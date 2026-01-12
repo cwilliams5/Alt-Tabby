@@ -33,7 +33,7 @@ WinEnumLite_ScanAll() {
         WinEnumLite_Init()
 
     records := []
-    z := 0
+    z := 0  ; Z-order counter for eligible windows only
 
     ; Enable detection of hidden windows (includes komorebi-cloaked windows)
     prevDetect := A_DetectHiddenWindows
@@ -42,13 +42,10 @@ WinEnumLite_ScanAll() {
     DetectHiddenWindows(prevDetect)
     for _, hwnd in list {
         ; Skip shell window
-        if (hwnd = _WN_ShellWindow) {
-            z += 1
+        if (hwnd = _WN_ShellWindow)
             continue
-        }
 
-        rec := _WN_ProbeWindow(hwnd, z)
-        z += 1
+        rec := _WN_ProbeWindow(hwnd, 0)  ; Z will be set below for eligible windows
 
         if (!rec)
             continue
@@ -56,6 +53,10 @@ WinEnumLite_ScanAll() {
         ; Apply Alt-Tab eligibility filter
         if (WN_UseAltTabEligibility && !rec["altTabEligible"])
             continue
+
+        ; Assign z-order only to eligible windows (keeps values low and meaningful)
+        rec["z"] := z
+        z += 1
 
         records.Push(rec)
     }
