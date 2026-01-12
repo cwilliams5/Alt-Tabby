@@ -198,8 +198,11 @@ _Viewer_Get(rec, key, defaultVal := "") {
     if (rec is Map) {
         return rec.Has(key) ? rec[key] : defaultVal
     }
-    try return rec.%key%
-    catch return defaultVal
+    try {
+        return rec.%key%
+    } catch {
+        return defaultVal
+    }
 }
 
 _Viewer_StartStore() {
