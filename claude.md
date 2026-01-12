@@ -1,49 +1,79 @@
-# Alt-Tabby assistant context
+# Alt-Tabby Assistant Context
 
-Project summary
+## Project Summary
 - AHK v2 Alt-Tab replacement focused on responsiveness and low latency.
 - Komorebi aware; uses workspace state to filter and label windows.
 - Hotkey interception is split into a separate micro process for speed.
 
-Current entrypoints
-- `components/switcher.ahk`: main logic + GUI (legacy wiring).
-- `components/interceptor.ahk`: ultra light Alt-Tab interceptor using PostMessage IPC.
+## Architecture (4-Process Design)
+1. **Interceptor** (micro): Ultra-fast Alt+Tab hook, isolated for timing. Communicates via IPC.
+2. **WindowStore + Producers**: Single process hosting store, winenum, MRU, komorebi producers. Named pipe server for multi-subscriber.
+3. **AltLogic + GUI**: Consumer process with overlay, MRU selection, window activation.
+4. **Debug Viewer**: Diagnostic tool showing Z/MRU-ordered window list from store.
 
-Key modules
-- `components/altlogic.ahk`: session logic, list building, activation.
-- `components/komorebi_sub.ahk`: komorebi subscription via named pipe.
-- `components/winenum.ahk`: fast Z-order enumeration, optional store hooks.
-- `components/mru.ahk`: MRU tracking updates.
-- `components/icon_pump.ahk` / `components/proc_pump.ahk`: background enrichers.
-- `components/gui.ahk` and `components/New GUI Working POC.ahk`: UI layers.
+## Current Directory Structure
+```
+src/
+  shared/         - IPC, JSON, config utilities
+    config.ahk    - Global settings (pipe names, intervals, feature flags)
+    ipc_pipe.ahk  - Named pipe server/client with adaptive polling
+    json.ahk      - JSON encoder/decoder (Map and Object aware)
+  store/          - WindowStore process
+    store_server.ahk    - Main store process with pipe server
+    windowstore.ahk     - Core store API (scans, projections, upserts)
+    winenum_lite.ahk    - Basic window enumeration producer
+    mru_lite.ahk        - Focus tracking producer
+    komorebi_lite.ahk   - Komorebi polling producer
+  viewer/         - Debug viewer
+    viewer.ahk    - GUI with Z/MRU toggle, workspace filter
+tests/
+  run_tests.ahk   - Automated test suite (unit + live)
+  test.ps1        - PowerShell test runner
+legacy/
+  components_legacy/  - Original ChatGPT work (reference only)
+```
 
-Architecture direction
-- Planned WindowStore API as single source of truth for window state.
-- Producers push into WindowStore; consumers subscribe or request projections.
-- Minimize blocking in hot paths; use batching and async pumps.
+## Key Files
+- `src/store/store_server.ahk`: WindowStore main entry point
+- `src/store/windowstore.ahk`: Core store with GetProjection, UpsertWindow, scan APIs
+- `src/shared/ipc_pipe.ahk`: Multi-subscriber named pipe IPC
+- `src/viewer/viewer.ahk`: Debug viewer GUI
+- `tests/run_tests.ahk`: Automated tests
 
-Notes
-- The WindowStore implementation is not currently present in this repo; see
-  `components/Chat GPT Thread.txt` for prior draft API and refactors.
-Lessons from provided components
-- `components/list.ahk` defines a full WindowStore API (batching, scans, projections, ownership policy, queues) and is a solid baseline for a fresh implementation.
-- Store uses BeginScan/EndScan with TTL hiding and hard removal; rev bumps are remember-on-batch for low churn.
-- Work queues exist for pid, icon, and workspace enrichment; pumps pop batches off these queues.
-- Ownership policy (off/warn/strict) is intended to avoid accidental field collisions across producers.
-- Store meta tracks current workspace name/id and supports workspace-filtered projections.
-- `components/komorebi_poc - WORKING.ahk` is only a historical reference and not a target for reuse.
+## Legacy Components (in legacy/components_legacy/)
+These are from the original ChatGPT work. Some are battle-tested:
+- `interceptor.ahk`: Solid Alt+Tab hook with grace period - **port this**
+- `winenum.ahk`: Full-featured enumeration with DWM cloaking - **port features**
+- `komorebi_sub.ahk`: Subscription-based updates - **use instead of polling**
+- `New GUI Working POC.ahk`: Rich GUI with icons, DWM effects - **port this**
+- `mru.ahk`, `icon_pump.ahk`, `proc_pump.ahk`: Mature enrichers
 
-Guiding constraints
-- Must use AutoHotkey v2 syntax exclusively (avoid v1 patterns).
-- Prioritize responsiveness and low CPU usage; prefer event-driven and idle timers, not busy loops.
-- IPC should be lightweight; named pipes are preferred over WM_COPYDATA.
-- Use compile/error checks with AutoHotkey v2 when possible to catch syntax errors early.
+## Guiding Constraints
+- **AHK v2 only**: No v1 patterns. Use direct function refs, not `Func("Name")`.
+- **Low CPU**: Event-driven, not busy loops. Adaptive polling when needed.
+- **Named pipes for IPC**: Multi-subscriber support, no WM_COPYDATA.
+- **Testing**: Run `tests/run_tests.ahk --live` to validate changes.
 
-Recent lessons
-- AHK v2: avoid `Func("Name")` for callbacks; use direct function references (`Store_OnMessage`) or `.Bind` on function objects.
-- IPC named pipes: client must retry on `ERROR_FILE_NOT_FOUND` until server creates pipe; server uses overlapped `ConnectNamedPipe`.
-- JSON encoder needs Map vs Object handling; in v2, `obj.OwnProps()` is needed for plain objects.
-- Store expects Map records; avoid assigning via `row[key]` on plain objects (use `row.%key%`).
+## Recent Lessons Learned
+- `_WS_GetOpt()` helper handles both Map and plain Object options
+- String sort comparisons must use `StrCompare()` not `<`/`>` operators
+- AHK v2 `#Include` is compile-time, cannot be conditional at runtime
+- Use `/ErrorStdOut` for silent testing without GUI popups
+- Store expects Map records from producers; use `rec["key"]` not `rec.key`
 
-Legacy context
-- Legacy AHK files moved to `legacy/components_legacy/` for reference only.
+## Testing
+Run automated tests before committing:
+```powershell
+.\tests\test.ps1 --live
+```
+Or directly:
+```
+AutoHotkey64.exe /ErrorStdOut tests\run_tests.ahk --live
+```
+Check `%TEMP%\alt_tabby_tests.log` for results.
+
+## Next Steps (Planned)
+1. Port legacy interceptor to `src/interceptor/`
+2. Enhance producers with legacy features (DWM cloaking, blacklist)
+3. Add komorebi subscription producer (replace polling)
+4. Wire legacy GUI as the real AltLogic consumer
