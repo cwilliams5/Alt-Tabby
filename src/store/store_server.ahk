@@ -80,16 +80,23 @@ Store_BroadcastSnapshot() {
             }
         }
     }
-    Store_PushDeltas()
+    Store_PushDeltas(payload)
 }
 
-Store_PushDeltas() {
+Store_PushDeltas(payload) {
     global gStore_Server, gStore_LastClientRev
     for hPipe, _ in gStore_Server.clients {
         last := gStore_LastClientRev.Has(hPipe) ? gStore_LastClientRev[hPipe] : -1
-        if (last = gStore_LastBroadcastRev)
+        if (last = payload.rev)
             continue
-        gStore_LastClientRev[hPipe] := gStore_LastBroadcastRev
+        delta := {
+            type: IPC_MSG_DELTA,
+            rev: payload.rev,
+            baseRev: last,
+            payload: { meta: payload.meta, items: payload.items }
+        }
+        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(delta))
+        gStore_LastClientRev[hPipe] := payload.rev
     }
 }
 
