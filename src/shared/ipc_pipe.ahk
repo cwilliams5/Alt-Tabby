@@ -13,6 +13,8 @@ IPC_MSG_SET_PROJECTION_OPTS := "set_projection_opts"
 IPC_MSG_PING := "ping"
 IPC_MSG_ERROR := "error"
 
+global IPC_DebugLogPath := ""
+
 IPC_DefaultProjectionOpts() {
     return {
         currentWorkspaceOnly: false,
@@ -35,7 +37,7 @@ IPC_PipeServer_Start(pipeName, onMessageFn) {
         idleStreak: 0
     }
     _IPC_Server_AddPending(server)
-    server.timerFn := Func("IPC__ServerTick").Bind(server)
+    server.timerFn := IPC__ServerTick.Bind(server)
     SetTimer(server.timerFn, server.tickMs)
     return server
 }
@@ -55,21 +57,25 @@ IPC_PipeServer_Stop(server) {
 
 IPC_PipeServer_Broadcast(server, msgText) {
     if !IsObject(server)
-        return
+        return 0
     if (!msgText || SubStr(msgText, -1) != "`n")
         msgText .= "`n"
     bytes := _IPC_StrToUtf8(msgText)
     buf := bytes.buf
     len := bytes.len
     dead := []
+    sent := 0
     for hPipe, _ in server.clients {
         if (!_IPC_WritePipe(hPipe, buf, len))
             dead.Push(hPipe)
+        else
+            sent += 1
     }
     for _, h in dead {
         server.clients.Delete(h)
         _IPC_CloseHandle(h)
     }
+    return sent
 }
 
 IPC_PipeServer_Send(server, hPipe, msgText) {
@@ -101,7 +107,7 @@ IPC_PipeClient_Connect(pipeName, onMessageFn) {
     if (!h)
         return client
     client.hPipe := h
-    client.timerFn := Func("IPC__ClientTick").Bind(client)
+    client.timerFn := IPC__ClientTick.Bind(client)
     SetTimer(client.timerFn, client.tickMs)
     return client
 }
@@ -213,36 +219,59 @@ _IPC_CreatePipeInstance(pipeName) {
     if (!hPipe || hPipe = -1)
         return { hPipe: 0 }
     hEvent := DllCall("CreateEventW", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
+    if (!hEvent) {
+        _IPC_CloseHandle(hPipe)
+        return { hPipe: 0 }
+    }
     over := Buffer(A_PtrSize=8 ? 32 : 20, 0)
     NumPut("ptr", hEvent, over, (A_PtrSize=8) ? 24 : 16)
     ok := DllCall("ConnectNamedPipe", "ptr", hPipe, "ptr", over.Ptr, "int")
+    pending := false
+    connected := false
     if (!ok) {
         gle := DllCall("GetLastError", "uint")
-        if (gle = 997 || gle = 535) {
-            ; pending or already connected
+        if (gle = 997) {
+            pending := true
+        } else if (gle = 535) {
+            connected := true
         } else {
             _IPC_CloseHandle(hEvent)
             _IPC_CloseHandle(hPipe)
             return { hPipe: 0 }
         }
+    } else {
+        connected := true
     }
-    return { hPipe: hPipe, hEvent: hEvent, over: over }
+    _IPC_Log("pipe_create hPipe=" hPipe " hEvent=" hEvent " pending=" pending " connected=" connected)
+    return { hPipe: hPipe, hEvent: hEvent, over: over, pending: pending, connected: connected }
 }
 
 _IPC_CheckConnect(inst) {
     if (!inst.hPipe)
         return false
-    ; If already connected, PeekNamedPipe will succeed. Otherwise check overlapped.
-    if (_IPC_PeekAvailable(inst.hPipe) >= 0)
+    if (inst.connected)
         return true
-    bytes := 0
-    ok := DllCall("GetOverlappedResult", "ptr", inst.hPipe, "ptr", inst.over.Ptr, "uint*", &bytes, "int", 0)
-    if (ok) {
-        _IPC_CloseHandle(inst.hEvent)
-        return true
+    if (inst.pending) {
+        wait := DllCall("WaitForSingleObject", "ptr", inst.hEvent, "uint", 1, "uint")
+        if (wait = 0) { ; WAIT_OBJECT_0
+            bytes := 0
+            DllCall("GetOverlappedResult", "ptr", inst.hPipe, "ptr", inst.over.Ptr, "uint*", &bytes, "int", 1)
+            inst.connected := true
+            inst.pending := false
+            _IPC_CloseHandle(inst.hEvent)
+            _IPC_Log("pipe_connected hPipe=" inst.hPipe)
+            return true
+        }
+        return false
     }
-    gle := DllCall("GetLastError", "uint")
-    return (gle = 535) ; ERROR_PIPE_CONNECTED
+    return false
+}
+
+_IPC_Log(msg) {
+    global IPC_DebugLogPath
+    if (!IPC_DebugLogPath)
+        return
+    try FileAppend(msg "`n", IPC_DebugLogPath, "UTF-8")
 }
 
 _IPC_ClosePipeInstance(inst) {
@@ -268,9 +297,14 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
             , "ptr", 0
             , "ptr")
         if (hPipe && hPipe != -1)
+        {
+            mode := 0x00000002 ; PIPE_READMODE_MESSAGE
+            DllCall("SetNamedPipeHandleState", "ptr", hPipe, "uint*", &mode, "ptr", 0, "ptr", 0)
+            _IPC_Log("pipe_client_connected hPipe=" hPipe)
             return hPipe
+        }
         gle := DllCall("GetLastError", "uint")
-        if (gle != 231) ; ERROR_PIPE_BUSY
+        if (gle != 231 && gle != 2) ; ERROR_PIPE_BUSY or ERROR_FILE_NOT_FOUND
             return 0
         if ((A_TickCount - start) > timeoutMs)
             return 0

@@ -14,16 +14,16 @@ WinEnumLite_ScanAll() {
         isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
         isVis := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
         state := isMin ? "WorkspaceMinimized" : (isVis ? "WorkspaceShowing" : "WorkspaceHidden")
-        records.Push({
-            hwnd: hwnd,
-            title: title,
-            class: class,
-            pid: pid,
-            state: state,
-            z: z,
-            altTabEligible: true,
-            isBlacklisted: false
-        })
+        rec := Map()
+        rec["hwnd"] := hwnd
+        rec["title"] := title
+        rec["class"] := class
+        rec["pid"] := pid
+        rec["state"] := state
+        rec["z"] := z
+        rec["altTabEligible"] := true
+        rec["isBlacklisted"] := false
+        records.Push(rec)
     }
     return records
 }
