@@ -12,6 +12,7 @@ global gViewer_Sort := "Z"
 global gViewer_Gui := 0
 global gViewer_LV := 0
 global gViewer_RowByHwnd := Map()
+global gViewer_CurrentOnly := false
 
 Viewer_Init() {
     global gViewer_Client, StorePipeName
@@ -55,7 +56,7 @@ _Viewer_ProjectionOpts() {
     return {
         sort: gViewer_Sort,
         columns: "items",
-        currentWorkspaceOnly: false,
+        currentWorkspaceOnly: gViewer_CurrentOnly,
         includeMinimized: true,
         includeCloaked: true,
         blacklistMode: "exclude"
@@ -67,6 +68,8 @@ _Viewer_CreateGui() {
     gViewer_Gui := Gui("+Resize +AlwaysOnTop", "WindowStore Viewer")
     btn := gViewer_Gui.AddButton("x10 y10 w160 h28", "Toggle Z/MRU")
     btn.OnEvent("Click", _Viewer_ToggleSort)
+    btn2 := gViewer_Gui.AddButton("x180 y10 w200 h28", "Toggle Current WS")
+    btn2.OnEvent("Click", _Viewer_ToggleCurrentWS)
     gViewer_LV := gViewer_Gui.AddListView("x10 y48 w900 h500", ["Z", "HWND", "PID", "Title", "Class", "State", "Workspace", "Process", "Focused"])
     gViewer_Gui.Show()
 }
@@ -74,6 +77,12 @@ _Viewer_CreateGui() {
 _Viewer_ToggleSort(*) {
     global gViewer_Sort
     gViewer_Sort := (gViewer_Sort = "Z") ? "MRU" : "Z"
+    _Viewer_RequestProjection()
+}
+
+_Viewer_ToggleCurrentWS(*) {
+    global gViewer_CurrentOnly
+    gViewer_CurrentOnly := !gViewer_CurrentOnly
     _Viewer_RequestProjection()
 }
 

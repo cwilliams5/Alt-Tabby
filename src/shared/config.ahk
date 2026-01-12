@@ -12,3 +12,6 @@ StoreScanIntervalMs := 1000
 
 ; ---- Runtime ----
 AhkV2Path := "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
+
+; ---- Producers ----
+UseMruLite := false
