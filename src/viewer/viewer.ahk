@@ -102,16 +102,13 @@ Viewer_OnMessage(line, hPipe := 0) {
     }
 
     if (type = IPC_MSG_SNAPSHOT) {
-        ; Snapshot = push from store (uses store's default opts, not client's)
+        ; Snapshot = push from store (now tailored to our projection opts)
         gViewer_PushCount++
         gViewer_LastUpdateType := "push"
         if (obj.Has("payload")) {
             payload := obj["payload"]
             _Viewer_UpdateCurrentWS(payload)
-            ; Only use snapshot data if we're in [All] mode
-            ; When in [Current] mode, snapshots don't respect our filter - ignore them
-            ; and rely on explicit projection requests instead
-            if (!gViewer_CurrentOnly && payload.Has("items")) {
+            if (payload.Has("items")) {
                 items := payload["items"]
                 _Viewer_Log("push items=" items.Length)
                 if (!gViewer_Headless) {
@@ -120,7 +117,7 @@ Viewer_OnMessage(line, hPipe := 0) {
             }
         }
     } else if (type = IPC_MSG_PROJECTION) {
-        ; Projection = response to our request (poll)
+        ; Projection = response to our explicit request
         gViewer_PollCount++
         gViewer_LastUpdateType := "poll"
         if (obj.Has("payload")) {
@@ -135,15 +132,13 @@ Viewer_OnMessage(line, hPipe := 0) {
             }
         }
     } else if (type = IPC_MSG_DELTA) {
-        ; Delta = push from store (uses store's default opts, not client's)
+        ; Delta = incremental update (now tailored to our projection opts)
         gViewer_PushCount++
-        gViewer_LastUpdateType := "push"
+        gViewer_LastUpdateType := "delta"
         if (obj.Has("payload")) {
             payload := obj["payload"]
             _Viewer_UpdateCurrentWS(payload)
-            ; Only apply deltas if we're in [All] mode
-            ; When in [Current] mode, deltas don't respect our filter
-            if (!gViewer_CurrentOnly && payload.Has("upserts") && !gViewer_Headless) {
+            if (payload.Has("upserts") && !gViewer_Headless) {
                 _Viewer_ApplyDelta(payload)
             }
         }
@@ -248,7 +243,17 @@ _Viewer_ToggleCurrentWS(*) {
     global gViewer_CurrentOnly, gViewer_WSLabel
     gViewer_CurrentOnly := !gViewer_CurrentOnly
     gViewer_WSLabel.Text := gViewer_CurrentOnly ? "[Current]" : "[All]"
+    ; Update server with new projection opts so future pushes are filtered correctly
+    _Viewer_SendProjectionOpts()
     _Viewer_RequestProjection()
+}
+
+_Viewer_SendProjectionOpts() {
+    global gViewer_Client, IPC_MSG_SET_PROJECTION_OPTS
+    if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe)
+        return
+    msg := { type: IPC_MSG_SET_PROJECTION_OPTS, projectionOpts: _Viewer_ProjectionOpts() }
+    IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
 }
 
 _Viewer_UpdateList(items) {
@@ -472,7 +477,7 @@ _Viewer_ApplyDelta(payload) {
 }
 
 _Viewer_Heartbeat() {
-    global gViewer_Client, gViewer_LastMsgTick, StorePipeName, gViewer_CurrentOnly
+    global gViewer_Client, gViewer_LastMsgTick, StorePipeName
     global gViewer_Status, gViewer_PushCount, gViewer_PollCount, gViewer_LastUpdateType
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
@@ -486,19 +491,15 @@ _Viewer_Heartbeat() {
         return
     }
 
-    ; When in [Current] mode, we ignore push updates so need to poll more often
-    ; When in [All] mode, only poll if no updates in 5 seconds
-    if (gViewer_CurrentOnly) {
-        _Viewer_RequestProjection()
-    } else if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > 5000) {
+    ; Request refresh if no updates in 5 seconds (server pushes tailored updates)
+    if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > 5000) {
         _Viewer_RequestProjection()
     }
 
     if (IsObject(gViewer_Status)) {
         elapsed := A_TickCount - gViewer_LastMsgTick
         typeStr := gViewer_LastUpdateType ? gViewer_LastUpdateType : "none"
-        modeStr := gViewer_CurrentOnly ? " [polling]" : ""
-        gViewer_Status.Text := "Last: " typeStr " " elapsed "ms ago | Push: " gViewer_PushCount " | Poll: " gViewer_PollCount . modeStr
+        gViewer_Status.Text := "Last: " typeStr " " elapsed "ms ago | Push: " gViewer_PushCount " | Poll: " gViewer_PollCount
     }
 }
 

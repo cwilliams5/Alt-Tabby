@@ -13,13 +13,13 @@
 #Include %A_ScriptDir%\proc_pump.ahk
 
 global gStore_Server := 0
-global gStore_ClientOpts := Map() ; hPipe -> projection opts
+global gStore_ClientOpts := Map()      ; hPipe -> projection opts
 global gStore_LastBroadcastRev := -1
 global gStore_TestMode := false
 global gStore_ErrorLog := ""
 global gStore_LastClientLog := 0
-global gStore_LastClientRev := Map()
-global gStore_LastProj := []
+global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
+global gStore_LastClientProj := Map()  ; hPipe -> last projection items (for delta calc)
 
 for _, arg in A_Args {
     if (arg = "--test")
@@ -73,71 +73,88 @@ Store_ScanTick() {
     rev := WindowStore_GetRev()
     if (rev != gStore_LastBroadcastRev) {
         gStore_LastBroadcastRev := rev
-        Store_BroadcastSnapshot()
+        Store_PushToClients()
     }
 }
 
-Store_BroadcastSnapshot() {
-    global gStore_Server, gStore_TestMode
-    ; Include cloaked windows in broadcast so viewers with "All" mode work correctly
-    payload := WindowStore_GetProjection({ sort: "Z", columns: "items", includeCloaked: true })
-    msg := {
-        type: IPC_MSG_SNAPSHOT,
-        rev: payload.rev,
-        payload: { meta: payload.meta, items: payload.items }
-    }
-    sent := IPC_PipeServer_Broadcast(gStore_Server, JXON_Dump(msg))
-    if (gStore_TestMode)
-    {
-        Store_LogError("broadcast_sent=" sent " items=" payload.items.Length)
-        if (payload.items.Length = 0 && gWS_Store.Count > 0) {
-            for _, rec in gWS_Store {
-                Store_LogError("sample_present=" rec.present " state=" rec.state)
-                break
-            }
-        }
-    }
-    Store_PushDeltas(payload)
-    gStore_LastProj := payload.items
-}
+; Push tailored projections to each client based on their registered opts
+Store_PushToClients() {
+    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_TestMode
 
-Store_PushDeltas(payload) {
-    global gStore_Server, gStore_LastClientRev
+    if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
+        return
+
+    sent := 0
     for hPipe, _ in gStore_Server.clients {
-        last := gStore_LastClientRev.Has(hPipe) ? gStore_LastClientRev[hPipe] : -1
-        if (last = payload.rev)
+        ; Get this client's projection opts (or defaults)
+        opts := gStore_ClientOpts.Has(hPipe) ? gStore_ClientOpts[hPipe] : IPC_DefaultProjectionOpts()
+
+        ; Generate projection tailored to this client
+        proj := WindowStore_GetProjection(opts)
+
+        ; Get client's previous projection for delta calculation
+        prevItems := gStore_LastClientProj.Has(hPipe) ? gStore_LastClientProj[hPipe] : []
+        lastRev := gStore_LastClientRev.Has(hPipe) ? gStore_LastClientRev[hPipe] : -1
+
+        ; Skip if nothing changed for this client
+        if (lastRev = proj.rev)
             continue
-        delta := Store_BuildDelta(payload, last)
-        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(delta))
-        gStore_LastClientRev[hPipe] := payload.rev
+
+        ; Build and send delta or snapshot
+        if (prevItems.Length > 0) {
+            ; Send delta
+            delta := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev)
+            IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(delta))
+        } else {
+            ; First message - send full snapshot
+            msg := {
+                type: IPC_MSG_SNAPSHOT,
+                rev: proj.rev,
+                payload: { meta: proj.meta, items: proj.items }
+            }
+            IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
+        }
+
+        ; Update client's tracking state
+        gStore_LastClientRev[hPipe] := proj.rev
+        gStore_LastClientProj[hPipe] := proj.items
+        sent++
+    }
+
+    if (gStore_TestMode && sent > 0) {
+        Store_LogError("pushed to " sent " clients")
     }
 }
 
-Store_BuildDelta(payload, baseRev) {
-    global gStore_LastProj
-    prev := gStore_LastProj
-    next := payload.items
-
+; Build delta between previous and current projection for a specific client
+Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev) {
     prevMap := Map()
-    for _, rec in prev
+    for _, rec in prevItems
         prevMap[rec.hwnd] := rec
     nextMap := Map()
-    for _, rec in next
+    for _, rec in nextItems
         nextMap[rec.hwnd] := rec
 
     upserts := []
     removes := []
 
+    ; Find new/changed items
     for hwnd, rec in nextMap {
         if (!prevMap.Has(hwnd)) {
             upserts.Push(rec)
         } else {
-            ; naive compare of key fields
             old := prevMap[hwnd]
-            if (rec.title != old.title || rec.state != old.state || rec.z != old.z || rec.pid != old.pid)
+            ; Compare key fields that matter for display
+            if (rec.title != old.title || rec.state != old.state || rec.z != old.z
+                || rec.pid != old.pid || rec.isFocused != old.isFocused
+                || rec.workspaceName != old.workspaceName || rec.isCloaked != old.isCloaked
+                || rec.processName != old.processName || rec.iconHicon != old.iconHicon) {
                 upserts.Push(rec)
+            }
         }
     }
+
+    ; Find removed items
     for hwnd, _ in prevMap {
         if (!nextMap.Has(hwnd))
             removes.Push(hwnd)
@@ -145,14 +162,14 @@ Store_BuildDelta(payload, baseRev) {
 
     return {
         type: IPC_MSG_DELTA,
-        rev: payload.rev,
+        rev: rev,
         baseRev: baseRev,
-        payload: { meta: payload.meta, upserts: upserts, removes: removes }
+        payload: { meta: meta, upserts: upserts, removes: removes }
     }
 }
 
 Store_OnMessage(line, hPipe := 0) {
-    global gStore_ClientOpts
+    global gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj
     obj := ""
     try obj := JXON_Load(line)
     catch {
@@ -164,18 +181,35 @@ Store_OnMessage(line, hPipe := 0) {
     if (type = IPC_MSG_HELLO) {
         opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : IPC_DefaultProjectionOpts()
         gStore_ClientOpts[hPipe] := opts
-        gStore_LastClientRev[hPipe] := WindowStore_GetRev()
+        gStore_LastClientRev[hPipe] := -1  ; Will get updated when we send initial projection
+        gStore_LastClientProj[hPipe] := [] ; No previous projection yet
+
+        ; Send hello ack
         ack := {
             type: IPC_MSG_HELLO_ACK,
             rev: WindowStore_GetRev(),
-            payload: { meta: WindowStore_GetCurrentWorkspace(), capabilities: { deltas: false } }
+            payload: { meta: WindowStore_GetCurrentWorkspace(), capabilities: { deltas: true } }
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(ack))
+
+        ; Immediately send initial projection with client's opts
+        proj := WindowStore_GetProjection(opts)
+        msg := {
+            type: IPC_MSG_SNAPSHOT,
+            rev: proj.rev,
+            payload: { meta: proj.meta, items: proj.items }
+        }
+        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
+        gStore_LastClientRev[hPipe] := proj.rev
+        gStore_LastClientProj[hPipe] := proj.items
         return
     }
     if (type = IPC_MSG_SET_PROJECTION_OPTS) {
-        if (obj.Has("projectionOpts"))
+        if (obj.Has("projectionOpts")) {
             gStore_ClientOpts[hPipe] := obj["projectionOpts"]
+            ; Clear last projection so client gets fresh snapshot with new opts
+            gStore_LastClientProj[hPipe] := []
+        }
         return
     }
     if (type = IPC_MSG_SNAPSHOT_REQUEST || type = IPC_MSG_PROJECTION_REQUEST) {
