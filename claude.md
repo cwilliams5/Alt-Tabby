@@ -32,3 +32,9 @@ Lessons from provided components
 - Ownership policy (off/warn/strict) is intended to avoid accidental field collisions across producers.
 - Store meta tracks current workspace name/id and supports workspace-filtered projections.
 - `components/komorebi_poc - WORKING.ahk` is only a historical reference and not a target for reuse.
+
+Guiding constraints
+- Must use AutoHotkey v2 syntax exclusively (avoid v1 patterns).
+- Prioritize responsiveness and low CPU usage; prefer event-driven and idle timers, not busy loops.
+- IPC should be lightweight; named pipes are preferred over WM_COPYDATA.
+- Use compile/error checks with AutoHotkey v2 when possible to catch syntax errors early.
