@@ -9,6 +9,8 @@
 #Include %A_ScriptDir%\mru_lite.ahk
 #Include %A_ScriptDir%\komorebi_lite.ahk
 #Include %A_ScriptDir%\komorebi_sub.ahk
+#Include %A_ScriptDir%\icon_pump.ahk
+#Include %A_ScriptDir%\proc_pump.ahk
 
 global gStore_Server := 0
 global gStore_ClientOpts := Map() ; hPipe -> projection opts
@@ -50,6 +52,10 @@ Store_Init() {
         KomorebiSub_Init()
     else if (IsSet(UseKomorebiLite) && UseKomorebiLite)
         KomorebiLite_Init()
+    if (IsSet(UseIconPump) && UseIconPump)
+        IconPump_Start()
+    if (IsSet(UseProcPump) && UseProcPump)
+        ProcPump_Start()
 }
 
 Store_ScanTick() {
@@ -182,7 +188,7 @@ Store_OnMessage(line, hPipe := 0) {
         resp := {
             type: respType,
             rev: proj.rev,
-            payload: { meta: proj.meta, items: proj.Has("items") ? proj.items : [] }
+            payload: { meta: proj.meta, items: proj.HasOwnProp("items") ? proj.items : [] }
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(resp))
         gStore_LastClientRev[hPipe] := proj.rev
@@ -191,6 +197,27 @@ Store_OnMessage(line, hPipe := 0) {
 }
 
 Store_Init()
+
+OnExit(Store_OnExit)
+
+Store_OnExit(reason, code) {
+    global gStore_Server
+    ; Stop all timers before exit to prevent errors
+    try {
+        SetTimer(Store_ScanTick, 0)
+    }
+    try {
+        if (IsSet(MRU_Lite_Tick)) {
+            SetTimer(MRU_Lite_Tick, 0)
+        }
+    }
+    try {
+        if (IsObject(gStore_Server)) {
+            IPC_PipeServer_Stop(gStore_Server)
+        }
+    }
+    return 0  ; Allow exit
+}
 
 Store_OnError(err, *) {
     global gStore_ErrorLog

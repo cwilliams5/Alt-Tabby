@@ -55,22 +55,57 @@ These are from the original ChatGPT work. Some are battle-tested:
 - **Testing**: Run `tests/run_tests.ahk --live` to validate changes.
 
 ## Recent Lessons Learned
+
+### AHK v2 Syntax
 - `_WS_GetOpt()` helper handles both Map and plain Object options
 - String sort comparisons must use `StrCompare()` not `<`/`>` operators
 - AHK v2 `#Include` is compile-time, cannot be conditional at runtime
-- Use `/ErrorStdOut` for silent testing without GUI popups
 - Store expects Map records from producers; use `rec["key"]` not `rec.key`
+
+### Global Variable Scoping (CRITICAL)
+- **Global constants defined at file scope (like `IPC_MSG_SNAPSHOT := "snapshot"`) are NOT automatically accessible inside functions**
+- You MUST declare them with `global` inside each function that uses them:
+  ```ahk
+  MyFunc() {
+      global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION  ; Required!
+      if (type = IPC_MSG_SNAPSHOT) { ... }
+  }
+  ```
+- With `#Warn VarUnset, Off`, missing globals silently become empty strings - comparisons fail without errors
+- This is a common source of "code runs but doesn't work" bugs
+
+### Testing from Git Bash
+- Use `//ErrorStdOut` (double slash) to prevent Git Bash path expansion
+- Git Bash converts `/ErrorStdOut` → `C:/Program Files/Git/ErrorStdOut` (wrong!)
+- Correct: `"C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" //ErrorStdOut "path\to\script.ahk"`
+
+### ListView Updates
+- ListView rows stay in insertion order; sorting the data array doesn't reorder displayed rows
+- To re-sort a ListView: delete all rows and re-add in sorted order, OR use ListView's native Sort
+- Incremental updates (modifying existing rows) preserve original row order
+
+### Komorebi Integration Testing
+- Always verify komorebi is actually running: `komorebic state`
+- Test workspace data flows end-to-end: komorebi → producer → store → viewer
+- Don't assume empty columns mean "no data" - verify the data source
 
 ## Testing
 Run automated tests before committing:
 ```powershell
 .\tests\test.ps1 --live
 ```
-Or directly:
+Or directly (note double-slash for Git Bash):
 ```
-AutoHotkey64.exe /ErrorStdOut tests\run_tests.ahk --live
+AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 ```
 Check `%TEMP%\alt_tabby_tests.log` for results.
+
+### Test Coverage Requirements
+- Unit tests for core functions
+- IPC integration tests (server ↔ client)
+- Real store integration (spawn actual store_server)
+- Headless viewer simulation (validates display fields)
+- Komorebi integration (verify workspace data flows)
 
 ## Next Steps (Planned)
 1. Port legacy interceptor to `src/interceptor/`

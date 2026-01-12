@@ -8,6 +8,16 @@ global gWS_ScanId := 0
 global gWS_Config := Map()
 global gWS_Meta := Map()
 
+; Work queues for pumps
+global gWS_IconQueue := []         ; hwnds needing icons
+global gWS_PidQueue := []          ; pids needing process info
+global gWS_IconQueueSet := Map()   ; fast lookup for dedup
+global gWS_PidQueueSet := Map()    ; fast lookup for dedup
+
+; Caches
+global gWS_ExeIconCache := Map()   ; exe path -> HICON (master copy)
+global gWS_ProcNameCache := Map()  ; pid -> process name
+
 gWS_Config["MissingTTLms"] := 1200
 gWS_Meta["currentWSId"] := ""
 gWS_Meta["currentWSName"] := ""
@@ -65,7 +75,8 @@ WindowStore_UpsertWindow(records, source := "") {
         hwnd := rec.Has("hwnd") ? (rec["hwnd"] + 0) : 0
         if (!hwnd)
             continue
-        if (!gWS_Store.Has(hwnd)) {
+        isNew := !gWS_Store.Has(hwnd)
+        if (isNew) {
             gWS_Store[hwnd] := _WS_NewRecord(hwnd)
             added += 1
         }
@@ -81,6 +92,9 @@ WindowStore_UpsertWindow(records, source := "") {
         row.lastSeenScanId := gWS_ScanId
         row.lastSeenTick := A_TickCount
         updated += 1
+
+        ; Enqueue for enrichment if missing data
+        _WS_EnqueueIfNeeded(row)
     }
     if (added || updated)
         gWS_Rev += 1
@@ -94,10 +108,21 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
         return { changed: false, rev: gWS_Rev }
     row := gWS_Store[hwnd]
     changed := false
-    for k, v in patch {
-        if (!row.Has(k) || row[k] != v) {
-            row[k] := v
-            changed := true
+    ; Handle both Map and plain object patches
+    if (patch is Map) {
+        for k, v in patch {
+            if (!row.HasOwnProp(k) || row.%k% != v) {
+                row.%k% := v
+                changed := true
+            }
+        }
+    } else if (IsObject(patch)) {
+        for k in patch.OwnProps() {
+            v := patch.%k%
+            if (!row.HasOwnProp(k) || row.%k% != v) {
+                row.%k% := v
+                changed := true
+            }
         }
     }
     if (changed)
@@ -216,6 +241,9 @@ _WS_NewRecord(hwnd) {
         state: "WorkspaceHidden",
         altTabEligible: true,
         isBlacklisted: false,
+        isCloaked: false,
+        isMinimized: false,
+        isVisible: false,
         z: 0,
         lastActivatedTick: 0,
         isFocused: false,
@@ -239,8 +267,13 @@ _WS_ToItem(rec) {
         z: rec.z,
         lastActivatedTick: rec.lastActivatedTick,
         isFocused: rec.isFocused,
+        isCloaked: rec.isCloaked,
+        isMinimized: rec.isMinimized,
         workspaceName: rec.workspaceName,
+        workspaceId: rec.workspaceId,
+        isOnCurrentWorkspace: rec.isOnCurrentWorkspace,
         processName: rec.processName,
+        iconHicon: rec.iconHicon,
         present: rec.present
     }
 }
@@ -304,4 +337,146 @@ _WS_CmpProcessName(a, b) {
 _WS_CmpMRU(a, b) {
     ; MRU: most recently activated first (descending)
     return (a.lastActivatedTick > b.lastActivatedTick) ? -1 : (a.lastActivatedTick < b.lastActivatedTick) ? 1 : 0
+}
+
+; ============================================================
+; Pump Queue Management
+; ============================================================
+
+; Enqueue window for enrichment if missing icon or process info
+_WS_EnqueueIfNeeded(row) {
+    global gWS_IconQueue, gWS_IconQueueSet, gWS_PidQueue, gWS_PidQueueSet
+    now := A_TickCount
+
+    ; Need icon?
+    if (!row.iconHicon && row.present) {
+        if (row.iconCooldownUntilTick = 0 || now >= row.iconCooldownUntilTick) {
+            hwnd := row.hwnd + 0
+            if (!gWS_IconQueueSet.Has(hwnd)) {
+                gWS_IconQueue.Push(hwnd)
+                gWS_IconQueueSet[hwnd] := true
+            }
+        }
+    }
+
+    ; Need process name?
+    if (row.processName = "" && row.pid > 0 && row.present) {
+        pid := row.pid + 0
+        if (!gWS_PidQueueSet.Has(pid)) {
+            gWS_PidQueue.Push(pid)
+            gWS_PidQueueSet[pid] := true
+        }
+    }
+}
+
+; Pop batch of hwnds needing icons
+WindowStore_PopIconBatch(count := 16) {
+    global gWS_IconQueue, gWS_IconQueueSet
+    batch := []
+    while (gWS_IconQueue.Length > 0 && batch.Length < count) {
+        hwnd := gWS_IconQueue.RemoveAt(1)
+        gWS_IconQueueSet.Delete(hwnd)
+        batch.Push(hwnd)
+    }
+    return batch
+}
+
+; Pop batch of pids needing process info
+WindowStore_PopPidBatch(count := 16) {
+    global gWS_PidQueue, gWS_PidQueueSet
+    batch := []
+    while (gWS_PidQueue.Length > 0 && batch.Length < count) {
+        pid := gWS_PidQueue.RemoveAt(1)
+        gWS_PidQueueSet.Delete(pid)
+        batch.Push(pid)
+    }
+    return batch
+}
+
+; ============================================================
+; Process Name Cache
+; ============================================================
+
+; Get cached process name for pid
+WindowStore_GetProcNameCached(pid) {
+    global gWS_ProcNameCache
+    pid := pid + 0
+    return gWS_ProcNameCache.Has(pid) ? gWS_ProcNameCache[pid] : ""
+}
+
+; Update process name for all windows with this pid
+WindowStore_UpdateProcessName(pid, name) {
+    global gWS_Store, gWS_Rev, gWS_ProcNameCache
+    pid := pid + 0
+    if (pid <= 0 || name = "")
+        return
+
+    ; Cache it
+    gWS_ProcNameCache[pid] := name
+
+    ; Update all matching rows
+    changed := false
+    for hwnd, rec in gWS_Store {
+        if (rec.pid = pid && rec.processName != name) {
+            rec.processName := name
+            changed := true
+        }
+    }
+    if (changed)
+        gWS_Rev += 1
+}
+
+; ============================================================
+; Icon Cache
+; ============================================================
+
+; Get a COPY of cached icon for exe (caller owns the copy)
+WindowStore_GetExeIconCopy(exePath) {
+    global gWS_ExeIconCache
+    if (!gWS_ExeIconCache.Has(exePath))
+        return 0
+    master := gWS_ExeIconCache[exePath]
+    if (!master)
+        return 0
+    return DllCall("user32\CopyIcon", "ptr", master, "ptr")
+}
+
+; Store master icon for exe (store owns it, don't destroy)
+WindowStore_ExeIconCachePut(exePath, hIcon) {
+    global gWS_ExeIconCache
+    if (hIcon)
+        gWS_ExeIconCache[exePath] := hIcon
+}
+
+; ============================================================
+; Ensure API (for producers that add partial data)
+; ============================================================
+
+; Ensure a window exists in store, merge hints, enqueue for enrichment
+WindowStore_Ensure(hwnd, hints := 0, source := "") {
+    global gWS_Store, gWS_Rev
+    hwnd := hwnd + 0
+    if (!hwnd)
+        return
+
+    if (!gWS_Store.Has(hwnd)) {
+        gWS_Store[hwnd] := _WS_NewRecord(hwnd)
+        gWS_Rev += 1
+    }
+
+    row := gWS_Store[hwnd]
+
+    ; Merge hints
+    if (IsObject(hints)) {
+        if (hints is Map) {
+            for k, v in hints
+                row.%k% := v
+        } else {
+            for k in hints.OwnProps()
+                row.%k% := hints.%k%
+        }
+    }
+
+    ; Enqueue for enrichment
+    _WS_EnqueueIfNeeded(row)
 }

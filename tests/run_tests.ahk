@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+#Warn VarUnset, Off  ; Suppress warnings for functions defined in includes
 
 ; Automated test runner
 ; Usage: AutoHotkey64.exe tests/run_tests.ahk [--live]
@@ -7,6 +8,12 @@
 global TestLogPath := A_Temp "\alt_tabby_tests.log"
 global TestErrors := 0
 global TestPassed := 0
+global testServer := 0
+global gTestClient := 0
+global gTestResponse := ""
+global gTestResponseReceived := false
+global gRealStoreResponse := ""
+global gRealStoreReceived := false
 
 try FileDelete(TestLogPath)
 Log("=== Alt-Tabby Test Run " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
@@ -20,8 +27,12 @@ for _, arg in A_Args {
 }
 
 ; Include files needed for testing
+#Include %A_ScriptDir%\..\src\shared\config.ahk
+#Include %A_ScriptDir%\..\src\shared\json.ahk
+#Include %A_ScriptDir%\..\src\shared\ipc_pipe.ahk
 #Include %A_ScriptDir%\..\src\store\windowstore.ahk
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
+#Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk
 
 Log("`n--- WindowStore Unit Tests ---")
 
@@ -105,6 +116,346 @@ if (RunLiveTests) {
 
     proj := WindowStore_GetProjection({ sort: "Z" })
     AssertTrue(proj.items.Length > 0, "Full pipeline produces projection (" proj.items.Length " items)")
+
+    ; --- IPC Test: Store Server and Client ---
+    Log("`n--- IPC Integration Tests ---")
+
+    ; Start a test store server on a unique pipe
+    testPipeName := "\\.\pipe\alt_tabby_test_" A_TickCount
+    testServer := IPC_PipeServer_Start(testPipeName, Test_OnServerMessage)
+    AssertTrue(IsObject(testServer), "IPC server started")
+
+    ; Give server a moment to set up pending connection
+    Sleep(100)
+
+    ; Connect client
+    gTestResponse := ""
+    gTestResponseReceived := false
+    gTestClient := IPC_PipeClient_Connect(testPipeName, Test_OnClientMessage)
+    AssertTrue(gTestClient.hPipe != 0, "IPC client connected")
+
+    if (gTestClient.hPipe) {
+        ; Give connection time to establish
+        Sleep(200)
+
+        ; Send projection request
+        reqMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
+        IPC_PipeClient_Send(gTestClient, JXON_Dump(reqMsg))
+
+        ; Wait for response (with timeout)
+        waitStart := A_TickCount
+        while (!gTestResponseReceived && (A_TickCount - waitStart) < 3000) {
+            Sleep(50)
+        }
+
+        if (gTestResponseReceived) {
+            try {
+                respObj := JXON_Load(gTestResponse)
+                hasItems := respObj.Has("payload") && respObj["payload"].Has("items")
+                AssertTrue(hasItems, "IPC response contains items array")
+                if (hasItems) {
+                    items := respObj["payload"]["items"]
+                    itemCount := items.Length
+                    Log("  IPC received " itemCount " items from store")
+
+                    ; Validate projection includes required fields
+                    if (itemCount > 0) {
+                        sample := items[1]
+                        requiredFields := ["hwnd", "title", "class", "pid", "state", "z",
+                            "lastActivatedTick", "isFocused", "isCloaked", "isMinimized",
+                            "workspaceName", "processName", "present"]
+                        missingFields := []
+                        for _, field in requiredFields {
+                            if (!sample.Has(field)) {
+                                missingFields.Push(field)
+                            }
+                        }
+                        if (missingFields.Length = 0) {
+                            Log("PASS: Projection contains all required fields")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: Projection missing fields: " _ArrayJoin(missingFields, ", "))
+                            TestErrors++
+                        }
+                    }
+                }
+            } catch as e {
+                Log("FAIL: IPC response parse error - " e.Message)
+                TestErrors++
+            }
+        } else {
+            Log("FAIL: IPC response timeout")
+            TestErrors++
+        }
+
+        ; Cleanup client
+        IPC_PipeClient_Close(gTestClient)
+    }
+
+    ; Cleanup server
+    IPC_PipeServer_Stop(testServer)
+
+    ; --- Real Store Integration Test ---
+    Log("`n--- Real Store Integration Test ---")
+
+    ; Start the real store_server process
+    storePath := A_ScriptDir "\..\src\store\store_server.ahk"
+    testStorePipe := "tabby_test_store_" A_TickCount
+    storeArgs := '/ErrorStdOut "' storePath '" --pipe=' testStorePipe
+    storePid := 0
+
+    try {
+        Run('"' A_AhkPath '" ' storeArgs, , "Hide", &storePid)
+    } catch {
+        Log("SKIP: Could not start store_server")
+        storePid := 0
+    }
+
+    if (storePid) {
+        ; Wait for store to start
+        Sleep(1500)
+
+        ; Connect as a client (like the viewer does)
+        global gRealStoreResponse := ""
+        global gRealStoreReceived := false
+        realClient := IPC_PipeClient_Connect(testStorePipe, Test_OnRealStoreMessage)
+
+        if (realClient.hPipe) {
+            Log("PASS: Connected to real store_server")
+            TestPassed++
+
+            ; Send hello like the viewer does
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "test", wants: { deltas: true } }
+            IPC_PipeClient_Send(realClient, JXON_Dump(helloMsg))
+
+            ; Send projection request
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
+            IPC_PipeClient_Send(realClient, JXON_Dump(projMsg))
+
+            ; Wait for response
+            waitStart := A_TickCount
+            while (!gRealStoreReceived && (A_TickCount - waitStart) < 5000) {
+                Sleep(100)
+            }
+
+            if (gRealStoreReceived) {
+                Log("PASS: Received response from real store")
+                TestPassed++
+                try {
+                    respObj := JXON_Load(gRealStoreResponse)
+                    if (respObj.Has("payload") && respObj["payload"].Has("items")) {
+                        itemCount := respObj["payload"]["items"].Length
+                        Log("  Real store returned " itemCount " items")
+                        AssertTrue(itemCount > 0, "Real store returns windows")
+                    } else {
+                        Log("FAIL: Real store response missing items")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: Real store response parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: Timeout waiting for real store response")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(realClient)
+        } else {
+            Log("FAIL: Could not connect to real store_server")
+            TestErrors++
+        }
+
+        ; Kill the store process
+        try {
+            ProcessClose(storePid)
+        }
+    }
+
+    ; --- Headless Viewer Simulation Test ---
+    Log("`n--- Headless Viewer Simulation Test ---")
+
+    ; Start a fresh store for viewer test
+    viewerStorePipe := "tabby_viewer_test_" A_TickCount
+    viewerStorePid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' viewerStorePipe, , "Hide", &viewerStorePid)
+    } catch as e {
+        Log("SKIP: Could not start store for viewer test: " e.Message)
+        viewerStorePid := 0
+    }
+
+    if (viewerStorePid) {
+        Sleep(1500)
+
+        global gViewerTestResponse := ""
+        global gViewerTestReceived := false
+        global gViewerTestHelloAck := false
+
+        viewerClient := IPC_PipeClient_Connect(viewerStorePipe, Test_OnViewerMessage)
+
+        if (viewerClient.hPipe) {
+            Log("PASS: Viewer connected to store")
+            TestPassed++
+
+            ; Send hello like real viewer
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "test_viewer", wants: { deltas: true } }
+            IPC_PipeClient_Send(viewerClient, JXON_Dump(helloMsg))
+
+            ; Send projection request with MRU sort
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "MRU", columns: "items" } }
+            IPC_PipeClient_Send(viewerClient, JXON_Dump(projMsg))
+
+            ; Wait for response
+            waitStart := A_TickCount
+            while (!gViewerTestReceived && (A_TickCount - waitStart) < 5000) {
+                Sleep(100)
+            }
+
+            if (gViewerTestReceived) {
+                Log("PASS: Viewer received projection response")
+                TestPassed++
+
+                try {
+                    respObj := JXON_Load(gViewerTestResponse)
+                    if (respObj.Has("payload") && respObj["payload"].Has("items")) {
+                        items := respObj["payload"]["items"]
+                        if (items.Length > 0) {
+                            ; Validate critical fields for viewer display
+                            sample := items[1]
+                            viewerFields := ["hwnd", "title", "z", "lastActivatedTick", "isCloaked",
+                                "isMinimized", "workspaceName", "isFocused", "state"]
+                            missingViewerFields := []
+                            for _, field in viewerFields {
+                                if (!sample.Has(field)) {
+                                    missingViewerFields.Push(field)
+                                }
+                            }
+                            if (missingViewerFields.Length = 0) {
+                                Log("PASS: Viewer projection has all display fields")
+                                TestPassed++
+                            } else {
+                                Log("FAIL: Viewer projection missing: " _ArrayJoin(missingViewerFields, ", "))
+                                TestErrors++
+                            }
+
+                            ; Test that sort field (lastActivatedTick) is present for MRU sort
+                            hasSortData := true
+                            for _, item in items {
+                                if (!item.Has("lastActivatedTick")) {
+                                    hasSortData := false
+                                    break
+                                }
+                            }
+                            if (hasSortData) {
+                                Log("PASS: All items have MRU sort field (lastActivatedTick)")
+                                TestPassed++
+                            } else {
+                                Log("FAIL: Some items missing lastActivatedTick for MRU sort")
+                                TestErrors++
+                            }
+                        } else {
+                            Log("SKIP: No items to validate viewer fields")
+                        }
+                    } else {
+                        Log("FAIL: Viewer response missing payload/items")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: Viewer response parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: Viewer timeout waiting for projection")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(viewerClient)
+        } else {
+            Log("FAIL: Viewer could not connect to store")
+            TestErrors++
+        }
+
+        try {
+            ProcessClose(viewerStorePid)
+        }
+    }
+
+    ; --- Komorebi Integration Test ---
+    Log("`n--- Komorebi Integration Test ---")
+
+    ; Check if komorebic is available
+    komorebicPath := "C:\Program Files\komorebi\bin\komorebic.exe"
+    if (FileExist(komorebicPath)) {
+        Log("PASS: komorebic.exe found")
+        TestPassed++
+
+        ; Get komorebi state
+        tmpState := A_Temp "\komorebi_test_state.tmp"
+        try FileDelete(tmpState)
+        cmdLine := 'cmd.exe /c ""' komorebicPath '" state > "' tmpState '"" 2>&1'
+        try {
+            RunWait(cmdLine, , "Hide")
+        }
+        Sleep(200)  ; Give file time to write
+        stateTxt := ""
+        try stateTxt := FileRead(tmpState, "UTF-8")
+        try FileDelete(tmpState)
+
+        if (stateTxt != "" && InStr(stateTxt, '"monitors"')) {
+            Log("PASS: komorebic state returned valid JSON")
+            TestPassed++
+
+            ; Count workspaces
+            wsCount := 0
+            posWs := 1
+            while (p := RegExMatch(stateTxt, '"name"\s*:\s*"([^"]+)"', &mw, posWs)) {
+                ; Skip monitor names (they have "device" nearby)
+                if (!InStr(SubStr(stateTxt, Max(1, p - 100), 200), '"device"'))
+                    wsCount++
+                posWs := mw.Pos(0) + mw.Len(0)
+            }
+            Log("  Found " wsCount " workspace names in komorebi state")
+
+            ; Count hwnds
+            hwndCount := 0
+            posH := 1
+            while (p := RegExMatch(stateTxt, '"hwnd"\s*:\s*(\d+)', &mh, posH)) {
+                hwndCount++
+                posH := mh.Pos(0) + mh.Len(0)
+            }
+            Log("  Found " hwndCount " window hwnds in komorebi state")
+
+            if (hwndCount > 0) {
+                Log("PASS: Komorebi has managed windows")
+                TestPassed++
+
+                ; Test _KSub_FindWorkspaceByHwnd (include komorebi_sub for the function)
+                ; Get first hwnd from state
+                firstHwnd := 0
+                if RegExMatch(stateTxt, '"hwnd"\s*:\s*(\d+)', &mFirst)
+                    firstHwnd := Integer(mFirst[1])
+
+                if (firstHwnd > 0) {
+                    wsName := _KSub_FindWorkspaceByHwnd(stateTxt, firstHwnd)
+                    if (wsName != "") {
+                        Log("PASS: _KSub_FindWorkspaceByHwnd returned '" wsName "' for hwnd " firstHwnd)
+                        TestPassed++
+                    } else {
+                        Log("FAIL: _KSub_FindWorkspaceByHwnd returned empty for hwnd " firstHwnd)
+                        TestErrors++
+                    }
+                }
+            } else {
+                Log("SKIP: No windows managed by komorebi")
+            }
+        } else {
+            Log("SKIP: komorebic state empty or invalid (komorebi may not be running)")
+        }
+    } else {
+        Log("SKIP: komorebic.exe not found at " komorebicPath)
+    }
 }
 
 ; Summary
@@ -114,6 +465,73 @@ Log("Failed: " TestErrors)
 Log("Result: " (TestErrors = 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED"))
 
 ExitApp(TestErrors > 0 ? 1 : 0)
+
+; --- IPC Test Callbacks ---
+
+Test_OnServerMessage(line, hPipe := 0) {
+    global testServer
+    ; Handle incoming requests like the real store
+    Log("  [IPC] Server received: " SubStr(line, 1, 80))
+    obj := ""
+    try {
+        obj := JXON_Load(line)
+    } catch as e {
+        Log("  [IPC] Parse error: " e.Message)
+        return
+    }
+    if (!IsObject(obj) || !obj.Has("type")) {
+        Log("  [IPC] Invalid message format")
+        return
+    }
+    type := obj["type"]
+    Log("  [IPC] Message type: " type)
+    if (type = IPC_MSG_PROJECTION_REQUEST || type = IPC_MSG_SNAPSHOT_REQUEST) {
+        ; Get projection from current WindowStore state
+        opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : { sort: "Z" }
+        proj := WindowStore_GetProjection(opts)
+        respType := (type = IPC_MSG_SNAPSHOT_REQUEST) ? IPC_MSG_SNAPSHOT : IPC_MSG_PROJECTION
+        resp := {
+            type: respType,
+            rev: proj.rev,
+            payload: { meta: proj.meta, items: proj.HasOwnProp("items") ? proj.items : [] }
+        }
+        ; Send response
+        respJson := JXON_Dump(resp)
+        Log("  [IPC] Sending response: " SubStr(respJson, 1, 80) "...")
+        IPC_PipeServer_Send(testServer, hPipe, respJson)
+    }
+}
+
+Test_OnClientMessage(line, hPipe := 0) {
+    global gTestResponse, gTestResponseReceived
+    Log("  [IPC] Client received: " SubStr(line, 1, 80))
+    gTestResponse := line
+    gTestResponseReceived := true
+}
+
+Test_OnRealStoreMessage(line, hPipe := 0) {
+    global gRealStoreResponse, gRealStoreReceived
+    ; Skip hello_ack, we want the projection response
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        Log("  [Real Store] Received: " SubStr(line, 1, 80))
+        gRealStoreResponse := line
+        gRealStoreReceived := true
+    } else {
+        Log("  [Real Store] Got other msg type: " SubStr(line, 1, 60))
+    }
+}
+
+Test_OnViewerMessage(line, hPipe := 0) {
+    global gViewerTestResponse, gViewerTestReceived
+    ; Skip hello_ack, we want the projection response
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        Log("  [Viewer Test] Received projection: " SubStr(line, 1, 80))
+        gViewerTestResponse := line
+        gViewerTestReceived := true
+    } else {
+        Log("  [Viewer Test] Got other msg: " SubStr(line, 1, 60))
+    }
+}
 
 ; --- Test Helpers ---
 
@@ -142,4 +560,15 @@ AssertTrue(condition, name) {
         Log("FAIL: " name)
         TestErrors++
     }
+}
+
+_ArrayJoin(arr, sep := ", ") {
+    out := ""
+    for i, v in arr {
+        if (i > 1) {
+            out .= sep
+        }
+        out .= v
+    }
+    return out
 }
