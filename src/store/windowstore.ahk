@@ -387,8 +387,8 @@ _WS_EnqueueIfNeeded(row) {
     global gWS_IconQueue, gWS_IconQueueSet, gWS_PidQueue, gWS_PidQueueSet
     now := A_TickCount
 
-    ; Need icon?
-    if (!row.iconHicon && row.present) {
+    ; Need icon? Skip cloaked windows - can't get icons from them
+    if (!row.iconHicon && row.present && !row.isCloaked) {
         if (row.iconCooldownUntilTick = 0 || now >= row.iconCooldownUntilTick) {
             hwnd := row.hwnd + 0
             if (!gWS_IconQueueSet.Has(hwnd)) {
