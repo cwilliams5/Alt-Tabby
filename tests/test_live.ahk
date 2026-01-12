@@ -1,9 +1,17 @@
 #Requires AutoHotkey v2.0
+#Include ..\src\shared\config.ahk
 
 ; Live integration test harness (observes real system state).
-; Edit TestLiveDurationSec to control runtime.
 
-TestLiveDurationSec := 30
+TestLiveDurationSec_Override := ""  ; set to a number to override config
+
+if (TestLiveDurationSec_Override != "")
+    TestLiveDurationSec := TestLiveDurationSec_Override
+else if IsSet(TestLiveDurationSec_Default)
+    TestLiveDurationSec := TestLiveDurationSec_Default
+else
+    TestLiveDurationSec := 30
+
 TestLiveLogPath := A_ScriptDir "\windowstore_live.log"
 
 FileAppend("test_live start " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n", TestLiveLogPath, "UTF-8")
