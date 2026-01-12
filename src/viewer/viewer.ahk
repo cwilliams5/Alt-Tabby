@@ -61,7 +61,7 @@ _Viewer_ProjectionOpts() {
 
 _Viewer_CreateGui() {
     global gViewer_Gui, gViewer_LV
-    gViewer_Gui := Gui("+Resize", "WindowStore Viewer")
+    gViewer_Gui := Gui("+Resize +AlwaysOnTop", "WindowStore Viewer")
     btn := gViewer_Gui.AddButton("x10 y10 w160 h28", "Toggle Z/MRU")
     btn.OnEvent("Click", _Viewer_ToggleSort)
     gViewer_LV := gViewer_Gui.AddListView("x10 y48 w900 h500", ["Z", "HWND", "PID", "Title", "Class", "State", "Workspace", "Process", "Focused"])
