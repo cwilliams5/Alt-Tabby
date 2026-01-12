@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
 
 ; ============================================================
 ; Komorebi Subscription Producer
@@ -289,29 +290,65 @@ KomorebiSub_PollFallback() {
     if (txt = "")
         return
 
-    ; Extract focused workspace
-    ws := ""
-    if RegExMatch(txt, '"focused_workspace"\s*:\s*"([^"]+)"', &m)
-        ws := m[1]
+    ; Extract current workspace name
+    ws := _KSub_GetCurrentWorkspaceName(txt)
 
     if (ws != "" && ws != _KSub_LastWorkspaceName) {
         _KSub_LastWorkspaceName := ws
         try WindowStore_SetCurrentWorkspace("", ws)
     }
 
-    ; Update active window's workspace
-    hwnd := 0
-    try hwnd := WinGetID("A")
-    if (hwnd && txt != "") {
-        wsn := _KSub_FindWorkspaceByHwnd(txt, hwnd)
-        if (wsn != "") {
-            isCurrent := (wsn = _KSub_LastWorkspaceName)
-            try WindowStore_UpdateFields(hwnd, {
-                workspaceName: wsn,
-                isOnCurrentWorkspace: isCurrent
-            })
+    ; Map ALL windows to their workspaces
+    _KSub_UpdateAllWindowWorkspaces(txt, _KSub_LastWorkspaceName)
+}
+
+; Extract current workspace name from komorebi state
+_KSub_GetCurrentWorkspaceName(txt) {
+    if (txt = "")
+        return ""
+
+    ; Try explicit focused_workspace_name first
+    m := 0
+    if RegExMatch(txt, '"focused_workspace_name"\s*:\s*"([^"]+)"', &m)
+        return m[1]
+
+    ; Try last_focused_workspace (index) - need to find name by index
+    if RegExMatch(txt, '"last_focused_workspace"\s*:\s*(\d+)', &m) {
+        idx := Integer(m[1])
+        ; Find workspace name at this index within the same monitor's workspaces
+        ; Look for "workspaces" block, then find the nth "name" entry
+        pos := m.Pos(0)
+        ; Search backwards for "workspaces" to find the workspace array
+        backText := SubStr(txt, 1, pos)
+        wsPos := 0
+        searchPos := 1
+        while (p := InStr(backText, '"workspaces"', , searchPos)) {
+            wsPos := p
+            searchPos := p + 1
+        }
+        if (wsPos > 0) {
+            ; From wsPos, find workspace names in order
+            wsBlock := SubStr(txt, wsPos, pos - wsPos + 500)
+            names := []
+            posN := 1
+            mn := 0
+            while (q := RegExMatch(wsBlock, '"name"\s*:\s*"([^"]+)"', &mn, posN)) {
+                names.Push(mn[1])
+                posN := mn.Pos(0) + mn.Len(0)
+            }
+            if (idx >= 0 && idx < names.Length)
+                return names[idx + 1]  ; AHK arrays are 1-based
         }
     }
+
+    ; Fallback: get active window's workspace
+    hwnd := 0
+    try hwnd := WinGetID("A")
+    if (hwnd) {
+        return _KSub_FindWorkspaceByHwnd(txt, hwnd)
+    }
+
+    return ""
 }
 
 _KSub_GetStateFallback() {
@@ -351,4 +388,29 @@ _KSub_FindWorkspaceByHwnd(txt, hwnd) {
         i -= 1
     }
     return ""
+}
+
+; Update ALL windows with their workspace info from komorebi state
+_KSub_UpdateAllWindowWorkspaces(txt, currentWS) {
+    global gWS_Store
+    if (txt = "")
+        return
+
+    ; Get list of all hwnds in WindowStore
+    hwnds := []
+    for hwnd, _ in gWS_Store {
+        hwnds.Push(hwnd)
+    }
+
+    ; For each hwnd, look up its workspace in komorebi state
+    for _, hwnd in hwnds {
+        wsName := _KSub_FindWorkspaceByHwnd(txt, hwnd)
+        if (wsName != "") {
+            isCurrent := (wsName = currentWS)
+            try WindowStore_UpdateFields(hwnd, {
+                workspaceName: wsName,
+                isOnCurrentWorkspace: isCurrent
+            })
+        }
+    }
 }
