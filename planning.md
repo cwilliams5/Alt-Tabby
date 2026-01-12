@@ -1,37 +1,71 @@
-# Planning
+# Alt-Tabby Planning
 
-Context
-- Code lives under `components/` and includes interceptor, logic, GUI, komorebi, winenum, and MRU.
-- IPC for Alt-Tab is via RegisterWindowMessage + PostMessage broadcast.
-- WindowStore API is referenced by winenum/mru/komorebi_pump but is missing from disk.
-- Prior design notes and draft implementations are in `components/Chat GPT Thread.txt`.
+## Project Goals
+- Lightning fast Alt-Tab replacement with no perceptible lag
+- Komorebi awareness: workspace scoping, hidden/minimized states, labeling
+- Clean separation: interceptor, window state, logic, and UI in distinct processes
+- Extendable API for future consumers (widgets, status bars)
 
-Goals (from user)
-- Lightning fast Alt-Tab replacement with no perceptible lag.
-- Komorebi awareness: workspace scoping, hidden/minimized states, and labeling.
-- Clean separation: interceptor, window state, logic, and UI in distinct modules.
-- Extendable API for future consumers (e.g., widgets).
+## Architecture Decisions (Settled)
 
-Open questions
-- Confirm desired GitHub owner and repo name (default: current gh auth user, Alt-Tabby).
-- Decide process split: single WindowStore process with producers in-proc vs multi-proc producers.
-- Decide store subscription model (full snapshot + deltas, drift strategy, resync policy).
-- Define authoritative sources per field (ownership policy) and conflict resolution.
-- Decide if GUI stays in-process with logic or is a separate subscriber.
+### 4-Process Design
+1. **Interceptor** (micro): Ultra-fast Alt+Tab hook, isolated for timing
+2. **WindowStore + Producers**: Single process with winenum, MRU, komorebi producers
+3. **AltLogic + GUI**: Consumer process with overlay and window activation
+4. **Debug Viewer**: Diagnostic tool for development
 
-Immediate next steps
-- Inventory missing WindowStore implementation and decide rebuild vs import from thread.
-- Define minimal IPC contract between WindowStore and AltLogic/GUI.
-- Determine startup sequence for winenum, komorebi, and MRU to prime the store.
+### IPC Model
+- Named pipes for multi-subscriber support
+- Snapshot + deltas with revision tracking
+- Client reconnection with resync on rev mismatch
 
-Progress notes
-- IPC named pipe connection stabilized; client retries on missing pipe.
-- Store/server/JSON helper now compile in v2; live test receives snapshots.
-Project structure
-- `legacy/components_legacy/`: historical context only; not used for new implementation.
-- `src/store/`: WindowStore + producers + pumps + pipe server.
-- `src/interceptor/`: micro interceptor (Alt+Tab hook).
-- `src/switcher/`: AltLogic + GUI (consumer).
-- `src/viewer/`: debug viewer (consumer).
-- `src/shared/`: IPC helpers, config, utilities.
-- `tests/`: fixture + live harnesses.
+### Data Flow
+```
+[WinEnum] ──┐
+[MRU]     ──┼──> [WindowStore] ──> Named Pipe ──> [Viewer/GUI/Widgets]
+[Komorebi]──┘
+```
+
+## Current Status
+
+### Completed
+- [x] Commit history cleaned (Codex attribution fixed)
+- [x] WindowStore core with projections, upserts, scan APIs
+- [x] Named pipe IPC (server + client with adaptive polling)
+- [x] Debug viewer (connects and receives data)
+- [x] Basic producers (winenum_lite, mru_lite, komorebi_lite)
+- [x] Automated testing framework (10 tests passing)
+- [x] Bug fix: GetProjection now handles both Map and plain Object opts
+
+### In Progress
+- [ ] Documentation updates (CLAUDE.md, planning.md)
+
+### Next Up
+- [ ] Port legacy interceptor to `src/interceptor/`
+- [ ] Enhance winenum with DWM cloaking detection
+- [ ] Replace komorebi polling with subscription-based updates
+- [ ] Port legacy GUI as real AltLogic consumer
+
+## Legacy Components to Port
+
+| Component | Source | Target | Priority |
+|-----------|--------|--------|----------|
+| Interceptor | `legacy/components_legacy/interceptor.ahk` | `src/interceptor/` | HIGH |
+| GUI | `legacy/components_legacy/New GUI Working POC.ahk` | `src/switcher/` | HIGH |
+| WinEnum features | `legacy/components_legacy/winenum.ahk` | Enhance `winenum_lite.ahk` | MEDIUM |
+| Komorebi sub | `legacy/components_legacy/komorebi_sub.ahk` | Replace `komorebi_lite.ahk` | MEDIUM |
+| Icon pump | `legacy/components_legacy/icon_pump.ahk` | `src/store/` | LOW |
+| Proc pump | `legacy/components_legacy/proc_pump.ahk` | `src/store/` | LOW |
+
+## Testing Strategy
+- Unit tests for WindowStore logic (Maps, Objects, sorting)
+- Live tests with real window enumeration
+- Run before each commit: `.\tests\test.ps1 --live`
+- Log output: `%TEMP%\alt_tabby_tests.log`
+
+## Lessons Learned
+1. AHK v2 `#Include` is compile-time, not runtime conditional
+2. Use `StrCompare()` for string sorting, not `<`/`>` operators
+3. `_WS_GetOpt()` pattern handles both Map and Object options
+4. Named function refs required for comparators (no inline fat arrows in sort)
+5. `/ErrorStdOut` enables headless testing without GUI popups
