@@ -25,3 +25,10 @@ Architecture direction
 Notes
 - The WindowStore implementation is not currently present in this repo; see
   `components/Chat GPT Thread.txt` for prior draft API and refactors.
+Lessons from provided components
+- `components/list.ahk` defines a full WindowStore API (batching, scans, projections, ownership policy, queues) and is a solid baseline for a fresh implementation.
+- Store uses BeginScan/EndScan with TTL hiding and hard removal; rev bumps are remember-on-batch for low churn.
+- Work queues exist for pid, icon, and workspace enrichment; pumps pop batches off these queues.
+- Ownership policy (off/warn/strict) is intended to avoid accidental field collisions across producers.
+- Store meta tracks current workspace name/id and supports workspace-filtered projections.
+- `components/komorebi_poc - WORKING.ahk` is only a historical reference and not a target for reuse.
