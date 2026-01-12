@@ -1,0 +1,240 @@
+#Requires AutoHotkey v2.0
+
+; WindowStore (v1) - minimal core for IPC + viewer.
+
+global gWS_Store := Map()
+global gWS_Rev := 0
+global gWS_ScanId := 0
+global gWS_Config := Map()
+global gWS_Meta := Map()
+
+gWS_Config["MissingTTLms"] := 1200
+gWS_Meta["currentWSId"] := ""
+gWS_Meta["currentWSName"] := ""
+
+WindowStore_Init(config := 0) {
+    global gWS_Config
+    if IsObject(config) {
+        for k, v in config
+            gWS_Config[k] := v
+    }
+}
+
+WindowStore_BeginScan() {
+    global gWS_ScanId
+    if (gWS_ScanId = 0x7FFFFFFF)
+        gWS_ScanId := 0
+    gWS_ScanId += 1
+    return gWS_ScanId
+}
+
+WindowStore_EndScan(graceMs := "") {
+    global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev
+    now := A_TickCount
+    ttl := (graceMs != "" ? graceMs + 0 : gWS_Config["MissingTTLms"] + 0)
+    removed := 0
+    changed := false
+    for hwnd, rec in gWS_Store {
+        if (rec.lastSeenScanId != gWS_ScanId) {
+            if (rec.presentNow) {
+                rec.presentNow := false
+                rec.present := false
+                rec.missingSinceTick := now
+                changed := true
+            } else if (rec.missingSinceTick && (now - rec.missingSinceTick) >= ttl) {
+                gWS_Store.Delete(hwnd)
+                removed += 1
+                changed := true
+            }
+        }
+    }
+    if (changed)
+        gWS_Rev += 1
+    return { removed: removed, rev: gWS_Rev }
+}
+
+WindowStore_UpsertWindow(records, source := "") {
+    global gWS_Store, gWS_Rev, gWS_ScanId
+    added := 0
+    updated := 0
+    for _, rec in records {
+        hwnd := rec.hwnd + 0
+        if (!hwnd)
+            continue
+        if (!gWS_Store.Has(hwnd)) {
+            gWS_Store[hwnd] := _WS_NewRecord(hwnd)
+            added += 1
+        }
+        row := gWS_Store[hwnd]
+        for k, v in rec
+            row[k] := v
+        row.present := true
+        row.presentNow := true
+        row.lastSeenScanId := gWS_ScanId
+        row.lastSeenTick := A_TickCount
+        updated += 1
+    }
+    if (added || updated)
+        gWS_Rev += 1
+    return { added: added, updated: updated, rev: gWS_Rev }
+}
+
+WindowStore_UpdateFields(hwnd, patch, source := "") {
+    global gWS_Store, gWS_Rev
+    hwnd := hwnd + 0
+    if (!gWS_Store.Has(hwnd))
+        return { changed: false, rev: gWS_Rev }
+    row := gWS_Store[hwnd]
+    changed := false
+    for k, v in patch {
+        if (!row.Has(k) || row[k] != v) {
+            row[k] := v
+            changed := true
+        }
+    }
+    if (changed)
+        gWS_Rev += 1
+    return { changed: changed, rev: gWS_Rev }
+}
+
+WindowStore_RemoveWindow(hwnds) {
+    global gWS_Store, gWS_Rev
+    removed := 0
+    for _, h in hwnds {
+        hwnd := h + 0
+        if (gWS_Store.Has(hwnd)) {
+            gWS_Store.Delete(hwnd)
+            removed += 1
+        }
+    }
+    if (removed)
+        gWS_Rev += 1
+    return { removed: removed, rev: gWS_Rev }
+}
+
+WindowStore_GetRev() {
+    global gWS_Rev
+    return gWS_Rev
+}
+
+WindowStore_GetByHwnd(hwnd) {
+    global gWS_Store
+    hwnd := hwnd + 0
+    return gWS_Store.Has(hwnd) ? gWS_Store[hwnd] : ""
+}
+
+WindowStore_SetCurrentWorkspace(id, name := "") {
+    global gWS_Meta, gWS_Rev
+    changed := false
+    if (gWS_Meta["currentWSId"] != id) {
+        gWS_Meta["currentWSId"] := id
+        changed := true
+    }
+    if (gWS_Meta["currentWSName"] != name) {
+        gWS_Meta["currentWSName"] := name
+        changed := true
+    }
+    if (changed)
+        gWS_Rev += 1
+}
+
+WindowStore_GetCurrentWorkspace() {
+    global gWS_Meta
+    return { id: gWS_Meta["currentWSId"], name: gWS_Meta["currentWSName"] }
+}
+
+WindowStore_GetProjection(opts := 0) {
+    global gWS_Store, gWS_Meta
+    if (!IsObject(opts))
+        opts := Map()
+    sort := opts.Has("sort") ? opts["sort"] : "MRU"
+    currentOnly := opts.Has("currentWorkspaceOnly") ? opts["currentWorkspaceOnly"] : false
+    includeMin := opts.Has("includeMinimized") ? opts["includeMinimized"] : true
+    includeCloaked := opts.Has("includeCloaked") ? opts["includeCloaked"] : false
+    blacklistMode := opts.Has("blacklistMode") ? opts["blacklistMode"] : "exclude"
+    columns := opts.Has("columns") ? opts["columns"] : "items"
+
+    items := []
+    for _, rec in gWS_Store {
+        if (!rec.present)
+            continue
+        if (currentOnly && !rec.isOnCurrentWorkspace)
+            continue
+        if (!includeMin && rec.state = "WorkspaceMinimized")
+            continue
+        if (!includeCloaked && rec.state = "OtherWorkspace")
+            continue
+        if (blacklistMode = "exclude" && rec.isBlacklisted)
+            continue
+        if (blacklistMode = "only" && !rec.isBlacklisted)
+            continue
+        items.Push(rec)
+    }
+
+    if (sort = "Z") {
+        items.Sort((a, b) => (a.z < b.z) ? -1 : (a.z > b.z) ? 1 : 0)
+    } else if (sort = "Title") {
+        items.Sort((a, b) => StrLower(a.title) < StrLower(b.title) ? -1 : 1)
+    } else if (sort = "Pid") {
+        items.Sort((a, b) => (a.pid < b.pid) ? -1 : (a.pid > b.pid) ? 1 : 0)
+    } else if (sort = "ProcessName") {
+        items.Sort((a, b) => StrLower(a.processName) < StrLower(b.processName) ? -1 : 1)
+    } else {
+        items.Sort((a, b) => (a.lastActivatedTick > b.lastActivatedTick) ? -1 : 1)
+    }
+
+    if (columns = "hwndsOnly") {
+        hwnds := []
+        for _, rec in items
+            hwnds.Push(rec.hwnd)
+        return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta }
+    }
+
+    rows := []
+    for _, rec in items
+        rows.Push(_WS_ToItem(rec))
+    return { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
+}
+
+_WS_NewRecord(hwnd) {
+    return {
+        hwnd: hwnd,
+        title: "",
+        class: "",
+        pid: 0,
+        present: false,
+        presentNow: false,
+        missingSinceTick: 0,
+        lastSeenScanId: 0,
+        lastSeenTick: 0,
+        state: "WorkspaceHidden",
+        altTabEligible: true,
+        isBlacklisted: false,
+        z: 0,
+        lastActivatedTick: 0,
+        isFocused: false,
+        workspaceId: "",
+        workspaceName: "",
+        isOnCurrentWorkspace: true,
+        processName: "",
+        exePath: "",
+        iconHicon: 0,
+        iconCooldownUntilTick: 0
+    }
+}
+
+_WS_ToItem(rec) {
+    return {
+        hwnd: rec.hwnd,
+        title: rec.title,
+        class: rec.class,
+        pid: rec.pid,
+        state: rec.state,
+        z: rec.z,
+        lastActivatedTick: rec.lastActivatedTick,
+        isFocused: rec.isFocused,
+        workspaceName: rec.workspaceName,
+        processName: rec.processName,
+        present: rec.present
+    }
+}
