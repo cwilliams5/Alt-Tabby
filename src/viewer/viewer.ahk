@@ -32,6 +32,8 @@ Viewer_OnMessage(line, hPipe := 0) {
     if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION || type = IPC_MSG_DELTA) {
         if (obj.Has("payload") && obj["payload"].Has("items"))
             _Viewer_UpdateList(obj["payload"]["items"])
+        else if (obj.Has("payload") && obj["payload"].Has("upserts"))
+            _Viewer_ApplyDelta(obj["payload"])
     }
 }
 
@@ -80,6 +82,13 @@ _Viewer_UpdateList(items) {
     for _, rec in items {
         gViewer_LV.Add("", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
     }
+}
+
+_Viewer_ApplyDelta(payload) {
+    global gViewer_LV
+    ; naive: rebuild full list when deltas arrive
+    if (payload.Has("upserts"))
+        _Viewer_RequestProjection()
 }
 
 Viewer_Init()

@@ -14,6 +14,7 @@ global gStore_TestMode := false
 global gStore_ErrorLog := ""
 global gStore_LastClientLog := 0
 global gStore_LastClientRev := Map()
+global gStore_LastProj := []
 
 for _, arg in A_Args {
     if (arg = "--test")
@@ -81,6 +82,7 @@ Store_BroadcastSnapshot() {
         }
     }
     Store_PushDeltas(payload)
+    gStore_LastProj := payload.items
 }
 
 Store_PushDeltas(payload) {
@@ -89,14 +91,47 @@ Store_PushDeltas(payload) {
         last := gStore_LastClientRev.Has(hPipe) ? gStore_LastClientRev[hPipe] : -1
         if (last = payload.rev)
             continue
-        delta := {
-            type: IPC_MSG_DELTA,
-            rev: payload.rev,
-            baseRev: last,
-            payload: { meta: payload.meta, items: payload.items }
-        }
+        delta := Store_BuildDelta(payload, last)
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(delta))
         gStore_LastClientRev[hPipe] := payload.rev
+    }
+}
+
+Store_BuildDelta(payload, baseRev) {
+    global gStore_LastProj
+    prev := gStore_LastProj
+    next := payload.items
+
+    prevMap := Map()
+    for _, rec in prev
+        prevMap[rec.hwnd] := rec
+    nextMap := Map()
+    for _, rec in next
+        nextMap[rec.hwnd] := rec
+
+    upserts := []
+    removes := []
+
+    for hwnd, rec in nextMap {
+        if (!prevMap.Has(hwnd)) {
+            upserts.Push(rec)
+        } else {
+            ; naive compare of key fields
+            old := prevMap[hwnd]
+            if (rec.title != old.title || rec.state != old.state || rec.z != old.z || rec.pid != old.pid)
+                upserts.Push(rec)
+        }
+    }
+    for hwnd, _ in prevMap {
+        if (!nextMap.Has(hwnd))
+            removes.Push(hwnd)
+    }
+
+    return {
+        type: IPC_MSG_DELTA,
+        rev: payload.rev,
+        baseRev: baseRev,
+        payload: { meta: payload.meta, upserts: upserts, removes: removes }
     }
 }
 
