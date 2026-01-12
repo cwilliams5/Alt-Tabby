@@ -13,6 +13,7 @@ global gViewer_Gui := 0
 global gViewer_LV := 0
 global gViewer_RowByHwnd := Map()
 global gViewer_CurrentOnly := false
+global gViewer_RecByHwnd := Map()
 
 Viewer_Init() {
     global gViewer_Client, StorePipeName
@@ -90,23 +91,34 @@ _Viewer_UpdateList(items) {
     global gViewer_LV
     gViewer_LV.Delete()
     gViewer_RowByHwnd := Map()
+    gViewer_RecByHwnd := Map()
     for _, rec in items {
         row := gViewer_LV.Add("", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
         gViewer_RowByHwnd[rec.hwnd] := row
+        gViewer_RecByHwnd[rec.hwnd] := rec
     }
 }
 
 _Viewer_ApplyDelta(payload) {
     global gViewer_LV, gViewer_RowByHwnd
+    global gViewer_RecByHwnd, gViewer_Sort
     if (payload.Has("removes") && payload["removes"].Length) {
         _Viewer_RequestProjection()
         return
     }
     if !(payload.Has("upserts"))
         return
+    needsRefresh := false
     for _, rec in payload["upserts"] {
         if (!IsObject(rec) || !rec.Has("hwnd"))
             continue
+        if (gViewer_RecByHwnd.Has(rec.hwnd)) {
+            old := gViewer_RecByHwnd[rec.hwnd]
+            if (gViewer_Sort = "Z" && rec.z != old.z)
+                needsRefresh := true
+            else if (gViewer_Sort = "MRU" && rec.lastActivatedTick != old.lastActivatedTick)
+                needsRefresh := true
+        }
         if (gViewer_RowByHwnd.Has(rec.hwnd)) {
             row := gViewer_RowByHwnd[rec.hwnd]
             gViewer_LV.Modify(row, "", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
@@ -114,7 +126,10 @@ _Viewer_ApplyDelta(payload) {
             row := gViewer_LV.Add("", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
             gViewer_RowByHwnd[rec.hwnd] := row
         }
+        gViewer_RecByHwnd[rec.hwnd] := rec
     }
+    if (needsRefresh)
+        _Viewer_RequestProjection()
 }
 
 Viewer_Init()
