@@ -176,7 +176,7 @@ WindowStore_GetByHwnd(hwnd) {
 }
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
-    global gWS_Meta, gWS_Rev
+    global gWS_Meta, gWS_Rev, gWS_Store
     changed := false
     if (gWS_Meta["currentWSId"] != id) {
         gWS_Meta["currentWSId"] := id
@@ -186,8 +186,15 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
         gWS_Meta["currentWSName"] := name
         changed := true
     }
-    if (changed)
+    if (changed) {
+        ; Update isOnCurrentWorkspace for all windows based on new workspace
+        for hwnd, rec in gWS_Store {
+            newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "" && name = "")
+            if (rec.isOnCurrentWorkspace != newIsOnCurrent)
+                rec.isOnCurrentWorkspace := newIsOnCurrent
+        }
         gWS_Rev += 1
+    }
 }
 
 WindowStore_GetCurrentWorkspace() {

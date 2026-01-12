@@ -23,7 +23,8 @@ global gViewer_WSLabel := 0
 global gViewer_Headless := false
 global gViewer_LastRev := -1
 global gViewer_LastItemCount := 0
-global gViewer_PushCount := 0
+global gViewer_PushSnapCount := 0
+global gViewer_PushDeltaCount := 0
 global gViewer_PollCount := 0
 global gViewer_LastUpdateType := ""
 global gViewer_CurrentWSLabel := 0
@@ -67,7 +68,7 @@ Viewer_Init() {
 
 Viewer_OnMessage(line, hPipe := 0) {
     global gViewer_LastMsgTick, gViewer_LastRev
-    global gViewer_PushCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
+    global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
     global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK
     gViewer_LastMsgTick := A_TickCount
     _Viewer_Log("=== MESSAGE RECEIVED ===")
@@ -103,8 +104,8 @@ Viewer_OnMessage(line, hPipe := 0) {
 
     if (type = IPC_MSG_SNAPSHOT) {
         ; Snapshot = push from store (now tailored to our projection opts)
-        gViewer_PushCount++
-        gViewer_LastUpdateType := "push"
+        gViewer_PushSnapCount++
+        gViewer_LastUpdateType := "snap"
         if (obj.Has("payload")) {
             payload := obj["payload"]
             _Viewer_UpdateCurrentWS(payload)
@@ -133,7 +134,7 @@ Viewer_OnMessage(line, hPipe := 0) {
         }
     } else if (type = IPC_MSG_DELTA) {
         ; Delta = incremental update (now tailored to our projection opts)
-        gViewer_PushCount++
+        gViewer_PushDeltaCount++
         gViewer_LastUpdateType := "delta"
         if (obj.Has("payload")) {
             payload := obj["payload"]
@@ -478,7 +479,7 @@ _Viewer_ApplyDelta(payload) {
 
 _Viewer_Heartbeat() {
     global gViewer_Client, gViewer_LastMsgTick, StorePipeName
-    global gViewer_Status, gViewer_PushCount, gViewer_PollCount, gViewer_LastUpdateType
+    global gViewer_Status, gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
         gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
@@ -499,7 +500,7 @@ _Viewer_Heartbeat() {
     if (IsObject(gViewer_Status)) {
         elapsed := A_TickCount - gViewer_LastMsgTick
         typeStr := gViewer_LastUpdateType ? gViewer_LastUpdateType : "none"
-        gViewer_Status.Text := "Last: " typeStr " " elapsed "ms ago | Push: " gViewer_PushCount " | Poll: " gViewer_PollCount
+        gViewer_Status.Text := "Last: " typeStr " " elapsed "ms | Snap: " gViewer_PushSnapCount " | Delta: " gViewer_PushDeltaCount " | Poll: " gViewer_PollCount
     }
 }
 
