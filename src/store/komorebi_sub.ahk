@@ -628,12 +628,12 @@ _KSub_GetWindowClass(hwnd) {
     return ""
 }
 
-; Get window PID via Win API
+; Get window PID via Win API (works on cloaked windows too)
 _KSub_GetWindowPid(hwnd) {
-    try {
-        return WinGetPID("ahk_id " hwnd)
-    }
-    return 0
+    ; Use GetWindowThreadProcessId - works on any valid hwnd including cloaked
+    pid := 0
+    DllCall("user32\GetWindowThreadProcessId", "ptr", hwnd, "uint*", &pid)
+    return pid
 }
 
 ; Fallback polling mode (when subscription fails)
