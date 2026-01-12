@@ -14,6 +14,7 @@ global gViewer_LV := 0
 global gViewer_RowByHwnd := Map()
 global gViewer_CurrentOnly := false
 global gViewer_RecByHwnd := Map()
+global gViewer_LastMsgTick := 0
 
 Viewer_Init() {
     global gViewer_Client, StorePipeName
@@ -21,9 +22,12 @@ Viewer_Init() {
     gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
     _Viewer_SendHello()
     _Viewer_RequestProjection()
+    SetTimer(_Viewer_Heartbeat, 1000)
 }
 
 Viewer_OnMessage(line, hPipe := 0) {
+    global gViewer_LastMsgTick
+    gViewer_LastMsgTick := A_TickCount
     obj := ""
     try obj := JXON_Load(line)
     catch {
@@ -130,6 +134,21 @@ _Viewer_ApplyDelta(payload) {
     }
     if (needsRefresh)
         _Viewer_RequestProjection()
+}
+
+_Viewer_Heartbeat() {
+    global gViewer_Client, gViewer_LastMsgTick, StorePipeName
+    if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
+        gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
+        if (gViewer_Client.hPipe) {
+            _Viewer_SendHello()
+            _Viewer_RequestProjection()
+        }
+        return
+    }
+    if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > 3000) {
+        _Viewer_RequestProjection()
+    }
 }
 
 Viewer_Init()
