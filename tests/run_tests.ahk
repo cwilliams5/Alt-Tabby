@@ -463,7 +463,7 @@ if (RunLiveTests) {
     ; This test verifies workspace data flows from komorebi through the store to projections
     ; First, directly test that we can get workspace data from komorebic
     Log("  [WS E2E] Testing direct komorebic state fetch...")
-    directTxt := _KSub_GetStateFallback()
+    directTxt := _KSub_GetStateDirect()
     if (directTxt = "") {
         Log("  [WS E2E] WARNING: komorebic state returned empty")
     } else {

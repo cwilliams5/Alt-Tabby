@@ -46,6 +46,15 @@ WindowStore_EndScan(graceMs := "") {
     changed := false
     for hwnd, rec in gWS_Store {
         if (rec.lastSeenScanId != gWS_ScanId) {
+            ; Skip windows that have workspace data from komorebi
+            ; These are "present" from komorebi's perspective even if winenum doesn't see them
+            if (rec.HasOwnProp("workspaceName") && rec.workspaceName != "") {
+                ; Keep komorebi-managed windows present
+                rec.lastSeenScanId := gWS_ScanId
+                rec.presentNow := true
+                rec.present := true
+                continue
+            }
             if (rec.presentNow) {
                 rec.presentNow := false
                 rec.present := false
@@ -81,9 +90,18 @@ WindowStore_UpsertWindow(records, source := "") {
             added += 1
         }
         row := gWS_Store[hwnd]
+
+        ; If window has komorebi workspace data, don't let winenum overwrite state/isCloaked
+        ; Komorebi is authoritative for workspace state
+        hasKomorebiWs := row.HasOwnProp("workspaceName") && row.workspaceName != ""
+
         if (rec is Map) {
-            for k, v in rec
+            for k, v in rec {
+                ; Preserve komorebi workspace state if winenum tries to overwrite
+                if (hasKomorebiWs && (k = "state" || k = "isCloaked" || k = "isOnCurrentWorkspace"))
+                    continue
                 row.%k% := v
+            }
         } else {
             continue
         }
