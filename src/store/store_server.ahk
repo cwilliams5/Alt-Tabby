@@ -79,7 +79,8 @@ Store_ScanTick() {
 
 Store_BroadcastSnapshot() {
     global gStore_Server, gStore_TestMode
-    payload := WindowStore_GetProjection({ sort: "Z", columns: "items" })
+    ; Include cloaked windows in broadcast so viewers with "All" mode work correctly
+    payload := WindowStore_GetProjection({ sort: "Z", columns: "items", includeCloaked: true })
     msg := {
         type: IPC_MSG_SNAPSHOT,
         rev: payload.rev,

@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
 
 ; Komorebi-lite: poll komorebic state and update current workspace + active window workspace.
 

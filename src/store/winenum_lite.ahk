@@ -35,7 +35,11 @@ WinEnumLite_ScanAll() {
     records := []
     z := 0
 
+    ; Enable detection of hidden windows (includes komorebi-cloaked windows)
+    prevDetect := A_DetectHiddenWindows
+    DetectHiddenWindows(true)
     list := WinGetList()
+    DetectHiddenWindows(prevDetect)
     for _, hwnd in list {
         ; Skip shell window
         if (hwnd = _WN_ShellWindow) {

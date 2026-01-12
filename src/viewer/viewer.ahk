@@ -26,6 +26,8 @@ global gViewer_LastItemCount := 0
 global gViewer_PushCount := 0
 global gViewer_PollCount := 0
 global gViewer_LastUpdateType := ""
+global gViewer_CurrentWSLabel := 0
+global gViewer_CurrentWSName := ""
 
 for _, arg in A_Args {
     if (SubStr(arg, 1, 6) = "--log=") {
@@ -100,34 +102,49 @@ Viewer_OnMessage(line, hPipe := 0) {
     }
 
     if (type = IPC_MSG_SNAPSHOT) {
-        ; Snapshot = push from store
+        ; Snapshot = push from store (uses store's default opts, not client's)
         gViewer_PushCount++
         gViewer_LastUpdateType := "push"
-        if (obj.Has("payload") && obj["payload"].Has("items")) {
-            items := obj["payload"]["items"]
-            _Viewer_Log("push items=" items.Length)
-            if (!gViewer_Headless) {
-                _Viewer_UpdateList(items)
+        if (obj.Has("payload")) {
+            payload := obj["payload"]
+            _Viewer_UpdateCurrentWS(payload)
+            ; Only use snapshot data if we're in [All] mode
+            ; When in [Current] mode, snapshots don't respect our filter - ignore them
+            ; and rely on explicit projection requests instead
+            if (!gViewer_CurrentOnly && payload.Has("items")) {
+                items := payload["items"]
+                _Viewer_Log("push items=" items.Length)
+                if (!gViewer_Headless) {
+                    _Viewer_UpdateList(items)
+                }
             }
         }
     } else if (type = IPC_MSG_PROJECTION) {
         ; Projection = response to our request (poll)
         gViewer_PollCount++
         gViewer_LastUpdateType := "poll"
-        if (obj.Has("payload") && obj["payload"].Has("items")) {
-            items := obj["payload"]["items"]
-            _Viewer_Log("poll items=" items.Length)
-            if (!gViewer_Headless) {
-                _Viewer_UpdateList(items)
+        if (obj.Has("payload")) {
+            payload := obj["payload"]
+            _Viewer_UpdateCurrentWS(payload)
+            if (payload.Has("items")) {
+                items := payload["items"]
+                _Viewer_Log("poll items=" items.Length)
+                if (!gViewer_Headless) {
+                    _Viewer_UpdateList(items)
+                }
             }
         }
     } else if (type = IPC_MSG_DELTA) {
-        ; Delta = push from store
+        ; Delta = push from store (uses store's default opts, not client's)
         gViewer_PushCount++
         gViewer_LastUpdateType := "push"
-        if (obj.Has("payload") && obj["payload"].Has("upserts")) {
-            if (!gViewer_Headless) {
-                _Viewer_ApplyDelta(obj["payload"])
+        if (obj.Has("payload")) {
+            payload := obj["payload"]
+            _Viewer_UpdateCurrentWS(payload)
+            ; Only apply deltas if we're in [All] mode
+            ; When in [Current] mode, deltas don't respect our filter
+            if (!gViewer_CurrentOnly && payload.Has("upserts") && !gViewer_Headless) {
+                _Viewer_ApplyDelta(payload)
             }
         }
     }
@@ -160,7 +177,7 @@ _Viewer_ProjectionOpts() {
 
 _Viewer_CreateGui() {
     global gViewer_Gui, gViewer_LV, gViewer_Status
-    global gViewer_SortLabel, gViewer_WSLabel
+    global gViewer_SortLabel, gViewer_WSLabel, gViewer_CurrentWSLabel
 
     gViewer_Gui := Gui("+Resize +AlwaysOnTop", "WindowStore Viewer")
 
@@ -172,14 +189,18 @@ _Viewer_CreateGui() {
     ; Workspace toggle
     btn2 := gViewer_Gui.AddButton("x200 y10 w120 h28", "Toggle WS")
     btn2.OnEvent("Click", _Viewer_ToggleCurrentWS)
-    gViewer_WSLabel := gViewer_Gui.AddText("x325 y14 w80 h20", "[All]")
+    gViewer_WSLabel := gViewer_Gui.AddText("x325 y14 w60 h20", "[All]")
+
+    ; Current workspace display
+    gViewer_Gui.AddText("x390 y14 w60 h20", "Current:")
+    gViewer_CurrentWSLabel := gViewer_Gui.AddText("x445 y14 w80 h20 +0x100", "---")  ; 0x100 = SS_SUNKEN
 
     ; Refresh button
-    btn3 := gViewer_Gui.AddButton("x420 y10 w80 h28", "Refresh")
+    btn3 := gViewer_Gui.AddButton("x530 y10 w80 h28", "Refresh")
     btn3.OnEvent("Click", (*) => _Viewer_RequestProjection())
 
     ; Status
-    gViewer_Status := gViewer_Gui.AddText("x510 y14 w400 h20", "Disconnected")
+    gViewer_Status := gViewer_Gui.AddText("x620 y14 w400 h20", "Disconnected")
 
     ; ListView with all columns
     ; Columns: Z, MRU, HWND, PID, Title, Class, State, WS, Process, Focus, Cloak, Min, Icon
@@ -451,7 +472,7 @@ _Viewer_ApplyDelta(payload) {
 }
 
 _Viewer_Heartbeat() {
-    global gViewer_Client, gViewer_LastMsgTick, StorePipeName
+    global gViewer_Client, gViewer_LastMsgTick, StorePipeName, gViewer_CurrentOnly
     global gViewer_Status, gViewer_PushCount, gViewer_PollCount, gViewer_LastUpdateType
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
@@ -465,15 +486,19 @@ _Viewer_Heartbeat() {
         return
     }
 
-    ; Only request refresh if no updates received in 5 seconds
-    if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > 5000) {
+    ; When in [Current] mode, we ignore push updates so need to poll more often
+    ; When in [All] mode, only poll if no updates in 5 seconds
+    if (gViewer_CurrentOnly) {
+        _Viewer_RequestProjection()
+    } else if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > 5000) {
         _Viewer_RequestProjection()
     }
 
     if (IsObject(gViewer_Status)) {
         elapsed := A_TickCount - gViewer_LastMsgTick
         typeStr := gViewer_LastUpdateType ? gViewer_LastUpdateType : "none"
-        gViewer_Status.Text := "Last: " typeStr " " elapsed "ms ago | Push: " gViewer_PushCount " | Poll: " gViewer_PollCount
+        modeStr := gViewer_CurrentOnly ? " [polling]" : ""
+        gViewer_Status.Text := "Last: " typeStr " " elapsed "ms ago | Push: " gViewer_PushCount " | Poll: " gViewer_PollCount . modeStr
     }
 }
 
@@ -483,6 +508,25 @@ _Viewer_Log(msg) {
         return
     }
     try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", gViewer_LogPath, "UTF-8")
+}
+
+_Viewer_UpdateCurrentWS(payload) {
+    global gViewer_CurrentWSLabel, gViewer_CurrentWSName, gViewer_Headless
+    if (!payload.Has("meta"))
+        return
+    meta := payload["meta"]
+    wsName := ""
+    if (meta is Map) {
+        wsName := meta.Has("currentWSName") ? meta["currentWSName"] : ""
+    } else if (IsObject(meta)) {
+        try wsName := meta.currentWSName
+    }
+    if (wsName != "" && wsName != gViewer_CurrentWSName) {
+        gViewer_CurrentWSName := wsName
+        if (!gViewer_Headless && IsObject(gViewer_CurrentWSLabel)) {
+            gViewer_CurrentWSLabel.Text := wsName
+        }
+    }
 }
 
 _Viewer_Get(rec, key, defaultVal := "") {

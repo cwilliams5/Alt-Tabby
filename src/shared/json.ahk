@@ -3,7 +3,7 @@
 ; Minimal JSON encode/decode (JXON-style) for AHK v2.
 ; Reference: https://github.com/cocobelgica/AutoHotkey-JSON (adapted for v2).
 
-JXON_Load(&src) {
+JXON_Load(src) {
     static q := Chr(34)
     pos := 1
     return JXON__ReadValue(src, &pos)
@@ -13,29 +13,35 @@ JXON_Dump(obj, indent := "") {
     return JXON__DumpValue(obj, indent, 1)
 }
 
-JXON__ReadValue(&src, &pos) {
+JXON__ReadValue(src, &pos) {
     JXON__SkipWS(src, &pos)
-    if (pos > StrLen(src))
+    if (pos > StrLen(src)) {
         return ""
+    }
     ch := SubStr(src, pos, 1)
-    if (ch = "{")
+    if (ch = "{") {
         return JXON__ReadObject(src, &pos)
-    if (ch = "[")
+    }
+    if (ch = "[") {
         return JXON__ReadArray(src, &pos)
-    if (ch = Chr(34))
+    }
+    if (ch = Chr(34)) {
         return JXON__ReadString(src, &pos)
+    }
     if (RegExMatch(SubStr(src, pos), "^(true|false|null)", &m)) {
         pos += StrLen(m[1])
-        if (m[1] = "true")
+        if (m[1] = "true") {
             return true
-        if (m[1] = "false")
+        }
+        if (m[1] = "false") {
             return false
+        }
         return ""
     }
     return JXON__ReadNumber(src, &pos)
 }
 
-JXON__ReadObject(&src, &pos) {
+JXON__ReadObject(src, &pos) {
     obj := Map()
     pos += 1
     JXON__SkipWS(src, &pos)
@@ -60,7 +66,7 @@ JXON__ReadObject(&src, &pos) {
     return obj
 }
 
-JXON__ReadArray(&src, &pos) {
+JXON__ReadArray(src, &pos) {
     arr := []
     pos += 1
     JXON__SkipWS(src, &pos)
@@ -81,7 +87,7 @@ JXON__ReadArray(&src, &pos) {
     return arr
 }
 
-JXON__ReadString(&src, &pos) {
+JXON__ReadString(src, &pos) {
     pos += 1
     out := ""
     len := StrLen(src)
@@ -94,23 +100,23 @@ JXON__ReadString(&src, &pos) {
         if (ch = Chr(92)) {
             pos += 1
             esc := SubStr(src, pos, 1)
-            if (esc = "n")
+            if (esc = "n") {
                 out .= "`n"
-            else if (esc = "r")
+            } else if (esc = "r") {
                 out .= "`r"
-            else if (esc = "t")
+            } else if (esc = "t") {
                 out .= "`t"
-            else if (esc = Chr(92))
+            } else if (esc = Chr(92)) {
                 out .= Chr(92)
-            else if (esc = Chr(34))
+            } else if (esc = Chr(34)) {
                 out .= Chr(34)
-            else if (esc = "/")
+            } else if (esc = "/") {
                 out .= "/"
-            else if (esc = "b")
+            } else if (esc = "b") {
                 out .= Chr(8)
-            else if (esc = "f")
+            } else if (esc = "f") {
                 out .= Chr(12)
-            else if (esc = "u") {
+            } else if (esc = "u") {
                 hex := SubStr(src, pos + 1, 4)
                 out .= Chr("0x" hex)
                 pos += 4
@@ -125,7 +131,7 @@ JXON__ReadString(&src, &pos) {
     return out
 }
 
-JXON__ReadNumber(&src, &pos) {
+JXON__ReadNumber(src, &pos) {
     if (RegExMatch(SubStr(src, pos), "^-?\d+(\.\d+)?([eE][+-]?\d+)?", &m)) {
         pos += StrLen(m[0])
         return m[0] + 0
@@ -133,11 +139,12 @@ JXON__ReadNumber(&src, &pos) {
     return ""
 }
 
-JXON__SkipWS(&src, &pos) {
+JXON__SkipWS(src, &pos) {
     while (pos <= StrLen(src)) {
         ch := SubStr(src, pos, 1)
-        if (ch != " " && ch != "`n" && ch != "`r" && ch != "`t")
+        if (ch != " " && ch != "`n" && ch != "`r" && ch != "`t") {
             break
+        }
         pos += 1
     }
 }
