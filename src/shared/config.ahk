@@ -15,7 +15,8 @@ AhkV2Path := "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 
 ; ---- Producers ----
 UseMruLite := false
-UseKomorebiLite := false
+UseKomorebiSub := false        ; Subscription-based komorebi (preferred)
+UseKomorebiLite := false       ; Polling-based komorebi (fallback)
 KomorebicExe := "C:\\Program Files\\komorebi\\bin\\komorebic.exe"
 
 ; ---- Viewer ----
