@@ -45,9 +45,7 @@ Store_Init() {
         ExitApp(1)
     }
     gStore_Server := IPC_PipeServer_Start(StorePipeName, Store_OnMessage)
-    ; Do initial scan immediately so data is available when clients connect
-    Store_ScanTick()
-    SetTimer(Store_ScanTick, StoreScanIntervalMs)
+    ; Initialize producers BEFORE first scan so they can enrich data
     if (IsSet(UseMruLite) && UseMruLite)
         MRU_Lite_Init()
     if (IsSet(UseKomorebiSub) && UseKomorebiSub)
@@ -58,6 +56,9 @@ Store_Init() {
         IconPump_Start()
     if (IsSet(UseProcPump) && UseProcPump)
         ProcPump_Start()
+    ; Do initial scan AFTER producers init so data includes komorebi workspace info
+    Store_ScanTick()
+    SetTimer(Store_ScanTick, StoreScanIntervalMs)
 }
 
 Store_ScanTick() {
@@ -183,10 +184,9 @@ Store_OnMessage(line, hPipe := 0) {
         gStore_LastClientRev[hPipe] := -1  ; Will get updated when we send initial projection
         gStore_LastClientProj[hPipe] := [] ; No previous projection yet
 
-        ; Send hello ack
+        ; Send hello ack (no rev - it's just an ack, snapshot follows with rev)
         ack := {
             type: IPC_MSG_HELLO_ACK,
-            rev: WindowStore_GetRev(),
             payload: { meta: WindowStore_GetCurrentWorkspace(), capabilities: { deltas: true } }
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(ack))
