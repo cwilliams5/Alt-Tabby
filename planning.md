@@ -23,6 +23,10 @@ Immediate next steps
 - Inventory missing WindowStore implementation and decide rebuild vs import from thread.
 - Define minimal IPC contract between WindowStore and AltLogic/GUI.
 - Determine startup sequence for winenum, komorebi, and MRU to prime the store.
+
+Progress notes
+- IPC named pipe connection stabilized; client retries on missing pipe.
+- Store/server/JSON helper now compile in v2; live test receives snapshots.
 Project structure
 - `legacy/components_legacy/`: historical context only; not used for new implementation.
 - `src/store/`: WindowStore + producers + pumps + pipe server.

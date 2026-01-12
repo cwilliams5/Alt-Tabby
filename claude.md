@@ -39,5 +39,11 @@ Guiding constraints
 - IPC should be lightweight; named pipes are preferred over WM_COPYDATA.
 - Use compile/error checks with AutoHotkey v2 when possible to catch syntax errors early.
 
+Recent lessons
+- AHK v2: avoid `Func("Name")` for callbacks; use direct function references (`Store_OnMessage`) or `.Bind` on function objects.
+- IPC named pipes: client must retry on `ERROR_FILE_NOT_FOUND` until server creates pipe; server uses overlapped `ConnectNamedPipe`.
+- JSON encoder needs Map vs Object handling; in v2, `obj.OwnProps()` is needed for plain objects.
+- Store expects Map records; avoid assigning via `row[key]` on plain objects (use `row.%key%`).
+
 Legacy context
 - Legacy AHK files moved to `legacy/components_legacy/` for reference only.
