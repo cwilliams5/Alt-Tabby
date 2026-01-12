@@ -11,6 +11,7 @@ global gViewer_Client := 0
 global gViewer_Sort := "Z"
 global gViewer_Gui := 0
 global gViewer_LV := 0
+global gViewer_RowByHwnd := Map()
 
 Viewer_Init() {
     global gViewer_Client, StorePipeName
@@ -79,16 +80,32 @@ _Viewer_ToggleSort(*) {
 _Viewer_UpdateList(items) {
     global gViewer_LV
     gViewer_LV.Delete()
+    gViewer_RowByHwnd := Map()
     for _, rec in items {
-        gViewer_LV.Add("", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
+        row := gViewer_LV.Add("", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
+        gViewer_RowByHwnd[rec.hwnd] := row
     }
 }
 
 _Viewer_ApplyDelta(payload) {
-    global gViewer_LV
-    ; naive: rebuild full list when deltas arrive
-    if (payload.Has("upserts"))
+    global gViewer_LV, gViewer_RowByHwnd
+    if (payload.Has("removes") && payload["removes"].Length) {
         _Viewer_RequestProjection()
+        return
+    }
+    if !(payload.Has("upserts"))
+        return
+    for _, rec in payload["upserts"] {
+        if (!IsObject(rec) || !rec.Has("hwnd"))
+            continue
+        if (gViewer_RowByHwnd.Has(rec.hwnd)) {
+            row := gViewer_RowByHwnd[rec.hwnd]
+            gViewer_LV.Modify(row, "", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
+        } else {
+            row := gViewer_LV.Add("", rec.Has("z") ? rec.z : "", "0x" Format("{:X}", rec.hwnd), rec.pid, rec.title, rec.class, rec.state, rec.workspaceName, rec.processName, rec.isFocused ? "Y" : "")
+            gViewer_RowByHwnd[rec.hwnd] := row
+        }
+    }
 }
 
 Viewer_Init()
