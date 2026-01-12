@@ -72,6 +72,22 @@ IPC_PipeServer_Broadcast(server, msgText) {
     }
 }
 
+IPC_PipeServer_Send(server, hPipe, msgText) {
+    if !IsObject(server)
+        return false
+    if (!server.clients.Has(hPipe))
+        return false
+    if (!msgText || SubStr(msgText, -1) != "`n")
+        msgText .= "`n"
+    bytes := _IPC_StrToUtf8(msgText)
+    if (!_IPC_WritePipe(hPipe, bytes.buf, bytes.len)) {
+        server.clients.Delete(hPipe)
+        _IPC_CloseHandle(hPipe)
+        return false
+    }
+    return true
+}
+
 IPC_PipeClient_Connect(pipeName, onMessageFn) {
     client := {
         pipeName: pipeName,
@@ -282,11 +298,11 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
         return 0
     chunk := StrGet(buf.Ptr, bytesRead, "UTF-8")
     stateObj.buf .= chunk
-    _IPC_ParseLines(stateObj, onMessageFn)
+    _IPC_ParseLines(stateObj, onMessageFn, hPipe)
     return bytesRead
 }
 
-_IPC_ParseLines(stateObj, onMessageFn) {
+_IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
     while true {
         pos := InStr(stateObj.buf, "`n")
         if (!pos)
@@ -296,7 +312,7 @@ _IPC_ParseLines(stateObj, onMessageFn) {
         if (SubStr(line, -1) = "`r")
             line := SubStr(line, 1, -1)
         if (line != "") {
-            try onMessageFn.Call(line)
+            try onMessageFn.Call(line, hPipe)
             catch {
             }
         }
