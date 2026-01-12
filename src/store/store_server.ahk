@@ -13,6 +13,7 @@ global gStore_LastBroadcastRev := -1
 global gStore_TestMode := false
 global gStore_ErrorLog := ""
 global gStore_LastClientLog := 0
+global gStore_LastClientRev := Map()
 
 for _, arg in A_Args {
     if (arg = "--test")
@@ -79,6 +80,17 @@ Store_BroadcastSnapshot() {
             }
         }
     }
+    Store_PushDeltas()
+}
+
+Store_PushDeltas() {
+    global gStore_Server, gStore_LastClientRev
+    for hPipe, _ in gStore_Server.clients {
+        last := gStore_LastClientRev.Has(hPipe) ? gStore_LastClientRev[hPipe] : -1
+        if (last = gStore_LastBroadcastRev)
+            continue
+        gStore_LastClientRev[hPipe] := gStore_LastBroadcastRev
+    }
 }
 
 Store_OnMessage(line, hPipe := 0) {
@@ -94,6 +106,7 @@ Store_OnMessage(line, hPipe := 0) {
     if (type = IPC_MSG_HELLO) {
         opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : IPC_DefaultProjectionOpts()
         gStore_ClientOpts[hPipe] := opts
+        gStore_LastClientRev[hPipe] := WindowStore_GetRev()
         ack := {
             type: IPC_MSG_HELLO_ACK,
             rev: WindowStore_GetRev(),
@@ -121,6 +134,7 @@ Store_OnMessage(line, hPipe := 0) {
             payload: { meta: proj.meta, items: proj.Has("items") ? proj.items : [] }
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(resp))
+        gStore_LastClientRev[hPipe] := proj.rev
         return
     }
 }

@@ -5,6 +5,8 @@
 #Include ..\shared\json.ahk
 #Include ..\shared\ipc_pipe.ahk
 
+; Viewer (debug) - receives snapshots/deltas from store.
+
 global gViewer_Client := 0
 global gViewer_Sort := "Z"
 global gViewer_Gui := 0
@@ -27,7 +29,7 @@ Viewer_OnMessage(line, hPipe := 0) {
     if (!IsObject(obj) || !obj.Has("type"))
         return
     type := obj["type"]
-    if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION) {
+    if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION || type = IPC_MSG_DELTA) {
         if (obj.Has("payload") && obj["payload"].Has("items"))
             _Viewer_UpdateList(obj["payload"]["items"])
     }
@@ -35,7 +37,7 @@ Viewer_OnMessage(line, hPipe := 0) {
 
 _Viewer_SendHello() {
     global gViewer_Client
-    msg := { type: IPC_MSG_HELLO, clientId: "viewer", wants: { deltas: false }, projectionOpts: _Viewer_ProjectionOpts() }
+    msg := { type: IPC_MSG_HELLO, clientId: "viewer", wants: { deltas: true }, projectionOpts: _Viewer_ProjectionOpts() }
     IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
 }
 
