@@ -5,3 +5,7 @@
 ; ---- Testing ----
 ; Default duration for test_live.ahk when not overridden there.
 TestLiveDurationSec_Default := 30
+
+; ---- Store ----
+StorePipeName := "tabby_store_v1"
+StoreScanIntervalMs := 1000
