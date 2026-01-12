@@ -38,3 +38,6 @@ Guiding constraints
 - Prioritize responsiveness and low CPU usage; prefer event-driven and idle timers, not busy loops.
 - IPC should be lightweight; named pipes are preferred over WM_COPYDATA.
 - Use compile/error checks with AutoHotkey v2 when possible to catch syntax errors early.
+
+Legacy context
+- Legacy AHK files moved to `legacy/components_legacy/` for reference only.
