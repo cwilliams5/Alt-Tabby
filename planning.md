@@ -23,3 +23,11 @@ Immediate next steps
 - Inventory missing WindowStore implementation and decide rebuild vs import from thread.
 - Define minimal IPC contract between WindowStore and AltLogic/GUI.
 - Determine startup sequence for winenum, komorebi, and MRU to prime the store.
+Project structure
+- `legacy/components_legacy/`: historical context only; not used for new implementation.
+- `src/store/`: WindowStore + producers + pumps + pipe server.
+- `src/interceptor/`: micro interceptor (Alt+Tab hook).
+- `src/switcher/`: AltLogic + GUI (consumer).
+- `src/viewer/`: debug viewer (consumer).
+- `src/shared/`: IPC helpers, config, utilities.
+- `tests/`: fixture + live harnesses.

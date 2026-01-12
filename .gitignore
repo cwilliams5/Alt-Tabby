@@ -1,0 +1,6 @@
+# Logs
+/tests/*.log
+
+# OS
+Thumbs.db
+.DS_Store
