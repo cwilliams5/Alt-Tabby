@@ -446,9 +446,14 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
     if (monitorsArr.Length = 0)
         return
 
-    ; Get current workspace name (for window tagging, not necessarily for setting current)
+    ; Get current workspace name for window tagging
+    ; When skipWorkspaceUpdate=true, use _KSub_LastWorkspaceName (already set by focus event)
+    ; Otherwise calculate from state
     currentWsName := ""
-    if (focusedMonIdx >= 0 && focusedMonIdx < monitorsArr.Length) {
+    if (skipWorkspaceUpdate) {
+        ; Trust the value already set by focus event handler
+        currentWsName := _KSub_LastWorkspaceName
+    } else if (focusedMonIdx >= 0 && focusedMonIdx < monitorsArr.Length) {
         monObj := monitorsArr[focusedMonIdx + 1]  ; AHK 1-based
         focusedWsIdx := _KSub_GetFocusedWorkspaceIndex(monObj)
         currentWsName := _KSub_GetWorkspaceNameByIndex(monObj, focusedWsIdx)
