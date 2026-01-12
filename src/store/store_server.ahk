@@ -100,11 +100,15 @@ Store_PushToClients() {
         if (lastRev = proj.rev)
             continue
 
-        ; Send full snapshot (simpler and more reliable than deltas for now)
-        msg := {
-            type: IPC_MSG_SNAPSHOT,
-            rev: proj.rev,
-            payload: { meta: proj.meta, items: proj.items }
+        ; Send delta if client has previous state, otherwise full snapshot
+        if (prevItems.Length > 0) {
+            msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev)
+        } else {
+            msg := {
+                type: IPC_MSG_SNAPSHOT,
+                rev: proj.rev,
+                payload: { meta: proj.meta, items: proj.items }
+            }
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
 
