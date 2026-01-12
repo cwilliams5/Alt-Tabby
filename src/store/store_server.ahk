@@ -45,6 +45,8 @@ Store_Init() {
         ExitApp(1)
     }
     gStore_Server := IPC_PipeServer_Start(StorePipeName, Store_OnMessage)
+    ; Do initial scan immediately so data is available when clients connect
+    Store_ScanTick()
     SetTimer(Store_ScanTick, StoreScanIntervalMs)
     if (IsSet(UseMruLite) && UseMruLite)
         MRU_Lite_Init()
