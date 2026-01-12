@@ -6,6 +6,7 @@
 #Include %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include %A_ScriptDir%\windowstore.ahk
 #Include %A_ScriptDir%\winenum_lite.ahk
+#Include %A_ScriptDir%\mru_lite.ahk
 
 global gStore_Server := 0
 global gStore_ClientOpts := Map() ; hPipe -> projection opts
@@ -41,6 +42,8 @@ Store_Init() {
     }
     gStore_Server := IPC_PipeServer_Start(StorePipeName, Store_OnMessage)
     SetTimer(Store_ScanTick, StoreScanIntervalMs)
+    if (IsSet(UseMruLite) && UseMruLite)
+        MRU_Lite_Init()
 }
 
 Store_ScanTick() {
