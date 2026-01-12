@@ -55,10 +55,14 @@ WindowStore_EndScan(graceMs := "") {
 
 WindowStore_UpsertWindow(records, source := "") {
     global gWS_Store, gWS_Rev, gWS_ScanId
+    if (!IsObject(records) || !(records is Array))
+        return { added: 0, updated: 0, rev: gWS_Rev }
     added := 0
     updated := 0
     for _, rec in records {
-        hwnd := rec.hwnd + 0
+        if (!IsObject(rec))
+            continue
+        hwnd := rec.Has("hwnd") ? (rec["hwnd"] + 0) : 0
         if (!hwnd)
             continue
         if (!gWS_Store.Has(hwnd)) {
@@ -66,8 +70,12 @@ WindowStore_UpsertWindow(records, source := "") {
             added += 1
         }
         row := gWS_Store[hwnd]
-        for k, v in rec
-            row[k] := v
+        if (rec is Map) {
+            for k, v in rec
+                row.%k% := v
+        } else {
+            continue
+        }
         row.present := true
         row.presentNow := true
         row.lastSeenScanId := gWS_ScanId
@@ -145,7 +153,7 @@ WindowStore_GetCurrentWorkspace() {
 
 WindowStore_GetProjection(opts := 0) {
     global gWS_Store, gWS_Meta
-    if (!IsObject(opts))
+    if (!IsObject(opts) || !(opts is Map))
         opts := Map()
     sort := opts.Has("sort") ? opts["sort"] : "MRU"
     currentOnly := opts.Has("currentWorkspaceOnly") ? opts["currentWorkspaceOnly"] : false
@@ -172,15 +180,15 @@ WindowStore_GetProjection(opts := 0) {
     }
 
     if (sort = "Z") {
-        items.Sort((a, b) => (a.z < b.z) ? -1 : (a.z > b.z) ? 1 : 0)
+        _WS_TrySort(items, (a, b) => (a.z < b.z) ? -1 : (a.z > b.z) ? 1 : 0)
     } else if (sort = "Title") {
-        items.Sort((a, b) => StrLower(a.title) < StrLower(b.title) ? -1 : 1)
+        _WS_TrySort(items, (a, b) => StrLower(a.title) < StrLower(b.title) ? -1 : 1)
     } else if (sort = "Pid") {
-        items.Sort((a, b) => (a.pid < b.pid) ? -1 : (a.pid > b.pid) ? 1 : 0)
+        _WS_TrySort(items, (a, b) => (a.pid < b.pid) ? -1 : (a.pid > b.pid) ? 1 : 0)
     } else if (sort = "ProcessName") {
-        items.Sort((a, b) => StrLower(a.processName) < StrLower(b.processName) ? -1 : 1)
+        _WS_TrySort(items, (a, b) => StrLower(a.processName) < StrLower(b.processName) ? -1 : 1)
     } else {
-        items.Sort((a, b) => (a.lastActivatedTick > b.lastActivatedTick) ? -1 : 1)
+        _WS_TrySort(items, (a, b) => (a.lastActivatedTick > b.lastActivatedTick) ? -1 : 1)
     }
 
     if (columns = "hwndsOnly") {
@@ -236,5 +244,34 @@ _WS_ToItem(rec) {
         workspaceName: rec.workspaceName,
         processName: rec.processName,
         present: rec.present
+    }
+}
+
+_WS_TrySort(arr, cmp) {
+    if (!IsObject(arr) || !(arr is Array) || arr.Length <= 1)
+        return
+    if (arr.HasMethod("Sort")) {
+        try {
+            arr.Sort(cmp)
+            return
+        } catch {
+        }
+    }
+    _WS_InsertionSort(arr, cmp)
+}
+
+_WS_InsertionSort(arr, cmp) {
+    len := arr.Length
+    Loop len {
+        i := A_Index
+        if (i = 1)
+            continue
+        key := arr[i]
+        j := i - 1
+        while (j >= 1 && cmp(arr[j], key) > 0) {
+            arr[j + 1] := arr[j]
+            j -= 1
+        }
+        arr[j + 1] := key
     }
 }

@@ -9,3 +9,6 @@ TestLiveDurationSec_Default := 30
 ; ---- Store ----
 StorePipeName := "tabby_store_v1"
 StoreScanIntervalMs := 1000
+
+; ---- Runtime ----
+AhkV2Path := "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"

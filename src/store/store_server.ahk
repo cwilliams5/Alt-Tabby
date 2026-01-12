@@ -1,39 +1,57 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-#Include ..\shared\config.ahk
-#Include ..\shared\json.ahk
-#Include ..\shared\ipc_pipe.ahk
-#Include windowstore.ahk
-#Include winenum_lite.ahk
+#Include %A_ScriptDir%\..\shared\config.ahk
+#Include %A_ScriptDir%\..\shared\json.ahk
+#Include %A_ScriptDir%\..\shared\ipc_pipe.ahk
+#Include %A_ScriptDir%\windowstore.ahk
+#Include %A_ScriptDir%\winenum_lite.ahk
 
 global gStore_Server := 0
 global gStore_ClientOpts := Map() ; hPipe -> projection opts
 global gStore_LastBroadcastRev := -1
 global gStore_TestMode := false
 global gStore_ErrorLog := ""
+global gStore_LastClientLog := 0
 
 for _, arg in A_Args {
     if (arg = "--test")
         gStore_TestMode := true
     else if (SubStr(arg, 1, 6) = "--log=")
         gStore_ErrorLog := SubStr(arg, 7)
+    else if (SubStr(arg, 1, 7) = "--pipe=")
+        StorePipeName := SubStr(arg, 8)
 }
-if (gStore_TestMode)
-    OnError(Func("Store_OnError"))
+if (gStore_TestMode) {
+    try OnError(Store_OnError)
+    IPC_DebugLogPath := A_ScriptDir "\..\..\tests\windowstore_ipc.log"
+    try FileDelete(IPC_DebugLogPath)
+    Store_LogError("store_dir=" A_ScriptDir)
+    Store_LogError("ipc_exists=" (FileExist(A_ScriptDir "\..\shared\ipc_pipe.ahk") ? "1" : "0"))
+}
 
 Store_Init() {
     global gStore_Server, StorePipeName, StoreScanIntervalMs
     WindowStore_Init()
-    gStore_Server := IPC_PipeServer_Start(StorePipeName, Func("Store_OnMessage"))
+    if (!_Store_HasIpcSymbols()) {
+        Store_LogError("ipc_pipe symbols missing")
+        ExitApp(1)
+    }
+    gStore_Server := IPC_PipeServer_Start(StorePipeName, Store_OnMessage)
     SetTimer(Store_ScanTick, StoreScanIntervalMs)
 }
 
 Store_ScanTick() {
-    global gStore_LastBroadcastRev, gStore_Server
+    global gStore_LastBroadcastRev, gStore_Server, gStore_TestMode, gStore_LastClientLog
+    if (gStore_TestMode && (A_TickCount - gStore_LastClientLog) > 3000) {
+        gStore_LastClientLog := A_TickCount
+        try Store_LogError("clients=" gStore_Server.clients.Count " store=" gWS_Store.Count " rev=" WindowStore_GetRev())
+    }
     WindowStore_BeginScan()
-    recs := WinEnumLite_ScanAll()
-    WindowStore_UpsertWindow(recs, "winenum_lite")
+    recs := ""
+    try recs := WinEnumLite_ScanAll()
+    if (IsObject(recs))
+        WindowStore_UpsertWindow(recs, "winenum_lite")
     WindowStore_EndScan()
     rev := WindowStore_GetRev()
     if (rev != gStore_LastBroadcastRev) {
@@ -43,14 +61,24 @@ Store_ScanTick() {
 }
 
 Store_BroadcastSnapshot() {
-    global gStore_Server
+    global gStore_Server, gStore_TestMode
     payload := WindowStore_GetProjection({ sort: "Z", columns: "items" })
     msg := {
         type: IPC_MSG_SNAPSHOT,
         rev: payload.rev,
         payload: { meta: payload.meta, items: payload.items }
     }
-    IPC_PipeServer_Broadcast(gStore_Server, JXON_Dump(msg))
+    sent := IPC_PipeServer_Broadcast(gStore_Server, JXON_Dump(msg))
+    if (gStore_TestMode)
+    {
+        Store_LogError("broadcast_sent=" sent " items=" payload.items.Length)
+        if (payload.items.Length = 0 && gWS_Store.Count > 0) {
+            for _, rec in gWS_Store {
+                Store_LogError("sample_present=" rec.present " state=" rec.state)
+                break
+            }
+        }
+    }
 }
 
 Store_OnMessage(line, hPipe := 0) {
@@ -102,8 +130,27 @@ Store_Init()
 Store_OnError(err, *) {
     global gStore_ErrorLog
     path := gStore_ErrorLog ? gStore_ErrorLog : (A_Temp "\tabby_store_error.log")
-    msg := "store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" err.Message "`n"
+    msg := "store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n"
+        . "msg=" err.Message "`n"
+        . "file=" err.File "`n"
+        . "line=" err.Line "`n"
+        . "what=" err.What "`n"
     try FileAppend(msg, path, "UTF-8")
     ExitApp(1)
     return true
+}
+
+Store_LogError(msg) {
+    global gStore_ErrorLog
+    path := gStore_ErrorLog ? gStore_ErrorLog : (A_Temp "\tabby_store_error.log")
+    try FileAppend("store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" msg "`n", path, "UTF-8")
+}
+
+_Store_HasIpcSymbols() {
+    try {
+        tmp := IPC_MSG_HELLO
+        return true
+    } catch {
+        return false
+    }
 }

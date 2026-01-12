@@ -148,25 +148,36 @@ JXON__DumpValue(val, indent, level) {
             return JXON__DumpArray(val, indent, level)
         return JXON__DumpObject(val, indent, level)
     }
+    if (val is Number)
+        return val
     if (val == true)
         return "true"
     if (val == false)
         return "false"
     if (val == "")
         return "null"
-    if (val is Number)
-        return val
     return JXON__EscapeString(val)
 }
 
 JXON__DumpObject(obj, indent, level) {
-    if (obj.Count = 0)
+    try {
+        hasAny := false
+        enum := (obj is Map) ? obj : obj.OwnProps()
+        for _, _ in enum {
+            hasAny := true
+            break
+        }
+        if (!hasAny)
+            return "{}"
+    } catch {
         return "{}"
+    }
     pad := indent ? "`n" . JXON__Repeat(indent, level) : ""
     padInner := indent ? "`n" . JXON__Repeat(indent, level + 1) : ""
     out := "{"
     first := true
-    for k, v in obj {
+    enum := (obj is Map) ? obj : obj.OwnProps()
+    for k, v in enum {
         if (!first)
             out .= ","
         out .= padInner . JXON__EscapeString(k) . ":" . (indent ? " " : "") . JXON__DumpValue(v, indent, level + 1)

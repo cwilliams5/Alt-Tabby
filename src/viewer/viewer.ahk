@@ -13,7 +13,7 @@ global gViewer_LV := 0
 Viewer_Init() {
     global gViewer_Client, StorePipeName
     _Viewer_CreateGui()
-    gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Func("Viewer_OnMessage"))
+    gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
     _Viewer_SendHello()
     _Viewer_RequestProjection()
 }
