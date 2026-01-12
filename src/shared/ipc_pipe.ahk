@@ -25,27 +25,293 @@ IPC_DefaultProjectionOpts() {
 }
 
 IPC_PipeServer_Start(pipeName, onMessageFn) {
-    ; TODO: implement named pipe server with multi-subscriber support.
-    return { pipeName: pipeName, onMessage: onMessageFn }
+    server := {
+        pipeName: pipeName,
+        onMessage: onMessageFn,
+        pending: [],
+        clients: Map(),   ; hPipe -> { buf: "" }
+        timerFn: 0
+    }
+    _IPC_Server_AddPending(server)
+    server.timerFn := Func("IPC__ServerTick").Bind(server)
+    SetTimer(server.timerFn, 15)
+    return server
 }
 
 IPC_PipeServer_Stop(server) {
-    ; TODO: cleanup handles.
+    if !IsObject(server)
+        return
+    if (server.timerFn)
+        SetTimer(server.timerFn, 0)
+    for _, inst in server.pending
+        _IPC_ClosePipeInstance(inst)
+    for hPipe, _ in server.clients
+        _IPC_CloseHandle(hPipe)
+    server.pending := []
+    server.clients := Map()
 }
 
 IPC_PipeServer_Broadcast(server, msgText) {
-    ; TODO: send msgText to all clients.
+    if !IsObject(server)
+        return
+    if (!msgText || SubStr(msgText, -1) != "`n")
+        msgText .= "`n"
+    bytes := _IPC_StrToUtf8(msgText)
+    buf := bytes.buf
+    len := bytes.len
+    dead := []
+    for hPipe, _ in server.clients {
+        if (!_IPC_WritePipe(hPipe, buf, len))
+            dead.Push(hPipe)
+    }
+    for _, h in dead {
+        server.clients.Delete(h)
+        _IPC_CloseHandle(h)
+    }
 }
 
 IPC_PipeClient_Connect(pipeName, onMessageFn) {
-    ; TODO: connect and start read loop.
-    return { pipeName: pipeName, onMessage: onMessageFn }
+    client := {
+        pipeName: pipeName,
+        onMessage: onMessageFn,
+        hPipe: 0,
+        buf: "",
+        timerFn: 0
+    }
+    h := _IPC_ClientConnect(pipeName, 2000)
+    if (!h)
+        return client
+    client.hPipe := h
+    client.timerFn := Func("IPC__ClientTick").Bind(client)
+    SetTimer(client.timerFn, 15)
+    return client
 }
 
 IPC_PipeClient_Send(client, msgText) {
-    ; TODO: send msgText to server.
+    if !IsObject(client)
+        return false
+    if (!client.hPipe)
+        return false
+    if (!msgText || SubStr(msgText, -1) != "`n")
+        msgText .= "`n"
+    bytes := _IPC_StrToUtf8(msgText)
+    return _IPC_WritePipe(client.hPipe, bytes.buf, bytes.len)
 }
 
 IPC_PipeClient_Close(client) {
-    ; TODO: cleanup handles.
+    if !IsObject(client)
+        return
+    if (client.timerFn)
+        SetTimer(client.timerFn, 0)
+    if (client.hPipe) {
+        _IPC_CloseHandle(client.hPipe)
+        client.hPipe := 0
+    }
+}
+
+; ============================ Server internals =============================
+
+IPC__ServerTick(server) {
+    ; Check pending pipe instances for connections, read from clients.
+    _IPC_Server_AcceptPending(server)
+    _IPC_Server_ReadClients(server)
+}
+
+_IPC_Server_AddPending(server) {
+    inst := _IPC_CreatePipeInstance(server.pipeName)
+    if (inst.hPipe)
+        server.pending.Push(inst)
+}
+
+_IPC_Server_AcceptPending(server) {
+    connected := []
+    for idx, inst in server.pending {
+        if (_IPC_CheckConnect(inst)) {
+            server.clients[inst.hPipe] := { buf: "" }
+            connected.Push(idx)
+            _IPC_Server_AddPending(server)
+        }
+    }
+    ; remove connected instances from pending list (reverse order)
+    Loop connected.Length {
+        i := connected[connected.Length - A_Index + 1]
+        server.pending.RemoveAt(i)
+    }
+}
+
+_IPC_Server_ReadClients(server) {
+    dead := []
+    for hPipe, state in server.clients {
+        if (!_IPC_ReadPipeLines(hPipe, state, server.onMessage))
+            dead.Push(hPipe)
+    }
+    for _, h in dead {
+        server.clients.Delete(h)
+        _IPC_CloseHandle(h)
+    }
+}
+
+; ============================ Client internals =============================
+
+IPC__ClientTick(client) {
+    if (!client.hPipe)
+        return
+    if (!_IPC_ReadPipeLines(client.hPipe, client, client.onMessage)) {
+        _IPC_CloseHandle(client.hPipe)
+        client.hPipe := 0
+        if (client.timerFn)
+            SetTimer(client.timerFn, 0)
+    }
+}
+
+; ============================== Pipe helpers ===============================
+
+_IPC_CreatePipeInstance(pipeName) {
+    PIPE_ACCESS_DUPLEX := 0x00000003
+    FILE_FLAG_OVERLAPPED := 0x40000000
+    PIPE_TYPE_MESSAGE := 0x00000004
+    PIPE_READMODE_MESSAGE := 0x00000002
+    PIPE_WAIT := 0x00000000
+    hPipe := DllCall("CreateNamedPipeW"
+        , "str", "\\.\pipe\" pipeName
+        , "uint", PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED
+        , "uint", PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT
+        , "uint", 255
+        , "uint", 65536
+        , "uint", 65536
+        , "uint", 0
+        , "ptr", 0
+        , "ptr")
+    if (!hPipe || hPipe = -1)
+        return { hPipe: 0 }
+    hEvent := DllCall("CreateEventW", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
+    over := Buffer(A_PtrSize=8 ? 32 : 20, 0)
+    NumPut("ptr", hEvent, over, (A_PtrSize=8) ? 24 : 16)
+    ok := DllCall("ConnectNamedPipe", "ptr", hPipe, "ptr", over.Ptr, "int")
+    if (!ok) {
+        gle := DllCall("GetLastError", "uint")
+        if (gle = 997 || gle = 535) {
+            ; pending or already connected
+        } else {
+            _IPC_CloseHandle(hEvent)
+            _IPC_CloseHandle(hPipe)
+            return { hPipe: 0 }
+        }
+    }
+    return { hPipe: hPipe, hEvent: hEvent, over: over }
+}
+
+_IPC_CheckConnect(inst) {
+    if (!inst.hPipe)
+        return false
+    ; If already connected, PeekNamedPipe will succeed. Otherwise check overlapped.
+    if (_IPC_PeekAvailable(inst.hPipe) >= 0)
+        return true
+    bytes := 0
+    ok := DllCall("GetOverlappedResult", "ptr", inst.hPipe, "ptr", inst.over.Ptr, "uint*", &bytes, "int", 0)
+    if (ok) {
+        _IPC_CloseHandle(inst.hEvent)
+        return true
+    }
+    gle := DllCall("GetLastError", "uint")
+    return (gle = 535) ; ERROR_PIPE_CONNECTED
+}
+
+_IPC_ClosePipeInstance(inst) {
+    if (IsObject(inst)) {
+        if (inst.hEvent)
+            _IPC_CloseHandle(inst.hEvent)
+        if (inst.hPipe)
+            _IPC_CloseHandle(inst.hPipe)
+    }
+}
+
+_IPC_ClientConnect(pipeName, timeoutMs := 2000) {
+    name := "\\.\pipe\" pipeName
+    start := A_TickCount
+    loop {
+        hPipe := DllCall("CreateFileW"
+            , "str", name
+            , "uint", 0xC0000000 ; GENERIC_READ|GENERIC_WRITE
+            , "uint", 0
+            , "ptr", 0
+            , "uint", 3
+            , "uint", 0
+            , "ptr", 0
+            , "ptr")
+        if (hPipe && hPipe != -1)
+            return hPipe
+        gle := DllCall("GetLastError", "uint")
+        if (gle != 231) ; ERROR_PIPE_BUSY
+            return 0
+        if ((A_TickCount - start) > timeoutMs)
+            return 0
+        DllCall("WaitNamedPipeW", "str", name, "uint", 200)
+    }
+}
+
+_IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
+    avail := _IPC_PeekAvailable(hPipe)
+    if (avail < 0)
+        return false
+    if (avail = 0)
+        return true
+    toRead := Min(avail, 65536)
+    buf := Buffer(toRead)
+    bytesRead := 0
+    ok := DllCall("ReadFile", "ptr", hPipe, "ptr", buf.Ptr, "uint", toRead, "uint*", &bytesRead, "ptr", 0)
+    if (!ok) {
+        gle := DllCall("GetLastError", "uint")
+        return (gle = 234) ; ERROR_MORE_DATA
+    }
+    if (bytesRead <= 0)
+        return true
+    chunk := StrGet(buf.Ptr, bytesRead, "UTF-8")
+    stateObj.buf .= chunk
+    _IPC_ParseLines(stateObj, onMessageFn)
+    return true
+}
+
+_IPC_ParseLines(stateObj, onMessageFn) {
+    while true {
+        pos := InStr(stateObj.buf, "`n")
+        if (!pos)
+            break
+        line := SubStr(stateObj.buf, 1, pos - 1)
+        stateObj.buf := SubStr(stateObj.buf, pos + 1)
+        if (SubStr(line, -1) = "`r")
+            line := SubStr(line, 1, -1)
+        if (line != "") {
+            try onMessageFn.Call(line)
+            catch {
+            }
+        }
+    }
+}
+
+_IPC_PeekAvailable(hPipe) {
+    bytesAvail := 0
+    ok := DllCall("PeekNamedPipe", "ptr", hPipe, "ptr", 0, "uint", 0, "uint*", 0, "uint*", &bytesAvail, "uint*", 0)
+    if (!ok)
+        return -1
+    return bytesAvail
+}
+
+_IPC_WritePipe(hPipe, bufPtr, len) {
+    wrote := 0
+    ok := DllCall("WriteFile", "ptr", hPipe, "ptr", bufPtr, "uint", len, "uint*", &wrote, "ptr", 0)
+    return ok && (wrote = len)
+}
+
+_IPC_StrToUtf8(str) {
+    ; Convert to UTF-8 buffer with exact length.
+    len := StrPut(str, "UTF-8") - 1
+    buf := Buffer(len)
+    StrPut(str, buf, "UTF-8")
+    return { buf: buf, len: len }
+}
+
+_IPC_CloseHandle(h) {
+    if (h && h != -1)
+        DllCall("CloseHandle", "ptr", h)
 }
