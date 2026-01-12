@@ -49,7 +49,8 @@ WindowStore_EndScan(graceMs := "") {
             ; Skip windows that have workspace data from komorebi
             ; These are "present" from komorebi's perspective even if winenum doesn't see them
             if (rec.HasOwnProp("workspaceName") && rec.workspaceName != "") {
-                ; Keep komorebi-managed windows present
+                ; Keep komorebi-managed windows present, preserve their Z value
+                ; (Z reflects actual Windows Z-order which matters for alt-tab behavior)
                 rec.lastSeenScanId := gWS_ScanId
                 rec.presentNow := true
                 rec.present := true
@@ -337,7 +338,14 @@ _WS_GetOpt(opts, key, default) {
 
 ; Comparison functions for sorting
 _WS_CmpZ(a, b) {
-    return (a.z < b.z) ? -1 : (a.z > b.z) ? 1 : 0
+    ; Primary: Z-order (ascending, lower = closer to top)
+    if (a.z != b.z)
+        return (a.z < b.z) ? -1 : 1
+    ; Tie-breaker: MRU (descending, higher tick = more recent = first)
+    if (a.lastActivatedTick != b.lastActivatedTick)
+        return (a.lastActivatedTick > b.lastActivatedTick) ? -1 : 1
+    ; Final tie-breaker: hwnd for stability
+    return (a.hwnd < b.hwnd) ? -1 : (a.hwnd > b.hwnd) ? 1 : 0
 }
 
 _WS_CmpTitle(a, b) {
@@ -353,8 +361,14 @@ _WS_CmpProcessName(a, b) {
 }
 
 _WS_CmpMRU(a, b) {
-    ; MRU: most recently activated first (descending)
-    return (a.lastActivatedTick > b.lastActivatedTick) ? -1 : (a.lastActivatedTick < b.lastActivatedTick) ? 1 : 0
+    ; Primary: MRU (descending, higher tick = more recent = first)
+    if (a.lastActivatedTick != b.lastActivatedTick)
+        return (a.lastActivatedTick > b.lastActivatedTick) ? -1 : 1
+    ; Fallback for windows with no MRU data: use Z-order
+    if (a.z != b.z)
+        return (a.z < b.z) ? -1 : 1
+    ; Final tie-breaker: hwnd for stability
+    return (a.hwnd < b.hwnd) ? -1 : (a.hwnd > b.hwnd) ? 1 : 0
 }
 
 ; ============================================================

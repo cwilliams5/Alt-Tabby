@@ -588,16 +588,37 @@ _Viewer_InsertionSort(arr, cmp) {
 }
 
 _Viewer_CmpZ(a, b) {
+    ; Primary: Z-order (ascending, lower = closer to top)
     az := _Viewer_Get(a, "z", 0)
     bz := _Viewer_Get(b, "z", 0)
-    return (az < bz) ? -1 : (az > bz) ? 1 : 0
+    if (az != bz)
+        return (az < bz) ? -1 : 1
+    ; Tie-breaker: MRU (descending, higher tick = more recent = first)
+    at := _Viewer_Get(a, "lastActivatedTick", 0)
+    bt := _Viewer_Get(b, "lastActivatedTick", 0)
+    if (at != bt)
+        return (at > bt) ? -1 : 1
+    ; Final tie-breaker: hwnd for stability
+    ah := _Viewer_Get(a, "hwnd", 0)
+    bh := _Viewer_Get(b, "hwnd", 0)
+    return (ah < bh) ? -1 : (ah > bh) ? 1 : 0
 }
 
 _Viewer_CmpMRU(a, b) {
-    ; MRU: most recently activated first (descending)
+    ; Primary: MRU (descending, higher tick = more recent = first)
     at := _Viewer_Get(a, "lastActivatedTick", 0)
     bt := _Viewer_Get(b, "lastActivatedTick", 0)
-    return (at > bt) ? -1 : (at < bt) ? 1 : 0
+    if (at != bt)
+        return (at > bt) ? -1 : 1
+    ; Fallback for windows with no MRU data: use Z-order
+    az := _Viewer_Get(a, "z", 0)
+    bz := _Viewer_Get(b, "z", 0)
+    if (az != bz)
+        return (az < bz) ? -1 : 1
+    ; Final tie-breaker: hwnd for stability
+    ah := _Viewer_Get(a, "hwnd", 0)
+    bh := _Viewer_Get(b, "hwnd", 0)
+    return (ah < bh) ? -1 : (ah > bh) ? 1 : 0
 }
 
 Viewer_Init()
