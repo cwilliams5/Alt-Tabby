@@ -30,11 +30,13 @@ IPC_PipeServer_Start(pipeName, onMessageFn) {
         onMessage: onMessageFn,
         pending: [],
         clients: Map(),   ; hPipe -> { buf: "" }
-        timerFn: 0
+        timerFn: 0,
+        tickMs: 100,
+        idleStreak: 0
     }
     _IPC_Server_AddPending(server)
     server.timerFn := Func("IPC__ServerTick").Bind(server)
-    SetTimer(server.timerFn, 15)
+    SetTimer(server.timerFn, server.tickMs)
     return server
 }
 
@@ -76,14 +78,15 @@ IPC_PipeClient_Connect(pipeName, onMessageFn) {
         onMessage: onMessageFn,
         hPipe: 0,
         buf: "",
-        timerFn: 0
+        timerFn: 0,
+        tickMs: 100
     }
     h := _IPC_ClientConnect(pipeName, 2000)
     if (!h)
         return client
     client.hPipe := h
     client.timerFn := Func("IPC__ClientTick").Bind(client)
-    SetTimer(client.timerFn, 15)
+    SetTimer(client.timerFn, client.tickMs)
     return client
 }
 
@@ -114,7 +117,8 @@ IPC_PipeClient_Close(client) {
 IPC__ServerTick(server) {
     ; Check pending pipe instances for connections, read from clients.
     _IPC_Server_AcceptPending(server)
-    _IPC_Server_ReadClients(server)
+    activity := _IPC_Server_ReadClients(server)
+    _IPC_Server_AdjustTimer(server, activity)
 }
 
 _IPC_Server_AddPending(server) {
@@ -141,14 +145,19 @@ _IPC_Server_AcceptPending(server) {
 
 _IPC_Server_ReadClients(server) {
     dead := []
+    activity := 0
     for hPipe, state in server.clients {
-        if (!_IPC_ReadPipeLines(hPipe, state, server.onMessage))
+        readStatus := _IPC_ReadPipeLines(hPipe, state, server.onMessage)
+        if (readStatus < 0)
             dead.Push(hPipe)
+        else if (readStatus > 0)
+            activity += readStatus
     }
     for _, h in dead {
         server.clients.Delete(h)
         _IPC_CloseHandle(h)
     }
+    return activity
 }
 
 ; ============================ Client internals =============================
@@ -156,12 +165,15 @@ _IPC_Server_ReadClients(server) {
 IPC__ClientTick(client) {
     if (!client.hPipe)
         return
-    if (!_IPC_ReadPipeLines(client.hPipe, client, client.onMessage)) {
+    readStatus := _IPC_ReadPipeLines(client.hPipe, client, client.onMessage)
+    if (readStatus < 0) {
         _IPC_CloseHandle(client.hPipe)
         client.hPipe := 0
         if (client.timerFn)
             SetTimer(client.timerFn, 0)
+        return
     }
+    _IPC_Client_AdjustTimer(client, readStatus)
 }
 
 ; ============================== Pipe helpers ===============================
@@ -253,23 +265,25 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
 _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
     avail := _IPC_PeekAvailable(hPipe)
     if (avail < 0)
-        return false
+        return -1
     if (avail = 0)
-        return true
+        return 0
     toRead := Min(avail, 65536)
     buf := Buffer(toRead)
     bytesRead := 0
     ok := DllCall("ReadFile", "ptr", hPipe, "ptr", buf.Ptr, "uint", toRead, "uint*", &bytesRead, "ptr", 0)
     if (!ok) {
         gle := DllCall("GetLastError", "uint")
-        return (gle = 234) ; ERROR_MORE_DATA
+        if (gle = 234) ; ERROR_MORE_DATA
+            return 0
+        return -1
     }
     if (bytesRead <= 0)
-        return true
+        return 0
     chunk := StrGet(buf.Ptr, bytesRead, "UTF-8")
     stateObj.buf .= chunk
     _IPC_ParseLines(stateObj, onMessageFn)
-    return true
+    return bytesRead
 }
 
 _IPC_ParseLines(stateObj, onMessageFn) {
@@ -314,4 +328,46 @@ _IPC_StrToUtf8(str) {
 _IPC_CloseHandle(h) {
     if (h && h != -1)
         DllCall("CloseHandle", "ptr", h)
+}
+
+; ============================== Timer policy ===============================
+
+_IPC_Server_AdjustTimer(server, activityBytes) {
+    ; Keep CPU low: slow tick when idle, speed up when active.
+    if (activityBytes > 0) {
+        server.idleStreak := 0
+        _IPC_SetServerTick(server, 15)
+        return
+    }
+    if (server.clients.Count = 0) {
+        _IPC_SetServerTick(server, 250)
+        return
+    }
+    server.idleStreak += 1
+    if (server.idleStreak >= 8)
+        _IPC_SetServerTick(server, 100)
+}
+
+_IPC_SetServerTick(server, ms) {
+    if (server.tickMs = ms)
+        return
+    server.tickMs := ms
+    if (server.timerFn)
+        SetTimer(server.timerFn, server.tickMs)
+}
+
+_IPC_Client_AdjustTimer(client, activityBytes) {
+    if (activityBytes > 0) {
+        _IPC_SetClientTick(client, 15)
+        return
+    }
+    _IPC_SetClientTick(client, 100)
+}
+
+_IPC_SetClientTick(client, ms) {
+    if (client.tickMs = ms)
+        return
+    client.tickMs := ms
+    if (client.timerFn)
+        SetTimer(client.timerFn, client.tickMs)
 }
