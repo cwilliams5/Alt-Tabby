@@ -17,7 +17,7 @@ AhkV2Path := "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 UseMruLite := true
 UseKomorebiSub := true         ; Subscription-based komorebi (preferred)
 UseKomorebiLite := false       ; Polling-based komorebi (fallback)
-KomorebicExe := "C:\\Program Files\\komorebi\\bin\\komorebic.exe"
+KomorebicExe := "C:\Program Files\komorebi\bin\komorebic.exe"
 
 ; ---- Pumps ----
 UseIconPump := true

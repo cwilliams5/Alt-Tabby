@@ -130,7 +130,33 @@ KomorebiSub_Start() {
     _KSub_LastEvent := A_TickCount
     _KSub_FallbackMode := false
     SetTimer(KomorebiSub_Poll, KSub_PollMs)
+
+    ; Do initial poll to populate all windows with workspace data immediately
+    ; (subscription mode only gets updates on events, not initial state)
+    ; Runs after 1500ms to ensure first winenum scan has populated the store
+    SetTimer(_KSub_InitialPoll, -1500)
+
     return true
+}
+
+; One-time initial poll to populate workspace data on startup
+_KSub_InitialPoll() {
+    global _KSub_LastWorkspaceName
+
+    if (!KomorebiSub_IsAvailable())
+        return
+
+    txt := _KSub_GetStateFallback()
+    if (txt = "")
+        return
+
+    ws := _KSub_GetCurrentWorkspaceName(txt)
+    if (ws != "") {
+        _KSub_LastWorkspaceName := ws
+        try WindowStore_SetCurrentWorkspace("", ws)
+    }
+
+    _KSub_UpdateAllWindowWorkspaces(txt, _KSub_LastWorkspaceName)
 }
 
 ; Stop subscription
@@ -354,8 +380,10 @@ _KSub_GetCurrentWorkspaceName(txt) {
 _KSub_GetStateFallback() {
     global KomorebicExe
     tmp := A_Temp "\komorebi_state_" A_TickCount ".tmp"
-    cmd := 'cmd.exe /c "' KomorebicExe '" state > "' tmp '" 2>&1'
+    ; Use double-quote escaping for cmd.exe with paths containing spaces
+    cmd := 'cmd.exe /c ""' KomorebicExe '" state > "' tmp '"" 2>&1'
     try RunWait(cmd, , "Hide")
+    Sleep(100)  ; Give file time to write
     txt := ""
     try txt := FileRead(tmp, "UTF-8")
     try FileDelete(tmp)

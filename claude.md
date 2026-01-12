@@ -88,6 +88,24 @@ These are from the original ChatGPT work. Some are battle-tested:
 - Always verify komorebi is actually running: `komorebic state`
 - Test workspace data flows end-to-end: komorebi → producer → store → viewer
 - Don't assume empty columns mean "no data" - verify the data source
+- Tests should START the store, not assume it's already running
+
+### cmd.exe Quoting for Paths with Spaces
+- When using `cmd.exe /c` with paths containing spaces, use double-quote escaping:
+  ```ahk
+  ; WRONG - fails with paths like "C:\Program Files\..."
+  cmd := 'cmd.exe /c "' path '" args > "' outfile '"'
+
+  ; CORRECT - double-quote escaping for cmd.exe
+  cmd := 'cmd.exe /c ""' path '" args > "' outfile '""'
+  ```
+- The extra quotes at start (`""`) and end (`""`) are required for cmd.exe to parse correctly
+
+### Subscription vs Polling for Komorebi
+- Subscription mode (`komorebic subscribe-pipe`) only receives events when things change
+- Need an initial poll on startup to populate existing windows with workspace data
+- The subscription includes BOTH event AND full state in each notification
+- Reference: `legacy/components_legacy/komorebi_poc - WORKING.ahk`
 
 ## Testing
 Run automated tests before committing:

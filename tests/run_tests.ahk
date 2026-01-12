@@ -386,7 +386,7 @@ if (RunLiveTests) {
     Log("`n--- Komorebi Integration Test ---")
 
     ; Check if komorebic is available
-    komorebicPath := "C:\Program Files\komorebi\bin\komorebic.exe"
+    komorebicPath := KomorebicExe  ; Use configured path from config.ahk
     if (FileExist(komorebicPath)) {
         Log("PASS: komorebic.exe found")
         TestPassed++
@@ -455,6 +455,138 @@ if (RunLiveTests) {
         }
     } else {
         Log("SKIP: komorebic.exe not found at " komorebicPath)
+    }
+
+    ; --- Workspace Data E2E Test ---
+    Log("`n--- Workspace Data E2E Test ---")
+
+    ; This test verifies workspace data flows from komorebi through the store to projections
+    ; First, directly test that we can get workspace data from komorebic
+    Log("  [WS E2E] Testing direct komorebic state fetch...")
+    directTxt := _KSub_GetStateFallback()
+    if (directTxt = "") {
+        Log("  [WS E2E] WARNING: komorebic state returned empty")
+    } else {
+        ; Count windows with workspace data
+        directHwnds := 0
+        directPos := 1
+        while (p := RegExMatch(directTxt, '"hwnd"\s*:\s*(\d+)', &dm, directPos)) {
+            directHwnds++
+            directPos := dm.Pos(0) + dm.Len(0)
+        }
+        Log("  [WS E2E] Direct komorebic state has " directHwnds " hwnds")
+
+        ; Test lookup for a window
+        if (directHwnds > 0 && RegExMatch(directTxt, '"hwnd"\s*:\s*(\d+)', &dm2)) {
+            testHwnd := Integer(dm2[1])
+            testWs := _KSub_FindWorkspaceByHwnd(directTxt, testHwnd)
+            Log("  [WS E2E] Direct lookup hwnd " testHwnd " -> workspace '" testWs "'")
+        }
+    }
+
+    ; Start a fresh store with komorebi producer enabled
+    wsE2EPipe := "tabby_ws_e2e_" A_TickCount
+    wsE2EPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' wsE2EPipe, , "Hide", &wsE2EPid)
+    } catch as e {
+        Log("SKIP: Could not start store for workspace E2E test: " e.Message)
+        wsE2EPid := 0
+    }
+
+    if (wsE2EPid) {
+        ; Wait for store to initialize and komorebi initial poll to run
+        ; Initial poll happens at 1500ms after winenum populates at 1000ms
+        ; Add extra time for komorebic state command
+        Sleep(4000)
+
+        global gWsE2EResponse := ""
+        global gWsE2EReceived := false
+
+        wsE2EClient := IPC_PipeClient_Connect(wsE2EPipe, Test_OnWsE2EMessage)
+
+        if (wsE2EClient.hPipe) {
+            Log("PASS: E2E test connected to store")
+            TestPassed++
+
+            ; Send hello
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "ws_e2e_test", wants: { deltas: false } }
+            IPC_PipeClient_Send(wsE2EClient, JXON_Dump(helloMsg))
+
+            ; Request projection with workspace data
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items", includeMinimized: true, includeCloaked: true } }
+            IPC_PipeClient_Send(wsE2EClient, JXON_Dump(projMsg))
+
+            ; Wait for response
+            waitStart := A_TickCount
+            while (!gWsE2EReceived && (A_TickCount - waitStart) < 5000) {
+                Sleep(100)
+            }
+
+            if (gWsE2EReceived) {
+                try {
+                    respObj := JXON_Load(gWsE2EResponse)
+                    if (respObj.Has("payload") && respObj["payload"].Has("items")) {
+                        items := respObj["payload"]["items"]
+                        Log("  E2E test received " items.Length " items")
+
+                        ; Count items with workspace data
+                        itemsWithWs := 0
+                        itemsWithCloak := 0
+                        for _, item in items {
+                            wsName := item.Has("workspaceName") ? item["workspaceName"] : ""
+                            isCloaked := item.Has("isCloaked") ? item["isCloaked"] : false
+                            if (wsName != "")
+                                itemsWithWs++
+                            if (isCloaked)
+                                itemsWithCloak++
+                        }
+
+                        Log("  Items with workspaceName: " itemsWithWs "/" items.Length)
+                        Log("  Items with isCloaked=true: " itemsWithCloak "/" items.Length)
+
+                        ; If komorebi is running and has windows, we should have workspace data
+                        if (FileExist(komorebicPath) && itemsWithWs > 0) {
+                            Log("PASS: Workspace data flows through to projection")
+                            TestPassed++
+                        } else if (!FileExist(komorebicPath)) {
+                            Log("SKIP: Cannot verify workspace e2e without komorebi")
+                        } else {
+                            Log("WARN: No workspace data in projection (komorebi may have no managed windows)")
+                        }
+
+                        ; isCloaked field should always be present (from winenum_lite)
+                        sampleHasCloaked := items.Length > 0 && items[1].Has("isCloaked")
+                        if (sampleHasCloaked) {
+                            Log("PASS: isCloaked field present in projection items")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: isCloaked field missing from projection items")
+                            TestErrors++
+                        }
+                    } else {
+                        Log("FAIL: E2E response missing payload/items")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: E2E response parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: E2E test timeout waiting for response")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(wsE2EClient)
+        } else {
+            Log("FAIL: E2E test could not connect to store")
+            TestErrors++
+        }
+
+        try {
+            ProcessClose(wsE2EPid)
+        }
     }
 }
 
@@ -530,6 +662,18 @@ Test_OnViewerMessage(line, hPipe := 0) {
         gViewerTestReceived := true
     } else {
         Log("  [Viewer Test] Got other msg: " SubStr(line, 1, 60))
+    }
+}
+
+Test_OnWsE2EMessage(line, hPipe := 0) {
+    global gWsE2EResponse, gWsE2EReceived
+    ; Skip hello_ack, we want the projection response
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        Log("  [WS E2E] Received projection: " SubStr(line, 1, 80))
+        gWsE2EResponse := line
+        gWsE2EReceived := true
+    } else {
+        Log("  [WS E2E] Got other msg: " SubStr(line, 1, 60))
     }
 }
 
