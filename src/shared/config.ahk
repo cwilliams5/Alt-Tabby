@@ -17,3 +17,7 @@ AhkV2Path := "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 UseMruLite := false
 UseKomorebiLite := false
 KomorebicExe := "C:\\Program Files\\komorebi\\bin\\komorebic.exe"
+
+; ---- Viewer ----
+DebugViewerLog := false
+ViewerAutoStartStore := false
