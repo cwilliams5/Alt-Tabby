@@ -153,14 +153,12 @@ WindowStore_GetCurrentWorkspace() {
 
 WindowStore_GetProjection(opts := 0) {
     global gWS_Store, gWS_Meta
-    if (!IsObject(opts) || !(opts is Map))
-        opts := Map()
-    sort := opts.Has("sort") ? opts["sort"] : "MRU"
-    currentOnly := opts.Has("currentWorkspaceOnly") ? opts["currentWorkspaceOnly"] : false
-    includeMin := opts.Has("includeMinimized") ? opts["includeMinimized"] : true
-    includeCloaked := opts.Has("includeCloaked") ? opts["includeCloaked"] : false
-    blacklistMode := opts.Has("blacklistMode") ? opts["blacklistMode"] : "exclude"
-    columns := opts.Has("columns") ? opts["columns"] : "items"
+    sort := _WS_GetOpt(opts, "sort", "MRU")
+    currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
+    includeMin := _WS_GetOpt(opts, "includeMinimized", true)
+    includeCloaked := _WS_GetOpt(opts, "includeCloaked", false)
+    blacklistMode := _WS_GetOpt(opts, "blacklistMode", "exclude")
+    columns := _WS_GetOpt(opts, "columns", "items")
 
     items := []
     for _, rec in gWS_Store {
@@ -180,15 +178,15 @@ WindowStore_GetProjection(opts := 0) {
     }
 
     if (sort = "Z") {
-        _WS_TrySort(items, (a, b) => (a.z < b.z) ? -1 : (a.z > b.z) ? 1 : 0)
+        _WS_TrySort(items, _WS_CmpZ)
     } else if (sort = "Title") {
-        _WS_TrySort(items, (a, b) => StrLower(a.title) < StrLower(b.title) ? -1 : 1)
+        _WS_TrySort(items, _WS_CmpTitle)
     } else if (sort = "Pid") {
-        _WS_TrySort(items, (a, b) => (a.pid < b.pid) ? -1 : (a.pid > b.pid) ? 1 : 0)
+        _WS_TrySort(items, _WS_CmpPid)
     } else if (sort = "ProcessName") {
-        _WS_TrySort(items, (a, b) => StrLower(a.processName) < StrLower(b.processName) ? -1 : 1)
+        _WS_TrySort(items, _WS_CmpProcessName)
     } else {
-        _WS_TrySort(items, (a, b) => (a.lastActivatedTick > b.lastActivatedTick) ? -1 : 1)
+        _WS_TrySort(items, _WS_CmpMRU)
     }
 
     if (columns = "hwndsOnly") {
@@ -274,4 +272,36 @@ _WS_InsertionSort(arr, cmp) {
         }
         arr[j + 1] := key
     }
+}
+
+; Helper to get option from Map or plain Object
+_WS_GetOpt(opts, key, default) {
+    if (!IsObject(opts))
+        return default
+    if (opts is Map)
+        return opts.Has(key) ? opts[key] : default
+    ; Plain object - use HasOwnProp
+    return opts.HasOwnProp(key) ? opts.%key% : default
+}
+
+; Comparison functions for sorting
+_WS_CmpZ(a, b) {
+    return (a.z < b.z) ? -1 : (a.z > b.z) ? 1 : 0
+}
+
+_WS_CmpTitle(a, b) {
+    return StrCompare(a.title, b.title, "Locale")
+}
+
+_WS_CmpPid(a, b) {
+    return (a.pid < b.pid) ? -1 : (a.pid > b.pid) ? 1 : 0
+}
+
+_WS_CmpProcessName(a, b) {
+    return StrCompare(a.processName, b.processName, "Locale")
+}
+
+_WS_CmpMRU(a, b) {
+    ; MRU: most recently activated first (descending)
+    return (a.lastActivatedTick > b.lastActivatedTick) ? -1 : (a.lastActivatedTick < b.lastActivatedTick) ? 1 : 0
 }
