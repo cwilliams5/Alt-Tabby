@@ -57,8 +57,8 @@ WinEnumLite_ScanAll() {
         if (useAltTab && !rec["altTabEligible"])
             continue
 
-        ; Apply blacklist filter
-        if (useBlacklist && _WN_IsBlacklisted(rec["title"], rec["class"]))
+        ; Apply blacklist filter (uses shared/blacklist.ahk)
+        if (useBlacklist && Blacklist_IsMatch(rec["title"], rec["class"]))
             continue
 
         ; Assign z-order only to eligible windows (keeps values low and meaningful)
@@ -69,54 +69,6 @@ WinEnumLite_ScanAll() {
     }
 
     return records
-}
-
-; Check if window matches any blacklist pattern
-_WN_IsBlacklisted(title, class) {
-    global BlacklistTitle, BlacklistClass, BlacklistPair
-
-    ; Check title blacklist
-    if (IsSet(BlacklistTitle) && IsObject(BlacklistTitle)) {
-        for _, pattern in BlacklistTitle {
-            if (_WN_WildcardMatch(title, pattern))
-                return true
-        }
-    }
-
-    ; Check class blacklist
-    if (IsSet(BlacklistClass) && IsObject(BlacklistClass)) {
-        for _, pattern in BlacklistClass {
-            if (_WN_WildcardMatch(class, pattern))
-                return true
-        }
-    }
-
-    ; Check pair blacklist (both must match)
-    if (IsSet(BlacklistPair) && IsObject(BlacklistPair)) {
-        for _, pair in BlacklistPair {
-            classMatch := false
-            titleMatch := false
-            if (pair.HasOwnProp("Class"))
-                classMatch := _WN_WildcardMatch(class, pair.Class)
-            if (pair.HasOwnProp("Title"))
-                titleMatch := _WN_WildcardMatch(title, pair.Title)
-            if (classMatch && titleMatch)
-                return true
-        }
-    }
-
-    return false
-}
-
-; Case-insensitive wildcard match (* and ?)
-_WN_WildcardMatch(str, pattern) {
-    if (pattern = "")
-        return false
-    ; Convert wildcard pattern to regex
-    regex := "i)^" RegExReplace(RegExReplace(pattern, "[.+^${}|()\\[\]]", "\$0"), "\*", ".*")
-    regex := RegExReplace(regex, "\?", ".")
-    regex .= "$"
-    return RegExMatch(str, regex)
 }
 
 ; Probe a single window - returns Map or empty string
