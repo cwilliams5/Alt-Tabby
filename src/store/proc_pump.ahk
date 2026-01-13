@@ -8,9 +8,9 @@
 ; Caches results and fans out to all WindowStore rows with same PID
 ; ============================================================
 
-; Configuration
-global ProcBatchPerTick := 16
-global ProcTimerIntervalMs := 100
+; Configuration (use values from config.ahk if set, otherwise defaults)
+global ProcBatchPerTick := IsSet(ProcPumpBatchSize) ? ProcPumpBatchSize : 16
+global ProcTimerIntervalMs := IsSet(ProcPumpIntervalMs) ? ProcPumpIntervalMs : 100
 
 ; State
 global _PP_TimerOn := false
