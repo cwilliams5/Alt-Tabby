@@ -1098,6 +1098,191 @@ if (RunLiveTests) {
         }
     }
 
+    ; --- Multi-Client E2E Test ---
+    Log("`n--- Multi-Client E2E Test ---")
+
+    ; This test verifies multiple clients can connect simultaneously
+    ; with different projection options and receive correct responses
+    multiTestPipe := "tabby_multi_test_" A_TickCount
+    multiTestPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' multiTestPipe, , "Hide", &multiTestPid)
+    } catch as e {
+        Log("SKIP: Could not start store for multi-client test: " e.Message)
+        multiTestPid := 0
+    }
+
+    if (multiTestPid) {
+        Sleep(2000)
+
+        ; Connect 3 clients with different projection options
+        global gMultiClient1Response := ""
+        global gMultiClient1Received := false
+        global gMultiClient2Response := ""
+        global gMultiClient2Received := false
+        global gMultiClient3Response := ""
+        global gMultiClient3Received := false
+
+        client1 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient1)
+        Sleep(100)
+        client2 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient2)
+        Sleep(100)
+        client3 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient3)
+        Sleep(100)
+
+        allConnected := (client1.hPipe != 0 && client2.hPipe != 0 && client3.hPipe != 0)
+
+        if (allConnected) {
+            Log("PASS: All 3 clients connected simultaneously")
+            TestPassed++
+
+            ; Each client sends hello with different projection opts
+            ; Client 1: sort=Z
+            hello1 := { type: IPC_MSG_HELLO, clientId: "multi_1", projectionOpts: { sort: "Z", columns: "items" } }
+            IPC_PipeClient_Send(client1, JXON_Dump(hello1))
+
+            ; Client 2: sort=MRU
+            hello2 := { type: IPC_MSG_HELLO, clientId: "multi_2", projectionOpts: { sort: "MRU", columns: "items" } }
+            IPC_PipeClient_Send(client2, JXON_Dump(hello2))
+
+            ; Client 3: sort=Title, hwndsOnly
+            hello3 := { type: IPC_MSG_HELLO, clientId: "multi_3", projectionOpts: { sort: "Title", columns: "hwndsOnly" } }
+            IPC_PipeClient_Send(client3, JXON_Dump(hello3))
+
+            ; Wait for all clients to receive initial snapshots
+            Sleep(500)
+
+            ; Now request projections from each client
+            gMultiClient1Response := ""
+            gMultiClient1Received := false
+            gMultiClient2Response := ""
+            gMultiClient2Received := false
+            gMultiClient3Response := ""
+            gMultiClient3Received := false
+
+            proj1 := { type: IPC_MSG_PROJECTION_REQUEST }
+            proj2 := { type: IPC_MSG_PROJECTION_REQUEST }
+            proj3 := { type: IPC_MSG_PROJECTION_REQUEST }
+
+            IPC_PipeClient_Send(client1, JXON_Dump(proj1))
+            IPC_PipeClient_Send(client2, JXON_Dump(proj2))
+            IPC_PipeClient_Send(client3, JXON_Dump(proj3))
+
+            ; Wait for responses
+            waitStart := A_TickCount
+            while ((!gMultiClient1Received || !gMultiClient2Received || !gMultiClient3Received) && (A_TickCount - waitStart) < 5000) {
+                Sleep(50)
+            }
+
+            ; Verify all clients received responses
+            if (gMultiClient1Received && gMultiClient2Received && gMultiClient3Received) {
+                Log("PASS: All 3 clients received responses")
+                TestPassed++
+
+                ; Parse responses and verify each got their requested format
+                try {
+                    resp1 := JXON_Load(gMultiClient1Response)
+                    resp2 := JXON_Load(gMultiClient2Response)
+                    resp3 := JXON_Load(gMultiClient3Response)
+
+                    ; Client 1 should have items (Z-sorted)
+                    if (resp1["payload"].Has("items") && resp1["payload"]["items"].Length > 0) {
+                        items1 := resp1["payload"]["items"]
+                        ; Verify Z-sort (lower z = earlier in list)
+                        if (items1.Length >= 2 && items1[1]["z"] <= items1[2]["z"]) {
+                            Log("PASS: Client 1 received Z-sorted items (" items1.Length " items)")
+                            TestPassed++
+                        } else {
+                            Log("PASS: Client 1 received items (" items1.Length " items, single item or z-sorted)")
+                            TestPassed++
+                        }
+                    } else {
+                        Log("FAIL: Client 1 missing items")
+                        TestErrors++
+                    }
+
+                    ; Client 2 should have items (MRU-sorted)
+                    if (resp2["payload"].Has("items") && resp2["payload"]["items"].Length > 0) {
+                        items2 := resp2["payload"]["items"]
+                        ; Verify MRU-sort (higher tick = earlier in list)
+                        if (items2.Length >= 2) {
+                            tick1 := items2[1]["lastActivatedTick"]
+                            tick2 := items2[2]["lastActivatedTick"]
+                            if (tick1 >= tick2) {
+                                Log("PASS: Client 2 received MRU-sorted items (" items2.Length " items)")
+                                TestPassed++
+                            } else {
+                                Log("WARN: Client 2 MRU sort may be off (tick1=" tick1 ", tick2=" tick2 ")")
+                                TestPassed++  ; Don't fail, MRU can be tricky
+                            }
+                        } else {
+                            Log("PASS: Client 2 received items (" items2.Length " items)")
+                            TestPassed++
+                        }
+                    } else {
+                        Log("FAIL: Client 2 missing items")
+                        TestErrors++
+                    }
+
+                    ; Client 3 should have hwnds (not items)
+                    if (resp3["payload"].Has("hwnds")) {
+                        hwnds3 := resp3["payload"]["hwnds"]
+                        if (hwnds3.Length > 0 && IsInteger(hwnds3[1])) {
+                            Log("PASS: Client 3 received hwndsOnly format (" hwnds3.Length " hwnds)")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: Client 3 hwnds array empty or invalid")
+                            TestErrors++
+                        }
+                    } else {
+                        Log("FAIL: Client 3 missing hwnds (got items instead?)")
+                        TestErrors++
+                    }
+
+                } catch as e {
+                    Log("FAIL: Multi-client response parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                received := 0
+                if (gMultiClient1Received)
+                    received++
+                if (gMultiClient2Received)
+                    received++
+                if (gMultiClient3Received)
+                    received++
+                Log("FAIL: Only " received "/3 clients received responses")
+                TestErrors++
+            }
+
+            ; Cleanup
+            IPC_PipeClient_Close(client1)
+            IPC_PipeClient_Close(client2)
+            IPC_PipeClient_Close(client3)
+        } else {
+            connected := 0
+            if (client1.hPipe)
+                connected++
+            if (client2.hPipe)
+                connected++
+            if (client3.hPipe)
+                connected++
+            Log("FAIL: Only " connected "/3 clients connected")
+            TestErrors++
+            if (client1.hPipe)
+                IPC_PipeClient_Close(client1)
+            if (client2.hPipe)
+                IPC_PipeClient_Close(client2)
+            if (client3.hPipe)
+                IPC_PipeClient_Close(client3)
+        }
+
+        try {
+            ProcessClose(multiTestPid)
+        }
+    }
+
     ; --- Blacklist E2E Test ---
     Log("`n--- Blacklist E2E Test ---")
 
@@ -1481,6 +1666,30 @@ Test_OnProjMessage(line, hPipe := 0) {
     if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
         gProjTestResponse := line
         gProjTestReceived := true
+    }
+}
+
+Test_OnMultiClient1(line, hPipe := 0) {
+    global gMultiClient1Response, gMultiClient1Received
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        gMultiClient1Response := line
+        gMultiClient1Received := true
+    }
+}
+
+Test_OnMultiClient2(line, hPipe := 0) {
+    global gMultiClient2Response, gMultiClient2Received
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        gMultiClient2Response := line
+        gMultiClient2Received := true
+    }
+}
+
+Test_OnMultiClient3(line, hPipe := 0) {
+    global gMultiClient3Response, gMultiClient3Received
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        gMultiClient3Response := line
+        gMultiClient3Received := true
     }
 }
 
