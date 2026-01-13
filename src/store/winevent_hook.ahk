@@ -17,9 +17,9 @@
 ;   - Z-order change (via location change)
 ; ============================================================
 
-; Configuration
-global WinEventHook_DebounceMs := 50      ; Debounce rapid events
-global WinEventHook_BatchMs := 100        ; Batch window for updates
+; Configuration (use values from config.ahk if set, otherwise defaults)
+global WinEventHook_DebounceMs := IsSet(WinEventHookDebounceMs) ? WinEventHookDebounceMs : 50
+global WinEventHook_BatchMs := IsSet(WinEventHookBatchMs) ? WinEventHookBatchMs : 100
 
 ; State
 global _WEH_Hook := 0

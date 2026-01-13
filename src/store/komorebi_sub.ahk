@@ -11,10 +11,11 @@
 ; Based on working POC: legacy/components_legacy/komorebi_poc - WORKING.ahk
 ; ============================================================
 
-; Configuration (can be overridden before Init)
-global KomorebicExe := "C:\Program Files\komorebi\bin\komorebic.exe"
-global KSub_PollMs := 50           ; Timer interval for pipe polling
-global KSub_IdleRecycleMs := 120000  ; Restart if no events this long
+; Configuration (use values from config.ahk if set, otherwise defaults)
+; Note: KomorebicExe is set in config.ahk, we just reference it here
+global KSub_PollMs := IsSet(KomorebiSubPollMs) ? KomorebiSubPollMs : 50
+global KSub_IdleRecycleMs := IsSet(KomorebiSubIdleRecycleMs) ? KomorebiSubIdleRecycleMs : 120000
+global KSub_FallbackPollMs := IsSet(KomorebiSubFallbackPollMs) ? KomorebiSubFallbackPollMs : 2000
 
 ; State
 global _KSub_PipeName := ""
@@ -40,7 +41,7 @@ KomorebiSub_Init() {
     if (!KomorebiSub_IsAvailable()) {
         ; Fall back to polling mode
         _KSub_FallbackMode := true
-        SetTimer(KomorebiSub_PollFallback, 2000)
+        SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
         return false
     }
 
@@ -84,7 +85,7 @@ KomorebiSub_Start() {
     if (_KSub_hPipe = 0 || _KSub_hPipe = -1) {
         _KSub_hPipe := 0
         _KSub_FallbackMode := true
-        SetTimer(KomorebiSub_PollFallback, 2000)
+        SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
         return false
     }
 
@@ -93,7 +94,7 @@ KomorebiSub_Start() {
     if (!_KSub_hEvent) {
         KomorebiSub_Stop()
         _KSub_FallbackMode := true
-        SetTimer(KomorebiSub_PollFallback, 2000)
+        SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
         return false
     }
 
@@ -113,7 +114,7 @@ KomorebiSub_Start() {
         else {
             KomorebiSub_Stop()
             _KSub_FallbackMode := true
-            SetTimer(KomorebiSub_PollFallback, 2000)
+            SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
             return false
         }
     } else {

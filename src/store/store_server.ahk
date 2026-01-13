@@ -86,7 +86,8 @@ Store_Init() {
         ; Hook working - it handles MRU tracking internally
         Store_LogError("WinEventHook active - MRU tracking via hook")
         ; Start Z-pump for on-demand scans
-        SetTimer(Store_ZPumpTick, 200)
+        zPumpMs := IsSet(ZPumpIntervalMs) ? ZPumpIntervalMs : 200
+        SetTimer(Store_ZPumpTick, zPumpMs)
 
         ; Optional safety net polling (usually disabled)
         safetyMs := IsSet(WinEnumSafetyPollMs) ? WinEnumSafetyPollMs : 0

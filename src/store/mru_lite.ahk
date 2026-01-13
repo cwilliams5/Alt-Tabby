@@ -2,11 +2,16 @@
 #Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
 
 ; MRU-lite: track active window and update lastActivatedTick in store.
+; This is a FALLBACK - only used if WinEventHook fails to start.
+
+; Configuration (use value from config.ahk if set, otherwise default)
+global MruLiteIntervalMs := IsSet(MruLitePollMs) ? MruLitePollMs : 250
 
 global _MRU_LastHwnd := 0
 
 MRU_Lite_Init() {
-    SetTimer(MRU_Lite_Tick, 250)
+    global MruLiteIntervalMs
+    SetTimer(MRU_Lite_Tick, MruLiteIntervalMs)
 }
 
 MRU_Lite_Tick() {

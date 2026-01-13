@@ -10,15 +10,15 @@
 ;   3) Bounded retries with exponential backoff
 ; ============================================================
 
-; Configuration
-global IconBatchPerTick := 16
-global IconTimerIntervalMs := 80
-global IconMaxAttempts := 4
-global IconSkipHidden := true           ; Skip cloaked/minimized windows
-global IconIdleBackoffMs := 1500        ; Cooldown when skipping hidden
-global IconAttemptBackoffMs := 300      ; Base backoff after failed try
-global IconAttemptBackoffMultiplier := 1.8
-global IconGiveUpBackoffMs := 5000      ; Long cooldown after max attempts
+; Configuration (use values from config.ahk if set, otherwise defaults)
+global IconBatchPerTick := IsSet(IconPumpBatchSize) ? IconPumpBatchSize : 16
+global IconTimerIntervalMs := IsSet(IconPumpIntervalMs) ? IconPumpIntervalMs : 80
+global IconMaxAttempts := IsSet(IconPumpMaxAttempts) ? IconPumpMaxAttempts : 4
+global IconSkipHidden := IsSet(IconPumpSkipHidden) ? IconPumpSkipHidden : true
+global IconIdleBackoffMs := IsSet(IconPumpIdleBackoffMs) ? IconPumpIdleBackoffMs : 1500
+global IconAttemptBackoffMs := IsSet(IconPumpAttemptBackoffMs) ? IconPumpAttemptBackoffMs : 300
+global IconAttemptBackoffMultiplier := IsSet(IconPumpBackoffMultiplier) ? IconPumpBackoffMultiplier : 1.8
+global IconGiveUpBackoffMs := 5000      ; Long cooldown after max attempts (internal)
 
 ; State
 global _IP_TimerOn := false
