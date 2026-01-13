@@ -24,6 +24,15 @@ global gStore_LastClientLog := 0
 global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
 global gStore_LastClientProj := Map()  ; hPipe -> last projection items (for delta calc)
 
+; Producer state tracking: "running", "disabled", "failed"
+global gStore_ProducerState := Map()
+gStore_ProducerState["wineventHook"] := "disabled"
+gStore_ProducerState["mruLite"] := "disabled"
+gStore_ProducerState["komorebiSub"] := "disabled"
+gStore_ProducerState["komorebiLite"] := "disabled"
+gStore_ProducerState["iconPump"] := "disabled"
+gStore_ProducerState["procPump"] := "disabled"
+
 for _, arg in A_Args {
     if (arg = "--test")
         gStore_TestMode := true
@@ -64,16 +73,23 @@ Store_Init() {
     ; Initialize producers BEFORE first scan so they can enrich data
 
     ; Komorebi is optional - graceful if not installed
-    if (IsSet(UseKomorebiSub) && UseKomorebiSub)
-        KomorebiSub_Init()
-    else if (IsSet(UseKomorebiLite) && UseKomorebiLite)
+    if (IsSet(UseKomorebiSub) && UseKomorebiSub) {
+        ksubOk := KomorebiSub_Init()
+        gStore_ProducerState["komorebiSub"] := ksubOk ? "running" : "failed"
+    } else if (IsSet(UseKomorebiLite) && UseKomorebiLite) {
         KomorebiLite_Init()
+        gStore_ProducerState["komorebiLite"] := "running"
+    }
 
     ; Pumps
-    if (IsSet(UseIconPump) && UseIconPump)
+    if (IsSet(UseIconPump) && UseIconPump) {
         IconPump_Start()
-    if (IsSet(UseProcPump) && UseProcPump)
+        gStore_ProducerState["iconPump"] := "running"
+    }
+    if (IsSet(UseProcPump) && UseProcPump) {
         ProcPump_Start()
+        gStore_ProducerState["procPump"] := "running"
+    }
 
     ; Do initial full scan AFTER producers init so data includes komorebi workspace info
     Store_FullScan()
@@ -82,13 +98,16 @@ Store_Init() {
     hookOk := WinEventHook_Start()
     if (!hookOk) {
         Store_LogError("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
+        gStore_ProducerState["wineventHook"] := "failed"
         ; Fallback: enable MRU_Lite for focus tracking
         MRU_Lite_Init()
+        gStore_ProducerState["mruLite"] := "running"
         ; Fallback: enable safety polling if hook fails
         SetTimer(Store_FullScan, 2000)
     } else {
         ; Hook working - it handles MRU tracking internally
         Store_LogError("WinEventHook active - MRU tracking via hook")
+        gStore_ProducerState["wineventHook"] := "running"
         ; Start Z-pump for on-demand scans
         zPumpMs := IsSet(ZPumpIntervalMs) ? ZPumpIntervalMs : 200
         SetTimer(Store_ZPumpTick, zPumpMs)
@@ -99,6 +118,9 @@ Store_Init() {
             SetTimer(Store_FullScan, safetyMs)
         }
     }
+
+    ; Store producer state in meta for client visibility
+    _Store_UpdateProducerMeta()
 
     ; Start heartbeat timer for client connection health
     heartbeatMs := IsSet(StoreHeartbeatIntervalMs) ? StoreHeartbeatIntervalMs : 5000
@@ -401,4 +423,14 @@ _Store_HasIpcSymbols() {
     } catch {
         return false
     }
+}
+
+; Update gWS_Meta with current producer states for client visibility
+_Store_UpdateProducerMeta() {
+    global gStore_ProducerState, gWS_Meta
+    ; Convert Map to plain object for JSON serialization
+    producers := {}
+    for name, state in gStore_ProducerState
+        producers.%name% := state
+    gWS_Meta["producers"] := producers
 }

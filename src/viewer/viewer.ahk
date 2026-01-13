@@ -35,6 +35,7 @@ global gViewer_HeartbeatCount := 0
 global gViewer_LastUpdateType := ""
 global gViewer_CurrentWSLabel := 0
 global gViewer_CurrentWSName := ""
+global gViewer_ProducerState := Map()  ; Producer states from store meta
 
 for _, arg in A_Args {
     if (SubStr(arg, 1, 6) = "--log=") {
@@ -645,7 +646,8 @@ _Viewer_Heartbeat() {
     if (IsObject(gViewer_Status)) {
         elapsed := gViewer_LastMsgTick ? (A_TickCount - gViewer_LastMsgTick) : 0
         typeStr := gViewer_LastUpdateType ? gViewer_LastUpdateType : "none"
-        gViewer_Status.Text := "Rev: " gViewer_LastRev " | Last: " typeStr " " elapsed "ms | Snap: " gViewer_PushSnapCount " | Delta: " gViewer_PushDeltaCount " | HB: " gViewer_HeartbeatCount " | Poll: " gViewer_PollCount
+        prodStr := _Viewer_FormatProducerState()
+        gViewer_Status.Text := "Rev:" gViewer_LastRev " | " typeStr " " elapsed "ms | S:" gViewer_PushSnapCount " D:" gViewer_PushDeltaCount " H:" gViewer_HeartbeatCount " P:" gViewer_PollCount " | " prodStr
     }
 }
 
@@ -657,21 +659,76 @@ _Viewer_Log(msg) {
     try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", gViewer_LogPath, "UTF-8")
 }
 
+; Format producer states for status bar display
+; Shows abbreviated names with symbols: ✓=running, ✗=failed, -=disabled
+_Viewer_FormatProducerState() {
+    global gViewer_ProducerState
+
+    if (!gViewer_ProducerState.Count)
+        return "Producers: ?"
+
+    parts := []
+
+    ; Show key producers with symbols
+    ; WEH = WinEventHook, MRU = MRU_Lite, KS = KomorebiSub, IP = IconPump, PP = ProcPump
+    _Viewer_AddProdStatus(&parts, "WEH", "wineventHook")
+    _Viewer_AddProdStatus(&parts, "MRU", "mruLite")
+    _Viewer_AddProdStatus(&parts, "KS", "komorebiSub")
+    _Viewer_AddProdStatus(&parts, "KL", "komorebiLite")
+    _Viewer_AddProdStatus(&parts, "IP", "iconPump")
+    _Viewer_AddProdStatus(&parts, "PP", "procPump")
+
+    result := ""
+    for _, part in parts
+        result .= (result ? " " : "") . part
+    return result
+}
+
+_Viewer_AddProdStatus(&parts, abbrev, name) {
+    global gViewer_ProducerState
+    if (!gViewer_ProducerState.Has(name))
+        return
+    state := gViewer_ProducerState[name]
+    if (state = "running")
+        parts.Push(abbrev ":OK")
+    else if (state = "failed")
+        parts.Push(abbrev ":FAIL")
+    ; Skip disabled producers to keep status line compact
+}
+
 _Viewer_UpdateCurrentWS(payload) {
-    global gViewer_CurrentWSLabel, gViewer_CurrentWSName, gViewer_Headless
+    global gViewer_CurrentWSLabel, gViewer_CurrentWSName, gViewer_Headless, gViewer_ProducerState
     if (!payload.Has("meta"))
         return
     meta := payload["meta"]
     wsName := ""
+    producers := ""
     if (meta is Map) {
         wsName := meta.Has("currentWSName") ? meta["currentWSName"] : ""
+        producers := meta.Has("producers") ? meta["producers"] : ""
     } else if (IsObject(meta)) {
         try wsName := meta.currentWSName
+        try producers := meta.producers
     }
     if (wsName != "" && wsName != gViewer_CurrentWSName) {
         gViewer_CurrentWSName := wsName
         if (!gViewer_Headless && IsObject(gViewer_CurrentWSLabel)) {
             gViewer_CurrentWSLabel.Text := wsName
+        }
+    }
+    ; Update producer state cache
+    if (IsObject(producers)) {
+        gViewer_ProducerState := Map()
+        if (producers is Map) {
+            for name, state in producers
+                gViewer_ProducerState[name] := state
+        } else {
+            for name in ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"] {
+                try {
+                    if (producers.HasOwnProp(name))
+                        gViewer_ProducerState[name] := producers.%name%
+                }
+            }
         }
     }
 }

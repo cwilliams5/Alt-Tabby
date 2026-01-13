@@ -160,6 +160,15 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - WinEventHook calls `WindowStore_EnqueueForZ()` after upserting - triggers Z-pump
 - WinEventHook handles MRU updates on FOREGROUND/FOCUS events (no separate polling)
 
+### Producer Observability
+- **Producer state is tracked in projection meta** - clients see what's running/failed/disabled
+- States: `"running"`, `"failed"`, `"disabled"`
+- State included in `meta.producers` object: `{ wineventHook, mruLite, komorebiSub, komorebiLite, iconPump, procPump }`
+- Viewer status bar shows: `WEH:OK KS:OK IP:OK PP:OK` (only running/failed shown, disabled hidden)
+- **No automatic retry** - if a producer fails at startup, it stays failed. User restarts store.
+- KomorebiSub has built-in recovery via `IdleRecycleMs` (120s) pipe recycling
+- This is **observability only** - no IPC commands to restart individual producers (too complex)
+
 ### Window Removal Safety
 - Any producer can request removal via `WindowStore_RemoveWindow()`
 - Store verifies `!IsWindow(hwnd)` before actually deleting - prevents race conditions
