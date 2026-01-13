@@ -811,6 +811,293 @@ if (RunLiveTests) {
         }
     }
 
+    ; --- Projection Options E2E Test ---
+    Log("`n--- Projection Options E2E Test ---")
+
+    ; This test verifies all projection options work correctly
+    projTestPipe := "tabby_proj_test_" A_TickCount
+    projTestPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' projTestPipe, , "Hide", &projTestPid)
+    } catch as e {
+        Log("SKIP: Could not start store for projection test: " e.Message)
+        projTestPid := 0
+    }
+
+    if (projTestPid) {
+        Sleep(2000)
+
+        global gProjTestResponse := ""
+        global gProjTestReceived := false
+
+        projClient := IPC_PipeClient_Connect(projTestPipe, Test_OnProjMessage)
+
+        if (projClient.hPipe) {
+            Log("PASS: Projection test connected to store")
+            TestPassed++
+
+            ; Send hello
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "proj_test", wants: { deltas: false } }
+            IPC_PipeClient_Send(projClient, JXON_Dump(helloMsg))
+            Sleep(300)
+
+            ; === Test sort options ===
+            sortTests := ["Z", "MRU", "Title", "Pid", "ProcessName"]
+            for _, sortType in sortTests {
+                gProjTestResponse := ""
+                gProjTestReceived := false
+                projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: sortType, columns: "items" } }
+                IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+
+                waitStart := A_TickCount
+                while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                    Sleep(50)
+
+                if (gProjTestReceived) {
+                    try {
+                        respObj := JXON_Load(gProjTestResponse)
+                        items := respObj["payload"]["items"]
+                        if (items.Length > 0) {
+                            Log("PASS: sort=" sortType " returned " items.Length " items")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: sort=" sortType " returned 0 items")
+                            TestErrors++
+                        }
+                    } catch as e {
+                        Log("FAIL: sort=" sortType " parse error: " e.Message)
+                        TestErrors++
+                    }
+                } else {
+                    Log("FAIL: sort=" sortType " timeout")
+                    TestErrors++
+                }
+            }
+
+            ; === Test columns: hwndsOnly ===
+            gProjTestResponse := ""
+            gProjTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "hwndsOnly" } }
+            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                Sleep(50)
+
+            if (gProjTestReceived) {
+                try {
+                    respObj := JXON_Load(gProjTestResponse)
+                    if (respObj["payload"].Has("hwnds")) {
+                        hwnds := respObj["payload"]["hwnds"]
+                        if (hwnds.Length > 0) {
+                            ; Verify hwnds are integers
+                            firstHwnd := hwnds[1]
+                            if (IsInteger(firstHwnd)) {
+                                Log("PASS: columns=hwndsOnly returned " hwnds.Length " hwnds")
+                                TestPassed++
+                            } else {
+                                Log("FAIL: columns=hwndsOnly returned non-integer hwnd")
+                                TestErrors++
+                            }
+                        } else {
+                            Log("FAIL: columns=hwndsOnly returned empty array")
+                            TestErrors++
+                        }
+                    } else {
+                        Log("FAIL: columns=hwndsOnly missing 'hwnds' key")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: columns=hwndsOnly parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: columns=hwndsOnly timeout")
+                TestErrors++
+            }
+
+            ; === Test includeMinimized: false ===
+            ; First get count with minimized included
+            gProjTestResponse := ""
+            gProjTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeMinimized: true } }
+            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                Sleep(50)
+
+            countWithMin := 0
+            countMinimized := 0
+            if (gProjTestReceived) {
+                try {
+                    respObj := JXON_Load(gProjTestResponse)
+                    items := respObj["payload"]["items"]
+                    countWithMin := items.Length
+                    for _, item in items {
+                        if (item.Has("isMinimized") && item["isMinimized"])
+                            countMinimized++
+                    }
+                }
+            }
+
+            ; Now get count without minimized
+            gProjTestResponse := ""
+            gProjTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeMinimized: false } }
+            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                Sleep(50)
+
+            if (gProjTestReceived) {
+                try {
+                    respObj := JXON_Load(gProjTestResponse)
+                    items := respObj["payload"]["items"]
+                    countWithoutMin := items.Length
+
+                    ; Verify no minimized windows in result
+                    hasMinimized := false
+                    for _, item in items {
+                        if (item.Has("isMinimized") && item["isMinimized"]) {
+                            hasMinimized := true
+                            break
+                        }
+                    }
+
+                    if (!hasMinimized) {
+                        Log("PASS: includeMinimized=false filters minimized (with=" countWithMin ", without=" countWithoutMin ", minimized=" countMinimized ")")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: includeMinimized=false still has minimized windows")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: includeMinimized=false parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: includeMinimized=false timeout")
+                TestErrors++
+            }
+
+            ; === Test includeCloaked: true vs false ===
+            gProjTestResponse := ""
+            gProjTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeCloaked: true } }
+            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                Sleep(50)
+
+            countWithCloaked := 0
+            countCloaked := 0
+            if (gProjTestReceived) {
+                try {
+                    respObj := JXON_Load(gProjTestResponse)
+                    items := respObj["payload"]["items"]
+                    countWithCloaked := items.Length
+                    for _, item in items {
+                        if (item.Has("isCloaked") && item["isCloaked"])
+                            countCloaked++
+                    }
+                }
+            }
+
+            gProjTestResponse := ""
+            gProjTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeCloaked: false } }
+            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                Sleep(50)
+
+            if (gProjTestReceived) {
+                try {
+                    respObj := JXON_Load(gProjTestResponse)
+                    items := respObj["payload"]["items"]
+                    countWithoutCloaked := items.Length
+
+                    ; Verify no cloaked windows in result
+                    hasCloaked := false
+                    for _, item in items {
+                        if (item.Has("isCloaked") && item["isCloaked"]) {
+                            hasCloaked := true
+                            break
+                        }
+                    }
+
+                    if (!hasCloaked) {
+                        Log("PASS: includeCloaked=false filters cloaked (with=" countWithCloaked ", without=" countWithoutCloaked ", cloaked=" countCloaked ")")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: includeCloaked=false still has cloaked windows")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: includeCloaked=false parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: includeCloaked=false timeout")
+                TestErrors++
+            }
+
+            ; === Test currentWorkspaceOnly: true ===
+            gProjTestResponse := ""
+            gProjTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", currentWorkspaceOnly: true } }
+            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                Sleep(50)
+
+            if (gProjTestReceived) {
+                try {
+                    respObj := JXON_Load(gProjTestResponse)
+                    items := respObj["payload"]["items"]
+
+                    ; Verify all windows are on current workspace
+                    allOnCurrent := true
+                    for _, item in items {
+                        if (item.Has("isOnCurrentWorkspace") && !item["isOnCurrentWorkspace"]) {
+                            allOnCurrent := false
+                            break
+                        }
+                    }
+
+                    if (allOnCurrent) {
+                        Log("PASS: currentWorkspaceOnly=true filters to current workspace (" items.Length " items)")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: currentWorkspaceOnly=true has windows from other workspaces")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: currentWorkspaceOnly=true parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: currentWorkspaceOnly=true timeout")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(projClient)
+        } else {
+            Log("FAIL: Could not connect to store for projection test")
+            TestErrors++
+        }
+
+        try {
+            ProcessClose(projTestPid)
+        }
+    }
+
     ; --- Blacklist E2E Test ---
     Log("`n--- Blacklist E2E Test ---")
 
@@ -1185,6 +1472,15 @@ Test_OnMruMessage(line, hPipe := 0) {
         gMruTestReceived := true
     } else {
         Log("  [MRU Test] Got other msg: " SubStr(line, 1, 50))
+    }
+}
+
+Test_OnProjMessage(line, hPipe := 0) {
+    global gProjTestResponse, gProjTestReceived
+    ; We want projection/snapshot responses
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        gProjTestResponse := line
+        gProjTestReceived := true
     }
 }
 

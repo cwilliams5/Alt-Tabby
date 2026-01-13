@@ -305,10 +305,16 @@ Store_OnMessage(line, hPipe := 0) {
             opts := obj["projectionOpts"]
         proj := WindowStore_GetProjection(opts)
         respType := (type = IPC_MSG_SNAPSHOT_REQUEST) ? IPC_MSG_SNAPSHOT : IPC_MSG_PROJECTION
+        ; Handle both items and hwndsOnly response formats
+        payload := { meta: proj.meta }
+        if (proj.HasOwnProp("hwnds"))
+            payload.hwnds := proj.hwnds
+        else
+            payload.items := proj.HasOwnProp("items") ? proj.items : []
         resp := {
             type: respType,
             rev: proj.rev,
-            payload: { meta: proj.meta, items: proj.HasOwnProp("items") ? proj.items : [] }
+            payload: payload
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(resp))
         gStore_LastClientRev[hPipe] := proj.rev
