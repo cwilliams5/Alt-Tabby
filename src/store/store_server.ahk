@@ -58,8 +58,6 @@ Store_Init() {
     gStore_Server := IPC_PipeServer_Start(StorePipeName, Store_OnMessage)
 
     ; Initialize producers BEFORE first scan so they can enrich data
-    ; MRU is always enabled (essential for alt-tab)
-    MRU_Lite_Init()
 
     ; Komorebi is optional - graceful if not installed
     if (IsSet(UseKomorebiSub) && UseKomorebiSub)
@@ -76,13 +74,18 @@ Store_Init() {
     ; Do initial full scan AFTER producers init so data includes komorebi workspace info
     Store_FullScan()
 
-    ; WinEventHook is always enabled (primary source of window changes)
-    if (!WinEventHook_Start()) {
-        Store_LogError("WinEventHook failed to start - enabling safety polling")
+    ; WinEventHook is always enabled (primary source of window changes + MRU tracking)
+    hookOk := WinEventHook_Start()
+    if (!hookOk) {
+        Store_LogError("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
+        ; Fallback: enable MRU_Lite for focus tracking
+        MRU_Lite_Init()
         ; Fallback: enable safety polling if hook fails
         SetTimer(Store_FullScan, 2000)
     } else {
-        ; Hook working - start Z-pump for on-demand scans
+        ; Hook working - it handles MRU tracking internally
+        Store_LogError("WinEventHook active - MRU tracking via hook")
+        ; Start Z-pump for on-demand scans
         SetTimer(Store_ZPumpTick, 200)
 
         ; Optional safety net polling (usually disabled)

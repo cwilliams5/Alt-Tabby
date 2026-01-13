@@ -664,6 +664,153 @@ if (RunLiveTests) {
         }
     }
 
+    ; --- MRU/Focus Tracking Test ---
+    Log("`n--- MRU/Focus Tracking Test ---")
+
+    ; This test verifies that focus tracking updates lastActivatedTick and isFocused
+    mruTestPipe := "tabby_mru_test_" A_TickCount
+    mruTestPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' mruTestPipe, , "Hide", &mruTestPid)
+    } catch as e {
+        Log("SKIP: Could not start store for MRU test: " e.Message)
+        mruTestPid := 0
+    }
+
+    if (mruTestPid) {
+        ; Wait for store to initialize and WinEventHook to start
+        Sleep(2000)
+
+        global gMruTestResponse := ""
+        global gMruTestReceived := false
+
+        mruClient := IPC_PipeClient_Connect(mruTestPipe, Test_OnMruMessage)
+
+        if (mruClient.hPipe) {
+            Log("PASS: MRU test connected to store")
+            TestPassed++
+
+            ; Send hello
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "mru_test", wants: { deltas: false } }
+            IPC_PipeClient_Send(mruClient, JXON_Dump(helloMsg))
+
+            ; Trigger a focus change by activating a window
+            ; First, get the current foreground window
+            origFg := 0
+            try origFg := WinGetID("A")
+
+            ; Find a different window to activate temporarily
+            testWindows := WinEnumLite_ScanAll()
+            alternateHwnd := 0
+            for _, rec in testWindows {
+                hwnd := rec["hwnd"]
+                if (hwnd != origFg && !rec["isMinimized"] && !rec["isCloaked"]) {
+                    alternateHwnd := hwnd
+                    break
+                }
+            }
+
+            if (alternateHwnd) {
+                ; Activate the alternate window to trigger focus event
+                try WinActivate("ahk_id " alternateHwnd)
+                Sleep(300)  ; Give WinEventHook time to process
+            }
+
+            ; Restore original foreground
+            if (origFg) {
+                try WinActivate("ahk_id " origFg)
+                Sleep(300)
+            }
+
+            ; Request projection and check MRU data
+            gMruTestResponse := ""
+            gMruTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "MRU", columns: "items" } }
+            IPC_PipeClient_Send(mruClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gMruTestReceived && (A_TickCount - waitStart) < 3000)
+                Sleep(50)
+
+            if (gMruTestReceived) {
+                try {
+                    respObj := JXON_Load(gMruTestResponse)
+                    items := respObj["payload"]["items"]
+                    Log("  MRU test received " items.Length " items")
+
+                    ; Check that at least one window has isFocused=true
+                    focusedCount := 0
+                    focusedHwnd := 0
+                    focusedTick := 0
+                    for _, item in items {
+                        if (item.Has("isFocused") && item["isFocused"] = true) {
+                            focusedCount++
+                            focusedHwnd := item["hwnd"]
+                            focusedTick := item.Has("lastActivatedTick") ? item["lastActivatedTick"] : 0
+                        }
+                    }
+
+                    if (focusedCount = 1) {
+                        Log("PASS: Exactly one window has isFocused=true (hwnd=" focusedHwnd ")")
+                        TestPassed++
+                    } else if (focusedCount > 1) {
+                        Log("FAIL: Multiple windows have isFocused=true (" focusedCount " windows)")
+                        TestErrors++
+                    } else {
+                        Log("FAIL: No window has isFocused=true - MRU tracking not working!")
+                        TestErrors++
+                    }
+
+                    ; Check that focused window has recent lastActivatedTick
+                    if (focusedTick > 0) {
+                        tickAge := A_TickCount - focusedTick
+                        if (tickAge < 10000) {  ; Within 10 seconds
+                            Log("PASS: Focused window has recent lastActivatedTick (age=" tickAge "ms)")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: Focused window lastActivatedTick too old (age=" tickAge "ms)")
+                            TestErrors++
+                        }
+                    } else if (focusedCount > 0) {
+                        Log("FAIL: Focused window has no lastActivatedTick")
+                        TestErrors++
+                    }
+
+                    ; Check that items are sorted by MRU (first should be most recent)
+                    if (items.Length >= 2) {
+                        first := items[1]
+                        second := items[2]
+                        firstTick := first.Has("lastActivatedTick") ? first["lastActivatedTick"] : 0
+                        secondTick := second.Has("lastActivatedTick") ? second["lastActivatedTick"] : 0
+                        if (firstTick >= secondTick) {
+                            Log("PASS: MRU sort order correct (first=" firstTick ", second=" secondTick ")")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: MRU sort order wrong (first=" firstTick " < second=" secondTick ")")
+                            TestErrors++
+                        }
+                    }
+                } catch as e {
+                    Log("FAIL: MRU test parse error: " e.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: MRU test timeout")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(mruClient)
+        } else {
+            Log("FAIL: Could not connect to store for MRU test")
+            TestErrors++
+        }
+
+        try {
+            ProcessClose(mruTestPid)
+        }
+    }
+
     ; --- Blacklist E2E Test ---
     Log("`n--- Blacklist E2E Test ---")
 
@@ -1026,6 +1173,18 @@ Test_OnBlacklistMessage(line, hPipe := 0) {
         gBlTestReceived := true
     } else {
         Log("  [BL Test] Got other msg: " SubStr(line, 1, 50))
+    }
+}
+
+Test_OnMruMessage(line, hPipe := 0) {
+    global gMruTestResponse, gMruTestReceived
+    ; We want projection/snapshot responses
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        Log("  [MRU Test] Received: " SubStr(line, 1, 60))
+        gMruTestResponse := line
+        gMruTestReceived := true
+    } else {
+        Log("  [MRU Test] Got other msg: " SubStr(line, 1, 50))
     }
 }
 

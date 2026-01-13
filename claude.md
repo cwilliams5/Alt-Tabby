@@ -147,7 +147,8 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - If WinEventHook fails to start, automatic fallback to 2-second polling
 
 ### Producer Architecture (CRITICAL)
-- **MRU and WinEventHook are always enabled** - no config options, essential for operation
+- **WinEventHook is always enabled** - primary source for window changes AND MRU tracking
+- **MRU_Lite is fallback only** - starts only if WinEventHook fails to initialize
 - **Komorebi is optional** - graceful handling if not installed/running
 - **WinEnum runs on-demand** (pump mode), not polling:
   - Startup (initial population)
@@ -155,8 +156,9 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
   - Z-pump trigger (when WinEventHook adds windows with z=0)
   - Optional safety polling via `WinEnumSafetyPollMs` (default 0 = disabled)
 - **Only winenum (full scan) should call BeginScan/EndScan** - these manage window presence
-- Partial producers (komorebi, winevent_hook, MRU) should ONLY call UpsertWindow/UpdateFields
+- Partial producers (komorebi, winevent_hook) should ONLY call UpsertWindow/UpdateFields
 - WinEventHook calls `WindowStore_EnqueueForZ()` after upserting - triggers Z-pump
+- WinEventHook handles MRU updates on FOREGROUND/FOCUS events (no separate polling)
 
 ### Window Removal Safety
 - Any producer can request removal via `WindowStore_RemoveWindow()`
