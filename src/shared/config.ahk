@@ -22,43 +22,7 @@ KomorebicExe := "C:\Program Files\komorebi\bin\komorebic.exe"
 UseWinEventHook := true        ; Event-driven updates (responsive, low CPU)
 StoreScanIntervalMs := 2000    ; Polling interval (safety net, can be slower with hook enabled)
 UseAltTabEligibility := true   ; Filter windows like native Alt-Tab
-UseBlacklist := true           ; Apply title/class blacklists
-
-; ---- Blacklists (AHK wildcard patterns, case-insensitive) ----
-global BlacklistTitle := [
-    "komoborder*",
-    "YasbBar",
-    "NVIDIA GeForce Overlay",
-    "DWM Notification Window",
-    "MSCTFIME UI",
-    "Default IME",
-    "Task Switching",
-    "Command Palette",
-    "GDI+ Window*",
-    "Windows Input Experience",
-    "Program Manager"
-]
-global BlacklistClass := [
-    "komoborder*",
-    "CEF-OSC-WIDGET",
-    "Dwm",
-    "MSCTFIME UI",
-    "IME",
-    "MSTaskSwWClass",
-    "MSTaskListWClass",
-    "Shell_TrayWnd",
-    "Shell_SecondaryTrayWnd",
-    "GDI+ Hook Window Class",
-    "XamlExplorerHostIslandWindow",
-    "WinUIDesktopWin32WindowClass",
-    "Windows.UI.Core.CoreWindow",
-    "Qt*QWindow*",
-    "AutoHotkeyGUI"
-]
-; Class+Title pairs (both must match)
-global BlacklistPair := [
-    { Class: "GDI+ Hook Window Class", Title: "GDI+ Window*" }
-]
+UseBlacklist := true           ; Apply blacklist from shared/blacklist.txt
 
 ; ---- Pumps ----
 UseIconPump := true

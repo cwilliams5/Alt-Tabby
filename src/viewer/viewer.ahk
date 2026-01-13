@@ -5,6 +5,7 @@
 #Include ..\shared\config.ahk
 #Include ..\shared\json.ahk
 #Include ..\shared\ipc_pipe.ahk
+#Include ..\shared\blacklist.ahk
 
 ; Viewer (debug) - receives snapshots/deltas from store.
 
@@ -216,6 +217,9 @@ _Viewer_CreateGui() {
     gViewer_LV.ModifyCol(11, 30)  ; Cloaked
     gViewer_LV.ModifyCol(12, 30)  ; Minimized
     gViewer_LV.ModifyCol(13, 70)  ; Icon (HICON value)
+
+    ; Double-click to blacklist a window
+    gViewer_LV.OnEvent("DoubleClick", _Viewer_OnBlacklist)
 
     gViewer_Gui.OnEvent("Close", (*) => ExitApp())
     gViewer_Gui.OnEvent("Size", _Viewer_OnResize)
@@ -687,6 +691,63 @@ _Viewer_CmpMRU(a, b) {
     ah := _Viewer_Get(a, "hwnd", 0)
     bh := _Viewer_Get(b, "hwnd", 0)
     return (ah < bh) ? -1 : (ah > bh) ? 1 : 0
+}
+
+; Handle double-click to blacklist a window
+_Viewer_OnBlacklist(lv, row) {
+    global gViewer_Client, gViewer_RecByHwnd, gViewer_RowByHwnd, IPC_MSG_RELOAD_BLACKLIST
+
+    if (row = 0)
+        return
+
+    ; Find the hwnd for this row
+    hwnd := 0
+    for h, r in gViewer_RecByHwnd {
+        if (gViewer_RowByHwnd.Has(h) && gViewer_RowByHwnd[h] = row) {
+            hwnd := h
+            break
+        }
+    }
+
+    if (!hwnd || !gViewer_RecByHwnd.Has(hwnd))
+        return
+
+    rec := gViewer_RecByHwnd[hwnd]
+    class := _Viewer_Get(rec, "class", "")
+    title := _Viewer_Get(rec, "title", "")
+
+    if (class = "" && title = "")
+        return
+
+    ; Confirm with user
+    result := MsgBox("Blacklist this window?`n`nClass: " class "`nTitle: " title "`n`nThis will add a Class|Title pair to blacklist.txt", "Blacklist Window", "YesNo Icon?")
+    if (result != "Yes")
+        return
+
+    ; Write to blacklist file
+    if (!Blacklist_AddPair(class, title)) {
+        _Viewer_ShowToast("Failed to write to blacklist.txt")
+        return
+    }
+
+    ; Send reload message to store
+    if (IsObject(gViewer_Client) && gViewer_Client.hPipe) {
+        msg := { type: IPC_MSG_RELOAD_BLACKLIST }
+        IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+    }
+
+    _Viewer_ShowToast("Blacklisted: " class)
+}
+
+; Show a temporary toast notification
+_Viewer_ShowToast(message) {
+    global gViewer_Gui
+
+    ; Create tooltip-style toast near the main window
+    if (IsObject(gViewer_Gui)) {
+        ToolTip(message)
+        SetTimer(() => ToolTip(), -2000)  ; Hide after 2 seconds
+    }
 }
 
 Viewer_Init()

@@ -229,9 +229,9 @@ _WEH_ProbeWindow(hwnd) {
     if (useAltTab && !eligible)
         return ""
 
-    ; Blacklist filter - use winenum's function
+    ; Blacklist filter (uses shared/blacklist.ahk)
     useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
-    if (useBlacklist && _WN_IsBlacklisted(title, class))
+    if (useBlacklist && Blacklist_IsMatch(title, class))
         return ""
 
     ; Build record

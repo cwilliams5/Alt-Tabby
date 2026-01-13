@@ -4,6 +4,7 @@
 #Include %A_ScriptDir%\..\shared\config.ahk
 #Include %A_ScriptDir%\..\shared\json.ahk
 #Include %A_ScriptDir%\..\shared\ipc_pipe.ahk
+#Include %A_ScriptDir%\..\shared\blacklist.ahk
 #Include %A_ScriptDir%\windowstore.ahk
 #Include %A_ScriptDir%\winenum_lite.ahk
 #Include %A_ScriptDir%\mru_lite.ahk
@@ -40,6 +41,15 @@ if (gStore_TestMode) {
 
 Store_Init() {
     global gStore_Server, StorePipeName, StoreScanIntervalMs
+
+    ; Load blacklist before anything else
+    if (!Blacklist_Init()) {
+        Store_LogError("blacklist.txt not found, using empty blacklist")
+    } else {
+        stats := Blacklist_GetStats()
+        Store_LogError("blacklist loaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+    }
+
     WindowStore_Init()
     if (!_Store_HasIpcSymbols()) {
         Store_LogError("ipc_pipe symbols missing")
@@ -241,6 +251,21 @@ Store_OnMessage(line, hPipe := 0) {
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(resp))
         gStore_LastClientRev[hPipe] := proj.rev
+        return
+    }
+    if (type = IPC_MSG_RELOAD_BLACKLIST) {
+        ; Reload blacklist from file and trigger rescan
+        Blacklist_Reload()
+        stats := Blacklist_GetStats()
+        Store_LogError("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+
+        ; Clear all client projections to force fresh delta calculation
+        for clientPipe, _ in gStore_LastClientProj {
+            gStore_LastClientProj[clientPipe] := []
+        }
+
+        ; Trigger immediate rescan which will filter out newly-blacklisted windows
+        Store_ScanTick()
         return
     }
 }

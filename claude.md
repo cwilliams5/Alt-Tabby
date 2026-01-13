@@ -155,13 +155,15 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - Use `forceRemove := true` parameter only for cleanup of known-stale entries
 
 ### Blacklist Filtering
-- Configured in `config.ahk`: `BlacklistTitle`, `BlacklistClass`, `BlacklistPair`
-- `UseAltTabEligibility` and `UseBlacklist` toggles control filtering
+- Configured in `src/shared/blacklist.txt` (file-based, hot-reloadable via IPC)
+- `UseBlacklist` toggle in config.ahk enables/disables filtering
 - **Filtering happens at producer level** - blacklisted windows never enter the store
 - Producers that ADD windows filter first: winenum_lite, winevent_hook, komorebi_sub
 - MRU producer only UPDATES existing windows (lastActivatedTick, isFocused) - no filtering needed
 - Wildcards `*` and `?` supported in patterns (case-insensitive)
-- Common blacklisted items: MSTaskListWClass (taskbar internals), AutoHotkeyGUI, komoborder, Shell_TrayWnd
+- File format: `[Title]`, `[Class]`, `[Pair]` sections; pairs use `Class|Title` format
+- Viewer: double-click a row to blacklist it (sends IPC reload message to store)
+- Store reloads blacklist on `reload_blacklist` IPC message, triggers rescan
 
 ## Next Steps (Planned)
 1. Port legacy interceptor to `src/interceptor/`

@@ -12,6 +12,7 @@ IPC_MSG_PROJECTION := "projection"
 IPC_MSG_SET_PROJECTION_OPTS := "set_projection_opts"
 IPC_MSG_PING := "ping"
 IPC_MSG_ERROR := "error"
+IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
 
 global IPC_DebugLogPath := ""
 

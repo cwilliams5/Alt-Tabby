@@ -30,9 +30,13 @@ for _, arg in A_Args {
 #Include %A_ScriptDir%\..\src\shared\config.ahk
 #Include %A_ScriptDir%\..\src\shared\json.ahk
 #Include %A_ScriptDir%\..\src\shared\ipc_pipe.ahk
+#Include %A_ScriptDir%\..\src\shared\blacklist.ahk
 #Include %A_ScriptDir%\..\src\store\windowstore.ahk
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk
+
+; Initialize blacklist before tests
+Blacklist_Init()
 
 Log("`n--- WindowStore Unit Tests ---")
 
@@ -60,7 +64,9 @@ rec1["hwnd"] := 12345
 rec1["title"] := "Test Window 1"
 rec1["class"] := "TestClass"
 rec1["pid"] := 100
-rec1["state"] := "WorkspaceShowing"
+rec1["isVisible"] := true
+rec1["isCloaked"] := false
+rec1["isMinimized"] := false
 rec1["z"] := 1
 testRecs.Push(rec1)
 
@@ -69,7 +75,9 @@ rec2["hwnd"] := 67890
 rec2["title"] := "Test Window 2"
 rec2["class"] := "TestClass2"
 rec2["pid"] := 200
-rec2["state"] := "WorkspaceShowing"
+rec2["isVisible"] := true
+rec2["isCloaked"] := false
+rec2["isMinimized"] := false
 rec2["z"] := 2
 testRecs.Push(rec2)
 
@@ -161,9 +169,9 @@ if (RunLiveTests) {
                     ; Validate projection includes required fields
                     if (itemCount > 0) {
                         sample := items[1]
-                        requiredFields := ["hwnd", "title", "class", "pid", "state", "z",
+                        requiredFields := ["hwnd", "title", "class", "pid", "z",
                             "lastActivatedTick", "isFocused", "isCloaked", "isMinimized",
-                            "workspaceName", "processName", "present"]
+                            "isOnCurrentWorkspace", "workspaceName", "processName", "present"]
                         missingFields := []
                         for _, field in requiredFields {
                             if (!sample.Has(field)) {
@@ -325,7 +333,7 @@ if (RunLiveTests) {
                             ; Validate critical fields for viewer display
                             sample := items[1]
                             viewerFields := ["hwnd", "title", "z", "lastActivatedTick", "isCloaked",
-                                "isMinimized", "workspaceName", "isFocused", "state"]
+                                "isMinimized", "isOnCurrentWorkspace", "workspaceName", "isFocused"]
                             missingViewerFields := []
                             for _, field in viewerFields {
                                 if (!sample.Has(field)) {

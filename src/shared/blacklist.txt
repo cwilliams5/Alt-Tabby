@@ -1,0 +1,39 @@
+; Alt-Tabby Blacklist Configuration
+; Windows matching these patterns are excluded from the window list.
+; Wildcards: * (any chars), ? (single char) - case-insensitive
+;
+; To blacklist a window from the viewer, click the X button on its row.
+
+[Title]
+komoborder*
+YasbBar
+NVIDIA GeForce Overlay
+DWM Notification Window
+MSCTFIME UI
+Default IME
+Task Switching
+Command Palette
+GDI+ Window*
+Windows Input Experience
+Program Manager
+
+[Class]
+komoborder*
+CEF-OSC-WIDGET
+Dwm
+MSCTFIME UI
+IME
+MSTaskSwWClass
+MSTaskListWClass
+Shell_TrayWnd
+Shell_SecondaryTrayWnd
+GDI+ Hook Window Class
+XamlExplorerHostIslandWindow
+WinUIDesktopWin32WindowClass
+Windows.UI.Core.CoreWindow
+Qt*QWindow*
+AutoHotkeyGUI
+
+[Pair]
+; Format: Class|Title (both must match)
+GDI+ Hook Window Class|GDI+ Window*

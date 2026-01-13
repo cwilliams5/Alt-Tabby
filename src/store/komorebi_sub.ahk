@@ -553,8 +553,8 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
             title := (info.title != "") ? info.title : _KSub_GetWindowTitle(hwnd)
             class := (info.class != "") ? info.class : _KSub_GetWindowClass(hwnd)
 
-            ; Check blacklist before adding
-            if (useBlacklist && _WN_IsBlacklisted(title, class)) {
+            ; Check blacklist before adding (uses shared/blacklist.ahk)
+            if (useBlacklist && Blacklist_IsMatch(title, class)) {
                 skippedBlacklist++
                 continue
             }
