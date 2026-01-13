@@ -719,13 +719,26 @@ _Viewer_OnBlacklist(lv, row) {
     if (class = "" && title = "")
         return
 
-    ; Confirm with user
-    result := MsgBox("Blacklist this window?`n`nClass: " class "`nTitle: " title "`n`nThis will add a Class|Title pair to blacklist.txt", "Blacklist Window", "YesNo Icon?")
-    if (result != "Yes")
+    ; Show blacklist options dialog
+    choice := _Viewer_ShowBlacklistDialog(class, title)
+    if (choice = "")
         return
 
-    ; Write to blacklist file
-    if (!Blacklist_AddPair(class, title)) {
+    ; Write to blacklist file based on choice
+    success := false
+    toastMsg := ""
+    if (choice = "class") {
+        success := Blacklist_AddClass(class)
+        toastMsg := "Blacklisted class: " class
+    } else if (choice = "title") {
+        success := Blacklist_AddTitle(title)
+        toastMsg := "Blacklisted title: " title
+    } else if (choice = "pair") {
+        success := Blacklist_AddPair(class, title)
+        toastMsg := "Blacklisted pair: " class "|" title
+    }
+
+    if (!success) {
         _Viewer_ShowToast("Failed to write to blacklist.txt")
         return
     }
@@ -736,7 +749,40 @@ _Viewer_OnBlacklist(lv, row) {
         IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
     }
 
-    _Viewer_ShowToast("Blacklisted: " class)
+    _Viewer_ShowToast(toastMsg)
+}
+
+; Show dialog with blacklist options
+_Viewer_ShowBlacklistDialog(class, title) {
+    global gBlacklistChoice := ""
+
+    dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
+    dlg.SetFont("s10")
+
+    dlg.AddText("x10 y10 w380", "Add to blacklist:")
+    dlg.AddText("x10 y35 w380", "Class: " class)
+    dlg.AddText("x10 y55 w380", "Title: " SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : ""))
+
+    dlg.AddButton("x10 y90 w90 h30", "Add Class").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "class"))
+    dlg.AddButton("x110 y90 w90 h30", "Add Title").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "title"))
+    dlg.AddButton("x210 y90 w90 h30", "Add Pair").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "pair"))
+    dlg.AddButton("x310 y90 w80 h30", "Cancel").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, ""))
+
+    dlg.OnEvent("Close", (*) => _Viewer_BlacklistChoice(dlg, ""))
+    dlg.OnEvent("Escape", (*) => _Viewer_BlacklistChoice(dlg, ""))
+
+    dlg.Show("w400 h130")
+
+    ; Wait for dialog to close
+    WinWaitClose(dlg)
+
+    return gBlacklistChoice
+}
+
+_Viewer_BlacklistChoice(dlg, choice) {
+    global gBlacklistChoice
+    gBlacklistChoice := choice
+    dlg.Destroy()
 }
 
 ; Show a temporary toast notification

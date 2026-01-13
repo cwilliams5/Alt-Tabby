@@ -126,7 +126,7 @@ Blacklist_IsMatch(title, class) {
     return false
 }
 
-; Add a new pair entry to the blacklist file
+; Add a new pair entry to the blacklist file (appends to [Pair] section)
 Blacklist_AddPair(class, title) {
     global gBlacklist_FilePath
 
@@ -137,12 +137,73 @@ Blacklist_AddPair(class, title) {
     entry := class "|" title "`n"
 
     try {
-        ; Append to [Pair] section at end of file
         FileAppend(entry, gBlacklist_FilePath, "UTF-8")
         return true
     } catch {
         return false
     }
+}
+
+; Add a class pattern to the blacklist file
+Blacklist_AddClass(class) {
+    global gBlacklist_FilePath
+
+    if (gBlacklist_FilePath = "" || class = "")
+        return false
+
+    try {
+        ; Read file, find [Class] section, insert entry
+        content := FileRead(gBlacklist_FilePath, "UTF-8")
+        newContent := _BL_InsertInSection(content, "Class", class)
+        if (newContent = content)
+            return false  ; Failed to insert
+        FileDelete(gBlacklist_FilePath)
+        FileAppend(newContent, gBlacklist_FilePath, "UTF-8")
+        return true
+    } catch {
+        return false
+    }
+}
+
+; Add a title pattern to the blacklist file
+Blacklist_AddTitle(title) {
+    global gBlacklist_FilePath
+
+    if (gBlacklist_FilePath = "" || title = "")
+        return false
+
+    try {
+        ; Read file, find [Title] section, insert entry
+        content := FileRead(gBlacklist_FilePath, "UTF-8")
+        newContent := _BL_InsertInSection(content, "Title", title)
+        if (newContent = content)
+            return false  ; Failed to insert
+        FileDelete(gBlacklist_FilePath)
+        FileAppend(newContent, gBlacklist_FilePath, "UTF-8")
+        return true
+    } catch {
+        return false
+    }
+}
+
+; Insert entry into a specific section of the blacklist file
+_BL_InsertInSection(content, sectionName, entry) {
+    ; Find the section header
+    sectionHeader := "[" sectionName "]"
+    pos := InStr(content, sectionHeader)
+    if (!pos)
+        return content  ; Section not found
+
+    ; Find end of header line
+    lineEnd := InStr(content, "`n", , pos)
+    if (!lineEnd)
+        lineEnd := StrLen(content)
+
+    ; Insert entry after the section header
+    before := SubStr(content, 1, lineEnd)
+    after := SubStr(content, lineEnd + 1)
+
+    return before entry "`n" after
 }
 
 ; Case-insensitive wildcard match (* and ?)
