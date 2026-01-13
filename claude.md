@@ -216,6 +216,19 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - These are added to `.gitignore` - just delete them if they appear
 - Tracked at: https://github.com/anthropics/claude-code/issues/17636
 
+### Config System (IMPORTANT)
+- **Two files must stay in sync** when adding new config values:
+  1. `src/shared/config.ahk` - defines the default value (e.g., `global MyNewSetting := 100`)
+  2. `src/shared/config_loader.ahk` - loads from INI and creates default INI
+- When adding a new config:
+  1. Add the default in `config.ahk` with a comment explaining it
+  2. Add a `_CL_LoadSetting_*()` call in `_CL_LoadAllSettings()`
+  3. Add a case in the appropriate `_CL_LoadSetting_*()` switch block
+  4. Add a commented line in `_CL_CreateDefaultIni()` for the default INI
+- The INI file (`src/config.ini`) has all values commented out by default
+- Users uncomment and edit values they want to customize
+- **Never commit config.ini** - it's in `.gitignore` and user-specific
+
 ## Next Steps (Planned)
 1. Port legacy interceptor to `src/interceptor/`
 2. Wire legacy GUI as the real AltLogic consumer

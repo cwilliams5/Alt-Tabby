@@ -1,6 +1,9 @@
 # Logs
 /tests/*.log
 
+# User config (created from defaults on first run)
+/src/config.ini
+
 # OS
 Thumbs.db
 .DS_Store
