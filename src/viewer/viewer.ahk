@@ -166,8 +166,7 @@ _Viewer_ProjectionOpts() {
         columns: "items",
         currentWorkspaceOnly: gViewer_CurrentOnly,
         includeMinimized: true,
-        includeCloaked: true,
-        blacklistMode: "exclude"
+        includeCloaked: true
     }
 }
 
@@ -199,9 +198,9 @@ _Viewer_CreateGui() {
     gViewer_Status := gViewer_Gui.AddText("x620 y14 w400 h20", "Disconnected")
 
     ; ListView with all columns
-    ; Columns: Z, MRU, HWND, PID, Title, Class, State, WS, Process, Focus, Cloak, Min, Icon
+    ; Columns: Z, MRU, HWND, PID, Title, Class, WS, Cur, Process, Foc, Clk, Min, Icon
     gViewer_LV := gViewer_Gui.AddListView("x10 y48 w1200 h600 +LV0x10000",
-        ["Z", "MRU", "HWND", "PID", "Title", "Class", "State", "WS", "Process", "Foc", "Clk", "Min", "Icon"])
+        ["Z", "MRU", "HWND", "PID", "Title", "Class", "WS", "Cur", "Process", "Foc", "Clk", "Min", "Icon"])
 
     ; Set column widths
     gViewer_LV.ModifyCol(1, 35)   ; Z
@@ -210,8 +209,8 @@ _Viewer_CreateGui() {
     gViewer_LV.ModifyCol(4, 45)   ; PID
     gViewer_LV.ModifyCol(5, 280)  ; Title
     gViewer_LV.ModifyCol(6, 130)  ; Class
-    gViewer_LV.ModifyCol(7, 100)  ; State
-    gViewer_LV.ModifyCol(8, 60)   ; Workspace
+    gViewer_LV.ModifyCol(7, 60)   ; Workspace
+    gViewer_LV.ModifyCol(8, 30)   ; isOnCurrentWorkspace (Cur)
     gViewer_LV.ModifyCol(9, 90)   ; Process
     gViewer_LV.ModifyCol(10, 30)  ; Focused
     gViewer_LV.ModifyCol(11, 30)  ; Cloaked
@@ -283,8 +282,8 @@ _Viewer_UpdateList(items) {
             _Viewer_Get(rec, "pid", ""),
             _Viewer_Get(rec, "title", ""),
             _Viewer_Get(rec, "class", ""),
-            _Viewer_Get(rec, "state", ""),
             _Viewer_Get(rec, "workspaceName", ""),
+            _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
             _Viewer_Get(rec, "processName", ""),
             _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
             _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
@@ -298,6 +297,50 @@ _Viewer_UpdateList(items) {
     gViewer_LastItemCount := items.Length
 
     ; Re-enable redraw
+    gViewer_LV.Opt("+Redraw")
+}
+
+; Rebuild ListView from cached records (for re-sorting without network request)
+_Viewer_RebuildFromCache() {
+    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_Sort
+
+    ; Collect all cached records into array
+    items := []
+    for hwnd, rec in gViewer_RecByHwnd {
+        items.Push(rec)
+    }
+
+    if (items.Length = 0)
+        return
+
+    ; Sort locally
+    _Viewer_SortItems(items, gViewer_Sort)
+
+    ; Rebuild ListView
+    gViewer_LV.Opt("-Redraw")
+    gViewer_LV.Delete()
+    gViewer_RowByHwnd := Map()
+
+    for _, rec in items {
+        hwnd := _Viewer_Get(rec, "hwnd", 0)
+        row := gViewer_LV.Add("",
+            _Viewer_Get(rec, "z", ""),
+            _Viewer_Get(rec, "lastActivatedTick", ""),
+            "0x" Format("{:X}", hwnd),
+            _Viewer_Get(rec, "pid", ""),
+            _Viewer_Get(rec, "title", ""),
+            _Viewer_Get(rec, "class", ""),
+            _Viewer_Get(rec, "workspaceName", ""),
+            _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
+            _Viewer_Get(rec, "processName", ""),
+            _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
+            _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
+            _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
+            _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
+        )
+        gViewer_RowByHwnd[hwnd] := row
+    }
+
     gViewer_LV.Opt("+Redraw")
 }
 
@@ -325,12 +368,13 @@ _Viewer_IncrementalUpdate(items) {
                     _Viewer_Get(rec, "pid", ""),
                     _Viewer_Get(rec, "title", ""),
                     _Viewer_Get(rec, "class", ""),
-                    _Viewer_Get(rec, "state", ""),
                     _Viewer_Get(rec, "workspaceName", ""),
+                    _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
                     _Viewer_Get(rec, "processName", ""),
                     _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
                     _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                    _Viewer_Get(rec, "isMinimized", 0) ? "Y" : ""
+                    _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
+                    _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
                 )
                 gViewer_RecByHwnd[hwnd] := rec
             }
@@ -343,12 +387,13 @@ _Viewer_IncrementalUpdate(items) {
                 _Viewer_Get(rec, "pid", ""),
                 _Viewer_Get(rec, "title", ""),
                 _Viewer_Get(rec, "class", ""),
-                _Viewer_Get(rec, "state", ""),
                 _Viewer_Get(rec, "workspaceName", ""),
+                _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
                 _Viewer_Get(rec, "processName", ""),
                 _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
                 _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : ""
+                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
+                _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
             )
             gViewer_RowByHwnd[hwnd] := row
             gViewer_RecByHwnd[hwnd] := rec
@@ -381,7 +426,13 @@ _Viewer_RecChanged(old, new) {
     if (_Viewer_Get(old, "title", "") != _Viewer_Get(new, "title", "")) {
         return true
     }
-    if (_Viewer_Get(old, "state", "") != _Viewer_Get(new, "state", "")) {
+    if (_Viewer_Get(old, "isCloaked", 0) != _Viewer_Get(new, "isCloaked", 0)) {
+        return true
+    }
+    if (_Viewer_Get(old, "isMinimized", 0) != _Viewer_Get(new, "isMinimized", 0)) {
+        return true
+    }
+    if (_Viewer_Get(old, "isOnCurrentWorkspace", 0) != _Viewer_Get(new, "isOnCurrentWorkspace", 0)) {
         return true
     }
     if (_Viewer_Get(old, "isFocused", 0) != _Viewer_Get(new, "isFocused", 0)) {
@@ -402,13 +453,25 @@ _Viewer_RecChanged(old, new) {
 _Viewer_ApplyDelta(payload) {
     global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_Sort
 
-    ; Handle removes
+    ; Handle removes locally - remove from cache, then rebuild
+    hadRemoves := false
     if (payload.Has("removes") && payload["removes"].Length) {
-        _Viewer_RequestProjection()
-        return
+        for _, hwnd in payload["removes"] {
+            if (gViewer_RecByHwnd.Has(hwnd)) {
+                gViewer_RecByHwnd.Delete(hwnd)
+                hadRemoves := true
+            }
+            if (gViewer_RowByHwnd.Has(hwnd)) {
+                gViewer_RowByHwnd.Delete(hwnd)
+            }
+        }
     }
 
-    if (!payload.Has("upserts")) {
+    ; If only removes and no upserts, rebuild from cache
+    if (!payload.Has("upserts") || payload["upserts"].Length = 0) {
+        if (hadRemoves) {
+            _Viewer_RebuildFromCache()
+        }
         return
     }
 
@@ -443,12 +506,13 @@ _Viewer_ApplyDelta(payload) {
                 _Viewer_Get(rec, "pid", ""),
                 _Viewer_Get(rec, "title", ""),
                 _Viewer_Get(rec, "class", ""),
-                _Viewer_Get(rec, "state", ""),
                 _Viewer_Get(rec, "workspaceName", ""),
+                _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
                 _Viewer_Get(rec, "processName", ""),
                 _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
                 _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : ""
+                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
+                _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
             )
         } else {
             row := gViewer_LV.Add("",
@@ -458,12 +522,13 @@ _Viewer_ApplyDelta(payload) {
                 _Viewer_Get(rec, "pid", ""),
                 _Viewer_Get(rec, "title", ""),
                 _Viewer_Get(rec, "class", ""),
-                _Viewer_Get(rec, "state", ""),
                 _Viewer_Get(rec, "workspaceName", ""),
+                _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
                 _Viewer_Get(rec, "processName", ""),
                 _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
                 _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : ""
+                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
+                _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
             )
             gViewer_RowByHwnd[hwnd] := row
         }
@@ -472,8 +537,10 @@ _Viewer_ApplyDelta(payload) {
 
     gViewer_LV.Opt("+Redraw")
 
-    if (needsRefresh) {
-        _Viewer_RequestProjection()
+    if (needsRefresh || hadRemoves) {
+        ; Re-sort locally instead of requesting new projection
+        ; Also rebuild if removes happened (row numbers shift)
+        _Viewer_RebuildFromCache()
     }
 }
 

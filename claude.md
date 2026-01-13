@@ -84,6 +84,12 @@ These are from the original ChatGPT work. Some are battle-tested:
 - To re-sort a ListView: delete all rows and re-add in sorted order, OR use ListView's native Sort
 - Incremental updates (modifying existing rows) preserve original row order
 
+### Viewer Delta Handling
+- Viewer processes all deltas (upserts AND removes) locally without network requests
+- `_Viewer_RebuildFromCache()` re-sorts cached data without requesting new projection
+- Only request projection when: toggle sort/filter, heartbeat timeout, or manual refresh
+- This eliminates "poll count increasing alongside delta count" issue
+
 ### Komorebi Integration Testing
 - Always verify komorebi is actually running: `komorebic state`
 - Test workspace data flows end-to-end: komorebi → producer → store → viewer
@@ -125,8 +131,38 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - Headless viewer simulation (validates display fields)
 - Komorebi integration (verify workspace data flows)
 
+### Delta Efficiency
+- Empty deltas (0 upserts, 0 removes) should not be sent - check before sending
+- Rev bumps don't mean actual changes for a specific client's projection
+- Use `tests/delta_diagnostic.ahk` to debug delta issues
+
+### Window Enumeration
+- Polling always runs as a safety net (interval configurable via `StoreScanIntervalMs`)
+- `UseWinEventHook := true` (default) adds event-driven updates for responsiveness
+- Both can run together: hook catches changes immediately, polling ensures nothing missed
+- With hook enabled, polling interval can be longer (e.g., 2000ms) to reduce CPU
+
+### Producer Architecture (CRITICAL)
+- **Only winenum (full scan) should call BeginScan/EndScan** - these manage window presence
+- Partial producers (komorebi, winevent_hook, MRU) should ONLY call UpsertWindow/UpdateFields
+- If a partial producer calls EndScan, it will mark windows it didn't see as "missing"
+- This causes windows to flicker in/out of existence between updates
+
+### Window Removal Safety
+- Any producer can request removal via `WindowStore_RemoveWindow()`
+- Store verifies `!IsWindow(hwnd)` before actually deleting - prevents race conditions
+- EndScan TTL-based removal also verifies window is gone; if still exists, resets presence
+- Use `forceRemove := true` parameter only for cleanup of known-stale entries
+
+### Blacklist Filtering
+- Configured in `config.ahk`: `BlacklistTitle`, `BlacklistClass`, `BlacklistPair`
+- `UseAltTabEligibility` and `UseBlacklist` toggles control filtering
+- **Filtering happens at producer level** - blacklisted windows never enter the store
+- Producers that ADD windows filter first: winenum_lite, winevent_hook, komorebi_sub
+- MRU producer only UPDATES existing windows (lastActivatedTick, isFocused) - no filtering needed
+- Wildcards `*` and `?` supported in patterns (case-insensitive)
+- Common blacklisted items: MSTaskListWClass (taskbar internals), AutoHotkeyGUI, komoborder, Shell_TrayWnd
+
 ## Next Steps (Planned)
 1. Port legacy interceptor to `src/interceptor/`
-2. Enhance producers with legacy features (DWM cloaking, blacklist)
-3. Add komorebi subscription producer (replace polling)
-4. Wire legacy GUI as the real AltLogic consumer
+2. Wire legacy GUI as the real AltLogic consumer

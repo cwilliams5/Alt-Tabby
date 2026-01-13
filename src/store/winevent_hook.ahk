@@ -1,0 +1,274 @@
+#Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
+
+; ============================================================
+; WinEvent Hook - Event-driven window change detection
+; ============================================================
+; Alternative to winenum polling. Uses SetWinEventHook to receive
+; notifications when windows change. More efficient than polling
+; when system is mostly idle.
+;
+; Events tracked:
+;   - Window create/destroy
+;   - Window show/hide
+;   - Foreground change
+;   - Title change
+;   - Minimize/restore
+;   - Z-order change (via location change)
+; ============================================================
+
+; Configuration
+global WinEventHook_DebounceMs := 50      ; Debounce rapid events
+global WinEventHook_BatchMs := 100        ; Batch window for updates
+
+; State
+global _WEH_Hook := 0
+global _WEH_PendingHwnds := Map()         ; hwnd -> tick of last event
+global _WEH_LastProcessTick := 0
+global _WEH_TimerOn := false
+global _WEH_ShellWindow := 0
+
+; Event constants
+global WEH_EVENT_OBJECT_CREATE := 0x8000
+global WEH_EVENT_OBJECT_DESTROY := 0x8001
+global WEH_EVENT_OBJECT_SHOW := 0x8002
+global WEH_EVENT_OBJECT_HIDE := 0x8003
+global WEH_EVENT_OBJECT_FOCUS := 0x8005
+global WEH_EVENT_OBJECT_LOCATIONCHANGE := 0x800B
+global WEH_EVENT_OBJECT_NAMECHANGE := 0x800C
+global WEH_EVENT_SYSTEM_FOREGROUND := 0x0003
+global WEH_EVENT_SYSTEM_MINIMIZESTART := 0x0016
+global WEH_EVENT_SYSTEM_MINIMIZEEND := 0x0017
+
+; Initialize and install the hook
+WinEventHook_Start() {
+    global _WEH_Hook, _WEH_ShellWindow, _WEH_TimerOn
+
+    if (_WEH_Hook)
+        return  ; Already running
+
+    _WEH_ShellWindow := DllCall("user32\GetShellWindow", "ptr")
+
+    ; Hook range covers all events we care about
+    ; EVENT_MIN = 0x0001, but we only need from SYSTEM_FOREGROUND to OBJECT_NAMECHANGE
+    minEvent := 0x0003  ; EVENT_SYSTEM_FOREGROUND
+    maxEvent := 0x800C  ; EVENT_OBJECT_NAMECHANGE
+
+    ; Create the callback
+    callback := CallbackCreate(_WEH_WinEventProc, "F", 7)
+
+    ; Install out-of-context hook (WINEVENT_OUTOFCONTEXT = 0)
+    ; This allows us to receive events from all processes
+    _WEH_Hook := DllCall("user32\SetWinEventHook",
+        "uint", minEvent,       ; eventMin
+        "uint", maxEvent,       ; eventMax
+        "ptr", 0,               ; hmodWinEventProc (0 for out-of-context)
+        "ptr", callback,        ; pfnWinEventProc
+        "uint", 0,              ; idProcess (0 = all)
+        "uint", 0,              ; idThread (0 = all)
+        "uint", 0,              ; dwFlags (WINEVENT_OUTOFCONTEXT)
+        "ptr")
+
+    if (!_WEH_Hook) {
+        return false
+    }
+
+    ; Start the batch processing timer
+    _WEH_TimerOn := true
+    SetTimer(_WEH_ProcessBatch, WinEventHook_BatchMs)
+
+    return true
+}
+
+; Stop and uninstall the hook
+WinEventHook_Stop() {
+    global _WEH_Hook, _WEH_TimerOn
+
+    if (_WEH_TimerOn) {
+        SetTimer(_WEH_ProcessBatch, 0)
+        _WEH_TimerOn := false
+    }
+
+    if (_WEH_Hook) {
+        DllCall("user32\UnhookWinEvent", "ptr", _WEH_Hook)
+        _WEH_Hook := 0
+    }
+}
+
+; Hook callback - called for each window event
+; Keep this FAST - just queue the hwnd for later processing
+_WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
+    global _WEH_PendingHwnds, _WEH_ShellWindow
+    global WEH_EVENT_OBJECT_CREATE, WEH_EVENT_OBJECT_DESTROY, WEH_EVENT_OBJECT_SHOW
+    global WEH_EVENT_OBJECT_HIDE, WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
+    global WEH_EVENT_SYSTEM_MINIMIZESTART, WEH_EVENT_SYSTEM_MINIMIZEEND, WEH_EVENT_OBJECT_FOCUS
+    global WEH_EVENT_OBJECT_LOCATIONCHANGE
+
+    ; Only care about window-level events (idObject = OBJID_WINDOW = 0)
+    if (idObject != 0)
+        return
+
+    ; Skip shell window
+    if (hwnd = _WEH_ShellWindow)
+        return
+
+    ; Filter to relevant events
+    if (event != WEH_EVENT_OBJECT_CREATE
+        && event != WEH_EVENT_OBJECT_DESTROY
+        && event != WEH_EVENT_OBJECT_SHOW
+        && event != WEH_EVENT_OBJECT_HIDE
+        && event != WEH_EVENT_SYSTEM_FOREGROUND
+        && event != WEH_EVENT_OBJECT_NAMECHANGE
+        && event != WEH_EVENT_SYSTEM_MINIMIZESTART
+        && event != WEH_EVENT_SYSTEM_MINIMIZEEND
+        && event != WEH_EVENT_OBJECT_FOCUS
+        && event != WEH_EVENT_OBJECT_LOCATIONCHANGE)
+        return
+
+    ; For destroy events, mark for removal
+    if (event = WEH_EVENT_OBJECT_DESTROY) {
+        _WEH_PendingHwnds[hwnd] := -1  ; -1 = destroyed
+        return
+    }
+
+    ; Queue for update
+    _WEH_PendingHwnds[hwnd] := A_TickCount
+}
+
+; Process queued events in batches
+_WEH_ProcessBatch() {
+    global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs
+
+    if (_WEH_PendingHwnds.Count = 0)
+        return
+
+    now := A_TickCount
+
+    ; Collect hwnds ready to process (past debounce period)
+    toProcess := []
+    toRemove := []
+    destroyed := []
+
+    for hwnd, tick in _WEH_PendingHwnds {
+        if (tick = -1) {
+            ; Destroyed window
+            destroyed.Push(hwnd)
+            toRemove.Push(hwnd)
+        } else if ((now - tick) >= WinEventHook_DebounceMs) {
+            ; Ready to process
+            toProcess.Push(hwnd)
+            toRemove.Push(hwnd)
+        }
+    }
+
+    ; Remove processed items from pending
+    for _, hwnd in toRemove {
+        _WEH_PendingHwnds.Delete(hwnd)
+    }
+
+    ; Handle destroyed windows
+    if (destroyed.Length > 0) {
+        WindowStore_RemoveWindow(destroyed)
+    }
+
+    ; Probe and update changed windows
+    ; NOTE: Do NOT call BeginScan/EndScan here - that's for full scans only.
+    ; Partial producers should just upsert without affecting other windows' presence.
+    if (toProcess.Length > 0) {
+        records := []
+        for _, hwnd in toProcess {
+            rec := _WEH_ProbeWindow(hwnd)
+            if (rec)
+                records.Push(rec)
+        }
+        if (records.Length > 0) {
+            WindowStore_UpsertWindow(records, "winevent_hook")
+        }
+    }
+
+    _WEH_LastProcessTick := now
+}
+
+; Probe a single window - returns Map or empty string
+_WEH_ProbeWindow(hwnd) {
+    global UseAltTabEligibility, UseBlacklist
+
+    ; Get basic window info
+    title := ""
+    class := ""
+    pid := 0
+
+    try {
+        ; Check window still exists
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+            return ""
+
+        title := WinGetTitle("ahk_id " hwnd)
+        class := WinGetClass("ahk_id " hwnd)
+        pid := WinGetPID("ahk_id " hwnd)
+    } catch {
+        return ""
+    }
+
+    ; Skip windows with no title
+    if (title = "")
+        return ""
+
+    ; Visibility state
+    isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
+    isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
+
+    ; DWM cloaking
+    cloakedBuf := Buffer(4, 0)
+    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
+    isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+
+    ; Alt-Tab eligibility - filter early
+    eligible := _WEH_IsAltTabEligible(hwnd, isVisible, isMin, isCloaked)
+    useAltTab := IsSet(UseAltTabEligibility) ? UseAltTabEligibility : true
+    if (useAltTab && !eligible)
+        return ""
+
+    ; Blacklist filter - use winenum's function
+    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
+    if (useBlacklist && _WN_IsBlacklisted(title, class))
+        return ""
+
+    ; Build record
+    rec := Map()
+    rec["hwnd"] := hwnd
+    rec["title"] := title
+    rec["class"] := class
+    rec["pid"] := pid
+    rec["z"] := 0  ; Will be set by full scan or inferred
+    rec["altTabEligible"] := eligible
+    rec["isCloaked"] := isCloaked
+    rec["isMinimized"] := isMin
+    rec["isVisible"] := isVisible
+
+    return rec
+}
+
+; Alt-Tab eligibility check
+_WEH_IsAltTabEligible(hwnd, isVisible, isMin, isCloaked) {
+    ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -20, "ptr")
+
+    WS_EX_TOOLWINDOW := 0x00000080
+    WS_EX_APPWINDOW := 0x00040000
+
+    isTool := (ex & WS_EX_TOOLWINDOW) != 0
+    isApp := (ex & WS_EX_APPWINDOW) != 0
+
+    owner := DllCall("user32\GetWindow", "ptr", hwnd, "uint", 4, "ptr")
+
+    if (isTool)
+        return false
+
+    if (owner != 0 && !isApp)
+        return false
+
+    if !(isVisible || isMin || isCloaked)
+        return false
+
+    return true
+}

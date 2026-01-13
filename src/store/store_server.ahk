@@ -11,6 +11,7 @@
 #Include %A_ScriptDir%\komorebi_sub.ahk
 #Include %A_ScriptDir%\icon_pump.ahk
 #Include %A_ScriptDir%\proc_pump.ahk
+#Include %A_ScriptDir%\winevent_hook.ahk
 
 global gStore_Server := 0
 global gStore_ClientOpts := Map()      ; hPipe -> projection opts
@@ -56,9 +57,19 @@ Store_Init() {
         IconPump_Start()
     if (IsSet(UseProcPump) && UseProcPump)
         ProcPump_Start()
-    ; Do initial scan AFTER producers init so data includes komorebi workspace info
+
+    ; Do initial full scan AFTER producers init so data includes komorebi workspace info
     Store_ScanTick()
+
+    ; Always run polling as a safety net
     SetTimer(Store_ScanTick, StoreScanIntervalMs)
+
+    ; Optionally add WinEventHook for responsive event-driven updates
+    if (IsSet(UseWinEventHook) && UseWinEventHook) {
+        if (!WinEventHook_Start()) {
+            Store_LogError("WinEventHook failed to start (polling will continue)")
+        }
+    }
 }
 
 Store_ScanTick() {
@@ -106,6 +117,9 @@ Store_PushToClients() {
         ; Send delta if client has previous state, otherwise full snapshot
         if (prevItems.Length > 0) {
             msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev)
+            ; Skip sending empty deltas (rev bumped but nothing changed for this client)
+            if (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0)
+                continue
         } else {
             msg := {
                 type: IPC_MSG_SNAPSHOT,
@@ -145,9 +159,10 @@ Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev) {
         } else {
             old := prevMap[hwnd]
             ; Compare key fields that matter for display
-            if (rec.title != old.title || rec.state != old.state || rec.z != old.z
+            if (rec.title != old.title || rec.z != old.z
                 || rec.pid != old.pid || rec.isFocused != old.isFocused
                 || rec.workspaceName != old.workspaceName || rec.isCloaked != old.isCloaked
+                || rec.isMinimized != old.isMinimized || rec.isOnCurrentWorkspace != old.isOnCurrentWorkspace
                 || rec.processName != old.processName || rec.iconHicon != old.iconHicon) {
                 upserts.Push(rec)
             }
@@ -236,9 +251,12 @@ OnExit(Store_OnExit)
 
 Store_OnExit(reason, code) {
     global gStore_Server
-    ; Stop all timers before exit to prevent errors
+    ; Stop all timers and hooks before exit to prevent errors
     try {
         SetTimer(Store_ScanTick, 0)
+    }
+    try {
+        WinEventHook_Stop()
     }
     try {
         if (IsSet(MRU_Lite_Tick)) {
