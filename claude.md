@@ -130,23 +130,33 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - Real store integration (spawn actual store_server)
 - Headless viewer simulation (validates display fields)
 - Komorebi integration (verify workspace data flows)
+- Heartbeat test (verify store→client heartbeat with rev)
+- Blacklist E2E test (IPC reload, purge, file operations)
 
 ### Delta Efficiency
 - Empty deltas (0 upserts, 0 removes) should not be sent - check before sending
 - Rev bumps don't mean actual changes for a specific client's projection
 - Use `tests/delta_diagnostic.ahk` to debug delta issues
 
-### Window Enumeration
-- Polling always runs as a safety net (interval configurable via `StoreScanIntervalMs`)
-- `UseWinEventHook := true` (default) adds event-driven updates for responsiveness
-- Both can run together: hook catches changes immediately, polling ensures nothing missed
-- With hook enabled, polling interval can be longer (e.g., 2000ms) to reduce CPU
+### Window Enumeration (On-Demand Architecture)
+- **WinEventHook is primary** - catches window create/destroy/show/hide/title changes in real-time
+- **WinEnum is on-demand** (pump mode) - only runs when needed:
+  - Startup, snapshot requests, or Z-pump trigger
+  - Optional safety polling via `WinEnumSafetyPollMs` (default 0 = disabled)
+- **Z-pump**: When WinEventHook adds a window (z=0), it's queued; Z-pump triggers full scan
+- If WinEventHook fails to start, automatic fallback to 2-second polling
 
 ### Producer Architecture (CRITICAL)
+- **MRU and WinEventHook are always enabled** - no config options, essential for operation
+- **Komorebi is optional** - graceful handling if not installed/running
+- **WinEnum runs on-demand** (pump mode), not polling:
+  - Startup (initial population)
+  - Snapshot request from client (safety/accuracy)
+  - Z-pump trigger (when WinEventHook adds windows with z=0)
+  - Optional safety polling via `WinEnumSafetyPollMs` (default 0 = disabled)
 - **Only winenum (full scan) should call BeginScan/EndScan** - these manage window presence
 - Partial producers (komorebi, winevent_hook, MRU) should ONLY call UpsertWindow/UpdateFields
-- If a partial producer calls EndScan, it will mark windows it didn't see as "missing"
-- This causes windows to flicker in/out of existence between updates
+- WinEventHook calls `WindowStore_EnqueueForZ()` after upserting - triggers Z-pump
 
 ### Window Removal Safety
 - Any producer can request removal via `WindowStore_RemoveWindow()`
@@ -163,7 +173,46 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - Wildcards `*` and `?` supported in patterns (case-insensitive)
 - File format: `[Title]`, `[Class]`, `[Pair]` sections; pairs use `Class|Title` format
 - Viewer: double-click a row to blacklist it (sends IPC reload message to store)
-- Store reloads blacklist on `reload_blacklist` IPC message, triggers rescan
+- Store reloads blacklist on `reload_blacklist` IPC message, purges matching windows immediately
+- `WindowStore_PurgeBlacklisted()` removes all windows matching current blacklist after reload
+
+### Centralized Window Eligibility (CRITICAL)
+- **All eligibility logic lives in `Blacklist_IsWindowEligible()` in `src/shared/blacklist.ahk`**
+- This function combines Alt-Tab eligibility rules AND blacklist filtering
+- All producers MUST use this single function - never duplicate eligibility logic
+- Alt-Tab eligibility checks: WS_CHILD, WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, owner windows, visibility/cloaked
+- This prevents producers from disagreeing on which windows are eligible (causing flicker)
+
+### Heartbeat & Connection Health
+- **Store broadcasts heartbeat** every `StoreHeartbeatIntervalMs` (default 5s) to all clients
+- Heartbeat message: `{ type: "heartbeat", rev: <current_rev> }`
+- **Viewer uses heartbeat for**:
+  - Connection liveness: no message in `ViewerHeartbeatTimeoutMs` (default 12s) → reconnect
+  - Drift detection: if `store.rev > local.rev` → request full projection (we missed something)
+- **No blind polling**: Viewer does NOT poll on interval; relies on pushed deltas + heartbeat
+- Polling only happens on: initial connect, reconnect, toggle sort/filter, manual refresh, or rev drift
+
+### Revision Churn Prevention (CRITICAL)
+- **Rev should ONLY bump when data actually changes** - not on every scan cycle
+- `WindowStore_UpsertWindow` and `WindowStore_Ensure` must compare values before updating
+- Pattern: `if (!row.HasOwnProp(k) || row.%k% != v) { row.%k% := v; changed := true }`
+- **Internal fields** (`gWS_InternalFields`) update without bumping rev:
+  - `lastSeenScanId`, `lastSeenTick`, `missingSinceTick` - scan tracking
+  - `iconCooldownUntilTick`, `iconGaveUp` - icon pump state
+- Rev churn = wasted CPU + network traffic (deltas sent when nothing changed)
+- Debug: Set `DiagChurnLog := true` in config.ahk, check `%TEMP%\tabby_store_error.log`
+- When idle, viewer's "Rev" counter should be stable
+
+### Icon Pump Retry Logic
+- **Don't enqueue hidden windows** - `_WS_EnqueueIfNeeded` skips cloaked, minimized, invisible
+- After `IconMaxAttempts` (default 4), window is marked `iconGaveUp := true`
+- Windows that gave up are never re-enqueued (prevents endless retry loops)
+- Successful icon retrieval clears the gave-up flag and attempts counter
+
+### Claude Code CLI Known Issues
+- **tmpclaude-* files**: Claude Code creates `tmpclaude-xxxx-cwd` files in the working directory (Windows bug)
+- These are added to `.gitignore` - just delete them if they appear
+- Tracked at: https://github.com/anthropics/claude-code/issues/17636
 
 ## Next Steps (Planned)
 1. Port legacy interceptor to `src/interceptor/`

@@ -26,14 +26,9 @@ WinEnumLite_Init() {
 ; Full scan - returns array of Maps suitable for WindowStore_UpsertWindow
 WinEnumLite_ScanAll() {
     global _WN_ShellWindow
-    global UseAltTabEligibility, UseBlacklist
 
     if (!_WN_ShellWindow)
         WinEnumLite_Init()
-
-    ; Get filter settings from config (with defaults)
-    useAltTab := IsSet(UseAltTabEligibility) ? UseAltTabEligibility : true
-    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
 
     records := []
     z := 0  ; Z-order counter for eligible windows only
@@ -43,28 +38,21 @@ WinEnumLite_ScanAll() {
     DetectHiddenWindows(true)
     list := WinGetList()
     DetectHiddenWindows(prevDetect)
+
     for _, hwnd in list {
         ; Skip shell window
         if (hwnd = _WN_ShellWindow)
             continue
 
-        rec := _WN_ProbeWindow(hwnd, 0)  ; Z will be set below for eligible windows
+        ; Use centralized eligibility check (Alt-Tab rules + blacklist)
+        if (!Blacklist_IsWindowEligible(hwnd))
+            continue
 
+        rec := _WN_ProbeWindow(hwnd, z)
         if (!rec)
             continue
 
-        ; Apply Alt-Tab eligibility filter
-        if (useAltTab && !rec["altTabEligible"])
-            continue
-
-        ; Apply blacklist filter (uses shared/blacklist.ahk)
-        if (useBlacklist && Blacklist_IsMatch(rec["title"], rec["class"]))
-            continue
-
-        ; Assign z-order only to eligible windows (keeps values low and meaningful)
-        rec["z"] := z
         z += 1
-
         records.Push(rec)
     }
 
@@ -72,6 +60,7 @@ WinEnumLite_ScanAll() {
 }
 
 ; Probe a single window - returns Map or empty string
+; NOTE: Eligibility check should be done before calling this (via Blacklist_IsWindowEligible)
 _WN_ProbeWindow(hwnd, zOrder := 0) {
     ; Get basic window info
     title := ""
@@ -99,9 +88,6 @@ _WN_ProbeWindow(hwnd, zOrder := 0) {
     hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
     isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 
-    ; Check Alt-Tab eligibility
-    eligible := _WN_IsAltTabEligible(hwnd, isVisible, isMin, isCloaked)
-
     ; Build record as Map (required by WindowStore)
     rec := Map()
     rec["hwnd"] := hwnd
@@ -109,39 +95,10 @@ _WN_ProbeWindow(hwnd, zOrder := 0) {
     rec["class"] := class
     rec["pid"] := pid
     rec["z"] := zOrder
-    rec["altTabEligible"] := eligible
+    rec["altTabEligible"] := true  ; Already checked by caller
     rec["isCloaked"] := isCloaked
     rec["isMinimized"] := isMin
     rec["isVisible"] := isVisible
 
     return rec
-}
-
-; Alt-Tab eligibility rules (matches Windows behavior)
-_WN_IsAltTabEligible(hwnd, isVisible, isMin, isCloaked) {
-    ; Get extended window style
-    ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -20, "ptr")
-
-    WS_EX_TOOLWINDOW := 0x00000080
-    WS_EX_APPWINDOW := 0x00040000
-
-    isTool := (ex & WS_EX_TOOLWINDOW) != 0
-    isApp := (ex & WS_EX_APPWINDOW) != 0
-
-    ; Get owner window
-    owner := DllCall("user32\GetWindow", "ptr", hwnd, "uint", 4, "ptr")  ; GW_OWNER
-
-    ; Tool windows are never Alt-Tab eligible
-    if (isTool)
-        return false
-
-    ; Owned windows need WS_EX_APPWINDOW to be eligible
-    if (owner != 0 && !isApp)
-        return false
-
-    ; Must be visible, minimized, or cloaked
-    if !(isVisible || isMin || isCloaked)
-        return false
-
-    return true
 }

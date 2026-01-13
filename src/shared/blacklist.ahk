@@ -206,6 +206,97 @@ _BL_InsertInSection(content, sectionName, entry) {
     return before entry "`n" after
 }
 
+; ============================================================
+; Window Eligibility - Centralized Alt-Tab eligibility check
+; ============================================================
+
+; Check if a window should be included (passes Alt-Tab eligibility AND blacklist)
+; Returns true if window should be included, false if it should be filtered out
+Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
+    global UseAltTabEligibility, UseBlacklist
+
+    ; Get window info if not provided
+    if (title = "" || class = "") {
+        try {
+            if (title = "")
+                title := WinGetTitle("ahk_id " hwnd)
+            if (class = "")
+                class := WinGetClass("ahk_id " hwnd)
+        } catch {
+            return false
+        }
+    }
+
+    ; Skip windows with no title
+    if (title = "")
+        return false
+
+    ; Check Alt-Tab eligibility
+    useAltTab := IsSet(UseAltTabEligibility) ? UseAltTabEligibility : true
+    if (useAltTab && !_BL_IsAltTabEligible(hwnd))
+        return false
+
+    ; Check blacklist
+    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
+    if (useBlacklist && Blacklist_IsMatch(title, class))
+        return false
+
+    return true
+}
+
+; Alt-Tab eligibility rules (matches Windows behavior)
+_BL_IsAltTabEligible(hwnd) {
+    ; Get visibility state
+    isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
+    isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
+
+    ; Get regular window style
+    style := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -16, "ptr")  ; GWL_STYLE
+
+    WS_CHILD := 0x40000000
+
+    ; Child windows are never Alt-Tab eligible
+    if (style & WS_CHILD)
+        return false
+
+    ; Get extended window style
+    ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -20, "ptr")  ; GWL_EXSTYLE
+
+    WS_EX_TOOLWINDOW := 0x00000080
+    WS_EX_APPWINDOW := 0x00040000
+    WS_EX_NOACTIVATE := 0x08000000
+
+    isTool := (ex & WS_EX_TOOLWINDOW) != 0
+    isApp := (ex & WS_EX_APPWINDOW) != 0
+    isNoActivate := (ex & WS_EX_NOACTIVATE) != 0
+
+    ; Tool windows are never Alt-Tab eligible
+    if (isTool)
+        return false
+
+    ; NoActivate windows are not Alt-Tab eligible
+    if (isNoActivate)
+        return false
+
+    ; Get owner window
+    owner := DllCall("user32\GetWindow", "ptr", hwnd, "uint", 4, "ptr")  ; GW_OWNER
+
+    ; Owned windows need WS_EX_APPWINDOW to be eligible
+    if (owner != 0 && !isApp)
+        return false
+
+    ; Check DWM cloaking
+    cloakedBuf := Buffer(4, 0)
+    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
+    isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+
+    ; Must be visible, minimized, or cloaked
+    if !(isVisible || isMin || isCloaked)
+        return false
+
+    return true
+}
+
 ; Case-insensitive wildcard match (* and ?)
 _BL_WildcardMatch(str, pattern) {
     if (pattern = "")

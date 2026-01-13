@@ -1,4 +1,4 @@
-; Alt-Tabby Blacklist Configuration
+﻿; Alt-Tabby Blacklist Configuration
 ; Windows matching these patterns are excluded from the window list.
 ; Wildcards: * (any chars), ? (single char) - case-insensitive
 ;
