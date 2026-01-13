@@ -539,22 +539,33 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
 
     _KSub_Log("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
 
+    ; Get blacklist config flag
+    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
+
     addedCount := 0
     updatedCount := 0
+    skippedBlacklist := 0
     for hwnd, info in wsMap {
         ; Check if window exists in store
         if (!gWS_Store.Has(hwnd)) {
             ; Window not in store - add it!
             ; This happens for windows on other workspaces that winenum didn't see
+            title := (info.title != "") ? info.title : _KSub_GetWindowTitle(hwnd)
+            class := (info.class != "") ? info.class : _KSub_GetWindowClass(hwnd)
+
+            ; Check blacklist before adding
+            if (useBlacklist && _WN_IsBlacklisted(title, class)) {
+                skippedBlacklist++
+                continue
+            }
+
             rec := Map()
             rec["hwnd"] := hwnd
-            rec["title"] := (info.title != "") ? info.title : _KSub_GetWindowTitle(hwnd)
-            rec["class"] := (info.class != "") ? info.class : _KSub_GetWindowClass(hwnd)
+            rec["title"] := title
+            rec["class"] := class
             rec["pid"] := _KSub_GetWindowPid(hwnd)
-            rec["state"] := info.isCurrent ? "WorkspaceShowing" : "OtherWorkspace"
             rec["z"] := 9999  ; Put at end of z-order
             rec["altTabEligible"] := true  ; Komorebi windows are eligible
-            rec["isBlacklisted"] := false
             rec["isCloaked"] := !info.isCurrent  ; Not on current workspace = cloaked
             rec["isMinimized"] := false
             rec["isVisible"] := info.isCurrent
@@ -568,13 +579,12 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
             try WindowStore_UpdateFields(hwnd, {
                 workspaceName: info.wsName,
                 isOnCurrentWorkspace: info.isCurrent,
-                isCloaked: !info.isCurrent,
-                state: info.isCurrent ? "WorkspaceShowing" : "OtherWorkspace"
+                isCloaked: !info.isCurrent
             })
             updatedCount++
         }
     }
-    _KSub_Log("ProcessFullState: added " addedCount " windows, updated " updatedCount " windows")
+    _KSub_Log("ProcessFullState: added " addedCount " updated " updatedCount " skipped(blacklist) " skippedBlacklist)
 
     ; Also update windows in store that aren't in komorebi state
     ; (they might have cached workspace data)

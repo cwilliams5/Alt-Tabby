@@ -7,14 +7,12 @@
 ;   - Z-order enumeration via EnumWindows
 ;   - DWM cloaking detection (for virtual desktops/komorebi)
 ;   - Alt-Tab eligibility filtering
+;   - Blacklist filtering (title, class, pairs)
 ;   - Minimal overhead, no debug logging
 ; ============================================================
 
 ; Load dwmapi once at startup
 DllCall("LoadLibrary", "str", "dwmapi.dll")
-
-; Configuration
-global WN_UseAltTabEligibility := true   ; Filter by Alt-Tab rules
 
 ; Shell window handle (cached)
 global _WN_ShellWindow := 0
@@ -27,10 +25,15 @@ WinEnumLite_Init() {
 
 ; Full scan - returns array of Maps suitable for WindowStore_UpsertWindow
 WinEnumLite_ScanAll() {
-    global _WN_ShellWindow, WN_UseAltTabEligibility
+    global _WN_ShellWindow
+    global UseAltTabEligibility, UseBlacklist
 
     if (!_WN_ShellWindow)
         WinEnumLite_Init()
+
+    ; Get filter settings from config (with defaults)
+    useAltTab := IsSet(UseAltTabEligibility) ? UseAltTabEligibility : true
+    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
 
     records := []
     z := 0  ; Z-order counter for eligible windows only
@@ -51,7 +54,11 @@ WinEnumLite_ScanAll() {
             continue
 
         ; Apply Alt-Tab eligibility filter
-        if (WN_UseAltTabEligibility && !rec["altTabEligible"])
+        if (useAltTab && !rec["altTabEligible"])
+            continue
+
+        ; Apply blacklist filter
+        if (useBlacklist && _WN_IsBlacklisted(rec["title"], rec["class"]))
             continue
 
         ; Assign z-order only to eligible windows (keeps values low and meaningful)
@@ -62,6 +69,54 @@ WinEnumLite_ScanAll() {
     }
 
     return records
+}
+
+; Check if window matches any blacklist pattern
+_WN_IsBlacklisted(title, class) {
+    global BlacklistTitle, BlacklistClass, BlacklistPair
+
+    ; Check title blacklist
+    if (IsSet(BlacklistTitle) && IsObject(BlacklistTitle)) {
+        for _, pattern in BlacklistTitle {
+            if (_WN_WildcardMatch(title, pattern))
+                return true
+        }
+    }
+
+    ; Check class blacklist
+    if (IsSet(BlacklistClass) && IsObject(BlacklistClass)) {
+        for _, pattern in BlacklistClass {
+            if (_WN_WildcardMatch(class, pattern))
+                return true
+        }
+    }
+
+    ; Check pair blacklist (both must match)
+    if (IsSet(BlacklistPair) && IsObject(BlacklistPair)) {
+        for _, pair in BlacklistPair {
+            classMatch := false
+            titleMatch := false
+            if (pair.HasOwnProp("Class"))
+                classMatch := _WN_WildcardMatch(class, pair.Class)
+            if (pair.HasOwnProp("Title"))
+                titleMatch := _WN_WildcardMatch(title, pair.Title)
+            if (classMatch && titleMatch)
+                return true
+        }
+    }
+
+    return false
+}
+
+; Case-insensitive wildcard match (* and ?)
+_WN_WildcardMatch(str, pattern) {
+    if (pattern = "")
+        return false
+    ; Convert wildcard pattern to regex
+    regex := "i)^" RegExReplace(RegExReplace(pattern, "[.+^${}|()\\[\]]", "\$0"), "\*", ".*")
+    regex := RegExReplace(regex, "\?", ".")
+    regex .= "$"
+    return RegExMatch(str, regex)
 }
 
 ; Probe a single window - returns Map or empty string
@@ -92,15 +147,6 @@ _WN_ProbeWindow(hwnd, zOrder := 0) {
     hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
     isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 
-    ; Determine window state
-    state := "WorkspaceHidden"
-    if (isCloaked)
-        state := "OtherWorkspace"
-    else if (isMin)
-        state := "WorkspaceMinimized"
-    else if (isVisible)
-        state := "WorkspaceShowing"
-
     ; Check Alt-Tab eligibility
     eligible := _WN_IsAltTabEligible(hwnd, isVisible, isMin, isCloaked)
 
@@ -110,10 +156,8 @@ _WN_ProbeWindow(hwnd, zOrder := 0) {
     rec["title"] := title
     rec["class"] := class
     rec["pid"] := pid
-    rec["state"] := state
     rec["z"] := zOrder
     rec["altTabEligible"] := eligible
-    rec["isBlacklisted"] := false
     rec["isCloaked"] := isCloaked
     rec["isMinimized"] := isMin
     rec["isVisible"] := isVisible

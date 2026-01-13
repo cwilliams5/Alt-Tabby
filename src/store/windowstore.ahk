@@ -62,9 +62,17 @@ WindowStore_EndScan(graceMs := "") {
                 rec.missingSinceTick := now
                 changed := true
             } else if (rec.missingSinceTick && (now - rec.missingSinceTick) >= ttl) {
-                gWS_Store.Delete(hwnd)
-                removed += 1
-                changed := true
+                ; Verify window is actually gone before removing
+                if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+                    gWS_Store.Delete(hwnd)
+                    removed += 1
+                    changed := true
+                } else {
+                    ; Window still exists - reset presence, winenum will find it next scan
+                    rec.presentNow := true
+                    rec.present := true
+                    rec.missingSinceTick := 0
+                }
             }
         }
     }
@@ -99,7 +107,7 @@ WindowStore_UpsertWindow(records, source := "") {
         if (rec is Map) {
             for k, v in rec {
                 ; Preserve komorebi workspace state if winenum tries to overwrite
-                if (hasKomorebiWs && (k = "state" || k = "isCloaked" || k = "isOnCurrentWorkspace"))
+                if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
                     continue
                 row.%k% := v
             }
@@ -149,15 +157,18 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
     return { changed: changed, rev: gWS_Rev }
 }
 
-WindowStore_RemoveWindow(hwnds) {
+WindowStore_RemoveWindow(hwnds, forceRemove := false) {
     global gWS_Store, gWS_Rev
     removed := 0
     for _, h in hwnds {
         hwnd := h + 0
-        if (gWS_Store.Has(hwnd)) {
-            gWS_Store.Delete(hwnd)
-            removed += 1
-        }
+        if (!gWS_Store.Has(hwnd))
+            continue
+        ; Verify window is actually gone before removing (unless forced)
+        if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+            continue  ; Window still exists, don't remove
+        gWS_Store.Delete(hwnd)
+        removed += 1
     }
     if (removed)
         gWS_Rev += 1
@@ -208,8 +219,10 @@ WindowStore_GetProjection(opts := 0) {
     currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
     includeMin := _WS_GetOpt(opts, "includeMinimized", true)
     includeCloaked := _WS_GetOpt(opts, "includeCloaked", false)
-    blacklistMode := _WS_GetOpt(opts, "blacklistMode", "exclude")
     columns := _WS_GetOpt(opts, "columns", "items")
+
+    ; NOTE: Blacklist filtering happens at producer level (winenum, winevent, komorebi)
+    ; so blacklisted windows never enter the store. No need to filter here.
 
     items := []
     for _, rec in gWS_Store {
@@ -217,13 +230,9 @@ WindowStore_GetProjection(opts := 0) {
             continue
         if (currentOnly && !rec.isOnCurrentWorkspace)
             continue
-        if (!includeMin && rec.state = "WorkspaceMinimized")
+        if (!includeMin && rec.isMinimized)
             continue
-        if (!includeCloaked && rec.state = "OtherWorkspace")
-            continue
-        if (blacklistMode = "exclude" && rec.isBlacklisted)
-            continue
-        if (blacklistMode = "only" && !rec.isBlacklisted)
+        if (!includeCloaked && rec.isCloaked)
             continue
         items.Push(rec)
     }
@@ -264,9 +273,7 @@ _WS_NewRecord(hwnd) {
         missingSinceTick: 0,
         lastSeenScanId: 0,
         lastSeenTick: 0,
-        state: "WorkspaceHidden",
         altTabEligible: true,
-        isBlacklisted: false,
         isCloaked: false,
         isMinimized: false,
         isVisible: false,
@@ -289,7 +296,6 @@ _WS_ToItem(rec) {
         title: rec.title,
         class: rec.class,
         pid: rec.pid,
-        state: rec.state,
         z: rec.z,
         lastActivatedTick: rec.lastActivatedTick,
         isFocused: rec.isFocused,

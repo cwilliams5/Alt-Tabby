@@ -20,7 +20,6 @@ IPC_DefaultProjectionOpts() {
         currentWorkspaceOnly: false,
         includeMinimized: true,
         includeCloaked: false,
-        blacklistMode: "exclude",
         sort: "MRU",
         columns: "items"
     }
