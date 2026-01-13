@@ -539,12 +539,9 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
 
     _KSub_Log("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
 
-    ; Get blacklist config flag
-    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
-
     addedCount := 0
     updatedCount := 0
-    skippedBlacklist := 0
+    skippedIneligible := 0
     for hwnd, info in wsMap {
         ; Check if window exists in store
         if (!gWS_Store.Has(hwnd)) {
@@ -553,9 +550,9 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
             title := (info.title != "") ? info.title : _KSub_GetWindowTitle(hwnd)
             class := (info.class != "") ? info.class : _KSub_GetWindowClass(hwnd)
 
-            ; Check blacklist before adding (uses shared/blacklist.ahk)
-            if (useBlacklist && Blacklist_IsMatch(title, class)) {
-                skippedBlacklist++
+            ; Use centralized eligibility check (Alt-Tab rules + blacklist)
+            if (!Blacklist_IsWindowEligible(hwnd, title, class)) {
+                skippedIneligible++
                 continue
             }
 
@@ -584,7 +581,7 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
             updatedCount++
         }
     }
-    _KSub_Log("ProcessFullState: added " addedCount " updated " updatedCount " skipped(blacklist) " skippedBlacklist)
+    _KSub_Log("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
 
     ; Also update windows in store that aren't in komorebi state
     ; (they might have cached workspace data)

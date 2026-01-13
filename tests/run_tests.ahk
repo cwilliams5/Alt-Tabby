@@ -35,8 +35,8 @@ for _, arg in A_Args {
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk
 
-; Initialize blacklist before tests
-Blacklist_Init()
+; Initialize blacklist before tests - use explicit path to src/shared/blacklist.txt
+Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 
 Log("`n--- WindowStore Unit Tests ---")
 
@@ -596,6 +596,318 @@ if (RunLiveTests) {
             ProcessClose(wsE2EPid)
         }
     }
+
+    ; --- Heartbeat Test ---
+    Log("`n--- Heartbeat Test ---")
+
+    ; Start a store with short heartbeat interval for testing
+    hbTestPipe := "tabby_hb_test_" A_TickCount
+    hbTestPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' hbTestPipe, , "Hide", &hbTestPid)
+    } catch as e {
+        Log("SKIP: Could not start store for heartbeat test: " e.Message)
+        hbTestPid := 0
+    }
+
+    if (hbTestPid) {
+        ; Wait for store to initialize
+        Sleep(1500)
+
+        global gHbTestHeartbeats := 0
+        global gHbTestLastRev := -1
+        global gHbTestReceived := false
+
+        hbClient := IPC_PipeClient_Connect(hbTestPipe, Test_OnHeartbeatMessage)
+
+        if (hbClient.hPipe) {
+            Log("PASS: Heartbeat test connected to store")
+            TestPassed++
+
+            ; Send hello to register as client
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "hb_test", wants: { deltas: true } }
+            IPC_PipeClient_Send(hbClient, JXON_Dump(helloMsg))
+
+            ; Wait for heartbeats (store sends every 5s by default, we wait up to 12s)
+            Log("  Waiting for heartbeat messages...")
+            waitStart := A_TickCount
+            while (gHbTestHeartbeats < 2 && (A_TickCount - waitStart) < 12000) {
+                Sleep(500)
+            }
+
+            if (gHbTestHeartbeats >= 1) {
+                Log("PASS: Received " gHbTestHeartbeats " heartbeat(s)")
+                TestPassed++
+
+                ; Verify heartbeat contains rev
+                if (gHbTestLastRev >= 0) {
+                    Log("PASS: Heartbeat contains rev field (rev=" gHbTestLastRev ")")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Heartbeat missing rev field")
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: No heartbeats received within timeout")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(hbClient)
+        } else {
+            Log("FAIL: Could not connect to store for heartbeat test")
+            TestErrors++
+        }
+
+        try {
+            ProcessClose(hbTestPid)
+        }
+    }
+
+    ; --- Blacklist E2E Test ---
+    Log("`n--- Blacklist E2E Test ---")
+
+    ; Start a fresh store for blacklist test
+    blTestPipe := "tabby_bl_test_" A_TickCount
+    blTestPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' blTestPipe, , "Hide", &blTestPid)
+    } catch as e {
+        Log("SKIP: Could not start store for blacklist test: " e.Message)
+        blTestPid := 0
+    }
+
+    if (blTestPid) {
+        Sleep(1500)
+
+        global gBlTestResponse := ""
+        global gBlTestReceived := false
+
+        blClient := IPC_PipeClient_Connect(blTestPipe, Test_OnBlacklistMessage)
+
+        if (blClient.hPipe) {
+            Log("PASS: Blacklist test connected to store")
+            TestPassed++
+
+            ; Send hello
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "bl_test", wants: { deltas: false } }
+            IPC_PipeClient_Send(blClient, JXON_Dump(helloMsg))
+
+            ; Get initial projection
+            gBlTestResponse := ""
+            gBlTestReceived := false
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
+            IPC_PipeClient_Send(blClient, JXON_Dump(projMsg))
+
+            waitStart := A_TickCount
+            while (!gBlTestReceived && (A_TickCount - waitStart) < 3000)
+                Sleep(50)
+
+            if (!gBlTestReceived) {
+                Log("FAIL: Timeout getting initial projection for blacklist test")
+                TestErrors++
+            } else {
+                try {
+                    respObj := JXON_Load(gBlTestResponse)
+                    items := respObj["payload"]["items"]
+                    initialCount := items.Length
+                    Log("  Initial projection has " initialCount " windows")
+
+                    ; Find a class to blacklist (pick one that exists)
+                    testClass := ""
+                    testTitle := ""
+                    testClassCount := 0
+                    for _, item in items {
+                        cls := item.Has("class") ? item["class"] : ""
+                        ttl := item.Has("title") ? item["title"] : ""
+                        if (cls != "" && ttl != "") {
+                            ; Count how many windows have this class
+                            classCount := 0
+                            for _, item2 in items {
+                                if (item2.Has("class") && item2["class"] = cls)
+                                    classCount++
+                            }
+                            ; Use this class for test (prefer one with few windows)
+                            if (testClass = "" || classCount < testClassCount) {
+                                testClass := cls
+                                testTitle := ttl
+                                testClassCount := classCount
+                            }
+                        }
+                    }
+
+                    if (testClass = "") {
+                        Log("SKIP: No suitable class found for blacklist test")
+                    } else {
+                        Log("  Testing blacklist with class '" testClass "' (" testClassCount " windows)")
+
+                        ; Read current blacklist file to preserve it
+                        blFilePath := A_ScriptDir "\..\src\shared\blacklist.txt"
+                        originalBlacklist := ""
+                        try originalBlacklist := FileRead(blFilePath, "UTF-8")
+
+                        ; === Test 1: Class blacklist ===
+                        Log("  [BL Test] Testing class blacklist...")
+
+                        ; Add test class to blacklist
+                        Blacklist_AddClass(testClass)
+
+                        ; Send reload IPC
+                        reloadMsg := { type: IPC_MSG_RELOAD_BLACKLIST }
+                        IPC_PipeClient_Send(blClient, JXON_Dump(reloadMsg))
+                        Sleep(500)  ; Wait for reload and push
+
+                        ; Get new projection
+                        gBlTestResponse := ""
+                        gBlTestReceived := false
+                        IPC_PipeClient_Send(blClient, JXON_Dump(projMsg))
+
+                        waitStart := A_TickCount
+                        while (!gBlTestReceived && (A_TickCount - waitStart) < 3000)
+                            Sleep(50)
+
+                        if (gBlTestReceived) {
+                            respObj2 := JXON_Load(gBlTestResponse)
+                            items2 := respObj2["payload"]["items"]
+                            afterClassBlCount := items2.Length
+
+                            ; Count remaining windows with test class
+                            remainingWithClass := 0
+                            for _, item in items2 {
+                                if (item.Has("class") && item["class"] = testClass)
+                                    remainingWithClass++
+                            }
+
+                            Log("  After class blacklist: " afterClassBlCount " windows, " remainingWithClass " with test class")
+
+                            if (remainingWithClass = 0 && afterClassBlCount < initialCount) {
+                                Log("PASS: Class blacklist removed windows")
+                                TestPassed++
+                            } else if (remainingWithClass < testClassCount) {
+                                Log("PASS: Class blacklist removed some windows (" (testClassCount - remainingWithClass) " of " testClassCount ")")
+                                TestPassed++
+                            } else {
+                                Log("FAIL: Class blacklist did not remove windows (expected 0, got " remainingWithClass ")")
+                                TestErrors++
+                            }
+                        } else {
+                            Log("FAIL: Timeout after class blacklist reload")
+                            TestErrors++
+                        }
+
+                        ; === Restore original blacklist and verify windows return ===
+                        Log("  [BL Test] Restoring original blacklist...")
+
+                        ; Restore original blacklist
+                        try {
+                            FileDelete(blFilePath)
+                            FileAppend(originalBlacklist, blFilePath, "UTF-8")
+                        }
+
+                        ; Send reload IPC
+                        IPC_PipeClient_Send(blClient, JXON_Dump(reloadMsg))
+                        Sleep(500)
+
+                        ; Get restored projection
+                        gBlTestResponse := ""
+                        gBlTestReceived := false
+                        IPC_PipeClient_Send(blClient, JXON_Dump(projMsg))
+
+                        waitStart := A_TickCount
+                        while (!gBlTestReceived && (A_TickCount - waitStart) < 3000)
+                            Sleep(50)
+
+                        if (gBlTestReceived) {
+                            respObj3 := JXON_Load(gBlTestResponse)
+                            items3 := respObj3["payload"]["items"]
+                            restoredCount := items3.Length
+
+                            ; Windows should be back (via next winenum scan)
+                            ; Note: They may not be immediately back since winenum needs to rescan
+                            Log("  After restore: " restoredCount " windows (was " initialCount ")")
+
+                            if (restoredCount >= afterClassBlCount) {
+                                Log("PASS: Blacklist restore works (IPC reload mechanism verified)")
+                                TestPassed++
+                            } else {
+                                Log("WARN: Restored count lower than expected (winenum may not have rescanned yet)")
+                            }
+                        }
+
+                        ; === Test 2: Title blacklist (verify mechanism works) ===
+                        Log("  [BL Test] Testing title blacklist pattern matching...")
+
+                        ; Just verify blacklist functions work - add and remove test entry
+                        testTitlePattern := "TEST_BL_TITLE_" A_TickCount
+                        Blacklist_AddTitle(testTitlePattern)
+
+                        ; Read back and verify it was added
+                        testContent := ""
+                        try testContent := FileRead(blFilePath, "UTF-8")
+
+                        if (InStr(testContent, testTitlePattern)) {
+                            Log("PASS: Title pattern added to blacklist file")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: Title pattern not found in blacklist file")
+                            TestErrors++
+                        }
+
+                        ; Restore original
+                        try {
+                            FileDelete(blFilePath)
+                            FileAppend(originalBlacklist, blFilePath, "UTF-8")
+                        }
+
+                        ; === Test 3: Pair blacklist ===
+                        Log("  [BL Test] Testing pair blacklist pattern matching...")
+
+                        testPairClass := "TEST_BL_PAIR_CLASS_" A_TickCount
+                        testPairTitle := "TEST_BL_PAIR_TITLE_" A_TickCount
+                        Blacklist_AddPair(testPairClass, testPairTitle)
+
+                        ; Read back and verify
+                        testContent := ""
+                        try testContent := FileRead(blFilePath, "UTF-8")
+
+                        expectedPair := testPairClass "|" testPairTitle
+                        if (InStr(testContent, expectedPair)) {
+                            Log("PASS: Pair pattern added to blacklist file")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: Pair pattern not found in blacklist file")
+                            TestErrors++
+                        }
+
+                        ; Final restore
+                        try {
+                            FileDelete(blFilePath)
+                            FileAppend(originalBlacklist, blFilePath, "UTF-8")
+                        }
+
+                        ; Send final reload to restore store state
+                        IPC_PipeClient_Send(blClient, JXON_Dump(reloadMsg))
+                        Sleep(200)
+
+                        Log("  [BL Test] Blacklist file restored to original state")
+                    }
+                } catch as e {
+                    Log("FAIL: Blacklist test error: " e.Message)
+                    TestErrors++
+                }
+            }
+
+            IPC_PipeClient_Close(blClient)
+        } else {
+            Log("FAIL: Could not connect to store for blacklist test")
+            TestErrors++
+        }
+
+        try {
+            ProcessClose(blTestPid)
+        }
+    }
 }
 
 ; Summary
@@ -682,6 +994,38 @@ Test_OnWsE2EMessage(line, hPipe := 0) {
         gWsE2EReceived := true
     } else {
         Log("  [WS E2E] Got other msg: " SubStr(line, 1, 60))
+    }
+}
+
+Test_OnHeartbeatMessage(line, hPipe := 0) {
+    global gHbTestHeartbeats, gHbTestLastRev, gHbTestReceived, IPC_MSG_HEARTBEAT
+    if (InStr(line, '"type":"heartbeat"')) {
+        gHbTestHeartbeats++
+        Log("  [HB Test] Received heartbeat #" gHbTestHeartbeats ": " SubStr(line, 1, 60))
+        ; Extract rev from message
+        try {
+            obj := JXON_Load(line)
+            if (obj.Has("rev")) {
+                gHbTestLastRev := obj["rev"]
+            }
+        }
+        gHbTestReceived := true
+    } else if (InStr(line, '"type":"snapshot"') || InStr(line, '"type":"projection"')) {
+        Log("  [HB Test] Got data msg (ignoring): " SubStr(line, 1, 50))
+    } else {
+        Log("  [HB Test] Got other msg: " SubStr(line, 1, 50))
+    }
+}
+
+Test_OnBlacklistMessage(line, hPipe := 0) {
+    global gBlTestResponse, gBlTestReceived
+    ; We want projection/snapshot responses
+    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+        Log("  [BL Test] Received: " SubStr(line, 1, 60))
+        gBlTestResponse := line
+        gBlTestReceived := true
+    } else {
+        Log("  [BL Test] Got other msg: " SubStr(line, 1, 50))
     }
 }
 

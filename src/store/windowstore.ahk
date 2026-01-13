@@ -8,11 +8,17 @@ global gWS_ScanId := 0
 global gWS_Config := Map()
 global gWS_Meta := Map()
 
+; Diagnostic: track what's causing rev bumps
+global gWS_DiagChurn := Map()  ; field -> count of changes
+global gWS_DiagSource := Map() ; source -> count of rev bumps
+
 ; Work queues for pumps
 global gWS_IconQueue := []         ; hwnds needing icons
 global gWS_PidQueue := []          ; pids needing process info
+global gWS_ZQueue := []            ; hwnds needing Z-order (triggers winenum pump)
 global gWS_IconQueueSet := Map()   ; fast lookup for dedup
 global gWS_PidQueueSet := Map()    ; fast lookup for dedup
+global gWS_ZQueueSet := Map()      ; fast lookup for dedup
 
 ; Caches
 global gWS_ExeIconCache := Map()   ; exe path -> HICON (master copy)
@@ -76,8 +82,10 @@ WindowStore_EndScan(graceMs := "") {
             }
         }
     }
-    if (changed)
+    if (changed) {
         gWS_Rev += 1
+        _WS_DiagBump("EndScan")
+    }
     return { removed: removed, rev: gWS_Rev }
 }
 
@@ -104,32 +112,57 @@ WindowStore_UpsertWindow(records, source := "") {
         ; Komorebi is authoritative for workspace state
         hasKomorebiWs := row.HasOwnProp("workspaceName") && row.workspaceName != ""
 
+        ; Track if any field actually changed
+        rowChanged := false
         if (rec is Map) {
             for k, v in rec {
                 ; Preserve komorebi workspace state if winenum tries to overwrite
                 if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
                     continue
-                row.%k% := v
+                ; Only update if value differs
+                if (!row.HasOwnProp(k) || row.%k% != v) {
+                    ; Diagnostic: track which fields trigger changes (skip for new records)
+                    if (!isNew) {
+                        gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
+                    }
+                    row.%k% := v
+                    rowChanged := true
+                }
             }
         } else {
             continue
         }
-        row.present := true
-        row.presentNow := true
+        ; Update presence flags - check for changes
+        if (!row.present) {
+            row.present := true
+            rowChanged := true
+        }
+        if (!row.presentNow) {
+            row.presentNow := true
+            rowChanged := true
+        }
+        ; Always update scan tracking (these don't trigger rev bump)
         row.lastSeenScanId := gWS_ScanId
         row.lastSeenTick := A_TickCount
-        updated += 1
+
+        if (rowChanged)
+            updated += 1
 
         ; Enqueue for enrichment if missing data
         _WS_EnqueueIfNeeded(row)
     }
-    if (added || updated)
+    if (added || updated) {
         gWS_Rev += 1
+        _WS_DiagBump("UpsertWindow")
+    }
     return { added: added, updated: updated, rev: gWS_Rev }
 }
 
+; Fields that are internal tracking and should not bump rev when changed
+global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true)
+
 WindowStore_UpdateFields(hwnd, patch, source := "") {
-    global gWS_Store, gWS_Rev
+    global gWS_Store, gWS_Rev, gWS_InternalFields
     hwnd := hwnd + 0
     if (!gWS_Store.Has(hwnd))
         return { changed: false, rev: gWS_Rev }
@@ -140,7 +173,9 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
         for k, v in patch {
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
-                changed := true
+                ; Only count as "changed" if it's not an internal tracking field
+                if (!gWS_InternalFields.Has(k))
+                    changed := true
             }
         }
     } else if (IsObject(patch)) {
@@ -148,12 +183,15 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
             v := patch.%k%
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
-                changed := true
+                if (!gWS_InternalFields.Has(k))
+                    changed := true
             }
         }
     }
-    if (changed)
+    if (changed) {
         gWS_Rev += 1
+        _WS_DiagBump("UpdateFields:" . source)
+    }
     return { changed: changed, rev: gWS_Rev }
 }
 
@@ -170,14 +208,69 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         gWS_Store.Delete(hwnd)
         removed += 1
     }
-    if (removed)
+    if (removed) {
         gWS_Rev += 1
+        _WS_DiagBump("RemoveWindow")
+    }
+    return { removed: removed, rev: gWS_Rev }
+}
+
+; Purge all windows from store that match the current blacklist
+; Called after blacklist reload to remove newly-blacklisted windows
+WindowStore_PurgeBlacklisted() {
+    global gWS_Store, gWS_Rev
+    removed := 0
+    toRemove := []
+
+    ; Collect hwnds that match blacklist (can't modify Map while iterating)
+    for hwnd, rec in gWS_Store {
+        title := rec.HasOwnProp("title") ? rec.title : ""
+        class := rec.HasOwnProp("class") ? rec.class : ""
+        if (Blacklist_IsMatch(title, class)) {
+            toRemove.Push(hwnd)
+        }
+    }
+
+    ; Remove them
+    for _, hwnd in toRemove {
+        gWS_Store.Delete(hwnd)
+        removed += 1
+    }
+
+    if (removed) {
+        gWS_Rev += 1
+        _WS_DiagBump("PurgeBlacklisted")
+    }
+
     return { removed: removed, rev: gWS_Rev }
 }
 
 WindowStore_GetRev() {
     global gWS_Rev
     return gWS_Rev
+}
+
+; Diagnostic: get and reset churn stats
+WindowStore_GetChurnDiag(reset := true) {
+    global gWS_DiagChurn, gWS_DiagSource
+    result := Map()
+    result["fields"] := Map()
+    result["sources"] := Map()
+    for k, v in gWS_DiagChurn
+        result["fields"][k] := v
+    for k, v in gWS_DiagSource
+        result["sources"][k] := v
+    if (reset) {
+        gWS_DiagChurn := Map()
+        gWS_DiagSource := Map()
+    }
+    return result
+}
+
+; Diagnostic: record a rev bump from a source
+_WS_DiagBump(source) {
+    global gWS_DiagSource
+    gWS_DiagSource[source] := (gWS_DiagSource.Has(source) ? gWS_DiagSource[source] : 0) + 1
 }
 
 WindowStore_GetByHwnd(hwnd) {
@@ -205,6 +298,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
                 rec.isOnCurrentWorkspace := newIsOnCurrent
         }
         gWS_Rev += 1
+        _WS_DiagBump("SetCurrentWorkspace")
     }
 }
 
@@ -286,7 +380,8 @@ _WS_NewRecord(hwnd) {
         processName: "",
         exePath: "",
         iconHicon: 0,
-        iconCooldownUntilTick: 0
+        iconCooldownUntilTick: 0,
+        iconGaveUp: false
     }
 }
 
@@ -393,8 +488,9 @@ _WS_EnqueueIfNeeded(row) {
     global gWS_IconQueue, gWS_IconQueueSet, gWS_PidQueue, gWS_PidQueueSet
     now := A_TickCount
 
-    ; Need icon? Skip cloaked windows - can't get icons from them
-    if (!row.iconHicon && row.present && !row.isCloaked) {
+    ; Need icon? Skip hidden windows and windows that gave up - can't reliably get icons from them
+    ; This matches IconSkipHidden logic in icon_pump.ahk to avoid endless retry loops
+    if (!row.iconHicon && row.present && !row.isCloaked && !row.isMinimized && row.isVisible && !row.iconGaveUp) {
         if (row.iconCooldownUntilTick = 0 || now >= row.iconCooldownUntilTick) {
             hwnd := row.hwnd + 0
             if (!gWS_IconQueueSet.Has(hwnd)) {
@@ -439,6 +535,39 @@ WindowStore_PopPidBatch(count := 16) {
 }
 
 ; ============================================================
+; Z-Order Queue (triggers winenum pump)
+; ============================================================
+
+; Enqueue a window that needs Z-order (called by partial producers like winevent_hook)
+WindowStore_EnqueueForZ(hwnd) {
+    global gWS_ZQueue, gWS_ZQueueSet
+    hwnd := hwnd + 0
+    if (!hwnd || gWS_ZQueueSet.Has(hwnd))
+        return
+    gWS_ZQueue.Push(hwnd)
+    gWS_ZQueueSet[hwnd] := true
+}
+
+; Check if any windows need Z-order enrichment
+WindowStore_HasPendingZ() {
+    global gWS_ZQueue
+    return gWS_ZQueue.Length > 0
+}
+
+; Get count of pending Z requests
+WindowStore_PendingZCount() {
+    global gWS_ZQueue
+    return gWS_ZQueue.Length
+}
+
+; Clear the Z queue (called after a full winenum scan)
+WindowStore_ClearZQueue() {
+    global gWS_ZQueue, gWS_ZQueueSet
+    gWS_ZQueue := []
+    gWS_ZQueueSet := Map()
+}
+
+; ============================================================
 ; Process Name Cache
 ; ============================================================
 
@@ -467,8 +596,10 @@ WindowStore_UpdateProcessName(pid, name) {
             changed := true
         }
     }
-    if (changed)
+    if (changed) {
         gWS_Rev += 1
+        _WS_DiagBump("UpdateProcessName")
+    }
 }
 
 ; ============================================================
@@ -504,22 +635,37 @@ WindowStore_Ensure(hwnd, hints := 0, source := "") {
     if (!hwnd)
         return
 
-    if (!gWS_Store.Has(hwnd)) {
+    isNew := !gWS_Store.Has(hwnd)
+    if (isNew) {
         gWS_Store[hwnd] := _WS_NewRecord(hwnd)
-        gWS_Rev += 1
     }
 
     row := gWS_Store[hwnd]
+    changed := isNew
 
-    ; Merge hints
+    ; Merge hints - only update if value differs
     if (IsObject(hints)) {
         if (hints is Map) {
-            for k, v in hints
-                row.%k% := v
+            for k, v in hints {
+                if (!row.HasOwnProp(k) || row.%k% != v) {
+                    row.%k% := v
+                    changed := true
+                }
+            }
         } else {
-            for k in hints.OwnProps()
-                row.%k% := hints.%k%
+            for k in hints.OwnProps() {
+                v := hints.%k%
+                if (!row.HasOwnProp(k) || row.%k% != v) {
+                    row.%k% := v
+                    changed := true
+                }
+            }
         }
+    }
+
+    if (changed) {
+        gWS_Rev += 1
+        _WS_DiagBump("Ensure:" . source)
     }
 
     ; Enqueue for enrichment

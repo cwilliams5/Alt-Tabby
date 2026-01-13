@@ -40,7 +40,7 @@ if (gStore_TestMode) {
 }
 
 Store_Init() {
-    global gStore_Server, StorePipeName, StoreScanIntervalMs
+    global gStore_Server, StorePipeName
 
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
@@ -56,33 +56,85 @@ Store_Init() {
         ExitApp(1)
     }
     gStore_Server := IPC_PipeServer_Start(StorePipeName, Store_OnMessage)
+
     ; Initialize producers BEFORE first scan so they can enrich data
-    if (IsSet(UseMruLite) && UseMruLite)
-        MRU_Lite_Init()
+    ; MRU is always enabled (essential for alt-tab)
+    MRU_Lite_Init()
+
+    ; Komorebi is optional - graceful if not installed
     if (IsSet(UseKomorebiSub) && UseKomorebiSub)
         KomorebiSub_Init()
     else if (IsSet(UseKomorebiLite) && UseKomorebiLite)
         KomorebiLite_Init()
+
+    ; Pumps
     if (IsSet(UseIconPump) && UseIconPump)
         IconPump_Start()
     if (IsSet(UseProcPump) && UseProcPump)
         ProcPump_Start()
 
     ; Do initial full scan AFTER producers init so data includes komorebi workspace info
-    Store_ScanTick()
+    Store_FullScan()
 
-    ; Always run polling as a safety net
-    SetTimer(Store_ScanTick, StoreScanIntervalMs)
+    ; WinEventHook is always enabled (primary source of window changes)
+    if (!WinEventHook_Start()) {
+        Store_LogError("WinEventHook failed to start - enabling safety polling")
+        ; Fallback: enable safety polling if hook fails
+        SetTimer(Store_FullScan, 2000)
+    } else {
+        ; Hook working - start Z-pump for on-demand scans
+        SetTimer(Store_ZPumpTick, 200)
 
-    ; Optionally add WinEventHook for responsive event-driven updates
-    if (IsSet(UseWinEventHook) && UseWinEventHook) {
-        if (!WinEventHook_Start()) {
-            Store_LogError("WinEventHook failed to start (polling will continue)")
+        ; Optional safety net polling (usually disabled)
+        safetyMs := IsSet(WinEnumSafetyPollMs) ? WinEnumSafetyPollMs : 0
+        if (safetyMs > 0) {
+            SetTimer(Store_FullScan, safetyMs)
         }
     }
+
+    ; Start heartbeat timer for client connection health
+    heartbeatMs := IsSet(StoreHeartbeatIntervalMs) ? StoreHeartbeatIntervalMs : 5000
+    SetTimer(Store_HeartbeatTick, heartbeatMs)
 }
 
-Store_ScanTick() {
+; Broadcast heartbeat to all clients with current rev for drift detection
+Store_HeartbeatTick() {
+    global gStore_Server, IPC_MSG_HEARTBEAT
+
+    if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
+        return
+
+    ; Log churn diagnostics (what fields and sources are triggering rev bumps)
+    if (IsSet(DiagChurnLog) && DiagChurnLog) {
+        churn := WindowStore_GetChurnDiag(true)
+        if (churn["sources"].Count > 0 || churn["fields"].Count > 0) {
+            srcParts := ""
+            for src, count in churn["sources"]
+                srcParts .= (srcParts ? ", " : "") . src "=" count
+            fldParts := ""
+            for fld, count in churn["fields"]
+                fldParts .= (fldParts ? ", " : "") . fld "=" count
+            Store_LogError("CHURN src=[" srcParts "] fields=[" fldParts "]")
+        }
+    }
+
+    rev := WindowStore_GetRev()
+    msg := JXON_Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
+    IPC_PipeServer_Broadcast(gStore_Server, msg)
+}
+
+; Z-Pump: triggers full scan when windows need Z-order enrichment
+Store_ZPumpTick() {
+    if (!WindowStore_HasPendingZ())
+        return
+    ; Windows need Z-order - run full scan
+    Store_FullScan()
+    ; Clear the queue after scan
+    WindowStore_ClearZQueue()
+}
+
+; Full winenum scan - runs on startup, snapshot request, Z-pump trigger, or safety polling
+Store_FullScan() {
     global gStore_LastBroadcastRev, gStore_Server, gStore_TestMode, gStore_LastClientLog
     if (gStore_TestMode && (A_TickCount - gStore_LastClientLog) > 3000) {
         gStore_LastClientLog := A_TickCount
@@ -237,6 +289,11 @@ Store_OnMessage(line, hPipe := 0) {
         return
     }
     if (type = IPC_MSG_SNAPSHOT_REQUEST || type = IPC_MSG_PROJECTION_REQUEST) {
+        ; Snapshot requests trigger a full scan for accuracy
+        if (type = IPC_MSG_SNAPSHOT_REQUEST) {
+            Store_FullScan()
+            WindowStore_ClearZQueue()
+        }
         opts := IPC_DefaultProjectionOpts()
         if (gStore_ClientOpts.Has(hPipe))
             opts := gStore_ClientOpts[hPipe]
@@ -254,18 +311,22 @@ Store_OnMessage(line, hPipe := 0) {
         return
     }
     if (type = IPC_MSG_RELOAD_BLACKLIST) {
-        ; Reload blacklist from file and trigger rescan
+        ; Reload blacklist from file
         Blacklist_Reload()
         stats := Blacklist_GetStats()
         Store_LogError("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+
+        ; Purge windows that now match the blacklist
+        purgeResult := WindowStore_PurgeBlacklisted()
+        Store_LogError("blacklist purge removed " purgeResult.removed " windows")
 
         ; Clear all client projections to force fresh delta calculation
         for clientPipe, _ in gStore_LastClientProj {
             gStore_LastClientProj[clientPipe] := []
         }
 
-        ; Trigger immediate rescan which will filter out newly-blacklisted windows
-        Store_ScanTick()
+        ; Push updated projections to clients immediately
+        Store_PushToClients()
         return
     }
 }
@@ -278,15 +339,19 @@ Store_OnExit(reason, code) {
     global gStore_Server
     ; Stop all timers and hooks before exit to prevent errors
     try {
-        SetTimer(Store_ScanTick, 0)
+        SetTimer(Store_FullScan, 0)
+    }
+    try {
+        SetTimer(Store_ZPumpTick, 0)
+    }
+    try {
+        SetTimer(Store_HeartbeatTick, 0)
     }
     try {
         WinEventHook_Stop()
     }
     try {
-        if (IsSet(MRU_Lite_Tick)) {
-            SetTimer(MRU_Lite_Tick, 0)
-        }
+        SetTimer(MRU_Lite_Tick, 0)
     }
     try {
         if (IsObject(gStore_Server)) {

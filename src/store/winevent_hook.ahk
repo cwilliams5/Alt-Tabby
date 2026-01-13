@@ -183,6 +183,10 @@ _WEH_ProcessBatch() {
         }
         if (records.Length > 0) {
             WindowStore_UpsertWindow(records, "winevent_hook")
+            ; Enqueue for Z-order enrichment (triggers winenum pump)
+            for _, rec in records {
+                WindowStore_EnqueueForZ(rec["hwnd"])
+            }
         }
     }
 
@@ -190,8 +194,19 @@ _WEH_ProcessBatch() {
 }
 
 ; Probe a single window - returns Map or empty string
+; NOTE: Eligibility check should be done before calling this (via Blacklist_IsWindowEligible)
 _WEH_ProbeWindow(hwnd) {
-    global UseAltTabEligibility, UseBlacklist
+    ; Check window still exists
+    try {
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+            return ""
+    } catch {
+        return ""
+    }
+
+    ; Use centralized eligibility check (Alt-Tab rules + blacklist)
+    if (!Blacklist_IsWindowEligible(hwnd))
+        return ""
 
     ; Get basic window info
     title := ""
@@ -199,10 +214,6 @@ _WEH_ProbeWindow(hwnd) {
     pid := 0
 
     try {
-        ; Check window still exists
-        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
-            return ""
-
         title := WinGetTitle("ahk_id " hwnd)
         class := WinGetClass("ahk_id " hwnd)
         pid := WinGetPID("ahk_id " hwnd)
@@ -210,7 +221,7 @@ _WEH_ProbeWindow(hwnd) {
         return ""
     }
 
-    ; Skip windows with no title
+    ; Skip windows with no title (should already be caught by eligibility, but double-check)
     if (title = "")
         return ""
 
@@ -223,17 +234,6 @@ _WEH_ProbeWindow(hwnd) {
     hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
     isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 
-    ; Alt-Tab eligibility - filter early
-    eligible := _WEH_IsAltTabEligible(hwnd, isVisible, isMin, isCloaked)
-    useAltTab := IsSet(UseAltTabEligibility) ? UseAltTabEligibility : true
-    if (useAltTab && !eligible)
-        return ""
-
-    ; Blacklist filter (uses shared/blacklist.ahk)
-    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
-    if (useBlacklist && Blacklist_IsMatch(title, class))
-        return ""
-
     ; Build record
     rec := Map()
     rec["hwnd"] := hwnd
@@ -241,7 +241,7 @@ _WEH_ProbeWindow(hwnd) {
     rec["class"] := class
     rec["pid"] := pid
     rec["z"] := 0  ; Will be set by full scan or inferred
-    rec["altTabEligible"] := eligible
+    rec["altTabEligible"] := true  ; Already checked by eligibility
     rec["isCloaked"] := isCloaked
     rec["isMinimized"] := isMin
     rec["isVisible"] := isVisible
@@ -249,26 +249,3 @@ _WEH_ProbeWindow(hwnd) {
     return rec
 }
 
-; Alt-Tab eligibility check
-_WEH_IsAltTabEligible(hwnd, isVisible, isMin, isCloaked) {
-    ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -20, "ptr")
-
-    WS_EX_TOOLWINDOW := 0x00000080
-    WS_EX_APPWINDOW := 0x00040000
-
-    isTool := (ex & WS_EX_TOOLWINDOW) != 0
-    isApp := (ex & WS_EX_APPWINDOW) != 0
-
-    owner := DllCall("user32\GetWindow", "ptr", hwnd, "uint", 4, "ptr")
-
-    if (isTool)
-        return false
-
-    if (owner != 0 && !isApp)
-        return false
-
-    if !(isVisible || isMin || isCloaked)
-        return false
-
-    return true
-}

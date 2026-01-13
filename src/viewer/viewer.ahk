@@ -10,23 +10,28 @@
 ; Viewer (debug) - receives snapshots/deltas from store.
 
 global gViewer_Client := 0
-global gViewer_Sort := "Z"
+global gViewer_Sort := "MRU"
 global gViewer_Gui := 0
 global gViewer_LV := 0
 global gViewer_RowByHwnd := Map()
 global gViewer_CurrentOnly := false
+global gViewer_IncludeMinimized := true
+global gViewer_IncludeCloaked := true
 global gViewer_RecByHwnd := Map()
 global gViewer_LastMsgTick := 0
 global gViewer_LogPath := ""
 global gViewer_Status := 0
 global gViewer_SortLabel := 0
 global gViewer_WSLabel := 0
+global gViewer_MinLabel := 0
+global gViewer_CloakLabel := 0
 global gViewer_Headless := false
 global gViewer_LastRev := -1
 global gViewer_LastItemCount := 0
 global gViewer_PushSnapCount := 0
 global gViewer_PushDeltaCount := 0
 global gViewer_PollCount := 0
+global gViewer_HeartbeatCount := 0
 global gViewer_LastUpdateType := ""
 global gViewer_CurrentWSLabel := 0
 global gViewer_CurrentWSName := ""
@@ -42,6 +47,10 @@ for _, arg in A_Args {
 Viewer_Init() {
     global gViewer_Client, StorePipeName
     global gViewer_LogPath, ViewerAutoStartStore
+
+    ; Initialize blacklist for writing (viewer needs to know the file path)
+    Blacklist_Init()
+
     if (IsSet(DebugViewerLog) && DebugViewerLog && !gViewer_LogPath) {
         gViewer_LogPath := A_Temp "\tabby_viewer.log"
     }
@@ -70,7 +79,8 @@ Viewer_Init() {
 Viewer_OnMessage(line, hPipe := 0) {
     global gViewer_LastMsgTick, gViewer_LastRev
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
-    global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK
+    global gViewer_HeartbeatCount
+    global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK, IPC_MSG_HEARTBEAT
     gViewer_LastMsgTick := A_TickCount
     _Viewer_Log("=== MESSAGE RECEIVED ===")
     _Viewer_Log("raw: " SubStr(line, 1, 300))
@@ -144,6 +154,18 @@ Viewer_OnMessage(line, hPipe := 0) {
                 _Viewer_ApplyDelta(payload)
             }
         }
+    } else if (type = IPC_MSG_HEARTBEAT) {
+        ; Heartbeat = store is alive, check if we're behind on rev
+        gViewer_HeartbeatCount++
+        gViewer_LastUpdateType := "hb"
+        if (obj.Has("rev")) {
+            storeRev := obj["rev"]
+            ; If store rev is ahead, we missed something - request full projection
+            if (storeRev > gViewer_LastRev && gViewer_LastRev >= 0) {
+                _Viewer_Log("heartbeat: store rev " storeRev " > local rev " gViewer_LastRev " - requesting resync")
+                _Viewer_RequestProjection()
+            }
+        }
     }
 }
 
@@ -161,47 +183,66 @@ _Viewer_RequestProjection() {
 }
 
 _Viewer_ProjectionOpts() {
-    global gViewer_Sort, gViewer_CurrentOnly
+    global gViewer_Sort, gViewer_CurrentOnly, gViewer_IncludeMinimized, gViewer_IncludeCloaked
     return {
         sort: gViewer_Sort,
         columns: "items",
         currentWorkspaceOnly: gViewer_CurrentOnly,
-        includeMinimized: true,
-        includeCloaked: true
+        includeMinimized: gViewer_IncludeMinimized,
+        includeCloaked: gViewer_IncludeCloaked
     }
 }
 
 _Viewer_CreateGui() {
     global gViewer_Gui, gViewer_LV, gViewer_Status
     global gViewer_SortLabel, gViewer_WSLabel, gViewer_CurrentWSLabel
+    global gViewer_MinLabel, gViewer_CloakLabel
 
     gViewer_Gui := Gui("+Resize +AlwaysOnTop", "WindowStore Viewer")
 
+    ; === Top toolbar - toggle buttons ===
+    xPos := 10
+
     ; Sort toggle
-    btn := gViewer_Gui.AddButton("x10 y10 w120 h28", "Toggle Sort")
+    btn := gViewer_Gui.AddButton("x" xPos " y10 w70 h24", "Sort")
     btn.OnEvent("Click", _Viewer_ToggleSort)
-    gViewer_SortLabel := gViewer_Gui.AddText("x135 y14 w60 h20", "[Z]")
+    gViewer_SortLabel := gViewer_Gui.AddText("x" (xPos + 75) " y14 w35 h20", "[MRU]")
+    xPos += 115
 
     ; Workspace toggle
-    btn2 := gViewer_Gui.AddButton("x200 y10 w120 h28", "Toggle WS")
+    btn2 := gViewer_Gui.AddButton("x" xPos " y10 w70 h24", "WS")
     btn2.OnEvent("Click", _Viewer_ToggleCurrentWS)
-    gViewer_WSLabel := gViewer_Gui.AddText("x325 y14 w60 h20", "[All]")
+    gViewer_WSLabel := gViewer_Gui.AddText("x" (xPos + 75) " y14 w50 h20", "[All]")
+    xPos += 130
+
+    ; Minimized toggle
+    btn3 := gViewer_Gui.AddButton("x" xPos " y10 w70 h24", "Min")
+    btn3.OnEvent("Click", _Viewer_ToggleMinimized)
+    gViewer_MinLabel := gViewer_Gui.AddText("x" (xPos + 75) " y14 w35 h20", "[Y]")
+    xPos += 115
+
+    ; Cloaked toggle
+    btn4 := gViewer_Gui.AddButton("x" xPos " y10 w70 h24", "Cloak")
+    btn4.OnEvent("Click", _Viewer_ToggleCloaked)
+    gViewer_CloakLabel := gViewer_Gui.AddText("x" (xPos + 75) " y14 w35 h20", "[Y]")
+    xPos += 115
 
     ; Current workspace display
-    gViewer_Gui.AddText("x390 y14 w60 h20", "Current:")
-    gViewer_CurrentWSLabel := gViewer_Gui.AddText("x445 y14 w80 h20 +0x100", "---")  ; 0x100 = SS_SUNKEN
+    gViewer_Gui.AddText("x" xPos " y14 w50 h20", "CurWS:")
+    gViewer_CurrentWSLabel := gViewer_Gui.AddText("x" (xPos + 50) " y14 w70 h20 +0x100", "---")
+    xPos += 130
 
     ; Refresh button
-    btn3 := gViewer_Gui.AddButton("x530 y10 w80 h28", "Refresh")
-    btn3.OnEvent("Click", (*) => _Viewer_RequestProjection())
+    btn5 := gViewer_Gui.AddButton("x" xPos " y10 w60 h24", "Refresh")
+    btn5.OnEvent("Click", (*) => _Viewer_RequestProjection())
 
-    ; Status
-    gViewer_Status := gViewer_Gui.AddText("x620 y14 w400 h20", "Disconnected")
-
-    ; ListView with all columns
+    ; === ListView in middle ===
     ; Columns: Z, MRU, HWND, PID, Title, Class, WS, Cur, Process, Foc, Clk, Min, Icon
-    gViewer_LV := gViewer_Gui.AddListView("x10 y48 w1200 h600 +LV0x10000",
+    gViewer_LV := gViewer_Gui.AddListView("x10 y44 w1100 h570 +LV0x10000",
         ["Z", "MRU", "HWND", "PID", "Title", "Class", "WS", "Cur", "Process", "Foc", "Clk", "Min", "Icon"])
+
+    ; === Bottom status bar ===
+    gViewer_Status := gViewer_Gui.AddText("x10 y620 w1100 h20", "Disconnected")
 
     ; Set column widths
     gViewer_LV.ModifyCol(1, 35)   ; Z
@@ -227,11 +268,14 @@ _Viewer_CreateGui() {
 }
 
 _Viewer_OnResize(gui, minMax, w, h) {
-    global gViewer_LV
+    global gViewer_LV, gViewer_Status
     if (minMax = -1) {
         return  ; Minimized
     }
-    gViewer_LV.Move(, , w - 20, h - 58)
+    ; ListView: top=44, bottom margin=30 (for status bar)
+    gViewer_LV.Move(, , w - 20, h - 74)
+    ; Status bar at bottom
+    gViewer_Status.Move(10, h - 26, w - 20)
 }
 
 _Viewer_ToggleSort(*) {
@@ -246,8 +290,24 @@ _Viewer_ToggleSort(*) {
 _Viewer_ToggleCurrentWS(*) {
     global gViewer_CurrentOnly, gViewer_WSLabel
     gViewer_CurrentOnly := !gViewer_CurrentOnly
-    gViewer_WSLabel.Text := gViewer_CurrentOnly ? "[Current]" : "[All]"
+    gViewer_WSLabel.Text := gViewer_CurrentOnly ? "[Cur]" : "[All]"
     ; Update server with new projection opts so future pushes are filtered correctly
+    _Viewer_SendProjectionOpts()
+    _Viewer_RequestProjection()
+}
+
+_Viewer_ToggleMinimized(*) {
+    global gViewer_IncludeMinimized, gViewer_MinLabel
+    gViewer_IncludeMinimized := !gViewer_IncludeMinimized
+    gViewer_MinLabel.Text := gViewer_IncludeMinimized ? "[Y]" : "[N]"
+    _Viewer_SendProjectionOpts()
+    _Viewer_RequestProjection()
+}
+
+_Viewer_ToggleCloaked(*) {
+    global gViewer_IncludeCloaked, gViewer_CloakLabel
+    gViewer_IncludeCloaked := !gViewer_IncludeCloaked
+    gViewer_CloakLabel.Text := gViewer_IncludeCloaked ? "[Y]" : "[N]"
     _Viewer_SendProjectionOpts()
     _Viewer_RequestProjection()
 }
@@ -549,13 +609,18 @@ _Viewer_ApplyDelta(payload) {
 }
 
 _Viewer_Heartbeat() {
-    global gViewer_Client, gViewer_LastMsgTick, StorePipeName
-    global gViewer_Status, gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType
+    global gViewer_Client, gViewer_LastMsgTick, StorePipeName, ViewerHeartbeatTimeoutMs
+    global gViewer_Status, gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
+    global gViewer_HeartbeatCount, gViewer_LastUpdateType
+
+    timeoutMs := IsSet(ViewerHeartbeatTimeoutMs) ? ViewerHeartbeatTimeoutMs : 12000
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
+        ; Not connected - try to connect
         gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
         if (gViewer_Client.hPipe) {
             _Viewer_SendHello()
+            _Viewer_Log("Reconnected to store")
         }
         if (IsObject(gViewer_Status)) {
             gViewer_Status.Text := "Disconnected"
@@ -563,15 +628,24 @@ _Viewer_Heartbeat() {
         return
     }
 
-    ; Request refresh if no updates in 5 seconds (server pushes tailored updates)
-    if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > 5000) {
-        _Viewer_RequestProjection()
+    ; Check for heartbeat timeout - if no message in timeoutMs, connection may be dead
+    if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > timeoutMs) {
+        _Viewer_Log("Heartbeat timeout (" timeoutMs "ms) - attempting reconnect")
+        ; Close current connection and try to reconnect
+        IPC_PipeClient_Close(gViewer_Client)
+        gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
+        if (gViewer_Client.hPipe) {
+            _Viewer_SendHello()
+            _Viewer_Log("Reconnected after timeout")
+        }
+        return
     }
 
+    ; Update status bar
     if (IsObject(gViewer_Status)) {
-        elapsed := A_TickCount - gViewer_LastMsgTick
+        elapsed := gViewer_LastMsgTick ? (A_TickCount - gViewer_LastMsgTick) : 0
         typeStr := gViewer_LastUpdateType ? gViewer_LastUpdateType : "none"
-        gViewer_Status.Text := "Last: " typeStr " " elapsed "ms | Snap: " gViewer_PushSnapCount " | Delta: " gViewer_PushDeltaCount " | Poll: " gViewer_PollCount
+        gViewer_Status.Text := "Rev: " gViewer_LastRev " | Last: " typeStr " " elapsed "ms | Snap: " gViewer_PushSnapCount " | Delta: " gViewer_PushDeltaCount " | HB: " gViewer_HeartbeatCount " | Poll: " gViewer_PollCount
     }
 }
 

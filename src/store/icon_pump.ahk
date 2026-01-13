@@ -68,7 +68,7 @@ _IP_Tick() {
 
         ; Skip hidden windows (unlikely to yield icon)
         if (IconSkipHidden) {
-            if (rec.state = "OtherWorkspace" || rec.isMinimized || !rec.isVisible) {
+            if (rec.isCloaked || rec.isMinimized || !rec.isVisible) {
                 _IP_SetCooldown(hwnd, IconIdleBackoffMs)
                 continue
             }
@@ -112,7 +112,9 @@ _IP_Tick() {
                 step := Floor(IconAttemptBackoffMs * (IconAttemptBackoffMultiplier ** (tries - 1)))
             _IP_SetCooldown(hwnd, step)
         } else {
-            _IP_SetCooldown(hwnd, IconGiveUpBackoffMs)
+            ; Max attempts reached - mark as gave up so we don't retry forever
+            WindowStore_UpdateFields(hwnd, { iconGaveUp: true }, "icons")
+            _IP_Attempts.Delete(hwnd)  ; Clean up attempts tracking
         }
     }
 }
