@@ -28,6 +28,10 @@ global _WEH_LastProcessTick := 0
 global _WEH_TimerOn := false
 global _WEH_ShellWindow := 0
 
+; MRU tracking (replaces MRU_Lite when hook is active)
+global _WEH_LastFocusHwnd := 0
+global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
+
 ; Event constants
 global WEH_EVENT_OBJECT_CREATE := 0x8000
 global WEH_EVENT_OBJECT_DESTROY := 0x8001
@@ -98,7 +102,7 @@ WinEventHook_Stop() {
 ; Hook callback - called for each window event
 ; Keep this FAST - just queue the hwnd for later processing
 _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
-    global _WEH_PendingHwnds, _WEH_ShellWindow
+    global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd
     global WEH_EVENT_OBJECT_CREATE, WEH_EVENT_OBJECT_DESTROY, WEH_EVENT_OBJECT_SHOW
     global WEH_EVENT_OBJECT_HIDE, WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
     global WEH_EVENT_SYSTEM_MINIMIZESTART, WEH_EVENT_SYSTEM_MINIMIZEEND, WEH_EVENT_OBJECT_FOCUS
@@ -131,6 +135,11 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         return
     }
 
+    ; For focus/foreground events, capture for MRU update (processed in batch)
+    if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS) {
+        _WEH_PendingFocusHwnd := hwnd
+    }
+
     ; Queue for update
     _WEH_PendingHwnds[hwnd] := A_TickCount
 }
@@ -138,6 +147,22 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 ; Process queued events in batches
 _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs
+    global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
+
+    ; Process MRU focus changes first (no debounce needed)
+    if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != _WEH_LastFocusHwnd) {
+        newFocus := _WEH_PendingFocusHwnd
+        _WEH_PendingFocusHwnd := 0  ; Clear pending
+
+        ; Clear focus on previous window
+        if (_WEH_LastFocusHwnd) {
+            try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
+        }
+
+        ; Set focus and MRU timestamp on new window
+        _WEH_LastFocusHwnd := newFocus
+        try WindowStore_UpdateFields(newFocus, { lastActivatedTick: A_TickCount, isFocused: true }, "winevent_mru")
+    }
 
     if (_WEH_PendingHwnds.Count = 0)
         return
