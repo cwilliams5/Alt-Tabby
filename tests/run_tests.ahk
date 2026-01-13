@@ -664,6 +664,115 @@ if (RunLiveTests) {
         }
     }
 
+    ; --- Producer State E2E Test ---
+    Log("`n--- Producer State E2E Test ---")
+
+    ; Start a store for producer state testing
+    prodTestPipe := "tabby_prod_test_" A_TickCount
+    prodTestPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' prodTestPipe, , "Hide", &prodTestPid)
+    } catch as e {
+        Log("SKIP: Could not start store for producer state test: " e.Message)
+        prodTestPid := 0
+    }
+
+    if (prodTestPid) {
+        Sleep(1500)
+
+        global gProdTestMeta := ""
+        global gProdTestReceived := false
+
+        prodClient := IPC_PipeClient_Connect(prodTestPipe, Test_OnProducerStateMessage)
+
+        if (prodClient.hPipe) {
+            Log("PASS: Producer state test connected to store")
+            TestPassed++
+
+            ; Send hello to get initial snapshot with meta
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "prod_test" }
+            IPC_PipeClient_Send(prodClient, JXON_Dump(helloMsg))
+
+            ; Wait for snapshot
+            waitStart := A_TickCount
+            while (!gProdTestReceived && (A_TickCount - waitStart) < 5000) {
+                Sleep(100)
+            }
+
+            if (gProdTestReceived && IsObject(gProdTestMeta)) {
+                Log("PASS: Received projection with meta")
+                TestPassed++
+
+                ; Check for producers object in meta
+                producers := ""
+                if (gProdTestMeta is Map && gProdTestMeta.Has("producers")) {
+                    producers := gProdTestMeta["producers"]
+                } else if (IsObject(gProdTestMeta)) {
+                    try producers := gProdTestMeta.producers
+                }
+
+                if (IsObject(producers)) {
+                    Log("PASS: Meta contains producers object")
+                    TestPassed++
+
+                    ; Check that wineventHook state exists and is valid
+                    wehState := ""
+                    if (producers is Map && producers.Has("wineventHook")) {
+                        wehState := producers["wineventHook"]
+                    } else if (IsObject(producers)) {
+                        try wehState := producers.wineventHook
+                    }
+
+                    if (wehState = "running" || wehState = "failed" || wehState = "disabled") {
+                        Log("PASS: wineventHook state is valid (" wehState ")")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: wineventHook state invalid or missing (got: " wehState ")")
+                        TestErrors++
+                    }
+
+                    ; Count how many producers are reported
+                    prodCount := 0
+                    expectedProducers := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
+                    for _, pname in expectedProducers {
+                        pstate := ""
+                        if (producers is Map && producers.Has(pname)) {
+                            pstate := producers[pname]
+                        } else if (IsObject(producers)) {
+                            try pstate := producers.%pname%
+                        }
+                        if (pstate != "")
+                            prodCount++
+                    }
+
+                    if (prodCount >= 4) {
+                        Log("PASS: Found " prodCount " producer states in meta")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: Expected at least 4 producer states, got " prodCount)
+                        TestErrors++
+                    }
+                } else {
+                    Log("FAIL: Meta missing producers object")
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: Did not receive projection with meta")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(prodClient)
+        } else {
+            Log("FAIL: Could not connect to store for producer state test")
+            TestErrors++
+        }
+
+        try {
+            ProcessClose(prodTestPid)
+        }
+    }
+
     ; --- MRU/Focus Tracking Test ---
     Log("`n--- MRU/Focus Tracking Test ---")
 
@@ -1633,6 +1742,26 @@ Test_OnHeartbeatMessage(line, hPipe := 0) {
         Log("  [HB Test] Got data msg (ignoring): " SubStr(line, 1, 50))
     } else {
         Log("  [HB Test] Got other msg: " SubStr(line, 1, 50))
+    }
+}
+
+Test_OnProducerStateMessage(line, hPipe := 0) {
+    global gProdTestMeta, gProdTestReceived
+    ; We want snapshot response with meta.producers
+    if (InStr(line, '"type":"snapshot"') || InStr(line, '"type":"projection"')) {
+        Log("  [Prod Test] Received: " SubStr(line, 1, 60))
+        try {
+            obj := JXON_Load(line)
+            if (obj.Has("payload")) {
+                payload := obj["payload"]
+                if (payload.Has("meta")) {
+                    gProdTestMeta := payload["meta"]
+                }
+            }
+        }
+        gProdTestReceived := true
+    } else {
+        Log("  [Prod Test] Got other msg: " SubStr(line, 1, 50))
     }
 }
 
