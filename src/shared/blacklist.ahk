@@ -44,7 +44,7 @@ Blacklist_Init(filePath := "") {
     return Blacklist_Reload()
 }
 
-; Reload blacklist from file
+; Reload blacklist from file (creates default if missing)
 Blacklist_Reload() {
     global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs
     global gBlacklist_FilePath, gBlacklist_Loaded
@@ -52,6 +52,11 @@ Blacklist_Reload() {
     gBlacklist_Titles := []
     gBlacklist_Classes := []
     gBlacklist_Pairs := []
+
+    if (!FileExist(gBlacklist_FilePath)) {
+        ; Try to create default blacklist
+        _Blacklist_CreateDefault(gBlacklist_FilePath)
+    }
 
     if (!FileExist(gBlacklist_FilePath)) {
         gBlacklist_Loaded := false
@@ -316,5 +321,55 @@ Blacklist_GetStats() {
         titles: gBlacklist_Titles.Length,
         classes: gBlacklist_Classes.Length,
         pairs: gBlacklist_Pairs.Length
+    }
+}
+
+; Create default blacklist file with common Windows exclusions
+_Blacklist_CreateDefault(path) {
+    content := "; Alt-Tabby Blacklist Configuration`n"
+    content .= "; Windows matching these patterns are excluded from the window list.`n"
+    content .= "; Wildcards: * (any chars), ? (single char) - case-insensitive`n"
+    content .= ";`n"
+    content .= "; To blacklist a window from the viewer, double-click its row.`n"
+    content .= "`n"
+    content .= "[Title]`n"
+    content .= "komoborder*`n"
+    content .= "YasbBar`n"
+    content .= "NVIDIA GeForce Overlay`n"
+    content .= "DWM Notification Window`n"
+    content .= "MSCTFIME UI`n"
+    content .= "Default IME`n"
+    content .= "Task Switching`n"
+    content .= "Command Palette`n"
+    content .= "GDI+ Window*`n"
+    content .= "Windows Input Experience`n"
+    content .= "Program Manager`n"
+    content .= "`n"
+    content .= "[Class]`n"
+    content .= "komoborder*`n"
+    content .= "CEF-OSC-WIDGET`n"
+    content .= "Dwm`n"
+    content .= "MSCTFIME UI`n"
+    content .= "IME`n"
+    content .= "MSTaskSwWClass`n"
+    content .= "MSTaskListWClass`n"
+    content .= "Shell_TrayWnd`n"
+    content .= "Shell_SecondaryTrayWnd`n"
+    content .= "GDI+ Hook Window Class`n"
+    content .= "XamlExplorerHostIslandWindow`n"
+    content .= "WinUIDesktopWin32WindowClass`n"
+    content .= "Windows.UI.Core.CoreWindow`n"
+    content .= "Qt*QWindow*`n"
+    content .= "AutoHotkeyGUI`n"
+    content .= "`n"
+    content .= "[Pair]`n"
+    content .= "; Format: Class|Title (both must match)`n"
+    content .= "GDI+ Hook Window Class|GDI+ Window*`n"
+
+    try {
+        FileAppend(content, path, "UTF-8")
+        return true
+    } catch {
+        return false
     }
 }

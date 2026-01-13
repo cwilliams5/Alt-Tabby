@@ -2,6 +2,7 @@
 #SingleInstance Force
 
 #Include %A_ScriptDir%\..\shared\config.ahk
+#Include %A_ScriptDir%\..\shared\config_loader.ahk
 #Include %A_ScriptDir%\..\shared\json.ahk
 #Include %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include %A_ScriptDir%\..\shared\blacklist.ahk
@@ -41,6 +42,9 @@ if (gStore_TestMode) {
 
 Store_Init() {
     global gStore_Server, StorePipeName
+
+    ; Load config.ini (overrides defaults from config.ahk)
+    ConfigLoader_Init(A_ScriptDir "\..")
 
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
