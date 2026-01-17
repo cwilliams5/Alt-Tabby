@@ -428,6 +428,10 @@ GUI_ShowOverlayWithFrozen() {
         return
     }
 
+    ; Set visible flag FIRST to prevent re-entrancy issues
+    ; (Show/DwmFlush can pump messages, allowing hotkeys to fire mid-function)
+    gGUI_OverlayVisible := true
+
     ; Use frozen items for display
     gGUI_Items := gGUI_FrozenItems
 
@@ -451,8 +455,6 @@ GUI_ShowOverlayWithFrozen() {
         gGUI_Overlay.Show("NA")
     }
     Win_DwmFlush()
-
-    gGUI_OverlayVisible := true
 }
 
 GUI_MoveSelectionFrozen(delta) {
@@ -770,6 +772,9 @@ GUI_ShowOverlay() {
         return
     }
 
+    ; Set visible flag FIRST to prevent re-entrancy
+    gGUI_OverlayVisible := true
+
     gGUI_Sel := 1
     gGUI_ScrollTop := 0
     gGUI_Revealed := false
@@ -786,8 +791,6 @@ GUI_ShowOverlay() {
         gGUI_Overlay.Show("NA")
     }
     Win_DwmFlush()
-
-    gGUI_OverlayVisible := true
 }
 
 GUI_HideOverlay() {

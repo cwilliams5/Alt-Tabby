@@ -125,13 +125,17 @@ Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) {
         ww := optW
         wh := optH
     } else {
-        ; Try client size first (use temp vars to avoid reference parameter quirks)
-        cx := 0
-        cy := 0
+        ; Try client size first
+        ; Use try-catch to handle exceptions and ensure variables are always set
         cw := 0
         ch := 0
         try {
+            cx := 0
+            cy := 0
             WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hWnd)
+        } catch {
+            cw := 0
+            ch := 0
         }
         if (cw > 0 && ch > 0) {
             ww := cw
@@ -140,12 +144,15 @@ Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) {
 
         ; Fall back to window size
         if (ww <= 0 || wh <= 0) {
-            wx := 0
-            wy := 0
             winW := 0
             winH := 0
             try {
+                wx := 0
+                wy := 0
                 WinGetPos(&wx, &wy, &winW, &winH, "ahk_id " hWnd)
+            } catch {
+                winW := 0
+                winH := 0
             }
             if (winW > 0) {
                 ww := winW
@@ -163,6 +170,8 @@ Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) {
     hrgn := 0
     try {
         hrgn := DllCall("gdi32\CreateRoundRectRgn", "int", 0, "int", 0, "int", ww + 1, "int", wh + 1, "int", radiusPx * 2, "int", radiusPx * 2, "ptr")
+    } catch {
+        hrgn := 0
     }
     if (hrgn) {
         DllCall("user32\SetWindowRgn", "ptr", hWnd, "ptr", hrgn, "int", 1)
