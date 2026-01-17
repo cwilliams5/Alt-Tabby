@@ -5,11 +5,26 @@
 - Komorebi aware; uses workspace state to filter and label windows.
 - Hotkey interception is split into a separate micro process for speed.
 
-## Architecture (4-Process Design)
-1. **Interceptor** (micro): Ultra-fast Alt+Tab hook, isolated for timing. Communicates via IPC.
-2. **WindowStore + Producers**: Single process hosting store, winenum, MRU, komorebi producers. Named pipe server for multi-subscriber.
+## Architecture (Unified Launcher + Multi-Process)
+
+### Compiled Distribution
+Single executable `AltTabby.exe` serves as both launcher and all process modes:
+- `AltTabby.exe` - Launcher (spawns store + gui, manages tray menu)
+- `AltTabby.exe --store` - WindowStore server only
+- `AltTabby.exe --gui-only` - GUI only (requires store running)
+- `AltTabby.exe --viewer` - Debug viewer
+
+### Process Roles
+1. **Launcher**: Stays alive, single tray icon, tracks subprocess PIDs, on-demand menu updates
+2. **WindowStore + Producers**: Store, winenum, MRU, komorebi producers. Named pipe server.
 3. **AltLogic + GUI**: Consumer process with overlay, MRU selection, window activation.
 4. **Debug Viewer**: Diagnostic tool showing Z/MRU-ordered window list from store.
+
+### Development Mode
+When running from `/src`, modules can run standalone:
+- `store_server.ahk` - Store process
+- `gui_main.ahk` - GUI process
+- `viewer.ahk` - Viewer process
 
 ## Current Directory Structure
 ```
@@ -34,11 +49,14 @@ legacy/
 ```
 
 ## Key Files
+- `src/alt_tabby.ahk`: Unified entry point (launcher + mode router)
 - `src/store/store_server.ahk`: WindowStore main entry point
 - `src/store/windowstore.ahk`: Core store with GetProjection, UpsertWindow, scan APIs
 - `src/shared/ipc_pipe.ahk`: Multi-subscriber named pipe IPC
 - `src/viewer/viewer.ahk`: Debug viewer GUI
+- `src/gui/gui_main.ahk`: Alt-Tab GUI overlay
 - `tests/run_tests.ahk`: Automated tests
+- `compile.bat`: Compiles to `release/AltTabby.exe`
 
 ## Legacy Components (in legacy/components_legacy/)
 These are from the original ChatGPT work. Some are battle-tested:
@@ -62,6 +80,15 @@ These are from the original ChatGPT work. Some are battle-tested:
 - AHK v2 `#Include` is compile-time, cannot be conditional at runtime
 - Store expects Map records from producers; use `rec["key"]` not `rec.key`
 
+### #SingleInstance in Multi-File Compiled Projects
+- **When multiple .ahk files are compiled into one exe, all `#SingleInstance` directives are merged**
+- If included files have `#SingleInstance Force`, they will kill other instances of the same exe
+- **For multi-process architectures** (store + gui from same exe with different args):
+  - Entry point (alt_tabby.ahk) should have `#SingleInstance Off`
+  - Module files (store_server.ahk, gui_main.ahk) should NOT have `#SingleInstance`
+  - This allows multiple instances of the same exe to run with different modes
+- The first `#SingleInstance` directive encountered is supposed to win, but behavior can be unpredictable with includes
+
 ### Global Variable Scoping (CRITICAL)
 - **Global constants defined at file scope (like `IPC_MSG_SNAPSHOT := "snapshot"`) are NOT automatically accessible inside functions**
 - You MUST declare them with `global` inside each function that uses them:
@@ -74,10 +101,41 @@ These are from the original ChatGPT work. Some are battle-tested:
 - With `#Warn VarUnset, Off`, missing globals silently become empty strings - comparisons fail without errors
 - This is a common source of "code runs but doesn't work" bugs
 
-### Testing from Git Bash
-- Use `//ErrorStdOut` (double slash) to prevent Git Bash path expansion
-- Git Bash converts `/ErrorStdOut` → `C:/Program Files/Git/ErrorStdOut` (wrong!)
-- Correct: `"C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe" //ErrorStdOut "path\to\script.ahk"`
+### Git Bash Path Expansion (CRITICAL)
+- **Git Bash converts any `/param` to `C:/Program Files/Git/param`** - this breaks all forward-slash parameters
+- Affects: AutoHotkey (`/ErrorStdOut`), Ahk2Exe (`/in`, `/out`, `/base`), and any other Windows CLI tools
+- **Solution: Use double slashes `//param` to prevent path expansion**
+- Examples:
+  ```bash
+  # WRONG - Git Bash expands /ErrorStdOut to a path
+  AutoHotkey64.exe /ErrorStdOut script.ahk
+
+  # CORRECT - double slash prevents expansion
+  AutoHotkey64.exe //ErrorStdOut script.ahk
+
+  # WRONG - Ahk2Exe params get expanded
+  Ahk2Exe.exe /in script.ahk /out script.exe /base AutoHotkey64.exe
+
+  # CORRECT - all params need double slashes
+  Ahk2Exe.exe //in script.ahk //out script.exe //base AutoHotkey64.exe
+  ```
+- Note: Windows batch files (`.bat`) run in cmd.exe, not Git Bash, so they use single slashes normally
+
+### Compilation
+- **Use `compile.bat`** for standard compilation (runs in cmd.exe, single slashes OK)
+- **From Git Bash**, use double slashes: `Ahk2Exe.exe //in ... //out ... //base ...`
+- Ahk2Exe requires `/base` to specify v2 runtime: `"C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"`
+- Output: `release/AltTabby.exe` with `config.ini` and `blacklist.txt` alongside
+- Use `@Ahk2Exe-Base` directive in script as fallback (but command-line `/base` is more reliable)
+
+### Unified Launcher Tray Menu
+- **On-demand menu updates** - no polling timer, rebuild menu on right-click
+- Use `OnMessage(0x404, TrayIconClick)` to intercept WM_TRAYICON
+- Check for `lParam = 0x205` (WM_RBUTTONUP) then call `UpdateTrayMenu()` and `A_TrayMenu.Show()`
+- Must return 1 to prevent default handling after showing menu manually
+- Track subprocess PIDs with `Run(cmd, , , &PID)` - 4th param is output variable
+- Check process alive with `ProcessExist(PID)`, kill with `ProcessClose(PID)`
+- Subprocesses hide tray icon: `A_IconHidden := true`
 
 ### ListView Updates
 - ListView rows stay in insertion order; sorting the data array doesn't reorder displayed rows

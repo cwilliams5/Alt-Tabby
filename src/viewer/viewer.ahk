@@ -1,11 +1,12 @@
 #Requires AutoHotkey v2.0
-#SingleInstance Force
+; Note: #SingleInstance removed - unified exe uses #SingleInstance Off
 #Warn VarUnset, Off
 
-#Include ..\shared\config.ahk
-#Include ..\shared\json.ahk
-#Include ..\shared\ipc_pipe.ahk
-#Include ..\shared\blacklist.ahk
+; Includes: Use *i (ignore if not found) for unified exe compatibility
+#Include *i ..\shared\config.ahk
+#Include *i ..\shared\json.ahk
+#Include *i ..\shared\ipc_pipe.ahk
+#Include *i ..\shared\blacklist.ahk
 
 ; Viewer (debug) - receives snapshots/deltas from store.
 
@@ -927,4 +928,7 @@ _Viewer_ShowToast(message) {
     }
 }
 
-Viewer_Init()
+; Auto-init only if running standalone or if mode is "viewer"
+if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "viewer") {
+    Viewer_Init()
+}

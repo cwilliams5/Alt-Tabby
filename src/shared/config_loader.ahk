@@ -12,12 +12,24 @@ global gConfigIniPath := ""
 global gConfigLoaded := false
 
 ; Initialize config - call this early in startup
-; basePath: directory containing config.ini (defaults to script dir's parent)
+; basePath: directory containing config.ini
+; - When compiled: defaults to exe directory
+; - When in development: defaults to src/ (script dir's parent for store/gui)
 ConfigLoader_Init(basePath := "") {
     global gConfigIniPath, gConfigLoaded
 
-    if (basePath = "")
-        basePath := A_ScriptDir "\.."
+    if (basePath = "") {
+        if (A_IsCompiled) {
+            ; Compiled: config.ini next to the exe
+            basePath := A_ScriptDir
+        } else {
+            ; Development: try src/ directory first, then script's parent
+            basePath := A_ScriptDir
+            if (!FileExist(basePath "\config.ini")) {
+                basePath := A_ScriptDir "\.."
+            }
+        }
+    }
 
     gConfigIniPath := basePath "\config.ini"
 
