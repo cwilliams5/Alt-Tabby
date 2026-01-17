@@ -16,6 +16,7 @@ Client -> Store
 - `snapshot_request`: `{ includeItems: true, projectionOpts }`
 - `projection_request`: `{ projectionOpts }`
 - `set_projection_opts`: `{ projectionOpts }`
+- `reload_blacklist`: `{}` - triggers blacklist file reload and purges matching windows
 - `ping`: `{}`
 
 Store -> Client
@@ -23,6 +24,7 @@ Store -> Client
 - `snapshot`: `{ rev, meta, items }`
 - `delta`: `{ rev, baseRev, upserts, patches, removes, meta? }`
 - `projection`: `{ rev, meta, items }`
+- `heartbeat`: `{ rev }` - sent periodically (default 5s) for connection health
 - `error`: `{ code, message }`
 
 Projection options
