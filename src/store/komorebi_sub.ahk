@@ -385,6 +385,10 @@ _KSub_OnNotification(jsonLine) {
         eventType := _KSub_GetStringProp(eventObj, "type")
 
     _KSub_Log("  Event type: '" eventType "'")
+    _KSub_DiagLog("Event: " eventType)
+
+    ; Track if we explicitly handled workspace change
+    handledWorkspaceEvent := false
 
     ; Handle workspace focus events - update current workspace from event
     if (eventType = "FocusMonitorWorkspaceNumber" || eventType = "FocusWorkspaceNumber" || eventType = "FocusNamedWorkspace") {
@@ -426,13 +430,16 @@ _KSub_OnNotification(jsonLine) {
         }
 
         _KSub_Log("  Focus event resolved wsName='" wsName "'")
+        _KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
         if (wsName != "") {
             global _KSub_LastWorkspaceName
             if (wsName != _KSub_LastWorkspaceName) {
                 _KSub_Log("  Updating current workspace to '" wsName "' from focus event")
+                _KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
                 _KSub_LastWorkspaceName := wsName
                 try WindowStore_SetCurrentWorkspace("", wsName)
             }
+            handledWorkspaceEvent := true
         }
     }
 
@@ -452,8 +459,9 @@ _KSub_OnNotification(jsonLine) {
     }
 
     ; Process full state to update ALL windows' workspace info
-    ; Skip workspace update from state since focus events handle workspace changes
-    _KSub_ProcessFullState(stateObj, true)
+    ; Only skip workspace update if we explicitly handled a workspace focus event above
+    ; Otherwise, let ProcessFullState derive workspace from state (handles FocusChange, MoveWindow, etc.)
+    _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
 }
 
 ; Process full komorebi state and update all windows
@@ -484,12 +492,15 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
         currentWsName := _KSub_GetWorkspaceNameByIndex(monObj, focusedWsIdx)
     }
 
-    _KSub_Log("ProcessFullState: focusedMon=" focusedMonIdx " focusedWs=" (IsSet(focusedWsIdx) ? focusedWsIdx : "N/A") " currentWsName='" currentWsName "' lastWsName='" _KSub_LastWorkspaceName "' skipWsUpdate=" skipWorkspaceUpdate)
+    wsIdxLog := (IsSet(focusedWsIdx) ? focusedWsIdx : "N/A")
+    _KSub_Log("ProcessFullState: focusedMon=" focusedMonIdx " focusedWs=" wsIdxLog " currentWsName='" currentWsName "' lastWsName='" _KSub_LastWorkspaceName "' skipWsUpdate=" skipWorkspaceUpdate)
+    _KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" wsIdxLog " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
 
     ; Only update current workspace if not skipping (initial poll or direct state query)
     ; Skip if called from notification handler since focus events already update workspace
     if (!skipWorkspaceUpdate && currentWsName != "" && currentWsName != _KSub_LastWorkspaceName) {
         _KSub_Log("  Updating workspace from '" _KSub_LastWorkspaceName "' to '" currentWsName "'")
+        _KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
         try WindowStore_SetCurrentWorkspace("", currentWsName)
     }
