@@ -80,15 +80,6 @@ These are from the original ChatGPT work. Some are battle-tested:
 - AHK v2 `#Include` is compile-time, cannot be conditional at runtime
 - Store expects Map records from producers; use `rec["key"]` not `rec.key`
 
-### #SingleInstance in Multi-File Compiled Projects
-- **When multiple .ahk files are compiled into one exe, all `#SingleInstance` directives are merged**
-- If included files have `#SingleInstance Force`, they will kill other instances of the same exe
-- **For multi-process architectures** (store + gui from same exe with different args):
-  - Entry point (alt_tabby.ahk) should have `#SingleInstance Off`
-  - Module files (store_server.ahk, gui_main.ahk) should NOT have `#SingleInstance`
-  - This allows multiple instances of the same exe to run with different modes
-- The first `#SingleInstance` directive encountered is supposed to win, but behavior can be unpredictable with includes
-
 ### Global Variable Scoping (CRITICAL)
 - **Global constants defined at file scope (like `IPC_MSG_SNAPSHOT := "snapshot"`) are NOT automatically accessible inside functions**
 - You MUST declare them with `global` inside each function that uses them:
@@ -139,6 +130,15 @@ These are from the original ChatGPT work. Some are battle-tested:
   Ahk2Exe.exe //in script.ahk //out script.exe //base AutoHotkey64.exe
   ```
 - Note: Windows batch files (`.bat`) run in cmd.exe, not Git Bash, so they use single slashes normally
+
+### #SingleInstance in Multi-File Compiled Projects
+- **When multiple .ahk files are compiled into one exe, all `#SingleInstance` directives are merged**
+- If included files have `#SingleInstance Force`, they will kill other instances of the same exe
+- **For multi-process architectures** (store + gui from same exe with different args):
+  - Entry point (alt_tabby.ahk) should have `#SingleInstance Off`
+  - Module files (store_server.ahk, gui_main.ahk) should NOT have `#SingleInstance`
+  - This allows multiple instances of the same exe to run with different modes
+- The first `#SingleInstance` directive encountered is supposed to win, but behavior can be unpredictable with includes
 
 ### Compilation
 - **Use `compile.bat`** for standard compilation (runs in cmd.exe, single slashes OK)
@@ -315,28 +315,6 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - Users uncomment and edit values they want to customize
 - **Never commit config.ini** - it's in `.gitignore` and user-specific
 
-## Alt-Tab Client Implementation Plan
-
-### Architecture Overview
-```
-Interceptor (micro process)     GUI Process (always running)
-       │                              │
-       │ ──IPC: key events──►         │ ◄──IPC──► Store
-       │   Alt, Tab, Escape           │
-       │                              │
-   Hook only, <5ms              State machine + rendering
-```
-
-### File Structure
-```
-src/
-  interceptor/
-    interceptor.ahk    # Minimal: hook + IPC to GUI, <100 lines
-  gui/
-    alttab.ahk         # Entry point, state machine, store client
-    alttab_gui.ahk     # GUI rendering (from legacy POC)
-```
-
 ### State Machine
 ```
 IDLE ──Alt down──► ALT_PENDING ──Tab──► ACTIVE ──Alt up──► IDLE
@@ -384,17 +362,6 @@ GraceMs=150           # Delay before showing GUI
 PrewarmOnAlt=true     # Request snapshot on Alt down
 QuickSwitchMs=100     # Max time for quick switch
 ```
-
-### Legacy Reference Files
-- `legacy/components_legacy/interceptor3.ahk` - battle-tested hook, grace periods
-- `legacy/components_legacy/New GUI Working POC.ahk` - working DWM GUI
-- `src/viewer/viewer.ahk` - correct IPC patterns for store client
-
-### Implementation Order
-1. Interceptor: minimal hook → IPC to GUI
-2. GUI state machine: logic only, no rendering, log transitions
-3. GUI rendering: port from legacy POC
-4. Integration: measure end-to-end latency
 
 ### Key Metrics to Verify
 - Alt+Tab detection: <5ms
