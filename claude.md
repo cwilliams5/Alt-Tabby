@@ -238,6 +238,88 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - Users uncomment and edit values they want to customize
 - **Never commit config.ini** - it's in `.gitignore` and user-specific
 
-## Next Steps (Planned)
-1. Port legacy interceptor to `src/interceptor/`
-2. Wire legacy GUI as the real AltLogic consumer
+## Alt-Tab Client Implementation Plan
+
+### Architecture Overview
+```
+Interceptor (micro process)     GUI Process (always running)
+       │                              │
+       │ ──IPC: key events──►         │ ◄──IPC──► Store
+       │   Alt, Tab, Escape           │
+       │                              │
+   Hook only, <5ms              State machine + rendering
+```
+
+### File Structure
+```
+src/
+  interceptor/
+    interceptor.ahk    # Minimal: hook + IPC to GUI, <100 lines
+  gui/
+    alttab.ahk         # Entry point, state machine, store client
+    alttab_gui.ahk     # GUI rendering (from legacy POC)
+```
+
+### State Machine
+```
+IDLE ──Alt down──► ALT_PENDING ──Tab──► ACTIVE ──Alt up──► IDLE
+                        │                  │
+                        │ Alt up (quick)   │ Escape
+                        ▼                  ▼
+                   QUICK_SWITCH         CANCEL
+```
+
+- **IDLE**: Connected to store, receiving deltas, cache fresh
+- **ALT_PENDING**: Alt held, pre-warm snapshot requested, grace timer running
+- **ACTIVE**: GUI visible, list FROZEN (no delta updates), Tab cycles selection
+- **QUICK_SWITCH**: Alt+Tab+release < grace period = switch to MRU[1], no GUI
+- **CANCEL**: Escape pressed, close GUI, no switch
+
+### Critical Design Decisions
+
+1. **Lock-in on first Tab**: Projection frozen when Tab pressed, not on Alt
+   - Gives pre-warm maximum time (human reaction ~50-100ms)
+   - Frozen list never reorders during interaction (matches native Windows)
+
+2. **Pre-warm on Alt**: Request snapshot when Alt pressed
+   - By Tab time, fresh data likely arrived
+   - If not, use current cache (still recent from deltas)
+
+3. **GUI always running**: Show/hide, don't create/destroy
+   - Faster response than process spawn or GUI creation
+   - Memory cost acceptable for responsiveness
+
+4. **Interceptor minimal**: Only hook + IPC
+   - Must respond <5ms
+   - No timers, no logic, no includes except IPC
+
+5. **Grace period ~150ms**: Quick Alt+Tab = instant switch, no GUI
+
+### IPC Between Interceptor and GUI
+- Named pipe (fastest, already proven in codebase)
+- Messages: `alt_down`, `alt_up`, `tab`, `shift_tab`, `escape`
+- GUI owns all logic, interceptor just forwards events
+
+### Config Options (to add)
+```
+[AltTab]
+GraceMs=150           # Delay before showing GUI
+PrewarmOnAlt=true     # Request snapshot on Alt down
+QuickSwitchMs=100     # Max time for quick switch
+```
+
+### Legacy Reference Files
+- `legacy/components_legacy/interceptor3.ahk` - battle-tested hook, grace periods
+- `legacy/components_legacy/New GUI Working POC.ahk` - working DWM GUI
+- `src/viewer/viewer.ahk` - correct IPC patterns for store client
+
+### Implementation Order
+1. Interceptor: minimal hook → IPC to GUI
+2. GUI state machine: logic only, no rendering, log transitions
+3. GUI rendering: port from legacy POC
+4. Integration: measure end-to-end latency
+
+### Key Metrics to Verify
+- Alt+Tab detection: <5ms
+- GUI show after Tab: <50ms
+- Quick switch (no GUI): <25ms total

@@ -1,7 +1,11 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+#UseHook true
+InstallKeybdHook(true)
 
-; Alt-Tabby GUI - Integrated with WindowStore and Interceptor
+; Alt-Tabby GUI - Integrated with WindowStore and Interceptor (hooks built-in)
+; Use an inert mask key so Alt taps don't focus menus
+A_MenuMaskKey := "vkE8"
 
 #Include %A_ScriptDir%\..\shared\config.ahk
 #Include %A_ScriptDir%\..\shared\json.ahk
@@ -32,6 +36,36 @@ global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
 global gGUI_LastRowsDesired := -1
 
+; State machine: IDLE -> ALT_PENDING -> ACTIVE
+; IDLE: Normal state, receiving/applying deltas, cache fresh
+; ALT_PENDING: Alt held, optional pre-warm, still receiving deltas
+; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
+global gGUI_State := "IDLE"
+global gGUI_AltDownTick := 0
+global gGUI_FirstTabTick := 0
+global gGUI_TabCount := 0
+global gGUI_FrozenItems := []  ; Snapshot of items when locking in
+
+; ========================= INTERCEPTOR STATE (built-in hooks) =========================
+; These variables track the keyboard hook state (previously in interceptor.ahk)
+global gINT_DecisionMs := 24          ; Tab decision window
+global gINT_LastAltLeewayMs := 60     ; Alt timing tolerance
+global gINT_DisableInProcesses := []
+global gINT_DisableInFullscreen := true
+
+global gINT_SessionActive := false
+global gINT_TabHeld := false
+global gINT_PressCount := 0
+global gINT_LastAltDown := -999999
+global gINT_AltIsDown := false        ; Track Alt state via hotkey handlers
+
+; Deferred-Tab decision state
+global gINT_TabPending := false
+global gINT_TabUpSeen := false
+global gINT_PendingShift := false
+global gINT_PendingDecideArmed := false
+global gINT_AltUpDuringPending := false  ; Track if Alt released before Tab_Decide
+
 ; ========================= INITIALIZATION =========================
 
 GUI_Main_Init() {
@@ -40,36 +74,408 @@ GUI_Main_Init() {
     Win_InitDpiAwareness()
     Gdip_Startup()
 
-    ; Listen for interceptor events
-    TABBY_IPC_Listen(GUI_OnInterceptorEvent)
+    ; Set up interceptor keyboard hooks (built-in, no IPC)
+    INT_SetupHotkeys()
 
     ; Connect to WindowStore
     gGUI_StoreClient := IPC_PipeClient_Connect(StorePipeName, GUI_OnStoreMessage)
     if (gGUI_StoreClient.hPipe) {
-        hello := { type: IPC_MSG_HELLO, projectionOpts: { sort: "MRU", columns: "items" } }
+        ; Request deltas so we stay up to date like the viewer
+        hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items" } }
         IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(hello))
     }
 }
 
-; ========================= IPC HANDLERS =========================
+; ========================= INTERCEPTOR HOOKS (built-in) =========================
+
+INT_SetupHotkeys() {
+    ; Alt hooks (pass-through, just observe)
+    Hotkey("~*Alt", INT_Alt_Down)
+    Hotkey("~*Alt Up", INT_Alt_Up)
+
+    ; Tab hooks (intercept for decision)
+    Hotkey("$*Tab", INT_Tab_Down)
+    Hotkey("$*Tab Up", INT_Tab_Up)
+
+    ; Escape hook
+    Hotkey("$*Escape", INT_Escape_Down)
+
+    ; Exit hotkey
+    Hotkey("$*!F12", (*) => ExitApp())
+}
+
+INT_Alt_Down(*) {
+    global gINT_LastAltDown, gINT_AltIsDown, TABBY_EV_ALT_DOWN
+    gINT_AltIsDown := true
+    gINT_LastAltDown := A_TickCount
+
+    ; Mask key to prevent menu focus
+    try Send("{Blind}{vkE8}")
+
+    ; Notify GUI handler directly (no IPC)
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+}
+
+INT_Alt_Up(*) {
+    global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, gINT_TabPending
+    global gINT_AltUpDuringPending, gINT_AltIsDown, TABBY_EV_ALT_UP
+
+    gINT_AltIsDown := false
+
+    ; If Tab decision is pending, mark that Alt was released
+    if (gINT_TabPending) {
+        gINT_AltUpDuringPending := true
+        ; Don't send ALT_UP here - Tab_Decide will handle it
+    } else if (gINT_SessionActive && gINT_PressCount >= 1) {
+        ; Session was active, send ALT_UP directly
+        GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    }
+    ; else: No active session, ignore
+
+    gINT_SessionActive := false
+    gINT_PressCount := 0
+    gINT_TabHeld := false
+}
+
+INT_Tab_Down(*) {
+    global gINT_TabPending, gINT_TabHeld, gINT_PendingShift, gINT_TabUpSeen
+    global gINT_PendingDecideArmed, gINT_DecisionMs, gINT_AltUpDuringPending
+
+    if (INT_ShouldBypass()) {
+        Send(GetKeyState("Shift", "P") ? "+{Tab}" : "{Tab}")
+        return
+    }
+
+    ; Already pending, or held from Alt+Tab step - block key repeat
+    if (gINT_TabPending || gINT_TabHeld)
+        return
+
+    ; Swallow Tab briefly and decide if this is Alt+Tab
+    gINT_TabPending := true
+    gINT_PendingShift := GetKeyState("Shift", "P")
+    gINT_TabUpSeen := false
+    gINT_PendingDecideArmed := true
+    gINT_AltUpDuringPending := false
+    SetTimer(INT_Tab_Decide, -gINT_DecisionMs)
+}
+
+INT_Tab_Up(*) {
+    global gINT_TabHeld, gINT_TabPending, gINT_TabUpSeen
+
+    if (gINT_TabHeld) {
+        ; Released from Alt+Tab step
+        gINT_TabHeld := false
+        return
+    }
+    ; If still deciding, remember Tab went up
+    if (gINT_TabPending)
+        gINT_TabUpSeen := true
+}
+
+INT_Tab_Decide() {
+    global gINT_PendingDecideArmed
+    if (!gINT_PendingDecideArmed)
+        return
+    gINT_PendingDecideArmed := false
+    ; Small delay to let Alt_Up run first if it's pending
+    SetTimer(INT_Tab_Decide_Inner, -1)
+}
+
+INT_Tab_Decide_Inner() {
+    global gINT_TabPending, gINT_TabUpSeen, gINT_PendingShift, gINT_AltUpDuringPending
+    global gINT_LastAltDown, gINT_LastAltLeewayMs, gINT_AltIsDown
+    global gINT_SessionActive, gINT_PressCount, gINT_TabHeld
+    global TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_FLAG_SHIFT
+
+    ; Capture state NOW (before any potential message pumping)
+    altDownNow := gINT_AltIsDown
+    altUpFlag := gINT_AltUpDuringPending
+    altRecent := (A_TickCount - gINT_LastAltDown) <= gINT_LastAltLeewayMs
+    isAltTab := altDownNow || altRecent || altUpFlag
+
+    if (isAltTab) {
+        ; This is an Alt+Tab press
+        gINT_TabPending := false
+
+        if (!gINT_SessionActive) {
+            gINT_SessionActive := true
+            gINT_PressCount := 0
+        }
+        gINT_PressCount += 1
+
+        ; Send TAB_STEP directly to GUI handler
+        shiftFlag := gINT_PendingShift ? TABBY_FLAG_SHIFT : 0
+        GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
+
+        ; Track Tab held state
+        gINT_TabHeld := !gINT_TabUpSeen
+
+        ; CRITICAL: If Alt was released during decision window, send ALT_UP now
+        if (!altDownNow || altUpFlag) {
+            GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+            gINT_SessionActive := false
+            gINT_PressCount := 0
+            gINT_TabHeld := false
+            gINT_AltUpDuringPending := false
+        }
+    } else {
+        ; Not Alt+Tab - replay normal Tab
+        gINT_TabPending := false
+        Send(gINT_PendingShift ? "+{Tab}" : "{Tab}")
+    }
+}
+
+INT_Escape_Down(*) {
+    global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, TABBY_EV_ESCAPE
+
+    ; Only consume Escape if in active Alt+Tab session
+    if (!gINT_SessionActive || gINT_PressCount < 1) {
+        Send("{Escape}")
+        return
+    }
+
+    ; Notify GUI to cancel
+    GUI_OnInterceptorEvent(TABBY_EV_ESCAPE, 0, 0)
+
+    ; Reset session state
+    gINT_SessionActive := false
+    gINT_PressCount := 0
+    gINT_TabHeld := false
+}
+
+INT_ShouldBypass() {
+    global gINT_DisableInProcesses, gINT_DisableInFullscreen
+
+    exename := ""
+    try exename := WinGetProcessName("A")
+    if (exename) {
+        lex := StrLower(exename)
+        for _, nm in gINT_DisableInProcesses {
+            if (StrLower(nm) = lex)
+                return true
+        }
+    }
+    return gINT_DisableInFullscreen && INT_IsFullscreen("A")
+}
+
+INT_IsFullscreen(win := "A") {
+    local x := 0, y := 0, w := 0, h := 0
+    try WinGetPos(&x, &y, &w, &h, win)
+    return (w >= A_ScreenWidth * 0.99 && h >= A_ScreenHeight * 0.99 && x <= 5 && y <= 5)
+}
+
+; ========================= GUI EVENT HANDLERS =========================
 
 GUI_OnInterceptorEvent(evCode, flags, lParam) {
-    global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel
+    global gGUI_State, gGUI_AltDownTick, gGUI_FirstTabTick, gGUI_TabCount
+    global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems
+    global AltTabGraceMs, AltTabPrewarmOnAlt, AltTabQuickSwitchMs
+    global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT
+
+    if (evCode = TABBY_EV_ALT_DOWN) {
+        ; Alt pressed - enter ALT_PENDING state
+        gGUI_State := "ALT_PENDING"
+        gGUI_AltDownTick := A_TickCount
+        gGUI_FirstTabTick := 0
+        gGUI_TabCount := 0
+
+        ; Pre-warm: request snapshot now so data is ready when Tab pressed
+        if (AltTabPrewarmOnAlt) {
+            GUI_RequestSnapshot()
+        }
+        return
+    }
 
     if (evCode = TABBY_EV_TAB_STEP) {
         shiftHeld := (flags & TABBY_FLAG_SHIFT) != 0
 
-        if (!gGUI_OverlayVisible) {
-            GUI_RequestSnapshot()
-            GUI_ShowOverlay()
+        if (gGUI_State = "IDLE") {
+            ; Tab without Alt (shouldn't happen normally, interceptor handles this)
+            return
         }
 
-        delta := shiftHeld ? -1 : 1
-        GUI_MoveSelection(delta)
-    } else if (evCode = TABBY_EV_ALT_UP) {
+        if (gGUI_State = "ALT_PENDING") {
+            ; First Tab - freeze IMMEDIATELY with current data and go to ACTIVE
+            gGUI_FirstTabTick := A_TickCount
+            gGUI_TabCount := 1
+            gGUI_State := "ACTIVE"
+
+            ; Freeze the current items list NOW (whatever deltas have given us)
+            gGUI_FrozenItems := []
+            for _, item in gGUI_Items {
+                gGUI_FrozenItems.Push(item)
+            }
+
+            ; Selection: First Alt+Tab selects the PREVIOUS window (position 2 in 1-based MRU list)
+            ; Position 1 = current window (we're already on it)
+            ; Position 2 = previous window (what Alt+Tab should switch to)
+            gGUI_Sel := 2
+            if (gGUI_Sel > gGUI_FrozenItems.Length) {
+                ; Only 1 window? Select it
+                gGUI_Sel := 1
+            }
+            ; Pin selection at top (virtual scroll)
+            gGUI_ScrollTop := gGUI_Sel - 1
+
+            ; Start grace timer - show GUI after delay
+            SetTimer(GUI_GraceTimerFired, -AltTabGraceMs)
+            return
+        }
+
+        if (gGUI_State = "ACTIVE") {
+            gGUI_TabCount += 1
+            delta := shiftHeld ? -1 : 1
+            GUI_MoveSelectionFrozen(delta)
+
+            ; If GUI not yet visible (still in grace period), show it now on 2nd Tab
+            if (!gGUI_OverlayVisible && gGUI_TabCount > 1) {
+                SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer
+                GUI_ShowOverlayWithFrozen()
+            } else if (gGUI_OverlayVisible) {
+                GUI_Repaint()
+            }
+        }
+        return
+    }
+
+    if (evCode = TABBY_EV_ALT_UP) {
+        ; DEBUG: Show ALT_UP arrival
+        ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
+        SetTimer(() => ToolTip(,,,3), -2000)
+
+        if (gGUI_State = "ALT_PENDING") {
+            ; Alt released without Tab - return to IDLE
+            gGUI_State := "IDLE"
+            return
+        }
+
+        if (gGUI_State = "ACTIVE") {
+            SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer
+
+            timeSinceTab := A_TickCount - gGUI_FirstTabTick
+
+            if (!gGUI_OverlayVisible && timeSinceTab < AltTabQuickSwitchMs) {
+                ; Quick switch: Alt+Tab released quickly, no GUI shown
+                GUI_ActivateFromFrozen()
+            } else if (gGUI_OverlayVisible) {
+                ; Normal case: activate selected and hide
+                GUI_ActivateFromFrozen()
+                GUI_HideOverlay()
+            } else {
+                ; Edge case: grace period expired but GUI not shown yet
+                GUI_ActivateFromFrozen()
+            }
+
+            gGUI_State := "IDLE"
+            gGUI_FrozenItems := []
+
+            ; Resync with store - we may have missed deltas during ACTIVE
+            GUI_RequestSnapshot()
+        }
+        return
+    }
+
+    if (evCode = TABBY_EV_ESCAPE) {
+        ; Cancel - hide without activating
+        SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer
         if (gGUI_OverlayVisible) {
-            GUI_ActivateSelected()
             GUI_HideOverlay()
+        }
+        gGUI_State := "IDLE"
+        gGUI_FrozenItems := []
+
+        ; Resync with store - we may have missed deltas during ACTIVE
+        GUI_RequestSnapshot()
+        return
+    }
+}
+
+GUI_GraceTimerFired() {
+    global gGUI_State, gGUI_OverlayVisible
+
+    if (gGUI_State = "ACTIVE" && !gGUI_OverlayVisible) {
+        GUI_ShowOverlayWithFrozen()
+    }
+}
+
+GUI_ShowOverlayWithFrozen() {
+    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
+    global gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed
+
+    if (gGUI_OverlayVisible) {
+        return
+    }
+
+    ; Use frozen items for display
+    gGUI_Items := gGUI_FrozenItems
+    ; NOTE: gGUI_Sel and gGUI_ScrollTop are ALREADY set correctly - don't reset them!
+
+    gGUI_Revealed := false
+
+    try {
+        gGUI_Base.Show("NA")
+    }
+
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_Items.Length)
+    GUI_ResizeToRows(rowsDesired)
+    GUI_Repaint()  ; Paint with correct sel/scroll from the start
+
+    try {
+        gGUI_Overlay.Show("NA")
+    }
+    Win_DwmFlush()
+
+    gGUI_OverlayVisible := true
+}
+
+GUI_MoveSelectionFrozen(delta) {
+    global gGUI_Sel, gGUI_FrozenItems, gGUI_ScrollTop
+
+    if (gGUI_FrozenItems.Length = 0) {
+        return
+    }
+
+    count := gGUI_FrozenItems.Length
+    newSel := gGUI_Sel + delta
+
+    ; Wrap around
+    if (newSel < 1) {
+        newSel := count
+    } else if (newSel > count) {
+        newSel := 1
+    }
+
+    gGUI_Sel := newSel
+    ; Pin selection at top row (virtual scroll - list moves, selection stays at top)
+    gGUI_ScrollTop := gGUI_Sel - 1
+}
+
+GUI_ActivateFromFrozen() {
+    global gGUI_Sel, gGUI_FrozenItems
+
+    if (gGUI_Sel < 1 || gGUI_Sel > gGUI_FrozenItems.Length) {
+        ToolTip("ACTIVATE: sel=" gGUI_Sel " OUT OF RANGE (len=" gGUI_FrozenItems.Length ")", 100, 150, 2)
+        SetTimer(() => ToolTip(,,,2), -2000)
+        return
+    }
+
+    item := gGUI_FrozenItems[gGUI_Sel]
+    hwnd := item.hwnd
+
+    ; DEBUG: Show what we're activating
+    ToolTip("ACTIVATE sel=" gGUI_Sel ": " SubStr(item.Title, 1, 40), 100, 150, 2)
+    SetTimer(() => ToolTip(,,,2), -2000)
+
+    if (!hwnd) {
+        return
+    }
+
+    try {
+        if (WinExist("ahk_id " hwnd)) {
+            if (DllCall("user32\IsIconic", "ptr", hwnd, "int")) {
+                DllCall("user32\ShowWindow", "ptr", hwnd, "int", 9)  ; SW_RESTORE
+            }
+            DllCall("user32\SetForegroundWindow", "ptr", hwnd)
         }
     }
 }
@@ -77,6 +483,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 GUI_OnStoreMessage(line, hPipe := 0) {
     global gGUI_StoreConnected, gGUI_StoreRev, gGUI_Items, gGUI_Sel
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText
+    global gGUI_State  ; CRITICAL: Check state to avoid updating during ACTIVE
+    global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
 
     obj := ""
     try {
@@ -100,6 +508,16 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     }
 
     if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION) {
+        ; CRITICAL: When in ACTIVE state, list is FROZEN - ignore incoming data!
+        ; This prevents the GUI from showing different items than what gets activated.
+        if (gGUI_State = "ACTIVE") {
+            ; Still update rev for tracking, but don't touch items
+            if (obj.Has("rev")) {
+                gGUI_StoreRev := obj["rev"]
+            }
+            return
+        }
+
         if (obj.Has("payload") && obj["payload"].Has("items")) {
             gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
             if (gGUI_Sel > gGUI_Items.Length && gGUI_Items.Length > 0) {
@@ -125,6 +543,25 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         }
         return
     }
+
+    if (type = IPC_MSG_DELTA) {
+        ; CRITICAL: When in ACTIVE state, list is FROZEN - ignore deltas!
+        if (gGUI_State = "ACTIVE") {
+            if (obj.Has("rev")) {
+                gGUI_StoreRev := obj["rev"]
+            }
+            return
+        }
+
+        ; Apply delta incrementally to stay up-to-date
+        if (obj.Has("payload")) {
+            GUI_ApplyDelta(obj["payload"])
+        }
+        if (obj.Has("rev")) {
+            gGUI_StoreRev := obj["rev"]
+        }
+        return
+    }
 }
 
 GUI_ConvertStoreItems(items) {
@@ -139,10 +576,131 @@ GUI_ConvertStoreItems(items) {
             PID: item.Has("pid") ? "" item["pid"] : "",
             WS: item.Has("workspaceName") ? item["workspaceName"] : "",
             processName: item.Has("processName") ? item["processName"] : "",
-            iconHicon: item.Has("iconHicon") ? item["iconHicon"] : 0
+            iconHicon: item.Has("iconHicon") ? item["iconHicon"] : 0,
+            lastActivatedTick: item.Has("lastActivatedTick") ? item["lastActivatedTick"] : 0
         })
     }
     return result
+}
+
+GUI_ApplyDelta(payload) {
+    global gGUI_Items, gGUI_Sel
+
+    changed := false
+
+    ; Handle removes - filter out items by hwnd
+    if (payload.Has("removes") && payload["removes"].Length) {
+        newItems := []
+        for _, item in gGUI_Items {
+            isRemoved := false
+            for _, hwnd in payload["removes"] {
+                if (item.hwnd = hwnd) {
+                    isRemoved := true
+                    break
+                }
+            }
+            if (!isRemoved) {
+                newItems.Push(item)
+            }
+        }
+        if (newItems.Length != gGUI_Items.Length) {
+            gGUI_Items := newItems
+            changed := true
+        }
+    }
+
+    ; Handle upserts - update existing or add new items
+    if (payload.Has("upserts") && payload["upserts"].Length) {
+        for _, rec in payload["upserts"] {
+            if (!IsObject(rec)) {
+                continue
+            }
+            hwnd := rec.Has("hwnd") ? rec["hwnd"] : 0
+            if (!hwnd) {
+                continue
+            }
+
+            ; Find existing item by hwnd
+            found := false
+            for i, item in gGUI_Items {
+                if (item.hwnd = hwnd) {
+                    ; Update existing item
+                    if (rec.Has("title")) {
+                        item.Title := rec["title"]
+                    }
+                    if (rec.Has("class")) {
+                        item.Class := rec["class"]
+                    }
+                    if (rec.Has("pid")) {
+                        item.PID := "" rec["pid"]
+                    }
+                    if (rec.Has("workspaceName")) {
+                        item.WS := rec["workspaceName"]
+                    }
+                    if (rec.Has("processName")) {
+                        item.processName := rec["processName"]
+                    }
+                    if (rec.Has("iconHicon")) {
+                        item.iconHicon := rec["iconHicon"]
+                    }
+                    if (rec.Has("lastActivatedTick")) {
+                        item.lastActivatedTick := rec["lastActivatedTick"]
+                    }
+                    found := true
+                    changed := true
+                    break
+                }
+            }
+
+            ; Add new item if not found
+            if (!found) {
+                gGUI_Items.Push({
+                    hwnd: hwnd,
+                    Title: rec.Has("title") ? rec["title"] : "",
+                    Class: rec.Has("class") ? rec["class"] : "",
+                    HWND: Format("0x{:X}", hwnd),
+                    PID: rec.Has("pid") ? "" rec["pid"] : "",
+                    WS: rec.Has("workspaceName") ? rec["workspaceName"] : "",
+                    processName: rec.Has("processName") ? rec["processName"] : "",
+                    iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
+                    lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
+                })
+                changed := true
+            }
+        }
+    }
+
+    ; Re-sort by MRU (lastActivatedTick descending) if anything changed
+    if (changed && gGUI_Items.Length > 1) {
+        GUI_SortItemsByMRU()
+    }
+
+    ; Clamp selection
+    if (gGUI_Sel > gGUI_Items.Length && gGUI_Items.Length > 0) {
+        gGUI_Sel := gGUI_Items.Length
+    }
+    if (gGUI_Sel < 1 && gGUI_Items.Length > 0) {
+        gGUI_Sel := 1
+    }
+}
+
+GUI_SortItemsByMRU() {
+    global gGUI_Items
+
+    ; Simple bubble sort by lastActivatedTick descending (higher = more recent = first)
+    n := gGUI_Items.Length
+    loop n - 1 {
+        i := A_Index
+        loop n - i {
+            j := A_Index
+            if (gGUI_Items[j].lastActivatedTick < gGUI_Items[j + 1].lastActivatedTick) {
+                ; Swap
+                temp := gGUI_Items[j]
+                gGUI_Items[j] := gGUI_Items[j + 1]
+                gGUI_Items[j + 1] := temp
+            }
+        }
+    }
 }
 
 GUI_RequestSnapshot() {
@@ -1044,7 +1602,12 @@ GUI_RemoveItemAt(idx1) {
 ; ========================= MOUSE HANDLERS =========================
 
 GUI_OnClick(x, y) {
-    global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_ScrollTop
+    global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop
+
+    ; Don't process clicks if overlay isn't visible
+    if (!gGUI_OverlayVisible) {
+        return
+    }
 
     act := ""
     idx := 0
@@ -1096,9 +1659,14 @@ GUI_OnClick(x, y) {
 }
 
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
-    global gGUI_OverlayH, gGUI_HoverRow, gGUI_HoverBtn, gGUI_Items, gGUI_Sel
+    global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_Items, gGUI_Sel
 
     if (hwnd != gGUI_OverlayH) {
+        return 0
+    }
+
+    ; Don't process mouse moves if overlay isn't visible
+    if (!gGUI_OverlayVisible) {
         return 0
     }
 
@@ -1121,6 +1689,13 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
 }
 
 GUI_OnWheel(wParam, lParam) {
+    global gGUI_OverlayVisible
+
+    ; Don't process wheel if overlay isn't visible
+    if (!gGUI_OverlayVisible) {
+        return
+    }
+
     delta := (wParam >> 16) & 0xFFFF
     if (delta >= 0x8000) {
         delta := delta - 0x10000

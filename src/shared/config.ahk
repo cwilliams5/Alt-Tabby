@@ -166,6 +166,23 @@ ViewerAutoStartStore := false
 DiagChurnLog := false
 
 ; ============================================================
+; Alt-Tab GUI Settings
+; ============================================================
+; Controls the Alt-Tab overlay behavior
+
+; Grace period before showing GUI (ms). During this time,
+; if Alt is released, we do a quick switch without showing GUI.
+AltTabGraceMs := 150
+
+; Pre-warm snapshot on Alt down (true = request data before Tab pressed)
+; DISABLED FOR DEBUGGING - set to true once Alt+Tab logic is stable
+AltTabPrewarmOnAlt := false
+
+; Maximum time for quick switch without showing GUI (ms)
+; If Alt+Tab and release happen within this time, instant switch
+AltTabQuickSwitchMs := 100
+
+; ============================================================
 ; Testing
 ; ============================================================
 ; Options for automated test suite
