@@ -140,17 +140,45 @@ INT_Alt_Up(*) {
 INT_Tab_Down(*) {
     global gINT_TabPending, gINT_TabHeld, gINT_PendingShift, gINT_TabUpSeen
     global gINT_PendingDecideArmed, gINT_DecisionMs, gINT_AltUpDuringPending
+    global gINT_SessionActive, gINT_PressCount, gINT_AltIsDown
+    global TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
 
     if (INT_ShouldBypass()) {
         Send(GetKeyState("Shift", "P") ? "+{Tab}" : "{Tab}")
         return
     }
 
-    ; Already pending, or held from Alt+Tab step - block key repeat
-    if (gINT_TabPending || gINT_TabHeld)
+    ; Block key repeat while Tab is physically held
+    if (gINT_TabHeld)
         return
 
-    ; Swallow Tab briefly and decide if this is Alt+Tab
+    ; If session is already active, we KNOW it's Alt+Tab - no delay needed!
+    ; The 24ms delay is only for the FIRST Tab to decide "is Alt held?"
+    if (gINT_SessionActive && gINT_AltIsDown) {
+        ; Cancel any pending decision
+        if (gINT_TabPending) {
+            SetTimer(INT_Tab_Decide, 0)
+            gINT_PendingDecideArmed := false
+            gINT_TabPending := false
+        }
+
+        ; Process immediately
+        gINT_PressCount += 1
+        shiftHeld := GetKeyState("Shift", "P")
+        shiftFlag := shiftHeld ? TABBY_FLAG_SHIFT : 0
+        GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
+        gINT_TabHeld := true  ; Block repeats until Tab released
+        return
+    }
+
+    ; If a decision is pending and new Tab arrives, commit the pending one immediately
+    if (gINT_TabPending) {
+        SetTimer(INT_Tab_Decide, 0)  ; Cancel pending timer
+        gINT_PendingDecideArmed := false
+        INT_Tab_Decide_Inner()  ; Commit immediately
+    }
+
+    ; Start new Tab decision (first Tab only needs this delay)
     gINT_TabPending := true
     gINT_PendingShift := GetKeyState("Shift", "P")
     gINT_TabUpSeen := false
