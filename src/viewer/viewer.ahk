@@ -105,10 +105,11 @@ Viewer_OnMessage(line, hPipe := 0) {
     _Viewer_Log("type=" type " (expecting snapshot=" IPC_MSG_SNAPSHOT " or projection=" IPC_MSG_PROJECTION ")")
 
     ; Check revision to avoid duplicate processing
+    ; Skip heartbeats from this check - they should always be processed even with same rev
     if (obj.Has("rev")) {
         rev := obj["rev"]
         _Viewer_Log("rev=" rev " lastRev=" gViewer_LastRev)
-        if (rev = gViewer_LastRev && type != IPC_MSG_HELLO_ACK) {
+        if (rev = gViewer_LastRev && type != IPC_MSG_HELLO_ACK && type != IPC_MSG_HEARTBEAT) {
             _Viewer_Log("skip duplicate rev=" rev)
             return
         }
