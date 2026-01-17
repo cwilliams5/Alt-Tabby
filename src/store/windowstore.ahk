@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Expected: file is included after blacklist.ahk
 
 ; WindowStore (v1) - minimal core for IPC + viewer.
 

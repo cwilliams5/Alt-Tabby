@@ -100,6 +100,25 @@ These are from the original ChatGPT work. Some are battle-tested:
   ```
 - With `#Warn VarUnset, Off`, missing globals silently become empty strings - comparisons fail without errors
 - This is a common source of "code runs but doesn't work" bugs
+- **Functions are different from variables** - don't add `global FunctionName` for functions defined in other files
+- Functions are automatically global in AHK v2
+- If you get warnings about undefined functions from included files, add `#Warn VarUnset, Off` to the calling file
+
+### Compiled vs Development Path Handling (CRITICAL)
+- **`A_ScriptDir` changes based on compiled status**:
+  - Compiled: directory containing the exe (e.g., `release/`)
+  - Development: directory containing the .ahk file (e.g., `src/store/`)
+- **Use `A_IsCompiled` to handle path differences**:
+  ```ahk
+  if (A_IsCompiled) {
+      configPath := A_ScriptDir "\config.ini"  ; Next to exe
+  } else {
+      configPath := A_ScriptDir "\..\config.ini"  ; Relative path
+  }
+  ```
+- **Don't hardcode relative paths** that only work in development mode
+- Functions like `ConfigLoader_Init()` should have built-in logic for both modes
+- When creating default files, ensure the target directory exists first
 
 ### Git Bash Path Expansion (CRITICAL)
 - **Git Bash converts any `/param` to `C:/Program Files/Git/param`** - this breaks all forward-slash parameters

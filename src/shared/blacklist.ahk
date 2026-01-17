@@ -28,11 +28,9 @@ Blacklist_Init(filePath := "") {
 
     if (filePath = "") {
         if (A_IsCompiled) {
-            ; Compiled: look in exe directory, then shared/ subdirectory
+            ; Compiled: blacklist.txt lives next to the exe
+            ; Don't fall back to subdirectories - file will be created here if missing
             gBlacklist_FilePath := A_ScriptDir "\blacklist.txt"
-            if (!FileExist(gBlacklist_FilePath)) {
-                gBlacklist_FilePath := A_ScriptDir "\shared\blacklist.txt"
-            }
         } else {
             ; Development: try various relative paths
             ; From src/ (alt_tabby.ahk)

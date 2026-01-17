@@ -57,7 +57,10 @@ Store_Init() {
     global gStore_Server, StorePipeName
 
     ; Load config.ini (overrides defaults from config.ahk)
-    ConfigLoader_Init(A_ScriptDir "\..")
+    ; Let ConfigLoader_Init() determine path based on A_IsCompiled:
+    ; - Compiled: uses A_ScriptDir (exe directory)
+    ; - Development: tries A_ScriptDir, then A_ScriptDir "\..\"
+    ConfigLoader_Init()
 
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
