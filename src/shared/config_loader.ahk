@@ -80,6 +80,10 @@ _CL_LoadAllSettings() {
 
     _CL_LoadSetting_Bool("Diagnostics", "ChurnLog", "DiagChurnLog")
     _CL_LoadSetting_Int("Testing", "LiveDurationSec", "TestLiveDurationSec_Default")
+
+    _CL_LoadSetting_Int("AltTab", "GraceMs", "AltTabGraceMs")
+    _CL_LoadSetting_Bool("AltTab", "PrewarmOnAlt", "AltTabPrewarmOnAlt")
+    _CL_LoadSetting_Int("AltTab", "QuickSwitchMs", "AltTabQuickSwitchMs")
 }
 
 ; Individual setting loaders - each handles its own global
@@ -143,6 +147,9 @@ _CL_LoadSetting_Bool(section, key, globalName := "") {
         case "DiagChurnLog":
             global DiagChurnLog
             DiagChurnLog := boolVal
+        case "AltTabPrewarmOnAlt":
+            global AltTabPrewarmOnAlt
+            AltTabPrewarmOnAlt := boolVal
     }
 }
 
@@ -209,6 +216,12 @@ _CL_LoadSetting_Int(section, key, globalName := "") {
         case "TestLiveDurationSec_Default":
             global TestLiveDurationSec_Default
             TestLiveDurationSec_Default := intVal
+        case "AltTabGraceMs":
+            global AltTabGraceMs
+            AltTabGraceMs := intVal
+        case "AltTabQuickSwitchMs":
+            global AltTabQuickSwitchMs
+            AltTabQuickSwitchMs := intVal
     }
 }
 
@@ -322,6 +335,13 @@ _CL_CreateDefaultIni(path) {
     content .= "[Diagnostics]`n"
     content .= "; Debug options`n"
     content .= "; ChurnLog=false`n"
+    content .= "`n"
+
+    content .= "[AltTab]`n"
+    content .= "; Alt-Tab GUI behavior`n"
+    content .= "; GraceMs=150`n"
+    content .= "; PrewarmOnAlt=true`n"
+    content .= "; QuickSwitchMs=100`n"
 
     try FileAppend(content, path, "UTF-8")
 }

@@ -55,4 +55,6 @@ _TABBY_IPC_Dispatch(cb, wParam, lParam) {
 ; Event constants for clarity
 global TABBY_EV_TAB_STEP := 1
 global TABBY_EV_ALT_UP   := 2
+global TABBY_EV_ALT_DOWN := 3
+global TABBY_EV_ESCAPE   := 4
 global TABBY_FLAG_SHIFT  := 1
