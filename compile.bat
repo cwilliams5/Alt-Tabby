@@ -62,6 +62,29 @@ echo Output:    %OUTPUT%
 echo Base:      %AHK2BASE%
 echo.
 
+:: Kill any running AltTabby processes first
+echo Checking for running AltTabby processes...
+tasklist /FI "IMAGENAME eq AltTabby.exe" 2>nul | find /I "AltTabby.exe" >nul
+if not errorlevel 1 (
+    echo Found running AltTabby.exe - attempting to terminate...
+    taskkill /IM AltTabby.exe /F >nul 2>&1
+    if errorlevel 1 (
+        echo WARNING: Could not terminate AltTabby.exe
+        echo          Process may be running as Administrator.
+        echo          Please close it manually and try again.
+        echo.
+        pause
+        exit /b 1
+    ) else (
+        echo   - Terminated AltTabby.exe
+        :: Give the OS a moment to release file handles
+        timeout /t 2 /nobreak >nul
+    )
+) else (
+    echo   - No running AltTabby.exe found
+)
+echo.
+
 :: Compile using v2 base interpreter
 :: /base specifies the v2 exe to use as the runtime
 "%AHK2EXE%" /in "%INPUT%" /out "%OUTPUT%" /base "%AHK2BASE%" /silent verbose
