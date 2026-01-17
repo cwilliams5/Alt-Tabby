@@ -1,19 +1,23 @@
 #Requires AutoHotkey v2.0
-#SingleInstance Force
+; Note: #SingleInstance removed - unified exe uses #SingleInstance Off
+; When running standalone, multiple instances are OK for development
 
-#Include %A_ScriptDir%\..\shared\config.ahk
-#Include %A_ScriptDir%\..\shared\config_loader.ahk
-#Include %A_ScriptDir%\..\shared\json.ahk
-#Include %A_ScriptDir%\..\shared\ipc_pipe.ahk
-#Include %A_ScriptDir%\..\shared\blacklist.ahk
-#Include %A_ScriptDir%\windowstore.ahk
-#Include %A_ScriptDir%\winenum_lite.ahk
-#Include %A_ScriptDir%\mru_lite.ahk
-#Include %A_ScriptDir%\komorebi_lite.ahk
-#Include %A_ScriptDir%\komorebi_sub.ahk
-#Include %A_ScriptDir%\icon_pump.ahk
-#Include %A_ScriptDir%\proc_pump.ahk
-#Include %A_ScriptDir%\winevent_hook.ahk
+; Includes: Use *i (ignore if not found) to handle both:
+; - Standalone: files found via %A_ScriptDir%\..\ path
+; - Included from alt_tabby.ahk: files already loaded, paths don't match but that's OK
+#Include *i %A_ScriptDir%\..\shared\config.ahk
+#Include *i %A_ScriptDir%\..\shared\config_loader.ahk
+#Include *i %A_ScriptDir%\..\shared\json.ahk
+#Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
+#Include *i %A_ScriptDir%\..\shared\blacklist.ahk
+#Include *i %A_ScriptDir%\windowstore.ahk
+#Include *i %A_ScriptDir%\winenum_lite.ahk
+#Include *i %A_ScriptDir%\mru_lite.ahk
+#Include *i %A_ScriptDir%\komorebi_lite.ahk
+#Include *i %A_ScriptDir%\komorebi_sub.ahk
+#Include *i %A_ScriptDir%\icon_pump.ahk
+#Include *i %A_ScriptDir%\proc_pump.ahk
+#Include *i %A_ScriptDir%\winevent_hook.ahk
 
 global gStore_Server := 0
 global gStore_ClientOpts := Map()      ; hPipe -> projection opts
@@ -367,9 +371,13 @@ Store_OnMessage(line, hPipe := 0) {
     }
 }
 
-Store_Init()
-
-OnExit(Store_OnExit)
+; Auto-init only if running standalone or if mode is "store"
+; When included from alt_tabby.ahk with a different mode, skip init.
+if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "store") {
+    Store_Init()
+    OnExit(Store_OnExit)
+    Persistent()
+}
 
 Store_OnExit(reason, code) {
     global gStore_Server

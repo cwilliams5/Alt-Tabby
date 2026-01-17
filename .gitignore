@@ -3,6 +3,10 @@
 
 # User config (created from defaults on first run)
 /src/config.ini
+/config.ini
+
+# Release folder (compiled output)
+/release/
 
 # OS
 Thumbs.db

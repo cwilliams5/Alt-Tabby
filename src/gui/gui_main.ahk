@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#SingleInstance Force
+; Note: #SingleInstance removed - unified exe uses #SingleInstance Off
 #UseHook true
 InstallKeybdHook(true)
 
@@ -7,13 +7,14 @@ InstallKeybdHook(true)
 ; Use an inert mask key so Alt taps don't focus menus
 A_MenuMaskKey := "vkE8"
 
-#Include %A_ScriptDir%\..\shared\config.ahk
-#Include %A_ScriptDir%\..\shared\json.ahk
-#Include %A_ScriptDir%\..\shared\ipc_pipe.ahk
-#Include %A_ScriptDir%\..\interceptor\interceptor_ipc.ahk
-#Include %A_ScriptDir%\gui_config.ahk
-#Include %A_ScriptDir%\gui_gdip.ahk
-#Include %A_ScriptDir%\gui_win.ahk
+; Includes: Use *i (ignore if not found) for unified exe compatibility
+#Include *i %A_ScriptDir%\..\shared\config.ahk
+#Include *i %A_ScriptDir%\..\shared\json.ahk
+#Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
+#Include *i %A_ScriptDir%\..\interceptor\interceptor_ipc.ahk
+#Include *i %A_ScriptDir%\gui_config.ahk
+#Include *i %A_ScriptDir%\gui_gdip.ahk
+#Include *i %A_ScriptDir%\gui_win.ahk
 
 ; ========================= GLOBAL STATE =========================
 
@@ -1857,24 +1858,27 @@ GUI_CreateOverlay() {
 
 ; ========================= MAIN =========================
 
-GUI_Main_Init()
+; Auto-init only if running standalone or if mode is "gui"
+if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
+    GUI_Main_Init()
 
-; DPI change handler
-OnMessage(0x02E0, (wParam, lParam, msg, hwnd) => (gGdip_ResScale := 0.0, 0))
+    ; DPI change handler
+    OnMessage(0x02E0, (wParam, lParam, msg, hwnd) => (gGdip_ResScale := 0.0, 0))
 
-; Create windows
-GUI_CreateBase()
-gGUI_Sel := 1
-gGUI_ScrollTop := 0
-GUI_CreateOverlay()
+    ; Create windows
+    GUI_CreateBase()
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    GUI_CreateOverlay()
 
-; Start hidden
-gGUI_OverlayVisible := false
-gGUI_Revealed := false
+    ; Start hidden
+    gGUI_OverlayVisible := false
+    gGUI_Revealed := false
 
-; Mouse handlers
-OnMessage(0x0201, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : 0))
-OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))
-OnMessage(0x0200, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
+    ; Mouse handlers
+    OnMessage(0x0201, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : 0))
+    OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))
+    OnMessage(0x0200, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
 
-Persistent()
+    Persistent()
+}

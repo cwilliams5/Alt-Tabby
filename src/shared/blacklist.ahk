@@ -27,15 +27,24 @@ Blacklist_Init(filePath := "") {
     global gBlacklist_FilePath
 
     if (filePath = "") {
-        ; Default: blacklist.txt next to this script (in shared/)
-        gBlacklist_FilePath := A_ScriptDir "\shared\blacklist.txt"
-        if (!FileExist(gBlacklist_FilePath)) {
-            ; Try relative to script directory for store_server
-            gBlacklist_FilePath := A_ScriptDir "\..\shared\blacklist.txt"
-        }
-        if (!FileExist(gBlacklist_FilePath)) {
-            ; Fallback to same directory
+        if (A_IsCompiled) {
+            ; Compiled: look in exe directory, then shared/ subdirectory
             gBlacklist_FilePath := A_ScriptDir "\blacklist.txt"
+            if (!FileExist(gBlacklist_FilePath)) {
+                gBlacklist_FilePath := A_ScriptDir "\shared\blacklist.txt"
+            }
+        } else {
+            ; Development: try various relative paths
+            ; From src/ (alt_tabby.ahk)
+            gBlacklist_FilePath := A_ScriptDir "\shared\blacklist.txt"
+            if (!FileExist(gBlacklist_FilePath)) {
+                ; From src/store/ or src/gui/
+                gBlacklist_FilePath := A_ScriptDir "\..\shared\blacklist.txt"
+            }
+            if (!FileExist(gBlacklist_FilePath)) {
+                ; Fallback to same directory
+                gBlacklist_FilePath := A_ScriptDir "\blacklist.txt"
+            }
         }
     } else {
         gBlacklist_FilePath := filePath
