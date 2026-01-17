@@ -152,17 +152,17 @@ INT_Tab_Down(*) {
     if (gINT_TabHeld)
         return
 
-    ; If session is already active, we KNOW it's Alt+Tab - no delay needed!
-    ; The 24ms delay is only for the FIRST Tab to decide "is Alt held?"
-    if (gINT_SessionActive && gINT_AltIsDown) {
-        ; Cancel any pending decision
-        if (gINT_TabPending) {
-            SetTimer(INT_Tab_Decide, 0)
-            gINT_PendingDecideArmed := false
-            gINT_TabPending := false
-        }
+    ; If a decision is pending, commit it immediately before processing this Tab
+    if (gINT_TabPending) {
+        SetTimer(INT_Tab_Decide, 0)  ; Cancel pending timer
+        gINT_PendingDecideArmed := false
+        gINT_TabPending := false
+        INT_Tab_Decide_Inner()  ; Commit immediately - may set gINT_SessionActive := true
+    }
 
-        ; Process immediately
+    ; NOW check if session is active (either was already, or became active after committing above)
+    ; If active, process this Tab immediately - no delay needed!
+    if (gINT_SessionActive && gINT_AltIsDown) {
         gINT_PressCount += 1
         shiftHeld := GetKeyState("Shift", "P")
         shiftFlag := shiftHeld ? TABBY_FLAG_SHIFT : 0
@@ -171,14 +171,7 @@ INT_Tab_Down(*) {
         return
     }
 
-    ; If a decision is pending and new Tab arrives, commit the pending one immediately
-    if (gINT_TabPending) {
-        SetTimer(INT_Tab_Decide, 0)  ; Cancel pending timer
-        gINT_PendingDecideArmed := false
-        INT_Tab_Decide_Inner()  ; Commit immediately
-    }
-
-    ; Start new Tab decision (first Tab only needs this delay)
+    ; Session not active yet - this is the FIRST Tab, needs decision delay
     gINT_TabPending := true
     gINT_PendingShift := GetKeyState("Shift", "P")
     gINT_TabUpSeen := false
