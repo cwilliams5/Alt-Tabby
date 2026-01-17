@@ -201,12 +201,73 @@ IPC__ClientTick(client) {
 
 ; ============================== Pipe helpers ===============================
 
+; Create SECURITY_ATTRIBUTES with NULL DACL to allow non-elevated processes to connect
+; This is needed when running as administrator - otherwise non-elevated clients can't connect
+_IPC_CreateOpenSecurityAttrs() {
+    ; Use static buffers so they persist for the lifetime of the pipe
+    static pSD := 0
+    static pSA := 0
+
+    ; SECURITY_DESCRIPTOR size: 20 bytes (32-bit) or 40 bytes (64-bit)
+    ; Using 40 to be safe
+    if (!pSD) {
+        pSD := Buffer(40, 0)
+
+        ; Initialize security descriptor
+        ; SECURITY_DESCRIPTOR_REVISION = 1
+        ok := DllCall("advapi32\InitializeSecurityDescriptor"
+            , "ptr", pSD.Ptr
+            , "uint", 1  ; SECURITY_DESCRIPTOR_REVISION
+            , "int")
+
+        if (!ok)
+            return 0
+
+        ; Set NULL DACL (grants full access to everyone)
+        ; SetSecurityDescriptorDacl(pSD, bDaclPresent=TRUE, pDacl=NULL, bDaclDefaulted=FALSE)
+        ok := DllCall("advapi32\SetSecurityDescriptorDacl"
+            , "ptr", pSD.Ptr
+            , "int", 1    ; bDaclPresent = TRUE (DACL is present)
+            , "ptr", 0    ; pDacl = NULL (NULL DACL = allow all access)
+            , "int", 0    ; bDaclDefaulted = FALSE
+            , "int")
+
+        if (!ok)
+            return 0
+    }
+
+    ; Create SECURITY_ATTRIBUTES structure
+    ; struct SECURITY_ATTRIBUTES {
+    ;   DWORD  nLength;              // offset 0, size 4
+    ;   LPVOID lpSecurityDescriptor; // offset 4 (32-bit) or 8 (64-bit), size 4/8
+    ;   BOOL   bInheritHandle;       // offset 8 (32-bit) or 16 (64-bit), size 4
+    ; }
+    if (!pSA) {
+        saSize := (A_PtrSize = 8) ? 24 : 12
+        pSA := Buffer(saSize, 0)
+
+        ; nLength
+        NumPut("uint", saSize, pSA, 0)
+        ; lpSecurityDescriptor (at offset A_PtrSize due to alignment)
+        NumPut("ptr", pSD.Ptr, pSA, A_PtrSize)
+        ; bInheritHandle (at offset A_PtrSize + A_PtrSize)
+        NumPut("int", 0, pSA, A_PtrSize * 2)
+    }
+
+    return pSA.Ptr
+}
+
 _IPC_CreatePipeInstance(pipeName) {
     PIPE_ACCESS_DUPLEX := 0x00000003
     FILE_FLAG_OVERLAPPED := 0x40000000
     PIPE_TYPE_MESSAGE := 0x00000004
     PIPE_READMODE_MESSAGE := 0x00000002
     PIPE_WAIT := 0x00000000
+
+    ; Create security attributes with NULL DACL to allow non-elevated processes
+    ; to connect when we're running as administrator
+    pSA := _IPC_CreateOpenSecurityAttrs()
+
     hPipe := DllCall("CreateNamedPipeW"
         , "str", "\\.\pipe\" pipeName
         , "uint", PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED
@@ -215,7 +276,7 @@ _IPC_CreatePipeInstance(pipeName) {
         , "uint", 65536
         , "uint", 65536
         , "uint", 0
-        , "ptr", 0
+        , "ptr", pSA   ; security attrs (NULL DACL = allow all)
         , "ptr")
     if (!hPipe || hPipe = -1)
         return { hPipe: 0 }

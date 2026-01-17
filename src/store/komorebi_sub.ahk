@@ -70,6 +70,10 @@ KomorebiSub_Start() {
     PIPE_TYPE_BYTE := 0x00000000
     PIPE_READMODE_BYTE := 0x00000000
 
+    ; Create security attributes with NULL DACL to allow non-elevated processes
+    ; to connect when we're running as administrator
+    pSA := _KSub_CreateOpenSecurityAttrs()
+
     pipePath := "\\.\pipe\" _KSub_PipeName
     _KSub_hPipe := DllCall("CreateNamedPipeW"
         , "str", pipePath
@@ -79,7 +83,7 @@ KomorebiSub_Start() {
         , "uint", 0          ; out buffer (inbound only)
         , "uint", 65536      ; in buffer
         , "uint", 0          ; default timeout
-        , "ptr", 0           ; security attrs
+        , "ptr", pSA         ; security attrs (NULL DACL = allow all)
         , "ptr")
 
     if (_KSub_hPipe = 0 || _KSub_hPipe = -1) {
@@ -123,20 +127,31 @@ KomorebiSub_Start() {
 
     ; Launch komorebic subscriber
     try {
-        _KSub_ClientPid := Run('"' KomorebicExe '" subscribe-pipe ' _KSub_PipeName, , "Hide")
-    } catch {
+        cmd := '"' KomorebicExe '" subscribe-pipe ' _KSub_PipeName
+        _KSub_ClientPid := Run(cmd, , "Hide")
+        _KSub_DiagLog("KomorebiSub: Launched subscriber pid=" _KSub_ClientPid " cmd=" cmd)
+    } catch as e {
+        _KSub_DiagLog("KomorebiSub: Failed to launch subscriber: " e.Message)
         ; Keep server alive, client may connect later
     }
 
     _KSub_LastEvent := A_TickCount
     _KSub_FallbackMode := false
+    _KSub_DiagLog("KomorebiSub: Setting timer with interval=" KSub_PollMs)
     SetTimer(KomorebiSub_Poll, KSub_PollMs)
 
     ; Do initial poll to populate all windows with workspace data immediately
     ; Runs after 1500ms to ensure first winenum scan has populated the store
     SetTimer(_KSub_InitialPoll, -1500)
 
+    _KSub_DiagLog("KomorebiSub: Start complete, pipe=" _KSub_PipeName)
     return true
+}
+
+; Diagnostic logging (always on for debugging compiled mode issues)
+_KSub_DiagLog(msg) {
+    static logPath := A_Temp "\tabby_ksub_diag.log"
+    try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", logPath, "UTF-8")
 }
 
 ; One-time initial poll to populate workspace data on startup
@@ -193,6 +208,14 @@ KomorebiSub_Stop() {
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Over, _KSub_Connected
     global _KSub_LastEvent, KSub_IdleRecycleMs, _KSub_Buf
+    static pollCount := 0, lastLogTick := 0
+
+    pollCount++
+    ; Log every 5 seconds to avoid spam
+    if (A_TickCount - lastLogTick > 5000) {
+        _KSub_DiagLog("Poll #" pollCount ": hPipe=" _KSub_hPipe " connected=" _KSub_Connected)
+        lastLogTick := A_TickCount
+    }
 
     if (!_KSub_hPipe)
         return
@@ -272,6 +295,7 @@ KomorebiSub_Poll() {
         json := _KSub_ExtractOneJson(&_KSub_Buf)
         if (json = "")
             break
+        _KSub_DiagLog("Poll: Got notification, len=" StrLen(json))
         _KSub_Log("Poll: Got JSON object, len=" StrLen(json))
         _KSub_OnNotification(json)
     }
@@ -824,6 +848,71 @@ _KSub_ArrayTopLevelSplit(arrayText) {
     if (last != "")
         res.Push(last)
     return res
+}
+
+; ============================================================
+; Security Helpers
+; ============================================================
+
+; Create SECURITY_ATTRIBUTES with NULL DACL to allow non-elevated processes to connect
+; This is needed when running as administrator - otherwise komorebic (non-elevated) can't connect
+_KSub_CreateOpenSecurityAttrs() {
+    ; Use static buffers so they persist for the lifetime of the pipe
+    static pSD := 0
+    static pSA := 0
+
+    ; SECURITY_DESCRIPTOR size: 20 bytes (32-bit) or 40 bytes (64-bit)
+    ; Using 40 to be safe
+    if (!pSD) {
+        pSD := Buffer(40, 0)
+
+        ; Initialize security descriptor
+        ; SECURITY_DESCRIPTOR_REVISION = 1
+        ok := DllCall("advapi32\InitializeSecurityDescriptor"
+            , "ptr", pSD.Ptr
+            , "uint", 1  ; SECURITY_DESCRIPTOR_REVISION
+            , "int")
+
+        if (!ok) {
+            _KSub_DiagLog("InitializeSecurityDescriptor failed: " A_LastError)
+            return 0
+        }
+
+        ; Set NULL DACL (grants full access to everyone)
+        ; SetSecurityDescriptorDacl(pSD, bDaclPresent=TRUE, pDacl=NULL, bDaclDefaulted=FALSE)
+        ok := DllCall("advapi32\SetSecurityDescriptorDacl"
+            , "ptr", pSD.Ptr
+            , "int", 1    ; bDaclPresent = TRUE (DACL is present)
+            , "ptr", 0    ; pDacl = NULL (NULL DACL = allow all access)
+            , "int", 0    ; bDaclDefaulted = FALSE
+            , "int")
+
+        if (!ok) {
+            _KSub_DiagLog("SetSecurityDescriptorDacl failed: " A_LastError)
+            return 0
+        }
+    }
+
+    ; Create SECURITY_ATTRIBUTES structure
+    ; struct SECURITY_ATTRIBUTES {
+    ;   DWORD  nLength;              // offset 0, size 4
+    ;   LPVOID lpSecurityDescriptor; // offset 4 (32-bit) or 8 (64-bit), size 4/8
+    ;   BOOL   bInheritHandle;       // offset 8 (32-bit) or 16 (64-bit), size 4
+    ; }
+    if (!pSA) {
+        saSize := (A_PtrSize = 8) ? 24 : 12
+        pSA := Buffer(saSize, 0)
+
+        ; nLength
+        NumPut("uint", saSize, pSA, 0)
+        ; lpSecurityDescriptor (at offset A_PtrSize due to alignment)
+        NumPut("ptr", pSD.Ptr, pSA, A_PtrSize)
+        ; bInheritHandle (at offset A_PtrSize + A_PtrSize)
+        NumPut("int", 0, pSA, A_PtrSize * 2)
+    }
+
+    _KSub_DiagLog("Created NULL DACL security attributes")
+    return pSA.Ptr
 }
 
 ; ============================================================
