@@ -429,6 +429,7 @@ GUI_GraceTimerFired() {
 GUI_ShowOverlayWithFrozen() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed
+    global GUI_ScrollKeepHighlightOnTop
 
     if (gGUI_OverlayVisible) {
         return
@@ -436,7 +437,12 @@ GUI_ShowOverlayWithFrozen() {
 
     ; Use frozen items for display
     gGUI_Items := gGUI_FrozenItems
-    ; NOTE: gGUI_Sel and gGUI_ScrollTop are ALREADY set correctly - don't reset them!
+
+    ; ENFORCE: When ScrollKeepHighlightOnTop is true, selected item must be at top
+    ; This catches any edge cases where scrollTop wasn't set correctly
+    if (GUI_ScrollKeepHighlightOnTop && gGUI_FrozenItems.Length > 0) {
+        gGUI_ScrollTop := gGUI_Sel - 1
+    }
 
     gGUI_Revealed := false
 
@@ -1005,7 +1011,13 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
 ; ========================= PAINTING =========================
 
 GUI_Repaint() {
-    global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_Sel, gGUI_LastRowsDesired, gGUI_Revealed
+    global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
+    global gGUI_State, GUI_ScrollKeepHighlightOnTop
+
+    ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
+    if (gGUI_State = "ACTIVE" && GUI_ScrollKeepHighlightOnTop && gGUI_Items.Length > 0) {
+        gGUI_ScrollTop := gGUI_Sel - 1
+    }
 
     count := gGUI_Items.Length
     rowsDesired := GUI_ComputeRowsToShow(count)
