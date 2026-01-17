@@ -23,6 +23,14 @@ global gGUI_HoverRow := 0
 global gGUI_HoverBtn := ""
 global gGUI_FooterText := "All Windows"
 
+; Workspace mode: "all" = show all workspaces, "current" = show current workspace only
+global gGUI_WorkspaceMode := "all"
+global gGUI_CurrentWSName := ""  ; Cached from store meta
+
+; Footer arrow hit regions (physical coords, updated during paint)
+global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
+global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
+
 global gGUI_StoreClient := 0
 global gGUI_StoreConnected := false
 global gGUI_StoreRev := -1
@@ -75,6 +83,9 @@ GUI_Main_Init() {
     Win_InitDpiAwareness()
     Gdip_Startup()
 
+    ; Initialize footer text based on workspace mode
+    GUI_UpdateFooterText()
+
     ; Set up interceptor keyboard hooks (built-in, no IPC)
     INT_SetupHotkeys()
 
@@ -82,7 +93,7 @@ GUI_Main_Init() {
     gGUI_StoreClient := IPC_PipeClient_Connect(StorePipeName, GUI_OnStoreMessage)
     if (gGUI_StoreClient.hPipe) {
         ; Request deltas so we stay up to date like the viewer
-        hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items" } }
+        hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
         IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(hello))
     }
 }
@@ -101,8 +112,20 @@ INT_SetupHotkeys() {
     ; Escape hook
     Hotkey("$*Escape", INT_Escape_Down)
 
+    ; Ctrl hook for workspace mode toggle (only when GUI active)
+    Hotkey("~*Ctrl", INT_Ctrl_Down)
+
     ; Exit hotkey
     Hotkey("$*!F12", (*) => ExitApp())
+}
+
+INT_Ctrl_Down(*) {
+    global gGUI_State, gGUI_OverlayVisible
+
+    ; Only toggle mode when GUI is active and visible
+    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
+        GUI_ToggleWorkspaceMode()
+    }
 }
 
 INT_Alt_Down(*) {
@@ -281,8 +304,14 @@ INT_ShouldBypass() {
 }
 
 INT_IsFullscreen(win := "A") {
-    local x := 0, y := 0, w := 0, h := 0
-    try WinGetPos(&x, &y, &w, &h, win)
+    local x, y, w, h
+    try {
+        WinGetPos(&x, &y, &w, &h, win)
+    } catch {
+        return false
+    }
+    if (!IsSet(w) || !IsSet(h))
+        return false
     return (w >= A_ScreenWidth * 0.99 && h >= A_ScreenHeight * 0.99 && x <= 5 && y <= 5)
 }
 
@@ -322,11 +351,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_TabCount := 1
             gGUI_State := "ACTIVE"
 
-            ; Freeze the current items list NOW (whatever deltas have given us)
-            gGUI_FrozenItems := []
-            for _, item in gGUI_Items {
-                gGUI_FrozenItems.Push(item)
-            }
+            ; Freeze the current items list NOW, filtered by workspace mode
+            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
 
             ; Selection: First Alt+Tab selects the PREVIOUS window (position 2 in 1-based MRU list)
             ; Position 1 = current window (we're already on it)
@@ -490,24 +516,7 @@ GUI_ActivateFromFrozen() {
     }
 
     item := gGUI_FrozenItems[gGUI_Sel]
-    hwnd := item.hwnd
-
-    ; DEBUG: Show what we're activating
-    ToolTip("ACTIVATE sel=" gGUI_Sel ": " SubStr(item.Title, 1, 40), 100, 150, 2)
-    SetTimer(() => ToolTip(,,,2), -2000)
-
-    if (!hwnd) {
-        return
-    }
-
-    try {
-        if (WinExist("ahk_id " hwnd)) {
-            if (DllCall("user32\IsIconic", "ptr", hwnd, "int")) {
-                DllCall("user32\ShowWindow", "ptr", hwnd, "int", 9)  ; SW_RESTORE
-            }
-            DllCall("user32\SetForegroundWindow", "ptr", hwnd)
-        }
-    }
+    GUI_ActivateItem(item)
 }
 
 GUI_OnStoreMessage(line, hPipe := 0) {
@@ -557,12 +566,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
                 gGUI_Sel := 1
             }
 
-            if (obj["payload"].Has("meta") && obj["payload"]["meta"].Has("currentWSName")) {
-                wsName := obj["payload"]["meta"]["currentWSName"]
-                if (wsName != "") {
-                    gGUI_FooterText := wsName
-                }
-            }
+            GUI_UpdateCurrentWSFromPayload(obj["payload"])
 
             if (gGUI_OverlayVisible && gGUI_OverlayH) {
                 GUI_Repaint()
@@ -585,6 +589,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
 
         ; Apply delta incrementally to stay up-to-date
         if (obj.Has("payload")) {
+            GUI_UpdateCurrentWSFromPayload(obj["payload"])
             GUI_ApplyDelta(obj["payload"])
         }
         if (obj.Has("rev")) {
@@ -605,6 +610,7 @@ GUI_ConvertStoreItems(items) {
             HWND: Format("0x{:X}", hwnd),
             PID: item.Has("pid") ? "" item["pid"] : "",
             WS: item.Has("workspaceName") ? item["workspaceName"] : "",
+            isOnCurrentWorkspace: item.Has("isOnCurrentWorkspace") ? item["isOnCurrentWorkspace"] : true,
             processName: item.Has("processName") ? item["processName"] : "",
             iconHicon: item.Has("iconHicon") ? item["iconHicon"] : 0,
             lastActivatedTick: item.Has("lastActivatedTick") ? item["lastActivatedTick"] : 0
@@ -667,6 +673,9 @@ GUI_ApplyDelta(payload) {
                     if (rec.Has("workspaceName")) {
                         item.WS := rec["workspaceName"]
                     }
+                    if (rec.Has("isOnCurrentWorkspace")) {
+                        item.isOnCurrentWorkspace := rec["isOnCurrentWorkspace"]
+                    }
                     if (rec.Has("processName")) {
                         item.processName := rec["processName"]
                     }
@@ -691,6 +700,7 @@ GUI_ApplyDelta(payload) {
                     HWND: Format("0x{:X}", hwnd),
                     PID: rec.Has("pid") ? "" rec["pid"] : "",
                     WS: rec.Has("workspaceName") ? rec["workspaceName"] : "",
+                    isOnCurrentWorkspace: rec.Has("isOnCurrentWorkspace") ? rec["isOnCurrentWorkspace"] : true,
                     processName: rec.Has("processName") ? rec["processName"] : "",
                     iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
                     lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
@@ -738,7 +748,7 @@ GUI_RequestSnapshot() {
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
-    req := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "MRU", columns: "items" } }
+    req := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
     IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(req))
 }
 
@@ -748,18 +758,149 @@ GUI_ActivateSelected() {
         return
     }
     item := gGUI_Items[gGUI_Sel]
+    GUI_ActivateItem(item)
+}
+
+; Unified activation logic with cross-workspace support via komorebi
+GUI_ActivateItem(item) {
+    global KomorebicExe
+
     hwnd := item.hwnd
     if (!hwnd) {
         return
     }
 
+    ; Check if window is on a different workspace
+    isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
+    wsName := item.HasOwnProp("WS") ? item.WS : ""
+
+    ; If window is on different workspace and we have komorebi, switch workspace first
+    if (!isOnCurrent && wsName != "" && IsSet(KomorebicExe) && KomorebicExe != "" && FileExist(KomorebicExe)) {
+        try {
+            ; Use komorebic to switch to the target workspace
+            cmd := '"' KomorebicExe '" focus-named-workspace "' wsName '"'
+            Run(cmd, , "Hide")
+            ; Brief delay to let workspace switch complete
+            Sleep(50)
+        }
+    }
+
+    ; Now activate the window
     try {
         if (WinExist("ahk_id " hwnd)) {
             if (DllCall("user32\IsIconic", "ptr", hwnd, "int")) {
-                DllCall("user32\ShowWindow", "ptr", hwnd, "int", 9)
+                DllCall("user32\ShowWindow", "ptr", hwnd, "int", 9)  ; SW_RESTORE
             }
             DllCall("user32\SetForegroundWindow", "ptr", hwnd)
         }
+    }
+}
+
+; ========================= WORKSPACE MODE =========================
+
+GUI_UpdateFooterText() {
+    global gGUI_FooterText, gGUI_WorkspaceMode, gGUI_CurrentWSName
+
+    if (gGUI_WorkspaceMode = "all") {
+        gGUI_FooterText := "All Workspaces"
+    } else {
+        ; "current" mode
+        wsName := (gGUI_CurrentWSName != "") ? gGUI_CurrentWSName : "Unknown"
+        gGUI_FooterText := "Current (" wsName ")"
+    }
+}
+
+GUI_UpdateCurrentWSFromPayload(payload) {
+    global gGUI_CurrentWSName
+
+    if (!payload.Has("meta"))
+        return
+
+    meta := payload["meta"]
+    wsName := ""
+
+    ; Handle both Map and Object types for meta
+    if (meta is Map) {
+        wsName := meta.Has("currentWSName") ? meta["currentWSName"] : ""
+    } else if (IsObject(meta)) {
+        try wsName := meta.currentWSName
+    }
+
+    if (wsName != "" && wsName != gGUI_CurrentWSName) {
+        gGUI_CurrentWSName := wsName
+        GUI_UpdateFooterText()
+    }
+}
+
+GUI_ToggleWorkspaceMode() {
+    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+
+    ; Toggle mode
+    gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"
+    GUI_UpdateFooterText()
+
+    ; If GUI is visible and active, re-filter and repaint
+    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
+        ; Re-filter from the original unfrozen items
+        gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
+
+        ; Reset selection
+        gGUI_Sel := 2
+        if (gGUI_Sel > gGUI_FrozenItems.Length) {
+            gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
+        }
+        gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+
+        GUI_Repaint()
+    }
+}
+
+GUI_FilterByWorkspaceMode(items) {
+    global gGUI_WorkspaceMode
+
+    if (gGUI_WorkspaceMode = "all") {
+        ; Return copy of all items
+        result := []
+        for _, item in items {
+            result.Push(item)
+        }
+        return result
+    }
+
+    ; "current" mode - only items on current workspace
+    result := []
+    for _, item in items {
+        isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
+        if (isOnCurrent) {
+            result.Push(item)
+        }
+    }
+    return result
+}
+
+GUI_SetWorkspaceMode(mode) {
+    global gGUI_WorkspaceMode
+
+    if (mode != "all" && mode != "current") {
+        return
+    }
+    if (gGUI_WorkspaceMode = mode) {
+        return
+    }
+
+    gGUI_WorkspaceMode := mode
+    GUI_UpdateFooterText()
+
+    ; Same logic as toggle - re-filter if visible
+    global gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
+        gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
+        gGUI_Sel := 2
+        if (gGUI_Sel > gGUI_FrozenItems.Length) {
+            gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
+        }
+        gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+        GUI_Repaint()
     }
 }
 
@@ -1008,15 +1149,18 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
 ; ========================= PAINTING =========================
 
 GUI_Repaint() {
-    global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
+    global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, GUI_ScrollKeepHighlightOnTop
 
+    ; Use frozen items when in ACTIVE state, live items otherwise
+    items := (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
+
     ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
-    if (gGUI_State = "ACTIVE" && GUI_ScrollKeepHighlightOnTop && gGUI_Items.Length > 0) {
+    if (gGUI_State = "ACTIVE" && GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
         gGUI_ScrollTop := gGUI_Sel - 1
     }
 
-    count := gGUI_Items.Length
+    count := items.Length
     rowsDesired := GUI_ComputeRowsToShow(count)
     if (rowsDesired != gGUI_LastRowsDesired) {
         GUI_ResizeToRows(rowsDesired)
@@ -1033,7 +1177,7 @@ GUI_Repaint() {
     gGdip_CurScale := scale
 
     Gdip_EnsureBackbuffer(phW, phH)
-    GUI_PaintOverlay(gGUI_Items, gGUI_Sel, phW, phH, scale)
+    GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale)
 
     ; BLENDFUNCTION
     bf := Buffer(4, 0)
@@ -1518,7 +1662,7 @@ GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, 
 }
 
 GUI_DrawFooter(g, wPhys, hPhys, scale) {
-    global gGUI_FooterText
+    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect
 
     if (!GUI_ShowFooter) {
         return
@@ -1539,6 +1683,7 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
         fr := 0
     }
 
+    ; Draw footer background
     Gdip_FillRoundRect(g, GUI_FooterBGARGB, fx, fy, fw, fh, fr)
     if (GUI_FooterBorderPx > 0) {
         Gdip_StrokeRoundRect(g, GUI_FooterBorderARGB, fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, Round(GUI_FooterBorderPx * scale))
@@ -1548,24 +1693,64 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
     if (pad < 0) {
         pad := 0
     }
-    tx := fx + pad
-    tw := fw - 2 * pad
 
-    t := StrLower(Trim(GUI_FooterTextAlign))
-    fmt := gGdip_Res["fmtFooterCenter"]
-    if (t = "left") {
-        fmt := gGdip_Res["fmtFooterLeft"]
-    } else if (t = "right") {
-        fmt := gGdip_Res["fmtFooterRight"]
+    ; Arrow dimensions
+    arrowW := Round(24 * scale)  ; Width for arrow hit area
+    arrowPad := Round(8 * scale)  ; Padding inside footer
+
+    ; Left arrow "←"
+    leftArrowX := fx + arrowPad
+    leftArrowY := fy
+    leftArrowW := arrowW
+    leftArrowH := fh
+
+    ; Store hit region for click detection
+    gGUI_LeftArrowRect.x := leftArrowX
+    gGUI_LeftArrowRect.y := leftArrowY
+    gGUI_LeftArrowRect.w := leftArrowW
+    gGUI_LeftArrowRect.h := leftArrowH
+
+    ; Draw left arrow
+    rfLeft := Buffer(16, 0)
+    NumPut("Float", leftArrowX, rfLeft, 0)
+    NumPut("Float", leftArrowY, rfLeft, 4)
+    NumPut("Float", leftArrowW, rfLeft, 8)
+    NumPut("Float", leftArrowH, rfLeft, 12)
+    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", "←", "int", -1, "ptr", gGdip_Res["fFooter"], "ptr", rfLeft.Ptr, "ptr", gGdip_Res["fmtFooterCenter"], "ptr", gGdip_Res["brFooterText"])
+
+    ; Right arrow "→"
+    rightArrowX := fx + fw - arrowPad - arrowW
+    rightArrowY := fy
+    rightArrowW := arrowW
+    rightArrowH := fh
+
+    ; Store hit region for click detection
+    gGUI_RightArrowRect.x := rightArrowX
+    gGUI_RightArrowRect.y := rightArrowY
+    gGUI_RightArrowRect.w := rightArrowW
+    gGUI_RightArrowRect.h := rightArrowH
+
+    ; Draw right arrow
+    rfRight := Buffer(16, 0)
+    NumPut("Float", rightArrowX, rfRight, 0)
+    NumPut("Float", rightArrowY, rfRight, 4)
+    NumPut("Float", rightArrowW, rfRight, 8)
+    NumPut("Float", rightArrowH, rfRight, 12)
+    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", "→", "int", -1, "ptr", gGdip_Res["fFooter"], "ptr", rfRight.Ptr, "ptr", gGdip_Res["fmtFooterCenter"], "ptr", gGdip_Res["brFooterText"])
+
+    ; Center text (between arrows)
+    textX := leftArrowX + leftArrowW + arrowPad
+    textW := rightArrowX - textX - arrowPad
+    if (textW < 0) {
+        textW := 0
     }
 
-    rf := Buffer(16, 0)
-    NumPut("Float", tx, rf, 0)
-    NumPut("Float", fy, rf, 4)
-    NumPut("Float", tw, rf, 8)
-    NumPut("Float", fh, rf, 12)
-
-    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", gGUI_FooterText, "int", -1, "ptr", gGdip_Res["fFooter"], "ptr", rf.Ptr, "ptr", fmt, "ptr", gGdip_Res["brFooterText"])
+    rfCenter := Buffer(16, 0)
+    NumPut("Float", textX, rfCenter, 0)
+    NumPut("Float", fy, rfCenter, 4)
+    NumPut("Float", textW, rfCenter, 8)
+    NumPut("Float", fh, rfCenter, 12)
+    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", gGUI_FooterText, "int", -1, "ptr", gGdip_Res["fFooter"], "ptr", rfCenter.Ptr, "ptr", gGdip_Res["fmtFooterCenter"], "ptr", gGdip_Res["brFooterText"])
 }
 
 ; ========================= ACTIONS =========================
@@ -1640,10 +1825,27 @@ GUI_RemoveItemAt(idx1) {
 
 GUI_OnClick(x, y) {
     global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop
+    global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State
 
     ; Don't process clicks if overlay isn't visible
     if (!gGUI_OverlayVisible) {
         return
+    }
+
+    ; Check footer arrow clicks (only when GUI is active)
+    if (gGUI_State = "ACTIVE") {
+        ; Left arrow click
+        if (x >= gGUI_LeftArrowRect.x && x < gGUI_LeftArrowRect.x + gGUI_LeftArrowRect.w
+            && y >= gGUI_LeftArrowRect.y && y < gGUI_LeftArrowRect.y + gGUI_LeftArrowRect.h) {
+            GUI_ToggleWorkspaceMode()
+            return
+        }
+        ; Right arrow click
+        if (x >= gGUI_RightArrowRect.x && x < gGUI_RightArrowRect.x + gGUI_RightArrowRect.w
+            && y >= gGUI_RightArrowRect.y && y < gGUI_RightArrowRect.y + gGUI_RightArrowRect.h) {
+            GUI_ToggleWorkspaceMode()
+            return
+        }
     }
 
     act := ""

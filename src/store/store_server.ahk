@@ -27,6 +27,7 @@ global gStore_ErrorLog := ""
 global gStore_LastClientLog := 0
 global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
 global gStore_LastClientProj := Map()  ; hPipe -> last projection items (for delta calc)
+global gStore_LastClientMeta := Map()  ; hPipe -> last meta sent (for workspace change detection)
 
 ; Producer state tracking: "running", "disabled", "failed"
 global gStore_ProducerState := Map()
@@ -192,7 +193,7 @@ Store_FullScan() {
 
 ; Push tailored projections to each client based on their registered opts
 Store_PushToClients() {
-    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_TestMode
+    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_TestMode
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -208,16 +209,21 @@ Store_PushToClients() {
         ; Get client's previous projection for delta calculation
         prevItems := gStore_LastClientProj.Has(hPipe) ? gStore_LastClientProj[hPipe] : []
         lastRev := gStore_LastClientRev.Has(hPipe) ? gStore_LastClientRev[hPipe] : -1
+        prevMeta := gStore_LastClientMeta.Has(hPipe) ? gStore_LastClientMeta[hPipe] : ""
 
         ; Skip if nothing changed for this client
         if (lastRev = proj.rev)
             continue
 
+        ; Check if meta changed (workspace name)
+        metaChanged := Store_MetaChanged(prevMeta, proj.meta)
+
         ; Send delta if client has previous state, otherwise full snapshot
         if (prevItems.Length > 0) {
             msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev)
-            ; Skip sending empty deltas (rev bumped but nothing changed for this client)
-            if (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0)
+            ; Skip sending empty deltas ONLY if meta also didn't change
+            ; Always send if meta changed (workspace switch) even with no window changes
+            if (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
                 continue
         } else {
             msg := {
@@ -231,12 +237,39 @@ Store_PushToClients() {
         ; Update client's tracking state
         gStore_LastClientRev[hPipe] := proj.rev
         gStore_LastClientProj[hPipe] := proj.items
+        gStore_LastClientMeta[hPipe] := proj.meta
         sent++
     }
 
     if (gStore_TestMode && sent > 0) {
         Store_LogError("pushed to " sent " clients")
     }
+}
+
+; Check if meta changed (specifically currentWSName for workspace tracking)
+Store_MetaChanged(prevMeta, nextMeta) {
+    if (prevMeta = "")
+        return true  ; No previous meta, consider it changed
+
+    ; Compare workspace name - the critical field for workspace tracking
+    prevWSName := ""
+    nextWSName := ""
+
+    if (IsObject(prevMeta)) {
+        if (prevMeta is Map)
+            prevWSName := prevMeta.Has("currentWSName") ? prevMeta["currentWSName"] : ""
+        else
+            try prevWSName := prevMeta.currentWSName
+    }
+
+    if (IsObject(nextMeta)) {
+        if (nextMeta is Map)
+            nextWSName := nextMeta.Has("currentWSName") ? nextMeta["currentWSName"] : ""
+        else
+            try nextWSName := nextMeta.currentWSName
+    }
+
+    return (prevWSName != nextWSName)
 }
 
 ; Build delta between previous and current projection for a specific client
@@ -320,8 +353,9 @@ Store_OnMessage(line, hPipe := 0) {
     if (type = IPC_MSG_SET_PROJECTION_OPTS) {
         if (obj.Has("projectionOpts")) {
             gStore_ClientOpts[hPipe] := obj["projectionOpts"]
-            ; Clear last projection so client gets fresh snapshot with new opts
+            ; Clear last projection/meta so client gets fresh snapshot with new opts
             gStore_LastClientProj[hPipe] := []
+            gStore_LastClientMeta[hPipe] := ""
         }
         return
     }
@@ -363,9 +397,10 @@ Store_OnMessage(line, hPipe := 0) {
         purgeResult := WindowStore_PurgeBlacklisted()
         Store_LogError("blacklist purge removed " purgeResult.removed " windows")
 
-        ; Clear all client projections to force fresh delta calculation
+        ; Clear all client projections/meta to force fresh delta calculation
         for clientPipe, _ in gStore_LastClientProj {
             gStore_LastClientProj[clientPipe] := []
+            gStore_LastClientMeta[clientPipe] := ""
         }
 
         ; Push updated projections to clients immediately
