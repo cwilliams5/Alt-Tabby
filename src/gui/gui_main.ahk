@@ -148,10 +148,6 @@ INT_Tab_Down(*) {
         return
     }
 
-    ; Block key repeat while Tab is physically held
-    if (gINT_TabHeld)
-        return
-
     ; If a decision is pending, commit it immediately before processing this Tab
     if (gINT_TabPending) {
         SetTimer(INT_Tab_Decide, 0)  ; Cancel pending timer
@@ -160,16 +156,21 @@ INT_Tab_Down(*) {
         INT_Tab_Decide_Inner()  ; Commit immediately - may set gINT_SessionActive := true
     }
 
-    ; NOW check if session is active (either was already, or became active after committing above)
-    ; If active, process this Tab immediately - no delay needed!
+    ; ACTIVE SESSION: Process ALL Tabs immediately - no TabHeld blocking!
+    ; During active session we WANT rapid Tabs to work even if Tab Up is delayed.
+    ; The TabHeld mechanism is for the first Tab only (to block key repeat before session starts).
     if (gINT_SessionActive && gINT_AltIsDown) {
         gINT_PressCount += 1
         shiftHeld := GetKeyState("Shift", "P")
         shiftFlag := shiftHeld ? TABBY_FLAG_SHIFT : 0
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
-        gINT_TabHeld := true  ; Block repeats until Tab released
+        ; NOTE: Don't set gINT_TabHeld here - we process ALL tabs during active session
         return
     }
+
+    ; FIRST TAB: Check TabHeld to block key repeat (user holding Tab before Alt)
+    if (gINT_TabHeld)
+        return
 
     ; Session not active yet - this is the FIRST Tab, needs decision delay
     gINT_TabPending := true
@@ -228,15 +229,14 @@ INT_Tab_Decide_Inner() {
         shiftFlag := gINT_PendingShift ? TABBY_FLAG_SHIFT : 0
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
 
-        ; Track Tab held state
-        gINT_TabHeld := !gINT_TabUpSeen
+        ; NOTE: We no longer set gINT_TabHeld here - during active session we process
+        ; ALL Tabs without blocking, just like native Windows Alt+Tab behavior.
 
         ; CRITICAL: If Alt was released during decision window, send ALT_UP now
         if (!altDownNow || altUpFlag) {
             GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
             gINT_SessionActive := false
             gINT_PressCount := 0
-            gINT_TabHeld := false
             gINT_AltUpDuringPending := false
         }
     } else {
