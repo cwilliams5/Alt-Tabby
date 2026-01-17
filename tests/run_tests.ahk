@@ -1804,6 +1804,85 @@ if (RunLiveTests) {
             }
             Sleep(500)
         }
+
+        ; --- Config/Blacklist Recreation Test ---
+        Log("`n--- Config/Blacklist Recreation Test ---")
+
+        releaseDir := A_ScriptDir "\..\release"
+        configPath := releaseDir "\config.ini"
+        blacklistPath := releaseDir "\blacklist.txt"
+        configBackup := ""
+        blacklistBackup := ""
+
+        ; Back up existing files
+        if (FileExist(configPath)) {
+            configBackup := FileRead(configPath, "UTF-8")
+            FileDelete(configPath)
+        }
+        if (FileExist(blacklistPath)) {
+            blacklistBackup := FileRead(blacklistPath, "UTF-8")
+            FileDelete(blacklistPath)
+        }
+
+        ; Verify files are deleted
+        if (FileExist(configPath) || FileExist(blacklistPath)) {
+            Log("FAIL: Could not delete config files for recreation test")
+            TestErrors++
+        } else {
+            Log("  Deleted config.ini and blacklist.txt for recreation test")
+
+            ; Run compiled store briefly - it should recreate the files
+            recreatePipe := "tabby_recreate_test_" A_TickCount
+            recreatePid := 0
+
+            try {
+                Run('"' compiledExePath '" --store --pipe=' recreatePipe, , "Hide", &recreatePid)
+            }
+
+            if (recreatePid) {
+                Sleep(2000)  ; Give it time to start and create files
+
+                ; Check if files were recreated
+                configRecreated := FileExist(configPath)
+                blacklistRecreated := FileExist(blacklistPath)
+
+                if (configRecreated) {
+                    Log("PASS: config.ini recreated by compiled exe")
+                    TestPassed++
+                } else {
+                    Log("FAIL: config.ini NOT recreated by compiled exe")
+                    TestErrors++
+                }
+
+                if (blacklistRecreated) {
+                    Log("PASS: blacklist.txt recreated by compiled exe")
+                    TestPassed++
+                } else {
+                    Log("FAIL: blacklist.txt NOT recreated by compiled exe")
+                    TestErrors++
+                }
+
+                ; Kill the test store
+                try {
+                    ProcessClose(recreatePid)
+                }
+            } else {
+                Log("FAIL: Could not launch compiled exe for recreation test")
+                TestErrors++
+            }
+        }
+
+        ; Restore original files
+        if (configBackup != "") {
+            try FileDelete(configPath)
+            FileAppend(configBackup, configPath, "UTF-8")
+            Log("  Restored original config.ini")
+        }
+        if (blacklistBackup != "") {
+            try FileDelete(blacklistPath)
+            FileAppend(blacklistBackup, blacklistPath, "UTF-8")
+            Log("  Restored original blacklist.txt")
+        }
     } else {
         Log("SKIP: Compiled exe tests skipped - AltTabby.exe not found")
     }

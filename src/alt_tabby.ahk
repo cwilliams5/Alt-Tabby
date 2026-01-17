@@ -23,9 +23,15 @@ global g_AltTabbyMode := "launch"
 
 for _, arg in A_Args {
     switch StrLower(arg) {
-        case "--store":    g_AltTabbyMode := "store"
-        case "--viewer":   g_AltTabbyMode := "viewer"
-        case "--gui-only": g_AltTabbyMode := "gui"
+        case "--store":
+            g_AltTabbyMode := "store"
+            A_IconHidden := true  ; Hide tray icon IMMEDIATELY to minimize flicker
+        case "--viewer":
+            g_AltTabbyMode := "viewer"
+            A_IconHidden := true
+        case "--gui-only":
+            g_AltTabbyMode := "gui"
+            A_IconHidden := true
     }
 }
 
@@ -48,10 +54,8 @@ if (g_AltTabbyMode = "launch") {
     Persistent()
 }
 
-; Subprocesses: hide tray icon (launcher handles it)
-if (g_AltTabbyMode != "launch") {
-    A_IconHidden := true
-}
+; Note: Subprocess tray icon hiding is done immediately in arg parsing above
+; to minimize flicker (A_IconHidden := true set as soon as mode detected)
 
 ; ============================================================
 ; INCLUDES
