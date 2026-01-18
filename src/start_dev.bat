@@ -8,6 +8,8 @@ setlocal
 ::   1. Store server (window data provider)
 ::   2. GUI (Alt-Tab overlay)
 ::   3. Viewer (debug window list)
+::
+:: Run from: src/ directory OR release/ directory
 :: ============================================================
 
 echo.
@@ -16,23 +18,35 @@ echo Alt-Tabby Development Starter
 echo ============================================================
 echo.
 
-:: Find AHK v2
-set "AHK=C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
+:: Find AHK v2 - check PATH first, then standard location
+where AutoHotkey64.exe >nul 2>&1
+if %ERRORLEVEL%==0 (
+    set "AHK=AutoHotkey64.exe"
+) else (
+    set "AHK=C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
+)
+
 if not exist "%AHK%" (
-    echo ERROR: AutoHotkey v2 not found at: %AHK%
+    echo ERROR: AutoHotkey v2 not found.
+    echo Install from: https://www.autohotkey.com/
     pause
     exit /b 1
 )
 
-:: Get script directory and src path
+:: Get script directory
 set "BASEDIR=%~dp0"
 if "%BASEDIR:~-1%"=="\" set "BASEDIR=%BASEDIR:~0,-1%"
-set "SRCDIR=%BASEDIR%\..\src"
 
-:: Verify src directory exists
-if not exist "%SRCDIR%\store\store_server.ahk" (
-    echo ERROR: Source files not found. Run from /release directory.
-    echo Expected: %SRCDIR%\store\store_server.ahk
+:: Determine src directory based on where we're running from
+:: If running from src/, BASEDIR is src/
+:: If running from release/, need to go up to find src/
+if exist "%BASEDIR%\store\store_server.ahk" (
+    set "SRCDIR=%BASEDIR%"
+) else if exist "%BASEDIR%\..\src\store\store_server.ahk" (
+    set "SRCDIR=%BASEDIR%\..\src"
+) else (
+    echo ERROR: Source files not found.
+    echo Run this script from the src/ or release/ directory.
     pause
     exit /b 1
 )
