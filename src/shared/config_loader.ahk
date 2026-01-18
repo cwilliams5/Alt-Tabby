@@ -59,6 +59,22 @@ global gConfigRegistry := [
      d: "Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data)."},
 
     ; ============================================================
+    ; Launcher Settings
+    ; ============================================================
+    {type: "section", name: "Launcher",
+     desc: "Launcher Settings",
+     long: "Settings for the main Alt-Tabby launcher process (splash screen, startup behavior)."},
+
+    {s: "Launcher", k: "ShowSplash", g: "LauncherShowSplash", t: "bool", default: true,
+     d: "Show splash screen on startup. Displays logo briefly while store and GUI processes start."},
+
+    {s: "Launcher", k: "SplashDurationMs", g: "LauncherSplashDurationMs", t: "int", default: 1500,
+     d: "Splash screen display duration in milliseconds. Set to 0 for minimum (until processes start)."},
+
+    {s: "Launcher", k: "SplashImagePath", g: "LauncherSplashImagePath", t: "string", default: "img\logo.png",
+     d: "Path to splash screen image (relative to Alt-Tabby directory, or absolute path)."},
+
+    ; ============================================================
     ; GUI Appearance
     ; ============================================================
     {type: "section", name: "GUI",
@@ -775,6 +791,60 @@ _CL_FormatValue(val, type) {
     if (type = "int" && IsInteger(val) && val >= 0x10)
         return Format("0x{:X}", val)  ; Hex for large ints (colors, etc.)
     return String(val)
+}
+
+; Write to INI preserving comments and structure (unlike IniWrite which reorganizes)
+_CL_WriteIniPreserveFormat(path, section, key, value) {
+    if (!FileExist(path))
+        return false
+
+    content := FileRead(path, "UTF-8")
+    lines := StrSplit(content, "`n", "`r")
+
+    inSection := false
+    keyFound := false
+    newLines := []
+
+    for i, line in lines {
+        trimmed := Trim(line)
+
+        ; Check for section headers
+        if (RegExMatch(trimmed, "^\[(.+)\]$", &m)) {
+            inSection := (m[1] = section)
+        }
+
+        ; Check for key in correct section (not commented)
+        if (inSection && !keyFound && SubStr(trimmed, 1, 1) != ";") {
+            if (RegExMatch(trimmed, "^" key "\s*=", &m)) {
+                ; Found the key - replace the line
+                newLines.Push(key "=" value)
+                keyFound := true
+                continue
+            }
+        }
+
+        newLines.Push(line)
+    }
+
+    ; If key not found, fall back to IniWrite (adds new key)
+    if (!keyFound) {
+        IniWrite(value, path, section, key)
+        return true
+    }
+
+    ; Write back the file
+    newContent := ""
+    for i, line in newLines {
+        newContent .= line
+        if (i < newLines.Length)
+            newContent .= "`n"
+    }
+
+    try {
+        FileDelete(path)
+        FileAppend(newContent, path, "UTF-8")
+    }
+    return true
 }
 
 ; ============================================================

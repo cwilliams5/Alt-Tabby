@@ -8,7 +8,11 @@ global _KLite_Stamp := 0
 global _KLite_TTL := 500
 
 KomorebiLite_Init() {
+    ; Check if komorebi is available before starting timer
+    if (!KomorebiLite_IsAvailable())
+        return false
     SetTimer(KomorebiLite_Tick, 1000)
+    return true
 }
 
 KomorebiLite_Tick() {
