@@ -87,13 +87,18 @@ if (g_AltTabbyMode = "launch") {
 #Include %A_ScriptDir%\viewer\
 #Include viewer.ahk
 
-; GUI module (from src/gui/ and src/interceptor/)
-#Include %A_ScriptDir%\interceptor\
-#Include interceptor_ipc.ahk
+; GUI module (from src/gui/)
 #Include %A_ScriptDir%\gui\
 #Include gui_config.ahk
 #Include gui_gdip.ahk
 #Include gui_win.ahk
+#Include gui_overlay.ahk
+#Include gui_workspace.ahk
+#Include gui_paint.ahk
+#Include gui_input.ahk
+#Include gui_store.ahk
+#Include gui_state.ahk
+#Include gui_interceptor.ahk
 #Include gui_main.ahk
 
 ; ============================================================

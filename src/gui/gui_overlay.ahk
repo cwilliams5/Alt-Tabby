@@ -1,5 +1,6 @@
 ; Alt-Tabby GUI - Overlay Management
 ; Handles window creation, sizing, show/hide, and layout calculations
+#Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= SHOW/HIDE =========================
 

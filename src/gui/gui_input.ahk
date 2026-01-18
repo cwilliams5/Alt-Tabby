@@ -1,5 +1,6 @@
 ; Alt-Tabby GUI - Input Handling
 ; Handles mouse events, selection movement, hover detection, and actions
+#Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= SELECTION MOVEMENT =========================
 

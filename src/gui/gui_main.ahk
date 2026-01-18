@@ -9,28 +9,20 @@ InstallKeybdHook(true)
 ; Use an inert mask key so Alt taps don't focus menus
 A_MenuMaskKey := "vkE8"
 
-; ========================= INCLUDES =========================
-; Shared utilities (use *i for unified exe compatibility)
+; ========================= INCLUDES (SHARED UTILITIES) =========================
+; Shared utilities first (use *i for unified exe compatibility)
 #Include *i %A_ScriptDir%\..\shared\config.ahk
 #Include *i %A_ScriptDir%\..\shared\json.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
-#Include *i %A_ScriptDir%\..\interceptor\interceptor_ipc.ahk
 
 ; GUI configuration and utilities
 #Include *i %A_ScriptDir%\gui_config.ahk
 #Include *i %A_ScriptDir%\gui_gdip.ahk
 #Include *i %A_ScriptDir%\gui_win.ahk
 
-; GUI sub-modules (order matters for dependencies)
-#Include *i %A_ScriptDir%\gui_overlay.ahk
-#Include *i %A_ScriptDir%\gui_workspace.ahk
-#Include *i %A_ScriptDir%\gui_paint.ahk
-#Include *i %A_ScriptDir%\gui_input.ahk
-#Include *i %A_ScriptDir%\gui_store.ahk
-#Include *i %A_ScriptDir%\gui_state.ahk
-#Include *i %A_ScriptDir%\gui_interceptor.ahk
-
 ; ========================= GLOBAL STATE =========================
+; CRITICAL: These must be declared BEFORE sub-module includes
+; Sub-modules reference these globals and need them to exist at parse time
 
 global gGUI_Revealed := false
 global gGUI_HoverRow := 0
@@ -70,6 +62,16 @@ global gGUI_TabCount := 0
 global gGUI_FrozenItems := []  ; Snapshot of items when locking in
 global gGUI_AllItems := []     ; Unfiltered items - preserved for workspace toggle
 global gGUI_AwaitingToggleProjection := false  ; Flag for UseCurrentWSProjection mode
+
+; ========================= INCLUDES (SUB-MODULES) =========================
+; These sub-modules reference the globals declared above
+#Include *i %A_ScriptDir%\gui_overlay.ahk
+#Include *i %A_ScriptDir%\gui_workspace.ahk
+#Include *i %A_ScriptDir%\gui_paint.ahk
+#Include *i %A_ScriptDir%\gui_input.ahk
+#Include *i %A_ScriptDir%\gui_store.ahk
+#Include *i %A_ScriptDir%\gui_state.ahk
+#Include *i %A_ScriptDir%\gui_interceptor.ahk
 
 ; ========================= INITIALIZATION =========================
 
