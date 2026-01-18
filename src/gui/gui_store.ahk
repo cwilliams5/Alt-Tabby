@@ -34,8 +34,8 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION) {
         ; When in ACTIVE state, list behavior depends on FreezeWindowList config
         ; EXCEPTION: If awaiting a toggle-triggered projection (UseCurrentWSProjection mode), accept it
-        global FreezeWindowList, gGUI_AwaitingToggleProjection
-        isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList  ; Default to frozen if not set
+        global gGUI_AwaitingToggleProjection, cfg
+        isFrozen := cfg.FreezeWindowList
         isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection
 
         if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
@@ -96,8 +96,8 @@ GUI_OnStoreMessage(line, hPipe := 0) {
 
     if (type = IPC_MSG_DELTA) {
         ; When in ACTIVE state, list behavior depends on FreezeWindowList config
-        global FreezeWindowList
-        isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList  ; Default to frozen if not set
+        global cfg
+        isFrozen := cfg.FreezeWindowList
 
         if (gGUI_State = "ACTIVE" && isFrozen) {
             ; Frozen mode: ignore deltas

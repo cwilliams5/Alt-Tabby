@@ -3,7 +3,7 @@
 #Warn VarUnset, Off
 
 ; Includes: Use *i (ignore if not found) for unified exe compatibility
-#Include *i ..\shared\config.ahk
+#Include *i ..\shared\config_loader.ahk
 #Include *i ..\shared\json.ahk
 #Include *i ..\shared\ipc_pipe.ahk
 #Include *i ..\shared\blacklist.ahk
@@ -47,23 +47,25 @@ for _, arg in A_Args {
 }
 
 Viewer_Init() {
-    global gViewer_Client, StorePipeName
-    global gViewer_LogPath, ViewerAutoStartStore
+    global gViewer_Client, gViewer_LogPath, cfg
+
+    ; CRITICAL: Initialize config FIRST - sets all global defaults
+    ConfigLoader_Init()
 
     ; Initialize blacklist for writing (viewer needs to know the file path)
     Blacklist_Init()
 
-    if (IsSet(DebugViewerLog) && DebugViewerLog && !gViewer_LogPath) {
+    if (cfg.DebugViewerLog && !gViewer_LogPath) {
         gViewer_LogPath := A_Temp "\tabby_viewer.log"
     }
     try OnError(Viewer_OnError)
     if (!gViewer_Headless) {
         _Viewer_CreateGui()
     }
-    _Viewer_Log("Connecting to pipe: " StorePipeName)
-    gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
+    _Viewer_Log("Connecting to pipe: " cfg.StorePipeName)
+    gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
     _Viewer_Log("Connection result: hPipe=" gViewer_Client.hPipe)
-    if (!gViewer_Client.hPipe && IsSet(ViewerAutoStartStore) && ViewerAutoStartStore) {
+    if (!gViewer_Client.hPipe && cfg.ViewerAutoStartStore) {
         _Viewer_Log("Starting store...")
         _Viewer_StartStore()
     }
@@ -612,15 +614,15 @@ _Viewer_ApplyDelta(payload) {
 }
 
 _Viewer_Heartbeat() {
-    global gViewer_Client, gViewer_LastMsgTick, StorePipeName, ViewerHeartbeatTimeoutMs
+    global gViewer_Client, gViewer_LastMsgTick, cfg
     global gViewer_Status, gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
     global gViewer_HeartbeatCount, gViewer_LastUpdateType
 
-    timeoutMs := IsSet(ViewerHeartbeatTimeoutMs) ? ViewerHeartbeatTimeoutMs : 12000
+    timeoutMs := cfg.ViewerHeartbeatTimeoutMs
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
         ; Not connected - try to connect
-        gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
+        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
         if (gViewer_Client.hPipe) {
             _Viewer_SendHello()
             _Viewer_Log("Reconnected to store")
@@ -636,7 +638,7 @@ _Viewer_Heartbeat() {
         _Viewer_Log("Heartbeat timeout (" timeoutMs "ms) - attempting reconnect")
         ; Close current connection and try to reconnect
         IPC_PipeClient_Close(gViewer_Client)
-        gViewer_Client := IPC_PipeClient_Connect(StorePipeName, Viewer_OnMessage)
+        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
         if (gViewer_Client.hPipe) {
             _Viewer_SendHello()
             _Viewer_Log("Reconnected after timeout")
@@ -754,9 +756,9 @@ _Viewer_IconStr(hicon) {
 }
 
 _Viewer_StartStore() {
-    global AhkV2Path
+    global cfg
     storePath := A_ScriptDir "\..\store\store_server.ahk"
-    runner := (IsSet(AhkV2Path) && FileExist(AhkV2Path)) ? AhkV2Path : A_AhkPath
+    runner := (cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path)) ? cfg.AhkV2Path : A_AhkPath
     Run('"' runner '" "' storePath '"', , "Hide")
 }
 

@@ -5,7 +5,6 @@
 ; Includes: Use *i (ignore if not found) to handle both:
 ; - Standalone: files found via %A_ScriptDir%\..\ path
 ; - Included from alt_tabby.ahk: files already loaded, paths don't match but that's OK
-#Include *i %A_ScriptDir%\..\shared\config.ahk
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
 #Include *i %A_ScriptDir%\..\shared\json.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
@@ -38,13 +37,15 @@ gStore_ProducerState["komorebiLite"] := "disabled"
 gStore_ProducerState["iconPump"] := "disabled"
 gStore_ProducerState["procPump"] := "disabled"
 
+; Parse command-line args into local vars first (ConfigLoader_Init will set defaults)
+global gStore_CmdLinePipe := ""  ; Command-line override for pipe name
 for _, arg in A_Args {
     if (arg = "--test")
         gStore_TestMode := true
     else if (SubStr(arg, 1, 6) = "--log=")
         gStore_ErrorLog := SubStr(arg, 7)
     else if (SubStr(arg, 1, 7) = "--pipe=")
-        StorePipeName := SubStr(arg, 8)
+        gStore_CmdLinePipe := SubStr(arg, 8)
 }
 if (gStore_TestMode) {
     try OnError(Store_OnError)
@@ -55,13 +56,17 @@ if (gStore_TestMode) {
 }
 
 Store_Init() {
-    global gStore_Server, StorePipeName
+    global gStore_Server, gStore_CmdLinePipe, cfg
 
-    ; Load config.ini (overrides defaults from config.ahk)
+    ; Load config.ini (overrides defaults from gConfigRegistry)
     ; Let ConfigLoader_Init() determine path based on A_IsCompiled:
     ; - Compiled: uses A_ScriptDir (exe directory)
     ; - Development: tries A_ScriptDir, then A_ScriptDir "\..\"
     ConfigLoader_Init()
+
+    ; Apply command-line overrides AFTER config init (command line wins)
+    if (gStore_CmdLinePipe != "")
+        cfg.StorePipeName := gStore_CmdLinePipe
 
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
@@ -76,25 +81,25 @@ Store_Init() {
         Store_LogError("ipc_pipe symbols missing")
         ExitApp(1)
     }
-    gStore_Server := IPC_PipeServer_Start(StorePipeName, Store_OnMessage)
+    gStore_Server := IPC_PipeServer_Start(cfg.StorePipeName, Store_OnMessage)
 
     ; Initialize producers BEFORE first scan so they can enrich data
 
     ; Komorebi is optional - graceful if not installed
-    if (IsSet(UseKomorebiSub) && UseKomorebiSub) {
+    if (cfg.UseKomorebiSub) {
         ksubOk := KomorebiSub_Init()
         gStore_ProducerState["komorebiSub"] := ksubOk ? "running" : "failed"
-    } else if (IsSet(UseKomorebiLite) && UseKomorebiLite) {
+    } else if (cfg.UseKomorebiLite) {
         KomorebiLite_Init()
         gStore_ProducerState["komorebiLite"] := "running"
     }
 
     ; Pumps
-    if (IsSet(UseIconPump) && UseIconPump) {
+    if (cfg.UseIconPump) {
         IconPump_Start()
         gStore_ProducerState["iconPump"] := "running"
     }
-    if (IsSet(UseProcPump) && UseProcPump) {
+    if (cfg.UseProcPump) {
         ProcPump_Start()
         gStore_ProducerState["procPump"] := "running"
     }
@@ -117,13 +122,11 @@ Store_Init() {
         Store_LogError("WinEventHook active - MRU tracking via hook")
         gStore_ProducerState["wineventHook"] := "running"
         ; Start Z-pump for on-demand scans
-        zPumpMs := IsSet(ZPumpIntervalMs) ? ZPumpIntervalMs : 200
-        SetTimer(Store_ZPumpTick, zPumpMs)
+        SetTimer(Store_ZPumpTick, cfg.ZPumpIntervalMs)
 
         ; Optional safety net polling (usually disabled)
-        safetyMs := IsSet(WinEnumSafetyPollMs) ? WinEnumSafetyPollMs : 0
-        if (safetyMs > 0) {
-            SetTimer(Store_FullScan, safetyMs)
+        if (cfg.WinEnumSafetyPollMs > 0) {
+            SetTimer(Store_FullScan, cfg.WinEnumSafetyPollMs)
         }
     }
 
@@ -131,8 +134,7 @@ Store_Init() {
     _Store_UpdateProducerMeta()
 
     ; Start heartbeat timer for client connection health
-    heartbeatMs := IsSet(StoreHeartbeatIntervalMs) ? StoreHeartbeatIntervalMs : 5000
-    SetTimer(Store_HeartbeatTick, heartbeatMs)
+    SetTimer(Store_HeartbeatTick, cfg.StoreHeartbeatIntervalMs)
 }
 
 ; Broadcast heartbeat to all clients with current rev for drift detection
@@ -143,7 +145,7 @@ Store_HeartbeatTick() {
         return
 
     ; Log churn diagnostics (what fields and sources are triggering rev bumps)
-    if (IsSet(DiagChurnLog) && DiagChurnLog) {
+    if (cfg.DiagChurnLog) {
         churn := WindowStore_GetChurnDiag(true)
         if (churn["sources"].Count > 0 || churn["fields"].Count > 0) {
             srcParts := ""

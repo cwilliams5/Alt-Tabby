@@ -30,7 +30,7 @@ When running from `/src`, modules can run standalone:
 ```
 src/
   shared/         - IPC, JSON, config utilities
-    config.ahk    - Global settings (pipe names, intervals, feature flags)
+    config_loader.ahk - Registry-driven config system (single source of truth)
     ipc_pipe.ahk  - Named pipe server/client with adaptive polling
     json.ahk      - JSON encoder/decoder (Map and Object aware)
   store/          - WindowStore process
@@ -73,10 +73,10 @@ legacy/
 ## Legacy Components (in legacy/components_legacy/)
 These are from the original ChatGPT work. Some are battle-tested:
 - `interceptor.ahk`: Solid Alt+Tab hook with grace period - **PORTED to gui_interceptor.ahk**
-- `winenum.ahk`: Full-featured enumeration with DWM cloaking - **port features**
-- `komorebi_sub.ahk`: Subscription-based updates - **use instead of polling**
-- `New GUI Working POC.ahk`: Rich GUI with icons, DWM effects - **port this**
-- `mru.ahk`, `icon_pump.ahk`, `proc_pump.ahk`: Mature enrichers
+- `winenum.ahk`: Full-featured enumeration with DWM cloaking - **ported features**
+- `komorebi_sub.ahk`: Subscription-based updates - **ported - use instead of polling**
+- `New GUI Working POC.ahk`: Rich GUI with icons, DWM effects - **PORTED to Main GUI**
+- `mru.ahk`, `icon_pump.ahk`, `proc_pump.ahk`: Mature enrichers **PORTED**
 
 ## Guiding Constraints
 - **AHK v2 only**: No v1 patterns. Use direct function refs, not `Func("Name")`.
@@ -122,6 +122,50 @@ These are from the original ChatGPT work. Some are battle-tested:
 - **Functions are different from variables** - don't add `global FunctionName` for functions defined in other files
 - Functions are automatically global in AHK v2
 - If you get warnings about undefined functions from included files, add `#Warn VarUnset, Off` to the calling file
+
+### Cross-File Global Visibility (CRITICAL)
+- **Variables set inside a function are NOT visible to other files**, even with `global` keyword
+- Setting `global Foo := 123` inside a function only makes `Foo` accessible within that file
+- **For globals that other files need to see, declare them at FILE SCOPE** (outside any function):
+  ```ahk
+  ; In config_loader.ahk - FILE SCOPE declaration
+  global StorePipeName  ; Just declare, don't initialize
+  global UseIconPump
+
+  ; Later, a function can set the value
+  _CL_InitializeDefaults() {
+      global StorePipeName, UseIconPump  ; Reference the file-scope globals
+      StorePipeName := "tabby_store_v1"
+      UseIconPump := true
+  }
+  ```
+- The file-scope declaration makes the variable visible to all files that include this one
+- The function can then set the actual value
+
+### IsSet() Behavior with Global Declarations (CRITICAL)
+- **`IsSet(Var)` returns true if the variable has been assigned ANY value, including 0, false, or ""**
+- **`IsSet(Var)` returns false ONLY if the variable was declared but never assigned**
+- This affects fallback patterns like:
+  ```ahk
+  ; In producer file - uses IsSet() for fallback
+  global WinEventHook_DebounceMs := IsSet(WinEventHookDebounceMs) ? WinEventHookDebounceMs : 50
+  ```
+- **If you declare with an initial value, IsSet() returns true and uses that value:**
+  ```ahk
+  ; WRONG - IsSet() returns true, uses 0 instead of fallback 50
+  global WinEventHookDebounceMs := 0
+
+  ; CORRECT - IsSet() returns false until _CL_InitializeDefaults() sets the real value
+  global WinEventHookDebounceMs  ; Declare without value
+  ```
+- This caused a bug where all config values were 0/false because `IsSet()` returned true for initialized-to-zero globals
+
+### Trust Test Failures
+- **When tests fail, investigate the root cause - don't dismiss failures as "timing issues" or "environment-specific"**
+- If tests passed before a change and fail after, the change introduced a regression
+- Compiled exe tests passing while development mode fails usually indicates a path or initialization issue
+- Multiple tests failing with similar patterns (e.g., "Could not connect to store") points to a common root cause
+- The test suite exists specifically to catch these issues - trust it
 
 ### Compiled vs Development Path Handling (CRITICAL)
 - **`A_ScriptDir` changes based on compiled status**:
@@ -373,41 +417,81 @@ Check `%TEMP%\gui_tests.log` for results.
 - These are added to `.gitignore` - just delete them if they appear
 - Tracked at: https://github.com/anthropics/claude-code/issues/17636
 
-### Config System (Registry-Driven)
-- **Single source of truth**: All defaults live in `src/shared/config.ahk`
-- **Registry-driven loader**: `src/shared/config_loader.ahk` uses `gConfigRegistry` array
-- **Dynamic INI generation**: Default INI is built by reading current global values (no hardcoded strings)
-
-**Architecture:**
-```ahk
-; gConfigRegistry - array of config metadata
-global gConfigRegistry := [
-    {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", d: "Grace period before showing GUI (ms)"},
-    {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "hex", d: "Background transparency"},
-    ; ... 50+ entries
-]
-; s=section, k=key, g=globalName, t=type(int/bool/hex/string), d=description
-```
+### Config System (Single Source of Truth)
+- **Single object**: All config values stored in `global cfg := {}` object
+- **Access via**: `cfg.PropertyName` (e.g., `cfg.AltTabGraceMs`, `cfg.GUI_RowHeight`)
+- **Single source of truth**: `gConfigRegistry` in `src/shared/config_loader.ahk` contains ALL config definitions
+- **Registry includes defaults**: Each setting has a `default` value - no separate config.ahk needed
+- **INI supplementing**: Missing keys in existing config.ini are automatically added on startup
+- **Config editor**: `--config` flag or tray menu launches GUI editor with section/subsection headers
 
 **When adding a new config:**
-1. Add the default in `config.ahk` with a comment (e.g., `MyNewSetting := 100`)
-2. Add one entry to `gConfigRegistry` in `config_loader.ahk`
-3. Add to the `global` declaration list in `_CL_ReadGlobal()` and `_CL_WriteGlobal()`
-4. Add a case in the switch block of both functions
+1. Add ONE entry to `gConfigRegistry` in `config_loader.ahk`
+2. That's it! The value is automatically available as `cfg.YourConfigName`
+
+**Registry Schema:**
+```ahk
+global gConfigRegistry := [
+    ; Section header
+    {type: "section", name: "AltTab",
+     desc: "Alt-Tab Behavior",
+     long: "These control the Alt-Tab overlay behavior - tweak these first!"},
+
+    ; Setting with default - automatically available as cfg.AltTabGraceMs
+    {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", default: 150,
+     d: "Grace period before showing GUI (ms). During this time, if Alt is released, we do a quick switch."},
+
+    ; Subsection header (for GUI grouping)
+    {type: "subsection", section: "GUI", name: "Background Window",
+     desc: "Window background and frame styling"},
+
+    ; Setting in subsection - automatically available as cfg.GUI_AcrylicAlpha
+    {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "int", default: 0x33,
+     d: "Background transparency (0x00=transparent, 0xFF=opaque)"},
+]
+```
+
+**Entry types:**
+- `Section`: `{type: "section", name, desc, long}` - INI section with tab in config editor
+- `Subsection`: `{type: "subsection", section, name, desc}` - Visual grouping in GUI only
+- `Setting`: `{s, k, g, t, default, d}` - Actual config value (stored as `cfg.g`)
+
+**Accessing config values:**
+```ahk
+; Direct access (most common)
+if (cfg.AltTabPrewarmOnAlt) { ... }
+timeout := cfg.ViewerHeartbeatTimeoutMs
+
+; Defensive access (for code that may run before ConfigLoader_Init)
+useAltTab := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
+
+; In functions, declare global cfg
+MyFunction() {
+    global cfg
+    if (cfg.SomeSetting) { ... }
+}
+```
+
+**CRITICAL - ConfigLoader_Init() Must Be Called First:**
+- Every entry point that uses config MUST call `ConfigLoader_Init()` before accessing `cfg`
+- Entry points that need config: `gui_main.ahk`, `viewer.ahk`, `store_server.ahk`
+- Each calls `ConfigLoader_Init()` at the START of their init function
+- **Symptom of missing init**: Property access errors on `cfg`
+- Tests include an "Entry Point Initialization Test" that catches this by actually running each entry point
 
 **Key functions:**
-- `_CL_ReadGlobal(name, type)` - Read a global by name (centralized switch)
-- `_CL_WriteGlobal(name, value, type)` - Write a global by name
-- `_CL_CreateDefaultIni(path)` - Generate INI from current globals + registry metadata
+- `_CL_InitializeDefaults()` - Sets all `cfg.` properties from registry defaults
+- `_CL_SupplementIni(path)` - Adds missing keys to existing config.ini
+- `_CL_CreateDefaultIni(path)` - Creates full INI with section/subsection comments
+- `_CL_ReadGlobal(name, type)` / `_CL_WriteGlobal(name, value)` - Dynamic property access (used by config editor)
 
 **Config sections (in order of user relevance):**
 1. `[AltTab]` - Alt-Tab behavior (most likely to edit)
-2. `[GUI]` - Appearance settings
+2. `[GUI]` - Appearance settings (with many subsections)
 3. `[IPC]`, `[Tools]`, `[Producers]`, etc. - Advanced settings
 
-- The INI file (`src/config.ini`) has all values commented out by default
-- Users uncomment and edit values they want to customize
 - **Never commit config.ini** - it's in `.gitignore` and user-specific
+- User edits in config.ini override registry defaults
 
 ### State Machine
 ```

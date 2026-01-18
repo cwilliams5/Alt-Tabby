@@ -9,6 +9,7 @@
 ;
 ; Uses gConfigRegistry from config_loader.ahk to dynamically
 ; build the UI. Supports bool (checkbox), int/float/string (edit).
+; Shows section descriptions and subsection headers.
 ; ============================================================
 
 global gCE_Gui := 0
@@ -56,7 +57,7 @@ _CE_CreateGui() {
 
     gCE_Controls := Map()
 
-    gCE_Gui := Gui("+Resize +MinSize400x300", "Alt-Tabby Configuration")
+    gCE_Gui := Gui("+Resize +MinSize600x500", "Alt-Tabby Configuration")
     gCE_Gui.OnEvent("Close", _CE_OnClose)
     gCE_Gui.OnEvent("Size", _CE_OnSize)
     gCE_Gui.SetFont("s9", "Segoe UI")
@@ -64,8 +65,11 @@ _CE_CreateGui() {
     ; Get unique section names in order
     sections := _CE_GetSectionNames()
 
-    ; Create tab control
-    tabs := gCE_Gui.AddTab3("vTabs w560 h420", sections)
+    ; Calculate tab height - use larger default for subsections
+    tabHeight := 500
+
+    ; Create tab control - positioned to leave room for buttons
+    tabs := gCE_Gui.AddTab3("vTabs x10 y10 w680 h" tabHeight, sections)
 
     ; Build controls for each section
     for _, sectionName in sections {
@@ -75,9 +79,10 @@ _CE_CreateGui() {
 
     tabs.UseTab()  ; Exit tab control
 
-    ; Bottom buttons
-    gCE_Gui.AddButton("vBtnSave w80 x400 y+20", "Save").OnEvent("Click", _CE_OnSave)
-    gCE_Gui.AddButton("vBtnCancel w80 x+10", "Cancel").OnEvent("Click", _CE_OnCancel)
+    ; Bottom buttons - positioned below tabs
+    btnY := tabHeight + 25
+    gCE_Gui.AddButton("vBtnSave w80 x500 y" btnY, "Save").OnEvent("Click", _CE_OnSave)
+    gCE_Gui.AddButton("vBtnCancel w80 x590 y" btnY, "Cancel").OnEvent("Click", _CE_OnCancel)
 }
 
 _CE_GetSectionNames() {
@@ -92,8 +97,10 @@ _CE_GetSectionNames() {
     ; Filter to only sections that exist in registry
     result := []
     seen := Map()
-    for _, cfg in gConfigRegistry {
-        seen[cfg.s] := true
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section") {
+            seen[entry.name] := true
+        }
     }
     for _, s in order {
         if (seen.Has(s))
@@ -105,26 +112,73 @@ _CE_GetSectionNames() {
 _CE_BuildSectionControls(sectionName) {
     global gCE_Gui, gCE_Controls, gConfigRegistry
 
-    y := 10
+    ; Start y after tab headers (2 rows of tabs = ~55px) + margin
+    y := 60
 
-    for _, cfg in gConfigRegistry {
-        if (cfg.s != sectionName)
+    ; Find section's long description and show it
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section" && entry.name = sectionName) {
+            if (entry.HasOwnProp("long")) {
+                gCE_Gui.SetFont("s9 italic", "Segoe UI")
+                gCE_Gui.AddText("x20 y" y " w600 cGray", entry.long)
+                gCE_Gui.SetFont("s9 norm", "Segoe UI")
+                y += 25
+            }
+            break
+        }
+    }
+
+    isFirst := true
+
+    for _, entry in gConfigRegistry {
+        ; Handle subsection headers
+        if (entry.HasOwnProp("type") && entry.type = "subsection" && entry.section = sectionName) {
+            ; Add spacing before subsection
+            if (!isFirst)
+                y += 12
+
+            ; Subsection header (bold)
+            gCE_Gui.SetFont("s9 bold", "Segoe UI")
+            gCE_Gui.AddText("x20 y" y " w300", entry.name)
+            gCE_Gui.SetFont("s9 norm", "Segoe UI")
+            y += 18
+
+            ; Subsection description (gray, italic)
+            if (entry.HasOwnProp("desc")) {
+                gCE_Gui.SetFont("s8 italic", "Segoe UI")
+                gCE_Gui.AddText("x20 y" y " w600 cGray", entry.desc)
+                gCE_Gui.SetFont("s9 norm", "Segoe UI")
+                y += 16
+            }
+
+            isFirst := false
+            continue
+        }
+
+        ; Skip non-settings (section headers, etc.)
+        if (!entry.HasOwnProp("default"))
+            continue
+
+        ; Skip entries not in this section
+        if (entry.s != sectionName)
             continue
 
         ; Add control based on type
-        if (cfg.t = "bool") {
+        if (entry.t = "bool") {
             ; Checkbox for boolean
-            ctrl := gCE_Gui.AddCheckbox("v" cfg.g " y" y, cfg.k)
-            ctrl.ToolTip := cfg.d
+            ctrl := gCE_Gui.AddCheckbox("v" entry.g " x20 y" y, entry.k)
+            ctrl.ToolTip := entry.d
+            y += 22
         } else {
             ; Label + Edit for other types
-            gCE_Gui.AddText("y" y " w120", cfg.k ":")
-            ctrl := gCE_Gui.AddEdit("v" cfg.g " x+5 yp-3 w200")
-            ctrl.ToolTip := cfg.d
+            gCE_Gui.AddText("x20 y" y " w150", entry.k ":")
+            ctrl := gCE_Gui.AddEdit("v" entry.g " x180 y" (y - 2) " w200")
+            ctrl.ToolTip := entry.d
+            y += 26
         }
 
-        gCE_Controls[cfg.g] := ctrl
-        y += 30
+        gCE_Controls[entry.g] := ctrl
+        isFirst := false
     }
 }
 
@@ -137,27 +191,31 @@ _CE_LoadValues() {
 
     gCE_OriginalValues := Map()
 
-    for _, cfg in gConfigRegistry {
-        if (!gCE_Controls.Has(cfg.g))
+    for _, entry in gConfigRegistry {
+        ; Skip non-settings
+        if (!entry.HasOwnProp("default"))
             continue
 
-        ctrl := gCE_Controls[cfg.g]
+        if (!gCE_Controls.Has(entry.g))
+            continue
 
-        ; Read from INI, fall back to current global value
-        iniVal := IniRead(gConfigIniPath, cfg.s, cfg.k, "")
+        ctrl := gCE_Controls[entry.g]
+
+        ; Read from INI, fall back to default
+        iniVal := IniRead(gConfigIniPath, entry.s, entry.k, "")
         if (iniVal = "") {
-            ; Use current default from global
-            val := _CL_ReadGlobal(cfg.g, cfg.t)
+            ; Use default from registry
+            val := entry.default
         } else {
             ; Parse INI value
-            val := _CE_ParseValue(iniVal, cfg.t)
+            val := _CE_ParseValue(iniVal, entry.t)
         }
 
         ; Set control value
-        _CE_SetControlValue(ctrl, val, cfg.t)
+        _CE_SetControlValue(ctrl, val, entry.t)
 
         ; Store original for change detection
-        gCE_OriginalValues[cfg.g] := val
+        gCE_OriginalValues[entry.g] := val
     }
 }
 
@@ -209,13 +267,17 @@ _CE_GetControlValue(ctrl, type) {
 _CE_HasUnsavedChanges() {
     global gCE_Controls, gCE_OriginalValues, gConfigRegistry
 
-    for _, cfg in gConfigRegistry {
-        if (!gCE_Controls.Has(cfg.g))
+    for _, entry in gConfigRegistry {
+        ; Skip non-settings
+        if (!entry.HasOwnProp("default"))
             continue
 
-        ctrl := gCE_Controls[cfg.g]
-        currentVal := _CE_GetControlValue(ctrl, cfg.t)
-        originalVal := gCE_OriginalValues[cfg.g]
+        if (!gCE_Controls.Has(entry.g))
+            continue
+
+        ctrl := gCE_Controls[entry.g]
+        currentVal := _CE_GetControlValue(ctrl, entry.t)
+        originalVal := gCE_OriginalValues[entry.g]
 
         if (currentVal != originalVal)
             return true
@@ -228,19 +290,23 @@ _CE_SaveToIni() {
 
     changeCount := 0
 
-    for _, cfg in gConfigRegistry {
-        if (!gCE_Controls.Has(cfg.g))
+    for _, entry in gConfigRegistry {
+        ; Skip non-settings
+        if (!entry.HasOwnProp("default"))
             continue
 
-        ctrl := gCE_Controls[cfg.g]
-        currentVal := _CE_GetControlValue(ctrl, cfg.t)
-        originalVal := gCE_OriginalValues[cfg.g]
+        if (!gCE_Controls.Has(entry.g))
+            continue
+
+        ctrl := gCE_Controls[entry.g]
+        currentVal := _CE_GetControlValue(ctrl, entry.t)
+        originalVal := gCE_OriginalValues[entry.g]
 
         ; Only write changed values
         if (currentVal != originalVal) {
             ; Format for INI
-            iniVal := _CE_FormatForIni(currentVal, cfg.t)
-            IniWrite(iniVal, gConfigIniPath, cfg.s, cfg.k)
+            iniVal := _CE_FormatForIni(currentVal, entry.t)
+            IniWrite(iniVal, gConfigIniPath, entry.s, entry.k)
             changeCount++
         }
     }
@@ -307,14 +373,14 @@ _CE_OnSize(guiObj, minMax, width, height) {
     if (minMax = -1)  ; Minimized
         return
 
-    ; Resize tab control
+    ; Resize tab control - leave room for buttons at bottom
     try {
-        guiObj["Tabs"].Move(, , width - 40, height - 80)
+        guiObj["Tabs"].Move(, , width - 20, height - 60)
     }
 
-    ; Move buttons
+    ; Move buttons to bottom right
     try {
-        guiObj["BtnCancel"].Move(width - 100, height - 40)
-        guiObj["BtnSave"].Move(width - 190, height - 40)
+        guiObj["BtnCancel"].Move(width - 100, height - 45)
+        guiObj["BtnSave"].Move(width - 190, height - 45)
     }
 }

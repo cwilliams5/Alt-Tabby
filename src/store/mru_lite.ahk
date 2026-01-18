@@ -4,13 +4,17 @@
 ; MRU-lite: track active window and update lastActivatedTick in store.
 ; This is a FALLBACK - only used if WinEventHook fails to start.
 
-; Configuration (use value from config.ahk if set, otherwise default)
-global MruLiteIntervalMs := IsSet(MruLitePollMs) ? MruLitePollMs : 250
+; Configuration (set in MRU_Lite_Init after ConfigLoader_Init)
+global MruLiteIntervalMs := 0
 
 global _MRU_LastHwnd := 0
 
 MRU_Lite_Init() {
-    global MruLiteIntervalMs
+    global MruLiteIntervalMs, cfg
+
+    ; Load config values (ConfigLoader_Init has already run)
+    MruLiteIntervalMs := cfg.MruLitePollMs
+
     SetTimer(MRU_Lite_Tick, MruLiteIntervalMs)
 }
 

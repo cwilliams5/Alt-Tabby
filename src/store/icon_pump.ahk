@@ -10,14 +10,14 @@
 ;   3) Bounded retries with exponential backoff
 ; ============================================================
 
-; Configuration (use values from config.ahk if set, otherwise defaults)
-global IconBatchPerTick := IsSet(IconPumpBatchSize) ? IconPumpBatchSize : 16
-global IconTimerIntervalMs := IsSet(IconPumpIntervalMs) ? IconPumpIntervalMs : 80
-global IconMaxAttempts := IsSet(IconPumpMaxAttempts) ? IconPumpMaxAttempts : 4
-global IconSkipHidden := IsSet(IconPumpSkipHidden) ? IconPumpSkipHidden : true
-global IconIdleBackoffMs := IsSet(IconPumpIdleBackoffMs) ? IconPumpIdleBackoffMs : 1500
-global IconAttemptBackoffMs := IsSet(IconPumpAttemptBackoffMs) ? IconPumpAttemptBackoffMs : 300
-global IconAttemptBackoffMultiplier := IsSet(IconPumpBackoffMultiplier) ? IconPumpBackoffMultiplier : 1.8
+; Configuration (set in IconPump_Start after ConfigLoader_Init)
+global IconBatchPerTick := 0
+global IconTimerIntervalMs := 0
+global IconMaxAttempts := 0
+global IconSkipHidden := 0
+global IconIdleBackoffMs := 0
+global IconAttemptBackoffMs := 0
+global IconAttemptBackoffMultiplier := 0
 global IconGiveUpBackoffMs := 5000      ; Long cooldown after max attempts (internal)
 
 ; State
@@ -26,7 +26,21 @@ global _IP_Attempts := Map()            ; hwnd -> attempt count
 
 ; Start the icon pump timer
 IconPump_Start() {
-    global _IP_TimerOn, IconTimerIntervalMs
+    global _IP_TimerOn, IconTimerIntervalMs, cfg
+    global IconBatchPerTick, IconMaxAttempts, IconSkipHidden
+    global IconIdleBackoffMs, IconAttemptBackoffMs, IconAttemptBackoffMultiplier
+
+    ; Load config values on first start (ConfigLoader_Init has already run)
+    if (IconTimerIntervalMs = 0) {
+        IconBatchPerTick := cfg.IconPumpBatchSize
+        IconTimerIntervalMs := cfg.IconPumpIntervalMs
+        IconMaxAttempts := cfg.IconPumpMaxAttempts
+        IconSkipHidden := cfg.IconPumpSkipHidden
+        IconIdleBackoffMs := cfg.IconPumpIdleBackoffMs
+        IconAttemptBackoffMs := cfg.IconPumpAttemptBackoffMs
+        IconAttemptBackoffMultiplier := cfg.IconPumpBackoffMultiplier
+    }
+
     if (_IP_TimerOn)
         return
     _IP_TimerOn := true

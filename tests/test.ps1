@@ -75,6 +75,46 @@ if ($syntaxErrors -gt 0) {
     exit 1
 }
 
+# --- Compilation Phase ---
+# Always recompile before testing compiled exe to ensure we test current code
+Write-Host "`n--- Compilation Phase ---" -ForegroundColor Yellow
+$compiler = "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe"
+$ahkBase = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
+$srcFile = "$srcRoot\alt_tabby.ahk"
+$releaseDir = (Resolve-Path "$PSScriptRoot\..").Path + "\release"
+$outFile = "$releaseDir\AltTabby.exe"
+
+if (Test-Path $compiler) {
+    Write-Host "Recompiling source to ensure tests use current code..."
+
+    # Kill any running AltTabby processes first
+    $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Host "  Stopping running AltTabby processes..."
+        Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+    }
+
+    # Ensure release directory exists
+    if (-not (Test-Path $releaseDir)) {
+        New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+    }
+
+    # Compile - use quoted argument string to handle paths with spaces
+    # Note: PowerShell ArgumentList with array doesn't handle spaces well
+    $compileArgStr = "/in `"$srcFile`" /out `"$outFile`" /base `"$ahkBase`" /silent verbose"
+    $compileProc = Start-Process -FilePath $compiler -ArgumentList $compileArgStr -Wait -NoNewWindow -PassThru
+
+    if ($compileProc.ExitCode -eq 0 -and (Test-Path $outFile)) {
+        Write-Host "PASS: Compiled AltTabby.exe successfully" -ForegroundColor Green
+    } else {
+        Write-Host "FAIL: Compilation failed (exit code: $($compileProc.ExitCode))" -ForegroundColor Red
+        # Continue with tests anyway - compiled exe tests will be skipped if exe doesn't exist
+    }
+} else {
+    Write-Host "SKIP: Ahk2Exe.exe not found - compiled exe tests will use existing binary" -ForegroundColor Yellow
+}
+
 Write-Host "`n--- Unit Tests Phase ---" -ForegroundColor Yellow
 
 # Build arguments

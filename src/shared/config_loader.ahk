@@ -1,115 +1,661 @@
 #Requires AutoHotkey v2.0
 
 ; ============================================================
-; Config Loader - Registry-driven INI support
+; Config Loader - Registry-driven Configuration System
 ; ============================================================
-; Single source of truth: config.ahk defines defaults, this file
-; defines the registry (section/key/type mappings) and handles
-; INI generation and loading.
+; SINGLE SOURCE OF TRUTH: gConfigRegistry contains ALL config
+; definitions including defaults, types, and descriptions.
 ;
 ; To add a new config:
-; 1. Add the default value in config.ahk
-; 2. Add an entry to gConfigRegistry below
-; 3. Add a case in _CL_ReadGlobal() and _CL_WriteGlobal()
+; 1. Add an entry to gConfigRegistry below (with default value)
+; 2. That's it! The value is automatically available as cfg.YourConfigName
+;
+; Access config values via: cfg.PropertyName (e.g., cfg.AltTabGraceMs)
 ; ============================================================
 
 global gConfigIniPath := ""
 global gConfigLoaded := false
 
 ; ============================================================
-; CONFIG REGISTRY
+; SINGLE GLOBAL CONFIG OBJECT
 ; ============================================================
-; Each entry: {s: section, k: key, g: globalName, t: type, d: description}
-; Types: "string", "int", "float", "bool"
+; All config values are stored as properties on this object.
+; This replaces 100+ individual global declarations.
+; Dynamic property access: cfg.%name% := value
+
+global cfg := {}
+
+; ============================================================
+; CONFIG REGISTRY - Single Source of Truth
+; ============================================================
+; Entry types:
+;   Section:    {type: "section", name: "Name", desc: "Short", long: "Long description"}
+;   Subsection: {type: "subsection", section: "Parent", name: "Name", desc: "Description"}
+;   Setting:    {s: section, k: key, g: global, t: type, default: value, d: "Description"}
+;
+; Setting types: "string", "int", "float", "bool"
 
 global gConfigRegistry := [
-    ; === Alt-Tab Behavior (most likely to edit) ===
-    {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", d: "Grace period before showing GUI (ms)"},
-    {s: "AltTab", k: "QuickSwitchMs", g: "AltTabQuickSwitchMs", t: "int", d: "Max time for quick switch without GUI (ms)"},
-    {s: "AltTab", k: "PrewarmOnAlt", g: "AltTabPrewarmOnAlt", t: "bool", d: "Pre-warm snapshot on Alt down"},
-    {s: "AltTab", k: "FreezeWindowList", g: "FreezeWindowList", t: "bool", d: "Freeze list on first Tab (true=stable, false=live)"},
-    {s: "AltTab", k: "UseCurrentWSProjection", g: "UseCurrentWSProjection", t: "bool", d: "Use server-side workspace filtering"},
+    ; ============================================================
+    ; Alt-Tab Behavior (Most Likely to Edit)
+    ; ============================================================
+    {type: "section", name: "AltTab",
+     desc: "Alt-Tab Behavior",
+     long: "These control the Alt-Tab overlay behavior - tweak these first!"},
 
-    ; === GUI Appearance ===
-    {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "int", d: "Background transparency (hex)"},
-    {s: "GUI", k: "AcrylicBaseRgb", g: "GUI_AcrylicBaseRgb", t: "int", d: "Background tint color (hex RGB)"},
-    {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", d: "Window corner radius"},
-    {s: "GUI", k: "ScreenWidthPct", g: "GUI_ScreenWidthPct", t: "float", d: "GUI width as fraction of screen"},
-    {s: "GUI", k: "RowsVisibleMin", g: "GUI_RowsVisibleMin", t: "int", d: "Minimum visible rows"},
-    {s: "GUI", k: "RowsVisibleMax", g: "GUI_RowsVisibleMax", t: "int", d: "Maximum visible rows"},
-    {s: "GUI", k: "RowHeight", g: "GUI_RowHeight", t: "int", d: "Height of each row (px)"},
-    {s: "GUI", k: "IconSize", g: "GUI_IconSize", t: "int", d: "Icon size (px)"},
-    {s: "GUI", k: "ShowHeader", g: "GUI_ShowHeader", t: "bool", d: "Show column headers"},
-    {s: "GUI", k: "ShowFooter", g: "GUI_ShowFooter", t: "bool", d: "Show footer bar"},
-    {s: "GUI", k: "ShowCloseButton", g: "GUI_ShowCloseButton", t: "bool", d: "Show close button on hover"},
-    {s: "GUI", k: "ShowKillButton", g: "GUI_ShowKillButton", t: "bool", d: "Show kill button on hover"},
-    {s: "GUI", k: "ShowBlacklistButton", g: "GUI_ShowBlacklistButton", t: "bool", d: "Show blacklist button on hover"},
-    {s: "GUI", k: "ScrollKeepHighlightOnTop", g: "GUI_ScrollKeepHighlightOnTop", t: "bool", d: "Keep selection at top when scrolling"},
-    {s: "GUI", k: "EmptyListText", g: "GUI_EmptyListText", t: "string", d: "Text shown when no windows"},
+    {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", default: 150,
+     d: "Grace period before showing GUI (ms). During this time, if Alt is released, we do a quick switch without showing GUI."},
 
-    ; === IPC ===
-    {s: "IPC", k: "StorePipeName", g: "StorePipeName", t: "string", d: "Named pipe for store communication"},
+    {s: "AltTab", k: "QuickSwitchMs", g: "AltTabQuickSwitchMs", t: "int", default: 100,
+     d: "Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch."},
 
-    ; === Tools ===
-    {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", d: "Path to AHK v2 executable"},
-    {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", d: "Path to komorebic.exe"},
+    {s: "AltTab", k: "PrewarmOnAlt", g: "AltTabPrewarmOnAlt", t: "bool", default: true,
+     d: "Pre-warm snapshot on Alt down (true = request data before Tab pressed). Ensures fresh window data is available when Tab is pressed."},
 
-    ; === Producers ===
-    {s: "Producers", k: "UseKomorebiSub", g: "UseKomorebiSub", t: "bool", d: "Enable komorebi subscription"},
-    {s: "Producers", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", d: "Enable komorebi polling fallback"},
-    {s: "Producers", k: "UseIconPump", g: "UseIconPump", t: "bool", d: "Enable icon resolution"},
-    {s: "Producers", k: "UseProcPump", g: "UseProcPump", t: "bool", d: "Enable process name resolution"},
+    {s: "AltTab", k: "FreezeWindowList", g: "FreezeWindowList", t: "bool", default: false,
+     d: "Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker)."},
 
-    ; === Filtering ===
-    {s: "Filtering", k: "UseAltTabEligibility", g: "UseAltTabEligibility", t: "bool", d: "Filter like native Alt-Tab"},
-    {s: "Filtering", k: "UseBlacklist", g: "UseBlacklist", t: "bool", d: "Apply blacklist filtering"},
+    {s: "AltTab", k: "UseCurrentWSProjection", g: "UseCurrentWSProjection", t: "bool", default: true,
+     d: "Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data)."},
 
-    ; === WinEventHook ===
-    {s: "WinEventHook", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", d: "Event debounce time (ms)"},
-    {s: "WinEventHook", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", d: "Batch processing interval (ms)"},
+    ; ============================================================
+    ; GUI Appearance
+    ; ============================================================
+    {type: "section", name: "GUI",
+     desc: "GUI Appearance",
+     long: "Visual styling for the Alt-Tab overlay window."},
 
-    ; === ZPump ===
-    {s: "ZPump", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", d: "Z-order pump interval (ms)"},
+    ; --- Background Window ---
+    {type: "subsection", section: "GUI", name: "Background Window",
+     desc: "Window background and frame styling"},
 
-    ; === WinEnum ===
-    {s: "WinEnum", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", d: "Safety polling interval (0=disabled)"},
+    {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "int", default: 0x33,
+     d: "Background transparency (0x00=transparent, 0xFF=opaque)"},
 
-    ; === MruLite ===
-    {s: "MruLite", k: "PollMs", g: "MruLitePollMs", t: "int", d: "MRU fallback poll interval (ms)"},
+    {s: "GUI", k: "AcrylicBaseRgb", g: "GUI_AcrylicBaseRgb", t: "int", default: 0x330000,
+     d: "Background tint color (hex RGB)"},
 
-    ; === IconPump ===
-    {s: "IconPump", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", d: "Icon pump interval (ms)"},
-    {s: "IconPump", k: "BatchSize", g: "IconPumpBatchSize", t: "int", d: "Icons per batch"},
-    {s: "IconPump", k: "MaxAttempts", g: "IconPumpMaxAttempts", t: "int", d: "Max retry attempts"},
-    {s: "IconPump", k: "SkipHidden", g: "IconPumpSkipHidden", t: "bool", d: "Skip hidden windows"},
-    {s: "IconPump", k: "IdleBackoffMs", g: "IconPumpIdleBackoffMs", t: "int", d: "Idle backoff (ms)"},
-    {s: "IconPump", k: "AttemptBackoffMs", g: "IconPumpAttemptBackoffMs", t: "int", d: "Per-attempt backoff (ms)"},
-    {s: "IconPump", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", d: "Backoff multiplier"},
+    {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", default: 18,
+     d: "Window corner radius in pixels"},
 
-    ; === ProcPump ===
-    {s: "ProcPump", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", d: "Process pump interval (ms)"},
-    {s: "ProcPump", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", d: "PIDs per batch"},
+    {s: "GUI", k: "AlwaysOnTop", g: "GUI_AlwaysOnTop", t: "bool", default: true,
+     d: "Keep overlay always on top of other windows"},
 
-    ; === KomorebiSub ===
-    {s: "KomorebiSub", k: "PollMs", g: "KomorebiSubPollMs", t: "int", d: "Pipe poll interval (ms)"},
-    {s: "KomorebiSub", k: "IdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", d: "Restart if idle (ms)"},
-    {s: "KomorebiSub", k: "FallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", d: "Fallback poll interval (ms)"},
+    ; --- Size Config ---
+    {type: "subsection", section: "GUI", name: "Size Config",
+     desc: "Window and row sizing"},
 
-    ; === Heartbeat ===
-    {s: "Heartbeat", k: "StoreIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", d: "Store heartbeat interval (ms)"},
-    {s: "Heartbeat", k: "ViewerTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", d: "Viewer timeout (ms)"},
+    {s: "GUI", k: "ScreenWidthPct", g: "GUI_ScreenWidthPct", t: "float", default: 0.60,
+     d: "GUI width as fraction of screen (0.0-1.0)"},
 
-    ; === Viewer ===
-    {s: "Viewer", k: "DebugLog", g: "DebugViewerLog", t: "bool", d: "Enable viewer debug logging"},
-    {s: "Viewer", k: "AutoStartStore", g: "ViewerAutoStartStore", t: "bool", d: "Auto-start store if not running"},
+    {s: "GUI", k: "RowsVisibleMin", g: "GUI_RowsVisibleMin", t: "int", default: 1,
+     d: "Minimum visible rows"},
 
-    ; === Diagnostics ===
-    {s: "Diagnostics", k: "ChurnLog", g: "DiagChurnLog", t: "bool", d: "Log rev bump sources"},
-    {s: "Diagnostics", k: "KomorebiLog", g: "DiagKomorebiLog", t: "bool", d: "Log komorebi events"},
-    {s: "Diagnostics", k: "AltTabTooltips", g: "DebugAltTabTooltips", t: "bool", d: "Show Alt-Tab debug tooltips"},
+    {s: "GUI", k: "RowsVisibleMax", g: "GUI_RowsVisibleMax", t: "int", default: 8,
+     d: "Maximum visible rows"},
 
-    ; === Testing ===
-    {s: "Testing", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", d: "Default live test duration"}
+    {s: "GUI", k: "RowHeight", g: "GUI_RowHeight", t: "int", default: 56,
+     d: "Height of each row in pixels"},
+
+    {s: "GUI", k: "MarginX", g: "GUI_MarginX", t: "int", default: 18,
+     d: "Horizontal margin in pixels"},
+
+    {s: "GUI", k: "MarginY", g: "GUI_MarginY", t: "int", default: 18,
+     d: "Vertical margin in pixels"},
+
+    ; --- Virtual List Look ---
+    {type: "subsection", section: "GUI", name: "Virtual List Look",
+     desc: "Row and icon appearance"},
+
+    {s: "GUI", k: "IconSize", g: "GUI_IconSize", t: "int", default: 36,
+     d: "Icon size in pixels"},
+
+    {s: "GUI", k: "IconLeftMargin", g: "GUI_IconLeftMargin", t: "int", default: 8,
+     d: "Left margin before icon in pixels"},
+
+    {s: "GUI", k: "RowRadius", g: "GUI_RowRadius", t: "int", default: 12,
+     d: "Row corner radius in pixels"},
+
+    {s: "GUI", k: "SelARGB", g: "GUI_SelARGB", t: "int", default: 0x662B5CAD,
+     d: "Selection highlight color (ARGB)"},
+
+    ; --- Selection & Scrolling ---
+    {type: "subsection", section: "GUI", name: "Selection & Scrolling",
+     desc: "Selection and scroll behavior"},
+
+    {s: "GUI", k: "ScrollKeepHighlightOnTop", g: "GUI_ScrollKeepHighlightOnTop", t: "bool", default: true,
+     d: "Keep selection at top when scrolling"},
+
+    {s: "GUI", k: "EmptyListText", g: "GUI_EmptyListText", t: "string", default: "No Windows",
+     d: "Text shown when no windows available"},
+
+    ; --- Action Keystrokes ---
+    {type: "subsection", section: "GUI", name: "Action Keystrokes",
+     desc: "Keyboard shortcuts for window actions"},
+
+    {s: "GUI", k: "AllowCloseKeystroke", g: "GUI_AllowCloseKeystroke", t: "bool", default: true,
+     d: "Allow closing windows with keyboard shortcut"},
+
+    {s: "GUI", k: "AllowKillKeystroke", g: "GUI_AllowKillKeystroke", t: "bool", default: true,
+     d: "Allow killing windows with keyboard shortcut"},
+
+    {s: "GUI", k: "AllowBlacklistKeystroke", g: "GUI_AllowBlacklistKeystroke", t: "bool", default: true,
+     d: "Allow blacklisting windows with keyboard shortcut"},
+
+    ; --- Action Buttons ---
+    {type: "subsection", section: "GUI", name: "Action Buttons",
+     desc: "Row action buttons shown on hover"},
+
+    {s: "GUI", k: "ShowCloseButton", g: "GUI_ShowCloseButton", t: "bool", default: true,
+     d: "Show close button on hover"},
+
+    {s: "GUI", k: "ShowKillButton", g: "GUI_ShowKillButton", t: "bool", default: true,
+     d: "Show kill button on hover"},
+
+    {s: "GUI", k: "ShowBlacklistButton", g: "GUI_ShowBlacklistButton", t: "bool", default: true,
+     d: "Show blacklist button on hover"},
+
+    {s: "GUI", k: "ActionBtnSizePx", g: "GUI_ActionBtnSizePx", t: "int", default: 24,
+     d: "Action button size in pixels"},
+
+    {s: "GUI", k: "ActionBtnGapPx", g: "GUI_ActionBtnGapPx", t: "int", default: 6,
+     d: "Gap between action buttons in pixels"},
+
+    {s: "GUI", k: "ActionBtnRadiusPx", g: "GUI_ActionBtnRadiusPx", t: "int", default: 6,
+     d: "Action button corner radius"},
+
+    {s: "GUI", k: "ActionFontName", g: "GUI_ActionFontName", t: "string", default: "Segoe UI Symbol",
+     d: "Action button font name"},
+
+    {s: "GUI", k: "ActionFontSize", g: "GUI_ActionFontSize", t: "int", default: 18,
+     d: "Action button font size"},
+
+    {s: "GUI", k: "ActionFontWeight", g: "GUI_ActionFontWeight", t: "int", default: 700,
+     d: "Action button font weight"},
+
+    ; --- Close Button Styling ---
+    {type: "subsection", section: "GUI", name: "Close Button Styling",
+     desc: "Close button appearance"},
+
+    {s: "GUI", k: "CloseButtonBorderPx", g: "GUI_CloseButtonBorderPx", t: "int", default: 1,
+     d: "Close button border width"},
+
+    {s: "GUI", k: "CloseButtonBorderARGB", g: "GUI_CloseButtonBorderARGB", t: "int", default: 0x88FFFFFF,
+     d: "Close button border color (ARGB)"},
+
+    {s: "GUI", k: "CloseButtonBGARGB", g: "GUI_CloseButtonBGARGB", t: "int", default: 0xFF000000,
+     d: "Close button background color (ARGB)"},
+
+    {s: "GUI", k: "CloseButtonBGHoverARGB", g: "GUI_CloseButtonBGHoverARGB", t: "int", default: 0xFF888888,
+     d: "Close button background color on hover (ARGB)"},
+
+    {s: "GUI", k: "CloseButtonTextARGB", g: "GUI_CloseButtonTextARGB", t: "int", default: 0xFFFFFFFF,
+     d: "Close button text color (ARGB)"},
+
+    {s: "GUI", k: "CloseButtonTextHoverARGB", g: "GUI_CloseButtonTextHoverARGB", t: "int", default: 0xFFFF0000,
+     d: "Close button text color on hover (ARGB)"},
+
+    {s: "GUI", k: "CloseButtonGlyph", g: "GUI_CloseButtonGlyph", t: "string", default: "X",
+     d: "Close button glyph character"},
+
+    ; --- Kill Button Styling ---
+    {type: "subsection", section: "GUI", name: "Kill Button Styling",
+     desc: "Kill button appearance"},
+
+    {s: "GUI", k: "KillButtonBorderPx", g: "GUI_KillButtonBorderPx", t: "int", default: 1,
+     d: "Kill button border width"},
+
+    {s: "GUI", k: "KillButtonBorderARGB", g: "GUI_KillButtonBorderARGB", t: "int", default: 0x88FFB4A5,
+     d: "Kill button border color (ARGB)"},
+
+    {s: "GUI", k: "KillButtonBGARGB", g: "GUI_KillButtonBGARGB", t: "int", default: 0xFF300000,
+     d: "Kill button background color (ARGB)"},
+
+    {s: "GUI", k: "KillButtonBGHoverARGB", g: "GUI_KillButtonBGHoverARGB", t: "int", default: 0xFFD00000,
+     d: "Kill button background color on hover (ARGB)"},
+
+    {s: "GUI", k: "KillButtonTextARGB", g: "GUI_KillButtonTextARGB", t: "int", default: 0xFFFFE8E8,
+     d: "Kill button text color (ARGB)"},
+
+    {s: "GUI", k: "KillButtonTextHoverARGB", g: "GUI_KillButtonTextHoverARGB", t: "int", default: 0xFFFFFFFF,
+     d: "Kill button text color on hover (ARGB)"},
+
+    {s: "GUI", k: "KillButtonGlyph", g: "GUI_KillButtonGlyph", t: "string", default: "K",
+     d: "Kill button glyph character"},
+
+    ; --- Blacklist Button Styling ---
+    {type: "subsection", section: "GUI", name: "Blacklist Button Styling",
+     desc: "Blacklist button appearance"},
+
+    {s: "GUI", k: "BlacklistButtonBorderPx", g: "GUI_BlacklistButtonBorderPx", t: "int", default: 1,
+     d: "Blacklist button border width"},
+
+    {s: "GUI", k: "BlacklistButtonBorderARGB", g: "GUI_BlacklistButtonBorderARGB", t: "int", default: 0x88999999,
+     d: "Blacklist button border color (ARGB)"},
+
+    {s: "GUI", k: "BlacklistButtonBGARGB", g: "GUI_BlacklistButtonBGARGB", t: "int", default: 0xFF000000,
+     d: "Blacklist button background color (ARGB)"},
+
+    {s: "GUI", k: "BlacklistButtonBGHoverARGB", g: "GUI_BlacklistButtonBGHoverARGB", t: "int", default: 0xFF888888,
+     d: "Blacklist button background color on hover (ARGB)"},
+
+    {s: "GUI", k: "BlacklistButtonTextARGB", g: "GUI_BlacklistButtonTextARGB", t: "int", default: 0xFFFFFFFF,
+     d: "Blacklist button text color (ARGB)"},
+
+    {s: "GUI", k: "BlacklistButtonTextHoverARGB", g: "GUI_BlacklistButtonTextHoverARGB", t: "int", default: 0xFFFF0000,
+     d: "Blacklist button text color on hover (ARGB)"},
+
+    {s: "GUI", k: "BlacklistButtonGlyph", g: "GUI_BlacklistButtonGlyph", t: "string", default: "B",
+     d: "Blacklist button glyph character"},
+
+    ; --- Columns ---
+    {type: "subsection", section: "GUI", name: "Columns",
+     desc: "Extra data columns (0 = hidden)"},
+
+    {s: "GUI", k: "ShowHeader", g: "GUI_ShowHeader", t: "bool", default: true,
+     d: "Show column headers"},
+
+    {s: "GUI", k: "ColFixed2", g: "GUI_ColFixed2", t: "int", default: 70,
+     d: "Column 2 width (HWND)"},
+
+    {s: "GUI", k: "ColFixed3", g: "GUI_ColFixed3", t: "int", default: 50,
+     d: "Column 3 width (PID)"},
+
+    {s: "GUI", k: "ColFixed4", g: "GUI_ColFixed4", t: "int", default: 60,
+     d: "Column 4 width (Workspace)"},
+
+    {s: "GUI", k: "ColFixed5", g: "GUI_ColFixed5", t: "int", default: 0,
+     d: "Column 5 width (0=hidden)"},
+
+    {s: "GUI", k: "ColFixed6", g: "GUI_ColFixed6", t: "int", default: 0,
+     d: "Column 6 width (0=hidden)"},
+
+    {s: "GUI", k: "Col2Name", g: "GUI_Col2Name", t: "string", default: "HWND",
+     d: "Column 2 header name"},
+
+    {s: "GUI", k: "Col3Name", g: "GUI_Col3Name", t: "string", default: "PID",
+     d: "Column 3 header name"},
+
+    {s: "GUI", k: "Col4Name", g: "GUI_Col4Name", t: "string", default: "WS",
+     d: "Column 4 header name"},
+
+    {s: "GUI", k: "Col5Name", g: "GUI_Col5Name", t: "string", default: "",
+     d: "Column 5 header name"},
+
+    {s: "GUI", k: "Col6Name", g: "GUI_Col6Name", t: "string", default: "",
+     d: "Column 6 header name"},
+
+    ; --- Header Font ---
+    {type: "subsection", section: "GUI", name: "Header Font",
+     desc: "Column header text styling"},
+
+    {s: "GUI", k: "HdrFontName", g: "GUI_HdrFontName", t: "string", default: "Segoe UI",
+     d: "Header font name"},
+
+    {s: "GUI", k: "HdrFontSize", g: "GUI_HdrFontSize", t: "int", default: 12,
+     d: "Header font size"},
+
+    {s: "GUI", k: "HdrFontWeight", g: "GUI_HdrFontWeight", t: "int", default: 600,
+     d: "Header font weight"},
+
+    {s: "GUI", k: "HdrARGB", g: "GUI_HdrARGB", t: "int", default: 0xFFD0D6DE,
+     d: "Header text color (ARGB)"},
+
+    ; --- Main Font ---
+    {type: "subsection", section: "GUI", name: "Main Font",
+     desc: "Window title text styling"},
+
+    {s: "GUI", k: "MainFontName", g: "GUI_MainFontName", t: "string", default: "Segoe UI",
+     d: "Main font name"},
+
+    {s: "GUI", k: "MainFontSize", g: "GUI_MainFontSize", t: "int", default: 20,
+     d: "Main font size"},
+
+    {s: "GUI", k: "MainFontWeight", g: "GUI_MainFontWeight", t: "int", default: 400,
+     d: "Main font weight"},
+
+    {s: "GUI", k: "MainFontNameHi", g: "GUI_MainFontNameHi", t: "string", default: "Segoe UI",
+     d: "Main font name when highlighted"},
+
+    {s: "GUI", k: "MainFontSizeHi", g: "GUI_MainFontSizeHi", t: "int", default: 20,
+     d: "Main font size when highlighted"},
+
+    {s: "GUI", k: "MainFontWeightHi", g: "GUI_MainFontWeightHi", t: "int", default: 800,
+     d: "Main font weight when highlighted"},
+
+    {s: "GUI", k: "MainARGB", g: "GUI_MainARGB", t: "int", default: 0xFFF0F0F0,
+     d: "Main text color (ARGB)"},
+
+    {s: "GUI", k: "MainARGBHi", g: "GUI_MainARGBHi", t: "int", default: 0xFFF0F0F0,
+     d: "Main text color when highlighted (ARGB)"},
+
+    ; --- Sub Font ---
+    {type: "subsection", section: "GUI", name: "Sub Font",
+     desc: "Subtitle row text styling"},
+
+    {s: "GUI", k: "SubFontName", g: "GUI_SubFontName", t: "string", default: "Segoe UI",
+     d: "Sub font name"},
+
+    {s: "GUI", k: "SubFontSize", g: "GUI_SubFontSize", t: "int", default: 12,
+     d: "Sub font size"},
+
+    {s: "GUI", k: "SubFontWeight", g: "GUI_SubFontWeight", t: "int", default: 400,
+     d: "Sub font weight"},
+
+    {s: "GUI", k: "SubFontNameHi", g: "GUI_SubFontNameHi", t: "string", default: "Segoe UI",
+     d: "Sub font name when highlighted"},
+
+    {s: "GUI", k: "SubFontSizeHi", g: "GUI_SubFontSizeHi", t: "int", default: 12,
+     d: "Sub font size when highlighted"},
+
+    {s: "GUI", k: "SubFontWeightHi", g: "GUI_SubFontWeightHi", t: "int", default: 600,
+     d: "Sub font weight when highlighted"},
+
+    {s: "GUI", k: "SubARGB", g: "GUI_SubARGB", t: "int", default: 0xFFB5C0CE,
+     d: "Sub text color (ARGB)"},
+
+    {s: "GUI", k: "SubARGBHi", g: "GUI_SubARGBHi", t: "int", default: 0xFFB5C0CE,
+     d: "Sub text color when highlighted (ARGB)"},
+
+    ; --- Column Font ---
+    {type: "subsection", section: "GUI", name: "Column Font",
+     desc: "Column value text styling"},
+
+    {s: "GUI", k: "ColFontName", g: "GUI_ColFontName", t: "string", default: "Segoe UI",
+     d: "Column font name"},
+
+    {s: "GUI", k: "ColFontSize", g: "GUI_ColFontSize", t: "int", default: 12,
+     d: "Column font size"},
+
+    {s: "GUI", k: "ColFontWeight", g: "GUI_ColFontWeight", t: "int", default: 400,
+     d: "Column font weight"},
+
+    {s: "GUI", k: "ColFontNameHi", g: "GUI_ColFontNameHi", t: "string", default: "Segoe UI",
+     d: "Column font name when highlighted"},
+
+    {s: "GUI", k: "ColFontSizeHi", g: "GUI_ColFontSizeHi", t: "int", default: 12,
+     d: "Column font size when highlighted"},
+
+    {s: "GUI", k: "ColFontWeightHi", g: "GUI_ColFontWeightHi", t: "int", default: 600,
+     d: "Column font weight when highlighted"},
+
+    {s: "GUI", k: "ColARGB", g: "GUI_ColARGB", t: "int", default: 0xFFF0F0F0,
+     d: "Column text color (ARGB)"},
+
+    {s: "GUI", k: "ColARGBHi", g: "GUI_ColARGBHi", t: "int", default: 0xFFF0F0F0,
+     d: "Column text color when highlighted (ARGB)"},
+
+    ; --- Scrollbar ---
+    {type: "subsection", section: "GUI", name: "Scrollbar",
+     desc: "Scrollbar appearance"},
+
+    {s: "GUI", k: "ScrollBarEnabled", g: "GUI_ScrollBarEnabled", t: "bool", default: true,
+     d: "Show scrollbar when content overflows"},
+
+    {s: "GUI", k: "ScrollBarWidthPx", g: "GUI_ScrollBarWidthPx", t: "int", default: 6,
+     d: "Scrollbar width in pixels"},
+
+    {s: "GUI", k: "ScrollBarMarginRightPx", g: "GUI_ScrollBarMarginRightPx", t: "int", default: 8,
+     d: "Scrollbar right margin in pixels"},
+
+    {s: "GUI", k: "ScrollBarThumbARGB", g: "GUI_ScrollBarThumbARGB", t: "int", default: 0x88FFFFFF,
+     d: "Scrollbar thumb color (ARGB)"},
+
+    {s: "GUI", k: "ScrollBarGutterEnabled", g: "GUI_ScrollBarGutterEnabled", t: "bool", default: false,
+     d: "Show scrollbar gutter background"},
+
+    {s: "GUI", k: "ScrollBarGutterARGB", g: "GUI_ScrollBarGutterARGB", t: "int", default: 0x30000000,
+     d: "Scrollbar gutter color (ARGB)"},
+
+    ; --- Footer ---
+    {type: "subsection", section: "GUI", name: "Footer",
+     desc: "Footer bar appearance"},
+
+    {s: "GUI", k: "ShowFooter", g: "GUI_ShowFooter", t: "bool", default: true,
+     d: "Show footer bar"},
+
+    {s: "GUI", k: "FooterTextAlign", g: "GUI_FooterTextAlign", t: "string", default: "center",
+     d: "Footer text alignment (left, center, right)"},
+
+    {s: "GUI", k: "FooterBorderPx", g: "GUI_FooterBorderPx", t: "int", default: 0,
+     d: "Footer border width in pixels"},
+
+    {s: "GUI", k: "FooterBorderARGB", g: "GUI_FooterBorderARGB", t: "int", default: 0x33FFFFFF,
+     d: "Footer border color (ARGB)"},
+
+    {s: "GUI", k: "FooterBGRadius", g: "GUI_FooterBGRadius", t: "int", default: 0,
+     d: "Footer background corner radius"},
+
+    {s: "GUI", k: "FooterBGARGB", g: "GUI_FooterBGARGB", t: "int", default: 0x00000000,
+     d: "Footer background color (ARGB)"},
+
+    {s: "GUI", k: "FooterTextARGB", g: "GUI_FooterTextARGB", t: "int", default: 0xFFFFFFFF,
+     d: "Footer text color (ARGB)"},
+
+    {s: "GUI", k: "FooterFontName", g: "GUI_FooterFontName", t: "string", default: "Segoe UI",
+     d: "Footer font name"},
+
+    {s: "GUI", k: "FooterFontSize", g: "GUI_FooterFontSize", t: "int", default: 14,
+     d: "Footer font size"},
+
+    {s: "GUI", k: "FooterFontWeight", g: "GUI_FooterFontWeight", t: "int", default: 600,
+     d: "Footer font weight"},
+
+    {s: "GUI", k: "FooterHeightPx", g: "GUI_FooterHeightPx", t: "int", default: 24,
+     d: "Footer height in pixels"},
+
+    {s: "GUI", k: "FooterGapTopPx", g: "GUI_FooterGapTopPx", t: "int", default: 8,
+     d: "Gap between content and footer in pixels"},
+
+    {s: "GUI", k: "FooterPaddingX", g: "GUI_FooterPaddingX", t: "int", default: 12,
+     d: "Footer horizontal padding in pixels"},
+
+    ; ============================================================
+    ; IPC & Pipes
+    ; ============================================================
+    {type: "section", name: "IPC",
+     desc: "IPC & Pipes",
+     long: "Named pipe for store<->client communication."},
+
+    {s: "IPC", k: "StorePipeName", g: "StorePipeName", t: "string", default: "tabby_store_v1",
+     d: "Named pipe name for store communication"},
+
+    ; ============================================================
+    ; External Tools
+    ; ============================================================
+    {type: "section", name: "Tools",
+     desc: "External Tools",
+     long: "Paths to external executables used by Alt-Tabby."},
+
+    {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", default: "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
+     d: "Path to AHK v2 executable (for spawning subprocesses)"},
+
+    {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", default: "C:\Program Files\komorebi\bin\komorebic.exe",
+     d: "Path to komorebic.exe (komorebi CLI)"},
+
+    ; ============================================================
+    ; Producer Toggles
+    ; ============================================================
+    {type: "section", name: "Producers",
+     desc: "Producer Toggles",
+     long: "WinEventHook and MRU are always enabled (core functionality). These control optional producers."},
+
+    {s: "Producers", k: "UseKomorebiSub", g: "UseKomorebiSub", t: "bool", default: true,
+     d: "Komorebi subscription-based integration (preferred, event-driven)"},
+
+    {s: "Producers", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", default: false,
+     d: "Komorebi polling-based fallback (use if subscription fails)"},
+
+    {s: "Producers", k: "UseIconPump", g: "UseIconPump", t: "bool", default: true,
+     d: "Resolve window icons in background"},
+
+    {s: "Producers", k: "UseProcPump", g: "UseProcPump", t: "bool", default: true,
+     d: "Resolve process names in background"},
+
+    ; ============================================================
+    ; Window Filtering
+    ; ============================================================
+    {type: "section", name: "Filtering",
+     desc: "Window Filtering",
+     long: "Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist."},
+
+    {s: "Filtering", k: "UseAltTabEligibility", g: "UseAltTabEligibility", t: "bool", default: true,
+     d: "Filter windows like native Alt-Tab (skip tool windows, etc.)"},
+
+    {s: "Filtering", k: "UseBlacklist", g: "UseBlacklist", t: "bool", default: true,
+     d: "Apply blacklist from shared/blacklist.txt"},
+
+    ; ============================================================
+    ; WinEventHook Timing
+    ; ============================================================
+    {type: "section", name: "WinEventHook",
+     desc: "WinEventHook Timing",
+     long: "Event-driven window change detection. Events are queued then processed in batches to keep the callback fast."},
+
+    {s: "WinEventHook", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", default: 50,
+     d: "Debounce rapid events (e.g., window moving fires many events)"},
+
+    {s: "WinEventHook", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", default: 100,
+     d: "Batch processing interval - how often queued events are processed"},
+
+    ; ============================================================
+    ; Z-Pump Timing
+    ; ============================================================
+    {type: "section", name: "ZPump",
+     desc: "Z-Pump Timing",
+     long: "When WinEventHook adds a window, we don't know its Z-order. Z-pump triggers a full WinEnum scan to get accurate Z-order."},
+
+    {s: "ZPump", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
+     d: "How often to check if Z-queue has pending windows"},
+
+    ; ============================================================
+    ; WinEnum (Full Scan) Safety Polling
+    ; ============================================================
+    {type: "section", name: "WinEnum",
+     desc: "WinEnum Safety Polling",
+     long: "WinEnum normally runs on-demand (startup, snapshot, Z-pump). Enable safety polling as a paranoid belt-and-suspenders."},
+
+    {s: "WinEnum", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", default: 0,
+     d: "Safety polling interval (0=disabled, or 30000+ for safety net)"},
+
+    ; ============================================================
+    ; MRU Lite Timing (Fallback Only)
+    ; ============================================================
+    {type: "section", name: "MruLite",
+     desc: "MRU Lite Timing",
+     long: "MRU_Lite only runs if WinEventHook fails to start. It polls the foreground window to track focus changes."},
+
+    {s: "MruLite", k: "PollMs", g: "MruLitePollMs", t: "int", default: 250,
+     d: "Polling interval for focus tracking fallback"},
+
+    ; ============================================================
+    ; Icon Pump Timing
+    ; ============================================================
+    {type: "section", name: "IconPump",
+     desc: "Icon Pump Timing",
+     long: "Resolves window icons asynchronously with retry/backoff."},
+
+    {s: "IconPump", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", default: 80,
+     d: "How often the pump processes its queue"},
+
+    {s: "IconPump", k: "BatchSize", g: "IconPumpBatchSize", t: "int", default: 16,
+     d: "Max icons to process per tick (prevents lag spikes)"},
+
+    {s: "IconPump", k: "MaxAttempts", g: "IconPumpMaxAttempts", t: "int", default: 4,
+     d: "Max attempts before giving up on a window's icon"},
+
+    {s: "IconPump", k: "SkipHidden", g: "IconPumpSkipHidden", t: "bool", default: true,
+     d: "Skip hidden windows (unlikely to yield icon anyway)"},
+
+    {s: "IconPump", k: "IdleBackoffMs", g: "IconPumpIdleBackoffMs", t: "int", default: 1500,
+     d: "Cooldown when skipping hidden windows"},
+
+    {s: "IconPump", k: "AttemptBackoffMs", g: "IconPumpAttemptBackoffMs", t: "int", default: 300,
+     d: "Base backoff after failed attempt (multiplied by attempt number)"},
+
+    {s: "IconPump", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", default: 1.8,
+     d: "Backoff multiplier for exponential backoff (1.0 = linear)"},
+
+    ; ============================================================
+    ; Process Pump Timing
+    ; ============================================================
+    {type: "section", name: "ProcPump",
+     desc: "Process Pump Timing",
+     long: "Resolves PID -> process name asynchronously."},
+
+    {s: "ProcPump", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", default: 100,
+     d: "How often the pump processes its queue"},
+
+    {s: "ProcPump", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", default: 16,
+     d: "Max PIDs to resolve per tick"},
+
+    ; ============================================================
+    ; Komorebi Subscription Timing
+    ; ============================================================
+    {type: "section", name: "KomorebiSub",
+     desc: "Komorebi Subscription Timing",
+     long: "Event-driven komorebi integration via named pipe."},
+
+    {s: "KomorebiSub", k: "PollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
+     d: "Pipe poll interval (checking for incoming data)"},
+
+    {s: "KomorebiSub", k: "IdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
+     d: "Restart subscription if no events for this long (stale detection)"},
+
+    {s: "KomorebiSub", k: "FallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
+     d: "Fallback polling interval if subscription fails"},
+
+    ; ============================================================
+    ; Heartbeat & Connection Health
+    ; ============================================================
+    {type: "section", name: "Heartbeat",
+     desc: "Heartbeat & Connection Health",
+     long: "Store broadcasts heartbeat to clients for liveness detection."},
+
+    {s: "Heartbeat", k: "StoreIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", default: 5000,
+     d: "Store sends heartbeat every N ms"},
+
+    {s: "Heartbeat", k: "ViewerTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", default: 12000,
+     d: "Viewer considers connection dead after N ms without any message"},
+
+    ; ============================================================
+    ; Viewer Settings
+    ; ============================================================
+    {type: "section", name: "Viewer",
+     desc: "Viewer Settings",
+     long: "Debug viewer GUI options."},
+
+    {s: "Viewer", k: "DebugLog", g: "DebugViewerLog", t: "bool", default: false,
+     d: "Enable verbose logging to error log"},
+
+    {s: "Viewer", k: "AutoStartStore", g: "ViewerAutoStartStore", t: "bool", default: false,
+     d: "Auto-start store_server if not running when viewer connects"},
+
+    ; ============================================================
+    ; Diagnostics
+    ; ============================================================
+    {type: "section", name: "Diagnostics",
+     desc: "Diagnostics",
+     long: "Debug options for troubleshooting. All disabled by default to minimize disk I/O and resource usage."},
+
+    {s: "Diagnostics", k: "ChurnLog", g: "DiagChurnLog", t: "bool", default: false,
+     d: "Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle."},
+
+    {s: "Diagnostics", k: "KomorebiLog", g: "DiagKomorebiLog", t: "bool", default: false,
+     d: "Log komorebi subscription events to %TEMP%\\tabby_ksub_diag.log. Use when workspace tracking has issues."},
+
+    {s: "Diagnostics", k: "AltTabTooltips", g: "DebugAltTabTooltips", t: "bool", default: false,
+     d: "Show tooltips for Alt-Tab state machine debugging. Use when overlay behavior is incorrect."},
+
+    ; ============================================================
+    ; Testing
+    ; ============================================================
+    {type: "section", name: "Testing",
+     desc: "Testing",
+     long: "Options for automated test suite."},
+
+    {s: "Testing", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", default: 30,
+     d: "Default duration for test_live.ahk"}
 ]
 
 ; ============================================================
@@ -133,66 +679,94 @@ ConfigLoader_Init(basePath := "") {
 
     gConfigIniPath := basePath "\config.ini"
 
+    ; Initialize all config values to defaults FIRST
+    _CL_InitializeDefaults()
+
     if (!FileExist(gConfigIniPath)) {
         _CL_CreateDefaultIni(gConfigIniPath)
+    } else {
+        _CL_SupplementIni(gConfigIniPath)  ; Add missing keys
     }
 
-    _CL_LoadAllSettings()
+    _CL_LoadAllSettings()  ; Load user overrides
     gConfigLoaded := true
 }
 
-; Get the config registry (for future config editor)
+; Get the config registry (for config editor)
 ConfigLoader_GetRegistry() {
     global gConfigRegistry
     return gConfigRegistry
 }
 
+; Get config value with fallback default (convenience helper)
+ConfigGet(name, defaultVal := "") {
+    global cfg
+    return cfg.HasOwnProp(name) ? cfg.%name% : defaultVal
+}
+
 ; ============================================================
-; INI GENERATION (reads defaults from globals)
+; INITIALIZATION
+; ============================================================
+
+_CL_InitializeDefaults() {
+    global cfg, gConfigRegistry
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("default")) {
+            cfg.%entry.g% := entry.default
+        }
+    }
+}
+
+; ============================================================
+; INI GENERATION
 ; ============================================================
 
 _CL_CreateDefaultIni(path) {
     global gConfigRegistry
 
     content := "; Alt-Tabby Configuration`n"
-    content .= "; Uncomment and edit values to customize. Delete a line to use defaults.`n"
-    content .= "; Changes take effect on next startup.`n"
+    content .= "; Edit values below. Delete file to restore defaults.`n"
     content .= "`n"
 
-    ; Group entries by section
-    sections := Map()
-    for _, cfg in gConfigRegistry {
-        if (!sections.Has(cfg.s))
-            sections[cfg.s] := []
-        sections[cfg.s].Push(cfg)
-    }
+    currentSection := ""
 
-    ; Define section order (most important first)
-    sectionOrder := ["AltTab", "GUI", "IPC", "Tools", "Producers", "Filtering",
-                     "WinEventHook", "ZPump", "WinEnum", "MruLite",
-                     "IconPump", "ProcPump", "KomorebiSub",
-                     "Heartbeat", "Viewer", "Diagnostics", "Testing"]
-
-    for _, sect in sectionOrder {
-        if (!sections.Has(sect))
-            continue
-
-        content .= "[" sect "]`n"
-
-        for _, cfg in sections[sect] {
-            ; Read current default value from the global
-            defaultVal := _CL_ReadGlobal(cfg.g, cfg.t)
-
-            ; Add description as comment
-            content .= "; " cfg.d "`n"
-
-            ; Add setting (commented out so defaults are used)
-            content .= "; " cfg.k "=" _CL_FormatValue(defaultVal, cfg.t) "`n"
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section") {
+            content .= "[" entry.name "]`n"
+            if (entry.HasOwnProp("long"))
+                content .= "; " entry.long "`n"
+            content .= "`n"
+            currentSection := entry.name
         }
-        content .= "`n"
+        else if (entry.HasOwnProp("type") && entry.type = "subsection") {
+            content .= "; --- " entry.name " ---`n"
+            if (entry.HasOwnProp("desc"))
+                content .= "; " entry.desc "`n"
+        }
+        else if (entry.HasOwnProp("default")) {
+            ; Setting
+            content .= "; " entry.d "`n"
+            content .= entry.k "=" _CL_FormatValue(entry.default, entry.t) "`n"
+        }
     }
 
     try FileAppend(content, path, "UTF-8")
+}
+
+_CL_SupplementIni(path) {
+    global gConfigRegistry
+
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("default"))
+            continue  ; Skip section/subsection headers
+
+        ; Check if key exists in INI
+        existing := IniRead(path, entry.s, entry.k, Chr(1))  ; Use sentinel
+        if (existing = Chr(1)) {
+            ; Key missing - add it with default value
+            IniWrite(_CL_FormatValue(entry.default, entry.t), path, entry.s, entry.k)
+        }
+    }
 }
 
 _CL_FormatValue(val, type) {
@@ -208,15 +782,18 @@ _CL_FormatValue(val, type) {
 ; ============================================================
 
 _CL_LoadAllSettings() {
-    global gConfigIniPath, gConfigRegistry
+    global gConfigIniPath, gConfigRegistry, cfg
 
-    for _, cfg in gConfigRegistry {
-        val := IniRead(gConfigIniPath, cfg.s, cfg.k, "")
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("default"))
+            continue  ; Skip section/subsection headers
+
+        val := IniRead(gConfigIniPath, entry.s, entry.k, "")
         if (val = "")
             continue
 
         ; Parse value based on type
-        switch cfg.t {
+        switch entry.t {
             case "bool":
                 parsedVal := (val = "true" || val = "1" || val = "yes")
             case "int":
@@ -231,172 +808,23 @@ _CL_LoadAllSettings() {
                 parsedVal := val
         }
 
-        _CL_WriteGlobal(cfg.g, parsedVal)
+        cfg.%entry.g% := parsedVal
     }
 }
 
 ; ============================================================
-; GLOBAL ACCESS HELPERS
+; GLOBAL ACCESS HELPERS (for config editor compatibility)
 ; ============================================================
-; AHK v2 requires explicit global declarations, so we use switch
-; statements to access globals by name. This is the only place
-; these switch statements exist - the rest of the code is data-driven.
+; These use dynamic property access - no switch statements needed!
 
 _CL_ReadGlobal(name, type := "string") {
-    ; Declare all globals at function scope first
-    global AltTabGraceMs, AltTabQuickSwitchMs, AltTabPrewarmOnAlt, FreezeWindowList, UseCurrentWSProjection
-    global GUI_AcrylicAlpha, GUI_AcrylicBaseRgb, GUI_CornerRadiusPx, GUI_ScreenWidthPct
-    global GUI_RowsVisibleMin, GUI_RowsVisibleMax, GUI_RowHeight, GUI_IconSize
-    global GUI_ShowHeader, GUI_ShowFooter, GUI_ShowCloseButton, GUI_ShowKillButton, GUI_ShowBlacklistButton
-    global GUI_ScrollKeepHighlightOnTop, GUI_EmptyListText
-    global StorePipeName, AhkV2Path, KomorebicExe
-    global UseKomorebiSub, UseKomorebiLite, UseIconPump, UseProcPump
-    global UseAltTabEligibility, UseBlacklist
-    global WinEventHookDebounceMs, WinEventHookBatchMs, ZPumpIntervalMs, WinEnumSafetyPollMs, MruLitePollMs
-    global IconPumpIntervalMs, IconPumpBatchSize, IconPumpMaxAttempts, IconPumpSkipHidden
-    global IconPumpIdleBackoffMs, IconPumpAttemptBackoffMs, IconPumpBackoffMultiplier
-    global ProcPumpIntervalMs, ProcPumpBatchSize
-    global KomorebiSubPollMs, KomorebiSubIdleRecycleMs, KomorebiSubFallbackPollMs
-    global StoreHeartbeatIntervalMs, ViewerHeartbeatTimeoutMs
-    global DebugViewerLog, ViewerAutoStartStore
-    global DiagChurnLog, DiagKomorebiLog, DebugAltTabTooltips
-    global TestLiveDurationSec_Default
-
-    switch name {
-        case "AltTabGraceMs": return AltTabGraceMs
-        case "AltTabQuickSwitchMs": return AltTabQuickSwitchMs
-        case "AltTabPrewarmOnAlt": return AltTabPrewarmOnAlt
-        case "FreezeWindowList": return FreezeWindowList
-        case "UseCurrentWSProjection": return UseCurrentWSProjection
-        case "GUI_AcrylicAlpha": return GUI_AcrylicAlpha
-        case "GUI_AcrylicBaseRgb": return GUI_AcrylicBaseRgb
-        case "GUI_CornerRadiusPx": return GUI_CornerRadiusPx
-        case "GUI_ScreenWidthPct": return GUI_ScreenWidthPct
-        case "GUI_RowsVisibleMin": return GUI_RowsVisibleMin
-        case "GUI_RowsVisibleMax": return GUI_RowsVisibleMax
-        case "GUI_RowHeight": return GUI_RowHeight
-        case "GUI_IconSize": return GUI_IconSize
-        case "GUI_ShowHeader": return GUI_ShowHeader
-        case "GUI_ShowFooter": return GUI_ShowFooter
-        case "GUI_ShowCloseButton": return GUI_ShowCloseButton
-        case "GUI_ShowKillButton": return GUI_ShowKillButton
-        case "GUI_ShowBlacklistButton": return GUI_ShowBlacklistButton
-        case "GUI_ScrollKeepHighlightOnTop": return GUI_ScrollKeepHighlightOnTop
-        case "GUI_EmptyListText": return GUI_EmptyListText
-        case "StorePipeName": return StorePipeName
-        case "AhkV2Path": return AhkV2Path
-        case "KomorebicExe": return KomorebicExe
-        case "UseKomorebiSub": return UseKomorebiSub
-        case "UseKomorebiLite": return UseKomorebiLite
-        case "UseIconPump": return UseIconPump
-        case "UseProcPump": return UseProcPump
-        case "UseAltTabEligibility": return UseAltTabEligibility
-        case "UseBlacklist": return UseBlacklist
-        case "WinEventHookDebounceMs": return WinEventHookDebounceMs
-        case "WinEventHookBatchMs": return WinEventHookBatchMs
-        case "ZPumpIntervalMs": return ZPumpIntervalMs
-        case "WinEnumSafetyPollMs": return WinEnumSafetyPollMs
-        case "MruLitePollMs": return MruLitePollMs
-        case "IconPumpIntervalMs": return IconPumpIntervalMs
-        case "IconPumpBatchSize": return IconPumpBatchSize
-        case "IconPumpMaxAttempts": return IconPumpMaxAttempts
-        case "IconPumpSkipHidden": return IconPumpSkipHidden
-        case "IconPumpIdleBackoffMs": return IconPumpIdleBackoffMs
-        case "IconPumpAttemptBackoffMs": return IconPumpAttemptBackoffMs
-        case "IconPumpBackoffMultiplier": return IconPumpBackoffMultiplier
-        case "ProcPumpIntervalMs": return ProcPumpIntervalMs
-        case "ProcPumpBatchSize": return ProcPumpBatchSize
-        case "KomorebiSubPollMs": return KomorebiSubPollMs
-        case "KomorebiSubIdleRecycleMs": return KomorebiSubIdleRecycleMs
-        case "KomorebiSubFallbackPollMs": return KomorebiSubFallbackPollMs
-        case "StoreHeartbeatIntervalMs": return StoreHeartbeatIntervalMs
-        case "ViewerHeartbeatTimeoutMs": return ViewerHeartbeatTimeoutMs
-        case "DebugViewerLog": return DebugViewerLog
-        case "ViewerAutoStartStore": return ViewerAutoStartStore
-        case "DiagChurnLog": return DiagChurnLog
-        case "DiagKomorebiLog": return DiagKomorebiLog
-        case "DebugAltTabTooltips": return DebugAltTabTooltips
-        case "TestLiveDurationSec_Default": return TestLiveDurationSec_Default
-    }
-    return ""
+    global cfg
+    return cfg.HasOwnProp(name) ? cfg.%name% : ""
 }
 
 _CL_WriteGlobal(name, val) {
-    ; Declare all globals at function scope first
-    global AltTabGraceMs, AltTabQuickSwitchMs, AltTabPrewarmOnAlt, FreezeWindowList, UseCurrentWSProjection
-    global GUI_AcrylicAlpha, GUI_AcrylicBaseRgb, GUI_CornerRadiusPx, GUI_ScreenWidthPct
-    global GUI_RowsVisibleMin, GUI_RowsVisibleMax, GUI_RowHeight, GUI_IconSize
-    global GUI_ShowHeader, GUI_ShowFooter, GUI_ShowCloseButton, GUI_ShowKillButton, GUI_ShowBlacklistButton
-    global GUI_ScrollKeepHighlightOnTop, GUI_EmptyListText
-    global StorePipeName, AhkV2Path, KomorebicExe
-    global UseKomorebiSub, UseKomorebiLite, UseIconPump, UseProcPump
-    global UseAltTabEligibility, UseBlacklist
-    global WinEventHookDebounceMs, WinEventHookBatchMs, ZPumpIntervalMs, WinEnumSafetyPollMs, MruLitePollMs
-    global IconPumpIntervalMs, IconPumpBatchSize, IconPumpMaxAttempts, IconPumpSkipHidden
-    global IconPumpIdleBackoffMs, IconPumpAttemptBackoffMs, IconPumpBackoffMultiplier
-    global ProcPumpIntervalMs, ProcPumpBatchSize
-    global KomorebiSubPollMs, KomorebiSubIdleRecycleMs, KomorebiSubFallbackPollMs
-    global StoreHeartbeatIntervalMs, ViewerHeartbeatTimeoutMs
-    global DebugViewerLog, ViewerAutoStartStore
-    global DiagChurnLog, DiagKomorebiLog, DebugAltTabTooltips
-    global TestLiveDurationSec_Default
-
-    switch name {
-        case "AltTabGraceMs": AltTabGraceMs := val
-        case "AltTabQuickSwitchMs": AltTabQuickSwitchMs := val
-        case "AltTabPrewarmOnAlt": AltTabPrewarmOnAlt := val
-        case "FreezeWindowList": FreezeWindowList := val
-        case "UseCurrentWSProjection": UseCurrentWSProjection := val
-        case "GUI_AcrylicAlpha": GUI_AcrylicAlpha := val
-        case "GUI_AcrylicBaseRgb": GUI_AcrylicBaseRgb := val
-        case "GUI_CornerRadiusPx": GUI_CornerRadiusPx := val
-        case "GUI_ScreenWidthPct": GUI_ScreenWidthPct := val
-        case "GUI_RowsVisibleMin": GUI_RowsVisibleMin := val
-        case "GUI_RowsVisibleMax": GUI_RowsVisibleMax := val
-        case "GUI_RowHeight": GUI_RowHeight := val
-        case "GUI_IconSize": GUI_IconSize := val
-        case "GUI_ShowHeader": GUI_ShowHeader := val
-        case "GUI_ShowFooter": GUI_ShowFooter := val
-        case "GUI_ShowCloseButton": GUI_ShowCloseButton := val
-        case "GUI_ShowKillButton": GUI_ShowKillButton := val
-        case "GUI_ShowBlacklistButton": GUI_ShowBlacklistButton := val
-        case "GUI_ScrollKeepHighlightOnTop": GUI_ScrollKeepHighlightOnTop := val
-        case "GUI_EmptyListText": GUI_EmptyListText := val
-        case "StorePipeName": StorePipeName := val
-        case "AhkV2Path": AhkV2Path := val
-        case "KomorebicExe": KomorebicExe := val
-        case "UseKomorebiSub": UseKomorebiSub := val
-        case "UseKomorebiLite": UseKomorebiLite := val
-        case "UseIconPump": UseIconPump := val
-        case "UseProcPump": UseProcPump := val
-        case "UseAltTabEligibility": UseAltTabEligibility := val
-        case "UseBlacklist": UseBlacklist := val
-        case "WinEventHookDebounceMs": WinEventHookDebounceMs := val
-        case "WinEventHookBatchMs": WinEventHookBatchMs := val
-        case "ZPumpIntervalMs": ZPumpIntervalMs := val
-        case "WinEnumSafetyPollMs": WinEnumSafetyPollMs := val
-        case "MruLitePollMs": MruLitePollMs := val
-        case "IconPumpIntervalMs": IconPumpIntervalMs := val
-        case "IconPumpBatchSize": IconPumpBatchSize := val
-        case "IconPumpMaxAttempts": IconPumpMaxAttempts := val
-        case "IconPumpSkipHidden": IconPumpSkipHidden := val
-        case "IconPumpIdleBackoffMs": IconPumpIdleBackoffMs := val
-        case "IconPumpAttemptBackoffMs": IconPumpAttemptBackoffMs := val
-        case "IconPumpBackoffMultiplier": IconPumpBackoffMultiplier := val
-        case "ProcPumpIntervalMs": ProcPumpIntervalMs := val
-        case "ProcPumpBatchSize": ProcPumpBatchSize := val
-        case "KomorebiSubPollMs": KomorebiSubPollMs := val
-        case "KomorebiSubIdleRecycleMs": KomorebiSubIdleRecycleMs := val
-        case "KomorebiSubFallbackPollMs": KomorebiSubFallbackPollMs := val
-        case "StoreHeartbeatIntervalMs": StoreHeartbeatIntervalMs := val
-        case "ViewerHeartbeatTimeoutMs": ViewerHeartbeatTimeoutMs := val
-        case "DebugViewerLog": DebugViewerLog := val
-        case "ViewerAutoStartStore": ViewerAutoStartStore := val
-        case "DiagChurnLog": DiagChurnLog := val
-        case "DiagKomorebiLog": DiagKomorebiLog := val
-        case "DebugAltTabTooltips": DebugAltTabTooltips := val
-        case "TestLiveDurationSec_Default": TestLiveDurationSec_Default := val
-    }
+    global cfg
+    cfg.%name% := val
 }
 
 ; ============================================================

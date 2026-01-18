@@ -11,8 +11,7 @@ A_MenuMaskKey := "vkE8"
 
 ; ========================= INCLUDES (SHARED UTILITIES) =========================
 ; Shared utilities first (use *i for unified exe compatibility)
-; Note: config.ahk now includes all GUI settings (merged from gui_config.ahk)
-#Include *i %A_ScriptDir%\..\shared\config.ahk
+#Include *i %A_ScriptDir%\..\shared\config_loader.ahk
 #Include *i %A_ScriptDir%\..\shared\json.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 
@@ -76,7 +75,10 @@ global gGUI_AwaitingToggleProjection := false  ; Flag for UseCurrentWSProjection
 ; ========================= INITIALIZATION =========================
 
 GUI_Main_Init() {
-    global gGUI_StoreClient, StorePipeName
+    global gGUI_StoreClient, cfg
+
+    ; CRITICAL: Initialize config FIRST - sets all global defaults
+    ConfigLoader_Init()
 
     Win_InitDpiAwareness()
     Gdip_Startup()
@@ -88,7 +90,7 @@ GUI_Main_Init() {
     INT_SetupHotkeys()
 
     ; Connect to WindowStore
-    gGUI_StoreClient := IPC_PipeClient_Connect(StorePipeName, GUI_OnStoreMessage)
+    gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
     if (gGUI_StoreClient.hPipe) {
         ; Request deltas so we stay up to date like the viewer
         hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }

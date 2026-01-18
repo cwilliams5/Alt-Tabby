@@ -11,11 +11,10 @@
 ; Based on working POC: legacy/components_legacy/komorebi_poc - WORKING.ahk
 ; ============================================================
 
-; Configuration (use values from config.ahk if set, otherwise defaults)
-; Note: KomorebicExe is set in config.ahk, we just reference it here
-global KSub_PollMs := IsSet(KomorebiSubPollMs) ? KomorebiSubPollMs : 50
-global KSub_IdleRecycleMs := IsSet(KomorebiSubIdleRecycleMs) ? KomorebiSubIdleRecycleMs : 120000
-global KSub_FallbackPollMs := IsSet(KomorebiSubFallbackPollMs) ? KomorebiSubFallbackPollMs : 2000
+; Configuration (set in KomorebiSub_Init after ConfigLoader_Init)
+global KSub_PollMs := 0
+global KSub_IdleRecycleMs := 0
+global KSub_FallbackPollMs := 0
 
 ; State
 global _KSub_PipeName := ""
@@ -34,7 +33,14 @@ global _KSub_WorkspaceCache := Map()
 
 ; Initialize komorebi subscription
 KomorebiSub_Init() {
-    global _KSub_PipeName, _KSub_WorkspaceCache
+    global _KSub_PipeName, _KSub_WorkspaceCache, cfg
+    global KSub_PollMs, KSub_IdleRecycleMs, KSub_FallbackPollMs
+
+    ; Load config values (ConfigLoader_Init has already run)
+    KSub_PollMs := cfg.KomorebiSubPollMs
+    KSub_IdleRecycleMs := cfg.KomorebiSubIdleRecycleMs
+    KSub_FallbackPollMs := cfg.KomorebiSubFallbackPollMs
+
     _KSub_PipeName := "tabby_" A_TickCount "_" Random(1000, 9999)
     _KSub_WorkspaceCache := Map()
 
@@ -50,8 +56,8 @@ KomorebiSub_Init() {
 
 ; Check if komorebic is available
 KomorebiSub_IsAvailable() {
-    global KomorebicExe
-    return (KomorebicExe != "" && FileExist(KomorebicExe))
+    global cfg
+    return (cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe))
 }
 
 ; Start subscription
@@ -127,7 +133,7 @@ KomorebiSub_Start() {
 
     ; Launch komorebic subscriber
     try {
-        cmd := '"' KomorebicExe '" subscribe-pipe ' _KSub_PipeName
+        cmd := '"' cfg.KomorebicExe '" subscribe-pipe ' _KSub_PipeName
         _KSub_ClientPid := Run(cmd, , "Hide")
         _KSub_DiagLog("KomorebiSub: Launched subscriber pid=" _KSub_ClientPid " cmd=" cmd)
     } catch as e {
@@ -151,8 +157,8 @@ KomorebiSub_Start() {
 ; Diagnostic logging - controlled by DiagKomorebiLog config flag
 ; Writes to %TEMP%\tabby_ksub_diag.log when enabled
 _KSub_DiagLog(msg) {
-    global DiagKomorebiLog
-    if (!IsSet(DiagKomorebiLog) || !DiagKomorebiLog)
+    global cfg
+    if (!cfg.DiagKomorebiLog)
         return
     static logPath := A_Temp "\tabby_ksub_diag.log"
     try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", logPath, "UTF-8")
@@ -781,10 +787,10 @@ KomorebiSub_PollFallback() {
 
 ; Get komorebi state directly via command
 _KSub_GetStateDirect() {
-    global KomorebicExe
+    global cfg
     tmp := A_Temp "\komorebi_state_" A_TickCount ".tmp"
     ; Use double-quote escaping for cmd.exe with paths containing spaces
-    cmd := 'cmd.exe /c ""' KomorebicExe '" state > "' tmp '"" 2>&1'
+    cmd := 'cmd.exe /c ""' cfg.KomorebicExe '" state > "' tmp '"" 2>&1'
     try RunWait(cmd, , "Hide")
     Sleep(100)  ; Give file time to write
     txt := ""
