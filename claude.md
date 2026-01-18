@@ -48,7 +48,6 @@ src/
     gui_paint.ahk       - Rendering code
     gui_input.ahk       - Mouse, selection, hover, actions
     gui_overlay.ahk     - Window creation, sizing, show/hide
-    gui_config.ahk      - GUI configuration constants
     gui_gdip.ahk        - GDI+ graphics helpers
     gui_win.ahk         - Window/DPI utilities
   viewer/         - Debug viewer
@@ -92,6 +91,22 @@ These are from the original ChatGPT work. Some are battle-tested:
 - String sort comparisons must use `StrCompare()` not `<`/`>` operators
 - AHK v2 `#Include` is compile-time, cannot be conditional at runtime
 - Store expects Map records from producers; use `rec["key"]` not `rec.key`
+- **No inline global declarations in switch cases** - this is invalid:
+  ```ahk
+  ; WRONG - syntax error
+  switch name {
+      case "Foo": global Foo; return Foo
+  }
+
+  ; CORRECT - declare all globals at function scope first
+  MyFunc(name) {
+      global Foo, Bar, Baz  ; Declare all at top
+      switch name {
+          case "Foo": return Foo
+          case "Bar": return Bar
+      }
+  }
+  ```
 
 ### Global Variable Scoping (CRITICAL)
 - **Global constants defined at file scope (like `IPC_MSG_SNAPSHOT := "snapshot"`) are NOT automatically accessible inside functions**
@@ -358,15 +373,38 @@ Check `%TEMP%\gui_tests.log` for results.
 - These are added to `.gitignore` - just delete them if they appear
 - Tracked at: https://github.com/anthropics/claude-code/issues/17636
 
-### Config System (IMPORTANT)
-- **Two files must stay in sync** when adding new config values:
-  1. `src/shared/config.ahk` - defines the default value (e.g., `global MyNewSetting := 100`)
-  2. `src/shared/config_loader.ahk` - loads from INI and creates default INI
-- When adding a new config:
-  1. Add the default in `config.ahk` with a comment explaining it
-  2. Add a `_CL_LoadSetting_*()` call in `_CL_LoadAllSettings()`
-  3. Add a case in the appropriate `_CL_LoadSetting_*()` switch block
-  4. Add a commented line in `_CL_CreateDefaultIni()` for the default INI
+### Config System (Registry-Driven)
+- **Single source of truth**: All defaults live in `src/shared/config.ahk`
+- **Registry-driven loader**: `src/shared/config_loader.ahk` uses `gConfigRegistry` array
+- **Dynamic INI generation**: Default INI is built by reading current global values (no hardcoded strings)
+
+**Architecture:**
+```ahk
+; gConfigRegistry - array of config metadata
+global gConfigRegistry := [
+    {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", d: "Grace period before showing GUI (ms)"},
+    {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "hex", d: "Background transparency"},
+    ; ... 50+ entries
+]
+; s=section, k=key, g=globalName, t=type(int/bool/hex/string), d=description
+```
+
+**When adding a new config:**
+1. Add the default in `config.ahk` with a comment (e.g., `MyNewSetting := 100`)
+2. Add one entry to `gConfigRegistry` in `config_loader.ahk`
+3. Add to the `global` declaration list in `_CL_ReadGlobal()` and `_CL_WriteGlobal()`
+4. Add a case in the switch block of both functions
+
+**Key functions:**
+- `_CL_ReadGlobal(name, type)` - Read a global by name (centralized switch)
+- `_CL_WriteGlobal(name, value, type)` - Write a global by name
+- `_CL_CreateDefaultIni(path)` - Generate INI from current globals + registry metadata
+
+**Config sections (in order of user relevance):**
+1. `[AltTab]` - Alt-Tab behavior (most likely to edit)
+2. `[GUI]` - Appearance settings
+3. `[IPC]`, `[Tools]`, `[Producers]`, etc. - Advanced settings
+
 - The INI file (`src/config.ini`) has all values commented out by default
 - Users uncomment and edit values they want to customize
 - **Never commit config.ini** - it's in `.gitignore` and user-specific
