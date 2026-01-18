@@ -11,6 +11,7 @@
 ;   alt_tabby.exe --store     - Run as WindowStore server
 ;   alt_tabby.exe --viewer    - Run as Debug Viewer
 ;   alt_tabby.exe --gui-only  - Run as GUI only (store must be running)
+;   alt_tabby.exe --config    - Run Config Editor
 ;
 ; IMPORTANT: Mode flag is set BEFORE includes. Each module checks
 ; this flag and only initializes if it matches.
@@ -32,6 +33,9 @@ for _, arg in A_Args {
         case "--gui-only":
             g_AltTabbyMode := "gui"
             A_IconHidden := true
+        case "--config":
+            g_AltTabbyMode := "config"
+            ; Config editor shows its own window, no tray icon needed
     }
 }
 
@@ -57,6 +61,9 @@ if (g_AltTabbyMode = "launch") {
 ; Note: Subprocess tray icon hiding is done immediately in arg parsing above
 ; to minimize flicker (A_IconHidden := true set as soon as mode detected)
 
+; Config mode: run the config editor and exit
+; (Handled after includes since ConfigEditor_Run needs config_loader)
+
 ; ============================================================
 ; INCLUDES
 ; ============================================================
@@ -67,6 +74,7 @@ if (g_AltTabbyMode = "launch") {
 #Include %A_ScriptDir%\shared\
 #Include config.ahk
 #Include config_loader.ahk
+#Include config_editor.ahk
 #Include json.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
@@ -100,6 +108,15 @@ if (g_AltTabbyMode = "launch") {
 #Include gui_state.ahk
 #Include gui_interceptor.ahk
 #Include gui_main.ahk
+
+; ============================================================
+; CONFIG MODE HANDLER
+; ============================================================
+; Run config editor and exit when launched with --config
+if (g_AltTabbyMode = "config") {
+    ConfigEditor_Run(false)  ; false = standalone mode, show "restart needed" message
+    ExitApp()
+}
 
 ; ============================================================
 ; LAUNCHER FUNCTIONS
@@ -195,6 +212,10 @@ UpdateTrayMenu() {
         tray.Add()
     }
 
+    ; Config editor
+    tray.Add("Edit Config...", (*) => LaunchConfigEditor())
+    tray.Add()
+
     tray.Add("Exit", (*) => ExitAll())
 }
 
@@ -260,4 +281,15 @@ ExitAll() {
         ProcessClose(g_ViewerPID)
 
     ExitApp()
+}
+
+LaunchConfigEditor() {
+    ; Run config editor with auto-restart enabled
+    ; Returns true if changes were saved
+    if (ConfigEditor_Run(true)) {
+        ; Restart store and GUI to apply changes
+        RestartStore()
+        Sleep(300)
+        RestartGui()
+    }
 }
