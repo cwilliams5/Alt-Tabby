@@ -11,12 +11,12 @@ A_MenuMaskKey := "vkE8"
 
 ; ========================= INCLUDES (SHARED UTILITIES) =========================
 ; Shared utilities first (use *i for unified exe compatibility)
+; Note: config.ahk now includes all GUI settings (merged from gui_config.ahk)
 #Include *i %A_ScriptDir%\..\shared\config.ahk
 #Include *i %A_ScriptDir%\..\shared\json.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 
-; GUI configuration and utilities
-#Include *i %A_ScriptDir%\gui_config.ahk
+; GUI utilities
 #Include *i %A_ScriptDir%\gui_gdip.ahk
 #Include *i %A_ScriptDir%\gui_win.ahk
 

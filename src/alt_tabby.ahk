@@ -88,8 +88,8 @@ if (g_AltTabbyMode = "launch") {
 #Include viewer.ahk
 
 ; GUI module (from src/gui/)
+; Note: GUI settings are now in shared/config.ahk
 #Include %A_ScriptDir%\gui\
-#Include gui_config.ahk
 #Include gui_gdip.ahk
 #Include gui_win.ahk
 #Include gui_overlay.ahk

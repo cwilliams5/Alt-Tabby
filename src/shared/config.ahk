@@ -4,8 +4,183 @@
 ; Alt-Tabby Configuration
 ; ============================================================
 ; All timing values are in milliseconds unless noted.
-; Lower values = more responsive but higher CPU usage.
+; Settings are organized with most user-relevant at top.
 ; ============================================================
+
+; ============================================================
+; Alt-Tab Behavior (Most Likely to Edit)
+; ============================================================
+; These control the Alt-Tab overlay behavior - tweak these first!
+
+; Grace period before showing GUI (ms). During this time,
+; if Alt is released, we do a quick switch without showing GUI.
+AltTabGraceMs := 150
+
+; Maximum time for quick switch without showing GUI (ms)
+; If Alt+Tab and release happen within this time, instant switch
+AltTabQuickSwitchMs := 100
+
+; Pre-warm snapshot on Alt down (true = request data before Tab pressed)
+; Ensures fresh window data is available when Tab is pressed
+AltTabPrewarmOnAlt := true
+
+; Freeze window list on first Tab press (true = stable list, false = live updates)
+; When true, the list is locked and won't change during Alt+Tab interaction
+; When false, the list updates in real-time (may cause visual flicker)
+FreezeWindowList := false
+
+; Use server-side workspace projection filtering (true = request from store, false = filter client-side)
+; When true, CTRL workspace toggle requests a new projection from the store
+; When false, CTRL toggle filters the cached items locally (faster, but uses cached data)
+UseCurrentWSProjection := true
+
+; ============================================================
+; GUI Appearance
+; ============================================================
+; Visual styling for the Alt-Tab overlay
+
+; Background Window
+GUI_AcrylicAlpha    := 0x33
+GUI_AcrylicBaseRgb  := 0x330000
+GUI_CornerRadiusPx  := 18
+GUI_AlwaysOnTop     := true
+
+; Selection scroll behavior
+GUI_ScrollKeepHighlightOnTop := true
+
+; Size config
+GUI_ScreenWidthPct := 0.60
+GUI_RowsVisibleMin := 1
+GUI_RowsVisibleMax := 8
+
+; Virtual list look
+GUI_RowHeight   := 56
+GUI_MarginX     := 18
+GUI_MarginY     := 18
+GUI_IconSize    := 36
+GUI_IconLeftMargin := 8
+GUI_RowRadius   := 12
+GUI_SelARGB     := 0x662B5CAD
+
+; Action keystrokes
+GUI_AllowCloseKeystroke     := true
+GUI_AllowKillKeystroke      := true
+GUI_AllowBlacklistKeystroke := true
+
+; Show row action buttons on hover
+GUI_ShowCloseButton      := true
+GUI_ShowKillButton       := true
+GUI_ShowBlacklistButton  := true
+
+; Action button geometry
+GUI_ActionBtnSizePx   := 24
+GUI_ActionBtnGapPx    := 6
+GUI_ActionBtnRadiusPx := 6
+GUI_ActionFontName    := "Segoe UI Symbol"
+GUI_ActionFontSize    := 18
+GUI_ActionFontWeight  := 700
+
+; Close button styling
+GUI_CloseButtonBorderPx      := 1
+GUI_CloseButtonBorderARGB    := 0x88FFFFFF
+GUI_CloseButtonBGARGB        := 0xFF000000
+GUI_CloseButtonBGHoverARGB   := 0xFF888888
+GUI_CloseButtonTextARGB      := 0xFFFFFFFF
+GUI_CloseButtonTextHoverARGB := 0xFFFF0000
+GUI_CloseButtonGlyph         := "X"
+
+; Kill button styling
+GUI_KillButtonBorderPx       := 1
+GUI_KillButtonBorderARGB     := 0x88FFB4A5
+GUI_KillButtonBGARGB         := 0xFF300000
+GUI_KillButtonBGHoverARGB    := 0xFFD00000
+GUI_KillButtonTextARGB       := 0xFFFFE8E8
+GUI_KillButtonTextHoverARGB  := 0xFFFFFFFF
+GUI_KillButtonGlyph          := "K"
+
+; Blacklist button styling
+GUI_BlacklistButtonBorderPx      := 1
+GUI_BlacklistButtonBorderARGB    := 0x88999999
+GUI_BlacklistButtonBGARGB        := 0xFF000000
+GUI_BlacklistButtonBGHoverARGB   := 0xFF888888
+GUI_BlacklistButtonTextARGB      := 0xFFFFFFFF
+GUI_BlacklistButtonTextHoverARGB := 0xFFFF0000
+GUI_BlacklistButtonGlyph         := "B"
+
+; Extra columns (0 = hidden)
+GUI_ColFixed2   := 70   ; HWND
+GUI_ColFixed3   := 50   ; PID
+GUI_ColFixed4   := 60   ; Workspace
+GUI_ColFixed5   := 0
+GUI_ColFixed6   := 0
+
+GUI_ShowHeader := true
+GUI_Col2Name := "HWND"
+GUI_Col3Name := "PID"
+GUI_Col4Name := "WS"
+GUI_Col5Name := ""
+GUI_Col6Name := ""
+
+; Header font
+GUI_HdrFontName   := "Segoe UI"
+GUI_HdrFontSize   := 12
+GUI_HdrFontWeight := 600
+GUI_HdrARGB       := 0xFFD0D6DE
+
+; Main Font (title row)
+GUI_MainFontName := "Segoe UI"
+GUI_MainFontSize := 20
+GUI_MainFontWeight := 400
+GUI_MainFontNameHi := "Segoe UI"
+GUI_MainFontSizeHi := 20
+GUI_MainFontWeightHi := 800
+GUI_MainARGB := 0xFFF0F0F0
+GUI_MainARGBHi := 0xFFF0F0F0
+
+; Sub Font (subtitle row)
+GUI_SubFontName := "Segoe UI"
+GUI_SubFontSize := 12
+GUI_SubFontWeight := 400
+GUI_SubFontNameHi := "Segoe UI"
+GUI_SubFontSizeHi := 12
+GUI_SubFontWeightHi := 600
+GUI_SubARGB     := 0xFFB5C0CE
+GUI_SubARGBHi   := 0xFFB5C0CE
+
+; Column Font
+GUI_ColFontName := "Segoe UI"
+GUI_ColFontSize := 12
+GUI_ColFontWeight := 400
+GUI_ColFontNameHi := "Segoe UI"
+GUI_ColFontSizeHi := 12
+GUI_ColFontWeightHi := 600
+GUI_ColARGB := 0xFFF0F0F0
+GUI_ColARGBHi := 0xFFF0F0F0
+
+; Scrollbar
+GUI_ScrollBarEnabled         := true
+GUI_ScrollBarWidthPx         := 6
+GUI_ScrollBarMarginRightPx   := 8
+GUI_ScrollBarThumbARGB       := 0x88FFFFFF
+GUI_ScrollBarGutterEnabled   := false
+GUI_ScrollBarGutterARGB      := 0x30000000
+
+GUI_EmptyListText := "No Windows"
+
+; Footer
+GUI_ShowFooter          := true
+GUI_FooterTextAlign     := "center"
+GUI_FooterBorderPx      := 0
+GUI_FooterBorderARGB    := 0x33FFFFFF
+GUI_FooterBGRadius      := 0
+GUI_FooterBGARGB        := 0x00000000
+GUI_FooterTextARGB      := 0xFFFFFFFF
+GUI_FooterFontName      := "Segoe UI"
+GUI_FooterFontSize      := 14
+GUI_FooterFontWeight    := 600
+GUI_FooterHeightPx      := 24
+GUI_FooterGapTopPx      := 8
+GUI_FooterPaddingX      := 12
 
 ; ============================================================
 ; IPC & Pipes
@@ -177,33 +352,6 @@ DiagKomorebiLog := false
 ; Use when: Alt-Tab overlay behavior is incorrect (not showing,
 ; wrong state transitions, quick-switch not working)
 DebugAltTabTooltips := false
-
-; ============================================================
-; Alt-Tab GUI Settings
-; ============================================================
-; Controls the Alt-Tab overlay behavior
-
-; Grace period before showing GUI (ms). During this time,
-; if Alt is released, we do a quick switch without showing GUI.
-AltTabGraceMs := 150
-
-; Pre-warm snapshot on Alt down (true = request data before Tab pressed)
-; Ensures fresh window data is available when Tab is pressed
-AltTabPrewarmOnAlt := true
-
-; Maximum time for quick switch without showing GUI (ms)
-; If Alt+Tab and release happen within this time, instant switch
-AltTabQuickSwitchMs := 100
-
-; Freeze window list on first Tab press (true = stable list, false = live updates)
-; When true, the list is locked and won't change during Alt+Tab interaction
-; When false, the list updates in real-time (may cause visual flicker)
-FreezeWindowList := false
-
-; Use server-side workspace projection filtering (true = request from store, false = filter client-side)
-; When true, CTRL workspace toggle requests a new projection from the store
-; When false, CTRL toggle filters the cached items locally (faster, but uses cached data)
-UseCurrentWSProjection := true
 
 ; ============================================================
 ; Testing
