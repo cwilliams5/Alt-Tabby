@@ -98,6 +98,8 @@ _CL_LoadAllSettings() {
     _CL_LoadSetting_Int("AltTab", "GraceMs", "AltTabGraceMs")
     _CL_LoadSetting_Bool("AltTab", "PrewarmOnAlt", "AltTabPrewarmOnAlt")
     _CL_LoadSetting_Int("AltTab", "QuickSwitchMs", "AltTabQuickSwitchMs")
+    _CL_LoadSetting_Bool("AltTab", "FreezeWindowList", "FreezeWindowList")
+    _CL_LoadSetting_Bool("AltTab", "UseCurrentWSProjection", "UseCurrentWSProjection")
 }
 
 ; Individual setting loaders - each handles its own global
@@ -170,6 +172,12 @@ _CL_LoadSetting_Bool(section, key, globalName := "") {
         case "AltTabPrewarmOnAlt":
             global AltTabPrewarmOnAlt
             AltTabPrewarmOnAlt := boolVal
+        case "FreezeWindowList":
+            global FreezeWindowList
+            FreezeWindowList := boolVal
+        case "UseCurrentWSProjection":
+            global UseCurrentWSProjection
+            UseCurrentWSProjection := boolVal
     }
 }
 
@@ -367,6 +375,8 @@ _CL_CreateDefaultIni(path) {
     content .= "; GraceMs=150`n"
     content .= "; PrewarmOnAlt=true`n"
     content .= "; QuickSwitchMs=100`n"
+    content .= "; FreezeWindowList=true`n"
+    content .= "; UseCurrentWSProjection=false`n"
 
     try FileAppend(content, path, "UTF-8")
 }

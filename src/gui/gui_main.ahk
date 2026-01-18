@@ -55,6 +55,7 @@ global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
 global gGUI_FrozenItems := []  ; Snapshot of items when locking in
 global gGUI_AllItems := []     ; Unfiltered items - preserved for workspace toggle
+global gGUI_AwaitingToggleProjection := false  ; Flag for UseCurrentWSProjection mode
 
 ; ========================= INTERCEPTOR STATE (built-in hooks) =========================
 ; These variables track the keyboard hook state (previously in interceptor.ahk)
@@ -347,10 +348,20 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         }
 
         if (gGUI_State = "ALT_PENDING") {
-            ; First Tab - freeze IMMEDIATELY with current data and go to ACTIVE
+            ; First Tab - freeze with current data and go to ACTIVE
             gGUI_FirstTabTick := A_TickCount
             gGUI_TabCount := 1
             gGUI_State := "ACTIVE"
+
+            ; SAFETY: If gGUI_Items is empty and prewarm was requested, wait briefly for data
+            ; This handles the race where Tab is pressed before prewarm response arrives
+            global AltTabPrewarmOnAlt
+            if (gGUI_Items.Length = 0 && IsSet(AltTabPrewarmOnAlt) && AltTabPrewarmOnAlt) {
+                waitStart := A_TickCount
+                while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < 50) {
+                    Sleep(10)  ; Allow IPC timer to fire and process incoming messages
+                }
+            }
 
             ; Freeze: save ALL items (for workspace toggle), then filter
             gGUI_AllItems := gGUI_Items
@@ -554,18 +565,47 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     }
 
     if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION) {
-        ; CRITICAL: When in ACTIVE state, list is FROZEN - ignore incoming data!
-        ; This prevents the GUI from showing different items than what gets activated.
-        if (gGUI_State = "ACTIVE") {
-            ; Still update rev for tracking, but don't touch items
+        ; When in ACTIVE state, list behavior depends on FreezeWindowList config
+        ; EXCEPTION: If awaiting a toggle-triggered projection (UseCurrentWSProjection mode), accept it
+        global FreezeWindowList, gGUI_AwaitingToggleProjection
+        isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList  ; Default to frozen if not set
+        isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection
+
+        if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
+            ; Frozen mode and not a toggle response: ignore incoming data
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
             return
         }
 
+        ; Clear the toggle flag if it was set
+        if (isToggleResponse) {
+            gGUI_AwaitingToggleProjection := false
+        }
+
         if (obj.Has("payload") && obj["payload"].Has("items")) {
             gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
+
+            ; If in ACTIVE state (either !frozen or toggle response), update display
+            if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {
+                gGUI_AllItems := gGUI_Items
+                gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+
+                ; Reset selection for toggle response
+                if (isToggleResponse) {
+                    gGUI_Sel := 2
+                    if (gGUI_Sel > gGUI_FrozenItems.Length) {
+                        gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
+                    }
+                    gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+
+                    ; Resize GUI if item count changed significantly
+                    rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+                    GUI_ResizeToRows(rowsDesired)
+                }
+            }
+
             if (gGUI_Sel > gGUI_Items.Length && gGUI_Items.Length > 0) {
                 gGUI_Sel := gGUI_Items.Length
             }
@@ -586,8 +626,12 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     }
 
     if (type = IPC_MSG_DELTA) {
-        ; CRITICAL: When in ACTIVE state, list is FROZEN - ignore deltas!
-        if (gGUI_State = "ACTIVE") {
+        ; When in ACTIVE state, list behavior depends on FreezeWindowList config
+        global FreezeWindowList
+        isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList  ; Default to frozen if not set
+
+        if (gGUI_State = "ACTIVE" && isFrozen) {
+            ; Frozen mode: ignore deltas
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -598,6 +642,15 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         if (obj.Has("payload")) {
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
             GUI_ApplyDelta(obj["payload"])
+
+            ; If in ACTIVE state with FreezeWindowList=false, update live display
+            if (gGUI_State = "ACTIVE" && !isFrozen) {
+                gGUI_AllItems := gGUI_Items
+                gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+                if (gGUI_OverlayVisible && gGUI_OverlayH) {
+                    GUI_Repaint()
+                }
+            }
         }
         if (obj.Has("rev")) {
             gGUI_StoreRev := obj["rev"]
@@ -759,6 +812,21 @@ GUI_RequestSnapshot() {
     IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(req))
 }
 
+; Request projection with optional workspace filtering (for UseCurrentWSProjection mode)
+GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
+    global gGUI_StoreClient, gGUI_AwaitingToggleProjection
+    if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
+        return
+    }
+    opts := { sort: "MRU", columns: "items", includeCloaked: true }
+    if (currentWSOnly) {
+        opts.currentWorkspaceOnly := true
+    }
+    req := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: opts }
+    gGUI_AwaitingToggleProjection := true  ; Flag to allow this response during ACTIVE state
+    IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(req))
+}
+
 GUI_ActivateSelected() {
     global gGUI_Items, gGUI_Sel
     if (gGUI_Sel < 1 || gGUI_Sel > gGUI_Items.Length) {
@@ -841,28 +909,42 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 
 GUI_ToggleWorkspaceMode() {
     global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+    global UseCurrentWSProjection, FreezeWindowList
 
     ; Toggle mode
     gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"
     GUI_UpdateFooterText()
 
-    ; If GUI is visible and active, re-filter and repaint
+    ; If GUI is visible and active, refresh the list
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        ; Re-filter from the UNFILTERED items (gGUI_AllItems preserved at freeze time)
-        gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
-        gGUI_Items := gGUI_FrozenItems  ; Update display list
+        ; Check if we should request from store or filter locally
+        useServerFilter := IsSet(UseCurrentWSProjection) && UseCurrentWSProjection
 
-        ; Reset selection
-        gGUI_Sel := 2
-        if (gGUI_Sel > gGUI_FrozenItems.Length) {
-            gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
+        if (useServerFilter) {
+            ; Request new projection from store with workspace filter
+            ; Response will be handled by GUI_OnStoreMessage (gGUI_AwaitingToggleProjection flag)
+            currentWSOnly := (gGUI_WorkspaceMode = "current")
+            GUI_RequestProjectionWithWSFilter(currentWSOnly)
+            ; Don't repaint yet - wait for response
+        } else {
+            ; Filter locally from cached items
+            isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList
+            sourceItems := isFrozen ? gGUI_AllItems : gGUI_Items
+            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(sourceItems)
+            gGUI_Items := gGUI_FrozenItems  ; Update display list
+
+            ; Reset selection
+            gGUI_Sel := 2
+            if (gGUI_Sel > gGUI_FrozenItems.Length) {
+                gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
+            }
+            gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+
+            ; Resize GUI if item count changed significantly
+            rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+            GUI_ResizeToRows(rowsDesired)
+            GUI_Repaint()
         }
-        gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
-
-        ; Resize GUI if item count changed significantly
-        rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
-        GUI_ResizeToRows(rowsDesired)
-        GUI_Repaint()
     }
 }
 
