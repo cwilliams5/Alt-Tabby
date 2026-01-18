@@ -3,7 +3,7 @@
 ## Project Summary
 - AHK v2 Alt-Tab replacement focused on responsiveness and low latency.
 - Komorebi aware; uses workspace state to filter and label windows.
-- Hotkey interception is split into a separate micro process for speed.
+- Keyboard hooks built into GUI process for minimal latency (no IPC delay).
 
 ## Architecture (Unified Launcher + Multi-Process)
 
@@ -39,10 +39,23 @@ src/
     winenum_lite.ahk    - Basic window enumeration producer
     mru_lite.ahk        - Focus tracking producer
     komorebi_lite.ahk   - Komorebi polling producer
+  gui/            - Alt-Tab GUI overlay (modular)
+    gui_main.ahk        - Entry point, includes, globals, init
+    gui_interceptor.ahk - Keyboard hooks, Tab decision logic
+    gui_state.ahk       - State machine, event handlers, activation
+    gui_store.ahk       - Store IPC, deltas, snapshots
+    gui_workspace.ahk   - Workspace mode toggle/filter
+    gui_paint.ahk       - Rendering code
+    gui_input.ahk       - Mouse, selection, hover, actions
+    gui_overlay.ahk     - Window creation, sizing, show/hide
+    gui_config.ahk      - GUI configuration constants
+    gui_gdip.ahk        - GDI+ graphics helpers
+    gui_win.ahk         - Window/DPI utilities
   viewer/         - Debug viewer
     viewer.ahk    - GUI with Z/MRU toggle, workspace filter
 tests/
   run_tests.ahk   - Automated test suite (unit + live)
+  gui_tests.ahk   - GUI state machine tests
   test.ps1        - PowerShell test runner
 legacy/
   components_legacy/  - Original ChatGPT work (reference only)
@@ -60,7 +73,7 @@ legacy/
 
 ## Legacy Components (in legacy/components_legacy/)
 These are from the original ChatGPT work. Some are battle-tested:
-- `interceptor.ahk`: Solid Alt+Tab hook with grace period - **port this**
+- `interceptor.ahk`: Solid Alt+Tab hook with grace period - **PORTED to gui_interceptor.ahk**
 - `winenum.ahk`: Full-featured enumeration with DWM cloaking - **port features**
 - `komorebi_sub.ahk`: Subscription-based updates - **use instead of polling**
 - `New GUI Working POC.ahk`: Rich GUI with icons, DWM effects - **port this**
@@ -387,16 +400,12 @@ IDLE ──Alt down──► ALT_PENDING ──Tab──► ACTIVE ──Alt up�
    - Faster response than process spawn or GUI creation
    - Memory cost acceptable for responsiveness
 
-4. **Interceptor minimal**: Only hook + IPC
+4. **Keyboard hooks in GUI process**: No separate interceptor process
+   - Hooks built into gui_interceptor.ahk for zero IPC latency
+   - Direct function calls between interceptor and state machine
    - Must respond <5ms
-   - No timers, no logic, no includes except IPC
 
 5. **Grace period ~150ms**: Quick Alt+Tab = instant switch, no GUI
-
-### IPC Between Interceptor and GUI
-- Named pipe (fastest, already proven in codebase)
-- Messages: `alt_down`, `alt_up`, `tab`, `shift_tab`, `escape`
-- GUI owns all logic, interceptor just forwards events
 
 ### Config Options
 

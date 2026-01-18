@@ -1,5 +1,6 @@
 ; Alt-Tabby GUI - Store IPC
 ; Handles communication with WindowStore: messages, deltas, snapshots
+#Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= STORE MESSAGE HANDLER =========================
 

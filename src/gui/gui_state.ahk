@@ -1,5 +1,6 @@
 ; Alt-Tabby GUI - State Machine
 ; Handles state transitions: IDLE -> ALT_PENDING -> ACTIVE -> IDLE
+#Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= STATE MACHINE EVENT HANDLER =========================
 

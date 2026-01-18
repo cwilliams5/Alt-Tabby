@@ -1,5 +1,6 @@
 ; Alt-Tabby GUI - Workspace Mode
 ; Handles workspace filtering and toggle between "all" and "current" modes
+#Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= FOOTER TEXT =========================
 

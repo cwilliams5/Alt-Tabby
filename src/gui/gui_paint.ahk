@@ -1,5 +1,6 @@
 ; Alt-Tabby GUI - Painting
 ; Handles all rendering: overlay painting, resources, scrollbar, footer, action buttons
+#Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= MAIN REPAINT =========================
 

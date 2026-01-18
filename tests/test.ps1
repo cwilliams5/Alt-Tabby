@@ -28,8 +28,14 @@ $filesToCheck = @(
     "$srcRoot\store\icon_pump.ahk",
     "$srcRoot\store\proc_pump.ahk",
     "$srcRoot\viewer\viewer.ahk",
-    "$srcRoot\interceptor\interceptor.ahk",
     "$srcRoot\gui\gui_main.ahk",
+    "$srcRoot\gui\gui_interceptor.ahk",
+    "$srcRoot\gui\gui_state.ahk",
+    "$srcRoot\gui\gui_store.ahk",
+    "$srcRoot\gui\gui_workspace.ahk",
+    "$srcRoot\gui\gui_paint.ahk",
+    "$srcRoot\gui\gui_input.ahk",
+    "$srcRoot\gui\gui_overlay.ahk",
     "$PSScriptRoot\gui_tests.ahk"
 )
 
