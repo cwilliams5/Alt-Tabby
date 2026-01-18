@@ -236,6 +236,7 @@ GUI_ActivateSelected() {
 }
 
 ; Unified activation logic with cross-workspace support via komorebi
+; Uses komorebi's activation pattern: SendInput → SetWindowPos → SetForegroundWindow
 GUI_ActivateItem(item) {
     global cfg
 
@@ -248,23 +249,66 @@ GUI_ActivateItem(item) {
     isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
     wsName := item.HasOwnProp("WS") ? item.WS : ""
 
-    ; If window is on different workspace and we have komorebi, switch workspace first
+    ; === STEP 1: Switch workspace if needed ===
     if (!isOnCurrent && wsName != "" && cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe)) {
         try {
             ; Use komorebic to switch to the target workspace
             cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
             Run(cmd, , "Hide")
-            ; Brief delay to let workspace switch complete
-            Sleep(50)
+
+            ; Poll until workspace switch completes (max 150ms)
+            ; Use WScript.Shell.Run with window style 0 (hidden) to avoid cmd.exe flash
+            tempFile := A_Temp "\tabby_ws_query.tmp"
+            shell := ComObject("WScript.Shell")
+            deadline := A_TickCount + 150
+            while (A_TickCount < deadline) {
+                Sleep(15)
+                try {
+                    try FileDelete(tempFile)
+                    ; Run cmd.exe hidden (style 0), wait for completion (true)
+                    queryCmd := 'cmd.exe /c "' cfg.KomorebicExe '" query focused-workspace-name > "' tempFile '"'
+                    shell.Run(queryCmd, 0, true)
+                    if FileExist(tempFile) {
+                        result := Trim(FileRead(tempFile))
+                        if (result = wsName)
+                            break
+                    }
+                }
+            }
+            try FileDelete(tempFile)
         }
     }
 
-    ; Now activate the window
+    ; NOTE: Do NOT manually uncloak windows - this interferes with komorebi's
+    ; workspace management and can pull windows to the wrong workspace.
+    ; Komorebi handles uncloaking when switching workspaces.
+
+    ; === STEP 3: Robust window activation (komorebi's pattern from windows_api.rs) ===
     try {
         if (WinExist("ahk_id " hwnd)) {
-            if (DllCall("user32\IsIconic", "ptr", hwnd, "int")) {
+            ; Restore if minimized
+            if (DllCall("user32\IsIconic", "ptr", hwnd, "int"))
                 DllCall("user32\ShowWindow", "ptr", hwnd, "int", 9)  ; SW_RESTORE
-            }
+
+            ; Send dummy mouse input to bypass foreground lock (komorebi's trick)
+            ; This satisfies Windows' requirement that the process has received recent input
+            inputSize := 40  ; sizeof(INPUT) on 64-bit
+            input := Buffer(inputSize, 0)
+            NumPut("uint", 0, input, 0)  ; type = INPUT_MOUSE
+            DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
+
+            ; Bring window to top with SWP_SHOWWINDOW
+            ; Flags: SWP_NOMOVE (0x0002) | SWP_NOSIZE (0x0001) | SWP_SHOWWINDOW (0x0040) | SWP_ASYNCWINDOWPOS (0x4000)
+            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", -1  ; HWND_TOP = 0, but -1 = HWND_TOPMOST works better
+                , "int", 0, "int", 0, "int", 0, "int", 0
+                , "uint", 0x0043 | 0x4000)  ; SWP_NOSIZE|SWP_NOMOVE|SWP_SHOWWINDOW|SWP_ASYNCWINDOWPOS
+
+            ; Reset to non-topmost (we just want it on top temporarily, not always-on-top)
+            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", -2  ; HWND_NOTOPMOST
+                , "int", 0, "int", 0, "int", 0, "int", 0
+                , "uint", 0x0003 | 0x4000)  ; SWP_NOSIZE|SWP_NOMOVE|SWP_ASYNCWINDOWPOS
+
+            ; Now SetForegroundWindow should work
             DllCall("user32\SetForegroundWindow", "ptr", hwnd)
         }
     }

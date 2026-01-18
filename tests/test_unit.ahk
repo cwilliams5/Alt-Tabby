@@ -140,14 +140,14 @@ RunUnitTests() {
             ; Read back and check for supplemented keys
             supplementedContent := FileRead(testConfigPath)
 
-            ; Check that new keys were added
-            hasGraceMs := InStr(supplementedContent, "GraceMs=999")  ; Original preserved
-            hasQuickSwitch := InStr(supplementedContent, "QuickSwitchMs=")  ; New key added
-            hasPrewarm := InStr(supplementedContent, "PrewarmOnAlt=")  ; New key added
+            ; Check that new keys were added (commented out with ; prefix)
+            hasGraceMs := InStr(supplementedContent, "GraceMs=999")  ; Original preserved (uncommented since customized)
+            hasQuickSwitch := InStr(supplementedContent, "; QuickSwitchMs=")  ; New key added (commented - default)
+            hasPrewarm := InStr(supplementedContent, "; PrewarmOnAlt=")  ; New key added (commented - default)
             hasGuiSection := InStr(supplementedContent, "[GUI]")  ; New section added
 
             if (hasGraceMs && hasQuickSwitch && hasPrewarm && hasGuiSection) {
-                Log("PASS: INI supplementing added missing keys while preserving existing")
+                Log("PASS: INI supplementing added missing keys (commented) while preserving existing")
                 TestPassed++
 
                 ; Verify the original value wasn't changed
@@ -225,7 +225,8 @@ RunUnitTests() {
     entryPoints := [
         {name: "store_server.ahk", path: A_ScriptDir "\..\src\store\store_server.ahk", args: "--pipe=entry_test_store_" A_TickCount},
         {name: "viewer.ahk", path: A_ScriptDir "\..\src\viewer\viewer.ahk", args: "--nogui"},
-        {name: "gui_main.ahk", path: A_ScriptDir "\..\src\gui\gui_main.ahk", args: ""}
+        {name: "gui_main.ahk", path: A_ScriptDir "\..\src\gui\gui_main.ahk", args: ""},
+        {name: "alt_tabby.ahk (launcher)", path: A_ScriptDir "\..\src\alt_tabby.ahk", args: ""}
     ]
 
     for _, ep in entryPoints {
@@ -262,6 +263,19 @@ RunUnitTests() {
         ; Kill it if still running (we just wanted to test init)
         if (stillRunning) {
             ProcessClose(pid)
+        }
+
+        ; Special cleanup for launcher: it spawns child processes (store, gui)
+        if (InStr(ep.name, "launcher")) {
+            Sleep(200)  ; Let children start
+            ; Kill any AutoHotkey processes running store or gui spawned by launcher
+            for proc in ComObjGet("winmgmts:").ExecQuery("SELECT * FROM Win32_Process WHERE Name='AutoHotkey64.exe'") {
+                cmdLine := ""
+                try cmdLine := proc.CommandLine
+                if (InStr(cmdLine, "store_server.ahk") || InStr(cmdLine, "gui_main.ahk")) {
+                    try ProcessClose(proc.ProcessId)
+                }
+            }
         }
 
         ; Read error output

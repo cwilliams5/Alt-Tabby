@@ -370,10 +370,8 @@ _CE_SaveToIni() {
 
         ; Only write changed values
         if (currentVal != originalVal) {
-            ; Format for INI
-            iniVal := _CE_FormatForIni(currentVal, entry.t)
-            ; Use format-preserving write to keep comments in place
-            _CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, iniVal)
+            ; Use format-preserving write - passes default so it can comment/uncomment
+            _CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, currentVal, entry.default, entry.t)
             changeCount++
         }
     }
