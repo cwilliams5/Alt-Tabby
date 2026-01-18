@@ -44,7 +44,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 
 GUI_ToggleWorkspaceMode() {
     global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
-    global UseCurrentWSProjection, FreezeWindowList
+    global cfg
 
     ; Toggle mode
     gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"
@@ -53,7 +53,7 @@ GUI_ToggleWorkspaceMode() {
     ; If GUI is visible and active, refresh the list
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
         ; Check if we should request from store or filter locally
-        useServerFilter := IsSet(UseCurrentWSProjection) && UseCurrentWSProjection
+        useServerFilter := cfg.UseCurrentWSProjection
 
         if (useServerFilter) {
             ; Request new projection from store with workspace filter
@@ -63,7 +63,7 @@ GUI_ToggleWorkspaceMode() {
             ; Don't repaint yet - wait for response
         } else {
             ; Filter locally from cached items
-            isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList
+            isFrozen := cfg.FreezeWindowList
             sourceItems := isFrozen ? gGUI_AllItems : gGUI_Items
             gGUI_FrozenItems := GUI_FilterByWorkspaceMode(sourceItems)
             gGUI_Items := gGUI_FrozenItems  ; Update display list

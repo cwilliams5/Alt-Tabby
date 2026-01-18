@@ -5,7 +5,7 @@
 ; ========================= SELECTION MOVEMENT =========================
 
 GUI_MoveSelection(delta) {
-    global gGUI_Sel, gGUI_Items, gGUI_ScrollTop, gGUI_OverlayH
+    global gGUI_Sel, gGUI_Items, gGUI_ScrollTop, gGUI_OverlayH, cfg
 
     if (gGUI_Items.Length = 0 || delta = 0) {
         return
@@ -20,7 +20,7 @@ GUI_MoveSelection(delta) {
         vis := count
     }
 
-    if (GUI_ScrollKeepHighlightOnTop) {
+    if (cfg.GUI_ScrollKeepHighlightOnTop) {
         if (delta > 0) {
             gGUI_Sel := Win_Wrap1(gGUI_Sel + 1, count)
         } else {
@@ -81,7 +81,7 @@ GUI_RecalcHover() {
 }
 
 GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
-    global gGUI_Items, gGUI_ScrollTop, gGUI_OverlayH
+    global gGUI_Items, gGUI_ScrollTop, gGUI_OverlayH, cfg
 
     action := ""
     idx1 := 0
@@ -91,11 +91,11 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     }
 
     scale := Win_GetScaleForWindow(gGUI_OverlayH)
-    RowH := Round(GUI_RowHeight * scale)
+    RowH := Round(cfg.GUI_RowHeight * scale)
     if (RowH < 1) {
         RowH := 1
     }
-    My := Round(GUI_MarginY * scale)
+    My := Round(cfg.GUI_MarginY * scale)
     hdr := Round(GUI_HeaderBlockDip() * scale)
     topY := My + hdr
 
@@ -117,15 +117,15 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     idx0 := Win_Wrap0(gGUI_ScrollTop + (rowVis - 1), count)
     idx1 := idx0 + 1
 
-    size := Round(GUI_ActionBtnSizePx * scale)
+    size := Round(cfg.GUI_ActionBtnSizePx * scale)
     if (size < 12) {
         size := 12
     }
-    gap := Round(GUI_ActionBtnGapPx * scale)
+    gap := Round(cfg.GUI_ActionBtnGapPx * scale)
     if (gap < 2) {
         gap := 2
     }
-    marR := Round(GUI_MarginX * scale)
+    marR := Round(cfg.GUI_MarginX * scale)
 
     ox := 0
     oy := 0
@@ -136,17 +136,17 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     btnX := ow - marR - size
     btnY := topY + (rowVis - 1) * RowH + (RowH - size) // 2
 
-    if (GUI_ShowCloseButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+    if (cfg.GUI_ShowCloseButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
         action := "close"
         return
     }
     btnX := btnX - (size + gap)
-    if (GUI_ShowKillButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+    if (cfg.GUI_ShowKillButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
         action := "kill"
         return
     }
     btnX := btnX - (size + gap)
-    if (GUI_ShowBlacklistButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+    if (cfg.GUI_ShowBlacklistButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
         action := "blacklist"
         return
     }
@@ -223,7 +223,7 @@ GUI_RemoveItemAt(idx1) {
 ; ========================= MOUSE HANDLERS =========================
 
 GUI_OnClick(x, y) {
-    global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop
+    global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
     global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State
 
     ; Don't process clicks if overlay isn't visible
@@ -263,7 +263,7 @@ GUI_OnClick(x, y) {
     scale := Win_GetScaleForWindow(gGUI_OverlayH)
     yDip := Round(y / scale)
 
-    rowsTopDip := GUI_MarginY + GUI_HeaderBlockDip()
+    rowsTopDip := cfg.GUI_MarginY + GUI_HeaderBlockDip()
     if (yDip < rowsTopDip) {
         return
     }
@@ -277,7 +277,7 @@ GUI_OnClick(x, y) {
         rowsDrawn := count
     }
 
-    idxVisible := ((yDip - rowsTopDip) // GUI_RowHeight) + 1
+    idxVisible := ((yDip - rowsTopDip) // cfg.GUI_RowHeight) + 1
     if (idxVisible < 1) {
         idxVisible := 1
     }
@@ -289,7 +289,7 @@ GUI_OnClick(x, y) {
     idx0 := Win_Wrap0(top0 + (idxVisible - 1), count)
     gGUI_Sel := idx0 + 1
 
-    if (GUI_ScrollKeepHighlightOnTop) {
+    if (cfg.GUI_ScrollKeepHighlightOnTop) {
         gGUI_ScrollTop := gGUI_Sel - 1
     }
 
@@ -327,7 +327,7 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
 }
 
 GUI_OnWheel(wParam, lParam) {
-    global gGUI_OverlayVisible
+    global gGUI_OverlayVisible, cfg
 
     ; Don't process wheel if overlay isn't visible
     if (!gGUI_OverlayVisible) {
@@ -343,7 +343,7 @@ GUI_OnWheel(wParam, lParam) {
         step := 1
     }
 
-    if (GUI_ScrollKeepHighlightOnTop) {
+    if (cfg.GUI_ScrollKeepHighlightOnTop) {
         GUI_MoveSelection(step)
     } else {
         GUI_ScrollBy(step)

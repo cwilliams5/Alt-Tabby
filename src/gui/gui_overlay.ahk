@@ -53,31 +53,34 @@ GUI_HideOverlay() {
 ; ========================= LAYOUT CALCULATIONS =========================
 
 GUI_ComputeRowsToShow(count) {
-    if (count >= GUI_RowsVisibleMax) {
-        return GUI_RowsVisibleMax
+    global cfg
+    if (count >= cfg.GUI_RowsVisibleMax) {
+        return cfg.GUI_RowsVisibleMax
     }
-    if (count > GUI_RowsVisibleMin) {
+    if (count > cfg.GUI_RowsVisibleMin) {
         return count
     }
-    return GUI_RowsVisibleMin
+    return cfg.GUI_RowsVisibleMin
 }
 
 GUI_HeaderBlockDip() {
-    if (GUI_ShowHeader) {
+    global cfg
+    if (cfg.GUI_ShowHeader) {
         return 32
     }
     return 0
 }
 
 GUI_FooterBlockDip() {
-    if (GUI_ShowFooter) {
-        return GUI_FooterGapTopPx + GUI_FooterHeightPx
+    global cfg
+    if (cfg.GUI_ShowFooter) {
+        return cfg.GUI_FooterGapTopPx + cfg.GUI_FooterHeightPx
     }
     return 0
 }
 
 GUI_GetVisibleRows() {
-    global gGUI_OverlayH
+    global gGUI_OverlayH, cfg
 
     ox := 0
     oy := 0
@@ -88,20 +91,20 @@ GUI_GetVisibleRows() {
     scale := Win_GetScaleForWindow(gGUI_OverlayH)
     ohDip := ohPhys / scale
 
-    headerTopDip := GUI_MarginY + GUI_HeaderBlockDip()
+    headerTopDip := cfg.GUI_MarginY + GUI_HeaderBlockDip()
     footerDip := GUI_FooterBlockDip()
-    usableDip := ohDip - headerTopDip - GUI_MarginY - footerDip
+    usableDip := ohDip - headerTopDip - cfg.GUI_MarginY - footerDip
 
-    if (usableDip < GUI_RowHeight) {
+    if (usableDip < cfg.GUI_RowHeight) {
         return 0
     }
-    return Floor(usableDip / GUI_RowHeight)
+    return Floor(usableDip / cfg.GUI_RowHeight)
 }
 
 ; ========================= RESIZE =========================
 
 GUI_ResizeToRows(rowsToShow) {
-    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
+    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH, cfg
 
     xDip := 0
     yDip := 0
@@ -123,11 +126,12 @@ GUI_ResizeToRows(rowsToShow) {
 
     Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
     Win_SetPosPhys(gGUI_OverlayH, xPhys, yPhys, wPhys, hPhys)
-    Win_ApplyRoundRegion(gGUI_BaseH, GUI_CornerRadiusPx, wDip, hDip)
+    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
     Win_DwmFlush()
 }
 
 GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
+    global cfg
     waL := 0
     waT := 0
     waR := 0
@@ -141,7 +145,7 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
     left_dip := waL / monScale
     top_dip := waT / monScale
 
-    pct := GUI_ScreenWidthPct
+    pct := cfg.GUI_ScreenWidthPct
     if (pct <= 0) {
         pct := 0.10
     }
@@ -150,7 +154,7 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
     }
 
     w := Round(waW_dip * pct)
-    h := GUI_MarginY + GUI_HeaderBlockDip() + rowsToShow * GUI_RowHeight + GUI_FooterBlockDip() + GUI_MarginY
+    h := cfg.GUI_MarginY + GUI_HeaderBlockDip() + rowsToShow * cfg.GUI_RowHeight + GUI_FooterBlockDip() + cfg.GUI_MarginY
 
     x := Round(left_dip + (waW_dip - w) / 2)
     y := Round(top_dip + (waH_dip - h) / 2)
@@ -159,7 +163,7 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
 ; ========================= WINDOW CREATION =========================
 
 GUI_CreateBase() {
-    global gGUI_Base, gGUI_BaseH, gGUI_Items
+    global gGUI_Base, gGUI_BaseH, gGUI_Items, cfg
 
     opts := "+AlwaysOnTop -Caption"
 
@@ -175,7 +179,7 @@ GUI_CreateBase() {
 
     monScale := Win_GetMonitorScale(left, top, right, bottom)
 
-    pct := GUI_ScreenWidthPct
+    pct := cfg.GUI_ScreenWidthPct
     if (pct <= 0) {
         pct := 0.10
     }
@@ -189,7 +193,7 @@ GUI_CreateBase() {
     top_dip := top / monScale
 
     winW := Round(waW_dip * pct)
-    winH := GUI_MarginY + GUI_HeaderBlockDip() + rowsDesired * GUI_RowHeight + GUI_FooterBlockDip() + GUI_MarginY
+    winH := cfg.GUI_MarginY + GUI_HeaderBlockDip() + rowsDesired * cfg.GUI_RowHeight + GUI_FooterBlockDip() + cfg.GUI_MarginY
     winX := Round(left_dip + (waW_dip - winW) / 2)
     winY := Round(top_dip + (waH_dip - winH) / 2)
 
@@ -218,8 +222,8 @@ GUI_CreateBase() {
     Win_EnableDarkTitleBar(gGUI_BaseH)
     Win_SetCornerPreference(gGUI_BaseH, 2)
     Win_ForceNoLayered(gGUI_BaseH)
-    Win_ApplyRoundRegion(gGUI_BaseH, GUI_CornerRadiusPx, winW, winH)
-    Win_ApplyAcrylic(gGUI_BaseH, GUI_AcrylicAlpha, GUI_AcrylicBaseRgb)
+    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, winW, winH)
+    Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicAlpha, cfg.GUI_AcrylicBaseRgb)
     Win_DwmFlush()
 }
 

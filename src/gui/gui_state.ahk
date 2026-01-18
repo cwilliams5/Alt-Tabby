@@ -6,8 +6,7 @@
 
 GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_State, gGUI_AltDownTick, gGUI_FirstTabTick, gGUI_TabCount
-    global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems
-    global AltTabGraceMs, AltTabPrewarmOnAlt, AltTabQuickSwitchMs
+    global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT
 
     if (evCode = TABBY_EV_ALT_DOWN) {
@@ -18,7 +17,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         gGUI_TabCount := 0
 
         ; Pre-warm: request snapshot now so data is ready when Tab pressed
-        if (AltTabPrewarmOnAlt) {
+        if (cfg.AltTabPrewarmOnAlt) {
             GUI_RequestSnapshot()
         }
         return
@@ -40,8 +39,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; SAFETY: If gGUI_Items is empty and prewarm was requested, wait briefly for data
             ; This handles the race where Tab is pressed before prewarm response arrives
-            global AltTabPrewarmOnAlt
-            if (gGUI_Items.Length = 0 && IsSet(AltTabPrewarmOnAlt) && AltTabPrewarmOnAlt) {
+            if (gGUI_Items.Length = 0 && cfg.AltTabPrewarmOnAlt) {
                 waitStart := A_TickCount
                 while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < 50) {
                     Sleep(10)  ; Allow IPC timer to fire and process incoming messages
@@ -64,7 +62,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_ScrollTop := gGUI_Sel - 1
 
             ; Start grace timer - show GUI after delay
-            SetTimer(GUI_GraceTimerFired, -AltTabGraceMs)
+            SetTimer(GUI_GraceTimerFired, -cfg.AltTabGraceMs)
             return
         }
 
@@ -86,7 +84,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ALT_UP) {
         ; DEBUG: Show ALT_UP arrival (controlled by DebugAltTabTooltips config)
-        if (IsSet(DebugAltTabTooltips) && DebugAltTabTooltips) {
+        if (cfg.DebugAltTabTooltips) {
             ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
             SetTimer(() => ToolTip(,,,3), -2000)
         }
@@ -102,7 +100,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             timeSinceTab := A_TickCount - gGUI_FirstTabTick
 
-            if (!gGUI_OverlayVisible && timeSinceTab < AltTabQuickSwitchMs) {
+            if (!gGUI_OverlayVisible && timeSinceTab < cfg.AltTabQuickSwitchMs) {
                 ; Quick switch: Alt+Tab released quickly, no GUI shown
                 GUI_ActivateFromFrozen()
             } else if (gGUI_OverlayVisible) {
@@ -152,8 +150,7 @@ GUI_GraceTimerFired() {
 
 GUI_ShowOverlayWithFrozen() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
-    global gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed
-    global GUI_ScrollKeepHighlightOnTop
+    global gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
 
     if (gGUI_OverlayVisible) {
         return
@@ -168,7 +165,7 @@ GUI_ShowOverlayWithFrozen() {
 
     ; ENFORCE: When ScrollKeepHighlightOnTop is true, selected item must be at top
     ; This catches any edge cases where scrollTop wasn't set correctly
-    if (GUI_ScrollKeepHighlightOnTop && gGUI_FrozenItems.Length > 0) {
+    if (cfg.GUI_ScrollKeepHighlightOnTop && gGUI_FrozenItems.Length > 0) {
         gGUI_ScrollTop := gGUI_Sel - 1
     }
 
@@ -215,7 +212,7 @@ GUI_ActivateFromFrozen() {
 
     if (gGUI_Sel < 1 || gGUI_Sel > gGUI_FrozenItems.Length) {
         ; DEBUG: Out of range selection (controlled by DebugAltTabTooltips config)
-        if (IsSet(DebugAltTabTooltips) && DebugAltTabTooltips) {
+        if (cfg.DebugAltTabTooltips) {
             ToolTip("ACTIVATE: sel=" gGUI_Sel " OUT OF RANGE (len=" gGUI_FrozenItems.Length ")", 100, 150, 2)
             SetTimer(() => ToolTip(,,,2), -2000)
         }
@@ -239,7 +236,7 @@ GUI_ActivateSelected() {
 
 ; Unified activation logic with cross-workspace support via komorebi
 GUI_ActivateItem(item) {
-    global KomorebicExe
+    global cfg
 
     hwnd := item.hwnd
     if (!hwnd) {
@@ -251,10 +248,10 @@ GUI_ActivateItem(item) {
     wsName := item.HasOwnProp("WS") ? item.WS : ""
 
     ; If window is on different workspace and we have komorebi, switch workspace first
-    if (!isOnCurrent && wsName != "" && IsSet(KomorebicExe) && KomorebicExe != "" && FileExist(KomorebicExe)) {
+    if (!isOnCurrent && wsName != "" && cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe)) {
         try {
             ; Use komorebic to switch to the target workspace
-            cmd := '"' KomorebicExe '" focus-named-workspace "' wsName '"'
+            cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
             Run(cmd, , "Hide")
             ; Brief delay to let workspace switch complete
             Sleep(50)

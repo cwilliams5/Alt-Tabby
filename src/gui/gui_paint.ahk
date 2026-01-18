@@ -6,13 +6,13 @@
 
 GUI_Repaint() {
     global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
-    global gGUI_State, GUI_ScrollKeepHighlightOnTop
+    global gGUI_State, cfg
 
     ; Use frozen items when in ACTIVE state, live items otherwise
     items := (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
 
     ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
-    if (gGUI_State = "ACTIVE" && GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
+    if (gGUI_State = "ACTIVE" && cfg.GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
         gGUI_ScrollTop := gGUI_Sel - 1
     }
 
@@ -71,7 +71,7 @@ GUI_RevealBoth() {
         return
     }
 
-    Win_ApplyRoundRegion(gGUI_BaseH, GUI_CornerRadiusPx)
+    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx)
     try {
         gGUI_Base.Show("NA")
     }
@@ -85,7 +85,7 @@ GUI_RevealBoth() {
 ; ========================= OVERLAY PAINTING =========================
 
 GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
-    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText
+    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg
 
     GUI_EnsureResources(scale)
 
@@ -99,19 +99,19 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     scrollTop := gGUI_ScrollTop
 
-    RowH := Round(GUI_RowHeight * scale)
+    RowH := Round(cfg.GUI_RowHeight * scale)
     if (RowH < 1) {
         RowH := 1
     }
-    Mx := Round(GUI_MarginX * scale)
-    My := Round(GUI_MarginY * scale)
-    ISize := Round(GUI_IconSize * scale)
-    Rad := Round(GUI_RowRadius * scale)
+    Mx := Round(cfg.GUI_MarginX * scale)
+    My := Round(cfg.GUI_MarginY * scale)
+    ISize := Round(cfg.GUI_IconSize * scale)
+    Rad := Round(cfg.GUI_RowRadius * scale)
     gapText := Round(12 * scale)
     gapCols := Round(10 * scale)
     hdrY4 := Round(4 * scale)
     hdrH28 := Round(28 * scale)
-    iconLeftDip := Round(GUI_IconLeftMargin * scale)
+    iconLeftDip := Round(cfg.GUI_IconLeftMargin * scale)
 
     y := My
     leftX := Mx + iconLeftDip
@@ -119,36 +119,36 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     ; Right columns
     cols := []
-    Col6W := Round(GUI_ColFixed6 * scale)
-    Col5W := Round(GUI_ColFixed5 * scale)
-    Col4W := Round(GUI_ColFixed4 * scale)
-    Col3W := Round(GUI_ColFixed3 * scale)
-    Col2W := Round(GUI_ColFixed2 * scale)
+    Col6W := Round(cfg.GUI_ColFixed6 * scale)
+    Col5W := Round(cfg.GUI_ColFixed5 * scale)
+    Col4W := Round(cfg.GUI_ColFixed4 * scale)
+    Col3W := Round(cfg.GUI_ColFixed3 * scale)
+    Col2W := Round(cfg.GUI_ColFixed2 * scale)
 
     rightX := wPhys - Mx
     if (Col6W > 0) {
         cx := rightX - Col6W
-        cols.Push({name: GUI_Col6Name, w: Col6W, key: "Col6", x: cx})
+        cols.Push({name: cfg.GUI_Col6Name, w: Col6W, key: "Col6", x: cx})
         rightX := cx - gapCols
     }
     if (Col5W > 0) {
         cx := rightX - Col5W
-        cols.Push({name: GUI_Col5Name, w: Col5W, key: "Col5", x: cx})
+        cols.Push({name: cfg.GUI_Col5Name, w: Col5W, key: "Col5", x: cx})
         rightX := cx - gapCols
     }
     if (Col4W > 0) {
         cx := rightX - Col4W
-        cols.Push({name: GUI_Col4Name, w: Col4W, key: "WS", x: cx})
+        cols.Push({name: cfg.GUI_Col4Name, w: Col4W, key: "WS", x: cx})
         rightX := cx - gapCols
     }
     if (Col3W > 0) {
         cx := rightX - Col3W
-        cols.Push({name: GUI_Col3Name, w: Col3W, key: "PID", x: cx})
+        cols.Push({name: cfg.GUI_Col3Name, w: Col3W, key: "PID", x: cx})
         rightX := cx - gapCols
     }
     if (Col2W > 0) {
         cx := rightX - Col2W
-        cols.Push({name: GUI_Col2Name, w: Col2W, key: "HWND", x: cx})
+        cols.Push({name: cfg.GUI_Col2Name, w: Col2W, key: "HWND", x: cx})
         rightX := cx - gapCols
     }
 
@@ -160,7 +160,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     fmtLeft := gGdip_Res["fmtLeft"]
 
     ; Header
-    if (GUI_ShowHeader) {
+    if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
         Gdip_DrawText(g, "Title", textX, hdrY, textW, Round(20 * scale), gGdip_Res["brHdr"], gGdip_Res["fHdr"], fmtLeft)
         for _, col in cols {
@@ -174,9 +174,9 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     footerH := 0
     footerGap := 0
-    if (GUI_ShowFooter) {
-        footerH := Round(GUI_FooterHeightPx * scale)
-        footerGap := Round(GUI_FooterGapTopPx * scale)
+    if (cfg.GUI_ShowFooter) {
+        footerH := Round(cfg.GUI_FooterHeightPx * scale)
+        footerGap := Round(cfg.GUI_FooterGapTopPx * scale)
     }
     availH := hPhys - My - contentTopY - footerH - footerGap
     if (availH < 0) {
@@ -201,7 +201,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         if (rectY < contentTopY) {
             rectY := contentTopY
         }
-        Gdip_DrawCenteredText(g, GUI_EmptyListText, rectX, rectY, rectW, rectH, GUI_MainARGB, gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
+        Gdip_DrawCenteredText(g, cfg.GUI_EmptyListText, rectX, rectY, rectW, rectH, cfg.GUI_MainARGB, gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
     } else if (rowsToDraw > 0) {
         start0 := Win_Wrap0(scrollTop, count)
         i := 0
@@ -214,7 +214,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             isSel := (idx1 = selIndex)
 
             if (isSel) {
-                Gdip_FillRoundRect(g, GUI_SelARGB, Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad)
+                Gdip_FillRoundRect(g, cfg.GUI_SelARGB, Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad)
             }
 
             ix := leftX
@@ -269,7 +269,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     }
 
     ; Footer
-    if (GUI_ShowFooter) {
+    if (cfg.GUI_ShowFooter) {
         GUI_DrawFooter(g, wPhys, hPhys, scale)
     }
 }
@@ -277,7 +277,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 ; ========================= RESOURCE MANAGEMENT =========================
 
 GUI_EnsureResources(scale) {
-    global gGdip_Res, gGdip_ResScale
+    global gGdip_Res, gGdip_ResScale, cfg
 
     if (Abs(gGdip_ResScale - scale) < 0.001 && gGdip_Res.Count) {
         return
@@ -288,15 +288,15 @@ GUI_EnsureResources(scale) {
 
     ; Brushes
     brushes := [
-        ["brMain", GUI_MainARGB],
-        ["brMainHi", GUI_MainARGBHi],
-        ["brSub", GUI_SubARGB],
-        ["brSubHi", GUI_SubARGBHi],
-        ["brCol", GUI_ColARGB],
-        ["brColHi", GUI_ColARGBHi],
-        ["brHdr", GUI_HdrARGB],
+        ["brMain", cfg.GUI_MainARGB],
+        ["brMainHi", cfg.GUI_MainARGBHi],
+        ["brSub", cfg.GUI_SubARGB],
+        ["brSubHi", cfg.GUI_SubARGBHi],
+        ["brCol", cfg.GUI_ColARGB],
+        ["brColHi", cfg.GUI_ColARGBHi],
+        ["brHdr", cfg.GUI_HdrARGB],
         ["brHit", 0x01000000],
-        ["brFooterText", GUI_FooterTextARGB]
+        ["brFooterText", cfg.GUI_FooterTextARGB]
     ]
     for _, b in brushes {
         br := 0
@@ -308,15 +308,15 @@ GUI_EnsureResources(scale) {
     UnitPixel := 2
 
     fonts := [
-        [GUI_MainFontName, GUI_MainFontSize, GUI_MainFontWeight, "ffMain", "fMain"],
-        [GUI_MainFontNameHi, GUI_MainFontSizeHi, GUI_MainFontWeightHi, "ffMainHi", "fMainHi"],
-        [GUI_SubFontName, GUI_SubFontSize, GUI_SubFontWeight, "ffSub", "fSub"],
-        [GUI_SubFontNameHi, GUI_SubFontSizeHi, GUI_SubFontWeightHi, "ffSubHi", "fSubHi"],
-        [GUI_ColFontName, GUI_ColFontSize, GUI_ColFontWeight, "ffCol", "fCol"],
-        [GUI_ColFontNameHi, GUI_ColFontSizeHi, GUI_ColFontWeightHi, "ffColHi", "fColHi"],
-        [GUI_HdrFontName, GUI_HdrFontSize, GUI_HdrFontWeight, "ffHdr", "fHdr"],
-        [GUI_ActionFontName, GUI_ActionFontSize, GUI_ActionFontWeight, "ffAction", "fAction"],
-        [GUI_FooterFontName, GUI_FooterFontSize, GUI_FooterFontWeight, "ffFooter", "fFooter"]
+        [cfg.GUI_MainFontName, cfg.GUI_MainFontSize, cfg.GUI_MainFontWeight, "ffMain", "fMain"],
+        [cfg.GUI_MainFontNameHi, cfg.GUI_MainFontSizeHi, cfg.GUI_MainFontWeightHi, "ffMainHi", "fMainHi"],
+        [cfg.GUI_SubFontName, cfg.GUI_SubFontSize, cfg.GUI_SubFontWeight, "ffSub", "fSub"],
+        [cfg.GUI_SubFontNameHi, cfg.GUI_SubFontSizeHi, cfg.GUI_SubFontWeightHi, "ffSubHi", "fSubHi"],
+        [cfg.GUI_ColFontName, cfg.GUI_ColFontSize, cfg.GUI_ColFontWeight, "ffCol", "fCol"],
+        [cfg.GUI_ColFontNameHi, cfg.GUI_ColFontSizeHi, cfg.GUI_ColFontWeightHi, "ffColHi", "fColHi"],
+        [cfg.GUI_HdrFontName, cfg.GUI_HdrFontSize, cfg.GUI_HdrFontWeight, "ffHdr", "fHdr"],
+        [cfg.GUI_ActionFontName, cfg.GUI_ActionFontSize, cfg.GUI_ActionFontWeight, "ffAction", "fAction"],
+        [cfg.GUI_FooterFontName, cfg.GUI_FooterFontSize, cfg.GUI_FooterFontWeight, "ffFooter", "fFooter"]
     ]
     for _, f in fonts {
         fam := 0
@@ -360,65 +360,66 @@ GUI_EnsureResources(scale) {
 ; ========================= ACTION BUTTONS =========================
 
 GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
-    global gGUI_HoverBtn
+    global gGUI_HoverBtn, cfg
 
-    size := Round(GUI_ActionBtnSizePx * scale)
+    size := Round(cfg.GUI_ActionBtnSizePx * scale)
     if (size < 12) {
         size := 12
     }
-    gap := Round(GUI_ActionBtnGapPx * scale)
+    gap := Round(cfg.GUI_ActionBtnGapPx * scale)
     if (gap < 2) {
         gap := 2
     }
-    rad := Round(GUI_ActionBtnRadiusPx * scale)
+    rad := Round(cfg.GUI_ActionBtnRadiusPx * scale)
     if (rad < 2) {
         rad := 2
     }
-    marR := Round(GUI_MarginX * scale)
+    marR := Round(cfg.GUI_MarginX * scale)
 
     btnX := wPhys - marR - size
     btnY := yRow + (rowHPhys - size) // 2
 
-    if (GUI_ShowCloseButton) {
+    if (cfg.GUI_ShowCloseButton) {
         hovered := (gGUI_HoverBtn = "close")
-        bgCol := hovered ? GUI_CloseButtonBGHoverARGB : GUI_CloseButtonBGARGB
-        txCol := hovered ? GUI_CloseButtonTextHoverARGB : GUI_CloseButtonTextARGB
+        bgCol := hovered ? cfg.GUI_CloseButtonBGHoverARGB : cfg.GUI_CloseButtonBGARGB
+        txCol := hovered ? cfg.GUI_CloseButtonTextHoverARGB : cfg.GUI_CloseButtonTextARGB
         Gdip_FillRoundRect(g, bgCol, btnX, btnY, size, size, rad)
-        if (GUI_CloseButtonBorderPx > 0) {
-            Gdip_StrokeRoundRect(g, GUI_CloseButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(GUI_CloseButtonBorderPx * scale))
+        if (cfg.GUI_CloseButtonBorderPx > 0) {
+            Gdip_StrokeRoundRect(g, cfg.GUI_CloseButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(cfg.GUI_CloseButtonBorderPx * scale))
         }
-        Gdip_DrawCenteredText(g, GUI_CloseButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
+        Gdip_DrawCenteredText(g, cfg.GUI_CloseButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
         btnX := btnX - (size + gap)
     }
 
-    if (GUI_ShowKillButton) {
+    if (cfg.GUI_ShowKillButton) {
         hovered := (gGUI_HoverBtn = "kill")
-        bgCol := hovered ? GUI_KillButtonBGHoverARGB : GUI_KillButtonBGARGB
-        txCol := hovered ? GUI_KillButtonTextHoverARGB : GUI_KillButtonTextARGB
+        bgCol := hovered ? cfg.GUI_KillButtonBGHoverARGB : cfg.GUI_KillButtonBGARGB
+        txCol := hovered ? cfg.GUI_KillButtonTextHoverARGB : cfg.GUI_KillButtonTextARGB
         Gdip_FillRoundRect(g, bgCol, btnX, btnY, size, size, rad)
-        if (GUI_KillButtonBorderPx > 0) {
-            Gdip_StrokeRoundRect(g, GUI_KillButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(GUI_KillButtonBorderPx * scale))
+        if (cfg.GUI_KillButtonBorderPx > 0) {
+            Gdip_StrokeRoundRect(g, cfg.GUI_KillButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(cfg.GUI_KillButtonBorderPx * scale))
         }
-        Gdip_DrawCenteredText(g, GUI_KillButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
+        Gdip_DrawCenteredText(g, cfg.GUI_KillButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
         btnX := btnX - (size + gap)
     }
 
-    if (GUI_ShowBlacklistButton) {
+    if (cfg.GUI_ShowBlacklistButton) {
         hovered := (gGUI_HoverBtn = "blacklist")
-        bgCol := hovered ? GUI_BlacklistButtonBGHoverARGB : GUI_BlacklistButtonBGARGB
-        txCol := hovered ? GUI_BlacklistButtonTextHoverARGB : GUI_BlacklistButtonTextARGB
+        bgCol := hovered ? cfg.GUI_BlacklistButtonBGHoverARGB : cfg.GUI_BlacklistButtonBGARGB
+        txCol := hovered ? cfg.GUI_BlacklistButtonTextHoverARGB : cfg.GUI_BlacklistButtonTextARGB
         Gdip_FillRoundRect(g, bgCol, btnX, btnY, size, size, rad)
-        if (GUI_BlacklistButtonBorderPx > 0) {
-            Gdip_StrokeRoundRect(g, GUI_BlacklistButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(GUI_BlacklistButtonBorderPx * scale))
+        if (cfg.GUI_BlacklistButtonBorderPx > 0) {
+            Gdip_StrokeRoundRect(g, cfg.GUI_BlacklistButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(cfg.GUI_BlacklistButtonBorderPx * scale))
         }
-        Gdip_DrawCenteredText(g, GUI_BlacklistButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
+        Gdip_DrawCenteredText(g, cfg.GUI_BlacklistButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
     }
 }
 
 ; ========================= SCROLLBAR =========================
 
 GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
-    if (!GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
+    global cfg
+    if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
         return
     }
 
@@ -427,11 +428,11 @@ GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, 
         return
     }
 
-    trackW := Round(GUI_ScrollBarWidthPx * scale)
+    trackW := Round(cfg.GUI_ScrollBarWidthPx * scale)
     if (trackW < 2) {
         trackW := 2
     }
-    marR := Round(GUI_ScrollBarMarginRightPx * scale)
+    marR := Round(cfg.GUI_ScrollBarMarginRightPx * scale)
     if (marR < 0) {
         marR := 0
     }
@@ -451,20 +452,20 @@ GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, 
     y2 := y1 + thumbH
     yEnd := y + trackH
 
-    if (GUI_ScrollBarGutterEnabled) {
-        Gdip_FillRoundRect(g, GUI_ScrollBarGutterARGB, x, y, trackW, trackH, r)
+    if (cfg.GUI_ScrollBarGutterEnabled) {
+        Gdip_FillRoundRect(g, cfg.GUI_ScrollBarGutterARGB, x, y, trackW, trackH, r)
     }
 
     if (y2 <= yEnd) {
-        Gdip_FillRoundRect(g, GUI_ScrollBarThumbARGB, x, y1, trackW, thumbH, r)
+        Gdip_FillRoundRect(g, cfg.GUI_ScrollBarThumbARGB, x, y1, trackW, thumbH, r)
     } else {
         h1 := yEnd - y1
         if (h1 > 0) {
-            Gdip_FillRoundRect(g, GUI_ScrollBarThumbARGB, x, y1, trackW, h1, r)
+            Gdip_FillRoundRect(g, cfg.GUI_ScrollBarThumbARGB, x, y1, trackW, h1, r)
         }
         h2 := y2 - yEnd
         if (h2 > 0) {
-            Gdip_FillRoundRect(g, GUI_ScrollBarThumbARGB, x, y, trackW, h2, r)
+            Gdip_FillRoundRect(g, cfg.GUI_ScrollBarThumbARGB, x, y, trackW, h2, r)
         }
     }
 }
@@ -472,34 +473,34 @@ GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, 
 ; ========================= FOOTER =========================
 
 GUI_DrawFooter(g, wPhys, hPhys, scale) {
-    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect
+    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, cfg
 
-    if (!GUI_ShowFooter) {
+    if (!cfg.GUI_ShowFooter) {
         return
     }
 
-    fh := Round(GUI_FooterHeightPx * scale)
+    fh := Round(cfg.GUI_FooterHeightPx * scale)
     if (fh < 1) {
         fh := 1
     }
-    mx := Round(GUI_MarginX * scale)
-    my := Round(GUI_MarginY * scale)
+    mx := Round(cfg.GUI_MarginX * scale)
+    my := Round(cfg.GUI_MarginY * scale)
 
     fx := mx
     fy := hPhys - my - fh
     fw := wPhys - 2 * mx
-    fr := Round(GUI_FooterBGRadius * scale)
+    fr := Round(cfg.GUI_FooterBGRadius * scale)
     if (fr < 0) {
         fr := 0
     }
 
     ; Draw footer background
-    Gdip_FillRoundRect(g, GUI_FooterBGARGB, fx, fy, fw, fh, fr)
-    if (GUI_FooterBorderPx > 0) {
-        Gdip_StrokeRoundRect(g, GUI_FooterBorderARGB, fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, Round(GUI_FooterBorderPx * scale))
+    Gdip_FillRoundRect(g, cfg.GUI_FooterBGARGB, fx, fy, fw, fh, fr)
+    if (cfg.GUI_FooterBorderPx > 0) {
+        Gdip_StrokeRoundRect(g, cfg.GUI_FooterBorderARGB, fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, Round(cfg.GUI_FooterBorderPx * scale))
     }
 
-    pad := Round(GUI_FooterPaddingX * scale)
+    pad := Round(cfg.GUI_FooterPaddingX * scale)
     if (pad < 0) {
         pad := 0
     }

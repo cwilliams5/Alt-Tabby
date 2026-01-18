@@ -29,17 +29,17 @@ KomorebiLite_Tick() {
 }
 
 KomorebiLite_IsAvailable() {
-    global KomorebicExe
-    return (IsSet(KomorebicExe) && KomorebicExe != "" && FileExist(KomorebicExe))
+    global cfg
+    return (cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe))
 }
 
 KomorebiLite_GetStateText() {
-    global _KLite_StateText, _KLite_Stamp, _KLite_TTL, KomorebicExe
+    global _KLite_StateText, _KLite_Stamp, _KLite_TTL, cfg
     now := A_TickCount
     if (_KLite_StateText != "" && (now - _KLite_Stamp) < _KLite_TTL)
         return _KLite_StateText
     tmp := A_Temp "\komorebi_state_" A_TickCount "_" Random(1000,9999) ".tmp"
-    cmd := 'cmd.exe /c "' KomorebicExe '" state > "' tmp '" 2>&1'
+    cmd := 'cmd.exe /c "' cfg.KomorebicExe '" state > "' tmp '" 2>&1'
     RunWait(cmd, , "Hide")
     txt := ""
     try txt := FileRead(tmp, "UTF-8")

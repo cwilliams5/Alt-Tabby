@@ -17,9 +17,9 @@
 ;   - Z-order change (via location change)
 ; ============================================================
 
-; Configuration (use values from config.ahk if set, otherwise defaults)
-global WinEventHook_DebounceMs := IsSet(WinEventHookDebounceMs) ? WinEventHookDebounceMs : 50
-global WinEventHook_BatchMs := IsSet(WinEventHookBatchMs) ? WinEventHookBatchMs : 100
+; Configuration (set in WinEventHook_Start after ConfigLoader_Init)
+global WinEventHook_DebounceMs := 0
+global WinEventHook_BatchMs := 0
 
 ; State
 global _WEH_Hook := 0
@@ -46,7 +46,14 @@ global WEH_EVENT_SYSTEM_MINIMIZEEND := 0x0017
 
 ; Initialize and install the hook
 WinEventHook_Start() {
-    global _WEH_Hook, _WEH_ShellWindow, _WEH_TimerOn
+    global _WEH_Hook, _WEH_ShellWindow, _WEH_TimerOn, cfg
+    global WinEventHook_DebounceMs, WinEventHook_BatchMs
+
+    ; Load config values on first start (ConfigLoader_Init has already run)
+    if (WinEventHook_DebounceMs = 0) {
+        WinEventHook_DebounceMs := cfg.WinEventHookDebounceMs
+        WinEventHook_BatchMs := cfg.WinEventHookBatchMs
+    }
 
     if (_WEH_Hook)
         return  ; Already running

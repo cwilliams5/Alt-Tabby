@@ -72,7 +72,6 @@ if (g_AltTabbyMode = "launch") {
 
 ; Shared libraries (from src/shared/)
 #Include %A_ScriptDir%\shared\
-#Include config.ahk
 #Include config_loader.ahk
 #Include config_editor.ahk
 #Include json.ahk
@@ -96,7 +95,6 @@ if (g_AltTabbyMode = "launch") {
 #Include viewer.ahk
 
 ; GUI module (from src/gui/)
-; Note: GUI settings are now in shared/config.ahk
 #Include %A_ScriptDir%\gui\
 #Include gui_gdip.ahk
 #Include gui_win.ahk

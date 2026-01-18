@@ -8,16 +8,23 @@
 ; Caches results and fans out to all WindowStore rows with same PID
 ; ============================================================
 
-; Configuration (use values from config.ahk if set, otherwise defaults)
-global ProcBatchPerTick := IsSet(ProcPumpBatchSize) ? ProcPumpBatchSize : 16
-global ProcTimerIntervalMs := IsSet(ProcPumpIntervalMs) ? ProcPumpIntervalMs : 100
+; Configuration (set in ProcPump_Start after ConfigLoader_Init)
+global ProcBatchPerTick := 0
+global ProcTimerIntervalMs := 0
 
 ; State
 global _PP_TimerOn := false
 
 ; Start the process pump timer
 ProcPump_Start() {
-    global _PP_TimerOn, ProcTimerIntervalMs
+    global _PP_TimerOn, ProcTimerIntervalMs, ProcBatchPerTick, cfg
+
+    ; Load config values on first start (ConfigLoader_Init has already run)
+    if (ProcTimerIntervalMs = 0) {
+        ProcBatchPerTick := cfg.ProcPumpBatchSize
+        ProcTimerIntervalMs := cfg.ProcPumpIntervalMs
+    }
+
     if (_PP_TimerOn)
         return
     _PP_TimerOn := true

@@ -225,7 +225,7 @@ _BL_InsertInSection(content, sectionName, entry) {
 ; Check if a window should be included (passes Alt-Tab eligibility AND blacklist)
 ; Returns true if window should be included, false if it should be filtered out
 Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
-    global UseAltTabEligibility, UseBlacklist
+    global cfg
 
     ; Get window info if not provided
     if (title = "" || class = "") {
@@ -243,13 +243,13 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
     if (title = "")
         return false
 
-    ; Check Alt-Tab eligibility
-    useAltTab := IsSet(UseAltTabEligibility) ? UseAltTabEligibility : true
+    ; Check Alt-Tab eligibility (keep HasOwnProp - may run before full init)
+    useAltTab := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
     if (useAltTab && !_BL_IsAltTabEligible(hwnd))
         return false
 
-    ; Check blacklist
-    useBlacklist := IsSet(UseBlacklist) ? UseBlacklist : true
+    ; Check blacklist (keep HasOwnProp - may run before full init)
+    useBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
     if (useBlacklist && Blacklist_IsMatch(title, class))
         return false
 

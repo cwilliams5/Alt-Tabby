@@ -27,13 +27,16 @@ for _, arg in A_Args {
 }
 
 ; Include files needed for testing
-#Include %A_ScriptDir%\..\src\shared\config.ahk
+#Include %A_ScriptDir%\..\src\shared\config_loader.ahk
 #Include %A_ScriptDir%\..\src\shared\json.ahk
 #Include %A_ScriptDir%\..\src\shared\ipc_pipe.ahk
 #Include %A_ScriptDir%\..\src\shared\blacklist.ahk
 #Include %A_ScriptDir%\..\src\store\windowstore.ahk
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk
+
+; Initialize config (sets all defaults from gConfigRegistry)
+ConfigLoader_Init(A_ScriptDir "\..\src")
 
 ; Initialize blacklist before tests - use explicit path to src/shared/blacklist.txt
 Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
@@ -394,7 +397,7 @@ if (RunLiveTests) {
     Log("`n--- Komorebi Integration Test ---")
 
     ; Check if komorebic is available
-    komorebicPath := KomorebicExe  ; Use configured path from config.ahk
+    komorebicPath := cfg.KomorebicExe  ; Use configured path from cfg object
     if (FileExist(komorebicPath)) {
         Log("PASS: komorebic.exe found")
         TestPassed++
@@ -1885,6 +1888,235 @@ if (RunLiveTests) {
         }
     } else {
         Log("SKIP: Compiled exe tests skipped - AltTabby.exe not found")
+    }
+}
+
+; --- Config System Tests ---
+Log("`n--- Config System Tests ---")
+
+; Test 1: Verify critical config defaults are set
+Log("Testing config defaults after ConfigLoader_Init()...")
+configDefaultsOk := true
+configErrors := []
+
+; These should all have non-zero/non-empty values after init
+; Uses cfg object (single global config container)
+if (!cfg.HasOwnProp("StorePipeName") || cfg.StorePipeName = "") {
+    configErrors.Push("cfg.StorePipeName is empty")
+    configDefaultsOk := false
+}
+if (!cfg.HasOwnProp("AltTabGraceMs") || cfg.AltTabGraceMs <= 0) {
+    configErrors.Push("cfg.AltTabGraceMs is 0 or unset")
+    configDefaultsOk := false
+}
+if (!cfg.HasOwnProp("GUI_RowHeight") || cfg.GUI_RowHeight <= 0) {
+    configErrors.Push("cfg.GUI_RowHeight is 0 or unset")
+    configDefaultsOk := false
+}
+if (!cfg.HasOwnProp("GUI_RowsVisibleMax") || cfg.GUI_RowsVisibleMax <= 0) {
+    configErrors.Push("cfg.GUI_RowsVisibleMax is 0 or unset")
+    configDefaultsOk := false
+}
+if (!cfg.HasOwnProp("WinEventHookDebounceMs") || cfg.WinEventHookDebounceMs <= 0) {
+    configErrors.Push("cfg.WinEventHookDebounceMs is 0 or unset")
+    configDefaultsOk := false
+}
+if (!cfg.HasOwnProp("StoreHeartbeatIntervalMs") || cfg.StoreHeartbeatIntervalMs <= 0) {
+    configErrors.Push("cfg.StoreHeartbeatIntervalMs is 0 or unset")
+    configDefaultsOk := false
+}
+
+if (configDefaultsOk) {
+    Log("PASS: All critical config defaults are set correctly")
+    TestPassed++
+} else {
+    Log("FAIL: Config defaults not set correctly:")
+    for _, err in configErrors {
+        Log("  - " err)
+    }
+    TestErrors++
+}
+
+; Test 2: INI Supplementing - partial config gets new keys added
+Log("Testing INI supplementing (partial config gets new keys)...")
+testConfigDir := A_Temp "\tabby_config_test_" A_TickCount
+testConfigPath := testConfigDir "\config.ini"
+
+try {
+    DirCreate(testConfigDir)
+
+    ; Create a minimal config.ini with only one setting
+    partialIni := "[AltTab]`nGraceMs=999`n"
+    FileAppend(partialIni, testConfigPath, "UTF-8")
+
+    ; Read back to verify it was written
+    originalContent := FileRead(testConfigPath)
+    hasOnlySetting := InStr(originalContent, "GraceMs=999") && !InStr(originalContent, "QuickSwitchMs")
+
+    if (!hasOnlySetting) {
+        Log("FAIL: Could not create partial test config.ini")
+        TestErrors++
+    } else {
+        ; Call _CL_SupplementIni to add missing keys
+        _CL_SupplementIni(testConfigPath)
+
+        ; Read back and check for supplemented keys
+        supplementedContent := FileRead(testConfigPath)
+
+        ; Check that new keys were added
+        hasGraceMs := InStr(supplementedContent, "GraceMs=999")  ; Original preserved
+        hasQuickSwitch := InStr(supplementedContent, "QuickSwitchMs=")  ; New key added
+        hasPrewarm := InStr(supplementedContent, "PrewarmOnAlt=")  ; New key added
+        hasGuiSection := InStr(supplementedContent, "[GUI]")  ; New section added
+
+        if (hasGraceMs && hasQuickSwitch && hasPrewarm && hasGuiSection) {
+            Log("PASS: INI supplementing added missing keys while preserving existing")
+            TestPassed++
+
+            ; Verify the original value wasn't changed
+            if (InStr(supplementedContent, "GraceMs=999")) {
+                Log("PASS: Original config value (GraceMs=999) was preserved")
+                TestPassed++
+            } else {
+                Log("FAIL: Original config value was overwritten")
+                TestErrors++
+            }
+        } else {
+            Log("FAIL: INI supplementing did not add expected keys")
+            Log("  hasGraceMs=" hasGraceMs ", hasQuickSwitch=" hasQuickSwitch ", hasPrewarm=" hasPrewarm ", hasGuiSection=" hasGuiSection)
+            TestErrors++
+        }
+    }
+
+    ; Cleanup
+    try FileDelete(testConfigPath)
+    try DirDelete(testConfigDir)
+} catch as e {
+    Log("FAIL: INI supplementing test error: " e.Message)
+    TestErrors++
+    try DirDelete(testConfigDir, true)
+}
+
+; Test 3: Config registry completeness - every setting has required fields
+Log("Testing config registry completeness...")
+registryErrors := []
+settingCount := 0
+
+for _, entry in gConfigRegistry {
+    ; Skip section/subsection headers
+    if (entry.HasOwnProp("type") && (entry.type = "section" || entry.type = "subsection"))
+        continue
+
+    ; Settings must have these fields
+    if (!entry.HasOwnProp("s")) {
+        registryErrors.Push("Entry missing 's' (section)")
+    }
+    if (!entry.HasOwnProp("k")) {
+        registryErrors.Push("Entry missing 'k' (key)")
+    }
+    if (!entry.HasOwnProp("g")) {
+        registryErrors.Push("Entry missing 'g' (global name)")
+    }
+    if (!entry.HasOwnProp("default")) {
+        registryErrors.Push("Entry " (entry.HasOwnProp("k") ? entry.k : "?") " missing 'default'")
+    }
+    if (!entry.HasOwnProp("t")) {
+        registryErrors.Push("Entry " (entry.HasOwnProp("k") ? entry.k : "?") " missing 't' (type)")
+    }
+    settingCount++
+}
+
+if (registryErrors.Length = 0) {
+    Log("PASS: All " settingCount " config registry entries have required fields")
+    TestPassed++
+} else {
+    Log("FAIL: Config registry has incomplete entries:")
+    for _, err in registryErrors {
+        Log("  - " err)
+    }
+    TestErrors++
+}
+
+; --- Entry Point Initialization Tests ---
+; These test that each entry point file can actually RUN (not just syntax check)
+; by launching with ErrorStdOut and checking for runtime errors
+Log("`n--- Entry Point Initialization Tests ---")
+Log("Testing that entry points initialize without runtime errors...")
+
+entryPoints := [
+    {name: "store_server.ahk", path: A_ScriptDir "\..\src\store\store_server.ahk", args: "--pipe=entry_test_store_" A_TickCount},
+    {name: "viewer.ahk", path: A_ScriptDir "\..\src\viewer\viewer.ahk", args: "--nogui"},
+    {name: "gui_main.ahk", path: A_ScriptDir "\..\src\gui\gui_main.ahk", args: ""}
+]
+
+for _, ep in entryPoints {
+    if (!FileExist(ep.path)) {
+        Log("SKIP: " ep.name " not found")
+        continue
+    }
+
+    ; Run with ErrorStdOut to capture runtime errors to a temp file
+    errFile := A_Temp "\tabby_entry_test_" A_TickCount "_" A_Index ".err"
+    try FileDelete(errFile)
+
+    ; Use cmd.exe to capture stderr
+    cmd := '"' A_AhkPath '" /ErrorStdOut "' ep.path '"'
+    if (ep.args != "")
+        cmd .= " " ep.args
+    cmd := 'cmd.exe /c ' cmd ' 2>"' errFile '"'
+
+    pid := 0
+    try {
+        Run(cmd, , "Hide", &pid)
+    } catch as e {
+        Log("FAIL: " ep.name " - could not launch: " e.Message)
+        TestErrors++
+        continue
+    }
+
+    ; Wait a moment for initialization to complete (or fail)
+    Sleep(1500)
+
+    ; Check if process is still running
+    stillRunning := ProcessExist(pid)
+
+    ; Kill it if still running (we just wanted to test init)
+    if (stillRunning) {
+        ProcessClose(pid)
+    }
+
+    ; Read error output
+    errOutput := ""
+    if (FileExist(errFile)) {
+        try {
+            errOutput := FileRead(errFile)
+        }
+        try FileDelete(errFile)
+    }
+
+    ; Check for errors
+    hasError := InStr(errOutput, "Error:") || InStr(errOutput, "has not been assigned")
+
+    if (hasError) {
+        Log("FAIL: " ep.name " - runtime initialization error:")
+        ; Show first few lines of error
+        errLines := StrSplit(errOutput, "`n")
+        lineCount := 0
+        for _, line in errLines {
+            if (Trim(line) != "" && lineCount < 5) {
+                Log("  " Trim(line))
+                lineCount++
+            }
+        }
+        TestErrors++
+    } else if (!stillRunning && errOutput != "") {
+        ; Process exited but had some output (might be warning)
+        Log("WARN: " ep.name " - exited with output: " SubStr(errOutput, 1, 100))
+        Log("PASS: " ep.name " - initialized without fatal error")
+        TestPassed++
+    } else {
+        Log("PASS: " ep.name " - initialized successfully (ran for 1.5s)")
+        TestPassed++
     }
 }
 
