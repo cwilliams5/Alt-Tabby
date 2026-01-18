@@ -236,6 +236,22 @@ Check `%TEMP%\alt_tabby_tests.log` for results.
 - Komorebi integration (verify workspace data flows)
 - Heartbeat test (verify store→client heartbeat with rev)
 - Blacklist E2E test (IPC reload, purge, file operations)
+- GUI state machine tests (tests/gui_tests.ahk)
+
+### GUI Tests (`tests/gui_tests.ahk`)
+Tests the Alt-Tab GUI state machine without actual keyboard or rendering:
+- State transitions: IDLE → ALT_PENDING → ACTIVE → IDLE
+- Freeze behavior with FreezeWindowList option
+- Workspace toggle with UseCurrentWSProjection option
+- Pre-warm with AltTabPrewarmOnAlt option
+- Config combination matrix (all 8 combinations of 3 booleans)
+- Selection wrapping, escape cancellation, delta blocking
+
+Run GUI tests separately:
+```
+AutoHotkey64.exe //ErrorStdOut tests\gui_tests.ahk
+```
+Check `%TEMP%\gui_tests.log` for results.
 
 ### Delta Efficiency
 - Empty deltas (0 upserts, 0 removes) should not be sent - check before sending
@@ -382,13 +398,38 @@ IDLE ──Alt down──► ALT_PENDING ──Tab──► ACTIVE ──Alt up�
 - Messages: `alt_down`, `alt_up`, `tab`, `shift_tab`, `escape`
 - GUI owns all logic, interceptor just forwards events
 
-### Config Options (to add)
-```
+### Config Options
+
+```ini
 [AltTab]
-GraceMs=150           # Delay before showing GUI
-PrewarmOnAlt=true     # Request snapshot on Alt down
-QuickSwitchMs=100     # Max time for quick switch
+GraceMs=150              # Delay before showing GUI
+QuickSwitchMs=100        # Max time for quick switch
+
+# Pre-warm snapshot on Alt down (default: true)
+# Ensures fresh window data is available when Tab is pressed
+AltTabPrewarmOnAlt=true
+
+# Freeze window list on first Tab press (default: true)
+# true = list locked when Tab pressed, stable during interaction (matches Windows)
+# false = live updates continue during Alt+Tab (list may reorder)
+FreezeWindowList=true
+
+# Use server-side workspace projection filtering (default: false)
+# true = CTRL toggle requests filtered projection from store
+# false = CTRL toggle filters client-side from cached data
+UseCurrentWSProjection=false
 ```
+
+### GUI Config Option Behavior Matrix
+
+| FreezeWindowList | UseCurrentWSProjection | Prewarm | CTRL Toggle Behavior |
+|------------------|------------------------|---------|----------------------|
+| true | false | true | Re-filter from frozen gGUI_AllItems |
+| true | true | true | Request new projection from store |
+| false | false | true | Re-filter from live gGUI_Items |
+| false | true | true | Request new projection from store |
+
+**Wait-for-data logic**: When Tab is pressed and `gGUI_Items` is empty (prewarm data hasn't arrived yet), the GUI waits up to 50ms for data to arrive before freezing. This prevents the "no windows" bug when CTRL toggling workspace mode.
 
 ### Key Metrics to Verify
 - Alt+Tab detection: <5ms
