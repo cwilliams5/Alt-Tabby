@@ -2,16 +2,28 @@
 ; Handles mouse events, selection movement, hover detection, and actions
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+; ========================= DISPLAY ITEMS HELPER =========================
+
+; Returns the correct items array based on GUI state
+; Paint and input must use the same array for consistent behavior
+; During ACTIVE state with workspace filtering, use gGUI_FrozenItems
+; Otherwise use gGUI_Items (live data from store)
+_GUI_GetDisplayItems() {
+    global gGUI_State, gGUI_Items, gGUI_FrozenItems
+    return (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
+}
+
 ; ========================= SELECTION MOVEMENT =========================
 
 GUI_MoveSelection(delta) {
-    global gGUI_Sel, gGUI_Items, gGUI_ScrollTop, gGUI_OverlayH, cfg
+    global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH, cfg
 
-    if (gGUI_Items.Length = 0 || delta = 0) {
+    items := _GUI_GetDisplayItems()
+    if (items.Length = 0 || delta = 0) {
         return
     }
 
-    count := gGUI_Items.Length
+    count := items.Length
     vis := GUI_GetVisibleRows()
     if (vis <= 0) {
         vis := 1
@@ -81,11 +93,12 @@ GUI_RecalcHover() {
 }
 
 GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
-    global gGUI_Items, gGUI_ScrollTop, gGUI_OverlayH, cfg
+    global gGUI_ScrollTop, gGUI_OverlayH, cfg
 
     action := ""
     idx1 := 0
-    count := gGUI_Items.Length
+    items := _GUI_GetDisplayItems()
+    count := items.Length
     if (count <= 0) {
         return
     }
@@ -155,16 +168,17 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
 ; ========================= ACTIONS =========================
 
 GUI_PerformAction(action, idx1 := 0) {
-    global gGUI_Items, gGUI_Sel
+    global gGUI_Sel
 
     if (idx1 = 0) {
         idx1 := gGUI_Sel
     }
-    if (idx1 < 1 || idx1 > gGUI_Items.Length) {
+    items := _GUI_GetDisplayItems()
+    if (idx1 < 1 || idx1 > items.Length) {
         return
     }
 
-    cur := gGUI_Items[idx1]
+    cur := items[idx1]
 
     if (action = "close") {
         hwnd := cur.hwnd
@@ -255,7 +269,8 @@ GUI_OnClick(x, y) {
         return
     }
 
-    count := gGUI_Items.Length
+    items := _GUI_GetDisplayItems()
+    count := items.Length
     if (count = 0) {
         return
     }
@@ -351,13 +366,14 @@ GUI_OnWheel(wParam, lParam) {
 }
 
 GUI_ScrollBy(step) {
-    global gGUI_ScrollTop, gGUI_Items, gGUI_OverlayH, gGUI_Sel
+    global gGUI_ScrollTop, gGUI_OverlayH, gGUI_Sel
 
     vis := GUI_GetVisibleRows()
     if (vis <= 0) {
         return
     }
-    count := gGUI_Items.Length
+    items := _GUI_GetDisplayItems()
+    count := items.Length
     if (count <= 0) {
         return
     }

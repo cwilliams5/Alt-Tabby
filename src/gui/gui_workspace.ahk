@@ -66,7 +66,7 @@ GUI_ToggleWorkspaceMode() {
             isFrozen := cfg.FreezeWindowList
             sourceItems := isFrozen ? gGUI_AllItems : gGUI_Items
             gGUI_FrozenItems := GUI_FilterByWorkspaceMode(sourceItems)
-            gGUI_Items := gGUI_FrozenItems  ; Update display list
+            ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
 
             ; Reset selection
             gGUI_Sel := 2
