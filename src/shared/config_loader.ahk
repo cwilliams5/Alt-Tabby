@@ -1,29 +1,129 @@
 #Requires AutoHotkey v2.0
 
 ; ============================================================
-; Config Loader - INI file support with defaults from config.ahk
+; Config Loader - Registry-driven INI support
 ; ============================================================
-; Loads user settings from config.ini. If a setting is present in
-; the INI file, it overrides the default from config.ahk.
-; Creates default config.ini if missing.
+; Single source of truth: config.ahk defines defaults, this file
+; defines the registry (section/key/type mappings) and handles
+; INI generation and loading.
+;
+; To add a new config:
+; 1. Add the default value in config.ahk
+; 2. Add an entry to gConfigRegistry below
+; 3. Add a case in _CL_ReadGlobal() and _CL_WriteGlobal()
 ; ============================================================
 
 global gConfigIniPath := ""
 global gConfigLoaded := false
 
+; ============================================================
+; CONFIG REGISTRY
+; ============================================================
+; Each entry: {s: section, k: key, g: globalName, t: type, d: description}
+; Types: "string", "int", "float", "bool"
+
+global gConfigRegistry := [
+    ; === Alt-Tab Behavior (most likely to edit) ===
+    {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", d: "Grace period before showing GUI (ms)"},
+    {s: "AltTab", k: "QuickSwitchMs", g: "AltTabQuickSwitchMs", t: "int", d: "Max time for quick switch without GUI (ms)"},
+    {s: "AltTab", k: "PrewarmOnAlt", g: "AltTabPrewarmOnAlt", t: "bool", d: "Pre-warm snapshot on Alt down"},
+    {s: "AltTab", k: "FreezeWindowList", g: "FreezeWindowList", t: "bool", d: "Freeze list on first Tab (true=stable, false=live)"},
+    {s: "AltTab", k: "UseCurrentWSProjection", g: "UseCurrentWSProjection", t: "bool", d: "Use server-side workspace filtering"},
+
+    ; === GUI Appearance ===
+    {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "int", d: "Background transparency (hex)"},
+    {s: "GUI", k: "AcrylicBaseRgb", g: "GUI_AcrylicBaseRgb", t: "int", d: "Background tint color (hex RGB)"},
+    {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", d: "Window corner radius"},
+    {s: "GUI", k: "ScreenWidthPct", g: "GUI_ScreenWidthPct", t: "float", d: "GUI width as fraction of screen"},
+    {s: "GUI", k: "RowsVisibleMin", g: "GUI_RowsVisibleMin", t: "int", d: "Minimum visible rows"},
+    {s: "GUI", k: "RowsVisibleMax", g: "GUI_RowsVisibleMax", t: "int", d: "Maximum visible rows"},
+    {s: "GUI", k: "RowHeight", g: "GUI_RowHeight", t: "int", d: "Height of each row (px)"},
+    {s: "GUI", k: "IconSize", g: "GUI_IconSize", t: "int", d: "Icon size (px)"},
+    {s: "GUI", k: "ShowHeader", g: "GUI_ShowHeader", t: "bool", d: "Show column headers"},
+    {s: "GUI", k: "ShowFooter", g: "GUI_ShowFooter", t: "bool", d: "Show footer bar"},
+    {s: "GUI", k: "ShowCloseButton", g: "GUI_ShowCloseButton", t: "bool", d: "Show close button on hover"},
+    {s: "GUI", k: "ShowKillButton", g: "GUI_ShowKillButton", t: "bool", d: "Show kill button on hover"},
+    {s: "GUI", k: "ShowBlacklistButton", g: "GUI_ShowBlacklistButton", t: "bool", d: "Show blacklist button on hover"},
+    {s: "GUI", k: "ScrollKeepHighlightOnTop", g: "GUI_ScrollKeepHighlightOnTop", t: "bool", d: "Keep selection at top when scrolling"},
+    {s: "GUI", k: "EmptyListText", g: "GUI_EmptyListText", t: "string", d: "Text shown when no windows"},
+
+    ; === IPC ===
+    {s: "IPC", k: "StorePipeName", g: "StorePipeName", t: "string", d: "Named pipe for store communication"},
+
+    ; === Tools ===
+    {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", d: "Path to AHK v2 executable"},
+    {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", d: "Path to komorebic.exe"},
+
+    ; === Producers ===
+    {s: "Producers", k: "UseKomorebiSub", g: "UseKomorebiSub", t: "bool", d: "Enable komorebi subscription"},
+    {s: "Producers", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", d: "Enable komorebi polling fallback"},
+    {s: "Producers", k: "UseIconPump", g: "UseIconPump", t: "bool", d: "Enable icon resolution"},
+    {s: "Producers", k: "UseProcPump", g: "UseProcPump", t: "bool", d: "Enable process name resolution"},
+
+    ; === Filtering ===
+    {s: "Filtering", k: "UseAltTabEligibility", g: "UseAltTabEligibility", t: "bool", d: "Filter like native Alt-Tab"},
+    {s: "Filtering", k: "UseBlacklist", g: "UseBlacklist", t: "bool", d: "Apply blacklist filtering"},
+
+    ; === WinEventHook ===
+    {s: "WinEventHook", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", d: "Event debounce time (ms)"},
+    {s: "WinEventHook", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", d: "Batch processing interval (ms)"},
+
+    ; === ZPump ===
+    {s: "ZPump", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", d: "Z-order pump interval (ms)"},
+
+    ; === WinEnum ===
+    {s: "WinEnum", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", d: "Safety polling interval (0=disabled)"},
+
+    ; === MruLite ===
+    {s: "MruLite", k: "PollMs", g: "MruLitePollMs", t: "int", d: "MRU fallback poll interval (ms)"},
+
+    ; === IconPump ===
+    {s: "IconPump", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", d: "Icon pump interval (ms)"},
+    {s: "IconPump", k: "BatchSize", g: "IconPumpBatchSize", t: "int", d: "Icons per batch"},
+    {s: "IconPump", k: "MaxAttempts", g: "IconPumpMaxAttempts", t: "int", d: "Max retry attempts"},
+    {s: "IconPump", k: "SkipHidden", g: "IconPumpSkipHidden", t: "bool", d: "Skip hidden windows"},
+    {s: "IconPump", k: "IdleBackoffMs", g: "IconPumpIdleBackoffMs", t: "int", d: "Idle backoff (ms)"},
+    {s: "IconPump", k: "AttemptBackoffMs", g: "IconPumpAttemptBackoffMs", t: "int", d: "Per-attempt backoff (ms)"},
+    {s: "IconPump", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", d: "Backoff multiplier"},
+
+    ; === ProcPump ===
+    {s: "ProcPump", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", d: "Process pump interval (ms)"},
+    {s: "ProcPump", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", d: "PIDs per batch"},
+
+    ; === KomorebiSub ===
+    {s: "KomorebiSub", k: "PollMs", g: "KomorebiSubPollMs", t: "int", d: "Pipe poll interval (ms)"},
+    {s: "KomorebiSub", k: "IdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", d: "Restart if idle (ms)"},
+    {s: "KomorebiSub", k: "FallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", d: "Fallback poll interval (ms)"},
+
+    ; === Heartbeat ===
+    {s: "Heartbeat", k: "StoreIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", d: "Store heartbeat interval (ms)"},
+    {s: "Heartbeat", k: "ViewerTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", d: "Viewer timeout (ms)"},
+
+    ; === Viewer ===
+    {s: "Viewer", k: "DebugLog", g: "DebugViewerLog", t: "bool", d: "Enable viewer debug logging"},
+    {s: "Viewer", k: "AutoStartStore", g: "ViewerAutoStartStore", t: "bool", d: "Auto-start store if not running"},
+
+    ; === Diagnostics ===
+    {s: "Diagnostics", k: "ChurnLog", g: "DiagChurnLog", t: "bool", d: "Log rev bump sources"},
+    {s: "Diagnostics", k: "KomorebiLog", g: "DiagKomorebiLog", t: "bool", d: "Log komorebi events"},
+    {s: "Diagnostics", k: "AltTabTooltips", g: "DebugAltTabTooltips", t: "bool", d: "Show Alt-Tab debug tooltips"},
+
+    ; === Testing ===
+    {s: "Testing", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", d: "Default live test duration"}
+]
+
+; ============================================================
+; PUBLIC API
+; ============================================================
+
 ; Initialize config - call this early in startup
-; basePath: directory containing config.ini
-; - When compiled: defaults to exe directory
-; - When in development: defaults to src/ (script dir's parent for store/gui)
 ConfigLoader_Init(basePath := "") {
     global gConfigIniPath, gConfigLoaded
 
     if (basePath = "") {
         if (A_IsCompiled) {
-            ; Compiled: config.ini next to the exe
             basePath := A_ScriptDir
         } else {
-            ; Development: try src/ directory first, then script's parent
             basePath := A_ScriptDir
             if (!FileExist(basePath "\config.ini")) {
                 basePath := A_ScriptDir "\.."
@@ -33,355 +133,276 @@ ConfigLoader_Init(basePath := "") {
 
     gConfigIniPath := basePath "\config.ini"
 
-    ; Create default config.ini if missing
     if (!FileExist(gConfigIniPath)) {
         _CL_CreateDefaultIni(gConfigIniPath)
     }
 
-    ; Load settings from INI, overriding config.ahk defaults
     _CL_LoadAllSettings()
     gConfigLoaded := true
 }
 
-; Load all settings - direct assignments, no dynamic variable magic
-_CL_LoadAllSettings() {
-    global gConfigIniPath
-
-    ; Each setting: read from INI, if not empty, assign to global
-    ; This is verbose but avoids AHK v2 global declaration issues
-
-    _CL_LoadSetting_String("IPC", "StorePipeName")
-    _CL_LoadSetting_String("Tools", "AhkV2Path")
-    _CL_LoadSetting_String("Tools", "KomorebicExe")
-
-    _CL_LoadSetting_Bool("Producers", "UseKomorebiSub")
-    _CL_LoadSetting_Bool("Producers", "UseKomorebiLite")
-    _CL_LoadSetting_Bool("Producers", "UseIconPump")
-    _CL_LoadSetting_Bool("Producers", "UseProcPump")
-
-    _CL_LoadSetting_Bool("Filtering", "UseAltTabEligibility")
-    _CL_LoadSetting_Bool("Filtering", "UseBlacklist")
-
-    _CL_LoadSetting_Int("WinEventHook", "DebounceMs", "WinEventHookDebounceMs")
-    _CL_LoadSetting_Int("WinEventHook", "BatchMs", "WinEventHookBatchMs")
-
-    _CL_LoadSetting_Int("ZPump", "IntervalMs", "ZPumpIntervalMs")
-    _CL_LoadSetting_Int("WinEnum", "SafetyPollMs", "WinEnumSafetyPollMs")
-    _CL_LoadSetting_Int("MruLite", "PollMs", "MruLitePollMs")
-
-    _CL_LoadSetting_Int("IconPump", "IntervalMs", "IconPumpIntervalMs")
-    _CL_LoadSetting_Int("IconPump", "BatchSize", "IconPumpBatchSize")
-    _CL_LoadSetting_Int("IconPump", "MaxAttempts", "IconPumpMaxAttempts")
-    _CL_LoadSetting_Bool("IconPump", "SkipHidden", "IconPumpSkipHidden")
-    _CL_LoadSetting_Int("IconPump", "IdleBackoffMs", "IconPumpIdleBackoffMs")
-    _CL_LoadSetting_Int("IconPump", "AttemptBackoffMs", "IconPumpAttemptBackoffMs")
-    _CL_LoadSetting_Float("IconPump", "BackoffMultiplier", "IconPumpBackoffMultiplier")
-
-    _CL_LoadSetting_Int("ProcPump", "IntervalMs", "ProcPumpIntervalMs")
-    _CL_LoadSetting_Int("ProcPump", "BatchSize", "ProcPumpBatchSize")
-
-    _CL_LoadSetting_Int("KomorebiSub", "PollMs", "KomorebiSubPollMs")
-    _CL_LoadSetting_Int("KomorebiSub", "IdleRecycleMs", "KomorebiSubIdleRecycleMs")
-    _CL_LoadSetting_Int("KomorebiSub", "FallbackPollMs", "KomorebiSubFallbackPollMs")
-
-    _CL_LoadSetting_Int("Heartbeat", "StoreIntervalMs", "StoreHeartbeatIntervalMs")
-    _CL_LoadSetting_Int("Heartbeat", "ViewerTimeoutMs", "ViewerHeartbeatTimeoutMs")
-
-    _CL_LoadSetting_Bool("Viewer", "DebugLog", "DebugViewerLog")
-    _CL_LoadSetting_Bool("Viewer", "AutoStartStore", "ViewerAutoStartStore")
-
-    _CL_LoadSetting_Bool("Diagnostics", "ChurnLog", "DiagChurnLog")
-    _CL_LoadSetting_Bool("Diagnostics", "KomorebiLog", "DiagKomorebiLog")
-    _CL_LoadSetting_Bool("Diagnostics", "AltTabTooltips", "DebugAltTabTooltips")
-    _CL_LoadSetting_Int("Testing", "LiveDurationSec", "TestLiveDurationSec_Default")
-
-    _CL_LoadSetting_Int("AltTab", "GraceMs", "AltTabGraceMs")
-    _CL_LoadSetting_Bool("AltTab", "PrewarmOnAlt", "AltTabPrewarmOnAlt")
-    _CL_LoadSetting_Int("AltTab", "QuickSwitchMs", "AltTabQuickSwitchMs")
-    _CL_LoadSetting_Bool("AltTab", "FreezeWindowList", "FreezeWindowList")
-    _CL_LoadSetting_Bool("AltTab", "UseCurrentWSProjection", "UseCurrentWSProjection")
+; Get the config registry (for future config editor)
+ConfigLoader_GetRegistry() {
+    global gConfigRegistry
+    return gConfigRegistry
 }
 
-; Individual setting loaders - each handles its own global
-_CL_LoadSetting_String(section, key, globalName := "") {
-    global gConfigIniPath
-    if (globalName = "")
-        globalName := key
-    val := IniRead(gConfigIniPath, section, key, "")
-    if (val = "")
-        return
-    ; Use switch to assign to correct global - avoids dynamic global issues
-    switch globalName {
-        case "StorePipeName":
-            global StorePipeName
-            StorePipeName := val
-        case "AhkV2Path":
-            global AhkV2Path
-            AhkV2Path := val
-        case "KomorebicExe":
-            global KomorebicExe
-            KomorebicExe := val
-    }
-}
+; ============================================================
+; INI GENERATION (reads defaults from globals)
+; ============================================================
 
-_CL_LoadSetting_Bool(section, key, globalName := "") {
-    global gConfigIniPath
-    if (globalName = "")
-        globalName := key
-    val := IniRead(gConfigIniPath, section, key, "")
-    if (val = "")
-        return
-    boolVal := (val = "true" || val = "1" || val = "yes")
-    switch globalName {
-        case "UseKomorebiSub":
-            global UseKomorebiSub
-            UseKomorebiSub := boolVal
-        case "UseKomorebiLite":
-            global UseKomorebiLite
-            UseKomorebiLite := boolVal
-        case "UseIconPump":
-            global UseIconPump
-            UseIconPump := boolVal
-        case "UseProcPump":
-            global UseProcPump
-            UseProcPump := boolVal
-        case "UseAltTabEligibility":
-            global UseAltTabEligibility
-            UseAltTabEligibility := boolVal
-        case "UseBlacklist":
-            global UseBlacklist
-            UseBlacklist := boolVal
-        case "IconPumpSkipHidden":
-            global IconPumpSkipHidden
-            IconPumpSkipHidden := boolVal
-        case "DebugViewerLog":
-            global DebugViewerLog
-            DebugViewerLog := boolVal
-        case "ViewerAutoStartStore":
-            global ViewerAutoStartStore
-            ViewerAutoStartStore := boolVal
-        case "DiagChurnLog":
-            global DiagChurnLog
-            DiagChurnLog := boolVal
-        case "DiagKomorebiLog":
-            global DiagKomorebiLog
-            DiagKomorebiLog := boolVal
-        case "DebugAltTabTooltips":
-            global DebugAltTabTooltips
-            DebugAltTabTooltips := boolVal
-        case "AltTabPrewarmOnAlt":
-            global AltTabPrewarmOnAlt
-            AltTabPrewarmOnAlt := boolVal
-        case "FreezeWindowList":
-            global FreezeWindowList
-            FreezeWindowList := boolVal
-        case "UseCurrentWSProjection":
-            global UseCurrentWSProjection
-            UseCurrentWSProjection := boolVal
-    }
-}
-
-_CL_LoadSetting_Int(section, key, globalName := "") {
-    global gConfigIniPath
-    if (globalName = "")
-        globalName := key
-    val := IniRead(gConfigIniPath, section, key, "")
-    if (val = "")
-        return
-    intVal := Integer(val)
-    switch globalName {
-        case "WinEventHookDebounceMs":
-            global WinEventHookDebounceMs
-            WinEventHookDebounceMs := intVal
-        case "WinEventHookBatchMs":
-            global WinEventHookBatchMs
-            WinEventHookBatchMs := intVal
-        case "ZPumpIntervalMs":
-            global ZPumpIntervalMs
-            ZPumpIntervalMs := intVal
-        case "WinEnumSafetyPollMs":
-            global WinEnumSafetyPollMs
-            WinEnumSafetyPollMs := intVal
-        case "MruLitePollMs":
-            global MruLitePollMs
-            MruLitePollMs := intVal
-        case "IconPumpIntervalMs":
-            global IconPumpIntervalMs
-            IconPumpIntervalMs := intVal
-        case "IconPumpBatchSize":
-            global IconPumpBatchSize
-            IconPumpBatchSize := intVal
-        case "IconPumpMaxAttempts":
-            global IconPumpMaxAttempts
-            IconPumpMaxAttempts := intVal
-        case "IconPumpIdleBackoffMs":
-            global IconPumpIdleBackoffMs
-            IconPumpIdleBackoffMs := intVal
-        case "IconPumpAttemptBackoffMs":
-            global IconPumpAttemptBackoffMs
-            IconPumpAttemptBackoffMs := intVal
-        case "ProcPumpIntervalMs":
-            global ProcPumpIntervalMs
-            ProcPumpIntervalMs := intVal
-        case "ProcPumpBatchSize":
-            global ProcPumpBatchSize
-            ProcPumpBatchSize := intVal
-        case "KomorebiSubPollMs":
-            global KomorebiSubPollMs
-            KomorebiSubPollMs := intVal
-        case "KomorebiSubIdleRecycleMs":
-            global KomorebiSubIdleRecycleMs
-            KomorebiSubIdleRecycleMs := intVal
-        case "KomorebiSubFallbackPollMs":
-            global KomorebiSubFallbackPollMs
-            KomorebiSubFallbackPollMs := intVal
-        case "StoreHeartbeatIntervalMs":
-            global StoreHeartbeatIntervalMs
-            StoreHeartbeatIntervalMs := intVal
-        case "ViewerHeartbeatTimeoutMs":
-            global ViewerHeartbeatTimeoutMs
-            ViewerHeartbeatTimeoutMs := intVal
-        case "TestLiveDurationSec_Default":
-            global TestLiveDurationSec_Default
-            TestLiveDurationSec_Default := intVal
-        case "AltTabGraceMs":
-            global AltTabGraceMs
-            AltTabGraceMs := intVal
-        case "AltTabQuickSwitchMs":
-            global AltTabQuickSwitchMs
-            AltTabQuickSwitchMs := intVal
-    }
-}
-
-_CL_LoadSetting_Float(section, key, globalName := "") {
-    global gConfigIniPath
-    if (globalName = "")
-        globalName := key
-    val := IniRead(gConfigIniPath, section, key, "")
-    if (val = "")
-        return
-    floatVal := Float(val)
-    switch globalName {
-        case "IconPumpBackoffMultiplier":
-            global IconPumpBackoffMultiplier
-            IconPumpBackoffMultiplier := floatVal
-    }
-}
-
-; Create default config.ini
 _CL_CreateDefaultIni(path) {
+    global gConfigRegistry
+
     content := "; Alt-Tabby Configuration`n"
-    content .= "; Edit this file to customize settings. Delete a line to use defaults.`n"
+    content .= "; Uncomment and edit values to customize. Delete a line to use defaults.`n"
     content .= "; Changes take effect on next startup.`n"
     content .= "`n"
 
-    content .= "[IPC]`n"
-    content .= "; Named pipe for store<->client communication`n"
-    content .= "; StorePipeName=tabby_store_v1`n"
-    content .= "`n"
+    ; Group entries by section
+    sections := Map()
+    for _, cfg in gConfigRegistry {
+        if (!sections.Has(cfg.s))
+            sections[cfg.s] := []
+        sections[cfg.s].Push(cfg)
+    }
 
-    content .= "[Tools]`n"
-    content .= "; Path to AHK v2 executable (for spawning subprocesses)`n"
-    content .= "; AhkV2Path=C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe`n"
-    content .= "; Path to komorebic.exe (komorebi CLI)`n"
-    content .= "; KomorebicExe=C:\\Program Files\\komorebi\\bin\\komorebic.exe`n"
-    content .= "`n"
+    ; Define section order (most important first)
+    sectionOrder := ["AltTab", "GUI", "IPC", "Tools", "Producers", "Filtering",
+                     "WinEventHook", "ZPump", "WinEnum", "MruLite",
+                     "IconPump", "ProcPump", "KomorebiSub",
+                     "Heartbeat", "Viewer", "Diagnostics", "Testing"]
 
-    content .= "[Producers]`n"
-    content .= "; Komorebi integration - adds workspace names to windows`n"
-    content .= "; UseKomorebiSub=true`n"
-    content .= "; UseKomorebiLite=false`n"
-    content .= "; Enrichment pumps - add icons and process names asynchronously`n"
-    content .= "; UseIconPump=true`n"
-    content .= "; UseProcPump=true`n"
-    content .= "`n"
+    for _, sect in sectionOrder {
+        if (!sections.Has(sect))
+            continue
 
-    content .= "[Filtering]`n"
-    content .= "; Filter windows like native Alt-Tab (skip tool windows, etc.)`n"
-    content .= "; UseAltTabEligibility=true`n"
-    content .= "; Apply blacklist from blacklist.txt`n"
-    content .= "; UseBlacklist=true`n"
-    content .= "`n"
+        content .= "[" sect "]`n"
 
-    content .= "[WinEventHook]`n"
-    content .= "; Event-driven window change detection timing (ms)`n"
-    content .= "; DebounceMs=50`n"
-    content .= "; BatchMs=100`n"
-    content .= "`n"
+        for _, cfg in sections[sect] {
+            ; Read current default value from the global
+            defaultVal := _CL_ReadGlobal(cfg.g, cfg.t)
 
-    content .= "[ZPump]`n"
-    content .= "; Z-order enrichment pump interval (ms)`n"
-    content .= "; IntervalMs=200`n"
-    content .= "`n"
+            ; Add description as comment
+            content .= "; " cfg.d "`n"
 
-    content .= "[WinEnum]`n"
-    content .= "; Safety polling interval (0=disabled, 30000+=paranoid safety net)`n"
-    content .= "; SafetyPollMs=0`n"
-    content .= "`n"
-
-    content .= "[MruLite]`n"
-    content .= "; MRU fallback polling interval (only if WinEventHook fails)`n"
-    content .= "; PollMs=250`n"
-    content .= "`n"
-
-    content .= "[IconPump]`n"
-    content .= "; Icon resolution timing`n"
-    content .= "; IntervalMs=80`n"
-    content .= "; BatchSize=16`n"
-    content .= "; MaxAttempts=4`n"
-    content .= "; SkipHidden=true`n"
-    content .= "; IdleBackoffMs=1500`n"
-    content .= "; AttemptBackoffMs=300`n"
-    content .= "; BackoffMultiplier=1.8`n"
-    content .= "`n"
-
-    content .= "[ProcPump]`n"
-    content .= "; Process name resolution timing`n"
-    content .= "; IntervalMs=100`n"
-    content .= "; BatchSize=16`n"
-    content .= "`n"
-
-    content .= "[KomorebiSub]`n"
-    content .= "; Komorebi subscription timing`n"
-    content .= "; PollMs=50`n"
-    content .= "; IdleRecycleMs=120000`n"
-    content .= "; FallbackPollMs=2000`n"
-    content .= "`n"
-
-    content .= "[Heartbeat]`n"
-    content .= "; Connection health timing`n"
-    content .= "; StoreIntervalMs=5000`n"
-    content .= "; ViewerTimeoutMs=12000`n"
-    content .= "`n"
-
-    content .= "[Viewer]`n"
-    content .= "; Debug viewer options`n"
-    content .= "; DebugLog=false`n"
-    content .= "; AutoStartStore=false`n"
-    content .= "`n"
-
-    content .= "[Diagnostics]`n"
-    content .= "; Debug options - all disabled by default to minimize disk I/O`n"
-    content .= "; ChurnLog: Log rev bump sources to %TEMP%\\tabby_store_error.log (debug store churn)`n"
-    content .= "; ChurnLog=false`n"
-    content .= "; KomorebiLog: Log events to %TEMP%\\tabby_ksub_diag.log (debug workspace tracking)`n"
-    content .= "; KomorebiLog=false`n"
-    content .= "; AltTabTooltips: Show state machine tooltips (debug Alt-Tab overlay)`n"
-    content .= "; AltTabTooltips=false`n"
-    content .= "`n"
-
-    content .= "[AltTab]`n"
-    content .= "; Alt-Tab GUI behavior`n"
-    content .= "; GraceMs=150`n"
-    content .= "; PrewarmOnAlt=true`n"
-    content .= "; QuickSwitchMs=100`n"
-    content .= "; FreezeWindowList=true`n"
-    content .= "; UseCurrentWSProjection=false`n"
+            ; Add setting (commented out so defaults are used)
+            content .= "; " cfg.k "=" _CL_FormatValue(defaultVal, cfg.t) "`n"
+        }
+        content .= "`n"
+    }
 
     try FileAppend(content, path, "UTF-8")
 }
 
-; Create default blacklist.txt if missing
+_CL_FormatValue(val, type) {
+    if (type = "bool")
+        return val ? "true" : "false"
+    if (type = "int" && IsInteger(val) && val >= 0x10)
+        return Format("0x{:X}", val)  ; Hex for large ints (colors, etc.)
+    return String(val)
+}
+
+; ============================================================
+; INI LOADING
+; ============================================================
+
+_CL_LoadAllSettings() {
+    global gConfigIniPath, gConfigRegistry
+
+    for _, cfg in gConfigRegistry {
+        val := IniRead(gConfigIniPath, cfg.s, cfg.k, "")
+        if (val = "")
+            continue
+
+        ; Parse value based on type
+        switch cfg.t {
+            case "bool":
+                parsedVal := (val = "true" || val = "1" || val = "yes")
+            case "int":
+                ; Handle hex values
+                if (SubStr(val, 1, 2) = "0x")
+                    parsedVal := Integer(val)
+                else
+                    parsedVal := Integer(val)
+            case "float":
+                parsedVal := Float(val)
+            default:
+                parsedVal := val
+        }
+
+        _CL_WriteGlobal(cfg.g, parsedVal)
+    }
+}
+
+; ============================================================
+; GLOBAL ACCESS HELPERS
+; ============================================================
+; AHK v2 requires explicit global declarations, so we use switch
+; statements to access globals by name. This is the only place
+; these switch statements exist - the rest of the code is data-driven.
+
+_CL_ReadGlobal(name, type := "string") {
+    ; Declare all globals at function scope first
+    global AltTabGraceMs, AltTabQuickSwitchMs, AltTabPrewarmOnAlt, FreezeWindowList, UseCurrentWSProjection
+    global GUI_AcrylicAlpha, GUI_AcrylicBaseRgb, GUI_CornerRadiusPx, GUI_ScreenWidthPct
+    global GUI_RowsVisibleMin, GUI_RowsVisibleMax, GUI_RowHeight, GUI_IconSize
+    global GUI_ShowHeader, GUI_ShowFooter, GUI_ShowCloseButton, GUI_ShowKillButton, GUI_ShowBlacklistButton
+    global GUI_ScrollKeepHighlightOnTop, GUI_EmptyListText
+    global StorePipeName, AhkV2Path, KomorebicExe
+    global UseKomorebiSub, UseKomorebiLite, UseIconPump, UseProcPump
+    global UseAltTabEligibility, UseBlacklist
+    global WinEventHookDebounceMs, WinEventHookBatchMs, ZPumpIntervalMs, WinEnumSafetyPollMs, MruLitePollMs
+    global IconPumpIntervalMs, IconPumpBatchSize, IconPumpMaxAttempts, IconPumpSkipHidden
+    global IconPumpIdleBackoffMs, IconPumpAttemptBackoffMs, IconPumpBackoffMultiplier
+    global ProcPumpIntervalMs, ProcPumpBatchSize
+    global KomorebiSubPollMs, KomorebiSubIdleRecycleMs, KomorebiSubFallbackPollMs
+    global StoreHeartbeatIntervalMs, ViewerHeartbeatTimeoutMs
+    global DebugViewerLog, ViewerAutoStartStore
+    global DiagChurnLog, DiagKomorebiLog, DebugAltTabTooltips
+    global TestLiveDurationSec_Default
+
+    switch name {
+        case "AltTabGraceMs": return AltTabGraceMs
+        case "AltTabQuickSwitchMs": return AltTabQuickSwitchMs
+        case "AltTabPrewarmOnAlt": return AltTabPrewarmOnAlt
+        case "FreezeWindowList": return FreezeWindowList
+        case "UseCurrentWSProjection": return UseCurrentWSProjection
+        case "GUI_AcrylicAlpha": return GUI_AcrylicAlpha
+        case "GUI_AcrylicBaseRgb": return GUI_AcrylicBaseRgb
+        case "GUI_CornerRadiusPx": return GUI_CornerRadiusPx
+        case "GUI_ScreenWidthPct": return GUI_ScreenWidthPct
+        case "GUI_RowsVisibleMin": return GUI_RowsVisibleMin
+        case "GUI_RowsVisibleMax": return GUI_RowsVisibleMax
+        case "GUI_RowHeight": return GUI_RowHeight
+        case "GUI_IconSize": return GUI_IconSize
+        case "GUI_ShowHeader": return GUI_ShowHeader
+        case "GUI_ShowFooter": return GUI_ShowFooter
+        case "GUI_ShowCloseButton": return GUI_ShowCloseButton
+        case "GUI_ShowKillButton": return GUI_ShowKillButton
+        case "GUI_ShowBlacklistButton": return GUI_ShowBlacklistButton
+        case "GUI_ScrollKeepHighlightOnTop": return GUI_ScrollKeepHighlightOnTop
+        case "GUI_EmptyListText": return GUI_EmptyListText
+        case "StorePipeName": return StorePipeName
+        case "AhkV2Path": return AhkV2Path
+        case "KomorebicExe": return KomorebicExe
+        case "UseKomorebiSub": return UseKomorebiSub
+        case "UseKomorebiLite": return UseKomorebiLite
+        case "UseIconPump": return UseIconPump
+        case "UseProcPump": return UseProcPump
+        case "UseAltTabEligibility": return UseAltTabEligibility
+        case "UseBlacklist": return UseBlacklist
+        case "WinEventHookDebounceMs": return WinEventHookDebounceMs
+        case "WinEventHookBatchMs": return WinEventHookBatchMs
+        case "ZPumpIntervalMs": return ZPumpIntervalMs
+        case "WinEnumSafetyPollMs": return WinEnumSafetyPollMs
+        case "MruLitePollMs": return MruLitePollMs
+        case "IconPumpIntervalMs": return IconPumpIntervalMs
+        case "IconPumpBatchSize": return IconPumpBatchSize
+        case "IconPumpMaxAttempts": return IconPumpMaxAttempts
+        case "IconPumpSkipHidden": return IconPumpSkipHidden
+        case "IconPumpIdleBackoffMs": return IconPumpIdleBackoffMs
+        case "IconPumpAttemptBackoffMs": return IconPumpAttemptBackoffMs
+        case "IconPumpBackoffMultiplier": return IconPumpBackoffMultiplier
+        case "ProcPumpIntervalMs": return ProcPumpIntervalMs
+        case "ProcPumpBatchSize": return ProcPumpBatchSize
+        case "KomorebiSubPollMs": return KomorebiSubPollMs
+        case "KomorebiSubIdleRecycleMs": return KomorebiSubIdleRecycleMs
+        case "KomorebiSubFallbackPollMs": return KomorebiSubFallbackPollMs
+        case "StoreHeartbeatIntervalMs": return StoreHeartbeatIntervalMs
+        case "ViewerHeartbeatTimeoutMs": return ViewerHeartbeatTimeoutMs
+        case "DebugViewerLog": return DebugViewerLog
+        case "ViewerAutoStartStore": return ViewerAutoStartStore
+        case "DiagChurnLog": return DiagChurnLog
+        case "DiagKomorebiLog": return DiagKomorebiLog
+        case "DebugAltTabTooltips": return DebugAltTabTooltips
+        case "TestLiveDurationSec_Default": return TestLiveDurationSec_Default
+    }
+    return ""
+}
+
+_CL_WriteGlobal(name, val) {
+    ; Declare all globals at function scope first
+    global AltTabGraceMs, AltTabQuickSwitchMs, AltTabPrewarmOnAlt, FreezeWindowList, UseCurrentWSProjection
+    global GUI_AcrylicAlpha, GUI_AcrylicBaseRgb, GUI_CornerRadiusPx, GUI_ScreenWidthPct
+    global GUI_RowsVisibleMin, GUI_RowsVisibleMax, GUI_RowHeight, GUI_IconSize
+    global GUI_ShowHeader, GUI_ShowFooter, GUI_ShowCloseButton, GUI_ShowKillButton, GUI_ShowBlacklistButton
+    global GUI_ScrollKeepHighlightOnTop, GUI_EmptyListText
+    global StorePipeName, AhkV2Path, KomorebicExe
+    global UseKomorebiSub, UseKomorebiLite, UseIconPump, UseProcPump
+    global UseAltTabEligibility, UseBlacklist
+    global WinEventHookDebounceMs, WinEventHookBatchMs, ZPumpIntervalMs, WinEnumSafetyPollMs, MruLitePollMs
+    global IconPumpIntervalMs, IconPumpBatchSize, IconPumpMaxAttempts, IconPumpSkipHidden
+    global IconPumpIdleBackoffMs, IconPumpAttemptBackoffMs, IconPumpBackoffMultiplier
+    global ProcPumpIntervalMs, ProcPumpBatchSize
+    global KomorebiSubPollMs, KomorebiSubIdleRecycleMs, KomorebiSubFallbackPollMs
+    global StoreHeartbeatIntervalMs, ViewerHeartbeatTimeoutMs
+    global DebugViewerLog, ViewerAutoStartStore
+    global DiagChurnLog, DiagKomorebiLog, DebugAltTabTooltips
+    global TestLiveDurationSec_Default
+
+    switch name {
+        case "AltTabGraceMs": AltTabGraceMs := val
+        case "AltTabQuickSwitchMs": AltTabQuickSwitchMs := val
+        case "AltTabPrewarmOnAlt": AltTabPrewarmOnAlt := val
+        case "FreezeWindowList": FreezeWindowList := val
+        case "UseCurrentWSProjection": UseCurrentWSProjection := val
+        case "GUI_AcrylicAlpha": GUI_AcrylicAlpha := val
+        case "GUI_AcrylicBaseRgb": GUI_AcrylicBaseRgb := val
+        case "GUI_CornerRadiusPx": GUI_CornerRadiusPx := val
+        case "GUI_ScreenWidthPct": GUI_ScreenWidthPct := val
+        case "GUI_RowsVisibleMin": GUI_RowsVisibleMin := val
+        case "GUI_RowsVisibleMax": GUI_RowsVisibleMax := val
+        case "GUI_RowHeight": GUI_RowHeight := val
+        case "GUI_IconSize": GUI_IconSize := val
+        case "GUI_ShowHeader": GUI_ShowHeader := val
+        case "GUI_ShowFooter": GUI_ShowFooter := val
+        case "GUI_ShowCloseButton": GUI_ShowCloseButton := val
+        case "GUI_ShowKillButton": GUI_ShowKillButton := val
+        case "GUI_ShowBlacklistButton": GUI_ShowBlacklistButton := val
+        case "GUI_ScrollKeepHighlightOnTop": GUI_ScrollKeepHighlightOnTop := val
+        case "GUI_EmptyListText": GUI_EmptyListText := val
+        case "StorePipeName": StorePipeName := val
+        case "AhkV2Path": AhkV2Path := val
+        case "KomorebicExe": KomorebicExe := val
+        case "UseKomorebiSub": UseKomorebiSub := val
+        case "UseKomorebiLite": UseKomorebiLite := val
+        case "UseIconPump": UseIconPump := val
+        case "UseProcPump": UseProcPump := val
+        case "UseAltTabEligibility": UseAltTabEligibility := val
+        case "UseBlacklist": UseBlacklist := val
+        case "WinEventHookDebounceMs": WinEventHookDebounceMs := val
+        case "WinEventHookBatchMs": WinEventHookBatchMs := val
+        case "ZPumpIntervalMs": ZPumpIntervalMs := val
+        case "WinEnumSafetyPollMs": WinEnumSafetyPollMs := val
+        case "MruLitePollMs": MruLitePollMs := val
+        case "IconPumpIntervalMs": IconPumpIntervalMs := val
+        case "IconPumpBatchSize": IconPumpBatchSize := val
+        case "IconPumpMaxAttempts": IconPumpMaxAttempts := val
+        case "IconPumpSkipHidden": IconPumpSkipHidden := val
+        case "IconPumpIdleBackoffMs": IconPumpIdleBackoffMs := val
+        case "IconPumpAttemptBackoffMs": IconPumpAttemptBackoffMs := val
+        case "IconPumpBackoffMultiplier": IconPumpBackoffMultiplier := val
+        case "ProcPumpIntervalMs": ProcPumpIntervalMs := val
+        case "ProcPumpBatchSize": ProcPumpBatchSize := val
+        case "KomorebiSubPollMs": KomorebiSubPollMs := val
+        case "KomorebiSubIdleRecycleMs": KomorebiSubIdleRecycleMs := val
+        case "KomorebiSubFallbackPollMs": KomorebiSubFallbackPollMs := val
+        case "StoreHeartbeatIntervalMs": StoreHeartbeatIntervalMs := val
+        case "ViewerHeartbeatTimeoutMs": ViewerHeartbeatTimeoutMs := val
+        case "DebugViewerLog": DebugViewerLog := val
+        case "ViewerAutoStartStore": ViewerAutoStartStore := val
+        case "DiagChurnLog": DiagChurnLog := val
+        case "DiagKomorebiLog": DiagKomorebiLog := val
+        case "DebugAltTabTooltips": DebugAltTabTooltips := val
+        case "TestLiveDurationSec_Default": TestLiveDurationSec_Default := val
+    }
+}
+
+; ============================================================
+; BLACKLIST HELPER
+; ============================================================
+
 ConfigLoader_CreateDefaultBlacklist(path) {
     if (FileExist(path))
         return true
