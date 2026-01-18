@@ -1,0 +1,238 @@
+; Alt-Tabby GUI - Overlay Management
+; Handles window creation, sizing, show/hide, and layout calculations
+
+; ========================= SHOW/HIDE =========================
+
+GUI_ShowOverlay() {
+    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
+    global gGUI_Items, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed
+
+    if (gGUI_OverlayVisible) {
+        return
+    }
+
+    ; Set visible flag FIRST to prevent re-entrancy
+    gGUI_OverlayVisible := true
+
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gGUI_Revealed := false
+
+    try {
+        gGUI_Base.Show("NA")
+    }
+
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_Items.Length)
+    GUI_ResizeToRows(rowsDesired)
+    GUI_Repaint()
+
+    try {
+        gGUI_Overlay.Show("NA")
+    }
+    Win_DwmFlush()
+}
+
+GUI_HideOverlay() {
+    global gGUI_OverlayVisible, gGUI_Base, gGUI_Overlay, gGUI_Revealed
+
+    if (!gGUI_OverlayVisible) {
+        return
+    }
+
+    try {
+        gGUI_Overlay.Hide()
+    }
+    try {
+        gGUI_Base.Hide()
+    }
+    gGUI_OverlayVisible := false
+    gGUI_Revealed := false
+}
+
+; ========================= LAYOUT CALCULATIONS =========================
+
+GUI_ComputeRowsToShow(count) {
+    if (count >= GUI_RowsVisibleMax) {
+        return GUI_RowsVisibleMax
+    }
+    if (count > GUI_RowsVisibleMin) {
+        return count
+    }
+    return GUI_RowsVisibleMin
+}
+
+GUI_HeaderBlockDip() {
+    if (GUI_ShowHeader) {
+        return 32
+    }
+    return 0
+}
+
+GUI_FooterBlockDip() {
+    if (GUI_ShowFooter) {
+        return GUI_FooterGapTopPx + GUI_FooterHeightPx
+    }
+    return 0
+}
+
+GUI_GetVisibleRows() {
+    global gGUI_OverlayH
+
+    ox := 0
+    oy := 0
+    owPhys := 0
+    ohPhys := 0
+    Win_GetRectPhys(gGUI_OverlayH, &ox, &oy, &owPhys, &ohPhys)
+
+    scale := Win_GetScaleForWindow(gGUI_OverlayH)
+    ohDip := ohPhys / scale
+
+    headerTopDip := GUI_MarginY + GUI_HeaderBlockDip()
+    footerDip := GUI_FooterBlockDip()
+    usableDip := ohDip - headerTopDip - GUI_MarginY - footerDip
+
+    if (usableDip < GUI_RowHeight) {
+        return 0
+    }
+    return Floor(usableDip / GUI_RowHeight)
+}
+
+; ========================= RESIZE =========================
+
+GUI_ResizeToRows(rowsToShow) {
+    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
+
+    xDip := 0
+    yDip := 0
+    wDip := 0
+    hDip := 0
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, gGUI_BaseH)
+
+    waL := 0
+    waT := 0
+    waR := 0
+    waB := 0
+    Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
+    monScale := Win_GetMonitorScale(waL, waT, waR, waB)
+
+    xPhys := Round(xDip * monScale)
+    yPhys := Round(yDip * monScale)
+    wPhys := Round(wDip * monScale)
+    hPhys := Round(hDip * monScale)
+
+    Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
+    Win_SetPosPhys(gGUI_OverlayH, xPhys, yPhys, wPhys, hPhys)
+    Win_ApplyRoundRegion(gGUI_BaseH, GUI_CornerRadiusPx, wDip, hDip)
+    Win_DwmFlush()
+}
+
+GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
+    waL := 0
+    waT := 0
+    waR := 0
+    waB := 0
+    Win_GetWorkAreaFromHwnd(hWnd, &waL, &waT, &waR, &waB)
+
+    monScale := Win_GetMonitorScale(waL, waT, waR, waB)
+
+    waW_dip := (waR - waL) / monScale
+    waH_dip := (waB - waT) / monScale
+    left_dip := waL / monScale
+    top_dip := waT / monScale
+
+    pct := GUI_ScreenWidthPct
+    if (pct <= 0) {
+        pct := 0.10
+    }
+    if (pct > 1.0) {
+        pct := pct / 100.0
+    }
+
+    w := Round(waW_dip * pct)
+    h := GUI_MarginY + GUI_HeaderBlockDip() + rowsToShow * GUI_RowHeight + GUI_FooterBlockDip() + GUI_MarginY
+
+    x := Round(left_dip + (waW_dip - w) / 2)
+    y := Round(top_dip + (waH_dip - h) / 2)
+}
+
+; ========================= WINDOW CREATION =========================
+
+GUI_CreateBase() {
+    global gGUI_Base, gGUI_BaseH, gGUI_Items
+
+    opts := "+AlwaysOnTop -Caption"
+
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_Items.Length)
+
+    left := 0
+    top := 0
+    right := 0
+    bottom := 0
+    MonitorGetWorkArea(0, &left, &top, &right, &bottom)
+    waW_phys := right - left
+    waH_phys := bottom - top
+
+    monScale := Win_GetMonitorScale(left, top, right, bottom)
+
+    pct := GUI_ScreenWidthPct
+    if (pct <= 0) {
+        pct := 0.10
+    }
+    if (pct > 1.0) {
+        pct := pct / 100.0
+    }
+
+    waW_dip := waW_phys / monScale
+    waH_dip := waH_phys / monScale
+    left_dip := left / monScale
+    top_dip := top / monScale
+
+    winW := Round(waW_dip * pct)
+    winH := GUI_MarginY + GUI_HeaderBlockDip() + rowsDesired * GUI_RowHeight + GUI_FooterBlockDip() + GUI_MarginY
+    winX := Round(left_dip + (waW_dip - winW) / 2)
+    winY := Round(top_dip + (waH_dip - winH) / 2)
+
+    gGUI_Base := Gui(opts, "Alt-Tabby")
+    gGUI_Base.Show("Hide w" winW " h" winH)
+    gGUI_BaseH := gGUI_Base.Hwnd
+
+    curX := 0
+    curY := 0
+    curW := 0
+    curH := 0
+    Win_GetRectPhys(gGUI_BaseH, &curX, &curY, &curW, &curH)
+
+    waL := 0
+    waT := 0
+    waR := 0
+    waB := 0
+    Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
+    waW := waR - waL
+    waH := waB - waT
+
+    tgtX := waL + (waW - curW) // 2
+    tgtY := waT + (waH - curH) // 2
+    Win_SetPosPhys(gGUI_BaseH, tgtX, tgtY, curW, curH)
+
+    Win_EnableDarkTitleBar(gGUI_BaseH)
+    Win_SetCornerPreference(gGUI_BaseH, 2)
+    Win_ForceNoLayered(gGUI_BaseH)
+    Win_ApplyRoundRegion(gGUI_BaseH, GUI_CornerRadiusPx, winW, winH)
+    Win_ApplyAcrylic(gGUI_BaseH, GUI_AcrylicAlpha, GUI_AcrylicBaseRgb)
+    Win_DwmFlush()
+}
+
+GUI_CreateOverlay() {
+    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
+
+    gGUI_Overlay := Gui("+AlwaysOnTop -Caption +ToolWindow +Owner" gGUI_BaseH)
+    gGUI_Overlay.Show("Hide")
+    gGUI_OverlayH := gGUI_Overlay.Hwnd
+
+    ox := 0
+    oy := 0
+    ow := 0
+    oh := 0
+    Win_GetRectPhys(gGUI_BaseH, &ox, &oy, &ow, &oh)
+    Win_SetPosPhys(gGUI_OverlayH, ox, oy, ow, oh)
+}

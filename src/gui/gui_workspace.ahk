@@ -1,0 +1,136 @@
+; Alt-Tabby GUI - Workspace Mode
+; Handles workspace filtering and toggle between "all" and "current" modes
+
+; ========================= FOOTER TEXT =========================
+
+GUI_UpdateFooterText() {
+    global gGUI_FooterText, gGUI_WorkspaceMode, gGUI_CurrentWSName
+
+    if (gGUI_WorkspaceMode = "all") {
+        gGUI_FooterText := "All Workspaces"
+    } else {
+        ; "current" mode
+        wsName := (gGUI_CurrentWSName != "") ? gGUI_CurrentWSName : "Unknown"
+        gGUI_FooterText := "Current (" wsName ")"
+    }
+}
+
+; ========================= CURRENT WORKSPACE TRACKING =========================
+
+GUI_UpdateCurrentWSFromPayload(payload) {
+    global gGUI_CurrentWSName
+
+    if (!payload.Has("meta"))
+        return
+
+    meta := payload["meta"]
+    wsName := ""
+
+    ; Handle both Map and Object types for meta
+    if (meta is Map) {
+        wsName := meta.Has("currentWSName") ? meta["currentWSName"] : ""
+    } else if (IsObject(meta)) {
+        try wsName := meta.currentWSName
+    }
+
+    if (wsName != "" && wsName != gGUI_CurrentWSName) {
+        gGUI_CurrentWSName := wsName
+        GUI_UpdateFooterText()
+    }
+}
+
+; ========================= WORKSPACE TOGGLE =========================
+
+GUI_ToggleWorkspaceMode() {
+    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+    global UseCurrentWSProjection, FreezeWindowList
+
+    ; Toggle mode
+    gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"
+    GUI_UpdateFooterText()
+
+    ; If GUI is visible and active, refresh the list
+    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
+        ; Check if we should request from store or filter locally
+        useServerFilter := IsSet(UseCurrentWSProjection) && UseCurrentWSProjection
+
+        if (useServerFilter) {
+            ; Request new projection from store with workspace filter
+            ; Response will be handled by GUI_OnStoreMessage (gGUI_AwaitingToggleProjection flag)
+            currentWSOnly := (gGUI_WorkspaceMode = "current")
+            GUI_RequestProjectionWithWSFilter(currentWSOnly)
+            ; Don't repaint yet - wait for response
+        } else {
+            ; Filter locally from cached items
+            isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList
+            sourceItems := isFrozen ? gGUI_AllItems : gGUI_Items
+            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(sourceItems)
+            gGUI_Items := gGUI_FrozenItems  ; Update display list
+
+            ; Reset selection
+            gGUI_Sel := 2
+            if (gGUI_Sel > gGUI_FrozenItems.Length) {
+                gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
+            }
+            gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+
+            ; Resize GUI if item count changed significantly
+            rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+            GUI_ResizeToRows(rowsDesired)
+            GUI_Repaint()
+        }
+    }
+}
+
+; ========================= WORKSPACE FILTERING =========================
+
+GUI_FilterByWorkspaceMode(items) {
+    global gGUI_WorkspaceMode
+
+    if (gGUI_WorkspaceMode = "all") {
+        ; Return copy of all items
+        result := []
+        for _, item in items {
+            result.Push(item)
+        }
+        return result
+    }
+
+    ; "current" mode - only items on current workspace
+    result := []
+    for _, item in items {
+        isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
+        if (isOnCurrent) {
+            result.Push(item)
+        }
+    }
+    return result
+}
+
+; ========================= WORKSPACE MODE SETTER =========================
+
+GUI_SetWorkspaceMode(mode) {
+    global gGUI_WorkspaceMode
+
+    if (mode != "all" && mode != "current") {
+        return
+    }
+    if (gGUI_WorkspaceMode = mode) {
+        return
+    }
+
+    gGUI_WorkspaceMode := mode
+    GUI_UpdateFooterText()
+
+    ; Same logic as toggle - re-filter if visible
+    global gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
+        gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
+        gGUI_Sel := 2
+        if (gGUI_Sel > gGUI_FrozenItems.Length) {
+            gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
+        }
+        gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+        GUI_Repaint()
+    }
+}
