@@ -6,7 +6,7 @@
 
 GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_State, gGUI_AltDownTick, gGUI_FirstTabTick, gGUI_TabCount
-    global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems, cfg
+    global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems, gGUI_AllItems, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT
 
     if (evCode = TABBY_EV_ALT_DOWN) {
@@ -160,8 +160,9 @@ GUI_ShowOverlayWithFrozen() {
     ; (Show/DwmFlush can pump messages, allowing hotkeys to fire mid-function)
     gGUI_OverlayVisible := true
 
-    ; Use frozen items for display
-    gGUI_Items := gGUI_FrozenItems
+    ; NOTE: Do NOT set gGUI_Items := gGUI_FrozenItems here!
+    ; gGUI_Items must remain the unfiltered source of truth for cross-session consistency.
+    ; Paint function correctly uses gGUI_FrozenItems when in ACTIVE state.
 
     ; ENFORCE: When ScrollKeepHighlightOnTop is true, selected item must be at top
     ; This catches any edge cases where scrollTop wasn't set correctly
@@ -175,7 +176,7 @@ GUI_ShowOverlayWithFrozen() {
         gGUI_Base.Show("NA")
     }
 
-    rowsDesired := GUI_ComputeRowsToShow(gGUI_Items.Length)
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
     GUI_ResizeToRows(rowsDesired)
     GUI_Repaint()  ; Paint with correct sel/scroll from the start
 

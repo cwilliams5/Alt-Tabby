@@ -7,7 +7,7 @@
 GUI_OnStoreMessage(line, hPipe := 0) {
     global gGUI_StoreConnected, gGUI_StoreRev, gGUI_Items, gGUI_Sel
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText
-    global gGUI_State  ; CRITICAL: Check state to avoid updating during ACTIVE
+    global gGUI_State, gGUI_FrozenItems, gGUI_AllItems  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
 
     obj := ""
@@ -57,9 +57,20 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             ; If in ACTIVE state (either !frozen or toggle response), update display
             if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {
                 gGUI_AllItems := gGUI_Items
-                gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
-                ; Keep gGUI_Items in sync with frozen list for functions that use it directly
-                gGUI_Items := gGUI_FrozenItems
+
+                ; For server-side filtered toggle responses (UseCurrentWSProjection=true),
+                ; the server already applied the currentWorkspaceOnly filter - don't re-filter
+                if (isToggleResponse && cfg.UseCurrentWSProjection) {
+                    ; Server already filtered - copy items directly
+                    gGUI_FrozenItems := []
+                    for _, item in gGUI_AllItems {
+                        gGUI_FrozenItems.Push(item)
+                    }
+                } else {
+                    ; Client-side filter (local filtering mode)
+                    gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+                }
+                ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
 
                 ; Reset selection for toggle response
                 if (isToggleResponse) {
@@ -75,10 +86,12 @@ GUI_OnStoreMessage(line, hPipe := 0) {
                 }
             }
 
-            if (gGUI_Sel > gGUI_Items.Length && gGUI_Items.Length > 0) {
-                gGUI_Sel := gGUI_Items.Length
+            ; Clamp selection based on state - use filtered list when ACTIVE
+            displayItems := (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
+            if (gGUI_Sel > displayItems.Length && displayItems.Length > 0) {
+                gGUI_Sel := displayItems.Length
             }
-            if (gGUI_Sel < 1 && gGUI_Items.Length > 0) {
+            if (gGUI_Sel < 1 && displayItems.Length > 0) {
                 gGUI_Sel := 1
             }
 
@@ -116,8 +129,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             if (gGUI_State = "ACTIVE" && !isFrozen) {
                 gGUI_AllItems := gGUI_Items
                 gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
-                ; Keep gGUI_Items in sync with frozen list
-                gGUI_Items := gGUI_FrozenItems
+                ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
                 if (gGUI_OverlayVisible && gGUI_OverlayH) {
                     GUI_Repaint()
                 }

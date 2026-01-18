@@ -53,7 +53,10 @@ src/
   viewer/         - Debug viewer
     viewer.ahk    - GUI with Z/MRU toggle, workspace filter
 tests/
-  run_tests.ahk   - Automated test suite (unit + live)
+  run_tests.ahk   - Test orchestrator (includes production + test files)
+  test_utils.ahk  - Test utilities: Log, Assert, IPC callbacks
+  test_unit.ahk   - Unit tests (WindowStore, Config, Entry Points)
+  test_live.ahk   - Live integration tests (require --live flag)
   gui_tests.ahk   - GUI state machine tests
   test.ps1        - PowerShell test runner
 legacy/
@@ -123,6 +126,28 @@ These are from the original ChatGPT work. Some are battle-tested:
 - Functions are automatically global in AHK v2
 - If you get warnings about undefined functions from included files, add `#Warn VarUnset, Off` to the calling file
 
+**Common bug pattern - using globals without declaring them:**
+```ahk
+; WRONG - gGUI_AllItems and gGUI_FrozenItems are used but not declared global
+; They become LOCAL variables, invisible to other functions!
+GUI_OnStoreMessage(line) {
+    global gGUI_Items, gGUI_State  ; Missing gGUI_AllItems, gGUI_FrozenItems!
+    ...
+    gGUI_AllItems := gGUI_Items           ; Creates LOCAL variable
+    gGUI_FrozenItems := FilterItems()     ; Creates LOCAL variable
+}
+
+; CORRECT - declare ALL globals used in the function
+GUI_OnStoreMessage(line) {
+    global gGUI_Items, gGUI_State, gGUI_AllItems, gGUI_FrozenItems
+    ...
+    gGUI_AllItems := gGUI_Items           ; Updates GLOBAL
+    gGUI_FrozenItems := FilterItems()     ; Updates GLOBAL
+}
+```
+- **Symptom**: Function appears to work internally, but other functions see stale/empty values
+- **Debug tip**: Add diagnostic logging to print `.Length` before AND after function calls
+
 ### Cross-File Global Visibility (CRITICAL)
 - **Variables set inside a function are NOT visible to other files**, even with `global` keyword
 - Setting `global Foo := 123` inside a function only makes `Foo` accessible within that file
@@ -166,6 +191,57 @@ These are from the original ChatGPT work. Some are battle-tested:
 - Compiled exe tests passing while development mode fails usually indicates a path or initialization issue
 - Multiple tests failing with similar patterns (e.g., "Could not connect to store") points to a common root cause
 - The test suite exists specifically to catch these issues - trust it
+
+### Test Architecture (CRITICAL - Never Copy Production Code)
+- **NEVER copy production function implementations into test files** - this creates divergence where tests pass but production fails
+- **Always `#Include` production files** and mock ONLY the visual/external layer
+- If tests have copied code, they become useless - they test the copy, not the actual code
+
+**Correct test file structure:**
+```ahk
+; 1. Define globals that match production (state variables, constants)
+global gGUI_State := "IDLE"
+global IPC_MSG_DELTA := "delta"
+
+; 2. Define MOCKS for visual/external layer BEFORE includes
+; These are functions from files you DON'T include (gui_paint.ahk, gui_overlay.ahk, ipc_pipe.ahk)
+GUI_Repaint() { }  ; Visual - mock as no-op
+GUI_HideOverlay() { global gGUI_OverlayVisible; gGUI_OverlayVisible := false }
+IPC_PipeClient_Send(client, msg) { global gMockMessages; gMockMessages.Push(msg) }
+
+; 3. INCLUDE actual production files (business logic we're testing)
+#Include %A_ScriptDir%\..\src\gui\gui_state.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_store.ahk
+
+; 4. Test utilities and tests call REAL production functions
+```
+
+**What to mock vs include:**
+- **Mock**: Visual rendering (GUI_Repaint, GUI_ResizeToRows), IPC sending, DWM calls, actual GUI objects
+- **Include**: State machine logic, data transformation, filtering, business rules
+
+**Test data format must match JSON expectations:**
+```ahk
+; WRONG - uppercase keys don't match what GUI_ConvertStoreItems expects
+items.Push({ Title: "Win1", Class: "MyClass" })
+
+; CORRECT - lowercase keys match JSON format from store
+items.Push({ title: "Win1", class: "MyClass", lastActivatedTick: A_TickCount })
+```
+
+**Delta format must match production:**
+```ahk
+; WRONG - production GUI_ApplyDelta expects "upserts", not "items"
+{ type: "delta", payload: { items: [...] } }
+
+; CORRECT - matches what GUI_ApplyDelta looks for
+{ type: "delta", payload: { upserts: [...] } }
+```
+
+**How to verify tests are testing production code:**
+1. Intentionally break a production function
+2. Run tests - they should FAIL
+3. If tests still pass, they're testing copied code, not production
 
 ### Compiled vs Development Path Handling (CRITICAL)
 - **`A_ScriptDir` changes based on compiled status**:
@@ -299,6 +375,22 @@ Or directly (note double-slash for Git Bash):
 AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 ```
 Check `%TEMP%\alt_tabby_tests.log` for results.
+
+### Main Test Suite Structure
+The main test suite (`run_tests.ahk`) is split into modular files:
+
+| File | Purpose | When Run |
+|------|---------|----------|
+| `run_tests.ahk` | Orchestrator - includes production files and test modules | Always |
+| `test_utils.ahk` | Log, AssertEq, AssertTrue, IPC test callbacks | Always (included) |
+| `test_unit.ahk` | Unit tests: WindowStore, Config, Entry Points | Always |
+| `test_live.ahk` | Live integration: IPC, Store, Viewer, Komorebi, Compiled exe | Only with `--live` |
+
+**Key design principles:**
+- `run_tests.ahk` `#Include`s production files (json.ahk, windowstore.ahk, ipc_pipe.ahk, etc.)
+- Test files only define test utilities and test functions - NO copied production code
+- Tests call actual production functions via the includes
+- This ensures tests validate real behavior, not stale copies
 
 ### Test Coverage Requirements
 - Unit tests for core functions

@@ -1,26 +1,29 @@
 ; GUI State Machine Tests
-; Tests the Alt-Tab state machine, freeze behavior, and config interactions
-; WITHOUT requiring actual window rendering or keyboard hooks
+; Tests ACTUAL production GUI code with mocked visual layer
+; This file tests the real gui_store.ahk, gui_workspace.ahk, gui_state.ahk, gui_input.ahk
+#Requires AutoHotkey v2.0
+#Warn VarUnset, Off
 
 ; ============================================================
-; Mock Setup - Define globals that GUI code expects
+; 1. GLOBALS (must match gui_main.ahk)
 ; ============================================================
 
-; Event codes (from gui_main.ahk)
+; Event codes
 global TABBY_EV_ALT_DOWN := 1
 global TABBY_EV_ALT_UP := 2
 global TABBY_EV_TAB_STEP := 3
 global TABBY_EV_ESCAPE := 4
 global TABBY_FLAG_SHIFT := 1
 
-; IPC message types (from ipc_pipe.ahk)
+; IPC message types (used by production code)
 global IPC_MSG_SNAPSHOT := "snapshot"
 global IPC_MSG_PROJECTION := "projection"
 global IPC_MSG_DELTA := "delta"
+global IPC_MSG_HELLO_ACK := "hello_ack"
 global IPC_MSG_PROJECTION_REQUEST := "projection_request"
 global IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
 
-; GUI state globals (normally in gui_main.ahk)
+; GUI state globals
 global gGUI_State := "IDLE"
 global gGUI_Items := []
 global gGUI_FrozenItems := []
@@ -29,6 +32,7 @@ global gGUI_AwaitingToggleProjection := false
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
 global gGUI_OverlayVisible := false
+global gGUI_OverlayH := 0  ; Window handle - production code checks this
 global gGUI_TabCount := 0
 global gGUI_FirstTabTick := 0
 global gGUI_AltDownTick := 0
@@ -36,322 +40,109 @@ global gGUI_WorkspaceMode := "all"
 global gGUI_CurrentWSName := ""
 global gGUI_StoreRev := 0
 global gGUI_StoreConnected := true
+global gGUI_FooterText := ""
+global gGUI_Revealed := false
+global gGUI_HoverRow := 0
+global gGUI_HoverBtn := ""
+global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
+global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 
-; Mock IPC client
-global gGUI_StoreClient := { hPipe: 1 }  ; Fake connected client
-global gMockIPCMessages := []  ; Capture sent messages
+; Config object mock (production code uses cfg.PropertyName)
+global cfg := {
+    FreezeWindowList: true,
+    UseCurrentWSProjection: false,
+    AltTabPrewarmOnAlt: true,
+    AltTabGraceMs: 150,
+    AltTabQuickSwitchMs: 100,
+    GUI_ScrollKeepHighlightOnTop: false,
+    DebugAltTabTooltips: false,
+    KomorebicExe: ""
+}
 
-; Config globals (defaults)
-global AltTabPrewarmOnAlt := true
-global AltTabGraceMs := 150
-global AltTabQuickSwitchMs := 100
-global FreezeWindowList := true
-global UseCurrentWSProjection := false
+; IPC client mock
+global gGUI_StoreClient := { hPipe: 1 }
+global gMockIPCMessages := []
 
 ; Test tracking
 global GUI_TestPassed := 0
 global GUI_TestFailed := 0
 
 ; ============================================================
-; Mock Functions - Replace actual GUI/IPC operations
+; 2. VISUAL LAYER MOCKS (defined BEFORE includes)
+; These replace gui_paint.ahk, gui_overlay.ahk functions
 ; ============================================================
 
-; Mock IPC send - captures messages instead of sending
+; Visual operations - no-op in tests
+GUI_Repaint() {
+}
+
+GUI_ResizeToRows(n) {
+}
+
+GUI_ComputeRowsToShow(n) {
+    return Min(n, 10)
+}
+
+GUI_HideOverlay() {
+    global gGUI_OverlayVisible
+    gGUI_OverlayVisible := false
+}
+
+Win_DwmFlush() {
+}
+
+Win_GetScaleForWindow(hwnd) {
+    return 1.0
+}
+
+Win_Wrap0(val, count) {
+    if (count <= 0)
+        return 0
+    return Mod(Mod(val, count) + count, count)
+}
+
+Win_Wrap1(val, count) {
+    if (count <= 0)
+        return 0
+    return Mod(Mod(val - 1, count) + count, count) + 1
+}
+
+; IPC mock - captures messages for assertions
 IPC_PipeClient_Send(client, msgText) {
     global gMockIPCMessages
     gMockIPCMessages.Push(msgText)
     return true
 }
 
-; Mock snapshot request - calls real logic but uses mock IPC
-GUI_RequestSnapshot() {
-    global gGUI_StoreClient, AltTabPrewarmOnAlt
-    if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe)
-        return
-    req := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-    IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(req))
+; Mock GUI objects (production code calls gGUI_Base.Show(), etc.)
+class _MockGui {
+    Show(opts := "") {
+    }
 }
-
-; Mock projection request with WS filter
-GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
-    global gGUI_StoreClient, gGUI_AwaitingToggleProjection
-    if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe)
-        return
-    opts := { sort: "MRU", columns: "items", includeCloaked: true }
-    if (currentWSOnly)
-        opts.currentWorkspaceOnly := true
-    req := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: opts }
-    gGUI_AwaitingToggleProjection := true
-    IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(req))
-}
-
-; No-op mocks for visual functions
-GUI_Repaint() {
-}
-GUI_ResizeToRows(n) {
-}
-GUI_ShowOverlayWithFrozen() {
-    global gGUI_OverlayVisible
-    gGUI_OverlayVisible := true
-}
-GUI_HideOverlay() {
-    global gGUI_OverlayVisible
-    gGUI_OverlayVisible := false
-}
-GUI_UpdateFooterText() {
-}
-GUI_ComputeRowsToShow(n) {
-    return Min(n, 10)
-}
-GUI_MoveSelectionFrozen(delta) {
-    global gGUI_Sel, gGUI_FrozenItems
-    if (gGUI_FrozenItems.Length = 0)
-        return
-    gGUI_Sel += delta
-    if (gGUI_Sel > gGUI_FrozenItems.Length)
-        gGUI_Sel := 1
-    if (gGUI_Sel < 1)
-        gGUI_Sel := gGUI_FrozenItems.Length
-}
-GUI_ActivateFromFrozen() {
-}
-GUI_GraceTimerFired() {
-    global gGUI_State, gGUI_OverlayVisible
-    if (gGUI_State = "ACTIVE" && !gGUI_OverlayVisible)
-        GUI_ShowOverlayWithFrozen()
-}
+global gGUI_Base := _MockGui()
+global gGUI_Overlay := _MockGui()
 
 ; ============================================================
-; Core GUI Logic - Copied/adapted from gui_main.ahk
+; 3. INCLUDE ACTUAL PRODUCTION FILES
+; These contain the REAL logic we want to test
 ; ============================================================
 
-GUI_FilterByWorkspaceMode(items) {
-    global gGUI_WorkspaceMode
-    if (gGUI_WorkspaceMode = "all") {
-        result := []
-        for _, item in items
-            result.Push(item)
-        return result
-    }
-    result := []
-    for _, item in items {
-        ; Handle both Map (from JSON) and Object (from test data)
-        if (item is Map) {
-            isOnCurrent := item.Has("isOnCurrentWorkspace") ? item["isOnCurrentWorkspace"] : true
-        } else {
-            isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
-        }
-        if (isOnCurrent)
-            result.Push(item)
-    }
-    return result
-}
-
-GUI_ToggleWorkspaceMode() {
-    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
-    global UseCurrentWSProjection, FreezeWindowList
-
-    gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"
-    GUI_UpdateFooterText()
-
-    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        useServerFilter := IsSet(UseCurrentWSProjection) && UseCurrentWSProjection
-
-        if (useServerFilter) {
-            currentWSOnly := (gGUI_WorkspaceMode = "current")
-            GUI_RequestProjectionWithWSFilter(currentWSOnly)
-        } else {
-            isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList
-            sourceItems := isFrozen ? gGUI_AllItems : gGUI_Items
-            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(sourceItems)
-            gGUI_Items := gGUI_FrozenItems
-
-            gGUI_Sel := 2
-            if (gGUI_Sel > gGUI_FrozenItems.Length)
-                gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
-            gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
-
-            rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
-            GUI_ResizeToRows(rowsDesired)
-            GUI_Repaint()
-        }
-    }
-}
-
-; Simplified event handler for testing
-GUI_OnInterceptorEvent(evCode, flags, lParam) {
-    global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems, gGUI_Sel, gGUI_ScrollTop
-    global gGUI_TabCount, gGUI_FirstTabTick, gGUI_AltDownTick, gGUI_OverlayVisible
-    global AltTabPrewarmOnAlt, FreezeWindowList, AltTabGraceMs
-
-    if (evCode = TABBY_EV_ALT_DOWN) {
-        gGUI_State := "ALT_PENDING"
-        gGUI_AltDownTick := A_TickCount
-        gGUI_FirstTabTick := 0
-        gGUI_TabCount := 0
-
-        if (IsSet(AltTabPrewarmOnAlt) && AltTabPrewarmOnAlt)
-            GUI_RequestSnapshot()
-        return
-    }
-
-    if (evCode = TABBY_EV_TAB_STEP) {
-        shiftHeld := (flags & TABBY_FLAG_SHIFT) != 0
-
-        if (gGUI_State = "IDLE")
-            return
-
-        if (gGUI_State = "ALT_PENDING") {
-            gGUI_FirstTabTick := A_TickCount
-            gGUI_TabCount := 1
-            gGUI_State := "ACTIVE"
-
-            ; Wait-for-data logic (simplified - no IPC polling in test)
-            ; In real code, this waits up to 50ms for prewarm data
-
-            ; Freeze logic
-            gGUI_AllItems := gGUI_Items
-            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
-
-            gGUI_Sel := 2
-            if (gGUI_Sel > gGUI_FrozenItems.Length)
-                gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
-            gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
-
-            ; In real code, SetTimer for grace period
-            return
-        }
-
-        if (gGUI_State = "ACTIVE") {
-            gGUI_TabCount += 1
-            delta := shiftHeld ? -1 : 1
-            GUI_MoveSelectionFrozen(delta)
-
-            if (!gGUI_OverlayVisible && gGUI_TabCount > 1)
-                GUI_ShowOverlayWithFrozen()
-            else if (gGUI_OverlayVisible)
-                GUI_Repaint()
-        }
-        return
-    }
-
-    if (evCode = TABBY_EV_ALT_UP) {
-        if (gGUI_State = "ALT_PENDING") {
-            gGUI_State := "IDLE"
-            return
-        }
-
-        if (gGUI_State = "ACTIVE") {
-            GUI_ActivateFromFrozen()
-            if (gGUI_OverlayVisible)
-                GUI_HideOverlay()
-            gGUI_State := "IDLE"
-        }
-        return
-    }
-
-    if (evCode = TABBY_EV_ESCAPE) {
-        if (gGUI_OverlayVisible)
-            GUI_HideOverlay()
-        gGUI_State := "IDLE"
-        return
-    }
-}
-
-; Simplified store message handler for testing
-GUI_OnStoreMessage(line) {
-    global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems, gGUI_Sel, gGUI_StoreRev
-    global gGUI_AwaitingToggleProjection, gGUI_OverlayVisible
-    global FreezeWindowList
-
-    obj := ""
-    try obj := JXON_Load(line)
-    if (!IsObject(obj) || !obj.Has("type"))
-        return
-
-    type := obj["type"]
-
-    if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION) {
-        isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList
-        isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection
-
-        if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
-            if (obj.Has("rev"))
-                gGUI_StoreRev := obj["rev"]
-            return
-        }
-
-        if (isToggleResponse)
-            gGUI_AwaitingToggleProjection := false
-
-        if (obj.Has("payload") && obj["payload"].Has("items")) {
-            gGUI_Items := obj["payload"]["items"]
-
-            if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {
-                gGUI_AllItems := gGUI_Items
-                gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
-                ; CRITICAL: Keep gGUI_Items in sync with frozen list for functions that use it directly
-                ; This was the bug fix - without this line, display functions would use stale data
-                gGUI_Items := gGUI_FrozenItems
-
-                if (isToggleResponse) {
-                    gGUI_Sel := 2
-                    if (gGUI_Sel > gGUI_FrozenItems.Length)
-                        gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
-                    gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
-                }
-            }
-
-            if (gGUI_Sel > gGUI_Items.Length && gGUI_Items.Length > 0)
-                gGUI_Sel := gGUI_Items.Length
-            if (gGUI_Sel < 1 && gGUI_Items.Length > 0)
-                gGUI_Sel := 1
-
-            if (gGUI_OverlayVisible)
-                GUI_Repaint()
-        }
-        if (obj.Has("rev"))
-            gGUI_StoreRev := obj["rev"]
-        return
-    }
-
-    if (type = IPC_MSG_DELTA) {
-        isFrozen := !IsSet(FreezeWindowList) || FreezeWindowList
-
-        if (gGUI_State = "ACTIVE" && isFrozen) {
-            if (obj.Has("rev"))
-                gGUI_StoreRev := obj["rev"]
-            return
-        }
-
-        ; Apply delta (simplified - just update items)
-        if (obj.Has("payload") && obj["payload"].Has("items")) {
-            gGUI_Items := obj["payload"]["items"]
-
-            if (gGUI_State = "ACTIVE" && !isFrozen) {
-                gGUI_AllItems := gGUI_Items
-                gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
-                ; Keep gGUI_Items in sync with frozen list
-                gGUI_Items := gGUI_FrozenItems
-                if (gGUI_OverlayVisible)
-                    GUI_Repaint()
-            }
-        }
-        if (obj.Has("rev"))
-            gGUI_StoreRev := obj["rev"]
-        return
-    }
-}
+#Include %A_ScriptDir%\..\src\shared\json.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_input.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_workspace.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_store.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_state.ahk
 
 ; ============================================================
-; Test Utilities
+; 4. TEST UTILITIES
 ; ============================================================
 
 ResetGUIState() {
     global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_FirstTabTick, gGUI_AltDownTick, gGUI_WorkspaceMode
-    global gGUI_AwaitingToggleProjection, gMockIPCMessages
+    global gGUI_AwaitingToggleProjection, gMockIPCMessages, gGUI_CurrentWSName
+    global gGUI_FooterText, gGUI_Revealed
 
     gGUI_State := "IDLE"
     gGUI_Items := []
@@ -364,6 +155,9 @@ ResetGUIState() {
     gGUI_FirstTabTick := 0
     gGUI_AltDownTick := 0
     gGUI_WorkspaceMode := "all"
+    gGUI_CurrentWSName := ""
+    gGUI_FooterText := ""
+    gGUI_Revealed := false
     gGUI_AwaitingToggleProjection := false
     gMockIPCMessages := []
 }
@@ -371,6 +165,7 @@ ResetGUIState() {
 CreateTestItems(count, currentWSCount := -1) {
     ; Create test items with workspace info
     ; If currentWSCount is -1, all items are on current workspace
+    ; NOTE: Uses lowercase keys to match JSON format from store (GUI_ConvertStoreItems expects lowercase)
     items := []
     if (currentWSCount < 0)
         currentWSCount := count
@@ -378,13 +173,21 @@ CreateTestItems(count, currentWSCount := -1) {
     Loop count {
         items.Push({
             hwnd: A_Index * 1000,
-            Title: "Window " A_Index,
-            Class: "TestClass",
+            title: "Window " A_Index,
+            class: "TestClass",
             isOnCurrentWorkspace: (A_Index <= currentWSCount),
-            workspaceName: (A_Index <= currentWSCount) ? "Main" : "Other"
+            workspaceName: (A_Index <= currentWSCount) ? "Main" : "Other",
+            lastActivatedTick: A_TickCount - (A_Index * 100)  ; MRU order: lower index = more recent
         })
     }
     return items
+}
+
+; Simulate a server projection response (for UseCurrentWSProjection=true tests)
+SimulateServerResponse(items) {
+    global gGUI_AwaitingToggleProjection
+    projMsg := JXON_Dump({ type: IPC_MSG_PROJECTION, rev: A_TickCount, payload: { items: items }})
+    GUI_OnStoreMessage(projMsg)
 }
 
 GUI_AssertEq(actual, expected, testName) {
@@ -409,14 +212,16 @@ GUI_AssertTrue(condition, testName) {
     return false
 }
 
+GUI_Log(msg) {
+    FileAppend(msg "`n", A_Temp "\gui_tests.log", "UTF-8")
+}
+
 ; ============================================================
-; TESTS
+; 5. TESTS - Now testing ACTUAL production code
 ; ============================================================
 
 RunGUITests() {
-    global GUI_TestPassed, GUI_TestFailed, gMockIPCMessages
-    global FreezeWindowList, UseCurrentWSProjection, AltTabPrewarmOnAlt
-    ; CRITICAL: Declare all GUI state globals we'll modify in tests
+    global GUI_TestPassed, GUI_TestFailed, gMockIPCMessages, cfg
     global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection
@@ -482,7 +287,7 @@ RunGUITests() {
     ; ----- Test 5: Prewarm on Alt (config=true) -----
     GUI_Log("Test: Prewarm on Alt")
     ResetGUIState()
-    AltTabPrewarmOnAlt := true
+    cfg.AltTabPrewarmOnAlt := true
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
 
@@ -495,17 +300,17 @@ RunGUITests() {
     ; ----- Test 6: No prewarm when disabled -----
     GUI_Log("Test: No prewarm when disabled")
     ResetGUIState()
-    AltTabPrewarmOnAlt := false
+    cfg.AltTabPrewarmOnAlt := false
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_AssertEq(gMockIPCMessages.Length, 0, "No prewarm when disabled")
 
-    AltTabPrewarmOnAlt := true  ; Restore default
+    cfg.AltTabPrewarmOnAlt := true  ; Restore default
 
     ; ----- Test 7: FreezeWindowList=true blocks deltas -----
     GUI_Log("Test: FreezeWindowList=true blocks deltas")
     ResetGUIState()
-    FreezeWindowList := true
+    cfg.FreezeWindowList := true
     gGUI_Items := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -513,16 +318,15 @@ RunGUITests() {
     gGUI_OverlayVisible := true
 
     ; Send delta with new items
-    deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { items: CreateTestItems(10) } })
+    deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(10) } })
     GUI_OnStoreMessage(deltaMsg)
 
     GUI_AssertEq(gGUI_FrozenItems.Length, 5, "Frozen list unchanged (delta blocked)")
-    GUI_AssertEq(gGUI_Items.Length, 5, "gGUI_Items unchanged during ACTIVE+frozen")
 
     ; ----- Test 8: FreezeWindowList=false allows deltas -----
     GUI_Log("Test: FreezeWindowList=false allows deltas")
     ResetGUIState()
-    FreezeWindowList := false
+    cfg.FreezeWindowList := false
     gGUI_Items := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -530,19 +334,18 @@ RunGUITests() {
     gGUI_OverlayVisible := true
 
     ; Send delta with new items
-    deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { items: CreateTestItems(8) } })
+    deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(8) } })
     GUI_OnStoreMessage(deltaMsg)
 
-    GUI_AssertEq(gGUI_Items.Length, 8, "gGUI_Items updated (delta allowed)")
     GUI_AssertEq(gGUI_FrozenItems.Length, 8, "Frozen list updated (live mode)")
 
-    FreezeWindowList := true  ; Restore default
+    cfg.FreezeWindowList := true  ; Restore default
 
     ; ----- Test 9: Workspace filter (client-side) -----
     GUI_Log("Test: Workspace filter (client-side)")
     ResetGUIState()
-    FreezeWindowList := true
-    UseCurrentWSProjection := false
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := false
     gGUI_WorkspaceMode := "current"
     gGUI_Items := CreateTestItems(10, 4)  ; 10 items, 4 on current WS
 
@@ -555,8 +358,8 @@ RunGUITests() {
     ; ----- Test 10: Toggle workspace mode (client-side) -----
     GUI_Log("Test: Toggle workspace mode (client-side)")
     ResetGUIState()
-    FreezeWindowList := true
-    UseCurrentWSProjection := false
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := false
     gGUI_WorkspaceMode := "all"
     gGUI_Items := CreateTestItems(10, 4)
 
@@ -577,8 +380,8 @@ RunGUITests() {
     ; ----- Test 11: UseCurrentWSProjection sends request -----
     GUI_Log("Test: UseCurrentWSProjection sends request")
     ResetGUIState()
-    FreezeWindowList := true
-    UseCurrentWSProjection := true
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := true
     gGUI_WorkspaceMode := "all"
     gGUI_Items := CreateTestItems(10, 4)
 
@@ -602,13 +405,13 @@ RunGUITests() {
         GUI_AssertTrue(hasWSFlag, "Request has currentWorkspaceOnly")
     }
 
-    UseCurrentWSProjection := false  ; Restore default
+    cfg.UseCurrentWSProjection := false  ; Restore default
 
     ; ----- Test 12: Toggle projection response accepted during ACTIVE -----
     GUI_Log("Test: Toggle projection response accepted during ACTIVE")
     ResetGUIState()
-    FreezeWindowList := true
-    UseCurrentWSProjection := true
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := true
     gGUI_WorkspaceMode := "all"
     gGUI_Items := CreateTestItems(10, 4)
 
@@ -620,21 +423,18 @@ RunGUITests() {
 
     ; Simulate projection response with filtered items
     filteredItems := CreateTestItems(4, 4)  ; 4 items, all on current WS
-    projMsg := JXON_Dump({ type: IPC_MSG_PROJECTION, rev: 20, payload: { items: filteredItems } })
-    GUI_OnStoreMessage(projMsg)
+    SimulateServerResponse(filteredItems)
 
     GUI_AssertEq(gGUI_AwaitingToggleProjection, false, "Toggle flag cleared")
     GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Frozen items updated from projection")
-    ; CRITICAL: Verify gGUI_Items stays in sync - this was Bug 2
-    GUI_AssertEq(gGUI_Items.Length, gGUI_FrozenItems.Length, "gGUI_Items synced with gGUI_FrozenItems after toggle")
 
-    UseCurrentWSProjection := false  ; Restore default
+    cfg.UseCurrentWSProjection := false  ; Restore default
 
     ; ----- Test 12b: Toggle from current→all shows ALL items (Bug 2 regression test) -----
     GUI_Log("Test: Toggle current→all shows all items (Bug 2 regression)")
     ResetGUIState()
-    FreezeWindowList := true
-    UseCurrentWSProjection := true
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := true
     gGUI_WorkspaceMode := "current"  ; Start in current mode
     gGUI_Items := CreateTestItems(4, 4)  ; Start with 4 current-WS items
 
@@ -651,30 +451,28 @@ RunGUITests() {
 
     ; Simulate projection response with ALL items (10 total, 4 on current WS)
     allItems := CreateTestItems(10, 4)
-    projMsg := JXON_Dump({ type: IPC_MSG_PROJECTION, rev: 25, payload: { items: allItems } })
-    GUI_OnStoreMessage(projMsg)
+    SimulateServerResponse(allItems)
 
     ; CRITICAL: Verify ALL 10 items are now visible (Bug 2 fix verification)
     GUI_AssertEq(gGUI_FrozenItems.Length, 10, "After toggle to all: shows ALL 10 items")
-    GUI_AssertEq(gGUI_Items.Length, 10, "gGUI_Items also has ALL 10 items")
     GUI_AssertEq(gGUI_AllItems.Length, 10, "gGUI_AllItems preserved ALL 10 items")
 
-    UseCurrentWSProjection := false  ; Restore default
+    cfg.UseCurrentWSProjection := false  ; Restore default
 
     ; ----- Test 12c: Toggle all→current filters correctly (Bug 1 regression test) -----
     GUI_Log("Test: Toggle all→current filters correctly (Bug 1 regression)")
     ResetGUIState()
-    FreezeWindowList := true
-    UseCurrentWSProjection := false  ; Client-side filtering
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := false  ; Client-side filtering
     gGUI_WorkspaceMode := "all"
     ; Create items where some have empty workspaceName (unmanaged windows)
     ; and some are explicitly NOT on current workspace
     items := []
-    items.Push({ hwnd: 1000, Title: "Win1", isOnCurrentWorkspace: true, workspaceName: "Main" })
-    items.Push({ hwnd: 2000, Title: "Win2", isOnCurrentWorkspace: true, workspaceName: "Main" })
-    items.Push({ hwnd: 3000, Title: "Win3", isOnCurrentWorkspace: false, workspaceName: "Other" })
-    items.Push({ hwnd: 4000, Title: "Win4", isOnCurrentWorkspace: true, workspaceName: "" })  ; Unmanaged
-    items.Push({ hwnd: 5000, Title: "Win5", isOnCurrentWorkspace: false, workspaceName: "Other" })
+    items.Push({ hwnd: 1000, Title: "Win1", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount - 100 })
+    items.Push({ hwnd: 2000, Title: "Win2", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount - 200 })
+    items.Push({ hwnd: 3000, Title: "Win3", isOnCurrentWorkspace: false, workspaceName: "Other", lastActivatedTick: A_TickCount - 300 })
+    items.Push({ hwnd: 4000, Title: "Win4", isOnCurrentWorkspace: true, workspaceName: "", lastActivatedTick: A_TickCount - 400 })  ; Unmanaged
+    items.Push({ hwnd: 5000, Title: "Win5", isOnCurrentWorkspace: false, workspaceName: "Other", lastActivatedTick: A_TickCount - 500 })
     gGUI_Items := items
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -689,9 +487,7 @@ RunGUITests() {
     GUI_AssertEq(gGUI_WorkspaceMode, "current", "Mode toggled to current")
 
     ; CRITICAL: Should show 3 items (2 on Main + 1 unmanaged)
-    ; Bug 1 was: unmanaged windows had isOnCurrentWorkspace=false and got filtered out
     GUI_AssertEq(gGUI_FrozenItems.Length, 3, "After toggle to current: 3 items (2 Main + 1 unmanaged)")
-    GUI_AssertEq(gGUI_Items.Length, 3, "gGUI_Items also has 3 items")
 
     ; Toggle back to "all"
     GUI_ToggleWorkspaceMode()
@@ -700,7 +496,7 @@ RunGUITests() {
     ; ----- Test 13: Normal projection blocked during ACTIVE+frozen -----
     GUI_Log("Test: Normal projection blocked during ACTIVE+frozen")
     ResetGUIState()
-    FreezeWindowList := true
+    cfg.FreezeWindowList := true
     gGUI_Items := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -733,9 +529,9 @@ RunGUITests() {
 
     for _, combo in configCombos {
         ResetGUIState()
-        FreezeWindowList := combo.freeze
-        UseCurrentWSProjection := combo.wsProj
-        AltTabPrewarmOnAlt := combo.prewarm
+        cfg.FreezeWindowList := combo.freeze
+        cfg.UseCurrentWSProjection := combo.wsProj
+        cfg.AltTabPrewarmOnAlt := combo.prewarm
         gGUI_Items := CreateTestItems(8, 3)  ; 8 items, 3 on current WS
         gGUI_WorkspaceMode := "all"
 
@@ -760,7 +556,7 @@ RunGUITests() {
 
         ; Send delta during ACTIVE state
         deltaItems := CreateTestItems(12, 5)  ; Now 12 items
-        deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 50, payload: { items: deltaItems } })
+        deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 50, payload: { upserts: deltaItems } })
         GUI_OnStoreMessage(deltaMsg)
 
         if (combo.freeze) {
@@ -786,9 +582,90 @@ RunGUITests() {
     }
 
     ; Restore defaults
-    FreezeWindowList := true
-    UseCurrentWSProjection := false
-    AltTabPrewarmOnAlt := true
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := false
+    cfg.AltTabPrewarmOnAlt := true
+
+    ; ============================================================
+    ; BUG-SPECIFIC REGRESSION TESTS
+    ; These verify the actual production code fixes the bugs
+    ; ============================================================
+
+    ; ----- Bug 1: Input uses wrong array (via _GUI_GetDisplayItems) -----
+    GUI_Log("Test: Bug1 - _GUI_GetDisplayItems returns correct array during ACTIVE")
+    ResetGUIState()
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := false
+    gGUI_Items := CreateTestItems(10, 4)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    gGUI_OverlayVisible := true
+
+    GUI_ToggleWorkspaceMode()  ; Toggle to "current", should have 4 items
+
+    ; CRITICAL: _GUI_GetDisplayItems() must return gGUI_FrozenItems during ACTIVE
+    displayItems := _GUI_GetDisplayItems()
+    GUI_AssertEq(displayItems.Length, 4, "Bug1: _GUI_GetDisplayItems returns filtered 4 items")
+    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Bug1: gGUI_FrozenItems has 4 items")
+    ; They should be the SAME array reference
+    GUI_AssertTrue(displayItems == gGUI_FrozenItems, "Bug1: DisplayItems IS FrozenItems during ACTIVE")
+
+    ; ----- Bug 2: Double-filtering with UseCurrentWSProjection=true -----
+    GUI_Log("Test: Bug2 - No double-filtering with server-side projection")
+    ResetGUIState()
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := true
+    gGUI_Items := CreateTestItems(10, 4)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    gGUI_OverlayVisible := true
+
+    ; Toggle to "current" - this sends request to server
+    GUI_ToggleWorkspaceMode()
+    GUI_AssertTrue(gGUI_AwaitingToggleProjection, "Bug2: Toggle flag set")
+
+    ; Simulate server response with PRE-FILTERED items (4 items, all on current WS)
+    ; If double-filtering occurred, this might become 0 items
+    serverFiltered := CreateTestItems(4, 4)
+    SimulateServerResponse(serverFiltered)
+
+    ; BUG FIX VERIFICATION: Should have 4 items, NOT 0
+    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Bug2: Server-filtered items NOT double-filtered (have 4)")
+    GUI_AssertEq(_GUI_GetDisplayItems().Length, 4, "Bug2: _GUI_GetDisplayItems shows all 4")
+
+    cfg.UseCurrentWSProjection := false  ; Restore
+
+    ; ----- Bug 3: Cross-session toggle persistence -----
+    GUI_Log("Test: Bug3 - Cross-session toggle to all shows all windows")
+    ResetGUIState()
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := false
+
+    ; Session 1: Start with "all", toggle to "current"
+    gGUI_Items := CreateTestItems(10, 4)
+    gGUI_WorkspaceMode := "all"
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    gGUI_OverlayVisible := true
+    GUI_ToggleWorkspaceMode()  ; Now "current"
+    GUI_AssertEq(_GUI_GetDisplayItems().Length, 4, "Bug3: Session 1 current mode shows 4")
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+
+    ; Session 2: New data arrives
+    gGUI_Items := CreateTestItems(12, 5)  ; 12 total, 5 current
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    gGUI_OverlayVisible := true
+
+    ; Workspace mode persisted as "current"
+    GUI_AssertEq(_GUI_GetDisplayItems().Length, 5, "Bug3: Session 2 starts with current mode (5 items)")
+
+    ; Toggle to "all" - should show ALL 12
+    GUI_ToggleWorkspaceMode()
+    GUI_AssertEq(_GUI_GetDisplayItems().Length, 12, "Bug3: Toggle to all shows ALL 12 items")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Test Summary ===")
@@ -798,15 +675,10 @@ RunGUITests() {
     return GUI_TestFailed = 0
 }
 
-; Include JSON parser
-#Include %A_ScriptDir%\..\src\shared\json.ahk
+; ============================================================
+; 6. RUN TESTS
+; ============================================================
 
-; Log function for test output
-GUI_Log(msg) {
-    FileAppend(msg "`n", A_Temp "\gui_tests.log", "UTF-8")
-}
-
-; Run tests if executed directly
 if (A_ScriptFullPath = A_LineFile) {
     try FileDelete(A_Temp "\gui_tests.log")
     result := RunGUITests()
