@@ -160,10 +160,23 @@ ViewerAutoStartStore := false
 ; ============================================================
 ; Diagnostics
 ; ============================================================
-; Debug options for troubleshooting
+; Debug options for troubleshooting. All disabled by default
+; to minimize disk I/O and resource usage. Enable as needed.
 
-; Log revision bump sources to error log (for debugging churn)
+; Log revision bump sources to %TEMP%\tabby_store_error.log
+; Use when: Store rev is churning (incrementing rapidly when idle)
+; Shows which code paths are bumping rev unnecessarily
 DiagChurnLog := false
+
+; Log komorebi subscription events to %TEMP%\tabby_ksub_diag.log
+; Use when: Workspace tracking issues, windows not updating WS column,
+; move/focus events not being processed correctly
+DiagKomorebiLog := false
+
+; Show tooltips for Alt-Tab state machine debugging
+; Use when: Alt-Tab overlay behavior is incorrect (not showing,
+; wrong state transitions, quick-switch not working)
+DebugAltTabTooltips := false
 
 ; ============================================================
 ; Alt-Tab GUI Settings
