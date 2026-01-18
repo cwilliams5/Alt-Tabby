@@ -148,8 +148,12 @@ KomorebiSub_Start() {
     return true
 }
 
-; Diagnostic logging (always on for debugging compiled mode issues)
+; Diagnostic logging - controlled by DiagKomorebiLog config flag
+; Writes to %TEMP%\tabby_ksub_diag.log when enabled
 _KSub_DiagLog(msg) {
+    global DiagKomorebiLog
+    if (!IsSet(DiagKomorebiLog) || !DiagKomorebiLog)
+        return
     static logPath := A_Temp "\tabby_ksub_diag.log"
     try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", logPath, "UTF-8")
 }
@@ -390,41 +394,90 @@ _KSub_OnNotification(jsonLine) {
     ; Track if we explicitly handled workspace change
     handledWorkspaceEvent := false
 
-    ; Handle workspace focus events - update current workspace from event
-    if (eventType = "FocusMonitorWorkspaceNumber" || eventType = "FocusWorkspaceNumber" || eventType = "FocusNamedWorkspace") {
+    ; Handle workspace focus/move events - update current workspace from event
+    ; MoveContainerToWorkspaceNumber: user moved focused window to another workspace (and followed it)
+    if (eventType = "FocusMonitorWorkspaceNumber" || eventType = "FocusWorkspaceNumber"
+        || eventType = "FocusNamedWorkspace" || eventType = "MoveContainerToWorkspaceNumber"
+        || eventType = "MoveContainerToNamedWorkspace") {
         ; content varies by event type:
         ; - FocusMonitorWorkspaceNumber: [monitorIdx, workspaceIdx]
         ; - FocusWorkspaceNumber: [workspaceIdx]
         ; - FocusNamedWorkspace: "WorkspaceName"
-        contentRaw := _KSub_ExtractArrayByKey(eventObj, "content")
-        if (contentRaw = "") {
-            ; Maybe it's a string value
-            m := 0
-            if RegExMatch(eventObj, '"content"\s*:\s*"([^"]+)"', &m)
-                contentRaw := m[1]
-        }
+        ; - MoveContainerToWorkspaceNumber: workspaceIdx (single number)
+        ; - MoveContainerToNamedWorkspace: "WorkspaceName"
+
+        ; Try multiple extraction methods like the POC does
+        contentRaw := _KSub_ExtractContentRaw(eventObj)
 
         _KSub_Log("  FocusWorkspace content: " contentRaw)
+        _KSub_DiagLog("  content raw: '" contentRaw "'")
+
+        ; Debug: always show event structure for workspace events
+        if (StrLen(eventObj) > 0) {
+            ; Show full event if small, otherwise snippet
+            if (StrLen(eventObj) <= 500)
+                _KSub_DiagLog("  eventObj: " eventObj)
+            else {
+                snippet := SubStr(eventObj, 1, 400)
+                _KSub_DiagLog("  eventObj snippet: " snippet)
+            }
+        }
 
         wsName := ""
 
-        if (eventType = "FocusNamedWorkspace") {
+        if (eventType = "FocusNamedWorkspace" || eventType = "MoveContainerToNamedWorkspace") {
             ; Content is the workspace name directly
             wsName := Trim(contentRaw, '" ')
-        } else {
-            ; Content is array with index
-            parts := _KSub_ArrayTopLevelSplit(contentRaw)
+        } else if (eventType = "MoveContainerToWorkspaceNumber") {
+            ; Content is just the workspace index (single number, not array)
+            ; Try to extract as plain number first
             wsIdx := -1
-            if (parts.Length >= 2)
+            if (contentRaw != "") {
+                ; Remove brackets if present
+                cleaned := RegExReplace(contentRaw, "[\[\]]", "")
+                cleaned := Trim(cleaned)
+                if (cleaned != "")
+                    wsIdx := Integer(cleaned)
+            }
+            _KSub_DiagLog("  MoveContainer wsIdx=" wsIdx)
+
+            if (wsIdx >= 0) {
+                ; Use focused monitor (we're moving on current monitor)
+                focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateObj)
+                monitorsArr := _KSub_GetMonitorsArray(stateObj)
+                if (focusedMonIdx >= 0 && monitorsArr.Length > focusedMonIdx) {
+                    monObj := monitorsArr[focusedMonIdx + 1]
+                    wsName := _KSub_GetWorkspaceNameByIndex(monObj, wsIdx)
+                    _KSub_DiagLog("  lookup wsName from focusMon[" focusedMonIdx "] ws[" wsIdx "] = '" wsName "'")
+                }
+            }
+        } else {
+            ; FocusMonitorWorkspaceNumber: [monitorIdx, workspaceIdx]
+            ; FocusWorkspaceNumber: [workspaceIdx]
+            parts := _KSub_ArrayTopLevelSplit(contentRaw)
+            _KSub_DiagLog("  parts count: " parts.Length)
+            for i, p in parts
+                _KSub_DiagLog("    parts[" i "]: '" p "'")
+
+            wsIdx := -1
+            monIdx := 0
+            if (parts.Length >= 2) {
+                monIdx := Integer(Trim(parts[1]))
                 wsIdx := Integer(Trim(parts[2]))
-            else if (parts.Length = 1)
+            } else if (parts.Length = 1) {
                 wsIdx := Integer(Trim(parts[1]))
+            }
+
+            _KSub_DiagLog("  monIdx=" monIdx " wsIdx=" wsIdx)
 
             if (wsIdx >= 0) {
                 monitorsArr := _KSub_GetMonitorsArray(stateObj)
-                if (monitorsArr.Length > 0) {
-                    monObj := monitorsArr[1]  ; Assume single monitor
+                _KSub_DiagLog("  monitors count: " monitorsArr.Length)
+                if (monitorsArr.Length > monIdx) {
+                    ; Use the correct monitor from the event
+                    monObj := monitorsArr[monIdx + 1]  ; AHK is 1-based
                     wsName := _KSub_GetWorkspaceNameByIndex(monObj, wsIdx)
+                    _KSub_DiagLog("  lookup wsName from mon[" monIdx "] ws[" wsIdx "] = '" wsName "'")
                 }
             }
         }
@@ -433,12 +486,29 @@ _KSub_OnNotification(jsonLine) {
         _KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
         if (wsName != "") {
             global _KSub_LastWorkspaceName
+            ; Capture old workspace BEFORE updating (needed for move events)
+            previousWsName := _KSub_LastWorkspaceName
+
             if (wsName != _KSub_LastWorkspaceName) {
                 _KSub_Log("  Updating current workspace to '" wsName "' from focus event")
                 _KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
                 _KSub_LastWorkspaceName := wsName
                 try WindowStore_SetCurrentWorkspace("", wsName)
             }
+
+            ; For MOVE events: DON'T try to explicitly update the moved window here.
+            ; The state at this point is inconsistent - Signal has already moved to the TARGET
+            ; workspace in the state data, but focus indices on the SOURCE workspace point to
+            ; a DIFFERENT window. Any attempt to find "the moved window" will fail.
+            ;
+            ; Instead, rely on ProcessFullState from subsequent Cloak/Uncloak events which
+            ; will have consistent state and correctly update all windows including Signal.
+            if (eventType = "MoveContainerToWorkspaceNumber" || eventType = "MoveContainerToNamedWorkspace") {
+                _KSub_DiagLog("  Move event: previousWS='" previousWsName "' targetWS='" wsName "' (letting ProcessFullState handle window update)")
+            }
+
+            ; Immediately push to clients so they see the workspace change
+            try Store_PushToClients()
             handledWorkspaceEvent := true
         }
     }
@@ -459,9 +529,14 @@ _KSub_OnNotification(jsonLine) {
     }
 
     ; Process full state to update ALL windows' workspace info
-    ; Only skip workspace update if we explicitly handled a workspace focus event above
-    ; Otherwise, let ProcessFullState derive workspace from state (handles FocusChange, MoveWindow, etc.)
-    _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
+    ; ALWAYS skip workspace update from notifications - the state's focused workspace index
+    ; can be stale (not yet updated by komorebi). Trust explicit workspace events only.
+    ; Workspace is derived from state only during initial poll (_KSub_InitialPoll).
+    _KSub_ProcessFullState(stateObj, true)
+
+    ; Push changes to clients after ProcessFullState updates windows
+    ; This ensures clients see workspace assignments from the komorebi state
+    try Store_PushToClients()
 }
 
 ; Process full komorebi state and update all windows
@@ -495,6 +570,14 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
     wsIdxLog := (IsSet(focusedWsIdx) ? focusedWsIdx : "N/A")
     _KSub_Log("ProcessFullState: focusedMon=" focusedMonIdx " focusedWs=" wsIdxLog " currentWsName='" currentWsName "' lastWsName='" _KSub_LastWorkspaceName "' skipWsUpdate=" skipWorkspaceUpdate)
     _KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" wsIdxLog " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
+
+    ; Extra debug: if not skipping, show why we derived this workspace
+    if (!skipWorkspaceUpdate && focusedMonIdx >= 0 && monitorsArr.Length > 0) {
+        monObj := monitorsArr[focusedMonIdx + 1]
+        ring := _KSub_GetWorkspacesRing(monObj)
+        ringFocused := _KSub_GetIntProp(ring, "focused")
+        _KSub_DiagLog("  state ring.focused=" ringFocused)
+    }
 
     ; Only update current workspace if not skipping (initial poll or direct state query)
     ; Skip if called from notification handler since focus events already update workspace
@@ -722,6 +805,52 @@ _KSub_ExtractObjectByKey(text, key) {
         return ""
     start := m.Pos(0) + m.Len(0) - 1  ; at '{'
     return _KSub_BalancedObjectFrom(text, start)
+}
+
+; Extract "content" field from event - tries array, string, number, then object
+; Based on POC's _GetEventContentRaw which handles all komorebi content formats
+_KSub_ExtractContentRaw(evtText) {
+    ; Try array first: "content": [...]
+    arr := _KSub_ExtractArrayByKey(evtText, "content")
+    if (arr != "") {
+        _KSub_DiagLog("    ExtractContent: found array")
+        return arr
+    }
+
+    ; Try quoted string: "content": "value"
+    m := 0
+    if RegExMatch(evtText, '(?s)"content"\s*:\s*"((?:\\.|[^"])*)"', &m) {
+        _KSub_DiagLog("    ExtractContent: found string")
+        return m[1]  ; Return unquoted for consistency
+    }
+
+    ; Try integer: "content": 123
+    m := 0
+    if RegExMatch(evtText, '(?s)"content"\s*:\s*(-?\d+)', &m) {
+        _KSub_DiagLog("    ExtractContent: found integer=" m[1])
+        return m[1]
+    }
+
+    ; Try object: "content": {...}
+    ; This handles SocketMessage format where content is {EventType: value}
+    obj := _KSub_ExtractObjectByKey(evtText, "content")
+    if (obj != "") {
+        _KSub_DiagLog("    ExtractContent: found object, extracting value")
+        ; Try to extract the workspace index from within the object
+        ; e.g., {"MoveContainerToWorkspaceNumber": 1} -> extract 1
+        m := 0
+        ; Look for any numeric value in the object
+        if RegExMatch(obj, ':\s*(-?\d+)', &m)
+            return m[1]
+        ; Look for any string value
+        if RegExMatch(obj, ':\s*"([^"]*)"', &m)
+            return m[1]
+        ; Return the whole object as fallback
+        return obj
+    }
+
+    _KSub_DiagLog("    ExtractContent: no content found")
+    return ""
 }
 
 _KSub_ExtractArrayByKey(text, key) {
@@ -995,4 +1124,183 @@ _KSub_FindWorkspaceByHwnd(stateText, hwnd) {
         }
     }
     return ""
+}
+
+; Get the focused window hwnd from a SPECIFIC workspace by name
+; Used for move events where we need to find the window on the SOURCE workspace
+_KSub_GetFocusedHwndFromWorkspace(stateText, targetWsName) {
+    if (targetWsName = "")
+        return _KSub_GetFocusedHwnd(stateText)  ; Fallback to general lookup
+
+    _KSub_DiagLog("    GetFocusedHwndFromWorkspace: looking for ws='" targetWsName "'")
+
+    ; Search all monitors for the workspace with this name
+    monitorsArr := _KSub_GetMonitorsArray(stateText)
+    for mi, monObj in monitorsArr {
+        wsArr := _KSub_GetWorkspacesArray(monObj)
+        for wi, wsObj in wsArr {
+            wsName := _KSub_GetStringProp(wsObj, "name")
+            if (wsName = targetWsName) {
+                _KSub_DiagLog("    Found workspace '" targetWsName "' at mon=" (mi-1) " ws=" (wi-1))
+
+                ; Get focused container in this workspace
+                containersRing := _KSub_ExtractObjectByKey(wsObj, "containers")
+                if (containersRing != "") {
+                    focusedContIdx := _KSub_GetIntProp(containersRing, "focused")
+                    containersArr := _KSub_ExtractArrayByKey(containersRing, "elements")
+                    if (containersArr != "") {
+                        containers := _KSub_ArrayTopLevelSplit(containersArr)
+                        if (focusedContIdx >= 0 && focusedContIdx < containers.Length) {
+                            contObj := containers[focusedContIdx + 1]
+
+                            ; Get focused window in this container
+                            windowsRing := _KSub_ExtractObjectByKey(contObj, "windows")
+                            if (windowsRing != "") {
+                                focusedWinIdx := _KSub_GetIntProp(windowsRing, "focused")
+                                windowsArr := _KSub_ExtractArrayByKey(windowsRing, "elements")
+                                if (windowsArr != "") {
+                                    windows := _KSub_ArrayTopLevelSplit(windowsArr)
+                                    if (focusedWinIdx >= 0 && focusedWinIdx < windows.Length) {
+                                        winObj := windows[focusedWinIdx + 1]
+                                        hwnd := _KSub_GetIntProp(winObj, "hwnd")
+                                        if (hwnd) {
+                                            _KSub_DiagLog("    Found hwnd=" hwnd " via containers.windows")
+                                            return hwnd
+                                        }
+                                    }
+                                }
+                            }
+
+                            ; Fallback: container might have "window" directly
+                            windowObj := _KSub_ExtractObjectByKey(contObj, "window")
+                            if (windowObj != "") {
+                                hwnd := _KSub_GetIntProp(windowObj, "hwnd")
+                                if (hwnd) {
+                                    _KSub_DiagLog("    Found hwnd=" hwnd " via container.window")
+                                    return hwnd
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ; Fallback: try monocle_container
+                monocleObj := _KSub_ExtractObjectByKey(wsObj, "monocle_container")
+                if (monocleObj != "") {
+                    hwnd := _KSub_GetIntProp(monocleObj, "hwnd")
+                    if (!hwnd) {
+                        winObj := _KSub_ExtractObjectByKey(monocleObj, "window")
+                        if (winObj != "")
+                            hwnd := _KSub_GetIntProp(winObj, "hwnd")
+                    }
+                    if (hwnd) {
+                        _KSub_DiagLog("    Found hwnd=" hwnd " via monocle_container")
+                        return hwnd
+                    }
+                }
+
+                _KSub_DiagLog("    Workspace found but no focused window")
+                return 0
+            }
+        }
+    }
+
+    _KSub_DiagLog("    Workspace '" targetWsName "' not found in state")
+    return 0
+}
+
+; Get the focused window hwnd from komorebi state
+; Must navigate: focused monitor -> focused workspace -> focused container -> focused window
+_KSub_GetFocusedHwnd(stateText) {
+    ; Navigate through the state hierarchy to find the truly focused window
+    ; 1. Get focused monitor
+    focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateText)
+    monitorsArr := _KSub_GetMonitorsArray(stateText)
+
+    if (focusedMonIdx >= 0 && focusedMonIdx < monitorsArr.Length) {
+        monObj := monitorsArr[focusedMonIdx + 1]  ; AHK 1-based
+
+        ; 2. Get focused workspace on this monitor
+        focusedWsIdx := _KSub_GetFocusedWorkspaceIndex(monObj)
+        wsArr := _KSub_GetWorkspacesArray(monObj)
+
+        if (focusedWsIdx >= 0 && focusedWsIdx < wsArr.Length) {
+            wsObj := wsArr[focusedWsIdx + 1]  ; AHK 1-based
+
+            ; 3. Get focused container in this workspace
+            containersRing := _KSub_ExtractObjectByKey(wsObj, "containers")
+            if (containersRing != "") {
+                focusedContIdx := _KSub_GetIntProp(containersRing, "focused")
+                containersArr := _KSub_ExtractArrayByKey(containersRing, "elements")
+                if (containersArr != "") {
+                    containers := _KSub_ArrayTopLevelSplit(containersArr)
+                    if (focusedContIdx >= 0 && focusedContIdx < containers.Length) {
+                        contObj := containers[focusedContIdx + 1]
+
+                        ; 4. Get focused window in this container
+                        windowsRing := _KSub_ExtractObjectByKey(contObj, "windows")
+                        if (windowsRing != "") {
+                            focusedWinIdx := _KSub_GetIntProp(windowsRing, "focused")
+                            windowsArr := _KSub_ExtractArrayByKey(windowsRing, "elements")
+                            if (windowsArr != "") {
+                                windows := _KSub_ArrayTopLevelSplit(windowsArr)
+                                if (focusedWinIdx >= 0 && focusedWinIdx < windows.Length) {
+                                    winObj := windows[focusedWinIdx + 1]
+                                    hwnd := _KSub_GetIntProp(winObj, "hwnd")
+                                    if (hwnd) {
+                                        _KSub_DiagLog("    GetFocusedHwnd: found via hierarchy hwnd=" hwnd)
+                                        return hwnd
+                                    }
+                                }
+                            }
+                        }
+
+                        ; Fallback: container might have "window" directly (single window container)
+                        windowObj := _KSub_ExtractObjectByKey(contObj, "window")
+                        if (windowObj != "") {
+                            hwnd := _KSub_GetIntProp(windowObj, "hwnd")
+                            if (hwnd) {
+                                _KSub_DiagLog("    GetFocusedHwnd: found via container.window hwnd=" hwnd)
+                                return hwnd
+                            }
+                        }
+                    }
+                }
+            }
+
+            ; Fallback: try workspace's monocle_container
+            monocleObj := _KSub_ExtractObjectByKey(wsObj, "monocle_container")
+            if (monocleObj != "") {
+                hwnd := _KSub_GetIntProp(monocleObj, "hwnd")
+                if (!hwnd) {
+                    ; Try nested window object
+                    winObj := _KSub_ExtractObjectByKey(monocleObj, "window")
+                    if (winObj != "")
+                        hwnd := _KSub_GetIntProp(winObj, "hwnd")
+                }
+                if (hwnd) {
+                    _KSub_DiagLog("    GetFocusedHwnd: found via monocle_container hwnd=" hwnd)
+                    return hwnd
+                }
+            }
+        }
+    }
+
+    ; Last resort fallbacks (some komorebi builds have these at top level):
+    m := 0
+    if RegExMatch(stateText, '(?s)"focused_window"\s*:\s*\{[^}]*"hwnd"\s*:\s*(\d+)', &m) {
+        _KSub_DiagLog("    GetFocusedHwnd: found via focused_window fallback hwnd=" m[1])
+        return Integer(m[1])
+    }
+    if RegExMatch(stateText, '(?s)"focused_hwnd"\s*:\s*(\d+)', &m) {
+        _KSub_DiagLog("    GetFocusedHwnd: found via focused_hwnd fallback hwnd=" m[1])
+        return Integer(m[1])
+    }
+    if RegExMatch(stateText, '(?s)"last_focused_window"\s*:\s*\{[^}]*"hwnd"\s*:\s*(\d+)', &m) {
+        _KSub_DiagLog("    GetFocusedHwnd: found via last_focused_window fallback hwnd=" m[1])
+        return Integer(m[1])
+    }
+
+    _KSub_DiagLog("    GetFocusedHwnd: could not find focused hwnd")
+    return 0
 }

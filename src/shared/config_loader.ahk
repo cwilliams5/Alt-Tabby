@@ -91,6 +91,8 @@ _CL_LoadAllSettings() {
     _CL_LoadSetting_Bool("Viewer", "AutoStartStore", "ViewerAutoStartStore")
 
     _CL_LoadSetting_Bool("Diagnostics", "ChurnLog", "DiagChurnLog")
+    _CL_LoadSetting_Bool("Diagnostics", "KomorebiLog", "DiagKomorebiLog")
+    _CL_LoadSetting_Bool("Diagnostics", "AltTabTooltips", "DebugAltTabTooltips")
     _CL_LoadSetting_Int("Testing", "LiveDurationSec", "TestLiveDurationSec_Default")
 
     _CL_LoadSetting_Int("AltTab", "GraceMs", "AltTabGraceMs")
@@ -159,6 +161,12 @@ _CL_LoadSetting_Bool(section, key, globalName := "") {
         case "DiagChurnLog":
             global DiagChurnLog
             DiagChurnLog := boolVal
+        case "DiagKomorebiLog":
+            global DiagKomorebiLog
+            DiagKomorebiLog := boolVal
+        case "DebugAltTabTooltips":
+            global DebugAltTabTooltips
+            DebugAltTabTooltips := boolVal
         case "AltTabPrewarmOnAlt":
             global AltTabPrewarmOnAlt
             AltTabPrewarmOnAlt := boolVal
@@ -345,8 +353,13 @@ _CL_CreateDefaultIni(path) {
     content .= "`n"
 
     content .= "[Diagnostics]`n"
-    content .= "; Debug options`n"
+    content .= "; Debug options - all disabled by default to minimize disk I/O`n"
+    content .= "; ChurnLog: Log rev bump sources to %TEMP%\\tabby_store_error.log (debug store churn)`n"
     content .= "; ChurnLog=false`n"
+    content .= "; KomorebiLog: Log events to %TEMP%\\tabby_ksub_diag.log (debug workspace tracking)`n"
+    content .= "; KomorebiLog=false`n"
+    content .= "; AltTabTooltips: Show state machine tooltips (debug Alt-Tab overlay)`n"
+    content .= "; AltTabTooltips=false`n"
     content .= "`n"
 
     content .= "[AltTab]`n"

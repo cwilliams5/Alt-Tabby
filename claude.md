@@ -190,6 +190,33 @@ These are from the original ChatGPT work. Some are battle-tested:
 - The subscription includes BOTH event AND full state in each notification
 - Reference: `legacy/components_legacy/komorebi_poc - WORKING.ahk`
 
+### Komorebi Notification State Consistency (CRITICAL)
+- **Notification state is inconsistent** - it's a snapshot taken mid-operation
+- For workspace focus events (FocusMonitorWorkspaceNumber, etc.):
+  - Trust the EVENT's content for the new workspace name/index
+  - DON'T trust the state's `ring.focused` - it may be stale
+  - Always pass `skipWorkspaceUpdate=true` to ProcessFullState from notifications
+- For move events (MoveContainerToWorkspaceNumber, etc.):
+  - The moved WINDOW is already on the TARGET workspace in the state data
+  - But focus INDICES on the source workspace still point to OTHER windows
+  - DON'T try to find "the moved window" by looking at focused container on source workspace
+  - Let ProcessFullState handle window updates - it correctly finds windows by scanning ALL workspaces
+- **Push AFTER ProcessFullState** - updates to windows won't reach clients otherwise:
+  ```ahk
+  _KSub_ProcessFullState(stateObj, true)
+  try Store_PushToClients()  ; Critical! Send window updates to clients
+  ```
+- The pattern: trust EVENT for workspace change, trust STATE for window positions
+
+### Komorebi Event Content Extraction
+- Event content varies by type - use robust extraction:
+  - Array: `"content": [1, 2]`
+  - String: `"content": "WorkspaceName"`
+  - Integer: `"content": 1`
+  - Object: `"content": {"EventType": 1}` (for SocketMessage types)
+- The `_KSub_ExtractContentRaw()` function tries all formats in order
+- For SocketMessage events, the workspace index may be nested in an object
+
 ## Testing
 Run automated tests before committing:
 ```powershell
@@ -367,3 +394,31 @@ QuickSwitchMs=100     # Max time for quick switch
 - Alt+Tab detection: <5ms
 - GUI show after Tab: <50ms
 - Quick switch (no GUI): <25ms total
+
+## Debug Options
+
+Debug options are in `[Diagnostics]` section of config.ini. All disabled by default to minimize disk I/O.
+
+### DiagChurnLog
+- **File**: `%TEMP%\tabby_store_error.log`
+- **Use when**: Store rev is incrementing rapidly when idle (revision churn)
+- **Shows**: Which code paths are bumping rev unnecessarily
+- **Enable**: Set `ChurnLog=true` in config.ini `[Diagnostics]` section
+
+### DiagKomorebiLog
+- **File**: `%TEMP%\tabby_ksub_diag.log`
+- **Use when**: Workspace tracking issues - windows not showing correct workspace, CurWS not updating, move/focus events not being processed
+- **Shows**: All komorebi events received, content extraction, workspace lookups, window updates
+- **Enable**: Set `KomorebiLog=true` in config.ini `[Diagnostics]` section
+
+### DebugAltTabTooltips
+- **Output**: On-screen tooltips
+- **Use when**: Alt-Tab overlay not appearing, wrong state transitions, quick-switch not working
+- **Shows**: State machine transitions (ALT_UP arrival, selection out of range errors)
+- **Enable**: Set `AltTabTooltips=true` in config.ini `[Diagnostics]` section
+
+### DebugViewerLog
+- **File**: `%TEMP%\tabby_viewer.log`
+- **Use when**: Viewer not receiving deltas, connection issues
+- **Shows**: Pipe connection events, delta processing
+- **Enable**: Set `DebugLog=true` in config.ini `[Viewer]` section

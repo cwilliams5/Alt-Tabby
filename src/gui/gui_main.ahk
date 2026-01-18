@@ -387,9 +387,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     if (evCode = TABBY_EV_ALT_UP) {
-        ; DEBUG: Show ALT_UP arrival
-        ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
-        SetTimer(() => ToolTip(,,,3), -2000)
+        ; DEBUG: Show ALT_UP arrival (controlled by DebugAltTabTooltips config)
+        if (IsSet(DebugAltTabTooltips) && DebugAltTabTooltips) {
+            ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
+            SetTimer(() => ToolTip(,,,3), -2000)
+        }
 
         if (gGUI_State = "ALT_PENDING") {
             ; Alt released without Tab - return to IDLE
@@ -510,8 +512,11 @@ GUI_ActivateFromFrozen() {
     global gGUI_Sel, gGUI_FrozenItems
 
     if (gGUI_Sel < 1 || gGUI_Sel > gGUI_FrozenItems.Length) {
-        ToolTip("ACTIVATE: sel=" gGUI_Sel " OUT OF RANGE (len=" gGUI_FrozenItems.Length ")", 100, 150, 2)
-        SetTimer(() => ToolTip(,,,2), -2000)
+        ; DEBUG: Out of range selection (controlled by DebugAltTabTooltips config)
+        if (IsSet(DebugAltTabTooltips) && DebugAltTabTooltips) {
+            ToolTip("ACTIVATE: sel=" gGUI_Sel " OUT OF RANGE (len=" gGUI_FrozenItems.Length ")", 100, 150, 2)
+            SetTimer(() => ToolTip(,,,2), -2000)
+        }
         return
     }
 
