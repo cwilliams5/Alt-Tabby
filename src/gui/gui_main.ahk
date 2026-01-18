@@ -54,6 +54,7 @@ global gGUI_AltDownTick := 0
 global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
 global gGUI_FrozenItems := []  ; Snapshot of items when locking in
+global gGUI_AllItems := []     ; Unfiltered items - preserved for workspace toggle
 
 ; ========================= INTERCEPTOR STATE (built-in hooks) =========================
 ; These variables track the keyboard hook state (previously in interceptor.ahk)
@@ -351,8 +352,9 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_TabCount := 1
             gGUI_State := "ACTIVE"
 
-            ; Freeze the current items list NOW, filtered by workspace mode
-            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
+            ; Freeze: save ALL items (for workspace toggle), then filter
+            gGUI_AllItems := gGUI_Items
+            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
 
             ; Selection: First Alt+Tab selects the PREVIOUS window (position 2 in 1-based MRU list)
             ; Position 1 = current window (we're already on it)
@@ -838,7 +840,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 }
 
 GUI_ToggleWorkspaceMode() {
-    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
 
     ; Toggle mode
     gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"
@@ -846,8 +848,9 @@ GUI_ToggleWorkspaceMode() {
 
     ; If GUI is visible and active, re-filter and repaint
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        ; Re-filter from the original unfrozen items
-        gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
+        ; Re-filter from the UNFILTERED items (gGUI_AllItems preserved at freeze time)
+        gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+        gGUI_Items := gGUI_FrozenItems  ; Update display list
 
         ; Reset selection
         gGUI_Sel := 2
@@ -856,6 +859,9 @@ GUI_ToggleWorkspaceMode() {
         }
         gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
 
+        ; Resize GUI if item count changed significantly
+        rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+        GUI_ResizeToRows(rowsDesired)
         GUI_Repaint()
     }
 }
