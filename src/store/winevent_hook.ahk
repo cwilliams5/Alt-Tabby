@@ -228,6 +228,9 @@ _WEH_ProcessBatch() {
 ; Probe a single window - returns Map or empty string
 ; NOTE: Eligibility check should be done before calling this (via Blacklist_IsWindowEligible)
 _WEH_ProbeWindow(hwnd) {
+    ; Static buffer for DWM cloaking - avoid allocation per call
+    static cloakedBuf := Buffer(4, 0)
+
     ; Check window still exists
     try {
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
@@ -262,7 +265,6 @@ _WEH_ProbeWindow(hwnd) {
     isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
 
     ; DWM cloaking
-    cloakedBuf := Buffer(4, 0)
     hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
     isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 

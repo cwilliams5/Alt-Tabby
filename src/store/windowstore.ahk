@@ -207,6 +207,8 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
             continue  ; Window still exists, don't remove
         gWS_Store.Delete(hwnd)
+        ; Clean up icon pump tracking state (prevents memory leak)
+        try IconPump_CleanupWindow(hwnd)
         removed += 1
     }
     if (removed) {

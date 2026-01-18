@@ -63,6 +63,9 @@ WinEnumLite_ScanAll() {
 ; Probe a single window - returns Map or empty string
 ; NOTE: Eligibility check should be done before calling this (via Blacklist_IsWindowEligible)
 _WN_ProbeWindow(hwnd, zOrder := 0) {
+    ; Static buffer for DWM cloaking - avoid allocation per call
+    static cloakedBuf := Buffer(4, 0)
+
     ; Get basic window info
     title := ""
     class := ""
@@ -85,7 +88,6 @@ _WN_ProbeWindow(hwnd, zOrder := 0) {
     isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
 
     ; DWM cloaking detection (for virtual desktops, komorebi, etc.)
-    cloakedBuf := Buffer(4, 0)
     hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
     isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 

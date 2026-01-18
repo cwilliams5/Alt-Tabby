@@ -12,6 +12,7 @@
 ;   alt_tabby.exe --viewer    - Run as Debug Viewer
 ;   alt_tabby.exe --gui-only  - Run as GUI only (store must be running)
 ;   alt_tabby.exe --config    - Run Config Editor
+;   alt_tabby.exe --blacklist - Run Blacklist Editor
 ;
 ; IMPORTANT: Mode flag is set BEFORE includes. Each module checks
 ; this flag and only initializes if it matches.
@@ -36,33 +37,25 @@ for _, arg in A_Args {
         case "--config":
             g_AltTabbyMode := "config"
             ; Config editor shows its own window, no tray icon needed
+        case "--blacklist":
+            g_AltTabbyMode := "blacklist"
+            ; Blacklist editor shows its own window, no tray icon needed
     }
 }
 
-; Launcher mode: stay alive and manage subprocesses
+; Launcher mode globals (declared early, initialization happens after includes)
 if (g_AltTabbyMode = "launch") {
     global g_StorePID := 0
     global g_GuiPID := 0
     global g_ViewerPID := 0
-
-    ; Set up tray with on-demand menu updates
-    SetupLauncherTray()
-    OnMessage(0x404, TrayIconClick)  ; WM_TRAYICON
-
-    ; Launch store and GUI
-    LaunchStore()
-    Sleep(300)
-    LaunchGui()
-
-    ; Stay alive to manage subprocesses
-    Persistent()
+    global g_SplashGui := 0
+    global g_SplashStartTick := 0
 }
 
 ; Note: Subprocess tray icon hiding is done immediately in arg parsing above
 ; to minimize flicker (A_IconHidden := true set as soon as mode detected)
 
-; Config mode: run the config editor and exit
-; (Handled after includes since ConfigEditor_Run needs config_loader)
+; Note: Launcher initialization moved to after includes (needs ConfigLoader_Init)
 
 ; ============================================================
 ; INCLUDES
@@ -74,6 +67,7 @@ if (g_AltTabbyMode = "launch") {
 #Include %A_ScriptDir%\shared\
 #Include config_loader.ahk
 #Include config_editor.ahk
+#Include blacklist_editor.ahk
 #Include json.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
@@ -116,6 +110,47 @@ if (g_AltTabbyMode = "config") {
     ExitApp()
 }
 
+; Run blacklist editor and exit when launched with --blacklist
+if (g_AltTabbyMode = "blacklist") {
+    BlacklistEditor_Run()
+    ExitApp()
+}
+
+; ============================================================
+; LAUNCHER MODE INITIALIZATION
+; ============================================================
+; Must be after includes so we can use ConfigLoader_Init
+if (g_AltTabbyMode = "launch") {
+    ; Initialize config to get splash settings
+    ConfigLoader_Init()
+
+    ; Show splash screen if enabled
+    if (cfg.LauncherShowSplash)
+        ShowSplashScreen()
+
+    ; Set up tray with on-demand menu updates
+    SetupLauncherTray()
+    OnMessage(0x404, TrayIconClick)  ; WM_TRAYICON
+
+    ; Launch store and GUI
+    LaunchStore()
+    Sleep(300)
+    LaunchGui()
+
+    ; Hide splash after duration (or immediately if duration is 0)
+    if (cfg.LauncherShowSplash) {
+        ; Calculate remaining time after launches
+        elapsed := A_TickCount - g_SplashStartTick
+        remaining := cfg.LauncherSplashDurationMs - elapsed
+        if (remaining > 0)
+            Sleep(remaining)
+        HideSplashScreen()
+    }
+
+    ; Stay alive to manage subprocesses
+    Persistent()
+}
+
 ; ============================================================
 ; LAUNCHER FUNCTIONS
 ; ============================================================
@@ -144,6 +179,57 @@ LaunchViewer() {
         Run('"' A_ScriptFullPath '" --viewer', , , &g_ViewerPID)
     } else {
         Run('"' A_AhkPath '" "' A_ScriptDir '\viewer\viewer.ahk"', , , &g_ViewerPID)
+    }
+}
+
+; ============================================================
+; SPLASH SCREEN
+; ============================================================
+
+ShowSplashScreen() {
+    global g_SplashGui, g_SplashStartTick, cfg
+
+    g_SplashStartTick := A_TickCount
+
+    ; Resolve image path
+    imgPath := cfg.LauncherSplashImagePath
+    if (!InStr(imgPath, ":")) {  ; Relative path
+        if (A_IsCompiled)
+            imgPath := A_ScriptDir "\" imgPath       ; Next to exe
+        else
+            imgPath := A_ScriptDir "\..\img\logo.png"  ; In project root /img
+    }
+
+    ; Check if image exists
+    if (!FileExist(imgPath)) {
+        ; No image, skip splash
+        return
+    }
+
+    ; Create splash window (borderless, centered)
+    g_SplashGui := Gui("-Caption +AlwaysOnTop +ToolWindow")
+    g_SplashGui.BackColor := "000000"
+
+    ; Add image - let it determine size
+    try {
+        g_SplashGui.AddPicture("x0 y0", imgPath)
+    } catch {
+        ; Failed to load image
+        g_SplashGui.Destroy()
+        g_SplashGui := 0
+        return
+    }
+
+    ; Show centered on primary monitor
+    g_SplashGui.Show("AutoSize Center NoActivate")
+}
+
+HideSplashScreen() {
+    global g_SplashGui
+
+    if (g_SplashGui) {
+        try g_SplashGui.Destroy()
+        g_SplashGui := 0
     }
 }
 
@@ -210,8 +296,9 @@ UpdateTrayMenu() {
         tray.Add()
     }
 
-    ; Config editor
+    ; Editors
     tray.Add("Edit Config...", (*) => LaunchConfigEditor())
+    tray.Add("Edit Blacklist...", (*) => LaunchBlacklistEditor())
     tray.Add()
 
     tray.Add("Exit", (*) => ExitAll())
@@ -290,4 +377,10 @@ LaunchConfigEditor() {
         Sleep(300)
         RestartGui()
     }
+}
+
+LaunchBlacklistEditor() {
+    ; Run blacklist editor
+    ; IPC reload is sent automatically by the editor
+    BlacklistEditor_Run()
 }

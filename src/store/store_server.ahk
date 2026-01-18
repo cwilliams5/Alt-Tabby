@@ -90,8 +90,8 @@ Store_Init() {
         ksubOk := KomorebiSub_Init()
         gStore_ProducerState["komorebiSub"] := ksubOk ? "running" : "failed"
     } else if (cfg.UseKomorebiLite) {
-        KomorebiLite_Init()
-        gStore_ProducerState["komorebiLite"] := "running"
+        kLiteOk := KomorebiLite_Init()
+        gStore_ProducerState["komorebiLite"] := kLiteOk ? "running" : "failed"
     }
 
     ; Pumps

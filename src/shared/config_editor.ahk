@@ -13,8 +13,9 @@
 ; ============================================================
 
 global gCE_Gui := 0
-global gCE_Controls := Map()      ; Map of globalName -> control
+global gCE_Controls := Map()       ; Map of globalName -> control
 global gCE_OriginalValues := Map() ; Map of globalName -> original value
+global gCE_SectionHeights := Map() ; Calculated height per section
 global gCE_HasChanges := false
 global gCE_SavedChanges := false
 global gCE_AutoRestart := false
@@ -53,23 +54,34 @@ ConfigEditor_Run(autoRestart := false) {
 ; ============================================================
 
 _CE_CreateGui() {
-    global gCE_Gui, gCE_Controls, gConfigRegistry
+    global gCE_Gui, gCE_Controls, gConfigRegistry, gCE_SectionHeights
 
     gCE_Controls := Map()
-
-    gCE_Gui := Gui("+Resize +MinSize600x500", "Alt-Tabby Configuration")
-    gCE_Gui.OnEvent("Close", _CE_OnClose)
-    gCE_Gui.OnEvent("Size", _CE_OnSize)
-    gCE_Gui.SetFont("s9", "Segoe UI")
+    gCE_SectionHeights := Map()
 
     ; Get unique section names in order
     sections := _CE_GetSectionNames()
 
-    ; Calculate tab height - use larger default for subsections
-    tabHeight := 500
+    ; First pass: calculate content height for each section
+    maxHeight := 0
+    for _, sectionName in sections {
+        sectionHeight := _CE_CalcSectionHeight(sectionName)
+        gCE_SectionHeights[sectionName] := sectionHeight
+        if (sectionHeight > maxHeight)
+            maxHeight := sectionHeight
+    }
+
+    ; Dynamic tab height based on content (add margin for tab headers)
+    tabHeight := Min(Max(maxHeight + 70, 400), 700)  ; Min 400, max 700
+    windowHeight := tabHeight + 80  ; Room for buttons
+
+    gCE_Gui := Gui("+Resize +MinSize700x500", "Alt-Tabby Configuration")
+    gCE_Gui.OnEvent("Close", _CE_OnClose)
+    gCE_Gui.OnEvent("Size", _CE_OnSize)
+    gCE_Gui.SetFont("s9", "Segoe UI")
 
     ; Create tab control - positioned to leave room for buttons
-    tabs := gCE_Gui.AddTab3("vTabs x10 y10 w680 h" tabHeight, sections)
+    tabs := gCE_Gui.AddTab3("vTabs x10 y10 w780 h" tabHeight, sections)
 
     ; Build controls for each section
     for _, sectionName in sections {
@@ -81,15 +93,61 @@ _CE_CreateGui() {
 
     ; Bottom buttons - positioned below tabs
     btnY := tabHeight + 25
-    gCE_Gui.AddButton("vBtnSave w80 x500 y" btnY, "Save").OnEvent("Click", _CE_OnSave)
-    gCE_Gui.AddButton("vBtnCancel w80 x590 y" btnY, "Cancel").OnEvent("Click", _CE_OnCancel)
+    gCE_Gui.AddButton("vBtnSave w80 x600 y" btnY, "Save").OnEvent("Click", _CE_OnSave)
+    gCE_Gui.AddButton("vBtnCancel w80 x690 y" btnY, "Cancel").OnEvent("Click", _CE_OnCancel)
+
+    ; Set initial window size
+    gCE_Gui.Show("w800 h" windowHeight)
+    gCE_Gui.Hide()  ; Will be shown by caller
+}
+
+; Calculate height needed for a section's content
+_CE_CalcSectionHeight(sectionName) {
+    global gConfigRegistry
+    y := 60  ; Start offset
+
+    ; Section description
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section" && entry.name = sectionName) {
+            if (entry.HasOwnProp("long")) {
+                textLen := StrLen(entry.long)
+                lineCount := Max(1, Ceil(textLen / 80))
+                y += lineCount * 16 + 12
+            }
+            break
+        }
+    }
+
+    ; Count items in this section
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "subsection" && entry.section = sectionName) {
+            y += 12  ; Spacing
+            y += 18  ; Header
+            if (entry.HasOwnProp("desc")) {
+                descLen := StrLen(entry.desc)
+                descLines := Max(1, Ceil(descLen / 85))
+                y += descLines * 14 + 6
+            }
+            continue
+        }
+
+        if (!entry.HasOwnProp("default") || entry.s != sectionName)
+            continue
+
+        if (entry.t = "bool")
+            y += 22
+        else
+            y += 26
+    }
+
+    return y
 }
 
 _CE_GetSectionNames() {
     global gConfigRegistry
 
     ; Define order (matches config_loader.ahk)
-    order := ["AltTab", "GUI", "IPC", "Tools", "Producers", "Filtering",
+    order := ["AltTab", "Launcher", "GUI", "IPC", "Tools", "Producers", "Filtering",
               "WinEventHook", "ZPump", "WinEnum", "MruLite",
               "IconPump", "ProcPump", "KomorebiSub",
               "Heartbeat", "Viewer", "Diagnostics", "Testing"]
@@ -120,9 +178,13 @@ _CE_BuildSectionControls(sectionName) {
         if (entry.HasOwnProp("type") && entry.type = "section" && entry.name = sectionName) {
             if (entry.HasOwnProp("long")) {
                 gCE_Gui.SetFont("s9 italic", "Segoe UI")
-                gCE_Gui.AddText("x20 y" y " w600 cGray", entry.long)
+                ; Calculate dynamic height based on text length (approx 80 chars per line at w600)
+                textLen := StrLen(entry.long)
+                lineCount := Max(1, Ceil(textLen / 80))
+                textHeight := lineCount * 16 + 4  ; 16px per line + padding
+                gCE_Gui.AddText("x20 y" y " w600 h" textHeight " +Wrap cGray", entry.long)
                 gCE_Gui.SetFont("s9 norm", "Segoe UI")
-                y += 25
+                y += textHeight + 8
             }
             break
         }
@@ -146,9 +208,13 @@ _CE_BuildSectionControls(sectionName) {
             ; Subsection description (gray, italic)
             if (entry.HasOwnProp("desc")) {
                 gCE_Gui.SetFont("s8 italic", "Segoe UI")
-                gCE_Gui.AddText("x20 y" y " w600 cGray", entry.desc)
+                ; Calculate dynamic height for subsection description
+                descLen := StrLen(entry.desc)
+                descLines := Max(1, Ceil(descLen / 85))
+                descHeight := descLines * 14 + 2  ; 14px per line at s8
+                gCE_Gui.AddText("x20 y" y " w600 h" descHeight " +Wrap cGray", entry.desc)
                 gCE_Gui.SetFont("s9 norm", "Segoe UI")
-                y += 16
+                y += descHeight + 4
             }
 
             isFirst := false
@@ -306,7 +372,8 @@ _CE_SaveToIni() {
         if (currentVal != originalVal) {
             ; Format for INI
             iniVal := _CE_FormatForIni(currentVal, entry.t)
-            IniWrite(iniVal, gConfigIniPath, entry.s, entry.k)
+            ; Use format-preserving write to keep comments in place
+            _CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, iniVal)
             changeCount++
         }
     }
@@ -375,12 +442,12 @@ _CE_OnSize(guiObj, minMax, width, height) {
 
     ; Resize tab control - leave room for buttons at bottom
     try {
-        guiObj["Tabs"].Move(, , width - 20, height - 60)
+        guiObj["Tabs"].Move(, , width - 20, height - 70)
     }
 
     ; Move buttons to bottom right
     try {
-        guiObj["BtnCancel"].Move(width - 100, height - 45)
-        guiObj["BtnSave"].Move(width - 190, height - 45)
+        guiObj["BtnCancel"].Move(width - 110, height - 50)
+        guiObj["BtnSave"].Move(width - 200, height - 50)
     }
 }

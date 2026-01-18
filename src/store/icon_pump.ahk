@@ -56,6 +56,13 @@ IconPump_Stop() {
     SetTimer(_IP_Tick, 0)
 }
 
+; Clean up tracking state when windows are removed (prevents memory leak)
+IconPump_CleanupWindow(hwnd) {
+    global _IP_Attempts
+    if (_IP_Attempts.Has(hwnd))
+        _IP_Attempts.Delete(hwnd)
+}
+
 ; Main pump tick
 _IP_Tick() {
     global IconBatchPerTick, _IP_Attempts
