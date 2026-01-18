@@ -68,8 +68,11 @@ global gConfigRegistry := [
     {s: "Launcher", k: "ShowSplash", g: "LauncherShowSplash", t: "bool", default: true,
      d: "Show splash screen on startup. Displays logo briefly while store and GUI processes start."},
 
-    {s: "Launcher", k: "SplashDurationMs", g: "LauncherSplashDurationMs", t: "int", default: 1500,
-     d: "Splash screen display duration in milliseconds. Set to 0 for minimum (until processes start)."},
+    {s: "Launcher", k: "SplashDurationMs", g: "LauncherSplashDurationMs", t: "int", default: 3000,
+     d: "Splash screen display duration in milliseconds (includes fade time). Set to 0 for minimum."},
+
+    {s: "Launcher", k: "SplashFadeMs", g: "LauncherSplashFadeMs", t: "int", default: 500,
+     d: "Splash screen fade in/out duration in milliseconds."},
 
     {s: "Launcher", k: "SplashImagePath", g: "LauncherSplashImagePath", t: "string", default: "img\logo.png",
      d: "Path to splash screen image (relative to Alt-Tabby directory, or absolute path)."},
@@ -740,8 +743,9 @@ _CL_InitializeDefaults() {
 _CL_CreateDefaultIni(path) {
     global gConfigRegistry
 
-    content := "; Alt-Tabby Configuration`n"
-    content .= "; Edit values below. Delete file to restore defaults.`n"
+    content := ";;; Alt-Tabby Configuration`n"
+    content .= ";;; Settings are commented out by default (use registry defaults).`n"
+    content .= ";;; Uncomment a line to customize. Delete file to restore all defaults.`n"
     content .= "`n"
 
     currentSection := ""
@@ -750,19 +754,19 @@ _CL_CreateDefaultIni(path) {
         if (entry.HasOwnProp("type") && entry.type = "section") {
             content .= "[" entry.name "]`n"
             if (entry.HasOwnProp("long"))
-                content .= "; " entry.long "`n"
+                content .= ";;; " entry.long "`n"
             content .= "`n"
             currentSection := entry.name
         }
         else if (entry.HasOwnProp("type") && entry.type = "subsection") {
-            content .= "; --- " entry.name " ---`n"
+            content .= ";;; --- " entry.name " ---`n"
             if (entry.HasOwnProp("desc"))
-                content .= "; " entry.desc "`n"
+                content .= ";;; " entry.desc "`n"
         }
         else if (entry.HasOwnProp("default")) {
-            ; Setting
-            content .= "; " entry.d "`n"
-            content .= entry.k "=" _CL_FormatValue(entry.default, entry.t) "`n"
+            ; Setting - description with ;;; and default value commented out with ;
+            content .= ";;; " entry.d "`n"
+            content .= "; " entry.k "=" _CL_FormatValue(entry.default, entry.t) "`n"
         }
     }
 
@@ -772,16 +776,104 @@ _CL_CreateDefaultIni(path) {
 _CL_SupplementIni(path) {
     global gConfigRegistry
 
+    ; Read entire file
+    content := FileRead(path, "UTF-8")
+    lines := StrSplit(content, "`n", "`r")
+    modified := false
+
+    ; Build list of missing keys per section
+    missingBySection := Map()
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
-            continue  ; Skip section/subsection headers
+            continue
 
-        ; Check if key exists in INI
-        existing := IniRead(path, entry.s, entry.k, Chr(1))  ; Use sentinel
-        if (existing = Chr(1)) {
-            ; Key missing - add it with default value
-            IniWrite(_CL_FormatValue(entry.default, entry.t), path, entry.s, entry.k)
+        ; Check if key exists (commented or uncommented)
+        keyPattern := "^\s*;?\s*" entry.k "\s*="
+        keyFound := false
+        inSection := false
+
+        for _, line in lines {
+            trimmed := Trim(line)
+            if (SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]") {
+                sectionName := SubStr(trimmed, 2, -1)
+                inSection := (sectionName = entry.s)
+            } else if (inSection && RegExMatch(trimmed, keyPattern)) {
+                keyFound := true
+                break
+            }
         }
+
+        if (!keyFound) {
+            if (!missingBySection.Has(entry.s))
+                missingBySection[entry.s] := []
+            missingBySection[entry.s].Push(entry)
+            modified := true
+        }
+    }
+
+    if (!modified)
+        return
+
+    ; Rebuild file with missing keys inserted at end of each section
+    newLines := []
+    currentSection := ""
+
+    for idx, line in lines {
+        trimmed := Trim(line)
+
+        ; Detect section change
+        if (SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]") {
+            ; Before moving to new section, add missing keys to current section
+            if (currentSection != "" && missingBySection.Has(currentSection)) {
+                for _, entry in missingBySection[currentSection] {
+                    newLines.Push(";;; " entry.d)
+                    newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t))
+                }
+                missingBySection.Delete(currentSection)
+            }
+            currentSection := SubStr(trimmed, 2, -1)
+        }
+
+        newLines.Push(line)
+    }
+
+    ; Handle last section
+    if (currentSection != "" && missingBySection.Has(currentSection)) {
+        for _, entry in missingBySection[currentSection] {
+            newLines.Push(";;; " entry.d)
+            newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t))
+        }
+    }
+
+    ; Add any sections that don't exist yet
+    for sectionName, entries in missingBySection {
+        newLines.Push("")
+        newLines.Push("[" sectionName "]")
+        for _, entry in entries {
+            newLines.Push(";;; " entry.d)
+            newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t))
+        }
+    }
+
+    ; Write back safely - write to temp first, then replace
+    ; Build content string (AHK v2 arrays don't have Join)
+    content := ""
+    for i, line in newLines {
+        content .= (i > 1 ? "`n" : "") . line
+    }
+
+    tempPath := path ".tmp"
+    try {
+        if (FileExist(tempPath))
+            FileDelete(tempPath)
+        FileAppend(content, tempPath, "UTF-8")
+        ; Only delete original after temp write succeeded
+        FileDelete(path)
+        FileMove(tempPath, path)
+    } catch as e {
+        ; Clean up temp file on failure
+        try FileDelete(tempPath)
+        throw e  ; Re-throw so caller knows it failed
     }
 }
 
@@ -790,16 +882,24 @@ _CL_FormatValue(val, type) {
         return val ? "true" : "false"
     if (type = "int" && IsInteger(val) && val >= 0x10)
         return Format("0x{:X}", val)  ; Hex for large ints (colors, etc.)
+    if (type = "float")
+        return Format("{:.2f}", val)  ; 2 decimal places for floats
     return String(val)
 }
 
 ; Write to INI preserving comments and structure (unlike IniWrite which reorganizes)
-_CL_WriteIniPreserveFormat(path, section, key, value) {
+; If value equals default, comments out the line; otherwise uncomments it
+_CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType := "string") {
     if (!FileExist(path))
         return false
 
     content := FileRead(path, "UTF-8")
     lines := StrSplit(content, "`n", "`r")
+
+    ; Determine if value equals default (should be commented out)
+    formattedValue := _CL_FormatValue(value, valType)
+    formattedDefault := _CL_FormatValue(defaultVal, valType)
+    shouldComment := (formattedValue = formattedDefault)
 
     inSection := false
     keyFound := false
@@ -813,11 +913,15 @@ _CL_WriteIniPreserveFormat(path, section, key, value) {
             inSection := (m[1] = section)
         }
 
-        ; Check for key in correct section (not commented)
-        if (inSection && !keyFound && SubStr(trimmed, 1, 1) != ";") {
-            if (RegExMatch(trimmed, "^" key "\s*=", &m)) {
-                ; Found the key - replace the line
-                newLines.Push(key "=" value)
+        ; Check for key in correct section (commented or uncommented)
+        if (inSection && !keyFound) {
+            ; Match both "; Key=" and "Key="
+            if (RegExMatch(trimmed, "^;?\s*" key "\s*=")) {
+                ; Found the key - replace with proper format
+                if (shouldComment)
+                    newLines.Push("; " key "=" formattedValue)
+                else
+                    newLines.Push(key "=" formattedValue)
                 keyFound := true
                 continue
             }
@@ -826,10 +930,40 @@ _CL_WriteIniPreserveFormat(path, section, key, value) {
         newLines.Push(line)
     }
 
-    ; If key not found, fall back to IniWrite (adds new key)
+    ; If key not found, add it at end of section
     if (!keyFound) {
-        IniWrite(value, path, section, key)
-        return true
+        ; Find end of section and insert there
+        newLines2 := []
+        inSection := false
+        added := false
+
+        for i, line in newLines {
+            trimmed := Trim(line)
+
+            if (RegExMatch(trimmed, "^\[(.+)\]$", &m)) {
+                ; Before entering new section, add key if we were in target section
+                if (inSection && !added) {
+                    if (shouldComment)
+                        newLines2.Push("; " key "=" formattedValue)
+                    else
+                        newLines2.Push(key "=" formattedValue)
+                    added := true
+                }
+                inSection := (m[1] = section)
+            }
+
+            newLines2.Push(line)
+        }
+
+        ; If still not added (section was last), add at end
+        if (!added) {
+            if (shouldComment)
+                newLines2.Push("; " key "=" formattedValue)
+            else
+                newLines2.Push(key "=" formattedValue)
+        }
+
+        newLines := newLines2
     }
 
     ; Write back the file

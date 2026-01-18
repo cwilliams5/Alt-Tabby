@@ -659,6 +659,51 @@ UseCurrentWSProjection=false
 - GUI show after Tab: <50ms
 - Quick switch (no GUI): <25ms total
 
+### Cross-Workspace Window Activation (CRITICAL)
+
+When activating a window on a different komorebi workspace, several challenges must be handled:
+
+**The Problem:**
+- `komorebic focus-named-workspace` switches workspace but focuses komorebi's "last used" window, not our target
+- `SetForegroundWindow` alone fails due to Windows' foreground lock restrictions
+- Manual uncloaking with `DwmSetWindowAttribute(DWMWA_CLOAK)` pulls windows to the WRONG workspace - never do this!
+
+**The Solution (in `gui_state.ahk:GUI_ActivateItem`):**
+
+1. **Switch workspace and poll for completion:**
+   ```ahk
+   Run('"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"', , "Hide")
+
+   ; Poll with WScript.Shell.Run (window style 0 = hidden, true = wait)
+   shell := ComObject("WScript.Shell")
+   queryCmd := 'cmd.exe /c "' cfg.KomorebicExe '" query focused-workspace-name > "' tempFile '"'
+   shell.Run(queryCmd, 0, true)  ; Hidden cmd.exe, wait for completion
+   ```
+
+2. **Use komorebi's activation pattern (SendInput trick):**
+   ```ahk
+   ; Send dummy mouse input to bypass foreground lock
+   input := Buffer(40, 0)
+   NumPut("uint", 0, input, 0)  ; INPUT_MOUSE
+   DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", 40)
+
+   ; SetWindowPos to bring to top
+   DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", -1, ...)  ; HWND_TOPMOST
+   DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", -2, ...)  ; HWND_NOTOPMOST
+
+   ; Now SetForegroundWindow works
+   DllCall("user32\SetForegroundWindow", "ptr", hwnd)
+   ```
+
+**Key Lessons:**
+- **Never manually uncloak** - komorebi manages cloaking; interfering pulls windows across workspaces
+- **Must wait for workspace switch** - fixed sleep is unreliable; poll `query focused-workspace-name`
+- **Hide cmd.exe properly** - use `WScript.Shell.Run(cmd, 0, true)` not `shell.Exec()` which flashes
+- **SendInput trick is essential** - bypasses Windows' foreground lock that blocks background processes
+- **SetWindowPos before SetForegroundWindow** - brings window to top first
+
+**Reference:** Komorebi's `raise_and_focus_window` in [windows_api.rs](https://github.com/LGUG2Z/komorebi/blob/master/komorebi/src/windows_api.rs)
+
 ## Debug Options
 
 Debug options are in `[Diagnostics]` section of config.ini. All disabled by default to minimize disk I/O.
