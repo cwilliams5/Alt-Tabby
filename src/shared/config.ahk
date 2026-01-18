@@ -188,12 +188,22 @@ DebugAltTabTooltips := false
 AltTabGraceMs := 150
 
 ; Pre-warm snapshot on Alt down (true = request data before Tab pressed)
-; DISABLED FOR DEBUGGING - set to true once Alt+Tab logic is stable
-AltTabPrewarmOnAlt := false
+; Ensures fresh window data is available when Tab is pressed
+AltTabPrewarmOnAlt := true
 
 ; Maximum time for quick switch without showing GUI (ms)
 ; If Alt+Tab and release happen within this time, instant switch
 AltTabQuickSwitchMs := 100
+
+; Freeze window list on first Tab press (true = stable list, false = live updates)
+; When true, the list is locked and won't change during Alt+Tab interaction
+; When false, the list updates in real-time (may cause visual flicker)
+FreezeWindowList := true
+
+; Use server-side workspace projection filtering (true = request from store, false = filter client-side)
+; When true, CTRL workspace toggle requests a new projection from the store
+; When false, CTRL toggle filters the cached items locally (faster, but uses cached data)
+UseCurrentWSProjection := false
 
 ; ============================================================
 ; Testing
