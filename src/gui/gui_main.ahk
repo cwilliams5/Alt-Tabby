@@ -591,6 +591,8 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {
                 gGUI_AllItems := gGUI_Items
                 gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+                ; Keep gGUI_Items in sync with frozen list for functions that use it directly
+                gGUI_Items := gGUI_FrozenItems
 
                 ; Reset selection for toggle response
                 if (isToggleResponse) {
@@ -647,6 +649,8 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             if (gGUI_State = "ACTIVE" && !isFrozen) {
                 gGUI_AllItems := gGUI_Items
                 gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+                ; Keep gGUI_Items in sync with frozen list
+                gGUI_Items := gGUI_FrozenItems
                 if (gGUI_OverlayVisible && gGUI_OverlayH) {
                     GUI_Repaint()
                 }

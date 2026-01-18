@@ -29,7 +29,8 @@ $filesToCheck = @(
     "$srcRoot\store\proc_pump.ahk",
     "$srcRoot\viewer\viewer.ahk",
     "$srcRoot\interceptor\interceptor.ahk",
-    "$srcRoot\gui\gui_main.ahk"
+    "$srcRoot\gui\gui_main.ahk",
+    "$PSScriptRoot\gui_tests.ahk"
 )
 
 $syntaxErrors = 0
@@ -93,4 +94,41 @@ if (Test-Path $logFile) {
     Write-Host "Test log not found - tests may have failed to run" -ForegroundColor Red
 }
 
-exit $process.ExitCode
+$mainExitCode = $process.ExitCode
+
+# --- GUI Tests Phase ---
+Write-Host "`n--- GUI Tests Phase ---" -ForegroundColor Yellow
+
+$guiScript = "$PSScriptRoot\gui_tests.ahk"
+$guiLogFile = "$env:TEMP\gui_tests.log"
+$guiStderrFile = "$env:TEMP\ahk_gui_stderr.log"
+
+Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
+Remove-Item -Force -ErrorAction SilentlyContinue $guiStderrFile
+
+if (Test-Path $guiScript) {
+    $guiArgs = @("/ErrorStdOut", $guiScript)
+    $guiProcess = Start-Process -FilePath $ahk -ArgumentList $guiArgs -Wait -NoNewWindow -PassThru -RedirectStandardError $guiStderrFile
+
+    # Check for errors
+    $guiStderr = Get-Content $guiStderrFile -ErrorAction SilentlyContinue
+    if ($guiStderr) {
+        Write-Host "=== GUI TEST ERRORS ===" -ForegroundColor Red
+        Write-Host $guiStderr
+    }
+
+    # Show results
+    if (Test-Path $guiLogFile) {
+        Get-Content $guiLogFile
+    } else {
+        Write-Host "GUI test log not found - tests may have failed to run" -ForegroundColor Red
+    }
+
+    if ($guiProcess.ExitCode -ne 0) {
+        $mainExitCode = $guiProcess.ExitCode
+    }
+} else {
+    Write-Host "SKIP: gui_tests.ahk not found" -ForegroundColor Yellow
+}
+
+exit $mainExitCode

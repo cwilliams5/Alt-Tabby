@@ -293,8 +293,9 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
     }
     if (changed) {
         ; Update isOnCurrentWorkspace for all windows based on new workspace
+        ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
         for hwnd, rec in gWS_Store {
-            newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "" && name = "")
+            newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
             if (rec.isOnCurrentWorkspace != newIsOnCurrent)
                 rec.isOnCurrentWorkspace := newIsOnCurrent
         }
