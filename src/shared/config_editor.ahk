@@ -10,15 +10,43 @@
 ; Uses gConfigRegistry from config_loader.ahk to dynamically
 ; build the UI. Supports bool (checkbox), int/float/string (edit).
 ; Shows section descriptions and subsection headers.
+;
+; Dynamically adds vertical scrollbars to tabs whose content
+; exceeds the available viewport height.
 ; ============================================================
 
+; Scroll pane not needed - scrolling handled directly with control movement
+; and native Windows scrollbar APIs
+
 global gCE_Gui := 0
-global gCE_Controls := Map()       ; Map of globalName -> control
-global gCE_OriginalValues := Map() ; Map of globalName -> original value
-global gCE_SectionHeights := Map() ; Calculated height per section
+global gCE_TabCtrl := 0               ; Tab control reference
+global gCE_Controls := Map()          ; Map of globalName -> control
+global gCE_OriginalValues := Map()    ; Map of globalName -> original value
+global gCE_SectionHeights := Map()    ; Calculated height per section
+global gCE_ScrollPanes := Map()       ; Map of sectionName -> {controls, contentHeight, viewportHeight, scrollPos}
+global gCE_CurrentSection := ""       ; Currently visible section
+global gCE_TabViewportH := 0          ; Available height inside tab content area
+global gCE_BoundScrollMsg := 0        ; Bound scroll message handler
+global gCE_BoundWheelMsg := 0         ; Bound mouse wheel handler
 global gCE_HasChanges := false
 global gCE_SavedChanges := false
 global gCE_AutoRestart := false
+
+; Scroll bar constants
+global CE_SB_VERT := 1
+global CE_SIF_RANGE := 0x1
+global CE_SIF_PAGE := 0x2
+global CE_SIF_POS := 0x4
+global CE_SIF_ALL := 0x17
+global CE_WM_VSCROLL := 0x115
+global CE_WM_MOUSEWHEEL := 0x20A
+
+; Scroll commands
+global CE_SB_LINEUP := 0
+global CE_SB_LINEDOWN := 1
+global CE_SB_PAGEUP := 2
+global CE_SB_PAGEDOWN := 3
+global CE_SB_THUMBTRACK := 5
 
 ; ============================================================
 ; PUBLIC API
@@ -54,15 +82,17 @@ ConfigEditor_Run(autoRestart := false) {
 ; ============================================================
 
 _CE_CreateGui() {
-    global gCE_Gui, gCE_Controls, gConfigRegistry, gCE_SectionHeights
+    global gCE_Gui, gCE_TabCtrl, gCE_Controls, gConfigRegistry, gCE_SectionHeights
+    global gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
 
     gCE_Controls := Map()
     gCE_SectionHeights := Map()
+    gCE_ScrollPanes := Map()
 
     ; Get unique section names in order
     sections := _CE_GetSectionNames()
 
-    ; First pass: calculate content height for each section
+    ; First pass: calculate content height for each section accurately
     maxHeight := 0
     for _, sectionName in sections {
         sectionHeight := _CE_CalcSectionHeight(sectionName)
@@ -71,25 +101,57 @@ _CE_CreateGui() {
             maxHeight := sectionHeight
     }
 
-    ; Dynamic tab height based on content (add margin for tab headers)
-    tabHeight := Min(Max(maxHeight + 70, 400), 700)  ; Min 400, max 700
+    ; Fixed window/tab dimensions
+    tabHeight := 600
     windowHeight := tabHeight + 80  ; Room for buttons
 
-    gCE_Gui := Gui("+Resize +MinSize700x500", "Alt-Tabby Configuration")
+    ; Create GUI - WS_CLIPCHILDREN helps with redraw
+    gCE_Gui := Gui("+Resize +MinSize700x500 +0x02000000", "Alt-Tabby Configuration")
     gCE_Gui.OnEvent("Close", _CE_OnClose)
     gCE_Gui.OnEvent("Size", _CE_OnSize)
     gCE_Gui.SetFont("s9", "Segoe UI")
 
     ; Create tab control - positioned to leave room for buttons
-    tabs := gCE_Gui.AddTab3("vTabs x10 y10 w780 h" tabHeight, sections)
+    gCE_TabCtrl := gCE_Gui.AddTab3("vTabs x10 y10 w780 h" tabHeight, sections)
+    gCE_TabCtrl.OnEvent("Change", _CE_OnTabChange)
 
-    ; Build controls for each section
+    ; Tab content area height (tab is 600px, headers ~50px, margin ~10px)
+    gCE_TabViewportH := tabHeight - 60
+
+    ; Build controls for ALL sections directly in tabs
+    ; Track controls per section for scrolling
     for _, sectionName in sections {
-        tabs.UseTab(sectionName)
-        _CE_BuildSectionControls(sectionName)
+        gCE_TabCtrl.UseTab(sectionName)
+        contentHeight := gCE_SectionHeights[sectionName]
+
+        ; Build controls and get the list of controls created
+        sectionCtrls := _CE_BuildSectionControls(sectionName, gCE_Gui, false)
+
+        ; If this section needs scrolling, track it
+        if (contentHeight > gCE_TabViewportH) {
+            gCE_ScrollPanes[sectionName] := {
+                controls: sectionCtrls,
+                contentHeight: contentHeight,
+                viewportHeight: gCE_TabViewportH,
+                scrollPos: 0
+            }
+        }
     }
 
-    tabs.UseTab()  ; Exit tab control
+    gCE_TabCtrl.UseTab()  ; Exit tab control
+
+    gCE_CurrentSection := sections[1]
+
+    ; Register mouse wheel handler for scrolling
+    gCE_BoundWheelMsg := _CE_OnMouseWheel
+    OnMessage(CE_WM_MOUSEWHEEL, gCE_BoundWheelMsg)
+
+    ; Register scrollbar message handler
+    gCE_BoundScrollMsg := _CE_OnVScroll
+    OnMessage(CE_WM_VSCROLL, gCE_BoundScrollMsg)
+
+    ; Update scrollbar for initial section
+    _CE_UpdateScrollBar()
 
     ; Bottom buttons - positioned below tabs
     btnY := tabHeight + 25
@@ -102,9 +164,10 @@ _CE_CreateGui() {
 }
 
 ; Calculate height needed for a section's content
+; Returns the pure content height (not including tab header offset)
 _CE_CalcSectionHeight(sectionName) {
     global gConfigRegistry
-    y := 60  ; Start offset
+    y := 0  ; Pure content height, no offset
 
     ; Section description
     for _, entry in gConfigRegistry {
@@ -167,23 +230,30 @@ _CE_GetSectionNames() {
     return result
 }
 
-_CE_BuildSectionControls(sectionName) {
-    global gCE_Gui, gCE_Controls, gConfigRegistry
+; Build controls for a section
+; targetGui: The GUI to add controls to
+; isScrollPane: unused now, kept for compatibility
+; Returns: Array of {ctrl, origY} for all controls created (for scrolling)
+_CE_BuildSectionControls(sectionName, targetGui, isScrollPane := false) {
+    global gCE_Controls, gConfigRegistry
 
-    ; Start y after tab headers (2 rows of tabs = ~55px) + margin
+    createdControls := []  ; Track controls for scrolling
+
+    ; Start y position after tab headers (60px)
     y := 60
+    xBase := 20
 
     ; Find section's long description and show it
     for _, entry in gConfigRegistry {
         if (entry.HasOwnProp("type") && entry.type = "section" && entry.name = sectionName) {
             if (entry.HasOwnProp("long")) {
-                gCE_Gui.SetFont("s9 italic", "Segoe UI")
-                ; Calculate dynamic height based on text length (approx 80 chars per line at w600)
+                targetGui.SetFont("s9 italic", "Segoe UI")
                 textLen := StrLen(entry.long)
                 lineCount := Max(1, Ceil(textLen / 80))
-                textHeight := lineCount * 16 + 4  ; 16px per line + padding
-                gCE_Gui.AddText("x20 y" y " w600 h" textHeight " +Wrap cGray", entry.long)
-                gCE_Gui.SetFont("s9 norm", "Segoe UI")
+                textHeight := lineCount * 16 + 4
+                txtCtrl := targetGui.AddText("x" xBase " y" y " w600 h" textHeight " +Wrap cGray", entry.long)
+                createdControls.Push({ctrl: txtCtrl, origY: y})
+                targetGui.SetFont("s9 norm", "Segoe UI")
                 y += textHeight + 8
             }
             break
@@ -195,25 +265,23 @@ _CE_BuildSectionControls(sectionName) {
     for _, entry in gConfigRegistry {
         ; Handle subsection headers
         if (entry.HasOwnProp("type") && entry.type = "subsection" && entry.section = sectionName) {
-            ; Add spacing before subsection
             if (!isFirst)
                 y += 12
 
-            ; Subsection header (bold)
-            gCE_Gui.SetFont("s9 bold", "Segoe UI")
-            gCE_Gui.AddText("x20 y" y " w300", entry.name)
-            gCE_Gui.SetFont("s9 norm", "Segoe UI")
+            targetGui.SetFont("s9 bold", "Segoe UI")
+            hdrCtrl := targetGui.AddText("x" xBase " y" y " w300", entry.name)
+            createdControls.Push({ctrl: hdrCtrl, origY: y})
+            targetGui.SetFont("s9 norm", "Segoe UI")
             y += 18
 
-            ; Subsection description (gray, italic)
             if (entry.HasOwnProp("desc")) {
-                gCE_Gui.SetFont("s8 italic", "Segoe UI")
-                ; Calculate dynamic height for subsection description
+                targetGui.SetFont("s8 italic", "Segoe UI")
                 descLen := StrLen(entry.desc)
                 descLines := Max(1, Ceil(descLen / 85))
-                descHeight := descLines * 14 + 2  ; 14px per line at s8
-                gCE_Gui.AddText("x20 y" y " w600 h" descHeight " +Wrap cGray", entry.desc)
-                gCE_Gui.SetFont("s9 norm", "Segoe UI")
+                descHeight := descLines * 14 + 2
+                descCtrl := targetGui.AddText("x" xBase " y" y " w600 h" descHeight " +Wrap cGray", entry.desc)
+                createdControls.Push({ctrl: descCtrl, origY: y})
+                targetGui.SetFont("s9 norm", "Segoe UI")
                 y += descHeight + 4
             }
 
@@ -221,31 +289,80 @@ _CE_BuildSectionControls(sectionName) {
             continue
         }
 
-        ; Skip non-settings (section headers, etc.)
         if (!entry.HasOwnProp("default"))
             continue
-
-        ; Skip entries not in this section
         if (entry.s != sectionName)
             continue
 
-        ; Add control based on type
         if (entry.t = "bool") {
-            ; Checkbox for boolean
-            ctrl := gCE_Gui.AddCheckbox("v" entry.g " x20 y" y, entry.k)
+            ctrl := targetGui.AddCheckbox("v" entry.g " x" xBase " y" y, entry.k)
             ctrl.ToolTip := entry.d
+            createdControls.Push({ctrl: ctrl, origY: y})
             y += 22
         } else {
-            ; Label + Edit for other types
-            gCE_Gui.AddText("x20 y" y " w150", entry.k ":")
-            ctrl := gCE_Gui.AddEdit("v" entry.g " x180 y" (y - 2) " w200")
+            editX := xBase + 160
+            lblCtrl := targetGui.AddText("x" xBase " y" y " w150", entry.k ":")
+            createdControls.Push({ctrl: lblCtrl, origY: y})
+            ctrl := targetGui.AddEdit("v" entry.g " x" editX " y" (y - 2) " w200")
             ctrl.ToolTip := entry.d
+            createdControls.Push({ctrl: ctrl, origY: y - 2})
             y += 26
         }
 
         gCE_Controls[entry.g] := ctrl
         isFirst := false
     }
+
+    return createdControls
+}
+
+; ============================================================
+; SCROLLBAR MANAGEMENT
+; ============================================================
+
+; Update the scrollbar visibility and range for current section
+_CE_UpdateScrollBar() {
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
+
+    ; Check if current section needs scrolling
+    if (!gCE_ScrollPanes.Has(gCE_CurrentSection)) {
+        ; No scrolling needed - hide scrollbar
+        DllCall("ShowScrollBar", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Int", false)
+        return
+    }
+
+    pane := gCE_ScrollPanes[gCE_CurrentSection]
+
+    ; Show scrollbar
+    DllCall("ShowScrollBar", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Int", true)
+
+    ; Create SCROLLINFO struct (28 bytes)
+    scrollInfo := Buffer(28, 0)
+    NumPut("UInt", 28, scrollInfo, 0)                                    ; cbSize
+    NumPut("UInt", CE_SIF_RANGE | CE_SIF_PAGE | CE_SIF_POS, scrollInfo, 4)  ; fMask
+    NumPut("Int", 0, scrollInfo, 8)                                      ; nMin
+    NumPut("Int", pane.contentHeight, scrollInfo, 12)                    ; nMax
+    NumPut("UInt", pane.viewportHeight, scrollInfo, 16)                  ; nPage
+    NumPut("Int", pane.scrollPos, scrollInfo, 20)                        ; nPos
+
+    DllCall("SetScrollInfo", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Ptr", scrollInfo, "Int", true)
+}
+
+; Update just the scroll position (after scrolling)
+_CE_UpdateScrollPos() {
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
+
+    if (!gCE_ScrollPanes.Has(gCE_CurrentSection))
+        return
+
+    pane := gCE_ScrollPanes[gCE_CurrentSection]
+
+    scrollInfo := Buffer(28, 0)
+    NumPut("UInt", 28, scrollInfo, 0)           ; cbSize
+    NumPut("UInt", CE_SIF_POS, scrollInfo, 4)   ; fMask
+    NumPut("Int", pane.scrollPos, scrollInfo, 20)  ; nPos
+
+    DllCall("SetScrollInfo", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Ptr", scrollInfo, "Int", true)
 }
 
 ; ============================================================
@@ -395,6 +512,7 @@ _CE_OnSave(*) {
     global gCE_Gui, gCE_SavedChanges, gCE_AutoRestart
 
     if (!_CE_HasUnsavedChanges()) {
+        _CE_Cleanup()
         gCE_Gui.Destroy()
         return
     }
@@ -402,6 +520,7 @@ _CE_OnSave(*) {
     changeCount := _CE_SaveToIni()
     gCE_SavedChanges := true
 
+    _CE_Cleanup()
     gCE_Gui.Destroy()
 
     ; Show message if standalone mode
@@ -419,6 +538,7 @@ _CE_OnCancel(*) {
             return
     }
 
+    _CE_Cleanup()
     gCE_Gui.Destroy()
 }
 
@@ -427,20 +547,35 @@ _CE_OnClose(guiObj) {
         result := MsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Configuration", "YesNoCancel Icon?")
         if (result = "Cancel")
             return true  ; Prevent close
-        if (result = "Yes")
+        if (result = "Yes") {
             _CE_OnSave()
+            return false
+        }
         ; "No" falls through to close
     }
+    _CE_Cleanup()
     return false  ; Allow close
 }
 
 _CE_OnSize(guiObj, minMax, width, height) {
+    global gCE_TabViewportH, gCE_ScrollPanes, gCE_CurrentSection
+
     if (minMax = -1)  ; Minimized
         return
 
     ; Resize tab control - leave room for buttons at bottom
     try {
         guiObj["Tabs"].Move(, , width - 20, height - 70)
+        ; Update viewport height for scrolling calculations
+        gCE_TabViewportH := height - 70 - 60  ; tab height minus headers
+
+        ; Update scroll ranges for all panes
+        for sectionName, pane in gCE_ScrollPanes {
+            pane.viewportHeight := gCE_TabViewportH
+        }
+
+        ; Update scrollbar for current section
+        _CE_UpdateScrollBar()
     }
 
     ; Move buttons to bottom right
@@ -448,4 +583,154 @@ _CE_OnSize(guiObj, minMax, width, height) {
         guiObj["BtnCancel"].Move(width - 110, height - 50)
         guiObj["BtnSave"].Move(width - 200, height - 50)
     }
+}
+
+; Handle tab change - reset scroll position when switching tabs
+_CE_OnTabChange(ctrl, *) {
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
+
+    sections := _CE_GetSectionNames()
+    newSection := sections[ctrl.Value]
+
+    if (newSection = gCE_CurrentSection)
+        return
+
+    ; Reset scroll position for the tab we're leaving
+    if (gCE_ScrollPanes.Has(gCE_CurrentSection)) {
+        pane := gCE_ScrollPanes[gCE_CurrentSection]
+        if (pane.scrollPos != 0) {
+            ; Move controls back to original positions
+            for item in pane.controls {
+                try item.ctrl.Move(unset, item.origY, unset, unset)
+            }
+            pane.scrollPos := 0
+        }
+    }
+
+    gCE_CurrentSection := newSection
+
+    ; Update scrollbar for new section
+    _CE_UpdateScrollBar()
+
+    ; Force redraw to show new tab's content correctly
+    DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
+            "UInt", 0x0001 | 0x0100 | 0x0080)  ; RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN
+}
+
+; Clean up before destroying main GUI
+_CE_Cleanup() {
+    global gCE_ScrollPanes, gCE_BoundWheelMsg, gCE_BoundScrollMsg
+
+    if (IsSet(gCE_BoundWheelMsg) && gCE_BoundWheelMsg) {
+        OnMessage(CE_WM_MOUSEWHEEL, gCE_BoundWheelMsg, 0)
+        gCE_BoundWheelMsg := 0
+    }
+    if (IsSet(gCE_BoundScrollMsg) && gCE_BoundScrollMsg) {
+        OnMessage(CE_WM_VSCROLL, gCE_BoundScrollMsg, 0)
+        gCE_BoundScrollMsg := 0
+    }
+    gCE_ScrollPanes := Map()
+}
+
+; Perform scrolling - moves controls and refreshes display
+_CE_DoScroll(deltaPixels) {
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
+
+    if (!gCE_ScrollPanes.Has(gCE_CurrentSection))
+        return
+
+    pane := gCE_ScrollPanes[gCE_CurrentSection]
+
+    oldPos := pane.scrollPos
+    maxPos := pane.contentHeight - pane.viewportHeight
+    if (maxPos < 0)
+        maxPos := 0
+
+    ; Calculate new position
+    newPos := pane.scrollPos + deltaPixels
+    newPos := Max(0, Min(maxPos, newPos))
+
+    if (newPos = oldPos)
+        return
+
+    pane.scrollPos := newPos
+
+    ; Move all controls in this section
+    for item in pane.controls {
+        try {
+            newY := item.origY - pane.scrollPos
+            item.ctrl.Move(unset, newY, unset, unset)
+        }
+    }
+
+    ; Update scrollbar position
+    _CE_UpdateScrollPos()
+
+    ; Force full window redraw - slow but reliable
+    DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
+            "UInt", 0x0001 | 0x0100 | 0x0080)  ; RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN
+}
+
+; Handle WM_VSCROLL - scrollbar interaction
+_CE_OnVScroll(wParam, lParam, msg, hwnd) {
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
+
+    ; Only handle for our window
+    if (hwnd != gCE_Gui.Hwnd)
+        return
+
+    ; Only scroll if current section needs it
+    if (!gCE_ScrollPanes.Has(gCE_CurrentSection))
+        return
+
+    pane := gCE_ScrollPanes[gCE_CurrentSection]
+    scrollCmd := wParam & 0xFFFF
+
+    deltaPixels := 0
+
+    switch scrollCmd {
+        case CE_SB_LINEUP:
+            deltaPixels := -30
+        case CE_SB_LINEDOWN:
+            deltaPixels := 30
+        case CE_SB_PAGEUP:
+            deltaPixels := -gCE_TabViewportH
+        case CE_SB_PAGEDOWN:
+            deltaPixels := gCE_TabViewportH
+        case CE_SB_THUMBTRACK:
+            ; Get thumb position from high word
+            newPos := (wParam >> 16) & 0xFFFF
+            deltaPixels := newPos - pane.scrollPos
+    }
+
+    if (deltaPixels != 0)
+        _CE_DoScroll(deltaPixels)
+
+    return 0
+}
+
+; Handle mouse wheel - scroll by moving controls
+_CE_OnMouseWheel(wParam, lParam, msg, hwnd) {
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
+
+    ; Only scroll if current section needs it
+    if (!gCE_ScrollPanes.Has(gCE_CurrentSection))
+        return
+
+    ; Only handle if mouse is over our window
+    MouseGetPos(, , &winHwnd)
+    if (winHwnd != gCE_Gui.Hwnd)
+        return
+
+    ; Get wheel delta (positive = scroll up, negative = scroll down)
+    delta := (wParam >> 16) & 0xFFFF
+    if (delta > 0x7FFF)
+        delta := delta - 0x10000
+
+    ; Convert to scroll amount - 120 units per notch, 100px per notch
+    scrollAmount := -delta / 120 * 100
+
+    _CE_DoScroll(scrollAmount)
+
+    return 0
 }
