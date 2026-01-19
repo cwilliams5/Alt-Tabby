@@ -14,6 +14,8 @@ IPC_MSG_PING := "ping"
 IPC_MSG_ERROR := "error"
 IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
 IPC_MSG_HEARTBEAT := "heartbeat"
+IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
+IPC_MSG_PRODUCER_STATUS := "producer_status"
 
 global IPC_DebugLogPath := ""
 

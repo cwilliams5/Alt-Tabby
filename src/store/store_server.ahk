@@ -130,8 +130,8 @@ Store_Init() {
         }
     }
 
-    ; Store producer state in meta for client visibility
-    _Store_UpdateProducerMeta()
+    ; NOTE: Producer state is NOT stored in gWS_Meta anymore (removes bloat from deltas/snapshots)
+    ; Clients that need producer status should send IPC_MSG_PRODUCER_STATUS_REQUEST
 
     ; Start heartbeat timer for client connection health
     SetTimer(Store_HeartbeatTick, cfg.StoreHeartbeatIntervalMs)
@@ -409,6 +409,25 @@ Store_OnMessage(line, hPipe := 0) {
         Store_PushToClients()
         return
     }
+    if (type = IPC_MSG_PRODUCER_STATUS_REQUEST) {
+        ; Return current producer states (on-demand, not in every delta/snapshot)
+        producers := _Store_GetProducerStates()
+        resp := {
+            type: IPC_MSG_PRODUCER_STATUS,
+            producers: producers
+        }
+        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(resp))
+        return
+    }
+}
+
+; Get current producer states as plain object (for IPC response)
+_Store_GetProducerStates() {
+    global gStore_ProducerState
+    producers := {}
+    for name, state in gStore_ProducerState
+        producers.%name% := state
+    return producers
 }
 
 ; Auto-init only if running standalone or if mode is "store"
@@ -471,14 +490,4 @@ _Store_HasIpcSymbols() {
     } catch {
         return false
     }
-}
-
-; Update gWS_Meta with current producer states for client visibility
-_Store_UpdateProducerMeta() {
-    global gStore_ProducerState, gWS_Meta
-    ; Convert Map to plain object for JSON serialization
-    producers := {}
-    for name, state in gStore_ProducerState
-        producers.%name% := state
-    gWS_Meta["producers"] := producers
 }
