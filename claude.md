@@ -865,11 +865,7 @@ for item in gGUI_Items {
 
 #### Debugging Rapid Alt-Tab Issues
 
-**Enable event logging:**
-```ahk
-; In gui_state.ahk - set to true for debugging
-global gGUI_DebugEventLog := true
-```
+**Enable event logging:** Set `EventLog=true` in config.ini `[Diagnostics]` section (see DiagEventLog below).
 
 **Log file:** `%TEMP%\tabby_events.log`
 
@@ -929,3 +925,10 @@ Debug options are in `[Diagnostics]` section of config.ini. All disabled by defa
 - **Use when**: Viewer not receiving deltas, connection issues
 - **Shows**: Pipe connection events, delta processing
 - **Enable**: Set `DebugLog=true` in config.ini `[Viewer]` section
+
+### DiagEventLog
+- **File**: `%TEMP%\tabby_events.log`
+- **Use when**: Rapid Alt-Tab issues, events being lost, wrong window selected
+- **Shows**: All interceptor events (Alt/Tab down/up), state machine transitions, async activation phases, event buffering, MRU updates
+- **Enable**: Set `EventLog=true` in config.ini `[Diagnostics]` section
+- **Pattern to look for**: Missing `Tab_Down` between `Alt_Down` and `Alt_Up` indicates Tab was lost during hook uninstallation
