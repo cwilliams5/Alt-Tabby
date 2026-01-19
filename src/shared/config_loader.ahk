@@ -666,6 +666,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "AltTabTooltips", g: "DebugAltTabTooltips", t: "bool", default: false,
      d: "Show tooltips for Alt-Tab state machine debugging. Use when overlay behavior is incorrect."},
 
+    {s: "Diagnostics", k: "EventLog", g: "DiagEventLog", t: "bool", default: false,
+     d: "Log Alt-Tab events to %TEMP%\\tabby_events.log. Use when debugging rapid Alt-Tab or event timing issues."},
+
     ; ============================================================
     ; Testing
     ; ============================================================
