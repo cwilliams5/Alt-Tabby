@@ -58,6 +58,15 @@ global gConfigRegistry := [
     {s: "AltTab", k: "UseCurrentWSProjection", g: "UseCurrentWSProjection", t: "bool", default: true,
      d: "Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data)."},
 
+    {type: "subsection", section: "AltTab", name: "Bypass",
+     desc: "When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby"},
+
+    {s: "AltTab", k: "BypassFullscreen", g: "AltTabBypassFullscreen", t: "bool", default: true,
+     d: "Bypass Alt-Tabby when the foreground window is fullscreen (covers ≥99% of screen). Useful for games that need native Alt-Tab behavior."},
+
+    {s: "AltTab", k: "BypassProcesses", g: "AltTabBypassProcesses", t: "string", default: "",
+     d: "Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead."},
+
     ; ============================================================
     ; Launcher Settings
     ; ============================================================

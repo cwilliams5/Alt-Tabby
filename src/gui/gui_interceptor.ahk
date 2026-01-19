@@ -15,8 +15,7 @@ global TABBY_FLAG_SHIFT  := 1  ; Shift modifier flag
 
 global gINT_DecisionMs := 24          ; Tab decision window
 global gINT_LastAltLeewayMs := 60     ; Alt timing tolerance
-global gINT_DisableInProcesses := []
-global gINT_DisableInFullscreen := true
+; NOTE: Bypass settings are now in config: cfg.AltTabBypassFullscreen, cfg.AltTabBypassProcesses
 
 global gINT_SessionActive := false
 global gINT_TabHeld := false
@@ -268,18 +267,26 @@ INT_Escape_Down(*) {
 ; ========================= BYPASS DETECTION =========================
 
 INT_ShouldBypass() {
-    global gINT_DisableInProcesses, gINT_DisableInFullscreen
+    global cfg
 
-    exename := ""
-    try exename := WinGetProcessName("A")
-    if (exename) {
-        lex := StrLower(exename)
-        for _, nm in gINT_DisableInProcesses {
-            if (StrLower(nm) = lex)
-                return true
+    ; Check process blacklist (comma-separated string from config)
+    if (cfg.AltTabBypassProcesses != "") {
+        exename := ""
+        try exename := WinGetProcessName("A")
+        if (exename) {
+            lex := StrLower(exename)
+            ; Parse comma-separated list
+            bypassList := StrSplit(cfg.AltTabBypassProcesses, ",")
+            for _, nm in bypassList {
+                nm := Trim(nm)  ; Remove whitespace
+                if (nm != "" && StrLower(nm) = lex)
+                    return true
+            }
         }
     }
-    return gINT_DisableInFullscreen && INT_IsFullscreen("A")
+
+    ; Check fullscreen detection
+    return cfg.AltTabBypassFullscreen && INT_IsFullscreen("A")
 }
 
 INT_IsFullscreen(win := "A") {

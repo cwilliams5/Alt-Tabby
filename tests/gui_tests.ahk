@@ -66,6 +66,8 @@ global cfg := {
     AltTabPrewarmOnAlt: true,
     AltTabGraceMs: 150,
     AltTabQuickSwitchMs: 100,
+    AltTabBypassFullscreen: true,
+    AltTabBypassProcesses: "",
     GUI_ScrollKeepHighlightOnTop: false,
     DebugAltTabTooltips: false,
     DiagEventLog: false,  ; Disable event logging during tests
