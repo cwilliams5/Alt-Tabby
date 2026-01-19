@@ -70,10 +70,10 @@ Store_Init() {
 
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
-        Store_LogError("blacklist.txt not found, using empty blacklist")
+        Store_LogInfo("blacklist.txt not found, using empty blacklist")
     } else {
         stats := Blacklist_GetStats()
-        Store_LogError("blacklist loaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+        Store_LogInfo("blacklist loaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
     }
 
     WindowStore_Init()
@@ -110,7 +110,7 @@ Store_Init() {
     ; WinEventHook is always enabled (primary source of window changes + MRU tracking)
     hookOk := WinEventHook_Start()
     if (!hookOk) {
-        Store_LogError("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
+        Store_LogInfo("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
         gStore_ProducerState["wineventHook"] := "failed"
         ; Fallback: enable MRU_Lite for focus tracking
         MRU_Lite_Init()
@@ -119,7 +119,7 @@ Store_Init() {
         SetTimer(Store_FullScan, 2000)
     } else {
         ; Hook working - it handles MRU tracking internally
-        Store_LogError("WinEventHook active - MRU tracking via hook")
+        Store_LogInfo("WinEventHook active - MRU tracking via hook")
         gStore_ProducerState["wineventHook"] := "running"
         ; Start Z-pump for on-demand scans
         SetTimer(Store_ZPumpTick, cfg.ZPumpIntervalMs)
@@ -154,7 +154,7 @@ Store_HeartbeatTick() {
             fldParts := ""
             for fld, count in churn["fields"]
                 fldParts .= (fldParts ? ", " : "") . fld "=" count
-            Store_LogError("CHURN src=[" srcParts "] fields=[" fldParts "]")
+            Store_LogInfo("CHURN src=[" srcParts "] fields=[" fldParts "]")
         }
     }
 
@@ -393,11 +393,11 @@ Store_OnMessage(line, hPipe := 0) {
         ; Reload blacklist from file
         Blacklist_Reload()
         stats := Blacklist_GetStats()
-        Store_LogError("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+        Store_LogInfo("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
 
         ; Purge windows that now match the blacklist
         purgeResult := WindowStore_PurgeBlacklisted()
-        Store_LogError("blacklist purge removed " purgeResult.removed " windows")
+        Store_LogInfo("blacklist purge removed " purgeResult.removed " windows")
 
         ; Clear all client projections/meta to force fresh delta calculation
         for clientPipe, _ in gStore_LastClientProj {
@@ -481,6 +481,15 @@ Store_LogError(msg) {
     global gStore_ErrorLog
     path := gStore_ErrorLog ? gStore_ErrorLog : (A_Temp "\tabby_store_error.log")
     try FileAppend("store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" msg "`n", path, "UTF-8")
+}
+
+; Informational logging - controlled by DiagStoreLog config flag
+Store_LogInfo(msg) {
+    global gStore_ErrorLog, cfg
+    if (!cfg.DiagStoreLog)
+        return
+    path := gStore_ErrorLog ? gStore_ErrorLog : (A_Temp "\tabby_store_error.log")
+    try FileAppend("store_info " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" msg "`n", path, "UTF-8")
 }
 
 _Store_HasIpcSymbols() {
