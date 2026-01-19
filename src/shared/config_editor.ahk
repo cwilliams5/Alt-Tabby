@@ -28,6 +28,9 @@ global gCE_CurrentSection := ""       ; Currently visible section
 global gCE_TabViewportH := 0          ; Available height inside tab content area
 global gCE_BoundScrollMsg := 0        ; Bound scroll message handler
 global gCE_BoundWheelMsg := 0         ; Bound mouse wheel handler
+global gCE_BoundMouseMove := 0        ; Bound mouse move handler for tooltips
+global gCE_Tooltips := Map()          ; Map of control Hwnd -> tooltip text
+global gCE_LastTooltipHwnd := 0       ; Track last control shown tooltip for
 global gCE_HasChanges := false
 global gCE_SavedChanges := false
 global gCE_AutoRestart := false
@@ -149,6 +152,10 @@ _CE_CreateGui() {
     ; Register scrollbar message handler
     gCE_BoundScrollMsg := _CE_OnVScroll
     OnMessage(CE_WM_VSCROLL, gCE_BoundScrollMsg)
+
+    ; Register mouse move handler for tooltips (WM_MOUSEMOVE = 0x200)
+    gCE_BoundMouseMove := _CE_OnMouseMove
+    OnMessage(0x200, gCE_BoundMouseMove)
 
     ; Update scrollbar for initial section
     _CE_UpdateScrollBar()
@@ -296,15 +303,16 @@ _CE_BuildSectionControls(sectionName, targetGui, isScrollPane := false) {
 
         if (entry.t = "bool") {
             ctrl := targetGui.AddCheckbox("v" entry.g " x" xBase " y" y, entry.k)
-            ctrl.ToolTip := entry.d
+            gCE_Tooltips[ctrl.Hwnd] := entry.d
             createdControls.Push({ctrl: ctrl, origY: y})
             y += 22
         } else {
             editX := xBase + 160
-            lblCtrl := targetGui.AddText("x" xBase " y" y " w150", entry.k ":")
+            lblCtrl := targetGui.AddText("x" xBase " y" y " w150 +0x100", entry.k ":")  ; SS_NOTIFY for mouse msgs
+            gCE_Tooltips[lblCtrl.Hwnd] := entry.d  ; Tooltip on label too
             createdControls.Push({ctrl: lblCtrl, origY: y})
             ctrl := targetGui.AddEdit("v" entry.g " x" editX " y" (y - 2) " w200")
-            ctrl.ToolTip := entry.d
+            gCE_Tooltips[ctrl.Hwnd] := entry.d
             createdControls.Push({ctrl: ctrl, origY: y - 2})
             y += 26
         }
@@ -632,7 +640,14 @@ _CE_Cleanup() {
         OnMessage(CE_WM_VSCROLL, gCE_BoundScrollMsg, 0)
         gCE_BoundScrollMsg := 0
     }
+    if (IsSet(gCE_BoundMouseMove) && gCE_BoundMouseMove) {
+        OnMessage(0x200, gCE_BoundMouseMove, 0)
+        gCE_BoundMouseMove := 0
+    }
+    ToolTip()  ; Hide any active tooltip
     gCE_ScrollPanes := Map()
+    gCE_Tooltips := Map()
+    gCE_LastTooltipHwnd := 0
 }
 
 ; Perform scrolling - moves controls and refreshes display
@@ -737,4 +752,41 @@ _CE_OnMouseWheel(wParam, lParam, msg, hwnd) {
     _CE_DoScroll(scrollAmount)
 
     return 0
+}
+
+; Handle mouse move - show tooltips for controls
+_CE_OnMouseMove(wParam, lParam, msg, hwnd) {
+    global gCE_Gui, gCE_Tooltips, gCE_LastTooltipHwnd
+
+    if (!gCE_Gui)
+        return
+
+    ; hwnd is the control the mouse is over (WM_MOUSEMOVE goes to control, not parent)
+    ; Check if this control has a tooltip
+    if (gCE_Tooltips.Has(hwnd)) {
+        ; Only update if we moved to a different control
+        if (hwnd != gCE_LastTooltipHwnd) {
+            gCE_LastTooltipHwnd := hwnd
+            ; Show tooltip after a short delay
+            SetTimer(_CE_ShowTooltip.Bind(hwnd), -500)
+        }
+    } else {
+        ; Not over a control with tooltip - hide any existing
+        if (gCE_LastTooltipHwnd) {
+            gCE_LastTooltipHwnd := 0
+            ToolTip()
+        }
+    }
+}
+
+; Show tooltip for a control (called via timer)
+_CE_ShowTooltip(ctrlHwnd) {
+    global gCE_Tooltips, gCE_LastTooltipHwnd
+
+    ; Only show if still over the same control
+    if (ctrlHwnd = gCE_LastTooltipHwnd && gCE_Tooltips.Has(ctrlHwnd)) {
+        ToolTip(gCE_Tooltips[ctrlHwnd])
+        ; Auto-hide after 5 seconds
+        SetTimer(ToolTip, -5000)
+    }
 }
