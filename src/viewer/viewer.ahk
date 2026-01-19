@@ -72,6 +72,8 @@ Viewer_Init() {
     if (gViewer_Client.hPipe) {
         _Viewer_Log("Sending hello...")
         _Viewer_SendHello()
+        _Viewer_Log("Requesting producer status...")
+        _Viewer_RequestProducerStatus()
         _Viewer_Log("Sending projection request...")
         _Viewer_RequestProjection()
     } else {
@@ -85,6 +87,7 @@ Viewer_OnMessage(line, hPipe := 0) {
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
     global gViewer_HeartbeatCount
     global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK, IPC_MSG_HEARTBEAT
+    global IPC_MSG_PRODUCER_STATUS
     gViewer_LastMsgTick := A_TickCount
     _Viewer_Log("=== MESSAGE RECEIVED ===")
     _Viewer_Log("raw: " SubStr(line, 1, 300))
@@ -171,6 +174,12 @@ Viewer_OnMessage(line, hPipe := 0) {
                 _Viewer_RequestProjection()
             }
         }
+    } else if (type = IPC_MSG_PRODUCER_STATUS) {
+        ; Producer status = response to our explicit request
+        _Viewer_Log("producer status received")
+        if (obj.Has("producers")) {
+            _Viewer_UpdateProducerState(obj["producers"])
+        }
     }
 }
 
@@ -185,6 +194,36 @@ _Viewer_RequestProjection() {
     gViewer_LastRev := -1  ; Reset to allow next response
     msg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: _Viewer_ProjectionOpts() }
     IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+}
+
+_Viewer_RequestProducerStatus() {
+    global gViewer_Client, IPC_MSG_PRODUCER_STATUS_REQUEST
+    if (!gViewer_Client || !gViewer_Client.hPipe)
+        return
+    msg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
+    IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+}
+
+; Update producer state from IPC response (not from meta anymore)
+_Viewer_UpdateProducerState(producers) {
+    global gViewer_ProducerState, gViewer_Headless
+    if (!IsObject(producers))
+        return
+    gViewer_ProducerState := Map()
+    if (producers is Map) {
+        for name, state in producers
+            gViewer_ProducerState[name] := state
+    } else {
+        for name in ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"] {
+            try {
+                if (producers.HasOwnProp(name))
+                    gViewer_ProducerState[name] := producers.%name%
+            }
+        }
+    }
+    ; Update status bar display
+    if (!gViewer_Headless)
+        _Viewer_UpdateStatusBar()
 }
 
 _Viewer_ProjectionOpts() {
@@ -240,6 +279,11 @@ _Viewer_CreateGui() {
     ; Refresh button
     btn5 := gViewer_Gui.AddButton("x" xPos " y10 w60 h24", "Refresh")
     btn5.OnEvent("Click", (*) => _Viewer_RequestProjection())
+    xPos += 70
+
+    ; Status button (refresh producer status)
+    btn6 := gViewer_Gui.AddButton("x" xPos " y10 w50 h24", "Status")
+    btn6.OnEvent("Click", (*) => _Viewer_RequestProducerStatus())
 
     ; === ListView in middle ===
     ; Columns: Z, MRU, HWND, PID, Title, Class, WS, Cur, Process, Foc, Clk, Min, Icon
@@ -625,6 +669,7 @@ _Viewer_Heartbeat() {
         gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
         if (gViewer_Client.hPipe) {
             _Viewer_SendHello()
+            _Viewer_RequestProducerStatus()  ; Request producer status on connect
             _Viewer_Log("Reconnected to store")
         }
         if (IsObject(gViewer_Status)) {
@@ -641,12 +686,20 @@ _Viewer_Heartbeat() {
         gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
         if (gViewer_Client.hPipe) {
             _Viewer_SendHello()
+            _Viewer_RequestProducerStatus()  ; Request producer status on reconnect
             _Viewer_Log("Reconnected after timeout")
         }
         return
     }
 
     ; Update status bar
+    _Viewer_UpdateStatusBar()
+}
+
+_Viewer_UpdateStatusBar() {
+    global gViewer_Status, gViewer_LastMsgTick, gViewer_LastRev
+    global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
+    global gViewer_HeartbeatCount, gViewer_LastUpdateType
     if (IsObject(gViewer_Status)) {
         elapsed := gViewer_LastMsgTick ? (A_TickCount - gViewer_LastMsgTick) : 0
         typeStr := gViewer_LastUpdateType ? gViewer_LastUpdateType : "none"
@@ -701,18 +754,15 @@ _Viewer_AddProdStatus(&parts, abbrev, name) {
 }
 
 _Viewer_UpdateCurrentWS(payload) {
-    global gViewer_CurrentWSLabel, gViewer_CurrentWSName, gViewer_Headless, gViewer_ProducerState
+    global gViewer_CurrentWSLabel, gViewer_CurrentWSName, gViewer_Headless
     if (!payload.Has("meta"))
         return
     meta := payload["meta"]
     wsName := ""
-    producers := ""
     if (meta is Map) {
         wsName := meta.Has("currentWSName") ? meta["currentWSName"] : ""
-        producers := meta.Has("producers") ? meta["producers"] : ""
     } else if (IsObject(meta)) {
         try wsName := meta.currentWSName
-        try producers := meta.producers
     }
     if (wsName != "" && wsName != gViewer_CurrentWSName) {
         gViewer_CurrentWSName := wsName
@@ -720,21 +770,8 @@ _Viewer_UpdateCurrentWS(payload) {
             gViewer_CurrentWSLabel.Text := wsName
         }
     }
-    ; Update producer state cache
-    if (IsObject(producers)) {
-        gViewer_ProducerState := Map()
-        if (producers is Map) {
-            for name, state in producers
-                gViewer_ProducerState[name] := state
-        } else {
-            for name in ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"] {
-                try {
-                    if (producers.HasOwnProp(name))
-                        gViewer_ProducerState[name] := producers.%name%
-                }
-            }
-        }
-    }
+    ; NOTE: Producer state is now obtained via IPC_MSG_PRODUCER_STATUS_REQUEST
+    ; (no longer included in meta to reduce delta/snapshot bloat)
 }
 
 _Viewer_Get(rec, key, defaultVal := "") {

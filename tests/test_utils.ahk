@@ -140,17 +140,14 @@ Test_OnHeartbeatMessage(line, hPipe := 0) {
 }
 
 Test_OnProducerStateMessage(line, hPipe := 0) {
-    global gProdTestMeta, gProdTestReceived
-    ; We want snapshot response with meta.producers
-    if (InStr(line, '"type":"snapshot"') || InStr(line, '"type":"projection"')) {
-        Log("  [Prod Test] Received: " SubStr(line, 1, 60))
+    global gProdTestProducers, gProdTestReceived
+    ; We want producer_status response (new IPC message type)
+    if (InStr(line, '"type":"producer_status"')) {
+        Log("  [Prod Test] Received producer_status: " SubStr(line, 1, 80))
         try {
             obj := JXON_Load(line)
-            if (obj.Has("payload")) {
-                payload := obj["payload"]
-                if (payload.Has("meta")) {
-                    gProdTestMeta := payload["meta"]
-                }
+            if (obj.Has("producers")) {
+                gProdTestProducers := obj["producers"]
             }
         }
         gProdTestReceived := true

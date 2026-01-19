@@ -8,7 +8,7 @@ RunLiveTests() {
     global gViewerTestResponse, gViewerTestReceived, gViewerTestHelloAck
     global gWsE2EResponse, gWsE2EReceived
     global gHbTestHeartbeats, gHbTestLastRev, gHbTestReceived
-    global gProdTestMeta, gProdTestReceived
+    global gProdTestProducers, gProdTestReceived
     global gMruTestResponse, gMruTestReceived
     global gProjTestResponse, gProjTestReceived
     global gMultiClient1Response, gMultiClient1Received
@@ -19,6 +19,7 @@ RunLiveTests() {
     global testServer, gTestClient, gTestResponse, gTestResponseReceived
     global IPC_MSG_HELLO, IPC_MSG_PROJECTION_REQUEST, IPC_MSG_SNAPSHOT_REQUEST
     global IPC_MSG_PROJECTION, IPC_MSG_SNAPSHOT, IPC_MSG_RELOAD_BLACKLIST
+    global IPC_MSG_PRODUCER_STATUS_REQUEST
 
     storePath := A_ScriptDir "\..\src\store\store_server.ahk"
     compileBat := A_ScriptDir "\..\compile.bat"
@@ -690,7 +691,7 @@ RunLiveTests() {
     if (prodTestPid) {
         Sleep(1500)
 
-        gProdTestMeta := ""
+        gProdTestProducers := ""
         gProdTestReceived := false
 
         prodClient := IPC_PipeClient_Connect(prodTestPipe, Test_OnProducerStateMessage)
@@ -699,75 +700,61 @@ RunLiveTests() {
             Log("PASS: Producer state test connected to store")
             TestPassed++
 
-            ; Send hello to get initial snapshot with meta
-            helloMsg := { type: IPC_MSG_HELLO, clientId: "prod_test" }
-            IPC_PipeClient_Send(prodClient, JXON_Dump(helloMsg))
+            ; Send producer_status_request (new IPC message type)
+            statusReqMsg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
+            IPC_PipeClient_Send(prodClient, JXON_Dump(statusReqMsg))
 
-            ; Wait for snapshot
+            ; Wait for producer_status response
             waitStart := A_TickCount
             while (!gProdTestReceived && (A_TickCount - waitStart) < 5000) {
                 Sleep(100)
             }
 
-            if (gProdTestReceived && IsObject(gProdTestMeta)) {
-                Log("PASS: Received projection with meta")
+            if (gProdTestReceived && IsObject(gProdTestProducers)) {
+                Log("PASS: Received producer_status response")
                 TestPassed++
 
-                ; Check for producers object in meta
-                producers := ""
-                if (gProdTestMeta is Map && gProdTestMeta.Has("producers")) {
-                    producers := gProdTestMeta["producers"]
-                } else if (IsObject(gProdTestMeta)) {
-                    try producers := gProdTestMeta.producers
+                producers := gProdTestProducers
+
+                ; Check that wineventHook state exists and is valid
+                wehState := ""
+                if (producers is Map && producers.Has("wineventHook")) {
+                    wehState := producers["wineventHook"]
+                } else if (IsObject(producers)) {
+                    try wehState := producers.wineventHook
                 }
 
-                if (IsObject(producers)) {
-                    Log("PASS: Meta contains producers object")
+                if (wehState = "running" || wehState = "failed" || wehState = "disabled") {
+                    Log("PASS: wineventHook state is valid (" wehState ")")
                     TestPassed++
-
-                    ; Check that wineventHook state exists and is valid
-                    wehState := ""
-                    if (producers is Map && producers.Has("wineventHook")) {
-                        wehState := producers["wineventHook"]
-                    } else if (IsObject(producers)) {
-                        try wehState := producers.wineventHook
-                    }
-
-                    if (wehState = "running" || wehState = "failed" || wehState = "disabled") {
-                        Log("PASS: wineventHook state is valid (" wehState ")")
-                        TestPassed++
-                    } else {
-                        Log("FAIL: wineventHook state invalid or missing (got: " wehState ")")
-                        TestErrors++
-                    }
-
-                    ; Count how many producers are reported
-                    prodCount := 0
-                    expectedProducers := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
-                    for _, pname in expectedProducers {
-                        pstate := ""
-                        if (producers is Map && producers.Has(pname)) {
-                            pstate := producers[pname]
-                        } else if (IsObject(producers)) {
-                            try pstate := producers.%pname%
-                        }
-                        if (pstate != "")
-                            prodCount++
-                    }
-
-                    if (prodCount >= 4) {
-                        Log("PASS: Found " prodCount " producer states in meta")
-                        TestPassed++
-                    } else {
-                        Log("FAIL: Expected at least 4 producer states, got " prodCount)
-                        TestErrors++
-                    }
                 } else {
-                    Log("FAIL: Meta missing producers object")
+                    Log("FAIL: wineventHook state invalid or missing (got: " wehState ")")
+                    TestErrors++
+                }
+
+                ; Count how many producers are reported
+                prodCount := 0
+                expectedProducers := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
+                for _, pname in expectedProducers {
+                    pstate := ""
+                    if (producers is Map && producers.Has(pname)) {
+                        pstate := producers[pname]
+                    } else if (IsObject(producers)) {
+                        try pstate := producers.%pname%
+                    }
+                    if (pstate != "")
+                        prodCount++
+                }
+
+                if (prodCount >= 4) {
+                    Log("PASS: Found " prodCount " producer states via IPC")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Expected at least 4 producer states, got " prodCount)
                     TestErrors++
                 }
             } else {
-                Log("FAIL: Did not receive projection with meta")
+                Log("FAIL: Did not receive producer_status response")
                 TestErrors++
             }
 
