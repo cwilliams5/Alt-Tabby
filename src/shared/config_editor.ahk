@@ -604,6 +604,9 @@ _CE_OnTabChange(ctrl, *) {
                 try item.ctrl.Move(unset, item.origY, unset, unset)
             }
             pane.scrollPos := 0
+            ; Redraw after resetting scroll to clear any artifacts
+            DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
+                    "UInt", 0x0001 | 0x0100 | 0x0080)
         }
     }
 
