@@ -2,7 +2,24 @@
   "permissions": {
     "allow": [
       "Bash(dir:*)",
-      "Bash(git stash push:*)"
+      "Bash(git stash push:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.autohotkey.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(\"C:\\\\Program Files\\\\AutoHotkey\\\\v2\\\\AutoHotkey64.exe\" //ErrorStdOut src/alt_tabby.ahk --config)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(cmd.exe /c compile.bat)",
+      "Bash(cmd.exe //c \"compile.bat\")",
+      "Bash(cmd.exe //c \"E:\\\\Documents\\\\GitHub\\\\Alt-Tabby\\\\compile.bat\")",
+      "Bash(python:*)",
+      "Bash(powershell -Command \"Add-Type -AssemblyName System.Drawing; [System.Drawing.Icon]::ExtractAssociatedIcon\\(\\(Resolve-Path ''release\\\\AltTabby.exe''\\).Path\\).ToBitmap\\(\\).Save\\(''tempiconcheck\\\\extracted.png''\\); Write-Host ''Extracted to tempiconcheck\\\\extracted.png''\")",
+      "Bash(powershell -Command \"[System.Drawing.Icon]::ExtractAssociatedIcon\\(\\(Resolve-Path ''release\\\\AltTabby.exe''\\).Path\\).ToBitmap\\(\\).Save\\(''tempiconcheck\\\\extracted_new.png''\\)\")",
+      "Bash(powershell -Command \"Add-Type -AssemblyName System.Drawing; [System.Drawing.Icon]::ExtractAssociatedIcon\\(\\(Resolve-Path ''release\\\\AltTabby.exe''\\).Path\\).ToBitmap\\(\\).Save\\(''tempiconcheck\\\\extracted_new.png''\\)\")",
+      "Bash(powershell -Command \"\\(Get-Item ''release\\\\AltTabby.exe''\\).VersionInfo | Format-List *\")",
+      "Bash(\"C:/Program Files/AutoHotkey/v2/AutoHotkey64.exe\" //ErrorStdOut tests/run_tests.ahk)"
     ]
   }
 }

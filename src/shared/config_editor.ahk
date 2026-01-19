@@ -328,21 +328,38 @@ _CE_BuildSectionControls(sectionName, targetGui, isScrollPane := false) {
 ; SCROLLBAR MANAGEMENT
 ; ============================================================
 
+; Check if GUI is still valid (not destroyed)
+_CE_IsGuiValid() {
+    global gCE_Gui
+    if (!gCE_Gui)
+        return false
+    try {
+        hwnd := gCE_Gui.Hwnd
+        return hwnd != 0
+    } catch {
+        return false
+    }
+}
+
 ; Update the scrollbar visibility and range for current section
 _CE_UpdateScrollBar() {
     global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
 
+    ; Guard against destroyed GUI
+    if (!_CE_IsGuiValid())
+        return
+
     ; Check if current section needs scrolling
     if (!gCE_ScrollPanes.Has(gCE_CurrentSection)) {
         ; No scrolling needed - hide scrollbar
-        DllCall("ShowScrollBar", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Int", false)
+        try DllCall("ShowScrollBar", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Int", false)
         return
     }
 
     pane := gCE_ScrollPanes[gCE_CurrentSection]
 
     ; Show scrollbar
-    DllCall("ShowScrollBar", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Int", true)
+    try DllCall("ShowScrollBar", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Int", true)
 
     ; Create SCROLLINFO struct (28 bytes)
     scrollInfo := Buffer(28, 0)
@@ -353,12 +370,16 @@ _CE_UpdateScrollBar() {
     NumPut("UInt", pane.viewportHeight, scrollInfo, 16)                  ; nPage
     NumPut("Int", pane.scrollPos, scrollInfo, 20)                        ; nPos
 
-    DllCall("SetScrollInfo", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Ptr", scrollInfo, "Int", true)
+    try DllCall("SetScrollInfo", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Ptr", scrollInfo, "Int", true)
 }
 
 ; Update just the scroll position (after scrolling)
 _CE_UpdateScrollPos() {
     global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
+
+    ; Guard against destroyed GUI
+    if (!_CE_IsGuiValid())
+        return
 
     if (!gCE_ScrollPanes.Has(gCE_CurrentSection))
         return
@@ -370,7 +391,7 @@ _CE_UpdateScrollPos() {
     NumPut("UInt", CE_SIF_POS, scrollInfo, 4)   ; fMask
     NumPut("Int", pane.scrollPos, scrollInfo, 20)  ; nPos
 
-    DllCall("SetScrollInfo", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Ptr", scrollInfo, "Int", true)
+    try DllCall("SetScrollInfo", "Ptr", gCE_Gui.Hwnd, "Int", CE_SB_VERT, "Ptr", scrollInfo, "Int", true)
 }
 
 ; ============================================================
@@ -597,6 +618,10 @@ _CE_OnSize(guiObj, minMax, width, height) {
 _CE_OnTabChange(ctrl, *) {
     global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
 
+    ; Guard against destroyed GUI (can happen with rapid tab clicks)
+    if (!_CE_IsGuiValid())
+        return
+
     sections := _CE_GetSectionNames()
     newSection := sections[ctrl.Value]
 
@@ -613,8 +638,8 @@ _CE_OnTabChange(ctrl, *) {
             }
             pane.scrollPos := 0
             ; Redraw after resetting scroll to clear any artifacts
-            DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
-                    "UInt", 0x0001 | 0x0100 | 0x0080)
+            try DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
+                        "UInt", 0x0001 | 0x0100 | 0x0080)
         }
     }
 
@@ -624,8 +649,8 @@ _CE_OnTabChange(ctrl, *) {
     _CE_UpdateScrollBar()
 
     ; Force redraw to show new tab's content correctly
-    DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
-            "UInt", 0x0001 | 0x0100 | 0x0080)  ; RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN
+    try DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
+                "UInt", 0x0001 | 0x0100 | 0x0080)  ; RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN
 }
 
 ; Clean up before destroying main GUI
@@ -653,6 +678,10 @@ _CE_Cleanup() {
 ; Perform scrolling - moves controls and refreshes display
 _CE_DoScroll(deltaPixels) {
     global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
+
+    ; Guard against destroyed GUI
+    if (!_CE_IsGuiValid())
+        return
 
     if (!gCE_ScrollPanes.Has(gCE_CurrentSection))
         return
@@ -686,13 +715,17 @@ _CE_DoScroll(deltaPixels) {
 
     ; Invalidate window for redraw - don't force synchronous update (RDW_UPDATENOW)
     ; Let Windows coalesce redraws naturally for smoother scrolling
-    DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
-            "UInt", 0x0001 | 0x0080)  ; RDW_INVALIDATE | RDW_ALLCHILDREN (no RDW_UPDATENOW)
+    try DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
+                "UInt", 0x0001 | 0x0080)  ; RDW_INVALIDATE | RDW_ALLCHILDREN (no RDW_UPDATENOW)
 }
 
 ; Handle WM_VSCROLL - scrollbar interaction
 _CE_OnVScroll(wParam, lParam, msg, hwnd) {
     global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
+
+    ; Guard against destroyed GUI
+    if (!_CE_IsGuiValid())
+        return
 
     ; Only handle for our window
     if (hwnd != gCE_Gui.Hwnd)
@@ -732,6 +765,10 @@ _CE_OnVScroll(wParam, lParam, msg, hwnd) {
 _CE_OnMouseWheel(wParam, lParam, msg, hwnd) {
     global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
 
+    ; Guard against destroyed GUI
+    if (!_CE_IsGuiValid())
+        return
+
     ; Only scroll if current section needs it
     if (!gCE_ScrollPanes.Has(gCE_CurrentSection))
         return
@@ -758,7 +795,8 @@ _CE_OnMouseWheel(wParam, lParam, msg, hwnd) {
 _CE_OnMouseMove(wParam, lParam, msg, hwnd) {
     global gCE_Gui, gCE_Tooltips, gCE_LastTooltipHwnd
 
-    if (!gCE_Gui)
+    ; Guard against destroyed GUI
+    if (!_CE_IsGuiValid())
         return
 
     ; hwnd is the control the mouse is over (WM_MOUSEMOVE goes to control, not parent)
