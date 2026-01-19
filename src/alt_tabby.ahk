@@ -3,6 +3,15 @@
 
 ;@Ahk2Exe-Base C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe
 
+; Ahk2Exe directives - customize exe metadata (removes AutoHotkey identification)
+;@Ahk2Exe-SetDescription Alt-Tabby Window Switcher
+;@Ahk2Exe-SetProductName Alt-Tabby
+;@Ahk2Exe-SetProductVersion 1.0.0
+;@Ahk2Exe-SetFileVersion 1.0.0.0
+;@Ahk2Exe-SetCopyright Alt-Tabby
+;@Ahk2Exe-SetOrigFilename AltTabby.exe
+;@Ahk2Exe-SetCompanyName Alt-Tabby
+
 ; ============================================================
 ; Alt-Tabby - Unified Launcher & Mode Router
 ; ============================================================
