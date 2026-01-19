@@ -940,6 +940,12 @@ Debug options are in `[Diagnostics]` section of config.ini. All disabled by defa
 - **Enable**: Set `WinEventLog=true` in config.ini `[Diagnostics]` section
 - **Pattern to look for**: `FOCUS SKIP (no title)` for system UI filtering, `exists=0` for windows not in store
 
+### DiagStoreLog
+- **File**: `%TEMP%\tabby_store_error.log`
+- **Use when**: General store debugging - startup issues, blacklist loading, producer initialization
+- **Shows**: Store startup sequence, blacklist stats, WinEventHook status, blacklist reload/purge operations
+- **Enable**: Set `StoreLog=true` in config.ini `[Diagnostics]` section
+
 ### Game Mode Bypass (Fullscreen/Process Bypass)
 
 The bypass feature disables Tab hooks when a fullscreen game or blacklisted process is focused, allowing native Windows Alt+Tab to work.

@@ -681,6 +681,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "WinEventLog", g: "DiagWinEventLog", t: "bool", default: false,
      d: "Log WinEventHook focus events to %TEMP%\\tabby_weh_focus.log. Use when focus tracking issues occur."},
 
+    {s: "Diagnostics", k: "StoreLog", g: "DiagStoreLog", t: "bool", default: false,
+     d: "Log store startup and operational info to %TEMP%\\tabby_store_error.log. Use for general store debugging."},
+
     ; ============================================================
     ; Testing
     ; ============================================================
