@@ -666,9 +666,10 @@ _CE_DoScroll(deltaPixels) {
     ; Update scrollbar position
     _CE_UpdateScrollPos()
 
-    ; Force full window redraw - slow but reliable
+    ; Invalidate window for redraw - don't force synchronous update (RDW_UPDATENOW)
+    ; Let Windows coalesce redraws naturally for smoother scrolling
     DllCall("RedrawWindow", "Ptr", gCE_Gui.Hwnd, "Ptr", 0, "Ptr", 0,
-            "UInt", 0x0001 | 0x0100 | 0x0080)  ; RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN
+            "UInt", 0x0001 | 0x0080)  ; RDW_INVALIDATE | RDW_ALLCHILDREN (no RDW_UPDATENOW)
 }
 
 ; Handle WM_VSCROLL - scrollbar interaction
