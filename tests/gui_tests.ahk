@@ -59,6 +59,9 @@ global gGUI_PendingTempFile := ""
 global gGUI_EventBuffer := []
 global gGUI_LastLocalMRUTick := 0
 
+; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
+global gINT_BypassMode := false
+
 ; Config object mock (production code uses cfg.PropertyName)
 global cfg := {
     FreezeWindowList: true,
@@ -127,6 +130,17 @@ IPC_PipeClient_Send(client, msgText) {
     global gMockIPCMessages
     gMockIPCMessages.Push(msgText)
     return true
+}
+
+; Interceptor mocks (gui_interceptor.ahk functions - we don't include that file because it has hotkeys)
+INT_ShouldBypassWindow(hwnd := 0) {
+    ; In tests, never bypass
+    return false
+}
+
+INT_SetBypassMode(shouldBypass) {
+    global gINT_BypassMode
+    gINT_BypassMode := shouldBypass
 }
 
 ; Mock GUI objects (production code calls gGUI_Base.Show(), etc.)

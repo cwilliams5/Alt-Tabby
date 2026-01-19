@@ -106,6 +106,10 @@ GUI_Main_Init() {
         hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
         IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(hello))
     }
+
+    ; Check initial bypass state based on current focused window
+    ; If a fullscreen game is already focused when Alt-Tabby starts, enable bypass immediately
+    INT_SetBypassMode(INT_ShouldBypassWindow(0))
 }
 
 ; ========================= MAIN AUTO-INIT =========================

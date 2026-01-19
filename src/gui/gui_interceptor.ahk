@@ -30,6 +30,9 @@ global gINT_PendingShift := false
 global gINT_PendingDecideArmed := false
 global gINT_AltUpDuringPending := false  ; Track if Alt released before Tab_Decide
 
+; Bypass mode state - when true, Tab hotkey is disabled for fullscreen games
+global gINT_BypassMode := false
+
 ; ========================= HOTKEY SETUP =========================
 
 INT_SetupHotkeys() {
@@ -123,11 +126,9 @@ INT_Tab_Down(*) {
 
     _GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
 
-    if (INT_ShouldBypass()) {
-        _GUI_LogEvent("INT: Tab_Down -> BYPASS")
-        Send(GetKeyState("Shift", "P") ? "+{Tab}" : "{Tab}")
-        return
-    }
+    ; NOTE: Bypass check removed - now handled via focus-change detection in GUI_ApplyDelta
+    ; When a bypass window is focused, INT_SetBypassMode disables Tab hooks entirely,
+    ; so Tab never reaches here and native Windows Alt-Tab works
 
     ; If a decision is pending, commit it immediately before processing this Tab
     if (gINT_TabPending) {
@@ -266,19 +267,47 @@ INT_Escape_Down(*) {
 
 ; ========================= BYPASS DETECTION =========================
 
-INT_ShouldBypass() {
+; Called from GUI_ApplyDelta when focus changes to check bypass criteria
+INT_SetBypassMode(shouldBypass) {
+    global gINT_BypassMode
+
+    if (shouldBypass && !gINT_BypassMode) {
+        ; Entering bypass mode - disable Tab hooks
+        _GUI_LogEvent("INT: Entering BYPASS MODE, disabling Tab hotkey")
+        gINT_BypassMode := true
+        try {
+            Hotkey("$*Tab", "Off")
+            Hotkey("$*Tab Up", "Off")
+        }
+    } else if (!shouldBypass && gINT_BypassMode) {
+        ; Leaving bypass mode - re-enable Tab hooks
+        _GUI_LogEvent("INT: Leaving BYPASS MODE, re-enabling Tab hotkey")
+        gINT_BypassMode := false
+        try {
+            Hotkey("$*Tab", "On")
+            Hotkey("$*Tab Up", "On")
+        }
+    }
+}
+
+; Check bypass criteria for a specific window (or active window if hwnd=0)
+INT_ShouldBypassWindow(hwnd := 0) {
     global cfg
 
-    ; Check process blacklist (comma-separated string from config)
+    if (hwnd = 0)
+        hwnd := WinExist("A")
+    if (!hwnd)
+        return false
+
+    ; Check process blacklist
     if (cfg.AltTabBypassProcesses != "") {
         exename := ""
-        try exename := WinGetProcessName("A")
+        try exename := WinGetProcessName(hwnd)
         if (exename) {
             lex := StrLower(exename)
-            ; Parse comma-separated list
             bypassList := StrSplit(cfg.AltTabBypassProcesses, ",")
             for _, nm in bypassList {
-                nm := Trim(nm)  ; Remove whitespace
+                nm := Trim(nm)
                 if (nm != "" && StrLower(nm) = lex)
                     return true
             }
@@ -286,13 +315,13 @@ INT_ShouldBypass() {
     }
 
     ; Check fullscreen detection
-    return cfg.AltTabBypassFullscreen && INT_IsFullscreen("A")
+    return cfg.AltTabBypassFullscreen && INT_IsFullscreenHwnd(hwnd)
 }
 
-INT_IsFullscreen(win := "A") {
+INT_IsFullscreenHwnd(hwnd) {
     local x, y, w, h
     try {
-        WinGetPos(&x, &y, &w, &h, win)
+        WinGetPos(&x, &y, &w, &h, hwnd)
     } catch {
         return false
     }
