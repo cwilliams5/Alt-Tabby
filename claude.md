@@ -704,6 +704,204 @@ When activating a window on a different komorebi workspace, several challenges m
 
 **Reference:** Komorebi's `raise_and_focus_window` in [windows_api.rs](https://github.com/LGUG2Z/komorebi/blob/master/komorebi/src/windows_api.rs)
 
+### Rapid Alt-Tab & Keyboard Hook Preservation (CRITICAL)
+
+When doing rapid Alt+Tab sequences (especially during cross-workspace activation), keyboard events can be lost due to hook uninstallation. This section documents the hard-won lessons from fixing this.
+
+#### SendMode("Event") is Mandatory
+
+**The Problem:**
+- AHK's default `SendInput` mode temporarily **uninstalls all keyboard hooks** during Send operations
+- When `Send("{Blind}{vkE8}")` runs in our interceptor, the hook is briefly gone (~1ms)
+- User's rapid keypress (Alt or Tab) during this window is lost at the Windows level
+- The keypress never reaches AHK - it's gone forever
+
+**The Fix:**
+```ahk
+; At the TOP of gui_main.ahk, before anything else
+SendMode("Event")  ; Keep keyboard hooks active during Send
+```
+
+**Why This Matters:**
+- `SendInput`: Fast, buffers input, but **uninstalls hook**
+- `SendEvent`: Slightly slower, but **hook stays active**
+- For Alt-Tab, keeping the hook is far more important than send speed
+
+**References:**
+- [AHK SendMode docs](https://www.autohotkey.com/docs/v2/lib/SendMode.htm)
+- [Forum discussion on hook uninstallation](https://www.autohotkey.com/boards/viewtopic.php?t=127074)
+
+#### Critical "On" in All Hotkey Callbacks
+
+**The Problem:**
+Without `Critical "On"`, one hotkey callback can interrupt another mid-execution:
+1. User presses Tab → `INT_Tab_Down` starts running
+2. User releases Alt → `INT_Alt_Up` interrupts `INT_Tab_Down`
+3. `INT_Alt_Up` resets state to IDLE
+4. `INT_Tab_Down` resumes but state is now wrong
+5. Tab event is effectively lost
+
+**The Fix:**
+```ahk
+INT_Alt_Down(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
+    ; ... handler code
+}
+
+INT_Tab_Down(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
+    ; ... handler code
+}
+```
+
+**Apply to ALL hotkey handlers:**
+- `INT_Alt_Down`, `INT_Alt_Up`
+- `INT_Tab_Down`, `INT_Tab_Up`
+- `INT_Tab_Decide`, `INT_Tab_Decide_Inner`
+- `INT_Ctrl_Down`, `INT_Escape_Down`
+- `GUI_OnInterceptorEvent` (state machine entry point)
+
+#### komorebic Also Uses SendInput (Hook Uninstallation)
+
+**The Problem:**
+When we call `komorebic focus-named-workspace`, komorebi internally uses `SendInput` for its window activation. This **also uninstalls our keyboard hook** briefly!
+
+```
+User presses Alt+Tab → we switch workspace
+komorebic runs SendInput → OUR hook is uninstalled
+User presses Tab (for next Alt+Tab) → TAB IS LOST
+```
+
+**The Fix:** Async activation with event buffering (see below)
+
+#### Async Activation with Event Buffering
+
+**The Pattern:**
+Cross-workspace activation is now **non-blocking** (async). During the workspace switch:
+1. Events are BUFFERED, not processed immediately
+2. Keyboard hook keeps running between timer fires
+3. After activation completes, buffered events are processed in order
+
+**Implementation (in `gui_state.ahk`):**
+```ahk
+; Async state
+global gGUI_PendingPhase := ""    ; "polling", "waiting", "flushing", or ""
+global gGUI_EventBuffer := []      ; Queued events during async
+
+; In GUI_OnInterceptorEvent - buffer events if async in progress
+if (gGUI_PendingPhase != "") {
+    if (evCode = TABBY_EV_ESCAPE) {
+        _GUI_CancelPendingActivation()  ; ESC cancels immediately
+        return
+    }
+    gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
+    return
+}
+```
+
+**Lost Tab Detection:**
+If komorebic's SendInput causes Tab to be lost, we detect and synthesize it:
+```ahk
+; In _GUI_ProcessEventBuffer
+; Pattern: ALT_DN + ALT_UP without TAB means Tab was lost
+hasAltDn := false, hasTab := false, hasAltUp := false
+for ev in events {
+    if (ev.ev = TABBY_EV_ALT_DOWN) hasAltDn := true
+    if (ev.ev = TABBY_EV_TAB_STEP) hasTab := true
+    if (ev.ev = TABBY_EV_ALT_UP) hasAltUp := true
+}
+if (hasAltDn && hasAltUp && !hasTab) {
+    ; Lost Tab detected! Insert synthetic TAB after ALT_DN
+    events.InsertAt(altDnIdx + 1, {ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0})
+}
+```
+
+#### Local MRU Updates (Faster Than Store Deltas)
+
+**The Problem:**
+During rapid Alt+Tab, we're faster than the store's delta pipeline:
+1. Alt+Tab #1: Activate window A
+2. We update local MRU (A is now position 1)
+3. But pre-warm snapshot from BEFORE activation arrives
+4. Snapshot overwrites our local MRU with stale data
+5. Alt+Tab #2: Selects WRONG window (sees stale MRU order)
+
+**The Fix:** Track local MRU timestamp and skip stale snapshots:
+```ahk
+; In gui_main.ahk
+global gGUI_LastLocalMRUTick := 0
+
+; In GUI_ActivateItem - after successful activation
+gGUI_LastLocalMRUTick := A_TickCount  ; Mark that we just updated MRU
+
+; In GUI_OnInterceptorEvent (ALT_DOWN) - skip prewarm if MRU fresh
+mruAge := A_TickCount - gGUI_LastLocalMRUTick
+if (mruAge > 300) {
+    GUI_RequestSnapshot()  ; OK to prewarm
+} else {
+    ; Skip - our local MRU is fresher than store's
+}
+
+; In GUI_OnStoreMessage - skip snapshot if MRU fresh
+if (mruAge < 300 && !isToggleResponse) {
+    ; Skip this snapshot - would overwrite our fresh local MRU
+    gGUI_StoreRev := obj["rev"]  ; Still update rev
+    return
+}
+```
+
+**Also update local workspace immediately:**
+```ahk
+; After cross-workspace activation completes
+gGUI_CurrentWSName := gGUI_PendingWSName  ; Don't wait for IPC
+
+; Update all items' isOnCurrentWorkspace flags
+for item in gGUI_Items {
+    if (item.HasOwnProp("WS")) {
+        item.isOnCurrentWorkspace := (item.WS = gGUI_CurrentWSName)
+    }
+}
+```
+
+#### Debugging Rapid Alt-Tab Issues
+
+**Enable event logging:**
+```ahk
+; In gui_state.ahk - set to true for debugging
+global gGUI_DebugEventLog := true
+```
+
+**Log file:** `%TEMP%\tabby_events.log`
+
+**What to look for:**
+- `INT: Alt_Down` / `INT: Alt_Up` / `INT: Tab_Down` - interceptor events
+- `BUFFERING` - events being queued during async
+- `PREWARM: skipped` - local MRU protection working
+- `SNAPSHOT: skipped` - stale snapshot protection working
+- `MRU UPDATE` - local MRU being updated after activation
+- Missing `Tab_Down` between `Alt_Down` and `Alt_Up` = lost Tab event
+
+**Pattern for lost events:**
+```
+Alt_Down (session=false)    ; First Alt+Tab
+Tab_Down (session=false)    ; Tab received
+ACTIVATE                    ; Switch happens
+Alt_Down (session=false)    ; Second Alt+Tab starts
+Alt_Up (session=false)      ; NO TAB IN BETWEEN = Tab was lost
+```
+
+#### Summary: The Full Defense Stack
+
+1. **SendMode("Event")** - keeps hook active during our Sends
+2. **Critical "On"** - prevents callback interruption
+3. **Async activation** - non-blocking to allow keyboard events
+4. **Event buffering** - queue events during async, process after
+5. **Lost Tab detection** - synthesize Tab if ALT_DN+ALT_UP without TAB
+6. **Local MRU tracking** - skip stale prewarmed/in-flight snapshots
+7. **Local WS update** - update workspace state immediately, don't wait for IPC
+
+**Ultimate limitation:** If a keypress is lost before reaching AHK's hook (at Windows/driver level), there's nothing we can do. This happens at extreme speeds (4+ rapid Alt+Tabs). For normal use, the above defenses make Alt-Tabby **more responsive than native Windows Alt+Tab**.
+
 ## Debug Options
 
 Debug options are in `[Diagnostics]` section of config.ini. All disabled by default to minimize disk I/O.
