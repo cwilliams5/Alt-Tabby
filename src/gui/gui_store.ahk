@@ -9,6 +9,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText
     global gGUI_State, gGUI_FrozenItems, gGUI_AllItems  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
+    global gGUI_LastLocalMRUTick  ; For skipping stale in-flight snapshots
 
     obj := ""
     try {
@@ -49,6 +50,20 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         ; Clear the toggle flag if it was set
         if (isToggleResponse) {
             gGUI_AwaitingToggleProjection := false
+        }
+
+        ; CRITICAL: Skip snapshot if local MRU was updated recently
+        ; This prevents stale in-flight snapshots from overwriting fresh local MRU order
+        ; Exception: toggle responses should always be applied (user explicitly requested)
+        if (!IsSet(gGUI_LastLocalMRUTick))
+            gGUI_LastLocalMRUTick := 0
+        mruAge := A_TickCount - gGUI_LastLocalMRUTick
+        if (mruAge < 300 && !isToggleResponse) {
+            _GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
+            if (obj.Has("rev")) {
+                gGUI_StoreRev := obj["rev"]
+            }
+            return
         }
 
         if (obj.Has("payload") && obj["payload"].Has("items")) {

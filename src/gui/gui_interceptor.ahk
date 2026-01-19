@@ -55,6 +55,7 @@ INT_SetupHotkeys() {
 ; ========================= CTRL HANDLER =========================
 
 INT_Ctrl_Down(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
     global gGUI_State, gGUI_OverlayVisible
 
     ; Only toggle mode when GUI is active and visible
@@ -66,7 +67,9 @@ INT_Ctrl_Down(*) {
 ; ========================= ALT HANDLERS =========================
 
 INT_Alt_Down(*) {
-    global gINT_LastAltDown, gINT_AltIsDown, TABBY_EV_ALT_DOWN
+    Critical "On"  ; Prevent other hotkeys from interrupting
+    global gINT_LastAltDown, gINT_AltIsDown, TABBY_EV_ALT_DOWN, gINT_SessionActive
+    _GUI_LogEvent("INT: Alt_Down (session=" gINT_SessionActive ")")
     gINT_AltIsDown := true
     gINT_LastAltDown := A_TickCount
 
@@ -78,20 +81,32 @@ INT_Alt_Down(*) {
 }
 
 INT_Alt_Up(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, gINT_TabPending
     global gINT_AltUpDuringPending, gINT_AltIsDown, TABBY_EV_ALT_UP
+    global gGUI_PendingPhase  ; Check if GUI is buffering events
 
+    _GUI_LogEvent("INT: Alt_Up (session=" gINT_SessionActive " tabPending=" gINT_TabPending " presses=" gINT_PressCount ")")
     gINT_AltIsDown := false
 
     ; If Tab decision is pending, mark that Alt was released
     if (gINT_TabPending) {
+        _GUI_LogEvent("INT: Alt_Up -> marking AltUpDuringPending")
         gINT_AltUpDuringPending := true
         ; Don't send ALT_UP here - Tab_Decide will handle it
     } else if (gINT_SessionActive && gINT_PressCount >= 1) {
         ; Session was active, send ALT_UP directly
+        _GUI_LogEvent("INT: Alt_Up -> sending ALT_UP event")
         GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    } else if (gGUI_PendingPhase != "") {
+        ; GUI is buffering events during async - pass Alt_Up anyway
+        ; This handles the case where Tab was lost during workspace switch
+        ; (komorebic's SendInput briefly uninstalls keyboard hooks)
+        _GUI_LogEvent("INT: Alt_Up -> forwarding to buffer (async pending)")
+        GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    } else {
+        _GUI_LogEvent("INT: Alt_Up -> ignored (no active session)")
     }
-    ; else: No active session, ignore
 
     gINT_SessionActive := false
     gINT_PressCount := 0
@@ -101,18 +116,23 @@ INT_Alt_Up(*) {
 ; ========================= TAB HANDLERS =========================
 
 INT_Tab_Down(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabPending, gINT_TabHeld, gINT_PendingShift, gINT_TabUpSeen
     global gINT_PendingDecideArmed, gINT_DecisionMs, gINT_AltUpDuringPending
     global gINT_SessionActive, gINT_PressCount, gINT_AltIsDown
     global TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
 
+    _GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
+
     if (INT_ShouldBypass()) {
+        _GUI_LogEvent("INT: Tab_Down -> BYPASS")
         Send(GetKeyState("Shift", "P") ? "+{Tab}" : "{Tab}")
         return
     }
 
     ; If a decision is pending, commit it immediately before processing this Tab
     if (gINT_TabPending) {
+        _GUI_LogEvent("INT: Tab_Down -> committing pending decision first")
         SetTimer(INT_Tab_Decide, 0)  ; Cancel pending timer
         gINT_PendingDecideArmed := false
         gINT_TabPending := false
@@ -126,16 +146,20 @@ INT_Tab_Down(*) {
         gINT_PressCount += 1
         shiftHeld := GetKeyState("Shift", "P")
         shiftFlag := shiftHeld ? TABBY_FLAG_SHIFT : 0
+        _GUI_LogEvent("INT: Tab_Down -> active session, sending TAB_STEP (press #" gINT_PressCount ")")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
         ; NOTE: Don't set gINT_TabHeld here - we process ALL tabs during active session
         return
     }
 
     ; FIRST TAB: Check TabHeld to block key repeat (user holding Tab before Alt)
-    if (gINT_TabHeld)
+    if (gINT_TabHeld) {
+        _GUI_LogEvent("INT: Tab_Down -> blocked (TabHeld)")
         return
+    }
 
     ; Session not active yet - this is the FIRST Tab, needs decision delay
+    _GUI_LogEvent("INT: Tab_Down -> FIRST TAB, starting " gINT_DecisionMs "ms decision timer")
     gINT_TabPending := true
     gINT_PendingShift := GetKeyState("Shift", "P")
     gINT_TabUpSeen := false
@@ -145,6 +169,7 @@ INT_Tab_Down(*) {
 }
 
 INT_Tab_Up(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabHeld, gINT_TabPending, gINT_TabUpSeen
 
     if (gINT_TabHeld) {
@@ -158,15 +183,20 @@ INT_Tab_Up(*) {
 }
 
 INT_Tab_Decide() {
-    global gINT_PendingDecideArmed
+    Critical "On"  ; Prevent other hotkeys from interrupting
+    global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_AltIsDown
     if (!gINT_PendingDecideArmed)
         return
     gINT_PendingDecideArmed := false
-    ; Small delay to let Alt_Up run first if it's pending
-    SetTimer(INT_Tab_Decide_Inner, -1)
+    ; Log state at timer fire time (before delay)
+    _GUI_LogEvent("INT: Tab_Decide (altIsDown=" gINT_AltIsDown " altUpFlag=" gINT_AltUpDuringPending ")")
+    ; Delay to let Alt_Up hotkey run first if it's pending
+    ; 1ms wasn't enough - Alt_Up hotkey may not have fired yet
+    SetTimer(INT_Tab_Decide_Inner, -5)
 }
 
 INT_Tab_Decide_Inner() {
+    Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabPending, gINT_TabUpSeen, gINT_PendingShift, gINT_AltUpDuringPending
     global gINT_LastAltDown, gINT_LastAltLeewayMs, gINT_AltIsDown
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld
@@ -177,6 +207,8 @@ INT_Tab_Decide_Inner() {
     altUpFlag := gINT_AltUpDuringPending
     altRecent := (A_TickCount - gINT_LastAltDown) <= gINT_LastAltLeewayMs
     isAltTab := altDownNow || altRecent || altUpFlag
+
+    _GUI_LogEvent("INT: Tab_Decide_Inner (altDown=" altDownNow " altUpFlag=" altUpFlag " altRecent=" altRecent " -> isAltTab=" isAltTab ")")
 
     if (isAltTab) {
         ; This is an Alt+Tab press
@@ -190,6 +222,7 @@ INT_Tab_Decide_Inner() {
 
         ; Send TAB_STEP directly to GUI handler
         shiftFlag := gINT_PendingShift ? TABBY_FLAG_SHIFT : 0
+        _GUI_LogEvent("INT: Tab_Decide -> sending TAB_STEP")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
 
         ; NOTE: We no longer set gINT_TabHeld here - during active session we process
@@ -197,6 +230,7 @@ INT_Tab_Decide_Inner() {
 
         ; CRITICAL: If Alt was released during decision window, send ALT_UP now
         if (!altDownNow || altUpFlag) {
+            _GUI_LogEvent("INT: Tab_Decide -> Alt was released, sending ALT_UP")
             GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
             gINT_SessionActive := false
             gINT_PressCount := 0
@@ -204,6 +238,7 @@ INT_Tab_Decide_Inner() {
         }
     } else {
         ; Not Alt+Tab - replay normal Tab
+        _GUI_LogEvent("INT: Tab_Decide -> NOT Alt+Tab, replaying Tab")
         gINT_TabPending := false
         Send(gINT_PendingShift ? "+{Tab}" : "{Tab}")
     }
@@ -212,6 +247,7 @@ INT_Tab_Decide_Inner() {
 ; ========================= ESCAPE HANDLER =========================
 
 INT_Escape_Down(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, TABBY_EV_ESCAPE
 
     ; Only consume Escape if in active Alt+Tab session

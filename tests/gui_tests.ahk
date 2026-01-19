@@ -47,6 +47,18 @@ global gGUI_HoverBtn := ""
 global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 
+; Async activation globals (for cross-workspace support)
+global gGUI_PendingPhase := ""
+global gGUI_PendingItem := ""
+global gGUI_PendingHwnd := 0
+global gGUI_PendingWSName := ""
+global gGUI_PendingDeadline := 0
+global gGUI_PendingWaitUntil := 0
+global gGUI_PendingShell := ""
+global gGUI_PendingTempFile := ""
+global gGUI_EventBuffer := []
+global gGUI_LastLocalMRUTick := 0
+
 ; Config object mock (production code uses cfg.PropertyName)
 global cfg := {
     FreezeWindowList: true,

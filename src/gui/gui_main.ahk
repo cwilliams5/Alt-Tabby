@@ -3,6 +3,12 @@
 #UseHook true
 InstallKeybdHook(true)
 
+; CRITICAL: Use SendEvent mode to prevent keyboard hook from being uninstalled
+; during Send operations. SendInput (default) temporarily removes the hook,
+; causing rapid keypresses to be missed during cross-workspace activation.
+; See: https://www.autohotkey.com/boards/viewtopic.php?t=127074
+SendMode("Event")
+
 ; Alt-Tabby GUI - Main entry point
 ; This file orchestrates all GUI components by including sub-modules
 
@@ -61,6 +67,7 @@ global gGUI_TabCount := 0
 global gGUI_FrozenItems := []  ; Snapshot of items when locking in
 global gGUI_AllItems := []     ; Unfiltered items - preserved for workspace toggle
 global gGUI_AwaitingToggleProjection := false  ; Flag for UseCurrentWSProjection mode
+global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
 
 ; ========================= INCLUDES (SUB-MODULES) =========================
 ; These sub-modules reference the globals declared above
@@ -79,6 +86,9 @@ GUI_Main_Init() {
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
+
+    ; Start debug event log (if enabled)
+    _GUI_LogEventStartup()
 
     Win_InitDpiAwareness()
     Gdip_Startup()
