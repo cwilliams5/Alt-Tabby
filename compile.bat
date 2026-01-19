@@ -85,9 +85,13 @@ if not errorlevel 1 (
 )
 echo.
 
+:: Set icon path
+set "ICON=%BASEDIR%\img\icon.ico"
+
 :: Compile using v2 base interpreter
 :: /base specifies the v2 exe to use as the runtime
-"%AHK2EXE%" /in "%INPUT%" /out "%OUTPUT%" /base "%AHK2BASE%" /silent verbose
+:: /icon sets the exe icon
+"%AHK2EXE%" /in "%INPUT%" /out "%OUTPUT%" /base "%AHK2BASE%" /icon "%ICON%" /silent verbose
 
 :: Check result
 if errorlevel 1 (
