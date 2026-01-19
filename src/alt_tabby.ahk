@@ -421,7 +421,10 @@ TrayIconClick(wParam, lParam, msg, hwnd) {
 }
 
 SetupLauncherTray() {
-    TraySetIcon("shell32.dll", 15)
+    ; Set custom icon - path differs between compiled and dev mode
+    iconPath := A_IsCompiled ? A_ScriptDir "\img\icon.ico" : A_ScriptDir "\..\img\icon.ico"
+    if FileExist(iconPath)
+        TraySetIcon(iconPath)
     A_IconTip := "Alt-Tabby"
     UpdateTrayMenu()
 }
