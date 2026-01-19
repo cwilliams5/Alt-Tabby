@@ -68,6 +68,7 @@ global cfg := {
     AltTabQuickSwitchMs: 100,
     GUI_ScrollKeepHighlightOnTop: false,
     DebugAltTabTooltips: false,
+    DiagEventLog: false,  ; Disable event logging during tests
     KomorebicExe: ""
 }
 

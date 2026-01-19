@@ -15,14 +15,13 @@ global gGUI_PendingTempFile := ""        ; Temp file for query results
 ; Event buffering during async activation (queue events, don't cancel)
 global gGUI_EventBuffer := []            ; Queued events during async activation
 
-; Debug logging for event tracing (writes to %TEMP%\tabby_events.log)
-global gGUI_DebugEventLog := true        ; TEMP: enabled for debugging rapid Alt-Tab issue
-
 ; ========================= DEBUG LOGGING =========================
+; Controlled by cfg.DiagEventLog (config.ini [Diagnostics] EventLog=true)
+; Log file: %TEMP%\tabby_events.log
 
 _GUI_LogEvent(msg) {
-    global gGUI_DebugEventLog
-    if (!gGUI_DebugEventLog)
+    global cfg
+    if (!cfg.DiagEventLog)
         return
     try {
         logFile := A_Temp "\tabby_events.log"
@@ -36,8 +35,8 @@ _GUI_LogEvent(msg) {
 
 ; Call at startup to mark new session
 _GUI_LogEventStartup() {
-    global gGUI_DebugEventLog
-    if (!gGUI_DebugEventLog)
+    global cfg
+    if (!cfg.DiagEventLog)
         return
     try {
         logFile := A_Temp "\tabby_events.log"
