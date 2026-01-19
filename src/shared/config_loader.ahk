@@ -678,6 +678,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "EventLog", g: "DiagEventLog", t: "bool", default: false,
      d: "Log Alt-Tab events to %TEMP%\\tabby_events.log. Use when debugging rapid Alt-Tab or event timing issues."},
 
+    {s: "Diagnostics", k: "WinEventLog", g: "DiagWinEventLog", t: "bool", default: false,
+     d: "Log WinEventHook focus events to %TEMP%\\tabby_weh_focus.log. Use when focus tracking issues occur."},
+
     ; ============================================================
     ; Testing
     ; ============================================================

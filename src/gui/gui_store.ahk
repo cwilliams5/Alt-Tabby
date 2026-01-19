@@ -182,9 +182,16 @@ GUI_ConvertStoreItems(items) {
 ; ========================= DELTA APPLICATION =========================
 
 GUI_ApplyDelta(payload) {
-    global gGUI_Items, gGUI_Sel
+    global gGUI_Items, gGUI_Sel, gINT_BypassMode
 
     changed := false
+    focusChangedToHwnd := 0  ; Track if any window received focus
+
+    ; Debug: log delta arrival when in bypass mode
+    if (gINT_BypassMode) {
+        upsertCount := (payload.Has("upserts") && payload["upserts"].Length) ? payload["upserts"].Length : 0
+        _GUI_LogEvent("DELTA IN BYPASS: " upsertCount " upserts")
+    }
 
     ; Handle removes - filter out items by hwnd
     if (payload.Has("removes") && payload["removes"].Length) {
@@ -247,6 +254,11 @@ GUI_ApplyDelta(payload) {
                     if (rec.Has("lastActivatedTick")) {
                         item.lastActivatedTick := rec["lastActivatedTick"]
                     }
+                    ; Track focus change (don't process here, just record it)
+                    if (rec.Has("isFocused") && rec["isFocused"]) {
+                        _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
+                        focusChangedToHwnd := hwnd
+                    }
                     found := true
                     changed := true
                     break
@@ -267,6 +279,11 @@ GUI_ApplyDelta(payload) {
                     iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
                     lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
                 })
+                ; Track focus change for new item too
+                if (rec.Has("isFocused") && rec["isFocused"]) {
+                    _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
+                    focusChangedToHwnd := hwnd
+                }
                 changed := true
             }
         }
@@ -283,6 +300,14 @@ GUI_ApplyDelta(payload) {
     }
     if (gGUI_Sel < 1 && gGUI_Items.Length > 0) {
         gGUI_Sel := 1
+    }
+
+    ; AFTER all delta processing: check bypass state for newly focused window
+    ; This runs ONCE per delta, not per upsert - minimizes blocking time
+    if (focusChangedToHwnd) {
+        shouldBypass := INT_ShouldBypassWindow(focusChangedToHwnd)
+        _GUI_LogEvent("BYPASS CHECK: hwnd=" focusChangedToHwnd " shouldBypass=" shouldBypass)
+        INT_SetBypassMode(shouldBypass)
     }
 }
 

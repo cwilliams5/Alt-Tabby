@@ -932,3 +932,56 @@ Debug options are in `[Diagnostics]` section of config.ini. All disabled by defa
 - **Shows**: All interceptor events (Alt/Tab down/up), state machine transitions, async activation phases, event buffering, MRU updates
 - **Enable**: Set `EventLog=true` in config.ini `[Diagnostics]` section
 - **Pattern to look for**: Missing `Tab_Down` between `Alt_Down` and `Alt_Up` indicates Tab was lost during hook uninstallation
+
+### DiagWinEventLog
+- **File**: `%TEMP%\tabby_weh_focus.log`
+- **Use when**: Focus tracking issues - bypass mode not engaging/disengaging, isFocused not updating
+- **Shows**: WinEventHook focus events (FOREGROUND/FOCUS), batch processing, UpdateFields results
+- **Enable**: Set `WinEventLog=true` in config.ini `[Diagnostics]` section
+- **Pattern to look for**: `FOCUS SKIP (no title)` for system UI filtering, `exists=0` for windows not in store
+
+### Game Mode Bypass (Fullscreen/Process Bypass)
+
+The bypass feature disables Tab hooks when a fullscreen game or blacklisted process is focused, allowing native Windows Alt+Tab to work.
+
+**Architecture:**
+1. Store sends `isFocused: true` in deltas when focus changes
+2. GUI's `GUI_ApplyDelta` detects focus change, calls `INT_ShouldBypassWindow(hwnd)`
+3. If bypass needed, `INT_SetBypassMode(true)` disables Tab hotkeys with `Hotkey("$*Tab", "Off")`
+4. Tab passes through to Windows natively → native Alt+Tab works
+5. When focus leaves bypass window, Tab hotkeys are re-enabled
+
+**Critical Bug Fixed - Task Switching UI Poisoning Focus Tracking:**
+
+Windows Alt+Tab shows a "Task Switching" UI window that briefly gets focus events. The sequence is:
+1. User presses Alt+Tab → Task Switching UI appears (gets FOREGROUND event)
+2. User selects Firefox → Firefox gets FOREGROUND event
+3. Task Switching dismisses → Task Switching gets ANOTHER FOREGROUND event (overwrites Firefox!)
+4. Batch processes Task Switching (not in store, exists=0), ignores it
+5. Firefox focus was lost, bypass mode stays active
+
+**The Fix:** Filter out windows with empty titles in the WinEventHook callback itself:
+```ahk
+; In _WEH_WinEventProc callback
+if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS) {
+    title := ""
+    try title := WinGetTitle("ahk_id " hwnd)
+
+    ; Skip windows with empty titles - system UI like Task Switching
+    if (title = "") {
+        return  ; Don't overwrite _WEH_PendingFocusHwnd
+    }
+
+    _WEH_PendingFocusHwnd := hwnd
+}
+```
+
+**Also Required - WindowStore_UpdateFields exists field:**
+```ahk
+; Returns exists: false for windows not in store
+; This prevents system UI from poisoning _WEH_LastFocusHwnd
+if (!gWS_Store.Has(hwnd))
+    return { changed: false, exists: false, rev: gWS_Rev }
+```
+
+**Key Insight:** Don't just ignore system UI in batch processing - prevent it from overwriting real window focus events in the callback itself.

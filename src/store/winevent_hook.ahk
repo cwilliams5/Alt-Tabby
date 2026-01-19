@@ -32,6 +32,15 @@ global _WEH_ShellWindow := 0
 global _WEH_LastFocusHwnd := 0
 global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 
+; Debug logging for focus events - controlled by DiagWinEventLog config flag
+_WEH_DiagLog(msg) {
+    global cfg
+    if (!cfg.DiagWinEventLog)
+        return
+    static logPath := A_Temp "\tabby_weh_focus.log"
+    try FileAppend(FormatTime(, "HH:mm:ss.") SubStr(A_MSec, 1, 2) " " msg "`n", logPath, "UTF-8")
+}
+
 ; Event constants
 global WEH_EVENT_OBJECT_CREATE := 0x8000
 global WEH_EVENT_OBJECT_DESTROY := 0x8001
@@ -144,7 +153,20 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; For focus/foreground events, capture for MRU update (processed in batch)
     if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS) {
+        ; Get window title to filter system UI
+        title := ""
+        try title := WinGetTitle("ahk_id " hwnd)
+
+        ; CRITICAL: Skip windows with empty titles - these are system UI like Task Switching
+        ; that briefly get focus during Alt+Tab and would overwrite the real target window
+        if (title = "") {
+            _WEH_DiagLog("FOCUS SKIP (no title): hwnd=" hwnd " (keeping " _WEH_PendingFocusHwnd ")")
+            return
+        }
+
+        oldPending := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := hwnd
+        _WEH_DiagLog("FOCUS EVENT: hwnd=" hwnd " title='" SubStr(title, 1, 25) "' (was " oldPending ")")
     }
 
     ; Queue for update
@@ -161,14 +183,33 @@ _WEH_ProcessBatch() {
         newFocus := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := 0  ; Clear pending
 
-        ; Clear focus on previous window
-        if (_WEH_LastFocusHwnd) {
-            try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
-        }
+        ; Debug: log the focus transition (always log hwnd, title may fail)
+        oldTitle := ""
+        newTitle := ""
+        try oldTitle := _WEH_LastFocusHwnd ? WinGetTitle("ahk_id " _WEH_LastFocusHwnd) : "(none)"
+        try newTitle := WinGetTitle("ahk_id " newFocus)
+        _WEH_DiagLog("BATCH PROCESS: " _WEH_LastFocusHwnd " '" SubStr(oldTitle, 1, 15) "' -> " newFocus " '" SubStr(newTitle, 1, 15) "'")
 
-        ; Set focus and MRU timestamp on new window
-        _WEH_LastFocusHwnd := newFocus
-        try WindowStore_UpdateFields(newFocus, { lastActivatedTick: A_TickCount, isFocused: true }, "winevent_mru")
+        ; Try to update the new window first - this tells us if it's in our store
+        result := { changed: false, exists: false }
+        try result := WindowStore_UpdateFields(newFocus, { lastActivatedTick: A_TickCount, isFocused: true }, "winevent_mru")
+        _WEH_DiagLog("  UpdateFields result: exists=" (result.exists ? 1 : 0) " changed=" (result.changed ? 1 : 0))
+
+        ; CRITICAL: Only update _WEH_LastFocusHwnd if the window is actually in our store
+        ; This prevents system UI windows (like Alt+Tab switcher) from poisoning our focus tracking
+        if (result.exists) {
+            ; Clear focus on previous window (only if we're actually switching to a tracked window)
+            if (_WEH_LastFocusHwnd && _WEH_LastFocusHwnd != newFocus) {
+                try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
+            }
+            _WEH_LastFocusHwnd := newFocus
+        } else {
+            _WEH_DiagLog("  IGNORED: window not in store (system UI?)")
+        }
+    } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = _WEH_LastFocusHwnd) {
+        ; Same hwnd - log why we're skipping
+        _WEH_DiagLog("FOCUS SKIP: same hwnd " _WEH_PendingFocusHwnd)
+        _WEH_PendingFocusHwnd := 0
     }
 
     if (_WEH_PendingHwnds.Count = 0)

@@ -166,7 +166,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
     global gWS_Store, gWS_Rev, gWS_InternalFields
     hwnd := hwnd + 0
     if (!gWS_Store.Has(hwnd))
-        return { changed: false, rev: gWS_Rev }
+        return { changed: false, exists: false, rev: gWS_Rev }
     row := gWS_Store[hwnd]
     changed := false
     ; Handle both Map and plain object patches
@@ -193,7 +193,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
         gWS_Rev += 1
         _WS_DiagBump("UpdateFields:" . source)
     }
-    return { changed: changed, rev: gWS_Rev }
+    return { changed: changed, exists: true, rev: gWS_Rev }
 }
 
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {

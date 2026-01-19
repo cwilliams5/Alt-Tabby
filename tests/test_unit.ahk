@@ -312,4 +312,61 @@ RunUnitTests() {
             TestPassed++
         }
     }
+
+    ; ============================================================
+    ; WindowStore_UpdateFields 'exists' field test
+    ; ============================================================
+    Log("`n--- WindowStore_UpdateFields Tests ---")
+
+    ; Ensure store is initialized
+    WindowStore_Init()
+    WindowStore_BeginScan()
+
+    ; Add a test window
+    testHwnd := 99999
+    testRec := Map()
+    testRec["hwnd"] := testHwnd
+    testRec["title"] := "Test Bypass Window"
+    testRec["class"] := "TestClass"
+    testRec["pid"] := 999
+    testRec["isVisible"] := true
+    testRec["isCloaked"] := false
+    testRec["isMinimized"] := false
+    testRec["z"] := 1
+    testRec["isFocused"] := false
+    WindowStore_UpsertWindow([testRec], "test")
+    WindowStore_EndScan()
+
+    ; Test: UpdateFields on existing window should return exists=true
+    result := WindowStore_UpdateFields(testHwnd, { isFocused: true }, "test")
+    if (result.exists = true) {
+        Log("PASS: WindowStore_UpdateFields returns exists=true for window in store")
+        TestPassed++
+    } else {
+        Log("FAIL: WindowStore_UpdateFields should return exists=true for window in store")
+        TestErrors++
+    }
+
+    ; Test: UpdateFields on non-existent window should return exists=false
+    result := WindowStore_UpdateFields(88888, { isFocused: true }, "test")
+    if (result.exists = false) {
+        Log("PASS: WindowStore_UpdateFields returns exists=false for window not in store")
+        TestPassed++
+    } else {
+        Log("FAIL: WindowStore_UpdateFields should return exists=false for window not in store")
+        TestErrors++
+    }
+
+    ; Test: UpdateFields changed field - updating same value should be changed=false
+    result := WindowStore_UpdateFields(testHwnd, { isFocused: true }, "test")
+    if (result.changed = false && result.exists = true) {
+        Log("PASS: WindowStore_UpdateFields returns changed=false when value unchanged")
+        TestPassed++
+    } else {
+        Log("FAIL: WindowStore_UpdateFields should return changed=false when value unchanged (got changed=" result.changed ")")
+        TestErrors++
+    }
+
+    ; Clean up - remove test window
+    WindowStore_RemoveWindow([testHwnd], true)
 }
