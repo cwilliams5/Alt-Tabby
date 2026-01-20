@@ -16,5 +16,8 @@ Thumbs.db
 # https://github.com/anthropics/claude-code/issues/17636
 tmpclaude-*
 
+# Claude Code local settings
+.claude/
+
 # Temp folder for examples/screenshots (never commit)
 /temp/
