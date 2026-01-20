@@ -31,6 +31,9 @@ GUI_ShowOverlay() {
         gGUI_Overlay.Show("NA")
     }
     Win_DwmFlush()
+
+    ; Start hover polling (fallback for WM_MOUSELEAVE)
+    GUI_StartHoverPolling()
 }
 
 GUI_HideOverlay() {
@@ -40,6 +43,9 @@ GUI_HideOverlay() {
     if (!gGUI_OverlayVisible) {
         return
     }
+
+    ; Stop hover polling
+    GUI_StopHoverPolling()
 
     try {
         gGUI_Overlay.Hide()
