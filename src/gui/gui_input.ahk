@@ -82,6 +82,20 @@ GUI_RecalcHover() {
     x := NumGet(pt, 0, "Int")
     y := NumGet(pt, 4, "Int")
 
+    ; Check if mouse is inside the GUI window bounds
+    ; If outside, clear hover state
+    ox := 0, oy := 0, ow := 0, oh := 0
+    Win_GetRectPhys(gGUI_OverlayH, &ox, &oy, &ow, &oh)
+    if (x < 0 || y < 0 || x >= ow || y >= oh) {
+        ; Mouse is outside the window
+        if (gGUI_HoverRow != 0 || gGUI_HoverBtn != "") {
+            gGUI_HoverRow := 0
+            gGUI_HoverBtn := ""
+            return true  ; Changed
+        }
+        return false
+    }
+
     act := ""
     idx := 0
     GUI_DetectActionAtPoint(x, y, &act, &idx)
@@ -168,7 +182,7 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
 ; ========================= ACTIONS =========================
 
 GUI_PerformAction(action, idx1 := 0) {
-    global gGUI_Sel
+    global gGUI_Sel, gGUI_StoreClient, IPC_MSG_RELOAD_BLACKLIST
 
     if (idx1 = 0) {
         idx1 := gGUI_Sel
@@ -192,7 +206,17 @@ GUI_PerformAction(action, idx1 := 0) {
     if (action = "kill") {
         pid := cur.HasOwnProp("PID") ? cur.PID : ""
         ttl := cur.HasOwnProp("Title") ? cur.Title : "window"
-        if (Win_ConfirmTopmost("Terminate process " pid " for '" ttl "'?", "Confirm")) {
+        pname := cur.HasOwnProp("processName") ? cur.processName : ""
+
+        ; Build detailed confirmation message
+        msg := "Kill process?"
+        msg .= "`n`nWindow: " SubStr(ttl, 1, 50) (StrLen(ttl) > 50 ? "..." : "")
+        if (pname != "") {
+            msg .= "`nProcess: " pname
+        }
+        msg .= "`nPID: " pid
+
+        if (Win_ConfirmTopmost(msg, "Confirm Kill")) {
             if (pid != "") {
                 try {
                     ProcessClose(pid)
@@ -204,11 +228,41 @@ GUI_PerformAction(action, idx1 := 0) {
     }
 
     if (action = "blacklist") {
-        ttl := cur.HasOwnProp("Title") ? cur.Title : "window"
-        cls := cur.HasOwnProp("Class") ? cur.Class : "?"
-        if (Win_ConfirmTopmost("Blacklist '" ttl "' (class '" cls "')?", "Confirm")) {
-            GUI_RemoveItemAt(idx1)
+        ttl := cur.HasOwnProp("Title") ? cur.Title : ""
+        cls := cur.HasOwnProp("Class") ? cur.Class : ""
+
+        if (cls = "" && ttl = "") {
+            return
         }
+
+        ; Show blacklist options dialog
+        choice := _GUI_ShowBlacklistDialog(cls, ttl)
+        if (choice = "") {
+            return
+        }
+
+        ; Write to blacklist file based on choice
+        success := false
+        if (choice = "class" && cls != "") {
+            success := Blacklist_AddClass(cls)
+        } else if (choice = "title" && ttl != "") {
+            success := Blacklist_AddTitle(ttl)
+        } else if (choice = "pair" && cls != "" && ttl != "") {
+            success := Blacklist_AddPair(cls, ttl)
+        }
+
+        if (!success) {
+            return
+        }
+
+        ; Send reload message to store via IPC
+        if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe) {
+            msg := { type: IPC_MSG_RELOAD_BLACKLIST }
+            IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(msg))
+        }
+
+        ; Remove item from local display
+        GUI_RemoveItemAt(idx1)
         return
     }
 }
@@ -325,8 +379,12 @@ GUI_OnClick(x, y) {
     GUI_Repaint()
 }
 
+; Track whether we've requested WM_MOUSELEAVE notification
+global gGUI_MouseTracking := false
+
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
     global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_Items, gGUI_Sel
+    global gGUI_MouseTracking
 
     if (hwnd != gGUI_OverlayH) {
         return 0
@@ -335,6 +393,18 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
     ; Don't process mouse moves if overlay isn't visible
     if (!gGUI_OverlayVisible) {
         return 0
+    }
+
+    ; Request WM_MOUSELEAVE notification if not already tracking
+    if (!gGUI_MouseTracking) {
+        ; TRACKMOUSEEVENT structure: cbSize(4), dwFlags(4), hwndTrack(ptr), dwHoverTime(4)
+        static TME_LEAVE := 0x02
+        tme := Buffer(8 + A_PtrSize + 4, 0)
+        NumPut("uint", 8 + A_PtrSize + 4, tme, 0)  ; cbSize
+        NumPut("uint", TME_LEAVE, tme, 4)          ; dwFlags
+        NumPut("ptr", hwnd, tme, 8)                ; hwndTrack
+        DllCall("user32\TrackMouseEvent", "ptr", tme)
+        gGUI_MouseTracking := true
     }
 
     x := lParam & 0xFFFF
@@ -351,6 +421,22 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
 
     if (gGUI_HoverRow != prevRow || gGUI_HoverBtn != prevBtn) {
         GUI_Repaint()
+    }
+    return 0
+}
+
+GUI_OnMouseLeave() {
+    global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking, gGUI_OverlayVisible
+
+    ; Mouse has left the window - clear hover state
+    gGUI_MouseTracking := false
+
+    if (gGUI_HoverRow != 0 || gGUI_HoverBtn != "") {
+        gGUI_HoverRow := 0
+        gGUI_HoverBtn := ""
+        if (gGUI_OverlayVisible) {
+            GUI_Repaint()
+        }
     }
     return 0
 }
@@ -403,4 +489,55 @@ GUI_ScrollBy(step) {
     gGUI_ScrollTop := Win_Wrap0(gGUI_ScrollTop + step, count)
     GUI_RecalcHover()
     GUI_Repaint()
+}
+
+; ========================= BLACKLIST DIALOG =========================
+
+; Global for dialog result (needed for modal behavior)
+global gGUI_BlacklistChoice := ""
+
+; Show dialog with blacklist options (class, title, or pair)
+; Returns: "class", "title", "pair", or "" (cancelled)
+_GUI_ShowBlacklistDialog(class, title) {
+    global gGUI_BlacklistChoice
+    gGUI_BlacklistChoice := ""
+
+    dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
+    dlg.SetFont("s10")
+
+    dlg.AddText("x10 y10 w380", "Add to blacklist:")
+    dlg.AddText("x10 y35 w380", "Class: " class)
+    dlg.AddText("x10 y55 w380", "Title: " SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : ""))
+
+    ; Only show buttons for non-empty values
+    btnX := 10
+    if (class != "") {
+        dlg.AddButton("x" btnX " y90 w90 h30", "Add Class").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "class"))
+        btnX += 100
+    }
+    if (title != "") {
+        dlg.AddButton("x" btnX " y90 w90 h30", "Add Title").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "title"))
+        btnX += 100
+    }
+    if (class != "" && title != "") {
+        dlg.AddButton("x" btnX " y90 w90 h30", "Add Pair").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "pair"))
+        btnX += 100
+    }
+    dlg.AddButton("x" btnX " y90 w80 h30", "Cancel").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, ""))
+
+    dlg.OnEvent("Close", (*) => _GUI_BlacklistChoice(dlg, ""))
+    dlg.OnEvent("Escape", (*) => _GUI_BlacklistChoice(dlg, ""))
+
+    dlg.Show("w400 h130")
+
+    ; Wait for dialog to close
+    WinWaitClose(dlg)
+
+    return gGUI_BlacklistChoice
+}
+
+_GUI_BlacklistChoice(dlg, choice) {
+    global gGUI_BlacklistChoice
+    gGUI_BlacklistChoice := choice
+    dlg.Destroy()
 }

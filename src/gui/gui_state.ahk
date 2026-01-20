@@ -165,6 +165,10 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             delta := shiftHeld ? -1 : 1
             GUI_MoveSelectionFrozen(delta)
 
+            ; Recalculate hover based on current mouse position after scroll
+            ; This ensures action buttons follow the mouse, not the row index
+            GUI_RecalcHover()
+
             ; If GUI not yet visible (still in grace period), show it now on 2nd Tab
             if (!gGUI_OverlayVisible && gGUI_TabCount > 1) {
                 SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer

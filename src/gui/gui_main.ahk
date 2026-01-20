@@ -20,6 +20,7 @@ A_MenuMaskKey := "vkE8"
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
 #Include *i %A_ScriptDir%\..\shared\json.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
+#Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 
 ; GUI utilities
 #Include *i %A_ScriptDir%\gui_gdip.ahk
@@ -87,6 +88,9 @@ GUI_Main_Init() {
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
 
+    ; Initialize blacklist for writing (needed for blacklist button in GUI)
+    Blacklist_Init()
+
     ; Start debug event log (if enabled)
     _GUI_LogEventStartup()
 
@@ -135,6 +139,7 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     OnMessage(0x0201, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : 0))
     OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))
     OnMessage(0x0200, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
+    OnMessage(0x02A3, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))  ; WM_MOUSELEAVE
 
     Persistent()
 }
