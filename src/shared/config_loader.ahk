@@ -582,17 +582,14 @@ global gConfigRegistry := [
     {s: "IconPump", k: "MaxAttempts", g: "IconPumpMaxAttempts", t: "int", default: 4,
      d: "Max attempts before giving up on a window's icon"},
 
-    {s: "IconPump", k: "SkipHidden", g: "IconPumpSkipHidden", t: "bool", default: true,
-     d: "Skip hidden windows (unlikely to yield icon anyway)"},
-
-    {s: "IconPump", k: "IdleBackoffMs", g: "IconPumpIdleBackoffMs", t: "int", default: 1500,
-     d: "Cooldown when skipping hidden windows"},
-
     {s: "IconPump", k: "AttemptBackoffMs", g: "IconPumpAttemptBackoffMs", t: "int", default: 300,
      d: "Base backoff after failed attempt (multiplied by attempt number)"},
 
     {s: "IconPump", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", default: 1.8,
      d: "Backoff multiplier for exponential backoff (1.0 = linear)"},
+
+    {s: "IconPump", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 30000,
+     d: "Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay."},
 
     ; ============================================================
     ; Process Pump Timing
@@ -673,6 +670,9 @@ global gConfigRegistry := [
 
     {s: "Diagnostics", k: "StoreLog", g: "DiagStoreLog", t: "bool", default: false,
      d: "Log store startup and operational info to %TEMP%\\tabby_store_error.log. Use for general store debugging."},
+
+    {s: "Diagnostics", k: "IconPumpLog", g: "DiagIconPumpLog", t: "bool", default: false,
+     d: "Log icon pump operations to %TEMP%\\tabby_iconpump.log. Use when debugging icon resolution issues (cloaked windows, UWP apps)."},
 
     ; ============================================================
     ; Testing

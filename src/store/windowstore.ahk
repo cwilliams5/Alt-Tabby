@@ -160,7 +160,7 @@ WindowStore_UpsertWindow(records, source := "") {
 }
 
 ; Fields that are internal tracking and should not bump rev when changed
-global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true)
+global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true, "iconMethod", true, "iconLastRefreshTick", true)
 
 WindowStore_UpdateFields(hwnd, patch, source := "") {
     global gWS_Store, gWS_Rev, gWS_InternalFields
@@ -385,7 +385,9 @@ _WS_NewRecord(hwnd) {
         exePath: "",
         iconHicon: 0,
         iconCooldownUntilTick: 0,
-        iconGaveUp: false
+        iconGaveUp: false,
+        iconMethod: "",           ; "wm_geticon", "uwp", "exe", or "" (none yet)
+        iconLastRefreshTick: 0    ; When we last checked WM_GETICON (for refresh throttle)
     }
 }
 
@@ -492,9 +494,20 @@ _WS_EnqueueIfNeeded(row) {
     global gWS_IconQueue, gWS_IconQueueSet, gWS_PidQueue, gWS_PidQueueSet
     now := A_TickCount
 
-    ; Need icon? Skip hidden windows and windows that gave up - can't reliably get icons from them
-    ; This matches IconSkipHidden logic in icon_pump.ahk to avoid endless retry loops
-    if (!row.iconHicon && row.present && !row.isCloaked && !row.isMinimized && row.isVisible && !row.iconGaveUp) {
+    ; Determine if window needs icon work
+    needsIconWork := false
+    isVisible := !row.isCloaked && !row.isMinimized && row.isVisible
+
+    if (!row.iconHicon && !row.iconGaveUp) {
+        ; No icon yet - need one
+        needsIconWork := true
+    } else if (row.iconHicon && row.iconMethod != "wm_geticon" && isVisible) {
+        ; Has fallback icon (UWP/EXE), window is now visible - try to upgrade
+        needsIconWork := true
+    }
+    ; Note: refresh-on-focus is handled by WindowStore_EnqueueIconRefresh, not here
+
+    if (needsIconWork && row.present) {
         if (row.iconCooldownUntilTick = 0 || now >= row.iconCooldownUntilTick) {
             hwnd := row.hwnd + 0
             if (!gWS_IconQueueSet.Has(hwnd)) {
@@ -512,6 +525,39 @@ _WS_EnqueueIfNeeded(row) {
             gWS_PidQueueSet[pid] := true
         }
     }
+}
+
+; Enqueue window for icon refresh (called when window gains focus)
+; This allows upgrading fallback icons or refreshing WM_GETICON icons that may have changed
+WindowStore_EnqueueIconRefresh(hwnd) {
+    global gWS_Store, gWS_IconQueue, gWS_IconQueueSet, cfg
+    hwnd := hwnd + 0
+
+    if (!gWS_Store.Has(hwnd))
+        return false
+
+    row := gWS_Store[hwnd]
+
+    ; Don't refresh if no icon yet (normal enqueue handles that)
+    if (!row.iconHicon)
+        return false
+
+    ; Don't refresh if window gave up and still has no good icon
+    if (row.iconGaveUp && row.iconMethod = "")
+        return false
+
+    ; Check throttle - don't refresh too frequently
+    now := A_TickCount
+    throttleMs := cfg.HasOwnProp("IconPumpRefreshThrottleMs") ? cfg.IconPumpRefreshThrottleMs : 30000
+    if (row.iconLastRefreshTick > 0 && (now - row.iconLastRefreshTick) < throttleMs)
+        return false
+
+    ; Enqueue for refresh
+    if (!gWS_IconQueueSet.Has(hwnd)) {
+        gWS_IconQueue.Push(hwnd)
+        gWS_IconQueueSet[hwnd] := true
+    }
+    return true
 }
 
 ; Pop batch of hwnds needing icons

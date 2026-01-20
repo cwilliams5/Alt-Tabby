@@ -69,6 +69,7 @@ for _, arg in A_Args {
 #Include %A_ScriptDir%\..\src\store\windowstore.ahk
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk
+#Include %A_ScriptDir%\..\src\store\icon_pump.ahk
 
 ; ============================================================
 ; Include TEST files (utilities, callbacks, test functions)

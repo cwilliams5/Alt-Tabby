@@ -203,6 +203,10 @@ _WEH_ProcessBatch() {
                 try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
             }
             _WEH_LastFocusHwnd := newFocus
+
+            ; Enqueue icon refresh check (throttled) - allows updating window icons that change
+            ; (e.g., browser favicons) when the window gains focus
+            try WindowStore_EnqueueIconRefresh(newFocus)
         } else {
             _WEH_DiagLog("  IGNORED: window not in store (system UI?)")
         }
