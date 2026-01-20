@@ -284,6 +284,9 @@ GUI_ShowOverlayWithFrozen() {
         gGUI_Overlay.Show("NA")
     }
     Win_DwmFlush()
+
+    ; Start hover polling (fallback for WM_MOUSELEAVE)
+    GUI_StartHoverPolling()
 }
 
 GUI_MoveSelectionFrozen(delta) {
