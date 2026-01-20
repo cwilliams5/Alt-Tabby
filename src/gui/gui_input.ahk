@@ -441,6 +441,60 @@ GUI_OnMouseLeave() {
     return 0
 }
 
+; ========================= HOVER POLLING =========================
+; Fallback mechanism to clear hover when mouse leaves window
+; WM_MOUSELEAVE doesn't always fire reliably, so we poll
+
+GUI_StartHoverPolling() {
+    SetTimer(_GUI_HoverPollTick, 100)  ; Check every 100ms
+}
+
+GUI_StopHoverPolling() {
+    SetTimer(_GUI_HoverPollTick, 0)
+}
+
+_GUI_HoverPollTick() {
+    global gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_OverlayH
+
+    ; Stop polling if overlay not visible
+    if (!gGUI_OverlayVisible) {
+        GUI_StopHoverPolling()
+        return
+    }
+
+    ; Only poll if we have hover state to potentially clear
+    if (gGUI_HoverRow = 0 && gGUI_HoverBtn = "") {
+        return
+    }
+
+    ; Check if mouse is still over our window
+    pt := Buffer(8, 0)
+    if (!DllCall("user32\GetCursorPos", "ptr", pt)) {
+        return
+    }
+
+    ; Get mouse position in screen coords
+    mx := NumGet(pt, 0, "Int")
+    my := NumGet(pt, 4, "Int")
+
+    ; Get window rect in screen coords
+    rect := Buffer(16, 0)
+    if (!DllCall("user32\GetWindowRect", "ptr", gGUI_OverlayH, "ptr", rect)) {
+        return
+    }
+    left := NumGet(rect, 0, "Int")
+    top := NumGet(rect, 4, "Int")
+    right := NumGet(rect, 8, "Int")
+    bottom := NumGet(rect, 12, "Int")
+
+    ; If mouse is outside window bounds, clear hover state
+    if (mx < left || mx >= right || my < top || my >= bottom) {
+        gGUI_HoverRow := 0
+        gGUI_HoverBtn := ""
+        GUI_Repaint()
+    }
+}
+
 GUI_OnWheel(wParam, lParam) {
     global gGUI_OverlayVisible, cfg
 
