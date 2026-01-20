@@ -716,6 +716,7 @@ ConfigLoader_Init(basePath := "") {
     }
 
     _CL_LoadAllSettings()  ; Load user overrides
+    _CL_ValidateSettings() ; Clamp values to safe ranges
     gConfigLoaded := true
 }
 
@@ -1022,6 +1023,82 @@ _CL_LoadAllSettings() {
 
         cfg.%entry.g% := parsedVal
     }
+}
+
+; ============================================================
+; CONFIG VALIDATION
+; ============================================================
+; Clamp numeric values to safe ranges to prevent crashes from invalid config
+
+_CL_ValidateSettings() {
+    global cfg
+
+    ; Helper to clamp a value to a range
+    clamp := (val, minVal, maxVal) => Max(minVal, Min(maxVal, val))
+
+    ; --- GUI Size Settings (prevent division by zero, rendering issues) ---
+    cfg.GUI_RowHeight := clamp(cfg.GUI_RowHeight, 20, 200)
+    cfg.GUI_ScreenWidthPct := clamp(cfg.GUI_ScreenWidthPct, 0.1, 1.0)
+    cfg.GUI_RowsVisibleMin := clamp(cfg.GUI_RowsVisibleMin, 1, 20)
+    cfg.GUI_RowsVisibleMax := clamp(cfg.GUI_RowsVisibleMax, 1, 50)
+    cfg.GUI_IconSize := clamp(cfg.GUI_IconSize, 8, 256)
+    cfg.GUI_MarginX := clamp(cfg.GUI_MarginX, 0, 200)
+    cfg.GUI_MarginY := clamp(cfg.GUI_MarginY, 0, 200)
+    cfg.GUI_CornerRadiusPx := clamp(cfg.GUI_CornerRadiusPx, 0, 100)
+    cfg.GUI_RowRadius := clamp(cfg.GUI_RowRadius, 0, 50)
+
+    ; Ensure RowsVisibleMin <= RowsVisibleMax
+    if (cfg.GUI_RowsVisibleMin > cfg.GUI_RowsVisibleMax)
+        cfg.GUI_RowsVisibleMin := cfg.GUI_RowsVisibleMax
+
+    ; --- Action Button Settings ---
+    cfg.GUI_ActionBtnSizePx := clamp(cfg.GUI_ActionBtnSizePx, 12, 64)
+    cfg.GUI_ActionBtnGapPx := clamp(cfg.GUI_ActionBtnGapPx, 0, 50)
+    cfg.GUI_ActionBtnRadiusPx := clamp(cfg.GUI_ActionBtnRadiusPx, 0, 32)
+    cfg.GUI_ActionFontSize := clamp(cfg.GUI_ActionFontSize, 8, 48)
+
+    ; --- Font Sizes ---
+    cfg.GUI_HdrFontSize := clamp(cfg.GUI_HdrFontSize, 6, 48)
+    cfg.GUI_MainFontSize := clamp(cfg.GUI_MainFontSize, 8, 72)
+    cfg.GUI_MainFontSizeHi := clamp(cfg.GUI_MainFontSizeHi, 8, 72)
+    cfg.GUI_SubFontSize := clamp(cfg.GUI_SubFontSize, 6, 48)
+    cfg.GUI_SubFontSizeHi := clamp(cfg.GUI_SubFontSizeHi, 6, 48)
+    cfg.GUI_ColFontSize := clamp(cfg.GUI_ColFontSize, 6, 48)
+    cfg.GUI_ColFontSizeHi := clamp(cfg.GUI_ColFontSizeHi, 6, 48)
+    cfg.GUI_FooterFontSize := clamp(cfg.GUI_FooterFontSize, 6, 48)
+    cfg.GUI_FooterHeightPx := clamp(cfg.GUI_FooterHeightPx, 0, 100)
+
+    ; --- Scrollbar ---
+    cfg.GUI_ScrollBarWidthPx := clamp(cfg.GUI_ScrollBarWidthPx, 2, 30)
+
+    ; --- Timing Settings (prevent CPU hogging or unresponsive behavior) ---
+    cfg.AltTabGraceMs := clamp(cfg.AltTabGraceMs, 0, 2000)
+    cfg.AltTabQuickSwitchMs := clamp(cfg.AltTabQuickSwitchMs, 0, 1000)
+
+    ; --- Producer Intervals (min 10ms to prevent CPU spin) ---
+    cfg.WinEventHookDebounceMs := clamp(cfg.WinEventHookDebounceMs, 10, 1000)
+    cfg.WinEventHookBatchMs := clamp(cfg.WinEventHookBatchMs, 10, 2000)
+    cfg.ZPumpIntervalMs := clamp(cfg.ZPumpIntervalMs, 50, 5000)
+    cfg.MruLitePollMs := clamp(cfg.MruLitePollMs, 50, 5000)
+    cfg.IconPumpIntervalMs := clamp(cfg.IconPumpIntervalMs, 20, 1000)
+    cfg.IconPumpBatchSize := clamp(cfg.IconPumpBatchSize, 1, 100)
+    cfg.IconPumpMaxAttempts := clamp(cfg.IconPumpMaxAttempts, 1, 20)
+    cfg.IconPumpAttemptBackoffMs := clamp(cfg.IconPumpAttemptBackoffMs, 50, 5000)
+    cfg.IconPumpBackoffMultiplier := clamp(cfg.IconPumpBackoffMultiplier, 1.0, 5.0)
+    cfg.IconPumpRefreshThrottleMs := clamp(cfg.IconPumpRefreshThrottleMs, 1000, 300000)
+    cfg.ProcPumpIntervalMs := clamp(cfg.ProcPumpIntervalMs, 20, 1000)
+    cfg.ProcPumpBatchSize := clamp(cfg.ProcPumpBatchSize, 1, 100)
+    cfg.KomorebiSubPollMs := clamp(cfg.KomorebiSubPollMs, 10, 1000)
+    cfg.KomorebiSubIdleRecycleMs := clamp(cfg.KomorebiSubIdleRecycleMs, 10000, 600000)
+    cfg.KomorebiSubFallbackPollMs := clamp(cfg.KomorebiSubFallbackPollMs, 500, 30000)
+
+    ; --- Heartbeat Settings ---
+    cfg.StoreHeartbeatIntervalMs := clamp(cfg.StoreHeartbeatIntervalMs, 1000, 60000)
+    cfg.ViewerHeartbeatTimeoutMs := clamp(cfg.ViewerHeartbeatTimeoutMs, 2000, 120000)
+
+    ; --- Launcher Settings ---
+    cfg.LauncherSplashDurationMs := clamp(cfg.LauncherSplashDurationMs, 0, 10000)
+    cfg.LauncherSplashFadeMs := clamp(cfg.LauncherSplashFadeMs, 0, 2000)
 }
 
 ; ============================================================
