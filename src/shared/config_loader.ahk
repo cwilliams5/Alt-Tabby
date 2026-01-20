@@ -109,9 +109,6 @@ global gConfigRegistry := [
     {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", default: 18,
      d: "Window corner radius in pixels"},
 
-    {s: "GUI", k: "AlwaysOnTop", g: "GUI_AlwaysOnTop", t: "bool", default: true,
-     d: "Keep overlay always on top of other windows"},
-
     ; --- Size Config ---
     {type: "subsection", section: "GUI", name: "Size Config",
      desc: "Window and row sizing"},
@@ -431,9 +428,6 @@ global gConfigRegistry := [
 
     {s: "GUI", k: "ShowFooter", g: "GUI_ShowFooter", t: "bool", default: true,
      d: "Show footer bar"},
-
-    {s: "GUI", k: "FooterTextAlign", g: "GUI_FooterTextAlign", t: "string", default: "center",
-     d: "Footer text alignment (left, center, right)"},
 
     {s: "GUI", k: "FooterBorderPx", g: "GUI_FooterBorderPx", t: "int", default: 0,
      d: "Footer border width in pixels"},
