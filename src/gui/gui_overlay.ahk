@@ -35,6 +35,7 @@ GUI_ShowOverlay() {
 
 GUI_HideOverlay() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Overlay, gGUI_Revealed
+    global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking
 
     if (!gGUI_OverlayVisible) {
         return
@@ -48,6 +49,11 @@ GUI_HideOverlay() {
     }
     gGUI_OverlayVisible := false
     gGUI_Revealed := false
+
+    ; Clear hover state and mouse tracking when hiding
+    gGUI_HoverRow := 0
+    gGUI_HoverBtn := ""
+    gGUI_MouseTracking := false
 }
 
 ; ========================= LAYOUT CALCULATIONS =========================

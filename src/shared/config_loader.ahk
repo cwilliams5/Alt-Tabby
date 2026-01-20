@@ -160,19 +160,6 @@ global gConfigRegistry := [
     {s: "GUI", k: "EmptyListText", g: "GUI_EmptyListText", t: "string", default: "No Windows",
      d: "Text shown when no windows available"},
 
-    ; --- Action Keystrokes ---
-    {type: "subsection", section: "GUI", name: "Action Keystrokes",
-     desc: "Keyboard shortcuts for window actions"},
-
-    {s: "GUI", k: "AllowCloseKeystroke", g: "GUI_AllowCloseKeystroke", t: "bool", default: true,
-     d: "Allow closing windows with keyboard shortcut"},
-
-    {s: "GUI", k: "AllowKillKeystroke", g: "GUI_AllowKillKeystroke", t: "bool", default: true,
-     d: "Allow killing windows with keyboard shortcut"},
-
-    {s: "GUI", k: "AllowBlacklistKeystroke", g: "GUI_AllowBlacklistKeystroke", t: "bool", default: true,
-     d: "Allow blacklisting windows with keyboard shortcut"},
-
     ; --- Action Buttons ---
     {type: "subsection", section: "GUI", name: "Action Buttons",
      desc: "Row action buttons shown on hover"},
