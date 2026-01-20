@@ -58,6 +58,9 @@ global gConfigRegistry := [
     {s: "AltTab", k: "UseCurrentWSProjection", g: "UseCurrentWSProjection", t: "bool", default: true,
      d: "Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data)."},
 
+    {s: "AltTab", k: "SwitchOnClick", g: "AltTabSwitchOnClick", t: "bool", default: true,
+     d: "Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released."},
+
     {type: "subsection", section: "AltTab", name: "Bypass",
      desc: "When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby"},
 

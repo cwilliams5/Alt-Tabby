@@ -238,7 +238,7 @@ GUI_RemoveItemAt(idx1) {
 
 GUI_OnClick(x, y) {
     global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
-    global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State
+    global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State, gGUI_FrozenItems
 
     ; Don't process clicks if overlay isn't visible
     if (!gGUI_OverlayVisible) {
@@ -302,7 +302,21 @@ GUI_OnClick(x, y) {
 
     top0 := gGUI_ScrollTop
     idx0 := Win_Wrap0(top0 + (idxVisible - 1), count)
-    gGUI_Sel := idx0 + 1
+    clickedIdx := idx0 + 1
+
+    ; Check if we should activate immediately on click (like Windows native)
+    if (cfg.AltTabSwitchOnClick && gGUI_State = "ACTIVE") {
+        ; Get the clicked item and activate it immediately
+        item := items[clickedIdx]
+        GUI_HideOverlay()
+        GUI_ActivateItem(item)
+        gGUI_State := "IDLE"
+        gGUI_FrozenItems := []
+        return
+    }
+
+    ; Default behavior: just select the row
+    gGUI_Sel := clickedIdx
 
     if (cfg.GUI_ScrollKeepHighlightOnTop) {
         gGUI_ScrollTop := gGUI_Sel - 1
