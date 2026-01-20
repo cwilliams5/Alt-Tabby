@@ -15,3 +15,6 @@ Thumbs.db
 # Claude Code CLI temp files (known bug on Windows)
 # https://github.com/anthropics/claude-code/issues/17636
 tmpclaude-*
+
+# Temp folder for examples/screenshots (never commit)
+/temp/
