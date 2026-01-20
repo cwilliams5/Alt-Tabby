@@ -486,6 +486,17 @@ UpdateTrayMenu() {
     tray.Add("Edit Blacklist...", (*) => LaunchBlacklistEditor())
     tray.Add()
 
+    ; Shortcuts (with checkmarks for current state)
+    tray.Add("Add to Start Menu", (*) => ToggleStartMenuShortcut())
+    if (_Shortcut_StartMenuExists())
+        tray.Check("Add to Start Menu")
+
+    tray.Add("Run at Startup", (*) => ToggleStartupShortcut())
+    if (_Shortcut_StartupExists())
+        tray.Check("Run at Startup")
+
+    tray.Add()
+
     tray.Add("Exit", (*) => ExitAll())
 }
 
@@ -568,4 +579,120 @@ LaunchBlacklistEditor() {
     ; Run blacklist editor
     ; IPC reload is sent automatically by the editor
     BlacklistEditor_Run()
+}
+
+; ============================================================
+; SHORTCUT MANAGEMENT (Start Menu / Startup)
+; ============================================================
+
+; Get the path where Start Menu shortcut would be
+_Shortcut_GetStartMenuPath() {
+    return A_AppData "\Microsoft\Windows\Start Menu\Programs\Alt-Tabby.lnk"
+}
+
+; Get the path where Startup shortcut would be
+_Shortcut_GetStartupPath() {
+    return A_Startup "\Alt-Tabby.lnk"
+}
+
+; Check if Start Menu shortcut exists
+_Shortcut_StartMenuExists() {
+    return FileExist(_Shortcut_GetStartMenuPath())
+}
+
+; Check if Startup shortcut exists
+_Shortcut_StartupExists() {
+    return FileExist(_Shortcut_GetStartupPath())
+}
+
+; Create a shortcut file using WScript.Shell COM
+_Shortcut_Create(lnkPath, targetPath, iconPath := "", description := "") {
+    try {
+        ; Get parent directory using SplitPath
+        SplitPath(targetPath, , &targetDir)
+
+        shell := ComObject("WScript.Shell")
+        shortcut := shell.CreateShortcut(lnkPath)
+        shortcut.TargetPath := targetPath
+        shortcut.WorkingDirectory := targetDir
+        if (iconPath && FileExist(iconPath))
+            shortcut.IconLocation := iconPath
+        if (description)
+            shortcut.Description := description
+        shortcut.Save()
+        return true
+    } catch as e {
+        MsgBox("Failed to create shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
+        return false
+    }
+}
+
+; Get the exe path (works for both compiled and dev mode)
+_Shortcut_GetExePath() {
+    if (A_IsCompiled)
+        return A_ScriptFullPath
+    else
+        return A_AhkPath '" "' A_ScriptFullPath  ; AutoHotkey.exe "script.ahk"
+}
+
+; Get the icon path
+_Shortcut_GetIconPath() {
+    if (A_IsCompiled)
+        return A_ScriptDir "\img\icon.ico"
+    else
+        return A_ScriptDir "\..\img\icon.ico"
+}
+
+; Toggle Start Menu shortcut
+ToggleStartMenuShortcut() {
+    lnkPath := _Shortcut_GetStartMenuPath()
+    if (FileExist(lnkPath)) {
+        try {
+            FileDelete(lnkPath)
+            ToolTip("Removed from Start Menu")
+        } catch as e {
+            MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
+        }
+    } else {
+        if (_Shortcut_Create(lnkPath, A_IsCompiled ? A_ScriptFullPath : A_AhkPath, _Shortcut_GetIconPath(), "Alt-Tabby Window Switcher")) {
+            ; For dev mode, we need to fix the shortcut to include the script path as argument
+            if (!A_IsCompiled) {
+                try {
+                    shell := ComObject("WScript.Shell")
+                    shortcut := shell.CreateShortcut(lnkPath)
+                    shortcut.Arguments := '"' A_ScriptFullPath '"'
+                    shortcut.Save()
+                }
+            }
+            ToolTip("Added to Start Menu")
+        }
+    }
+    SetTimer(() => ToolTip(), -1500)
+}
+
+; Toggle Startup shortcut
+ToggleStartupShortcut() {
+    lnkPath := _Shortcut_GetStartupPath()
+    if (FileExist(lnkPath)) {
+        try {
+            FileDelete(lnkPath)
+            ToolTip("Removed from Startup")
+        } catch as e {
+            MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
+        }
+    } else {
+        if (_Shortcut_Create(lnkPath, A_IsCompiled ? A_ScriptFullPath : A_AhkPath, _Shortcut_GetIconPath(), "Alt-Tabby Window Switcher")) {
+            ; For dev mode, we need to fix the shortcut to include the script path as argument
+            if (!A_IsCompiled) {
+                try {
+                    shell := ComObject("WScript.Shell")
+                    shortcut := shell.CreateShortcut(lnkPath)
+                    shortcut.Arguments := '"' A_ScriptFullPath '"'
+                    shortcut.Save()
+                }
+            }
+            ToolTip("Added to Startup")
+        }
+    }
+    SetTimer(() => ToolTip(), -1500)
 }
