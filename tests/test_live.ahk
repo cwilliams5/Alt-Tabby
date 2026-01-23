@@ -1894,11 +1894,12 @@ RunLiveTests() {
         }
 
         ; Test launcher mode (spawns multiple processes)
+        ; Use --skip-wizard to prevent first-run wizard from blocking
         Log("  Testing launcher mode (spawns store + gui)...")
         launcherPid := 0
 
         try {
-            Run('"' compiledExePath '"', , "Hide", &launcherPid)
+            Run('"' compiledExePath '" --skip-wizard', , "Hide", &launcherPid)
         } catch as e {
             Log("FAIL: Could not launch AltTabby.exe (launcher mode): " e.Message)
             TestErrors++

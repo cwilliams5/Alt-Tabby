@@ -36,6 +36,7 @@
 ; MODE FLAG - SET BEFORE ANY INCLUDES!
 ; ============================================================
 global g_AltTabbyMode := "launch"
+global g_SkipWizard := false
 
 for _, arg in A_Args {
     switch StrLower(arg) {
@@ -66,6 +67,9 @@ for _, arg in A_Args {
         case "--update-installed":
             g_AltTabbyMode := "update-installed"
             ; Update installed version after self-elevation (from mismatch detection)
+        case "--skip-wizard":
+            g_SkipWizard := true
+            ; Skip first-run wizard (for automated testing)
     }
 }
 
@@ -298,7 +302,7 @@ if (g_AltTabbyMode = "launch") {
 
     ; Check for first-run (config exists but FirstRunCompleted is false)
     configPath := A_IsCompiled ? A_ScriptDir "\config.ini" : A_ScriptDir "\..\config.ini"
-    if (!cfg.SetupFirstRunCompleted) {
+    if (!cfg.SetupFirstRunCompleted && !g_SkipWizard) {
         ; Show first-run wizard
         ShowFirstRunWizard()
         ; If wizard was shown and exited (self-elevated), we exit here
