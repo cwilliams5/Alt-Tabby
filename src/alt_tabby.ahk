@@ -6,8 +6,8 @@
 ; Ahk2Exe directives - customize exe metadata (removes AutoHotkey identification)
 ;@Ahk2Exe-SetDescription Alt-Tabby Window Switcher
 ;@Ahk2Exe-SetProductName Alt-Tabby
-;@Ahk2Exe-SetProductVersion 0.4.0
-;@Ahk2Exe-SetFileVersion 0.4.0.0
+;@Ahk2Exe-SetProductVersion 0.4.1
+;@Ahk2Exe-SetFileVersion 0.4.1.0
 ;@Ahk2Exe-SetCopyright Alt-Tabby
 ;@Ahk2Exe-SetOrigFilename AltTabby.exe
 ;@Ahk2Exe-SetCompanyName Alt-Tabby

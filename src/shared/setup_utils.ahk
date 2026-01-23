@@ -7,7 +7,7 @@
 ; Included by alt_tabby.ahk and tests.
 
 ; Version constant for development mode (compiled mode reads from exe metadata)
-global APP_VERSION := "0.4.0"
+global APP_VERSION := "0.4.1"
 
 ; ============================================================
 ; VERSION MANAGEMENT
