@@ -33,12 +33,17 @@ Main() {
         if (FileExist(outPath))
             FileDelete(outPath)
         FileAppend(md, outPath, "UTF-8")
-        FileAppend("`n", "*")  ; stdout
+    } catch as e {
+        ; Try stdout, but it may not be available when run as subprocess
+        try FileAppend("ERROR: " e.Message "`n", "*")
+        ExitApp(1)
+    }
+
+    ; Try to output status to stdout (may fail if no console attached)
+    try {
+        FileAppend("`n", "*")
         FileAppend("Generated: " outPath "`n", "*")
         FileAppend("Total settings: " CountSettings() "`n", "*")
-    } catch as e {
-        FileAppend("ERROR: " e.Message "`n", "*")
-        ExitApp(1)
     }
 
     ExitApp(0)

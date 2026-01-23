@@ -30,11 +30,19 @@ When running from `/src`, modules can run standalone:
 ## Current Directory Structure
 ```
 src/
+  alt_tabby.ahk   - Unified entry point (mode router, includes)
   shared/         - IPC, JSON, config utilities
     config_loader.ahk - Registry-driven config system (single source of truth)
     setup_utils.ahk   - Version, Task Scheduler, shortcut, update check utilities
     ipc_pipe.ahk  - Named pipe server/client with adaptive polling
     json.ahk      - JSON encoder/decoder (Map and Object aware)
+  launcher/       - Launcher process (tray, wizard, install)
+    launcher_main.ahk     - Core init, subprocess management
+    launcher_tray.ahk     - Tray menu, restart/toggle handlers
+    launcher_splash.ahk   - Splash screen (GDI+ PNG with fade)
+    launcher_wizard.ahk   - First-run setup wizard
+    launcher_install.ahk  - Program Files install, mismatch detection
+    launcher_shortcuts.ahk - Shortcut creation, admin-aware shortcuts
   store/          - WindowStore process
     store_server.ahk    - Main store process with pipe server
     windowstore.ahk     - Core store API (scans, projections, upserts)
@@ -67,7 +75,8 @@ legacy/
 
 ## Key Files
 - `VERSION`: Single source of truth for app version (e.g., `0.4.1`)
-- `src/alt_tabby.ahk`: Unified entry point (launcher + mode router)
+- `src/alt_tabby.ahk`: Unified entry point (mode router, ~290 lines)
+- `src/launcher/launcher_main.ahk`: Launcher init, subprocess management
 - `src/store/store_server.ahk`: WindowStore main entry point
 - `src/store/windowstore.ahk`: Core store with GetProjection, UpsertWindow, scan APIs
 - `src/shared/ipc_pipe.ahk`: Multi-subscriber named pipe IPC
