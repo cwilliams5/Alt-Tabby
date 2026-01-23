@@ -167,8 +167,13 @@ if (g_AltTabbyMode = "blacklist") {
 ; ============================================================
 if (g_AltTabbyMode = "wizard-continue") {
     ConfigLoader_Init()
-    if (WizardContinue()) {
-        ; Wizard completed - launch normally
+    wizardResult := WizardContinue()
+
+    if (wizardResult = "installed") {
+        ; Installed to different location - new exe was launched, we exit
+        ExitApp()
+    } else if (wizardResult) {
+        ; Wizard completed - launch normally (from same location)
 
         ; Show splash screen if enabled
         if (cfg.LauncherShowSplash)
@@ -1195,6 +1200,7 @@ WizardApply(*) {
 }
 
 ; Called when --wizard-continue flag is passed (after elevation)
+; Returns: "installed" if we should launch from new location, true if normal continue, false on error
 WizardContinue() {
     global cfg, gConfigIniPath
 
@@ -1212,7 +1218,8 @@ WizardContinue() {
     }
 
     ; Apply the choices (we're elevated now)
-    _WizardApplyChoices(
+    ; Returns the installed exe path if we installed elsewhere, empty string otherwise
+    installedPath := _WizardApplyChoices(
         choices["startMenu"],
         choices["startup"],
         choices["install"],
@@ -1220,21 +1227,30 @@ WizardContinue() {
         choices["autoUpdate"]
     )
 
+    ; If we installed to a different location, launch from there
+    if (installedPath != "") {
+        Run('"' installedPath '"')
+        return "installed"  ; Signal caller to exit
+    }
+
     return true
 }
 
 ; Internal: Apply wizard choices (called from both wizard and continuation)
+; Returns the installed exe path if we installed to a different location, empty string otherwise
 _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     global cfg, gConfigIniPath
 
     ; Determine exe path
     exePath := A_IsCompiled ? A_ScriptFullPath : A_ScriptFullPath
+    installedElsewhere := ""
 
     ; Step 1: Install to Program Files (if selected)
     if (install) {
         newPath := InstallToProgramFiles()
-        if (newPath != "") {
+        if (newPath != "" && newPath != A_ScriptFullPath) {
             exePath := newPath
+            installedElsewhere := newPath
             ; Update config path to point to new location so subsequent writes go there
             newDir := ""
             SplitPath(newPath, , &newDir)
@@ -1263,6 +1279,8 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         _CreateShortcutForCurrentMode(_Shortcut_GetStartMenuPath())
     if (startup)
         _CreateShortcutForCurrentMode(_Shortcut_GetStartupPath())
+
+    return installedElsewhere
 }
 
 ; ============================================================
