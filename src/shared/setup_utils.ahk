@@ -298,12 +298,14 @@ _Update_NeedsElevation(targetDir) {
 _Update_KillOtherProcesses() {
     myPID := ProcessExist()  ; Get our own PID
 
-    ; Use WMI to find and kill all AltTabby.exe processes
-    for proc in ComObject("WinMgmts:").ExecQuery("SELECT ProcessId FROM Win32_Process WHERE Name='AltTabby.exe'") {
-        pid := proc.ProcessId
-        if (pid != myPID) {
-            try ProcessClose(pid)
-        }
+    ; Loop to kill all AltTabby.exe processes except ourselves
+    ; Using ProcessExist/ProcessClose instead of WMI (WMI can fail in elevated contexts)
+    loop 10 {  ; Max 10 iterations to avoid infinite loop
+        pid := ProcessExist("AltTabby.exe")
+        if (!pid || pid = myPID)
+            break
+        try ProcessClose(pid)
+        Sleep(100)  ; Brief pause for process to terminate
     }
 }
 
