@@ -76,6 +76,18 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_State := "IDLE"
             return
         }
+
+        ; Overflow protection: if buffer exceeds 50 events, something is wrong
+        ; Normal rapid Alt+Tab produces ~4-6 events max (ALT_DN, TAB, TAB, ALT_UP)
+        ; 50 events = ~12 complete Alt+Tab sequences queued = clearly pathological
+        ; Clear buffer and cancel pending activation to recover gracefully
+        if (gGUI_EventBuffer.Length > 50) {
+            _GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, clearing")
+            _GUI_CancelPendingActivation()
+            gGUI_State := "IDLE"
+            return
+        }
+
         _GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_PendingPhase ")")
         gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
         return
@@ -413,8 +425,9 @@ GUI_ActivateItem(item) {
         if (gGUI_PendingShell = "")
             gGUI_PendingShell := ComObject("WScript.Shell")
 
-        ; Start async timer - fires every 15ms, yields control between fires
-        SetTimer(_GUI_AsyncActivationTick, 15)
+        ; Start async timer - configurable via cfg.AltTabAsyncActivationPollMs
+        ; Lower = more responsive but higher CPU (spawns cmd.exe each poll)
+        SetTimer(_GUI_AsyncActivationTick, cfg.AltTabAsyncActivationPollMs)
         return  ; Return immediately - keyboard events can now be processed!
     }
 
@@ -666,10 +679,14 @@ _GUI_CancelPendingActivation() {
 _GUI_ClearPendingState() {
     global gGUI_PendingItem, gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
-    global gGUI_PendingTempFile
+    global gGUI_PendingTempFile, gGUI_PendingShell
 
     ; Clean up temp file
     try FileDelete(gGUI_PendingTempFile)
+
+    ; Release COM object to prevent memory leak
+    ; In AHK v2, setting to "" releases the COM reference
+    gGUI_PendingShell := ""
 
     gGUI_PendingItem := ""
     gGUI_PendingHwnd := 0

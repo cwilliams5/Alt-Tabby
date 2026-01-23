@@ -61,6 +61,9 @@ global gConfigRegistry := [
     {s: "AltTab", k: "SwitchOnClick", g: "AltTabSwitchOnClick", t: "bool", default: true,
      d: "Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released."},
 
+    {s: "AltTab", k: "AsyncActivationPollMs", g: "AltTabAsyncActivationPollMs", t: "int", default: 15,
+     d: "Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU (spawns cmd.exe each poll). Default: 15."},
+
     {type: "subsection", section: "AltTab", name: "Bypass",
      desc: "When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby"},
 
@@ -1090,6 +1093,7 @@ _CL_ValidateSettings() {
     ; --- Timing Settings (prevent CPU hogging or unresponsive behavior) ---
     cfg.AltTabGraceMs := clamp(cfg.AltTabGraceMs, 0, 2000)
     cfg.AltTabQuickSwitchMs := clamp(cfg.AltTabQuickSwitchMs, 0, 1000)
+    cfg.AltTabAsyncActivationPollMs := clamp(cfg.AltTabAsyncActivationPollMs, 10, 100)
 
     ; --- Producer Intervals (min 10ms to prevent CPU spin) ---
     cfg.WinEventHookDebounceMs := clamp(cfg.WinEventHookDebounceMs, 10, 1000)

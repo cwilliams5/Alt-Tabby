@@ -164,6 +164,7 @@ _Shortcut_GetEffectiveExePath() {
 CheckForUpdates(showIfCurrent := false) {
     currentVersion := GetAppVersion()
     apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
+    whr := ""  ; Declare outside try for cleanup
 
     try {
         whr := ComObject("WinHttp.WinHttpRequest.5.1")
@@ -173,6 +174,7 @@ CheckForUpdates(showIfCurrent := false) {
 
         if (whr.Status = 200) {
             response := whr.ResponseText
+            whr := ""  ; Release COM BEFORE processing (we have the text)
 
             ; Parse JSON for tag_name and download URL
             if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch))
@@ -203,11 +205,14 @@ CheckForUpdates(showIfCurrent := false) {
             }
         } else if (showIfCurrent) {
             TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
+            whr := ""  ; Release COM on error path
         }
     } catch as e {
+        whr := ""  ; Ensure release on exception
         if (showIfCurrent)
             TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
     }
+    whr := ""  ; Final safety - ensure release on all exit paths
 }
 
 ; Parse GitHub API response to find AltTabby.exe download URL
@@ -229,6 +234,10 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
     ; Show progress
     TrayTip("Downloading Update", "Downloading Alt-Tabby " newVersion "...", "Iconi")
 
+    ; Declare COM objects outside try for cleanup
+    whr := ""
+    stream := ""
+
     ; Download to temp
     try {
         whr := ComObject("WinHttp.WinHttpRequest.5.1")
@@ -238,6 +247,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
 
         if (whr.Status != 200) {
             MsgBox("Download failed: HTTP " whr.Status, "Update Error", "Icon!")
+            whr := ""  ; Release COM before return
             return
         }
 
@@ -248,7 +258,11 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         stream.Write(whr.ResponseBody)
         stream.SaveToFile(tempExe, 2)  ; 2 = overwrite
         stream.Close()
+        stream := ""  ; Release ADODB.Stream after close
+        whr := ""     ; Release WinHttp
     } catch as e {
+        stream := ""  ; Cleanup on error
+        whr := ""
         MsgBox("Download failed:`n" e.Message, "Update Error", "Icon!")
         return
     }

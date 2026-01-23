@@ -214,18 +214,7 @@ Store_PushToClients() {
         return
 
     ; Clean up tracking maps for disconnected clients (prevents memory leak)
-    ; Clone the map for iteration since we're modifying during loop
-    for hPipe, _ in gStore_LastClientRev.Clone() {
-        if (!gStore_Server.clients.Has(hPipe)) {
-            gStore_LastClientRev.Delete(hPipe)
-            if (gStore_LastClientProj.Has(hPipe))
-                gStore_LastClientProj.Delete(hPipe)
-            if (gStore_LastClientMeta.Has(hPipe))
-                gStore_LastClientMeta.Delete(hPipe)
-            if (gStore_ClientOpts.Has(hPipe))
-                gStore_ClientOpts.Delete(hPipe)
-        }
-    }
+    _Store_CleanupDisconnectedClients()
 
     sent := 0
     for hPipe, _ in gStore_Server.clients {
@@ -455,6 +444,34 @@ _Store_GetProducerStates() {
     for name, state in gStore_ProducerState
         producers.%name% := state
     return producers
+}
+
+; Clean up tracking maps for disconnected clients (prevents memory leak)
+; Check ALL tracking maps, not just gStore_LastClientRev - this handles race
+; conditions where disconnect happens between map updates
+_Store_CleanupDisconnectedClients() {
+    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta
+
+    ; Collect all known hPipes from all tracking maps
+    allPipes := Map()
+    for hPipe, _ in gStore_LastClientRev
+        allPipes[hPipe] := true
+    for hPipe, _ in gStore_LastClientProj
+        allPipes[hPipe] := true
+    for hPipe, _ in gStore_LastClientMeta
+        allPipes[hPipe] := true
+    for hPipe, _ in gStore_ClientOpts
+        allPipes[hPipe] := true
+
+    ; Clean up any that are no longer connected
+    for hPipe, _ in allPipes {
+        if (!gStore_Server.clients.Has(hPipe)) {
+            gStore_LastClientRev.Delete(hPipe)
+            gStore_LastClientProj.Delete(hPipe)
+            gStore_LastClientMeta.Delete(hPipe)
+            gStore_ClientOpts.Delete(hPipe)
+        }
+    }
 }
 
 ; Auto-init only if running standalone or if mode is "store"
