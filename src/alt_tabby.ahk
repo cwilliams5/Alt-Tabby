@@ -751,7 +751,7 @@ WizardSkip(*) {
 }
 
 WizardApply(*) {
-    global g_WizardGui, cfg, gConfigIniPath
+    global g_WizardGui, cfg, gConfigIniPath, JSON
 
     ; Get checkbox states
     startMenu := g_WizardGui["StartMenu"].Value
@@ -776,24 +776,33 @@ WizardApply(*) {
         FileAppend(choices, choicesFile, "UTF-8")
 
         ; Self-elevate and continue wizard
-        if A_IsCompiled
-            Run('*RunAs "' A_ScriptFullPath '" --wizard-continue')
-        else
-            Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --wizard-continue')
+        ; User may cancel UAC - handle gracefully
+        try {
+            if A_IsCompiled
+                Run('*RunAs "' A_ScriptFullPath '" --wizard-continue')
+            else
+                Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --wizard-continue')
 
-        g_WizardGui.Destroy()
-        ExitApp()  ; Exit non-elevated instance
-        return
+            g_WizardGui.Destroy()
+            ExitApp()  ; Exit non-elevated instance
+        } catch as e {
+            ; UAC was cancelled - clean up temp file and notify user
+            try FileDelete(choicesFile)
+            MsgBox("Administrator privileges are required for the selected options.`n`nYou can still use Alt-Tabby without these features, or try again later from the tray menu.", "Alt-Tabby", "Icon!")
+            ; Don't exit - fall through to apply non-admin options only
+            install := false
+            admin := false
+        }
     }
 
-    ; We're either not needing admin, or we're already admin
+    ; Apply choices (without admin options if UAC was cancelled)
     _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate)
     g_WizardGui.Destroy()
 }
 
 ; Called when --wizard-continue flag is passed (after elevation)
 WizardContinue() {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, JSON
 
     choicesFile := A_Temp "\alttabby_wizard.json"
     if (!FileExist(choicesFile))
