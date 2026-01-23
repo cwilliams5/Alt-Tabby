@@ -38,6 +38,16 @@ echo Found compiler: %AHK2EXE%
 echo Found v2 base:  %AHK2BASE%
 echo.
 
+:: Read version from VERSION file
+set /p VERSION=<"%~dp0VERSION"
+if "%VERSION%"=="" (
+    echo ERROR: Could not read VERSION file
+    pause
+    exit /b 1
+)
+echo Version: %VERSION%
+echo.
+
 :: Get script directory (remove trailing backslash if present)
 set "BASEDIR=%~dp0"
 if "%BASEDIR:~-1%"=="\" set "BASEDIR=%BASEDIR:~0,-1%"
@@ -91,7 +101,8 @@ set "ICON=%BASEDIR%\img\icon.ico"
 :: Compile using v2 base interpreter
 :: /base specifies the v2 exe to use as the runtime
 :: /icon sets the exe icon
-"%AHK2EXE%" /in "%INPUT%" /out "%OUTPUT%" /base "%AHK2BASE%" /icon "%ICON%" /silent verbose
+:: /SetProductVersion and /SetFileVersion set exe metadata from VERSION file
+"%AHK2EXE%" /in "%INPUT%" /out "%OUTPUT%" /base "%AHK2BASE%" /icon "%ICON%" /SetProductVersion "%VERSION%" /SetFileVersion "%VERSION%.0" /silent verbose
 
 :: Check result
 if errorlevel 1 (

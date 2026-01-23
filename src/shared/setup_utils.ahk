@@ -6,26 +6,38 @@
 ; Shared functions for first-run wizard, admin mode, and updates.
 ; Included by alt_tabby.ahk and tests.
 
-; Version constant for development mode (compiled mode reads from exe metadata)
-global APP_VERSION := "0.4.1"
-
 ; ============================================================
 ; VERSION MANAGEMENT
 ; ============================================================
 
 ; Get the application version
 ; In compiled mode, reads from exe file version info
-; In dev mode, returns APP_VERSION constant
+; In dev mode, reads from VERSION file in project root
 GetAppVersion() {
-    global APP_VERSION
     if (A_IsCompiled) {
         try {
             return FileGetVersion(A_ScriptFullPath)
-        } catch {
-            return APP_VERSION
         }
     }
-    return APP_VERSION
+
+    ; Dev mode: find VERSION file by looking up from script directory
+    searchDir := A_ScriptDir
+    loop 5 {  ; Search up to 5 levels
+        versionFile := searchDir "\VERSION"
+        if (FileExist(versionFile)) {
+            try {
+                version := Trim(FileRead(versionFile), " `t`r`n")
+                if (version != "")
+                    return version
+            }
+        }
+        ; Go up one directory
+        SplitPath(searchDir, , &searchDir)
+        if (searchDir = "")
+            break
+    }
+
+    return "0.0.0"  ; Fallback if VERSION file not found
 }
 
 ; Compare two version strings (semver-style: X.Y.Z)
@@ -281,6 +293,20 @@ _Update_NeedsElevation(targetDir) {
     }
 }
 
+; Kill all AltTabby.exe processes except the current one
+; This releases file locks on the exe before updating
+_Update_KillOtherProcesses() {
+    myPID := ProcessExist()  ; Get our own PID
+
+    ; Use WMI to find and kill all AltTabby.exe processes
+    for proc in ComObject("WinMgmts:").ExecQuery("SELECT ProcessId FROM Win32_Process WHERE Name='AltTabby.exe'") {
+        pid := proc.ProcessId
+        if (pid != myPID) {
+            try ProcessClose(pid)
+        }
+    }
+}
+
 ; Apply update: rename current exe, move new exe, relaunch
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
     targetDir := ""
@@ -288,6 +314,11 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
     oldExePath := targetExePath ".old"
 
     try {
+        ; Kill all other AltTabby.exe processes (store, gui, viewer)
+        ; This releases file locks so we can rename/delete the exe
+        _Update_KillOtherProcesses()
+        Sleep(500)  ; Give processes time to fully exit
+
         ; Remove any previous .old file
         if (FileExist(oldExePath))
             FileDelete(oldExePath)
@@ -302,6 +333,11 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         TrayTip("Update Complete", "Alt-Tabby has been updated. Restarting...", "Iconi")
         Sleep(1000)
 
+        ; Schedule cleanup of .old file after we exit (we can't delete our own running exe)
+        ; The ping command adds a ~1 second delay for our process to fully exit
+        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 2 > nul && del "' oldExePath '"'
+        Run(cleanupCmd,, "Hide")
+
         Run('"' targetExePath '"')
         ExitApp()
 
@@ -315,6 +351,9 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
 }
 
 ; Called on startup to clean up old exe from previous update
+; This is a fallback - the elevated updater schedules cleanup via cmd.exe,
+; but this handles cases where: (1) exe is not in Program Files (no elevation needed),
+; or (2) the scheduled cmd cleanup somehow failed
 _Update_CleanupOldExe() {
     if (!A_IsCompiled)
         return

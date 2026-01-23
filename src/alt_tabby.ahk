@@ -4,10 +4,9 @@
 ;@Ahk2Exe-Base C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe
 
 ; Ahk2Exe directives - customize exe metadata (removes AutoHotkey identification)
+; Note: ProductVersion and FileVersion are set via compile.bat from VERSION file
 ;@Ahk2Exe-SetDescription Alt-Tabby Window Switcher
 ;@Ahk2Exe-SetProductName Alt-Tabby
-;@Ahk2Exe-SetProductVersion 0.4.1
-;@Ahk2Exe-SetFileVersion 0.4.1.0
 ;@Ahk2Exe-SetCopyright Alt-Tabby
 ;@Ahk2Exe-SetOrigFilename AltTabby.exe
 ;@Ahk2Exe-SetCompanyName Alt-Tabby
@@ -507,6 +506,11 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
     backupPath := targetPath ".old"
 
     try {
+        ; Kill all other AltTabby.exe processes (store, gui, viewer)
+        ; This releases file locks so we can rename/delete the exe
+        _Update_KillOtherProcesses()
+        Sleep(500)  ; Give processes time to fully exit
+
         ; Remove any previous backup
         if (FileExist(backupPath))
             FileDelete(backupPath)
@@ -520,6 +524,12 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         ; Success - launch from installed location and exit
         TrayTip("Update Complete", "Alt-Tabby has been updated at:`n" targetPath, "Iconi")
         Sleep(1000)
+
+        ; Schedule cleanup of .old file after we exit
+        ; The ping command adds a ~1 second delay for our process to fully exit
+        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 2 > nul && del "' backupPath '"'
+        Run(cleanupCmd,, "Hide")
+
         Run('"' targetPath '"')
         ExitApp()
 
@@ -1219,8 +1229,13 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     ; Step 1: Install to Program Files (if selected)
     if (install) {
         newPath := InstallToProgramFiles()
-        if (newPath != "")
+        if (newPath != "") {
             exePath := newPath
+            ; Update config path to point to new location so subsequent writes go there
+            newDir := ""
+            SplitPath(newPath, , &newDir)
+            gConfigIniPath := newDir "\config.ini"
+        }
     }
 
     ; Step 2: Create admin task (if selected) - needs final exe path
