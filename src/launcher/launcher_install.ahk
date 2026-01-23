@@ -201,8 +201,14 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         if (FileExist(backupPath))
             FileDelete(backupPath)
 
-        ; Backup current installed version
-        FileMove(targetPath, backupPath)
+        ; Bug 2 fix: Specific error handling for exe rename
+        ; This can fail due to antivirus, file locks, or disk errors
+        try {
+            FileMove(targetPath, backupPath)
+        } catch as renameErr {
+            MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Icon!")
+            return
+        }
 
         ; Copy new version
         FileCopy(sourcePath, targetPath)
@@ -227,30 +233,46 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
             targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
         }
 
-        ; Update admin task if TARGET has admin mode enabled
+        ; Bug 1 fix: Update admin task if TARGET has admin mode enabled, with error handling
         if (targetRunAsAdmin && AdminTaskExists()) {
             ; Recreate task with target exe path
             DeleteAdminTask()
-            CreateAdminTask(targetPath)
+            if (!CreateAdminTask(targetPath)) {
+                ; Task creation failed - disable admin mode to avoid broken state
+                TrayTip("Admin Mode Error", "Could not recreate admin task. Admin mode has been disabled.", "Icon!")
+                cfg.SetupRunAsAdmin := false
+                if (FileExist(targetConfigPath))
+                    try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
+            }
         }
 
         ; Success - launch from installed location and exit
         TrayTip("Update Complete", "Alt-Tabby has been updated at:`n" targetPath, "Iconi")
         Sleep(1000)
 
-        ; Schedule cleanup of .old file after we exit
-        ; The ping command adds a ~1 second delay for our process to fully exit
-        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 2 > nul && del "' backupPath '"'
+        ; Bug 8 fix: Extended cleanup delay with retry for slow systems
+        ; First attempt after 4 seconds, retry after another 4 seconds if first fails
+        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 5 > nul && del "' backupPath '" 2>nul || (ping 127.0.0.1 -n 5 > nul && del "' backupPath '")'
         Run(cleanupCmd,, "Hide")
 
         Run('"' targetPath '"')
         ExitApp()
 
     } catch as e {
-        ; Try to restore backup
+        ; Bug 3 fix: Track and communicate rollback result
+        rollbackSuccess := false
         if (!FileExist(targetPath) && FileExist(backupPath)) {
-            try FileMove(backupPath, targetPath)
+            try {
+                FileMove(backupPath, targetPath)
+                rollbackSuccess := true
+            }
         }
-        MsgBox("Update failed:`n" e.Message, "Alt-Tabby", "Icon!")
+
+        if (rollbackSuccess)
+            MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
+        else if (FileExist(targetPath))
+            MsgBox("Update failed:`n" e.Message, "Update Error", "Icon!")
+        else
+            MsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
     }
 }

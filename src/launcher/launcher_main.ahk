@@ -51,7 +51,8 @@ Launcher_Init() {
     ; Skip task redirect if mismatch was detected - user chose to run from current location
     ; Showing task repair dialog after mismatch "No" would redirect to wrong version
     if (!g_MismatchDialogShown && _ShouldRedirectToScheduledTask()) {
-        exitCode := RunWait('schtasks /run /tn "Alt-Tabby"',, "Hide")
+        global ALTTABBY_TASK_NAME
+        exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
 
         if (exitCode = 0) {
             Sleep(100)  ; Brief delay for task to initialize
@@ -137,6 +138,22 @@ _ShouldRedirectToScheduledTask() {
     ; Validate task points to current exe (handles renamed exe case)
     taskPath := _AdminTask_GetCommandPath()
     if (taskPath = "" || StrLower(taskPath) != StrLower(A_ScriptFullPath)) {
+        ; Bug 4 fix: Check for repair cooldown (24 hours) to avoid repeated prompts
+        ; This prevents annoyance when user repeatedly launches a renamed exe
+        lastRepairTick := 0
+        try {
+            lastRepairStr := IniRead(gConfigIniPath, "Setup", "LastTaskRepairTick", "0")
+            lastRepairTick := Integer(lastRepairStr)
+        }
+        repairCooldownMs := 86400000  ; 24 hours
+
+        if (lastRepairTick > 0 && (A_TickCount - lastRepairTick) < repairCooldownMs) {
+            ; Within cooldown period - silently disable admin mode and continue
+            cfg.SetupRunAsAdmin := false
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+            return false
+        }
+
         ; Task is stale - offer to repair
         result := MsgBox(
             "The Admin Mode scheduled task points to a different location:`n"
@@ -154,6 +171,8 @@ _ShouldRedirectToScheduledTask() {
                     Run('*RunAs "' A_ScriptFullPath '" --repair-admin-task')
                 else
                     Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --repair-admin-task')
+                ; Record repair attempt tick (will be updated again on success)
+                try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTick", A_TickCount, 0, "int")
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
                 ; UAC refused - fall back to non-admin
@@ -162,8 +181,10 @@ _ShouldRedirectToScheduledTask() {
         }
 
         ; User said No or UAC refused - disable admin mode and continue non-elevated
+        ; Record the tick to start cooldown period
         cfg.SetupRunAsAdmin := false
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTick", A_TickCount, 0, "int")
         TrayTip("Admin Mode Disabled", "The scheduled task was stale and couldn't be used.`nRe-enable from tray menu if needed.", "Icon!")
         return false
     }

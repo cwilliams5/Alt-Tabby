@@ -7,6 +7,9 @@
 ; Shared functions for first-run wizard, admin mode, and updates.
 ; Included by alt_tabby.ahk and tests.
 
+; Task name constant - used by all task scheduler functions
+global ALTTABBY_TASK_NAME := "Alt-Tabby"
+
 ; ============================================================
 ; VERSION MANAGEMENT
 ; ============================================================
@@ -63,7 +66,8 @@ CompareVersions(v1, v2) {
 
 ; Create a scheduled task with highest privileges (UAC-free admin)
 CreateAdminTask(exePath) {
-    taskName := "Alt-Tabby"
+    global ALTTABBY_TASK_NAME
+    taskName := ALTTABBY_TASK_NAME
 
     ; Build XML for scheduled task
     ; Key: <RunLevel>HighestAvailable</RunLevel> = Run with highest privileges
@@ -103,24 +107,27 @@ CreateAdminTask(exePath) {
 
 ; Delete the admin scheduled task
 DeleteAdminTask() {
-    result := RunWait('schtasks /delete /tn "Alt-Tabby" /f', , "Hide")
+    global ALTTABBY_TASK_NAME
+    result := RunWait('schtasks /delete /tn "' ALTTABBY_TASK_NAME '" /f', , "Hide")
     return (result = 0)
 }
 
 ; Check if admin task exists
 AdminTaskExists() {
-    result := RunWait('schtasks /query /tn "Alt-Tabby"', , "Hide")
+    global ALTTABBY_TASK_NAME
+    result := RunWait('schtasks /query /tn "' ALTTABBY_TASK_NAME '"', , "Hide")
     return (result = 0)  ; 0 = task exists
 }
 
 ; Extract command path from existing scheduled task XML
 ; Returns empty string if task doesn't exist or can't be parsed
 _AdminTask_GetCommandPath() {
+    global ALTTABBY_TASK_NAME
     tempFile := A_Temp "\alttabby_task_query.xml"
     try FileDelete(tempFile)
 
     ; Export task to XML (schtasks /xml outputs to stdout, redirect to file)
-    result := RunWait('cmd.exe /c schtasks /query /tn "Alt-Tabby" /xml > "' tempFile '"',, "Hide")
+    result := RunWait('cmd.exe /c schtasks /query /tn "' ALTTABBY_TASK_NAME '" /xml > "' tempFile '"',, "Hide")
     if (result != 0 || !FileExist(tempFile))
         return ""
 
@@ -328,6 +335,11 @@ _Update_NeedsElevation(targetDir) {
     if (A_IsAdmin)
         return false
 
+    ; Bug 5 fix: Validate directory exists first
+    ; If directory doesn't exist, we'll need admin to create it (e.g., Program Files)
+    if (!DirExist(targetDir))
+        return true
+
     ; Try to create a temp file in the target directory
     testFile := targetDir "\alttabby_write_test.tmp"
     try {
@@ -379,8 +391,14 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         if (FileExist(oldExePath))
             FileDelete(oldExePath)
 
-        ; Rename current exe to .old (Windows allows this even while running)
-        FileMove(targetExePath, oldExePath)
+        ; Bug 2 fix: Specific error handling for exe rename
+        ; This can fail due to antivirus, file locks, or disk errors
+        try {
+            FileMove(targetExePath, oldExePath)
+        } catch as renameErr {
+            MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Icon!")
+            return
+        }
 
         ; Move new exe to target location
         FileMove(newExePath, targetExePath)
@@ -400,31 +418,47 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
             targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
         }
 
-        ; Update admin task if TARGET has admin mode enabled
+        ; Bug 1 fix: Update admin task if TARGET has admin mode enabled, with error handling
         if (targetRunAsAdmin && AdminTaskExists()) {
             ; Recreate task with new exe path
             DeleteAdminTask()
-            CreateAdminTask(targetExePath)
+            if (!CreateAdminTask(targetExePath)) {
+                ; Task creation failed - disable admin mode to avoid broken state
+                TrayTip("Admin Mode Error", "Could not recreate admin task. Admin mode has been disabled.", "Icon!")
+                cfg.SetupRunAsAdmin := false
+                if (FileExist(targetConfigPath))
+                    try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
+            }
         }
 
         ; Success! Launch new version and exit
         TrayTip("Update Complete", "Alt-Tabby has been updated. Restarting...", "Iconi")
         Sleep(1000)
 
-        ; Schedule cleanup of .old file after we exit (we can't delete our own running exe)
-        ; The ping command adds a ~1 second delay for our process to fully exit
-        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 2 > nul && del "' oldExePath '"'
+        ; Bug 8 fix: Extended cleanup delay with retry for slow systems
+        ; First attempt after 4 seconds, retry after another 4 seconds if first fails
+        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 5 > nul && del "' oldExePath '" 2>nul || (ping 127.0.0.1 -n 5 > nul && del "' oldExePath '")'
         Run(cleanupCmd,, "Hide")
 
         Run('"' targetExePath '"')
         ExitApp()
 
     } catch as e {
-        ; Try to restore old exe if something went wrong
+        ; Bug 3 fix: Track and communicate rollback result
+        rollbackSuccess := false
         if (!FileExist(targetExePath) && FileExist(oldExePath)) {
-            try FileMove(oldExePath, targetExePath)
+            try {
+                FileMove(oldExePath, targetExePath)
+                rollbackSuccess := true
+            }
         }
-        MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
+
+        if (rollbackSuccess)
+            MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
+        else if (FileExist(targetExePath))
+            MsgBox("Update failed:`n" e.Message, "Update Error", "Icon!")
+        else
+            MsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
     }
 }
 
@@ -453,9 +487,12 @@ _Update_ContinueFromElevation() {
         content := FileRead(updateFile, "UTF-8")
         FileDelete(updateFile)
 
+        ; Bug 6 fix: Add specific error for corrupted state file
         parts := StrSplit(content, "<|>")
-        if (parts.Length != 2)
+        if (parts.Length != 2) {
+            MsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), "Alt-Tabby", "Icon!")
             return false
+        }
 
         newExePath := parts[1]
         targetExePath := parts[2]
