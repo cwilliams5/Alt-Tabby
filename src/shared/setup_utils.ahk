@@ -161,16 +161,16 @@ CheckForUpdates(showIfCurrent := false) {
                 latestVersion := match[1]
                 if (CompareVersions(latestVersion, currentVersion) > 0) {
                     ; Newer version available
-                    TrayTip("Update Available", "Alt-Tabby " latestVersion " is available!`nCurrent: " currentVersion "`n`nVisit the tray menu to download.", "Info")
+                    TrayTip("Update Available", "Alt-Tabby " latestVersion " is available!`nCurrent: " currentVersion "`n`nVisit the tray menu to download.", "Iconi")
                 } else if (showIfCurrent) {
-                    TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Info")
+                    TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
                 }
             }
         } else if (showIfCurrent) {
-            TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Warning")
+            TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
         }
     } catch as e {
         if (showIfCurrent)
-            TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Warning")
+            TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
     }
 }

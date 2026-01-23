@@ -52,6 +52,9 @@ for _, arg in A_Args {
         case "--wizard-continue":
             g_AltTabbyMode := "wizard-continue"
             ; Continue wizard after self-elevation (elevated instance)
+        case "--enable-admin-task":
+            g_AltTabbyMode := "enable-admin-task"
+            ; Create admin task after self-elevation (from tray menu toggle)
     }
 }
 
@@ -164,6 +167,24 @@ if (g_AltTabbyMode = "wizard-continue") {
         MsgBox("No wizard continuation data found.", "Alt-Tabby", "Icon!")
         ExitApp()
     }
+}
+
+; ============================================================
+; ENABLE-ADMIN-TASK MODE (After Self-Elevation from Tray Menu)
+; ============================================================
+if (g_AltTabbyMode = "enable-admin-task") {
+    ConfigLoader_Init()
+
+    exePath := _Shortcut_GetEffectiveExePath()
+    if (CreateAdminTask(exePath)) {
+        cfg.SetupRunAsAdmin := true
+        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        RecreateShortcuts()  ; Update to point to schtasks
+        TrayTip("Admin Mode Enabled", "Alt-Tabby will now run with administrator privileges.", "Iconi")
+    } else {
+        MsgBox("Failed to create scheduled task.", "Alt-Tabby", "Iconx")
+    }
+    ExitApp()
 }
 
 ; ============================================================
@@ -751,7 +772,7 @@ WizardSkip(*) {
 }
 
 WizardApply(*) {
-    global g_WizardGui, cfg, gConfigIniPath, JSON
+    global g_WizardGui, cfg, gConfigIniPath
 
     ; Get checkbox states
     startMenu := g_WizardGui["StartMenu"].Value
@@ -764,7 +785,7 @@ WizardApply(*) {
     needsAdmin := install || admin
     if (needsAdmin && !A_IsAdmin) {
         ; Save wizard choices to temp file, re-launch elevated with --wizard-continue flag
-        choices := JSON.Stringify(Map(
+        choices := JXON_Dump(Map(
             "startMenu", startMenu,
             "startup", startup,
             "install", install,
@@ -802,7 +823,7 @@ WizardApply(*) {
 
 ; Called when --wizard-continue flag is passed (after elevation)
 WizardContinue() {
-    global cfg, gConfigIniPath, JSON
+    global cfg, gConfigIniPath
 
     choicesFile := A_Temp "\alttabby_wizard.json"
     if (!FileExist(choicesFile))
@@ -811,7 +832,7 @@ WizardContinue() {
     ; Read saved choices
     try {
         choicesJson := FileRead(choicesFile, "UTF-8")
-        choices := JSON.Parse(choicesJson)
+        choices := JXON_Load(choicesJson)
         FileDelete(choicesFile)
     } catch {
         return false
@@ -995,7 +1016,7 @@ ToggleAdminMode() {
     global cfg, gConfigIniPath
 
     if (cfg.SetupRunAsAdmin) {
-        ; Disable admin mode
+        ; Disable admin mode - doesn't require elevation
         DeleteAdminTask()
         cfg.SetupRunAsAdmin := false
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
@@ -1003,13 +1024,29 @@ ToggleAdminMode() {
         ToolTip("Admin mode disabled")
         SetTimer(() => ToolTip(), -1500)
     } else {
-        ; Enable admin mode - need to create task
+        ; Enable admin mode - requires elevation to create scheduled task
         if (!A_IsAdmin) {
             result := MsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", "Alt-Tabby", "OKCancel Icon!")
             if (result = "Cancel")
                 return
+
+            ; Self-elevate with --enable-admin-task flag
+            try {
+                if A_IsCompiled
+                    Run('*RunAs "' A_ScriptFullPath '" --enable-admin-task')
+                else
+                    Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --enable-admin-task')
+                ; Don't exit - the elevated instance will create the task and exit
+                ; We'll see the result on next tray menu open
+                ToolTip("Creating admin task...")
+                SetTimer(() => ToolTip(), -2000)
+            } catch {
+                MsgBox("UAC was cancelled. Admin mode was not enabled.", "Alt-Tabby", "Icon!")
+            }
+            return
         }
 
+        ; We're already admin - create task directly
         exePath := _Shortcut_GetEffectiveExePath()
         if (CreateAdminTask(exePath)) {
             cfg.SetupRunAsAdmin := true
@@ -1017,6 +1054,8 @@ ToggleAdminMode() {
             RecreateShortcuts()  ; Update to point to schtasks
             ToolTip("Admin mode enabled")
             SetTimer(() => ToolTip(), -1500)
+        } else {
+            MsgBox("Failed to create scheduled task.", "Alt-Tabby", "Iconx")
         }
     }
 }
