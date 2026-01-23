@@ -69,6 +69,9 @@ for _, arg in A_Args {
         case "--update-installed":
             g_AltTabbyMode := "update-installed"
             ; Update installed version after self-elevation (from mismatch detection)
+        case "--repair-admin-task":
+            g_AltTabbyMode := "repair-admin-task"
+            ; Repair stale admin task after self-elevation
         case "--testing-mode":
             g_TestingMode := true
             ; Skip wizard and install mismatch dialogs (for automated testing)
@@ -220,9 +223,41 @@ if (g_AltTabbyMode = "enable-admin-task") {
 }
 
 ; ============================================================
+; REPAIR-ADMIN-TASK MODE (After Self-Elevation for Stale Task)
+; ============================================================
+if (g_AltTabbyMode = "repair-admin-task") {
+    ConfigLoader_Init()
+
+    ; Recreate task with current exe path
+    exePath := A_ScriptFullPath
+    DeleteAdminTask()
+    if (CreateAdminTask(exePath)) {
+        cfg.SetupRunAsAdmin := true
+        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        TrayTip("Admin Mode Repaired", "Scheduled task updated to current location.", "Iconi")
+
+        ; Now launch via the repaired task
+        Sleep(500)  ; Brief pause for task to be ready
+        exitCode := RunWait('schtasks /run /tn "Alt-Tabby"',, "Hide")
+
+        if (exitCode != 0) {
+            ; Task run failed - launch directly instead
+            MsgBox("Task repaired but failed to launch (code " exitCode ").`nLaunching directly.", "Alt-Tabby", "Icon!")
+            Run('"' exePath '"')
+        }
+    } else {
+        MsgBox("Failed to repair scheduled task.", "Alt-Tabby", "Iconx")
+        ; Fall back to direct launch
+        Run('"' exePath '"')
+    }
+    ExitApp()
+}
+
+; ============================================================
 ; APPLY-UPDATE MODE (After Self-Elevation for Update)
 ; ============================================================
 if (g_AltTabbyMode = "apply-update") {
+    ConfigLoader_Init()  ; Required for admin task recreation in _Update_ApplyAndRelaunch
     ; Apply the downloaded update (we're now elevated)
     if (!_Update_ContinueFromElevation()) {
         MsgBox("Update continuation failed. Please try updating again.", "Alt-Tabby", "Icon!")
@@ -234,6 +269,7 @@ if (g_AltTabbyMode = "apply-update") {
 ; UPDATE-INSTALLED MODE (After Self-Elevation for Install Mismatch)
 ; ============================================================
 if (g_AltTabbyMode = "update-installed") {
+    ConfigLoader_Init()  ; Required for admin task recreation
     updateFile := A_Temp "\alttabby_install_update.txt"
 
     if (!FileExist(updateFile)) {

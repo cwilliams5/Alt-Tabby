@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Cross-file globals (cfg, g_StorePID, etc.) come from alt_tabby.ahk
 
 ; ============================================================
 ; Launcher Tray Menu - On-Demand Updates

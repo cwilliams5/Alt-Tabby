@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; g_TestingMode and other globals come from alt_tabby.ahk
 
 ; ============================================================
 ; Launcher Main - Core Init & Subprocess Management
@@ -12,7 +13,7 @@ global g_LauncherMutex := 0
 ; Main launcher initialization
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
-    global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg
+    global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
 
     ; Check if another launcher is already running (named mutex)
     ; MUST be before mismatch check to prevent race conditions
@@ -48,8 +49,18 @@ Launcher_Init() {
 
     ; Check if we should redirect to scheduled task (admin mode)
     if (_ShouldRedirectToScheduledTask()) {
-        Run('schtasks /run /tn "Alt-Tabby"',, "Hide")
-        ExitApp()
+        exitCode := RunWait('schtasks /run /tn "Alt-Tabby"',, "Hide")
+
+        if (exitCode = 0) {
+            Sleep(100)  ; Brief delay for task to initialize
+            ExitApp()
+        } else {
+            ; Task failed to run - fall back to non-admin mode
+            cfg.SetupRunAsAdmin := false
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+            TrayTip("Admin Mode Error", "Scheduled task failed (code " exitCode "). Running without elevation.", "Icon!")
+            ; Continue with normal startup below
+        }
     }
 
     ; Check for first-run (config exists but FirstRunCompleted is false)
@@ -107,8 +118,9 @@ _Launcher_OnExit(exitReason, exitCode) {
 }
 
 ; Check if we should redirect to scheduled task instead of running directly
-; Returns true if: task exists and we're NOT already elevated
+; Returns true if: task exists, points to current exe, and we're NOT already elevated
 ; Note: Trusts task existence over config (handles corrupted config case)
+; Handles stale task paths (exe renamed/moved) by offering repair
 _ShouldRedirectToScheduledTask() {
     global cfg, gConfigIniPath
 
@@ -117,18 +129,47 @@ _ShouldRedirectToScheduledTask() {
         return false
 
     ; Check if task exists
-    taskExists := AdminTaskExists()
+    if (!AdminTaskExists())
+        return false
 
-    ; If task exists but config says disabled, update config to match reality
-    ; This handles case where config was corrupted/reset
-    if (taskExists && !cfg.SetupRunAsAdmin) {
+    ; Validate task points to current exe (handles renamed exe case)
+    taskPath := _AdminTask_GetCommandPath()
+    if (taskPath = "" || StrLower(taskPath) != StrLower(A_ScriptFullPath)) {
+        ; Task is stale - offer to repair
+        result := MsgBox(
+            "The Admin Mode scheduled task points to a different location:`n"
+            "Task: " taskPath "`n"
+            "Current: " A_ScriptFullPath "`n`n"
+            "Would you like to repair it? (requires elevation)",
+            "Alt-Tabby - Admin Mode Repair",
+            "YesNo Icon?"
+        )
+
+        if (result = "Yes") {
+            ; Self-elevate to repair task
+            try {
+                if (A_IsCompiled)
+                    Run('*RunAs "' A_ScriptFullPath '" --repair-admin-task')
+                else
+                    Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --repair-admin-task')
+                ExitApp()  ; Elevated instance will handle launch
+            } catch {
+                ; UAC refused - fall back to non-admin
+                MsgBox("Administrator privileges required to repair.`nRunning without elevation.", "Alt-Tabby", "Icon!")
+            }
+        }
+
+        ; User said No or UAC refused - disable admin mode and continue non-elevated
+        cfg.SetupRunAsAdmin := false
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        return false
+    }
+
+    ; Sync config if needed (handles corrupted config case)
+    if (!cfg.SetupRunAsAdmin) {
         cfg.SetupRunAsAdmin := true
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
     }
-
-    ; Only redirect if task exists and we're not admin
-    if (!taskExists)
-        return false
 
     return true
 }

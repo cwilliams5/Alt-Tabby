@@ -113,6 +113,28 @@ AdminTaskExists() {
     return (result = 0)  ; 0 = task exists
 }
 
+; Extract command path from existing scheduled task XML
+; Returns empty string if task doesn't exist or can't be parsed
+_AdminTask_GetCommandPath() {
+    tempFile := A_Temp "\alttabby_task_query.xml"
+    try FileDelete(tempFile)
+
+    ; Export task to XML (schtasks /xml outputs to stdout, redirect to file)
+    result := RunWait('cmd.exe /c schtasks /query /tn "Alt-Tabby" /xml > "' tempFile '"',, "Hide")
+    if (result != 0 || !FileExist(tempFile))
+        return ""
+
+    try {
+        xml := FileRead(tempFile, "UTF-8")
+        FileDelete(tempFile)
+
+        ; Extract: <Command>"path"</Command> or <Command>path</Command>
+        if (RegExMatch(xml, '<Command>"?([^"<]+)"?</Command>', &match))
+            return match[1]
+    }
+    return ""
+}
+
 ; ============================================================
 ; SHORTCUT PATH HELPERS
 ; ============================================================
@@ -231,6 +253,10 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
     SplitPath(currentExe, , &exeDir)
     tempExe := A_Temp "\AltTabby_" newVersion ".exe"
 
+    ; Clean up any existing partial download from previous failed attempt
+    if (FileExist(tempExe))
+        try FileDelete(tempExe)
+
     ; Show progress
     TrayTip("Downloading Update", "Downloading Alt-Tabby " newVersion "...", "Iconi")
 
@@ -261,8 +287,11 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         stream := ""  ; Release ADODB.Stream after close
         whr := ""     ; Release WinHttp
     } catch as e {
-        stream := ""  ; Cleanup on error
+        stream := ""  ; Cleanup COM objects on error
         whr := ""
+        ; Clean up partial download
+        if (FileExist(tempExe))
+            try FileDelete(tempExe)
         MsgBox("Download failed:`n" e.Message, "Update Error", "Icon!")
         return
     }
@@ -284,6 +313,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         } catch {
             MsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Icon!")
             try FileDelete(updateFile)
+            try FileDelete(tempExe)  ; Clean up downloaded exe
             return
         }
     }

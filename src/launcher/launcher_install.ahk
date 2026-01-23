@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Cross-file globals (cfg, g_MismatchDialogShown) come from alt_tabby.ahk
 
 ; ============================================================
 ; Launcher Install - Program Files & Mismatch Detection

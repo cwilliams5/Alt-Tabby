@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Cross-file globals (cfg) come from alt_tabby.ahk
 
 ; ============================================================
 ; Launcher Shortcuts - Start Menu, Startup, Admin-Aware

@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Cross-file globals (cfg, gConfigIniPath) come from alt_tabby.ahk
 
 ; ============================================================
 ; Launcher Wizard - First-Run Setup
