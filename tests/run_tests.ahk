@@ -66,6 +66,7 @@ for _, arg in A_Args {
 #Include %A_ScriptDir%\..\src\shared\json.ahk
 #Include %A_ScriptDir%\..\src\shared\ipc_pipe.ahk
 #Include %A_ScriptDir%\..\src\shared\blacklist.ahk
+#Include %A_ScriptDir%\..\src\shared\setup_utils.ahk
 #Include %A_ScriptDir%\..\src\store\windowstore.ahk
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk

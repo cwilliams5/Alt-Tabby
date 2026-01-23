@@ -6,8 +6,8 @@
 ; Ahk2Exe directives - customize exe metadata (removes AutoHotkey identification)
 ;@Ahk2Exe-SetDescription Alt-Tabby Window Switcher
 ;@Ahk2Exe-SetProductName Alt-Tabby
-;@Ahk2Exe-SetProductVersion 1.0.0
-;@Ahk2Exe-SetFileVersion 1.0.0.0
+;@Ahk2Exe-SetProductVersion 0.4.0
+;@Ahk2Exe-SetFileVersion 0.4.0.0
 ;@Ahk2Exe-SetCopyright Alt-Tabby
 ;@Ahk2Exe-SetOrigFilename AltTabby.exe
 ;@Ahk2Exe-SetCompanyName Alt-Tabby
@@ -49,11 +49,14 @@ for _, arg in A_Args {
         case "--blacklist":
             g_AltTabbyMode := "blacklist"
             ; Blacklist editor shows its own window, no tray icon needed
+        case "--wizard-continue":
+            g_AltTabbyMode := "wizard-continue"
+            ; Continue wizard after self-elevation (elevated instance)
     }
 }
 
 ; Launcher mode globals (declared early, initialization happens after includes)
-if (g_AltTabbyMode = "launch") {
+if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
     global g_StorePID := 0
     global g_GuiPID := 0
     global g_ViewerPID := 0
@@ -69,6 +72,8 @@ if (g_AltTabbyMode = "launch") {
     global g_SplashImgH := 0
     global g_SplashPosX := 0
     global g_SplashPosY := 0
+    ; First-run wizard globals
+    global g_WizardGui := 0
 }
 
 ; Note: Subprocess tray icon hiding is done immediately in arg parsing above
@@ -90,6 +95,7 @@ if (g_AltTabbyMode = "launch") {
 #Include json.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
+#Include setup_utils.ahk
 
 ; Store module (from src/store/)
 #Include %A_ScriptDir%\store\
@@ -136,12 +142,46 @@ if (g_AltTabbyMode = "blacklist") {
 }
 
 ; ============================================================
+; WIZARD-CONTINUE MODE (After Self-Elevation)
+; ============================================================
+if (g_AltTabbyMode = "wizard-continue") {
+    ConfigLoader_Init()
+    if (WizardContinue()) {
+        ; Wizard completed - launch normally
+        SetupLauncherTray()
+        OnMessage(0x404, TrayIconClick)
+        LaunchStore()
+        Sleep(300)
+        LaunchGui()
+
+        ; Auto-update check if enabled
+        if (cfg.SetupAutoUpdateCheck)
+            SetTimer(() => CheckForUpdates(false), -5000)
+
+        Persistent()
+    } else {
+        ; No wizard data found - exit
+        MsgBox("No wizard continuation data found.", "Alt-Tabby", "Icon!")
+        ExitApp()
+    }
+}
+
+; ============================================================
 ; LAUNCHER MODE INITIALIZATION
 ; ============================================================
 ; Must be after includes so we can use ConfigLoader_Init
 if (g_AltTabbyMode = "launch") {
     ; Initialize config to get splash settings
     ConfigLoader_Init()
+
+    ; Check for first-run (config exists but FirstRunCompleted is false)
+    configPath := A_IsCompiled ? A_ScriptDir "\config.ini" : A_ScriptDir "\..\config.ini"
+    if (!cfg.SetupFirstRunCompleted) {
+        ; Show first-run wizard
+        ShowFirstRunWizard()
+        ; If wizard was shown and exited (self-elevated), we exit here
+        ; Otherwise continue to normal startup
+    }
 
     ; Show splash screen if enabled
     if (cfg.LauncherShowSplash)
@@ -165,6 +205,10 @@ if (g_AltTabbyMode = "launch") {
             Sleep(remaining)
         HideSplashScreen()
     }
+
+    ; Auto-update check if enabled
+    if (cfg.SetupAutoUpdateCheck)
+        SetTimer(() => CheckForUpdates(false), -5000)
 
     ; Stay alive to manage subprocesses
     Persistent()
@@ -439,14 +483,15 @@ SetupLauncherTray() {
 }
 
 UpdateTrayMenu() {
-    global g_StorePID, g_GuiPID, g_ViewerPID
+    global g_StorePID, g_GuiPID, g_ViewerPID, cfg
 
     tray := A_TrayMenu
     tray.Delete()
 
-    ; Header
-    tray.Add("Alt-Tabby", (*) => 0)
-    tray.Disable("Alt-Tabby")
+    ; Header with version
+    version := GetAppVersion()
+    tray.Add("Alt-Tabby v" version, (*) => 0)
+    tray.Disable("Alt-Tabby v" version)
     tray.Add()
 
     ; Store status
@@ -494,6 +539,21 @@ UpdateTrayMenu() {
     tray.Add("Run at Startup", (*) => ToggleStartupShortcut())
     if (_Shortcut_StartupExists())
         tray.Check("Run at Startup")
+
+    tray.Add()
+
+    ; Admin mode toggle
+    tray.Add("Run as Administrator", (*) => ToggleAdminMode())
+    if (cfg.SetupRunAsAdmin && AdminTaskExists())
+        tray.Check("Run as Administrator")
+
+    tray.Add()
+
+    ; Updates section
+    tray.Add("Check for Updates Now", (*) => CheckForUpdates(true))
+    tray.Add("Auto-check on Startup", (*) => ToggleAutoUpdate())
+    if (cfg.SetupAutoUpdateCheck)
+        tray.Check("Auto-check on Startup")
 
     tray.Add()
 
@@ -584,26 +644,9 @@ LaunchBlacklistEditor() {
 ; ============================================================
 ; SHORTCUT MANAGEMENT (Start Menu / Startup)
 ; ============================================================
-
-; Get the path where Start Menu shortcut would be
-_Shortcut_GetStartMenuPath() {
-    return A_AppData "\Microsoft\Windows\Start Menu\Programs\Alt-Tabby.lnk"
-}
-
-; Get the path where Startup shortcut would be
-_Shortcut_GetStartupPath() {
-    return A_Startup "\Alt-Tabby.lnk"
-}
-
-; Check if Start Menu shortcut exists
-_Shortcut_StartMenuExists() {
-    return FileExist(_Shortcut_GetStartMenuPath())
-}
-
-; Check if Startup shortcut exists
-_Shortcut_StartupExists() {
-    return FileExist(_Shortcut_GetStartupPath())
-}
+; Note: _Shortcut_GetStartMenuPath, _Shortcut_GetStartupPath,
+; _Shortcut_StartMenuExists, _Shortcut_StartupExists, and
+; _Shortcut_GetIconPath are defined in setup_utils.ahk
 
 ; Create a shortcut file using WScript.Shell COM
 _Shortcut_Create(lnkPath, targetPath, iconPath := "", description := "") {
@@ -627,24 +670,9 @@ _Shortcut_Create(lnkPath, targetPath, iconPath := "", description := "") {
     }
 }
 
-; Get the exe path (works for both compiled and dev mode)
-_Shortcut_GetExePath() {
-    if (A_IsCompiled)
-        return A_ScriptFullPath
-    else
-        return A_AhkPath '" "' A_ScriptFullPath  ; AutoHotkey.exe "script.ahk"
-}
-
-; Get the icon path
-_Shortcut_GetIconPath() {
-    if (A_IsCompiled)
-        return A_ScriptDir "\img\icon.ico"
-    else
-        return A_ScriptDir "\..\img\icon.ico"
-}
-
 ; Toggle Start Menu shortcut
 ToggleStartMenuShortcut() {
+    global cfg
     lnkPath := _Shortcut_GetStartMenuPath()
     if (FileExist(lnkPath)) {
         try {
@@ -654,16 +682,8 @@ ToggleStartMenuShortcut() {
             MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
         }
     } else {
-        if (_Shortcut_Create(lnkPath, A_IsCompiled ? A_ScriptFullPath : A_AhkPath, _Shortcut_GetIconPath(), "Alt-Tabby Window Switcher")) {
-            ; For dev mode, we need to fix the shortcut to include the script path as argument
-            if (!A_IsCompiled) {
-                try {
-                    shell := ComObject("WScript.Shell")
-                    shortcut := shell.CreateShortcut(lnkPath)
-                    shortcut.Arguments := '"' A_ScriptFullPath '"'
-                    shortcut.Save()
-                }
-            }
+        ; Use admin-aware shortcut creation
+        if (_CreateShortcutForCurrentMode(lnkPath)) {
             ToolTip("Added to Start Menu")
         }
     }
@@ -672,6 +692,7 @@ ToggleStartMenuShortcut() {
 
 ; Toggle Startup shortcut
 ToggleStartupShortcut() {
+    global cfg
     lnkPath := _Shortcut_GetStartupPath()
     if (FileExist(lnkPath)) {
         try {
@@ -681,18 +702,320 @@ ToggleStartupShortcut() {
             MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
         }
     } else {
-        if (_Shortcut_Create(lnkPath, A_IsCompiled ? A_ScriptFullPath : A_AhkPath, _Shortcut_GetIconPath(), "Alt-Tabby Window Switcher")) {
-            ; For dev mode, we need to fix the shortcut to include the script path as argument
-            if (!A_IsCompiled) {
-                try {
-                    shell := ComObject("WScript.Shell")
-                    shortcut := shell.CreateShortcut(lnkPath)
-                    shortcut.Arguments := '"' A_ScriptFullPath '"'
-                    shortcut.Save()
-                }
-            }
+        ; Use admin-aware shortcut creation
+        if (_CreateShortcutForCurrentMode(lnkPath)) {
             ToolTip("Added to Startup")
         }
     }
+    SetTimer(() => ToolTip(), -1500)
+}
+
+; ============================================================
+; FIRST-RUN WIZARD
+; ============================================================
+
+ShowFirstRunWizard() {
+    global g_WizardGui, cfg
+
+    g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
+    g_WizardGui.SetFont("s10", "Segoe UI")
+
+    g_WizardGui.AddText("w400", "Let's set up a few things to get you started:")
+    g_WizardGui.AddText("w400 y+5", "")
+
+    g_WizardGui.AddCheckbox("vStartMenu w400", "Add to Start Menu")
+    g_WizardGui.AddCheckbox("vStartup w400 Checked", "Run at Startup (recommended)")
+    g_WizardGui.AddCheckbox("vInstall w400", "Install to Program Files")
+    g_WizardGui.AddCheckbox("vAdmin w400", "Run as Administrator (for elevated windows)")
+    g_WizardGui.AddCheckbox("vAutoUpdate w400 Checked", "Check for updates automatically")
+
+    g_WizardGui.AddText("w400 y+15 cGray", "Note: 'Install to Program Files' and 'Run as Administrator'")
+    g_WizardGui.AddText("w400 cGray", "require a one-time UAC elevation.")
+
+    g_WizardGui.AddButton("w100 y+20", "Skip").OnEvent("Click", WizardSkip)
+    g_WizardGui.AddButton("w120 x+10 Default", "Apply && Start").OnEvent("Click", WizardApply)
+
+    g_WizardGui.OnEvent("Close", WizardSkip)
+    g_WizardGui.Show()
+    WinWaitClose(g_WizardGui)
+}
+
+WizardSkip(*) {
+    global g_WizardGui, cfg, gConfigIniPath
+
+    ; Mark first-run as completed even if skipped
+    cfg.SetupFirstRunCompleted := true
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+
+    g_WizardGui.Destroy()
+}
+
+WizardApply(*) {
+    global g_WizardGui, cfg, gConfigIniPath
+
+    ; Get checkbox states
+    startMenu := g_WizardGui["StartMenu"].Value
+    startup := g_WizardGui["Startup"].Value
+    install := g_WizardGui["Install"].Value
+    admin := g_WizardGui["Admin"].Value
+    autoUpdate := g_WizardGui["AutoUpdate"].Value
+
+    ; Check if selected options require admin
+    needsAdmin := install || admin
+    if (needsAdmin && !A_IsAdmin) {
+        ; Save wizard choices to temp file, re-launch elevated with --wizard-continue flag
+        choices := JSON.Stringify(Map(
+            "startMenu", startMenu,
+            "startup", startup,
+            "install", install,
+            "admin", admin,
+            "autoUpdate", autoUpdate
+        ))
+        choicesFile := A_Temp "\alttabby_wizard.json"
+        try FileDelete(choicesFile)
+        FileAppend(choices, choicesFile, "UTF-8")
+
+        ; Self-elevate and continue wizard
+        if A_IsCompiled
+            Run('*RunAs "' A_ScriptFullPath '" --wizard-continue')
+        else
+            Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --wizard-continue')
+
+        g_WizardGui.Destroy()
+        ExitApp()  ; Exit non-elevated instance
+        return
+    }
+
+    ; We're either not needing admin, or we're already admin
+    _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate)
+    g_WizardGui.Destroy()
+}
+
+; Called when --wizard-continue flag is passed (after elevation)
+WizardContinue() {
+    global cfg, gConfigIniPath
+
+    choicesFile := A_Temp "\alttabby_wizard.json"
+    if (!FileExist(choicesFile))
+        return false
+
+    ; Read saved choices
+    try {
+        choicesJson := FileRead(choicesFile, "UTF-8")
+        choices := JSON.Parse(choicesJson)
+        FileDelete(choicesFile)
+    } catch {
+        return false
+    }
+
+    ; Apply the choices (we're elevated now)
+    _WizardApplyChoices(
+        choices["startMenu"],
+        choices["startup"],
+        choices["install"],
+        choices["admin"],
+        choices["autoUpdate"]
+    )
+
+    return true
+}
+
+; Internal: Apply wizard choices (called from both wizard and continuation)
+_WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
+    global cfg, gConfigIniPath
+
+    ; Determine exe path
+    exePath := A_IsCompiled ? A_ScriptFullPath : A_ScriptFullPath
+
+    ; Step 1: Install to Program Files (if selected)
+    if (install) {
+        newPath := InstallToProgramFiles()
+        if (newPath != "")
+            exePath := newPath
+    }
+
+    ; Step 2: Create admin task (if selected) - needs final exe path
+    if (admin) {
+        if (CreateAdminTask(exePath)) {
+            cfg.SetupRunAsAdmin := true
+            _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        }
+    }
+
+    ; Step 3: Save config
+    cfg.SetupExePath := exePath
+    cfg.SetupAutoUpdateCheck := autoUpdate
+    cfg.SetupFirstRunCompleted := true
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", exePath, "", "string")
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", autoUpdate, true, "bool")
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+
+    ; Step 4: Create shortcuts AFTER admin mode is set (so they point correctly)
+    if (startMenu)
+        _CreateShortcutForCurrentMode(_Shortcut_GetStartMenuPath())
+    if (startup)
+        _CreateShortcutForCurrentMode(_Shortcut_GetStartupPath())
+}
+
+; ============================================================
+; PROGRAM FILES INSTALLATION
+; ============================================================
+
+InstallToProgramFiles() {
+    global cfg
+
+    ; Target: C:\Program Files\Alt-Tabby\
+    installDir := "C:\Program Files\Alt-Tabby"
+    srcExe := A_IsCompiled ? A_ScriptFullPath : ""
+    srcDir := A_IsCompiled ? A_ScriptDir : ""
+
+    if (!A_IsCompiled) {
+        MsgBox("Program Files installation only works with compiled exe.", "Alt-Tabby", "Icon!")
+        return ""
+    }
+
+    ; Check if we need admin
+    if (!A_IsAdmin) {
+        MsgBox("Administrator privileges required to install to Program Files.", "Alt-Tabby", "Icon!")
+        return ""
+    }
+
+    ; Check if already in Program Files
+    if (InStr(A_ScriptDir, "C:\Program Files\Alt-Tabby")) {
+        return A_ScriptFullPath  ; Already there
+    }
+
+    try {
+        ; Create directory
+        if (!DirExist(installDir))
+            DirCreate(installDir)
+
+        ; Copy exe
+        FileCopy(srcExe, installDir "\AltTabby.exe", true)
+
+        ; Copy img folder if exists
+        if (DirExist(srcDir "\img"))
+            DirCopy(srcDir "\img", installDir "\img", true)
+
+        ; Copy config if exists (so user keeps their settings)
+        if (FileExist(srcDir "\config.ini"))
+            FileCopy(srcDir "\config.ini", installDir "\config.ini", true)
+
+        ; Copy blacklist if exists
+        if (FileExist(srcDir "\blacklist.txt"))
+            FileCopy(srcDir "\blacklist.txt", installDir "\blacklist.txt", true)
+
+        return installDir "\AltTabby.exe"
+    } catch as e {
+        MsgBox("Failed to install to Program Files:`n" e.Message, "Alt-Tabby", "IconX")
+        return ""
+    }
+}
+
+; ============================================================
+; ADMIN-AWARE SHORTCUT MANAGEMENT
+; ============================================================
+; Note: CreateAdminTask, DeleteAdminTask, AdminTaskExists, and
+; _Shortcut_GetEffectiveExePath are defined in setup_utils.ahk
+
+; Create a shortcut that respects admin mode
+; When admin mode is ON, shortcut runs the scheduled task instead of exe directly
+_CreateShortcutForCurrentMode(lnkPath) {
+    global cfg
+
+    exePath := _Shortcut_GetEffectiveExePath()
+    iconPath := _Shortcut_GetIconPath()
+
+    try {
+        shell := ComObject("WScript.Shell")
+        shortcut := shell.CreateShortcut(lnkPath)
+
+        if (cfg.SetupRunAsAdmin && AdminTaskExists()) {
+            ; Shortcut to run scheduled task (UAC-free admin)
+            shortcut.TargetPath := "schtasks.exe"
+            shortcut.Arguments := '/run /tn "Alt-Tabby"'
+            shortcut.Description := "Alt-Tabby Window Switcher (Admin)"
+        } else if (A_IsCompiled) {
+            ; Direct exe shortcut
+            shortcut.TargetPath := exePath
+            shortcut.Description := "Alt-Tabby Window Switcher"
+        } else {
+            ; Dev mode: AutoHotkey.exe with script as argument
+            shortcut.TargetPath := A_AhkPath
+            shortcut.Arguments := '"' A_ScriptFullPath '"'
+            shortcut.Description := "Alt-Tabby Window Switcher (Dev)"
+        }
+
+        ; Set working directory
+        SplitPath(exePath, , &workDir)
+        shortcut.WorkingDirectory := workDir
+
+        ; Set icon
+        if (iconPath && FileExist(iconPath))
+            shortcut.IconLocation := iconPath
+
+        shortcut.Save()
+        return true
+    } catch as e {
+        MsgBox("Failed to create shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
+        return false
+    }
+}
+
+; Recreate existing shortcuts when admin mode changes
+RecreateShortcuts() {
+    ; If Start Menu shortcut exists, recreate it
+    if (_Shortcut_StartMenuExists()) {
+        try FileDelete(_Shortcut_GetStartMenuPath())
+        _CreateShortcutForCurrentMode(_Shortcut_GetStartMenuPath())
+    }
+
+    ; If Startup shortcut exists, recreate it
+    if (_Shortcut_StartupExists()) {
+        try FileDelete(_Shortcut_GetStartupPath())
+        _CreateShortcutForCurrentMode(_Shortcut_GetStartupPath())
+    }
+}
+
+; ============================================================
+; TRAY MENU TOGGLES
+; Note: CheckForUpdates is defined in setup_utils.ahk
+; ============================================================
+
+ToggleAdminMode() {
+    global cfg, gConfigIniPath
+
+    if (cfg.SetupRunAsAdmin) {
+        ; Disable admin mode
+        DeleteAdminTask()
+        cfg.SetupRunAsAdmin := false
+        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        RecreateShortcuts()  ; Update to point to exe
+        ToolTip("Admin mode disabled")
+        SetTimer(() => ToolTip(), -1500)
+    } else {
+        ; Enable admin mode - need to create task
+        if (!A_IsAdmin) {
+            result := MsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", "Alt-Tabby", "OKCancel Icon!")
+            if (result = "Cancel")
+                return
+        }
+
+        exePath := _Shortcut_GetEffectiveExePath()
+        if (CreateAdminTask(exePath)) {
+            cfg.SetupRunAsAdmin := true
+            _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+            RecreateShortcuts()  ; Update to point to schtasks
+            ToolTip("Admin mode enabled")
+            SetTimer(() => ToolTip(), -1500)
+        }
+    }
+}
+
+ToggleAutoUpdate() {
+    global cfg, gConfigIniPath
+    cfg.SetupAutoUpdateCheck := !cfg.SetupAutoUpdateCheck
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", cfg.SetupAutoUpdateCheck, true, "bool")
+    ToolTip(cfg.SetupAutoUpdateCheck ? "Auto-update enabled" : "Auto-update disabled")
     SetTimer(() => ToolTip(), -1500)
 }

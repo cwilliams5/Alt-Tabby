@@ -679,7 +679,26 @@ global gConfigRegistry := [
      long: "Options for automated test suite."},
 
     {s: "Testing", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", default: 30,
-     d: "Default duration for test_live.ahk"}
+     d: "Default duration for test_live.ahk"},
+
+    ; ============================================================
+    ; Setup (First-Run & Installation)
+    ; ============================================================
+    {type: "section", name: "Setup",
+     desc: "Setup & Installation",
+     long: "Installation paths and first-run settings. Managed automatically by the setup wizard."},
+
+    {s: "Setup", k: "ExePath", g: "SetupExePath", t: "string", default: "",
+     d: "Full path to AltTabby.exe after installation. Empty = use current location."},
+
+    {s: "Setup", k: "RunAsAdmin", g: "SetupRunAsAdmin", t: "bool", default: false,
+     d: "Run with administrator privileges via Task Scheduler (no UAC prompts after setup)."},
+
+    {s: "Setup", k: "AutoUpdateCheck", g: "SetupAutoUpdateCheck", t: "bool", default: true,
+     d: "Automatically check for updates on startup."},
+
+    {s: "Setup", k: "FirstRunCompleted", g: "SetupFirstRunCompleted", t: "bool", default: false,
+     d: "Set to true after first-run wizard completes."}
 ]
 
 ; ============================================================

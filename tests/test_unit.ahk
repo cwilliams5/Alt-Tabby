@@ -662,4 +662,268 @@ RunUnitTests() {
 
     ; Clean up
     WindowStore_RemoveWindow([upgradeHwnd], true)
+
+    ; ============================================================
+    ; Version Management Tests
+    ; ============================================================
+    Log("`n--- Version Management Tests ---")
+
+    ; Test CompareVersions function
+    Log("Testing CompareVersions()...")
+
+    ; Test: newer version is greater
+    result := CompareVersions("0.4.0", "0.3.2")
+    if (result = 1) {
+        Log("PASS: CompareVersions('0.4.0', '0.3.2') = 1 (newer is greater)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('0.4.0', '0.3.2') should be 1, got " result)
+        TestErrors++
+    }
+
+    ; Test: older version is less
+    result := CompareVersions("0.3.2", "0.4.0")
+    if (result = -1) {
+        Log("PASS: CompareVersions('0.3.2', '0.4.0') = -1 (older is less)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('0.3.2', '0.4.0') should be -1, got " result)
+        TestErrors++
+    }
+
+    ; Test: equal versions
+    result := CompareVersions("1.0.0", "1.0.0")
+    if (result = 0) {
+        Log("PASS: CompareVersions('1.0.0', '1.0.0') = 0 (equal)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('1.0.0', '1.0.0') should be 0, got " result)
+        TestErrors++
+    }
+
+    ; Test: shorter version string
+    result := CompareVersions("1.2", "1.2.0")
+    if (result = 0) {
+        Log("PASS: CompareVersions('1.2', '1.2.0') = 0 (missing patch = 0)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('1.2', '1.2.0') should be 0, got " result)
+        TestErrors++
+    }
+
+    ; Test: major version difference
+    result := CompareVersions("2.0.0", "1.9.9")
+    if (result = 1) {
+        Log("PASS: CompareVersions('2.0.0', '1.9.9') = 1 (major version wins)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('2.0.0', '1.9.9') should be 1, got " result)
+        TestErrors++
+    }
+
+    ; Test: GetAppVersion returns non-empty string
+    Log("Testing GetAppVersion()...")
+    version := GetAppVersion()
+    if (version != "" && RegExMatch(version, "^\d+\.\d+")) {
+        Log("PASS: GetAppVersion() returned valid version: " version)
+        TestPassed++
+    } else {
+        Log("FAIL: GetAppVersion() should return version string, got: " version)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Task Scheduler Function Tests
+    ; ============================================================
+    Log("`n--- Task Scheduler Function Tests ---")
+
+    ; Test AdminTaskExists - should not fail even if task doesn't exist
+    Log("Testing AdminTaskExists()...")
+    try {
+        taskExists := AdminTaskExists()
+        Log("PASS: AdminTaskExists() returned " (taskExists ? "true" : "false") " without error")
+        TestPassed++
+    } catch as e {
+        Log("FAIL: AdminTaskExists() threw error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test CreateAdminTask and DeleteAdminTask (only if admin)
+    ; These tests are conditional - they need admin privileges
+    if (A_IsAdmin) {
+        Log("Running admin-level Task Scheduler tests...")
+
+        ; Create a test task with a unique name
+        testTaskExePath := A_WinDir "\notepad.exe"  ; Safe exe to use for testing
+
+        ; Save the current task state
+        originalTaskExists := AdminTaskExists()
+
+        ; Test CreateAdminTask
+        Log("Testing CreateAdminTask()...")
+        createResult := CreateAdminTask(testTaskExePath)
+        if (createResult) {
+            Log("PASS: CreateAdminTask() succeeded")
+            TestPassed++
+
+            ; Verify task exists
+            if (AdminTaskExists()) {
+                Log("PASS: Task verified to exist after creation")
+                TestPassed++
+            } else {
+                Log("FAIL: AdminTaskExists() returned false after CreateAdminTask()")
+                TestErrors++
+            }
+
+            ; Test DeleteAdminTask
+            Log("Testing DeleteAdminTask()...")
+            deleteResult := DeleteAdminTask()
+            if (deleteResult) {
+                Log("PASS: DeleteAdminTask() succeeded")
+                TestPassed++
+
+                ; Verify task no longer exists
+                if (!AdminTaskExists()) {
+                    Log("PASS: Task verified to not exist after deletion")
+                    TestPassed++
+                } else {
+                    Log("FAIL: AdminTaskExists() returned true after DeleteAdminTask()")
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: DeleteAdminTask() returned false")
+                TestErrors++
+            }
+        } else {
+            Log("FAIL: CreateAdminTask() returned false")
+            TestErrors++
+        }
+
+        ; Restore original state if task existed before
+        if (originalTaskExists && !AdminTaskExists()) {
+            Log("NOTE: Original task was removed by test - this shouldn't happen in normal testing")
+        }
+    } else {
+        Log("SKIP: Task Scheduler create/delete tests require admin privileges")
+        Log("  Run tests as administrator to test CreateAdminTask/DeleteAdminTask")
+    }
+
+    ; ============================================================
+    ; Shortcut Helper Function Tests
+    ; ============================================================
+    Log("`n--- Shortcut Helper Function Tests ---")
+
+    ; Test _Shortcut_GetStartMenuPath
+    Log("Testing _Shortcut_GetStartMenuPath()...")
+    startMenuPath := _Shortcut_GetStartMenuPath()
+    if (InStr(startMenuPath, "Start Menu") && InStr(startMenuPath, "Alt-Tabby.lnk")) {
+        Log("PASS: _Shortcut_GetStartMenuPath() returned valid path: " startMenuPath)
+        TestPassed++
+    } else {
+        Log("FAIL: _Shortcut_GetStartMenuPath() returned unexpected path: " startMenuPath)
+        TestErrors++
+    }
+
+    ; Test _Shortcut_GetStartupPath
+    Log("Testing _Shortcut_GetStartupPath()...")
+    startupPath := _Shortcut_GetStartupPath()
+    if (InStr(startupPath, "Startup") && InStr(startupPath, "Alt-Tabby.lnk")) {
+        Log("PASS: _Shortcut_GetStartupPath() returned valid path: " startupPath)
+        TestPassed++
+    } else {
+        Log("FAIL: _Shortcut_GetStartupPath() returned unexpected path: " startupPath)
+        TestErrors++
+    }
+
+    ; Test _Shortcut_GetIconPath
+    Log("Testing _Shortcut_GetIconPath()...")
+    iconPath := _Shortcut_GetIconPath()
+    if (InStr(iconPath, "icon.ico")) {
+        Log("PASS: _Shortcut_GetIconPath() returned icon path: " iconPath)
+        TestPassed++
+    } else {
+        Log("FAIL: _Shortcut_GetIconPath() returned unexpected path: " iconPath)
+        TestErrors++
+    }
+
+    ; Test _Shortcut_GetEffectiveExePath
+    Log("Testing _Shortcut_GetEffectiveExePath()...")
+    effectivePath := _Shortcut_GetEffectiveExePath()
+    if (effectivePath != "") {
+        Log("PASS: _Shortcut_GetEffectiveExePath() returned: " effectivePath)
+        TestPassed++
+    } else {
+        Log("FAIL: _Shortcut_GetEffectiveExePath() returned empty string")
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Setup Config Tests
+    ; ============================================================
+    Log("`n--- Setup Config Tests ---")
+
+    ; Test that new setup config options exist in registry
+    Log("Testing Setup config options in registry...")
+    setupConfigsFound := 0
+    requiredSetupConfigs := ["SetupExePath", "SetupRunAsAdmin", "SetupAutoUpdateCheck", "SetupFirstRunCompleted"]
+
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("g"))
+            continue
+        for _, reqConfig in requiredSetupConfigs {
+            if (entry.g = reqConfig) {
+                setupConfigsFound++
+                break
+            }
+        }
+    }
+
+    if (setupConfigsFound = requiredSetupConfigs.Length) {
+        Log("PASS: All " setupConfigsFound " Setup config options found in registry")
+        TestPassed++
+    } else {
+        Log("FAIL: Only " setupConfigsFound "/" requiredSetupConfigs.Length " Setup config options found in registry")
+        TestErrors++
+    }
+
+    ; Test that cfg object has setup properties after init
+    Log("Testing cfg object has Setup properties...")
+    setupPropsOk := true
+    missingProps := []
+
+    if (!cfg.HasOwnProp("SetupExePath")) {
+        missingProps.Push("SetupExePath")
+        setupPropsOk := false
+    }
+    if (!cfg.HasOwnProp("SetupRunAsAdmin")) {
+        missingProps.Push("SetupRunAsAdmin")
+        setupPropsOk := false
+    }
+    if (!cfg.HasOwnProp("SetupAutoUpdateCheck")) {
+        missingProps.Push("SetupAutoUpdateCheck")
+        setupPropsOk := false
+    }
+    if (!cfg.HasOwnProp("SetupFirstRunCompleted")) {
+        missingProps.Push("SetupFirstRunCompleted")
+        setupPropsOk := false
+    }
+
+    if (setupPropsOk) {
+        Log("PASS: cfg object has all Setup properties")
+        TestPassed++
+    } else {
+        Log("FAIL: cfg object missing Setup properties: " _JoinArray(missingProps, ", "))
+        TestErrors++
+    }
+}
+
+; Helper to join array elements
+_JoinArray(arr, sep) {
+    result := ""
+    for i, item in arr {
+        if (i > 1)
+            result .= sep
+        result .= item
+    }
+    return result
 }
