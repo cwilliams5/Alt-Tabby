@@ -229,6 +229,27 @@ if (g_AltTabbyMode = "launch") {
     ; Initialize config to get splash settings
     ConfigLoader_Init()
 
+    ; Check if another launcher is already running (named mutex)
+    if (!_Launcher_AcquireMutex()) {
+        result := MsgBox(
+            "Alt-Tabby is already running.`n`n"
+            "Would you like to restart it?",
+            "Alt-Tabby",
+            "YesNo Icon?"
+        )
+        if (result = "Yes") {
+            _Launcher_KillExistingInstances()
+            Sleep(500)  ; Wait for mutex to be released
+            if (!_Launcher_AcquireMutex()) {
+                MsgBox("Could not restart Alt-Tabby. Please try again.", "Alt-Tabby", "Icon!")
+                ExitApp()
+            }
+            ; Continue with normal startup below
+        } else {
+            ExitApp()
+        }
+    }
+
     ; Clean up old exe from previous update
     _Update_CleanupOldExe()
 
@@ -299,6 +320,43 @@ _ShouldRedirectToScheduledTask() {
         return false  ; Already elevated, don't redirect
 
     return true
+}
+
+; Try to acquire the launcher mutex
+; Returns true if acquired (we're the only launcher), false if already held
+global g_LauncherMutex := 0
+
+_Launcher_AcquireMutex() {
+    global g_LauncherMutex
+
+    ; Try to create named mutex
+    g_LauncherMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", "AltTabby_Launcher", "ptr")
+    lastError := DllCall("GetLastError")
+
+    ; ERROR_ALREADY_EXISTS = 183
+    if (lastError = 183) {
+        ; Mutex already exists - another launcher is running
+        if (g_LauncherMutex) {
+            DllCall("CloseHandle", "ptr", g_LauncherMutex)
+            g_LauncherMutex := 0
+        }
+        return false
+    }
+
+    return (g_LauncherMutex != 0)
+}
+
+; Kill all existing AltTabby.exe processes except ourselves
+_Launcher_KillExistingInstances() {
+    myPID := ProcessExist()  ; Get our own PID
+
+    ; Find and kill all AltTabby.exe processes
+    for proc in ComObject("WinMgmts:").ExecQuery("SELECT ProcessId FROM Win32_Process WHERE Name='AltTabby.exe'") {
+        pid := proc.ProcessId
+        if (pid != myPID) {
+            ProcessClose(pid)
+        }
+    }
 }
 
 LaunchStore() {
