@@ -881,10 +881,11 @@ UpdateTrayMenu() {
     tray := A_TrayMenu
     tray.Delete()
 
-    ; Header with version
+    ; Header with version (and admin status if elevated)
     version := GetAppVersion()
-    tray.Add("Alt-Tabby v" version, (*) => 0)
-    tray.Disable("Alt-Tabby v" version)
+    header := "Alt-Tabby v" version (A_IsAdmin ? " (Admin)" : "")
+    tray.Add(header, (*) => 0)
+    tray.Disable(header)
     tray.Add()
 
     ; Store status
@@ -1179,9 +1180,9 @@ WizardApply(*) {
             g_WizardGui.Destroy()
             ExitApp()  ; Exit non-elevated instance
         } catch as e {
-            ; UAC was cancelled - clean up temp file and notify user
+            ; UAC was cancelled or failed - clean up temp file and notify user
             try FileDelete(choicesFile)
-            MsgBox("Administrator privileges are required for the selected options.`n`nYou can still use Alt-Tabby without these features, or try again later from the tray menu.", "Alt-Tabby", "Icon!")
+            MsgBox("Administrator privileges are required for the selected options.`n`nError: " e.Message "`n`nYou can still use Alt-Tabby without these features, or try again later from the tray menu.", "Alt-Tabby", "Icon!")
             ; Don't exit - fall through to apply non-admin options only
             install := false
             admin := false
