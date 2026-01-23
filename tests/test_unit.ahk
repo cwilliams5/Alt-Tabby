@@ -732,6 +732,55 @@ RunUnitTests() {
         TestErrors++
     }
 
+    ; Test: _Update_FindExeDownloadUrl parses GitHub API response
+    Log("Testing _Update_FindExeDownloadUrl()...")
+
+    ; Sample GitHub API response (simplified but realistic)
+    sampleResponse := '{"tag_name":"v0.5.0","assets":[{"name":"AltTabby.exe","browser_download_url":"https://github.com/cwilliams5/Alt-Tabby/releases/download/v0.5.0/AltTabby.exe"}]}'
+    url := _Update_FindExeDownloadUrl(sampleResponse)
+    expectedUrl := "https://github.com/cwilliams5/Alt-Tabby/releases/download/v0.5.0/AltTabby.exe"
+    if (url = expectedUrl) {
+        Log("PASS: _Update_FindExeDownloadUrl() found correct URL")
+        TestPassed++
+    } else {
+        Log("FAIL: _Update_FindExeDownloadUrl() should return '" expectedUrl "', got: '" url "'")
+        TestErrors++
+    }
+
+    ; Test: _Update_FindExeDownloadUrl handles response with no exe
+    sampleNoExe := '{"tag_name":"v0.5.0","assets":[{"name":"readme.txt","browser_download_url":"https://example.com/readme.txt"}]}'
+    url := _Update_FindExeDownloadUrl(sampleNoExe)
+    if (url = "") {
+        Log("PASS: _Update_FindExeDownloadUrl() returns empty for no exe")
+        TestPassed++
+    } else {
+        Log("FAIL: _Update_FindExeDownloadUrl() should return empty for no exe, got: '" url "'")
+        TestErrors++
+    }
+
+    ; Test: tag_name regex handles both "v0.5.0" and "0.5.0" formats
+    Log("Testing tag_name parsing...")
+    responseWithV := '{"tag_name":"v0.5.0","other":"data"}'
+    responseWithoutV := '{"tag_name":"0.5.0","other":"data"}'
+
+    ; Test with 'v' prefix
+    if (RegExMatch(responseWithV, '"tag_name"\s*:\s*"v?([^"]+)"', &match1) && match1[1] = "0.5.0") {
+        Log("PASS: tag_name regex extracts '0.5.0' from 'v0.5.0'")
+        TestPassed++
+    } else {
+        Log("FAIL: tag_name regex should extract '0.5.0' from 'v0.5.0'")
+        TestErrors++
+    }
+
+    ; Test without 'v' prefix
+    if (RegExMatch(responseWithoutV, '"tag_name"\s*:\s*"v?([^"]+)"', &match2) && match2[1] = "0.5.0") {
+        Log("PASS: tag_name regex extracts '0.5.0' from '0.5.0'")
+        TestPassed++
+    } else {
+        Log("FAIL: tag_name regex should extract '0.5.0' from '0.5.0'")
+        TestErrors++
+    }
+
     ; ============================================================
     ; Task Scheduler Function Tests
     ; ============================================================

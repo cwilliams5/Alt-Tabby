@@ -93,6 +93,126 @@ RunLiveTests() {
     }
 
     ; ============================================================
+    ; GitHub API Auto-Update Test
+    ; ============================================================
+    Log("`n--- GitHub API Auto-Update Test ---")
+
+    ; Test that we can reach the GitHub API and parse the response
+    apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
+    Log("  Fetching: " apiUrl)
+
+    try {
+        whr := ComObject("WinHttp.WinHttpRequest.5.1")
+        whr.Open("GET", apiUrl, false)
+        whr.SetRequestHeader("User-Agent", "Alt-Tabby-Tests/" GetAppVersion())
+        whr.Send()
+
+        if (whr.Status = 200) {
+            Log("PASS: GitHub API returned HTTP 200")
+            TestPassed++
+
+            response := whr.ResponseText
+
+            ; Test tag_name parsing
+            if (RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
+                Log("PASS: Found tag_name: v" tagMatch[1])
+                TestPassed++
+
+                ; Validate version format
+                if (RegExMatch(tagMatch[1], "^\d+\.\d+\.\d+$")) {
+                    Log("PASS: Version format is valid semver")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Version format invalid: " tagMatch[1])
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: Could not find tag_name in response")
+                TestErrors++
+            }
+
+            ; Test download URL parsing
+            downloadUrl := _Update_FindExeDownloadUrl(response)
+            if (downloadUrl != "") {
+                Log("PASS: Found AltTabby.exe download URL")
+                TestPassed++
+
+                ; Validate URL format
+                if (InStr(downloadUrl, "github.com") && InStr(downloadUrl, "AltTabby.exe")) {
+                    Log("PASS: Download URL format is valid: " SubStr(downloadUrl, 1, 60) "...")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Download URL format unexpected: " downloadUrl)
+                    TestErrors++
+                }
+
+                ; Test actual download - download to temp and verify PE header
+                Log("  Testing actual download...")
+                tempExe := A_Temp "\AltTabby_download_test.exe"
+                try {
+                    dlWhr := ComObject("WinHttp.WinHttpRequest.5.1")
+                    dlWhr.Open("GET", downloadUrl, false)
+                    dlWhr.SetRequestHeader("User-Agent", "Alt-Tabby-Tests/" GetAppVersion())
+                    dlWhr.Send()
+
+                    if (dlWhr.Status = 200) {
+                        ; Save to file
+                        stream := ComObject("ADODB.Stream")
+                        stream.Type := 1  ; Binary
+                        stream.Open()
+                        stream.Write(dlWhr.ResponseBody)
+                        stream.SaveToFile(tempExe, 2)  ; Overwrite
+                        stream.Close()
+
+                        ; Verify file size is reasonable (>1MB for compiled AHK)
+                        fileSize := FileGetSize(tempExe)
+                        if (fileSize > 1000000) {
+                            Log("PASS: Downloaded exe is valid size (" Round(fileSize / 1024 / 1024, 2) " MB)")
+                            TestPassed++
+
+                            ; Verify MZ header (PE executable)
+                            f := FileOpen(tempExe, "r")
+                            f.RawRead(header := Buffer(2))
+                            f.Close()
+                            if (NumGet(header, 0, "UChar") = 0x4D && NumGet(header, 1, "UChar") = 0x5A) {
+                                Log("PASS: Downloaded exe has valid PE header (MZ)")
+                                TestPassed++
+                            } else {
+                                Log("FAIL: Downloaded file is not a valid PE executable")
+                                TestErrors++
+                            }
+                        } else {
+                            Log("FAIL: Downloaded exe too small (" fileSize " bytes)")
+                            TestErrors++
+                        }
+
+                        ; Cleanup
+                        try FileDelete(tempExe)
+                    } else {
+                        Log("FAIL: Download returned HTTP " dlWhr.Status)
+                        TestErrors++
+                    }
+                } catch as dlErr {
+                    Log("FAIL: Download failed: " dlErr.Message)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: Could not find AltTabby.exe download URL in release")
+                TestErrors++
+            }
+        } else if (whr.Status = 404) {
+            Log("FAIL: GitHub API returned 404 - repo may be private or release missing")
+            TestErrors++
+        } else {
+            Log("FAIL: GitHub API returned HTTP " whr.Status)
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: GitHub API request failed: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
     ; Live Integration Tests (WinEnumLite, WindowStore pipeline)
     ; ============================================================
     Log("`n--- Live Integration Tests ---")
