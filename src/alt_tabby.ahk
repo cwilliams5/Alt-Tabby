@@ -60,6 +60,9 @@ for _, arg in A_Args {
         case "--enable-admin-task":
             g_AltTabbyMode := "enable-admin-task"
             ; Create admin task after self-elevation (from tray menu toggle)
+        case "--apply-update":
+            g_AltTabbyMode := "apply-update"
+            ; Apply downloaded update after self-elevation
     }
 }
 
@@ -208,12 +211,26 @@ if (g_AltTabbyMode = "enable-admin-task") {
 }
 
 ; ============================================================
+; APPLY-UPDATE MODE (After Self-Elevation for Update)
+; ============================================================
+if (g_AltTabbyMode = "apply-update") {
+    ; Apply the downloaded update (we're now elevated)
+    if (!_Update_ContinueFromElevation()) {
+        MsgBox("Update continuation failed. Please try updating again.", "Alt-Tabby", "Icon!")
+    }
+    ExitApp()
+}
+
+; ============================================================
 ; LAUNCHER MODE INITIALIZATION
 ; ============================================================
 ; Must be after includes so we can use ConfigLoader_Init
 if (g_AltTabbyMode = "launch") {
     ; Initialize config to get splash settings
     ConfigLoader_Init()
+
+    ; Clean up old exe from previous update
+    _Update_CleanupOldExe()
 
     ; Check if we should redirect to scheduled task (admin mode)
     if (_ShouldRedirectToScheduledTask()) {

@@ -141,9 +141,13 @@ _Shortcut_GetEffectiveExePath() {
 }
 
 ; ============================================================
-; UPDATE CHECKING
+; AUTO-UPDATE SYSTEM
 ; ============================================================
+; Flow: Check GitHub → Download to temp → Swap exe → Relaunch
+; Handles elevation for Program Files installs.
 
+; Check for updates and optionally offer to install
+; showIfCurrent: If true, show message even when up to date
 CheckForUpdates(showIfCurrent := false) {
     currentVersion := GetAppVersion()
     apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
@@ -156,15 +160,33 @@ CheckForUpdates(showIfCurrent := false) {
 
         if (whr.Status = 200) {
             response := whr.ResponseText
-            ; Parse JSON for "tag_name" - GitHub tags are like "v0.4.0"
-            if (RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &match)) {
-                latestVersion := match[1]
-                if (CompareVersions(latestVersion, currentVersion) > 0) {
-                    ; Newer version available
-                    TrayTip("Update Available", "Alt-Tabby " latestVersion " is available!`nCurrent: " currentVersion "`n`nVisit the tray menu to download.", "Iconi")
-                } else if (showIfCurrent) {
-                    TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
+
+            ; Parse JSON for tag_name and download URL
+            if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch))
+                return
+
+            latestVersion := tagMatch[1]
+
+            if (CompareVersions(latestVersion, currentVersion) > 0) {
+                ; Newer version available - offer to update
+                result := MsgBox(
+                    "Alt-Tabby " latestVersion " is available!`n"
+                    "You have: " currentVersion "`n`n"
+                    "Would you like to download and install the update now?",
+                    "Update Available",
+                    "YesNo Icon?"
+                )
+
+                if (result = "Yes") {
+                    ; Find download URL for AltTabby.exe
+                    downloadUrl := _Update_FindExeDownloadUrl(response)
+                    if (downloadUrl)
+                        _Update_DownloadAndApply(downloadUrl, latestVersion)
+                    else
+                        MsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Icon!")
                 }
+            } else if (showIfCurrent) {
+                TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
             }
         } else if (showIfCurrent) {
             TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
@@ -172,5 +194,158 @@ CheckForUpdates(showIfCurrent := false) {
     } catch as e {
         if (showIfCurrent)
             TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
+    }
+}
+
+; Parse GitHub API response to find AltTabby.exe download URL
+_Update_FindExeDownloadUrl(jsonResponse) {
+    ; Look for browser_download_url containing AltTabby.exe
+    if (RegExMatch(jsonResponse, '"browser_download_url"\s*:\s*"([^"]*AltTabby\.exe[^"]*)"', &match))
+        return match[1]
+    return ""
+}
+
+; Download update and apply it
+_Update_DownloadAndApply(downloadUrl, newVersion) {
+    ; Determine paths
+    currentExe := A_ScriptFullPath
+    exeDir := ""
+    SplitPath(currentExe, , &exeDir)
+    tempExe := A_Temp "\AltTabby_" newVersion ".exe"
+
+    ; Show progress
+    TrayTip("Downloading Update", "Downloading Alt-Tabby " newVersion "...", "Iconi")
+
+    ; Download to temp
+    try {
+        whr := ComObject("WinHttp.WinHttpRequest.5.1")
+        whr.Open("GET", downloadUrl, false)
+        whr.SetRequestHeader("User-Agent", "Alt-Tabby/" GetAppVersion())
+        whr.Send()
+
+        if (whr.Status != 200) {
+            MsgBox("Download failed: HTTP " whr.Status, "Update Error", "Icon!")
+            return
+        }
+
+        ; Save response body to file
+        stream := ComObject("ADODB.Stream")
+        stream.Type := 1  ; Binary
+        stream.Open()
+        stream.Write(whr.ResponseBody)
+        stream.SaveToFile(tempExe, 2)  ; 2 = overwrite
+        stream.Close()
+    } catch as e {
+        MsgBox("Download failed:`n" e.Message, "Update Error", "Icon!")
+        return
+    }
+
+    ; Check if we need elevation to write to exe directory
+    if (_Update_NeedsElevation(exeDir)) {
+        ; Save update info and self-elevate
+        updateInfo := tempExe "|" currentExe
+        updateFile := A_Temp "\alttabby_update.txt"
+        try FileDelete(updateFile)
+        FileAppend(updateInfo, updateFile, "UTF-8")
+
+        try {
+            if A_IsCompiled
+                Run('*RunAs "' A_ScriptFullPath '" --apply-update')
+            else
+                Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --apply-update')
+            ExitApp()
+        } catch {
+            MsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Icon!")
+            try FileDelete(updateFile)
+            return
+        }
+    }
+
+    ; Apply the update directly
+    _Update_ApplyAndRelaunch(tempExe, currentExe)
+}
+
+; Check if we need elevation to write to the target directory
+_Update_NeedsElevation(targetDir) {
+    if (A_IsAdmin)
+        return false
+
+    ; Try to create a temp file in the target directory
+    testFile := targetDir "\alttabby_write_test.tmp"
+    try {
+        FileAppend("test", testFile)
+        FileDelete(testFile)
+        return false  ; Write succeeded, no elevation needed
+    } catch {
+        return true  ; Write failed, need elevation
+    }
+}
+
+; Apply update: rename current exe, move new exe, relaunch
+_Update_ApplyAndRelaunch(newExePath, targetExePath) {
+    targetDir := ""
+    SplitPath(targetExePath, , &targetDir)
+    oldExePath := targetExePath ".old"
+
+    try {
+        ; Remove any previous .old file
+        if (FileExist(oldExePath))
+            FileDelete(oldExePath)
+
+        ; Rename current exe to .old (Windows allows this even while running)
+        FileMove(targetExePath, oldExePath)
+
+        ; Move new exe to target location
+        FileMove(newExePath, targetExePath)
+
+        ; Success! Launch new version and exit
+        TrayTip("Update Complete", "Alt-Tabby has been updated. Restarting...", "Iconi")
+        Sleep(1000)
+
+        Run('"' targetExePath '"')
+        ExitApp()
+
+    } catch as e {
+        ; Try to restore old exe if something went wrong
+        if (!FileExist(targetExePath) && FileExist(oldExePath)) {
+            try FileMove(oldExePath, targetExePath)
+        }
+        MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
+    }
+}
+
+; Called on startup to clean up old exe from previous update
+_Update_CleanupOldExe() {
+    if (!A_IsCompiled)
+        return
+
+    oldExe := A_ScriptFullPath ".old"
+    if (FileExist(oldExe)) {
+        try FileDelete(oldExe)
+    }
+}
+
+; Called when launched with --apply-update flag (elevated)
+_Update_ContinueFromElevation() {
+    updateFile := A_Temp "\alttabby_update.txt"
+
+    if (!FileExist(updateFile))
+        return false
+
+    try {
+        content := FileRead(updateFile, "UTF-8")
+        FileDelete(updateFile)
+
+        parts := StrSplit(content, "|")
+        if (parts.Length != 2)
+            return false
+
+        newExePath := parts[1]
+        targetExePath := parts[2]
+
+        _Update_ApplyAndRelaunch(newExePath, targetExePath)
+        return true  ; Won't reach here if successful (ExitApp called)
+    } catch {
+        return false
     }
 }
