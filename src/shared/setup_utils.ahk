@@ -124,10 +124,10 @@ _Shortcut_StartupExists() {
     return FileExist(_Shortcut_GetStartupPath())
 }
 
-; Get the icon path
+; Get the icon path - in compiled mode, icon is embedded in exe
 _Shortcut_GetIconPath() {
     if (A_IsCompiled)
-        return A_ScriptDir "\img\icon.ico"
+        return A_ScriptFullPath  ; Icon is embedded in exe
     else
         return A_ScriptDir "\..\img\icon.ico"
 }

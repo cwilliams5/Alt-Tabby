@@ -12,6 +12,11 @@
 ;@Ahk2Exe-SetOrigFilename AltTabby.exe
 ;@Ahk2Exe-SetCompanyName Alt-Tabby
 
+; Embed resources - eliminates need for /img folder in compiled exe
+; Icon is set via compile.bat /icon flag (becomes main exe icon)
+; PNG is embedded as RCDATA resource with ID 10
+;@Ahk2Exe-AddResource ..\img\logo.png, 10
+
 ; ============================================================
 ; Alt-Tabby - Unified Launcher & Mode Router
 ; ============================================================
@@ -317,18 +322,6 @@ ShowSplashScreen() {
 
     g_SplashStartTick := A_TickCount
 
-    ; Resolve image path
-    imgPath := cfg.LauncherSplashImagePath
-    if (!InStr(imgPath, ":")) {  ; Relative path
-        if (A_IsCompiled)
-            imgPath := A_ScriptDir "\" imgPath
-        else
-            imgPath := A_ScriptDir "\..\img\logo.png"
-    }
-
-    if (!FileExist(imgPath))
-        return
-
     ; Load GDI+ library first (required before GdiplusStartup)
     g_SplashHModule := DllCall("LoadLibrary", "str", "gdiplus", "ptr")
     if (!g_SplashHModule)
@@ -345,9 +338,18 @@ ShowSplashScreen() {
         return
     }
 
-    ; Load PNG with GDI+
+    ; Load PNG - from embedded resource (compiled) or file (dev mode)
     g_SplashBitmap := 0
-    DllCall("gdiplus\GdipCreateBitmapFromFile", "wstr", imgPath, "ptr*", &g_SplashBitmap)
+    if (A_IsCompiled) {
+        ; Load from embedded resource (ID 10, RT_RCDATA=10)
+        g_SplashBitmap := _LoadBitmapFromResource(10)
+    } else {
+        ; Dev mode: load from file
+        imgPath := A_ScriptDir "\..\img\logo.png"
+        if (FileExist(imgPath))
+            DllCall("gdiplus\GdipCreateBitmapFromFile", "wstr", imgPath, "ptr*", &g_SplashBitmap)
+    }
+
     if (!g_SplashBitmap) {
         DllCall("gdiplus\GdiplusShutdown", "uptr", g_SplashToken)
         DllCall("FreeLibrary", "ptr", g_SplashHModule)
@@ -526,6 +528,58 @@ _SplashFade(fromAlpha, toAlpha, durationMs) {
     _SplashUpdateLayeredWindow(toAlpha)
 }
 
+; Load a GDI+ bitmap from an embedded PE resource
+; resourceId: The resource ID (e.g., 10 for logo.png)
+; Returns: GDI+ bitmap pointer, or 0 on failure
+_LoadBitmapFromResource(resourceId) {
+    ; Find the resource (RT_RCDATA = 10)
+    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", 10, "ptr")
+    if (!hRes)
+        return 0
+
+    ; Get resource size and load it
+    resSize := DllCall("SizeofResource", "ptr", 0, "ptr", hRes, "uint")
+    hMem := DllCall("LoadResource", "ptr", 0, "ptr", hRes, "ptr")
+    if (!hMem || !resSize)
+        return 0
+
+    ; Lock the resource to get a pointer to the data
+    pData := DllCall("LockResource", "ptr", hMem, "ptr")
+    if (!pData)
+        return 0
+
+    ; Allocate global memory and copy resource data (needed for IStream)
+    hGlobal := DllCall("GlobalAlloc", "uint", 0x0002, "uptr", resSize, "ptr")  ; GMEM_MOVEABLE
+    if (!hGlobal)
+        return 0
+
+    pGlobal := DllCall("GlobalLock", "ptr", hGlobal, "ptr")
+    if (!pGlobal) {
+        DllCall("GlobalFree", "ptr", hGlobal)
+        return 0
+    }
+
+    DllCall("RtlMoveMemory", "ptr", pGlobal, "ptr", pData, "uptr", resSize)
+    DllCall("GlobalUnlock", "ptr", hGlobal)
+
+    ; Create IStream from the global memory
+    pStream := 0
+    hr := DllCall("ole32\CreateStreamOnHGlobal", "ptr", hGlobal, "int", 1, "ptr*", &pStream, "int")
+    if (hr != 0 || !pStream) {
+        DllCall("GlobalFree", "ptr", hGlobal)
+        return 0
+    }
+
+    ; Create GDI+ bitmap from IStream
+    pBitmap := 0
+    DllCall("gdiplus\GdipCreateBitmapFromStream", "ptr", pStream, "ptr*", &pBitmap)
+
+    ; Release IStream (it owns the HGLOBAL now due to fDeleteOnRelease=1)
+    ObjRelease(pStream)
+
+    return pBitmap
+}
+
 ; ============================================================
 ; TRAY MENU (ON-DEMAND UPDATES)
 ; ============================================================
@@ -541,10 +595,15 @@ TrayIconClick(wParam, lParam, msg, hwnd) {
 }
 
 SetupLauncherTray() {
-    ; Set custom icon - path differs between compiled and dev mode
-    iconPath := A_IsCompiled ? A_ScriptDir "\img\icon.ico" : A_ScriptDir "\..\img\icon.ico"
-    if FileExist(iconPath)
-        TraySetIcon(iconPath)
+    ; Set custom icon - embedded in exe for compiled, file for dev mode
+    if (A_IsCompiled) {
+        ; Icon is embedded in exe via /icon compile flag - use icon index 1
+        TraySetIcon(A_ScriptFullPath, 1)
+    } else {
+        iconPath := A_ScriptDir "\..\img\icon.ico"
+        if FileExist(iconPath)
+            TraySetIcon(iconPath)
+    }
     A_IconTip := "Alt-Tabby"
     UpdateTrayMenu()
 }

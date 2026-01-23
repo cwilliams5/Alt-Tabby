@@ -142,12 +142,7 @@ if exist "%SCRIPT_DIR%\shared\blacklist.txt" (
     echo   - blacklist.txt copied
 )
 
-:: Copy img folder for splash screen
-if exist "%BASEDIR%\img" (
-    if not exist "%BASEDIR%\release\img" mkdir "%BASEDIR%\release\img"
-    xcopy /Y /Q "%BASEDIR%\img\*" "%BASEDIR%\release\img\" >nul 2>&1
-    echo   - img folder copied
-)
+:: Note: img folder no longer needed - icon and logo.png are embedded in exe
 
 echo.
 echo Usage:
