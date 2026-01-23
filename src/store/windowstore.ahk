@@ -218,6 +218,45 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
     return { removed: removed, rev: gWS_Rev }
 }
 
+; ============================================================
+; Existence Validation - Lightweight zombie detection
+; ============================================================
+; Iterates existing store entries and removes any where IsWindow() returns false.
+; This is O(n) where n is typically 10-30 windows - much lighter than full EnumWindows.
+; Catches edge cases: process crashes without clean DESTROY events, remote desktop
+; disconnections, windows that die during debounce period.
+
+WindowStore_ValidateExistence() {
+    global gWS_Store, gWS_Rev
+    toRemove := []
+
+    for hwnd, rec in gWS_Store {
+        ; IsWindow returns false only for truly destroyed windows
+        ; Cloaked/minimized windows still return true
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+            toRemove.Push(hwnd)
+        }
+    }
+
+    if (toRemove.Length = 0)
+        return { removed: 0, rev: gWS_Rev }
+
+    removed := 0
+    for _, hwnd in toRemove {
+        gWS_Store.Delete(hwnd)
+        ; Clean up icon pump tracking state
+        try IconPump_CleanupWindow(hwnd)
+        removed += 1
+    }
+
+    if (removed > 0) {
+        gWS_Rev += 1
+        _WS_DiagBump("ValidateExistence")
+    }
+
+    return { removed: removed, rev: gWS_Rev }
+}
+
 ; Purge all windows from store that match the current blacklist
 ; Called after blacklist reload to remove newly-blacklisted windows
 WindowStore_PurgeBlacklisted() {

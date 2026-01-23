@@ -550,6 +550,9 @@ global gConfigRegistry := [
     {s: "WinEnum", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", default: 0,
      d: "Safety polling interval (0=disabled, or 30000+ for safety net)"},
 
+    {s: "WinEnum", k: "ValidateExistenceMs", g: "WinEnumValidateExistenceMs", t: "int", default: 5000,
+     d: "Lightweight zombie detection interval (ms). Checks existing store entries via IsWindow() to remove dead windows. Much faster than full EnumWindows scan. 0=disabled."},
+
     ; ============================================================
     ; MRU Lite Timing (Fallback Only)
     ; ============================================================

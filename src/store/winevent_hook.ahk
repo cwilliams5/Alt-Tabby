@@ -245,7 +245,7 @@ _WEH_ProcessBatch() {
 
     ; Handle destroyed windows
     if (destroyed.Length > 0) {
-        WindowStore_RemoveWindow(destroyed)
+        WindowStore_RemoveWindow(destroyed, true)  ; forceRemove=true - trust the OS
     }
 
     ; Probe and update changed windows

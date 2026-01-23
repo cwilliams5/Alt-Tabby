@@ -130,6 +130,11 @@ Store_Init() {
         }
     }
 
+    ; Start lightweight existence validation (catches zombies from crashes)
+    if (cfg.WinEnumValidateExistenceMs > 0) {
+        SetTimer(Store_ValidateExistenceTick, cfg.WinEnumValidateExistenceMs)
+    }
+
     ; NOTE: Producer state is NOT stored in gWS_Meta anymore (removes bloat from deltas/snapshots)
     ; Clients that need producer status should send IPC_MSG_PRODUCER_STATUS_REQUEST
 
@@ -171,6 +176,14 @@ Store_ZPumpTick() {
     Store_FullScan()
     ; Clear the queue after scan
     WindowStore_ClearZQueue()
+}
+
+; Lightweight zombie detection - validates existing store entries still exist
+Store_ValidateExistenceTick() {
+    result := WindowStore_ValidateExistence()
+    if (result.removed > 0) {
+        Store_PushToClients()
+    }
 }
 
 ; Full winenum scan - runs on startup, snapshot request, Z-pump trigger, or safety polling
@@ -449,6 +462,9 @@ Store_OnExit(reason, code) {
     }
     try {
         SetTimer(Store_HeartbeatTick, 0)
+    }
+    try {
+        SetTimer(Store_ValidateExistenceTick, 0)
     }
     try {
         WinEventHook_Stop()
