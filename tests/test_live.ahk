@@ -30,6 +30,10 @@ RunLiveTests() {
     ; ============================================================
     Log("`n--- Compile Binary ---")
 
+    ; Kill any running AltTabby processes before compilation
+    ; This prevents "file in use" errors and avoids single-instance dialog
+    _Test_KillAllAltTabby()
+
     if (!FileExist(compileBat)) {
         Log("FAIL: compile.bat not found at: " compileBat)
         TestErrors++
@@ -1851,6 +1855,10 @@ RunLiveTests() {
     ; ============================================================
     Log("`n--- Compiled Exe Mode Tests ---")
 
+    ; Kill any running AltTabby processes before launching compiled exe
+    ; This prevents single-instance dialog from blocking tests
+    _Test_KillAllAltTabby()
+
     if (FileExist(compiledExePath)) {
         ; Test --store mode
         compiledStorePipe := "tabby_compiled_store_" A_TickCount
@@ -2016,4 +2024,18 @@ RunLiveTests() {
     } else {
         Log("SKIP: Compiled exe tests skipped - AltTabby.exe not found")
     }
+}
+
+; ============================================================
+; Helper: Kill all running AltTabby.exe processes
+; ============================================================
+_Test_KillAllAltTabby() {
+    ; Use WMI to find and kill all AltTabby.exe processes
+    for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
+        try {
+            proc.Terminate()
+        }
+    }
+    ; Give processes time to fully exit
+    Sleep(500)
 }

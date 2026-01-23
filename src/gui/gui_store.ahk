@@ -10,6 +10,10 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     global gGUI_State, gGUI_FrozenItems, gGUI_AllItems  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
     global gGUI_LastLocalMRUTick  ; For skipping stale in-flight snapshots
+    global gGUI_LastMsgTick  ; For health check timeout detection
+
+    ; Track last message time for health check
+    gGUI_LastMsgTick := A_TickCount
 
     obj := ""
     try {

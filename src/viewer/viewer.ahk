@@ -79,7 +79,11 @@ Viewer_Init() {
     } else {
         _Viewer_Log("Not connected, skipping initial messages")
     }
-    SetTimer(_Viewer_Heartbeat, 2000)
+
+    ; Health check timer interval derived from heartbeat config
+    ; Check every heartbeat interval (gives ~2-3 checks before timeout triggers)
+    healthCheckMs := cfg.StoreHeartbeatIntervalMs
+    SetTimer(_Viewer_Heartbeat, healthCheckMs)
 }
 
 Viewer_OnMessage(line, hPipe := 0) {
