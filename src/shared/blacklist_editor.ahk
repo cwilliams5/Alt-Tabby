@@ -284,7 +284,24 @@ _BE_OnClose(guiObj) {
     return false  ; Allow close
 }
 
+; Check if GUI is still valid (not destroyed)
+_BE_IsGuiValid() {
+    global gBE_Gui
+    if (!gBE_Gui)
+        return false
+    try {
+        hwnd := gBE_Gui.Hwnd
+        return hwnd != 0
+    } catch {
+        return false
+    }
+}
+
 _BE_OnSize(guiObj, minMax, width, height) {
+    ; Guard against destroyed GUI
+    if (!_BE_IsGuiValid())
+        return
+
     if (minMax = -1)  ; Minimized
         return
 

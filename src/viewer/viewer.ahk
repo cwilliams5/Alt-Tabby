@@ -316,15 +316,33 @@ _Viewer_CreateGui() {
     gViewer_Gui.Show("w1120 h660")
 }
 
+; Check if GUI is still valid (not destroyed)
+_Viewer_IsGuiValid() {
+    global gViewer_Gui
+    if (!gViewer_Gui)
+        return false
+    try {
+        hwnd := gViewer_Gui.Hwnd
+        return hwnd != 0
+    } catch {
+        return false
+    }
+}
+
 _Viewer_OnResize(gui, minMax, w, h) {
     global gViewer_LV, gViewer_Status
+
+    ; Guard against destroyed GUI
+    if (!_Viewer_IsGuiValid())
+        return
+
     if (minMax = -1) {
         return  ; Minimized
     }
     ; ListView: top=44, bottom margin=30 (for status bar)
-    gViewer_LV.Move(, , w - 20, h - 74)
+    try gViewer_LV.Move(, , w - 20, h - 74)
     ; Status bar at bottom
-    gViewer_Status.Move(10, h - 26, w - 20)
+    try gViewer_Status.Move(10, h - 26, w - 20)
 }
 
 _Viewer_ToggleSort(*) {
@@ -662,6 +680,10 @@ _Viewer_Heartbeat() {
     global gViewer_Status, gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
     global gViewer_HeartbeatCount, gViewer_LastUpdateType
 
+    ; Guard against destroyed GUI
+    if (!_Viewer_IsGuiValid())
+        return
+
     timeoutMs := cfg.ViewerHeartbeatTimeoutMs
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
@@ -672,9 +694,7 @@ _Viewer_Heartbeat() {
             _Viewer_RequestProducerStatus()  ; Request producer status on connect
             _Viewer_Log("Reconnected to store")
         }
-        if (IsObject(gViewer_Status)) {
-            gViewer_Status.Text := "Disconnected"
-        }
+        try gViewer_Status.Text := "Disconnected"
         return
     }
 
@@ -700,7 +720,12 @@ _Viewer_UpdateStatusBar() {
     global gViewer_Status, gViewer_LastMsgTick, gViewer_LastRev
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
     global gViewer_HeartbeatCount, gViewer_LastUpdateType
-    if (IsObject(gViewer_Status)) {
+
+    ; Guard against destroyed GUI
+    if (!_Viewer_IsGuiValid())
+        return
+
+    try {
         elapsed := gViewer_LastMsgTick ? (A_TickCount - gViewer_LastMsgTick) : 0
         typeStr := gViewer_LastUpdateType ? gViewer_LastUpdateType : "none"
         prodStr := _Viewer_FormatProducerState()
