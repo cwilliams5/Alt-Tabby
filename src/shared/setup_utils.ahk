@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Functions like _CL_WriteIniPreserveFormat come from config_loader.ahk
 
 ; ============================================================
 ; Setup Utilities - Version, Task Scheduler, Shortcuts
@@ -293,15 +294,20 @@ _Update_NeedsElevation(targetDir) {
     }
 }
 
-; Kill all AltTabby.exe processes except the current one
+; Kill all instances of this exe except the current one
 ; This releases file locks on the exe before updating
+; Gets exe name dynamically to support renamed executables (e.g., "alttabby v4.exe")
 _Update_KillOtherProcesses() {
     myPID := ProcessExist()  ; Get our own PID
 
-    ; Loop to kill all AltTabby.exe processes except ourselves
+    ; Get exe name dynamically (handles renamed exe)
+    exeName := ""
+    SplitPath(A_ScriptFullPath, &exeName)
+
+    ; Loop to kill all instances of this exe except ourselves
     ; Using ProcessExist/ProcessClose instead of WMI (WMI can fail in elevated contexts)
     loop 10 {  ; Max 10 iterations to avoid infinite loop
-        pid := ProcessExist("AltTabby.exe")
+        pid := ProcessExist(exeName)
         if (!pid || pid = myPID)
             break
         try ProcessClose(pid)
@@ -414,8 +420,11 @@ _Update_ContinueFromElevation() {
             return false
         }
 
-        ; Validate target path looks like an AltTabby path
-        if (!InStr(targetExePath, "AltTabby.exe")) {
+        ; Validate target path looks like an Alt-Tabby executable
+        ; Allow renamed exes (e.g., "alttabby v4.exe") as long as they contain "tabby"
+        targetName := ""
+        SplitPath(targetExePath, &targetName)
+        if (!RegExMatch(targetName, "i)\.exe$") || !InStr(StrLower(targetName), "tabby")) {
             MsgBox("Invalid update target path:`n" targetExePath, "Alt-Tabby", "Icon!")
             return false
         }

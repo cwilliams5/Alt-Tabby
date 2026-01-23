@@ -38,7 +38,7 @@
 ; MODE FLAG - SET BEFORE ANY INCLUDES!
 ; ============================================================
 global g_AltTabbyMode := "launch"
-global g_SkipWizard := false
+global g_TestingMode := false  ; Skip wizard and install mismatch dialogs (for automated testing)
 
 for _, arg in A_Args {
     switch StrLower(arg) {
@@ -69,9 +69,9 @@ for _, arg in A_Args {
         case "--update-installed":
             g_AltTabbyMode := "update-installed"
             ; Update installed version after self-elevation (from mismatch detection)
-        case "--skip-wizard":
-            g_SkipWizard := true
-            ; Skip first-run wizard (for automated testing)
+        case "--testing-mode":
+            g_TestingMode := true
+            ; Skip wizard and install mismatch dialogs (for automated testing)
     }
 }
 
@@ -266,8 +266,11 @@ if (g_AltTabbyMode = "update-installed") {
             ExitApp()
         }
 
-        ; Validate target path looks like an AltTabby path
-        if (!InStr(targetPath, "AltTabby.exe")) {
+        ; Validate target path looks like an Alt-Tabby executable
+        ; Allow renamed exes (e.g., "alttabby v4.exe") as long as they contain "tabby"
+        targetName := ""
+        SplitPath(targetPath, &targetName)
+        if (!RegExMatch(targetName, "i)\.exe$") || !InStr(StrLower(targetName), "tabby")) {
             MsgBox("Invalid update target path:`n" targetPath, "Alt-Tabby", "Icon!")
             ExitApp()
         }
@@ -312,7 +315,9 @@ if (g_AltTabbyMode = "launch") {
     ; Check if running from different location than installed version
     ; (e.g., user downloaded new version and ran from Downloads)
     ; May set g_MismatchDialogShown to prevent auto-update race
-    _Launcher_CheckInstallMismatch()
+    ; Skip in testing mode to avoid blocking automated tests
+    if (!g_TestingMode)
+        _Launcher_CheckInstallMismatch()
 
     ; Clean up old exe from previous update
     _Update_CleanupOldExe()
@@ -324,8 +329,9 @@ if (g_AltTabbyMode = "launch") {
     }
 
     ; Check for first-run (config exists but FirstRunCompleted is false)
+    ; Skip in testing mode to avoid blocking automated tests
     configPath := A_IsCompiled ? A_ScriptDir "\config.ini" : A_ScriptDir "\..\config.ini"
-    if (!cfg.SetupFirstRunCompleted && !g_SkipWizard) {
+    if (!cfg.SetupFirstRunCompleted && !g_TestingMode) {
         ; Show first-run wizard
         ShowFirstRunWizard()
         ; If wizard was shown and exited (self-elevated), we exit here
@@ -418,14 +424,19 @@ _Launcher_AcquireMutex() {
     return (g_LauncherMutex != 0)
 }
 
-; Kill all existing AltTabby.exe processes except ourselves
+; Kill all existing instances of this exe except ourselves
 ; Uses ProcessExist/ProcessClose loop instead of WMI (WMI can fail with 0x800401F3)
+; Gets exe name dynamically to support renamed executables (e.g., "alttabby v4.exe")
 _Launcher_KillExistingInstances() {
     myPID := ProcessExist()  ; Get our own PID
 
-    ; Loop to kill all AltTabby.exe processes except ourselves
+    ; Get exe name dynamically (handles renamed exe)
+    exeName := ""
+    SplitPath(A_ScriptFullPath, &exeName)
+
+    ; Loop to kill all instances of this exe except ourselves
     loop 10 {  ; Max 10 iterations to avoid infinite loop
-        pid := ProcessExist("AltTabby.exe")
+        pid := ProcessExist(exeName)
         if (!pid || pid = myPID)
             break
         try ProcessClose(pid)
