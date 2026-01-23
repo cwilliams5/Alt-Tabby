@@ -21,3 +21,6 @@ tmpclaude-*
 
 # Temp folder for examples/screenshots (never commit)
 /temp/
+
+# Claude Code project context (local only)
+CLAUDE.md
