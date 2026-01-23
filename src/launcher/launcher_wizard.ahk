@@ -10,8 +10,9 @@
 ; - Run as Administrator
 ; - Auto-update checking
 
-; Wizard global
+; Wizard globals
 global g_WizardGui := 0
+global g_WizardShuttingDown := false  ; Shutdown coordination flag
 
 ShowFirstRunWizard() {
     global g_WizardGui, cfg
@@ -40,17 +41,23 @@ ShowFirstRunWizard() {
 }
 
 WizardSkip(*) {
-    global g_WizardGui, cfg, gConfigIniPath
+    global g_WizardGui, g_WizardShuttingDown, cfg, gConfigIniPath
+    if (g_WizardShuttingDown)
+        return
+    g_WizardShuttingDown := true
 
     ; Mark first-run as completed even if skipped
     cfg.SetupFirstRunCompleted := true
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
 
-    g_WizardGui.Destroy()
+    try g_WizardGui.Destroy()
 }
 
 WizardApply(*) {
-    global g_WizardGui, cfg, gConfigIniPath
+    global g_WizardGui, g_WizardShuttingDown, cfg, gConfigIniPath
+    if (g_WizardShuttingDown)
+        return
+    g_WizardShuttingDown := true
 
     ; Get checkbox states
     startMenu := g_WizardGui["StartMenu"].Value
@@ -96,7 +103,7 @@ WizardApply(*) {
 
     ; Apply choices (without admin options if UAC was cancelled)
     _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate)
-    g_WizardGui.Destroy()
+    try g_WizardGui.Destroy()
 }
 
 ; Called when --wizard-continue flag is passed (after elevation)

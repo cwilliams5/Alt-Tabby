@@ -88,8 +88,22 @@ Launcher_Init() {
     if (cfg.SetupAutoUpdateCheck && !g_MismatchDialogShown)
         SetTimer(() => CheckForUpdates(false), -5000)
 
+    ; Register cleanup on exit
+    OnExit(_Launcher_OnExit)
+
     ; Stay alive to manage subprocesses
     Persistent()
+}
+
+; Cleanup handler called on exit
+_Launcher_OnExit(exitReason, exitCode) {
+    global g_LauncherMutex
+    try HideSplashScreen()
+    if (g_LauncherMutex) {
+        try DllCall("CloseHandle", "ptr", g_LauncherMutex)
+        g_LauncherMutex := 0
+    }
+    return 0  ; Allow exit to proceed
 }
 
 ; Check if we should redirect to scheduled task instead of running directly

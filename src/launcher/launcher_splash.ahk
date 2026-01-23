@@ -19,6 +19,7 @@ global g_SplashImgH := 0
 global g_SplashPosX := 0
 global g_SplashPosY := 0
 global g_SplashDIB := 0  ; DIB bitmap handle (must be deleted to avoid leak)
+global g_SplashShuttingDown := false  ; Shutdown coordination flag
 
 ShowSplashScreen() {
     global g_SplashHwnd, g_SplashStartTick, g_SplashBitmap, g_SplashHdc, g_SplashToken
@@ -135,55 +136,58 @@ ShowSplashScreen() {
 
 HideSplashScreen() {
     global g_SplashHwnd, g_SplashBitmap, g_SplashHdc, g_SplashToken, g_SplashHdcScreen, g_SplashHModule
-    global g_SplashDIB, cfg
+    global g_SplashDIB, g_SplashShuttingDown, cfg
+
+    ; Set shutdown flag FIRST to stop any in-progress fades
+    g_SplashShuttingDown := true
 
     if (g_SplashHwnd) {
         ; Fade out
         _Splash_Fade(255, 0, cfg.LauncherSplashFadeMs)
 
         ; Cleanup window
-        DllCall("DestroyWindow", "ptr", g_SplashHwnd)
+        try DllCall("DestroyWindow", "ptr", g_SplashHwnd)
         g_SplashHwnd := 0
     }
 
     ; Delete DIB before DC (must delete bitmap before the DC it's selected into)
     if (g_SplashDIB) {
-        DllCall("DeleteObject", "ptr", g_SplashDIB)
+        try DllCall("DeleteObject", "ptr", g_SplashDIB)
         g_SplashDIB := 0
     }
 
     if (g_SplashHdc) {
-        DllCall("DeleteDC", "ptr", g_SplashHdc)
+        try DllCall("DeleteDC", "ptr", g_SplashHdc)
         g_SplashHdc := 0
     }
 
     if (g_SplashHdcScreen) {
-        DllCall("ReleaseDC", "ptr", 0, "ptr", g_SplashHdcScreen)
+        try DllCall("ReleaseDC", "ptr", 0, "ptr", g_SplashHdcScreen)
         g_SplashHdcScreen := 0
     }
 
     if (g_SplashBitmap) {
-        DllCall("gdiplus\GdipDisposeImage", "ptr", g_SplashBitmap)
+        try DllCall("gdiplus\GdipDisposeImage", "ptr", g_SplashBitmap)
         g_SplashBitmap := 0
     }
 
     if (g_SplashToken) {
-        DllCall("gdiplus\GdiplusShutdown", "uptr", g_SplashToken)
+        try DllCall("gdiplus\GdiplusShutdown", "uptr", g_SplashToken)
         g_SplashToken := 0
     }
 
     if (g_SplashHModule) {
-        DllCall("FreeLibrary", "ptr", g_SplashHModule)
+        try DllCall("FreeLibrary", "ptr", g_SplashHModule)
         g_SplashHModule := 0
     }
 }
 
 ; Update layered window with specified alpha - uses UpdateLayeredWindow for per-pixel alpha
 _Splash_UpdateLayeredWindow(alpha) {
-    global g_SplashHwnd, g_SplashHdc, g_SplashHdcScreen
+    global g_SplashHwnd, g_SplashHdc, g_SplashHdcScreen, g_SplashShuttingDown
     global g_SplashImgW, g_SplashImgH, g_SplashPosX, g_SplashPosY
 
-    if (!g_SplashHwnd)
+    if (!g_SplashHwnd || g_SplashShuttingDown)
         return
 
     ptSrc := Buffer(8, 0)  ; Source point (0,0)
@@ -207,7 +211,7 @@ _Splash_UpdateLayeredWindow(alpha) {
 }
 
 _Splash_Fade(fromAlpha, toAlpha, durationMs) {
-    global g_SplashHwnd
+    global g_SplashHwnd, g_SplashShuttingDown
     if (!g_SplashHwnd)
         return
 
@@ -222,6 +226,9 @@ _Splash_Fade(fromAlpha, toAlpha, durationMs) {
 
     startTick := A_TickCount
     Loop steps {
+        ; Exit early if shutdown started or window destroyed
+        if (!g_SplashHwnd || g_SplashShuttingDown)
+            return
         elapsed := A_TickCount - startTick
         progress := Min(elapsed / durationMs, 1.0)
         alpha := Integer(fromAlpha + (toAlpha - fromAlpha) * progress)
@@ -230,7 +237,9 @@ _Splash_Fade(fromAlpha, toAlpha, durationMs) {
             break
         Sleep(16)
     }
-    _Splash_UpdateLayeredWindow(toAlpha)
+    ; Guard final update
+    if (g_SplashHwnd && !g_SplashShuttingDown)
+        _Splash_UpdateLayeredWindow(toAlpha)
 }
 
 ; Load a GDI+ bitmap from an embedded PE resource

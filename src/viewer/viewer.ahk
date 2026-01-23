@@ -37,6 +37,7 @@ global gViewer_LastUpdateType := ""
 global gViewer_CurrentWSLabel := 0
 global gViewer_CurrentWSName := ""
 global gViewer_ProducerState := Map()  ; Producer states from store meta
+global gViewer_ShuttingDown := false  ; Shutdown coordination flag
 
 for _, arg in A_Args {
     if (SubStr(arg, 1, 6) = "--log=") {
@@ -87,11 +88,13 @@ Viewer_Init() {
 }
 
 Viewer_OnMessage(line, hPipe := 0) {
-    global gViewer_LastMsgTick, gViewer_LastRev
+    global gViewer_LastMsgTick, gViewer_LastRev, gViewer_ShuttingDown
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
     global gViewer_HeartbeatCount
     global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK, IPC_MSG_HEARTBEAT
     global IPC_MSG_PRODUCER_STATUS
+    if (gViewer_ShuttingDown)
+        return
     gViewer_LastMsgTick := A_TickCount
     _Viewer_Log("=== MESSAGE RECEIVED ===")
     _Viewer_Log("raw: " SubStr(line, 1, 300))
@@ -315,9 +318,19 @@ _Viewer_CreateGui() {
     ; Double-click to blacklist a window
     gViewer_LV.OnEvent("DoubleClick", _Viewer_OnBlacklist)
 
-    gViewer_Gui.OnEvent("Close", (*) => ExitApp())
+    gViewer_Gui.OnEvent("Close", (*) => (_Viewer_Shutdown(), ExitApp()))
     gViewer_Gui.OnEvent("Size", _Viewer_OnResize)
     gViewer_Gui.Show("w1120 h660")
+}
+
+; Graceful shutdown - stops timer first, then closes IPC
+_Viewer_Shutdown() {
+    global gViewer_ShuttingDown, gViewer_Client
+    gViewer_ShuttingDown := true
+    SetTimer(_Viewer_Heartbeat, 0)  ; Stop timer FIRST
+    if (IsObject(gViewer_Client) && gViewer_Client.hPipe)
+        IPC_PipeClient_Close(gViewer_Client)
+    gViewer_Client := 0
 }
 
 ; Check if GUI is still valid (not destroyed)
@@ -334,10 +347,10 @@ _Viewer_IsGuiValid() {
 }
 
 _Viewer_OnResize(gui, minMax, w, h) {
-    global gViewer_LV, gViewer_Status
+    global gViewer_LV, gViewer_Status, gViewer_ShuttingDown
 
-    ; Guard against destroyed GUI
-    if (!_Viewer_IsGuiValid())
+    ; Guard against shutdown or destroyed GUI
+    if (gViewer_ShuttingDown || !_Viewer_IsGuiValid())
         return
 
     if (minMax = -1) {
@@ -350,7 +363,9 @@ _Viewer_OnResize(gui, minMax, w, h) {
 }
 
 _Viewer_ToggleSort(*) {
-    global gViewer_Sort, gViewer_SortLabel, gViewer_LastItemCount
+    global gViewer_Sort, gViewer_SortLabel, gViewer_LastItemCount, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
     gViewer_Sort := (gViewer_Sort = "Z") ? "MRU" : "Z"
     gViewer_SortLabel.Text := "[" gViewer_Sort "]"
     ; Force full refresh by resetting cache
@@ -359,7 +374,9 @@ _Viewer_ToggleSort(*) {
 }
 
 _Viewer_ToggleCurrentWS(*) {
-    global gViewer_CurrentOnly, gViewer_WSLabel
+    global gViewer_CurrentOnly, gViewer_WSLabel, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
     gViewer_CurrentOnly := !gViewer_CurrentOnly
     gViewer_WSLabel.Text := gViewer_CurrentOnly ? "[Cur]" : "[All]"
     ; Update server with new projection opts so future pushes are filtered correctly
@@ -368,7 +385,9 @@ _Viewer_ToggleCurrentWS(*) {
 }
 
 _Viewer_ToggleMinimized(*) {
-    global gViewer_IncludeMinimized, gViewer_MinLabel
+    global gViewer_IncludeMinimized, gViewer_MinLabel, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
     gViewer_IncludeMinimized := !gViewer_IncludeMinimized
     gViewer_MinLabel.Text := gViewer_IncludeMinimized ? "[Y]" : "[N]"
     _Viewer_SendProjectionOpts()
@@ -376,7 +395,9 @@ _Viewer_ToggleMinimized(*) {
 }
 
 _Viewer_ToggleCloaked(*) {
-    global gViewer_IncludeCloaked, gViewer_CloakLabel
+    global gViewer_IncludeCloaked, gViewer_CloakLabel, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
     gViewer_IncludeCloaked := !gViewer_IncludeCloaked
     gViewer_CloakLabel.Text := gViewer_IncludeCloaked ? "[Y]" : "[N]"
     _Viewer_SendProjectionOpts()
@@ -393,7 +414,9 @@ _Viewer_SendProjectionOpts() {
 
 _Viewer_UpdateList(items) {
     global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_LastItemCount
-    global gViewer_Sort
+    global gViewer_Sort, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
 
     ; Local sort - viewer controls its own sort order
     _Viewer_SortItems(items, gViewer_Sort)
@@ -437,7 +460,9 @@ _Viewer_UpdateList(items) {
 
 ; Rebuild ListView from cached records (for re-sorting without network request)
 _Viewer_RebuildFromCache() {
-    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_Sort
+    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_Sort, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
 
     ; Collect all cached records into array
     items := []
@@ -480,7 +505,9 @@ _Viewer_RebuildFromCache() {
 }
 
 _Viewer_IncrementalUpdate(items) {
-    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd
+    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
 
     ; Disable redraw during update
     gViewer_LV.Opt("-Redraw")
@@ -586,7 +613,9 @@ _Viewer_RecChanged(old, new) {
 }
 
 _Viewer_ApplyDelta(payload) {
-    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_Sort
+    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_Sort, gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return
 
     ; Handle removes locally - remove from cache, then rebuild
     hadRemoves := false
@@ -680,12 +709,12 @@ _Viewer_ApplyDelta(payload) {
 }
 
 _Viewer_Heartbeat() {
-    global gViewer_Client, gViewer_LastMsgTick, cfg
+    global gViewer_Client, gViewer_LastMsgTick, cfg, gViewer_ShuttingDown
     global gViewer_Status, gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
     global gViewer_HeartbeatCount, gViewer_LastUpdateType
 
-    ; Guard against destroyed GUI
-    if (!_Viewer_IsGuiValid())
+    ; Guard against shutdown or destroyed GUI
+    if (gViewer_ShuttingDown || !_Viewer_IsGuiValid())
         return
 
     timeoutMs := cfg.ViewerHeartbeatTimeoutMs
@@ -721,12 +750,12 @@ _Viewer_Heartbeat() {
 }
 
 _Viewer_UpdateStatusBar() {
-    global gViewer_Status, gViewer_LastMsgTick, gViewer_LastRev
+    global gViewer_Status, gViewer_LastMsgTick, gViewer_LastRev, gViewer_ShuttingDown
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
     global gViewer_HeartbeatCount, gViewer_LastUpdateType
 
-    ; Guard against destroyed GUI
-    if (!_Viewer_IsGuiValid())
+    ; Guard against shutdown or destroyed GUI
+    if (gViewer_ShuttingDown || !_Viewer_IsGuiValid())
         return
 
     try {
@@ -896,9 +925,9 @@ _Viewer_CmpMRU(a, b) {
 
 ; Handle double-click to blacklist a window
 _Viewer_OnBlacklist(lv, row) {
-    global gViewer_Client, gViewer_RecByHwnd, gViewer_RowByHwnd, IPC_MSG_RELOAD_BLACKLIST
+    global gViewer_Client, gViewer_RecByHwnd, gViewer_RowByHwnd, IPC_MSG_RELOAD_BLACKLIST, gViewer_ShuttingDown
 
-    if (row = 0)
+    if (gViewer_ShuttingDown || row = 0)
         return
 
     ; Find the hwnd for this row
@@ -955,7 +984,9 @@ _Viewer_OnBlacklist(lv, row) {
 
 ; Show dialog with blacklist options
 _Viewer_ShowBlacklistDialog(class, title) {
-    global gBlacklistChoice := ""
+    global gBlacklistChoice := "", gViewer_ShuttingDown
+    if (gViewer_ShuttingDown)
+        return ""
 
     dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
     dlg.SetFont("s10")
