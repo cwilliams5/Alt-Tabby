@@ -75,6 +75,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
     global g_SplashImgH := 0
     global g_SplashPosX := 0
     global g_SplashPosY := 0
+    global g_SplashDIB := 0  ; DIB bitmap handle (must be deleted to avoid leak)
     ; First-run wizard globals
     global g_WizardGui := 0
 }
@@ -312,7 +313,7 @@ LaunchViewer() {
 ShowSplashScreen() {
     global g_SplashHwnd, g_SplashStartTick, g_SplashBitmap, g_SplashHdc, g_SplashToken
     global g_SplashHdcScreen, g_SplashImgW, g_SplashImgH, g_SplashPosX, g_SplashPosY, g_SplashHModule
-    global cfg
+    global g_SplashDIB, cfg
 
     g_SplashStartTick := A_TickCount
 
@@ -401,8 +402,8 @@ ShowSplashScreen() {
     NumPut("UShort", 32, bi, 14)        ; biBitCount
 
     pvBits := 0
-    hBitmap := DllCall("CreateDIBSection", "ptr", g_SplashHdc, "ptr", bi.Ptr, "uint", 0, "ptr*", &pvBits, "ptr", 0, "uint", 0, "ptr")
-    DllCall("SelectObject", "ptr", g_SplashHdc, "ptr", hBitmap, "ptr")
+    g_SplashDIB := DllCall("CreateDIBSection", "ptr", g_SplashHdc, "ptr", bi.Ptr, "uint", 0, "ptr*", &pvBits, "ptr", 0, "uint", 0, "ptr")
+    DllCall("SelectObject", "ptr", g_SplashHdc, "ptr", g_SplashDIB, "ptr")
 
     ; Clear the bitmap to transparent (important!)
     DllCall("gdi32\PatBlt", "ptr", g_SplashHdc, "int", 0, "int", 0, "int", g_SplashImgW, "int", g_SplashImgH, "uint", 0x00000042)  ; BLACKNESS
@@ -427,7 +428,7 @@ ShowSplashScreen() {
 
 HideSplashScreen() {
     global g_SplashHwnd, g_SplashBitmap, g_SplashHdc, g_SplashToken, g_SplashHdcScreen, g_SplashHModule
-    global cfg
+    global g_SplashDIB, cfg
 
     if (g_SplashHwnd) {
         ; Fade out
@@ -436,6 +437,12 @@ HideSplashScreen() {
         ; Cleanup window
         DllCall("DestroyWindow", "ptr", g_SplashHwnd)
         g_SplashHwnd := 0
+    }
+
+    ; Delete DIB before DC (must delete bitmap before the DC it's selected into)
+    if (g_SplashDIB) {
+        DllCall("DeleteObject", "ptr", g_SplashDIB)
+        g_SplashDIB := 0
     }
 
     if (g_SplashHdc) {
