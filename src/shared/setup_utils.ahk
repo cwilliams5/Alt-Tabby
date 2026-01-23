@@ -311,6 +311,8 @@ _Update_KillOtherProcesses() {
 
 ; Apply update: rename current exe, move new exe, relaunch
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
+    global cfg, gConfigIniPath
+
     targetDir := ""
     SplitPath(targetExePath, , &targetDir)
     oldExePath := targetExePath ".old"
@@ -330,6 +332,22 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
 
         ; Move new exe to target location
         FileMove(newExePath, targetExePath)
+
+        ; Update config to reflect new exe path (Bug 2 fix)
+        if (IsSet(cfg) && IsSet(gConfigIniPath)) {
+            cfg.SetupExePath := targetExePath
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", targetExePath, "", "string")
+        }
+
+        ; Update admin task if enabled (Bug 1 fix)
+        ; The task may point to old path if user moved exe or installed to new location
+        if (IsSet(cfg) && cfg.HasOwnProp("SetupRunAsAdmin") && cfg.SetupRunAsAdmin) {
+            if (AdminTaskExists()) {
+                ; Recreate task with new exe path
+                DeleteAdminTask()
+                CreateAdminTask(targetExePath)
+            }
+        }
 
         ; Success! Launch new version and exit
         TrayTip("Update Complete", "Alt-Tabby has been updated. Restarting...", "Iconi")
@@ -383,6 +401,24 @@ _Update_ContinueFromElevation() {
 
         newExePath := parts[1]
         targetExePath := parts[2]
+
+        ; Security validation: ensure source file exists
+        if (!FileExist(newExePath)) {
+            MsgBox("Update source file not found:`n" newExePath, "Alt-Tabby", "Icon!")
+            return false
+        }
+
+        ; Validate source path is in TEMP directory (expected from download)
+        if (!InStr(newExePath, A_Temp)) {
+            MsgBox("Invalid update source path (not in temp):`n" newExePath, "Alt-Tabby", "Icon!")
+            return false
+        }
+
+        ; Validate target path looks like an AltTabby path
+        if (!InStr(targetExePath, "AltTabby.exe")) {
+            MsgBox("Invalid update target path:`n" targetExePath, "Alt-Tabby", "Icon!")
+            return false
+        }
 
         _Update_ApplyAndRelaunch(newExePath, targetExePath)
         return true  ; Won't reach here if successful (ExitApp called)

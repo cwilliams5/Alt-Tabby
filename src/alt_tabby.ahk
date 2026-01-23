@@ -80,6 +80,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
     global g_StorePID := 0
     global g_GuiPID := 0
     global g_ViewerPID := 0
+    global g_MismatchDialogShown := false  ; Prevents auto-update race condition
     ; Splash screen globals
     global g_SplashHwnd := 0
     global g_SplashStartTick := 0
@@ -258,6 +259,19 @@ if (g_AltTabbyMode = "update-installed") {
 
         sourcePath := parts[1]
         targetPath := parts[2]
+
+        ; Security validation: ensure paths are valid
+        if (!FileExist(sourcePath)) {
+            MsgBox("Update source file not found:`n" sourcePath, "Alt-Tabby", "Icon!")
+            ExitApp()
+        }
+
+        ; Validate target path looks like an AltTabby path
+        if (!InStr(targetPath, "AltTabby.exe")) {
+            MsgBox("Invalid update target path:`n" targetPath, "Alt-Tabby", "Icon!")
+            ExitApp()
+        }
+
         _Launcher_DoUpdateInstalled(sourcePath, targetPath)
     } catch as e {
         MsgBox("Update failed:`n" e.Message, "Alt-Tabby", "Icon!")
@@ -273,11 +287,8 @@ if (g_AltTabbyMode = "launch") {
     ; Initialize config to get splash settings
     ConfigLoader_Init()
 
-    ; Check if running from different location than installed version
-    ; (e.g., user downloaded new version and ran from Downloads)
-    _Launcher_CheckInstallMismatch()
-
     ; Check if another launcher is already running (named mutex)
+    ; MUST be before mismatch check to prevent race conditions
     if (!_Launcher_AcquireMutex()) {
         result := MsgBox(
             "Alt-Tabby is already running.`n`n"
@@ -297,6 +308,11 @@ if (g_AltTabbyMode = "launch") {
             ExitApp()
         }
     }
+
+    ; Check if running from different location than installed version
+    ; (e.g., user downloaded new version and ran from Downloads)
+    ; May set g_MismatchDialogShown to prevent auto-update race
+    _Launcher_CheckInstallMismatch()
 
     ; Clean up old exe from previous update
     _Update_CleanupOldExe()
@@ -339,8 +355,8 @@ if (g_AltTabbyMode = "launch") {
         HideSplashScreen()
     }
 
-    ; Auto-update check if enabled
-    if (cfg.SetupAutoUpdateCheck)
+    ; Auto-update check if enabled (skip if mismatch dialog was shown to avoid race)
+    if (cfg.SetupAutoUpdateCheck && !g_MismatchDialogShown)
         SetTimer(() => CheckForUpdates(false), -5000)
 
     ; Stay alive to manage subprocesses
@@ -352,20 +368,28 @@ if (g_AltTabbyMode = "launch") {
 ; ============================================================
 
 ; Check if we should redirect to scheduled task instead of running directly
-; Returns true if: admin mode enabled, task exists, and we're NOT already elevated
+; Returns true if: task exists and we're NOT already elevated
+; Note: Trusts task existence over config (handles corrupted config case)
 _ShouldRedirectToScheduledTask() {
-    global cfg
+    global cfg, gConfigIniPath
 
-    ; Only redirect if:
-    ; 1. Admin mode is enabled in config
-    ; 2. The scheduled task actually exists
-    ; 3. We're NOT already running as admin (avoid infinite loop)
-    if (!cfg.SetupRunAsAdmin)
-        return false
-    if (!AdminTaskExists())
-        return false
+    ; Already elevated - don't redirect (avoid infinite loop)
     if (A_IsAdmin)
-        return false  ; Already elevated, don't redirect
+        return false
+
+    ; Check if task exists
+    taskExists := AdminTaskExists()
+
+    ; If task exists but config says disabled, update config to match reality
+    ; This handles case where config was corrupted/reset
+    if (taskExists && !cfg.SetupRunAsAdmin) {
+        cfg.SetupRunAsAdmin := true
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+    }
+
+    ; Only redirect if task exists and we're not admin
+    if (!taskExists)
+        return false
 
     return true
 }
@@ -395,32 +419,46 @@ _Launcher_AcquireMutex() {
 }
 
 ; Kill all existing AltTabby.exe processes except ourselves
+; Uses ProcessExist/ProcessClose loop instead of WMI (WMI can fail with 0x800401F3)
 _Launcher_KillExistingInstances() {
     myPID := ProcessExist()  ; Get our own PID
 
-    ; Find and kill all AltTabby.exe processes
-    for proc in ComObject("WinMgmts:").ExecQuery("SELECT ProcessId FROM Win32_Process WHERE Name='AltTabby.exe'") {
-        pid := proc.ProcessId
-        if (pid != myPID) {
-            ProcessClose(pid)
-        }
+    ; Loop to kill all AltTabby.exe processes except ourselves
+    loop 10 {  ; Max 10 iterations to avoid infinite loop
+        pid := ProcessExist("AltTabby.exe")
+        if (!pid || pid = myPID)
+            break
+        try ProcessClose(pid)
+        Sleep(100)  ; Brief pause for process to terminate
     }
 }
 
 ; Check if we're running from a different location than the installed version
 ; Offers to update or launch the installed version
+; Sets g_MismatchDialogShown if a dialog was displayed (to prevent race with auto-update)
 _Launcher_CheckInstallMismatch() {
-    global cfg
+    global cfg, g_MismatchDialogShown
 
     ; Only relevant for compiled exe
     if (!A_IsCompiled)
         return
 
-    ; Check if we have an installed path recorded
-    if (!cfg.HasOwnProp("SetupExePath") || cfg.SetupExePath = "")
+    ; First, check config for SetupExePath
+    installedPath := ""
+    if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "")
+        installedPath := cfg.SetupExePath
+
+    ; Also check well-known install location (handles fresh config case)
+    ; This ensures we detect existing PF installs even with empty/fresh config
+    pfPath := "C:\Program Files\Alt-Tabby\AltTabby.exe"
+    if (installedPath = "" && FileExist(pfPath)) {
+        installedPath := pfPath
+    }
+
+    ; No known installation
+    if (installedPath = "")
         return
 
-    installedPath := cfg.SetupExePath
     currentPath := A_ScriptFullPath
 
     ; Normalize paths for comparison (case-insensitive)
@@ -440,6 +478,9 @@ _Launcher_CheckInstallMismatch() {
     }
 
     versionCompare := CompareVersions(currentVersion, installedVersion)
+
+    ; Mark that we're showing a mismatch dialog (prevents auto-update race)
+    g_MismatchDialogShown := true
 
     if (versionCompare > 0) {
         ; Current version is NEWER than installed
@@ -509,6 +550,8 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 
 ; Actually perform the update (called directly or after elevation)
 _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
+    global cfg, gConfigIniPath
+
     targetDir := ""
     SplitPath(targetPath, , &targetDir)
     backupPath := targetPath ".old"
@@ -528,6 +571,21 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
 
         ; Copy new version
         FileCopy(sourcePath, targetPath)
+
+        ; Update config to reflect the target path
+        if (IsSet(cfg) && IsSet(gConfigIniPath)) {
+            cfg.SetupExePath := targetPath
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", targetPath, "", "string")
+        }
+
+        ; Update admin task if enabled - task needs to point to target location
+        if (IsSet(cfg) && cfg.HasOwnProp("SetupRunAsAdmin") && cfg.SetupRunAsAdmin) {
+            if (AdminTaskExists()) {
+                ; Recreate task with target exe path
+                DeleteAdminTask()
+                CreateAdminTask(targetPath)
+            }
+        }
 
         ; Success - launch from installed location and exit
         TrayTip("Update Complete", "Alt-Tabby has been updated at:`n" targetPath, "Iconi")
@@ -1244,6 +1302,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     ; Determine exe path
     exePath := A_IsCompiled ? A_ScriptFullPath : A_ScriptFullPath
     installedElsewhere := ""
+    installSucceeded := false
 
     ; Step 1: Install to Program Files (if selected)
     if (install) {
@@ -1251,18 +1310,38 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         if (newPath != "" && newPath != A_ScriptFullPath) {
             exePath := newPath
             installedElsewhere := newPath
+            installSucceeded := true
             ; Update config path to point to new location so subsequent writes go there
             newDir := ""
             SplitPath(newPath, , &newDir)
             gConfigIniPath := newDir "\config.ini"
+        } else if (newPath = "") {
+            ; Install failed - exePath stays at current location
+            installSucceeded := false
+        } else {
+            ; newPath = A_ScriptFullPath means we were already in Program Files
+            installSucceeded := true
         }
     }
 
     ; Step 2: Create admin task (if selected) - needs final exe path
     if (admin) {
-        if (CreateAdminTask(exePath)) {
-            cfg.SetupRunAsAdmin := true
-            _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        ; Only create admin task if:
+        ; - Install wasn't requested, OR
+        ; - Install was requested AND succeeded
+        ; This prevents stale task pointing to temporary location
+        if (!install || installSucceeded) {
+            if (CreateAdminTask(exePath)) {
+                cfg.SetupRunAsAdmin := true
+                _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+            } else {
+                ; Task creation failed - notify user
+                MsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", "Alt-Tabby", "Icon!")
+                ; Don't set cfg.SetupRunAsAdmin since task creation failed
+            }
+        } else {
+            ; Install was requested but failed - don't create task pointing to temp location
+            MsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", "Alt-Tabby", "Icon!")
         }
     }
 
@@ -1306,8 +1385,9 @@ InstallToProgramFiles() {
         return ""
     }
 
-    ; Check if already in Program Files
-    if (InStr(A_ScriptDir, "C:\Program Files\Alt-Tabby")) {
+    ; Check if already in Program Files (use exact path comparison, not substring)
+    normalizedDir := StrLower(A_ScriptDir)
+    if (normalizedDir = StrLower(installDir)) {
         return A_ScriptFullPath  ; Already there
     }
 
@@ -1359,7 +1439,8 @@ _CreateShortcutForCurrentMode(lnkPath) {
         ; Always point to our exe - it will self-redirect to scheduled task if needed
         if (A_IsCompiled) {
             shortcut.TargetPath := exePath
-            shortcut.Description := cfg.SetupRunAsAdmin
+            ; Only show "(Admin)" if task actually exists (not just config says so)
+            shortcut.Description := (cfg.SetupRunAsAdmin && AdminTaskExists())
                 ? "Alt-Tabby Window Switcher (Admin)"
                 : "Alt-Tabby Window Switcher"
         } else {

@@ -145,21 +145,9 @@ echo SUCCESS! Compiled to: %OUTPUT%
 echo ============================================================
 echo.
 
-:: Copy config files to release directory (alongside exe)
-echo Copying config files...
-if exist "%SCRIPT_DIR%\config.ini" (
-    copy /Y "%SCRIPT_DIR%\config.ini" "%BASEDIR%\release\config.ini" >nul
-    echo   - config.ini copied
-) else (
-    echo   - config.ini not found (will use defaults)
-)
-
-if exist "%SCRIPT_DIR%\shared\blacklist.txt" (
-    copy /Y "%SCRIPT_DIR%\shared\blacklist.txt" "%BASEDIR%\release\blacklist.txt" >nul
-    echo   - blacklist.txt copied
-)
-
-:: Note: img folder no longer needed - icon and logo.png are embedded in exe
+:: Note: config.ini and blacklist.txt are NOT copied to release/
+:: They are created fresh on first run (first-run wizard handles setup)
+:: This prevents stale config from interfering with version mismatch detection
 
 echo.
 echo Usage:
