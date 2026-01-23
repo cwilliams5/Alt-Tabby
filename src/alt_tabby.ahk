@@ -63,6 +63,9 @@ for _, arg in A_Args {
         case "--apply-update":
             g_AltTabbyMode := "apply-update"
             ; Apply downloaded update after self-elevation
+        case "--update-installed":
+            g_AltTabbyMode := "update-installed"
+            ; Update installed version after self-elevation (from mismatch detection)
     }
 }
 
@@ -222,12 +225,46 @@ if (g_AltTabbyMode = "apply-update") {
 }
 
 ; ============================================================
+; UPDATE-INSTALLED MODE (After Self-Elevation for Install Mismatch)
+; ============================================================
+if (g_AltTabbyMode = "update-installed") {
+    updateFile := A_Temp "\alttabby_install_update.txt"
+
+    if (!FileExist(updateFile)) {
+        MsgBox("Update information not found.", "Alt-Tabby", "Icon!")
+        ExitApp()
+    }
+
+    try {
+        content := FileRead(updateFile, "UTF-8")
+        FileDelete(updateFile)
+
+        parts := StrSplit(content, "|")
+        if (parts.Length != 2) {
+            MsgBox("Invalid update information.", "Alt-Tabby", "Icon!")
+            ExitApp()
+        }
+
+        sourcePath := parts[1]
+        targetPath := parts[2]
+        _Launcher_DoUpdateInstalled(sourcePath, targetPath)
+    } catch as e {
+        MsgBox("Update failed:`n" e.Message, "Alt-Tabby", "Icon!")
+    }
+    ExitApp()
+}
+
+; ============================================================
 ; LAUNCHER MODE INITIALIZATION
 ; ============================================================
 ; Must be after includes so we can use ConfigLoader_Init
 if (g_AltTabbyMode = "launch") {
     ; Initialize config to get splash settings
     ConfigLoader_Init()
+
+    ; Check if running from different location than installed version
+    ; (e.g., user downloaded new version and ran from Downloads)
+    _Launcher_CheckInstallMismatch()
 
     ; Check if another launcher is already running (named mutex)
     if (!_Launcher_AcquireMutex()) {
@@ -356,6 +393,138 @@ _Launcher_KillExistingInstances() {
         if (pid != myPID) {
             ProcessClose(pid)
         }
+    }
+}
+
+; Check if we're running from a different location than the installed version
+; Offers to update or launch the installed version
+_Launcher_CheckInstallMismatch() {
+    global cfg
+
+    ; Only relevant for compiled exe
+    if (!A_IsCompiled)
+        return
+
+    ; Check if we have an installed path recorded
+    if (!cfg.HasOwnProp("SetupExePath") || cfg.SetupExePath = "")
+        return
+
+    installedPath := cfg.SetupExePath
+    currentPath := A_ScriptFullPath
+
+    ; Normalize paths for comparison (case-insensitive)
+    if (StrLower(installedPath) = StrLower(currentPath))
+        return  ; Running from installed location, all good
+
+    ; Check if installed exe actually exists
+    if (!FileExist(installedPath))
+        return  ; Installed exe is gone, continue normally
+
+    ; Get versions
+    currentVersion := GetAppVersion()
+    try {
+        installedVersion := FileGetVersion(installedPath)
+    } catch {
+        installedVersion := "0.0.0"
+    }
+
+    versionCompare := CompareVersions(currentVersion, installedVersion)
+
+    if (versionCompare > 0) {
+        ; Current version is NEWER than installed
+        result := MsgBox(
+            "Alt-Tabby is installed at:`n" installedPath "`n`n"
+            "You're running a newer version (" currentVersion " vs " installedVersion ").`n`n"
+            "Update the installed version?",
+            "Alt-Tabby - Update Installed Version?",
+            "YesNo Icon?"
+        )
+
+        if (result = "Yes") {
+            _Launcher_UpdateInstalledVersion(installedPath)
+            ; If we return, update failed - continue running from current location
+        }
+        ; "No" - continue running from current location
+    } else {
+        ; Current version is SAME or OLDER than installed
+        result := MsgBox(
+            "Alt-Tabby is already installed at:`n" installedPath "`n`n"
+            "Launch the installed version instead?",
+            "Alt-Tabby - Already Installed",
+            "YesNo Icon?"
+        )
+
+        if (result = "Yes") {
+            ; Launch installed version and exit
+            try {
+                Run('"' installedPath '"')
+                ExitApp()
+            } catch as e {
+                MsgBox("Could not launch installed version:`n" e.Message, "Alt-Tabby", "Icon!")
+            }
+        }
+        ; "No" - continue running from current location
+    }
+}
+
+; Update the installed version with the current exe
+_Launcher_UpdateInstalledVersion(installedPath) {
+    global cfg, gConfigIniPath
+
+    installedDir := ""
+    SplitPath(installedPath, , &installedDir)
+
+    ; Check if we need elevation
+    if (_Update_NeedsElevation(installedDir)) {
+        ; Save update info and self-elevate
+        updateInfo := A_ScriptFullPath "|" installedPath
+        updateFile := A_Temp "\alttabby_install_update.txt"
+        try FileDelete(updateFile)
+        FileAppend(updateInfo, updateFile, "UTF-8")
+
+        try {
+            Run('*RunAs "' A_ScriptFullPath '" --update-installed')
+            ExitApp()
+        } catch {
+            MsgBox("Update requires administrator privileges.", "Alt-Tabby", "Icon!")
+            try FileDelete(updateFile)
+            return
+        }
+    }
+
+    ; Apply update directly
+    _Launcher_DoUpdateInstalled(A_ScriptFullPath, installedPath)
+}
+
+; Actually perform the update (called directly or after elevation)
+_Launcher_DoUpdateInstalled(sourcePath, targetPath) {
+    targetDir := ""
+    SplitPath(targetPath, , &targetDir)
+    backupPath := targetPath ".old"
+
+    try {
+        ; Remove any previous backup
+        if (FileExist(backupPath))
+            FileDelete(backupPath)
+
+        ; Backup current installed version
+        FileMove(targetPath, backupPath)
+
+        ; Copy new version
+        FileCopy(sourcePath, targetPath)
+
+        ; Success - launch from installed location and exit
+        TrayTip("Update Complete", "Alt-Tabby has been updated at:`n" targetPath, "Iconi")
+        Sleep(1000)
+        Run('"' targetPath '"')
+        ExitApp()
+
+    } catch as e {
+        ; Try to restore backup
+        if (!FileExist(targetPath) && FileExist(backupPath)) {
+            try FileMove(backupPath, targetPath)
+        }
+        MsgBox("Update failed:`n" e.Message, "Alt-Tabby", "Icon!")
     }
 }
 
