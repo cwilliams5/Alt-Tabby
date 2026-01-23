@@ -151,11 +151,25 @@ if (g_AltTabbyMode = "wizard-continue") {
     ConfigLoader_Init()
     if (WizardContinue()) {
         ; Wizard completed - launch normally
+
+        ; Show splash screen if enabled
+        if (cfg.LauncherShowSplash)
+            ShowSplashScreen()
+
         SetupLauncherTray()
         OnMessage(0x404, TrayIconClick)
         LaunchStore()
         Sleep(300)
         LaunchGui()
+
+        ; Hide splash after duration
+        if (cfg.LauncherShowSplash) {
+            elapsed := A_TickCount - g_SplashStartTick
+            remaining := cfg.LauncherSplashDurationMs - elapsed
+            if (remaining > 0)
+                Sleep(remaining)
+            HideSplashScreen()
+        }
 
         ; Auto-update check if enabled
         if (cfg.SetupAutoUpdateCheck)
@@ -194,6 +208,12 @@ if (g_AltTabbyMode = "enable-admin-task") {
 if (g_AltTabbyMode = "launch") {
     ; Initialize config to get splash settings
     ConfigLoader_Init()
+
+    ; Check if we should redirect to scheduled task (admin mode)
+    if (_ShouldRedirectToScheduledTask()) {
+        Run('schtasks /run /tn "Alt-Tabby"',, "Hide")
+        ExitApp()
+    }
 
     ; Check for first-run (config exists but FirstRunCompleted is false)
     configPath := A_IsCompiled ? A_ScriptDir "\config.ini" : A_ScriptDir "\..\config.ini"
@@ -238,6 +258,25 @@ if (g_AltTabbyMode = "launch") {
 ; ============================================================
 ; LAUNCHER FUNCTIONS
 ; ============================================================
+
+; Check if we should redirect to scheduled task instead of running directly
+; Returns true if: admin mode enabled, task exists, and we're NOT already elevated
+_ShouldRedirectToScheduledTask() {
+    global cfg
+
+    ; Only redirect if:
+    ; 1. Admin mode is enabled in config
+    ; 2. The scheduled task actually exists
+    ; 3. We're NOT already running as admin (avoid infinite loop)
+    if (!cfg.SetupRunAsAdmin)
+        return false
+    if (!AdminTaskExists())
+        return false
+    if (A_IsAdmin)
+        return false  ; Already elevated, don't redirect
+
+    return true
+}
 
 LaunchStore() {
     global g_StorePID
@@ -504,7 +543,13 @@ SetupLauncherTray() {
 }
 
 UpdateTrayMenu() {
-    global g_StorePID, g_GuiPID, g_ViewerPID, cfg
+    global g_StorePID, g_GuiPID, g_ViewerPID, cfg, gConfigIniPath
+
+    ; Reload SetupRunAsAdmin from disk in case elevated instance changed it
+    if (FileExist(gConfigIniPath)) {
+        iniVal := IniRead(gConfigIniPath, "Setup", "RunAsAdmin", "false")
+        cfg.SetupRunAsAdmin := (iniVal = "true" || iniVal = "1")
+    }
 
     tray := A_TrayMenu
     tray.Delete()
@@ -948,8 +993,8 @@ InstallToProgramFiles() {
 ; Note: CreateAdminTask, DeleteAdminTask, AdminTaskExists, and
 ; _Shortcut_GetEffectiveExePath are defined in setup_utils.ahk
 
-; Create a shortcut that respects admin mode
-; When admin mode is ON, shortcut runs the scheduled task instead of exe directly
+; Create a shortcut that always points to the exe
+; The exe will self-redirect to the scheduled task if admin mode is enabled
 _CreateShortcutForCurrentMode(lnkPath) {
     global cfg
 
@@ -960,15 +1005,12 @@ _CreateShortcutForCurrentMode(lnkPath) {
         shell := ComObject("WScript.Shell")
         shortcut := shell.CreateShortcut(lnkPath)
 
-        if (cfg.SetupRunAsAdmin && AdminTaskExists()) {
-            ; Shortcut to run scheduled task (UAC-free admin)
-            shortcut.TargetPath := "schtasks.exe"
-            shortcut.Arguments := '/run /tn "Alt-Tabby"'
-            shortcut.Description := "Alt-Tabby Window Switcher (Admin)"
-        } else if (A_IsCompiled) {
-            ; Direct exe shortcut
+        ; Always point to our exe - it will self-redirect to scheduled task if needed
+        if (A_IsCompiled) {
             shortcut.TargetPath := exePath
-            shortcut.Description := "Alt-Tabby Window Switcher"
+            shortcut.Description := cfg.SetupRunAsAdmin
+                ? "Alt-Tabby Window Switcher (Admin)"
+                : "Alt-Tabby Window Switcher"
         } else {
             ; Dev mode: AutoHotkey.exe with script as argument
             shortcut.TargetPath := A_AhkPath
@@ -1020,9 +1062,21 @@ ToggleAdminMode() {
         DeleteAdminTask()
         cfg.SetupRunAsAdmin := false
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-        RecreateShortcuts()  ; Update to point to exe
-        ToolTip("Admin mode disabled")
-        SetTimer(() => ToolTip(), -1500)
+        RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
+
+        ; Offer restart to apply change immediately
+        result := MsgBox("Admin mode disabled.`n`nRestart Alt-Tabby to run without elevation?", "Alt-Tabby", "YesNo Icon?")
+        if (result = "Yes") {
+            ; Restart non-elevated by running the exe directly
+            if A_IsCompiled
+                Run('"' A_ScriptFullPath '"')
+            else
+                Run('"' A_AhkPath '" "' A_ScriptFullPath '"')
+            ExitAll()
+        } else {
+            ToolTip("Admin mode disabled - changes apply on next launch")
+            SetTimer(() => ToolTip(), -2000)
+        }
     } else {
         ; Enable admin mode - requires elevation to create scheduled task
         if (!A_IsAdmin) {

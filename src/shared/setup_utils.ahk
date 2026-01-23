@@ -66,7 +66,7 @@ CreateAdminTask(exePath) {
     xml .= '<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>'
     xml .= '<AllowStartOnDemand>true</AllowStartOnDemand>'
     xml .= '<Enabled>true</Enabled>'
-    xml .= '<Hidden>false</Hidden>'
+    xml .= '<Hidden>true</Hidden>'
     xml .= '<RunOnlyIfIdle>false</RunOnlyIfIdle>'
     xml .= '<WakeToRun>false</WakeToRun>'
     xml .= '</Settings>'
