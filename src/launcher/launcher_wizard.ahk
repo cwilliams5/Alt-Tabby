@@ -93,10 +93,23 @@ WizardApply(*) {
             g_WizardGui.Destroy()
             ExitApp()  ; Exit non-elevated instance
         } catch as e {
-            ; UAC was cancelled or failed - clean up temp file and notify user
+            ; UAC was cancelled or failed - clean up temp file and ask user
             try FileDelete(choicesFile)
-            MsgBox("Administrator privileges are required for the selected options.`n`nError: " e.Message "`n`nYou can still use Alt-Tabby without these features, or try again later from the tray menu.", "Alt-Tabby", "Icon!")
-            ; Don't exit - fall through to apply non-admin options only
+            result := MsgBox(
+                "Administrator privileges are required for:`n"
+                "- Install to Program Files`n"
+                "- Run as Administrator`n`n"
+                "These options will be skipped.`n`n"
+                "Continue with remaining options (shortcuts, auto-update)?",
+                "Alt-Tabby Setup",
+                "YesNo Icon?"
+            )
+            if (result = "No") {
+                g_WizardShuttingDown := false  ; Allow clean exit
+                try g_WizardGui.Destroy()
+                return  ; Exit wizard completely
+            }
+            ; Continue with non-admin options only
             install := false
             admin := false
         }

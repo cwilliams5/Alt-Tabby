@@ -281,7 +281,7 @@ if (g_AltTabbyMode = "update-installed") {
         content := FileRead(updateFile, "UTF-8")
         FileDelete(updateFile)
 
-        parts := StrSplit(content, "|")
+        parts := StrSplit(content, "<|>")
         if (parts.Length != 2) {
             MsgBox("Invalid update information.", "Alt-Tabby", "Icon!")
             ExitApp()

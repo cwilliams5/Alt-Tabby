@@ -162,8 +162,8 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 
     ; Check if we need elevation
     if (_Update_NeedsElevation(installedDir)) {
-        ; Save update info and self-elevate
-        updateInfo := A_ScriptFullPath "|" installedPath
+        ; Save update info and self-elevate (use <|> delimiter to handle pipe chars in paths)
+        updateInfo := A_ScriptFullPath "<|>" installedPath
         updateFile := A_Temp "\alttabby_install_update.txt"
         try FileDelete(updateFile)
         FileAppend(updateInfo, updateFile, "UTF-8")
@@ -210,6 +210,11 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         ; Update config AT THE TARGET location (not source location where we're running from)
         ; This ensures the installed version has the correct SetupExePath
         cfg.SetupExePath := targetPath
+        ; Ensure target config exists (may be missing for fresh installs)
+        if (!FileExist(targetConfigPath)) {
+            if (FileExist(gConfigIniPath))
+                try FileCopy(gConfigIniPath, targetConfigPath)
+        }
         if (FileExist(targetConfigPath)) {
             try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
         }

@@ -48,7 +48,9 @@ Launcher_Init() {
     _Update_CleanupOldExe()
 
     ; Check if we should redirect to scheduled task (admin mode)
-    if (_ShouldRedirectToScheduledTask()) {
+    ; Skip task redirect if mismatch was detected - user chose to run from current location
+    ; Showing task repair dialog after mismatch "No" would redirect to wrong version
+    if (!g_MismatchDialogShown && _ShouldRedirectToScheduledTask()) {
         exitCode := RunWait('schtasks /run /tn "Alt-Tabby"',, "Hide")
 
         if (exitCode = 0) {
@@ -162,6 +164,7 @@ _ShouldRedirectToScheduledTask() {
         ; User said No or UAC refused - disable admin mode and continue non-elevated
         cfg.SetupRunAsAdmin := false
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        TrayTip("Admin Mode Disabled", "The scheduled task was stale and couldn't be used.`nRe-enable from tray menu if needed.", "Icon!")
         return false
     }
 

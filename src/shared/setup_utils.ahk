@@ -239,8 +239,8 @@ CheckForUpdates(showIfCurrent := false) {
 
 ; Parse GitHub API response to find AltTabby.exe download URL
 _Update_FindExeDownloadUrl(jsonResponse) {
-    ; Look for browser_download_url containing AltTabby.exe
-    if (RegExMatch(jsonResponse, '"browser_download_url"\s*:\s*"([^"]*AltTabby\.exe[^"]*)"', &match))
+    ; Look for browser_download_url containing AltTabby.exe (case-insensitive)
+    if (RegExMatch(jsonResponse, 'i)"browser_download_url"\s*:\s*"([^"]*AltTabby\.exe[^"]*)"', &match))
         return match[1]
     return ""
 }
@@ -268,6 +268,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
     try {
         whr := ComObject("WinHttp.WinHttpRequest.5.1")
         whr.Open("GET", downloadUrl, false)
+        whr.SetTimeouts(30000, 30000, 30000, 120000)  ; 30s connect/send/receive, 120s total
         whr.SetRequestHeader("User-Agent", "Alt-Tabby/" GetAppVersion())
         whr.Send()
 
@@ -298,8 +299,8 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
 
     ; Check if we need elevation to write to exe directory
     if (_Update_NeedsElevation(exeDir)) {
-        ; Save update info and self-elevate
-        updateInfo := tempExe "|" currentExe
+        ; Save update info and self-elevate (use <|> delimiter to handle pipe chars in paths)
+        updateInfo := tempExe "<|>" currentExe
         updateFile := A_Temp "\alttabby_update.txt"
         try FileDelete(updateFile)
         FileAppend(updateInfo, updateFile, "UTF-8")
@@ -452,7 +453,7 @@ _Update_ContinueFromElevation() {
         content := FileRead(updateFile, "UTF-8")
         FileDelete(updateFile)
 
-        parts := StrSplit(content, "|")
+        parts := StrSplit(content, "<|>")
         if (parts.Length != 2)
             return false
 
