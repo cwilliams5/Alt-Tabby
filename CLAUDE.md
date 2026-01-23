@@ -71,10 +71,12 @@ legacy/
 - `src/store/store_server.ahk`: WindowStore main entry point
 - `src/store/windowstore.ahk`: Core store with GetProjection, UpsertWindow, scan APIs
 - `src/shared/ipc_pipe.ahk`: Multi-subscriber named pipe IPC
+- `src/shared/config_registry.ahk`: Single source of truth for all config definitions
 - `src/viewer/viewer.ahk`: Debug viewer GUI
 - `src/gui/gui_main.ahk`: Alt-Tab GUI overlay
 - `tests/run_tests.ahk`: Automated tests
 - `compile.bat`: Compiles to `release/AltTabby.exe` (reads version from VERSION)
+- `build-config-docs.ahk`: Generates `docs/options.md` from config registry (run by compile.bat)
 
 ## Legacy Components (in legacy/components_legacy/)
 These are from the original ChatGPT work. Some are battle-tested:
