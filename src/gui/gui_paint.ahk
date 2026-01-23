@@ -66,18 +66,37 @@ GUI_Repaint() {
 
 GUI_RevealBoth() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed
+    global gGUI_State  ; Need access to state for race fix
 
     if (gGUI_Revealed) {
         return
     }
 
+    ; RACE FIX: Abort early if state already changed
+    if (gGUI_State != "ACTIVE") {
+        return
+    }
+
     Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx)
+
     try {
         gGUI_Base.Show("NA")
     }
+
+    ; RACE FIX: Check if Alt was released during Show (which pumps messages)
+    if (gGUI_State != "ACTIVE") {
+        return
+    }
+
     try {
         gGUI_Overlay.Show("NA")
     }
+
+    ; RACE FIX: Check again after Overlay.Show
+    if (gGUI_State != "ACTIVE") {
+        return
+    }
+
     Win_DwmFlush()
     gGUI_Revealed := true
 }
