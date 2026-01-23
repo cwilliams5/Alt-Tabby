@@ -52,13 +52,16 @@ Blacklist_Init(filePath := "") {
 }
 
 ; Reload blacklist from file (creates default if missing)
+; Uses atomic swap pattern to prevent race conditions - producers calling
+; Blacklist_IsMatch() during reload will see either old or new data, never empty arrays.
 Blacklist_Reload() {
     global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs
     global gBlacklist_FilePath, gBlacklist_Loaded
 
-    gBlacklist_Titles := []
-    gBlacklist_Classes := []
-    gBlacklist_Pairs := []
+    ; Build new lists in LOCAL variables first (not globals)
+    newTitles := []
+    newClasses := []
+    newPairs := []
 
     if (!FileExist(gBlacklist_FilePath)) {
         ; Try to create default blacklist
@@ -66,6 +69,10 @@ Blacklist_Reload() {
     }
 
     if (!FileExist(gBlacklist_FilePath)) {
+        ; Atomic swap to empty lists
+        gBlacklist_Titles := newTitles
+        gBlacklist_Classes := newClasses
+        gBlacklist_Pairs := newPairs
         gBlacklist_Loaded := false
         return false
     }
@@ -73,6 +80,7 @@ Blacklist_Reload() {
     try {
         content := FileRead(gBlacklist_FilePath, "UTF-8")
     } catch {
+        ; Don't clear existing lists on read error - keep old data
         gBlacklist_Loaded := false
         return false
     }
@@ -92,20 +100,26 @@ Blacklist_Reload() {
             continue
         }
 
-        ; Add to appropriate list based on current section
+        ; Add to LOCAL lists based on current section
         if (currentSection = "Title") {
-            gBlacklist_Titles.Push(line)
+            newTitles.Push(line)
         } else if (currentSection = "Class") {
-            gBlacklist_Classes.Push(line)
+            newClasses.Push(line)
         } else if (currentSection = "Pair") {
             ; Parse Class|Title format
             parts := StrSplit(line, "|")
             if (parts.Length >= 2) {
-                gBlacklist_Pairs.Push({ Class: parts[1], Title: parts[2] })
+                newPairs.Push({ Class: parts[1], Title: parts[2] })
             }
         }
     }
 
+    ; ATOMIC SWAP: Replace all globals at once
+    ; In AHK v2's cooperative model, these assignments complete atomically
+    ; between statement boundaries, so producers never see partial state
+    gBlacklist_Titles := newTitles
+    gBlacklist_Classes := newClasses
+    gBlacklist_Pairs := newPairs
     gBlacklist_Loaded := true
     return true
 }

@@ -213,6 +213,20 @@ Store_PushToClients() {
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
 
+    ; Clean up tracking maps for disconnected clients (prevents memory leak)
+    ; Clone the map for iteration since we're modifying during loop
+    for hPipe, _ in gStore_LastClientRev.Clone() {
+        if (!gStore_Server.clients.Has(hPipe)) {
+            gStore_LastClientRev.Delete(hPipe)
+            if (gStore_LastClientProj.Has(hPipe))
+                gStore_LastClientProj.Delete(hPipe)
+            if (gStore_LastClientMeta.Has(hPipe))
+                gStore_LastClientMeta.Delete(hPipe)
+            if (gStore_ClientOpts.Has(hPipe))
+                gStore_ClientOpts.Delete(hPipe)
+        }
+    }
+
     sent := 0
     for hPipe, _ in gStore_Server.clients {
         ; Get this client's projection opts (or defaults)

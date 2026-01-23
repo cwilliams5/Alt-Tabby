@@ -158,13 +158,18 @@ _IPC_Server_AcceptPending(server) {
         if (_IPC_CheckConnect(inst)) {
             server.clients[inst.hPipe] := { buf: "" }
             connected.Push(idx)
-            _IPC_Server_AddPending(server)
+            ; DON'T call _IPC_Server_AddPending here - modifies array during iteration!
         }
     }
-    ; remove connected instances from pending list (reverse order)
+    ; Remove connected instances from pending list (reverse order)
     Loop connected.Length {
         i := connected[connected.Length - A_Index + 1]
         server.pending.RemoveAt(i)
+    }
+    ; Add new pending instances AFTER iteration completes
+    ; (one new instance per connected client to maintain pending pool)
+    Loop connected.Length {
+        _IPC_Server_AddPending(server)
     }
 }
 
@@ -396,6 +401,13 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
         return 0
     chunk := StrGet(buf.Ptr, bytesRead, "UTF-8")
     stateObj.buf .= chunk
+
+    ; Prevent unbounded buffer growth (max 1MB) - protects against malformed clients
+    if (StrLen(stateObj.buf) > 1048576) {
+        stateObj.buf := ""
+        return -1  ; Signal error - disconnect client
+    }
+
     _IPC_ParseLines(stateObj, onMessageFn, hPipe)
     return bytesRead
 }
