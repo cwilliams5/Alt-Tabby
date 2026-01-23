@@ -1162,6 +1162,24 @@ The app can download and install updates automatically from GitHub Releases.
 - If `cfg.SetupAutoUpdateCheck` is true, checks after 5-second delay
 - Uses same flow but shows TrayTip instead of MsgBox for non-interactive check
 
+**Config path for updates (CRITICAL):**
+- When updating from a different location (mismatch update), the elevated instance's `gConfigIniPath` points to the SOURCE location (e.g., Downloads)
+- Updates must write `SetupExePath` and read `RunAsAdmin` from the **TARGET** location's config.ini
+- Both `_Launcher_DoUpdateInstalled()` and `_Update_ApplyAndRelaunch()` calculate `targetConfigPath` and use it directly:
+  ```ahk
+  targetConfigPath := targetDir "\config.ini"
+  ; Write to TARGET config, not gConfigIniPath
+  if (FileExist(targetConfigPath)) {
+      try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
+  }
+  ; Read RunAsAdmin from TARGET config, not source cfg
+  if (FileExist(targetConfigPath)) {
+      iniVal := IniRead(targetConfigPath, "Setup", "RunAsAdmin", "false")
+      targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
+  }
+  ```
+- This ensures the installed version's config reflects the update, and admin mode is correctly maintained
+
 ### New Config Options (in `[Setup]` section)
 ```ini
 [Setup]

@@ -188,6 +188,7 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
 
     targetDir := ""
     SplitPath(targetPath, , &targetDir)
+    targetConfigPath := targetDir "\config.ini"  ; Target's config location
     backupPath := targetPath ".old"
 
     try {
@@ -206,19 +207,26 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         ; Copy new version
         FileCopy(sourcePath, targetPath)
 
-        ; Update config to reflect the target path
-        if (IsSet(cfg) && IsSet(gConfigIniPath)) {
-            cfg.SetupExePath := targetPath
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", targetPath, "", "string")
+        ; Update config AT THE TARGET location (not source location where we're running from)
+        ; This ensures the installed version has the correct SetupExePath
+        cfg.SetupExePath := targetPath
+        if (FileExist(targetConfigPath)) {
+            try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
         }
 
-        ; Update admin task if enabled - task needs to point to target location
-        if (IsSet(cfg) && cfg.HasOwnProp("SetupRunAsAdmin") && cfg.SetupRunAsAdmin) {
-            if (AdminTaskExists()) {
-                ; Recreate task with target exe path
-                DeleteAdminTask()
-                CreateAdminTask(targetPath)
-            }
+        ; Read admin mode from TARGET config (not source config we loaded at startup)
+        ; The target location may have different settings than where this exe is running from
+        targetRunAsAdmin := false
+        if (FileExist(targetConfigPath)) {
+            iniVal := IniRead(targetConfigPath, "Setup", "RunAsAdmin", "false")
+            targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
+        }
+
+        ; Update admin task if TARGET has admin mode enabled
+        if (targetRunAsAdmin && AdminTaskExists()) {
+            ; Recreate task with target exe path
+            DeleteAdminTask()
+            CreateAdminTask(targetPath)
         }
 
         ; Success - launch from installed location and exit

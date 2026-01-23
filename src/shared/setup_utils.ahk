@@ -365,6 +365,7 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
 
     targetDir := ""
     SplitPath(targetExePath, , &targetDir)
+    targetConfigPath := targetDir "\config.ini"  ; Target's config location
     oldExePath := targetExePath ".old"
 
     try {
@@ -383,20 +384,26 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         ; Move new exe to target location
         FileMove(newExePath, targetExePath)
 
-        ; Update config to reflect new exe path (Bug 2 fix)
-        if (IsSet(cfg) && IsSet(gConfigIniPath)) {
-            cfg.SetupExePath := targetExePath
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", targetExePath, "", "string")
+        ; Update config AT THE TARGET location (not source location where we're running from)
+        ; For auto-update this is usually the same, but for mismatch updates they may differ
+        cfg.SetupExePath := targetExePath
+        if (FileExist(targetConfigPath)) {
+            try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetExePath, "", "string")
         }
 
-        ; Update admin task if enabled (Bug 1 fix)
-        ; The task may point to old path if user moved exe or installed to new location
-        if (IsSet(cfg) && cfg.HasOwnProp("SetupRunAsAdmin") && cfg.SetupRunAsAdmin) {
-            if (AdminTaskExists()) {
-                ; Recreate task with new exe path
-                DeleteAdminTask()
-                CreateAdminTask(targetExePath)
-            }
+        ; Read admin mode from TARGET config (not source config we loaded at startup)
+        ; This ensures we correctly handle cases where target has different settings
+        targetRunAsAdmin := false
+        if (FileExist(targetConfigPath)) {
+            iniVal := IniRead(targetConfigPath, "Setup", "RunAsAdmin", "false")
+            targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
+        }
+
+        ; Update admin task if TARGET has admin mode enabled
+        if (targetRunAsAdmin && AdminTaskExists()) {
+            ; Recreate task with new exe path
+            DeleteAdminTask()
+            CreateAdminTask(targetExePath)
         }
 
         ; Success! Launch new version and exit
