@@ -65,14 +65,27 @@ CompareVersions(v1, v2) {
 ; ============================================================
 
 ; Create a scheduled task with highest privileges (UAC-free admin)
-CreateAdminTask(exePath) {
-    global ALTTABBY_TASK_NAME
+; Includes InstallationId in description for identification
+CreateAdminTask(exePath, installId := "") {
+    global ALTTABBY_TASK_NAME, cfg
     taskName := ALTTABBY_TASK_NAME
+
+    ; Get InstallationId if not provided
+    if (installId = "" && IsSet(cfg) && cfg.HasOwnProp("SetupInstallationId"))
+        installId := cfg.SetupInstallationId
+
+    ; Build description with embedded ID for later identification
+    taskDesc := "Alt-Tabby Admin Task"
+    if (installId != "")
+        taskDesc .= " [ID:" installId "]"
 
     ; Build XML for scheduled task
     ; Key: <RunLevel>HighestAvailable</RunLevel> = Run with highest privileges
     xml := '<?xml version="1.0" encoding="UTF-16"?>'
     xml .= '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
+    xml .= '<RegistrationInfo>'
+    xml .= '<Description>' taskDesc '</Description>'
+    xml .= '</RegistrationInfo>'
     xml .= '<Principals><Principal id="Author">'
     xml .= '<LogonType>InteractiveToken</LogonType>'
     xml .= '<RunLevel>HighestAvailable</RunLevel>'
@@ -137,6 +150,29 @@ _AdminTask_GetCommandPath() {
 
         ; Extract: <Command>"path"</Command> or <Command>path</Command>
         if (RegExMatch(xml, '<Command>"?([^"<]+)"?</Command>', &match))
+            return match[1]
+    }
+    return ""
+}
+
+; Extract InstallationId from task description
+; Returns empty string if task doesn't exist or has no ID
+_AdminTask_GetInstallationId() {
+    global ALTTABBY_TASK_NAME
+    tempFile := A_Temp "\alttabby_task_query.xml"
+    try FileDelete(tempFile)
+
+    ; Export task to XML
+    result := RunWait('cmd.exe /c schtasks /query /tn "' ALTTABBY_TASK_NAME '" /xml > "' tempFile '"',, "Hide")
+    if (result != 0 || !FileExist(tempFile))
+        return ""
+
+    try {
+        xml := FileRead(tempFile, "UTF-8")
+        FileDelete(tempFile)
+
+        ; Extract: <Description>Alt-Tabby Admin Task [ID:XXXXXXXX]</Description>
+        if (RegExMatch(xml, '\[ID:([A-Fa-f0-9]{8})\]', &match))
             return match[1]
     }
     return ""

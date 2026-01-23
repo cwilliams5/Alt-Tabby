@@ -684,5 +684,8 @@ global gConfigRegistry := [
      d: "Automatically check for updates on startup."},
 
     {s: "Setup", k: "FirstRunCompleted", g: "SetupFirstRunCompleted", t: "bool", default: false,
-     d: "Set to true after first-run wizard completes."}
+     d: "Set to true after first-run wizard completes."},
+
+    {s: "Setup", k: "InstallationId", g: "SetupInstallationId", t: "string", default: "",
+     d: "Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification."}
 ]

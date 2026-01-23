@@ -15,7 +15,11 @@ global g_LauncherMutex := 0
 Launcher_Init() {
     global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
 
+    ; Ensure InstallationId exists (generates on first run)
+    _Launcher_EnsureInstallationId()
+
     ; Check if another launcher is already running (named mutex)
+    ; Uses InstallationId so renamed exes in same install still share mutex
     ; MUST be before mismatch check to prevent race conditions
     if (!_Launcher_AcquireMutex()) {
         result := MsgBox(
@@ -69,10 +73,20 @@ Launcher_Init() {
     ; Check for first-run (config exists but FirstRunCompleted is false)
     ; Skip in testing mode to avoid blocking automated tests
     if (!cfg.SetupFirstRunCompleted && !g_TestingMode) {
-        ; Show first-run wizard
-        ShowFirstRunWizard()
-        ; If wizard was shown and exited (self-elevated), we exit here
-        ; Otherwise continue to normal startup
+        ; Before showing wizard, check if there's an existing install with config
+        ; This handles: user downloads new version, their config.ini is empty/missing
+        ; but there's a Program Files install with a valid config
+        if (_Launcher_ShouldSkipWizardForExistingInstall()) {
+            ; Mismatch check will run on next iteration (already ran above)
+            ; Mark wizard as complete since user has existing setup
+            cfg.SetupFirstRunCompleted := true
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+        } else {
+            ; Show first-run wizard
+            ShowFirstRunWizard()
+            ; If wizard was shown and exited (self-elevated), we exit here
+            ; Otherwise continue to normal startup
+        }
     }
 
     ; Show splash screen if enabled
@@ -123,7 +137,9 @@ _Launcher_OnExit(exitReason, exitCode) {
 ; Check if we should redirect to scheduled task instead of running directly
 ; Returns true if: task exists, points to current exe, and we're NOT already elevated
 ; Note: Trusts task existence over config (handles corrupted config case)
-; Handles stale task paths (exe renamed/moved) by offering repair
+; Handles stale task paths by:
+;   - Auto-repairing if InstallationId matches (same install, just renamed/moved)
+;   - Prompting user if ID doesn't match or is missing (might be different install)
 _ShouldRedirectToScheduledTask() {
     global cfg, gConfigIniPath
 
@@ -138,8 +154,31 @@ _ShouldRedirectToScheduledTask() {
     ; Validate task points to current exe (handles renamed exe case)
     taskPath := _AdminTask_GetCommandPath()
     if (taskPath = "" || StrLower(taskPath) != StrLower(A_ScriptFullPath)) {
-        ; Bug 4 fix: Check for repair cooldown (24 hours) to avoid repeated prompts
-        ; This prevents annoyance when user repeatedly launches a renamed exe
+        ; Task path doesn't match - check if InstallationId matches
+        taskId := _AdminTask_GetInstallationId()
+        currentId := (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
+            ? cfg.SetupInstallationId : ""
+
+        ; If IDs match, auto-repair without prompting (same installation, just renamed/moved)
+        if (taskId != "" && currentId != "" && taskId = currentId) {
+            ; Self-elevate to auto-repair task
+            try {
+                if (A_IsCompiled)
+                    Run('*RunAs "' A_ScriptFullPath '" --repair-admin-task')
+                else
+                    Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --repair-admin-task')
+                ExitApp()  ; Elevated instance will handle launch
+            } catch {
+                ; UAC refused - fall back to non-admin
+                TrayTip("Admin Mode", "Could not elevate to repair task. Running without admin privileges.", "Icon!")
+                cfg.SetupRunAsAdmin := false
+                try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+                return false
+            }
+        }
+
+        ; IDs don't match or missing - use cooldown-based prompting
+        ; This handles: different installs, legacy tasks without ID, etc.
         lastRepairTick := 0
         try {
             lastRepairStr := IniRead(gConfigIniPath, "Setup", "LastTaskRepairTick", "0")
@@ -154,7 +193,7 @@ _ShouldRedirectToScheduledTask() {
             return false
         }
 
-        ; Task is stale - offer to repair
+        ; Task is stale and ID doesn't match - offer to repair
         result := MsgBox(
             "The Admin Mode scheduled task points to a different location:`n"
             "Task: " taskPath "`n"
@@ -176,16 +215,16 @@ _ShouldRedirectToScheduledTask() {
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
                 ; UAC refused - fall back to non-admin
-                MsgBox("Administrator privileges required to repair.`nRunning without elevation.", "Alt-Tabby", "Icon!")
+                TrayTip("Admin Mode", "Administrator privileges required to repair. Running without elevation.", "Icon!")
             }
         }
 
         ; User said No or UAC refused - disable admin mode and continue non-elevated
-        ; Record the tick to start cooldown period
+        ; Record the tick to start cooldown period (only for non-matching IDs)
         cfg.SetupRunAsAdmin := false
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTick", A_TickCount, 0, "int")
-        TrayTip("Admin Mode Disabled", "The scheduled task was stale and couldn't be used.`nRe-enable from tray menu if needed.", "Icon!")
+        TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
         return false
     }
 
@@ -200,11 +239,18 @@ _ShouldRedirectToScheduledTask() {
 
 ; Try to acquire the launcher mutex
 ; Returns true if acquired (we're the only launcher), false if already held
+; Uses InstallationId so renamed exes within same installation share mutex
 _Launcher_AcquireMutex() {
-    global g_LauncherMutex
+    global g_LauncherMutex, cfg
+
+    ; Build mutex name using InstallationId (prevents different-named exes running together)
+    ; Falls back to hardcoded name if no ID yet (shouldn't happen - EnsureInstallationId runs first)
+    installId := (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
+        ? cfg.SetupInstallationId : "default"
+    mutexName := "AltTabby_Launcher_" installId
 
     ; Try to create named mutex
-    g_LauncherMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", "AltTabby_Launcher", "ptr")
+    g_LauncherMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
     lastError := DllCall("GetLastError")
 
     ; ERROR_ALREADY_EXISTS = 183
@@ -218,6 +264,64 @@ _Launcher_AcquireMutex() {
     }
 
     return (g_LauncherMutex != 0)
+}
+
+; Ensure InstallationId exists, generate if missing
+; Called early in startup before mutex acquisition
+_Launcher_EnsureInstallationId() {
+    global cfg, gConfigIniPath
+
+    if (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
+        return  ; Already have ID
+
+    ; Generate 8-character hex ID
+    installId := _Launcher_GenerateId()
+    cfg.SetupInstallationId := installId
+    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", installId, "", "string")
+}
+
+; Generate an 8-character hex ID
+_Launcher_GenerateId() {
+    ; Use combination of tick count and random for uniqueness
+    DllCall("QueryPerformanceCounter", "Int64*", &counter := 0)
+    Random(&seed := 0)
+    combined := counter ^ seed ^ A_TickCount
+
+    ; Format as 8-char hex
+    id := Format("{:08X}", combined & 0xFFFFFFFF)
+    return id
+}
+
+; Check if we should skip wizard due to existing installation
+; Returns true if: there's an existing Program Files install with valid config
+_Launcher_ShouldSkipWizardForExistingInstall() {
+    global cfg
+
+    ; Only relevant when FirstRunCompleted is false (would show wizard)
+    if (cfg.SetupFirstRunCompleted)
+        return false
+
+    ; Check for Program Files installation
+    pfPath := "C:\Program Files\Alt-Tabby\AltTabby.exe"
+    pfConfigPath := "C:\Program Files\Alt-Tabby\config.ini"
+
+    ; If running from Program Files, don't skip (let wizard show for fresh PF installs)
+    if (InStr(A_ScriptDir, "C:\Program Files\Alt-Tabby"))
+        return false
+
+    ; Check if Program Files install exists with completed setup
+    if (FileExist(pfPath) && FileExist(pfConfigPath)) {
+        try {
+            firstRunVal := IniRead(pfConfigPath, "Setup", "FirstRunCompleted", "false")
+            if (firstRunVal = "true" || firstRunVal = "1") {
+                ; Existing install has completed setup - skip wizard
+                ; The mismatch dialog will offer to launch installed version or run from here
+                return true
+            }
+        }
+    }
+
+    return false
 }
 
 ; Kill all existing instances of this exe except ourselves

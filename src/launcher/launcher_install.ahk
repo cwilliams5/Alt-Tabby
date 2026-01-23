@@ -133,12 +133,8 @@ _Launcher_CheckInstallMismatch() {
         ; "No" - continue running from current location
     } else {
         ; Current version is SAME or OLDER than installed
-        result := MsgBox(
-            "Alt-Tabby is already installed at:`n" installedPath "`n`n"
-            "Launch the installed version instead?",
-            "Alt-Tabby - Already Installed",
-            "YesNo Icon?"
-        )
+        ; Use custom 3-button dialog: Yes (launch installed) / No (run from here once) / Always (run from here always)
+        result := _Launcher_ShowMismatchDialog(installedPath)
 
         if (result = "Yes") {
             ; Launch installed version and exit
@@ -148,9 +144,43 @@ _Launcher_CheckInstallMismatch() {
             } catch as e {
                 MsgBox("Could not launch installed version:`n" e.Message, "Alt-Tabby", "Icon!")
             }
+        } else if (result = "Always") {
+            ; Update SetupExePath to current location - never ask again
+            cfg.SetupExePath := currentPath
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
+            ; Continue running from current location
         }
-        ; "No" - continue running from current location
+        ; "No" - continue running from current location (one-time)
     }
+}
+
+; Custom 3-button dialog for mismatch: Yes / No / Always run from here
+; Returns: "Yes", "No", or "Always"
+_Launcher_ShowMismatchDialog(installedPath) {
+    global cfg
+
+    mismatchGui := Gui("+AlwaysOnTop +Owner", "Alt-Tabby - Already Installed")
+    mismatchGui.SetFont("s10", "Segoe UI")
+
+    mismatchGui.AddText("w380", "Alt-Tabby is already installed at:")
+    mismatchGui.AddText("w380 cGray", installedPath)
+    mismatchGui.AddText("w380 y+15", "Launch the installed version instead?")
+
+    result := ""  ; Will be set by button clicks
+
+    btnYes := mismatchGui.AddButton("w100 y+20 Default", "Yes")
+    btnNo := mismatchGui.AddButton("w100 x+10", "No")
+    btnAlways := mismatchGui.AddButton("w140 x+10", "Always run from here")
+
+    btnYes.OnEvent("Click", (*) => (result := "Yes", mismatchGui.Destroy()))
+    btnNo.OnEvent("Click", (*) => (result := "No", mismatchGui.Destroy()))
+    btnAlways.OnEvent("Click", (*) => (result := "Always", mismatchGui.Destroy()))
+    mismatchGui.OnEvent("Close", (*) => (result := "No", mismatchGui.Destroy()))
+
+    mismatchGui.Show()
+    WinWaitClose(mismatchGui)
+
+    return result
 }
 
 ; Update the installed version with the current exe
