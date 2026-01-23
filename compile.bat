@@ -22,7 +22,6 @@ set "AHK2BASE=C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 if not exist "%AHK2EXE%" (
     echo ERROR: Ahk2Exe.exe not found at: %AHK2EXE%
     echo Please install AutoHotkey with the compiler component.
-    pause
     exit /b 1
 )
 
@@ -30,7 +29,6 @@ if not exist "%AHK2EXE%" (
 if not exist "%AHK2BASE%" (
     echo ERROR: AutoHotkey v2 not found at: %AHK2BASE%
     echo Please install AutoHotkey v2.
-    pause
     exit /b 1
 )
 
@@ -42,7 +40,6 @@ echo.
 set /p VERSION=<"%~dp0VERSION"
 if "%VERSION%"=="" (
     echo ERROR: Could not read VERSION file
-    pause
     exit /b 1
 )
 echo Version: %VERSION%
@@ -53,12 +50,10 @@ echo Generating config documentation...
 "%AHK2BASE%" /ErrorStdOut "%~dp0build-config-docs.ahk"
 if errorlevel 1 (
     echo ERROR: Failed to generate config documentation
-    pause
     exit /b 1
 )
 if not exist "%~dp0docs\options.md" (
     echo ERROR: docs\options.md was not created
-    pause
     exit /b 1
 )
 echo   - Generated docs\options.md
@@ -85,7 +80,6 @@ set "OUTPUT=%BASEDIR%\release\AltTabby.exe"
 :: Check input exists
 if not exist "%INPUT%" (
     echo ERROR: Source file not found: %INPUT%
-    pause
     exit /b 1
 )
 
@@ -105,7 +99,6 @@ if not errorlevel 1 (
         echo          Process may be running as Administrator.
         echo          Please close it manually and try again.
         echo.
-        pause
         exit /b 1
     ) else (
         echo   - Terminated AltTabby.exe
@@ -135,7 +128,6 @@ if errorlevel 1 (
     echo   Source: %INPUT%
     echo   Base File: v2.0.19 U64 AutoHotkey64.exe
     echo.
-    pause
     exit /b 1
 )
 
@@ -150,7 +142,6 @@ if not exist "%OUTPUT%" (
     echo   2. Select Source: %INPUT%
     echo   3. Select Base File: v2.0.19 U64 AutoHotkey64.exe
     echo.
-    pause
     exit /b 1
 )
 
@@ -175,5 +166,3 @@ echo.
 echo TIP: Run as Administrator for full functionality
 echo      (required to intercept Alt+Tab in admin windows)
 echo.
-
-pause
