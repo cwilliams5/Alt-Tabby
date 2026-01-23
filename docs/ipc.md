@@ -12,36 +12,38 @@ Common fields
 - `payload`: message data.
 
 Client -> Store
-- `hello`: `{ clientId, wants: { deltas: true }, projectionOpts }`
-- `snapshot_request`: `{ includeItems: true, projectionOpts }`
-- `projection_request`: `{ projectionOpts }`
-- `set_projection_opts`: `{ projectionOpts }`
-- `reload_blacklist`: `{}` - triggers blacklist file reload and purges matching windows
-- `producer_status_request`: `{}` - request current producer states
+- `hello`: `{ projectionOpts? }` - Register client and receive initial snapshot
+- `snapshot_request`: `{ projectionOpts? }` - Request fresh snapshot (triggers full window scan)
+- `projection_request`: `{ projectionOpts? }` - Request projection without triggering scan
+- `set_projection_opts`: `{ projectionOpts }` - Update client's projection options
+- `reload_blacklist`: `{}` - Triggers blacklist file reload and purges matching windows
+- `producer_status_request`: `{}` - Request current producer states
 - `ping`: `{}`
 
 Store -> Client
-- `hello_ack`: `{ rev, meta, capabilities }`
-- `snapshot`: `{ rev, meta, items }`
-- `delta`: `{ rev, baseRev, upserts, patches, removes, meta }`
-- `projection`: `{ rev, meta, items }`
-- `heartbeat`: `{ rev }` - sent periodically (default 5s) for connection health
-- `producer_status`: `{ producers }` - response to producer_status_request
+- `hello_ack`: `{ payload: { meta, capabilities } }`
+- `snapshot`: `{ rev, payload: { meta, items } }`
+- `delta`: `{ rev, baseRev, payload: { upserts, patches, removes, meta } }`
+- `projection`: `{ rev, payload: { meta, items | hwnds } }`
+- `heartbeat`: `{ rev }` - Sent periodically (default 5s) for connection health
+- `producer_status`: `{ producers }` - Response to producer_status_request
 - `error`: `{ code, message }`
 
 Projection options
-- `currentWorkspaceOnly`: bool
-- `includeMinimized`: bool
-- `includeCloaked`: bool
-- `blacklistMode`: "exclude" | "include" | "only"
-- `sort`: "MRU" | "Z" | "Title" | "Pid" | "ProcessName"
-- `columns`: "items" | "hwndsOnly"
+- `currentWorkspaceOnly`: bool - Filter to current komorebi workspace
+- `includeMinimized`: bool - Include minimized windows (default true)
+- `includeCloaked`: bool - Include cloaked/hidden windows (default false)
+- `sort`: "MRU" | "Z" | "Title" | "Pid" | "ProcessName" - Sort order
+- `columns`: "items" | "hwndsOnly" - Full items or just hwnd list
+
+Note: Blacklist filtering happens at producer level. Blacklisted windows never enter the store.
 
 Meta object
 - `currentWSId`: current workspace ID (string)
 - `currentWSName`: current workspace name (string)
-- Note: Producer status is NOT included in meta (reduces delta/snapshot bloat)
-- Use `producer_status_request` to get producer states on demand
+
+Note: Producer status is NOT included in meta (reduces delta/snapshot bloat).
+Use `producer_status_request` to get producer states on demand.
 
 Producer status object
 - `wineventHook`: "running" | "failed" | "disabled"
@@ -53,4 +55,5 @@ Producer status object
 
 Resync behavior
 - If client receives `delta.baseRev` that does not match its last known `rev`, it should request a full `snapshot`.
+- Heartbeat includes `rev` for drift detection - if store rev > local rev, client missed updates.
 - Optional periodic snapshot (e.g. every 60s) is acceptable for drift protection.

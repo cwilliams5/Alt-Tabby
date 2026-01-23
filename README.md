@@ -42,9 +42,11 @@ The store maintains the authoritative window list with real-time updates from mu
 
 | Producer | Purpose |
 |----------|---------|
-| WinEventHook | Window create/destroy/focus events |
-| WinEnum | Full window enumeration (on-demand) |
-| KomorebiSub | Workspace tracking via komorebi |
+| WinEventHook | Window create/destroy/focus events (primary) |
+| WinEnum | Full window enumeration (on-demand, for Z-order) |
+| MRU_Lite | Focus tracking (fallback if WinEventHook fails) |
+| KomorebiSub | Workspace tracking via komorebi subscription |
+| KomorebiLite | Workspace polling (fallback if subscription fails) |
 | IconPump | Async icon extraction |
 | ProcPump | Process name resolution |
 
