@@ -251,6 +251,7 @@ GUI_GraceTimerFired() {
 GUI_ShowOverlayWithFrozen() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
+    global gGUI_State
 
     if (gGUI_OverlayVisible) {
         return
@@ -276,13 +277,30 @@ GUI_ShowOverlayWithFrozen() {
         gGUI_Base.Show("NA")
     }
 
+    ; RACE FIX: Check if Alt was released during Show (which pumps messages)
+    ; If state changed to IDLE, ALT_UP already called HideOverlay - abort show sequence
+    if (gGUI_State != "ACTIVE") {
+        return
+    }
+
     rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
     GUI_ResizeToRows(rowsDesired)
     GUI_Repaint()  ; Paint with correct sel/scroll from the start
 
+    ; RACE FIX: Check again after paint operations (GDI+ can pump messages)
+    if (gGUI_State != "ACTIVE") {
+        return
+    }
+
     try {
         gGUI_Overlay.Show("NA")
     }
+
+    ; RACE FIX: Final check before DwmFlush
+    if (gGUI_State != "ACTIVE") {
+        return
+    }
+
     Win_DwmFlush()
 
     ; Start hover polling (fallback for WM_MOUSELEAVE)
