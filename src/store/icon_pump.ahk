@@ -76,9 +76,18 @@ IconPump_Stop() {
     SetTimer(_IP_Tick, 0)
 }
 
-; Clean up tracking state when windows are removed (prevents memory leak)
+; Clean up tracking state AND destroy HICON when windows are removed
+; IMPORTANT: Must be called BEFORE gWS_Store.Delete(hwnd) so we can access the record
 IconPump_CleanupWindow(hwnd) {
     global _IP_Attempts
+
+    ; Destroy the HICON first (before record is deleted from store)
+    rec := WindowStore_GetByHwnd(hwnd)
+    if (rec && rec.HasOwnProp("iconHicon") && rec.iconHicon) {
+        try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
+    }
+
+    ; Clean up attempt tracking
     if (_IP_Attempts.Has(hwnd))
         _IP_Attempts.Delete(hwnd)
 }

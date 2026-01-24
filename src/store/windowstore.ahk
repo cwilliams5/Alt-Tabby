@@ -208,9 +208,9 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         ; Verify window is actually gone before removing (unless forced)
         if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
             continue  ; Window still exists, don't remove
-        gWS_Store.Delete(hwnd)
-        ; Clean up icon pump tracking state (prevents memory leak)
+        ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
         try IconPump_CleanupWindow(hwnd)
+        gWS_Store.Delete(hwnd)
         removed += 1
     }
     if (removed) {
@@ -245,9 +245,9 @@ WindowStore_ValidateExistence() {
 
     removed := 0
     for _, hwnd in toRemove {
-        gWS_Store.Delete(hwnd)
-        ; Clean up icon pump tracking state
+        ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
         try IconPump_CleanupWindow(hwnd)
+        gWS_Store.Delete(hwnd)
         removed += 1
     }
 

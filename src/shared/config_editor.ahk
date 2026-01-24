@@ -88,6 +88,9 @@ _CE_CreateGui() {
     global gCE_Gui, gCE_TabCtrl, gCE_Controls, gConfigRegistry, gCE_SectionHeights
     global gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
 
+    ; Clean up any existing handlers from previous invocations (prevents accumulation)
+    _CE_Cleanup()
+
     gCE_Controls := Map()
     gCE_SectionHeights := Map()
     gCE_ScrollPanes := Map()

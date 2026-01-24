@@ -217,6 +217,17 @@ _GUI_StartStore() {
     }
 }
 
+; Clean up resources on exit
+_GUI_OnExit(reason, code) {
+    ; Stop health check timer
+    SetTimer(_GUI_StoreHealthCheck, 0)
+
+    ; Clean up GDI+
+    Gdip_Shutdown()
+
+    return 0
+}
+
 ; ========================= MAIN AUTO-INIT =========================
 
 ; Auto-init only if running standalone or if mode is "gui"
@@ -241,6 +252,9 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))
     OnMessage(0x0200, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
     OnMessage(0x02A3, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))  ; WM_MOUSELEAVE
+
+    ; Register exit handler for cleanup
+    OnExit(_GUI_OnExit)
 
     Persistent()
 }
