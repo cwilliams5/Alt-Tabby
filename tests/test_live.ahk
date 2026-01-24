@@ -333,7 +333,7 @@ RunLiveTests() {
 
     ; Start the real store_server process
     testStorePipe := "tabby_test_store_" A_TickCount
-    storeArgs := '/ErrorStdOut "' storePath '" --pipe=' testStorePipe
+    storeArgs := '/ErrorStdOut "' storePath '" --test --pipe=' testStorePipe
     storePid := 0
 
     try {
@@ -414,7 +414,7 @@ RunLiveTests() {
     viewerStorePid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' viewerStorePipe, , "Hide", &viewerStorePid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' viewerStorePipe, , "Hide", &viewerStorePid)
     } catch as e {
         Log("SKIP: Could not start store for viewer test: " e.Message)
         viewerStorePid := 0
@@ -627,7 +627,7 @@ RunLiveTests() {
     wsE2EPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' wsE2EPipe, , "Hide", &wsE2EPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' wsE2EPipe, , "Hide", &wsE2EPid)
     } catch as e {
         Log("SKIP: Could not start store for workspace E2E test: " e.Message)
         wsE2EPid := 0
@@ -737,7 +737,7 @@ RunLiveTests() {
     hbTestPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' hbTestPipe, , "Hide", &hbTestPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' hbTestPipe, , "Hide", &hbTestPid)
     } catch as e {
         Log("SKIP: Could not start store for heartbeat test: " e.Message)
         hbTestPid := 0
@@ -806,7 +806,7 @@ RunLiveTests() {
     prodTestPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' prodTestPipe, , "Hide", &prodTestPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' prodTestPipe, , "Hide", &prodTestPid)
     } catch as e {
         Log("SKIP: Could not start store for producer state test: " e.Message)
         prodTestPid := 0
@@ -903,7 +903,7 @@ RunLiveTests() {
     mruTestPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' mruTestPipe, , "Hide", &mruTestPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' mruTestPipe, , "Hide", &mruTestPid)
     } catch as e {
         Log("SKIP: Could not start store for MRU test: " e.Message)
         mruTestPid := 0
@@ -1052,7 +1052,7 @@ RunLiveTests() {
     projTestPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' projTestPipe, , "Hide", &projTestPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' projTestPipe, , "Hide", &projTestPid)
     } catch as e {
         Log("SKIP: Could not start store for projection test: " e.Message)
         projTestPid := 0
@@ -1342,7 +1342,7 @@ RunLiveTests() {
     multiTestPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' multiTestPipe, , "Hide", &multiTestPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' multiTestPipe, , "Hide", &multiTestPid)
     } catch as e {
         Log("SKIP: Could not start store for multi-client test: " e.Message)
         multiTestPid := 0
@@ -1528,7 +1528,7 @@ RunLiveTests() {
     blTestPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' blTestPipe, , "Hide", &blTestPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' blTestPipe, , "Hide", &blTestPid)
     } catch as e {
         Log("SKIP: Could not start store for blacklist test: " e.Message)
         blTestPid := 0
@@ -1785,7 +1785,7 @@ RunLiveTests() {
     standaloneStorePid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' standaloneStorePipe, , "Hide", &standaloneStorePid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' standaloneStorePipe, , "Hide", &standaloneStorePid)
     } catch as e {
         Log("FAIL: Could not launch standalone store_server.ahk: " e.Message)
         TestErrors++
@@ -1875,7 +1875,7 @@ RunLiveTests() {
         compiledStorePid := 0
 
         try {
-            Run('"' compiledExePath '" --store --pipe=' compiledStorePipe, , "Hide", &compiledStorePid)
+            Run('"' compiledExePath '" --store --test --pipe=' compiledStorePipe, , "Hide", &compiledStorePid)
         } catch as e {
             Log("FAIL: Could not launch AltTabby.exe --store: " e.Message)
             TestErrors++
@@ -1984,7 +1984,7 @@ RunLiveTests() {
             recreatePid := 0
 
             try {
-                Run('"' compiledExePath '" --store --pipe=' recreatePipe, , "Hide", &recreatePid)
+                Run('"' compiledExePath '" --store --test --pipe=' recreatePipe, , "Hide", &recreatePid)
             }
 
             if (recreatePid) {

@@ -50,6 +50,19 @@ global gCompiledStoreReceived := false
 ; --- Initialize log ---
 try FileDelete(TestLogPath)
 Log("=== Alt-Tabby Test Run " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
+
+; --- Error handler to prevent dialog popups ---
+OnError(_Test_OnError)
+
+_Test_OnError(err, *) {
+    global TestErrors
+    Log("ERROR: Unhandled exception")
+    Log("  Message: " err.Message)
+    Log("  File: " err.File)
+    Log("  Line: " err.Line)
+    TestErrors++
+    return true  ; Suppress default error dialog
+}
 Log("Log file: " TestLogPath)
 
 ; --- Check for --live flag ---

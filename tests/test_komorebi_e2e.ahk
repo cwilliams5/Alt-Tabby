@@ -118,7 +118,7 @@ testPipe := "tabby_komorebi_e2e_" A_TickCount
 storePid := 0
 
 try {
-    Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --pipe=' testPipe, , "Hide", &storePid)
+    Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' testPipe, , "Hide", &storePid)
 } catch as e {
     Log("FAIL: Could not start store_server: " e.Message)
     ExitApp(1)
