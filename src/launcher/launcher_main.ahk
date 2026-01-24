@@ -45,6 +45,7 @@ _Launcher_LogStartup() {
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
     global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
+    global ALTTABBY_TASK_NAME
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
     _Launcher_LogStartup()
@@ -92,7 +93,6 @@ Launcher_Init() {
     ; Skip task redirect if mismatch was detected - user chose to run from current location
     ; Showing task repair dialog after mismatch "No" would redirect to wrong version
     if (!g_MismatchDialogShown && _ShouldRedirectToScheduledTask()) {
-        global ALTTABBY_TASK_NAME
         exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
 
         if (exitCode = 0) {

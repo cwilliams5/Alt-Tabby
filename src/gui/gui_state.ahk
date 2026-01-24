@@ -385,7 +385,7 @@ GUI_ActivateItem(item) {
     global gGUI_PendingItem, gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingShell, gGUI_PendingTempFile
-    global gGUI_Items, gGUI_LastLocalMRUTick  ; Needed for same-workspace MRU update
+    global gGUI_Items, gGUI_LastLocalMRUTick, gGUI_CurrentWSName  ; Needed for same-workspace MRU update
 
     hwnd := item.hwnd
     if (!hwnd) {
@@ -397,7 +397,6 @@ GUI_ActivateItem(item) {
     wsName := item.HasOwnProp("WS") ? item.WS : ""
 
     ; DEBUG: Log all async activation conditions
-    global gGUI_CurrentWSName
     komorebicPath := cfg.HasOwnProp("KomorebicExe") ? cfg.KomorebicExe : "(not set)"
     komorebicExists := (komorebicPath != "(not set)" && FileExist(komorebicPath)) ? "yes" : "no"
     curWS := IsSet(gGUI_CurrentWSName) ? gGUI_CurrentWSName : "(unknown)"

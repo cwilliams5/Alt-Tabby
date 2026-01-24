@@ -409,6 +409,9 @@ Debug options for troubleshooting. All disabled by default to minimize disk I/O 
 | `WinEventLog` | bool | `false` | Log WinEventHook focus events to %TEMP%\\tabby_weh_focus.log. Use when focus tracking issues occur. |
 | `StoreLog` | bool | `false` | Log store startup and operational info to %TEMP%\\tabby_store_error.log. Use for general store debugging. |
 | `IconPumpLog` | bool | `false` | Log icon pump operations to %TEMP%\\tabby_iconpump.log. Use when debugging icon resolution issues (cloaked windows, UWP apps). |
+| `ProcPumpLog` | bool | `false` | Log process pump operations to %TEMP%\\tabby_procpump.log. Use when debugging process name resolution failures. |
+| `LauncherLog` | bool | `false` | Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems. |
+| `IPCLog` | bool | `false` | Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues. |
 
 ## Testing
 
@@ -432,4 +435,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-24 with 158 total settings.*
+*Generated on 2026-01-24 with 161 total settings.*
