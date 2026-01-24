@@ -205,6 +205,7 @@ LaunchBlacklistEditor() {
 ; Uses file-based lock instead of timer to handle long UAC dialogs
 global g_AdminToggleInProgress := false
 global g_AdminToggleLockFile := A_Temp "\alttabby_admin_toggle.lock"
+global g_AdminToggleStartTick := 0  ; Tick-based timing instead of static counter
 
 ToggleAdminMode() {
     global cfg, gConfigIniPath, g_AdminToggleInProgress, g_AdminToggleLockFile
@@ -249,6 +250,7 @@ ToggleAdminMode() {
                 try FileDelete(g_AdminToggleLockFile)
                 FileAppend(A_TickCount, g_AdminToggleLockFile)
                 g_AdminToggleInProgress := true
+                g_AdminToggleStartTick := A_TickCount  ; Track start time for timeout
 
                 if A_IsCompiled
                     Run('*RunAs "' A_ScriptFullPath '" --enable-admin-task')
@@ -283,23 +285,21 @@ ToggleAdminMode() {
 }
 
 ; Polling callback to check if elevated instance completed
-; Uses static counter for timeout (30 seconds = 60 checks at 500ms)
+; Uses tick-based timing for timeout (30 seconds) to prevent static variable state leaks
 _AdminToggle_CheckComplete() {
-    global g_AdminToggleInProgress, g_AdminToggleLockFile
-    static checkCount := 0
+    global g_AdminToggleInProgress, g_AdminToggleLockFile, g_AdminToggleStartTick
 
     if (!FileExist(g_AdminToggleLockFile)) {
         ; Lock file deleted - elevated instance completed
         g_AdminToggleInProgress := false
-        checkCount := 0
         return
     }
 
-    checkCount++
-    if (checkCount >= 60) {  ; 30 seconds (500ms * 60)
+    ; Use tick-based timing instead of static counter (prevents state leaks if timer cancelled)
+    elapsed := A_TickCount - g_AdminToggleStartTick
+    if (elapsed >= 30000) {  ; 30 seconds
         ; Timeout - assume something went wrong
         g_AdminToggleInProgress := false
-        checkCount := 0
         try FileDelete(g_AdminToggleLockFile)
         return
     }

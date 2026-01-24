@@ -482,6 +482,8 @@ _GUI_AsyncActivationTick() {
     ; all keyboard hooks in the system. This can cause Tab presses to be lost.
     ; If we see Alt+Tab physically held but no TAB event in buffer, synthesize one.
     if (gGUI_PendingPhase = "polling" && GetKeyState("Alt", "P") && GetKeyState("Tab", "P")) {
+        ; Protect buffer read+write with Critical to prevent interceptor interruption
+        Critical "On"
         hasAltDn := false
         hasTab := false
         for ev in gGUI_EventBuffer {
@@ -495,6 +497,7 @@ _GUI_AsyncActivationTick() {
             _GUI_LogEvent("ASYNC: detected missed Tab press, synthesizing TAB_STEP")
             gGUI_EventBuffer.Push({ev: TABBY_EV_TAB_STEP, flags: shiftFlag, lParam: 0})
         }
+        Critical "Off"
     }
 
     now := A_TickCount
@@ -636,8 +639,11 @@ _GUI_ProcessEventBuffer() {
     }
 
     ; Process all buffered events in order
+    ; CRITICAL: Clone+clear must be atomic to prevent losing events from interceptor
+    Critical "On"
     events := gGUI_EventBuffer.Clone()
     gGUI_EventBuffer := []
+    Critical "Off"
 
     ; === Detect and fix lost Tab events ===
     ; Pattern: ALT_DN + ALT_UP without TAB in between suggests Tab was lost

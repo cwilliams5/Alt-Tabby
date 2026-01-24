@@ -200,6 +200,10 @@ GUI_ApplyDelta(payload) {
         _GUI_LogEvent("DELTA IN BYPASS: " upsertCount " upserts")
     }
 
+    ; CRITICAL: Protect array modifications from hotkey interruption
+    ; Hotkeys (Alt/Tab) may access gGUI_Items during state transitions
+    Critical "On"
+
     ; Handle removes - filter out items by hwnd
     if (payload.Has("removes") && payload["removes"].Length) {
         newItems := []
@@ -308,6 +312,9 @@ GUI_ApplyDelta(payload) {
     if (gGUI_Sel < 1 && gGUI_Items.Length > 0) {
         gGUI_Sel := 1
     }
+
+    ; End critical section before bypass check (which may do significant work)
+    Critical "Off"
 
     ; AFTER all delta processing: check bypass state for newly focused window
     ; This runs ONCE per delta, not per upsert - minimizes blocking time
