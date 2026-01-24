@@ -225,7 +225,10 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
     try {
         ; Kill all other AltTabby.exe processes (store, gui, viewer)
         ; This releases file locks so we can rename/delete the exe
-        _Update_KillOtherProcesses()
+        ; Pass target exe name to handle renamed exes
+        targetExeName := ""
+        SplitPath(targetPath, &targetExeName)
+        _Update_KillOtherProcesses(targetExeName)
         Sleep(500)  ; Give processes time to fully exit
 
         ; Remove any previous backup

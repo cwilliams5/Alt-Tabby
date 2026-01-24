@@ -201,11 +201,13 @@ LaunchBlacklistEditor() {
 ; TRAY MENU TOGGLES
 ; ============================================================
 
-; Race condition guard for admin toggle (Priority 2 fix)
+; Race condition guard for admin toggle
+; Uses file-based lock instead of timer to handle long UAC dialogs
 global g_AdminToggleInProgress := false
+global g_AdminToggleLockFile := A_Temp "\alttabby_admin_toggle.lock"
 
 ToggleAdminMode() {
-    global cfg, gConfigIniPath, g_AdminToggleInProgress
+    global cfg, gConfigIniPath, g_AdminToggleInProgress, g_AdminToggleLockFile
 
     ; Prevent re-entry during async elevation
     if (g_AdminToggleInProgress) {
@@ -243,21 +245,24 @@ ToggleAdminMode() {
 
             ; Self-elevate with --enable-admin-task flag
             try {
+                ; Create lock file before elevation (will be deleted by elevated instance)
+                try FileDelete(g_AdminToggleLockFile)
+                FileAppend(A_TickCount, g_AdminToggleLockFile)
                 g_AdminToggleInProgress := true
-                ; No timer here - flag stays true until catch block or post-launch timer
 
                 if A_IsCompiled
                     Run('*RunAs "' A_ScriptFullPath '" --enable-admin-task')
                 else
                     Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --enable-admin-task')
 
-                ; Reset after brief delay (elevated instance exits quickly)
-                ; This fires AFTER Run() returns (which is immediate on UAC accept)
-                SetTimer(() => (g_AdminToggleInProgress := false), -3000)
+                ; Start polling for lock file deletion (elevated instance will delete it)
+                ; Check every 500ms, timeout after 30 seconds
+                SetTimer(_AdminToggle_CheckComplete, -500)
                 ToolTip("Creating admin task...")
                 SetTimer(() => ToolTip(), -2000)
             } catch {
                 g_AdminToggleInProgress := false
+                try FileDelete(g_AdminToggleLockFile)
                 MsgBox("UAC was cancelled. Admin mode was not enabled.", "Alt-Tabby", "Icon!")
             }
             return
@@ -275,6 +280,32 @@ ToggleAdminMode() {
             MsgBox("Failed to create scheduled task.", "Alt-Tabby", "Iconx")
         }
     }
+}
+
+; Polling callback to check if elevated instance completed
+; Uses static counter for timeout (30 seconds = 60 checks at 500ms)
+_AdminToggle_CheckComplete() {
+    global g_AdminToggleInProgress, g_AdminToggleLockFile
+    static checkCount := 0
+
+    if (!FileExist(g_AdminToggleLockFile)) {
+        ; Lock file deleted - elevated instance completed
+        g_AdminToggleInProgress := false
+        checkCount := 0
+        return
+    }
+
+    checkCount++
+    if (checkCount >= 60) {  ; 30 seconds (500ms * 60)
+        ; Timeout - assume something went wrong
+        g_AdminToggleInProgress := false
+        checkCount := 0
+        try FileDelete(g_AdminToggleLockFile)
+        return
+    }
+
+    ; Keep checking
+    SetTimer(_AdminToggle_CheckComplete, -500)
 }
 
 ToggleAutoUpdate() {

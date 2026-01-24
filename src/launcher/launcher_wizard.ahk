@@ -112,6 +112,34 @@ WizardApply(*) {
             ; Continue with non-admin options only
             install := false
             admin := false
+
+            ; Warn if shortcuts will point to potentially temporary location
+            if (startup || startMenu) {
+                currentDir := ""
+                SplitPath(A_ScriptFullPath, , &currentDir)
+                lowerDir := StrLower(currentDir)
+
+                ; Check if current location looks temporary
+                isTemporary := (InStr(lowerDir, "\downloads")
+                    || InStr(lowerDir, "\temp")
+                    || InStr(lowerDir, "\desktop")
+                    || InStr(lowerDir, "\appdata\local\temp"))
+
+                if (isTemporary) {
+                    result2 := MsgBox(
+                        "Shortcuts will point to:`n" A_ScriptFullPath "`n`n"
+                        "This location may be temporary (Downloads, Desktop, Temp).`n"
+                        "If you delete this file, the shortcuts will break.`n`n"
+                        "Create shortcuts anyway?",
+                        "Alt-Tabby Setup",
+                        "YesNo Icon?"
+                    )
+                    if (result2 = "No") {
+                        startup := false
+                        startMenu := false
+                    }
+                }
+            }
         }
     }
 

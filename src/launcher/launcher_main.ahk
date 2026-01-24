@@ -182,18 +182,22 @@ _ShouldRedirectToScheduledTask() {
 
         ; IDs don't match or missing - use cooldown-based prompting
         ; This handles: different installs, legacy tasks without ID, etc.
-        lastRepairTick := 0
+        ; Use A_Now (timestamp) instead of A_TickCount to handle system uptime >49.7 days
+        lastRepairTime := ""
         try {
-            lastRepairStr := IniRead(gConfigIniPath, "Setup", "LastTaskRepairTick", "0")
-            lastRepairTick := Integer(lastRepairStr)
+            lastRepairTime := IniRead(gConfigIniPath, "Setup", "LastTaskRepairTime", "")
         }
-        repairCooldownMs := 86400000  ; 24 hours
 
-        if (lastRepairTick > 0 && (A_TickCount - lastRepairTick) < repairCooldownMs) {
-            ; Within cooldown period - silently disable admin mode and continue
-            cfg.SetupRunAsAdmin := false
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-            return false
+        if (lastRepairTime != "") {
+            try {
+                hoursSince := DateDiff(A_Now, lastRepairTime, "Hours")
+                if (hoursSince < 24) {
+                    ; Within cooldown period - silently disable admin mode and continue
+                    cfg.SetupRunAsAdmin := false
+                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+                    return false
+                }
+            }
         }
 
         ; Task is stale and ID doesn't match - offer to repair
@@ -222,10 +226,11 @@ _ShouldRedirectToScheduledTask() {
         }
 
         ; User said No or UAC refused - disable admin mode and continue non-elevated
-        ; Record the tick to start cooldown period (only for non-matching IDs)
+        ; Record the timestamp to start cooldown period (only for non-matching IDs)
+        ; Use A_Now instead of A_TickCount to handle system uptime >49.7 days
         cfg.SetupRunAsAdmin := false
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTick", A_TickCount, 0, "int")
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTime", A_Now, "", "string")
         TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
         return false
     }
@@ -270,11 +275,23 @@ _Launcher_AcquireMutex() {
 
 ; Ensure InstallationId exists, generate if missing
 ; Called early in startup before mutex acquisition
+; If config is reset but task exists, recovers ID from task to prevent repair prompts
 _Launcher_EnsureInstallationId() {
     global cfg, gConfigIniPath
 
     if (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
         return  ; Already have ID
+
+    ; Check if existing task has an ID we should reuse
+    ; This handles config reset/deletion while task still exists
+    if (AdminTaskExists()) {
+        existingId := _AdminTask_GetInstallationId()
+        if (existingId != "") {
+            cfg.SetupInstallationId := existingId
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", existingId, "", "string")
+            return
+        }
+    }
 
     ; Generate 8-character hex ID
     installId := _Launcher_GenerateId()
@@ -326,23 +343,49 @@ _Launcher_ShouldSkipWizardForExistingInstall() {
     return false
 }
 
-; Kill all existing instances of this exe except ourselves
+; Kill all existing instances of Alt-Tabby exes except ourselves
 ; Uses ProcessExist/ProcessClose loop instead of WMI (WMI can fail with 0x800401F3)
-; Gets exe name dynamically to support renamed executables (e.g., "alttabby v4.exe")
+; Handles renamed exes by killing processes matching:
+;   1. Current exe name (from A_ScriptFullPath)
+;   2. Exe name from cfg.SetupExePath (installed location, may differ)
 _Launcher_KillExistingInstances() {
+    global cfg
     myPID := ProcessExist()  ; Get our own PID
 
-    ; Get exe name dynamically (handles renamed exe)
-    exeName := ""
-    SplitPath(A_ScriptFullPath, &exeName)
+    ; Build list of exe names to kill (avoid duplicates, case-insensitive)
+    exeNames := []
+    seenNames := Map()  ; Track seen names for deduplication
 
-    ; Loop to kill all instances of this exe except ourselves
-    loop 10 {  ; Max 10 iterations to avoid infinite loop
-        pid := ProcessExist(exeName)
-        if (!pid || pid = myPID)
-            break
-        try ProcessClose(pid)
-        Sleep(100)  ; Brief pause for process to terminate
+    ; 1. Current exe name
+    currentName := ""
+    SplitPath(A_ScriptFullPath, &currentName)
+    if (currentName != "") {
+        exeNames.Push(currentName)
+        seenNames[StrLower(currentName)] := true
+    }
+
+    ; 2. Configured install path exe name (may be different if user renamed)
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
+        configName := ""
+        SplitPath(cfg.SetupExePath, &configName)
+        if (configName != "") {
+            lowerConfig := StrLower(configName)
+            if (!seenNames.Has(lowerConfig)) {
+                exeNames.Push(configName)
+                seenNames[lowerConfig] := true
+            }
+        }
+    }
+
+    ; Kill all matching processes (except ourselves)
+    for exeName in exeNames {
+        loop 10 {  ; Max 10 iterations per exe name to avoid infinite loop
+            pid := ProcessExist(exeName)
+            if (!pid || pid = myPID)
+                break
+            try ProcessClose(pid)
+            Sleep(100)  ; Brief pause for process to terminate
+        }
     }
 }
 

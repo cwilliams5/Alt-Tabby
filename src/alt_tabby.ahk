@@ -219,6 +219,9 @@ if (g_AltTabbyMode = "enable-admin-task") {
     } else {
         MsgBox("Failed to create scheduled task.", "Alt-Tabby", "Iconx")
     }
+
+    ; Delete lock file to signal completion to non-elevated instance
+    try FileDelete(A_Temp "\alttabby_admin_toggle.lock")
     ExitApp()
 }
 
@@ -234,9 +237,10 @@ if (g_AltTabbyMode = "repair-admin-task") {
     if (CreateAdminTask(exePath)) {
         cfg.SetupRunAsAdmin := true
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
-        ; Record tick AFTER successful repair (not before like in caller)
+        ; Record timestamp AFTER successful repair (not before like in caller)
         ; This prevents 24h lockout if user refuses UAC or repair fails
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTick", A_TickCount, 0, "int")
+        ; Use A_Now instead of A_TickCount to handle system uptime >49.7 days
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTime", A_Now, "", "string")
         TrayTip("Admin Mode Repaired", "Scheduled task updated to current location.", "Iconi")
 
         ; Now launch via the repaired task

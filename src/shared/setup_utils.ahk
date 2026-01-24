@@ -221,9 +221,10 @@ _Shortcut_StartupExists() {
 }
 
 ; Get the icon path - in compiled mode, icon is embedded in exe
+; Uses effective exe path to ensure icon remains valid even if user deletes the running exe
 _Shortcut_GetIconPath() {
     if (A_IsCompiled)
-        return A_ScriptFullPath  ; Icon is embedded in exe
+        return _Shortcut_GetEffectiveExePath()  ; Icon is embedded in exe - use same path as shortcut target
     else
         return A_ScriptDir "\..\img\icon.ico"
 }
@@ -405,24 +406,60 @@ _Update_NeedsElevation(targetDir) {
     }
 }
 
-; Kill all instances of this exe except the current one
+; Kill all instances of Alt-Tabby exes except the current one
 ; This releases file locks on the exe before updating
-; Gets exe name dynamically to support renamed executables (e.g., "alttabby v4.exe")
-_Update_KillOtherProcesses() {
+; Handles renamed exes by killing processes matching:
+;   1. Current exe name (from A_ScriptFullPath)
+;   2. Target exe name (passed as parameter, for updates)
+;   3. Exe name from cfg.SetupExePath (installed location, may differ)
+_Update_KillOtherProcesses(targetExeName := "") {
+    global cfg
     myPID := ProcessExist()  ; Get our own PID
 
-    ; Get exe name dynamically (handles renamed exe)
-    exeName := ""
-    SplitPath(A_ScriptFullPath, &exeName)
+    ; Build list of exe names to kill (avoid duplicates, case-insensitive)
+    exeNames := []
+    seenNames := Map()  ; Track seen names for deduplication
 
-    ; Loop to kill all instances of this exe except ourselves
+    ; 1. Current exe name
+    currentName := ""
+    SplitPath(A_ScriptFullPath, &currentName)
+    if (currentName != "") {
+        exeNames.Push(currentName)
+        seenNames[StrLower(currentName)] := true
+    }
+
+    ; 2. Target exe name (for updates, passed by caller)
+    if (targetExeName != "") {
+        lowerTarget := StrLower(targetExeName)
+        if (!seenNames.Has(lowerTarget)) {
+            exeNames.Push(targetExeName)
+            seenNames[lowerTarget] := true
+        }
+    }
+
+    ; 3. Configured install path exe name (may be different if user renamed)
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
+        configName := ""
+        SplitPath(cfg.SetupExePath, &configName)
+        if (configName != "") {
+            lowerConfig := StrLower(configName)
+            if (!seenNames.Has(lowerConfig)) {
+                exeNames.Push(configName)
+                seenNames[lowerConfig] := true
+            }
+        }
+    }
+
+    ; Kill all matching processes (except ourselves)
     ; Using ProcessExist/ProcessClose instead of WMI (WMI can fail in elevated contexts)
-    loop 10 {  ; Max 10 iterations to avoid infinite loop
-        pid := ProcessExist(exeName)
-        if (!pid || pid = myPID)
-            break
-        try ProcessClose(pid)
-        Sleep(100)  ; Brief pause for process to terminate
+    for exeName in exeNames {
+        loop 10 {  ; Max 10 iterations per exe name to avoid infinite loop
+            pid := ProcessExist(exeName)
+            if (!pid || pid = myPID)
+                break
+            try ProcessClose(pid)
+            Sleep(100)  ; Brief pause for process to terminate
+        }
     }
 }
 
@@ -438,7 +475,10 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
     try {
         ; Kill all other AltTabby.exe processes (store, gui, viewer)
         ; This releases file locks so we can rename/delete the exe
-        _Update_KillOtherProcesses()
+        ; Pass target exe name to handle renamed exes
+        targetExeName := ""
+        SplitPath(targetExePath, &targetExeName)
+        _Update_KillOtherProcesses(targetExeName)
         Sleep(500)  ; Give processes time to fully exit
 
         ; Remove any previous .old file
@@ -573,21 +613,62 @@ _Update_CleanupStaleTempFiles() {
     }
 }
 
-; Validate that a file is a valid PE executable (checks MZ magic bytes)
+; Validate that a file is a valid PE executable
+; Checks: file size (100KB-50MB), MZ magic, and PE signature at e_lfanew
 ; Returns true if valid PE, false otherwise
 _Update_ValidatePEFile(filePath) {
     try {
+        ; Check file size (expect 100KB - 50MB for AHK exe)
+        ; Too small = corrupted/truncated, too large = not a normal exe
+        fileSize := FileGetSize(filePath)
+        if (fileSize < 102400 || fileSize > 52428800)  ; 100KB to 50MB
+            return false
+
         f := FileOpen(filePath, "r")
         if (!f)
             return false
-        ; Read first 2 bytes (MZ magic header) as raw binary
-        buf := Buffer(2)
-        f.RawRead(buf, 2)
-        f.Close()
+
+        ; Read DOS header (64 bytes) - contains MZ magic and e_lfanew offset
+        buf := Buffer(64)
+        bytesRead := f.RawRead(buf, 64)
+        if (bytesRead < 64) {
+            f.Close()
+            return false
+        }
+
+        ; Check MZ magic bytes at offset 0
         ; 'M' = 0x4D = 77, 'Z' = 0x5A = 90
         byte1 := NumGet(buf, 0, "UChar")
         byte2 := NumGet(buf, 1, "UChar")
-        return (byte1 = 77 && byte2 = 90)
+        if (byte1 != 77 || byte2 != 90) {
+            f.Close()
+            return false
+        }
+
+        ; Get e_lfanew (offset to PE header) at offset 0x3C (60)
+        ; This should be a reasonable offset (typically 64-1024)
+        e_lfanew := NumGet(buf, 0x3C, "UInt")
+        if (e_lfanew < 64 || e_lfanew > 1024) {
+            f.Close()
+            return false
+        }
+
+        ; Seek to PE header and read PE signature
+        f.Seek(e_lfanew)
+        peBuf := Buffer(4)
+        bytesRead := f.RawRead(peBuf, 4)
+        f.Close()
+
+        if (bytesRead < 4)
+            return false
+
+        ; PE signature: 'P' = 80, 'E' = 69, 0x00, 0x00
+        pe1 := NumGet(peBuf, 0, "UChar")
+        pe2 := NumGet(peBuf, 1, "UChar")
+        pe3 := NumGet(peBuf, 2, "UChar")
+        pe4 := NumGet(peBuf, 3, "UChar")
+
+        return (pe1 = 80 && pe2 = 69 && pe3 = 0 && pe4 = 0)
     } catch {
         return false
     }
