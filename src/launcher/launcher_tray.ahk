@@ -201,8 +201,18 @@ LaunchBlacklistEditor() {
 ; TRAY MENU TOGGLES
 ; ============================================================
 
+; Race condition guard for admin toggle (Priority 2 fix)
+global g_AdminToggleInProgress := false
+
 ToggleAdminMode() {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, g_AdminToggleInProgress
+
+    ; Prevent re-entry during async elevation
+    if (g_AdminToggleInProgress) {
+        ToolTip("Operation in progress, please wait...")
+        SetTimer(() => ToolTip(), -1500)
+        return
+    }
 
     if (cfg.SetupRunAsAdmin) {
         ; Disable admin mode - doesn't require elevation
@@ -233,6 +243,9 @@ ToggleAdminMode() {
 
             ; Self-elevate with --enable-admin-task flag
             try {
+                g_AdminToggleInProgress := true
+                SetTimer(() => (g_AdminToggleInProgress := false), -10000)  ; Auto-reset after 10s
+
                 if A_IsCompiled
                     Run('*RunAs "' A_ScriptFullPath '" --enable-admin-task')
                 else
@@ -242,6 +255,7 @@ ToggleAdminMode() {
                 ToolTip("Creating admin task...")
                 SetTimer(() => ToolTip(), -2000)
             } catch {
+                g_AdminToggleInProgress := false
                 MsgBox("UAC was cancelled. Admin mode was not enabled.", "Alt-Tabby", "Icon!")
             }
             return

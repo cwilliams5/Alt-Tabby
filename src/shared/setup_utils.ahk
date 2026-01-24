@@ -46,12 +46,30 @@ GetAppVersion() {
 
 ; Compare two version strings (semver-style: X.Y.Z)
 ; Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+; Handles: leading 'v' prefix (e.g., "v1.0.0") and pre-release suffixes (e.g., "1.0.0-beta")
 CompareVersions(v1, v2) {
+    ; Strip leading 'v' if present
+    v1 := RegExReplace(v1, "^v", "")
+    v2 := RegExReplace(v2, "^v", "")
+
     parts1 := StrSplit(v1, ".")
     parts2 := StrSplit(v2, ".")
     Loop 3 {
-        p1 := parts1.Has(A_Index) ? Integer(parts1[A_Index]) : 0
-        p2 := parts2.Has(A_Index) ? Integer(parts2[A_Index]) : 0
+        p1Str := parts1.Has(A_Index) ? parts1[A_Index] : "0"
+        p2Str := parts2.Has(A_Index) ? parts2[A_Index] : "0"
+
+        ; Strip pre-release suffix (e.g., "1-beta" -> "1")
+        p1Str := RegExReplace(p1Str, "-.*$", "")
+        p2Str := RegExReplace(p2Str, "-.*$", "")
+
+        try {
+            p1 := Integer(p1Str)
+            p2 := Integer(p2Str)
+        } catch {
+            p1 := 0
+            p2 := 0
+        }
+
         if (p1 > p2)
             return 1
         if (p1 < p2)
@@ -500,6 +518,10 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
             }
         }
 
+        ; Clean up downloaded exe on failure (Priority 4 fix)
+        if (FileExist(newExePath))
+            try FileDelete(newExePath)
+
         if (rollbackSuccess)
             MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
         else if (FileExist(targetExePath))
@@ -520,6 +542,34 @@ _Update_CleanupOldExe() {
     oldExe := A_ScriptFullPath ".old"
     if (FileExist(oldExe)) {
         try FileDelete(oldExe)
+    }
+}
+
+; Clean up stale temp files from crashed wizard/update instances (Priority 3 fix)
+; Called on startup after _Update_CleanupOldExe
+_Update_CleanupStaleTempFiles() {
+    staleFiles := [
+        A_Temp "\alttabby_wizard.json",
+        A_Temp "\alttabby_update.txt",
+        A_Temp "\alttabby_install_update.txt"
+    ]
+
+    for filePath in staleFiles {
+        if (FileExist(filePath)) {
+            try {
+                modTime := FileGetTime(filePath, "M")
+                if (DateDiff(A_Now, modTime, "Hours") >= 1)
+                    FileDelete(filePath)
+            }
+        }
+    }
+
+    ; Clean up old downloaded exes
+    Loop Files A_Temp "\AltTabby_*.exe" {
+        try {
+            if (DateDiff(A_Now, A_LoopFileTimeModified, "Hours") >= 1)
+                FileDelete(A_LoopFilePath)
+        }
     }
 }
 

@@ -51,6 +51,9 @@ Launcher_Init() {
     ; Clean up old exe from previous update
     _Update_CleanupOldExe()
 
+    ; Clean up stale temp files from crashed wizard/update instances
+    _Update_CleanupStaleTempFiles()
+
     ; Check if we should redirect to scheduled task (admin mode)
     ; Skip task redirect if mismatch was detected - user chose to run from current location
     ; Showing task repair dialog after mismatch "No" would redirect to wrong version

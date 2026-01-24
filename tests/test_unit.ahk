@@ -721,6 +721,46 @@ RunUnitTests() {
         TestErrors++
     }
 
+    ; Test: pre-release suffix stripped
+    result := CompareVersions("1.0.0-beta", "1.0.0")
+    if (result = 0) {
+        Log("PASS: CompareVersions('1.0.0-beta', '1.0.0') = 0 (pre-release stripped)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('1.0.0-beta', '1.0.0') should be 0, got " result)
+        TestErrors++
+    }
+
+    ; Test: leading v stripped
+    result := CompareVersions("v1.0.0", "1.0.0")
+    if (result = 0) {
+        Log("PASS: CompareVersions('v1.0.0', '1.0.0') = 0 (leading v stripped)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('v1.0.0', '1.0.0') should be 0, got " result)
+        TestErrors++
+    }
+
+    ; Test: major only newer
+    result := CompareVersions("2", "1.5.0")
+    if (result = 1) {
+        Log("PASS: CompareVersions('2', '1.5.0') = 1 (major only newer)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('2', '1.5.0') should be 1, got " result)
+        TestErrors++
+    }
+
+    ; Test: both pre-release stripped equal
+    result := CompareVersions("1.0.0-rc1", "1.0.0-beta")
+    if (result = 0) {
+        Log("PASS: CompareVersions('1.0.0-rc1', '1.0.0-beta') = 0 (both pre-release stripped)")
+        TestPassed++
+    } else {
+        Log("FAIL: CompareVersions('1.0.0-rc1', '1.0.0-beta') should be 0, got " result)
+        TestErrors++
+    }
+
     ; Test: GetAppVersion returns non-empty string
     Log("Testing GetAppVersion()...")
     version := GetAppVersion()
