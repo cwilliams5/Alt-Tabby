@@ -428,7 +428,8 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 | `RunAsAdmin` | bool | `false` | Run with administrator privileges via Task Scheduler (no UAC prompts after setup). |
 | `AutoUpdateCheck` | bool | `true` | Automatically check for updates on startup. |
 | `FirstRunCompleted` | bool | `false` | Set to true after first-run wizard completes. |
+| `InstallationId` | string | `(empty)` | Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification. |
 
 ---
 
-*Generated on 2026-01-23 with 157 total settings.*
+*Generated on 2026-01-23 with 158 total settings.*

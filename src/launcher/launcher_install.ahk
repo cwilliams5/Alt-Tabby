@@ -148,6 +148,7 @@ _Launcher_CheckInstallMismatch() {
             ; Update SetupExePath to current location - never ask again
             cfg.SetupExePath := currentPath
             try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
+            g_MismatchDialogShown := false  ; Allow auto-update now that mismatch is resolved
             ; Continue running from current location
         }
         ; "No" - continue running from current location (one-time)

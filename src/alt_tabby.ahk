@@ -234,6 +234,9 @@ if (g_AltTabbyMode = "repair-admin-task") {
     if (CreateAdminTask(exePath)) {
         cfg.SetupRunAsAdmin := true
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        ; Record tick AFTER successful repair (not before like in caller)
+        ; This prevents 24h lockout if user refuses UAC or repair fails
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTick", A_TickCount, 0, "int")
         TrayTip("Admin Mode Repaired", "Scheduled task updated to current location.", "Iconi")
 
         ; Now launch via the repaired task

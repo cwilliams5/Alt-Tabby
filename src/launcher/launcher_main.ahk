@@ -210,8 +210,7 @@ _ShouldRedirectToScheduledTask() {
                     Run('*RunAs "' A_ScriptFullPath '" --repair-admin-task')
                 else
                     Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --repair-admin-task')
-                ; Record repair attempt tick (will be updated again on success)
-                try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTick", A_TickCount, 0, "int")
+                ; Note: tick is recorded AFTER successful repair in --repair-admin-task handler
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
                 ; UAC refused - fall back to non-admin
@@ -284,7 +283,7 @@ _Launcher_EnsureInstallationId() {
 _Launcher_GenerateId() {
     ; Use combination of tick count and random for uniqueness
     DllCall("QueryPerformanceCounter", "Int64*", &counter := 0)
-    Random(&seed := 0)
+    seed := Random(0, 0x7FFFFFFF)  ; Random integer in valid range
     combined := counter ^ seed ^ A_TickCount
 
     ; Format as 8-char hex

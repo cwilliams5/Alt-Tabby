@@ -436,6 +436,15 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
             return
         }
 
+        ; Validate PE header before applying (catches corrupted downloads, HTML error pages)
+        if (!_Update_ValidatePEFile(newExePath)) {
+            ; Restore the old exe
+            if (FileExist(oldExePath))
+                FileMove(oldExePath, targetExePath)
+            MsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Icon!")
+            return
+        }
+
         ; Move new exe to target location
         FileMove(newExePath, targetExePath)
 
@@ -509,6 +518,26 @@ _Update_CleanupOldExe() {
     oldExe := A_ScriptFullPath ".old"
     if (FileExist(oldExe)) {
         try FileDelete(oldExe)
+    }
+}
+
+; Validate that a file is a valid PE executable (checks MZ magic bytes)
+; Returns true if valid PE, false otherwise
+_Update_ValidatePEFile(filePath) {
+    try {
+        f := FileOpen(filePath, "r")
+        if (!f)
+            return false
+        ; Read first 2 bytes (MZ magic header) as raw binary
+        buf := Buffer(2)
+        f.RawRead(buf, 2)
+        f.Close()
+        ; 'M' = 0x4D = 77, 'Z' = 0x5A = 90
+        byte1 := NumGet(buf, 0, "UChar")
+        byte2 := NumGet(buf, 1, "UChar")
+        return (byte1 = 77 && byte2 = 90)
+    } catch {
+        return false
     }
 }
 
