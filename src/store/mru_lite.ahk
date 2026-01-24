@@ -30,6 +30,8 @@ MRU_Lite_Tick() {
     if (!hwnd || hwnd = _MRU_LastHwnd) {
         return
     }
+    ; Atomic focus update - prevent race conditions with other timers/hotkeys
+    Critical "On"
     ; Clear focus on previous window
     if (_MRU_LastHwnd) {
         try {
@@ -40,4 +42,5 @@ MRU_Lite_Tick() {
     try {
         WindowStore_UpdateFields(hwnd, { lastActivatedTick: A_TickCount, isFocused: true })
     }
+    Critical "Off"
 }

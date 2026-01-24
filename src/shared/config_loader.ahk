@@ -462,55 +462,43 @@ _CL_WriteGlobal(name, val) {
 ; ============================================================
 ; BLACKLIST HELPER
 ; ============================================================
+; NOTE: Default blacklist creation is handled by _Blacklist_CreateDefault()
+; in src/shared/blacklist.ahk. This section retained for documentation.
 
-ConfigLoader_CreateDefaultBlacklist(path) {
-    if (FileExist(path))
-        return true
+; ============================================================
+; LOG PATH HELPERS
+; ============================================================
+; Centralized log path generation to avoid hardcoded paths throughout codebase.
+; All log files go to A_Temp with "tabby_" prefix for easy identification.
 
-    content := "; Alt-Tabby Blacklist Configuration`n"
-    content .= "; Windows matching these patterns are excluded from the window list.`n"
-    content .= "; Wildcards: * (any chars), ? (single char) - case-insensitive`n"
-    content .= ";`n"
-    content .= "; To blacklist a window from the viewer, click the X button on its row.`n"
-    content .= "`n"
-    content .= "[Title]`n"
-    content .= "komoborder*`n"
-    content .= "YasbBar`n"
-    content .= "NVIDIA GeForce Overlay`n"
-    content .= "DWM Notification Window`n"
-    content .= "MSCTFIME UI`n"
-    content .= "Default IME`n"
-    content .= "Task Switching`n"
-    content .= "Command Palette`n"
-    content .= "GDI+ Window*`n"
-    content .= "Windows Input Experience`n"
-    content .= "Program Manager`n"
-    content .= "`n"
-    content .= "[Class]`n"
-    content .= "komoborder*`n"
-    content .= "CEF-OSC-WIDGET`n"
-    content .= "Dwm`n"
-    content .= "MSCTFIME UI`n"
-    content .= "IME`n"
-    content .= "MSTaskSwWClass`n"
-    content .= "MSTaskListWClass`n"
-    content .= "Shell_TrayWnd`n"
-    content .= "Shell_SecondaryTrayWnd`n"
-    content .= "GDI+ Hook Window Class`n"
-    content .= "XamlExplorerHostIslandWindow`n"
-    content .= "WinUIDesktopWin32WindowClass`n"
-    content .= "Windows.UI.Core.CoreWindow`n"
-    content .= "Qt*QWindow*`n"
-    content .= "AutoHotkeyGUI`n"
-    content .= "`n"
-    content .= "[Pair]`n"
-    content .= "; Format: Class|Title (both must match)`n"
-    content .= "GDI+ Hook Window Class|GDI+ Window*`n"
+global LOG_PATH_EVENTS     := A_Temp "\tabby_events.log"
+global LOG_PATH_LAUNCHER   := A_Temp "\tabby_launcher.log"
+global LOG_PATH_STORE      := A_Temp "\tabby_store_error.log"
+global LOG_PATH_ICONPUMP   := A_Temp "\tabby_iconpump.log"
+global LOG_PATH_KSUB       := A_Temp "\tabby_ksub_diag.log"
+global LOG_PATH_WINEVENT   := A_Temp "\tabby_weh_focus.log"
+global LOG_PATH_PROCPUMP   := A_Temp "\tabby_procpump.log"
+global LOG_PATH_IPC        := A_Temp "\tabby_ipc.log"
+global LOG_PATH_VIEWER     := A_Temp "\tabby_viewer.log"
 
-    try {
-        FileAppend(content, path, "UTF-8")
-        return true
-    } catch {
-        return false
-    }
+; Format a timestamp for log entries (consistent across all loggers)
+; Format: "HH:mm:ss.xxx" where xxx is milliseconds from tick count
+GetLogTimestamp() {
+    return FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
+}
+
+; Write a log entry with timestamp to the specified file
+; Usage: LogAppend(LOG_PATH_EVENTS, "Event occurred")
+LogAppend(logPath, msg) {
+    ts := GetLogTimestamp()
+    try FileAppend(ts " " msg "`n", logPath, "UTF-8")
+}
+
+; Initialize a log session (delete old log, write header)
+; Usage: LogInitSession(LOG_PATH_EVENTS, "Alt-Tabby Event Log")
+LogInitSession(logPath, title) {
+    try FileDelete(logPath)
+    header := "=== " title " - " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===`n"
+    header .= "Log file: " logPath "`n`n"
+    try FileAppend(header, logPath, "UTF-8")
 }

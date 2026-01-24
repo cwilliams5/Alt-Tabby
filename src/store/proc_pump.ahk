@@ -20,13 +20,11 @@ global _PP_TimerOn := false
 ; Log file: %TEMP%\tabby_procpump.log
 
 _PP_Log(msg) {
-    global cfg
+    global cfg, LOG_PATH_PROCPUMP
     if (!cfg.DiagProcPumpLog)
         return
     try {
-        logFile := A_Temp "\tabby_procpump.log"
-        ts := FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
-        FileAppend(ts " " msg "`n", logFile, "UTF-8")
+        LogAppend(LOG_PATH_PROCPUMP, msg)
     }
 }
 

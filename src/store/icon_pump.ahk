@@ -44,7 +44,8 @@ IconPump_Start() {
         ; Initialize diagnostic logging
         _IP_DiagEnabled := cfg.HasOwnProp("DiagIconPumpLog") ? cfg.DiagIconPumpLog : false
         if (_IP_DiagEnabled) {
-            _IP_LogPath := A_Temp "\tabby_iconpump.log"
+            global LOG_PATH_ICONPUMP
+            _IP_LogPath := LOG_PATH_ICONPUMP
             _IP_Log("=== Icon Pump started ===")
             _IP_Log("Config: BatchSize=" IconBatchPerTick " IntervalMs=" IconTimerIntervalMs " MaxAttempts=" IconMaxAttempts)
         }

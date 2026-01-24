@@ -559,8 +559,8 @@ Store_OnExit(reason, code) {
 }
 
 Store_OnError(err, *) {
-    global gStore_ErrorLog
-    path := gStore_ErrorLog ? gStore_ErrorLog : (A_Temp "\tabby_store_error.log")
+    global gStore_ErrorLog, LOG_PATH_STORE
+    path := gStore_ErrorLog ? gStore_ErrorLog : LOG_PATH_STORE
     msg := "store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n"
         . "msg=" err.Message "`n"
         . "file=" err.File "`n"
@@ -572,17 +572,17 @@ Store_OnError(err, *) {
 }
 
 Store_LogError(msg) {
-    global gStore_ErrorLog
-    path := gStore_ErrorLog ? gStore_ErrorLog : (A_Temp "\tabby_store_error.log")
+    global gStore_ErrorLog, LOG_PATH_STORE
+    path := gStore_ErrorLog ? gStore_ErrorLog : LOG_PATH_STORE
     try FileAppend("store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" msg "`n", path, "UTF-8")
 }
 
 ; Informational logging - controlled by DiagStoreLog config flag
 Store_LogInfo(msg) {
-    global gStore_ErrorLog, cfg
+    global gStore_ErrorLog, cfg, LOG_PATH_STORE
     if (!cfg.DiagStoreLog)
         return
-    path := gStore_ErrorLog ? gStore_ErrorLog : (A_Temp "\tabby_store_error.log")
+    path := gStore_ErrorLog ? gStore_ErrorLog : LOG_PATH_STORE
     try FileAppend("store_info " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" msg "`n", path, "UTF-8")
 }
 

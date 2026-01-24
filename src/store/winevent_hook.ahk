@@ -35,11 +35,10 @@ global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 
 ; Debug logging for focus events - controlled by DiagWinEventLog config flag
 _WEH_DiagLog(msg) {
-    global cfg
+    global cfg, LOG_PATH_WINEVENT
     if (!cfg.DiagWinEventLog)
         return
-    static logPath := A_Temp "\tabby_weh_focus.log"
-    try FileAppend(FormatTime(, "HH:mm:ss.") SubStr(A_MSec, 1, 2) " " msg "`n", logPath, "UTF-8")
+    try FileAppend(GetLogTimestamp() " " msg "`n", LOG_PATH_WINEVENT, "UTF-8")
 }
 
 ; Event constants

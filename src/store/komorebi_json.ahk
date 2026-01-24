@@ -16,7 +16,25 @@
 ;   _KSub_GetIntProp           - Get integer property value
 ;   _KSub_UnescapeJson         - Unescape JSON string
 ;   _KSub_ArrayTopLevelSplit   - Split array into top-level elements
+;   _KSub_IsQuoteEscaped       - Check if quote at position is escaped
 ; ============================================================
+
+; Check if a quote character at position `pos` is escaped by counting
+; consecutive backslashes before it. Even count = not escaped, odd = escaped.
+; Handles edge cases like `\\"` (escaped backslash before unescaped quote).
+_KSub_IsQuoteEscaped(text, pos) {
+    if (pos <= 1)
+        return false
+    backslashCount := 0
+    checkPos := pos - 1
+    while (checkPos >= 1 && SubStr(text, checkPos, 1) = "\") {
+        backslashCount += 1
+        checkPos -= 1
+    }
+    ; Odd number of backslashes = quote is escaped
+    ; Even number (including 0) = quote is NOT escaped
+    return (Mod(backslashCount, 2) = 1)
+}
 
 _KSub_ExtractObjectByKey(text, key) {
     ; Returns the balanced {...} value for "key": { ... }
@@ -103,7 +121,7 @@ _KSub_BalancedObjectFrom(text, bracePos) {
                     return SubStr(text, bracePos, i - bracePos + 1)
             }
         } else {
-            if (ch = '"' && SubStr(text, i - 1, 1) != "\")
+            if (ch = '"' && !_KSub_IsQuoteEscaped(text, i))
                 inString := false
         }
         i += 1
@@ -131,7 +149,7 @@ _KSub_BalancedArrayFrom(text, brackPos) {
                     return SubStr(text, brackPos, i - brackPos + 1)
             }
         } else {
-            if (ch = '"' && SubStr(text, i - 1, 1) != "\")
+            if (ch = '"' && !_KSub_IsQuoteEscaped(text, i))
                 inString := false
         }
         i += 1
@@ -200,7 +218,7 @@ _KSub_ArrayTopLevelSplit(arrayText) {
                 start := i + 1
             }
         } else {
-            if (ch = '"' && SubStr(arrayText, i - 1, 1) != "\")
+            if (ch = '"' && !_KSub_IsQuoteEscaped(arrayText, i))
                 inString := false
         }
         i += 1

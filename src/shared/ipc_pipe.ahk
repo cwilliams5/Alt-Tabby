@@ -2,6 +2,7 @@
 
 ; IPC helpers (v2 only). Stubbed for now; will be implemented with named pipes.
 
+; IPC Message Types
 IPC_MSG_HELLO := "hello"
 IPC_MSG_HELLO_ACK := "hello_ack"
 IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
@@ -16,6 +17,17 @@ IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
 IPC_MSG_HEARTBEAT := "heartbeat"
 IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
 IPC_MSG_PRODUCER_STATUS := "producer_status"
+
+; IPC Timing Constants (milliseconds)
+global IPC_TICK_ACTIVE := 15        ; Server/client tick when active (messages pending)
+global IPC_TICK_IDLE := 100         ; Client tick when no activity
+global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
+global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect
+global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)
+
+; IPC Buffer Constants
+global IPC_READ_CHUNK_SIZE := 65536       ; Max bytes to read per iteration
+global IPC_BUFFER_OVERFLOW := 1048576     ; 1MB - max buffer before discard
 
 global IPC_DebugLogPath := ""
 
@@ -298,8 +310,8 @@ _IPC_CreatePipeInstance(pipeName) {
         , "uint", PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED
         , "uint", PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT
         , "uint", 255
-        , "uint", 65536
-        , "uint", 65536
+        , "uint", IPC_READ_CHUNK_SIZE   ; output buffer size
+        , "uint", IPC_READ_CHUNK_SIZE   ; input buffer size
         , "uint", 0
         , "ptr", pSA   ; security attrs (NULL DACL = allow all)
         , "ptr")
@@ -339,7 +351,7 @@ _IPC_CheckConnect(inst) {
     if (inst.connected)
         return true
     if (inst.pending) {
-        wait := DllCall("WaitForSingleObject", "ptr", inst.hEvent, "uint", 1, "uint")
+        wait := DllCall("WaitForSingleObject", "ptr", inst.hEvent, "uint", IPC_WAIT_SINGLE_OBJ, "uint")
         if (wait = 0) { ; WAIT_OBJECT_0
             bytes := 0
             DllCall("GetOverlappedResult", "ptr", inst.hPipe, "ptr", inst.over.Ptr, "uint*", &bytes, "int", 1)
@@ -355,18 +367,18 @@ _IPC_CheckConnect(inst) {
 }
 
 _IPC_Log(msg) {
-    global IPC_DebugLogPath, cfg
+    global IPC_DebugLogPath, cfg, LOG_PATH_IPC
     ; Use explicit path if set (test mode), otherwise check config flag
     logPath := IPC_DebugLogPath
     if (!logPath) {
         ; Check config flag - cfg may not be initialized early in startup
         if (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)
-            logPath := A_Temp "\tabby_ipc.log"
+            logPath := LOG_PATH_IPC
         else
             return
     }
     try {
-        ts := FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
+        ts := GetLogTimestamp()
         FileAppend(ts " " msg "`n", logPath, "UTF-8")
     }
 }
@@ -405,7 +417,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
             return 0
         if ((A_TickCount - start) > timeoutMs)
             return 0
-        DllCall("WaitNamedPipeW", "str", name, "uint", 200)
+        DllCall("WaitNamedPipeW", "str", name, "uint", IPC_WAIT_PIPE_TIMEOUT)
     }
 }
 
@@ -415,7 +427,7 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
         return -1
     if (avail = 0)
         return 0
-    toRead := Min(avail, 65536)
+    toRead := Min(avail, IPC_READ_CHUNK_SIZE)
     buf := Buffer(toRead)
     bytesRead := 0
     ok := DllCall("ReadFile", "ptr", hPipe, "ptr", buf.Ptr, "uint", toRead, "uint*", &bytesRead, "ptr", 0)
@@ -430,8 +442,8 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
     chunk := StrGet(buf.Ptr, bytesRead, "UTF-8")
     stateObj.buf .= chunk
 
-    ; Prevent unbounded buffer growth (max 1MB) - protects against malformed clients
-    if (StrLen(stateObj.buf) > 1048576) {
+    ; Prevent unbounded buffer growth - protects against malformed clients
+    if (StrLen(stateObj.buf) > IPC_BUFFER_OVERFLOW) {
         stateObj.buf := ""
         return -1  ; Signal error - disconnect client
     }
@@ -490,16 +502,16 @@ _IPC_Server_AdjustTimer(server, activityBytes) {
     ; Keep CPU low: slow tick when idle, speed up when active.
     if (activityBytes > 0) {
         server.idleStreak := 0
-        _IPC_SetServerTick(server, 15)
+        _IPC_SetServerTick(server, IPC_TICK_ACTIVE)
         return
     }
     if (server.clients.Count = 0) {
-        _IPC_SetServerTick(server, 250)
+        _IPC_SetServerTick(server, IPC_TICK_SERVER_IDLE)
         return
     }
     server.idleStreak += 1
     if (server.idleStreak >= 8)
-        _IPC_SetServerTick(server, 100)
+        _IPC_SetServerTick(server, IPC_TICK_IDLE)
 }
 
 _IPC_SetServerTick(server, ms) {
@@ -512,10 +524,10 @@ _IPC_SetServerTick(server, ms) {
 
 _IPC_Client_AdjustTimer(client, activityBytes) {
     if (activityBytes > 0) {
-        _IPC_SetClientTick(client, 15)
+        _IPC_SetClientTick(client, IPC_TICK_ACTIVE)
         return
     }
-    _IPC_SetClientTick(client, 100)
+    _IPC_SetClientTick(client, IPC_TICK_IDLE)
 }
 
 _IPC_SetClientTick(client, ms) {

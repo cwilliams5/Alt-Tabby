@@ -15,29 +15,24 @@ global g_LauncherMutex := 0
 ; Log file: %TEMP%\tabby_launcher.log
 
 _Launcher_Log(msg) {
-    global cfg
+    global cfg, LOG_PATH_LAUNCHER
     if (!cfg.DiagLauncherLog)
         return
     try {
-        logFile := A_Temp "\tabby_launcher.log"
-        ts := FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
-        FileAppend(ts " " msg "`n", logFile, "UTF-8")
+        LogAppend(LOG_PATH_LAUNCHER, msg)
     }
 }
 
 ; Call at startup to mark new session
 _Launcher_LogStartup() {
-    global cfg
+    global cfg, LOG_PATH_LAUNCHER
     if (!cfg.DiagLauncherLog)
         return
     try {
-        logFile := A_Temp "\tabby_launcher.log"
-        ; Clear old log and start fresh
-        FileDelete(logFile)
-        FileAppend("=== Alt-Tabby Launcher Log - " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===`n", logFile, "UTF-8")
-        FileAppend("Exe: " A_ScriptFullPath "`n", logFile, "UTF-8")
-        FileAppend("Compiled: " (A_IsCompiled ? "yes" : "no") " | Admin: " (A_IsAdmin ? "yes" : "no") "`n", logFile, "UTF-8")
-        FileAppend("`n", logFile, "UTF-8")
+        LogInitSession(LOG_PATH_LAUNCHER, "Alt-Tabby Launcher Log")
+        ; Add launcher-specific context
+        FileAppend("Exe: " A_ScriptFullPath "`n", LOG_PATH_LAUNCHER, "UTF-8")
+        FileAppend("Compiled: " (A_IsCompiled ? "yes" : "no") " | Admin: " (A_IsAdmin ? "yes" : "no") "`n`n", LOG_PATH_LAUNCHER, "UTF-8")
     }
 }
 

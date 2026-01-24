@@ -163,11 +163,10 @@ KomorebiSub_Start() {
 ; Diagnostic logging - controlled by DiagKomorebiLog config flag
 ; Writes to %TEMP%\tabby_ksub_diag.log when enabled
 _KSub_DiagLog(msg) {
-    global cfg
+    global cfg, LOG_PATH_KSUB
     if (!cfg.DiagKomorebiLog)
         return
-    static logPath := A_Temp "\tabby_ksub_diag.log"
-    try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", logPath, "UTF-8")
+    try LogAppend(LOG_PATH_KSUB, msg)
 }
 
 ; One-time initial poll to populate workspace data on startup

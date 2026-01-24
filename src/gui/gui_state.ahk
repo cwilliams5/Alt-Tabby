@@ -21,13 +21,11 @@ global gGUI_FlushStartTick := 0          ; When "flushing" phase started (for ti
 ; Log file: %TEMP%\tabby_events.log
 
 _GUI_LogEvent(msg) {
-    global cfg
+    global cfg, LOG_PATH_EVENTS
     if (!cfg.DiagEventLog)
         return
     try {
-        logFile := A_Temp "\tabby_events.log"
-        ts := FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
-        FileAppend(ts " " msg "`n", logFile, "UTF-8")
+        LogAppend(LOG_PATH_EVENTS, msg)
     } catch as e {
         ; Log errors to separate file so we can see what's failing
         try FileAppend("LOG_ERROR: " e.Message " | " msg "`n", A_Temp "\tabby_log_errors.txt", "UTF-8")
@@ -36,15 +34,11 @@ _GUI_LogEvent(msg) {
 
 ; Call at startup to mark new session
 _GUI_LogEventStartup() {
-    global cfg
+    global cfg, LOG_PATH_EVENTS
     if (!cfg.DiagEventLog)
         return
     try {
-        logFile := A_Temp "\tabby_events.log"
-        ; Clear old log and start fresh
-        FileDelete(logFile)
-        FileAppend("=== Alt-Tabby Event Log - " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===`n", logFile, "UTF-8")
-        FileAppend("Log file: " logFile "`n`n", logFile, "UTF-8")
+        LogInitSession(LOG_PATH_EVENTS, "Alt-Tabby Event Log")
     }
 }
 

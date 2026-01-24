@@ -57,7 +57,8 @@ Viewer_Init() {
     Blacklist_Init()
 
     if (cfg.DebugViewerLog && !gViewer_LogPath) {
-        gViewer_LogPath := A_Temp "\tabby_viewer.log"
+        global LOG_PATH_VIEWER
+        gViewer_LogPath := LOG_PATH_VIEWER
     }
     try OnError(Viewer_OnError)
     if (!gViewer_Headless) {
