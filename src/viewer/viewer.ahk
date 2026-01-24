@@ -1020,12 +1020,12 @@ _Viewer_BlacklistChoice(dlg, choice) {
 
 ; Show a temporary toast notification
 _Viewer_ShowToast(message) {
-    global gViewer_Gui
+    global gViewer_Gui, TOOLTIP_DURATION_DEFAULT
 
     ; Create tooltip-style toast near the main window
     if (IsObject(gViewer_Gui)) {
         ToolTip(message)
-        SetTimer(() => ToolTip(), -2000)  ; Hide after 2 seconds
+        HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
     }
 }
 

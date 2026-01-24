@@ -60,7 +60,7 @@ Launcher_Init() {
         )
         if (result = "Yes") {
             _Launcher_KillExistingInstances()
-            Sleep(500)  ; Wait for mutex to be released
+            Sleep(TIMING_MUTEX_RELEASE_WAIT)  ; Wait for mutex to be released
             if (!_Launcher_AcquireMutex()) {
                 MsgBox("Could not restart Alt-Tabby. Please try again.", "Alt-Tabby", "Icon!")
                 ExitApp()
@@ -131,7 +131,7 @@ Launcher_Init() {
 
     ; Launch store and GUI
     LaunchStore()
-    Sleep(300)
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
     LaunchGui()
 
     ; Hide splash after duration (or immediately if duration is 0)

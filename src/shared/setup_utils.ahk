@@ -495,7 +495,7 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         targetExeName := ""
         SplitPath(targetExePath, &targetExeName)
         _Update_KillOtherProcesses(targetExeName)
-        Sleep(500)  ; Give processes time to fully exit
+        Sleep(TIMING_PROCESS_EXIT_WAIT)  ; Give processes time to fully exit
 
         ; Remove any previous .old file
         if (FileExist(oldExePath))
@@ -554,7 +554,7 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
 
         ; Success! Launch new version and exit
         TrayTip("Update Complete", "Alt-Tabby has been updated. Restarting...", "Iconi")
-        Sleep(1000)
+        Sleep(TIMING_STORE_START_WAIT)
 
         ; Bug 8 fix: Extended cleanup delay with retry for slow systems
         ; Uses timeout instead of ping (ping fails on systems with ICMP blocked)

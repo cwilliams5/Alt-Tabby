@@ -124,8 +124,11 @@ WindowStore_UpsertWindow(records, source := "") {
                 ; Only update if value differs
                 if (!row.HasOwnProp(k) || row.%k% != v) {
                     ; Diagnostic: track which fields trigger changes (skip for new records)
+                    ; Use Critical to prevent race conditions on counter increment
                     if (!isNew) {
+                        Critical "On"
                         gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
+                        Critical "Off"
                     }
                     row.%k% := v
                     rowChanged := true

@@ -46,7 +46,7 @@ ToggleStartMenuShortcut() {
             ToolTip("Added to Start Menu")
         }
     }
-    SetTimer(() => ToolTip(), -1500)
+    HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }
 
 ; Toggle Startup shortcut
@@ -66,7 +66,7 @@ ToggleStartupShortcut() {
             ToolTip("Added to Startup")
         }
     }
-    SetTimer(() => ToolTip(), -1500)
+    HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }
 
 ; Create a shortcut that always points to the exe

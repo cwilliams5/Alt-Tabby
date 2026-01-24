@@ -134,9 +134,10 @@ _GUI_StoreHealthCheck() {
     global gGUI_ReconnectAttempts, gGUI_StoreRestartAttempts, cfg
     global IPC_MSG_HELLO
 
+    global MAX_RECONNECT_ATTEMPTS, MAX_RESTART_ATTEMPTS
     timeoutMs := cfg.ViewerHeartbeatTimeoutMs  ; Same timeout as viewer (default 12s)
-    maxReconnectAttempts := 3  ; Try reconnecting 3 times before restarting store
-    maxRestartAttempts := 2    ; Only try restarting store twice
+    maxReconnectAttempts := MAX_RECONNECT_ATTEMPTS
+    maxRestartAttempts := MAX_RESTART_ATTEMPTS
 
     ; Case 1: Pipe handle is invalid (store disconnected or never connected)
     if (!IsObject(gGUI_StoreClient) || !gGUI_StoreClient.hPipe) {
@@ -146,7 +147,7 @@ _GUI_StoreHealthCheck() {
         if (gGUI_ReconnectAttempts <= maxReconnectAttempts) {
             ; Try to reconnect
             ToolTip("Alt-Tabby: Reconnecting to store... (" gGUI_ReconnectAttempts "/" maxReconnectAttempts ")")
-            SetTimer(() => ToolTip(), -2000)
+            HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
 
             ; Defensive close before reconnect (in case of stale handle)
             if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
@@ -161,7 +162,7 @@ _GUI_StoreHealthCheck() {
                 gGUI_ReconnectAttempts := 0
                 gGUI_StoreConnected := true
                 ToolTip("Alt-Tabby: Reconnected to store")
-                SetTimer(() => ToolTip(), -2000)
+                HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             }
         } else if (gGUI_StoreRestartAttempts < maxRestartAttempts) {
             ; Reconnection failed repeatedly - try restarting store
@@ -169,12 +170,12 @@ _GUI_StoreHealthCheck() {
             gGUI_ReconnectAttempts := 0  ; Reset for next cycle
 
             ToolTip("Alt-Tabby: Restarting store... (" gGUI_StoreRestartAttempts "/" maxRestartAttempts ")")
-            SetTimer(() => ToolTip(), -3000)
+            HideTooltipAfter(TOOLTIP_DURATION_LONG)
 
             _GUI_StartStore()
 
             ; Wait a moment for store to start, then try connecting
-            Sleep(1000)
+            Sleep(TIMING_STORE_START_WAIT)
 
             ; Defensive close before reconnect (in case of stale handle)
             if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
@@ -187,7 +188,7 @@ _GUI_StoreHealthCheck() {
                 gGUI_LastMsgTick := A_TickCount
                 gGUI_StoreConnected := true
                 ToolTip("Alt-Tabby: Store restarted and connected")
-                SetTimer(() => ToolTip(), -2000)
+                HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             }
         }
         ; If all restart attempts exhausted, stop trying (avoid infinite loop)

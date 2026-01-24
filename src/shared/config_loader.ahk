@@ -502,3 +502,48 @@ LogInitSession(logPath, title) {
     header .= "Log file: " logPath "`n`n"
     try FileAppend(header, logPath, "UTF-8")
 }
+
+; ============================================================
+; TIMING CONSTANTS
+; ============================================================
+; Centralized timing values to avoid magic numbers throughout codebase.
+; These are operational delays, not user-configurable settings.
+
+; Sleep delays (milliseconds)
+global TIMING_PROCESS_EXIT_WAIT := 500    ; Wait for processes to fully exit
+global TIMING_MUTEX_RELEASE_WAIT := 500   ; Wait for mutex to be released
+global TIMING_TASK_READY_WAIT := 500      ; Wait for scheduled task to be ready
+global TIMING_SUBPROCESS_LAUNCH := 300    ; Brief delay before launching subprocess
+global TIMING_STORE_START_WAIT := 1000    ; Wait for store to start
+
+; Tooltip durations (milliseconds, negative for one-shot timer)
+global TOOLTIP_DURATION_SHORT := 1500     ; Quick feedback tooltips
+global TOOLTIP_DURATION_DEFAULT := 2000   ; Standard tooltip duration
+global TOOLTIP_DURATION_LONG := 3000      ; Extended tooltip for important messages
+
+; Retry limits
+global MAX_RECONNECT_ATTEMPTS := 3        ; Pipe reconnection attempts before restart
+global MAX_RESTART_ATTEMPTS := 2          ; Store restart attempts before giving up
+
+; ============================================================
+; TOOLTIP HELPER
+; ============================================================
+; Schedule tooltip to hide after specified duration.
+; Usage: HideTooltipAfter(2000) or HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
+HideTooltipAfter(durationMs := 2000) {
+    SetTimer(() => ToolTip(), -durationMs)
+}
+
+; ============================================================
+; OBJECT/MAP HELPER
+; ============================================================
+; Safely get a property from an object or Map with a default fallback.
+; Handles both obj.key and obj["key"] access patterns.
+; Usage: val := GetProp(obj, "key", "default")
+GetProp(obj, key, defaultVal := "") {
+    if (!IsObject(obj))
+        return defaultVal
+    if (obj is Map)
+        return obj.Has(key) ? obj[key] : defaultVal
+    return obj.HasOwnProp(key) ? obj.%key% : defaultVal
+}

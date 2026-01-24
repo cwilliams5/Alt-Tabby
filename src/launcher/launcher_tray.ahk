@@ -117,29 +117,29 @@ UpdateTrayMenu() {
 }
 
 RestartStore() {
-    global g_StorePID
+    global g_StorePID, TIMING_SUBPROCESS_LAUNCH
     if (g_StorePID && ProcessExist(g_StorePID))
         ProcessClose(g_StorePID)
     g_StorePID := 0
-    Sleep(300)
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
     LaunchStore()
 }
 
 RestartGui() {
-    global g_GuiPID
+    global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
     if (g_GuiPID && ProcessExist(g_GuiPID))
         ProcessClose(g_GuiPID)
     g_GuiPID := 0
-    Sleep(300)
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
     LaunchGui()
 }
 
 RestartViewer() {
-    global g_ViewerPID
+    global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
     if (g_ViewerPID && ProcessExist(g_ViewerPID))
         ProcessClose(g_ViewerPID)
     g_ViewerPID := 0
-    Sleep(300)
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
     LaunchViewer()
 }
 
@@ -158,11 +158,11 @@ RestartAll() {
     g_GuiPID := 0
     g_ViewerPID := 0
 
-    Sleep(500)
+    Sleep(TIMING_PROCESS_EXIT_WAIT)
 
     ; Relaunch core processes
     LaunchStore()
-    Sleep(300)
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
     LaunchGui()
 }
 
@@ -181,12 +181,13 @@ ExitAll() {
 }
 
 LaunchConfigEditor() {
+    global TIMING_SUBPROCESS_LAUNCH
     ; Run config editor with auto-restart enabled
     ; Returns true if changes were saved
     if (ConfigEditor_Run(true)) {
         ; Restart store and GUI to apply changes
         RestartStore()
-        Sleep(300)
+        Sleep(TIMING_SUBPROCESS_LAUNCH)
         RestartGui()
     }
 }
@@ -213,7 +214,7 @@ ToggleAdminMode() {
     ; Prevent re-entry during async elevation
     if (g_AdminToggleInProgress) {
         ToolTip("Operation in progress, please wait...")
-        SetTimer(() => ToolTip(), -1500)
+        HideTooltipAfter(TOOLTIP_DURATION_SHORT)
         return
     }
 
@@ -235,7 +236,7 @@ ToggleAdminMode() {
             ExitAll()
         } else {
             ToolTip("Admin mode disabled - changes apply on next launch")
-            SetTimer(() => ToolTip(), -2000)
+            HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
         }
     } else {
         ; Enable admin mode - requires elevation to create scheduled task
@@ -261,7 +262,7 @@ ToggleAdminMode() {
                 ; Check every 500ms, timeout after 30 seconds
                 SetTimer(_AdminToggle_CheckComplete, -500)
                 ToolTip("Creating admin task...")
-                SetTimer(() => ToolTip(), -2000)
+                HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             } catch {
                 g_AdminToggleInProgress := false
                 try FileDelete(g_AdminToggleLockFile)
@@ -277,7 +278,7 @@ ToggleAdminMode() {
             _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
             RecreateShortcuts()  ; Update to point to schtasks
             ToolTip("Admin mode enabled")
-            SetTimer(() => ToolTip(), -1500)
+            HideTooltipAfter(TOOLTIP_DURATION_SHORT)
         } else {
             MsgBox("Failed to create scheduled task.", "Alt-Tabby", "Iconx")
         }
@@ -313,5 +314,5 @@ ToggleAutoUpdate() {
     cfg.SetupAutoUpdateCheck := !cfg.SetupAutoUpdateCheck
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", cfg.SetupAutoUpdateCheck, true, "bool")
     ToolTip(cfg.SetupAutoUpdateCheck ? "Auto-update enabled" : "Auto-update disabled")
-    SetTimer(() => ToolTip(), -1500)
+    HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }

@@ -180,7 +180,7 @@ if (g_AltTabbyMode = "wizard-continue") {
         SetupLauncherTray()
         OnMessage(0x404, TrayIconClick)
         LaunchStore()
-        Sleep(300)
+        Sleep(TIMING_SUBPROCESS_LAUNCH)
         LaunchGui()
 
         ; Hide splash after duration
@@ -244,7 +244,7 @@ if (g_AltTabbyMode = "repair-admin-task") {
         TrayTip("Admin Mode Repaired", "Scheduled task updated to current location.", "Iconi")
 
         ; Now launch via the repaired task
-        Sleep(500)  ; Brief pause for task to be ready
+        Sleep(TIMING_TASK_READY_WAIT)  ; Brief pause for task to be ready
         exitCode := RunWait('schtasks /run /tn "Alt-Tabby"',, "Hide")
 
         if (exitCode != 0) {

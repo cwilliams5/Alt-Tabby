@@ -257,7 +257,7 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         targetExeName := ""
         SplitPath(targetPath, &targetExeName)
         _Update_KillOtherProcesses(targetExeName)
-        Sleep(500)  ; Give processes time to fully exit
+        Sleep(TIMING_PROCESS_EXIT_WAIT)  ; Give processes time to fully exit
 
         ; Remove any previous backup
         if (FileExist(backupPath))
@@ -312,7 +312,7 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
 
         ; Success - launch from installed location and exit
         TrayTip("Update Complete", "Alt-Tabby has been updated at:`n" targetPath, "Iconi")
-        Sleep(1000)
+        Sleep(TIMING_STORE_START_WAIT)
 
         ; Bug 8 fix: Extended cleanup delay with retry for slow systems
         ; Uses timeout instead of ping (ping fails on systems with ICMP blocked)
