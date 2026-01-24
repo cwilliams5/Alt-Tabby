@@ -207,17 +207,25 @@ Store_FullScan() {
 }
 
 ; Push tailored projections to each client based on their registered opts
+; Uses Critical section to atomically snapshot client handles, preventing race
+; conditions where clients disconnect during iteration
 Store_PushToClients() {
     global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_TestMode
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
 
-    ; Clean up tracking maps for disconnected clients (prevents memory leak)
+    ; Atomically clean up disconnected clients and snapshot current handles
+    ; This prevents race conditions if clients disconnect during iteration
+    Critical "On"
     _Store_CleanupDisconnectedClients()
+    clientHandles := []
+    for hPipe, _ in gStore_Server.clients
+        clientHandles.Push(hPipe)
+    Critical "Off"
 
     sent := 0
-    for hPipe, _ in gStore_Server.clients {
+    for _, hPipe in clientHandles {
         ; Get this client's projection opts (or defaults)
         opts := gStore_ClientOpts.Has(hPipe) ? gStore_ClientOpts[hPipe] : IPC_DefaultProjectionOpts()
 

@@ -188,6 +188,9 @@ _WEH_ProcessBatch() {
     global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
 
     ; Process MRU focus changes first (no debounce needed)
+    ; Wrap in Critical to prevent race conditions where old window retains isFocused:true
+    ; if removed during focus transition
+    Critical "On"
     if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != _WEH_LastFocusHwnd) {
         newFocus := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := 0  ; Clear pending
@@ -224,6 +227,7 @@ _WEH_ProcessBatch() {
         _WEH_DiagLog("FOCUS SKIP: same hwnd " _WEH_PendingFocusHwnd)
         _WEH_PendingFocusHwnd := 0
     }
+    Critical "Off"
 
     if (_WEH_PendingHwnds.Count = 0)
         return

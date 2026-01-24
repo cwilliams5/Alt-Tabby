@@ -93,6 +93,7 @@ IconPump_CleanupWindow(hwnd) {
 }
 
 ; Main pump tick
+; Uses Critical sections around per-window processing to prevent TOCTOU races
 _IP_Tick() {
     global IconBatchPerTick, _IP_Attempts
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
@@ -104,10 +105,15 @@ _IP_Tick() {
     now := A_TickCount
 
     for _, hwnd in hwnds {
+        ; Wrap per-window processing in Critical to prevent race conditions
+        ; between checking window state and updating it
+        Critical "On"
+
         hwnd := hwnd + 0
         rec := WindowStore_GetByHwnd(hwnd)
         if (!rec) {
             _IP_Log("SKIP hwnd=" hwnd " (not in store)")
+            Critical "Off"
             continue
         }
 
@@ -118,6 +124,7 @@ _IP_Tick() {
         ; WinExist doesn't see cloaked windows (other workspaces), but IsWindow does
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             _IP_Log("SKIP hwnd=" hwnd " '" title "' (window gone)")
+            Critical "Off"
             continue
         }
 
@@ -139,6 +146,7 @@ _IP_Tick() {
         } else {
             ; Has fallback icon but still hidden - nothing to do
             _IP_Log("SKIP hwnd=" hwnd " '" title "' (has fallback, still hidden)")
+            Critical "Off"
             continue
         }
 
@@ -223,6 +231,7 @@ _IP_Tick() {
             }, "icons")
             _IP_Attempts[hwnd] := 0
             _IP_Log("SUCCESS hwnd=" hwnd " '" title "' mode=" mode " method=" method)
+            Critical "Off"
             continue
         }
 
@@ -232,6 +241,7 @@ _IP_Tick() {
             ; Just update the refresh timestamp so we don't spam retries
             WindowStore_UpdateFields(hwnd, { iconLastRefreshTick: now }, "icons")
             _IP_Log("KEPT hwnd=" hwnd " '" title "' mode=" mode " (WM_GETICON failed, keeping existing)")
+            Critical "Off"
             continue
         }
 
@@ -251,6 +261,8 @@ _IP_Tick() {
             _IP_Attempts.Delete(hwnd)  ; Clean up attempts tracking
             _IP_Log("GAVE UP hwnd=" hwnd " '" title "' after " IconMaxAttempts " attempts")
         }
+
+        Critical "Off"
     }
 }
 

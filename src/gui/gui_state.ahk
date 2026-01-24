@@ -14,6 +14,7 @@ global gGUI_PendingTempFile := ""        ; Temp file for query results
 
 ; Event buffering during async activation (queue events, don't cancel)
 global gGUI_EventBuffer := []            ; Queued events during async activation
+global gGUI_FlushStartTick := 0          ; When "flushing" phase started (for tick-based wait)
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagEventLog (config.ini [Diagnostics] EventLog=true)
@@ -588,6 +589,7 @@ _GUI_AsyncActivationTick() {
         ; Keep the phase set to "flushing" so events continue to be buffered
         ; until _GUI_ProcessEventBuffer completes.
         gGUI_PendingPhase := "flushing"
+        gGUI_FlushStartTick := A_TickCount  ; Track when flushing started for tick-based wait
 
         ; NOTE: Do NOT request snapshot here - it would overwrite our local MRU update
         ; with stale store data. The store will get the focus update via WinEventHook.
@@ -603,19 +605,24 @@ _GUI_AsyncActivationTick() {
 ; Process buffered events after async activation completes
 ; Called via SetTimer -1 after async complete, with gGUI_PendingPhase="flushing"
 _GUI_ProcessEventBuffer() {
-    global gGUI_EventBuffer, gGUI_Items, gGUI_PendingPhase
+    global gGUI_EventBuffer, gGUI_Items, gGUI_PendingPhase, gGUI_FlushStartTick
+
+    ; Validate we're in flushing phase - prevents stale timers from processing
+    if (gGUI_PendingPhase != "flushing") {
+        _GUI_LogEvent("BUFFER SKIP: not in flushing phase (phase=" gGUI_PendingPhase ")")
+        return
+    }
 
     ; CRITICAL: Wait a bit for any pending interceptor timers (Tab_Decide etc) to fire
     ; and get buffered. The interceptor has a 5ms delay in Tab_Decide, plus up to 24ms
     ; for the decision timer itself. We wait 30ms to be safe.
-    static waitCount := 0
-    if (waitCount < 3) {  ; Wait up to 30ms (3 x 10ms)
-        waitCount++
-        _GUI_LogEvent("BUFFER WAIT: " waitCount " (buf=" gGUI_EventBuffer.Length ")")
+    ; Using tick-based timing instead of static counter to prevent state leaks.
+    elapsed := A_TickCount - gGUI_FlushStartTick
+    if (elapsed < 30) {
+        _GUI_LogEvent("BUFFER WAIT: elapsed=" elapsed "ms (buf=" gGUI_EventBuffer.Length ")")
         SetTimer(_GUI_ProcessEventBuffer, -10)
         return
     }
-    waitCount := 0  ; Reset for next time
 
     _GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_Items.Length)
 

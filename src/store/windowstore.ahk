@@ -86,8 +86,7 @@ WindowStore_EndScan(graceMs := "") {
         }
     }
     if (changed) {
-        gWS_Rev += 1
-        _WS_DiagBump("EndScan")
+        _WS_BumpRev("EndScan")
     }
     return { removed: removed, rev: gWS_Rev }
 }
@@ -155,8 +154,7 @@ WindowStore_UpsertWindow(records, source := "") {
         _WS_EnqueueIfNeeded(row)
     }
     if (added || updated) {
-        gWS_Rev += 1
-        _WS_DiagBump("UpsertWindow")
+        _WS_BumpRev("UpsertWindow")
     }
     return { added: added, updated: updated, rev: gWS_Rev }
 }
@@ -192,8 +190,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
         }
     }
     if (changed) {
-        gWS_Rev += 1
-        _WS_DiagBump("UpdateFields:" . source)
+        _WS_BumpRev("UpdateFields:" . source)
     }
     return { changed: changed, exists: true, rev: gWS_Rev }
 }
@@ -214,8 +211,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         removed += 1
     }
     if (removed) {
-        gWS_Rev += 1
-        _WS_DiagBump("RemoveWindow")
+        _WS_BumpRev("RemoveWindow")
     }
     return { removed: removed, rev: gWS_Rev }
 }
@@ -252,8 +248,7 @@ WindowStore_ValidateExistence() {
     }
 
     if (removed > 0) {
-        gWS_Rev += 1
-        _WS_DiagBump("ValidateExistence")
+        _WS_BumpRev("ValidateExistence")
     }
 
     return { removed: removed, rev: gWS_Rev }
@@ -284,8 +279,7 @@ WindowStore_PurgeBlacklisted() {
     }
 
     if (removed) {
-        gWS_Rev += 1
-        _WS_DiagBump("PurgeBlacklisted")
+        _WS_BumpRev("PurgeBlacklisted")
     }
 
     return { removed: removed, rev: gWS_Rev }
@@ -319,6 +313,16 @@ _WS_DiagBump(source) {
     gWS_DiagSource[source] := (gWS_DiagSource.Has(source) ? gWS_DiagSource[source] : 0) + 1
 }
 
+; Atomic revision bump - prevents race conditions when multiple producers bump rev
+; Wraps increment in Critical to prevent interruption by timers/hotkeys
+_WS_BumpRev(source) {
+    Critical "On"
+    global gWS_Rev
+    gWS_Rev += 1
+    _WS_DiagBump(source)
+    Critical "Off"
+}
+
 WindowStore_GetByHwnd(hwnd) {
     global gWS_Store
     hwnd := hwnd + 0
@@ -344,8 +348,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
             if (rec.isOnCurrentWorkspace != newIsOnCurrent)
                 rec.isOnCurrentWorkspace := newIsOnCurrent
         }
-        gWS_Rev += 1
-        _WS_DiagBump("SetCurrentWorkspace")
+        _WS_BumpRev("SetCurrentWorkspace")
     }
 }
 
@@ -533,7 +536,9 @@ _WS_CmpMRU(a, b) {
 ; ============================================================
 
 ; Enqueue window for enrichment if missing icon or process info
+; Wrapped in Critical to prevent race conditions in check-then-insert pattern
 _WS_EnqueueIfNeeded(row) {
+    Critical "On"
     global gWS_IconQueue, gWS_IconQueueSet, gWS_PidQueue, gWS_PidQueueSet
     now := A_TickCount
 
@@ -568,6 +573,7 @@ _WS_EnqueueIfNeeded(row) {
             gWS_PidQueueSet[pid] := true
         }
     }
+    Critical "Off"
 }
 
 ; Enqueue window for icon refresh (called when window gains focus)
@@ -632,13 +638,18 @@ WindowStore_PopPidBatch(count := 16) {
 ; ============================================================
 
 ; Enqueue a window that needs Z-order (called by partial producers like winevent_hook)
+; Wrapped in Critical to prevent race with ClearZQueue
 WindowStore_EnqueueForZ(hwnd) {
+    Critical "On"
     global gWS_ZQueue, gWS_ZQueueSet
     hwnd := hwnd + 0
-    if (!hwnd || gWS_ZQueueSet.Has(hwnd))
+    if (!hwnd || gWS_ZQueueSet.Has(hwnd)) {
+        Critical "Off"
         return
+    }
     gWS_ZQueue.Push(hwnd)
     gWS_ZQueueSet[hwnd] := true
+    Critical "Off"
 }
 
 ; Check if any windows need Z-order enrichment
@@ -654,10 +665,13 @@ WindowStore_PendingZCount() {
 }
 
 ; Clear the Z queue (called after a full winenum scan)
+; Wrapped in Critical to prevent race with EnqueueForZ
 WindowStore_ClearZQueue() {
+    Critical "On"
     global gWS_ZQueue, gWS_ZQueueSet
     gWS_ZQueue := []
     gWS_ZQueueSet := Map()
+    Critical "Off"
 }
 
 ; ============================================================
@@ -690,8 +704,7 @@ WindowStore_UpdateProcessName(pid, name) {
         }
     }
     if (changed) {
-        gWS_Rev += 1
-        _WS_DiagBump("UpdateProcessName")
+        _WS_BumpRev("UpdateProcessName")
     }
 }
 
@@ -757,8 +770,7 @@ WindowStore_Ensure(hwnd, hints := 0, source := "") {
     }
 
     if (changed) {
-        gWS_Rev += 1
-        _WS_DiagBump("Ensure:" . source)
+        _WS_BumpRev("Ensure:" . source)
     }
 
     ; Enqueue for enrichment

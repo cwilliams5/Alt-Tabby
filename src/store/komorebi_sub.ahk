@@ -33,7 +33,9 @@ global _KSub_LastWorkspaceName := ""
 global _KSub_FallbackMode := false
 
 ; Cache of window workspace assignments (persists even when windows leave komorebi)
+; Each entry is { wsName: "name", tick: timestamp } for staleness detection
 global _KSub_WorkspaceCache := Map()
+global _KSub_CacheMaxAgeMs := 10000  ; Cache entries older than 10s are considered stale
 
 ; Initialize komorebi subscription
 KomorebiSub_Init() {
@@ -661,8 +663,8 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
                     }
                 }
 
-                ; Cache for persistence
-                _KSub_WorkspaceCache[hwnd] := wsName
+                ; Cache for persistence with timestamp for staleness detection
+                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
 
                 pos := hwndMatch.Pos(0) + hwndMatch.Len(0)
             }
@@ -723,10 +725,18 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
 
     ; Also update windows in store that aren't in komorebi state
     ; (they might have cached workspace data)
+    ; Uses timestamped cache entries to avoid using stale data
     if (IsObject(gWS_Store)) {
+        now := A_TickCount
         for hwnd, rec in gWS_Store {
             if (!wsMap.Has(hwnd) && _KSub_WorkspaceCache.Has(hwnd)) {
-                wsName := _KSub_WorkspaceCache[hwnd]
+                cached := _KSub_WorkspaceCache[hwnd]
+                ; Check cache staleness - entries older than _KSub_CacheMaxAgeMs are skipped
+                if ((now - cached.tick) > _KSub_CacheMaxAgeMs) {
+                    _KSub_WorkspaceCache.Delete(hwnd)  ; Clean up stale entry
+                    continue
+                }
+                wsName := cached.wsName
                 isCurrent := (wsName = _KSub_LastWorkspaceName)
                 try WindowStore_UpdateFields(hwnd, {
                     workspaceName: wsName,

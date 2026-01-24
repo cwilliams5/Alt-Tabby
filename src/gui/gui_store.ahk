@@ -334,6 +334,30 @@ GUI_SortItemsByMRU() {
     }
 }
 
+; ========================= SELECTION VALIDATION =========================
+
+; Validates and clamps selection to current list bounds
+; Prevents race conditions when deltas change list length while selection points to old index
+; Returns the validated selection index (always valid, or 0 if list is empty)
+GUI_GetValidatedSel() {
+    global gGUI_Sel, gGUI_State, gGUI_FrozenItems, gGUI_Items
+
+    ; Determine which list to use based on state
+    displayItems := (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
+
+    ; Handle empty list
+    if (displayItems.Length = 0)
+        return 0
+
+    ; Clamp selection to valid range
+    if (gGUI_Sel < 1)
+        gGUI_Sel := 1
+    if (gGUI_Sel > displayItems.Length)
+        gGUI_Sel := displayItems.Length
+
+    return gGUI_Sel
+}
+
 ; ========================= SNAPSHOT/PROJECTION REQUESTS =========================
 
 GUI_RequestSnapshot() {
