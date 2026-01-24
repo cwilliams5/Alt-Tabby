@@ -337,10 +337,20 @@ _IPC_CheckConnect(inst) {
 }
 
 _IPC_Log(msg) {
-    global IPC_DebugLogPath
-    if (!IPC_DebugLogPath)
-        return
-    try FileAppend(msg "`n", IPC_DebugLogPath, "UTF-8")
+    global IPC_DebugLogPath, cfg
+    ; Use explicit path if set (test mode), otherwise check config flag
+    logPath := IPC_DebugLogPath
+    if (!logPath) {
+        ; Check config flag - cfg may not be initialized early in startup
+        if (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)
+            logPath := A_Temp "\tabby_ipc.log"
+        else
+            return
+    }
+    try {
+        ts := FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
+        FileAppend(ts " " msg "`n", logPath, "UTF-8")
+    }
 }
 
 _IPC_ClosePipeInstance(inst) {

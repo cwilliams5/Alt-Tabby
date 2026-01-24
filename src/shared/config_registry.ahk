@@ -657,6 +657,15 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "IconPumpLog", g: "DiagIconPumpLog", t: "bool", default: false,
      d: "Log icon pump operations to %TEMP%\\tabby_iconpump.log. Use when debugging icon resolution issues (cloaked windows, UWP apps)."},
 
+    {s: "Diagnostics", k: "ProcPumpLog", g: "DiagProcPumpLog", t: "bool", default: false,
+     d: "Log process pump operations to %TEMP%\\tabby_procpump.log. Use when debugging process name resolution failures."},
+
+    {s: "Diagnostics", k: "LauncherLog", g: "DiagLauncherLog", t: "bool", default: false,
+     d: "Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems."},
+
+    {s: "Diagnostics", k: "IPCLog", g: "DiagIPCLog", t: "bool", default: false,
+     d: "Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues."},
+
     ; ============================================================
     ; Testing
     ; ============================================================

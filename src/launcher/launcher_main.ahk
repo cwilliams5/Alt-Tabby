@@ -10,10 +10,44 @@
 ; Launcher mutex global
 global g_LauncherMutex := 0
 
+; ========================= DEBUG LOGGING =========================
+; Controlled by cfg.DiagLauncherLog (config.ini [Diagnostics] LauncherLog=true)
+; Log file: %TEMP%\tabby_launcher.log
+
+_Launcher_Log(msg) {
+    global cfg
+    if (!cfg.DiagLauncherLog)
+        return
+    try {
+        logFile := A_Temp "\tabby_launcher.log"
+        ts := FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
+        FileAppend(ts " " msg "`n", logFile, "UTF-8")
+    }
+}
+
+; Call at startup to mark new session
+_Launcher_LogStartup() {
+    global cfg
+    if (!cfg.DiagLauncherLog)
+        return
+    try {
+        logFile := A_Temp "\tabby_launcher.log"
+        ; Clear old log and start fresh
+        FileDelete(logFile)
+        FileAppend("=== Alt-Tabby Launcher Log - " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===`n", logFile, "UTF-8")
+        FileAppend("Exe: " A_ScriptFullPath "`n", logFile, "UTF-8")
+        FileAppend("Compiled: " (A_IsCompiled ? "yes" : "no") " | Admin: " (A_IsAdmin ? "yes" : "no") "`n", logFile, "UTF-8")
+        FileAppend("`n", logFile, "UTF-8")
+    }
+}
+
 ; Main launcher initialization
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
     global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
+
+    ; Log startup (clears old log if DiagLauncherLog is enabled)
+    _Launcher_LogStartup()
 
     ; Ensure InstallationId exists (generates on first run)
     _Launcher_EnsureInstallationId()
@@ -147,12 +181,16 @@ _ShouldRedirectToScheduledTask() {
     global cfg, gConfigIniPath
 
     ; Already elevated - don't redirect (avoid infinite loop)
-    if (A_IsAdmin)
+    if (A_IsAdmin) {
+        _Launcher_Log("TASK_REDIRECT: skip (already admin)")
         return false
+    }
 
     ; Check if task exists
-    if (!AdminTaskExists())
+    if (!AdminTaskExists()) {
+        _Launcher_Log("TASK_REDIRECT: skip (no task exists)")
         return false
+    }
 
     ; Validate task points to current exe (handles renamed exe case)
     taskPath := _AdminTask_GetCommandPath()
@@ -241,6 +279,7 @@ _ShouldRedirectToScheduledTask() {
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
     }
 
+    _Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
     return true
 }
 
@@ -263,6 +302,7 @@ _Launcher_AcquireMutex() {
     ; ERROR_ALREADY_EXISTS = 183
     if (lastError = 183) {
         ; Mutex already exists - another launcher is running
+        _Launcher_Log("MUTEX: already exists (err=183), another launcher running")
         if (g_LauncherMutex) {
             DllCall("CloseHandle", "ptr", g_LauncherMutex)
             g_LauncherMutex := 0
@@ -270,6 +310,7 @@ _Launcher_AcquireMutex() {
         return false
     }
 
+    _Launcher_Log("MUTEX: acquired successfully (name=" mutexName ")")
     return (g_LauncherMutex != 0)
 }
 
@@ -395,27 +436,33 @@ _Launcher_KillExistingInstances() {
 
 LaunchStore() {
     global g_StorePID
+    _Launcher_Log("LAUNCH: starting store process")
     if (A_IsCompiled) {
         Run('"' A_ScriptFullPath '" --store', , , &g_StorePID)
     } else {
         Run('"' A_AhkPath '" "' A_ScriptDir '\store\store_server.ahk"', , , &g_StorePID)
     }
+    _Launcher_Log("LAUNCH: store PID=" g_StorePID)
 }
 
 LaunchGui() {
     global g_GuiPID
+    _Launcher_Log("LAUNCH: starting GUI process")
     if (A_IsCompiled) {
         Run('"' A_ScriptFullPath '" --gui-only', , , &g_GuiPID)
     } else {
         Run('"' A_AhkPath '" "' A_ScriptDir '\gui\gui_main.ahk"', , , &g_GuiPID)
     }
+    _Launcher_Log("LAUNCH: GUI PID=" g_GuiPID)
 }
 
 LaunchViewer() {
     global g_ViewerPID
+    _Launcher_Log("LAUNCH: starting viewer process")
     if (A_IsCompiled) {
         Run('"' A_ScriptFullPath '" --viewer', , , &g_ViewerPID)
     } else {
         Run('"' A_AhkPath '" "' A_ScriptDir '\viewer\viewer.ahk"', , , &g_ViewerPID)
     }
+    _Launcher_Log("LAUNCH: viewer PID=" g_ViewerPID)
 }

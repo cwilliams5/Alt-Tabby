@@ -291,6 +291,7 @@ INT_SetBypassMode(shouldBypass) {
 }
 
 ; Check bypass criteria for a specific window (or active window if hwnd=0)
+; Also logs the reason when bypass is triggered (under DiagEventLog)
 INT_ShouldBypassWindow(hwnd := 0) {
     global cfg
 
@@ -308,14 +309,21 @@ INT_ShouldBypassWindow(hwnd := 0) {
             bypassList := StrSplit(cfg.AltTabBypassProcesses, ",")
             for _, nm in bypassList {
                 nm := Trim(nm)
-                if (nm != "" && StrLower(nm) = lex)
+                if (nm != "" && StrLower(nm) = lex) {
+                    _GUI_LogEvent("BYPASS REASON: process='" exename "' hwnd=" hwnd)
                     return true
+                }
             }
         }
     }
 
     ; Check fullscreen detection
-    return cfg.AltTabBypassFullscreen && INT_IsFullscreenHwnd(hwnd)
+    if (cfg.AltTabBypassFullscreen && INT_IsFullscreenHwnd(hwnd)) {
+        _GUI_LogEvent("BYPASS REASON: fullscreen hwnd=" hwnd)
+        return true
+    }
+
+    return false
 }
 
 INT_IsFullscreenHwnd(hwnd) {

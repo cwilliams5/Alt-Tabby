@@ -1150,6 +1150,27 @@ Debug options are in `[Diagnostics]` section of config.ini. All disabled by defa
 - **Enable**: Set `IconPumpLog=true` in config.ini `[Diagnostics]` section
 - **Pattern to look for**: `PROC` entries for cloaked windows show the resolution path; `SUCCESS method=EXE` confirms EXE fallback is working
 
+### DiagProcPumpLog
+- **File**: `%TEMP%\tabby_procpump.log`
+- **Use when**: Process name resolution failures - windows showing blank process names
+- **Shows**: OpenProcess and QueryFullProcessImageNameW failures with error codes
+- **Enable**: Set `ProcPumpLog=true` in config.ini `[Diagnostics]` section
+- **Pattern to look for**: `OpenProcess FAILED` with error 5 (access denied) or error 87 (invalid parameter)
+
+### DiagLauncherLog
+- **File**: `%TEMP%\tabby_launcher.log`
+- **Use when**: Startup issues - subprocess not launching, mutex problems, task redirect failures
+- **Shows**: Mutex acquisition, subprocess launch with PIDs, task redirect decisions
+- **Enable**: Set `LauncherLog=true` in config.ini `[Diagnostics]` section
+- **Pattern to look for**: `MUTEX: already exists` indicates another instance running; `LAUNCH: store PID=0` indicates failed subprocess
+
+### DiagIPCLog
+- **File**: `%TEMP%\tabby_ipc.log`
+- **Use when**: Store-GUI communication issues - viewer not receiving deltas, connection drops
+- **Shows**: Pipe creation/connection events, client connects/disconnects
+- **Enable**: Set `IPCLog=true` in config.ini `[Diagnostics]` section
+- **Pattern to look for**: `pipe_connected` confirms client connected; missing entries indicate pipe never created
+
 ### Game Mode Bypass (Fullscreen/Process Bypass)
 
 The bypass feature disables Tab hooks when a fullscreen game or blacklisted process is focused, allowing native Windows Alt+Tab to work.

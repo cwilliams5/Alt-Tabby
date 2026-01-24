@@ -15,6 +15,21 @@ global ProcTimerIntervalMs := 0
 ; State
 global _PP_TimerOn := false
 
+; ========================= DEBUG LOGGING =========================
+; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
+; Log file: %TEMP%\tabby_procpump.log
+
+_PP_Log(msg) {
+    global cfg
+    if (!cfg.DiagProcPumpLog)
+        return
+    try {
+        logFile := A_Temp "\tabby_procpump.log"
+        ts := FormatTime(, "HH:mm:ss") "." SubStr("000" Mod(A_TickCount, 1000), -2)
+        FileAppend(ts " " msg "`n", logFile, "UTF-8")
+    }
+}
+
 ; Start the process pump timer
 ProcPump_Start() {
     global _PP_TimerOn, ProcTimerIntervalMs, ProcBatchPerTick, cfg
@@ -75,13 +90,21 @@ _PP_Tick() {
 _PP_GetProcessPath(pid) {
     ; PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     h := DllCall("kernel32\OpenProcess", "uint", 0x1000, "int", 0, "uint", pid, "ptr")
-    if (!h)
+    if (!h) {
+        gle := DllCall("kernel32\GetLastError", "uint")
+        _PP_Log("OpenProcess FAILED pid=" pid " err=" gle)
         return ""
+    }
     buf := Buffer(32767 * 2, 0)
     cch := 32767
     ok := DllCall("kernel32\QueryFullProcessImageNameW", "ptr", h, "uint", 0, "ptr", buf.Ptr, "uint*", &cch, "int")
     DllCall("kernel32\CloseHandle", "ptr", h)
-    return ok ? StrGet(buf.Ptr, "UTF-16") : ""
+    if (!ok) {
+        gle := DllCall("kernel32\GetLastError", "uint")
+        _PP_Log("QueryFullProcessImageNameW FAILED pid=" pid " err=" gle)
+        return ""
+    }
+    return StrGet(buf.Ptr, "UTF-16")
 }
 
 ; Extract filename from path
