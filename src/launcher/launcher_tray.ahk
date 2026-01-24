@@ -244,14 +244,16 @@ ToggleAdminMode() {
             ; Self-elevate with --enable-admin-task flag
             try {
                 g_AdminToggleInProgress := true
-                SetTimer(() => (g_AdminToggleInProgress := false), -10000)  ; Auto-reset after 10s
+                ; No timer here - flag stays true until catch block or post-launch timer
 
                 if A_IsCompiled
                     Run('*RunAs "' A_ScriptFullPath '" --enable-admin-task')
                 else
                     Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --enable-admin-task')
-                ; Don't exit - the elevated instance will create the task and exit
-                ; We'll see the result on next tray menu open
+
+                ; Reset after brief delay (elevated instance exits quickly)
+                ; This fires AFTER Run() returns (which is immediate on UAC accept)
+                SetTimer(() => (g_AdminToggleInProgress := false), -3000)
                 ToolTip("Creating admin task...")
                 SetTimer(() => ToolTip(), -2000)
             } catch {
