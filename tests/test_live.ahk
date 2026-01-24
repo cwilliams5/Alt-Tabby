@@ -1624,27 +1624,32 @@ RunLiveTests() {
                             Sleep(50)
 
                         if (gBlTestReceived) {
-                            respObj2 := JXON_Load(gBlTestResponse)
-                            items2 := respObj2["payload"]["items"]
-                            afterClassBlCount := items2.Length
+                            try {
+                                respObj2 := JXON_Load(gBlTestResponse)
+                                items2 := respObj2["payload"]["items"]
+                                afterClassBlCount := items2.Length
 
-                            ; Count remaining windows with test class
-                            remainingWithClass := 0
-                            for _, item in items2 {
-                                if (item.Has("class") && item["class"] = testClass)
-                                    remainingWithClass++
-                            }
+                                ; Count remaining windows with test class
+                                remainingWithClass := 0
+                                for _, item in items2 {
+                                    if (item.Has("class") && item["class"] = testClass)
+                                        remainingWithClass++
+                                }
 
-                            Log("  After class blacklist: " afterClassBlCount " windows, " remainingWithClass " with test class")
+                                Log("  After class blacklist: " afterClassBlCount " windows, " remainingWithClass " with test class")
 
-                            if (remainingWithClass = 0 && afterClassBlCount < initialCount) {
-                                Log("PASS: Class blacklist removed windows")
-                                TestPassed++
-                            } else if (remainingWithClass < testClassCount) {
-                                Log("PASS: Class blacklist removed some windows (" (testClassCount - remainingWithClass) " of " testClassCount ")")
-                                TestPassed++
-                            } else {
-                                Log("FAIL: Class blacklist did not remove windows (expected 0, got " remainingWithClass ")")
+                                if (remainingWithClass = 0 && afterClassBlCount < initialCount) {
+                                    Log("PASS: Class blacklist removed windows")
+                                    TestPassed++
+                                } else if (remainingWithClass < testClassCount) {
+                                    Log("PASS: Class blacklist removed some windows (" (testClassCount - remainingWithClass) " of " testClassCount ")")
+                                    TestPassed++
+                                } else {
+                                    Log("FAIL: Class blacklist did not remove windows (expected 0, got " remainingWithClass ")")
+                                    TestErrors++
+                                }
+                            } catch as e {
+                                Log("FAIL: Class blacklist response parse error: " e.Message)
                                 TestErrors++
                             }
                         } else {
@@ -1675,19 +1680,24 @@ RunLiveTests() {
                             Sleep(50)
 
                         if (gBlTestReceived) {
-                            respObj3 := JXON_Load(gBlTestResponse)
-                            items3 := respObj3["payload"]["items"]
-                            restoredCount := items3.Length
+                            try {
+                                respObj3 := JXON_Load(gBlTestResponse)
+                                items3 := respObj3["payload"]["items"]
+                                restoredCount := items3.Length
 
-                            ; Windows should be back (via next winenum scan)
-                            ; Note: They may not be immediately back since winenum needs to rescan
-                            Log("  After restore: " restoredCount " windows (was " initialCount ")")
+                                ; Windows should be back (via next winenum scan)
+                                ; Note: They may not be immediately back since winenum needs to rescan
+                                Log("  After restore: " restoredCount " windows (was " initialCount ")")
 
-                            if (restoredCount >= afterClassBlCount) {
-                                Log("PASS: Blacklist restore works (IPC reload mechanism verified)")
-                                TestPassed++
-                            } else {
-                                Log("WARN: Restored count lower than expected (winenum may not have rescanned yet)")
+                                if (restoredCount >= afterClassBlCount) {
+                                    Log("PASS: Blacklist restore works (IPC reload mechanism verified)")
+                                    TestPassed++
+                                } else {
+                                    Log("WARN: Restored count lower than expected (winenum may not have rescanned yet)")
+                                }
+                            } catch as e {
+                                Log("FAIL: Blacklist restore response parse error: " e.Message)
+                                TestErrors++
                             }
                         }
 

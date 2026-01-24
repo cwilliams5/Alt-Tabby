@@ -335,6 +335,10 @@ Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev) {
 
 Store_OnMessage(line, hPipe := 0) {
     global gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj
+    global gStore_Server, gStore_LastClientMeta
+    global IPC_MSG_HELLO, IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION
+    global IPC_MSG_SET_PROJECTION_OPTS, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_PROJECTION_REQUEST
+    global IPC_MSG_RELOAD_BLACKLIST, IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
     obj := ""
     try obj := JXON_Load(line)
     catch {

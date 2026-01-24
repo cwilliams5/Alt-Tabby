@@ -327,7 +327,7 @@ RunGUITests() {
             GUI_AssertEq(msg["type"], IPC_MSG_SNAPSHOT_REQUEST, "Prewarm is snapshot request")
         } catch as e {
             GUI_Log("FAIL: JSON parse error in prewarm test: " e.Message)
-            GUI_Errors++
+            GUI_TestFailed++
         }
     }
 
@@ -440,7 +440,7 @@ RunGUITests() {
             GUI_AssertTrue(hasWSFlag, "Request has currentWorkspaceOnly")
         } catch as e {
             GUI_Log("FAIL: JSON parse error in workspace toggle test: " e.Message)
-            GUI_Errors++
+            GUI_TestFailed++
         }
     }
 

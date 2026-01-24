@@ -337,7 +337,7 @@ GUI_SortItemsByMRU() {
 ; ========================= SNAPSHOT/PROJECTION REQUESTS =========================
 
 GUI_RequestSnapshot() {
-    global gGUI_StoreClient
+    global gGUI_StoreClient, IPC_MSG_SNAPSHOT_REQUEST
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
@@ -347,7 +347,7 @@ GUI_RequestSnapshot() {
 
 ; Request projection with optional workspace filtering (for UseCurrentWSProjection mode)
 GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
-    global gGUI_StoreClient, gGUI_AwaitingToggleProjection
+    global gGUI_StoreClient, gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION_REQUEST
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
