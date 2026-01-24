@@ -322,8 +322,13 @@ RunGUITests() {
 
     GUI_AssertEq(gMockIPCMessages.Length, 1, "Prewarm request sent")
     if (gMockIPCMessages.Length > 0) {
-        msg := JXON_Load(gMockIPCMessages[1])
-        GUI_AssertEq(msg["type"], IPC_MSG_SNAPSHOT_REQUEST, "Prewarm is snapshot request")
+        try {
+            msg := JXON_Load(gMockIPCMessages[1])
+            GUI_AssertEq(msg["type"], IPC_MSG_SNAPSHOT_REQUEST, "Prewarm is snapshot request")
+        } catch as e {
+            GUI_Log("FAIL: JSON parse error in prewarm test: " e.Message)
+            GUI_Errors++
+        }
     }
 
     ; ----- Test 6: No prewarm when disabled -----
@@ -427,11 +432,16 @@ RunGUITests() {
 
     ; Verify request has currentWorkspaceOnly
     if (gMockIPCMessages.Length > msgCountBefore) {
-        lastMsg := JXON_Load(gMockIPCMessages[gMockIPCMessages.Length])
-        GUI_AssertEq(lastMsg["type"], IPC_MSG_PROJECTION_REQUEST, "Request type is projection_request")
-        opts := lastMsg["projectionOpts"]
-        hasWSFlag := (opts is Map) ? opts.Has("currentWorkspaceOnly") : opts.HasOwnProp("currentWorkspaceOnly")
-        GUI_AssertTrue(hasWSFlag, "Request has currentWorkspaceOnly")
+        try {
+            lastMsg := JXON_Load(gMockIPCMessages[gMockIPCMessages.Length])
+            GUI_AssertEq(lastMsg["type"], IPC_MSG_PROJECTION_REQUEST, "Request type is projection_request")
+            opts := lastMsg["projectionOpts"]
+            hasWSFlag := (opts is Map) ? opts.Has("currentWorkspaceOnly") : opts.HasOwnProp("currentWorkspaceOnly")
+            GUI_AssertTrue(hasWSFlag, "Request has currentWorkspaceOnly")
+        } catch as e {
+            GUI_Log("FAIL: JSON parse error in workspace toggle test: " e.Message)
+            GUI_Errors++
+        }
     }
 
     cfg.UseCurrentWSProjection := false  ; Restore default

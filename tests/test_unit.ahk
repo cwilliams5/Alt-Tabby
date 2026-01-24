@@ -67,6 +67,215 @@ RunUnitTests() {
     AssertEq(projZ.items[1].z, 1, "Z-order sorting (first item z=1)")
 
     ; ============================================================
+    ; JSON (JXON) Unit Tests
+    ; ============================================================
+    Log("`n--- JSON (JXON) Unit Tests ---")
+
+    ; Test 1: JXON_Load - simple object
+    jsonObj := '{"name":"test","value":42}'
+    try {
+        parsed := JXON_Load(jsonObj)
+        if (parsed["name"] = "test" && parsed["value"] = 42) {
+            Log("PASS: JXON_Load parses simple object correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load parsed wrong values: name=" parsed["name"] ", value=" parsed["value"])
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on valid JSON: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 2: JXON_Load - array
+    jsonArr := '[1, 2, 3, "four"]'
+    try {
+        parsed := JXON_Load(jsonArr)
+        if (parsed.Length = 4 && parsed[1] = 1 && parsed[4] = "four") {
+            Log("PASS: JXON_Load parses array correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load parsed wrong array values")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on valid array: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 3: JXON_Load - boolean and null
+    jsonBool := '{"yes":true,"no":false,"nothing":null}'
+    try {
+        parsed := JXON_Load(jsonBool)
+        if (parsed["yes"] = true && parsed["no"] = false && parsed["nothing"] = "") {
+            Log("PASS: JXON_Load parses true/false/null correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load parsed wrong boolean/null values")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on boolean/null JSON: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 4: JXON_Load - nested object
+    jsonNested := '{"outer":{"inner":"value"}}'
+    try {
+        parsed := JXON_Load(jsonNested)
+        if (parsed["outer"]["inner"] = "value") {
+            Log("PASS: JXON_Load parses nested objects correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load parsed wrong nested value")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on nested JSON: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 5: JXON_Load - escaped characters in string
+    ; Note: In AHK, we need to double-escape: \\ in AHK string = \ in JSON = escape char
+    jsonEscaped := '{"text":"line1\nline2\ttab\"quote\"","path":"C:\\Users"}'
+    try {
+        parsed := JXON_Load(jsonEscaped)
+        hasNewline := InStr(parsed["text"], "`n")
+        hasTab := InStr(parsed["text"], "`t")
+        hasQuote := InStr(parsed["text"], '"')
+        hasBackslash := InStr(parsed["path"], "\")
+        if (hasNewline && hasTab && hasQuote && hasBackslash) {
+            Log("PASS: JXON_Load handles escape sequences correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load escape handling: newline=" hasNewline ", tab=" hasTab ", quote=" hasQuote ", backslash=" hasBackslash)
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on escaped JSON: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 6: JXON_Load - empty object/array
+    try {
+        emptyObj := JXON_Load('{}')
+        emptyArr := JXON_Load('[]')
+        objIsMap := (emptyObj is Map)
+        arrIsArray := (emptyArr is Array) && emptyArr.Length = 0
+        if (objIsMap && arrIsArray) {
+            Log("PASS: JXON_Load handles empty {} and [] correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load empty handling: objIsMap=" objIsMap ", arrIsArray=" arrIsArray)
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on empty JSON: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 7: JXON_Load - whitespace handling
+    try {
+        wsJson := '  {  "key"  :  "value"  }  '
+        parsed := JXON_Load(wsJson)
+        if (parsed["key"] = "value") {
+            Log("PASS: JXON_Load handles extra whitespace correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load whitespace handling failed")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on whitespace JSON: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 8: JXON_Dump - simple object
+    testObj := Map("name", "test", "value", 42)
+    try {
+        dumped := JXON_Dump(testObj)
+        if (InStr(dumped, '"name"') && InStr(dumped, '"test"') && InStr(dumped, "42")) {
+            Log("PASS: JXON_Dump serializes Map correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Dump output missing expected content: " dumped)
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Dump threw error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 9: JXON_Dump - array
+    ; Note: JXON_Dump outputs 1/0 for booleans due to AHK's boolean representation
+    testArr := [1, "two", 3.14]
+    try {
+        dumped := JXON_Dump(testArr)
+        if (InStr(dumped, "[") && InStr(dumped, "1") && InStr(dumped, '"two"') && InStr(dumped, "3.14")) {
+            Log("PASS: JXON_Dump serializes array correctly")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Dump array output: " dumped)
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Dump threw error on array: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 10: Round-trip test - Load → Dump → Load
+    originalJson := '{"type":"projection","rev":123,"payload":{"items":[{"hwnd":1,"title":"Test"}]}}'
+    try {
+        parsed1 := JXON_Load(originalJson)
+        dumped := JXON_Dump(parsed1)
+        parsed2 := JXON_Load(dumped)
+
+        ; Verify key values survive round-trip
+        if (parsed2["type"] = "projection" && parsed2["rev"] = 123 && parsed2["payload"]["items"][1]["title"] = "Test") {
+            Log("PASS: JXON round-trip (Load→Dump→Load) preserves data")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON round-trip lost data")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON round-trip threw error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 11: JXON_Dump - null/empty string handling
+    try {
+        nullTest := Map("empty", "", "zero", 0)
+        dumped := JXON_Dump(nullTest)
+        if (InStr(dumped, "null") && InStr(dumped, ":0")) {
+            Log("PASS: JXON_Dump handles empty string as null and 0 as number")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Dump null/zero output: " dumped)
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Dump threw error on null/empty: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 12: JXON with special characters in keys/values
+    try {
+        specialJson := '{"key with spaces":"value","emoji":"🎉","unicode":"日本語"}'
+        parsed := JXON_Load(specialJson)
+        if (parsed.Has("key with spaces") && parsed["key with spaces"] = "value") {
+            Log("PASS: JXON_Load handles keys with spaces")
+            TestPassed++
+        } else {
+            Log("FAIL: JXON_Load failed on special keys")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JXON_Load threw error on special chars: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
     ; Config System Tests
     ; ============================================================
     Log("`n--- Config System Tests ---")
