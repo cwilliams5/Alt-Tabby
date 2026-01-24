@@ -71,6 +71,8 @@ WindowStore_EndScan(graceMs := "") {
             } else if (rec.missingSinceTick && (now - rec.missingSinceTick) >= ttl) {
                 ; Verify window is actually gone before removing
                 if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+                    ; Clean up icon pump tracking state before deleting (prevents HICON leak)
+                    try IconPump_CleanupWindow(hwnd)
                     gWS_Store.Delete(hwnd)
                     removed += 1
                     changed := true
@@ -275,6 +277,8 @@ WindowStore_PurgeBlacklisted() {
 
     ; Remove them
     for _, hwnd in toRemove {
+        ; Clean up icon pump tracking state before deleting (prevents HICON leak)
+        try IconPump_CleanupWindow(hwnd)
         gWS_Store.Delete(hwnd)
         removed += 1
     }

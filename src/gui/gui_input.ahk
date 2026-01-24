@@ -446,6 +446,7 @@ GUI_OnMouseLeave() {
 ; WM_MOUSELEAVE doesn't always fire reliably, so we poll
 
 GUI_StartHoverPolling() {
+    GUI_StopHoverPolling()  ; Stop any existing timer first (prevents duplication)
     SetTimer(_GUI_HoverPollTick, 100)  ; Check every 100ms
 }
 

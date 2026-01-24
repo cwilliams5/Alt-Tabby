@@ -195,8 +195,17 @@ _KSub_InitialPoll() {
 ; Stop subscription
 KomorebiSub_Stop() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Over, _KSub_Connected, _KSub_ClientPid
+    global _KSub_FallbackMode
 
+    ; Stop all timers
     SetTimer(KomorebiSub_Poll, 0)
+    SetTimer(_KSub_InitialPoll, 0)  ; Cancel one-shot timer if pending
+
+    ; Stop fallback timer if active
+    if (_KSub_FallbackMode) {
+        SetTimer(KomorebiSub_PollFallback, 0)
+        _KSub_FallbackMode := false
+    }
 
     if (_KSub_ClientPid) {
         try ProcessClose(_KSub_ClientPid)

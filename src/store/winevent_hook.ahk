@@ -23,6 +23,7 @@ global WinEventHook_BatchMs := 0
 
 ; State
 global _WEH_Hook := 0
+global _WEH_CallbackObj := 0              ; Callback object - MUST be global to prevent GC
 global _WEH_PendingHwnds := Map()         ; hwnd -> tick of last event
 global _WEH_LastProcessTick := 0
 global _WEH_TimerOn := false
@@ -74,8 +75,10 @@ WinEventHook_Start() {
     minEvent := 0x0003  ; EVENT_SYSTEM_FOREGROUND
     maxEvent := 0x800C  ; EVENT_OBJECT_NAMECHANGE
 
-    ; Create the callback
-    callback := CallbackCreate(_WEH_WinEventProc, "F", 7)
+    ; Create the callback - store globally to prevent GC (CRITICAL!)
+    ; If stored in a local variable, the callback can be garbage collected while
+    ; the hook is still active, causing crashes or silent failures.
+    _WEH_CallbackObj := CallbackCreate(_WEH_WinEventProc, "F", 7)
 
     ; Install out-of-context hook (WINEVENT_OUTOFCONTEXT = 0)
     ; This allows us to receive events from all processes
@@ -83,7 +86,7 @@ WinEventHook_Start() {
         "uint", minEvent,       ; eventMin
         "uint", maxEvent,       ; eventMax
         "ptr", 0,               ; hmodWinEventProc (0 for out-of-context)
-        "ptr", callback,        ; pfnWinEventProc
+        "ptr", _WEH_CallbackObj, ; pfnWinEventProc
         "uint", 0,              ; idProcess (0 = all)
         "uint", 0,              ; idThread (0 = all)
         "uint", 0,              ; dwFlags (WINEVENT_OUTOFCONTEXT)
@@ -102,7 +105,7 @@ WinEventHook_Start() {
 
 ; Stop and uninstall the hook
 WinEventHook_Stop() {
-    global _WEH_Hook, _WEH_TimerOn
+    global _WEH_Hook, _WEH_TimerOn, _WEH_CallbackObj
 
     if (_WEH_TimerOn) {
         SetTimer(_WEH_ProcessBatch, 0)
@@ -112,6 +115,12 @@ WinEventHook_Stop() {
     if (_WEH_Hook) {
         DllCall("user32\UnhookWinEvent", "ptr", _WEH_Hook)
         _WEH_Hook := 0
+    }
+
+    ; Free the callback object to prevent memory leak
+    if (_WEH_CallbackObj) {
+        CallbackFree(_WEH_CallbackObj)
+        _WEH_CallbackObj := 0
     }
 }
 

@@ -485,6 +485,8 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "store") {
 Store_OnExit(reason, code) {
     global gStore_Server
     ; Stop all timers and hooks before exit to prevent errors
+
+    ; Stop core timers
     try {
         SetTimer(Store_FullScan, 0)
     }
@@ -497,12 +499,34 @@ Store_OnExit(reason, code) {
     try {
         SetTimer(Store_ValidateExistenceTick, 0)
     }
+
+    ; Stop WinEventHook (frees callback too)
     try {
         WinEventHook_Stop()
     }
+
+    ; Stop MRU fallback timer
     try {
         SetTimer(MRU_Lite_Tick, 0)
     }
+
+    ; Stop pumps
+    try {
+        IconPump_Stop()
+    }
+    try {
+        ProcPump_Stop()
+    }
+
+    ; Stop Komorebi producers
+    try {
+        KomorebiSub_Stop()
+    }
+    try {
+        KomorebiLite_Stop()
+    }
+
+    ; Stop IPC server
     try {
         if (IsObject(gStore_Server)) {
             IPC_PipeServer_Stop(gStore_Server)

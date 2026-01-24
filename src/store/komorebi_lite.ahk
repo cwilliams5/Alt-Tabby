@@ -15,6 +15,10 @@ KomorebiLite_Init() {
     return true
 }
 
+KomorebiLite_Stop() {
+    SetTimer(KomorebiLite_Tick, 0)
+}
+
 KomorebiLite_Tick() {
     if !KomorebiLite_IsAvailable()
         return
