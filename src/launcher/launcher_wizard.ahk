@@ -132,9 +132,10 @@ WizardContinue() {
     ; Read saved choices
     try {
         choicesJson := FileRead(choicesFile, "UTF-8")
+        FileDelete(choicesFile)  ; Delete immediately after reading
         choices := JXON_Load(choicesJson)
-        FileDelete(choicesFile)
     } catch {
+        try FileDelete(choicesFile)  ; Safety cleanup if read succeeded but delete/parse failed
         return false
     }
 

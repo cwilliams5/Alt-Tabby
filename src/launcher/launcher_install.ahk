@@ -270,7 +270,9 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
             DeleteAdminTask()
             if (!CreateAdminTask(targetPath)) {
                 ; Task creation failed - disable admin mode to avoid broken state
-                TrayTip("Admin Mode Error", "Could not recreate admin task. Admin mode has been disabled.", "Icon!")
+                MsgBox("Could not recreate admin task after update.`n`n"
+                    "Admin mode has been disabled. You can re-enable it from the tray menu.",
+                    "Alt-Tabby - Admin Mode Error", "Icon!")
                 cfg.SetupRunAsAdmin := false
                 if (FileExist(targetConfigPath))
                     try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
