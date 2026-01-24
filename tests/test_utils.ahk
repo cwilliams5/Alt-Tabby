@@ -222,3 +222,36 @@ Test_OnCompiledStoreMessage(line, hPipe := 0) {
     global gCompiledStoreReceived
     gCompiledStoreReceived := true
 }
+
+; --- Shared Helper Functions ---
+
+; Join array elements with a separator
+_JoinArray(arr, sep) {
+    result := ""
+    for i, item in arr {
+        if (i > 1)
+            result .= sep
+        result .= item
+    }
+    return result
+}
+
+; Repeat a string n times
+_RepeatStr(str, count) {
+    result := ""
+    loop count
+        result .= str
+    return result
+}
+
+; Kill all running AltTabby.exe processes
+_Test_KillAllAltTabby() {
+    ; Use WMI to find and kill all AltTabby.exe processes
+    for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
+        try {
+            proc.Terminate()
+        }
+    }
+    ; Give processes time to fully exit
+    Sleep(500)
+}
