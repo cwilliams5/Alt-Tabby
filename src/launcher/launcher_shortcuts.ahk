@@ -77,6 +77,32 @@ _CreateShortcutForCurrentMode(lnkPath) {
     exePath := _Shortcut_GetEffectiveExePath()
     iconPath := _Shortcut_GetIconPath()
 
+    ; Check for conflicting shortcut from different installation
+    if (FileExist(lnkPath)) {
+        try {
+            shell := ComObject("WScript.Shell")
+            existing := shell.CreateShortcut(lnkPath)
+            existingTarget := existing.TargetPath
+
+            ; Get target to compare (in dev mode, compare scripts; in compiled, compare exes)
+            ourTarget := A_IsCompiled ? exePath : A_AhkPath
+
+            ; If shortcut points to a different location, warn user
+            if (StrLower(existingTarget) != StrLower(ourTarget)) {
+                result := MsgBox(
+                    "A shortcut 'Alt-Tabby' already exists pointing to:`n" existingTarget "`n`n"
+                    "Replace it with a shortcut to this installation?`n" ourTarget,
+                    "Alt-Tabby - Shortcut Conflict",
+                    "YesNo Icon?"
+                )
+                if (result = "No")
+                    return false
+                ; User chose Yes - continue to overwrite
+            }
+        }
+        ; If we can't read existing shortcut, proceed with overwrite
+    }
+
     try {
         shell := ComObject("WScript.Shell")
         shortcut := shell.CreateShortcut(lnkPath)

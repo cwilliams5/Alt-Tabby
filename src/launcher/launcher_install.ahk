@@ -14,8 +14,8 @@
 InstallToProgramFiles() {
     global cfg
 
-    ; Target: C:\Program Files\Alt-Tabby\
-    installDir := "C:\Program Files\Alt-Tabby"
+    ; Target: Program Files\Alt-Tabby (localized for non-English Windows)
+    installDir := A_ProgramFiles "\Alt-Tabby"
     srcExe := A_IsCompiled ? A_ScriptFullPath : ""
     srcDir := A_IsCompiled ? A_ScriptDir : ""
 
@@ -84,7 +84,7 @@ _Launcher_CheckInstallMismatch() {
 
     ; Also check well-known install location (handles fresh config case)
     ; This ensures we detect existing PF installs even with empty/fresh config
-    pfPath := "C:\Program Files\Alt-Tabby\AltTabby.exe"
+    pfPath := A_ProgramFiles "\Alt-Tabby\AltTabby.exe"
     if (installedPath = "" && FileExist(pfPath)) {
         installedPath := pfPath
     }
@@ -131,41 +131,69 @@ _Launcher_CheckInstallMismatch() {
             ; If we return, update failed - continue running from current location
         }
         ; "No" - continue running from current location
-    } else {
-        ; Current version is SAME or OLDER than installed
-        ; Use custom 3-button dialog: Yes (launch installed) / No (run from here once) / Always (run from here always)
-        result := _Launcher_ShowMismatchDialog(installedPath)
+    } else if (versionCompare = 0) {
+        ; Current version is SAME as installed - clearer message about duplicate installations
+        result := _Launcher_ShowMismatchDialog(installedPath,
+            "Alt-Tabby - Same Version Running",
+            "Alt-Tabby " currentVersion " is also installed at:",
+            "You have the same version in two locations. Launch from the installed location instead?")
 
-        if (result = "Yes") {
-            ; Launch installed version and exit
-            try {
-                Run('"' installedPath '"')
-                ExitApp()
-            } catch as e {
-                MsgBox("Could not launch installed version:`n" e.Message, "Alt-Tabby", "Icon!")
-            }
-        } else if (result = "Always") {
-            ; Update SetupExePath to current location - never ask again
-            cfg.SetupExePath := currentPath
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
-            g_MismatchDialogShown := false  ; Allow auto-update now that mismatch is resolved
-            ; Continue running from current location
-        }
-        ; "No" - continue running from current location (one-time)
+        ; Handle dialog result (same logic for same-version and older-version cases)
+        _Launcher_HandleMismatchResult(result, installedPath, currentPath)
+    } else {
+        ; Current version is OLDER than installed
+        ; Use custom 3-button dialog: Yes (launch installed) / No (run from here once) / Always (run from here always)
+        result := _Launcher_ShowMismatchDialog(installedPath,
+            "Alt-Tabby - Newer Version Installed",
+            "A newer version (" installedVersion ") is installed at:",
+            "Launch the newer installed version instead?")
+
+        ; Handle dialog result
+        _Launcher_HandleMismatchResult(result, installedPath, currentPath)
     }
+}
+
+; Common handler for mismatch dialog results
+_Launcher_HandleMismatchResult(result, installedPath, currentPath) {
+    global cfg, gConfigIniPath, g_MismatchDialogShown
+
+    if (result = "Yes") {
+        ; Launch installed version and exit
+        try {
+            Run('"' installedPath '"')
+            ExitApp()
+        } catch as e {
+            MsgBox("Could not launch installed version:`n" e.Message, "Alt-Tabby", "Icon!")
+        }
+    } else if (result = "Always") {
+        ; Update SetupExePath to current location - never ask again
+        cfg.SetupExePath := currentPath
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
+        g_MismatchDialogShown := false  ; Allow auto-update now that mismatch is resolved
+        ; Continue running from current location
+    }
+    ; "No" - continue running from current location (one-time)
 }
 
 ; Custom 3-button dialog for mismatch: Yes / No / Always run from here
 ; Returns: "Yes", "No", or "Always"
-_Launcher_ShowMismatchDialog(installedPath) {
+; Optional params allow customization for same-version vs older-version scenarios
+_Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question := "") {
     global cfg
 
-    mismatchGui := Gui("+AlwaysOnTop +Owner", "Alt-Tabby - Already Installed")
+    if (title = "")
+        title := "Alt-Tabby - Already Installed"
+    if (message = "")
+        message := "Alt-Tabby is already installed at:"
+    if (question = "")
+        question := "Launch the installed version instead?"
+
+    mismatchGui := Gui("+AlwaysOnTop +Owner", title)
     mismatchGui.SetFont("s10", "Segoe UI")
 
-    mismatchGui.AddText("w380", "Alt-Tabby is already installed at:")
+    mismatchGui.AddText("w380", message)
     mismatchGui.AddText("w380 cGray", installedPath)
-    mismatchGui.AddText("w380 y+15", "Launch the installed version instead?")
+    mismatchGui.AddText("w380 y+15", question)
 
     result := ""  ; Will be set by button clicks
 
@@ -287,8 +315,9 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         Sleep(1000)
 
         ; Bug 8 fix: Extended cleanup delay with retry for slow systems
+        ; Uses timeout instead of ping (ping fails on systems with ICMP blocked)
         ; First attempt after 4 seconds, retry after another 4 seconds if first fails
-        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 5 > nul && del "' backupPath '" 2>nul || (ping 127.0.0.1 -n 5 > nul && del "' backupPath '")'
+        cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '")'
         Run(cleanupCmd,, "Hide")
 
         Run('"' targetPath '"')

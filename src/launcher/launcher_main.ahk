@@ -361,12 +361,13 @@ _Launcher_ShouldSkipWizardForExistingInstall() {
     if (cfg.SetupFirstRunCompleted)
         return false
 
-    ; Check for Program Files installation
-    pfPath := "C:\Program Files\Alt-Tabby\AltTabby.exe"
-    pfConfigPath := "C:\Program Files\Alt-Tabby\config.ini"
+    ; Check for Program Files installation (localized for non-English Windows)
+    pfDir := A_ProgramFiles "\Alt-Tabby"
+    pfPath := pfDir "\AltTabby.exe"
+    pfConfigPath := pfDir "\config.ini"
 
     ; If running from Program Files, don't skip (let wizard show for fresh PF installs)
-    if (InStr(A_ScriptDir, "C:\Program Files\Alt-Tabby"))
+    if (InStr(A_ScriptDir, pfDir))
         return false
 
     ; Check if Program Files install exists with completed setup

@@ -10,6 +10,9 @@
 ; Task name constant - used by all task scheduler functions
 global ALTTABBY_TASK_NAME := "Alt-Tabby"
 
+; Guard to prevent concurrent update checks (auto-update timer + manual button)
+global g_UpdateCheckInProgress := false
+
 ; ============================================================
 ; VERSION MANAGEMENT
 ; ============================================================
@@ -246,6 +249,16 @@ _Shortcut_GetEffectiveExePath() {
 ; Check for updates and optionally offer to install
 ; showIfCurrent: If true, show message even when up to date
 CheckForUpdates(showIfCurrent := false) {
+    global g_UpdateCheckInProgress
+
+    ; Prevent concurrent update checks (auto-update timer + manual button race)
+    if (g_UpdateCheckInProgress) {
+        if (showIfCurrent)
+            TrayTip("Update Check", "An update check is already in progress.", "Iconi")
+        return
+    }
+    g_UpdateCheckInProgress := true
+
     currentVersion := GetAppVersion()
     apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
     whr := ""  ; Declare outside try for cleanup
@@ -261,8 +274,10 @@ CheckForUpdates(showIfCurrent := false) {
             whr := ""  ; Release COM BEFORE processing (we have the text)
 
             ; Parse JSON for tag_name and download URL
-            if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch))
+            if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
+                g_UpdateCheckInProgress := false
                 return
+            }
 
             latestVersion := tagMatch[1]
 
@@ -297,6 +312,7 @@ CheckForUpdates(showIfCurrent := false) {
             TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
     }
     whr := ""  ; Final safety - ensure release on all exit paths
+    g_UpdateCheckInProgress := false
 }
 
 ; Parse GitHub API response to find AltTabby.exe download URL
@@ -541,8 +557,9 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         Sleep(1000)
 
         ; Bug 8 fix: Extended cleanup delay with retry for slow systems
+        ; Uses timeout instead of ping (ping fails on systems with ICMP blocked)
         ; First attempt after 4 seconds, retry after another 4 seconds if first fails
-        cleanupCmd := 'cmd.exe /c ping 127.0.0.1 -n 5 > nul && del "' oldExePath '" 2>nul || (ping 127.0.0.1 -n 5 > nul && del "' oldExePath '")'
+        cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' oldExePath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' oldExePath '")'
         Run(cleanupCmd,, "Hide")
 
         Run('"' targetExePath '"')
@@ -591,7 +608,8 @@ _Update_CleanupStaleTempFiles() {
     staleFiles := [
         A_Temp "\alttabby_wizard.json",
         A_Temp "\alttabby_update.txt",
-        A_Temp "\alttabby_install_update.txt"
+        A_Temp "\alttabby_install_update.txt",
+        A_Temp "\alttabby_admin_toggle.lock"
     ]
 
     for filePath in staleFiles {
