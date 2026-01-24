@@ -148,6 +148,10 @@ _GUI_StoreHealthCheck() {
             ToolTip("Alt-Tabby: Reconnecting to store... (" gGUI_ReconnectAttempts "/" maxReconnectAttempts ")")
             SetTimer(() => ToolTip(), -2000)
 
+            ; Defensive close before reconnect (in case of stale handle)
+            if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
+                IPC_PipeClient_Close(gGUI_StoreClient)
+
             gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
             if (gGUI_StoreClient.hPipe) {
                 ; Reconnected successfully
@@ -171,6 +175,11 @@ _GUI_StoreHealthCheck() {
 
             ; Wait a moment for store to start, then try connecting
             Sleep(1000)
+
+            ; Defensive close before reconnect (in case of stale handle)
+            if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
+                IPC_PipeClient_Close(gGUI_StoreClient)
+
             gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
             if (gGUI_StoreClient.hPipe) {
                 hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }

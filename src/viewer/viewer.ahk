@@ -1028,7 +1028,14 @@ _Viewer_ShowToast(message) {
     }
 }
 
+; OnExit wrapper for viewer cleanup
+_Viewer_OnExitWrapper(reason, code) {
+    _Viewer_Shutdown()
+    return 0
+}
+
 ; Auto-init only if running standalone or if mode is "viewer"
 if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "viewer") {
     Viewer_Init()
+    OnExit(_Viewer_OnExitWrapper)
 }

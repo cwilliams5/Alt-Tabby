@@ -724,10 +724,42 @@ WindowStore_GetExeIconCopy(exePath) {
 }
 
 ; Store master icon for exe (store owns it, don't destroy)
+; Cache limited to 100 entries to prevent unbounded memory growth
 WindowStore_ExeIconCachePut(exePath, hIcon) {
     global gWS_ExeIconCache
-    if (hIcon)
-        gWS_ExeIconCache[exePath] := hIcon
+    if (!hIcon)
+        return
+    ; Evict oldest entry if at max (100 entries)
+    if (gWS_ExeIconCache.Count >= 100) {
+        for oldPath, oldIcon in gWS_ExeIconCache {
+            if (oldIcon)
+                try DllCall("user32\DestroyIcon", "ptr", oldIcon)
+            gWS_ExeIconCache.Delete(oldPath)
+            break  ; Only remove one entry
+        }
+    }
+    gWS_ExeIconCache[exePath] := hIcon
+}
+
+; Clean up all cached exe icons - call on shutdown
+WindowStore_CleanupExeIconCache() {
+    global gWS_ExeIconCache
+    for exePath, hIcon in gWS_ExeIconCache {
+        if (hIcon)
+            try DllCall("user32\DestroyIcon", "ptr", hIcon)
+    }
+    gWS_ExeIconCache := Map()
+}
+
+; Clean up all per-window icons in the store
+WindowStore_CleanupAllIcons() {
+    global gWS_Store
+    for hwnd, rec in gWS_Store {
+        if (rec.HasOwnProp("iconHicon") && rec.iconHicon) {
+            try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
+            rec.iconHicon := 0
+        }
+    }
 }
 
 ; ============================================================

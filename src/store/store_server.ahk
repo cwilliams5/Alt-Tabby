@@ -541,6 +541,14 @@ Store_OnExit(reason, code) {
         KomorebiLite_Stop()
     }
 
+    ; Clean up icons before exit (prevents HICON resource leaks)
+    try {
+        WindowStore_CleanupAllIcons()
+    }
+    try {
+        WindowStore_CleanupExeIconCache()
+    }
+
     ; Stop IPC server
     try {
         if (IsObject(gStore_Server)) {

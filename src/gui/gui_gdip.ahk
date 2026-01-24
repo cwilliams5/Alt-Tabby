@@ -29,6 +29,38 @@ Gdip_Startup() {
     return 0
 }
 
+; Shutdown GDI+ and clean up all resources
+Gdip_Shutdown() {
+    global gGdip_Token, gGdip_G, gGdip_BackHdc, gGdip_BackHBM, gGdip_BackPrev
+
+    ; Clean cached brushes/fonts first
+    Gdip_DisposeResources()
+
+    ; Delete graphics object
+    if (gGdip_G) {
+        try DllCall("gdiplus\GdipDeleteGraphics", "ptr", gGdip_G)
+        gGdip_G := 0
+    }
+
+    ; Clean up backbuffer
+    if (gGdip_BackHBM) {
+        if (gGdip_BackHdc && gGdip_BackPrev)
+            try DllCall("gdi32\SelectObject", "ptr", gGdip_BackHdc, "ptr", gGdip_BackPrev)
+        try DllCall("gdi32\DeleteObject", "ptr", gGdip_BackHBM)
+        gGdip_BackHBM := 0
+    }
+    if (gGdip_BackHdc) {
+        try DllCall("gdi32\DeleteDC", "ptr", gGdip_BackHdc)
+        gGdip_BackHdc := 0
+    }
+
+    ; Shutdown GDI+ token last
+    if (gGdip_Token) {
+        try DllCall("gdiplus\GdiplusShutdown", "uptr", gGdip_Token)
+        gGdip_Token := 0
+    }
+}
+
 ; Ensure backbuffer exists at specified size
 Gdip_EnsureBackbuffer(wPhys, hPhys) {
     global gGdip_BackHdc, gGdip_BackHBM, gGdip_BackPrev, gGdip_BackW, gGdip_BackH, gGdip_G

@@ -66,18 +66,31 @@ IPC_PipeServer_Broadcast(server, msgText) {
     bytes := _IPC_StrToUtf8(msgText)
     buf := bytes.buf
     len := bytes.len
+
+    ; Snapshot handles atomically to prevent race with timer callback
+    Critical "On"
+    handles := []
+    for hPipe, _ in server.clients
+        handles.Push(hPipe)
+    Critical "Off"
+
     dead := []
     sent := 0
-    for hPipe, _ in server.clients {
+    for _, hPipe in handles {
         if (!_IPC_WritePipe(hPipe, buf, len))
             dead.Push(hPipe)
         else
             sent += 1
     }
+
+    ; Cleanup dead handles atomically
+    Critical "On"
     for _, h in dead {
         server.clients.Delete(h)
         _IPC_CloseHandle(h)
     }
+    Critical "Off"
+
     return sent
 }
 
@@ -140,10 +153,15 @@ IPC_PipeClient_Close(client) {
 ; ============================ Server internals =============================
 
 IPC__ServerTick(server) {
-    ; Check pending pipe instances for connections, read from clients.
-    _IPC_Server_AcceptPending(server)
-    activity := _IPC_Server_ReadClients(server)
-    _IPC_Server_AdjustTimer(server, activity)
+    ; Wrap in Critical to prevent race conditions with Broadcast
+    Critical "On"
+    try {
+        ; Check pending pipe instances for connections, read from clients.
+        _IPC_Server_AcceptPending(server)
+        activity := _IPC_Server_ReadClients(server)
+        _IPC_Server_AdjustTimer(server, activity)
+    }
+    Critical "Off"
 }
 
 _IPC_Server_AddPending(server) {
