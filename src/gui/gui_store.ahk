@@ -18,7 +18,10 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     obj := ""
     try {
         obj := JXON_Load(line)
-    } catch {
+    } catch as err {
+        ; Log malformed JSON when diagnostics enabled (helps debug IPC issues)
+        preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
+        _GUI_LogEvent("JSON parse error: " err.Message " | content: " preview)
         return
     }
 
