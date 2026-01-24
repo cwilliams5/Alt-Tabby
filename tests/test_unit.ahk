@@ -67,6 +67,37 @@ RunUnitTests() {
     AssertEq(projZ.items[1].z, 1, "Z-order sorting (first item z=1)")
 
     ; ============================================================
+    ; Race Condition Prevention Tests
+    ; ============================================================
+    Log("`n--- Race Condition Prevention Tests ---")
+
+    ; Test: _WS_BumpRev atomicity - rev should increment exactly once
+    global gWS_Rev
+    startRev := gWS_Rev
+    _WS_BumpRev("test")
+    AssertEq(gWS_Rev, startRev + 1, "_WS_BumpRev increments rev exactly once")
+
+    ; Test: _WS_BumpRev records source in diagnostics
+    global gWS_DiagSource
+    prevCount := gWS_DiagSource.Has("test") ? gWS_DiagSource["test"] : 0
+    _WS_BumpRev("test")
+    AssertEq(gWS_DiagSource["test"], prevCount + 1, "_WS_BumpRev records diagnostic source")
+
+    ; Test: Z-queue deduplication - same hwnd shouldn't be added twice
+    WindowStore_ClearZQueue()
+    global gWS_ZQueue
+    WindowStore_EnqueueForZ(99999)
+    WindowStore_EnqueueForZ(99999)  ; Duplicate
+    AssertEq(gWS_ZQueue.Length, 1, "Z-queue deduplication prevents duplicates")
+
+    ; Test: Z-queue clear empties both queue and set
+    WindowStore_EnqueueForZ(88888)
+    WindowStore_ClearZQueue()
+    global gWS_ZQueueSet
+    AssertEq(gWS_ZQueue.Length, 0, "Z-queue clear empties queue")
+    AssertEq(gWS_ZQueueSet.Count, 0, "Z-queue clear empties set")
+
+    ; ============================================================
     ; JSON (JXON) Unit Tests
     ; ============================================================
     Log("`n--- JSON (JXON) Unit Tests ---")

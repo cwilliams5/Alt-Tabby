@@ -58,6 +58,7 @@ global gGUI_PendingShell := ""
 global gGUI_PendingTempFile := ""
 global gGUI_EventBuffer := []
 global gGUI_LastLocalMRUTick := 0
+global gGUI_FlushStartTick := 0  ; For tick-based flushing wait (race condition fix)
 
 ; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
 global gINT_BypassMode := false
@@ -705,6 +706,64 @@ RunGUITests() {
     ; Toggle to "all" - should show ALL 12
     GUI_ToggleWorkspaceMode()
     GUI_AssertEq(_GUI_GetDisplayItems().Length, 12, "Bug3: Toggle to all shows ALL 12 items")
+
+    ; ============================================================
+    ; RACE CONDITION PREVENTION TESTS
+    ; ============================================================
+
+    ; ----- Test: GUI_GetValidatedSel clamps selection to bounds -----
+    GUI_Log("Test: GUI_GetValidatedSel clamps out-of-bounds selection")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5, 2)
+    gGUI_FrozenItems := gGUI_Items
+
+    ; Test: Selection too high gets clamped
+    gGUI_Sel := 10  ; Out of bounds
+    gGUI_State := "IDLE"
+    validSel := GUI_GetValidatedSel()
+    GUI_AssertEq(validSel, 5, "GetValidatedSel clamps high selection to list length")
+    GUI_AssertEq(gGUI_Sel, 5, "GetValidatedSel updates gGUI_Sel")
+
+    ; Test: Selection too low gets clamped
+    gGUI_Sel := 0
+    validSel := GUI_GetValidatedSel()
+    GUI_AssertEq(validSel, 1, "GetValidatedSel clamps low selection to 1")
+
+    ; Test: Empty list returns 0
+    gGUI_Items := []
+    gGUI_Sel := 5
+    validSel := GUI_GetValidatedSel()
+    GUI_AssertEq(validSel, 0, "GetValidatedSel returns 0 for empty list")
+
+    ; Test: Uses FrozenItems during ACTIVE state
+    gGUI_Items := CreateTestItems(10, 5)
+    gGUI_FrozenItems := CreateTestItems(3, 1)  ; Smaller frozen list
+    gGUI_State := "ACTIVE"
+    gGUI_Sel := 8  ; Out of bounds for FrozenItems
+    validSel := GUI_GetValidatedSel()
+    GUI_AssertEq(validSel, 3, "GetValidatedSel uses FrozenItems during ACTIVE")
+
+    ; ----- Test: Selection survives delta that removes items -----
+    GUI_Log("Test: Selection survives delta that removes items")
+    ResetGUIState()
+    cfg.FreezeWindowList := false  ; Live mode
+    gGUI_Items := CreateTestItems(10, 5)
+    gGUI_Sel := 8  ; Select item 8
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    gGUI_OverlayVisible := true
+
+    ; Delta removes items, list shrinks to 5
+    smallerItems := CreateTestItems(5, 2)
+    deltaMsg := JXON_Dump({ type: IPC_MSG_SNAPSHOT, rev: 60, payload: { items: smallerItems } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    ; Selection should be clamped to new list size
+    GUI_AssertTrue(gGUI_Sel <= 5, "Selection clamped after list shrinks (sel=" gGUI_Sel ")")
+
+    ; Restore
+    cfg.FreezeWindowList := true
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Test Summary ===")

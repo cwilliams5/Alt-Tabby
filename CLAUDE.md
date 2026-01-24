@@ -199,6 +199,107 @@ GUI_OnStoreMessage(line) {
   ```
 - This caused a bug where all config values were 0/false because `IsSet()` returned true for initialized-to-zero globals
 
+### Race Conditions and Critical Sections (CRITICAL)
+AHK v2 doesn't have true threads, but **timers and hotkeys CAN interrupt each other** unless prevented. This causes race conditions when shared state is modified.
+
+**When to use `Critical "On"`:**
+1. **Incrementing counters**: `gRev += 1` can be interrupted mid-operation
+2. **Check-then-act patterns**: `if (!map.Has(k)) { map[k] := v }` is not atomic
+3. **Map iteration during modification**: snapshot keys first, then iterate
+4. **Focus/selection state transitions**: old state may not be cleared properly
+
+**Pattern for atomic operations:**
+```ahk
+; WRONG - can be interrupted between check and insert
+if (!gQueue.Has(hwnd)) {
+    gQueue.Push(hwnd)     ; Another timer could insert between these lines
+    gQueueSet[hwnd] := true
+}
+
+; CORRECT - wrap in Critical
+Critical "On"
+if (!gQueue.Has(hwnd)) {
+    gQueue.Push(hwnd)
+    gQueueSet[hwnd] := true
+}
+Critical "Off"
+```
+
+**Pattern for atomic helpers:**
+```ahk
+; Create helper functions for frequently-used atomic operations
+_WS_BumpRev(source) {
+    Critical "On"
+    global gWS_Rev
+    gWS_Rev += 1
+    _WS_DiagBump(source)
+    Critical "Off"
+}
+```
+
+**Pattern for safe Map iteration:**
+```ahk
+; WRONG - client may disconnect during iteration
+for hPipe, _ in gServer.clients {
+    SendToClient(hPipe, msg)  ; Client may be removed mid-loop
+}
+
+; CORRECT - snapshot handles first
+Critical "On"
+handles := []
+for hPipe, _ in gServer.clients
+    handles.Push(hPipe)
+Critical "Off"
+
+for _, hPipe in handles {
+    SendToClient(hPipe, msg)  ; Safe - iterating copy
+}
+```
+
+**Avoid static variables in timer callbacks:**
+```ahk
+; WRONG - static persists across invocations, can leak state
+_ProcessBuffer() {
+    static waitCount := 0
+    if (waitCount < 3) {
+        waitCount++      ; If timer is cancelled, waitCount stays non-zero
+        SetTimer(..., -10)
+        return
+    }
+    waitCount := 0  ; Only reset on success path
+}
+
+; CORRECT - use tick-based timing
+global gFlushStartTick := 0
+
+_StartFlush() {
+    gFlushStartTick := A_TickCount
+    SetTimer(_ProcessBuffer, -1)
+}
+
+_ProcessBuffer() {
+    elapsed := A_TickCount - gFlushStartTick
+    if (elapsed < 30) {
+        SetTimer(_ProcessBuffer, -10)
+        return
+    }
+    ; Process...
+}
+```
+
+**Don't forget `Critical "Off"` at ALL exit points:**
+```ahk
+for _, hwnd in hwnds {
+    Critical "On"
+    if (!WindowExists(hwnd)) {
+        Critical "Off"  ; MUST have this before continue!
+        continue
+    }
+    ; ... processing ...
+    Critical "Off"  ; At end of loop body
+}
+```
+
 ### Trust Test Failures
 - **When tests fail, investigate the root cause - don't dismiss failures as "timing issues" or "environment-specific"**
 - If tests passed before a change and fail after, the change introduced a regression
