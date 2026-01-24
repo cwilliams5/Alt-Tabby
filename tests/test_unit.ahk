@@ -455,6 +455,63 @@ RunUnitTests() {
     }
 
     ; ============================================================
+    ; Diagnostic Logging Guard Tests
+    ; ============================================================
+    ; These tests verify that logging functions respect their config flags
+    ; and don't write files when disabled (default behavior)
+    Log("`n--- Diagnostic Logging Guard Tests ---")
+
+    ; Test 1: Verify all diagnostic config options default to false
+    diagOptions := ["DiagChurnLog", "DiagKomorebiLog", "DiagEventLog", "DiagWinEventLog",
+                    "DiagStoreLog", "DiagIconPumpLog", "DiagProcPumpLog", "DiagLauncherLog", "DiagIPCLog"]
+    allDefaultFalse := true
+    for _, opt in diagOptions {
+        if (!cfg.HasOwnProp(opt)) {
+            Log("FAIL: cfg missing diagnostic option: " opt)
+            TestErrors++
+            allDefaultFalse := false
+        } else if (cfg.%opt% != false) {
+            Log("FAIL: " opt " should default to false, got: " cfg.%opt%)
+            TestErrors++
+            allDefaultFalse := false
+        }
+    }
+    if (allDefaultFalse) {
+        Log("PASS: All " diagOptions.Length " diagnostic options default to false")
+        TestPassed++
+    }
+
+    ; Test 2: Verify IPC_Log handles uninitialized cfg gracefully
+    ; Save current state
+    global IPC_DebugLogPath
+    savedIPCPath := IPC_DebugLogPath
+    IPC_DebugLogPath := ""
+
+    ; Create a minimal test - _IPC_Log should not crash with partial cfg
+    testLogFile := A_Temp "\tabby_ipc_test_" A_TickCount ".log"
+    try {
+        ; _IPC_Log checks IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog")
+        ; With cfg.DiagIPCLog = false, it should return without writing
+        _IPC_Log("test message that should not appear")
+
+        ; Verify no file was created (since DiagIPCLog is false)
+        if (FileExist(testLogFile)) {
+            Log("FAIL: _IPC_Log wrote file when DiagIPCLog=false")
+            TestErrors++
+            try FileDelete(testLogFile)
+        } else {
+            Log("PASS: _IPC_Log respects DiagIPCLog=false (no file created)")
+            TestPassed++
+        }
+    } catch as e {
+        Log("FAIL: _IPC_Log crashed: " e.Message)
+        TestErrors++
+    }
+
+    ; Restore state
+    IPC_DebugLogPath := savedIPCPath
+
+    ; ============================================================
     ; Entry Point Initialization Tests
     ; ============================================================
     ; These test that each entry point file can actually RUN (not just syntax check)

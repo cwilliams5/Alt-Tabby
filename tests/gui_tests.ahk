@@ -75,6 +75,9 @@ global cfg := {
     GUI_ScrollKeepHighlightOnTop: false,
     DebugAltTabTooltips: false,
     DiagEventLog: false,  ; Disable event logging during tests
+    DiagProcPumpLog: false,
+    DiagLauncherLog: false,
+    DiagIPCLog: false,
     KomorebicExe: ""
 }
 
