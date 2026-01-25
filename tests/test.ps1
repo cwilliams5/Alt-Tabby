@@ -14,7 +14,7 @@ if (-not $live -and $remainingArgs) {
     foreach ($arg in $remainingArgs) {
         if ($arg -match '^-{1,2}live$') {
             $live = $true
-            Write-Host "[test.ps1] Detected --live in unparsed args (use -File for proper parsing)" -ForegroundColor DarkYellow
+            Write-Host "[test.ps1] WARNING: Detected --live in unparsed args. STOP using -Command, use -File instead: powershell -File .\tests\test.ps1 --live" -ForegroundColor Red
             break
         }
     }
