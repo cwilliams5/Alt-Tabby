@@ -306,6 +306,211 @@ RunUnitTests_Core() {
         TestErrors++
     }
 
+    ; Test 13: JXON_Load - Unicode escape sequences (\uXXXX)
+    ; Note: In AHK v2 single-quoted strings, backslashes are literal (no escaping)
+    ; So '\u0041' is literally backslash-u-0041, which is valid JSON unicode escape
+    Log("Testing JSON unicode escape sequences...")
+    try {
+        ; Test basic BMP character: \u0041 = 'A'
+        jsonA := '{"char":"\u0041"}'
+        parsedA := JXON_Load(jsonA)
+        if (parsedA["char"] = "A") {
+            Log("PASS: \u0041 decodes to 'A'")
+            TestPassed++
+        } else {
+            Log("FAIL: \u0041 expected 'A', got '" parsedA["char"] "'")
+            TestErrors++
+        }
+
+        ; Test accented character: \u00E9 = 'é'
+        jsonAccent := '{"accent":"caf\u00E9"}'
+        parsedAccent := JXON_Load(jsonAccent)
+        if (parsedAccent["accent"] = "café") {
+            Log("PASS: \u00E9 decodes to 'é' (in context)")
+            TestPassed++
+        } else {
+            Log("FAIL: \u00E9 expected 'café', got '" parsedAccent["accent"] "'")
+            TestErrors++
+        }
+
+        ; Test CJK character: \u4E2D = '中'
+        jsonCJK := '{"cjk":"\u4E2D"}'
+        parsedCJK := JXON_Load(jsonCJK)
+        if (parsedCJK["cjk"] = "中") {
+            Log("PASS: \u4E2D decodes to '中'")
+            TestPassed++
+        } else {
+            Log("FAIL: \u4E2D expected '中', got '" parsedCJK["cjk"] "'")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: JSON unicode escape test threw error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Blacklist Wildcard Matching Tests
+    ; ============================================================
+    Log("`n--- Blacklist Wildcard Matching Tests ---")
+
+    ; Test _BL_WildcardMatch edge cases
+    Log("Testing _BL_WildcardMatch edge cases...")
+
+    ; Test 1: * matches any string
+    if (_BL_WildcardMatch("test", "*")) {
+        Log("PASS: * matches any string")
+        TestPassed++
+    } else {
+        Log("FAIL: * should match any string")
+        TestErrors++
+    }
+
+    ; Test 2: * matches empty string
+    if (_BL_WildcardMatch("", "*")) {
+        Log("PASS: * matches empty string")
+        TestPassed++
+    } else {
+        Log("FAIL: * should match empty string")
+        TestErrors++
+    }
+
+    ; Test 3: ? matches single character
+    if (_BL_WildcardMatch("a", "?")) {
+        Log("PASS: ? matches single char")
+        TestPassed++
+    } else {
+        Log("FAIL: ? should match single char")
+        TestErrors++
+    }
+
+    ; Test 4: ? does NOT match multiple characters
+    if (!_BL_WildcardMatch("ab", "?")) {
+        Log("PASS: ? does not match two chars")
+        TestPassed++
+    } else {
+        Log("FAIL: ? should not match two chars")
+        TestErrors++
+    }
+
+    ; Test 5: Wildcard with literal dot (regex special char)
+    if (_BL_WildcardMatch("test.exe", "*.exe")) {
+        Log("PASS: wildcard with literal dot works")
+        TestPassed++
+    } else {
+        Log("FAIL: *.exe should match test.exe")
+        TestErrors++
+    }
+
+    ; Test 6: Literal brackets (regex special char)
+    if (_BL_WildcardMatch("[Bracket]", "[Bracket]")) {
+        Log("PASS: literal brackets match")
+        TestPassed++
+    } else {
+        Log("FAIL: literal brackets should match")
+        TestErrors++
+    }
+
+    ; Test 7: Empty pattern returns false
+    if (!_BL_WildcardMatch("test", "")) {
+        Log("PASS: empty pattern returns false")
+        TestPassed++
+    } else {
+        Log("FAIL: empty pattern should return false")
+        TestErrors++
+    }
+
+    ; Test 8: Case insensitivity
+    if (_BL_WildcardMatch("TEST", "test") && _BL_WildcardMatch("test", "TEST")) {
+        Log("PASS: matching is case-insensitive")
+        TestPassed++
+    } else {
+        Log("FAIL: matching should be case-insensitive")
+        TestErrors++
+    }
+
+    ; Test 9: Plus sign (regex special char)
+    if (_BL_WildcardMatch("C++", "C++")) {
+        Log("PASS: literal + sign matches")
+        TestPassed++
+    } else {
+        Log("FAIL: literal + sign should match")
+        TestErrors++
+    }
+
+    ; Test 10: Dollar sign and caret (regex special chars)
+    if (_BL_WildcardMatch("$price^", "$price^")) {
+        Log("PASS: literal $ and ^ match")
+        TestPassed++
+    } else {
+        Log("FAIL: literal $ and ^ should match")
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Alt-Tab Eligibility Code Inspection Tests
+    ; ============================================================
+    Log("`n--- Alt-Tab Eligibility Code Inspection Tests ---")
+    Log("Testing _BL_IsAltTabEligible code structure...")
+
+    blPath := A_ScriptDir "\..\src\shared\blacklist.ahk"
+    if (!FileExist(blPath)) {
+        Log("SKIP: blacklist.ahk not found at " blPath)
+    } else {
+        blCode := FileRead(blPath)
+
+        ; Verify all eligibility checks exist in the code
+        eligibilityChecks := [
+            {pattern: "WS_CHILD", name: "WS_CHILD check"},
+            {pattern: "WS_EX_TOOLWINDOW", name: "WS_EX_TOOLWINDOW check"},
+            {pattern: "WS_EX_NOACTIVATE", name: "WS_EX_NOACTIVATE check"},
+            {pattern: "GW_OWNER", name: "owner window check"},
+            {pattern: "IsWindowVisible", name: "visibility check"},
+            {pattern: "DwmGetWindowAttribute", name: "DWM cloaking check"},
+            {pattern: "WS_EX_APPWINDOW", name: "WS_EX_APPWINDOW for owned windows"},
+            {pattern: "IsIconic", name: "minimized state check"}
+        ]
+
+        allChecksPresent := true
+        for _, check in eligibilityChecks {
+            if (InStr(blCode, check.pattern)) {
+                Log("PASS: _BL_IsAltTabEligible has " check.name)
+                TestPassed++
+            } else {
+                Log("FAIL: _BL_IsAltTabEligible missing " check.name " (" check.pattern ")")
+                TestErrors++
+                allChecksPresent := false
+            }
+        }
+    }
+
+    ; ============================================================
+    ; WinEventHook Empty Title Filter Test
+    ; ============================================================
+    Log("`n--- WinEventHook Empty Title Filter Test ---")
+    Log("Testing WinEventHook filters empty-title windows from focus tracking...")
+
+    wehPath := A_ScriptDir "\..\src\store\winevent_hook.ahk"
+    if (!FileExist(wehPath)) {
+        Log("SKIP: winevent_hook.ahk not found at " wehPath)
+    } else {
+        wehCode := FileRead(wehPath)
+
+        ; Check for the critical empty title filter
+        ; The fix checks for empty title and returns early to prevent Task Switching UI poisoning
+        hasEmptyTitleCheck := InStr(wehCode, 'if (title = "")') || InStr(wehCode, 'if (title = "")')
+        hasFocusSkipComment := InStr(wehCode, "FOCUS SKIP") || InStr(wehCode, "no title")
+        hasReturnAfterCheck := InStr(wehCode, "CRITICAL: Skip windows with empty titles")
+
+        if (hasEmptyTitleCheck && (hasFocusSkipComment || hasReturnAfterCheck)) {
+            Log("PASS: WinEventHook filters windows with empty titles (Task Switching UI fix)")
+            TestPassed++
+        } else {
+            Log("FAIL: WinEventHook should filter empty-title windows to prevent focus poisoning")
+            Log("  hasEmptyTitleCheck=" hasEmptyTitleCheck ", hasFocusSkipComment=" hasFocusSkipComment)
+            TestErrors++
+        }
+    }
+
     ; ============================================================
     ; Config System Tests
     ; ============================================================
