@@ -775,6 +775,7 @@ _Update_ContinueFromElevation() {
         ; Validate source path is in TEMP directory (expected from download)
         if (!InStr(newExePath, A_Temp)) {
             MsgBox("Invalid update source path (not in temp):`n" newExePath, "Alt-Tabby", "Icon!")
+            try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false
         }
 
@@ -784,6 +785,7 @@ _Update_ContinueFromElevation() {
         SplitPath(targetExePath, &targetName)
         if (!RegExMatch(targetName, "i)\.exe$") || !InStr(StrLower(targetName), "tabby")) {
             MsgBox("Invalid update target path:`n" targetExePath, "Alt-Tabby", "Icon!")
+            try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false
         }
 

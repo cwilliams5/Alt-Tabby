@@ -288,6 +288,7 @@ _AdminToggle_CheckComplete() {
         ; Timeout - assume something went wrong
         g_AdminToggleInProgress := false
         try FileDelete(g_AdminToggleLockFile)
+        TrayTip("Admin Mode", "Operation timed out. Please try again.`nIf the problem persists, restart Alt-Tabby.", "Icon!")
         return
     }
 

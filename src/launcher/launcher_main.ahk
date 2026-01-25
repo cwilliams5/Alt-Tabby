@@ -60,9 +60,17 @@ Launcher_Init() {
         )
         if (result = "Yes") {
             _Launcher_KillExistingInstances()
-            Sleep(TIMING_MUTEX_RELEASE_WAIT)  ; Wait for mutex to be released
-            if (!_Launcher_AcquireMutex()) {
-                MsgBox("Could not restart Alt-Tabby. Please try again.", "Alt-Tabby", "Icon!")
+            ; Retry mutex acquisition with increasing delays for slow systems
+            acquired := false
+            loop 3 {
+                Sleep(TIMING_MUTEX_RELEASE_WAIT * A_Index)  ; 500ms, 1000ms, 1500ms
+                if (_Launcher_AcquireMutex()) {
+                    acquired := true
+                    break
+                }
+            }
+            if (!acquired) {
+                MsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", "Alt-Tabby", "Icon!")
                 ExitApp()
             }
             ; Continue with normal startup below
@@ -223,9 +231,10 @@ _ShouldRedirectToScheduledTask() {
             try {
                 hoursSince := DateDiff(A_Now, lastRepairTime, "Hours")
                 if (hoursSince < 24) {
-                    ; Within cooldown period - silently disable admin mode and continue
+                    ; Within cooldown period - disable admin mode and notify user
                     cfg.SetupRunAsAdmin := false
                     try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+                    TrayTip("Admin Mode Disabled", "The scheduled task needs repair.`nRe-enable from tray menu after 24 hours.", "Icon!")
                     return false
                 }
             }

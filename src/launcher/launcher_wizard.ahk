@@ -117,17 +117,21 @@ WizardApply(*) {
                 SplitPath(A_ScriptFullPath, , &currentDir)
                 lowerDir := StrLower(currentDir)
 
-                ; Check if current location looks temporary
+                ; Check if current location looks temporary or cloud-synced
                 isTemporary := (InStr(lowerDir, "\downloads")
                     || InStr(lowerDir, "\temp")
                     || InStr(lowerDir, "\desktop")
-                    || InStr(lowerDir, "\appdata\local\temp"))
+                    || InStr(lowerDir, "\appdata\local\temp")
+                    || InStr(lowerDir, "\onedrive")
+                    || InStr(lowerDir, "\dropbox")
+                    || InStr(lowerDir, "\google drive")
+                    || InStr(lowerDir, "\icloud"))
 
                 if (isTemporary) {
                     result2 := MsgBox(
                         "Shortcuts will point to:`n" A_ScriptFullPath "`n`n"
-                        "This location may be temporary (Downloads, Desktop, Temp).`n"
-                        "If you delete this file, the shortcuts will break.`n`n"
+                        "This location may be temporary or cloud-synced.`n"
+                        "If you delete or move this file, the shortcuts will break.`n`n"
                         "Create shortcuts anyway?",
                         "Alt-Tabby Setup",
                         "YesNo Icon?"
