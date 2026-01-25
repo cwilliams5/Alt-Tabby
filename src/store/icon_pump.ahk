@@ -530,6 +530,8 @@ _IP_TryResolveFromUWP(hwnd, pid) {
         return 0
 
     ; Load PNG as HBITMAP
+    hBitmap := 0
+    hIcon := 0
     try {
         hBitmap := LoadPicture(logoPath, "GDI+")
         if (!hBitmap)
@@ -537,15 +539,15 @@ _IP_TryResolveFromUWP(hwnd, pid) {
 
         ; Convert HBITMAP to HICON
         hIcon := _IP_BitmapToIcon(hBitmap)
-
-        ; Clean up bitmap
-        DllCall("gdi32\DeleteObject", "ptr", hBitmap)
-
-        return hIcon
     } catch as e {
         _IP_Log("UWP LoadPicture FAILED path=" logoPath " err=" e.Message)
-        return 0
     }
+
+    ; ALWAYS clean up hBitmap if allocated (whether success or failure)
+    if (hBitmap)
+        DllCall("gdi32\DeleteObject", "ptr", hBitmap)
+
+    return hIcon
 }
 
 ; Convert HBITMAP to HICON

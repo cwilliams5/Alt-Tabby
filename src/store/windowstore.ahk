@@ -748,10 +748,19 @@ WindowStore_GetProcNameCached(pid) {
 
 ; Update process name for all windows with this pid
 WindowStore_UpdateProcessName(pid, name) {
-    global gWS_Store, gWS_Rev, gWS_ProcNameCache
+    global gWS_Store, gWS_Rev, gWS_ProcNameCache, cfg
     pid := pid + 0
     if (pid <= 0 || name = "")
         return
+
+    ; FIFO eviction when at max (prevents unbounded memory growth)
+    maxSize := cfg.HasOwnProp("ProcNameCacheMax") ? cfg.ProcNameCacheMax : 200
+    if (gWS_ProcNameCache.Count >= maxSize) {
+        for oldPid, _ in gWS_ProcNameCache {
+            gWS_ProcNameCache.Delete(oldPid)
+            break  ; Only remove one entry
+        }
+    }
 
     ; Cache it
     gWS_ProcNameCache[pid] := name
@@ -795,13 +804,15 @@ WindowStore_GetExeIconCopy(exePath) {
 }
 
 ; Store master icon for exe (store owns it, don't destroy)
-; Cache limited to WS_EXE_ICON_CACHE_MAX entries to prevent unbounded memory growth
+; Cache limited to ExeIconCacheMax entries to prevent unbounded memory growth
 WindowStore_ExeIconCachePut(exePath, hIcon) {
-    global gWS_ExeIconCache, WS_EXE_ICON_CACHE_MAX
+    global gWS_ExeIconCache, cfg
     if (!hIcon)
         return
+    ; Use config if available, fallback to 100
+    maxSize := cfg.HasOwnProp("ExeIconCacheMax") ? cfg.ExeIconCacheMax : 100
     ; Evict oldest entry if at max
-    if (gWS_ExeIconCache.Count >= WS_EXE_ICON_CACHE_MAX) {
+    if (gWS_ExeIconCache.Count >= maxSize) {
         for oldPath, oldIcon in gWS_ExeIconCache {
             if (oldIcon)
                 try DllCall("user32\DestroyIcon", "ptr", oldIcon)
@@ -820,6 +831,30 @@ WindowStore_CleanupExeIconCache() {
             try DllCall("user32\DestroyIcon", "ptr", hIcon)
     }
     gWS_ExeIconCache := Map()
+}
+
+; Prune dead PIDs from process name cache (called from Store_HeartbeatTick)
+; Returns the number of entries pruned
+WindowStore_PruneProcNameCache() {
+    global gWS_ProcNameCache
+    if (!IsObject(gWS_ProcNameCache) || gWS_ProcNameCache.Count = 0)
+        return 0
+
+    ; Snapshot keys to prevent iteration-during-modification
+    Critical "On"
+    pids := []
+    for pid, _ in gWS_ProcNameCache
+        pids.Push(pid)
+    Critical "Off"
+
+    pruned := 0
+    for _, pid in pids {
+        if (!ProcessExist(pid)) {
+            gWS_ProcNameCache.Delete(pid)
+            pruned++
+        }
+    }
+    return pruned
 }
 
 ; Clean up all per-window icons in the store

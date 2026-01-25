@@ -609,6 +609,19 @@ global gConfigRegistry := [
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
     ; ============================================================
+    ; Cache Limits
+    ; ============================================================
+    {type: "section", name: "Cache",
+     desc: "Cache Limits",
+     long: "Size limits for internal caches to prevent unbounded memory growth."},
+
+    {s: "Cache", k: "ExeIconMax", g: "ExeIconCacheMax", t: "int", default: 100,
+     d: "Maximum number of cached exe icons. Older entries are evicted when limit is reached."},
+
+    {s: "Cache", k: "ProcNameMax", g: "ProcNameCacheMax", t: "int", default: 200,
+     d: "Maximum number of cached process names. Older entries are evicted when limit is reached."},
+
+    ; ============================================================
     ; Komorebi Subscription Timing
     ; ============================================================
     {type: "section", name: "KomorebiSub",

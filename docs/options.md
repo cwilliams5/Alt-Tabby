@@ -21,6 +21,7 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [MruLite](#mrulite)
 - [IconPump](#iconpump)
 - [ProcPump](#procpump)
+- [Cache](#cache)
 - [KomorebiSub](#komorebisub)
 - [Heartbeat](#heartbeat)
 - [Viewer](#viewer)
@@ -381,6 +382,15 @@ Resolves PID -> process name asynchronously.
 | `BatchSize` | int | `16` | Max PIDs to resolve per tick |
 | `IdleThreshold` | int | `5` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 
+## Cache
+
+Size limits for internal caches to prevent unbounded memory growth.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ExeIconMax` | int | `100` | Maximum number of cached exe icons. Older entries are evicted when limit is reached. |
+| `ProcNameMax` | int | `200` | Maximum number of cached process names. Older entries are evicted when limit is reached. |
+
 ## KomorebiSub
 
 Event-driven komorebi integration via named pipe.
@@ -448,4 +458,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-25 with 167 total settings.*
+*Generated on 2026-01-25 with 169 total settings.*

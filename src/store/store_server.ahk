@@ -161,6 +161,9 @@ Store_HeartbeatTick() {
     ; Prune stale workspace cache entries (Issue #3 - memory leak prevention)
     try KomorebiSub_PruneStaleCache()
 
+    ; Prune dead PIDs from process name cache (prevents unbounded growth)
+    try WindowStore_PruneProcNameCache()
+
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
 
