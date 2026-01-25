@@ -225,6 +225,72 @@ Test_OnCompiledStoreMessage(line, hPipe := 0) {
 
 ; --- Shared Helper Functions ---
 
+; Wait for a store's named pipe to become available
+; Returns true if pipe is ready, false on timeout
+WaitForStorePipe(pipeName, timeoutMs := 3000) {
+    pipePath := "\\.\pipe\" pipeName
+    start := A_TickCount
+    while ((A_TickCount - start) < timeoutMs) {
+        ; Try to open the pipe - succeeds when store is ready
+        hPipe := DllCall("CreateFile",
+            "Str", pipePath,
+            "UInt", 0x80000000,  ; GENERIC_READ
+            "UInt", 0,
+            "Ptr", 0,
+            "UInt", 3,          ; OPEN_EXISTING
+            "UInt", 0,
+            "Ptr", 0,
+            "Ptr")
+        if (hPipe != -1) {
+            DllCall("CloseHandle", "Ptr", hPipe)
+            return true
+        }
+        Sleep(50)  ; Poll every 50ms
+    }
+    return false
+}
+
+; Launch a test store process with adaptive waiting
+; Returns pipe name on success, empty string on failure
+LaunchTestStore(pipeName := "", &outPid := 0) {
+    if (pipeName = "")
+        pipeName := "test_store_" A_TickCount "_" Random(1000, 9999)
+
+    storePath := A_ScriptDir "\..\src\store\store_server.ahk"
+    outPid := 0
+
+    try {
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' pipeName, , "Hide", &outPid)
+    } catch as e {
+        Log("ERROR: Failed to launch store: " e.Message)
+        return ""
+    }
+
+    if (!WaitForStorePipe(pipeName, 3000)) {
+        Log("ERROR: Store pipe not ready within 3s: " pipeName)
+        if (outPid)
+            try ProcessClose(outPid)
+        return ""
+    }
+
+    return pipeName
+}
+
+; Cleanup a test store process
+CleanupTestStore(pid) {
+    if (pid)
+        try ProcessClose(pid)
+}
+
+; Wait for a flag variable to become true
+; Returns the flag value (true if set, false on timeout)
+WaitForFlag(&flag, timeoutMs := 2000, pollMs := 20) {
+    start := A_TickCount
+    while (!flag && (A_TickCount - start) < timeoutMs)
+        Sleep(pollMs)
+    return flag
+}
+
 ; Join array elements with a separator
 _JoinArray(arr, sep) {
     result := ""

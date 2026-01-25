@@ -18,8 +18,8 @@ Remove-Item -Force -ErrorAction SilentlyContinue $stderrFile
 Write-Host "=== Alt-Tabby Test Run $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ForegroundColor Cyan
 Write-Host "Log file: $logFile"
 
-# --- Syntax Check Phase ---
-Write-Host "`n--- Syntax Check Phase ---" -ForegroundColor Yellow
+# --- Syntax Check Phase (Parallel) ---
+Write-Host "`n--- Syntax Check Phase (Parallel) ---" -ForegroundColor Yellow
 
 $filesToCheck = @(
     "$srcRoot\store\windowstore.ahk",
@@ -39,34 +39,40 @@ $filesToCheck = @(
     "$PSScriptRoot\gui_tests.ahk"
 )
 
-$syntaxErrors = 0
+# Launch all syntax checks in parallel
+$syntaxJobs = @()
 foreach ($file in $filesToCheck) {
     if (Test-Path $file) {
         $shortName = Split-Path $file -Leaf
         $errFile = "$env:TEMP\ahk_syntax_$shortName.log"
         Remove-Item -Force -ErrorAction SilentlyContinue $errFile
 
-        # Use /ErrorStdOut to capture syntax errors without GUI
-        $proc = Start-Process -FilePath $ahk -ArgumentList "/ErrorStdOut", "/validate", $file -Wait -NoNewWindow -PassThru -RedirectStandardError $errFile 2>$null
-
-        # /validate doesn't exist, so try a different approach: just check if it compiles
-        # We use a timeout and check stderr
-        if ($proc.ExitCode -ne 0) {
-            $errContent = Get-Content $errFile -ErrorAction SilentlyContinue -Raw
-            if ($errContent) {
-                Write-Host "FAIL: $shortName" -ForegroundColor Red
-                Write-Host $errContent -ForegroundColor Red
-                $syntaxErrors++
-            } else {
-                # Exit code non-zero but no error might be normal termination
-                Write-Host "PASS: $shortName (syntax ok)" -ForegroundColor Green
+        # Start syntax check as background job
+        $syntaxJobs += Start-Job -ScriptBlock {
+            param($ahkPath, $filePath, $errFilePath)
+            $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", "/validate", $filePath -Wait -NoNewWindow -PassThru -RedirectStandardError $errFilePath 2>$null
+            $errContent = if (Test-Path $errFilePath) { Get-Content $errFilePath -Raw -ErrorAction SilentlyContinue } else { "" }
+            return @{
+                ExitCode = $proc.ExitCode
+                ErrorContent = $errContent
+                FileName = Split-Path $filePath -Leaf
             }
-        } else {
-            Write-Host "PASS: $shortName" -ForegroundColor Green
-        }
-    } else {
-        Write-Host "SKIP: $file (not found)" -ForegroundColor Yellow
+        } -ArgumentList $ahk, $file, $errFile
     }
+}
+
+# Wait for all syntax checks to complete and collect results
+$syntaxErrors = 0
+$syntaxJobs | Wait-Job | ForEach-Object {
+    $result = Receive-Job $_
+    if ($result.ExitCode -ne 0 -and $result.ErrorContent) {
+        Write-Host "FAIL: $($result.FileName)" -ForegroundColor Red
+        Write-Host $result.ErrorContent -ForegroundColor Red
+        $syntaxErrors++
+    } else {
+        Write-Host "PASS: $($result.FileName)" -ForegroundColor Green
+    }
+    Remove-Job $_
 }
 
 if ($syntaxErrors -gt 0) {
@@ -84,6 +90,26 @@ $srcFile = "$srcRoot\alt_tabby.ahk"
 $releaseDir = (Resolve-Path "$PSScriptRoot\..").Path + "\release"
 $outFile = "$releaseDir\AltTabby.exe"
 
+# --- Start GUI Tests Early (Background) ---
+# GUI tests have no dependencies on compilation or store, so run them in parallel
+$guiScript = "$PSScriptRoot\gui_tests.ahk"
+$guiLogFile = "$env:TEMP\gui_tests.log"
+$guiStderrFile = "$env:TEMP\ahk_gui_stderr.log"
+$guiJob = $null
+
+Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
+Remove-Item -Force -ErrorAction SilentlyContinue $guiStderrFile
+
+if (Test-Path $guiScript) {
+    Write-Host "Starting GUI tests in background..." -ForegroundColor Cyan
+    $guiJob = Start-Job -ScriptBlock {
+        param($ahkPath, $scriptPath, $stderrPath)
+        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
+        return $proc.ExitCode
+    } -ArgumentList $ahk, $guiScript, $guiStderrFile
+}
+
+# Continue with compilation
 if (Test-Path $compiler) {
     Write-Host "Recompiling source to ensure tests use current code..."
 
@@ -142,19 +168,13 @@ if (Test-Path $logFile) {
 
 $mainExitCode = $process.ExitCode
 
-# --- GUI Tests Phase ---
+# --- GUI Tests Phase (Collect Results) ---
 Write-Host "`n--- GUI Tests Phase ---" -ForegroundColor Yellow
 
-$guiScript = "$PSScriptRoot\gui_tests.ahk"
-$guiLogFile = "$env:TEMP\gui_tests.log"
-$guiStderrFile = "$env:TEMP\ahk_gui_stderr.log"
-
-Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
-Remove-Item -Force -ErrorAction SilentlyContinue $guiStderrFile
-
-if (Test-Path $guiScript) {
-    $guiArgs = @("/ErrorStdOut", $guiScript)
-    $guiProcess = Start-Process -FilePath $ahk -ArgumentList $guiArgs -Wait -NoNewWindow -PassThru -RedirectStandardError $guiStderrFile
+if ($guiJob) {
+    Write-Host "Waiting for GUI tests to complete..."
+    $guiExitCode = $guiJob | Wait-Job | Receive-Job
+    Remove-Job $guiJob
 
     # Check for errors
     $guiStderr = Get-Content $guiStderrFile -ErrorAction SilentlyContinue
@@ -170,8 +190,8 @@ if (Test-Path $guiScript) {
         Write-Host "GUI test log not found - tests may have failed to run" -ForegroundColor Red
     }
 
-    if ($guiProcess.ExitCode -ne 0) {
-        $mainExitCode = $guiProcess.ExitCode
+    if ($guiExitCode -ne 0) {
+        $mainExitCode = $guiExitCode
     }
 } else {
     Write-Host "SKIP: gui_tests.ahk not found" -ForegroundColor Yellow

@@ -337,9 +337,16 @@ RunLiveTests_Core() {
     }
 
     if (storePid) {
-        ; Wait for store to start
-        Sleep(1500)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(testStorePipe, 3000)) {
+            Log("FAIL: Store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(storePid)
+            storePid := 0
+        }
+    }
 
+    if (storePid) {
         ; Connect as a client (like the viewer does)
         gRealStoreResponse := ""
         gRealStoreReceived := false
@@ -414,8 +421,16 @@ RunLiveTests_Core() {
     }
 
     if (viewerStorePid) {
-        Sleep(1500)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(viewerStorePipe, 3000)) {
+            Log("FAIL: Viewer store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(viewerStorePid)
+            viewerStorePid := 0
+        }
+    }
 
+    if (viewerStorePid) {
         gViewerTestResponse := ""
         gViewerTestReceived := false
         gViewerTestHelloAck := false
@@ -627,10 +642,19 @@ RunLiveTests_Core() {
     }
 
     if (wsE2EPid) {
-        ; Wait for store to initialize and komorebi initial poll to run
-        ; Initial poll happens at 1500ms after winenum populates at 1000ms
-        ; Add extra time for komorebic state command
-        Sleep(4000)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(wsE2EPipe, 3000)) {
+            Log("FAIL: WS E2E store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(wsE2EPid)
+            wsE2EPid := 0
+        }
+    }
+
+    if (wsE2EPid) {
+        ; Additional wait for komorebi initial poll to complete
+        ; Initial poll happens after winenum populates
+        Sleep(2000)
 
         gWsE2EResponse := ""
         gWsE2EReceived := false
@@ -737,9 +761,16 @@ RunLiveTests_Core() {
     }
 
     if (hbTestPid) {
-        ; Wait for store to initialize
-        Sleep(1500)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(hbTestPipe, 3000)) {
+            Log("FAIL: Heartbeat store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(hbTestPid)
+            hbTestPid := 0
+        }
+    }
 
+    if (hbTestPid) {
         gHbTestHeartbeats := 0
         gHbTestLastRev := -1
         gHbTestReceived := false
@@ -806,8 +837,16 @@ RunLiveTests_Core() {
     }
 
     if (prodTestPid) {
-        Sleep(1500)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(prodTestPipe, 3000)) {
+            Log("FAIL: Producer state store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(prodTestPid)
+            prodTestPid := 0
+        }
+    }
 
+    if (prodTestPid) {
         gProdTestProducers := ""
         gProdTestReceived := false
 

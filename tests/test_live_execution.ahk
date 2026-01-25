@@ -28,8 +28,16 @@ RunLiveTests_Execution() {
     }
 
     if (standaloneStorePid) {
-        Sleep(2000)  ; Wait for store to initialize
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(standaloneStorePipe, 3000)) {
+            Log("FAIL: Standalone store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(standaloneStorePid)
+            standaloneStorePid := 0
+        }
+    }
 
+    if (standaloneStorePid) {
         ; Verify process is running
         if (ProcessExist(standaloneStorePid)) {
             Log("PASS: Standalone store_server.ahk launched (PID=" standaloneStorePid ")")
@@ -118,8 +126,16 @@ RunLiveTests_Execution() {
         }
 
         if (compiledStorePid) {
-            Sleep(2000)
+            ; Wait for store pipe to become available (adaptive)
+            if (!WaitForStorePipe(compiledStorePipe, 3000)) {
+                Log("FAIL: Compiled store pipe not ready within timeout")
+                TestErrors++
+                try ProcessClose(compiledStorePid)
+                compiledStorePid := 0
+            }
+        }
 
+        if (compiledStorePid) {
             if (ProcessExist(compiledStorePid)) {
                 Log("PASS: AltTabby.exe --store launched (PID=" compiledStorePid ")")
                 TestPassed++
@@ -223,7 +239,11 @@ RunLiveTests_Execution() {
             }
 
             if (recreatePid) {
-                Sleep(2000)  ; Give it time to start and create files
+                ; Wait for store pipe to become available (adaptive)
+                ; Files are created during init, so pipe ready = files created
+                if (!WaitForStorePipe(recreatePipe, 3000)) {
+                    Log("WARN: Recreation test store pipe not ready, checking files anyway")
+                }
 
                 ; Check if files were recreated
                 configRecreated := FileExist(configPath)

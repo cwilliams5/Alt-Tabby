@@ -31,9 +31,16 @@ RunLiveTests_Features() {
     }
 
     if (mruTestPid) {
-        ; Wait for store to initialize and WinEventHook to start
-        Sleep(2000)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(mruTestPipe, 3000)) {
+            Log("FAIL: MRU test store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(mruTestPid)
+            mruTestPid := 0
+        }
+    }
 
+    if (mruTestPid) {
         gMruTestResponse := ""
         gMruTestReceived := false
 
@@ -180,8 +187,16 @@ RunLiveTests_Features() {
     }
 
     if (projTestPid) {
-        Sleep(2000)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(projTestPipe, 3000)) {
+            Log("FAIL: Projection test store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(projTestPid)
+            projTestPid := 0
+        }
+    }
 
+    if (projTestPid) {
         gProjTestResponse := ""
         gProjTestReceived := false
 
@@ -472,8 +487,16 @@ RunLiveTests_Features() {
     }
 
     if (multiTestPid) {
-        Sleep(2000)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(multiTestPipe, 3000)) {
+            Log("FAIL: Multi-client test store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(multiTestPid)
+            multiTestPid := 0
+        }
+    }
 
+    if (multiTestPid) {
         ; Reset flags BEFORE connecting (so callbacks can set them from initial snapshot)
         gMultiClient1Response := ""
         gMultiClient1Received := false
@@ -653,8 +676,16 @@ RunLiveTests_Features() {
     }
 
     if (blTestPid) {
-        Sleep(1500)
+        ; Wait for store pipe to become available (adaptive)
+        if (!WaitForStorePipe(blTestPipe, 3000)) {
+            Log("FAIL: Blacklist test store pipe not ready within timeout")
+            TestErrors++
+            try ProcessClose(blTestPid)
+            blTestPid := 0
+        }
+    }
 
+    if (blTestPid) {
         gBlTestResponse := ""
         gBlTestReceived := false
 
