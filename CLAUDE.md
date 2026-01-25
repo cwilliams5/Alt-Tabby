@@ -10,7 +10,7 @@
 - **Low CPU**: Event-driven, not busy loops. Adaptive polling when needed
 - **AHK v2 only**: No v1 patterns. Use direct function refs, not `Func("Name")`
 - **Named pipes for IPC**: Multi-subscriber support, no WM_COPYDATA
-- **Testing**: Run `tests/run_tests.ahk --live` to validate changes, DO NOT Out-Null
+- **Testing**: Run `.\tests\test.ps1 --live` to validate changes. NEVER use `powershell -Command`
 
 ---
 
@@ -93,19 +93,26 @@ Windows batch files (`.bat`) run in cmd.exe - single slashes work there.
 ```powershell
 .\tests\test.ps1 --live
 ```
-Or directly:
+
+**NEVER use `powershell -Command`** - it breaks argument parsing and the test will fail:
+```powershell
+# RIGHT - direct invocation
+.\tests\test.ps1 --live
+
+# RIGHT - if you must use powershell explicitly
+powershell -File .\tests\test.ps1 --live
+```
+
+Or run AHK directly (double-slash for Git Bash):
 ```
 AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 ```
+
 Log: `%TEMP%\alt_tabby_tests.log`
 
 GUI tests: `AutoHotkey64.exe //ErrorStdOut tests\gui_tests.ahk`
 
-**Never suppress output** - piping to `Out-Null` prevents child processes (like compiled exe tests) from spawning correctly:
-```powershell
-# WRONG - child processes may not spawn
-powershell -Command "& '.\tests\test.ps1' --live | Out-Null"
-```
+**Never suppress output** - piping to `Out-Null` breaks child process spawning.
 
 ---
 

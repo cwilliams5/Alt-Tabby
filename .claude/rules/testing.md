@@ -5,10 +5,24 @@
 ```powershell
 .\tests\test.ps1 --live
 ```
-Or directly (double-slash for Git Bash):
+
+**NEVER use `powershell -Command`** - it breaks argument parsing and fails hard:
+```powershell
+# WRONG - will exit with FATAL FAILURE
+powershell -Command ".\tests\test.ps1 --live"
+
+# RIGHT - direct invocation
+.\tests\test.ps1 --live
+
+# RIGHT - explicit powershell with -File flag
+powershell -File .\tests\test.ps1 --live
+```
+
+Or run AHK directly (double-slash for Git Bash):
 ```
 AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 ```
+
 Log: `%TEMP%\alt_tabby_tests.log`
 
 ## Test Architecture (CRITICAL)

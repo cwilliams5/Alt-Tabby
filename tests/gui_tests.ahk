@@ -177,6 +177,7 @@ ResetGUIState() {
     global gGUI_FirstTabTick, gGUI_AltDownTick, gGUI_WorkspaceMode
     global gGUI_AwaitingToggleProjection, gMockIPCMessages, gGUI_CurrentWSName
     global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
+    global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
 
     gGUI_State := "IDLE"
     gGUI_Items := []
@@ -196,6 +197,9 @@ ResetGUIState() {
     gGUI_AwaitingToggleProjection := false
     gGUI_LastLocalMRUTick := 0  ; Reset to avoid MRU freshness skip in snapshot handler
     gMockIPCMessages := []
+    gGUI_EventBuffer := []
+    gGUI_PendingPhase := ""
+    gGUI_FlushStartTick := 0
 }
 
 CreateTestItems(count, currentWSCount := -1) {
@@ -261,6 +265,7 @@ RunGUITests() {
     global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection
+    global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -774,6 +779,92 @@ RunGUITests() {
 
     ; Restore
     cfg.FreezeWindowList := true
+
+    ; ============================================================
+    ; EDGE CASE TESTS - Grace timer, buffer overflow, lost Tab
+    ; ============================================================
+
+    ; ----- Test: Grace timer aborts when Alt_Up fires before timer -----
+    GUI_Log("Test: Grace timer aborts when state is IDLE")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_OverlayVisible, false, "Overlay not visible (grace period)")
+
+    ; Alt released before grace timer fires
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    GUI_AssertEq(gGUI_State, "IDLE", "State is IDLE after Alt_Up")
+
+    ; Now simulate grace timer firing late (race condition)
+    GUI_GraceTimerFired()
+
+    ; Overlay should NOT have shown - grace timer should have aborted
+    GUI_AssertEq(gGUI_OverlayVisible, false, "Grace timer correctly aborted (state was IDLE)")
+
+    ; ----- Test: Event buffer overflow triggers recovery -----
+    GUI_Log("Test: Event buffer overflow recovery")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_PendingPhase := "polling"  ; Simulate async activation in progress
+    gGUI_State := "ACTIVE"
+
+    ; Fill buffer beyond max (51 events - over GUI_EVENT_BUFFER_MAX of 50)
+    Loop 51 {
+        gGUI_EventBuffer.Push({ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0})
+    }
+
+    ; Next event triggers overflow handler
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+
+    GUI_AssertEq(gGUI_State, "IDLE", "Overflow triggered IDLE state")
+    GUI_AssertEq(gGUI_PendingPhase, "", "Overflow cleared pending phase")
+    gGUI_EventBuffer := []  ; Clean up
+
+    ; ----- Test: First Tab selection with 1-item list -----
+    GUI_Log("Test: Selection clamps to 1 when list has only 1 item")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(1)  ; Only 1 window
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+
+    GUI_AssertEq(gGUI_FrozenItems.Length, 1, "Frozen has 1 item")
+    GUI_AssertEq(gGUI_Sel, 1, "Selection is 1 (clamped from default 2)")
+
+    ; ----- Test: First Tab with empty list -----
+    GUI_Log("Test: Selection handles empty list gracefully")
+    ResetGUIState()
+    gGUI_Items := []  ; Empty list
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+
+    GUI_AssertEq(gGUI_FrozenItems.Length, 0, "Frozen is empty")
+    validSel := GUI_GetValidatedSel()
+    GUI_AssertEq(validSel, 0, "Validated selection is 0 for empty list")
+
+    ; ----- Test: Lost Tab detection synthesizes TAB_STEP -----
+    GUI_Log("Test: Lost Tab detection synthesizes TAB_STEP")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_PendingPhase := "flushing"
+    gGUI_FlushStartTick := A_TickCount - 50  ; Past the GUI_EVENT_FLUSH_WAIT_MS threshold
+
+    ; Buffer: ALT_DN + ALT_UP but NO TAB (Tab was lost during komorebic's SendInput)
+    gGUI_EventBuffer := [
+        {ev: TABBY_EV_ALT_DOWN, flags: 0, lParam: 0},
+        {ev: TABBY_EV_ALT_UP, flags: 0, lParam: 0}
+    ]
+
+    ; Process the buffer - should detect missing Tab and synthesize it
+    _GUI_ProcessEventBuffer()
+
+    ; After processing: cycle should have completed (synthesized Tab was processed)
+    ; ALT_DN -> ALT_PENDING -> TAB (synthesized) -> ACTIVE -> ALT_UP -> IDLE
+    GUI_AssertEq(gGUI_State, "IDLE", "Cycle completed after synthesized Tab (state=IDLE)")
+    GUI_AssertEq(gGUI_PendingPhase, "", "Pending phase cleared after buffer processed")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Test Summary ===")

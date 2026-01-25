@@ -814,4 +814,140 @@ RunUnitTests_Core() {
             TestPassed++
         }
     }
+
+    ; ============================================================
+    ; WindowStore Advanced Tests
+    ; ============================================================
+    Log("`n--- WindowStore Advanced Tests ---")
+
+    ; Test: WindowStore_EndScan TTL marks windows missing before removal
+    Log("Testing EndScan TTL grace period...")
+
+    WindowStore_Init()
+    global gWS_Store
+
+    ; Scan 1: Add two windows
+    WindowStore_BeginScan()
+    rec1 := Map("hwnd", 11111, "title", "Persistent", "class", "Test", "pid", 1,
+                "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    rec2 := Map("hwnd", 22222, "title", "Disappearing", "class", "Test", "pid", 2,
+                "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+    WindowStore_UpsertWindow([rec1, rec2], "test")
+    WindowStore_EndScan(100)  ; 100ms grace
+
+    AssertEq(gWS_Store[11111].present, true, "Window 1 present after scan 1")
+    AssertEq(gWS_Store[22222].present, true, "Window 2 present after scan 1")
+
+    ; Scan 2: Only include window 1
+    WindowStore_BeginScan()
+    WindowStore_UpsertWindow([rec1], "test")
+    WindowStore_EndScan(100)
+
+    ; Window 2 marked missing but NOT removed yet (within grace period)
+    AssertEq(gWS_Store[11111].present, true, "Window 1 still present")
+    AssertEq(gWS_Store.Has(22222), true, "Window 2 still in store (grace period)")
+    AssertEq(gWS_Store[22222].present, false, "Window 2 marked present=false")
+
+    ; Wait for grace period + scan again
+    Sleep(150)
+    WindowStore_BeginScan()
+    WindowStore_UpsertWindow([rec1], "test")
+    WindowStore_EndScan(100)
+
+    ; Window 2 removed after grace expires (IsWindow returns false for fake hwnd)
+    AssertEq(gWS_Store.Has(22222), false, "Window 2 removed after grace period")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([11111], true)
+
+    ; Test: WindowStore_BuildDelta field detection
+    Log("Testing BuildDelta field detection...")
+
+    baseItem := {
+        hwnd: 12345, title: "Original", class: "TestClass", pid: 100, z: 1,
+        isFocused: false, workspaceName: "Main", isCloaked: false,
+        isMinimized: false, isOnCurrentWorkspace: true, processName: "test.exe",
+        iconHicon: 0
+    }
+
+    ; Fields that SHOULD trigger delta (from BuildDelta code)
+    triggerTests := [
+        {field: "title", newVal: "Changed"},
+        {field: "z", newVal: 2},
+        {field: "isFocused", newVal: true},
+        {field: "workspaceName", newVal: "Other"},
+        {field: "isCloaked", newVal: true},
+        {field: "isMinimized", newVal: true},
+        {field: "isOnCurrentWorkspace", newVal: false},
+        {field: "processName", newVal: "other.exe"},
+        {field: "iconHicon", newVal: 12345}
+    ]
+
+    for _, test in triggerTests {
+        changedItem := {}
+        for k in baseItem.OwnProps()
+            changedItem.%k% := baseItem.%k%
+        changedItem.%test.field% := test.newVal
+
+        delta := WindowStore_BuildDelta([baseItem], [changedItem])
+        AssertEq(delta.upserts.Length, 1, "Field '" test.field "' triggers delta")
+    }
+
+    ; Fields that should NOT trigger delta (class is not in comparison list)
+    noTriggerTests := [{field: "class", newVal: "OtherClass"}]
+    for _, test in noTriggerTests {
+        changedItem := {}
+        for k in baseItem.OwnProps()
+            changedItem.%k% := baseItem.%k%
+        changedItem.%test.field% := test.newVal
+
+        delta := WindowStore_BuildDelta([baseItem], [changedItem])
+        AssertEq(delta.upserts.Length, 0, "Field '" test.field "' does NOT trigger delta")
+    }
+
+    ; New window creates upsert
+    delta := WindowStore_BuildDelta([], [baseItem])
+    AssertEq(delta.upserts.Length, 1, "New window triggers upsert")
+    AssertEq(delta.removes.Length, 0, "No removes for new window")
+
+    ; Removed window creates remove
+    delta := WindowStore_BuildDelta([baseItem], [])
+    AssertEq(delta.removes.Length, 1, "Removed window triggers remove")
+
+    ; Test: WindowStore_SetCurrentWorkspace updates all windows
+    Log("Testing SetCurrentWorkspace consistency...")
+
+    WindowStore_Init()
+    global gWS_Meta
+
+    WindowStore_BeginScan()
+    recs := []
+    recs.Push(Map("hwnd", 1001, "title", "Win1", "class", "T", "pid", 1,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false,
+                  "z", 1, "workspaceName", "Main"))
+    recs.Push(Map("hwnd", 1002, "title", "Win2", "class", "T", "pid", 2,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false,
+                  "z", 2, "workspaceName", "Other"))
+    recs.Push(Map("hwnd", 1003, "title", "Win3", "class", "T", "pid", 3,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false,
+                  "z", 3, "workspaceName", ""))  ; Unmanaged
+    WindowStore_UpsertWindow(recs, "test")
+    WindowStore_EndScan()
+
+    startRev := WindowStore_GetRev()
+    WindowStore_SetCurrentWorkspace("", "Main")
+
+    AssertEq(gWS_Store[1001].isOnCurrentWorkspace, true, "Main window on current")
+    AssertEq(gWS_Store[1002].isOnCurrentWorkspace, false, "Other window NOT on current")
+    AssertEq(gWS_Store[1003].isOnCurrentWorkspace, true, "Unmanaged floats to current")
+    AssertEq(gWS_Meta["currentWSName"], "Main", "Meta updated")
+    AssertEq(WindowStore_GetRev(), startRev + 1, "Rev bumped exactly once")
+
+    ; Switch workspace
+    WindowStore_SetCurrentWorkspace("", "Other")
+    AssertEq(gWS_Store[1001].isOnCurrentWorkspace, false, "Main now NOT current")
+    AssertEq(gWS_Store[1002].isOnCurrentWorkspace, true, "Other now current")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([1001, 1002, 1003], true)
 }

@@ -7,15 +7,24 @@ param(
     $remainingArgs
 )
 
-# HARDENING: Detect --live even when called incorrectly via `powershell -Command`
+# HARDENING: Detect when called incorrectly via `powershell -Command`
 # With -Command, switch params aren't parsed correctly and end up in $remainingArgs
-# This ensures LLM agents can't accidentally skip live tests
+# This MUST fail hard - warnings get ignored by LLM agents
 if (-not $live -and $remainingArgs) {
     foreach ($arg in $remainingArgs) {
         if ($arg -match '^-{1,2}live$') {
-            $live = $true
-            Write-Host "[test.ps1] WARNING: Detected --live in unparsed args. STOP using -Command, use -File instead: powershell -File .\tests\test.ps1 --live" -ForegroundColor Red
-            break
+            Write-Host ""
+            Write-Host "============================================================" -ForegroundColor Red
+            Write-Host "FATAL FAILURE: Do NOT use 'powershell -Command'" -ForegroundColor Red
+            Write-Host "============================================================" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "WRONG: powershell -Command `".\tests\test.ps1 --live`"" -ForegroundColor Red
+            Write-Host "RIGHT: .\tests\test.ps1 --live" -ForegroundColor Green
+            Write-Host "RIGHT: powershell -File .\tests\test.ps1 --live" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "The -Command flag breaks argument parsing. Use -File or direct invocation." -ForegroundColor Yellow
+            Write-Host "============================================================" -ForegroundColor Red
+            exit 1
         }
     }
 }
