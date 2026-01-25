@@ -9,11 +9,22 @@
 
 ### Compiled Distribution
 Single executable `AltTabby.exe` serves as both launcher and all process modes:
+
+**User-facing modes:**
 - `AltTabby.exe` - Launcher (spawns store + gui, manages tray menu)
 - `AltTabby.exe --store` - WindowStore server only
 - `AltTabby.exe --gui-only` - GUI only (requires store running)
 - `AltTabby.exe --viewer` - Debug viewer
+- `AltTabby.exe --config` - Config Editor GUI (standalone)
+- `AltTabby.exe --blacklist` - Blacklist Editor GUI (standalone)
 - `AltTabby.exe --testing-mode` - Skip wizard and install mismatch dialogs (for automated testing)
+
+**Internal/elevation modes** (used by self-elevation flows):
+- `--wizard-continue` - Continue wizard after self-elevation
+- `--enable-admin-task` - Create admin task after elevation
+- `--repair-admin-task` - Repair stale admin task after elevation
+- `--apply-update` - Apply downloaded update after elevation
+- `--update-installed` - Update installed version after elevation
 
 ### Process Roles
 1. **Launcher**: Stays alive, single tray icon, tracks subprocess PIDs, on-demand menu updates
@@ -27,60 +38,90 @@ When running from `/src`, modules can run standalone:
 - `gui_main.ahk` - GUI process
 - `viewer.ahk` - Viewer process
 
+Config and blacklist editors are accessed via `--config` and `--blacklist` flags (not standalone files).
+
 ## Current Directory Structure
 ```
 src/
-  alt_tabby.ahk   - Unified entry point (mode router, includes)
-  shared/         - IPC, JSON, config utilities
-    config_loader.ahk - Registry-driven config system (single source of truth)
-    setup_utils.ahk   - Version, Task Scheduler, shortcut, update check utilities
-    ipc_pipe.ahk  - Named pipe server/client with adaptive polling
-    json.ahk      - JSON encoder/decoder (Map and Object aware)
-  launcher/       - Launcher process (tray, wizard, install)
-    launcher_main.ahk     - Core init, subprocess management
-    launcher_tray.ahk     - Tray menu, restart/toggle handlers
-    launcher_splash.ahk   - Splash screen (GDI+ PNG with fade)
-    launcher_wizard.ahk   - First-run setup wizard
+  alt_tabby.ahk         - Unified entry point (mode router, includes)
+  shared/               - IPC, JSON, config utilities
+    blacklist.ahk         - Blacklist filtering, window eligibility logic
+    blacklist_editor.ahk  - GUI editor for blacklist
+    config_editor.ahk     - GUI editor for config
+    config_loader.ahk     - Config loading, INI parsing, defaults
+    config_registry.ahk   - Single source of truth for all config definitions
+    ipc_pipe.ahk          - Named pipe server/client with adaptive polling
+    json.ahk              - JSON encoder/decoder (Map and Object aware)
+    process_utils.ahk     - Process-related utilities
+    pump_utils.ahk        - Shared pump idle detection helpers
+    setup_utils.ahk       - Version, Task Scheduler, shortcut, update check utilities
+    win_utils.ahk         - Window utilities
+  launcher/             - Launcher process (tray, wizard, install)
     launcher_install.ahk  - Program Files install, mismatch detection
+    launcher_main.ahk     - Core init, subprocess management
     launcher_shortcuts.ahk - Shortcut creation, admin-aware shortcuts
-  store/          - WindowStore process
-    store_server.ahk    - Main store process with pipe server
-    windowstore.ahk     - Core store API (scans, projections, upserts)
-    winenum_lite.ahk    - Basic window enumeration producer
-    mru_lite.ahk        - Focus tracking producer
-    komorebi_lite.ahk   - Komorebi polling producer
-  gui/            - Alt-Tab GUI overlay (modular)
-    gui_main.ahk        - Entry point, includes, globals, init
-    gui_interceptor.ahk - Keyboard hooks, Tab decision logic
-    gui_state.ahk       - State machine, event handlers, activation
-    gui_store.ahk       - Store IPC, deltas, snapshots
-    gui_workspace.ahk   - Workspace mode toggle/filter
-    gui_paint.ahk       - Rendering code
-    gui_input.ahk       - Mouse, selection, hover, actions
-    gui_overlay.ahk     - Window creation, sizing, show/hide
-    gui_gdip.ahk        - GDI+ graphics helpers
-    gui_win.ahk         - Window/DPI utilities
-  viewer/         - Debug viewer
-    viewer.ahk    - GUI with Z/MRU toggle, workspace filter
+    launcher_splash.ahk   - Splash screen (GDI+ PNG with fade)
+    launcher_tray.ahk     - Tray menu, restart/toggle handlers
+    launcher_utils.ahk    - Launcher helper utilities
+    launcher_wizard.ahk   - First-run setup wizard
+  store/                - WindowStore process
+    icon_pump.ahk         - Icon resolution producer (WM_GETICON, UWP, EXE fallback)
+    komorebi_json.ahk     - Komorebi JSON parsing helpers
+    komorebi_lite.ahk     - Komorebi polling producer (fallback)
+    komorebi_state.ahk    - Komorebi state management
+    komorebi_sub.ahk      - Komorebi subscription producer (primary)
+    mru_lite.ahk          - Focus tracking producer (fallback if WinEventHook fails)
+    proc_pump.ahk         - Process name resolution producer
+    store_server.ahk      - Main store process with pipe server
+    windowstore.ahk       - Core store API (scans, projections, upserts)
+    winenum_lite.ahk      - Basic window enumeration producer
+    winevent_hook.ahk     - Primary window event producer (create/destroy/focus)
+  gui/                  - Alt-Tab GUI overlay (modular)
+    gui_main.ahk          - Entry point, includes, globals, init
+    gui_interceptor.ahk   - Keyboard hooks, Tab decision logic
+    gui_state.ahk         - State machine, event handlers, activation
+    gui_store.ahk         - Store IPC, deltas, snapshots
+    gui_workspace.ahk     - Workspace mode toggle/filter
+    gui_paint.ahk         - Rendering code
+    gui_input.ahk         - Mouse, selection, hover, actions
+    gui_overlay.ahk       - Window creation, sizing, show/hide
+    gui_gdip.ahk          - GDI+ graphics helpers
+    gui_win.ahk           - Window/DPI utilities
+  viewer/               - Debug viewer
+    viewer.ahk            - GUI with Z/MRU toggle, workspace filter
 tests/
-  run_tests.ahk   - Test orchestrator (includes production + test files)
-  test_utils.ahk  - Test utilities: Log, Assert, IPC callbacks
-  test_unit.ahk   - Unit tests (WindowStore, Config, Entry Points)
-  test_live.ahk   - Live integration tests (require --live flag)
-  gui_tests.ahk   - GUI state machine tests
-  test.ps1        - PowerShell test runner
+  run_tests.ahk           - Test orchestrator (includes production + test files)
+  test_utils.ahk          - Test utilities: Log, Assert, IPC callbacks
+  test_unit.ahk           - Unit test orchestrator (thin wrapper)
+    test_unit_core.ahk      - Core unit tests
+    test_unit_storage.ahk   - Storage/WindowStore tests
+    test_unit_setup.ahk     - Setup/config tests
+    test_unit_cleanup.ahk   - Cleanup tests
+    test_unit_advanced.ahk  - Advanced unit tests
+  test_live.ahk           - Live test orchestrator (thin wrapper)
+    test_live_core.ahk      - Core live integration tests
+    test_live_features.ahk  - Feature integration tests
+    test_live_execution.ahk - Execution tests
+  gui_tests.ahk           - GUI state machine tests (standalone)
+  test_komorebi_e2e.ahk   - Komorebi end-to-end tests (standalone)
+  test_viewer_live.ahk    - Viewer tests (standalone)
+  test_fixture.ahk        - Test fixtures
+  delta_diagnostic.ahk    - Delta debugging tool
+  debug_workspace.ahk     - Workspace debug tool
+  test.ps1                - PowerShell test runner
 legacy/
-  components_legacy/  - Original ChatGPT work (reference only)
+  components_legacy/      - Original ChatGPT work (reference only)
 ```
 
 ## Key Files
-- `VERSION`: Single source of truth for app version (e.g., `0.4.1`)
-- `src/alt_tabby.ahk`: Unified entry point (mode router, ~290 lines)
+- `VERSION`: Single source of truth for app version (e.g., `0.6.0`)
+- `src/alt_tabby.ahk`: Unified entry point (mode router, ~350 lines)
 - `src/launcher/launcher_main.ahk`: Launcher init, subprocess management
 - `src/store/store_server.ahk`: WindowStore main entry point
 - `src/store/windowstore.ahk`: Core store with GetProjection, UpsertWindow, scan APIs
 - `src/shared/ipc_pipe.ahk`: Multi-subscriber named pipe IPC
 - `src/shared/config_registry.ahk`: Single source of truth for all config definitions
+- `src/shared/blacklist.ahk`: Centralized window eligibility and blacklist filtering
 - `src/viewer/viewer.ahk`: Debug viewer GUI
 - `src/gui/gui_main.ahk`: Alt-Tab GUI overlay
 - `tests/run_tests.ahk`: Automated tests
@@ -88,12 +129,16 @@ legacy/
 - `build-config-docs.ahk`: Generates `docs/options.md` from config registry (run by compile.bat)
 
 ## Legacy Components (in legacy/components_legacy/)
-These are from the original ChatGPT work. Some are battle-tested:
-- `interceptor.ahk`: Solid Alt+Tab hook with grace period - **PORTED to gui_interceptor.ahk**
-- `winenum.ahk`: Full-featured enumeration with DWM cloaking - **ported features**
-- `komorebi_sub.ahk`: Subscription-based updates - **ported - use instead of polling**
-- `New GUI Working POC.ahk`: Rich GUI with icons, DWM effects - **PORTED to Main GUI**
-- `mru.ahk`, `icon_pump.ahk`, `proc_pump.ahk`: Mature enrichers **PORTED**
+These are from the original ChatGPT work. All have been ported to production code:
+- `interceptor.ahk`: Alt+Tab hook with grace period → now `src/gui/gui_interceptor.ahk`
+- `winenum.ahk`: Window enumeration with DWM cloaking → features in `src/store/winenum_lite.ahk`
+- `komorebi_sub.ahk`: Subscription-based updates → now `src/store/komorebi_sub.ahk`
+- `New GUI Working POC.ahk`: Rich GUI with icons, DWM effects → now `src/gui/` modules
+- `mru.ahk`: MRU tracking → now `src/store/mru_lite.ahk` and `src/store/winevent_hook.ahk`
+- `icon_pump.ahk`: Icon resolution → now `src/store/icon_pump.ahk`
+- `proc_pump.ahk`: Process name resolution → now `src/store/proc_pump.ahk`
+
+The legacy folder is kept for reference only; active code is in `src/`.
 
 ## Guiding Constraints
 - **AHK v2 only**: No v1 patterns. Use direct function refs, not `Func("Name")`.
@@ -540,14 +585,24 @@ AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 Check `%TEMP%\alt_tabby_tests.log` for results.
 
 ### Main Test Suite Structure
-The main test suite (`run_tests.ahk`) is split into modular files:
+The main test suite (`run_tests.ahk`) uses a modular/hierarchical structure:
 
 | File | Purpose | When Run |
 |------|---------|----------|
 | `run_tests.ahk` | Orchestrator - includes production files and test modules | Always |
 | `test_utils.ahk` | Log, AssertEq, AssertTrue, IPC test callbacks | Always (included) |
-| `test_unit.ahk` | Unit tests: WindowStore, Config, Entry Points | Always |
-| `test_live.ahk` | Live integration: IPC, Store, Viewer, Komorebi, Compiled exe | Only with `--live` |
+| `test_unit.ahk` | Unit test orchestrator (thin wrapper, ~17 lines) | Always |
+| `test_unit_core.ahk` | Core unit tests | Always (via test_unit.ahk) |
+| `test_unit_storage.ahk` | Storage/WindowStore tests | Always (via test_unit.ahk) |
+| `test_unit_setup.ahk` | Setup/config tests | Always (via test_unit.ahk) |
+| `test_unit_cleanup.ahk` | Cleanup tests | Always (via test_unit.ahk) |
+| `test_unit_advanced.ahk` | Advanced unit tests | Always (via test_unit.ahk) |
+| `test_live.ahk` | Live test orchestrator (thin wrapper, ~13 lines) | Only with `--live` |
+| `test_live_core.ahk` | Core live integration tests | Only with `--live` (via test_live.ahk) |
+| `test_live_features.ahk` | Feature integration tests | Only with `--live` (via test_live.ahk) |
+| `test_live_execution.ahk` | Execution tests | Only with `--live` (via test_live.ahk) |
+
+Note: `test_unit.ahk` and `test_live.ahk` are thin orchestrators that `#Include` their respective sub-modules.
 
 **Key design principles:**
 - `run_tests.ahk` `#Include`s production files (json.ahk, windowstore.ahk, ipc_pipe.ahk, etc.)
@@ -701,21 +756,16 @@ The icon pump resolves window icons using a multi-method chain with fallbacks fo
 - `DllCall("user32\IsWindow", "ptr", hwnd, "int")` returns TRUE for cloaked windows
 - Always use `IsWindow` API when checking if cloaked windows still exist
 
-### Claude Code CLI Known Issues
-- **tmpclaude-* files**: Claude Code creates `tmpclaude-xxxx-cwd` files in the working directory (Windows bug)
-- These are added to `.gitignore` - just delete them if they appear
-- Tracked at: https://github.com/anthropics/claude-code/issues/17636
-
 ### Config System (Single Source of Truth)
 - **Single object**: All config values stored in `global cfg := {}` object
 - **Access via**: `cfg.PropertyName` (e.g., `cfg.AltTabGraceMs`, `cfg.GUI_RowHeight`)
-- **Single source of truth**: `gConfigRegistry` in `src/shared/config_loader.ahk` contains ALL config definitions
+- **Single source of truth**: `gConfigRegistry` in `src/shared/config_registry.ahk` contains ALL config definitions
 - **Registry includes defaults**: Each setting has a `default` value - no separate config.ahk needed
 - **INI supplementing**: Missing keys in existing config.ini are automatically added on startup
 - **Config editor**: `--config` flag or tray menu launches GUI editor with section/subsection headers
 
 **When adding a new config:**
-1. Add ONE entry to `gConfigRegistry` in `config_loader.ahk`
+1. Add ONE entry to `gConfigRegistry` in `config_registry.ahk`
 2. That's it! The value is automatically available as `cfg.YourConfigName`
 
 **Registry Schema:**
@@ -788,14 +838,17 @@ IDLE ──Alt down──► ALT_PENDING ──Tab──► ACTIVE ──Alt up�
                         │                  │
                         │ Alt up (quick)   │ Escape
                         ▼                  ▼
-                   QUICK_SWITCH         CANCEL
+                   (quick switch)       (cancel)
 ```
 
+**Actual state values** (set via `gGUI_State :=`): Only 3 states exist in code:
 - **IDLE**: Connected to store, receiving deltas, cache fresh
 - **ALT_PENDING**: Alt held, pre-warm snapshot requested, grace timer running
 - **ACTIVE**: GUI visible, list FROZEN (no delta updates), Tab cycles selection
-- **QUICK_SWITCH**: Alt+Tab+release < grace period = switch to MRU[1], no GUI
-- **CANCEL**: Escape pressed, close GUI, no switch
+
+**Behavioral outcomes** (not state values, just what happens):
+- **Quick switch**: Alt+Tab+release < grace period = switch to MRU[1], no GUI, returns to IDLE
+- **Cancel**: Escape pressed, close GUI, no switch, returns to IDLE
 
 ### Critical Design Decisions
 
