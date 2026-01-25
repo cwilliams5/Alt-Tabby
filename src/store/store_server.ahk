@@ -359,14 +359,20 @@ Store_OnMessage(line, hPipe := 0) {
 
         ; Immediately send initial projection with client's opts
         proj := WindowStore_GetProjection(opts)
+        ; Handle both items and hwndsOnly response formats (same logic as PROJECTION_REQUEST)
+        payload := { meta: proj.meta }
+        if (proj.HasOwnProp("hwnds"))
+            payload.hwnds := proj.hwnds
+        else
+            payload.items := proj.HasOwnProp("items") ? proj.items : []
         msg := {
             type: IPC_MSG_SNAPSHOT,
             rev: proj.rev,
-            payload: { meta: proj.meta, items: proj.items }
+            payload: payload
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
         gStore_LastClientRev[hPipe] := proj.rev
-        gStore_LastClientProj[hPipe] := proj.items
+        gStore_LastClientProj[hPipe] := proj.HasOwnProp("items") ? proj.items : []
         return
     }
     if (type = IPC_MSG_SET_PROJECTION_OPTS) {

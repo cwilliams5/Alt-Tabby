@@ -458,7 +458,9 @@ RunLiveTests_Features() {
     Log("`n--- Multi-Client E2E Test ---")
 
     ; This test verifies multiple clients can connect simultaneously
-    ; with different projection options and receive correct responses
+    ; with different projection options and receive correct responses.
+    ; The store sends an initial snapshot after HELLO using the client's
+    ; projection options, so we just need to wait for that snapshot.
     multiTestPipe := "tabby_multi_test_" A_TickCount
     multiTestPid := 0
 
@@ -472,7 +474,7 @@ RunLiveTests_Features() {
     if (multiTestPid) {
         Sleep(2000)
 
-        ; Connect 3 clients with different projection options
+        ; Reset flags BEFORE connecting (so callbacks can set them from initial snapshot)
         gMultiClient1Response := ""
         gMultiClient1Received := false
         gMultiClient2Response := ""
@@ -480,12 +482,14 @@ RunLiveTests_Features() {
         gMultiClient3Response := ""
         gMultiClient3Received := false
 
+        ; Connect 3 clients with different projection options
+        ; Use slightly longer delays to ensure pipe instances are ready
         client1 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient1)
-        Sleep(100)
+        Sleep(150)
         client2 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient2)
-        Sleep(100)
+        Sleep(150)
         client3 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient3)
-        Sleep(100)
+        Sleep(150)
 
         allConnected := (client1.hPipe != 0 && client2.hPipe != 0 && client3.hPipe != 0)
 
@@ -494,6 +498,7 @@ RunLiveTests_Features() {
             TestPassed++
 
             ; Each client sends hello with different projection opts
+            ; The store will send initial snapshot with these options
             ; Client 1: sort=Z
             hello1 := { type: IPC_MSG_HELLO, clientId: "multi_1", projectionOpts: { sort: "Z", columns: "items" } }
             IPC_PipeClient_Send(client1, JXON_Dump(hello1))
@@ -506,30 +511,15 @@ RunLiveTests_Features() {
             hello3 := { type: IPC_MSG_HELLO, clientId: "multi_3", projectionOpts: { sort: "Title", columns: "hwndsOnly" } }
             IPC_PipeClient_Send(client3, JXON_Dump(hello3))
 
-            ; Wait for all clients to receive initial snapshots
-            Sleep(500)
-
-            ; Now request projections from each client
-            gMultiClient1Response := ""
-            gMultiClient1Received := false
-            gMultiClient2Response := ""
-            gMultiClient2Received := false
-            gMultiClient3Response := ""
-            gMultiClient3Received := false
-
-            proj1 := { type: IPC_MSG_PROJECTION_REQUEST }
-            proj2 := { type: IPC_MSG_PROJECTION_REQUEST }
-            proj3 := { type: IPC_MSG_PROJECTION_REQUEST }
-
-            IPC_PipeClient_Send(client1, JXON_Dump(proj1))
-            IPC_PipeClient_Send(client2, JXON_Dump(proj2))
-            IPC_PipeClient_Send(client3, JXON_Dump(proj3))
-
-            ; Wait for responses
+            ; Wait for all clients to receive their initial snapshots
+            ; The store sends snapshot immediately after HELLO, respecting projection options
             waitStart := A_TickCount
             while ((!gMultiClient1Received || !gMultiClient2Received || !gMultiClient3Received) && (A_TickCount - waitStart) < 5000) {
                 Sleep(50)
             }
+
+            ; Debug: log which clients received responses
+            Log("  [Multi-Client] Received: c1=" (gMultiClient1Received ? "Y" : "N") " c2=" (gMultiClient2Received ? "Y" : "N") " c3=" (gMultiClient3Received ? "Y" : "N"))
 
             ; Verify all clients received responses
             if (gMultiClient1Received && gMultiClient2Received && gMultiClient3Received) {
@@ -609,6 +599,13 @@ RunLiveTests_Features() {
                 if (gMultiClient3Received)
                     received++
                 Log("FAIL: Only " received "/3 clients received responses")
+                ; Log response snippets for debugging
+                if (gMultiClient1Response != "")
+                    Log("  [c1 got] " SubStr(gMultiClient1Response, 1, 100) "...")
+                if (gMultiClient2Response != "")
+                    Log("  [c2 got] " SubStr(gMultiClient2Response, 1, 100) "...")
+                if (gMultiClient3Response != "")
+                    Log("  [c3 got] " SubStr(gMultiClient3Response, 1, 100) "...")
                 TestErrors++
             }
 
