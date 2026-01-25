@@ -491,6 +491,23 @@ _Update_KillOtherProcesses(targetExeName := "") {
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
     global cfg, gConfigIniPath
 
+    ; Lock file to prevent concurrent update operations
+    ; (e.g., auto-update + manual update from mismatch running simultaneously)
+    lockFile := A_Temp "\alttabby_update.lock"
+    if (FileExist(lockFile)) {
+        try {
+            modTime := FileGetTime(lockFile, "M")
+            if (DateDiff(A_Now, modTime, "Minutes") < 5) {
+                MsgBox("Another update is in progress. Please wait.", "Alt-Tabby", "Icon!")
+                return
+            }
+            ; Lock is stale (>5 minutes old), remove it
+            FileDelete(lockFile)
+        }
+    }
+    ; Create lock file
+    try FileAppend(A_Now, lockFile)
+
     targetDir := ""
     SplitPath(targetExePath, , &targetDir)
     targetConfigPath := targetDir "\config.ini"  ; Target's config location
@@ -514,6 +531,7 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         try {
             FileMove(targetExePath, oldExePath)
         } catch as renameErr {
+            try FileDelete(lockFile)  ; Clean up lock file
             MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Icon!")
             return
         }
@@ -523,6 +541,7 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
             ; Restore the old exe
             if (FileExist(oldExePath))
                 FileMove(oldExePath, targetExePath)
+            try FileDelete(lockFile)  ; Clean up lock file
             MsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Icon!")
             return
         }
@@ -570,6 +589,9 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' oldExePath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' oldExePath '")'
         Run(cleanupCmd,, "Hide")
 
+        ; Delete update lock file
+        try FileDelete(lockFile)
+
         Run('"' targetExePath '"')
         ExitApp()
 
@@ -586,6 +608,9 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         ; Clean up downloaded exe on failure (Priority 4 fix)
         if (FileExist(newExePath))
             try FileDelete(newExePath)
+
+        ; Clean up lock file
+        try FileDelete(lockFile)
 
         if (rollbackSuccess)
             MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
@@ -617,7 +642,8 @@ _Update_CleanupStaleTempFiles() {
         A_Temp "\alttabby_wizard.json",
         A_Temp "\alttabby_update.txt",
         A_Temp "\alttabby_install_update.txt",
-        A_Temp "\alttabby_admin_toggle.lock"
+        A_Temp "\alttabby_admin_toggle.lock",
+        A_Temp "\alttabby_update.lock"
     ]
 
     for filePath in staleFiles {

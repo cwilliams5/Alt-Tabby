@@ -1255,6 +1255,9 @@ When "Run as Administrator" is enabled:
 - Toggle via tray menu recreates shortcuts (description changes but target stays as exe)
 - Tray menu reloads `SetupRunAsAdmin` from disk on each open (catches changes from elevated instances)
 
+**Multiple Installations Limitation:**
+If you have multiple Alt-Tabby installations (e.g., stable in Program Files + beta in another folder), only ONE can have admin mode enabled at a time. The scheduled task is always named "Alt-Tabby" (hardcoded), so enabling admin mode in one installation will overwrite/repair the task, effectively disabling it for the other installation. The InstallationId system detects this and prompts the user, but doesn't prevent the conflict.
+
 ### Auto-Update System
 The app can download and install updates automatically from GitHub Releases.
 

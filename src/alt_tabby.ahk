@@ -176,6 +176,16 @@ if (g_AltTabbyMode = "wizard-continue") {
     } else if (wizardResult) {
         ; Wizard completed - launch normally (from same location)
 
+        ; Ensure InstallationId exists (should already, but be safe)
+        _Launcher_EnsureInstallationId()
+
+        ; Acquire mutex before running as launcher
+        ; Bug fix: Without this, wizard-continue could run alongside another launcher
+        if (!_Launcher_AcquireMutex()) {
+            MsgBox("Alt-Tabby is already running.", "Alt-Tabby", "Icon!")
+            ExitApp()
+        }
+
         ; Show splash screen if enabled
         if (cfg.LauncherShowSplash)
             ShowSplashScreen()
@@ -198,6 +208,9 @@ if (g_AltTabbyMode = "wizard-continue") {
         ; Auto-update check if enabled
         if (cfg.SetupAutoUpdateCheck)
             SetTimer(() => CheckForUpdates(false), -5000)
+
+        ; Register cleanup on exit (releases mutex, kills subprocesses)
+        OnExit(_Launcher_OnExit)
 
         Persistent()
     } else {
