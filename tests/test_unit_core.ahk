@@ -497,7 +497,7 @@ RunUnitTests_Core() {
 
         ; Check for the critical empty title filter
         ; The fix checks for empty title and returns early to prevent Task Switching UI poisoning
-        hasEmptyTitleCheck := InStr(wehCode, 'if (title = "")') || InStr(wehCode, 'if (title = "")')
+        hasEmptyTitleCheck := InStr(wehCode, 'if (title = "")') || InStr(wehCode, 'if title = ""')
         hasFocusSkipComment := InStr(wehCode, "FOCUS SKIP") || InStr(wehCode, "no title")
         hasReturnAfterCheck := InStr(wehCode, "CRITICAL: Skip windows with empty titles")
 

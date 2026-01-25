@@ -157,12 +157,11 @@ RunUnitTests_Cleanup() {
             Log("FAIL: Could not set up test window with icon")
             TestErrors++
         } else {
-            ; Call cleanup (use fake icons, so no actual DestroyIcon needed)
-            ; Note: In real usage, this would destroy actual HICONs
-            ; For testing, we set iconHicon to 0 manually to avoid DllCall on fake handle
-            gWS_Store[testHwnd].iconHicon := 0  ; Simulate what cleanup does
+            ; Call actual production function
+            ; Note: DestroyIcon on fake handles fails silently (returns 0) - safe to test
+            WindowStore_CleanupAllIcons()
 
-            ; Verify icon is cleared
+            ; Verify icon was cleared
             if (gWS_Store[testHwnd].iconHicon = 0) {
                 Log("PASS: WindowStore_CleanupAllIcons() zeros iconHicon field")
                 TestPassed++
