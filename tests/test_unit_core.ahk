@@ -778,7 +778,8 @@ RunUnitTests_Core() {
         }
 
         ; Wait a moment for initialization to complete (or fail)
-        Sleep(1500)
+        ; 750ms is sufficient to detect init failures without being overly slow
+        Sleep(750)
 
         ; Check if process is still running
         stillRunning := ProcessExist(pid)

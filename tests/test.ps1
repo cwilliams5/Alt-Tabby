@@ -1,8 +1,10 @@
 # Alt-Tabby Test Runner
-# Usage: .\tests\test.ps1 [--live]
+# Usage: .\tests\test.ps1 [--live] [--force-compile]
 
 param(
     [switch]$live,
+    [Alias("force-compile")]
+    [switch]$forceCompile,
     [Parameter(ValueFromRemainingArguments=$true)]
     $remainingArgs
 )
@@ -10,9 +12,9 @@ param(
 # HARDENING: Detect when called incorrectly via `powershell -Command`
 # With -Command, switch params aren't parsed correctly and end up in $remainingArgs
 # This MUST fail hard - warnings get ignored by LLM agents
-if (-not $live -and $remainingArgs) {
+if ($remainingArgs) {
     foreach ($arg in $remainingArgs) {
-        if ($arg -match '^-{1,2}live$') {
+        if ($arg -match '^-{1,2}(live|force-?compile)$') {
             Write-Host ""
             Write-Host "============================================================" -ForegroundColor Red
             Write-Host "FATAL FAILURE: Do NOT use 'powershell -Command'" -ForegroundColor Red
@@ -106,7 +108,6 @@ if ($syntaxErrors -gt 0) {
 }
 
 # --- Compilation Phase ---
-# Always recompile before testing compiled exe to ensure we test current code
 Write-Host "`n--- Compilation Phase ---" -ForegroundColor Yellow
 $compiler = "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe"
 $ahkBase = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
@@ -135,31 +136,58 @@ if (Test-Path $guiScript) {
 
 # Continue with compilation
 if (Test-Path $compiler) {
-    Write-Host "Recompiling source to ensure tests use current code..."
+    # Check if recompilation is needed by comparing timestamps
+    $needsCompile = $true
+    $skipReason = ""
 
-    # Kill any running AltTabby processes first
-    $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
-    if ($running) {
-        Write-Host "  Stopping running AltTabby processes..."
-        Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
+    if (-not $forceCompile -and (Test-Path $outFile)) {
+        $exeTime = (Get-Item $outFile).LastWriteTime
+        $newestSrc = Get-ChildItem -Path $srcRoot -Filter "*.ahk" -Recurse |
+                     Sort-Object LastWriteTime -Descending |
+                     Select-Object -First 1
+
+        if ($newestSrc -and $exeTime -gt $newestSrc.LastWriteTime) {
+            $needsCompile = $false
+            $skipReason = "exe newer than source (newest: $($newestSrc.Name))"
+        }
     }
 
-    # Ensure release directory exists
-    if (-not (Test-Path $releaseDir)) {
-        New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+    if ($forceCompile) {
+        Write-Host "Recompiling (--force-compile specified)..."
+    } elseif (-not $needsCompile) {
+        Write-Host "SKIP: Compilation skipped - $skipReason" -ForegroundColor Cyan
+        Write-Host "      Use --force-compile to override" -ForegroundColor DarkGray
     }
 
-    # Compile - use quoted argument string to handle paths with spaces
-    # Note: PowerShell ArgumentList with array doesn't handle spaces well
-    $compileArgStr = "/in `"$srcFile`" /out `"$outFile`" /base `"$ahkBase`" /silent verbose"
-    $compileProc = Start-Process -FilePath $compiler -ArgumentList $compileArgStr -Wait -NoNewWindow -PassThru
+    if ($needsCompile) {
+        if (-not $forceCompile) {
+            Write-Host "Recompiling source to ensure tests use current code..."
+        }
 
-    if ($compileProc.ExitCode -eq 0 -and (Test-Path $outFile)) {
-        Write-Host "PASS: Compiled AltTabby.exe successfully" -ForegroundColor Green
-    } else {
-        Write-Host "FAIL: Compilation failed (exit code: $($compileProc.ExitCode))" -ForegroundColor Red
-        # Continue with tests anyway - compiled exe tests will be skipped if exe doesn't exist
+        # Kill any running AltTabby processes first
+        $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
+        if ($running) {
+            Write-Host "  Stopping running AltTabby processes..."
+            Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        }
+
+        # Ensure release directory exists
+        if (-not (Test-Path $releaseDir)) {
+            New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+        }
+
+        # Compile - use quoted argument string to handle paths with spaces
+        # Note: PowerShell ArgumentList with array doesn't handle spaces well
+        $compileArgStr = "/in `"$srcFile`" /out `"$outFile`" /base `"$ahkBase`" /silent verbose"
+        $compileProc = Start-Process -FilePath $compiler -ArgumentList $compileArgStr -Wait -NoNewWindow -PassThru
+
+        if ($compileProc.ExitCode -eq 0 -and (Test-Path $outFile)) {
+            Write-Host "PASS: Compiled AltTabby.exe successfully" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: Compilation failed (exit code: $($compileProc.ExitCode))" -ForegroundColor Red
+            # Continue with tests anyway - compiled exe tests will be skipped if exe doesn't exist
+        }
     }
 } else {
     Write-Host "SKIP: Ahk2Exe.exe not found - compiled exe tests will use existing binary" -ForegroundColor Yellow
