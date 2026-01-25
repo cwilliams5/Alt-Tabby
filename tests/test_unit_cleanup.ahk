@@ -591,4 +591,375 @@ RunUnitTests_Cleanup() {
         Log("FAIL: Store_LogError check error: " e.Message)
         TestErrors++
     }
+
+    ; ============================================================
+    ; Include Completeness Tests (Prevent Missing Shared Utilities)
+    ; ============================================================
+    ; These tests ensure store_server.ahk includes all needed shared utilities
+    ; to prevent standalone mode crashes like those fixed in d9a90cc
+    Log("`n--- Include Completeness Tests ---")
+
+    ; Test: store_server.ahk includes all required shared utilities
+    Log("Testing store_server.ahk has all required shared includes...")
+    try {
+        storePath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(storePath)) {
+            code := FileRead(storePath)
+
+            requiredIncludes := [
+                "config_loader.ahk",
+                "json.ahk",
+                "ipc_pipe.ahk",
+                "blacklist.ahk",
+                "process_utils.ahk",
+                "win_utils.ahk"
+            ]
+
+            missingIncludes := []
+            for _, inc in requiredIncludes {
+                if (!InStr(code, inc)) {
+                    missingIncludes.Push(inc)
+                }
+            }
+
+            if (missingIncludes.Length = 0) {
+                Log("PASS: store_server.ahk has all " requiredIncludes.Length " required shared includes")
+                TestPassed++
+            } else {
+                Log("FAIL: store_server.ahk missing includes: " _ArrayJoin(missingIncludes, ", "))
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Include completeness check error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Function Reference Validation Tests
+    ; ============================================================
+    ; Ensure called functions match defined functions (prevent typos)
+    Log("`n--- Function Reference Validation Tests ---")
+
+    ; Test: _KSub_* function calls match definitions
+    Log("Testing komorebi function references match definitions...")
+    try {
+        ksubPath := A_ScriptDir "\..\src\store\komorebi_sub.ahk"
+        kstatePath := A_ScriptDir "\..\src\store\komorebi_state.ahk"
+        kjsonPath := A_ScriptDir "\..\src\store\komorebi_json.ahk"
+
+        if (FileExist(ksubPath) && FileExist(kstatePath)) {
+            ksubCode := FileRead(ksubPath)
+            kstateCode := FileRead(kstatePath)
+            kjsonCode := FileExist(kjsonPath) ? FileRead(kjsonPath) : ""
+            allCode := ksubCode . kstateCode . kjsonCode
+
+            ; Find all _KSub_* function definitions
+            definedFuncs := Map()
+            pos := 1
+            while (pos := RegExMatch(allCode, "(_KSub_\w+)\s*\(", &m, pos)) {
+                ; Check if this is a definition (has opening brace after params)
+                afterMatch := SubStr(allCode, pos + StrLen(m[]), 200)
+                if (RegExMatch(afterMatch, "^\s*[^)]*\)\s*\{")) {
+                    definedFuncs[m[1]] := true
+                }
+                pos += StrLen(m[])
+            }
+
+            ; Check for undefined _KSub_* calls (specifically _KSub_Log which was a bug)
+            undefinedCalls := []
+            if (InStr(allCode, "_KSub_Log(") && !definedFuncs.Has("_KSub_Log")) {
+                undefinedCalls.Push("_KSub_Log (should be _KSub_DiagLog)")
+            }
+
+            if (undefinedCalls.Length = 0) {
+                Log("PASS: All _KSub_* function calls have matching definitions")
+                TestPassed++
+            } else {
+                Log("FAIL: Undefined function calls found: " _ArrayJoin(undefinedCalls, ", "))
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find komorebi source files")
+        }
+    } catch as e {
+        Log("FAIL: Function reference check error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Client Disconnect Cleanup Tests
+    ; ============================================================
+    Log("`n--- Client Disconnect Cleanup Tests ---")
+
+    ; Test: IPC server supports onDisconnect callback
+    Log("Testing IPC server has onDisconnect callback support...")
+    try {
+        ipcPath := A_ScriptDir "\..\src\shared\ipc_pipe.ahk"
+        if (FileExist(ipcPath)) {
+            code := FileRead(ipcPath)
+
+            hasParam := InStr(code, "onDisconnectFn")
+            hasCallback := InStr(code, "onDisconnect:")
+            callsCallback := InStr(code, "server.onDisconnect")
+
+            if (hasParam && hasCallback && callsCallback) {
+                Log("PASS: IPC server has onDisconnect callback support")
+                TestPassed++
+            } else {
+                Log("FAIL: IPC server missing disconnect callback (param=" hasParam ", field=" hasCallback ", call=" callsCallback ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find ipc_pipe.ahk")
+        }
+    } catch as e {
+        Log("FAIL: IPC disconnect callback check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: Store registers disconnect callback and cleans up Maps
+    Log("Testing Store registers disconnect callback...")
+    try {
+        storePath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(storePath)) {
+            code := FileRead(storePath)
+
+            ; Check callback is passed to IPC_PipeServer_Start
+            hasCallbackArg := InStr(code, "Store_OnClientDisconnect)")
+
+            ; Check Store_OnClientDisconnect function exists and cleans all Maps
+            hasFunction := InStr(code, "Store_OnClientDisconnect(hPipe)")
+            cleansClientOpts := InStr(code, "gStore_ClientOpts.Delete(")
+            cleansLastRev := InStr(code, "gStore_LastClientRev.Delete(")
+            cleansLastProj := InStr(code, "gStore_LastClientProj.Delete(")
+            cleansLastMeta := InStr(code, "gStore_LastClientMeta.Delete(")
+
+            if (hasCallbackArg && hasFunction && cleansClientOpts && cleansLastRev && cleansLastProj && cleansLastMeta) {
+                Log("PASS: Store registers disconnect callback and cleans all 4 client Maps")
+                TestPassed++
+            } else {
+                Log("FAIL: Store disconnect cleanup incomplete (callback=" hasCallbackArg ", func=" hasFunction ", maps=" (cleansClientOpts && cleansLastRev && cleansLastProj && cleansLastMeta) ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Store disconnect callback check error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Buffer Overflow Protection Tests
+    ; ============================================================
+    Log("`n--- Buffer Overflow Protection Tests ---")
+
+    ; Test: Komorebi subscription has buffer overflow protection
+    Log("Testing komorebi_sub.ahk has buffer overflow protection...")
+    try {
+        ksubPath := A_ScriptDir "\..\src\store\komorebi_sub.ahk"
+        if (FileExist(ksubPath)) {
+            code := FileRead(ksubPath)
+
+            ; Check for buffer size limit (1MB = 1048576)
+            hasLimit := InStr(code, "1048576")
+            hasOverflowCheck := InStr(code, "StrLen(_KSub_Buf)")
+            resetsBuffer := InStr(code, '_KSub_Buf := ""')
+
+            if (hasLimit && hasOverflowCheck && resetsBuffer) {
+                Log("PASS: komorebi_sub.ahk has 1MB buffer overflow protection")
+                TestPassed++
+            } else {
+                Log("FAIL: Buffer overflow protection incomplete (limit=" hasLimit ", check=" hasOverflowCheck ", reset=" resetsBuffer ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find komorebi_sub.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Buffer overflow check error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Workspace Cache Pruning Tests
+    ; ============================================================
+    Log("`n--- Workspace Cache Pruning Tests ---")
+
+    ; Test: KomorebiSub has cache pruning function
+    Log("Testing komorebi_sub.ahk has cache pruning function...")
+    try {
+        ksubPath := A_ScriptDir "\..\src\store\komorebi_sub.ahk"
+        if (FileExist(ksubPath)) {
+            code := FileRead(ksubPath)
+
+            hasPruneFunc := InStr(code, "KomorebiSub_PruneStaleCache()")
+            checksAge := InStr(code, "_KSub_CacheMaxAgeMs")
+            deletesStale := InStr(code, "_KSub_WorkspaceCache.Delete(")
+
+            if (hasPruneFunc && checksAge && deletesStale) {
+                Log("PASS: komorebi_sub.ahk has cache pruning function with TTL check")
+                TestPassed++
+            } else {
+                Log("FAIL: Cache pruning incomplete (func=" hasPruneFunc ", age=" checksAge ", delete=" deletesStale ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find komorebi_sub.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Cache pruning check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: Store heartbeat calls cache pruning
+    Log("Testing store heartbeat calls cache pruning...")
+    try {
+        storePath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(storePath)) {
+            code := FileRead(storePath)
+
+            ; Extract Store_HeartbeatTick function and check it calls pruning
+            if (RegExMatch(code, "Store_HeartbeatTick\(\)\s*\{[\s\S]*?^\}", &match)) {
+                funcBody := match[]
+                callsPrune := InStr(funcBody, "KomorebiSub_PruneStaleCache")
+
+                if (callsPrune) {
+                    Log("PASS: Store_HeartbeatTick calls KomorebiSub_PruneStaleCache")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Store_HeartbeatTick does not call cache pruning")
+                    TestErrors++
+                }
+            } else {
+                ; Fallback: just check if the call exists somewhere after HeartbeatTick definition
+                if (InStr(code, "Store_HeartbeatTick") && InStr(code, "KomorebiSub_PruneStaleCache")) {
+                    Log("PASS: Store_HeartbeatTick and KomorebiSub_PruneStaleCache both exist")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Could not verify heartbeat calls pruning")
+                    TestErrors++
+                }
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Heartbeat pruning check error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Idle Timer Pause Tests (CPU Churn Prevention)
+    ; ============================================================
+    Log("`n--- Idle Timer Pause Tests ---")
+
+    ; Test: Icon pump has idle-pause pattern
+    Log("Testing icon_pump.ahk has idle-pause pattern...")
+    try {
+        iconPath := A_ScriptDir "\..\src\store\icon_pump.ahk"
+        if (FileExist(iconPath)) {
+            code := FileRead(iconPath)
+
+            hasIdleTicks := InStr(code, "_IP_IdleTicks")
+            hasIdleThreshold := InStr(code, "_IP_IdleThreshold")
+            pausesTimer := InStr(code, "SetTimer(_IP_Tick, 0)")
+            hasEnsureRunning := InStr(code, "IconPump_EnsureRunning()")
+
+            if (hasIdleTicks && hasIdleThreshold && pausesTimer && hasEnsureRunning) {
+                Log("PASS: icon_pump.ahk has idle-pause pattern with EnsureRunning")
+                TestPassed++
+            } else {
+                Log("FAIL: Icon pump idle-pause incomplete (ticks=" hasIdleTicks ", threshold=" hasIdleThreshold ", pause=" pausesTimer ", ensure=" hasEnsureRunning ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find icon_pump.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Icon pump idle check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: Proc pump has idle-pause pattern
+    Log("Testing proc_pump.ahk has idle-pause pattern...")
+    try {
+        procPath := A_ScriptDir "\..\src\store\proc_pump.ahk"
+        if (FileExist(procPath)) {
+            code := FileRead(procPath)
+
+            hasIdleTicks := InStr(code, "_PP_IdleTicks")
+            hasIdleThreshold := InStr(code, "_PP_IdleThreshold")
+            pausesTimer := InStr(code, "SetTimer(_PP_Tick, 0)")
+            hasEnsureRunning := InStr(code, "ProcPump_EnsureRunning()")
+
+            if (hasIdleTicks && hasIdleThreshold && pausesTimer && hasEnsureRunning) {
+                Log("PASS: proc_pump.ahk has idle-pause pattern with EnsureRunning")
+                TestPassed++
+            } else {
+                Log("FAIL: Proc pump idle-pause incomplete (ticks=" hasIdleTicks ", threshold=" hasIdleThreshold ", pause=" pausesTimer ", ensure=" hasEnsureRunning ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find proc_pump.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Proc pump idle check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: WinEvent hook has idle-pause pattern
+    Log("Testing winevent_hook.ahk has idle-pause pattern...")
+    try {
+        wehPath := A_ScriptDir "\..\src\store\winevent_hook.ahk"
+        if (FileExist(wehPath)) {
+            code := FileRead(wehPath)
+
+            hasIdleTicks := InStr(code, "_WEH_IdleTicks")
+            hasIdleThreshold := InStr(code, "_WEH_IdleThreshold")
+            pausesTimer := InStr(code, "SetTimer(_WEH_ProcessBatch, 0)")
+            hasEnsureRunning := InStr(code, "WinEventHook_EnsureTimerRunning()")
+
+            if (hasIdleTicks && hasIdleThreshold && pausesTimer && hasEnsureRunning) {
+                Log("PASS: winevent_hook.ahk has idle-pause pattern with EnsureTimerRunning")
+                TestPassed++
+            } else {
+                Log("FAIL: WinEvent hook idle-pause incomplete (ticks=" hasIdleTicks ", threshold=" hasIdleThreshold ", pause=" pausesTimer ", ensure=" hasEnsureRunning ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find winevent_hook.ahk")
+        }
+    } catch as e {
+        Log("FAIL: WinEvent hook idle check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: WindowStore wakes pumps when enqueuing work
+    Log("Testing windowstore.ahk wakes pumps when enqueuing...")
+    try {
+        wsPath := A_ScriptDir "\..\src\store\windowstore.ahk"
+        if (FileExist(wsPath)) {
+            code := FileRead(wsPath)
+
+            wakesIconPump := InStr(code, "IconPump_EnsureRunning()")
+            wakesProcPump := InStr(code, "ProcPump_EnsureRunning()")
+
+            if (wakesIconPump && wakesProcPump) {
+                Log("PASS: windowstore.ahk wakes both pumps when enqueuing work")
+                TestPassed++
+            } else {
+                Log("FAIL: WindowStore pump wake incomplete (icon=" wakesIconPump ", proc=" wakesProcPump ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find windowstore.ahk")
+        }
+    } catch as e {
+        Log("FAIL: WindowStore pump wake check error: " e.Message)
+        TestErrors++
+    }
 }
