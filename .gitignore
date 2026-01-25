@@ -16,8 +16,9 @@ Thumbs.db
 # https://github.com/anthropics/claude-code/issues/17636
 tmpclaude-*
 
-# Claude Code local settings
-.claude/
+# Claude Code local settings (but keep rules/ for project documentation)
+.claude/*
+!.claude/rules/
 
 # Plan files (created by Claude agents)
 PLAN.md
