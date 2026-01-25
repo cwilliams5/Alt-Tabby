@@ -479,7 +479,8 @@ _IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
             line := SubStr(line, 1, -1)
         if (line != "") {
             try onMessageFn.Call(line, hPipe)
-            catch {
+            catch as e {
+                _IPC_Log("Message callback error: " e.Message " | line: " SubStr(line, 1, 100))
             }
         }
     }
