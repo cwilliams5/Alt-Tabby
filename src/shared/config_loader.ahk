@@ -328,6 +328,8 @@ _CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType 
     try {
         FileDelete(path)
         FileAppend(newContent, path, "UTF-8")
+    } catch as e {
+        return false
     }
     return true
 }

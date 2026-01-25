@@ -14,6 +14,13 @@ global IPC_OVERLAPPED_SIZE := (A_PtrSize = 8) ? 32 : 20
 global IPC_OVERLAPPED_EVENT_OFFSET := (A_PtrSize = 8) ? 24 : 16
 global IPC_SECURITY_ATTRS_SIZE := (A_PtrSize = 8) ? 24 : 12
 
+; Pipe creation constants
+global IPC_PIPE_ACCESS_DUPLEX := 0x00000003
+global IPC_FILE_FLAG_OVERLAPPED := 0x40000000
+global IPC_PIPE_TYPE_MESSAGE := 0x00000004
+global IPC_PIPE_READMODE_MESSAGE := 0x00000002
+global IPC_PIPE_WAIT := 0x00000000
+
 ; IPC Message Types
 global IPC_MSG_HELLO := "hello"
 global IPC_MSG_HELLO_ACK := "hello_ack"
@@ -311,11 +318,8 @@ _IPC_CreateOpenSecurityAttrs() {
 }
 
 _IPC_CreatePipeInstance(pipeName) {
-    PIPE_ACCESS_DUPLEX := 0x00000003
-    FILE_FLAG_OVERLAPPED := 0x40000000
-    PIPE_TYPE_MESSAGE := 0x00000004
-    PIPE_READMODE_MESSAGE := 0x00000002
-    PIPE_WAIT := 0x00000000
+    global IPC_PIPE_ACCESS_DUPLEX, IPC_FILE_FLAG_OVERLAPPED
+    global IPC_PIPE_TYPE_MESSAGE, IPC_PIPE_READMODE_MESSAGE, IPC_PIPE_WAIT
 
     ; Create security attributes with NULL DACL to allow non-elevated processes
     ; to connect when we're running as administrator
@@ -323,8 +327,8 @@ _IPC_CreatePipeInstance(pipeName) {
 
     hPipe := DllCall("CreateNamedPipeW"
         , "str", "\\.\pipe\" pipeName
-        , "uint", PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED
-        , "uint", PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT
+        , "uint", IPC_PIPE_ACCESS_DUPLEX | IPC_FILE_FLAG_OVERLAPPED
+        , "uint", IPC_PIPE_TYPE_MESSAGE | IPC_PIPE_READMODE_MESSAGE | IPC_PIPE_WAIT
         , "uint", 255
         , "uint", IPC_READ_CHUNK_SIZE   ; output buffer size
         , "uint", IPC_READ_CHUNK_SIZE   ; input buffer size

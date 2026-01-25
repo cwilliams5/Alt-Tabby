@@ -33,6 +33,17 @@ gWS_Config["MissingTTLms"] := WS_MISSING_TTL_DEFAULT_MS
 gWS_Meta["currentWSId"] := ""
 gWS_Meta["currentWSName"] := ""
 
+; Safely snapshot Map keys for iteration (prevents modification during iteration)
+; Returns an Array of keys. Caller can iterate safely after Critical section ends.
+_WS_SnapshotMapKeys(mapObj) {
+    Critical "On"
+    keys := []
+    for k, _ in mapObj
+        keys.Push(k)
+    Critical "Off"
+    return keys
+}
+
 WindowStore_Init(config := 0) {
     global gWS_Config
     if IsObject(config) {
@@ -57,12 +68,7 @@ WindowStore_EndScan(graceMs := "") {
     changed := false
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    ; AHK v2 Map iteration during modification is undefined behavior
-    Critical "On"
-    hwnds := []
-    for hwnd, _ in gWS_Store
-        hwnds.Push(hwnd)
-    Critical "Off"
+    hwnds := _WS_SnapshotMapKeys(gWS_Store)
 
     for _, hwnd in hwnds {
         if (!gWS_Store.Has(hwnd))
@@ -247,11 +253,7 @@ WindowStore_ValidateExistence() {
     global gWS_Store, gWS_Rev
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    Critical "On"
-    hwnds := []
-    for hwnd, _ in gWS_Store
-        hwnds.Push(hwnd)
-    Critical "Off"
+    hwnds := _WS_SnapshotMapKeys(gWS_Store)
 
     toRemove := []
     for _, hwnd in hwnds {
@@ -290,11 +292,7 @@ WindowStore_PurgeBlacklisted() {
     toRemove := []
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    Critical "On"
-    hwnds := []
-    for hwnd, _ in gWS_Store
-        hwnds.Push(hwnd)
-    Critical "Off"
+    hwnds := _WS_SnapshotMapKeys(gWS_Store)
 
     ; Collect hwnds that match blacklist
     for _, hwnd in hwnds {
@@ -769,11 +767,7 @@ WindowStore_UpdateProcessName(pid, name) {
     gWS_ProcNameCache[pid] := name
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    Critical "On"
-    hwnds := []
-    for hwnd, _ in gWS_Store
-        hwnds.Push(hwnd)
-    Critical "Off"
+    hwnds := _WS_SnapshotMapKeys(gWS_Store)
 
     ; Update all matching rows
     changed := false
@@ -844,11 +838,7 @@ WindowStore_PruneProcNameCache() {
         return 0
 
     ; Snapshot keys to prevent iteration-during-modification
-    Critical "On"
-    pids := []
-    for pid, _ in gWS_ProcNameCache
-        pids.Push(pid)
-    Critical "Off"
+    pids := _WS_SnapshotMapKeys(gWS_ProcNameCache)
 
     pruned := 0
     for _, pid in pids {

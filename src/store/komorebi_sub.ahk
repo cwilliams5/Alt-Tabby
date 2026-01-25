@@ -400,7 +400,7 @@ _KSub_ExtractOneJson(&s) {
                 }
             }
         } else {
-            if (ch = '"' && SubStr(s, i - 1, 1) != "\")
+            if (ch = '"' && !_KSub_IsQuoteEscaped(s, i))
                 inString := false
         }
         i += 1
@@ -754,11 +754,7 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
         now := A_TickCount
 
         ; Snapshot hwnds to prevent iteration-during-modification race
-        Critical "On"
-        hwnds := []
-        for hwnd, _ in gWS_Store
-            hwnds.Push(hwnd)
-        Critical "Off"
+        hwnds := _WS_SnapshotMapKeys(gWS_Store)
 
         for _, hwnd in hwnds {
             ; Guard: window may have been removed between snapshot and processing

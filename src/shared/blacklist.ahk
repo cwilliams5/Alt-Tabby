@@ -22,6 +22,12 @@ global gBlacklist_Pairs := []
 global gBlacklist_FilePath := ""
 global gBlacklist_Loaded := false
 
+; Window style constants for eligibility checks
+global BL_WS_CHILD := 0x40000000
+global BL_WS_EX_TOOLWINDOW := 0x00000080
+global BL_WS_EX_APPWINDOW := 0x00040000
+global BL_WS_EX_NOACTIVATE := 0x08000000
+
 ; Initialize and load blacklist from file
 Blacklist_Init(filePath := "") {
     global gBlacklist_FilePath
@@ -265,6 +271,8 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
 
 ; Alt-Tab eligibility rules (matches Windows behavior)
 _BL_IsAltTabEligible(hwnd) {
+    global BL_WS_CHILD, BL_WS_EX_TOOLWINDOW, BL_WS_EX_APPWINDOW, BL_WS_EX_NOACTIVATE
+
     ; Get visibility state
     isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
     isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
@@ -272,22 +280,16 @@ _BL_IsAltTabEligible(hwnd) {
     ; Get regular window style
     style := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -16, "ptr")  ; GWL_STYLE
 
-    WS_CHILD := 0x40000000
-
     ; Child windows are never Alt-Tab eligible
-    if (style & WS_CHILD)
+    if (style & BL_WS_CHILD)
         return false
 
     ; Get extended window style
     ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -20, "ptr")  ; GWL_EXSTYLE
 
-    WS_EX_TOOLWINDOW := 0x00000080
-    WS_EX_APPWINDOW := 0x00040000
-    WS_EX_NOACTIVATE := 0x08000000
-
-    isTool := (ex & WS_EX_TOOLWINDOW) != 0
-    isApp := (ex & WS_EX_APPWINDOW) != 0
-    isNoActivate := (ex & WS_EX_NOACTIVATE) != 0
+    isTool := (ex & BL_WS_EX_TOOLWINDOW) != 0
+    isApp := (ex & BL_WS_EX_APPWINDOW) != 0
+    isNoActivate := (ex & BL_WS_EX_NOACTIVATE) != 0
 
     ; Tool windows are never Alt-Tab eligible
     if (isTool)
