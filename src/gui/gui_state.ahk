@@ -515,7 +515,10 @@ _GUI_AsyncActivationTick() {
     ; During workspace switch, komorebic uses SendInput which briefly uninstalls
     ; all keyboard hooks in the system. This can cause Tab presses to be lost.
     ; If we see Alt+Tab physically held but no TAB event in buffer, synthesize one.
-    if (gGUI_PendingPhase = "polling" && GetKeyState("Alt", "P") && GetKeyState("Tab", "P")) {
+    ; BUT: Only synthesize if the interceptor is NOT in its decision window (gINT_TabPending).
+    ; If TabPending is true, the interceptor will eventually send the Tab event itself.
+    global gINT_TabPending
+    if (gGUI_PendingPhase = "polling" && GetKeyState("Alt", "P") && GetKeyState("Tab", "P") && !gINT_TabPending) {
         ; Protect buffer read+write with Critical to prevent interceptor interruption
         Critical "On"
         hasAltDn := false
