@@ -6,10 +6,21 @@ RunUnitTests_Cleanup() {
     global TestPassed, TestErrors, cfg
 
     ; ============================================================
-    ; GDI+ Shutdown Tests (Resource Leak Prevention)
+    ; GDI+ Shutdown Tests (Code Inspection)
     ; ============================================================
-    ; Note: These tests use code inspection since gui_gdip.ahk isn't
-    ; included in the test context. This avoids interfering with graphics state.
+    ; NOTE: These tests use code inspection (FileRead + InStr) rather than
+    ; execution because gui_gdip.ahk requires an active graphics context
+    ; (GDI+ token, device contexts, etc.) that cannot be safely initialized
+    ; in a headless test environment.
+    ;
+    ; This approach verifies that:
+    ; - Cleanup functions EXIST with proper patterns
+    ; - Required DLL calls are present (GdiplusShutdown, GdipDeleteGraphics)
+    ; - Global state is cleared to prevent resource leaks
+    ;
+    ; LIMITATIONS: Cannot verify functions execute correctly at runtime.
+    ; Live testing (running the actual GUI) validates actual shutdown behavior.
+    ; These are REGRESSION GUARDS - they catch accidental removal of cleanup code.
     Log("`n--- GDI+ Shutdown Tests ---")
 
     ; Test 1: Gdip_Shutdown function exists in source

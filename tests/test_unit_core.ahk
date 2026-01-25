@@ -449,6 +449,16 @@ RunUnitTests_Core() {
     ; ============================================================
     ; Alt-Tab Eligibility Code Inspection Tests
     ; ============================================================
+    ; NOTE: These tests use code inspection to verify _BL_IsAltTabEligible
+    ; contains all required Windows API checks. This supplements functional
+    ; tests because:
+    ; - Some checks (cloaking, owned windows) require specific window states
+    ;   that are difficult to create reliably in tests
+    ; - The full eligibility logic involves many interacting conditions
+    ;
+    ; LIMITATIONS: Verifies patterns EXIST but not their correctness.
+    ; Functional tests in test_blacklist.ahk validate actual filtering behavior.
+    ; These are REGRESSION GUARDS - they catch accidental removal of eligibility checks.
     Log("`n--- Alt-Tab Eligibility Code Inspection Tests ---")
     Log("Testing _BL_IsAltTabEligible code structure...")
 
@@ -484,8 +494,19 @@ RunUnitTests_Core() {
     }
 
     ; ============================================================
-    ; WinEventHook Empty Title Filter Test
+    ; WinEventHook Empty Title Filter Test (Code Inspection)
     ; ============================================================
+    ; NOTE: This test uses code inspection because WinEventHook requires
+    ; system-level hooks (SetWinEventHook) that cannot be safely tested
+    ; without affecting the real Windows event stream.
+    ;
+    ; The empty-title filter is critical: Windows Task Switching UI sends
+    ; focus events with empty titles, which can poison MRU tracking. This
+    ; test verifies the defensive check exists.
+    ;
+    ; LIMITATIONS: Cannot verify the filter executes at the right time.
+    ; Live testing with actual window switching validates runtime behavior.
+    ; This is a REGRESSION GUARD - catches accidental removal of the fix.
     Log("`n--- WinEventHook Empty Title Filter Test ---")
     Log("Testing WinEventHook filters empty-title windows from focus tracking...")
 
