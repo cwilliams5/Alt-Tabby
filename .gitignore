@@ -19,6 +19,9 @@ tmpclaude-*
 # Claude Code local settings
 .claude/
 
+# Plan files (created by Claude agents)
+PLAN.md
+
 # Temp folder for examples/screenshots (never commit)
 /temp/
 
