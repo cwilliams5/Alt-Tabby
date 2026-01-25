@@ -167,7 +167,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     }
     if (Col2W > 0) {
         cx := rightX - Col2W
-        cols.Push({name: cfg.GUI_Col2Name, w: Col2W, key: "HWND", x: cx})
+        cols.Push({name: cfg.GUI_Col2Name, w: Col2W, key: "hwndHex", x: cx})
         rightX := cx - gapCols
     }
 

@@ -26,6 +26,7 @@ global IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
 ; GUI state globals
 global gGUI_State := "IDLE"
 global gGUI_Items := []
+global gGUI_ItemsMap := Map()  ; hwnd -> item lookup for O(1) delta processing
 global gGUI_FrozenItems := []
 global gGUI_AllItems := []
 global gGUI_AwaitingToggleProjection := false
@@ -175,10 +176,11 @@ ResetGUIState() {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_FirstTabTick, gGUI_AltDownTick, gGUI_WorkspaceMode
     global gGUI_AwaitingToggleProjection, gMockIPCMessages, gGUI_CurrentWSName
-    global gGUI_FooterText, gGUI_Revealed
+    global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
 
     gGUI_State := "IDLE"
     gGUI_Items := []
+    gGUI_ItemsMap := Map()
     gGUI_FrozenItems := []
     gGUI_AllItems := []
     gGUI_Sel := 1
@@ -192,6 +194,7 @@ ResetGUIState() {
     gGUI_FooterText := ""
     gGUI_Revealed := false
     gGUI_AwaitingToggleProjection := false
+    gGUI_LastLocalMRUTick := 0  ; Reset to avoid MRU freshness skip in snapshot handler
     gMockIPCMessages := []
 }
 
@@ -365,13 +368,15 @@ RunGUITests() {
     GUI_Log("Test: FreezeWindowList=false allows deltas")
     ResetGUIState()
     cfg.FreezeWindowList := false
-    gGUI_Items := CreateTestItems(5)
+    ; Simulate realistic flow: items arrive via snapshot before Alt+Tab
+    snapshotMsg := JXON_Dump({ type: IPC_MSG_SNAPSHOT, rev: 5, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
     gGUI_OverlayVisible := true
 
-    ; Send delta with new items
+    ; Send delta with new items (items 1-5 update, 6-8 add)
     deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(8) } })
     GUI_OnStoreMessage(deltaMsg)
 
@@ -575,7 +580,9 @@ RunGUITests() {
         cfg.FreezeWindowList := combo.freeze
         cfg.UseCurrentWSProjection := combo.wsProj
         cfg.AltTabPrewarmOnAlt := combo.prewarm
-        gGUI_Items := CreateTestItems(8, 3)  ; 8 items, 3 on current WS
+        ; Simulate realistic flow: items arrive via snapshot before Alt+Tab
+        snapshotMsg := JXON_Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(8, 3) } })
+        GUI_OnStoreMessage(snapshotMsg)
         gGUI_WorkspaceMode := "all"
 
         ; Simulate Alt+Tab

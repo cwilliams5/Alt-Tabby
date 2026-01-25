@@ -2,10 +2,13 @@
 ; Handles communication with WindowStore: messages, deltas, snapshots
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_Items)
+global gGUI_ItemsMap := Map()
+
 ; ========================= STORE MESSAGE HANDLER =========================
 
 GUI_OnStoreMessage(line, hPipe := 0) {
-    global gGUI_StoreConnected, gGUI_StoreRev, gGUI_Items, gGUI_Sel
+    global gGUI_StoreConnected, gGUI_StoreRev, gGUI_Items, gGUI_Sel, gGUI_ItemsMap
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText
     global gGUI_State, gGUI_FrozenItems, gGUI_AllItems  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
@@ -79,6 +82,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             ; Hotkeys (Alt/Tab) may access gGUI_Items during state transitions
             Critical "On"
             gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
+            gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
             if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {
@@ -177,7 +181,7 @@ GUI_ConvertStoreItems(items) {
             hwnd: hwnd,
             Title: item.Has("title") ? item["title"] : "",
             Class: item.Has("class") ? item["class"] : "",
-            HWND: Format("0x{:X}", hwnd),
+            hwndHex: Format("0x{:X}", hwnd),  ; Renamed from HWND to avoid case collision
             PID: item.Has("pid") ? "" item["pid"] : "",
             WS: item.Has("workspaceName") ? item["workspaceName"] : "",
             isOnCurrentWorkspace: item.Has("isOnCurrentWorkspace") ? item["isOnCurrentWorkspace"] : true,
@@ -189,10 +193,18 @@ GUI_ConvertStoreItems(items) {
     return result
 }
 
+; Rebuild hwnd -> item Map from items array (call after replacing gGUI_Items)
+GUI_RebuildItemsMap(items) {
+    m := Map()
+    for _, item in items
+        m[item.hwnd] := item
+    return m
+}
+
 ; ========================= DELTA APPLICATION =========================
 
 GUI_ApplyDelta(payload) {
-    global gGUI_Items, gGUI_Sel, gINT_BypassMode
+    global gGUI_Items, gGUI_Sel, gINT_BypassMode, gGUI_ItemsMap
 
     changed := false
     focusChangedToHwnd := 0  ; Track if any window received focus
@@ -207,92 +219,77 @@ GUI_ApplyDelta(payload) {
     ; Hotkeys (Alt/Tab) may access gGUI_Items during state transitions
     Critical "On"
 
-    ; Handle removes - filter out items by hwnd
+    ; Handle removes - filter out items by hwnd using Set for O(1) lookup
     if (payload.Has("removes") && payload["removes"].Length) {
+        ; Build set for O(1) lookup instead of O(n) inner loop
+        removeSet := Map()
+        for _, hwnd in payload["removes"]
+            removeSet[hwnd] := true
+
+        ; Single pass filter O(n) instead of O(n*m)
         newItems := []
         for _, item in gGUI_Items {
-            isRemoved := false
-            for _, hwnd in payload["removes"] {
-                if (item.hwnd = hwnd) {
-                    isRemoved := true
-                    break
-                }
-            }
-            if (!isRemoved) {
+            if (!removeSet.Has(item.hwnd))
                 newItems.Push(item)
-            }
         }
         if (newItems.Length != gGUI_Items.Length) {
             gGUI_Items := newItems
+            gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
             changed := true
         }
     }
 
-    ; Handle upserts - update existing or add new items
+    ; Handle upserts - update existing or add new items using Map for O(1) lookup
     if (payload.Has("upserts") && payload["upserts"].Length) {
         for _, rec in payload["upserts"] {
-            if (!IsObject(rec)) {
+            if (!IsObject(rec))
                 continue
-            }
             hwnd := rec.Has("hwnd") ? rec["hwnd"] : 0
-            if (!hwnd) {
+            if (!hwnd)
                 continue
-            }
 
-            ; Find existing item by hwnd
-            found := false
-            for i, item in gGUI_Items {
-                if (item.hwnd = hwnd) {
-                    ; Update existing item
-                    if (rec.Has("title")) {
-                        item.Title := rec["title"]
-                    }
-                    if (rec.Has("class")) {
-                        item.Class := rec["class"]
-                    }
-                    if (rec.Has("pid")) {
-                        item.PID := "" rec["pid"]
-                    }
-                    if (rec.Has("workspaceName")) {
-                        item.WS := rec["workspaceName"]
-                    }
-                    if (rec.Has("isOnCurrentWorkspace")) {
-                        item.isOnCurrentWorkspace := rec["isOnCurrentWorkspace"]
-                    }
-                    if (rec.Has("processName")) {
-                        item.processName := rec["processName"]
-                    }
-                    if (rec.Has("iconHicon")) {
-                        item.iconHicon := rec["iconHicon"]
-                    }
-                    if (rec.Has("lastActivatedTick")) {
-                        item.lastActivatedTick := rec["lastActivatedTick"]
-                    }
-                    ; Track focus change (don't process here, just record it)
-                    if (rec.Has("isFocused") && rec["isFocused"]) {
-                        _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
-                        focusChangedToHwnd := hwnd
-                    }
-                    found := true
-                    changed := true
-                    break
+            ; O(1) lookup instead of O(n) scan
+            if (gGUI_ItemsMap.Has(hwnd)) {
+                ; Update existing item
+                item := gGUI_ItemsMap[hwnd]
+                if (rec.Has("title"))
+                    item.Title := rec["title"]
+                if (rec.Has("class"))
+                    item.Class := rec["class"]
+                if (rec.Has("pid"))
+                    item.PID := "" rec["pid"]
+                if (rec.Has("workspaceName"))
+                    item.WS := rec["workspaceName"]
+                if (rec.Has("isOnCurrentWorkspace"))
+                    item.isOnCurrentWorkspace := rec["isOnCurrentWorkspace"]
+                if (rec.Has("processName"))
+                    item.processName := rec["processName"]
+                if (rec.Has("iconHicon"))
+                    item.iconHicon := rec["iconHicon"]
+                if (rec.Has("lastActivatedTick"))
+                    item.lastActivatedTick := rec["lastActivatedTick"]
+                ; Track focus change (don't process here, just record it)
+                if (rec.Has("isFocused") && rec["isFocused"]) {
+                    _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
+                    focusChangedToHwnd := hwnd
                 }
-            }
-
-            ; Add new item if not found
-            if (!found) {
-                gGUI_Items.Push({
+                changed := true
+            } else {
+                ; Add new item
+                newItem := {
                     hwnd: hwnd,
                     Title: rec.Has("title") ? rec["title"] : "",
                     Class: rec.Has("class") ? rec["class"] : "",
-                    HWND: Format("0x{:X}", hwnd),
+                    hwndHex: Format("0x{:X}", hwnd),  ; Must match GUI_ConvertStoreItems
                     PID: rec.Has("pid") ? "" rec["pid"] : "",
                     WS: rec.Has("workspaceName") ? rec["workspaceName"] : "",
                     isOnCurrentWorkspace: rec.Has("isOnCurrentWorkspace") ? rec["isOnCurrentWorkspace"] : true,
                     processName: rec.Has("processName") ? rec["processName"] : "",
                     iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
                     lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
-                })
+                }
+                gGUI_Items.Push(newItem)
+                gGUI_ItemsMap[hwnd] := newItem
                 ; Track focus change for new item too
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
@@ -331,19 +328,26 @@ GUI_ApplyDelta(payload) {
 GUI_SortItemsByMRU() {
     global gGUI_Items
 
-    ; Simple bubble sort by lastActivatedTick descending (higher = more recent = first)
+    ; Insertion sort by lastActivatedTick descending (higher = more recent = first)
+    ; O(n) for nearly-sorted data (typical case - MRU order rarely changes much)
+    ; O(n²) worst case, but still better than bubble sort in practice
     n := gGUI_Items.Length
-    loop n - 1 {
+    if (n <= 1)
+        return
+
+    loop n {
         i := A_Index
-        loop n - i {
-            j := A_Index
-            if (gGUI_Items[j].lastActivatedTick < gGUI_Items[j + 1].lastActivatedTick) {
-                ; Swap
-                temp := gGUI_Items[j]
-                gGUI_Items[j] := gGUI_Items[j + 1]
-                gGUI_Items[j + 1] := temp
-            }
+        if (i = 1)
+            continue
+        key := gGUI_Items[i]
+        keyTick := key.lastActivatedTick
+        j := i - 1
+        ; Shift elements that are smaller (older) than key to the right
+        while (j >= 1 && gGUI_Items[j].lastActivatedTick < keyTick) {
+            gGUI_Items[j + 1] := gGUI_Items[j]
+            j -= 1
         }
+        gGUI_Items[j + 1] := key
     }
 }
 

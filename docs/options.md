@@ -53,6 +53,16 @@ When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby
 | `BypassFullscreen` | bool | `true` | Bypass Alt-Tabby when the foreground window is fullscreen (covers ≥99% of screen). Useful for games that need native Alt-Tab behavior. |
 | `BypassProcesses` | string | `(empty)` | Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead. |
 
+### Internal Timing
+
+Internal timing parameters (usually no need to change)
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `MRUFreshnessMs` | int | `300` | How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations. |
+| `WSPollTimeoutMs` | int | `200` | Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation. |
+| `PrewarmWaitMs` | int | `50` | Max time to wait for prewarm data on Tab (ms). If items are empty when Tab is pressed, wait up to this long for data to arrive. |
+
 ## Launcher
 
 Settings for the main Alt-Tabby launcher process (splash screen, startup behavior).
@@ -320,6 +330,7 @@ Event-driven window change detection. Events are queued then processed in batche
 |--------|------|---------|-------------|
 | `DebounceMs` | int | `50` | Debounce rapid events (e.g., window moving fires many events) |
 | `BatchMs` | int | `100` | Batch processing interval - how often queued events are processed |
+| `IdleThreshold` | int | `10` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 
 ## ZPump
 
@@ -358,6 +369,7 @@ Resolves window icons asynchronously with retry/backoff.
 | `AttemptBackoffMs` | int | `300` | Base backoff after failed attempt (multiplied by attempt number) |
 | `BackoffMultiplier` | float | `1.80` | Backoff multiplier for exponential backoff (1.0 = linear) |
 | `RefreshThrottleMs` | int | `30000` | Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay. |
+| `IdleThreshold` | int | `5` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 
 ## ProcPump
 
@@ -367,6 +379,7 @@ Resolves PID -> process name asynchronously.
 |--------|------|---------|-------------|
 | `IntervalMs` | int | `100` | How often the pump processes its queue |
 | `BatchSize` | int | `16` | Max PIDs to resolve per tick |
+| `IdleThreshold` | int | `5` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 
 ## KomorebiSub
 
@@ -435,4 +448,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-24 with 161 total settings.*
+*Generated on 2026-01-24 with 167 total settings.*

@@ -108,6 +108,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 #Include setup_utils.ahk
 #Include process_utils.ahk
 #Include win_utils.ahk
+#Include pump_utils.ahk
 
 ; Launcher module (from src/launcher/)
 #Include %A_ScriptDir%\launcher\
