@@ -229,6 +229,7 @@ Store_FullScan() {
 ; conditions where clients disconnect during iteration
 Store_PushToClients() {
     global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_TestMode
+    global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -318,6 +319,7 @@ Store_MetaChanged(prevMeta, nextMeta) {
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)
 Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev) {
+    global IPC_MSG_DELTA
     delta := WindowStore_BuildDelta(prevItems, nextItems)
     return {
         type: IPC_MSG_DELTA,

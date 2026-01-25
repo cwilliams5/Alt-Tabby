@@ -15,20 +15,20 @@ global IPC_OVERLAPPED_EVENT_OFFSET := (A_PtrSize = 8) ? 24 : 16
 global IPC_SECURITY_ATTRS_SIZE := (A_PtrSize = 8) ? 24 : 12
 
 ; IPC Message Types
-IPC_MSG_HELLO := "hello"
-IPC_MSG_HELLO_ACK := "hello_ack"
-IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
-IPC_MSG_SNAPSHOT := "snapshot"
-IPC_MSG_DELTA := "delta"
-IPC_MSG_PROJECTION_REQUEST := "projection_request"
-IPC_MSG_PROJECTION := "projection"
-IPC_MSG_SET_PROJECTION_OPTS := "set_projection_opts"
-IPC_MSG_PING := "ping"
-IPC_MSG_ERROR := "error"
-IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
-IPC_MSG_HEARTBEAT := "heartbeat"
-IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
-IPC_MSG_PRODUCER_STATUS := "producer_status"
+global IPC_MSG_HELLO := "hello"
+global IPC_MSG_HELLO_ACK := "hello_ack"
+global IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
+global IPC_MSG_SNAPSHOT := "snapshot"
+global IPC_MSG_DELTA := "delta"
+global IPC_MSG_PROJECTION_REQUEST := "projection_request"
+global IPC_MSG_PROJECTION := "projection"
+global IPC_MSG_SET_PROJECTION_OPTS := "set_projection_opts"
+global IPC_MSG_PING := "ping"
+global IPC_MSG_ERROR := "error"
+global IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
+global IPC_MSG_HEARTBEAT := "heartbeat"
+global IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
+global IPC_MSG_PRODUCER_STATUS := "producer_status"
 
 ; IPC Timing Constants (milliseconds)
 global IPC_TICK_ACTIVE := 15        ; Server/client tick when active (messages pending)
