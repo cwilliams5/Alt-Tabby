@@ -74,6 +74,9 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         }
 
         if (obj.Has("payload") && obj["payload"].Has("items")) {
+            ; RACE FIX: Protect array modifications from hotkey interruption
+            ; Hotkeys (Alt/Tab) may access gGUI_Items during state transitions
+            Critical "On"
             gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
@@ -101,10 +104,6 @@ GUI_OnStoreMessage(line, hPipe := 0) {
                         gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
                     }
                     gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
-
-                    ; Resize GUI if item count changed significantly
-                    rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
-                    GUI_ResizeToRows(rowsDesired)
                 }
             }
 
@@ -116,8 +115,15 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             if (gGUI_Sel < 1 && displayItems.Length > 0) {
                 gGUI_Sel := 1
             }
+            Critical "Off"
 
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
+
+            ; Resize and repaint OUTSIDE Critical (GDI+ can pump messages)
+            if (isToggleResponse && gGUI_State = "ACTIVE") {
+                rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+                GUI_ResizeToRows(rowsDesired)
+            }
 
             if (gGUI_OverlayVisible && gGUI_OverlayH) {
                 GUI_Repaint()

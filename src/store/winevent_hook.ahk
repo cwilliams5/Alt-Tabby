@@ -168,9 +168,14 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         && event != WEH_EVENT_OBJECT_LOCATIONCHANGE)
         return
 
+    ; RACE FIX: Protect Map writes from batch processor interruption
+    ; The batch processor iterates _WEH_PendingHwnds - we must not modify it concurrently
+    Critical "On"
+
     ; For destroy events, mark for removal
     if (event = WEH_EVENT_OBJECT_DESTROY) {
         _WEH_PendingHwnds[hwnd] := -1  ; -1 = destroyed
+        Critical "Off"
         return
     }
 
@@ -184,6 +189,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         ; that briefly get focus during Alt+Tab and would overwrite the real target window
         if (title = "") {
             _WEH_DiagLog("FOCUS SKIP (no title): hwnd=" hwnd " (keeping " _WEH_PendingFocusHwnd ")")
+            Critical "Off"
             return
         }
 
@@ -194,6 +200,8 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; Queue for update
     _WEH_PendingHwnds[hwnd] := A_TickCount
+
+    Critical "Off"
 
     ; Wake timer if it was paused due to idle
     WinEventHook_EnsureTimerRunning()

@@ -98,7 +98,9 @@ IconPump_EnsureRunning() {
 
 ; Clean up tracking state AND destroy HICON when windows are removed
 ; IMPORTANT: Must be called BEFORE gWS_Store.Delete(hwnd) so we can access the record
+; RACE FIX: Add Critical to prevent _IP_Tick from processing same hwnd concurrently
 IconPump_CleanupWindow(hwnd) {
+    Critical "On"
     global _IP_Attempts
 
     ; Destroy the HICON first (before record is deleted from store)
@@ -110,6 +112,7 @@ IconPump_CleanupWindow(hwnd) {
     ; Clean up attempt tracking
     if (_IP_Attempts.Has(hwnd))
         _IP_Attempts.Delete(hwnd)
+    Critical "Off"
 }
 
 ; Main pump tick

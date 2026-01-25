@@ -253,11 +253,16 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 ; ========================= GRACE TIMER =========================
 
 GUI_GraceTimerFired() {
+    ; RACE FIX: Prevent race with Alt_Up hotkey - timer can fire while
+    ; GUI_OnInterceptorEvent is processing ALT_UP, causing inconsistent state
+    Critical "On"
     global gGUI_State, gGUI_OverlayVisible
 
+    ; Double-check state - may have changed between scheduling and firing
     if (gGUI_State = "ACTIVE" && !gGUI_OverlayVisible) {
         GUI_ShowOverlayWithFrozen()
     }
+    Critical "Off"
 }
 
 ; ========================= FROZEN STATE HELPERS =========================
@@ -455,11 +460,19 @@ _GUI_AsyncActivationTick() {
     global gGUI_EventBuffer, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
     global gGUI_Items, gGUI_CurrentWSName, gGUI_LastLocalMRUTick
 
+    ; RACE FIX: Ensure phase reads and transitions are atomic
+    ; Phase can be read by interceptor to decide whether to buffer events
+    Critical "On"
+
     ; Safety: if no pending activation, stop timer
     if (gGUI_PendingPhase = "") {
         SetTimer(_GUI_AsyncActivationTick, 0)
+        Critical "Off"
         return
     }
+    ; Read phase into local variable for consistent use throughout function
+    phase := gGUI_PendingPhase
+    Critical "Off"
 
     ; === CRITICAL: Detect missed Tab events ===
     ; During workspace switch, komorebic uses SendInput which briefly uninstalls
@@ -487,12 +500,15 @@ _GUI_AsyncActivationTick() {
     now := A_TickCount
 
     ; === PHASE 1: Poll for workspace switch completion ===
-    if (gGUI_PendingPhase = "polling") {
+    if (phase = "polling") {
         ; Check if deadline exceeded
         if (now > gGUI_PendingDeadline) {
             ; Timeout - do activation anyway
+            ; RACE FIX: Phase transition must be atomic
+            Critical "On"
             gGUI_PendingPhase := "waiting"
             gGUI_PendingWaitUntil := now + GUI_WS_SWITCH_SETTLE_MS
+            Critical "Off"
             return
         }
 
@@ -510,8 +526,11 @@ _GUI_AsyncActivationTick() {
                 result := Trim(FileRead(gGUI_PendingTempFile))
                 if (result = gGUI_PendingWSName) {
                     ; Switch complete! Move to waiting phase
+                    ; RACE FIX: Phase transition must be atomic
+                    Critical "On"
                     gGUI_PendingPhase := "waiting"
                     gGUI_PendingWaitUntil := now + GUI_WS_SWITCH_SETTLE_MS
+                    Critical "Off"
                     return
                 }
             }
@@ -520,7 +539,7 @@ _GUI_AsyncActivationTick() {
     }
 
     ; === PHASE 2: Wait for komorebi's post-switch focus logic ===
-    if (gGUI_PendingPhase = "waiting") {
+    if (phase = "waiting") {
         if (now < gGUI_PendingWaitUntil) {
             return  ; Keep waiting
         }
@@ -560,8 +579,11 @@ _GUI_AsyncActivationTick() {
         ; will send events that bypass the buffer, arriving out of order.
         ; Keep the phase set to "flushing" so events continue to be buffered
         ; until _GUI_ProcessEventBuffer completes.
+        ; RACE FIX: Phase transition must be atomic
+        Critical "On"
         gGUI_PendingPhase := "flushing"
         gGUI_FlushStartTick := A_TickCount  ; Track when flushing started for tick-based wait
+        Critical "Off"
 
         ; NOTE: Do NOT request snapshot here - it would overwrite our local MRU update
         ; with stale store data. The store will get the focus update via WinEventHook.

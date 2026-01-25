@@ -55,7 +55,19 @@ WindowStore_EndScan(graceMs := "") {
     ttl := (graceMs != "" ? graceMs + 0 : gWS_Config["MissingTTLms"] + 0)
     removed := 0
     changed := false
-    for hwnd, rec in gWS_Store {
+
+    ; RACE FIX: Snapshot keys to prevent iteration-during-modification
+    ; AHK v2 Map iteration during modification is undefined behavior
+    Critical "On"
+    hwnds := []
+    for hwnd, _ in gWS_Store
+        hwnds.Push(hwnd)
+    Critical "Off"
+
+    for _, hwnd in hwnds {
+        if (!gWS_Store.Has(hwnd))
+            continue  ; May have been removed by another producer
+        rec := gWS_Store[hwnd]
         if (rec.lastSeenScanId != gWS_ScanId) {
             ; Skip windows that have workspace data from komorebi
             ; These are "present" from komorebi's perspective even if winenum doesn't see them
@@ -348,6 +360,8 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
         changed := true
     }
     if (changed) {
+        ; RACE FIX: Wrap iteration in Critical to prevent timer/hotkey interruption
+        Critical "On"
         ; Update isOnCurrentWorkspace for all windows based on new workspace
         ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
         for hwnd, rec in gWS_Store {
@@ -355,6 +369,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
             if (rec.isOnCurrentWorkspace != newIsOnCurrent)
                 rec.isOnCurrentWorkspace := newIsOnCurrent
         }
+        Critical "Off"
         _WS_BumpRev("SetCurrentWorkspace")
     }
 }
@@ -375,6 +390,8 @@ WindowStore_GetProjection(opts := 0) {
     ; NOTE: Blacklist filtering happens at producer level (winenum, winevent, komorebi)
     ; so blacklisted windows never enter the store. No need to filter here.
 
+    ; RACE FIX: Short Critical section around iteration to prevent concurrent modifications
+    Critical "On"
     items := []
     for _, rec in gWS_Store {
         if (!rec.present)
@@ -387,6 +404,7 @@ WindowStore_GetProjection(opts := 0) {
             continue
         items.Push(rec)
     }
+    Critical "Off"
 
     if (sort = "Z") {
         _WS_TrySort(items, _WS_CmpZ)

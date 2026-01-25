@@ -131,6 +131,8 @@ Viewer_OnMessage(line, hPipe := 0) {
 
     if (type = IPC_MSG_SNAPSHOT) {
         ; Snapshot = push from store (now tailored to our projection opts)
+        ; RACE FIX: Protect cache modifications from timer interruption
+        Critical "On"
         gViewer_PushSnapCount++
         gViewer_LastUpdateType := "snap"
         if (obj.Has("payload")) {
@@ -139,13 +141,20 @@ Viewer_OnMessage(line, hPipe := 0) {
             if (payload.Has("items")) {
                 items := payload["items"]
                 _Viewer_Log("push items=" items.Length)
+                Critical "Off"
                 if (!gViewer_Headless) {
                     _Viewer_UpdateList(items)
                 }
+            } else {
+                Critical "Off"
             }
+        } else {
+            Critical "Off"
         }
     } else if (type = IPC_MSG_PROJECTION) {
         ; Projection = response to our explicit request
+        ; RACE FIX: Protect cache modifications from timer interruption
+        Critical "On"
         gViewer_PollCount++
         gViewer_LastUpdateType := "poll"
         if (obj.Has("payload")) {
@@ -154,21 +163,31 @@ Viewer_OnMessage(line, hPipe := 0) {
             if (payload.Has("items")) {
                 items := payload["items"]
                 _Viewer_Log("poll items=" items.Length)
+                Critical "Off"
                 if (!gViewer_Headless) {
                     _Viewer_UpdateList(items)
                 }
+            } else {
+                Critical "Off"
             }
+        } else {
+            Critical "Off"
         }
     } else if (type = IPC_MSG_DELTA) {
         ; Delta = incremental update (now tailored to our projection opts)
+        ; RACE FIX: Protect cache modifications from timer interruption
+        Critical "On"
         gViewer_PushDeltaCount++
         gViewer_LastUpdateType := "delta"
         if (obj.Has("payload")) {
             payload := obj["payload"]
             _Viewer_UpdateCurrentWS(payload)
+            Critical "Off"
             if (payload.Has("upserts") && !gViewer_Headless) {
                 _Viewer_ApplyDelta(payload)
             }
+        } else {
+            Critical "Off"
         }
     } else if (type = IPC_MSG_HEARTBEAT) {
         ; Heartbeat = store is alive, check if we're behind on rev

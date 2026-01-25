@@ -341,10 +341,14 @@ Store_OnMessage(line, hPipe := 0) {
         return
     type := obj["type"]
     if (type = IPC_MSG_HELLO) {
+        ; RACE FIX: Wrap client Map modifications in Critical to prevent
+        ; timer interrupts from seeing inconsistent state
+        Critical "On"
         opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : IPC_DefaultProjectionOpts()
         gStore_ClientOpts[hPipe] := opts
         gStore_LastClientRev[hPipe] := -1  ; Will get updated when we send initial projection
         gStore_LastClientProj[hPipe] := [] ; No previous projection yet
+        Critical "Off"
 
         ; Send hello ack (no rev - it's just an ack, snapshot follows with rev)
         ack := {
@@ -367,10 +371,13 @@ Store_OnMessage(line, hPipe := 0) {
     }
     if (type = IPC_MSG_SET_PROJECTION_OPTS) {
         if (obj.Has("projectionOpts")) {
+            ; RACE FIX: Wrap client Map modifications in Critical
+            Critical "On"
             gStore_ClientOpts[hPipe] := obj["projectionOpts"]
             ; Clear last projection/meta so client gets fresh snapshot with new opts
             gStore_LastClientProj[hPipe] := []
             gStore_LastClientMeta[hPipe] := ""
+            Critical "Off"
         }
         return
     }
