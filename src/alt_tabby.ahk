@@ -169,6 +169,7 @@ if (g_AltTabbyMode = "blacklist") {
 ; ============================================================
 if (g_AltTabbyMode = "wizard-continue") {
     ConfigLoader_Init()
+    _Launcher_EnsureInstallationId()  ; Must be before WizardContinue (may create admin task)
     wizardResult := WizardContinue()
 
     if (wizardResult = "installed") {
@@ -176,9 +177,6 @@ if (g_AltTabbyMode = "wizard-continue") {
         ExitApp()
     } else if (wizardResult) {
         ; Wizard completed - launch normally (from same location)
-
-        ; Ensure InstallationId exists (should already, but be safe)
-        _Launcher_EnsureInstallationId()
 
         ; Acquire mutex before running as launcher
         ; Bug fix: Without this, wizard-continue could run alongside another launcher
@@ -226,6 +224,7 @@ if (g_AltTabbyMode = "wizard-continue") {
 ; ============================================================
 if (g_AltTabbyMode = "enable-admin-task") {
     ConfigLoader_Init()
+    _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     exePath := _Shortcut_GetEffectiveExePath()
     if (CreateAdminTask(exePath)) {
@@ -247,6 +246,7 @@ if (g_AltTabbyMode = "enable-admin-task") {
 ; ============================================================
 if (g_AltTabbyMode = "repair-admin-task") {
     ConfigLoader_Init()
+    _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     ; Recreate task with current exe path
     exePath := A_ScriptFullPath

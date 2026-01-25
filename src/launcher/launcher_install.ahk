@@ -299,9 +299,20 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
 
         ; Bug 1 fix: Update admin task if TARGET has admin mode enabled, with error handling
         if (targetRunAsAdmin && AdminTaskExists()) {
-            ; Recreate task with target exe path
+            ; Read InstallationId from TARGET config, or generate if missing
+            targetInstallId := ""
+            if (FileExist(targetConfigPath)) {
+                try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
+            }
+            if (targetInstallId = "") {
+                targetInstallId := _Launcher_GenerateId()
+                if (FileExist(targetConfigPath))
+                    try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
+            }
+
+            ; Recreate task with target exe path and target's InstallationId
             DeleteAdminTask()
-            if (!CreateAdminTask(targetPath)) {
+            if (!CreateAdminTask(targetPath, targetInstallId)) {
                 ; Task creation failed - disable admin mode to avoid broken state
                 MsgBox("Could not recreate admin task after update.`n`n"
                     "Admin mode has been disabled. You can re-enable it from the tray menu.",
