@@ -431,10 +431,12 @@ Store_OnMessage(line, hPipe := 0) {
         Store_LogInfo("blacklist purge removed " purgeResult.removed " windows")
 
         ; Clear all client projections/meta to force fresh delta calculation
+        Critical "On"
         for clientPipe, _ in gStore_LastClientProj {
             gStore_LastClientProj[clientPipe] := []
             gStore_LastClientMeta[clientPipe] := ""
         }
+        Critical "Off"
 
         ; Push updated projections to clients immediately
         Store_PushToClients()
@@ -456,8 +458,10 @@ Store_OnMessage(line, hPipe := 0) {
 _Store_GetProducerStates() {
     global gStore_ProducerState
     producers := {}
+    Critical "On"
     for name, state in gStore_ProducerState
         producers.%name% := state
+    Critical "Off"
     return producers
 }
 

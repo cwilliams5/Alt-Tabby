@@ -752,7 +752,18 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
     ; Uses timestamped cache entries to avoid using stale data
     if (IsObject(gWS_Store)) {
         now := A_TickCount
-        for hwnd, rec in gWS_Store {
+
+        ; Snapshot hwnds to prevent iteration-during-modification race
+        Critical "On"
+        hwnds := []
+        for hwnd, _ in gWS_Store
+            hwnds.Push(hwnd)
+        Critical "Off"
+
+        for _, hwnd in hwnds {
+            ; Guard: window may have been removed between snapshot and processing
+            if (!gWS_Store.Has(hwnd))
+                continue
             if (!wsMap.Has(hwnd) && _KSub_WorkspaceCache.Has(hwnd)) {
                 cached := _KSub_WorkspaceCache[hwnd]
                 ; Check cache staleness - entries older than _KSub_CacheMaxAgeMs are skipped
