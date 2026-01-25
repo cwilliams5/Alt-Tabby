@@ -230,6 +230,23 @@ KomorebiSub_Stop() {
     _KSub_Connected := false
 }
 
+; Prune stale workspace cache entries (called from Store_HeartbeatTick)
+; Removes entries older than _KSub_CacheMaxAgeMs to prevent unbounded growth
+KomorebiSub_PruneStaleCache() {
+    global _KSub_WorkspaceCache, _KSub_CacheMaxAgeMs
+    if (!IsObject(_KSub_WorkspaceCache) || _KSub_WorkspaceCache.Count = 0)
+        return
+
+    now := A_TickCount
+    toDelete := []
+    for hwnd, cached in _KSub_WorkspaceCache {
+        if ((now - cached.tick) > _KSub_CacheMaxAgeMs)
+            toDelete.Push(hwnd)
+    }
+    for _, hwnd in toDelete
+        _KSub_WorkspaceCache.Delete(hwnd)
+}
+
 ; Poll timer - check connection and read data (non-blocking like POC)
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Over, _KSub_Connected
@@ -309,6 +326,14 @@ KomorebiSub_Poll() {
 
         _KSub_LastEvent := A_TickCount
         chunk := StrGet(buf.Ptr, read, "UTF-8")
+
+        ; Protect against unbounded buffer growth (1MB limit)
+        ; This prevents OOM when komorebi sends incomplete JSON with opening brace
+        if (StrLen(_KSub_Buf) + StrLen(chunk) > 1048576) {
+            _KSub_DiagLog("Buffer overflow protection: reset (was " StrLen(_KSub_Buf) ")")
+            _KSub_Buf := ""
+        }
+
         _KSub_Buf .= chunk
         bytesRead += read
 

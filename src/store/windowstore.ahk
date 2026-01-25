@@ -568,6 +568,7 @@ _WS_EnqueueIfNeeded(row) {
             if (!gWS_IconQueueSet.Has(hwnd)) {
                 gWS_IconQueue.Push(hwnd)
                 gWS_IconQueueSet[hwnd] := true
+                try IconPump_EnsureRunning()  ; Wake timer from idle pause
             }
         }
     }
@@ -578,6 +579,7 @@ _WS_EnqueueIfNeeded(row) {
         if (!gWS_PidQueueSet.Has(pid)) {
             gWS_PidQueue.Push(pid)
             gWS_PidQueueSet[pid] := true
+            try ProcPump_EnsureRunning()  ; Wake timer from idle pause
         }
     }
     Critical "Off"
@@ -612,6 +614,7 @@ WindowStore_EnqueueIconRefresh(hwnd) {
     if (!gWS_IconQueueSet.Has(hwnd)) {
         gWS_IconQueue.Push(hwnd)
         gWS_IconQueueSet[hwnd] := true
+        try IconPump_EnsureRunning()  ; Wake timer from idle pause
     }
     return true
 }

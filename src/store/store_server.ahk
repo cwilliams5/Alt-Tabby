@@ -9,6 +9,8 @@
 #Include *i %A_ScriptDir%\..\shared\json.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
+#Include *i %A_ScriptDir%\..\shared\process_utils.ahk
+#Include *i %A_ScriptDir%\..\shared\win_utils.ahk
 #Include *i %A_ScriptDir%\windowstore.ahk
 #Include *i %A_ScriptDir%\winenum_lite.ahk
 #Include *i %A_ScriptDir%\mru_lite.ahk
@@ -81,7 +83,7 @@ Store_Init() {
         Store_LogError("ipc_pipe symbols missing")
         ExitApp(1)
     }
-    gStore_Server := IPC_PipeServer_Start(cfg.StorePipeName, Store_OnMessage)
+    gStore_Server := IPC_PipeServer_Start(cfg.StorePipeName, Store_OnMessage, Store_OnClientDisconnect)
 
     ; Initialize producers BEFORE first scan so they can enrich data
 
@@ -143,8 +145,20 @@ Store_Init() {
 }
 
 ; Broadcast heartbeat to all clients with current rev for drift detection
+; Also performs periodic maintenance: cleanup orphaned entries, prune caches
 Store_HeartbeatTick() {
     global gStore_Server, IPC_MSG_HEARTBEAT
+
+    ; Safety net: clean up any orphaned client Map entries
+    ; Primary cleanup happens in Store_OnClientDisconnect (via IPC callback)
+    if (IsObject(gStore_Server)) {
+        Critical "On"
+        _Store_CleanupDisconnectedClients()
+        Critical "Off"
+    }
+
+    ; Prune stale workspace cache entries (Issue #3 - memory leak prevention)
+    try KomorebiSub_PruneStaleCache()
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -429,9 +443,22 @@ _Store_GetProducerStates() {
     return producers
 }
 
+; Immediate cleanup callback when a client disconnects (called by IPC layer)
+; This is the primary cleanup mechanism - prevents stale entries from accumulating
+Store_OnClientDisconnect(hPipe) {
+    global gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta
+    Critical "On"
+    gStore_ClientOpts.Delete(hPipe)
+    gStore_LastClientRev.Delete(hPipe)
+    gStore_LastClientProj.Delete(hPipe)
+    gStore_LastClientMeta.Delete(hPipe)
+    Critical "Off"
+}
+
 ; Clean up tracking maps for disconnected clients (prevents memory leak)
 ; Check ALL tracking maps, not just gStore_LastClientRev - this handles race
 ; conditions where disconnect happens between map updates
+; NOTE: This is now a safety net - primary cleanup is Store_OnClientDisconnect
 _Store_CleanupDisconnectedClients() {
     global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta
 

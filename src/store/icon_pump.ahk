@@ -29,6 +29,8 @@ global _IP_LogPath := ""
 ; State
 global _IP_TimerOn := false
 global _IP_Attempts := Map()            ; hwnd -> attempt count
+global _IP_IdleTicks := 0               ; Counter for consecutive empty ticks
+global _IP_IdleThreshold := 5           ; Pause timer after this many empty ticks
 
 ; Start the icon pump timer
 IconPump_Start() {
@@ -81,6 +83,19 @@ IconPump_Stop() {
     SetTimer(_IP_Tick, 0)
 }
 
+; Ensure the icon pump timer is running (wake from idle pause)
+; Call this when new work is enqueued to the icon queue
+IconPump_EnsureRunning() {
+    global _IP_TimerOn, _IP_IdleTicks, IconTimerIntervalMs
+    if (_IP_TimerOn)
+        return  ; Already running
+    if (IconTimerIntervalMs <= 0)
+        return  ; Not initialized or disabled
+    _IP_TimerOn := true
+    _IP_IdleTicks := 0
+    SetTimer(_IP_Tick, IconTimerIntervalMs)
+}
+
 ; Clean up tracking state AND destroy HICON when windows are removed
 ; IMPORTANT: Must be called BEFORE gWS_Store.Delete(hwnd) so we can access the record
 IconPump_CleanupWindow(hwnd) {
@@ -100,12 +115,21 @@ IconPump_CleanupWindow(hwnd) {
 ; Main pump tick
 ; Uses Critical sections around per-window processing to prevent TOCTOU races
 _IP_Tick() {
-    global IconBatchPerTick, _IP_Attempts
+    global IconBatchPerTick, _IP_Attempts, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
 
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
-    if (!IsObject(hwnds) || hwnds.Length = 0)
+    if (!IsObject(hwnds) || hwnds.Length = 0) {
+        ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
+        _IP_IdleTicks += 1
+        if (_IP_IdleTicks >= _IP_IdleThreshold && _IP_TimerOn) {
+            SetTimer(_IP_Tick, 0)
+            _IP_TimerOn := false
+            _IP_Log("Timer paused (idle after " _IP_IdleTicks " empty ticks)")
+        }
         return
+    }
+    _IP_IdleTicks := 0  ; Reset idle counter when we have work
 
     now := A_TickCount
 

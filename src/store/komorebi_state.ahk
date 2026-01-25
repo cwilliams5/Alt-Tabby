@@ -54,11 +54,11 @@ _KSub_GetWorkspacesArray(monObjText) {
 _KSub_GetFocusedWorkspaceIndex(monObjText) {
     ring := _KSub_GetWorkspacesRing(monObjText)
     if (ring = "") {
-        _KSub_Log("  GetFocusedWorkspaceIndex: no ring found")
+        _KSub_DiagLog("  GetFocusedWorkspaceIndex: no ring found")
         return -1
     }
     focusedIdx := _KSub_GetIntProp(ring, "focused")
-    _KSub_Log("  GetFocusedWorkspaceIndex: ring len=" StrLen(ring) " focused=" focusedIdx)
+    _KSub_DiagLog("  GetFocusedWorkspaceIndex: ring len=" StrLen(ring) " focused=" focusedIdx)
     return focusedIdx
 }
 

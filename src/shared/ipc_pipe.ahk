@@ -53,10 +53,11 @@ IPC_DefaultProjectionOpts() {
     }
 }
 
-IPC_PipeServer_Start(pipeName, onMessageFn) {
+IPC_PipeServer_Start(pipeName, onMessageFn, onDisconnectFn := 0) {
     server := {
         pipeName: pipeName,
         onMessage: onMessageFn,
+        onDisconnect: onDisconnectFn,  ; Called when a client disconnects (hPipe passed)
         pending: [],
         clients: Map(),   ; hPipe -> { buf: "" }
         timerFn: 0,
@@ -226,6 +227,9 @@ _IPC_Server_ReadClients(server) {
             activity += readStatus
     }
     for _, h in dead {
+        ; Call onDisconnect callback before cleanup (allows tracking map cleanup)
+        if (server.onDisconnect)
+            try server.onDisconnect.Call(h)
         server.clients.Delete(h)
         _IPC_CloseHandle(h)
     }

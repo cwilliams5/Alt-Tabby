@@ -28,6 +28,8 @@ global _WEH_PendingHwnds := Map()         ; hwnd -> tick of last event
 global _WEH_LastProcessTick := 0
 global _WEH_TimerOn := false
 global _WEH_ShellWindow := 0
+global _WEH_IdleTicks := 0                ; Counter for consecutive empty ticks
+global _WEH_IdleThreshold := 10           ; Pause timer after this many empty ticks (higher for WEH)
 
 ; MRU tracking (replaces MRU_Lite when hook is active)
 global _WEH_LastFocusHwnd := 0
@@ -100,6 +102,19 @@ WinEventHook_Start() {
     SetTimer(_WEH_ProcessBatch, WinEventHook_BatchMs)
 
     return true
+}
+
+; Ensure the batch processing timer is running (wake from idle pause)
+; Called by the callback when new events are queued
+WinEventHook_EnsureTimerRunning() {
+    global _WEH_TimerOn, _WEH_IdleTicks, WinEventHook_BatchMs
+    if (_WEH_TimerOn)
+        return  ; Already running
+    if (WinEventHook_BatchMs <= 0)
+        return  ; Not initialized
+    _WEH_TimerOn := true
+    _WEH_IdleTicks := 0
+    SetTimer(_WEH_ProcessBatch, WinEventHook_BatchMs)
 }
 
 ; Stop and uninstall the hook
@@ -179,12 +194,28 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; Queue for update
     _WEH_PendingHwnds[hwnd] := A_TickCount
+
+    ; Wake timer if it was paused due to idle
+    WinEventHook_EnsureTimerRunning()
 }
 
 ; Process queued events in batches
 _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs
     global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
+    global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
+
+    ; Check for idle condition first (no pending focus and no pending hwnds)
+    if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
+        _WEH_IdleTicks += 1
+        if (_WEH_IdleTicks >= _WEH_IdleThreshold && _WEH_TimerOn) {
+            SetTimer(_WEH_ProcessBatch, 0)
+            _WEH_TimerOn := false
+            _WEH_DiagLog("Batch timer paused (idle after " _WEH_IdleTicks " empty ticks)")
+        }
+        return
+    }
+    _WEH_IdleTicks := 0  ; Reset idle counter when we have work
 
     ; Process MRU focus changes first (no debounce needed)
     ; Wrap in Critical to prevent race conditions where old window retains isFocused:true
