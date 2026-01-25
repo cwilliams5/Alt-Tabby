@@ -3,6 +3,10 @@
 
 ; WindowStore (v1) - minimal core for IPC + viewer.
 
+; Cache and TTL constants
+global WS_EXE_ICON_CACHE_MAX := 100         ; Max cached exe icons
+global WS_MISSING_TTL_DEFAULT_MS := 1200    ; Default TTL for missing windows
+
 global gWS_Store := Map()
 global gWS_Rev := 0
 global gWS_ScanId := 0
@@ -25,7 +29,7 @@ global gWS_ZQueueSet := Map()      ; fast lookup for dedup
 global gWS_ExeIconCache := Map()   ; exe path -> HICON (master copy)
 global gWS_ProcNameCache := Map()  ; pid -> process name
 
-gWS_Config["MissingTTLms"] := 1200
+gWS_Config["MissingTTLms"] := WS_MISSING_TTL_DEFAULT_MS
 gWS_Meta["currentWSId"] := ""
 gWS_Meta["currentWSName"] := ""
 
@@ -727,13 +731,13 @@ WindowStore_GetExeIconCopy(exePath) {
 }
 
 ; Store master icon for exe (store owns it, don't destroy)
-; Cache limited to 100 entries to prevent unbounded memory growth
+; Cache limited to WS_EXE_ICON_CACHE_MAX entries to prevent unbounded memory growth
 WindowStore_ExeIconCachePut(exePath, hIcon) {
-    global gWS_ExeIconCache
+    global gWS_ExeIconCache, WS_EXE_ICON_CACHE_MAX
     if (!hIcon)
         return
-    ; Evict oldest entry if at max (100 entries)
-    if (gWS_ExeIconCache.Count >= 100) {
+    ; Evict oldest entry if at max
+    if (gWS_ExeIconCache.Count >= WS_EXE_ICON_CACHE_MAX) {
         for oldPath, oldIcon in gWS_ExeIconCache {
             if (oldIcon)
                 try DllCall("user32\DestroyIcon", "ptr", oldIcon)
@@ -763,6 +767,52 @@ WindowStore_CleanupAllIcons() {
             rec.iconHicon := 0
         }
     }
+}
+
+; ============================================================
+; Delta Building - Compute changes between projections
+; ============================================================
+
+; Build delta between previous and current projection items
+; Parameters:
+;   prevItems - Array of previous projection items
+;   nextItems - Array of current projection items
+; Returns: { upserts: [], removes: [] }
+WindowStore_BuildDelta(prevItems, nextItems) {
+    prevMap := Map()
+    for _, rec in prevItems
+        prevMap[rec.hwnd] := rec
+    nextMap := Map()
+    for _, rec in nextItems
+        nextMap[rec.hwnd] := rec
+
+    upserts := []
+    removes := []
+
+    ; Find new/changed items
+    for hwnd, rec in nextMap {
+        if (!prevMap.Has(hwnd)) {
+            upserts.Push(rec)
+        } else {
+            old := prevMap[hwnd]
+            ; Compare key fields that matter for display
+            if (rec.title != old.title || rec.z != old.z
+                || rec.pid != old.pid || rec.isFocused != old.isFocused
+                || rec.workspaceName != old.workspaceName || rec.isCloaked != old.isCloaked
+                || rec.isMinimized != old.isMinimized || rec.isOnCurrentWorkspace != old.isOnCurrentWorkspace
+                || rec.processName != old.processName || rec.iconHicon != old.iconHicon) {
+                upserts.Push(rec)
+            }
+        }
+    }
+
+    ; Find removed items
+    for hwnd, _ in prevMap {
+        if (!nextMap.Has(hwnd))
+            removes.Push(hwnd)
+    }
+
+    return { upserts: upserts, removes: removes }
 }
 
 ; ============================================================

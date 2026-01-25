@@ -99,6 +99,8 @@ KomorebiSub_Start() {
         , "ptr")
 
     if (_KSub_hPipe = 0 || _KSub_hPipe = -1) {
+        gle := DllCall("GetLastError", "uint")
+        _KSub_DiagLog("KomorebiSub: CreateNamedPipeW FAILED err=" gle " path=" pipePath)
         _KSub_hPipe := 0
         _KSub_FallbackMode := true
         SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)

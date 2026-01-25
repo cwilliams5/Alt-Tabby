@@ -172,38 +172,31 @@ Blacklist_AddPair(class, title) {
 
 ; Add a class pattern to the blacklist file
 Blacklist_AddClass(class) {
-    global gBlacklist_FilePath
-
-    if (gBlacklist_FilePath = "" || class = "")
+    if (class = "")
         return false
-
-    try {
-        ; Read file, find [Class] section, insert entry
-        content := FileRead(gBlacklist_FilePath, "UTF-8")
-        newContent := _BL_InsertInSection(content, "Class", class)
-        if (newContent = content)
-            return false  ; Failed to insert
-        FileDelete(gBlacklist_FilePath)
-        FileAppend(newContent, gBlacklist_FilePath, "UTF-8")
-        return true
-    } catch {
-        return false
-    }
+    return _BL_AddToSection("Class", class)
 }
 
 ; Add a title pattern to the blacklist file
 Blacklist_AddTitle(title) {
+    if (title = "")
+        return false
+    return _BL_AddToSection("Title", title)
+}
+
+; Internal helper: Add an entry to a specific section of the blacklist file
+_BL_AddToSection(sectionName, entry) {
     global gBlacklist_FilePath
 
-    if (gBlacklist_FilePath = "" || title = "")
+    if (gBlacklist_FilePath = "")
         return false
 
     try {
-        ; Read file, find [Title] section, insert entry
+        ; Read file, find section, insert entry
         content := FileRead(gBlacklist_FilePath, "UTF-8")
-        newContent := _BL_InsertInSection(content, "Title", title)
+        newContent := _BL_InsertInSection(content, sectionName, entry)
         if (newContent = content)
-            return false  ; Failed to insert
+            return false  ; Failed to insert (section not found)
         FileDelete(gBlacklist_FilePath)
         FileAppend(newContent, gBlacklist_FilePath, "UTF-8")
         return true

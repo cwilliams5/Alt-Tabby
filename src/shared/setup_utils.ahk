@@ -10,6 +10,14 @@
 ; Task name constant - used by all task scheduler functions
 global ALTTABBY_TASK_NAME := "Alt-Tabby"
 
+; PE validation constants
+global PE_MIN_SIZE := 102400                ; 100KB minimum for valid AHK exe
+global PE_MAX_SIZE := 52428800              ; 50MB maximum
+global PE_MZ_MAGIC_1 := 77                  ; 'M' (0x4D)
+global PE_MZ_MAGIC_2 := 90                  ; 'Z' (0x5A)
+global PE_SIG_1 := 80                       ; 'P' (0x50)
+global PE_SIG_2 := 69                       ; 'E' (0x45)
+
 ; Guard to prevent concurrent update checks (auto-update timer + manual button)
 global g_UpdateCheckInProgress := false
 
@@ -632,14 +640,14 @@ _Update_CleanupStaleTempFiles() {
 }
 
 ; Validate that a file is a valid PE executable
-; Checks: file size (100KB-50MB), MZ magic, and PE signature at e_lfanew
+; Checks: file size, MZ magic, and PE signature at e_lfanew
 ; Returns true if valid PE, false otherwise
 _Update_ValidatePEFile(filePath) {
+    global PE_MIN_SIZE, PE_MAX_SIZE, PE_MZ_MAGIC_1, PE_MZ_MAGIC_2, PE_SIG_1, PE_SIG_2
     try {
-        ; Check file size (expect 100KB - 50MB for AHK exe)
-        ; Too small = corrupted/truncated, too large = not a normal exe
+        ; Check file size - too small = corrupted/truncated, too large = not a normal exe
         fileSize := FileGetSize(filePath)
-        if (fileSize < 102400 || fileSize > 52428800)  ; 100KB to 50MB
+        if (fileSize < PE_MIN_SIZE || fileSize > PE_MAX_SIZE)
             return false
 
         f := FileOpen(filePath, "r")
@@ -655,10 +663,9 @@ _Update_ValidatePEFile(filePath) {
         }
 
         ; Check MZ magic bytes at offset 0
-        ; 'M' = 0x4D = 77, 'Z' = 0x5A = 90
         byte1 := NumGet(buf, 0, "UChar")
         byte2 := NumGet(buf, 1, "UChar")
-        if (byte1 != 77 || byte2 != 90) {
+        if (byte1 != PE_MZ_MAGIC_1 || byte2 != PE_MZ_MAGIC_2) {
             f.Close()
             return false
         }
@@ -680,13 +687,13 @@ _Update_ValidatePEFile(filePath) {
         if (bytesRead < 4)
             return false
 
-        ; PE signature: 'P' = 80, 'E' = 69, 0x00, 0x00
+        ; PE signature: 'P' 'E' 0x00 0x00
         pe1 := NumGet(peBuf, 0, "UChar")
         pe2 := NumGet(peBuf, 1, "UChar")
         pe3 := NumGet(peBuf, 2, "UChar")
         pe4 := NumGet(peBuf, 3, "UChar")
 
-        return (pe1 = 80 && pe2 = 69 && pe3 = 0 && pe4 = 0)
+        return (pe1 = PE_SIG_1 && pe2 = PE_SIG_2 && pe3 = 0 && pe4 = 0)
     } catch {
         return false
     }

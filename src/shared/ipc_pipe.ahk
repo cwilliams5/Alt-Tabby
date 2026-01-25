@@ -2,6 +2,18 @@
 
 ; IPC helpers (v2 only). Stubbed for now; will be implemented with named pipes.
 
+; Windows error codes
+global IPC_ERROR_IO_PENDING := 997
+global IPC_ERROR_PIPE_CONNECTED := 535
+global IPC_ERROR_PIPE_BUSY := 231
+global IPC_ERROR_FILE_NOT_FOUND := 2
+global IPC_ERROR_MORE_DATA := 234
+
+; Structure sizes (platform-dependent)
+global IPC_OVERLAPPED_SIZE := (A_PtrSize = 8) ? 32 : 20
+global IPC_OVERLAPPED_EVENT_OFFSET := (A_PtrSize = 8) ? 24 : 16
+global IPC_SECURITY_ATTRS_SIZE := (A_PtrSize = 8) ? 24 : 12
+
 ; IPC Message Types
 IPC_MSG_HELLO := "hello"
 IPC_MSG_HELLO_ACK := "hello_ack"
@@ -280,7 +292,7 @@ _IPC_CreateOpenSecurityAttrs() {
     ;   BOOL   bInheritHandle;       // offset 8 (32-bit) or 16 (64-bit), size 4
     ; }
     if (!pSA) {
-        saSize := (A_PtrSize = 8) ? 24 : 12
+        saSize := IPC_SECURITY_ATTRS_SIZE
         pSA := Buffer(saSize, 0)
 
         ; nLength
@@ -322,16 +334,16 @@ _IPC_CreatePipeInstance(pipeName) {
         _IPC_CloseHandle(hPipe)
         return { hPipe: 0 }
     }
-    over := Buffer(A_PtrSize=8 ? 32 : 20, 0)
-    NumPut("ptr", hEvent, over, (A_PtrSize=8) ? 24 : 16)
+    over := Buffer(IPC_OVERLAPPED_SIZE, 0)
+    NumPut("ptr", hEvent, over, IPC_OVERLAPPED_EVENT_OFFSET)
     ok := DllCall("ConnectNamedPipe", "ptr", hPipe, "ptr", over.Ptr, "int")
     pending := false
     connected := false
     if (!ok) {
         gle := DllCall("GetLastError", "uint")
-        if (gle = 997) {
+        if (gle = IPC_ERROR_IO_PENDING) {
             pending := true
-        } else if (gle = 535) {
+        } else if (gle = IPC_ERROR_PIPE_CONNECTED) {
             connected := true
         } else {
             _IPC_CloseHandle(hEvent)
@@ -413,7 +425,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
             return hPipe
         }
         gle := DllCall("GetLastError", "uint")
-        if (gle != 231 && gle != 2) ; ERROR_PIPE_BUSY or ERROR_FILE_NOT_FOUND
+        if (gle != IPC_ERROR_PIPE_BUSY && gle != IPC_ERROR_FILE_NOT_FOUND)
             return 0
         if ((A_TickCount - start) > timeoutMs)
             return 0
@@ -433,7 +445,7 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
     ok := DllCall("ReadFile", "ptr", hPipe, "ptr", buf.Ptr, "uint", toRead, "uint*", &bytesRead, "ptr", 0)
     if (!ok) {
         gle := DllCall("GetLastError", "uint")
-        if (gle = 234) ; ERROR_MORE_DATA
+        if (gle = IPC_ERROR_MORE_DATA)
             return 0
         return -1
     }

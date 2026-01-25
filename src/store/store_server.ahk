@@ -298,46 +298,14 @@ Store_MetaChanged(prevMeta, nextMeta) {
     return (prevWSName != nextWSName)
 }
 
-; Build delta between previous and current projection for a specific client
+; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)
 Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev) {
-    prevMap := Map()
-    for _, rec in prevItems
-        prevMap[rec.hwnd] := rec
-    nextMap := Map()
-    for _, rec in nextItems
-        nextMap[rec.hwnd] := rec
-
-    upserts := []
-    removes := []
-
-    ; Find new/changed items
-    for hwnd, rec in nextMap {
-        if (!prevMap.Has(hwnd)) {
-            upserts.Push(rec)
-        } else {
-            old := prevMap[hwnd]
-            ; Compare key fields that matter for display
-            if (rec.title != old.title || rec.z != old.z
-                || rec.pid != old.pid || rec.isFocused != old.isFocused
-                || rec.workspaceName != old.workspaceName || rec.isCloaked != old.isCloaked
-                || rec.isMinimized != old.isMinimized || rec.isOnCurrentWorkspace != old.isOnCurrentWorkspace
-                || rec.processName != old.processName || rec.iconHicon != old.iconHicon) {
-                upserts.Push(rec)
-            }
-        }
-    }
-
-    ; Find removed items
-    for hwnd, _ in prevMap {
-        if (!nextMap.Has(hwnd))
-            removes.Push(hwnd)
-    }
-
+    delta := WindowStore_BuildDelta(prevItems, nextItems)
     return {
         type: IPC_MSG_DELTA,
         rev: rev,
         baseRev: baseRev,
-        payload: { meta: meta, upserts: upserts, removes: removes }
+        payload: { meta: meta, upserts: delta.upserts, removes: delta.removes }
     }
 }
 

@@ -432,33 +432,15 @@ _Launcher_KillExistingInstances() {
 
 LaunchStore() {
     global g_StorePID
-    _Launcher_Log("LAUNCH: starting store process")
-    if (A_IsCompiled) {
-        Run('"' A_ScriptFullPath '" --store', , , &g_StorePID)
-    } else {
-        Run('"' A_AhkPath '" "' A_ScriptDir '\store\store_server.ahk"', , , &g_StorePID)
-    }
-    _Launcher_Log("LAUNCH: store PID=" g_StorePID)
+    LauncherUtils_Launch("store", &g_StorePID, _Launcher_Log)
 }
 
 LaunchGui() {
     global g_GuiPID
-    _Launcher_Log("LAUNCH: starting GUI process")
-    if (A_IsCompiled) {
-        Run('"' A_ScriptFullPath '" --gui-only', , , &g_GuiPID)
-    } else {
-        Run('"' A_AhkPath '" "' A_ScriptDir '\gui\gui_main.ahk"', , , &g_GuiPID)
-    }
-    _Launcher_Log("LAUNCH: GUI PID=" g_GuiPID)
+    LauncherUtils_Launch("gui", &g_GuiPID, _Launcher_Log)
 }
 
 LaunchViewer() {
     global g_ViewerPID
-    _Launcher_Log("LAUNCH: starting viewer process")
-    if (A_IsCompiled) {
-        Run('"' A_ScriptFullPath '" --viewer', , , &g_ViewerPID)
-    } else {
-        Run('"' A_AhkPath '" "' A_ScriptDir '\viewer\viewer.ahk"', , , &g_ViewerPID)
-    }
-    _Launcher_Log("LAUNCH: viewer PID=" g_ViewerPID)
+    LauncherUtils_Launch("viewer", &g_ViewerPID, _Launcher_Log)
 }

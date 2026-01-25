@@ -84,31 +84,12 @@ _PP_Tick() {
     }
 }
 
-; Get full process path from PID
+; Get full process path from PID (uses shared utility with logging)
 _PP_GetProcessPath(pid) {
-    ; PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    h := DllCall("kernel32\OpenProcess", "uint", 0x1000, "int", 0, "uint", pid, "ptr")
-    if (!h) {
-        gle := DllCall("kernel32\GetLastError", "uint")
-        _PP_Log("OpenProcess FAILED pid=" pid " err=" gle)
-        return ""
-    }
-    buf := Buffer(32767 * 2, 0)
-    cch := 32767
-    ok := DllCall("kernel32\QueryFullProcessImageNameW", "ptr", h, "uint", 0, "ptr", buf.Ptr, "uint*", &cch, "int")
-    DllCall("kernel32\CloseHandle", "ptr", h)
-    if (!ok) {
-        gle := DllCall("kernel32\GetLastError", "uint")
-        _PP_Log("QueryFullProcessImageNameW FAILED pid=" pid " err=" gle)
-        return ""
-    }
-    return StrGet(buf.Ptr, "UTF-16")
+    return ProcessUtils_GetPath(pid, _PP_Log)
 }
 
-; Extract filename from path
+; Extract filename from path (uses shared utility)
 _PP_Basename(path) {
-    if (path = "")
-        return ""
-    SplitPath(path, &fn)
-    return fn
+    return ProcessUtils_Basename(path)
 }

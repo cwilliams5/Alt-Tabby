@@ -2,6 +2,14 @@
 ; Handles state transitions: IDLE -> ALT_PENDING -> ACTIVE -> IDLE
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+; Timing constants (milliseconds)
+global GUI_MRU_FRESHNESS_MS := 300          ; Local MRU update validity period
+global GUI_WS_SWITCH_TIMEOUT_MS := 200      ; Max time to poll for workspace switch
+global GUI_WS_SWITCH_SETTLE_MS := 75        ; Wait after workspace switch for komorebi
+global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
+global GUI_EVENT_FLUSH_WAIT_MS := 30        ; Wait before processing buffered events
+global GUI_PREWARM_WAIT_MS := 50            ; Max wait for prewarm data on Tab
+
 ; Async cross-workspace activation state (non-blocking to allow keyboard events)
 global gGUI_PendingItem := ""            ; Item object being activated (or empty)
 global gGUI_PendingHwnd := 0             ; Target hwnd
@@ -72,11 +80,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             return
         }
 
-        ; Overflow protection: if buffer exceeds 50 events, something is wrong
+        ; Overflow protection: if buffer exceeds max events, something is wrong
         ; Normal rapid Alt+Tab produces ~4-6 events max (ALT_DN, TAB, TAB, ALT_UP)
         ; 50 events = ~12 complete Alt+Tab sequences queued = clearly pathological
         ; Clear buffer and cancel pending activation to recover gracefully
-        if (gGUI_EventBuffer.Length > 50) {
+        if (gGUI_EventBuffer.Length > GUI_EVENT_BUFFER_MAX) {
             _GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, clearing")
             _GUI_CancelPendingActivation()
             gGUI_State := "IDLE"
@@ -102,7 +110,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         if (cfg.AltTabPrewarmOnAlt) {
-            if (mruAge > 300) {
+            if (mruAge > GUI_MRU_FRESHNESS_MS) {
                 GUI_RequestSnapshot()
             } else {
                 _GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
@@ -129,7 +137,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; This handles the race where Tab is pressed before prewarm response arrives
             if (gGUI_Items.Length = 0 && cfg.AltTabPrewarmOnAlt) {
                 waitStart := A_TickCount
-                while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < 50) {
+                while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < GUI_PREWARM_WAIT_MS) {
                     Sleep(10)  ; Allow IPC timer to fire and process incoming messages
                 }
             }
@@ -410,7 +418,7 @@ GUI_ActivateItem(item) {
         gGUI_PendingItem := item
         gGUI_PendingHwnd := hwnd
         gGUI_PendingWSName := wsName
-        gGUI_PendingDeadline := A_TickCount + 200  ; Max 200ms to poll
+        gGUI_PendingDeadline := A_TickCount + GUI_WS_SWITCH_TIMEOUT_MS
         gGUI_PendingPhase := "polling"
         gGUI_PendingWaitUntil := 0
         gGUI_PendingTempFile := A_Temp "\tabby_ws_query_" A_TickCount ".tmp"
@@ -430,20 +438,7 @@ GUI_ActivateItem(item) {
 
     ; CRITICAL: Update MRU order locally for rapid Alt+Tab support
     ; Without this, a quick second Alt+Tab sees stale MRU and may select wrong window
-    ; (Same fix as in ASYNC COMPLETE for cross-workspace)
-    _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_Items.Length " items")
-    for i, itm in gGUI_Items {
-        if (itm.hwnd = hwnd) {
-            itm.lastActivatedTick := A_TickCount
-            _GUI_LogEvent("MRU UPDATE: found at position " i ", moving to position 1")
-            if (i > 1) {
-                gGUI_Items.RemoveAt(i)
-                gGUI_Items.InsertAt(1, itm)
-            }
-            gGUI_LastLocalMRUTick := A_TickCount  ; Track for prewarm suppression
-            break
-        }
-    }
+    _GUI_UpdateLocalMRU(hwnd)
 
     ; NOTE: Do NOT request snapshot here - it would overwrite our local MRU update
     ; with stale store data. The store will get the focus update via WinEventHook.
@@ -502,7 +497,7 @@ _GUI_AsyncActivationTick() {
         if (now > gGUI_PendingDeadline) {
             ; Timeout - do activation anyway
             gGUI_PendingPhase := "waiting"
-            gGUI_PendingWaitUntil := now + 75  ; Still wait 75ms for komorebi
+            gGUI_PendingWaitUntil := now + GUI_WS_SWITCH_SETTLE_MS
             return
         }
 
@@ -521,7 +516,7 @@ _GUI_AsyncActivationTick() {
                 if (result = gGUI_PendingWSName) {
                     ; Switch complete! Move to waiting phase
                     gGUI_PendingPhase := "waiting"
-                    gGUI_PendingWaitUntil := now + 75  ; Wait 75ms for komorebi to finish
+                    gGUI_PendingWaitUntil := now + GUI_WS_SWITCH_SETTLE_MS
                     return
                 }
             }
@@ -563,21 +558,7 @@ _GUI_AsyncActivationTick() {
         ; CRITICAL: Update MRU order - move activated window to position 1
         ; Don't wait for IPC - we know we just activated gGUI_PendingHwnd
         ; This ensures buffered Alt+Tab selects the PREVIOUS window, not the same one
-        activatedHwnd := gGUI_PendingHwnd
-        for i, item in gGUI_Items {
-            if (item.hwnd = activatedHwnd) {
-                ; Update lastActivatedTick to make this window most recent
-                item.lastActivatedTick := A_TickCount
-                ; Move to front of array
-                if (i > 1) {
-                    gGUI_Items.RemoveAt(i)
-                    gGUI_Items.InsertAt(1, item)
-                }
-                gGUI_LastLocalMRUTick := A_TickCount  ; Track for prewarm suppression
-                _GUI_LogEvent("ASYNC: moved hwnd " activatedHwnd " to MRU position 1")
-                break
-            }
-        }
+        _GUI_UpdateLocalMRU(gGUI_PendingHwnd)
 
         ; CRITICAL: Do NOT clear gGUI_PendingPhase yet!
         ; If we clear it now, any pending Tab_Decide timers from the interceptor
@@ -614,7 +595,7 @@ _GUI_ProcessEventBuffer() {
     ; for the decision timer itself. We wait 30ms to be safe.
     ; Using tick-based timing instead of static counter to prevent state leaks.
     elapsed := A_TickCount - gGUI_FlushStartTick
-    if (elapsed < 30) {
+    if (elapsed < GUI_EVENT_FLUSH_WAIT_MS) {
         _GUI_LogEvent("BUFFER WAIT: elapsed=" elapsed "ms (buf=" gGUI_EventBuffer.Length ")")
         SetTimer(_GUI_ProcessEventBuffer, -10)
         return
@@ -722,6 +703,33 @@ _GUI_ResyncKeyboardState() {
         ; Synthesize ALT_DOWN to get state machine in sync
         GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     }
+}
+
+; ========================= LOCAL MRU UPDATE =========================
+
+; Update local MRU order - move activated window to position 1
+; Called after successful activation to ensure rapid Alt+Tab sees correct order
+; Parameters:
+;   hwnd - Window handle that was activated
+; Updates: gGUI_Items array order, gGUI_LastLocalMRUTick
+_GUI_UpdateLocalMRU(hwnd) {
+    global gGUI_Items, gGUI_LastLocalMRUTick
+
+    _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_Items.Length " items")
+    for i, item in gGUI_Items {
+        if (item.hwnd = hwnd) {
+            item.lastActivatedTick := A_TickCount
+            _GUI_LogEvent("MRU UPDATE: found at position " i ", moving to position 1")
+            if (i > 1) {
+                gGUI_Items.RemoveAt(i)
+                gGUI_Items.InsertAt(1, item)
+            }
+            gGUI_LastLocalMRUTick := A_TickCount
+            return true
+        }
+    }
+    _GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
+    return false
 }
 
 ; ========================= ROBUST WINDOW ACTIVATION =========================

@@ -10,13 +10,17 @@
 ;   3) Bounded retries with exponential backoff
 ; ============================================================
 
+; Internal constants
+global IP_GIVEUP_BACKOFF_MS := 5000     ; Long cooldown after max attempts
+global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
+
 ; Configuration (set in IconPump_Start after ConfigLoader_Init)
 global IconBatchPerTick := 0
 global IconTimerIntervalMs := 0
 global IconMaxAttempts := 0
 global IconAttemptBackoffMs := 0
 global IconAttemptBackoffMultiplier := 0
-global IconGiveUpBackoffMs := 5000      ; Long cooldown after max attempts (internal)
+global IconGiveUpBackoffMs := IP_GIVEUP_BACKOFF_MS
 
 ; Diagnostic logging
 global _IP_DiagEnabled := false
@@ -119,7 +123,7 @@ _IP_Tick() {
         }
 
         title := rec.HasOwnProp("title") ? rec.title : ""
-        title := SubStr(title, 1, 40)  ; Truncate for logging
+        title := SubStr(title, 1, IP_LOG_TITLE_MAX_LEN)  ; Truncate for logging
 
         ; Window may have vanished - use IsWindow API, not WinExist
         ; WinExist doesn't see cloaked windows (other workspaces), but IsWindow does
@@ -293,16 +297,9 @@ _IP_TryResolveFromWindow(hWnd) {
     return 0
 }
 
-; Get process exe path from pid
+; Get process exe path from pid (uses shared utility)
 _IP_GetProcessPath(pid) {
-    hProc := DllCall("kernel32\OpenProcess", "uint", 0x1000, "int", 0, "uint", pid, "ptr")
-    if (!hProc)
-        return ""
-    buf := Buffer(32767 * 2, 0)
-    cch := 32767
-    ok := DllCall("kernel32\QueryFullProcessImageNameW", "ptr", hProc, "uint", 0, "ptr", buf.Ptr, "uint*", &cch, "int")
-    DllCall("kernel32\CloseHandle", "ptr", hProc)
-    return ok ? StrGet(buf.Ptr, "UTF-16") : ""
+    return ProcessUtils_GetPath(pid)
 }
 
 ; Extract icon from exe file
@@ -526,7 +523,8 @@ _IP_TryResolveFromUWP(hwnd, pid) {
         DllCall("gdi32\DeleteObject", "ptr", hBitmap)
 
         return hIcon
-    } catch {
+    } catch as e {
+        _IP_Log("UWP LoadPicture FAILED path=" logoPath " err=" e.Message)
         return 0
     }
 }

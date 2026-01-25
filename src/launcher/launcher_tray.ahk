@@ -51,7 +51,7 @@ UpdateTrayMenu() {
     tray.Add()
 
     ; Store status
-    storeRunning := g_StorePID && ProcessExist(g_StorePID)
+    storeRunning := LauncherUtils_IsRunning(g_StorePID)
     if (storeRunning) {
         tray.Add("Store: Restart", (*) => RestartStore())
     } else {
@@ -59,7 +59,7 @@ UpdateTrayMenu() {
     }
 
     ; GUI status
-    guiRunning := g_GuiPID && ProcessExist(g_GuiPID)
+    guiRunning := LauncherUtils_IsRunning(g_GuiPID)
     if (guiRunning) {
         tray.Add("GUI: Restart", (*) => RestartGui())
     } else {
@@ -67,7 +67,7 @@ UpdateTrayMenu() {
     }
 
     ; Viewer status (optional, launch from menu)
-    viewerRunning := g_ViewerPID && ProcessExist(g_ViewerPID)
+    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
     if (viewerRunning) {
         tray.Add("Viewer: Restart", (*) => RestartViewer())
     } else {
@@ -118,29 +118,17 @@ UpdateTrayMenu() {
 
 RestartStore() {
     global g_StorePID, TIMING_SUBPROCESS_LAUNCH
-    if (g_StorePID && ProcessExist(g_StorePID))
-        ProcessClose(g_StorePID)
-    g_StorePID := 0
-    Sleep(TIMING_SUBPROCESS_LAUNCH)
-    LaunchStore()
+    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH)
 }
 
 RestartGui() {
     global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
-    if (g_GuiPID && ProcessExist(g_GuiPID))
-        ProcessClose(g_GuiPID)
-    g_GuiPID := 0
-    Sleep(TIMING_SUBPROCESS_LAUNCH)
-    LaunchGui()
+    LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH)
 }
 
 RestartViewer() {
     global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
-    if (g_ViewerPID && ProcessExist(g_ViewerPID))
-        ProcessClose(g_ViewerPID)
-    g_ViewerPID := 0
-    Sleep(TIMING_SUBPROCESS_LAUNCH)
-    LaunchViewer()
+    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH)
 }
 
 RestartAll() {

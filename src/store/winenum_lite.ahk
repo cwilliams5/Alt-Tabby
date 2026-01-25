@@ -12,9 +12,6 @@
 ;   - Minimal overhead, no debug logging
 ; ============================================================
 
-; Load dwmapi once at startup
-DllCall("LoadLibrary", "str", "dwmapi.dll")
-
 ; Shell window handle (cached)
 global _WN_ShellWindow := 0
 
@@ -62,46 +59,7 @@ WinEnumLite_ScanAll() {
 
 ; Probe a single window - returns Map or empty string
 ; NOTE: Eligibility check should be done before calling this (via Blacklist_IsWindowEligible)
+; Uses shared WinUtils_ProbeWindow
 _WN_ProbeWindow(hwnd, zOrder := 0) {
-    ; Static buffer for DWM cloaking - avoid allocation per call
-    static cloakedBuf := Buffer(4, 0)
-
-    ; Get basic window info
-    title := ""
-    class := ""
-    pid := 0
-
-    try {
-        title := WinGetTitle("ahk_id " hwnd)
-        class := WinGetClass("ahk_id " hwnd)
-        pid := WinGetPID("ahk_id " hwnd)
-    } catch {
-        return ""
-    }
-
-    ; Skip windows with no title (usually not user-facing)
-    if (title = "")
-        return ""
-
-    ; Visibility state
-    isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
-    isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
-
-    ; DWM cloaking detection (for virtual desktops, komorebi, etc.)
-    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
-    isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
-
-    ; Build record as Map (required by WindowStore)
-    rec := Map()
-    rec["hwnd"] := hwnd
-    rec["title"] := title
-    rec["class"] := class
-    rec["pid"] := pid
-    rec["z"] := zOrder
-    rec["altTabEligible"] := true  ; Already checked by caller
-    rec["isCloaked"] := isCloaked
-    rec["isMinimized"] := isMin
-    rec["isVisible"] := isVisible
-
-    return rec
+    return WinUtils_ProbeWindow(hwnd, zOrder, false, false)  ; No exists/eligibility check (caller handles)
 }

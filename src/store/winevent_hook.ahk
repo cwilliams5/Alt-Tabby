@@ -283,60 +283,8 @@ _WEH_ProcessBatch() {
 }
 
 ; Probe a single window - returns Map or empty string
-; NOTE: Eligibility check should be done before calling this (via Blacklist_IsWindowEligible)
+; Uses shared WinUtils_ProbeWindow with exists and eligibility checks
 _WEH_ProbeWindow(hwnd) {
-    ; Static buffer for DWM cloaking - avoid allocation per call
-    static cloakedBuf := Buffer(4, 0)
-
-    ; Check window still exists
-    try {
-        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
-            return ""
-    } catch {
-        return ""
-    }
-
-    ; Use centralized eligibility check (Alt-Tab rules + blacklist)
-    if (!Blacklist_IsWindowEligible(hwnd))
-        return ""
-
-    ; Get basic window info
-    title := ""
-    class := ""
-    pid := 0
-
-    try {
-        title := WinGetTitle("ahk_id " hwnd)
-        class := WinGetClass("ahk_id " hwnd)
-        pid := WinGetPID("ahk_id " hwnd)
-    } catch {
-        return ""
-    }
-
-    ; Skip windows with no title (should already be caught by eligibility, but double-check)
-    if (title = "")
-        return ""
-
-    ; Visibility state
-    isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
-    isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
-
-    ; DWM cloaking
-    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
-    isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
-
-    ; Build record
-    rec := Map()
-    rec["hwnd"] := hwnd
-    rec["title"] := title
-    rec["class"] := class
-    rec["pid"] := pid
-    rec["z"] := 0  ; Will be set by full scan or inferred
-    rec["altTabEligible"] := true  ; Already checked by eligibility
-    rec["isCloaked"] := isCloaked
-    rec["isMinimized"] := isMin
-    rec["isVisible"] := isVisible
-
-    return rec
+    return WinUtils_ProbeWindow(hwnd, 0, true, true)  ; checkExists=true, checkEligible=true
 }
 

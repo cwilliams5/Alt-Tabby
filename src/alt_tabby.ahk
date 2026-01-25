@@ -106,9 +106,12 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
 #Include setup_utils.ahk
+#Include process_utils.ahk
+#Include win_utils.ahk
 
 ; Launcher module (from src/launcher/)
 #Include %A_ScriptDir%\launcher\
+#Include launcher_utils.ahk
 #Include launcher_splash.ahk
 #Include launcher_shortcuts.ahk
 #Include launcher_install.ahk
