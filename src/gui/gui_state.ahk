@@ -32,12 +32,7 @@ _GUI_LogEvent(msg) {
     global cfg, LOG_PATH_EVENTS
     if (!cfg.DiagEventLog)
         return
-    try {
-        LogAppend(LOG_PATH_EVENTS, msg)
-    } catch as e {
-        ; Log errors to separate file so we can see what's failing
-        try FileAppend("LOG_ERROR: " e.Message " | " msg "`n", A_Temp "\tabby_log_errors.txt", "UTF-8")
-    }
+    try LogAppend(LOG_PATH_EVENTS, msg)
 }
 
 ; Call at startup to mark new session

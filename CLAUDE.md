@@ -1171,6 +1171,12 @@ Debug options are in `[Diagnostics]` section of config.ini. All disabled by defa
 - **Enable**: Set `IPCLog=true` in config.ini `[Diagnostics]` section
 - **Pattern to look for**: `pipe_connected` confirms client connected; missing entries indicate pipe never created
 
+### Store_LogError (Always Active)
+- **File**: `%TEMP%\tabby_store_error.log`
+- **No config flag** - intentionally unconditional
+- **Purpose**: Catches fatal errors and startup issues even when all debug options are disabled
+- This is correct design: errors should always be logged. Only `Store_LogInfo()` respects `DiagStoreLog`.
+
 ### Game Mode Bypass (Fullscreen/Process Bypass)
 
 The bypass feature disables Tab hooks when a fullscreen game or blacklisted process is focused, allowing native Windows Alt+Tab to work.

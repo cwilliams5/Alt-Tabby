@@ -175,24 +175,24 @@ _KSub_DiagLog(msg) {
 _KSub_InitialPoll() {
     global _KSub_LastWorkspaceName
 
-    _KSub_Log("InitialPoll: Starting")
+    _KSub_DiagLog("InitialPoll: Starting")
 
     if (!KomorebiSub_IsAvailable()) {
-        _KSub_Log("InitialPoll: komorebic not available")
+        _KSub_DiagLog("InitialPoll: komorebic not available")
         return
     }
 
     txt := _KSub_GetStateDirect()
     if (txt = "") {
-        _KSub_Log("InitialPoll: Got empty state")
+        _KSub_DiagLog("InitialPoll: Got empty state")
         return
     }
 
-    _KSub_Log("InitialPoll: Got state len=" StrLen(txt))
+    _KSub_DiagLog("InitialPoll: Got state len=" StrLen(txt))
 
     ; Update all windows from full state
     _KSub_ProcessFullState(txt)
-    _KSub_Log("InitialPoll: Complete")
+    _KSub_DiagLog("InitialPoll: Complete")
 }
 
 ; Stop subscription
@@ -322,7 +322,7 @@ KomorebiSub_Poll() {
         if (json = "")
             break
         _KSub_DiagLog("Poll: Got notification, len=" StrLen(json))
-        _KSub_Log("Poll: Got JSON object, len=" StrLen(json))
+        _KSub_DiagLog("Poll: Got JSON object, len=" StrLen(json))
         _KSub_OnNotification(json)
     }
 
@@ -377,21 +377,11 @@ _KSub_ExtractOneJson(&s) {
     return ""
 }
 
-; Debug log for komorebi subscription (disabled by default)
-global _KSub_DebugLog := ""  ; Set to A_Temp "\ksub_debug.log" to enable
-
-_KSub_Log(msg) {
-    global _KSub_DebugLog
-    if (_KSub_DebugLog = "")
-        return
-    try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", _KSub_DebugLog, "UTF-8")
-}
-
 ; Process a complete notification JSON
 _KSub_OnNotification(jsonLine) {
     global _KSub_LastWorkspaceName, _KSub_WorkspaceCache
 
-    _KSub_Log("OnNotification called, len=" StrLen(jsonLine))
+    _KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
 
     ; Each notification has: { "event": {...}, "state": {...} }
     ; The state contains the FULL komorebi state - use it!
@@ -399,10 +389,10 @@ _KSub_OnNotification(jsonLine) {
     ; Extract the state object
     stateObj := _KSub_ExtractObjectByKey(jsonLine, "state")
     if (stateObj = "") {
-        _KSub_Log("  No state object found")
+        _KSub_DiagLog("  No state object found")
         return  ; No state, skip
     }
-    _KSub_Log("  State object len=" StrLen(stateObj))
+    _KSub_DiagLog("  State object len=" StrLen(stateObj))
 
     ; Extract the event object for workspace/cloak tracking
     eventObj := _KSub_ExtractObjectByKey(jsonLine, "event")
@@ -410,7 +400,7 @@ _KSub_OnNotification(jsonLine) {
     if (eventObj != "")
         eventType := _KSub_GetStringProp(eventObj, "type")
 
-    _KSub_Log("  Event type: '" eventType "'")
+    _KSub_DiagLog("  Event type: '" eventType "'")
     _KSub_DiagLog("Event: " eventType)
 
     ; Track if we explicitly handled workspace change
@@ -431,7 +421,7 @@ _KSub_OnNotification(jsonLine) {
         ; Try multiple extraction methods like the POC does
         contentRaw := _KSub_ExtractContentRaw(eventObj)
 
-        _KSub_Log("  FocusWorkspace content: " contentRaw)
+        _KSub_DiagLog("  FocusWorkspace content: " contentRaw)
         _KSub_DiagLog("  content raw: '" contentRaw "'")
 
         ; Debug: always show event structure for workspace events
@@ -504,7 +494,7 @@ _KSub_OnNotification(jsonLine) {
             }
         }
 
-        _KSub_Log("  Focus event resolved wsName='" wsName "'")
+        _KSub_DiagLog("  Focus event resolved wsName='" wsName "'")
         _KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
         if (wsName != "") {
             global _KSub_LastWorkspaceName
@@ -512,7 +502,7 @@ _KSub_OnNotification(jsonLine) {
             previousWsName := _KSub_LastWorkspaceName
 
             if (wsName != _KSub_LastWorkspaceName) {
-                _KSub_Log("  Updating current workspace to '" wsName "' from focus event")
+                _KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
                 _KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
                 _KSub_LastWorkspaceName := wsName
                 try WindowStore_SetCurrentWorkspace("", wsName)
@@ -590,7 +580,7 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
     }
 
     wsIdxLog := (IsSet(focusedWsIdx) ? focusedWsIdx : "N/A")
-    _KSub_Log("ProcessFullState: focusedMon=" focusedMonIdx " focusedWs=" wsIdxLog " currentWsName='" currentWsName "' lastWsName='" _KSub_LastWorkspaceName "' skipWsUpdate=" skipWorkspaceUpdate)
+    _KSub_DiagLog("ProcessFullState: focusedMon=" focusedMonIdx " focusedWs=" wsIdxLog " currentWsName='" currentWsName "' lastWsName='" _KSub_LastWorkspaceName "' skipWsUpdate=" skipWorkspaceUpdate)
     _KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" wsIdxLog " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
 
     ; Extra debug: if not skipping, show why we derived this workspace
@@ -604,7 +594,7 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
     ; Only update current workspace if not skipping (initial poll or direct state query)
     ; Skip if called from notification handler since focus events already update workspace
     if (!skipWorkspaceUpdate && currentWsName != "" && currentWsName != _KSub_LastWorkspaceName) {
-        _KSub_Log("  Updating workspace from '" _KSub_LastWorkspaceName "' to '" currentWsName "'")
+        _KSub_DiagLog("  Updating workspace from '" _KSub_LastWorkspaceName "' to '" currentWsName "'")
         _KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
         try WindowStore_SetCurrentWorkspace("", currentWsName)
@@ -674,11 +664,11 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
 
     ; Update/insert ALL windows from komorebi state
     if (!IsSet(gWS_Store)) {
-        _KSub_Log("ProcessFullState: gWS_Store not set, returning")
+        _KSub_DiagLog("ProcessFullState: gWS_Store not set, returning")
         return
     }
 
-    _KSub_Log("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
+    _KSub_DiagLog("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
 
     addedCount := 0
     updatedCount := 0
@@ -722,7 +712,7 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
             updatedCount++
         }
     }
-    _KSub_Log("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
+    _KSub_DiagLog("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
 
     ; Also update windows in store that aren't in komorebi state
     ; (they might have cached workspace data)
