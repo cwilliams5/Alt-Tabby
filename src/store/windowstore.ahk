@@ -245,9 +245,18 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
 
 WindowStore_ValidateExistence() {
     global gWS_Store, gWS_Rev
-    toRemove := []
 
-    for hwnd, rec in gWS_Store {
+    ; RACE FIX: Snapshot keys to prevent iteration-during-modification
+    Critical "On"
+    hwnds := []
+    for hwnd, _ in gWS_Store
+        hwnds.Push(hwnd)
+    Critical "Off"
+
+    toRemove := []
+    for _, hwnd in hwnds {
+        if (!gWS_Store.Has(hwnd))
+            continue  ; May have been removed by another producer
         ; IsWindow returns false only for truly destroyed windows
         ; Cloaked/minimized windows still return true
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
@@ -280,8 +289,18 @@ WindowStore_PurgeBlacklisted() {
     removed := 0
     toRemove := []
 
-    ; Collect hwnds that match blacklist (can't modify Map while iterating)
-    for hwnd, rec in gWS_Store {
+    ; RACE FIX: Snapshot keys to prevent iteration-during-modification
+    Critical "On"
+    hwnds := []
+    for hwnd, _ in gWS_Store
+        hwnds.Push(hwnd)
+    Critical "Off"
+
+    ; Collect hwnds that match blacklist
+    for _, hwnd in hwnds {
+        if (!gWS_Store.Has(hwnd))
+            continue  ; May have been removed by another producer
+        rec := gWS_Store[hwnd]
         title := rec.HasOwnProp("title") ? rec.title : ""
         class := rec.HasOwnProp("class") ? rec.class : ""
         if (Blacklist_IsMatch(title, class)) {
@@ -638,7 +657,9 @@ WindowStore_EnqueueIconRefresh(hwnd) {
 }
 
 ; Pop batch of hwnds needing icons
+; RACE FIX: Wrap in Critical - push operations use Critical, so pop must too
 WindowStore_PopIconBatch(count := 16) {
+    Critical "On"
     global gWS_IconQueue, gWS_IconQueueSet
     batch := []
     while (gWS_IconQueue.Length > 0 && batch.Length < count) {
@@ -646,11 +667,14 @@ WindowStore_PopIconBatch(count := 16) {
         gWS_IconQueueSet.Delete(hwnd)
         batch.Push(hwnd)
     }
+    Critical "Off"
     return batch
 }
 
 ; Pop batch of pids needing process info
+; RACE FIX: Wrap in Critical - push operations use Critical, so pop must too
 WindowStore_PopPidBatch(count := 16) {
+    Critical "On"
     global gWS_PidQueue, gWS_PidQueueSet
     batch := []
     while (gWS_PidQueue.Length > 0 && batch.Length < count) {
@@ -658,6 +682,7 @@ WindowStore_PopPidBatch(count := 16) {
         gWS_PidQueueSet.Delete(pid)
         batch.Push(pid)
     }
+    Critical "Off"
     return batch
 }
 
@@ -681,15 +706,23 @@ WindowStore_EnqueueForZ(hwnd) {
 }
 
 ; Check if any windows need Z-order enrichment
+; RACE FIX: Add Critical for consistency with EnqueueForZ/ClearZQueue
 WindowStore_HasPendingZ() {
+    Critical "On"
     global gWS_ZQueue
-    return gWS_ZQueue.Length > 0
+    result := gWS_ZQueue.Length > 0
+    Critical "Off"
+    return result
 }
 
 ; Get count of pending Z requests
+; RACE FIX: Add Critical for consistency with EnqueueForZ/ClearZQueue
 WindowStore_PendingZCount() {
+    Critical "On"
     global gWS_ZQueue
-    return gWS_ZQueue.Length
+    result := gWS_ZQueue.Length
+    Critical "Off"
+    return result
 }
 
 ; Clear the Z queue (called after a full winenum scan)
@@ -723,9 +756,19 @@ WindowStore_UpdateProcessName(pid, name) {
     ; Cache it
     gWS_ProcNameCache[pid] := name
 
+    ; RACE FIX: Snapshot keys to prevent iteration-during-modification
+    Critical "On"
+    hwnds := []
+    for hwnd, _ in gWS_Store
+        hwnds.Push(hwnd)
+    Critical "Off"
+
     ; Update all matching rows
     changed := false
-    for hwnd, rec in gWS_Store {
+    for _, hwnd in hwnds {
+        if (!gWS_Store.Has(hwnd))
+            continue  ; May have been removed by another producer
+        rec := gWS_Store[hwnd]
         if (rec.pid = pid && rec.processName != name) {
             rec.processName := name
             changed := true

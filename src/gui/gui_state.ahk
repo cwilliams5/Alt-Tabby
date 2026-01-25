@@ -766,7 +766,9 @@ _GUI_ResyncKeyboardState() {
 ; Parameters:
 ;   hwnd - Window handle that was activated
 ; Updates: gGUI_Items array order, gGUI_LastLocalMRUTick
+; RACE FIX: Wrap in Critical - modifies gGUI_Items array which IPC deltas also modify
 _GUI_UpdateLocalMRU(hwnd) {
+    Critical "On"
     global gGUI_Items, gGUI_LastLocalMRUTick
 
     _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_Items.Length " items")
@@ -779,10 +781,12 @@ _GUI_UpdateLocalMRU(hwnd) {
                 gGUI_Items.InsertAt(1, item)
             }
             gGUI_LastLocalMRUTick := A_TickCount
+            Critical "Off"
             return true
         }
     }
     _GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
+    Critical "Off"
     return false
 }
 

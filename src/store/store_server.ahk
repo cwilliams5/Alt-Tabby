@@ -342,14 +342,14 @@ Store_OnMessage(line, hPipe := 0) {
         return
     type := obj["type"]
     if (type = IPC_MSG_HELLO) {
-        ; RACE FIX: Wrap client Map modifications in Critical to prevent
-        ; timer interrupts from seeing inconsistent state
+        ; RACE FIX: Wrap ALL client Map modifications in single Critical section
+        ; to prevent timer interrupts from seeing inconsistent state between
+        ; initial writes and final projection tracking updates
         Critical "On"
         opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : IPC_DefaultProjectionOpts()
         gStore_ClientOpts[hPipe] := opts
         gStore_LastClientRev[hPipe] := -1  ; Will get updated when we send initial projection
         gStore_LastClientProj[hPipe] := [] ; No previous projection yet
-        Critical "Off"
 
         ; Send hello ack (no rev - it's just an ack, snapshot follows with rev)
         ack := {
@@ -374,6 +374,7 @@ Store_OnMessage(line, hPipe := 0) {
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
         gStore_LastClientRev[hPipe] := proj.rev
         gStore_LastClientProj[hPipe] := proj.HasOwnProp("items") ? proj.items : []
+        Critical "Off"
         return
     }
     if (type = IPC_MSG_SET_PROJECTION_OPTS) {
