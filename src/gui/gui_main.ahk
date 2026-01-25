@@ -93,6 +93,9 @@ GUI_Main_Init() {
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
 
+    ; Initialize event name map for logging
+    _GUI_InitEventNames()
+
     ; Initialize blacklist for writing (needed for blacklist button in GUI)
     Blacklist_Init()
 

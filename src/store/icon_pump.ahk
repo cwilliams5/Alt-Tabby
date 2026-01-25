@@ -30,7 +30,7 @@ global _IP_LogPath := ""
 global _IP_TimerOn := false
 global _IP_Attempts := Map()            ; hwnd -> attempt count
 global _IP_IdleTicks := 0               ; Counter for consecutive empty ticks
-global _IP_IdleThreshold := 5           ; Pause timer after this many empty ticks
+global _IP_IdleThreshold := 5           ; Default, overridden from config in IconPump_Init()
 
 ; Start the icon pump timer
 IconPump_Start() {
@@ -41,11 +41,13 @@ IconPump_Start() {
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (IconTimerIntervalMs = 0) {
+        global _IP_IdleThreshold
         IconBatchPerTick := cfg.IconPumpBatchSize
         IconTimerIntervalMs := cfg.IconPumpIntervalMs
         IconMaxAttempts := cfg.IconPumpMaxAttempts
         IconAttemptBackoffMs := cfg.IconPumpAttemptBackoffMs
         IconAttemptBackoffMultiplier := cfg.IconPumpBackoffMultiplier
+        _IP_IdleThreshold := cfg.HasOwnProp("IconPumpIdleThreshold") ? cfg.IconPumpIdleThreshold : 5
 
         ; Initialize diagnostic logging
         _IP_DiagEnabled := cfg.HasOwnProp("DiagIconPumpLog") ? cfg.DiagIconPumpLog : false
@@ -87,13 +89,7 @@ IconPump_Stop() {
 ; Call this when new work is enqueued to the icon queue
 IconPump_EnsureRunning() {
     global _IP_TimerOn, _IP_IdleTicks, IconTimerIntervalMs
-    if (_IP_TimerOn)
-        return  ; Already running
-    if (IconTimerIntervalMs <= 0)
-        return  ; Not initialized or disabled
-    _IP_TimerOn := true
-    _IP_IdleTicks := 0
-    SetTimer(_IP_Tick, IconTimerIntervalMs)
+    Pump_EnsureRunning(&_IP_TimerOn, &_IP_IdleTicks, IconTimerIntervalMs, _IP_Tick)
 }
 
 ; Clean up tracking state AND destroy HICON when windows are removed
@@ -107,6 +103,7 @@ IconPump_CleanupWindow(hwnd) {
     rec := WindowStore_GetByHwnd(hwnd)
     if (rec && rec.HasOwnProp("iconHicon") && rec.iconHicon) {
         try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
+        rec.iconHicon := 0  ; Defensive: prevent use-after-free
     }
 
     ; Clean up attempt tracking
@@ -124,12 +121,7 @@ _IP_Tick() {
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
     if (!IsObject(hwnds) || hwnds.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
-        _IP_IdleTicks += 1
-        if (_IP_IdleTicks >= _IP_IdleThreshold && _IP_TimerOn) {
-            SetTimer(_IP_Tick, 0)
-            _IP_TimerOn := false
-            _IP_Log("Timer paused (idle after " _IP_IdleTicks " empty ticks)")
-        }
+        Pump_HandleIdle(&_IP_IdleTicks, _IP_IdleThreshold, &_IP_TimerOn, _IP_Tick, _IP_Log)
         return
     }
     _IP_IdleTicks := 0  ; Reset idle counter when we have work

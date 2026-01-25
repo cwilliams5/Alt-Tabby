@@ -56,6 +56,18 @@ global gConfigRegistry := [
     {s: "AltTab", k: "BypassProcesses", g: "AltTabBypassProcesses", t: "string", default: "",
      d: "Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead."},
 
+    {type: "subsection", section: "AltTab", name: "Internal Timing",
+     desc: "Internal timing parameters (usually no need to change)"},
+
+    {s: "AltTab", k: "MRUFreshnessMs", g: "AltTabMRUFreshnessMs", t: "int", default: 300,
+     d: "How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations."},
+
+    {s: "AltTab", k: "WSPollTimeoutMs", g: "AltTabWSPollTimeoutMs", t: "int", default: 200,
+     d: "Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation."},
+
+    {s: "AltTab", k: "PrewarmWaitMs", g: "AltTabPrewarmWaitMs", t: "int", default: 50,
+     d: "Max time to wait for prewarm data on Tab (ms). If items are empty when Tab is pressed, wait up to this long for data to arrive."},
+
     ; ============================================================
     ; Launcher Settings
     ; ============================================================
@@ -516,6 +528,9 @@ global gConfigRegistry := [
     {s: "WinEventHook", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", default: 100,
      d: "Batch processing interval - how often queued events are processed"},
 
+    {s: "WinEventHook", k: "IdleThreshold", g: "WinEventHookIdleThreshold", t: "int", default: 10,
+     d: "Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
+
     ; ============================================================
     ; Z-Pump Timing
     ; ============================================================
@@ -574,6 +589,9 @@ global gConfigRegistry := [
     {s: "IconPump", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 30000,
      d: "Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay."},
 
+    {s: "IconPump", k: "IdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
+     d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
+
     ; ============================================================
     ; Process Pump Timing
     ; ============================================================
@@ -586,6 +604,9 @@ global gConfigRegistry := [
 
     {s: "ProcPump", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", default: 16,
      d: "Max PIDs to resolve per tick"},
+
+    {s: "ProcPump", k: "IdleThreshold", g: "ProcPumpIdleThreshold", t: "int", default: 5,
+     d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
     ; ============================================================
     ; Komorebi Subscription Timing

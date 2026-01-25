@@ -764,10 +764,10 @@ RunUnitTests_Cleanup() {
         if (FileExist(ksubPath)) {
             code := FileRead(ksubPath)
 
-            ; Check for buffer size limit (1MB = 1048576)
-            hasLimit := InStr(code, "1048576")
-            hasOverflowCheck := InStr(code, "StrLen(_KSub_Buf)")
-            resetsBuffer := InStr(code, '_KSub_Buf := ""')
+            ; Check for buffer size limit (1MB = 1048576 or KSUB_BUFFER_MAX_BYTES constant)
+            hasLimit := InStr(code, "1048576") || InStr(code, "KSUB_BUFFER_MAX_BYTES")
+            hasOverflowCheck := InStr(code, "StrLen(_KSub_ReadBuffer)")
+            resetsBuffer := InStr(code, '_KSub_ReadBuffer := ""')
 
             if (hasLimit && hasOverflowCheck && resetsBuffer) {
                 Log("PASS: komorebi_sub.ahk has 1MB buffer overflow protection")

@@ -2,13 +2,12 @@
 ; Handles state transitions: IDLE -> ALT_PENDING -> ACTIVE -> IDLE
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
-; Timing constants (milliseconds)
-global GUI_MRU_FRESHNESS_MS := 300          ; Local MRU update validity period
-global GUI_WS_SWITCH_TIMEOUT_MS := 200      ; Max time to poll for workspace switch
+; Timing constants (hardcoded - not user-configurable)
+; These are internal implementation details that users shouldn't need to change.
+; The main timing values (MRU freshness, WS poll timeout, prewarm wait) are in config.
 global GUI_WS_SWITCH_SETTLE_MS := 75        ; Wait after workspace switch for komorebi
 global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 global GUI_EVENT_FLUSH_WAIT_MS := 30        ; Wait before processing buffered events
-global GUI_PREWARM_WAIT_MS := 50            ; Max wait for prewarm data on Tab
 
 ; Async cross-workspace activation state (non-blocking to allow keyboard events)
 global gGUI_PendingItem := ""            ; Item object being activated (or empty)
@@ -45,6 +44,24 @@ _GUI_LogEventStartup() {
     }
 }
 
+; ========================= EVENT NAME LOOKUP =========================
+
+; Map for converting event codes to readable names (clearer than ternary chain)
+global gGUI_EventNames := Map()
+
+_GUI_InitEventNames() {
+    global gGUI_EventNames, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE
+    gGUI_EventNames[TABBY_EV_ALT_DOWN] := "ALT_DN"
+    gGUI_EventNames[TABBY_EV_TAB_STEP] := "TAB"
+    gGUI_EventNames[TABBY_EV_ALT_UP] := "ALT_UP"
+    gGUI_EventNames[TABBY_EV_ESCAPE] := "ESC"
+}
+
+_GUI_GetEventName(evCode) {
+    global gGUI_EventNames
+    return gGUI_EventNames.Has(evCode) ? gGUI_EventNames[evCode] : "?"
+}
+
 ; ========================= STATE MACHINE EVENT HANDLER =========================
 
 GUI_OnInterceptorEvent(evCode, flags, lParam) {
@@ -59,7 +76,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick
 
     ; Get event name for logging
-    evName := evCode = TABBY_EV_ALT_DOWN ? "ALT_DN" : evCode = TABBY_EV_TAB_STEP ? "TAB" : evCode = TABBY_EV_ALT_UP ? "ALT_UP" : evCode = TABBY_EV_ESCAPE ? "ESC" : "?"
+    evName := _GUI_GetEventName(evCode)
 
     ; File-based debug logging (no performance impact from tooltips)
     _GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_Items.Length " buf=" gGUI_EventBuffer.Length)
@@ -105,7 +122,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         if (cfg.AltTabPrewarmOnAlt) {
-            if (mruAge > GUI_MRU_FRESHNESS_MS) {
+            mruFreshness := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
+            if (mruAge > mruFreshness) {
                 GUI_RequestSnapshot()
             } else {
                 _GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
@@ -132,7 +150,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; This handles the race where Tab is pressed before prewarm response arrives
             if (gGUI_Items.Length = 0 && cfg.AltTabPrewarmOnAlt) {
                 waitStart := A_TickCount
-                while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < GUI_PREWARM_WAIT_MS) {
+                prewarmWait := cfg.HasOwnProp("AltTabPrewarmWaitMs") ? cfg.AltTabPrewarmWaitMs : 50
+                while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < prewarmWait) {
                     Sleep(10)  ; Allow IPC timer to fire and process incoming messages
                 }
             }
@@ -266,6 +285,23 @@ GUI_GraceTimerFired() {
 }
 
 ; ========================= FROZEN STATE HELPERS =========================
+
+; Reset selection to MRU position 2 (the "previous" window)
+; and clamp to list bounds. Used after filtering/toggling workspace mode.
+; Parameters:
+;   listRef - Optional reference to the list to use (default: gGUI_FrozenItems)
+; Returns: The new selection index
+_GUI_ResetSelectionToMRU(listRef := "") {
+    global gGUI_Sel, gGUI_ScrollTop, gGUI_FrozenItems
+    items := (listRef != "") ? listRef : gGUI_FrozenItems
+
+    gGUI_Sel := 2  ; MRU position 2 = previous window
+    if (gGUI_Sel > items.Length) {
+        gGUI_Sel := (items.Length > 0) ? 1 : 0
+    }
+    gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+    return gGUI_Sel
+}
 
 GUI_ShowOverlayWithFrozen() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
@@ -418,7 +454,8 @@ GUI_ActivateItem(item) {
         gGUI_PendingItem := item
         gGUI_PendingHwnd := hwnd
         gGUI_PendingWSName := wsName
-        gGUI_PendingDeadline := A_TickCount + GUI_WS_SWITCH_TIMEOUT_MS
+        wsPollTimeout := cfg.HasOwnProp("AltTabWSPollTimeoutMs") ? cfg.AltTabWSPollTimeoutMs : 200
+        gGUI_PendingDeadline := A_TickCount + wsPollTimeout
         gGUI_PendingPhase := "polling"
         gGUI_PendingWaitUntil := 0
         gGUI_PendingTempFile := A_Temp "\tabby_ws_query_" A_TickCount ".tmp"

@@ -65,7 +65,8 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         if (!IsSet(gGUI_LastLocalMRUTick))
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
-        if (mruAge < 300 && !isToggleResponse) {
+        mruFreshness := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
+        if (mruAge < mruFreshness && !isToggleResponse) {
             _GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
@@ -99,11 +100,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
 
                 ; Reset selection for toggle response
                 if (isToggleResponse) {
-                    gGUI_Sel := 2
-                    if (gGUI_Sel > gGUI_FrozenItems.Length) {
-                        gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
-                    }
-                    gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+                    _GUI_ResetSelectionToMRU()
                 }
             }
 

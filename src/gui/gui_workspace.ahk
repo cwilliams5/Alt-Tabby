@@ -69,11 +69,7 @@ GUI_ToggleWorkspaceMode() {
             ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
 
             ; Reset selection
-            gGUI_Sel := 2
-            if (gGUI_Sel > gGUI_FrozenItems.Length) {
-                gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
-            }
-            gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+            _GUI_ResetSelectionToMRU()
 
             ; Resize GUI if item count changed significantly
             rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
@@ -124,14 +120,10 @@ GUI_SetWorkspaceMode(mode) {
     GUI_UpdateFooterText()
 
     ; Same logic as toggle - re-filter if visible
-    global gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+    global gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_Items
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
         gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
-        gGUI_Sel := 2
-        if (gGUI_Sel > gGUI_FrozenItems.Length) {
-            gGUI_Sel := (gGUI_FrozenItems.Length > 0) ? 1 : 0
-        }
-        gGUI_ScrollTop := (gGUI_Sel > 0) ? gGUI_Sel - 1 : 0
+        _GUI_ResetSelectionToMRU()
         GUI_Repaint()
     }
 }

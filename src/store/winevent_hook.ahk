@@ -29,7 +29,7 @@ global _WEH_LastProcessTick := 0
 global _WEH_TimerOn := false
 global _WEH_ShellWindow := 0
 global _WEH_IdleTicks := 0                ; Counter for consecutive empty ticks
-global _WEH_IdleThreshold := 10           ; Pause timer after this many empty ticks (higher for WEH)
+global _WEH_IdleThreshold := 10           ; Default, overridden from config in WinEventHook_Start()
 
 ; MRU tracking (replaces MRU_Lite when hook is active)
 global _WEH_LastFocusHwnd := 0
@@ -62,8 +62,10 @@ WinEventHook_Start() {
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (WinEventHook_DebounceMs = 0) {
+        global _WEH_IdleThreshold
         WinEventHook_DebounceMs := cfg.WinEventHookDebounceMs
         WinEventHook_BatchMs := cfg.WinEventHookBatchMs
+        _WEH_IdleThreshold := cfg.HasOwnProp("WinEventHookIdleThreshold") ? cfg.WinEventHookIdleThreshold : 10
     }
 
     if (_WEH_Hook)
@@ -108,13 +110,7 @@ WinEventHook_Start() {
 ; Called by the callback when new events are queued
 WinEventHook_EnsureTimerRunning() {
     global _WEH_TimerOn, _WEH_IdleTicks, WinEventHook_BatchMs
-    if (_WEH_TimerOn)
-        return  ; Already running
-    if (WinEventHook_BatchMs <= 0)
-        return  ; Not initialized
-    _WEH_TimerOn := true
-    _WEH_IdleTicks := 0
-    SetTimer(_WEH_ProcessBatch, WinEventHook_BatchMs)
+    Pump_EnsureRunning(&_WEH_TimerOn, &_WEH_IdleTicks, WinEventHook_BatchMs, _WEH_ProcessBatch)
 }
 
 ; Stop and uninstall the hook
@@ -215,12 +211,7 @@ _WEH_ProcessBatch() {
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
-        _WEH_IdleTicks += 1
-        if (_WEH_IdleTicks >= _WEH_IdleThreshold && _WEH_TimerOn) {
-            SetTimer(_WEH_ProcessBatch, 0)
-            _WEH_TimerOn := false
-            _WEH_DiagLog("Batch timer paused (idle after " _WEH_IdleTicks " empty ticks)")
-        }
+        Pump_HandleIdle(&_WEH_IdleTicks, _WEH_IdleThreshold, &_WEH_TimerOn, _WEH_ProcessBatch, _WEH_DiagLog)
         return
     }
     _WEH_IdleTicks := 0  ; Reset idle counter when we have work

@@ -11,6 +11,7 @@
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 #Include *i %A_ScriptDir%\..\shared\process_utils.ahk
 #Include *i %A_ScriptDir%\..\shared\win_utils.ahk
+#Include *i %A_ScriptDir%\..\shared\pump_utils.ahk
 #Include *i %A_ScriptDir%\windowstore.ahk
 #Include *i %A_ScriptDir%\winenum_lite.ahk
 #Include *i %A_ScriptDir%\mru_lite.ahk

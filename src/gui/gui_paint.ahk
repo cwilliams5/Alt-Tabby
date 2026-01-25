@@ -378,6 +378,38 @@ GUI_EnsureResources(scale) {
 
 ; ========================= ACTION BUTTONS =========================
 
+; Draw a single action button and update btnX position
+; Parameters:
+;   g         - GDI+ graphics object
+;   &btnX     - ByRef x position (decremented after drawing)
+;   btnY      - y position
+;   size      - button size in pixels
+;   rad       - corner radius in pixels
+;   scale     - DPI scale factor
+;   btnName   - button identifier ("close", "kill", "blacklist")
+;   showProp  - config property name for show toggle (e.g., "GUI_ShowCloseButton")
+;   bgProp    - config property prefix for colors (e.g., "GUI_CloseButton")
+;   glyph     - text/glyph to draw
+;   borderPx  - border thickness (from config)
+;   gap       - gap between buttons in pixels
+_GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bgProp, glyph, borderPx, gap) {
+    global gGUI_HoverBtn, cfg
+
+    if (!cfg.%showProp%)
+        return
+
+    hovered := (gGUI_HoverBtn = btnName)
+    bgCol := hovered ? cfg.%bgProp "BGHoverARGB"% : cfg.%bgProp "BGARGB"%
+    txCol := hovered ? cfg.%bgProp "TextHoverARGB"% : cfg.%bgProp "TextARGB"%
+
+    Gdip_FillRoundRect(g, bgCol, btnX, btnY, size, size, rad)
+    if (borderPx > 0) {
+        Gdip_StrokeRoundRect(g, cfg.%bgProp "BorderARGB"%, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(borderPx * scale))
+    }
+    Gdip_DrawCenteredText(g, glyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
+    btnX := btnX - (size + gap)
+}
+
 GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
     global gGUI_HoverBtn, cfg
 
@@ -398,40 +430,14 @@ GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
     btnX := wPhys - marR - size
     btnY := yRow + (rowHPhys - size) // 2
 
-    if (cfg.GUI_ShowCloseButton) {
-        hovered := (gGUI_HoverBtn = "close")
-        bgCol := hovered ? cfg.GUI_CloseButtonBGHoverARGB : cfg.GUI_CloseButtonBGARGB
-        txCol := hovered ? cfg.GUI_CloseButtonTextHoverARGB : cfg.GUI_CloseButtonTextARGB
-        Gdip_FillRoundRect(g, bgCol, btnX, btnY, size, size, rad)
-        if (cfg.GUI_CloseButtonBorderPx > 0) {
-            Gdip_StrokeRoundRect(g, cfg.GUI_CloseButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(cfg.GUI_CloseButtonBorderPx * scale))
-        }
-        Gdip_DrawCenteredText(g, cfg.GUI_CloseButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
-        btnX := btnX - (size + gap)
-    }
+    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "close",
+        "GUI_ShowCloseButton", "GUI_CloseButton", cfg.GUI_CloseButtonGlyph, cfg.GUI_CloseButtonBorderPx, gap)
 
-    if (cfg.GUI_ShowKillButton) {
-        hovered := (gGUI_HoverBtn = "kill")
-        bgCol := hovered ? cfg.GUI_KillButtonBGHoverARGB : cfg.GUI_KillButtonBGARGB
-        txCol := hovered ? cfg.GUI_KillButtonTextHoverARGB : cfg.GUI_KillButtonTextARGB
-        Gdip_FillRoundRect(g, bgCol, btnX, btnY, size, size, rad)
-        if (cfg.GUI_KillButtonBorderPx > 0) {
-            Gdip_StrokeRoundRect(g, cfg.GUI_KillButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(cfg.GUI_KillButtonBorderPx * scale))
-        }
-        Gdip_DrawCenteredText(g, cfg.GUI_KillButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
-        btnX := btnX - (size + gap)
-    }
+    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "kill",
+        "GUI_ShowKillButton", "GUI_KillButton", cfg.GUI_KillButtonGlyph, cfg.GUI_KillButtonBorderPx, gap)
 
-    if (cfg.GUI_ShowBlacklistButton) {
-        hovered := (gGUI_HoverBtn = "blacklist")
-        bgCol := hovered ? cfg.GUI_BlacklistButtonBGHoverARGB : cfg.GUI_BlacklistButtonBGARGB
-        txCol := hovered ? cfg.GUI_BlacklistButtonTextHoverARGB : cfg.GUI_BlacklistButtonTextARGB
-        Gdip_FillRoundRect(g, bgCol, btnX, btnY, size, size, rad)
-        if (cfg.GUI_BlacklistButtonBorderPx > 0) {
-            Gdip_StrokeRoundRect(g, cfg.GUI_BlacklistButtonBorderARGB, btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, Round(cfg.GUI_BlacklistButtonBorderPx * scale))
-        }
-        Gdip_DrawCenteredText(g, cfg.GUI_BlacklistButtonGlyph, btnX, btnY, size, size, txCol, gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
-    }
+    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "blacklist",
+        "GUI_ShowBlacklistButton", "GUI_BlacklistButton", cfg.GUI_BlacklistButtonGlyph, cfg.GUI_BlacklistButtonBorderPx, gap)
 }
 
 ; ========================= SCROLLBAR =========================

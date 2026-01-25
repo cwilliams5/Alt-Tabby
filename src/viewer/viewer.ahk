@@ -453,21 +453,7 @@ _Viewer_UpdateList(items) {
 
     for _, rec in items {
         hwnd := _Viewer_Get(rec, "hwnd", 0)
-        row := gViewer_LV.Add("",
-            _Viewer_Get(rec, "z", ""),
-            _Viewer_Get(rec, "lastActivatedTick", ""),
-            "0x" Format("{:X}", hwnd),
-            _Viewer_Get(rec, "pid", ""),
-            _Viewer_Get(rec, "title", ""),
-            _Viewer_Get(rec, "class", ""),
-            _Viewer_Get(rec, "workspaceName", ""),
-            _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
-            _Viewer_Get(rec, "processName", ""),
-            _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
-            _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-            _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
-            _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
-        )
+        row := gViewer_LV.Add("", _Viewer_BuildRowArgs(rec)*)
         gViewer_RowByHwnd[hwnd] := row
         gViewer_RecByHwnd[hwnd] := rec
     }
@@ -503,21 +489,7 @@ _Viewer_RebuildFromCache() {
 
     for _, rec in items {
         hwnd := _Viewer_Get(rec, "hwnd", 0)
-        row := gViewer_LV.Add("",
-            _Viewer_Get(rec, "z", ""),
-            _Viewer_Get(rec, "lastActivatedTick", ""),
-            "0x" Format("{:X}", hwnd),
-            _Viewer_Get(rec, "pid", ""),
-            _Viewer_Get(rec, "title", ""),
-            _Viewer_Get(rec, "class", ""),
-            _Viewer_Get(rec, "workspaceName", ""),
-            _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
-            _Viewer_Get(rec, "processName", ""),
-            _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
-            _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-            _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
-            _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
-        )
+        row := gViewer_LV.Add("", _Viewer_BuildRowArgs(rec)*)
         gViewer_RowByHwnd[hwnd] := row
     }
 
@@ -543,40 +515,12 @@ _Viewer_IncrementalUpdate(items) {
 
             ; Check if anything changed
             if (_Viewer_RecChanged(old, rec)) {
-                gViewer_LV.Modify(row, "",
-                    _Viewer_Get(rec, "z", ""),
-                    _Viewer_Get(rec, "lastActivatedTick", ""),
-                    "0x" Format("{:X}", hwnd),
-                    _Viewer_Get(rec, "pid", ""),
-                    _Viewer_Get(rec, "title", ""),
-                    _Viewer_Get(rec, "class", ""),
-                    _Viewer_Get(rec, "workspaceName", ""),
-                    _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
-                    _Viewer_Get(rec, "processName", ""),
-                    _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
-                    _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                    _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
-                    _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
-                )
+                gViewer_LV.Modify(row, "", _Viewer_BuildRowArgs(rec)*)
                 gViewer_RecByHwnd[hwnd] := rec
             }
         } else {
             ; New window - add it
-            row := gViewer_LV.Add("",
-                _Viewer_Get(rec, "z", ""),
-                _Viewer_Get(rec, "lastActivatedTick", ""),
-                "0x" Format("{:X}", hwnd),
-                _Viewer_Get(rec, "pid", ""),
-                _Viewer_Get(rec, "title", ""),
-                _Viewer_Get(rec, "class", ""),
-                _Viewer_Get(rec, "workspaceName", ""),
-                _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
-                _Viewer_Get(rec, "processName", ""),
-                _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
-                _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
-            )
+            row := gViewer_LV.Add("", _Viewer_BuildRowArgs(rec)*)
             gViewer_RowByHwnd[hwnd] := row
             gViewer_RecByHwnd[hwnd] := rec
         }
@@ -683,37 +627,9 @@ _Viewer_ApplyDelta(payload) {
 
         if (gViewer_RowByHwnd.Has(hwnd)) {
             row := gViewer_RowByHwnd[hwnd]
-            gViewer_LV.Modify(row, "",
-                _Viewer_Get(rec, "z", ""),
-                _Viewer_Get(rec, "lastActivatedTick", ""),
-                "0x" Format("{:X}", hwnd),
-                _Viewer_Get(rec, "pid", ""),
-                _Viewer_Get(rec, "title", ""),
-                _Viewer_Get(rec, "class", ""),
-                _Viewer_Get(rec, "workspaceName", ""),
-                _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
-                _Viewer_Get(rec, "processName", ""),
-                _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
-                _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
-            )
+            gViewer_LV.Modify(row, "", _Viewer_BuildRowArgs(rec)*)
         } else {
-            row := gViewer_LV.Add("",
-                _Viewer_Get(rec, "z", ""),
-                _Viewer_Get(rec, "lastActivatedTick", ""),
-                "0x" Format("{:X}", hwnd),
-                _Viewer_Get(rec, "pid", ""),
-                _Viewer_Get(rec, "title", ""),
-                _Viewer_Get(rec, "class", ""),
-                _Viewer_Get(rec, "workspaceName", ""),
-                _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
-                _Viewer_Get(rec, "processName", ""),
-                _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
-                _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
-                _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
-            )
+            row := gViewer_LV.Add("", _Viewer_BuildRowArgs(rec)*)
             gViewer_RowByHwnd[hwnd] := row
         }
         gViewer_RecByHwnd[hwnd] := rec
@@ -861,6 +777,27 @@ _Viewer_Get(rec, key, defaultVal := "") {
     } catch {
         return defaultVal
     }
+}
+
+; Build ListView row values from a record
+; Returns an array that can be passed to gViewer_LV.Add/Modify using splat operator (*)
+_Viewer_BuildRowArgs(rec) {
+    hwnd := _Viewer_Get(rec, "hwnd", 0)
+    return [
+        _Viewer_Get(rec, "z", ""),
+        _Viewer_Get(rec, "lastActivatedTick", ""),
+        "0x" Format("{:X}", hwnd),
+        _Viewer_Get(rec, "pid", ""),
+        _Viewer_Get(rec, "title", ""),
+        _Viewer_Get(rec, "class", ""),
+        _Viewer_Get(rec, "workspaceName", ""),
+        _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
+        _Viewer_Get(rec, "processName", ""),
+        _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
+        _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
+        _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
+        _Viewer_IconStr(_Viewer_Get(rec, "iconHicon", 0))
+    ]
 }
 
 _Viewer_IconStr(hicon) {

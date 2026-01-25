@@ -22,6 +22,28 @@ global g_SplashPosY := 0
 global g_SplashDIB := 0  ; DIB bitmap handle (must be deleted to avoid leak)
 global g_SplashShuttingDown := false  ; Shutdown coordination flag
 
+; Cleanup a single GDI/system resource (helper to reduce repetition)
+; Parameters:
+;   globalRef - ByRef to the global variable holding the handle
+;   cleanupFn - The DLL function name (e.g., "DeleteObject", "DeleteDC")
+;   dllName   - The DLL name (default: "" means kernel32/user32/gdi32 auto)
+;   extraArg  - Optional extra argument for functions like ReleaseDC that need hwnd
+_Splash_CleanupResource(&globalRef, cleanupFn, dllName := "", extraArg := "") {
+    if (!globalRef)
+        return
+    try {
+        if (extraArg != "") {
+            ; For ReleaseDC which needs (hwnd, hdc)
+            DllCall(cleanupFn, "ptr", extraArg, "ptr", globalRef)
+        } else if (dllName != "") {
+            DllCall(dllName "\" cleanupFn, "ptr", globalRef)
+        } else {
+            DllCall(cleanupFn, "ptr", globalRef)
+        }
+    }
+    globalRef := 0
+}
+
 ShowSplashScreen() {
     global g_SplashHwnd, g_SplashStartTick, g_SplashBitmap, g_SplashHdc, g_SplashToken
     global g_SplashHdcScreen, g_SplashImgW, g_SplashImgH, g_SplashPosX, g_SplashPosY, g_SplashHModule
@@ -40,8 +62,7 @@ ShowSplashScreen() {
     g_SplashToken := 0
     DllCall("gdiplus\GdiplusStartup", "ptr*", &g_SplashToken, "ptr", si.Ptr, "ptr", 0)
     if (!g_SplashToken) {
-        DllCall("FreeLibrary", "ptr", g_SplashHModule)
-        g_SplashHModule := 0
+        _Splash_CleanupResource(&g_SplashHModule, "FreeLibrary")
         return
     }
 
@@ -58,10 +79,8 @@ ShowSplashScreen() {
     }
 
     if (!g_SplashBitmap) {
-        DllCall("gdiplus\GdiplusShutdown", "uptr", g_SplashToken)
-        DllCall("FreeLibrary", "ptr", g_SplashHModule)
-        g_SplashToken := 0
-        g_SplashHModule := 0
+        _Splash_CleanupResource(&g_SplashToken, "GdiplusShutdown", "gdiplus")
+        _Splash_CleanupResource(&g_SplashHModule, "FreeLibrary")
         return
     }
 
@@ -89,12 +108,9 @@ ShowSplashScreen() {
         , "ptr", 0, "ptr", 0, "ptr", 0, "ptr", 0, "ptr")
 
     if (!g_SplashHwnd) {
-        DllCall("gdiplus\GdipDisposeImage", "ptr", g_SplashBitmap)
-        DllCall("gdiplus\GdiplusShutdown", "uptr", g_SplashToken)
-        DllCall("FreeLibrary", "ptr", g_SplashHModule)
-        g_SplashBitmap := 0
-        g_SplashToken := 0
-        g_SplashHModule := 0
+        _Splash_CleanupResource(&g_SplashBitmap, "GdipDisposeImage", "gdiplus")
+        _Splash_CleanupResource(&g_SplashToken, "GdiplusShutdown", "gdiplus")
+        _Splash_CleanupResource(&g_SplashHModule, "FreeLibrary")
         return
     }
 
@@ -145,42 +161,16 @@ HideSplashScreen() {
     if (g_SplashHwnd) {
         ; Fade out
         _Splash_Fade(255, 0, cfg.LauncherSplashFadeMs)
-
-        ; Cleanup window
-        try DllCall("DestroyWindow", "ptr", g_SplashHwnd)
-        g_SplashHwnd := 0
+        _Splash_CleanupResource(&g_SplashHwnd, "DestroyWindow")
     }
 
     ; Delete DIB before DC (must delete bitmap before the DC it's selected into)
-    if (g_SplashDIB) {
-        try DllCall("DeleteObject", "ptr", g_SplashDIB)
-        g_SplashDIB := 0
-    }
-
-    if (g_SplashHdc) {
-        try DllCall("DeleteDC", "ptr", g_SplashHdc)
-        g_SplashHdc := 0
-    }
-
-    if (g_SplashHdcScreen) {
-        try DllCall("ReleaseDC", "ptr", 0, "ptr", g_SplashHdcScreen)
-        g_SplashHdcScreen := 0
-    }
-
-    if (g_SplashBitmap) {
-        try DllCall("gdiplus\GdipDisposeImage", "ptr", g_SplashBitmap)
-        g_SplashBitmap := 0
-    }
-
-    if (g_SplashToken) {
-        try DllCall("gdiplus\GdiplusShutdown", "uptr", g_SplashToken)
-        g_SplashToken := 0
-    }
-
-    if (g_SplashHModule) {
-        try DllCall("FreeLibrary", "ptr", g_SplashHModule)
-        g_SplashHModule := 0
-    }
+    _Splash_CleanupResource(&g_SplashDIB, "DeleteObject")
+    _Splash_CleanupResource(&g_SplashHdc, "DeleteDC")
+    _Splash_CleanupResource(&g_SplashHdcScreen, "ReleaseDC", "", 0)
+    _Splash_CleanupResource(&g_SplashBitmap, "GdipDisposeImage", "gdiplus")
+    _Splash_CleanupResource(&g_SplashToken, "GdiplusShutdown", "gdiplus")
+    _Splash_CleanupResource(&g_SplashHModule, "FreeLibrary")
 }
 
 ; Update layered window with specified alpha - uses UpdateLayeredWindow for per-pixel alpha

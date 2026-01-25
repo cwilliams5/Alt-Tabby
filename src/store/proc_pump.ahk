@@ -15,7 +15,7 @@ global ProcTimerIntervalMs := 0
 ; State
 global _PP_TimerOn := false
 global _PP_IdleTicks := 0               ; Counter for consecutive empty ticks
-global _PP_IdleThreshold := 5           ; Pause timer after this many empty ticks
+global _PP_IdleThreshold := 5           ; Default, overridden from config in ProcPump_Start()
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
@@ -36,8 +36,10 @@ ProcPump_Start() {
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (ProcTimerIntervalMs = 0) {
+        global _PP_IdleThreshold
         ProcBatchPerTick := cfg.ProcPumpBatchSize
         ProcTimerIntervalMs := cfg.ProcPumpIntervalMs
+        _PP_IdleThreshold := cfg.HasOwnProp("ProcPumpIdleThreshold") ? cfg.ProcPumpIdleThreshold : 5
     }
 
     if (_PP_TimerOn)
@@ -59,13 +61,7 @@ ProcPump_Stop() {
 ; Call this when new work is enqueued to the process queue
 ProcPump_EnsureRunning() {
     global _PP_TimerOn, _PP_IdleTicks, ProcTimerIntervalMs
-    if (_PP_TimerOn)
-        return  ; Already running
-    if (ProcTimerIntervalMs <= 0)
-        return  ; Not initialized or disabled
-    _PP_TimerOn := true
-    _PP_IdleTicks := 0
-    SetTimer(_PP_Tick, ProcTimerIntervalMs)
+    Pump_EnsureRunning(&_PP_TimerOn, &_PP_IdleTicks, ProcTimerIntervalMs, _PP_Tick)
 }
 
 ; Main pump tick
@@ -75,12 +71,7 @@ _PP_Tick() {
     pids := WindowStore_PopPidBatch(ProcBatchPerTick)
     if (!IsObject(pids) || pids.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
-        _PP_IdleTicks += 1
-        if (_PP_IdleTicks >= _PP_IdleThreshold && _PP_TimerOn) {
-            SetTimer(_PP_Tick, 0)
-            _PP_TimerOn := false
-            _PP_Log("Timer paused (idle after " _PP_IdleTicks " empty ticks)")
-        }
+        Pump_HandleIdle(&_PP_IdleTicks, _PP_IdleThreshold, &_PP_TimerOn, _PP_Tick, _PP_Log)
         return
     }
     _PP_IdleTicks := 0  ; Reset idle counter when we have work

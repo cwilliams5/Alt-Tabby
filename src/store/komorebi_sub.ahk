@@ -15,6 +15,14 @@
 ; Based on working POC: legacy/components_legacy/komorebi_poc - WORKING.ahk
 ; ============================================================
 
+; Windows API Error Codes (for readability)
+global ERROR_IO_PENDING := 997
+global ERROR_BROKEN_PIPE := 109
+global ERROR_PIPE_CONNECTED := 535
+
+; Buffer size limit (1MB) - prevents OOM from incomplete JSON
+global KSUB_BUFFER_MAX_BYTES := 1048576
+
 ; Configuration (set in KomorebiSub_Init after ConfigLoader_Init)
 global KSub_PollMs := 0
 global KSub_IdleRecycleMs := 0
@@ -24,11 +32,11 @@ global KSub_FallbackPollMs := 0
 global _KSub_PipeName := ""
 global _KSub_hPipe := 0
 global _KSub_hEvent := 0
-global _KSub_Over := 0
+global _KSub_Overlappedlapped := 0       ; OVERLAPPED structure for async I/O
 global _KSub_Connected := false
 global _KSub_ClientPid := 0
-global _KSub_LastEvent := 0
-global _KSub_Buf := ""
+global _KSub_LastEventTickTick := 0    ; Timestamp of last event (for idle detection)
+global _KSub_ReadBuffer := ""      ; Accumulated bytes from pipe reads
 global _KSub_LastWorkspaceName := ""
 global _KSub_FallbackMode := false
 
@@ -68,8 +76,8 @@ KomorebiSub_IsAvailable() {
 
 ; Start subscription
 KomorebiSub_Start() {
-    global _KSub_PipeName, _KSub_hPipe, _KSub_hEvent, _KSub_Over
-    global _KSub_Connected, _KSub_ClientPid, _KSub_LastEvent, _KSub_FallbackMode
+    global _KSub_PipeName, _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped
+    global _KSub_Connected, _KSub_ClientPid, _KSub_LastEventTick, _KSub_FallbackMode
 
     KomorebiSub_Stop()
 
@@ -118,16 +126,16 @@ KomorebiSub_Start() {
 
     ; Allocate OVERLAPPED structure
     overSize := (A_PtrSize = 8) ? 32 : 20
-    _KSub_Over := Buffer(overSize, 0)
-    NumPut("ptr", _KSub_hEvent, _KSub_Over, (A_PtrSize = 8) ? 24 : 16)
+    _KSub_Overlapped := Buffer(overSize, 0)
+    NumPut("ptr", _KSub_hEvent, _KSub_Overlapped, (A_PtrSize = 8) ? 24 : 16)
 
     ; Begin async connect (non-blocking)
-    ok := DllCall("ConnectNamedPipe", "ptr", _KSub_hPipe, "ptr", _KSub_Over.Ptr, "int")
+    ok := DllCall("ConnectNamedPipe", "ptr", _KSub_hPipe, "ptr", _KSub_Overlapped.Ptr, "int")
     if (!ok) {
         gle := DllCall("GetLastError", "uint")
-        if (gle = 997)        ; ERROR_IO_PENDING - async in progress
+        if (gle = ERROR_IO_PENDING)        ; Async operation in progress
             _KSub_Connected := false
-        else if (gle = 535)   ; ERROR_PIPE_CONNECTED - already connected
+        else if (gle = ERROR_PIPE_CONNECTED)   ; Already connected
             _KSub_Connected := true
         else {
             KomorebiSub_Stop()
@@ -149,7 +157,7 @@ KomorebiSub_Start() {
         ; Keep server alive, client may connect later
     }
 
-    _KSub_LastEvent := A_TickCount
+    _KSub_LastEventTick := A_TickCount
     _KSub_FallbackMode := false
     _KSub_DiagLog("KomorebiSub: Setting timer with interval=" KSub_PollMs)
     SetTimer(KomorebiSub_Poll, KSub_PollMs)
@@ -197,7 +205,7 @@ _KSub_InitialPoll() {
 
 ; Stop subscription
 KomorebiSub_Stop() {
-    global _KSub_hPipe, _KSub_hEvent, _KSub_Over, _KSub_Connected, _KSub_ClientPid
+    global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected, _KSub_ClientPid
     global _KSub_FallbackMode
 
     ; Stop all timers
@@ -226,7 +234,7 @@ KomorebiSub_Stop() {
         _KSub_hEvent := 0
     }
 
-    _KSub_Over := 0
+    _KSub_Overlapped := 0
     _KSub_Connected := false
 }
 
@@ -249,8 +257,8 @@ KomorebiSub_PruneStaleCache() {
 
 ; Poll timer - check connection and read data (non-blocking like POC)
 KomorebiSub_Poll() {
-    global _KSub_hPipe, _KSub_hEvent, _KSub_Over, _KSub_Connected
-    global _KSub_LastEvent, KSub_IdleRecycleMs, _KSub_Buf
+    global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
+    global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer
     static pollCount := 0, lastLogTick := 0
 
     pollCount++
@@ -273,7 +281,7 @@ KomorebiSub_Poll() {
             bytes := 0
             ok := DllCall("GetOverlappedResult"
                 , "ptr", _KSub_hPipe
-                , "ptr", _KSub_Over.Ptr
+                , "ptr", _KSub_Overlapped.Ptr
                 , "uint*", &bytes
                 , "int", 0  ; don't wait
                 , "int")
@@ -302,7 +310,7 @@ KomorebiSub_Poll() {
 
         if (!ok) {
             gle := DllCall("GetLastError", "uint")
-            if (gle = 109)  ; ERROR_BROKEN_PIPE
+            if (gle = ERROR_BROKEN_PIPE)  ; Pipe disconnected, restart
                 KomorebiSub_Start()
             return
         }
@@ -324,17 +332,17 @@ KomorebiSub_Poll() {
         if (!ok2 || read = 0)
             break
 
-        _KSub_LastEvent := A_TickCount
+        _KSub_LastEventTick := A_TickCount
         chunk := StrGet(buf.Ptr, read, "UTF-8")
 
-        ; Protect against unbounded buffer growth (1MB limit)
+        ; Protect against unbounded buffer growth
         ; This prevents OOM when komorebi sends incomplete JSON with opening brace
-        if (StrLen(_KSub_Buf) + StrLen(chunk) > 1048576) {
-            _KSub_DiagLog("Buffer overflow protection: reset (was " StrLen(_KSub_Buf) ")")
-            _KSub_Buf := ""
+        if (StrLen(_KSub_ReadBuffer) + StrLen(chunk) > KSUB_BUFFER_MAX_BYTES) {
+            _KSub_DiagLog("Buffer overflow protection: reset (was " StrLen(_KSub_ReadBuffer) ")")
+            _KSub_ReadBuffer := ""
         }
 
-        _KSub_Buf .= chunk
+        _KSub_ReadBuffer .= chunk
         bytesRead += read
 
         if (bytesRead >= 65536)
@@ -343,7 +351,7 @@ KomorebiSub_Poll() {
 
     ; Extract complete JSON objects from buffer
     while true {
-        json := _KSub_ExtractOneJson(&_KSub_Buf)
+        json := _KSub_ExtractOneJson(&_KSub_ReadBuffer)
         if (json = "")
             break
         _KSub_DiagLog("Poll: Got notification, len=" StrLen(json))
@@ -352,7 +360,7 @@ KomorebiSub_Poll() {
     }
 
     ; Recycle if idle too long
-    if ((A_TickCount - _KSub_LastEvent) > KSub_IdleRecycleMs)
+    if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs)
         KomorebiSub_Start()
 }
 
