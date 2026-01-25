@@ -263,27 +263,37 @@ _WEH_ProcessBatch() {
 
     now := A_TickCount
 
+    ; RACE FIX: Snapshot map entries atomically to prevent callback interruption
+    ; (callback _WEH_WinEventProc modifies _WEH_PendingHwnds with Critical)
+    Critical "On"
+    entries := []
+    for hwnd, tick in _WEH_PendingHwnds
+        entries.Push({hwnd: hwnd, tick: tick})
+    Critical "Off"
+
     ; Collect hwnds ready to process (past debounce period)
     toProcess := []
     toRemove := []
     destroyed := []
 
-    for hwnd, tick in _WEH_PendingHwnds {
-        if (tick = -1) {
+    for _, entry in entries {
+        if (entry.tick = -1) {
             ; Destroyed window
-            destroyed.Push(hwnd)
-            toRemove.Push(hwnd)
-        } else if ((now - tick) >= WinEventHook_DebounceMs) {
+            destroyed.Push(entry.hwnd)
+            toRemove.Push(entry.hwnd)
+        } else if ((now - entry.tick) >= WinEventHook_DebounceMs) {
             ; Ready to process
-            toProcess.Push(hwnd)
-            toRemove.Push(hwnd)
+            toProcess.Push(entry.hwnd)
+            toRemove.Push(entry.hwnd)
         }
     }
 
-    ; Remove processed items from pending
+    ; RACE FIX: Remove processed items atomically
+    Critical "On"
     for _, hwnd in toRemove {
         _WEH_PendingHwnds.Delete(hwnd)
     }
+    Critical "Off"
 
     ; Handle destroyed windows
     if (destroyed.Length > 0) {

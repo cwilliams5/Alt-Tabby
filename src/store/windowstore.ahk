@@ -647,12 +647,15 @@ WindowStore_EnqueueIconRefresh(hwnd) {
     if (row.iconLastRefreshTick > 0 && (now - row.iconLastRefreshTick) < throttleMs)
         return false
 
-    ; Enqueue for refresh
+    ; RACE FIX: Wrap in Critical - check-then-insert must be atomic
+    ; (same pattern as _WS_EnqueueIfNeeded and WindowStore_PopIconBatch)
+    Critical "On"
     if (!gWS_IconQueueSet.Has(hwnd)) {
         gWS_IconQueue.Push(hwnd)
         gWS_IconQueueSet[hwnd] := true
         try IconPump_EnsureRunning()  ; Wake timer from idle pause
     }
+    Critical "Off"
     return true
 }
 
