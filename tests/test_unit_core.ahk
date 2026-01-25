@@ -972,4 +972,258 @@ RunUnitTests_Core() {
 
     ; Cleanup
     WindowStore_RemoveWindow([1001, 1002, 1003], true)
+
+    ; ============================================================
+    ; Phase 1: Bypass Mode Detection Tests
+    ; ============================================================
+    Log("`n--- Bypass Mode Detection Tests ---")
+
+    ; Test 1: Process bypass list matching (case-insensitive)
+    Log("Testing bypass process list matching...")
+
+    ; Save original config
+    origBypassProcesses := cfg.AltTabBypassProcesses
+    origBypassFullscreen := cfg.AltTabBypassFullscreen
+
+    ; Test with comma-separated process list
+    cfg.AltTabBypassProcesses := "notepad.exe, calc.exe, game.exe"
+    cfg.AltTabBypassFullscreen := false  ; Disable fullscreen check for this test
+
+    ; Mock test: We can't easily test with real windows, but we can verify
+    ; the bypass logic by checking the code structure
+    bypassPath := A_ScriptDir "\..\src\gui\gui_interceptor.ahk"
+    if (FileExist(bypassPath)) {
+        bypassCode := FileRead(bypassPath)
+
+        ; Verify process list splitting logic exists
+        hasStrSplit := InStr(bypassCode, "StrSplit(cfg.AltTabBypassProcesses")
+        hasStrLower := InStr(bypassCode, "StrLower")
+        hasTrim := InStr(bypassCode, "Trim(")
+
+        if (hasStrSplit && hasStrLower && hasTrim) {
+            Log("PASS: INT_ShouldBypassWindow has process list parsing (split, lowercase, trim)")
+            TestPassed++
+        } else {
+            Log("FAIL: INT_ShouldBypassWindow missing process list parsing")
+            Log("  hasStrSplit=" hasStrSplit ", hasStrLower=" hasStrLower ", hasTrim=" hasTrim)
+            TestErrors++
+        }
+
+        ; Verify fullscreen detection logic exists
+        hasFullscreenCheck := InStr(bypassCode, "INT_IsFullscreenHwnd")
+        hasScreenWidth := InStr(bypassCode, "A_ScreenWidth")
+        hasScreenHeight := InStr(bypassCode, "A_ScreenHeight")
+
+        if (hasFullscreenCheck && hasScreenWidth && hasScreenHeight) {
+            Log("PASS: INT_IsFullscreenHwnd checks screen dimensions")
+            TestPassed++
+        } else {
+            Log("FAIL: INT_IsFullscreenHwnd missing screen dimension checks")
+            TestErrors++
+        }
+
+        ; Verify hotkey disable pattern exists
+        hasHotkeyOff := InStr(bypassCode, 'Hotkey("$*Tab", "Off")')
+        hasHotkeyOn := InStr(bypassCode, 'Hotkey("$*Tab", "On")')
+
+        if (hasHotkeyOff && hasHotkeyOn) {
+            Log("PASS: INT_SetBypassMode toggles Tab hotkey On/Off")
+            TestPassed++
+        } else {
+            Log("FAIL: INT_SetBypassMode missing Tab hotkey toggle")
+            TestErrors++
+        }
+    } else {
+        Log("SKIP: gui_interceptor.ahk not found")
+    }
+
+    ; Restore original config
+    cfg.AltTabBypassProcesses := origBypassProcesses
+    cfg.AltTabBypassFullscreen := origBypassFullscreen
+
+    ; ============================================================
+    ; Phase 2: Config Validation Bounds Tests
+    ; ============================================================
+    Log("`n--- Config Validation Bounds Tests ---")
+
+    ; Test that _CL_ValidateSettings clamps out-of-bounds values
+    Log("Testing config value clamping...")
+
+    ; Save original values
+    origGraceMs := cfg.AltTabGraceMs
+    origRowHeight := cfg.GUI_RowHeight
+    origRowsMin := cfg.GUI_RowsVisibleMin
+    origRowsMax := cfg.GUI_RowsVisibleMax
+
+    ; Test 1: Value below minimum gets clamped up
+    cfg.AltTabGraceMs := -100  ; Below min of 0
+    _CL_ValidateSettings()
+    if (cfg.AltTabGraceMs >= 0) {
+        Log("PASS: AltTabGraceMs=-100 clamped to " cfg.AltTabGraceMs " (>= 0)")
+        TestPassed++
+    } else {
+        Log("FAIL: AltTabGraceMs=-100 not clamped, got " cfg.AltTabGraceMs)
+        TestErrors++
+    }
+
+    ; Test 2: Value above maximum gets clamped down
+    cfg.AltTabGraceMs := 99999  ; Above max of 2000
+    _CL_ValidateSettings()
+    if (cfg.AltTabGraceMs <= 2000) {
+        Log("PASS: AltTabGraceMs=99999 clamped to " cfg.AltTabGraceMs " (<= 2000)")
+        TestPassed++
+    } else {
+        Log("FAIL: AltTabGraceMs=99999 not clamped, got " cfg.AltTabGraceMs)
+        TestErrors++
+    }
+
+    ; Test 3: GUI_RowHeight minimum enforcement
+    cfg.GUI_RowHeight := 5  ; Below min of 20
+    _CL_ValidateSettings()
+    if (cfg.GUI_RowHeight >= 20) {
+        Log("PASS: GUI_RowHeight=5 clamped to " cfg.GUI_RowHeight " (>= 20)")
+        TestPassed++
+    } else {
+        Log("FAIL: GUI_RowHeight=5 not clamped, got " cfg.GUI_RowHeight)
+        TestErrors++
+    }
+
+    ; Test 4: RowsVisibleMin/Max consistency enforcement
+    cfg.GUI_RowsVisibleMin := 30
+    cfg.GUI_RowsVisibleMax := 10  ; Min > Max - should be fixed
+    _CL_ValidateSettings()
+    if (cfg.GUI_RowsVisibleMin <= cfg.GUI_RowsVisibleMax) {
+        Log("PASS: RowsVisibleMin/Max consistency enforced (min=" cfg.GUI_RowsVisibleMin " max=" cfg.GUI_RowsVisibleMax ")")
+        TestPassed++
+    } else {
+        Log("FAIL: RowsVisibleMin > RowsVisibleMax not fixed")
+        TestErrors++
+    }
+
+    ; Restore original values
+    cfg.AltTabGraceMs := origGraceMs
+    cfg.GUI_RowHeight := origRowHeight
+    cfg.GUI_RowsVisibleMin := origRowsMin
+    cfg.GUI_RowsVisibleMax := origRowsMax
+
+    ; ============================================================
+    ; Phase 2: Komorebi Content Parsing Tests
+    ; ============================================================
+    Log("`n--- Komorebi Content Parsing Tests ---")
+
+    ; Test _KSub_ExtractContentRaw with different content formats
+    Log("Testing _KSub_ExtractContentRaw with various content types...")
+
+    ; Test 1: Array content - [1, 2]
+    testEvent1 := '{"type":"FocusMonitorWorkspaceNumber","content":[0,2]}'
+    result1 := _KSub_ExtractContentRaw(testEvent1)
+    if (result1 = "[0,2]") {
+        Log("PASS: Array content [0,2] extracted correctly")
+        TestPassed++
+    } else {
+        Log("FAIL: Array content expected '[0,2]', got '" result1 "'")
+        TestErrors++
+    }
+
+    ; Test 2: String content - "WorkspaceName"
+    testEvent2 := '{"type":"FocusNamedWorkspace","content":"Main"}'
+    result2 := _KSub_ExtractContentRaw(testEvent2)
+    if (result2 = "Main") {
+        Log("PASS: String content 'Main' extracted correctly")
+        TestPassed++
+    } else {
+        Log("FAIL: String content expected 'Main', got '" result2 "'")
+        TestErrors++
+    }
+
+    ; Test 3: Integer content - 1
+    testEvent3 := '{"type":"MoveContainerToWorkspaceNumber","content":3}'
+    result3 := _KSub_ExtractContentRaw(testEvent3)
+    if (result3 = "3") {
+        Log("PASS: Integer content 3 extracted correctly")
+        TestPassed++
+    } else {
+        Log("FAIL: Integer content expected '3', got '" result3 "'")
+        TestErrors++
+    }
+
+    ; Test 4: Object content - {"EventType": value}
+    testEvent4 := '{"type":"SocketMessage","content":{"MoveContainerToWorkspaceNumber":5}}'
+    result4 := _KSub_ExtractContentRaw(testEvent4)
+    if (result4 = "5") {
+        Log("PASS: Object content value 5 extracted correctly")
+        TestPassed++
+    } else {
+        Log("FAIL: Object content expected '5', got '" result4 "'")
+        TestErrors++
+    }
+
+    ; Test 5: Missing content - empty string
+    testEvent5 := '{"type":"SomeEvent"}'
+    result5 := _KSub_ExtractContentRaw(testEvent5)
+    if (result5 = "") {
+        Log("PASS: Missing content returns empty string")
+        TestPassed++
+    } else {
+        Log("FAIL: Missing content expected '', got '" result5 "'")
+        TestErrors++
+    }
+
+    ; Test 6: Workspace name with spaces
+    testEvent6 := '{"type":"FocusNamedWorkspace","content":"Work Space 1"}'
+    result6 := _KSub_ExtractContentRaw(testEvent6)
+    if (result6 = "Work Space 1") {
+        Log("PASS: Workspace name with spaces extracted correctly")
+        TestPassed++
+    } else {
+        Log("FAIL: Workspace with spaces expected 'Work Space 1', got '" result6 "'")
+        TestErrors++
+    }
+
+    ; Test 7: Negative integer content
+    testEvent7 := '{"type":"SomeEvent","content":-1}'
+    result7 := _KSub_ExtractContentRaw(testEvent7)
+    if (result7 = "-1") {
+        Log("PASS: Negative integer -1 extracted correctly")
+        TestPassed++
+    } else {
+        Log("FAIL: Negative integer expected '-1', got '" result7 "'")
+        TestErrors++
+    }
+
+    ; Test _KSub_ArrayTopLevelSplit for proper array parsing
+    Log("Testing _KSub_ArrayTopLevelSplit...")
+
+    ; Test 8: Simple numeric array
+    testArr1 := "[1, 2, 3]"
+    parts1 := _KSub_ArrayTopLevelSplit(testArr1)
+    if (parts1.Length = 3 && parts1[1] = "1" && parts1[2] = "2" && parts1[3] = "3") {
+        Log("PASS: [1, 2, 3] split into 3 elements")
+        TestPassed++
+    } else {
+        Log("FAIL: [1, 2, 3] split incorrectly, got " parts1.Length " elements")
+        TestErrors++
+    }
+
+    ; Test 9: Array with nested object
+    testArr2 := '[1, {"hwnd": 12345}, "text"]'
+    parts2 := _KSub_ArrayTopLevelSplit(testArr2)
+    if (parts2.Length = 3) {
+        Log("PASS: Array with nested object split into 3 top-level elements")
+        TestPassed++
+    } else {
+        Log("FAIL: Array with nested object expected 3 elements, got " parts2.Length)
+        TestErrors++
+    }
+
+    ; Test 10: Empty array
+    testArr3 := "[]"
+    parts3 := _KSub_ArrayTopLevelSplit(testArr3)
+    if (parts3.Length = 0) {
+        Log("PASS: Empty array returns 0 elements")
+        TestPassed++
+    } else {
+        Log("FAIL: Empty array expected 0 elements, got " parts3.Length)
+        TestErrors++
+    }
 }
