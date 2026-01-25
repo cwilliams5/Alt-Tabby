@@ -10,6 +10,9 @@
 ; Task name constant - used by all task scheduler functions
 global ALTTABBY_TASK_NAME := "Alt-Tabby"
 
+; Install directory constant - uses localized Program Files path
+global ALTTABBY_INSTALL_DIR := A_ProgramFiles "\Alt-Tabby"
+
 ; PE validation constants
 global PE_MIN_SIZE := 102400                ; 100KB minimum for valid AHK exe
 global PE_MAX_SIZE := 52428800              ; 50MB maximum
@@ -87,6 +90,25 @@ CompareVersions(v1, v2) {
             return -1
     }
     return 0
+}
+
+; ============================================================
+; SELF-ELEVATION HELPER
+; ============================================================
+
+; Run the current script as administrator with the specified command-line arguments
+; Returns: true if elevation was initiated, false if failed
+; Note: If successful, the current process should exit to let the elevated one run
+_Launcher_RunAsAdmin(args) {
+    try {
+        if (A_IsCompiled)
+            Run('*RunAs "' A_ScriptFullPath '" ' args)
+        else
+            Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" ' args)
+        return true
+    } catch {
+        return false
+    }
 }
 
 ; ============================================================
@@ -392,10 +414,8 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         FileAppend(updateInfo, updateFile, "UTF-8")
 
         try {
-            if A_IsCompiled
-                Run('*RunAs "' A_ScriptFullPath '" --apply-update')
-            else
-                Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --apply-update')
+            if (!_Launcher_RunAsAdmin("--apply-update"))
+                throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
             MsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Icon!")

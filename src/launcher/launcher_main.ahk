@@ -199,10 +199,8 @@ _ShouldRedirectToScheduledTask() {
         if (taskId != "" && currentId != "" && taskId = currentId) {
             ; Self-elevate to auto-repair task
             try {
-                if (A_IsCompiled)
-                    Run('*RunAs "' A_ScriptFullPath '" --repair-admin-task')
-                else
-                    Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --repair-admin-task')
+                if (!_Launcher_RunAsAdmin("--repair-admin-task"))
+                    throw Error("RunAsAdmin failed")
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
                 ; UAC refused - fall back to non-admin
@@ -246,10 +244,8 @@ _ShouldRedirectToScheduledTask() {
         if (result = "Yes") {
             ; Self-elevate to repair task
             try {
-                if (A_IsCompiled)
-                    Run('*RunAs "' A_ScriptFullPath '" --repair-admin-task')
-                else
-                    Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --repair-admin-task')
+                if (!_Launcher_RunAsAdmin("--repair-admin-task"))
+                    throw Error("RunAsAdmin failed")
                 ; Note: tick is recorded AFTER successful repair in --repair-admin-task handler
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
@@ -357,7 +353,8 @@ _Launcher_ShouldSkipWizardForExistingInstall() {
         return false
 
     ; Check for Program Files installation (localized for non-English Windows)
-    pfDir := A_ProgramFiles "\Alt-Tabby"
+    global ALTTABBY_INSTALL_DIR
+    pfDir := ALTTABBY_INSTALL_DIR
     pfPath := pfDir "\AltTabby.exe"
     pfConfigPath := pfDir "\config.ini"
 

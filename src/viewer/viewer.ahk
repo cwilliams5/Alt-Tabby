@@ -545,33 +545,22 @@ _Viewer_IncrementalUpdate(items) {
 }
 
 _Viewer_RecChanged(old, new) {
-    ; Compare key fields
-    if (_Viewer_Get(old, "z", 0) != _Viewer_Get(new, "z", 0)) {
-        return true
-    }
-    if (_Viewer_Get(old, "title", "") != _Viewer_Get(new, "title", "")) {
-        return true
-    }
-    if (_Viewer_Get(old, "isCloaked", 0) != _Viewer_Get(new, "isCloaked", 0)) {
-        return true
-    }
-    if (_Viewer_Get(old, "isMinimized", 0) != _Viewer_Get(new, "isMinimized", 0)) {
-        return true
-    }
-    if (_Viewer_Get(old, "isOnCurrentWorkspace", 0) != _Viewer_Get(new, "isOnCurrentWorkspace", 0)) {
-        return true
-    }
-    if (_Viewer_Get(old, "isFocused", 0) != _Viewer_Get(new, "isFocused", 0)) {
-        return true
-    }
-    if (_Viewer_Get(old, "processName", "") != _Viewer_Get(new, "processName", "")) {
-        return true
-    }
-    if (_Viewer_Get(old, "workspaceName", "") != _Viewer_Get(new, "workspaceName", "")) {
-        return true
-    }
-    if (_Viewer_Get(old, "lastActivatedTick", 0) != _Viewer_Get(new, "lastActivatedTick", 0)) {
-        return true
+    ; Fields to compare with their default values
+    static fields := [
+        {key: "z", def: 0},
+        {key: "title", def: ""},
+        {key: "isCloaked", def: 0},
+        {key: "isMinimized", def: 0},
+        {key: "isOnCurrentWorkspace", def: 0},
+        {key: "isFocused", def: 0},
+        {key: "processName", def: ""},
+        {key: "workspaceName", def: ""},
+        {key: "lastActivatedTick", def: 0}
+    ]
+
+    for _, f in fields {
+        if (_Viewer_Get(old, f.key, f.def) != _Viewer_Get(new, f.key, f.def))
+            return true
     }
     return false
 }

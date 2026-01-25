@@ -241,10 +241,8 @@ ToggleAdminMode() {
                 g_AdminToggleInProgress := true
                 g_AdminToggleStartTick := A_TickCount  ; Track start time for timeout
 
-                if A_IsCompiled
-                    Run('*RunAs "' A_ScriptFullPath '" --enable-admin-task')
-                else
-                    Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --enable-admin-task')
+                if (!_Launcher_RunAsAdmin("--enable-admin-task"))
+                    throw Error("RunAsAdmin failed")
 
                 ; Start polling for lock file deletion (elevated instance will delete it)
                 ; Check every 500ms, timeout after 30 seconds

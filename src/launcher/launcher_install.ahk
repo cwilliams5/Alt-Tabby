@@ -12,10 +12,10 @@
 ; ============================================================
 
 InstallToProgramFiles() {
-    global cfg
+    global cfg, ALTTABBY_INSTALL_DIR
 
     ; Target: Program Files\Alt-Tabby (localized for non-English Windows)
-    installDir := A_ProgramFiles "\Alt-Tabby"
+    installDir := ALTTABBY_INSTALL_DIR
     srcExe := A_IsCompiled ? A_ScriptFullPath : ""
     srcDir := A_IsCompiled ? A_ScriptDir : ""
 
@@ -84,7 +84,8 @@ _Launcher_CheckInstallMismatch() {
 
     ; Also check well-known install location (handles fresh config case)
     ; This ensures we detect existing PF installs even with empty/fresh config
-    pfPath := A_ProgramFiles "\Alt-Tabby\AltTabby.exe"
+    global ALTTABBY_INSTALL_DIR
+    pfPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
     if (installedPath = "" && FileExist(pfPath)) {
         installedPath := pfPath
     }
@@ -228,7 +229,8 @@ _Launcher_UpdateInstalledVersion(installedPath) {
         FileAppend(updateInfo, updateFile, "UTF-8")
 
         try {
-            Run('*RunAs "' A_ScriptFullPath '" --update-installed')
+            if (!_Launcher_RunAsAdmin("--update-installed"))
+                throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
             MsgBox("Update requires administrator privileges.", "Alt-Tabby", "Icon!")

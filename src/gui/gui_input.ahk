@@ -144,14 +144,9 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     idx0 := Win_Wrap0(gGUI_ScrollTop + (rowVis - 1), count)
     idx1 := idx0 + 1
 
-    size := Round(cfg.GUI_ActionBtnSizePx * scale)
-    if (size < 12) {
-        size := 12
-    }
-    gap := Round(cfg.GUI_ActionBtnGapPx * scale)
-    if (gap < 2) {
-        gap := 2
-    }
+    metrics := _GUI_GetActionBtnMetrics(scale)
+    size := metrics.size
+    gap := metrics.gap
     marR := Round(cfg.GUI_MarginX * scale)
 
     ox := 0

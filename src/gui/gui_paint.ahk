@@ -378,6 +378,22 @@ GUI_EnsureResources(scale) {
 
 ; ========================= ACTION BUTTONS =========================
 
+; Get scaled action button metrics with minimums enforced
+; Returns: {size, gap, rad}
+_GUI_GetActionBtnMetrics(scale) {
+    global cfg
+    size := Round(cfg.GUI_ActionBtnSizePx * scale)
+    if (size < 12)
+        size := 12
+    gap := Round(cfg.GUI_ActionBtnGapPx * scale)
+    if (gap < 2)
+        gap := 2
+    rad := Round(cfg.GUI_ActionBtnRadiusPx * scale)
+    if (rad < 2)
+        rad := 2
+    return {size: size, gap: gap, rad: rad}
+}
+
 ; Draw a single action button and update btnX position
 ; Parameters:
 ;   g         - GDI+ graphics object
@@ -413,18 +429,10 @@ _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bg
 GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
     global gGUI_HoverBtn, cfg
 
-    size := Round(cfg.GUI_ActionBtnSizePx * scale)
-    if (size < 12) {
-        size := 12
-    }
-    gap := Round(cfg.GUI_ActionBtnGapPx * scale)
-    if (gap < 2) {
-        gap := 2
-    }
-    rad := Round(cfg.GUI_ActionBtnRadiusPx * scale)
-    if (rad < 2) {
-        rad := 2
-    }
+    metrics := _GUI_GetActionBtnMetrics(scale)
+    size := metrics.size
+    gap := metrics.gap
+    rad := metrics.rad
     marR := Round(cfg.GUI_MarginX * scale)
 
     btnX := wPhys - marR - size

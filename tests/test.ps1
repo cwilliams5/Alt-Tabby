@@ -2,8 +2,23 @@
 # Usage: .\tests\test.ps1 [--live]
 
 param(
-    [switch]$live
+    [switch]$live,
+    [Parameter(ValueFromRemainingArguments=$true)]
+    $remainingArgs
 )
+
+# HARDENING: Detect --live even when called incorrectly via `powershell -Command`
+# With -Command, switch params aren't parsed correctly and end up in $remainingArgs
+# This ensures LLM agents can't accidentally skip live tests
+if (-not $live -and $remainingArgs) {
+    foreach ($arg in $remainingArgs) {
+        if ($arg -match '^-{1,2}live$') {
+            $live = $true
+            Write-Host "[test.ps1] Detected --live in unparsed args (use -File for proper parsing)" -ForegroundColor DarkYellow
+            break
+        }
+    }
+}
 
 $ahk = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 $script = "$PSScriptRoot\run_tests.ahk"

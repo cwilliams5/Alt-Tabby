@@ -85,10 +85,8 @@ WizardApply(*) {
         ; Self-elevate and continue wizard
         ; User may cancel UAC - handle gracefully
         try {
-            if A_IsCompiled
-                Run('*RunAs "' A_ScriptFullPath '" --wizard-continue')
-            else
-                Run('*RunAs "' A_AhkPath '" "' A_ScriptFullPath '" --wizard-continue')
+            if (!_Launcher_RunAsAdmin("--wizard-continue"))
+                throw Error("RunAsAdmin failed")
 
             g_WizardGui.Destroy()
             ExitApp()  ; Exit non-elevated instance
@@ -192,7 +190,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     global cfg, gConfigIniPath
 
     ; Determine exe path
-    exePath := A_IsCompiled ? A_ScriptFullPath : A_ScriptFullPath
+    exePath := A_ScriptFullPath
     installedElsewhere := ""
     installSucceeded := false
 
