@@ -202,6 +202,12 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; This ensures action buttons follow the mouse, not the row index
             GUI_RecalcHover()
 
+            ; RESPONSIVENESS: Release Critical BEFORE GUI operations.
+            ; GDI+ painting, window Show(), and DwmFlush() can take >16ms.
+            ; Keeping Critical on during these would delay keyboard event processing.
+            ; State mutations are complete above - only rendering remains.
+            Critical "Off"
+
             ; If GUI not yet visible (still in grace period), show it now on 2nd Tab
             if (!gGUI_OverlayVisible && gGUI_TabCount > 1) {
                 SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer

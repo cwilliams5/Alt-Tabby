@@ -301,6 +301,8 @@ GUI_ApplyDelta(payload) {
     }
 
     ; Re-sort by MRU (lastActivatedTick descending) if anything changed
+    ; NOTE: Sort stays inside Critical for correctness - hotkeys read gGUI_Items.
+    ; Performance is fine: O(n) for nearly-sorted data (typical MRU case).
     if (changed && gGUI_Items.Length > 1) {
         GUI_SortItemsByMRU()
     }
