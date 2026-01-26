@@ -202,11 +202,18 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; This ensures action buttons follow the mouse, not the row index
             GUI_RecalcHover()
 
-            ; RESPONSIVENESS: Release Critical BEFORE GUI operations.
-            ; GDI+ painting, window Show(), and DwmFlush() can take >16ms.
-            ; Keeping Critical on during these would delay keyboard event processing.
-            ; State mutations are complete above - only rendering remains.
-            Critical "Off"
+            ; ============================================================
+            ; CRITICAL MUST STAY ON DURING RENDERING - DO NOT CHANGE
+            ; ============================================================
+            ; A previous optimization tried releasing Critical "Off" here to
+            ; improve keyboard responsiveness during GDI+ rendering (~16ms).
+            ; This caused severe bugs:
+            ;   1. Partial glass background draws (IPC interrupted mid-render)
+            ;   2. Window mapping corruption (gGUI_Items modified during render)
+            ;   3. Stale projection data on quick re-open
+            ; The ~16ms delay is acceptable - users won't notice, but they WILL
+            ; notice corrupted UI. Keep Critical on through the entire handler.
+            ; ============================================================
 
             ; If GUI not yet visible (still in grace period), show it now on 2nd Tab
             if (!gGUI_OverlayVisible && gGUI_TabCount > 1) {

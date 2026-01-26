@@ -248,10 +248,13 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
 ; ============================================================
 ; Existence Validation - Lightweight zombie detection
 ; ============================================================
-; Iterates existing store entries and removes any where IsWindow() returns false.
+; Iterates existing store entries and removes any that:
+;   1. No longer exist (IsWindow returns false) - destroyed windows
+;   2. Still exist but no longer eligible (IsWindowEligible returns false) - ghost windows
 ; This is O(n) where n is typically 10-30 windows - much lighter than full EnumWindows.
 ; Catches edge cases: process crashes without clean DESTROY events, remote desktop
-; disconnections, windows that die during debounce period.
+; disconnections, windows that die during debounce period, and apps that REUSE HWNDs
+; for hidden windows (like Outlook message windows).
 
 WindowStore_ValidateExistence() {
     global gWS_Store, gWS_Rev
@@ -263,11 +266,49 @@ WindowStore_ValidateExistence() {
     for _, hwnd in hwnds {
         if (!gWS_Store.Has(hwnd))
             continue  ; May have been removed by another producer
-        ; IsWindow returns false only for truly destroyed windows
-        ; Cloaked/minimized windows still return true
+
+        ; Check 1: IsWindow returns false for truly destroyed windows
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             toRemove.Push(hwnd)
+            continue
         }
+
+        ; Check 2: Window exists but may no longer be eligible (ghost window)
+        ; This catches apps like Outlook that REUSE HWNDs - window becomes hidden/cloaked
+        ; but HWND still exists. Without this check, ghost windows persist forever.
+        ;
+        ; SPECIAL CASE: Komorebi-managed windows on OTHER workspaces are cloaked but valid.
+        ; We need to distinguish between:
+        ;   A) Window on other workspace (cloaked by komorebi) → keep it
+        ;   B) Ghost window (not visible, not cloaked) → remove it
+        ;
+        ; The key insight: komorebi CLOAKS windows to hide them. If a window is
+        ; neither visible NOR cloaked, it's a ghost (like Outlook reused HWNDs).
+        ; Windows native Alt-Tab uses this same logic.
+        rec := gWS_Store[hwnd]
+
+        ; Quick visibility check - if visible, definitely keep
+        isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
+        if (isVisible)
+            continue
+
+        ; Check DWM cloaking
+        cloakedBuf := Buffer(4, 0)
+        hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
+        isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+
+        ; If cloaked, it's likely on another workspace - keep it
+        if (isCloaked)
+            continue
+
+        ; Check if minimized
+        isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
+        if (isMin)
+            continue
+
+        ; Window is not visible, not cloaked, not minimized → it's a ghost
+        ; This matches Windows native Alt-Tab behavior
+        toRemove.Push(hwnd)
     }
 
     if (toRemove.Length = 0)

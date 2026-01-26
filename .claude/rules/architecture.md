@@ -48,6 +48,23 @@ States in projection meta: `"running"`, `"failed"`, `"disabled"`
 
 **All eligibility logic in `Blacklist_IsWindowEligible()`** - combines Alt-Tab rules AND blacklist filtering. All producers MUST use this single function.
 
+## Window Lifecycle Handling
+
+### Focus Event Race Condition (CRITICAL)
+When a new window opens and gets focus:
+1. `EVENT_SYSTEM_FOREGROUND` fires BEFORE WinEnum discovers the window
+2. WinEventHook's `WindowStore_UpdateFields()` returns `exists: false`
+3. **FIX:** When focus event comes for unknown window, check eligibility and ADD it immediately with MRU data
+4. Without this fix, new windows appear at BOTTOM of Alt+Tab list
+
+### Ghost Window Detection (CRITICAL)
+Some apps (Outlook, etc.) REUSE HWNDs for temporary windows:
+1. Window is added when eligible
+2. App "closes" window but HWND still exists (just hidden/cloaked)
+3. `IsWindow()` returns true, so standard validation doesn't remove it
+4. **FIX:** `WindowStore_ValidateExistence()` also checks `Blacklist_IsWindowEligible()`
+5. Ghost windows are removed when they become ineligible
+
 ## State Machine
 
 ```

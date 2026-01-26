@@ -95,7 +95,8 @@ Launcher_Init() {
     ; Check if we should redirect to scheduled task (admin mode)
     ; Skip task redirect if mismatch was detected - user chose to run from current location
     ; Showing task repair dialog after mismatch "No" would redirect to wrong version
-    if (!g_MismatchDialogShown && _ShouldRedirectToScheduledTask()) {
+    ; Skip in testing mode to avoid blocking automated tests
+    if (!g_TestingMode && !g_MismatchDialogShown && _ShouldRedirectToScheduledTask()) {
         exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
 
         if (exitCode = 0) {
@@ -181,7 +182,13 @@ _Launcher_OnExit(exitReason, exitCode) {
 ;   - Auto-repairing if InstallationId matches (same install, just renamed/moved)
 ;   - Prompting user if ID doesn't match or is missing (might be different install)
 _ShouldRedirectToScheduledTask() {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, g_TestingMode
+
+    ; Skip in testing mode - never show dialogs during automated tests
+    if (IsSet(g_TestingMode) && g_TestingMode) {
+        _Launcher_Log("TASK_REDIRECT: skip (testing mode)")
+        return false
+    }
 
     ; Already elevated - don't redirect (avoid infinite loop)
     if (A_IsAdmin) {

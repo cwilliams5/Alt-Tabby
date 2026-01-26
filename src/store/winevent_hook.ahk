@@ -181,17 +181,25 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         title := ""
         try title := WinGetTitle("ahk_id " hwnd)
 
-        ; CRITICAL: Skip windows with empty titles - these are system UI like Task Switching
-        ; that briefly get focus during Alt+Tab and would overwrite the real target window
+        ; CRITICAL: Skip windows with empty titles UNLESS they're already in our store.
+        ; Empty title filter catches system UI like Task Switching that briefly get focus.
+        ; But apps like Outlook may have windows with no title momentarily - if we already
+        ; know about them (in store), we should still update their MRU.
         if (title = "") {
-            _WEH_DiagLog("FOCUS SKIP (no title): hwnd=" hwnd " (keeping " _WEH_PendingFocusHwnd ")")
-            Critical "Off"
-            return
+            ; Check if window is in store - if so, allow focus update
+            inStore := false
+            try inStore := WindowStore_GetByHwnd(hwnd) != 0
+            if (!inStore) {
+                _WEH_DiagLog("FOCUS SKIP (no title, not in store): hwnd=" hwnd " (keeping " _WEH_PendingFocusHwnd ")")
+                Critical "Off"
+                return
+            }
+            _WEH_DiagLog("FOCUS EVENT (no title but IN STORE): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
+        } else {
+            _WEH_DiagLog("FOCUS EVENT: hwnd=" hwnd " title='" SubStr(title, 1, 25) "' (was " _WEH_PendingFocusHwnd ")")
         }
 
-        oldPending := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := hwnd
-        _WEH_DiagLog("FOCUS EVENT: hwnd=" hwnd " title='" SubStr(title, 1, 25) "' (was " oldPending ")")
     }
 
     ; Queue for update
@@ -249,7 +257,34 @@ _WEH_ProcessBatch() {
             ; (e.g., browser favicons) when the window gains focus
             try WindowStore_EnqueueIconRefresh(newFocus)
         } else {
-            _WEH_DiagLog("  IGNORED: window not in store (system UI?)")
+            ; Window not in store yet - check if it's eligible and add it with focus data
+            ; This fixes the race condition where focus event arrives before WinEnum discovers the window
+            ; Without this fix, newly opened windows appear at BOTTOM of MRU list (lastActivatedTick=0)
+            _WEH_DiagLog("  NOT IN STORE: checking eligibility...")
+            if (Blacklist_IsWindowEligible(newFocus)) {
+                ; Window is eligible - add it to store with focus data
+                ; NOTE: WinUtils_ProbeWindow returns a Map, use ["key"] not .key
+                probe := WinUtils_ProbeWindow(newFocus, 0, false, false)  ; Don't recheck eligibility
+                probeTitle := (probe && probe.Has("title")) ? probe["title"] : ""
+                if (probe && probeTitle != "") {
+                    probe["lastActivatedTick"] := A_TickCount
+                    probe["isFocused"] := true
+                    probe["present"] := true
+                    probe["presentNow"] := true
+                    try WindowStore_UpsertWindow([probe], "winevent_focus_add")
+                    _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
+
+                    ; Clear focus on previous window
+                    if (_WEH_LastFocusHwnd && _WEH_LastFocusHwnd != newFocus) {
+                        try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
+                    }
+                    _WEH_LastFocusHwnd := newFocus
+                } else {
+                    _WEH_DiagLog("  PROBE FAILED: window may be closing or system UI")
+                }
+            } else {
+                _WEH_DiagLog("  IGNORED: not eligible (system UI or blacklisted)")
+            }
         }
     } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = _WEH_LastFocusHwnd) {
         ; Same hwnd - log why we're skipping

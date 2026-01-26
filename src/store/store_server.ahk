@@ -507,12 +507,18 @@ _Store_CleanupDisconnectedClients() {
         allPipes[hPipe] := true
 
     ; Clean up any that are no longer connected
+    ; NOTE: Check Has() before Delete() - a pipe may only exist in some maps
+    ; (due to race conditions or partial initialization during connect/disconnect)
     for hPipe, _ in allPipes {
         if (!gStore_Server.clients.Has(hPipe)) {
-            gStore_LastClientRev.Delete(hPipe)
-            gStore_LastClientProj.Delete(hPipe)
-            gStore_LastClientMeta.Delete(hPipe)
-            gStore_ClientOpts.Delete(hPipe)
+            if (gStore_LastClientRev.Has(hPipe))
+                gStore_LastClientRev.Delete(hPipe)
+            if (gStore_LastClientProj.Has(hPipe))
+                gStore_LastClientProj.Delete(hPipe)
+            if (gStore_LastClientMeta.Has(hPipe))
+                gStore_LastClientMeta.Delete(hPipe)
+            if (gStore_ClientOpts.Has(hPipe))
+                gStore_ClientOpts.Delete(hPipe)
         }
     }
 }

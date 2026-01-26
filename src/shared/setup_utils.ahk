@@ -119,24 +119,30 @@ _Launcher_RunAsAdmin(args) {
 ; Includes InstallationId in description for identification
 ; Returns false if user cancels due to existing task conflict
 CreateAdminTask(exePath, installId := "") {
-    global ALTTABBY_TASK_NAME, cfg
+    global ALTTABBY_TASK_NAME, cfg, g_TestingMode
     taskName := ALTTABBY_TASK_NAME
 
     ; Check if task exists pointing to different location (another installation)
     ; Warn user before silently overwriting another installation's admin mode
+    ; Skip dialog in testing mode to avoid blocking automated tests
     if (AdminTaskExists()) {
         existingPath := _AdminTask_GetCommandPath()
         if (existingPath != "" && StrLower(existingPath) != StrLower(exePath)) {
-            result := MsgBox(
-                "Another Alt-Tabby installation has Admin Mode enabled:`n"
-                existingPath "`n`n"
-                "Enabling it here will disable it there.`n"
-                "Continue?",
-                "Alt-Tabby - Admin Mode Conflict",
-                "YesNo Icon?"
-            )
-            if (result = "No")
-                return false
+            ; In testing mode, just proceed without prompting
+            if (IsSet(g_TestingMode) && g_TestingMode) {
+                ; Auto-proceed in testing mode
+            } else {
+                result := MsgBox(
+                    "Another Alt-Tabby installation has Admin Mode enabled:`n"
+                    existingPath "`n`n"
+                    "Enabling it here will disable it there.`n"
+                    "Continue?",
+                    "Alt-Tabby - Admin Mode Conflict",
+                    "YesNo Icon?"
+                )
+                if (result = "No")
+                    return false
+            }
         }
     }
 

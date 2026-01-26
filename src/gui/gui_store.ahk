@@ -45,12 +45,32 @@ GUI_OnStoreMessage(line, hPipe := 0) {
     if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION) {
         ; When in ACTIVE state, list behavior depends on FreezeWindowList config
         ; EXCEPTION: If awaiting a toggle-triggered projection (UseCurrentWSProjection mode), accept it
-        global gGUI_AwaitingToggleProjection, cfg
+        global gGUI_AwaitingToggleProjection, cfg, gGUI_PendingPhase
         isFrozen := cfg.FreezeWindowList
         isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection
 
         if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
             ; Frozen mode and not a toggle response: ignore incoming data
+            if (obj.Has("rev")) {
+                gGUI_StoreRev := obj["rev"]
+            }
+            return
+        }
+
+        ; ============================================================
+        ; ASYNC ACTIVATION GUARD - DO NOT REMOVE
+        ; ============================================================
+        ; Skip snapshots while async cross-workspace activation is pending.
+        ; During async activation (gGUI_PendingPhase != ""):
+        ;   1. State is IDLE but we're still processing a switch
+        ;   2. Events are being buffered for replay after activation
+        ;   3. Incoming snapshots may contain filtered data (current WS only)
+        ; If we accept the snapshot, gGUI_Items gets corrupted with partial
+        ; data, causing "only 1 window shown" on next Alt+Tab.
+        ; Toggle responses are exempt (user explicitly requested refresh).
+        ; ============================================================
+        if (gGUI_PendingPhase != "" && !isToggleResponse) {
+            _GUI_LogEvent("SNAPSHOT: skipped (async activation pending, phase=" gGUI_PendingPhase ")")
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -116,6 +136,13 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             if (gGUI_Sel < 1 && displayItems.Length > 0) {
                 gGUI_Sel := 1
             }
+
+            ; NOTE: Critical "Off" here is SAFE (unlike gui_state.ahk) because:
+            ;   1. gGUI_FrozenItems is already populated inside this Critical section
+            ;   2. GUI_Repaint uses frozen items when ACTIVE, which won't be modified
+            ;   3. If not ACTIVE, overlay isn't visible so repaint won't trigger
+            ; Compare with gui_state.ahk where Critical was released BEFORE
+            ; gGUI_FrozenItems was populated, causing race conditions.
             Critical "Off"
 
             GUI_UpdateCurrentWSFromPayload(obj["payload"])

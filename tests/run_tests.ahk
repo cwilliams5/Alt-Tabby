@@ -15,6 +15,9 @@ global TestLogPath := A_Temp "\alt_tabby_tests.log"
 global TestErrors := 0
 global TestPassed := 0
 
+; --- Testing mode flag (suppresses dialogs in setup_utils.ahk) ---
+global g_TestingMode := true
+
 ; --- IPC test globals (used by test_utils.ahk callbacks) ---
 global testServer := 0
 global gTestClient := 0
