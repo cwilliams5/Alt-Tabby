@@ -206,7 +206,11 @@ ToggleAdminMode() {
         return
     }
 
-    if (cfg.SetupRunAsAdmin) {
+    ; Check BOTH config AND task existence - must match the checkmark condition (line 103)
+    ; This prevents state mismatch when config says enabled but task doesn't exist
+    isCurrentlyEnabled := cfg.SetupRunAsAdmin && AdminTaskExists()
+
+    if (isCurrentlyEnabled) {
         ; Disable admin mode - doesn't require elevation
         DeleteAdminTask()
         cfg.SetupRunAsAdmin := false
