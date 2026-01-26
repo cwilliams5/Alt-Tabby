@@ -71,7 +71,11 @@ InstallToProgramFiles() {
 ; Offers to update or launch the installed version
 ; Sets g_MismatchDialogShown if a dialog was displayed (to prevent race with auto-update)
 _Launcher_CheckInstallMismatch() {
-    global cfg, g_MismatchDialogShown
+    global cfg, g_MismatchDialogShown, g_SkipMismatchCheck
+
+    ; Skip if flag set (after one-time elevation from mismatch prompt)
+    if (g_SkipMismatchCheck)
+        return
 
     ; Only relevant for compiled exe
     if (!A_IsCompiled)
@@ -393,7 +397,8 @@ _Launcher_OfferOneTimeElevation() {
 
     if (result = "Yes") {
         try {
-            Run('*RunAs "' A_ScriptFullPath '"')
+            ; Pass --skip-mismatch to avoid showing mismatch dialog again after restart
+            Run('*RunAs "' A_ScriptFullPath '" --skip-mismatch')
             ExitApp()
         } catch {
             ; UAC refused - continue without elevation

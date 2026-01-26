@@ -243,14 +243,37 @@ _Shortcut_GetStartupPath() {
     return A_Startup "\Alt-Tabby.lnk"
 }
 
-; Check if Start Menu shortcut exists
+; Check if Start Menu shortcut exists AND points to current exe
+; Returns false if shortcut exists but points to different location (prevents misleading checkmarks)
 _Shortcut_StartMenuExists() {
-    return FileExist(_Shortcut_GetStartMenuPath())
+    return _Shortcut_ExistsAndPointsToUs(_Shortcut_GetStartMenuPath())
 }
 
-; Check if Startup shortcut exists
+; Check if Startup shortcut exists AND points to current exe
+; Returns false if shortcut exists but points to different location (prevents misleading checkmarks)
 _Shortcut_StartupExists() {
-    return FileExist(_Shortcut_GetStartupPath())
+    return _Shortcut_ExistsAndPointsToUs(_Shortcut_GetStartupPath())
+}
+
+; Helper: Check if shortcut exists and its target matches current exe
+_Shortcut_ExistsAndPointsToUs(lnkPath) {
+    if (!FileExist(lnkPath))
+        return false
+
+    try {
+        shell := ComObject("WScript.Shell")
+        shortcut := shell.CreateShortcut(lnkPath)
+        targetPath := shortcut.TargetPath
+
+        ; In compiled mode, compare target to our exe path
+        ; In dev mode, compare to AutoHotkey.exe (we're run via AHK)
+        ourTarget := A_IsCompiled ? A_ScriptFullPath : A_AhkPath
+
+        return (StrLower(targetPath) = StrLower(ourTarget))
+    } catch {
+        ; If we can't read the shortcut, assume it doesn't match
+        return false
+    }
 }
 
 ; Get the icon path - in compiled mode, icon is embedded in exe

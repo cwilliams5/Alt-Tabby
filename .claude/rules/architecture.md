@@ -11,7 +11,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `--viewer` - Debug viewer
 - `--config` / `--blacklist` - Editor GUIs
 
-**Internal modes:** `--wizard-continue`, `--enable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`
+**Internal modes:** `--wizard-continue`, `--enable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`, `--skip-mismatch`
 
 ## Process Roles
 

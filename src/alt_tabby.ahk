@@ -39,6 +39,7 @@
 ; ============================================================
 global g_AltTabbyMode := "launch"
 global g_TestingMode := false  ; Skip wizard and install mismatch dialogs (for automated testing)
+global g_SkipMismatchCheck := false  ; Skip mismatch dialog (after one-time elevation from mismatch)
 
 for _, arg in A_Args {
     switch StrLower(arg) {
@@ -75,6 +76,9 @@ for _, arg in A_Args {
         case "--testing-mode":
             g_TestingMode := true
             ; Skip wizard and install mismatch dialogs (for automated testing)
+        case "--skip-mismatch":
+            g_SkipMismatchCheck := true
+            ; Skip mismatch dialog (after one-time elevation from mismatch prompt)
     }
 }
 
