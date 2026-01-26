@@ -258,10 +258,6 @@ if (g_AltTabbyMode = "repair-admin-task") {
     if (CreateAdminTask(exePath)) {
         cfg.SetupRunAsAdmin := true
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
-        ; Record timestamp AFTER successful repair (not before like in caller)
-        ; This prevents 24h lockout if user refuses UAC or repair fails
-        ; Use A_Now instead of A_TickCount to handle system uptime >49.7 days
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTime", A_Now, "", "string")
 
         ; Update SetupExePath to current location (handles renamed exe case)
         cfg.SetupExePath := exePath

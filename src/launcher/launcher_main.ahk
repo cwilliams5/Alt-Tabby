@@ -219,28 +219,10 @@ _ShouldRedirectToScheduledTask() {
             }
         }
 
-        ; IDs don't match or missing - use cooldown-based prompting
+        ; IDs don't match or missing - prompt user to repair.
         ; This handles: different installs, legacy tasks without ID, etc.
-        ; Use A_Now (timestamp) instead of A_TickCount to handle system uptime >49.7 days
-        lastRepairTime := ""
-        try {
-            lastRepairTime := IniRead(gConfigIniPath, "Setup", "LastTaskRepairTime", "")
-        }
-
-        if (lastRepairTime != "") {
-            try {
-                hoursSince := DateDiff(A_Now, lastRepairTime, "Hours")
-                if (hoursSince < 24) {
-                    ; Within cooldown period - disable admin mode and notify user
-                    cfg.SetupRunAsAdmin := false
-                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-                    TrayTip("Admin Mode Disabled", "The scheduled task needs repair.`nRe-enable from tray menu after 24 hours.", "Icon!")
-                    return false
-                }
-            }
-        }
-
-        ; Task is stale and ID doesn't match - offer to repair
+        ; NOTE: We intentionally prompt every time rather than using a cooldown.
+        ; A cooldown was confusing and non-deterministic. Users can dismiss if needed.
         result := MsgBox(
             "The Admin Mode scheduled task points to a different location:`n"
             "Task: " taskPath "`n"
@@ -255,7 +237,6 @@ _ShouldRedirectToScheduledTask() {
             try {
                 if (!_Launcher_RunAsAdmin("--repair-admin-task"))
                     throw Error("RunAsAdmin failed")
-                ; Note: tick is recorded AFTER successful repair in --repair-admin-task handler
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
                 ; UAC refused - fall back to non-admin
@@ -264,11 +245,8 @@ _ShouldRedirectToScheduledTask() {
         }
 
         ; User said No or UAC refused - disable admin mode and continue non-elevated
-        ; Record the timestamp to start cooldown period (only for non-matching IDs)
-        ; Use A_Now instead of A_TickCount to handle system uptime >49.7 days
         cfg.SetupRunAsAdmin := false
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "LastTaskRepairTime", A_Now, "", "string")
         TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
         return false
     }
