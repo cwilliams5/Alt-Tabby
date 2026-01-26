@@ -172,8 +172,13 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
         g_MismatchDialogShown := false  ; Allow auto-update now that mismatch is resolved
         ; Continue running from current location
+    } else {
+        ; "No" - continue running from current location (one-time)
+        ; Offer elevation if installed version has admin task but we're not elevated.
+        ; This handles dev testing scenario: user wants to test THIS build with admin
+        ; without affecting the installed version's task scheduler setup.
+        _Launcher_OfferOneTimeElevation()
     }
-    ; "No" - continue running from current location (one-time)
 }
 
 ; Custom 3-button dialog for mismatch: Yes / No / Always run from here
@@ -353,4 +358,46 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         else
             MsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
     }
+}
+
+; ============================================================
+; ONE-TIME ELEVATION OFFER
+; ============================================================
+; Offered after user dismisses mismatch dialog with "No" (run from here).
+; Only shows if: admin task exists (installed version runs elevated) AND we're not admin.
+; This handles dev testing scenario without affecting normal user flow.
+; Normal users typically don't have admin mode enabled, so they won't see this.
+
+_Launcher_OfferOneTimeElevation() {
+    ; Already elevated - nothing to offer
+    if (A_IsAdmin)
+        return
+
+    ; Only relevant for compiled exe
+    if (!A_IsCompiled)
+        return
+
+    ; Only offer if installed version has admin task
+    ; (This means the user explicitly set up admin mode before)
+    if (!AdminTaskExists())
+        return
+
+    ; Offer one-time elevation for THIS session
+    result := MsgBox(
+        "The installed version runs as Administrator.`n`n"
+        "Run this version elevated too?`n"
+        "(This is one-time and won't affect the installed version)",
+        "Alt-Tabby - Run Elevated?",
+        "YesNo Icon?"
+    )
+
+    if (result = "Yes") {
+        try {
+            Run('*RunAs "' A_ScriptFullPath '"')
+            ExitApp()
+        } catch {
+            ; UAC refused - continue without elevation
+        }
+    }
+    ; "No" - continue without elevation
 }
