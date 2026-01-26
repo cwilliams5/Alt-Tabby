@@ -294,7 +294,14 @@ _Launcher_AcquireMutex() {
 
 ; Ensure InstallationId exists, generate if missing
 ; Called early in startup before mutex acquisition
-; If config is reset but task exists, recovers ID from task to prevent repair prompts
+;
+; IMPORTANT: Only recover InstallationId from existing admin task if current exe is in
+; the SAME DIRECTORY as the task's target path. This prevents a hijacking scenario where:
+;   1. User runs fresh exe from Downloads while PF install has admin task
+;   2. ID would be recovered from task
+;   3. Auto-repair would silently redirect task to Downloads
+;
+; Auto-repair is still useful when user renames exe or deletes config in same directory.
 _Launcher_EnsureInstallationId() {
     global cfg, gConfigIniPath
 
@@ -302,17 +309,26 @@ _Launcher_EnsureInstallationId() {
         return  ; Already have ID
 
     ; Check if existing task has an ID we should reuse
-    ; This handles config reset/deletion while task still exists
+    ; Only recover if we're in the SAME DIRECTORY as the task's target
     if (AdminTaskExists()) {
-        existingId := _AdminTask_GetInstallationId()
-        if (existingId != "") {
-            cfg.SetupInstallationId := existingId
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", existingId, "", "string")
-            return
+        taskPath := _AdminTask_GetCommandPath()
+        if (taskPath != "") {
+            taskDir := ""
+            SplitPath(taskPath, , &taskDir)
+
+            ; Only recover if we're in the same directory as the task target
+            if (taskDir != "" && StrLower(taskDir) = StrLower(A_ScriptDir)) {
+                existingId := _AdminTask_GetInstallationId()
+                if (existingId != "") {
+                    cfg.SetupInstallationId := existingId
+                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", existingId, "", "string")
+                    return
+                }
+            }
         }
     }
 
-    ; Generate 8-character hex ID
+    ; Generate new ID (different location or no matching task)
     installId := _Launcher_GenerateId()
     cfg.SetupInstallationId := installId
     try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", installId, "", "string")

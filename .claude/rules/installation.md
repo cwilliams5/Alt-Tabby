@@ -50,3 +50,17 @@ Launcher uses named mutex "AltTabby_Launcher":
 Detects running exe from different location than installed:
 - Newer version running: Offer to update installed
 - Same/older: Offer to launch installed version instead
+- If user chooses "No" or "Always run from here", offers to close running installed instance
+
+## InstallationId Recovery Rules
+
+**Critical Design Decision**: Only recover InstallationId from existing admin task if current exe is in the SAME DIRECTORY as the task's target path.
+
+Why this matters:
+- Auto-repair (silent task update when IDs match) is useful when user renames their exe
+- But ID recovery + auto-repair creates a hijacking path if recovery happens across directories
+- Example: Fresh exe from Downloads would recover ID from PF install's task, then auto-repair would silently redirect task to Downloads
+
+The fix ensures:
+- Renamed exe in same directory → ID recovered → auto-repair works (good)
+- Fresh exe in different directory → new ID generated → no auto-repair (safe)

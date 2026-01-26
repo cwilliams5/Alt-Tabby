@@ -117,9 +117,28 @@ _Launcher_RunAsAdmin(args) {
 
 ; Create a scheduled task with highest privileges (UAC-free admin)
 ; Includes InstallationId in description for identification
+; Returns false if user cancels due to existing task conflict
 CreateAdminTask(exePath, installId := "") {
     global ALTTABBY_TASK_NAME, cfg
     taskName := ALTTABBY_TASK_NAME
+
+    ; Check if task exists pointing to different location (another installation)
+    ; Warn user before silently overwriting another installation's admin mode
+    if (AdminTaskExists()) {
+        existingPath := _AdminTask_GetCommandPath()
+        if (existingPath != "" && StrLower(existingPath) != StrLower(exePath)) {
+            result := MsgBox(
+                "Another Alt-Tabby installation has Admin Mode enabled:`n"
+                existingPath "`n`n"
+                "Enabling it here will disable it there.`n"
+                "Continue?",
+                "Alt-Tabby - Admin Mode Conflict",
+                "YesNo Icon?"
+            )
+            if (result = "No")
+                return false
+        }
+    }
 
     ; Get InstallationId if not provided
     if (installId = "" && IsSet(cfg) && cfg.HasOwnProp("SetupInstallationId"))

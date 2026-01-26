@@ -175,13 +175,51 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
         cfg.SetupExePath := currentPath
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
         g_MismatchDialogShown := false  ; Allow auto-update now that mismatch is resolved
+
+        ; Check if installed version is currently running to prevent multiple instances
+        _Launcher_OfferToStopInstalledInstance(installedPath)
         ; Continue running from current location
     } else {
         ; "No" - continue running from current location (one-time)
+        ; Check if installed version is currently running to prevent multiple instances
+        _Launcher_OfferToStopInstalledInstance(installedPath)
+
         ; Offer elevation if installed version has admin task but we're not elevated.
         ; This handles dev testing scenario: user wants to test THIS build with admin
         ; without affecting the installed version's task scheduler setup.
         _Launcher_OfferOneTimeElevation()
+    }
+}
+
+; Check if installed version is running and offer to stop it to prevent multiple instances
+; This handles the case where different InstallationIds bypass the mutex check
+_Launcher_OfferToStopInstalledInstance(installedPath) {
+    global TIMING_MUTEX_RELEASE_WAIT
+
+    ; Get the exe name from the installed path
+    installedExeName := ""
+    SplitPath(installedPath, &installedExeName)
+
+    if (installedExeName = "")
+        return
+
+    ; Check if any process with that name is running (other than us)
+    myPID := ProcessExist()
+    pid := ProcessExist(installedExeName)
+
+    if (!pid || pid = myPID)
+        return  ; Not running or only us
+
+    result := MsgBox(
+        "The installed version is currently running.`n`n"
+        "Close it to avoid conflicts? (Recommended)",
+        "Alt-Tabby - Instance Running",
+        "YesNo Icon?"
+    )
+
+    if (result = "Yes") {
+        _Launcher_KillExistingInstances()
+        Sleep(TIMING_MUTEX_RELEASE_WAIT)
     }
 }
 
