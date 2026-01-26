@@ -666,22 +666,21 @@ _GUI_ProcessEventBuffer() {
 
     _GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_Items.Length)
 
-    ; Clear pending phase NOW - we've waited for interceptor timers
-    _GUI_ClearPendingState()
+    ; Process all buffered events in order
+    ; CRITICAL: Clone+clear+phase-clear must be atomic to prevent race condition
+    ; where new events arrive after phase clear but before buffer clone
+    Critical "On"
+    events := gGUI_EventBuffer.Clone()
+    gGUI_EventBuffer := []
+    _GUI_ClearPendingState()  ; Clear phase AFTER clone to prevent out-of-order events
+    Critical "Off"
 
-    if (gGUI_EventBuffer.Length = 0) {
+    if (events.Length = 0) {
         ; No buffered events - just resync keyboard state
         _GUI_LogEvent("BUFFER: empty, resyncing keyboard state")
         _GUI_ResyncKeyboardState()
         return
     }
-
-    ; Process all buffered events in order
-    ; CRITICAL: Clone+clear must be atomic to prevent losing events from interceptor
-    Critical "On"
-    events := gGUI_EventBuffer.Clone()
-    gGUI_EventBuffer := []
-    Critical "Off"
 
     ; === Detect and fix lost Tab events ===
     ; Pattern: ALT_DN + ALT_UP without TAB in between suggests Tab was lost
