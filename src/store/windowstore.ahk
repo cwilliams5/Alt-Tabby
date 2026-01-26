@@ -808,16 +808,26 @@ WindowStore_ExeIconCachePut(exePath, hIcon) {
         return
     ; Use config if available, fallback to 100
     maxSize := cfg.HasOwnProp("ExeIconCacheMax") ? cfg.ExeIconCacheMax : 100
-    ; Evict oldest entry if at max
+    ; RACE FIX: Wrap FIFO eviction in Critical - prevents concurrent modification
+    ; during iteration (another producer calling ExeIconCachePut simultaneously)
+    Critical "On"
     if (gWS_ExeIconCache.Count >= maxSize) {
+        ; Snapshot first entry to avoid modifying Map during iteration
+        firstPath := ""
+        firstIcon := 0
         for oldPath, oldIcon in gWS_ExeIconCache {
-            if (oldIcon)
-                try DllCall("user32\DestroyIcon", "ptr", oldIcon)
-            gWS_ExeIconCache.Delete(oldPath)
-            break  ; Only remove one entry
+            firstPath := oldPath
+            firstIcon := oldIcon
+            break
+        }
+        if (firstPath != "") {
+            if (firstIcon)
+                try DllCall("user32\DestroyIcon", "ptr", firstIcon)
+            gWS_ExeIconCache.Delete(firstPath)
         }
     }
     gWS_ExeIconCache[exePath] := hIcon
+    Critical "Off"
 }
 
 ; Clean up all cached exe icons - call on shutdown

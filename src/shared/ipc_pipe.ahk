@@ -129,16 +129,23 @@ IPC_PipeServer_Broadcast(server, msgText) {
 IPC_PipeServer_Send(server, hPipe, msgText) {
     if !IsObject(server)
         return false
-    if (!server.clients.Has(hPipe))
+    ; RACE FIX: Wrap check-then-act in Critical to prevent concurrent modification
+    ; of server.clients between Has() check and Delete() on failure
+    Critical "On"
+    if (!server.clients.Has(hPipe)) {
+        Critical "Off"
         return false
+    }
     if (!msgText || SubStr(msgText, -1) != "`n")
         msgText .= "`n"
     bytes := _IPC_StrToUtf8(msgText)
     if (!_IPC_WritePipe(hPipe, bytes.buf, bytes.len)) {
         server.clients.Delete(hPipe)
         _IPC_CloseHandle(hPipe)
+        Critical "Off"
         return false
     }
+    Critical "Off"
     return true
 }
 

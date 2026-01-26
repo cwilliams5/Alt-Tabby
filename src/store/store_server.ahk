@@ -234,19 +234,24 @@ Store_PushToClients() {
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
 
-    ; Atomically clean up disconnected clients and snapshot current handles
+    ; Atomically clean up disconnected clients and snapshot current handles + opts
     ; This prevents race conditions if clients disconnect during iteration
+    ; RACE FIX: Also snapshot gStore_ClientOpts - it can be modified by Store_OnMessage
     Critical "On"
     _Store_CleanupDisconnectedClients()
     clientHandles := []
-    for hPipe, _ in gStore_Server.clients
+    clientOptsSnapshot := Map()
+    for hPipe, _ in gStore_Server.clients {
         clientHandles.Push(hPipe)
+        if (gStore_ClientOpts.Has(hPipe))
+            clientOptsSnapshot[hPipe] := gStore_ClientOpts[hPipe]
+    }
     Critical "Off"
 
     sent := 0
     for _, hPipe in clientHandles {
-        ; Get this client's projection opts (or defaults)
-        opts := gStore_ClientOpts.Has(hPipe) ? gStore_ClientOpts[hPipe] : IPC_DefaultProjectionOpts()
+        ; Get this client's projection opts (or defaults) from snapshot
+        opts := clientOptsSnapshot.Has(hPipe) ? clientOptsSnapshot[hPipe] : IPC_DefaultProjectionOpts()
 
         ; Generate projection tailored to this client
         proj := WindowStore_GetProjection(opts)
