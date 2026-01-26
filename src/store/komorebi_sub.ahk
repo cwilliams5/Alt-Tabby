@@ -240,11 +240,13 @@ KomorebiSub_Stop() {
 
 ; Prune stale workspace cache entries (called from Store_HeartbeatTick)
 ; Removes entries older than _KSub_CacheMaxAgeMs to prevent unbounded growth
+; RACE FIX: Wrap in Critical - _KSub_ProcessFullState writes to cache on komorebi notifications
 KomorebiSub_PruneStaleCache() {
     global _KSub_WorkspaceCache, _KSub_CacheMaxAgeMs
     if (!IsObject(_KSub_WorkspaceCache) || _KSub_WorkspaceCache.Count = 0)
         return
 
+    Critical "On"
     now := A_TickCount
     toDelete := []
     for hwnd, cached in _KSub_WorkspaceCache {
@@ -253,6 +255,7 @@ KomorebiSub_PruneStaleCache() {
     }
     for _, hwnd in toDelete
         _KSub_WorkspaceCache.Delete(hwnd)
+    Critical "Off"
 }
 
 ; Poll timer - check connection and read data (non-blocking like POC)

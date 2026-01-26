@@ -284,10 +284,13 @@ Store_PushToClients() {
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
 
-        ; Update client's tracking state
+        ; RACE FIX: Wrap client tracking updates in Critical
+        ; Store_OnMessage also modifies these maps when client sends HELLO or SET_PROJECTION_OPTS
+        Critical "On"
         gStore_LastClientRev[hPipe] := proj.rev
         gStore_LastClientProj[hPipe] := proj.items
         gStore_LastClientMeta[hPipe] := proj.meta
+        Critical "Off"
         sent++
     }
 

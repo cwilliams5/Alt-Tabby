@@ -269,6 +269,9 @@ WindowStore_ValidateExistence() {
     if (toRemove.Length = 0)
         return { removed: 0, rev: gWS_Rev }
 
+    ; RACE FIX: Wrap deletes + rev bump in Critical to prevent IPC requests
+    ; from seeing inconsistent state (deleted entries with stale rev)
+    Critical "On"
     removed := 0
     for _, hwnd in toRemove {
         ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
@@ -280,6 +283,7 @@ WindowStore_ValidateExistence() {
     if (removed > 0) {
         _WS_BumpRev("ValidateExistence")
     }
+    Critical "Off"
 
     return { removed: removed, rev: gWS_Rev }
 }
@@ -327,8 +331,11 @@ WindowStore_GetRev() {
 }
 
 ; Diagnostic: get and reset churn stats
+; RACE FIX: Wrap in Critical - iteration + reset must be atomic
+; (_WS_BumpRev modifies gWS_DiagSource with its own Critical section)
 WindowStore_GetChurnDiag(reset := true) {
     global gWS_DiagChurn, gWS_DiagSource
+    Critical "On"
     result := Map()
     result["fields"] := Map()
     result["sources"] := Map()
@@ -340,6 +347,7 @@ WindowStore_GetChurnDiag(reset := true) {
         gWS_DiagChurn := Map()
         gWS_DiagSource := Map()
     }
+    Critical "Off"
     return result
 }
 
@@ -755,16 +763,23 @@ WindowStore_UpdateProcessName(pid, name) {
         return
 
     ; FIFO eviction when at max (prevents unbounded memory growth)
+    ; RACE FIX: Wrap in Critical - iteration + delete must be atomic (same as ExeIconCachePut)
     maxSize := cfg.HasOwnProp("ProcNameCacheMax") ? cfg.ProcNameCacheMax : 200
+    Critical "On"
     if (gWS_ProcNameCache.Count >= maxSize) {
+        ; Snapshot first entry to avoid modifying Map during iteration
+        firstPid := 0
         for oldPid, _ in gWS_ProcNameCache {
-            gWS_ProcNameCache.Delete(oldPid)
-            break  ; Only remove one entry
+            firstPid := oldPid
+            break
         }
+        if (firstPid)
+            gWS_ProcNameCache.Delete(firstPid)
     }
 
     ; Cache it
     gWS_ProcNameCache[pid] := name
+    Critical "Off"
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)

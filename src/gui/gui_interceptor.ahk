@@ -268,7 +268,10 @@ INT_Escape_Down(*) {
 ; ========================= BYPASS DETECTION =========================
 
 ; Called from GUI_ApplyDelta when focus changes to check bypass criteria
+; RACE FIX: Wrap in Critical - flag set + hotkey toggle must be atomic
+; to prevent Tab callback from seeing inconsistent state (flag true but hotkey still on)
 INT_SetBypassMode(shouldBypass) {
+    Critical "On"
     global gINT_BypassMode
 
     if (shouldBypass && !gINT_BypassMode) {
@@ -288,6 +291,7 @@ INT_SetBypassMode(shouldBypass) {
             Hotkey("$*Tab Up", "On")
         }
     }
+    Critical "Off"
 }
 
 ; Check bypass criteria for a specific window (or active window if hwnd=0)
