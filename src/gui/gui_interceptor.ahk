@@ -13,8 +13,8 @@ global TABBY_FLAG_SHIFT  := 1  ; Shift modifier flag
 ; ========================= INTERCEPTOR STATE =========================
 ; These variables track the keyboard hook state
 
-global gINT_DecisionMs := 24          ; Tab decision window
 global gINT_LastAltLeewayMs := 60     ; Alt timing tolerance
+; NOTE: Tab decision window now in config: cfg.AltTabTabDecisionMs (default 24ms)
 ; NOTE: Bypass settings are now in config: cfg.AltTabBypassFullscreen, cfg.AltTabBypassProcesses
 
 global gINT_SessionActive := false
@@ -120,7 +120,7 @@ INT_Alt_Up(*) {
 INT_Tab_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabPending, gINT_TabHeld, gINT_PendingShift, gINT_TabUpSeen
-    global gINT_PendingDecideArmed, gINT_DecisionMs, gINT_AltUpDuringPending
+    global gINT_PendingDecideArmed, gINT_AltUpDuringPending, cfg
     global gINT_SessionActive, gINT_PressCount, gINT_AltIsDown
     global TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
 
@@ -159,13 +159,13 @@ INT_Tab_Down(*) {
     }
 
     ; Session not active yet - this is the FIRST Tab, needs decision delay
-    _GUI_LogEvent("INT: Tab_Down -> FIRST TAB, starting " gINT_DecisionMs "ms decision timer")
+    _GUI_LogEvent("INT: Tab_Down -> FIRST TAB, starting " cfg.AltTabTabDecisionMs "ms decision timer")
     gINT_TabPending := true
     gINT_PendingShift := GetKeyState("Shift", "P")
     gINT_TabUpSeen := false
     gINT_PendingDecideArmed := true
     gINT_AltUpDuringPending := false
-    SetTimer(INT_Tab_Decide, -gINT_DecisionMs)
+    SetTimer(INT_Tab_Decide, -cfg.AltTabTabDecisionMs)
 }
 
 INT_Tab_Up(*) {

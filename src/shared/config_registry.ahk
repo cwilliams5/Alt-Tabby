@@ -68,6 +68,12 @@ global gConfigRegistry := [
     {s: "AltTab", k: "PrewarmWaitMs", g: "AltTabPrewarmWaitMs", t: "int", default: 50,
      d: "Max time to wait for prewarm data on Tab (ms). If items are empty when Tab is pressed, wait up to this long for data to arrive."},
 
+    {s: "AltTab", k: "TabDecisionMs", g: "AltTabTabDecisionMs", t: "int", default: 24,
+     d: "Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. Range: 15-40."},
+
+    {s: "AltTab", k: "WorkspaceSwitchSettleMs", g: "AltTabWorkspaceSwitchSettleMs", t: "int", default: 75,
+     d: "Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems."},
+
     ; ============================================================
     ; Launcher Settings
     ; ============================================================

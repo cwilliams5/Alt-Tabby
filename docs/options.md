@@ -63,6 +63,8 @@ Internal timing parameters (usually no need to change)
 | `MRUFreshnessMs` | int | `300` | How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations. |
 | `WSPollTimeoutMs` | int | `200` | Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation. |
 | `PrewarmWaitMs` | int | `50` | Max time to wait for prewarm data on Tab (ms). If items are empty when Tab is pressed, wait up to this long for data to arrive. |
+| `TabDecisionMs` | int | `24` | Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. Range: 15-40. |
+| `WorkspaceSwitchSettleMs` | int | `75` | Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems. |
 
 ## Launcher
 
@@ -458,4 +460,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-25 with 169 total settings.*
+*Generated on 2026-01-25 with 171 total settings.*

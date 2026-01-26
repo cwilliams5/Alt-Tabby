@@ -5,7 +5,7 @@
 ; Timing constants (hardcoded - not user-configurable)
 ; These are internal implementation details that users shouldn't need to change.
 ; The main timing values (MRU freshness, WS poll timeout, prewarm wait) are in config.
-global GUI_WS_SWITCH_SETTLE_MS := 75        ; Wait after workspace switch for komorebi
+; NOTE: Workspace switch settle time now in config: cfg.AltTabWorkspaceSwitchSettleMs (default 75ms)
 global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 global GUI_EVENT_FLUSH_WAIT_MS := 30        ; Wait before processing buffered events
 
@@ -553,7 +553,7 @@ _GUI_AsyncActivationTick() {
             ; RACE FIX: Phase transition must be atomic
             Critical "On"
             gGUI_PendingPhase := "waiting"
-            gGUI_PendingWaitUntil := now + GUI_WS_SWITCH_SETTLE_MS
+            gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
             Critical "Off"
             return
         }
@@ -575,7 +575,7 @@ _GUI_AsyncActivationTick() {
                     ; RACE FIX: Phase transition must be atomic
                     Critical "On"
                     gGUI_PendingPhase := "waiting"
-                    gGUI_PendingWaitUntil := now + GUI_WS_SWITCH_SETTLE_MS
+                    gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
                     Critical "Off"
                     return
                 }
