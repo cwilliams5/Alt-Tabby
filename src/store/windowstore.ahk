@@ -125,12 +125,16 @@ WindowStore_UpsertWindow(records, source := "") {
         hwnd := rec.Has("hwnd") ? (rec["hwnd"] + 0) : 0
         if (!hwnd)
             continue
+        ; RACE FIX: Wrap check-then-insert in Critical to prevent multiple producers
+        ; from racing on timer/hotkey interruption
+        Critical "On"
         isNew := !gWS_Store.Has(hwnd)
         if (isNew) {
             gWS_Store[hwnd] := _WS_NewRecord(hwnd)
             added += 1
         }
         row := gWS_Store[hwnd]
+        Critical "Off"
 
         ; If window has komorebi workspace data, don't let winenum overwrite state/isCloaked
         ; Komorebi is authoritative for workspace state

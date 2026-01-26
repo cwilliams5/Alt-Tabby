@@ -13,6 +13,7 @@
 ; Internal constants
 global IP_GIVEUP_BACKOFF_MS := 5000     ; Long cooldown after max attempts
 global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
+global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000  ; Process access right for package queries
 
 ; Configuration (set in IconPump_Start after ConfigLoader_Init)
 global IconBatchPerTick := 0
@@ -370,7 +371,7 @@ _IP_AppHasPackage(pid) {
         return false
 
     ; Open process with PROCESS_QUERY_LIMITED_INFORMATION (0x1000)
-    hProc := DllCall("kernel32\OpenProcess", "uint", 0x1000, "int", 0, "uint", pid, "ptr")
+    hProc := DllCall("kernel32\OpenProcess", "uint", PROCESS_QUERY_LIMITED_INFORMATION, "int", 0, "uint", pid, "ptr")
     if (!hProc)
         return false
 
@@ -478,7 +479,7 @@ _IP_GetPackagePath(pid) {
         return ""
 
     ; Open process with PROCESS_QUERY_LIMITED_INFORMATION
-    hProc := DllCall("kernel32\OpenProcess", "uint", 0x1000, "int", 0, "uint", pid, "ptr")
+    hProc := DllCall("kernel32\OpenProcess", "uint", PROCESS_QUERY_LIMITED_INFORMATION, "int", 0, "uint", pid, "ptr")
     if (!hProc)
         return ""
 

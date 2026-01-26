@@ -560,86 +560,113 @@ _Update_KillOtherProcesses(targetExeName := "") {
     }
 }
 
-; Apply update: rename current exe, move new exe, relaunch
-_Update_ApplyAndRelaunch(newExePath, targetExePath) {
+; ============================================================
+; UPDATE CORE - Shared logic for applying updates
+; ============================================================
+; Used by both _Launcher_DoUpdateInstalled (mismatch update) and
+; _Update_ApplyAndRelaunch (auto-update). Extracted to eliminate duplication.
+;
+; Options:
+;   sourcePath - Path to new exe (source of update)
+;   targetPath - Path to install to (destination)
+;   useLockFile - Use lock file to prevent concurrent updates
+;   validatePE - Validate PE header before applying
+;   copyMode - true = FileCopy (keep source), false = FileMove (delete source)
+;   ensureTargetConfig - Copy config.ini from source location if missing at target
+;   successMessage - Message to show in TrayTip on success
+;   cleanupSourceOnFailure - Delete source file if update fails
+
+_Update_ApplyCore(opts) {
     global cfg, gConfigIniPath
 
-    ; Lock file to prevent concurrent update operations
-    ; (e.g., auto-update + manual update from mismatch running simultaneously)
-    lockFile := A_Temp "\alttabby_update.lock"
-    if (FileExist(lockFile)) {
-        try {
-            modTime := FileGetTime(lockFile, "M")
-            if (DateDiff(A_Now, modTime, "Minutes") < 5) {
-                MsgBox("Another update is in progress. Please wait.", "Alt-Tabby", "Icon!")
-                return
+    sourcePath := opts.HasOwnProp("sourcePath") ? opts.sourcePath : ""
+    targetPath := opts.HasOwnProp("targetPath") ? opts.targetPath : ""
+    useLockFile := opts.HasOwnProp("useLockFile") ? opts.useLockFile : false
+    validatePE := opts.HasOwnProp("validatePE") ? opts.validatePE : false
+    copyMode := opts.HasOwnProp("copyMode") ? opts.copyMode : false
+    ensureTargetConfig := opts.HasOwnProp("ensureTargetConfig") ? opts.ensureTargetConfig : false
+    successMessage := opts.HasOwnProp("successMessage") ? opts.successMessage : "Alt-Tabby has been updated."
+    cleanupSourceOnFailure := opts.HasOwnProp("cleanupSourceOnFailure") ? opts.cleanupSourceOnFailure : false
+
+    lockFile := ""
+    if (useLockFile) {
+        lockFile := A_Temp "\alttabby_update.lock"
+        if (FileExist(lockFile)) {
+            try {
+                modTime := FileGetTime(lockFile, "M")
+                if (DateDiff(A_Now, modTime, "Minutes") < 5) {
+                    MsgBox("Another update is in progress. Please wait.", "Alt-Tabby", "Icon!")
+                    return
+                }
+                FileDelete(lockFile)
             }
-            ; Lock is stale (>5 minutes old), remove it
-            FileDelete(lockFile)
         }
+        try FileAppend(A_Now, lockFile)
     }
-    ; Create lock file
-    try FileAppend(A_Now, lockFile)
 
     targetDir := ""
-    SplitPath(targetExePath, , &targetDir)
-    targetConfigPath := targetDir "\config.ini"  ; Target's config location
-    oldExePath := targetExePath ".old"
+    SplitPath(targetPath, , &targetDir)
+    targetConfigPath := targetDir "\config.ini"
+    backupPath := targetPath ".old"
 
     try {
-        ; Kill all other AltTabby.exe processes (store, gui, viewer)
-        ; This releases file locks so we can rename/delete the exe
-        ; Pass target exe name to handle renamed exes
+        ; Kill all other AltTabby.exe processes
         targetExeName := ""
-        SplitPath(targetExePath, &targetExeName)
+        SplitPath(targetPath, &targetExeName)
         _Update_KillOtherProcesses(targetExeName)
-        Sleep(TIMING_PROCESS_EXIT_WAIT)  ; Give processes time to fully exit
+        Sleep(TIMING_PROCESS_EXIT_WAIT)
 
-        ; Remove any previous .old file
-        if (FileExist(oldExePath))
-            FileDelete(oldExePath)
+        ; Remove any previous backup
+        if (FileExist(backupPath))
+            FileDelete(backupPath)
 
-        ; Bug 2 fix: Specific error handling for exe rename
-        ; This can fail due to antivirus, file locks, or disk errors
+        ; Rename existing exe to .old
         try {
-            FileMove(targetExePath, oldExePath)
+            FileMove(targetPath, backupPath)
         } catch as renameErr {
-            try FileDelete(lockFile)  ; Clean up lock file
+            if (lockFile != "")
+                try FileDelete(lockFile)
             MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Icon!")
             return
         }
 
-        ; Validate PE header before applying (catches corrupted downloads, HTML error pages)
-        if (!_Update_ValidatePEFile(newExePath)) {
-            ; Restore the old exe
-            if (FileExist(oldExePath))
-                FileMove(oldExePath, targetExePath)
-            try FileDelete(lockFile)  ; Clean up lock file
+        ; Validate PE header if requested
+        if (validatePE && !_Update_ValidatePEFile(sourcePath)) {
+            if (FileExist(backupPath))
+                FileMove(backupPath, targetPath)
+            if (lockFile != "")
+                try FileDelete(lockFile)
             MsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Icon!")
             return
         }
 
-        ; Move new exe to target location
-        FileMove(newExePath, targetExePath)
+        ; Copy or move new exe to target location
+        if (copyMode)
+            FileCopy(sourcePath, targetPath)
+        else
+            FileMove(sourcePath, targetPath)
 
-        ; Update config AT THE TARGET location (not source location where we're running from)
-        ; For auto-update this is usually the same, but for mismatch updates they may differ
-        cfg.SetupExePath := targetExePath
-        if (FileExist(targetConfigPath)) {
-            try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetExePath, "", "string")
+        ; Ensure target config exists if requested
+        if (ensureTargetConfig && !FileExist(targetConfigPath)) {
+            if (FileExist(gConfigIniPath))
+                try FileCopy(gConfigIniPath, targetConfigPath)
         }
 
-        ; Read admin mode from TARGET config (not source config we loaded at startup)
-        ; This ensures we correctly handle cases where target has different settings
+        ; Update config at target location
+        cfg.SetupExePath := targetPath
+        if (FileExist(targetConfigPath)) {
+            try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
+        }
+
+        ; Read admin mode from target config
         targetRunAsAdmin := false
         if (FileExist(targetConfigPath)) {
             iniVal := IniRead(targetConfigPath, "Setup", "RunAsAdmin", "false")
             targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
         }
 
-        ; Bug 1 fix: Update admin task if TARGET has admin mode enabled, with error handling
+        ; Update admin task if target has admin mode enabled
         if (targetRunAsAdmin && AdminTaskExists()) {
-            ; Read InstallationId from TARGET config, or generate if missing
             targetInstallId := ""
             if (FileExist(targetConfigPath)) {
                 try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
@@ -650,10 +677,8 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
                     try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
             }
 
-            ; Recreate task with new exe path and target's InstallationId
             DeleteAdminTask()
-            if (!CreateAdminTask(targetExePath, targetInstallId)) {
-                ; Task creation failed - disable admin mode to avoid broken state
+            if (!CreateAdminTask(targetPath, targetInstallId)) {
                 MsgBox("Could not recreate admin task after update.`n`n"
                     "Admin mode has been disabled. You can re-enable it from the tray menu.",
                     "Alt-Tabby - Admin Mode Error", "Icon!")
@@ -663,46 +688,59 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
             }
         }
 
-        ; Success! Launch new version and exit
-        TrayTip("Update Complete", "Alt-Tabby has been updated. Restarting...", "Iconi")
+        ; Success
+        TrayTip("Update Complete", successMessage, "Iconi")
         Sleep(TIMING_STORE_START_WAIT)
 
-        ; Bug 8 fix: Extended cleanup delay with retry for slow systems
-        ; Uses timeout instead of ping (ping fails on systems with ICMP blocked)
-        ; First attempt after 4 seconds, retry after another 4 seconds if first fails
-        cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' oldExePath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' oldExePath '")'
+        ; Cleanup command for backup
+        cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '")'
         Run(cleanupCmd,, "Hide")
 
-        ; Delete update lock file
-        try FileDelete(lockFile)
+        if (lockFile != "")
+            try FileDelete(lockFile)
 
-        Run('"' targetExePath '"')
+        Run('"' targetPath '"')
         ExitApp()
 
     } catch as e {
-        ; Bug 3 fix: Track and communicate rollback result
+        ; Rollback
         rollbackSuccess := false
-        if (!FileExist(targetExePath) && FileExist(oldExePath)) {
+        if (!FileExist(targetPath) && FileExist(backupPath)) {
             try {
-                FileMove(oldExePath, targetExePath)
+                FileMove(backupPath, targetPath)
                 rollbackSuccess := true
             }
         }
 
-        ; Clean up downloaded exe on failure (Priority 4 fix)
-        if (FileExist(newExePath))
-            try FileDelete(newExePath)
+        ; Clean up source on failure if requested
+        if (cleanupSourceOnFailure && FileExist(sourcePath))
+            try FileDelete(sourcePath)
 
-        ; Clean up lock file
-        try FileDelete(lockFile)
+        if (lockFile != "")
+            try FileDelete(lockFile)
 
         if (rollbackSuccess)
             MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
-        else if (FileExist(targetExePath))
+        else if (FileExist(targetPath))
             MsgBox("Update failed:`n" e.Message, "Update Error", "Icon!")
         else
             MsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
     }
+}
+
+; Apply update: rename current exe, move new exe, relaunch
+; Wrapper for auto-update flow - uses _Update_ApplyCore with appropriate options
+_Update_ApplyAndRelaunch(newExePath, targetExePath) {
+    _Update_ApplyCore({
+        sourcePath: newExePath,
+        targetPath: targetExePath,
+        useLockFile: true,
+        validatePE: true,
+        copyMode: false,               ; FileMove (delete source after copy)
+        ensureTargetConfig: false,
+        successMessage: "Alt-Tabby has been updated. Restarting...",
+        cleanupSourceOnFailure: true
+    })
 }
 
 ; Called on startup to clean up old exe from previous update

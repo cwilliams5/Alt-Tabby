@@ -10,6 +10,10 @@ global TABBY_EV_ALT_DOWN := 3  ; Alt pressed, session starting
 global TABBY_EV_ESCAPE   := 4  ; Escape pressed, cancel session
 global TABBY_FLAG_SHIFT  := 1  ; Shift modifier flag
 
+; Fullscreen detection thresholds
+global FULLSCREEN_SIZE_THRESHOLD := 0.99    ; Window must cover 99% of screen dimensions
+global FULLSCREEN_POS_TOLERANCE := 5        ; Allow up to 5 pixels from screen edge
+
 ; ========================= INTERCEPTOR STATE =========================
 ; These variables track the keyboard hook state
 
@@ -339,5 +343,5 @@ INT_IsFullscreenHwnd(hwnd) {
     }
     if (!IsSet(w) || !IsSet(h))
         return false
-    return (w >= A_ScreenWidth * 0.99 && h >= A_ScreenHeight * 0.99 && x <= 5 && y <= 5)
+    return (w >= A_ScreenWidth * FULLSCREEN_SIZE_THRESHOLD && h >= A_ScreenHeight * FULLSCREEN_SIZE_THRESHOLD && x <= FULLSCREEN_POS_TOLERANCE && y <= FULLSCREEN_POS_TOLERANCE)
 }

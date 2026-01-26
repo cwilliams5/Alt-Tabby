@@ -169,26 +169,35 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         }
         return
     }
+
+    ; Unknown message type - log for debugging (could mask IPC bugs)
+    _GUI_LogEvent("IPC: unknown message type: " type)
 }
 
 ; ========================= ITEM CONVERSION =========================
+
+; Helper: Create GUI item object from store record (Map with lowercase keys)
+; Used by both GUI_ConvertStoreItems and GUI_ApplyDelta for consistency
+_GUI_CreateItemFromRecord(hwnd, rec) {
+    return {
+        hwnd: hwnd,
+        Title: rec.Has("title") ? rec["title"] : "",
+        Class: rec.Has("class") ? rec["class"] : "",
+        hwndHex: Format("0x{:X}", hwnd),
+        PID: rec.Has("pid") ? "" rec["pid"] : "",
+        WS: rec.Has("workspaceName") ? rec["workspaceName"] : "",
+        isOnCurrentWorkspace: rec.Has("isOnCurrentWorkspace") ? rec["isOnCurrentWorkspace"] : true,
+        processName: rec.Has("processName") ? rec["processName"] : "",
+        iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
+        lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
+    }
+}
 
 GUI_ConvertStoreItems(items) {
     result := []
     for _, item in items {
         hwnd := item.Has("hwnd") ? item["hwnd"] : 0
-        result.Push({
-            hwnd: hwnd,
-            Title: item.Has("title") ? item["title"] : "",
-            Class: item.Has("class") ? item["class"] : "",
-            hwndHex: Format("0x{:X}", hwnd),  ; Renamed from HWND to avoid case collision
-            PID: item.Has("pid") ? "" item["pid"] : "",
-            WS: item.Has("workspaceName") ? item["workspaceName"] : "",
-            isOnCurrentWorkspace: item.Has("isOnCurrentWorkspace") ? item["isOnCurrentWorkspace"] : true,
-            processName: item.Has("processName") ? item["processName"] : "",
-            iconHicon: item.Has("iconHicon") ? item["iconHicon"] : 0,
-            lastActivatedTick: item.Has("lastActivatedTick") ? item["lastActivatedTick"] : 0
-        })
+        result.Push(_GUI_CreateItemFromRecord(hwnd, item))
     }
     return result
 }
@@ -275,19 +284,8 @@ GUI_ApplyDelta(payload) {
                 }
                 changed := true
             } else {
-                ; Add new item
-                newItem := {
-                    hwnd: hwnd,
-                    Title: rec.Has("title") ? rec["title"] : "",
-                    Class: rec.Has("class") ? rec["class"] : "",
-                    hwndHex: Format("0x{:X}", hwnd),  ; Must match GUI_ConvertStoreItems
-                    PID: rec.Has("pid") ? "" rec["pid"] : "",
-                    WS: rec.Has("workspaceName") ? rec["workspaceName"] : "",
-                    isOnCurrentWorkspace: rec.Has("isOnCurrentWorkspace") ? rec["isOnCurrentWorkspace"] : true,
-                    processName: rec.Has("processName") ? rec["processName"] : "",
-                    iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
-                    lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
-                }
+                ; Add new item using shared helper
+                newItem := _GUI_CreateItemFromRecord(hwnd, rec)
                 gGUI_Items.Push(newItem)
                 gGUI_ItemsMap[hwnd] := newItem
                 ; Track focus change for new item too

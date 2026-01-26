@@ -291,115 +291,18 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 }
 
 ; Actually perform the update (called directly or after elevation)
+; Wrapper for mismatch update flow - uses _Update_ApplyCore with appropriate options
 _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
-    global cfg, gConfigIniPath
-
-    targetDir := ""
-    SplitPath(targetPath, , &targetDir)
-    targetConfigPath := targetDir "\config.ini"  ; Target's config location
-    backupPath := targetPath ".old"
-
-    try {
-        ; Kill all other AltTabby.exe processes (store, gui, viewer)
-        ; This releases file locks so we can rename/delete the exe
-        ; Pass target exe name to handle renamed exes
-        targetExeName := ""
-        SplitPath(targetPath, &targetExeName)
-        _Update_KillOtherProcesses(targetExeName)
-        Sleep(TIMING_PROCESS_EXIT_WAIT)  ; Give processes time to fully exit
-
-        ; Remove any previous backup
-        if (FileExist(backupPath))
-            FileDelete(backupPath)
-
-        ; Bug 2 fix: Specific error handling for exe rename
-        ; This can fail due to antivirus, file locks, or disk errors
-        try {
-            FileMove(targetPath, backupPath)
-        } catch as renameErr {
-            MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Icon!")
-            return
-        }
-
-        ; Copy new version
-        FileCopy(sourcePath, targetPath)
-
-        ; Update config AT THE TARGET location (not source location where we're running from)
-        ; This ensures the installed version has the correct SetupExePath
-        cfg.SetupExePath := targetPath
-        ; Ensure target config exists (may be missing for fresh installs)
-        if (!FileExist(targetConfigPath)) {
-            if (FileExist(gConfigIniPath))
-                try FileCopy(gConfigIniPath, targetConfigPath)
-        }
-        if (FileExist(targetConfigPath)) {
-            try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
-        }
-
-        ; Read admin mode from TARGET config (not source config we loaded at startup)
-        ; The target location may have different settings than where this exe is running from
-        targetRunAsAdmin := false
-        if (FileExist(targetConfigPath)) {
-            iniVal := IniRead(targetConfigPath, "Setup", "RunAsAdmin", "false")
-            targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
-        }
-
-        ; Bug 1 fix: Update admin task if TARGET has admin mode enabled, with error handling
-        if (targetRunAsAdmin && AdminTaskExists()) {
-            ; Read InstallationId from TARGET config, or generate if missing
-            targetInstallId := ""
-            if (FileExist(targetConfigPath)) {
-                try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
-            }
-            if (targetInstallId = "") {
-                targetInstallId := _Launcher_GenerateId()
-                if (FileExist(targetConfigPath))
-                    try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
-            }
-
-            ; Recreate task with target exe path and target's InstallationId
-            DeleteAdminTask()
-            if (!CreateAdminTask(targetPath, targetInstallId)) {
-                ; Task creation failed - disable admin mode to avoid broken state
-                MsgBox("Could not recreate admin task after update.`n`n"
-                    "Admin mode has been disabled. You can re-enable it from the tray menu.",
-                    "Alt-Tabby - Admin Mode Error", "Icon!")
-                cfg.SetupRunAsAdmin := false
-                if (FileExist(targetConfigPath))
-                    try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
-            }
-        }
-
-        ; Success - launch from installed location and exit
-        TrayTip("Update Complete", "Alt-Tabby has been updated at:`n" targetPath, "Iconi")
-        Sleep(TIMING_STORE_START_WAIT)
-
-        ; Bug 8 fix: Extended cleanup delay with retry for slow systems
-        ; Uses timeout instead of ping (ping fails on systems with ICMP blocked)
-        ; First attempt after 4 seconds, retry after another 4 seconds if first fails
-        cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '")'
-        Run(cleanupCmd,, "Hide")
-
-        Run('"' targetPath '"')
-        ExitApp()
-
-    } catch as e {
-        ; Bug 3 fix: Track and communicate rollback result
-        rollbackSuccess := false
-        if (!FileExist(targetPath) && FileExist(backupPath)) {
-            try {
-                FileMove(backupPath, targetPath)
-                rollbackSuccess := true
-            }
-        }
-
-        if (rollbackSuccess)
-            MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
-        else if (FileExist(targetPath))
-            MsgBox("Update failed:`n" e.Message, "Update Error", "Icon!")
-        else
-            MsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
-    }
+    _Update_ApplyCore({
+        sourcePath: sourcePath,
+        targetPath: targetPath,
+        useLockFile: false,
+        validatePE: false,             ; Source is running exe, already valid
+        copyMode: true,                ; FileCopy (keep source - it's the running exe)
+        ensureTargetConfig: true,      ; Copy config if missing at target
+        successMessage: "Alt-Tabby has been updated at:`n" targetPath,
+        cleanupSourceOnFailure: false  ; Don't delete source - it's the running exe
+    })
 }
 
 ; ============================================================
