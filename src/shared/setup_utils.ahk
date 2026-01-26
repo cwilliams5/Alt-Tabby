@@ -248,6 +248,17 @@ _AdminTask_GetInstallationId() {
     return ""
 }
 
+; Check if admin task exists AND points to the current exe
+; Used for tray menu checkmark - prevents misleading state when task points elsewhere
+_AdminTask_PointsToUs() {
+    if (!AdminTaskExists())
+        return false
+    taskPath := _AdminTask_GetCommandPath()
+    if (taskPath = "")
+        return false
+    return StrLower(taskPath) = StrLower(A_ScriptFullPath)
+}
+
 ; ============================================================
 ; SHORTCUT PATH HELPERS
 ; ============================================================

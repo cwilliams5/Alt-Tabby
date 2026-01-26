@@ -48,8 +48,11 @@ WizardSkip(*) {
     g_WizardShuttingDown := true
 
     ; Mark first-run as completed even if skipped
+    ; Also record exe path so mismatch detection works for custom locations
     cfg.SetupFirstRunCompleted := true
+    cfg.SetupExePath := A_ScriptFullPath
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
 
     try g_WizardGui.Destroy()
 }

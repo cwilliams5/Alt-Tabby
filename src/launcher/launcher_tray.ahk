@@ -100,7 +100,7 @@ UpdateTrayMenu() {
 
     ; Admin mode toggle
     tray.Add("Run as Administrator", (*) => ToggleAdminMode())
-    if (cfg.SetupRunAsAdmin && AdminTaskExists())
+    if (cfg.SetupRunAsAdmin && _AdminTask_PointsToUs())
         tray.Check("Run as Administrator")
 
     tray.Add()
@@ -206,9 +206,9 @@ ToggleAdminMode() {
         return
     }
 
-    ; Check BOTH config AND task existence - must match the checkmark condition (line 103)
-    ; This prevents state mismatch when config says enabled but task doesn't exist
-    isCurrentlyEnabled := cfg.SetupRunAsAdmin && AdminTaskExists()
+    ; Check BOTH config AND task existence AND that task points to us
+    ; This prevents state mismatch when config says enabled but task points elsewhere
+    isCurrentlyEnabled := cfg.SetupRunAsAdmin && _AdminTask_PointsToUs()
 
     if (isCurrentlyEnabled) {
         ; Disable admin mode - doesn't require elevation
