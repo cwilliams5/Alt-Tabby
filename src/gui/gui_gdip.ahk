@@ -303,8 +303,7 @@ Gdip_DrawIconFromHicon(g, hIcon, x, y, size) {
         return false
     }
 
-    pBmp := 0
-    DllCall("gdiplus\GdipCreateBitmapFromHICON", "ptr", hIcon, "ptr*", &pBmp)
+    pBmp := _Gdip_CreateBitmapFromHICON_Alpha(hIcon)
     if (!pBmp) {
         return false
     }
@@ -312,6 +311,184 @@ Gdip_DrawIconFromHicon(g, hIcon, x, y, size) {
     DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", pBmp, "int", x, "int", y, "int", size, "int", size)
     DllCall("gdiplus\GdipDisposeImage", "ptr", pBmp)
     return true
+}
+
+; Convert HICON to GDI+ Bitmap preserving alpha channel
+; GdipCreateBitmapFromHICON flattens alpha to 0/255, losing semi-transparency.
+; This function extracts raw pixel data and preserves the full alpha channel.
+_Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
+    if (!hIcon)
+        return 0
+
+    ; Get icon info - gives us color bitmap and mask
+    ; ICONINFO: fIcon(4) + xHotspot(4) + yHotspot(4) + hbmMask(ptr) + hbmColor(ptr)
+    iiSize := 8 + A_PtrSize * 3
+    ii := Buffer(iiSize, 0)
+    if (!DllCall("user32\GetIconInfo", "ptr", hIcon, "ptr", ii.Ptr, "int"))
+        return 0
+
+    hbmMask := NumGet(ii, 8 + A_PtrSize, "ptr")
+    hbmColor := NumGet(ii, 8 + A_PtrSize * 2, "ptr")
+
+    ; We need hbmColor for 32-bit icons
+    if (!hbmColor) {
+        if (hbmMask)
+            DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        return 0
+    }
+
+    ; Get bitmap dimensions via BITMAP structure
+    ; BITMAP: bmType(4) + bmWidth(4) + bmHeight(4) + bmWidthBytes(4) + bmPlanes(2) + bmBitsPixel(2) + bmBits(ptr)
+    bmSize := 24 + A_PtrSize
+    bm := Buffer(bmSize, 0)
+    if (!DllCall("gdi32\GetObjectW", "ptr", hbmColor, "int", bmSize, "ptr", bm.Ptr, "int")) {
+        DllCall("gdi32\DeleteObject", "ptr", hbmColor)
+        if (hbmMask)
+            DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        return 0
+    }
+
+    w := NumGet(bm, 4, "int")
+    h := NumGet(bm, 8, "int")
+    bpp := NumGet(bm, 18, "ushort")
+
+    ; Only handle 32-bit icons with this method
+    if (bpp != 32 || w <= 0 || h <= 0) {
+        DllCall("gdi32\DeleteObject", "ptr", hbmColor)
+        if (hbmMask)
+            DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        ; Fall back to standard method for non-32bit icons
+        pBmp := 0
+        DllCall("gdiplus\GdipCreateBitmapFromHICON", "ptr", hIcon, "ptr*", &pBmp)
+        return pBmp
+    }
+
+    ; Set up BITMAPINFOHEADER for GetDIBits
+    ; Size=40, Width, Height (negative for top-down), Planes=1, BitCount=32, Compression=BI_RGB
+    bih := Buffer(40, 0)
+    NumPut("uint", 40, bih, 0)          ; biSize
+    NumPut("int", w, bih, 4)            ; biWidth
+    NumPut("int", -h, bih, 8)           ; biHeight (negative = top-down DIB)
+    NumPut("ushort", 1, bih, 12)        ; biPlanes
+    NumPut("ushort", 32, bih, 14)       ; biBitCount
+    NumPut("uint", 0, bih, 16)          ; biCompression = BI_RGB
+
+    ; Allocate buffer for pixel data (BGRA format, 4 bytes per pixel)
+    stride := w * 4
+    pixelDataSize := stride * h
+    pixels := Buffer(pixelDataSize, 0)
+
+    ; Get device context and extract pixel data
+    hdc := DllCall("user32\GetDC", "ptr", 0, "ptr")
+    result := DllCall("gdi32\GetDIBits", "ptr", hdc, "ptr", hbmColor, "uint", 0, "uint", h, "ptr", pixels.Ptr, "ptr", bih.Ptr, "uint", 0, "int")
+    DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
+
+    if (!result) {
+        DllCall("gdi32\DeleteObject", "ptr", hbmColor)
+        if (hbmMask)
+            DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        return 0
+    }
+
+    ; Scan pixels to check if icon has real alpha channel
+    ; (some 32-bit icons have all alpha=0 and rely on mask instead)
+    ; Early exit: any non-zero alpha means icon has alpha channel
+    hasAlpha := false
+    loop pixelDataSize // 4 {
+        if (NumGet(pixels, (A_Index - 1) * 4 + 3, "uchar") > 0) {
+            hasAlpha := true
+            break
+        }
+    }
+
+    ; If no alpha detected, we need to use the mask to determine transparency
+    if (!hasAlpha && hbmMask) {
+        ; Get mask bitmap data
+        maskBih := Buffer(40, 0)
+        NumPut("uint", 40, maskBih, 0)
+        NumPut("int", w, maskBih, 4)
+        NumPut("int", -h, maskBih, 8)
+        NumPut("ushort", 1, maskBih, 12)
+        NumPut("ushort", 32, maskBih, 14)  ; Request 32-bit for easier processing
+        NumPut("uint", 0, maskBih, 16)
+
+        maskPixels := Buffer(pixelDataSize, 0)
+        hdc := DllCall("user32\GetDC", "ptr", 0, "ptr")
+        DllCall("gdi32\GetDIBits", "ptr", hdc, "ptr", hbmMask, "uint", 0, "uint", h, "ptr", maskPixels.Ptr, "ptr", maskBih.Ptr, "uint", 0, "int")
+        DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
+
+        ; Apply mask: where mask is white (0xFFFFFF), pixel is transparent
+        loop pixelDataSize // 4 {
+            offset := (A_Index - 1) * 4
+            maskVal := NumGet(maskPixels, offset, "uint") & 0xFFFFFF
+            if (maskVal = 0) {
+                ; Mask is black = opaque
+                NumPut("uchar", 255, pixels, offset + 3)
+            } else {
+                ; Mask is white = transparent
+                NumPut("uchar", 0, pixels, offset + 3)
+            }
+        }
+    }
+
+    ; Create GDI+ bitmap with GDI+ owning the memory (scan0 = 0)
+    ; PixelFormat32bppARGB = 0x26200A
+    pBmp := 0
+    status := DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", w, "int", h, "int", 0, "int", 0x26200A, "ptr", 0, "ptr*", &pBmp, "int")
+
+    if (status != 0 || !pBmp) {
+        DllCall("gdi32\DeleteObject", "ptr", hbmColor)
+        if (hbmMask)
+            DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        return 0
+    }
+
+    ; Lock bitmap to get write access to GDI+'s internal pixel buffer
+    ; BitmapData: Width(4) + Height(4) + Stride(4) + PixelFormat(4) + Scan0(ptr) + Reserved(ptr)
+    bd := Buffer(16 + A_PtrSize * 2, 0)
+    rect := Buffer(16, 0)
+    NumPut("int", 0, rect, 0)   ; x
+    NumPut("int", 0, rect, 4)   ; y
+    NumPut("int", w, rect, 8)   ; width
+    NumPut("int", h, rect, 12)  ; height
+
+    ; ImageLockModeWrite = 2
+    status := DllCall("gdiplus\GdipBitmapLockBits", "ptr", pBmp, "ptr", rect.Ptr, "uint", 2, "int", 0x26200A, "ptr", bd.Ptr, "int")
+
+    if (status != 0) {
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pBmp)
+        DllCall("gdi32\DeleteObject", "ptr", hbmColor)
+        if (hbmMask)
+            DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        return 0
+    }
+
+    ; Get scan0 pointer and stride from BitmapData
+    gdipStride := NumGet(bd, 8, "int")
+    scan0 := NumGet(bd, 16, "ptr")
+
+    ; Copy our pixel data into GDI+'s buffer
+    if (gdipStride = stride) {
+        ; Same stride - single memcpy
+        DllCall("msvcrt\memcpy", "ptr", scan0, "ptr", pixels.Ptr, "uptr", pixelDataSize)
+    } else {
+        ; Different stride - copy row by row
+        loop h {
+            srcOffset := (A_Index - 1) * stride
+            dstOffset := (A_Index - 1) * gdipStride
+            DllCall("msvcrt\memcpy", "ptr", scan0 + dstOffset, "ptr", pixels.Ptr + srcOffset, "uptr", w * 4)
+        }
+    }
+
+    ; Unlock bitmap - now it owns a copy of our data
+    DllCall("gdiplus\GdipBitmapUnlockBits", "ptr", pBmp, "ptr", bd.Ptr)
+
+    ; Clean up source bitmaps
+    DllCall("gdi32\DeleteObject", "ptr", hbmColor)
+    if (hbmMask)
+        DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+
+    return pBmp
 }
 
 ; Draw icon with caching - avoids HICON->Bitmap conversion on every frame
@@ -338,9 +515,8 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size) {
         }
     }
 
-    ; Cache miss or stale - convert and cache
-    pBmp := 0
-    DllCall("gdiplus\GdipCreateBitmapFromHICON", "ptr", hIcon, "ptr*", &pBmp)
+    ; Cache miss or stale - convert with alpha preservation and cache
+    pBmp := _Gdip_CreateBitmapFromHICON_Alpha(hIcon)
     if (!pBmp) {
         ; Conversion failed - remove from cache if present
         if (gGdip_IconCache.Has(hwnd))
