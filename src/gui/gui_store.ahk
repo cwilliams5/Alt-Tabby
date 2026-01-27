@@ -259,8 +259,11 @@ GUI_ApplyDelta(payload) {
     if (payload.Has("removes") && payload["removes"].Length) {
         ; Build set for O(1) lookup instead of O(n) inner loop
         removeSet := Map()
-        for _, hwnd in payload["removes"]
+        for _, hwnd in payload["removes"] {
             removeSet[hwnd] := true
+            ; Invalidate icon cache for removed window
+            Gdip_InvalidateIconCache(hwnd)
+        }
 
         ; Single pass filter O(n) instead of O(n*m)
         newItems := []

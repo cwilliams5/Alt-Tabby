@@ -241,7 +241,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
             iconDrawn := false
             if (cur.HasOwnProp("iconHicon") && cur.iconHicon) {
-                iconDrawn := Gdip_DrawIconFromHicon(g, cur.iconHicon, ix, iy, ISize)
+                iconDrawn := Gdip_DrawCachedIcon(g, cur.hwnd, cur.iconHicon, ix, iy, ISize)
             }
             if (!iconDrawn) {
                 Gdip_FillEllipse(g, Gdip_ARGBFromIndex(idx1), ix, iy, ISize, ISize)

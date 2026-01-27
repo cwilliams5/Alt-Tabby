@@ -8,6 +8,13 @@
 ;   1) Try WM_GETICON / class icon (CopyIcon before storing)
 ;   2) Fallback to process EXE icon, cached per EXE
 ;   3) Bounded retries with exponential backoff
+;
+; Cross-process HICON note:
+;   HICON handles are USER objects stored in win32k.sys shared
+;   kernel memory, not process-local. The numeric handle value
+;   can be passed to GUI via IPC and used directly - both processes
+;   index into the same kernel handle table. Store owns the icons
+;   (via CopyIcon); they remain valid while Store runs.
 ; ============================================================
 
 ; Internal constants

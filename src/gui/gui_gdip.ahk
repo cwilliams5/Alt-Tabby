@@ -14,6 +14,10 @@ global gGdip_CurScale := 1.0
 global gGdip_ResScale := 0.0
 global gGdip_Res := Map()
 
+; Icon bitmap cache: hwnd -> {hicon: number, pBmp: GDI+ bitmap ptr}
+; Avoids re-converting HICON to GDI+ bitmap on every repaint
+global gGdip_IconCache := Map()
+
 ; Start GDI+
 Gdip_Startup() {
     global gGdip_Token
@@ -33,7 +37,10 @@ Gdip_Startup() {
 Gdip_Shutdown() {
     global gGdip_Token, gGdip_G, gGdip_BackHdc, gGdip_BackHBM, gGdip_BackPrev
 
-    ; Clean cached brushes/fonts first
+    ; Clean icon cache first (before GDI+ shutdown)
+    Gdip_ClearIconCache()
+
+    ; Clean cached brushes/fonts
     Gdip_DisposeResources()
 
     ; Delete graphics object
@@ -290,7 +297,7 @@ Gdip_FillEllipse(g, argb, x, y, w, h) {
     }
 }
 
-; Draw icon from HICON
+; Draw icon from HICON (uncached - used internally)
 Gdip_DrawIconFromHicon(g, hIcon, x, y, size) {
     if (!hIcon || !g) {
         return false
@@ -305,6 +312,74 @@ Gdip_DrawIconFromHicon(g, hIcon, x, y, size) {
     DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", pBmp, "int", x, "int", y, "int", size, "int", size)
     DllCall("gdiplus\GdipDisposeImage", "ptr", pBmp)
     return true
+}
+
+; Draw icon with caching - avoids HICON->Bitmap conversion on every frame
+; Cache key is hwnd; invalidates if hIcon value changes
+; Note: hIcon from Store works cross-process (USER objects in win32k.sys shared memory)
+Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size) {
+    global gGdip_IconCache
+
+    if (!hIcon || !g) {
+        return false
+    }
+
+    ; Check cache - O(1) lookup
+    if (gGdip_IconCache.Has(hwnd)) {
+        cached := gGdip_IconCache[hwnd]
+        ; Cache hit - verify hIcon hasn't changed
+        if (cached.hicon = hIcon && cached.pBmp) {
+            DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", cached.pBmp, "int", x, "int", y, "int", size, "int", size)
+            return true
+        }
+        ; hIcon changed - dispose old bitmap
+        if (cached.pBmp) {
+            try DllCall("gdiplus\GdipDisposeImage", "ptr", cached.pBmp)
+        }
+    }
+
+    ; Cache miss or stale - convert and cache
+    pBmp := 0
+    DllCall("gdiplus\GdipCreateBitmapFromHICON", "ptr", hIcon, "ptr*", &pBmp)
+    if (!pBmp) {
+        ; Conversion failed - remove from cache if present
+        if (gGdip_IconCache.Has(hwnd))
+            gGdip_IconCache.Delete(hwnd)
+        return false
+    }
+
+    ; Store in cache
+    gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: pBmp}
+
+    ; Draw
+    DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", pBmp, "int", x, "int", y, "int", size, "int", size)
+    return true
+}
+
+; Invalidate cache entry for a specific hwnd (call when window removed)
+Gdip_InvalidateIconCache(hwnd) {
+    global gGdip_IconCache
+
+    if (!gGdip_IconCache.Has(hwnd))
+        return
+
+    cached := gGdip_IconCache[hwnd]
+    if (cached.pBmp) {
+        try DllCall("gdiplus\GdipDisposeImage", "ptr", cached.pBmp)
+    }
+    gGdip_IconCache.Delete(hwnd)
+}
+
+; Clear entire icon cache (call on shutdown or major state reset)
+Gdip_ClearIconCache() {
+    global gGdip_IconCache
+
+    for hwnd, cached in gGdip_IconCache {
+        if (cached.pBmp) {
+            try DllCall("gdiplus\GdipDisposeImage", "ptr", cached.pBmp)
+        }
+    }
+    gGdip_IconCache := Map()
 }
 
 ; Generate color from index (fallback when no icon)
