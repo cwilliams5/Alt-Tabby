@@ -554,14 +554,24 @@ _Update_KillOtherProcesses(targetExeName := "") {
     }
 
     ; Kill all matching processes (except ourselves)
-    ; Using ProcessExist/ProcessClose instead of WMI (WMI can fail in elevated contexts)
+    ; Use taskkill for reliable multi-process termination, excluding our own PID
     for exeName in exeNames {
-        loop 10 {  ; Max 10 iterations per exe name to avoid infinite loop
+        ; /F = force, /IM = image name, /FI = filter to exclude our PID
+        cmd := 'taskkill /F /IM "' exeName '" /FI "PID ne ' myPID '"'
+        try RunWait(cmd,, "Hide")
+    }
+
+    ; Give processes time to fully terminate
+    Sleep(200)
+
+    ; Verify all are gone (except us) - retry with ProcessClose as fallback
+    for exeName in exeNames {
+        loop 10 {
             pid := ProcessExist(exeName)
             if (!pid || pid = myPID)
                 break
             try ProcessClose(pid)
-            Sleep(100)  ; Brief pause for process to terminate
+            Sleep(100)
         }
     }
 }
