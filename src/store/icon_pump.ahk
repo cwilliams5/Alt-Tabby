@@ -299,6 +299,7 @@ _IP_Tick() {
 }
 
 ; Try to get icon from window via WM_GETICON or class icon
+; Prefer larger icons (ICON_BIG=32x32) over small (16x16) since we display at 36px+
 _IP_TryResolveFromWindow(hWnd) {
     WM_GETICON := 0x7F
     ICON_SMALL2 := 2
@@ -308,15 +309,16 @@ _IP_TryResolveFromWindow(hWnd) {
     GCLP_HICON := -14
 
     try {
-        h := SendMessage(WM_GETICON, ICON_SMALL2, 0, , "ahk_id " hWnd)
+        ; Prefer large icons first for better quality at display size
+        h := SendMessage(WM_GETICON, ICON_BIG, 0, , "ahk_id " hWnd)
+        if (!h)
+            h := SendMessage(WM_GETICON, ICON_SMALL2, 0, , "ahk_id " hWnd)
         if (!h)
             h := SendMessage(WM_GETICON, ICON_SMALL, 0, , "ahk_id " hWnd)
         if (!h)
-            h := SendMessage(WM_GETICON, ICON_BIG, 0, , "ahk_id " hWnd)
+            h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", GCLP_HICON, "ptr")
         if (!h)
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", GCLP_HICONSM, "ptr")
-        if (!h)
-            h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", GCLP_HICON, "ptr")
         if (h)
             return DllCall("user32\CopyIcon", "ptr", h, "ptr")
     } catch {
