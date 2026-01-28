@@ -19,7 +19,7 @@ GUI_UpdateFooterText() {
 ; ========================= CURRENT WORKSPACE TRACKING =========================
 
 GUI_UpdateCurrentWSFromPayload(payload) {
-    global gGUI_CurrentWSName
+    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop
 
     if (!payload.Has("meta"))
         return
@@ -37,6 +37,15 @@ GUI_UpdateCurrentWSFromPayload(payload) {
     if (wsName != "" && wsName != gGUI_CurrentWSName) {
         gGUI_CurrentWSName := wsName
         GUI_UpdateFooterText()
+
+        ; Reset selection to first item when workspace changes in "current" mode.
+        ; The user's tab position was contextual to the old workspace — retaining it
+        ; on the new workspace highlights an unrelated window or nothing at all
+        ; (if the new workspace has fewer windows than the old selection index).
+        if (gGUI_WorkspaceMode = "current" && gGUI_State = "ACTIVE") {
+            gGUI_Sel := 1
+            gGUI_ScrollTop := 0
+        }
     }
 }
 
