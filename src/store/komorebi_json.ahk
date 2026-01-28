@@ -14,6 +14,7 @@
 ;   _KSub_BalancedArrayFrom    - Get balanced array from position
 ;   _KSub_GetStringProp        - Get string property value
 ;   _KSub_GetIntProp           - Get integer property value
+;   _KSub_GetRingFocused       - Get top-level "focused" from Ring object
 ;   _KSub_UnescapeJson         - Unescape JSON string
 ;   _KSub_ArrayTopLevelSplit   - Split array into top-level elements
 ;   _KSub_IsQuoteEscaped       - Check if quote at position is escaped
@@ -167,6 +168,25 @@ _KSub_GetStringProp(objText, key) {
 _KSub_GetIntProp(objText, key) {
     m := 0
     if RegExMatch(objText, '(?s)"' key '"\s*:\s*(-?\d+)', &m)
+        return Integer(m[1])
+    return ""
+}
+
+; Get the "focused" index from a Ring object (monitors, workspaces, containers, windows).
+; Ring JSON is: { "elements": [...nested objects with their own "focused"...], "focused": N }
+; _KSub_GetIntProp finds the FIRST "focused" which is a nested one inside "elements".
+; The ring's own "focused" is always the LAST one (after the "elements" array), so we
+; search only the tail of the string for speed — avoids scanning the entire elements array.
+_KSub_GetRingFocused(ringText) {
+    ; Fast path: Ring's "focused" is the LAST one near the end, after "elements": [...]
+    ; The tail may still contain nested "focused" from the last workspace's containers,
+    ; so use greedy .* to find the LAST occurrence. On 200 chars this is essentially free.
+    m := 0
+    tail := SubStr(ringText, -200)
+    if RegExMatch(tail, '(?s).*"focused"\s*:\s*(-?\d+)', &m)
+        return Integer(m[1])
+    ; Fallback: search full text with greedy match
+    if RegExMatch(ringText, '(?s).*"focused"\s*:\s*(-?\d+)', &m)
         return Integer(m[1])
     return ""
 }

@@ -36,7 +36,7 @@ _KSub_GetFocusedMonitorIndex(stateText) {
     ring := _KSub_GetMonitorsRing(stateText)
     if (ring = "")
         return -1
-    return _KSub_GetIntProp(ring, "focused")
+    return _KSub_GetRingFocused(ring)
 }
 
 _KSub_GetWorkspacesRing(monObjText) {
@@ -57,7 +57,7 @@ _KSub_GetFocusedWorkspaceIndex(monObjText) {
         _KSub_DiagLog("  GetFocusedWorkspaceIndex: no ring found")
         return -1
     }
-    focusedIdx := _KSub_GetIntProp(ring, "focused")
+    focusedIdx := _KSub_GetRingFocused(ring)
     _KSub_DiagLog("  GetFocusedWorkspaceIndex: ring len=" StrLen(ring) " focused=" focusedIdx)
     return focusedIdx
 }
@@ -107,7 +107,7 @@ _KSub_GetFocusedHwndFromWorkspace(stateText, targetWsName) {
                 ; Get focused container in this workspace
                 containersRing := _KSub_ExtractObjectByKey(wsObj, "containers")
                 if (containersRing != "") {
-                    focusedContIdx := _KSub_GetIntProp(containersRing, "focused")
+                    focusedContIdx := _KSub_GetRingFocused(containersRing)
                     containersArr := _KSub_ExtractArrayByKey(containersRing, "elements")
                     if (containersArr != "") {
                         containers := _KSub_ArrayTopLevelSplit(containersArr)
@@ -117,7 +117,7 @@ _KSub_GetFocusedHwndFromWorkspace(stateText, targetWsName) {
                             ; Get focused window in this container
                             windowsRing := _KSub_ExtractObjectByKey(contObj, "windows")
                             if (windowsRing != "") {
-                                focusedWinIdx := _KSub_GetIntProp(windowsRing, "focused")
+                                focusedWinIdx := _KSub_GetRingFocused(windowsRing)
                                 windowsArr := _KSub_ExtractArrayByKey(windowsRing, "elements")
                                 if (windowsArr != "") {
                                     windows := _KSub_ArrayTopLevelSplit(windowsArr)
@@ -191,7 +191,7 @@ _KSub_GetFocusedHwnd(stateText) {
             ; 3. Get focused container in this workspace
             containersRing := _KSub_ExtractObjectByKey(wsObj, "containers")
             if (containersRing != "") {
-                focusedContIdx := _KSub_GetIntProp(containersRing, "focused")
+                focusedContIdx := _KSub_GetRingFocused(containersRing)
                 containersArr := _KSub_ExtractArrayByKey(containersRing, "elements")
                 if (containersArr != "") {
                     containers := _KSub_ArrayTopLevelSplit(containersArr)
@@ -201,7 +201,7 @@ _KSub_GetFocusedHwnd(stateText) {
                         ; 4. Get focused window in this container
                         windowsRing := _KSub_ExtractObjectByKey(contObj, "windows")
                         if (windowsRing != "") {
-                            focusedWinIdx := _KSub_GetIntProp(windowsRing, "focused")
+                            focusedWinIdx := _KSub_GetRingFocused(windowsRing)
                             windowsArr := _KSub_ExtractArrayByKey(windowsRing, "elements")
                             if (windowsArr != "") {
                                 windows := _KSub_ArrayTopLevelSplit(windowsArr)

@@ -38,6 +38,7 @@ global _KSub_ClientPid := 0
 global _KSub_LastEventTick := 0          ; Timestamp of last event (for idle detection)
 global _KSub_ReadBuffer := ""      ; Accumulated bytes from pipe reads
 global _KSub_LastWorkspaceName := ""
+global _KSub_LastWsUpdateTick := 0         ; Tick when workspace was last set (for derivation cooldown)
 global _KSub_FallbackMode := false
 
 ; Cache of window workspace assignments (persists even when windows leave komorebi)
@@ -533,7 +534,7 @@ _KSub_OnNotification(jsonLine) {
         _KSub_DiagLog("  Focus event resolved wsName='" wsName "'")
         _KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
         if (wsName != "") {
-            global _KSub_LastWorkspaceName
+            global _KSub_LastWorkspaceName, _KSub_LastWsUpdateTick
             ; Capture old workspace BEFORE updating (needed for move events)
             previousWsName := _KSub_LastWorkspaceName
 
@@ -541,6 +542,7 @@ _KSub_OnNotification(jsonLine) {
                 _KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
                 _KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
                 _KSub_LastWorkspaceName := wsName
+                _KSub_LastWsUpdateTick := A_TickCount
                 try WindowStore_SetCurrentWorkspace("", wsName)
             }
 
@@ -577,10 +579,12 @@ _KSub_OnNotification(jsonLine) {
     }
 
     ; Process full state to update ALL windows' workspace info
-    ; ALWAYS skip workspace update from notifications - the state's focused workspace index
-    ; can be stale (not yet updated by komorebi). Trust explicit workspace events only.
-    ; Workspace is derived from state only during initial poll (_KSub_InitialPoll).
-    _KSub_ProcessFullState(stateObj, true)
+    ; Skip workspace derivation only for events that already handled it explicitly
+    ; (e.g., FocusNamedWorkspace sets CurWS from event content).
+    ; Non-workspace events (FocusChange, Cloak, Uncloak) derive workspace from
+    ; state's ring.focused, which catches external workspace switches like
+    ; notification clicks that don't fire explicit workspace events.
+    _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
 
     ; Push changes to clients after ProcessFullState updates windows
     ; This ensures clients see workspace assignments from the komorebi state
@@ -590,13 +594,21 @@ _KSub_OnNotification(jsonLine) {
 ; Process full komorebi state and update all windows
 ; skipWorkspaceUpdate: set to true when called after a focus event (notification already handled workspace)
 _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
-    global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache
+    global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache, _KSub_LastWsUpdateTick
 
     if (stateText = "")
         return
 
-    ; Get focused monitor and workspace
-    focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateText)
+    ; Cooldown: after any workspace update (explicit or state-derived), skip re-derivation
+    ; for 2 seconds. Workspace switches produce bursts of 6-8 Cloak/Uncloak events that
+    ; each run expensive state parsing to arrive at the same workspace — pure waste.
+    ; The first event in a burst detects the change; subsequent events reuse the cached value.
+    if (!skipWorkspaceUpdate && _KSub_LastWsUpdateTick > 0
+        && A_TickCount - _KSub_LastWsUpdateTick < 2000) {
+        skipWorkspaceUpdate := true
+        _KSub_DiagLog("ProcessFullState: skip=cooldown (ws updated " (A_TickCount - _KSub_LastWsUpdateTick) "ms ago)")
+    }
+
     monitorsArr := _KSub_GetMonitorsArray(stateText)
 
     if (monitorsArr.Length = 0)
@@ -606,33 +618,28 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
     ; When skipWorkspaceUpdate=true, use _KSub_LastWorkspaceName (already set by focus event)
     ; Otherwise calculate from state
     currentWsName := ""
+    focusedWsIdx := "N/A"
+    focusedMonIdx := -1
     if (skipWorkspaceUpdate) {
-        ; Trust the value already set by focus event handler
+        ; Trust the value already set by focus event handler or cooldown cache
         currentWsName := _KSub_LastWorkspaceName
-    } else if (focusedMonIdx >= 0 && focusedMonIdx < monitorsArr.Length) {
-        monObj := monitorsArr[focusedMonIdx + 1]  ; AHK 1-based
-        focusedWsIdx := _KSub_GetFocusedWorkspaceIndex(monObj)
-        currentWsName := _KSub_GetWorkspaceNameByIndex(monObj, focusedWsIdx)
+    } else {
+        focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateText)
+        if (focusedMonIdx >= 0 && focusedMonIdx < monitorsArr.Length) {
+            monObj := monitorsArr[focusedMonIdx + 1]  ; AHK 1-based
+            focusedWsIdx := _KSub_GetFocusedWorkspaceIndex(monObj)
+            currentWsName := _KSub_GetWorkspaceNameByIndex(monObj, focusedWsIdx)
+        }
     }
 
-    wsIdxLog := (IsSet(focusedWsIdx) ? focusedWsIdx : "N/A")
-    _KSub_DiagLog("ProcessFullState: focusedMon=" focusedMonIdx " focusedWs=" wsIdxLog " currentWsName='" currentWsName "' lastWsName='" _KSub_LastWorkspaceName "' skipWsUpdate=" skipWorkspaceUpdate)
-    _KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" wsIdxLog " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
-
-    ; Extra debug: if not skipping, show why we derived this workspace
-    if (!skipWorkspaceUpdate && focusedMonIdx >= 0 && monitorsArr.Length > 0) {
-        monObj := monitorsArr[focusedMonIdx + 1]
-        ring := _KSub_GetWorkspacesRing(monObj)
-        ringFocused := _KSub_GetIntProp(ring, "focused")
-        _KSub_DiagLog("  state ring.focused=" ringFocused)
-    }
+    _KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" focusedWsIdx " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
 
     ; Only update current workspace if not skipping (initial poll or direct state query)
     ; Skip if called from notification handler since focus events already update workspace
     if (!skipWorkspaceUpdate && currentWsName != "" && currentWsName != _KSub_LastWorkspaceName) {
-        _KSub_DiagLog("  Updating workspace from '" _KSub_LastWorkspaceName "' to '" currentWsName "'")
         _KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
+        _KSub_LastWsUpdateTick := A_TickCount
         try WindowStore_SetCurrentWorkspace("", currentWsName)
     }
 
