@@ -10,6 +10,9 @@
 TrayIconClick(wParam, lParam, msg, hwnd) {
     ; 0x205 = WM_RBUTTONUP (right-click release)
     if (lParam = 0x205) {
+        ; Dismiss splash screen if still showing — user wants to interact with tray,
+        ; not wait for the splash duration to finish
+        HideSplashScreen()
         UpdateTrayMenu()
         A_TrayMenu.Show()  ; Must explicitly show the menu
         return 1  ; Prevent default handling (we showed it ourselves)
