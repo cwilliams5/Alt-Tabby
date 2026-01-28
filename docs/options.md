@@ -437,6 +437,7 @@ Debug options for troubleshooting. All disabled by default to minimize disk I/O 
 | `ProcPumpLog` | bool | `false` | Log process pump operations to %TEMP%\\tabby_procpump.log. Use when debugging process name resolution failures. |
 | `LauncherLog` | bool | `false` | Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems. |
 | `IPCLog` | bool | `false` | Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues. |
+| `PaintTimingLog` | bool | `false` | Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle. |
 
 ## Testing
 
@@ -460,4 +461,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-26 with 171 total settings.*
+*Generated on 2026-01-28 with 172 total settings.*

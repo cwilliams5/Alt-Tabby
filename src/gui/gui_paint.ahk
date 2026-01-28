@@ -2,11 +2,89 @@
 ; Handles all rendering: overlay painting, resources, scrollbar, footer, action buttons
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+; ========================= PAINT TIMING DEBUG LOG =========================
+; Dedicated log for investigating slow paint after extended idle
+; Log file: %TEMP%\tabby_paint_timing.log
+; Auto-trimmed to keep last ~50KB when exceeding 100KB
+
+global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
+global gPaint_SessionPaintCount := 0  ; How many paints this session
+global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
+global PAINT_LOG_MAX_BYTES := 102400   ; 100KB max before trim
+global PAINT_LOG_KEEP_BYTES := 51200   ; Keep last ~50KB after trim
+
+_Paint_Log(msg) {
+    global cfg, LOG_PATH_PAINT_TIMING
+    if (!cfg.DiagPaintTimingLog)
+        return
+    try {
+        timestamp := FormatTime(, "yyyy-MM-dd HH:mm:ss")
+        FileAppend(timestamp " | " msg "`n", LOG_PATH_PAINT_TIMING)
+    }
+}
+
+; Trim log file if it exceeds max size, keeping the tail
+_Paint_LogTrim() {
+    global cfg, LOG_PATH_PAINT_TIMING, PAINT_LOG_MAX_BYTES, PAINT_LOG_KEEP_BYTES
+    if (!cfg.DiagPaintTimingLog)
+        return
+    try {
+        if (!FileExist(LOG_PATH_PAINT_TIMING))
+            return
+        size := FileGetSize(LOG_PATH_PAINT_TIMING)
+        if (size <= PAINT_LOG_MAX_BYTES)
+            return
+        content := FileRead(LOG_PATH_PAINT_TIMING)
+        ; Keep the last KEEP_BYTES worth of characters (roughly)
+        keepChars := PAINT_LOG_KEEP_BYTES
+        if (StrLen(content) > keepChars) {
+            tail := SubStr(content, StrLen(content) - keepChars + 1)
+            ; Find first newline to avoid partial line at start
+            nlPos := InStr(tail, "`n")
+            if (nlPos > 0)
+                tail := SubStr(tail, nlPos + 1)
+            FileDelete(LOG_PATH_PAINT_TIMING)
+            FileAppend("... (log trimmed) ...`n" tail, LOG_PATH_PAINT_TIMING)
+        }
+    }
+}
+
+_Paint_LogStartSession() {
+    global cfg, LOG_PATH_PAINT_TIMING, gPaint_SessionPaintCount
+    gPaint_SessionPaintCount := 0
+    if (!cfg.DiagPaintTimingLog)
+        return
+    try {
+        ; Delete old log on fresh boot for clean slate
+        if (FileExist(LOG_PATH_PAINT_TIMING))
+            FileDelete(LOG_PATH_PAINT_TIMING)
+        FileAppend("========== NEW SESSION " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ==========`n", LOG_PATH_PAINT_TIMING)
+    }
+}
+
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {
     global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
+    global gPaint_LastPaintTick, gPaint_SessionPaintCount
+    global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH
+
+    ; ===== TIMING: Start =====
+    tTotal := A_TickCount
+    idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+    gPaint_SessionPaintCount += 1
+    paintNum := gPaint_SessionPaintCount
+
+    ; Log context for first paint or paint after long idle (>60s)
+    if (paintNum = 1 || idleDuration > 60000) {
+        iconCacheSize := 0
+        for _ in gGdip_IconCache
+            iconCacheSize += 1
+        resCount := gGdip_Res.Count
+        _Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
+        _Paint_Log("  Context: items=" gGUI_Items.Length " frozen=" gGUI_FrozenItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
+    }
 
     ; Use frozen items when in ACTIVE state, live items otherwise
     items := (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
@@ -27,13 +105,30 @@ GUI_Repaint() {
     phY := 0
     phW := 0
     phH := 0
-    Win_GetRectPhys(gGUI_BaseH, &phX, &phY, &phW, &phH)
 
+    ; ===== TIMING: GetRect =====
+    t1 := A_TickCount
+    Win_GetRectPhys(gGUI_BaseH, &phX, &phY, &phW, &phH)
+    tGetRect := A_TickCount - t1
+
+    ; ===== TIMING: GetScale =====
+    t1 := A_TickCount
     scale := Win_GetScaleForWindow(gGUI_BaseH)
     gGdip_CurScale := scale
+    tGetScale := A_TickCount - t1
 
+    ; ===== TIMING: EnsureBackbuffer =====
+    t1 := A_TickCount
     Gdip_EnsureBackbuffer(phW, phH)
+    tBackbuf := A_TickCount - t1
+
+    ; ===== TIMING: PaintOverlay (the big one) =====
+    t1 := A_TickCount
     GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale)
+    tPaintOverlay := A_TickCount - t1
+
+    ; ===== TIMING: Buffer setup =====
+    t1 := A_TickCount
 
     ; BLENDFUNCTION
     bf := Buffer(4, 0)
@@ -50,6 +145,11 @@ GUI_Repaint() {
     NumPut("Int", phX, ptDst, 0)
     NumPut("Int", phY, ptDst, 4)
 
+    tBuffers := A_TickCount - t1
+
+    ; ===== TIMING: UpdateLayeredWindow =====
+    t1 := A_TickCount
+
     ; Ensure WS_EX_LAYERED
     ex := DllCall("user32\GetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", -20, "ptr")
     if (!(ex & 0x80000)) {
@@ -61,7 +161,21 @@ GUI_Repaint() {
     DllCall("user32\UpdateLayeredWindow", "ptr", gGUI_OverlayH, "ptr", hdcScreen, "ptr", ptDst.Ptr, "ptr", sz.Ptr, "ptr", gGdip_BackHdc, "ptr", ptSrc.Ptr, "int", 0, "ptr", bf.Ptr, "uint", 0x2, "int")
     DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
 
+    tUpdateLayer := A_TickCount - t1
+
+    ; ===== TIMING: RevealBoth =====
+    t1 := A_TickCount
     GUI_RevealBoth()
+    tReveal := A_TickCount - t1
+
+    ; ===== TIMING: Total =====
+    tTotalMs := A_TickCount - tTotal
+    gPaint_LastPaintTick := A_TickCount
+
+    ; Log timing for first paint, paint after long idle, or slow paints (>100ms)
+    if (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100) {
+        _Paint_Log("  Timing: total=" tTotalMs "ms | getRect=" tGetRect " getScale=" tGetScale " backbuf=" tBackbuf " paintOverlay=" tPaintOverlay " buffers=" tBuffers " updateLayer=" tUpdateLayer " reveal=" tReveal)
+    }
 }
 
 GUI_RevealBoth() {
@@ -105,9 +219,16 @@ GUI_RevealBoth() {
 
 GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg
+    global gPaint_SessionPaintCount, gPaint_LastPaintTick
 
+    ; ===== TIMING: EnsureResources =====
+    tPO_Start := A_TickCount
+    t1 := A_TickCount
     GUI_EnsureResources(scale)
+    tPO_Resources := A_TickCount - t1
 
+    ; ===== TIMING: EnsureGraphics + Clear =====
+    t1 := A_TickCount
     g := Gdip_EnsureGraphics()
     if (!g) {
         return
@@ -115,6 +236,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     Gdip_Clear(g, 0x00000000)
     Gdip_FillRect(g, gGdip_Res["brHit"], 0, 0, wPhys, hPhys)
+    tPO_GraphicsClear := A_TickCount - t1
 
     scrollTop := gGUI_ScrollTop
 
@@ -222,6 +344,13 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         }
         Gdip_DrawCenteredText(g, cfg.GUI_EmptyListText, rectX, rectY, rectW, rectH, cfg.GUI_MainARGB, gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
     } else if (rowsToDraw > 0) {
+        ; ===== TIMING: Row loop start =====
+        tPO_RowsStart := A_TickCount
+        tPO_IconsTotal := 0
+        tPO_TextTotal := 0
+        iconCacheHits := 0
+        iconCacheMisses := 0
+
         start0 := Win_Wrap0(scrollTop, count)
         i := 0
         yRow := y
@@ -239,13 +368,27 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             ix := leftX
             iy := yRow + (RowH - ISize) // 2
 
+            ; ===== TIMING: Icon draw =====
+            tIcon := A_TickCount
             iconDrawn := false
+            iconWasCacheHit := false
             if (cur.HasOwnProp("iconHicon") && cur.iconHicon) {
+                ; Check if this will be a cache hit BEFORE drawing (for logging)
+                if (gGdip_IconCache.Has(cur.hwnd)) {
+                    cached := gGdip_IconCache[cur.hwnd]
+                    if (cached.hicon = cur.iconHicon && cached.pBmp)
+                        iconWasCacheHit := true
+                }
                 iconDrawn := Gdip_DrawCachedIcon(g, cur.hwnd, cur.iconHicon, ix, iy, ISize)
+                if (iconWasCacheHit)
+                    iconCacheHits += 1
+                else
+                    iconCacheMisses += 1
             }
             if (!iconDrawn) {
                 Gdip_FillEllipse(g, Gdip_ARGBFromIndex(idx1), ix, iy, ISize, ISize)
             }
+            tPO_IconsTotal += A_TickCount - tIcon
 
             fMainUse := isSel ? gGdip_Res["fMainHi"] : gGdip_Res["fMain"]
             fSubUse := isSel ? gGdip_Res["fSubHi"] : gGdip_Res["fSub"]
@@ -280,16 +423,32 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             yRow := yRow + RowH
             i := i + 1
         }
+        ; ===== TIMING: Row loop end =====
+        tPO_RowsTotal := A_TickCount - tPO_RowsStart
     }
 
     ; Scrollbar
+    t1 := A_TickCount
     if (count > rowsToDraw && rowsToDraw > 0) {
         GUI_DrawScrollbar(g, wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
     }
+    tPO_Scrollbar := A_TickCount - t1
 
     ; Footer
+    t1 := A_TickCount
     if (cfg.GUI_ShowFooter) {
         GUI_DrawFooter(g, wPhys, hPhys, scale)
+    }
+    tPO_Footer := A_TickCount - t1
+
+    ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
+    tPO_Total := A_TickCount - tPO_Start
+    idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+    if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
+        _Paint_Log("  PaintOverlay: total=" tPO_Total "ms | resources=" tPO_Resources " graphicsClear=" tPO_GraphicsClear " rows=" (IsSet(tPO_RowsTotal) ? tPO_RowsTotal : 0) " scrollbar=" tPO_Scrollbar " footer=" tPO_Footer)
+        if (IsSet(tPO_IconsTotal)) {
+            _Paint_Log("    Icons: totalTime=" tPO_IconsTotal "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
+        }
     }
 }
 
@@ -297,15 +456,29 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
 GUI_EnsureResources(scale) {
     global gGdip_Res, gGdip_ResScale, cfg
+    global gPaint_SessionPaintCount, gPaint_LastPaintTick
 
     if (Abs(gGdip_ResScale - scale) < 0.001 && gGdip_Res.Count) {
+        ; Resources exist and scale unchanged - skip recreation
         return
     }
 
+    ; Log resource recreation (this is potentially slow)
+    idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+    _Paint_Log("  ** RECREATING RESOURCES (oldScale=" gGdip_ResScale " newScale=" scale " resCount=" gGdip_Res.Count " idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ")")
+
+    tRes_Start := A_TickCount
+
+    t1 := A_TickCount
     Gdip_DisposeResources()
+    tRes_Dispose := A_TickCount - t1
+
+    t1 := A_TickCount
     Gdip_Startup()
+    tRes_Startup := A_TickCount - t1
 
     ; Brushes
+    t1 := A_TickCount
     brushes := [
         ["brMain", cfg.GUI_MainARGB],
         ["brMainHi", cfg.GUI_MainARGBHi],
@@ -322,8 +495,10 @@ GUI_EnsureResources(scale) {
         DllCall("gdiplus\GdipCreateSolidFill", "int", b[2], "ptr*", &br)
         gGdip_Res[b[1]] := br
     }
+    tRes_Brushes := A_TickCount - t1
 
     ; Fonts
+    t1 := A_TickCount
     UnitPixel := 2
 
     fonts := [
@@ -346,8 +521,10 @@ GUI_EnsureResources(scale) {
         gGdip_Res[f[4]] := fam
         gGdip_Res[f[5]] := font
     }
+    tRes_Fonts := A_TickCount - t1
 
     ; String formats
+    t1 := A_TickCount
     StringAlignmentNear := 0
     StringAlignmentCenter := 1
     StringAlignmentFar := 2
@@ -372,8 +549,13 @@ GUI_EnsureResources(scale) {
         DllCall("gdiplus\GdipSetStringFormatLineAlign", "ptr", fmt, "int", fm[3])
         gGdip_Res[fm[1]] := fmt
     }
+    tRes_Formats := A_TickCount - t1
 
     gGdip_ResScale := scale
+
+    ; Log resource recreation timing
+    tRes_Total := A_TickCount - tRes_Start
+    _Paint_Log("    Resources: total=" tRes_Total "ms | dispose=" tRes_Dispose " startup=" tRes_Startup " brushes=" tRes_Brushes " fonts=" tRes_Fonts " formats=" tRes_Formats)
 }
 
 ; ========================= ACTION BUTTONS =========================

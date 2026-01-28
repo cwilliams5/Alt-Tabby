@@ -102,6 +102,9 @@ GUI_Main_Init() {
     ; Start debug event log (if enabled)
     _GUI_LogEventStartup()
 
+    ; Start paint timing debug log (if enabled in config)
+    _Paint_LogStartSession()
+
     Win_InitDpiAwareness()
     Gdip_Startup()
 
@@ -255,6 +258,13 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     gGUI_Sel := 1
     gGUI_ScrollTop := 0
     GUI_CreateOverlay()
+
+    ; Pre-create GDI+ resources (fonts, brushes, string formats)
+    ; GdipCreateFontFamilyFromName takes ~1.5s on first call (GDI+ font enumeration).
+    ; Do it now at startup rather than deferring to first paint.
+    scale := Win_GetScaleForWindow(gGUI_BaseH)
+    gGdip_CurScale := scale
+    GUI_EnsureResources(scale)
 
     ; Start hidden
     gGUI_OverlayVisible := false

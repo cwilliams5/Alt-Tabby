@@ -58,6 +58,12 @@ All in `[Diagnostics]` section of config.ini. Disabled by default.
 - **Use when**: Store-GUI communication issues
 - **Enable**: `IPCLog=true`
 
+## DiagPaintTimingLog
+- **File**: `%TEMP%\tabby_paint_timing.log`
+- **Use when**: Slow overlay rendering after extended idle, paint performance issues
+- **Enable**: `PaintTimingLog=true`
+- **Details**: Logs per-paint step timings (getRect, getScale, backbuf, paintOverlay, updateLayer). Logs first paint, paint after 60s+ idle, and any paint >100ms. Auto-trimmed to 100KB (keeps last 50KB). Log deleted on fresh boot.
+
 ## Store_LogError (Always Active)
 - **File**: `%TEMP%\tabby_store_error.log`
 - No config flag - errors always logged

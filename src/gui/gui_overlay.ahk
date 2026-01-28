@@ -53,9 +53,12 @@ GUI_ShowOverlay() {
     GUI_StartHoverPolling()
 }
 
+global gGUI_HideCount := 0  ; Track hides for periodic log trim
+
 GUI_HideOverlay() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Overlay, gGUI_Revealed
     global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking
+    global gGUI_HideCount
 
     if (!gGUI_OverlayVisible) {
         return
@@ -77,6 +80,11 @@ GUI_HideOverlay() {
     gGUI_HoverRow := 0
     gGUI_HoverBtn := ""
     gGUI_MouseTracking := false
+
+    ; Periodically trim paint timing log (every 10 hide cycles)
+    gGUI_HideCount += 1
+    if (Mod(gGUI_HideCount, 10) = 0)
+        _Paint_LogTrim()
 }
 
 ; ========================= LAYOUT CALCULATIONS =========================

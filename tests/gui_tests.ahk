@@ -76,6 +76,7 @@ global cfg := {
     GUI_ScrollKeepHighlightOnTop: false,
     DebugAltTabTooltips: false,
     DiagEventLog: false,  ; Disable event logging during tests
+    DiagPaintTimingLog: false,  ; Disable paint timing log during tests
     DiagProcPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
@@ -109,6 +110,16 @@ GUI_ComputeRowsToShow(n) {
 GUI_HideOverlay() {
     global gGUI_OverlayVisible
     gGUI_OverlayVisible := false
+}
+
+; Paint timing log mocks (gui_paint.ahk not included in tests)
+global gPaint_LastPaintTick := 0
+global gPaint_SessionPaintCount := 0
+_Paint_Log(msg) {
+}
+_Paint_LogTrim() {
+}
+_Paint_LogStartSession() {
 }
 
 Win_DwmFlush() {
