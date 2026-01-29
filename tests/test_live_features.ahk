@@ -457,6 +457,16 @@ RunLiveTests_Features() {
             hello3 := { type: IPC_MSG_HELLO, clientId: "multi_3", projectionOpts: { sort: "Title", columns: "hwndsOnly" } }
             IPC_PipeClient_Send(client3, JSON.Dump(hello3))
 
+            ; Reset flags AFTER sending HELLOs to discard any messages received
+            ; between connect and HELLO (shared store may push to connected clients
+            ; before they send HELLO, using default items format instead of hwndsOnly)
+            gMultiClient1Response := ""
+            gMultiClient1Received := false
+            gMultiClient2Response := ""
+            gMultiClient2Received := false
+            gMultiClient3Response := ""
+            gMultiClient3Received := false
+
             ; Wait for all clients to receive their initial snapshots
             ; The store sends snapshot immediately after HELLO, respecting projection options
             waitStart := A_TickCount
