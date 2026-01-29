@@ -264,7 +264,7 @@ RunLiveTests_Core() {
 
         ; Send projection request
         reqMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
-        IPC_PipeClient_Send(gTestClient, JXON_Dump(reqMsg))
+        IPC_PipeClient_Send(gTestClient, JSON.Dump(reqMsg))
 
         ; Wait for response (with timeout)
         waitStart := A_TickCount
@@ -274,7 +274,7 @@ RunLiveTests_Core() {
 
         if (gTestResponseReceived) {
             try {
-                respObj := JXON_Load(gTestResponse)
+                respObj := JSON.Load(gTestResponse)
                 hasItems := respObj.Has("payload") && respObj["payload"].Has("items")
                 AssertTrue(hasItems, "IPC response contains items array")
                 if (hasItems) {
@@ -358,11 +358,11 @@ RunLiveTests_Core() {
 
             ; Send hello like the viewer does
             helloMsg := { type: IPC_MSG_HELLO, clientId: "test", wants: { deltas: true } }
-            IPC_PipeClient_Send(realClient, JXON_Dump(helloMsg))
+            IPC_PipeClient_Send(realClient, JSON.Dump(helloMsg))
 
             ; Send projection request
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
-            IPC_PipeClient_Send(realClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(realClient, JSON.Dump(projMsg))
 
             ; Wait for response
             waitStart := A_TickCount
@@ -374,7 +374,7 @@ RunLiveTests_Core() {
                 Log("PASS: Received response from real store")
                 TestPassed++
                 try {
-                    respObj := JXON_Load(gRealStoreResponse)
+                    respObj := JSON.Load(gRealStoreResponse)
                     if (respObj.Has("payload") && respObj["payload"].Has("items")) {
                         itemCount := respObj["payload"]["items"].Length
                         Log("  Real store returned " itemCount " items")
@@ -443,11 +443,11 @@ RunLiveTests_Core() {
 
             ; Send hello like real viewer
             helloMsg := { type: IPC_MSG_HELLO, clientId: "test_viewer", wants: { deltas: true } }
-            IPC_PipeClient_Send(viewerClient, JXON_Dump(helloMsg))
+            IPC_PipeClient_Send(viewerClient, JSON.Dump(helloMsg))
 
             ; Send projection request with MRU sort
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "MRU", columns: "items" } }
-            IPC_PipeClient_Send(viewerClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(viewerClient, JSON.Dump(projMsg))
 
             ; Wait for response
             waitStart := A_TickCount
@@ -460,7 +460,7 @@ RunLiveTests_Core() {
                 TestPassed++
 
                 try {
-                    respObj := JXON_Load(gViewerTestResponse)
+                    respObj := JSON.Load(gViewerTestResponse)
                     if (respObj.Has("payload") && respObj["payload"].Has("items")) {
                         items := respObj["payload"]["items"]
                         if (items.Length > 0) {
@@ -551,48 +551,62 @@ RunLiveTests_Core() {
             Log("PASS: komorebic state returned valid JSON")
             TestPassed++
 
-            ; Count workspaces
-            wsCount := 0
-            posWs := 1
-            while (p := RegExMatch(stateTxt, '"name"\s*:\s*"([^"]+)"', &mw, posWs)) {
-                ; Skip monitor names (they have "device" nearby)
-                if (!InStr(SubStr(stateTxt, Max(1, p - 100), 200), '"device"'))
-                    wsCount++
-                posWs := mw.Pos(0) + mw.Len(0)
-            }
-            Log("  Found " wsCount " workspace names in komorebi state")
-
-            ; Count hwnds
-            hwndCount := 0
-            posH := 1
-            while (p := RegExMatch(stateTxt, '"hwnd"\s*:\s*(\d+)', &mh, posH)) {
-                hwndCount++
-                posH := mh.Pos(0) + mh.Len(0)
-            }
-            Log("  Found " hwndCount " window hwnds in komorebi state")
-
-            if (hwndCount > 0) {
-                Log("PASS: Komorebi has managed windows")
-                TestPassed++
-
-                ; Test _KSub_FindWorkspaceByHwnd (include komorebi_sub for the function)
-                ; Get first hwnd from state
+            ; Parse state JSON with cJson
+            stateObj := ""
+            try stateObj := JSON.Load(stateTxt)
+            if !(stateObj is Map) {
+                Log("FAIL: Could not parse komorebic state JSON")
+                TestErrors++
+            } else {
+                ; Count workspaces and hwnds from parsed structure
+                wsCount := 0
+                hwndCount := 0
                 firstHwnd := 0
-                if RegExMatch(stateTxt, '"hwnd"\s*:\s*(\d+)', &mFirst)
-                    firstHwnd := Integer(mFirst[1])
-
-                if (firstHwnd > 0) {
-                    wsName := _KSub_FindWorkspaceByHwnd(stateTxt, firstHwnd)
-                    if (wsName != "") {
-                        Log("PASS: _KSub_FindWorkspaceByHwnd returned '" wsName "' for hwnd " firstHwnd)
-                        TestPassed++
-                    } else {
-                        Log("FAIL: _KSub_FindWorkspaceByHwnd returned empty for hwnd " firstHwnd)
-                        TestErrors++
+                monitorsArr := _KSub_GetMonitorsArray(stateObj)
+                for _, monObj in monitorsArr {
+                    for _, wsObj in _KSub_GetWorkspacesArray(monObj) {
+                        wsName := _KSafe_Str(wsObj, "name")
+                        if (wsName != "")
+                            wsCount++
+                        ; Count hwnds in containers
+                        if (wsObj is Map && wsObj.Has("containers")) {
+                            for _, cont in _KSafe_Elements(wsObj["containers"]) {
+                                if !(cont is Map)
+                                    continue
+                                if (cont.Has("windows")) {
+                                    for _, win in _KSafe_Elements(cont["windows"]) {
+                                        if (win is Map && win.Has("hwnd")) {
+                                            hwndCount++
+                                            if (!firstHwnd)
+                                                firstHwnd := _KSafe_Int(win, "hwnd")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            } else {
-                Log("SKIP: No windows managed by komorebi")
+                Log("  Found " wsCount " workspace names in komorebi state")
+                Log("  Found " hwndCount " window hwnds in komorebi state")
+
+                if (hwndCount > 0) {
+                    Log("PASS: Komorebi has managed windows")
+                    TestPassed++
+
+                    ; Test _KSub_FindWorkspaceByHwnd with parsed state
+                    if (firstHwnd > 0) {
+                        wsName := _KSub_FindWorkspaceByHwnd(stateObj, firstHwnd)
+                        if (wsName != "") {
+                            Log("PASS: _KSub_FindWorkspaceByHwnd returned '" wsName "' for hwnd " firstHwnd)
+                            TestPassed++
+                        } else {
+                            Log("FAIL: _KSub_FindWorkspaceByHwnd returned empty for hwnd " firstHwnd)
+                            TestErrors++
+                        }
+                    }
+                } else {
+                    Log("SKIP: No windows managed by komorebi")
+                }
             }
         } else {
             Log("SKIP: komorebic state empty or invalid (komorebi may not be running)")
@@ -613,20 +627,38 @@ RunLiveTests_Core() {
     if (directTxt = "") {
         Log("  [WS E2E] WARNING: komorebic state returned empty")
     } else {
-        ; Count windows with workspace data
+        ; Parse and count windows from parsed structure
+        directObj := ""
+        try directObj := JSON.Load(directTxt)
         directHwnds := 0
-        directPos := 1
-        while (p := RegExMatch(directTxt, '"hwnd"\s*:\s*(\d+)', &dm, directPos)) {
-            directHwnds++
-            directPos := dm.Pos(0) + dm.Len(0)
+        firstTestHwnd := 0
+        if (directObj is Map) {
+            for _, monObj in _KSub_GetMonitorsArray(directObj) {
+                for _, wsObj in _KSub_GetWorkspacesArray(monObj) {
+                    if !(wsObj is Map) || !wsObj.Has("containers")
+                        continue
+                    for _, cont in _KSafe_Elements(wsObj["containers"]) {
+                        if !(cont is Map)
+                            continue
+                        if (cont.Has("windows")) {
+                            for _, win in _KSafe_Elements(cont["windows"]) {
+                                if (win is Map && win.Has("hwnd")) {
+                                    directHwnds++
+                                    if (!firstTestHwnd)
+                                        firstTestHwnd := _KSafe_Int(win, "hwnd")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         Log("  [WS E2E] Direct komorebic state has " directHwnds " hwnds")
 
         ; Test lookup for a window
-        if (directHwnds > 0 && RegExMatch(directTxt, '"hwnd"\s*:\s*(\d+)', &dm2)) {
-            testHwnd := Integer(dm2[1])
-            testWs := _KSub_FindWorkspaceByHwnd(directTxt, testHwnd)
-            Log("  [WS E2E] Direct lookup hwnd " testHwnd " -> workspace '" testWs "'")
+        if (directHwnds > 0 && firstTestHwnd > 0) {
+            testWs := _KSub_FindWorkspaceByHwnd(directObj, firstTestHwnd)
+            Log("  [WS E2E] Direct lookup hwnd " firstTestHwnd " -> workspace '" testWs "'")
         }
     }
 
@@ -667,11 +699,11 @@ RunLiveTests_Core() {
 
             ; Send hello
             helloMsg := { type: IPC_MSG_HELLO, clientId: "ws_e2e_test", wants: { deltas: false } }
-            IPC_PipeClient_Send(wsE2EClient, JXON_Dump(helloMsg))
+            IPC_PipeClient_Send(wsE2EClient, JSON.Dump(helloMsg))
 
             ; Request projection with workspace data
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items", includeMinimized: true, includeCloaked: true } }
-            IPC_PipeClient_Send(wsE2EClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(wsE2EClient, JSON.Dump(projMsg))
 
             ; Wait for response
             waitStart := A_TickCount
@@ -681,7 +713,7 @@ RunLiveTests_Core() {
 
             if (gWsE2EReceived) {
                 try {
-                    respObj := JXON_Load(gWsE2EResponse)
+                    respObj := JSON.Load(gWsE2EResponse)
                     if (respObj.Has("payload") && respObj["payload"].Has("items")) {
                         items := respObj["payload"]["items"]
                         Log("  E2E test received " items.Length " items")
@@ -783,7 +815,7 @@ RunLiveTests_Core() {
 
             ; Send hello to register as client
             helloMsg := { type: IPC_MSG_HELLO, clientId: "hb_test", wants: { deltas: true } }
-            IPC_PipeClient_Send(hbClient, JXON_Dump(helloMsg))
+            IPC_PipeClient_Send(hbClient, JSON.Dump(helloMsg))
 
             ; Wait for heartbeats (store sends every 5s by default, we wait up to 12s)
             Log("  Waiting for heartbeat messages...")
@@ -858,7 +890,7 @@ RunLiveTests_Core() {
 
             ; Send producer_status_request (new IPC message type)
             statusReqMsg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
-            IPC_PipeClient_Send(prodClient, JXON_Dump(statusReqMsg))
+            IPC_PipeClient_Send(prodClient, JSON.Dump(statusReqMsg))
 
             ; Wait for producer_status response
             waitStart := A_TickCount

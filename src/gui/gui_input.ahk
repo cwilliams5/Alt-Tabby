@@ -253,7 +253,7 @@ GUI_PerformAction(action, idx1 := 0) {
         ; Send reload message to store via IPC
         if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe) {
             msg := { type: IPC_MSG_RELOAD_BLACKLIST }
-            IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(msg))
+            IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(msg))
         }
 
         ; Remove item from local display

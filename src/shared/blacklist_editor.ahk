@@ -205,7 +205,7 @@ _BE_SendReloadIPC() {
         client := IPC_PipeClient_Connect(pipeName, (*) => 0)
         if (client.hPipe) {
             msg := { type: IPC_MSG_RELOAD_BLACKLIST }
-            IPC_PipeClient_Send(client, JXON_Dump(msg))
+            IPC_PipeClient_Send(client, JSON.Dump(msg))
             Sleep(100)  ; Give store time to process
             IPC_PipeClient_Close(client)
             return true

@@ -18,7 +18,7 @@ A_MenuMaskKey := "vkE8"
 ; ========================= INCLUDES (SHARED UTILITIES) =========================
 ; Shared utilities first (use *i for unified exe compatibility)
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
-#Include *i %A_ScriptDir%\..\shared\json.ahk
+#Include *i %A_ScriptDir%\..\shared\cjson.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 
@@ -119,7 +119,7 @@ GUI_Main_Init() {
     if (gGUI_StoreClient.hPipe) {
         ; Request deltas so we stay up to date like the viewer
         hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-        IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(hello))
+        IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
         gGUI_LastMsgTick := A_TickCount  ; Initialize last message time
     }
 
@@ -163,7 +163,7 @@ _GUI_StoreHealthCheck() {
             if (gGUI_StoreClient.hPipe) {
                 ; Reconnected successfully
                 hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-                IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(hello))
+                IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
                 gGUI_LastMsgTick := A_TickCount
                 gGUI_ReconnectAttempts := 0
                 gGUI_StoreConnected := true
@@ -190,7 +190,7 @@ _GUI_StoreHealthCheck() {
             gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
             if (gGUI_StoreClient.hPipe) {
                 hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-                IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(hello))
+                IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
                 gGUI_LastMsgTick := A_TickCount
                 gGUI_StoreConnected := true
                 ToolTip("Alt-Tabby: Store restarted and connected")

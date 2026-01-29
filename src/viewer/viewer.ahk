@@ -4,7 +4,7 @@
 
 ; Includes: Use *i (ignore if not found) for unified exe compatibility
 #Include *i ..\shared\config_loader.ahk
-#Include *i ..\shared\json.ahk
+#Include *i ..\shared\cjson.ahk
 #Include *i ..\shared\ipc_pipe.ahk
 #Include *i ..\shared\blacklist.ahk
 
@@ -101,7 +101,7 @@ Viewer_OnMessage(line, hPipe := 0) {
     _Viewer_Log("raw: " SubStr(line, 1, 300))
     obj := ""
     try {
-        obj := JXON_Load(line)
+        obj := JSON.Load(line)
     } catch as e {
         _Viewer_Log("JSON parse error: " e.Message)
         return
@@ -213,14 +213,14 @@ Viewer_OnMessage(line, hPipe := 0) {
 _Viewer_SendHello() {
     global gViewer_Client, IPC_MSG_HELLO
     msg := { type: IPC_MSG_HELLO, clientId: "viewer", wants: { deltas: true }, projectionOpts: _Viewer_ProjectionOpts() }
-    IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
 }
 
 _Viewer_RequestProjection() {
     global gViewer_Client, gViewer_LastRev, IPC_MSG_PROJECTION_REQUEST
     gViewer_LastRev := -1  ; Reset to allow next response
     msg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: _Viewer_ProjectionOpts() }
-    IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
 }
 
 _Viewer_RequestProducerStatus() {
@@ -228,7 +228,7 @@ _Viewer_RequestProducerStatus() {
     if (!gViewer_Client || !gViewer_Client.hPipe)
         return
     msg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
-    IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
 }
 
 ; Update producer state from IPC response (not from meta anymore)
@@ -429,7 +429,7 @@ _Viewer_SendProjectionOpts() {
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe)
         return
     msg := { type: IPC_MSG_SET_PROJECTION_OPTS, projectionOpts: _Viewer_ProjectionOpts() }
-    IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
 }
 
 _Viewer_UpdateList(items) {
@@ -922,7 +922,7 @@ _Viewer_OnBlacklist(lv, row) {
     ; Send reload message to store
     if (IsObject(gViewer_Client) && gViewer_Client.hPipe) {
         msg := { type: IPC_MSG_RELOAD_BLACKLIST }
-        IPC_PipeClient_Send(gViewer_Client, JXON_Dump(msg))
+        IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
     }
 
     _Viewer_ShowToast(toastMsg)

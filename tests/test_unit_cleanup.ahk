@@ -618,7 +618,7 @@ RunUnitTests_Cleanup() {
 
             requiredIncludes := [
                 "config_loader.ahk",
-                "json.ahk",
+                "cjson.ahk",
                 "ipc_pipe.ahk",
                 "blacklist.ahk",
                 "process_utils.ahk",

@@ -172,7 +172,7 @@ global gGUI_Overlay := _MockGui()
 ; These contain the REAL logic we want to test
 ; ============================================================
 
-#Include %A_ScriptDir%\..\src\shared\json.ahk
+#Include %A_ScriptDir%\..\src\shared\cjson.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_input.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_workspace.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_store.ahk
@@ -237,7 +237,7 @@ CreateTestItems(count, currentWSCount := -1) {
 ; Simulate a server projection response (for UseCurrentWSProjection=true tests)
 SimulateServerResponse(items) {
     global gGUI_AwaitingToggleProjection
-    projMsg := JXON_Dump({ type: IPC_MSG_PROJECTION, rev: A_TickCount, payload: { items: items }})
+    projMsg := JSON.Dump({ type: IPC_MSG_PROJECTION, rev: A_TickCount, payload: { items: items }})
     GUI_OnStoreMessage(projMsg)
 }
 
@@ -346,7 +346,7 @@ RunGUITests() {
     GUI_AssertEq(gMockIPCMessages.Length, 1, "Prewarm request sent")
     if (gMockIPCMessages.Length > 0) {
         try {
-            msg := JXON_Load(gMockIPCMessages[1])
+            msg := JSON.Load(gMockIPCMessages[1])
             GUI_AssertEq(msg["type"], IPC_MSG_SNAPSHOT_REQUEST, "Prewarm is snapshot request")
         } catch as e {
             GUI_Log("FAIL: JSON parse error in prewarm test: " e.Message)
@@ -375,7 +375,7 @@ RunGUITests() {
     gGUI_OverlayVisible := true
 
     ; Send delta with new items
-    deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(10) } })
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(10) } })
     GUI_OnStoreMessage(deltaMsg)
 
     GUI_AssertEq(gGUI_FrozenItems.Length, 5, "Frozen list unchanged (delta blocked)")
@@ -385,7 +385,7 @@ RunGUITests() {
     ResetGUIState()
     cfg.FreezeWindowList := false
     ; Simulate realistic flow: items arrive via snapshot before Alt+Tab
-    snapshotMsg := JXON_Dump({ type: IPC_MSG_SNAPSHOT, rev: 5, payload: { items: CreateTestItems(5) } })
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 5, payload: { items: CreateTestItems(5) } })
     GUI_OnStoreMessage(snapshotMsg)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -393,7 +393,7 @@ RunGUITests() {
     gGUI_OverlayVisible := true
 
     ; Send delta with new items (items 1-5 update, 6-8 add)
-    deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(8) } })
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(8) } })
     GUI_OnStoreMessage(deltaMsg)
 
     GUI_AssertEq(gGUI_FrozenItems.Length, 8, "Frozen list updated (live mode)")
@@ -458,7 +458,7 @@ RunGUITests() {
     ; Verify request has currentWorkspaceOnly
     if (gMockIPCMessages.Length > msgCountBefore) {
         try {
-            lastMsg := JXON_Load(gMockIPCMessages[gMockIPCMessages.Length])
+            lastMsg := JSON.Load(gMockIPCMessages[gMockIPCMessages.Length])
             GUI_AssertEq(lastMsg["type"], IPC_MSG_PROJECTION_REQUEST, "Request type is projection_request")
             opts := lastMsg["projectionOpts"]
             hasWSFlag := (opts is Map) ? opts.Has("currentWorkspaceOnly") : opts.HasOwnProp("currentWorkspaceOnly")
@@ -570,7 +570,7 @@ RunGUITests() {
     GUI_AssertEq(gGUI_AwaitingToggleProjection, false, "No toggle pending")
 
     ; Send projection (should be blocked)
-    projMsg := JXON_Dump({ type: IPC_MSG_PROJECTION, rev: 30, payload: { items: CreateTestItems(20) } })
+    projMsg := JSON.Dump({ type: IPC_MSG_PROJECTION, rev: 30, payload: { items: CreateTestItems(20) } })
     GUI_OnStoreMessage(projMsg)
 
     GUI_AssertEq(gGUI_FrozenItems.Length, 5, "Frozen items unchanged (projection blocked)")
@@ -597,7 +597,7 @@ RunGUITests() {
         cfg.UseCurrentWSProjection := combo.wsProj
         cfg.AltTabPrewarmOnAlt := combo.prewarm
         ; Simulate realistic flow: items arrive via snapshot before Alt+Tab
-        snapshotMsg := JXON_Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(8, 3) } })
+        snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(8, 3) } })
         GUI_OnStoreMessage(snapshotMsg)
         gGUI_WorkspaceMode := "all"
 
@@ -622,7 +622,7 @@ RunGUITests() {
 
         ; Send delta during ACTIVE state
         deltaItems := CreateTestItems(12, 5)  ; Now 12 items
-        deltaMsg := JXON_Dump({ type: IPC_MSG_DELTA, rev: 50, payload: { upserts: deltaItems } })
+        deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 50, payload: { upserts: deltaItems } })
         GUI_OnStoreMessage(deltaMsg)
 
         if (combo.freeze) {
@@ -782,7 +782,7 @@ RunGUITests() {
 
     ; Delta removes items, list shrinks to 5
     smallerItems := CreateTestItems(5, 2)
-    deltaMsg := JXON_Dump({ type: IPC_MSG_SNAPSHOT, rev: 60, payload: { items: smallerItems } })
+    deltaMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 60, payload: { items: smallerItems } })
     GUI_OnStoreMessage(deltaMsg)
 
     ; Selection should be clamped to new list size

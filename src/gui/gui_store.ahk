@@ -20,7 +20,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
 
     obj := ""
     try {
-        obj := JXON_Load(line)
+        obj := JSON.Load(line)
     } catch as err {
         ; Log malformed JSON when diagnostics enabled (helps debug IPC issues)
         preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
@@ -413,7 +413,7 @@ GUI_RequestSnapshot() {
         return
     }
     req := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-    IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(req))
+    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req))
 }
 
 ; Request projection with optional workspace filtering (for UseCurrentWSProjection mode)
@@ -428,5 +428,5 @@ GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
     }
     req := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: opts }
     gGUI_AwaitingToggleProjection := true  ; Flag to allow this response during ACTIVE state
-    IPC_PipeClient_Send(gGUI_StoreClient, JXON_Dump(req))
+    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req))
 }

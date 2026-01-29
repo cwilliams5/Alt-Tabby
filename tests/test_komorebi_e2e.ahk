@@ -21,7 +21,7 @@ Log("=== Komorebi E2E Test " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
 
 ; Include shared modules
 #Include %A_ScriptDir%\..\src\shared\config.ahk
-#Include %A_ScriptDir%\..\src\shared\json.ahk
+#Include %A_ScriptDir%\..\src\shared\cjson.ahk
 #Include %A_ScriptDir%\..\src\shared\ipc_pipe.ahk
 #Include %A_ScriptDir%\..\src\store\windowstore.ahk
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
@@ -46,8 +46,18 @@ if (stateText = "") {
 Log("PASS: Got komorebic state (" StrLen(stateText) " bytes)")
 TestPassed++
 
-; Parse monitors and workspaces
-monitorsArr := _KSub_GetMonitorsArray(stateText)
+; Parse state JSON once (cJson)
+stateObj := ""
+try stateObj := JSON.Load(stateText)
+if !(stateObj is Map) {
+    Log("FAIL: Could not parse komorebic state JSON")
+    ExitApp(1)
+}
+Log("PASS: Parsed komorebic state JSON")
+TestPassed++
+
+; Navigate parsed state
+monitorsArr := _KSub_GetMonitorsArray(stateObj)
 if (monitorsArr.Length = 0) {
     Log("FAIL: No monitors found in komorebic state")
     ExitApp(1)
@@ -64,19 +74,28 @@ for mi, monObj in monitorsArr {
     Log("  Monitor " (mi-1) ": " wsArr.Length " workspaces")
 
     for wi, wsObj in wsArr {
-        wsName := _KSub_GetStringProp(wsObj, "name")
+        wsName := _KSafe_Str(wsObj, "name")
         if (wsName = "")
             continue
 
-        ; Get containers and count hwnds
-        containersText := _KSub_ExtractObjectByKey(wsObj, "containers")
+        ; Get containers and count hwnds from parsed structure
         hwnds := []
-        if (containersText != "") {
-            pos := 1
-            hwndMatch := 0
-            while (p := RegExMatch(containersText, '"hwnd"\s*:\s*(\d+)', &hwndMatch, pos)) {
-                hwnds.Push(Integer(hwndMatch[1]))
-                pos := hwndMatch.Pos(0) + hwndMatch.Len(0)
+        if (wsObj is Map && wsObj.Has("containers")) {
+            containersRing := wsObj["containers"]
+            for _, cont in _KSafe_Elements(containersRing) {
+                if !(cont is Map)
+                    continue
+                if (cont.Has("windows")) {
+                    for _, win in _KSafe_Elements(cont["windows"]) {
+                        if (win is Map && win.Has("hwnd"))
+                            hwnds.Push(_KSafe_Int(win, "hwnd"))
+                    }
+                }
+                if (cont.Has("window")) {
+                    winObj := cont["window"]
+                    if (winObj is Map && winObj.Has("hwnd"))
+                        hwnds.Push(_KSafe_Int(winObj, "hwnd"))
+                }
             }
         }
 
@@ -99,7 +118,7 @@ if (workspaceData.Count > 1) {
 }
 
 ; Get current workspace
-focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateText)
+focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateObj)
 currentWsName := ""
 if (focusedMonIdx >= 0 && focusedMonIdx < monitorsArr.Length) {
     monObj := monitorsArr[focusedMonIdx + 1]
@@ -143,7 +162,7 @@ TestPassed++
 
 ; Send hello
 helloMsg := { type: IPC_MSG_HELLO, clientId: "e2e_test", wants: { deltas: false } }
-IPC_PipeClient_Send(testClient, JXON_Dump(helloMsg))
+IPC_PipeClient_Send(testClient, JSON.Dump(helloMsg))
 
 ; Request projection with ALL windows (includeCloaked = true)
 projMsg := {
@@ -156,7 +175,7 @@ projMsg := {
         currentWorkspaceOnly: false
     }
 }
-IPC_PipeClient_Send(testClient, JXON_Dump(projMsg))
+IPC_PipeClient_Send(testClient, JSON.Dump(projMsg))
 
 ; Wait for response
 waitStart := A_TickCount
@@ -176,7 +195,7 @@ TestPassed++
 
 ; Parse and analyze projection
 try {
-    respObj := JXON_Load(gTestResponse)
+    respObj := JSON.Load(gTestResponse)
     items := respObj["payload"]["items"]
     meta := respObj["payload"]["meta"]
 
@@ -304,7 +323,7 @@ if (targetWorkspace = "") {
     ; Request new projection
     gTestResponse := ""
     gTestReceived := false
-    IPC_PipeClient_Send(testClient, JXON_Dump(projMsg))
+    IPC_PipeClient_Send(testClient, JSON.Dump(projMsg))
 
     waitStart := A_TickCount
     while (!gTestReceived && (A_TickCount - waitStart) < 5000) {
@@ -313,7 +332,7 @@ if (targetWorkspace = "") {
 
     if (gTestReceived) {
         try {
-            respObj2 := JXON_Load(gTestResponse)
+            respObj2 := JSON.Load(gTestResponse)
             meta2 := respObj2["payload"]["meta"]
             items2 := respObj2["payload"]["items"]
 

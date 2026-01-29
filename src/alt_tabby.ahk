@@ -106,7 +106,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 #Include config_loader.ahk
 #Include config_editor.ahk
 #Include blacklist_editor.ahk
-#Include json.ahk
+#Include cjson.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
 #Include setup_utils.ahk

@@ -6,7 +6,7 @@
 ; Logs to file instead of popups
 
 #Include %A_ScriptDir%\..\src\shared\config.ahk
-#Include %A_ScriptDir%\..\src\shared\json.ahk
+#Include %A_ScriptDir%\..\src\shared\cjson.ahk
 #Include %A_ScriptDir%\..\src\shared\ipc_pipe.ahk
 
 global gDebugResponse := ""
@@ -38,14 +38,14 @@ Log("Connected to store")
 
 ; Send hello
 helloMsg := { type: IPC_MSG_HELLO, clientId: "debug", wants: { deltas: false } }
-IPC_PipeClient_Send(client, JXON_Dump(helloMsg))
+IPC_PipeClient_Send(client, JSON.Dump(helloMsg))
 Log("Sent hello")
 
 Sleep(200)
 
 ; Send projection request
 projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items", includeMinimized: true, includeCloaked: true } }
-IPC_PipeClient_Send(client, JXON_Dump(projMsg))
+IPC_PipeClient_Send(client, JSON.Dump(projMsg))
 Log("Sent projection request")
 
 ; Wait for response
@@ -64,7 +64,7 @@ Log("")
 Log("=== Analyzing Response ===")
 
 try {
-    resp := JXON_Load(gDebugResponse)
+    resp := JSON.Load(gDebugResponse)
     if (!resp.Has("payload") || !resp["payload"].Has("items")) {
         Log("FAIL: Response missing payload/items")
         ExitApp(1)

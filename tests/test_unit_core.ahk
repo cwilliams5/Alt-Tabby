@@ -105,7 +105,7 @@ RunUnitTests_Core() {
     ; Test 1: JXON_Load - simple object
     jsonObj := '{"name":"test","value":42}'
     try {
-        parsed := JXON_Load(jsonObj)
+        parsed := JSON.Load(jsonObj)
         if (parsed["name"] = "test" && parsed["value"] = 42) {
             Log("PASS: JXON_Load parses simple object correctly")
             TestPassed++
@@ -121,7 +121,7 @@ RunUnitTests_Core() {
     ; Test 2: JXON_Load - array
     jsonArr := '[1, 2, 3, "four"]'
     try {
-        parsed := JXON_Load(jsonArr)
+        parsed := JSON.Load(jsonArr)
         if (parsed.Length = 4 && parsed[1] = 1 && parsed[4] = "four") {
             Log("PASS: JXON_Load parses array correctly")
             TestPassed++
@@ -137,7 +137,7 @@ RunUnitTests_Core() {
     ; Test 3: JXON_Load - boolean and null
     jsonBool := '{"yes":true,"no":false,"nothing":null}'
     try {
-        parsed := JXON_Load(jsonBool)
+        parsed := JSON.Load(jsonBool)
         if (parsed["yes"] = true && parsed["no"] = false && parsed["nothing"] = "") {
             Log("PASS: JXON_Load parses true/false/null correctly")
             TestPassed++
@@ -153,7 +153,7 @@ RunUnitTests_Core() {
     ; Test 4: JXON_Load - nested object
     jsonNested := '{"outer":{"inner":"value"}}'
     try {
-        parsed := JXON_Load(jsonNested)
+        parsed := JSON.Load(jsonNested)
         if (parsed["outer"]["inner"] = "value") {
             Log("PASS: JXON_Load parses nested objects correctly")
             TestPassed++
@@ -170,7 +170,7 @@ RunUnitTests_Core() {
     ; Note: In AHK, we need to double-escape: \\ in AHK string = \ in JSON = escape char
     jsonEscaped := '{"text":"line1\nline2\ttab\"quote\"","path":"C:\\Users"}'
     try {
-        parsed := JXON_Load(jsonEscaped)
+        parsed := JSON.Load(jsonEscaped)
         hasNewline := InStr(parsed["text"], "`n")
         hasTab := InStr(parsed["text"], "`t")
         hasQuote := InStr(parsed["text"], '"')
@@ -189,8 +189,8 @@ RunUnitTests_Core() {
 
     ; Test 6: JXON_Load - empty object/array
     try {
-        emptyObj := JXON_Load('{}')
-        emptyArr := JXON_Load('[]')
+        emptyObj := JSON.Load('{}')
+        emptyArr := JSON.Load('[]')
         objIsMap := (emptyObj is Map)
         arrIsArray := (emptyArr is Array) && emptyArr.Length = 0
         if (objIsMap && arrIsArray) {
@@ -208,7 +208,7 @@ RunUnitTests_Core() {
     ; Test 7: JXON_Load - whitespace handling
     try {
         wsJson := '  {  "key"  :  "value"  }  '
-        parsed := JXON_Load(wsJson)
+        parsed := JSON.Load(wsJson)
         if (parsed["key"] = "value") {
             Log("PASS: JXON_Load handles extra whitespace correctly")
             TestPassed++
@@ -224,7 +224,7 @@ RunUnitTests_Core() {
     ; Test 8: JXON_Dump - simple object
     testObj := Map("name", "test", "value", 42)
     try {
-        dumped := JXON_Dump(testObj)
+        dumped := JSON.Dump(testObj)
         if (InStr(dumped, '"name"') && InStr(dumped, '"test"') && InStr(dumped, "42")) {
             Log("PASS: JXON_Dump serializes Map correctly")
             TestPassed++
@@ -241,7 +241,7 @@ RunUnitTests_Core() {
     ; Note: JXON_Dump outputs 1/0 for booleans due to AHK's boolean representation
     testArr := [1, "two", 3.14]
     try {
-        dumped := JXON_Dump(testArr)
+        dumped := JSON.Dump(testArr)
         if (InStr(dumped, "[") && InStr(dumped, "1") && InStr(dumped, '"two"') && InStr(dumped, "3.14")) {
             Log("PASS: JXON_Dump serializes array correctly")
             TestPassed++
@@ -257,9 +257,9 @@ RunUnitTests_Core() {
     ; Test 10: Round-trip test - Load -> Dump -> Load
     originalJson := '{"type":"projection","rev":123,"payload":{"items":[{"hwnd":1,"title":"Test"}]}}'
     try {
-        parsed1 := JXON_Load(originalJson)
-        dumped := JXON_Dump(parsed1)
-        parsed2 := JXON_Load(dumped)
+        parsed1 := JSON.Load(originalJson)
+        dumped := JSON.Dump(parsed1)
+        parsed2 := JSON.Load(dumped)
 
         ; Verify key values survive round-trip
         if (parsed2["type"] = "projection" && parsed2["rev"] = 123 && parsed2["payload"]["items"][1]["title"] = "Test") {
@@ -274,26 +274,27 @@ RunUnitTests_Core() {
         TestErrors++
     }
 
-    ; Test 11: JXON_Dump - null/empty string handling
+    ; Test 11: JXON_Dump - empty string and zero handling
+    ; cJson correctly serializes empty string as "" (not null) and 0 as number
     try {
         nullTest := Map("empty", "", "zero", 0)
-        dumped := JXON_Dump(nullTest)
-        if (InStr(dumped, "null") && InStr(dumped, ":0")) {
-            Log("PASS: JXON_Dump handles empty string as null and 0 as number")
+        dumped := JSON.Dump(nullTest)
+        if (InStr(dumped, '""') && InStr(dumped, ":0")) {
+            Log('PASS: JXON_Dump handles empty string as "" and 0 as number')
             TestPassed++
         } else {
-            Log("FAIL: JXON_Dump null/zero output: " dumped)
+            Log("FAIL: JXON_Dump empty/zero output: " dumped)
             TestErrors++
         }
     } catch as e {
-        Log("FAIL: JXON_Dump threw error on null/empty: " e.Message)
+        Log("FAIL: JXON_Dump threw error on empty/zero: " e.Message)
         TestErrors++
     }
 
     ; Test 12: JXON with special characters in keys/values
     try {
         specialJson := '{"key with spaces":"value","emoji":"🎉","unicode":"日本語"}'
-        parsed := JXON_Load(specialJson)
+        parsed := JSON.Load(specialJson)
         if (parsed.Has("key with spaces") && parsed["key with spaces"] = "value") {
             Log("PASS: JXON_Load handles keys with spaces")
             TestPassed++
@@ -313,7 +314,7 @@ RunUnitTests_Core() {
     try {
         ; Test basic BMP character: \u0041 = 'A'
         jsonA := '{"char":"\u0041"}'
-        parsedA := JXON_Load(jsonA)
+        parsedA := JSON.Load(jsonA)
         if (parsedA["char"] = "A") {
             Log("PASS: \u0041 decodes to 'A'")
             TestPassed++
@@ -324,7 +325,7 @@ RunUnitTests_Core() {
 
         ; Test accented character: \u00E9 = 'é'
         jsonAccent := '{"accent":"caf\u00E9"}'
-        parsedAccent := JXON_Load(jsonAccent)
+        parsedAccent := JSON.Load(jsonAccent)
         if (parsedAccent["accent"] = "café") {
             Log("PASS: \u00E9 decodes to 'é' (in context)")
             TestPassed++
@@ -335,7 +336,7 @@ RunUnitTests_Core() {
 
         ; Test CJK character: \u4E2D = '中'
         jsonCJK := '{"cjk":"\u4E2D"}'
-        parsedCJK := JXON_Load(jsonCJK)
+        parsedCJK := JSON.Load(jsonCJK)
         if (parsedCJK["cjk"] = "中") {
             Log("PASS: \u4E2D decodes to '中'")
             TestPassed++
@@ -1107,123 +1108,267 @@ RunUnitTests_Core() {
     cfg.GUI_RowsVisibleMax := origRowsMax
 
     ; ============================================================
-    ; Phase 2: Komorebi Content Parsing Tests
+    ; Phase 2: cJson Content Extraction & Safe Navigation Tests
     ; ============================================================
-    Log("`n--- Komorebi Content Parsing Tests ---")
+    Log("`n--- cJson Content Extraction Tests ---")
 
-    ; Test _KSub_ExtractContentRaw with different content formats
-    Log("Testing _KSub_ExtractContentRaw with various content types...")
+    ; Test cJson returns correct AHK types for different JSON content
+    Log("Testing cJson content type detection...")
 
-    ; Test 1: Array content - [1, 2]
-    testEvent1 := '{"type":"FocusMonitorWorkspaceNumber","content":[0,2]}'
-    result1 := _KSub_ExtractContentRaw(testEvent1)
-    if (result1 = "[0,2]") {
-        Log("PASS: Array content [0,2] extracted correctly")
+    ; Test 1: Array content returns AHK Array
+    testEvent1 := JSON.Load('{"type":"FocusMonitorWorkspaceNumber","content":[0,2]}')
+    content1 := testEvent1["content"]
+    if (content1 is Array && content1.Length = 2 && content1[1] = 0 && content1[2] = 2) {
+        Log("PASS: Array content [0,2] parsed as AHK Array with correct values")
         TestPassed++
     } else {
-        Log("FAIL: Array content expected '[0,2]', got '" result1 "'")
+        Log("FAIL: Array content type=" Type(content1))
         TestErrors++
     }
 
-    ; Test 2: String content - "WorkspaceName"
-    testEvent2 := '{"type":"FocusNamedWorkspace","content":"Main"}'
-    result2 := _KSub_ExtractContentRaw(testEvent2)
-    if (result2 = "Main") {
-        Log("PASS: String content 'Main' extracted correctly")
+    ; Test 2: String content returns AHK String
+    testEvent2 := JSON.Load('{"type":"FocusNamedWorkspace","content":"Main"}')
+    content2 := testEvent2["content"]
+    if (content2 is String && content2 = "Main") {
+        Log("PASS: String content 'Main' parsed correctly")
         TestPassed++
     } else {
-        Log("FAIL: String content expected 'Main', got '" result2 "'")
+        Log("FAIL: String content expected 'Main', got '" String(content2) "' type=" Type(content2))
         TestErrors++
     }
 
-    ; Test 3: Integer content - 1
-    testEvent3 := '{"type":"MoveContainerToWorkspaceNumber","content":3}'
-    result3 := _KSub_ExtractContentRaw(testEvent3)
-    if (result3 = "3") {
-        Log("PASS: Integer content 3 extracted correctly")
+    ; Test 3: Integer content returns AHK Integer
+    testEvent3 := JSON.Load('{"type":"MoveContainerToWorkspaceNumber","content":3}')
+    content3 := testEvent3["content"]
+    if (content3 is Integer && content3 = 3) {
+        Log("PASS: Integer content 3 parsed correctly")
         TestPassed++
     } else {
-        Log("FAIL: Integer content expected '3', got '" result3 "'")
+        Log("FAIL: Integer content expected 3, got '" String(content3) "' type=" Type(content3))
         TestErrors++
     }
 
-    ; Test 4: Object content - {"EventType": value}
-    testEvent4 := '{"type":"SocketMessage","content":{"MoveContainerToWorkspaceNumber":5}}'
-    result4 := _KSub_ExtractContentRaw(testEvent4)
-    if (result4 = "5") {
-        Log("PASS: Object content value 5 extracted correctly")
+    ; Test 4: Object content returns AHK Map
+    testEvent4 := JSON.Load('{"type":"SocketMessage","content":{"MoveContainerToWorkspaceNumber":5}}')
+    content4 := testEvent4["content"]
+    if (content4 is Map && content4.Has("MoveContainerToWorkspaceNumber") && content4["MoveContainerToWorkspaceNumber"] = 5) {
+        Log("PASS: Object content parsed as Map with correct value")
         TestPassed++
     } else {
-        Log("FAIL: Object content expected '5', got '" result4 "'")
+        Log("FAIL: Object content type=" Type(content4))
         TestErrors++
     }
 
-    ; Test 5: Missing content - empty string
-    testEvent5 := '{"type":"SomeEvent"}'
-    result5 := _KSub_ExtractContentRaw(testEvent5)
-    if (result5 = "") {
-        Log("PASS: Missing content returns empty string")
+    ; Test 5: Missing content key
+    testEvent5 := JSON.Load('{"type":"SomeEvent"}')
+    if (!testEvent5.Has("content")) {
+        Log("PASS: Missing content key correctly absent from Map")
         TestPassed++
     } else {
-        Log("FAIL: Missing content expected '', got '" result5 "'")
+        Log("FAIL: Missing content should not exist in Map")
         TestErrors++
     }
 
     ; Test 6: Workspace name with spaces
-    testEvent6 := '{"type":"FocusNamedWorkspace","content":"Work Space 1"}'
-    result6 := _KSub_ExtractContentRaw(testEvent6)
-    if (result6 = "Work Space 1") {
-        Log("PASS: Workspace name with spaces extracted correctly")
+    testEvent6 := JSON.Load('{"type":"FocusNamedWorkspace","content":"Work Space 1"}')
+    content6 := testEvent6["content"]
+    if (content6 = "Work Space 1") {
+        Log("PASS: Workspace name with spaces parsed correctly")
         TestPassed++
     } else {
-        Log("FAIL: Workspace with spaces expected 'Work Space 1', got '" result6 "'")
+        Log("FAIL: Workspace with spaces expected 'Work Space 1', got '" String(content6) "'")
         TestErrors++
     }
 
     ; Test 7: Negative integer content
-    testEvent7 := '{"type":"SomeEvent","content":-1}'
-    result7 := _KSub_ExtractContentRaw(testEvent7)
-    if (result7 = "-1") {
-        Log("PASS: Negative integer -1 extracted correctly")
+    testEvent7 := JSON.Load('{"type":"SomeEvent","content":-1}')
+    content7 := testEvent7["content"]
+    if (content7 is Integer && content7 = -1) {
+        Log("PASS: Negative integer -1 parsed correctly")
         TestPassed++
     } else {
-        Log("FAIL: Negative integer expected '-1', got '" result7 "'")
+        Log("FAIL: Negative integer expected -1, got '" String(content7) "'")
         TestErrors++
     }
 
-    ; Test _KSub_ArrayTopLevelSplit for proper array parsing
-    Log("Testing _KSub_ArrayTopLevelSplit...")
+    ; ============================================================
+    ; Safe Navigation Helper Tests
+    ; ============================================================
+    Log("`n--- Safe Navigation Helper Tests ---")
 
-    ; Test 8: Simple numeric array
-    testArr1 := "[1, 2, 3]"
-    parts1 := _KSub_ArrayTopLevelSplit(testArr1)
-    if (parts1.Length = 3 && parts1[1] = "1" && parts1[2] = "2" && parts1[3] = "3") {
-        Log("PASS: [1, 2, 3] split into 3 elements")
-        TestPassed++
-    } else {
-        Log("FAIL: [1, 2, 3] split incorrectly, got " parts1.Length " elements")
-        TestErrors++
+    ; Test _KSafe_Elements with valid ring
+    validRing := Map("elements", [1, 2, 3], "focused", 1)
+    elResult := _KSafe_Elements(validRing)
+    AssertEq(elResult.Length, 3, "_KSafe_Elements valid ring")
+
+    ; Test _KSafe_Elements with empty Map
+    AssertEq(_KSafe_Elements(Map()).Length, 0, "_KSafe_Elements empty Map")
+
+    ; Test _KSafe_Elements with non-Map
+    AssertEq(_KSafe_Elements("not a map").Length, 0, "_KSafe_Elements non-Map")
+
+    ; Test _KSafe_Elements with Map without "elements" key
+    AssertEq(_KSafe_Elements(Map("other", 1)).Length, 0, "_KSafe_Elements no elements key")
+
+    ; Test _KSafe_Focused with valid ring
+    AssertEq(_KSafe_Focused(validRing), 1, "_KSafe_Focused valid ring")
+
+    ; Test _KSafe_Focused with missing key
+    AssertEq(_KSafe_Focused(Map()), -1, "_KSafe_Focused missing key")
+
+    ; Test _KSafe_Focused with non-Map
+    AssertEq(_KSafe_Focused(42), -1, "_KSafe_Focused non-Map")
+
+    ; Test _KSafe_Str with valid key
+    testMap2 := Map("name", "TestWorkspace", "count", 5)
+    AssertEq(_KSafe_Str(testMap2, "name"), "TestWorkspace", "_KSafe_Str valid string")
+
+    ; Test _KSafe_Str with integer value (should convert to string)
+    result := _KSafe_Str(testMap2, "count")
+    AssertEq(result, "5", "_KSafe_Str integer->string conversion")
+
+    ; Test _KSafe_Str with missing key
+    AssertEq(_KSafe_Str(testMap2, "missing"), "", "_KSafe_Str missing key")
+
+    ; Test _KSafe_Str with non-Map
+    AssertEq(_KSafe_Str("string", "key"), "", "_KSafe_Str non-Map")
+
+    ; Test _KSafe_Int with valid key
+    AssertEq(_KSafe_Int(testMap2, "count"), 5, "_KSafe_Int valid integer")
+
+    ; Test _KSafe_Int with missing key
+    AssertEq(_KSafe_Int(testMap2, "missing"), 0, "_KSafe_Int missing key")
+
+    ; Test _KSafe_Int with non-Map
+    AssertEq(_KSafe_Int(42, "key"), 0, "_KSafe_Int non-Map")
+
+    ; ============================================================
+    ; cJson Large-Input Correctness (Regression Guard)
+    ; ============================================================
+    Log("`n--- cJson Large-Input Correctness ---")
+
+    ; Build a synthetic komorebi-like state with deeply nested rings
+    ; This tests the keys that JXON_Load corrupted on large inputs:
+    ; "focused" -> "used", "has_pending_raise_op" -> "_pending_raise_op"
+    Log("Testing cJson parses large input without key corruption...")
+
+    ; Build a ~20KB+ JSON string with komorebi ring structure
+    workspaces := ""
+    loop 8 {
+        wsIdx := A_Index - 1
+        windows := ""
+        loop 10 {
+            winIdx := A_Index - 1
+            hwndVal := (wsIdx * 100) + winIdx + 65536
+            if (winIdx > 0)
+                windows .= ","
+            windows .= '{"hwnd":' hwndVal ',"title":"Window ' hwndVal '","class":"TestClass","exe":"test.exe","has_pending_raise_op":false}'
+        }
+        if (wsIdx > 0)
+            workspaces .= ","
+        workspaces .= '{"name":"WS' wsIdx '","containers":{"elements":[{"windows":{"elements":[' windows '],"focused":0}}],"focused":0},"monocle_container":null,"has_pending_raise_op":false}'
     }
 
-    ; Test 9: Array with nested object
-    testArr2 := '[1, {"hwnd": 12345}, "text"]'
-    parts2 := _KSub_ArrayTopLevelSplit(testArr2)
-    if (parts2.Length = 3) {
-        Log("PASS: Array with nested object split into 3 top-level elements")
-        TestPassed++
-    } else {
-        Log("FAIL: Array with nested object expected 3 elements, got " parts2.Length)
+    largeState := '{"monitors":{"elements":[{"workspaces":{"elements":[' workspaces '],"focused":2},"has_pending_raise_op":false}],"focused":0},"has_pending_raise_op":false}'
+
+    ; Verify the string is large enough to trigger the old JXON bug
+    stateLen := StrLen(largeState)
+    Log("  Generated state: " stateLen " chars (" Round(stateLen / 1024, 1) " KB)")
+
+    ; Parse with cJson
+    largeObj := ""
+    try largeObj := JSON.Load(largeState)
+
+    if !(largeObj is Map) {
+        Log("FAIL: cJson failed to parse large state")
         TestErrors++
+    } else {
+        ; Test key integrity - these are the keys JXON_Load corrupted
+        if (largeObj.Has("focused") || largeObj.Has("monitors")) {
+            ; Check top-level "has_pending_raise_op" key
+            if (largeObj.Has("has_pending_raise_op")) {
+                Log("PASS: Top-level 'has_pending_raise_op' key intact")
+                TestPassed++
+            } else {
+                Log("FAIL: Top-level 'has_pending_raise_op' key missing/corrupted")
+                TestErrors++
+            }
+
+            ; Navigate to monitors ring and check "focused"
+            monitors := largeObj["monitors"]
+            if (monitors is Map && monitors.Has("focused") && monitors["focused"] = 0) {
+                Log("PASS: monitors.focused key intact (value=0)")
+                TestPassed++
+            } else {
+                Log("FAIL: monitors.focused key missing/corrupted")
+                TestErrors++
+            }
+
+            ; Navigate to workspace and check "focused"
+            monArr := _KSafe_Elements(monitors)
+            if (monArr.Length > 0) {
+                wsRing := monArr[1]["workspaces"]
+                if (wsRing is Map && wsRing.Has("focused") && wsRing["focused"] = 2) {
+                    Log("PASS: workspaces.focused key intact (value=2)")
+                    TestPassed++
+                } else {
+                    Log("FAIL: workspaces.focused key missing/corrupted")
+                    TestErrors++
+                }
+
+                ; Check deep window's has_pending_raise_op
+                wsArr := _KSafe_Elements(wsRing)
+                if (wsArr.Length > 0) {
+                    ws0 := wsArr[1]
+                    if (ws0 is Map && ws0.Has("has_pending_raise_op")) {
+                        Log("PASS: Workspace 'has_pending_raise_op' key intact")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: Workspace 'has_pending_raise_op' key missing/corrupted")
+                        TestErrors++
+                    }
+                }
+            }
+        } else {
+            Log("FAIL: Basic top-level keys missing from parsed large state")
+            TestErrors++
+        }
     }
 
-    ; Test 10: Empty array
-    testArr3 := "[]"
-    parts3 := _KSub_ArrayTopLevelSplit(testArr3)
-    if (parts3.Length = 0) {
-        Log("PASS: Empty array returns 0 elements")
-        TestPassed++
-    } else {
-        Log("FAIL: Empty array expected 0 elements, got " parts3.Length)
-        TestErrors++
-    }
+    ; ============================================================
+    ; End-to-End Parse + Navigate Test
+    ; ============================================================
+    Log("`n--- Parse + Navigate Komorebi State Test ---")
+
+    ; Construct a minimal komorebi state with known structure
+    miniState := '{"monitors":{"elements":[{"workspaces":{"elements":['
+        . '{"name":"Alpha","containers":{"elements":[{"windows":{"elements":[{"hwnd":111,"title":"Win A"}],"focused":0}}],"focused":0},"monocle_container":null},'
+        . '{"name":"Beta","containers":{"elements":[{"windows":{"elements":[{"hwnd":222,"title":"Win B"},{"hwnd":333,"title":"Win C"}],"focused":1}}],"focused":0},"monocle_container":null}'
+        . '],"focused":1}}],"focused":0}}'
+
+    miniObj := JSON.Load(miniState)
+
+    ; Test focused monitor index
+    AssertEq(_KSub_GetFocusedMonitorIndex(miniObj), 0, "Parse+Navigate: focused monitor index")
+
+    ; Test monitors array
+    miniMonArr := _KSub_GetMonitorsArray(miniObj)
+    AssertEq(miniMonArr.Length, 1, "Parse+Navigate: monitor count")
+
+    ; Test focused workspace index
+    AssertEq(_KSub_GetFocusedWorkspaceIndex(miniMonArr[1]), 1, "Parse+Navigate: focused workspace index")
+
+    ; Test workspace name by index
+    AssertEq(_KSub_GetWorkspaceNameByIndex(miniMonArr[1], 0), "Alpha", "Parse+Navigate: ws 0 name")
+    AssertEq(_KSub_GetWorkspaceNameByIndex(miniMonArr[1], 1), "Beta", "Parse+Navigate: ws 1 name")
+
+    ; Test FindWorkspaceByHwnd
+    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 111), "Alpha", "Parse+Navigate: hwnd 111 in Alpha")
+    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 222), "Beta", "Parse+Navigate: hwnd 222 in Beta")
+    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 333), "Beta", "Parse+Navigate: hwnd 333 in Beta")
+    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 999), "", "Parse+Navigate: hwnd 999 not found")
+
+    ; Test GetFocusedHwnd (should navigate to Beta ws, focused container 0, focused window 1 = hwnd 333)
+    focusedHwnd := _KSub_GetFocusedHwnd(miniObj)
+    AssertEq(focusedHwnd, 333, "Parse+Navigate: focused hwnd is 333")
 }

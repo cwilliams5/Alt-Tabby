@@ -2,8 +2,7 @@
 #Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
 
 ; Include extracted modules
-#Include komorebi_json.ahk   ; Pure JSON extraction utilities
-#Include komorebi_state.ahk  ; State navigation helpers (uses JSON utils)
+#Include komorebi_state.ahk  ; State navigation helpers (accepts parsed Map/Array objects)
 
 ; ============================================================
 ; Komorebi Subscription Producer
@@ -199,8 +198,14 @@ _KSub_InitialPoll() {
 
     _KSub_DiagLog("InitialPoll: Got state len=" StrLen(txt))
 
-    ; Update all windows from full state
-    _KSub_ProcessFullState(txt)
+    ; Parse JSON and update all windows from full state
+    stateObj := ""
+    try stateObj := JSON.Load(txt)
+    if !(stateObj is Map) {
+        _KSub_DiagLog("InitialPoll: Failed to parse state JSON")
+        return
+    }
+    _KSub_ProcessFullState(stateObj)
     _KSub_DiagLog("InitialPoll: Complete")
 }
 
@@ -368,6 +373,21 @@ KomorebiSub_Poll() {
         KomorebiSub_Start()
 }
 
+; Check if a quote character at position `pos` is escaped by counting
+; consecutive backslashes before it. Even count = not escaped, odd = escaped.
+; Used by stream framing (_KSub_ExtractOneJson) only.
+_KSub_IsQuoteEscaped(text, pos) {
+    if (pos <= 1)
+        return false
+    backslashCount := 0
+    checkPos := pos - 1
+    while (checkPos >= 1 && SubStr(text, checkPos, 1) = "\") {
+        backslashCount += 1
+        checkPos -= 1
+    }
+    return (Mod(backslashCount, 2) = 1)
+}
+
 ; Extract one complete JSON object from buffer (balanced braces)
 _KSub_ExtractOneJson(&s) {
     if (s = "")
@@ -420,22 +440,33 @@ _KSub_OnNotification(jsonLine) {
 
     _KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
 
-    ; Each notification has: { "event": {...}, "state": {...} }
-    ; The state contains the FULL komorebi state - use it!
-
-    ; Extract the state object
-    stateObj := _KSub_ExtractObjectByKey(jsonLine, "state")
-    if (stateObj = "") {
-        _KSub_DiagLog("  No state object found")
-        return  ; No state, skip
+    ; Parse the notification JSON once
+    parsed := ""
+    try parsed := JSON.Load(jsonLine)
+    if !(parsed is Map) {
+        _KSub_DiagLog("  Failed to parse notification JSON")
+        return
     }
-    _KSub_DiagLog("  State object len=" StrLen(stateObj))
+
+    ; Each notification has: { "event": {...}, "state": {...} }
+    if (!parsed.Has("state")) {
+        _KSub_DiagLog("  No state object found")
+        return
+    }
+    stateObj := parsed["state"]
+    if !(stateObj is Map) {
+        _KSub_DiagLog("  State is not a Map")
+        return
+    }
 
     ; Extract the event object for workspace/cloak tracking
-    eventObj := _KSub_ExtractObjectByKey(jsonLine, "event")
+    eventObj := ""
     eventType := ""
-    if (eventObj != "")
-        eventType := _KSub_GetStringProp(eventObj, "type")
+    if (parsed.Has("event")) {
+        eventObj := parsed["event"]
+        if (eventObj is Map)
+            eventType := _KSafe_Str(eventObj, "type")
+    }
 
     _KSub_DiagLog("  Event type: '" eventType "'")
     _KSub_DiagLog("Event: " eventType)
@@ -455,38 +486,30 @@ _KSub_OnNotification(jsonLine) {
         ; - MoveContainerToWorkspaceNumber: workspaceIdx (single number)
         ; - MoveContainerToNamedWorkspace: "WorkspaceName"
 
-        ; Try multiple extraction methods like the POC does
-        contentRaw := _KSub_ExtractContentRaw(eventObj)
+        ; With cJson, content is already the correct type (String, Integer, Array, or Map)
+        content := ""
+        if (eventObj is Map && eventObj.Has("content"))
+            content := eventObj["content"]
 
-        _KSub_DiagLog("  FocusWorkspace content: " contentRaw)
-        _KSub_DiagLog("  content raw: '" contentRaw "'")
-
-        ; Debug: always show event structure for workspace events
-        if (StrLen(eventObj) > 0) {
-            ; Show full event if small, otherwise snippet
-            if (StrLen(eventObj) <= 500)
-                _KSub_DiagLog("  eventObj: " eventObj)
-            else {
-                snippet := SubStr(eventObj, 1, 400)
-                _KSub_DiagLog("  eventObj snippet: " snippet)
-            }
-        }
+        _KSub_DiagLog("  FocusWorkspace content type: " Type(content))
 
         wsName := ""
 
         if (eventType = "FocusNamedWorkspace" || eventType = "MoveContainerToNamedWorkspace") {
-            ; Content is the workspace name directly
-            wsName := Trim(contentRaw, '" ')
+            ; Content is the workspace name directly (string)
+            if (content is String)
+                wsName := content
+            else
+                wsName := String(content)
         } else if (eventType = "MoveContainerToWorkspaceNumber") {
-            ; Content is just the workspace index (single number, not array)
-            ; Try to extract as plain number first
+            ; Content is the workspace index (integer or possibly in an array)
             wsIdx := -1
-            if (contentRaw != "") {
-                ; Remove brackets if present
-                cleaned := RegExReplace(contentRaw, "[\[\]]", "")
-                cleaned := Trim(cleaned)
-                if (cleaned != "")
-                    wsIdx := Integer(cleaned)
+            if (content is Integer) {
+                wsIdx := content
+            } else if (content is Array && content.Length > 0) {
+                try wsIdx := Integer(content[1])
+            } else if (content != "") {
+                try wsIdx := Integer(content)
             }
             _KSub_DiagLog("  MoveContainer wsIdx=" wsIdx)
 
@@ -503,18 +526,19 @@ _KSub_OnNotification(jsonLine) {
         } else {
             ; FocusMonitorWorkspaceNumber: [monitorIdx, workspaceIdx]
             ; FocusWorkspaceNumber: [workspaceIdx]
-            parts := _KSub_ArrayTopLevelSplit(contentRaw)
-            _KSub_DiagLog("  parts count: " parts.Length)
-            for i, p in parts
-                _KSub_DiagLog("    parts[" i "]: '" p "'")
-
+            ; Content is already an Array from cJson
             wsIdx := -1
             monIdx := 0
-            if (parts.Length >= 2) {
-                monIdx := Integer(Trim(parts[1]))
-                wsIdx := Integer(Trim(parts[2]))
-            } else if (parts.Length = 1) {
-                wsIdx := Integer(Trim(parts[1]))
+            if (content is Array) {
+                _KSub_DiagLog("  content array length: " content.Length)
+                if (content.Length >= 2) {
+                    monIdx := Integer(content[1])
+                    wsIdx := Integer(content[2])
+                } else if (content.Length = 1) {
+                    wsIdx := Integer(content[1])
+                }
+            } else if (content is Integer) {
+                wsIdx := content
             }
 
             _KSub_DiagLog("  monIdx=" monIdx " wsIdx=" wsIdx)
@@ -565,15 +589,21 @@ _KSub_OnNotification(jsonLine) {
 
     ; Handle Cloak/Uncloak events for isCloaked tracking
     if (eventType = "Cloak" || eventType = "Uncloak") {
-        contentArr := _KSub_ExtractArrayByKey(eventObj, "content")
-        if (contentArr != "") {
+        if (eventObj is Map && eventObj.Has("content")) {
+            contentArr := eventObj["content"]
             ; content = ["ObjectCloaked", { "hwnd": N, ... }]
-            ; Extract the hwnd from the object in the array
-            hwndMatch := 0
-            if RegExMatch(contentArr, '"hwnd"\s*:\s*(\d+)', &hwndMatch) {
-                hwnd := Integer(hwndMatch[1])
-                isCloaked := (eventType = "Cloak")
-                try WindowStore_UpdateFields(hwnd, { isCloaked: isCloaked })
+            ; Iterate the array to find the object with hwnd
+            if (contentArr is Array) {
+                for _, item in contentArr {
+                    if (item is Map && item.Has("hwnd")) {
+                        hwnd := _KSafe_Int(item, "hwnd")
+                        if (hwnd) {
+                            isCloaked := (eventType = "Cloak")
+                            try WindowStore_UpdateFields(hwnd, { isCloaked: isCloaked })
+                        }
+                        break
+                    }
+                }
             }
         }
     }
@@ -592,11 +622,12 @@ _KSub_OnNotification(jsonLine) {
 }
 
 ; Process full komorebi state and update all windows
+; stateObj: parsed Map from cJson (NOT raw text)
 ; skipWorkspaceUpdate: set to true when called after a focus event (notification already handled workspace)
-_KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
+_KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
     global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache, _KSub_LastWsUpdateTick
 
-    if (stateText = "")
+    if !(stateObj is Map)
         return
 
     ; Cooldown: after any workspace update (explicit or state-derived), skip re-derivation
@@ -609,7 +640,7 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
         _KSub_DiagLog("ProcessFullState: skip=cooldown (ws updated " (A_TickCount - _KSub_LastWsUpdateTick) "ms ago)")
     }
 
-    monitorsArr := _KSub_GetMonitorsArray(stateText)
+    monitorsArr := _KSub_GetMonitorsArray(stateObj)
 
     if (monitorsArr.Length = 0)
         return
@@ -624,7 +655,7 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
         ; Trust the value already set by focus event handler or cooldown cache
         currentWsName := _KSub_LastWorkspaceName
     } else {
-        focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateText)
+        focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateObj)
         if (focusedMonIdx >= 0 && focusedMonIdx < monitorsArr.Length) {
             monObj := monitorsArr[focusedMonIdx + 1]  ; AHK 1-based
             focusedWsIdx := _KSub_GetFocusedWorkspaceIndex(monObj)
@@ -650,7 +681,9 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
     for mi, monObj in monitorsArr {
         wsArr := _KSub_GetWorkspacesArray(monObj)
         for wi, wsObj in wsArr {
-            wsName := _KSub_GetStringProp(wsObj, "name")
+            if !(wsObj is Map)
+                continue
+            wsName := _KSafe_Str(wsObj, "name")
             if (wsName = "")
                 continue
 
@@ -658,49 +691,99 @@ _KSub_ProcessFullState(stateText, skipWorkspaceUpdate := false) {
             isCurrentWs := (wsName = currentWsName)
 
             ; Get all containers in this workspace
-            containersText := _KSub_ExtractObjectByKey(wsObj, "containers")
-            if (containersText = "")
+            if (!wsObj.Has("containers"))
                 continue
+            containersRing := wsObj["containers"]
+            contArr := _KSafe_Elements(containersRing)
 
-            ; Find all windows in the containers
-            pos := 1
-            while (p := RegExMatch(containersText, '"hwnd"\s*:\s*(\d+)', &hwndMatch, pos)) {
-                hwnd := Integer(hwndMatch[1])
+            ; Iterate containers -> windows to find all hwnds
+            for _, cont in contArr {
+                if !(cont is Map)
+                    continue
 
-                ; Get window metadata from komorebi state
-                ; Find the container object for this hwnd
-                containerStart := _KSub_FindContainerForHwnd(containersText, hwnd)
-                if (containerStart > 0) {
-                    containerObj := _KSub_BalancedObjectFrom(containersText, containerStart)
-                    windowObj := _KSub_ExtractObjectByKey(containerObj, "window")
-                    if (windowObj = "")
-                        windowObj := containerObj
+                ; Check windows ring in this container
+                if (cont.Has("windows")) {
+                    for _, win in _KSafe_Elements(cont["windows"]) {
+                        if !(win is Map) || !win.Has("hwnd")
+                            continue
+                        hwnd := _KSafe_Int(win, "hwnd")
+                        if (!hwnd)
+                            continue
 
-                    title := _KSub_GetStringProp(windowObj, "title")
-                    class := _KSub_GetStringProp(windowObj, "class")
-                    exe := _KSub_GetStringProp(windowObj, "exe")
+                        title := _KSafe_Str(win, "title")
+                        class := _KSafe_Str(win, "class")
+                        exe := _KSafe_Str(win, "exe")
 
-                    wsMap[hwnd] := {
-                        wsName: wsName,
-                        title: title,
-                        class: class,
-                        exe: exe,
-                        isCurrent: isCurrentWs
-                    }
-                } else {
-                    wsMap[hwnd] := {
-                        wsName: wsName,
-                        title: "",
-                        class: "",
-                        exe: "",
-                        isCurrent: isCurrentWs
+                        wsMap[hwnd] := {
+                            wsName: wsName,
+                            title: title,
+                            class: class,
+                            exe: exe,
+                            isCurrent: isCurrentWs
+                        }
+                        _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
                     }
                 }
 
-                ; Cache for persistence with timestamp for staleness detection
-                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                ; Single window container ("window" key directly)
+                if (cont.Has("window")) {
+                    winObj := cont["window"]
+                    if (winObj is Map && winObj.Has("hwnd")) {
+                        hwnd := _KSafe_Int(winObj, "hwnd")
+                        if (hwnd && !wsMap.Has(hwnd)) {
+                            wsMap[hwnd] := {
+                                wsName: wsName,
+                                title: _KSafe_Str(winObj, "title"),
+                                class: _KSafe_Str(winObj, "class"),
+                                exe: _KSafe_Str(winObj, "exe"),
+                                isCurrent: isCurrentWs
+                            }
+                            _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                        }
+                    }
+                }
+            }
 
-                pos := hwndMatch.Pos(0) + hwndMatch.Len(0)
+            ; Also check monocle_container
+            if (wsObj.Has("monocle_container")) {
+                mono := wsObj["monocle_container"]
+                if (mono is Map) {
+                    ; Monocle may have windows ring
+                    if (mono.Has("windows")) {
+                        for _, win in _KSafe_Elements(mono["windows"]) {
+                            if !(win is Map) || !win.Has("hwnd")
+                                continue
+                            hwnd := _KSafe_Int(win, "hwnd")
+                            if (hwnd && !wsMap.Has(hwnd)) {
+                                wsMap[hwnd] := {
+                                    wsName: wsName,
+                                    title: _KSafe_Str(win, "title"),
+                                    class: _KSafe_Str(win, "class"),
+                                    exe: _KSafe_Str(win, "exe"),
+                                    isCurrent: isCurrentWs
+                                }
+                                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                            }
+                        }
+                    }
+                    ; Monocle may have single "window"
+                    if (mono.Has("window")) {
+                        winObj := mono["window"]
+                        if (winObj is Map && winObj.Has("hwnd")) {
+                            hwnd := _KSafe_Int(winObj, "hwnd")
+                            if (hwnd && !wsMap.Has(hwnd)) {
+                                wsMap[hwnd] := {
+                                    wsName: wsName,
+                                    title: _KSafe_Str(winObj, "title"),
+                                    class: _KSafe_Str(winObj, "class"),
+                                    exe: _KSafe_Str(winObj, "exe"),
+                                    isCurrent: isCurrentWs
+                                }
+                                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -821,7 +904,12 @@ KomorebiSub_PollFallback() {
     if (txt = "")
         return
 
-    _KSub_ProcessFullState(txt)
+    ; Parse JSON before passing to ProcessFullState (expects parsed Map)
+    stateObj := ""
+    try stateObj := JSON.Load(txt)
+    if !(stateObj is Map)
+        return
+    _KSub_ProcessFullState(stateObj)
 }
 
 ; Get komorebi state directly via command

@@ -4,7 +4,7 @@
 ; Diagnostic tool to identify what fields are causing constant deltas
 
 #Include ..\src\shared\config.ahk
-#Include ..\src\shared\json.ahk
+#Include ..\src\shared\cjson.ahk
 #Include ..\src\shared\ipc_pipe.ahk
 
 global gDiag_Client := 0
@@ -33,7 +33,7 @@ Log("Connected, sending hello...")
 
 ; Send hello
 hello := { type: IPC_MSG_HELLO, clientId: "delta_diag", wants: { deltas: true }, projectionOpts: { sort: "Z", columns: "items", includeMinimized: true, includeCloaked: true } }
-IPC_PipeClient_Send(gDiag_Client, JXON_Dump(hello))
+IPC_PipeClient_Send(gDiag_Client, JSON.Dump(hello))
 
 Log("Waiting for messages... (Ctrl+C to exit)")
 Log("Will compare consecutive projections and report which fields differ")
@@ -47,7 +47,7 @@ OnMessage(line, hPipe := 0) {
     global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK
 
     obj := ""
-    try obj := JXON_Load(line)
+    try obj := JSON.Load(line)
     if (!IsObject(obj) || !obj.Has("type"))
         return
 

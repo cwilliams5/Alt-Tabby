@@ -6,7 +6,7 @@
 ; - Standalone: files found via %A_ScriptDir%\..\ path
 ; - Included from alt_tabby.ahk: files already loaded, paths don't match but that's OK
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
-#Include *i %A_ScriptDir%\..\shared\json.ahk
+#Include *i %A_ScriptDir%\..\shared\cjson.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 #Include *i %A_ScriptDir%\..\shared\process_utils.ahk
@@ -183,7 +183,7 @@ Store_HeartbeatTick() {
     }
 
     rev := WindowStore_GetRev()
-    msg := JXON_Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
+    msg := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
     IPC_PipeServer_Broadcast(gStore_Server, msg)
 }
 
@@ -283,7 +283,7 @@ Store_PushToClients() {
                 payload: { meta: proj.meta, items: proj.items }
             }
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
 
         ; RACE FIX: Wrap client tracking updates in Critical
         ; Store_OnMessage also modifies these maps when client sends HELLO or SET_PROJECTION_OPTS
@@ -345,7 +345,7 @@ Store_OnMessage(line, hPipe := 0) {
     global IPC_MSG_SET_PROJECTION_OPTS, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_PROJECTION_REQUEST
     global IPC_MSG_RELOAD_BLACKLIST, IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
     obj := ""
-    try obj := JXON_Load(line)
+    try obj := JSON.Load(line)
     catch as err {
         ; Log malformed JSON when diagnostics enabled (helps debug IPC issues)
         preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
@@ -370,7 +370,7 @@ Store_OnMessage(line, hPipe := 0) {
             type: IPC_MSG_HELLO_ACK,
             payload: { meta: WindowStore_GetCurrentWorkspace(), capabilities: { deltas: true } }
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(ack))
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(ack))
 
         ; Immediately send initial projection with client's opts
         proj := WindowStore_GetProjection(opts)
@@ -385,7 +385,7 @@ Store_OnMessage(line, hPipe := 0) {
             rev: proj.rev,
             payload: payload
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(msg))
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
         gStore_LastClientRev[hPipe] := proj.rev
         gStore_LastClientProj[hPipe] := proj.HasOwnProp("items") ? proj.items : []
         Critical "Off"
@@ -427,7 +427,7 @@ Store_OnMessage(line, hPipe := 0) {
             rev: proj.rev,
             payload: payload
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(resp))
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
         gStore_LastClientRev[hPipe] := proj.rev
         return
     }
@@ -460,7 +460,7 @@ Store_OnMessage(line, hPipe := 0) {
             type: IPC_MSG_PRODUCER_STATUS,
             producers: producers
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JXON_Dump(resp))
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
         return
     }
 }

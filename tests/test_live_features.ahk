@@ -52,7 +52,7 @@ RunLiveTests_Features() {
 
             ; Send hello
             helloMsg := { type: IPC_MSG_HELLO, clientId: "mru_test", wants: { deltas: false } }
-            IPC_PipeClient_Send(mruClient, JXON_Dump(helloMsg))
+            IPC_PipeClient_Send(mruClient, JSON.Dump(helloMsg))
 
             ; Trigger a focus change by activating a window
             ; First, get the current foreground window
@@ -86,7 +86,7 @@ RunLiveTests_Features() {
             gMruTestResponse := ""
             gMruTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "MRU", columns: "items" } }
-            IPC_PipeClient_Send(mruClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(mruClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gMruTestReceived && (A_TickCount - waitStart) < 3000)
@@ -94,7 +94,7 @@ RunLiveTests_Features() {
 
             if (gMruTestReceived) {
                 try {
-                    respObj := JXON_Load(gMruTestResponse)
+                    respObj := JSON.Load(gMruTestResponse)
                     items := respObj["payload"]["items"]
                     Log("  MRU test received " items.Length " items")
 
@@ -178,7 +178,7 @@ RunLiveTests_Features() {
 
             ; Send hello
             helloMsg := { type: IPC_MSG_HELLO, clientId: "proj_test", wants: { deltas: false } }
-            IPC_PipeClient_Send(projClient, JXON_Dump(helloMsg))
+            IPC_PipeClient_Send(projClient, JSON.Dump(helloMsg))
             Sleep(300)
 
             ; === Test sort options ===
@@ -187,7 +187,7 @@ RunLiveTests_Features() {
                 gProjTestResponse := ""
                 gProjTestReceived := false
                 projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: sortType, columns: "items" } }
-                IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+                IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
                 waitStart := A_TickCount
                 while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
@@ -195,7 +195,7 @@ RunLiveTests_Features() {
 
                 if (gProjTestReceived) {
                     try {
-                        respObj := JXON_Load(gProjTestResponse)
+                        respObj := JSON.Load(gProjTestResponse)
                         items := respObj["payload"]["items"]
                         if (items.Length > 0) {
                             Log("PASS: sort=" sortType " returned " items.Length " items")
@@ -218,7 +218,7 @@ RunLiveTests_Features() {
             gProjTestResponse := ""
             gProjTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "hwndsOnly" } }
-            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
@@ -226,7 +226,7 @@ RunLiveTests_Features() {
 
             if (gProjTestReceived) {
                 try {
-                    respObj := JXON_Load(gProjTestResponse)
+                    respObj := JSON.Load(gProjTestResponse)
                     if (respObj["payload"].Has("hwnds")) {
                         hwnds := respObj["payload"]["hwnds"]
                         if (hwnds.Length > 0) {
@@ -261,7 +261,7 @@ RunLiveTests_Features() {
             gProjTestResponse := ""
             gProjTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeMinimized: true } }
-            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
@@ -271,7 +271,7 @@ RunLiveTests_Features() {
             countMinimized := 0
             if (gProjTestReceived) {
                 try {
-                    respObj := JXON_Load(gProjTestResponse)
+                    respObj := JSON.Load(gProjTestResponse)
                     items := respObj["payload"]["items"]
                     countWithMin := items.Length
                     for _, item in items {
@@ -285,7 +285,7 @@ RunLiveTests_Features() {
             gProjTestResponse := ""
             gProjTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeMinimized: false } }
-            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
@@ -293,7 +293,7 @@ RunLiveTests_Features() {
 
             if (gProjTestReceived) {
                 try {
-                    respObj := JXON_Load(gProjTestResponse)
+                    respObj := JSON.Load(gProjTestResponse)
                     items := respObj["payload"]["items"]
                     countWithoutMin := items.Length
 
@@ -326,7 +326,7 @@ RunLiveTests_Features() {
             gProjTestResponse := ""
             gProjTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeCloaked: true } }
-            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
@@ -336,7 +336,7 @@ RunLiveTests_Features() {
             countCloaked := 0
             if (gProjTestReceived) {
                 try {
-                    respObj := JXON_Load(gProjTestResponse)
+                    respObj := JSON.Load(gProjTestResponse)
                     items := respObj["payload"]["items"]
                     countWithCloaked := items.Length
                     for _, item in items {
@@ -349,7 +349,7 @@ RunLiveTests_Features() {
             gProjTestResponse := ""
             gProjTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", includeCloaked: false } }
-            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
@@ -357,7 +357,7 @@ RunLiveTests_Features() {
 
             if (gProjTestReceived) {
                 try {
-                    respObj := JXON_Load(gProjTestResponse)
+                    respObj := JSON.Load(gProjTestResponse)
                     items := respObj["payload"]["items"]
                     countWithoutCloaked := items.Length
 
@@ -390,7 +390,7 @@ RunLiveTests_Features() {
             gProjTestResponse := ""
             gProjTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", currentWorkspaceOnly: true } }
-            IPC_PipeClient_Send(projClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
@@ -398,7 +398,7 @@ RunLiveTests_Features() {
 
             if (gProjTestReceived) {
                 try {
-                    respObj := JXON_Load(gProjTestResponse)
+                    respObj := JSON.Load(gProjTestResponse)
                     items := respObj["payload"]["items"]
 
                     ; Verify all windows are on current workspace
@@ -494,15 +494,15 @@ RunLiveTests_Features() {
             ; The store will send initial snapshot with these options
             ; Client 1: sort=Z
             hello1 := { type: IPC_MSG_HELLO, clientId: "multi_1", projectionOpts: { sort: "Z", columns: "items" } }
-            IPC_PipeClient_Send(client1, JXON_Dump(hello1))
+            IPC_PipeClient_Send(client1, JSON.Dump(hello1))
 
             ; Client 2: sort=MRU
             hello2 := { type: IPC_MSG_HELLO, clientId: "multi_2", projectionOpts: { sort: "MRU", columns: "items" } }
-            IPC_PipeClient_Send(client2, JXON_Dump(hello2))
+            IPC_PipeClient_Send(client2, JSON.Dump(hello2))
 
             ; Client 3: sort=Title, hwndsOnly
             hello3 := { type: IPC_MSG_HELLO, clientId: "multi_3", projectionOpts: { sort: "Title", columns: "hwndsOnly" } }
-            IPC_PipeClient_Send(client3, JXON_Dump(hello3))
+            IPC_PipeClient_Send(client3, JSON.Dump(hello3))
 
             ; Wait for all clients to receive their initial snapshots
             ; The store sends snapshot immediately after HELLO, respecting projection options
@@ -521,9 +521,9 @@ RunLiveTests_Features() {
 
                 ; Parse responses and verify each got their requested format
                 try {
-                    resp1 := JXON_Load(gMultiClient1Response)
-                    resp2 := JXON_Load(gMultiClient2Response)
-                    resp3 := JXON_Load(gMultiClient3Response)
+                    resp1 := JSON.Load(gMultiClient1Response)
+                    resp2 := JSON.Load(gMultiClient2Response)
+                    resp3 := JSON.Load(gMultiClient3Response)
 
                     ; Client 1 should have items (Z-sorted)
                     if (resp1["payload"].Has("items") && resp1["payload"]["items"].Length > 0) {
@@ -667,13 +667,13 @@ RunLiveTests_Features() {
 
             ; Send hello
             helloMsg := { type: IPC_MSG_HELLO, clientId: "bl_test", wants: { deltas: false } }
-            IPC_PipeClient_Send(blClient, JXON_Dump(helloMsg))
+            IPC_PipeClient_Send(blClient, JSON.Dump(helloMsg))
 
             ; Get initial projection
             gBlTestResponse := ""
             gBlTestReceived := false
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
-            IPC_PipeClient_Send(blClient, JXON_Dump(projMsg))
+            IPC_PipeClient_Send(blClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
             while (!gBlTestReceived && (A_TickCount - waitStart) < 3000)
@@ -684,7 +684,7 @@ RunLiveTests_Features() {
                 TestErrors++
             } else {
                 try {
-                    respObj := JXON_Load(gBlTestResponse)
+                    respObj := JSON.Load(gBlTestResponse)
                     items := respObj["payload"]["items"]
                     initialCount := items.Length
                     Log("  Initial projection has " initialCount " windows")
@@ -730,13 +730,13 @@ RunLiveTests_Features() {
 
                         ; Send reload IPC
                         reloadMsg := { type: IPC_MSG_RELOAD_BLACKLIST }
-                        IPC_PipeClient_Send(blClient, JXON_Dump(reloadMsg))
+                        IPC_PipeClient_Send(blClient, JSON.Dump(reloadMsg))
                         Sleep(500)  ; Wait for reload and push
 
                         ; Get new projection
                         gBlTestResponse := ""
                         gBlTestReceived := false
-                        IPC_PipeClient_Send(blClient, JXON_Dump(projMsg))
+                        IPC_PipeClient_Send(blClient, JSON.Dump(projMsg))
 
                         waitStart := A_TickCount
                         while (!gBlTestReceived && (A_TickCount - waitStart) < 3000)
@@ -744,7 +744,7 @@ RunLiveTests_Features() {
 
                         if (gBlTestReceived) {
                             try {
-                                respObj2 := JXON_Load(gBlTestResponse)
+                                respObj2 := JSON.Load(gBlTestResponse)
                                 items2 := respObj2["payload"]["items"]
                                 afterClassBlCount := items2.Length
 
@@ -786,13 +786,13 @@ RunLiveTests_Features() {
                         }
 
                         ; Send reload IPC
-                        IPC_PipeClient_Send(blClient, JXON_Dump(reloadMsg))
+                        IPC_PipeClient_Send(blClient, JSON.Dump(reloadMsg))
                         Sleep(500)
 
                         ; Get restored projection
                         gBlTestResponse := ""
                         gBlTestReceived := false
-                        IPC_PipeClient_Send(blClient, JXON_Dump(projMsg))
+                        IPC_PipeClient_Send(blClient, JSON.Dump(projMsg))
 
                         waitStart := A_TickCount
                         while (!gBlTestReceived && (A_TickCount - waitStart) < 3000)
@@ -800,7 +800,7 @@ RunLiveTests_Features() {
 
                         if (gBlTestReceived) {
                             try {
-                                respObj3 := JXON_Load(gBlTestResponse)
+                                respObj3 := JSON.Load(gBlTestResponse)
                                 items3 := respObj3["payload"]["items"]
                                 restoredCount := items3.Length
 
@@ -872,7 +872,7 @@ RunLiveTests_Features() {
                         }
 
                         ; Send final reload to restore store state
-                        IPC_PipeClient_Send(blClient, JXON_Dump(reloadMsg))
+                        IPC_PipeClient_Send(blClient, JSON.Dump(reloadMsg))
                         Sleep(200)
 
                         Log("  [BL Test] Blacklist file restored to original state")

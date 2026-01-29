@@ -48,7 +48,7 @@ Test_OnServerMessage(line, hPipe := 0) {
     Log("  [IPC] Server received: " SubStr(line, 1, 80))
     obj := ""
     try {
-        obj := JXON_Load(line)
+        obj := JSON.Load(line)
     } catch as e {
         Log("  [IPC] Parse error: " e.Message)
         return
@@ -70,7 +70,7 @@ Test_OnServerMessage(line, hPipe := 0) {
             payload: { meta: proj.meta, items: proj.HasOwnProp("items") ? proj.items : [] }
         }
         ; Send response
-        respJson := JXON_Dump(resp)
+        respJson := JSON.Dump(resp)
         Log("  [IPC] Sending response: " SubStr(respJson, 1, 80) "...")
         IPC_PipeServer_Send(testServer, hPipe, respJson)
     }
@@ -126,7 +126,7 @@ Test_OnHeartbeatMessage(line, hPipe := 0) {
         Log("  [HB Test] Received heartbeat #" gHbTestHeartbeats ": " SubStr(line, 1, 60))
         ; Extract rev from message
         try {
-            obj := JXON_Load(line)
+            obj := JSON.Load(line)
             if (obj.Has("rev")) {
                 gHbTestLastRev := obj["rev"]
             }
@@ -145,7 +145,7 @@ Test_OnProducerStateMessage(line, hPipe := 0) {
     if (InStr(line, '"type":"producer_status"')) {
         Log("  [Prod Test] Received producer_status: " SubStr(line, 1, 80))
         try {
-            obj := JXON_Load(line)
+            obj := JSON.Load(line)
             if (obj.Has("producers")) {
                 gProdTestProducers := obj["producers"]
             }

@@ -74,7 +74,7 @@ WizardApply(*) {
     needsAdmin := install || admin
     if (needsAdmin && !A_IsAdmin) {
         ; Save wizard choices to temp file, re-launch elevated with --wizard-continue flag
-        choices := JXON_Dump(Map(
+        choices := JSON.Dump(Map(
             "startMenu", startMenu,
             "startup", startup,
             "install", install,
@@ -166,7 +166,7 @@ WizardContinue() {
     try {
         choicesJson := FileRead(choicesFile, "UTF-8")
         FileDelete(choicesFile)  ; Delete immediately after reading
-        choices := JXON_Load(choicesJson)
+        choices := JSON.Load(choicesJson)
     } catch {
         try FileDelete(choicesFile)  ; Safety cleanup if read succeeded but delete/parse failed
         return false

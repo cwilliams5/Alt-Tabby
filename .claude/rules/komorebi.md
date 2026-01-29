@@ -28,13 +28,14 @@ try Store_PushToClients()  ; Critical!
 
 ## Event Content Extraction
 
-Content varies by type:
-- Array: `"content": [1, 2]`
-- String: `"content": "WorkspaceName"`
-- Integer: `"content": 1`
-- Object: `"content": {"EventType": 1}`
+Notifications are parsed once with `JSON.Load(jsonLine)` at the top of `_KSub_OnNotification`.
+Content is accessed via `eventObj["content"]` — cJson returns the correct AHK type automatically:
+- Array: `[1, 2]` -> AHK Array
+- String: `"WorkspaceName"` -> AHK String
+- Integer: `1` -> AHK Integer
+- Object: `{"EventType": 1}` -> AHK Map
 
-Use `_KSub_ExtractContentRaw()` which tries all formats.
+No manual type detection needed. Use `_KSafe_Str()`, `_KSafe_Int()` for safe property access.
 
 ## Cross-Workspace Activation
 
