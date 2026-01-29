@@ -231,7 +231,7 @@ _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs, _WEH_PendingZNeeded
     global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
-    global cfg
+    global cfg, gWS_Meta
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
@@ -270,6 +270,18 @@ _WEH_ProcessBatch() {
                 try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
             }
             _WEH_LastFocusHwnd := newFocus
+
+            ; Safety net: detect missed komorebi workspace switch.
+            ; If focused window's workspaceName differs from current, komorebi must have
+            ; switched workspaces but we missed the event (reconnect, pipe overflow, etc.)
+            try {
+                focusedRec := WindowStore_GetByHwnd(newFocus)
+                if (focusedRec && focusedRec.HasOwnProp("workspaceName") && focusedRec.workspaceName != ""
+                    && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
+                    _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
+                    WindowStore_SetCurrentWorkspace("", focusedRec.workspaceName)
+                }
+            }
 
             ; Enqueue icon refresh check (throttled) - allows updating window icons that change
             ; (e.g., browser favicons) when the window gains focus
