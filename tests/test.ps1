@@ -136,8 +136,35 @@ if (Test-Path $guiScript) {
 }
 
 if ($live) {
-    Write-Host "`n--- Compilation Phase ---" -ForegroundColor Yellow
-    Write-Host "SKIP: Compilation deferred to Core tests (--live)" -ForegroundColor Cyan
+    Write-Host "`n--- Compilation Phase (compile.bat) ---" -ForegroundColor Yellow
+    $compileBat = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.bat"
+    $compileDir = (Resolve-Path "$PSScriptRoot\..").Path
+
+    if (Test-Path $compileBat) {
+        # Kill running AltTabby processes first
+        $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
+        if ($running) {
+            Write-Host "  Stopping running AltTabby processes..."
+            Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        }
+
+        Write-Host "  Running compile.bat..."
+        $compileProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$compileBat`" < nul" -Wait -NoNewWindow -PassThru -WorkingDirectory $compileDir
+
+        if ($compileProc.ExitCode -eq 0 -and (Test-Path $outFile)) {
+            Write-Host "PASS: compile.bat completed" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: compile.bat failed (exit $($compileProc.ExitCode))" -ForegroundColor Red
+            Write-Host "Aborting - compiled exe required for live tests" -ForegroundColor Red
+            if ($guiJob) { $guiJob | Wait-Job | Remove-Job -Force }
+            exit 1
+        }
+    } else {
+        Write-Host "FAIL: compile.bat not found" -ForegroundColor Red
+        if ($guiJob) { $guiJob | Wait-Job | Remove-Job -Force }
+        exit 1
+    }
 } else {
     Write-Host "`n--- Compilation Phase ---" -ForegroundColor Yellow
     # Continue with compilation (non-live mode)
@@ -204,11 +231,11 @@ if ($live) {
 $mainExitCode = 0
 
 if ($live) {
-    # === Optimized Parallel Live Test Pipeline ===
-    # Timeline: Features(bg) + Units(fg) → Core(bg) → Execution(fg)
-    # Features has no compile.bat dependency, so it starts alongside unit tests.
-    # Core starts after units finish (compile.bat kills AltTabby processes).
-    # Execution starts as soon as Core finishes (needs compiled exe).
+    # === All-Parallel Live Test Pipeline ===
+    # Phase 0 (above): Syntax + GUI + compile.bat
+    # Phase 1 (here): ALL suites launch simultaneously
+    # Safe because: Features + Core use AHK stores, Execution uses AltTabby.exe
+    # All use unique pipe names with timestamps — no collisions
 
     $coreLogFile = "$env:TEMP\alt_tabby_tests_core.log"
     $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
@@ -224,8 +251,8 @@ if ($live) {
 
     $liveStart = Get-Date
 
-    # --- Phase 1: Features (bg) + Unit tests (fg) in parallel ---
-    Write-Host "`n--- Phase 1: Unit Tests + Features (parallel) ---" -ForegroundColor Yellow
+    # --- All Suites (parallel) ---
+    Write-Host "`n--- All Suites (parallel) ---" -ForegroundColor Yellow
 
     Write-Host "  Starting Features tests (background)..." -ForegroundColor Cyan
     $featuresJob = Start-Job -ScriptBlock {
@@ -233,6 +260,20 @@ if ($live) {
         $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-features" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
         return $proc.ExitCode
     } -ArgumentList $ahk, $script, $featuresStderrFile
+
+    Write-Host "  Starting Core tests (background)..." -ForegroundColor Cyan
+    $coreJob = Start-Job -ScriptBlock {
+        param($ahkPath, $scriptPath, $stderrPath)
+        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-core" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
+        return $proc.ExitCode
+    } -ArgumentList $ahk, $script, $coreStderrFile
+
+    Write-Host "  Starting Execution tests (background)..." -ForegroundColor Cyan
+    $executionJob = Start-Job -ScriptBlock {
+        param($ahkPath, $scriptPath, $stderrPath)
+        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-execution" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
+        return $proc.ExitCode
+    } -ArgumentList $ahk, $script, $executionStderrFile
 
     Write-Host "  Running Unit tests (foreground)..." -ForegroundColor Cyan
     $unitArgs = @("/ErrorStdOut", $script)
@@ -254,22 +295,12 @@ if ($live) {
         $mainExitCode = $process.ExitCode
     }
 
-    # --- Phase 2: Core (bg) - starts after units finish (compile.bat safety) ---
-    Write-Host "`n--- Phase 2: Core Tests ---" -ForegroundColor Yellow
-    Write-Host "  Starting Core tests..." -ForegroundColor Cyan
+    # --- Collect Results (wait for all background jobs) ---
 
-    $coreJob = Start-Job -ScriptBlock {
-        param($ahkPath, $scriptPath, $stderrPath)
-        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-core" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
-        return $proc.ExitCode
-    } -ArgumentList $ahk, $script, $coreStderrFile
-
-    # Wait for Core to finish (Execution depends on Core's compiled exe)
+    Write-Host "`n--- Core Test Results ---" -ForegroundColor Yellow
     $coreExitCode = $coreJob | Wait-Job | Receive-Job
     Remove-Job $coreJob
 
-    # Show Core results
-    Write-Host "`n--- Core Test Results ---" -ForegroundColor Yellow
     $coreStderr = Get-Content $coreStderrFile -ErrorAction SilentlyContinue
     if ($coreStderr) {
         Write-Host "=== CORE TEST ERRORS ===" -ForegroundColor Red
@@ -283,9 +314,9 @@ if ($live) {
 
     if ($coreExitCode -ne 0) { $mainExitCode = $coreExitCode }
 
-    # --- Phase 3: Execution (fg) - starts immediately after Core, overlaps with Features tail ---
-    Write-Host "`n--- Phase 3: Execution Tests ---" -ForegroundColor Yellow
-    $execProcess = Start-Process -FilePath $ahk -ArgumentList "/ErrorStdOut", $script, "--live-execution" -Wait -NoNewWindow -PassThru -RedirectStandardError $executionStderrFile
+    Write-Host "`n--- Execution Test Results ---" -ForegroundColor Yellow
+    $execExitCode = $executionJob | Wait-Job | Receive-Job
+    Remove-Job $executionJob
 
     $executionStderr = Get-Content $executionStderrFile -ErrorAction SilentlyContinue
     if ($executionStderr) {
@@ -298,9 +329,8 @@ if ($live) {
         Write-Host "Execution test log not found - tests may have failed to run" -ForegroundColor Red
     }
 
-    if ($execProcess.ExitCode -ne 0) { $mainExitCode = $execProcess.ExitCode }
+    if ($execExitCode -ne 0) { $mainExitCode = $execExitCode }
 
-    # --- Collect Features results (likely already done by now) ---
     Write-Host "`n--- Features Test Results ---" -ForegroundColor Yellow
     $featuresExitCode = $featuresJob | Wait-Job | Receive-Job
     Remove-Job $featuresJob
