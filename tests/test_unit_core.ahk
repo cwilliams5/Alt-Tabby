@@ -1423,4 +1423,120 @@ RunUnitTests_Core() {
     ; Test GetFocusedHwnd (should navigate to Beta ws, focused container 0, focused window 1 = hwnd 333)
     focusedHwnd := _KSub_GetFocusedHwnd(miniObj)
     AssertEq(focusedHwnd, 333, "Parse+Navigate: focused hwnd is 333")
+
+    ; ============================================================
+    ; _BL_InsertInSection Tests
+    ; ============================================================
+    Log("`n--- _BL_InsertInSection Tests ---")
+
+    ; Test 1: Insert into existing section
+    Log("Testing _BL_InsertInSection with existing section...")
+    testContent := "[Title]`nExistingEntry`n[Class]`nSomeClass`n"
+    result := _BL_InsertInSection(testContent, "Title", "NewEntry")
+    if (InStr(result, "[Title]`nNewEntry`n") && InStr(result, "ExistingEntry")) {
+        Log("PASS: _BL_InsertInSection inserted after section header")
+        TestPassed++
+    } else {
+        Log("FAIL: _BL_InsertInSection did not insert correctly")
+        Log("  Result: " SubStr(result, 1, 100))
+        TestErrors++
+    }
+
+    ; Test 2: Section not found returns content unchanged
+    Log("Testing _BL_InsertInSection with missing section...")
+    result := _BL_InsertInSection(testContent, "Nonexistent", "NewEntry")
+    if (result = testContent) {
+        Log("PASS: _BL_InsertInSection returns unchanged when section missing")
+        TestPassed++
+    } else {
+        Log("FAIL: _BL_InsertInSection should return unchanged for missing section")
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Blacklist Pair Matching E2E Tests
+    ; ============================================================
+    Log("`n--- Blacklist Pair Matching E2E Tests ---")
+
+    ; Create temp blacklist file with Title, Class, and Pair entries
+    testBlDir := A_Temp "\tabby_bl_test_" A_TickCount
+    testBlPath := testBlDir "\blacklist.txt"
+
+    ; Save original blacklist path to restore later (prevents breaking live tests)
+    global gBlacklist_FilePath
+    savedBlPath := gBlacklist_FilePath
+
+    try {
+        DirCreate(testBlDir)
+
+        blContent := "[Title]`nBadTitle*`n[Class]`nBadClass`n[Pair]`nPairClass|PairTitle*`n"
+        FileAppend(blContent, testBlPath, "UTF-8")
+
+        ; Load the test blacklist
+        Blacklist_Init(testBlPath)
+
+        ; Test title-only match
+        if (Blacklist_IsMatch("BadTitleFoo", "IrrelevantClass")) {
+            Log("PASS: Title-only match works (BadTitle* matches BadTitleFoo)")
+            TestPassed++
+        } else {
+            Log("FAIL: Title-only match should work for BadTitle*")
+            TestErrors++
+        }
+
+        ; Test class-only match
+        if (Blacklist_IsMatch("IrrelevantTitle", "BadClass")) {
+            Log("PASS: Class-only match works")
+            TestPassed++
+        } else {
+            Log("FAIL: Class-only match should work for BadClass")
+            TestErrors++
+        }
+
+        ; Test pair match: BOTH class and title must match
+        if (Blacklist_IsMatch("PairTitleFoo", "PairClass")) {
+            Log("PASS: Pair match works when BOTH class and title match")
+            TestPassed++
+        } else {
+            Log("FAIL: Pair match should work when both match")
+            TestErrors++
+        }
+
+        ; Test pair partial: only class matches pair -> false (title doesn't match)
+        if (!Blacklist_IsMatch("UnrelatedTitle", "PairClass")) {
+            Log("PASS: Pair partial (class only) correctly returns false")
+            TestPassed++
+        } else {
+            Log("FAIL: Pair partial (class only) should return false")
+            TestErrors++
+        }
+
+        ; Test pair partial: only title matches pair -> false (class doesn't match)
+        if (!Blacklist_IsMatch("PairTitleFoo", "UnrelatedClass")) {
+            Log("PASS: Pair partial (title only) correctly returns false")
+            TestPassed++
+        } else {
+            Log("FAIL: Pair partial (title only) should return false")
+            TestErrors++
+        }
+
+        ; Test no match
+        if (!Blacklist_IsMatch("SafeTitle", "SafeClass")) {
+            Log("PASS: Non-matching title+class correctly returns false")
+            TestPassed++
+        } else {
+            Log("FAIL: Non-matching title+class should return false")
+            TestErrors++
+        }
+
+        ; Cleanup: restore original blacklist path and reload
+        try FileDelete(testBlPath)
+        try DirDelete(testBlDir)
+        Blacklist_Init(savedBlPath)
+    } catch as e {
+        Log("FAIL: Blacklist pair E2E test error: " e.Message)
+        TestErrors++
+        try DirDelete(testBlDir, true)
+        Blacklist_Init(savedBlPath)
+    }
 }

@@ -61,6 +61,9 @@ global gGUI_EventBuffer := []
 global gGUI_LastLocalMRUTick := 0
 global gGUI_FlushStartTick := 0  ; For tick-based flushing wait (race condition fix)
 
+; Health check timestamp (used by gui_store.ahk)
+global gGUI_LastMsgTick := 0
+
 ; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
 global gINT_BypassMode := false
 
@@ -110,6 +113,17 @@ GUI_ComputeRowsToShow(n) {
 GUI_HideOverlay() {
     global gGUI_OverlayVisible
     gGUI_OverlayVisible := false
+}
+
+; GDI+ icon cache invalidation mock (called by GUI_ApplyDelta on removes)
+Gdip_InvalidateIconCache(hwnd) {
+}
+
+; Visible rows mock (called by _GUI_AnyVisibleItemChanged)
+global gMock_VisibleRows := 5
+GUI_GetVisibleRows() {
+    global gMock_VisibleRows
+    return gMock_VisibleRows
 }
 
 ; Paint timing log mocks (gui_paint.ahk not included in tests)
@@ -189,6 +203,7 @@ ResetGUIState() {
     global gGUI_AwaitingToggleProjection, gMockIPCMessages, gGUI_CurrentWSName
     global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
+    global gMock_VisibleRows, gGUI_LastMsgTick
 
     gGUI_State := "IDLE"
     gGUI_Items := []
@@ -211,6 +226,8 @@ ResetGUIState() {
     gGUI_EventBuffer := []
     gGUI_PendingPhase := ""
     gGUI_FlushStartTick := 0
+    gMock_VisibleRows := 5
+    gGUI_LastMsgTick := 0
 }
 
 CreateTestItems(count, currentWSCount := -1) {
@@ -275,8 +292,9 @@ RunGUITests() {
     global GUI_TestPassed, GUI_TestFailed, gMockIPCMessages, cfg
     global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
-    global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection
+    global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
+    global gGUI_StoreRev, gGUI_ItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -876,6 +894,358 @@ RunGUITests() {
     ; ALT_DN -> ALT_PENDING -> TAB (synthesized) -> ACTIVE -> ALT_UP -> IDLE
     GUI_AssertEq(gGUI_State, "IDLE", "Cycle completed after synthesized Tab (state=IDLE)")
     GUI_AssertEq(gGUI_PendingPhase, "", "Pending phase cleared after buffer processed")
+
+    ; ============================================================
+    ; SNAPSHOT GUARD TESTS
+    ; ============================================================
+
+    ; ----- Test: Snapshot skipped during async activation -----
+    GUI_Log("Test: Snapshot skipped during async activation")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_PendingPhase := "polling"  ; Simulate async activation in progress
+
+    ; Send snapshot - should be skipped (items unchanged)
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 100, payload: { items: CreateTestItems(10) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 5, "Snapshot skipped: items unchanged during async")
+    GUI_AssertEq(gGUI_StoreRev, 100, "Snapshot skipped: rev still updated")
+    gGUI_PendingPhase := ""  ; Cleanup
+
+    ; ----- Test: Snapshot skipped when local MRU is fresh -----
+    GUI_Log("Test: Snapshot skipped when local MRU is fresh")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_LastLocalMRUTick := A_TickCount  ; Just updated MRU
+
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 101, payload: { items: CreateTestItems(10) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 5, "Snapshot skipped: items unchanged when MRU fresh")
+    GUI_AssertEq(gGUI_StoreRev, 101, "Snapshot skipped: rev still updated when MRU fresh")
+
+    ; ----- Test: Snapshot accepted when local MRU is stale -----
+    GUI_Log("Test: Snapshot accepted when local MRU is stale")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_LastLocalMRUTick := A_TickCount - 1000  ; MRU updated 1s ago
+
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 102, payload: { items: CreateTestItems(10) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 10, "Snapshot accepted: items updated when MRU stale")
+
+    ; ----- Test: Toggle response bypasses BOTH guards -----
+    GUI_Log("Test: Toggle response bypasses both guards")
+    ResetGUIState()
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := true
+    gGUI_Items := CreateTestItems(5)
+
+    ; Set up ACTIVE state with pending toggle
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    gGUI_OverlayVisible := true
+
+    ; Request toggle (sets AwaitingToggleProjection)
+    GUI_ToggleWorkspaceMode()
+    GUI_AssertTrue(gGUI_AwaitingToggleProjection, "Toggle guard: awaiting flag set")
+
+    ; Set BOTH guards active
+    gGUI_PendingPhase := "polling"
+    gGUI_LastLocalMRUTick := A_TickCount
+
+    ; Send projection response - should bypass both guards because isToggleResponse
+    filteredItems := CreateTestItems(3, 3)
+    projMsg := JSON.Dump({ type: IPC_MSG_PROJECTION, rev: 103, payload: { items: filteredItems }})
+    GUI_OnStoreMessage(projMsg)
+
+    GUI_AssertEq(gGUI_AwaitingToggleProjection, false, "Toggle guard: flag cleared")
+    GUI_AssertEq(gGUI_FrozenItems.Length, 3, "Toggle guard: items updated despite both guards")
+    gGUI_PendingPhase := ""  ; Cleanup
+
+    cfg.UseCurrentWSProjection := false  ; Restore
+
+    ; ============================================================
+    ; DELTA PROCESSING TESTS
+    ; ============================================================
+
+    ; ----- Test: Delta removes items -----
+    GUI_Log("Test: Delta removes items")
+    ResetGUIState()
+    cfg.FreezeWindowList := false  ; Live mode for delta processing
+    ; Load initial items via snapshot
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    GUI_AssertEq(gGUI_Items.Length, 5, "Delta remove: initial 5 items")
+
+    ; Remove items with hwnd 2000 and 4000
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [2000, 4000] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 3, "Delta remove: 3 items remain")
+    GUI_AssertEq(gGUI_ItemsMap.Has(2000), false, "Delta remove: hwnd 2000 gone from map")
+    GUI_AssertEq(gGUI_ItemsMap.Has(4000), false, "Delta remove: hwnd 4000 gone from map")
+    GUI_AssertEq(gGUI_ItemsMap.Has(1000), true, "Delta remove: hwnd 1000 still in map")
+
+    ; ----- Test: Delta remove clamps selection -----
+    GUI_Log("Test: Delta remove clamps selection")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    gGUI_Sel := 5  ; Select last item
+
+    ; Remove items 4000 and 5000 (last two)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [4000, 5000] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 3, "Delta remove clamp: 3 items remain")
+    GUI_AssertTrue(gGUI_Sel <= 3, "Delta remove clamp: selection clamped to " gGUI_Sel)
+
+    ; ----- Test: Delta upsert updates existing item (cosmetic) -----
+    GUI_Log("Test: Delta upsert updates existing item (cosmetic)")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    ; Update title and processName of existing item (cosmetic, no MRU change)
+    upsertRec := Map("hwnd", 1000, "title", "Updated Title", "processName", "updated.exe")
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 5, "Delta upsert cosmetic: still 5 items")
+    GUI_AssertEq(gGUI_ItemsMap[1000].Title, "Updated Title", "Delta upsert cosmetic: title updated")
+    GUI_AssertEq(gGUI_ItemsMap[1000].processName, "updated.exe", "Delta upsert cosmetic: processName updated")
+
+    ; ----- Test: Delta upsert updates MRU field (triggers sort) -----
+    GUI_Log("Test: Delta upsert updates MRU field")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    ; Update lastActivatedTick of item 3000 to make it most recent
+    upsertRec := Map("hwnd", 3000, "lastActivatedTick", A_TickCount + 99999)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    ; Item 3000 should now be first (highest tick)
+    GUI_AssertEq(gGUI_Items[1].hwnd, 3000, "Delta upsert MRU: item 3000 moved to first position")
+
+    ; ----- Test: Delta upsert adds new item -----
+    GUI_Log("Test: Delta upsert adds new item")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(3) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    ; Add a brand new item via upsert
+    newRec := Map("hwnd", 9999, "title", "New Window", "class", "NewClass", "lastActivatedTick", A_TickCount + 99999)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [newRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 4, "Delta upsert new: 4 items total")
+    GUI_AssertEq(gGUI_ItemsMap.Has(9999), true, "Delta upsert new: hwnd 9999 in map")
+    GUI_AssertEq(gGUI_ItemsMap[9999].Title, "New Window", "Delta upsert new: title correct")
+
+    cfg.FreezeWindowList := true  ; Restore
+
+    ; ============================================================
+    ; LOCAL MRU UPDATE TESTS
+    ; ============================================================
+
+    ; ----- Test: _GUI_UpdateLocalMRU moves item to position 1 -----
+    GUI_Log("Test: _GUI_UpdateLocalMRU moves item to position 1")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+
+    ; Move item 3 (hwnd=3000) to position 1
+    result := _GUI_UpdateLocalMRU(3000)
+    GUI_AssertTrue(result, "UpdateLocalMRU: returns true for known hwnd")
+    GUI_AssertEq(gGUI_Items[1].hwnd, 3000, "UpdateLocalMRU: hwnd 3000 moved to position 1")
+    GUI_AssertTrue(gGUI_LastLocalMRUTick > 0, "UpdateLocalMRU: freshness tick set")
+
+    ; ----- Test: _GUI_UpdateLocalMRU unknown hwnd returns false -----
+    GUI_Log("Test: _GUI_UpdateLocalMRU unknown hwnd")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(3)
+    origFirst := gGUI_Items[1].hwnd
+
+    result := _GUI_UpdateLocalMRU(99999)
+    GUI_AssertTrue(!result, "UpdateLocalMRU: returns false for unknown hwnd")
+    GUI_AssertEq(gGUI_Items[1].hwnd, origFirst, "UpdateLocalMRU: items unchanged for unknown hwnd")
+    GUI_AssertEq(gGUI_LastLocalMRUTick, 0, "UpdateLocalMRU: tick NOT set for unknown hwnd")
+
+    ; ----- Test: _GUI_UpdateLocalMRU already-first item -----
+    GUI_Log("Test: _GUI_UpdateLocalMRU already-first item")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(3)
+    firstHwnd := gGUI_Items[1].hwnd
+
+    result := _GUI_UpdateLocalMRU(firstHwnd)
+    GUI_AssertTrue(result, "UpdateLocalMRU: returns true for first item")
+    GUI_AssertEq(gGUI_Items[1].hwnd, firstHwnd, "UpdateLocalMRU: first item stays first")
+    GUI_AssertTrue(gGUI_LastLocalMRUTick > 0, "UpdateLocalMRU: tick set even for first item")
+
+    ; ============================================================
+    ; GUI_SortItemsByMRU TESTS
+    ; ============================================================
+
+    ; ----- Test: GUI_SortItemsByMRU sorts by lastActivatedTick descending -----
+    GUI_Log("Test: GUI_SortItemsByMRU sorts correctly")
+    ResetGUIState()
+    gGUI_Items := []
+    ticks := [100, 300, 200, 500, 400]
+    Loop ticks.Length {
+        gGUI_Items.Push({ hwnd: A_Index * 1000, title: "W" A_Index, lastActivatedTick: ticks[A_Index] })
+    }
+
+    GUI_SortItemsByMRU()
+
+    GUI_AssertEq(gGUI_Items[1].lastActivatedTick, 500, "Sort MRU: first item has tick 500")
+    GUI_AssertEq(gGUI_Items[2].lastActivatedTick, 400, "Sort MRU: second item has tick 400")
+    GUI_AssertEq(gGUI_Items[3].lastActivatedTick, 300, "Sort MRU: third item has tick 300")
+    GUI_AssertEq(gGUI_Items[4].lastActivatedTick, 200, "Sort MRU: fourth item has tick 200")
+    GUI_AssertEq(gGUI_Items[5].lastActivatedTick, 100, "Sort MRU: fifth item has tick 100")
+
+    ; ----- Test: GUI_SortItemsByMRU handles single item -----
+    GUI_Log("Test: GUI_SortItemsByMRU handles single item")
+    ResetGUIState()
+    gGUI_Items := [{ hwnd: 1000, title: "Solo", lastActivatedTick: 42 }]
+    GUI_SortItemsByMRU()
+    GUI_AssertEq(gGUI_Items.Length, 1, "Sort MRU single: still 1 item")
+    GUI_AssertEq(gGUI_Items[1].lastActivatedTick, 42, "Sort MRU single: value preserved")
+
+    ; ----- Test: GUI_SortItemsByMRU handles empty list -----
+    GUI_Log("Test: GUI_SortItemsByMRU handles empty list")
+    ResetGUIState()
+    gGUI_Items := []
+    GUI_SortItemsByMRU()
+    GUI_AssertEq(gGUI_Items.Length, 0, "Sort MRU empty: no error")
+
+    ; ============================================================
+    ; VIEWPORT CHANGE DETECTION TESTS
+    ; ============================================================
+
+    ; ----- Test: _GUI_AnyVisibleItemChanged - item in viewport -----
+    GUI_Log("Test: Viewport change detection")
+    ResetGUIState()
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    items := CreateTestItems(10)
+    changedHwnds := Map()
+    changedHwnds[3000] := true  ; Item 3 is in viewport (indices 1-5)
+
+    result := _GUI_AnyVisibleItemChanged(items, changedHwnds)
+    GUI_AssertTrue(result, "Viewport: changed item 3 in viewport detected")
+
+    ; ----- Test: _GUI_AnyVisibleItemChanged - item off-screen -----
+    GUI_Log("Test: Viewport change detection - off-screen")
+    changedHwnds2 := Map()
+    changedHwnds2[8000] := true  ; Item 8 is off-screen (viewport is 1-5)
+
+    result := _GUI_AnyVisibleItemChanged(items, changedHwnds2)
+    GUI_AssertTrue(!result, "Viewport: changed item 8 off-screen not detected")
+
+    ; ----- Test: _GUI_AnyVisibleItemChanged - empty changedHwnds -----
+    GUI_Log("Test: Viewport change detection - empty changes")
+    result := _GUI_AnyVisibleItemChanged(items, Map())
+    GUI_AssertTrue(!result, "Viewport: empty changedHwnds returns false")
+
+    ; ============================================================
+    ; GUI_RemoveItemAt TESTS
+    ; ============================================================
+
+    ; ----- Test: GUI_RemoveItemAt removes middle item -----
+    GUI_Log("Test: GUI_RemoveItemAt removes middle item")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_Sel := 2
+
+    GUI_RemoveItemAt(3)  ; Remove middle item
+
+    GUI_AssertEq(gGUI_Items.Length, 4, "RemoveItemAt middle: 4 items remain")
+    GUI_AssertEq(gGUI_Sel, 2, "RemoveItemAt middle: selection unchanged")
+
+    ; ----- Test: GUI_RemoveItemAt removes last item, clamps selection -----
+    GUI_Log("Test: GUI_RemoveItemAt clamps selection")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(3)
+    gGUI_Sel := 3  ; Select last item
+
+    GUI_RemoveItemAt(3)  ; Remove last item
+
+    GUI_AssertEq(gGUI_Items.Length, 2, "RemoveItemAt last: 2 items remain")
+    GUI_AssertEq(gGUI_Sel, 2, "RemoveItemAt last: selection clamped to 2")
+
+    ; ----- Test: GUI_RemoveItemAt removes only item -----
+    GUI_Log("Test: GUI_RemoveItemAt removes only item")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(1)
+    gGUI_Sel := 1
+
+    GUI_RemoveItemAt(1)
+
+    GUI_AssertEq(gGUI_Items.Length, 0, "RemoveItemAt only: list empty")
+    GUI_AssertEq(gGUI_Sel, 1, "RemoveItemAt only: sel=1 (default)")
+    GUI_AssertEq(gGUI_ScrollTop, 0, "RemoveItemAt only: scrollTop=0")
+
+    ; ----- Test: GUI_RemoveItemAt out-of-bounds is no-op -----
+    GUI_Log("Test: GUI_RemoveItemAt out-of-bounds")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(3)
+
+    GUI_RemoveItemAt(0)
+    GUI_AssertEq(gGUI_Items.Length, 3, "RemoveItemAt 0: no-op")
+
+    GUI_RemoveItemAt(4)
+    GUI_AssertEq(gGUI_Items.Length, 3, "RemoveItemAt 4: no-op (out of bounds)")
+
+    ; ============================================================
+    ; WORKSPACE PAYLOAD TRACKING TESTS
+    ; ============================================================
+
+    ; ----- Test: GUI_UpdateCurrentWSFromPayload extracts workspace name -----
+    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload extracts workspace name")
+    ResetGUIState()
+    payload := Map()
+    payload["meta"] := Map("currentWSName", "Alpha")
+
+    GUI_UpdateCurrentWSFromPayload(payload)
+    GUI_AssertEq(gGUI_CurrentWSName, "Alpha", "WSPayload: workspace name extracted")
+
+    ; ----- Test: GUI_UpdateCurrentWSFromPayload resets selection in current mode -----
+    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload resets selection in current mode")
+    ResetGUIState()
+    gGUI_WorkspaceMode := "current"
+    gGUI_State := "ACTIVE"
+    gGUI_CurrentWSName := "Alpha"
+    gGUI_Sel := 5
+
+    payload := Map()
+    payload["meta"] := Map("currentWSName", "Beta")
+
+    GUI_UpdateCurrentWSFromPayload(payload)
+    GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload reset: workspace updated")
+    GUI_AssertEq(gGUI_Sel, 1, "WSPayload reset: selection reset to 1")
+
+    ; ----- Test: GUI_UpdateCurrentWSFromPayload does NOT reset in all mode -----
+    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload no reset in all mode")
+    ResetGUIState()
+    gGUI_WorkspaceMode := "all"
+    gGUI_State := "ACTIVE"
+    gGUI_CurrentWSName := "Alpha"
+    gGUI_Sel := 5
+
+    payload := Map()
+    payload["meta"] := Map("currentWSName", "Beta")
+
+    GUI_UpdateCurrentWSFromPayload(payload)
+    GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload all: workspace updated")
+    GUI_AssertEq(gGUI_Sel, 5, "WSPayload all: selection NOT reset")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Test Summary ===")
