@@ -27,6 +27,7 @@ A_MenuMaskKey := "vkE8"
 #Include *i %A_ScriptDir%\..\shared\cjson.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
+#Include *i %A_ScriptDir%\..\shared\process_utils.ahk
 
 ; GUI utilities
 #Include *i %A_ScriptDir%\gui_gdip.ahk
@@ -217,13 +218,13 @@ _GUI_StartStore() {
     ; Determine how to start the store based on compiled vs dev mode
     if (A_IsCompiled) {
         ; Compiled: run same exe with --store flag
-        Run('"' A_ScriptFullPath '" --store', , "Hide")
+        ProcessUtils_RunHidden('"' A_ScriptFullPath '" --store')
     } else {
         ; Dev mode: run store_server.ahk directly
         storePath := A_ScriptDir "\..\store\store_server.ahk"
         runner := (cfg.HasOwnProp("AhkV2Path") && cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path))
             ? cfg.AhkV2Path : A_AhkPath
-        Run('"' runner '" "' storePath '"', , "Hide")
+        ProcessUtils_RunHidden('"' runner '" "' storePath '"')
     }
 }
 

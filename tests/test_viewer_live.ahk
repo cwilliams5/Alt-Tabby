@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+A_IconHidden := true  ; No tray icon during tests
 #Include ..\src\shared\config.ahk
 
 ; Headless viewer integration test (no GUI).
@@ -62,7 +63,7 @@ TestViewer_OnError(err, *) {
     return true
 }
 
-; Launch a process hidden without cursor feedback (STARTF_FORCEOFFEEDBACK).
+; Launch a process hidden without cursor feedback (STARTF_FORCEOFFFEEDBACK).
 ; Sets outPid to the new process ID. Returns true on success.
 _TV_RunSilent(cmdLine, &outPid := 0) {
     outPid := 0
@@ -70,7 +71,7 @@ _TV_RunSilent(cmdLine, &outPid := 0) {
     StrPut(cmdLine, cmdBuf, "UTF-16")
     si := Buffer(104, 0)
     NumPut("UInt", 104, si, 0)    ; cb
-    NumPut("UInt", 0x41, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+    NumPut("UInt", 0x81, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK
     pi := Buffer(24, 0)
     result := DllCall("CreateProcessW",
         "Ptr", 0, "Ptr", cmdBuf,

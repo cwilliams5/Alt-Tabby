@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+A_IconHidden := true  ; No tray icon during tests
 
 ; Diagnostic tool to identify what fields are causing constant deltas
 

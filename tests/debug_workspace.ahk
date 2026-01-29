@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 #Warn VarUnset, Off
+A_IconHidden := true  ; No tray icon during tests
 
 ; Debug script to check if workspace data flows through the store
 ; Logs to file instead of popups

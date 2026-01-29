@@ -486,7 +486,7 @@ GUI_ActivateItem(item) {
         ; Start workspace switch
         try {
             cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
-            Run(cmd, , "Hide")
+            ProcessUtils_RunHidden(cmd)
         }
 
         ; Set up async state

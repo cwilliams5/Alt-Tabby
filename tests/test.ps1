@@ -32,13 +32,13 @@ if ($remainingArgs) {
 }
 
 # --- Silent Process Helper ---
-# Uses CreateProcessW with STARTF_FORCEOFFEEDBACK to suppress the Windows
-# "app starting" cursor (pointer+hourglass) during process launches.
+# Uses CreateProcessW with STARTF_FORCEOFFFEEDBACK (0x80) to suppress the
+# Windows "app starting" cursor (pointer+hourglass) during process launches.
 # PowerShell's Start-Process doesn't expose this flag.
 #
 # StartCaptured/RunWaitCaptured launch processes DIRECTLY (no cmd.exe wrapper)
 # with STARTF_USESTDHANDLES to redirect stdout+stderr to a file. This applies
-# FORCEOFFEEDBACK to the actual target process, not an intermediate cmd.exe
+# FORCEOFFFEEDBACK to the actual target process, not an intermediate cmd.exe
 # whose children would still trigger cursor feedback.
 Add-Type @"
 using System;
@@ -86,7 +86,7 @@ public class SilentProcess {
     public static int RunWait(string cmdLine, string workDir = null) {
         var si = new STARTUPINFOW();
         si.cb = Marshal.SizeOf(si);
-        si.dwFlags = 0x41; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+        si.dwFlags = 0x81; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK
         var sb = new StringBuilder(cmdLine);
         PROCESS_INFORMATION pi;
         if (!CreateProcessW(null, sb, IntPtr.Zero, IntPtr.Zero, false,
@@ -102,7 +102,7 @@ public class SilentProcess {
     public static IntPtr Start(string cmdLine, string workDir = null) {
         var si = new STARTUPINFOW();
         si.cb = Marshal.SizeOf(si);
-        si.dwFlags = 0x41; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+        si.dwFlags = 0x81; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK
         var sb = new StringBuilder(cmdLine);
         PROCESS_INFORMATION pi;
         if (!CreateProcessW(null, sb, IntPtr.Zero, IntPtr.Zero, false,
@@ -124,7 +124,7 @@ public class SilentProcess {
         }
         var si = new STARTUPINFOW();
         si.cb = Marshal.SizeOf(si);
-        si.dwFlags = 0x141; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK | STARTF_USESTDHANDLES
+        si.dwFlags = 0x181; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK | STARTF_USESTDHANDLES
         si.hStdInput = hNul;
         si.hStdOutput = hOut;
         si.hStdError = hOut;

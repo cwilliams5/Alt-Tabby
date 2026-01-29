@@ -226,7 +226,7 @@ Test_OnCompiledStoreMessage(line, hPipe := 0) {
 ; --- Process Launch Helpers ---
 ; Windows shows the "app starting" cursor (pointer+hourglass) whenever a new
 ; process is launched via Run(). These helpers use CreateProcessW with
-; STARTF_FORCEOFFEEDBACK to suppress that cursor change during tests.
+; STARTF_FORCEOFFFEEDBACK (0x80) to suppress that cursor change during tests.
 
 ; Launch a process hidden without cursor feedback.
 ; Returns true on success. Sets outPid to the new process ID.
@@ -240,7 +240,7 @@ _Test_RunSilent(cmdLine, &outPid := 0) {
     ; STARTUPINFOW (104 bytes on 64-bit)
     si := Buffer(104, 0)
     NumPut("UInt", 104, si, 0)    ; cb = sizeof(STARTUPINFOW)
-    NumPut("UInt", 0x41, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+    NumPut("UInt", 0x81, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK
     ; wShowWindow at offset 64 = 0 (SW_HIDE) from zero-init
 
     ; PROCESS_INFORMATION (24 bytes on 64-bit)
@@ -276,7 +276,7 @@ _Test_RunWaitSilent(cmdLine, workDir := "") {
 
     si := Buffer(104, 0)
     NumPut("UInt", 104, si, 0)
-    NumPut("UInt", 0x41, si, 60)
+    NumPut("UInt", 0x81, si, 60)
 
     pi := Buffer(24, 0)
 

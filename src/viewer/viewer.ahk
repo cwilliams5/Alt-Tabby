@@ -7,6 +7,7 @@
 #Include *i ..\shared\cjson.ahk
 #Include *i ..\shared\ipc_pipe.ahk
 #Include *i ..\shared\blacklist.ahk
+#Include *i ..\shared\process_utils.ahk
 
 ; Viewer (debug) - receives snapshots/deltas from store.
 
@@ -807,7 +808,7 @@ _Viewer_StartStore() {
     global cfg
     storePath := A_ScriptDir "\..\store\store_server.ahk"
     runner := (cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path)) ? cfg.AhkV2Path : A_AhkPath
-    Run('"' runner '" "' storePath '"', , "Hide")
+    ProcessUtils_RunHidden('"' runner '" "' storePath '"')
 }
 
 Viewer_OnError(err, *) {

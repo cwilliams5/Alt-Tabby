@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 #Warn VarUnset, Off
+A_IconHidden := true  ; No tray icon during tests
 
 ; ============================================================
 ; Comprehensive Komorebi E2E Test
@@ -440,7 +441,7 @@ _ArrayJoin(arr, sep := ", ") {
     return out
 }
 
-; Launch a process hidden without cursor feedback (STARTF_FORCEOFFEEDBACK).
+; Launch a process hidden without cursor feedback (STARTF_FORCEOFFFEEDBACK).
 ; Sets outPid to the new process ID. Returns true on success.
 _KE2E_RunSilent(cmdLine, &outPid := 0) {
     outPid := 0
@@ -448,7 +449,7 @@ _KE2E_RunSilent(cmdLine, &outPid := 0) {
     StrPut(cmdLine, cmdBuf, "UTF-16")
     si := Buffer(104, 0)
     NumPut("UInt", 104, si, 0)    ; cb
-    NumPut("UInt", 0x41, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+    NumPut("UInt", 0x81, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK
     pi := Buffer(24, 0)
     result := DllCall("CreateProcessW",
         "Ptr", 0, "Ptr", cmdBuf,
@@ -471,7 +472,7 @@ _KE2E_RunWaitSilent(cmdLine) {
     StrPut(cmdLine, cmdBuf, "UTF-16")
     si := Buffer(104, 0)
     NumPut("UInt", 104, si, 0)
-    NumPut("UInt", 0x41, si, 60)
+    NumPut("UInt", 0x81, si, 60)
     pi := Buffer(24, 0)
     result := DllCall("CreateProcessW",
         "Ptr", 0, "Ptr", cmdBuf,

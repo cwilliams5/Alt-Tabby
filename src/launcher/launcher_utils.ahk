@@ -49,11 +49,17 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
         logFunc("LAUNCH: starting " component " process")
 
     ; Run and capture PID
+    ; ProcessUtils_Run suppresses cursor feedback in test mode
     try {
-        Run(cmd, , , &pidVar)
+        ProcessUtils_Run(cmd, &pidVar)
+        if (pidVar) {
+            if (logFunc != "")
+                logFunc("LAUNCH: " component " PID=" pidVar)
+            return true
+        }
         if (logFunc != "")
-            logFunc("LAUNCH: " component " PID=" pidVar)
-        return true
+            logFunc("LAUNCH: " component " FAILED - ProcessUtils_Run returned 0")
+        return false
     } catch as e {
         if (logFunc != "")
             logFunc("LAUNCH: " component " FAILED - " e.Message)

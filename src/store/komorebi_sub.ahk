@@ -155,7 +155,7 @@ KomorebiSub_Start() {
     ; Launch komorebic subscriber
     try {
         cmd := '"' cfg.KomorebicExe '" subscribe-pipe ' _KSub_PipeName
-        _KSub_ClientPid := Run(cmd, , "Hide")
+        _KSub_ClientPid := ProcessUtils_RunHidden(cmd)
         _KSub_DiagLog("KomorebiSub: Launched subscriber pid=" _KSub_ClientPid " cmd=" cmd)
     } catch as e {
         _KSub_DiagLog("KomorebiSub: Failed to launch subscriber: " e.Message)
@@ -965,7 +965,7 @@ _KSub_GetStateDirect() {
     tmp := A_Temp "\komorebi_state_" A_TickCount ".tmp"
     ; Use double-quote escaping for cmd.exe with paths containing spaces
     cmd := 'cmd.exe /c ""' cfg.KomorebicExe '" state > "' tmp '"" 2>&1'
-    try RunWait(cmd, , "Hide")
+    try ProcessUtils_RunWaitHidden(cmd)
     Sleep(100)  ; Give file time to write
     txt := ""
     try txt := FileRead(tmp, "UTF-8")

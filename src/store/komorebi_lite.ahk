@@ -48,7 +48,7 @@ KomorebiLite_GetStateText() {
         return _KLite_StateText
     tmp := A_Temp "\komorebi_state_" A_TickCount "_" Random(1000,9999) ".tmp"
     cmd := 'cmd.exe /c "' cfg.KomorebicExe '" state > "' tmp '" 2>&1'
-    RunWait(cmd, , "Hide")
+    ProcessUtils_RunWaitHidden(cmd)
     txt := ""
     try txt := FileRead(tmp, "UTF-8")
     try FileDelete(tmp)
