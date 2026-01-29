@@ -88,7 +88,7 @@ global gGUI_StoreRestartAttempts := 0  ; Counter for store restart attempts
 ; ========================= INITIALIZATION =========================
 
 GUI_Main_Init() {
-    global gGUI_StoreClient, cfg
+    global gGUI_StoreClient, cfg, IPC_MSG_HELLO
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
