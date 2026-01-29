@@ -18,6 +18,10 @@ global gGdip_Res := Map()
 ; Avoids re-converting HICON to GDI+ bitmap on every repaint
 global gGdip_IconCache := Map()
 
+; Dynamic brush/pen caches: auto-populated on first use, cleared on shutdown/scale change
+global gGdip_BrushCache := Map()   ; argb -> pBrush
+global gGdip_PenCache := Map()     ; "argb_width" -> pPen
+
 ; Start GDI+
 Gdip_Startup() {
     global gGdip_Token
@@ -151,7 +155,19 @@ Gdip_FontStyleFromWeight(w) {
 
 ; Dispose all cached GDI+ resources
 Gdip_DisposeResources() {
-    global gGdip_Res, gGdip_ResScale
+    global gGdip_Res, gGdip_ResScale, gGdip_BrushCache, gGdip_PenCache
+
+    ; Always clear dynamic brush/pen caches (independent of gGdip_Res)
+    for _, pBr in gGdip_BrushCache {
+        if (pBr)
+            DllCall("gdiplus\GdipDeleteBrush", "ptr", pBr)
+    }
+    gGdip_BrushCache := Map()
+    for _, pPen in gGdip_PenCache {
+        if (pPen)
+            DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
+    }
+    gGdip_PenCache := Map()
 
     if (!gGdip_Res.Count) {
         gGdip_ResScale := 0.0
@@ -190,24 +206,41 @@ Gdip_DisposeResources() {
     gGdip_ResScale := 0.0
 }
 
-; Fill rounded rectangle
-Gdip_FillRoundRect(g, argb, x, y, w, h, r) {
+; Get or create a cached solid brush for the given ARGB color
+Gdip_GetCachedBrush(argb) {
+    global gGdip_BrushCache
+    if (gGdip_BrushCache.Has(argb))
+        return gGdip_BrushCache[argb]
+    pBr := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "int", argb, "ptr*", &pBr)
+    gGdip_BrushCache[argb] := pBr
+    return pBr
+}
+
+; Get or create a cached pen for the given ARGB color and width
+Gdip_GetCachedPen(argb, width) {
+    global gGdip_PenCache
+    key := argb "_" width
+    if (gGdip_PenCache.Has(key))
+        return gGdip_PenCache[key]
+    pPen := 0
+    DllCall("gdiplus\GdipCreatePen1", "int", argb, "float", width, "int", 2, "ptr*", &pPen)
+    gGdip_PenCache[key] := pPen
+    return pPen
+}
+
+; Fill rounded rectangle (pBr = pre-cached brush pointer)
+Gdip_FillRoundRect(g, pBr, x, y, w, h, r) {
     if (w <= 0 || h <= 0) {
         return
     }
 
     if (r <= 0) {
-        pBr := 0
-        DllCall("gdiplus\GdipCreateSolidFill", "int", argb, "ptr*", &pBr)
         DllCall("gdiplus\GdipFillRectangle", "ptr", g, "ptr", pBr, "float", x, "float", y, "float", w, "float", h)
-        if (pBr) {
-            DllCall("gdiplus\GdipDeleteBrush", "ptr", pBr)
-        }
         return
     }
 
     pPath := 0
-    pBr := 0
     r2 := r * 2.0
 
     DllCall("gdiplus\GdipCreatePath", "int", 0, "ptr*", &pPath)
@@ -220,25 +253,20 @@ Gdip_FillRoundRect(g, argb, x, y, w, h, r) {
     DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x, "float", y + h - r2, "float", r2, "float", r2, "float", 90.0, "float", 90.0)
     DllCall("gdiplus\GdipClosePathFigure", "ptr", pPath)
 
-    DllCall("gdiplus\GdipCreateSolidFill", "int", argb, "ptr*", &pBr)
     DllCall("gdiplus\GdipFillPath", "ptr", g, "ptr", pBr, "ptr", pPath)
 
-    if (pBr) {
-        DllCall("gdiplus\GdipDeleteBrush", "ptr", pBr)
-    }
     if (pPath) {
         DllCall("gdiplus\GdipDeletePath", "ptr", pPath)
     }
 }
 
-; Stroke rounded rectangle
-Gdip_StrokeRoundRect(g, argb, x, y, w, h, r, strokeWidth := 1) {
+; Stroke rounded rectangle (pPen = pre-cached pen pointer)
+Gdip_StrokeRoundRect(g, pPen, x, y, w, h, r) {
     if (w <= 0 || h <= 0) {
         return
     }
 
     pPath := 0
-    pPen := 0
     r2 := r * 2.0
 
     DllCall("gdiplus\GdipCreatePath", "int", 0, "ptr*", &pPath)
@@ -251,12 +279,8 @@ Gdip_StrokeRoundRect(g, argb, x, y, w, h, r, strokeWidth := 1) {
     DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x, "float", y + h - r2, "float", r2, "float", r2, "float", 90.0, "float", 90.0)
     DllCall("gdiplus\GdipClosePathFigure", "ptr", pPath)
 
-    DllCall("gdiplus\GdipCreatePen1", "int", argb, "float", strokeWidth, "int", 2, "ptr*", &pPen)
     DllCall("gdiplus\GdipDrawPath", "ptr", g, "ptr", pPen, "ptr", pPath)
 
-    if (pPen) {
-        DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
-    }
     if (pPath) {
         DllCall("gdiplus\GdipDeletePath", "ptr", pPath)
     }
@@ -272,29 +296,19 @@ Gdip_DrawText(g, text, x, y, w, h, br, font, fmt) {
     DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", text, "int", -1, "ptr", font, "ptr", rf.Ptr, "ptr", fmt, "ptr", br)
 }
 
-; Draw centered text in rectangle
-Gdip_DrawCenteredText(g, text, x, y, w, h, argb, font, fmtCenter) {
+; Draw centered text in rectangle (pBr = pre-cached brush pointer)
+Gdip_DrawCenteredText(g, text, x, y, w, h, pBr, font, fmtCenter) {
     rf := Buffer(16, 0)
     NumPut("Float", x, rf, 0)
     NumPut("Float", y, rf, 4)
     NumPut("Float", w, rf, 8)
     NumPut("Float", h, rf, 12)
-    br := 0
-    DllCall("gdiplus\GdipCreateSolidFill", "int", argb, "ptr*", &br)
-    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", text, "int", -1, "ptr", font, "ptr", rf.Ptr, "ptr", fmtCenter, "ptr", br)
-    if (br) {
-        DllCall("gdiplus\GdipDeleteBrush", "ptr", br)
-    }
+    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", text, "int", -1, "ptr", font, "ptr", rf.Ptr, "ptr", fmtCenter, "ptr", pBr)
 }
 
-; Fill ellipse
-Gdip_FillEllipse(g, argb, x, y, w, h) {
-    pBr := 0
-    DllCall("gdiplus\GdipCreateSolidFill", "int", argb, "ptr*", &pBr)
+; Fill ellipse (pBr = pre-cached brush pointer)
+Gdip_FillEllipse(g, pBr, x, y, w, h) {
     DllCall("gdiplus\GdipFillEllipse", "ptr", g, "ptr", pBr, "float", x, "float", y, "float", w, "float", h)
-    if (pBr) {
-        DllCall("gdiplus\GdipDeleteBrush", "ptr", pBr)
-    }
 }
 
 ; Draw icon from HICON (uncached - used internally)

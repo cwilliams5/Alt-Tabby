@@ -35,13 +35,7 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
         }
     }
 
-    ; Optional: Use centralized eligibility check (Alt-Tab rules + blacklist)
-    if (checkEligible) {
-        if (!Blacklist_IsWindowEligible(hwnd))
-            return ""
-    }
-
-    ; Get basic window info
+    ; Get basic window info FIRST (needed for eligibility check)
     title := ""
     class := ""
     pid := 0
@@ -58,14 +52,23 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
     if (title = "")
         return ""
 
-    ; Visibility state
-    isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
-    isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
+    isVisible := false
+    isMin := false
+    isCloaked := false
 
-    ; DWM cloaking detection (for virtual desktops, komorebi, etc.)
-    global DWMWA_CLOAKED
-    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
-    isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+    if (checkEligible) {
+        ; Use Ex variant - gets vis/min/cloak as byproduct of eligibility check
+        ; Avoids redundant DllCalls (IsWindowVisible, IsIconic, DwmGetWindowAttribute)
+        if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked))
+            return ""
+    } else {
+        ; Fetch vis/min/cloak directly
+        isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
+        isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
+        global DWMWA_CLOAKED
+        hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
+        isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+    }
 
     ; Build record as Map (required by WindowStore)
     rec := Map()

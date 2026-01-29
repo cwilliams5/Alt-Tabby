@@ -270,12 +270,21 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
 }
 
 ; Alt-Tab eligibility rules (matches Windows behavior)
+; Delegates to Ex variant for shared implementation
 _BL_IsAltTabEligible(hwnd) {
+    vis := false, min := false, clk := false
+    return _BL_IsAltTabEligibleEx(hwnd, &vis, &min, &clk)
+}
+
+; Extended Alt-Tab eligibility - returns vis/min/cloak via ByRef
+; Used by Blacklist_IsWindowEligibleEx to avoid redundant DllCalls in WinUtils_ProbeWindow
+_BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
     global BL_WS_CHILD, BL_WS_EX_TOOLWINDOW, BL_WS_EX_APPWINDOW, BL_WS_EX_NOACTIVATE
+    static cloakedBuf := Buffer(4, 0)
 
     ; Get visibility state
-    isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
-    isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
+    outVis := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
+    outMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
 
     ; Get regular window style
     style := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -16, "ptr")  ; GWL_STYLE
@@ -307,12 +316,43 @@ _BL_IsAltTabEligible(hwnd) {
         return false
 
     ; Check DWM cloaking
-    cloakedBuf := Buffer(4, 0)
     hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
-    isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+    outCloak := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 
     ; Must be visible, minimized, or cloaked
-    if !(isVisible || isMin || isCloaked)
+    if !(outVis || outMin || outCloak)
+        return false
+
+    return true
+}
+
+; Extended eligibility check - returns vis/min/cloak via ByRef when eligible
+; Avoids redundant DllCalls when caller also needs these values (e.g., WinUtils_ProbeWindow)
+Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
+    global cfg
+    static cloakedBuf := Buffer(4, 0)
+
+    ; Skip windows with no title
+    if (title = "")
+        return false
+
+    ; Check Alt-Tab eligibility (keep HasOwnProp - may run before full init)
+    useAltTab := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
+    if (useAltTab) {
+        if (!_BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak))
+            return false
+    } else {
+        ; Fetch vis/min/cloak directly when eligibility check is skipped
+        outVis := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
+        outMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
+        global DWMWA_CLOAKED
+        hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
+        outCloak := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+    }
+
+    ; Check blacklist (keep HasOwnProp - may run before full init)
+    useBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
+    if (useBlacklist && Blacklist_IsMatch(title, class))
         return false
 
     return true
