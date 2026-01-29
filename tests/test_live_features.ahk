@@ -408,13 +408,8 @@ RunLiveTests_Features() {
         }
     }
 
-    ; Kill the shared store (done with MRU and Projection tests)
-    if (sharedFeatStorePid) {
-        try ProcessClose(sharedFeatStorePid)
-    }
-
     ; ============================================================
-    ; Multi-Client E2E Test
+    ; Multi-Client E2E Test (reuses shared store from MRU/Projection)
     ; ============================================================
     Log("`n--- Multi-Client E2E Test ---")
 
@@ -422,25 +417,9 @@ RunLiveTests_Features() {
     ; with different projection options and receive correct responses.
     ; The store sends an initial snapshot after HELLO using the client's
     ; projection options, so we just need to wait for that snapshot.
-    multiTestPipe := "tabby_multi_test_" A_TickCount
-    multiTestPid := 0
+    ; Reuses the shared store - Multi-client is pure read-only.
 
-    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' multiTestPipe, &multiTestPid)) {
-        Log("SKIP: Could not start store for multi-client test")
-        multiTestPid := 0
-    }
-
-    if (multiTestPid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(multiTestPipe, 3000)) {
-            Log("FAIL: Multi-client test store pipe not ready within timeout")
-            TestErrors++
-            try ProcessClose(multiTestPid)
-            multiTestPid := 0
-        }
-    }
-
-    if (multiTestPid) {
+    if (sharedFeatStorePid) {
         ; Reset flags BEFORE connecting (so callbacks can set them from initial snapshot)
         gMultiClient1Response := ""
         gMultiClient1Received := false
@@ -451,11 +430,11 @@ RunLiveTests_Features() {
 
         ; Connect 3 clients with different projection options
         ; Use slightly longer delays to ensure pipe instances are ready
-        client1 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient1)
+        client1 := IPC_PipeClient_Connect(sharedFeatStorePipe, Test_OnMultiClient1)
         Sleep(100)
-        client2 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient2)
+        client2 := IPC_PipeClient_Connect(sharedFeatStorePipe, Test_OnMultiClient2)
         Sleep(100)
-        client3 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient3)
+        client3 := IPC_PipeClient_Connect(sharedFeatStorePipe, Test_OnMultiClient3)
         Sleep(100)
 
         allConnected := (client1.hPipe != 0 && client2.hPipe != 0 && client3.hPipe != 0)
@@ -598,9 +577,11 @@ RunLiveTests_Features() {
                 IPC_PipeClient_Close(client3)
         }
 
-        try {
-            ProcessClose(multiTestPid)
-        }
+    }
+
+    ; Kill the shared store (done with MRU, Projection, and Multi-client tests)
+    if (sharedFeatStorePid) {
+        try ProcessClose(sharedFeatStorePid)
     }
 
     ; ============================================================

@@ -760,13 +760,6 @@ RunLiveTests_Core() {
     }
 
     if (wsE2EPid) {
-        ; Wait for komorebi initial poll to complete
-        ; Initial poll happens after winenum populates
-        Sleep(1500)
-
-        gWsE2EResponse := ""
-        gWsE2EReceived := false
-
         wsE2EClient := IPC_PipeClient_Connect(wsE2EPipe, Test_OnWsE2EMessage)
 
         if (wsE2EClient.hPipe) {
@@ -777,14 +770,39 @@ RunLiveTests_Core() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "ws_e2e_test", wants: { deltas: false } }
             IPC_PipeClient_Send(wsE2EClient, JSON.Dump(helloMsg))
 
-            ; Request projection with workspace data
+            ; Poll for workspace data instead of fixed 1500ms sleep.
+            ; Komorebi initial poll completes asynchronously after store starts.
+            ; Exit early as soon as workspace data appears in projection.
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items", includeMinimized: true, includeCloaked: true } }
-            IPC_PipeClient_Send(wsE2EClient, JSON.Dump(projMsg))
+            pollStart := A_TickCount
+            wsDataReady := false
 
-            ; Wait for response
-            waitStart := A_TickCount
-            while (!gWsE2EReceived && (A_TickCount - waitStart) < 5000) {
-                Sleep(100)
+            while (!wsDataReady && (A_TickCount - pollStart) < 5000) {
+                gWsE2EResponse := ""
+                gWsE2EReceived := false
+                IPC_PipeClient_Send(wsE2EClient, JSON.Dump(projMsg))
+
+                waitStart := A_TickCount
+                while (!gWsE2EReceived && (A_TickCount - waitStart) < 1000)
+                    Sleep(50)
+
+                if (gWsE2EReceived) {
+                    try {
+                        checkObj := JSON.Load(gWsE2EResponse)
+                        if (checkObj.Has("payload") && checkObj["payload"].Has("items")) {
+                            checkItems := checkObj["payload"]["items"]
+                            for _, item in checkItems {
+                                if (item.Has("workspaceName") && item["workspaceName"] != "") {
+                                    wsDataReady := true
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!wsDataReady)
+                    Sleep(200)
             }
 
             if (gWsE2EReceived) {
