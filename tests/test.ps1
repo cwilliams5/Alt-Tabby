@@ -204,12 +204,37 @@ if ($live) {
 $mainExitCode = 0
 
 if ($live) {
-    # === Parallel Live Test Mode ===
-    # 1. Run unit tests (no --live flag)
-    # 2. Run Core + Features in parallel
-    # 3. Run Execution sequentially (needs compiled exe from Core)
+    # === Optimized Parallel Live Test Pipeline ===
+    # Timeline: Features(bg) + Units(fg) → Core(bg) → Execution(fg)
+    # Features has no compile.bat dependency, so it starts alongside unit tests.
+    # Core starts after units finish (compile.bat kills AltTabby processes).
+    # Execution starts as soon as Core finishes (needs compiled exe).
 
-    Write-Host "`n--- Unit Tests Phase ---" -ForegroundColor Yellow
+    $coreLogFile = "$env:TEMP\alt_tabby_tests_core.log"
+    $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
+    $executionLogFile = "$env:TEMP\alt_tabby_tests_execution.log"
+    $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
+    $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
+    $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
+
+    # Clean parallel log files
+    foreach ($f in @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile)) {
+        Remove-Item -Force -ErrorAction SilentlyContinue $f
+    }
+
+    $liveStart = Get-Date
+
+    # --- Phase 1: Features (bg) + Unit tests (fg) in parallel ---
+    Write-Host "`n--- Phase 1: Unit Tests + Features (parallel) ---" -ForegroundColor Yellow
+
+    Write-Host "  Starting Features tests (background)..." -ForegroundColor Cyan
+    $featuresJob = Start-Job -ScriptBlock {
+        param($ahkPath, $scriptPath, $stderrPath)
+        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-features" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
+        return $proc.ExitCode
+    } -ArgumentList $ahk, $script, $featuresStderrFile
+
+    Write-Host "  Running Unit tests (foreground)..." -ForegroundColor Cyan
     $unitArgs = @("/ErrorStdOut", $script)
     $process = Start-Process -FilePath $ahk -ArgumentList $unitArgs -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrFile
 
@@ -229,47 +254,19 @@ if ($live) {
         $mainExitCode = $process.ExitCode
     }
 
-    # --- Parallel Live Suites: Core + Features ---
-    Write-Host "`n--- Live Tests Phase (Core + Features in parallel) ---" -ForegroundColor Yellow
-
-    $coreLogFile = "$env:TEMP\alt_tabby_tests_core.log"
-    $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
-    $executionLogFile = "$env:TEMP\alt_tabby_tests_execution.log"
-    $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
-    $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
-    $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
-
-    # Clean parallel log files
-    Remove-Item -Force -ErrorAction SilentlyContinue $coreLogFile
-    Remove-Item -Force -ErrorAction SilentlyContinue $featuresLogFile
-    Remove-Item -Force -ErrorAction SilentlyContinue $executionLogFile
-    Remove-Item -Force -ErrorAction SilentlyContinue $coreStderrFile
-    Remove-Item -Force -ErrorAction SilentlyContinue $featuresStderrFile
-    Remove-Item -Force -ErrorAction SilentlyContinue $executionStderrFile
-
-    $coreStart = Get-Date
+    # --- Phase 2: Core (bg) - starts after units finish (compile.bat safety) ---
+    Write-Host "`n--- Phase 2: Core Tests ---" -ForegroundColor Yellow
     Write-Host "  Starting Core tests..." -ForegroundColor Cyan
+
     $coreJob = Start-Job -ScriptBlock {
         param($ahkPath, $scriptPath, $stderrPath)
         $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-core" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
         return $proc.ExitCode
     } -ArgumentList $ahk, $script, $coreStderrFile
 
-    Write-Host "  Starting Features tests..." -ForegroundColor Cyan
-    $featuresJob = Start-Job -ScriptBlock {
-        param($ahkPath, $scriptPath, $stderrPath)
-        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-features" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
-        return $proc.ExitCode
-    } -ArgumentList $ahk, $script, $featuresStderrFile
-
-    # Wait for both to complete
-    Write-Host "  Waiting for Core + Features to complete..." -ForegroundColor DarkGray
+    # Wait for Core to finish (Execution depends on Core's compiled exe)
     $coreExitCode = $coreJob | Wait-Job | Receive-Job
     Remove-Job $coreJob
-    $featuresExitCode = $featuresJob | Wait-Job | Receive-Job
-    Remove-Job $featuresJob
-
-    $parallelElapsed = ((Get-Date) - $coreStart).TotalSeconds
 
     # Show Core results
     Write-Host "`n--- Core Test Results ---" -ForegroundColor Yellow
@@ -284,27 +281,10 @@ if ($live) {
         Write-Host "Core test log not found - tests may have failed to run" -ForegroundColor Red
     }
 
-    # Show Features results
-    Write-Host "`n--- Features Test Results ---" -ForegroundColor Yellow
-    $featuresStderr = Get-Content $featuresStderrFile -ErrorAction SilentlyContinue
-    if ($featuresStderr) {
-        Write-Host "=== FEATURES TEST ERRORS ===" -ForegroundColor Red
-        Write-Host $featuresStderr
-    }
-    if (Test-Path $featuresLogFile) {
-        Get-Content $featuresLogFile
-    } else {
-        Write-Host "Features test log not found - tests may have failed to run" -ForegroundColor Red
-    }
-
-    Write-Host "`n  Core + Features completed in $([math]::Round($parallelElapsed, 1))s (parallel)" -ForegroundColor Cyan
-
     if ($coreExitCode -ne 0) { $mainExitCode = $coreExitCode }
-    if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
 
-    # --- Sequential: Execution tests (needs compiled exe from Core) ---
-    Write-Host "`n--- Execution Tests Phase (sequential) ---" -ForegroundColor Yellow
-    $execStart = Get-Date
+    # --- Phase 3: Execution (fg) - starts immediately after Core, overlaps with Features tail ---
+    Write-Host "`n--- Phase 3: Execution Tests ---" -ForegroundColor Yellow
     $execProcess = Start-Process -FilePath $ahk -ArgumentList "/ErrorStdOut", $script, "--live-execution" -Wait -NoNewWindow -PassThru -RedirectStandardError $executionStderrFile
 
     $executionStderr = Get-Content $executionStderrFile -ErrorAction SilentlyContinue
@@ -318,10 +298,28 @@ if ($live) {
         Write-Host "Execution test log not found - tests may have failed to run" -ForegroundColor Red
     }
 
-    $execElapsed = ((Get-Date) - $execStart).TotalSeconds
-    Write-Host "`n  Execution tests completed in $([math]::Round($execElapsed, 1))s" -ForegroundColor Cyan
-
     if ($execProcess.ExitCode -ne 0) { $mainExitCode = $execProcess.ExitCode }
+
+    # --- Collect Features results (likely already done by now) ---
+    Write-Host "`n--- Features Test Results ---" -ForegroundColor Yellow
+    $featuresExitCode = $featuresJob | Wait-Job | Receive-Job
+    Remove-Job $featuresJob
+
+    $featuresStderr = Get-Content $featuresStderrFile -ErrorAction SilentlyContinue
+    if ($featuresStderr) {
+        Write-Host "=== FEATURES TEST ERRORS ===" -ForegroundColor Red
+        Write-Host $featuresStderr
+    }
+    if (Test-Path $featuresLogFile) {
+        Get-Content $featuresLogFile
+    } else {
+        Write-Host "Features test log not found - tests may have failed to run" -ForegroundColor Red
+    }
+
+    if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
+
+    $liveElapsed = ((Get-Date) - $liveStart).TotalSeconds
+    Write-Host "`n  Live pipeline completed in $([math]::Round($liveElapsed, 1))s" -ForegroundColor Cyan
 } else {
     # === Non-live mode: unit tests only ===
     Write-Host "`n--- Unit Tests Phase ---" -ForegroundColor Yellow

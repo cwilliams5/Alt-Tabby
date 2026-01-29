@@ -130,8 +130,8 @@ Launcher_Init() {
         }
     }
 
-    ; Show splash screen if enabled
-    if (cfg.LauncherShowSplash)
+    ; Show splash screen if enabled (skip in testing mode)
+    if (cfg.LauncherShowSplash && !g_TestingMode)
         ShowSplashScreen()
 
     ; Set up tray with on-demand menu updates
@@ -144,7 +144,7 @@ Launcher_Init() {
     LaunchGui()
 
     ; Hide splash after duration (or immediately if duration is 0)
-    if (cfg.LauncherShowSplash) {
+    if (cfg.LauncherShowSplash && !g_TestingMode) {
         ; Calculate remaining time after launches
         elapsed := A_TickCount - g_SplashStartTick
         remaining := cfg.LauncherSplashDurationMs - elapsed

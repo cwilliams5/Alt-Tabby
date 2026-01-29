@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Off  ; Allow parallel instances for --live-core/features/execution
 #Warn VarUnset, Off  ; Suppress warnings for functions defined in includes
+A_IconHidden := true  ; No tray icon during tests
 
 ; Automated test runner - Orchestrates all test suites
 ; Usage: AutoHotkey64.exe tests/run_tests.ahk [--live]
@@ -50,25 +51,7 @@ global gBlTestReceived := false
 global gStandaloneTestReceived := false
 global gCompiledStoreReceived := false
 
-; --- Initialize log ---
-try FileDelete(TestLogPath)
-Log("=== Alt-Tabby Test Run " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
-
-; --- Error handler to prevent dialog popups ---
-OnError(_Test_OnError)
-
-_Test_OnError(err, *) {
-    global TestErrors
-    Log("ERROR: Unhandled exception")
-    Log("  Message: " err.Message)
-    Log("  File: " err.File)
-    Log("  Line: " err.Line)
-    TestErrors++
-    return true  ; Suppress default error dialog
-}
-Log("Log file: " TestLogPath)
-
-; --- Check for flags ---
+; --- Check for flags (BEFORE log init to set suite-specific log paths) ---
 DoLiveTests := false
 DoLiveCore := false
 DoLiveFeatures := false
@@ -84,22 +67,32 @@ for _, arg in A_Args {
         DoLiveExecution := true
 }
 
-; Single-suite modes use a dedicated log file for parallel aggregation
-if (DoLiveCore) {
+; Single-suite modes use a dedicated log file to avoid file locking
+; conflicts when multiple instances run in parallel
+if (DoLiveCore)
     TestLogPath := A_Temp "\alt_tabby_tests_core.log"
-    try FileDelete(TestLogPath)
-    Log("=== Alt-Tabby Test Run (Core) " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
-}
-if (DoLiveFeatures) {
+else if (DoLiveFeatures)
     TestLogPath := A_Temp "\alt_tabby_tests_features.log"
-    try FileDelete(TestLogPath)
-    Log("=== Alt-Tabby Test Run (Features) " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
-}
-if (DoLiveExecution) {
+else if (DoLiveExecution)
     TestLogPath := A_Temp "\alt_tabby_tests_execution.log"
-    try FileDelete(TestLogPath)
-    Log("=== Alt-Tabby Test Run (Execution) " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
+
+; --- Error handler BEFORE any I/O to catch early startup errors ---
+OnError(_Test_OnError)
+
+_Test_OnError(err, *) {
+    global TestErrors
+    Log("ERROR: Unhandled exception")
+    Log("  Message: " err.Message)
+    Log("  File: " err.File)
+    Log("  Line: " err.Line)
+    TestErrors++
+    return true  ; Suppress default error dialog
 }
+
+; --- Initialize log (after path is finalized, error handler is active) ---
+try FileDelete(TestLogPath)
+Log("=== Alt-Tabby Test Run " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
+Log("Log file: " TestLogPath)
 
 ; ============================================================
 ; Include PRODUCTION files (tests call real functions)

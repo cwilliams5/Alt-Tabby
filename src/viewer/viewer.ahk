@@ -39,13 +39,20 @@ global gViewer_CurrentWSName := ""
 global gViewer_ProducerState := Map()  ; Producer states from store meta
 global gViewer_ShuttingDown := false  ; Shutdown coordination flag
 
+global gViewer_TestMode := false
 for _, arg in A_Args {
     if (SubStr(arg, 1, 6) = "--log=") {
         gViewer_LogPath := SubStr(arg, 7)
     } else if (arg = "--nogui") {
         gViewer_Headless := true
+    } else if (arg = "--test") {
+        gViewer_TestMode := true
     }
 }
+
+; Hide tray icon for headless/test mode (no user-facing UI needed)
+if (gViewer_Headless || gViewer_TestMode)
+    A_IconHidden := true
 
 Viewer_Init() {
     global gViewer_Client, gViewer_LogPath, cfg

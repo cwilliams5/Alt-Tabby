@@ -3,6 +3,7 @@
 ; This file tests the real gui_store.ahk, gui_workspace.ahk, gui_state.ahk, gui_input.ahk
 #Requires AutoHotkey v2.0
 #Warn VarUnset, Off
+A_IconHidden := true  ; No tray icon during tests
 
 ; ============================================================
 ; 1. GLOBALS (must match gui_main.ahk)

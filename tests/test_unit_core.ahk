@@ -801,21 +801,24 @@ RunUnitTests_Core() {
     entryPoints := [
         {name: "store_server.ahk", path: A_ScriptDir "\..\src\store\store_server.ahk", args: "--test --pipe=entry_test_store_" A_TickCount},
         {name: "viewer.ahk", path: A_ScriptDir "\..\src\viewer\viewer.ahk", args: "--nogui"},
-        {name: "gui_main.ahk", path: A_ScriptDir "\..\src\gui\gui_main.ahk", args: ""},
+        {name: "gui_main.ahk", path: A_ScriptDir "\..\src\gui\gui_main.ahk", args: "--test"},
         {name: "alt_tabby.ahk (launcher)", path: A_ScriptDir "\..\src\alt_tabby.ahk", args: "--testing-mode"}
     ]
 
-    for _, ep in entryPoints {
+    ; Launch ALL entry points in parallel (saves ~2s vs sequential)
+    pids := []
+    errFiles := []
+    for idx, ep in entryPoints {
         if (!FileExist(ep.path)) {
             Log("SKIP: " ep.name " not found")
+            pids.Push(0)
+            errFiles.Push("")
             continue
         }
 
-        ; Run with ErrorStdOut to capture runtime errors to a temp file
-        errFile := A_Temp "\tabby_entry_test_" A_TickCount "_" A_Index ".err"
+        errFile := A_Temp "\tabby_entry_test_" A_TickCount "_" idx ".err"
         try FileDelete(errFile)
 
-        ; Use cmd.exe to capture stderr
         cmd := '"' A_AhkPath '" /ErrorStdOut "' ep.path '"'
         if (ep.args != "")
             cmd .= " " ep.args
@@ -827,49 +830,43 @@ RunUnitTests_Core() {
         } catch as e {
             Log("FAIL: " ep.name " - could not launch: " e.Message)
             TestErrors++
-            continue
         }
+        pids.Push(pid)
+        errFiles.Push(errFile)
+    }
 
-        ; Wait a moment for initialization to complete (or fail)
-        ; 750ms is sufficient to detect init failures without being overly slow
-        Sleep(750)
+    ; Single wait for all to initialize (750ms total instead of 4x750ms)
+    Sleep(750)
 
-        ; Check if process is still running
+    ; Collect results from all entry points
+    for idx, ep in entryPoints {
+        pid := pids[idx]
+        errFile := errFiles[idx]
+        if (!pid)
+            continue
+
         stillRunning := ProcessExist(pid)
 
-        ; Kill it if still running (we just wanted to test init)
-        if (stillRunning) {
+        ; For launcher: find child PIDs BEFORE killing parent (tree kill)
+        if (InStr(ep.name, "launcher") && stillRunning) {
+            ; taskkill /T kills the entire process tree (cmd → launcher → store + gui)
+            RunWait('taskkill /F /T /PID ' pid, , "Hide")
+            stillRunning := false  ; We just killed it
+        } else if (stillRunning) {
             ProcessClose(pid)
-        }
-
-        ; Special cleanup for launcher: it spawns child processes (store, gui)
-        if (InStr(ep.name, "launcher")) {
-            Sleep(200)  ; Let children start
-            ; Kill any AutoHotkey processes running store or gui spawned by launcher
-            for proc in ComObjGet("winmgmts:").ExecQuery("SELECT * FROM Win32_Process WHERE Name='AutoHotkey64.exe'") {
-                cmdLine := ""
-                try cmdLine := proc.CommandLine
-                if (InStr(cmdLine, "store_server.ahk") || InStr(cmdLine, "gui_main.ahk")) {
-                    try ProcessClose(proc.ProcessId)
-                }
-            }
         }
 
         ; Read error output
         errOutput := ""
-        if (FileExist(errFile)) {
-            try {
-                errOutput := FileRead(errFile)
-            }
+        if (errFile != "" && FileExist(errFile)) {
+            try errOutput := FileRead(errFile)
             try FileDelete(errFile)
         }
 
-        ; Check for errors
         hasError := InStr(errOutput, "Error:") || InStr(errOutput, "has not been assigned")
 
         if (hasError) {
             Log("FAIL: " ep.name " - runtime initialization error:")
-            ; Show first few lines of error
             errLines := StrSplit(errOutput, "`n")
             lineCount := 0
             for _, line in errLines {
@@ -880,12 +877,11 @@ RunUnitTests_Core() {
             }
             TestErrors++
         } else if (!stillRunning && errOutput != "") {
-            ; Process exited but had some output (might be warning)
             Log("WARN: " ep.name " - exited with output: " SubStr(errOutput, 1, 100))
             Log("PASS: " ep.name " - initialized without fatal error")
             TestPassed++
         } else {
-            Log("PASS: " ep.name " - initialized successfully (ran for 1.5s)")
+            Log("PASS: " ep.name " - initialized successfully (ran for 0.75s)")
             TestPassed++
         }
     }

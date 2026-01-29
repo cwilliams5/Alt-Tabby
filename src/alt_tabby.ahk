@@ -75,6 +75,7 @@ for _, arg in A_Args {
             ; Repair stale admin task after self-elevation
         case "--testing-mode":
             g_TestingMode := true
+            A_IconHidden := true  ; No tray icon during automated testing
             ; Skip wizard and install mismatch dialogs (for automated testing)
         case "--skip-mismatch":
             g_SkipMismatchCheck := true

@@ -57,33 +57,32 @@ RunLiveTests_Features() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "mru_test", wants: { deltas: false } }
             IPC_PipeClient_Send(mruClient, JSON.Dump(helloMsg))
 
-            ; Trigger a focus change by activating a window
-            ; First, get the current foreground window
-            origFg := 0
-            try origFg := WinGetID("A")
-
-            ; Find a different window to activate temporarily
-            testWindows := WinEnumLite_ScanAll()
-            alternateHwnd := 0
-            for _, rec in testWindows {
-                hwnd := rec["hwnd"]
-                if (hwnd != origFg && !rec["isMinimized"] && !rec["isCloaked"]) {
-                    alternateHwnd := hwnd
-                    break
-                }
-            }
-
-            if (alternateHwnd) {
-                ; Activate the alternate window to trigger focus event
-                try WinActivate("ahk_id " alternateHwnd)
-                Sleep(300)  ; Give WinEventHook time to process
-            }
-
-            ; Restore original foreground
-            if (origFg) {
-                try WinActivate("ahk_id " origFg)
-                Sleep(300)
-            }
+            ; DISABLED: This block switches the user's active window to generate
+            ; real focus events for MRU tracking. It's disruptive when the user is
+            ; actively working during test runs (steals focus, interrupts typing).
+            ; The MRU sort order assertion below still works because the store
+            ; populates MRU data from its own startup enumeration.
+            ; Re-enable for focused MRU validation if needed:
+            ;
+            ; origFg := 0
+            ; try origFg := WinGetID("A")
+            ; testWindows := WinEnumLite_ScanAll()
+            ; alternateHwnd := 0
+            ; for _, rec in testWindows {
+            ;     hwnd := rec["hwnd"]
+            ;     if (hwnd != origFg && !rec["isMinimized"] && !rec["isCloaked"]) {
+            ;         alternateHwnd := hwnd
+            ;         break
+            ;     }
+            ; }
+            ; if (alternateHwnd) {
+            ;     try WinActivate("ahk_id " alternateHwnd)
+            ;     Sleep(300)
+            ; }
+            ; if (origFg) {
+            ;     try WinActivate("ahk_id " origFg)
+            ;     Sleep(300)
+            ; }
 
             ; Request projection and check MRU data
             gMruTestResponse := ""

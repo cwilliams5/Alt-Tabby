@@ -44,6 +44,7 @@ gStore_ProducerState["procPump"] := "disabled"
 
 ; Parse command-line args into local vars first (ConfigLoader_Init will set defaults)
 global gStore_CmdLinePipe := ""  ; Command-line override for pipe name
+global gStore_CmdLineHeartbeatMs := 0  ; Command-line override for heartbeat interval
 for _, arg in A_Args {
     if (arg = "--test")
         gStore_TestMode := true
@@ -51,8 +52,11 @@ for _, arg in A_Args {
         gStore_ErrorLog := SubStr(arg, 7)
     else if (SubStr(arg, 1, 7) = "--pipe=")
         gStore_CmdLinePipe := SubStr(arg, 8)
+    else if (SubStr(arg, 1, 15) = "--heartbeat-ms=")
+        gStore_CmdLineHeartbeatMs := Integer(SubStr(arg, 16))
 }
 if (gStore_TestMode) {
+    A_IconHidden := true  ; No tray icon when launched by test runner
     try OnError(Store_OnError)
     IPC_DebugLogPath := A_ScriptDir "\..\..\tests\windowstore_ipc.log"
     try FileDelete(IPC_DebugLogPath)
@@ -72,6 +76,8 @@ Store_Init() {
     ; Apply command-line overrides AFTER config init (command line wins)
     if (gStore_CmdLinePipe != "")
         cfg.StorePipeName := gStore_CmdLinePipe
+    if (gStore_CmdLineHeartbeatMs > 0)
+        cfg.StoreHeartbeatIntervalMs := gStore_CmdLineHeartbeatMs
 
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {

@@ -843,13 +843,13 @@ RunLiveTests_Core() {
     ; ============================================================
     Log("`n--- Heartbeat Test ---")
 
-    ; Start a store with short heartbeat interval for testing
+    ; Start a store with fast heartbeat interval (1s instead of default 5s)
     hbTestPipe := "tabby_hb_test_" A_TickCount
     hbTestPid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' hbTestPipe, , "Hide", &hbTestPid)
-        Log("  [HB] Store launched (PID=" hbTestPid ", pipe=" hbTestPipe ")")
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' hbTestPipe ' --heartbeat-ms=1000', , "Hide", &hbTestPid)
+        Log("  [HB] Store launched (PID=" hbTestPid ", pipe=" hbTestPipe ", heartbeat=1000ms)")
     } catch as e {
         Log("SKIP: Could not start store for heartbeat test: " e.Message)
         hbTestPid := 0

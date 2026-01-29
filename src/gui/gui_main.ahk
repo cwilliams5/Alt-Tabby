@@ -12,6 +12,12 @@ SendMode("Event")
 ; Alt-Tabby GUI - Main entry point
 ; This file orchestrates all GUI components by including sub-modules
 
+; Hide tray icon when launched standalone by test runner
+for _, arg in A_Args {
+    if (arg = "--test")
+        A_IconHidden := true
+}
+
 ; Use an inert mask key so Alt taps don't focus menus
 A_MenuMaskKey := "vkE8"
 

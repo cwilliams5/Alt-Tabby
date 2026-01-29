@@ -38,6 +38,10 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
             default:
                 return false
         }
+        ; In testing mode, pass --test to child processes so they hide tray icons
+        global g_TestingMode
+        if (g_TestingMode)
+            cmd .= " --test"
     }
 
     ; Log if function provided
