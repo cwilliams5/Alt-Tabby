@@ -151,7 +151,9 @@ _GUI_StoreHealthCheck() {
         gGUI_ReconnectAttempts++
 
         if (gGUI_ReconnectAttempts <= maxReconnectAttempts) {
-            ; Try to reconnect
+            ; Try to reconnect - NON-BLOCKING (timeoutMs=0 = single attempt, no loop)
+            ; This prevents the busy-wait loop in _IPC_ClientConnect from freezing
+            ; keyboard/mouse input via blocked low-level hook callbacks.
             ToolTip("Alt-Tabby: Reconnecting to store... (" gGUI_ReconnectAttempts "/" maxReconnectAttempts ")")
             HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
 
@@ -159,7 +161,7 @@ _GUI_StoreHealthCheck() {
             if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
                 IPC_PipeClient_Close(gGUI_StoreClient)
 
-            gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
+            gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage, 0)
             if (gGUI_StoreClient.hPipe) {
                 ; Reconnected successfully
                 hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
@@ -170,8 +172,9 @@ _GUI_StoreHealthCheck() {
                 ToolTip("Alt-Tabby: Reconnected to store")
                 HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             }
+            ; If failed, next health check tick will retry (no blocking)
         } else if (gGUI_StoreRestartAttempts < maxRestartAttempts) {
-            ; Reconnection failed repeatedly - try restarting store
+            ; Reconnection failed repeatedly - restart store
             gGUI_StoreRestartAttempts++
             gGUI_ReconnectAttempts := 0  ; Reset for next cycle
 
@@ -179,23 +182,8 @@ _GUI_StoreHealthCheck() {
             HideTooltipAfter(TOOLTIP_DURATION_LONG)
 
             _GUI_StartStore()
-
-            ; Wait a moment for store to start, then try connecting
-            Sleep(TIMING_STORE_START_WAIT)
-
-            ; Defensive close before reconnect (in case of stale handle)
-            if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
-                IPC_PipeClient_Close(gGUI_StoreClient)
-
-            gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
-            if (gGUI_StoreClient.hPipe) {
-                hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-                IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
-                gGUI_LastMsgTick := A_TickCount
-                gGUI_StoreConnected := true
-                ToolTip("Alt-Tabby: Store restarted and connected")
-                HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
-            }
+            ; Don't Sleep or block here - the next health check tick (5s) will
+            ; attempt connection after the store has had time to start up.
         }
         ; If all restart attempts exhausted, stop trying (avoid infinite loop)
         return

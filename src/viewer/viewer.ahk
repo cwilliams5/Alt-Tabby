@@ -645,8 +645,8 @@ _Viewer_Heartbeat() {
     timeoutMs := cfg.ViewerHeartbeatTimeoutMs
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
-        ; Not connected - try to connect
-        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
+        ; Not connected - try non-blocking connect (single attempt, no busy-wait loop)
+        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage, 0)
         if (gViewer_Client.hPipe) {
             _Viewer_SendHello()
             _Viewer_RequestProducerStatus()  ; Request producer status on connect
@@ -659,9 +659,9 @@ _Viewer_Heartbeat() {
     ; Check for heartbeat timeout - if no message in timeoutMs, connection may be dead
     if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > timeoutMs) {
         _Viewer_Log("Heartbeat timeout (" timeoutMs "ms) - attempting reconnect")
-        ; Close current connection and try to reconnect
+        ; Close current connection and try non-blocking reconnect
         IPC_PipeClient_Close(gViewer_Client)
-        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
+        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage, 0)
         if (gViewer_Client.hPipe) {
             _Viewer_SendHello()
             _Viewer_RequestProducerStatus()  ; Request producer status on reconnect

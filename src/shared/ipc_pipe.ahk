@@ -150,7 +150,7 @@ IPC_PipeServer_Send(server, hPipe, msgText) {
     return true
 }
 
-IPC_PipeClient_Connect(pipeName, onMessageFn) {
+IPC_PipeClient_Connect(pipeName, onMessageFn, timeoutMs := 2000) {
     client := {
         pipeName: pipeName,
         onMessage: onMessageFn,
@@ -160,7 +160,7 @@ IPC_PipeClient_Connect(pipeName, onMessageFn) {
         tickMs: 100,
         idleStreak: 0
     }
-    h := _IPC_ClientConnect(pipeName, 2000)
+    h := _IPC_ClientConnect(pipeName, timeoutMs)
     if (!h)
         return client
     client.hPipe := h
@@ -444,9 +444,19 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
         gle := DllCall("GetLastError", "uint")
         if (gle != IPC_ERROR_PIPE_BUSY && gle != IPC_ERROR_FILE_NOT_FOUND)
             return 0
+        ; Non-blocking mode: single attempt, return immediately on failure
+        if (timeoutMs <= 0)
+            return 0
         if ((A_TickCount - start) > timeoutMs)
             return 0
-        DllCall("WaitNamedPipeW", "str", name, "uint", IPC_WAIT_PIPE_TIMEOUT)
+        ; CRITICAL: WaitNamedPipeW returns immediately when pipe doesn't exist,
+        ; creating a CPU-burning busy-wait that blocks the message queue and freezes
+        ; keyboard/mouse input (low-level hooks can't be processed).
+        ; Sleep pumps the AHK message queue, allowing hook callbacks to run.
+        if (gle = IPC_ERROR_FILE_NOT_FOUND)
+            Sleep(50)
+        else
+            DllCall("WaitNamedPipeW", "str", name, "uint", IPC_WAIT_PIPE_TIMEOUT)
     }
 }
 
