@@ -260,7 +260,7 @@ RunLiveTests_Core() {
 
     if (gTestClient.hPipe) {
         ; Give connection time to establish
-        Sleep(200)
+        Sleep(50)
 
         ; Send projection request
         reqMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
@@ -579,7 +579,7 @@ RunLiveTests_Core() {
     ; Kill the shared store (done with Real Store, Viewer, and Producer State tests)
     if (sharedStorePid) {
         try ProcessClose(sharedStorePid)
-        Sleep(500)  ; Allow process cleanup before launching new stores
+        Sleep(200)  ; Allow process cleanup before launching new stores
     }
 
     ; ============================================================
@@ -746,9 +746,9 @@ RunLiveTests_Core() {
     }
 
     if (wsE2EPid) {
-        ; Additional wait for komorebi initial poll to complete
+        ; Wait for komorebi initial poll to complete
         ; Initial poll happens after winenum populates
-        Sleep(2000)
+        Sleep(1500)
 
         gWsE2EResponse := ""
         gWsE2EReceived := false
@@ -841,6 +841,11 @@ RunLiveTests_Core() {
     ; ============================================================
     ; Heartbeat Test
     ; ============================================================
+    ; NOTE: Do NOT try to overlap this with other tests. Heartbeats are
+    ; suppressed while the store is actively sending deltas (window events).
+    ; On an active desktop, deltas flow every ~0.8s which resets the heartbeat
+    ; timer indefinitely. This test needs a quiescent period after store
+    ; startup, which only happens reliably when run sequentially.
     Log("`n--- Heartbeat Test ---")
 
     ; Start a store with fast heartbeat interval (1s instead of default 5s)
@@ -882,14 +887,16 @@ RunLiveTests_Core() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "hb_test", wants: { deltas: true } }
             IPC_PipeClient_Send(hbClient, JSON.Dump(helloMsg))
 
-            ; Wait for heartbeats. Store suppresses heartbeats when recent messages were sent,
-            ; so first heartbeat after hello snapshot can take up to 2x interval in worst case.
-            ; Use 2x heartbeat interval + 5s buffer for reliable test timing.
-            hbTimeoutMs := (cfg.StoreHeartbeatIntervalMs * 2) + 5000
+            ; Wait for heartbeats. Store suppresses heartbeats when recent messages
+            ; were sent, so first heartbeat after hello snapshot can take up to 2x
+            ; interval in worst case (active desktop generates deltas that reset timer).
+            ; Use generous timeout: the store sends heartbeats at 1000ms intervals,
+            ; but deltas from window events can delay them on an active desktop.
+            hbTimeoutMs := 15000
             Log("  Waiting for heartbeat messages (timeout=" hbTimeoutMs "ms)...")
             waitStart := A_TickCount
             while (gHbTestHeartbeats < 2 && (A_TickCount - waitStart) < hbTimeoutMs) {
-                Sleep(500)
+                Sleep(200)
             }
 
             if (gHbTestHeartbeats >= 1) {

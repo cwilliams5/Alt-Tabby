@@ -156,7 +156,7 @@ RunLiveTests_Features() {
             ; Send hello
             helloMsg := { type: IPC_MSG_HELLO, clientId: "proj_test", wants: { deltas: false } }
             IPC_PipeClient_Send(projClient, JSON.Dump(helloMsg))
-            Sleep(300)
+            Sleep(100)
 
             ; === Test sort options ===
             sortTests := ["Z", "MRU", "Title", "Pid", "ProcessName"]
@@ -456,11 +456,11 @@ RunLiveTests_Features() {
         ; Connect 3 clients with different projection options
         ; Use slightly longer delays to ensure pipe instances are ready
         client1 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient1)
-        Sleep(150)
+        Sleep(100)
         client2 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient2)
-        Sleep(150)
+        Sleep(100)
         client3 := IPC_PipeClient_Connect(multiTestPipe, Test_OnMultiClient3)
-        Sleep(150)
+        Sleep(100)
 
         allConnected := (client1.hPipe != 0 && client2.hPipe != 0 && client3.hPipe != 0)
 
@@ -709,7 +709,7 @@ RunLiveTests_Features() {
                         ; Send reload IPC
                         reloadMsg := { type: IPC_MSG_RELOAD_BLACKLIST }
                         IPC_PipeClient_Send(blClient, JSON.Dump(reloadMsg))
-                        Sleep(500)  ; Wait for reload and push
+                        Sleep(250)  ; Wait for reload and push
 
                         ; Get new projection
                         gBlTestResponse := ""
@@ -765,7 +765,7 @@ RunLiveTests_Features() {
 
                         ; Send reload IPC
                         IPC_PipeClient_Send(blClient, JSON.Dump(reloadMsg))
-                        Sleep(500)
+                        Sleep(250)
 
                         ; Get restored projection
                         gBlTestResponse := ""
@@ -851,7 +851,7 @@ RunLiveTests_Features() {
 
                         ; Send final reload to restore store state
                         IPC_PipeClient_Send(blClient, JSON.Dump(reloadMsg))
-                        Sleep(200)
+                        Sleep(100)
 
                         Log("  [BL Test] Blacklist file restored to original state")
                     }

@@ -176,12 +176,18 @@ RunLiveTests_Execution() {
         }
 
         if (launcherPid) {
-            Sleep(3000)  ; Wait for launcher to spawn subprocesses
-
-            ; Count AltTabby.exe processes
+            ; Poll for subprocess spawning instead of fixed sleep
+            ; Launcher spawns store + gui, so expect 3+ AltTabby.exe processes
             processCount := 0
-            for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
-                processCount++
+            spawnStart := A_TickCount
+            while ((A_TickCount - spawnStart) < 5000) {
+                processCount := 0
+                for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
+                    processCount++
+                }
+                if (processCount >= 3)
+                    break
+                Sleep(200)
             }
 
             if (processCount >= 3) {
@@ -201,7 +207,7 @@ RunLiveTests_Execution() {
                     proc.Terminate()
                 }
             }
-            Sleep(500)
+            Sleep(200)
         }
 
         ; --- Config/Blacklist Recreation Test ---

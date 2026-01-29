@@ -1,6 +1,5 @@
 #Requires AutoHotkey v2.0
-; Note: #SingleInstance removed - unified exe uses #SingleInstance Off
-; When running standalone, multiple instances are OK for development
+#SingleInstance Off  ; Allow multiple instances (tests run overlapping stores)
 
 ; Includes: Use *i (ignore if not found) to handle both:
 ; - Standalone: files found via %A_ScriptDir%\..\ path

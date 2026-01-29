@@ -319,5 +319,5 @@ _Test_KillAllAltTabby() {
         }
     }
     ; Give processes time to fully exit
-    Sleep(500)
+    Sleep(200)
 }
