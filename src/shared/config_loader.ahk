@@ -415,10 +415,20 @@ _CL_ValidateSettings() {
     ; --- Scrollbar ---
     cfg.GUI_ScrollBarWidthPx := clamp(cfg.GUI_ScrollBarWidthPx, 2, 30)
 
+    ; --- Bypass Settings ---
+    cfg.AltTabBypassFullscreenThreshold := clamp(cfg.AltTabBypassFullscreenThreshold, 0.90, 1.0)
+    cfg.AltTabBypassFullscreenTolerancePx := clamp(cfg.AltTabBypassFullscreenTolerancePx, 0, 50)
+
+    ; --- GUI Layout Constants ---
+    cfg.GUI_IconTextGapPx := clamp(cfg.GUI_IconTextGapPx, 0, 50)
+    cfg.GUI_ColumnGapPx := clamp(cfg.GUI_ColumnGapPx, 0, 50)
+    cfg.GUI_HeaderHeightPx := clamp(cfg.GUI_HeaderHeightPx, 16, 60)
+
     ; --- Timing Settings (prevent CPU hogging or unresponsive behavior) ---
     cfg.AltTabGraceMs := clamp(cfg.AltTabGraceMs, 0, 2000)
     cfg.AltTabQuickSwitchMs := clamp(cfg.AltTabQuickSwitchMs, 0, 1000)
     cfg.AltTabAsyncActivationPollMs := clamp(cfg.AltTabAsyncActivationPollMs, 10, 100)
+    cfg.AltTabAltLeewayMs := clamp(cfg.AltTabAltLeewayMs, 20, 200)
 
     ; --- Producer Intervals (min 10ms to prevent CPU spin) ---
     cfg.WinEventHookDebounceMs := clamp(cfg.WinEventHookDebounceMs, 10, 1000)
@@ -437,6 +447,14 @@ _CL_ValidateSettings() {
     cfg.KomorebiSubIdleRecycleMs := clamp(cfg.KomorebiSubIdleRecycleMs, 10000, 600000)
     cfg.KomorebiSubFallbackPollMs := clamp(cfg.KomorebiSubFallbackPollMs, 500, 30000)
     cfg.KomorebiSubBatchCloakEventsMs := clamp(cfg.KomorebiSubBatchCloakEventsMs, 0, 500)
+    cfg.KomorebiSubCacheMaxAgeMs := clamp(cfg.KomorebiSubCacheMaxAgeMs, 1000, 60000)
+
+    ; --- WinEnum Settings ---
+    cfg.WinEnumMissingWindowTTLMs := clamp(cfg.WinEnumMissingWindowTTLMs, 100, 10000)
+    cfg.WinEnumFallbackScanIntervalMs := clamp(cfg.WinEnumFallbackScanIntervalMs, 500, 10000)
+
+    ; --- Icon Pump GiveUp ---
+    cfg.IconPumpGiveUpBackoffMs := clamp(cfg.IconPumpGiveUpBackoffMs, 1000, 30000)
 
     ; --- IPC Settings ---
     cfg.IPCIdleTickMs := clamp(cfg.IPCIdleTickMs, 15, 500)

@@ -17,8 +17,7 @@
 ;   (via CopyIcon); they remain valid while Store runs.
 ; ============================================================
 
-; Internal constants
-global IP_GIVEUP_BACKOFF_MS := 5000     ; Long cooldown after max attempts
+; NOTE: GiveUp backoff now in config: cfg.IconPumpGiveUpBackoffMs (default 5000)
 global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
 global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000  ; Process access right for package queries
 
@@ -28,7 +27,7 @@ global IconTimerIntervalMs := 0
 global IconMaxAttempts := 0
 global IconAttemptBackoffMs := 0
 global IconAttemptBackoffMultiplier := 0
-global IconGiveUpBackoffMs := IP_GIVEUP_BACKOFF_MS
+global IconGiveUpBackoffMs := 5000  ; Default, overridden from cfg in IconPump_Start()
 
 ; Diagnostic logging
 global _IP_DiagEnabled := false
@@ -44,7 +43,7 @@ global _IP_IdleThreshold := 5           ; Default, overridden from config in Ico
 IconPump_Start() {
     global _IP_TimerOn, IconTimerIntervalMs, cfg
     global IconBatchPerTick, IconMaxAttempts
-    global IconAttemptBackoffMs, IconAttemptBackoffMultiplier
+    global IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global _IP_DiagEnabled, _IP_LogPath
 
     ; Load config values on first start (ConfigLoader_Init has already run)
@@ -55,6 +54,7 @@ IconPump_Start() {
         IconMaxAttempts := cfg.IconPumpMaxAttempts
         IconAttemptBackoffMs := cfg.IconPumpAttemptBackoffMs
         IconAttemptBackoffMultiplier := cfg.IconPumpBackoffMultiplier
+        IconGiveUpBackoffMs := cfg.IconPumpGiveUpBackoffMs
         _IP_IdleThreshold := cfg.HasOwnProp("IconPumpIdleThreshold") ? cfg.IconPumpIdleThreshold : 5
 
         ; Initialize diagnostic logging

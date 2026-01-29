@@ -53,11 +53,20 @@ global gConfigRegistry := [
     {s: "AltTab", k: "BypassFullscreen", g: "AltTabBypassFullscreen", t: "bool", default: true,
      d: "Bypass Alt-Tabby when the foreground window is fullscreen (covers ≥99% of screen). Useful for games that need native Alt-Tab behavior."},
 
+    {s: "AltTab", k: "BypassFullscreenThreshold", g: "AltTabBypassFullscreenThreshold", t: "float", default: 0.99,
+     d: "Fraction of screen dimensions a window must cover to be considered fullscreen (0.90-1.0). Lower values catch borderless windowed games that don't quite fill the screen."},
+
+    {s: "AltTab", k: "BypassFullscreenTolerancePx", g: "AltTabBypassFullscreenTolerancePx", t: "int", default: 5,
+     d: "Maximum pixels from screen edge for a window to still be considered fullscreen (0-50). Increase if borderless windows are offset by more than 5px."},
+
     {s: "AltTab", k: "BypassProcesses", g: "AltTabBypassProcesses", t: "string", default: "",
      d: "Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead."},
 
     {type: "subsection", section: "AltTab", name: "Internal Timing",
      desc: "Internal timing parameters (usually no need to change)"},
+
+    {s: "AltTab", k: "AltLeewayMs", g: "AltTabAltLeewayMs", t: "int", default: 60,
+     d: "Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab. Increase for slower typing speeds. Range: 20-200."},
 
     {s: "AltTab", k: "MRUFreshnessMs", g: "AltTabMRUFreshnessMs", t: "int", default: 300,
      d: "How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations."},
@@ -144,6 +153,15 @@ global gConfigRegistry := [
 
     {s: "GUI", k: "IconLeftMargin", g: "GUI_IconLeftMargin", t: "int", default: 8,
      d: "Left margin before icon in pixels"},
+
+    {s: "GUI", k: "IconTextGapPx", g: "GUI_IconTextGapPx", t: "int", default: 12,
+     d: "Gap between icon and title text in pixels"},
+
+    {s: "GUI", k: "ColumnGapPx", g: "GUI_ColumnGapPx", t: "int", default: 10,
+     d: "Gap between right-side data columns in pixels"},
+
+    {s: "GUI", k: "HeaderHeightPx", g: "GUI_HeaderHeightPx", t: "int", default: 28,
+     d: "Header row height in pixels"},
 
     {s: "GUI", k: "RowRadius", g: "GUI_RowRadius", t: "int", default: 12,
      d: "Row corner radius in pixels"},
@@ -557,6 +575,12 @@ global gConfigRegistry := [
      desc: "WinEnum Safety Polling",
      long: "WinEnum normally runs on-demand (startup, snapshot, Z-pump). Enable safety polling as a paranoid belt-and-suspenders."},
 
+    {s: "WinEnum", k: "MissingWindowTTLMs", g: "WinEnumMissingWindowTTLMs", t: "int", default: 1200,
+     d: "Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps. Range: 100-10000."},
+
+    {s: "WinEnum", k: "FallbackScanIntervalMs", g: "WinEnumFallbackScanIntervalMs", t: "int", default: 2000,
+     d: "Polling interval when WinEventHook fails and fallback scanning is active (ms). Lower = more responsive but higher CPU. Range: 500-10000."},
+
     {s: "WinEnum", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", default: 0,
      d: "Safety polling interval (0=disabled, or 30000+ for safety net)"},
 
@@ -594,6 +618,9 @@ global gConfigRegistry := [
 
     {s: "IconPump", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", default: 1.8,
      d: "Backoff multiplier for exponential backoff (1.0 = linear)"},
+
+    {s: "IconPump", k: "GiveUpBackoffMs", g: "IconPumpGiveUpBackoffMs", t: "int", default: 5000,
+     d: "Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps. Range: 1000-30000."},
 
     {s: "IconPump", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 30000,
      d: "Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay."},
@@ -645,6 +672,9 @@ global gConfigRegistry := [
 
     {s: "KomorebiSub", k: "FallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
      d: "Fallback polling interval if subscription fails"},
+
+    {s: "KomorebiSub", k: "CacheMaxAgeMs", g: "KomorebiSubCacheMaxAgeMs", t: "int", default: 10000,
+     d: "Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. Range: 1000-60000."},
 
     {s: "KomorebiSub", k: "BatchCloakEventsMs", g: "KomorebiSubBatchCloakEventsMs", t: "int", default: 50,
      d: "Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately."},

@@ -25,7 +25,7 @@ global gStore_Server := 0
 global gStore_ClientOpts := Map()      ; hPipe -> projection opts
 global gStore_LastBroadcastRev := -1
 global gStore_TestMode := false
-global FALLBACK_SCAN_INTERVAL_MS := 2000  ; Interval for safety polling when WinEventHook fails
+; NOTE: Fallback scan interval now in config: cfg.WinEnumFallbackScanIntervalMs (default 2000)
 global gStore_ErrorLog := ""
 global gStore_LastClientLog := 0
 global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
@@ -121,7 +121,7 @@ Store_Init() {
         MRU_Lite_Init()
         gStore_ProducerState["mruLite"] := "running"
         ; Fallback: enable safety polling if hook fails
-        SetTimer(Store_FullScan, FALLBACK_SCAN_INTERVAL_MS)
+        SetTimer(Store_FullScan, cfg.WinEnumFallbackScanIntervalMs)
     } else {
         ; Hook working - it handles MRU tracking internally
         Store_LogInfo("WinEventHook active - MRU tracking via hook")

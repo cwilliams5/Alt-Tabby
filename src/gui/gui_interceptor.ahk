@@ -10,14 +10,10 @@ global TABBY_EV_ALT_DOWN := 3  ; Alt pressed, session starting
 global TABBY_EV_ESCAPE   := 4  ; Escape pressed, cancel session
 global TABBY_FLAG_SHIFT  := 1  ; Shift modifier flag
 
-; Fullscreen detection thresholds
-global FULLSCREEN_SIZE_THRESHOLD := 0.99    ; Window must cover 99% of screen dimensions
-global FULLSCREEN_POS_TOLERANCE := 5        ; Allow up to 5 pixels from screen edge
-
 ; ========================= INTERCEPTOR STATE =========================
 ; These variables track the keyboard hook state
-
-global gINT_LastAltLeewayMs := 60     ; Alt timing tolerance
+; NOTE: Fullscreen thresholds now in config: cfg.AltTabBypassFullscreenThreshold, cfg.AltTabBypassFullscreenTolerancePx
+; NOTE: Alt leeway now in config: cfg.AltTabAltLeewayMs
 ; NOTE: Tab decision window now in config: cfg.AltTabTabDecisionMs (default 24ms)
 ; NOTE: Bypass settings are now in config: cfg.AltTabBypassFullscreen, cfg.AltTabBypassProcesses
 
@@ -202,14 +198,14 @@ INT_Tab_Decide() {
 INT_Tab_Decide_Inner() {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabPending, gINT_TabUpSeen, gINT_PendingShift, gINT_AltUpDuringPending
-    global gINT_LastAltDown, gINT_LastAltLeewayMs, gINT_AltIsDown
+    global gINT_LastAltDown, gINT_AltIsDown, cfg
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld
     global TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_FLAG_SHIFT
 
     ; Capture state NOW (before any potential message pumping)
     altDownNow := gINT_AltIsDown
     altUpFlag := gINT_AltUpDuringPending
-    altRecent := (A_TickCount - gINT_LastAltDown) <= gINT_LastAltLeewayMs
+    altRecent := (A_TickCount - gINT_LastAltDown) <= cfg.AltTabAltLeewayMs
     isAltTab := altDownNow || altRecent || altUpFlag
 
     _GUI_LogEvent("INT: Tab_Decide_Inner (altDown=" altDownNow " altUpFlag=" altUpFlag " altRecent=" altRecent " -> isAltTab=" isAltTab ")")
@@ -335,6 +331,7 @@ INT_ShouldBypassWindow(hwnd := 0) {
 }
 
 INT_IsFullscreenHwnd(hwnd) {
+    global cfg
     local x, y, w, h
     try {
         WinGetPos(&x, &y, &w, &h, hwnd)
@@ -343,5 +340,5 @@ INT_IsFullscreenHwnd(hwnd) {
     }
     if (!IsSet(w) || !IsSet(h))
         return false
-    return (w >= A_ScreenWidth * FULLSCREEN_SIZE_THRESHOLD && h >= A_ScreenHeight * FULLSCREEN_SIZE_THRESHOLD && x <= FULLSCREEN_POS_TOLERANCE && y <= FULLSCREEN_POS_TOLERANCE)
+    return (w >= A_ScreenWidth * cfg.AltTabBypassFullscreenThreshold && h >= A_ScreenHeight * cfg.AltTabBypassFullscreenThreshold && x <= cfg.AltTabBypassFullscreenTolerancePx && y <= cfg.AltTabBypassFullscreenTolerancePx)
 }

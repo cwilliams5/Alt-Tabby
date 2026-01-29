@@ -52,6 +52,8 @@ When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `BypassFullscreen` | bool | `true` | Bypass Alt-Tabby when the foreground window is fullscreen (covers ≥99% of screen). Useful for games that need native Alt-Tab behavior. |
+| `BypassFullscreenThreshold` | float | `0.99` | Fraction of screen dimensions a window must cover to be considered fullscreen (0.90-1.0). Lower values catch borderless windowed games that don't quite fill the screen. |
+| `BypassFullscreenTolerancePx` | int | `5` | Maximum pixels from screen edge for a window to still be considered fullscreen (0-50). Increase if borderless windows are offset by more than 5px. |
 | `BypassProcesses` | string | `(empty)` | Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead. |
 
 ### Internal Timing
@@ -60,6 +62,7 @@ Internal timing parameters (usually no need to change)
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `AltLeewayMs` | int | `60` | Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab. Increase for slower typing speeds. Range: 20-200. |
 | `MRUFreshnessMs` | int | `300` | How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations. |
 | `WSPollTimeoutMs` | int | `200` | Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation. |
 | `PrewarmWaitMs` | int | `50` | Max time to wait for prewarm data on Tab (ms). If items are empty when Tab is pressed, wait up to this long for data to arrive. |
@@ -112,6 +115,9 @@ Row and icon appearance
 |--------|------|---------|-------------|
 | `IconSize` | int | `36` | Icon size in pixels |
 | `IconLeftMargin` | int | `8` | Left margin before icon in pixels |
+| `IconTextGapPx` | int | `12` | Gap between icon and title text in pixels |
+| `ColumnGapPx` | int | `10` | Gap between right-side data columns in pixels |
+| `HeaderHeightPx` | int | `28` | Header row height in pixels |
 | `RowRadius` | int | `12` | Row corner radius in pixels |
 | `SelARGB` | int | `0x662B5CAD` | Selection highlight color (ARGB) |
 
@@ -350,6 +356,8 @@ WinEnum normally runs on-demand (startup, snapshot, Z-pump). Enable safety polli
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `MissingWindowTTLMs` | int | `1200` | Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps. Range: 100-10000. |
+| `FallbackScanIntervalMs` | int | `2000` | Polling interval when WinEventHook fails and fallback scanning is active (ms). Lower = more responsive but higher CPU. Range: 500-10000. |
 | `SafetyPollMs` | int | `0` | Safety polling interval (0=disabled, or 30000+ for safety net) |
 | `ValidateExistenceMs` | int | `5000` | Lightweight zombie detection interval (ms). Checks existing store entries via IsWindow() to remove dead windows. Much faster than full EnumWindows scan. 0=disabled. |
 
@@ -372,6 +380,7 @@ Resolves window icons asynchronously with retry/backoff.
 | `MaxAttempts` | int | `4` | Max attempts before giving up on a window's icon |
 | `AttemptBackoffMs` | int | `300` | Base backoff after failed attempt (multiplied by attempt number) |
 | `BackoffMultiplier` | float | `1.80` | Backoff multiplier for exponential backoff (1.0 = linear) |
+| `GiveUpBackoffMs` | int | `5000` | Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps. Range: 1000-30000. |
 | `RefreshThrottleMs` | int | `30000` | Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay. |
 | `IdleThreshold` | int | `5` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 
@@ -403,6 +412,7 @@ Event-driven komorebi integration via named pipe.
 | `PollMs` | int | `50` | Pipe poll interval (checking for incoming data) |
 | `IdleRecycleMs` | int | `120000` | Restart subscription if no events for this long (stale detection) |
 | `FallbackPollMs` | int | `2000` | Fallback polling interval if subscription fails |
+| `CacheMaxAgeMs` | int | `10000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. Range: 1000-60000. |
 | `BatchCloakEventsMs` | int | `50` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
 
 ## Heartbeat
@@ -463,4 +473,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-28 with 174 total settings.*
+*Generated on 2026-01-28 with 184 total settings.*

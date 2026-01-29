@@ -249,10 +249,10 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     My := Round(cfg.GUI_MarginY * scale)
     ISize := Round(cfg.GUI_IconSize * scale)
     Rad := Round(cfg.GUI_RowRadius * scale)
-    gapText := Round(12 * scale)
-    gapCols := Round(10 * scale)
+    gapText := Round(cfg.GUI_IconTextGapPx * scale)
+    gapCols := Round(cfg.GUI_ColumnGapPx * scale)
     hdrY4 := Round(4 * scale)
-    hdrH28 := Round(28 * scale)
+    hdrH28 := Round(cfg.GUI_HeaderHeightPx * scale)
     iconLeftDip := Round(cfg.GUI_IconLeftMargin * scale)
 
     y := My

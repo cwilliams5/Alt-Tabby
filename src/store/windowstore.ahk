@@ -3,9 +3,8 @@
 
 ; WindowStore (v1) - minimal core for IPC + viewer.
 
-; Cache and TTL constants
+; Cache constants
 global WS_EXE_ICON_CACHE_MAX := 100         ; Max cached exe icons
-global WS_MISSING_TTL_DEFAULT_MS := 1200    ; Default TTL for missing windows
 
 global gWS_Store := Map()
 global gWS_Rev := 0
@@ -29,7 +28,7 @@ global gWS_ZQueueSet := Map()      ; fast lookup for dedup
 global gWS_ExeIconCache := Map()   ; exe path -> HICON (master copy)
 global gWS_ProcNameCache := Map()  ; pid -> process name
 
-gWS_Config["MissingTTLms"] := WS_MISSING_TTL_DEFAULT_MS
+gWS_Config["MissingTTLms"] := 1200  ; Default, overridden from cfg in WindowStore_Init()
 gWS_Meta["currentWSId"] := ""
 gWS_Meta["currentWSName"] := ""
 
@@ -45,11 +44,14 @@ _WS_SnapshotMapKeys(mapObj) {
 }
 
 WindowStore_Init(config := 0) {
-    global gWS_Config
+    global gWS_Config, cfg
     if IsObject(config) {
         for k, v in config
             gWS_Config[k] := v
     }
+    ; Load TTL from config if available (ConfigLoader_Init sets cfg.WinEnumMissingWindowTTLMs)
+    if (IsObject(cfg) && cfg.HasOwnProp("WinEnumMissingWindowTTLMs"))
+        gWS_Config["MissingTTLms"] := cfg.WinEnumMissingWindowTTLMs
 }
 
 WindowStore_BeginScan() {

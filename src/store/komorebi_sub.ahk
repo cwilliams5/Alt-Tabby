@@ -43,7 +43,7 @@ global _KSub_FallbackMode := false
 ; Cache of window workspace assignments (persists even when windows leave komorebi)
 ; Each entry is { wsName: "name", tick: timestamp } for staleness detection
 global _KSub_WorkspaceCache := Map()
-global _KSub_CacheMaxAgeMs := 10000  ; Cache entries older than 10s are considered stale
+global _KSub_CacheMaxAgeMs := 10000  ; Default, overridden from cfg in KomorebiSub_Init()
 
 ; Cloak event batching state
 global _KSub_CloakPushPending := false
@@ -51,13 +51,14 @@ global _KSub_CloakBatchTimerFn := 0
 
 ; Initialize komorebi subscription
 KomorebiSub_Init() {
-    global _KSub_PipeName, _KSub_WorkspaceCache, cfg
+    global _KSub_PipeName, _KSub_WorkspaceCache, _KSub_CacheMaxAgeMs, cfg
     global KSub_PollMs, KSub_IdleRecycleMs, KSub_FallbackPollMs
 
     ; Load config values (ConfigLoader_Init has already run)
     KSub_PollMs := cfg.KomorebiSubPollMs
     KSub_IdleRecycleMs := cfg.KomorebiSubIdleRecycleMs
     KSub_FallbackPollMs := cfg.KomorebiSubFallbackPollMs
+    _KSub_CacheMaxAgeMs := cfg.KomorebiSubCacheMaxAgeMs
 
     _KSub_PipeName := "tabby_" A_TickCount "_" Random(1000, 9999)
     _KSub_WorkspaceCache := Map()
