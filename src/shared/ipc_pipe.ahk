@@ -157,7 +157,8 @@ IPC_PipeClient_Connect(pipeName, onMessageFn) {
         hPipe: 0,
         buf: "",
         timerFn: 0,
-        tickMs: 100
+        tickMs: 100,
+        idleStreak: 0
     }
     h := _IPC_ClientConnect(pipeName, 2000)
     if (!h)
@@ -553,10 +554,22 @@ _IPC_SetServerTick(server, ms) {
 
 _IPC_Client_AdjustTimer(client, activityBytes) {
     if (activityBytes > 0) {
+        client.idleStreak := 0
         _IPC_SetClientTick(client, IPC_TICK_ACTIVE)
         return
     }
-    _IPC_SetClientTick(client, IPC_TICK_IDLE)
+    ; Graduated cooldown: stay responsive during bursty activity (workspace switches,
+    ; rapid Alt-Tab) then back off gradually to save CPU when truly idle.
+    ; At 15ms ticks: 4 idle ticks = 60ms before first step-up.
+    client.idleStreak += 1
+    if (client.idleStreak < 4)
+        return  ; Stay at current (active) tick
+    if (client.idleStreak < 8)
+        _IPC_SetClientTick(client, 30)
+    else if (client.idleStreak < 14)
+        _IPC_SetClientTick(client, 50)
+    else
+        _IPC_SetClientTick(client, IPC_TICK_IDLE)
 }
 
 _IPC_SetClientTick(client, ms) {
