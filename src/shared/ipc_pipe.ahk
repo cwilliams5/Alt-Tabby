@@ -560,11 +560,11 @@ _IPC_Client_AdjustTimer(client, activityBytes) {
     }
     ; Graduated cooldown: stay responsive during bursty activity (workspace switches,
     ; rapid Alt-Tab) then back off gradually to save CPU when truly idle.
-    ; At 15ms ticks: 4 idle ticks = 60ms before first step-up.
+    ; At 15ms ticks: 7 idle ticks = 105ms before first step-up.
     client.idleStreak += 1
-    if (client.idleStreak < 4)
+    if (client.idleStreak < 7)
         return  ; Stay at current (active) tick
-    if (client.idleStreak < 8)
+    if (client.idleStreak < 11)
         _IPC_SetClientTick(client, 30)
     else if (client.idleStreak < 14)
         _IPC_SetClientTick(client, 50)
