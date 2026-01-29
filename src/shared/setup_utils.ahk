@@ -118,15 +118,15 @@ _Launcher_RunAsAdmin(args) {
 ; Create a scheduled task with highest privileges (UAC-free admin)
 ; Includes InstallationId in description for identification
 ; Returns false if user cancels due to existing task conflict
-CreateAdminTask(exePath, installId := "") {
+CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     global ALTTABBY_TASK_NAME, cfg, g_TestingMode
-    taskName := ALTTABBY_TASK_NAME
+    taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
 
     ; Check if task exists pointing to different location (another installation)
     ; Warn user before silently overwriting another installation's admin mode
     ; Skip dialog in testing mode to avoid blocking automated tests
-    if (AdminTaskExists()) {
-        existingPath := _AdminTask_GetCommandPath()
+    if (AdminTaskExists(taskName)) {
+        existingPath := _AdminTask_GetCommandPath(taskName)
         if (existingPath != "" && StrLower(existingPath) != StrLower(exePath)) {
             ; In testing mode, just proceed without prompting
             if (IsSet(g_TestingMode) && g_TestingMode) {
@@ -195,28 +195,31 @@ CreateAdminTask(exePath, installId := "") {
 }
 
 ; Delete the admin scheduled task
-DeleteAdminTask() {
+DeleteAdminTask(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
-    result := RunWait('schtasks /delete /tn "' ALTTABBY_TASK_NAME '" /f', , "Hide")
+    taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
+    result := RunWait('schtasks /delete /tn "' taskName '" /f', , "Hide")
     return (result = 0)
 }
 
 ; Check if admin task exists
-AdminTaskExists() {
+AdminTaskExists(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
-    result := RunWait('schtasks /query /tn "' ALTTABBY_TASK_NAME '"', , "Hide")
+    taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
+    result := RunWait('schtasks /query /tn "' taskName '"', , "Hide")
     return (result = 0)  ; 0 = task exists
 }
 
 ; Extract command path from existing scheduled task XML
 ; Returns empty string if task doesn't exist or can't be parsed
-_AdminTask_GetCommandPath() {
+_AdminTask_GetCommandPath(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
+    taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
     tempFile := A_Temp "\alttabby_task_query.xml"
     try FileDelete(tempFile)
 
     ; Export task to XML (schtasks /xml outputs to stdout, redirect to file)
-    result := RunWait('cmd.exe /c schtasks /query /tn "' ALTTABBY_TASK_NAME '" /xml > "' tempFile '"',, "Hide")
+    result := RunWait('cmd.exe /c schtasks /query /tn "' taskName '" /xml > "' tempFile '"',, "Hide")
     if (result != 0 || !FileExist(tempFile))
         return ""
 

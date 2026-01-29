@@ -181,24 +181,26 @@ RunUnitTests_Setup() {
 
     ; Test CreateAdminTask and DeleteAdminTask (only if admin)
     ; These tests are conditional - they need admin privileges
+    ; IMPORTANT: Uses a test-specific task name to avoid destroying the production
+    ; "Alt-Tabby" scheduled task (which provides admin mode for installed versions)
     if (A_IsAdmin) {
         Log("Running admin-level Task Scheduler tests...")
 
-        ; Create a test task with a unique name
+        testTaskName := "Alt-Tabby Test"
         testTaskExePath := A_WinDir "\notepad.exe"  ; Safe exe to use for testing
 
-        ; Save the current task state
-        originalTaskExists := AdminTaskExists()
+        ; Clean up any leftover test task from previous runs
+        DeleteAdminTask(testTaskName)
 
         ; Test CreateAdminTask
         Log("Testing CreateAdminTask()...")
-        createResult := CreateAdminTask(testTaskExePath)
+        createResult := CreateAdminTask(testTaskExePath, "", testTaskName)
         if (createResult) {
             Log("PASS: CreateAdminTask() succeeded")
             TestPassed++
 
             ; Verify task exists
-            if (AdminTaskExists()) {
+            if (AdminTaskExists(testTaskName)) {
                 Log("PASS: Task verified to exist after creation")
                 TestPassed++
             } else {
@@ -208,13 +210,13 @@ RunUnitTests_Setup() {
 
             ; Test DeleteAdminTask
             Log("Testing DeleteAdminTask()...")
-            deleteResult := DeleteAdminTask()
+            deleteResult := DeleteAdminTask(testTaskName)
             if (deleteResult) {
                 Log("PASS: DeleteAdminTask() succeeded")
                 TestPassed++
 
                 ; Verify task no longer exists
-                if (!AdminTaskExists()) {
+                if (!AdminTaskExists(testTaskName)) {
                     Log("PASS: Task verified to not exist after deletion")
                     TestPassed++
                 } else {
@@ -228,11 +230,6 @@ RunUnitTests_Setup() {
         } else {
             Log("FAIL: CreateAdminTask() returned false")
             TestErrors++
-        }
-
-        ; Restore original state if task existed before
-        if (originalTaskExists && !AdminTaskExists()) {
-            Log("NOTE: Original task was removed by test - this shouldn't happen in normal testing")
         }
     } else {
         Log("SKIP: Task Scheduler create/delete tests require admin privileges")
