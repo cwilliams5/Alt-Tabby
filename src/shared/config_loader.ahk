@@ -354,13 +354,19 @@ _CL_LoadAllSettings() {
             case "bool":
                 parsedVal := (val = "true" || val = "1" || val = "yes")
             case "int":
-                ; Handle hex values
-                if (SubStr(val, 1, 2) = "0x")
+                try {
                     parsedVal := Integer(val)
-                else
-                    parsedVal := Integer(val)
+                } catch {
+                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected int), using default")
+                    continue
+                }
             case "float":
-                parsedVal := Float(val)
+                try {
+                    parsedVal := Float(val)
+                } catch {
+                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected float), using default")
+                    continue
+                }
             default:
                 parsedVal := val
         }

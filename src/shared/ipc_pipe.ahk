@@ -110,15 +110,19 @@ IPC_PipeServer_Broadcast(server, msgText) {
     dead := []
     sent := 0
     for _, hPipe in handles {
-        if (!_IPC_WritePipe(hPipe, buf, len))
+        if (!_IPC_WritePipe(hPipe, buf, len)) {
+            _IPC_Log("WritePipe failed during broadcast hPipe=" hPipe)
             dead.Push(hPipe)
-        else
+        } else {
             sent += 1
+        }
     }
 
     ; Cleanup dead handles atomically
     Critical "On"
     for _, h in dead {
+        if (server.onDisconnect)
+            try server.onDisconnect.Call(h)
         server.clients.Delete(h)
         _IPC_CloseHandle(h)
     }
@@ -141,6 +145,9 @@ IPC_PipeServer_Send(server, hPipe, msgText) {
         msgText .= "`n"
     bytes := _IPC_StrToUtf8(msgText)
     if (!_IPC_WritePipe(hPipe, bytes.buf, bytes.len)) {
+        _IPC_Log("WritePipe failed during send hPipe=" hPipe)
+        if (server.onDisconnect)
+            try server.onDisconnect.Call(hPipe)
         server.clients.Delete(hPipe)
         _IPC_CloseHandle(hPipe)
         Critical "Off"
@@ -344,8 +351,10 @@ _IPC_CreatePipeInstance(pipeName) {
         , "uint", 0
         , "ptr", pSA   ; security attrs (NULL DACL = allow all)
         , "ptr")
-    if (!hPipe || hPipe = -1)
+    if (!hPipe || hPipe = -1) {
+        _IPC_Log("CreateNamedPipeW failed GLE=" DllCall("GetLastError", "uint") " pipe=" pipeName)
         return { hPipe: 0 }
+    }
     hEvent := DllCall("CreateEventW", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
     if (!hEvent) {
         _IPC_CloseHandle(hPipe)
@@ -363,6 +372,7 @@ _IPC_CreatePipeInstance(pipeName) {
         } else if (gle = IPC_ERROR_PIPE_CONNECTED) {
             connected := true
         } else {
+            _IPC_Log("ConnectNamedPipe unexpected GLE=" gle " hPipe=" hPipe)
             _IPC_CloseHandle(hEvent)
             _IPC_CloseHandle(hPipe)
             return { hPipe: 0 }
@@ -442,8 +452,10 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
             return hPipe
         }
         gle := DllCall("GetLastError", "uint")
-        if (gle != IPC_ERROR_PIPE_BUSY && gle != IPC_ERROR_FILE_NOT_FOUND)
+        if (gle != IPC_ERROR_PIPE_BUSY && gle != IPC_ERROR_FILE_NOT_FOUND) {
+            _IPC_Log("ClientConnect unexpected GLE=" gle " pipe=" pipeName)
             return 0
+        }
         ; Non-blocking mode: single attempt, return immediately on failure
         if (timeoutMs <= 0)
             return 0

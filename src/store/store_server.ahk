@@ -115,7 +115,7 @@ Store_Init() {
     ; WinEventHook is always enabled (primary source of window changes + MRU tracking)
     hookOk := WinEventHook_Start()
     if (!hookOk) {
-        Store_LogInfo("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
+        Store_LogError("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
         gStore_ProducerState["wineventHook"] := "failed"
         ; Fallback: enable MRU_Lite for focus tracking
         MRU_Lite_Init()
