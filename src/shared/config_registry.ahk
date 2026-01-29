@@ -476,6 +476,9 @@ global gConfigRegistry := [
     {s: "IPC", k: "StorePipeName", g: "StorePipeName", t: "string", default: "tabby_store_v1",
      d: "Named pipe name for store communication"},
 
+    {s: "IPC", k: "IdleTickMs", g: "IPCIdleTickMs", t: "int", default: 100,
+     d: "Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms."},
+
     ; ============================================================
     ; External Tools
     ; ============================================================

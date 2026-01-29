@@ -287,7 +287,7 @@ RunLiveTests_Core() {
                         sample := items[1]
                         requiredFields := ["hwnd", "title", "class", "pid", "z",
                             "lastActivatedTick", "isFocused", "isCloaked", "isMinimized",
-                            "isOnCurrentWorkspace", "workspaceName", "processName", "present"]
+                            "isOnCurrentWorkspace", "workspaceName", "processName"]
                         missingFields := []
                         for _, field in requiredFields {
                             if (!sample.Has(field)) {

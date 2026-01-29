@@ -179,7 +179,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         ; Apply delta incrementally to stay up-to-date
         if (obj.Has("payload")) {
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
-            GUI_ApplyDelta(obj["payload"])
+            result := GUI_ApplyDelta(obj["payload"])
 
             ; If in ACTIVE state with FreezeWindowList=false, update live display
             if (gGUI_State = "ACTIVE" && !isFrozen) {
@@ -187,7 +187,11 @@ GUI_OnStoreMessage(line, hPipe := 0) {
                 gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
                 ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
                 if (gGUI_OverlayVisible && gGUI_OverlayH) {
-                    GUI_Repaint()
+                    ; Only repaint if visible items were affected.
+                    ; MRU changes always repaint (sort order or item count changed).
+                    ; Cosmetic changes (icon, processName) only repaint if in viewport.
+                    if (result.mruChanged || _GUI_AnyVisibleItemChanged(gGUI_FrozenItems, result.changedHwnds))
+                        GUI_Repaint()
                 }
             }
         }
@@ -243,6 +247,8 @@ GUI_ApplyDelta(payload) {
     global gGUI_Items, gGUI_Sel, gINT_BypassMode, gGUI_ItemsMap
 
     changed := false
+    mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
+    changedHwnds := Map()    ; Track which hwnds were affected (for viewport-based repaint)
     focusChangedToHwnd := 0  ; Track if any window received focus
 
     ; Debug: log delta arrival when in bypass mode
@@ -261,7 +267,7 @@ GUI_ApplyDelta(payload) {
         removeSet := Map()
         for _, hwnd in payload["removes"] {
             removeSet[hwnd] := true
-            ; Invalidate icon cache for removed window
+            changedHwnds[hwnd] := true
             Gdip_InvalidateIconCache(hwnd)
         }
 
@@ -275,6 +281,7 @@ GUI_ApplyDelta(payload) {
             gGUI_Items := newItems
             gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
             changed := true
+            mruChanged := true  ; Item count changed, layout affected
         }
     }
 
@@ -286,6 +293,8 @@ GUI_ApplyDelta(payload) {
             hwnd := rec.Has("hwnd") ? rec["hwnd"] : 0
             if (!hwnd)
                 continue
+
+            changedHwnds[hwnd] := true
 
             ; O(1) lookup instead of O(n) scan
             if (gGUI_ItemsMap.Has(hwnd)) {
@@ -305,12 +314,15 @@ GUI_ApplyDelta(payload) {
                     item.processName := rec["processName"]
                 if (rec.Has("iconHicon"))
                     item.iconHicon := rec["iconHicon"]
-                if (rec.Has("lastActivatedTick"))
+                if (rec.Has("lastActivatedTick")) {
                     item.lastActivatedTick := rec["lastActivatedTick"]
+                    mruChanged := true
+                }
                 ; Track focus change (don't process here, just record it)
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
                     focusChangedToHwnd := hwnd
+                    mruChanged := true
                 }
                 changed := true
             } else {
@@ -324,14 +336,14 @@ GUI_ApplyDelta(payload) {
                     focusChangedToHwnd := hwnd
                 }
                 changed := true
+                mruChanged := true  ; New item added, layout affected
             }
         }
     }
 
-    ; Re-sort by MRU (lastActivatedTick descending) if anything changed
-    ; NOTE: Sort stays inside Critical for correctness - hotkeys read gGUI_Items.
-    ; Performance is fine: O(n) for nearly-sorted data (typical MRU case).
-    if (changed && gGUI_Items.Length > 1) {
+    ; Only sort when MRU-relevant fields changed (lastActivatedTick, isFocused, items added/removed).
+    ; Skip sort for cosmetic-only updates (icon, processName, title) — saves O(n) per delta.
+    if (mruChanged && gGUI_Items.Length > 1) {
         GUI_SortItemsByMRU()
     }
 
@@ -353,6 +365,8 @@ GUI_ApplyDelta(payload) {
         _GUI_LogEvent("BYPASS CHECK: hwnd=" focusChangedToHwnd " shouldBypass=" shouldBypass)
         INT_SetBypassMode(shouldBypass)
     }
+
+    return { mruChanged: mruChanged, changedHwnds: changedHwnds }
 }
 
 GUI_SortItemsByMRU() {
@@ -379,6 +393,31 @@ GUI_SortItemsByMRU() {
         }
         gGUI_Items[j + 1] := key
     }
+}
+
+; ========================= VIEWPORT CHANGE DETECTION =========================
+
+; Check if any of the changed hwnds are in the currently visible viewport.
+; Used to skip expensive GDI+ repaints when only off-screen items changed
+; (e.g., background icon/processName resolution for non-visible windows).
+_GUI_AnyVisibleItemChanged(displayItems, changedHwnds) {
+    global gGUI_ScrollTop
+    if (changedHwnds.Count = 0 || displayItems.Length = 0)
+        return false
+    vis := GUI_GetVisibleRows()
+    if (vis <= 0)
+        return false
+    startIdx := gGUI_ScrollTop + 1
+    endIdx := gGUI_ScrollTop + vis
+    if (endIdx > displayItems.Length)
+        endIdx := displayItems.Length
+    idx := startIdx
+    while (idx <= endIdx) {
+        if (changedHwnds.Has(displayItems[idx].hwnd))
+            return true
+        idx++
+    }
+    return false
 }
 
 ; ========================= SELECTION VALIDATION =========================

@@ -551,8 +551,7 @@ _WS_ToItem(rec) {
         workspaceId: rec.workspaceId,
         isOnCurrentWorkspace: rec.isOnCurrentWorkspace,
         processName: rec.processName,
-        iconHicon: rec.iconHicon,
-        present: rec.present
+        iconHicon: rec.iconHicon
     }
 }
 

@@ -437,6 +437,11 @@ _CL_ValidateSettings() {
     cfg.KomorebiSubIdleRecycleMs := clamp(cfg.KomorebiSubIdleRecycleMs, 10000, 600000)
     cfg.KomorebiSubFallbackPollMs := clamp(cfg.KomorebiSubFallbackPollMs, 500, 30000)
 
+    ; --- IPC Settings ---
+    cfg.IPCIdleTickMs := clamp(cfg.IPCIdleTickMs, 15, 500)
+    global IPC_TICK_IDLE
+    IPC_TICK_IDLE := cfg.IPCIdleTickMs
+
     ; --- Heartbeat Settings ---
     cfg.StoreHeartbeatIntervalMs := clamp(cfg.StoreHeartbeatIntervalMs, 1000, 60000)
     cfg.ViewerHeartbeatTimeoutMs := clamp(cfg.ViewerHeartbeatTimeoutMs, 2000, 120000)

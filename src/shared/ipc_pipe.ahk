@@ -39,7 +39,7 @@ global IPC_MSG_PRODUCER_STATUS := "producer_status"
 
 ; IPC Timing Constants (milliseconds)
 global IPC_TICK_ACTIVE := 15        ; Server/client tick when active (messages pending)
-global IPC_TICK_IDLE := 100         ; Client tick when no activity
+global IPC_TICK_IDLE := 100         ; Client tick when no activity (overridable via cfg.IPCIdleTickMs)
 global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
 global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect
 global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)

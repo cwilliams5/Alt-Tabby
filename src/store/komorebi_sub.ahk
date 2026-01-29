@@ -608,16 +608,20 @@ _KSub_OnNotification(jsonLine) {
         }
     }
 
-    ; Process full state to update ALL windows' workspace info
-    ; Skip workspace derivation only for events that already handled it explicitly
-    ; (e.g., FocusNamedWorkspace sets CurWS from event content).
-    ; Non-workspace events (FocusChange, Cloak, Uncloak) derive workspace from
-    ; state's ring.focused, which catches external workspace switches like
-    ; notification clicks that don't fire explicit workspace events.
-    _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
+    ; Skip expensive full-state processing for events that don't change workspace structure.
+    ; Cloak/Uncloak: already fast-pathed above (isCloaked update). These fire per-window
+    ; during workspace switches (10+ events), so skipping saves 50-500ms of redundant work.
+    ; TitleUpdate: WinEventHook handles NAMECHANGE faster (same process, no JSON parsing).
+    ;
+    ; All other events run ProcessFullState because they may change workspace structure:
+    ; - FocusChange: can signal external workspace switches (notification clicks)
+    ; - Workspace/Move events: change window→workspace mapping
+    ; - Manage/Unmanage: add/remove windows from komorebi tracking
+    if (eventType != "Cloak" && eventType != "Uncloak" && eventType != "TitleUpdate") {
+        _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
+    }
 
-    ; Push changes to clients after ProcessFullState updates windows
-    ; This ensures clients see workspace assignments from the komorebi state
+    ; Push changes to clients (either from fast-path updates or ProcessFullState)
     try Store_PushToClients()
 }
 

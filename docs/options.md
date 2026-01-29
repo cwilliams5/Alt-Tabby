@@ -295,6 +295,7 @@ Named pipe for store<->client communication.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `StorePipeName` | string | `tabby_store_v1` | Named pipe name for store communication |
+| `IdleTickMs` | int | `100` | Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms. |
 
 ## Tools
 
@@ -461,4 +462,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-28 with 172 total settings.*
+*Generated on 2026-01-28 with 173 total settings.*
