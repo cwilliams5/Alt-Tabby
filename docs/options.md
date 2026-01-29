@@ -473,4 +473,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-28 with 184 total settings.*
+*Generated on 2026-01-29 with 184 total settings.*

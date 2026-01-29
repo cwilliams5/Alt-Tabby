@@ -320,37 +320,39 @@ RunLiveTests_Core() {
     IPC_PipeServer_Stop(testServer)
 
     ; ============================================================
-    ; Real Store Integration Test
+    ; Shared Store for Real Store + Viewer + Producer State tests
     ; ============================================================
-    Log("`n--- Real Store Integration Test ---")
-
-    ; Start the real store_server process
-    testStorePipe := "tabby_test_store_" A_TickCount
-    storeArgs := '/ErrorStdOut "' storePath '" --test --pipe=' testStorePipe
-    storePid := 0
+    ; These three tests are read-only (connect, query, verify, disconnect)
+    ; so they safely share a single store instance.
+    sharedStorePipe := "tabby_shared_test_" A_TickCount
+    sharedStorePid := 0
 
     try {
-        Run('"' A_AhkPath '" ' storeArgs, , "Hide", &storePid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' sharedStorePipe, , "Hide", &sharedStorePid)
     } catch {
-        Log("SKIP: Could not start store_server")
-        storePid := 0
+        Log("SKIP: Could not start shared store_server")
+        sharedStorePid := 0
     }
 
-    if (storePid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(testStorePipe, 3000)) {
-            Log("FAIL: Store pipe not ready within timeout")
+    if (sharedStorePid) {
+        if (!WaitForStorePipe(sharedStorePipe, 3000)) {
+            Log("FAIL: Shared store pipe not ready within timeout")
             TestErrors++
-            try ProcessClose(storePid)
-            storePid := 0
+            try ProcessClose(sharedStorePid)
+            sharedStorePid := 0
         }
     }
 
-    if (storePid) {
+    ; ============================================================
+    ; Real Store Integration Test (uses shared store)
+    ; ============================================================
+    Log("`n--- Real Store Integration Test ---")
+
+    if (sharedStorePid) {
         ; Connect as a client (like the viewer does)
         gRealStoreResponse := ""
         gRealStoreReceived := false
-        realClient := IPC_PipeClient_Connect(testStorePipe, Test_OnRealStoreMessage)
+        realClient := IPC_PipeClient_Connect(sharedStorePipe, Test_OnRealStoreMessage)
 
         if (realClient.hPipe) {
             Log("PASS: Connected to real store_server")
@@ -397,45 +399,19 @@ RunLiveTests_Core() {
             Log("FAIL: Could not connect to real store_server")
             TestErrors++
         }
-
-        ; Kill the store process
-        try {
-            ProcessClose(storePid)
-        }
     }
 
     ; ============================================================
-    ; Headless Viewer Simulation Test
+    ; Headless Viewer Simulation Test (uses shared store)
     ; ============================================================
     Log("`n--- Headless Viewer Simulation Test ---")
 
-    ; Start a fresh store for viewer test
-    viewerStorePipe := "tabby_viewer_test_" A_TickCount
-    viewerStorePid := 0
-
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' viewerStorePipe, , "Hide", &viewerStorePid)
-    } catch as e {
-        Log("SKIP: Could not start store for viewer test: " e.Message)
-        viewerStorePid := 0
-    }
-
-    if (viewerStorePid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(viewerStorePipe, 3000)) {
-            Log("FAIL: Viewer store pipe not ready within timeout")
-            TestErrors++
-            try ProcessClose(viewerStorePid)
-            viewerStorePid := 0
-        }
-    }
-
-    if (viewerStorePid) {
+    if (sharedStorePid) {
         gViewerTestResponse := ""
         gViewerTestReceived := false
         gViewerTestHelloAck := false
 
-        viewerClient := IPC_PipeClient_Connect(viewerStorePipe, Test_OnViewerMessage)
+        viewerClient := IPC_PipeClient_Connect(sharedStorePipe, Test_OnViewerMessage)
 
         if (viewerClient.hPipe) {
             Log("PASS: Viewer connected to store")
@@ -518,10 +494,92 @@ RunLiveTests_Core() {
             Log("FAIL: Viewer could not connect to store")
             TestErrors++
         }
+    }
 
-        try {
-            ProcessClose(viewerStorePid)
+    ; ============================================================
+    ; Producer State E2E Test (uses shared store)
+    ; ============================================================
+    Log("`n--- Producer State E2E Test ---")
+
+    if (sharedStorePid) {
+        gProdTestProducers := ""
+        gProdTestReceived := false
+
+        prodClient := IPC_PipeClient_Connect(sharedStorePipe, Test_OnProducerStateMessage)
+
+        if (prodClient.hPipe) {
+            Log("PASS: Producer state test connected to store")
+            TestPassed++
+
+            ; Send producer_status_request (new IPC message type)
+            statusReqMsg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
+            IPC_PipeClient_Send(prodClient, JSON.Dump(statusReqMsg))
+
+            ; Wait for producer_status response
+            waitStart := A_TickCount
+            while (!gProdTestReceived && (A_TickCount - waitStart) < 5000) {
+                Sleep(100)
+            }
+
+            if (gProdTestReceived && IsObject(gProdTestProducers)) {
+                Log("PASS: Received producer_status response")
+                TestPassed++
+
+                producers := gProdTestProducers
+
+                ; Check that wineventHook state exists and is valid
+                wehState := ""
+                if (producers is Map && producers.Has("wineventHook")) {
+                    wehState := producers["wineventHook"]
+                } else if (IsObject(producers)) {
+                    try wehState := producers.wineventHook
+                }
+
+                if (wehState = "running" || wehState = "failed" || wehState = "disabled") {
+                    Log("PASS: wineventHook state is valid (" wehState ")")
+                    TestPassed++
+                } else {
+                    Log("FAIL: wineventHook state invalid or missing (got: " wehState ")")
+                    TestErrors++
+                }
+
+                ; Count how many producers are reported
+                prodCount := 0
+                expectedProducers := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
+                for _, pname in expectedProducers {
+                    pstate := ""
+                    if (producers is Map && producers.Has(pname)) {
+                        pstate := producers[pname]
+                    } else if (IsObject(producers)) {
+                        try pstate := producers.%pname%
+                    }
+                    if (pstate != "")
+                        prodCount++
+                }
+
+                if (prodCount >= 4) {
+                    Log("PASS: Found " prodCount " producer states via IPC")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Expected at least 4 producer states, got " prodCount)
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: Did not receive producer_status response")
+                TestErrors++
+            }
+
+            IPC_PipeClient_Close(prodClient)
+        } else {
+            Log("FAIL: Could not connect to store for producer state test")
+            TestErrors++
         }
+    }
+
+    ; Kill the shared store (done with Real Store, Viewer, and Producer State tests)
+    if (sharedStorePid) {
+        try ProcessClose(sharedStorePid)
+        Sleep(500)  ; Allow process cleanup before launching new stores
     }
 
     ; ============================================================
@@ -668,15 +726,19 @@ RunLiveTests_Core() {
 
     try {
         Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' wsE2EPipe, , "Hide", &wsE2EPid)
+        Log("  [WS E2E] Store launched (PID=" wsE2EPid ", pipe=" wsE2EPipe ")")
     } catch as e {
         Log("SKIP: Could not start store for workspace E2E test: " e.Message)
         wsE2EPid := 0
     }
 
     if (wsE2EPid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(wsE2EPipe, 3000)) {
-            Log("FAIL: WS E2E store pipe not ready within timeout")
+        ; Wait for store pipe to become available
+        ; Use 5s timeout to handle parallel test load
+        if (!WaitForStorePipe(wsE2EPipe, 5000)) {
+            ; Check if process is still alive
+            stillAlive := ProcessExist(wsE2EPid)
+            Log("FAIL: WS E2E store pipe not ready within timeout (process " (stillAlive ? "alive" : "dead") ")")
             TestErrors++
             try ProcessClose(wsE2EPid)
             wsE2EPid := 0
@@ -787,15 +849,18 @@ RunLiveTests_Core() {
 
     try {
         Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' hbTestPipe, , "Hide", &hbTestPid)
+        Log("  [HB] Store launched (PID=" hbTestPid ", pipe=" hbTestPipe ")")
     } catch as e {
         Log("SKIP: Could not start store for heartbeat test: " e.Message)
         hbTestPid := 0
     }
 
     if (hbTestPid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(hbTestPipe, 3000)) {
-            Log("FAIL: Heartbeat store pipe not ready within timeout")
+        ; Wait for store pipe to become available
+        ; Use 5s timeout to handle parallel test load
+        if (!WaitForStorePipe(hbTestPipe, 5000)) {
+            stillAlive := ProcessExist(hbTestPid)
+            Log("FAIL: Heartbeat store pipe not ready within timeout (process " (stillAlive ? "alive" : "dead") ")")
             TestErrors++
             try ProcessClose(hbTestPid)
             hbTestPid := 0
@@ -855,108 +920,4 @@ RunLiveTests_Core() {
         }
     }
 
-    ; ============================================================
-    ; Producer State E2E Test
-    ; ============================================================
-    Log("`n--- Producer State E2E Test ---")
-
-    ; Start a store for producer state testing
-    prodTestPipe := "tabby_prod_test_" A_TickCount
-    prodTestPid := 0
-
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' prodTestPipe, , "Hide", &prodTestPid)
-    } catch as e {
-        Log("SKIP: Could not start store for producer state test: " e.Message)
-        prodTestPid := 0
-    }
-
-    if (prodTestPid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(prodTestPipe, 3000)) {
-            Log("FAIL: Producer state store pipe not ready within timeout")
-            TestErrors++
-            try ProcessClose(prodTestPid)
-            prodTestPid := 0
-        }
-    }
-
-    if (prodTestPid) {
-        gProdTestProducers := ""
-        gProdTestReceived := false
-
-        prodClient := IPC_PipeClient_Connect(prodTestPipe, Test_OnProducerStateMessage)
-
-        if (prodClient.hPipe) {
-            Log("PASS: Producer state test connected to store")
-            TestPassed++
-
-            ; Send producer_status_request (new IPC message type)
-            statusReqMsg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
-            IPC_PipeClient_Send(prodClient, JSON.Dump(statusReqMsg))
-
-            ; Wait for producer_status response
-            waitStart := A_TickCount
-            while (!gProdTestReceived && (A_TickCount - waitStart) < 5000) {
-                Sleep(100)
-            }
-
-            if (gProdTestReceived && IsObject(gProdTestProducers)) {
-                Log("PASS: Received producer_status response")
-                TestPassed++
-
-                producers := gProdTestProducers
-
-                ; Check that wineventHook state exists and is valid
-                wehState := ""
-                if (producers is Map && producers.Has("wineventHook")) {
-                    wehState := producers["wineventHook"]
-                } else if (IsObject(producers)) {
-                    try wehState := producers.wineventHook
-                }
-
-                if (wehState = "running" || wehState = "failed" || wehState = "disabled") {
-                    Log("PASS: wineventHook state is valid (" wehState ")")
-                    TestPassed++
-                } else {
-                    Log("FAIL: wineventHook state invalid or missing (got: " wehState ")")
-                    TestErrors++
-                }
-
-                ; Count how many producers are reported
-                prodCount := 0
-                expectedProducers := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
-                for _, pname in expectedProducers {
-                    pstate := ""
-                    if (producers is Map && producers.Has(pname)) {
-                        pstate := producers[pname]
-                    } else if (IsObject(producers)) {
-                        try pstate := producers.%pname%
-                    }
-                    if (pstate != "")
-                        prodCount++
-                }
-
-                if (prodCount >= 4) {
-                    Log("PASS: Found " prodCount " producer states via IPC")
-                    TestPassed++
-                } else {
-                    Log("FAIL: Expected at least 4 producer states, got " prodCount)
-                    TestErrors++
-                }
-            } else {
-                Log("FAIL: Did not receive producer_status response")
-                TestErrors++
-            }
-
-            IPC_PipeClient_Close(prodClient)
-        } else {
-            Log("FAIL: Could not connect to store for producer state test")
-            TestErrors++
-        }
-
-        try {
-            ProcessClose(prodTestPid)
-        }
-    }
 }

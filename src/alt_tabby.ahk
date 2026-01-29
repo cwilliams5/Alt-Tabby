@@ -189,8 +189,8 @@ if (g_AltTabbyMode = "wizard-continue") {
             ExitApp()
         }
 
-        ; Show splash screen if enabled
-        if (cfg.LauncherShowSplash)
+        ; Show splash screen if enabled (skip in testing mode)
+        if (cfg.LauncherShowSplash && !g_TestingMode)
             ShowSplashScreen()
 
         SetupLauncherTray()
@@ -200,7 +200,7 @@ if (g_AltTabbyMode = "wizard-continue") {
         LaunchGui()
 
         ; Hide splash after duration
-        if (cfg.LauncherShowSplash) {
+        if (cfg.LauncherShowSplash && !g_TestingMode) {
             elapsed := A_TickCount - g_SplashStartTick
             remaining := cfg.LauncherSplashDurationMs - elapsed
             if (remaining > 0)

@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#SingleInstance Force
+#SingleInstance Off  ; Allow parallel instances for --live-core/features/execution
 #Warn VarUnset, Off  ; Suppress warnings for functions defined in includes
 
 ; Automated test runner - Orchestrates all test suites
@@ -68,11 +68,37 @@ _Test_OnError(err, *) {
 }
 Log("Log file: " TestLogPath)
 
-; --- Check for --live flag ---
+; --- Check for flags ---
 DoLiveTests := false
+DoLiveCore := false
+DoLiveFeatures := false
+DoLiveExecution := false
 for _, arg in A_Args {
     if (arg = "--live")
         DoLiveTests := true
+    else if (arg = "--live-core")
+        DoLiveCore := true
+    else if (arg = "--live-features")
+        DoLiveFeatures := true
+    else if (arg = "--live-execution")
+        DoLiveExecution := true
+}
+
+; Single-suite modes use a dedicated log file for parallel aggregation
+if (DoLiveCore) {
+    TestLogPath := A_Temp "\alt_tabby_tests_core.log"
+    try FileDelete(TestLogPath)
+    Log("=== Alt-Tabby Test Run (Core) " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
+}
+if (DoLiveFeatures) {
+    TestLogPath := A_Temp "\alt_tabby_tests_features.log"
+    try FileDelete(TestLogPath)
+    Log("=== Alt-Tabby Test Run (Features) " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
+}
+if (DoLiveExecution) {
+    TestLogPath := A_Temp "\alt_tabby_tests_execution.log"
+    try FileDelete(TestLogPath)
+    Log("=== Alt-Tabby Test Run (Execution) " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
 }
 
 ; ============================================================
@@ -107,12 +133,25 @@ ConfigLoader_Init(A_ScriptDir "\..\src")
 ; Initialize blacklist before tests
 Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 
-; --- Always run unit tests ---
-RunUnitTests()
+; --- Determine what to run ---
+; Single-suite modes skip unit tests (they run in the main process)
+isSingleSuite := DoLiveCore || DoLiveFeatures || DoLiveExecution
 
-; --- Run live tests if --live flag provided ---
+if (!isSingleSuite) {
+    ; --- Always run unit tests in full/default mode ---
+    RunUnitTests()
+}
+
+; --- Run live tests ---
 if (DoLiveTests) {
+    ; Full sequential mode (backward compat)
     RunLiveTests()
+} else if (DoLiveCore) {
+    RunLiveTests_Core()
+} else if (DoLiveFeatures) {
+    RunLiveTests_Features()
+} else if (DoLiveExecution) {
+    RunLiveTests_Execution()
 }
 
 ; --- Summary ---

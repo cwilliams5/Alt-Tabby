@@ -15,36 +15,39 @@ RunLiveTests_Features() {
     storePath := A_ScriptDir "\..\src\store\store_server.ahk"
 
     ; ============================================================
-    ; MRU/Focus Tracking Test
+    ; Shared Store for MRU + Projection tests
     ; ============================================================
-    Log("`n--- MRU/Focus Tracking Test ---")
-
-    ; This test verifies that focus tracking updates lastActivatedTick and isFocused
-    mruTestPipe := "tabby_mru_test_" A_TickCount
-    mruTestPid := 0
+    ; MRU adds focus data (non-destructive), Projection is pure read-only.
+    ; Run MRU first so its focus changes populate the store for Projection.
+    sharedFeatStorePipe := "tabby_feat_shared_" A_TickCount
+    sharedFeatStorePid := 0
 
     try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' mruTestPipe, , "Hide", &mruTestPid)
+        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' sharedFeatStorePipe, , "Hide", &sharedFeatStorePid)
     } catch as e {
-        Log("SKIP: Could not start store for MRU test: " e.Message)
-        mruTestPid := 0
+        Log("SKIP: Could not start shared store for MRU/Projection tests: " e.Message)
+        sharedFeatStorePid := 0
     }
 
-    if (mruTestPid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(mruTestPipe, 3000)) {
-            Log("FAIL: MRU test store pipe not ready within timeout")
+    if (sharedFeatStorePid) {
+        if (!WaitForStorePipe(sharedFeatStorePipe, 3000)) {
+            Log("FAIL: Shared features store pipe not ready within timeout")
             TestErrors++
-            try ProcessClose(mruTestPid)
-            mruTestPid := 0
+            try ProcessClose(sharedFeatStorePid)
+            sharedFeatStorePid := 0
         }
     }
 
-    if (mruTestPid) {
+    ; ============================================================
+    ; MRU/Focus Tracking Test (uses shared store)
+    ; ============================================================
+    Log("`n--- MRU/Focus Tracking Test ---")
+
+    if (sharedFeatStorePid) {
         gMruTestResponse := ""
         gMruTestReceived := false
 
-        mruClient := IPC_PipeClient_Connect(mruTestPipe, Test_OnMruMessage)
+        mruClient := IPC_PipeClient_Connect(sharedFeatStorePipe, Test_OnMruMessage)
 
         if (mruClient.hPipe) {
             Log("PASS: MRU test connected to store")
@@ -134,43 +137,18 @@ RunLiveTests_Features() {
             Log("FAIL: Could not connect to store for MRU test")
             TestErrors++
         }
-
-        try {
-            ProcessClose(mruTestPid)
-        }
     }
 
     ; ============================================================
-    ; Projection Options E2E Test
+    ; Projection Options E2E Test (uses shared store)
     ; ============================================================
     Log("`n--- Projection Options E2E Test ---")
 
-    ; This test verifies all projection options work correctly
-    projTestPipe := "tabby_proj_test_" A_TickCount
-    projTestPid := 0
-
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' projTestPipe, , "Hide", &projTestPid)
-    } catch as e {
-        Log("SKIP: Could not start store for projection test: " e.Message)
-        projTestPid := 0
-    }
-
-    if (projTestPid) {
-        ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(projTestPipe, 3000)) {
-            Log("FAIL: Projection test store pipe not ready within timeout")
-            TestErrors++
-            try ProcessClose(projTestPid)
-            projTestPid := 0
-        }
-    }
-
-    if (projTestPid) {
+    if (sharedFeatStorePid) {
         gProjTestResponse := ""
         gProjTestReceived := false
 
-        projClient := IPC_PipeClient_Connect(projTestPipe, Test_OnProjMessage)
+        projClient := IPC_PipeClient_Connect(sharedFeatStorePipe, Test_OnProjMessage)
 
         if (projClient.hPipe) {
             Log("PASS: Projection test connected to store")
@@ -431,10 +409,11 @@ RunLiveTests_Features() {
             Log("FAIL: Could not connect to store for projection test")
             TestErrors++
         }
+    }
 
-        try {
-            ProcessClose(projTestPid)
-        }
+    ; Kill the shared store (done with MRU and Projection tests)
+    if (sharedFeatStorePid) {
+        try ProcessClose(sharedFeatStorePid)
     }
 
     ; ============================================================
