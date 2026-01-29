@@ -68,7 +68,7 @@ GUI_Repaint() {
     global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
-    global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH
+    global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_CurScale, gGdip_BackHdc
 
     ; ===== TIMING: Start =====
     tTotal := A_TickCount
@@ -180,7 +180,7 @@ GUI_Repaint() {
 }
 
 GUI_RevealBoth() {
-    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed
+    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed, cfg
     global gGUI_State  ; Need access to state for race fix
 
     if (gGUI_Revealed) {
@@ -219,7 +219,7 @@ GUI_RevealBoth() {
 ; ========================= OVERLAY PAINTING =========================
 
 GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
-    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg
+    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
 
     ; ===== TIMING: EnsureResources =====
@@ -600,7 +600,7 @@ _GUI_GetActionBtnMetrics(scale) {
 ;   borderPx  - border thickness (from config)
 ;   gap       - gap between buttons in pixels
 _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bgProp, glyph, borderPx, gap) {
-    global gGUI_HoverBtn, cfg
+    global gGUI_HoverBtn, cfg, gGdip_Res
 
     if (!cfg.%showProp%)
         return
@@ -698,7 +698,7 @@ GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, 
 ; ========================= FOOTER =========================
 
 GUI_DrawFooter(g, wPhys, hPhys, scale) {
-    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, cfg
+    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, cfg, gGdip_Res
 
     if (!cfg.GUI_ShowFooter) {
         return

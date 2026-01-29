@@ -31,7 +31,7 @@ _Shortcut_Create(lnkPath, targetPath, iconPath := "", description := "") {
 
 ; Toggle Start Menu shortcut
 ToggleStartMenuShortcut() {
-    global cfg
+    global cfg, TOOLTIP_DURATION_SHORT
     lnkPath := _Shortcut_GetStartMenuPath()
     if (FileExist(lnkPath)) {
         try {
@@ -51,7 +51,7 @@ ToggleStartMenuShortcut() {
 
 ; Toggle Startup shortcut
 ToggleStartupShortcut() {
-    global cfg
+    global cfg, TOOLTIP_DURATION_SHORT
     lnkPath := _Shortcut_GetStartupPath()
     if (FileExist(lnkPath)) {
         try {

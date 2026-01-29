@@ -87,6 +87,7 @@ ConfigEditor_Run(autoRestart := false) {
 _CE_CreateGui() {
     global gCE_Gui, gCE_TabCtrl, gCE_Controls, gConfigRegistry, gCE_SectionHeights
     global gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
+    global gCE_BoundWheelMsg, CE_WM_MOUSEWHEEL, gCE_BoundScrollMsg, CE_WM_VSCROLL, gCE_BoundMouseMove
 
     ; Clean up any existing handlers from previous invocations (prevents accumulation)
     _CE_Cleanup()
@@ -245,7 +246,7 @@ _CE_GetSectionNames() {
 ; isScrollPane: unused now, kept for compatibility
 ; Returns: Array of {ctrl, origY} for all controls created (for scrolling)
 _CE_BuildSectionControls(sectionName, targetGui, isScrollPane := false) {
-    global gCE_Controls, gConfigRegistry
+    global gCE_Controls, gConfigRegistry, gCE_Tooltips
 
     createdControls := []  ; Track controls for scrolling
 
@@ -346,7 +347,8 @@ _CE_IsGuiValid() {
 
 ; Update the scrollbar visibility and range for current section
 _CE_UpdateScrollBar() {
-    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH, CE_SB_VERT
+    global CE_SIF_PAGE, CE_SIF_POS, CE_SIF_RANGE
 
     ; Guard against destroyed GUI
     if (!_CE_IsGuiValid())
@@ -378,7 +380,7 @@ _CE_UpdateScrollBar() {
 
 ; Update just the scroll position (after scrolling)
 _CE_UpdateScrollPos() {
-    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection
+    global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, CE_SIF_POS, CE_SB_VERT
 
     ; Guard against destroyed GUI
     if (!_CE_IsGuiValid())
@@ -659,6 +661,7 @@ _CE_OnTabChange(ctrl, *) {
 ; Clean up before destroying main GUI
 _CE_Cleanup() {
     global gCE_ScrollPanes, gCE_BoundWheelMsg, gCE_BoundScrollMsg
+    global CE_WM_MOUSEWHEEL, CE_WM_VSCROLL, gCE_BoundMouseMove, gCE_Tooltips, gCE_LastTooltipHwnd
 
     if (IsSet(gCE_BoundWheelMsg) && gCE_BoundWheelMsg) {
         OnMessage(CE_WM_MOUSEWHEEL, gCE_BoundWheelMsg, 0)
@@ -725,6 +728,7 @@ _CE_DoScroll(deltaPixels) {
 ; Handle WM_VSCROLL - scrollbar interaction
 _CE_OnVScroll(wParam, lParam, msg, hwnd) {
     global gCE_Gui, gCE_ScrollPanes, gCE_CurrentSection, gCE_TabViewportH
+    global CE_SB_LINEUP, CE_SB_LINEDOWN, CE_SB_PAGEUP, CE_SB_PAGEDOWN, CE_SB_THUMBTRACK
 
     ; Guard against destroyed GUI
     if (!_CE_IsGuiValid())

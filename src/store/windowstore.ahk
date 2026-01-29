@@ -116,7 +116,7 @@ WindowStore_EndScan(graceMs := "") {
 }
 
 WindowStore_UpsertWindow(records, source := "") {
-    global gWS_Store, gWS_Rev, gWS_ScanId
+    global gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
     added := 0

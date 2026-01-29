@@ -27,6 +27,8 @@ AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 
 Logs: `%TEMP%\alt_tabby_tests.log` (unit tests). `--live` runs suites in parallel with separate logs: `alt_tabby_tests_core.log`, `alt_tabby_tests_features.log`, `alt_tabby_tests_execution.log`
 
+**Pre-gate:** Static analysis (`tests/static_analysis.ps1`) runs before all tests. If any function uses a file-scope global without a `global` declaration, the suite is blocked. Fix by adding `global <name>` inside the flagged function. New checks are auto-discovered as `tests/check_*.ps1`.
+
 ## Test Architecture (CRITICAL)
 
 **NEVER copy production code into test files** - tests become useless (test the copy, not production).

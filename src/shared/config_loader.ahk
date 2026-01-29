@@ -339,7 +339,7 @@ _CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType 
 ; ============================================================
 
 _CL_LoadAllSettings() {
-    global gConfigIniPath, gConfigRegistry, cfg
+    global gConfigIniPath, gConfigRegistry, cfg, LOG_PATH_STORE
 
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))

@@ -57,6 +57,7 @@ if (gViewer_Headless || gViewer_TestMode)
 
 Viewer_Init() {
     global gViewer_Client, gViewer_LogPath, cfg
+    global gViewer_Headless
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()

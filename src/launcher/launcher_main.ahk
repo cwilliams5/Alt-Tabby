@@ -40,7 +40,7 @@ _Launcher_LogStartup() {
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
     global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
-    global ALTTABBY_TASK_NAME
+    global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, g_SplashStartTick
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
     _Launcher_LogStartup()

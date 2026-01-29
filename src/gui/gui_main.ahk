@@ -95,7 +95,7 @@ global gGUI_StoreRestartAttempts := 0  ; Counter for store restart attempts
 ; ========================= INITIALIZATION =========================
 
 GUI_Main_Init() {
-    global gGUI_StoreClient, cfg, IPC_MSG_HELLO
+    global gGUI_StoreClient, cfg, IPC_MSG_HELLO, gGUI_LastMsgTick
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
@@ -147,7 +147,7 @@ _GUI_StoreHealthCheck() {
     global gGUI_ReconnectAttempts, gGUI_StoreRestartAttempts, cfg
     global IPC_MSG_HELLO
 
-    global MAX_RECONNECT_ATTEMPTS, MAX_RESTART_ATTEMPTS
+    global MAX_RECONNECT_ATTEMPTS, MAX_RESTART_ATTEMPTS, TOOLTIP_DURATION_DEFAULT, TOOLTIP_DURATION_LONG
     timeoutMs := cfg.ViewerHeartbeatTimeoutMs  ; Same timeout as viewer (default 12s)
     maxReconnectAttempts := MAX_RECONNECT_ATTEMPTS
     maxRestartAttempts := MAX_RESTART_ATTEMPTS

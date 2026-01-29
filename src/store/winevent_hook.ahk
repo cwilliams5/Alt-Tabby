@@ -63,6 +63,7 @@ global WEH_EVENT_SYSTEM_MINIMIZEEND := 0x0017
 WinEventHook_Start() {
     global _WEH_Hook, _WEH_ShellWindow, _WEH_TimerOn, cfg
     global WinEventHook_DebounceMs, WinEventHook_BatchMs
+    global _WEH_CallbackObj
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (WinEventHook_DebounceMs = 0) {

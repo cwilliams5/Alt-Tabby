@@ -53,6 +53,7 @@ global _KSub_CloakBatchTimerFn := 0
 KomorebiSub_Init() {
     global _KSub_PipeName, _KSub_WorkspaceCache, _KSub_CacheMaxAgeMs, cfg
     global KSub_PollMs, KSub_IdleRecycleMs, KSub_FallbackPollMs
+    global _KSub_FallbackMode
 
     ; Load config values (ConfigLoader_Init has already run)
     KSub_PollMs := cfg.KomorebiSubPollMs
@@ -83,6 +84,7 @@ KomorebiSub_IsAvailable() {
 KomorebiSub_Start() {
     global _KSub_PipeName, _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped
     global _KSub_Connected, _KSub_ClientPid, _KSub_LastEventTick, _KSub_FallbackMode
+    global KSub_FallbackPollMs, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, KSub_PollMs
 
     KomorebiSub_Stop()
 
@@ -273,6 +275,7 @@ KomorebiSub_PruneStaleCache() {
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
     global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer
+    global ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES
     static pollCount := 0, lastLogTick := 0
 
     pollCount++
@@ -683,6 +686,7 @@ _KSub_CancelCloakTimer() {
 ; skipWorkspaceUpdate: set to true when called after a focus event (notification already handled workspace)
 _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
     global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache, _KSub_LastWsUpdateTick
+    global _KSub_CacheMaxAgeMs
 
     if !(stateObj is Map)
         return

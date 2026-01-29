@@ -70,7 +70,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     global gGUI_State, gGUI_AltDownTick, gGUI_FirstTabTick, gGUI_TabCount
     global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems, gGUI_AllItems, cfg
-    global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT
+    global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
     global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick
 
     ; Get event name for logging
@@ -677,7 +677,7 @@ _GUI_AsyncActivationTick() {
 ; Process buffered events after async activation completes
 ; Called via SetTimer -1 after async complete, with gGUI_PendingPhase="flushing"
 _GUI_ProcessEventBuffer() {
-    global gGUI_EventBuffer, gGUI_Items, gGUI_PendingPhase
+    global gGUI_EventBuffer, gGUI_Items, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP
 
     ; Validate we're in flushing phase - prevents stale timers from processing
     if (gGUI_PendingPhase != "flushing") {

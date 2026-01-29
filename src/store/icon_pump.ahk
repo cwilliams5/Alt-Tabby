@@ -125,6 +125,7 @@ IconPump_CleanupWindow(hwnd) {
 _IP_Tick() {
     global IconBatchPerTick, _IP_Attempts, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
+    global IP_LOG_TITLE_MAX_LEN
 
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
     if (!IsObject(hwnds) || hwnds.Length = 0) {
@@ -376,6 +377,7 @@ _IP_SetCooldown(hwnd, ms) {
 
 ; Check if a process is a UWP/packaged app (has a package identity)
 _IP_AppHasPackage(pid) {
+    global PROCESS_QUERY_LIMITED_INFORMATION
     if (!pid || pid <= 0)
         return false
 
@@ -484,6 +486,7 @@ _IP_GetUWPLogoPath(hwnd) {
 
 ; Get the package installation path for a UWP process
 _IP_GetPackagePath(pid) {
+    global PROCESS_QUERY_LIMITED_INFORMATION
     if (!pid || pid <= 0)
         return ""
 

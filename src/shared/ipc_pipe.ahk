@@ -201,6 +201,7 @@ IPC_PipeClient_Close(client) {
 ; ============================ Server internals =============================
 
 IPC__ServerTick(server) {
+    global IPC_ERROR_IO_PENDING, IPC_ERROR_PIPE_CONNECTED
     ; Wrap in Critical to prevent race conditions with Broadcast
     Critical "On"
     try {
@@ -280,6 +281,7 @@ IPC__ClientTick(client) {
 ; Create SECURITY_ATTRIBUTES with NULL DACL to allow non-elevated processes to connect
 ; This is needed when running as administrator - otherwise non-elevated clients can't connect
 _IPC_CreateOpenSecurityAttrs() {
+    global IPC_SECURITY_ATTRS_SIZE
     ; Use static buffers so they persist for the lifetime of the pipe
     static pSD := 0
     static pSA := 0
@@ -336,6 +338,8 @@ _IPC_CreateOpenSecurityAttrs() {
 _IPC_CreatePipeInstance(pipeName) {
     global IPC_PIPE_ACCESS_DUPLEX, IPC_FILE_FLAG_OVERLAPPED
     global IPC_PIPE_TYPE_MESSAGE, IPC_PIPE_READMODE_MESSAGE, IPC_PIPE_WAIT
+    global IPC_READ_CHUNK_SIZE, IPC_OVERLAPPED_SIZE, IPC_OVERLAPPED_EVENT_OFFSET
+    global IPC_ERROR_IO_PENDING, IPC_ERROR_PIPE_CONNECTED
 
     ; Create security attributes with NULL DACL to allow non-elevated processes
     ; to connect when we're running as administrator
@@ -385,6 +389,7 @@ _IPC_CreatePipeInstance(pipeName) {
 }
 
 _IPC_CheckConnect(inst) {
+    global IPC_WAIT_SINGLE_OBJ
     if (!inst.hPipe)
         return false
     if (inst.connected)
@@ -432,6 +437,7 @@ _IPC_ClosePipeInstance(inst) {
 }
 
 _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
+    global IPC_WAIT_SINGLE_OBJ, IPC_ERROR_PIPE_BUSY, IPC_ERROR_FILE_NOT_FOUND, IPC_WAIT_PIPE_TIMEOUT
     name := "\\.\pipe\" pipeName
     start := A_TickCount
     loop {
@@ -473,7 +479,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
 }
 
 _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
-    global IPC_READ_BUF
+    global IPC_READ_BUF, IPC_READ_CHUNK_SIZE, IPC_ERROR_MORE_DATA, IPC_BUFFER_OVERFLOW
     avail := _IPC_PeekAvailable(hPipe)
     if (avail < 0)
         return -1
@@ -551,6 +557,7 @@ _IPC_CloseHandle(h) {
 ; ============================== Timer policy ===============================
 
 _IPC_Server_AdjustTimer(server, activityBytes) {
+    global IPC_TICK_ACTIVE, IPC_TICK_SERVER_IDLE, IPC_TICK_IDLE
     ; Keep CPU low: slow tick when idle, speed up when active.
     if (activityBytes > 0) {
         server.idleStreak := 0
@@ -575,6 +582,7 @@ _IPC_SetServerTick(server, ms) {
 }
 
 _IPC_Client_AdjustTimer(client, activityBytes) {
+    global IPC_TICK_ACTIVE, IPC_TICK_IDLE
     if (activityBytes > 0) {
         client.idleStreak := 0
         _IPC_SetClientTick(client, IPC_TICK_ACTIVE)

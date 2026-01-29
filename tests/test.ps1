@@ -229,6 +229,32 @@ if ($syntaxErrors -gt 0) {
     exit 1
 }
 
+# --- Static Analysis Pre-Gate (Parallel) ---
+# Runs all check_*.ps1 scripts in parallel via the dispatcher.
+# Catches issues like undeclared globals that cause runtime popups or silent bugs.
+# This MUST pass before any AHK process launches.
+Write-Host "`n--- Static Analysis Pre-Gate ---" -ForegroundColor Yellow
+
+$staticAnalysisScript = "$PSScriptRoot\static_analysis.ps1"
+if (Test-Path $staticAnalysisScript) {
+    & $staticAnalysisScript -SourceDir $srcRoot
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "============================================================" -ForegroundColor Red
+        Write-Host "  STATIC ANALYSIS FAILED - TEST SUITE BLOCKED" -ForegroundColor Red
+        Write-Host "============================================================" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "  One or more static analysis checks failed." -ForegroundColor Yellow
+        Write-Host "  Fix all reported issues before tests can run." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  No tests will run until all static analysis checks pass." -ForegroundColor Red
+        Write-Host "============================================================" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Host "  SKIP: static_analysis.ps1 not found" -ForegroundColor Yellow
+}
+
 # --- Compilation Phase ---
 # When --live is specified, skip compilation here - Core tests include compile.bat testing
 # which handles compilation. This avoids redundant compilation (~5-10s savings).

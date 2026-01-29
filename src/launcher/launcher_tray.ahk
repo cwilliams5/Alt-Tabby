@@ -135,7 +135,7 @@ RestartViewer() {
 }
 
 RestartAll() {
-    global g_StorePID, g_GuiPID, g_ViewerPID
+    global g_StorePID, g_GuiPID, g_ViewerPID, TIMING_PROCESS_EXIT_WAIT, TIMING_SUBPROCESS_LAUNCH
 
     ; Kill existing processes
     if (g_StorePID && ProcessExist(g_StorePID))
@@ -201,6 +201,7 @@ global g_AdminToggleStartTick := 0  ; Tick-based timing instead of static counte
 
 ToggleAdminMode() {
     global cfg, gConfigIniPath, g_AdminToggleInProgress, g_AdminToggleLockFile
+    global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, g_AdminToggleStartTick
 
     ; Prevent re-entry during async elevation
     if (g_AdminToggleInProgress) {
@@ -304,7 +305,7 @@ _AdminToggle_CheckComplete() {
 }
 
 ToggleAutoUpdate() {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, TOOLTIP_DURATION_SHORT
     cfg.SetupAutoUpdateCheck := !cfg.SetupAutoUpdateCheck
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", cfg.SetupAutoUpdateCheck, true, "bool")
     ToolTip(cfg.SetupAutoUpdateCheck ? "Auto-update enabled" : "Auto-update disabled")

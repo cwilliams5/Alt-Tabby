@@ -25,7 +25,7 @@ MyFunc() {
     if (type = IPC_MSG_SNAPSHOT) { ... }
 }
 ```
-With `#Warn VarUnset, Off`, missing globals silently become empty strings. **This is a common source of "code runs but doesn't work" bugs.**
+**Enforcement:** The static analysis pre-gate (`check_globals.ps1`) catches missing declarations before tests run. `#Warn VarUnset, Off` remains as a safety net — it does NOT replace the checker.
 
 ### Cross-File Global Visibility
 

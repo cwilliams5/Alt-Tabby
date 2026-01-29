@@ -596,7 +596,7 @@ _Update_KillOtherProcesses(targetExeName := "") {
 ;   cleanupSourceOnFailure - Delete source file if update fails
 
 _Update_ApplyCore(opts) {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_STORE_START_WAIT
 
     sourcePath := opts.HasOwnProp("sourcePath") ? opts.sourcePath : ""
     targetPath := opts.HasOwnProp("targetPath") ? opts.targetPath : ""

@@ -1,0 +1,112 @@
+# static_analysis.ps1 - Parallel dispatcher for static analysis checks
+# Discovers and runs all check_*.ps1 scripts in the tests/ directory.
+# All checks launch in parallel; wall-clock time = slowest check.
+# Exit codes: 0 = all pass, 1 = any check failed
+#
+# To add a new check: create tests/check_<name>.ps1 that accepts
+# -SourceDir and exits 0 (pass) or 1 (fail). It will be auto-discovered.
+#
+# Usage: powershell -File tests\static_analysis.ps1 [-SourceDir "path\to\src"]
+
+param(
+    [string]$SourceDir
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not $SourceDir) {
+    $SourceDir = (Resolve-Path "$PSScriptRoot\..\src").Path
+}
+if (-not (Test-Path $SourceDir)) {
+    Write-Host "  ERROR: Source directory not found: $SourceDir" -ForegroundColor Red
+    exit 1
+}
+
+# Auto-discover all check scripts
+$checks = @(Get-ChildItem "$PSScriptRoot\check_*.ps1" | Sort-Object Name)
+
+if ($checks.Count -eq 0) {
+    Write-Host "  No static analysis checks found (check_*.ps1)" -ForegroundColor Yellow
+    exit 0
+}
+
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+Write-Host "  Running $($checks.Count) static analysis check(s) in parallel..." -ForegroundColor Cyan
+
+# --- Launch all checks in parallel ---
+# Each check runs as a separate powershell.exe process.
+# Output is captured to temp files so parallel checks don't interleave.
+# After all complete, results are displayed sequentially.
+$procs = @()
+foreach ($check in $checks) {
+    $name = $check.BaseName
+    $outFile = "$env:TEMP\sa_${name}.log"
+    Remove-Item -Force -ErrorAction SilentlyContinue $outFile
+
+    # Use -Command with *>&1 to merge ALL output streams (including Write-Host
+    # information stream 6) into stdout, which then gets captured to file.
+    # This preserves the full output from each check for sequential replay.
+    $escapedPath = $check.FullName -replace "'", "''"
+    $escapedSrc = $SourceDir -replace "'", "''"
+    $cmdArgs = "-NoProfile -Command ""& '$escapedPath' -SourceDir '$escapedSrc' *>&1; exit `$LASTEXITCODE"""
+
+    $proc = Start-Process -FilePath "powershell.exe" `
+        -ArgumentList $cmdArgs `
+        -NoNewWindow -PassThru `
+        -RedirectStandardOutput $outFile
+
+    $procs += @{
+        Process  = $proc
+        Name     = $name
+        Label    = $check.Name
+        OutFile  = $outFile
+    }
+}
+
+# --- Wait for all and collect results ---
+$failures = 0
+$results = [System.Collections.ArrayList]::new()
+foreach ($p in $procs) {
+    $p.Process | Wait-Process
+    [void]$results.Add(@{
+        Name     = $p.Name
+        Label    = $p.Label
+        ExitCode = $p.Process.ExitCode
+        OutFile  = $p.OutFile
+    })
+    if ($p.Process.ExitCode -ne 0) { $failures++ }
+}
+
+$sw.Stop()
+
+# --- Display results sequentially (no interleaving) ---
+foreach ($r in $results) {
+    $output = if (Test-Path $r.OutFile) { Get-Content $r.OutFile -Raw -ErrorAction SilentlyContinue } else { "" }
+
+    if ($r.ExitCode -eq 0) {
+        # Passed — show compact output
+        if ($output) {
+            Write-Host $output.TrimEnd()
+        }
+        Write-Host "  PASS: $($r.Label)" -ForegroundColor Green
+    } else {
+        # Failed — show full output so the agent/developer can fix issues
+        if ($output) {
+            Write-Host $output.TrimEnd()
+        }
+        Write-Host "  FAIL: $($r.Label)" -ForegroundColor Red
+    }
+    Write-Host ""
+}
+
+Write-Host "  Static analysis completed in $($sw.ElapsedMilliseconds)ms ($($checks.Count) check(s), $failures failure(s))" -ForegroundColor Cyan
+
+# Cleanup temp files
+foreach ($r in $results) {
+    Remove-Item -Force -ErrorAction SilentlyContinue $r.OutFile
+}
+
+if ($failures -gt 0) {
+    exit 1
+}
+exit 0

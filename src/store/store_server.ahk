@@ -65,6 +65,7 @@ if (gStore_TestMode) {
 
 Store_Init() {
     global gStore_Server, gStore_CmdLinePipe, cfg
+    global gStore_CmdLineHeartbeatMs, gStore_ProducerState
 
     ; Load config.ini (overrides defaults from gConfigRegistry)
     ; Let ConfigLoader_Init() determine path based on A_IsCompiled:
@@ -155,7 +156,7 @@ Store_Init() {
 ; Broadcast heartbeat to all clients with current rev for drift detection
 ; Also performs periodic maintenance: cleanup orphaned entries, prune caches
 Store_HeartbeatTick() {
-    global gStore_Server, IPC_MSG_HEARTBEAT
+    global gStore_Server, IPC_MSG_HEARTBEAT, cfg
 
     ; Safety net: clean up any orphaned client Map entries
     ; Primary cleanup happens in Store_OnClientDisconnect (via IPC callback)
@@ -223,7 +224,7 @@ Store_ValidateExistenceTick() {
 
 ; Full winenum scan - runs on startup, snapshot request, Z-pump trigger, or safety polling
 Store_FullScan() {
-    global gStore_LastBroadcastRev, gStore_Server, gStore_TestMode, gStore_LastClientLog
+    global gStore_LastBroadcastRev, gStore_Server, gStore_TestMode, gStore_LastClientLog, gWS_Store
     if (gStore_TestMode && (A_TickCount - gStore_LastClientLog) > 3000) {
         gStore_LastClientLog := A_TickCount
         try Store_LogError("clients=" gStore_Server.clients.Count " store=" gWS_Store.Count " rev=" WindowStore_GetRev())
@@ -643,6 +644,7 @@ Store_LogInfo(msg) {
 }
 
 _Store_HasIpcSymbols() {
+    global IPC_MSG_HELLO
     try {
         tmp := IPC_MSG_HELLO
         return true
