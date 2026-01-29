@@ -36,9 +36,10 @@ if ($remainingArgs) {
 # "app starting" cursor (pointer+hourglass) during process launches.
 # PowerShell's Start-Process doesn't expose this flag.
 #
-# IMPORTANT: Does NOT set STARTF_USESTDHANDLES — null stdin/stdout handles
-# cause AHK processes to crash immediately. Stderr capture uses cmd.exe
-# redirect (2>"file") instead.
+# StartCaptured/RunWaitCaptured launch processes DIRECTLY (no cmd.exe wrapper)
+# with STARTF_USESTDHANDLES to redirect stdout+stderr to a file. This applies
+# FORCEOFFEEDBACK to the actual target process, not an intermediate cmd.exe
+# whose children would still trigger cursor feedback.
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -50,6 +51,11 @@ public class SilentProcess {
         IntPtr lpProcessAttributes, IntPtr lpThreadAttributes,
         bool bInheritHandles, uint dwCreationFlags, IntPtr lpEnvironment,
         string lpCurrentDirectory, ref STARTUPINFOW si, out PROCESS_INFORMATION pi);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateFileW(
+        string lpFileName, uint dwDesiredAccess, uint dwShareMode,
+        ref SECURITY_ATTRIBUTES lpSecurityAttributes, uint dwCreationDisposition,
+        uint dwFlagsAndAttributes, IntPtr hTemplateFile);
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
     [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr h, out int code);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
@@ -63,15 +69,24 @@ public class SilentProcess {
     }
     [StructLayout(LayoutKind.Sequential)]
     struct PROCESS_INFORMATION { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct SECURITY_ATTRIBUTES { public int nLength; public IntPtr lpSecurityDescriptor; public bool bInheritHandle; }
 
-    // Guard: PowerShell converts $null to "" for .NET string params.
-    // Empty string for lpCurrentDirectory causes ERROR_INVALID_NAME (123).
     static string NullIfEmpty(string s) { return string.IsNullOrEmpty(s) ? null : s; }
+    static readonly IntPtr INVALID = new IntPtr(-1);
 
+    static IntPtr OpenInheritable(string path, uint access, uint creation) {
+        var sa = new SECURITY_ATTRIBUTES();
+        sa.nLength = Marshal.SizeOf(sa);
+        sa.bInheritHandle = true;
+        return CreateFileW(path, access, 3, ref sa, creation, 0, IntPtr.Zero);
+    }
+
+    // Launch without stdio redirection. Cursor suppressed.
     public static int RunWait(string cmdLine, string workDir = null) {
         var si = new STARTUPINFOW();
         si.cb = Marshal.SizeOf(si);
-        si.dwFlags = 0x40; // STARTF_FORCEOFFEEDBACK
+        si.dwFlags = 0x41; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
         var sb = new StringBuilder(cmdLine);
         PROCESS_INFORMATION pi;
         if (!CreateProcessW(null, sb, IntPtr.Zero, IntPtr.Zero, false,
@@ -83,10 +98,11 @@ public class SilentProcess {
         return code;
     }
 
+    // Launch without stdio redirection, return process handle. Cursor suppressed.
     public static IntPtr Start(string cmdLine, string workDir = null) {
         var si = new STARTUPINFOW();
         si.cb = Marshal.SizeOf(si);
-        si.dwFlags = 0x40; // STARTF_FORCEOFFEEDBACK
+        si.dwFlags = 0x41; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
         var sb = new StringBuilder(cmdLine);
         PROCESS_INFORMATION pi;
         if (!CreateProcessW(null, sb, IntPtr.Zero, IntPtr.Zero, false,
@@ -94,6 +110,38 @@ public class SilentProcess {
             return IntPtr.Zero;
         CloseHandle(pi.hThread);
         return pi.hProcess;
+    }
+
+    // Launch with stdout+stderr captured to file, stdin from NUL. Cursor suppressed.
+    // Applies FORCEOFFEEDBACK directly to the target process (no cmd.exe wrapper).
+    public static IntPtr StartCaptured(string cmdLine, string outputPath, string workDir = null) {
+        IntPtr hNul = OpenInheritable("NUL", 0x80000000, 3);  // GENERIC_READ, OPEN_EXISTING
+        IntPtr hOut = OpenInheritable(outputPath, 0x40000000, 2); // GENERIC_WRITE, CREATE_ALWAYS
+        if (hNul == INVALID || hOut == INVALID) {
+            if (hNul != INVALID) CloseHandle(hNul);
+            if (hOut != INVALID) CloseHandle(hOut);
+            return IntPtr.Zero;
+        }
+        var si = new STARTUPINFOW();
+        si.cb = Marshal.SizeOf(si);
+        si.dwFlags = 0x141; // STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK | STARTF_USESTDHANDLES
+        si.hStdInput = hNul;
+        si.hStdOutput = hOut;
+        si.hStdError = hOut;
+        var sb = new StringBuilder(cmdLine);
+        PROCESS_INFORMATION pi;
+        bool ok = CreateProcessW(null, sb, IntPtr.Zero, IntPtr.Zero, true,
+            0x08000000, IntPtr.Zero, NullIfEmpty(workDir), ref si, out pi);
+        CloseHandle(hNul);
+        CloseHandle(hOut);
+        if (!ok) return IntPtr.Zero;
+        CloseHandle(pi.hThread);
+        return pi.hProcess;
+    }
+
+    // Launch with capture and wait for exit. Cursor suppressed.
+    public static int RunWaitCaptured(string cmdLine, string outputPath, string workDir = null) {
+        return WaitAndGetExitCode(StartCaptured(cmdLine, outputPath, workDir));
     }
 
     public static int WaitAndGetExitCode(IntPtr hProcess) {
@@ -138,8 +186,7 @@ $filesToCheck = @(
     "$PSScriptRoot\gui_tests.ahk"
 )
 
-# Launch all syntax checks in parallel via cmd.exe wrapper
-# cmd.exe provides output capture (> file 2>&1), SilentProcess provides cursor suppression
+# Launch all syntax checks in parallel — direct AHK launch with captured output
 $syntaxProcs = @()
 foreach ($file in $filesToCheck) {
     if (Test-Path $file) {
@@ -147,8 +194,8 @@ foreach ($file in $filesToCheck) {
         $errFile = "$env:TEMP\ahk_syntax_$shortName.log"
         Remove-Item -Force -ErrorAction SilentlyContinue $errFile
 
-        $cmdLine = 'cmd.exe /c ""' + $ahk + '" /ErrorStdOut /validate "' + $file + '" > "' + $errFile + '" 2>&1"'
-        $hProc = [SilentProcess]::Start($cmdLine)
+        $cmdLine = '"' + $ahk + '" /ErrorStdOut /validate "' + $file + '"'
+        $hProc = [SilentProcess]::StartCaptured($cmdLine, $errFile)
         $syntaxProcs += @{
             Handle = $hProc
             FileName = $shortName
@@ -321,19 +368,18 @@ if ($live) {
     # --- All Suites (parallel) ---
     Write-Host "`n--- All Suites (parallel) ---" -ForegroundColor Yellow
 
-    # Background suites use cmd.exe wrapper for stderr capture via redirect
+    # All suites launched directly (no cmd.exe) — FORCEOFFEEDBACK applies to AHK itself
     Write-Host "  Starting Features tests (background)..." -ForegroundColor Cyan
-    $featuresHandle = [SilentProcess]::Start('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" --live-features 2>"' + $featuresStderrFile + '""')
+    $featuresHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-features', $featuresStderrFile)
 
     Write-Host "  Starting Core tests (background)..." -ForegroundColor Cyan
-    $coreHandle = [SilentProcess]::Start('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" --live-core 2>"' + $coreStderrFile + '""')
+    $coreHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-core', $coreStderrFile)
 
     Write-Host "  Starting Execution tests (background)..." -ForegroundColor Cyan
-    $executionHandle = [SilentProcess]::Start('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution 2>"' + $executionStderrFile + '""')
+    $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
     Write-Host "  Running Unit tests (foreground)..." -ForegroundColor Cyan
-    $unitCmd = 'cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" 2>"' + $stderrFile + '""'
-    $unitExit = [SilentProcess]::RunWait($unitCmd)
+    $unitExit = [SilentProcess]::RunWaitCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '"', $stderrFile)
 
     $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
     if ($stderr) {
@@ -410,7 +456,7 @@ if ($live) {
     $stderrFile = "$env:TEMP\ahk_stderr.log"
     Remove-Item -Force -ErrorAction SilentlyContinue $stderrFile
 
-    $mainExitCode = [SilentProcess]::RunWait('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" 2>"' + $stderrFile + '""')
+    $mainExitCode = [SilentProcess]::RunWaitCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '"', $stderrFile)
 
     $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
     if ($stderr) {
