@@ -972,4 +972,95 @@ RunUnitTests_Cleanup() {
         Log("FAIL: WindowStore pump wake check error: " e.Message)
         TestErrors++
     }
+
+    ; ============================================================
+    ; Hot Path Static Buffer Tests (Code Inspection)
+    ; ============================================================
+    ; Verify frequently-called functions use static Buffers
+    ; to prevent per-call allocation churn (regression guard)
+    Log("`n--- Hot Path Static Buffer Tests ---")
+
+    ; Test 1: Gdip_DrawText uses static buffer
+    Log("Testing Gdip_DrawText uses static buffer...")
+    try {
+        gdipPath := A_ScriptDir "\..\src\gui\gui_gdip.ahk"
+        if (FileExist(gdipPath)) {
+            code := FileRead(gdipPath)
+            if (RegExMatch(code, "Gdip_DrawText\([\s\S]*?static rf\s*:=\s*Buffer")) {
+                Log("PASS: Gdip_DrawText uses static rf buffer")
+                TestPassed++
+            } else {
+                Log("FAIL: Gdip_DrawText should use static rf buffer (hot path)")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find gui_gdip.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Gdip_DrawText static buffer check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 2: Gdip_DrawCenteredText uses static buffer
+    Log("Testing Gdip_DrawCenteredText uses static buffer...")
+    try {
+        gdipPath := A_ScriptDir "\..\src\gui\gui_gdip.ahk"
+        if (FileExist(gdipPath)) {
+            code := FileRead(gdipPath)
+            if (RegExMatch(code, "Gdip_DrawCenteredText\([\s\S]*?static rf\s*:=\s*Buffer")) {
+                Log("PASS: Gdip_DrawCenteredText uses static rf buffer")
+                TestPassed++
+            } else {
+                Log("FAIL: Gdip_DrawCenteredText should use static rf buffer (hot path)")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find gui_gdip.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Gdip_DrawCenteredText static buffer check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 3: GUI_Repaint uses static marshal buffers
+    Log("Testing GUI_Repaint uses static marshal buffers...")
+    try {
+        paintPath := A_ScriptDir "\..\src\gui\gui_paint.ahk"
+        if (FileExist(paintPath)) {
+            code := FileRead(paintPath)
+            if (InStr(code, "static bf := Buffer")) {
+                Log("PASS: GUI_Repaint uses static bf buffer")
+                TestPassed++
+            } else {
+                Log("FAIL: GUI_Repaint should use static bf buffer (hot path)")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find gui_paint.ahk")
+        }
+    } catch as e {
+        Log("FAIL: GUI_Repaint static buffer check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 4: GUI_RecalcHover uses static buffer
+    Log("Testing GUI_RecalcHover uses static buffer...")
+    try {
+        inputPath := A_ScriptDir "\..\src\gui\gui_input.ahk"
+        if (FileExist(inputPath)) {
+            code := FileRead(inputPath)
+            if (RegExMatch(code, "GUI_RecalcHover\([\s\S]*?static pt\s*:=\s*Buffer")) {
+                Log("PASS: GUI_RecalcHover uses static pt buffer")
+                TestPassed++
+            } else {
+                Log("FAIL: GUI_RecalcHover should use static pt buffer (hot path)")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find gui_input.ahk")
+        }
+    } catch as e {
+        Log("FAIL: GUI_RecalcHover static buffer check error: " e.Message)
+        TestErrors++
+    }
 }

@@ -130,16 +130,17 @@ GUI_Repaint() {
     ; ===== TIMING: Buffer setup =====
     t1 := A_TickCount
 
+    ; static: marshal buffers reused per frame
+    static bf := Buffer(4, 0)
+    static sz := Buffer(8, 0)
+    static ptDst := Buffer(8, 0)
+    static ptSrc := Buffer(8, 0)
+
     ; BLENDFUNCTION
-    bf := Buffer(4, 0)
     NumPut("UChar", 0x00, bf, 0)
     NumPut("UChar", 0x00, bf, 1)
     NumPut("UChar", 255, bf, 2)
     NumPut("UChar", 0x01, bf, 3)
-
-    sz := Buffer(8, 0)
-    ptDst := Buffer(8, 0)
-    ptSrc := Buffer(8, 0)
     NumPut("Int", phW, sz, 0)
     NumPut("Int", phH, sz, 4)
     NumPut("Int", phX, ptDst, 0)
@@ -355,6 +356,14 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         i := 0
         yRow := y
 
+        ; Pre-compute per-row text layout constants (avoids ~90 Round() calls per frame)
+        titleY := Round(6 * scale)
+        titleH := Round(24 * scale)
+        subY := Round(28 * scale)
+        subH := Round(18 * scale)
+        colY := Round(10 * scale)
+        colH := Round(20 * scale)
+
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
             idx1 := idx0 + 1
@@ -398,7 +407,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             brColUse := isSel ? gGdip_Res["brColHi"] : gGdip_Res["brCol"]
 
             title := cur.HasOwnProp("Title") ? cur.Title : ""
-            Gdip_DrawText(g, title, textX, yRow + Round(6 * scale), textW, Round(24 * scale), brMainUse, fMainUse, fmtLeft)
+            Gdip_DrawText(g, title, textX, yRow + titleY, textW, titleH, brMainUse, fMainUse, fmtLeft)
 
             sub := ""
             if (cur.HasOwnProp("processName") && cur.processName != "") {
@@ -406,14 +415,14 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             } else if (cur.HasOwnProp("Class")) {
                 sub := "Class: " cur.Class
             }
-            Gdip_DrawText(g, sub, textX, yRow + Round(28 * scale), textW, Round(18 * scale), brSubUse, fSubUse, fmtLeft)
+            Gdip_DrawText(g, sub, textX, yRow + subY, textW, subH, brSubUse, fSubUse, fmtLeft)
 
             for _, col in cols {
                 val := ""
                 if (cur.HasOwnProp(col.key)) {
                     val := cur.%col.key%
                 }
-                Gdip_DrawText(g, val, col.x, yRow + Round(10 * scale), col.w, Round(20 * scale), brColUse, fColUse, gGdip_Res["fmt"])
+                Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, gGdip_Res["fmt"])
             }
 
             if (idx1 = gGUI_HoverRow) {
@@ -738,7 +747,7 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.h := leftArrowH
 
     ; Draw left arrow
-    rfLeft := Buffer(16, 0)
+    static rfLeft := Buffer(16, 0)
     NumPut("Float", leftArrowX, rfLeft, 0)
     NumPut("Float", leftArrowY, rfLeft, 4)
     NumPut("Float", leftArrowW, rfLeft, 8)
@@ -758,7 +767,7 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    rfRight := Buffer(16, 0)
+    static rfRight := Buffer(16, 0)
     NumPut("Float", rightArrowX, rfRight, 0)
     NumPut("Float", rightArrowY, rfRight, 4)
     NumPut("Float", rightArrowW, rfRight, 8)
@@ -772,7 +781,7 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
         textW := 0
     }
 
-    rfCenter := Buffer(16, 0)
+    static rfCenter := Buffer(16, 0)
     NumPut("Float", textX, rfCenter, 0)
     NumPut("Float", fy, rfCenter, 4)
     NumPut("Float", textW, rfCenter, 8)

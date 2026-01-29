@@ -22,6 +22,12 @@ global gBlacklist_Pairs := []
 global gBlacklist_FilePath := ""
 global gBlacklist_Loaded := false
 
+; Pre-compiled regex arrays (built during Blacklist_Reload, used in Blacklist_IsMatch hot path)
+global gBlacklist_TitleRegex := []
+global gBlacklist_ClassRegex := []
+global gBlacklist_PairClassRegex := []
+global gBlacklist_PairTitleRegex := []
+
 ; Window style constants for eligibility checks
 global BL_WS_CHILD := 0x40000000
 global BL_WS_EX_TOOLWINDOW := 0x00000080
@@ -62,6 +68,7 @@ Blacklist_Init(filePath := "") {
 ; Blacklist_IsMatch() during reload will see either old or new data, never empty arrays.
 Blacklist_Reload() {
     global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs
+    global gBlacklist_TitleRegex, gBlacklist_ClassRegex, gBlacklist_PairClassRegex, gBlacklist_PairTitleRegex
     global gBlacklist_FilePath, gBlacklist_Loaded
 
     ; Build new lists in LOCAL variables first (not globals)
@@ -75,10 +82,14 @@ Blacklist_Reload() {
     }
 
     if (!FileExist(gBlacklist_FilePath)) {
-        ; Atomic swap to empty lists
+        ; Atomic swap to empty lists (including regex arrays)
         gBlacklist_Titles := newTitles
         gBlacklist_Classes := newClasses
         gBlacklist_Pairs := newPairs
+        gBlacklist_TitleRegex := []
+        gBlacklist_ClassRegex := []
+        gBlacklist_PairClassRegex := []
+        gBlacklist_PairTitleRegex := []
         gBlacklist_Loaded := false
         return false
     }
@@ -120,38 +131,58 @@ Blacklist_Reload() {
         }
     }
 
+    ; Pre-compile: avoids per-match regex string building in hot path
+    newTitleRegex := []
+    for _, p in newTitles
+        newTitleRegex.Push(_BL_CompileWildcard(p))
+    newClassRegex := []
+    for _, p in newClasses
+        newClassRegex.Push(_BL_CompileWildcard(p))
+    newPairClassRegex := []
+    newPairTitleRegex := []
+    for _, pair in newPairs {
+        newPairClassRegex.Push(_BL_CompileWildcard(pair.Class))
+        newPairTitleRegex.Push(_BL_CompileWildcard(pair.Title))
+    }
+
     ; ATOMIC SWAP: Replace all globals at once
     ; In AHK v2's cooperative model, these assignments complete atomically
     ; between statement boundaries, so producers never see partial state
     gBlacklist_Titles := newTitles
     gBlacklist_Classes := newClasses
     gBlacklist_Pairs := newPairs
+    gBlacklist_TitleRegex := newTitleRegex
+    gBlacklist_ClassRegex := newClassRegex
+    gBlacklist_PairClassRegex := newPairClassRegex
+    gBlacklist_PairTitleRegex := newPairTitleRegex
     gBlacklist_Loaded := true
     return true
 }
 
 ; Check if a window matches any blacklist pattern
+; Uses pre-compiled regex arrays for hot-path performance (no per-match string building)
 Blacklist_IsMatch(title, class) {
-    global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs, gBlacklist_Loaded
+    global gBlacklist_TitleRegex, gBlacklist_ClassRegex
+    global gBlacklist_PairClassRegex, gBlacklist_PairTitleRegex, gBlacklist_Loaded
 
     if (!gBlacklist_Loaded)
         return false
 
-    ; Check title blacklist
-    for _, pattern in gBlacklist_Titles {
-        if (_BL_WildcardMatch(title, pattern))
+    ; Check title blacklist (pre-compiled regex)
+    for _, regex in gBlacklist_TitleRegex {
+        if (RegExMatch(title, regex))
             return true
     }
 
-    ; Check class blacklist
-    for _, pattern in gBlacklist_Classes {
-        if (_BL_WildcardMatch(class, pattern))
+    ; Check class blacklist (pre-compiled regex)
+    for _, regex in gBlacklist_ClassRegex {
+        if (RegExMatch(class, regex))
             return true
     }
 
-    ; Check pair blacklist (both must match)
-    for _, pair in gBlacklist_Pairs {
-        if (_BL_WildcardMatch(class, pair.Class) && _BL_WildcardMatch(title, pair.Title))
+    ; Check pair blacklist (both must match, pre-compiled regex)
+    for i, _ in gBlacklist_PairClassRegex {
+        if (RegExMatch(class, gBlacklist_PairClassRegex[i]) && RegExMatch(title, gBlacklist_PairTitleRegex[i]))
             return true
     }
 
@@ -358,7 +389,15 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
     return true
 }
 
-; Case-insensitive wildcard match (* and ?)
+; Pre-compile wildcard pattern to regex string (called during Blacklist_Reload)
+_BL_CompileWildcard(pattern) {
+    regex := "i)^" RegExReplace(RegExReplace(pattern, "[.+^${}|()\\[\]]", "\$0"), "\*", ".*")
+    regex := RegExReplace(regex, "\?", ".")
+    regex .= "$"
+    return regex
+}
+
+; Case-insensitive wildcard match (* and ?) — cold path only (one-off callers)
 _BL_WildcardMatch(str, pattern) {
     if (pattern = "")
         return false

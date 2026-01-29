@@ -293,7 +293,7 @@ WindowStore_ValidateExistence() {
             continue
 
         ; Check DWM cloaking
-        cloakedBuf := Buffer(4, 0)
+        static cloakedBuf := Buffer(4, 0)  ; static: reused per-iteration, repopulated by DllCall
         hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
         isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 

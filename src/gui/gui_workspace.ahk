@@ -94,12 +94,7 @@ GUI_FilterByWorkspaceMode(items) {
     global gGUI_WorkspaceMode
 
     if (gGUI_WorkspaceMode = "all") {
-        ; Return copy of all items
-        result := []
-        for _, item in items {
-            result.Push(item)
-        }
-        return result
+        return items
     }
 
     ; "current" mode - only items on current workspace

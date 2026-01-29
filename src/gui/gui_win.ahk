@@ -87,7 +87,7 @@ Win_GetScaleForWindow(hWnd) {
 
 ; Get window rect in physical pixels
 Win_GetRectPhys(hWnd, &x, &y, &w, &h) {
-    rc := Buffer(16, 0)
+    static rc := Buffer(16, 0)  ; static: reused per-call, repopulated before each DllCall
     ok := DllCall("user32\GetWindowRect", "ptr", hWnd, "ptr", rc.Ptr, "int")
     if (!ok) {
         x := 0

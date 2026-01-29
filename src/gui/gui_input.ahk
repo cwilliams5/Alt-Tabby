@@ -71,7 +71,7 @@ GUI_RecalcHover() {
         return false
     }
 
-    pt := Buffer(8, 0)
+    static pt := Buffer(8, 0)  ; static: reused per-call, repopulated before each DllCall
     if (!DllCall("user32\GetCursorPos", "ptr", pt)) {
         return false
     }
@@ -464,7 +464,8 @@ _GUI_HoverPollTick() {
     }
 
     ; Check if mouse is still over our window
-    pt := Buffer(8, 0)
+    static pt := Buffer(8, 0)   ; static: reused per-call, repopulated before each DllCall
+    static rect := Buffer(16, 0)
     if (!DllCall("user32\GetCursorPos", "ptr", pt)) {
         return
     }
@@ -474,7 +475,6 @@ _GUI_HoverPollTick() {
     my := NumGet(pt, 4, "Int")
 
     ; Get window rect in screen coords
-    rect := Buffer(16, 0)
     if (!DllCall("user32\GetWindowRect", "ptr", gGUI_OverlayH, "ptr", rect)) {
         return
     }

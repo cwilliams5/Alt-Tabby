@@ -495,6 +495,58 @@ RunUnitTests_Core() {
     }
 
     ; ============================================================
+    ; Blacklist Regex Pre-compilation Tests (Code Inspection)
+    ; ============================================================
+    ; Verify that Blacklist_IsMatch uses pre-compiled regex arrays
+    ; rather than building regex strings per-match (hot path performance)
+    Log("`n--- Blacklist Regex Pre-compilation Tests ---")
+
+    blPath := A_ScriptDir "\..\src\shared\blacklist.ahk"
+    if (!FileExist(blPath)) {
+        Log("SKIP: blacklist.ahk not found")
+    } else {
+        blCode := FileRead(blPath)
+
+        ; Test 1: Pre-compiled regex arrays exist
+        Log("Testing blacklist has pre-compiled regex arrays...")
+        if (InStr(blCode, "gBlacklist_TitleRegex") && InStr(blCode, "gBlacklist_ClassRegex")) {
+            Log("PASS: blacklist.ahk has pre-compiled regex arrays")
+            TestPassed++
+        } else {
+            Log("FAIL: blacklist.ahk missing pre-compiled regex arrays")
+            TestErrors++
+        }
+
+        ; Test 2: Blacklist_IsMatch does NOT build regex per-match
+        ; Check that between "Blacklist_IsMatch" and the next function def, there's no RegExReplace
+        Log("Testing Blacklist_IsMatch uses pre-compiled regex...")
+        matchStart := InStr(blCode, "Blacklist_IsMatch(title, class)")
+        if (matchStart) {
+            ; Extract ~500 chars from function start (enough to cover the function body)
+            funcChunk := SubStr(blCode, matchStart, 500)
+            if (!InStr(funcChunk, "RegExReplace") && !InStr(funcChunk, "_BL_WildcardMatch")) {
+                Log("PASS: Blacklist_IsMatch does not call RegExReplace/_BL_WildcardMatch (uses pre-compiled)")
+                TestPassed++
+            } else {
+                Log("FAIL: Blacklist_IsMatch should not call RegExReplace/_BL_WildcardMatch in hot path")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find Blacklist_IsMatch function")
+        }
+
+        ; Test 3: _BL_CompileWildcard helper exists
+        Log("Testing _BL_CompileWildcard compile helper exists...")
+        if (InStr(blCode, "_BL_CompileWildcard(")) {
+            Log("PASS: _BL_CompileWildcard compile helper exists")
+            TestPassed++
+        } else {
+            Log("FAIL: _BL_CompileWildcard compile helper missing")
+            TestErrors++
+        }
+    }
+
+    ; ============================================================
     ; WinEventHook Empty Title Filter Test (Code Inspection)
     ; ============================================================
     ; NOTE: This test uses code inspection because WinEventHook requires

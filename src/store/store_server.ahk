@@ -340,6 +340,8 @@ Store_MetaChanged(prevMeta, nextMeta) {
 }
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)
+; Workspace metadata in every delta intentionally — self-healing property
+; ensures GUI recovers correct workspace even if a change delta is lost
 Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev) {
     global IPC_MSG_DELTA
     delta := WindowStore_BuildDelta(prevItems, nextItems)

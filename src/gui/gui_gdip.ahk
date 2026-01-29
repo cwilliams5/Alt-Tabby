@@ -288,7 +288,7 @@ Gdip_StrokeRoundRect(g, pPen, x, y, w, h, r) {
 
 ; Draw text
 Gdip_DrawText(g, text, x, y, w, h, br, font, fmt) {
-    rf := Buffer(16, 0)
+    static rf := Buffer(16, 0)  ; static: reused per-call, repopulated before each DllCall
     NumPut("Float", x, rf, 0)
     NumPut("Float", y, rf, 4)
     NumPut("Float", w, rf, 8)
@@ -298,7 +298,7 @@ Gdip_DrawText(g, text, x, y, w, h, br, font, fmt) {
 
 ; Draw centered text in rectangle (pBr = pre-cached brush pointer)
 Gdip_DrawCenteredText(g, text, x, y, w, h, pBr, font, fmtCenter) {
-    rf := Buffer(16, 0)
+    static rf := Buffer(16, 0)  ; static: reused per-call, repopulated before each DllCall
     NumPut("Float", x, rf, 0)
     NumPut("Float", y, rf, 4)
     NumPut("Float", w, rf, 8)
