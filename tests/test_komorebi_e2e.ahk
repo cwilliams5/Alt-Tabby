@@ -137,7 +137,11 @@ testPipe := "tabby_komorebi_e2e_" A_TickCount
 storePid := 0
 
 try {
-    Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' testPipe, , "Hide", &storePid)
+    _KE2E_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' testPipe, &storePid)
+    if (!storePid) {
+        Log("FAIL: Could not start store_server (CreateProcess failed)")
+        ExitApp(1)
+    }
 } catch as e {
     Log("FAIL: Could not start store_server: " e.Message)
     ExitApp(1)
@@ -312,7 +316,7 @@ if (targetWorkspace = "") {
     ; Use komorebic to switch workspace
     switchCmd := 'cmd.exe /c ""' KomorebicExe '" focus-named-workspace ' targetWorkspace '"'
     try {
-        RunWait(switchCmd, , "Hide")
+        _KE2E_RunWaitSilent(switchCmd)
     } catch as e {
         Log("WARN: Switch command may have failed: " e.Message)
     }
@@ -384,7 +388,7 @@ if (targetWorkspace = "") {
     Log("  Switching back to '" currentWsName "'...")
     switchBackCmd := 'cmd.exe /c ""' KomorebicExe '" focus-named-workspace ' currentWsName '"'
     try {
-        RunWait(switchBackCmd, , "Hide")
+        _KE2E_RunWaitSilent(switchBackCmd)
     }
     Sleep(1000)
 }
@@ -434,4 +438,54 @@ _ArrayJoin(arr, sep := ", ") {
         out .= v
     }
     return out
+}
+
+; Launch a process hidden without cursor feedback (STARTF_FORCEOFFEEDBACK).
+; Sets outPid to the new process ID. Returns true on success.
+_KE2E_RunSilent(cmdLine, &outPid := 0) {
+    outPid := 0
+    cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
+    StrPut(cmdLine, cmdBuf, "UTF-16")
+    si := Buffer(104, 0)
+    NumPut("UInt", 104, si, 0)    ; cb
+    NumPut("UInt", 0x41, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+    pi := Buffer(24, 0)
+    result := DllCall("CreateProcessW",
+        "Ptr", 0, "Ptr", cmdBuf,
+        "Ptr", 0, "Ptr", 0,
+        "Int", 0, "UInt", 0x08000000,
+        "Ptr", 0, "Ptr", 0,
+        "Ptr", si, "Ptr", pi, "Int")
+    if (result) {
+        outPid := NumGet(pi, 16, "UInt")
+        DllCall("CloseHandle", "Ptr", NumGet(pi, 0, "Ptr"))
+        DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))
+    }
+    return result
+}
+
+; Launch a process hidden without cursor feedback and wait for it to exit.
+; Returns the process exit code, or -1 on failure.
+_KE2E_RunWaitSilent(cmdLine) {
+    cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
+    StrPut(cmdLine, cmdBuf, "UTF-16")
+    si := Buffer(104, 0)
+    NumPut("UInt", 104, si, 0)
+    NumPut("UInt", 0x41, si, 60)
+    pi := Buffer(24, 0)
+    result := DllCall("CreateProcessW",
+        "Ptr", 0, "Ptr", cmdBuf,
+        "Ptr", 0, "Ptr", 0,
+        "Int", 0, "UInt", 0x08000000,
+        "Ptr", 0, "Ptr", 0,
+        "Ptr", si, "Ptr", pi, "Int")
+    if (!result)
+        return -1
+    hProcess := NumGet(pi, 0, "Ptr")
+    DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))
+    DllCall("WaitForSingleObject", "Ptr", hProcess, "UInt", 0xFFFFFFFF)
+    exitCode := 0
+    DllCall("GetExitCodeProcess", "Ptr", hProcess, "UInt*", &exitCode)
+    DllCall("CloseHandle", "Ptr", hProcess)
+    return exitCode
 }

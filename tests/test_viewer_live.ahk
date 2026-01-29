@@ -35,15 +35,15 @@ SetTimer(TestViewer_Stop, -TestViewerDurationSec * 1000)
 return
 
 TestViewer_StartStore() {
-    global TestViewerStorePath, TestViewerStoreLogPath, AhkV2Path, TestViewerPipeName
+    global TestViewerStorePath, TestViewerStoreLogPath, AhkV2Path, TestViewerPipeName, TestViewer_StorePid
     runner := (IsSet(AhkV2Path) && FileExist(AhkV2Path)) ? AhkV2Path : A_AhkPath
-    Run('"' runner '" "' TestViewerStorePath '" --test --log="' TestViewerStoreLogPath '" --pipe="' TestViewerPipeName '"', , "Hide", &TestViewer_StorePid)
+    _TV_RunSilent('"' runner '" "' TestViewerStorePath '" --test --log="' TestViewerStoreLogPath '" --pipe="' TestViewerPipeName '"', &TestViewer_StorePid)
 }
 
 TestViewer_StartViewer() {
-    global TestViewerPath, TestViewerLogPath, AhkV2Path, TestViewerPipeName
+    global TestViewerPath, TestViewerLogPath, AhkV2Path, TestViewerPipeName, TestViewer_ViewerPid
     runner := (IsSet(AhkV2Path) && FileExist(AhkV2Path)) ? AhkV2Path : A_AhkPath
-    Run('"' runner '" "' TestViewerPath '" --nogui --log="' TestViewerLogPath '" --pipe="' TestViewerPipeName '"', , "Hide", &TestViewer_ViewerPid)
+    _TV_RunSilent('"' runner '" "' TestViewerPath '" --nogui --log="' TestViewerLogPath '" --pipe="' TestViewerPipeName '"', &TestViewer_ViewerPid)
 }
 
 TestViewer_Stop() {
@@ -60,4 +60,28 @@ TestViewer_OnError(err, *) {
     try FileAppend(msg, TestViewerLogPath, "UTF-8")
     ExitApp(1)
     return true
+}
+
+; Launch a process hidden without cursor feedback (STARTF_FORCEOFFEEDBACK).
+; Sets outPid to the new process ID. Returns true on success.
+_TV_RunSilent(cmdLine, &outPid := 0) {
+    outPid := 0
+    cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
+    StrPut(cmdLine, cmdBuf, "UTF-16")
+    si := Buffer(104, 0)
+    NumPut("UInt", 104, si, 0)    ; cb
+    NumPut("UInt", 0x41, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+    pi := Buffer(24, 0)
+    result := DllCall("CreateProcessW",
+        "Ptr", 0, "Ptr", cmdBuf,
+        "Ptr", 0, "Ptr", 0,
+        "Int", 0, "UInt", 0x08000000,
+        "Ptr", 0, "Ptr", 0,
+        "Ptr", si, "Ptr", pi, "Int")
+    if (result) {
+        outPid := NumGet(pi, 16, "UInt")
+        DllCall("CloseHandle", "Ptr", NumGet(pi, 0, "Ptr"))
+        DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))
+    }
+    return result
 }

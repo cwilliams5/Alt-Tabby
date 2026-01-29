@@ -31,15 +31,88 @@ if ($remainingArgs) {
     }
 }
 
+# --- Silent Process Helper ---
+# Uses CreateProcessW with STARTF_FORCEOFFEEDBACK to suppress the Windows
+# "app starting" cursor (pointer+hourglass) during process launches.
+# PowerShell's Start-Process doesn't expose this flag.
+#
+# IMPORTANT: Does NOT set STARTF_USESTDHANDLES — null stdin/stdout handles
+# cause AHK processes to crash immediately. Stderr capture uses cmd.exe
+# redirect (2>"file") instead.
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class SilentProcess {
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool CreateProcessW(
+        string lpApplicationName, StringBuilder lpCommandLine,
+        IntPtr lpProcessAttributes, IntPtr lpThreadAttributes,
+        bool bInheritHandles, uint dwCreationFlags, IntPtr lpEnvironment,
+        string lpCurrentDirectory, ref STARTUPINFOW si, out PROCESS_INFORMATION pi);
+    [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr h, out int code);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct STARTUPINFOW {
+        public int cb; public string lpReserved; public string lpDesktop; public string lpTitle;
+        public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute;
+        public int dwFlags; public short wShowWindow, cbReserved2;
+        public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct PROCESS_INFORMATION { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+
+    // Guard: PowerShell converts $null to "" for .NET string params.
+    // Empty string for lpCurrentDirectory causes ERROR_INVALID_NAME (123).
+    static string NullIfEmpty(string s) { return string.IsNullOrEmpty(s) ? null : s; }
+
+    public static int RunWait(string cmdLine, string workDir = null) {
+        var si = new STARTUPINFOW();
+        si.cb = Marshal.SizeOf(si);
+        si.dwFlags = 0x40; // STARTF_FORCEOFFEEDBACK
+        var sb = new StringBuilder(cmdLine);
+        PROCESS_INFORMATION pi;
+        if (!CreateProcessW(null, sb, IntPtr.Zero, IntPtr.Zero, false,
+                0x08000000, IntPtr.Zero, NullIfEmpty(workDir), ref si, out pi))
+            return -1;
+        WaitForSingleObject(pi.hProcess, 0xFFFFFFFF);
+        int code; GetExitCodeProcess(pi.hProcess, out code);
+        CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+        return code;
+    }
+
+    public static IntPtr Start(string cmdLine, string workDir = null) {
+        var si = new STARTUPINFOW();
+        si.cb = Marshal.SizeOf(si);
+        si.dwFlags = 0x40; // STARTF_FORCEOFFEEDBACK
+        var sb = new StringBuilder(cmdLine);
+        PROCESS_INFORMATION pi;
+        if (!CreateProcessW(null, sb, IntPtr.Zero, IntPtr.Zero, false,
+                0x08000000, IntPtr.Zero, NullIfEmpty(workDir), ref si, out pi))
+            return IntPtr.Zero;
+        CloseHandle(pi.hThread);
+        return pi.hProcess;
+    }
+
+    public static int WaitAndGetExitCode(IntPtr hProcess) {
+        if (hProcess == IntPtr.Zero) return -1;
+        WaitForSingleObject(hProcess, 0xFFFFFFFF);
+        int code; GetExitCodeProcess(hProcess, out code);
+        CloseHandle(hProcess);
+        return code;
+    }
+}
+"@
+
 $ahk = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 $script = "$PSScriptRoot\run_tests.ahk"
 $logFile = "$env:TEMP\alt_tabby_tests.log"
-$stderrFile = "$env:TEMP\ahk_stderr.log"
 $srcRoot = (Resolve-Path "$PSScriptRoot\..\src").Path
 
 # Remove old logs
 Remove-Item -Force -ErrorAction SilentlyContinue $logFile
-Remove-Item -Force -ErrorAction SilentlyContinue $stderrFile
 
 Write-Host "=== Alt-Tabby Test Run $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ForegroundColor Cyan
 Write-Host "Log file: $logFile"
@@ -65,40 +138,42 @@ $filesToCheck = @(
     "$PSScriptRoot\gui_tests.ahk"
 )
 
-# Launch all syntax checks in parallel
-$syntaxJobs = @()
+# Launch all syntax checks in parallel via cmd.exe wrapper
+# cmd.exe provides output capture (> file 2>&1), SilentProcess provides cursor suppression
+$syntaxProcs = @()
 foreach ($file in $filesToCheck) {
     if (Test-Path $file) {
         $shortName = Split-Path $file -Leaf
         $errFile = "$env:TEMP\ahk_syntax_$shortName.log"
         Remove-Item -Force -ErrorAction SilentlyContinue $errFile
 
-        # Start syntax check as background job
-        $syntaxJobs += Start-Job -ScriptBlock {
-            param($ahkPath, $filePath, $errFilePath)
-            $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", "/validate", $filePath -Wait -NoNewWindow -PassThru -RedirectStandardError $errFilePath 2>$null
-            $errContent = if (Test-Path $errFilePath) { Get-Content $errFilePath -Raw -ErrorAction SilentlyContinue } else { "" }
-            return @{
-                ExitCode = $proc.ExitCode
-                ErrorContent = $errContent
-                FileName = Split-Path $filePath -Leaf
-            }
-        } -ArgumentList $ahk, $file, $errFile
+        $cmdLine = 'cmd.exe /c ""' + $ahk + '" /ErrorStdOut /validate "' + $file + '" > "' + $errFile + '" 2>&1"'
+        $hProc = [SilentProcess]::Start($cmdLine)
+        $syntaxProcs += @{
+            Handle = $hProc
+            FileName = $shortName
+            ErrFile = $errFile
+        }
     }
 }
 
 # Wait for all syntax checks to complete and collect results
 $syntaxErrors = 0
-$syntaxJobs | Wait-Job | ForEach-Object {
-    $result = Receive-Job $_
-    if ($result.ExitCode -ne 0 -and $result.ErrorContent) {
-        Write-Host "FAIL: $($result.FileName)" -ForegroundColor Red
-        Write-Host $result.ErrorContent -ForegroundColor Red
+foreach ($sp in $syntaxProcs) {
+    if ($sp.Handle -eq [IntPtr]::Zero) {
+        Write-Host "FAIL: $($sp.FileName) (failed to launch)" -ForegroundColor Red
+        $syntaxErrors++
+        continue
+    }
+    $exitCode = [SilentProcess]::WaitAndGetExitCode($sp.Handle)
+    if ($exitCode -ne 0) {
+        Write-Host "FAIL: $($sp.FileName)" -ForegroundColor Red
+        $errContent = if (Test-Path $sp.ErrFile) { Get-Content $sp.ErrFile -Raw -ErrorAction SilentlyContinue } else { "" }
+        if ($errContent) { Write-Host $errContent -ForegroundColor Red }
         $syntaxErrors++
     } else {
-        Write-Host "PASS: $($result.FileName)" -ForegroundColor Green
+        Write-Host "PASS: $($sp.FileName)" -ForegroundColor Green
     }
-    Remove-Job $_
 }
 
 if ($syntaxErrors -gt 0) {
@@ -120,19 +195,13 @@ $outFile = "$releaseDir\AltTabby.exe"
 # GUI tests have no dependencies on compilation or store, so run them in parallel
 $guiScript = "$PSScriptRoot\gui_tests.ahk"
 $guiLogFile = "$env:TEMP\gui_tests.log"
-$guiStderrFile = "$env:TEMP\ahk_gui_stderr.log"
-$guiJob = $null
+$guiHandle = [IntPtr]::Zero
 
 Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
-Remove-Item -Force -ErrorAction SilentlyContinue $guiStderrFile
 
 if (Test-Path $guiScript) {
     Write-Host "Starting GUI tests in background..." -ForegroundColor Cyan
-    $guiJob = Start-Job -ScriptBlock {
-        param($ahkPath, $scriptPath, $stderrPath)
-        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
-        return $proc.ExitCode
-    } -ArgumentList $ahk, $guiScript, $guiStderrFile
+    $guiHandle = [SilentProcess]::Start('"' + $ahk + '" /ErrorStdOut "' + $guiScript + '"')
 }
 
 if ($live) {
@@ -150,19 +219,17 @@ if ($live) {
         }
 
         Write-Host "  Running compile.bat..."
-        $compileProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$compileBat`" < nul" -Wait -NoNewWindow -PassThru -WorkingDirectory $compileDir
+        $compileExit = [SilentProcess]::RunWait(('cmd.exe /c "' + $compileBat + '" < nul'), $compileDir)
 
-        if ($compileProc.ExitCode -eq 0 -and (Test-Path $outFile)) {
+        if ($compileExit -eq 0 -and (Test-Path $outFile)) {
             Write-Host "PASS: compile.bat completed" -ForegroundColor Green
         } else {
-            Write-Host "FAIL: compile.bat failed (exit $($compileProc.ExitCode))" -ForegroundColor Red
+            Write-Host "FAIL: compile.bat failed (exit $compileExit)" -ForegroundColor Red
             Write-Host "Aborting - compiled exe required for live tests" -ForegroundColor Red
-            if ($guiJob) { $guiJob | Wait-Job | Remove-Job -Force }
             exit 1
         }
     } else {
         Write-Host "FAIL: compile.bat not found" -ForegroundColor Red
-        if ($guiJob) { $guiJob | Wait-Job | Remove-Job -Force }
         exit 1
     }
 } else {
@@ -210,15 +277,14 @@ if ($live) {
                 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
             }
 
-            # Compile - use quoted argument string to handle paths with spaces
-            # Note: PowerShell ArgumentList with array doesn't handle spaces well
+            # Compile using SilentProcess to suppress cursor feedback
             $compileArgStr = "/in `"$srcFile`" /out `"$outFile`" /base `"$ahkBase`" /silent verbose"
-            $compileProc = Start-Process -FilePath $compiler -ArgumentList $compileArgStr -Wait -NoNewWindow -PassThru
+            $compileExit = [SilentProcess]::RunWait('"' + $compiler + '" ' + $compileArgStr)
 
-            if ($compileProc.ExitCode -eq 0 -and (Test-Path $outFile)) {
+            if ($compileExit -eq 0 -and (Test-Path $outFile)) {
                 Write-Host "PASS: Compiled AltTabby.exe successfully" -ForegroundColor Green
             } else {
-                Write-Host "FAIL: Compilation failed (exit code: $($compileProc.ExitCode))" -ForegroundColor Red
+                Write-Host "FAIL: Compilation failed (exit code: $compileExit)" -ForegroundColor Red
                 # Continue with tests anyway - compiled exe tests will be skipped if exe doesn't exist
             }
         }
@@ -243,9 +309,10 @@ if ($live) {
     $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
     $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
     $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
+    $stderrFile = "$env:TEMP\ahk_stderr.log"
 
     # Clean parallel log files
-    foreach ($f in @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile)) {
+    foreach ($f in @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile, $stderrFile)) {
         Remove-Item -Force -ErrorAction SilentlyContinue $f
     }
 
@@ -254,30 +321,19 @@ if ($live) {
     # --- All Suites (parallel) ---
     Write-Host "`n--- All Suites (parallel) ---" -ForegroundColor Yellow
 
+    # Background suites use cmd.exe wrapper for stderr capture via redirect
     Write-Host "  Starting Features tests (background)..." -ForegroundColor Cyan
-    $featuresJob = Start-Job -ScriptBlock {
-        param($ahkPath, $scriptPath, $stderrPath)
-        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-features" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
-        return $proc.ExitCode
-    } -ArgumentList $ahk, $script, $featuresStderrFile
+    $featuresHandle = [SilentProcess]::Start('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" --live-features 2>"' + $featuresStderrFile + '""')
 
     Write-Host "  Starting Core tests (background)..." -ForegroundColor Cyan
-    $coreJob = Start-Job -ScriptBlock {
-        param($ahkPath, $scriptPath, $stderrPath)
-        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-core" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
-        return $proc.ExitCode
-    } -ArgumentList $ahk, $script, $coreStderrFile
+    $coreHandle = [SilentProcess]::Start('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" --live-core 2>"' + $coreStderrFile + '""')
 
     Write-Host "  Starting Execution tests (background)..." -ForegroundColor Cyan
-    $executionJob = Start-Job -ScriptBlock {
-        param($ahkPath, $scriptPath, $stderrPath)
-        $proc = Start-Process -FilePath $ahkPath -ArgumentList "/ErrorStdOut", $scriptPath, "--live-execution" -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrPath
-        return $proc.ExitCode
-    } -ArgumentList $ahk, $script, $executionStderrFile
+    $executionHandle = [SilentProcess]::Start('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution 2>"' + $executionStderrFile + '""')
 
     Write-Host "  Running Unit tests (foreground)..." -ForegroundColor Cyan
-    $unitArgs = @("/ErrorStdOut", $script)
-    $process = Start-Process -FilePath $ahk -ArgumentList $unitArgs -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrFile
+    $unitCmd = 'cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" 2>"' + $stderrFile + '""'
+    $unitExit = [SilentProcess]::RunWait($unitCmd)
 
     $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
     if ($stderr) {
@@ -291,15 +347,14 @@ if ($live) {
         Write-Host "Unit test log not found - tests may have failed to run" -ForegroundColor Red
     }
 
-    if ($process.ExitCode -ne 0) {
-        $mainExitCode = $process.ExitCode
+    if ($unitExit -ne 0) {
+        $mainExitCode = $unitExit
     }
 
-    # --- Collect Results (wait for all background jobs) ---
+    # --- Collect Results (wait for all background processes) ---
 
     Write-Host "`n--- Core Test Results ---" -ForegroundColor Yellow
-    $coreExitCode = $coreJob | Wait-Job | Receive-Job
-    Remove-Job $coreJob
+    $coreExitCode = [SilentProcess]::WaitAndGetExitCode($coreHandle)
 
     $coreStderr = Get-Content $coreStderrFile -ErrorAction SilentlyContinue
     if ($coreStderr) {
@@ -315,8 +370,7 @@ if ($live) {
     if ($coreExitCode -ne 0) { $mainExitCode = $coreExitCode }
 
     Write-Host "`n--- Execution Test Results ---" -ForegroundColor Yellow
-    $execExitCode = $executionJob | Wait-Job | Receive-Job
-    Remove-Job $executionJob
+    $execExitCode = [SilentProcess]::WaitAndGetExitCode($executionHandle)
 
     $executionStderr = Get-Content $executionStderrFile -ErrorAction SilentlyContinue
     if ($executionStderr) {
@@ -332,8 +386,7 @@ if ($live) {
     if ($execExitCode -ne 0) { $mainExitCode = $execExitCode }
 
     Write-Host "`n--- Features Test Results ---" -ForegroundColor Yellow
-    $featuresExitCode = $featuresJob | Wait-Job | Receive-Job
-    Remove-Job $featuresJob
+    $featuresExitCode = [SilentProcess]::WaitAndGetExitCode($featuresHandle)
 
     $featuresStderr = Get-Content $featuresStderrFile -ErrorAction SilentlyContinue
     if ($featuresStderr) {
@@ -354,8 +407,10 @@ if ($live) {
     # === Non-live mode: unit tests only ===
     Write-Host "`n--- Unit Tests Phase ---" -ForegroundColor Yellow
 
-    $testArgs = @("/ErrorStdOut", $script)
-    $process = Start-Process -FilePath $ahk -ArgumentList $testArgs -Wait -NoNewWindow -PassThru -RedirectStandardError $stderrFile
+    $stderrFile = "$env:TEMP\ahk_stderr.log"
+    Remove-Item -Force -ErrorAction SilentlyContinue $stderrFile
+
+    $mainExitCode = [SilentProcess]::RunWait('cmd.exe /c ""' + $ahk + '" /ErrorStdOut "' + $script + '" 2>"' + $stderrFile + '""')
 
     $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
     if ($stderr) {
@@ -368,24 +423,14 @@ if ($live) {
     } else {
         Write-Host "Test log not found - tests may have failed to run" -ForegroundColor Red
     }
-
-    $mainExitCode = $process.ExitCode
 }
 
 # --- GUI Tests Phase (Collect Results) ---
 Write-Host "`n--- GUI Tests Phase ---" -ForegroundColor Yellow
 
-if ($guiJob) {
+if ($guiHandle -ne [IntPtr]::Zero) {
     Write-Host "Waiting for GUI tests to complete..."
-    $guiExitCode = $guiJob | Wait-Job | Receive-Job
-    Remove-Job $guiJob
-
-    # Check for errors
-    $guiStderr = Get-Content $guiStderrFile -ErrorAction SilentlyContinue
-    if ($guiStderr) {
-        Write-Host "=== GUI TEST ERRORS ===" -ForegroundColor Red
-        Write-Host $guiStderr
-    }
+    $guiExitCode = [SilentProcess]::WaitAndGetExitCode($guiHandle)
 
     # Show results
     if (Test-Path $guiLogFile) {
