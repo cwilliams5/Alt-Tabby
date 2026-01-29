@@ -646,6 +646,9 @@ global gConfigRegistry := [
     {s: "KomorebiSub", k: "FallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
      d: "Fallback polling interval if subscription fails"},
 
+    {s: "KomorebiSub", k: "BatchCloakEventsMs", g: "KomorebiSubBatchCloakEventsMs", t: "int", default: 50,
+     d: "Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately."},
+
     ; ============================================================
     ; Heartbeat & Connection Health
     ; ============================================================

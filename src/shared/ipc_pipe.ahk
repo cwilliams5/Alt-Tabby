@@ -47,6 +47,7 @@ global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)
 ; IPC Buffer Constants
 global IPC_READ_CHUNK_SIZE := 65536       ; Max bytes to read per iteration
 global IPC_BUFFER_OVERFLOW := 1048576     ; 1MB - max buffer before discard
+global IPC_READ_BUF := Buffer(IPC_READ_CHUNK_SIZE)  ; Pre-allocated read buffer (reused across all reads)
 
 global IPC_DebugLogPath := ""
 
@@ -449,15 +450,15 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
 }
 
 _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
+    global IPC_READ_BUF
     avail := _IPC_PeekAvailable(hPipe)
     if (avail < 0)
         return -1
     if (avail = 0)
         return 0
     toRead := Min(avail, IPC_READ_CHUNK_SIZE)
-    buf := Buffer(toRead)
     bytesRead := 0
-    ok := DllCall("ReadFile", "ptr", hPipe, "ptr", buf.Ptr, "uint", toRead, "uint*", &bytesRead, "ptr", 0)
+    ok := DllCall("ReadFile", "ptr", hPipe, "ptr", IPC_READ_BUF.Ptr, "uint", toRead, "uint*", &bytesRead, "ptr", 0)
     if (!ok) {
         gle := DllCall("GetLastError", "uint")
         if (gle = IPC_ERROR_MORE_DATA)
@@ -466,7 +467,7 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
     }
     if (bytesRead <= 0)
         return 0
-    chunk := StrGet(buf.Ptr, bytesRead, "UTF-8")
+    chunk := StrGet(IPC_READ_BUF.Ptr, bytesRead, "UTF-8")
     stateObj.buf .= chunk
 
     ; Prevent unbounded buffer growth - protects against malformed clients

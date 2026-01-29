@@ -231,6 +231,7 @@ _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs, _WEH_PendingZNeeded
     global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
+    global cfg
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
@@ -247,12 +248,14 @@ _WEH_ProcessBatch() {
         newFocus := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := 0  ; Clear pending
 
-        ; Debug: log the focus transition (always log hwnd, title may fail)
-        oldTitle := ""
-        newTitle := ""
-        try oldTitle := _WEH_LastFocusHwnd ? WinGetTitle("ahk_id " _WEH_LastFocusHwnd) : "(none)"
-        try newTitle := WinGetTitle("ahk_id " newFocus)
-        _WEH_DiagLog("BATCH PROCESS: " _WEH_LastFocusHwnd " '" SubStr(oldTitle, 1, 15) "' -> " newFocus " '" SubStr(newTitle, 1, 15) "'")
+        ; Debug: log the focus transition (only fetch titles when diagnostics enabled)
+        if (cfg.DiagWinEventLog) {
+            oldTitle := ""
+            newTitle := ""
+            try oldTitle := _WEH_LastFocusHwnd ? WinGetTitle("ahk_id " _WEH_LastFocusHwnd) : "(none)"
+            try newTitle := WinGetTitle("ahk_id " newFocus)
+            _WEH_DiagLog("BATCH PROCESS: " _WEH_LastFocusHwnd " '" SubStr(oldTitle, 1, 15) "' -> " newFocus " '" SubStr(newTitle, 1, 15) "'")
+        }
 
         ; Try to update the new window first - this tells us if it's in our store
         result := { changed: false, exists: false }

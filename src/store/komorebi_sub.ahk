@@ -45,6 +45,10 @@ global _KSub_FallbackMode := false
 global _KSub_WorkspaceCache := Map()
 global _KSub_CacheMaxAgeMs := 10000  ; Cache entries older than 10s are considered stale
 
+; Cloak event batching state
+global _KSub_CloakPushPending := false
+global _KSub_CloakBatchTimerFn := 0
+
 ; Initialize komorebi subscription
 KomorebiSub_Init() {
     global _KSub_PipeName, _KSub_WorkspaceCache, cfg
@@ -621,8 +625,56 @@ _KSub_OnNotification(jsonLine) {
         _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
     }
 
-    ; Push changes to clients (either from fast-path updates or ProcessFullState)
+    ; Push changes to clients.
+    ; For Cloak/Uncloak: batch into a single deferred push (workspace switches fire 10+
+    ; Cloak events rapidly — batching avoids 10 redundant projection+delta+JSON cycles).
+    ; For all other events: push immediately.
+    if (eventType = "Cloak" || eventType = "Uncloak") {
+        _KSub_ScheduleCloakPush()
+    } else {
+        ; A structural event flushes any pending cloak batch immediately
+        _KSub_CancelCloakTimer()
+        try Store_PushToClients()
+    }
+}
+
+; Schedule a deferred push for batched Cloak/Uncloak events.
+; If a timer is already pending, the new cloak change will be included
+; when it fires (no action needed — store already has the updated field).
+_KSub_ScheduleCloakPush() {
+    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn, cfg
+
+    ; If batching disabled, push immediately
+    if (!cfg.KomorebiSubBatchCloakEventsMs) {
+        try Store_PushToClients()
+        return
+    }
+
+    ; Already scheduled — nothing to do, new cloaks batch into same push
+    if (_KSub_CloakPushPending)
+        return
+
+    _KSub_CloakPushPending := true
+    _KSub_CloakBatchTimerFn := _KSub_FlushCloakBatch.Bind()
+    SetTimer(_KSub_CloakBatchTimerFn, -cfg.KomorebiSubBatchCloakEventsMs)
+}
+
+; Timer callback: push all accumulated cloak changes in one delta
+_KSub_FlushCloakBatch() {
+    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn
+    _KSub_CloakPushPending := false
+    _KSub_CloakBatchTimerFn := 0
     try Store_PushToClients()
+}
+
+; Cancel any pending cloak batch timer (called when a structural event pushes immediately)
+_KSub_CancelCloakTimer() {
+    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn
+    if (_KSub_CloakPushPending) {
+        SetTimer(_KSub_CloakBatchTimerFn, 0)
+        _KSub_CloakPushPending := false
+        _KSub_CloakBatchTimerFn := 0
+    }
 }
 
 ; Process full komorebi state and update all windows

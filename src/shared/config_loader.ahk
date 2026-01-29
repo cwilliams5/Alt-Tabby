@@ -436,6 +436,7 @@ _CL_ValidateSettings() {
     cfg.KomorebiSubPollMs := clamp(cfg.KomorebiSubPollMs, 10, 1000)
     cfg.KomorebiSubIdleRecycleMs := clamp(cfg.KomorebiSubIdleRecycleMs, 10000, 600000)
     cfg.KomorebiSubFallbackPollMs := clamp(cfg.KomorebiSubFallbackPollMs, 500, 30000)
+    cfg.KomorebiSubBatchCloakEventsMs := clamp(cfg.KomorebiSubBatchCloakEventsMs, 0, 500)
 
     ; --- IPC Settings ---
     cfg.IPCIdleTickMs := clamp(cfg.IPCIdleTickMs, 15, 500)

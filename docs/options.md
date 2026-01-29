@@ -403,6 +403,7 @@ Event-driven komorebi integration via named pipe.
 | `PollMs` | int | `50` | Pipe poll interval (checking for incoming data) |
 | `IdleRecycleMs` | int | `120000` | Restart subscription if no events for this long (stale detection) |
 | `FallbackPollMs` | int | `2000` | Fallback polling interval if subscription fails |
+| `BatchCloakEventsMs` | int | `50` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
 
 ## Heartbeat
 
@@ -462,4 +463,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-28 with 173 total settings.*
+*Generated on 2026-01-28 with 174 total settings.*
