@@ -25,7 +25,7 @@ Or run AHK directly (double-slash for Git Bash):
 AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
 ```
 
-Log: `%TEMP%\alt_tabby_tests.log`
+Logs: `%TEMP%\alt_tabby_tests.log` (unit tests). `--live` runs suites in parallel with separate logs: `alt_tabby_tests_core.log`, `alt_tabby_tests_features.log`, `alt_tabby_tests_execution.log`
 
 ## Test Architecture (CRITICAL)
 
@@ -79,6 +79,11 @@ Run separately:
 AutoHotkey64.exe //ErrorStdOut tests\gui_tests.ahk
 ```
 Tests state transitions, freeze behavior, workspace toggle, config combinations.
+
+## Test Patterns
+
+- **Poll, don't sleep** — Use `WaitForFlag(&flag)` / `WaitForStorePipe(name)` from `test_utils.ahk`, not fixed `Sleep()`. Adaptive polling exits as soon as data arrives.
+- **Process launching** — Use `LaunchTestStore(pipeName)` and `_Test_RunSilent(cmdLine)` from `test_utils.ahk`. These handle cursor suppression and cleanup.
 
 ## Trust Test Failures
 
