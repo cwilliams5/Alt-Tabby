@@ -55,6 +55,11 @@ foreach ($check in $checks) {
         -NoNewWindow -PassThru `
         -RedirectStandardOutput $outFile
 
+    # Access .Handle immediately to cache the native process handle.
+    # Without this, fast-exiting processes release their handle before
+    # we read ExitCode, leaving it null (which fails the -ne 0 check).
+    $handle = $proc.Handle
+
     $procs += @{
         Process  = $proc
         Name     = $name

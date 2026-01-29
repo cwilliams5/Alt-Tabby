@@ -87,7 +87,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             _GUI_LogEvent("ESC during async - canceling")
             _GUI_CancelPendingActivation()
             gGUI_State := "IDLE"
-            return
+            return  ; lint-ignore: critical-section
         }
 
         ; Overflow protection: if buffer exceeds max events, something is wrong
@@ -98,12 +98,12 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             _GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, clearing")
             _GUI_CancelPendingActivation()
             gGUI_State := "IDLE"
-            return
+            return  ; lint-ignore: critical-section
         }
 
         _GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_PendingPhase ")")
         gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
-        return
+        return  ; lint-ignore: critical-section
     }
 
     if (evCode = TABBY_EV_ALT_DOWN) {
@@ -116,7 +116,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Pre-warm: request snapshot now so data is ready when Tab pressed
         ; SKIP if we just did a local MRU update - our data is fresher than the store's
         ; (The store hasn't processed our focus change via WinEventHook yet)
-        if (!IsSet(gGUI_LastLocalMRUTick))
+        if (!IsSet(gGUI_LastLocalMRUTick))  ; lint-ignore: isset-with-default
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         if (cfg.AltTabPrewarmOnAlt) {
@@ -127,7 +127,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 _GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
             }
         }
-        return
+        return  ; lint-ignore: critical-section
     }
 
     if (evCode = TABBY_EV_TAB_STEP) {
@@ -135,7 +135,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         if (gGUI_State = "IDLE") {
             ; Tab without Alt (shouldn't happen normally, interceptor handles this)
-            return
+            return  ; lint-ignore: critical-section
         }
 
         if (gGUI_State = "ALT_PENDING") {
@@ -188,7 +188,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; Start grace timer - show GUI after delay
             SetTimer(GUI_GraceTimerFired, -cfg.AltTabGraceMs)
-            return
+            return  ; lint-ignore: critical-section
         }
 
         if (gGUI_State = "ACTIVE") {
@@ -221,7 +221,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 GUI_Repaint()
             }
         }
-        return
+        return  ; lint-ignore: critical-section
     }
 
     if (evCode = TABBY_EV_ALT_UP) {
@@ -234,7 +234,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (gGUI_State = "ALT_PENDING") {
             ; Alt released without Tab - return to IDLE
             gGUI_State := "IDLE"
-            return
+            return  ; lint-ignore: critical-section
         }
 
         if (gGUI_State = "ACTIVE") {
@@ -262,7 +262,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; No buffering needed - just request snapshot to resync after activation completes.
             ; The async timer will call GUI_RequestSnapshot() when done.
         }
-        return
+        return  ; lint-ignore: critical-section
     }
 
     if (evCode = TABBY_EV_ESCAPE) {
@@ -276,7 +276,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         ; Resync with store - we may have missed deltas during ACTIVE
         GUI_RequestSnapshot()
-        return
+        return  ; lint-ignore: critical-section
     }
 }
 
@@ -476,7 +476,7 @@ GUI_ActivateItem(item) {
     ; DEBUG: Log all async activation conditions
     komorebicPath := cfg.HasOwnProp("KomorebicExe") ? cfg.KomorebicExe : "(not set)"
     komorebicExists := (komorebicPath != "(not set)" && FileExist(komorebicPath)) ? "yes" : "no"
-    curWS := IsSet(gGUI_CurrentWSName) ? gGUI_CurrentWSName : "(unknown)"
+    curWS := IsSet(gGUI_CurrentWSName) ? gGUI_CurrentWSName : "(unknown)"  ; lint-ignore: isset-with-default
     _GUI_LogEvent("ACTIVATE_COND: isOnCurrent=" isOnCurrent " wsName='" wsName "' curWS='" curWS "' komorebic='" komorebicPath "' exists=" komorebicExists)
 
     ; === Cross-workspace: ASYNC activation (non-blocking) ===

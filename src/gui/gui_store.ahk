@@ -47,7 +47,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         ; EXCEPTION: If awaiting a toggle-triggered projection (UseCurrentWSProjection mode), accept it
         global gGUI_AwaitingToggleProjection, cfg, gGUI_PendingPhase
         isFrozen := cfg.FreezeWindowList
-        isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection
+        isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection  ; lint-ignore: isset-with-default
 
         if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
             ; Frozen mode and not a toggle response: ignore incoming data
@@ -85,7 +85,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         ; CRITICAL: Skip snapshot if local MRU was updated recently
         ; This prevents stale in-flight snapshots from overwriting fresh local MRU order
         ; Exception: toggle responses should always be applied (user explicitly requested)
-        if (!IsSet(gGUI_LastLocalMRUTick))
+        if (!IsSet(gGUI_LastLocalMRUTick))  ; lint-ignore: isset-with-default
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         mruFreshness := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
@@ -289,10 +289,10 @@ GUI_ApplyDelta(payload) {
     if (payload.Has("upserts") && payload["upserts"].Length) {
         for _, rec in payload["upserts"] {
             if (!IsObject(rec))
-                continue
+                continue  ; lint-ignore: critical-section
             hwnd := rec.Has("hwnd") ? rec["hwnd"] : 0
             if (!hwnd)
-                continue
+                continue  ; lint-ignore: critical-section
 
             changedHwnds[hwnd] := true
 

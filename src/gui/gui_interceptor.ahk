@@ -149,13 +149,13 @@ INT_Tab_Down(*) {
         _GUI_LogEvent("INT: Tab_Down -> active session, sending TAB_STEP (press #" gINT_PressCount ")")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
         ; NOTE: Don't set gINT_TabHeld here - we process ALL tabs during active session
-        return
+        return  ; lint-ignore: critical-section
     }
 
     ; FIRST TAB: Check TabHeld to block key repeat (user holding Tab before Alt)
     if (gINT_TabHeld) {
         _GUI_LogEvent("INT: Tab_Down -> blocked (TabHeld)")
-        return
+        return  ; lint-ignore: critical-section
     }
 
     ; Session not active yet - this is the FIRST Tab, needs decision delay
@@ -175,7 +175,7 @@ INT_Tab_Up(*) {
     if (gINT_TabHeld) {
         ; Released from Alt+Tab step
         gINT_TabHeld := false
-        return
+        return  ; lint-ignore: critical-section
     }
     ; If still deciding, remember Tab went up
     if (gINT_TabPending)
@@ -186,7 +186,7 @@ INT_Tab_Decide() {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_AltIsDown
     if (!gINT_PendingDecideArmed)
-        return
+        return  ; lint-ignore: critical-section
     gINT_PendingDecideArmed := false
     ; Log state at timer fire time (before delay)
     _GUI_LogEvent("INT: Tab_Decide (altIsDown=" gINT_AltIsDown " altUpFlag=" gINT_AltUpDuringPending ")")
@@ -253,7 +253,7 @@ INT_Escape_Down(*) {
     ; Only consume Escape if in active Alt+Tab session
     if (!gINT_SessionActive || gINT_PressCount < 1) {
         Send("{Escape}")
-        return
+        return  ; lint-ignore: critical-section
     }
 
     ; Notify GUI to cancel

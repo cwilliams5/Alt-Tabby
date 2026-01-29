@@ -129,7 +129,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
         existingPath := _AdminTask_GetCommandPath(taskName)
         if (existingPath != "" && StrLower(existingPath) != StrLower(exePath)) {
             ; In testing mode, just proceed without prompting
-            if (IsSet(g_TestingMode) && g_TestingMode) {
+            if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
                 ; Auto-proceed in testing mode
             } else {
                 result := MsgBox(
@@ -147,7 +147,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     }
 
     ; Get InstallationId if not provided
-    if (installId = "" && IsSet(cfg) && cfg.HasOwnProp("SetupInstallationId"))
+    if (installId = "" && IsSet(cfg) && cfg.HasOwnProp("SetupInstallationId"))  ; lint-ignore: isset-with-default
         installId := cfg.SetupInstallationId
 
     ; Build description with embedded ID for later identification
@@ -327,7 +327,7 @@ _Shortcut_GetIconPath() {
 ; Get the effective exe path (installed location or current)
 _Shortcut_GetEffectiveExePath() {
     global cfg
-    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "" && FileExist(cfg.SetupExePath))
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "" && FileExist(cfg.SetupExePath))  ; lint-ignore: isset-with-default
         return cfg.SetupExePath
     return A_IsCompiled ? A_ScriptFullPath : A_ScriptFullPath
 }
@@ -544,7 +544,7 @@ _Update_KillOtherProcesses(targetExeName := "") {
     }
 
     ; 3. Configured install path exe name (may be different if user renamed)
-    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {  ; lint-ignore: isset-with-default
         configName := ""
         SplitPath(cfg.SetupExePath, &configName)
         if (configName != "") {

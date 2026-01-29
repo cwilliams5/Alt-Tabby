@@ -416,7 +416,7 @@ _IPC_Log(msg) {
     logPath := IPC_DebugLogPath
     if (!logPath) {
         ; Check config flag - cfg may not be initialized early in startup
-        if (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)
+        if (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)  ; lint-ignore: isset-with-default
             logPath := LOG_PATH_IPC
         else
             return

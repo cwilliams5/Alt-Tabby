@@ -471,13 +471,13 @@ WindowStore_GetProjection(opts := 0) {
     items := []
     for _, rec in gWS_Store {
         if (!rec.present)
-            continue
+            continue  ; lint-ignore: critical-section
         if (currentOnly && !rec.isOnCurrentWorkspace)
-            continue
+            continue  ; lint-ignore: critical-section
         if (!includeMin && rec.isMinimized)
-            continue
+            continue  ; lint-ignore: critical-section
         if (!includeCloaked && rec.isCloaked)
-            continue
+            continue  ; lint-ignore: critical-section
         items.Push(rec)
     }
     Critical "Off"

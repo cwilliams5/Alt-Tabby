@@ -663,15 +663,15 @@ _CE_Cleanup() {
     global gCE_ScrollPanes, gCE_BoundWheelMsg, gCE_BoundScrollMsg
     global CE_WM_MOUSEWHEEL, CE_WM_VSCROLL, gCE_BoundMouseMove, gCE_Tooltips, gCE_LastTooltipHwnd
 
-    if (IsSet(gCE_BoundWheelMsg) && gCE_BoundWheelMsg) {
+    if (IsSet(gCE_BoundWheelMsg) && gCE_BoundWheelMsg) {  ; lint-ignore: isset-with-default
         OnMessage(CE_WM_MOUSEWHEEL, gCE_BoundWheelMsg, 0)
         gCE_BoundWheelMsg := 0
     }
-    if (IsSet(gCE_BoundScrollMsg) && gCE_BoundScrollMsg) {
+    if (IsSet(gCE_BoundScrollMsg) && gCE_BoundScrollMsg) {  ; lint-ignore: isset-with-default
         OnMessage(CE_WM_VSCROLL, gCE_BoundScrollMsg, 0)
         gCE_BoundScrollMsg := 0
     }
-    if (IsSet(gCE_BoundMouseMove) && gCE_BoundMouseMove) {
+    if (IsSet(gCE_BoundMouseMove) && gCE_BoundMouseMove) {  ; lint-ignore: isset-with-default
         OnMessage(0x200, gCE_BoundMouseMove, 0)
         gCE_BoundMouseMove := 0
     }

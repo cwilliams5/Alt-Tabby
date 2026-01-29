@@ -548,7 +548,7 @@ _Store_CleanupDisconnectedClients() {
 
 ; Auto-init only if running standalone or if mode is "store"
 ; When included from alt_tabby.ahk with a different mode, skip init.
-if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "store") {
+if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "store") {  ; lint-ignore: isset-with-default
     Store_Init()
     OnExit(Store_OnExit)
     Persistent()

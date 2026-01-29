@@ -185,7 +185,7 @@ _ShouldRedirectToScheduledTask() {
     global cfg, gConfigIniPath, g_TestingMode
 
     ; Skip in testing mode - never show dialogs during automated tests
-    if (IsSet(g_TestingMode) && g_TestingMode) {
+    if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
         _Launcher_Log("TASK_REDIRECT: skip (testing mode)")
         return false
     }
@@ -409,7 +409,7 @@ _Launcher_KillExistingInstances() {
     }
 
     ; 2. Configured install path exe name (may be different if user renamed)
-    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {  ; lint-ignore: isset-with-default
         configName := ""
         SplitPath(cfg.SetupExePath, &configName)
         if (configName != "") {

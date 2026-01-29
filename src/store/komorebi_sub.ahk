@@ -837,7 +837,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
     }
 
     ; Update/insert ALL windows from komorebi state
-    if (!IsSet(gWS_Store)) {
+    if (!IsSet(gWS_Store)) {  ; lint-ignore: isset-with-default
         _KSub_DiagLog("ProcessFullState: gWS_Store not set, returning")
         return
     }

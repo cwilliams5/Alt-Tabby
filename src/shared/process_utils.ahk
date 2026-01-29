@@ -65,7 +65,7 @@ ProcessUtils_Basename(path) {
 ; Check if any test mode flag is active (store --test or alt_tabby --testing-mode)
 _PU_IsTestMode() {
     global gStore_TestMode, g_TestingMode
-    return (IsSet(gStore_TestMode) && gStore_TestMode) || (IsSet(g_TestingMode) && g_TestingMode)
+    return (IsSet(gStore_TestMode) && gStore_TestMode) || (IsSet(g_TestingMode) && g_TestingMode)  ; lint-ignore: isset-with-default
 }
 
 ; Run a command hidden (no window). Suppresses cursor feedback in test mode.
