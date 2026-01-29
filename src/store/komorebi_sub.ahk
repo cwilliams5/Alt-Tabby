@@ -675,8 +675,10 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
     }
 
     ; Build map of ALL windows to their workspaces from komorebi state
-    ; AND collect window metadata for any windows not in store
-    wsMap := Map()  ; hwnd -> { wsName, title, class, exe }
+    ; Only stores wsName/isCurrent/winObj — title/class/exe extracted lazily
+    ; in the "add to store" branch (uncommon path) to avoid wasted work
+    wsMap := Map()  ; hwnd -> { wsName, isCurrent, winObj }
+    now := A_TickCount
 
     for mi, monObj in monitorsArr {
         wsArr := _KSub_GetWorkspacesArray(monObj)
@@ -710,18 +712,12 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                         if (!hwnd)
                             continue
 
-                        title := _KSafe_Str(win, "title")
-                        class := _KSafe_Str(win, "class")
-                        exe := _KSafe_Str(win, "exe")
-
-                        wsMap[hwnd] := {
-                            wsName: wsName,
-                            title: title,
-                            class: class,
-                            exe: exe,
-                            isCurrent: isCurrentWs
-                        }
-                        _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                        wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
+                        ; Update cache: refresh tick in place if wsName unchanged, else new entry
+                        if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
+                            _KSub_WorkspaceCache[hwnd].tick := now
+                        else
+                            _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
                     }
                 }
 
@@ -731,14 +727,11 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                     if (winObj is Map && winObj.Has("hwnd")) {
                         hwnd := _KSafe_Int(winObj, "hwnd")
                         if (hwnd && !wsMap.Has(hwnd)) {
-                            wsMap[hwnd] := {
-                                wsName: wsName,
-                                title: _KSafe_Str(winObj, "title"),
-                                class: _KSafe_Str(winObj, "class"),
-                                exe: _KSafe_Str(winObj, "exe"),
-                                isCurrent: isCurrentWs
-                            }
-                            _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                            wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
+                            if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
+                                _KSub_WorkspaceCache[hwnd].tick := now
+                            else
+                                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
                         }
                     }
                 }
@@ -755,14 +748,11 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                                 continue
                             hwnd := _KSafe_Int(win, "hwnd")
                             if (hwnd && !wsMap.Has(hwnd)) {
-                                wsMap[hwnd] := {
-                                    wsName: wsName,
-                                    title: _KSafe_Str(win, "title"),
-                                    class: _KSafe_Str(win, "class"),
-                                    exe: _KSafe_Str(win, "exe"),
-                                    isCurrent: isCurrentWs
-                                }
-                                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                                wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
+                                if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
+                                    _KSub_WorkspaceCache[hwnd].tick := now
+                                else
+                                    _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
                             }
                         }
                     }
@@ -772,14 +762,11 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                         if (winObj is Map && winObj.Has("hwnd")) {
                             hwnd := _KSafe_Int(winObj, "hwnd")
                             if (hwnd && !wsMap.Has(hwnd)) {
-                                wsMap[hwnd] := {
-                                    wsName: wsName,
-                                    title: _KSafe_Str(winObj, "title"),
-                                    class: _KSafe_Str(winObj, "class"),
-                                    exe: _KSafe_Str(winObj, "exe"),
-                                    isCurrent: isCurrentWs
-                                }
-                                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: A_TickCount }
+                                wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
+                                if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
+                                    _KSub_WorkspaceCache[hwnd].tick := now
+                                else
+                                    _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
                             }
                         }
                     }
@@ -804,8 +791,11 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
         if (!gWS_Store.Has(hwnd)) {
             ; Window not in store - add it!
             ; This happens for windows on other workspaces that winenum didn't see
-            title := (info.title != "") ? info.title : _KSub_GetWindowTitle(hwnd)
-            class := (info.class != "") ? info.class : _KSub_GetWindowClass(hwnd)
+            ; Extract title/class/exe lazily — only needed for new windows
+            kTitle := _KSafe_Str(info.winObj, "title")
+            kClass := _KSafe_Str(info.winObj, "class")
+            title := (kTitle != "") ? kTitle : _KSub_GetWindowTitle(hwnd)
+            class := (kClass != "") ? kClass : _KSub_GetWindowClass(hwnd)
 
             ; Use centralized eligibility check (Alt-Tab rules + blacklist)
             if (!Blacklist_IsWindowEligible(hwnd, title, class)) {

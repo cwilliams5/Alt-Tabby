@@ -35,6 +35,10 @@ global _WEH_IdleThreshold := 10           ; Default, overridden from config in W
 global _WEH_LastFocusHwnd := 0
 global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 
+; Z-order tracking: only events that change Z-order should trigger full winenum scan
+; NAMECHANGE and LOCATIONCHANGE fire frequently but don't affect Z — skip them
+global _WEH_PendingZNeeded := Map()       ; hwnd -> true if Z-affecting event received
+
 ; Debug logging for focus events - controlled by DiagWinEventLog config flag
 _WEH_DiagLog(msg) {
     global cfg, LOG_PATH_WINEVENT
@@ -137,7 +141,7 @@ WinEventHook_Stop() {
 ; Hook callback - called for each window event
 ; Keep this FAST - just queue the hwnd for later processing
 _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
-    global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd
+    global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd, _WEH_PendingZNeeded
     global WEH_EVENT_OBJECT_CREATE, WEH_EVENT_OBJECT_DESTROY, WEH_EVENT_OBJECT_SHOW
     global WEH_EVENT_OBJECT_HIDE, WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
     global WEH_EVENT_SYSTEM_MINIMIZESTART, WEH_EVENT_SYSTEM_MINIMIZEEND, WEH_EVENT_OBJECT_FOCUS
@@ -205,6 +209,17 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     ; Queue for update
     _WEH_PendingHwnds[hwnd] := A_TickCount
 
+    ; Flag Z-order enrichment only for events that change Z-order
+    ; NAMECHANGE and LOCATIONCHANGE are frequent but don't affect Z — skip them
+    if (event = WEH_EVENT_OBJECT_CREATE
+        || event = WEH_EVENT_OBJECT_SHOW
+        || event = WEH_EVENT_SYSTEM_FOREGROUND
+        || event = WEH_EVENT_OBJECT_FOCUS
+        || event = WEH_EVENT_SYSTEM_MINIMIZESTART
+        || event = WEH_EVENT_SYSTEM_MINIMIZEEND) {
+        _WEH_PendingZNeeded[hwnd] := true
+    }
+
     Critical "Off"
 
     ; Wake timer if it was paused due to idle
@@ -213,7 +228,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
 ; Process queued events in batches
 _WEH_ProcessBatch() {
-    global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs
+    global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs, _WEH_PendingZNeeded
     global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
 
@@ -323,10 +338,18 @@ _WEH_ProcessBatch() {
         }
     }
 
-    ; RACE FIX: Remove processed items atomically
+    ; RACE FIX: Snapshot Z flags before cleanup (needed for conditional enqueue below)
+    ; Then remove processed items atomically
     Critical "On"
+    zSnapshot := Map()
+    for _, hwnd in toProcess {
+        if (_WEH_PendingZNeeded.Has(hwnd))
+            zSnapshot[hwnd] := true
+    }
     for _, hwnd in toRemove {
         _WEH_PendingHwnds.Delete(hwnd)
+        if (_WEH_PendingZNeeded.Has(hwnd))
+            _WEH_PendingZNeeded.Delete(hwnd)
     }
     Critical "Off"
 
@@ -347,9 +370,12 @@ _WEH_ProcessBatch() {
         }
         if (records.Length > 0) {
             WindowStore_UpsertWindow(records, "winevent_hook")
-            ; Enqueue for Z-order enrichment (triggers winenum pump)
+            ; Only enqueue Z-order enrichment for events that change Z-order
+            ; (CREATE, SHOW, FOREGROUND, FOCUS, MINIMIZE, RESTORE)
+            ; Skips NAMECHANGE and LOCATIONCHANGE which fire frequently but don't affect Z
             for _, rec in records {
-                WindowStore_EnqueueForZ(rec["hwnd"])
+                if (zSnapshot.Has(rec["hwnd"]))
+                    WindowStore_EnqueueForZ(rec["hwnd"])
             }
         }
     }

@@ -817,10 +817,13 @@ RunLiveTests_Core() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "hb_test", wants: { deltas: true } }
             IPC_PipeClient_Send(hbClient, JSON.Dump(helloMsg))
 
-            ; Wait for heartbeats (store sends every 5s by default, we wait up to 12s)
-            Log("  Waiting for heartbeat messages...")
+            ; Wait for heartbeats. Store suppresses heartbeats when recent messages were sent,
+            ; so first heartbeat after hello snapshot can take up to 2x interval in worst case.
+            ; Use 2x heartbeat interval + 5s buffer for reliable test timing.
+            hbTimeoutMs := (cfg.StoreHeartbeatIntervalMs * 2) + 5000
+            Log("  Waiting for heartbeat messages (timeout=" hbTimeoutMs "ms)...")
             waitStart := A_TickCount
-            while (gHbTestHeartbeats < 2 && (A_TickCount - waitStart) < 12000) {
+            while (gHbTestHeartbeats < 2 && (A_TickCount - waitStart) < hbTimeoutMs) {
                 Sleep(500)
             }
 

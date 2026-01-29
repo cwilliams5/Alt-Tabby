@@ -31,6 +31,7 @@ global gStore_LastClientLog := 0
 global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
 global gStore_LastClientProj := Map()  ; hPipe -> last projection items (for delta calc)
 global gStore_LastClientMeta := Map()  ; hPipe -> last meta sent (for workspace change detection)
+global gStore_LastSendTick := 0       ; Tick of last message sent to ANY client (heartbeat or delta)
 
 ; Producer state tracking: "running", "disabled", "failed"
 global gStore_ProducerState := Map()
@@ -182,9 +183,19 @@ Store_HeartbeatTick() {
         }
     }
 
+    ; Only send heartbeat when no message (delta or heartbeat) was sent recently.
+    ; Store_PushToClients updates gStore_LastSendTick on every delta/snapshot,
+    ; so heartbeats are naturally suppressed when data is flowing.
+    ; Clients use time-based health monitoring (gGUI_LastMsgTick / gViewer_LastMsgTick)
+    ; and timeout after ViewerHeartbeatTimeoutMs (default 12s), so they don't care
+    ; whether they receive heartbeats or deltas — just that SOMETHING arrives.
+    global gStore_LastSendTick
+    if (gStore_LastSendTick && (A_TickCount - gStore_LastSendTick) < cfg.StoreHeartbeatIntervalMs)
+        return
     rev := WindowStore_GetRev()
     msg := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
     IPC_PipeServer_Broadcast(gStore_Server, msg)
+    gStore_LastSendTick := A_TickCount
 }
 
 ; Z-Pump: triggers full scan when windows need Z-order enrichment
@@ -230,7 +241,7 @@ Store_FullScan() {
 ; conditions where clients disconnect during iteration
 Store_PushToClients() {
     global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_TestMode
-    global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA
+    global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA, gStore_LastSendTick
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -295,6 +306,8 @@ Store_PushToClients() {
         sent++
     }
 
+    if (sent > 0)
+        gStore_LastSendTick := A_TickCount
     if (gStore_TestMode && sent > 0) {
         Store_LogError("pushed to " sent " clients")
     }
@@ -340,7 +353,7 @@ Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev) {
 
 Store_OnMessage(line, hPipe := 0) {
     global gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj
-    global gStore_Server, gStore_LastClientMeta
+    global gStore_Server, gStore_LastClientMeta, gStore_LastSendTick
     global IPC_MSG_HELLO, IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION
     global IPC_MSG_SET_PROJECTION_OPTS, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_PROJECTION_REQUEST
     global IPC_MSG_RELOAD_BLACKLIST, IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
@@ -388,6 +401,7 @@ Store_OnMessage(line, hPipe := 0) {
         IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
         gStore_LastClientRev[hPipe] := proj.rev
         gStore_LastClientProj[hPipe] := proj.HasOwnProp("items") ? proj.items : []
+        gStore_LastSendTick := A_TickCount
         Critical "Off"
         return
     }
@@ -429,6 +443,7 @@ Store_OnMessage(line, hPipe := 0) {
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
         gStore_LastClientRev[hPipe] := proj.rev
+        gStore_LastSendTick := A_TickCount
         return
     }
     if (type = IPC_MSG_RELOAD_BLACKLIST) {

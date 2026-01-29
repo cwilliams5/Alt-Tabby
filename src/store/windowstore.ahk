@@ -420,28 +420,32 @@ WindowStore_GetByHwnd(hwnd) {
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
     global gWS_Meta, gWS_Rev, gWS_Store
-    changed := false
-    if (gWS_Meta["currentWSId"] != id) {
-        gWS_Meta["currentWSId"] := id
-        changed := true
-    }
-    if (gWS_Meta["currentWSName"] != name) {
-        gWS_Meta["currentWSName"] := name
-        changed := true
-    }
-    if (changed) {
-        ; RACE FIX: Wrap iteration in Critical to prevent timer/hotkey interruption
-        Critical "On"
-        ; Update isOnCurrentWorkspace for all windows based on new workspace
-        ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
-        for hwnd, rec in gWS_Store {
-            newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
-            if (rec.isOnCurrentWorkspace != newIsOnCurrent)
-                rec.isOnCurrentWorkspace := newIsOnCurrent
+    ; Always update meta (lightweight, no rev bump)
+    gWS_Meta["currentWSId"] := id
+
+    ; Only recalculate window state if workspace NAME changed
+    ; ID is metadata only — GUI cares about name for filtering
+    if (gWS_Meta["currentWSName"] = name)
+        return
+
+    gWS_Meta["currentWSName"] := name
+
+    ; RACE FIX: Wrap iteration in Critical to prevent timer/hotkey interruption
+    Critical "On"
+    ; Update isOnCurrentWorkspace for all windows based on new workspace
+    ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
+    anyFlipped := false
+    for hwnd, rec in gWS_Store {
+        newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
+        if (rec.isOnCurrentWorkspace != newIsOnCurrent) {
+            rec.isOnCurrentWorkspace := newIsOnCurrent
+            anyFlipped := true
         }
-        Critical "Off"
-        _WS_BumpRev("SetCurrentWorkspace")
     }
+    Critical "Off"
+    ; Only bump rev if at least one window's state actually changed
+    if (anyFlipped)
+        _WS_BumpRev("SetCurrentWorkspace")
 }
 
 WindowStore_GetCurrentWorkspace() {
