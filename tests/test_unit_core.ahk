@@ -825,10 +825,8 @@ RunUnitTests_Core() {
         cmd := 'cmd.exe /c ' cmd ' 2>"' errFile '"'
 
         pid := 0
-        try {
-            Run(cmd, , "Hide", &pid)
-        } catch as e {
-            Log("FAIL: " ep.name " - could not launch: " e.Message)
+        if (!_Test_RunSilent(cmd, &pid)) {
+            Log("FAIL: " ep.name " - could not launch")
             TestErrors++
         }
         pids.Push(pid)
@@ -850,7 +848,7 @@ RunUnitTests_Core() {
         ; For launcher: find child PIDs BEFORE killing parent (tree kill)
         if (InStr(ep.name, "launcher") && stillRunning) {
             ; taskkill /T kills the entire process tree (cmd → launcher → store + gui)
-            RunWait('taskkill /F /T /PID ' pid, , "Hide")
+            _Test_RunWaitSilent('taskkill /F /T /PID ' pid)
             stillRunning := false  ; We just killed it
         } else if (stillRunning) {
             ProcessClose(pid)

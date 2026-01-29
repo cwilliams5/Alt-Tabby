@@ -223,6 +223,96 @@ Test_OnCompiledStoreMessage(line, hPipe := 0) {
     gCompiledStoreReceived := true
 }
 
+; --- Process Launch Helpers ---
+; Windows shows the "app starting" cursor (pointer+hourglass) whenever a new
+; process is launched via Run(). These helpers use CreateProcessW with
+; STARTF_FORCEOFFEEDBACK to suppress that cursor change during tests.
+
+; Launch a process hidden without cursor feedback.
+; Returns true on success. Sets outPid to the new process ID.
+_Test_RunSilent(cmdLine, &outPid := 0) {
+    outPid := 0
+
+    ; CreateProcessW requires writable command line buffer
+    cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
+    StrPut(cmdLine, cmdBuf, "UTF-16")
+
+    ; STARTUPINFOW (104 bytes on 64-bit)
+    si := Buffer(104, 0)
+    NumPut("UInt", 104, si, 0)    ; cb = sizeof(STARTUPINFOW)
+    NumPut("UInt", 0x41, si, 60)  ; dwFlags: STARTF_USESHOWWINDOW | STARTF_FORCEOFFEEDBACK
+    ; wShowWindow at offset 64 = 0 (SW_HIDE) from zero-init
+
+    ; PROCESS_INFORMATION (24 bytes on 64-bit)
+    pi := Buffer(24, 0)
+
+    result := DllCall("CreateProcessW",
+        "Ptr", 0,            ; lpApplicationName
+        "Ptr", cmdBuf,       ; lpCommandLine (writable)
+        "Ptr", 0,            ; lpProcessAttributes
+        "Ptr", 0,            ; lpThreadAttributes
+        "Int", 0,            ; bInheritHandles
+        "UInt", 0x08000000,  ; dwCreationFlags: CREATE_NO_WINDOW
+        "Ptr", 0,            ; lpEnvironment
+        "Ptr", 0,            ; lpCurrentDirectory
+        "Ptr", si,           ; lpStartupInfo
+        "Ptr", pi,           ; lpProcessInformation
+        "Int")
+
+    if (result) {
+        outPid := NumGet(pi, 16, "UInt")                     ; dwProcessId
+        DllCall("CloseHandle", "Ptr", NumGet(pi, 0, "Ptr"))  ; hProcess
+        DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))  ; hThread
+    }
+
+    return result
+}
+
+; Launch a process hidden without cursor feedback and wait for it to exit.
+; Returns the process exit code, or -1 on failure.
+_Test_RunWaitSilent(cmdLine, workDir := "") {
+    cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
+    StrPut(cmdLine, cmdBuf, "UTF-16")
+
+    si := Buffer(104, 0)
+    NumPut("UInt", 104, si, 0)
+    NumPut("UInt", 0x41, si, 60)
+
+    pi := Buffer(24, 0)
+
+    wdBuf := 0
+    wdPtr := 0
+    if (workDir != "") {
+        wdBuf := Buffer((StrLen(workDir) + 1) * 2)
+        StrPut(workDir, wdBuf, "UTF-16")
+        wdPtr := wdBuf.Ptr
+    }
+
+    result := DllCall("CreateProcessW",
+        "Ptr", 0, "Ptr", cmdBuf,
+        "Ptr", 0, "Ptr", 0,
+        "Int", 0,
+        "UInt", 0x08000000,
+        "Ptr", 0,
+        "Ptr", wdPtr,
+        "Ptr", si, "Ptr", pi,
+        "Int")
+
+    if (!result)
+        return -1
+
+    hProcess := NumGet(pi, 0, "Ptr")
+    DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))  ; hThread
+
+    DllCall("WaitForSingleObject", "Ptr", hProcess, "UInt", 0xFFFFFFFF)
+
+    exitCode := 0
+    DllCall("GetExitCodeProcess", "Ptr", hProcess, "UInt*", &exitCode)
+    DllCall("CloseHandle", "Ptr", hProcess)
+
+    return exitCode
+}
+
 ; --- Shared Helper Functions ---
 
 ; Wait for a store's named pipe to become available
@@ -259,10 +349,8 @@ LaunchTestStore(pipeName := "", &outPid := 0) {
     storePath := A_ScriptDir "\..\src\store\store_server.ahk"
     outPid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' pipeName, , "Hide", &outPid)
-    } catch as e {
-        Log("ERROR: Failed to launch store: " e.Message)
+    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' pipeName, &outPid)) {
+        Log("ERROR: Failed to launch store")
         return ""
     }
 

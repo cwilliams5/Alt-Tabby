@@ -19,10 +19,8 @@ RunLiveTests_Execution() {
     standaloneStorePipe := "tabby_standalone_test_" A_TickCount
     standaloneStorePid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' standaloneStorePipe, , "Hide", &standaloneStorePid)
-    } catch as e {
-        Log("FAIL: Could not launch standalone store_server.ahk: " e.Message)
+    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' standaloneStorePipe, &standaloneStorePid)) {
+        Log("FAIL: Could not launch standalone store_server.ahk")
         TestErrors++
         standaloneStorePid := 0
     }
@@ -117,10 +115,8 @@ RunLiveTests_Execution() {
         compiledStorePipe := "tabby_compiled_store_" A_TickCount
         compiledStorePid := 0
 
-        try {
-            Run('"' compiledExePath '" --store --test --pipe=' compiledStorePipe, , "Hide", &compiledStorePid)
-        } catch as e {
-            Log("FAIL: Could not launch AltTabby.exe --store: " e.Message)
+        if (!_Test_RunSilent('"' compiledExePath '" --store --test --pipe=' compiledStorePipe, &compiledStorePid)) {
+            Log("FAIL: Could not launch AltTabby.exe --store")
             TestErrors++
             compiledStorePid := 0
         }
@@ -167,10 +163,8 @@ RunLiveTests_Execution() {
         Log("  Testing launcher mode (spawns store + gui)...")
         launcherPid := 0
 
-        try {
-            Run('"' compiledExePath '" --testing-mode', , "Hide", &launcherPid)
-        } catch as e {
-            Log("FAIL: Could not launch AltTabby.exe (launcher mode): " e.Message)
+        if (!_Test_RunSilent('"' compiledExePath '" --testing-mode', &launcherPid)) {
+            Log("FAIL: Could not launch AltTabby.exe (launcher mode)")
             TestErrors++
             launcherPid := 0
         }
@@ -240,9 +234,7 @@ RunLiveTests_Execution() {
             recreatePipe := "tabby_recreate_test_" A_TickCount
             recreatePid := 0
 
-            try {
-                Run('"' compiledExePath '" --store --test --pipe=' recreatePipe, , "Hide", &recreatePid)
-            }
+            _Test_RunSilent('"' compiledExePath '" --store --test --pipe=' recreatePipe, &recreatePid)
 
             if (recreatePid) {
                 ; Wait for store pipe to become available (adaptive)

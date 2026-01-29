@@ -22,10 +22,8 @@ RunLiveTests_Features() {
     sharedFeatStorePipe := "tabby_feat_shared_" A_TickCount
     sharedFeatStorePid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' sharedFeatStorePipe, , "Hide", &sharedFeatStorePid)
-    } catch as e {
-        Log("SKIP: Could not start shared store for MRU/Projection tests: " e.Message)
+    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' sharedFeatStorePipe, &sharedFeatStorePid)) {
+        Log("SKIP: Could not start shared store for MRU/Projection tests")
         sharedFeatStorePid := 0
     }
 
@@ -427,10 +425,8 @@ RunLiveTests_Features() {
     multiTestPipe := "tabby_multi_test_" A_TickCount
     multiTestPid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' multiTestPipe, , "Hide", &multiTestPid)
-    } catch as e {
-        Log("SKIP: Could not start store for multi-client test: " e.Message)
+    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' multiTestPipe, &multiTestPid)) {
+        Log("SKIP: Could not start store for multi-client test")
         multiTestPid := 0
     }
 
@@ -616,10 +612,8 @@ RunLiveTests_Features() {
     blTestPipe := "tabby_bl_test_" A_TickCount
     blTestPid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' blTestPipe, , "Hide", &blTestPid)
-    } catch as e {
-        Log("SKIP: Could not start store for blacklist test: " e.Message)
+    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' blTestPipe, &blTestPid)) {
+        Log("SKIP: Could not start store for blacklist test")
         blTestPid := 0
     }
 

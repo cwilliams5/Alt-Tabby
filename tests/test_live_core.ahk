@@ -42,7 +42,7 @@ RunLiveTests_Core() {
 
         try {
             ; RunWait with hidden window, pipe from nul to skip the pause
-            exitCode := RunWait('cmd.exe /c "' compileBat '" < nul', A_ScriptDir "\..", "Hide")
+            exitCode := _Test_RunWaitSilent('cmd.exe /c "' compileBat '" < nul', A_ScriptDir "\..")
 
             if (exitCode != 0) {
                 Log("FAIL: compile.bat failed with exit code " exitCode)
@@ -327,9 +327,7 @@ RunLiveTests_Core() {
     sharedStorePipe := "tabby_shared_test_" A_TickCount
     sharedStorePid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' sharedStorePipe, , "Hide", &sharedStorePid)
-    } catch {
+    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' sharedStorePipe, &sharedStorePid)) {
         Log("SKIP: Could not start shared store_server")
         sharedStorePid := 0
     }
@@ -597,9 +595,7 @@ RunLiveTests_Core() {
         tmpState := A_Temp "\komorebi_test_state.tmp"
         try FileDelete(tmpState)
         cmdLine := 'cmd.exe /c ""' komorebicPath '" state > "' tmpState '"" 2>&1'
-        try {
-            RunWait(cmdLine, , "Hide")
-        }
+        _Test_RunWaitSilent(cmdLine)
         Sleep(200)  ; Give file time to write
         stateTxt := ""
         try stateTxt := FileRead(tmpState, "UTF-8")
@@ -724,11 +720,10 @@ RunLiveTests_Core() {
     wsE2EPipe := "tabby_ws_e2e_" A_TickCount
     wsE2EPid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' wsE2EPipe, , "Hide", &wsE2EPid)
+    if (_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' wsE2EPipe, &wsE2EPid)) {
         Log("  [WS E2E] Store launched (PID=" wsE2EPid ", pipe=" wsE2EPipe ")")
-    } catch as e {
-        Log("SKIP: Could not start store for workspace E2E test: " e.Message)
+    } else {
+        Log("SKIP: Could not start store for workspace E2E test")
         wsE2EPid := 0
     }
 
@@ -852,11 +847,10 @@ RunLiveTests_Core() {
     hbTestPipe := "tabby_hb_test_" A_TickCount
     hbTestPid := 0
 
-    try {
-        Run('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' hbTestPipe ' --heartbeat-ms=1000', , "Hide", &hbTestPid)
+    if (_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' hbTestPipe ' --heartbeat-ms=1000', &hbTestPid)) {
         Log("  [HB] Store launched (PID=" hbTestPid ", pipe=" hbTestPipe ", heartbeat=1000ms)")
-    } catch as e {
-        Log("SKIP: Could not start store for heartbeat test: " e.Message)
+    } else {
+        Log("SKIP: Could not start store for heartbeat test")
         hbTestPid := 0
     }
 
