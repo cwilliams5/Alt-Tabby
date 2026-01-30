@@ -211,7 +211,10 @@ Test_OnMultiClient2(line, hPipe := 0) {
 
 Test_OnMultiClient3(line, hPipe := 0) {
     global gMultiClient3Response, gMultiClient3Received
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
+    ; Client 3 expects hwndsOnly format - ignore stale broadcasts with items format
+    ; that arrive before HELLO is processed (race between connect and HELLO)
+    if ((InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"'))
+        && InStr(line, '"hwnds"')) {
         gMultiClient3Response := line
         gMultiClient3Received := true
     }
