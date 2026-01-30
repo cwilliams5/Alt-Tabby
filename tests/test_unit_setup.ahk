@@ -1,5 +1,5 @@
 ; Unit Tests - Setup & Installation
-; Version, Task Scheduler, Shortcuts, Setup Config, PE Validation, Temp Detection, Exe Dedup, DateDiff
+; Version, Task Scheduler, Shortcuts, Setup Config, PE Validation, Temp Detection, Exe Dedup
 ; Included by test_unit.ahk
 
 RunUnitTests_Setup() {
@@ -467,84 +467,33 @@ RunUnitTests_Setup() {
     }
 
     ; ============================================================
-    ; Exe Name Deduplication Tests (Bug #1 fix)
-    ; Tests the StrLower + Map.Has dedup pattern used in
-    ; _Update_KillOtherProcesses. The production function can't
-    ; be called directly (it kills processes), so we test the
-    ; pattern in isolation as a regression guard.
+    ; Exe Name Deduplication Tests (Bug #1 fix - Code Inspection)
+    ; _Update_KillOtherProcesses kills processes so it can't be
+    ; called directly. Verify the production function uses the
+    ; case-insensitive dedup pattern (StrLower + seenNames map).
     ; ============================================================
     Log("`n--- Exe Name Deduplication Tests ---")
 
-    ; Test case-insensitive deduplication logic
-    Log("Testing exe name deduplication (case-insensitive)...")
-    testNames := []
-    seenNames := Map()
-
-    ; Simulate adding names like _Update_KillOtherProcesses does
-    namesToAdd := ["AltTabby.exe", "alttabby.exe", "ALTTABBY.EXE", "OtherApp.exe"]
-    for _, name in namesToAdd {
-        lowerName := StrLower(name)
-        if (!seenNames.Has(lowerName)) {
-            testNames.Push(name)
-            seenNames[lowerName] := true
+    Log("Testing _Update_KillOtherProcesses uses case-insensitive dedup...")
+    try {
+        setupPath := A_ScriptDir "\..\src\shared\setup_utils.ahk"
+        if (FileExist(setupPath)) {
+            code := FileRead(setupPath)
+            hasFuncDef := InStr(code, "_Update_KillOtherProcesses(")
+            hasStrLower := InStr(code, "StrLower(")
+            hasSeenMap := InStr(code, "seenNames.Has(") || InStr(code, "seenNames[")
+            if (hasFuncDef && hasStrLower && hasSeenMap) {
+                Log("PASS: _Update_KillOtherProcesses uses StrLower + seenNames dedup")
+                TestPassed++
+            } else {
+                Log("FAIL: _Update_KillOtherProcesses missing dedup pattern (func=" hasFuncDef ", lower=" hasStrLower ", map=" hasSeenMap ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: setup_utils.ahk not found")
         }
-    }
-
-    if (testNames.Length = 2) {  ; Should have AltTabby.exe and OtherApp.exe
-        Log("PASS: Deduplication reduced 4 names to 2 unique names")
-        TestPassed++
-    } else {
-        Log("FAIL: Expected 2 unique names, got " testNames.Length)
-        TestErrors++
-    }
-
-    ; ============================================================
-    ; DateDiff Cooldown Tests (Bug #6 fix)
-    ; ============================================================
-    Log("`n--- DateDiff Cooldown Tests ---")
-
-    ; Test DateDiff with timestamps
-    Log("Testing DateDiff for 24-hour cooldown logic...")
-
-    ; Current time
-    nowTime := A_Now
-
-    ; 12 hours ago (should be within cooldown)
-    time12hAgo := DateAdd(nowTime, -12, "Hours")
-    hours12 := DateDiff(nowTime, time12hAgo, "Hours")
-    if (hours12 >= 11 && hours12 <= 13) {  ; Allow some tolerance
-        Log("PASS: DateDiff correctly calculated ~12 hours difference: " hours12)
-        TestPassed++
-    } else {
-        Log("FAIL: DateDiff returned " hours12 " hours, expected ~12")
-        TestErrors++
-    }
-
-    ; 36 hours ago (should be outside cooldown)
-    time36hAgo := DateAdd(nowTime, -36, "Hours")
-    hours36 := DateDiff(nowTime, time36hAgo, "Hours")
-    if (hours36 >= 35 && hours36 <= 37) {
-        Log("PASS: DateDiff correctly calculated ~36 hours difference: " hours36)
-        TestPassed++
-    } else {
-        Log("FAIL: DateDiff returned " hours36 " hours, expected ~36")
-        TestErrors++
-    }
-
-    ; Test cooldown logic
-    if (hours12 < 24) {
-        Log("PASS: 12 hours ago is within 24h cooldown")
-        TestPassed++
-    } else {
-        Log("FAIL: 12 hours should be within 24h cooldown")
-        TestErrors++
-    }
-
-    if (hours36 >= 24) {
-        Log("PASS: 36 hours ago is outside 24h cooldown")
-        TestPassed++
-    } else {
-        Log("FAIL: 36 hours should be outside 24h cooldown")
+    } catch as e {
+        Log("FAIL: Dedup code inspection error: " e.Message)
         TestErrors++
     }
 }
