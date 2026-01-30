@@ -192,9 +192,14 @@ LaunchBlacklistEditor() {
 global g_AdminToggleInProgress := false
 global g_AdminToggleStartTick := 0  ; Tick-based timing instead of static counter
 
+; Admin toggle timing constants
+global ADMIN_TOGGLE_POLL_MS := 500
+global ADMIN_TOGGLE_TIMEOUT_MS := 30000
+
 ToggleAdminMode() {
     global cfg, gConfigIniPath, g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK
     global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, g_AdminToggleStartTick, APP_NAME
+    global ADMIN_TOGGLE_POLL_MS
 
     ; Prevent re-entry during async elevation
     if (g_AdminToggleInProgress) {
@@ -260,8 +265,7 @@ ToggleAdminMode() {
                     throw Error("RunAsAdmin failed")
 
                 ; Start polling for lock file deletion (elevated instance will delete it)
-                ; Check every 500ms, timeout after 30 seconds
-                SetTimer(_AdminToggle_CheckComplete, -500)
+                SetTimer(_AdminToggle_CheckComplete, -ADMIN_TOGGLE_POLL_MS)
                 ToolTip("Creating admin task...")
                 HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             } catch {
@@ -307,6 +311,7 @@ ToggleAdminMode() {
 ; Uses tick-based timing for timeout (30 seconds) to prevent static variable state leaks
 _AdminToggle_CheckComplete() {
     global g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_AdminToggleStartTick
+    global ADMIN_TOGGLE_POLL_MS, ADMIN_TOGGLE_TIMEOUT_MS
 
     if (!FileExist(TEMP_ADMIN_TOGGLE_LOCK)) {
         ; Lock file deleted - elevated instance completed
@@ -316,7 +321,7 @@ _AdminToggle_CheckComplete() {
 
     ; Use tick-based timing instead of static counter (prevents state leaks if timer cancelled)
     elapsed := A_TickCount - g_AdminToggleStartTick
-    if (elapsed >= 30000) {  ; 30 seconds
+    if (elapsed >= ADMIN_TOGGLE_TIMEOUT_MS) {
         ; Timeout - assume something went wrong
         g_AdminToggleInProgress := false
         try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
@@ -325,7 +330,7 @@ _AdminToggle_CheckComplete() {
     }
 
     ; Keep checking
-    SetTimer(_AdminToggle_CheckComplete, -500)
+    SetTimer(_AdminToggle_CheckComplete, -ADMIN_TOGGLE_POLL_MS)
 }
 
 ToggleAutoUpdate() {
