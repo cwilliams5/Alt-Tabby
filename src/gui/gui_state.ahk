@@ -576,7 +576,7 @@ _GUI_AsyncActivationTick() {
     ; BUT: Only synthesize if the interceptor is NOT in its decision window (gINT_TabPending).
     ; If TabPending is true, the interceptor will eventually send the Tab event itself.
     global gINT_TabPending
-    if (gGUI_PendingPhase = "polling" && GetKeyState("Alt", "P") && GetKeyState("Tab", "P") && !gINT_TabPending) {
+    if (phase = "polling" && GetKeyState("Alt", "P") && GetKeyState("Tab", "P") && !gINT_TabPending) {
         ; Protect buffer read+write with Critical to prevent interceptor interruption
         Critical "On"
         hasAltDn := false

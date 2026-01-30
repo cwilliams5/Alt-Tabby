@@ -704,11 +704,13 @@ _KSub_FlushCloakBatch() {
 ; Cancel any pending cloak batch timer (called when a structural event pushes immediately)
 _KSub_CancelCloakTimer() {
     global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn
+    Critical "On"
     if (_KSub_CloakPushPending) {
         SetTimer(_KSub_CloakBatchTimerFn, 0)
         _KSub_CloakPushPending := false
         _KSub_CloakBatchTimerFn := 0
     }
+    Critical "Off"
 }
 
 ; Process full komorebi state and update all windows
