@@ -205,6 +205,13 @@ _ShouldRedirectToScheduledTask() {
     ; Validate task points to current exe (handles renamed exe case)
     taskPath := _AdminTask_GetCommandPath()
     if (taskPath = "" || StrLower(taskPath) != StrLower(A_ScriptFullPath)) {
+        ; If admin mode is disabled in config, don't attempt repair or prompt.
+        ; This prevents UAC prompt loops after user previously declined.
+        if (!cfg.SetupRunAsAdmin) {
+            _Launcher_Log("TASK_REDIRECT: skip (admin mode disabled in config, stale task ignored)")
+            return false
+        }
+
         ; Task path doesn't match - check if InstallationId matches
         taskId := _AdminTask_GetInstallationId()
         currentId := (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")

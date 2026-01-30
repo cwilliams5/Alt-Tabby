@@ -218,8 +218,15 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
     )
 
     if (result = "Yes") {
-        _Launcher_KillExistingInstances()
+        ; Kill the specific installed process we detected by PID.
+        ; Don't delegate to _Launcher_KillExistingInstances() — it searches by
+        ; current exe name, which won't match the installed exe (e.g., "AltTabby.exe"
+        ; vs "alttabby v4.exe").
+        try ProcessClose(pid)
         Sleep(TIMING_MUTEX_RELEASE_WAIT)
+        ; Verify it's gone, retry once if stubborn
+        if (ProcessExist(pid))
+            try ProcessClose(pid)
     }
 }
 

@@ -137,17 +137,20 @@ _CreateShortcutForCurrentMode(lnkPath) {
     }
 }
 
-; Recreate existing shortcuts when admin mode changes
+; Recreate existing shortcuts when admin mode changes or exe is renamed/repaired.
+; Uses FileExist() instead of _Shortcut_*Exists() because after an exe rename,
+; shortcuts point to the old name (target doesn't match), but they still need updating.
+; The shortcut filename is always "Alt-Tabby.lnk" — if it exists, it's ours.
 RecreateShortcuts() {
-    ; If Start Menu shortcut exists, recreate it
-    if (_Shortcut_StartMenuExists()) {
-        try FileDelete(_Shortcut_GetStartMenuPath())
-        _CreateShortcutForCurrentMode(_Shortcut_GetStartMenuPath())
+    startMenuPath := _Shortcut_GetStartMenuPath()
+    if (FileExist(startMenuPath)) {
+        try FileDelete(startMenuPath)
+        _CreateShortcutForCurrentMode(startMenuPath)
     }
 
-    ; If Startup shortcut exists, recreate it
-    if (_Shortcut_StartupExists()) {
-        try FileDelete(_Shortcut_GetStartupPath())
-        _CreateShortcutForCurrentMode(_Shortcut_GetStartupPath())
+    startupPath := _Shortcut_GetStartupPath()
+    if (FileExist(startupPath)) {
+        try FileDelete(startupPath)
+        _CreateShortcutForCurrentMode(startupPath)
     }
 }

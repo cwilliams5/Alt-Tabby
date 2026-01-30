@@ -211,6 +211,13 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         }
     }
 
+    ; Step 1.5: Clean up stale admin task if admin mode was NOT selected.
+    ; We're elevated (install requires it), so we can delete.
+    ; Without this, a previous install's task forces admin mode on the new install.
+    if (!admin && install && installSucceeded && AdminTaskExists()) {
+        DeleteAdminTask()
+    }
+
     ; Step 2: Create admin task (if selected) - needs final exe path
     if (admin) {
         ; Only create admin task if:
