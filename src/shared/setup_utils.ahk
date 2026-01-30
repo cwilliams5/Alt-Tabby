@@ -93,6 +93,24 @@ CompareVersions(v1, v2) {
 }
 
 ; ============================================================
+; TEMPORARY LOCATION DETECTION
+; ============================================================
+
+; Check if a path looks like a temporary or cloud-synced location
+; Used to warn users before creating shortcuts to ephemeral paths
+IsTemporaryLocation(path) {
+    lowerPath := StrLower(path)
+    return (InStr(lowerPath, "\downloads")
+        || InStr(lowerPath, "\temp")
+        || InStr(lowerPath, "\desktop")
+        || InStr(lowerPath, "\appdata\local\temp")
+        || InStr(lowerPath, "\onedrive")
+        || InStr(lowerPath, "\dropbox")
+        || InStr(lowerPath, "\google drive")
+        || InStr(lowerPath, "\icloud"))
+}
+
+; ============================================================
 ; SELF-ELEVATION HELPER
 ; ============================================================
 

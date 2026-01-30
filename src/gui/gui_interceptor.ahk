@@ -3,13 +3,8 @@
 ; Handles Alt+Tab keyboard interception with deferred Tab decision logic
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
-; ========================= EVENT CONSTANTS =========================
-; Event codes for internal communication between interceptor and state machine
-global TABBY_EV_TAB_STEP := 1  ; Tab pressed during Alt+Tab session
-global TABBY_EV_ALT_UP   := 2  ; Alt released, session ended
-global TABBY_EV_ALT_DOWN := 3  ; Alt pressed, session starting
-global TABBY_EV_ESCAPE   := 4  ; Escape pressed, cancel session
-global TABBY_FLAG_SHIFT  := 1  ; Shift modifier flag
+; Event constants (shared with state machine and tests)
+#Include gui_constants.ahk
 
 ; ========================= INTERCEPTOR STATE =========================
 ; These variables track the keyboard hook state

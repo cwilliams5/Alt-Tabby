@@ -32,6 +32,7 @@ A_MenuMaskKey := "vkE8"
 ; GUI utilities
 #Include *i %A_ScriptDir%\gui_gdip.ahk
 #Include *i %A_ScriptDir%\gui_win.ahk
+#Include *i %A_ScriptDir%\gui_constants.ahk
 
 ; ========================= GLOBAL STATE =========================
 ; CRITICAL: These must be declared BEFORE sub-module includes

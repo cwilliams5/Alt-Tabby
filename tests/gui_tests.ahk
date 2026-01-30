@@ -9,12 +9,8 @@ A_IconHidden := true  ; No tray icon during tests
 ; 1. GLOBALS (must match gui_main.ahk)
 ; ============================================================
 
-; Event codes
-global TABBY_EV_ALT_DOWN := 1
-global TABBY_EV_ALT_UP := 2
-global TABBY_EV_TAB_STEP := 3
-global TABBY_EV_ESCAPE := 4
-global TABBY_FLAG_SHIFT := 1
+; Event codes (from production gui_constants.ahk)
+#Include %A_ScriptDir%\..\src\gui\gui_constants.ahk
 
 ; IPC message types (used by production code)
 global IPC_MSG_SNAPSHOT := "snapshot"
@@ -144,17 +140,8 @@ Win_GetScaleForWindow(hwnd) {
     return 1.0
 }
 
-Win_Wrap0(val, count) {
-    if (count <= 0)
-        return 0
-    return Mod(Mod(val, count) + count, count)
-}
-
-Win_Wrap1(val, count) {
-    if (count <= 0)
-        return 0
-    return Mod(Mod(val - 1, count) + count, count) + 1
-}
+; Win_Wrap0, Win_Wrap1 from production (gui_math.ahk)
+#Include %A_ScriptDir%\..\src\gui\gui_math.ahk
 
 ; IPC mock - captures messages for assertions
 IPC_PipeClient_Send(client, msgText) {

@@ -118,17 +118,7 @@ WizardApply(*) {
             if (startup || startMenu) {
                 currentDir := ""
                 SplitPath(A_ScriptFullPath, , &currentDir)
-                lowerDir := StrLower(currentDir)
-
-                ; Check if current location looks temporary or cloud-synced
-                isTemporary := (InStr(lowerDir, "\downloads")
-                    || InStr(lowerDir, "\temp")
-                    || InStr(lowerDir, "\desktop")
-                    || InStr(lowerDir, "\appdata\local\temp")
-                    || InStr(lowerDir, "\onedrive")
-                    || InStr(lowerDir, "\dropbox")
-                    || InStr(lowerDir, "\google drive")
-                    || InStr(lowerDir, "\icloud"))
+                isTemporary := IsTemporaryLocation(currentDir)
 
                 if (isTemporary) {
                     result2 := MsgBox(

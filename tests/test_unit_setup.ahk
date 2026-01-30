@@ -423,6 +423,7 @@ RunUnitTests_Setup() {
 
     ; ============================================================
     ; Temporary Location Detection Tests (Bug #5 fix)
+    ; Tests production IsTemporaryLocation() from setup_utils.ahk
     ; ============================================================
     Log("`n--- Temporary Location Detection Tests ---")
 
@@ -431,16 +432,15 @@ RunUnitTests_Setup() {
         "C:\Users\test\Downloads\AltTabby.exe",
         "C:\Users\test\Desktop\AltTabby.exe",
         "C:\Users\test\AppData\Local\Temp\AltTabby.exe",
-        "D:\temp\subfolder\AltTabby.exe"
+        "D:\temp\subfolder\AltTabby.exe",
+        "C:\Users\test\OneDrive\Apps\AltTabby.exe",
+        "C:\Users\test\Dropbox\Tools\AltTabby.exe",
+        "C:\Users\test\Google Drive\AltTabby.exe",
+        "C:\Users\test\iCloud\AltTabby.exe"
     ]
 
     for _, testPath in tempPaths {
-        lowerPath := StrLower(testPath)
-        isTemp := (InStr(lowerPath, "\downloads")
-            || InStr(lowerPath, "\temp")
-            || InStr(lowerPath, "\desktop")
-            || InStr(lowerPath, "\appdata\local\temp"))
-        if (isTemp) {
+        if (IsTemporaryLocation(testPath)) {
             Log("PASS: '" testPath "' detected as temporary")
             TestPassed++
         } else {
@@ -457,12 +457,7 @@ RunUnitTests_Setup() {
     ]
 
     for _, testPath in nonTempPaths {
-        lowerPath := StrLower(testPath)
-        isTemp := (InStr(lowerPath, "\downloads")
-            || InStr(lowerPath, "\temp")
-            || InStr(lowerPath, "\desktop")
-            || InStr(lowerPath, "\appdata\local\temp"))
-        if (!isTemp) {
+        if (!IsTemporaryLocation(testPath)) {
             Log("PASS: '" testPath "' not detected as temporary")
             TestPassed++
         } else {
@@ -473,6 +468,10 @@ RunUnitTests_Setup() {
 
     ; ============================================================
     ; Exe Name Deduplication Tests (Bug #1 fix)
+    ; Tests the StrLower + Map.Has dedup pattern used in
+    ; _Update_KillOtherProcesses. The production function can't
+    ; be called directly (it kills processes), so we test the
+    ; pattern in isolation as a regression guard.
     ; ============================================================
     Log("`n--- Exe Name Deduplication Tests ---")
 
