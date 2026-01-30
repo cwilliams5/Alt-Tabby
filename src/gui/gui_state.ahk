@@ -363,6 +363,13 @@ GUI_ShowOverlayWithFrozen() {
     ; If state changed to IDLE, ALT_UP already called HideOverlay - abort show sequence
     if (gGUI_State != "ACTIVE") {
         _Paint_Log("ShowOverlay ABORT after Base.Show (state=" gGUI_State ")")
+        ; RACE FIX: Force-hide both windows. During Show()/DwmFlush(), the thread
+        ; can become interruptible - Alt_Up may call HideOverlay(), but the in-flight
+        ; Show() can re-show gGUI_Base after Hide(). Redundant Hide() is a safe no-op.
+        try gGUI_Overlay.Hide()
+        try gGUI_Base.Hide()
+        gGUI_OverlayVisible := false
+        gGUI_Revealed := false
         return
     }
 
@@ -379,6 +386,10 @@ GUI_ShowOverlayWithFrozen() {
     ; RACE FIX: Check again after paint operations (GDI+ can pump messages)
     if (gGUI_State != "ACTIVE") {
         _Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
+        try gGUI_Overlay.Hide()
+        try gGUI_Base.Hide()
+        gGUI_OverlayVisible := false
+        gGUI_Revealed := false
         return
     }
 
@@ -392,6 +403,10 @@ GUI_ShowOverlayWithFrozen() {
     ; RACE FIX: Final check before DwmFlush
     if (gGUI_State != "ACTIVE") {
         _Paint_Log("ShowOverlay ABORT after Overlay.Show (state=" gGUI_State ")")
+        try gGUI_Overlay.Hide()
+        try gGUI_Base.Hide()
+        gGUI_OverlayVisible := false
+        gGUI_Revealed := false
         return
     }
 

@@ -172,9 +172,14 @@ INT_SetBypassMode(shouldBypass) {
     gINT_BypassMode := shouldBypass
 }
 
-; Mock GUI objects (production code calls gGUI_Base.Show(), etc.)
+; Mock GUI objects (production code calls gGUI_Base.Show(), gGUI_Base.Hide(), etc.)
 class _MockGui {
+    visible := false
     Show(opts := "") {
+        this.visible := true
+    }
+    Hide() {
+        this.visible := false
     }
 }
 global gGUI_Base := _MockGui()
@@ -203,6 +208,7 @@ ResetGUIState() {
     global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gMock_VisibleRows, gGUI_LastMsgTick
+    global gGUI_Base, gGUI_Overlay
 
     gGUI_State := "IDLE"
     gGUI_Items := []
@@ -226,6 +232,8 @@ ResetGUIState() {
     gGUI_FlushStartTick := 0
     gMock_VisibleRows := 5
     gGUI_LastMsgTick := 0
+    gGUI_Base.visible := false
+    gGUI_Overlay.visible := false
 }
 
 CreateTestItems(count, currentWSCount := -1) {
@@ -829,6 +837,25 @@ RunGUITests() {
 
     ; Overlay should NOT have shown - grace timer should have aborted
     GUI_AssertEq(gGUI_OverlayVisible, false, "Grace timer correctly aborted (state was IDLE)")
+
+    ; ----- Test: Grace timer race - ShowOverlay aborts cleanly when state changed to IDLE -----
+    GUI_Log("Test: Grace timer race - ShowOverlay aborts with force-hide")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    ; State is ACTIVE, grace timer scheduled, overlay not yet visible
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    ; State is IDLE, grace timer cancelled
+    ; Simulate late grace timer firing (race condition)
+    GUI_GraceTimerFired()
+    ; OverlayVisible must be false after abort
+    GUI_AssertEq(gGUI_OverlayVisible, false, "Race fix: overlay not visible after late grace fire")
+    GUI_AssertEq(gGUI_State, "IDLE", "Race fix: state still IDLE after late grace fire")
+    ; Mock GUI windows must not be visible (force-hide cleans up in-flight Show)
+    GUI_AssertEq(gGUI_Base.visible, false, "Race fix: gGUI_Base not visible after abort")
+    GUI_AssertEq(gGUI_Overlay.visible, false, "Race fix: gGUI_Overlay not visible after abort")
 
     ; ----- Test: Event buffer overflow triggers recovery -----
     GUI_Log("Test: Event buffer overflow recovery")

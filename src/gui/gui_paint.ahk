@@ -189,6 +189,8 @@ GUI_RevealBoth() {
 
     ; RACE FIX: Abort early if state already changed
     if (gGUI_State != "ACTIVE") {
+        try gGUI_Overlay.Hide()
+        try gGUI_Base.Hide()
         return
     }
 
@@ -200,6 +202,8 @@ GUI_RevealBoth() {
 
     ; RACE FIX: Check if Alt was released during Show (which pumps messages)
     if (gGUI_State != "ACTIVE") {
+        try gGUI_Overlay.Hide()
+        try gGUI_Base.Hide()
         return
     }
 
@@ -209,6 +213,8 @@ GUI_RevealBoth() {
 
     ; RACE FIX: Check again after Overlay.Show
     if (gGUI_State != "ACTIVE") {
+        try gGUI_Overlay.Hide()
+        try gGUI_Base.Hide()
         return
     }
 
