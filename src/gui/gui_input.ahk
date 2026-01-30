@@ -33,6 +33,7 @@ GUI_MoveSelection(delta) {
         vis := count
     }
 
+    Critical "On"
     if (cfg.GUI_ScrollKeepHighlightOnTop) {
         if (delta > 0) {
             gGUI_Sel := Win_Wrap1(gGUI_Sel + 1, count)
@@ -58,6 +59,7 @@ GUI_MoveSelection(delta) {
             }
         }
     }
+    Critical "Off"
 
     GUI_RecalcHover()
     GUI_Repaint()
@@ -89,11 +91,14 @@ GUI_RecalcHover() {
     Win_GetRectPhys(gGUI_OverlayH, &ox, &oy, &ow, &oh)
     if (x < 0 || y < 0 || x >= ow || y >= oh) {
         ; Mouse is outside the window
+        Critical "On"
         if (gGUI_HoverRow != 0 || gGUI_HoverBtn != "") {
             gGUI_HoverRow := 0
             gGUI_HoverBtn := ""
+            Critical "Off"
             return true  ; Changed
         }
+        Critical "Off"
         return false
     }
 
@@ -101,9 +106,11 @@ GUI_RecalcHover() {
     idx := 0
     GUI_DetectActionAtPoint(x, y, &act, &idx)
 
+    Critical "On"
     changed := (idx != gGUI_HoverRow || act != gGUI_HoverBtn)
     gGUI_HoverRow := idx
     gGUI_HoverBtn := act
+    Critical "Off"
     return changed
 }
 
@@ -266,7 +273,9 @@ GUI_PerformAction(action, idx1 := 0) {
 GUI_RemoveItemAt(idx1) {
     global gGUI_Items, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
 
+    Critical "On"
     if (idx1 < 1 || idx1 > gGUI_Items.Length) {
+        Critical "Off"
         return
     }
     gGUI_Items.RemoveAt(idx1)
@@ -279,6 +288,7 @@ GUI_RemoveItemAt(idx1) {
             gGUI_Sel := gGUI_Items.Length
         }
     }
+    Critical "Off"
 
     GUI_RecalcHover()
     GUI_Repaint()
@@ -290,8 +300,11 @@ GUI_OnClick(x, y) {
     global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
     global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State, gGUI_FrozenItems
 
+    Critical "On"
+
     ; Don't process clicks if overlay isn't visible
     if (!gGUI_OverlayVisible) {
+        Critical "Off"
         return
     }
 
@@ -300,12 +313,14 @@ GUI_OnClick(x, y) {
         ; Left arrow click
         if (x >= gGUI_LeftArrowRect.x && x < gGUI_LeftArrowRect.x + gGUI_LeftArrowRect.w
             && y >= gGUI_LeftArrowRect.y && y < gGUI_LeftArrowRect.y + gGUI_LeftArrowRect.h) {
+            Critical "Off"
             GUI_ToggleWorkspaceMode()
             return
         }
         ; Right arrow click
         if (x >= gGUI_RightArrowRect.x && x < gGUI_RightArrowRect.x + gGUI_RightArrowRect.w
             && y >= gGUI_RightArrowRect.y && y < gGUI_RightArrowRect.y + gGUI_RightArrowRect.h) {
+            Critical "Off"
             GUI_ToggleWorkspaceMode()
             return
         }
@@ -315,6 +330,7 @@ GUI_OnClick(x, y) {
     idx := 0
     GUI_DetectActionAtPoint(x, y, &act, &idx)
     if (act != "") {
+        Critical "Off"
         GUI_PerformAction(act, idx)
         return
     }
@@ -322,6 +338,7 @@ GUI_OnClick(x, y) {
     items := _GUI_GetDisplayItems()
     count := items.Length
     if (count = 0) {
+        Critical "Off"
         return
     }
 
@@ -330,11 +347,13 @@ GUI_OnClick(x, y) {
 
     rowsTopDip := cfg.GUI_MarginY + GUI_HeaderBlockDip()
     if (yDip < rowsTopDip) {
+        Critical "Off"
         return
     }
 
     vis := GUI_GetVisibleRows()
     if (vis <= 0) {
+        Critical "Off"
         return
     }
     rowsDrawn := vis
@@ -347,6 +366,7 @@ GUI_OnClick(x, y) {
         idxVisible := 1
     }
     if (idxVisible > rowsDrawn) {
+        Critical "Off"
         return
     }
 
@@ -356,12 +376,13 @@ GUI_OnClick(x, y) {
 
     ; Check if we should activate immediately on click (like Windows native)
     if (cfg.AltTabSwitchOnClick && gGUI_State = "ACTIVE") {
-        ; Get the clicked item and activate it immediately
+        ; Set state BEFORE releasing Critical to prevent interruption clobbering
         item := items[clickedIdx]
-        GUI_HideOverlay()
-        GUI_ActivateItem(item)
         gGUI_State := "IDLE"
         gGUI_FrozenItems := []
+        Critical "Off"
+        GUI_HideOverlay()
+        GUI_ActivateItem(item)
         return
     }
 
@@ -371,6 +392,7 @@ GUI_OnClick(x, y) {
     if (cfg.GUI_ScrollKeepHighlightOnTop) {
         gGUI_ScrollTop := gGUI_Sel - 1
     }
+    Critical "Off"
 
     GUI_Repaint()
 }
@@ -410,12 +432,14 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
     idx := 0
     GUI_DetectActionAtPoint(x, y, &act, &idx)
 
+    Critical "On"
     prevRow := gGUI_HoverRow
     prevBtn := gGUI_HoverBtn
     gGUI_HoverRow := idx
     gGUI_HoverBtn := act
+    Critical "Off"
 
-    if (gGUI_HoverRow != prevRow || gGUI_HoverBtn != prevBtn) {
+    if (idx != prevRow || act != prevBtn) {
         GUI_Repaint()
     }
     return 0
@@ -427,12 +451,13 @@ GUI_OnMouseLeave() {
     ; Mouse has left the window - clear hover state
     gGUI_MouseTracking := false
 
-    if (gGUI_HoverRow != 0 || gGUI_HoverBtn != "") {
-        gGUI_HoverRow := 0
-        gGUI_HoverBtn := ""
-        if (gGUI_OverlayVisible) {
-            GUI_Repaint()
-        }
+    Critical "On"
+    needRepaint := (gGUI_HoverRow != 0 || gGUI_HoverBtn != "")
+    gGUI_HoverRow := 0
+    gGUI_HoverBtn := ""
+    Critical "Off"
+    if (needRepaint && gGUI_OverlayVisible) {
+        GUI_Repaint()
     }
     return 0
 }
@@ -486,8 +511,10 @@ _GUI_HoverPollTick() {
 
     ; If mouse is outside window bounds, clear hover state
     if (mx < left || mx >= right || my < top || my >= bottom) {
+        Critical "On"
         gGUI_HoverRow := 0
         gGUI_HoverBtn := ""
+        Critical "Off"
         GUI_Repaint()
     }
 }
@@ -537,7 +564,9 @@ GUI_ScrollBy(step) {
         return
     }
 
+    Critical "On"
     gGUI_ScrollTop := Win_Wrap0(gGUI_ScrollTop + step, count)
+    Critical "Off"
     GUI_RecalcHover()
     GUI_Repaint()
 }

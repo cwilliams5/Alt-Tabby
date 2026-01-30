@@ -83,6 +83,7 @@ Blacklist_Reload() {
 
     if (!FileExist(gBlacklist_FilePath)) {
         ; Atomic swap to empty lists (including regex arrays)
+        Critical "On"
         gBlacklist_Titles := newTitles
         gBlacklist_Classes := newClasses
         gBlacklist_Pairs := newPairs
@@ -91,6 +92,7 @@ Blacklist_Reload() {
         gBlacklist_PairClassRegex := []
         gBlacklist_PairTitleRegex := []
         gBlacklist_Loaded := false
+        Critical "Off"
         return false
     }
 
@@ -145,9 +147,9 @@ Blacklist_Reload() {
         newPairTitleRegex.Push(_BL_CompileWildcard(pair.Title))
     }
 
-    ; ATOMIC SWAP: Replace all globals at once
-    ; In AHK v2's cooperative model, these assignments complete atomically
-    ; between statement boundaries, so producers never see partial state
+    ; ATOMIC SWAP: Replace all globals at once under Critical to prevent
+    ; producers calling Blacklist_IsMatch() from seeing mismatched arrays
+    Critical "On"
     gBlacklist_Titles := newTitles
     gBlacklist_Classes := newClasses
     gBlacklist_Pairs := newPairs
@@ -156,6 +158,7 @@ Blacklist_Reload() {
     gBlacklist_PairClassRegex := newPairClassRegex
     gBlacklist_PairTitleRegex := newPairTitleRegex
     gBlacklist_Loaded := true
+    Critical "Off"
     return true
 }
 
