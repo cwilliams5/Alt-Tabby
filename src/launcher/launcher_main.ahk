@@ -109,10 +109,14 @@ Launcher_Init() {
             Sleep(TIMING_TASK_INIT_WAIT)  ; Brief delay for task to initialize
             ExitApp()
         } else {
-            ; Task failed to run - fall back to non-admin mode
+            ; Task failed to run - delete broken task to prevent retry loop on next launch.
+            ; Without deletion, _ShouldRedirectToScheduledTask() syncs SetupRunAsAdmin
+            ; back to true because the task still exists, creating an infinite loop.
+            try DeleteAdminTask()
             cfg.SetupRunAsAdmin := false
             try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-            TrayTip("Admin Mode Error", "Scheduled task failed (code " exitCode "). Running without elevation.", "Icon!")
+            _Launcher_Log("TASK_REDIRECT: schtasks /run failed (code " exitCode "), deleted broken task")
+            TrayTip("Admin Mode", "Scheduled task failed (code " exitCode ") and was removed.`nRe-enable from tray menu if needed.", "Icon!")
             ; Continue with normal startup below
         }
     }
@@ -144,6 +148,10 @@ Launcher_Init() {
     SetupLauncherTray()
     OnMessage(0x404, TrayIconClick)  ; WM_TRAYICON
 
+    ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
+    ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)
+    OnExit(_Launcher_OnExit)
+
     ; Launch store and GUI
     LaunchStore()
     Sleep(TIMING_SUBPROCESS_LAUNCH)
@@ -162,9 +170,6 @@ Launcher_Init() {
     ; Auto-update check if enabled (skip if mismatch dialog was shown to avoid race)
     if (cfg.SetupAutoUpdateCheck && !g_MismatchDialogShown)
         SetTimer(() => CheckForUpdates(false), -5000)
-
-    ; Register cleanup on exit
-    OnExit(_Launcher_OnExit)
 
     ; Stay alive to manage subprocesses
     Persistent()

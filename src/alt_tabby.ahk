@@ -196,6 +196,11 @@ if (g_AltTabbyMode = "wizard-continue") {
 
         SetupLauncherTray()
         OnMessage(0x404, TrayIconClick)
+
+        ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
+        ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)
+        OnExit(_Launcher_OnExit)
+
         LaunchStore()
         Sleep(TIMING_SUBPROCESS_LAUNCH)
         LaunchGui()
@@ -212,9 +217,6 @@ if (g_AltTabbyMode = "wizard-continue") {
         ; Auto-update check if enabled
         if (cfg.SetupAutoUpdateCheck)
             SetTimer(() => CheckForUpdates(false), -5000)
-
-        ; Register cleanup on exit (releases mutex, kills subprocesses)
-        OnExit(_Launcher_OnExit)
 
         Persistent()
     } else {
