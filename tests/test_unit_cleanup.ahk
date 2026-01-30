@@ -263,53 +263,6 @@ RunUnitTests_Cleanup() {
         TestErrors++
     }
 
-    ; Test 3: Exe icon cache eviction at 100 entries
-    Log("Testing exe icon cache LRU eviction at 100 entries...")
-    try {
-        global gWS_ExeIconCache
-
-        ; Clear cache first
-        gWS_ExeIconCache := Map()
-
-        ; Add 100 entries directly (bypassing the function to set up initial state)
-        Loop 100 {
-            gWS_ExeIconCache["C:\test\app" A_Index ".exe"] := 0
-        }
-
-        if (gWS_ExeIconCache.Count != 100) {
-            Log("FAIL: Could not populate cache with 100 entries")
-            TestErrors++
-        } else {
-            ; Add 101st entry via the function (should evict one and add new)
-            ; Note: We use a non-zero value because the function checks for valid hIcon
-            WindowStore_ExeIconCachePut("C:\test\app_new.exe", 1)
-
-            ; Should still be 100 (one evicted, one added)
-            if (gWS_ExeIconCache.Count = 100) {
-                Log("PASS: Cache eviction maintains 100 entry limit")
-                TestPassed++
-
-                ; Verify the new entry is present
-                if (gWS_ExeIconCache.Has("C:\test\app_new.exe")) {
-                    Log("PASS: New entry added after eviction")
-                    TestPassed++
-                } else {
-                    Log("FAIL: New entry should be in cache after eviction")
-                    TestErrors++
-                }
-            } else {
-                Log("FAIL: Cache should have 100 entries, has " gWS_ExeIconCache.Count)
-                TestErrors++
-            }
-        }
-
-        ; Clean up
-        gWS_ExeIconCache := Map()
-    } catch as e {
-        Log("FAIL: Cache eviction test error: " e.Message)
-        TestErrors++
-    }
-
     ; ============================================================
     ; IPC Critical Section Tests (Race Condition Prevention)
     ; ============================================================

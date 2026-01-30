@@ -405,39 +405,6 @@ _RepeatStr(str, count) {
     return result
 }
 
-; Extract the body of a named function from source code.
-; Returns the function body text (between outer braces), or "" if not found.
-; Handles nested braces correctly.
-_Test_ExtractFuncBody(code, funcName) {
-    ; Find the function definition
-    pos := InStr(code, funcName "(")
-    if (!pos)
-        return ""
-
-    ; Find opening brace
-    bracePos := InStr(code, "{", , pos)
-    if (!bracePos)
-        return ""
-
-    ; Count braces to find matching close
-    depth := 1
-    i := bracePos + 1
-    codeLen := StrLen(code)
-    while (i <= codeLen && depth > 0) {
-        ch := SubStr(code, i, 1)
-        if (ch = "{")
-            depth++
-        else if (ch = "}")
-            depth--
-        i++
-    }
-
-    if (depth != 0)
-        return ""
-
-    return SubStr(code, bracePos, i - bracePos)
-}
-
 ; Kill all running AltTabby.exe processes
 _Test_KillAllAltTabby() {
     ; Use WMI to find and kill all AltTabby.exe processes
