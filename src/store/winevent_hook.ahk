@@ -39,6 +39,9 @@ global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 ; NAMECHANGE and LOCATIONCHANGE fire frequently but don't affect Z — skip them
 global _WEH_PendingZNeeded := Map()       ; hwnd -> true if Z-affecting event received
 
+; Cosmetic buffer: throttle pushes for cosmetic-only batches (title changes)
+global _WEH_LastCosmeticPushTick := 0     ; Tick of last push for cosmetic-only changes
+
 ; Debug logging for focus events - controlled by DiagWinEventLog config flag
 _WEH_DiagLog(msg) {
     global cfg, LOG_PATH_WINEVENT
@@ -328,8 +331,11 @@ _WEH_ProcessBatch() {
     }
     Critical "Off"
 
-    if (_WEH_PendingHwnds.Count = 0)
+    if (_WEH_PendingHwnds.Count = 0) {
+        ; Focus-only path: push if focus change bumped rev (no structural changes pending)
+        _WEH_PushIfRevChanged()
         return
+    }
 
     now := A_TickCount
 
@@ -401,6 +407,43 @@ _WEH_ProcessBatch() {
     }
 
     _WEH_LastProcessTick := now
+
+    ; Proactive push: broadcast to clients when WEH changes bumped the rev.
+    ; Without this, focus/title/destroy changes only reach the GUI via the Z-pump
+    ; (~220ms) or the next Alt-press prewarm — adding significant latency.
+    ; Structural changes (destroy, Z-affecting events) push immediately.
+    ; Cosmetic-only changes (title/location) are throttled to avoid push floods
+    ; from apps with animated titles (e.g., terminal spinners).
+    hasRecords := (toProcess.Length > 0 && IsSet(records) && records.Length > 0)  ; lint-ignore: isset-with-default
+    if (destroyed.Length > 0 || hasRecords) {
+        isStructural := destroyed.Length > 0 || zSnapshot.Count > 0
+        _WEH_PushIfRevChanged(isStructural)
+    }
+}
+
+; Push to clients if the store rev has changed since the last broadcast.
+; Called after focus, upsert, and destroy processing to ensure proactive delta delivery.
+; Parameters:
+;   isStructural - true for focus/create/destroy/Z-affecting changes (push immediately)
+;                  false for cosmetic-only changes like title updates (throttled)
+;                  Default true so the focus-only path at line 333 always pushes immediately.
+_WEH_PushIfRevChanged(isStructural := true) {
+    global gStore_LastBroadcastRev, _WEH_LastCosmeticPushTick, cfg
+    rev := WindowStore_GetRev()
+    if (rev = gStore_LastBroadcastRev)
+        return
+
+    ; Cosmetic-only changes: throttle to avoid push floods from apps with
+    ; animated titles (terminal spinners, progress bars, etc.)
+    if (!isStructural) {
+        elapsed := A_TickCount - _WEH_LastCosmeticPushTick
+        if (elapsed < cfg.WinEventHookCosmeticBufferMs)
+            return
+        _WEH_LastCosmeticPushTick := A_TickCount
+    }
+
+    gStore_LastBroadcastRev := rev
+    try Store_PushToClients()
 }
 
 ; Probe a single window - returns Map or empty string

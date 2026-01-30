@@ -280,7 +280,11 @@ GUI_ApplyDelta(payload) {
         }
         if (newItems.Length != gGUI_Items.Length) {
             gGUI_Items := newItems
-            gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
+            ; Incremental map update: delete removed hwnds instead of rebuilding O(n)
+            for _, hwnd in payload["removes"] {
+                if (gGUI_ItemsMap.Has(hwnd))
+                    gGUI_ItemsMap.Delete(hwnd)
+            }
             changed := true
             mruChanged := true  ; Item count changed, layout affected
         }
@@ -448,12 +452,15 @@ GUI_GetValidatedSel() {
 ; ========================= SNAPSHOT/PROJECTION REQUESTS =========================
 
 GUI_RequestSnapshot() {
-    global gGUI_StoreClient, IPC_MSG_SNAPSHOT_REQUEST
+    global gGUI_StoreClient, IPC_MSG_SNAPSHOT_REQUEST, IPC_TICK_ACTIVE
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
     req := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
     IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req))
+    ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
+    gGUI_StoreClient.idleStreak := 0
+    _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
 }
 
 ; Request projection with optional workspace filtering (for UseCurrentWSProjection mode)
@@ -469,4 +476,8 @@ GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
     req := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: opts }
     gGUI_AwaitingToggleProjection := true  ; Flag to allow this response during ACTIVE state
     IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req))
+    ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
+    global IPC_TICK_ACTIVE
+    gGUI_StoreClient.idleStreak := 0
+    _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
 }

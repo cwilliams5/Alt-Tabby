@@ -558,6 +558,9 @@ global gConfigRegistry := [
     {s: "WinEventHook", k: "IdleThreshold", g: "WinEventHookIdleThreshold", t: "int", default: 10,
      d: "Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
+    {s: "WinEventHook", k: "CosmeticBufferMs", g: "WinEventHookCosmeticBufferMs", t: "int", default: 1000,
+     d: "Min interval between proactive pushes for cosmetic-only changes (title updates). Structural changes (focus, create, destroy) always push immediately."},
+
     ; ============================================================
     ; Z-Pump Timing
     ; ============================================================

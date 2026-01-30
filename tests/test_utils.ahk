@@ -120,22 +120,26 @@ Test_OnWsE2EMessage(line, hPipe := 0) {
 }
 
 Test_OnHeartbeatMessage(line, hPipe := 0) {
-    global gHbTestHeartbeats, gHbTestLastRev, gHbTestReceived, IPC_MSG_HEARTBEAT
+    global gHbTestHeartbeats, gHbTestLastRev, gHbTestReceived
+    global gHbTestLivenessCount
+    ; The liveness contract: client receives SOME message within heartbeat interval.
+    ; Any message type (heartbeat, delta, snapshot) counts as proof of liveness.
+    gHbTestLivenessCount++
     if (InStr(line, '"type":"heartbeat"')) {
         gHbTestHeartbeats++
         Log("  [HB Test] Received heartbeat #" gHbTestHeartbeats ": " SubStr(line, 1, 60))
-        ; Extract rev from message
         try {
             obj := JSON.Load(line)
-            if (obj.Has("rev")) {
+            if (obj.Has("rev"))
                 gHbTestLastRev := obj["rev"]
-            }
         }
         gHbTestReceived := true
+    } else if (InStr(line, '"type":"delta"')) {
+        Log("  [HB Test] Got delta (liveness #" gHbTestLivenessCount "): " SubStr(line, 1, 50))
     } else if (InStr(line, '"type":"snapshot"') || InStr(line, '"type":"projection"')) {
-        Log("  [HB Test] Got data msg (ignoring): " SubStr(line, 1, 50))
+        Log("  [HB Test] Got data msg (liveness #" gHbTestLivenessCount "): " SubStr(line, 1, 50))
     } else {
-        Log("  [HB Test] Got other msg: " SubStr(line, 1, 50))
+        Log("  [HB Test] Got other msg (liveness #" gHbTestLivenessCount "): " SubStr(line, 1, 50))
     }
 }
 

@@ -114,6 +114,14 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         gGUI_FirstTabTick := 0
         gGUI_TabCount := 0
 
+        ; Drop client to active polling on Alt keypress — ensures we're ready to
+        ; read pending deltas or prewarm response, even if prewarm is skipped
+        global gGUI_StoreClient, IPC_TICK_ACTIVE
+        if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe) {
+            gGUI_StoreClient.idleStreak := 0
+            _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
+        }
+
         ; Pre-warm: request snapshot now so data is ready when Tab pressed
         ; SKIP if we just did a local MRU update - our data is fresher than the store's
         ; (The store hasn't processed our focus change via WinEventHook yet)

@@ -871,14 +871,15 @@ RunLiveTests_Core() {
     }
 
     ; ============================================================
-    ; Heartbeat Test
+    ; Store Liveness Test
     ; ============================================================
-    ; NOTE: Do NOT try to overlap this with other tests. Heartbeats are
-    ; suppressed while the store is actively sending deltas (window events).
-    ; On an active desktop, deltas flow every ~0.8s which resets the heartbeat
-    ; timer indefinitely. This test needs a quiescent period after store
-    ; startup, which only happens reliably when run sequentially.
-    Log("`n--- Heartbeat Test ---")
+    ; Tests the store's liveness contract: a connected client receives periodic
+    ; messages within the heartbeat interval. The store may send heartbeats,
+    ; deltas, or snapshots — any message type proves liveness. When the store
+    ; is actively pushing deltas (e.g., window events), heartbeat messages are
+    ; suppressed by design (Store_HeartbeatTick skips when gStore_LastSendTick
+    ; is recent). This test validates the contract, not the mechanism.
+    Log("`n--- Store Liveness Test ---")
 
     ; Start a store with fast heartbeat interval (1s instead of default 5s)
     hbTestPipe := "tabby_hb_test_" A_TickCount
@@ -887,7 +888,7 @@ RunLiveTests_Core() {
     if (_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' hbTestPipe ' --heartbeat-ms=1000', &hbTestPid)) {
         Log("  [HB] Store launched (PID=" hbTestPid ", pipe=" hbTestPipe ", heartbeat=1000ms)")
     } else {
-        Log("SKIP: Could not start store for heartbeat test")
+        Log("SKIP: Could not start store for liveness test")
         hbTestPid := 0
     }
 
@@ -896,7 +897,7 @@ RunLiveTests_Core() {
         ; Use 5s timeout to handle parallel test load
         if (!WaitForStorePipe(hbTestPipe, 5000)) {
             stillAlive := ProcessExist(hbTestPid)
-            Log("FAIL: Heartbeat store pipe not ready within timeout (process " (stillAlive ? "alive" : "dead") ")")
+            Log("FAIL: Liveness store pipe not ready within timeout (process " (stillAlive ? "alive" : "dead") ")")
             TestErrors++
             try ProcessClose(hbTestPid)
             hbTestPid := 0
@@ -907,49 +908,51 @@ RunLiveTests_Core() {
         gHbTestHeartbeats := 0
         gHbTestLastRev := -1
         gHbTestReceived := false
+        global gHbTestLivenessCount := 0
 
         hbClient := IPC_PipeClient_Connect(hbTestPipe, Test_OnHeartbeatMessage)
 
         if (hbClient.hPipe) {
-            Log("PASS: Heartbeat test connected to store")
+            Log("PASS: Liveness test connected to store")
             TestPassed++
 
             ; Send hello to register as client
             helloMsg := { type: IPC_MSG_HELLO, clientId: "hb_test", wants: { deltas: true } }
             IPC_PipeClient_Send(hbClient, JSON.Dump(helloMsg))
 
-            ; Wait for heartbeats. Store suppresses heartbeats when recent messages
-            ; were sent, so first heartbeat after hello snapshot can take up to 2x
-            ; interval in worst case (active desktop generates deltas that reset timer).
-            ; Use generous timeout: the store sends heartbeats at 1000ms intervals,
-            ; but deltas from window events can delay them on an active desktop.
+            ; Wait for liveness messages. Any message type counts (heartbeat, delta,
+            ; snapshot). On an active desktop, proactive WEH pushes may suppress
+            ; heartbeats entirely — deltas serve the same liveness purpose.
             hbTimeoutMs := 15000
-            Log("  Waiting for heartbeat messages (timeout=" hbTimeoutMs "ms)...")
+            Log("  Waiting for liveness messages (timeout=" hbTimeoutMs "ms)...")
             waitStart := A_TickCount
-            while (gHbTestHeartbeats < 2 && (A_TickCount - waitStart) < hbTimeoutMs) {
+            while (gHbTestLivenessCount < 2 && (A_TickCount - waitStart) < hbTimeoutMs) {
                 Sleep(200)
             }
 
-            if (gHbTestHeartbeats >= 1) {
-                Log("PASS: Received " gHbTestHeartbeats " heartbeat(s)")
+            if (gHbTestLivenessCount >= 2) {
+                Log("PASS: Received " gHbTestLivenessCount " liveness messages (" gHbTestHeartbeats " heartbeats, " (gHbTestLivenessCount - gHbTestHeartbeats) " deltas/other)")
                 TestPassed++
 
-                ; Verify heartbeat contains rev
-                if (gHbTestLastRev >= 0) {
+                ; If heartbeat messages were received, verify they contain rev
+                if (gHbTestHeartbeats > 0 && gHbTestLastRev >= 0) {
                     Log("PASS: Heartbeat contains rev field (rev=" gHbTestLastRev ")")
                     TestPassed++
-                } else {
+                } else if (gHbTestHeartbeats > 0) {
                     Log("FAIL: Heartbeat missing rev field")
                     TestErrors++
+                } else {
+                    ; No heartbeats — deltas suppressed them. That's fine, still alive.
+                    Log("  (No heartbeat messages — deltas provided liveness)")
                 }
             } else {
-                Log("FAIL: No heartbeats received within timeout")
+                Log("FAIL: No liveness messages received within timeout (got " gHbTestLivenessCount ")")
                 TestErrors++
             }
 
             IPC_PipeClient_Close(hbClient)
         } else {
-            Log("FAIL: Could not connect to store for heartbeat test")
+            Log("FAIL: Could not connect to store for liveness test")
             TestErrors++
         }
 

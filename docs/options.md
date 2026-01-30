@@ -341,6 +341,7 @@ Event-driven window change detection. Events are queued then processed in batche
 | `DebounceMs` | int | `50` | Debounce rapid events (e.g., window moving fires many events) |
 | `BatchMs` | int | `100` | Batch processing interval - how often queued events are processed |
 | `IdleThreshold` | int | `10` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
+| `CosmeticBufferMs` | int | `1000` | Min interval between proactive pushes for cosmetic-only changes (title updates). Structural changes (focus, create, destroy) always push immediately. |
 
 ## ZPump
 
@@ -473,4 +474,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-29 with 184 total settings.*
+*Generated on 2026-01-29 with 185 total settings.*

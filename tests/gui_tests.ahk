@@ -84,7 +84,7 @@ global cfg := {
 }
 
 ; IPC client mock
-global gGUI_StoreClient := { hPipe: 1 }
+global gGUI_StoreClient := { hPipe: 1, idleStreak: 0, tickMs: 100, timerFn: "" }
 global gMockIPCMessages := []
 
 ; Test tracking
@@ -148,6 +148,11 @@ IPC_PipeClient_Send(client, msgText) {
     global gMockIPCMessages
     gMockIPCMessages.Push(msgText)
     return true
+}
+
+; IPC polling mock (used by active-polling optimizations)
+global IPC_TICK_ACTIVE := 15
+_IPC_SetClientTick(client, ms) {
 }
 
 ; Interceptor mocks (gui_interceptor.ahk functions - we don't include that file because it has hotkeys)
