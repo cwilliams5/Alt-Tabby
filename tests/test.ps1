@@ -159,6 +159,69 @@ $script = "$PSScriptRoot\run_tests.ahk"
 $logFile = "$env:TEMP\alt_tabby_tests.log"
 $srcRoot = (Resolve-Path "$PSScriptRoot\..\src").Path
 
+# --- Compact Test Summary ---
+# Parses an AHK test log file and outputs only failures + a one-line summary.
+# Full verbose logs remain in the temp files for manual inspection.
+function Show-TestSummary {
+    param(
+        [string]$LogPath,
+        [string]$Label
+    )
+
+    if (-not (Test-Path $LogPath)) {
+        Write-Host "  ${Label}: Log not found - tests may have crashed" -ForegroundColor Red
+        return
+    }
+
+    $lines = Get-Content $LogPath -ErrorAction SilentlyContinue
+    if (-not $lines) {
+        Write-Host "  ${Label}: Log is empty - tests may have crashed" -ForegroundColor Red
+        return
+    }
+
+    $failures = @()
+    $passed = -1
+    $failed = -1
+
+    foreach ($line in $lines) {
+        if ($line -match '^FAIL:\s') {
+            $failures += $line
+        }
+        elseif ($line -match '^Passed:\s*(\d+)') {
+            $passed = [int]$Matches[1]
+        }
+        elseif ($line -match '^Failed:\s*(\d+)') {
+            $failed = [int]$Matches[1]
+        }
+    }
+
+    # Show failures inline
+    if ($failures.Count -gt 0) {
+        foreach ($f in $failures) {
+            Write-Host "  $f" -ForegroundColor Red
+        }
+    }
+
+    # Show summary line
+    if ($passed -ge 0 -and $failed -ge 0) {
+        $total = $passed + $failed
+        if ($failed -eq 0) {
+            Write-Host "  ${Label}: ${passed}/${total} passed [PASS]" -ForegroundColor Green
+        } else {
+            Write-Host "  ${Label}: ${passed}/${total} passed, ${failed} failed [FAIL]" -ForegroundColor Red
+        }
+    } else {
+        # No summary found - test likely crashed before completing
+        if ($failures.Count -gt 0) {
+            Write-Host "  ${Label}: Crashed after $($failures.Count) failure(s)" -ForegroundColor Red
+        } else {
+            Write-Host "  ${Label}: No summary found (test may have crashed)" -ForegroundColor Red
+        }
+    }
+
+    Write-Host "  Log: $LogPath" -ForegroundColor DarkGray
+}
+
 # Remove old logs
 Remove-Item -Force -ErrorAction SilentlyContinue $logFile
 
@@ -205,28 +268,31 @@ foreach ($file in $filesToCheck) {
 }
 
 # Wait for all syntax checks to complete and collect results
-$syntaxErrors = 0
+$syntaxPassed = 0
+$syntaxFailed = 0
 foreach ($sp in $syntaxProcs) {
     if ($sp.Handle -eq [IntPtr]::Zero) {
-        Write-Host "FAIL: $($sp.FileName) (failed to launch)" -ForegroundColor Red
-        $syntaxErrors++
+        Write-Host "  FAIL: $($sp.FileName) (failed to launch)" -ForegroundColor Red
+        $syntaxFailed++
         continue
     }
     $exitCode = [SilentProcess]::WaitAndGetExitCode($sp.Handle)
     if ($exitCode -ne 0) {
-        Write-Host "FAIL: $($sp.FileName)" -ForegroundColor Red
+        Write-Host "  FAIL: $($sp.FileName)" -ForegroundColor Red
         $errContent = if (Test-Path $sp.ErrFile) { Get-Content $sp.ErrFile -Raw -ErrorAction SilentlyContinue } else { "" }
-        if ($errContent) { Write-Host $errContent -ForegroundColor Red }
-        $syntaxErrors++
+        if ($errContent) { Write-Host "    $errContent" -ForegroundColor Red }
+        $syntaxFailed++
     } else {
-        Write-Host "PASS: $($sp.FileName)" -ForegroundColor Green
+        $syntaxPassed++
     }
 }
 
-if ($syntaxErrors -gt 0) {
-    Write-Host "`n=== SYNTAX ERRORS FOUND: $syntaxErrors ===" -ForegroundColor Red
-    Write-Host "Fix syntax errors before running tests." -ForegroundColor Red
+$syntaxTotal = $syntaxPassed + $syntaxFailed
+if ($syntaxFailed -gt 0) {
+    Write-Host "  Syntax: $syntaxPassed/$syntaxTotal passed, $syntaxFailed failed [FAIL]" -ForegroundColor Red
     exit 1
+} else {
+    Write-Host "  Syntax: $syntaxTotal/$syntaxTotal passed [PASS]" -ForegroundColor Green
 }
 
 # --- Static Analysis Pre-Gate (Parallel) ---
@@ -413,11 +479,7 @@ if ($live) {
         Write-Host $stderr
     }
 
-    if (Test-Path $logFile) {
-        Get-Content $logFile
-    } else {
-        Write-Host "Unit test log not found - tests may have failed to run" -ForegroundColor Red
-    }
+    Show-TestSummary -LogPath $logFile -Label "Unit"
 
     if ($unitExit -ne 0) {
         $mainExitCode = $unitExit
@@ -433,11 +495,7 @@ if ($live) {
         Write-Host "=== CORE TEST ERRORS ===" -ForegroundColor Red
         Write-Host $coreStderr
     }
-    if (Test-Path $coreLogFile) {
-        Get-Content $coreLogFile
-    } else {
-        Write-Host "Core test log not found - tests may have failed to run" -ForegroundColor Red
-    }
+    Show-TestSummary -LogPath $coreLogFile -Label "Core"
 
     if ($coreExitCode -ne 0) { $mainExitCode = $coreExitCode }
 
@@ -449,11 +507,7 @@ if ($live) {
         Write-Host "=== EXECUTION TEST ERRORS ===" -ForegroundColor Red
         Write-Host $executionStderr
     }
-    if (Test-Path $executionLogFile) {
-        Get-Content $executionLogFile
-    } else {
-        Write-Host "Execution test log not found - tests may have failed to run" -ForegroundColor Red
-    }
+    Show-TestSummary -LogPath $executionLogFile -Label "Execution"
 
     if ($execExitCode -ne 0) { $mainExitCode = $execExitCode }
 
@@ -465,11 +519,7 @@ if ($live) {
         Write-Host "=== FEATURES TEST ERRORS ===" -ForegroundColor Red
         Write-Host $featuresStderr
     }
-    if (Test-Path $featuresLogFile) {
-        Get-Content $featuresLogFile
-    } else {
-        Write-Host "Features test log not found - tests may have failed to run" -ForegroundColor Red
-    }
+    Show-TestSummary -LogPath $featuresLogFile -Label "Features"
 
     if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
 
@@ -490,32 +540,21 @@ if ($live) {
         Write-Host $stderr
     }
 
-    if (Test-Path $logFile) {
-        Get-Content $logFile
-    } else {
-        Write-Host "Test log not found - tests may have failed to run" -ForegroundColor Red
-    }
+    Show-TestSummary -LogPath $logFile -Label "Unit"
 }
 
 # --- GUI Tests Phase (Collect Results) ---
 Write-Host "`n--- GUI Tests Phase ---" -ForegroundColor Yellow
 
 if ($guiHandle -ne [IntPtr]::Zero) {
-    Write-Host "Waiting for GUI tests to complete..."
     $guiExitCode = [SilentProcess]::WaitAndGetExitCode($guiHandle)
-
-    # Show results
-    if (Test-Path $guiLogFile) {
-        Get-Content $guiLogFile
-    } else {
-        Write-Host "GUI test log not found - tests may have failed to run" -ForegroundColor Red
-    }
+    Show-TestSummary -LogPath $guiLogFile -Label "GUI"
 
     if ($guiExitCode -ne 0) {
         $mainExitCode = $guiExitCode
     }
 } else {
-    Write-Host "SKIP: gui_tests.ahk not found" -ForegroundColor Yellow
+    Write-Host "  SKIP: gui_tests.ahk not found" -ForegroundColor Yellow
 }
 
 exit $mainExitCode

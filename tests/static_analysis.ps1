@@ -86,22 +86,17 @@ $sw.Stop()
 
 # --- Display results sequentially (no interleaving) ---
 foreach ($r in $results) {
-    $output = if (Test-Path $r.OutFile) { Get-Content $r.OutFile -Raw -ErrorAction SilentlyContinue } else { "" }
-
     if ($r.ExitCode -eq 0) {
-        # Passed — show compact output
-        if ($output) {
-            Write-Host $output.TrimEnd()
-        }
+        # Passed — one-liner only (verbose output stays in temp log files)
         Write-Host "  PASS: $($r.Label)" -ForegroundColor Green
     } else {
         # Failed — show full output so the agent/developer can fix issues
+        $output = if (Test-Path $r.OutFile) { Get-Content $r.OutFile -Raw -ErrorAction SilentlyContinue } else { "" }
         if ($output) {
             Write-Host $output.TrimEnd()
         }
         Write-Host "  FAIL: $($r.Label)" -ForegroundColor Red
     }
-    Write-Host ""
 }
 
 Write-Host "  Static analysis completed in $($sw.ElapsedMilliseconds)ms ($($checks.Count) check(s), $failures failure(s))" -ForegroundColor Cyan
