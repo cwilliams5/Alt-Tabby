@@ -181,7 +181,7 @@ WindowStore_UpsertWindow(records, source := "") {
         _WS_EnqueueIfNeeded(row)
     }
     if (added || updated) {
-        _WS_BumpRev("UpsertWindow")
+        _WS_BumpRev("UpsertWindow:" . source)
     }
     return { added: added, updated: updated, rev: gWS_Rev }
 }
@@ -286,8 +286,6 @@ WindowStore_ValidateExistence() {
         ; The key insight: komorebi CLOAKS windows to hide them. If a window is
         ; neither visible NOR cloaked, it's a ghost (like Outlook reused HWNDs).
         ; Windows native Alt-Tab uses this same logic.
-        rec := gWS_Store[hwnd]
-
         ; Quick visibility check - if visible, definitely keep
         isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
         if (isVisible)

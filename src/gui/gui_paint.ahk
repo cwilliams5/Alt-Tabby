@@ -334,7 +334,6 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         ; ===== TIMING: Row loop start =====
         tPO_RowsStart := A_TickCount
         tPO_IconsTotal := 0
-        tPO_TextTotal := 0
         iconCacheHits := 0
         iconCacheMisses := 0
 

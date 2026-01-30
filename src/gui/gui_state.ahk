@@ -853,7 +853,7 @@ _GUI_RobustActivate(hwnd) {
             inputSize := 40  ; sizeof(INPUT) on 64-bit
             input := Buffer(inputSize, 0)
             NumPut("uint", 0, input, 0)  ; type = INPUT_MOUSE
-            siResult := DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
+            DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
 
             ; Bring window to top with SWP_SHOWWINDOW
             ; Flags: SWP_NOMOVE (0x0002) | SWP_NOSIZE (0x0001) | SWP_SHOWWINDOW (0x0040) | SWP_ASYNCWINDOWPOS (0x4000)

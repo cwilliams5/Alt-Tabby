@@ -496,27 +496,6 @@ _Viewer_RebuildFromCache() {
     gViewer_LV.Opt("+Redraw")
 }
 
-_Viewer_RecChanged(old, new) {
-    ; Fields to compare with their default values
-    static fields := [
-        {key: "z", def: 0},
-        {key: "title", def: ""},
-        {key: "isCloaked", def: 0},
-        {key: "isMinimized", def: 0},
-        {key: "isOnCurrentWorkspace", def: 0},
-        {key: "isFocused", def: 0},
-        {key: "processName", def: ""},
-        {key: "workspaceName", def: ""},
-        {key: "lastActivatedTick", def: 0}
-    ]
-
-    for _, f in fields {
-        if (_Viewer_Get(old, f.key, f.def) != _Viewer_Get(new, f.key, f.def))
-            return true
-    }
-    return false
-}
-
 _Viewer_ApplyDelta(payload) {
     global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_Sort, gViewer_ShuttingDown
     if (gViewer_ShuttingDown)

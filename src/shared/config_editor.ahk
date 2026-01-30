@@ -39,7 +39,6 @@ global CE_SB_VERT := 1
 global CE_SIF_RANGE := 0x1
 global CE_SIF_PAGE := 0x2
 global CE_SIF_POS := 0x4
-global CE_SIF_ALL := 0x17
 global CE_WM_VSCROLL := 0x115
 global CE_WM_MOUSEWHEEL := 0x20A
 
