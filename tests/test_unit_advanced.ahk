@@ -84,11 +84,12 @@ RunUnitTests_Advanced() {
             setupCode := FileRead(setupUtilsPath)
 
             ; Check for all expected stale files in the array
+            ; Note: alttabby_admin_toggle.lock is behind TEMP_ADMIN_TOGGLE_LOCK constant
             expectedFiles := [
                 "alttabby_wizard.json",
                 "alttabby_update.txt",
                 "alttabby_install_update.txt",
-                "alttabby_admin_toggle.lock"
+                "TEMP_ADMIN_TOGGLE_LOCK"
             ]
 
             allFound := true

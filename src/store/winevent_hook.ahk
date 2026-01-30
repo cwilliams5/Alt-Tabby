@@ -89,8 +89,9 @@ WinEventHook_Start() {
 
     ; Hook range covers all events we care about
     ; EVENT_MIN = 0x0001, but we only need from SYSTEM_FOREGROUND to OBJECT_NAMECHANGE
-    minEvent := 0x0003  ; EVENT_SYSTEM_FOREGROUND
-    maxEvent := 0x800C  ; EVENT_OBJECT_NAMECHANGE
+    global WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
+    minEvent := WEH_EVENT_SYSTEM_FOREGROUND
+    maxEvent := WEH_EVENT_OBJECT_NAMECHANGE
 
     ; Create the callback - store globally to prevent GC (CRITICAL!)
     ; If stored in a local variable, the callback can be garbage collected while

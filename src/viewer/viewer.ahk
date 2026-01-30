@@ -140,49 +140,9 @@ Viewer_OnMessage(line, hPipe := 0) {
     }
 
     if (type = IPC_MSG_SNAPSHOT) {
-        ; Snapshot = push from store (now tailored to our projection opts)
-        ; RACE FIX: Protect cache modifications from timer interruption
-        Critical "On"
-        gViewer_PushSnapCount++
-        gViewer_LastUpdateType := "snap"
-        if (obj.Has("payload")) {
-            payload := obj["payload"]
-            _Viewer_UpdateCurrentWS(payload)
-            if (payload.Has("items")) {
-                items := payload["items"]
-                _Viewer_Log("push items=" items.Length)
-                Critical "Off"
-                if (!gViewer_Headless) {
-                    _Viewer_UpdateList(items)
-                }
-            } else {
-                Critical "Off"
-            }
-        } else {
-            Critical "Off"
-        }
+        _Viewer_HandleItemsMessage(obj, &gViewer_PushSnapCount, "snap")
     } else if (type = IPC_MSG_PROJECTION) {
-        ; Projection = response to our explicit request
-        ; RACE FIX: Protect cache modifications from timer interruption
-        Critical "On"
-        gViewer_PollCount++
-        gViewer_LastUpdateType := "poll"
-        if (obj.Has("payload")) {
-            payload := obj["payload"]
-            _Viewer_UpdateCurrentWS(payload)
-            if (payload.Has("items")) {
-                items := payload["items"]
-                _Viewer_Log("poll items=" items.Length)
-                Critical "Off"
-                if (!gViewer_Headless) {
-                    _Viewer_UpdateList(items)
-                }
-            } else {
-                Critical "Off"
-            }
-        } else {
-            Critical "Off"
-        }
+        _Viewer_HandleItemsMessage(obj, &gViewer_PollCount, "poll")
     } else if (type = IPC_MSG_DELTA) {
         ; Delta = incremental update (now tailored to our projection opts)
         ; RACE FIX: Protect cache modifications from timer interruption
@@ -218,6 +178,29 @@ Viewer_OnMessage(line, hPipe := 0) {
             _Viewer_UpdateProducerState(obj["producers"])
         }
     }
+}
+
+; Shared handler for SNAPSHOT and PROJECTION messages
+; Both have identical structure: bump counter, update WS, extract items, update list
+_Viewer_HandleItemsMessage(obj, &counter, label) {
+    global gViewer_LastUpdateType, gViewer_Headless
+    ; RACE FIX: Protect cache modifications from timer interruption
+    Critical "On"
+    counter++
+    gViewer_LastUpdateType := label
+    if (obj.Has("payload")) {
+        payload := obj["payload"]
+        _Viewer_UpdateCurrentWS(payload)
+        if (payload.Has("items")) {
+            items := payload["items"]
+            _Viewer_Log(label " items=" items.Length)
+            Critical "Off"
+            if (!gViewer_Headless)
+                _Viewer_UpdateList(items)
+            return
+        }
+    }
+    Critical "Off"
 }
 
 _Viewer_SendHello() {

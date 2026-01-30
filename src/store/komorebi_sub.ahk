@@ -282,6 +282,15 @@ KomorebiSub_PruneStaleCache() {
     Critical "Off"
 }
 
+; Update workspace cache entry: refresh tick if wsName unchanged, else create new entry
+_KSub_UpdateCacheEntry(hwnd, wsName, tick) {
+    global _KSub_WorkspaceCache
+    if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
+        _KSub_WorkspaceCache[hwnd].tick := tick
+    else
+        _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: tick }
+}
+
 ; Poll timer - check connection and read data (non-blocking like POC)
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
@@ -381,7 +390,6 @@ KomorebiSub_Poll() {
         json := _KSub_ExtractOneJson(&_KSub_ReadBuffer)
         if (json = "")
             break
-        _KSub_DiagLog("Poll: Got notification, len=" StrLen(json))
         _KSub_DiagLog("Poll: Got JSON object, len=" StrLen(json))
         _KSub_OnNotification(json)
     }
@@ -789,11 +797,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                             continue
 
                         wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
-                        ; Update cache: refresh tick in place if wsName unchanged, else new entry
-                        if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
-                            _KSub_WorkspaceCache[hwnd].tick := now
-                        else
-                            _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
+                        _KSub_UpdateCacheEntry(hwnd, wsName, now)
                     }
                 }
 
@@ -804,10 +808,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                         hwnd := _KSafe_Int(winObj, "hwnd")
                         if (hwnd && !wsMap.Has(hwnd)) {
                             wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
-                            if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
-                                _KSub_WorkspaceCache[hwnd].tick := now
-                            else
-                                _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
+                            _KSub_UpdateCacheEntry(hwnd, wsName, now)
                         }
                     }
                 }
@@ -825,10 +826,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                             hwnd := _KSafe_Int(win, "hwnd")
                             if (hwnd && !wsMap.Has(hwnd)) {
                                 wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
-                                if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
-                                    _KSub_WorkspaceCache[hwnd].tick := now
-                                else
-                                    _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
+                                _KSub_UpdateCacheEntry(hwnd, wsName, now)
                             }
                         }
                     }
@@ -839,10 +837,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                             hwnd := _KSafe_Int(winObj, "hwnd")
                             if (hwnd && !wsMap.Has(hwnd)) {
                                 wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
-                                if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
-                                    _KSub_WorkspaceCache[hwnd].tick := now
-                                else
-                                    _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: now }
+                                _KSub_UpdateCacheEntry(hwnd, wsName, now)
                             }
                         }
                     }

@@ -540,6 +540,13 @@ global TOOLTIP_DURATION_LONG := 3000      ; Extended tooltip for important messa
 global MAX_RECONNECT_ATTEMPTS := 3        ; Pipe reconnection attempts before restart
 global MAX_RESTART_ATTEMPTS := 2          ; Store restart attempts before giving up
 
+; Shared path/delimiter constants
+global TEMP_ADMIN_TOGGLE_LOCK := A_Temp "\alttabby_admin_toggle.lock"
+global UPDATE_INFO_DELIMITER := "<|>"
+
+; Application name constant
+global APP_NAME := "Alt-Tabby"
+
 ; ============================================================
 ; TOOLTIP HELPER
 ; ============================================================

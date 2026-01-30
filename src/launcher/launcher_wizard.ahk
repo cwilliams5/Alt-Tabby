@@ -184,7 +184,7 @@ WizardContinue() {
 ; Internal: Apply wizard choices (called from both wizard and continuation)
 ; Returns the installed exe path if we installed to a different location, empty string otherwise
 _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, APP_NAME
 
     ; Determine exe path
     exePath := A_ScriptFullPath
@@ -233,7 +233,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                     "admin mode will stop working.`n`n"
                     "Consider using 'Install to Program Files' for a permanent setup.`n`n"
                     "Create admin task anyway?",
-                    "Alt-Tabby - Temporary Location",
+                    APP_NAME " - Temporary Location",
                     "YesNo Icon?"
                 )
                 if (warnResult = "No")
@@ -246,13 +246,13 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
                 } else {
                     ; Task creation failed - notify user
-                    MsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", "Alt-Tabby", "Icon!")
+                    MsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", APP_NAME, "Icon!")
                     ; Don't set cfg.SetupRunAsAdmin since task creation failed
                 }
             }
         } else {
             ; Install was requested but failed - don't create task pointing to temp location
-            MsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", "Alt-Tabby", "Icon!")
+            MsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", APP_NAME, "Icon!")
         }
     }
 

@@ -18,14 +18,14 @@ ToggleStartupShortcut() {
 }
 
 _ToggleShortcut(lnkPath, locationName) {
-    global cfg, TOOLTIP_DURATION_SHORT
+    global cfg, TOOLTIP_DURATION_SHORT, APP_NAME
     if (_Shortcut_ExistsAndPointsToUs(lnkPath)) {
         ; Our shortcut exists - remove it
         try {
             FileDelete(lnkPath)
             ToolTip("Removed from " locationName)
         } catch as e {
-            MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
+            MsgBox("Failed to remove shortcut:`n" e.Message, APP_NAME, "Icon!")
         }
     } else {
         ; No shortcut or points elsewhere - create (handles conflict dialog internally)
@@ -39,7 +39,7 @@ _ToggleShortcut(lnkPath, locationName) {
 ; Create a shortcut that always points to the exe
 ; The exe will self-redirect to the scheduled task if admin mode is enabled
 _CreateShortcutForCurrentMode(lnkPath) {
-    global cfg
+    global cfg, APP_NAME
 
     exePath := _Shortcut_GetEffectiveExePath()
     iconPath := _Shortcut_GetIconPath()
@@ -59,7 +59,7 @@ _CreateShortcutForCurrentMode(lnkPath) {
                 result := MsgBox(
                     "A shortcut 'Alt-Tabby' already exists pointing to:`n" existingTarget "`n`n"
                     "Replace it with a shortcut to this installation?`n" ourTarget,
-                    "Alt-Tabby - Shortcut Conflict",
+                    APP_NAME " - Shortcut Conflict",
                     "YesNo Icon?"
                 )
                 if (result = "No")
@@ -99,7 +99,7 @@ _CreateShortcutForCurrentMode(lnkPath) {
         shortcut.Save()
         return true
     } catch as e {
-        MsgBox("Failed to create shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
+        MsgBox("Failed to create shortcut:`n" e.Message, APP_NAME, "Icon!")
         return false
     }
 }

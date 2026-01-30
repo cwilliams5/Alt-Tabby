@@ -40,7 +40,7 @@ _Launcher_LogStartup() {
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
     global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
-    global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick
+    global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick, APP_NAME
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
     _Launcher_LogStartup()
@@ -55,7 +55,7 @@ Launcher_Init() {
         result := MsgBox(
             "Alt-Tabby is already running.`n`n"
             "Would you like to restart it?",
-            "Alt-Tabby",
+            APP_NAME,
             "YesNo Icon?"
         )
         if (result = "Yes") {
@@ -70,7 +70,7 @@ Launcher_Init() {
                 }
             }
             if (!acquired) {
-                MsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", "Alt-Tabby", "Icon!")
+                MsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", APP_NAME, "Icon!")
                 ExitApp()
             }
             ; Continue with normal startup below
@@ -185,7 +185,7 @@ _Launcher_OnExit(exitReason, exitCode) {
 ;   - Auto-repairing if InstallationId matches (same install, just renamed/moved)
 ;   - Prompting user if ID doesn't match or is missing (might be different install)
 _ShouldRedirectToScheduledTask() {
-    global cfg, gConfigIniPath, g_TestingMode
+    global cfg, gConfigIniPath, g_TestingMode, APP_NAME
 
     ; Skip in testing mode - never show dialogs during automated tests
     if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
@@ -245,7 +245,7 @@ _ShouldRedirectToScheduledTask() {
             "Task: " taskPath "`n"
             "Current: " A_ScriptFullPath "`n`n"
             "Would you like to repair it? (requires elevation)",
-            "Alt-Tabby - Admin Mode Repair",
+            APP_NAME " - Admin Mode Repair",
             "YesNo Icon?"
         )
 
@@ -423,14 +423,29 @@ _Launcher_RepairStaleExePath() {
     RecreateShortcuts()
 }
 
+; Kill all processes matching exeName except ourselves, with retry loop
+; Used by _Launcher_KillExistingInstances and _Launcher_OfferToStopInstalledInstance
+_Launcher_KillProcessByName(exeName, maxAttempts := 10, sleepMs := 0) {
+    global TIMING_PROCESS_TERMINATE_WAIT
+    if (sleepMs = 0)
+        sleepMs := TIMING_PROCESS_TERMINATE_WAIT
+    myPID := ProcessExist()
+    loop maxAttempts {
+        pid := ProcessExist(exeName)
+        if (!pid || pid = myPID)
+            break
+        try ProcessClose(pid)
+        Sleep(sleepMs)
+    }
+}
+
 ; Kill all existing instances of Alt-Tabby exes except ourselves
 ; Uses ProcessExist/ProcessClose loop instead of WMI (WMI can fail with 0x800401F3)
 ; Handles renamed exes by killing processes matching:
 ;   1. Current exe name (from A_ScriptFullPath)
 ;   2. Exe name from cfg.SetupExePath (installed location, may differ)
 _Launcher_KillExistingInstances() {
-    global cfg, TIMING_PROCESS_TERMINATE_WAIT
-    myPID := ProcessExist()  ; Get our own PID
+    global cfg
 
     ; Build list of exe names to kill (avoid duplicates, case-insensitive)
     exeNames := []
@@ -459,13 +474,7 @@ _Launcher_KillExistingInstances() {
 
     ; Kill all matching processes (except ourselves)
     for exeName in exeNames {
-        loop 10 {  ; Max 10 iterations per exe name to avoid infinite loop
-            pid := ProcessExist(exeName)
-            if (!pid || pid = myPID)
-                break
-            try ProcessClose(pid)
-            Sleep(TIMING_PROCESS_TERMINATE_WAIT)  ; Brief pause for process to terminate
-        }
+        _Launcher_KillProcessByName(exeName)
     }
 }
 

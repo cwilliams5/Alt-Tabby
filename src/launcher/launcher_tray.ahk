@@ -30,7 +30,8 @@ SetupLauncherTray() {
         if FileExist(iconPath)
             TraySetIcon(iconPath)
     }
-    A_IconTip := "Alt-Tabby"
+    global APP_NAME
+    A_IconTip := APP_NAME
     UpdateTrayMenu()
 }
 
@@ -189,12 +190,11 @@ LaunchBlacklistEditor() {
 ; Race condition guard for admin toggle
 ; Uses file-based lock instead of timer to handle long UAC dialogs
 global g_AdminToggleInProgress := false
-global g_AdminToggleLockFile := A_Temp "\alttabby_admin_toggle.lock"
 global g_AdminToggleStartTick := 0  ; Tick-based timing instead of static counter
 
 ToggleAdminMode() {
-    global cfg, gConfigIniPath, g_AdminToggleInProgress, g_AdminToggleLockFile
-    global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, g_AdminToggleStartTick
+    global cfg, gConfigIniPath, g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK
+    global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, g_AdminToggleStartTick, APP_NAME
 
     ; Prevent re-entry during async elevation
     if (g_AdminToggleInProgress) {
@@ -215,7 +215,7 @@ ToggleAdminMode() {
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
 
         ; Offer restart to apply change immediately
-        result := MsgBox("Admin mode disabled.`n`nRestart Alt-Tabby to run without elevation?", "Alt-Tabby", "YesNo Icon?")
+        result := MsgBox("Admin mode disabled.`n`nRestart Alt-Tabby to run without elevation?", APP_NAME, "YesNo Icon?")
         if (result = "Yes") {
             ; Launch non-elevated via Explorer shell (de-escalation)
             launched := false
@@ -244,15 +244,15 @@ ToggleAdminMode() {
     } else {
         ; Enable admin mode - requires elevation to create scheduled task
         if (!A_IsAdmin) {
-            result := MsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", "Alt-Tabby", "OKCancel Icon!")
+            result := MsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", APP_NAME, "OKCancel Icon!")
             if (result = "Cancel")
                 return
 
             ; Self-elevate with --enable-admin-task flag
             try {
                 ; Create lock file before elevation (will be deleted by elevated instance)
-                try FileDelete(g_AdminToggleLockFile)
-                FileAppend(A_TickCount, g_AdminToggleLockFile)
+                try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
+                FileAppend(A_TickCount, TEMP_ADMIN_TOGGLE_LOCK)
                 g_AdminToggleInProgress := true
                 g_AdminToggleStartTick := A_TickCount  ; Track start time for timeout
 
@@ -266,8 +266,8 @@ ToggleAdminMode() {
                 HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             } catch {
                 g_AdminToggleInProgress := false
-                try FileDelete(g_AdminToggleLockFile)
-                MsgBox("UAC was cancelled. Admin mode was not enabled.", "Alt-Tabby", "Icon!")
+                try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
+                MsgBox("UAC was cancelled. Admin mode was not enabled.", APP_NAME, "Icon!")
             }
             return
         }
@@ -284,7 +284,7 @@ ToggleAdminMode() {
                 "This location may be temporary. If this file is moved or deleted, "
                 "admin mode will stop working.`n`n"
                 "Create admin task anyway?",
-                "Alt-Tabby - Temporary Location",
+                APP_NAME " - Temporary Location",
                 "YesNo Icon?"
             )
             if (warnResult = "No")
@@ -298,7 +298,7 @@ ToggleAdminMode() {
             ToolTip("Admin mode enabled")
             HideTooltipAfter(TOOLTIP_DURATION_SHORT)
         } else {
-            MsgBox("Failed to create scheduled task.", "Alt-Tabby", "Iconx")
+            MsgBox("Failed to create scheduled task.", APP_NAME, "Iconx")
         }
     }
 }
@@ -306,9 +306,9 @@ ToggleAdminMode() {
 ; Polling callback to check if elevated instance completed
 ; Uses tick-based timing for timeout (30 seconds) to prevent static variable state leaks
 _AdminToggle_CheckComplete() {
-    global g_AdminToggleInProgress, g_AdminToggleLockFile, g_AdminToggleStartTick
+    global g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_AdminToggleStartTick
 
-    if (!FileExist(g_AdminToggleLockFile)) {
+    if (!FileExist(TEMP_ADMIN_TOGGLE_LOCK)) {
         ; Lock file deleted - elevated instance completed
         g_AdminToggleInProgress := false
         return
@@ -319,7 +319,7 @@ _AdminToggle_CheckComplete() {
     if (elapsed >= 30000) {  ; 30 seconds
         ; Timeout - assume something went wrong
         g_AdminToggleInProgress := false
-        try FileDelete(g_AdminToggleLockFile)
+        try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
         TrayTip("Admin Mode", "Operation timed out. Please try again.`nIf the problem persists, restart Alt-Tabby.", "Icon!")
         return
     }

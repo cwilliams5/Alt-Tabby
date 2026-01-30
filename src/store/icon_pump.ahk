@@ -20,6 +20,16 @@
 ; NOTE: GiveUp backoff now in config: cfg.IconPumpGiveUpBackoffMs (default 5000)
 global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
 
+; Win32 constants for WM_GETICON icon resolution
+global IP_WM_GETICON := 0x7F
+global IP_ICON_BIG := 1
+global IP_ICON_SMALL := 0
+global IP_ICON_SMALL2 := 2
+global IP_GCLP_HICONSM := -34
+global IP_GCLP_HICON := -14
+global IP_SMTO_ABORTIFHUNG := 0x0002
+global IP_RESOLVE_TIMEOUT_MS := 500
+
 ; Configuration (set in IconPump_Start after ConfigLoader_Init)
 global IconBatchPerTick := 0
 global IconTimerIntervalMs := 0
@@ -302,14 +312,8 @@ _IP_Tick() {
 ; Prefer larger icons (ICON_BIG=32x32) over small (16x16) since we display at 36px+
 ; Uses SendMessageTimeoutW with SMTO_ABORTIFHUNG to avoid blocking on hung windows.
 _IP_TryResolveFromWindow(hWnd) {
-    WM_GETICON := 0x7F
-    ICON_SMALL2 := 2
-    ICON_SMALL := 0
-    ICON_BIG := 1
-    GCLP_HICONSM := -34
-    GCLP_HICON := -14
-    SMTO_ABORTIFHUNG := 0x0002
-    TIMEOUT_MS := 500
+    global IP_WM_GETICON, IP_ICON_BIG, IP_ICON_SMALL, IP_ICON_SMALL2
+    global IP_GCLP_HICONSM, IP_GCLP_HICON, IP_SMTO_ABORTIFHUNG, IP_RESOLVE_TIMEOUT_MS
 
     try {
         ; Skip hung windows entirely - fast kernel check, no messages sent
@@ -323,19 +327,19 @@ _IP_TryResolveFromWindow(hWnd) {
         result := 0
 
         ; Prefer large icons first for better quality at display size
-        result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", WM_GETICON, "uptr", ICON_BIG, "ptr", 0, "uint", SMTO_ABORTIFHUNG, "uint", TIMEOUT_MS, "uptr*", &h, "int")
+        result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", IP_ICON_BIG, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
         if (!result || !h) {
             h := 0
-            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", WM_GETICON, "uptr", ICON_SMALL2, "ptr", 0, "uint", SMTO_ABORTIFHUNG, "uint", TIMEOUT_MS, "uptr*", &h, "int")
+            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", IP_ICON_SMALL2, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
         }
         if (!result || !h) {
             h := 0
-            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", WM_GETICON, "uptr", ICON_SMALL, "ptr", 0, "uint", SMTO_ABORTIFHUNG, "uint", TIMEOUT_MS, "uptr*", &h, "int")
+            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", IP_ICON_SMALL, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
         }
         if (!h)
-            h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", GCLP_HICON, "ptr")
+            h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", IP_GCLP_HICON, "ptr")
         if (!h)
-            h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", GCLP_HICONSM, "ptr")
+            h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", IP_GCLP_HICONSM, "ptr")
         if (h)
             return DllCall("user32\CopyIcon", "ptr", h, "ptr")
     } catch as e {

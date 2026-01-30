@@ -137,7 +137,7 @@ _Launcher_RunAsAdmin(args) {
 ; Includes InstallationId in description for identification
 ; Returns false if user cancels due to existing task conflict
 CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
-    global ALTTABBY_TASK_NAME, cfg, g_TestingMode
+    global ALTTABBY_TASK_NAME, cfg, g_TestingMode, APP_NAME
     taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
 
     ; Check if task exists pointing to different location (another installation)
@@ -155,7 +155,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
                     existingPath "`n`n"
                     "Enabling it here will disable it there.`n"
                     "Continue?",
-                    "Alt-Tabby - Admin Mode Conflict",
+                    APP_NAME " - Admin Mode Conflict",
                     "YesNo Icon?"
                 )
                 if (result = "No")
@@ -487,8 +487,9 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
 
     ; Check if we need elevation to write to exe directory
     if (_Update_NeedsElevation(exeDir)) {
-        ; Save update info and self-elevate (use <|> delimiter to handle pipe chars in paths)
-        updateInfo := tempExe "<|>" currentExe
+        ; Save update info and self-elevate
+        global UPDATE_INFO_DELIMITER
+        updateInfo := tempExe UPDATE_INFO_DELIMITER currentExe
         updateFile := A_Temp "\alttabby_update.txt"
         try FileDelete(updateFile)
         FileAppend(updateInfo, updateFile, "UTF-8")
@@ -614,7 +615,7 @@ _Update_KillOtherProcesses(targetExeName := "") {
 ;   cleanupSourceOnFailure - Delete source file if update fails
 
 _Update_ApplyCore(opts) {
-    global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_STORE_START_WAIT
+    global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_STORE_START_WAIT, APP_NAME
 
     sourcePath := opts.HasOwnProp("sourcePath") ? opts.sourcePath : ""
     targetPath := opts.HasOwnProp("targetPath") ? opts.targetPath : ""
@@ -632,7 +633,7 @@ _Update_ApplyCore(opts) {
             try {
                 modTime := FileGetTime(lockFile, "M")
                 if (DateDiff(A_Now, modTime, "Minutes") < 5) {
-                    MsgBox("Another update is in progress. Please wait.", "Alt-Tabby", "Icon!")
+                    MsgBox("Another update is in progress. Please wait.", APP_NAME, "Icon!")
                     return
                 }
                 FileDelete(lockFile)
@@ -718,7 +719,7 @@ _Update_ApplyCore(opts) {
             if (!CreateAdminTask(targetPath, targetInstallId)) {
                 MsgBox("Could not recreate admin task after update.`n`n"
                     "Admin mode has been disabled. You can re-enable it from the tray menu.",
-                    "Alt-Tabby - Admin Mode Error", "Icon!")
+                    APP_NAME " - Admin Mode Error", "Icon!")
                 cfg.SetupRunAsAdmin := false
                 if (FileExist(targetConfigPath))
                     try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
@@ -811,11 +812,12 @@ _Update_CleanupOldExe() {
 ; Clean up stale temp files from crashed wizard/update instances (Priority 3 fix)
 ; Called on startup after _Update_CleanupOldExe
 _Update_CleanupStaleTempFiles() {
+    global TEMP_ADMIN_TOGGLE_LOCK
     staleFiles := [
         A_Temp "\alttabby_wizard.json",
         A_Temp "\alttabby_update.txt",
         A_Temp "\alttabby_install_update.txt",
-        A_Temp "\alttabby_admin_toggle.lock",
+        TEMP_ADMIN_TOGGLE_LOCK,
         A_Temp "\alttabby_update.lock"
     ]
 
@@ -900,6 +902,7 @@ _Update_ValidatePEFile(filePath) {
 
 ; Called when launched with --apply-update flag (elevated)
 _Update_ContinueFromElevation() {
+    global APP_NAME
     updateFile := A_Temp "\alttabby_update.txt"
 
     if (!FileExist(updateFile))
@@ -910,9 +913,10 @@ _Update_ContinueFromElevation() {
         FileDelete(updateFile)
 
         ; Bug 6 fix: Add specific error for corrupted state file
-        parts := StrSplit(content, "<|>")
+        global UPDATE_INFO_DELIMITER
+        parts := StrSplit(content, UPDATE_INFO_DELIMITER)
         if (parts.Length != 2) {
-            MsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), "Alt-Tabby", "Icon!")
+            MsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), APP_NAME, "Icon!")
             return false
         }
 
@@ -921,13 +925,13 @@ _Update_ContinueFromElevation() {
 
         ; Security validation: ensure source file exists
         if (!FileExist(newExePath)) {
-            MsgBox("Update source file not found:`n" newExePath, "Alt-Tabby", "Icon!")
+            MsgBox("Update source file not found:`n" newExePath, APP_NAME, "Icon!")
             return false
         }
 
         ; Validate source path is in TEMP directory (expected from download)
         if (!InStr(newExePath, A_Temp)) {
-            MsgBox("Invalid update source path (not in temp):`n" newExePath, "Alt-Tabby", "Icon!")
+            MsgBox("Invalid update source path (not in temp):`n" newExePath, APP_NAME, "Icon!")
             try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false
         }
@@ -939,7 +943,7 @@ _Update_ContinueFromElevation() {
         if (StrLower(targetExePath) != StrLower(A_ScriptFullPath)) {
             MsgBox("Update target doesn't match running executable.`n"
                 "Target: " targetExePath "`n"
-                "Running: " A_ScriptFullPath, "Alt-Tabby", "Icon!")
+                "Running: " A_ScriptFullPath, APP_NAME, "Icon!")
             try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false
         }

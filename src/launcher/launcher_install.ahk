@@ -12,7 +12,7 @@
 ; ============================================================
 
 InstallToProgramFiles() {
-    global cfg, ALTTABBY_INSTALL_DIR
+    global cfg, ALTTABBY_INSTALL_DIR, APP_NAME
 
     ; Target: Program Files\Alt-Tabby (localized for non-English Windows)
     installDir := ALTTABBY_INSTALL_DIR
@@ -20,13 +20,13 @@ InstallToProgramFiles() {
     srcDir := A_IsCompiled ? A_ScriptDir : ""
 
     if (!A_IsCompiled) {
-        MsgBox("Program Files installation only works with compiled exe.", "Alt-Tabby", "Icon!")
+        MsgBox("Program Files installation only works with compiled exe.", APP_NAME, "Icon!")
         return ""
     }
 
     ; Check if we need admin
     if (!A_IsAdmin) {
-        MsgBox("Administrator privileges required to install to Program Files.", "Alt-Tabby", "Icon!")
+        MsgBox("Administrator privileges required to install to Program Files.", APP_NAME, "Icon!")
         return ""
     }
 
@@ -58,7 +58,7 @@ InstallToProgramFiles() {
 
         return installDir "\AltTabby.exe"
     } catch as e {
-        MsgBox("Failed to install to Program Files:`n" e.Message, "Alt-Tabby", "IconX")
+        MsgBox("Failed to install to Program Files:`n" e.Message, APP_NAME, "IconX")
         return ""
     }
 }
@@ -71,7 +71,7 @@ InstallToProgramFiles() {
 ; Offers to update or launch the installed version
 ; Sets g_MismatchDialogShown if a dialog was displayed (to prevent race with auto-update)
 _Launcher_CheckInstallMismatch() {
-    global cfg, g_MismatchDialogShown, g_SkipMismatchCheck
+    global cfg, g_MismatchDialogShown, g_SkipMismatchCheck, APP_NAME
 
     ; Skip if flag set (after one-time elevation from mismatch prompt)
     if (g_SkipMismatchCheck)
@@ -127,7 +127,7 @@ _Launcher_CheckInstallMismatch() {
             "Alt-Tabby is installed at:`n" installedPath "`n`n"
             "You're running a newer version (" currentVersion " vs " installedVersion ").`n`n"
             "Update the installed version?",
-            "Alt-Tabby - Update Installed Version?",
+            APP_NAME " - Update Installed Version?",
             "YesNo Icon?"
         )
 
@@ -139,7 +139,7 @@ _Launcher_CheckInstallMismatch() {
     } else if (versionCompare = 0) {
         ; Current version is SAME as installed - clearer message about duplicate installations
         result := _Launcher_ShowMismatchDialog(installedPath,
-            "Alt-Tabby - Same Version Running",
+            APP_NAME " - Same Version Running",
             "Alt-Tabby " currentVersion " is also installed at:",
             "You have the same version in two locations. Launch from the installed location instead?")
 
@@ -149,7 +149,7 @@ _Launcher_CheckInstallMismatch() {
         ; Current version is OLDER than installed
         ; Use custom 3-button dialog: Yes (launch installed) / No (run from here once) / Always (run from here always)
         result := _Launcher_ShowMismatchDialog(installedPath,
-            "Alt-Tabby - Newer Version Installed",
+            APP_NAME " - Newer Version Installed",
             "A newer version (" installedVersion ") is installed at:",
             "Launch the newer installed version instead?")
 
@@ -160,7 +160,7 @@ _Launcher_CheckInstallMismatch() {
 
 ; Common handler for mismatch dialog results
 _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
-    global cfg, gConfigIniPath, g_MismatchDialogShown
+    global cfg, gConfigIniPath, g_MismatchDialogShown, APP_NAME
 
     if (result = "Yes") {
         ; Launch installed version and exit
@@ -168,7 +168,7 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
             Run('"' installedPath '"')
             ExitApp()
         } catch as e {
-            MsgBox("Could not launch installed version:`n" e.Message, "Alt-Tabby", "Icon!")
+            MsgBox("Could not launch installed version:`n" e.Message, APP_NAME, "Icon!")
         }
     } else if (result = "Always") {
         ; Update SetupExePath to current location - never ask again
@@ -194,7 +194,7 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
 ; Check if installed version is running and offer to stop it to prevent multiple instances
 ; This handles the case where different InstallationIds bypass the mutex check
 _Launcher_OfferToStopInstalledInstance(installedPath) {
-    global TIMING_MUTEX_RELEASE_WAIT
+    global TIMING_MUTEX_RELEASE_WAIT, APP_NAME
 
     ; Get the exe name from the installed path
     installedExeName := ""
@@ -213,7 +213,7 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
     result := MsgBox(
         "The installed version is currently running.`n`n"
         "Close it to avoid conflicts? (Recommended)",
-        "Alt-Tabby - Instance Running",
+        APP_NAME " - Instance Running",
         "YesNo Icon?"
     )
 
@@ -221,14 +221,8 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
         ; Kill ALL processes matching the installed exe name (launcher + store + gui).
         ; Can't delegate to _Launcher_KillExistingInstances() — it searches by
         ; current exe name, which won't match the installed exe (e.g., "AltTabby.exe"
-        ; vs "alttabby v4.exe"). Loop to catch all subprocesses.
-        loop 10 {
-            pid := ProcessExist(installedExeName)
-            if (!pid || pid = myPID)
-                break
-            try ProcessClose(pid)
-            Sleep(TIMING_MUTEX_RELEASE_WAIT)
-        }
+        ; vs "alttabby v4.exe").
+        _Launcher_KillProcessByName(installedExeName, 10, TIMING_MUTEX_RELEASE_WAIT)
     }
 }
 
@@ -236,10 +230,10 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
 ; Returns: "Yes", "No", or "Always"
 ; Optional params allow customization for same-version vs older-version scenarios
 _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question := "") {
-    global cfg
+    global cfg, APP_NAME
 
     if (title = "")
-        title := "Alt-Tabby - Already Installed"
+        title := APP_NAME " - Already Installed"
     if (message = "")
         message := "Alt-Tabby is already installed at:"
     if (question = "")
@@ -271,15 +265,16 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
 
 ; Update the installed version with the current exe
 _Launcher_UpdateInstalledVersion(installedPath) {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, APP_NAME
 
     installedDir := ""
     SplitPath(installedPath, , &installedDir)
 
     ; Check if we need elevation
     if (_Update_NeedsElevation(installedDir)) {
-        ; Save update info and self-elevate (use <|> delimiter to handle pipe chars in paths)
-        updateInfo := A_ScriptFullPath "<|>" installedPath
+        ; Save update info and self-elevate
+        global UPDATE_INFO_DELIMITER
+        updateInfo := A_ScriptFullPath UPDATE_INFO_DELIMITER installedPath
         updateFile := A_Temp "\alttabby_install_update.txt"
         try FileDelete(updateFile)
         FileAppend(updateInfo, updateFile, "UTF-8")
@@ -289,7 +284,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
-            MsgBox("Update requires administrator privileges.", "Alt-Tabby", "Icon!")
+            MsgBox("Update requires administrator privileges.", APP_NAME, "Icon!")
             try FileDelete(updateFile)
             return
         }
@@ -323,6 +318,7 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
 ; Normal users typically don't have admin mode enabled, so they won't see this.
 
 _Launcher_OfferOneTimeElevation() {
+    global APP_NAME
     ; Already elevated - nothing to offer
     if (A_IsAdmin)
         return
@@ -341,7 +337,7 @@ _Launcher_OfferOneTimeElevation() {
         "The installed version runs as Administrator.`n`n"
         "Run this version elevated too?`n"
         "(This is one-time and won't affect the installed version)",
-        "Alt-Tabby - Run Elevated?",
+        APP_NAME " - Run Elevated?",
         "YesNo Icon?"
     )
 

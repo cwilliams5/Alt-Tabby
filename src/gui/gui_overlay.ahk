@@ -186,7 +186,8 @@ GUI_CreateBase() {
     winX := Round(left_dip + (waW_dip - winW) / 2)
     winY := Round(top_dip + (waH_dip - winH) / 2)
 
-    gGUI_Base := Gui(opts, "Alt-Tabby")
+    global APP_NAME
+    gGUI_Base := Gui(opts, APP_NAME)
     gGUI_Base.Show("Hide w" winW " h" winH)
     gGUI_BaseH := gGUI_Base.Hwnd
 
