@@ -123,19 +123,18 @@ _Launcher_CheckInstallMismatch() {
 
     if (versionCompare > 0) {
         ; Current version is NEWER than installed
-        result := MsgBox(
-            "Alt-Tabby is installed at:`n" installedPath "`n`n"
-            "You're running a newer version (" currentVersion " vs " installedVersion ").`n`n"
-            "Update the installed version?",
-            APP_NAME " - Update Installed Version?",
-            "YesNo Icon?"
-        )
+        result := _Launcher_ShowMismatchDialog(installedPath,
+            APP_NAME " - Newer Version Running",
+            "You're running a newer version (" currentVersion " vs " installedVersion ").`nInstalled at:",
+            "Update the installed version?")
 
         if (result = "Yes") {
             _Launcher_UpdateInstalledVersion(installedPath)
             ; If we return, update failed - continue running from current location
+        } else {
+            ; "No" or "Always" - delegate to common handler
+            _Launcher_HandleMismatchResult(result, installedPath, currentPath)
         }
-        ; "No" - continue running from current location
     } else if (versionCompare = 0) {
         ; Current version is SAME as installed - clearer message about duplicate installations
         result := _Launcher_ShowMismatchDialog(installedPath,
@@ -171,6 +170,26 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
             MsgBox("Could not launch installed version:`n" e.Message, APP_NAME, "Icon!")
         }
     } else if (result = "Always") {
+        ; Warn if committing to a temporary location
+        currentDir := ""
+        SplitPath(currentPath, , &currentDir)
+        if (IsTemporaryLocation(currentDir)) {
+            warnResult := MsgBox(
+                "You're choosing to always run from:`n" currentPath "`n`n"
+                "This location may be temporary or cloud-synced.`n"
+                "If you delete or move this file, Alt-Tabby won't start.`n`n"
+                "Always run from here anyway?",
+                APP_NAME " - Temporary Location",
+                "YesNo Icon?"
+            )
+            if (warnResult = "No") {
+                ; Treat as one-time "No" instead
+                _Launcher_OfferToStopInstalledInstance(installedPath)
+                _Launcher_OfferOneTimeElevation()
+                return
+            }
+        }
+
         ; Update SetupExePath to current location - never ask again
         cfg.SetupExePath := currentPath
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
@@ -178,6 +197,9 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
 
         ; Check if installed version is currently running to prevent multiple instances
         _Launcher_OfferToStopInstalledInstance(installedPath)
+
+        ; Check for stale shortcuts that still point to the old installed path
+        _Launcher_OfferToUpdateStaleShortcuts()
         ; Continue running from current location
     } else {
         ; "No" - continue running from current location (one-time)
@@ -351,4 +373,49 @@ _Launcher_OfferOneTimeElevation() {
         }
     }
     ; "No" - continue without elevation
+}
+
+; ============================================================
+; STALE SHORTCUT DETECTION
+; ============================================================
+; After "Always run from here", check if startup/Start Menu shortcuts
+; still point to the old installed path. Offer to update them so the
+; user doesn't end up launching the wrong version on next boot.
+
+_Launcher_OfferToUpdateStaleShortcuts() {
+    global APP_NAME
+
+    ; Only relevant for compiled exe
+    if (!A_IsCompiled)
+        return
+
+    ; Check if any shortcuts exist but DON'T point to us
+    startupPath := _Shortcut_GetStartupPath()
+    startMenuPath := _Shortcut_GetStartMenuPath()
+
+    startupStale := FileExist(startupPath) && !_Shortcut_ExistsAndPointsToUs(startupPath)
+    startMenuStale := FileExist(startMenuPath) && !_Shortcut_ExistsAndPointsToUs(startMenuPath)
+
+    if (!startupStale && !startMenuStale)
+        return
+
+    ; Build description of which shortcuts are stale
+    staleList := ""
+    if (startupStale)
+        staleList .= "- Startup shortcut`n"
+    if (startMenuStale)
+        staleList .= "- Start Menu shortcut`n"
+
+    result := MsgBox(
+        "The following shortcuts point to a different location:`n`n"
+        staleList "`n"
+        "Update them to point to this version?`n"
+        "(Otherwise they'll keep launching the old version)",
+        APP_NAME " - Update Shortcuts?",
+        "YesNo Icon?"
+    )
+
+    if (result = "Yes") {
+        RecreateShortcuts()
+    }
 }

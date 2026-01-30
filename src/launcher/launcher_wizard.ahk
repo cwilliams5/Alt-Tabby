@@ -113,28 +113,7 @@ WizardApply(*) {
             ; Continue with non-admin options only
             install := false
             admin := false
-
-            ; Warn if shortcuts will point to potentially temporary location
-            if (startup || startMenu) {
-                currentDir := ""
-                SplitPath(A_ScriptFullPath, , &currentDir)
-                isTemporary := IsTemporaryLocation(currentDir)
-
-                if (isTemporary) {
-                    result2 := MsgBox(
-                        "Shortcuts will point to:`n" A_ScriptFullPath "`n`n"
-                        "This location may be temporary or cloud-synced.`n"
-                        "If you delete or move this file, the shortcuts will break.`n`n"
-                        "Create shortcuts anyway?",
-                        "Alt-Tabby Setup",
-                        "YesNo Icon?"
-                    )
-                    if (result2 = "No") {
-                        startup := false
-                        startMenu := false
-                    }
-                }
-            }
+            ; Temp location warning is now handled in _WizardApplyChoices()
         }
     }
 
@@ -265,6 +244,25 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
 
     ; Step 4: Create shortcuts AFTER admin mode is set (so they point correctly)
+    ; Warn if shortcuts will point to a temporary location (unless PF install succeeded)
+    if ((startMenu || startup) && !installSucceeded) {
+        currentDir := ""
+        SplitPath(exePath, , &currentDir)
+        if (IsTemporaryLocation(currentDir)) {
+            warnResult := MsgBox(
+                "Shortcuts will point to:`n" exePath "`n`n"
+                "This location may be temporary or cloud-synced.`n"
+                "If you delete or move this file, the shortcuts will break.`n`n"
+                "Create shortcuts anyway?",
+                APP_NAME " - Temporary Location",
+                "YesNo Icon?"
+            )
+            if (warnResult = "No") {
+                startMenu := false
+                startup := false
+            }
+        }
+    }
     if (startMenu)
         _CreateShortcutForCurrentMode(_Shortcut_GetStartMenuPath())
     if (startup)
