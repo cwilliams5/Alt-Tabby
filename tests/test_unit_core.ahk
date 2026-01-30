@@ -595,6 +595,125 @@ RunUnitTests_Core() {
         try DirDelete(testConfigDir, true)
     }
 
+    ; Test 2.5: _CL_WriteIniPreserveFormat direct tests
+    Log("Testing WriteIniPreserveFormat...")
+
+    testWipDir := A_Temp "\tabby_wip_test_" A_TickCount
+    testWipPath := testWipDir "\config.ini"
+
+    ; Note: _CL_FormatValue formats ints >= 0x10 as hex (e.g., 150 -> "0x96", 200 -> "0xC8")
+    ; Use "string" type to test pure write logic without hex formatting, or expect hex output
+
+    try {
+        DirCreate(testWipDir)
+
+        ; Test 1: Update existing value (using bool type to avoid hex conversion)
+        Log("Testing WriteIniPreserveFormat updates existing value...")
+        wipContent := "[AltTab]`nPrewarmOnAlt=true`nQuickSwitchMs=25`n[GUI]`nRowHeight=40`n"
+        FileAppend(wipContent, testWipPath, "UTF-8")
+
+        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+
+        wipResult := FileRead(testWipPath, "UTF-8")
+        if (InStr(wipResult, "PrewarmOnAlt=false") && InStr(wipResult, "QuickSwitchMs=25")) {
+            Log("PASS: WriteIniPreserveFormat updated PrewarmOnAlt to false, preserved QuickSwitchMs")
+            TestPassed++
+        } else {
+            Log("FAIL: WriteIniPreserveFormat should update PrewarmOnAlt=false and keep QuickSwitchMs=25")
+            Log("  Got: " SubStr(wipResult, 1, 200))
+            TestErrors++
+        }
+
+        ; Test 2: Comment out default value
+        Log("Testing WriteIniPreserveFormat comments out default value...")
+        try FileDelete(testWipPath)
+        wipContent := "[AltTab]`nPrewarmOnAlt=true`nQuickSwitchMs=25`n"
+        FileAppend(wipContent, testWipPath, "UTF-8")
+
+        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", true, true, "bool")
+
+        wipResult := FileRead(testWipPath, "UTF-8")
+        if (InStr(wipResult, "; PrewarmOnAlt=true")) {
+            Log("PASS: WriteIniPreserveFormat commented out default value (;PrewarmOnAlt=true)")
+            TestPassed++
+        } else {
+            Log("FAIL: WriteIniPreserveFormat should comment out value when it equals default")
+            Log("  Got: " SubStr(wipResult, 1, 200))
+            TestErrors++
+        }
+
+        ; Test 3: Uncomment custom value
+        Log("Testing WriteIniPreserveFormat uncomments custom value...")
+        try FileDelete(testWipPath)
+        wipContent := "[AltTab]`n; PrewarmOnAlt=true`nQuickSwitchMs=25`n"
+        FileAppend(wipContent, testWipPath, "UTF-8")
+
+        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+
+        wipResult := FileRead(testWipPath, "UTF-8")
+        if (InStr(wipResult, "PrewarmOnAlt=false") && !InStr(wipResult, "; PrewarmOnAlt=")) {
+            Log("PASS: WriteIniPreserveFormat uncommented and set PrewarmOnAlt=false")
+            TestPassed++
+        } else {
+            Log("FAIL: WriteIniPreserveFormat should uncomment and set custom value")
+            Log("  Got: " SubStr(wipResult, 1, 200))
+            TestErrors++
+        }
+
+        ; Test 4: Preserve other content (comments, blank lines, other sections)
+        Log("Testing WriteIniPreserveFormat preserves surrounding content...")
+        try FileDelete(testWipPath)
+        wipContent := "; Alt-Tabby Config`n`n[AltTab]`n; A comment about prewarm`nPrewarmOnAlt=true`n`n[GUI]`nRowHeight=40`n"
+        FileAppend(wipContent, testWipPath, "UTF-8")
+
+        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+
+        wipResult := FileRead(testWipPath, "UTF-8")
+        hasHeader := InStr(wipResult, "; Alt-Tabby Config")
+        hasComment := InStr(wipResult, "; A comment about prewarm")
+        hasGuiSection := InStr(wipResult, "[GUI]")
+        hasRowHeight := InStr(wipResult, "RowHeight=40")
+        if (hasHeader && hasComment && hasGuiSection && hasRowHeight) {
+            Log("PASS: WriteIniPreserveFormat preserved comments, blank lines, and other sections")
+            TestPassed++
+        } else {
+            Log("FAIL: WriteIniPreserveFormat should preserve surrounding content")
+            Log("  header=" hasHeader " comment=" hasComment " gui=" hasGuiSection " row=" hasRowHeight)
+            TestErrors++
+        }
+
+        ; Test 5: Add key to non-last section (key doesn't exist yet)
+        Log("Testing WriteIniPreserveFormat adds key to non-last section...")
+        try FileDelete(testWipPath)
+        wipContent := "[AltTab]`nPrewarmOnAlt=true`n[GUI]`nRowHeight=40`n"
+        FileAppend(wipContent, testWipPath, "UTF-8")
+
+        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "NewBool", false, true, "bool")
+
+        wipResult := FileRead(testWipPath, "UTF-8")
+        ; NewBool equals default (false == true? No - false != true), so it should be uncommented
+        ; Actually false != true, so shouldComment = false, key should be active
+        newKeyPos := InStr(wipResult, "NewBool=false")
+        guiPos := InStr(wipResult, "[GUI]")
+        if (newKeyPos && guiPos && newKeyPos < guiPos) {
+            Log("PASS: WriteIniPreserveFormat added NewBool=false within [AltTab] section (before [GUI])")
+            TestPassed++
+        } else {
+            Log("FAIL: WriteIniPreserveFormat should add new key within correct section")
+            Log("  newKeyPos=" newKeyPos " guiPos=" guiPos)
+            Log("  Got: " SubStr(wipResult, 1, 200))
+            TestErrors++
+        }
+
+        ; Cleanup
+        try FileDelete(testWipPath)
+        try DirDelete(testWipDir)
+    } catch as e {
+        Log("FAIL: WriteIniPreserveFormat test error: " e.Message)
+        TestErrors++
+        try DirDelete(testWipDir, true)
+    }
+
     ; Test 3: Config registry completeness - every setting has required fields
     Log("Testing config registry completeness...")
     registryErrors := []
@@ -830,6 +949,62 @@ RunUnitTests_Core() {
 
     ; Cleanup
     WindowStore_RemoveWindow([11111], true)
+
+    ; Test: EndScan preserves komorebi-managed windows (workspaceName set)
+    Log("Testing EndScan komorebi workspace preservation...")
+
+    WindowStore_Init()
+
+    ; Scan 1: Add two windows - one with workspaceName, one without
+    WindowStore_BeginScan()
+    wsRec1 := Map("hwnd", 33333, "title", "Komorebi Managed", "class", "Test", "pid", 10,
+                  "isVisible", true, "isCloaked", true, "isMinimized", false, "z", 1,
+                  "workspaceName", "MyWorkspace")
+    wsRec2 := Map("hwnd", 44444, "title", "Unmanaged Window", "class", "Test", "pid", 11,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
+                  "workspaceName", "")
+    WindowStore_UpsertWindow([wsRec1, wsRec2], "test")
+    WindowStore_EndScan(100)
+
+    AssertEq(gWS_Store[33333].present, true, "Komorebi window present after scan 1")
+    AssertEq(gWS_Store[44444].present, true, "Unmanaged window present after scan 1")
+
+    ; Scan 2: Only upsert the UNMANAGED window (simulating winenum not seeing komorebi-cloaked window)
+    WindowStore_BeginScan()
+    WindowStore_UpsertWindow([wsRec2], "test")
+    WindowStore_EndScan(100)
+
+    ; Komorebi-managed window should survive (workspaceName protects it)
+    AssertEq(gWS_Store.Has(33333), true, "Komorebi window still in store (workspace preservation)")
+    AssertEq(gWS_Store[33333].present, true, "Komorebi window still present=true (not marked missing)")
+
+    ; Scan 3: Only upsert neither (both not seen by winenum)
+    WindowStore_BeginScan()
+    WindowStore_EndScan(100)
+
+    ; Komorebi window should still survive, unmanaged should be marked missing
+    AssertEq(gWS_Store.Has(33333), true, "Komorebi window survives even with no upsert")
+    AssertEq(gWS_Store[33333].present, true, "Komorebi window still present=true")
+    AssertEq(gWS_Store[44444].present, false, "Unmanaged window marked present=false")
+
+    ; Test: Empty workspaceName does NOT protect
+    Log("Testing EndScan does not protect empty workspaceName...")
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    emptyWsRec := Map("hwnd", 55555, "title", "Empty WS Window", "class", "Test", "pid", 12,
+                      "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                      "workspaceName", "")
+    WindowStore_UpsertWindow([emptyWsRec], "test")
+    WindowStore_EndScan(100)
+
+    ; Scan again without upserting - empty workspaceName should NOT protect
+    WindowStore_BeginScan()
+    WindowStore_EndScan(100)
+
+    AssertEq(gWS_Store[55555].present, false, "Empty workspaceName does NOT protect window")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([33333, 44444, 55555], true)
 
     ; Test: WindowStore_BuildDelta field detection
     Log("Testing BuildDelta field detection...")

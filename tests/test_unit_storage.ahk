@@ -63,6 +63,212 @@ RunUnitTests_Storage() {
     WindowStore_RemoveWindow([testHwnd], true)
 
     ; ============================================================
+    ; WindowStore_ValidateExistence Tests (Ghost Window Detection)
+    ; ============================================================
+    Log("`n--- WindowStore_ValidateExistence Tests ---")
+
+    ; Test 1: Fake HWNDs removed (IsWindow returns false for non-existent windows)
+    Log("Testing ValidateExistence removes fake HWNDs...")
+    WindowStore_Init()
+    global gWS_Store
+
+    WindowStore_BeginScan()
+    fakeRec1 := Map("hwnd", 0x9999001, "title", "Fake Win 1", "class", "FakeClass", "pid", 1,
+                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    fakeRec2 := Map("hwnd", 0x9999002, "title", "Fake Win 2", "class", "FakeClass", "pid", 2,
+                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+    WindowStore_UpsertWindow([fakeRec1, fakeRec2], "test")
+    WindowStore_EndScan()
+
+    ; Both should be in store before validation
+    if (gWS_Store.Has(0x9999001) && gWS_Store.Has(0x9999002)) {
+        Log("PASS: Both fake HWNDs present before ValidateExistence")
+        TestPassed++
+    } else {
+        Log("FAIL: Fake HWNDs should be present before validation")
+        TestErrors++
+    }
+
+    result := WindowStore_ValidateExistence()
+
+    if (!gWS_Store.Has(0x9999001) && !gWS_Store.Has(0x9999002)) {
+        Log("PASS: ValidateExistence removed both fake HWNDs (IsWindow=false)")
+        TestPassed++
+    } else {
+        Log("FAIL: ValidateExistence should remove fake HWNDs (still has: "
+            . (gWS_Store.Has(0x9999001) ? "0x9999001 " : "") . (gWS_Store.Has(0x9999002) ? "0x9999002" : "") . ")")
+        TestErrors++
+    }
+
+    if (result.removed = 2) {
+        Log("PASS: ValidateExistence reports removed=2")
+        TestPassed++
+    } else {
+        Log("FAIL: ValidateExistence should report removed=2, got removed=" result.removed)
+        TestErrors++
+    }
+
+    ; Test 2: Rev bumped on removal
+    Log("Testing ValidateExistence bumps rev on removal...")
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    fakeRec3 := Map("hwnd", 0x9999003, "title", "Fake Win 3", "class", "FakeClass", "pid", 3,
+                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    WindowStore_UpsertWindow([fakeRec3], "test")
+    WindowStore_EndScan()
+
+    global gWS_Rev
+    revBefore := gWS_Rev
+    WindowStore_ValidateExistence()
+    if (gWS_Rev > revBefore) {
+        Log("PASS: ValidateExistence bumped rev after removal")
+        TestPassed++
+    } else {
+        Log("FAIL: ValidateExistence should bump rev after removal (before=" revBefore " after=" gWS_Rev ")")
+        TestErrors++
+    }
+
+    ; Test 3: Empty store is no-op
+    Log("Testing ValidateExistence no-op on empty store...")
+    WindowStore_Init()
+    ; Drain any queued icon work from previous tests
+    WindowStore_PopIconBatch(100)
+    gWS_Store := Map()
+    revBefore := gWS_Rev
+    result := WindowStore_ValidateExistence()
+    if (result.removed = 0 && gWS_Rev = revBefore) {
+        Log("PASS: ValidateExistence no-op on empty store (removed=0, rev unchanged)")
+        TestPassed++
+    } else {
+        Log("FAIL: ValidateExistence should be no-op on empty store (removed=" result.removed " rev changed=" (gWS_Rev != revBefore) ")")
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; WindowStore_PurgeBlacklisted Tests
+    ; ============================================================
+    Log("`n--- WindowStore_PurgeBlacklisted Tests ---")
+
+    ; Save original blacklist path to restore later
+    global gBlacklist_FilePath
+    savedBlPathStorage := gBlacklist_FilePath
+
+    ; Create temp blacklist file
+    testBlDirStorage := A_Temp "\tabby_purge_test_" A_TickCount
+    testBlPathStorage := testBlDirStorage "\blacklist.txt"
+
+    try {
+        DirCreate(testBlDirStorage)
+        blContentStorage := "[Title]`nBadTitle*`n[Class]`nBadClass`n[Pair]`n"
+        FileAppend(blContentStorage, testBlPathStorage, "UTF-8")
+
+        ; Load the test blacklist
+        Blacklist_Init(testBlPathStorage)
+
+        ; Test 1: Title match removed
+        Log("Testing PurgeBlacklisted removes title-matched windows...")
+        WindowStore_Init()
+        WindowStore_BeginScan()
+        badRec := Map("hwnd", 0xAA01, "title", "BadTitle Test Window", "class", "SafeClass", "pid", 10,
+                      "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+        goodRec := Map("hwnd", 0xAA02, "title", "GoodTitle Window", "class", "SafeClass", "pid", 11,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+        WindowStore_UpsertWindow([badRec, goodRec], "test")
+        WindowStore_EndScan()
+
+        result := WindowStore_PurgeBlacklisted()
+
+        if (!gWS_Store.Has(0xAA01)) {
+            Log("PASS: PurgeBlacklisted removed title-matched window (BadTitle*)")
+            TestPassed++
+        } else {
+            Log("FAIL: PurgeBlacklisted should remove title-matched window")
+            TestErrors++
+        }
+
+        ; Test 2: Non-matching kept
+        if (gWS_Store.Has(0xAA02)) {
+            Log("PASS: PurgeBlacklisted kept non-matching window (GoodTitle)")
+            TestPassed++
+        } else {
+            Log("FAIL: PurgeBlacklisted should keep non-matching window")
+            TestErrors++
+        }
+
+        if (result.removed = 1) {
+            Log("PASS: PurgeBlacklisted reports removed=1")
+            TestPassed++
+        } else {
+            Log("FAIL: PurgeBlacklisted should report removed=1, got removed=" result.removed)
+            TestErrors++
+        }
+
+        ; Test 3: Class match removed
+        Log("Testing PurgeBlacklisted removes class-matched windows...")
+        WindowStore_Init()
+        WindowStore_BeginScan()
+        classRec := Map("hwnd", 0xAA03, "title", "Safe Title", "class", "BadClass", "pid", 12,
+                        "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+        WindowStore_UpsertWindow([classRec], "test")
+        WindowStore_EndScan()
+
+        result := WindowStore_PurgeBlacklisted()
+        if (!gWS_Store.Has(0xAA03) && result.removed = 1) {
+            Log("PASS: PurgeBlacklisted removed class-matched window (BadClass)")
+            TestPassed++
+        } else {
+            Log("FAIL: PurgeBlacklisted should remove class-matched window (still has=" gWS_Store.Has(0xAA03) " removed=" result.removed ")")
+            TestErrors++
+        }
+
+        ; Test 4: Rev bumped only when something removed
+        Log("Testing PurgeBlacklisted rev behavior...")
+        WindowStore_Init()
+        WindowStore_BeginScan()
+        safeRec := Map("hwnd", 0xAA04, "title", "Completely Safe", "class", "SafeClass", "pid", 13,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+        WindowStore_UpsertWindow([safeRec], "test")
+        WindowStore_EndScan()
+
+        revBefore := gWS_Rev
+        result := WindowStore_PurgeBlacklisted()
+        if (result.removed = 0 && gWS_Rev = revBefore) {
+            Log("PASS: PurgeBlacklisted no rev bump when nothing removed")
+            TestPassed++
+        } else {
+            Log("FAIL: PurgeBlacklisted should not bump rev when nothing removed (removed=" result.removed ")")
+            TestErrors++
+        }
+        WindowStore_RemoveWindow([0xAA04], true)
+
+        ; Test 5: Empty store is no-op
+        Log("Testing PurgeBlacklisted no-op on empty store...")
+        WindowStore_Init()
+        gWS_Store := Map()
+        result := WindowStore_PurgeBlacklisted()
+        if (result.removed = 0) {
+            Log("PASS: PurgeBlacklisted no-op on empty store")
+            TestPassed++
+        } else {
+            Log("FAIL: PurgeBlacklisted should return removed=0 on empty store")
+            TestErrors++
+        }
+
+        ; Drain icon queue to prevent bleeding into subsequent tests
+        WindowStore_PopIconBatch(100)
+
+        ; Cleanup temp files and restore blacklist
+        try FileDelete(testBlPathStorage)
+        try DirDelete(testBlDirStorage)
+        Blacklist_Init(savedBlPathStorage)
+    } catch as e {
+        Log("FAIL: PurgeBlacklisted test error: " e.Message)
+        TestErrors++
+        try DirDelete(testBlDirStorage, true)
+        Blacklist_Init(savedBlPathStorage)
+    }
+
+    ; ============================================================
     ; Icon Pump Tests
     ; ============================================================
     Log("`n--- Icon Pump Tests ---")
