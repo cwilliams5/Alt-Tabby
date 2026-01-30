@@ -19,7 +19,8 @@ ToggleStartupShortcut() {
 
 _ToggleShortcut(lnkPath, locationName) {
     global cfg, TOOLTIP_DURATION_SHORT
-    if (FileExist(lnkPath)) {
+    if (_Shortcut_ExistsAndPointsToUs(lnkPath)) {
+        ; Our shortcut exists - remove it
         try {
             FileDelete(lnkPath)
             ToolTip("Removed from " locationName)
@@ -27,6 +28,7 @@ _ToggleShortcut(lnkPath, locationName) {
             MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
         }
     } else {
+        ; No shortcut or points elsewhere - create (handles conflict dialog internally)
         if (_CreateShortcutForCurrentMode(lnkPath)) {
             ToolTip("Added to " locationName)
         }

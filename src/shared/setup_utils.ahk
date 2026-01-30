@@ -918,12 +918,14 @@ _Update_ContinueFromElevation() {
             return false
         }
 
-        ; Validate target path looks like an Alt-Tabby executable
-        ; Allow renamed exes (e.g., "alttabby v4.exe") as long as they contain "tabby"
-        targetName := ""
-        SplitPath(targetExePath, &targetName)
-        if (!RegExMatch(targetName, "i)\.exe$") || !InStr(StrLower(targetName), "tabby")) {
-            MsgBox("Invalid update target path:`n" targetExePath, "Alt-Tabby", "Icon!")
+        ; Validate target is the same exe we're running from.
+        ; For --apply-update, the elevated instance IS the same exe, so A_ScriptFullPath
+        ; matches the original target. Path equality is both more secure (exact match)
+        ; and more permissive (works with any exe name, not just ones containing "tabby").
+        if (StrLower(targetExePath) != StrLower(A_ScriptFullPath)) {
+            MsgBox("Update target doesn't match running executable.`n"
+                "Target: " targetExePath "`n"
+                "Running: " A_ScriptFullPath, "Alt-Tabby", "Icon!")
             try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false
         }

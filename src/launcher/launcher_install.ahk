@@ -218,15 +218,17 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
     )
 
     if (result = "Yes") {
-        ; Kill the specific installed process we detected by PID.
-        ; Don't delegate to _Launcher_KillExistingInstances() — it searches by
+        ; Kill ALL processes matching the installed exe name (launcher + store + gui).
+        ; Can't delegate to _Launcher_KillExistingInstances() — it searches by
         ; current exe name, which won't match the installed exe (e.g., "AltTabby.exe"
-        ; vs "alttabby v4.exe").
-        try ProcessClose(pid)
-        Sleep(TIMING_MUTEX_RELEASE_WAIT)
-        ; Verify it's gone, retry once if stubborn
-        if (ProcessExist(pid))
+        ; vs "alttabby v4.exe"). Loop to catch all subprocesses.
+        loop 10 {
+            pid := ProcessExist(installedExeName)
+            if (!pid || pid = myPID)
+                break
             try ProcessClose(pid)
+            Sleep(TIMING_MUTEX_RELEASE_WAIT)
+        }
     }
 }
 

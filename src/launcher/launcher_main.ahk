@@ -86,6 +86,9 @@ Launcher_Init() {
     if (!g_TestingMode)
         _Launcher_CheckInstallMismatch()
 
+    ; Repair stale SetupExePath if old file was renamed/deleted (no admin task to auto-repair)
+    _Launcher_RepairStaleExePath()
+
     ; Clean up old exe from previous update
     _Update_CleanupOldExe()
 
@@ -392,6 +395,32 @@ _Launcher_ShouldSkipWizardForExistingInstall() {
     }
 
     return false
+}
+
+; Detect and repair stale SetupExePath when old file no longer exists.
+; Handles the case where user renamed the exe without admin mode (no auto-repair path).
+; If SetupExePath is set, doesn't match current path, AND the old file is gone,
+; silently update config and recreate shortcuts pointing to the new name.
+_Launcher_RepairStaleExePath() {
+    global cfg, gConfigIniPath
+
+    if (!A_IsCompiled)
+        return
+
+    ; Check if SetupExePath is set but stale (file doesn't exist)
+    if (!cfg.HasOwnProp("SetupExePath") || cfg.SetupExePath = "")
+        return
+    if (StrLower(cfg.SetupExePath) = StrLower(A_ScriptFullPath))
+        return  ; Already correct
+    if (FileExist(cfg.SetupExePath))
+        return  ; Old path still exists (mismatch check handles this)
+
+    ; SetupExePath points to non-existent file - update to current path
+    cfg.SetupExePath := A_ScriptFullPath
+    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+
+    ; Recreate shortcuts if they exist (they point to old name)
+    RecreateShortcuts()
 }
 
 ; Kill all existing instances of Alt-Tabby exes except ourselves

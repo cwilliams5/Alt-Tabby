@@ -225,13 +225,30 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         ; - Install was requested AND succeeded
         ; This prevents stale task pointing to temporary location
         if (!install || installSucceeded) {
-            if (CreateAdminTask(exePath)) {
-                cfg.SetupRunAsAdmin := true
-                _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
-            } else {
-                ; Task creation failed - notify user
-                MsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", "Alt-Tabby", "Icon!")
-                ; Don't set cfg.SetupRunAsAdmin since task creation failed
+            ; Warn if admin task would point to a temporary location (no install selected)
+            if (!install && IsTemporaryLocation(A_ScriptDir)) {
+                warnResult := MsgBox(
+                    "The admin task will point to:`n" exePath "`n`n"
+                    "This location may be temporary. If this file is moved or deleted, "
+                    "admin mode will stop working.`n`n"
+                    "Consider using 'Install to Program Files' for a permanent setup.`n`n"
+                    "Create admin task anyway?",
+                    "Alt-Tabby - Temporary Location",
+                    "YesNo Icon?"
+                )
+                if (warnResult = "No")
+                    admin := false
+            }
+
+            if (admin) {
+                if (CreateAdminTask(exePath)) {
+                    cfg.SetupRunAsAdmin := true
+                    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+                } else {
+                    ; Task creation failed - notify user
+                    MsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", "Alt-Tabby", "Icon!")
+                    ; Don't set cfg.SetupRunAsAdmin since task creation failed
+                }
             }
         } else {
             ; Install was requested but failed - don't create task pointing to temp location
