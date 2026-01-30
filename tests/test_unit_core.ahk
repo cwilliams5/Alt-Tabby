@@ -841,6 +841,97 @@ RunUnitTests_Core() {
     }
 
     ; ============================================================
+    ; Config INI Type Parsing Functional Tests
+    ; ============================================================
+    ; These tests write a real config.ini and verify _CL_LoadAllSettings parses correctly
+    Log("`n--- Config INI Type Parsing Functional Tests ---")
+
+    global gConfigIniPath, gConfigLoaded
+    savedIniPath := gConfigIniPath
+    savedLoaded := gConfigLoaded
+
+    ; Save cfg values we'll be testing
+    savedPrewarm := cfg.AltTabPrewarmOnAlt
+    savedGraceMs := cfg.AltTabGraceMs
+    savedWidthPct := cfg.GUI_ScreenWidthPct
+    savedPipeName := cfg.StorePipeName
+
+    testCfgDir := A_Temp "\tabby_cfgparse_test_" A_TickCount
+    testCfgPath := testCfgDir "\config.ini"
+
+    try {
+        DirCreate(testCfgDir)
+
+        ; Write INI values using IniWrite (ensures IniRead-compatible format)
+        gConfigIniPath := testCfgPath
+        IniWrite("true", testCfgPath, "AltTab", "PrewarmOnAlt")
+        IniWrite("200", testCfgPath, "AltTab", "GraceMs")
+        IniWrite("0.75", testCfgPath, "GUI", "ScreenWidthPct")
+        IniWrite("test_custom_pipe", testCfgPath, "IPC", "StorePipeName")
+
+        ; Reinitialize from temp INI
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+        _CL_ValidateSettings()
+
+        ; Test 1: Bool "true" -> true
+        AssertEq(cfg.AltTabPrewarmOnAlt, true, "Config parse: bool 'true' -> true")
+
+        ; Test 2: Int valid -> 200
+        AssertEq(cfg.AltTabGraceMs, 200, "Config parse: int '200' -> 200")
+
+        ; Test 3: Float valid -> 0.75
+        AssertEq(cfg.GUI_ScreenWidthPct, 0.75, "Config parse: float '0.75' -> 0.75")
+
+        ; Test 4: String -> "test_custom_pipe"
+        AssertEq(cfg.StorePipeName, "test_custom_pipe", "Config parse: string 'test_custom_pipe'")
+
+        ; Test 5: Bool "yes" variant
+        IniWrite("yes", testCfgPath, "AltTab", "PrewarmOnAlt")
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+        AssertEq(cfg.AltTabPrewarmOnAlt, true, "Config parse: bool 'yes' -> true")
+
+        ; Test 6: Bool "false" -> false
+        IniWrite("false", testCfgPath, "AltTab", "PrewarmOnAlt")
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+        AssertEq(cfg.AltTabPrewarmOnAlt, false, "Config parse: bool 'false' -> false")
+
+        ; Test 7: Int invalid -> default preserved
+        try FileDelete(testCfgPath)
+        IniWrite("not_a_number", testCfgPath, "AltTab", "GraceMs")
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+        AssertEq(cfg.AltTabGraceMs, 150, "Config parse: invalid int -> default 150 preserved")
+
+        ; Test 8: Empty value -> default preserved
+        try FileDelete(testCfgPath)
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+        AssertEq(cfg.AltTabGraceMs, 150, "Config parse: empty value -> default 150 preserved")
+
+    } catch as e {
+        Log("FAIL: Config INI type parsing test error: " e.Message)
+        TestErrors++
+    }
+
+    ; Restore original state
+    gConfigIniPath := savedIniPath
+    gConfigLoaded := savedLoaded
+    _CL_InitializeDefaults()
+    _CL_LoadAllSettings()
+    _CL_ValidateSettings()
+    cfg.AltTabPrewarmOnAlt := savedPrewarm
+    cfg.AltTabGraceMs := savedGraceMs
+    cfg.GUI_ScreenWidthPct := savedWidthPct
+    cfg.StorePipeName := savedPipeName
+
+    ; Cleanup
+    try FileDelete(testCfgPath)
+    try DirDelete(testCfgDir)
+
+    ; ============================================================
     ; Diagnostic Logging Guard Tests
     ; ============================================================
     ; These tests verify that logging functions respect their config flags

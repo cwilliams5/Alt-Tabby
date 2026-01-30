@@ -1075,4 +1075,76 @@ RunUnitTests_Storage() {
 
     ; Restore original blacklist
     Blacklist_Init(savedBlPathPM)
+
+    ; ============================================================
+    ; Blacklist_IsWindowEligible Synthetic Tests
+    ; ============================================================
+    ; These test the centralized eligibility function used by ALL producers.
+    ; UseAltTabEligibility=false bypasses DllCall-dependent checks so we can
+    ; test purely with synthetic title/class parameters.
+    Log("`n--- Blacklist_IsWindowEligible Synthetic Tests ---")
+
+    global gBlacklist_FilePath
+    savedBlPathElig := gBlacklist_FilePath
+    savedUseAltTab := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
+    savedUseBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
+
+    ; Bypass Alt-Tab DllCall eligibility for synthetic testing
+    cfg.UseAltTabEligibility := false
+    cfg.UseBlacklist := true
+
+    testBlDirElig := A_Temp "\tabby_bwelig_test_" A_TickCount
+    testBlPathElig := testBlDirElig "\blacklist.txt"
+
+    try {
+        DirCreate(testBlDirElig)
+
+        ; Write test blacklist with title, class, and pair patterns
+        blContent := "[Title]`nBadTitle*`n[Class]`nBadClass`n[Pair]`nSpecialClass|SpecialTitle*`n"
+        FileAppend(blContent, testBlPathElig, "UTF-8")
+        Blacklist_Init(testBlPathElig)
+
+        ; Test 1: Empty title -> false
+        result := Blacklist_IsWindowEligible(0, "", "AnyClass")
+        AssertEq(result, false, "IsWindowEligible: empty title -> false")
+
+        ; Test 2: Blacklisted title -> false
+        result := Blacklist_IsWindowEligible(0, "BadTitle Something", "SafeClass")
+        AssertEq(result, false, "IsWindowEligible: blacklisted title -> false")
+
+        ; Test 3: Clean window -> true
+        result := Blacklist_IsWindowEligible(0, "Good Window", "SafeClass")
+        AssertEq(result, true, "IsWindowEligible: clean window -> true")
+
+        ; Test 4: UseBlacklist=false -> blacklisted title passes
+        cfg.UseBlacklist := false
+        result := Blacklist_IsWindowEligible(0, "BadTitle Something", "SafeClass")
+        AssertEq(result, true, "IsWindowEligible: UseBlacklist=false -> blacklisted passes")
+        cfg.UseBlacklist := true
+
+        ; Test 5: Blacklisted class -> false
+        result := Blacklist_IsWindowEligible(0, "Good Window", "BadClass")
+        AssertEq(result, false, "IsWindowEligible: blacklisted class -> false")
+
+        ; Test 6: Pair match (both class+title) -> false
+        result := Blacklist_IsWindowEligible(0, "SpecialTitle App", "SpecialClass")
+        AssertEq(result, false, "IsWindowEligible: pair match (class+title) -> false")
+
+        ; Test 7: Pair partial (title only, class doesn't match) -> true
+        result := Blacklist_IsWindowEligible(0, "SpecialTitle App", "OtherClass")
+        AssertEq(result, true, "IsWindowEligible: pair partial (title only) -> true")
+
+    } catch as e {
+        Log("FAIL: Blacklist_IsWindowEligible test error: " e.Message)
+        TestErrors++
+    }
+
+    ; Restore original state
+    cfg.UseAltTabEligibility := savedUseAltTab
+    cfg.UseBlacklist := savedUseBlacklist
+    Blacklist_Init(savedBlPathElig)
+
+    ; Cleanup
+    try FileDelete(testBlPathElig)
+    try DirDelete(testBlDirElig)
 }
