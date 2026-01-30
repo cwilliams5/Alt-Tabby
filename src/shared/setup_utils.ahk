@@ -736,12 +736,26 @@ _Update_ApplyCore(opts) {
         if (lockFile != "")
             try FileDelete(lockFile)
 
+        ; Launch new version — de-elevate if admin mode is not configured
+        if (A_IsAdmin && !targetRunAsAdmin) {
+            try {
+                shell := ComObject("Shell.Application")
+                shell.ShellExecute(targetPath, "", targetDir)
+                ExitApp()
+            }
+            ; Fallback to direct launch if Shell.Application fails
+        }
         Run('"' targetPath '"')
         ExitApp()
 
     } catch as e {
-        ; Rollback
+        ; Rollback - handle partial/corrupted targetPath from failed copy/move
         rollbackSuccess := false
+        if (FileExist(targetPath) && FileExist(backupPath)) {
+            ; targetPath exists but may be partial/corrupted from failed copy/move
+            ; Remove it so we can restore the known-good backup
+            try FileDelete(targetPath)
+        }
         if (!FileExist(targetPath) && FileExist(backupPath)) {
             try {
                 FileMove(backupPath, targetPath)

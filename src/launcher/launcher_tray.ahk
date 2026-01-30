@@ -217,11 +217,25 @@ ToggleAdminMode() {
         ; Offer restart to apply change immediately
         result := MsgBox("Admin mode disabled.`n`nRestart Alt-Tabby to run without elevation?", "Alt-Tabby", "YesNo Icon?")
         if (result = "Yes") {
-            ; Restart non-elevated by running the exe directly
-            if A_IsCompiled
-                Run('"' A_ScriptFullPath '"')
-            else
-                Run('"' A_AhkPath '" "' A_ScriptFullPath '"')
+            ; Launch non-elevated via Explorer shell (de-escalation)
+            launched := false
+            if (A_IsAdmin) {
+                try {
+                    shell := ComObject("Shell.Application")
+                    shell.ShellExecute(
+                        A_IsCompiled ? A_ScriptFullPath : A_AhkPath,
+                        A_IsCompiled ? "" : '"' A_ScriptFullPath '"',
+                        A_ScriptDir)
+                    launched := true
+                }
+            }
+            if (!launched) {
+                ; Fallback: direct launch (still elevated if we're admin, but better than nothing)
+                if A_IsCompiled
+                    Run('"' A_ScriptFullPath '"')
+                else
+                    Run('"' A_AhkPath '" "' A_ScriptFullPath '"')
+            }
             ExitAll()
         } else {
             ToolTip("Admin mode disabled - changes apply on next launch")
@@ -260,6 +274,23 @@ ToggleAdminMode() {
 
         ; We're already admin - create task directly
         exePath := _Shortcut_GetEffectiveExePath()
+        exeDir := ""
+        SplitPath(exePath, , &exeDir)
+
+        ; Warn if admin task would point to a temporary location
+        if (IsTemporaryLocation(exeDir)) {
+            warnResult := MsgBox(
+                "The admin task will point to:`n" exePath "`n`n"
+                "This location may be temporary. If this file is moved or deleted, "
+                "admin mode will stop working.`n`n"
+                "Create admin task anyway?",
+                "Alt-Tabby - Temporary Location",
+                "YesNo Icon?"
+            )
+            if (warnResult = "No")
+                return
+        }
+
         if (CreateAdminTask(exePath)) {
             cfg.SetupRunAsAdmin := true
             _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")

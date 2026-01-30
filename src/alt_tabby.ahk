@@ -232,6 +232,25 @@ if (g_AltTabbyMode = "enable-admin-task") {
     _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     exePath := _Shortcut_GetEffectiveExePath()
+    exeDir := ""
+    SplitPath(exePath, , &exeDir)
+
+    ; Warn if admin task would point to a temporary location
+    if (IsTemporaryLocation(exeDir)) {
+        warnResult := MsgBox(
+            "The admin task will point to:`n" exePath "`n`n"
+            "This location may be temporary. If this file is moved or deleted, "
+            "admin mode will stop working.`n`n"
+            "Create admin task anyway?",
+            "Alt-Tabby - Temporary Location",
+            "YesNo Icon?"
+        )
+        if (warnResult = "No") {
+            try FileDelete(A_Temp "\alttabby_admin_toggle.lock")
+            ExitApp()
+        }
+    }
+
     if (CreateAdminTask(exePath)) {
         cfg.SetupRunAsAdmin := true
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
