@@ -43,10 +43,14 @@ GUI_UpdateCurrentWSFromPayload(payload) {
         ; The user's tab position was contextual to the old workspace — retaining it
         ; on the new workspace highlights an unrelated window or nothing at all
         ; (if the new workspace has fewer windows than the old selection index).
+        ; RACE FIX: Wrap in Critical to prevent a hotkey (Tab/Ctrl) from modifying
+        ; gGUI_Sel between the state check and the assignment.
+        Critical "On"
         if (gGUI_WorkspaceMode = "current" && gGUI_State = "ACTIVE") {
             gGUI_Sel := 1
             gGUI_ScrollTop := 0
         }
+        Critical "Off"
     }
 }
 
