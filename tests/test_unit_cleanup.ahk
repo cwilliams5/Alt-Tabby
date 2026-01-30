@@ -8,6 +8,176 @@ RunUnitTests_Cleanup() {
     global TestPassed, TestErrors, cfg
 
     ; ============================================================
+    ; LogTrim Log Rotation Tests
+    ; ============================================================
+    ; Verify LogTrim correctly trims large files, preserves tail content,
+    ; and handles edge cases (under threshold, nonexistent, empty).
+    Log("`n--- LogTrim Log Rotation Tests ---")
+
+    ; Test 1: File under 100KB should not be modified
+    Log("Testing LogTrim does not modify small file...")
+    testLogPath := A_Temp "\tabby_logtrim_test_" A_TickCount ".log"
+    try {
+        smallContent := ""
+        Loop 100 {
+            smallContent .= "Log line " A_Index " - some padding text here`n"
+        }
+        FileAppend(smallContent, testLogPath, "UTF-8")
+        sizeBefore := FileGetSize(testLogPath)
+
+        LogTrim(testLogPath)
+
+        sizeAfter := FileGetSize(testLogPath)
+        if (sizeBefore = sizeAfter) {
+            Log("PASS: LogTrim did not modify small file (" sizeBefore " bytes)")
+            TestPassed++
+        } else {
+            Log("FAIL: LogTrim should not modify file under threshold (" sizeBefore " -> " sizeAfter ")")
+            TestErrors++
+        }
+        try FileDelete(testLogPath)
+    } catch as e {
+        Log("FAIL: LogTrim small file test error: " e.Message)
+        TestErrors++
+        try FileDelete(testLogPath)
+    }
+
+    ; Test 2: File over 100KB should be trimmed to ~50KB
+    Log("Testing LogTrim trims large file to ~50KB...")
+    testLogPath := A_Temp "\tabby_logtrim_test_" A_TickCount ".log"
+    try {
+        ; Build a file > 102400 bytes (100KB). Each line is ~100 chars.
+        ; 1200 lines * 100 chars = ~120KB (well over threshold)
+        largeContent := ""
+        Loop 1200 {
+            largeContent .= "Line " Format("{:04d}", A_Index) " - " "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH" "`n"
+        }
+        FileAppend(largeContent, testLogPath, "UTF-8")
+        sizeBefore := FileGetSize(testLogPath)
+
+        LogTrim(testLogPath)
+
+        sizeAfter := FileGetSize(testLogPath)
+        if (sizeAfter < sizeBefore && sizeAfter <= 60000) {
+            Log("PASS: LogTrim trimmed file from " sizeBefore " to " sizeAfter " bytes")
+            TestPassed++
+        } else {
+            Log("FAIL: LogTrim should trim to ~50KB (before=" sizeBefore ", after=" sizeAfter ")")
+            TestErrors++
+        }
+        try FileDelete(testLogPath)
+    } catch as e {
+        Log("FAIL: LogTrim large file test error: " e.Message)
+        TestErrors++
+        try FileDelete(testLogPath)
+    }
+
+    ; Test 3: Non-existent file should not error
+    Log("Testing LogTrim handles non-existent file...")
+    try {
+        LogTrim(A_Temp "\tabby_nonexistent_" A_TickCount ".log")
+        Log("PASS: LogTrim did not error on non-existent file")
+        TestPassed++
+    } catch as e {
+        Log("FAIL: LogTrim should not error on non-existent file: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 4: Empty file should not error
+    Log("Testing LogTrim handles empty file...")
+    testLogPath := A_Temp "\tabby_logtrim_empty_" A_TickCount ".log"
+    try {
+        FileAppend("", testLogPath, "UTF-8")
+        LogTrim(testLogPath)
+        sizeAfter := FileGetSize(testLogPath)
+        if (sizeAfter <= 3) {  ; BOM may add a few bytes
+            Log("PASS: LogTrim did not error on empty file (size=" sizeAfter ")")
+            TestPassed++
+        } else {
+            Log("FAIL: LogTrim should not grow empty file (size=" sizeAfter ")")
+            TestErrors++
+        }
+        try FileDelete(testLogPath)
+    } catch as e {
+        Log("FAIL: LogTrim empty file test error: " e.Message)
+        TestErrors++
+        try FileDelete(testLogPath)
+    }
+
+    ; Test 5: Trimmed file retains TAIL content (last lines preserved)
+    Log("Testing LogTrim preserves tail content...")
+    testLogPath := A_Temp "\tabby_logtrim_tail_" A_TickCount ".log"
+    try {
+        ; Generate > 102400 bytes. 1300 lines × ~100 chars = ~130KB
+        largeContent := ""
+        Loop 1300 {
+            largeContent .= "Line " Format("{:04d}", A_Index) " PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PAD`n"
+        }
+        FileAppend(largeContent, testLogPath, "UTF-8")
+        sizeBefore := FileGetSize(testLogPath)
+
+        if (sizeBefore <= 102400) {
+            Log("SKIP: LogTrim tail test: content only " sizeBefore " bytes (need > 102400)")
+        } else {
+            LogTrim(testLogPath)
+
+            trimmedContent := FileRead(testLogPath)
+            ; Last line (1300) should be preserved since LogTrim keeps tail
+            hasLastLine := InStr(trimmedContent, "Line 1300")
+            ; First line should be gone (trimmed from head)
+            hasFirstLine := InStr(trimmedContent, "Line 0001")
+            if (hasLastLine && !hasFirstLine) {
+                Log("PASS: LogTrim preserved tail (has Line 1300, no Line 0001)")
+                TestPassed++
+            } else {
+                Log("FAIL: LogTrim should keep tail, remove head (last=" hasLastLine ", first=" hasFirstLine ", beforeSize=" sizeBefore ")")
+                TestErrors++
+            }
+        }
+        try FileDelete(testLogPath)
+    } catch as e {
+        Log("FAIL: LogTrim tail preservation test error: " e.Message)
+        TestErrors++
+        try FileDelete(testLogPath)
+    }
+
+    ; Test 6: File exactly at threshold (100KB = 102400 bytes) should NOT be trimmed
+    Log("Testing LogTrim does not trim at exact threshold...")
+    testLogPath := A_Temp "\tabby_logtrim_exact_" A_TickCount ".log"
+    try {
+        ; Build content close to exactly 102400 bytes
+        exactContent := ""
+        lineLen := 80  ; approximate bytes per line
+        targetLines := 102400 // lineLen  ; ~1280 lines
+        Loop targetLines {
+            exactContent .= "X" Format("{:04d}", A_Index) " - " "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrs" "`n"
+        }
+        FileAppend(exactContent, testLogPath, "UTF-8")
+        sizeBefore := FileGetSize(testLogPath)
+
+        LogTrim(testLogPath)
+
+        sizeAfter := FileGetSize(testLogPath)
+        ; At exactly threshold or below, should not trim
+        if (sizeBefore <= 102400 && sizeBefore = sizeAfter) {
+            Log("PASS: LogTrim did not trim file at threshold (" sizeBefore " bytes)")
+            TestPassed++
+        } else if (sizeBefore > 102400 && sizeAfter < sizeBefore) {
+            ; If our content happened to go slightly over, trimming is correct
+            Log("PASS: LogTrim correctly trimmed file just over threshold (" sizeBefore " -> " sizeAfter ")")
+            TestPassed++
+        } else {
+            Log("FAIL: LogTrim threshold behavior unexpected (before=" sizeBefore ", after=" sizeAfter ")")
+            TestErrors++
+        }
+        try FileDelete(testLogPath)
+    } catch as e {
+        Log("FAIL: LogTrim threshold test error: " e.Message)
+        TestErrors++
+        try FileDelete(testLogPath)
+    }
+
+    ; ============================================================
     ; GDI+ Shutdown Tests (Code Inspection)
     ; ============================================================
     ; NOTE: These tests use code inspection (FileRead + InStr) rather than

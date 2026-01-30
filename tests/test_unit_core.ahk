@@ -1198,6 +1198,74 @@ RunUnitTests_Core() {
     WindowStore_RemoveWindow([1001, 1002, 1003], true)
 
     ; ============================================================
+    ; Config INI Type Parsing & Formatting Tests
+    ; ============================================================
+    ; Verify _CL_FormatValue correctly formats typed values for INI output
+    ; and that _CL_LoadAllSettings has proper parsing branches for bool/int/float.
+    Log("`n--- Config INI Type Parsing Tests ---")
+
+    ; Test: _CL_FormatValue(true, "bool") → "true"
+    AssertEq(_CL_FormatValue(true, "bool"), "true", "_CL_FormatValue(true, bool) = 'true'")
+
+    ; Test: _CL_FormatValue(false, "bool") → "false"
+    AssertEq(_CL_FormatValue(false, "bool"), "false", "_CL_FormatValue(false, bool) = 'false'")
+
+    ; Test: _CL_FormatValue(42, "int") → "42" (small int, no hex)
+    AssertEq(_CL_FormatValue(5, "int"), "5", "_CL_FormatValue(5, int) = '5' (small int, decimal)")
+
+    ; Test: _CL_FormatValue(large int) → hex format
+    hexResult := _CL_FormatValue(255, "int")
+    AssertEq(hexResult, "0xFF", "_CL_FormatValue(255, int) = '0xFF' (large int, hex)")
+
+    ; Test: _CL_FormatValue(0.5, "float") → string containing "0.50"
+    floatResult := _CL_FormatValue(0.5, "float")
+    AssertEq(floatResult, "0.50", "_CL_FormatValue(0.5, float) = '0.50'")
+
+    ; Test: _CL_FormatValue("hello", "string") → "hello"
+    AssertEq(_CL_FormatValue("hello", "string"), "hello", "_CL_FormatValue('hello', string) = 'hello'")
+
+    ; Code inspection: Verify _CL_LoadAllSettings has parsing branches
+    ; Search the full file for parsing patterns that appear in the function body.
+    ; These patterns are unique to _CL_LoadAllSettings and don't appear elsewhere.
+    Log("Testing _CL_LoadAllSettings has type parsing branches (code inspection)...")
+    clPath := A_ScriptDir "\..\src\shared\config_loader.ahk"
+    if (FileExist(clPath)) {
+        clCode := FileRead(clPath)
+
+        ; Check for bool parsing: switch case with "true"/"1"/"yes"
+        ; Pattern: 'case "bool":' followed by parsing logic
+        hasBoolCase := InStr(clCode, 'case "bool":')
+        hasIntCase := InStr(clCode, 'case "int":')
+        hasFloatCase := InStr(clCode, 'case "float":')
+
+        if (hasBoolCase) {
+            Log("PASS: _CL_LoadAllSettings has bool parsing branch (case `"bool`":)")
+            TestPassed++
+        } else {
+            Log("FAIL: _CL_LoadAllSettings missing bool parsing branch")
+            TestErrors++
+        }
+
+        if (hasIntCase) {
+            Log("PASS: _CL_LoadAllSettings has int parsing branch (case `"int`":)")
+            TestPassed++
+        } else {
+            Log("FAIL: _CL_LoadAllSettings missing int parsing branch")
+            TestErrors++
+        }
+
+        if (hasFloatCase) {
+            Log("PASS: _CL_LoadAllSettings has float parsing branch (case `"float`":)")
+            TestPassed++
+        } else {
+            Log("FAIL: _CL_LoadAllSettings missing float parsing branch")
+            TestErrors++
+        }
+    } else {
+        Log("SKIP: config_loader.ahk not found")
+    }
+
+    ; ============================================================
     ; Phase 1: Bypass Mode Detection Tests
     ; ============================================================
     Log("`n--- Bypass Mode Detection Tests ---")
@@ -1656,6 +1724,51 @@ RunUnitTests_Core() {
     ; Test GetFocusedHwnd (should navigate to Beta ws, focused container 0, focused window 1 = hwnd 333)
     focusedHwnd := _KSub_GetFocusedHwnd(miniObj)
     AssertEq(focusedHwnd, 333, "Parse+Navigate: focused hwnd is 333")
+
+    ; ============================================================
+    ; _BL_CompileWildcard Regex Metacharacter Escaping Tests
+    ; ============================================================
+    ; Verify that _BL_CompileWildcard correctly escapes regex metacharacters
+    ; so that literal dots, brackets, pipes, etc. match literally, not as regex operators.
+    Log("`n--- _BL_CompileWildcard Metacharacter Escaping Tests ---")
+
+    ; Test: Literal dot should NOT match arbitrary character
+    dotRegex := _BL_CompileWildcard("msedge.exe")
+    AssertEq(!!RegExMatch("msedge.exe", dotRegex), true, "Wildcard dot: 'msedge.exe' matches 'msedge.exe'")
+    AssertEq(!!RegExMatch("msedgeXexe", dotRegex), false, "Wildcard dot: 'msedgeXexe' must NOT match 'msedge.exe'")
+
+    ; Test: Literal brackets should match literally
+    bracketRegex := _BL_CompileWildcard("[Preview]*")
+    AssertEq(!!RegExMatch("[Preview] Document", bracketRegex), true, "Wildcard brackets: '[Preview] Document' matches '[Preview]*'")
+    AssertEq(!!RegExMatch("Preview Document", bracketRegex), false, "Wildcard brackets: 'Preview Document' must NOT match '[Preview]*'")
+
+    ; Test: Literal pipe should match literally
+    pipeRegex := _BL_CompileWildcard("foo|bar")
+    AssertEq(!!RegExMatch("foo|bar", pipeRegex), true, "Wildcard pipe: 'foo|bar' matches 'foo|bar'")
+    AssertEq(!!RegExMatch("foo", pipeRegex), false, "Wildcard pipe: 'foo' must NOT match 'foo|bar'")
+
+    ; Test: Literal plus should match literally
+    plusRegex := _BL_CompileWildcard("C++")
+    AssertEq(!!RegExMatch("C++", plusRegex), true, "Wildcard plus: 'C++' matches 'C++'")
+    AssertEq(!!RegExMatch("Cxx", plusRegex), false, "Wildcard plus: 'Cxx' must NOT match 'C++'")
+
+    ; Test: Literal caret should match literally
+    caretRegex := _BL_CompileWildcard("^test")
+    AssertEq(!!RegExMatch("^test", caretRegex), true, "Wildcard caret: '^test' matches '^test'")
+    AssertEq(!!RegExMatch("test", caretRegex), false, "Wildcard caret: 'test' must NOT match '^test'")
+
+    ; Test: Literal parens should match literally
+    parenRegex := _BL_CompileWildcard("(untitled)")
+    AssertEq(!!RegExMatch("(untitled)", parenRegex), true, "Wildcard parens: '(untitled)' matches '(untitled)'")
+    AssertEq(!!RegExMatch("untitled", parenRegex), false, "Wildcard parens: 'untitled' must NOT match '(untitled)'")
+
+    ; Test: Wildcard + metachar combined: *.exe
+    wildcardDotRegex := _BL_CompileWildcard("*.exe")
+    AssertEq(!!RegExMatch("foo.exe", wildcardDotRegex), true, "Wildcard+dot: 'foo.exe' matches '*.exe'")
+    AssertEq(!!RegExMatch("fooXexe", wildcardDotRegex), false, "Wildcard+dot: 'fooXexe' must NOT match '*.exe'")
+
+    ; Test: Case insensitivity preserved with metachar patterns
+    AssertEq(!!RegExMatch("MSEDGE.EXE", dotRegex), true, "Wildcard case: 'MSEDGE.EXE' matches 'msedge.exe' (case-insensitive)")
 
     ; ============================================================
     ; _BL_InsertInSection Tests

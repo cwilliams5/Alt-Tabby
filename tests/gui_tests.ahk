@@ -319,6 +319,46 @@ RunGUITests() {
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
+    ; ============================================================
+    ; Win_Wrap0 / Win_Wrap1 Math Utility Tests
+    ; ============================================================
+    ; Direct unit tests for the wrapping math helpers used in selection
+    ; and scroll logic. These are pure math - no mocks needed.
+    GUI_Log("Test: Win_Wrap0 edge cases")
+
+    ; Win_Wrap0: wraps value to 0..(count-1)
+    GUI_AssertEq(Win_Wrap0(0, 5), 0, "Wrap0(0,5) = 0 (identity)")
+    GUI_AssertEq(Win_Wrap0(4, 5), 4, "Wrap0(4,5) = 4 (no wrap)")
+    GUI_AssertEq(Win_Wrap0(5, 5), 0, "Wrap0(5,5) = 0 (wrap forward)")
+    GUI_AssertEq(Win_Wrap0(6, 5), 1, "Wrap0(6,5) = 1 (beyond wrap)")
+    GUI_AssertEq(Win_Wrap0(-1, 5), 4, "Wrap0(-1,5) = 4 (wrap backward)")
+    GUI_AssertEq(Win_Wrap0(-5, 5), 0, "Wrap0(-5,5) = 0 (full backward wrap)")
+    GUI_AssertEq(Win_Wrap0(0, 0), 0, "Wrap0(0,0) = 0 (zero count guard)")
+    GUI_AssertEq(Win_Wrap0(0, -1), 0, "Wrap0(0,-1) = 0 (negative count guard)")
+    GUI_AssertEq(Win_Wrap0(0, 1), 0, "Wrap0(0,1) = 0 (single item)")
+    GUI_AssertEq(Win_Wrap0(1, 1), 0, "Wrap0(1,1) = 0 (single item wrap)")
+    GUI_AssertEq(Win_Wrap0(-1, 1), 0, "Wrap0(-1,1) = 0 (single item backward)")
+    GUI_AssertEq(Win_Wrap0(10, 3), 1, "Wrap0(10,3) = 1 (multi-wrap)")
+    GUI_AssertEq(Win_Wrap0(-7, 5), 3, "Wrap0(-7,5) = 3 (multi-backward)")
+
+    GUI_Log("Test: Win_Wrap1 edge cases")
+
+    ; Win_Wrap1: wraps value to 1..count
+    GUI_AssertEq(Win_Wrap1(1, 5), 1, "Wrap1(1,5) = 1 (identity)")
+    GUI_AssertEq(Win_Wrap1(5, 5), 5, "Wrap1(5,5) = 5 (no wrap)")
+    GUI_AssertEq(Win_Wrap1(6, 5), 1, "Wrap1(6,5) = 1 (wrap forward)")
+    GUI_AssertEq(Win_Wrap1(7, 5), 2, "Wrap1(7,5) = 2 (beyond wrap)")
+    GUI_AssertEq(Win_Wrap1(0, 5), 5, "Wrap1(0,5) = 5 (wrap backward)")
+    GUI_AssertEq(Win_Wrap1(-1, 5), 4, "Wrap1(-1,5) = 4 (further backward)")
+    GUI_AssertEq(Win_Wrap1(-4, 5), 1, "Wrap1(-4,5) = 1 (full backward wrap)")
+    GUI_AssertEq(Win_Wrap1(0, 0), 0, "Wrap1(0,0) = 0 (zero count guard)")
+    GUI_AssertEq(Win_Wrap1(0, -1), 0, "Wrap1(0,-1) = 0 (negative count guard)")
+    GUI_AssertEq(Win_Wrap1(1, 1), 1, "Wrap1(1,1) = 1 (single item)")
+    GUI_AssertEq(Win_Wrap1(2, 1), 1, "Wrap1(2,1) = 1 (single item wrap)")
+    GUI_AssertEq(Win_Wrap1(0, 1), 1, "Wrap1(0,1) = 1 (single item backward)")
+    GUI_AssertEq(Win_Wrap1(11, 3), 2, "Wrap1(11,3) = 2 (multi-wrap)")
+    GUI_AssertEq(Win_Wrap1(-6, 5), 4, "Wrap1(-6,5) = 4 (multi-backward)")
+
     ; ----- Test 1: Basic state transitions -----
     GUI_Log("Test: Basic state transitions")
     ResetGUIState()
@@ -1314,6 +1354,131 @@ RunGUITests() {
     gGUI_Sel := 1
     GUI_MoveSelectionFrozen(-1)
     GUI_AssertEq(gGUI_Sel, 5, "MoveSelectionFrozen: backward wrap first->last")
+
+    ; ============================================================
+    ; GUI_MoveSelection Scroll Viewport Tests
+    ; ============================================================
+    ; Tests that gGUI_ScrollTop updates correctly when selection moves
+    ; beyond the visible window, wraps, and under each scroll mode.
+
+    ; ----- Test: MoveSelection scrolls down past visible window -----
+    GUI_Log("Test: MoveSelection scrolls down past visible window")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FrozenItems := CreateTestItems(12)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    ; Move down to sel=5 (still visible at bottom), then sel=6 (should scroll)
+    GUI_MoveSelection(1)  ; sel=2
+    GUI_MoveSelection(1)  ; sel=3
+    GUI_MoveSelection(1)  ; sel=4
+    GUI_MoveSelection(1)  ; sel=5
+    GUI_AssertEq(gGUI_Sel, 5, "ScrollDown: sel=5 after 4 moves")
+    scrollBefore := gGUI_ScrollTop
+    GUI_MoveSelection(1)  ; sel=6, should scroll
+    GUI_AssertEq(gGUI_Sel, 6, "ScrollDown: sel=6")
+    GUI_AssertTrue(gGUI_ScrollTop > scrollBefore, "ScrollDown: scrollTop advanced past visible window")
+
+    ; ----- Test: MoveSelection scrolls up past top of viewport -----
+    GUI_Log("Test: MoveSelection scrolls up past top of viewport")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FrozenItems := CreateTestItems(12)
+    gGUI_Sel := 6
+    gGUI_ScrollTop := 5  ; Viewport shows items 6-10 (0-indexed top=5)
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    GUI_MoveSelection(-1)  ; sel=5, at top of viewport
+    GUI_MoveSelection(-1)  ; sel=4, should scroll up
+    GUI_AssertEq(gGUI_Sel, 4, "ScrollUp: sel=4")
+    GUI_AssertTrue(gGUI_ScrollTop <= 3, "ScrollUp: scrollTop retreated (scrollTop=" gGUI_ScrollTop ")")
+
+    ; ----- Test: MoveSelection wraps from last to first -----
+    GUI_Log("Test: MoveSelection wraps last->first")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FrozenItems := CreateTestItems(12)
+    gGUI_Sel := 12
+    gGUI_ScrollTop := 7
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    GUI_MoveSelection(1)  ; wrap to sel=1
+    GUI_AssertEq(gGUI_Sel, 1, "WrapFwd: sel=1 after wrapping from 12")
+
+    ; ----- Test: MoveSelection wraps from first to last -----
+    GUI_Log("Test: MoveSelection wraps first->last")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FrozenItems := CreateTestItems(12)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    GUI_MoveSelection(-1)  ; wrap to sel=12
+    GUI_AssertEq(gGUI_Sel, 12, "WrapBack: sel=12 after wrapping from 1")
+
+    ; ----- Test: ScrollKeepHighlightOnTop=true keeps highlight at top -----
+    GUI_Log("Test: ScrollKeepHighlightOnTop=true mode")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FrozenItems := CreateTestItems(12)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := true
+
+    GUI_MoveSelection(1)  ; sel=2, scrollTop should follow
+    GUI_AssertEq(gGUI_Sel, 2, "KeepTop: sel=2")
+    GUI_AssertEq(gGUI_ScrollTop, 1, "KeepTop: scrollTop=sel-1=1")
+
+    GUI_MoveSelection(1)  ; sel=3
+    GUI_AssertEq(gGUI_ScrollTop, 2, "KeepTop: scrollTop=sel-1=2")
+
+    ; Wrap forward
+    gGUI_Sel := 12
+    gGUI_ScrollTop := 11
+    GUI_MoveSelection(1)  ; wrap to sel=1
+    GUI_AssertEq(gGUI_Sel, 1, "KeepTop wrap: sel=1")
+    GUI_AssertEq(gGUI_ScrollTop, 0, "KeepTop wrap: scrollTop=0")
+
+    cfg.GUI_ScrollKeepHighlightOnTop := false  ; Restore
+
+    ; ----- Test: Fewer items than MaxVisibleRows (no scroll needed) -----
+    GUI_Log("Test: MoveSelection with fewer items than visible rows")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FrozenItems := CreateTestItems(3)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    GUI_MoveSelection(1)  ; sel=2
+    GUI_MoveSelection(1)  ; sel=3
+    GUI_AssertEq(gGUI_Sel, 3, "FewItems: sel=3")
+    GUI_MoveSelection(1)  ; wrap to sel=1
+    GUI_AssertEq(gGUI_Sel, 1, "FewItems: wrap to sel=1")
+
+    ; ----- Test: Single item (no movement possible) -----
+    GUI_Log("Test: MoveSelection with single item")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FrozenItems := CreateTestItems(1)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    GUI_MoveSelection(1)  ; should stay at 1 (wraps to 1)
+    GUI_AssertEq(gGUI_Sel, 1, "SingleItem: sel stays 1 after move forward")
+    GUI_MoveSelection(-1)  ; should stay at 1
+    GUI_AssertEq(gGUI_Sel, 1, "SingleItem: sel stays 1 after move backward")
 
     ; ============================================================
     ; ESC DURING ASYNC ACTIVATION TEST
