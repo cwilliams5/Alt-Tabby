@@ -350,104 +350,6 @@ RunUnitTests_Core() {
     }
 
     ; ============================================================
-    ; Blacklist Wildcard Matching Tests
-    ; ============================================================
-    Log("`n--- Blacklist Wildcard Matching Tests ---")
-
-    ; Test _BL_WildcardMatch edge cases
-    Log("Testing _BL_WildcardMatch edge cases...")
-
-    ; Test 1: * matches any string
-    if (_BL_WildcardMatch("test", "*")) {
-        Log("PASS: * matches any string")
-        TestPassed++
-    } else {
-        Log("FAIL: * should match any string")
-        TestErrors++
-    }
-
-    ; Test 2: * matches empty string
-    if (_BL_WildcardMatch("", "*")) {
-        Log("PASS: * matches empty string")
-        TestPassed++
-    } else {
-        Log("FAIL: * should match empty string")
-        TestErrors++
-    }
-
-    ; Test 3: ? matches single character
-    if (_BL_WildcardMatch("a", "?")) {
-        Log("PASS: ? matches single char")
-        TestPassed++
-    } else {
-        Log("FAIL: ? should match single char")
-        TestErrors++
-    }
-
-    ; Test 4: ? does NOT match multiple characters
-    if (!_BL_WildcardMatch("ab", "?")) {
-        Log("PASS: ? does not match two chars")
-        TestPassed++
-    } else {
-        Log("FAIL: ? should not match two chars")
-        TestErrors++
-    }
-
-    ; Test 5: Wildcard with literal dot (regex special char)
-    if (_BL_WildcardMatch("test.exe", "*.exe")) {
-        Log("PASS: wildcard with literal dot works")
-        TestPassed++
-    } else {
-        Log("FAIL: *.exe should match test.exe")
-        TestErrors++
-    }
-
-    ; Test 6: Literal brackets (regex special char)
-    if (_BL_WildcardMatch("[Bracket]", "[Bracket]")) {
-        Log("PASS: literal brackets match")
-        TestPassed++
-    } else {
-        Log("FAIL: literal brackets should match")
-        TestErrors++
-    }
-
-    ; Test 7: Empty pattern returns false
-    if (!_BL_WildcardMatch("test", "")) {
-        Log("PASS: empty pattern returns false")
-        TestPassed++
-    } else {
-        Log("FAIL: empty pattern should return false")
-        TestErrors++
-    }
-
-    ; Test 8: Case insensitivity
-    if (_BL_WildcardMatch("TEST", "test") && _BL_WildcardMatch("test", "TEST")) {
-        Log("PASS: matching is case-insensitive")
-        TestPassed++
-    } else {
-        Log("FAIL: matching should be case-insensitive")
-        TestErrors++
-    }
-
-    ; Test 9: Plus sign (regex special char)
-    if (_BL_WildcardMatch("C++", "C++")) {
-        Log("PASS: literal + sign matches")
-        TestPassed++
-    } else {
-        Log("FAIL: literal + sign should match")
-        TestErrors++
-    }
-
-    ; Test 10: Dollar sign and caret (regex special chars)
-    if (_BL_WildcardMatch("$price^", "$price^")) {
-        Log("PASS: literal $ and ^ match")
-        TestPassed++
-    } else {
-        Log("FAIL: literal $ and ^ should match")
-        TestErrors++
-    }
-
-    ; ============================================================
     ; Alt-Tab Eligibility Code Inspection Tests
     ; ============================================================
     ; NOTE: These tests use code inspection to verify _BL_IsAltTabEligible
@@ -524,11 +426,11 @@ RunUnitTests_Core() {
         if (matchStart) {
             ; Extract ~500 chars from function start (enough to cover the function body)
             funcChunk := SubStr(blCode, matchStart, 500)
-            if (!InStr(funcChunk, "RegExReplace") && !InStr(funcChunk, "_BL_WildcardMatch")) {
-                Log("PASS: Blacklist_IsMatch does not call RegExReplace/_BL_WildcardMatch (uses pre-compiled)")
+            if (!InStr(funcChunk, "RegExReplace")) {
+                Log("PASS: Blacklist_IsMatch does not call RegExReplace (uses pre-compiled)")
                 TestPassed++
             } else {
-                Log("FAIL: Blacklist_IsMatch should not call RegExReplace/_BL_WildcardMatch in hot path")
+                Log("FAIL: Blacklist_IsMatch should not call RegExReplace in hot path")
                 TestErrors++
             }
         } else {

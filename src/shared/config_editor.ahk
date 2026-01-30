@@ -31,7 +31,6 @@ global gCE_BoundWheelMsg := 0         ; Bound mouse wheel handler
 global gCE_BoundMouseMove := 0        ; Bound mouse move handler for tooltips
 global gCE_Tooltips := Map()          ; Map of control Hwnd -> tooltip text
 global gCE_LastTooltipHwnd := 0       ; Track last control shown tooltip for
-global gCE_HasChanges := false
 global gCE_SavedChanges := false
 global gCE_AutoRestart := false
 
@@ -528,14 +527,6 @@ _CE_SaveToIni() {
     }
 
     return changeCount
-}
-
-_CE_FormatForIni(val, type) {
-    if (type = "bool")
-        return val ? "true" : "false"
-    if (type = "int" && IsInteger(val) && val >= 0x100)
-        return Format("0x{:X}", val)  ; Hex for colors
-    return String(val)
 }
 
 ; ============================================================

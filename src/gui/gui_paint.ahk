@@ -69,7 +69,7 @@ GUI_Repaint() {
     global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
-    global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_CurScale, gGdip_BackHdc
+    global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_BackHdc
 
     ; ===== TIMING: Start =====
     tTotal := A_TickCount
@@ -115,7 +115,6 @@ GUI_Repaint() {
     ; ===== TIMING: GetScale =====
     t1 := A_TickCount
     scale := Win_GetScaleForWindow(gGUI_BaseH)
-    gGdip_CurScale := scale
     tGetScale := A_TickCount - t1
 
     ; ===== TIMING: EnsureBackbuffer =====

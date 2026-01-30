@@ -93,14 +93,3 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
     return rec
 }
 
-; Check if a window is DWM-cloaked (hidden by virtual desktop, komorebi, etc.)
-; Parameters:
-;   hwnd - Window handle to check
-; Returns: true if cloaked, false otherwise
-WinUtils_IsCloaked(hwnd) {
-    static cloakedBuf := Buffer(4, 0)
-    global DWMWA_CLOAKED
-
-    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
-    return (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
-}

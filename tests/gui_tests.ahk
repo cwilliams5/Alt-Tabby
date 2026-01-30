@@ -33,7 +33,6 @@ global gGUI_OverlayVisible := false
 global gGUI_OverlayH := 0  ; Window handle - production code checks this
 global gGUI_TabCount := 0
 global gGUI_FirstTabTick := 0
-global gGUI_AltDownTick := 0
 global gGUI_WorkspaceMode := "all"
 global gGUI_CurrentWSName := ""
 global gGUI_StoreRev := 0
@@ -47,7 +46,6 @@ global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 
 ; Async activation globals (for cross-workspace support)
 global gGUI_PendingPhase := ""
-global gGUI_PendingItem := ""
 global gGUI_PendingHwnd := 0
 global gGUI_PendingWSName := ""
 global gGUI_PendingDeadline := 0
@@ -192,7 +190,7 @@ global gGUI_Overlay := _MockGui()
 ResetGUIState() {
     global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
-    global gGUI_FirstTabTick, gGUI_AltDownTick, gGUI_WorkspaceMode
+    global gGUI_FirstTabTick, gGUI_WorkspaceMode
     global gGUI_AwaitingToggleProjection, gMockIPCMessages, gGUI_CurrentWSName
     global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
@@ -208,7 +206,6 @@ ResetGUIState() {
     gGUI_OverlayVisible := false
     gGUI_TabCount := 0
     gGUI_FirstTabTick := 0
-    gGUI_AltDownTick := 0
     gGUI_WorkspaceMode := "all"
     gGUI_CurrentWSName := ""
     gGUI_FooterText := ""

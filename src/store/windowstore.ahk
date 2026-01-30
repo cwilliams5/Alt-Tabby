@@ -774,16 +774,6 @@ WindowStore_HasPendingZ() {
     return result
 }
 
-; Get count of pending Z requests
-; RACE FIX: Add Critical for consistency with EnqueueForZ/ClearZQueue
-WindowStore_PendingZCount() {
-    Critical "On"
-    global gWS_ZQueue
-    result := gWS_ZQueue.Length
-    Critical "Off"
-    return result
-}
-
 ; Clear the Z queue (called after a full winenum scan)
 ; Wrapped in Critical to prevent race with EnqueueForZ
 WindowStore_ClearZQueue() {
@@ -982,49 +972,3 @@ WindowStore_BuildDelta(prevItems, nextItems) {
     return { upserts: upserts, removes: removes }
 }
 
-; ============================================================
-; Ensure API (for producers that add partial data)
-; ============================================================
-
-; Ensure a window exists in store, merge hints, enqueue for enrichment
-WindowStore_Ensure(hwnd, hints := 0, source := "") {
-    global gWS_Store, gWS_Rev
-    hwnd := hwnd + 0
-    if (!hwnd)
-        return
-
-    isNew := !gWS_Store.Has(hwnd)
-    if (isNew) {
-        gWS_Store[hwnd] := _WS_NewRecord(hwnd)
-    }
-
-    row := gWS_Store[hwnd]
-    changed := isNew
-
-    ; Merge hints - only update if value differs
-    if (IsObject(hints)) {
-        if (hints is Map) {
-            for k, v in hints {
-                if (!row.HasOwnProp(k) || row.%k% != v) {
-                    row.%k% := v
-                    changed := true
-                }
-            }
-        } else {
-            for k in hints.OwnProps() {
-                v := hints.%k%
-                if (!row.HasOwnProp(k) || row.%k% != v) {
-                    row.%k% := v
-                    changed := true
-                }
-            }
-        }
-    }
-
-    if (changed) {
-        _WS_BumpRev("Ensure:" . source)
-    }
-
-    ; Enqueue for enrichment
-    _WS_EnqueueIfNeeded(row)
-}

@@ -18,7 +18,6 @@ global gBE_ClassEdit := 0
 global gBE_PairEdit := 0
 global gBE_OriginalContent := ""
 global gBE_SavedChanges := false
-global gBE_StoreClient := 0
 
 ; ============================================================
 ; PUBLIC API
@@ -195,7 +194,7 @@ _BE_SaveToFile() {
 }
 
 _BE_SendReloadIPC() {
-    global gBE_StoreClient, cfg, IPC_MSG_RELOAD_BLACKLIST
+    global cfg, IPC_MSG_RELOAD_BLACKLIST
 
     ; Get store pipe name
     pipeName := cfg.HasOwnProp("StorePipeName") ? cfg.StorePipeName : "tabby_store_v1"

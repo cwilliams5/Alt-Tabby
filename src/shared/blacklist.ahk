@@ -405,17 +405,6 @@ _BL_CompileWildcard(pattern) {
     return regex
 }
 
-; Case-insensitive wildcard match (* and ?) — cold path only (one-off callers)
-_BL_WildcardMatch(str, pattern) {
-    if (pattern = "")
-        return false
-    ; Convert wildcard pattern to regex
-    regex := "i)^" RegExReplace(RegExReplace(pattern, "[.+^${}|()\\[\]]", "\$0"), "\*", ".*")
-    regex := RegExReplace(regex, "\?", ".")
-    regex .= "$"
-    return RegExMatch(str, regex)
-}
-
 ; Get current blacklist stats (for debugging)
 Blacklist_GetStats() {
     global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs, gBlacklist_FilePath

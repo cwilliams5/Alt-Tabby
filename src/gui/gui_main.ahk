@@ -71,7 +71,6 @@ global gGUI_LastRowsDesired := -1
 ; ALT_PENDING: Alt held, optional pre-warm, still receiving deltas
 ; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
 global gGUI_State := "IDLE"
-global gGUI_AltDownTick := 0
 global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
 global gGUI_FrozenItems := []  ; Snapshot of items when locking in
@@ -260,7 +259,6 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {  ; lint-ignore: isset-wi
     ; GdipCreateFontFamilyFromName takes ~1.5s on first call (GDI+ font enumeration).
     ; Do it now at startup rather than deferring to first paint.
     scale := Win_GetScaleForWindow(gGUI_BaseH)
-    gGdip_CurScale := scale
     GUI_EnsureResources(scale)
 
     ; Start hidden

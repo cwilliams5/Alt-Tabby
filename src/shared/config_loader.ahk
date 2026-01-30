@@ -62,18 +62,6 @@ ConfigLoader_Init(basePath := "") {
     gConfigLoaded := true
 }
 
-; Get the config registry (for config editor)
-ConfigLoader_GetRegistry() {
-    global gConfigRegistry
-    return gConfigRegistry
-}
-
-; Get config value with fallback default (convenience helper)
-ConfigGet(name, defaultVal := "") {
-    global cfg
-    return cfg.HasOwnProp(name) ? cfg.%name% : defaultVal
-}
-
 ; ============================================================
 ; INITIALIZATION
 ; ============================================================
@@ -474,21 +462,6 @@ _CL_ValidateSettings() {
     ; --- Launcher Settings ---
     cfg.LauncherSplashDurationMs := clamp(cfg.LauncherSplashDurationMs, 0, 10000)
     cfg.LauncherSplashFadeMs := clamp(cfg.LauncherSplashFadeMs, 0, 2000)
-}
-
-; ============================================================
-; GLOBAL ACCESS HELPERS (for config editor compatibility)
-; ============================================================
-; These use dynamic property access - no switch statements needed!
-
-_CL_ReadGlobal(name, type := "string") {
-    global cfg
-    return cfg.HasOwnProp(name) ? cfg.%name% : ""
-}
-
-_CL_WriteGlobal(name, val) {
-    global cfg
-    cfg.%name% := val
 }
 
 ; ============================================================

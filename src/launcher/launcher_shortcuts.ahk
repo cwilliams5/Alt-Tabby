@@ -7,28 +7,6 @@
 ; Creates and manages shortcuts with proper admin mode handling.
 ; Shortcuts always point to the exe; exe self-redirects to task if needed.
 
-; Create a shortcut file using WScript.Shell COM
-_Shortcut_Create(lnkPath, targetPath, iconPath := "", description := "") {
-    try {
-        ; Get parent directory using SplitPath
-        SplitPath(targetPath, , &targetDir)
-
-        shell := ComObject("WScript.Shell")
-        shortcut := shell.CreateShortcut(lnkPath)
-        shortcut.TargetPath := targetPath
-        shortcut.WorkingDirectory := targetDir
-        if (iconPath && FileExist(iconPath))
-            shortcut.IconLocation := iconPath
-        if (description)
-            shortcut.Description := description
-        shortcut.Save()
-        return true
-    } catch as e {
-        MsgBox("Failed to create shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
-        return false
-    }
-}
-
 ; Toggle Start Menu shortcut
 ToggleStartMenuShortcut() {
     _ToggleShortcut(_Shortcut_GetStartMenuPath(), "Start Menu")

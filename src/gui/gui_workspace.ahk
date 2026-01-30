@@ -109,26 +109,3 @@ GUI_FilterByWorkspaceMode(items) {
     return result
 }
 
-; ========================= WORKSPACE MODE SETTER =========================
-
-GUI_SetWorkspaceMode(mode) {
-    global gGUI_WorkspaceMode
-
-    if (mode != "all" && mode != "current") {
-        return
-    }
-    if (gGUI_WorkspaceMode = mode) {
-        return
-    }
-
-    gGUI_WorkspaceMode := mode
-    GUI_UpdateFooterText()
-
-    ; Same logic as toggle - re-filter if visible
-    global gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_Items
-    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_Items)
-        _GUI_ResetSelectionToMRU()
-        GUI_Repaint()
-    }
-}

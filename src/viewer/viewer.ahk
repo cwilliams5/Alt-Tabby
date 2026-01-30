@@ -512,54 +512,6 @@ _Viewer_RebuildFromCache() {
     gViewer_LV.Opt("+Redraw")
 }
 
-_Viewer_IncrementalUpdate(items) {
-    global gViewer_LV, gViewer_RowByHwnd, gViewer_RecByHwnd, gViewer_ShuttingDown
-    if (gViewer_ShuttingDown)
-        return
-
-    ; Disable redraw during update
-    gViewer_LV.Opt("-Redraw")
-
-    seen := Map()
-    for _, rec in items {
-        hwnd := _Viewer_Get(rec, "hwnd", 0)
-        seen[hwnd] := true
-
-        if (gViewer_RowByHwnd.Has(hwnd)) {
-            row := gViewer_RowByHwnd[hwnd]
-            old := gViewer_RecByHwnd[hwnd]
-
-            ; Check if anything changed
-            if (_Viewer_RecChanged(old, rec)) {
-                gViewer_LV.Modify(row, "", _Viewer_BuildRowArgs(rec)*)
-                gViewer_RecByHwnd[hwnd] := rec
-            }
-        } else {
-            ; New window - add it
-            row := gViewer_LV.Add("", _Viewer_BuildRowArgs(rec)*)
-            gViewer_RowByHwnd[hwnd] := row
-            gViewer_RecByHwnd[hwnd] := rec
-        }
-    }
-
-    ; Remove windows that are no longer present
-    toRemove := []
-    for hwnd, row in gViewer_RowByHwnd {
-        if (!seen.Has(hwnd)) {
-            toRemove.Push(hwnd)
-        }
-    }
-    if (toRemove.Length > 0) {
-        ; Need full refresh if items were removed (row numbers shift)
-        gViewer_LV.Opt("+Redraw")
-        _Viewer_UpdateList(items)
-        return
-    }
-
-    ; Re-enable redraw
-    gViewer_LV.Opt("+Redraw")
-}
-
 _Viewer_RecChanged(old, new) {
     ; Fields to compare with their default values
     static fields := [

@@ -21,7 +21,6 @@ global gINT_AltIsDown := false        ; Track Alt state via hotkey handlers
 
 ; Deferred-Tab decision state
 global gINT_TabPending := false
-global gINT_TabUpSeen := false
 global gINT_PendingShift := false
 global gINT_PendingDecideArmed := false
 global gINT_AltUpDuringPending := false  ; Track if Alt released before Tab_Decide
@@ -115,7 +114,7 @@ INT_Alt_Up(*) {
 
 INT_Tab_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
-    global gINT_TabPending, gINT_TabHeld, gINT_PendingShift, gINT_TabUpSeen
+    global gINT_TabPending, gINT_TabHeld, gINT_PendingShift
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, cfg
     global gINT_SessionActive, gINT_PressCount, gINT_AltIsDown
     global TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
@@ -158,7 +157,6 @@ INT_Tab_Down(*) {
     _GUI_LogEvent("INT: Tab_Down -> FIRST TAB, starting " cfg.AltTabTabDecisionMs "ms decision timer")
     gINT_TabPending := true
     gINT_PendingShift := GetKeyState("Shift", "P")
-    gINT_TabUpSeen := false
     gINT_PendingDecideArmed := true
     gINT_AltUpDuringPending := false
     SetTimer(INT_Tab_Decide, -cfg.AltTabTabDecisionMs)
@@ -166,16 +164,13 @@ INT_Tab_Down(*) {
 
 INT_Tab_Up(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
-    global gINT_TabHeld, gINT_TabPending, gINT_TabUpSeen
+    global gINT_TabHeld, gINT_TabPending
 
     if (gINT_TabHeld) {
         ; Released from Alt+Tab step
         gINT_TabHeld := false
         return  ; lint-ignore: critical-section
     }
-    ; If still deciding, remember Tab went up
-    if (gINT_TabPending)
-        gINT_TabUpSeen := true
 }
 
 INT_Tab_Decide() {
@@ -193,7 +188,7 @@ INT_Tab_Decide() {
 
 INT_Tab_Decide_Inner() {
     Critical "On"  ; Prevent other hotkeys from interrupting
-    global gINT_TabPending, gINT_TabUpSeen, gINT_PendingShift, gINT_AltUpDuringPending
+    global gINT_TabPending, gINT_PendingShift, gINT_AltUpDuringPending
     global gINT_LastAltDown, gINT_AltIsDown, cfg
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld
     global TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_FLAG_SHIFT

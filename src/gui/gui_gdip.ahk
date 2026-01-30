@@ -10,7 +10,6 @@ global gGdip_BackHBM := 0
 global gGdip_BackPrev := 0
 global gGdip_BackW := 0
 global gGdip_BackH := 0
-global gGdip_CurScale := 1.0
 global gGdip_ResScale := 0.0
 global gGdip_Res := Map()
 
@@ -309,22 +308,6 @@ Gdip_DrawCenteredText(g, text, x, y, w, h, pBr, font, fmtCenter) {
 ; Fill ellipse (pBr = pre-cached brush pointer)
 Gdip_FillEllipse(g, pBr, x, y, w, h) {
     DllCall("gdiplus\GdipFillEllipse", "ptr", g, "ptr", pBr, "float", x, "float", y, "float", w, "float", h)
-}
-
-; Draw icon from HICON (uncached - used internally)
-Gdip_DrawIconFromHicon(g, hIcon, x, y, size) {
-    if (!hIcon || !g) {
-        return false
-    }
-
-    pBmp := _Gdip_CreateBitmapFromHICON_Alpha(hIcon)
-    if (!pBmp) {
-        return false
-    }
-
-    DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", pBmp, "int", x, "int", y, "int", size, "int", size)
-    DllCall("gdiplus\GdipDisposeImage", "ptr", pBmp)
-    return true
 }
 
 ; Convert HICON to GDI+ Bitmap preserving alpha channel

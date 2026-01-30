@@ -10,7 +10,6 @@
 global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 
 ; Async cross-workspace activation state (non-blocking to allow keyboard events)
-global gGUI_PendingItem := ""            ; Item object being activated (or empty)
 global gGUI_PendingHwnd := 0             ; Target hwnd
 global gGUI_PendingWSName := ""          ; Target workspace name
 global gGUI_PendingDeadline := 0         ; Polling deadline (when to give up)
@@ -69,7 +68,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     ; resetting state to IDLE before Tab can set it to ACTIVE
     Critical "On"
 
-    global gGUI_State, gGUI_AltDownTick, gGUI_FirstTabTick, gGUI_TabCount
+    global gGUI_State, gGUI_FirstTabTick, gGUI_TabCount
     global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems, gGUI_AllItems, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
     global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick
@@ -110,7 +109,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     if (evCode = TABBY_EV_ALT_DOWN) {
         ; Alt pressed - enter ALT_PENDING state
         gGUI_State := "ALT_PENDING"
-        gGUI_AltDownTick := A_TickCount
         gGUI_FirstTabTick := 0
         gGUI_TabCount := 0
 
@@ -453,22 +451,13 @@ GUI_ActivateFromFrozen() {
 
 ; ========================= ACTIVATION =========================
 
-GUI_ActivateSelected() {
-    global gGUI_Items, gGUI_Sel
-    if (gGUI_Sel < 1 || gGUI_Sel > gGUI_Items.Length) {
-        return
-    }
-    item := gGUI_Items[gGUI_Sel]
-    GUI_ActivateItem(item)
-}
-
 ; Unified activation logic with cross-workspace support via komorebi
 ; For cross-workspace: ASYNC (non-blocking) to allow keyboard events during switch
 ; For same-workspace: SYNC (immediate) for speed
 ; Uses komorebi's activation pattern: SendInput → SetWindowPos → SetForegroundWindow
 GUI_ActivateItem(item) {
     global cfg
-    global gGUI_PendingItem, gGUI_PendingHwnd, gGUI_PendingWSName
+    global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingShell, gGUI_PendingTempFile
     global gGUI_Items, gGUI_LastLocalMRUTick, gGUI_CurrentWSName  ; Needed for same-workspace MRU update
@@ -499,7 +488,6 @@ GUI_ActivateItem(item) {
         }
 
         ; Set up async state
-        gGUI_PendingItem := item
         gGUI_PendingHwnd := hwnd
         gGUI_PendingWSName := wsName
         wsPollTimeout := cfg.HasOwnProp("AltTabWSPollTimeoutMs") ? cfg.AltTabWSPollTimeoutMs : 200
@@ -539,7 +527,7 @@ GUI_ActivateItem(item) {
 ; Yields control between fires, allowing keyboard hook callbacks to run
 _GUI_AsyncActivationTick() {
     global cfg
-    global gGUI_PendingItem, gGUI_PendingHwnd, gGUI_PendingWSName
+    global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingShell, gGUI_PendingTempFile
     global gGUI_EventBuffer, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
@@ -756,7 +744,7 @@ _GUI_CancelPendingActivation() {
 
 ; Clear all pending activation state
 _GUI_ClearPendingState() {
-    global gGUI_PendingItem, gGUI_PendingHwnd, gGUI_PendingWSName
+    global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingTempFile, gGUI_PendingShell
 
@@ -767,7 +755,6 @@ _GUI_ClearPendingState() {
     ; In AHK v2, setting to "" releases the COM reference
     gGUI_PendingShell := ""
 
-    gGUI_PendingItem := ""
     gGUI_PendingHwnd := 0
     gGUI_PendingWSName := ""
     gGUI_PendingDeadline := 0

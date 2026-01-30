@@ -5,55 +5,6 @@
 
 ; ========================= SHOW/HIDE =========================
 
-GUI_ShowOverlay() {
-    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
-    global gGUI_Items, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed
-    global gGUI_State
-
-    if (gGUI_OverlayVisible) {
-        return
-    }
-
-    ; Set visible flag FIRST to prevent re-entrancy
-    gGUI_OverlayVisible := true
-
-    gGUI_Sel := 1
-    gGUI_ScrollTop := 0
-    gGUI_Revealed := false
-
-    try {
-        gGUI_Base.Show("NA")
-    }
-
-    ; RACE FIX: Check if Alt was released during Show (which pumps messages)
-    if (gGUI_State != "ACTIVE") {
-        return
-    }
-
-    rowsDesired := GUI_ComputeRowsToShow(gGUI_Items.Length)
-    GUI_ResizeToRows(rowsDesired)
-    GUI_Repaint()
-
-    ; RACE FIX: Check again after paint operations
-    if (gGUI_State != "ACTIVE") {
-        return
-    }
-
-    try {
-        gGUI_Overlay.Show("NA")
-    }
-
-    ; RACE FIX: Final check before DwmFlush
-    if (gGUI_State != "ACTIVE") {
-        return
-    }
-
-    Win_DwmFlush()
-
-    ; Start hover polling (fallback for WM_MOUSELEAVE)
-    GUI_StartHoverPolling()
-}
-
 global gGUI_HideCount := 0  ; Track hides for periodic log trim
 
 GUI_HideOverlay() {
