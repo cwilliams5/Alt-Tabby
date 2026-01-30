@@ -10,6 +10,9 @@
 ; Launcher mutex global
 global g_LauncherMutex := 0
 
+; Win32 error code
+global ERROR_ALREADY_EXISTS := 183
+
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagLauncherLog (config.ini [Diagnostics] LauncherLog=true)
 ; Log file: %TEMP%\tabby_launcher.log
@@ -282,7 +285,7 @@ _ShouldRedirectToScheduledTask() {
 ; Returns true if acquired (we're the only launcher), false if already held
 ; Uses InstallationId so renamed exes within same installation share mutex
 _Launcher_AcquireMutex() {
-    global g_LauncherMutex, cfg
+    global g_LauncherMutex, cfg, ERROR_ALREADY_EXISTS
 
     ; Build mutex name using InstallationId (prevents different-named exes running together)
     ; Falls back to hardcoded name if no ID yet (shouldn't happen - EnsureInstallationId runs first)
@@ -294,10 +297,9 @@ _Launcher_AcquireMutex() {
     g_LauncherMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
     lastError := DllCall("GetLastError")
 
-    ; ERROR_ALREADY_EXISTS = 183
-    if (lastError = 183) {
+    if (lastError = ERROR_ALREADY_EXISTS) {
         ; Mutex already exists - another launcher is running
-        _Launcher_Log("MUTEX: already exists (err=183), another launcher running")
+        _Launcher_Log("MUTEX: already exists (err=" ERROR_ALREADY_EXISTS "), another launcher running")
         if (g_LauncherMutex) {
             DllCall("CloseHandle", "ptr", g_LauncherMutex)
             g_LauncherMutex := 0

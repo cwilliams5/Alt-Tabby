@@ -25,7 +25,6 @@ global WinEventHook_BatchMs := 0
 global _WEH_Hook := 0
 global _WEH_CallbackObj := 0              ; Callback object - MUST be global to prevent GC
 global _WEH_PendingHwnds := Map()         ; hwnd -> tick of last event
-global _WEH_LastProcessTick := 0
 global _WEH_TimerOn := false
 global _WEH_ShellWindow := 0
 global _WEH_IdleTicks := 0                ; Counter for consecutive empty ticks
@@ -254,7 +253,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
 ; Process queued events in batches
 _WEH_ProcessBatch() {
-    global _WEH_PendingHwnds, _WEH_LastProcessTick, WinEventHook_DebounceMs, _WEH_PendingZNeeded
+    global _WEH_PendingHwnds, WinEventHook_DebounceMs, _WEH_PendingZNeeded
     global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
     global cfg, gWS_Meta
@@ -419,8 +418,6 @@ _WEH_ProcessBatch() {
             }
         }
     }
-
-    _WEH_LastProcessTick := now
 
     ; Proactive push: broadcast to clients when WEH changes bumped the rev.
     ; Without this, focus/title/destroy changes only reach the GUI via the Z-pump
