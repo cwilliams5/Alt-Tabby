@@ -510,6 +510,33 @@ LogInitSession(logPath, title) {
     try FileAppend(header, logPath, "UTF-8")
 }
 
+; Log rotation constants (shared across all diagnostic logs)
+global LOG_MAX_BYTES := 102400   ; 100KB max before trim
+global LOG_KEEP_BYTES := 51200   ; Keep last ~50KB after trim
+
+; Trim a log file if it exceeds LOG_MAX_BYTES, keeping the tail
+; Usage: LogTrim(LOG_PATH_EVENTS)
+LogTrim(logPath) {
+    global LOG_MAX_BYTES, LOG_KEEP_BYTES
+    try {
+        if (!FileExist(logPath))
+            return
+        size := FileGetSize(logPath)
+        if (size <= LOG_MAX_BYTES)
+            return
+        content := FileRead(logPath)
+        keepChars := LOG_KEEP_BYTES
+        if (StrLen(content) > keepChars) {
+            tail := SubStr(content, StrLen(content) - keepChars + 1)
+            nlPos := InStr(tail, "`n")
+            if (nlPos > 0)
+                tail := SubStr(tail, nlPos + 1)
+            FileDelete(logPath)
+            FileAppend("... (log trimmed) ...`n" tail, logPath)
+        }
+    }
+}
+
 ; ============================================================
 ; TIMING CONSTANTS
 ; ============================================================

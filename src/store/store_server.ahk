@@ -33,6 +33,7 @@ global gStore_LastClientMeta := Map()  ; hPipe -> last meta sent (for workspace 
 global gStore_LastSendTick := 0       ; Tick of last message sent to ANY client (heartbeat or delta)
 global gStore_CachedHeartbeatJson := ""
 global gStore_CachedHeartbeatRev := -1
+global gStore_HeartbeatCount
 
 ; Producer state tracking: "running", "disabled", "failed"
 global gStore_ProducerState := Map()
@@ -188,6 +189,28 @@ Store_HeartbeatTick() {
 
     ; Prune dead PIDs from process name cache (prevents unbounded growth)
     try WindowStore_PruneProcNameCache()
+
+    ; Periodic log rotation for diagnostic logs (~every 60s)
+    global gStore_HeartbeatCount
+    if (!IsSet(gStore_HeartbeatCount))
+        gStore_HeartbeatCount := 0
+    gStore_HeartbeatCount += 1
+    if (Mod(gStore_HeartbeatCount, 12) = 0) {
+        global LOG_PATH_STORE, LOG_PATH_KSUB, LOG_PATH_WINEVENT
+        global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP, LOG_PATH_IPC
+        if (cfg.DiagStoreLog)
+            LogTrim(LOG_PATH_STORE)
+        if (cfg.DiagKomorebiLog)
+            LogTrim(LOG_PATH_KSUB)
+        if (cfg.DiagWinEventLog)
+            LogTrim(LOG_PATH_WINEVENT)
+        if (cfg.DiagIconPumpLog)
+            LogTrim(LOG_PATH_ICONPUMP)
+        if (cfg.DiagProcPumpLog)
+            LogTrim(LOG_PATH_PROCPUMP)
+        if (cfg.DiagIPCLog)
+            LogTrim(LOG_PATH_IPC)
+    }
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return

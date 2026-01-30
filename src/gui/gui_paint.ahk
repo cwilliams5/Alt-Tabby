@@ -11,9 +11,6 @@
 global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
 global gPaint_SessionPaintCount := 0  ; How many paints this session
 global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
-global PAINT_LOG_MAX_BYTES := 102400   ; 100KB max before trim
-global PAINT_LOG_KEEP_BYTES := 51200   ; Keep last ~50KB after trim
-
 _Paint_Log(msg) {
     global cfg, LOG_PATH_PAINT_TIMING
     if (!cfg.DiagPaintTimingLog)
@@ -26,28 +23,10 @@ _Paint_Log(msg) {
 
 ; Trim log file if it exceeds max size, keeping the tail
 _Paint_LogTrim() {
-    global cfg, LOG_PATH_PAINT_TIMING, PAINT_LOG_MAX_BYTES, PAINT_LOG_KEEP_BYTES
+    global cfg, LOG_PATH_PAINT_TIMING
     if (!cfg.DiagPaintTimingLog)
         return
-    try {
-        if (!FileExist(LOG_PATH_PAINT_TIMING))
-            return
-        size := FileGetSize(LOG_PATH_PAINT_TIMING)
-        if (size <= PAINT_LOG_MAX_BYTES)
-            return
-        content := FileRead(LOG_PATH_PAINT_TIMING)
-        ; Keep the last KEEP_BYTES worth of characters (roughly)
-        keepChars := PAINT_LOG_KEEP_BYTES
-        if (StrLen(content) > keepChars) {
-            tail := SubStr(content, StrLen(content) - keepChars + 1)
-            ; Find first newline to avoid partial line at start
-            nlPos := InStr(tail, "`n")
-            if (nlPos > 0)
-                tail := SubStr(tail, nlPos + 1)
-            FileDelete(LOG_PATH_PAINT_TIMING)
-            FileAppend("... (log trimmed) ...`n" tail, LOG_PATH_PAINT_TIMING)
-        }
-    }
+    LogTrim(LOG_PATH_PAINT_TIMING)
 }
 
 _Paint_LogStartSession() {

@@ -10,7 +10,7 @@ global gGUI_HideCount := 0  ; Track hides for periodic log trim
 GUI_HideOverlay() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Overlay, gGUI_Revealed
     global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking
-    global gGUI_HideCount
+    global gGUI_HideCount, cfg, LOG_PATH_EVENTS
 
     if (!gGUI_OverlayVisible) {
         return
@@ -33,10 +33,13 @@ GUI_HideOverlay() {
     gGUI_HoverBtn := ""
     gGUI_MouseTracking := false
 
-    ; Periodically trim paint timing log (every 10 hide cycles)
+    ; Periodically trim diagnostic logs (every 10 hide cycles)
     gGUI_HideCount += 1
-    if (Mod(gGUI_HideCount, 10) = 0)
+    if (Mod(gGUI_HideCount, 10) = 0) {
         _Paint_LogTrim()
+        if (cfg.DiagEventLog)
+            LogTrim(LOG_PATH_EVENTS)
+    }
 }
 
 ; ========================= LAYOUT CALCULATIONS =========================
