@@ -1147,4 +1147,193 @@ RunUnitTests_Storage() {
     ; Cleanup
     try FileDelete(testBlPathElig)
     try DirDelete(testBlDirElig)
+
+    ; ============================================================
+    ; Sort Comparator Tests (_WS_CmpTitle, _WS_CmpPid, _WS_CmpProcessName)
+    ; ============================================================
+    Log("`n--- Sort Comparator Tests ---")
+
+    ; _WS_CmpTitle: locale-based string comparison
+    objA := {title: "Alpha", pid: 0, processName: ""}
+    objB := {title: "Beta", pid: 0, processName: ""}
+    objC := {title: "Alpha", pid: 0, processName: ""}
+
+    AssertEq(_WS_CmpTitle(objA, objB) < 0, true, "CmpTitle: Alpha < Beta returns negative")
+    AssertEq(_WS_CmpTitle(objB, objA) > 0, true, "CmpTitle: Beta > Alpha returns positive")
+    AssertEq(_WS_CmpTitle(objA, objC), 0, "CmpTitle: Alpha = Alpha returns 0")
+
+    ; _WS_CmpPid: numeric comparison
+    pidA := {pid: 100}
+    pidB := {pid: 200}
+    pidC := {pid: 100}
+
+    AssertEq(_WS_CmpPid(pidA, pidB), -1, "CmpPid: 100 < 200 returns -1")
+    AssertEq(_WS_CmpPid(pidB, pidA), 1, "CmpPid: 200 > 100 returns 1")
+    AssertEq(_WS_CmpPid(pidA, pidC), 0, "CmpPid: 100 = 100 returns 0")
+
+    ; _WS_CmpProcessName: locale-based string comparison
+    pnA := {processName: "chrome.exe"}
+    pnB := {processName: "firefox.exe"}
+    pnC := {processName: "chrome.exe"}
+
+    AssertEq(_WS_CmpProcessName(pnA, pnB) < 0, true, "CmpProcessName: chrome < firefox returns negative")
+    AssertEq(_WS_CmpProcessName(pnB, pnA) > 0, true, "CmpProcessName: firefox > chrome returns positive")
+    AssertEq(_WS_CmpProcessName(pnA, pnC), 0, "CmpProcessName: chrome = chrome returns 0")
+
+    ; ============================================================
+    ; WindowStore_GetProjection Filtering Tests
+    ; ============================================================
+    Log("`n--- WindowStore_GetProjection Filtering Tests ---")
+
+    ; Set up store with 5 synthetic windows with varied properties
+    WindowStore_Init()
+    WindowStore_SetCurrentWorkspace("ws-1", "Desktop 1")
+    WindowStore_BeginScan()
+
+    ; Window 1: normal, visible, on current workspace, MRU=1000
+    projRec1 := Map("hwnd", 0xF001, "title", "Zulu Window", "class", "Test", "pid", 10,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 3,
+                     "lastActivatedTick", 1000, "isFocused", false,
+                     "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "zulu.exe")
+    ; Window 2: cloaked (other workspace), MRU=3000 (most recent)
+    projRec2 := Map("hwnd", 0xF002, "title", "Alpha Window", "class", "Test", "pid", 20,
+                     "isVisible", true, "isCloaked", true, "isMinimized", false, "z", 1,
+                     "lastActivatedTick", 3000, "isFocused", false,
+                     "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false, "processName", "alpha.exe")
+    ; Window 3: minimized, on current workspace, MRU=2000
+    projRec3 := Map("hwnd", 0xF003, "title", "Middle Window", "class", "Test", "pid", 5,
+                     "isVisible", false, "isCloaked", false, "isMinimized", true, "z", 5,
+                     "lastActivatedTick", 2000, "isFocused", false,
+                     "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "middle.exe")
+    ; Window 4: normal, visible, on current workspace, MRU=500
+    projRec4 := Map("hwnd", 0xF004, "title", "Beta Window", "class", "Test", "pid", 30,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
+                     "lastActivatedTick", 500, "isFocused", false,
+                     "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "beta.exe")
+    ; Window 5: cloaked + minimized, other workspace, MRU=100
+    projRec5 := Map("hwnd", 0xF005, "title", "Echo Window", "class", "Test", "pid", 15,
+                     "isVisible", false, "isCloaked", true, "isMinimized", true, "z", 4,
+                     "lastActivatedTick", 100, "isFocused", false,
+                     "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false, "processName", "echo.exe")
+
+    WindowStore_UpsertWindow([projRec1, projRec2, projRec3, projRec4, projRec5], "test")
+    WindowStore_EndScan()
+    WindowStore_PopIconBatch(100)
+
+    ; Test 1: Default projection excludes cloaked (2 cloaked out of 5)
+    proj := WindowStore_GetProjection()
+    AssertEq(proj.items.Length, 3, "GetProjection default: 3 items (excludes 2 cloaked)")
+
+    ; Test 2: includeCloaked=true shows all 5
+    proj := WindowStore_GetProjection({includeCloaked: true})
+    AssertEq(proj.items.Length, 5, "GetProjection includeCloaked=true: all 5 items")
+
+    ; Test 3: includeMinimized=false excludes minimized (rec3 is minimized + not cloaked)
+    proj := WindowStore_GetProjection({includeMinimized: false})
+    AssertEq(proj.items.Length, 2, "GetProjection includeMinimized=false: 2 items (excludes minimized+cloaked)")
+
+    ; Test 4: currentWorkspaceOnly=true filters to Desktop 1
+    proj := WindowStore_GetProjection({includeCloaked: true, currentWorkspaceOnly: true})
+    AssertEq(proj.items.Length, 3, "GetProjection currentWorkspaceOnly: 3 items on Desktop 1")
+
+    ; Test 5: Combined strict filters (currentWorkspaceOnly + no minimized + no cloaked)
+    proj := WindowStore_GetProjection({currentWorkspaceOnly: true, includeMinimized: false, includeCloaked: false})
+    AssertEq(proj.items.Length, 2, "GetProjection strict: 2 items (current WS, not min, not cloaked)")
+
+    ; Test 6: MRU sort order (default) - highest lastActivatedTick first
+    proj := WindowStore_GetProjection({includeCloaked: true})
+    AssertEq(proj.items[1].hwnd + 0, 0xF002, "GetProjection MRU sort: first item is 0xF002 (tick=3000)")
+    AssertEq(proj.items[5].hwnd + 0, 0xF005, "GetProjection MRU sort: last item is 0xF005 (tick=100)")
+
+    ; Test 7: hwndsOnly columns
+    proj := WindowStore_GetProjection({columns: "hwndsOnly", includeCloaked: true})
+    AssertEq(proj.HasOwnProp("hwnds"), true, "GetProjection hwndsOnly: has 'hwnds' property")
+    AssertEq(proj.HasOwnProp("items"), false, "GetProjection hwndsOnly: no 'items' property")
+    AssertEq(proj.hwnds.Length, 5, "GetProjection hwndsOnly: 5 hwnds")
+
+    ; Test 8: Sort="Title" produces alphabetical order
+    proj := WindowStore_GetProjection({sort: "Title", includeCloaked: true})
+    AssertEq(proj.items[1].title, "Alpha Window", "GetProjection Title sort: first is Alpha")
+    AssertEq(proj.items[5].title, "Zulu Window", "GetProjection Title sort: last is Zulu")
+
+    ; Test 9: Sort="Pid" produces numeric order
+    proj := WindowStore_GetProjection({sort: "Pid", includeCloaked: true})
+    AssertEq(proj.items[1].pid + 0, 5, "GetProjection Pid sort: first pid=5")
+    AssertEq(proj.items[5].pid + 0, 30, "GetProjection Pid sort: last pid=30")
+
+    ; Test 10: Empty store returns empty items
+    WindowStore_Init()
+    gWS_Store := Map()
+    proj := WindowStore_GetProjection()
+    AssertEq(proj.items.Length, 0, "GetProjection empty store: 0 items")
+
+    ; Drain icon queue
+    WindowStore_PopIconBatch(100)
+
+    ; ============================================================
+    ; Blacklist_Reload + GetStats Functional Tests
+    ; ============================================================
+    Log("`n--- Blacklist_Reload + GetStats Tests ---")
+
+    global gBlacklist_FilePath, gBlacklist_Loaded
+    savedBlPathReload := gBlacklist_FilePath
+
+    testBlDirReload := A_Temp "\tabby_blreload_test_" A_TickCount
+    testBlPathReload := testBlDirReload "\blacklist.txt"
+
+    try {
+        DirCreate(testBlDirReload)
+
+        ; Step 1: Init with patterns A
+        blContentA := "[Title]`nPatternA*`nExactTitleA`n[Class]`nClassA`n[Pair]`nPairClassA|PairTitleA*`n"
+        FileAppend(blContentA, testBlPathReload, "UTF-8")
+        Blacklist_Init(testBlPathReload)
+
+        ; Verify patterns A match
+        AssertEq(Blacklist_IsMatch("PatternA_Suffix", "OtherClass"), true, "Reload: patterns A title wildcard matches")
+        AssertEq(Blacklist_IsMatch("ExactTitleA", "OtherClass"), true, "Reload: patterns A exact title matches")
+        AssertEq(Blacklist_IsMatch("AnyTitle", "ClassA"), true, "Reload: patterns A class matches")
+
+        ; Verify GetStats reflects patterns A
+        stats := Blacklist_GetStats()
+        AssertEq(stats.titles, 2, "GetStats: 2 title patterns after init A")
+        AssertEq(stats.classes, 1, "GetStats: 1 class pattern after init A")
+        AssertEq(stats.pairs, 1, "GetStats: 1 pair pattern after init A")
+
+        ; Step 2: Overwrite file with patterns B and call Reload()
+        FileDelete(testBlPathReload)
+        blContentB := "[Title]`nPatternB*`n[Class]`nClassB`n[Pair]`nPairClassB|PairTitleB*`n"
+        FileAppend(blContentB, testBlPathReload, "UTF-8")
+
+        reloadResult := Blacklist_Reload()
+        AssertEq(reloadResult, true, "Reload: returns true on successful reload")
+
+        ; Step 3: New patterns B match
+        AssertEq(Blacklist_IsMatch("PatternB_Suffix", "OtherClass"), true, "Reload: new pattern B title matches after reload")
+        AssertEq(Blacklist_IsMatch("AnyTitle", "ClassB"), true, "Reload: new pattern B class matches after reload")
+
+        ; Step 4: Old patterns A no longer match
+        AssertEq(Blacklist_IsMatch("PatternA_Suffix", "OtherClass"), false, "Reload: old pattern A title no longer matches")
+        AssertEq(Blacklist_IsMatch("ExactTitleA", "OtherClass"), false, "Reload: old exact title A no longer matches")
+        AssertEq(Blacklist_IsMatch("AnyTitle", "ClassA"), false, "Reload: old class A no longer matches")
+
+        ; Step 5: Pair patterns work after reload
+        AssertEq(Blacklist_IsMatch("PairTitleB_Suffix", "PairClassB"), true, "Reload: pair B matches after reload")
+
+        ; Step 6: GetStats reflects updated counts
+        stats := Blacklist_GetStats()
+        AssertEq(stats.titles, 1, "GetStats: 1 title pattern after reload B")
+        AssertEq(stats.classes, 1, "GetStats: 1 class pattern after reload B")
+        AssertEq(stats.pairs, 1, "GetStats: 1 pair pattern after reload B")
+
+        ; Cleanup
+        try FileDelete(testBlPathReload)
+        try DirDelete(testBlDirReload)
+        Blacklist_Init(savedBlPathReload)
+    } catch as e {
+        Log("FAIL: Blacklist_Reload test error: " e.Message)
+        TestErrors++
+        try DirDelete(testBlDirReload, true)
+        Blacklist_Init(savedBlPathReload)
+    }
 }
