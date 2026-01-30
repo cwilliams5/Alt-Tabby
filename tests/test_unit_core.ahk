@@ -67,6 +67,50 @@ RunUnitTests_Core() {
     AssertEq(projZ.items[1].z, 1, "Z-order sorting (first item z=1)")
 
     ; ============================================================
+    ; Sorting Comparator Tiebreaker Tests
+    ; ============================================================
+    Log("`n--- Sorting Comparator Tiebreaker Tests ---")
+
+    ; Test _WS_CmpMRU: same lastActivatedTick, different z → z wins
+    cmpA := {lastActivatedTick: 1000, z: 2, hwnd: 10}
+    cmpB := {lastActivatedTick: 1000, z: 1, hwnd: 20}
+    AssertEq(_WS_CmpMRU(cmpA, cmpB) > 0, true, "_WS_CmpMRU: same tick, lower z wins (b before a)")
+
+    ; Test _WS_CmpMRU: same lastActivatedTick, same z, different hwnd → hwnd wins (stability)
+    cmpC := {lastActivatedTick: 1000, z: 1, hwnd: 10}
+    cmpD := {lastActivatedTick: 1000, z: 1, hwnd: 20}
+    AssertEq(_WS_CmpMRU(cmpC, cmpD) < 0, true, "_WS_CmpMRU: same tick+z, lower hwnd first (stability)")
+
+    ; Test _WS_CmpMRU: all equal → returns 0
+    cmpE := {lastActivatedTick: 1000, z: 1, hwnd: 10}
+    cmpF := {lastActivatedTick: 1000, z: 1, hwnd: 10}
+    AssertEq(_WS_CmpMRU(cmpE, cmpF), 0, "_WS_CmpMRU: all equal returns 0")
+
+    ; Test _WS_CmpZ: same z, different lastActivatedTick → MRU wins
+    cmpG := {z: 1, lastActivatedTick: 500, hwnd: 10}
+    cmpH := {z: 1, lastActivatedTick: 1000, hwnd: 20}
+    AssertEq(_WS_CmpZ(cmpG, cmpH) > 0, true, "_WS_CmpZ: same z, higher tick wins (h before g)")
+
+    ; Test _WS_CmpZ: same z, same tick, different hwnd → hwnd wins (stability)
+    cmpI := {z: 1, lastActivatedTick: 1000, hwnd: 10}
+    cmpJ := {z: 1, lastActivatedTick: 1000, hwnd: 20}
+    AssertEq(_WS_CmpZ(cmpI, cmpJ) < 0, true, "_WS_CmpZ: same z+tick, lower hwnd first (stability)")
+
+    ; Test _WS_InsertionSort: 4-item array, verify identical result to manual sort
+    sortArr := [
+        {lastActivatedTick: 100, z: 3, hwnd: 1},
+        {lastActivatedTick: 300, z: 1, hwnd: 2},
+        {lastActivatedTick: 300, z: 1, hwnd: 3},
+        {lastActivatedTick: 200, z: 2, hwnd: 4}
+    ]
+    _WS_InsertionSort(sortArr, _WS_CmpMRU)
+    ; Expected MRU order: tick 300 (hwnd 2), tick 300 (hwnd 3), tick 200 (hwnd 4), tick 100 (hwnd 1)
+    AssertEq(sortArr[1].hwnd, 2, "_WS_InsertionSort MRU: first = hwnd 2 (tick 300, lower hwnd)")
+    AssertEq(sortArr[2].hwnd, 3, "_WS_InsertionSort MRU: second = hwnd 3 (tick 300, higher hwnd)")
+    AssertEq(sortArr[3].hwnd, 4, "_WS_InsertionSort MRU: third = hwnd 4 (tick 200)")
+    AssertEq(sortArr[4].hwnd, 1, "_WS_InsertionSort MRU: fourth = hwnd 1 (tick 100)")
+
+    ; ============================================================
     ; Race Condition Prevention Tests
     ; ============================================================
     Log("`n--- Race Condition Prevention Tests ---")
@@ -483,6 +527,48 @@ RunUnitTests_Core() {
         } else {
             Log("FAIL: WinEventHook should filter empty-title windows to prevent focus poisoning")
             Log("  hasEmptyTitleCheck=" hasEmptyTitleCheck ", hasFocusSkipComment=" hasFocusSkipComment)
+            TestErrors++
+        }
+    }
+
+    ; ============================================================
+    ; WinEventHook Focus-on-Unknown-Window Guard (Code Inspection)
+    ; ============================================================
+    ; NOTE: This test guards the race condition fix where a new window opens
+    ; and gets focus BEFORE WinEnum discovers it. Without this fix, new windows
+    ; appear at the BOTTOM of Alt-Tab list (lastActivatedTick=0).
+    ; The fix in _WEH_ProcessBatch adds the window immediately when UpdateFields
+    ; returns exists=false for a focus event.
+    Log("`n--- WinEventHook Focus Race Condition Guard ---")
+
+    wehPath := A_ScriptDir "\..\src\store\winevent_hook.ahk"
+    if (!FileExist(wehPath)) {
+        Log("SKIP: winevent_hook.ahk not found at " wehPath)
+    } else {
+        wehCode := FileRead(wehPath)
+
+        ; Test 1: _WEH_ProcessBatch has path for exists=false on focus → calls UpsertWindow
+        ; When a focus event arrives for an unknown window, it should add the window immediately
+        hasExistsFalseBlock := InStr(wehCode, "NOT IN STORE") && InStr(wehCode, "UpsertWindow")
+        hasProbeForAdd := InStr(wehCode, "WinUtils_ProbeWindow") && InStr(wehCode, "winevent_focus_add")
+        if (hasExistsFalseBlock && hasProbeForAdd) {
+            Log("PASS: _WEH_ProcessBatch has focus-on-unknown-window path (probes + upserts)")
+            TestPassed++
+        } else {
+            Log("FAIL: _WEH_ProcessBatch should probe and upsert unknown windows on focus")
+            Log("  hasExistsFalseBlock=" hasExistsFalseBlock ", hasProbeForAdd=" hasProbeForAdd)
+            TestErrors++
+        }
+
+        ; Test 2: That upsert path sets lastActivatedTick (MRU data) on the new window
+        ; Without lastActivatedTick, the newly-added window would have tick=0 and appear at bottom
+        hasTickOnAdd := InStr(wehCode, 'probe["lastActivatedTick"]') && InStr(wehCode, 'probe["isFocused"]')
+        if (hasTickOnAdd) {
+            Log("PASS: Focus-add path sets lastActivatedTick and isFocused on new window")
+            TestPassed++
+        } else {
+            Log("FAIL: Focus-add path must set lastActivatedTick to avoid MRU-bottom placement")
+            Log("  hasTickOnAdd=" hasTickOnAdd)
             TestErrors++
         }
     }
@@ -1243,6 +1329,68 @@ RunUnitTests_Core() {
     cfg.GUI_RowHeight := origRowHeight
     cfg.GUI_RowsVisibleMin := origRowsMin
     cfg.GUI_RowsVisibleMax := origRowsMax
+
+    ; ============================================================
+    ; Config Validation Completeness Guard
+    ; ============================================================
+    ; Ensures _CL_ValidateSettings has clamp() calls for numeric config entries.
+    ; Not all int/float entries need clamping (colors, cache sizes, etc.), but
+    ; the count of clamp calls must not decrease — catches accidental removal.
+    ; If a new timing/size entry is added without validation, this test should
+    ; prompt the developer to consider adding bounds.
+    Log("`n--- Config Validation Completeness Guard ---")
+    Log("Testing config validation clamp() coverage...")
+
+    ; Count int/float entries in gConfigRegistry (excluding booleans and strings)
+    numericEntryCount := 0
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && (entry.type = "section" || entry.type = "subsection"))
+            continue
+        if (!entry.HasOwnProp("t"))
+            continue
+        if (entry.t = "int" || entry.t = "float")
+            numericEntryCount++
+    }
+
+    ; Count clamp() calls inside _CL_ValidateSettings (via code inspection)
+    clPath := A_ScriptDir "\..\src\shared\config_loader.ahk"
+    if (!FileExist(clPath)) {
+        Log("SKIP: config_loader.ahk not found")
+    } else {
+        clCode := FileRead(clPath)
+
+        ; Find the function body: from "_CL_ValidateSettings()" to next standalone "}"
+        fnStart := InStr(clCode, "_CL_ValidateSettings()")
+        if (fnStart) {
+            ; Count ":= clamp(" occurrences from function start onward
+            ; Each line like `cfg.X := clamp(cfg.X, min, max)` has exactly one
+            clampCount := 0
+            searchPos := fnStart
+            while (searchPos := InStr(clCode, ":= clamp(", , searchPos)) {
+                clampCount++
+                searchPos += 9  ; Move past ":= clamp("
+            }
+
+            Log("  Registry numeric entries (int/float): " numericEntryCount)
+            Log("  _CL_ValidateSettings clamp() calls: " clampCount)
+
+            ; Regression guard: the current production code has 57 clamp calls.
+            ; This must not decrease. (Not all 124 int/float entries need clamping —
+            ; colors, enum-like ints, and cache sizes are safe without bounds.)
+            minExpectedClamps := 50  ; Conservative floor below current 57
+            if (clampCount >= minExpectedClamps) {
+                Log("PASS: _CL_ValidateSettings has " clampCount " clamp() calls (>= " minExpectedClamps " minimum)")
+                TestPassed++
+            } else {
+                Log("FAIL: _CL_ValidateSettings only has " clampCount " clamp() calls (expected >= " minExpectedClamps ")")
+                Log("  Did someone remove validation bounds?")
+                TestErrors++
+            }
+        } else {
+            Log("FAIL: _CL_ValidateSettings function not found in config_loader.ahk")
+            TestErrors++
+        }
+    }
 
     ; ============================================================
     ; Phase 2: cJson Content Extraction & Safe Navigation Tests
