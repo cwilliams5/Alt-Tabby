@@ -286,8 +286,13 @@ Store_PushToClients() {
 
     sent := 0
     for _, hPipe in clientHandles {
-        ; Get this client's projection opts (or defaults) from snapshot
-        opts := clientOptsSnapshot.Has(hPipe) ? clientOptsSnapshot[hPipe] : IPC_DefaultProjectionOpts()
+        ; Skip clients that haven't sent HELLO yet - they have no registered opts.
+        ; The HELLO handler sends an initial snapshot with correct format, so
+        ; broadcasting here would just waste work and send the wrong format.
+        if (!clientOptsSnapshot.Has(hPipe))
+            continue
+
+        opts := clientOptsSnapshot[hPipe]
 
         ; Generate projection tailored to this client
         proj := WindowStore_GetProjection(opts)
