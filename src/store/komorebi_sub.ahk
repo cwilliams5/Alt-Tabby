@@ -22,6 +22,10 @@ global ERROR_PIPE_CONNECTED := 535
 ; Buffer size limit (1MB) - prevents OOM from incomplete JSON
 global KSUB_BUFFER_MAX_BYTES := 1048576
 
+; Pre-allocated read buffer for pipe reads (avoids per-poll allocation)
+global KSUB_READ_CHUNK_SIZE := 65536
+global KSUB_READ_BUF := Buffer(KSUB_READ_CHUNK_SIZE)
+
 ; Configuration (set in KomorebiSub_Init after ConfigLoader_Init)
 global KSub_PollMs := 0
 global KSub_IdleRecycleMs := 0
@@ -84,7 +88,7 @@ KomorebiSub_IsAvailable() {
 KomorebiSub_Start() {
     global _KSub_PipeName, _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped
     global _KSub_Connected, _KSub_ClientPid, _KSub_LastEventTick, _KSub_FallbackMode
-    global KSub_FallbackPollMs, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, KSub_PollMs
+    global KSub_FallbackPollMs, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, KSub_PollMs, KSUB_READ_CHUNK_SIZE
 
     KomorebiSub_Stop()
 
@@ -108,7 +112,7 @@ KomorebiSub_Start() {
         , "uint", PIPE_TYPE_BYTE | PIPE_READMODE_BYTE
         , "uint", 1          ; max instances
         , "uint", 0          ; out buffer (inbound only)
-        , "uint", 65536      ; in buffer
+        , "uint", KSUB_READ_CHUNK_SIZE  ; in buffer
         , "uint", 0          ; default timeout
         , "ptr", pSA         ; security attrs (NULL DACL = allow all)
         , "ptr")
@@ -275,7 +279,7 @@ KomorebiSub_PruneStaleCache() {
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
     global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer
-    global ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES
+    global ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
     static pollCount := 0, lastLogTick := 0
 
     pollCount++
@@ -335,13 +339,12 @@ KomorebiSub_Poll() {
         if (avail = 0)
             break
 
-        toRead := Min(avail, 65536)
-        buf := Buffer(toRead, 0)
+        toRead := Min(avail, KSUB_READ_CHUNK_SIZE)
         read := 0
         ok2 := DllCall("ReadFile"
             , "ptr", _KSub_hPipe
-            , "ptr", buf.Ptr
-            , "uint", buf.Size
+            , "ptr", KSUB_READ_BUF.Ptr
+            , "uint", toRead
             , "uint*", &read
             , "ptr", 0
             , "int")
@@ -350,7 +353,7 @@ KomorebiSub_Poll() {
             break
 
         _KSub_LastEventTick := A_TickCount
-        chunk := StrGet(buf.Ptr, read, "UTF-8")
+        chunk := StrGet(KSUB_READ_BUF.Ptr, read, "UTF-8")
 
         ; Protect against unbounded buffer growth
         ; This prevents OOM when komorebi sends incomplete JSON with opening brace
@@ -362,7 +365,7 @@ KomorebiSub_Poll() {
         _KSub_ReadBuffer .= chunk
         bytesRead += read
 
-        if (bytesRead >= 65536)
+        if (bytesRead >= KSUB_READ_CHUNK_SIZE)
             break
     }
 
