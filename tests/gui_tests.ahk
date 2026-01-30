@@ -12,14 +12,8 @@ A_IconHidden := true  ; No tray icon during tests
 ; Event codes (from production gui_constants.ahk)
 #Include %A_ScriptDir%\..\src\gui\gui_constants.ahk
 
-; IPC message types (used by production code)
-global IPC_MSG_SNAPSHOT := "snapshot"
-global IPC_MSG_PROJECTION := "projection"
-global IPC_MSG_DELTA := "delta"
-global IPC_MSG_HELLO_ACK := "hello_ack"
-global IPC_MSG_PROJECTION_REQUEST := "projection_request"
-global IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
-global IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
+; IPC message types (from shared constants — no hardcoded copies)
+#Include %A_ScriptDir%\..\src\shared\ipc_constants.ahk
 
 ; GUI state globals
 global gGUI_State := "IDLE"

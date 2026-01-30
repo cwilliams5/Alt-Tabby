@@ -400,30 +400,9 @@ Store_PushToClients() {
     }
 }
 
-; Check if meta changed (specifically currentWSName for workspace tracking)
+; Check if meta changed - delegates to WindowStore_MetaChanged (in windowstore.ahk)
 Store_MetaChanged(prevMeta, nextMeta) {
-    if (prevMeta = "")
-        return true  ; No previous meta, consider it changed
-
-    ; Compare workspace name - the critical field for workspace tracking
-    prevWSName := ""
-    nextWSName := ""
-
-    if (IsObject(prevMeta)) {
-        if (prevMeta is Map)
-            prevWSName := prevMeta.Has("currentWSName") ? prevMeta["currentWSName"] : ""
-        else
-            try prevWSName := prevMeta.currentWSName
-    }
-
-    if (IsObject(nextMeta)) {
-        if (nextMeta is Map)
-            nextWSName := nextMeta.Has("currentWSName") ? nextMeta["currentWSName"] : ""
-        else
-            try nextWSName := nextMeta.currentWSName
-    }
-
-    return (prevWSName != nextWSName)
+    return WindowStore_MetaChanged(prevMeta, nextMeta)
 }
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)

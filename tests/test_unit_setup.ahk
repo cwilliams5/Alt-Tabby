@@ -140,26 +140,16 @@ RunUnitTests_Setup() {
         TestErrors++
     }
 
-    ; Test: tag_name regex handles both "v0.5.0" and "0.5.0" formats
-    Log("Testing tag_name parsing...")
-    responseWithV := '{"tag_name":"v0.5.0","other":"data"}'
-    responseWithoutV := '{"tag_name":"0.5.0","other":"data"}'
-
-    ; Test with 'v' prefix
-    if (RegExMatch(responseWithV, '"tag_name"\s*:\s*"v?([^"]+)"', &match1) && match1[1] = "0.5.0") {
-        Log("PASS: tag_name regex extracts '0.5.0' from 'v0.5.0'")
+    ; Test: _Update_FindExeDownloadUrl handles tag_name without 'v' prefix
+    Log("Testing _Update_FindExeDownloadUrl() with tag_name without v prefix...")
+    sampleNoV := '{"tag_name":"0.6.0","assets":[{"name":"AltTabby.exe","browser_download_url":"https://github.com/cwilliams5/Alt-Tabby/releases/download/0.6.0/AltTabby.exe"}]}'
+    url := _Update_FindExeDownloadUrl(sampleNoV)
+    expectedNoV := "https://github.com/cwilliams5/Alt-Tabby/releases/download/0.6.0/AltTabby.exe"
+    if (url = expectedNoV) {
+        Log("PASS: _Update_FindExeDownloadUrl() works with tag_name without v prefix")
         TestPassed++
     } else {
-        Log("FAIL: tag_name regex should extract '0.5.0' from 'v0.5.0'")
-        TestErrors++
-    }
-
-    ; Test without 'v' prefix
-    if (RegExMatch(responseWithoutV, '"tag_name"\s*:\s*"v?([^"]+)"', &match2) && match2[1] = "0.5.0") {
-        Log("PASS: tag_name regex extracts '0.5.0' from '0.5.0'")
-        TestPassed++
-    } else {
-        Log("FAIL: tag_name regex should extract '0.5.0' from '0.5.0'")
+        Log("FAIL: _Update_FindExeDownloadUrl() should return '" expectedNoV "', got: '" url "'")
         TestErrors++
     }
 

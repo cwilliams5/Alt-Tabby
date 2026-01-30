@@ -121,25 +121,7 @@ RunUnitTests_Advanced() {
     ; ============================================================
     Log("`n--- Update Race Guard Tests ---")
 
-    ; Test 1: g_UpdateCheckInProgress global exists
-    Log("Testing g_UpdateCheckInProgress global exists...")
-    try {
-        global g_UpdateCheckInProgress
-
-        ; Check it's defined (IsSet returns true if declared and assigned)
-        if (IsSet(g_UpdateCheckInProgress)) {
-            Log("PASS: g_UpdateCheckInProgress global exists")
-            TestPassed++
-        } else {
-            Log("FAIL: g_UpdateCheckInProgress should be defined")
-            TestErrors++
-        }
-    } catch as e {
-        Log("FAIL: g_UpdateCheckInProgress check error: " e.Message)
-        TestErrors++
-    }
-
-    ; Test 2: g_UpdateCheckInProgress defaults to false
+    ; Test 1: g_UpdateCheckInProgress defaults to false
     Log("Testing g_UpdateCheckInProgress defaults to false...")
     try {
         global g_UpdateCheckInProgress
@@ -298,150 +280,90 @@ RunUnitTests_Advanced() {
     }
 
     ; ============================================================
-    ; Store_MetaChanged Code Inspection Tests (Gap 4)
+    ; WindowStore_MetaChanged Functional Tests
     ; ============================================================
-    Log("`n--- Store_MetaChanged Code Inspection Tests ---")
+    Log("`n--- WindowStore_MetaChanged Functional Tests ---")
 
-    ; Test 1: Function exists with correct signature
-    Log("Testing Store_MetaChanged() function exists...")
+    ; Test 1: Empty previous meta returns true (first-time case)
+    Log("Testing WindowStore_MetaChanged() with empty previous meta...")
     try {
-        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
-        if (FileExist(serverPath)) {
-            serverCode := FileRead(serverPath)
-
-            hasFn := InStr(serverCode, "Store_MetaChanged(prevMeta, nextMeta)")
-            if (hasFn) {
-                Log("PASS: Store_MetaChanged(prevMeta, nextMeta) exists")
-                TestPassed++
-            } else {
-                Log("FAIL: Store_MetaChanged function not found with expected signature")
-                TestErrors++
-            }
+        nextMeta := Map("currentWSName", "workspace1")
+        result := WindowStore_MetaChanged("", nextMeta)
+        if (result = true) {
+            Log("PASS: WindowStore_MetaChanged returns true for empty previous meta")
+            TestPassed++
         } else {
-            Log("SKIP: Could not find store_server.ahk")
+            Log("FAIL: Should return true for empty previous meta, got: " result)
+            TestErrors++
         }
     } catch as e {
-        Log("FAIL: Store_MetaChanged existence check error: " e.Message)
+        Log("FAIL: WindowStore_MetaChanged empty meta error: " e.Message)
         TestErrors++
     }
 
-    ; Test 2: Handles empty previous meta (returns true)
-    Log("Testing Store_MetaChanged() handles empty previous meta...")
+    ; Test 2: Same workspace name returns false (no change)
+    Log("Testing WindowStore_MetaChanged() with identical workspace names...")
     try {
-        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
-        if (FileExist(serverPath)) {
-            serverCode := FileRead(serverPath)
-
-            hasEmptyCheck := InStr(serverCode, 'if (prevMeta = "")') && InStr(serverCode, "return true")
-            if (hasEmptyCheck) {
-                Log("PASS: Store_MetaChanged handles empty previous meta (returns true)")
-                TestPassed++
-            } else {
-                Log("FAIL: Store_MetaChanged should return true for empty previous meta")
-                TestErrors++
-            }
+        prev := Map("currentWSName", "workspace1")
+        next := Map("currentWSName", "workspace1")
+        result := WindowStore_MetaChanged(prev, next)
+        if (result = false) {
+            Log("PASS: WindowStore_MetaChanged returns false when workspace unchanged")
+            TestPassed++
         } else {
-            Log("SKIP: Could not find store_server.ahk")
+            Log("FAIL: Should return false for same workspace, got: " result)
+            TestErrors++
         }
     } catch as e {
-        Log("FAIL: Store_MetaChanged empty meta check error: " e.Message)
+        Log("FAIL: WindowStore_MetaChanged same workspace error: " e.Message)
         TestErrors++
     }
 
-    ; Test 3: Handles both Map and Object meta types
-    Log("Testing Store_MetaChanged() handles Map and Object types...")
+    ; Test 3: Different workspace names returns true (changed)
+    Log("Testing WindowStore_MetaChanged() with different workspace names...")
     try {
-        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
-        if (FileExist(serverPath)) {
-            serverCode := FileRead(serverPath)
-
-            hasMapCheck := InStr(serverCode, "prevMeta is Map") && InStr(serverCode, "nextMeta is Map")
-            hasObjFallback := InStr(serverCode, "prevMeta.currentWSName") && InStr(serverCode, "nextMeta.currentWSName")
-            if (hasMapCheck && hasObjFallback) {
-                Log("PASS: Store_MetaChanged handles both Map and plain Object meta")
-                TestPassed++
-            } else {
-                Log("FAIL: Store_MetaChanged should handle both Map and Object (map=" hasMapCheck ", obj=" hasObjFallback ")")
-                TestErrors++
-            }
+        prev := Map("currentWSName", "workspace1")
+        next := Map("currentWSName", "workspace2")
+        result := WindowStore_MetaChanged(prev, next)
+        if (result = true) {
+            Log("PASS: WindowStore_MetaChanged returns true when workspace changed")
+            TestPassed++
         } else {
-            Log("SKIP: Could not find store_server.ahk")
+            Log("FAIL: Should return true for different workspaces, got: " result)
+            TestErrors++
         }
     } catch as e {
-        Log("FAIL: Store_MetaChanged type handling check error: " e.Message)
+        Log("FAIL: WindowStore_MetaChanged different workspace error: " e.Message)
         TestErrors++
     }
 
-    ; Test 4: Compares currentWSName field
-    Log("Testing Store_MetaChanged() compares currentWSName...")
+    ; Test 4: Handles plain Object meta (not Map)
+    Log("Testing WindowStore_MetaChanged() with plain Object meta...")
     try {
-        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
-        if (FileExist(serverPath)) {
-            serverCode := FileRead(serverPath)
-
-            comparesWSName := InStr(serverCode, 'prevMeta.Has("currentWSName")') && InStr(serverCode, 'nextMeta.Has("currentWSName")')
-            returnsComparison := InStr(serverCode, "return (prevWSName != nextWSName)")
-            if (comparesWSName && returnsComparison) {
-                Log("PASS: Store_MetaChanged compares currentWSName and returns boolean")
-                TestPassed++
-            } else {
-                Log("FAIL: Store_MetaChanged should compare currentWSName (has=" comparesWSName ", returns=" returnsComparison ")")
-                TestErrors++
-            }
+        prev := { currentWSName: "ws_a" }
+        next := { currentWSName: "ws_b" }
+        result := WindowStore_MetaChanged(prev, next)
+        if (result = true) {
+            Log("PASS: WindowStore_MetaChanged handles plain Object meta")
+            TestPassed++
         } else {
-            Log("SKIP: Could not find store_server.ahk")
+            Log("FAIL: Should return true for different Object meta workspaces, got: " result)
+            TestErrors++
+        }
+
+        ; Also test same name with Object
+        prev2 := { currentWSName: "ws_a" }
+        next2 := { currentWSName: "ws_a" }
+        result2 := WindowStore_MetaChanged(prev2, next2)
+        if (result2 = false) {
+            Log("PASS: WindowStore_MetaChanged returns false for same Object meta workspace")
+            TestPassed++
+        } else {
+            Log("FAIL: Should return false for same Object meta workspace, got: " result2)
+            TestErrors++
         }
     } catch as e {
-        Log("FAIL: Store_MetaChanged comparison check error: " e.Message)
-        TestErrors++
-    }
-
-    ; Test 5: Used in Store_PushToClients delta decision
-    Log("Testing Store_MetaChanged() used in push decision...")
-    try {
-        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
-        if (FileExist(serverPath)) {
-            serverCode := FileRead(serverPath)
-
-            usedInPush := InStr(serverCode, "Store_MetaChanged(")
-            hasMetaGuard := InStr(serverCode, "metaChanged") && InStr(serverCode, "!metaChanged")
-            if (usedInPush && hasMetaGuard) {
-                Log("PASS: Store_MetaChanged used in Store_PushToClients with metaChanged guard")
-                TestPassed++
-            } else {
-                Log("FAIL: Store_MetaChanged should be used in push logic (called=" usedInPush ", guard=" hasMetaGuard ")")
-                TestErrors++
-            }
-        } else {
-            Log("SKIP: Could not find store_server.ahk")
-        }
-    } catch as e {
-        Log("FAIL: Store_MetaChanged usage check error: " e.Message)
-        TestErrors++
-    }
-
-    ; Test 6: Returns boolean comparison of workspace names
-    Log("Testing Store_MetaChanged() returns boolean...")
-    try {
-        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
-        if (FileExist(serverPath)) {
-            serverCode := FileRead(serverPath)
-
-            ; Function should have two return paths: one for empty prevMeta, one for comparison
-            hasReturnTrue := InStr(serverCode, "return true")
-            hasReturnCompare := InStr(serverCode, "return (prevWSName != nextWSName)")
-            if (hasReturnTrue && hasReturnCompare) {
-                Log("PASS: Store_MetaChanged has two return paths (empty meta + name comparison)")
-                TestPassed++
-            } else {
-                Log("FAIL: Store_MetaChanged should have empty meta and comparison returns (true=" hasReturnTrue ", compare=" hasReturnCompare ")")
-                TestErrors++
-            }
-        } else {
-            Log("SKIP: Could not find store_server.ahk")
-        }
-    } catch as e {
-        Log("FAIL: Store_MetaChanged return check error: " e.Message)
+        Log("FAIL: WindowStore_MetaChanged Object meta error: " e.Message)
         TestErrors++
     }
 }

@@ -518,15 +518,14 @@ RunUnitTests_Core() {
         ; Check for the critical empty title filter
         ; The fix checks for empty title and returns early to prevent Task Switching UI poisoning
         hasEmptyTitleCheck := InStr(wehCode, 'if (title = "")') || InStr(wehCode, 'if title = ""')
-        hasFocusSkipComment := InStr(wehCode, "FOCUS SKIP") || InStr(wehCode, "no title")
-        hasReturnAfterCheck := InStr(wehCode, "CRITICAL: Skip windows with empty titles")
+        hasFocusSkipLog := InStr(wehCode, "FOCUS SKIP")
 
-        if (hasEmptyTitleCheck && (hasFocusSkipComment || hasReturnAfterCheck)) {
+        if (hasEmptyTitleCheck && hasFocusSkipLog) {
             Log("PASS: WinEventHook filters windows with empty titles (Task Switching UI fix)")
             TestPassed++
         } else {
             Log("FAIL: WinEventHook should filter empty-title windows to prevent focus poisoning")
-            Log("  hasEmptyTitleCheck=" hasEmptyTitleCheck ", hasFocusSkipComment=" hasFocusSkipComment)
+            Log("  hasEmptyTitleCheck=" hasEmptyTitleCheck ", hasFocusSkipLog=" hasFocusSkipLog)
             TestErrors++
         }
     }

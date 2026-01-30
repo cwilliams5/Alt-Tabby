@@ -21,26 +21,8 @@ global IPC_PIPE_TYPE_MESSAGE := 0x00000004
 global IPC_PIPE_READMODE_MESSAGE := 0x00000002
 global IPC_PIPE_WAIT := 0x00000000
 
-; IPC Message Types
-global IPC_MSG_HELLO := "hello"
-global IPC_MSG_HELLO_ACK := "hello_ack"
-global IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
-global IPC_MSG_SNAPSHOT := "snapshot"
-global IPC_MSG_DELTA := "delta"
-global IPC_MSG_PROJECTION_REQUEST := "projection_request"
-global IPC_MSG_PROJECTION := "projection"
-global IPC_MSG_SET_PROJECTION_OPTS := "set_projection_opts"
-global IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
-global IPC_MSG_HEARTBEAT := "heartbeat"
-global IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
-global IPC_MSG_PRODUCER_STATUS := "producer_status"
-
-; IPC Timing Constants (milliseconds)
-global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)
-global IPC_TICK_IDLE := 100         ; Client tick when no activity (overridable via cfg.IPCIdleTickMs)
-global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
-global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect
-global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)
+; IPC Message Types and Timing Constants (shared with tests)
+#Include %A_LineFile%\..\ipc_constants.ahk
 
 ; IPC Buffer Constants
 global IPC_READ_CHUNK_SIZE := 65536       ; Max bytes to read per iteration

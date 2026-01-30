@@ -408,25 +408,6 @@ RunUnitTests_Cleanup() {
         TestErrors++
     }
 
-    ; Test 4: Cleanup functions are called from Store_OnExit path
-    Log("Testing icon cleanup functions are accessible...")
-    try {
-        ; Verify both cleanup functions exist and are callable
-        fn1Exists := IsSet(WindowStore_CleanupExeIconCache) && (WindowStore_CleanupExeIconCache is Func)
-        fn2Exists := IsSet(WindowStore_CleanupAllIcons) && (WindowStore_CleanupAllIcons is Func)
-
-        if (fn1Exists && fn2Exists) {
-            Log("PASS: Both icon cleanup functions exist and are callable")
-            TestPassed++
-        } else {
-            Log("FAIL: Missing cleanup functions (ExeCache=" fn1Exists ", AllIcons=" fn2Exists ")")
-            TestErrors++
-        }
-    } catch as e {
-        Log("FAIL: Cleanup function check error: " e.Message)
-        TestErrors++
-    }
-
     ; ============================================================
     ; IPC Critical Section Tests (Race Condition Prevention)
     ; ============================================================
@@ -487,16 +468,18 @@ RunUnitTests_Cleanup() {
     ; Test 3: Verify Critical sections exist in IPC functions (code inspection)
     Log("Testing IPC functions have Critical sections (code check)...")
     try {
-        ; Read the IPC source file and verify Critical is present
+        ; Read the IPC source file and verify Critical is present within specific functions
         ipcPath := A_ScriptDir "\..\src\shared\ipc_pipe.ahk"
         if (FileExist(ipcPath)) {
             ipcCode := FileRead(ipcPath)
 
-            ; Check for Critical in ServerTick
-            hasServerTickCritical := InStr(ipcCode, "IPC__ServerTick") && InStr(ipcCode, 'Critical "On"')
+            ; Check for Critical in ServerTick function body
+            serverTickBody := _Test_ExtractFuncBody(ipcCode, "IPC__ServerTick")
+            hasServerTickCritical := InStr(serverTickBody, 'Critical "On"')
 
-            ; Check for Critical in Broadcast
-            hasBroadcastCritical := InStr(ipcCode, "IPC_PipeServer_Broadcast") && InStr(ipcCode, 'Critical "On"')
+            ; Check for Critical in Broadcast function body
+            broadcastBody := _Test_ExtractFuncBody(ipcCode, "IPC_PipeServer_Broadcast")
+            hasBroadcastCritical := InStr(broadcastBody, 'Critical "On"')
 
             if (hasServerTickCritical && hasBroadcastCritical) {
                 Log("PASS: IPC functions contain Critical sections")
@@ -575,16 +558,22 @@ RunUnitTests_Cleanup() {
         storePath := A_ScriptDir "\..\src\store\store_server.ahk"
         if (FileExist(storePath)) {
             storeCode := FileRead(storePath)
+            onExitBody := _Test_ExtractFuncBody(storeCode, "Store_OnExit")
 
-            hasCleanupAllIcons := InStr(storeCode, "WindowStore_CleanupAllIcons()")
-            hasCleanupExeCache := InStr(storeCode, "WindowStore_CleanupExeIconCache()")
-
-            if (hasCleanupAllIcons && hasCleanupExeCache) {
-                Log("PASS: Store_OnExit calls both icon cleanup functions")
-                TestPassed++
-            } else {
-                Log("FAIL: Store_OnExit missing cleanup calls (AllIcons=" hasCleanupAllIcons ", ExeCache=" hasCleanupExeCache ")")
+            if (onExitBody = "") {
+                Log("FAIL: Could not extract Store_OnExit function body")
                 TestErrors++
+            } else {
+                hasCleanupAllIcons := InStr(onExitBody, "WindowStore_CleanupAllIcons()")
+                hasCleanupExeCache := InStr(onExitBody, "WindowStore_CleanupExeIconCache()")
+
+                if (hasCleanupAllIcons && hasCleanupExeCache) {
+                    Log("PASS: Store_OnExit calls both icon cleanup functions")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Store_OnExit missing cleanup calls (AllIcons=" hasCleanupAllIcons ", ExeCache=" hasCleanupExeCache ")")
+                    TestErrors++
+                }
             }
         } else {
             Log("SKIP: Could not find store_server.ahk for code inspection")
@@ -600,16 +589,21 @@ RunUnitTests_Cleanup() {
         guiPath := A_ScriptDir "\..\src\gui\gui_main.ahk"
         if (FileExist(guiPath)) {
             guiCode := FileRead(guiPath)
+            onExitBody := _Test_ExtractFuncBody(guiCode, "_GUI_OnExit")
 
-            hasGdipShutdown := InStr(guiCode, "Gdip_Shutdown()")
-            inOnExit := InStr(guiCode, "_GUI_OnExit") && hasGdipShutdown
-
-            if (inOnExit) {
-                Log("PASS: GUI _GUI_OnExit calls Gdip_Shutdown()")
-                TestPassed++
-            } else {
-                Log("FAIL: GUI _GUI_OnExit should call Gdip_Shutdown()")
+            if (onExitBody = "") {
+                Log("FAIL: Could not extract _GUI_OnExit function body")
                 TestErrors++
+            } else {
+                hasGdipShutdown := InStr(onExitBody, "Gdip_Shutdown()")
+
+                if (hasGdipShutdown) {
+                    Log("PASS: GUI _GUI_OnExit calls Gdip_Shutdown()")
+                    TestPassed++
+                } else {
+                    Log("FAIL: GUI _GUI_OnExit should call Gdip_Shutdown()")
+                    TestErrors++
+                }
             }
         } else {
             Log("SKIP: Could not find gui_main.ahk for code inspection")
@@ -804,9 +798,12 @@ RunUnitTests_Cleanup() {
         if (FileExist(storePath)) {
             code := FileRead(storePath)
 
-            ; Extract Store_HeartbeatTick function and check it calls pruning
-            if (RegExMatch(code, "Store_HeartbeatTick\(\)\s*\{[\s\S]*?^\}", &match)) {
-                funcBody := match[]
+            ; Extract Store_HeartbeatTick function body and check it calls pruning
+            funcBody := _Test_ExtractFuncBody(code, "Store_HeartbeatTick")
+            if (funcBody = "") {
+                Log("FAIL: Could not extract Store_HeartbeatTick function body")
+                TestErrors++
+            } else {
                 callsPrune := InStr(funcBody, "KomorebiSub_PruneStaleCache")
 
                 if (callsPrune) {
@@ -814,15 +811,6 @@ RunUnitTests_Cleanup() {
                     TestPassed++
                 } else {
                     Log("FAIL: Store_HeartbeatTick does not call cache pruning")
-                    TestErrors++
-                }
-            } else {
-                ; Fallback: just check if the call exists somewhere after HeartbeatTick definition
-                if (InStr(code, "Store_HeartbeatTick") && InStr(code, "KomorebiSub_PruneStaleCache")) {
-                    Log("PASS: Store_HeartbeatTick and KomorebiSub_PruneStaleCache both exist")
-                    TestPassed++
-                } else {
-                    Log("FAIL: Could not verify heartbeat calls pruning")
                     TestErrors++
                 }
             }
