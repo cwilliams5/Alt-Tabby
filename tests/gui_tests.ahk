@@ -816,38 +816,6 @@ RunGUITests() {
     ; RACE CONDITION PREVENTION TESTS
     ; ============================================================
 
-    ; ----- Test: GUI_GetValidatedSel clamps selection to bounds -----
-    GUI_Log("Test: GUI_GetValidatedSel clamps out-of-bounds selection")
-    ResetGUIState()
-    gGUI_Items := CreateTestItems(5, 2)
-    gGUI_FrozenItems := gGUI_Items
-
-    ; Test: Selection too high gets clamped
-    gGUI_Sel := 10  ; Out of bounds
-    gGUI_State := "IDLE"
-    validSel := GUI_GetValidatedSel()
-    GUI_AssertEq(validSel, 5, "GetValidatedSel clamps high selection to list length")
-    GUI_AssertEq(gGUI_Sel, 5, "GetValidatedSel updates gGUI_Sel")
-
-    ; Test: Selection too low gets clamped
-    gGUI_Sel := 0
-    validSel := GUI_GetValidatedSel()
-    GUI_AssertEq(validSel, 1, "GetValidatedSel clamps low selection to 1")
-
-    ; Test: Empty list returns 0
-    gGUI_Items := []
-    gGUI_Sel := 5
-    validSel := GUI_GetValidatedSel()
-    GUI_AssertEq(validSel, 0, "GetValidatedSel returns 0 for empty list")
-
-    ; Test: Uses FrozenItems during ACTIVE state
-    gGUI_Items := CreateTestItems(10, 5)
-    gGUI_FrozenItems := CreateTestItems(3, 1)  ; Smaller frozen list
-    gGUI_State := "ACTIVE"
-    gGUI_Sel := 8  ; Out of bounds for FrozenItems
-    validSel := GUI_GetValidatedSel()
-    GUI_AssertEq(validSel, 3, "GetValidatedSel uses FrozenItems during ACTIVE")
-
     ; ----- Test: Selection survives delta that removes items -----
     GUI_Log("Test: Selection survives delta that removes items")
     ResetGUIState()
@@ -951,8 +919,6 @@ RunGUITests() {
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
 
     GUI_AssertEq(gGUI_FrozenItems.Length, 0, "Frozen is empty")
-    validSel := GUI_GetValidatedSel()
-    GUI_AssertEq(validSel, 0, "Validated selection is 0 for empty list")
 
     ; ----- Test: Lost Tab detection synthesizes TAB_STEP -----
     GUI_Log("Test: Lost Tab detection synthesizes TAB_STEP")

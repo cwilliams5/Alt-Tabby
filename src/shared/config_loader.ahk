@@ -589,16 +589,3 @@ HideTooltipAfter(durationMs := 2000) {
     SetTimer(() => ToolTip(), -durationMs)
 }
 
-; ============================================================
-; OBJECT/MAP HELPER
-; ============================================================
-; Safely get a property from an object or Map with a default fallback.
-; Handles both obj.key and obj["key"] access patterns.
-; Usage: val := GetProp(obj, "key", "default")
-GetProp(obj, key, defaultVal := "") {
-    if (!IsObject(obj))
-        return defaultVal
-    if (obj is Map)
-        return obj.Has(key) ? obj[key] : defaultVal
-    return obj.HasOwnProp(key) ? obj.%key% : defaultVal
-}

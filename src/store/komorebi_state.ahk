@@ -22,7 +22,6 @@
 ;   _KSub_GetFocusedWorkspaceIndex  - Get focused workspace index
 ;   _KSub_GetWorkspaceNameByIndex   - Get workspace name by index
 ;   _KSub_FindWorkspaceByHwnd       - Find workspace containing hwnd
-;   _KSub_GetFocusedHwndFromWorkspace - Get focused hwnd from named workspace
 ;   _KSub_GetFocusedHwnd            - Get currently focused hwnd
 ; ============================================================
 
@@ -184,88 +183,6 @@ _KSub_WorkspaceHasHwnd(wsObj, hwnd) {
     }
 
     return false
-}
-
-; Get the focused window hwnd from a SPECIFIC workspace by name
-; Used for move events where we need to find the window on the SOURCE workspace
-_KSub_GetFocusedHwndFromWorkspace(stateObj, targetWsName) {
-    if (targetWsName = "")
-        return _KSub_GetFocusedHwnd(stateObj)  ; Fallback to general lookup
-
-    _KSub_DiagLog("    GetFocusedHwndFromWorkspace: looking for ws='" targetWsName "'")
-
-    ; Search all monitors for the workspace with this name
-    monitorsArr := _KSub_GetMonitorsArray(stateObj)
-    for mi, monObj in monitorsArr {
-        wsArr := _KSub_GetWorkspacesArray(monObj)
-        for wi, wsObj in wsArr {
-            wsName := _KSafe_Str(wsObj, "name")
-            if (wsName != targetWsName)
-                continue
-
-            _KSub_DiagLog("    Found workspace '" targetWsName "' at mon=" (mi-1) " ws=" (wi-1))
-
-            ; Get focused container in this workspace
-            if !(wsObj is Map) || !wsObj.Has("containers")
-                continue
-
-            containersRing := wsObj["containers"]
-            contArr := _KSafe_Elements(containersRing)
-            focusedContIdx := _KSafe_Focused(containersRing)
-
-            if (focusedContIdx >= 0 && focusedContIdx < contArr.Length) {
-                contObj := contArr[focusedContIdx + 1]
-
-                ; Get focused window from windows ring
-                if (contObj is Map && contObj.Has("windows")) {
-                    windowsRing := contObj["windows"]
-                    winArr := _KSafe_Elements(windowsRing)
-                    focusedWinIdx := _KSafe_Focused(windowsRing)
-
-                    if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length) {
-                        winObj := winArr[focusedWinIdx + 1]
-                        hwnd := _KSafe_Int(winObj, "hwnd")
-                        if (hwnd) {
-                            _KSub_DiagLog("    Found hwnd=" hwnd " via containers.windows")
-                            return hwnd
-                        }
-                    }
-                }
-
-                ; Fallback: container might have "window" directly
-                if (contObj is Map && contObj.Has("window")) {
-                    winObj := contObj["window"]
-                    hwnd := _KSafe_Int(winObj, "hwnd")
-                    if (hwnd) {
-                        _KSub_DiagLog("    Found hwnd=" hwnd " via container.window")
-                        return hwnd
-                    }
-                }
-            }
-
-            ; Fallback: try monocle_container
-            if (wsObj.Has("monocle_container")) {
-                monocleObj := wsObj["monocle_container"]
-                if (monocleObj is Map) {
-                    hwnd := _KSafe_Int(monocleObj, "hwnd")
-                    if (!hwnd && monocleObj.Has("window")) {
-                        winObj := monocleObj["window"]
-                        hwnd := _KSafe_Int(winObj, "hwnd")
-                    }
-                    if (hwnd) {
-                        _KSub_DiagLog("    Found hwnd=" hwnd " via monocle_container")
-                        return hwnd
-                    }
-                }
-            }
-
-            _KSub_DiagLog("    Workspace found but no focused window")
-            return 0
-        }
-    }
-
-    _KSub_DiagLog("    Workspace '" targetWsName "' not found in state")
-    return 0
 }
 
 ; Get the focused window hwnd from komorebi state
