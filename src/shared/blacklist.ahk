@@ -172,21 +172,28 @@ Blacklist_IsMatch(title, class) {
     if (!gBlacklist_Loaded)
         return false
 
+    ; RACE FIX: Snapshot globals into locals so a concurrent Blacklist_Reload() swapping
+    ; shorter arrays mid-iteration can't cause index-out-of-bounds (zero-cost: AHK arrays are refs)
+    titleRegex := gBlacklist_TitleRegex
+    classRegex := gBlacklist_ClassRegex
+    pairClassRegex := gBlacklist_PairClassRegex
+    pairTitleRegex := gBlacklist_PairTitleRegex
+
     ; Check title blacklist (pre-compiled regex)
-    for _, regex in gBlacklist_TitleRegex {
+    for _, regex in titleRegex {
         if (RegExMatch(title, regex))
             return true
     }
 
     ; Check class blacklist (pre-compiled regex)
-    for _, regex in gBlacklist_ClassRegex {
+    for _, regex in classRegex {
         if (RegExMatch(class, regex))
             return true
     }
 
     ; Check pair blacklist (both must match, pre-compiled regex)
-    for i, _ in gBlacklist_PairClassRegex {
-        if (RegExMatch(class, gBlacklist_PairClassRegex[i]) && RegExMatch(title, gBlacklist_PairTitleRegex[i]))
+    for i, _ in pairClassRegex {
+        if (RegExMatch(class, pairClassRegex[i]) && RegExMatch(title, pairTitleRegex[i]))
             return true
     }
 

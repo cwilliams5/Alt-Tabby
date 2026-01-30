@@ -206,9 +206,8 @@ _CL_SupplementIni(path) {
         if (FileExist(tempPath))
             FileDelete(tempPath)
         FileAppend(content, tempPath, "UTF-8")
-        ; Only delete original after temp write succeeded
-        FileDelete(path)
-        FileMove(tempPath, path)
+        ; Atomic overwrite: MoveFileEx with MOVEFILE_REPLACE_EXISTING on NTFS
+        FileMove(tempPath, path, true)
     } catch as e {
         ; Clean up temp file on failure
         try FileDelete(tempPath)
@@ -319,8 +318,8 @@ _CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType 
         if (FileExist(tempPath))
             FileDelete(tempPath)
         FileAppend(newContent, tempPath, "UTF-8")
-        FileDelete(path)
-        FileMove(tempPath, path)
+        ; Atomic overwrite: MoveFileEx with MOVEFILE_REPLACE_EXISTING on NTFS
+        FileMove(tempPath, path, true)
     } catch as e {
         try FileDelete(tempPath)
         global LOG_PATH_STORE
