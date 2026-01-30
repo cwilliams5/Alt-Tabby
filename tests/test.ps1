@@ -1,10 +1,11 @@
 # Alt-Tabby Test Runner
-# Usage: .\tests\test.ps1 [--live] [--force-compile]
+# Usage: .\tests\test.ps1 [--live] [--force-compile] [--timing]
 
 param(
     [switch]$live,
     [Alias("force-compile")]
     [switch]$forceCompile,
+    [switch]$timing,
     [Parameter(ValueFromRemainingArguments=$true)]
     $remainingArgs
 )
@@ -14,7 +15,7 @@ param(
 # This MUST fail hard - warnings get ignored by LLM agents
 if ($remainingArgs) {
     foreach ($arg in $remainingArgs) {
-        if ($arg -match '^-{1,2}(live|force-?compile)$') {
+        if ($arg -match '^-{1,2}(live|force-?compile|timing)$') {
             Write-Host ""
             Write-Host "============================================================" -ForegroundColor Red
             Write-Host "FATAL FAILURE: Do NOT use 'powershell -Command'" -ForegroundColor Red
@@ -29,6 +30,111 @@ if ($remainingArgs) {
             exit 1
         }
     }
+}
+
+# --- Timing Infrastructure ---
+$masterSw = [System.Diagnostics.Stopwatch]::StartNew()
+$timingEvents = [System.Collections.ArrayList]::new()
+
+function Record-PhaseStart {
+    param([string]$Name)
+    if (-not $script:timing) { return }
+    [void]$script:timingEvents.Add(@{
+        Type    = "phase_start"
+        Name    = $Name
+        TickMs  = $script:masterSw.ElapsedMilliseconds
+    })
+}
+
+function Record-PhaseEnd {
+    param([string]$Name)
+    if (-not $script:timing) { return }
+    [void]$script:timingEvents.Add(@{
+        Type    = "phase_end"
+        Name    = $Name
+        TickMs  = $script:masterSw.ElapsedMilliseconds
+    })
+}
+
+function Record-ItemTiming {
+    param([string]$Phase, [string]$Item, [double]$DurationMs)
+    if (-not $script:timing) { return }
+    [void]$script:timingEvents.Add(@{
+        Type       = "item"
+        Phase      = $Phase
+        Item       = $Item
+        DurationMs = $DurationMs
+    })
+}
+
+function Show-TimingReport {
+    if (-not $script:timing) { return }
+
+    $phases = [System.Collections.ArrayList]::new()
+    $phaseStarts = @{}
+
+    foreach ($ev in $script:timingEvents) {
+        switch ($ev.Type) {
+            "phase_start" { $phaseStarts[$ev.Name] = $ev.TickMs }
+            "phase_end" {
+                $startMs = if ($phaseStarts.ContainsKey($ev.Name)) { $phaseStarts[$ev.Name] } else { 0 }
+                [void]$phases.Add(@{
+                    Name       = $ev.Name
+                    OffsetMs   = $startMs
+                    DurationMs = $ev.TickMs - $startMs
+                })
+            }
+        }
+    }
+
+    # Collect items per phase
+    $phaseItems = @{}
+    foreach ($ev in $script:timingEvents) {
+        if ($ev.Type -eq "item") {
+            if (-not $phaseItems.ContainsKey($ev.Phase)) { $phaseItems[$ev.Phase] = [System.Collections.ArrayList]::new() }
+            [void]$phaseItems[$ev.Phase].Add(@{ Item = $ev.Item; DurationMs = $ev.DurationMs })
+        }
+    }
+
+    $totalMs = $script:masterSw.ElapsedMilliseconds
+
+    # Find bottleneck phase (longest duration)
+    $bottleneckMs = 0
+    $bottleneckName = ""
+    foreach ($ph in $phases) {
+        if ($ph.DurationMs -gt $bottleneckMs) {
+            $bottleneckMs = $ph.DurationMs
+            $bottleneckName = $ph.Name
+        }
+    }
+
+    Write-Host ""
+    Write-Host "=== TIMING REPORT ===" -ForegroundColor Cyan
+    Write-Host ("{0,-44} {1,8} {2,10}" -f "Phase", "Offset", "Duration") -ForegroundColor Cyan
+    Write-Host ("-" * 64) -ForegroundColor DarkGray
+
+    foreach ($ph in $phases) {
+        $offsetStr = "+{0:F1}s" -f ($ph.OffsetMs / 1000)
+        $durStr = "{0:F1}s" -f ($ph.DurationMs / 1000)
+        $marker = if ($ph.Name -eq $bottleneckName -and $phases.Count -gt 1) { " << bottleneck" } else { "" }
+        Write-Host ("{0,-44} {1,8} {2,10}{3}" -f $ph.Name, $offsetStr, $durStr, $marker)
+
+        # Show sub-items sorted by duration descending
+        if ($phaseItems.ContainsKey($ph.Name)) {
+            $sorted = $phaseItems[$ph.Name] | Sort-Object { $_.DurationMs } -Descending
+            $slowestMs = $sorted[0].DurationMs
+            foreach ($item in $sorted) {
+                $itemDurStr = "{0:F1}s" -f ($item.DurationMs / 1000)
+                $itemMarker = if ($item.DurationMs -eq $slowestMs -and $sorted.Count -gt 1) { " << slowest" } else { "" }
+                Write-Host ("  {0,-42} {1,8} {2,10}{3}" -f $item.Item, "", $itemDurStr, $itemMarker)
+            }
+        }
+    }
+
+    Write-Host ("-" * 64) -ForegroundColor DarkGray
+    $totalStr = "{0:F1}s" -f ($totalMs / 1000)
+    Write-Host ("{0,-44} {1,8} {2,10}" -f "Total wall-clock", "", $totalStr) -ForegroundColor Cyan
+    Write-Host ""
 }
 
 # --- Silent Process Helper ---
@@ -151,6 +257,15 @@ public class SilentProcess {
         CloseHandle(hProcess);
         return code;
     }
+
+    // Non-blocking exit code check. Returns -259 (STILL_ACTIVE) if running.
+    public static int TryGetExitCode(IntPtr hProcess) {
+        if (hProcess == IntPtr.Zero) return -1;
+        uint result = WaitForSingleObject(hProcess, 0);
+        if (result != 0) return -259;
+        int code; GetExitCodeProcess(hProcess, out code);
+        return code;
+    }
 }
 "@
 
@@ -229,6 +344,7 @@ Write-Host "=== Alt-Tabby Test Run $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===
 Write-Host "Log file: $logFile"
 
 # --- Syntax Check Phase (Parallel) ---
+Record-PhaseStart "Syntax Check"
 Write-Host "`n--- Syntax Check Phase (Parallel) ---" -ForegroundColor Yellow
 
 $filesToCheck = @(
@@ -288,8 +404,10 @@ foreach ($sp in $syntaxProcs) {
 }
 
 $syntaxTotal = $syntaxPassed + $syntaxFailed
+Record-PhaseEnd "Syntax Check"
 if ($syntaxFailed -gt 0) {
     Write-Host "  Syntax: $syntaxPassed/$syntaxTotal passed, $syntaxFailed failed [FAIL]" -ForegroundColor Red
+    Show-TimingReport
     exit 1
 } else {
     Write-Host "  Syntax: $syntaxTotal/$syntaxTotal passed [PASS]" -ForegroundColor Green
@@ -299,12 +417,31 @@ if ($syntaxFailed -gt 0) {
 # Runs all check_*.ps1 scripts in parallel via the dispatcher.
 # Catches issues like undeclared globals that cause runtime popups or silent bugs.
 # This MUST pass before any AHK process launches.
+Record-PhaseStart "Static Analysis"
 Write-Host "`n--- Static Analysis Pre-Gate ---" -ForegroundColor Yellow
 
 $staticAnalysisScript = "$PSScriptRoot\static_analysis.ps1"
 if (Test-Path $staticAnalysisScript) {
-    & $staticAnalysisScript -SourceDir $srcRoot
-    if ($LASTEXITCODE -ne 0) {
+    $saArgs = @{ SourceDir = $srcRoot }
+    if ($timing) { $saArgs.Timing = $true }
+    & $staticAnalysisScript @saArgs
+    $saExit = $LASTEXITCODE
+
+    # Read per-check timing data if available
+    $saTimingFile = "$env:TEMP\sa_timing.json"
+    if ($timing -and (Test-Path $saTimingFile)) {
+        $saTimingData = Get-Content $saTimingFile -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
+        if ($saTimingData) {
+            foreach ($entry in $saTimingData) {
+                Record-ItemTiming -Phase "Static Analysis" -Item $entry.Name -DurationMs $entry.DurationMs
+            }
+        }
+        Remove-Item -Force -ErrorAction SilentlyContinue $saTimingFile
+    }
+
+    Record-PhaseEnd "Static Analysis"
+
+    if ($saExit -ne 0) {
         Write-Host ""
         Write-Host "============================================================" -ForegroundColor Red
         Write-Host "  STATIC ANALYSIS FAILED - TEST SUITE BLOCKED" -ForegroundColor Red
@@ -315,9 +452,11 @@ if (Test-Path $staticAnalysisScript) {
         Write-Host ""
         Write-Host "  No tests will run until all static analysis checks pass." -ForegroundColor Red
         Write-Host "============================================================" -ForegroundColor Red
+        Show-TimingReport
         exit 1
     }
 } else {
+    Record-PhaseEnd "Static Analysis"
     Write-Host "  SKIP: static_analysis.ps1 not found" -ForegroundColor Yellow
 }
 
@@ -340,10 +479,12 @@ Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
 
 if (Test-Path $guiScript) {
     Write-Host "Starting GUI tests in background..." -ForegroundColor Cyan
+    Record-PhaseStart "GUI Tests (background)"
     $guiHandle = [SilentProcess]::Start('"' + $ahk + '" /ErrorStdOut "' + $guiScript + '"')
 }
 
 if ($live) {
+    Record-PhaseStart "Compilation"
     Write-Host "`n--- Compilation Phase (compile.bat) ---" -ForegroundColor Yellow
     $compileBat = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.bat"
     $compileDir = (Resolve-Path "$PSScriptRoot\..").Path
@@ -360,18 +501,23 @@ if ($live) {
         Write-Host "  Running compile.bat..."
         $compileExit = [SilentProcess]::RunWait(('cmd.exe /c "' + $compileBat + '" < nul'), $compileDir)
 
+        Record-PhaseEnd "Compilation"
         if ($compileExit -eq 0 -and (Test-Path $outFile)) {
             Write-Host "PASS: compile.bat completed" -ForegroundColor Green
         } else {
             Write-Host "FAIL: compile.bat failed (exit $compileExit)" -ForegroundColor Red
             Write-Host "Aborting - compiled exe required for live tests" -ForegroundColor Red
+            Show-TimingReport
             exit 1
         }
     } else {
+        Record-PhaseEnd "Compilation"
         Write-Host "FAIL: compile.bat not found" -ForegroundColor Red
+        Show-TimingReport
         exit 1
     }
 } else {
+    Record-PhaseStart "Compilation"
     Write-Host "`n--- Compilation Phase ---" -ForegroundColor Yellow
     # Continue with compilation (non-live mode)
     if (Test-Path $compiler) {
@@ -430,6 +576,7 @@ if ($live) {
     } else {
         Write-Host "SKIP: Ahk2Exe.exe not found - compiled exe tests will use existing binary" -ForegroundColor Yellow
     }
+    Record-PhaseEnd "Compilation"
 }
 
 # --- Test Execution ---
@@ -456,6 +603,7 @@ if ($live) {
     }
 
     $liveStart = Get-Date
+    Record-PhaseStart "Live Tests"
 
     # --- All Suites (parallel) ---
     Write-Host "`n--- All Suites (parallel) ---" -ForegroundColor Yellow
@@ -470,8 +618,41 @@ if ($live) {
     Write-Host "  Starting Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
-    Write-Host "  Running Unit tests (foreground)..." -ForegroundColor Cyan
-    $unitExit = [SilentProcess]::RunWaitCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '"', $stderrFile)
+    # Launch Unit via StartCaptured (not RunWaitCaptured) so we have its handle for polling
+    Write-Host "  Starting Unit tests..." -ForegroundColor Cyan
+    $unitHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '"', $stderrFile)
+
+    # --- Timing: poll all 4 handles to record actual completion times ---
+    if ($timing) {
+        $pollSw = [System.Diagnostics.Stopwatch]::StartNew()
+        $suiteHandles = @{
+            Unit      = $unitHandle
+            Features  = $featuresHandle
+            Core      = $coreHandle
+            Execution = $executionHandle
+        }
+        $suiteDone = @{}
+        while ($suiteDone.Count -lt $suiteHandles.Count) {
+            foreach ($name in $suiteHandles.Keys) {
+                if ($suiteDone.ContainsKey($name)) { continue }
+                $code = [SilentProcess]::TryGetExitCode($suiteHandles[$name])
+                if ($code -ne -259) {
+                    $suiteDone[$name] = $pollSw.ElapsedMilliseconds
+                }
+            }
+            if ($suiteDone.Count -lt $suiteHandles.Count) {
+                Start-Sleep -Milliseconds 25
+            }
+        }
+        $pollSw.Stop()
+        Record-PhaseEnd "Live Tests"
+        foreach ($name in $suiteDone.Keys) {
+            Record-ItemTiming -Phase "Live Tests" -Item $name -DurationMs $suiteDone[$name]
+        }
+    }
+
+    # Wait for Unit (blocking — instant if polling already detected completion)
+    $unitExit = [SilentProcess]::WaitAndGetExitCode($unitHandle)
 
     $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
     if ($stderr) {
@@ -523,16 +704,19 @@ if ($live) {
 
     if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
 
+    if (-not $timing) { Record-PhaseEnd "Live Tests" }
     $liveElapsed = ((Get-Date) - $liveStart).TotalSeconds
     Write-Host "`n  Live pipeline completed in $([math]::Round($liveElapsed, 1))s" -ForegroundColor Cyan
 } else {
     # === Non-live mode: unit tests only ===
+    Record-PhaseStart "Unit Tests"
     Write-Host "`n--- Unit Tests Phase ---" -ForegroundColor Yellow
 
     $stderrFile = "$env:TEMP\ahk_stderr.log"
     Remove-Item -Force -ErrorAction SilentlyContinue $stderrFile
 
     $mainExitCode = [SilentProcess]::RunWaitCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '"', $stderrFile)
+    Record-PhaseEnd "Unit Tests"
 
     $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
     if ($stderr) {
@@ -548,6 +732,7 @@ Write-Host "`n--- GUI Tests Phase ---" -ForegroundColor Yellow
 
 if ($guiHandle -ne [IntPtr]::Zero) {
     $guiExitCode = [SilentProcess]::WaitAndGetExitCode($guiHandle)
+    Record-PhaseEnd "GUI Tests (background)"
     Show-TestSummary -LogPath $guiLogFile -Label "GUI"
 
     if ($guiExitCode -ne 0) {
@@ -557,4 +742,5 @@ if ($guiHandle -ne [IntPtr]::Zero) {
     Write-Host "  SKIP: gui_tests.ahk not found" -ForegroundColor Yellow
 }
 
+Show-TimingReport
 exit $mainExitCode

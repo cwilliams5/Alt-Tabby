@@ -9,7 +9,8 @@
 # Usage: powershell -File tests\static_analysis.ps1 [-SourceDir "path\to\src"]
 
 param(
-    [string]$SourceDir
+    [string]$SourceDir,
+    [switch]$Timing
 )
 
 $ErrorActionPreference = 'Stop'
@@ -73,11 +74,16 @@ $failures = 0
 $results = [System.Collections.ArrayList]::new()
 foreach ($p in $procs) {
     $p.Process | Wait-Process
+    $durationMs = 0
+    if ($Timing -and $p.Process.ExitTime -and $p.Process.StartTime) {
+        $durationMs = ($p.Process.ExitTime - $p.Process.StartTime).TotalMilliseconds
+    }
     [void]$results.Add(@{
-        Name     = $p.Name
-        Label    = $p.Label
-        ExitCode = $p.Process.ExitCode
-        OutFile  = $p.OutFile
+        Name       = $p.Name
+        Label      = $p.Label
+        ExitCode   = $p.Process.ExitCode
+        OutFile    = $p.OutFile
+        DurationMs = $durationMs
     })
     if ($p.Process.ExitCode -ne 0) { $failures++ }
 }
@@ -100,6 +106,12 @@ foreach ($r in $results) {
 }
 
 Write-Host "  Static analysis completed in $($sw.ElapsedMilliseconds)ms ($($checks.Count) check(s), $failures failure(s))" -ForegroundColor Cyan
+
+# Write per-check timing data for test.ps1 to consume
+if ($Timing) {
+    $timingData = $results | ForEach-Object { @{ Name = $_.Label; DurationMs = [math]::Round($_.DurationMs, 1) } }
+    $timingData | ConvertTo-Json -Compress | Set-Content "$env:TEMP\sa_timing.json" -Encoding UTF8
+}
 
 # Cleanup temp files
 foreach ($r in $results) {

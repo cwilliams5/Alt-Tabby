@@ -6,7 +6,7 @@
 .\tests\test.ps1 --live
 ```
 
-**Flags:** `--live` (integration tests), `--force-compile` (skip auto-skip when exe newer than source)
+**Flags:** `--live` (integration tests), `--force-compile` (skip auto-skip when exe newer than source), `--timing` (detailed timing report)
 
 **NEVER use `powershell -Command`** - it breaks argument parsing and fails hard:
 ```powershell
