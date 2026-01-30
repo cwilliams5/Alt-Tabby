@@ -121,17 +121,17 @@ UpdateTrayMenu() {
 
 RestartStore() {
     global g_StorePID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH)
+    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
 }
 
 RestartGui() {
     global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH)
+    LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
 }
 
 RestartViewer() {
     global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH)
+    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
 }
 
 RestartAll() {
