@@ -19,6 +19,7 @@ global IPC_MSG_DELTA := "delta"
 global IPC_MSG_HELLO_ACK := "hello_ack"
 global IPC_MSG_PROJECTION_REQUEST := "projection_request"
 global IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
+global IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
 
 ; GUI state globals
 global gGUI_State := "IDLE"
@@ -43,6 +44,8 @@ global gGUI_HoverRow := 0
 global gGUI_HoverBtn := ""
 global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
+global gGUI_MouseTracking := false  ; WM_MOUSELEAVE tracking state
+global gGUI_BaseH := 0              ; Window handle for overlay base
 
 ; Async activation globals (for cross-workspace support)
 global gGUI_PendingPhase := ""
@@ -56,14 +59,16 @@ global gGUI_EventBuffer := []
 global gGUI_LastLocalMRUTick := 0
 global gGUI_FlushStartTick := 0  ; For tick-based flushing wait (race condition fix)
 
-; Timing constants (from config_loader.ahk)
+; Constants from config_loader.ahk
 global TIMING_IPC_FIRE_WAIT := 10
+global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 
 ; Health check timestamp (used by gui_store.ahk)
 global gGUI_LastMsgTick := 0
 
 ; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
 global gINT_BypassMode := false
+global gINT_TabPending := false
 
 ; Config object mock (production code uses cfg.PropertyName)
 global cfg := {

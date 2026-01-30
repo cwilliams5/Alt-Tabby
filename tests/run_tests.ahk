@@ -18,6 +18,7 @@ global TestPassed := 0
 
 ; --- Testing mode flag (suppresses dialogs in setup_utils.ahk) ---
 global g_TestingMode := true
+global gStore_TestMode := false  ; Process utils test mode (from store_server.ahk)
 
 ; --- IPC test globals (used by test_utils.ahk callbacks) ---
 global testServer := 0

@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.0
+#Requires AutoHotkey v2.0  ; check_test_globals: skip (legacy diagnostic, uses old config.ahk)
 #SingleInstance Force
 A_IconHidden := true  ; No tray icon during tests
 
