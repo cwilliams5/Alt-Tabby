@@ -123,6 +123,13 @@ GUI_HideOverlay() {
 Gdip_InvalidateIconCache(hwnd) {
 }
 
+; GDI+ icon cache prune mock (called by snapshot handler to dispose orphaned bitmaps)
+global gMock_PruneCalledWith := ""
+Gdip_PruneIconCache(liveHwnds) {
+    global gMock_PruneCalledWith
+    gMock_PruneCalledWith := liveHwnds
+}
+
 ; Visible rows mock (called by _GUI_AnyVisibleItemChanged)
 global gMock_VisibleRows := 5
 GUI_GetVisibleRows() {
@@ -209,7 +216,7 @@ ResetGUIState() {
     global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
-    global gGUI_Base, gGUI_Overlay, gINT_BypassMode
+    global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
 
     gGUI_State := "IDLE"
     gGUI_Items := []
@@ -235,6 +242,7 @@ ResetGUIState() {
     gGUI_LastMsgTick := 0
     gMock_BypassResult := false
     gINT_BypassMode := false
+    gMock_PruneCalledWith := ""
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
 }
@@ -304,7 +312,7 @@ RunGUITests() {
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gGUI_StoreRev, gGUI_ItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
-    global gMock_BypassResult, gINT_BypassMode
+    global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -1428,6 +1436,44 @@ RunGUITests() {
     GUI_AssertEq(gGUI_ItemsMap[1000].Title, "Reused Window", "HWND reuse: title updated to new app")
 
     cfg.FreezeWindowList := true  ; Restore
+
+    ; ============================================================
+    ; ICON CACHE PRUNE ON SNAPSHOT TESTS (Resource leak fix)
+    ; ============================================================
+
+    ; ----- Test: Snapshot calls Gdip_PruneIconCache with live hwnd map -----
+    GUI_Log("Test: Snapshot calls Gdip_PruneIconCache with live hwnd map")
+    ResetGUIState()
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 200, payload: { items: CreateTestItems(3) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune: called on snapshot")
+    if (IsObject(gMock_PruneCalledWith)) {
+        ; The live hwnds map should contain exactly the 3 hwnds from the snapshot
+        GUI_AssertEq(gMock_PruneCalledWith.Count, 3, "Prune: live map has 3 entries")
+        GUI_AssertTrue(gMock_PruneCalledWith.Has(1000), "Prune: live map has hwnd 1000")
+        GUI_AssertTrue(gMock_PruneCalledWith.Has(2000), "Prune: live map has hwnd 2000")
+        GUI_AssertTrue(gMock_PruneCalledWith.Has(3000), "Prune: live map has hwnd 3000")
+    }
+
+    ; ----- Test: Prune called with updated map after second snapshot -----
+    GUI_Log("Test: Prune called with updated map after second snapshot")
+    ResetGUIState()
+    ; First snapshot: 5 items
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 201, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called on first snapshot")
+
+    ; Second snapshot: only 2 items (windows closed)
+    gMock_PruneCalledWith := ""
+    items2 := CreateTestItems(2)
+    snapshotMsg2 := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 202, payload: { items: items2 } })
+    GUI_OnStoreMessage(snapshotMsg2)
+
+    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called on second snapshot")
+    if (IsObject(gMock_PruneCalledWith)) {
+        GUI_AssertEq(gMock_PruneCalledWith.Count, 2, "Prune 2nd: live map has 2 entries (orphans would be pruned)")
+    }
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Test Summary ===")

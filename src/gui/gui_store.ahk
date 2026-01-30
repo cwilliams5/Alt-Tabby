@@ -108,6 +108,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             ; Critical already held from above (phase check guard)
             gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
             gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
+            Gdip_PruneIconCache(gGUI_ItemsMap)      ; Dispose orphaned GDI+ icon bitmaps
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
             if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {

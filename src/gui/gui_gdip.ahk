@@ -555,6 +555,29 @@ Gdip_ClearIconCache() {
     gGdip_IconCache := Map()
 }
 
+; Prune icon cache entries for hwnds not in the live items map.
+; Call after snapshot replacement to remove orphaned GDI+ bitmaps.
+Gdip_PruneIconCache(liveHwnds) {
+    global gGdip_IconCache
+
+    if (!gGdip_IconCache.Count)
+        return
+
+    ; Two-pass: collect stale keys first (can't delete during AHK v2 Map iteration)
+    stale := []
+    for hwnd, _ in gGdip_IconCache {
+        if (!liveHwnds.Has(hwnd))
+            stale.Push(hwnd)
+    }
+
+    for _, hwnd in stale {
+        cached := gGdip_IconCache[hwnd]
+        if (cached.pBmp)
+            try DllCall("gdiplus\GdipDisposeImage", "ptr", cached.pBmp)
+        gGdip_IconCache.Delete(hwnd)
+    }
+}
+
 ; Generate color from index (fallback when no icon)
 Gdip_ARGBFromIndex(i) {
     r := (37 * i) & 0xFF
