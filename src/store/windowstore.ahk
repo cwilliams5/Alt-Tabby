@@ -3,9 +3,6 @@
 
 ; WindowStore (v1) - minimal core for IPC + viewer.
 
-; Cache constants
-global WS_EXE_ICON_CACHE_MAX := 100         ; Max cached exe icons
-
 global gWS_Store := Map()
 global gWS_Rev := 0
 global gWS_ScanId := 0

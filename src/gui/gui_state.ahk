@@ -71,7 +71,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_State, gGUI_FirstTabTick, gGUI_TabCount
     global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems, gGUI_AllItems, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
-    global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick
+    global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick, TIMING_IPC_FIRE_WAIT
 
     ; Get event name for logging
     evName := _GUI_GetEventName(evCode)
@@ -157,7 +157,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 waitStart := A_TickCount
                 prewarmWait := cfg.HasOwnProp("AltTabPrewarmWaitMs") ? cfg.AltTabPrewarmWaitMs : 50
                 while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < prewarmWait) {
-                    Sleep(10)  ; Allow IPC timer to fire and process incoming messages
+                    Sleep(TIMING_IPC_FIRE_WAIT)  ; Allow IPC timer to fire and process incoming messages
                 }
             }
 

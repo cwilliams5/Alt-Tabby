@@ -19,7 +19,6 @@
 
 ; NOTE: GiveUp backoff now in config: cfg.IconPumpGiveUpBackoffMs (default 5000)
 global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
-global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000  ; Process access right for package queries
 
 ; Configuration (set in IconPump_Start after ConfigLoader_Init)
 global IconBatchPerTick := 0

@@ -968,12 +968,12 @@ KomorebiSub_PollFallback() {
 
 ; Get komorebi state directly via command
 _KSub_GetStateDirect() {
-    global cfg
+    global cfg, TIMING_FILE_WRITE_WAIT
     tmp := A_Temp "\komorebi_state_" A_TickCount ".tmp"
     ; Use double-quote escaping for cmd.exe with paths containing spaces
     cmd := 'cmd.exe /c ""' cfg.KomorebicExe '" state > "' tmp '"" 2>&1'
     try ProcessUtils_RunWaitHidden(cmd)
-    Sleep(100)  ; Give file time to write
+    Sleep(TIMING_FILE_WRITE_WAIT)  ; Give file time to write
     txt := ""
     try txt := FileRead(tmp, "UTF-8")
     try FileDelete(tmp)

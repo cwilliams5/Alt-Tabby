@@ -40,7 +40,7 @@ _Launcher_LogStartup() {
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
     global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
-    global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, g_SplashStartTick
+    global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
     _Launcher_LogStartup()
@@ -100,7 +100,7 @@ Launcher_Init() {
         exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
 
         if (exitCode = 0) {
-            Sleep(100)  ; Brief delay for task to initialize
+            Sleep(TIMING_TASK_INIT_WAIT)  ; Brief delay for task to initialize
             ExitApp()
         } else {
             ; Task failed to run - fall back to non-admin mode
@@ -400,7 +400,7 @@ _Launcher_ShouldSkipWizardForExistingInstall() {
 ;   1. Current exe name (from A_ScriptFullPath)
 ;   2. Exe name from cfg.SetupExePath (installed location, may differ)
 _Launcher_KillExistingInstances() {
-    global cfg
+    global cfg, TIMING_PROCESS_TERMINATE_WAIT
     myPID := ProcessExist()  ; Get our own PID
 
     ; Build list of exe names to kill (avoid duplicates, case-insensitive)
@@ -435,7 +435,7 @@ _Launcher_KillExistingInstances() {
             if (!pid || pid = myPID)
                 break
             try ProcessClose(pid)
-            Sleep(100)  ; Brief pause for process to terminate
+            Sleep(TIMING_PROCESS_TERMINATE_WAIT)  ; Brief pause for process to terminate
         }
     }
 }

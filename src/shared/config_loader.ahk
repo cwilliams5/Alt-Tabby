@@ -520,6 +520,14 @@ global TIMING_MUTEX_RELEASE_WAIT := 500   ; Wait for mutex to be released
 global TIMING_TASK_READY_WAIT := 500      ; Wait for scheduled task to be ready
 global TIMING_SUBPROCESS_LAUNCH := 300    ; Brief delay before launching subprocess
 global TIMING_STORE_START_WAIT := 1000    ; Wait for store to start
+global TIMING_TASK_INIT_WAIT := 100      ; Wait for scheduled task to initialize
+global TIMING_PROCESS_TERMINATE_WAIT := 100  ; Wait for process to terminate
+global TIMING_FILE_WRITE_WAIT := 100     ; Wait for file to write
+global TIMING_IPC_FIRE_WAIT := 10        ; Allow IPC timer to fire
+global TIMING_STORE_PROCESS_WAIT := 100  ; Wait for store to process
+global TIMING_PIPE_RETRY_WAIT := 50      ; Pipe connection retry delay
+global TIMING_SETUP_SETTLE := 200        ; Setup settle delay
+global TIMING_SETUP_RETRY_WAIT := 100    ; Setup retry delay
 
 ; Tooltip durations (milliseconds, negative for one-shot timer)
 global TOOLTIP_DURATION_SHORT := 1500     ; Quick feedback tooltips

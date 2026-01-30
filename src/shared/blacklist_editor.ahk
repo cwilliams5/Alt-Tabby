@@ -194,7 +194,7 @@ _BE_SaveToFile() {
 }
 
 _BE_SendReloadIPC() {
-    global cfg, IPC_MSG_RELOAD_BLACKLIST
+    global cfg, IPC_MSG_RELOAD_BLACKLIST, TIMING_STORE_PROCESS_WAIT
 
     ; Get store pipe name
     pipeName := cfg.HasOwnProp("StorePipeName") ? cfg.StorePipeName : "tabby_store_v1"
@@ -205,7 +205,7 @@ _BE_SendReloadIPC() {
         if (client.hPipe) {
             msg := { type: IPC_MSG_RELOAD_BLACKLIST }
             IPC_PipeClient_Send(client, JSON.Dump(msg))
-            Sleep(100)  ; Give store time to process
+            Sleep(TIMING_STORE_PROCESS_WAIT)  ; Give store time to process
             IPC_PipeClient_Close(client)
             return true
         }

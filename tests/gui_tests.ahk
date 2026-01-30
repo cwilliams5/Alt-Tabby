@@ -56,6 +56,9 @@ global gGUI_EventBuffer := []
 global gGUI_LastLocalMRUTick := 0
 global gGUI_FlushStartTick := 0  ; For tick-based flushing wait (race condition fix)
 
+; Timing constants (from config_loader.ahk)
+global TIMING_IPC_FIRE_WAIT := 10
+
 ; Health check timestamp (used by gui_store.ahk)
 global gGUI_LastMsgTick := 0
 

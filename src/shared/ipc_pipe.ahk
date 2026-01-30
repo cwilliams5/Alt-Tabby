@@ -435,7 +435,7 @@ _IPC_ClosePipeInstance(inst) {
 }
 
 _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
-    global IPC_WAIT_SINGLE_OBJ, IPC_ERROR_PIPE_BUSY, IPC_ERROR_FILE_NOT_FOUND, IPC_WAIT_PIPE_TIMEOUT
+    global IPC_WAIT_SINGLE_OBJ, IPC_ERROR_PIPE_BUSY, IPC_ERROR_FILE_NOT_FOUND, IPC_WAIT_PIPE_TIMEOUT, TIMING_PIPE_RETRY_WAIT
     name := "\\.\pipe\" pipeName
     start := A_TickCount
     loop {
@@ -470,7 +470,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
         ; keyboard/mouse input (low-level hooks can't be processed).
         ; Sleep pumps the AHK message queue, allowing hook callbacks to run.
         if (gle = IPC_ERROR_FILE_NOT_FOUND)
-            Sleep(50)
+            Sleep(TIMING_PIPE_RETRY_WAIT)
         else
             DllCall("WaitNamedPipeW", "str", name, "uint", IPC_WAIT_PIPE_TIMEOUT)
     }

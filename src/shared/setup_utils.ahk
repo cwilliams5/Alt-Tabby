@@ -537,7 +537,7 @@ _Update_NeedsElevation(targetDir) {
 ;   2. Target exe name (passed as parameter, for updates)
 ;   3. Exe name from cfg.SetupExePath (installed location, may differ)
 _Update_KillOtherProcesses(targetExeName := "") {
-    global cfg
+    global cfg, TIMING_SETUP_SETTLE, TIMING_SETUP_RETRY_WAIT
     myPID := ProcessExist()  ; Get our own PID
 
     ; Build list of exe names to kill (avoid duplicates, case-insensitive)
@@ -583,7 +583,7 @@ _Update_KillOtherProcesses(targetExeName := "") {
     }
 
     ; Give processes time to fully terminate
-    Sleep(200)
+    Sleep(TIMING_SETUP_SETTLE)
 
     ; Verify all are gone (except us) - retry with ProcessClose as fallback
     for exeName in exeNames {
@@ -592,7 +592,7 @@ _Update_KillOtherProcesses(targetExeName := "") {
             if (!pid || pid = myPID)
                 break
             try ProcessClose(pid)
-            Sleep(100)
+            Sleep(TIMING_SETUP_RETRY_WAIT)
         }
     }
 }
