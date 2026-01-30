@@ -936,6 +936,65 @@ RunGUITests() {
     GUI_AssertEq(gGUI_PendingPhase, "", "Pending phase cleared after buffer processed")
 
     ; ============================================================
+    ; ALT_PENDING DATA FLOW TESTS
+    ; ============================================================
+
+    ; ----- Test: Snapshot during ALT_PENDING updates gGUI_Items -----
+    GUI_Log("Test: Snapshot during ALT_PENDING updates gGUI_Items")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(3)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_AssertEq(gGUI_State, "ALT_PENDING", "ALT_PENDING data: state is ALT_PENDING")
+
+    ; Send snapshot with 8 items - should be accepted (prewarm data)
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 150, payload: { items: CreateTestItems(8) } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 8, "ALT_PENDING data: snapshot accepted (8 items)")
+    GUI_AssertEq(gGUI_State, "ALT_PENDING", "ALT_PENDING data: state unchanged after snapshot")
+
+    ; ----- Test: Delta during ALT_PENDING updates gGUI_Items -----
+    GUI_Log("Test: Delta during ALT_PENDING updates gGUI_Items")
+    ResetGUIState()
+    cfg.FreezeWindowList := false  ; Live mode for delta processing
+    ; Load initial 5 items via snapshot
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    GUI_AssertEq(gGUI_Items.Length, 5, "ALT_PENDING delta: initial 5 items")
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_AssertEq(gGUI_State, "ALT_PENDING", "ALT_PENDING delta: state is ALT_PENDING")
+
+    ; Send delta: remove hwnd 2000 and 4000, add hwnd 8888
+    newRec := Map("hwnd", 8888, "title", "New Window", "class", "NewClass", "lastActivatedTick", A_TickCount + 99999)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [2000, 4000], upserts: [newRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 4, "ALT_PENDING delta: 5 - 2 + 1 = 4 items")
+    GUI_AssertEq(gGUI_ItemsMap.Has(8888), true, "ALT_PENDING delta: new hwnd 8888 in map")
+    GUI_AssertEq(gGUI_ItemsMap.Has(2000), false, "ALT_PENDING delta: hwnd 2000 removed")
+    cfg.FreezeWindowList := true  ; Restore
+
+    ; ----- Test: Prewarm snapshot data used when Tab pressed -----
+    GUI_Log("Test: Prewarm snapshot data used when Tab pressed")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(3)
+
+    ; Alt down -> prewarm snapshot arrives -> Tab pressed
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+
+    ; Send snapshot with 10 items (simulating prewarm response)
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 160, payload: { items: CreateTestItems(10) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    GUI_AssertEq(gGUI_Items.Length, 10, "Prewarm: items updated to 10 during ALT_PENDING")
+
+    ; Now press Tab - should freeze the 10 prewarm items, not the stale 3
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_FrozenItems.Length, 10, "Prewarm: frozen items = 10 (prewarm data, not stale 3)")
+    GUI_AssertEq(gGUI_State, "ACTIVE", "Prewarm: state is ACTIVE after Tab")
+
+    ; ============================================================
     ; SNAPSHOT GUARD TESTS
     ; ============================================================
 
@@ -1469,6 +1528,51 @@ RunGUITests() {
     gGUI_EventBuffer := []
     _GUI_ProcessEventBuffer()
     GUI_AssertEq(gGUI_PendingPhase, "", "Empty buffer: pending phase cleared")
+
+    ; ============================================================
+    ; NORMAL EVENT BUFFER REPLAY TESTS
+    ; ============================================================
+
+    ; ----- Test: Normal buffer replay [ALT_DN, TAB_STEP, ALT_UP] completes full cycle -----
+    GUI_Log("Test: Normal buffer replay completes full cycle")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_PendingPhase := "flushing"
+    gGUI_FlushStartTick := A_TickCount - 50  ; Past the flush wait threshold
+
+    ; Buffer: normal Alt+Tab sequence (Tab NOT lost)
+    gGUI_EventBuffer := [
+        {ev: TABBY_EV_ALT_DOWN, flags: 0, lParam: 0},
+        {ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0},
+        {ev: TABBY_EV_ALT_UP, flags: 0, lParam: 0}
+    ]
+
+    _GUI_ProcessEventBuffer()
+
+    ; ALT_DN -> ALT_PENDING -> TAB_STEP -> ACTIVE -> ALT_UP -> IDLE
+    GUI_AssertEq(gGUI_State, "IDLE", "Normal replay: cycle completed (state=IDLE)")
+    GUI_AssertEq(gGUI_PendingPhase, "", "Normal replay: pending phase cleared")
+
+    ; ----- Test: Multi-Tab buffer replay completes full cycle -----
+    GUI_Log("Test: Multi-Tab buffer replay completes full cycle")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_PendingPhase := "flushing"
+    gGUI_FlushStartTick := A_TickCount - 50
+
+    ; Buffer: Alt+Tab with 3 Tab presses (user cycling through windows)
+    gGUI_EventBuffer := [
+        {ev: TABBY_EV_ALT_DOWN, flags: 0, lParam: 0},
+        {ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0},
+        {ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0},
+        {ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0},
+        {ev: TABBY_EV_ALT_UP, flags: 0, lParam: 0}
+    ]
+
+    _GUI_ProcessEventBuffer()
+
+    GUI_AssertEq(gGUI_State, "IDLE", "Multi-Tab replay: cycle completed (state=IDLE)")
+    GUI_AssertEq(gGUI_PendingPhase, "", "Multi-Tab replay: pending phase cleared")
 
     ; ============================================================
     ; BYPASS MODE PROPAGATION TESTS (Gap 1: isFocused in delta)

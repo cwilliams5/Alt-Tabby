@@ -1261,7 +1261,12 @@ RunUnitTests_Storage() {
     AssertEq(proj.items[1].pid + 0, 5, "GetProjection Pid sort: first pid=5")
     AssertEq(proj.items[5].pid + 0, 30, "GetProjection Pid sort: last pid=30")
 
-    ; Test 10: Empty store returns empty items
+    ; Test 10: Sort="ProcessName" produces alphabetical order
+    proj := WindowStore_GetProjection({sort: "ProcessName", includeCloaked: true})
+    AssertEq(proj.items[1].processName, "alpha.exe", "GetProjection ProcessName sort: first is alpha.exe")
+    AssertEq(proj.items[5].processName, "zulu.exe", "GetProjection ProcessName sort: last is zulu.exe")
+
+    ; Test 11: Empty store returns empty items
     WindowStore_Init()
     gWS_Store := Map()
     proj := WindowStore_GetProjection()
