@@ -15,6 +15,15 @@
 global g_WizardGui := 0
 global g_WizardShuttingDown := false  ; Shutdown coordination flag
 
+; Mark first-run as completed and record exe path
+_WizardMarkComplete() {
+    global cfg, gConfigIniPath
+    cfg.SetupFirstRunCompleted := true
+    cfg.SetupExePath := A_ScriptFullPath
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+}
+
 ShowFirstRunWizard() {
     global g_WizardGui, cfg
 
@@ -49,10 +58,7 @@ WizardSkip(*) {
 
     ; Mark first-run as completed even if skipped
     ; Also record exe path so mismatch detection works for custom locations
-    cfg.SetupFirstRunCompleted := true
-    cfg.SetupExePath := A_ScriptFullPath
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+    _WizardMarkComplete()
 
     try g_WizardGui.Destroy()
 }
@@ -107,10 +113,7 @@ WizardApply(*) {
             )
             if (result = "No") {
                 ; Mark first-run as completed so wizard doesn't show on every launch
-                cfg.SetupFirstRunCompleted := true
-                cfg.SetupExePath := A_ScriptFullPath
-                _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
-                _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+                _WizardMarkComplete()
                 g_WizardShuttingDown := false  ; Allow clean exit
                 try g_WizardGui.Destroy()
                 return  ; Exit wizard completely

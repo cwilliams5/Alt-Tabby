@@ -36,6 +36,11 @@ global gStore_CachedHeartbeatRev := -1
 global gStore_HeartbeatCount
 global gStore_ScanInProgress := false  ; Re-entrancy guard for Store_FullScan
 
+; Timer stagger offsets (negative = one-shot) to avoid thundering herd
+global STORE_STAGGER_ZPUMP_MS := -17
+global STORE_STAGGER_VALIDATE_MS := -37
+global STORE_STAGGER_HEARTBEAT_MS := -53
+
 ; Producer state tracking: "running", "disabled", "failed"
 global gStore_ProducerState := Map()
 gStore_ProducerState["wineventHook"] := "disabled"
@@ -148,8 +153,9 @@ Store_Init() {
         ; Hook working - it handles MRU tracking internally
         Store_LogInfo("WinEventHook active - MRU tracking via hook")
         gStore_ProducerState["wineventHook"] := "running"
-        ; Start Z-pump for on-demand scans (staggered by 17ms to avoid timer alignment)
-        SetTimer(_Store_StartZPump, -17)
+        ; Start Z-pump for on-demand scans (staggered to avoid timer alignment)
+        global STORE_STAGGER_ZPUMP_MS, STORE_STAGGER_VALIDATE_MS, STORE_STAGGER_HEARTBEAT_MS
+        SetTimer(_Store_StartZPump, STORE_STAGGER_ZPUMP_MS)
 
         ; Optional safety net polling (usually disabled)
         if (cfg.WinEnumSafetyPollMs > 0) {
@@ -162,14 +168,14 @@ Store_Init() {
     ; then the callback starts the periodic timer.
     ; Start lightweight existence validation (catches zombies from crashes)
     if (cfg.WinEnumValidateExistenceMs > 0) {
-        SetTimer(_Store_StartValidateExistence, -37)
+        SetTimer(_Store_StartValidateExistence, STORE_STAGGER_VALIDATE_MS)
     }
 
     ; NOTE: Producer state is NOT stored in gWS_Meta anymore (removes bloat from deltas/snapshots)
     ; Clients that need producer status should send IPC_MSG_PRODUCER_STATUS_REQUEST
 
-    ; Start heartbeat timer for client connection health (staggered by 53ms)
-    SetTimer(_Store_StartHeartbeat, -53)
+    ; Start heartbeat timer for client connection health (staggered)
+    SetTimer(_Store_StartHeartbeat, STORE_STAGGER_HEARTBEAT_MS)
 }
 
 ; Broadcast heartbeat to all clients with current rev for drift detection

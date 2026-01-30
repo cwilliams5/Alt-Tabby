@@ -100,13 +100,7 @@ Gdip_EnsureBackbuffer(wPhys, hPhys) {
         gGdip_BackHBM := 0
     }
 
-    bi := Buffer(40, 0)
-    NumPut("UInt", 40, bi, 0)
-    NumPut("Int", wPhys, bi, 4)
-    NumPut("Int", -hPhys, bi, 8)
-    NumPut("UShort", 1, bi, 12)
-    NumPut("UShort", 32, bi, 14)
-    NumPut("UInt", 0, bi, 16)
+    bi := _Gdip_CreateBitmapInfoHeader(wPhys, hPhys)
 
     pvBits := 0
     gGdip_BackHBM := DllCall("gdi32\CreateDIBSection", "ptr", gGdip_BackHdc, "ptr", bi.Ptr, "uint", 0, "ptr*", &pvBits, "ptr", 0, "uint", 0, "ptr")
@@ -134,13 +128,15 @@ Gdip_EnsureGraphics() {
         gGdip_G := 0
     }
 
+    global GDIP_SMOOTHING_ANTIALIAS, GDIP_TEXT_RENDER_ANTIALIAS_GRIDFIT
+
     DllCall("gdiplus\GdipCreateFromHDC", "ptr", gGdip_BackHdc, "ptr*", &gGdip_G)
     if (!gGdip_G) {
         return 0
     }
 
-    DllCall("gdiplus\GdipSetSmoothingMode", "ptr", gGdip_G, "int", 4)
-    DllCall("gdiplus\GdipSetTextRenderingHint", "ptr", gGdip_G, "int", 5)
+    DllCall("gdiplus\GdipSetSmoothingMode", "ptr", gGdip_G, "int", GDIP_SMOOTHING_ANTIALIAS)
+    DllCall("gdiplus\GdipSetTextRenderingHint", "ptr", gGdip_G, "int", GDIP_TEXT_RENDER_ANTIALIAS_GRIDFIT)
     return gGdip_G
 }
 
@@ -360,15 +356,8 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
         return pBmp
     }
 
-    ; Set up BITMAPINFOHEADER for GetDIBits
-    ; Size=40, Width, Height (negative for top-down), Planes=1, BitCount=32, Compression=BI_RGB
-    bih := Buffer(40, 0)
-    NumPut("uint", 40, bih, 0)          ; biSize
-    NumPut("int", w, bih, 4)            ; biWidth
-    NumPut("int", -h, bih, 8)           ; biHeight (negative = top-down DIB)
-    NumPut("ushort", 1, bih, 12)        ; biPlanes
-    NumPut("ushort", 32, bih, 14)       ; biBitCount
-    NumPut("uint", 0, bih, 16)          ; biCompression = BI_RGB
+    ; Set up BITMAPINFOHEADER for GetDIBits (top-down, 32bpp, BI_RGB)
+    bih := _Gdip_CreateBitmapInfoHeader(w, h)
 
     ; Allocate buffer for pixel data (BGRA format, 4 bytes per pixel)
     stride := w * 4
@@ -400,14 +389,8 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
 
     ; If no alpha detected, we need to use the mask to determine transparency
     if (!hasAlpha && hbmMask) {
-        ; Get mask bitmap data
-        maskBih := Buffer(40, 0)
-        NumPut("uint", 40, maskBih, 0)
-        NumPut("int", w, maskBih, 4)
-        NumPut("int", -h, maskBih, 8)
-        NumPut("ushort", 1, maskBih, 12)
-        NumPut("ushort", 32, maskBih, 14)  ; Request 32-bit for easier processing
-        NumPut("uint", 0, maskBih, 16)
+        ; Get mask bitmap data (request 32-bit for easier processing)
+        maskBih := _Gdip_CreateBitmapInfoHeader(w, h)
 
         maskPixels := Buffer(pixelDataSize, 0)
         hdc := DllCall("user32\GetDC", "ptr", 0, "ptr")
@@ -429,9 +412,9 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
     }
 
     ; Create GDI+ bitmap with GDI+ owning the memory (scan0 = 0)
-    ; PixelFormat32bppARGB = 0x26200A
+    global GDIP_PIXEL_FORMAT_32BPP_ARGB, GDIP_IMAGE_LOCK_WRITE
     pBmp := 0
-    status := DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", w, "int", h, "int", 0, "int", 0x26200A, "ptr", 0, "ptr*", &pBmp, "int")
+    status := DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", w, "int", h, "int", 0, "int", GDIP_PIXEL_FORMAT_32BPP_ARGB, "ptr", 0, "ptr*", &pBmp, "int")
 
     if (status != 0 || !pBmp) {
         DllCall("gdi32\DeleteObject", "ptr", hbmColor)
@@ -449,8 +432,7 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
     NumPut("int", w, rect, 8)   ; width
     NumPut("int", h, rect, 12)  ; height
 
-    ; ImageLockModeWrite = 2
-    status := DllCall("gdiplus\GdipBitmapLockBits", "ptr", pBmp, "ptr", rect.Ptr, "uint", 2, "int", 0x26200A, "ptr", bd.Ptr, "int")
+    status := DllCall("gdiplus\GdipBitmapLockBits", "ptr", pBmp, "ptr", rect.Ptr, "uint", GDIP_IMAGE_LOCK_WRITE, "int", GDIP_PIXEL_FORMAT_32BPP_ARGB, "ptr", bd.Ptr, "int")
 
     if (status != 0) {
         DllCall("gdiplus\GdipDisposeImage", "ptr", pBmp)
@@ -589,6 +571,19 @@ Gdip_ARGBFromIndex(i) {
 ; Clear graphics surface
 Gdip_Clear(g, argb := 0x00000000) {
     DllCall("gdiplus\GdipGraphicsClear", "ptr", g, "int", argb)
+}
+
+; Create a top-down 32bpp BITMAPINFOHEADER buffer
+_Gdip_CreateBitmapInfoHeader(w, h) {
+    global BITMAPINFOHEADER_SIZE, BPP_32
+    bi := Buffer(BITMAPINFOHEADER_SIZE, 0)
+    NumPut("UInt", BITMAPINFOHEADER_SIZE, bi, 0)
+    NumPut("Int", w, bi, 4)
+    NumPut("Int", -h, bi, 8)
+    NumPut("UShort", 1, bi, 12)
+    NumPut("UShort", BPP_32, bi, 14)
+    NumPut("UInt", 0, bi, 16)
+    return bi
 }
 
 ; Fill rectangle

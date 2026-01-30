@@ -719,12 +719,7 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.h := leftArrowH
 
     ; Draw left arrow
-    static rfLeft := Buffer(16, 0)
-    NumPut("Float", leftArrowX, rfLeft, 0)
-    NumPut("Float", leftArrowY, rfLeft, 4)
-    NumPut("Float", leftArrowW, rfLeft, 8)
-    NumPut("Float", leftArrowH, rfLeft, 12)
-    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", Chr(0x2190), "int", -1, "ptr", gGdip_Res["fFooter"], "ptr", rfLeft.Ptr, "ptr", gGdip_Res["fmtFooterCenter"], "ptr", gGdip_Res["brFooterText"])
+    Gdip_DrawCenteredText(g, Chr(0x2190), leftArrowX, leftArrowY, leftArrowW, leftArrowH, gGdip_Res["brFooterText"], gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
 
     ; Right arrow
     rightArrowX := fx + fw - arrowPad - arrowW
@@ -739,12 +734,7 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    static rfRight := Buffer(16, 0)
-    NumPut("Float", rightArrowX, rfRight, 0)
-    NumPut("Float", rightArrowY, rfRight, 4)
-    NumPut("Float", rightArrowW, rfRight, 8)
-    NumPut("Float", rightArrowH, rfRight, 12)
-    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", Chr(0x2192), "int", -1, "ptr", gGdip_Res["fFooter"], "ptr", rfRight.Ptr, "ptr", gGdip_Res["fmtFooterCenter"], "ptr", gGdip_Res["brFooterText"])
+    Gdip_DrawCenteredText(g, Chr(0x2192), rightArrowX, rightArrowY, rightArrowW, rightArrowH, gGdip_Res["brFooterText"], gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
 
     ; Center text (between arrows)
     textX := leftArrowX + leftArrowW + arrowPad
@@ -753,10 +743,5 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
         textW := 0
     }
 
-    static rfCenter := Buffer(16, 0)
-    NumPut("Float", textX, rfCenter, 0)
-    NumPut("Float", fy, rfCenter, 4)
-    NumPut("Float", textW, rfCenter, 8)
-    NumPut("Float", fh, rfCenter, 12)
-    DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", gGUI_FooterText, "int", -1, "ptr", gGdip_Res["fFooter"], "ptr", rfCenter.Ptr, "ptr", gGdip_Res["fmtFooterCenter"], "ptr", gGdip_Res["brFooterText"])
+    Gdip_DrawCenteredText(g, gGUI_FooterText, textX, fy, textW, fh, gGdip_Res["brFooterText"], gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
 }

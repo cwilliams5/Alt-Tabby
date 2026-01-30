@@ -3,6 +3,8 @@
 
 ; WindowStore (v1) - minimal core for IPC + viewer.
 
+global WS_SCAN_ID_MAX := 0x7FFFFFFF
+
 global gWS_Store := Map()
 global gWS_Rev := 0
 global gWS_ScanId := 0
@@ -52,8 +54,8 @@ WindowStore_Init(config := 0) {
 }
 
 WindowStore_BeginScan() {
-    global gWS_ScanId
-    if (gWS_ScanId = 0x7FFFFFFF)
+    global gWS_ScanId, WS_SCAN_ID_MAX
+    if (gWS_ScanId = WS_SCAN_ID_MAX)
         gWS_ScanId := 0
     gWS_ScanId += 1
     return gWS_ScanId
@@ -810,16 +812,8 @@ WindowStore_UpdateProcessName(pid, name) {
     ; RACE FIX: Wrap in Critical - iteration + delete must be atomic (same as ExeIconCachePut)
     maxSize := cfg.HasOwnProp("ProcNameCacheMax") ? cfg.ProcNameCacheMax : 200
     Critical "On"
-    if (gWS_ProcNameCache.Count >= maxSize) {
-        ; Snapshot first entry to avoid modifying Map during iteration
-        firstPid := 0
-        for oldPid, _ in gWS_ProcNameCache {
-            firstPid := oldPid
-            break
-        }
-        if (firstPid)
-            gWS_ProcNameCache.Delete(firstPid)
-    }
+    if (gWS_ProcNameCache.Count >= maxSize)
+        _WS_EvictOldest(gWS_ProcNameCache)
 
     ; Cache it
     gWS_ProcNameCache[pid] := name
@@ -874,21 +868,8 @@ WindowStore_ExeIconCachePut(exePath, hIcon) {
     ; RACE FIX: Wrap FIFO eviction in Critical - prevents concurrent modification
     ; during iteration (another producer calling ExeIconCachePut simultaneously)
     Critical "On"
-    if (gWS_ExeIconCache.Count >= maxSize) {
-        ; Snapshot first entry to avoid modifying Map during iteration
-        firstPath := ""
-        firstIcon := 0
-        for oldPath, oldIcon in gWS_ExeIconCache {
-            firstPath := oldPath
-            firstIcon := oldIcon
-            break
-        }
-        if (firstPath != "") {
-            if (firstIcon)
-                try DllCall("user32\DestroyIcon", "ptr", firstIcon)
-            gWS_ExeIconCache.Delete(firstPath)
-        }
-    }
+    if (gWS_ExeIconCache.Count >= maxSize)
+        _WS_EvictOldest(gWS_ExeIconCache, _WS_DestroyIconValue)
     gWS_ExeIconCache[exePath] := hIcon
     Critical "Off"
 }
@@ -901,6 +882,23 @@ WindowStore_CleanupExeIconCache() {
             try DllCall("user32\DestroyIcon", "ptr", hIcon)
     }
     gWS_ExeIconCache := Map()
+}
+
+; Evict the oldest (first-inserted) entry from a Map. Optional cleanup callback
+; receives the value before deletion (e.g., to destroy an HICON).
+_WS_EvictOldest(mapObj, cleanupFn := "") {
+    for k, v in mapObj {
+        if (cleanupFn != "")
+            try cleanupFn(v)
+        mapObj.Delete(k)
+        return
+    }
+}
+
+; Cleanup callback for icon cache eviction - destroys HICON
+_WS_DestroyIconValue(hIcon) {
+    if (hIcon)
+        try DllCall("user32\DestroyIcon", "ptr", hIcon)
 }
 
 ; Prune dead PIDs from process name cache (called from Store_HeartbeatTick)

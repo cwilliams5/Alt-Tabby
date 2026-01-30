@@ -327,14 +327,11 @@ _IP_TryResolveFromWindow(hWnd) {
         result := 0
 
         ; Prefer large icons first for better quality at display size
-        result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", IP_ICON_BIG, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
-        if (!result || !h) {
+        for _, iconType in [IP_ICON_BIG, IP_ICON_SMALL2, IP_ICON_SMALL] {
             h := 0
-            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", IP_ICON_SMALL2, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
-        }
-        if (!result || !h) {
-            h := 0
-            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", IP_ICON_SMALL, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
+            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", iconType, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
+            if (result && h)
+                break
         }
         if (!h)
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", IP_GCLP_HICON, "ptr")
@@ -353,12 +350,12 @@ _IP_GetProcessPath(pid) {
     return ProcessUtils_GetPath(pid)
 }
 
-; Extract icon from exe file
-_IP_ExtractExeIcon(exePath) {
+; Try to extract an icon from a single exe path (prefer small, cleanup large if both)
+_IP_TryExtractIconFromPath(path) {
     hSmall := 0
     hLarge := 0
     try {
-        DllCall("shell32\ExtractIconExW", "wstr", exePath, "int", 0, "ptr*", &hLarge, "ptr*", &hSmall, "uint", 1, "uint")
+        DllCall("shell32\ExtractIconExW", "wstr", path, "int", 0, "ptr*", &hLarge, "ptr*", &hSmall, "uint", 1, "uint")
         if (hSmall) {
             if (hLarge)
                 try DllCall("user32\DestroyIcon", "ptr", hLarge)
@@ -367,23 +364,15 @@ _IP_ExtractExeIcon(exePath) {
         if (hLarge)
             return hLarge
     } catch as e {
-        _IP_Log("WARN: ExtractIconExW failed for path=" exePath " err=" e.Message)
-    }
-    ; Last resort: explorer.exe
-    try {
-        win := A_WinDir "\explorer.exe"
-        DllCall("shell32\ExtractIconExW", "wstr", win, "int", 0, "ptr*", &hLarge, "ptr*", &hSmall, "uint", 1, "uint")
-        if (hSmall) {
-            if (hLarge)
-                try DllCall("user32\DestroyIcon", "ptr", hLarge)
-            return hSmall
-        }
-        if (hLarge)
-            return hLarge
-    } catch as e {
-        _IP_Log("WARN: ExtractIconExW fallback (explorer.exe) failed err=" e.Message)
+        _IP_Log("WARN: ExtractIconExW failed for path=" path " err=" e.Message)
     }
     return 0
+}
+
+; Extract icon from exe file, falling back to explorer.exe
+_IP_ExtractExeIcon(exePath) {
+    h := _IP_TryExtractIconFromPath(exePath)
+    return h ? h : _IP_TryExtractIconFromPath(A_WinDir "\explorer.exe")
 }
 
 ; Set cooldown on a window
