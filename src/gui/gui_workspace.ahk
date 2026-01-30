@@ -73,9 +73,13 @@ GUI_ToggleWorkspaceMode() {
             ; Don't repaint yet - wait for response
         } else {
             ; Filter locally from cached items
+            ; Critical required: GUI_OnClick releases Critical before calling us,
+            ; so an IPC timer could modify gGUI_Items/gGUI_AllItems mid-filter.
+            Critical "On"
             isFrozen := cfg.FreezeWindowList
             sourceItems := isFrozen ? gGUI_AllItems : gGUI_Items
             gGUI_FrozenItems := GUI_FilterByWorkspaceMode(sourceItems)
+            Critical "Off"
             ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
 
             ; Reset selection

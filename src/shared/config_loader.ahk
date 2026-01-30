@@ -313,10 +313,16 @@ _CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType 
             newContent .= "`n"
     }
 
+    ; Atomic write: temp file then move, so a crash mid-write can't lose the config
+    tempPath := path ".tmp"
     try {
+        if (FileExist(tempPath))
+            FileDelete(tempPath)
+        FileAppend(newContent, tempPath, "UTF-8")
         FileDelete(path)
-        FileAppend(newContent, path, "UTF-8")
+        FileMove(tempPath, path)
     } catch as e {
+        try FileDelete(tempPath)
         global LOG_PATH_STORE
         LogAppend(LOG_PATH_STORE, "config write error: " e.Message " path=" path)
         return false
