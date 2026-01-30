@@ -1026,7 +1026,8 @@ RunUnitTests_Core() {
         {field: "isMinimized", newVal: true},
         {field: "isOnCurrentWorkspace", newVal: false},
         {field: "processName", newVal: "other.exe"},
-        {field: "iconHicon", newVal: 12345}
+        {field: "iconHicon", newVal: 12345},
+        {field: "pid", newVal: 200}
     ]
 
     for _, test in triggerTests {

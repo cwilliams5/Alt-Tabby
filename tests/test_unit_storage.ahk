@@ -698,4 +698,147 @@ RunUnitTests_Storage() {
 
     ; Restore original cache
     gWS_ProcNameCache := savedProcCache
+
+    ; ============================================================
+    ; WindowStore_UpdateProcessName Tests
+    ; ============================================================
+    Log("`n--- WindowStore_UpdateProcessName Tests ---")
+
+    savedProcCache2 := gWS_ProcNameCache
+    savedProcMax := cfg.HasOwnProp("ProcNameCacheMax") ? cfg.ProcNameCacheMax : 200
+
+    ; Test 1: Guard - pid=0 and name="" both rejected
+    Log("Testing UpdateProcessName guard: pid=0 and name='' rejected...")
+    WindowStore_Init()
+    gWS_ProcNameCache := Map()
+    WindowStore_UpdateProcessName(0, "ghost.exe")
+    WindowStore_UpdateProcessName(999, "")
+    if (gWS_ProcNameCache.Count = 0) {
+        Log("PASS: UpdateProcessName guard rejected pid=0 and name=''")
+        TestPassed++
+    } else {
+        Log("FAIL: UpdateProcessName guard should reject pid=0 and name='', cache count=" gWS_ProcNameCache.Count)
+        TestErrors++
+    }
+
+    ; Test 2: Fan-out - two windows with same PID both updated
+    Log("Testing UpdateProcessName fan-out: two windows same PID both updated...")
+    WindowStore_Init()
+    gWS_ProcNameCache := Map()
+    WindowStore_BeginScan()
+    fanRec1 := Map("hwnd", 0xBB01, "title", "Fan Win 1", "class", "Test", "pid", 500,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    fanRec2 := Map("hwnd", 0xBB02, "title", "Fan Win 2", "class", "Test", "pid", 500,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+    fanRec3 := Map("hwnd", 0xBB03, "title", "Other PID", "class", "Test", "pid", 600,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 3)
+    WindowStore_UpsertWindow([fanRec1, fanRec2, fanRec3], "test")
+    WindowStore_EndScan()
+    ; Drain icon queue from upserts
+    WindowStore_PopIconBatch(100)
+
+    WindowStore_UpdateProcessName(500, "notepad.exe")
+
+    if (gWS_Store[0xBB01].processName = "notepad.exe" && gWS_Store[0xBB02].processName = "notepad.exe") {
+        Log("PASS: Both pid=500 windows updated to notepad.exe")
+        TestPassed++
+    } else {
+        Log("FAIL: Fan-out should update both pid=500 windows (got '"
+            . gWS_Store[0xBB01].processName "', '" gWS_Store[0xBB02].processName "')")
+        TestErrors++
+    }
+
+    ; Test 3: Isolation - different PID not touched
+    Log("Testing UpdateProcessName isolation: different PID not touched...")
+    if (gWS_Store[0xBB03].processName = "") {
+        Log("PASS: pid=600 window processName still empty")
+        TestPassed++
+    } else {
+        Log("FAIL: pid=600 window should not be touched, got '" gWS_Store[0xBB03].processName "'")
+        TestErrors++
+    }
+
+    ; Test 4: Rev bumped exactly once
+    Log("Testing UpdateProcessName rev bump...")
+    WindowStore_Init()
+    gWS_ProcNameCache := Map()
+    WindowStore_BeginScan()
+    revRec := Map("hwnd", 0xBB04, "title", "Rev Test", "class", "Test", "pid", 700,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    WindowStore_UpsertWindow([revRec], "test")
+    WindowStore_EndScan()
+    WindowStore_PopIconBatch(100)
+
+    revBefore := gWS_Rev
+    WindowStore_UpdateProcessName(700, "calc.exe")
+    if (gWS_Rev = revBefore + 1) {
+        Log("PASS: Rev bumped exactly once after UpdateProcessName")
+        TestPassed++
+    } else {
+        Log("FAIL: Rev should bump once, before=" revBefore " after=" gWS_Rev)
+        TestErrors++
+    }
+
+    ; Test 5: No rev bump when name unchanged
+    Log("Testing UpdateProcessName no rev bump when name unchanged...")
+    revBefore := gWS_Rev
+    WindowStore_UpdateProcessName(700, "calc.exe")  ; Same name again
+    if (gWS_Rev = revBefore) {
+        Log("PASS: No rev bump when name unchanged")
+        TestPassed++
+    } else {
+        Log("FAIL: Rev should not bump when name unchanged, before=" revBefore " after=" gWS_Rev)
+        TestErrors++
+    }
+
+    ; Test 6: ProcNameCache FIFO eviction (max=3, add 4)
+    Log("Testing ProcNameCache FIFO eviction...")
+    WindowStore_Init()
+    gWS_ProcNameCache := Map()
+    cfg.ProcNameCacheMax := 3
+
+    ; Need windows so UpdateProcessName doesn't short-circuit before caching
+    ; But actually the guard only checks pid<=0 or name="", not store membership
+    ; The cache write happens before the fan-out, so we just need valid pid+name
+    WindowStore_UpdateProcessName(1001, "a.exe")
+    WindowStore_UpdateProcessName(1002, "b.exe")
+    WindowStore_UpdateProcessName(1003, "c.exe")
+
+    if (gWS_ProcNameCache.Count = 3) {
+        Log("PASS: ProcNameCache has 3 entries at max")
+        TestPassed++
+    } else {
+        Log("FAIL: ProcNameCache expected 3 at max, got " gWS_ProcNameCache.Count)
+        TestErrors++
+    }
+
+    WindowStore_UpdateProcessName(1004, "d.exe")
+
+    if (gWS_ProcNameCache.Count = 3) {
+        Log("PASS: ProcNameCache still 3 after eviction")
+        TestPassed++
+    } else {
+        Log("FAIL: ProcNameCache expected 3 after eviction, got " gWS_ProcNameCache.Count)
+        TestErrors++
+    }
+
+    if (!gWS_ProcNameCache.Has(1001)) {
+        Log("PASS: ProcNameCache FIFO: first entry (pid=1001) evicted")
+        TestPassed++
+    } else {
+        Log("FAIL: ProcNameCache FIFO: pid=1001 should have been evicted")
+        TestErrors++
+    }
+
+    if (gWS_ProcNameCache.Has(1004)) {
+        Log("PASS: ProcNameCache FIFO: newest entry (pid=1004) present")
+        TestPassed++
+    } else {
+        Log("FAIL: ProcNameCache FIFO: pid=1004 should be present")
+        TestErrors++
+    }
+
+    ; Restore
+    gWS_ProcNameCache := savedProcCache2
+    cfg.ProcNameCacheMax := savedProcMax
 }
