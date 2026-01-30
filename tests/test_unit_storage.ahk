@@ -841,4 +841,238 @@ RunUnitTests_Storage() {
     ; Restore
     gWS_ProcNameCache := savedProcCache2
     cfg.ProcNameCacheMax := savedProcMax
+
+    ; ============================================================
+    ; Blacklist Pattern Matching Stress Tests
+    ; ============================================================
+    ; Tests _BL_CompileWildcard regex escaping and Blacklist_IsMatch
+    ; with diverse patterns that stress metacharacter handling,
+    ; wildcards, case sensitivity, and edge cases.
+    Log("`n--- Blacklist Pattern Matching Stress Tests ---")
+
+    global gBlacklist_FilePath, gBlacklist_Loaded
+    savedBlPathPM := gBlacklist_FilePath
+
+    ; --- Group 1: Regex metacharacters in patterns ---
+    ; _BL_CompileWildcard must escape . + ^ $ { } | ( ) \ [ ]
+    Log("Testing pattern matching with regex metacharacters...")
+
+    testBlDirPM := A_Temp "\tabby_blpm_test_" A_TickCount
+    testBlPathPM := testBlDirPM "\blacklist.txt"
+
+    try {
+        DirCreate(testBlDirPM)
+
+        blContentPM := "[Title]`nC++ Builder`nApp (Beta)`nfile.txt`nprice $5`n[Class]`n[Pair]`n"
+        FileAppend(blContentPM, testBlPathPM, "UTF-8")
+        Blacklist_Init(testBlPathPM)
+
+        ; Exact metacharacter matches
+        if (Blacklist_IsMatch("C++ Builder", "AnyClass")) {
+            Log("PASS: Metachar: 'C++ Builder' matches pattern 'C++ Builder'")
+            TestPassed++
+        } else {
+            Log("FAIL: Metachar: 'C++ Builder' should match (+ is escaped)")
+            TestErrors++
+        }
+
+        if (Blacklist_IsMatch("App (Beta)", "AnyClass")) {
+            Log("PASS: Metachar: 'App (Beta)' matches pattern 'App (Beta)'")
+            TestPassed++
+        } else {
+            Log("FAIL: Metachar: 'App (Beta)' should match (parens are escaped)")
+            TestErrors++
+        }
+
+        if (Blacklist_IsMatch("file.txt", "AnyClass")) {
+            Log("PASS: Metachar: 'file.txt' matches pattern 'file.txt'")
+            TestPassed++
+        } else {
+            Log("FAIL: Metachar: 'file.txt' should match (dot is escaped)")
+            TestErrors++
+        }
+
+        ; Dot NOT treated as wildcard: "file.txt" should NOT match "fileXtxt"
+        if (!Blacklist_IsMatch("fileXtxt", "AnyClass")) {
+            Log("PASS: Metachar: 'fileXtxt' does NOT match pattern 'file.txt' (dot escaped)")
+            TestPassed++
+        } else {
+            Log("FAIL: Metachar: 'fileXtxt' should NOT match 'file.txt' (dot must be escaped)")
+            TestErrors++
+        }
+
+        if (Blacklist_IsMatch("price $5", "AnyClass")) {
+            Log("PASS: Metachar: 'price $5' matches pattern 'price $5'")
+            TestPassed++
+        } else {
+            Log("FAIL: Metachar: 'price $5' should match ($ is escaped)")
+            TestErrors++
+        }
+
+        ; Cleanup group 1
+        try FileDelete(testBlPathPM)
+        try DirDelete(testBlDirPM)
+    } catch as e {
+        Log("FAIL: Metachar group error: " e.Message)
+        TestErrors++
+        try DirDelete(testBlDirPM, true)
+    }
+
+    ; --- Group 2a: Multi-wildcard and single-char wildcard ---
+    Log("Testing multi-wildcard and single-char wildcard patterns...")
+
+    testBlDirPM2a := A_Temp "\tabby_blpm2a_test_" A_TickCount
+    testBlPathPM2a := testBlDirPM2a "\blacklist.txt"
+
+    try {
+        DirCreate(testBlDirPM2a)
+
+        blContentPM2a := "[Title]`n*foo*bar*`nApp?`n[Class]`n[Pair]`n"
+        FileAppend(blContentPM2a, testBlPathPM2a, "UTF-8")
+        Blacklist_Init(testBlPathPM2a)
+
+        ; Multiple wildcards: *foo*bar*
+        if (Blacklist_IsMatch("prefix_foo_middle_bar_suffix", "AnyClass")) {
+            Log("PASS: Wildcard: '*foo*bar*' matches 'prefix_foo_middle_bar_suffix'")
+            TestPassed++
+        } else {
+            Log("FAIL: Wildcard: '*foo*bar*' should match with text between and around")
+            TestErrors++
+        }
+
+        if (Blacklist_IsMatch("foobar", "AnyClass")) {
+            Log("PASS: Wildcard: '*foo*bar*' matches 'foobar' (adjacent)")
+            TestPassed++
+        } else {
+            Log("FAIL: Wildcard: '*foo*bar*' should match 'foobar'")
+            TestErrors++
+        }
+
+        if (!Blacklist_IsMatch("barfoo", "AnyClass")) {
+            Log("PASS: Wildcard: '*foo*bar*' does NOT match 'barfoo' (wrong order)")
+            TestPassed++
+        } else {
+            Log("FAIL: Wildcard: '*foo*bar*' should NOT match 'barfoo'")
+            TestErrors++
+        }
+
+        ; Single-char wildcard: App? matches App1 but not App12
+        if (Blacklist_IsMatch("App1", "AnyClass")) {
+            Log("PASS: Wildcard: 'App?' matches 'App1'")
+            TestPassed++
+        } else {
+            Log("FAIL: Wildcard: 'App?' should match 'App1'")
+            TestErrors++
+        }
+
+        if (!Blacklist_IsMatch("App12", "AnyClass")) {
+            Log("PASS: Wildcard: 'App?' does NOT match 'App12' (too long)")
+            TestPassed++
+        } else {
+            Log("FAIL: Wildcard: 'App?' should NOT match 'App12'")
+            TestErrors++
+        }
+
+        ; Cleanup group 2a
+        try FileDelete(testBlPathPM2a)
+        try DirDelete(testBlDirPM2a)
+    } catch as e {
+        Log("FAIL: Multi-wildcard group error: " e.Message)
+        TestErrors++
+        try DirDelete(testBlDirPM2a, true)
+    }
+
+    ; --- Group 2b: Star-matches-all and case insensitivity ---
+    Log("Testing star-matches-all and case insensitivity...")
+
+    testBlDirPM2b := A_Temp "\tabby_blpm2b_test_" A_TickCount
+    testBlPathPM2b := testBlDirPM2b "\blacklist.txt"
+
+    try {
+        DirCreate(testBlDirPM2b)
+
+        blContentPM2b := "[Title]`n*`n[Class]`nNOTEPAD`n[Pair]`n"
+        FileAppend(blContentPM2b, testBlPathPM2b, "UTF-8")
+        Blacklist_Init(testBlPathPM2b)
+
+        ; Star matches everything
+        if (Blacklist_IsMatch("Literally Anything", "AnyClass")) {
+            Log("PASS: Wildcard: '*' matches any title")
+            TestPassed++
+        } else {
+            Log("FAIL: Wildcard: '*' should match any title")
+            TestErrors++
+        }
+
+        ; Case insensitivity: NOTEPAD class pattern matches Notepad
+        if (Blacklist_IsMatch("AnyTitle", "Notepad")) {
+            Log("PASS: Case: class pattern 'NOTEPAD' matches 'Notepad'")
+            TestPassed++
+        } else {
+            Log("FAIL: Case: 'NOTEPAD' should match 'Notepad' (case-insensitive)")
+            TestErrors++
+        }
+
+        if (Blacklist_IsMatch("AnyTitle", "notepad")) {
+            Log("PASS: Case: class pattern 'NOTEPAD' matches 'notepad'")
+            TestPassed++
+        } else {
+            Log("FAIL: Case: 'NOTEPAD' should match 'notepad' (case-insensitive)")
+            TestErrors++
+        }
+
+        ; Cleanup group 2b
+        try FileDelete(testBlPathPM2b)
+        try DirDelete(testBlDirPM2b)
+    } catch as e {
+        Log("FAIL: Star/case group error: " e.Message)
+        TestErrors++
+        try DirDelete(testBlDirPM2b, true)
+    }
+
+    ; --- Group 3: Not-loaded and empty list edge cases ---
+    Log("Testing not-loaded and empty list edge cases...")
+
+    ; Test: gBlacklist_Loaded=false -> always returns false
+    savedLoaded := gBlacklist_Loaded
+    gBlacklist_Loaded := false
+    if (!Blacklist_IsMatch("BadTitleFoo", "BadClass")) {
+        Log("PASS: Not-loaded: IsMatch returns false when gBlacklist_Loaded=false")
+        TestPassed++
+    } else {
+        Log("FAIL: Not-loaded: IsMatch should return false when gBlacklist_Loaded=false")
+        TestErrors++
+    }
+    gBlacklist_Loaded := savedLoaded
+
+    ; Test: Loaded but empty lists -> never matches
+    testBlDirPM3 := A_Temp "\tabby_blpm3_test_" A_TickCount
+    testBlPathPM3 := testBlDirPM3 "\blacklist.txt"
+
+    try {
+        DirCreate(testBlDirPM3)
+
+        blContentPM3 := "[Title]`n[Class]`n[Pair]`n"
+        FileAppend(blContentPM3, testBlPathPM3, "UTF-8")
+        Blacklist_Init(testBlPathPM3)
+
+        if (!Blacklist_IsMatch("AnyTitle", "AnyClass")) {
+            Log("PASS: Empty lists: IsMatch returns false when loaded but no patterns")
+            TestPassed++
+        } else {
+            Log("FAIL: Empty lists: IsMatch should return false with empty pattern lists")
+            TestErrors++
+        }
+
+        ; Cleanup group 3
+        try FileDelete(testBlPathPM3)
+        try DirDelete(testBlDirPM3)
+    } catch as e {
+        Log("FAIL: Empty list group error: " e.Message)
+        TestErrors++
+        try DirDelete(testBlDirPM3, true)
+    }
+
+    ; Restore original blacklist
+    Blacklist_Init(savedBlPathPM)
 }
