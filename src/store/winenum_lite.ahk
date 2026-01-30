@@ -42,11 +42,9 @@ WinEnumLite_ScanAll() {
         if (hwnd = _WN_ShellWindow)
             continue
 
-        ; Use centralized eligibility check (Alt-Tab rules + blacklist)
-        if (!Blacklist_IsWindowEligible(hwnd))
-            continue
-
-        rec := _WN_ProbeWindow(hwnd, z)
+        ; Single call: checkEligible=true does Alt-Tab + blacklist checks AND probes
+        ; window properties in one pass, avoiding redundant WinGetTitle/WinGetClass/DllCalls
+        rec := WinUtils_ProbeWindow(hwnd, z, false, true)
         if (!rec)
             continue
 
@@ -57,9 +55,3 @@ WinEnumLite_ScanAll() {
     return records
 }
 
-; Probe a single window - returns Map or empty string
-; NOTE: Eligibility check should be done before calling this (via Blacklist_IsWindowEligible)
-; Uses shared WinUtils_ProbeWindow
-_WN_ProbeWindow(hwnd, zOrder := 0) {
-    return WinUtils_ProbeWindow(hwnd, zOrder, false, false)  ; No exists/eligibility check (caller handles)
-}

@@ -301,6 +301,7 @@ _IP_Tick() {
 
 ; Try to get icon from window via WM_GETICON or class icon
 ; Prefer larger icons (ICON_BIG=32x32) over small (16x16) since we display at 36px+
+; Uses SendMessageTimeoutW with SMTO_ABORTIFHUNG to avoid blocking on hung windows.
 _IP_TryResolveFromWindow(hWnd) {
     WM_GETICON := 0x7F
     ICON_SMALL2 := 2
@@ -308,14 +309,30 @@ _IP_TryResolveFromWindow(hWnd) {
     ICON_BIG := 1
     GCLP_HICONSM := -34
     GCLP_HICON := -14
+    SMTO_ABORTIFHUNG := 0x0002
+    TIMEOUT_MS := 500
 
     try {
+        ; Skip hung windows entirely - fast kernel check, no messages sent
+        if (DllCall("user32\IsHungAppWindow", "ptr", hWnd, "int"))
+            return 0
+
+        ; Use SendMessageTimeoutW instead of SendMessage to avoid blocking
+        ; on windows that become hung between the IsHungAppWindow check and the send.
+        ; SMTO_ABORTIFHUNG returns immediately if target thread is not responding.
+        h := 0
+        result := 0
+
         ; Prefer large icons first for better quality at display size
-        h := SendMessage(WM_GETICON, ICON_BIG, 0, , "ahk_id " hWnd)
-        if (!h)
-            h := SendMessage(WM_GETICON, ICON_SMALL2, 0, , "ahk_id " hWnd)
-        if (!h)
-            h := SendMessage(WM_GETICON, ICON_SMALL, 0, , "ahk_id " hWnd)
+        result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", WM_GETICON, "uptr", ICON_BIG, "ptr", 0, "uint", SMTO_ABORTIFHUNG, "uint", TIMEOUT_MS, "uptr*", &h, "int")
+        if (!result || !h) {
+            h := 0
+            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", WM_GETICON, "uptr", ICON_SMALL2, "ptr", 0, "uint", SMTO_ABORTIFHUNG, "uint", TIMEOUT_MS, "uptr*", &h, "int")
+        }
+        if (!result || !h) {
+            h := 0
+            result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", WM_GETICON, "uptr", ICON_SMALL, "ptr", 0, "uint", SMTO_ABORTIFHUNG, "uint", TIMEOUT_MS, "uptr*", &h, "int")
+        }
         if (!h)
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", GCLP_HICON, "ptr")
         if (!h)

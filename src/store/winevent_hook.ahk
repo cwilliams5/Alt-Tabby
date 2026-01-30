@@ -182,6 +182,14 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; For focus/foreground events, capture for MRU update (processed in batch)
     if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS) {
+        ; Skip hung windows - WinGetTitle sends messages that block up to 5s
+        try {
+            if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int")) {
+                Critical "Off"
+                return
+            }
+        }
+
         ; Get window title to filter system UI
         title := ""
         try title := WinGetTitle("ahk_id " hwnd)
@@ -292,29 +300,25 @@ _WEH_ProcessBatch() {
             ; This fixes the race condition where focus event arrives before WinEnum discovers the window
             ; Without this fix, newly opened windows appear at BOTTOM of MRU list (lastActivatedTick=0)
             _WEH_DiagLog("  NOT IN STORE: checking eligibility...")
-            if (Blacklist_IsWindowEligible(newFocus)) {
-                ; Window is eligible - add it to store with focus data
-                ; NOTE: WinUtils_ProbeWindow returns a Map, use ["key"] not .key
-                probe := WinUtils_ProbeWindow(newFocus, 0, false, false)  ; Don't recheck eligibility
-                probeTitle := (probe && probe.Has("title")) ? probe["title"] : ""
-                if (probe && probeTitle != "") {
-                    probe["lastActivatedTick"] := A_TickCount
-                    probe["isFocused"] := true
-                    probe["present"] := true
-                    probe["presentNow"] := true
-                    try WindowStore_UpsertWindow([probe], "winevent_focus_add")
-                    _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
+            ; Single call: checkEligible=true does Alt-Tab + blacklist checks AND probes
+            ; window properties in one pass, avoiding redundant WinGetTitle/WinGetClass/DllCalls
+            probe := WinUtils_ProbeWindow(newFocus, 0, false, true)
+            probeTitle := (probe && probe.Has("title")) ? probe["title"] : ""
+            if (probe && probeTitle != "") {
+                probe["lastActivatedTick"] := A_TickCount
+                probe["isFocused"] := true
+                probe["present"] := true
+                probe["presentNow"] := true
+                try WindowStore_UpsertWindow([probe], "winevent_focus_add")
+                _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
 
-                    ; Clear focus on previous window
-                    if (_WEH_LastFocusHwnd && _WEH_LastFocusHwnd != newFocus) {
-                        try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
-                    }
-                    _WEH_LastFocusHwnd := newFocus
-                } else {
-                    _WEH_DiagLog("  PROBE FAILED: window may be closing or system UI")
+                ; Clear focus on previous window
+                if (_WEH_LastFocusHwnd && _WEH_LastFocusHwnd != newFocus) {
+                    try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
                 }
+                _WEH_LastFocusHwnd := newFocus
             } else {
-                _WEH_DiagLog("  IGNORED: not eligible (system UI or blacklisted)")
+                _WEH_DiagLog("  NOT ELIGIBLE or probe failed (system UI or blacklisted)")
             }
         }
     } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = _WEH_LastFocusHwnd) {

@@ -35,6 +35,14 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
         }
     }
 
+    ; Skip hung windows - IsHungAppWindow is a fast kernel call that doesn't
+    ; send window messages. WinGetTitle/WinGetClass send messages that block
+    ; up to 5 seconds on hung windows, freezing the entire store thread.
+    try {
+        if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int"))
+            return ""
+    }
+
     ; Get basic window info FIRST (needed for eligibility check)
     title := ""
     class := ""

@@ -132,8 +132,8 @@ Store_Init() {
         ; Hook working - it handles MRU tracking internally
         Store_LogInfo("WinEventHook active - MRU tracking via hook")
         gStore_ProducerState["wineventHook"] := "running"
-        ; Start Z-pump for on-demand scans
-        SetTimer(Store_ZPumpTick, cfg.ZPumpIntervalMs)
+        ; Start Z-pump for on-demand scans (staggered by 17ms to avoid timer alignment)
+        SetTimer(_Store_StartZPump, -17)
 
         ; Optional safety net polling (usually disabled)
         if (cfg.WinEnumSafetyPollMs > 0) {
@@ -141,16 +141,19 @@ Store_Init() {
         }
     }
 
+    ; Stagger remaining timers to avoid thundering herd when multiple timers
+    ; align on the same tick. One-shot timers (-N) fire once at the offset,
+    ; then the callback starts the periodic timer.
     ; Start lightweight existence validation (catches zombies from crashes)
     if (cfg.WinEnumValidateExistenceMs > 0) {
-        SetTimer(Store_ValidateExistenceTick, cfg.WinEnumValidateExistenceMs)
+        SetTimer(_Store_StartValidateExistence, -37)
     }
 
     ; NOTE: Producer state is NOT stored in gWS_Meta anymore (removes bloat from deltas/snapshots)
     ; Clients that need producer status should send IPC_MSG_PRODUCER_STATUS_REQUEST
 
-    ; Start heartbeat timer for client connection health
-    SetTimer(Store_HeartbeatTick, cfg.StoreHeartbeatIntervalMs)
+    ; Start heartbeat timer for client connection health (staggered by 53ms)
+    SetTimer(_Store_StartHeartbeat, -53)
 }
 
 ; Broadcast heartbeat to all clients with current rev for drift detection
@@ -202,6 +205,21 @@ Store_HeartbeatTick() {
     msg := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
     IPC_PipeServer_Broadcast(gStore_Server, msg)
     gStore_LastSendTick := A_TickCount
+}
+
+; Timer stagger helpers: one-shot callbacks that start periodic timers.
+; Called from Store_Init with offset delays to prevent thundering herd.
+_Store_StartZPump() {
+    global cfg
+    SetTimer(Store_ZPumpTick, cfg.ZPumpIntervalMs)
+}
+_Store_StartValidateExistence() {
+    global cfg
+    SetTimer(Store_ValidateExistenceTick, cfg.WinEnumValidateExistenceMs)
+}
+_Store_StartHeartbeat() {
+    global cfg
+    SetTimer(Store_HeartbeatTick, cfg.StoreHeartbeatIntervalMs)
 }
 
 ; Z-Pump: triggers full scan when windows need Z-order enrichment
@@ -558,7 +576,7 @@ Store_OnExit(reason, code) {
     global gStore_Server
     ; Stop all timers and hooks before exit to prevent errors
 
-    ; Stop core timers
+    ; Stop core timers (periodic + one-shot stagger helpers)
     try {
         SetTimer(Store_FullScan, 0)
     }
@@ -566,10 +584,19 @@ Store_OnExit(reason, code) {
         SetTimer(Store_ZPumpTick, 0)
     }
     try {
+        SetTimer(_Store_StartZPump, 0)
+    }
+    try {
         SetTimer(Store_HeartbeatTick, 0)
     }
     try {
+        SetTimer(_Store_StartHeartbeat, 0)
+    }
+    try {
         SetTimer(Store_ValidateExistenceTick, 0)
+    }
+    try {
+        SetTimer(_Store_StartValidateExistence, 0)
     }
 
     ; Stop WinEventHook (frees callback too)

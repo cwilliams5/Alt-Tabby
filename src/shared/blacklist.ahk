@@ -276,6 +276,11 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
 
     ; Get window info if not provided
     if (title = "" || class = "") {
+        ; Skip hung windows - WinGetTitle/WinGetClass send messages that block up to 5s
+        try {
+            if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int"))
+                return false
+        }
         try {
             if (title = "")
                 title := WinGetTitle("ahk_id " hwnd)
