@@ -1,3 +1,4 @@
+#Requires AutoHotkey v2.0
 ; Alt-Tabby GUI - State Machine
 ; Handles state transitions: IDLE -> ALT_PENDING -> ACTIVE -> IDLE
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions

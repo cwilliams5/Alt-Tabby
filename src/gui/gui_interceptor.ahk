@@ -1,3 +1,4 @@
+#Requires AutoHotkey v2.0
 ; Alt-Tabby GUI - Interceptor (Keyboard Hooks)
 ; Handles Alt+Tab keyboard interception with deferred Tab decision logic
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
