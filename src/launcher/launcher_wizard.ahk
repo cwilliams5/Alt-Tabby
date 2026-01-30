@@ -125,7 +125,7 @@ WizardApply(*) {
 ; Called when --wizard-continue flag is passed (after elevation)
 ; Returns: "installed" if we should launch from new location, true if normal continue, false on error
 WizardContinue() {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT
 
     choicesFile := A_Temp "\alttabby_wizard.json"
     if (!FileExist(choicesFile))
@@ -153,8 +153,16 @@ WizardContinue() {
 
     ; If we installed to a different location, launch from there
     if (installedPath != "") {
-        Run('"' installedPath '"')
-        return "installed"  ; Signal caller to exit
+        if (cfg.SetupRunAsAdmin && AdminTaskExists()) {
+            ; Launch via schtasks for immediate elevation (avoids intermediate non-elevated hop)
+            Sleep(TIMING_TASK_READY_WAIT)
+            exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
+            if (exitCode != 0)
+                Run('"' installedPath '"')  ; Fallback to direct launch
+        } else {
+            Run('"' installedPath '"')
+        }
+        return "installed"
     }
 
     return true
@@ -163,7 +171,7 @@ WizardContinue() {
 ; Internal: Apply wizard choices (called from both wizard and continuation)
 ; Returns the installed exe path if we installed to a different location, empty string otherwise
 _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
-    global cfg, gConfigIniPath, APP_NAME
+    global cfg, gConfigIniPath, APP_NAME, TIMING_PROCESS_EXIT_WAIT
 
     ; Determine exe path
     exePath := A_ScriptFullPath
@@ -172,6 +180,10 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
 
     ; Step 1: Install to Program Files (if selected)
     if (install) {
+        ; Kill existing PF processes before installing to avoid dual instances.
+        ; Uses hardcoded "AltTabby.exe" since PF installs always use that name.
+        _Launcher_KillProcessByName("AltTabby.exe")
+        Sleep(TIMING_PROCESS_EXIT_WAIT)
         newPath := InstallToProgramFiles()
         if (newPath != "" && newPath != A_ScriptFullPath) {
             exePath := newPath

@@ -231,7 +231,7 @@ if (g_AltTabbyMode = "enable-admin-task") {
     ConfigLoader_Init()
     _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
-    exePath := _Shortcut_GetEffectiveExePath()
+    exePath := A_ScriptFullPath
     exeDir := ""
     SplitPath(exePath, , &exeDir)
 

@@ -277,7 +277,7 @@ ToggleAdminMode() {
         }
 
         ; We're already admin - create task directly
-        exePath := _Shortcut_GetEffectiveExePath()
+        exePath := A_ScriptFullPath
         exeDir := ""
         SplitPath(exePath, , &exeDir)
 
