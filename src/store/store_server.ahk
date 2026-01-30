@@ -296,6 +296,11 @@ Store_PushToClients() {
     }
     Critical "Off"
 
+    ; Cache projections by normalized opts key within this push cycle.
+    ; When multiple clients have equivalent opts (e.g. GUI + Viewer both default
+    ; to MRU/items/includeCloaked), this avoids redundant store iteration + sort.
+    projCache := Map()
+
     sent := 0
     for _, hPipe in clientHandles {
         ; Skip clients that haven't sent HELLO yet - they have no registered opts.
@@ -306,8 +311,14 @@ Store_PushToClients() {
 
         opts := clientOptsSnapshot[hPipe]
 
-        ; Generate projection tailored to this client
-        proj := WindowStore_GetProjection(opts)
+        ; Generate projection tailored to this client (cached per opts fingerprint)
+        optsKey := _Store_OptsKey(opts)
+        if (projCache.Has(optsKey))
+            proj := projCache[optsKey]
+        else {
+            proj := WindowStore_GetProjection(opts)
+            projCache[optsKey] := proj
+        }
 
         ; Get client's previous projection for delta calculation
         prevItems := gStore_LastClientProj.Has(hPipe) ? gStore_LastClientProj[hPipe] : []
@@ -579,6 +590,17 @@ _Store_CleanupDisconnectedClients() {
                 gStore_ClientOpts.Delete(hPipe)
         }
     }
+}
+
+; Build a stable string key from projection opts for cache deduplication.
+; Two opts objects with the same 5 projection fields produce the same key.
+_Store_OptsKey(opts) {
+    s := _WS_GetOpt(opts, "sort", "MRU")
+    cw := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
+    im := _WS_GetOpt(opts, "includeMinimized", true)
+    ic := _WS_GetOpt(opts, "includeCloaked", false)
+    co := _WS_GetOpt(opts, "columns", "items")
+    return s "|" cw "|" im "|" ic "|" co
 }
 
 ; Auto-init only if running standalone or if mode is "store"

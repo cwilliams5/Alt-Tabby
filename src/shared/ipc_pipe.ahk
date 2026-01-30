@@ -45,7 +45,8 @@ global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)
 ; IPC Buffer Constants
 global IPC_READ_CHUNK_SIZE := 65536       ; Max bytes to read per iteration
 global IPC_BUFFER_OVERFLOW := 1048576     ; 1MB - max buffer before discard
-global IPC_READ_BUF := Buffer(IPC_READ_CHUNK_SIZE)  ; Pre-allocated read buffer (reused across all reads)
+global IPC_READ_BUF := Buffer(IPC_READ_CHUNK_SIZE)   ; Pre-allocated read buffer (reused across all reads)
+global IPC_WRITE_BUF := Buffer(IPC_READ_CHUNK_SIZE)  ; Pre-allocated write buffer (reused when msg fits)
 
 global IPC_DebugLogPath := ""
 
@@ -99,16 +100,18 @@ IPC_PipeServer_Broadcast(server, msgText) {
         return 0
     if (!msgText || SubStr(msgText, -1) != "`n")
         msgText .= "`n"
+
+    ; RACE FIX: Critical covers UTF-8 conversion + writes to protect IPC_WRITE_BUF
+    ; from being overwritten by an interrupting IPC_PipeServer_Send call
+    Critical "On"
     bytes := _IPC_StrToUtf8(msgText)
     buf := bytes.buf
     len := bytes.len
 
     ; Snapshot handles atomically to prevent race with timer callback
-    Critical "On"
     handles := []
     for hPipe, _ in server.clients
         handles.Push(hPipe)
-    Critical "Off"
 
     dead := []
     sent := 0
@@ -121,8 +124,7 @@ IPC_PipeServer_Broadcast(server, msgText) {
         }
     }
 
-    ; Cleanup dead handles atomically
-    Critical "On"
+    ; Cleanup dead handles
     for _, h in dead {
         if (server.onDisconnect)
             try server.onDisconnect.Call(h)
@@ -546,8 +548,15 @@ _IPC_WritePipe(hPipe, bufPtr, len) {
 }
 
 _IPC_StrToUtf8(str) {
+    global IPC_WRITE_BUF, IPC_READ_CHUNK_SIZE
     ; Convert to UTF-8 buffer with exact length.
+    ; Reuse pre-allocated write buffer when message fits (avoids heap alloc per send).
+    ; Safe: all callers consume the buffer synchronously within Critical "On".
     len := StrPut(str, "UTF-8") - 1
+    if (len <= IPC_READ_CHUNK_SIZE) {
+        StrPut(str, IPC_WRITE_BUF, "UTF-8")
+        return { buf: IPC_WRITE_BUF, len: len }
+    }
     buf := Buffer(len)
     StrPut(str, buf, "UTF-8")
     return { buf: buf, len: len }
