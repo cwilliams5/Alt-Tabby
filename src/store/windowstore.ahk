@@ -228,13 +228,16 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {
     global gWS_Store, gWS_Rev
     removed := 0
+    ; RACE FIX: Wrap delete loop + rev bump in Critical to prevent IPC requests
+    ; from seeing inconsistent state (consistent with ValidateExistence/PurgeBlacklisted)
+    Critical "On"
     for _, h in hwnds {
         hwnd := h + 0
         if (!gWS_Store.Has(hwnd))
-            continue
+            continue  ; lint-ignore: critical-section
         ; Verify window is actually gone before removing (unless forced)
         if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
-            continue  ; Window still exists, don't remove
+            continue  ; lint-ignore: critical-section
         ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
         try IconPump_CleanupWindow(hwnd)
         gWS_Store.Delete(hwnd)
@@ -243,6 +246,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
     if (removed) {
         _WS_BumpRev("RemoveWindow")
     }
+    Critical "Off"
     return { removed: removed, rev: gWS_Rev }
 }
 
@@ -825,11 +829,14 @@ WindowStore_UpdateProcessName(pid, name) {
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)
 
+    ; RACE FIX: Wrap record writes + rev bump in Critical to prevent interleaving
+    ; with other store mutation paths (consistent with UpdateFields)
+    Critical "On"
     ; Update all matching rows
     changed := false
     for _, hwnd in hwnds {
         if (!gWS_Store.Has(hwnd))
-            continue  ; May have been removed by another producer
+            continue  ; lint-ignore: critical-section
         rec := gWS_Store[hwnd]
         if (rec.pid = pid && rec.processName != name) {
             rec.processName := name
@@ -839,6 +846,7 @@ WindowStore_UpdateProcessName(pid, name) {
     if (changed) {
         _WS_BumpRev("UpdateProcessName")
     }
+    Critical "Off"
 }
 
 ; ============================================================
@@ -906,6 +914,9 @@ WindowStore_PruneProcNameCache() {
     ; Snapshot keys to prevent iteration-during-modification
     pids := _WS_SnapshotMapKeys(gWS_ProcNameCache)
 
+    ; RACE FIX: Wrap delete loop in Critical to prevent interleaving with
+    ; UpdateProcessName which inserts under Critical
+    Critical "On"
     pruned := 0
     for _, pid in pids {
         if (!ProcessExist(pid)) {
@@ -913,6 +924,7 @@ WindowStore_PruneProcNameCache() {
             pruned++
         }
     }
+    Critical "Off"
     return pruned
 }
 

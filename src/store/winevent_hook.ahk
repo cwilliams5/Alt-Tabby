@@ -443,21 +443,29 @@ _WEH_ProcessBatch() {
 ;                  Default true so the focus-only path at line 333 always pushes immediately.
 _WEH_PushIfRevChanged(isStructural := true) {
     global gStore_LastBroadcastRev, _WEH_LastCosmeticPushTick, cfg
+    ; RACE FIX: Wrap read-check-write-push in Critical to prevent two timers
+    ; from both reading same old rev and both pushing (duplicate broadcast)
+    Critical "On"
     rev := WindowStore_GetRev()
-    if (rev = gStore_LastBroadcastRev)
+    if (rev = gStore_LastBroadcastRev) {
+        Critical "Off"
         return
+    }
 
     ; Cosmetic-only changes: throttle to avoid push floods from apps with
     ; animated titles (terminal spinners, progress bars, etc.)
     if (!isStructural) {
         elapsed := A_TickCount - _WEH_LastCosmeticPushTick
-        if (elapsed < cfg.WinEventHookCosmeticBufferMs)
+        if (elapsed < cfg.WinEventHookCosmeticBufferMs) {
+            Critical "Off"
             return
+        }
         _WEH_LastCosmeticPushTick := A_TickCount
     }
 
     gStore_LastBroadcastRev := rev
     try Store_PushToClients()
+    Critical "Off"
 }
 
 ; Probe a single window - returns Map or empty string

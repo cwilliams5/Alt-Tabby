@@ -166,11 +166,15 @@ _GUI_StoreHealthCheck() {
             ToolTip("Alt-Tabby: Reconnecting to store... (" gGUI_ReconnectAttempts "/" maxReconnectAttempts ")")
             HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
 
+            ; RACE FIX: Wrap close + reconnect in Critical to prevent hotkey
+            ; from writing to closed handle between close and reassign
+            Critical "On"
             ; Defensive close before reconnect (in case of stale handle)
             if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
                 IPC_PipeClient_Close(gGUI_StoreClient)
 
             gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage, 0)
+            Critical "Off"
             if (gGUI_StoreClient.hPipe) {
                 ; Reconnected successfully
                 hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
@@ -204,10 +208,14 @@ _GUI_StoreHealthCheck() {
 
     ; Case 2: Pipe handle valid but no messages received in timeout period
     if (gGUI_LastMsgTick && (A_TickCount - gGUI_LastMsgTick) > timeoutMs) {
+        ; RACE FIX: Wrap close + reassign in Critical to prevent hotkey
+        ; from writing to closed handle between close and reassign
+        Critical "On"
         ; Connection may be stale - close and try reconnecting
         gGUI_StoreConnected := false
         IPC_PipeClient_Close(gGUI_StoreClient)
         gGUI_StoreClient := { hPipe: 0 }  ; Reset to trigger reconnect on next tick
+        Critical "Off"
         return
     }
 

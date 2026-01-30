@@ -294,10 +294,16 @@ Store_FullScan() {
     if (IsObject(recs))
         WindowStore_UpsertWindow(recs, "winenum_lite")
     WindowStore_EndScan()
+    ; RACE FIX: Wrap read-check-write in Critical to prevent two callers
+    ; from both reading same old rev and both pushing (duplicate broadcast)
+    Critical "On"
     rev := WindowStore_GetRev()
     if (rev != gStore_LastBroadcastRev) {
         gStore_LastBroadcastRev := rev
+        Critical "Off"
         Store_PushToClients()
+    } else {
+        Critical "Off"
     }
 }
 

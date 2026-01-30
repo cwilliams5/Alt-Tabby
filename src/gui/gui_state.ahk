@@ -161,6 +161,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 }
             }
 
+            ; RACE FIX: Sleep() above temporarily makes thread interruptible.
+            ; Alt_Up could have fired during Sleep and set state to IDLE.
+            if (gGUI_State != "ACTIVE")
+                return  ; lint-ignore: critical-section
+
             ; Freeze: save ALL items (for workspace toggle), then filter
             ; CRITICAL: Create shallow copy - assignment creates a reference which breaks freeze!
             gGUI_AllItems := []
