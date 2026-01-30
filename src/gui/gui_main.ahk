@@ -162,6 +162,7 @@ _GUI_StoreHealthCheck() {
             ; Try to reconnect - NON-BLOCKING (timeoutMs=0 = single attempt, no loop)
             ; This prevents the busy-wait loop in _IPC_ClientConnect from freezing
             ; keyboard/mouse input via blocked low-level hook callbacks.
+            _GUI_LogEvent("HEALTH: Store disconnected, reconnect attempt " gGUI_ReconnectAttempts "/" maxReconnectAttempts)
             ToolTip("Alt-Tabby: Reconnecting to store... (" gGUI_ReconnectAttempts "/" maxReconnectAttempts ")")
             HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
 
@@ -177,6 +178,7 @@ _GUI_StoreHealthCheck() {
                 gGUI_LastMsgTick := A_TickCount
                 gGUI_ReconnectAttempts := 0
                 gGUI_StoreConnected := true
+                _GUI_LogEvent("HEALTH: Reconnect succeeded")
                 ToolTip("Alt-Tabby: Reconnected to store")
                 HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             }
@@ -186,12 +188,15 @@ _GUI_StoreHealthCheck() {
             gGUI_StoreRestartAttempts++
             gGUI_ReconnectAttempts := 0  ; Reset for next cycle
 
+            _GUI_LogEvent("HEALTH: Reconnect exhausted, restarting store attempt " gGUI_StoreRestartAttempts "/" maxRestartAttempts)
             ToolTip("Alt-Tabby: Restarting store... (" gGUI_StoreRestartAttempts "/" maxRestartAttempts ")")
             HideTooltipAfter(TOOLTIP_DURATION_LONG)
 
             _GUI_StartStore()
             ; Don't Sleep or block here - the next health check tick (5s) will
             ; attempt connection after the store has had time to start up.
+        } else {
+            _GUI_LogEvent("HEALTH: All restart attempts exhausted (" maxRestartAttempts " restarts, " maxReconnectAttempts " reconnects each)")
         }
         ; If all restart attempts exhausted, stop trying (avoid infinite loop)
         return

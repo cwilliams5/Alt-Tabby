@@ -853,7 +853,7 @@ _GUI_RobustActivate(hwnd) {
             inputSize := 40  ; sizeof(INPUT) on 64-bit
             input := Buffer(inputSize, 0)
             NumPut("uint", 0, input, 0)  ; type = INPUT_MOUSE
-            DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
+            siResult := DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
 
             ; Bring window to top with SWP_SHOWWINDOW
             ; Flags: SWP_NOMOVE (0x0002) | SWP_NOSIZE (0x0001) | SWP_SHOWWINDOW (0x0040) | SWP_ASYNCWINDOWPOS (0x4000)
@@ -867,7 +867,9 @@ _GUI_RobustActivate(hwnd) {
                 , "uint", 0x0003 | 0x4000)  ; SWP_NOSIZE|SWP_NOMOVE|SWP_ASYNCWINDOWPOS
 
             ; Now SetForegroundWindow should work
-            DllCall("user32\SetForegroundWindow", "ptr", hwnd)
+            fgResult := DllCall("user32\SetForegroundWindow", "ptr", hwnd)
+            if (!fgResult)
+                _GUI_LogEvent("ACTIVATE WARN: SetForegroundWindow returned 0 for hwnd=" hwnd)
         } else {
             _GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
         }

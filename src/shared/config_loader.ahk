@@ -317,6 +317,8 @@ _CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType 
         FileDelete(path)
         FileAppend(newContent, path, "UTF-8")
     } catch as e {
+        global LOG_PATH_STORE
+        LogAppend(LOG_PATH_STORE, "config write error: " e.Message " path=" path)
         return false
     }
     return true

@@ -338,7 +338,8 @@ _IP_TryResolveFromWindow(hWnd) {
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", GCLP_HICONSM, "ptr")
         if (h)
             return DllCall("user32\CopyIcon", "ptr", h, "ptr")
-    } catch {
+    } catch as e {
+        _IP_Log("WARN: _IP_TryResolveFromWindow failed for hwnd=" hWnd " err=" e.Message)
     }
     return 0
 }
@@ -361,7 +362,8 @@ _IP_ExtractExeIcon(exePath) {
         }
         if (hLarge)
             return hLarge
-    } catch {
+    } catch as e {
+        _IP_Log("WARN: ExtractIconExW failed for path=" exePath " err=" e.Message)
     }
     ; Last resort: explorer.exe
     try {
@@ -374,7 +376,8 @@ _IP_ExtractExeIcon(exePath) {
         }
         if (hLarge)
             return hLarge
-    } catch {
+    } catch as e {
+        _IP_Log("WARN: ExtractIconExW fallback (explorer.exe) failed err=" e.Message)
     }
     return 0
 }

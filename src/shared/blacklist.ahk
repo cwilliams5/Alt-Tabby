@@ -69,7 +69,7 @@ Blacklist_Init(filePath := "") {
 Blacklist_Reload() {
     global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs
     global gBlacklist_TitleRegex, gBlacklist_ClassRegex, gBlacklist_PairClassRegex, gBlacklist_PairTitleRegex
-    global gBlacklist_FilePath, gBlacklist_Loaded
+    global gBlacklist_FilePath, gBlacklist_Loaded, LOG_PATH_STORE
 
     ; Build new lists in LOCAL variables first (not globals)
     newTitles := []
@@ -98,8 +98,9 @@ Blacklist_Reload() {
 
     try {
         content := FileRead(gBlacklist_FilePath, "UTF-8")
-    } catch {
+    } catch as e {
         ; Don't clear existing lists on read error - keep old data
+        LogAppend(LOG_PATH_STORE, "blacklist read error: " e.Message " path=" gBlacklist_FilePath)
         gBlacklist_Loaded := false
         return false
     }
@@ -226,7 +227,7 @@ Blacklist_AddTitle(title) {
 
 ; Internal helper: Add an entry to a specific section of the blacklist file
 _BL_AddToSection(sectionName, entry) {
-    global gBlacklist_FilePath
+    global gBlacklist_FilePath, LOG_PATH_STORE
 
     if (gBlacklist_FilePath = "")
         return false
@@ -240,7 +241,8 @@ _BL_AddToSection(sectionName, entry) {
         FileDelete(gBlacklist_FilePath)
         FileAppend(newContent, gBlacklist_FilePath, "UTF-8")
         return true
-    } catch {
+    } catch as e {
+        LogAppend(LOG_PATH_STORE, "blacklist write error in _BL_AddToSection: " e.Message)
         return false
     }
 }

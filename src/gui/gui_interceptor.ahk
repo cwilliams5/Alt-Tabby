@@ -272,6 +272,8 @@ INT_SetBypassMode(shouldBypass) {
         try {
             Hotkey("$*Tab", "Off")
             Hotkey("$*Tab Up", "Off")
+        } catch as e {
+            _GUI_LogEvent("INT: BYPASS Hotkey Off FAILED: " e.Message)
         }
     } else if (!shouldBypass && gINT_BypassMode) {
         ; Leaving bypass mode - re-enable Tab hooks
@@ -280,6 +282,8 @@ INT_SetBypassMode(shouldBypass) {
         try {
             Hotkey("$*Tab", "On")
             Hotkey("$*Tab Up", "On")
+        } catch as e {
+            _GUI_LogEvent("INT: BYPASS Hotkey On FAILED: " e.Message)
         }
     }
     Critical "Off"
