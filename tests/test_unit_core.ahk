@@ -1314,47 +1314,6 @@ RunUnitTests_Core() {
     ; Test: _CL_FormatValue("hello", "string") → "hello"
     AssertEq(_CL_FormatValue("hello", "string"), "hello", "_CL_FormatValue('hello', string) = 'hello'")
 
-    ; Code inspection: Verify _CL_LoadAllSettings has parsing branches
-    ; Search the full file for parsing patterns that appear in the function body.
-    ; These patterns are unique to _CL_LoadAllSettings and don't appear elsewhere.
-    Log("Testing _CL_LoadAllSettings has type parsing branches (code inspection)...")
-    clPath := A_ScriptDir "\..\src\shared\config_loader.ahk"
-    if (FileExist(clPath)) {
-        clCode := FileRead(clPath)
-
-        ; Check for bool parsing: switch case with "true"/"1"/"yes"
-        ; Pattern: 'case "bool":' followed by parsing logic
-        hasBoolCase := InStr(clCode, 'case "bool":')
-        hasIntCase := InStr(clCode, 'case "int":')
-        hasFloatCase := InStr(clCode, 'case "float":')
-
-        if (hasBoolCase) {
-            Log("PASS: _CL_LoadAllSettings has bool parsing branch (case `"bool`":)")
-            TestPassed++
-        } else {
-            Log("FAIL: _CL_LoadAllSettings missing bool parsing branch")
-            TestErrors++
-        }
-
-        if (hasIntCase) {
-            Log("PASS: _CL_LoadAllSettings has int parsing branch (case `"int`":)")
-            TestPassed++
-        } else {
-            Log("FAIL: _CL_LoadAllSettings missing int parsing branch")
-            TestErrors++
-        }
-
-        if (hasFloatCase) {
-            Log("PASS: _CL_LoadAllSettings has float parsing branch (case `"float`":)")
-            TestPassed++
-        } else {
-            Log("FAIL: _CL_LoadAllSettings missing float parsing branch")
-            TestErrors++
-        }
-    } else {
-        Log("SKIP: config_loader.ahk not found")
-    }
-
     ; ============================================================
     ; Phase 1: Bypass Mode Detection Tests
     ; ============================================================

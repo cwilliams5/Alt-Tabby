@@ -1,0 +1,458 @@
+# check_code_patterns.ps1 - Static analysis for production code patterns
+# Pre-gate test: runs before any AHK process launches.
+# Replaces FileRead+InStr code-inspection tests from AHK unit tests.
+# Table-driven: each entry specifies a file, patterns to find, and a description.
+#
+# Usage: powershell -File tests\check_code_patterns.ps1 [-SourceDir "path\to\src"]
+# Exit codes: 0 = all pass, 1 = any check failed
+
+param(
+    [string]$SourceDir
+)
+
+$ErrorActionPreference = 'Stop'
+$totalSw = [System.Diagnostics.Stopwatch]::StartNew()
+
+# === Resolve source directory ===
+
+if (-not $SourceDir) {
+    $SourceDir = (Resolve-Path "$PSScriptRoot\..\src").Path
+}
+if (-not (Test-Path $SourceDir)) {
+    Write-Host "  ERROR: Source directory not found: $SourceDir" -ForegroundColor Red
+    exit 1
+}
+
+# === Helpers ===
+
+# File content cache (each file read once)
+$script:FileCache = @{}
+
+function Get-CachedContent {
+    param([string]$RelPath)
+    if (-not $script:FileCache.ContainsKey($RelPath)) {
+        $fullPath = Join-Path $SourceDir $RelPath
+        if (Test-Path $fullPath) {
+            $script:FileCache[$RelPath] = [System.IO.File]::ReadAllText($fullPath)
+        } else {
+            $script:FileCache[$RelPath] = $null
+        }
+    }
+    return $script:FileCache[$RelPath]
+}
+
+function Extract-FunctionBody {
+    param([string]$Code, [string]$FuncName)
+
+    $idx = $Code.IndexOf("$FuncName(")
+    if ($idx -lt 0) { return $null }
+
+    $braceIdx = $Code.IndexOf('{', $idx)
+    if ($braceIdx -lt 0) { return $null }
+
+    $depth = 1
+    $i = $braceIdx + 1
+    while ($i -lt $Code.Length -and $depth -gt 0) {
+        $ch = $Code[$i]
+        if ($ch -eq '{') { $depth++ }
+        elseif ($ch -eq '}') { $depth-- }
+        $i++
+    }
+
+    if ($depth -ne 0) { return $null }
+    return $Code.Substring($braceIdx + 1, $i - $braceIdx - 2)
+}
+
+# === Check Table ===
+# Each entry:
+#   Id       - unique identifier
+#   File     - relative path from src/
+#   Desc     - human-readable description
+#   Patterns - array of literal strings that must ALL be present (unless AnyOf/NotPresent)
+#   Function - (optional) extract this function body before matching
+#   Regex    - (optional) $true = use -match instead of .Contains()
+#   AnyOf    - (optional) array where at least ONE must match
+#   NotPresent - (optional) array of patterns that must NOT appear
+
+$CHECKS = @(
+    # --- GDI+ Shutdown (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "gdip_shutdown_exists"
+        File     = "gui\gui_gdip.ahk"
+        Desc     = "Gdip_Shutdown() exists with cleanup calls"
+        Patterns = @("Gdip_Shutdown()", "GdiplusShutdown", "GdipDeleteGraphics")
+    },
+    @{
+        Id       = "gdip_shutdown_clears_globals"
+        File     = "gui\gui_gdip.ahk"
+        Desc     = "Gdip_Shutdown() clears all GDI+ globals"
+        Patterns = @("gGdip_Token := 0", "gGdip_G := 0", "gGdip_BackHdc := 0", "gGdip_BackHBM := 0")
+    },
+    @{
+        Id       = "gdip_shutdown_dispose"
+        File     = "gui\gui_gdip.ahk"
+        Desc     = "Gdip_Shutdown() calls Gdip_DisposeResources()"
+        Patterns = @("Gdip_DisposeResources()")
+    },
+
+    # --- OnExit Handler Registration (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "viewer_onexit"
+        File     = "viewer\viewer.ahk"
+        Desc     = "Viewer has _Viewer_OnExitWrapper and registers OnExit"
+        Patterns = @("_Viewer_OnExitWrapper", "OnExit(_Viewer_OnExitWrapper)")
+    },
+    @{
+        Id       = "gui_onexit"
+        File     = "gui\gui_main.ahk"
+        Desc     = "GUI has _GUI_OnExit and registers OnExit"
+        Patterns = @("_GUI_OnExit", "OnExit(_GUI_OnExit)")
+    },
+    @{
+        Id       = "store_onexit_icons"
+        File     = "store\store_server.ahk"
+        Desc     = "Store_OnExit calls both icon cleanup functions"
+        Function = "Store_OnExit"
+        Patterns = @("WindowStore_CleanupAllIcons()", "WindowStore_CleanupExeIconCache()")
+    },
+    @{
+        Id       = "gui_onexit_gdip"
+        File     = "gui\gui_main.ahk"
+        Desc     = "GUI _GUI_OnExit calls Gdip_Shutdown()"
+        Function = "_GUI_OnExit"
+        Patterns = @("Gdip_Shutdown()")
+    },
+
+    # --- Function Reference Validation (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "ksub_no_undefined_log"
+        File     = "store\komorebi_sub.ahk"
+        Desc     = "No undefined _KSub_Log() calls (should be _KSub_DiagLog)"
+        NotPresent = @("_KSub_Log(")
+    },
+
+    # --- Client Disconnect Cleanup (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "ipc_ondisconnect_support"
+        File     = "shared\ipc_pipe.ahk"
+        Desc     = "IPC server has onDisconnect callback support"
+        Patterns = @("onDisconnectFn", "onDisconnect:", "server.onDisconnect")
+    },
+    @{
+        Id       = "store_disconnect_cleanup"
+        File     = "store\store_server.ahk"
+        Desc     = "Store registers disconnect callback and cleans all client Maps"
+        Patterns = @(
+            "Store_OnClientDisconnect)",
+            "Store_OnClientDisconnect(hPipe)",
+            "gStore_ClientOpts.Delete(",
+            "gStore_LastClientRev.Delete(",
+            "gStore_LastClientProj.Delete(",
+            "gStore_LastClientMeta.Delete("
+        )
+    },
+
+    # --- Buffer Overflow Protection (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "ksub_buffer_overflow"
+        File     = "store\komorebi_sub.ahk"
+        Desc     = "Komorebi subscription has 1MB buffer overflow protection"
+        Patterns = @('_KSub_ReadBuffer := ""')
+        AnyOf    = @("1048576", "KSUB_BUFFER_MAX_BYTES")
+    },
+
+    # --- Workspace Cache Pruning (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "ksub_cache_prune_func"
+        File     = "store\komorebi_sub.ahk"
+        Desc     = "KomorebiSub has cache pruning function with TTL check"
+        Patterns = @("KomorebiSub_PruneStaleCache()", "_KSub_CacheMaxAgeMs", "_KSub_WorkspaceCache.Delete(")
+    },
+    @{
+        Id       = "heartbeat_calls_prune"
+        File     = "store\store_server.ahk"
+        Desc     = "Store_HeartbeatTick calls KomorebiSub_PruneStaleCache"
+        Function = "Store_HeartbeatTick"
+        Patterns = @("KomorebiSub_PruneStaleCache")
+    },
+
+    # --- Idle Timer Pause (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "icon_pump_idle_pause"
+        File     = "store\icon_pump.ahk"
+        Desc     = "Icon pump has idle-pause pattern with EnsureRunning"
+        Patterns = @("_IP_IdleTicks", "_IP_IdleThreshold", "SetTimer(_IP_Tick, 0)", "IconPump_EnsureRunning()")
+    },
+    @{
+        Id       = "proc_pump_idle_pause"
+        File     = "store\proc_pump.ahk"
+        Desc     = "Proc pump has idle-pause pattern with EnsureRunning"
+        Patterns = @("_PP_IdleTicks", "_PP_IdleThreshold", "SetTimer(_PP_Tick, 0)", "ProcPump_EnsureRunning()")
+    },
+    @{
+        Id       = "weh_idle_pause"
+        File     = "store\winevent_hook.ahk"
+        Desc     = "WinEvent hook has idle-pause pattern with EnsureTimerRunning"
+        Patterns = @("_WEH_IdleTicks", "_WEH_IdleThreshold", "SetTimer(_WEH_ProcessBatch, 0)", "WinEventHook_EnsureTimerRunning()")
+    },
+    @{
+        Id       = "windowstore_wakes_pumps"
+        File     = "store\windowstore.ahk"
+        Desc     = "WindowStore wakes both pumps when enqueuing work"
+        Patterns = @("IconPump_EnsureRunning()", "ProcPump_EnsureRunning()")
+    },
+
+    # --- Hot Path Static Buffers (from test_unit_cleanup.ahk) ---
+    @{
+        Id       = "gdip_drawtext_static_buf"
+        File     = "gui\gui_gdip.ahk"
+        Desc     = "Gdip_DrawText uses static rf buffer"
+        Regex    = $true
+        Patterns = @("Gdip_DrawText\([\s\S]*?static rf\s*:=\s*Buffer")
+    },
+    @{
+        Id       = "gdip_drawcentered_static_buf"
+        File     = "gui\gui_gdip.ahk"
+        Desc     = "Gdip_DrawCenteredText uses static rf buffer"
+        Regex    = $true
+        Patterns = @("Gdip_DrawCenteredText\([\s\S]*?static rf\s*:=\s*Buffer")
+    },
+    @{
+        Id       = "gui_repaint_static_buf"
+        File     = "gui\gui_paint.ahk"
+        Desc     = "GUI_Repaint uses static bf buffer"
+        Patterns = @("static bf := Buffer")
+    },
+    @{
+        Id       = "gui_recalchover_static_buf"
+        File     = "gui\gui_input.ahk"
+        Desc     = "GUI_RecalcHover uses static pt buffer"
+        Regex    = $true
+        Patterns = @("GUI_RecalcHover\([\s\S]*?static pt\s*:=\s*Buffer")
+    },
+
+    # --- Defensive Close (from test_unit_advanced.ahk) ---
+    @{
+        Id       = "gui_defensive_close"
+        File     = "gui\gui_main.ahk"
+        Desc     = "GUI has defensive IPC_PipeClient_Close before reconnect"
+        Patterns = @("IPC_PipeClient_Close(gGUI_StoreClient)")
+    },
+
+    # --- Stale File Cleanup (from test_unit_advanced.ahk) ---
+    @{
+        Id       = "stale_file_cleanup"
+        File     = "shared\setup_utils.ahk"
+        Desc     = "Stale files array contains all expected temp files"
+        Patterns = @("alttabby_wizard.json", "alttabby_update.txt", "alttabby_install_update.txt", "TEMP_ADMIN_TOGGLE_LOCK")
+    },
+
+    # --- Update Race Guard (from test_unit_advanced.ahk) ---
+    @{
+        Id       = "update_race_guard"
+        File     = "shared\setup_utils.ahk"
+        Desc     = "CheckForUpdates() has race guard (check, set, reset)"
+        Patterns = @("if (g_UpdateCheckInProgress)", "g_UpdateCheckInProgress := true", "g_UpdateCheckInProgress := false")
+    },
+
+    # --- Shortcut Conflict Detection (from test_unit_advanced.ahk) ---
+    @{
+        Id       = "shortcut_conflict_detection"
+        File     = "launcher\launcher_shortcuts.ahk"
+        Desc     = "Shortcut creation has conflict detection"
+        Patterns = @("if (FileExist(lnkPath))", "Shortcut Conflict")
+        AnyOf    = @("existingTarget", "existing.TargetPath")
+    },
+
+    # --- Mismatch Dialog (from test_unit_advanced.ahk) ---
+    @{
+        Id       = "mismatch_optional_params"
+        File     = "launcher\launcher_install.ahk"
+        Desc     = "Mismatch dialog accepts optional parameters"
+        Patterns = @('_Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question := "")')
+    },
+    @{
+        Id       = "mismatch_result_handler"
+        File     = "launcher\launcher_install.ahk"
+        Desc     = "Mismatch result handler exists with Yes/Always handling"
+        Patterns = @("_Launcher_HandleMismatchResult(", 'if (result = "Yes")')
+        AnyOf    = @('if (result = "Always")', 'else if (result = "Always")')
+    },
+    @{
+        Id       = "mismatch_same_version"
+        File     = "launcher\launcher_install.ahk"
+        Desc     = "Same-version mismatch has distinct dialog case"
+        Patterns = @("else if (versionCompare = 0)")
+        AnyOf    = @("Same Version", "same version")
+    },
+
+    # --- Exe Name Deduplication (from test_unit_setup.ahk) ---
+    @{
+        Id       = "exe_name_dedup"
+        File     = "shared\process_utils.ahk"
+        Desc     = "ProcessUtils_BuildExeNameList uses StrLower + seenNames dedup"
+        Patterns = @("ProcessUtils_BuildExeNameList(", "StrLower(")
+        AnyOf    = @("seenNames.Has(", "seenNames[")
+    },
+
+    # --- Process Detection & Kill Reliability (from test_unit_setup.ahk) ---
+    @{
+        Id       = "kill_process_pattern"
+        File     = "launcher\launcher_main.ahk"
+        Desc     = "KillProcessByName uses taskkill /F /IM with PID ne filter"
+        Patterns = @("_Launcher_KillProcessByName(", "taskkill /F /IM", "PID ne")
+    },
+    @{
+        Id       = "is_other_process_running"
+        File     = "launcher\launcher_main.ahk"
+        Desc     = "IsOtherProcessRunning uses tasklist /FI with PID ne"
+        Patterns = @("_Launcher_IsOtherProcessRunning(", "tasklist /FI", "PID ne")
+    },
+    @{
+        Id       = "offer_stop_uses_helper"
+        File     = "launcher\launcher_install.ahk"
+        Desc     = "OfferToStopInstalledInstance calls IsOtherProcessRunning"
+        Patterns = @("_Launcher_OfferToStopInstalledInstance(", "_Launcher_IsOtherProcessRunning(")
+    },
+
+    # --- Wizard FirstRunCompleted (from test_unit_setup.ahk) ---
+    @{
+        Id       = "wizard_no_path_firstrun"
+        File     = "launcher\launcher_wizard.ahk"
+        Desc     = "Wizard 'No' path after UAC cancel sets FirstRunCompleted"
+        Patterns = @('result = "No"', "FirstRunCompleted")
+    }
+)
+
+# === Also check exe_name_dedup delegation from setup_utils ===
+# The original test checked BOTH process_utils.ahk AND setup_utils.ahk
+# Add a separate check for the delegation
+$CHECKS += @(
+    @{
+        Id       = "exe_name_dedup_delegation"
+        File     = "shared\setup_utils.ahk"
+        Desc     = "_Update_KillOtherProcesses delegates to ProcessUtils_BuildExeNameList"
+        Patterns = @("ProcessUtils_BuildExeNameList(")
+    }
+)
+
+# === Run checks ===
+
+$passed = 0
+$failed = 0
+$skipped = 0
+$failures = @()
+
+foreach ($check in $CHECKS) {
+    $content = Get-CachedContent $check.File
+
+    if ($null -eq $content) {
+        $skipped++
+        continue
+    }
+
+    # If Function key is set, extract function body
+    $searchText = $content
+    if ($check.ContainsKey('Function') -and $check.Function) {
+        $body = Extract-FunctionBody $content $check.Function
+        if ($null -eq $body) {
+            $failed++
+            $failures += "$($check.Id): Could not extract function '$($check.Function)' from $($check.File)"
+            continue
+        }
+        $searchText = $body
+    }
+
+    $isRegex = $check.ContainsKey('Regex') -and $check.Regex
+
+    # Check NotPresent patterns (must NOT match)
+    if ($check.ContainsKey('NotPresent') -and $check.NotPresent) {
+        $foundBad = $false
+        foreach ($pat in $check.NotPresent) {
+            if ($isRegex) {
+                if ($searchText -match $pat) { $foundBad = $true; break }
+            } else {
+                if ($searchText.Contains($pat)) { $foundBad = $true; break }
+            }
+        }
+        if ($foundBad) {
+            $failed++
+            $failures += "$($check.Id): $($check.Desc) - forbidden pattern found in $($check.File)"
+            continue
+        }
+        # If there are no Patterns/AnyOf, this is a pure NotPresent check
+        if (-not $check.ContainsKey('Patterns') -and -not $check.ContainsKey('AnyOf')) {
+            $passed++
+            continue
+        }
+    }
+
+    # Check required Patterns (ALL must match)
+    $allPresent = $true
+    $missingPatterns = @()
+    if ($check.ContainsKey('Patterns') -and $check.Patterns) {
+        foreach ($pat in $check.Patterns) {
+            $found = $false
+            if ($isRegex) {
+                $found = $searchText -match $pat
+            } else {
+                $found = $searchText.Contains($pat)
+            }
+            if (-not $found) {
+                $allPresent = $false
+                $missingPatterns += $pat
+            }
+        }
+    }
+
+    # Check AnyOf patterns (at least ONE must match)
+    $anyOfOk = $true
+    if ($check.ContainsKey('AnyOf') -and $check.AnyOf) {
+        $anyOfOk = $false
+        foreach ($pat in $check.AnyOf) {
+            if ($isRegex) {
+                if ($searchText -match $pat) { $anyOfOk = $true; break }
+            } else {
+                if ($searchText.Contains($pat)) { $anyOfOk = $true; break }
+            }
+        }
+    }
+
+    if ($allPresent -and $anyOfOk) {
+        $passed++
+    } else {
+        $failed++
+        $detail = ""
+        if ($missingPatterns.Count -gt 0) {
+            $detail = " missing: $($missingPatterns -join ', ')"
+        }
+        if (-not $anyOfOk) {
+            $detail += " none of AnyOf matched"
+        }
+        $failures += "$($check.Id): $($check.Desc) -$detail in $($check.File)"
+    }
+}
+
+$totalSw.Stop()
+
+# === Report ===
+
+$timingLine = "  Timing: total=$($totalSw.ElapsedMilliseconds)ms"
+$statsLine  = "  Stats:  $($CHECKS.Count) checks ($passed passed, $failed failed, $skipped skipped)"
+
+if ($failed -gt 0) {
+    Write-Host ""
+    Write-Host "  FAIL: $failed code pattern check(s) failed." -ForegroundColor Red
+    foreach ($f in $failures) {
+        Write-Host "    $f" -ForegroundColor Red
+    }
+    Write-Host ""
+    Write-Host $timingLine -ForegroundColor Cyan
+    Write-Host $statsLine -ForegroundColor Cyan
+    exit 1
+} else {
+    Write-Host "  PASS: All $passed code pattern checks passed" -ForegroundColor Green
+    Write-Host $timingLine -ForegroundColor Cyan
+    Write-Host $statsLine -ForegroundColor Cyan
+    exit 0
+}
