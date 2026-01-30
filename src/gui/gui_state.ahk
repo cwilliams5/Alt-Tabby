@@ -843,6 +843,9 @@ _GUI_UpdateLocalMRU(hwnd) {
 ; Robust window activation using komorebi's pattern from windows_api.rs
 ; SendInput trick → SetWindowPos → SetForegroundWindow
 _GUI_RobustActivate(hwnd) {
+    global SW_RESTORE, HWND_TOPMOST, HWND_NOTOPMOST
+    global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW, SWP_ASYNCWINDOWPOS
+
     ; NOTE: Do NOT manually uncloak windows - this interferes with komorebi's
     ; workspace management and can pull windows to the wrong workspace.
     ; Komorebi handles uncloaking when switching workspaces.
@@ -851,7 +854,7 @@ _GUI_RobustActivate(hwnd) {
         if (WinExist("ahk_id " hwnd)) {
             ; Restore if minimized
             if (DllCall("user32\IsIconic", "ptr", hwnd, "int"))
-                DllCall("user32\ShowWindow", "ptr", hwnd, "int", 9)  ; SW_RESTORE
+                DllCall("user32\ShowWindow", "ptr", hwnd, "int", SW_RESTORE)
 
             ; Send dummy mouse input to bypass foreground lock (komorebi's trick)
             ; This satisfies Windows' requirement that the process has received recent input
@@ -861,15 +864,16 @@ _GUI_RobustActivate(hwnd) {
             DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
 
             ; Bring window to top with SWP_SHOWWINDOW
-            ; Flags: SWP_NOMOVE (0x0002) | SWP_NOSIZE (0x0001) | SWP_SHOWWINDOW (0x0040) | SWP_ASYNCWINDOWPOS (0x4000)
-            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", -1  ; HWND_TOP = 0, but -1 = HWND_TOPMOST works better
+            swpShow := SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS
+            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_TOPMOST
                 , "int", 0, "int", 0, "int", 0, "int", 0
-                , "uint", 0x0043 | 0x4000)  ; SWP_NOSIZE|SWP_NOMOVE|SWP_SHOWWINDOW|SWP_ASYNCWINDOWPOS
+                , "uint", swpShow)
 
             ; Reset to non-topmost (we just want it on top temporarily, not always-on-top)
-            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", -2  ; HWND_NOTOPMOST
+            swpNoShow := SWP_NOSIZE | SWP_NOMOVE | SWP_ASYNCWINDOWPOS
+            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_NOTOPMOST
                 , "int", 0, "int", 0, "int", 0, "int", 0
-                , "uint", 0x0003 | 0x4000)  ; SWP_NOSIZE|SWP_NOMOVE|SWP_ASYNCWINDOWPOS
+                , "uint", swpNoShow)
 
             ; Now SetForegroundWindow should work
             fgResult := DllCall("user32\SetForegroundWindow", "ptr", hwnd)

@@ -131,10 +131,11 @@ GUI_Repaint() {
     t1 := A_TickCount
 
     ; Ensure WS_EX_LAYERED
-    ex := DllCall("user32\GetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", -20, "ptr")
-    if (!(ex & 0x80000)) {
-        ex := ex | 0x80000
-        DllCall("user32\SetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", -20, "ptr", ex, "ptr")
+    global GWL_EXSTYLE, WS_EX_LAYERED
+    ex := DllCall("user32\GetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", GWL_EXSTYLE, "ptr")
+    if (!(ex & WS_EX_LAYERED)) {
+        ex := ex | WS_EX_LAYERED
+        DllCall("user32\SetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
     }
 
     hdcScreen := DllCall("user32\GetDC", "ptr", 0, "ptr")
@@ -459,6 +460,8 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 GUI_EnsureResources(scale) {
     global gGdip_Res, gGdip_ResScale, cfg
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
+    global GDIP_UNIT_PIXEL, GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_CENTER, GDIP_STRING_ALIGN_FAR
+    global GDIP_STRING_FORMAT_NO_WRAP, GDIP_STRING_FORMAT_LINE_LIMIT, GDIP_STRING_TRIMMING_ELLIPSIS
 
     if (Abs(gGdip_ResScale - scale) < 0.001 && gGdip_Res.Count) {
         ; Resources exist and scale unchanged - skip recreation
@@ -501,7 +504,6 @@ GUI_EnsureResources(scale) {
 
     ; Fonts
     t1 := A_TickCount
-    UnitPixel := 2
 
     fonts := [
         [cfg.GUI_MainFontName, cfg.GUI_MainFontSize, cfg.GUI_MainFontWeight, "ffMain", "fMain"],
@@ -519,7 +521,7 @@ GUI_EnsureResources(scale) {
         font := 0
         style := Gdip_FontStyleFromWeight(f[3])
         DllCall("gdiplus\GdipCreateFontFamilyFromName", "wstr", f[1], "ptr", 0, "ptr*", &fam)
-        DllCall("gdiplus\GdipCreateFont", "ptr", fam, "float", f[2] * scale, "int", style, "int", UnitPixel, "ptr*", &font)
+        DllCall("gdiplus\GdipCreateFont", "ptr", fam, "float", f[2] * scale, "int", style, "int", GDIP_UNIT_PIXEL, "ptr*", &font)
         gGdip_Res[f[4]] := fam
         gGdip_Res[f[5]] := font
     }
@@ -527,28 +529,23 @@ GUI_EnsureResources(scale) {
 
     ; String formats
     t1 := A_TickCount
-    StringAlignmentNear := 0
-    StringAlignmentCenter := 1
-    StringAlignmentFar := 2
-    ; StringFormatFlagsNoWrap | StringFormatFlagsLineLimit
-    flags := 0x00001000 | 0x00004000
+    fmtFlags := GDIP_STRING_FORMAT_NO_WRAP | GDIP_STRING_FORMAT_LINE_LIMIT
 
     formats := [
-        ["fmt", StringAlignmentNear, StringAlignmentNear],
-        ["fmtCenter", StringAlignmentCenter, StringAlignmentNear],
-        ["fmtRight", StringAlignmentFar, StringAlignmentNear],
-        ["fmtLeft", StringAlignmentNear, StringAlignmentNear],
-        ["fmtLeftCol", StringAlignmentNear, StringAlignmentNear],
-        ["fmtFooterLeft", StringAlignmentNear, StringAlignmentCenter],
-        ["fmtFooterCenter", StringAlignmentCenter, StringAlignmentCenter],
-        ["fmtFooterRight", StringAlignmentFar, StringAlignmentCenter]
+        ["fmt", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtCenter", GDIP_STRING_ALIGN_CENTER, GDIP_STRING_ALIGN_NEAR],
+        ["fmtRight", GDIP_STRING_ALIGN_FAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtLeft", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtLeftCol", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtFooterLeft", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_CENTER],
+        ["fmtFooterCenter", GDIP_STRING_ALIGN_CENTER, GDIP_STRING_ALIGN_CENTER],
+        ["fmtFooterRight", GDIP_STRING_ALIGN_FAR, GDIP_STRING_ALIGN_CENTER]
     ]
     for _, fm in formats {
         fmt := 0
         DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "ushort", 0, "ptr*", &fmt)
-        DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", fmt, "int", flags)
-        StringTrimmingEllipsisCharacter := 3
-        DllCall("gdiplus\GdipSetStringFormatTrimming", "ptr", fmt, "int", StringTrimmingEllipsisCharacter)
+        DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", fmt, "int", fmtFlags)
+        DllCall("gdiplus\GdipSetStringFormatTrimming", "ptr", fmt, "int", GDIP_STRING_TRIMMING_ELLIPSIS)
         DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", fmt, "int", fm[2])
         DllCall("gdiplus\GdipSetStringFormatLineAlign", "ptr", fmt, "int", fm[3])
         gGdip_Res[fm[1]] := fmt

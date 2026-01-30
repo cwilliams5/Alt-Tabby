@@ -48,6 +48,7 @@ ShowSplashScreen() {
     global g_SplashHwnd, g_SplashStartTick, g_SplashBitmap, g_SplashHdc, g_SplashToken
     global g_SplashHdcScreen, g_SplashImgW, g_SplashImgH, g_SplashPosX, g_SplashPosY, g_SplashHModule
     global g_SplashDIB, cfg
+    global WS_EX_LAYERED
 
     g_SplashStartTick := A_TickCount
 
@@ -91,7 +92,6 @@ ShowSplashScreen() {
 
     ; Create layered window (WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW)
     WS_POPUP := 0x80000000
-    WS_EX_LAYERED := 0x80000
     WS_EX_TOPMOST := 0x8
     WS_EX_TOOLWINDOW := 0x80
 
