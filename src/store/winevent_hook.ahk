@@ -241,6 +241,13 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     Critical "Off"
 
+    ; Fast-path: fire immediate batch for focus events instead of waiting
+    ; up to WinEventHook_BatchMs (default 100ms) for periodic timer.
+    ; SetTimer(-1) fires on next message pump cycle (~1-5ms).
+    ; Double-fire with periodic timer is harmless: ProcessBatch handles empty queues.
+    if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS)
+        SetTimer(_WEH_ProcessBatch, -1)
+
     ; Wake timer if it was paused due to idle
     WinEventHook_EnsureTimerRunning()
 }

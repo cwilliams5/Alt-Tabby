@@ -31,6 +31,8 @@ global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
 global gStore_LastClientProj := Map()  ; hPipe -> last projection items (for delta calc)
 global gStore_LastClientMeta := Map()  ; hPipe -> last meta sent (for workspace change detection)
 global gStore_LastSendTick := 0       ; Tick of last message sent to ANY client (heartbeat or delta)
+global gStore_CachedHeartbeatJson := ""
+global gStore_CachedHeartbeatRev := -1
 
 ; Producer state tracking: "running", "disabled", "failed"
 global gStore_ProducerState := Map()
@@ -214,8 +216,12 @@ Store_HeartbeatTick() {
     if (gStore_LastSendTick && (A_TickCount - gStore_LastSendTick) < cfg.StoreHeartbeatIntervalMs)
         return
     rev := WindowStore_GetRev()
-    msg := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
-    IPC_PipeServer_Broadcast(gStore_Server, msg)
+    global gStore_CachedHeartbeatJson, gStore_CachedHeartbeatRev
+    if (rev != gStore_CachedHeartbeatRev) {
+        gStore_CachedHeartbeatJson := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
+        gStore_CachedHeartbeatRev := rev
+    }
+    IPC_PipeServer_Broadcast(gStore_Server, gStore_CachedHeartbeatJson)
     gStore_LastSendTick := A_TickCount
 }
 

@@ -36,7 +36,7 @@ global IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
 global IPC_MSG_PRODUCER_STATUS := "producer_status"
 
 ; IPC Timing Constants (milliseconds)
-global IPC_TICK_ACTIVE := 15        ; Server/client tick when active (messages pending)
+global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)
 global IPC_TICK_IDLE := 100         ; Client tick when no activity (overridable via cfg.IPCIdleTickMs)
 global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
 global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect
@@ -603,13 +603,13 @@ _IPC_Client_AdjustTimer(client, activityBytes) {
     }
     ; Graduated cooldown: stay responsive during bursty activity (workspace switches,
     ; rapid Alt-Tab) then back off gradually to save CPU when truly idle.
-    ; At 15ms ticks: 7 idle ticks = 105ms before first step-up.
+    ; At 8ms ticks: 10 idle ticks = 80ms before first step-up.
     client.idleStreak += 1
-    if (client.idleStreak < 7)
+    if (client.idleStreak < 10)
         return  ; Stay at current (active) tick
-    if (client.idleStreak < 11)
+    if (client.idleStreak < 16)
         _IPC_SetClientTick(client, 30)
-    else if (client.idleStreak < 14)
+    else if (client.idleStreak < 20)
         _IPC_SetClientTick(client, 50)
     else
         _IPC_SetClientTick(client, IPC_TICK_IDLE)
