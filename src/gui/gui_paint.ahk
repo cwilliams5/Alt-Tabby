@@ -207,6 +207,8 @@ GUI_RevealBoth() {
 GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
+    global PAINT_HDR_Y_DIP, PAINT_TITLE_Y_DIP, PAINT_TITLE_H_DIP
+    global PAINT_SUB_Y_DIP, PAINT_SUB_H_DIP, PAINT_COL_Y_DIP, PAINT_COL_H_DIP
 
     ; ===== TIMING: EnsureResources =====
     tPO_Start := A_TickCount
@@ -237,8 +239,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     Rad := Round(cfg.GUI_RowRadius * scale)
     gapText := Round(cfg.GUI_IconTextGapPx * scale)
     gapCols := Round(cfg.GUI_ColumnGapPx * scale)
-    PAINT_HDR_Y := 4  ; header text Y offset (px, pre-scale)
-    hdrY4 := Round(PAINT_HDR_Y * scale)
+    hdrY4 := Round(PAINT_HDR_Y_DIP * scale)
     hdrH28 := Round(cfg.GUI_HeaderHeightPx * scale)
     iconLeftDip := Round(cfg.GUI_IconLeftMargin * scale)
 
@@ -342,21 +343,13 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         i := 0
         yRow := y
 
-        ; Row-internal layout constants (px, pre-scale)
-        PAINT_TITLE_Y := 6   ; title Y offset within row
-        PAINT_TITLE_H := 24  ; title text height
-        PAINT_SUB_Y := 28    ; subtitle Y offset within row
-        PAINT_SUB_H := 18    ; subtitle text height
-        PAINT_COL_Y := 10    ; column text Y offset
-        PAINT_COL_H := 20    ; column text height
-
         ; Pre-compute scaled values (avoids ~90 Round() calls per frame)
-        titleY := Round(PAINT_TITLE_Y * scale)
-        titleH := Round(PAINT_TITLE_H * scale)
-        subY := Round(PAINT_SUB_Y * scale)
-        subH := Round(PAINT_SUB_H * scale)
-        colY := Round(PAINT_COL_Y * scale)
-        colH := Round(PAINT_COL_H * scale)
+        titleY := Round(PAINT_TITLE_Y_DIP * scale)
+        titleH := Round(PAINT_TITLE_H_DIP * scale)
+        subY := Round(PAINT_SUB_Y_DIP * scale)
+        subH := Round(PAINT_SUB_H_DIP * scale)
+        colY := Round(PAINT_COL_Y_DIP * scale)
+        colH := Round(PAINT_COL_H_DIP * scale)
 
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
@@ -691,6 +684,7 @@ GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, 
 
 GUI_DrawFooter(g, wPhys, hPhys, scale) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, cfg, gGdip_Res
+    global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
 
     if (!cfg.GUI_ShowFooter) {
         return
@@ -723,8 +717,8 @@ GUI_DrawFooter(g, wPhys, hPhys, scale) {
     }
 
     ; Arrow dimensions
-    arrowW := Round(24 * scale)  ; Width for arrow hit area
-    arrowPad := Round(8 * scale)  ; Padding inside footer
+    arrowW := Round(PAINT_ARROW_W_DIP * scale)
+    arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
 
     ; Left arrow
     leftArrowX := fx + arrowPad

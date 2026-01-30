@@ -25,3 +25,14 @@ global GDIP_STRING_ALIGN_FAR := 2
 global GDIP_STRING_FORMAT_NO_WRAP := 0x00001000
 global GDIP_STRING_FORMAT_LINE_LIMIT := 0x00004000
 global GDIP_STRING_TRIMMING_ELLIPSIS := 3
+
+; Paint layout (DIP values, pre-scale)
+global PAINT_HDR_Y_DIP := 4
+global PAINT_TITLE_Y_DIP := 6
+global PAINT_TITLE_H_DIP := 24
+global PAINT_SUB_Y_DIP := 28
+global PAINT_SUB_H_DIP := 18
+global PAINT_COL_Y_DIP := 10
+global PAINT_COL_H_DIP := 20
+global PAINT_ARROW_W_DIP := 24
+global PAINT_ARROW_PAD_DIP := 8
