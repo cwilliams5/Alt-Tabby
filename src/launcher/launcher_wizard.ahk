@@ -205,19 +205,9 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         ; This prevents stale task pointing to temporary location
         if (!install || installSucceeded) {
             ; Warn if admin task would point to a temporary location (no install selected)
-            if (!install && IsTemporaryLocation(A_ScriptDir)) {
-                warnResult := MsgBox(
-                    "The admin task will point to:`n" exePath "`n`n"
-                    "This location may be temporary. If this file is moved or deleted, "
-                    "admin mode will stop working.`n`n"
-                    "Consider using 'Install to Program Files' for a permanent setup.`n`n"
-                    "Create admin task anyway?",
-                    APP_NAME " - Temporary Location",
-                    "YesNo Icon?"
-                )
-                if (warnResult = "No")
-                    admin := false
-            }
+            if (!install && !WarnIfTempLocation_AdminTask(exePath, A_ScriptDir,
+                    "Consider using 'Install to Program Files' for a permanent setup."))
+                admin := false
 
             if (admin) {
                 if (CreateAdminTask(exePath)) {

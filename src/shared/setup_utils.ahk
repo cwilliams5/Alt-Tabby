@@ -110,6 +110,31 @@ IsTemporaryLocation(path) {
         || InStr(lowerPath, "\icloud"))
 }
 
+; Warn if admin task would point to a temporary location
+; Returns true to proceed, false if user cancelled
+; Parameters:
+;   exePath   - Path to exe that the admin task will point to
+;   dirPath   - Directory to check (if empty, extracted from exePath)
+;   extraText - Additional text to insert before the "Create admin task anyway?" line
+WarnIfTempLocation_AdminTask(exePath, dirPath := "", extraText := "") {
+    global APP_NAME
+    if (dirPath = "") {
+        SplitPath(exePath, , &dirPath)
+    }
+    if (!IsTemporaryLocation(dirPath))
+        return true  ; Not temporary, proceed
+
+    msg := "The admin task will point to:`n" exePath "`n`n"
+        . "This location may be temporary. If this file is moved or deleted, "
+        . "admin mode will stop working.`n`n"
+    if (extraText != "")
+        msg .= extraText "`n`n"
+    msg .= "Create admin task anyway?"
+
+    warnResult := MsgBox(msg, APP_NAME " - Temporary Location", "YesNo Icon?")
+    return (warnResult != "No")
+}
+
 ; ============================================================
 ; SELF-ELEVATION HELPER
 ; ============================================================

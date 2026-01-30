@@ -282,18 +282,8 @@ ToggleAdminMode() {
         SplitPath(exePath, , &exeDir)
 
         ; Warn if admin task would point to a temporary location
-        if (IsTemporaryLocation(exeDir)) {
-            warnResult := MsgBox(
-                "The admin task will point to:`n" exePath "`n`n"
-                "This location may be temporary. If this file is moved or deleted, "
-                "admin mode will stop working.`n`n"
-                "Create admin task anyway?",
-                APP_NAME " - Temporary Location",
-                "YesNo Icon?"
-            )
-            if (warnResult = "No")
-                return
-        }
+        if (!WarnIfTempLocation_AdminTask(exePath, exeDir))
+            return
 
         if (CreateAdminTask(exePath)) {
             cfg.SetupRunAsAdmin := true
