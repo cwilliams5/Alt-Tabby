@@ -226,10 +226,7 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
         return
 
     ; Check if any process with that name is running (other than us)
-    myPID := ProcessExist()
-    pid := ProcessExist(installedExeName)
-
-    if (!pid || pid = myPID)
+    if (!_Launcher_IsOtherProcessRunning(installedExeName))
         return  ; Not running or only us
 
     result := MsgBox(

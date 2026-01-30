@@ -106,6 +106,11 @@ WizardApply(*) {
                 "YesNo Icon?"
             )
             if (result = "No") {
+                ; Mark first-run as completed so wizard doesn't show on every launch
+                cfg.SetupFirstRunCompleted := true
+                cfg.SetupExePath := A_ScriptFullPath
+                _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+                _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
                 g_WizardShuttingDown := false  ; Allow clean exit
                 try g_WizardGui.Destroy()
                 return  ; Exit wizard completely

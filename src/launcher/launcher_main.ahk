@@ -425,13 +425,56 @@ _Launcher_RepairStaleExePath() {
     RecreateShortcuts()
 }
 
-; Kill all processes matching exeName except ourselves, with retry loop
+; Check if another process with the given exe name is running (excluding our PID)
+; Fast path: ProcessExist returns PID != ours → true
+; If returns 0: no process, false
+; If returns our PID: use tasklist to check for other PIDs
+_Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
+    if (excludePID = 0)
+        excludePID := ProcessExist()
+
+    ; Fast path: check ProcessExist
+    pid := ProcessExist(exeName)
+    if (!pid)
+        return false  ; No process at all
+    if (pid != excludePID)
+        return true  ; Found another process immediately
+
+    ; ProcessExist returned our own PID — use tasklist to check for others
+    tempFile := A_Temp "\alttabby_proccheck.tmp"
+    try FileDelete(tempFile)
+    try {
+        cmd := 'cmd.exe /c tasklist /FI "IMAGENAME eq ' exeName '" /FI "PID ne ' excludePID '" /NH > "' tempFile '"'
+        RunWait(cmd,, "Hide")
+        if (FileExist(tempFile)) {
+            output := FileRead(tempFile, "UTF-8")
+            FileDelete(tempFile)
+            ; tasklist outputs "INFO: No tasks..." when no match, otherwise shows process lines
+            ; A real match will contain the exe name in the output
+            if (InStr(output, exeName))
+                return true
+        }
+    } catch {
+        try FileDelete(tempFile)
+    }
+    return false
+}
+
+; Kill all processes matching exeName except ourselves
+; Uses taskkill as primary mechanism (immune to ProcessExist PID ordering),
+; with ProcessClose loop as fallback for stragglers.
 ; Used by _Launcher_KillExistingInstances and _Launcher_OfferToStopInstalledInstance
 _Launcher_KillProcessByName(exeName, maxAttempts := 10, sleepMs := 0) {
-    global TIMING_PROCESS_TERMINATE_WAIT
+    global TIMING_PROCESS_TERMINATE_WAIT, TIMING_SETUP_SETTLE
     if (sleepMs = 0)
         sleepMs := TIMING_PROCESS_TERMINATE_WAIT
     myPID := ProcessExist()
+
+    ; Primary: taskkill (reliable for same-name processes)
+    try RunWait('taskkill /F /IM "' exeName '" /FI "PID ne ' myPID '"',, "Hide")
+    Sleep(TIMING_SETUP_SETTLE)
+
+    ; Fallback: ProcessClose loop for any stragglers
     loop maxAttempts {
         pid := ProcessExist(exeName)
         if (!pid || pid = myPID)

@@ -486,4 +486,114 @@ RunUnitTests_Setup() {
         Log("FAIL: Dedup code inspection error: " e.Message)
         TestErrors++
     }
+
+    ; ============================================================
+    ; Process Detection & Kill Reliability Tests (Code Inspection)
+    ; _Launcher_KillProcessByName and _Launcher_IsOtherProcessRunning
+    ; kill/detect processes so they can't be called directly.
+    ; Verify production code uses reliable patterns.
+    ; ============================================================
+    Log("`n--- Process Detection & Kill Reliability Tests ---")
+
+    ; Test: _Launcher_KillProcessByName uses taskkill with PID filter
+    Log("Testing _Launcher_KillProcessByName uses taskkill /F /IM with PID ne...")
+    try {
+        launcherMainPath := A_ScriptDir "\..\src\launcher\launcher_main.ahk"
+        if (FileExist(launcherMainPath)) {
+            code := FileRead(launcherMainPath)
+            hasFuncDef := InStr(code, "_Launcher_KillProcessByName(")
+            hasTaskkill := InStr(code, "taskkill /F /IM")
+            hasPIDFilter := InStr(code, "PID ne")
+            if (hasFuncDef && hasTaskkill && hasPIDFilter) {
+                Log("PASS: _Launcher_KillProcessByName uses taskkill /F /IM with PID ne filter")
+                TestPassed++
+            } else {
+                Log("FAIL: _Launcher_KillProcessByName missing taskkill pattern (func=" hasFuncDef ", taskkill=" hasTaskkill ", pidne=" hasPIDFilter ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: launcher_main.ahk not found")
+        }
+    } catch as e {
+        Log("FAIL: KillProcessByName code inspection error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: _Launcher_IsOtherProcessRunning exists and uses tasklist with PID filter
+    Log("Testing _Launcher_IsOtherProcessRunning uses tasklist /FI with PID ne...")
+    try {
+        launcherMainPath := A_ScriptDir "\..\src\launcher\launcher_main.ahk"
+        if (FileExist(launcherMainPath)) {
+            code := FileRead(launcherMainPath)
+            hasFuncDef := InStr(code, "_Launcher_IsOtherProcessRunning(")
+            hasTasklist := InStr(code, "tasklist /FI")
+            hasPIDFilter := InStr(code, 'PID ne')
+            if (hasFuncDef && hasTasklist && hasPIDFilter) {
+                Log("PASS: _Launcher_IsOtherProcessRunning uses tasklist /FI with PID ne")
+                TestPassed++
+            } else {
+                Log("FAIL: _Launcher_IsOtherProcessRunning missing pattern (func=" hasFuncDef ", tasklist=" hasTasklist ", pidne=" hasPIDFilter ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: launcher_main.ahk not found")
+        }
+    } catch as e {
+        Log("FAIL: IsOtherProcessRunning code inspection error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: _Launcher_OfferToStopInstalledInstance calls _Launcher_IsOtherProcessRunning
+    Log("Testing _Launcher_OfferToStopInstalledInstance uses _Launcher_IsOtherProcessRunning...")
+    try {
+        launcherInstallPath := A_ScriptDir "\..\src\launcher\launcher_install.ahk"
+        if (FileExist(launcherInstallPath)) {
+            code := FileRead(launcherInstallPath)
+            hasFuncDef := InStr(code, "_Launcher_OfferToStopInstalledInstance(")
+            hasNewHelper := InStr(code, "_Launcher_IsOtherProcessRunning(")
+            if (hasFuncDef && hasNewHelper) {
+                Log("PASS: _Launcher_OfferToStopInstalledInstance calls _Launcher_IsOtherProcessRunning")
+                TestPassed++
+            } else {
+                Log("FAIL: _Launcher_OfferToStopInstalledInstance missing helper call (func=" hasFuncDef ", helper=" hasNewHelper ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: launcher_install.ahk not found")
+        }
+    } catch as e {
+        Log("FAIL: OfferToStopInstalledInstance code inspection error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: Wizard "No" path after UAC cancel sets FirstRunCompleted
+    Log("Testing wizard UAC cancel 'No' path sets FirstRunCompleted...")
+    try {
+        wizardPath := A_ScriptDir "\..\src\launcher\launcher_wizard.ahk"
+        if (FileExist(wizardPath)) {
+            code := FileRead(wizardPath)
+            ; Find the "No" block: between 'result = "No"' and 'Exit wizard completely'
+            noPos := InStr(code, 'result = "No"')
+            returnPos := InStr(code, "Exit wizard completely")
+            if (noPos && returnPos && returnPos > noPos) {
+                noBlock := SubStr(code, noPos, returnPos - noPos)
+                hasFirstRun := InStr(noBlock, "FirstRunCompleted")
+                if (hasFirstRun) {
+                    Log("PASS: Wizard 'No' path sets FirstRunCompleted")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Wizard 'No' path missing FirstRunCompleted write")
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: Could not locate wizard 'No' block (noPos=" noPos ", returnPos=" returnPos ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: launcher_wizard.ahk not found")
+        }
+    } catch as e {
+        Log("FAIL: Wizard No path code inspection error: " e.Message)
+        TestErrors++
+    }
 }
