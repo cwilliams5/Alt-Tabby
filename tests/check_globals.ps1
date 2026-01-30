@@ -3,6 +3,16 @@
 # Catches functions that use file-scope globals without a 'global' declaration,
 # which silently become empty strings with #Warn VarUnset, Off.
 #
+# Scans both src/ and tests/ files:
+#   - src/ functions are checked against ALL src/ file-scope globals (cross-file)
+#   - test functions are checked against SAME-FILE globals only (per-file)
+#
+# Test files use per-file scoping because:
+#   1. Test functions access production globals via #Include (compile-time),
+#      not via separate compilation units — no 'global' declaration needed
+#   2. Object literal initializers in test mocks (e.g. { idleStreak: 0 }) would
+#      leak property names into the global set, causing false positives
+#
 # Usage: powershell -File tests\check_globals.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all clear, 1 = undeclared references found
 
@@ -89,16 +99,31 @@ if (-not (Test-Path $SourceDir)) {
 }
 
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
-$files = Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse
-Write-Host "  Scanning $($files.Count) files for undeclared global references..." -ForegroundColor Cyan
+$srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse)
+$testsDir = Join-Path $projectRoot "tests"
+$testFiles = @()
+$testsDirNorm = ""
+if (Test-Path $testsDir) {
+    $testFiles = @(Get-ChildItem -Path $testsDir -Filter "*.ahk" -Recurse)
+    $testsDirNorm = [System.IO.Path]::GetFullPath($testsDir).ToLower().TrimEnd('\') + '\'
+}
+$allFiles = $srcFiles + $testFiles
+Write-Host "  Scanning $($allFiles.Count) files ($($srcFiles.Count) src + $($testFiles.Count) tests) for undeclared global references..." -ForegroundColor Cyan
 
 # ============================================================
-# Pass 1: Collect all file-scope global variable names
+# Pass 1: Collect file-scope global variable names
+#   - src/ globals go into $fileGlobals (shared across all src/ functions)
+#   - test globals go into $testPerFileGlobals (per-file, isolated)
 # ============================================================
 $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
-$fileGlobals = @{}  # globalName -> "relpath:lineNum"
+$fileGlobals = @{}  # globalName -> "relpath:lineNum" (src/ only)
+$testPerFileGlobals = @{}  # filepath -> @{ globalName -> "relpath:lineNum" }
+$testGlobalCount = 0
 
-foreach ($file in $files) {
+foreach ($file in $allFiles) {
+    $isTestFile = $testsDirNorm -and $file.FullName.ToLower().StartsWith($testsDirNorm)
+    $localGlobals = @{}  # per-file collection for test files
+
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $depth = 0
     $inFunc = $false
@@ -131,23 +156,49 @@ foreach ($file in $files) {
         if (-not $inFunc -and $cleaned -match '^\s*global\s+(.+)') {
             $relPath = $file.FullName.Replace("$projectRoot\", '')
             foreach ($gName in (Extract-GlobalNames $Matches[1])) {
-                if (-not $fileGlobals.ContainsKey($gName)) {
-                    $fileGlobals[$gName] = "${relPath}:$($i + 1)"
+                if ($isTestFile) {
+                    if (-not $localGlobals.ContainsKey($gName)) {
+                        $localGlobals[$gName] = "${relPath}:$($i + 1)"
+                    }
+                } else {
+                    if (-not $fileGlobals.ContainsKey($gName)) {
+                        $fileGlobals[$gName] = "${relPath}:$($i + 1)"
+                    }
                 }
             }
         }
+    }
+
+    if ($isTestFile -and $localGlobals.Count -gt 0) {
+        $testPerFileGlobals[$file.FullName] = $localGlobals
+        $testGlobalCount += $localGlobals.Count
     }
 }
 $pass1Sw.Stop()
 
 # ============================================================
 # Pass 2: Check every function for undeclared global references
+#   - src/ functions checked against $fileGlobals (all src/ globals)
+#   - test functions checked against their own file's globals only
 # ============================================================
 $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $issues = [System.Collections.ArrayList]::new()
 $funcCount = 0
 
-foreach ($file in $files) {
+foreach ($file in $allFiles) {
+    $isTestFile = $testsDirNorm -and $file.FullName.ToLower().StartsWith($testsDirNorm)
+
+    # Determine which globals set to check against
+    if ($isTestFile) {
+        if ($testPerFileGlobals.ContainsKey($file.FullName)) {
+            $checkGlobals = $testPerFileGlobals[$file.FullName]
+        } else {
+            continue  # No file-scope globals in this test file — nothing to check
+        }
+    } else {
+        $checkGlobals = $fileGlobals
+    }
+
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
@@ -224,7 +275,7 @@ foreach ($file in $files) {
                 }
 
                 # Check each known global
-                foreach ($gName in $fileGlobals.Keys) {
+                foreach ($gName in $checkGlobals.Keys) {
                     if (-not $tokenSet.ContainsKey($gName)) { continue }
                     if ($funcDeclaredGlobals.ContainsKey($gName)) { continue }
                     if ($funcParams.ContainsKey($gName)) { continue }
@@ -246,7 +297,7 @@ foreach ($file in $files) {
                             Line     = $foundLine.Line
                             Function = $funcName
                             Global   = $gName
-                            Declared = $fileGlobals[$gName]
+                            Declared = $checkGlobals[$gName]
                         })
                     }
                 }
@@ -264,7 +315,7 @@ $totalSw.Stop()
 # Report
 # ============================================================
 $timingLine = "  Timing: pass1=$($pass1Sw.ElapsedMilliseconds)ms  pass2=$($pass2Sw.ElapsedMilliseconds)ms  total=$($totalSw.ElapsedMilliseconds)ms"
-$statsLine  = "  Stats:  $($fileGlobals.Count) globals, $funcCount functions, $($files.Count) files"
+$statsLine  = "  Stats:  $($fileGlobals.Count) src globals, $testGlobalCount test globals (per-file), $funcCount functions, $($allFiles.Count) files"
 
 if ($issues.Count -gt 0) {
     Write-Host ""

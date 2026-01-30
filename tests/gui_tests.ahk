@@ -270,7 +270,7 @@ CreateTestItems(count, currentWSCount := -1) {
 
 ; Simulate a server projection response (for UseCurrentWSProjection=true tests)
 SimulateServerResponse(items) {
-    global gGUI_AwaitingToggleProjection
+    global gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION
     projMsg := JSON.Dump({ type: IPC_MSG_PROJECTION, rev: A_TickCount, payload: { items: items }})
     GUI_OnStoreMessage(projMsg)
 }
@@ -313,6 +313,9 @@ RunGUITests() {
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gGUI_StoreRev, gGUI_ItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith
+    global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_DELTA
+    global IPC_MSG_PROJECTION, IPC_MSG_PROJECTION_REQUEST
+    global gGUI_Base, gGUI_Overlay
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
