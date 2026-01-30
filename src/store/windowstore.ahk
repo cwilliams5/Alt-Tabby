@@ -124,8 +124,9 @@ WindowStore_UpsertWindow(records, source := "") {
         hwnd := rec.Has("hwnd") ? (rec["hwnd"] + 0) : 0
         if (!hwnd)
             continue
-        ; RACE FIX: Wrap check-then-insert in Critical to prevent multiple producers
-        ; from racing on timer/hotkey interruption
+        ; RACE FIX: Wrap check-then-insert AND field updates in Critical to prevent
+        ; multiple producers from interleaving on the same record (timer/hotkey interruption).
+        ; Per-record granularity: Critical wraps one record's processing, not the entire batch.
         Critical "On"
         isNew := !gWS_Store.Has(hwnd)
         if (isNew) {
@@ -133,7 +134,6 @@ WindowStore_UpsertWindow(records, source := "") {
             added += 1
         }
         row := gWS_Store[hwnd]
-        Critical "Off"
 
         ; If window has komorebi workspace data, don't let winenum overwrite state/isCloaked
         ; Komorebi is authoritative for workspace state
@@ -145,22 +145,20 @@ WindowStore_UpsertWindow(records, source := "") {
             for k, v in rec {
                 ; Preserve komorebi workspace state if winenum tries to overwrite
                 if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
-                    continue
+                    continue  ; lint-ignore: critical-section
                 ; Only update if value differs
                 if (!row.HasOwnProp(k) || row.%k% != v) {
                     ; Diagnostic: track which fields trigger changes (skip for new records)
-                    ; Use Critical to prevent race conditions on counter increment
-                    if (!isNew) {
-                        Critical "On"
+                    ; Protected by outer Critical — no inner Critical needed
+                    if (!isNew)
                         gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
-                        Critical "Off"
-                    }
                     row.%k% := v
                     rowChanged := true
                 }
             }
         } else {
-            continue
+            Critical "Off"
+            continue  ; lint-ignore: critical-section
         }
         ; Update presence flags - check for changes
         if (!row.present) {
@@ -174,6 +172,7 @@ WindowStore_UpsertWindow(records, source := "") {
         ; Always update scan tracking (these don't trigger rev bump)
         row.lastSeenScanId := gWS_ScanId
         row.lastSeenTick := A_TickCount
+        Critical "Off"
 
         if (rowChanged)
             updated += 1
@@ -192,9 +191,12 @@ global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId"
 
 WindowStore_UpdateFields(hwnd, patch, source := "") {
     global gWS_Store, gWS_Rev, gWS_InternalFields
+    ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
+    ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
+    Critical "On"
     hwnd := hwnd + 0
     if (!gWS_Store.Has(hwnd))
-        return { changed: false, exists: false, rev: gWS_Rev }
+        return { changed: false, exists: false, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
     row := gWS_Store[hwnd]
     changed := false
     ; Handle both Map and plain object patches
@@ -220,7 +222,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
     if (changed) {
         _WS_BumpRev("UpdateFields:" . source)
     }
-    return { changed: changed, exists: true, rev: gWS_Rev }
+    return { changed: changed, exists: true, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
 }
 
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {

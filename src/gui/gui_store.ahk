@@ -50,12 +50,18 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         isFrozen := cfg.FreezeWindowList
         isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection  ; lint-ignore: isset-with-default
 
+        ; RACE FIX: Enter Critical before checking gGUI_PendingPhase to prevent
+        ; a hotkey from starting async activation between the phase check and
+        ; the array modifications below. Without this, a snapshot could be accepted
+        ; when it should be rejected per the async guard's documented invariant.
+        Critical "On"
+
         if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
             ; Frozen mode and not a toggle response: ignore incoming data
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
-            return
+            return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
         }
 
         ; ============================================================
@@ -75,7 +81,7 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
-            return
+            return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
         }
 
         ; Clear the toggle flag if it was set
@@ -95,13 +101,11 @@ GUI_OnStoreMessage(line, hPipe := 0) {
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
-            return
+            return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
         }
 
         if (obj.Has("payload") && obj["payload"].Has("items")) {
-            ; RACE FIX: Protect array modifications from hotkey interruption
-            ; Hotkeys (Alt/Tab) may access gGUI_Items during state transitions
-            Critical "On"
+            ; Critical already held from above (phase check guard)
             gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
             gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
 
