@@ -237,7 +237,7 @@ if (g_AltTabbyMode = "enable-admin-task") {
 
     ; Warn if admin task would point to a temporary location
     if (!WarnIfTempLocation_AdminTask(exePath, exeDir)) {
-        try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
+        _AdminToggle_WriteResult("cancelled")
         ExitApp()
     }
 
@@ -245,13 +245,11 @@ if (g_AltTabbyMode = "enable-admin-task") {
         cfg.SetupRunAsAdmin := true
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
         RecreateShortcuts()  ; Update to point to schtasks
-        TrayTip("Admin Mode Enabled", "Alt-Tabby will now run with administrator privileges.", "Iconi")
+        _AdminToggle_WriteResult("ok")
     } else {
-        MsgBox("Failed to create scheduled task.", APP_NAME, "Iconx")
+        _AdminToggle_WriteResult("failed")
     }
 
-    ; Delete lock file to signal completion to non-elevated instance
-    try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
     ExitApp()
 }
 

@@ -336,6 +336,52 @@ $CHECKS += @(
     }
 )
 
+# === Interaction Audit: Bug 1 - Exit handler kills subprocesses ===
+$CHECKS += @(
+    @{
+        Id       = "exit_handler_kills_subprocesses"
+        File     = "launcher\launcher_main.ahk"
+        Desc     = "_Launcher_OnExit calls _KillAllSubprocesses before mutex release"
+        Function = "_Launcher_OnExit"
+        Patterns = @("_KillAllSubprocesses()")
+    }
+)
+
+# === Interaction Audit: Bug 2 - Admin toggle result protocol ===
+$CHECKS += @(
+    @{
+        Id       = "admin_toggle_write_result_exists"
+        File     = "shared\setup_utils.ahk"
+        Desc     = "_AdminToggle_WriteResult helper exists in setup_utils.ahk"
+        Patterns = @("_AdminToggle_WriteResult(result)", "TEMP_ADMIN_TOGGLE_LOCK")
+    },
+    @{
+        Id       = "admin_toggle_handler_uses_write_result"
+        File     = "alt_tabby.ahk"
+        Desc     = "enable-admin-task handler uses _AdminToggle_WriteResult (not FileDelete)"
+        Patterns = @('_AdminToggle_WriteResult("ok")', '_AdminToggle_WriteResult("cancelled")', '_AdminToggle_WriteResult("failed")')
+        NotPresent = @("FileDelete(TEMP_ADMIN_TOGGLE_LOCK)")
+    },
+    @{
+        Id       = "admin_toggle_check_reads_content"
+        File     = "launcher\launcher_tray.ahk"
+        Desc     = "_AdminToggle_CheckComplete reads file content for result"
+        Function = "_AdminToggle_CheckComplete"
+        Patterns = @("FileRead(TEMP_ADMIN_TOGGLE_LOCK)", "IsNumber(content)")
+    }
+)
+
+# === Interaction Audit: Bug 3 - Stale RunAsAdmin config sync ===
+$CHECKS += @(
+    @{
+        Id       = "stale_admin_config_sync"
+        File     = "launcher\launcher_main.ahk"
+        Desc     = "_ShouldRedirectToScheduledTask syncs stale RunAsAdmin when task deleted"
+        Regex    = $true
+        Patterns = @("!AdminTaskExists\(\)\)\s*\{[\s\S]*?cfg\.SetupRunAsAdmin\s*:=\s*false")
+    }
+)
+
 # === Run checks ===
 
 $passed = 0

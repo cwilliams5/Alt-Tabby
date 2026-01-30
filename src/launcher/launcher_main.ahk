@@ -174,6 +174,7 @@ Launcher_Init() {
 _Launcher_OnExit(exitReason, exitCode) {
     global g_LauncherMutex
     try HideSplashScreen()
+    try _KillAllSubprocesses()
     if (g_LauncherMutex) {
         try DllCall("CloseHandle", "ptr", g_LauncherMutex)
         g_LauncherMutex := 0
@@ -204,6 +205,11 @@ _ShouldRedirectToScheduledTask() {
 
     ; Check if task exists
     if (!AdminTaskExists()) {
+        if (cfg.SetupRunAsAdmin) {
+            cfg.SetupRunAsAdmin := false
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+            _Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
+        }
         _Launcher_Log("TASK_REDIRECT: skip (no task exists)")
         return false
     }

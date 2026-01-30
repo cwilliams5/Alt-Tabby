@@ -154,6 +154,16 @@ _Launcher_RunAsAdmin(args) {
     }
 }
 
+; Write result to admin toggle lock file for the non-elevated instance to read.
+; Valid results: "ok", "cancelled", "failed"
+_AdminToggle_WriteResult(result) {
+    global TEMP_ADMIN_TOGGLE_LOCK
+    try {
+        try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
+        FileAppend(result, TEMP_ADMIN_TOGGLE_LOCK)
+    }
+}
+
 ; ============================================================
 ; TASK SCHEDULER (ADMIN MODE)
 ; ============================================================
