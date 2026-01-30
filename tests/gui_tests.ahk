@@ -1272,6 +1272,64 @@ RunGUITests() {
     GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload all: workspace updated")
     GUI_AssertEq(gGUI_Sel, 5, "WSPayload all: selection NOT reset")
 
+    ; ============================================================
+    ; GUI_MoveSelectionFrozen DIRECT TESTS
+    ; ============================================================
+
+    ; ----- Test: MoveSelectionFrozen empty list is no-op -----
+    GUI_Log("Test: MoveSelectionFrozen empty list is no-op")
+    ResetGUIState()
+    gGUI_FrozenItems := []
+    gGUI_Sel := 1
+    GUI_MoveSelectionFrozen(1)
+    GUI_AssertEq(gGUI_Sel, 1, "MoveSelectionFrozen: empty list is no-op")
+
+    ; ----- Test: MoveSelectionFrozen forward wrap last->first -----
+    GUI_Log("Test: MoveSelectionFrozen forward wrap")
+    ResetGUIState()
+    gGUI_FrozenItems := CreateTestItems(5)
+    gGUI_Sel := 5
+    GUI_MoveSelectionFrozen(1)
+    GUI_AssertEq(gGUI_Sel, 1, "MoveSelectionFrozen: forward wrap last->first")
+
+    ; ----- Test: MoveSelectionFrozen backward wrap first->last -----
+    GUI_Log("Test: MoveSelectionFrozen backward wrap")
+    ResetGUIState()
+    gGUI_FrozenItems := CreateTestItems(5)
+    gGUI_Sel := 1
+    GUI_MoveSelectionFrozen(-1)
+    GUI_AssertEq(gGUI_Sel, 5, "MoveSelectionFrozen: backward wrap first->last")
+
+    ; ============================================================
+    ; ESC DURING ASYNC ACTIVATION TEST
+    ; ============================================================
+
+    ; ----- Test: ESC during async activation cancels and clears state -----
+    GUI_Log("Test: ESC during async activation")
+    ResetGUIState()
+    gGUI_Items := CreateTestItems(5)
+    gGUI_PendingPhase := "polling"
+    gGUI_State := "ACTIVE"
+    gGUI_EventBuffer := [{ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0}]
+
+    GUI_OnInterceptorEvent(TABBY_EV_ESCAPE, 0, 0)
+
+    GUI_AssertEq(gGUI_State, "IDLE", "ESC during async: state is IDLE")
+    GUI_AssertEq(gGUI_PendingPhase, "", "ESC during async: pending phase cleared")
+    GUI_AssertEq(gGUI_EventBuffer.Length, 0, "ESC during async: buffer cleared")
+
+    ; ============================================================
+    ; EMPTY EVENT BUFFER → RESYNC TEST
+    ; ============================================================
+
+    ; ----- Test: Empty buffer triggers resync (no events to process) -----
+    GUI_Log("Test: Empty buffer triggers resync")
+    ResetGUIState()
+    gGUI_PendingPhase := "flushing"
+    gGUI_EventBuffer := []
+    _GUI_ProcessEventBuffer()
+    GUI_AssertEq(gGUI_PendingPhase, "", "Empty buffer: pending phase cleared")
+
     ; ----- Summary -----
     GUI_Log("`n=== GUI Test Summary ===")
     GUI_Log("Passed: " GUI_TestPassed)

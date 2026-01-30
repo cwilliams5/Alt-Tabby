@@ -1013,7 +1013,7 @@ RunUnitTests_Core() {
         hwnd: 12345, title: "Original", class: "TestClass", pid: 100, z: 1,
         isFocused: false, workspaceName: "Main", isCloaked: false,
         isMinimized: false, isOnCurrentWorkspace: true, processName: "test.exe",
-        iconHicon: 0
+        iconHicon: 0, lastActivatedTick: 100
     }
 
     ; Fields that SHOULD trigger delta (from BuildDelta code)
@@ -1039,8 +1039,11 @@ RunUnitTests_Core() {
         AssertEq(delta.upserts.Length, 1, "Field '" test.field "' triggers delta")
     }
 
-    ; Fields that should NOT trigger delta (class is not in comparison list)
-    noTriggerTests := [{field: "class", newVal: "OtherClass"}]
+    ; Fields that should NOT trigger delta (class and lastActivatedTick are not in comparison list)
+    noTriggerTests := [
+        {field: "class", newVal: "OtherClass"},
+        {field: "lastActivatedTick", newVal: A_TickCount + 99999}
+    ]
     for _, test in noTriggerTests {
         changedItem := {}
         for k in baseItem.OwnProps()
@@ -1059,6 +1062,11 @@ RunUnitTests_Core() {
     ; Removed window creates remove
     delta := WindowStore_BuildDelta([baseItem], [])
     AssertEq(delta.removes.Length, 1, "Removed window triggers remove")
+
+    ; Both arrays empty
+    delta := WindowStore_BuildDelta([], [])
+    AssertEq(delta.upserts.Length, 0, "Both empty: no upserts")
+    AssertEq(delta.removes.Length, 0, "Both empty: no removes")
 
     ; Test: WindowStore_SetCurrentWorkspace updates all windows
     Log("Testing SetCurrentWorkspace consistency...")
@@ -1093,6 +1101,11 @@ RunUnitTests_Core() {
     WindowStore_SetCurrentWorkspace("", "Other")
     AssertEq(gWS_Store[1001].isOnCurrentWorkspace, false, "Main now NOT current")
     AssertEq(gWS_Store[1002].isOnCurrentWorkspace, true, "Other now current")
+
+    ; Same-name no-op (no rev bump)
+    revBefore := WindowStore_GetRev()
+    WindowStore_SetCurrentWorkspace("", "Other")  ; Same name as currently set
+    AssertEq(WindowStore_GetRev(), revBefore, "SetCurrentWorkspace same name: no-op")
 
     ; Cleanup
     WindowStore_RemoveWindow([1001, 1002, 1003], true)

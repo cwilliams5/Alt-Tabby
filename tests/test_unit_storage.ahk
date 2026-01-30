@@ -560,4 +560,57 @@ RunUnitTests_Storage() {
 
     ; Clean up
     WindowStore_RemoveWindow([upgradeHwnd], true)
+
+    ; ============================================================
+    ; ExeIconCachePut FIFO Eviction Tests
+    ; ============================================================
+    Log("`n--- ExeIconCachePut FIFO Eviction Tests ---")
+
+    ; Use fake HICON values (DestroyIcon silently fails for invalid handles)
+    ; Override cfg.ExeIconCacheMax to 3 for testing
+    global gWS_ExeIconCache
+    savedCache := gWS_ExeIconCache
+    savedMax := cfg.HasOwnProp("ExeIconCacheMax") ? cfg.ExeIconCacheMax : 100
+    gWS_ExeIconCache := Map()
+    cfg.ExeIconCacheMax := 3
+
+    WindowStore_ExeIconCachePut("a.exe", 1001)
+    WindowStore_ExeIconCachePut("b.exe", 1002)
+    WindowStore_ExeIconCachePut("c.exe", 1003)
+    if (gWS_ExeIconCache.Count = 3) {
+        Log("PASS: ExeIconCache: 3 entries at max")
+        TestPassed++
+    } else {
+        Log("FAIL: ExeIconCache: expected 3 at max, got " gWS_ExeIconCache.Count)
+        TestErrors++
+    }
+
+    WindowStore_ExeIconCachePut("d.exe", 1004)
+    if (gWS_ExeIconCache.Count = 3) {
+        Log("PASS: ExeIconCache: still 3 after eviction")
+        TestPassed++
+    } else {
+        Log("FAIL: ExeIconCache: expected 3 after eviction, got " gWS_ExeIconCache.Count)
+        TestErrors++
+    }
+
+    if (!gWS_ExeIconCache.Has("a.exe")) {
+        Log("PASS: ExeIconCache FIFO: first entry (a.exe) evicted")
+        TestPassed++
+    } else {
+        Log("FAIL: ExeIconCache FIFO: a.exe should have been evicted")
+        TestErrors++
+    }
+
+    if (gWS_ExeIconCache.Has("d.exe")) {
+        Log("PASS: ExeIconCache FIFO: newest entry (d.exe) present")
+        TestPassed++
+    } else {
+        Log("FAIL: ExeIconCache FIFO: d.exe should be present")
+        TestErrors++
+    }
+
+    ; Restore original state
+    gWS_ExeIconCache := savedCache
+    cfg.ExeIconCacheMax := savedMax
 }
