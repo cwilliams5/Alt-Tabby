@@ -85,7 +85,6 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
     rec["class"] := class
     rec["pid"] := pid
     rec["z"] := zOrder
-    rec["altTabEligible"] := true  ; Caller ensures eligibility if needed
     rec["isCloaked"] := isCloaked
     rec["isMinimized"] := isMin
     rec["isVisible"] := isVisible

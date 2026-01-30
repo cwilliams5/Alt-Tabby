@@ -523,7 +523,6 @@ _WS_NewRecord(hwnd) {
         missingSinceTick: 0,
         lastSeenScanId: 0,
         lastSeenTick: 0,
-        altTabEligible: true,
         isCloaked: false,
         isMinimized: false,
         isVisible: false,

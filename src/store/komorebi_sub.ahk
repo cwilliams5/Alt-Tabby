@@ -883,7 +883,6 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
             rec["class"] := class
             rec["pid"] := _KSub_GetWindowPid(hwnd)
             rec["z"] := 9999  ; Put at end of z-order
-            rec["altTabEligible"] := true  ; Komorebi windows are eligible
             rec["isCloaked"] := !info.isCurrent  ; Not on current workspace = cloaked
             rec["isMinimized"] := false
             rec["isVisible"] := info.isCurrent
