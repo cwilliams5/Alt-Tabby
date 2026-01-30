@@ -184,8 +184,14 @@ GUI_OnStoreMessage(line, hPipe := 0) {
 
             ; If in ACTIVE state with FreezeWindowList=false, update live display
             if (gGUI_State = "ACTIVE" && !isFrozen) {
+                ; RACE FIX: Wrap both assignments in Critical so a hotkey (Tab, Ctrl)
+                ; can't interrupt between them and see new AllItems with old FrozenItems.
+                ; Consistent with the snapshot path (lines 104-147) which already uses Critical.
+                ; Release before repaint is safe: frozen items are already populated.
+                Critical "On"
                 gGUI_AllItems := gGUI_Items
                 gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+                Critical "Off"
                 ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
                 if (gGUI_OverlayVisible && gGUI_OverlayH) {
                     ; Only repaint if visible items were affected.

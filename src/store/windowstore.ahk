@@ -354,7 +354,9 @@ WindowStore_PurgeBlacklisted() {
         }
     }
 
-    ; Remove them
+    ; RACE FIX: Wrap deletes + rev bump in Critical to prevent IPC requests
+    ; from seeing deleted entries with stale rev (consistent with ValidateExistence)
+    Critical "On"
     for _, hwnd in toRemove {
         ; Clean up icon pump tracking state before deleting (prevents HICON leak)
         try IconPump_CleanupWindow(hwnd)
@@ -365,8 +367,7 @@ WindowStore_PurgeBlacklisted() {
     if (removed) {
         _WS_BumpRev("PurgeBlacklisted")
     }
-
-    return { removed: removed, rev: gWS_Rev }
+    return { removed: removed, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
 }
 
 WindowStore_GetRev() {
@@ -419,18 +420,21 @@ WindowStore_GetByHwnd(hwnd) {
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
     global gWS_Meta, gWS_Rev, gWS_Store
+    ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
+    ; and the iteration loop must be atomic so a timer can't observe stale meta values
+    ; between the name comparison (line below) and the name write.
+    ; _WS_BumpRev has its own internal Critical; nesting is fine in AHK v2.
+    Critical "On"
     ; Always update meta (lightweight, no rev bump)
     gWS_Meta["currentWSId"] := id
 
     ; Only recalculate window state if workspace NAME changed
     ; ID is metadata only — GUI cares about name for filtering
     if (gWS_Meta["currentWSName"] = name)
-        return
+        return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
 
     gWS_Meta["currentWSName"] := name
 
-    ; RACE FIX: Wrap iteration in Critical to prevent timer/hotkey interruption
-    Critical "On"
     ; Update isOnCurrentWorkspace for all windows based on new workspace
     ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
     anyFlipped := false
@@ -441,7 +445,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
             anyFlipped := true
         }
     }
-    Critical "Off"
+    ; Critical auto-released on return
     ; Only bump rev if at least one window's state actually changed
     if (anyFlipped)
         _WS_BumpRev("SetCurrentWorkspace")

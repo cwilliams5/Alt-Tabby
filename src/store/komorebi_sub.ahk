@@ -664,9 +664,14 @@ _KSub_ScheduleCloakPush() {
         return
     }
 
+    ; RACE FIX: Wrap check-then-set in Critical to prevent a timer interrupt
+    ; between the guard check and the flag assignment (which would orphan a Bind()
+    ; reference and schedule a duplicate push timer)
+    Critical "On"
+
     ; Already scheduled — nothing to do, new cloaks batch into same push
     if (_KSub_CloakPushPending)
-        return
+        return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
 
     _KSub_CloakPushPending := true
     _KSub_CloakBatchTimerFn := _KSub_FlushCloakBatch.Bind()
