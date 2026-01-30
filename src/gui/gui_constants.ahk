@@ -36,3 +36,4 @@ global PAINT_COL_Y_DIP := 10
 global PAINT_COL_H_DIP := 20
 global PAINT_ARROW_W_DIP := 24
 global PAINT_ARROW_PAD_DIP := 8
+global PAINT_TEXT_RIGHT_PAD_DIP := 16

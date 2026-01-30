@@ -209,6 +209,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_HDR_Y_DIP, PAINT_TITLE_Y_DIP, PAINT_TITLE_H_DIP
     global PAINT_SUB_Y_DIP, PAINT_SUB_H_DIP, PAINT_COL_Y_DIP, PAINT_COL_H_DIP
+    global PAINT_TEXT_RIGHT_PAD_DIP
 
     ; ===== TIMING: EnsureResources =====
     tPO_Start := A_TickCount
@@ -247,42 +248,27 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     leftX := Mx + iconLeftDip
     textX := leftX + ISize + gapText
 
-    ; Right columns
+    ; Right columns (data-driven: widthProp, nameProp, dataKey)
+    ; static: allocated once per process, not per-paint (hot-path rule)
+    static colDefs := [
+        ["GUI_ColFixed6", "GUI_Col6Name", "Col6"],
+        ["GUI_ColFixed5", "GUI_Col5Name", "Col5"],
+        ["GUI_ColFixed4", "GUI_Col4Name", "WS"],
+        ["GUI_ColFixed3", "GUI_Col3Name", "PID"],
+        ["GUI_ColFixed2", "GUI_Col2Name", "hwndHex"]
+    ]
     cols := []
-    Col6W := Round(cfg.GUI_ColFixed6 * scale)
-    Col5W := Round(cfg.GUI_ColFixed5 * scale)
-    Col4W := Round(cfg.GUI_ColFixed4 * scale)
-    Col3W := Round(cfg.GUI_ColFixed3 * scale)
-    Col2W := Round(cfg.GUI_ColFixed2 * scale)
-
     rightX := wPhys - Mx
-    if (Col6W > 0) {
-        cx := rightX - Col6W
-        cols.Push({name: cfg.GUI_Col6Name, w: Col6W, key: "Col6", x: cx})
-        rightX := cx - gapCols
-    }
-    if (Col5W > 0) {
-        cx := rightX - Col5W
-        cols.Push({name: cfg.GUI_Col5Name, w: Col5W, key: "Col5", x: cx})
-        rightX := cx - gapCols
-    }
-    if (Col4W > 0) {
-        cx := rightX - Col4W
-        cols.Push({name: cfg.GUI_Col4Name, w: Col4W, key: "WS", x: cx})
-        rightX := cx - gapCols
-    }
-    if (Col3W > 0) {
-        cx := rightX - Col3W
-        cols.Push({name: cfg.GUI_Col3Name, w: Col3W, key: "PID", x: cx})
-        rightX := cx - gapCols
-    }
-    if (Col2W > 0) {
-        cx := rightX - Col2W
-        cols.Push({name: cfg.GUI_Col2Name, w: Col2W, key: "hwndHex", x: cx})
-        rightX := cx - gapCols
+    for _, def in colDefs {
+        colW := Round(cfg.%def[1]% * scale)
+        if (colW > 0) {
+            cx := rightX - colW
+            cols.Push({name: cfg.%def[2]%, w: colW, key: def[3], x: cx})
+            rightX := cx - gapCols
+        }
     }
 
-    textW := (rightX - Round(16 * scale)) - textX
+    textW := (rightX - Round(PAINT_TEXT_RIGHT_PAD_DIP * scale)) - textX
     if (textW < 0) {
         textW := 0
     }

@@ -464,23 +464,28 @@ RunUnitTests_Setup() {
     ; ============================================================
     Log("`n--- Exe Name Deduplication Tests ---")
 
-    Log("Testing _Update_KillOtherProcesses uses case-insensitive dedup...")
+    Log("Testing exe name dedup via ProcessUtils_BuildExeNameList...")
     try {
+        ; Dedup logic now lives in ProcessUtils_BuildExeNameList (process_utils.ahk)
+        ; _Update_KillOtherProcesses delegates to it
+        procUtilsPath := A_ScriptDir "\..\src\shared\process_utils.ahk"
         setupPath := A_ScriptDir "\..\src\shared\setup_utils.ahk"
-        if (FileExist(setupPath)) {
-            code := FileRead(setupPath)
-            hasFuncDef := InStr(code, "_Update_KillOtherProcesses(")
-            hasStrLower := InStr(code, "StrLower(")
-            hasSeenMap := InStr(code, "seenNames.Has(") || InStr(code, "seenNames[")
-            if (hasFuncDef && hasStrLower && hasSeenMap) {
-                Log("PASS: _Update_KillOtherProcesses uses StrLower + seenNames dedup")
+        if (FileExist(procUtilsPath) && FileExist(setupPath)) {
+            puCode := FileRead(procUtilsPath)
+            suCode := FileRead(setupPath)
+            hasSharedFunc := InStr(puCode, "ProcessUtils_BuildExeNameList(")
+            hasStrLower := InStr(puCode, "StrLower(")
+            hasSeenMap := InStr(puCode, "seenNames.Has(") || InStr(puCode, "seenNames[")
+            hasDelegation := InStr(suCode, "ProcessUtils_BuildExeNameList(")
+            if (hasSharedFunc && hasStrLower && hasSeenMap && hasDelegation) {
+                Log("PASS: ProcessUtils_BuildExeNameList uses StrLower + seenNames dedup, _Update_KillOtherProcesses delegates to it")
                 TestPassed++
             } else {
-                Log("FAIL: _Update_KillOtherProcesses missing dedup pattern (func=" hasFuncDef ", lower=" hasStrLower ", map=" hasSeenMap ")")
+                Log("FAIL: exe name dedup pattern missing (shared=" hasSharedFunc ", lower=" hasStrLower ", map=" hasSeenMap ", delegation=" hasDelegation ")")
                 TestErrors++
             }
         } else {
-            Log("SKIP: setup_utils.ahk not found")
+            Log("SKIP: process_utils.ahk or setup_utils.ahk not found")
         }
     } catch as e {
         Log("FAIL: Dedup code inspection error: " e.Message)

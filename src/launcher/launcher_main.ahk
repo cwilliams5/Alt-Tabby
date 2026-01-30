@@ -490,35 +490,7 @@ _Launcher_KillProcessByName(exeName, maxAttempts := 10, sleepMs := 0) {
 ;   1. Current exe name (from A_ScriptFullPath)
 ;   2. Exe name from cfg.SetupExePath (installed location, may differ)
 _Launcher_KillExistingInstances() {
-    global cfg
-
-    ; Build list of exe names to kill (avoid duplicates, case-insensitive)
-    exeNames := []
-    seenNames := Map()  ; Track seen names for deduplication
-
-    ; 1. Current exe name
-    currentName := ""
-    SplitPath(A_ScriptFullPath, &currentName)
-    if (currentName != "") {
-        exeNames.Push(currentName)
-        seenNames[StrLower(currentName)] := true
-    }
-
-    ; 2. Configured install path exe name (may be different if user renamed)
-    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {  ; lint-ignore: isset-with-default
-        configName := ""
-        SplitPath(cfg.SetupExePath, &configName)
-        if (configName != "") {
-            lowerConfig := StrLower(configName)
-            if (!seenNames.Has(lowerConfig)) {
-                exeNames.Push(configName)
-                seenNames[lowerConfig] := true
-            }
-        }
-    }
-
-    ; Kill all matching processes (except ourselves)
-    for exeName in exeNames {
+    for exeName in ProcessUtils_BuildExeNameList() {
         _Launcher_KillProcessByName(exeName)
     }
 }

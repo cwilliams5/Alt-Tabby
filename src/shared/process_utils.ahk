@@ -7,8 +7,11 @@
 ;   - Process path resolution from PID
 ; ============================================================
 
-; Windows API constant
+; Windows API constants
 global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000
+global STARTF_USESHOWWINDOW := 0x01
+global STARTF_FORCEOFFFEEDBACK := 0x80
+global CREATE_NO_WINDOW := 0x08000000
 
 ; Get full process path from PID
 ; Parameters:
@@ -55,6 +58,54 @@ ProcessUtils_Basename(path) {
 }
 
 ; ============================================================
+; Exe Name List Builder
+; ============================================================
+; Builds a deduped array of exe names from:
+;   1. Current exe (A_ScriptFullPath)
+;   2. Optional target exe name (e.g., from update target path)
+;   3. cfg.SetupExePath (installed location, may differ if user renamed)
+; Used by _Launcher_KillExistingInstances and _Update_KillOtherProcesses.
+
+ProcessUtils_BuildExeNameList(targetExeName := "") {
+    global cfg
+
+    exeNames := []
+    seenNames := Map()
+
+    ; 1. Current exe name
+    currentName := ""
+    SplitPath(A_ScriptFullPath, &currentName)
+    if (currentName != "") {
+        exeNames.Push(currentName)
+        seenNames[StrLower(currentName)] := true
+    }
+
+    ; 2. Target exe name (for updates, passed by caller)
+    if (targetExeName != "") {
+        lowerTarget := StrLower(targetExeName)
+        if (!seenNames.Has(lowerTarget)) {
+            exeNames.Push(targetExeName)
+            seenNames[lowerTarget] := true
+        }
+    }
+
+    ; 3. Configured install path exe name (may be different if user renamed)
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {  ; lint-ignore: isset-with-default
+        configName := ""
+        SplitPath(cfg.SetupExePath, &configName)
+        if (configName != "") {
+            lowerConfig := StrLower(configName)
+            if (!seenNames.Has(lowerConfig)) {
+                exeNames.Push(configName)
+                seenNames[lowerConfig] := true
+            }
+        }
+    }
+
+    return exeNames
+}
+
+; ============================================================
 ; Cursor Feedback Suppression Helpers
 ; ============================================================
 ; During test runs, Windows shows "app starting" cursor (hourglass+pointer)
@@ -71,9 +122,10 @@ _PU_IsTestMode() {
 ; Run a command hidden (no window). Suppresses cursor feedback in test mode.
 ; Returns PID (0 on failure).
 ProcessUtils_RunHidden(cmdLine) {
+    global STARTF_USESHOWWINDOW, STARTF_FORCEOFFFEEDBACK, CREATE_NO_WINDOW
     if (_PU_IsTestMode()) {
         pid := 0
-        _PU_CreateProcess(cmdLine, 0x81, 0x08000000, &pid)
+        _PU_CreateProcess(cmdLine, STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK, CREATE_NO_WINDOW, &pid)
         return pid
     }
     try return Run(cmdLine, , "Hide")
@@ -83,8 +135,9 @@ ProcessUtils_RunHidden(cmdLine) {
 ; RunWait a command hidden. Suppresses cursor feedback in test mode.
 ; Returns exit code (-1 on failure).
 ProcessUtils_RunWaitHidden(cmdLine, workDir := "") {
+    global STARTF_USESHOWWINDOW, STARTF_FORCEOFFFEEDBACK, CREATE_NO_WINDOW
     if (_PU_IsTestMode())
-        return _PU_CreateProcessWait(cmdLine, 0x81, 0x08000000, workDir)
+        return _PU_CreateProcessWait(cmdLine, STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK, CREATE_NO_WINDOW, workDir)
     try return RunWait(cmdLine, workDir != "" ? workDir : unset, "Hide")
     return -1
 }
@@ -92,9 +145,10 @@ ProcessUtils_RunWaitHidden(cmdLine, workDir := "") {
 ; Run a command (visible). Suppresses cursor feedback in test mode.
 ; Sets &outPid to new process ID. Returns PID (0 on failure).
 ProcessUtils_Run(cmdLine, &outPid := 0) {
+    global STARTF_FORCEOFFFEEDBACK
     outPid := 0
     if (_PU_IsTestMode()) {
-        _PU_CreateProcess(cmdLine, 0x80, 0, &outPid)
+        _PU_CreateProcess(cmdLine, STARTF_FORCEOFFFEEDBACK, 0, &outPid)
         return outPid
     }
     try Run(cmdLine, , , &outPid)

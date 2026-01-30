@@ -253,15 +253,14 @@ AdminTaskExists(taskNameOverride := "") {
     return (result = 0)  ; 0 = task exists
 }
 
-; Extract command path from existing scheduled task XML
-; Returns empty string if task doesn't exist or can't be parsed
-_AdminTask_GetCommandPath(taskNameOverride := "") {
+; Fetch raw XML from a scheduled task via schtasks /query /xml
+; Returns XML string or "" on failure. Handles temp file creation/cleanup.
+_AdminTask_FetchXML(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
     taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
     tempFile := A_Temp "\alttabby_task_query.xml"
     try FileDelete(tempFile)
 
-    ; Export task to XML (schtasks /xml outputs to stdout, redirect to file)
     result := RunWait('cmd.exe /c schtasks /query /tn "' taskName '" /xml > "' tempFile '"',, "Hide")
     if (result != 0 || !FileExist(tempFile))
         return ""
@@ -269,34 +268,30 @@ _AdminTask_GetCommandPath(taskNameOverride := "") {
     try {
         xml := FileRead(tempFile, "UTF-8")
         FileDelete(tempFile)
-
-        ; Extract: <Command>"path"</Command> or <Command>path</Command>
-        if (RegExMatch(xml, '<Command>"?([^"<]+)"?</Command>', &match))
-            return match[1]
+        return xml
     }
+    return ""
+}
+
+; Extract command path from existing scheduled task XML
+; Returns empty string if task doesn't exist or can't be parsed
+_AdminTask_GetCommandPath(taskNameOverride := "") {
+    xml := _AdminTask_FetchXML(taskNameOverride)
+    if (xml = "")
+        return ""
+    if (RegExMatch(xml, '<Command>"?([^"<]+)"?</Command>', &match))
+        return match[1]
     return ""
 }
 
 ; Extract InstallationId from task description
 ; Returns empty string if task doesn't exist or has no ID
 _AdminTask_GetInstallationId() {
-    global ALTTABBY_TASK_NAME
-    tempFile := A_Temp "\alttabby_task_query.xml"
-    try FileDelete(tempFile)
-
-    ; Export task to XML
-    result := RunWait('cmd.exe /c schtasks /query /tn "' ALTTABBY_TASK_NAME '" /xml > "' tempFile '"',, "Hide")
-    if (result != 0 || !FileExist(tempFile))
+    xml := _AdminTask_FetchXML()
+    if (xml = "")
         return ""
-
-    try {
-        xml := FileRead(tempFile, "UTF-8")
-        FileDelete(tempFile)
-
-        ; Extract: <Description>Alt-Tabby Admin Task [ID:XXXXXXXX]</Description>
-        if (RegExMatch(xml, '\[ID:([A-Fa-f0-9]{8})\]', &match))
-            return match[1]
-    }
+    if (RegExMatch(xml, '\[ID:([A-Fa-f0-9]{8})\]', &match))
+        return match[1]
     return ""
 }
 
@@ -563,42 +558,10 @@ _Update_NeedsElevation(targetDir) {
 ;   2. Target exe name (passed as parameter, for updates)
 ;   3. Exe name from cfg.SetupExePath (installed location, may differ)
 _Update_KillOtherProcesses(targetExeName := "") {
-    global cfg, TIMING_SETUP_SETTLE, TIMING_SETUP_RETRY_WAIT
+    global TIMING_SETUP_SETTLE, TIMING_SETUP_RETRY_WAIT
     myPID := ProcessExist()  ; Get our own PID
 
-    ; Build list of exe names to kill (avoid duplicates, case-insensitive)
-    exeNames := []
-    seenNames := Map()  ; Track seen names for deduplication
-
-    ; 1. Current exe name
-    currentName := ""
-    SplitPath(A_ScriptFullPath, &currentName)
-    if (currentName != "") {
-        exeNames.Push(currentName)
-        seenNames[StrLower(currentName)] := true
-    }
-
-    ; 2. Target exe name (for updates, passed by caller)
-    if (targetExeName != "") {
-        lowerTarget := StrLower(targetExeName)
-        if (!seenNames.Has(lowerTarget)) {
-            exeNames.Push(targetExeName)
-            seenNames[lowerTarget] := true
-        }
-    }
-
-    ; 3. Configured install path exe name (may be different if user renamed)
-    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {  ; lint-ignore: isset-with-default
-        configName := ""
-        SplitPath(cfg.SetupExePath, &configName)
-        if (configName != "") {
-            lowerConfig := StrLower(configName)
-            if (!seenNames.Has(lowerConfig)) {
-                exeNames.Push(configName)
-                seenNames[lowerConfig] := true
-            }
-        }
-    }
+    exeNames := ProcessUtils_BuildExeNameList(targetExeName)
 
     ; Kill all matching processes (except ourselves)
     ; Use taskkill for reliable multi-process termination, excluding our own PID
@@ -876,50 +839,43 @@ _Update_ValidatePEFile(filePath) {
         if (fileSize < PE_MIN_SIZE || fileSize > PE_MAX_SIZE)
             return false
 
+        ; Read DOS header + PE signature in one session, then close immediately.
+        ; Single close point eliminates handle leak risk on early-return paths.
         f := FileOpen(filePath, "r")
         if (!f)
             return false
 
-        ; Read DOS header (64 bytes) - contains MZ magic and e_lfanew offset
         buf := Buffer(64)
-        bytesRead := f.RawRead(buf, 64)
-        if (bytesRead < 64) {
-            f.Close()
-            return false
-        }
+        dosRead := f.RawRead(buf, 64)
 
-        ; Check MZ magic bytes at offset 0
-        byte1 := NumGet(buf, 0, "UChar")
-        byte2 := NumGet(buf, 1, "UChar")
-        if (byte1 != PE_MZ_MAGIC_1 || byte2 != PE_MZ_MAGIC_2) {
-            f.Close()
-            return false
-        }
-
-        ; Get e_lfanew (offset to PE header) at offset 0x3C (60)
-        ; This should be a reasonable offset (typically 64-1024)
-        e_lfanew := NumGet(buf, 0x3C, "UInt")
-        if (e_lfanew < 64 || e_lfanew > 1024) {
-            f.Close()
-            return false
-        }
-
-        ; Seek to PE header and read PE signature
-        f.Seek(e_lfanew)
+        ; Read PE signature only if DOS header looks valid enough to contain e_lfanew
         peBuf := Buffer(4)
-        bytesRead := f.RawRead(peBuf, 4)
+        peRead := 0
+        e_lfanew := 0
+        if (dosRead >= 64) {
+            e_lfanew := NumGet(buf, 0x3C, "UInt")
+            if (e_lfanew >= 64 && e_lfanew <= 1024) {
+                f.Seek(e_lfanew)
+                peRead := f.RawRead(peBuf, 4)
+            }
+        }
         f.Close()
 
-        if (bytesRead < 4)
+        ; Validate DOS header
+        if (dosRead < 64)
+            return false
+        if (NumGet(buf, 0, "UChar") != PE_MZ_MAGIC_1 || NumGet(buf, 1, "UChar") != PE_MZ_MAGIC_2)
+            return false
+        if (e_lfanew < 64 || e_lfanew > 1024)
             return false
 
-        ; PE signature: 'P' 'E' 0x00 0x00
-        pe1 := NumGet(peBuf, 0, "UChar")
-        pe2 := NumGet(peBuf, 1, "UChar")
-        pe3 := NumGet(peBuf, 2, "UChar")
-        pe4 := NumGet(peBuf, 3, "UChar")
-
-        return (pe1 = PE_SIG_1 && pe2 = PE_SIG_2 && pe3 = 0 && pe4 = 0)
+        ; Validate PE signature: 'P' 'E' 0x00 0x00
+        if (peRead < 4)
+            return false
+        return (NumGet(peBuf, 0, "UChar") = PE_SIG_1
+            && NumGet(peBuf, 1, "UChar") = PE_SIG_2
+            && NumGet(peBuf, 2, "UChar") = 0
+            && NumGet(peBuf, 3, "UChar") = 0)
     } catch {
         return false
     }

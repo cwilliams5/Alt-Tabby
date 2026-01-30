@@ -578,6 +578,8 @@ _IPC_SetServerTick(server, ms) {
 
 _IPC_Client_AdjustTimer(client, activityBytes) {
     global IPC_TICK_ACTIVE, IPC_TICK_IDLE
+    global IPC_COOLDOWN_PHASE1_TICKS, IPC_COOLDOWN_PHASE2_TICKS, IPC_COOLDOWN_PHASE3_TICKS
+    global IPC_COOLDOWN_PHASE1_MS, IPC_COOLDOWN_PHASE2_MS
     if (activityBytes > 0) {
         client.idleStreak := 0
         _IPC_SetClientTick(client, IPC_TICK_ACTIVE)
@@ -587,12 +589,12 @@ _IPC_Client_AdjustTimer(client, activityBytes) {
     ; rapid Alt-Tab) then back off gradually to save CPU when truly idle.
     ; At 8ms ticks: 10 idle ticks = 80ms before first step-up.
     client.idleStreak += 1
-    if (client.idleStreak < 10)
+    if (client.idleStreak < IPC_COOLDOWN_PHASE1_TICKS)
         return  ; Stay at current (active) tick
-    if (client.idleStreak < 16)
-        _IPC_SetClientTick(client, 30)
-    else if (client.idleStreak < 20)
-        _IPC_SetClientTick(client, 50)
+    if (client.idleStreak < IPC_COOLDOWN_PHASE2_TICKS)
+        _IPC_SetClientTick(client, IPC_COOLDOWN_PHASE1_MS)
+    else if (client.idleStreak < IPC_COOLDOWN_PHASE3_TICKS)
+        _IPC_SetClientTick(client, IPC_COOLDOWN_PHASE2_MS)
     else
         _IPC_SetClientTick(client, IPC_TICK_IDLE)
 }

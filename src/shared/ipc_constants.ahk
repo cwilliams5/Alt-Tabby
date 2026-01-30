@@ -22,3 +22,10 @@ global IPC_TICK_IDLE := 100         ; Client tick when no activity (overridable 
 global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
 global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect
 global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)
+
+; Client cooldown thresholds (graduated idle back-off)
+global IPC_COOLDOWN_PHASE1_TICKS := 10   ; Idle ticks before first step-up
+global IPC_COOLDOWN_PHASE2_TICKS := 16   ; Idle ticks before second step-up
+global IPC_COOLDOWN_PHASE3_TICKS := 20   ; Idle ticks before full idle
+global IPC_COOLDOWN_PHASE1_MS := 30      ; First step-up interval
+global IPC_COOLDOWN_PHASE2_MS := 50      ; Second step-up interval
