@@ -397,9 +397,6 @@ GUI_OnClick(x, y) {
     GUI_Repaint()
 }
 
-; Track whether we've requested WM_MOUSELEAVE notification
-global gGUI_MouseTracking := false
-
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
     global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_Items, gGUI_Sel
     global gGUI_MouseTracking

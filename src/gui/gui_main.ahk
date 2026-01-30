@@ -41,6 +41,7 @@ A_MenuMaskKey := "vkE8"
 global gGUI_Revealed := false
 global gGUI_HoverRow := 0
 global gGUI_HoverBtn := ""
+global gGUI_MouseTracking := false  ; Whether we've requested WM_MOUSELEAVE notification
 global gGUI_FooterText := "All Windows"
 
 ; Workspace mode: "all" = show all workspaces, "current" = show current workspace only

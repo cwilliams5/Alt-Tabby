@@ -240,6 +240,13 @@ _Viewer_RequestProducerStatus() {
     IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
 }
 
+; Common reconnect sequence: send hello, request producer status, log
+_Viewer_OnConnected(logMsg) {
+    _Viewer_SendHello()
+    _Viewer_RequestProducerStatus()
+    _Viewer_Log(logMsg)
+}
+
 ; Update producer state from IPC response (not from meta anymore)
 _Viewer_UpdateProducerState(producers) {
     global gViewer_ProducerState, gViewer_Headless
@@ -656,11 +663,8 @@ _Viewer_Heartbeat() {
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
         ; Not connected - try non-blocking connect (single attempt, no busy-wait loop)
         gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage, 0)
-        if (gViewer_Client.hPipe) {
-            _Viewer_SendHello()
-            _Viewer_RequestProducerStatus()  ; Request producer status on connect
-            _Viewer_Log("Reconnected to store")
-        }
+        if (gViewer_Client.hPipe)
+            _Viewer_OnConnected("Reconnected to store")
         try gViewer_Status.Text := "Disconnected"
         return
     }
@@ -671,11 +675,8 @@ _Viewer_Heartbeat() {
         ; Close current connection and try non-blocking reconnect
         IPC_PipeClient_Close(gViewer_Client)
         gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage, 0)
-        if (gViewer_Client.hPipe) {
-            _Viewer_SendHello()
-            _Viewer_RequestProducerStatus()  ; Request producer status on reconnect
-            _Viewer_Log("Reconnected after timeout")
-        }
+        if (gViewer_Client.hPipe)
+            _Viewer_OnConnected("Reconnected after timeout")
         return
     }
 

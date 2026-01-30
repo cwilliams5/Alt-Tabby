@@ -135,20 +135,9 @@ RestartViewer() {
 }
 
 RestartAll() {
-    global g_StorePID, g_GuiPID, g_ViewerPID, TIMING_PROCESS_EXIT_WAIT, TIMING_SUBPROCESS_LAUNCH
+    global TIMING_PROCESS_EXIT_WAIT, TIMING_SUBPROCESS_LAUNCH
 
-    ; Kill existing processes
-    if (g_StorePID && ProcessExist(g_StorePID))
-        ProcessClose(g_StorePID)
-    if (g_GuiPID && ProcessExist(g_GuiPID))
-        ProcessClose(g_GuiPID)
-    if (g_ViewerPID && ProcessExist(g_ViewerPID))
-        ProcessClose(g_ViewerPID)
-
-    g_StorePID := 0
-    g_GuiPID := 0
-    g_ViewerPID := 0
-
+    _KillAllSubprocesses()
     Sleep(TIMING_PROCESS_EXIT_WAIT)
 
     ; Relaunch core processes
@@ -158,17 +147,21 @@ RestartAll() {
 }
 
 ExitAll() {
-    global g_StorePID, g_GuiPID, g_ViewerPID
+    _KillAllSubprocesses()
+    ExitApp()
+}
 
-    ; Kill all subprocesses
+_KillAllSubprocesses() {
+    global g_StorePID, g_GuiPID, g_ViewerPID
     if (g_StorePID && ProcessExist(g_StorePID))
         ProcessClose(g_StorePID)
     if (g_GuiPID && ProcessExist(g_GuiPID))
         ProcessClose(g_GuiPID)
     if (g_ViewerPID && ProcessExist(g_ViewerPID))
         ProcessClose(g_ViewerPID)
-
-    ExitApp()
+    g_StorePID := 0
+    g_GuiPID := 0
+    g_ViewerPID := 0
 }
 
 LaunchConfigEditor() {

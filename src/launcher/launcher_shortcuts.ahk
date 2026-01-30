@@ -31,39 +31,26 @@ _Shortcut_Create(lnkPath, targetPath, iconPath := "", description := "") {
 
 ; Toggle Start Menu shortcut
 ToggleStartMenuShortcut() {
-    global cfg, TOOLTIP_DURATION_SHORT
-    lnkPath := _Shortcut_GetStartMenuPath()
-    if (FileExist(lnkPath)) {
-        try {
-            FileDelete(lnkPath)
-            ToolTip("Removed from Start Menu")
-        } catch as e {
-            MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
-        }
-    } else {
-        ; Use admin-aware shortcut creation
-        if (_CreateShortcutForCurrentMode(lnkPath)) {
-            ToolTip("Added to Start Menu")
-        }
-    }
-    HideTooltipAfter(TOOLTIP_DURATION_SHORT)
+    _ToggleShortcut(_Shortcut_GetStartMenuPath(), "Start Menu")
 }
 
 ; Toggle Startup shortcut
 ToggleStartupShortcut() {
+    _ToggleShortcut(_Shortcut_GetStartupPath(), "Startup")
+}
+
+_ToggleShortcut(lnkPath, locationName) {
     global cfg, TOOLTIP_DURATION_SHORT
-    lnkPath := _Shortcut_GetStartupPath()
     if (FileExist(lnkPath)) {
         try {
             FileDelete(lnkPath)
-            ToolTip("Removed from Startup")
+            ToolTip("Removed from " locationName)
         } catch as e {
             MsgBox("Failed to remove shortcut:`n" e.Message, "Alt-Tabby", "Icon!")
         }
     } else {
-        ; Use admin-aware shortcut creation
         if (_CreateShortcutForCurrentMode(lnkPath)) {
-            ToolTip("Added to Startup")
+            ToolTip("Added to " locationName)
         }
     }
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)

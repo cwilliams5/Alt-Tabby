@@ -252,7 +252,8 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     Rad := Round(cfg.GUI_RowRadius * scale)
     gapText := Round(cfg.GUI_IconTextGapPx * scale)
     gapCols := Round(cfg.GUI_ColumnGapPx * scale)
-    hdrY4 := Round(4 * scale)
+    PAINT_HDR_Y := 4  ; header text Y offset (px, pre-scale)
+    hdrY4 := Round(PAINT_HDR_Y * scale)
     hdrH28 := Round(cfg.GUI_HeaderHeightPx * scale)
     iconLeftDip := Round(cfg.GUI_IconLeftMargin * scale)
 
@@ -357,13 +358,21 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         i := 0
         yRow := y
 
-        ; Pre-compute per-row text layout constants (avoids ~90 Round() calls per frame)
-        titleY := Round(6 * scale)
-        titleH := Round(24 * scale)
-        subY := Round(28 * scale)
-        subH := Round(18 * scale)
-        colY := Round(10 * scale)
-        colH := Round(20 * scale)
+        ; Row-internal layout constants (px, pre-scale)
+        PAINT_TITLE_Y := 6   ; title Y offset within row
+        PAINT_TITLE_H := 24  ; title text height
+        PAINT_SUB_Y := 28    ; subtitle Y offset within row
+        PAINT_SUB_H := 18    ; subtitle text height
+        PAINT_COL_Y := 10    ; column text Y offset
+        PAINT_COL_H := 20    ; column text height
+
+        ; Pre-compute scaled values (avoids ~90 Round() calls per frame)
+        titleY := Round(PAINT_TITLE_Y * scale)
+        titleH := Round(PAINT_TITLE_H * scale)
+        subY := Round(PAINT_SUB_Y * scale)
+        subH := Round(PAINT_SUB_H * scale)
+        colY := Round(PAINT_COL_Y * scale)
+        colH := Round(PAINT_COL_H * scale)
 
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
@@ -538,6 +547,7 @@ GUI_EnsureResources(scale) {
     StringAlignmentNear := 0
     StringAlignmentCenter := 1
     StringAlignmentFar := 2
+    ; StringFormatFlagsNoWrap | StringFormatFlagsLineLimit
     flags := 0x00001000 | 0x00004000
 
     formats := [
@@ -554,7 +564,8 @@ GUI_EnsureResources(scale) {
         fmt := 0
         DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "ushort", 0, "ptr*", &fmt)
         DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", fmt, "int", flags)
-        DllCall("gdiplus\GdipSetStringFormatTrimming", "ptr", fmt, "int", 3)
+        StringTrimmingEllipsisCharacter := 3
+        DllCall("gdiplus\GdipSetStringFormatTrimming", "ptr", fmt, "int", StringTrimmingEllipsisCharacter)
         DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", fmt, "int", fm[2])
         DllCall("gdiplus\GdipSetStringFormatLineAlign", "ptr", fmt, "int", fm[3])
         gGdip_Res[fm[1]] := fmt

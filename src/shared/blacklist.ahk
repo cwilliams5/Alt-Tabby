@@ -318,7 +318,7 @@ _BL_IsAltTabEligible(hwnd) {
 ; Extended Alt-Tab eligibility - returns vis/min/cloak via ByRef
 ; Used by Blacklist_IsWindowEligibleEx to avoid redundant DllCalls in WinUtils_ProbeWindow
 _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
-    global BL_WS_CHILD, BL_WS_EX_TOOLWINDOW, BL_WS_EX_APPWINDOW, BL_WS_EX_NOACTIVATE
+    global BL_WS_CHILD, BL_WS_EX_TOOLWINDOW, BL_WS_EX_APPWINDOW, BL_WS_EX_NOACTIVATE, DWMWA_CLOAKED
     static cloakedBuf := Buffer(4, 0)
 
     ; Get visibility state
@@ -355,7 +355,7 @@ _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
         return false
 
     ; Check DWM cloaking
-    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
+    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
     outCloak := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 
     ; Must be visible, minimized, or cloaked
