@@ -692,8 +692,12 @@ _KSub_ScheduleCloakPush() {
 ; Timer callback: push all accumulated cloak changes in one delta
 _KSub_FlushCloakBatch() {
     global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn
+    ; RACE FIX: Reset flags atomically so _KSub_ScheduleCloakPush() sees
+    ; consistent state if it interrupts between the two assignments
+    Critical "On"
     _KSub_CloakPushPending := false
     _KSub_CloakBatchTimerFn := 0
+    Critical "Off"
     try Store_PushToClients()
 }
 

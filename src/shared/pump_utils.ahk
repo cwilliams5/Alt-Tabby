@@ -25,15 +25,20 @@
 ;   _IP_IdleTicks := 0  ; Reset on successful work
 ;
 Pump_HandleIdle(&idleTicks, threshold, &timerOn, timerFn, logFn := "") {
+    ; RACE FIX: Wrap check-then-pause in Critical to prevent EnsureRunning
+    ; from seeing timerOn=true between our threshold check and SetTimer(,0)
+    Critical "On"
     idleTicks += 1
     if (idleTicks >= threshold && timerOn) {
         SetTimer(timerFn, 0)
         timerOn := false
+        Critical "Off"
         if (logFn != "" && IsObject(logFn)) {
             logFn("Timer paused (idle after " idleTicks " empty ticks)")
         }
         return false  ; Timer was paused
     }
+    Critical "Off"
     return true  ; Timer continues
 }
 
@@ -50,11 +55,15 @@ Pump_HandleIdle(&idleTicks, threshold, &timerOn, timerFn, logFn := "") {
 ;   Pump_EnsureRunning(&_IP_TimerOn, &_IP_IdleTicks, IconTimerIntervalMs, _IP_Tick)
 ;
 Pump_EnsureRunning(&timerOn, &idleTicks, intervalMs, timerFn) {
-    if (timerOn)
-        return  ; Already running
     if (intervalMs <= 0)
         return  ; Not initialized or disabled
+    ; RACE FIX: Wrap check-then-start in Critical to prevent HandleIdle
+    ; from pausing timer between our timerOn check and SetTimer start
+    Critical "On"
+    if (timerOn)
+        return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
     timerOn := true
     idleTicks := 0
     SetTimer(timerFn, intervalMs)
+    Critical "Off"
 }

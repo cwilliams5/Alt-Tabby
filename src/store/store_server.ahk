@@ -34,6 +34,7 @@ global gStore_LastSendTick := 0       ; Tick of last message sent to ANY client 
 global gStore_CachedHeartbeatJson := ""
 global gStore_CachedHeartbeatRev := -1
 global gStore_HeartbeatCount
+global gStore_ScanInProgress := false  ; Re-entrancy guard for Store_FullScan
 
 ; Producer state tracking: "running", "disabled", "failed"
 global gStore_ProducerState := Map()
@@ -284,6 +285,18 @@ Store_ValidateExistenceTick() {
 ; Full winenum scan - runs on startup, snapshot request, Z-pump trigger, or safety polling
 Store_FullScan() {
     global gStore_LastBroadcastRev, gStore_Server, gStore_TestMode, gStore_LastClientLog, gWS_Store
+    global gStore_ScanInProgress
+    ; RACE FIX: Re-entrancy guard — if WinEnumLite_ScanAll() is interrupted by an IPC
+    ; timer that triggers another Store_FullScan, the nested scan would corrupt gWS_ScanId
+    ; and cause EndScan to incorrectly mark windows as missing
+    Critical "On"
+    if (gStore_ScanInProgress) {
+        Critical "Off"
+        return
+    }
+    gStore_ScanInProgress := true
+    Critical "Off"
+
     if (gStore_TestMode && (A_TickCount - gStore_LastClientLog) > 3000) {
         gStore_LastClientLog := A_TickCount
         try Store_LogError("clients=" gStore_Server.clients.Count " store=" gWS_Store.Count " rev=" WindowStore_GetRev())
@@ -297,6 +310,7 @@ Store_FullScan() {
     ; RACE FIX: Wrap read-check-write in Critical to prevent two callers
     ; from both reading same old rev and both pushing (duplicate broadcast)
     Critical "On"
+    gStore_ScanInProgress := false
     rev := WindowStore_GetRev()
     if (rev != gStore_LastBroadcastRev) {
         gStore_LastBroadcastRev := rev
