@@ -613,4 +613,89 @@ RunUnitTests_Storage() {
     ; Restore original state
     gWS_ExeIconCache := savedCache
     cfg.ExeIconCacheMax := savedMax
+
+    ; ============================================================
+    ; WindowStore_PruneProcNameCache Tests
+    ; ============================================================
+    Log("`n--- WindowStore_PruneProcNameCache Tests ---")
+
+    global gWS_ProcNameCache
+    savedProcCache := gWS_ProcNameCache
+
+    ; Test 1: Dead PID pruned, live PID kept
+    Log("Testing PruneProcNameCache removes dead PIDs, keeps live PIDs...")
+    gWS_ProcNameCache := Map()
+    livePid := ProcessExist("explorer.exe")
+    if (livePid > 0) {
+        deadPid := 4000000000  ; PID that does not exist
+        gWS_ProcNameCache[livePid] := "explorer.exe"
+        gWS_ProcNameCache[deadPid] := "ghost.exe"
+
+        pruned := WindowStore_PruneProcNameCache()
+
+        if (pruned = 1) {
+            Log("PASS: PruneProcNameCache pruned 1 dead PID")
+            TestPassed++
+        } else {
+            Log("FAIL: PruneProcNameCache should prune 1 dead PID, got pruned=" pruned)
+            TestErrors++
+        }
+
+        if (!gWS_ProcNameCache.Has(deadPid)) {
+            Log("PASS: PruneProcNameCache removed dead PID " deadPid)
+            TestPassed++
+        } else {
+            Log("FAIL: PruneProcNameCache should remove dead PID " deadPid)
+            TestErrors++
+        }
+
+        if (gWS_ProcNameCache.Has(livePid)) {
+            Log("PASS: PruneProcNameCache kept live PID " livePid " (explorer.exe)")
+            TestPassed++
+        } else {
+            Log("FAIL: PruneProcNameCache should keep live PID " livePid)
+            TestErrors++
+        }
+    } else {
+        Log("SKIP: explorer.exe not running for PruneProcNameCache test")
+    }
+
+    ; Test 2: Empty cache returns 0
+    Log("Testing PruneProcNameCache on empty cache...")
+    gWS_ProcNameCache := Map()
+    pruned := WindowStore_PruneProcNameCache()
+    if (pruned = 0) {
+        Log("PASS: PruneProcNameCache returns 0 for empty cache")
+        TestPassed++
+    } else {
+        Log("FAIL: PruneProcNameCache should return 0 for empty cache, got " pruned)
+        TestErrors++
+    }
+
+    ; Test 3: All-dead PIDs pruned
+    Log("Testing PruneProcNameCache removes all dead PIDs...")
+    gWS_ProcNameCache := Map()
+    gWS_ProcNameCache[4000000001] := "dead1.exe"
+    gWS_ProcNameCache[4000000002] := "dead2.exe"
+    gWS_ProcNameCache[4000000003] := "dead3.exe"
+
+    pruned := WindowStore_PruneProcNameCache()
+    if (pruned = 3) {
+        Log("PASS: PruneProcNameCache pruned all 3 dead PIDs")
+        TestPassed++
+    } else {
+        Log("FAIL: PruneProcNameCache should prune 3, got " pruned)
+        TestErrors++
+    }
+
+    if (gWS_ProcNameCache.Count = 0) {
+        Log("PASS: PruneProcNameCache left cache empty after pruning all")
+        TestPassed++
+    } else {
+        Log("FAIL: PruneProcNameCache should leave cache empty, got count=" gWS_ProcNameCache.Count)
+        TestErrors++
+    }
+
+    ; Restore original cache
+    gWS_ProcNameCache := savedProcCache
 }

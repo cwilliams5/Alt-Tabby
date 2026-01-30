@@ -295,4 +295,152 @@ RunUnitTests_Advanced() {
         Log("FAIL: Same-version mismatch check error: " e.Message)
         TestErrors++
     }
+
+    ; ============================================================
+    ; Store_MetaChanged Code Inspection Tests (Gap 4)
+    ; ============================================================
+    Log("`n--- Store_MetaChanged Code Inspection Tests ---")
+
+    ; Test 1: Function exists with correct signature
+    Log("Testing Store_MetaChanged() function exists...")
+    try {
+        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(serverPath)) {
+            serverCode := FileRead(serverPath)
+
+            hasFn := InStr(serverCode, "Store_MetaChanged(prevMeta, nextMeta)")
+            if (hasFn) {
+                Log("PASS: Store_MetaChanged(prevMeta, nextMeta) exists")
+                TestPassed++
+            } else {
+                Log("FAIL: Store_MetaChanged function not found with expected signature")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Store_MetaChanged existence check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 2: Handles empty previous meta (returns true)
+    Log("Testing Store_MetaChanged() handles empty previous meta...")
+    try {
+        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(serverPath)) {
+            serverCode := FileRead(serverPath)
+
+            hasEmptyCheck := InStr(serverCode, 'if (prevMeta = "")') && InStr(serverCode, "return true")
+            if (hasEmptyCheck) {
+                Log("PASS: Store_MetaChanged handles empty previous meta (returns true)")
+                TestPassed++
+            } else {
+                Log("FAIL: Store_MetaChanged should return true for empty previous meta")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Store_MetaChanged empty meta check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 3: Handles both Map and Object meta types
+    Log("Testing Store_MetaChanged() handles Map and Object types...")
+    try {
+        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(serverPath)) {
+            serverCode := FileRead(serverPath)
+
+            hasMapCheck := InStr(serverCode, "prevMeta is Map") && InStr(serverCode, "nextMeta is Map")
+            hasObjFallback := InStr(serverCode, "prevMeta.currentWSName") && InStr(serverCode, "nextMeta.currentWSName")
+            if (hasMapCheck && hasObjFallback) {
+                Log("PASS: Store_MetaChanged handles both Map and plain Object meta")
+                TestPassed++
+            } else {
+                Log("FAIL: Store_MetaChanged should handle both Map and Object (map=" hasMapCheck ", obj=" hasObjFallback ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Store_MetaChanged type handling check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 4: Compares currentWSName field
+    Log("Testing Store_MetaChanged() compares currentWSName...")
+    try {
+        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(serverPath)) {
+            serverCode := FileRead(serverPath)
+
+            comparesWSName := InStr(serverCode, 'prevMeta.Has("currentWSName")') && InStr(serverCode, 'nextMeta.Has("currentWSName")')
+            returnsComparison := InStr(serverCode, "return (prevWSName != nextWSName)")
+            if (comparesWSName && returnsComparison) {
+                Log("PASS: Store_MetaChanged compares currentWSName and returns boolean")
+                TestPassed++
+            } else {
+                Log("FAIL: Store_MetaChanged should compare currentWSName (has=" comparesWSName ", returns=" returnsComparison ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Store_MetaChanged comparison check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 5: Used in Store_PushToClients delta decision
+    Log("Testing Store_MetaChanged() used in push decision...")
+    try {
+        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(serverPath)) {
+            serverCode := FileRead(serverPath)
+
+            usedInPush := InStr(serverCode, "Store_MetaChanged(")
+            hasMetaGuard := InStr(serverCode, "metaChanged") && InStr(serverCode, "!metaChanged")
+            if (usedInPush && hasMetaGuard) {
+                Log("PASS: Store_MetaChanged used in Store_PushToClients with metaChanged guard")
+                TestPassed++
+            } else {
+                Log("FAIL: Store_MetaChanged should be used in push logic (called=" usedInPush ", guard=" hasMetaGuard ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Store_MetaChanged usage check error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test 6: Returns boolean comparison of workspace names
+    Log("Testing Store_MetaChanged() returns boolean...")
+    try {
+        serverPath := A_ScriptDir "\..\src\store\store_server.ahk"
+        if (FileExist(serverPath)) {
+            serverCode := FileRead(serverPath)
+
+            ; Function should have two return paths: one for empty prevMeta, one for comparison
+            hasReturnTrue := InStr(serverCode, "return true")
+            hasReturnCompare := InStr(serverCode, "return (prevWSName != nextWSName)")
+            if (hasReturnTrue && hasReturnCompare) {
+                Log("PASS: Store_MetaChanged has two return paths (empty meta + name comparison)")
+                TestPassed++
+            } else {
+                Log("FAIL: Store_MetaChanged should have empty meta and comparison returns (true=" hasReturnTrue ", compare=" hasReturnCompare ")")
+                TestErrors++
+            }
+        } else {
+            Log("SKIP: Could not find store_server.ahk")
+        }
+    } catch as e {
+        Log("FAIL: Store_MetaChanged return check error: " e.Message)
+        TestErrors++
+    }
 }

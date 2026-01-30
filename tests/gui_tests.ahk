@@ -69,6 +69,7 @@ global gGUI_LastMsgTick := 0
 ; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
 global gINT_BypassMode := false
 global gINT_TabPending := false
+global gMock_BypassResult := false  ; Controls INT_ShouldBypassWindow mock return value
 
 ; Config object mock (production code uses cfg.PropertyName)
 global cfg := {
@@ -163,8 +164,8 @@ _IPC_SetClientTick(client, ms) {
 
 ; Interceptor mocks (gui_interceptor.ahk functions - we don't include that file because it has hotkeys)
 INT_ShouldBypassWindow(hwnd := 0) {
-    ; In tests, never bypass
-    return false
+    global gMock_BypassResult
+    return gMock_BypassResult
 }
 
 INT_SetBypassMode(shouldBypass) {
@@ -207,8 +208,8 @@ ResetGUIState() {
     global gGUI_AwaitingToggleProjection, gMockIPCMessages, gGUI_CurrentWSName
     global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
-    global gMock_VisibleRows, gGUI_LastMsgTick
-    global gGUI_Base, gGUI_Overlay
+    global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
+    global gGUI_Base, gGUI_Overlay, gINT_BypassMode
 
     gGUI_State := "IDLE"
     gGUI_Items := []
@@ -232,6 +233,8 @@ ResetGUIState() {
     gGUI_FlushStartTick := 0
     gMock_VisibleRows := 5
     gGUI_LastMsgTick := 0
+    gMock_BypassResult := false
+    gINT_BypassMode := false
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
 }
@@ -301,6 +304,7 @@ RunGUITests() {
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gGUI_StoreRev, gGUI_ItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
+    global gMock_BypassResult, gINT_BypassMode
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -1329,6 +1333,101 @@ RunGUITests() {
     gGUI_EventBuffer := []
     _GUI_ProcessEventBuffer()
     GUI_AssertEq(gGUI_PendingPhase, "", "Empty buffer: pending phase cleared")
+
+    ; ============================================================
+    ; BYPASS MODE PROPAGATION TESTS (Gap 1: isFocused in delta)
+    ; ============================================================
+
+    ; ----- Test: Delta isFocused=true on existing item sets bypass mode -----
+    GUI_Log("Test: Delta isFocused=true on existing item sets bypass mode")
+    ResetGUIState()
+    cfg.FreezeWindowList := false  ; Live mode for delta processing
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    gMock_BypassResult := true  ; Mock: window should trigger bypass
+
+    ; Send delta with isFocused=true on existing item
+    upsertRec := Map("hwnd", 1000, "isFocused", true)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gINT_BypassMode, true, "Bypass: isFocused=true on existing item enables bypass")
+
+    ; ----- Test: Delta isFocused=true on new item sets bypass mode -----
+    GUI_Log("Test: Delta isFocused=true on new item sets bypass mode")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(3) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    gMock_BypassResult := true
+
+    ; Send delta adding a NEW item with isFocused=true
+    newRec := Map("hwnd", 9999, "title", "Game Window", "class", "GameClass", "isFocused", true, "lastActivatedTick", A_TickCount + 99999)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [newRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gINT_BypassMode, true, "Bypass: isFocused=true on new item enables bypass")
+    GUI_AssertEq(gGUI_Items.Length, 4, "Bypass: new item added to list")
+
+    ; ----- Test: Bypass mock returning false resets bypass mode -----
+    GUI_Log("Test: Bypass mock returning false resets bypass mode")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    gINT_BypassMode := true  ; Pre-set bypass to true
+    gMock_BypassResult := false  ; Mock: window should NOT trigger bypass
+
+    ; Send delta with isFocused=true — bypass check should disable bypass
+    upsertRec := Map("hwnd", 2000, "isFocused", true)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gINT_BypassMode, false, "Bypass: isFocused=true with non-bypass window disables bypass")
+
+    cfg.FreezeWindowList := true  ; Restore
+
+    ; ============================================================
+    ; COMBINED REMOVES+UPSERTS DELTA TESTS (Gap 2)
+    ; ============================================================
+
+    ; ----- Test: Delta with both removes and upserts -----
+    GUI_Log("Test: Combined removes + upserts in single delta")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    GUI_AssertEq(gGUI_Items.Length, 5, "Combined delta: initial 5 items")
+
+    ; Single delta: remove hwnd 2000 and 4000, add hwnd 8888
+    newRec := Map("hwnd", 8888, "title", "Brand New", "class", "NewClass", "lastActivatedTick", A_TickCount + 99999)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [2000, 4000], upserts: [newRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 4, "Combined delta: 5 - 2 removed + 1 added = 4")
+    GUI_AssertEq(gGUI_ItemsMap.Has(2000), false, "Combined delta: hwnd 2000 removed")
+    GUI_AssertEq(gGUI_ItemsMap.Has(4000), false, "Combined delta: hwnd 4000 removed")
+    GUI_AssertEq(gGUI_ItemsMap.Has(8888), true, "Combined delta: hwnd 8888 added")
+    GUI_AssertEq(gGUI_ItemsMap[8888].Title, "Brand New", "Combined delta: new item title correct")
+
+    ; ----- Test: Remove then re-add same hwnd (HWND reuse) -----
+    GUI_Log("Test: Remove then re-add same hwnd (HWND reuse)")
+    ResetGUIState()
+    cfg.FreezeWindowList := false
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(3) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    GUI_AssertEq(gGUI_ItemsMap[1000].Title, "Window 1", "HWND reuse: original title")
+
+    ; Remove hwnd 1000 and re-add with new title (simulates HWND reuse by OS)
+    reusedRec := Map("hwnd", 1000, "title", "Reused Window", "class", "NewApp", "lastActivatedTick", A_TickCount + 99999)
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [1000], upserts: [reusedRec] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gGUI_Items.Length, 3, "HWND reuse: still 3 items")
+    GUI_AssertEq(gGUI_ItemsMap.Has(1000), true, "HWND reuse: hwnd 1000 exists")
+    GUI_AssertEq(gGUI_ItemsMap[1000].Title, "Reused Window", "HWND reuse: title updated to new app")
+
+    cfg.FreezeWindowList := true  ; Restore
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Test Summary ===")
