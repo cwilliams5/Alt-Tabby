@@ -20,6 +20,7 @@ global g_SplashImgH := 0
 global g_SplashPosX := 0
 global g_SplashPosY := 0
 global g_SplashDIB := 0  ; DIB bitmap handle (must be deleted to avoid leak)
+global g_SplashDIBOld := 0  ; Original bitmap from SelectObject (must restore before DeleteObject)
 global g_SplashShuttingDown := false  ; Shutdown coordination flag
 
 ; Cleanup a single GDI/system resource (helper to reduce repetition)
@@ -47,7 +48,7 @@ _Splash_CleanupResource(&globalRef, cleanupFn, dllName := "", extraArg := "") {
 ShowSplashScreen() {
     global g_SplashHwnd, g_SplashStartTick, g_SplashBitmap, g_SplashHdc, g_SplashToken
     global g_SplashHdcScreen, g_SplashImgW, g_SplashImgH, g_SplashPosX, g_SplashPosY, g_SplashHModule
-    global g_SplashDIB, cfg
+    global g_SplashDIB, g_SplashDIBOld, cfg
     global WS_EX_LAYERED
 
     g_SplashStartTick := A_TickCount
@@ -128,7 +129,7 @@ ShowSplashScreen() {
 
     pvBits := 0
     g_SplashDIB := DllCall("CreateDIBSection", "ptr", g_SplashHdc, "ptr", bi.Ptr, "uint", 0, "ptr*", &pvBits, "ptr", 0, "uint", 0, "ptr")
-    DllCall("SelectObject", "ptr", g_SplashHdc, "ptr", g_SplashDIB, "ptr")
+    g_SplashDIBOld := DllCall("SelectObject", "ptr", g_SplashHdc, "ptr", g_SplashDIB, "ptr")
 
     ; Clear the bitmap to transparent (important!)
     DllCall("gdi32\PatBlt", "ptr", g_SplashHdc, "int", 0, "int", 0, "int", g_SplashImgW, "int", g_SplashImgH, "uint", 0x00000042)  ; BLACKNESS
@@ -153,7 +154,7 @@ ShowSplashScreen() {
 
 HideSplashScreen() {
     global g_SplashHwnd, g_SplashBitmap, g_SplashHdc, g_SplashToken, g_SplashHdcScreen, g_SplashHModule
-    global g_SplashDIB, g_SplashShuttingDown, cfg
+    global g_SplashDIB, g_SplashDIBOld, g_SplashShuttingDown, cfg
 
     ; Set shutdown flag FIRST to stop any in-progress fades
     g_SplashShuttingDown := true
@@ -164,7 +165,10 @@ HideSplashScreen() {
         _Splash_CleanupResource(&g_SplashHwnd, "DestroyWindow")
     }
 
-    ; Delete DIB before DC (must delete bitmap before the DC it's selected into)
+    ; Restore original bitmap so DIB is deselected, then delete both
+    if (g_SplashHdc && g_SplashDIBOld)
+        try DllCall("gdi32\SelectObject", "ptr", g_SplashHdc, "ptr", g_SplashDIBOld)
+    g_SplashDIBOld := 0
     _Splash_CleanupResource(&g_SplashDIB, "DeleteObject")
     _Splash_CleanupResource(&g_SplashHdc, "DeleteDC")
     _Splash_CleanupResource(&g_SplashHdcScreen, "ReleaseDC", "", 0)
