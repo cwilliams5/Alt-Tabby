@@ -500,6 +500,8 @@ GUI_ActivateItem(item) {
         try {
             cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
             ProcessUtils_RunHidden(cmd)
+        } catch as e {
+            _GUI_LogEvent("ASYNC ERROR: komorebic focus-named-workspace failed: " e.Message)
         }
 
         ; Set up async state
@@ -595,6 +597,7 @@ _GUI_AsyncActivationTick() {
         ; Check if deadline exceeded
         if (now > gGUI_PendingDeadline) {
             ; Timeout - do activation anyway
+            _GUI_LogEvent("ASYNC TIMEOUT: workspace poll deadline exceeded for '" gGUI_PendingWSName "'")
             ; RACE FIX: Phase transition must be atomic
             Critical "On"
             gGUI_PendingPhase := "waiting"
@@ -865,6 +868,10 @@ _GUI_RobustActivate(hwnd) {
 
             ; Now SetForegroundWindow should work
             DllCall("user32\SetForegroundWindow", "ptr", hwnd)
+        } else {
+            _GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
         }
+    } catch as e {
+        _GUI_LogEvent("ACTIVATE ERROR: " e.Message " for hwnd=" hwnd)
     }
 }

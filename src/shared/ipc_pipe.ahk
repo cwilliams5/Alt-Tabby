@@ -60,6 +60,11 @@ IPC_DefaultProjectionOpts() {
 }
 
 IPC_PipeServer_Start(pipeName, onMessageFn, onDisconnectFn := 0) {
+    ; Reset log for new session (defensive cfg guard - cfg may not be initialized early)
+    global cfg, LOG_PATH_IPC
+    if (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)  ; lint-ignore: isset-with-default
+        LogInitSession(LOG_PATH_IPC, "Alt-Tabby IPC Log")
+
     server := {
         pipeName: pipeName,
         onMessage: onMessageFn,
@@ -499,6 +504,7 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
 
     ; Prevent unbounded buffer growth - protects against malformed clients
     if (StrLen(stateObj.buf) > IPC_BUFFER_OVERFLOW) {
+        _IPC_Log("BUFFER OVERFLOW: client exceeded " IPC_BUFFER_OVERFLOW " bytes, disconnecting")
         stateObj.buf := ""
         return -1  ; Signal error - disconnect client
     }

@@ -61,7 +61,7 @@ IconPump_Start() {
         if (_IP_DiagEnabled) {
             global LOG_PATH_ICONPUMP
             _IP_LogPath := LOG_PATH_ICONPUMP
-            _IP_Log("=== Icon Pump started ===")
+            LogInitSession(_IP_LogPath, "Alt-Tabby Icon Pump Log")
             _IP_Log("Config: BatchSize=" IconBatchPerTick " IntervalMs=" IconTimerIntervalMs " MaxAttempts=" IconMaxAttempts)
         }
     }

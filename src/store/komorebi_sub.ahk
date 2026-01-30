@@ -89,8 +89,15 @@ KomorebiSub_Start() {
     global _KSub_PipeName, _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped
     global _KSub_Connected, _KSub_ClientPid, _KSub_LastEventTick, _KSub_FallbackMode
     global KSub_FallbackPollMs, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, KSub_PollMs, KSUB_READ_CHUNK_SIZE
+    global cfg
 
     KomorebiSub_Stop()
+
+    ; Reset log for new session
+    if (cfg.DiagKomorebiLog) {
+        global LOG_PATH_KSUB
+        LogInitSession(LOG_PATH_KSUB, "Alt-Tabby Komorebi Subscription Log")
+    }
 
     if (!KomorebiSub_IsAvailable())
         return false

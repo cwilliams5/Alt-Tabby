@@ -76,6 +76,12 @@ WinEventHook_Start() {
         _WEH_IdleThreshold := cfg.HasOwnProp("WinEventHookIdleThreshold") ? cfg.WinEventHookIdleThreshold : 10
     }
 
+    ; Reset log for new session (before early-exit guard)
+    if (cfg.DiagWinEventLog) {
+        global LOG_PATH_WINEVENT
+        LogInitSession(LOG_PATH_WINEVENT, "Alt-Tabby WinEvent Log")
+    }
+
     if (_WEH_Hook)
         return  ; Already running
 

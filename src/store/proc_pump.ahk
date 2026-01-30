@@ -42,6 +42,12 @@ ProcPump_Start() {
         _PP_IdleThreshold := cfg.HasOwnProp("ProcPumpIdleThreshold") ? cfg.ProcPumpIdleThreshold : 5
     }
 
+    ; Reset log for new session
+    if (cfg.DiagProcPumpLog) {
+        global LOG_PATH_PROCPUMP
+        LogInitSession(LOG_PATH_PROCPUMP, "Alt-Tabby Process Pump Log")
+    }
+
     if (_PP_TimerOn)
         return
     _PP_TimerOn := true

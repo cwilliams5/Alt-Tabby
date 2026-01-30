@@ -73,6 +73,10 @@ Store_Init() {
     ; - Development: tries A_ScriptDir, then A_ScriptDir "\..\"
     ConfigLoader_Init()
 
+    ; Reset store log for new session (unconditional - Store_LogError is always-on)
+    global LOG_PATH_STORE
+    LogInitSession(LOG_PATH_STORE, "Alt-Tabby Store Log")
+
     ; Apply command-line overrides AFTER config init (command line wins)
     if (gStore_CmdLinePipe != "")
         cfg.StorePipeName := gStore_CmdLinePipe

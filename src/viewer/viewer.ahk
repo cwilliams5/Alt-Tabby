@@ -68,6 +68,7 @@ Viewer_Init() {
     if (cfg.DebugViewerLog && !gViewer_LogPath) {
         global LOG_PATH_VIEWER
         gViewer_LogPath := LOG_PATH_VIEWER
+        LogInitSession(gViewer_LogPath, "Alt-Tabby Viewer Log")
     }
     try OnError(Viewer_OnError)
     if (!gViewer_Headless) {
