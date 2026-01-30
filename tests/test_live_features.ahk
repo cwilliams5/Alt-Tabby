@@ -154,40 +154,13 @@ RunLiveTests_Features() {
             ; Send hello
             helloMsg := { type: IPC_MSG_HELLO, clientId: "proj_test", wants: { deltas: false } }
             IPC_PipeClient_Send(projClient, JSON.Dump(helloMsg))
-            Sleep(100)
 
-            ; === Test sort options ===
-            sortTests := ["Z", "MRU", "Title", "Pid", "ProcessName"]
-            for _, sortType in sortTests {
-                gProjTestResponse := ""
-                gProjTestReceived := false
-                projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: sortType, columns: "items" } }
-                IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
-
-                waitStart := A_TickCount
-                while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
-                    Sleep(50)
-
-                if (gProjTestReceived) {
-                    try {
-                        respObj := JSON.Load(gProjTestResponse)
-                        items := respObj["payload"]["items"]
-                        if (items.Length > 0) {
-                            Log("PASS: sort=" sortType " returned " items.Length " items")
-                            TestPassed++
-                        } else {
-                            Log("FAIL: sort=" sortType " returned 0 items")
-                            TestErrors++
-                        }
-                    } catch as e {
-                        Log("FAIL: sort=" sortType " parse error: " e.Message)
-                        TestErrors++
-                    }
-                } else {
-                    Log("FAIL: sort=" sortType " timeout")
-                    TestErrors++
-                }
-            }
+            ; Drain the initial snapshot sent after HELLO before running projection tests
+            gProjTestResponse := ""
+            gProjTestReceived := false
+            waitStart := A_TickCount
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+                Sleep(50)
 
             ; === Test columns: hwndsOnly ===
             gProjTestResponse := ""

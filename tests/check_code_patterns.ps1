@@ -73,6 +73,7 @@ function Extract-FunctionBody {
 #   Regex    - (optional) $true = use -match instead of .Contains()
 #   AnyOf    - (optional) array where at least ONE must match
 #   NotPresent - (optional) array of patterns that must NOT appear
+#   MinCount - (optional) count occurrences of Patterns[0] and require >= MinCount
 
 $CHECKS = @(
     # --- GDI+ Shutdown (from test_unit_cleanup.ahk) ---
@@ -382,6 +383,101 @@ $CHECKS += @(
     }
 )
 
+# === Code inspections migrated from test_unit_core.ahk ===
+
+# Group A - Alt-Tab Eligibility (8 patterns in blacklist.ahk)
+$CHECKS += @(
+    @{
+        Id       = "bl_eligibility_checks"
+        File     = "shared\blacklist.ahk"
+        Desc     = "_BL_IsAltTabEligible has all required Windows API checks"
+        Patterns = @("WS_CHILD", "WS_EX_TOOLWINDOW", "WS_EX_NOACTIVATE", "GW_OWNER",
+                      "IsWindowVisible", "DwmGetWindowAttribute", "WS_EX_APPWINDOW", "IsIconic")
+    }
+)
+
+# Group B - Blacklist Regex Pre-compilation (3 checks)
+$CHECKS += @(
+    @{
+        Id       = "bl_precompiled_regex_arrays"
+        File     = "shared\blacklist.ahk"
+        Desc     = "Blacklist has pre-compiled regex arrays for title and class"
+        Patterns = @("gBlacklist_TitleRegex", "gBlacklist_ClassRegex")
+    },
+    @{
+        Id       = "bl_ismatch_no_regexreplace"
+        File     = "shared\blacklist.ahk"
+        Desc     = "Blacklist_IsMatch does not call RegExReplace in hot path"
+        Function = "Blacklist_IsMatch"
+        NotPresent = @("RegExReplace")
+    },
+    @{
+        Id       = "bl_compile_wildcard"
+        File     = "shared\blacklist.ahk"
+        Desc     = "_BL_CompileWildcard compile helper exists"
+        Patterns = @("_BL_CompileWildcard(")
+    }
+)
+
+# Group C - WinEventHook Empty Title Filter (1 check)
+$CHECKS += @(
+    @{
+        Id       = "weh_empty_title_filter"
+        File     = "store\winevent_hook.ahk"
+        Desc     = "WinEventHook filters empty-title windows from focus tracking"
+        Patterns = @('if (title = "")', "FOCUS SKIP")
+    }
+)
+
+# Group D - WinEventHook Focus Race Condition Guard (2 checks)
+$CHECKS += @(
+    @{
+        Id       = "weh_focus_unknown_window"
+        File     = "store\winevent_hook.ahk"
+        Desc     = "_WEH_ProcessBatch has focus-on-unknown-window path (probes + upserts)"
+        Patterns = @("NOT IN STORE", "UpsertWindow", "WinUtils_ProbeWindow", "winevent_focus_add")
+    },
+    @{
+        Id       = "weh_focus_add_sets_tick"
+        File     = "store\winevent_hook.ahk"
+        Desc     = "Focus-add path sets lastActivatedTick and isFocused on new window"
+        Patterns = @('probe["lastActivatedTick"]', 'probe["isFocused"]')
+    }
+)
+
+# Group E - Bypass Mode Detection (3 checks)
+$CHECKS += @(
+    @{
+        Id       = "bypass_process_list_parsing"
+        File     = "gui\gui_interceptor.ahk"
+        Desc     = "INT_ShouldBypassWindow has process list parsing (split, lowercase, trim)"
+        Patterns = @("StrSplit(cfg.AltTabBypassProcesses", "StrLower", "Trim(")
+    },
+    @{
+        Id       = "bypass_fullscreen_detection"
+        File     = "gui\gui_interceptor.ahk"
+        Desc     = "INT_IsFullscreenHwnd checks screen dimensions"
+        Patterns = @("INT_IsFullscreenHwnd", "A_ScreenWidth", "A_ScreenHeight")
+    },
+    @{
+        Id       = "bypass_hotkey_toggle"
+        File     = "gui\gui_interceptor.ahk"
+        Desc     = "INT_SetBypassMode toggles Tab hotkey On/Off"
+        Patterns = @('Hotkey("$*Tab", "Off")', 'Hotkey("$*Tab", "On")')
+    }
+)
+
+# Group F - Config Validation Completeness (1 check, uses MinCount)
+$CHECKS += @(
+    @{
+        Id       = "config_validation_completeness"
+        File     = "shared\config_loader.ahk"
+        Desc     = "_CL_ValidateSettings has sufficient clamp() coverage"
+        Patterns = @(":= clamp(")
+        MinCount = 50
+    }
+)
+
 # === Run checks ===
 
 $passed = 0
@@ -464,7 +560,22 @@ foreach ($check in $CHECKS) {
         }
     }
 
-    if ($allPresent -and $anyOfOk) {
+    # Check MinCount (count occurrences of Patterns[0], require >= MinCount)
+    $minCountOk = $true
+    if ($check.ContainsKey('MinCount') -and $check.MinCount -gt 0 -and $check.ContainsKey('Patterns') -and $check.Patterns.Count -gt 0) {
+        $countPat = $check.Patterns[0]
+        $actualCount = 0
+        $searchIdx = 0
+        while (($searchIdx = $searchText.IndexOf($countPat, $searchIdx)) -ge 0) {
+            $actualCount++
+            $searchIdx += $countPat.Length
+        }
+        if ($actualCount -lt $check.MinCount) {
+            $minCountOk = $false
+        }
+    }
+
+    if ($allPresent -and $anyOfOk -and $minCountOk) {
         $passed++
     } else {
         $failed++
@@ -474,6 +585,9 @@ foreach ($check in $CHECKS) {
         }
         if (-not $anyOfOk) {
             $detail += " none of AnyOf matched"
+        }
+        if (-not $minCountOk) {
+            $detail += " MinCount: found $actualCount, expected >= $($check.MinCount)"
         }
         $failures += "$($check.Id): $($check.Desc) -$detail in $($check.File)"
     }
