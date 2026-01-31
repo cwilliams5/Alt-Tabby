@@ -117,8 +117,7 @@ RunLiveTests_Features() {
                             TestErrors++
                         }
                     } else {
-                        Log("PASS: MRU test received items (only " items.Length " items, skipping sort check)")
-                        TestPassed++
+                        Log("SKIP: MRU sort check needs >= 2 items, got " items.Length)
                     }
                 } catch as e {
                     Log("FAIL: MRU test parse error: " e.Message)
