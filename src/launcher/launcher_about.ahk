@@ -2,53 +2,75 @@
 #Warn VarUnset, Off  ; Cross-file globals (cfg, g_StorePID, etc.) come from alt_tabby.ahk
 
 ; ============================================================
-; Launcher About Dialog
+; Launcher Dashboard
 ; ============================================================
-; Non-blocking About dialog showing version, links, keyboard
-; shortcuts, and system information.
+; Two-column dashboard: Keyboard Shortcuts (left), Diagnostics
+; + Settings (right). Subprocess controls, settings toggles,
+; and system information.
+;
+; Adaptive refresh: always-on slow timer while dialog is open,
+; interactions temporarily boost to rapid polling, then decay:
+;   Hot  (0-15s after click)  500ms  — catch subprocess settle
+;   Warm (15-75s)             3s     — catch slower changes
+;   Cool (75s+ / idle)        30s    — prevent deep staleness
 
-global g_AboutGui := 0
-global g_AboutShuttingDown := false
+global g_DashboardGui := 0
+global g_DashboardShuttingDown := false
+global g_DashControls := {}
+global g_DashRefreshTick := 0
+global DASH_INTERVAL_HOT := 500
+global DASH_INTERVAL_WARM := 3000
+global DASH_INTERVAL_COOL := 30000
+global DASH_TIER_HOT_MS := 15000
+global DASH_TIER_WARM_MS := 75000
 
-ShowAboutDialog() {
-    global g_AboutGui, g_AboutShuttingDown, cfg, APP_NAME
+ShowDashboardDialog() {
+    global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
+    global g_DashControls, DASH_INTERVAL_COOL
 
     ; If already open, focus existing dialog
-    if (g_AboutGui) {
-        try WinActivate(g_AboutGui)
+    if (g_DashboardGui) {
+        try WinActivate(g_DashboardGui)
         return
     }
 
-    g_AboutShuttingDown := false
+    g_DashboardShuttingDown := false
+    g_DashControls := {}
 
-    aboutGui := Gui("", APP_NAME " - About")
-    aboutGui.SetFont("s10", "Segoe UI")
-    aboutGui.MarginX := 20
-    aboutGui.MarginY := 15
+    dg := Gui("", "Alt-Tabby Dashboard")
+    dg.SetFont("s10", "Segoe UI")
+    dg.MarginX := 20
+    dg.MarginY := 15
 
     ; ---- Header: Logo + Title + Version + Links ----
-    ; Logo: 707x548 source, scaled to h90 preserving aspect ratio (~116x90)
-    logo := _About_LoadLogo(aboutGui)
-    xAfterLogo := logo ? 150 : 0  ; 116px logo + 20px margin + 14px gap
+    logo := _Dash_LoadLogo(dg)
+    xAfterLogo := logo ? 150 : 0
 
-    aboutGui.SetFont("s16 Bold")
-    aboutGui.AddText("x" xAfterLogo " y15 w260", APP_NAME)
+    dg.SetFont("s16 Bold")
+    dg.AddText("x" xAfterLogo " y15 w260", APP_NAME)
 
-    aboutGui.SetFont("s10 Norm")
+    dg.SetFont("s10 Norm")
     version := GetAppVersion()
-    aboutGui.AddText("x" xAfterLogo " y+2 w260", "Version " version)
+    dg.AddText("x" xAfterLogo " y+2 w260", "Version " version)
 
-    aboutGui.AddLink("x" xAfterLogo " y+4 w260",
+    dg.AddLink("x" xAfterLogo " y+4 w260",
         '<a href="https://github.com/cwilliams5/Alt-Tabby">github.com/cwilliams5/Alt-Tabby</a>')
-    aboutGui.AddLink("x" xAfterLogo " y+2 w260",
+    dg.AddLink("x" xAfterLogo " y+2 w260",
         '<a href="https://github.com/cwilliams5/Alt-Tabby/blob/main/docs/options.md">Configuration Options</a>')
 
-    ; ---- Keyboard Shortcuts ----
-    aboutGui.SetFont("s10")
-    gb1 := aboutGui.AddGroupBox("x20 y+18 w380 h195", "Keyboard Shortcuts")
+    ; ---- Two-Column Layout ----
+    ; Left column: x=20, w=350  |  Gap: 15px  |  Right column: x=385, w=375
+    ; Both columns start at same Y after header
+    colY := 120  ; Y position below header
 
-    yStart := "yp+25"
+    ; ============================================================
+    ; LEFT COLUMN - Keyboard Shortcuts
+    ; ============================================================
+    dg.SetFont("s10")
+    dg.AddGroupBox("x20 y" colY " w350 h365", "Keyboard Shortcuts")
+
+    yStart := "y" (colY + 25)
     shortcuts := [
         ["Alt+Tab", "Cycle forward through windows"],
         ["Alt+Shift+Tab", "Cycle backward"],
@@ -61,75 +83,296 @@ ShowAboutDialog() {
 
     for i, item in shortcuts {
         yOpt := (i = 1) ? yStart : "y+4"
-        aboutGui.SetFont("s9 Bold")
-        aboutGui.AddText("x35 " yOpt " w130 Right", item[1])
-        aboutGui.SetFont("s9 Norm")
-        aboutGui.AddText("x175 yp w215", item[2])
+        dg.SetFont("s9 Bold")
+        dg.AddText("x35 " yOpt " w130 Right", item[1])
+        dg.SetFont("s9 Norm")
+        dg.AddText("x175 yp w185", item[2])
     }
 
-    ; ---- System Information ----
-    aboutGui.SetFont("s10")
-    gb2 := aboutGui.AddGroupBox("x20 y+18 w380 h175", "Diagnostics")
+    ; ============================================================
+    ; RIGHT COLUMN - Diagnostics + Settings
+    ; ============================================================
 
-    ; Build info
+    ; ---- Diagnostics GroupBox ----
+    dg.SetFont("s10")
+    dg.AddGroupBox("x385 y" colY " w375 h225", "Diagnostics")
+
+    ; Build + Elevation row
     buildType := A_IsCompiled ? "Compiled" : "Development"
     elevation := A_IsAdmin ? "Administrator" : "Standard"
-    aboutGui.SetFont("s9")
-    aboutGui.AddText("x35 yp+25 w355", "Build: " buildType "  |  Elevation: " elevation)
+    dg.SetFont("s9")
+    dg.AddText("x400 y" (colY + 25) " w240", "Build: " buildType "  |  Elevation: " elevation)
 
-    ; Subprocess status
-    storeStatus := LauncherUtils_IsRunning(g_StorePID)
-        ? "Running (PID " g_StorePID ")" : "Not running"
-    aboutGui.AddText("x35 y+4 w355", "Store: " storeStatus)
+    ; Escalate/De-escalate button
+    escalateLabel := A_IsAdmin ? "De-escalate" : "Escalate"
+    btnEscalate := dg.AddButton("x660 y" (colY + 21) " w85 h24", escalateLabel)
+    btnEscalate.OnEvent("Click", _Dash_OnEscalate)
 
-    guiStatus := LauncherUtils_IsRunning(g_GuiPID)
-        ? "Running (PID " g_GuiPID ")" : "Not running"
-    aboutGui.AddText("x35 y+4 w355", "GUI: " guiStatus)
+    ; Subprocess rows with buttons — handlers check live state, refresh updates labels
+    subY := colY + 52
 
-    viewerStatus := LauncherUtils_IsRunning(g_ViewerPID)
-        ? "Running (PID " g_ViewerPID ")" : "Not running"
-    aboutGui.AddText("x35 y+4 w355", "Viewer: " viewerStatus)
+    ; Store row
+    storeRunning := LauncherUtils_IsRunning(g_StorePID)
+    storeLabel := storeRunning ? "Store: Running (PID " g_StorePID ")" : "Store: Not running"
+    g_DashControls.storeText := dg.AddText("x400 y" subY " w240", storeLabel)
+    g_DashControls.storeBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", storeRunning ? "Restart" : "Launch")
+    g_DashControls.storeBtn.OnEvent("Click", _Dash_OnStoreBtn)
 
-    ; Install location
-    installInfo := _About_GetInstallInfo()
-    aboutGui.AddText("x35 y+4 w355", "Install: " installInfo)
+    ; GUI row
+    subY += 30
+    guiRunning := LauncherUtils_IsRunning(g_GuiPID)
+    guiLabel := guiRunning ? "GUI: Running (PID " g_GuiPID ")" : "GUI: Not running"
+    g_DashControls.guiText := dg.AddText("x400 y" subY " w240", guiLabel)
+    g_DashControls.guiBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", guiRunning ? "Restart" : "Launch")
+    g_DashControls.guiBtn.OnEvent("Click", _Dash_OnGuiBtn)
 
-    ; Admin task status
-    adminInfo := _About_GetAdminTaskInfo()
-    aboutGui.AddText("x35 y+4 w355", "Admin Task: " adminInfo)
+    ; Viewer row
+    subY += 30
+    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
+    viewerLabel := viewerRunning ? "Viewer: Running (PID " g_ViewerPID ")" : "Viewer: Not running"
+    g_DashControls.viewerText := dg.AddText("x400 y" subY " w240", viewerLabel)
+    g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerRunning ? "Restart" : "Launch")
+    g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
 
-    ; Komorebi status
-    komorebiInfo := _About_GetKomorebiInfo()
-    aboutGui.AddText("x35 y+4 w355", "Komorebi: " komorebiInfo)
+    ; Restart All button
+    subY += 30
+    dg.AddButton("x660 y" (subY - 2) " w85 h24", "Restart All").OnEvent("Click", _Dash_OnRestartAllBtn)
 
-    ; ---- Buttons ----
-    aboutGui.SetFont("s10")
-    aboutGui.AddButton("x140 y+25 w150", "Check for Updates").OnEvent("Click", _About_OnCheckUpdates)
-    btnOK := aboutGui.AddButton("x300 yp w80 Default", "OK")
-    btnOK.OnEvent("Click", _About_OnClose)
+    ; Info rows (read-only)
+    subY += 28
+    dg.AddText("x400 y" subY " w340", "Install: " _Dash_GetInstallInfo())
+
+    subY += 20
+    dg.AddText("x400 y" subY " w340", "Admin Task: " _Dash_GetAdminTaskInfo())
+
+    subY += 20
+    g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340", "Komorebi: " _Dash_GetKomorebiInfo())
+
+    ; ---- Settings GroupBox ----
+    settingsY := colY + 235
+    dg.SetFont("s10")
+    dg.AddGroupBox("x385 y" settingsY " w375 h130", "Settings")
+
+    ; Checkboxes — refresh timer corrects visual state if underlying toggle fails
+    dg.SetFont("s9")
+    chkY := settingsY + 25
+
+    g_DashControls.chkStartMenu := dg.AddCheckbox("x400 y" chkY " w340", "Add to Start Menu")
+    g_DashControls.chkStartMenu.Value := _Shortcut_StartMenuExists() ? 1 : 0
+    g_DashControls.chkStartMenu.OnEvent("Click", _Dash_OnStartMenuChk)
+
+    chkY += 24
+    g_DashControls.chkStartup := dg.AddCheckbox("x400 y" chkY " w340", "Run at Startup")
+    g_DashControls.chkStartup.Value := _Shortcut_StartupExists() ? 1 : 0
+    g_DashControls.chkStartup.OnEvent("Click", _Dash_OnStartupChk)
+
+    chkY += 24
+    g_DashControls.chkAutoUpdate := dg.AddCheckbox("x400 y" chkY " w340", "Auto-check for Updates")
+    g_DashControls.chkAutoUpdate.Value := cfg.SetupAutoUpdateCheck ? 1 : 0
+    g_DashControls.chkAutoUpdate.OnEvent("Click", _Dash_OnAutoUpdateChk)
+
+    ; Editor buttons
+    chkY += 30
+    dg.SetFont("s9")
+    dg.AddButton("x400 y" chkY " w170 h26", "Edit Config...").OnEvent("Click", (*) => LaunchConfigEditor())
+    dg.AddButton("x580 y" chkY " w170 h26", "Edit Blacklist...").OnEvent("Click", (*) => LaunchBlacklistEditor())
+
+    ; ---- Bottom Buttons ----
+    bottomY := colY + 375
+    dg.SetFont("s10")
+    dg.AddButton("x20 y" bottomY " w150", "Check for Updates").OnEvent("Click", _Dash_OnCheckUpdates)
+    btnOK := dg.AddButton("x675 yp w80 Default", "OK")
+    btnOK.OnEvent("Click", _Dash_OnClose)
 
     ; Close event
-    aboutGui.OnEvent("Close", _About_OnClose)
-    aboutGui.OnEvent("Escape", _About_OnClose)
+    dg.OnEvent("Close", _Dash_OnClose)
+    dg.OnEvent("Escape", _Dash_OnClose)
 
-    g_AboutGui := aboutGui
-    aboutGui.Show("AutoSize")
-    btnOK.Focus()  ; Start with OK focused, not the first link
+    g_DashboardGui := dg
+    dg.Show("w780")
+    btnOK.Focus()
+
+    ; Start background refresh in cool mode (no interaction yet)
+    SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_COOL)
 }
 
-_About_LoadLogo(aboutGui) {
+; ============================================================
+; Interaction Handlers — check live state, act, trigger refresh
+; ============================================================
+
+_Dash_OnStoreBtn(*) {
+    global g_StorePID
+    if (LauncherUtils_IsRunning(g_StorePID))
+        RestartStore()
+    else
+        LaunchStore()
+    _Dash_StartRefreshTimer()
+}
+
+_Dash_OnGuiBtn(*) {
+    global g_GuiPID
+    if (LauncherUtils_IsRunning(g_GuiPID))
+        RestartGui()
+    else
+        LaunchGui()
+    _Dash_StartRefreshTimer()
+}
+
+_Dash_OnViewerBtn(*) {
+    global g_ViewerPID
+    if (LauncherUtils_IsRunning(g_ViewerPID))
+        RestartViewer()
+    else
+        LaunchViewer()
+    _Dash_StartRefreshTimer()
+}
+
+_Dash_OnRestartAllBtn(*) {
+    RestartAll()
+    _Dash_StartRefreshTimer()
+}
+
+_Dash_OnStartMenuChk(*) {
+    ToggleStartMenuShortcut()
+    _Dash_StartRefreshTimer()
+}
+
+_Dash_OnStartupChk(*) {
+    ToggleStartupShortcut()
+    _Dash_StartRefreshTimer()
+}
+
+_Dash_OnAutoUpdateChk(*) {
+    ToggleAutoUpdate()
+    _Dash_StartRefreshTimer()
+}
+
+_Dash_OnEscalate(*) {
+    _Dash_OnClose()
+    ToggleAdminMode()
+}
+
+_Dash_OnCheckUpdates(*) {
+    _Dash_OnClose()
+    CheckForUpdates(true)
+}
+
+_Dash_OnClose(*) {
+    global g_DashboardGui, g_DashboardShuttingDown, g_DashControls
+    g_DashboardShuttingDown := true
+    SetTimer(_Dash_RefreshDynamic, 0)
+    if (g_DashboardGui) {
+        g_DashboardGui.Destroy()
+        g_DashboardGui := 0
+    }
+    g_DashControls := {}
+}
+
+; ============================================================
+; Adaptive Refresh
+; ============================================================
+; Always-on timer while dialog is open. Interactions boost to
+; hot (500ms), decays to warm (3s) then cool (30s).
+
+_Dash_StartRefreshTimer() {
+    global g_DashRefreshTick, DASH_INTERVAL_HOT
+    g_DashRefreshTick := A_TickCount
+    SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_HOT)
+}
+
+_Dash_RefreshDynamic() {
+    global g_DashboardGui, g_DashControls, g_DashRefreshTick
+    global g_StorePID, g_GuiPID, g_ViewerPID, cfg
+    global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
+    global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
+
+    ; Stop if dialog closed
+    if (!g_DashboardGui) {
+        SetTimer(_Dash_RefreshDynamic, 0)
+        return
+    }
+
+    ; Adaptive interval: decay from hot → warm → cool
+    elapsed := A_TickCount - g_DashRefreshTick
+    if (elapsed < DASH_TIER_HOT_MS)
+        nextInterval := DASH_INTERVAL_HOT
+    else if (elapsed < DASH_TIER_WARM_MS)
+        nextInterval := DASH_INTERVAL_WARM
+    else
+        nextInterval := DASH_INTERVAL_COOL
+    SetTimer(_Dash_RefreshDynamic, nextInterval)
+
+    ; Build new state snapshot — compute all values before touching any controls
+    storeRunning := LauncherUtils_IsRunning(g_StorePID)
+    guiRunning := LauncherUtils_IsRunning(g_GuiPID)
+    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
+
+    newState := Map(
+        "storeText", storeRunning ? "Store: Running (PID " g_StorePID ")" : "Store: Not running",
+        "storeBtn", storeRunning ? "Restart" : "Launch",
+        "guiText", guiRunning ? "GUI: Running (PID " g_GuiPID ")" : "GUI: Not running",
+        "guiBtn", guiRunning ? "Restart" : "Launch",
+        "viewerText", viewerRunning ? "Viewer: Running (PID " g_ViewerPID ")" : "Viewer: Not running",
+        "viewerBtn", viewerRunning ? "Restart" : "Launch",
+        "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
+        "chkStartMenu", _Shortcut_StartMenuExists() ? 1 : 0,
+        "chkStartup", _Shortcut_StartupExists() ? 1 : 0,
+        "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0
+    )
+
+    ; Diff against current control values — skip redraw if nothing changed
+    changed := false
+    if (g_DashControls.storeText.Value != newState["storeText"]
+        || g_DashControls.storeBtn.Text != newState["storeBtn"]
+        || g_DashControls.guiText.Value != newState["guiText"]
+        || g_DashControls.guiBtn.Text != newState["guiBtn"]
+        || g_DashControls.viewerText.Value != newState["viewerText"]
+        || g_DashControls.viewerBtn.Text != newState["viewerBtn"]
+        || g_DashControls.komorebiText.Value != newState["komorebiText"]
+        || g_DashControls.chkStartMenu.Value != newState["chkStartMenu"]
+        || g_DashControls.chkStartup.Value != newState["chkStartup"]
+        || g_DashControls.chkAutoUpdate.Value != newState["chkAutoUpdate"])
+        changed := true
+
+    if (!changed)
+        return
+
+    ; Suppress repaints while updating controls
+    hWnd := g_DashboardGui.Hwnd
+    DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 0, "ptr", 0)  ; WM_SETREDRAW FALSE
+
+    g_DashControls.storeText.Value := newState["storeText"]
+    g_DashControls.storeBtn.Text := newState["storeBtn"]
+    g_DashControls.guiText.Value := newState["guiText"]
+    g_DashControls.guiBtn.Text := newState["guiBtn"]
+    g_DashControls.viewerText.Value := newState["viewerText"]
+    g_DashControls.viewerBtn.Text := newState["viewerBtn"]
+    g_DashControls.komorebiText.Value := newState["komorebiText"]
+    g_DashControls.chkStartMenu.Value := newState["chkStartMenu"]
+    g_DashControls.chkStartup.Value := newState["chkStartup"]
+    g_DashControls.chkAutoUpdate.Value := newState["chkAutoUpdate"]
+
+    ; Re-enable repaints and force a single
+    DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 1, "ptr", 0)  ; WM_SETREDRAW TRUE
+    DllCall("user32\RedrawWindow", "ptr", hWnd, "ptr", 0, "ptr", 0, "uint", 0x0107)  ; RDW_INVALIDATE|RDW_ERASE|RDW_UPDATENOW
+}
+
+; ============================================================
+; Logo Loader
+; ============================================================
+
+_Dash_LoadLogo(dg) {
     ; Dev mode: load from file
     if (!A_IsCompiled) {
         imgPath := A_ScriptDir "\..\img\logo.png"
         if (FileExist(imgPath)) {
-            aboutGui.AddPicture("x20 y15 w116 h90", imgPath)
+            dg.AddPicture("x20 y15 w116 h90", imgPath)
             return true
         }
         return false
     }
 
     ; Compiled mode: extract from embedded resource, convert to HBITMAP
-    ; Load GDI+ if not already loaded
     hModule := DllCall("LoadLibrary", "str", "gdiplus", "ptr")
     if (!hModule)
         return false
@@ -156,9 +399,7 @@ _About_LoadLogo(aboutGui) {
     srcBitmap := pThumb ? pThumb : pBitmap
 
     ; Convert to HBITMAP with system button face color as background
-    ; This avoids transparency halos on the Gui background
     bgColor := DllCall("user32\GetSysColor", "int", 15, "uint")  ; COLOR_3DFACE
-    ; Convert BGR to ARGB
     r := (bgColor & 0xFF)
     g := (bgColor >> 8) & 0xFF
     b := (bgColor >> 16) & 0xFF
@@ -177,28 +418,30 @@ _About_LoadLogo(aboutGui) {
     if (!hBitmap)
         return false
 
-    aboutGui.AddPicture("x20 y15 w116 h90", "HBITMAP:*" hBitmap)
+    dg.AddPicture("x20 y15 w116 h90", "HBITMAP:*" hBitmap)
     return true
 }
 
-_About_GetInstallInfo() {
+; ============================================================
+; Info Helpers (read-only, snapshot at dialog-open or refresh)
+; ============================================================
+
+_Dash_GetInstallInfo() {
     global cfg, ALTTABBY_INSTALL_DIR
 
-    ; Check cfg.SetupExePath first
     if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
         installDir := ""
         SplitPath(cfg.SetupExePath, , &installDir)
         return installDir
     }
 
-    ; Check if running from well-known install dir
     if (InStr(StrLower(A_ScriptDir), StrLower(ALTTABBY_INSTALL_DIR)))
         return A_ScriptDir
 
     return A_ScriptDir " (portable)"
 }
 
-_About_GetAdminTaskInfo() {
+_Dash_GetAdminTaskInfo() {
     if (!AdminTaskExists())
         return "Not configured"
 
@@ -212,23 +455,9 @@ _About_GetAdminTaskInfo() {
     return "Active (unknown target)"
 }
 
-_About_GetKomorebiInfo() {
+_Dash_GetKomorebiInfo() {
     pid := ProcessExist("komorebi.exe")
     if (pid)
         return "Running (PID " pid ")"
     return "Not running"
-}
-
-_About_OnClose(*) {
-    global g_AboutGui, g_AboutShuttingDown
-    g_AboutShuttingDown := true
-    if (g_AboutGui) {
-        g_AboutGui.Destroy()
-        g_AboutGui := 0
-    }
-}
-
-_About_OnCheckUpdates(*) {
-    _About_OnClose()
-    CheckForUpdates(true)
 }

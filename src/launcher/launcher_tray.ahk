@@ -116,7 +116,7 @@ UpdateTrayMenu() {
         tray.Check("Auto-check on Startup")
 
     tray.Add()
-    tray.Add("About...", (*) => ShowAboutDialog())
+    tray.Add("Dashboard...", (*) => ShowDashboardDialog())
     tray.Add()
 
     tray.Add("Exit", (*) => ExitAll())
