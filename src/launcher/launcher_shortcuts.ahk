@@ -28,6 +28,22 @@ _ToggleShortcut(lnkPath, locationName) {
             MsgBox("Failed to remove shortcut:`n" e.Message, APP_NAME, "Icon!")
         }
     } else {
+        ; Warn if shortcut will point to a temporary/cloud location
+        exePath := _Shortcut_GetEffectiveExePath()
+        exeDir := ""
+        SplitPath(exePath, , &exeDir)
+        if (IsTemporaryLocation(exeDir)) {
+            warnResult := MsgBox(
+                "This shortcut will point to:`n" exePath "`n`n"
+                "This location may be temporary or cloud-synced.`n"
+                "If you delete or move this file, the shortcut will break.`n`n"
+                "Create shortcut anyway?",
+                APP_NAME " - Temporary Location",
+                "YesNo Icon?"
+            )
+            if (warnResult = "No")
+                return
+        }
         ; No shortcut or points elsewhere - create (handles conflict dialog internally)
         if (_CreateShortcutForCurrentMode(lnkPath)) {
             ToolTip("Added to " locationName)
