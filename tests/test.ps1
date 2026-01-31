@@ -1,5 +1,6 @@
 # Alt-Tabby Test Runner
 # Usage: .\tests\test.ps1 [--live] [--force-compile] [--timing]
+# --timing implies --live (bottleneck analysis requires the full pipeline)
 
 param(
     [switch]$live,
@@ -32,6 +33,12 @@ if ($remainingArgs) {
     }
 }
 
+# --timing implies --live (bottleneck analysis requires the full pipeline)
+if ($timing) { $live = $true }
+
+# Ensure UTF-8 output for box-drawing characters in timing report
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 # --- Timing Infrastructure ---
 $masterSw = [System.Diagnostics.Stopwatch]::StartNew()
 $timingEvents = [System.Collections.ArrayList]::new()
@@ -57,19 +64,21 @@ function Record-PhaseEnd {
 }
 
 function Record-ItemTiming {
-    param([string]$Phase, [string]$Item, [double]$DurationMs)
+    param([string]$Phase, [string]$Item, [double]$DurationMs, [double]$OffsetMs = -1)
     if (-not $script:timing) { return }
     [void]$script:timingEvents.Add(@{
         Type       = "item"
         Phase      = $Phase
         Item       = $Item
         DurationMs = $DurationMs
+        OffsetMs   = $OffsetMs
     })
 }
 
 function Show-TimingReport {
     if (-not $script:timing) { return }
 
+    # --- Collect phase data ---
     $phases = [System.Collections.ArrayList]::new()
     $phaseStarts = @{}
 
@@ -82,58 +91,254 @@ function Show-TimingReport {
                     Name       = $ev.Name
                     OffsetMs   = $startMs
                     DurationMs = $ev.TickMs - $startMs
+                    EndMs      = $ev.TickMs
                 })
             }
         }
     }
 
-    # Collect items per phase
+    # --- Collect items per phase ---
     $phaseItems = @{}
     foreach ($ev in $script:timingEvents) {
         if ($ev.Type -eq "item") {
             if (-not $phaseItems.ContainsKey($ev.Phase)) { $phaseItems[$ev.Phase] = [System.Collections.ArrayList]::new() }
-            [void]$phaseItems[$ev.Phase].Add(@{ Item = $ev.Item; DurationMs = $ev.DurationMs })
+            [void]$phaseItems[$ev.Phase].Add(@{ Item = $ev.Item; DurationMs = $ev.DurationMs; OffsetMs = $ev.OffsetMs })
         }
     }
 
     $totalMs = $script:masterSw.ElapsedMilliseconds
 
-    # Find bottleneck phase (longest duration)
-    $bottleneckMs = 0
-    $bottleneckName = ""
-    foreach ($ph in $phases) {
-        if ($ph.DurationMs -gt $bottleneckMs) {
-            $bottleneckMs = $ph.DurationMs
-            $bottleneckName = $ph.Name
+    # --- Identify phases ---
+    $compPhase = $phases | Where-Object { $_.Name -eq "Compilation" } | Select-Object -First 1
+    $preGatePhase = $phases | Where-Object { $_.Name -eq "Pre-Gate" } | Select-Object -First 1
+    $testsPhase = $phases | Where-Object { $_.Name -eq "Tests" } | Select-Object -First 1
+
+    if (-not $preGatePhase -or -not $testsPhase) {
+        # Fallback: not enough data for hierarchical report
+        Write-Host "`n=== TIMING REPORT ===" -ForegroundColor Cyan
+        Write-Host "  Insufficient timing data for report" -ForegroundColor Yellow
+        return
+    }
+
+    # --- Phase 1: Pre-Gate + Compilation ---
+    # Phase 1 offset = earliest start, duration = latest end - earliest start
+    $p1OffsetMs = $preGatePhase.OffsetMs
+    $p1EndMs = $preGatePhase.EndMs
+    if ($compPhase) {
+        $p1OffsetMs = [Math]::Min($p1OffsetMs, $compPhase.OffsetMs)
+        $p1EndMs = [Math]::Max($p1EndMs, $compPhase.EndMs)
+    }
+    $p1DurationMs = $p1EndMs - $p1OffsetMs
+
+    # --- Phase 2: Tests ---
+    $p2OffsetMs = $testsPhase.OffsetMs
+    $p2DurationMs = $testsPhase.DurationMs
+
+    # --- Gate arrow logic ---
+    # Two gates: Pre-Gate and Compilation. The one that finishes first gets the inner
+    # arrow (its target launches first = higher in the list). The later one gets outer.
+    # If no compilation or no stagger, no arrows.
+    $hasGateArrows = $false
+    $outerGateName = ""
+    $innerGateName = ""
+    $outerTargetOffsetMs = 0
+    $innerTargetOffsetMs = 0
+
+    if ($compPhase -and $phaseItems.ContainsKey("Tests")) {
+        $testItems = $phaseItems["Tests"]
+        # Find distinct offset values among test items
+        $offsets = @($testItems | Where-Object { $_.OffsetMs -ge 0 } | ForEach-Object { $_.OffsetMs } | Sort-Object -Unique)
+        if ($offsets.Count -ge 2) {
+            $hasGateArrows = $true
+            $earlyOffsetMs = $offsets[0]
+            $lateOffsetMs = $offsets[1]
+
+            # Pre-Gate finishes first → inner arrow (targets early wave)
+            # Compilation finishes later → outer arrow (targets late wave)
+            if ($preGatePhase.EndMs -le $compPhase.EndMs) {
+                $innerGateName = "Pre-Gate"
+                $innerTargetOffsetMs = $earlyOffsetMs
+                $outerGateName = "Compilation"
+                $outerTargetOffsetMs = $lateOffsetMs
+            } else {
+                $innerGateName = "Compilation"
+                $innerTargetOffsetMs = $earlyOffsetMs
+                $outerGateName = "Pre-Gate"
+                $outerTargetOffsetMs = $lateOffsetMs
+            }
+        }
+    }
+
+    # --- Determine bottleneck phase ---
+    $bottleneckPhase = if ($p1DurationMs -ge $p2DurationMs) { 1 } else { 2 }
+
+    # --- Box-drawing characters (PS 5.1 compatible) ---
+    $CH_CORNER_TL = [char]0x250C  # ┌
+    $CH_CORNER_BL = [char]0x2514  # └
+    $CH_HLINE     = [char]0x2500  # ─
+    $CH_VLINE     = [char]0x2502  # │
+    $CH_ARROW_R   = [char]0x25B8  # ▸
+    $CH_ARROW_L   = [char]0x25C4  # ◄
+    $CH_DHLINE    = [char]0x2550  # ═
+
+    $MRK_BOTTLENECK = " ${CH_ARROW_L}${CH_DHLINE}${CH_DHLINE} bottleneck"
+    $MRK_SLOWEST    = " ${CH_ARROW_L}${CH_HLINE}${CH_HLINE} slowest"
+
+    # --- Build output lines ---
+    # Each line: @{ Prefix = "  "; Text = "name"; Offset = "+1.2s"; Duration = "3.4s"; Marker = "" }
+    $lines = [System.Collections.ArrayList]::new()
+    $colW = 50  # name column width (includes prefix)
+
+    # Phase 1 header
+    $p1Name = if ($compPhase) { "Phase 1: Pre-Gate + Compilation" } else { "Phase 1: Pre-Gate" }
+    $p1Marker = if ($bottleneckPhase -eq 1) { $MRK_BOTTLENECK } else { "" }
+    [void]$lines.Add(@{ Prefix = "   "; Name = $p1Name; OffsetMs = $p1OffsetMs; DurMs = $p1DurationMs; Marker = $p1Marker; IsHeader = $true })
+
+    # Phase 1 items: Compilation and Pre-Gate (with sub-items)
+    # Determine slowest in Phase 1 (Compilation vs Pre-Gate duration)
+    $p1Items = [System.Collections.ArrayList]::new()
+    if ($compPhase) { [void]$p1Items.Add(@{ Name = "Compilation"; DurMs = $compPhase.DurationMs }) }
+    [void]$p1Items.Add(@{ Name = "Pre-Gate"; DurMs = $preGatePhase.DurationMs })
+    $p1SlowestMs = ($p1Items | Sort-Object { $_.DurMs } -Descending | Select-Object -First 1).DurMs
+
+    # Render Compilation
+    if ($compPhase) {
+        $compMarker = if ($compPhase.DurationMs -eq $p1SlowestMs -and $p1Items.Count -gt 1) { $MRK_SLOWEST } else { "" }
+        $compGateRole = if ($hasGateArrows -and $outerGateName -eq "Compilation") { "outer_start" } elseif ($hasGateArrows) { "inner_start" } else { "" }
+        [void]$lines.Add(@{ Prefix = "     "; Name = "Compilation"; OffsetMs = -1; DurMs = $compPhase.DurationMs; Marker = $compMarker; GateRole = $compGateRole })
+    }
+
+    # Render Pre-Gate + sub-items
+    $pgMarker = if ($preGatePhase.DurationMs -eq $p1SlowestMs -and $p1Items.Count -gt 1) { $MRK_SLOWEST } else { "" }
+    $pgGateRole = if ($hasGateArrows -and $outerGateName -eq "Pre-Gate") { "outer_start" } elseif ($hasGateArrows) { "inner_start" } else { "" }
+    [void]$lines.Add(@{ Prefix = "     "; Name = "Pre-Gate"; OffsetMs = -1; DurMs = $preGatePhase.DurationMs; Marker = $pgMarker; GateRole = $pgGateRole })
+
+    # Pre-Gate sub-items
+    if ($phaseItems.ContainsKey("Pre-Gate")) {
+        $pgItems = $phaseItems["Pre-Gate"] | Sort-Object { $_.DurationMs } -Descending
+        $pgSlowestMs = $pgItems[0].DurationMs
+        $pgBodyRole = if ($pgGateRole -eq "outer_start") { "outer_body" } elseif ($pgGateRole -eq "inner_start") { "inner_body" } else { "" }
+        foreach ($item in $pgItems) {
+            $itemMarker = if ($item.DurationMs -eq $pgSlowestMs -and @($pgItems).Count -gt 1) { $MRK_SLOWEST } else { "" }
+            [void]$lines.Add(@{ Prefix = "       "; Name = $item.Item; OffsetMs = -1; DurMs = $item.DurationMs; Marker = $itemMarker; GateRole = $pgBodyRole })
+        }
+    }
+
+    # Phase 2 header
+    $p2Marker = if ($bottleneckPhase -eq 2) { $MRK_BOTTLENECK } else { "" }
+    [void]$lines.Add(@{ Prefix = "   "; Name = "Phase 2: Tests"; OffsetMs = $p2OffsetMs; DurMs = $p2DurationMs; Marker = $p2Marker; IsHeader = $true })
+
+    # Phase 2 items sorted by duration descending, but early-offset items first within their wave
+    if ($phaseItems.ContainsKey("Tests")) {
+        $testItems = $phaseItems["Tests"] | Sort-Object { $_.DurationMs } -Descending
+        $testSlowestMs = ($testItems | Select-Object -First 1).DurationMs
+
+        # Separate into waves by offset, render early wave first
+        $earlyWave = @($testItems | Where-Object { $hasGateArrows -and $_.OffsetMs -ge 0 -and $_.OffsetMs -eq $innerTargetOffsetMs })
+        $lateWave = @($testItems | Where-Object { -not $hasGateArrows -or $_.OffsetMs -lt 0 -or $_.OffsetMs -ne $innerTargetOffsetMs })
+
+        $allWaves = @()
+        if ($earlyWave.Count -gt 0) { $allWaves += $earlyWave }
+        if ($lateWave.Count -gt 0) { $allWaves += $lateWave }
+
+        $prevOffsetMs = -2  # sentinel
+        foreach ($item in $allWaves) {
+            $itemMarker = if ($item.DurationMs -eq $testSlowestMs -and @($testItems).Count -gt 1) { $MRK_SLOWEST } else { "" }
+            $showOffset = if ($item.OffsetMs -ge 0 -and $item.OffsetMs -ne $prevOffsetMs) { $item.OffsetMs } else { -1 }
+            if ($item.OffsetMs -ge 0) { $prevOffsetMs = $item.OffsetMs }
+
+            # Determine gate role for this item
+            $role = ""
+            if ($hasGateArrows -and $item.OffsetMs -ge 0) {
+                if ($item.OffsetMs -eq $innerTargetOffsetMs -and $earlyWave.Count -gt 0 -and $item -eq $earlyWave[0]) {
+                    $role = "inner_target"
+                } elseif ($item.OffsetMs -eq $outerTargetOffsetMs -and $lateWave.Count -gt 0 -and $item -eq $lateWave[0]) {
+                    $role = "outer_target"
+                }
+            }
+
+            [void]$lines.Add(@{ Prefix = "       "; Name = $item.Item; OffsetMs = $showOffset; DurMs = $item.DurationMs; Marker = $itemMarker; GateRole = $role })
+        }
+    }
+
+    # --- Render with gate arrows ---
+    # Build the gate arrow prefix (4-char left margin) for each line
+    # Track vertical positions of gate starts and targets
+    $outerStartIdx = -1; $outerTargetIdx = -1
+    $innerStartIdx = -1; $innerTargetIdx = -1
+
+    if ($hasGateArrows) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $role = $lines[$i].GateRole
+            if ($role -eq "outer_start") { $outerStartIdx = $i }
+            if ($role -eq "inner_start") { $innerStartIdx = $i }
+            if ($role -eq "inner_target") { $innerTargetIdx = $i }
+            if ($role -eq "outer_target") { $outerTargetIdx = $i }
         }
     }
 
     Write-Host ""
     Write-Host "=== TIMING REPORT ===" -ForegroundColor Cyan
-    Write-Host ("{0,-44} {1,8} {2,10}" -f "Phase", "Offset", "Duration") -ForegroundColor Cyan
-    Write-Host ("-" * 64) -ForegroundColor DarkGray
+    $hdr = ("{0,-50}{1} {2}" -f "", "Offset".PadLeft(8), "Duration".PadLeft(10))
+    Write-Host $hdr -ForegroundColor Cyan
+    Write-Host ("-" * 70) -ForegroundColor DarkGray
 
-    foreach ($ph in $phases) {
-        $offsetStr = "+{0:F1}s" -f ($ph.OffsetMs / 1000)
-        $durStr = "{0:F1}s" -f ($ph.DurationMs / 1000)
-        $marker = if ($ph.Name -eq $bottleneckName -and $phases.Count -gt 1) { " << bottleneck" } else { "" }
-        Write-Host ("{0,-44} {1,8} {2,10}{3}" -f $ph.Name, $offsetStr, $durStr, $marker)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $ln = $lines[$i]
 
-        # Show sub-items sorted by duration descending
-        if ($phaseItems.ContainsKey($ph.Name)) {
-            $sorted = $phaseItems[$ph.Name] | Sort-Object { $_.DurationMs } -Descending
-            $slowestMs = $sorted[0].DurationMs
-            foreach ($item in $sorted) {
-                $itemDurStr = "{0:F1}s" -f ($item.DurationMs / 1000)
-                $itemMarker = if ($item.DurationMs -eq $slowestMs -and $sorted.Count -gt 1) { " << slowest" } else { "" }
-                Write-Host ("  {0,-42} {1,8} {2,10}{3}" -f $item.Item, "", $itemDurStr, $itemMarker)
+        # Build 5-char gate arrow prefix
+        $g = "     "
+        if ($hasGateArrows) {
+            $c0 = " "; $c1 = " "; $c2 = " "; $c3 = " "; $c4 = " "
+
+            # Outer arrow (column 0-1): ┌─ at start, │ in between, └──▸ at target
+            if ($i -eq $outerStartIdx) { $c0 = $CH_CORNER_TL; $c1 = $CH_HLINE }
+            elseif ($i -eq $outerTargetIdx) { $c0 = $CH_CORNER_BL; $c1 = $CH_HLINE; $c2 = $CH_HLINE; $c3 = $CH_ARROW_R }
+            elseif ($i -gt $outerStartIdx -and $i -lt $outerTargetIdx) { $c0 = $CH_VLINE }
+
+            # Inner arrow (column 1-2): ┌─ at start, │ in between, └▸ at target
+            # Only draw inner if not overridden by outer on same position
+            if ($i -eq $innerStartIdx) {
+                $c1 = $CH_CORNER_TL; $c2 = $CH_HLINE
+            } elseif ($i -eq $innerTargetIdx) {
+                $c1 = $CH_CORNER_BL; $c2 = $CH_ARROW_R
+            } elseif ($i -gt $innerStartIdx -and $i -lt $innerTargetIdx) {
+                if ($c1 -eq " ") { $c1 = $CH_VLINE }
             }
+
+            $g = "${c0}${c1}${c2}${c3}${c4}"
+        }
+
+        # Build the content
+        $name = $ln.Name
+        $prefix = $ln.Prefix
+        $fullName = "${prefix}${name}"
+
+        $offsetStr = ""
+        if ($ln.OffsetMs -ge 0) { $offsetStr = "+{0:F1}s" -f ($ln.OffsetMs / 1000) }
+        $durStr = "{0:F1}s" -f ($ln.DurMs / 1000)
+        $marker = if ($ln.Marker) { $ln.Marker } else { "" }
+
+        $nameCol = "${g}${fullName}"
+        $padLen = 50 - $nameCol.Length
+        if ($padLen -lt 1) { $padLen = 1 }
+        $pad = " " * $padLen
+
+        $offsetPad = $offsetStr.PadLeft(8)
+        $durPad = $durStr.PadLeft(10)
+        $text = "${nameCol}${pad}${offsetPad} ${durPad}${marker}"
+
+        if ($ln.IsHeader) {
+            Write-Host $text -ForegroundColor Cyan
+        } else {
+            Write-Host $text
         }
     }
 
-    Write-Host ("-" * 64) -ForegroundColor DarkGray
+    Write-Host ("-" * 70) -ForegroundColor DarkGray
     $totalStr = "{0:F1}s" -f ($totalMs / 1000)
-    Write-Host ("{0,-44} {1,8} {2,10}" -f "Total wall-clock", "", $totalStr) -ForegroundColor Cyan
+    $totalLine = ("{0,-50}{1} {2}" -f "Total wall-clock", "".PadLeft(8), $totalStr.PadLeft(10))
+    Write-Host $totalLine -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -385,7 +590,7 @@ if ($live) {
 # --- Pre-Gate Phase: Syntax Check + Static Analysis (Parallel) ---
 # Both are independent text-scanning checks. Neither depends on the other.
 # Both must pass before any AHK test process launches.
-Record-PhaseStart "Pre-Gate (Syntax + Static Analysis)"
+Record-PhaseStart "Pre-Gate"
 Write-Host "`n--- Pre-Gate: Syntax Check + Static Analysis (Parallel) ---" -ForegroundColor Yellow
 
 $filesToCheck = @(
@@ -481,7 +686,7 @@ if ($saHandle -ne [IntPtr]::Zero) {
         $saTimingData = Get-Content $saTimingFile -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
         if ($saTimingData) {
             foreach ($entry in $saTimingData) {
-                Record-ItemTiming -Phase "Pre-Gate (Syntax + Static Analysis)" -Item $entry.Name -DurationMs $entry.DurationMs
+                Record-ItemTiming -Phase "Pre-Gate" -Item $entry.Name -DurationMs $entry.DurationMs
             }
         }
         Remove-Item -Force -ErrorAction SilentlyContinue $saTimingFile
@@ -490,7 +695,7 @@ if ($saHandle -ne [IntPtr]::Zero) {
     Write-Host "  SKIP: static_analysis.ps1 not found" -ForegroundColor Yellow
 }
 
-Record-PhaseEnd "Pre-Gate (Syntax + Static Analysis)"
+Record-PhaseEnd "Pre-Gate"
 
 # Check for pre-gate failures — kill background compilation if needed
 $preGateFailed = $false
@@ -533,9 +738,10 @@ if ($syntaxFailed -gt 0 -or $saExit -ne 0) {
 
 # --- Start GUI Tests (Background) ---
 # GUI tests depend on pre-gates passing (they execute AHK code) but not on compilation.
+# In timing mode, GUI Tests is tracked as an item in the "Tests" phase (not its own phase).
+$guiStartTickMs = $masterSw.ElapsedMilliseconds
 if (Test-Path $guiScript) {
     Write-Host "Starting GUI tests in background..." -ForegroundColor Cyan
-    Record-PhaseStart "GUI Tests (background)"
     $guiHandle = [SilentProcess]::Start('"' + $ahk + '" /ErrorStdOut "' + $guiScript + '"')
 }
 
@@ -640,11 +846,11 @@ if ($live) {
 
 # --- Check if GUI tests already finished (accurate timing) ---
 # GUI tests take ~1s but WaitAndGetExitCode below is called much later,
-# so record the phase end now if the process has already exited.
+# so snapshot the duration now if the process has already exited.
 if ($guiHandle -ne [IntPtr]::Zero) {
     $guiCode = [SilentProcess]::TryGetExitCode($guiHandle)
     if ($guiCode -ne -259) {
-        Record-PhaseEnd "GUI Tests (background)"
+        $guiDurationMs = $masterSw.ElapsedMilliseconds - $guiStartTickMs
         $guiTimingRecorded = $true
     }
 }
@@ -689,7 +895,14 @@ if ($live) {
 
     # --- All 8 suites (parallel: 5 unit + 3 live) ---
     Write-Host "`n--- Test Execution (8 suites, parallel) ---" -ForegroundColor Yellow
-    Record-PhaseStart "Test Execution"
+
+    # The "Tests" phase starts at the earliest test launch (GUI Tests, already running).
+    # We recorded $guiStartTickMs above. Record the phase start at that time.
+    if ($timing) {
+        [void]$timingEvents.Add(@{ Type = "phase_start"; Name = "Tests"; TickMs = $guiStartTickMs })
+    }
+
+    $suiteStartTickMs = $masterSw.ElapsedMilliseconds
 
     foreach ($us in $unitSuites) {
         $us.StderrFile = "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
@@ -707,7 +920,7 @@ if ($live) {
     Write-Host "  Starting Live/Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
-    # --- Timing: poll all 8 handles to record actual completion times ---
+    # --- Timing: poll all 8 handles + GUI to record actual completion times ---
     if ($timing) {
         $pollSw = [System.Diagnostics.Stopwatch]::StartNew()
         $suiteHandles = @{
@@ -718,24 +931,42 @@ if ($live) {
         foreach ($us in $unitSuites) {
             $suiteHandles[$us.Label] = $us.Handle
         }
+
+        # Include GUI Tests in the poll if not already finished
+        $guiInPoll = (-not $guiTimingRecorded -and $guiHandle -ne [IntPtr]::Zero)
+        if ($guiInPoll) { $suiteHandles["GUI Tests"] = $guiHandle }
+
         $suiteDone = @{}
-        while ($suiteDone.Count -lt $suiteHandles.Count) {
+        # If GUI Tests already finished, record it now
+        if ($guiTimingRecorded) { $suiteDone["GUI Tests"] = $guiDurationMs }
+
+        $totalToWait = $suiteHandles.Count
+        if ($guiTimingRecorded) { $totalToWait = $suiteHandles.Count + 1 }
+
+        while ($suiteDone.Count -lt $totalToWait) {
             foreach ($name in $suiteHandles.Keys) {
                 if ($suiteDone.ContainsKey($name)) { continue }
                 $code = [SilentProcess]::TryGetExitCode($suiteHandles[$name])
                 if ($code -ne -259) {
-                    $suiteDone[$name] = $pollSw.ElapsedMilliseconds
+                    if ($name -eq "GUI Tests") {
+                        # GUI Tests duration measured from its own start
+                        $suiteDone[$name] = $masterSw.ElapsedMilliseconds - $guiStartTickMs
+                    } else {
+                        # Other suites measured from their batch launch
+                        $suiteDone[$name] = $pollSw.ElapsedMilliseconds
+                    }
                 }
             }
-            if ($suiteDone.Count -lt $suiteHandles.Count) {
+            if ($suiteDone.Count -lt $totalToWait) {
                 Start-Sleep -Milliseconds 25
             }
         }
         $pollSw.Stop()
-        Record-PhaseEnd "Test Execution"
+        Record-PhaseEnd "Tests"
 
         foreach ($label in $suiteDone.Keys) {
-            Record-ItemTiming -Phase "Test Execution" -Item $label -DurationMs $suiteDone[$label]
+            $itemOffsetMs = if ($label -eq "GUI Tests") { $guiStartTickMs } else { $suiteStartTickMs }
+            Record-ItemTiming -Phase "Tests" -Item $label -DurationMs $suiteDone[$label] -OffsetMs $itemOffsetMs
         }
     }
 
@@ -790,14 +1021,11 @@ if ($live) {
 
     if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
 
-    if (-not $timing) {
-        Record-PhaseEnd "Test Execution"
-    }
     $liveElapsed = ((Get-Date) - $liveStart).TotalSeconds
     Write-Host "`n  Live pipeline completed in $([math]::Round($liveElapsed, 1))s" -ForegroundColor Cyan
 } else {
     # === Non-live mode: 5-way parallel unit tests ===
-    Record-PhaseStart "Unit Tests"
+    # Note: --timing implies --live, so this path never runs with timing enabled.
     Write-Host "`n--- Unit Tests Phase (parallel) ---" -ForegroundColor Yellow
 
     # Clean log files
@@ -814,35 +1042,6 @@ if ($live) {
         $us.Handle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" ' + $us.Flag, $us.StderrFile)
     }
 
-    # --- Timing: poll all 5 handles ---
-    if ($timing) {
-        $pollSw = [System.Diagnostics.Stopwatch]::StartNew()
-        $suiteHandles = @{}
-        foreach ($us in $unitSuites) {
-            $suiteHandles[$us.Name] = $us.Handle
-        }
-        $suiteDone = @{}
-        while ($suiteDone.Count -lt $suiteHandles.Count) {
-            foreach ($name in $suiteHandles.Keys) {
-                if ($suiteDone.ContainsKey($name)) { continue }
-                $code = [SilentProcess]::TryGetExitCode($suiteHandles[$name])
-                if ($code -ne -259) {
-                    $suiteDone[$name] = $pollSw.ElapsedMilliseconds
-                }
-            }
-            if ($suiteDone.Count -lt $suiteHandles.Count) {
-                Start-Sleep -Milliseconds 25
-            }
-        }
-        $pollSw.Stop()
-        Record-PhaseEnd "Unit Tests"
-        foreach ($us in $unitSuites) {
-            if ($suiteDone.ContainsKey($us.Name)) {
-                Record-ItemTiming -Phase "Unit Tests" -Item $us.Label -DurationMs $suiteDone[$us.Name]
-            }
-        }
-    }
-
     # Collect results
     Write-Host ""
     foreach ($us in $unitSuites) {
@@ -855,8 +1054,6 @@ if ($live) {
         Show-TestSummary -LogPath $us.LogFile -Label $us.Label
         if ($usExit -ne 0) { $mainExitCode = $usExit }
     }
-
-    if (-not $timing) { Record-PhaseEnd "Unit Tests" }
 }
 
 # --- GUI Tests Phase (Collect Results) ---
@@ -865,7 +1062,8 @@ Write-Host "`n--- GUI Tests Phase ---" -ForegroundColor Yellow
 if ($guiHandle -ne [IntPtr]::Zero) {
     $guiExitCode = [SilentProcess]::WaitAndGetExitCode($guiHandle)
     if (-not $guiTimingRecorded) {
-        Record-PhaseEnd "GUI Tests (background)"
+        $guiDurationMs = $masterSw.ElapsedMilliseconds - $guiStartTickMs
+        $guiTimingRecorded = $true
     }
     Show-TestSummary -LogPath $guiLogFile -Label "GUI"
 
