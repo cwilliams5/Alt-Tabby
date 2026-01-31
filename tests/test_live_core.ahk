@@ -5,7 +5,7 @@
 RunLiveTests_Core() {
     global TestPassed, TestErrors, cfg
     global gRealStoreResponse, gRealStoreReceived
-    global gViewerTestResponse, gViewerTestReceived, gViewerTestHelloAck
+    global gViewerTestResponse, gViewerTestReceived
     global gProdTestProducers, gProdTestReceived
     global testServer, gTestClient, gTestResponse, gTestResponseReceived
     global IPC_MSG_HELLO, IPC_MSG_PROJECTION_REQUEST, IPC_MSG_SNAPSHOT_REQUEST
@@ -304,8 +304,6 @@ RunLiveTests_Core() {
     if (sharedStorePid) {
         gViewerTestResponse := ""
         gViewerTestReceived := false
-        gViewerTestHelloAck := false
-
         viewerClient := IPC_PipeClient_Connect(sharedStorePipe, Test_OnViewerMessage)
 
         if (viewerClient.hPipe) {

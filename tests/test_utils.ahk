@@ -30,16 +30,6 @@ AssertTrue(condition, name) {
     }
 }
 
-_ArrayJoin(arr, sep := ", ") {
-    out := ""
-    for i, v in arr {
-        if (i > 1)
-            out .= sep
-        out .= v
-    }
-    return out
-}
-
 ; --- IPC Test Callbacks ---
 
 Test_OnServerMessage(line, hPipe := 0) {
@@ -221,13 +211,9 @@ Test_OnMultiClient3(line, hPipe := 0) {
 }
 
 Test_OnStandaloneMessage(line, hPipe := 0) {
-    global gStandaloneTestReceived
-    gStandaloneTestReceived := true
 }
 
 Test_OnCompiledStoreMessage(line, hPipe := 0) {
-    global gCompiledStoreReceived
-    gCompiledStoreReceived := true
 }
 
 ; --- Process Launch Helpers ---

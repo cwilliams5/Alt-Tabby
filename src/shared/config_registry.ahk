@@ -99,9 +99,6 @@ global gConfigRegistry := [
     {s: "Launcher", k: "SplashFadeMs", g: "LauncherSplashFadeMs", t: "int", default: 500,
      d: "Splash screen fade in/out duration in milliseconds."},
 
-    {s: "Launcher", k: "SplashImagePath", g: "LauncherSplashImagePath", t: "string", default: "img\logo.png",
-     d: "Path to splash screen image (relative to Alt-Tabby directory, or absolute path)."},
-
     ; ============================================================
     ; GUI Appearance
     ; ============================================================

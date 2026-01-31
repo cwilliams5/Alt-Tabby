@@ -4,7 +4,6 @@
 
 RunLiveTests_Execution() {
     global TestPassed, TestErrors, cfg
-    global gStandaloneTestReceived, gCompiledStoreReceived
     global IPC_MSG_HELLO
 
     storePath := A_ScriptDir "\..\src\store\store_server.ahk"
@@ -42,7 +41,6 @@ RunLiveTests_Execution() {
             TestPassed++
 
             ; Try to connect to verify pipe was created
-            gStandaloneTestReceived := false
             standaloneClient := IPC_PipeClient_Connect(standaloneStorePipe, Test_OnStandaloneMessage)
 
             if (standaloneClient.hPipe) {
@@ -137,7 +135,6 @@ RunLiveTests_Execution() {
                 TestPassed++
 
                 ; Try to connect
-                gCompiledStoreReceived := false
                 compiledClient := IPC_PipeClient_Connect(compiledStorePipe, Test_OnCompiledStoreMessage)
 
                 if (compiledClient.hPipe) {

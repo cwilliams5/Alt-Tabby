@@ -29,7 +29,6 @@ global gRealStoreResponse := ""
 global gRealStoreReceived := false
 global gViewerTestResponse := ""
 global gViewerTestReceived := false
-global gViewerTestHelloAck := false
 global gWsE2EResponse := ""
 global gWsE2EReceived := false
 global gHbTestHeartbeats := 0
@@ -49,8 +48,6 @@ global gMultiClient3Response := ""
 global gMultiClient3Received := false
 global gBlTestResponse := ""
 global gBlTestReceived := false
-global gStandaloneTestReceived := false
-global gCompiledStoreReceived := false
 
 ; --- Check for flags (BEFORE log init to set suite-specific log paths) ---
 DoLiveTests := false
