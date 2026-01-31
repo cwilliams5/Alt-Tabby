@@ -206,7 +206,6 @@ _Dash_OnStoreBtn(*) {
         RestartStore()
     else
         LaunchStore()
-    _Dash_StartRefreshTimer()
 }
 
 _Dash_OnGuiBtn(*) {
@@ -215,7 +214,6 @@ _Dash_OnGuiBtn(*) {
         RestartGui()
     else
         LaunchGui()
-    _Dash_StartRefreshTimer()
 }
 
 _Dash_OnViewerBtn(*) {
@@ -224,27 +222,22 @@ _Dash_OnViewerBtn(*) {
         RestartViewer()
     else
         LaunchViewer()
-    _Dash_StartRefreshTimer()
 }
 
 _Dash_OnRestartAllBtn(*) {
     RestartAll()
-    _Dash_StartRefreshTimer()
 }
 
 _Dash_OnStartMenuChk(*) {
     ToggleStartMenuShortcut()
-    _Dash_StartRefreshTimer()
 }
 
 _Dash_OnStartupChk(*) {
     ToggleStartupShortcut()
-    _Dash_StartRefreshTimer()
 }
 
 _Dash_OnAutoUpdateChk(*) {
     ToggleAutoUpdate()
-    _Dash_StartRefreshTimer()
 }
 
 _Dash_OnEscalate(*) {
@@ -275,7 +268,9 @@ _Dash_OnClose(*) {
 ; hot (500ms), decays to warm (3s) then cool (30s).
 
 _Dash_StartRefreshTimer() {
-    global g_DashRefreshTick, DASH_INTERVAL_HOT
+    global g_DashboardGui, g_DashRefreshTick, DASH_INTERVAL_HOT
+    if (!g_DashboardGui)
+        return
     g_DashRefreshTick := A_TickCount
     SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_HOT)
 }

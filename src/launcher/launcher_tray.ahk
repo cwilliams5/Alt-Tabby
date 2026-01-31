@@ -125,22 +125,26 @@ UpdateTrayMenu() {
 RestartStore() {
     global g_StorePID, TIMING_SUBPROCESS_LAUNCH
     LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
+    _Dash_StartRefreshTimer()
 }
 
 RestartGui() {
     global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
     LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
+    _Dash_StartRefreshTimer()
 }
 
 RestartViewer() {
     global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
     LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
+    _Dash_StartRefreshTimer()
 }
 
 RestartAll() {
     global TIMING_PROCESS_EXIT_WAIT, TIMING_SUBPROCESS_LAUNCH
 
     _KillAllSubprocesses()
+    _Dash_StartRefreshTimer()
     Sleep(TIMING_PROCESS_EXIT_WAIT)
 
     ; Relaunch core processes
@@ -377,6 +381,7 @@ ToggleAutoUpdate() {
     global cfg, gConfigIniPath, TOOLTIP_DURATION_SHORT
     cfg.SetupAutoUpdateCheck := !cfg.SetupAutoUpdateCheck
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", cfg.SetupAutoUpdateCheck, true, "bool")
+    _Dash_StartRefreshTimer()
     ToolTip(cfg.SetupAutoUpdateCheck ? "Auto-update enabled" : "Auto-update disabled")
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }

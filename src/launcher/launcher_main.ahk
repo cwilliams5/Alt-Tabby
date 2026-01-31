@@ -580,14 +580,17 @@ _Launcher_KillExistingInstances() {
 LaunchStore() {
     global g_StorePID
     LauncherUtils_Launch("store", &g_StorePID, _Launcher_Log)
+    _Dash_StartRefreshTimer()
 }
 
 LaunchGui() {
     global g_GuiPID
     LauncherUtils_Launch("gui", &g_GuiPID, _Launcher_Log)
+    _Dash_StartRefreshTimer()
 }
 
 LaunchViewer() {
     global g_ViewerPID
     LauncherUtils_Launch("viewer", &g_ViewerPID, _Launcher_Log)
+    _Dash_StartRefreshTimer()
 }
