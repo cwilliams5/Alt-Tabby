@@ -362,6 +362,20 @@ _CL_LoadAllSettings() {
                     LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected float), using default")
                     continue
                 }
+            case "enum":
+                found := false
+                for _, opt in entry.options {
+                    if (opt = val) {
+                        found := true
+                        break
+                    }
+                }
+                if (found)
+                    parsedVal := val
+                else {
+                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (not a valid option), using default")
+                    continue
+                }
             default:
                 parsedVal := val
         }

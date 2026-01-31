@@ -11,7 +11,8 @@
 ;   Subsection: {type: "subsection", section: "Parent", name: "Name", desc: "Description"}
 ;   Setting:    {s: section, k: key, g: global, t: type, default: value, d: "Description"}
 ;
-; Setting types: "string", "int", "float", "bool"
+; Setting types: "string", "int", "float", "bool", "enum"
+;   Enum settings also have: options: ["val1", "val2", ...]
 ;
 ; To add a new config:
 ; 1. Add an entry to gConfigRegistry below (with default value)
@@ -656,6 +657,17 @@ global gConfigRegistry := [
 
     {s: "Cache", k: "ProcNameMax", g: "ProcNameCacheMax", t: "int", default: 200,
      d: "Maximum number of cached process names. Older entries are evicted when limit is reached."},
+
+    ; ============================================================
+    ; Komorebi Integration
+    ; ============================================================
+    {type: "section", name: "Komorebi",
+     desc: "Komorebi Integration",
+     long: "Settings for komorebi tiling window manager integration."},
+
+    {s: "Komorebi", k: "WorkspaceConfirmationMethod", g: "KomorebiWorkspaceConfirmMethod",
+     t: "enum", default: "PollKomorebic", options: ["PollKomorebic", "IsWindow", "AwaitDelta"],
+     d: "How Alt-Tabby verifies a workspace switch completed. PollKomorebic = polls komorebic, higher CPU but works multi-monitor. IsWindow = checks window visibility, lower CPU but doesn't work with Virtual Desktops. AwaitDelta = waits for store delta, lower CPU but could be higher latency."},
 
     ; ============================================================
     ; Komorebi Subscription Timing

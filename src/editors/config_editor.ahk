@@ -8,7 +8,7 @@
 ; Or from tray menu: "Edit Config..."
 ;
 ; Uses gConfigRegistry from config_loader.ahk to dynamically
-; build the UI. Supports bool (checkbox), int/float/string (edit).
+; build the UI. Supports bool (checkbox), enum (dropdown), int/float/string (edit).
 ; Shows section descriptions and subsection headers.
 ;
 ; Dynamically adds vertical scrollbars to tabs whose content
@@ -221,7 +221,7 @@ _CE_GetSectionNames() {
     ; Define order (matches config_loader.ahk)
     order := ["AltTab", "Launcher", "GUI", "IPC", "Tools", "Producers", "Filtering",
               "WinEventHook", "ZPump", "WinEnum", "MruLite",
-              "IconPump", "ProcPump", "KomorebiSub",
+              "IconPump", "ProcPump", "Komorebi", "KomorebiSub",
               "Heartbeat", "Viewer", "Diagnostics", "Testing"]
 
     ; Filter to only sections that exist in registry
@@ -308,6 +308,15 @@ _CE_BuildSectionControls(sectionName, targetGui, isScrollPane := false) {
             gCE_Tooltips[ctrl.Hwnd] := entry.d
             createdControls.Push({ctrl: ctrl, origY: y})
             y += 22
+        } else if (entry.t = "enum") {
+            editX := xBase + 160
+            lblCtrl := targetGui.AddText("x" xBase " y" y " w150 +0x100", entry.k ":")
+            gCE_Tooltips[lblCtrl.Hwnd] := entry.d
+            createdControls.Push({ctrl: lblCtrl, origY: y})
+            ctrl := targetGui.AddDropDownList("v" entry.g " x" editX " y" (y - 2) " w200", entry.options)
+            gCE_Tooltips[ctrl.Hwnd] := entry.d
+            createdControls.Push({ctrl: ctrl, origY: y - 2})
+            y += 26
         } else {
             editX := xBase + 160
             lblCtrl := targetGui.AddText("x" xBase " y" y " w150 +0x100", entry.k ":")  ; SS_NOTIFY for mouse msgs
@@ -452,6 +461,10 @@ _CE_ParseValue(iniVal, type) {
 _CE_SetControlValue(ctrl, val, type) {
     if (type = "bool") {
         ctrl.Value := val ? 1 : 0
+    } else if (type = "enum") {
+        try ctrl.Choose(String(val))
+        catch
+            try ctrl.Choose(1)  ; Fallback to first option
     } else {
         ctrl.Value := String(val)
     }
@@ -460,6 +473,8 @@ _CE_SetControlValue(ctrl, val, type) {
 _CE_GetControlValue(ctrl, type) {
     if (type = "bool") {
         return ctrl.Value ? true : false
+    } else if (type = "enum") {
+        return ctrl.Text
     } else if (type = "int") {
         try {
             txt := ctrl.Value

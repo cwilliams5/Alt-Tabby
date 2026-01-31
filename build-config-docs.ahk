@@ -162,6 +162,8 @@ FormatDefault(val, type, key := "") {
     }
     if (type = "float")
         return Format("{:.2f}", val)
+    if (type = "enum")
+        return String(val)
     if (type = "string") {
         if (val = "")
             return "(empty)"
