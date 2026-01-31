@@ -81,7 +81,7 @@ Windows batch files (`.bat`) run in cmd.exe - single slashes work there.
 
 - **NEVER create GitHub release without explicit user request**
 - Before release: clean working tree, run FULL test suite
-- Update `VERSION` file, run `compile.bat`
+- Update `VERSION` file, run `compile.bat` (thin wrapper for `compile.ps1`)
 - Upload `release/AltTabby.exe` directly (no zip)
 - Asset MUST be named `AltTabby.exe` (auto-update depends on this)
 - Do NOT include `config.ini` or `blacklist.txt`

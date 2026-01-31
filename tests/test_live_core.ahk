@@ -60,7 +60,7 @@ RunLiveTests_Core() {
 
             try {
                 ; RunWait with hidden window, pipe from nul to skip the pause
-                exitCode := _Test_RunWaitSilent('cmd.exe /c "' compileBat '" < nul', A_ScriptDir "\..")
+                exitCode := _Test_RunWaitSilent('cmd.exe /c "' compileBat '" --force < nul', A_ScriptDir "\..")
 
                 if (exitCode != 0) {
                     Log("FAIL: compile.bat failed with exit code " exitCode)

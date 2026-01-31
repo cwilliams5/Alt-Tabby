@@ -77,14 +77,16 @@ In frequently-called functions (paint, input, per-window loops):
 
 ## Compilation
 
-- Use `compile.bat` (cmd.exe, single slashes)
+- `compile.ps1` is the build script; `compile.bat` is a thin wrapper for double-click convenience
+- Flags: `--force` (skip smart-skip), `--test-mode` (machine-readable TIMING output), `--timing` (human-readable)
 - Ahk2Exe requires `/base "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"`
 - Embedded resources: icon via `/icon`, splash PNG via `@Ahk2Exe-AddResource`
+- Smart-skip: compares source `LastWriteTime` against exe — skips Ahk2Exe when exe is newer
 
 ## Version Management
 
 - Single source: `VERSION` file in project root
-- Compiled: `compile.bat` reads VERSION for Ahk2Exe flags
+- Compiled: `compile.ps1` reads VERSION for Ahk2Exe flags
 - Dev: `GetAppVersion()` searches up directories for VERSION file
 
 ## Compiled vs Development Paths

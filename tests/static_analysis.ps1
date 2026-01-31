@@ -62,10 +62,11 @@ foreach ($check in $checks) {
     $handle = $proc.Handle
 
     $procs += @{
-        Process  = $proc
-        Name     = $name
-        Label    = $check.Name
-        OutFile  = $outFile
+        Process     = $proc
+        Name        = $name
+        Label       = $check.Name
+        OutFile     = $outFile
+        LaunchTickMs = $sw.ElapsedMilliseconds
     }
 }
 
@@ -75,8 +76,20 @@ $results = [System.Collections.ArrayList]::new()
 foreach ($p in $procs) {
     $p.Process | Wait-Process
     $durationMs = 0
-    if ($Timing -and $p.Process.ExitTime -and $p.Process.StartTime) {
-        $durationMs = ($p.Process.ExitTime - $p.Process.StartTime).TotalMilliseconds
+    if ($Timing) {
+        # Prefer Process.ExitTime - StartTime for accurate per-process duration.
+        # Fall back to parent Stopwatch if CLR returns garbage (rare race condition
+        # that can produce values like -13 billion seconds).
+        try {
+            $ms = ($p.Process.ExitTime - $p.Process.StartTime).TotalMilliseconds
+            if ($ms -ge 0 -and $ms -le 600000) {
+                $durationMs = $ms
+            } else {
+                $durationMs = $sw.ElapsedMilliseconds - $p.LaunchTickMs
+            }
+        } catch {
+            $durationMs = $sw.ElapsedMilliseconds - $p.LaunchTickMs
+        }
     }
     [void]$results.Add(@{
         Name       = $p.Name

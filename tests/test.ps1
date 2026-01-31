@@ -201,11 +201,22 @@ function Show-TimingReport {
     [void]$p1Items.Add(@{ Name = "Pre-Gate"; DurMs = $preGatePhase.DurationMs })
     $p1SlowestMs = ($p1Items | Sort-Object { $_.DurMs } -Descending | Select-Object -First 1).DurMs
 
-    # Render Compilation
+    # Render Compilation + sub-items (from compile.ps1 --test-mode output)
     if ($compPhase) {
         $compMarker = if ($compPhase.DurationMs -eq $p1SlowestMs -and $p1Items.Count -gt 1) { $MRK_SLOWEST } else { "" }
         $compGateRole = if ($hasGateArrows -and $outerGateName -eq "Compilation") { "outer_start" } elseif ($hasGateArrows) { "inner_start" } else { "" }
         [void]$lines.Add(@{ Prefix = "     "; Name = "Compilation"; OffsetMs = -1; DurMs = $compPhase.DurationMs; Marker = $compMarker; GateRole = $compGateRole })
+
+        # Compilation sub-items (step timings from compile.ps1 --test-mode)
+        if ($phaseItems.ContainsKey("Compilation")) {
+            $compSubItems = $phaseItems["Compilation"] | Sort-Object { $_.DurationMs } -Descending
+            $compSubSlowestMs = $compSubItems[0].DurationMs
+            foreach ($item in $compSubItems) {
+                # Skip "slowest" marker when all items tied at 0ms (everything cached)
+                $itemMarker = if ($item.DurationMs -eq $compSubSlowestMs -and $compSubSlowestMs -gt 0 -and @($compSubItems).Count -gt 1) { $MRK_SLOWEST } else { "" }
+                [void]$lines.Add(@{ Prefix = "       "; Name = $item.Item; OffsetMs = -1; DurMs = $item.DurationMs; Marker = $itemMarker; GateRole = "" })
+            }
+        }
     }
 
     # Render Pre-Gate + sub-items
@@ -555,6 +566,7 @@ $srcFile = "$srcRoot\alt_tabby.ahk"
 $releaseDir = (Resolve-Path "$PSScriptRoot\..").Path + "\release"
 $outFile = "$releaseDir\AltTabby.exe"
 $compileBat = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.bat"
+$compilePs1 = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.ps1"
 $compileDir = (Resolve-Path "$PSScriptRoot\..").Path
 $staticAnalysisScript = "$PSScriptRoot\static_analysis.ps1"
 $guiScript = "$PSScriptRoot\gui_tests.ahk"
@@ -578,12 +590,15 @@ if ($live) {
         Start-Sleep -Seconds 1
     }
 
-    if (Test-Path $compileBat) {
+    if (Test-Path $compilePs1) {
         Record-PhaseStart "Compilation"
         Write-Host "Starting compilation in background..." -ForegroundColor Cyan
         $compileOutFile = "$env:TEMP\compile_captured.log"
         Remove-Item -Force -ErrorAction SilentlyContinue $compileOutFile
-        $compileHandle = [SilentProcess]::StartCaptured(('cmd.exe /c "' + $compileBat + '" < nul'), $compileOutFile, $compileDir)
+        $compileFlags = "--test-mode"
+        if ($timing) { $compileFlags += " --timing" }
+        if ($forceCompile) { $compileFlags += " --force" }
+        $compileHandle = [SilentProcess]::StartCaptured(('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $compilePs1 + '" ' + $compileFlags), $compileOutFile, $compileDir)
     }
 }
 
@@ -736,48 +751,103 @@ if ($syntaxFailed -gt 0 -or $saExit -ne 0) {
     exit 1
 }
 
-# --- Start GUI Tests (Background) ---
-# GUI tests depend on pre-gates passing (they execute AHK code) but not on compilation.
-# In timing mode, GUI Tests is tracked as an item in the "Tests" phase (not its own phase).
+# --- Unit Suite Metadata (data-driven, avoids 5x copy-paste) ---
+$unitSuites = @(
+    @{ Name = "UnitCore";     Flag = "--unit-core";     Label = "Unit/Core";     LogSuffix = "unit_core" },
+    @{ Name = "UnitStorage";  Flag = "--unit-storage";  Label = "Unit/Storage";  LogSuffix = "unit_storage" },
+    @{ Name = "UnitSetup";    Flag = "--unit-setup";    Label = "Unit/Setup";    LogSuffix = "unit_setup" },
+    @{ Name = "UnitCleanup";  Flag = "--unit-cleanup";  Label = "Unit/Cleanup";  LogSuffix = "unit_cleanup" },
+    @{ Name = "UnitAdvanced"; Flag = "--unit-advanced";  Label = "Unit/Advanced"; LogSuffix = "unit_advanced" }
+)
+
+# --- Start GUI Tests + Unit Tests (Background) ---
+# GUI and unit tests depend on pre-gates passing (they execute AHK source directly)
+# but NOT on compilation. Live tests launch later after compilation completes.
 $guiStartTickMs = $masterSw.ElapsedMilliseconds
 if (Test-Path $guiScript) {
     Write-Host "Starting GUI tests in background..." -ForegroundColor Cyan
     $guiHandle = [SilentProcess]::Start('"' + $ahk + '" /ErrorStdOut "' + $guiScript + '"')
 }
 
+# Launch unit suites immediately (they don't need compilation)
+if ($live) {
+    foreach ($us in $unitSuites) {
+        $us.StderrFile = "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
+        $us.LogFile = "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
+        Remove-Item -Force -ErrorAction SilentlyContinue $us.StderrFile
+        Remove-Item -Force -ErrorAction SilentlyContinue $us.LogFile
+        Write-Host "  Starting $($us.Label) tests (background)..." -ForegroundColor Cyan
+        $us.Handle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" ' + $us.Flag, $us.StderrFile)
+    }
+}
+
 # --- Compilation Phase ---
 if ($live) {
-    Write-Host "`n--- Compilation Phase (compile.bat) ---" -ForegroundColor Yellow
+    Write-Host "`n--- Compilation Phase (compile.ps1) ---" -ForegroundColor Yellow
 
     if ($compileHandle -ne [IntPtr]::Zero) {
         # Compilation was started in background — wait for it
         Write-Host "  Waiting for background compilation..."
         $compileExit = [SilentProcess]::WaitAndGetExitCode($compileHandle)
         Record-PhaseEnd "Compilation"
+        # Parse compile.ps1 step timings from captured output
+        if ($timing -and (Test-Path $compileOutFile)) {
+            $compileTotalMs = 0
+            foreach ($line in (Get-Content $compileOutFile -ErrorAction SilentlyContinue)) {
+                if ($line -match '^TIMING:(.+):(\d+)$') {
+                    $stepMs = [double]$Matches[2]
+                    Record-ItemTiming -Phase "Compilation" -Item $Matches[1] -DurationMs $stepMs
+                    $compileTotalMs += $stepMs
+                }
+            }
+            # Fix phase duration: background compilation likely finished during pre-gate,
+            # but WaitAndGetExitCode wasn't called until after. Use the actual step durations
+            # (sequential sum) to correct the phase end time.
+            if ($compileTotalMs -gt 0 -or $compileExit -eq 0) {
+                $compStart = $timingEvents | Where-Object { $_.Type -eq "phase_start" -and $_.Name -eq "Compilation" } | Select-Object -First 1
+                $compEnd = $timingEvents | Where-Object { $_.Type -eq "phase_end" -and $_.Name -eq "Compilation" } | Select-Object -Last 1
+                if ($compStart -and $compEnd) {
+                    $compEnd.TickMs = $compStart.TickMs + $compileTotalMs
+                }
+            }
+        }
         if ($compileExit -eq 0 -and (Test-Path $outFile)) {
-            Write-Host "PASS: compile.bat completed" -ForegroundColor Green
+            Write-Host "PASS: Compilation completed" -ForegroundColor Green
         } else {
-            Write-Host "FAIL: compile.bat failed (exit $compileExit)" -ForegroundColor Red
+            Write-Host "FAIL: Compilation failed (exit $compileExit)" -ForegroundColor Red
             Write-Host "Aborting - compiled exe required for live tests" -ForegroundColor Red
             Show-TimingReport
             exit 1
         }
-    } elseif (Test-Path $compileBat) {
-        # compile.bat not found at early launch — try now
+    } elseif (Test-Path $compilePs1) {
+        # compile.ps1 not found at early launch — try now
         Record-PhaseStart "Compilation"
-        Write-Host "  Running compile.bat..."
-        $compileExit = [SilentProcess]::RunWait(('cmd.exe /c "' + $compileBat + '" < nul'), $compileDir)
+        Write-Host "  Running compile.ps1..."
+        $compileFlags = "--test-mode"
+        if ($timing) { $compileFlags += " --timing" }
+        if ($forceCompile) { $compileFlags += " --force" }
+        $compileOutFile = "$env:TEMP\compile_captured.log"
+        Remove-Item -Force -ErrorAction SilentlyContinue $compileOutFile
+        $compileExit = [SilentProcess]::RunWaitCaptured(('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $compilePs1 + '" ' + $compileFlags), $compileOutFile, $compileDir)
         Record-PhaseEnd "Compilation"
+        # Parse compile.ps1 step timings from captured output
+        if ($timing -and (Test-Path $compileOutFile)) {
+            foreach ($line in (Get-Content $compileOutFile -ErrorAction SilentlyContinue)) {
+                if ($line -match '^TIMING:(.+):(\d+)$') {
+                    Record-ItemTiming -Phase "Compilation" -Item $Matches[1] -DurationMs ([double]$Matches[2])
+                }
+            }
+        }
         if ($compileExit -eq 0 -and (Test-Path $outFile)) {
-            Write-Host "PASS: compile.bat completed" -ForegroundColor Green
+            Write-Host "PASS: Compilation completed" -ForegroundColor Green
         } else {
-            Write-Host "FAIL: compile.bat failed (exit $compileExit)" -ForegroundColor Red
+            Write-Host "FAIL: Compilation failed (exit $compileExit)" -ForegroundColor Red
             Write-Host "Aborting - compiled exe required for live tests" -ForegroundColor Red
             Show-TimingReport
             exit 1
         }
     } else {
-        Write-Host "FAIL: compile.bat not found" -ForegroundColor Red
+        Write-Host "FAIL: compile.ps1 not found" -ForegroundColor Red
         Show-TimingReport
         exit 1
     }
@@ -855,24 +925,13 @@ if ($guiHandle -ne [IntPtr]::Zero) {
     }
 }
 
-# --- Unit Suite Metadata (data-driven, avoids 5x copy-paste) ---
-$unitSuites = @(
-    @{ Name = "UnitCore";     Flag = "--unit-core";     Label = "Unit/Core";     LogSuffix = "unit_core" },
-    @{ Name = "UnitStorage";  Flag = "--unit-storage";  Label = "Unit/Storage";  LogSuffix = "unit_storage" },
-    @{ Name = "UnitSetup";    Flag = "--unit-setup";    Label = "Unit/Setup";    LogSuffix = "unit_setup" },
-    @{ Name = "UnitCleanup";  Flag = "--unit-cleanup";  Label = "Unit/Cleanup";  LogSuffix = "unit_cleanup" },
-    @{ Name = "UnitAdvanced"; Flag = "--unit-advanced";  Label = "Unit/Advanced"; LogSuffix = "unit_advanced" }
-)
-
 # --- Test Execution ---
 $mainExitCode = 0
 
 if ($live) {
-    # === All-Parallel Live Test Pipeline ===
-    # Phase 0 (above): Syntax + GUI + compile.bat
-    # Phase 1 (here): ALL suites launch simultaneously
-    # Safe because: Features + Core use AHK stores, Execution uses AltTabby.exe
-    # All use unique pipe names with timestamps — no collisions
+    # === Live Test Pipeline ===
+    # GUI + Unit tests already launched above (gated by pre-gate only).
+    # Live tests launch here after compilation (they need the compiled exe).
 
     $coreLogFile = "$env:TEMP\alt_tabby_tests_core.log"
     $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
@@ -881,34 +940,26 @@ if ($live) {
     $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
     $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
 
-    # Build list of all log files to clean (live + unit suites)
-    $cleanFiles = @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile)
-    foreach ($us in $unitSuites) {
-        $cleanFiles += "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
-        $cleanFiles += "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
-    }
-    foreach ($f in $cleanFiles) {
+    # Clean live suite log files
+    foreach ($f in @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile)) {
         Remove-Item -Force -ErrorAction SilentlyContinue $f
     }
 
     $liveStart = Get-Date
 
-    # --- All 8 suites (parallel: 5 unit + 3 live) ---
-    Write-Host "`n--- Test Execution (8 suites, parallel) ---" -ForegroundColor Yellow
+    # --- Live suites (3 suites, gated by compilation) ---
+    Write-Host "`n--- Live Test Execution (3 suites, parallel) ---" -ForegroundColor Yellow
 
-    # The "Tests" phase starts at the earliest test launch (GUI Tests, already running).
-    # We recorded $guiStartTickMs above. Record the phase start at that time.
+    # The "Tests" phase starts at the earliest test launch (GUI + Unit, already running).
     if ($timing) {
         [void]$timingEvents.Add(@{ Type = "phase_start"; Name = "Tests"; TickMs = $guiStartTickMs })
     }
 
-    $suiteStartTickMs = $masterSw.ElapsedMilliseconds
-
-    foreach ($us in $unitSuites) {
-        $us.StderrFile = "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
-        $us.LogFile = "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
-        Write-Host "  Starting $($us.Label) tests (background)..." -ForegroundColor Cyan
-        $us.Handle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" ' + $us.Flag, $us.StderrFile)
+    $liveStartTickMs = $masterSw.ElapsedMilliseconds
+    # If compilation finished during pre-gate, live suites launch at the same offset
+    # as GUI+Unit (no meaningful stagger). Merge to avoid spurious arrows.
+    if (($liveStartTickMs - $guiStartTickMs) -lt 500) {
+        $liveStartTickMs = $guiStartTickMs
     }
 
     Write-Host "  Starting Live/Features tests (background)..." -ForegroundColor Cyan
@@ -922,7 +973,6 @@ if ($live) {
 
     # --- Timing: poll all 8 handles + GUI to record actual completion times ---
     if ($timing) {
-        $pollSw = [System.Diagnostics.Stopwatch]::StartNew()
         $suiteHandles = @{
             "Live/Features"  = $featuresHandle
             "Live/Core"      = $coreHandle
@@ -948,12 +998,13 @@ if ($live) {
                 if ($suiteDone.ContainsKey($name)) { continue }
                 $code = [SilentProcess]::TryGetExitCode($suiteHandles[$name])
                 if ($code -ne -259) {
+                    $nowMs = $masterSw.ElapsedMilliseconds
                     if ($name -eq "GUI Tests") {
-                        # GUI Tests duration measured from its own start
-                        $suiteDone[$name] = $masterSw.ElapsedMilliseconds - $guiStartTickMs
+                        $suiteDone[$name] = $nowMs - $guiStartTickMs
+                    } elseif ($name -like "Unit/*") {
+                        $suiteDone[$name] = $nowMs - $guiStartTickMs
                     } else {
-                        # Other suites measured from their batch launch
-                        $suiteDone[$name] = $pollSw.ElapsedMilliseconds
+                        $suiteDone[$name] = $nowMs - $liveStartTickMs
                     }
                 }
             }
@@ -961,11 +1012,14 @@ if ($live) {
                 Start-Sleep -Milliseconds 25
             }
         }
-        $pollSw.Stop()
         Record-PhaseEnd "Tests"
 
         foreach ($label in $suiteDone.Keys) {
-            $itemOffsetMs = if ($label -eq "GUI Tests") { $guiStartTickMs } else { $suiteStartTickMs }
+            if ($label -eq "GUI Tests" -or $label -like "Unit/*") {
+                $itemOffsetMs = $guiStartTickMs
+            } else {
+                $itemOffsetMs = $liveStartTickMs
+            }
             Record-ItemTiming -Phase "Tests" -Item $label -DurationMs $suiteDone[$label] -OffsetMs $itemOffsetMs
         }
     }
