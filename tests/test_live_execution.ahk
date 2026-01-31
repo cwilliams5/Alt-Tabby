@@ -191,7 +191,17 @@ RunLiveTests_Execution() {
                 Log("PASS: Launcher mode spawned " processCount " processes (may not include launcher)")
                 TestPassed++
             } else {
+                ; Diagnostics: is the launcher still alive or did it exit?
+                launcherAlive := ProcessExist(launcherPid)
+                launcherLog := ""
+                logPath := EnvGet("TEMP") "\tabby_launcher.log"
+                if (FileExist(logPath)) {
+                    try launcherLog := FileRead(logPath)
+                }
                 Log("FAIL: Launcher mode only has " processCount " process(es), expected 3")
+                Log("  Diagnostic: launcher PID " launcherPid " alive=" (launcherAlive ? "yes" : "no"))
+                if (launcherLog != "")
+                    Log("  Launcher log:`n" launcherLog)
                 TestErrors++
             }
 

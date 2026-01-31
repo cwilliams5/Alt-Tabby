@@ -55,6 +55,11 @@ Launcher_Init() {
     ; Uses InstallationId so renamed exes in same install still share mutex
     ; MUST be before mismatch check to prevent race conditions
     if (!_Launcher_AcquireMutex()) {
+        ; In testing mode, don't show dialog — just exit silently
+        ; (avoids invisible MsgBox blocking automated tests when user's instance is running)
+        if (g_TestingMode)
+            ExitApp()
+
         result := MsgBox(
             "Alt-Tabby is already running.`n`n"
             "Would you like to restart it?",
