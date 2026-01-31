@@ -44,12 +44,17 @@ RunUnitTests_Cleanup() {
     Log("Testing LogTrim trims large file to ~50KB...")
     testLogPath := A_Temp "\tabby_logtrim_test_" A_TickCount ".log"
     try {
-        ; Build a file > 102400 bytes (100KB). Each line is ~100 chars.
-        ; 1200 lines * 100 chars = ~120KB (well over threshold)
-        largeContent := ""
-        Loop 1200 {
-            largeContent .= "Line " Format("{:04d}", A_Index) " - " "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH" "`n"
+        ; Build a file > 102400 bytes (100KB). ~120KB target.
+        ; Build a small chunk then double it to avoid O(n²) concatenation.
+        chunk := ""
+        Loop 40 {
+            chunk .= "Line " Format("{:04d}", A_Index) " - " "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH" "`n"
         }
+        largeContent := chunk
+        Loop 5 {
+            largeContent .= largeContent
+        }
+        largeContent := SubStr(largeContent, 1, 120000)
         FileAppend(largeContent, testLogPath, "UTF-8")
         sizeBefore := FileGetSize(testLogPath)
 
@@ -106,11 +111,18 @@ RunUnitTests_Cleanup() {
     Log("Testing LogTrim preserves tail content...")
     testLogPath := A_Temp "\tabby_logtrim_tail_" A_TickCount ".log"
     try {
-        ; Generate > 102400 bytes. 1300 lines × ~100 chars = ~130KB
-        largeContent := ""
-        Loop 1300 {
-            largeContent .= "Line " Format("{:04d}", A_Index) " PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PAD`n"
+        ; Generate > 102400 bytes. ~130KB target.
+        ; Build bulk via doubling, then prepend/append unique markers.
+        chunk := ""
+        Loop 40 {
+            chunk .= "Line " Format("{:04d}", A_Index) " PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PADDING-PAD`n"
         }
+        bulk := chunk
+        Loop 5 {
+            bulk .= bulk
+        }
+        ; Prepend unique head marker, append unique tail marker
+        largeContent := "HEAD_MARKER_UNIQUE_12345`n" SubStr(bulk, 1, 128000) "TAIL_MARKER_UNIQUE_67890`n"
         FileAppend(largeContent, testLogPath, "UTF-8")
         sizeBefore := FileGetSize(testLogPath)
 
@@ -120,15 +132,15 @@ RunUnitTests_Cleanup() {
             LogTrim(testLogPath)
 
             trimmedContent := FileRead(testLogPath)
-            ; Last line (1300) should be preserved since LogTrim keeps tail
-            hasLastLine := InStr(trimmedContent, "Line 1300")
-            ; First line should be gone (trimmed from head)
-            hasFirstLine := InStr(trimmedContent, "Line 0001")
-            if (hasLastLine && !hasFirstLine) {
-                Log("PASS: LogTrim preserved tail (has Line 1300, no Line 0001)")
+            ; Tail marker should be preserved since LogTrim keeps tail
+            hasTail := InStr(trimmedContent, "TAIL_MARKER_UNIQUE_67890")
+            ; Head marker should be gone (trimmed from head)
+            hasHead := InStr(trimmedContent, "HEAD_MARKER_UNIQUE_12345")
+            if (hasTail && !hasHead) {
+                Log("PASS: LogTrim preserved tail (has tail marker, no head marker)")
                 TestPassed++
             } else {
-                Log("FAIL: LogTrim should keep tail, remove head (last=" hasLastLine ", first=" hasFirstLine ", beforeSize=" sizeBefore ")")
+                Log("FAIL: LogTrim should keep tail, remove head (tail=" hasTail ", head=" hasHead ", beforeSize=" sizeBefore ")")
                 TestErrors++
             }
         }
@@ -144,12 +156,16 @@ RunUnitTests_Cleanup() {
     testLogPath := A_Temp "\tabby_logtrim_exact_" A_TickCount ".log"
     try {
         ; Build content close to exactly 102400 bytes
-        exactContent := ""
-        lineLen := 80  ; approximate bytes per line
-        targetLines := 102400 // lineLen  ; ~1280 lines
-        Loop targetLines {
-            exactContent .= "X" Format("{:04d}", A_Index) " - " "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrs" "`n"
+        ; Build a small chunk then double to avoid O(n²) concatenation.
+        chunk := ""
+        Loop 40 {
+            chunk .= "X" Format("{:04d}", A_Index) " - " "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrs" "`n"
         }
+        exactContent := chunk
+        Loop 5 {
+            exactContent .= exactContent
+        }
+        exactContent := SubStr(exactContent, 1, 102400)
         FileAppend(exactContent, testLogPath, "UTF-8")
         sizeBefore := FileGetSize(testLogPath)
 

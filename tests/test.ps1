@@ -343,9 +343,50 @@ Remove-Item -Force -ErrorAction SilentlyContinue $logFile
 Write-Host "=== Alt-Tabby Test Run $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" -ForegroundColor Cyan
 Write-Host "Log file: $logFile"
 
-# --- Syntax Check Phase (Parallel) ---
-Record-PhaseStart "Syntax Check"
-Write-Host "`n--- Syntax Check Phase (Parallel) ---" -ForegroundColor Yellow
+# --- Shared paths ---
+$compiler = "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe"
+$ahkBase = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
+$srcFile = "$srcRoot\alt_tabby.ahk"
+$releaseDir = (Resolve-Path "$PSScriptRoot\..").Path + "\release"
+$outFile = "$releaseDir\AltTabby.exe"
+$compileBat = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.bat"
+$compileDir = (Resolve-Path "$PSScriptRoot\..").Path
+$staticAnalysisScript = "$PSScriptRoot\static_analysis.ps1"
+$guiScript = "$PSScriptRoot\gui_tests.ahk"
+$guiLogFile = "$env:TEMP\gui_tests.log"
+$guiHandle = [IntPtr]::Zero
+$guiTimingRecorded = $false
+$compileHandle = [IntPtr]::Zero
+
+Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
+
+# --- Live mode: Kill AltTabby + start compilation early (background) ---
+# Compilation overlaps with pre-gate checks to save ~3s on the critical path.
+# Safe because: Ahk2Exe reads source files (no write conflicts), runs silently,
+# and is killed if pre-gates fail.
+if ($live) {
+    # Kill running AltTabby processes first (must happen before compile touches exe)
+    $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Host "Stopping running AltTabby processes..." -ForegroundColor Yellow
+        Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+    }
+
+    if (Test-Path $compileBat) {
+        Record-PhaseStart "Compilation"
+        Write-Host "Starting compilation in background..." -ForegroundColor Cyan
+        $compileOutFile = "$env:TEMP\compile_captured.log"
+        Remove-Item -Force -ErrorAction SilentlyContinue $compileOutFile
+        $compileHandle = [SilentProcess]::StartCaptured(('cmd.exe /c "' + $compileBat + '" < nul'), $compileOutFile, $compileDir)
+    }
+}
+
+# --- Pre-Gate Phase: Syntax Check + Static Analysis (Parallel) ---
+# Both are independent text-scanning checks. Neither depends on the other.
+# Both must pass before any AHK test process launches.
+Record-PhaseStart "Pre-Gate (Syntax + Static Analysis)"
+Write-Host "`n--- Pre-Gate: Syntax Check + Static Analysis (Parallel) ---" -ForegroundColor Yellow
 
 $filesToCheck = @(
     "$srcRoot\store\windowstore.ahk",
@@ -383,6 +424,18 @@ foreach ($file in $filesToCheck) {
     }
 }
 
+# Launch static analysis in background (captured to temp file)
+$saOutFile = "$env:TEMP\sa_captured_output.log"
+$saHandle = [IntPtr]::Zero
+$saExit = 0
+Remove-Item -Force -ErrorAction SilentlyContinue $saOutFile
+
+if (Test-Path $staticAnalysisScript) {
+    $saTimingArg = if ($timing) { " -Timing" } else { "" }
+    $saCmdLine = 'powershell.exe -NoProfile -File "' + $staticAnalysisScript + '" -SourceDir "' + $srcRoot + '"' + $saTimingArg
+    $saHandle = [SilentProcess]::StartCaptured($saCmdLine, $saOutFile)
+}
+
 # Wait for all syntax checks to complete and collect results
 $syntaxPassed = 0
 $syntaxFailed = 0
@@ -404,28 +457,23 @@ foreach ($sp in $syntaxProcs) {
 }
 
 $syntaxTotal = $syntaxPassed + $syntaxFailed
-Record-PhaseEnd "Syntax Check"
 if ($syntaxFailed -gt 0) {
     Write-Host "  Syntax: $syntaxPassed/$syntaxTotal passed, $syntaxFailed failed [FAIL]" -ForegroundColor Red
-    Show-TimingReport
-    exit 1
 } else {
     Write-Host "  Syntax: $syntaxTotal/$syntaxTotal passed [PASS]" -ForegroundColor Green
 }
 
-# --- Static Analysis Pre-Gate (Parallel) ---
-# Runs all check_*.ps1 scripts in parallel via the dispatcher.
-# Catches issues like undeclared globals that cause runtime popups or silent bugs.
-# This MUST pass before any AHK process launches.
-Record-PhaseStart "Static Analysis"
-Write-Host "`n--- Static Analysis Pre-Gate ---" -ForegroundColor Yellow
+# Wait for static analysis to complete and show results
+if ($saHandle -ne [IntPtr]::Zero) {
+    $saExit = [SilentProcess]::WaitAndGetExitCode($saHandle)
 
-$staticAnalysisScript = "$PSScriptRoot\static_analysis.ps1"
-if (Test-Path $staticAnalysisScript) {
-    $saArgs = @{ SourceDir = $srcRoot }
-    if ($timing) { $saArgs.Timing = $true }
-    & $staticAnalysisScript @saArgs
-    $saExit = $LASTEXITCODE
+    # Replay captured SA output
+    Write-Host ""
+    if (Test-Path $saOutFile) {
+        $saOutput = Get-Content $saOutFile -Raw -ErrorAction SilentlyContinue
+        if ($saOutput) { Write-Host $saOutput.TrimEnd() }
+        Remove-Item -Force -ErrorAction SilentlyContinue $saOutFile
+    }
 
     # Read per-check timing data if available
     $saTimingFile = "$env:TEMP\sa_timing.json"
@@ -433,13 +481,21 @@ if (Test-Path $staticAnalysisScript) {
         $saTimingData = Get-Content $saTimingFile -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue
         if ($saTimingData) {
             foreach ($entry in $saTimingData) {
-                Record-ItemTiming -Phase "Static Analysis" -Item $entry.Name -DurationMs $entry.DurationMs
+                Record-ItemTiming -Phase "Pre-Gate (Syntax + Static Analysis)" -Item $entry.Name -DurationMs $entry.DurationMs
             }
         }
         Remove-Item -Force -ErrorAction SilentlyContinue $saTimingFile
     }
+} elseif (-not (Test-Path $staticAnalysisScript)) {
+    Write-Host "  SKIP: static_analysis.ps1 not found" -ForegroundColor Yellow
+}
 
-    Record-PhaseEnd "Static Analysis"
+Record-PhaseEnd "Pre-Gate (Syntax + Static Analysis)"
+
+# Check for pre-gate failures — kill background compilation if needed
+$preGateFailed = $false
+if ($syntaxFailed -gt 0 -or $saExit -ne 0) {
+    $preGateFailed = $true
 
     if ($saExit -ne 0) {
         Write-Host ""
@@ -452,55 +508,59 @@ if (Test-Path $staticAnalysisScript) {
         Write-Host ""
         Write-Host "  No tests will run until all static analysis checks pass." -ForegroundColor Red
         Write-Host "============================================================" -ForegroundColor Red
-        Show-TimingReport
-        exit 1
     }
-} else {
-    Record-PhaseEnd "Static Analysis"
-    Write-Host "  SKIP: static_analysis.ps1 not found" -ForegroundColor Yellow
+
+    # Kill background compilation if it was started
+    if ($compileHandle -ne [IntPtr]::Zero) {
+        # TryGetExitCode returns -259 if still running; if so, terminate it
+        $compileCode = [SilentProcess]::TryGetExitCode($compileHandle)
+        if ($compileCode -eq -259) {
+            # Process still running — terminate via handle
+            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class ProcHelper { [DllImport("kernel32.dll")] public static extern bool TerminateProcess(IntPtr h, uint code); [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); }'
+            [ProcHelper]::TerminateProcess($compileHandle, 1) | Out-Null
+            [ProcHelper]::CloseHandle($compileHandle) | Out-Null
+        } else {
+            # Already exited — just close the handle
+            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class ProcHelper2 { [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h); }' -ErrorAction SilentlyContinue
+            try { [ProcHelper2]::CloseHandle($compileHandle) | Out-Null } catch {}
+        }
+        Record-PhaseEnd "Compilation"
+    }
+
+    Show-TimingReport
+    exit 1
 }
 
-# --- Compilation Phase ---
-# When --live is specified, skip compilation here - Core tests include compile.bat testing
-# which handles compilation. This avoids redundant compilation (~5-10s savings).
-$compiler = "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe"
-$ahkBase = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
-$srcFile = "$srcRoot\alt_tabby.ahk"
-$releaseDir = (Resolve-Path "$PSScriptRoot\..").Path + "\release"
-$outFile = "$releaseDir\AltTabby.exe"
-
-# --- Start GUI Tests Early (Background) ---
-# GUI tests have no dependencies on compilation or store, so run them in parallel
-$guiScript = "$PSScriptRoot\gui_tests.ahk"
-$guiLogFile = "$env:TEMP\gui_tests.log"
-$guiHandle = [IntPtr]::Zero
-
-Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
-
+# --- Start GUI Tests (Background) ---
+# GUI tests depend on pre-gates passing (they execute AHK code) but not on compilation.
 if (Test-Path $guiScript) {
     Write-Host "Starting GUI tests in background..." -ForegroundColor Cyan
     Record-PhaseStart "GUI Tests (background)"
     $guiHandle = [SilentProcess]::Start('"' + $ahk + '" /ErrorStdOut "' + $guiScript + '"')
 }
 
+# --- Compilation Phase ---
 if ($live) {
-    Record-PhaseStart "Compilation"
     Write-Host "`n--- Compilation Phase (compile.bat) ---" -ForegroundColor Yellow
-    $compileBat = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.bat"
-    $compileDir = (Resolve-Path "$PSScriptRoot\..").Path
 
-    if (Test-Path $compileBat) {
-        # Kill running AltTabby processes first
-        $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
-        if ($running) {
-            Write-Host "  Stopping running AltTabby processes..."
-            Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 1
+    if ($compileHandle -ne [IntPtr]::Zero) {
+        # Compilation was started in background — wait for it
+        Write-Host "  Waiting for background compilation..."
+        $compileExit = [SilentProcess]::WaitAndGetExitCode($compileHandle)
+        Record-PhaseEnd "Compilation"
+        if ($compileExit -eq 0 -and (Test-Path $outFile)) {
+            Write-Host "PASS: compile.bat completed" -ForegroundColor Green
+        } else {
+            Write-Host "FAIL: compile.bat failed (exit $compileExit)" -ForegroundColor Red
+            Write-Host "Aborting - compiled exe required for live tests" -ForegroundColor Red
+            Show-TimingReport
+            exit 1
         }
-
+    } elseif (Test-Path $compileBat) {
+        # compile.bat not found at early launch — try now
+        Record-PhaseStart "Compilation"
         Write-Host "  Running compile.bat..."
         $compileExit = [SilentProcess]::RunWait(('cmd.exe /c "' + $compileBat + '" < nul'), $compileDir)
-
         Record-PhaseEnd "Compilation"
         if ($compileExit -eq 0 -and (Test-Path $outFile)) {
             Write-Host "PASS: compile.bat completed" -ForegroundColor Green
@@ -511,7 +571,6 @@ if ($live) {
             exit 1
         }
     } else {
-        Record-PhaseEnd "Compilation"
         Write-Host "FAIL: compile.bat not found" -ForegroundColor Red
         Show-TimingReport
         exit 1
@@ -579,6 +638,26 @@ if ($live) {
     Record-PhaseEnd "Compilation"
 }
 
+# --- Check if GUI tests already finished (accurate timing) ---
+# GUI tests take ~1s but WaitAndGetExitCode below is called much later,
+# so record the phase end now if the process has already exited.
+if ($guiHandle -ne [IntPtr]::Zero) {
+    $guiCode = [SilentProcess]::TryGetExitCode($guiHandle)
+    if ($guiCode -ne -259) {
+        Record-PhaseEnd "GUI Tests (background)"
+        $guiTimingRecorded = $true
+    }
+}
+
+# --- Unit Suite Metadata (data-driven, avoids 5x copy-paste) ---
+$unitSuites = @(
+    @{ Name = "UnitCore";     Flag = "--unit-core";     Label = "Unit/Core";     LogSuffix = "unit_core" },
+    @{ Name = "UnitStorage";  Flag = "--unit-storage";  Label = "Unit/Storage";  LogSuffix = "unit_storage" },
+    @{ Name = "UnitSetup";    Flag = "--unit-setup";    Label = "Unit/Setup";    LogSuffix = "unit_setup" },
+    @{ Name = "UnitCleanup";  Flag = "--unit-cleanup";  Label = "Unit/Cleanup";  LogSuffix = "unit_cleanup" },
+    @{ Name = "UnitAdvanced"; Flag = "--unit-advanced";  Label = "Unit/Advanced"; LogSuffix = "unit_advanced" }
+)
+
 # --- Test Execution ---
 $mainExitCode = 0
 
@@ -595,41 +674,49 @@ if ($live) {
     $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
     $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
     $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
-    $stderrFile = "$env:TEMP\ahk_stderr.log"
 
-    # Clean parallel log files
-    foreach ($f in @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile, $stderrFile)) {
+    # Build list of all log files to clean (live + unit suites)
+    $cleanFiles = @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile)
+    foreach ($us in $unitSuites) {
+        $cleanFiles += "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
+        $cleanFiles += "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
+    }
+    foreach ($f in $cleanFiles) {
         Remove-Item -Force -ErrorAction SilentlyContinue $f
     }
 
     $liveStart = Get-Date
-    Record-PhaseStart "Live Tests"
 
-    # --- All Suites (parallel) ---
-    Write-Host "`n--- All Suites (parallel) ---" -ForegroundColor Yellow
+    # --- All 8 suites (parallel: 5 unit + 3 live) ---
+    Write-Host "`n--- Test Execution (8 suites, parallel) ---" -ForegroundColor Yellow
+    Record-PhaseStart "Test Execution"
 
-    # All suites launched directly (no cmd.exe) — FORCEOFFEEDBACK applies to AHK itself
-    Write-Host "  Starting Features tests (background)..." -ForegroundColor Cyan
+    foreach ($us in $unitSuites) {
+        $us.StderrFile = "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
+        $us.LogFile = "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
+        Write-Host "  Starting $($us.Label) tests (background)..." -ForegroundColor Cyan
+        $us.Handle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" ' + $us.Flag, $us.StderrFile)
+    }
+
+    Write-Host "  Starting Live/Features tests (background)..." -ForegroundColor Cyan
     $featuresHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-features', $featuresStderrFile)
 
-    Write-Host "  Starting Core tests (background)..." -ForegroundColor Cyan
+    Write-Host "  Starting Live/Core tests (background)..." -ForegroundColor Cyan
     $coreHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-core', $coreStderrFile)
 
-    Write-Host "  Starting Execution tests (background)..." -ForegroundColor Cyan
+    Write-Host "  Starting Live/Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
-    # Launch Unit via StartCaptured (not RunWaitCaptured) so we have its handle for polling
-    Write-Host "  Starting Unit tests..." -ForegroundColor Cyan
-    $unitHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '"', $stderrFile)
-
-    # --- Timing: poll all 4 handles to record actual completion times ---
+    # --- Timing: poll all 8 handles to record actual completion times ---
     if ($timing) {
         $pollSw = [System.Diagnostics.Stopwatch]::StartNew()
         $suiteHandles = @{
-            Unit      = $unitHandle
-            Features  = $featuresHandle
-            Core      = $coreHandle
-            Execution = $executionHandle
+            "Live/Features"  = $featuresHandle
+            "Live/Core"      = $coreHandle
+            "Live/Execution" = $executionHandle
+        }
+        foreach ($us in $unitSuites) {
+            $suiteHandles[$us.Label] = $us.Handle
         }
         $suiteDone = @{}
         while ($suiteDone.Count -lt $suiteHandles.Count) {
@@ -645,28 +732,27 @@ if ($live) {
             }
         }
         $pollSw.Stop()
-        Record-PhaseEnd "Live Tests"
-        foreach ($name in $suiteDone.Keys) {
-            Record-ItemTiming -Phase "Live Tests" -Item $name -DurationMs $suiteDone[$name]
+        Record-PhaseEnd "Test Execution"
+
+        foreach ($label in $suiteDone.Keys) {
+            Record-ItemTiming -Phase "Test Execution" -Item $label -DurationMs $suiteDone[$label]
         }
     }
 
-    # Wait for Unit (blocking — instant if polling already detected completion)
-    $unitExit = [SilentProcess]::WaitAndGetExitCode($unitHandle)
-
-    $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
-    if ($stderr) {
-        Write-Host "=== UNIT TEST ERRORS ===" -ForegroundColor Red
-        Write-Host $stderr
+    # --- Collect Unit Results ---
+    Write-Host "`n--- Unit Test Results ---" -ForegroundColor Yellow
+    foreach ($us in $unitSuites) {
+        $usExit = [SilentProcess]::WaitAndGetExitCode($us.Handle)
+        $usStderr = Get-Content $us.StderrFile -ErrorAction SilentlyContinue
+        if ($usStderr) {
+            Write-Host "=== $($us.Label.ToUpper()) ERRORS ===" -ForegroundColor Red
+            Write-Host $usStderr
+        }
+        Show-TestSummary -LogPath $us.LogFile -Label $us.Label
+        if ($usExit -ne 0) { $mainExitCode = $usExit }
     }
 
-    Show-TestSummary -LogPath $logFile -Label "Unit"
-
-    if ($unitExit -ne 0) {
-        $mainExitCode = $unitExit
-    }
-
-    # --- Collect Results (wait for all background processes) ---
+    # --- Collect Live Results ---
 
     Write-Host "`n--- Core Test Results ---" -ForegroundColor Yellow
     $coreExitCode = [SilentProcess]::WaitAndGetExitCode($coreHandle)
@@ -704,27 +790,73 @@ if ($live) {
 
     if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
 
-    if (-not $timing) { Record-PhaseEnd "Live Tests" }
+    if (-not $timing) {
+        Record-PhaseEnd "Test Execution"
+    }
     $liveElapsed = ((Get-Date) - $liveStart).TotalSeconds
     Write-Host "`n  Live pipeline completed in $([math]::Round($liveElapsed, 1))s" -ForegroundColor Cyan
 } else {
-    # === Non-live mode: unit tests only ===
+    # === Non-live mode: 5-way parallel unit tests ===
     Record-PhaseStart "Unit Tests"
-    Write-Host "`n--- Unit Tests Phase ---" -ForegroundColor Yellow
+    Write-Host "`n--- Unit Tests Phase (parallel) ---" -ForegroundColor Yellow
 
-    $stderrFile = "$env:TEMP\ahk_stderr.log"
-    Remove-Item -Force -ErrorAction SilentlyContinue $stderrFile
-
-    $mainExitCode = [SilentProcess]::RunWaitCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '"', $stderrFile)
-    Record-PhaseEnd "Unit Tests"
-
-    $stderr = Get-Content $stderrFile -ErrorAction SilentlyContinue
-    if ($stderr) {
-        Write-Host "=== ERRORS ===" -ForegroundColor Red
-        Write-Host $stderr
+    # Clean log files
+    foreach ($us in $unitSuites) {
+        $us.StderrFile = "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
+        $us.LogFile = "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
+        Remove-Item -Force -ErrorAction SilentlyContinue $us.StderrFile
+        Remove-Item -Force -ErrorAction SilentlyContinue $us.LogFile
     }
 
-    Show-TestSummary -LogPath $logFile -Label "Unit"
+    # Launch all 5 unit suites in parallel
+    foreach ($us in $unitSuites) {
+        Write-Host "  Starting $($us.Label) tests (background)..." -ForegroundColor Cyan
+        $us.Handle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" ' + $us.Flag, $us.StderrFile)
+    }
+
+    # --- Timing: poll all 5 handles ---
+    if ($timing) {
+        $pollSw = [System.Diagnostics.Stopwatch]::StartNew()
+        $suiteHandles = @{}
+        foreach ($us in $unitSuites) {
+            $suiteHandles[$us.Name] = $us.Handle
+        }
+        $suiteDone = @{}
+        while ($suiteDone.Count -lt $suiteHandles.Count) {
+            foreach ($name in $suiteHandles.Keys) {
+                if ($suiteDone.ContainsKey($name)) { continue }
+                $code = [SilentProcess]::TryGetExitCode($suiteHandles[$name])
+                if ($code -ne -259) {
+                    $suiteDone[$name] = $pollSw.ElapsedMilliseconds
+                }
+            }
+            if ($suiteDone.Count -lt $suiteHandles.Count) {
+                Start-Sleep -Milliseconds 25
+            }
+        }
+        $pollSw.Stop()
+        Record-PhaseEnd "Unit Tests"
+        foreach ($us in $unitSuites) {
+            if ($suiteDone.ContainsKey($us.Name)) {
+                Record-ItemTiming -Phase "Unit Tests" -Item $us.Label -DurationMs $suiteDone[$us.Name]
+            }
+        }
+    }
+
+    # Collect results
+    Write-Host ""
+    foreach ($us in $unitSuites) {
+        $usExit = [SilentProcess]::WaitAndGetExitCode($us.Handle)
+        $usStderr = Get-Content $us.StderrFile -ErrorAction SilentlyContinue
+        if ($usStderr) {
+            Write-Host "=== $($us.Label.ToUpper()) ERRORS ===" -ForegroundColor Red
+            Write-Host $usStderr
+        }
+        Show-TestSummary -LogPath $us.LogFile -Label $us.Label
+        if ($usExit -ne 0) { $mainExitCode = $usExit }
+    }
+
+    if (-not $timing) { Record-PhaseEnd "Unit Tests" }
 }
 
 # --- GUI Tests Phase (Collect Results) ---
@@ -732,7 +864,9 @@ Write-Host "`n--- GUI Tests Phase ---" -ForegroundColor Yellow
 
 if ($guiHandle -ne [IntPtr]::Zero) {
     $guiExitCode = [SilentProcess]::WaitAndGetExitCode($guiHandle)
-    Record-PhaseEnd "GUI Tests (background)"
+    if (-not $guiTimingRecorded) {
+        Record-PhaseEnd "GUI Tests (background)"
+    }
     Show-TestSummary -LogPath $guiLogFile -Label "GUI"
 
     if ($guiExitCode -ne 0) {

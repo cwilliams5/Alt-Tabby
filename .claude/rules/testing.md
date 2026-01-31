@@ -87,6 +87,10 @@ Tests state transitions, freeze behavior, workspace toggle, config combinations.
 - **Poll, don't sleep** — Use `WaitForFlag(&flag)` / `WaitForStorePipe(name)` from `test_utils.ahk`, not fixed `Sleep()`. Adaptive polling exits as soon as data arrives.
 - **Process launching** — Use `LaunchTestStore(pipeName)` and `_Test_RunSilent(cmdLine)` from `test_utils.ahk`. These handle cursor suppression and cleanup.
 
+## Performance Benchmarking
+
+`tests/bench_unit_split.ps1` — Measures AHK startup overhead and per-file unit test times to evaluate parallel split strategies. Run when considering changes to test parallelization.
+
 ## Trust Test Failures
 
 - Don't dismiss as "timing issues" - investigate root cause

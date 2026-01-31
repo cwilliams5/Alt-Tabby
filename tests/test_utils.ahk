@@ -397,11 +397,18 @@ _JoinArray(arr, sep) {
     return result
 }
 
-; Repeat a string n times
+; Repeat a string n times (O(n log n) doubling for large counts)
 _RepeatStr(str, count) {
-    result := ""
-    loop count
-        result .= str
+    if (count <= 0)
+        return ""
+    result := str
+    n := 1
+    while (n * 2 <= count) {
+        result .= result
+        n *= 2
+    }
+    if (n < count)
+        result .= SubStr(result, 1, StrLen(str) * (count - n))
     return result
 }
 

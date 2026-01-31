@@ -57,6 +57,11 @@ DoLiveTests := false
 DoLiveCore := false
 DoLiveFeatures := false
 DoLiveExecution := false
+DoUnitCore := false
+DoUnitStorage := false
+DoUnitSetup := false
+DoUnitCleanup := false
+DoUnitAdvanced := false
 for _, arg in A_Args {
     if (arg = "--live")
         DoLiveTests := true
@@ -66,6 +71,16 @@ for _, arg in A_Args {
         DoLiveFeatures := true
     else if (arg = "--live-execution")
         DoLiveExecution := true
+    else if (arg = "--unit-core")
+        DoUnitCore := true
+    else if (arg = "--unit-storage")
+        DoUnitStorage := true
+    else if (arg = "--unit-setup")
+        DoUnitSetup := true
+    else if (arg = "--unit-cleanup")
+        DoUnitCleanup := true
+    else if (arg = "--unit-advanced")
+        DoUnitAdvanced := true
 }
 
 ; Single-suite modes use a dedicated log file to avoid file locking
@@ -76,6 +91,16 @@ else if (DoLiveFeatures)
     TestLogPath := A_Temp "\alt_tabby_tests_features.log"
 else if (DoLiveExecution)
     TestLogPath := A_Temp "\alt_tabby_tests_execution.log"
+else if (DoUnitCore)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_core.log"
+else if (DoUnitStorage)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_storage.log"
+else if (DoUnitSetup)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_setup.log"
+else if (DoUnitCleanup)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_cleanup.log"
+else if (DoUnitAdvanced)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_advanced.log"
 
 ; --- Error handler BEFORE any I/O to catch early startup errors ---
 OnError(_Test_OnError)
@@ -129,10 +154,23 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
-isSingleSuite := DoLiveCore || DoLiveFeatures || DoLiveExecution
+isUnitSingle := DoUnitCore || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced
+isSingleSuite := DoLiveCore || DoLiveFeatures || DoLiveExecution || isUnitSingle
 
-if (!isSingleSuite) {
-    ; --- Always run unit tests in full/default mode ---
+if (isUnitSingle) {
+    ; --- Run a single unit subset ---
+    if (DoUnitCore)
+        RunUnitTests_Core()
+    else if (DoUnitStorage)
+        RunUnitTests_Storage()
+    else if (DoUnitSetup)
+        RunUnitTests_Setup()
+    else if (DoUnitCleanup)
+        RunUnitTests_Cleanup()
+    else if (DoUnitAdvanced)
+        RunUnitTests_Advanced()
+} else if (!isSingleSuite) {
+    ; --- Full mode: run all unit tests ---
     RunUnitTests()
 }
 
