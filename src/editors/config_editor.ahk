@@ -32,7 +32,7 @@ global gCE_BoundMouseMove := 0        ; Bound mouse move handler for tooltips
 global gCE_Tooltips := Map()          ; Map of control Hwnd -> tooltip text
 global gCE_LastTooltipHwnd := 0       ; Track last control shown tooltip for
 global gCE_SavedChanges := false
-global gCE_AutoRestart := false
+global gCE_LauncherHwnd := 0
 
 ; Scroll bar constants
 global CE_SB_VERT := 1
@@ -54,12 +54,12 @@ global CE_SB_THUMBTRACK := 5
 ; ============================================================
 
 ; Run the config editor
-; autoRestart: If true, caller will handle restart on save
+; launcherHwnd: HWND of launcher process for WM_COPYDATA restart signal (0 = standalone)
 ; Returns: true if changes were saved, false otherwise
-ConfigEditor_Run(autoRestart := false) {
-    global gCE_Gui, gCE_SavedChanges, gCE_AutoRestart, gConfigLoaded
+ConfigEditor_Run(launcherHwnd := 0) {
+    global gCE_Gui, gCE_SavedChanges, gCE_LauncherHwnd, gConfigLoaded
 
-    gCE_AutoRestart := autoRestart
+    gCE_LauncherHwnd := launcherHwnd
     gCE_SavedChanges := false
 
     ; Initialize config system if not already done
@@ -533,7 +533,8 @@ _CE_SaveToIni() {
 ; ============================================================
 
 _CE_OnSave(*) {
-    global gCE_Gui, gCE_SavedChanges, gCE_AutoRestart
+    global gCE_Gui, gCE_SavedChanges, gCE_LauncherHwnd
+    global TABBY_CMD_RESTART_ALL
 
     if (!_CE_HasUnsavedChanges()) {
         _CE_Cleanup()
@@ -547,9 +548,27 @@ _CE_OnSave(*) {
     _CE_Cleanup()
     gCE_Gui.Destroy()
 
-    ; Show message if standalone mode
-    if (!gCE_AutoRestart) {
-        MsgBox("Settings saved (" changeCount " changes). Restart Alt-Tabby to apply changes.", "Alt-Tabby Configuration", "OK Icon!")
+    ; DESIGN DECISION: Config changes always restart store+GUI rather than hot-reload.
+    ; This avoids complexity of selective reload across dozens of config values
+    ; that affect init paths, GDI+ setup, IPC config, keyboard hooks, etc.
+    if (gCE_LauncherHwnd && DllCall("user32\IsWindow", "ptr", gCE_LauncherHwnd)) {
+        cds := Buffer(3 * A_PtrSize, 0)
+        NumPut("uptr", TABBY_CMD_RESTART_ALL, cds, 0)
+        NumPut("uint", 0, cds, A_PtrSize)
+        NumPut("ptr", 0, cds, 2 * A_PtrSize)
+
+        DllCall("user32\SendMessageTimeoutW"
+            , "ptr", gCE_LauncherHwnd
+            , "uint", 0x4A
+            , "ptr", A_ScriptHwnd
+            , "ptr", cds.Ptr
+            , "uint", 0x0002
+            , "uint", 3000
+            , "ptr*", &response := 0
+            , "ptr")
+    } else {
+        MsgBox("Settings saved (" changeCount " changes). Restart Alt-Tabby to apply changes.",
+            "Alt-Tabby Configuration", "OK Icon!")
     }
 }
 

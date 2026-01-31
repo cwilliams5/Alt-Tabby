@@ -15,7 +15,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 ## Process Roles
 
-1. **Launcher**: Tray icon, subprocess PIDs, on-demand menu updates
+1. **Launcher**: Tray icon, subprocess PIDs, on-demand menu updates, lifecycle manager (WM_COPYDATA: store restart from GUI, full restart from config editor). Config/blacklist editors launched as subprocesses.
 2. **WindowStore + Producers**: Named pipe server, window data
 3. **AltLogic + GUI**: Overlay, MRU selection, window activation
 4. **Debug Viewer**: Z/MRU-ordered window list display

@@ -166,21 +166,21 @@ _KillAllSubprocesses() {
 }
 
 LaunchConfigEditor() {
-    global TIMING_SUBPROCESS_LAUNCH
-    ; Run config editor with auto-restart enabled
-    ; Returns true if changes were saved
-    if (ConfigEditor_Run(true)) {
-        ; Restart store and GUI to apply changes
-        RestartStore()
-        Sleep(TIMING_SUBPROCESS_LAUNCH)
-        RestartGui()
+    ; Launch as subprocess: editor signals launcher via WM_COPYDATA when saving
+    if (A_IsCompiled) {
+        Run('"' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd)
+    } else {
+        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd)
     }
 }
 
 LaunchBlacklistEditor() {
-    ; Run blacklist editor
-    ; IPC reload is sent automatically by the editor
-    BlacklistEditor_Run()
+    ; Launch as subprocess: editor sends IPC_MSG_RELOAD_BLACKLIST to store directly
+    if (A_IsCompiled) {
+        Run('"' A_ScriptFullPath '" --blacklist')
+    } else {
+        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --blacklist')
+    }
 }
 
 ; ============================================================

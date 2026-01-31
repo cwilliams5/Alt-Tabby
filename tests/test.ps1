@@ -937,20 +937,22 @@ if ($live) {
     $networkLogFile = "$env:TEMP\alt_tabby_tests_network.log"
     $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
     $executionLogFile = "$env:TEMP\alt_tabby_tests_execution.log"
+    $lifecycleLogFile = "$env:TEMP\alt_tabby_tests_lifecycle.log"
     $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
     $networkStderrFile = "$env:TEMP\ahk_network_stderr.log"
     $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
     $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
+    $lifecycleStderrFile = "$env:TEMP\ahk_lifecycle_stderr.log"
 
     # Clean live suite log files
-    foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile)) {
+    foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $lifecycleLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile, $lifecycleStderrFile)) {
         Remove-Item -Force -ErrorAction SilentlyContinue $f
     }
 
     $liveStart = Get-Date
 
-    # --- Live suites (4 suites, gated by compilation) ---
-    Write-Host "`n--- Live Test Execution (4 suites, parallel) ---" -ForegroundColor Yellow
+    # --- Live suites (5 parallel, gated by compilation) ---
+    Write-Host "`n--- Live Test Execution (5 suites, parallel) ---" -ForegroundColor Yellow
 
     # The "Tests" phase starts at the earliest test launch (GUI + Unit, already running).
     if ($timing) {
@@ -976,13 +978,17 @@ if ($live) {
     Write-Host "  Starting Live/Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
-    # --- Timing: poll all 8 handles + GUI to record actual completion times ---
+    Write-Host "  Starting Live/Lifecycle tests (background)..." -ForegroundColor Cyan
+    $lifecycleHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-lifecycle', $lifecycleStderrFile)
+
+    # --- Timing: poll all handles + GUI to record actual completion times ---
     if ($timing) {
         $suiteHandles = @{
             "Live/Features"  = $featuresHandle
             "Live/Core"      = $coreHandle
             "Live/Network"   = $networkHandle
             "Live/Execution" = $executionHandle
+            "Live/Lifecycle" = $lifecycleHandle
         }
         foreach ($us in $unitSuites) {
             $suiteHandles[$us.Label] = $us.Handle
@@ -1092,6 +1098,18 @@ if ($live) {
     Show-TestSummary -LogPath $featuresLogFile -Label "Features"
 
     if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
+
+    Write-Host "`n--- Lifecycle Test Results ---" -ForegroundColor Yellow
+    $lifecycleExitCode = [SilentProcess]::WaitAndGetExitCode($lifecycleHandle)
+
+    $lifecycleStderr = Get-Content $lifecycleStderrFile -ErrorAction SilentlyContinue
+    if ($lifecycleStderr) {
+        Write-Host "=== LIFECYCLE TEST ERRORS ===" -ForegroundColor Red
+        Write-Host $lifecycleStderr
+    }
+    Show-TestSummary -LogPath $lifecycleLogFile -Label "Lifecycle"
+
+    if ($lifecycleExitCode -ne 0) { $mainExitCode = $lifecycleExitCode }
 
     $liveElapsed = ((Get-Date) - $liveStart).TotalSeconds
     Write-Host "`n  Live pipeline completed in $([math]::Round($liveElapsed, 1))s" -ForegroundColor Cyan

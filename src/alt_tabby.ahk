@@ -105,8 +105,6 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; Shared libraries (from src/shared/)
 #Include %A_ScriptDir%\shared\
 #Include config_loader.ahk
-#Include config_editor.ahk
-#Include blacklist_editor.ahk
 #Include cjson.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
@@ -114,6 +112,11 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 #Include process_utils.ahk
 #Include win_utils.ahk
 #Include pump_utils.ahk
+
+; Editor subprocesses (from src/editors/)
+#Include %A_ScriptDir%\editors\
+#Include config_editor.ahk
+#Include blacklist_editor.ahk
 
 ; Launcher module (from src/launcher/)
 #Include %A_ScriptDir%\launcher\
@@ -159,7 +162,12 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; ============================================================
 ; Run config editor and exit when launched with --config
 if (g_AltTabbyMode = "config") {
-    ConfigEditor_Run(false)  ; false = standalone mode, show "restart needed" message
+    launcherHwnd := 0
+    for _, arg in A_Args {
+        if (SubStr(arg, 1, 16) = "--launcher-hwnd=")
+            launcherHwnd := Integer(SubStr(arg, 17))
+    }
+    ConfigEditor_Run(launcherHwnd)
     ExitApp()
 }
 
@@ -196,6 +204,7 @@ if (g_AltTabbyMode = "wizard-continue") {
 
         SetupLauncherTray()
         OnMessage(0x404, TrayIconClick)
+        OnMessage(0x4A, _Launcher_OnCopyData)  ; WM_COPYDATA from child processes
 
         ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
         ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)

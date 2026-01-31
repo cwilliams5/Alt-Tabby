@@ -41,6 +41,8 @@ RunLiveTests_Core() {
         ; Full compilation path (backward compat for direct run_tests.ahk --live)
         ; Kill any running AltTabby processes before compilation
         ; This prevents "file in use" errors and avoids single-instance dialog
+        ; NOTE: Only reached when exe is stale (>90s old), never in test.ps1 pipeline
+        ; (test.ps1 compiles separately and the exe is always fresh)
         _Test_KillAllAltTabby()
 
         if (!FileExist(compileBat)) {

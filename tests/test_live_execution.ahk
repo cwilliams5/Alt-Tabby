@@ -104,9 +104,11 @@ RunLiveTests_Execution() {
     ; ============================================================
     Log("`n--- Compiled Exe Mode Tests ---")
 
-    ; Kill any running AltTabby processes before launching compiled exe
-    ; This prevents single-instance dialog from blocking tests
-    _Test_KillAllAltTabby()
+    ; Note: test.ps1 kills all AltTabby.exe processes at startup.
+    ; We do NOT call _Test_KillAllAltTabby() here because this suite runs
+    ; in parallel with others that may have their own AltTabby.exe processes.
+    ; For standalone runs: if another instance is running, the launcher's
+    ; --testing-mode will exit silently (acceptable — just a SKIP).
 
     if (FileExist(compiledExePath)) {
         ; Test --store mode
@@ -153,6 +155,9 @@ RunLiveTests_Execution() {
             try {
                 ProcessClose(compiledStorePid)
             }
+            ; Wait for store to fully exit and release config.ini / pipe handles
+            ; before launching launcher mode (which reads the same config)
+            Sleep(500)
         }
 
         ; Test launcher mode (spawns multiple processes)
@@ -202,13 +207,14 @@ RunLiveTests_Execution() {
                 TestErrors++
             }
 
-            ; Kill all AltTabby.exe processes
-            for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
-                try {
-                    proc.Terminate()
-                }
+            ; Kill launcher and its children (targeted by PID, not blanket process name kill)
+            for proc in ComObjGet("winmgmts:").ExecQuery(
+                "Select * from Win32_Process Where ParentProcessId = " launcherPid
+                " And Name = 'AltTabby.exe'") {
+                try proc.Terminate()
             }
-            Sleep(200)
+            try ProcessClose(launcherPid)
+            Sleep(500)
         }
 
         ; --- Config/Blacklist Recreation Test ---

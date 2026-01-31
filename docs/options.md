@@ -78,7 +78,6 @@ Settings for the main Alt-Tabby launcher process (splash screen, startup behavio
 | `ShowSplash` | bool | `true` | Show splash screen on startup. Displays logo briefly while store and GUI processes start. |
 | `SplashDurationMs` | int | `3000` | Splash screen display duration in milliseconds (includes fade time). Set to 0 for minimum. |
 | `SplashFadeMs` | int | `500` | Splash screen fade in/out duration in milliseconds. |
-| `SplashImagePath` | string | `img\logo.png` | Path to splash screen image (relative to Alt-Tabby directory, or absolute path). |
 
 ## GUI
 
@@ -474,4 +473,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-30 with 185 total settings.*
+*Generated on 2026-01-31 with 184 total settings.*

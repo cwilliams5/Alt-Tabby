@@ -55,6 +55,7 @@ DoLiveCore := false
 DoLiveNetwork := false
 DoLiveFeatures := false
 DoLiveExecution := false
+DoLiveLifecycle := false
 DoUnitCore := false
 DoUnitStorage := false
 DoUnitSetup := false
@@ -71,6 +72,8 @@ for _, arg in A_Args {
         DoLiveFeatures := true
     else if (arg = "--live-execution")
         DoLiveExecution := true
+    else if (arg = "--live-lifecycle")
+        DoLiveLifecycle := true
     else if (arg = "--unit-core")
         DoUnitCore := true
     else if (arg = "--unit-storage")
@@ -93,6 +96,8 @@ else if (DoLiveFeatures)
     TestLogPath := A_Temp "\alt_tabby_tests_features.log"
 else if (DoLiveExecution)
     TestLogPath := A_Temp "\alt_tabby_tests_execution.log"
+else if (DoLiveLifecycle)
+    TestLogPath := A_Temp "\alt_tabby_tests_lifecycle.log"
 else if (DoUnitCore)
     TestLogPath := A_Temp "\alt_tabby_tests_unit_core.log"
 else if (DoUnitStorage)
@@ -157,7 +162,7 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
 isUnitSingle := DoUnitCore || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced
-isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || isUnitSingle
+isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLiveLifecycle || isUnitSingle
 
 if (isUnitSingle) {
     ; --- Run a single unit subset ---
@@ -188,6 +193,8 @@ if (DoLiveTests) {
     RunLiveTests_Features()
 } else if (DoLiveExecution) {
     RunLiveTests_Execution()
+} else if (DoLiveLifecycle) {
+    RunLiveTests_Lifecycle()
 }
 
 ; --- Summary ---

@@ -10,6 +10,10 @@
 ; Launcher mutex global
 global g_LauncherMutex := 0
 
+; WM_COPYDATA debounce state (IsSet pattern - unset until first signal received)
+global g_LastStoreRestartTick  ; Debounce RESTART_STORE signals
+global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
+
 ; Win32 error code
 global ERROR_ALREADY_EXISTS := 183
 
@@ -152,6 +156,7 @@ Launcher_Init() {
     ; Set up tray with on-demand menu updates
     SetupLauncherTray()
     OnMessage(0x404, TrayIconClick)  ; WM_TRAYICON
+    OnMessage(0x4A, _Launcher_OnCopyData)  ; WM_COPYDATA from child processes
 
     ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
     ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)
@@ -161,6 +166,19 @@ Launcher_Init() {
     LaunchStore()
     Sleep(TIMING_SUBPROCESS_LAUNCH)
     LaunchGui()
+
+    ; In testing mode, write our HWND to temp file so lifecycle tests can send WM_COPYDATA
+    ; (test processes are launched with CREATE_NO_WINDOW which hides AHK's message window
+    ; from WinGetList/WinGetID, so tests can't discover the HWND externally)
+    ; Filename derived from exe name so renamed copies (e.g., AltTabby_lifecycle.exe) don't collide
+    if (g_TestingMode) {
+        exeName := ""
+        SplitPath(A_ScriptFullPath, &exeName)
+        exeBase := RegExReplace(exeName, "\.exe$", "")
+        hwndPath := A_Temp "\" StrLower(exeBase) "_hwnd.txt"
+        try FileDelete(hwndPath)
+        try FileAppend(A_ScriptHwnd, hwndPath)
+    }
 
     ; Hide splash after duration (or immediately if duration is 0)
     if (cfg.LauncherShowSplash && !g_TestingMode) {
@@ -190,6 +208,50 @@ _Launcher_OnExit(exitReason, exitCode) {
         g_LauncherMutex := 0
     }
     return 0  ; Allow exit to proceed
+}
+
+; Handle WM_COPYDATA control signals from child processes
+; GUI sends RESTART_STORE when store health check fails
+; Config editor sends RESTART_ALL when settings are saved
+_Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
+    global TABBY_CMD_RESTART_STORE, TABBY_CMD_RESTART_ALL
+    global g_LastStoreRestartTick, g_LastFullRestartTick
+
+    dwData := NumGet(lParam, 0, "uptr")
+
+    if (dwData = TABBY_CMD_RESTART_STORE) {
+        _Launcher_Log("IPC: Received RESTART_STORE from hwnd=" wParam)
+        if (IsSet(g_LastStoreRestartTick) && (A_TickCount - g_LastStoreRestartTick) < 5000) {
+            _Launcher_Log("IPC: RESTART_STORE debounced")
+            return 1
+        }
+        g_LastStoreRestartTick := A_TickCount
+        SetTimer(() => RestartStore(), -1)
+        return 1
+    }
+
+    if (dwData = TABBY_CMD_RESTART_ALL) {
+        _Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
+        if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < 5000) {
+            _Launcher_Log("IPC: RESTART_ALL debounced")
+            return 1
+        }
+        g_LastFullRestartTick := A_TickCount
+        ; DESIGN DECISION: Config changes restart store+GUI rather than hot-reload.
+        ; Avoids complexity of selective reload across dozens of values affecting
+        ; init, GDI+, IPC, hooks, etc.
+        SetTimer(_Launcher_RestartStoreAndGui, -1)
+        return 1
+    }
+
+    return 0
+}
+
+_Launcher_RestartStoreAndGui() {
+    global TIMING_SUBPROCESS_LAUNCH
+    RestartStore()
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
+    RestartGui()
 }
 
 ; Check if we should redirect to scheduled task instead of running directly

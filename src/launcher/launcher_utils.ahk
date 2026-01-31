@@ -20,7 +20,7 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
             case "store":
                 cmd := '"' A_ScriptFullPath '" --store'
             case "gui":
-                cmd := '"' A_ScriptFullPath '" --gui-only'
+                cmd := '"' A_ScriptFullPath '" --gui-only --launcher-hwnd=' A_ScriptHwnd
             case "viewer":
                 cmd := '"' A_ScriptFullPath '" --viewer'
             default:
@@ -32,7 +32,7 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
             case "store":
                 cmd := '"' A_AhkPath '" "' A_ScriptDir '\store\store_server.ahk"'
             case "gui":
-                cmd := '"' A_AhkPath '" "' A_ScriptDir '\gui\gui_main.ahk"'
+                cmd := '"' A_AhkPath '" "' A_ScriptDir '\gui\gui_main.ahk" --launcher-hwnd=' A_ScriptHwnd
             case "viewer":
                 cmd := '"' A_AhkPath '" "' A_ScriptDir '\viewer\viewer.ahk"'
             default:

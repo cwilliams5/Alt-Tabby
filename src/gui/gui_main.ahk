@@ -12,10 +12,12 @@ SendMode("Event")
 ; Alt-Tabby GUI - Main entry point
 ; This file orchestrates all GUI components by including sub-modules
 
-; Hide tray icon when launched standalone by test runner
+; Parse command-line arguments
 for _, arg in A_Args {
     if (arg = "--test")
         A_IconHidden := true
+    else if (SubStr(arg, 1, 16) = "--launcher-hwnd=")
+        gGUI_LauncherHwnd := Integer(SubStr(arg, 17))
 }
 
 ; Use an inert mask key so Alt taps don't focus menus
@@ -82,6 +84,7 @@ global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip
 global gGUI_LastMsgTick := 0       ; Timestamp of last message from store
 global gGUI_ReconnectAttempts := 0 ; Counter for failed reconnection attempts
 global gGUI_StoreRestartAttempts := 0  ; Counter for store restart attempts
+global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (0 = no launcher)
 
 ; ========================= INCLUDES (SUB-MODULES) =========================
 ; These sub-modules reference the globals declared above
@@ -196,7 +199,7 @@ _GUI_StoreHealthCheck() {
             ToolTip("Alt-Tabby: Restarting store... (" gGUI_StoreRestartAttempts "/" maxRestartAttempts ")")
             HideTooltipAfter(TOOLTIP_DURATION_LONG)
 
-            _GUI_StartStore()
+            _GUI_RequestStoreRestart()
             ; Don't Sleep or block here - the next health check tick (5s) will
             ; attempt connection after the store has had time to start up.
         } else {
@@ -240,6 +243,39 @@ _GUI_StartStore() {
             ? cfg.AhkV2Path : A_AhkPath
         ProcessUtils_RunHidden('"' runner '" "' storePath '"')
     }
+}
+
+; Request store restart: signal launcher (preferred) or start store directly (fallback)
+_GUI_RequestStoreRestart() {
+    global gGUI_LauncherHwnd, TABBY_CMD_RESTART_STORE
+
+    ; Try launcher first: it tracks the store PID and kills the old process
+    if (gGUI_LauncherHwnd && DllCall("user32\IsWindow", "ptr", gGUI_LauncherHwnd)) {
+        cds := Buffer(3 * A_PtrSize, 0)
+        NumPut("uptr", TABBY_CMD_RESTART_STORE, cds, 0)
+        NumPut("uint", 0, cds, A_PtrSize)
+        NumPut("ptr", 0, cds, 2 * A_PtrSize)
+
+        result := DllCall("user32\SendMessageTimeoutW"
+            , "ptr", gGUI_LauncherHwnd
+            , "uint", 0x4A
+            , "ptr", A_ScriptHwnd
+            , "ptr", cds.Ptr
+            , "uint", 0x0002  ; SMTO_ABORTIFHUNG
+            , "uint", 3000
+            , "ptr*", &response := 0
+            , "ptr")
+
+        if (result && response = 1) {
+            _GUI_LogEvent("HEALTH: Signaled launcher to restart store")
+            return
+        }
+        _GUI_LogEvent("HEALTH: Launcher signal failed (result=" result "), falling back to direct restart")
+        gGUI_LauncherHwnd := 0  ; Invalidate — don't retry a dead launcher
+    }
+
+    ; Fallback: no launcher or signal failed
+    _GUI_StartStore()
 }
 
 ; Clean up resources on exit

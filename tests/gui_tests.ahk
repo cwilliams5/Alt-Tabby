@@ -59,6 +59,7 @@ global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 
 ; Health check timestamp (used by gui_store.ahk)
 global gGUI_LastMsgTick := 0
+global gGUI_LauncherHwnd := 0  ; Not used in GUI tests, needed for production includes
 
 ; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
 global gINT_BypassMode := false

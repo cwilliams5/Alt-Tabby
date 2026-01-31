@@ -9,7 +9,7 @@
 - **Responsive** As absolutely responsive to user alt tab inputs as possible, above all other considerations.
 - **Low CPU**: Event-driven, not busy loops. Adaptive polling when needed
 - **AHK v2 only**: No v1 patterns. Use direct function refs, not `Func("Name")`
-- **Named pipes for IPC**: Multi-subscriber support, no WM_COPYDATA
+- **Named pipes for data IPC**: Multi-subscriber support. WM_COPYDATA for launcher control signals only (store restart, config apply)
 - **Testing**: Run `.\tests\test.ps1 --live` to validate changes. NEVER use `powershell -Command`
 
 ---
