@@ -88,6 +88,8 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
     global g_StorePID := 0
     global g_GuiPID := 0
     global g_ViewerPID := 0
+    global g_ConfigEditorPID := 0
+    global g_BlacklistEditorPID := 0
     global g_MismatchDialogShown := false  ; Prevents auto-update race condition
 }
 

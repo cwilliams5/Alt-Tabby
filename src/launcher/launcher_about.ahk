@@ -27,6 +27,7 @@ global DASH_TIER_WARM_MS := 75000
 ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
+    global g_ConfigEditorPID, g_BlacklistEditorPID
     global g_DashControls, DASH_INTERVAL_COOL
 
     ; If already open, focus existing dialog
@@ -59,18 +60,38 @@ ShowDashboardDialog() {
     dg.AddLink("x" xAfterLogo " y+2 w260",
         '<a href="https://github.com/cwilliams5/Alt-Tabby/blob/main/docs/options.md">Configuration Options</a>')
 
-    ; ---- Two-Column Layout ----
-    ; Left column: x=20, w=350  |  Gap: 15px  |  Right column: x=385, w=375
-    ; Both columns start at same Y after header
-    colY := 120  ; Y position below header
-
     ; ============================================================
-    ; LEFT COLUMN - Keyboard Shortcuts
+    ; TOP-RIGHT - Settings
     ; ============================================================
     dg.SetFont("s10")
-    dg.AddGroupBox("x20 y" colY " w350 h365", "Keyboard Shortcuts")
+    dg.AddGroupBox("x385 y10 w375 h130", "Settings")
 
-    yStart := "y" (colY + 25)
+    ; Checkboxes — refresh timer corrects visual state if underlying toggle fails
+    dg.SetFont("s9")
+
+    g_DashControls.chkStartMenu := dg.AddCheckbox("x400 y35 w340", "Add to Start Menu")
+    g_DashControls.chkStartMenu.Value := _Shortcut_StartMenuExists() ? 1 : 0
+    g_DashControls.chkStartMenu.OnEvent("Click", _Dash_OnStartMenuChk)
+
+    g_DashControls.chkStartup := dg.AddCheckbox("x400 y59 w340", "Run at Startup")
+    g_DashControls.chkStartup.Value := _Shortcut_StartupExists() ? 1 : 0
+    g_DashControls.chkStartup.OnEvent("Click", _Dash_OnStartupChk)
+
+    g_DashControls.chkAutoUpdate := dg.AddCheckbox("x400 y83 w340", "Auto-check for Updates")
+    g_DashControls.chkAutoUpdate.Value := cfg.SetupAutoUpdateCheck ? 1 : 0
+    g_DashControls.chkAutoUpdate.OnEvent("Click", _Dash_OnAutoUpdateChk)
+
+    ; Editor buttons
+    dg.SetFont("s9")
+    dg.AddButton("x400 y113 w170 h26", "Edit Config...").OnEvent("Click", (*) => LaunchConfigEditor())
+    dg.AddButton("x580 y113 w170 h26", "Edit Blacklist...").OnEvent("Click", (*) => LaunchBlacklistEditor())
+
+    ; ============================================================
+    ; BOTTOM-LEFT - Keyboard Shortcuts
+    ; ============================================================
+    dg.SetFont("s10")
+    dg.AddGroupBox("x20 y150 w350 h265", "Keyboard Shortcuts")
+
     shortcuts := [
         ["Alt+Tab", "Cycle forward through windows"],
         ["Alt+Shift+Tab", "Cycle backward"],
@@ -82,7 +103,7 @@ ShowDashboardDialog() {
     ]
 
     for i, item in shortcuts {
-        yOpt := (i = 1) ? yStart : "y+4"
+        yOpt := (i = 1) ? "y175" : "y+4"
         dg.SetFont("s9 Bold")
         dg.AddText("x35 " yOpt " w130 Right", item[1])
         dg.SetFont("s9 Norm")
@@ -90,28 +111,27 @@ ShowDashboardDialog() {
     }
 
     ; ============================================================
-    ; RIGHT COLUMN - Diagnostics + Settings
+    ; BOTTOM-RIGHT - Diagnostics
     ; ============================================================
-
-    ; ---- Diagnostics GroupBox ----
     dg.SetFont("s10")
-    dg.AddGroupBox("x385 y" colY " w375 h225", "Diagnostics")
+    dg.AddGroupBox("x385 y150 w375 h265", "Diagnostics")
 
     ; Build + Elevation row
     buildType := A_IsCompiled ? "Compiled" : "Development"
     elevation := A_IsAdmin ? "Administrator" : "Standard"
     dg.SetFont("s9")
-    dg.AddText("x400 y" (colY + 25) " w240", "Build: " buildType "  |  Elevation: " elevation)
+    dg.AddText("x400 y175 w240", "Build: " buildType "  |  Elevation: " elevation)
 
     ; Escalate/De-escalate button
     escalateLabel := A_IsAdmin ? "De-escalate" : "Escalate"
-    btnEscalate := dg.AddButton("x660 y" (colY + 21) " w85 h24", escalateLabel)
+    btnEscalate := dg.AddButton("x660 y171 w85 h24", escalateLabel)
     btnEscalate.OnEvent("Click", _Dash_OnEscalate)
 
     ; Subprocess rows with buttons — handlers check live state, refresh updates labels
-    subY := colY + 52
+    ; Order: Store, GUI, Config Editor, Blacklist Editor, Viewer
 
     ; Store row
+    subY := 202
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
     storeLabel := storeRunning ? "Store: Running (PID " g_StorePID ")" : "Store: Not running"
     g_DashControls.storeText := dg.AddText("x400 y" subY " w240", storeLabel)
@@ -126,6 +146,22 @@ ShowDashboardDialog() {
     g_DashControls.guiBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", guiRunning ? "Restart" : "Launch")
     g_DashControls.guiBtn.OnEvent("Click", _Dash_OnGuiBtn)
 
+    ; Config Editor row
+    subY += 30
+    configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
+    configLabel := configRunning ? "Config Editor: Running (PID " g_ConfigEditorPID ")" : "Config Editor: Not running"
+    g_DashControls.configText := dg.AddText("x400 y" subY " w240", configLabel)
+    g_DashControls.configBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", configRunning ? "Restart" : "Launch")
+    g_DashControls.configBtn.OnEvent("Click", _Dash_OnConfigBtn)
+
+    ; Blacklist Editor row
+    subY += 30
+    blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
+    blacklistLabel := blacklistRunning ? "Blacklist Ed: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Ed: Not running"
+    g_DashControls.blacklistText := dg.AddText("x400 y" subY " w240", blacklistLabel)
+    g_DashControls.blacklistBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", blacklistRunning ? "Restart" : "Launch")
+    g_DashControls.blacklistBtn.OnEvent("Click", _Dash_OnBlacklistBtn)
+
     ; Viewer row
     subY += 30
     viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
@@ -133,10 +169,6 @@ ShowDashboardDialog() {
     g_DashControls.viewerText := dg.AddText("x400 y" subY " w240", viewerLabel)
     g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerRunning ? "Restart" : "Launch")
     g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
-
-    ; Restart All button
-    subY += 30
-    dg.AddButton("x660 y" (subY - 2) " w85 h24", "Restart All").OnEvent("Click", _Dash_OnRestartAllBtn)
 
     ; Info rows (read-only)
     subY += 28
@@ -148,40 +180,10 @@ ShowDashboardDialog() {
     subY += 20
     g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340", "Komorebi: " _Dash_GetKomorebiInfo())
 
-    ; ---- Settings GroupBox ----
-    settingsY := colY + 235
-    dg.SetFont("s10")
-    dg.AddGroupBox("x385 y" settingsY " w375 h130", "Settings")
-
-    ; Checkboxes — refresh timer corrects visual state if underlying toggle fails
-    dg.SetFont("s9")
-    chkY := settingsY + 25
-
-    g_DashControls.chkStartMenu := dg.AddCheckbox("x400 y" chkY " w340", "Add to Start Menu")
-    g_DashControls.chkStartMenu.Value := _Shortcut_StartMenuExists() ? 1 : 0
-    g_DashControls.chkStartMenu.OnEvent("Click", _Dash_OnStartMenuChk)
-
-    chkY += 24
-    g_DashControls.chkStartup := dg.AddCheckbox("x400 y" chkY " w340", "Run at Startup")
-    g_DashControls.chkStartup.Value := _Shortcut_StartupExists() ? 1 : 0
-    g_DashControls.chkStartup.OnEvent("Click", _Dash_OnStartupChk)
-
-    chkY += 24
-    g_DashControls.chkAutoUpdate := dg.AddCheckbox("x400 y" chkY " w340", "Auto-check for Updates")
-    g_DashControls.chkAutoUpdate.Value := cfg.SetupAutoUpdateCheck ? 1 : 0
-    g_DashControls.chkAutoUpdate.OnEvent("Click", _Dash_OnAutoUpdateChk)
-
-    ; Editor buttons
-    chkY += 30
-    dg.SetFont("s9")
-    dg.AddButton("x400 y" chkY " w170 h26", "Edit Config...").OnEvent("Click", (*) => LaunchConfigEditor())
-    dg.AddButton("x580 y" chkY " w170 h26", "Edit Blacklist...").OnEvent("Click", (*) => LaunchBlacklistEditor())
-
     ; ---- Bottom Buttons ----
-    bottomY := colY + 375
     dg.SetFont("s10")
-    dg.AddButton("x20 y" bottomY " w150", "Check for Updates").OnEvent("Click", _Dash_OnCheckUpdates)
-    btnOK := dg.AddButton("x675 yp w80 Default", "OK")
+    dg.AddButton("x20 y425 w150", "Check for Updates").OnEvent("Click", _Dash_OnCheckUpdates)
+    btnOK := dg.AddButton("x675 y425 w80 Default", "OK")
     btnOK.OnEvent("Click", _Dash_OnClose)
 
     ; Close event
@@ -224,8 +226,20 @@ _Dash_OnViewerBtn(*) {
         LaunchViewer()
 }
 
-_Dash_OnRestartAllBtn(*) {
-    RestartAll()
+_Dash_OnConfigBtn(*) {
+    global g_ConfigEditorPID
+    if (LauncherUtils_IsRunning(g_ConfigEditorPID))
+        RestartConfigEditor()
+    else
+        LaunchConfigEditor()
+}
+
+_Dash_OnBlacklistBtn(*) {
+    global g_BlacklistEditorPID
+    if (LauncherUtils_IsRunning(g_BlacklistEditorPID))
+        RestartBlacklistEditor()
+    else
+        LaunchBlacklistEditor()
 }
 
 _Dash_OnStartMenuChk(*) {
@@ -278,6 +292,7 @@ _Dash_StartRefreshTimer() {
 _Dash_RefreshDynamic() {
     global g_DashboardGui, g_DashControls, g_DashRefreshTick
     global g_StorePID, g_GuiPID, g_ViewerPID, cfg
+    global g_ConfigEditorPID, g_BlacklistEditorPID
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
 
@@ -301,12 +316,18 @@ _Dash_RefreshDynamic() {
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
     viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
+    configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
+    blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
 
     newState := Map(
         "storeText", storeRunning ? "Store: Running (PID " g_StorePID ")" : "Store: Not running",
         "storeBtn", storeRunning ? "Restart" : "Launch",
         "guiText", guiRunning ? "GUI: Running (PID " g_GuiPID ")" : "GUI: Not running",
         "guiBtn", guiRunning ? "Restart" : "Launch",
+        "configText", configRunning ? "Config Editor: Running (PID " g_ConfigEditorPID ")" : "Config Editor: Not running",
+        "configBtn", configRunning ? "Restart" : "Launch",
+        "blacklistText", blacklistRunning ? "Blacklist Ed: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Ed: Not running",
+        "blacklistBtn", blacklistRunning ? "Restart" : "Launch",
         "viewerText", viewerRunning ? "Viewer: Running (PID " g_ViewerPID ")" : "Viewer: Not running",
         "viewerBtn", viewerRunning ? "Restart" : "Launch",
         "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
@@ -321,6 +342,10 @@ _Dash_RefreshDynamic() {
         || g_DashControls.storeBtn.Text != newState["storeBtn"]
         || g_DashControls.guiText.Value != newState["guiText"]
         || g_DashControls.guiBtn.Text != newState["guiBtn"]
+        || g_DashControls.configText.Value != newState["configText"]
+        || g_DashControls.configBtn.Text != newState["configBtn"]
+        || g_DashControls.blacklistText.Value != newState["blacklistText"]
+        || g_DashControls.blacklistBtn.Text != newState["blacklistBtn"]
         || g_DashControls.viewerText.Value != newState["viewerText"]
         || g_DashControls.viewerBtn.Text != newState["viewerBtn"]
         || g_DashControls.komorebiText.Value != newState["komorebiText"]
@@ -340,6 +365,10 @@ _Dash_RefreshDynamic() {
     g_DashControls.storeBtn.Text := newState["storeBtn"]
     g_DashControls.guiText.Value := newState["guiText"]
     g_DashControls.guiBtn.Text := newState["guiBtn"]
+    g_DashControls.configText.Value := newState["configText"]
+    g_DashControls.configBtn.Text := newState["configBtn"]
+    g_DashControls.blacklistText.Value := newState["blacklistText"]
+    g_DashControls.blacklistBtn.Text := newState["blacklistBtn"]
     g_DashControls.viewerText.Value := newState["viewerText"]
     g_DashControls.viewerBtn.Text := newState["viewerBtn"]
     g_DashControls.komorebiText.Value := newState["komorebiText"]

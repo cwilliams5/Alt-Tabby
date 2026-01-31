@@ -200,9 +200,15 @@ Launcher_Init() {
 
 ; Cleanup handler called on exit
 _Launcher_OnExit(exitReason, exitCode) {
-    global g_LauncherMutex
+    global g_LauncherMutex, g_ConfigEditorPID, g_BlacklistEditorPID
     try HideSplashScreen()
     try _KillAllSubprocesses()
+    try {
+        if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
+            ProcessClose(g_ConfigEditorPID)
+        if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
+            ProcessClose(g_BlacklistEditorPID)
+    }
     if (g_LauncherMutex) {
         try DllCall("CloseHandle", "ptr", g_LauncherMutex)
         g_LauncherMutex := 0

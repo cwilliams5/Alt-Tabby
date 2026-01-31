@@ -154,7 +154,13 @@ RestartAll() {
 }
 
 ExitAll() {
+    global g_ConfigEditorPID, g_BlacklistEditorPID
     _KillAllSubprocesses()
+    ; Kill editors on full exit (not in _KillAllSubprocesses — editors survive RestartAll)
+    if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
+        ProcessClose(g_ConfigEditorPID)
+    if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
+        ProcessClose(g_BlacklistEditorPID)
     ExitApp()
 }
 
@@ -172,21 +178,49 @@ _KillAllSubprocesses() {
 }
 
 LaunchConfigEditor() {
-    ; Launch as subprocess: editor signals launcher via WM_COPYDATA when saving
-    if (A_IsCompiled) {
-        Run('"' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd)
-    } else {
-        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd)
+    global g_ConfigEditorPID
+    ; If already running, activate existing window instead of launching duplicate
+    if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID)) {
+        try WinActivate("Alt-Tabby Configuration ahk_pid " g_ConfigEditorPID)
+        return
     }
+    if (A_IsCompiled)
+        Run('"' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd, , , &g_ConfigEditorPID)
+    else
+        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd, , , &g_ConfigEditorPID)
+    _Dash_StartRefreshTimer()
 }
 
 LaunchBlacklistEditor() {
-    ; Launch as subprocess: editor sends IPC_MSG_RELOAD_BLACKLIST to store directly
-    if (A_IsCompiled) {
-        Run('"' A_ScriptFullPath '" --blacklist')
-    } else {
-        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --blacklist')
+    global g_BlacklistEditorPID
+    ; If already running, activate existing window instead of launching duplicate
+    if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID)) {
+        try WinActivate("Alt-Tabby Blacklist Editor ahk_pid " g_BlacklistEditorPID)
+        return
     }
+    if (A_IsCompiled)
+        Run('"' A_ScriptFullPath '" --blacklist', , , &g_BlacklistEditorPID)
+    else
+        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --blacklist', , , &g_BlacklistEditorPID)
+    _Dash_StartRefreshTimer()
+}
+
+RestartConfigEditor() {
+    global g_ConfigEditorPID, TIMING_SUBPROCESS_LAUNCH
+    if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
+        ProcessClose(g_ConfigEditorPID)
+    g_ConfigEditorPID := 0
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
+    LaunchConfigEditor()
+}
+
+RestartBlacklistEditor() {
+    global g_BlacklistEditorPID, TIMING_SUBPROCESS_LAUNCH
+    if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
+        ProcessClose(g_BlacklistEditorPID)
+    g_BlacklistEditorPID := 0
+    Sleep(TIMING_SUBPROCESS_LAUNCH)
+    LaunchBlacklistEditor()
 }
 
 ; ============================================================
