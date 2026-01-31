@@ -202,22 +202,8 @@ Store_HeartbeatTick() {
     if (!IsSet(gStore_HeartbeatCount))
         gStore_HeartbeatCount := 0
     gStore_HeartbeatCount += 1
-    if (Mod(gStore_HeartbeatCount, 12) = 0) {
-        global LOG_PATH_STORE, LOG_PATH_KSUB, LOG_PATH_WINEVENT
-        global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP, LOG_PATH_IPC
-        if (cfg.DiagStoreLog)
-            LogTrim(LOG_PATH_STORE)
-        if (cfg.DiagKomorebiLog)
-            LogTrim(LOG_PATH_KSUB)
-        if (cfg.DiagWinEventLog)
-            LogTrim(LOG_PATH_WINEVENT)
-        if (cfg.DiagIconPumpLog)
-            LogTrim(LOG_PATH_ICONPUMP)
-        if (cfg.DiagProcPumpLog)
-            LogTrim(LOG_PATH_PROCPUMP)
-        if (cfg.DiagIPCLog)
-            LogTrim(LOG_PATH_IPC)
-    }
+    if (Mod(gStore_HeartbeatCount, 12) = 0)
+        _Store_RotateDiagLogs()
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -268,6 +254,25 @@ _Store_StartValidateExistence() {
 _Store_StartHeartbeat() {
     global cfg
     SetTimer(Store_HeartbeatTick, cfg.StoreHeartbeatIntervalMs)
+}
+
+; Rotate diagnostic logs that are enabled (called every 12th heartbeat, ~60s)
+_Store_RotateDiagLogs() {
+    global cfg
+    global LOG_PATH_STORE, LOG_PATH_KSUB, LOG_PATH_WINEVENT
+    global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP, LOG_PATH_IPC
+    if (cfg.DiagStoreLog)
+        LogTrim(LOG_PATH_STORE)
+    if (cfg.DiagKomorebiLog)
+        LogTrim(LOG_PATH_KSUB)
+    if (cfg.DiagWinEventLog)
+        LogTrim(LOG_PATH_WINEVENT)
+    if (cfg.DiagIconPumpLog)
+        LogTrim(LOG_PATH_ICONPUMP)
+    if (cfg.DiagProcPumpLog)
+        LogTrim(LOG_PATH_PROCPUMP)
+    if (cfg.DiagIPCLog)
+        LogTrim(LOG_PATH_IPC)
 }
 
 ; Z-Pump: triggers full scan when windows need Z-order enrichment
@@ -385,7 +390,7 @@ Store_PushToClients() {
             continue
 
         ; Check if meta changed (workspace name)
-        metaChanged := Store_MetaChanged(prevMeta, proj.meta)
+        metaChanged := WindowStore_MetaChanged(prevMeta, proj.meta)
 
         ; Send delta if client has previous state, otherwise full snapshot
         if (prevItems.Length > 0) {
@@ -418,11 +423,6 @@ Store_PushToClients() {
     if (gStore_TestMode && sent > 0) {
         Store_LogError("pushed to " sent " clients")
     }
-}
-
-; Check if meta changed - delegates to WindowStore_MetaChanged (in windowstore.ahk)
-Store_MetaChanged(prevMeta, nextMeta) {
-    return WindowStore_MetaChanged(prevMeta, nextMeta)
 }
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)
@@ -716,31 +716,28 @@ Store_OnExit(reason, code) {
 }
 
 Store_OnError(err, *) {
-    global gStore_ErrorLog, LOG_PATH_STORE
-    path := gStore_ErrorLog ? gStore_ErrorLog : LOG_PATH_STORE
-    msg := "store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n"
-        . "msg=" err.Message "`n"
-        . "file=" err.File "`n"
-        . "line=" err.Line "`n"
-        . "what=" err.What "`n"
-    try FileAppend(msg, path, "UTF-8")
+    msg := "store_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
+    LogAppend(_Store_LogPath(), msg)
     ExitApp(1)
     return true
 }
 
 Store_LogError(msg) {
-    global gStore_ErrorLog, LOG_PATH_STORE
-    path := gStore_ErrorLog ? gStore_ErrorLog : LOG_PATH_STORE
-    try FileAppend("store_error " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" msg "`n", path, "UTF-8")
+    LogAppend(_Store_LogPath(), "store_error " msg)
 }
 
 ; Informational logging - controlled by DiagStoreLog config flag
 Store_LogInfo(msg) {
-    global gStore_ErrorLog, cfg, LOG_PATH_STORE
+    global cfg
     if (!cfg.DiagStoreLog)
         return
-    path := gStore_ErrorLog ? gStore_ErrorLog : LOG_PATH_STORE
-    try FileAppend("store_info " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`n" msg "`n", path, "UTF-8")
+    LogAppend(_Store_LogPath(), "store_info " msg)
+}
+
+; Resolve store log path: test override or centralized constant
+_Store_LogPath() {
+    global gStore_ErrorLog, LOG_PATH_STORE
+    return gStore_ErrorLog ? gStore_ErrorLog : LOG_PATH_STORE
 }
 
 _Store_HasIpcSymbols() {

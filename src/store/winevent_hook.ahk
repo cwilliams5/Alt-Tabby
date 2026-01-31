@@ -46,7 +46,7 @@ _WEH_DiagLog(msg) {
     global cfg, LOG_PATH_WINEVENT
     if (!cfg.DiagWinEventLog)
         return
-    try FileAppend(GetLogTimestamp() " " msg "`n", LOG_PATH_WINEVENT, "UTF-8")
+    LogAppend(LOG_PATH_WINEVENT, msg)
 }
 
 ; Event constants

@@ -87,10 +87,7 @@ _IP_Log(msg) {
     global _IP_DiagEnabled, _IP_LogPath
     if (!_IP_DiagEnabled || _IP_LogPath = "")
         return
-    try {
-        timestamp := FormatTime(, "yyyy-MM-dd HH:mm:ss")
-        FileAppend(timestamp " " msg "`n", _IP_LogPath, "UTF-8")
-    }
+    LogAppend(_IP_LogPath, msg)
 }
 
 ; Stop the icon pump timer

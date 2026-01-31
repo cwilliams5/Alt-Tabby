@@ -492,6 +492,7 @@ global LOG_PATH_WINEVENT   := A_Temp "\tabby_weh_focus.log"
 global LOG_PATH_PROCPUMP   := A_Temp "\tabby_procpump.log"
 global LOG_PATH_IPC        := A_Temp "\tabby_ipc.log"
 global LOG_PATH_VIEWER     := A_Temp "\tabby_viewer.log"
+global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
 
 ; Format a timestamp for log entries (consistent across all loggers)
 ; Format: "HH:mm:ss.xxx" where xxx is milliseconds from tick count

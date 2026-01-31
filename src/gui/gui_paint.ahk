@@ -10,15 +10,12 @@
 
 global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
 global gPaint_SessionPaintCount := 0  ; How many paints this session
-global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
+global LOG_PATH_PAINT_TIMING  ; Defined in config_loader.ahk
 _Paint_Log(msg) {
     global cfg, LOG_PATH_PAINT_TIMING
     if (!cfg.DiagPaintTimingLog)
         return
-    try {
-        timestamp := FormatTime(, "yyyy-MM-dd HH:mm:ss")
-        FileAppend(timestamp " | " msg "`n", LOG_PATH_PAINT_TIMING)
-    }
+    LogAppend(LOG_PATH_PAINT_TIMING, msg)
 }
 
 ; Trim log file if it exceeds max size, keeping the tail

@@ -621,7 +621,7 @@ _Viewer_Log(msg) {
     if (!gViewer_LogPath) {
         return
     }
-    try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", gViewer_LogPath, "UTF-8")
+    LogAppend(gViewer_LogPath, msg)
 }
 
 ; Format producer states for status bar display
