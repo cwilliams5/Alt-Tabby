@@ -303,6 +303,7 @@ _AdminToggle_CheckComplete() {
     global g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_AdminToggleStartTick
     global ADMIN_TOGGLE_POLL_MS, ADMIN_TOGGLE_TIMEOUT_MS
     global TOOLTIP_DURATION_DEFAULT, APP_NAME
+    global ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT, cfg, gConfigIniPath
 
     if (!FileExist(TEMP_ADMIN_TOGGLE_LOCK)) {
         ; Lock file gone entirely - elevated instance crashed or was killed
@@ -339,8 +340,27 @@ _AdminToggle_CheckComplete() {
     try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
 
     if (content = "ok") {
-        ToolTip("Admin mode enabled")
-        HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
+        ; Re-read config from disk — the elevated instance wrote SetupRunAsAdmin=true
+        if (FileExist(gConfigIniPath)) {
+            iniVal := IniRead(gConfigIniPath, "Setup", "RunAsAdmin", "false")
+            cfg.SetupRunAsAdmin := (iniVal = "true" || iniVal = "1")
+        }
+
+        ; Offer restart so the user gets elevation immediately
+        result := MsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")
+        if (result = "Yes") {
+            ; Launch elevated instance via scheduled task
+            Sleep(TIMING_TASK_READY_WAIT)
+            exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
+            if (exitCode = 0) {
+                ExitAll()
+            } else {
+                MsgBox("Failed to launch via scheduled task (exit code " exitCode ").`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
+            }
+        } else {
+            ToolTip("Admin mode enabled - changes apply on next launch")
+            HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
+        }
     } else if (content = "cancelled") {
         ToolTip("Admin mode setup was cancelled")
         HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
