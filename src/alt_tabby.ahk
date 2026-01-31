@@ -125,6 +125,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 #Include launcher_shortcuts.ahk
 #Include launcher_install.ahk
 #Include launcher_wizard.ahk
+#Include launcher_about.ahk
 #Include launcher_tray.ahk
 #Include launcher_main.ahk
 
