@@ -55,6 +55,7 @@ global gCompiledStoreReceived := false
 ; --- Check for flags (BEFORE log init to set suite-specific log paths) ---
 DoLiveTests := false
 DoLiveCore := false
+DoLiveNetwork := false
 DoLiveFeatures := false
 DoLiveExecution := false
 DoUnitCore := false
@@ -67,6 +68,8 @@ for _, arg in A_Args {
         DoLiveTests := true
     else if (arg = "--live-core")
         DoLiveCore := true
+    else if (arg = "--live-network")
+        DoLiveNetwork := true
     else if (arg = "--live-features")
         DoLiveFeatures := true
     else if (arg = "--live-execution")
@@ -87,6 +90,8 @@ for _, arg in A_Args {
 ; conflicts when multiple instances run in parallel
 if (DoLiveCore)
     TestLogPath := A_Temp "\alt_tabby_tests_core.log"
+else if (DoLiveNetwork)
+    TestLogPath := A_Temp "\alt_tabby_tests_network.log"
 else if (DoLiveFeatures)
     TestLogPath := A_Temp "\alt_tabby_tests_features.log"
 else if (DoLiveExecution)
@@ -155,7 +160,7 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
 isUnitSingle := DoUnitCore || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced
-isSingleSuite := DoLiveCore || DoLiveFeatures || DoLiveExecution || isUnitSingle
+isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || isUnitSingle
 
 if (isUnitSingle) {
     ; --- Run a single unit subset ---
@@ -180,6 +185,8 @@ if (DoLiveTests) {
     RunLiveTests()
 } else if (DoLiveCore) {
     RunLiveTests_Core()
+} else if (DoLiveNetwork) {
+    RunLiveTests_Network()
 } else if (DoLiveFeatures) {
     RunLiveTests_Features()
 } else if (DoLiveExecution) {

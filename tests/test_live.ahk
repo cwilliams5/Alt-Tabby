@@ -3,11 +3,13 @@
 ; Included by run_tests.ahk
 
 #Include "test_live_core.ahk"
+#Include "test_live_network.ahk"
 #Include "test_live_features.ahk"
 #Include "test_live_execution.ahk"
 
 RunLiveTests() {
     RunLiveTests_Core()
+    RunLiveTests_Network()
     RunLiveTests_Features()
     RunLiveTests_Execution()
 }

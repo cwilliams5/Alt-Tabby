@@ -934,21 +934,23 @@ if ($live) {
     # Live tests launch here after compilation (they need the compiled exe).
 
     $coreLogFile = "$env:TEMP\alt_tabby_tests_core.log"
+    $networkLogFile = "$env:TEMP\alt_tabby_tests_network.log"
     $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
     $executionLogFile = "$env:TEMP\alt_tabby_tests_execution.log"
     $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
+    $networkStderrFile = "$env:TEMP\ahk_network_stderr.log"
     $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
     $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
 
     # Clean live suite log files
-    foreach ($f in @($coreLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $featuresStderrFile, $executionStderrFile)) {
+    foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile)) {
         Remove-Item -Force -ErrorAction SilentlyContinue $f
     }
 
     $liveStart = Get-Date
 
-    # --- Live suites (3 suites, gated by compilation) ---
-    Write-Host "`n--- Live Test Execution (3 suites, parallel) ---" -ForegroundColor Yellow
+    # --- Live suites (4 suites, gated by compilation) ---
+    Write-Host "`n--- Live Test Execution (4 suites, parallel) ---" -ForegroundColor Yellow
 
     # The "Tests" phase starts at the earliest test launch (GUI + Unit, already running).
     if ($timing) {
@@ -968,6 +970,9 @@ if ($live) {
     Write-Host "  Starting Live/Core tests (background)..." -ForegroundColor Cyan
     $coreHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-core', $coreStderrFile)
 
+    Write-Host "  Starting Live/Network tests (background)..." -ForegroundColor Cyan
+    $networkHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-network', $networkStderrFile)
+
     Write-Host "  Starting Live/Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
@@ -976,6 +981,7 @@ if ($live) {
         $suiteHandles = @{
             "Live/Features"  = $featuresHandle
             "Live/Core"      = $coreHandle
+            "Live/Network"   = $networkHandle
             "Live/Execution" = $executionHandle
         }
         foreach ($us in $unitSuites) {
@@ -1050,6 +1056,18 @@ if ($live) {
     Show-TestSummary -LogPath $coreLogFile -Label "Core"
 
     if ($coreExitCode -ne 0) { $mainExitCode = $coreExitCode }
+
+    Write-Host "`n--- Network Test Results ---" -ForegroundColor Yellow
+    $networkExitCode = [SilentProcess]::WaitAndGetExitCode($networkHandle)
+
+    $networkStderr = Get-Content $networkStderrFile -ErrorAction SilentlyContinue
+    if ($networkStderr) {
+        Write-Host "=== NETWORK TEST ERRORS ===" -ForegroundColor Red
+        Write-Host $networkStderr
+    }
+    Show-TestSummary -LogPath $networkLogFile -Label "Network"
+
+    if ($networkExitCode -ne 0) { $mainExitCode = $networkExitCode }
 
     Write-Host "`n--- Execution Test Results ---" -ForegroundColor Yellow
     $execExitCode = [SilentProcess]::WaitAndGetExitCode($executionHandle)
