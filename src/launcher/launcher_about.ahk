@@ -32,12 +32,13 @@ global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
 
 ; Producer status cache — queried once after store launch, shown in dashboard
 global g_ProducerStatusCache := ""
+global g_ProducerDotColor := ""  ; "c00AA00" (green) or "cCC0000" (red)
 
 ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashControls, g_DashUpdateState, g_ProducerStatusCache, DASH_INTERVAL_COOL
+    global g_DashControls, g_DashUpdateState, g_ProducerStatusCache, g_ProducerDotColor, DASH_INTERVAL_COOL
 
     ; If already open, focus existing dialog
     if (g_DashboardGui) {
@@ -159,52 +160,81 @@ ShowDashboardDialog() {
 
     ; Subprocess rows with buttons — handlers check live state, refresh updates labels
     ; Order: Store, Producers, GUI, Config Editor, Blacklist Editor, Viewer
-    ; Status dots: Chr(0x1F7E2) = green circle, Chr(0x1F534) = red circle
-    dotOK := Chr(0x1F7E2)
-    dotStop := Chr(0x1F534)
+    ; Colored dot controls: green=running, red=core not running, grey=optional not running
+    dot := Chr(0x25CF)  ; ● BLACK CIRCLE — renders solid in any font
 
-    ; Store row
+    ; Store row (core — red when not running)
     subY := 202
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
-    storeLabel := (storeRunning ? dotOK : dotStop) " Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running")
-    g_DashControls.storeText := dg.AddText("x400 y" subY " w260 +0x100", storeLabel)
+    storeDotColor := storeRunning ? "c00AA00" : "cCC0000"
+    dg.SetFont("s9 " storeDotColor)
+    g_DashControls.storeDot := dg.AddText("x400 y" subY " w14", dot)
+    g_DashControls.storeDotColor := storeDotColor
+    dg.SetFont("s9 cDefault")
+    storeLabel := "Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running")
+    g_DashControls.storeText := dg.AddText("x414 y" subY " w246 +0x100", storeLabel)
     g_DashControls.storeBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", storeRunning ? "Restart" : "Launch")
     g_DashControls.storeBtn.OnEvent("Click", _Dash_OnStoreBtn)
 
-    ; Producer status line (full-width row, no button)
+    ; Producer status line (dot shows overall health)
     subY += 20
+    prodDotColor := g_ProducerDotColor != "" ? g_ProducerDotColor : "c999999"
+    dg.SetFont("s9 " prodDotColor)
+    g_DashControls.producerDot := dg.AddText("x400 y" subY " w14", g_ProducerStatusCache != "" ? dot : "")
+    g_DashControls.producerDotColor := prodDotColor
+    dg.SetFont("s9 cDefault")
     prodLabel := g_ProducerStatusCache != "" ? "Producers: " g_ProducerStatusCache : ""
-    g_DashControls.producerText := dg.AddText("x400 y" subY " w275 +0x100", prodLabel)
+    g_DashControls.producerText := dg.AddText("x414 y" subY " w261 +0x100", prodLabel)
 
-    ; GUI row
+    ; GUI row (core — red when not running)
     subY += 18
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
-    guiLabel := (guiRunning ? dotOK : dotStop) " GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
-    g_DashControls.guiText := dg.AddText("x400 y" subY " w260 +0x100", guiLabel)
+    guiDotColor := guiRunning ? "c00AA00" : "cCC0000"
+    dg.SetFont("s9 " guiDotColor)
+    g_DashControls.guiDot := dg.AddText("x400 y" subY " w14", dot)
+    g_DashControls.guiDotColor := guiDotColor
+    dg.SetFont("s9 cDefault")
+    guiLabel := "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
+    g_DashControls.guiText := dg.AddText("x414 y" subY " w246 +0x100", guiLabel)
     g_DashControls.guiBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", guiRunning ? "Restart" : "Launch")
     g_DashControls.guiBtn.OnEvent("Click", _Dash_OnGuiBtn)
 
-    ; Config Editor row
+    ; Config Editor row (optional — grey when not running)
     subY += 30
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
-    configLabel := (configRunning ? dotOK : dotStop) " Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running")
-    g_DashControls.configText := dg.AddText("x400 y" subY " w260 +0x100", configLabel)
+    configDotColor := configRunning ? "c00AA00" : "c999999"
+    dg.SetFont("s9 " configDotColor)
+    g_DashControls.configDot := dg.AddText("x400 y" subY " w14", dot)
+    g_DashControls.configDotColor := configDotColor
+    dg.SetFont("s9 cDefault")
+    configLabel := "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running")
+    g_DashControls.configText := dg.AddText("x414 y" subY " w246 +0x100", configLabel)
     g_DashControls.configBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", configRunning ? "Restart" : "Launch")
     g_DashControls.configBtn.OnEvent("Click", _Dash_OnConfigBtn)
 
-    ; Blacklist Editor row
+    ; Blacklist Editor row (optional — grey when not running)
     subY += 30
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-    blacklistLabel := (blacklistRunning ? dotOK : dotStop) " Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running")
-    g_DashControls.blacklistText := dg.AddText("x400 y" subY " w260 +0x100", blacklistLabel)
+    blacklistDotColor := blacklistRunning ? "c00AA00" : "c999999"
+    dg.SetFont("s9 " blacklistDotColor)
+    g_DashControls.blacklistDot := dg.AddText("x400 y" subY " w14", dot)
+    g_DashControls.blacklistDotColor := blacklistDotColor
+    dg.SetFont("s9 cDefault")
+    blacklistLabel := "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running")
+    g_DashControls.blacklistText := dg.AddText("x414 y" subY " w246 +0x100", blacklistLabel)
     g_DashControls.blacklistBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", blacklistRunning ? "Restart" : "Launch")
     g_DashControls.blacklistBtn.OnEvent("Click", _Dash_OnBlacklistBtn)
 
-    ; Viewer row
+    ; Viewer row (optional — grey when not running)
     subY += 30
     viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-    viewerLabel := (viewerRunning ? dotOK : dotStop) " Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running")
-    g_DashControls.viewerText := dg.AddText("x400 y" subY " w260 +0x100", viewerLabel)
+    viewerDotColor := viewerRunning ? "c00AA00" : "c999999"
+    dg.SetFont("s9 " viewerDotColor)
+    g_DashControls.viewerDot := dg.AddText("x400 y" subY " w14", dot)
+    g_DashControls.viewerDotColor := viewerDotColor
+    dg.SetFont("s9 cDefault")
+    viewerLabel := "Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running")
+    g_DashControls.viewerText := dg.AddText("x414 y" subY " w246 +0x100", viewerLabel)
     g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerRunning ? "Restart" : "Launch")
     g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
 
@@ -422,7 +452,7 @@ _Dash_RefreshDynamic() {
     global g_DashboardGui, g_DashControls, g_DashRefreshTick
     global g_StorePID, g_GuiPID, g_ViewerPID, cfg
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashUpdateState, g_ProducerStatusCache
+    global g_DashUpdateState, g_ProducerStatusCache, g_ProducerDotColor
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
 
@@ -449,25 +479,33 @@ _Dash_RefreshDynamic() {
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
 
-    dotOK := Chr(0x1F7E2)
-    dotStop := Chr(0x1F534)
+    dot := Chr(0x25CF)
+    hasProd := g_ProducerStatusCache != ""
+    prodDotColor := g_ProducerDotColor != "" ? g_ProducerDotColor : "c999999"
 
     newState := Map(
-        "storeText", (storeRunning ? dotOK : dotStop) " Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running"),
+        "storeDotColor", storeRunning ? "c00AA00" : "cCC0000",
+        "storeText", "Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running"),
         "storeBtn", storeRunning ? "Restart" : "Launch",
-        "guiText", (guiRunning ? dotOK : dotStop) " GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running"),
+        "guiDotColor", guiRunning ? "c00AA00" : "cCC0000",
+        "guiText", "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running"),
         "guiBtn", guiRunning ? "Restart" : "Launch",
-        "configText", (configRunning ? dotOK : dotStop) " Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running"),
+        "configDotColor", configRunning ? "c00AA00" : "c999999",
+        "configText", "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running"),
         "configBtn", configRunning ? "Restart" : "Launch",
-        "blacklistText", (blacklistRunning ? dotOK : dotStop) " Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running"),
+        "blacklistDotColor", blacklistRunning ? "c00AA00" : "c999999",
+        "blacklistText", "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running"),
         "blacklistBtn", blacklistRunning ? "Restart" : "Launch",
-        "viewerText", (viewerRunning ? dotOK : dotStop) " Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running"),
+        "viewerDotColor", viewerRunning ? "c00AA00" : "c999999",
+        "viewerText", "Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running"),
         "viewerBtn", viewerRunning ? "Restart" : "Launch",
         "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
         "chkStartMenu", _Shortcut_StartMenuExists() ? 1 : 0,
         "chkStartup", _Shortcut_StartupExists() ? 1 : 0,
         "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0,
-        "producerText", g_ProducerStatusCache != "" ? "Producers: " g_ProducerStatusCache : "",
+        "producerDotColor", prodDotColor,
+        "producerDotText", hasProd ? dot : "",
+        "producerText", hasProd ? "Producers: " g_ProducerStatusCache : "",
         "updateText", _Dash_GetUpdateLabel(),
         "updateBtn", _Dash_GetUpdateBtnLabel(),
         "updateBtnEnabled", (g_DashUpdateState.status != "checking") ? 1 : 0
@@ -475,20 +513,27 @@ _Dash_RefreshDynamic() {
 
     ; Diff against current control values — skip redraw if nothing changed
     changed := false
-    if (g_DashControls.storeText.Value != newState["storeText"]
+    if (g_DashControls.storeDotColor != newState["storeDotColor"]
+        || g_DashControls.storeText.Value != newState["storeText"]
         || g_DashControls.storeBtn.Text != newState["storeBtn"]
+        || g_DashControls.guiDotColor != newState["guiDotColor"]
         || g_DashControls.guiText.Value != newState["guiText"]
         || g_DashControls.guiBtn.Text != newState["guiBtn"]
+        || g_DashControls.configDotColor != newState["configDotColor"]
         || g_DashControls.configText.Value != newState["configText"]
         || g_DashControls.configBtn.Text != newState["configBtn"]
+        || g_DashControls.blacklistDotColor != newState["blacklistDotColor"]
         || g_DashControls.blacklistText.Value != newState["blacklistText"]
         || g_DashControls.blacklistBtn.Text != newState["blacklistBtn"]
+        || g_DashControls.viewerDotColor != newState["viewerDotColor"]
         || g_DashControls.viewerText.Value != newState["viewerText"]
         || g_DashControls.viewerBtn.Text != newState["viewerBtn"]
         || g_DashControls.komorebiText.Value != newState["komorebiText"]
         || g_DashControls.chkStartMenu.Value != newState["chkStartMenu"]
         || g_DashControls.chkStartup.Value != newState["chkStartup"]
         || g_DashControls.chkAutoUpdate.Value != newState["chkAutoUpdate"]
+        || g_DashControls.producerDotColor != newState["producerDotColor"]
+        || g_DashControls.producerDot.Value != newState["producerDotText"]
         || g_DashControls.producerText.Value != newState["producerText"]
         || g_DashControls.updateText.Value != newState["updateText"]
         || g_DashControls.updateBtn.Text != newState["updateBtn"]
@@ -501,6 +546,33 @@ _Dash_RefreshDynamic() {
     ; Suppress repaints while updating controls
     hWnd := g_DashboardGui.Hwnd
     DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 0, "ptr", 0)  ; WM_SETREDRAW FALSE
+
+    ; Update dot colors via SetFont (only when changed to avoid flicker)
+    if (g_DashControls.storeDotColor != newState["storeDotColor"]) {
+        g_DashControls.storeDot.SetFont(newState["storeDotColor"])
+        g_DashControls.storeDotColor := newState["storeDotColor"]
+    }
+    if (g_DashControls.guiDotColor != newState["guiDotColor"]) {
+        g_DashControls.guiDot.SetFont(newState["guiDotColor"])
+        g_DashControls.guiDotColor := newState["guiDotColor"]
+    }
+    if (g_DashControls.configDotColor != newState["configDotColor"]) {
+        g_DashControls.configDot.SetFont(newState["configDotColor"])
+        g_DashControls.configDotColor := newState["configDotColor"]
+    }
+    if (g_DashControls.blacklistDotColor != newState["blacklistDotColor"]) {
+        g_DashControls.blacklistDot.SetFont(newState["blacklistDotColor"])
+        g_DashControls.blacklistDotColor := newState["blacklistDotColor"]
+    }
+    if (g_DashControls.viewerDotColor != newState["viewerDotColor"]) {
+        g_DashControls.viewerDot.SetFont(newState["viewerDotColor"])
+        g_DashControls.viewerDotColor := newState["viewerDotColor"]
+    }
+    if (g_DashControls.producerDotColor != newState["producerDotColor"]) {
+        g_DashControls.producerDot.SetFont(newState["producerDotColor"])
+        g_DashControls.producerDotColor := newState["producerDotColor"]
+    }
+    g_DashControls.producerDot.Value := newState["producerDotText"]
 
     g_DashControls.storeText.Value := newState["storeText"]
     g_DashControls.storeBtn.Text := newState["storeBtn"]
@@ -735,7 +807,7 @@ _Dash_GetKomorebiInfo() {
 ; Called on a delayed timer after store launch/restart.
 
 _Dash_QueryProducerStatus() {
-    global g_ProducerStatusCache, cfg
+    global g_ProducerStatusCache, g_ProducerDotColor, cfg
     global IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
 
     pipeName := cfg.StorePipeName
@@ -805,11 +877,11 @@ _Dash_QueryProducerStatus() {
     }
 }
 
-; Format producer states with colored dots: "🟢WEH 🟢KS 🟢IP 🟢PP"
+; Format producer states: "WEH KS IP PP" (running) or "WEH !KS IP PP" (KS failed)
+; Also sets g_ProducerDotColor: green if all OK, red if any failed
 ; Disabled producers omitted, MRU only shown if active (fallback)
 _Dash_FormatProducerStatus(producers) {
-    dotOK := Chr(0x1F7E2)
-    dotFail := Chr(0x1F534)
+    global g_ProducerDotColor
 
     abbrevs := [
         ["WEH", "wineventHook"],
@@ -821,6 +893,7 @@ _Dash_FormatProducerStatus(producers) {
     ]
 
     parts := []
+    hasFailed := false
     for _, pair in abbrevs {
         abbrev := pair[1]
         name := pair[2]
@@ -835,11 +908,15 @@ _Dash_FormatProducerStatus(producers) {
             }
         }
         if (state = "running")
-            parts.Push(dotOK abbrev)
-        else if (state = "failed")
-            parts.Push(dotFail abbrev)
+            parts.Push(abbrev)
+        else if (state = "failed") {
+            parts.Push("!" abbrev)
+            hasFailed := true
+        }
         ; Skip disabled — keeps line compact
     }
+
+    g_ProducerDotColor := hasFailed ? "cCC0000" : "c00AA00"
 
     result := ""
     for _, part in parts
