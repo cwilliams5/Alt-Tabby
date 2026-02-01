@@ -7,6 +7,7 @@
 #Include "test_unit_setup.ahk"
 #Include "test_unit_cleanup.ahk"
 #Include "test_unit_advanced.ahk"
+#Include "test_unit_stats.ahk"
 
 RunUnitTests() {
     RunUnitTests_Core()
@@ -14,4 +15,5 @@ RunUnitTests() {
     RunUnitTests_Setup()
     RunUnitTests_Cleanup()
     RunUnitTests_Advanced()
+    RunUnitTests_Stats()
 }

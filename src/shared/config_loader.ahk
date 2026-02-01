@@ -48,6 +48,9 @@ ConfigLoader_Init(basePath := "") {
 
     gConfigIniPath := basePath "\config.ini"
 
+    global STATS_INI_PATH
+    STATS_INI_PATH := basePath "\stats.ini"
+
     ; Initialize all config values to defaults FIRST
     _CL_InitializeDefaults()
 
@@ -507,6 +510,9 @@ global LOG_PATH_PROCPUMP   := A_Temp "\tabby_procpump.log"
 global LOG_PATH_IPC        := A_Temp "\tabby_ipc.log"
 global LOG_PATH_VIEWER     := A_Temp "\tabby_viewer.log"
 global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
+
+; Stats file path -- set properly in ConfigLoader_Init() alongside gConfigIniPath
+global STATS_INI_PATH
 
 ; Format a timestamp for log entries (consistent across all loggers)
 ; Format: "HH:mm:ss.xxx" where xxx is milliseconds from tick count

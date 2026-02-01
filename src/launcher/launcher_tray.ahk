@@ -67,6 +67,8 @@ UpdateTrayMenu() {
     tray.Add("Settings", _Tray_BuildSettingsMenu())
     tray.Add()
 
+    tray.Add("Show Stats...", (*) => ShowStatsDialog())
+
     ; "About / Help..." — bold via tray.Default, with app icon
     ; NOTE: The tray menu deliberately uses "About / Help..." while the popup window
     ; is called "Dashboard". This is an intentional UX decision — do not "fix" this.
@@ -290,11 +292,10 @@ RestartViewer() {
 }
 
 RestartAll() {
-    global TIMING_PROCESS_EXIT_WAIT, TIMING_SUBPROCESS_LAUNCH
+    global TIMING_SUBPROCESS_LAUNCH
 
-    _KillAllSubprocesses()
+    _GracefulShutdown()
     _Dash_StartRefreshTimer()
-    Sleep(TIMING_PROCESS_EXIT_WAIT)
 
     ; Relaunch core processes
     LaunchStore()
@@ -304,26 +305,56 @@ RestartAll() {
 
 ExitAll() {
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    _KillAllSubprocesses()
-    ; Kill editors on full exit (not in _KillAllSubprocesses — editors survive RestartAll)
+    ; Hard kill editors on full exit (not in _GracefulShutdown — editors survive RestartAll)
     if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
         ProcessClose(g_ConfigEditorPID)
     if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
         ProcessClose(g_BlacklistEditorPID)
+    _GracefulShutdown()
     ExitApp()
 }
 
 _KillAllSubprocesses() {
+    _GracefulShutdown()
+}
+
+_GracefulShutdown() {
     global g_StorePID, g_GuiPID, g_ViewerPID
-    if (g_StorePID && ProcessExist(g_StorePID))
-        ProcessClose(g_StorePID)
-    if (g_GuiPID && ProcessExist(g_GuiPID))
-        ProcessClose(g_GuiPID)
+
+    ; 1. Hard kill non-core processes (viewer)
     if (g_ViewerPID && ProcessExist(g_ViewerPID))
         ProcessClose(g_ViewerPID)
-    g_StorePID := 0
-    g_GuiPID := 0
     g_ViewerPID := 0
+
+    ; PostMessage needs to find AHK's hidden message windows
+    prevDHW := A_DetectHiddenWindows
+    DetectHiddenWindows(true)
+
+    ; 2. Graceful shutdown GUI first (sends final stats to still-alive store)
+    if (g_GuiPID && ProcessExist(g_GuiPID)) {
+        ; Target AHK's hidden message window (class "AutoHotkey"), not GUI windows
+        ; (class "AutoHotkeyGUI") — WM_CLOSE on a Gui window just hides it
+        try PostMessage(0x0010, , , , "ahk_pid " g_GuiPID " ahk_class AutoHotkey")  ; WM_CLOSE
+        deadline := A_TickCount + 3000
+        while (ProcessExist(g_GuiPID) && A_TickCount < deadline)
+            Sleep(10)
+        if (ProcessExist(g_GuiPID))
+            ProcessClose(g_GuiPID)
+    }
+    g_GuiPID := 0
+
+    ; 3. Graceful shutdown store second (flushes stats to disk)
+    if (g_StorePID && ProcessExist(g_StorePID)) {
+        try PostMessage(0x0010, , , , "ahk_pid " g_StorePID " ahk_class AutoHotkey")  ; WM_CLOSE
+        deadline := A_TickCount + 5000
+        while (ProcessExist(g_StorePID) && A_TickCount < deadline)
+            Sleep(10)
+        if (ProcessExist(g_StorePID))
+            ProcessClose(g_StorePID)
+    }
+    g_StorePID := 0
+
+    DetectHiddenWindows(prevDHW)
 }
 
 LaunchConfigEditor() {

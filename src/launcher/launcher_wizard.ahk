@@ -201,6 +201,8 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
             newDir := ""
             SplitPath(newPath, , &newDir)
             gConfigIniPath := newDir "\config.ini"
+            global STATS_INI_PATH
+            STATS_INI_PATH := newDir "\stats.ini"
         } else if (newPath = "") {
             ; Install failed - exePath stays at current location
             installSucceeded := false

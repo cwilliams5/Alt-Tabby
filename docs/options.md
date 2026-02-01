@@ -459,6 +459,7 @@ Debug options for troubleshooting. All disabled by default to minimize disk I/O 
 | `LauncherLog` | bool | `false` | Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems. |
 | `IPCLog` | bool | `false` | Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues. |
 | `PaintTimingLog` | bool | `false` | Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle. |
+| `StatsTracking` | bool | `true` | Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard. |
 
 ## Testing
 
@@ -482,4 +483,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-31 with 185 total settings.*
+*Generated on 2026-02-01 with 186 total settings.*

@@ -20,6 +20,10 @@
 #Include *i %A_ScriptDir%\proc_pump.ahk
 #Include *i %A_ScriptDir%\winevent_hook.ahk
 
+; Stats tracking
+global gStats_Lifetime := Map()   ; key -> integer, loaded from/flushed to stats.ini
+global gStats_Session := Map()    ; key -> integer, this session only
+
 global gStore_Server := 0
 global gStore_ClientOpts := Map()      ; hPipe -> projection opts
 global gStore_LastBroadcastRev := -1
@@ -81,6 +85,9 @@ Store_Init() {
     ; - Compiled: uses A_ScriptDir (exe directory)
     ; - Development: tries A_ScriptDir, then A_ScriptDir "\..\"
     ConfigLoader_Init()
+
+    ; Initialize stats tracking (loads lifetime stats from disk)
+    Stats_Init()
 
     ; Reset store log for new session (unconditional - Store_LogError is always-on)
     global LOG_PATH_STORE
@@ -204,6 +211,10 @@ Store_HeartbeatTick() {
     gStore_HeartbeatCount += 1
     if (Mod(gStore_HeartbeatCount, 12) = 0)
         _Store_RotateDiagLogs()
+
+    ; Flush stats to disk every ~5 minutes (60 heartbeats at 5s interval)
+    if (Mod(gStore_HeartbeatCount, 60) = 0)
+        try Stats_FlushToDisk()
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -445,6 +456,8 @@ Store_OnMessage(line, hPipe := 0) {
     global IPC_MSG_HELLO, IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION
     global IPC_MSG_SET_PROJECTION_OPTS, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_PROJECTION_REQUEST
     global IPC_MSG_RELOAD_BLACKLIST, IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
+    global IPC_MSG_STATS_UPDATE, IPC_MSG_STATS_REQUEST, IPC_MSG_STATS_RESPONSE
+    global gStats_Lifetime, gStats_Session
     obj := ""
     try obj := JSON.Load(line)
     catch as err {
@@ -566,6 +579,54 @@ Store_OnMessage(line, hPipe := 0) {
         IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
         return
     }
+    if (type = IPC_MSG_STATS_UPDATE) {
+        ; Accumulate GUI session stats into lifetime (GUI sends deltas since last send)
+        for _, key in ["TotalAltTabs", "TotalQuickSwitches", "TotalTabSteps",
+                       "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles"] {
+            if (obj.Has(key))
+                gStats_Lifetime[key] := gStats_Lifetime.Get(key, 0) + obj[key]
+        }
+        return
+    }
+    if (type = IPC_MSG_STATS_REQUEST) {
+        ; Build response combining lifetime + session stats + derived values
+        resp := { type: IPC_MSG_STATS_RESPONSE }
+
+        ; Copy all lifetime stats
+        for key, val in gStats_Lifetime
+            resp.%key% := val
+
+        ; Add current session info (use sessionStartTick which never resets, unlike startTick)
+        sessionSec := Round((A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000)
+        resp.SessionRunTimeSec := sessionSec
+        resp.SessionPeakWindows := gStats_Session.Get("peakWindows", 0)
+
+        ; Session activity deltas (current lifetime - baseline at launch)
+        resp.SessionAltTabs := gStats_Lifetime.Get("TotalAltTabs", 0) - gStats_Session.Get("baselineAltTabs", 0)
+        resp.SessionQuickSwitches := gStats_Lifetime.Get("TotalQuickSwitches", 0) - gStats_Session.Get("baselineQuickSwitches", 0)
+        resp.SessionTabSteps := gStats_Lifetime.Get("TotalTabSteps", 0) - gStats_Session.Get("baselineTabSteps", 0)
+        resp.SessionCancellations := gStats_Lifetime.Get("TotalCancellations", 0) - gStats_Session.Get("baselineCancellations", 0)
+        resp.SessionCrossWorkspace := gStats_Lifetime.Get("TotalCrossWorkspace", 0) - gStats_Session.Get("baselineCrossWorkspace", 0)
+        resp.SessionWorkspaceToggles := gStats_Lifetime.Get("TotalWorkspaceToggles", 0) - gStats_Session.Get("baselineWorkspaceToggles", 0)
+        resp.SessionWindowUpdates := gStats_Lifetime.Get("TotalWindowUpdates", 0) - gStats_Session.Get("baselineWindowUpdates", 0)
+        resp.SessionBlacklistSkips := gStats_Lifetime.Get("TotalBlacklistSkips", 0) - gStats_Session.Get("baselineBlacklistSkips", 0)
+
+        ; Derived stats (compute here so dashboard just displays)
+        totalRunSec := gStats_Lifetime.Get("TotalRunTimeSec", 0) + sessionSec
+        totalAltTabs := gStats_Lifetime.Get("TotalAltTabs", 0)
+        totalQuick := gStats_Lifetime.Get("TotalQuickSwitches", 0)
+        totalCancels := gStats_Lifetime.Get("TotalCancellations", 0)
+        totalTabs := gStats_Lifetime.Get("TotalTabSteps", 0)
+        totalActivations := totalAltTabs + totalQuick
+
+        resp.DerivedAvgAltTabsPerHour := (totalRunSec > 0) ? Round(totalAltTabs / (totalRunSec / 3600), 1) : 0
+        resp.DerivedQuickSwitchPct := (totalActivations > 0) ? Round(totalQuick / totalActivations * 100, 1) : 0
+        resp.DerivedCancelRate := (totalAltTabs + totalCancels > 0) ? Round(totalCancels / (totalAltTabs + totalCancels) * 100, 1) : 0
+        resp.DerivedAvgTabsPerSwitch := (totalAltTabs > 0) ? Round(totalTabs / totalAltTabs, 1) : 0
+
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
+        return
+    }
 }
 
 ; Get current producer states as plain object (for IPC response)
@@ -637,6 +698,117 @@ _Store_OptsKey(opts) {
     return s "|" cw "|" im "|" ic "|" co
 }
 
+; ============================================================
+; STATS ENGINE
+; ============================================================
+
+; All lifetime stat keys - used for initialization and serialization
+global STATS_LIFETIME_KEYS := [
+    "TotalRunTimeSec", "TotalSessions",
+    "TotalAltTabs", "TotalQuickSwitches", "TotalTabSteps",
+    "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles",
+    "TotalWindowUpdates", "TotalBlacklistSkips",
+    "PeakWindowsInSession", "LongestSessionSec"
+]
+
+Stats_Init() {
+    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
+
+    if (!cfg.StatsTrackingEnabled)
+        return
+
+    statsPath := STATS_INI_PATH
+
+    ; --- Crash recovery ---
+    bakExists := FileExist(statsPath ".bak")
+    iniExists := FileExist(statsPath)
+
+    if (bakExists && !iniExists) {
+        ; Crash before any writes completed -- .bak is the last known good
+        try FileMove(statsPath ".bak", statsPath)
+    } else if (bakExists && iniExists) {
+        ; Crash during or after write -- check sentinel
+        flushStatus := ""
+        try flushStatus := IniRead(statsPath, "Lifetime", "_FlushStatus", "")
+        if (flushStatus = "complete") {
+            ; .ini write finished fully -- discard .bak
+            try FileDelete(statsPath ".bak")
+        } else {
+            ; .ini is partial -- .bak has previous good state
+            try FileDelete(statsPath)
+            try FileMove(statsPath ".bak", statsPath)
+        }
+    }
+
+    ; --- Load lifetime stats from disk ---
+    for _, key in STATS_LIFETIME_KEYS {
+        val := 0
+        if (FileExist(statsPath)) {
+            try {
+                raw := IniRead(statsPath, "Lifetime", key, "0")
+                val := Integer(raw)
+            }
+        }
+        gStats_Lifetime[key] := val
+    }
+
+    ; Increment session count
+    gStats_Lifetime["TotalSessions"] := gStats_Lifetime.Get("TotalSessions", 0) + 1
+
+    ; Session tracking
+    gStats_Session["startTick"] := A_TickCount
+    gStats_Session["sessionStartTick"] := A_TickCount  ; Never reset — used for session runtime reporting
+    gStats_Session["peakWindows"] := 0
+
+    ; Save baseline for session activity reporting (current - baseline = this session)
+    gStats_Session["baselineAltTabs"] := gStats_Lifetime.Get("TotalAltTabs", 0)
+    gStats_Session["baselineQuickSwitches"] := gStats_Lifetime.Get("TotalQuickSwitches", 0)
+    gStats_Session["baselineTabSteps"] := gStats_Lifetime.Get("TotalTabSteps", 0)
+    gStats_Session["baselineCancellations"] := gStats_Lifetime.Get("TotalCancellations", 0)
+    gStats_Session["baselineCrossWorkspace"] := gStats_Lifetime.Get("TotalCrossWorkspace", 0)
+    gStats_Session["baselineWorkspaceToggles"] := gStats_Lifetime.Get("TotalWorkspaceToggles", 0)
+    gStats_Session["baselineWindowUpdates"] := gStats_Lifetime.Get("TotalWindowUpdates", 0)
+    gStats_Session["baselineBlacklistSkips"] := gStats_Lifetime.Get("TotalBlacklistSkips", 0)
+}
+
+Stats_FlushToDisk() {
+    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
+
+    if (!cfg.StatsTrackingEnabled)
+        return
+
+    statsPath := STATS_INI_PATH
+
+    ; Compute run time: existing lifetime + current session
+    sessionSec := (A_TickCount - gStats_Session.Get("startTick", A_TickCount)) / 1000
+    gStats_Lifetime["TotalRunTimeSec"] := gStats_Lifetime.Get("TotalRunTimeSec", 0) + Round(sessionSec)
+    ; Reset session start so we don't double-count on next flush
+    gStats_Session["startTick"] := A_TickCount
+
+    ; Update longest session (use total session time, not just segment since last flush)
+    totalSessionSec := (A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000
+    if (totalSessionSec > gStats_Lifetime.Get("LongestSessionSec", 0))
+        gStats_Lifetime["LongestSessionSec"] := Round(totalSessionSec)
+
+    ; Crash protection: backup existing file
+    if (FileExist(statsPath))
+        try FileCopy(statsPath, statsPath ".bak", true)
+
+    ; Remove sentinel from previous flush (will be re-written as last key)
+    try IniDelete(statsPath, "Lifetime", "_FlushStatus")
+
+    ; Write all stats
+    for _, key in STATS_LIFETIME_KEYS {
+        try IniWrite(gStats_Lifetime.Get(key, 0), statsPath, "Lifetime", key)
+    }
+
+    ; Sentinel: MUST be last write
+    try IniWrite("complete", statsPath, "Lifetime", "_FlushStatus")
+
+    ; Success -- remove backup
+    try FileDelete(statsPath ".bak")
+}
+
 ; Auto-init only if running standalone or if mode is "store"
 ; When included from alt_tabby.ahk with a different mode, skip init.
 if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "store") {  ; lint-ignore: isset-with-default
@@ -705,6 +877,9 @@ Store_OnExit(reason, code) {
     try {
         WindowStore_CleanupExeIconCache()
     }
+
+    ; Flush stats to disk before stopping IPC (final persist)
+    try Stats_FlushToDisk()
 
     ; Stop IPC server
     try {

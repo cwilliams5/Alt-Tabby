@@ -342,9 +342,9 @@ $CHECKS += @(
     @{
         Id       = "exit_handler_kills_subprocesses"
         File     = "launcher\launcher_main.ahk"
-        Desc     = "_Launcher_OnExit calls _KillAllSubprocesses before mutex release"
+        Desc     = "_Launcher_OnExit calls _GracefulShutdown before mutex release"
         Function = "_Launcher_OnExit"
-        Patterns = @("_KillAllSubprocesses()")
+        Patterns = @("_GracefulShutdown()")
     }
 )
 

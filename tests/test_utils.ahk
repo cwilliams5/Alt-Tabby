@@ -162,6 +162,17 @@ Test_OnBlacklistMessage(line, hPipe := 0) {
     }
 }
 
+Test_OnStatsMessage(line, hPipe := 0) {
+    global gStatsTestResponse, gStatsTestReceived
+    if (InStr(line, '"type":"stats_response"')) {
+        Log("  [Stats Test] Received response")
+        gStatsTestResponse := line
+        gStatsTestReceived := true
+    } else {
+        ; Ignore other messages (hello_ack, deltas, etc.)
+    }
+}
+
 Test_OnMruMessage(line, hPipe := 0) {
     global gMruTestResponse, gMruTestReceived
     ; We want projection/snapshot responses

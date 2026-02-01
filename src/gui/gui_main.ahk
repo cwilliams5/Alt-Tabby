@@ -80,6 +80,15 @@ global gGUI_AllItems := []     ; Unfiltered items - preserved for workspace togg
 global gGUI_AwaitingToggleProjection := false  ; Flag for UseCurrentWSProjection mode
 global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
 
+; Session stats counters (sent to store as deltas)
+global gStats_AltTabs := 0
+global gStats_QuickSwitches := 0
+global gStats_TabSteps := 0
+global gStats_Cancellations := 0
+global gStats_CrossWorkspace := 0
+global gStats_WorkspaceToggles := 0
+global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculation
+
 ; Store health check state
 global gGUI_LastMsgTick := 0       ; Timestamp of last message from store
 global gGUI_ReconnectAttempts := 0 ; Counter for failed reconnection attempts
@@ -280,6 +289,9 @@ _GUI_RequestStoreRestart() {
 
 ; Clean up resources on exit
 _GUI_OnExit(reason, code) {
+    ; Send any unsent stats to store before cleanup
+    try _Stats_SendToStore()
+
     ; Stop health check timer
     SetTimer(_GUI_StoreHealthCheck, 0)
 

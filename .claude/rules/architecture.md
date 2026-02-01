@@ -16,7 +16,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 ## Process Roles
 
 1. **Launcher**: Tray icon, subprocess PIDs, on-demand menu updates, lifecycle manager (WM_COPYDATA: store restart from GUI, full restart from config editor). Config/blacklist editors launched as subprocesses.
-2. **WindowStore + Producers**: Named pipe server, window data
+2. **WindowStore + Producers**: Named pipe server, window data, stats accumulation and persistence (`stats.ini`)
 3. **AltLogic + GUI**: Overlay, MRU selection, window activation
 4. **Debug Viewer**: Z/MRU-ordered window list display
 
@@ -29,6 +29,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 - `src/shared/config_registry.ahk` - All config definitions
 - `src/shared/blacklist.ahk` - Window eligibility logic
 - `src/gui/gui_main.ahk` - Alt-Tab GUI overlay
+- `stats.ini` - Lifetime usage statistics (next to config.ini, crash-safe with `.bak` sentinel)
 
 ## Producer Architecture
 
@@ -91,6 +92,12 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 - Single source: `gConfigRegistry` in `config_registry.ahk`
 - Access via `cfg.PropertyName`
 - **ConfigLoader_Init() must be called before using cfg**
+
+## Stats IPC Messages
+
+- `stats_update` - GUI → Store: delta counters (alt-tabs, quick switches, tab steps, cancellations, cross-workspace, workspace toggles)
+- `stats_request` - Launcher → Store: on-demand query for dashboard/stats dialog
+- `stats_response` - Store → Launcher: lifetime + session + derived stats
 
 ## Key Metrics
 

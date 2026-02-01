@@ -714,6 +714,14 @@ _Update_ApplyCore(opts) {
                 try FileCopy(gConfigIniPath, targetConfigPath)
         }
 
+        ; Preserve lifetime stats at target location
+        srcStatsPath := gConfigIniPath "\..\stats.ini"
+        targetStatsPath := targetDir "\stats.ini"
+        if (FileExist(srcStatsPath) && !FileExist(targetStatsPath))
+            try FileCopy(srcStatsPath, targetStatsPath)
+        if (FileExist(srcStatsPath ".bak") && !FileExist(targetStatsPath ".bak"))
+            try FileCopy(srcStatsPath ".bak", targetStatsPath ".bak")
+
         ; Update config at target location
         cfg.SetupExePath := targetPath
         if (FileExist(targetConfigPath)) {

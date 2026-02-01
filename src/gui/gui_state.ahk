@@ -150,6 +150,9 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_FirstTabTick := A_TickCount
             gGUI_TabCount := 1
             gGUI_State := "ACTIVE"
+            global gStats_AltTabs, gStats_TabSteps
+            gStats_AltTabs += 1
+            gStats_TabSteps += 1
 
             ; SAFETY: If gGUI_Items is empty and prewarm was requested, wait briefly for data
             ; This handles the race where Tab is pressed before prewarm response arrives
@@ -205,6 +208,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         if (gGUI_State = "ACTIVE") {
             gGUI_TabCount += 1
+            global gStats_TabSteps
+            gStats_TabSteps += 1
             delta := shiftHeld ? -1 : 1
             GUI_MoveSelectionFrozen(delta)
 
@@ -256,6 +261,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             if (!gGUI_OverlayVisible && timeSinceTab < cfg.AltTabQuickSwitchMs) {
                 ; Quick switch: Alt+Tab released quickly, no GUI shown
+                global gStats_QuickSwitches
+                gStats_QuickSwitches += 1
                 GUI_ActivateFromFrozen()
             } else if (gGUI_OverlayVisible) {
                 ; Normal case: hide FIRST (feels snappy), then activate
@@ -268,6 +275,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             gGUI_FrozenItems := []
             gGUI_State := "IDLE"
+            _Stats_SendToStore()
 
             ; NOTE: Activation is now async (non-blocking) for cross-workspace switches.
             ; Keyboard events are processed normally between timer fires.
@@ -279,12 +287,15 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ESCAPE) {
         ; Cancel - hide without activating
+        global gStats_Cancellations
+        gStats_Cancellations += 1
         SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer
         if (gGUI_OverlayVisible) {
             GUI_HideOverlay()
         }
         gGUI_State := "IDLE"
         gGUI_FrozenItems := []
+        _Stats_SendToStore()
 
         ; Resync with store - we may have missed deltas during ACTIVE
         GUI_RequestSnapshot()
@@ -499,6 +510,8 @@ GUI_ActivateItem(item) {
 
     ; === Cross-workspace: ASYNC activation (non-blocking) ===
     if (!isOnCurrent && wsName != "" && cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe)) {
+        global gStats_CrossWorkspace
+        gStats_CrossWorkspace += 1
         _GUI_LogEvent("ASYNC START: switching to workspace '" wsName "' for hwnd " hwnd)
 
         ; Start workspace switch
@@ -884,5 +897,59 @@ _GUI_RobustActivate(hwnd) {
         }
     } catch as e {
         _GUI_LogEvent("ACTIVATE ERROR: " e.Message " for hwnd=" hwnd)
+    }
+}
+
+; ========================= STATS SEND =========================
+
+; Send accumulated session stats to store as deltas
+; Called at session end (IDLE transition) and on exit
+_Stats_SendToStore() {
+    global gGUI_StoreClient, gGUI_StoreConnected
+    global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps
+    global gStats_Cancellations, gStats_CrossWorkspace, gStats_WorkspaceToggles
+    global gStats_LastSent
+    global IPC_MSG_STATS_UPDATE
+
+    ; Calculate deltas since last send
+    dAltTabs := gStats_AltTabs - gStats_LastSent.Get("AltTabs", 0)
+    dQuick := gStats_QuickSwitches - gStats_LastSent.Get("QuickSwitches", 0)
+    dTabs := gStats_TabSteps - gStats_LastSent.Get("TabSteps", 0)
+    dCancels := gStats_Cancellations - gStats_LastSent.Get("Cancellations", 0)
+    dCrossWS := gStats_CrossWorkspace - gStats_LastSent.Get("CrossWorkspace", 0)
+    dToggles := gStats_WorkspaceToggles - gStats_LastSent.Get("WorkspaceToggles", 0)
+
+    ; Skip if nothing to send
+    if (dAltTabs = 0 && dQuick = 0 && dTabs = 0 && dCancels = 0 && dCrossWS = 0 && dToggles = 0)
+        return
+
+    msg := Map()
+    msg["type"] := IPC_MSG_STATS_UPDATE
+    if (dAltTabs > 0)
+        msg["TotalAltTabs"] := dAltTabs
+    if (dQuick > 0)
+        msg["TotalQuickSwitches"] := dQuick
+    if (dTabs > 0)
+        msg["TotalTabSteps"] := dTabs
+    if (dCancels > 0)
+        msg["TotalCancellations"] := dCancels
+    if (dCrossWS > 0)
+        msg["TotalCrossWorkspace"] := dCrossWS
+    if (dToggles > 0)
+        msg["TotalWorkspaceToggles"] := dToggles
+
+    ; Send to store (if connected)
+    if (gGUI_StoreConnected && IsObject(gGUI_StoreClient)) {
+        try {
+            IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(msg))
+            ; Record what was sent
+            gStats_LastSent["AltTabs"] := gStats_AltTabs
+            gStats_LastSent["QuickSwitches"] := gStats_QuickSwitches
+            gStats_LastSent["TabSteps"] := gStats_TabSteps
+            gStats_LastSent["Cancellations"] := gStats_Cancellations
+            gStats_LastSent["CrossWorkspace"] := gStats_CrossWorkspace
+            gStats_LastSent["WorkspaceToggles"] := gStats_WorkspaceToggles
+        }
+        ; On failure, deltas accumulate and are retried next session end
     }
 }

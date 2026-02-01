@@ -18,6 +18,7 @@
 ; Icon is set via compile.bat /icon flag (becomes main exe icon)
 ; PNG is embedded as RCDATA resource with ID 10
 ;@Ahk2Exe-AddResource ..\img\logo.png, 10
+;@Ahk2Exe-AddResource ..\img\icon.png, 11
 
 ; ============================================================
 ; Alt-Tabby - Unified Launcher & Mode Router
@@ -128,6 +129,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 #Include launcher_install.ahk
 #Include launcher_wizard.ahk
 #Include launcher_about.ahk
+#Include launcher_stats.ahk
 #Include launcher_tray.ahk
 #Include launcher_main.ahk
 

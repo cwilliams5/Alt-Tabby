@@ -56,6 +56,12 @@ InstallToProgramFiles() {
         if (FileExist(srcDir "\blacklist.txt"))
             FileCopy(srcDir "\blacklist.txt", installDir "\blacklist.txt", true)
 
+        ; Copy stats if exists (preserve lifetime statistics)
+        if (FileExist(srcDir "\stats.ini"))
+            FileCopy(srcDir "\stats.ini", installDir "\stats.ini", true)
+        if (FileExist(srcDir "\stats.ini.bak"))
+            FileCopy(srcDir "\stats.ini.bak", installDir "\stats.ini.bak", true)
+
         return installDir "\AltTabby.exe"
     } catch as e {
         MsgBox("Failed to install to Program Files:`n" e.Message, APP_NAME, "IconX")

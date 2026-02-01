@@ -757,6 +757,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "PaintTimingLog", g: "DiagPaintTimingLog", t: "bool", default: false,
      d: "Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle."},
 
+    {s: "Diagnostics", k: "StatsTracking", g: "StatsTrackingEnabled", t: "bool", default: true,
+     d: "Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard."},
+
     ; ============================================================
     ; Testing
     ; ============================================================

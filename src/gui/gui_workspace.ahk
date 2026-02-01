@@ -58,7 +58,9 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 
 GUI_ToggleWorkspaceMode() {
     global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
-    global cfg
+    global cfg, gStats_WorkspaceToggles
+
+    gStats_WorkspaceToggles += 1
 
     ; Toggle mode
     gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"

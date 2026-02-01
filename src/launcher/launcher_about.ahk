@@ -35,6 +35,11 @@ global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
 global g_ProducerStatusCache := ""
 global g_ProducerDotColor := ""  ; "c00AA00" (green) or "cCC0000" (red)
 
+; Stats cache — queried from store on dashboard open and periodically
+global g_StatsCache := ""          ; Parsed stats response Map, or "" if not queried
+global g_StatsLastQueryTick := 0   ; Last time stats were queried from store
+global DASH_STATS_QUERY_INTERVAL := 5000  ; Query store at most every 5 seconds
+
 ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
@@ -100,14 +105,58 @@ ShowDashboardDialog() {
     btnEditBlacklist.OnEvent("Click", (*) => LaunchBlacklistEditor())
 
     ; ============================================================
+    ; MIDDLE ROW - Statistics
+    ; ============================================================
+    dg.SetFont("s10")
+    dg.AddGroupBox("x20 y150 w740 h110", "Statistics")
+
+    if (cfg.StatsTrackingEnabled) {
+        ; Session column (left)
+        dg.SetFont("s9 Bold")
+        dg.AddText("x35 y170 w170", "This Session")
+        dg.SetFont("s9 Norm")
+
+        dg.AddText("x35 y190 w90 Right", "Run Time:")
+        g_DashControls.statsSessionTime := dg.AddText("x130 y190 w100 +0x100", "...")
+
+        dg.AddText("x35 y208 w90 Right", "Alt-Tabs:")
+        g_DashControls.statsSessionAltTabs := dg.AddText("x130 y208 w100 +0x100", "...")
+
+        dg.AddText("x35 y226 w90 Right", "Quick:")
+        g_DashControls.statsSessionQuick := dg.AddText("x130 y226 w100 +0x100", "...")
+
+        ; Lifetime column (right)
+        dg.SetFont("s9 Bold")
+        dg.AddText("x395 y170 w170", "All Time")
+        dg.SetFont("s9 Norm")
+
+        dg.AddText("x395 y190 w90 Right", "Run Time:")
+        g_DashControls.statsLifetimeTime := dg.AddText("x490 y190 w110 +0x100", "...")
+
+        dg.AddText("x395 y208 w90 Right", "Alt-Tabs:")
+        g_DashControls.statsLifetimeAltTabs := dg.AddText("x490 y208 w110 +0x100", "...")
+
+        dg.AddText("x395 y226 w90 Right", "Quick:")
+        g_DashControls.statsLifetimeQuick := dg.AddText("x490 y226 w110 +0x100", "...")
+
+        ; More Stats button
+        dg.SetFont("s9")
+        btnMoreStats := dg.AddButton("x655 y235 w90 h24", "More Stats")
+        btnMoreStats.OnEvent("Click", (*) => ShowStatsDialog())
+    } else {
+        dg.SetFont("s9")
+        dg.AddText("x35 y185 w700 cGray", "Statistics tracking is disabled. Enable via Edit Config > Diagnostics > StatsTracking.")
+    }
+
+    ; ============================================================
     ; BOTTOM-LEFT - Keyboard Shortcuts
     ; ============================================================
     dg.SetFont("s10")
-    dg.AddGroupBox("x20 y150 w350 h265", "Keyboard Shortcuts")
+    dg.AddGroupBox("x20 y270 w350 h265", "Keyboard Shortcuts")
 
     ; "Always On" section — global hotkeys that work any time
     dg.SetFont("s9 Bold")
-    dg.AddText("x35 y172 w310", "Always On")
+    dg.AddText("x35 y292 w310", "Always On")
     dg.SetFont("s9 Norm")
 
     alwaysOn := [
@@ -146,17 +195,17 @@ ShowDashboardDialog() {
     ; BOTTOM-RIGHT - Diagnostics
     ; ============================================================
     dg.SetFont("s10")
-    dg.AddGroupBox("x385 y150 w375 h265", "Diagnostics")
+    dg.AddGroupBox("x385 y270 w375 h265", "Diagnostics")
 
     ; Build + Elevation row
     buildType := A_IsCompiled ? "Compiled" : "Development"
     elevation := A_IsAdmin ? "Administrator" : "Standard"
     dg.SetFont("s9")
-    ctlBuildInfo := dg.AddText("x400 y175 w240 +0x100", "Build: " buildType "  |  Elevation: " elevation)
+    ctlBuildInfo := dg.AddText("x400 y295 w240 +0x100", "Build: " buildType "  |  Elevation: " elevation)
 
     ; Escalate/De-escalate button
     escalateLabel := A_IsAdmin ? "De-escalate" : "Escalate"
-    btnEscalate := dg.AddButton("x660 y171 w85 h24", escalateLabel)
+    btnEscalate := dg.AddButton("x660 y291 w85 h24", escalateLabel)
     btnEscalate.OnEvent("Click", _Dash_OnEscalate)
 
     ; Subprocess rows with buttons — handlers check live state, refresh updates labels
@@ -165,7 +214,7 @@ ShowDashboardDialog() {
     dot := Chr(0x25CF)  ; ● BLACK CIRCLE — renders solid in any font
 
     ; Store row (core — red when not running)
-    subY := 202
+    subY := 322
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
     storeDotColor := storeRunning ? "c00AA00" : "cCC0000"
     dg.SetFont("s9 " storeDotColor)
@@ -252,15 +301,15 @@ ShowDashboardDialog() {
     ; ---- Bottom Row: action button + update status + OK ----
     dg.SetFont("s9")
     updateBtnLabel := _Dash_GetUpdateBtnLabel()
-    g_DashControls.updateBtn := dg.AddButton("x20 y425 w100 h24", updateBtnLabel)
+    g_DashControls.updateBtn := dg.AddButton("x20 y545 w100 h24", updateBtnLabel)
     g_DashControls.updateBtn.OnEvent("Click", _Dash_OnUpdateBtn)
     g_DashControls.updateBtn.Enabled := (g_DashUpdateState.status != "checking")
 
     updateLabel := _Dash_GetUpdateLabel()
-    g_DashControls.updateText := dg.AddText("x130 y430 w300 +0x100", updateLabel)
+    g_DashControls.updateText := dg.AddText("x130 y550 w300 +0x100", updateLabel)
 
     dg.SetFont("s10")
-    btnOK := dg.AddButton("x675 y425 w80 Default", "OK")
+    btnOK := dg.AddButton("x675 y545 w80 Default", "OK")
     btnOK.OnEvent("Click", _Dash_OnClose)
 
     ; Close event
@@ -281,6 +330,10 @@ ShowDashboardDialog() {
         _Dash_SetTip(hTT, g_DashControls.chkAutoUpdate, "Check GitHub for new releases on startup")
         _Dash_SetTip(hTT, btnEditConfig, "Open the configuration file editor")
         _Dash_SetTip(hTT, btnEditBlacklist, "Open the window blacklist editor")
+
+        ; Statistics
+        if (cfg.StatsTrackingEnabled && IsSet(btnMoreStats))
+            _Dash_SetTip(hTT, btnMoreStats, "View all lifetime, session, and derived statistics")
 
         ; Diagnostics — static tooltips on labels (SS_NOTIFY enables mouse tracking)
         _Dash_SetTip(hTT, ctlBuildInfo
@@ -340,6 +393,10 @@ ShowDashboardDialog() {
     ; Query producer status if store is running but cache is empty
     if (LauncherUtils_IsRunning(g_StorePID) && g_ProducerStatusCache = "")
         SetTimer(_Dash_QueryProducerStatus, -2000)
+
+    ; Query stats if store is running and tracking is enabled
+    if (LauncherUtils_IsRunning(g_StorePID) && cfg.StatsTrackingEnabled)
+        SetTimer(_Dash_QueryStats, -500)
 
     ; Auto-check if stale (never checked, or >12h ago)
     _Dash_MaybeCheckForUpdates()
@@ -454,6 +511,7 @@ _Dash_RefreshDynamic() {
     global g_StorePID, g_GuiPID, g_ViewerPID, cfg
     global g_ConfigEditorPID, g_BlacklistEditorPID
     global g_DashUpdateState, g_ProducerStatusCache, g_ProducerDotColor
+    global g_StatsCache, g_StatsLastQueryTick, DASH_STATS_QUERY_INTERVAL
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
 
@@ -472,6 +530,12 @@ _Dash_RefreshDynamic() {
     else
         nextInterval := DASH_INTERVAL_COOL
     SetTimer(_Dash_RefreshDynamic, nextInterval)
+
+    ; Re-query stats if in HOT/WARM interval and enough time has elapsed
+    if (cfg.StatsTrackingEnabled && LauncherUtils_IsRunning(g_StorePID)
+        && nextInterval <= DASH_INTERVAL_WARM
+        && (A_TickCount - g_StatsLastQueryTick) >= DASH_STATS_QUERY_INTERVAL)
+        SetTimer(_Dash_QueryStats, -1)
 
     ; Build new state snapshot — compute all values before touching any controls
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
@@ -512,6 +576,25 @@ _Dash_RefreshDynamic() {
         "updateBtnEnabled", (g_DashUpdateState.status != "checking") ? 1 : 0
     )
 
+    ; Add stats fields if tracking is enabled and controls exist
+    if (g_DashControls.HasOwnProp("statsSessionTime")) {
+        if (IsObject(g_StatsCache)) {
+            newState["statsSessionTime"] := _Stats_FormatDuration(_Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
+            newState["statsSessionAltTabs"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "SessionAltTabs"))
+            newState["statsSessionQuick"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "SessionQuickSwitches"))
+            newState["statsLifetimeTime"] := _Stats_FormatDuration(_Stats_MapGet(g_StatsCache, "TotalRunTimeSec") + _Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
+            newState["statsLifetimeAltTabs"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "TotalAltTabs"))
+            newState["statsLifetimeQuick"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "TotalQuickSwitches"))
+        } else {
+            newState["statsSessionTime"] := "..."
+            newState["statsSessionAltTabs"] := "..."
+            newState["statsSessionQuick"] := "..."
+            newState["statsLifetimeTime"] := "..."
+            newState["statsLifetimeAltTabs"] := "..."
+            newState["statsLifetimeQuick"] := "..."
+        }
+    }
+
     ; Diff against current control values — skip redraw if nothing changed
     changed := false
     if (g_DashControls.storeDotColor != newState["storeDotColor"]
@@ -540,6 +623,17 @@ _Dash_RefreshDynamic() {
         || g_DashControls.updateBtn.Text != newState["updateBtn"]
         || g_DashControls.updateBtn.Enabled != newState["updateBtnEnabled"])
         changed := true
+
+    ; Check stats controls for changes
+    if (!changed && g_DashControls.HasOwnProp("statsSessionTime") && newState.Has("statsSessionTime")) {
+        if (g_DashControls.statsSessionTime.Value != newState["statsSessionTime"]
+            || g_DashControls.statsSessionAltTabs.Value != newState["statsSessionAltTabs"]
+            || g_DashControls.statsSessionQuick.Value != newState["statsSessionQuick"]
+            || g_DashControls.statsLifetimeTime.Value != newState["statsLifetimeTime"]
+            || g_DashControls.statsLifetimeAltTabs.Value != newState["statsLifetimeAltTabs"]
+            || g_DashControls.statsLifetimeQuick.Value != newState["statsLifetimeQuick"])
+            changed := true
+    }
 
     if (!changed)
         return
@@ -593,6 +687,16 @@ _Dash_RefreshDynamic() {
     g_DashControls.updateText.Value := newState["updateText"]
     g_DashControls.updateBtn.Text := newState["updateBtn"]
     g_DashControls.updateBtn.Enabled := newState["updateBtnEnabled"]
+
+    ; Update stats controls
+    if (g_DashControls.HasOwnProp("statsSessionTime") && newState.Has("statsSessionTime")) {
+        g_DashControls.statsSessionTime.Value := newState["statsSessionTime"]
+        g_DashControls.statsSessionAltTabs.Value := newState["statsSessionAltTabs"]
+        g_DashControls.statsSessionQuick.Value := newState["statsSessionQuick"]
+        g_DashControls.statsLifetimeTime.Value := newState["statsLifetimeTime"]
+        g_DashControls.statsLifetimeAltTabs.Value := newState["statsLifetimeAltTabs"]
+        g_DashControls.statsLifetimeQuick.Value := newState["statsLifetimeQuick"]
+    }
 
     ; Update dynamic tooltips to match button state
     if (g_DashControls.HasOwnProp("hTooltip") && g_DashControls.hTooltip) {
@@ -687,9 +791,8 @@ _Dash_LoadLogo(dg) {
         return false
     }
 
-    ; Create thumbnail preserving aspect ratio (707x548 -> 116x90)
-    pThumb := 0
-    DllCall("gdiplus\GdipGetImageThumbnail", "ptr", pBitmap, "uint", 116, "uint", 90, "ptr*", &pThumb, "ptr", 0, "ptr", 0)
+    ; High-quality resize preserving aspect ratio (707x548 -> 116x90)
+    pThumb := _GdipResizeHQ(pBitmap, 116, 90)
     srcBitmap := pThumb ? pThumb : pBitmap
 
     ; Convert to HBITMAP with system button face color as background
@@ -877,6 +980,139 @@ _Dash_FormatProducerStatus(producers) {
     result := ""
     for _, part in parts
         result .= (result ? " " : "") part
+    return result
+}
+
+; ============================================================
+; Stats Query (one-shot IPC to store)
+; ============================================================
+; Connects to store pipe, requests stats, caches result.
+; Called on dashboard open and periodically during HOT/WARM refresh.
+
+_Dash_QueryStats() {
+    global g_StatsCache, g_StatsLastQueryTick, cfg
+    global IPC_MSG_STATS_REQUEST, IPC_MSG_STATS_RESPONSE
+
+    pipeName := cfg.StorePipeName
+
+    ; One-shot IPC: connect, send request, read response, disconnect
+    client := IPC_PipeClient_Connect(pipeName, (*) => 0, 2000)
+    if (!client.hPipe)
+        return
+
+    ; Stop the client's internal read timer BEFORE sending
+    if (client.timerFn)
+        SetTimer(client.timerFn, 0)
+
+    ; Send stats request
+    msg := '{"type":"' IPC_MSG_STATS_REQUEST '"}'
+    IPC_PipeClient_Send(client, msg)
+
+    ; Poll with PeekNamedPipe (non-blocking) then ReadFile when data arrives
+    readBuf := Buffer(8192, 0)
+    bytesRead := 0
+    response := ""
+    startTick := A_TickCount
+    while ((A_TickCount - startTick) < 3000) {
+        bytesAvail := 0
+        DllCall("kernel32\PeekNamedPipe"
+            , "ptr", client.hPipe
+            , "ptr", 0, "uint", 0, "ptr", 0
+            , "uint*", &bytesAvail
+            , "ptr", 0)
+        if (bytesAvail > 0) {
+            result := DllCall("kernel32\ReadFile"
+                , "ptr", client.hPipe
+                , "ptr", readBuf.Ptr
+                , "uint", 8192
+                , "uint*", &bytesRead
+                , "ptr", 0
+                , "int")
+            if (result && bytesRead > 0) {
+                response := StrGet(readBuf, bytesRead, "UTF-8")
+                break
+            }
+        }
+        Sleep(50)
+    }
+
+    IPC_PipeClient_Close(client)
+    g_StatsLastQueryTick := A_TickCount
+
+    if (response = "")
+        return
+
+    ; Parse response — may contain multiple newline-delimited messages
+    ; (hello/snapshot may arrive before stats_response)
+    for _, line in StrSplit(response, "`n") {
+        line := Trim(line, " `t`r")
+        if (line = "")
+            continue
+        try {
+            obj := JSON.Load(line)
+            if (obj.Has("type") && obj["type"] = IPC_MSG_STATS_RESPONSE) {
+                g_StatsCache := obj
+                _Dash_StartRefreshTimer()
+                return
+            }
+        }
+    }
+}
+
+; ============================================================
+; Stats Format Helpers
+; ============================================================
+
+; Safely get a numeric value from a Map (returns 0 if missing or not a Map)
+_Stats_MapGet(m, key) {
+    if (!IsObject(m))
+        return 0
+    return m.Has(key) ? m[key] : 0
+}
+
+; Format seconds into human-readable duration: "5s", "12m", "2h 15m", "3d 4h", "1y 42d"
+_Stats_FormatDuration(totalSec) {
+    totalSec := Integer(totalSec)
+    if (totalSec < 60)
+        return totalSec "s"
+    if (totalSec < 3600) {
+        m := Floor(totalSec / 60)
+        return m "m"
+    }
+    h := Floor(totalSec / 3600)
+    m := Floor(Mod(totalSec, 3600) / 60)
+    if (h >= 24) {
+        d := Floor(h / 24)
+        if (d >= 365) {
+            y := Floor(d / 365)
+            rd := Mod(d, 365)
+            if (rd > 0)
+                return y "y " rd "d"
+            return y "y"
+        }
+        rh := Mod(h, 24)
+        if (rh > 0)
+            return d "d " rh "h"
+        return d "d"
+    }
+    if (m > 0)
+        return h "h " m "m"
+    return h "h"
+}
+
+; Format an integer with comma separators: 47832 → "47,832"
+_Stats_FormatNumber(n) {
+    s := String(Integer(n))
+    len := StrLen(s)
+    if (len <= 3)
+        return s
+    result := ""
+    loop len {
+        i := len - A_Index + 1
+        if (A_Index > 1 && Mod(A_Index - 1, 3) = 0)
+            result := "," result
+        result := SubStr(s, i, 1) result
+    }
     return result
 }
 

@@ -185,6 +185,15 @@ WindowStore_UpsertWindow(records, source := "") {
     if (added || updated) {
         _WS_BumpRev("UpsertWindow:" . source)
     }
+    ; Update peak windows high-water mark
+    if (added > 0) {
+        global gStats_Session, gStats_Lifetime
+        if (IsObject(gStats_Session) && gWS_Store.Count > gStats_Session.Get("peakWindows", 0)) {
+            gStats_Session["peakWindows"] := gWS_Store.Count
+            if (IsObject(gStats_Lifetime) && gWS_Store.Count > gStats_Lifetime.Get("PeakWindowsInSession", 0))
+                gStats_Lifetime["PeakWindowsInSession"] := gWS_Store.Count
+        }
+    }
     return { added: added, updated: updated, rev: gWS_Rev }
 }
 
@@ -412,8 +421,10 @@ _WS_DiagBump(source) {
 ; Wraps increment in Critical to prevent interruption by timers/hotkeys
 _WS_BumpRev(source) {
     Critical "On"
-    global gWS_Rev
+    global gWS_Rev, gStats_Lifetime
     gWS_Rev += 1
+    if (gStats_Lifetime.Has("TotalWindowUpdates"))
+        gStats_Lifetime["TotalWindowUpdates"] += 1
     _WS_DiagBump(source)
     Critical "Off"
 }

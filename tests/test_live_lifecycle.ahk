@@ -161,7 +161,112 @@ RunLiveTests_Lifecycle() {
         }
     }
 
-    ; Cleanup
+    ; ============================================================
+    ; Test 3: Ordered WM_CLOSE shutdown (GUI exits before Store)
+    ; ============================================================
+    Log("`n--- Ordered Shutdown Test ---")
+
+    ; Wait for system to stabilize after RESTART_ALL
+    Sleep(1000)
+    if (!WaitForStorePipe(LIFECYCLE_PIPE_NAME, 3000)) {
+        Log("SKIP: Store not available for shutdown order test")
+    } else {
+        guiPid := _Lifecycle_FindGuiPid(launcherPid)
+        storePid := _Lifecycle_FindStorePid(launcherPid)
+
+        if (!guiPid || !storePid) {
+            Log("SKIP: Could not find GUI pid (" guiPid ") or Store pid (" storePid ") for shutdown test")
+        } else {
+            Log("Shutdown test: launcher=" launcherPid " gui=" guiPid " store=" storePid)
+
+            ; Record wall-clock time before shutdown to verify stats flush
+            preShutdownTime := A_Now
+
+            ; Send WM_CLOSE to launcher to trigger _GracefulShutdown
+            ; Use DllCall because AHK's PostMessage can't find hidden message windows
+            preShutdownTick := A_TickCount
+            DllCall("PostMessageW", "ptr", launcherHwnd, "uint", 0x0010, "ptr", 0, "ptr", 0)
+
+            ; High-frequency poll both PIDs to detect exit order
+            guiExitTick := 0
+            storeExitTick := 0
+            shutdownTimeout := 12000  ; 3s GUI + 5s Store + 4s margin
+
+            loop {
+                elapsed := A_TickCount - preShutdownTick
+                if (elapsed >= shutdownTimeout)
+                    break
+
+                if (!guiExitTick && !ProcessExist(guiPid))
+                    guiExitTick := A_TickCount
+                if (!storeExitTick && !ProcessExist(storePid))
+                    storeExitTick := A_TickCount
+
+                ; Both gone, done
+                if (guiExitTick && storeExitTick)
+                    break
+
+                Sleep(20)
+            }
+
+            ; Assert: GUI and Store both exited
+            if (guiExitTick && storeExitTick) {
+                ; Assert: GUI exited before or same tick as Store
+                if (guiExitTick <= storeExitTick) {
+                    Log("PASS: Shutdown order correct - GUI exited before Store (gui=" (guiExitTick - preShutdownTick) "ms, store=" (storeExitTick - preShutdownTick) "ms)")
+                    TestPassed++
+                } else {
+                    Log("FAIL: Shutdown order wrong - Store exited before GUI (gui=" (guiExitTick - preShutdownTick) "ms, store=" (storeExitTick - preShutdownTick) "ms)")
+                    TestErrors++
+                }
+            } else {
+                if (!guiExitTick) {
+                    Log("FAIL: GUI process did not exit within " shutdownTimeout "ms")
+                    TestErrors++
+                }
+                if (!storeExitTick) {
+                    Log("FAIL: Store process did not exit within " shutdownTimeout "ms")
+                    TestErrors++
+                }
+            }
+
+            ; Assert: Launcher also exited (give it a moment after store dies)
+            launcherGone := false
+            launcherWait := A_TickCount
+            while (A_TickCount - launcherWait < 3000) {
+                if (!ProcessExist(launcherPid)) {
+                    launcherGone := true
+                    break
+                }
+                Sleep(50)
+            }
+            if (launcherGone) {
+                Log("PASS: Launcher exited after shutdown")
+                TestPassed++
+            } else {
+                Log("FAIL: Launcher still alive 3s after store exited")
+                TestErrors++
+            }
+
+            ; Assert: stats.ini was flushed during graceful shutdown
+            statsPath := testDir "\stats.ini"
+            if (FileExist(statsPath)) {
+                statsModTime := FileGetTime(statsPath, "M")
+                if (statsModTime >= preShutdownTime) {
+                    Log("PASS: stats.ini flushed during shutdown (modified=" statsModTime ")")
+                    TestPassed++
+                } else {
+                    Log("FAIL: stats.ini exists but was not updated during shutdown (modified=" statsModTime ", shutdown started=" preShutdownTime ")")
+                    TestErrors++
+                }
+            } else {
+                Log("FAIL: stats.ini not found after graceful shutdown")
+                TestErrors++
+            }
+        }
+    }
+
+    ; Cleanup (safety net - processes should already be gone after Test 3)
     _Lifecycle_Cleanup()
 }
 
@@ -181,6 +286,20 @@ _Lifecycle_Cleanup() {
     ; Remove temp directory
     testDir := A_Temp "\alttabby_lifecycle_test"
     try DirDelete(testDir, true)
+}
+
+; Helper: find GUI PID by WMI (--gui-only in command line, not launcher)
+_Lifecycle_FindGuiPid(launcherPid) {
+    global LIFECYCLE_EXE_NAME
+    for proc in ComObjGet("winmgmts:").ExecQuery(
+        "Select ProcessId, CommandLine from Win32_Process Where Name = '" LIFECYCLE_EXE_NAME "'") {
+        pid := proc.ProcessId
+        cmdLine := ""
+        try cmdLine := proc.CommandLine
+        if (pid != launcherPid && InStr(cmdLine, "--gui-only"))
+            return pid
+    }
+    return 0
 }
 
 ; Helper: find store PID by WMI (--store in command line, not launcher)

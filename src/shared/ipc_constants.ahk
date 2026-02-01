@@ -15,6 +15,9 @@ global IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
 global IPC_MSG_HEARTBEAT := "heartbeat"
 global IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
 global IPC_MSG_PRODUCER_STATUS := "producer_status"
+global IPC_MSG_STATS_UPDATE := "stats_update"
+global IPC_MSG_STATS_REQUEST := "stats_request"
+global IPC_MSG_STATS_RESPONSE := "stats_response"
 
 ; IPC Timing Constants (milliseconds)
 global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)

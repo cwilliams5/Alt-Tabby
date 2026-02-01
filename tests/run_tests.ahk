@@ -19,6 +19,7 @@ global TestPassed := 0
 ; --- Testing mode flag (suppresses dialogs in setup_utils.ahk) ---
 global g_TestingMode := true
 global gStore_TestMode := false  ; Process utils test mode (from store_server.ahk)
+global g_AltTabbyMode := "test"  ; Prevent store_server.ahk auto-init when included
 
 ; --- IPC test globals (used by test_utils.ahk callbacks) ---
 global testServer := 0
@@ -48,12 +49,26 @@ global gMultiClient3Response := ""
 global gMultiClient3Received := false
 global gBlTestResponse := ""
 global gBlTestReceived := false
+global gStatsTestResponse := ""
+global gStatsTestReceived := false
+
+; --- Stats globals (re-declared here so they exist before store_server.ahk include) ---
+; store_server.ahk will re-assign these, which is fine.
+global gStats_Lifetime := Map()
+global gStats_Session := Map()
 
 ; --- Dashboard/Update check globals (from launcher_about.ahk, used by setup_utils.ahk) ---
 global g_LastUpdateCheckTick := 0
 global g_LastUpdateCheckTime := ""
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
+
+; --- Launcher subprocess PID globals (from alt_tabby.ahk, referenced by launcher_about.ahk) ---
+global g_StorePID := 0
+global g_GuiPID := 0
+global g_ViewerPID := 0
+global g_ConfigEditorPID := 0
+global g_BlacklistEditorPID := 0
 
 ; --- Check for flags (BEFORE log init to set suite-specific log paths) ---
 DoLiveTests := false
@@ -67,6 +82,7 @@ DoUnitStorage := false
 DoUnitSetup := false
 DoUnitCleanup := false
 DoUnitAdvanced := false
+DoUnitStats := false
 for _, arg in A_Args {
     if (arg = "--live")
         DoLiveTests := true
@@ -90,6 +106,8 @@ for _, arg in A_Args {
         DoUnitCleanup := true
     else if (arg = "--unit-advanced")
         DoUnitAdvanced := true
+    else if (arg = "--unit-stats")
+        DoUnitStats := true
 }
 
 ; Single-suite modes use a dedicated log file to avoid file locking
@@ -114,6 +132,8 @@ else if (DoUnitCleanup)
     TestLogPath := A_Temp "\alt_tabby_tests_unit_cleanup.log"
 else if (DoUnitAdvanced)
     TestLogPath := A_Temp "\alt_tabby_tests_unit_advanced.log"
+else if (DoUnitStats)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_stats.log"
 
 ; --- Error handler BEFORE any I/O to catch early startup errors ---
 OnError(_Test_OnError)
@@ -147,6 +167,8 @@ Log("Log file: " TestLogPath)
 #Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk
 #Include %A_ScriptDir%\..\src\store\icon_pump.ahk
+#Include %A_ScriptDir%\..\src\store\store_server.ahk
+#Include %A_ScriptDir%\..\src\launcher\launcher_about.ahk
 
 ; ============================================================
 ; Include TEST files (utilities, callbacks, test functions)
@@ -167,7 +189,7 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
-isUnitSingle := DoUnitCore || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced
+isUnitSingle := DoUnitCore || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced || DoUnitStats
 isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLiveLifecycle || isUnitSingle
 
 if (isUnitSingle) {
@@ -182,6 +204,8 @@ if (isUnitSingle) {
         RunUnitTests_Cleanup()
     else if (DoUnitAdvanced)
         RunUnitTests_Advanced()
+    else if (DoUnitStats)
+        RunUnitTests_Stats()
 } else if (!isSingleSuite) {
     ; --- Full mode: run all unit tests ---
     RunUnitTests()

@@ -53,6 +53,15 @@ global gGUI_EventBuffer := []
 global gGUI_LastLocalMRUTick := 0
 global gGUI_FlushStartTick := 0  ; For tick-based flushing wait (race condition fix)
 
+; Stats globals (from gui_main.ahk, used by gui_state.ahk and gui_workspace.ahk)
+global gStats_AltTabs := 0
+global gStats_QuickSwitches := 0
+global gStats_TabSteps := 0
+global gStats_Cancellations := 0
+global gStats_CrossWorkspace := 0
+global gStats_WorkspaceToggles := 0
+global gStats_LastSent := Map()
+
 ; Constants from config_loader.ahk
 global TIMING_IPC_FIRE_WAIT := 10
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"

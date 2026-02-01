@@ -10,7 +10,9 @@ RunLiveTests_Features() {
     global gMultiClient2Response, gMultiClient2Received
     global gMultiClient3Response, gMultiClient3Received
     global gBlTestResponse, gBlTestReceived
+    global gStatsTestResponse, gStatsTestReceived
     global IPC_MSG_HELLO, IPC_MSG_PROJECTION_REQUEST, IPC_MSG_RELOAD_BLACKLIST
+    global IPC_MSG_STATS_UPDATE, IPC_MSG_STATS_REQUEST, IPC_MSG_STATS_RESPONSE
 
     storePath := A_ScriptDir "\..\src\store\store_server.ahk"
 
@@ -561,7 +563,105 @@ RunLiveTests_Features() {
 
     }
 
-    ; Kill the shared store (done with MRU, Projection, and Multi-client tests)
+    ; ============================================================
+    ; Stats IPC Round-Trip Test (uses shared store)
+    ; ============================================================
+    Log("`n--- Stats IPC Round-Trip Test ---")
+
+    if (sharedFeatStorePid) {
+        gStatsTestResponse := ""
+        gStatsTestReceived := false
+
+        statsClient := IPC_PipeClient_Connect(sharedFeatStorePipe, Test_OnStatsMessage)
+
+        if (statsClient.hPipe) {
+            Log("PASS: Stats test connected to store")
+            TestPassed++
+
+            ; Send hello
+            helloMsg := { type: IPC_MSG_HELLO, clientId: "stats_test", wants: { deltas: false } }
+            IPC_PipeClient_Send(statsClient, JSON.Dump(helloMsg))
+            Sleep(100)
+
+            ; Send a stats_update with known deltas
+            updateMsg := Map()
+            updateMsg["type"] := IPC_MSG_STATS_UPDATE
+            updateMsg["TotalAltTabs"] := 7
+            updateMsg["TotalQuickSwitches"] := 3
+            updateMsg["TotalTabSteps"] := 15
+            updateMsg["TotalCancellations"] := 2
+            IPC_PipeClient_Send(statsClient, JSON.Dump(updateMsg))
+            Sleep(100)
+
+            ; Request stats back
+            gStatsTestResponse := ""
+            gStatsTestReceived := false
+            reqMsg := { type: IPC_MSG_STATS_REQUEST }
+            IPC_PipeClient_Send(statsClient, JSON.Dump(reqMsg))
+
+            waitStart := A_TickCount
+            while (!gStatsTestReceived && (A_TickCount - waitStart) < 3000)
+                Sleep(50)
+
+            if (!gStatsTestReceived) {
+                Log("FAIL: Timeout waiting for stats_response")
+                TestErrors++
+            } else {
+                try {
+                    respObj := JSON.Load(gStatsTestResponse)
+
+                    ; Verify the update was accumulated
+                    altTabs := respObj.Has("TotalAltTabs") ? respObj["TotalAltTabs"] : -1
+                    quickSwitches := respObj.Has("TotalQuickSwitches") ? respObj["TotalQuickSwitches"] : -1
+                    tabSteps := respObj.Has("TotalTabSteps") ? respObj["TotalTabSteps"] : -1
+                    cancellations := respObj.Has("TotalCancellations") ? respObj["TotalCancellations"] : -1
+
+                    ; Values should be >= what we sent (store may have other accumulations)
+                    if (altTabs >= 7 && quickSwitches >= 3 && tabSteps >= 15 && cancellations >= 2) {
+                        Log("PASS: Stats response includes accumulated values (AT=" altTabs " QS=" quickSwitches " TS=" tabSteps " C=" cancellations ")")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: Stats values too low (AT=" altTabs " QS=" quickSwitches " TS=" tabSteps " C=" cancellations ")")
+                        TestErrors++
+                    }
+
+                    ; Verify session fields exist
+                    hasSession := respObj.Has("SessionRunTimeSec") && respObj.Has("SessionPeakWindows")
+                        && respObj.Has("SessionAltTabs")
+                    if (hasSession) {
+                        Log("PASS: Stats response includes session fields")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: Missing session fields in stats response")
+                        TestErrors++
+                    }
+
+                    ; Verify derived fields exist
+                    hasDerived := respObj.Has("DerivedQuickSwitchPct") && respObj.Has("DerivedCancelRate")
+                        && respObj.Has("DerivedAvgTabsPerSwitch")
+                    if (hasDerived) {
+                        Log("PASS: Stats response includes derived fields")
+                        TestPassed++
+                    } else {
+                        Log("FAIL: Missing derived fields in stats response")
+                        TestErrors++
+                    }
+                } catch as e {
+                    Log("FAIL: Stats response parse error: " e.Message)
+                    TestErrors++
+                }
+            }
+
+            IPC_PipeClient_Close(statsClient)
+        } else {
+            Log("FAIL: Could not connect to store for stats test")
+            TestErrors++
+        }
+    } else {
+        Log("SKIP: No shared store for stats test")
+    }
+
+    ; Kill the shared store (done with MRU, Projection, Multi-client, and Stats tests)
     if (sharedFeatStorePid) {
         try ProcessClose(sharedFeatStorePid)
     }
@@ -604,10 +704,42 @@ RunLiveTests_Features() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "bl_test", wants: { deltas: false } }
             IPC_PipeClient_Send(blClient, JSON.Dump(helloMsg))
 
-            ; Get initial projection
+            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
+
+            ; Wait for store to stabilize — window count must be unchanged for 1s
+            ; The store is still discovering windows at startup (WinEnum, WinEvent hook),
+            ; so testing blacklist removal before discovery completes is unreliable.
+            stableCount := -1
+            stableSince := 0
+            stabilizeStart := A_TickCount
+            while ((A_TickCount - stabilizeStart) < 5000) {
+                gBlTestResponse := ""
+                gBlTestReceived := false
+                IPC_PipeClient_Send(blClient, JSON.Dump(projMsg))
+                waitStart := A_TickCount
+                while (!gBlTestReceived && (A_TickCount - waitStart) < 2000)
+                    Sleep(50)
+                if (!gBlTestReceived)
+                    continue  ; lint-ignore: critical-section
+                try {
+                    stResp := JSON.Load(gBlTestResponse)
+                    stItems := stResp["payload"]["items"]
+                    curCount := stItems.Length
+                    if (curCount = stableCount) {
+                        if ((A_TickCount - stableSince) >= 1000)
+                            break  ; Stable for 1s
+                    } else {
+                        stableCount := curCount
+                        stableSince := A_TickCount
+                    }
+                }
+                Sleep(200)
+            }
+            Log("  Store stabilized at " stableCount " windows (" (A_TickCount - stabilizeStart) "ms)")
+
+            ; Get stable initial projection
             gBlTestResponse := ""
             gBlTestReceived := false
-            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
             IPC_PipeClient_Send(blClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
@@ -666,48 +798,46 @@ RunLiveTests_Features() {
                         ; Send reload IPC
                         reloadMsg := { type: IPC_MSG_RELOAD_BLACKLIST }
                         IPC_PipeClient_Send(blClient, JSON.Dump(reloadMsg))
-                        Sleep(250)  ; Wait for reload and push
 
-                        ; Get new projection
-                        gBlTestResponse := ""
-                        gBlTestReceived := false
-                        IPC_PipeClient_Send(blClient, JSON.Dump(projMsg))
+                        ; Poll until blacklisted windows are removed (not fixed sleep)
+                        ; The store needs to: receive message, reload blacklist, purge windows, push.
+                        ; WinEvent hook focus events can re-add windows between purge and our check,
+                        ; but blacklist check should block them. Poll to handle timing variations.
+                        remainingWithClass := testClassCount
+                        afterClassBlCount := 0
+                        pollStart := A_TickCount
+                        while (remainingWithClass > 0 && (A_TickCount - pollStart) < 3000) {
+                            Sleep(100)
+                            gBlTestResponse := ""
+                            gBlTestReceived := false
+                            IPC_PipeClient_Send(blClient, JSON.Dump(projMsg))
 
-                        waitStart := A_TickCount
-                        while (!gBlTestReceived && (A_TickCount - waitStart) < 3000)
-                            Sleep(50)
+                            waitStart := A_TickCount
+                            while (!gBlTestReceived && (A_TickCount - waitStart) < 2000)
+                                Sleep(50)
 
-                        if (gBlTestReceived) {
+                            if (!gBlTestReceived)
+                                continue
+
                             try {
                                 respObj2 := JSON.Load(gBlTestResponse)
                                 items2 := respObj2["payload"]["items"]
                                 afterClassBlCount := items2.Length
-
-                                ; Count remaining windows with test class
                                 remainingWithClass := 0
                                 for _, item in items2 {
                                     if (item.Has("class") && item["class"] = testClass)
                                         remainingWithClass++
                                 }
-
-                                Log("  After class blacklist: " afterClassBlCount " windows, " remainingWithClass " with test class")
-
-                                if (remainingWithClass = 0 && afterClassBlCount < initialCount) {
-                                    Log("PASS: Class blacklist removed windows")
-                                    TestPassed++
-                                } else if (remainingWithClass < testClassCount) {
-                                    Log("PASS: Class blacklist removed some windows (" (testClassCount - remainingWithClass) " of " testClassCount ")")
-                                    TestPassed++
-                                } else {
-                                    Log("FAIL: Class blacklist did not remove windows (expected 0, got " remainingWithClass ")")
-                                    TestErrors++
-                                }
-                            } catch as e {
-                                Log("FAIL: Class blacklist response parse error: " e.Message)
-                                TestErrors++
                             }
+                        }
+
+                        Log("  After class blacklist: " afterClassBlCount " windows, " remainingWithClass " with test class")
+
+                        if (remainingWithClass = 0) {
+                            Log("PASS: Class blacklist removed " testClassCount " window(s) with class '" testClass "'")
+                            TestPassed++
                         } else {
-                            Log("FAIL: Timeout after class blacklist reload")
+                            Log("FAIL: Class blacklist did not remove windows (expected 0 with class '" testClass "', got " remainingWithClass ")")
                             TestErrors++
                         }
 

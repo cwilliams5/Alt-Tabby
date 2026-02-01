@@ -757,7 +757,8 @@ $unitSuites = @(
     @{ Name = "UnitStorage";  Flag = "--unit-storage";  Label = "Unit/Storage";  LogSuffix = "unit_storage" },
     @{ Name = "UnitSetup";    Flag = "--unit-setup";    Label = "Unit/Setup";    LogSuffix = "unit_setup" },
     @{ Name = "UnitCleanup";  Flag = "--unit-cleanup";  Label = "Unit/Cleanup";  LogSuffix = "unit_cleanup" },
-    @{ Name = "UnitAdvanced"; Flag = "--unit-advanced";  Label = "Unit/Advanced"; LogSuffix = "unit_advanced" }
+    @{ Name = "UnitAdvanced"; Flag = "--unit-advanced";  Label = "Unit/Advanced"; LogSuffix = "unit_advanced" },
+    @{ Name = "UnitStats";    Flag = "--unit-stats";     Label = "Unit/Stats";    LogSuffix = "unit_stats" }
 )
 
 # --- Start GUI Tests + Unit Tests (Background) ---
