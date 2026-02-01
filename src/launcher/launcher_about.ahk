@@ -64,9 +64,9 @@ ShowDashboardDialog() {
     version := GetAppVersion()
     dg.AddText("x" xAfterLogo " y+2 w225", "Version " version)
 
-    dg.AddLink("x" xAfterLogo " y+4 w225",
+    lnkGithub := dg.AddLink("x" xAfterLogo " y+4 w225",
         '<a href="https://github.com/cwilliams5/Alt-Tabby">github.com/cwilliams5/Alt-Tabby</a>')
-    dg.AddLink("x" xAfterLogo " y+2 w225",
+    lnkOptions := dg.AddLink("x" xAfterLogo " y+2 w225",
         '<a href="https://github.com/cwilliams5/Alt-Tabby/blob/main/docs/options.md">Configuration Options</a>')
 
     ; ============================================================
@@ -92,8 +92,10 @@ ShowDashboardDialog() {
 
     ; Editor buttons
     dg.SetFont("s9")
-    dg.AddButton("x400 y113 w170 h26", "Edit Config...").OnEvent("Click", (*) => LaunchConfigEditor())
-    dg.AddButton("x580 y113 w170 h26", "Edit Blacklist...").OnEvent("Click", (*) => LaunchBlacklistEditor())
+    btnEditConfig := dg.AddButton("x400 y113 w170 h26", "Edit Config...")
+    btnEditConfig.OnEvent("Click", (*) => LaunchConfigEditor())
+    btnEditBlacklist := dg.AddButton("x580 y113 w170 h26", "Edit Blacklist...")
+    btnEditBlacklist.OnEvent("Click", (*) => LaunchBlacklistEditor())
 
     ; ============================================================
     ; BOTTOM-LEFT - Keyboard Shortcuts
@@ -101,18 +103,37 @@ ShowDashboardDialog() {
     dg.SetFont("s10")
     dg.AddGroupBox("x20 y150 w350 h265", "Keyboard Shortcuts")
 
-    shortcuts := [
+    ; "Always On" section — global hotkeys that work any time
+    dg.SetFont("s9 Bold")
+    dg.AddText("x35 y172 w310", "Always On")
+    dg.SetFont("s9 Norm")
+
+    alwaysOn := [
         ["Alt+Tab", "Cycle forward through windows"],
         ["Alt+Shift+Tab", "Cycle backward"],
+        ["Alt+Shift+F12", "Exit Alt-Tabby"]
+    ]
+    for i, item in alwaysOn {
+        yOpt := (i = 1) ? "y+8" : "y+4"
+        dg.SetFont("s9 Bold")
+        dg.AddText("x35 " yOpt " w130 Right", item[1])
+        dg.SetFont("s9 Norm")
+        dg.AddText("x175 yp w185", item[2])
+    }
+
+    ; "In App" section — only work when overlay is visible
+    dg.SetFont("s9 Bold")
+    dg.AddText("x35 y+14 w310", "In App")
+    dg.SetFont("s9 Norm")
+
+    inApp := [
         ["Ctrl (hold Alt)", "Toggle workspace filter"],
         ["Escape", "Cancel and dismiss overlay"],
         ["Mouse click", "Select and activate window"],
-        ["Mouse wheel", "Scroll through windows"],
-        ["Alt+Shift+F12", "Exit Alt-Tabby"]
+        ["Mouse wheel", "Scroll through windows"]
     ]
-
-    for i, item in shortcuts {
-        yOpt := (i = 1) ? "y175" : "y+4"
+    for i, item in inApp {
+        yOpt := (i = 1) ? "y+8" : "y+4"
         dg.SetFont("s9 Bold")
         dg.AddText("x35 " yOpt " w130 Right", item[1])
         dg.SetFont("s9 Norm")
@@ -129,7 +150,7 @@ ShowDashboardDialog() {
     buildType := A_IsCompiled ? "Compiled" : "Development"
     elevation := A_IsAdmin ? "Administrator" : "Standard"
     dg.SetFont("s9")
-    dg.AddText("x400 y175 w240", "Build: " buildType "  |  Elevation: " elevation)
+    ctlBuildInfo := dg.AddText("x400 y175 w240 +0x100", "Build: " buildType "  |  Elevation: " elevation)
 
     ; Escalate/De-escalate button
     escalateLabel := A_IsAdmin ? "De-escalate" : "Escalate"
@@ -143,20 +164,20 @@ ShowDashboardDialog() {
     subY := 202
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
     storeLabel := storeRunning ? "Store: Running (PID " g_StorePID ")" : "Store: Not running"
-    g_DashControls.storeText := dg.AddText("x400 y" subY " w240", storeLabel)
+    g_DashControls.storeText := dg.AddText("x400 y" subY " w240 +0x100", storeLabel)
     g_DashControls.storeBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", storeRunning ? "Restart" : "Launch")
     g_DashControls.storeBtn.OnEvent("Click", _Dash_OnStoreBtn)
 
     ; Producer status line (compact, below Store)
     subY += 18
     prodLabel := g_ProducerStatusCache != "" ? g_ProducerStatusCache : ""
-    g_DashControls.producerText := dg.AddText("x415 y" subY " w325", prodLabel)
+    g_DashControls.producerText := dg.AddText("x415 y" subY " w250 +0x100", prodLabel)
 
     ; GUI row
     subY += 16
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
     guiLabel := guiRunning ? "GUI: Running (PID " g_GuiPID ")" : "GUI: Not running"
-    g_DashControls.guiText := dg.AddText("x400 y" subY " w240", guiLabel)
+    g_DashControls.guiText := dg.AddText("x400 y" subY " w240 +0x100", guiLabel)
     g_DashControls.guiBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", guiRunning ? "Restart" : "Launch")
     g_DashControls.guiBtn.OnEvent("Click", _Dash_OnGuiBtn)
 
@@ -164,7 +185,7 @@ ShowDashboardDialog() {
     subY += 30
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
     configLabel := configRunning ? "Config Editor: Running (PID " g_ConfigEditorPID ")" : "Config Editor: Not running"
-    g_DashControls.configText := dg.AddText("x400 y" subY " w240", configLabel)
+    g_DashControls.configText := dg.AddText("x400 y" subY " w240 +0x100", configLabel)
     g_DashControls.configBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", configRunning ? "Restart" : "Launch")
     g_DashControls.configBtn.OnEvent("Click", _Dash_OnConfigBtn)
 
@@ -172,7 +193,7 @@ ShowDashboardDialog() {
     subY += 30
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
     blacklistLabel := blacklistRunning ? "Blacklist Editor: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Editor: Not running"
-    g_DashControls.blacklistText := dg.AddText("x400 y" subY " w240", blacklistLabel)
+    g_DashControls.blacklistText := dg.AddText("x400 y" subY " w240 +0x100", blacklistLabel)
     g_DashControls.blacklistBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", blacklistRunning ? "Restart" : "Launch")
     g_DashControls.blacklistBtn.OnEvent("Click", _Dash_OnBlacklistBtn)
 
@@ -180,28 +201,29 @@ ShowDashboardDialog() {
     subY += 30
     viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
     viewerLabel := viewerRunning ? "Viewer: Running (PID " g_ViewerPID ")" : "Viewer: Not running"
-    g_DashControls.viewerText := dg.AddText("x400 y" subY " w240", viewerLabel)
+    g_DashControls.viewerText := dg.AddText("x400 y" subY " w240 +0x100", viewerLabel)
     g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerRunning ? "Restart" : "Launch")
     g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
 
     ; Info rows (read-only)
     subY += 28
-    dg.AddText("x400 y" subY " w340", "Install: " _Dash_GetInstallInfo())
+    ctlInstallInfo := dg.AddText("x400 y" subY " w340 +0x100", "Install: " _Dash_GetInstallInfo())
 
     subY += 20
-    dg.AddText("x400 y" subY " w340", "Admin Task: " _Dash_GetAdminTaskInfo())
+    ctlAdminTask := dg.AddText("x400 y" subY " w340 +0x100", "Admin Task: " _Dash_GetAdminTaskInfo())
 
     subY += 20
-    g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340", "Komorebi: " _Dash_GetKomorebiInfo())
+    g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340 +0x100", "Komorebi: " _Dash_GetKomorebiInfo())
 
-    ; ---- Bottom Row: Update status + action button + OK ----
+    ; ---- Bottom Row: action button + update status + OK ----
     dg.SetFont("s9")
-    updateLabel := _Dash_GetUpdateLabel()
-    g_DashControls.updateText := dg.AddText("x20 y430 w300", updateLabel)
     updateBtnLabel := _Dash_GetUpdateBtnLabel()
-    g_DashControls.updateBtn := dg.AddButton("x325 y425 w100 h24", updateBtnLabel)
+    g_DashControls.updateBtn := dg.AddButton("x20 y425 w100 h24", updateBtnLabel)
     g_DashControls.updateBtn.OnEvent("Click", _Dash_OnUpdateBtn)
     g_DashControls.updateBtn.Enabled := (g_DashUpdateState.status != "checking")
+
+    updateLabel := _Dash_GetUpdateLabel()
+    g_DashControls.updateText := dg.AddText("x130 y430 w300 +0x100", updateLabel)
 
     dg.SetFont("s10")
     btnOK := dg.AddButton("x675 y425 w80 Default", "OK")
@@ -211,12 +233,79 @@ ShowDashboardDialog() {
     dg.OnEvent("Close", _Dash_OnClose)
     dg.OnEvent("Escape", _Dash_OnClose)
 
+    ; ---- Tooltips ----
+    hTT := _Dash_CreateTooltipCtl(dg.Hwnd)
+    g_DashControls.hTooltip := hTT
+    if (hTT) {
+        ; Header links
+        _Dash_SetTip(hTT, lnkGithub, "Open the project page on GitHub")
+        _Dash_SetTip(hTT, lnkOptions, "View all configuration options on GitHub")
+
+        ; Settings
+        _Dash_SetTip(hTT, g_DashControls.chkStartMenu, "Create a shortcut in the Windows Start Menu")
+        _Dash_SetTip(hTT, g_DashControls.chkStartup, "Launch Alt-Tabby automatically when you log in")
+        _Dash_SetTip(hTT, g_DashControls.chkAutoUpdate, "Check GitHub for new releases on startup")
+        _Dash_SetTip(hTT, btnEditConfig, "Open the configuration file editor")
+        _Dash_SetTip(hTT, btnEditBlacklist, "Open the window blacklist editor")
+
+        ; Diagnostics — static tooltips on labels (SS_NOTIFY enables mouse tracking)
+        _Dash_SetTip(hTT, ctlBuildInfo
+            , "Build type and privilege level`n"
+            . "Compiled = running from AltTabby.exe`n"
+            . "Development = running from AHK source")
+        escalateTip := A_IsAdmin ? "Restart without administrator elevation" : "Restart with administrator elevation (UAC prompt)"
+        _Dash_SetTip(hTT, btnEscalate, escalateTip)
+        _Dash_SetTip(hTT, g_DashControls.storeText
+            , "The WindowStore server tracks all open windows and`n"
+            . "serves data to the GUI and other subscribers via named pipes")
+        _Dash_SetTip(hTT, g_DashControls.producerText
+            , "Status of store data producers`n"
+            . "WEH = Window Event Hook (tracks focus, title, window changes)`n"
+            . "KS = Komorebi Subscription (workspace events from komorebi)`n"
+            . "KL = Komorebi Lite (workspace polling fallback)`n"
+            . "IP = Icon Pump (resolves window icons asynchronously)`n"
+            . "PP = Process Pump (resolves process names asynchronously)`n"
+            . "MRU = MRU Tracker (focus tracking fallback if WEH fails)")
+        _Dash_SetTip(hTT, g_DashControls.guiText
+            , "The Alt+Tab overlay — handles keyboard hooks,`n"
+            . "window selection, and rendering")
+        _Dash_SetTip(hTT, g_DashControls.configText
+            , "Editor subprocess for modifying config.ini settings")
+        _Dash_SetTip(hTT, g_DashControls.blacklistText
+            , "Editor subprocess for managing the window filter blacklist")
+        _Dash_SetTip(hTT, g_DashControls.viewerText
+            , "Debug viewer — displays live window data from the`n"
+            . "WindowStore for troubleshooting")
+        _Dash_SetTip(hTT, ctlInstallInfo
+            , "Directory where Alt-Tabby is installed or running from")
+        _Dash_SetTip(hTT, ctlAdminTask
+            , "Windows Task Scheduler task that allows Alt-Tabby`n"
+            . "to run with administrator privileges without UAC prompts")
+        _Dash_SetTip(hTT, g_DashControls.komorebiText
+            , "Komorebi tiling window manager — when running,`n"
+            . "provides workspace data for filtering and labeling windows")
+        _Dash_SetTip(hTT, g_DashControls.updateText, "Update status — auto-checks when stale (12+ hours)")
+        _Dash_SetTip(hTT, btnOK, "Close the dashboard")
+
+        ; Dynamic tooltips — must match current button state
+        _Dash_SetTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
+        _Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
+        _Dash_SetTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
+        _Dash_SetTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
+        _Dash_SetTip(hTT, g_DashControls.viewerBtn, viewerRunning ? "Restart the debug viewer" : "Open the debug viewer")
+        _Dash_SetTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
+    }
+
     g_DashboardGui := dg
     dg.Show("w780")
     btnOK.Focus()
 
     ; Start background refresh in cool mode (no interaction yet)
     SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_COOL)
+
+    ; Query producer status if store is running but cache is empty
+    if (LauncherUtils_IsRunning(g_StorePID) && g_ProducerStatusCache = "")
+        SetTimer(_Dash_QueryProducerStatus, -2000)
 
     ; Auto-check if stale (never checked, or >12h ago)
     _Dash_MaybeCheckForUpdates()
@@ -425,6 +514,17 @@ _Dash_RefreshDynamic() {
     g_DashControls.updateText.Value := newState["updateText"]
     g_DashControls.updateBtn.Text := newState["updateBtn"]
     g_DashControls.updateBtn.Enabled := newState["updateBtnEnabled"]
+
+    ; Update dynamic tooltips to match button state
+    if (g_DashControls.HasOwnProp("hTooltip") && g_DashControls.hTooltip) {
+        hTT := g_DashControls.hTooltip
+        _Dash_UpdateTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
+        _Dash_UpdateTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
+        _Dash_UpdateTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
+        _Dash_UpdateTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
+        _Dash_UpdateTip(hTT, g_DashControls.viewerBtn, viewerRunning ? "Restart the debug viewer" : "Open the debug viewer")
+        _Dash_UpdateTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
+    }
 
     ; Re-enable repaints and force a single
     DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 1, "ptr", 0)  ; WM_SETREDRAW TRUE
@@ -640,40 +740,39 @@ _Dash_QueryProducerStatus() {
     if (!client.hPipe)
         return
 
+    ; Stop the client's internal read timer BEFORE sending to prevent it
+    ; from consuming our response via the no-op callback
+    if (client.timerFn)
+        SetTimer(client.timerFn, 0)
+
     ; Send producer status request
     msg := '{"type":"' IPC_MSG_PRODUCER_STATUS_REQUEST '"}'
     IPC_PipeClient_Send(client, msg)
 
-    ; Poll for response (up to 2 seconds)
-    startTick := A_TickCount
-    response := ""
-    while ((A_TickCount - startTick) < 2000) {
-        Sleep(100)
-        ; Check if client received data via its internal buffer
-        ; The pipe client uses async timer-based reads, so we need to
-        ; read directly since our callback is a no-op
-        break  ; Timer-based client won't work for one-shot — use direct read
-    }
-
-    ; Stop the client's timer and read directly
-    if (client.timerFn)
-        SetTimer(client.timerFn, 0)
-
-    ; Direct synchronous read from pipe
+    ; Poll with PeekNamedPipe (non-blocking) then ReadFile when data arrives
     readBuf := Buffer(4096, 0)
     bytesRead := 0
+    response := ""
     startTick := A_TickCount
-    while ((A_TickCount - startTick) < 2000) {
-        result := DllCall("kernel32\ReadFile"
+    while ((A_TickCount - startTick) < 3000) {
+        bytesAvail := 0
+        DllCall("kernel32\PeekNamedPipe"
             , "ptr", client.hPipe
-            , "ptr", readBuf.Ptr
-            , "uint", 4096
-            , "uint*", &bytesRead
-            , "ptr", 0
-            , "int")
-        if (result && bytesRead > 0) {
-            response := StrGet(readBuf, bytesRead, "UTF-8")
-            break
+            , "ptr", 0, "uint", 0, "ptr", 0
+            , "uint*", &bytesAvail
+            , "ptr", 0)
+        if (bytesAvail > 0) {
+            result := DllCall("kernel32\ReadFile"
+                , "ptr", client.hPipe
+                , "ptr", readBuf.Ptr
+                , "uint", 4096
+                , "uint*", &bytesRead
+                , "ptr", 0
+                , "int")
+            if (result && bytesRead > 0) {
+                response := StrGet(readBuf, bytesRead, "UTF-8")
+                break
+            }
         }
         Sleep(50)
     }
@@ -683,12 +782,19 @@ _Dash_QueryProducerStatus() {
     if (response = "")
         return
 
-    ; Parse response and format producer status line
-    try {
-        obj := JSON.Load(response)
-        if (obj.Has("type") && obj["type"] = IPC_MSG_PRODUCER_STATUS && obj.Has("producers")) {
-            g_ProducerStatusCache := _Dash_FormatProducerStatus(obj["producers"])
-            _Dash_StartRefreshTimer()
+    ; Parse response — may contain multiple newline-delimited messages
+    ; (hello/snapshot may arrive before producer_status)
+    for _, line in StrSplit(response, "`n") {
+        line := Trim(line, " `t`r")
+        if (line = "")
+            continue
+        try {
+            obj := JSON.Load(line)
+            if (obj.Has("type") && obj["type"] = IPC_MSG_PRODUCER_STATUS && obj.Has("producers")) {
+                g_ProducerStatusCache := _Dash_FormatProducerStatus(obj["producers"])
+                _Dash_StartRefreshTimer()
+                return
+            }
         }
     }
 }
@@ -730,4 +836,73 @@ _Dash_FormatProducerStatus(producers) {
     for _, part in parts
         result .= (result ? " " : "") part
     return result
+}
+
+; ============================================================
+; Tooltip Helpers (Win32 TOOLTIPS_CLASS common control)
+; ============================================================
+
+; Create a tooltip control attached to a parent window
+_Dash_CreateTooltipCtl(hwndParent) {
+    hTT := DllCall("CreateWindowEx"
+        , "uint", 0x8          ; WS_EX_TOPMOST
+        , "str", "tooltips_class32"
+        , "str", ""
+        , "uint", 0x80000003   ; WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX
+        , "int", 0x80000000    ; CW_USEDEFAULT
+        , "int", 0x80000000
+        , "int", 0x80000000
+        , "int", 0x80000000
+        , "ptr", hwndParent
+        , "ptr", 0, "ptr", 0, "ptr", 0
+        , "ptr")
+    if (!hTT)
+        return 0
+
+    ; Enable multiline tooltips (wrap at 400px)
+    DllCall("SendMessage", "ptr", hTT, "uint", 0x418, "ptr", 0, "ptr", 400)  ; TTM_SETMAXTIPWIDTH
+    return hTT
+}
+
+; Associate a tooltip string with a GUI control
+_Dash_SetTip(hTT, ctl, text) {
+    ; TOOLINFOW struct offsets (platform-dependent)
+    ptrOff := A_PtrSize = 8 ? 16 : 12     ; uId
+    textOff := A_PtrSize = 8 ? 48 : 36    ; lpszText
+    cbSize := A_PtrSize = 8 ? 72 : 48     ; includes lpReserved (COMCTL32 v6)
+
+    ti := Buffer(cbSize, 0)
+    NumPut("uint", cbSize, ti, 0)                    ; cbSize
+    NumPut("uint", 0x11, ti, 4)                       ; uFlags: TTF_IDISHWND(0x1) | TTF_SUBCLASS(0x10)
+    NumPut("ptr", ctl.Gui.Hwnd, ti, 8)               ; hwnd (parent)
+    NumPut("uptr", ctl.Hwnd, ti, ptrOff)             ; uId (control hwnd)
+    NumPut("ptr", StrPtr(text), ti, textOff)          ; lpszText
+
+    DllCall("SendMessage", "ptr", hTT, "uint", 0x432, "ptr", 0, "ptr", ti.Ptr)  ; TTM_ADDTOOLW
+}
+
+; Update an existing tooltip's text (for dynamic button tooltips)
+_Dash_UpdateTip(hTT, ctl, text) {
+    ptrOff := A_PtrSize = 8 ? 16 : 12
+    textOff := A_PtrSize = 8 ? 48 : 36
+    cbSize := A_PtrSize = 8 ? 72 : 48
+
+    ti := Buffer(cbSize, 0)
+    NumPut("uint", cbSize, ti, 0)
+    NumPut("uint", 0x11, ti, 4)                       ; TTF_IDISHWND | TTF_SUBCLASS
+    NumPut("ptr", ctl.Gui.Hwnd, ti, 8)
+    NumPut("uptr", ctl.Hwnd, ti, ptrOff)
+    NumPut("ptr", StrPtr(text), ti, textOff)
+
+    DllCall("SendMessage", "ptr", hTT, "uint", 0x439, "ptr", 0, "ptr", ti.Ptr)  ; TTM_UPDATETIPTEXTW
+}
+
+; Get tooltip text for update button based on current state
+_Dash_GetUpdateBtnTip() {
+    global g_DashUpdateState
+    if (g_DashUpdateState.status = "available")
+        return "Install version " g_DashUpdateState.version
+    if (g_DashUpdateState.status = "checking")
+        return "Checking for updates..."
+    return "Check GitHub for new versions"
 }
