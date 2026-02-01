@@ -645,57 +645,8 @@ _Dash_MaybeCheckForUpdates() {
 }
 
 _Dash_CheckForUpdatesAsync() {
-    global g_DashUpdateState, g_LastUpdateCheckTick, g_LastUpdateCheckTime, g_DashboardGui
-
-    currentVersion := GetAppVersion()
-    apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
-    whr := ""
-
-    try {
-        whr := ComObject("WinHttp.WinHttpRequest.5.1")
-        whr.Open("GET", apiUrl, false)
-        whr.SetRequestHeader("User-Agent", "Alt-Tabby/" currentVersion)
-        whr.Send()
-
-        if (whr.Status = 200) {
-            response := whr.ResponseText
-            whr := ""  ; Release COM before processing
-
-            if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
-                g_DashUpdateState.status := "error"
-                g_LastUpdateCheckTick := A_TickCount
-                g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-                _Dash_StartRefreshTimer()
-                return
-            }
-
-            latestVersion := tagMatch[1]
-            g_LastUpdateCheckTick := A_TickCount
-            g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-
-            if (CompareVersions(latestVersion, currentVersion) > 0) {
-                g_DashUpdateState.status := "available"
-                g_DashUpdateState.version := latestVersion
-                g_DashUpdateState.downloadUrl := _Update_FindExeDownloadUrl(response)
-            } else {
-                g_DashUpdateState.status := "uptodate"
-                g_DashUpdateState.version := ""
-                g_DashUpdateState.downloadUrl := ""
-            }
-        } else {
-            g_DashUpdateState.status := "error"
-            g_LastUpdateCheckTick := A_TickCount
-            g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-        }
-    } catch {
-        whr := ""
-        g_DashUpdateState.status := "error"
-        g_LastUpdateCheckTick := A_TickCount
-        g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-    }
-    whr := ""  ; Final safety
-
-    ; Trigger refresh if dashboard still open
+    global g_DashboardGui
+    CheckForUpdates(false, false)
     if (g_DashboardGui)
         _Dash_StartRefreshTimer()
 }

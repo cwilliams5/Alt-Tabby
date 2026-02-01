@@ -388,7 +388,7 @@ _Shortcut_GetEffectiveExePath() {
 
 ; Check for updates and optionally offer to install
 ; showIfCurrent: If true, show message even when up to date
-CheckForUpdates(showIfCurrent := false) {
+CheckForUpdates(showIfCurrent := false, showModal := true) {
     global g_UpdateCheckInProgress, g_DashUpdateState, g_LastUpdateCheckTick, g_LastUpdateCheckTime
 
     ; Prevent concurrent update checks (auto-update timer + manual button race)
@@ -434,26 +434,28 @@ CheckForUpdates(showIfCurrent := false) {
                 g_DashUpdateState.downloadUrl := downloadUrl ? downloadUrl : ""
 
                 ; Newer version available - offer to update
-                result := MsgBox(
-                    "Alt-Tabby " latestVersion " is available!`n"
-                    "You have: " currentVersion "`n`n"
-                    "Would you like to download and install the update now?",
-                    "Update Available",
-                    "YesNo Icon?"
-                )
+                if (showModal) {
+                    result := MsgBox(
+                        "Alt-Tabby " latestVersion " is available!`n"
+                        "You have: " currentVersion "`n`n"
+                        "Would you like to download and install the update now?",
+                        "Update Available",
+                        "YesNo Icon?"
+                    )
 
-                if (result = "Yes") {
-                    if (downloadUrl)
-                        _Update_DownloadAndApply(downloadUrl, latestVersion)
-                    else
-                        MsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Icon!")
+                    if (result = "Yes") {
+                        if (downloadUrl)
+                            _Update_DownloadAndApply(downloadUrl, latestVersion)
+                        else
+                            MsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Icon!")
+                    }
                 }
             } else {
                 ; Sync dashboard state — up to date
                 g_DashUpdateState.status := "uptodate"
                 g_DashUpdateState.version := ""
                 g_DashUpdateState.downloadUrl := ""
-                if (showIfCurrent)
+                if (showIfCurrent && showModal)
                     TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
             }
         } else {
@@ -461,7 +463,7 @@ CheckForUpdates(showIfCurrent := false) {
             g_DashUpdateState.status := "error"
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-            if (showIfCurrent) {
+            if (showIfCurrent && showModal) {
                 TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
             }
             whr := ""  ; Release COM on error path
@@ -472,7 +474,7 @@ CheckForUpdates(showIfCurrent := false) {
         g_DashUpdateState.status := "error"
         g_LastUpdateCheckTick := A_TickCount
         g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-        if (showIfCurrent)
+        if (showIfCurrent && showModal)
             TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
     }
     whr := ""  ; Final safety - ensure release on all exit paths
