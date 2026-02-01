@@ -515,8 +515,9 @@ _Dash_RefreshDynamic() {
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
 
-    ; Stop if dialog closed
-    if (!g_DashboardGui) {
+    ; Stop if dialog closed or shutting down
+    global g_DashboardShuttingDown
+    if (!g_DashboardGui || g_DashboardShuttingDown) {
         SetTimer(_Dash_RefreshDynamic, 0)
         return
     }
@@ -596,6 +597,9 @@ _Dash_RefreshDynamic() {
     }
 
     ; Diff against current control values — skip redraw if nothing changed
+    ; Guard: controls may have been destroyed between state build and diff
+    if (!g_DashControls.HasOwnProp("storeDotColor"))
+        return
     changed := false
     if (g_DashControls.storeDotColor != newState["storeDotColor"]
         || g_DashControls.storeText.Value != newState["storeText"]
