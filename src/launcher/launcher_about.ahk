@@ -10,17 +10,17 @@
 ;
 ; Adaptive refresh: always-on slow timer while dialog is open,
 ; interactions temporarily boost to rapid polling, then decay:
-;   Hot  (0-15s after click)  500ms  — catch subprocess settle
-;   Warm (15-75s)             3s     — catch slower changes
-;   Cool (75s+ / idle)        30s    — prevent deep staleness
+;   Hot  (0-15s after click)  250ms  — catch subprocess settle
+;   Warm (15-75s)             1s     — catch slower changes
+;   Cool (75s+ / idle)        5s     — prevent deep staleness
 
 global g_DashboardGui := 0
 global g_DashboardShuttingDown := false
 global g_DashControls := {}
 global g_DashRefreshTick := 0
-global DASH_INTERVAL_HOT := 500
-global DASH_INTERVAL_WARM := 3000
-global DASH_INTERVAL_COOL := 30000
+global DASH_INTERVAL_HOT := 250
+global DASH_INTERVAL_WARM := 1000
+global DASH_INTERVAL_COOL := 5000
 global DASH_TIER_HOT_MS := 15000
 global DASH_TIER_WARM_MS := 75000
 
