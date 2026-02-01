@@ -22,6 +22,7 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [IconPump](#iconpump)
 - [ProcPump](#procpump)
 - [Cache](#cache)
+- [Komorebi](#komorebi)
 - [KomorebiSub](#komorebisub)
 - [Heartbeat](#heartbeat)
 - [Viewer](#viewer)
@@ -403,6 +404,14 @@ Size limits for internal caches to prevent unbounded memory growth.
 | `ExeIconMax` | int | `100` | Maximum number of cached exe icons. Older entries are evicted when limit is reached. |
 | `ProcNameMax` | int | `200` | Maximum number of cached process names. Older entries are evicted when limit is reached. |
 
+## Komorebi
+
+Settings for komorebi tiling window manager integration.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `WorkspaceConfirmationMethod` | enum | `PollKomorebic` | How Alt-Tabby verifies a workspace switch completed. PollKomorebic = polls komorebic, higher CPU but works multi-monitor. IsWindow = checks window visibility, lower CPU but doesn't work with Virtual Desktops. AwaitDelta = waits for store delta, lower CPU but could be higher latency. |
+
 ## KomorebiSub
 
 Event-driven komorebi integration via named pipe.
@@ -473,4 +482,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-01-31 with 184 total settings.*
+*Generated on 2026-01-31 with 185 total settings.*

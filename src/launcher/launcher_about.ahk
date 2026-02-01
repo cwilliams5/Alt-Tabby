@@ -158,50 +158,53 @@ ShowDashboardDialog() {
     btnEscalate.OnEvent("Click", _Dash_OnEscalate)
 
     ; Subprocess rows with buttons — handlers check live state, refresh updates labels
-    ; Order: Store, GUI, Config Editor, Blacklist Editor, Viewer
+    ; Order: Store, Producers, GUI, Config Editor, Blacklist Editor, Viewer
+    ; Status dots: Chr(0x1F7E2) = green circle, Chr(0x1F534) = red circle
+    dotOK := Chr(0x1F7E2)
+    dotStop := Chr(0x1F534)
 
     ; Store row
     subY := 202
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
-    storeLabel := storeRunning ? "Store: Running (PID " g_StorePID ")" : "Store: Not running"
-    g_DashControls.storeText := dg.AddText("x400 y" subY " w240 +0x100", storeLabel)
+    storeLabel := (storeRunning ? dotOK : dotStop) " Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running")
+    g_DashControls.storeText := dg.AddText("x400 y" subY " w260 +0x100", storeLabel)
     g_DashControls.storeBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", storeRunning ? "Restart" : "Launch")
     g_DashControls.storeBtn.OnEvent("Click", _Dash_OnStoreBtn)
 
-    ; Producer status line (compact, below Store)
-    subY += 18
-    prodLabel := g_ProducerStatusCache != "" ? g_ProducerStatusCache : ""
-    g_DashControls.producerText := dg.AddText("x415 y" subY " w250 +0x100", prodLabel)
+    ; Producer status line (full-width row, no button)
+    subY += 20
+    prodLabel := g_ProducerStatusCache != "" ? "Producers: " g_ProducerStatusCache : ""
+    g_DashControls.producerText := dg.AddText("x400 y" subY " w275 +0x100", prodLabel)
 
     ; GUI row
-    subY += 16
+    subY += 18
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
-    guiLabel := guiRunning ? "GUI: Running (PID " g_GuiPID ")" : "GUI: Not running"
-    g_DashControls.guiText := dg.AddText("x400 y" subY " w240 +0x100", guiLabel)
+    guiLabel := (guiRunning ? dotOK : dotStop) " GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
+    g_DashControls.guiText := dg.AddText("x400 y" subY " w260 +0x100", guiLabel)
     g_DashControls.guiBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", guiRunning ? "Restart" : "Launch")
     g_DashControls.guiBtn.OnEvent("Click", _Dash_OnGuiBtn)
 
     ; Config Editor row
     subY += 30
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
-    configLabel := configRunning ? "Config Editor: Running (PID " g_ConfigEditorPID ")" : "Config Editor: Not running"
-    g_DashControls.configText := dg.AddText("x400 y" subY " w240 +0x100", configLabel)
+    configLabel := (configRunning ? dotOK : dotStop) " Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running")
+    g_DashControls.configText := dg.AddText("x400 y" subY " w260 +0x100", configLabel)
     g_DashControls.configBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", configRunning ? "Restart" : "Launch")
     g_DashControls.configBtn.OnEvent("Click", _Dash_OnConfigBtn)
 
     ; Blacklist Editor row
     subY += 30
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-    blacklistLabel := blacklistRunning ? "Blacklist Editor: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Editor: Not running"
-    g_DashControls.blacklistText := dg.AddText("x400 y" subY " w240 +0x100", blacklistLabel)
+    blacklistLabel := (blacklistRunning ? dotOK : dotStop) " Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running")
+    g_DashControls.blacklistText := dg.AddText("x400 y" subY " w260 +0x100", blacklistLabel)
     g_DashControls.blacklistBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", blacklistRunning ? "Restart" : "Launch")
     g_DashControls.blacklistBtn.OnEvent("Click", _Dash_OnBlacklistBtn)
 
     ; Viewer row
     subY += 30
     viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-    viewerLabel := viewerRunning ? "Viewer: Running (PID " g_ViewerPID ")" : "Viewer: Not running"
-    g_DashControls.viewerText := dg.AddText("x400 y" subY " w240 +0x100", viewerLabel)
+    viewerLabel := (viewerRunning ? dotOK : dotStop) " Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running")
+    g_DashControls.viewerText := dg.AddText("x400 y" subY " w260 +0x100", viewerLabel)
     g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerRunning ? "Restart" : "Launch")
     g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
 
@@ -446,22 +449,25 @@ _Dash_RefreshDynamic() {
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
 
+    dotOK := Chr(0x1F7E2)
+    dotStop := Chr(0x1F534)
+
     newState := Map(
-        "storeText", storeRunning ? "Store: Running (PID " g_StorePID ")" : "Store: Not running",
+        "storeText", (storeRunning ? dotOK : dotStop) " Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running"),
         "storeBtn", storeRunning ? "Restart" : "Launch",
-        "guiText", guiRunning ? "GUI: Running (PID " g_GuiPID ")" : "GUI: Not running",
+        "guiText", (guiRunning ? dotOK : dotStop) " GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running"),
         "guiBtn", guiRunning ? "Restart" : "Launch",
-        "configText", configRunning ? "Config Editor: Running (PID " g_ConfigEditorPID ")" : "Config Editor: Not running",
+        "configText", (configRunning ? dotOK : dotStop) " Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running"),
         "configBtn", configRunning ? "Restart" : "Launch",
-        "blacklistText", blacklistRunning ? "Blacklist Editor: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Editor: Not running",
+        "blacklistText", (blacklistRunning ? dotOK : dotStop) " Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running"),
         "blacklistBtn", blacklistRunning ? "Restart" : "Launch",
-        "viewerText", viewerRunning ? "Viewer: Running (PID " g_ViewerPID ")" : "Viewer: Not running",
+        "viewerText", (viewerRunning ? dotOK : dotStop) " Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running"),
         "viewerBtn", viewerRunning ? "Restart" : "Launch",
         "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
         "chkStartMenu", _Shortcut_StartMenuExists() ? 1 : 0,
         "chkStartup", _Shortcut_StartupExists() ? 1 : 0,
         "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0,
-        "producerText", g_ProducerStatusCache,
+        "producerText", g_ProducerStatusCache != "" ? "Producers: " g_ProducerStatusCache : "",
         "updateText", _Dash_GetUpdateLabel(),
         "updateBtn", _Dash_GetUpdateBtnLabel(),
         "updateBtnEnabled", (g_DashUpdateState.status != "checking") ? 1 : 0
@@ -799,9 +805,12 @@ _Dash_QueryProducerStatus() {
     }
 }
 
-; Format producer states: "WEH:OK MRU:OK KS:OK IP:OK PP:OK"
-; Matches viewer format — disabled producers omitted
+; Format producer states with colored dots: "🟢WEH 🟢KS 🟢IP 🟢PP"
+; Disabled producers omitted, MRU only shown if active (fallback)
 _Dash_FormatProducerStatus(producers) {
+    dotOK := Chr(0x1F7E2)
+    dotFail := Chr(0x1F534)
+
     abbrevs := [
         ["WEH", "wineventHook"],
         ["MRU", "mruLite"],
@@ -826,9 +835,9 @@ _Dash_FormatProducerStatus(producers) {
             }
         }
         if (state = "running")
-            parts.Push(abbrev ":OK")
+            parts.Push(dotOK abbrev)
         else if (state = "failed")
-            parts.Push(abbrev ":FAIL")
+            parts.Push(dotFail abbrev)
         ; Skip disabled — keeps line compact
     }
 
