@@ -30,11 +30,14 @@ global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
 
+; Producer status cache — queried once after store launch, shown in dashboard
+global g_ProducerStatusCache := ""
+
 ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashControls, g_DashUpdateState, DASH_INTERVAL_COOL
+    global g_DashControls, g_DashUpdateState, g_ProducerStatusCache, DASH_INTERVAL_COOL
 
     ; If already open, focus existing dialog
     if (g_DashboardGui) {
@@ -144,8 +147,13 @@ ShowDashboardDialog() {
     g_DashControls.storeBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", storeRunning ? "Restart" : "Launch")
     g_DashControls.storeBtn.OnEvent("Click", _Dash_OnStoreBtn)
 
+    ; Producer status line (compact, below Store)
+    subY += 18
+    prodLabel := g_ProducerStatusCache != "" ? g_ProducerStatusCache : ""
+    g_DashControls.producerText := dg.AddText("x415 y" subY " w325", prodLabel)
+
     ; GUI row
-    subY += 30
+    subY += 16
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
     guiLabel := guiRunning ? "GUI: Running (PID " g_GuiPID ")" : "GUI: Not running"
     g_DashControls.guiText := dg.AddText("x400 y" subY " w240", guiLabel)
@@ -186,15 +194,14 @@ ShowDashboardDialog() {
     subY += 20
     g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340", "Komorebi: " _Dash_GetKomorebiInfo())
 
-    ; ---- Bottom Row: Update status + OK ----
+    ; ---- Bottom Row: Update status + action button + OK ----
     dg.SetFont("s9")
     updateLabel := _Dash_GetUpdateLabel()
-    g_DashControls.updateText := dg.AddText("x20 y430 w400", updateLabel)
-    g_DashControls.updateInstallBtn := dg.AddButton("x430 y425 w65 h24", "Install")
-    g_DashControls.updateInstallBtn.OnEvent("Click", _Dash_OnInstallBtn)
-    g_DashControls.updateInstallBtn.Visible := (g_DashUpdateState.status = "available")
-    g_DashControls.updateCheckBtn := dg.AddButton("x500 y425 w100 h24", "Check Now")
-    g_DashControls.updateCheckBtn.OnEvent("Click", _Dash_OnCheckNowBtn)
+    g_DashControls.updateText := dg.AddText("x20 y430 w300", updateLabel)
+    updateBtnLabel := _Dash_GetUpdateBtnLabel()
+    g_DashControls.updateBtn := dg.AddButton("x325 y425 w100 h24", updateBtnLabel)
+    g_DashControls.updateBtn.OnEvent("Click", _Dash_OnUpdateBtn)
+    g_DashControls.updateBtn.Enabled := (g_DashUpdateState.status != "checking")
 
     dg.SetFont("s10")
     btnOK := dg.AddButton("x675 y425 w80 Default", "OK")
@@ -276,23 +283,22 @@ _Dash_OnEscalate(*) {
     ToggleAdminMode()
 }
 
-_Dash_OnCheckNowBtn(*) {
+_Dash_OnUpdateBtn(*) {
     global g_DashUpdateState
-    g_DashUpdateState.status := "checking"
-    g_DashUpdateState.version := ""
-    g_DashUpdateState.downloadUrl := ""
-    _Dash_StartRefreshTimer()
-    SetTimer(_Dash_CheckForUpdatesAsync, -1)
-}
-
-_Dash_OnInstallBtn(*) {
-    global g_DashUpdateState
-    if (g_DashUpdateState.status != "available" || g_DashUpdateState.downloadUrl = "")
-        return
-    url := g_DashUpdateState.downloadUrl
-    ver := g_DashUpdateState.version
-    _Dash_OnClose()
-    _Update_DownloadAndApply(url, ver)
+    if (g_DashUpdateState.status = "available" && g_DashUpdateState.downloadUrl != "") {
+        ; Install mode — close dashboard and apply update
+        url := g_DashUpdateState.downloadUrl
+        ver := g_DashUpdateState.version
+        _Dash_OnClose()
+        _Update_DownloadAndApply(url, ver)
+    } else {
+        ; Check mode — trigger async version check
+        g_DashUpdateState.status := "checking"
+        g_DashUpdateState.version := ""
+        g_DashUpdateState.downloadUrl := ""
+        _Dash_StartRefreshTimer()
+        SetTimer(_Dash_CheckForUpdatesAsync, -1)
+    }
 }
 
 _Dash_OnClose(*) {
@@ -324,7 +330,7 @@ _Dash_RefreshDynamic() {
     global g_DashboardGui, g_DashControls, g_DashRefreshTick
     global g_StorePID, g_GuiPID, g_ViewerPID, cfg
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashUpdateState
+    global g_DashUpdateState, g_ProducerStatusCache
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
 
@@ -366,8 +372,10 @@ _Dash_RefreshDynamic() {
         "chkStartMenu", _Shortcut_StartMenuExists() ? 1 : 0,
         "chkStartup", _Shortcut_StartupExists() ? 1 : 0,
         "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0,
+        "producerText", g_ProducerStatusCache,
         "updateText", _Dash_GetUpdateLabel(),
-        "updateInstallVisible", (g_DashUpdateState.status = "available") ? 1 : 0
+        "updateBtn", _Dash_GetUpdateBtnLabel(),
+        "updateBtnEnabled", (g_DashUpdateState.status != "checking") ? 1 : 0
     )
 
     ; Diff against current control values — skip redraw if nothing changed
@@ -386,8 +394,10 @@ _Dash_RefreshDynamic() {
         || g_DashControls.chkStartMenu.Value != newState["chkStartMenu"]
         || g_DashControls.chkStartup.Value != newState["chkStartup"]
         || g_DashControls.chkAutoUpdate.Value != newState["chkAutoUpdate"]
+        || g_DashControls.producerText.Value != newState["producerText"]
         || g_DashControls.updateText.Value != newState["updateText"]
-        || g_DashControls.updateInstallBtn.Visible != newState["updateInstallVisible"])
+        || g_DashControls.updateBtn.Text != newState["updateBtn"]
+        || g_DashControls.updateBtn.Enabled != newState["updateBtnEnabled"])
         changed := true
 
     if (!changed)
@@ -411,8 +421,10 @@ _Dash_RefreshDynamic() {
     g_DashControls.chkStartMenu.Value := newState["chkStartMenu"]
     g_DashControls.chkStartup.Value := newState["chkStartup"]
     g_DashControls.chkAutoUpdate.Value := newState["chkAutoUpdate"]
+    g_DashControls.producerText.Value := newState["producerText"]
     g_DashControls.updateText.Value := newState["updateText"]
-    g_DashControls.updateInstallBtn.Visible := newState["updateInstallVisible"]
+    g_DashControls.updateBtn.Text := newState["updateBtn"]
+    g_DashControls.updateBtn.Enabled := newState["updateBtnEnabled"]
 
     ; Re-enable repaints and force a single
     DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 1, "ptr", 0)  ; WM_SETREDRAW TRUE
@@ -432,6 +444,15 @@ _Dash_GetUpdateLabel() {
         case "error": return "Update: Check failed"
         default: return "Update: Not checked"
     }
+}
+
+_Dash_GetUpdateBtnLabel() {
+    global g_DashUpdateState
+    if (g_DashUpdateState.status = "available")
+        return "Install"
+    if (g_DashUpdateState.status = "checking")
+        return "Checking..."
+    return "Check Now"
 }
 
 _Dash_MaybeCheckForUpdates() {
@@ -599,4 +620,114 @@ _Dash_GetKomorebiInfo() {
     if (pid)
         return "Running (PID " pid ")"
     return "Not running"
+}
+
+; ============================================================
+; Producer Status Query (one-shot IPC to store)
+; ============================================================
+; Connects to store pipe, requests producer status, caches result.
+; Called on a delayed timer after store launch/restart.
+
+_Dash_QueryProducerStatus() {
+    global g_ProducerStatusCache, cfg
+    global IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
+
+    pipeName := cfg.StorePipeName
+    g_ProducerStatusCache := ""
+
+    ; One-shot IPC: connect, send request, read response, disconnect
+    client := IPC_PipeClient_Connect(pipeName, (*) => 0, 2000)
+    if (!client.hPipe)
+        return
+
+    ; Send producer status request
+    msg := '{"type":"' IPC_MSG_PRODUCER_STATUS_REQUEST '"}'
+    IPC_PipeClient_Send(client, msg)
+
+    ; Poll for response (up to 2 seconds)
+    startTick := A_TickCount
+    response := ""
+    while ((A_TickCount - startTick) < 2000) {
+        Sleep(100)
+        ; Check if client received data via its internal buffer
+        ; The pipe client uses async timer-based reads, so we need to
+        ; read directly since our callback is a no-op
+        break  ; Timer-based client won't work for one-shot — use direct read
+    }
+
+    ; Stop the client's timer and read directly
+    if (client.timerFn)
+        SetTimer(client.timerFn, 0)
+
+    ; Direct synchronous read from pipe
+    readBuf := Buffer(4096, 0)
+    bytesRead := 0
+    startTick := A_TickCount
+    while ((A_TickCount - startTick) < 2000) {
+        result := DllCall("kernel32\ReadFile"
+            , "ptr", client.hPipe
+            , "ptr", readBuf.Ptr
+            , "uint", 4096
+            , "uint*", &bytesRead
+            , "ptr", 0
+            , "int")
+        if (result && bytesRead > 0) {
+            response := StrGet(readBuf, bytesRead, "UTF-8")
+            break
+        }
+        Sleep(50)
+    }
+
+    IPC_PipeClient_Close(client)
+
+    if (response = "")
+        return
+
+    ; Parse response and format producer status line
+    try {
+        obj := JSON.Load(response)
+        if (obj.Has("type") && obj["type"] = IPC_MSG_PRODUCER_STATUS && obj.Has("producers")) {
+            g_ProducerStatusCache := _Dash_FormatProducerStatus(obj["producers"])
+            _Dash_StartRefreshTimer()
+        }
+    }
+}
+
+; Format producer states: "WEH:OK MRU:OK KS:OK IP:OK PP:OK"
+; Matches viewer format — disabled producers omitted
+_Dash_FormatProducerStatus(producers) {
+    abbrevs := [
+        ["WEH", "wineventHook"],
+        ["MRU", "mruLite"],
+        ["KS", "komorebiSub"],
+        ["KL", "komorebiLite"],
+        ["IP", "iconPump"],
+        ["PP", "procPump"]
+    ]
+
+    parts := []
+    for _, pair in abbrevs {
+        abbrev := pair[1]
+        name := pair[2]
+        state := ""
+        if (producers is Map) {
+            if (producers.Has(name))
+                state := producers[name]
+        } else {
+            try {
+                if (producers.HasOwnProp(name))
+                    state := producers.%name%
+            }
+        }
+        if (state = "running")
+            parts.Push(abbrev ":OK")
+        else if (state = "failed")
+            parts.Push(abbrev ":FAIL")
+        ; Skip disabled — keeps line compact
+    }
+
+    result := ""
+    for _, part in parts
+        result .= (result ? " " : "") part
+    return result
 }

@@ -584,9 +584,12 @@ _Launcher_KillExistingInstances() {
 ; ============================================================
 
 LaunchStore() {
-    global g_StorePID
+    global g_StorePID, g_ProducerStatusCache
+    g_ProducerStatusCache := ""
     LauncherUtils_Launch("store", &g_StorePID, _Launcher_Log)
     _Dash_StartRefreshTimer()
+    ; Query producer status after store has time to initialize producers
+    SetTimer(_Dash_QueryProducerStatus, -5000)
 }
 
 LaunchGui() {
