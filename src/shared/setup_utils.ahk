@@ -389,7 +389,7 @@ _Shortcut_GetEffectiveExePath() {
 ; Check for updates and optionally offer to install
 ; showIfCurrent: If true, show message even when up to date
 CheckForUpdates(showIfCurrent := false) {
-    global g_UpdateCheckInProgress
+    global g_UpdateCheckInProgress, g_DashUpdateState, g_LastUpdateCheckTick, g_LastUpdateCheckTime
 
     ; Prevent concurrent update checks (auto-update timer + manual button race)
     if (g_UpdateCheckInProgress) {
@@ -415,13 +415,24 @@ CheckForUpdates(showIfCurrent := false) {
 
             ; Parse JSON for tag_name and download URL
             if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
+                g_DashUpdateState.status := "error"
+                g_LastUpdateCheckTick := A_TickCount
+                g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
                 g_UpdateCheckInProgress := false
                 return
             }
 
             latestVersion := tagMatch[1]
+            g_LastUpdateCheckTick := A_TickCount
+            g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
 
             if (CompareVersions(latestVersion, currentVersion) > 0) {
+                ; Sync dashboard state — update available
+                downloadUrl := _Update_FindExeDownloadUrl(response)
+                g_DashUpdateState.status := "available"
+                g_DashUpdateState.version := latestVersion
+                g_DashUpdateState.downloadUrl := downloadUrl ? downloadUrl : ""
+
                 ; Newer version available - offer to update
                 result := MsgBox(
                     "Alt-Tabby " latestVersion " is available!`n"
@@ -432,22 +443,35 @@ CheckForUpdates(showIfCurrent := false) {
                 )
 
                 if (result = "Yes") {
-                    ; Find download URL for AltTabby.exe
-                    downloadUrl := _Update_FindExeDownloadUrl(response)
                     if (downloadUrl)
                         _Update_DownloadAndApply(downloadUrl, latestVersion)
                     else
                         MsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Icon!")
                 }
-            } else if (showIfCurrent) {
-                TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
+            } else {
+                ; Sync dashboard state — up to date
+                g_DashUpdateState.status := "uptodate"
+                g_DashUpdateState.version := ""
+                g_DashUpdateState.downloadUrl := ""
+                if (showIfCurrent)
+                    TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
             }
-        } else if (showIfCurrent) {
-            TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
+        } else {
+            ; Sync dashboard state — HTTP error
+            g_DashUpdateState.status := "error"
+            g_LastUpdateCheckTick := A_TickCount
+            g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
+            if (showIfCurrent) {
+                TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
+            }
             whr := ""  ; Release COM on error path
         }
     } catch as e {
         whr := ""  ; Ensure release on exception
+        ; Sync dashboard state — exception
+        g_DashUpdateState.status := "error"
+        g_LastUpdateCheckTick := A_TickCount
+        g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
         if (showIfCurrent)
             TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
     }

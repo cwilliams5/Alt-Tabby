@@ -49,6 +49,12 @@ global gMultiClient3Received := false
 global gBlTestResponse := ""
 global gBlTestReceived := false
 
+; --- Dashboard/Update check globals (from launcher_about.ahk, used by setup_utils.ahk) ---
+global g_LastUpdateCheckTick := 0
+global g_LastUpdateCheckTime := ""
+global g_DashUpdateState
+g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
+
 ; --- Check for flags (BEFORE log init to set suite-specific log paths) ---
 DoLiveTests := false
 DoLiveCore := false

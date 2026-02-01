@@ -36,7 +36,7 @@ SetupLauncherTray() {
 }
 
 UpdateTrayMenu() {
-    global g_StorePID, g_GuiPID, g_ViewerPID, cfg, gConfigIniPath
+    global cfg, gConfigIniPath
 
     ; Reload SetupRunAsAdmin from disk in case elevated instance changed it
     if (FileExist(gConfigIniPath)) {
@@ -47,79 +47,214 @@ UpdateTrayMenu() {
     tray := A_TrayMenu
     tray.Delete()
 
-    ; Header with version (and admin status if elevated)
+    ; Header with version
     version := GetAppVersion()
-    header := "Alt-Tabby v" version (A_IsAdmin ? " (Admin)" : "")
+    header := "Alt-Tabby v" version
     tray.Add(header, (*) => 0)
     tray.Disable(header)
     tray.Add()
 
-    ; Store status
-    storeRunning := LauncherUtils_IsRunning(g_StorePID)
-    if (storeRunning) {
-        tray.Add("Store: Restart", (*) => RestartStore())
-    } else {
-        tray.Add("Store: Launch", (*) => LaunchStore())
+    ; Submenus
+    tray.Add("Diagnostics", _Tray_BuildDiagnosticsMenu())
+    tray.Add("Update", _Tray_BuildUpdateMenu())
+    tray.Add("Settings", _Tray_BuildSettingsMenu())
+    tray.Add()
+
+    ; "About / Help..." — bold via tray.Default, with app icon
+    ; NOTE: The tray menu deliberately uses "About / Help..." while the popup window
+    ; is called "Dashboard". This is an intentional UX decision — do not "fix" this.
+    aboutLabel := "About / Help..."
+    tray.Add(aboutLabel, (*) => ShowDashboardDialog())
+    tray.Default := aboutLabel
+    iconPath := _Tray_GetIconPath()
+    if (iconPath != "") {
+        if (A_IsCompiled)
+            tray.SetIcon(aboutLabel, iconPath, 1)
+        else
+            tray.SetIcon(aboutLabel, iconPath)
     }
-
-    ; GUI status
-    guiRunning := LauncherUtils_IsRunning(g_GuiPID)
-    if (guiRunning) {
-        tray.Add("GUI: Restart", (*) => RestartGui())
-    } else {
-        tray.Add("GUI: Launch", (*) => LaunchGui())
-    }
-
-    ; Viewer status (optional, launch from menu)
-    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-    if (viewerRunning) {
-        tray.Add("Viewer: Restart", (*) => RestartViewer())
-    } else {
-        tray.Add("Viewer: Launch", (*) => LaunchViewer())
-    }
-
-    tray.Add()
-
-    ; Restart option (only if something is running)
-    if (storeRunning || guiRunning || viewerRunning) {
-        tray.Add("Restart All", (*) => RestartAll())
-        tray.Add()
-    }
-
-    ; Editors
-    tray.Add("Edit Config...", (*) => LaunchConfigEditor())
-    tray.Add("Edit Blacklist...", (*) => LaunchBlacklistEditor())
-    tray.Add()
-
-    ; Shortcuts (with checkmarks for current state)
-    tray.Add("Add to Start Menu", (*) => ToggleStartMenuShortcut())
-    if (_Shortcut_StartMenuExists())
-        tray.Check("Add to Start Menu")
-
-    tray.Add("Run at Startup", (*) => ToggleStartupShortcut())
-    if (_Shortcut_StartupExists())
-        tray.Check("Run at Startup")
-
-    tray.Add()
-
-    ; Admin mode toggle
-    tray.Add("Run as Administrator", (*) => ToggleAdminMode())
-    if (cfg.SetupRunAsAdmin && _AdminTask_PointsToUs())
-        tray.Check("Run as Administrator")
-
-    tray.Add()
-
-    ; Updates section
-    tray.Add("Check for Updates Now", (*) => CheckForUpdates(true))
-    tray.Add("Auto-check on Startup", (*) => ToggleAutoUpdate())
-    if (cfg.SetupAutoUpdateCheck)
-        tray.Check("Auto-check on Startup")
-
-    tray.Add()
-    tray.Add("Dashboard...", (*) => ShowDashboardDialog())
     tray.Add()
 
     tray.Add("Exit", (*) => ExitAll())
+}
+
+; ============================================================
+; SUBMENU BUILDERS
+; ============================================================
+
+_Tray_BuildDiagnosticsMenu() {
+    global g_StorePID, g_GuiPID, g_ViewerPID
+    global g_ConfigEditorPID, g_BlacklistEditorPID, cfg
+
+    m := Menu()
+
+    ; Build info (disabled)
+    buildType := A_IsCompiled ? "Compiled" : "Dev"
+    version := GetAppVersion()
+    buildLabel := "Build: " buildType " v" version
+    m.Add(buildLabel, (*) => 0)
+    m.Disable(buildLabel)
+
+    ; Komorebi status (disabled)
+    kPid := ProcessExist("komorebi.exe")
+    kLabel := kPid ? "Komorebi: Running (PID " kPid ")" : "Komorebi: Not Running"
+    m.Add(kLabel, (*) => 0)
+    m.Disable(kLabel)
+
+    ; Elevation status (clickable — toggles admin mode)
+    if (A_IsAdmin)
+        elevLabel := "Elevation: Administrator | De-Escalate"
+    else
+        elevLabel := "Elevation: Standard | Escalate"
+    m.Add(elevLabel, (*) => ToggleAdminMode())
+
+    m.Add()
+
+    ; Subprocess rows — label includes status AND action
+    ; Store
+    storeRunning := LauncherUtils_IsRunning(g_StorePID)
+    storeLabel := storeRunning
+        ? "Store: Running (PID " g_StorePID ") | Restart"
+        : "Store: Not Running | Launch"
+    m.Add(storeLabel, (*) => (LauncherUtils_IsRunning(g_StorePID) ? RestartStore() : LaunchStore()))
+
+    ; GUI
+    guiRunning := LauncherUtils_IsRunning(g_GuiPID)
+    guiLabel := guiRunning
+        ? "GUI: Running (PID " g_GuiPID ") | Restart"
+        : "GUI: Not Running | Launch"
+    m.Add(guiLabel, (*) => (LauncherUtils_IsRunning(g_GuiPID) ? RestartGui() : LaunchGui()))
+
+    ; Config Editor
+    configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
+    configLabel := configRunning
+        ? "Config Editor: Running (PID " g_ConfigEditorPID ") | Restart"
+        : "Config Editor: Not Running | Launch"
+    m.Add(configLabel, (*) => (LauncherUtils_IsRunning(g_ConfigEditorPID) ? RestartConfigEditor() : LaunchConfigEditor()))
+
+    ; Blacklist Editor
+    blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
+    blacklistLabel := blacklistRunning
+        ? "Blacklist Editor: Running (PID " g_BlacklistEditorPID ") | Restart"
+        : "Blacklist Editor: Not Running | Launch"
+    m.Add(blacklistLabel, (*) => (LauncherUtils_IsRunning(g_BlacklistEditorPID) ? RestartBlacklistEditor() : LaunchBlacklistEditor()))
+
+    ; Viewer
+    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
+    viewerLabel := viewerRunning
+        ? "Viewer: Running (PID " g_ViewerPID ") | Restart"
+        : "Viewer: Not Running | Launch"
+    m.Add(viewerLabel, (*) => (LauncherUtils_IsRunning(g_ViewerPID) ? RestartViewer() : LaunchViewer()))
+
+    m.Add()
+
+    ; Admin Task
+    if (AdminTaskExists() && _AdminTask_PointsToUs())
+        taskLabel := "Admin Task: Active | Uninstall"
+    else
+        taskLabel := "Admin Task: Not Configured | Install"
+    m.Add(taskLabel, (*) => ToggleAdminMode())
+
+    return m
+}
+
+_Tray_BuildUpdateMenu() {
+    global g_DashUpdateState, g_LastUpdateCheckTime, cfg
+
+    m := Menu()
+
+    ; Status line (disabled)
+    statusLabel := _Tray_GetUpdateStatusLabel()
+    m.Add(statusLabel, (*) => 0)
+    m.Disable(statusLabel)
+
+    ; Action item
+    if (g_DashUpdateState.status = "available" && g_DashUpdateState.version != "") {
+        installLabel := "Install v" g_DashUpdateState.version
+        m.Add(installLabel, (*) => _Tray_OnUpdateInstall())
+    } else if (g_DashUpdateState.status = "checking") {
+        checkingLabel := "Checking..."
+        m.Add(checkingLabel, (*) => 0)
+        m.Disable(checkingLabel)
+    } else {
+        m.Add("Check Now", (*) => CheckForUpdates(true))
+    }
+
+    m.Add()
+
+    ; Auto-check toggle
+    m.Add("Auto-Check for Updates", (*) => ToggleAutoUpdate())
+    if (cfg.SetupAutoUpdateCheck)
+        m.Check("Auto-Check for Updates")
+
+    return m
+}
+
+_Tray_BuildSettingsMenu() {
+    global cfg
+
+    m := Menu()
+
+    ; Editors
+    m.Add("Edit Config...", (*) => LaunchConfigEditor())
+    m.Add("Edit Blacklist...", (*) => LaunchBlacklistEditor())
+    m.Add()
+
+    ; Shortcut toggles
+    m.Add("Add to Start Menu", (*) => ToggleStartMenuShortcut())
+    if (_Shortcut_StartMenuExists())
+        m.Check("Add to Start Menu")
+
+    m.Add("Run at Startup", (*) => ToggleStartupShortcut())
+    if (_Shortcut_StartupExists())
+        m.Check("Run at Startup")
+
+    ; Auto-check toggle (intentional duplicate — also in Update submenu)
+    m.Add("Auto-Check for Updates", (*) => ToggleAutoUpdate())
+    if (cfg.SetupAutoUpdateCheck)
+        m.Check("Auto-Check for Updates")
+
+    m.Add()
+
+    ; Admin mode toggle
+    m.Add("Run as Administrator", (*) => ToggleAdminMode())
+    if (cfg.SetupRunAsAdmin && _AdminTask_PointsToUs())
+        m.Check("Run as Administrator")
+
+    return m
+}
+
+; ============================================================
+; TRAY MENU HELPERS
+; ============================================================
+
+_Tray_GetIconPath() {
+    if (A_IsCompiled)
+        return A_ScriptFullPath
+    devIcon := A_ScriptDir "\..\img\icon.ico"
+    if (FileExist(devIcon))
+        return devIcon
+    return ""
+}
+
+_Tray_GetUpdateStatusLabel() {
+    global g_DashUpdateState, g_LastUpdateCheckTime
+    timeSuffix := (g_LastUpdateCheckTime != "") ? " | " g_LastUpdateCheckTime : ""
+
+    switch g_DashUpdateState.status {
+        case "unchecked": return "Not Checked"
+        case "checking": return "Checking..."
+        case "uptodate": return "Up to Date" timeSuffix
+        case "available": return "v" g_DashUpdateState.version " Available" timeSuffix
+        case "error": return "Check Failed" timeSuffix
+        default: return "Not Checked"
+    }
+}
+
+_Tray_OnUpdateInstall() {
+    global g_DashUpdateState
+    if (g_DashUpdateState.status = "available" && g_DashUpdateState.downloadUrl != "")
+        _Update_DownloadAndApply(g_DashUpdateState.downloadUrl, g_DashUpdateState.version)
 }
 
 RestartStore() {

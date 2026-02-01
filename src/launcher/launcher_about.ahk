@@ -26,6 +26,7 @@ global DASH_TIER_WARM_MS := 75000
 
 ; Update check state — persists across dashboard open/close
 global g_LastUpdateCheckTick := 0
+global g_LastUpdateCheckTime := ""
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
@@ -644,7 +645,7 @@ _Dash_MaybeCheckForUpdates() {
 }
 
 _Dash_CheckForUpdatesAsync() {
-    global g_DashUpdateState, g_LastUpdateCheckTick, g_DashboardGui
+    global g_DashUpdateState, g_LastUpdateCheckTick, g_LastUpdateCheckTime, g_DashboardGui
 
     currentVersion := GetAppVersion()
     apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
@@ -663,12 +664,14 @@ _Dash_CheckForUpdatesAsync() {
             if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
                 g_DashUpdateState.status := "error"
                 g_LastUpdateCheckTick := A_TickCount
+                g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
                 _Dash_StartRefreshTimer()
                 return
             }
 
             latestVersion := tagMatch[1]
             g_LastUpdateCheckTick := A_TickCount
+            g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
 
             if (CompareVersions(latestVersion, currentVersion) > 0) {
                 g_DashUpdateState.status := "available"
@@ -682,11 +685,13 @@ _Dash_CheckForUpdatesAsync() {
         } else {
             g_DashUpdateState.status := "error"
             g_LastUpdateCheckTick := A_TickCount
+            g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
         }
     } catch {
         whr := ""
         g_DashUpdateState.status := "error"
         g_LastUpdateCheckTick := A_TickCount
+        g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
     }
     whr := ""  ; Final safety
 
