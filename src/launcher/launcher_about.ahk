@@ -49,15 +49,15 @@ ShowDashboardDialog() {
     xAfterLogo := logo ? 150 : 0
 
     dg.SetFont("s16 Bold")
-    dg.AddText("x" xAfterLogo " y15 w260", APP_NAME)
+    dg.AddText("x" xAfterLogo " y15 w225", APP_NAME)
 
     dg.SetFont("s10 Norm")
     version := GetAppVersion()
-    dg.AddText("x" xAfterLogo " y+2 w260", "Version " version)
+    dg.AddText("x" xAfterLogo " y+2 w225", "Version " version)
 
-    dg.AddLink("x" xAfterLogo " y+4 w260",
+    dg.AddLink("x" xAfterLogo " y+4 w225",
         '<a href="https://github.com/cwilliams5/Alt-Tabby">github.com/cwilliams5/Alt-Tabby</a>')
-    dg.AddLink("x" xAfterLogo " y+2 w260",
+    dg.AddLink("x" xAfterLogo " y+2 w225",
         '<a href="https://github.com/cwilliams5/Alt-Tabby/blob/main/docs/options.md">Configuration Options</a>')
 
     ; ============================================================
@@ -157,7 +157,7 @@ ShowDashboardDialog() {
     ; Blacklist Editor row
     subY += 30
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-    blacklistLabel := blacklistRunning ? "Blacklist Ed: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Ed: Not running"
+    blacklistLabel := blacklistRunning ? "Blacklist Editor: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Editor: Not running"
     g_DashControls.blacklistText := dg.AddText("x400 y" subY " w240", blacklistLabel)
     g_DashControls.blacklistBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", blacklistRunning ? "Restart" : "Launch")
     g_DashControls.blacklistBtn.OnEvent("Click", _Dash_OnBlacklistBtn)
@@ -326,7 +326,7 @@ _Dash_RefreshDynamic() {
         "guiBtn", guiRunning ? "Restart" : "Launch",
         "configText", configRunning ? "Config Editor: Running (PID " g_ConfigEditorPID ")" : "Config Editor: Not running",
         "configBtn", configRunning ? "Restart" : "Launch",
-        "blacklistText", blacklistRunning ? "Blacklist Ed: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Ed: Not running",
+        "blacklistText", blacklistRunning ? "Blacklist Editor: Running (PID " g_BlacklistEditorPID ")" : "Blacklist Editor: Not running",
         "blacklistBtn", blacklistRunning ? "Restart" : "Launch",
         "viewerText", viewerRunning ? "Viewer: Running (PID " g_ViewerPID ")" : "Viewer: Not running",
         "viewerBtn", viewerRunning ? "Restart" : "Launch",
