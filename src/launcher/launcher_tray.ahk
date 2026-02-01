@@ -7,6 +7,12 @@
 ; Manages the system tray icon and context menu.
 ; Menu is rebuilt on right-click for current subprocess status.
 
+; Cached expensive checks — populated at startup, updated after toggle operations.
+; Avoids ~500ms of schtasks subprocess + COM shortcut calls on every right-click.
+global g_CachedAdminTaskActive := false
+global g_CachedStartMenuShortcut := false
+global g_CachedStartupShortcut := false
+
 TrayIconClick(wParam, lParam, msg, hwnd) {
     ; 0x205 = WM_RBUTTONUP (right-click release)
     if (lParam = 0x205) {
@@ -32,6 +38,7 @@ SetupLauncherTray() {
     }
     global APP_NAME
     A_IconTip := APP_NAME
+    _Tray_RefreshCache()
     UpdateTrayMenu()
 }
 
@@ -83,7 +90,7 @@ UpdateTrayMenu() {
 ; ============================================================
 
 _Tray_BuildDiagnosticsMenu() {
-    global g_StorePID, g_GuiPID, g_ViewerPID
+    global g_StorePID, g_GuiPID, g_ViewerPID, g_CachedAdminTaskActive
     global g_ConfigEditorPID, g_BlacklistEditorPID, cfg
 
     m := Menu()
@@ -149,7 +156,7 @@ _Tray_BuildDiagnosticsMenu() {
     m.Add()
 
     ; Admin Task
-    if (AdminTaskExists() && _AdminTask_PointsToUs())
+    if (g_CachedAdminTaskActive)
         taskLabel := "Admin Task: Active | Uninstall"
     else
         taskLabel := "Admin Task: Not Configured | Install"
@@ -191,7 +198,7 @@ _Tray_BuildUpdateMenu() {
 }
 
 _Tray_BuildSettingsMenu() {
-    global cfg
+    global cfg, g_CachedAdminTaskActive, g_CachedStartMenuShortcut, g_CachedStartupShortcut
 
     m := Menu()
 
@@ -202,11 +209,11 @@ _Tray_BuildSettingsMenu() {
 
     ; Shortcut toggles
     m.Add("Add to Start Menu", (*) => ToggleStartMenuShortcut())
-    if (_Shortcut_StartMenuExists())
+    if (g_CachedStartMenuShortcut)
         m.Check("Add to Start Menu")
 
     m.Add("Run at Startup", (*) => ToggleStartupShortcut())
-    if (_Shortcut_StartupExists())
+    if (g_CachedStartupShortcut)
         m.Check("Run at Startup")
 
     ; Auto-check toggle (intentional duplicate — also in Update submenu)
@@ -218,7 +225,7 @@ _Tray_BuildSettingsMenu() {
 
     ; Admin mode toggle
     m.Add("Run as Administrator", (*) => ToggleAdminMode())
-    if (cfg.SetupRunAsAdmin && _AdminTask_PointsToUs())
+    if (cfg.SetupRunAsAdmin && g_CachedAdminTaskActive)
         m.Check("Run as Administrator")
 
     return m
@@ -249,6 +256,13 @@ _Tray_GetUpdateStatusLabel() {
         case "error": return "Check Failed" timeSuffix
         default: return "Not Checked"
     }
+}
+
+_Tray_RefreshCache() {
+    global g_CachedAdminTaskActive, g_CachedStartMenuShortcut, g_CachedStartupShortcut
+    g_CachedAdminTaskActive := _AdminTask_PointsToUs()
+    g_CachedStartMenuShortcut := _Shortcut_StartMenuExists()
+    g_CachedStartupShortcut := _Shortcut_StartupExists()
 }
 
 _Tray_OnUpdateInstall() {
@@ -372,7 +386,7 @@ global ADMIN_TOGGLE_POLL_MS := 500
 global ADMIN_TOGGLE_TIMEOUT_MS := 30000
 
 ToggleAdminMode() {
-    global cfg, gConfigIniPath, g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK
+    global cfg, gConfigIniPath, g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_CachedAdminTaskActive
     global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, g_AdminToggleStartTick, APP_NAME
     global ADMIN_TOGGLE_POLL_MS
 
@@ -385,11 +399,12 @@ ToggleAdminMode() {
 
     ; Check BOTH config AND task existence AND that task points to us
     ; This prevents state mismatch when config says enabled but task points elsewhere
-    isCurrentlyEnabled := cfg.SetupRunAsAdmin && _AdminTask_PointsToUs()
+    isCurrentlyEnabled := cfg.SetupRunAsAdmin && g_CachedAdminTaskActive
 
     if (isCurrentlyEnabled) {
         ; Disable admin mode - doesn't require elevation
         DeleteAdminTask()
+        g_CachedAdminTaskActive := false
         cfg.SetupRunAsAdmin := false
         _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
@@ -461,6 +476,7 @@ ToggleAdminMode() {
             return
 
         if (CreateAdminTask(exePath)) {
+            g_CachedAdminTaskActive := true
             cfg.SetupRunAsAdmin := true
             _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
             RecreateShortcuts()  ; Update to point to schtasks
@@ -475,7 +491,7 @@ ToggleAdminMode() {
 ; Polling callback to check if elevated instance completed
 ; Reads file content to determine outcome: numeric = still in progress, string = result
 _AdminToggle_CheckComplete() {
-    global g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_AdminToggleStartTick
+    global g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_AdminToggleStartTick, g_CachedAdminTaskActive
     global ADMIN_TOGGLE_POLL_MS, ADMIN_TOGGLE_TIMEOUT_MS
     global TOOLTIP_DURATION_DEFAULT, APP_NAME
     global ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT, cfg, gConfigIniPath
@@ -515,6 +531,7 @@ _AdminToggle_CheckComplete() {
     try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
 
     if (content = "ok") {
+        g_CachedAdminTaskActive := true
         ; Re-read config from disk — the elevated instance wrote SetupRunAsAdmin=true
         if (FileExist(gConfigIniPath)) {
             iniVal := IniRead(gConfigIniPath, "Setup", "RunAsAdmin", "false")

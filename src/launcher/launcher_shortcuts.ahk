@@ -9,12 +9,16 @@
 
 ; Toggle Start Menu shortcut
 ToggleStartMenuShortcut() {
+    global g_CachedStartMenuShortcut
     _ToggleShortcut(_Shortcut_GetStartMenuPath(), "Start Menu")
+    g_CachedStartMenuShortcut := _Shortcut_StartMenuExists()
 }
 
 ; Toggle Startup shortcut
 ToggleStartupShortcut() {
+    global g_CachedStartupShortcut
     _ToggleShortcut(_Shortcut_GetStartupPath(), "Startup")
+    g_CachedStartupShortcut := _Shortcut_StartupExists()
 }
 
 _ToggleShortcut(lnkPath, locationName) {
