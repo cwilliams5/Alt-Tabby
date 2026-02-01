@@ -24,11 +24,17 @@ global DASH_INTERVAL_COOL := 5000
 global DASH_TIER_HOT_MS := 15000
 global DASH_TIER_WARM_MS := 75000
 
+; Update check state — persists across dashboard open/close
+global g_LastUpdateCheckTick := 0
+global g_DashUpdateState
+g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
+global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
+
 ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashControls, DASH_INTERVAL_COOL
+    global g_DashControls, g_DashUpdateState, DASH_INTERVAL_COOL
 
     ; If already open, focus existing dialog
     if (g_DashboardGui) {
@@ -180,9 +186,17 @@ ShowDashboardDialog() {
     subY += 20
     g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340", "Komorebi: " _Dash_GetKomorebiInfo())
 
-    ; ---- Bottom Buttons ----
+    ; ---- Bottom Row: Update status + OK ----
+    dg.SetFont("s9")
+    updateLabel := _Dash_GetUpdateLabel()
+    g_DashControls.updateText := dg.AddText("x20 y430 w400", updateLabel)
+    g_DashControls.updateInstallBtn := dg.AddButton("x430 y425 w65 h24", "Install")
+    g_DashControls.updateInstallBtn.OnEvent("Click", _Dash_OnInstallBtn)
+    g_DashControls.updateInstallBtn.Visible := (g_DashUpdateState.status = "available")
+    g_DashControls.updateCheckBtn := dg.AddButton("x500 y425 w100 h24", "Check Now")
+    g_DashControls.updateCheckBtn.OnEvent("Click", _Dash_OnCheckNowBtn)
+
     dg.SetFont("s10")
-    dg.AddButton("x20 y425 w150", "Check for Updates").OnEvent("Click", _Dash_OnCheckUpdates)
     btnOK := dg.AddButton("x675 y425 w80 Default", "OK")
     btnOK.OnEvent("Click", _Dash_OnClose)
 
@@ -196,6 +210,9 @@ ShowDashboardDialog() {
 
     ; Start background refresh in cool mode (no interaction yet)
     SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_COOL)
+
+    ; Auto-check if stale (never checked, or >12h ago)
+    _Dash_MaybeCheckForUpdates()
 }
 
 ; ============================================================
@@ -259,9 +276,23 @@ _Dash_OnEscalate(*) {
     ToggleAdminMode()
 }
 
-_Dash_OnCheckUpdates(*) {
+_Dash_OnCheckNowBtn(*) {
+    global g_DashUpdateState
+    g_DashUpdateState.status := "checking"
+    g_DashUpdateState.version := ""
+    g_DashUpdateState.downloadUrl := ""
+    _Dash_StartRefreshTimer()
+    SetTimer(_Dash_CheckForUpdatesAsync, -1)
+}
+
+_Dash_OnInstallBtn(*) {
+    global g_DashUpdateState
+    if (g_DashUpdateState.status != "available" || g_DashUpdateState.downloadUrl = "")
+        return
+    url := g_DashUpdateState.downloadUrl
+    ver := g_DashUpdateState.version
     _Dash_OnClose()
-    CheckForUpdates(true)
+    _Update_DownloadAndApply(url, ver)
 }
 
 _Dash_OnClose(*) {
@@ -279,7 +310,7 @@ _Dash_OnClose(*) {
 ; Adaptive Refresh
 ; ============================================================
 ; Always-on timer while dialog is open. Interactions boost to
-; hot (500ms), decays to warm (3s) then cool (30s).
+; hot (250ms), decays to warm (1s) then cool (5s).
 
 _Dash_StartRefreshTimer() {
     global g_DashboardGui, g_DashRefreshTick, DASH_INTERVAL_HOT
@@ -293,6 +324,7 @@ _Dash_RefreshDynamic() {
     global g_DashboardGui, g_DashControls, g_DashRefreshTick
     global g_StorePID, g_GuiPID, g_ViewerPID, cfg
     global g_ConfigEditorPID, g_BlacklistEditorPID
+    global g_DashUpdateState
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
 
@@ -333,7 +365,9 @@ _Dash_RefreshDynamic() {
         "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
         "chkStartMenu", _Shortcut_StartMenuExists() ? 1 : 0,
         "chkStartup", _Shortcut_StartupExists() ? 1 : 0,
-        "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0
+        "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0,
+        "updateText", _Dash_GetUpdateLabel(),
+        "updateInstallVisible", (g_DashUpdateState.status = "available") ? 1 : 0
     )
 
     ; Diff against current control values — skip redraw if nothing changed
@@ -351,7 +385,9 @@ _Dash_RefreshDynamic() {
         || g_DashControls.komorebiText.Value != newState["komorebiText"]
         || g_DashControls.chkStartMenu.Value != newState["chkStartMenu"]
         || g_DashControls.chkStartup.Value != newState["chkStartup"]
-        || g_DashControls.chkAutoUpdate.Value != newState["chkAutoUpdate"])
+        || g_DashControls.chkAutoUpdate.Value != newState["chkAutoUpdate"]
+        || g_DashControls.updateText.Value != newState["updateText"]
+        || g_DashControls.updateInstallBtn.Visible != newState["updateInstallVisible"])
         changed := true
 
     if (!changed)
@@ -375,10 +411,89 @@ _Dash_RefreshDynamic() {
     g_DashControls.chkStartMenu.Value := newState["chkStartMenu"]
     g_DashControls.chkStartup.Value := newState["chkStartup"]
     g_DashControls.chkAutoUpdate.Value := newState["chkAutoUpdate"]
+    g_DashControls.updateText.Value := newState["updateText"]
+    g_DashControls.updateInstallBtn.Visible := newState["updateInstallVisible"]
 
     ; Re-enable repaints and force a single
     DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 1, "ptr", 0)  ; WM_SETREDRAW TRUE
     DllCall("user32\RedrawWindow", "ptr", hWnd, "ptr", 0, "ptr", 0, "uint", 0x0107)  ; RDW_INVALIDATE|RDW_ERASE|RDW_UPDATENOW
+}
+
+; ============================================================
+; Dashboard Update Check (non-blocking, no popups)
+; ============================================================
+
+_Dash_GetUpdateLabel() {
+    global g_DashUpdateState
+    switch g_DashUpdateState.status {
+        case "checking": return "Update: Checking..."
+        case "uptodate": return "Update: Up to date"
+        case "available": return "Update: Version " g_DashUpdateState.version " available"
+        case "error": return "Update: Check failed"
+        default: return "Update: Not checked"
+    }
+}
+
+_Dash_MaybeCheckForUpdates() {
+    global g_LastUpdateCheckTick, g_DashUpdateState, DASH_UPDATE_STALE_MS
+    ; Check if never checked or stale (>12h)
+    if (g_LastUpdateCheckTick = 0 || (A_TickCount - g_LastUpdateCheckTick) >= DASH_UPDATE_STALE_MS) {
+        g_DashUpdateState.status := "checking"
+        _Dash_StartRefreshTimer()
+        SetTimer(_Dash_CheckForUpdatesAsync, -1)
+    }
+}
+
+_Dash_CheckForUpdatesAsync() {
+    global g_DashUpdateState, g_LastUpdateCheckTick, g_DashboardGui
+
+    currentVersion := GetAppVersion()
+    apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
+    whr := ""
+
+    try {
+        whr := ComObject("WinHttp.WinHttpRequest.5.1")
+        whr.Open("GET", apiUrl, false)
+        whr.SetRequestHeader("User-Agent", "Alt-Tabby/" currentVersion)
+        whr.Send()
+
+        if (whr.Status = 200) {
+            response := whr.ResponseText
+            whr := ""  ; Release COM before processing
+
+            if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
+                g_DashUpdateState.status := "error"
+                g_LastUpdateCheckTick := A_TickCount
+                _Dash_StartRefreshTimer()
+                return
+            }
+
+            latestVersion := tagMatch[1]
+            g_LastUpdateCheckTick := A_TickCount
+
+            if (CompareVersions(latestVersion, currentVersion) > 0) {
+                g_DashUpdateState.status := "available"
+                g_DashUpdateState.version := latestVersion
+                g_DashUpdateState.downloadUrl := _Update_FindExeDownloadUrl(response)
+            } else {
+                g_DashUpdateState.status := "uptodate"
+                g_DashUpdateState.version := ""
+                g_DashUpdateState.downloadUrl := ""
+            }
+        } else {
+            g_DashUpdateState.status := "error"
+            g_LastUpdateCheckTick := A_TickCount
+        }
+    } catch {
+        whr := ""
+        g_DashUpdateState.status := "error"
+        g_LastUpdateCheckTick := A_TickCount
+    }
+    whr := ""  ; Final safety
+
+    ; Trigger refresh if dashboard still open
+    if (g_DashboardGui)
+        _Dash_StartRefreshTimer()
 }
 
 ; ============================================================
