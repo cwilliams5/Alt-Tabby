@@ -365,7 +365,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
                     iconCacheMisses += 1
             }
             if (!iconDrawn) {
-                Gdip_FillEllipse(g, Gdip_GetCachedBrush(Gdip_ARGBFromIndex(idx1)), ix, iy, ISize, ISize)
+                Gdip_FillEllipse(g, Gdip_GetCachedBrush(0x60808080), ix, iy, ISize, ISize)
             }
             tPO_IconsTotal += A_TickCount - tIcon
 

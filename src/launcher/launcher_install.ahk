@@ -264,7 +264,7 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
     if (question = "")
         question := "Launch the installed version instead?"
 
-    mismatchGui := Gui("+AlwaysOnTop +Owner", title)
+    mismatchGui := Gui("+AlwaysOnTop +Owner +Center", title)
     mismatchGui.SetFont("s10", "Segoe UI")
 
     mismatchGui.AddText("w380", message)

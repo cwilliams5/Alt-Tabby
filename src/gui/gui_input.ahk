@@ -579,7 +579,7 @@ _GUI_ShowBlacklistDialog(class, title) {
     global gGUI_BlacklistChoice
     gGUI_BlacklistChoice := ""
 
-    dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
+    dlg := Gui("+AlwaysOnTop +Owner +Center", "Blacklist Window")
     dlg.SetFont("s10")
 
     dlg.AddText("x10 y10 w380", "Add to blacklist:")
