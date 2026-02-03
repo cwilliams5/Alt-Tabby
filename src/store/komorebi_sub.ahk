@@ -415,74 +415,130 @@ KomorebiSub_Poll() {
         KomorebiSub_Start()
 }
 
-; Check if a quote character at position `pos` is escaped by counting
-; consecutive backslashes before it. Even count = not escaped, odd = escaped.
-; Used by stream framing (_KSub_ExtractOneJson) only.
-_KSub_IsQuoteEscaped(text, pos) {
-    if (pos <= 1)
-        return false
-    backslashCount := 0
-    checkPos := pos - 1
-    while (checkPos >= 1 && SubStr(text, checkPos, 1) = "\") {
-        backslashCount += 1
-        checkPos -= 1
-    }
-    return (Mod(backslashCount, 2) = 1)
-}
-
-; Extract one complete JSON object from buffer (balanced braces)
+; Extract one complete JSON notification from buffer.
+; Komorebi sends newline-delimited JSON (one notification per line).
+; This replaces the O(n) character-by-character scanner with O(1) InStr.
 _KSub_ExtractOneJson(&s) {
     if (s = "")
         return ""
 
-    ; Find first '{'
-    start := InStr(s, "{")
-    if (!start) {
-        ; No object start; keep buffer bounded
+    ; Komorebi uses newline-delimited JSON
+    nlPos := InStr(s, "`n")
+    if (!nlPos) {
+        ; No complete line yet - check buffer limits
         if (StrLen(s) > 1000000)
-            s := ""
+            s := ""  ; Prevent unbounded growth
         return ""
     }
 
-    ; Scan for matching closing '}' at depth 0, skipping strings
-    i := start
-    depth := 0
-    inString := false
-    len := StrLen(s)
+    ; Extract line (handle both \r\n and \n)
+    line := SubStr(s, 1, nlPos - 1)
+    if (StrLen(line) > 0 && SubStr(line, -1) = "`r")
+        line := SubStr(line, 1, -1)
 
-    while (i <= len) {
-        ch := SubStr(s, i, 1)
-        if (!inString) {
-            if (ch = '"') {
-                inString := true
-            } else if (ch = "{") {
-                depth += 1
-            } else if (ch = "}") {
-                depth -= 1
-                if (depth = 0) {
-                    obj := SubStr(s, start, i - start + 1)
-                    s := SubStr(s, i + 1)
-                    return obj
-                }
-            }
-        } else {
-            if (ch = '"' && !_KSub_IsQuoteEscaped(s, i))
-                inString := false
-        }
-        i += 1
+    ; Consume from buffer
+    s := SubStr(s, nlPos + 1)
+
+    ; Trim and validate
+    line := Trim(line)
+    if (line = "" || SubStr(line, 1, 1) != "{")
+        return ""
+
+    return line
+}
+
+; Quick extract event type from JSON string without full parse.
+; Searches for "type":" pattern near start of the notification.
+; Returns empty string if not found or malformed.
+; Used by Layer 2 early-exit optimization.
+_KSub_QuickExtractEventType(jsonLine) {
+    ; Event type is always near the start (within first ~100 chars)
+    ; Format: {"event":{"type":"EventName",...
+    pos := InStr(jsonLine, '"type":"')
+    if (!pos || pos > 100)
+        return ""
+
+    ; Skip past the pattern (8 chars for '"type":"')
+    pos += 8
+
+    ; Find closing quote
+    endPos := InStr(jsonLine, '"', , pos)
+    if (!endPos || endPos - pos > 50)  ; Event types are short
+        return ""
+
+    return SubStr(jsonLine, pos, endPos - pos)
+}
+
+; Quick extract hwnd from Cloak/Uncloak event without full JSON parse.
+; Searches for "hwnd": followed by a number in the event portion.
+; Returns 0 if not found.
+_KSub_QuickExtractHwnd(jsonLine) {
+    ; hwnd appears in event.content[{...,"hwnd":N,...}]
+    ; Search within first 500 chars (event object is small)
+    searchLimit := Min(500, StrLen(jsonLine))
+    searchPortion := SubStr(jsonLine, 1, searchLimit)
+
+    pos := InStr(searchPortion, '"hwnd":')
+    if (!pos)
+        return 0
+
+    ; Skip past '"hwnd":' (7 chars)
+    pos += 7
+
+    ; Skip whitespace
+    while (pos <= searchLimit && SubStr(searchPortion, pos, 1) = " ")
+        pos++
+
+    ; Extract digits (use InStr instead of comparison operators - AHK v2 string comparison quirk)
+    numStr := ""
+    while (pos <= searchLimit) {
+        ch := SubStr(searchPortion, pos, 1)
+        if (ch = "" || !InStr("0123456789", ch))
+            break
+        numStr .= ch
+        pos++
     }
 
-    ; Incomplete, wait for more data
-    return ""
+    if (numStr = "")
+        return 0
+
+    return Integer(numStr)
 }
 
 ; Process a complete notification JSON
+; Uses three-layer early-exit optimization:
+;   Layer 1: Newline-delimited framing (handled by _KSub_ExtractOneJson)
+;   Layer 2: Quick event type extraction to skip full parse for Cloak/Uncloak/TitleUpdate
+;   Layer 3: Full parse only for structural events (FocusChange, workspace moves, etc.)
 _KSub_OnNotification(jsonLine) {
     global _KSub_LastWorkspaceName, _KSub_WorkspaceCache, gKSub_MruSuppressUntilTick
 
     _KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
 
-    ; Parse the notification JSON once
+    ; ========== Layer 2: Quick event type extraction (no full JSON parse) ==========
+    eventType := _KSub_QuickExtractEventType(jsonLine)
+    _KSub_DiagLog("  Quick event type: '" eventType "'")
+
+    ; Fast path for Cloak/Uncloak: extract hwnd directly, skip 200KB state parse
+    ; These fire 10+ times per workspace switch, so avoiding full parse saves ~400KB-1.6MB
+    if (eventType = "Cloak" || eventType = "Uncloak") {
+        hwnd := _KSub_QuickExtractHwnd(jsonLine)
+        if (hwnd) {
+            isCloaked := (eventType = "Cloak")
+            try WindowStore_UpdateFields(hwnd, { isCloaked: isCloaked })
+            _KSub_DiagLog("  Cloak fast path: hwnd=" hwnd " cloaked=" isCloaked)
+        }
+        _KSub_ScheduleCloakPush()
+        return
+    }
+
+    ; Fast path for TitleUpdate: skip entirely (WinEventHook handles NAMECHANGE faster)
+    if (eventType = "TitleUpdate") {
+        _KSub_DiagLog("  TitleUpdate: skipped (WinEventHook handles)")
+        return
+    }
+
+    ; ========== Layer 3: Full parse for structural events ==========
     parsed := ""
     try parsed := JSON.Load(jsonLine)
     if !(parsed is Map) {
@@ -503,14 +559,11 @@ _KSub_OnNotification(jsonLine) {
 
     ; Extract the event object for workspace/cloak tracking
     eventObj := ""
-    eventType := ""
     if (parsed.Has("event")) {
         eventObj := parsed["event"]
-        if (eventObj is Map)
-            eventType := _KSafe_Str(eventObj, "type")
+        ; eventType already extracted above via quick method
     }
 
-    _KSub_DiagLog("  Event type: '" eventType "'")
     _KSub_DiagLog("Event: " eventType)
 
     ; Track if we explicitly handled workspace change
@@ -649,51 +702,17 @@ _KSub_OnNotification(jsonLine) {
         }
     }
 
-    ; Handle Cloak/Uncloak events for isCloaked tracking
-    if (eventType = "Cloak" || eventType = "Uncloak") {
-        if (eventObj is Map && eventObj.Has("content")) {
-            contentArr := eventObj["content"]
-            ; content = ["ObjectCloaked", { "hwnd": N, ... }]
-            ; Iterate the array to find the object with hwnd
-            if (contentArr is Array) {
-                for _, item in contentArr {
-                    if (item is Map && item.Has("hwnd")) {
-                        hwnd := _KSafe_Int(item, "hwnd")
-                        if (hwnd) {
-                            isCloaked := (eventType = "Cloak")
-                            try WindowStore_UpdateFields(hwnd, { isCloaked: isCloaked })
-                        }
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    ; Skip expensive full-state processing for events that don't change workspace structure.
-    ; Cloak/Uncloak: already fast-pathed above (isCloaked update). These fire per-window
-    ; during workspace switches (10+ events), so skipping saves 50-500ms of redundant work.
-    ; TitleUpdate: WinEventHook handles NAMECHANGE faster (same process, no JSON parsing).
-    ;
-    ; All other events run ProcessFullState because they may change workspace structure:
+    ; Process full state for structural events.
+    ; (Cloak/Uncloak/TitleUpdate already returned early above via Layer 2 fast path)
+    ; Structural events that reach here may change workspace structure:
     ; - FocusChange: can signal external workspace switches (notification clicks)
     ; - Workspace/Move events: change window→workspace mapping
     ; - Manage/Unmanage: add/remove windows from komorebi tracking
-    if (eventType != "Cloak" && eventType != "Uncloak" && eventType != "TitleUpdate") {
-        _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
-    }
+    _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
 
-    ; Push changes to clients.
-    ; For Cloak/Uncloak: batch into a single deferred push (workspace switches fire 10+
-    ; Cloak events rapidly — batching avoids 10 redundant projection+delta+JSON cycles).
-    ; For all other events: push immediately.
-    if (eventType = "Cloak" || eventType = "Uncloak") {
-        _KSub_ScheduleCloakPush()
-    } else {
-        ; A structural event flushes any pending cloak batch immediately
-        _KSub_CancelCloakTimer()
-        try Store_PushToClients()
-    }
+    ; Push changes to clients (flush any pending cloak batch first)
+    _KSub_CancelCloakTimer()
+    try Store_PushToClients()
 }
 
 ; Schedule a deferred push for batched Cloak/Uncloak events.

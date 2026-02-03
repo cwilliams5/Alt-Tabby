@@ -681,8 +681,8 @@ global gConfigRegistry := [
      long: "Settings for komorebi tiling window manager integration."},
 
     {s: "Komorebi", k: "WorkspaceConfirmationMethod", g: "KomorebiWorkspaceConfirmMethod",
-     t: "enum", default: "PollKomorebic", options: ["PollKomorebic", "IsWindow", "AwaitDelta"],
-     d: "How Alt-Tabby verifies a workspace switch completed. PollKomorebic = polls komorebic, higher CPU but works multi-monitor. IsWindow = checks window visibility, lower CPU but doesn't work with Virtual Desktops. AwaitDelta = waits for store delta, lower CPU but could be higher latency."},
+     t: "enum", default: "PollCloak", options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
+     d: "How Alt-Tabby verifies a workspace switch completed. PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},
 
     ; ============================================================
     ; Komorebi Subscription Timing

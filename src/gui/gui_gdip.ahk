@@ -5,6 +5,7 @@
 ; Global GDI+ state
 global gGdip_Token := 0
 global gGdip_G := 0
+global gGdip_GraphicsHdc := 0      ; HDC the Graphics was created from (for cache validation)
 global gGdip_BackHdc := 0
 global gGdip_BackHBM := 0
 global gGdip_BackPrev := 0
@@ -73,13 +74,14 @@ Gdip_Shutdown() {
 
 ; Ensure backbuffer exists at specified size
 Gdip_EnsureBackbuffer(wPhys, hPhys) {
-    global gGdip_BackHdc, gGdip_BackHBM, gGdip_BackPrev, gGdip_BackW, gGdip_BackH, gGdip_G
+    global gGdip_BackHdc, gGdip_BackHBM, gGdip_BackPrev, gGdip_BackW, gGdip_BackH, gGdip_G, gGdip_GraphicsHdc
 
     if (!gGdip_BackHdc) {
         gGdip_BackHdc := DllCall("gdi32\CreateCompatibleDC", "ptr", 0, "ptr")
         if (gGdip_G) {
             try DllCall("gdiplus\GdipDeleteGraphics", "ptr", gGdip_G)
             gGdip_G := 0
+            gGdip_GraphicsHdc := 0
         }
     }
 
@@ -109,20 +111,29 @@ Gdip_EnsureBackbuffer(wPhys, hPhys) {
     if (gGdip_G) {
         try DllCall("gdiplus\GdipDeleteGraphics", "ptr", gGdip_G)
         gGdip_G := 0
+        gGdip_GraphicsHdc := 0
     }
 
     gGdip_BackW := wPhys
     gGdip_BackH := hPhys
 }
 
-; Get or create Graphics object
+; Get or create Graphics object (cached when HDC unchanged)
+; The Graphics object is reused as long as the backbuffer HDC hasn't changed.
+; When backbuffer is reallocated (size change), gGdip_G is cleared by Gdip_EnsureBackbuffer().
 Gdip_EnsureGraphics() {
-    global gGdip_BackHdc, gGdip_G
+    global gGdip_BackHdc, gGdip_G, gGdip_GraphicsHdc
 
     if (!gGdip_BackHdc) {
         return 0
     }
 
+    ; Cache hit: Graphics still valid for current HDC (saves 4 DllCalls per frame)
+    if (gGdip_G && gGdip_GraphicsHdc = gGdip_BackHdc) {
+        return gGdip_G
+    }
+
+    ; Cache miss: HDC changed or no Graphics exists - recreate
     if (gGdip_G) {
         try DllCall("gdiplus\GdipDeleteGraphics", "ptr", gGdip_G)
         gGdip_G := 0
@@ -132,11 +143,13 @@ Gdip_EnsureGraphics() {
 
     DllCall("gdiplus\GdipCreateFromHDC", "ptr", gGdip_BackHdc, "ptr*", &gGdip_G)
     if (!gGdip_G) {
+        gGdip_GraphicsHdc := 0
         return 0
     }
 
     DllCall("gdiplus\GdipSetSmoothingMode", "ptr", gGdip_G, "int", GDIP_SMOOTHING_ANTIALIAS)
     DllCall("gdiplus\GdipSetTextRenderingHint", "ptr", gGdip_G, "int", GDIP_TEXT_RENDER_ANTIALIAS_GRIDFIT)
+    gGdip_GraphicsHdc := gGdip_BackHdc
     return gGdip_G
 }
 
@@ -150,7 +163,15 @@ Gdip_FontStyleFromWeight(w) {
 
 ; Dispose all cached GDI+ resources
 Gdip_DisposeResources() {
-    global gGdip_Res, gGdip_ResScale, gGdip_BrushCache, gGdip_PenCache
+    global gGdip_Res, gGdip_ResScale, gGdip_BrushCache, gGdip_PenCache, gGdip_G, gGdip_GraphicsHdc
+
+    ; Delete and invalidate cached Graphics object (force recreation on next EnsureGraphics call)
+    ; Must delete before clearing pointer to prevent leak
+    if (gGdip_G) {
+        try DllCall("gdiplus\GdipDeleteGraphics", "ptr", gGdip_G)
+        gGdip_G := 0
+    }
+    gGdip_GraphicsHdc := 0
 
     ; Always clear dynamic brush/pen caches (independent of gGdip_Res)
     for _, pBr in gGdip_BrushCache {

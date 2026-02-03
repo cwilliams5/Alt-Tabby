@@ -534,11 +534,14 @@ GUI_ActivateItem(item) {
         gGUI_PendingDeadline := A_TickCount + wsPollTimeout
         gGUI_PendingPhase := "polling"
         gGUI_PendingWaitUntil := 0
-        gGUI_PendingTempFile := A_Temp "\tabby_ws_query_" A_TickCount ".tmp"
 
-        ; Create WScript.Shell once (reuse for all polls)
-        if (gGUI_PendingShell = "")
-            gGUI_PendingShell := ComObject("WScript.Shell")
+        ; Only initialize cmd.exe resources for PollKomorebic method (others don't need them)
+        if (cfg.KomorebiWorkspaceConfirmMethod = "PollKomorebic") {
+            gGUI_PendingTempFile := A_Temp "\tabby_ws_query_" A_TickCount ".tmp"
+            ; Create WScript.Shell once (reuse for all polls)
+            if (gGUI_PendingShell = "")
+                gGUI_PendingShell := ComObject("WScript.Shell")
+        }
 
         ; Start async timer - configurable via cfg.AltTabAsyncActivationPollMs
         ; Lower = more responsive but higher CPU (spawns cmd.exe each poll)
@@ -629,28 +632,60 @@ _GUI_AsyncActivationTick() {
             return
         }
 
-        ; Poll current workspace (non-blocking: Run with wait=false, check file next tick)
-        try {
-            try FileDelete(gGUI_PendingTempFile)
-            queryCmd := 'cmd.exe /c "' cfg.KomorebicExe '" query focused-workspace-name > "' gGUI_PendingTempFile '"'
-            ; Run hidden, DON'T wait (false) - let it run async
-            gGUI_PendingShell.Run(queryCmd, 0, false)
-        }
+        ; Dispatch based on confirmation method
+        switchComplete := false
+        confirmMethod := cfg.KomorebiWorkspaceConfirmMethod
 
-        ; Check if switch completed (file from PREVIOUS tick)
-        if (FileExist(gGUI_PendingTempFile)) {
+        if (confirmMethod = "PollCloak") {
+            ; PollCloak: Check if target window is uncloaked via DwmGetWindowAttribute
+            ; When komorebi switches workspaces, it uncloaks windows on the target workspace
+            ; Sub-microsecond DllCall vs 50-100ms cmd.exe spawn
+            ; DWMWA_CLOAKED = 14 (Windows constant)
+            static cloakBuf := Buffer(4, 0)
+            hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", gGUI_PendingHwnd, "uint", 14, "ptr", cloakBuf.Ptr, "uint", 4, "int")
+            isCloaked := (hr = 0) && (NumGet(cloakBuf, 0, "UInt") != 0)
+            if (!isCloaked) {
+                switchComplete := true
+                _GUI_LogEvent("ASYNC POLLCLOAK: window uncloaked, switch complete")
+            }
+        } else if (confirmMethod = "AwaitDelta") {
+            ; AwaitDelta: Watch gGUI_CurrentWSName (updated by deltas via GUI_UpdateCurrentWSFromPayload)
+            ; Zero spawning, zero DllCalls - but depends on IPC latency
+            if (gGUI_CurrentWSName = gGUI_PendingWSName) {
+                switchComplete := true
+                _GUI_LogEvent("ASYNC AWAITDELTA: workspace name matches, switch complete")
+            }
+        } else {
+            ; PollKomorebic (default): Poll via cmd.exe spawning
+            ; Spawns cmd.exe /c komorebic query focused-workspace-name every tick
+            ; Highest CPU but works on multi-monitor setups
             try {
-                result := Trim(FileRead(gGUI_PendingTempFile))
-                if (result = gGUI_PendingWSName) {
-                    ; Switch complete! Move to waiting phase
-                    ; RACE FIX: Phase transition must be atomic
-                    Critical "On"
-                    gGUI_PendingPhase := "waiting"
-                    gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
-                    Critical "Off"
-                    return
+                try FileDelete(gGUI_PendingTempFile)
+                queryCmd := 'cmd.exe /c "' cfg.KomorebicExe '" query focused-workspace-name > "' gGUI_PendingTempFile '"'
+                ; Run hidden, DON'T wait (false) - let it run async
+                gGUI_PendingShell.Run(queryCmd, 0, false)
+            }
+
+            ; Check if switch completed (file from PREVIOUS tick)
+            if (FileExist(gGUI_PendingTempFile)) {
+                try {
+                    result := Trim(FileRead(gGUI_PendingTempFile))
+                    if (result = gGUI_PendingWSName) {
+                        switchComplete := true
+                        _GUI_LogEvent("ASYNC POLLKOMOREBIC: workspace name matches, switch complete")
+                    }
                 }
             }
+        }
+
+        if (switchComplete) {
+            ; Switch complete! Move to waiting phase
+            ; RACE FIX: Phase transition must be atomic
+            Critical "On"
+            gGUI_PendingPhase := "waiting"
+            gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
+            Critical "Off"
+            return
         }
         return  ; Keep polling
     }
