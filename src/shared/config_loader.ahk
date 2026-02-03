@@ -58,6 +58,7 @@ ConfigLoader_Init(basePath := "") {
         _CL_CreateDefaultIni(gConfigIniPath)
     } else {
         _CL_SupplementIni(gConfigIniPath)  ; Add missing keys
+        _CL_CleanupOrphanedKeys(gConfigIniPath)  ; Remove obsolete keys
     }
 
     _CL_LoadAllSettings()  ; Load user overrides
@@ -215,6 +216,112 @@ _CL_SupplementIni(path) {
         ; Clean up temp file on failure
         try FileDelete(tempPath)
         throw e  ; Re-throw so caller knows it failed
+    }
+}
+
+; Remove orphaned keys from known sections
+; "Orphaned" = key exists in config.ini but not in gConfigRegistry
+; Only removes from sections we own (defined in registry); unknown sections preserved
+_CL_CleanupOrphanedKeys(path) {
+    global gConfigRegistry
+
+    if (!FileExist(path))
+        return
+
+    ; Build map of known sections -> known keys
+    knownSections := Map()  ; section name -> Map of key names
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section") {
+            if (!knownSections.Has(entry.name))
+                knownSections[entry.name] := Map()
+        } else if (entry.HasOwnProp("s") && entry.HasOwnProp("k")) {
+            if (!knownSections.Has(entry.s))
+                knownSections[entry.s] := Map()
+            knownSections[entry.s][entry.k] := true
+        }
+    }
+
+    content := FileRead(path, "UTF-8")
+    lines := StrSplit(content, "`n", "`r")
+
+    newLines := []
+    pendingComments := []  ; Buffer for ;;; comment lines before a key
+    currentSection := ""
+    sectionIsKnown := false
+    modified := false
+
+    for _, line in lines {
+        trimmed := Trim(line)
+
+        ; Section header
+        if (SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]") {
+            ; Flush any pending comments (they weren't followed by an orphan key)
+            for _, c in pendingComments
+                newLines.Push(c)
+            pendingComments := []
+
+            currentSection := SubStr(trimmed, 2, -1)
+            sectionIsKnown := knownSections.Has(currentSection)
+            newLines.Push(line)
+            continue
+        }
+
+        ; Description comment line (;;; prefix) - buffer it
+        if (SubStr(trimmed, 1, 3) = ";;;") {
+            pendingComments.Push(line)
+            continue
+        }
+
+        ; Key line (commented or uncommented): ; Key=... or Key=...
+        if (RegExMatch(trimmed, "^;?\s*([A-Za-z_][A-Za-z0-9_]*)\s*=", &m)) {
+            keyName := m[1]
+
+            ; Check if this is an orphaned key in a known section
+            if (sectionIsKnown && !knownSections[currentSection].Has(keyName)) {
+                ; Orphaned - skip this line AND its pending comments
+                pendingComments := []
+                modified := true
+                continue
+            }
+
+            ; Valid key - flush pending comments and keep this line
+            for _, c in pendingComments
+                newLines.Push(c)
+            pendingComments := []
+            newLines.Push(line)
+            continue
+        }
+
+        ; Any other line (blank, regular comment, etc.)
+        ; Flush pending comments first
+        for _, c in pendingComments
+            newLines.Push(c)
+        pendingComments := []
+        newLines.Push(line)
+    }
+
+    ; Flush any trailing pending comments
+    for _, c in pendingComments
+        newLines.Push(c)
+
+    if (!modified)
+        return
+
+    ; Write back safely
+    newContent := ""
+    for i, line in newLines {
+        newContent .= (i > 1 ? "`n" : "") . line
+    }
+
+    tempPath := path ".tmp"
+    try {
+        if (FileExist(tempPath))
+            FileDelete(tempPath)
+        FileAppend(newContent, tempPath, "UTF-8")
+        FileMove(tempPath, path, true)
+    } catch as e {
+        try FileDelete(tempPath)
+        throw e
     }
 }
 

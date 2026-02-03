@@ -621,6 +621,77 @@ RunUnitTests_Core() {
         try DirDelete(testWipDir, true)
     }
 
+    ; Test 2.6: _CL_CleanupOrphanedKeys removes orphaned keys from known sections
+    Log("Testing CleanupOrphanedKeys...")
+    testCleanupDir := A_Temp "\tabby_cleanup_test_" A_TickCount
+    testCleanupPath := testCleanupDir "\config.ini"
+
+    try {
+        DirCreate(testCleanupDir)
+
+        ; Create config.ini with:
+        ; - Valid key in known section (should keep)
+        ; - Orphaned key in known section (should remove)
+        ; - Unknown section entirely (should keep)
+        cleanupContent := ""
+        cleanupContent .= "[AltTab]`n"
+        cleanupContent .= ";;; Valid setting description`n"
+        cleanupContent .= "GraceMs=200`n"
+        cleanupContent .= ";;; Orphaned setting (doesn't exist in registry)`n"
+        cleanupContent .= "; ObsoleteOldSetting=true`n"
+        cleanupContent .= "`n"
+        cleanupContent .= "[CustomUserSection]`n"
+        cleanupContent .= ";;; User's own custom section`n"
+        cleanupContent .= "MyCustomKey=value`n"
+        FileAppend(cleanupContent, testCleanupPath, "UTF-8")
+
+        ; Run cleanup
+        _CL_CleanupOrphanedKeys(testCleanupPath)
+
+        ; Read back and verify
+        cleanedContent := FileRead(testCleanupPath, "UTF-8")
+
+        hasValidKey := InStr(cleanedContent, "GraceMs=200")
+        hasOrphanedKey := InStr(cleanedContent, "ObsoleteOldSetting")
+        hasOrphanedComment := InStr(cleanedContent, "Orphaned setting")
+        hasCustomSection := InStr(cleanedContent, "[CustomUserSection]")
+        hasCustomKey := InStr(cleanedContent, "MyCustomKey=value")
+
+        cleanupPassed := true
+        if (!hasValidKey) {
+            Log("FAIL: CleanupOrphanedKeys removed valid key GraceMs")
+            cleanupPassed := false
+        }
+        if (hasOrphanedKey) {
+            Log("FAIL: CleanupOrphanedKeys did not remove orphaned key ObsoleteOldSetting")
+            cleanupPassed := false
+        }
+        if (hasOrphanedComment) {
+            Log("FAIL: CleanupOrphanedKeys did not remove orphaned key's comment")
+            cleanupPassed := false
+        }
+        if (!hasCustomSection || !hasCustomKey) {
+            Log("FAIL: CleanupOrphanedKeys removed unknown section [CustomUserSection]")
+            cleanupPassed := false
+        }
+
+        if (cleanupPassed) {
+            Log("PASS: CleanupOrphanedKeys removed orphaned keys from known sections, preserved unknown sections")
+            TestPassed++
+        } else {
+            Log("  Content after cleanup: " SubStr(cleanedContent, 1, 300))
+            TestErrors++
+        }
+
+        ; Cleanup
+        try FileDelete(testCleanupPath)
+        try DirDelete(testCleanupDir)
+    } catch as e {
+        Log("FAIL: CleanupOrphanedKeys test error: " e.Message)
+        TestErrors++
+        try DirDelete(testCleanupDir, true)
+    }
+
     ; Test 3: Config registry completeness - every setting has required fields
     Log("Testing config registry completeness...")
     registryErrors := []
