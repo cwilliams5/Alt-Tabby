@@ -302,6 +302,8 @@ Named pipe for store<->client communication.
 |--------|------|---------|-------------|
 | `StorePipeName` | string | `tabby_store_v1` | Named pipe name for store communication |
 | `IdleTickMs` | int | `100` | Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms. |
+| `SparseFullSyncEvery` | int | `10` | Sparse delta mode: 0=disabled (full records always), N>0=every Nth push sends full records for self-healing. |
+| `DeltaIncludeMeta` | bool | `true` | Include workspace meta in every delta (self-healing). Disable only for testing. |
 
 ## Tools
 
@@ -483,4 +485,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-01 with 186 total settings.*
+*Generated on 2026-02-02 with 188 total settings.*

@@ -11,6 +11,15 @@ global gWS_ScanId := 0
 global gWS_Config := Map()
 global gWS_Meta := Map()
 
+; Sort/projection cache - tracks when sort-affecting or filter-affecting fields change
+global gWS_SortDirty := true
+global gWS_CachedProjRecs := ""      ; Cached sorted record references
+global gWS_CachedProjOptsKey := ""   ; Opts key used for cache
+; Fields that affect projection membership or sort order
+global gWS_ProjectionFields := Map(
+    "lastActivatedTick", true, "isFocused", true, "z", true,
+    "isOnCurrentWorkspace", true, "isCloaked", true, "isMinimized", true)
+
 ; Diagnostic: track what's causing rev bumps
 global gWS_DiagChurn := Map()  ; field -> count of changes
 global gWS_DiagSource := Map() ; source -> count of rev bumps
@@ -62,7 +71,7 @@ WindowStore_BeginScan() {
 }
 
 WindowStore_EndScan(graceMs := "") {
-    global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev
+    global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev, gWS_SortDirty
     now := A_TickCount
     ttl := (graceMs != "" ? graceMs + 0 : gWS_Config["MissingTTLms"] + 0)
     removed := 0
@@ -109,17 +118,19 @@ WindowStore_EndScan(graceMs := "") {
         }
     }
     if (changed) {
+        gWS_SortDirty := true
         _WS_BumpRev("EndScan")
     }
     return { removed: removed, rev: gWS_Rev }
 }
 
 WindowStore_UpsertWindow(records, source := "") {
-    global gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn
+    global gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortDirty, gWS_ProjectionFields
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
     added := 0
     updated := 0
+    projDirty := false
     for _, rec in records {
         if (!IsObject(rec))
             continue
@@ -156,6 +167,8 @@ WindowStore_UpsertWindow(records, source := "") {
                         gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
                     row.%k% := v
                     rowChanged := true
+                    if (gWS_ProjectionFields.Has(k))
+                        projDirty := true
                 }
             }
         } else {
@@ -182,6 +195,8 @@ WindowStore_UpsertWindow(records, source := "") {
         ; Enqueue for enrichment if missing data
         _WS_EnqueueIfNeeded(row)
     }
+    if (added || projDirty)
+        gWS_SortDirty := true
     if (added || updated) {
         _WS_BumpRev("UpsertWindow:" . source)
     }
@@ -201,7 +216,7 @@ WindowStore_UpsertWindow(records, source := "") {
 global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true, "iconMethod", true, "iconLastRefreshTick", true)
 
 WindowStore_UpdateFields(hwnd, patch, source := "") {
-    global gWS_Store, gWS_Rev, gWS_InternalFields
+    global gWS_Store, gWS_Rev, gWS_InternalFields, gWS_SortDirty, gWS_ProjectionFields
     ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
     ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
     Critical "On"
@@ -210,6 +225,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
         return { changed: false, exists: false, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
     row := gWS_Store[hwnd]
     changed := false
+    projDirty := false
     ; Handle both Map and plain object patches
     if (patch is Map) {
         for k, v in patch {
@@ -218,6 +234,8 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
                 ; Only count as "changed" if it's not an internal tracking field
                 if (!gWS_InternalFields.Has(k))
                     changed := true
+                if (gWS_ProjectionFields.Has(k))
+                    projDirty := true
             }
         }
     } else if (IsObject(patch)) {
@@ -227,9 +245,13 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
                 row.%k% := v
                 if (!gWS_InternalFields.Has(k))
                     changed := true
+                if (gWS_ProjectionFields.Has(k))
+                    projDirty := true
             }
         }
     }
+    if (projDirty)
+        gWS_SortDirty := true
     if (changed) {
         _WS_BumpRev("UpdateFields:" . source)
     }
@@ -237,7 +259,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
 }
 
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {
-    global gWS_Store, gWS_Rev
+    global gWS_Store, gWS_Rev, gWS_SortDirty
     removed := 0
     ; RACE FIX: Wrap delete loop + rev bump in Critical to prevent IPC requests
     ; from seeing inconsistent state (consistent with ValidateExistence/PurgeBlacklisted)
@@ -255,6 +277,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         removed += 1
     }
     if (removed) {
+        gWS_SortDirty := true
         _WS_BumpRev("RemoveWindow")
     }
     Critical "Off"
@@ -273,7 +296,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
 ; for hidden windows (like Outlook message windows).
 
 WindowStore_ValidateExistence() {
-    global gWS_Store, gWS_Rev
+    global gWS_Store, gWS_Rev, gWS_SortDirty
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)
@@ -340,6 +363,7 @@ WindowStore_ValidateExistence() {
     }
 
     if (removed > 0) {
+        gWS_SortDirty := true
         _WS_BumpRev("ValidateExistence")
     }
     Critical "Off"
@@ -350,7 +374,7 @@ WindowStore_ValidateExistence() {
 ; Purge all windows from store that match the current blacklist
 ; Called after blacklist reload to remove newly-blacklisted windows
 WindowStore_PurgeBlacklisted() {
-    global gWS_Store, gWS_Rev
+    global gWS_Store, gWS_Rev, gWS_SortDirty
     removed := 0
     toRemove := []
 
@@ -380,6 +404,7 @@ WindowStore_PurgeBlacklisted() {
     }
 
     if (removed) {
+        gWS_SortDirty := true
         _WS_BumpRev("PurgeBlacklisted")
     }
     return { removed: removed, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
@@ -436,7 +461,7 @@ WindowStore_GetByHwnd(hwnd) {
 }
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
-    global gWS_Meta, gWS_Rev, gWS_Store
+    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortDirty
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
     ; and the iteration loop must be atomic so a timer can't observe stale meta values
     ; between the name comparison (line below) and the name write.
@@ -464,8 +489,10 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
     }
     ; Critical auto-released on return
     ; Only bump rev if at least one window's state actually changed
-    if (anyFlipped)
+    if (anyFlipped) {
+        gWS_SortDirty := true
         _WS_BumpRev("SetCurrentWorkspace")
+    }
 }
 
 WindowStore_GetCurrentWorkspace() {
@@ -474,12 +501,28 @@ WindowStore_GetCurrentWorkspace() {
 }
 
 WindowStore_GetProjection(opts := 0) {
-    global gWS_Store, gWS_Meta
+    global gWS_Store, gWS_Meta, gWS_SortDirty, gWS_CachedProjRecs, gWS_CachedProjOptsKey
     sort := _WS_GetOpt(opts, "sort", "MRU")
     currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
     includeMin := _WS_GetOpt(opts, "includeMinimized", true)
     includeCloaked := _WS_GetOpt(opts, "includeCloaked", false)
     columns := _WS_GetOpt(opts, "columns", "items")
+
+    optsKey := sort "|" currentOnly "|" includeMin "|" includeCloaked "|" columns
+
+    ; Skip filter+sort and reuse cached sorted records when order unchanged
+    if (!gWS_SortDirty && IsObject(gWS_CachedProjRecs) && gWS_CachedProjOptsKey = optsKey) {
+        if (columns = "hwndsOnly") {
+            hwnds := []
+            for _, rec in gWS_CachedProjRecs
+                hwnds.Push(rec.hwnd)
+            return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta }
+        }
+        rows := []
+        for _, rec in gWS_CachedProjRecs
+            rows.Push(_WS_ToItem(rec))
+        return { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
+    }
 
     ; NOTE: Blacklist filtering happens at producer level (winenum, winevent, komorebi)
     ; so blacklisted windows never enter the store. No need to filter here.
@@ -511,6 +554,11 @@ WindowStore_GetProjection(opts := 0) {
     } else {
         _WS_TrySort(items, _WS_CmpMRU)
     }
+
+    ; Update projection cache
+    gWS_SortDirty := false
+    gWS_CachedProjRecs := items
+    gWS_CachedProjOptsKey := optsKey
 
     if (columns = "hwndsOnly") {
         hwnds := []
@@ -952,11 +1000,23 @@ WindowStore_CleanupAllIcons() {
 ; ============================================================
 
 ; Build delta between previous and current projection items
+; DESIGN: Sparse mode with periodic full-sync resync is intentional.
+; The resync counter ensures client-side self-healing. Do not suggest going fully sparse.
 ; Parameters:
 ;   prevItems - Array of previous projection items
 ;   nextItems - Array of current projection items
+;   sparse    - When true, emit only changed fields + hwnd (reduces JSON payload)
+;               New records (hwnd not in prev) always emit full record regardless
 ; Returns: { upserts: [], removes: [] }
-WindowStore_BuildDelta(prevItems, nextItems) {
+WindowStore_BuildDelta(prevItems, nextItems, sparse := false) {
+    ; Fields compared for delta detection. Using a loop avoids an AHK v2 parser bug
+    ; where bare method calls after many consecutive single-line if statements silently fail.
+    ; Must include ALL fields from _WS_ToItem that affect display or sort order.
+    ; Notably: lastActivatedTick drives MRU sort - omitting it causes stale ordering in sparse mode.
+    static deltaFields := ["title", "class", "z", "pid", "isFocused", "workspaceName",
+        "isCloaked", "isMinimized", "isOnCurrentWorkspace", "processName", "iconHicon",
+        "lastActivatedTick"]
+
     prevMap := Map()
     for _, rec in prevItems
         prevMap[rec.hwnd] := rec
@@ -970,16 +1030,29 @@ WindowStore_BuildDelta(prevItems, nextItems) {
     ; Find new/changed items
     for hwnd, rec in nextMap {
         if (!prevMap.Has(hwnd)) {
+            ; New record: always emit full record (even in sparse mode)
             upserts.Push(rec)
         } else {
             old := prevMap[hwnd]
-            ; Compare key fields that matter for display
-            if (rec.title != old.title || rec.z != old.z
-                || rec.pid != old.pid || rec.isFocused != old.isFocused
-                || rec.workspaceName != old.workspaceName || rec.isCloaked != old.isCloaked
-                || rec.isMinimized != old.isMinimized || rec.isOnCurrentWorkspace != old.isOnCurrentWorkspace
-                || rec.processName != old.processName || rec.iconHicon != old.iconHicon) {
-                upserts.Push(rec)
+            changed := false
+            for _, field in deltaFields {
+                if (rec.%field% != old.%field%) {
+                    changed := true
+                    break
+                }
+            }
+            if (changed) {
+                if (sparse) {
+                    ; Sparse: emit only changed fields + hwnd
+                    sparseRec := {hwnd: hwnd}
+                    for _, field in deltaFields {
+                        if (rec.%field% != old.%field%)
+                            sparseRec.%field% := rec.%field%
+                    }
+                    upserts.Push(sparseRec)
+                } else {
+                    upserts.Push(rec)
+                }
             }
         }
     }

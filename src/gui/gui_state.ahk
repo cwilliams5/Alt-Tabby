@@ -111,6 +111,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         gGUI_State := "ALT_PENDING"
         gGUI_FirstTabTick := 0
         gGUI_TabCount := 0
+        global gGUI_WSContextSwitch
+        gGUI_WSContextSwitch := false
 
         ; Drop client to active polling on Alt keypress — ensures we're ready to
         ; read pending deltas or prewarm response, even if prewarm is skipped
@@ -320,16 +322,19 @@ GUI_GraceTimerFired() {
 
 ; ========================= FROZEN STATE HELPERS =========================
 
-; Reset selection to MRU position 2 (the "previous" window)
-; and clamp to list bounds. Used after filtering/toggling workspace mode.
+; Reset selection to MRU position (1 or 2) and clamp to list bounds.
+; After a workspace switch, sel=1 (focused window on NEW workspace is what you want).
+; Otherwise, sel=2 (the "previous" window — standard Alt-Tab behavior).
 ; Parameters:
 ;   listRef - Optional reference to the list to use (default: gGUI_FrozenItems)
 ; Returns: The new selection index
 _GUI_ResetSelectionToMRU(listRef := "") {
-    global gGUI_Sel, gGUI_ScrollTop, gGUI_FrozenItems
+    global gGUI_Sel, gGUI_ScrollTop, gGUI_FrozenItems, gGUI_WSContextSwitch
     items := (listRef != "") ? listRef : gGUI_FrozenItems
 
-    gGUI_Sel := 2  ; MRU position 2 = previous window
+    ; After a workspace switch, the focused window on the new workspace is at position 1.
+    ; Keep sel=1 for the entire overlay session so Ctrl toggles don't revert to sel=2.
+    gGUI_Sel := gGUI_WSContextSwitch ? 1 : 2
     if (gGUI_Sel > items.Length) {
         gGUI_Sel := (items.Length > 0) ? 1 : 0
     }

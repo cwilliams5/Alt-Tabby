@@ -535,24 +535,40 @@ _Viewer_ApplyDelta(payload) {
             continue
         }
 
-        ; Check if sort order might have changed
+        ; Merge sparse records into existing cache (sparse deltas may only contain changed fields)
         if (gViewer_RecByHwnd.Has(hwnd)) {
-            old := gViewer_RecByHwnd[hwnd]
-            if (gViewer_Sort = "Z" && _Viewer_Get(rec, "z", 0) != _Viewer_Get(old, "z", 0)) {
+            existing := gViewer_RecByHwnd[hwnd]
+            old := existing  ; Reference for sort comparison before merge
+
+            ; Check if sort order might have changed (use old value as fallback for sparse records)
+            if (gViewer_Sort = "Z" && _Viewer_Get(rec, "z", _Viewer_Get(old, "z", 0)) != _Viewer_Get(old, "z", 0)) {
                 needsRefresh := true
-            } else if (gViewer_Sort = "MRU" && _Viewer_Get(rec, "lastActivatedTick", 0) != _Viewer_Get(old, "lastActivatedTick", 0)) {
+            } else if (gViewer_Sort = "MRU" && _Viewer_Get(rec, "lastActivatedTick", _Viewer_Get(old, "lastActivatedTick", 0)) != _Viewer_Get(old, "lastActivatedTick", 0)) {
                 needsRefresh := true
             }
+
+            ; Merge: update only fields present in the sparse record
+            if (rec is Map) {
+                for k, v in rec
+                    existing[k] := v
+            } else {
+                for k in rec.OwnProps()
+                    existing.%k% := rec.%k%
+            }
+        } else {
+            ; New record: store as-is
+            gViewer_RecByHwnd[hwnd] := rec
         }
 
+        ; Use the merged record for display (ensures all fields are present)
+        displayRec := gViewer_RecByHwnd[hwnd]
         if (gViewer_RowByHwnd.Has(hwnd)) {
             row := gViewer_RowByHwnd[hwnd]
-            gViewer_LV.Modify(row, "", _Viewer_BuildRowArgs(rec)*)
+            gViewer_LV.Modify(row, "", _Viewer_BuildRowArgs(displayRec)*)
         } else {
-            row := gViewer_LV.Add("", _Viewer_BuildRowArgs(rec)*)
+            row := gViewer_LV.Add("", _Viewer_BuildRowArgs(displayRec)*)
             gViewer_RowByHwnd[hwnd] := row
         }
-        gViewer_RecByHwnd[hwnd] := rec
     }
 
     gViewer_LV.Opt("+Redraw")

@@ -20,7 +20,7 @@ GUI_UpdateFooterText() {
 ; ========================= CURRENT WORKSPACE TRACKING =========================
 
 GUI_UpdateCurrentWSFromPayload(payload) {
-    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop
+    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch
 
     if (!payload.Has("meta"))
         return
@@ -39,16 +39,19 @@ GUI_UpdateCurrentWSFromPayload(payload) {
         gGUI_CurrentWSName := wsName
         GUI_UpdateFooterText()
 
-        ; Reset selection to first item when workspace changes in "current" mode.
-        ; The user's tab position was contextual to the old workspace — retaining it
-        ; on the new workspace highlights an unrelated window or nothing at all
-        ; (if the new workspace has fewer windows than the old selection index).
+        ; Reset selection to first item when workspace changes during ACTIVE state.
+        ; A workspace switch is a context switch: position 1 is the focused window
+        ; on the NEW workspace, not "the window you're already on".  Keeping sel=2
+        ; (the default from _GUI_ResetSelectionToMRU) would highlight the focused
+        ; window from the OLD workspace — wrong after any workspace switch.
+        ; Applies in both "current" and "all" mode (the context switch is the same).
         ; RACE FIX: Wrap in Critical to prevent a hotkey (Tab/Ctrl) from modifying
         ; gGUI_Sel between the state check and the assignment.
         Critical "On"
-        if (gGUI_WorkspaceMode = "current" && gGUI_State = "ACTIVE") {
+        if (gGUI_State = "ACTIVE") {
             gGUI_Sel := 1
             gGUI_ScrollTop := 0
+            gGUI_WSContextSwitch := true  ; Sticky for this overlay session
         }
         Critical "Off"
     }

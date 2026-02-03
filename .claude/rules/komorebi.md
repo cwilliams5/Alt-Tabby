@@ -13,6 +13,7 @@
 For workspace focus events:
 - Trust EVENT content for new workspace name/index
 - DON'T trust state's `ring.focused` - may be stale
+- DON'T trust per-workspace container/window focus data either (e.g., Spotify reported as Main's focused window during a Media→Main switch)
 - Pass `skipWorkspaceUpdate=true` to ProcessFullState from notifications
 
 For move events:
@@ -36,6 +37,28 @@ Content is accessed via `eventObj["content"]` — cJson returns the correct AHK 
 - Object: `{"EventType": 1}` -> AHK Map
 
 No manual type detection needed. Use `_KSafe_Str()`, `_KSafe_Int()` for safe property access.
+
+## MRU During Workspace Switches
+
+Two defenses prevent wrong MRU ordering during workspace switches:
+
+**1. Focused hwnd caching** (`_KSub_FocusedHwndByWS`):
+- State snapshot is unreliable during `FocusWorkspaceNumber` events (ALL focus data is stale, not just ring indices)
+- Cache per-workspace focused hwnds from RELIABLE events (`FocusChange`, `Show` — where `skipWorkspaceUpdate=false`)
+- Use cache during UNRELIABLE workspace switch events (`skipWorkspaceUpdate=true`)
+- Cache ALL workspaces at once so first-time switches have data
+
+**2. WinEventHook MRU suppression** (`gKSub_MruSuppressUntilTick`):
+- During ~1s transition, Windows fires `EVENT_SYSTEM_FOREGROUND` for old/intermediate windows
+- WinEventHook would give wrong window a newer MRU tick AND trigger WS MISMATCH correction
+- Suppression set IMMEDIATELY on workspace event (first line, wrapped in Critical to prevent WEH's `-1` timer from interrupting)
+- NEVER cleared early (not even on FocusChange) — always auto-expires after 2s
+- Clearing on FocusChange created a gap during rapid switching where stale WEH events fired unsuppressed, triggering WS MISMATCH flip-flop and visible jiggle
+- Komorebi handles MRU through the focused hwnd cache, so WEH suppression is harmless
+
+**Selection after workspace switch** (`gui_workspace.ahk`):
+- `sel=1` (not `sel=2`) because workspace switch is a context switch — the focused window on the NEW workspace IS what you want
+- Applies in BOTH "current" and "all" workspace modes
 
 ## Cross-Workspace Activation
 

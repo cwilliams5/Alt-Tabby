@@ -291,3 +291,78 @@ _KSub_GetFocusedHwnd(stateObj) {
     _KSub_DiagLog("    GetFocusedHwnd: could not find focused hwnd")
     return 0
 }
+
+; Get focused hwnd from a single workspace object.
+; Navigates: focused container → focused window.
+_KSub_GetFocusedHwndFromWsObj(wsObj) {
+    if !(wsObj is Map)
+        return 0
+
+    if (wsObj.Has("containers")) {
+        containersRing := wsObj["containers"]
+        contArr := _KSafe_Elements(containersRing)
+        focusedContIdx := _KSafe_Focused(containersRing)
+        if (focusedContIdx >= 0 && focusedContIdx < contArr.Length) {
+            contObj := contArr[focusedContIdx + 1]
+            if (contObj is Map && contObj.Has("windows")) {
+                windowsRing := contObj["windows"]
+                winArr := _KSafe_Elements(windowsRing)
+                focusedWinIdx := _KSafe_Focused(windowsRing)
+                if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length)
+                    return _KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
+            }
+            if (contObj is Map && contObj.Has("window"))
+                return _KSafe_Int(contObj["window"], "hwnd")
+        }
+    }
+
+    if (wsObj.Has("monocle_container")) {
+        mono := wsObj["monocle_container"]
+        if (mono is Map) {
+            if (mono.Has("windows")) {
+                windowsRing := mono["windows"]
+                winArr := _KSafe_Elements(windowsRing)
+                focusedWinIdx := _KSafe_Focused(windowsRing)
+                if (focusedWinIdx >= 0 && focusedWinIdx < winArr.Length)
+                    return _KSafe_Int(winArr[focusedWinIdx + 1], "hwnd")
+            }
+            if (mono.Has("window"))
+                return _KSafe_Int(mono["window"], "hwnd")
+        }
+    }
+    return 0
+}
+
+; Get focused hwnd for a specific workspace by name.
+; Searches all monitors/workspaces for the named workspace.
+_KSub_GetFocusedHwndByWsName(stateObj, wsName) {
+    if (wsName = "")
+        return 0
+    monitorsArr := _KSub_GetMonitorsArray(stateObj)
+    for _, monObj in monitorsArr {
+        wsArr := _KSub_GetWorkspacesArray(monObj)
+        for _, wsObj in wsArr {
+            if (_KSafe_Str(wsObj, "name") = wsName)
+                return _KSub_GetFocusedHwndFromWsObj(wsObj)
+        }
+    }
+    return 0
+}
+
+; Cache focused hwnd for ALL workspaces from a reliable state snapshot.
+; Call this only when the state is known to be consistent (skipWorkspaceUpdate=false).
+; Returns nothing — populates the provided Map (wsName -> hwnd).
+_KSub_CacheFocusedHwnds(stateObj, cache) {
+    monitorsArr := _KSub_GetMonitorsArray(stateObj)
+    for _, monObj in monitorsArr {
+        wsArr := _KSub_GetWorkspacesArray(monObj)
+        for _, wsObj in wsArr {
+            wsN := _KSafe_Str(wsObj, "name")
+            if (wsN = "")
+                continue
+            fh := _KSub_GetFocusedHwndFromWsObj(wsObj)
+            if (fh)
+                cache[wsN] := fh
+        }
+    }
+}

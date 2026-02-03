@@ -495,6 +495,12 @@ global gConfigRegistry := [
     {s: "IPC", k: "IdleTickMs", g: "IPCIdleTickMs", t: "int", default: 100,
      d: "Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms."},
 
+    {s: "IPC", k: "SparseFullSyncEvery", g: "IPCSparseFullSyncEvery", t: "int", default: 10,
+     d: "Sparse delta mode: 0=disabled (full records always), N>0=every Nth push sends full records for self-healing."},
+
+    {s: "IPC", k: "DeltaIncludeMeta", g: "IPCDeltaIncludeMeta", t: "bool", default: true,
+     d: "Include workspace meta in every delta (self-healing). Disable only for testing."},
+
     ; ============================================================
     ; External Tools
     ; ============================================================

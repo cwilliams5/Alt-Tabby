@@ -49,6 +49,19 @@ global _KSub_FallbackMode := false
 global _KSub_WorkspaceCache := Map()
 global _KSub_CacheMaxAgeMs := 10000  ; Default, overridden from cfg in KomorebiSub_Init()
 
+; Cache of per-workspace focused hwnds (populated from reliable state events)
+; Used during workspace switch events where state snapshot is unreliable
+global _KSub_FocusedHwndByWS := Map()
+
+; MRU suppression: prevents WinEventHook from corrupting MRU during workspace switches.
+; Set to A_TickCount + 2000 on every FocusWorkspaceNumber/FocusNamedWorkspace event.
+; NEVER cleared early (not even on FocusChange) — always auto-expires after 2s.
+; Clearing on FocusChange created a gap during rapid switching where stale WEH events
+; triggered WS MISMATCH corrections, flip-flopping the workspace and causing visible jiggle.
+; Komorebi handles MRU through the focused hwnd cache, so WEH suppression is harmless.
+; Value: A_TickCount deadline (0 = not suppressed).
+global gKSub_MruSuppressUntilTick := 0
+
 ; Cloak event batching state
 global _KSub_CloakPushPending := false
 global _KSub_CloakBatchTimerFn := 0
@@ -465,7 +478,7 @@ _KSub_ExtractOneJson(&s) {
 
 ; Process a complete notification JSON
 _KSub_OnNotification(jsonLine) {
-    global _KSub_LastWorkspaceName, _KSub_WorkspaceCache
+    global _KSub_LastWorkspaceName, _KSub_WorkspaceCache, gKSub_MruSuppressUntilTick
 
     _KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
 
@@ -508,6 +521,13 @@ _KSub_OnNotification(jsonLine) {
     if (eventType = "FocusMonitorWorkspaceNumber" || eventType = "FocusWorkspaceNumber"
         || eventType = "FocusNamedWorkspace" || eventType = "MoveContainerToWorkspaceNumber"
         || eventType = "MoveContainerToNamedWorkspace") {
+        ; Suppress WinEventHook MRU IMMEDIATELY — before any content extraction.
+        ; Without Critical, WEH's SetTimer(-1) can interrupt between lines here.
+        ; The suppression must be active before any interruptible work happens.
+        Critical "On"
+        gKSub_MruSuppressUntilTick := A_TickCount + 2000
+        Critical "Off"
+
         ; content varies by event type:
         ; - FocusMonitorWorkspaceNumber: [monitorIdx, workspaceIdx]
         ; - FocusWorkspaceNumber: [workspaceIdx]
@@ -718,34 +738,34 @@ _KSub_CancelCloakTimer() {
 ; skipWorkspaceUpdate: set to true when called after a focus event (notification already handled workspace)
 _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
     global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache, _KSub_LastWsUpdateTick
-    global _KSub_CacheMaxAgeMs
+    global _KSub_CacheMaxAgeMs, _KSub_FocusedHwndByWS, gKSub_MruSuppressUntilTick
 
     if !(stateObj is Map)
         return
-
-    ; Cooldown: after any workspace update (explicit or state-derived), skip re-derivation
-    ; for 2 seconds. Workspace switches produce bursts of 6-8 Cloak/Uncloak events that
-    ; each run expensive state parsing to arrive at the same workspace — pure waste.
-    ; The first event in a burst detects the change; subsequent events reuse the cached value.
-    if (!skipWorkspaceUpdate && _KSub_LastWsUpdateTick > 0
-        && A_TickCount - _KSub_LastWsUpdateTick < 2000) {
-        skipWorkspaceUpdate := true
-        _KSub_DiagLog("ProcessFullState: skip=cooldown (ws updated " (A_TickCount - _KSub_LastWsUpdateTick) "ms ago)")
-    }
 
     monitorsArr := _KSub_GetMonitorsArray(stateObj)
 
     if (monitorsArr.Length = 0)
         return
 
-    ; Get current workspace name for window tagging
-    ; When skipWorkspaceUpdate=true, use _KSub_LastWorkspaceName (already set by focus event)
-    ; Otherwise calculate from state
+    ; ALWAYS extract focused workspace from state (cheap: ~9 Map lookups).
+    ; This provides self-healing when FocusWorkspaceNumber events lie — e.g.,
+    ; during rapid workspace switching where komorebi sends an event for a
+    ; switch that never physically completes.
+    ;
+    ; NOTE: A previous 2-second cooldown skipped state derivation after workspace events,
+    ; claiming it saved processing during Cloak/Uncloak bursts. But Cloak/Uncloak events
+    ; already skip ProcessFullState entirely (line 649), so the cooldown was blocking
+    ; self-correction for no benefit.
+    ;
+    ; When skipWorkspaceUpdate=true (same notification as a FocusWorkspaceNumber event),
+    ; we trust the event content per architecture.md ("state's ring.focused may be stale").
+    ; For ALL other events, we derive workspace from state and correct if it disagrees.
     currentWsName := ""
     focusedWsIdx := "N/A"
     focusedMonIdx := -1
     if (skipWorkspaceUpdate) {
-        ; Trust the value already set by focus event handler or cooldown cache
+        ; Trust the value already set by focus event handler for this notification
         currentWsName := _KSub_LastWorkspaceName
     } else {
         focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateObj)
@@ -758,8 +778,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
 
     _KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" focusedWsIdx " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
 
-    ; Only update current workspace if not skipping (initial poll or direct state query)
-    ; Skip if called from notification handler since focus events already update workspace
+    ; Update current workspace if state disagrees with cached value
     if (!skipWorkspaceUpdate && currentWsName != "" && currentWsName != _KSub_LastWorkspaceName) {
         _KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
@@ -908,6 +927,39 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
         }
     }
     _KSub_DiagLog("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
+
+    ; Update MRU for the focused window on the current workspace.
+    ; This ensures correct MRU ordering when clients request projections during
+    ; workspace switches. WinEventHook also tracks focus via EVENT_SYSTEM_FOREGROUND
+    ; but its batch timer (-1) yields to the komorebi sub timer that's running now,
+    ; so it hasn't fired yet.
+    ;
+    ; CACHING: During workspace switch events (skipWorkspaceUpdate=true), the komorebi
+    ; state snapshot is unreliable — not just ring.focused indices, but per-workspace
+    ; container/window focus data too (e.g., Spotify reported as Main's focused window
+    ; during a Media→Main switch). We cache focused hwnds from RELIABLE events
+    ; (FocusChange, Show, etc. where skipWorkspaceUpdate=false) and use the cache
+    ; during unreliable workspace switch events.
+    if (!skipWorkspaceUpdate) {
+        ; State is reliable — cache focused hwnds for ALL workspaces
+        _KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS)
+        _KSub_DiagLog("ProcessFullState: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
+
+        ; DON'T clear suppression here. During rapid workspace switches, clearing
+        ; on FocusChange creates a gap where stale WEH events sneak through before
+        ; the next FocusWorkspaceNumber sets suppression again. Those events trigger
+        ; WS MISMATCH corrections that flip-flop the workspace, causing visible jiggle.
+        ; Let suppression auto-expire after 2s instead. Komorebi handles MRU correctly
+        ; through the cache above, so WEH suppression during this window is harmless.
+    }
+    ; Use cache for MRU update (reliable whether state was just cached or previously cached)
+    if (currentWsName != "") {
+        focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
+        if (focusedHwnd) {
+            try WindowStore_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount })
+            _KSub_DiagLog("ProcessFullState: updated MRU for focused hwnd=" focusedHwnd " on '" currentWsName "' (cache " (!skipWorkspaceUpdate ? "refreshed" : "used") ")")
+        }
+    }
 
     ; Also update windows in store that aren't in komorebi state
     ; (they might have cached workspace data)

@@ -1024,7 +1024,9 @@ RunUnitTests_Core() {
         {field: "isOnCurrentWorkspace", newVal: false},
         {field: "processName", newVal: "other.exe"},
         {field: "iconHicon", newVal: 12345},
-        {field: "pid", newVal: 200}
+        {field: "pid", newVal: 200},
+        {field: "class", newVal: "OtherClass"},
+        {field: "lastActivatedTick", newVal: A_TickCount + 99999}
     ]
 
     for _, test in triggerTests {
@@ -1035,21 +1037,6 @@ RunUnitTests_Core() {
 
         delta := WindowStore_BuildDelta([baseItem], [changedItem])
         AssertEq(delta.upserts.Length, 1, "Field '" test.field "' triggers delta")
-    }
-
-    ; Fields that should NOT trigger delta (class and lastActivatedTick are not in comparison list)
-    noTriggerTests := [
-        {field: "class", newVal: "OtherClass"},
-        {field: "lastActivatedTick", newVal: A_TickCount + 99999}
-    ]
-    for _, test in noTriggerTests {
-        changedItem := {}
-        for k in baseItem.OwnProps()
-            changedItem.%k% := baseItem.%k%
-        changedItem.%test.field% := test.newVal
-
-        delta := WindowStore_BuildDelta([baseItem], [changedItem])
-        AssertEq(delta.upserts.Length, 0, "Field '" test.field "' does NOT trigger delta")
     }
 
     ; New window creates upsert
@@ -1065,6 +1052,129 @@ RunUnitTests_Core() {
     delta := WindowStore_BuildDelta([], [])
     AssertEq(delta.upserts.Length, 0, "Both empty: no upserts")
     AssertEq(delta.removes.Length, 0, "Both empty: no removes")
+
+    ; ============================================================
+    ; Sparse Delta Format Tests
+    ; ============================================================
+    Log("`n--- Sparse Delta Format Tests ---")
+
+    ; Sparse: single field change emits only hwnd + changed field
+    Log("Testing sparse delta single field change...")
+    sparseChangedItem := {}
+    for k in baseItem.OwnProps()
+        sparseChangedItem.%k% := baseItem.%k%
+    sparseChangedItem.title := "Sparse Changed Title"
+
+    delta := WindowStore_BuildDelta([baseItem], [sparseChangedItem], true)
+    AssertEq(delta.upserts.Length, 1, "Sparse: single field triggers upsert")
+    sparseRec := delta.upserts[1]
+    AssertEq(sparseRec.hwnd, 12345, "Sparse: hwnd present")
+    AssertEq(sparseRec.title, "Sparse Changed Title", "Sparse: changed field present")
+    ; Verify unchanged fields are NOT present
+    hasZ := sparseRec.HasOwnProp("z")
+    AssertEq(hasZ, false, "Sparse: unchanged 'z' not in record")
+    hasPid := sparseRec.HasOwnProp("pid")
+    AssertEq(hasPid, false, "Sparse: unchanged 'pid' not in record")
+    hasProcessName := sparseRec.HasOwnProp("processName")
+    AssertEq(hasProcessName, false, "Sparse: unchanged 'processName' not in record")
+
+    ; Sparse: multiple field changes emit only those fields + hwnd
+    Log("Testing sparse delta multiple field changes...")
+    multiChangedItem := {}
+    for k in baseItem.OwnProps()
+        multiChangedItem.%k% := baseItem.%k%
+    multiChangedItem.title := "Multi Changed"
+    multiChangedItem.isFocused := true
+    multiChangedItem.iconHicon := 99999
+
+    delta := WindowStore_BuildDelta([baseItem], [multiChangedItem], true)
+    AssertEq(delta.upserts.Length, 1, "Sparse multi: triggers upsert")
+    sparseRec := delta.upserts[1]
+    AssertEq(sparseRec.HasOwnProp("title"), true, "Sparse multi: title present")
+    AssertEq(sparseRec.HasOwnProp("isFocused"), true, "Sparse multi: isFocused present")
+    AssertEq(sparseRec.HasOwnProp("iconHicon"), true, "Sparse multi: iconHicon present")
+    AssertEq(sparseRec.HasOwnProp("z"), false, "Sparse multi: unchanged z absent")
+    AssertEq(sparseRec.HasOwnProp("workspaceName"), false, "Sparse multi: unchanged workspaceName absent")
+
+    ; Full-record backward compat: sparse=false emits all fields
+    Log("Testing full-record backward compat (sparse=false)...")
+    delta := WindowStore_BuildDelta([baseItem], [sparseChangedItem], false)
+    AssertEq(delta.upserts.Length, 1, "Full: single field triggers upsert")
+    fullRec := delta.upserts[1]
+    AssertEq(fullRec.HasOwnProp("z"), true, "Full: unchanged 'z' IS in record")
+    AssertEq(fullRec.HasOwnProp("pid"), true, "Full: unchanged 'pid' IS in record")
+    AssertEq(fullRec.HasOwnProp("processName"), true, "Full: unchanged 'processName' IS in record")
+
+    ; New record always full in sparse mode
+    Log("Testing new record always full in sparse mode...")
+    delta := WindowStore_BuildDelta([], [baseItem], true)
+    AssertEq(delta.upserts.Length, 1, "Sparse new: new window triggers upsert")
+    newRec := delta.upserts[1]
+    AssertEq(newRec.HasOwnProp("title"), true, "Sparse new: title present")
+    AssertEq(newRec.HasOwnProp("z"), true, "Sparse new: z present")
+    AssertEq(newRec.HasOwnProp("pid"), true, "Sparse new: pid present")
+    AssertEq(newRec.HasOwnProp("processName"), true, "Sparse new: processName present")
+    AssertEq(newRec.HasOwnProp("iconHicon"), true, "Sparse new: iconHicon present")
+
+    ; Sparse: no changes = no upserts (same as full mode)
+    delta := WindowStore_BuildDelta([baseItem], [baseItem], true)
+    AssertEq(delta.upserts.Length, 0, "Sparse: identical items = no upserts")
+
+    ; ============================================================
+    ; Sort Skip (gWS_SortDirty) Validation Tests
+    ; ============================================================
+    Log("`n--- Sort Skip Validation Tests ---")
+    global gWS_SortDirty, gWS_ProjectionFields
+
+    ; Setup: init store with test windows
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    sortTestRecs := []
+    sortTestRecs.Push(Map("hwnd", 5001, "title", "SortTest1", "class", "T", "pid", 1,
+                          "isVisible", true, "isCloaked", false, "isMinimized", false,
+                          "z", 1, "lastActivatedTick", 100))
+    sortTestRecs.Push(Map("hwnd", 5002, "title", "SortTest2", "class", "T", "pid", 2,
+                          "isVisible", true, "isCloaked", false, "isMinimized", false,
+                          "z", 2, "lastActivatedTick", 200))
+    WindowStore_UpsertWindow(sortTestRecs, "test")
+    WindowStore_EndScan()
+
+    ; Force a projection to reset dirty flag
+    WindowStore_GetProjection()
+    AssertEq(gWS_SortDirty, false, "SortDirty: false after GetProjection")
+
+    ; Cosmetic field change (iconHicon) should NOT set dirty
+    WindowStore_UpdateFields(5001, Map("iconHicon", 9999), "test")
+    AssertEq(gWS_SortDirty, false, "SortDirty: iconHicon change keeps false")
+
+    ; Title change should NOT set dirty (title is not in ProjectionFields)
+    WindowStore_UpdateFields(5001, Map("title", "New Title"), "test")
+    AssertEq(gWS_SortDirty, false, "SortDirty: title change keeps false")
+
+    ; Sort-affecting field (lastActivatedTick) should set dirty
+    WindowStore_UpdateFields(5001, Map("lastActivatedTick", 999), "test")
+    AssertEq(gWS_SortDirty, true, "SortDirty: lastActivatedTick sets true")
+
+    ; Reset via GetProjection
+    WindowStore_GetProjection()
+    AssertEq(gWS_SortDirty, false, "SortDirty: reset after second GetProjection")
+
+    ; Filter-affecting field (isCloaked) should set dirty
+    WindowStore_UpdateFields(5001, Map("isCloaked", true), "test")
+    AssertEq(gWS_SortDirty, true, "SortDirty: isCloaked sets true")
+
+    ; Reset and test z field
+    WindowStore_GetProjection()
+    WindowStore_UpdateFields(5001, Map("z", 99), "test")
+    AssertEq(gWS_SortDirty, true, "SortDirty: z change sets true")
+
+    ; Reset and test isFocused field
+    WindowStore_GetProjection()
+    WindowStore_UpdateFields(5001, Map("isFocused", true), "test")
+    AssertEq(gWS_SortDirty, true, "SortDirty: isFocused sets true")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([5001, 5002], true)
 
     ; Test: WindowStore_SetCurrentWorkspace updates all windows
     Log("Testing SetCurrentWorkspace consistency...")

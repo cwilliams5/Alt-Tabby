@@ -22,6 +22,7 @@ global gGUI_ItemsMap := Map()  ; hwnd -> item lookup for O(1) delta processing
 global gGUI_FrozenItems := []
 global gGUI_AllItems := []
 global gGUI_AwaitingToggleProjection := false
+global gGUI_WSContextSwitch := false
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
 global gGUI_OverlayVisible := false
@@ -216,7 +217,7 @@ ResetGUIState() {
     global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_FirstTabTick, gGUI_WorkspaceMode
-    global gGUI_AwaitingToggleProjection, gMockIPCMessages, gGUI_CurrentWSName
+    global gGUI_AwaitingToggleProjection, gGUI_WSContextSwitch, gMockIPCMessages, gGUI_CurrentWSName
     global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
@@ -237,6 +238,7 @@ ResetGUIState() {
     gGUI_FooterText := ""
     gGUI_Revealed := false
     gGUI_AwaitingToggleProjection := false
+    gGUI_WSContextSwitch := false
     gGUI_LastLocalMRUTick := 0  ; Reset to avoid MRU freshness skip in snapshot handler
     gMockIPCMessages := []
     gGUI_EventBuffer := []
@@ -1341,8 +1343,10 @@ RunGUITests() {
     GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload reset: workspace updated")
     GUI_AssertEq(gGUI_Sel, 1, "WSPayload reset: selection reset to 1")
 
-    ; ----- Test: GUI_UpdateCurrentWSFromPayload does NOT reset in all mode -----
-    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload no reset in all mode")
+    ; ----- Test: GUI_UpdateCurrentWSFromPayload ALSO resets in all mode -----
+    ; A workspace switch is a context switch regardless of display mode.
+    ; Position 1 = focused window on the NEW workspace, which is what the user wants.
+    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload resets in all mode")
     ResetGUIState()
     gGUI_WorkspaceMode := "all"
     gGUI_State := "ACTIVE"
@@ -1354,7 +1358,7 @@ RunGUITests() {
 
     GUI_UpdateCurrentWSFromPayload(payload)
     GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload all: workspace updated")
-    GUI_AssertEq(gGUI_Sel, 5, "WSPayload all: selection NOT reset")
+    GUI_AssertEq(gGUI_Sel, 1, "WSPayload all: selection reset to 1")
 
     ; ============================================================
     ; GUI_MoveSelectionFrozen DIRECT TESTS

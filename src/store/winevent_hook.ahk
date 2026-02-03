@@ -256,7 +256,7 @@ _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, WinEventHook_DebounceMs, _WEH_PendingZNeeded
     global _WEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
-    global cfg, gWS_Meta
+    global cfg, gWS_Meta, gKSub_MruSuppressUntilTick
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
@@ -269,6 +269,15 @@ _WEH_ProcessBatch() {
     ; Wrap in Critical to prevent race conditions where old window retains isFocused:true
     ; if removed during focus transition
     Critical "On"
+    ; Suppress focus processing during komorebi workspace switch.
+    ; Between FocusWorkspaceNumber and FocusChange (~1s), Windows fires
+    ; EVENT_SYSTEM_FOREGROUND for old/intermediate windows. Processing them:
+    ; 1) gives the wrong window a newer MRU tick, causing visible item "jiggle"
+    ; 2) triggers WS MISMATCH correction (line ~307) that flips workspace back and forth
+    if (_WEH_PendingFocusHwnd && gKSub_MruSuppressUntilTick > 0 && A_TickCount < gKSub_MruSuppressUntilTick) {
+        _WEH_DiagLog("FOCUS SUPPRESSED (ws switch): hwnd=" _WEH_PendingFocusHwnd)
+        _WEH_PendingFocusHwnd := 0
+    }
     if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != _WEH_LastFocusHwnd) {
         newFocus := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := 0  ; Clear pending

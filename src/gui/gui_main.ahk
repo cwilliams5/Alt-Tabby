@@ -78,6 +78,7 @@ global gGUI_TabCount := 0
 global gGUI_FrozenItems := []  ; Snapshot of items when locking in
 global gGUI_AllItems := []     ; Unfiltered items - preserved for workspace toggle
 global gGUI_AwaitingToggleProjection := false  ; Flag for UseCurrentWSProjection mode
+global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
 
 ; Session stats counters (sent to store as deltas)

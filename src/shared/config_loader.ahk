@@ -476,6 +476,8 @@ _CL_ValidateSettings() {
 
     ; --- IPC Settings ---
     cfg.IPCIdleTickMs := clamp(cfg.IPCIdleTickMs, 15, 500)
+    cfg.IPCSparseFullSyncEvery := clamp(cfg.IPCSparseFullSyncEvery, 0, 1000)
+    ; IPCDeltaIncludeMeta is bool, no clamping needed
     global IPC_TICK_IDLE
     IPC_TICK_IDLE := cfg.IPCIdleTickMs
 
