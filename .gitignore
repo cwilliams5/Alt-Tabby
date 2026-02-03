@@ -5,6 +5,10 @@
 /src/config.ini
 /config.ini
 
+# Stats file (runtime usage data)
+/src/stats.ini
+/stats.ini
+
 # Release folder (compiled output)
 /release/
 
