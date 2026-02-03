@@ -406,6 +406,7 @@ Size limits for internal caches to prevent unbounded memory growth.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `ExeIconMax` | int | `100` | Maximum number of cached exe icons. Older entries are evicted when limit is reached. |
+| `UwpLogoMax` | int | `50` | Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps. |
 | `ProcNameMax` | int | `200` | Maximum number of cached process names. Older entries are evicted when limit is reached. |
 
 ## Komorebi
@@ -487,4 +488,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-03 with 190 total settings.*
+*Generated on 2026-02-03 with 191 total settings.*
