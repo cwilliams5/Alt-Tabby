@@ -39,7 +39,7 @@ global gConfigRegistry := [
     {s: "AltTab", k: "FreezeWindowList", g: "FreezeWindowList", t: "bool", default: false,
      d: "Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker)."},
 
-    {s: "AltTab", k: "UseCurrentWSProjection", g: "UseCurrentWSProjection", t: "bool", default: true,
+    {s: "AltTab", k: "UseCurrentWSProjection", g: "UseCurrentWSProjection", t: "bool", default: false,
      d: "Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data)."},
 
     {s: "AltTab", k: "SwitchOnClick", g: "AltTabSwitchOnClick", t: "bool", default: true,
