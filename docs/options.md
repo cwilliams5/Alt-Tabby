@@ -42,7 +42,7 @@ These control the Alt-Tab overlay behavior - tweak these first!
 | `QuickSwitchMs` | int | `100` | Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch. |
 | `PrewarmOnAlt` | bool | `true` | Pre-warm snapshot on Alt down (true = request data before Tab pressed). Ensures fresh window data is available when Tab is pressed. |
 | `FreezeWindowList` | bool | `false` | Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker). |
-| `UseCurrentWSProjection` | bool | `true` | Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data). |
+| `UseCurrentWSProjection` | bool | `false` | Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data). |
 | `SwitchOnClick` | bool | `true` | Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released. |
 | `AsyncActivationPollMs` | int | `15` | Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU (spawns cmd.exe each poll). Default: 15. |
 
@@ -302,8 +302,10 @@ Named pipe for store<->client communication.
 |--------|------|---------|-------------|
 | `StorePipeName` | string | `tabby_store_v1` | Named pipe name for store communication |
 | `IdleTickMs` | int | `100` | Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms. |
-| `SparseFullSyncEvery` | int | `10` | Sparse delta mode: 0=disabled (full records always), N>0=every Nth push sends full records for self-healing. |
-| `DeltaIncludeMeta` | bool | `true` | Include workspace meta in every delta (self-healing). Disable only for testing. |
+| `FullRowEvery` | int | `10` | Per-row healing: 0=always full rows (legacy, no sparse deltas), N>0=every Nth push sends full rows instead of changed-fields-only. |
+| `WorkspaceDeltaStyle` | string | `Always` | Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean). |
+| `FullSyncEvery` | int | `60` | Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled. |
+| `UseDirtyTracking` | bool | `true` | Use dirty tracking for delta computation. Set false for debugging (full field comparison). |
 
 ## Tools
 
@@ -485,4 +487,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-02 with 188 total settings.*
+*Generated on 2026-02-03 with 190 total settings.*

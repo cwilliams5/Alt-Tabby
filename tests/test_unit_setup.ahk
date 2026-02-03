@@ -1,6 +1,7 @@
 ; Unit Tests - Setup & Installation
 ; Version, Task Scheduler, Shortcuts, Setup Config, PE Validation, Temp Detection
 ; Included by test_unit.ahk
+#Include test_utils.ahk
 
 RunUnitTests_Setup() {
     global TestPassed, TestErrors, gConfigRegistry, cfg

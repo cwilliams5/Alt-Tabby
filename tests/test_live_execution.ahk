@@ -1,6 +1,7 @@
 ; Live Tests - Execution Modes
 ; Standalone /src, Compilation Verification, Compiled Exe Modes
 ; Included by test_live.ahk
+#Include test_utils.ahk
 
 RunLiveTests_Execution() {
     global TestPassed, TestErrors, cfg

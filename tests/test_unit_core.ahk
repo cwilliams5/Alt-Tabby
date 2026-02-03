@@ -1,6 +1,7 @@
 ; Unit Tests - Core Data Structures
 ; WindowStore, Race Condition Prevention, JSON (JXON), Config System, Entry Points
 ; Included by test_unit.ahk
+#Include test_utils.ahk
 
 RunUnitTests_Core() {
     global TestPassed, TestErrors, gConfigRegistry, cfg
@@ -1119,6 +1120,81 @@ RunUnitTests_Core() {
     ; Sparse: no changes = no upserts (same as full mode)
     delta := WindowStore_BuildDelta([baseItem], [baseItem], true)
     AssertEq(delta.upserts.Length, 0, "Sparse: identical items = no upserts")
+
+    ; ============================================================
+    ; Dirty Tracking Equivalence Tests
+    ; ============================================================
+    ; Tests that dirty tracking skips non-dirty windows; debug mode compares all
+    Log("`n--- Dirty Tracking Equivalence Tests ---")
+
+    Log("Testing dirty tracking behavior...")
+    try {
+        ; Setup: Both hwnds have field changes (isFocused swapped between them)
+        ; This lets us verify dirty tracking skips 1002 when not marked dirty
+        prev := [
+            {hwnd: 1001, title: "Win1", class: "C1", z: 1, pid: 100, isFocused: false,
+             workspaceName: "ws1", isCloaked: false, isMinimized: false,
+             isOnCurrentWorkspace: true, processName: "app1", iconHicon: 0, lastActivatedTick: 1000},
+            {hwnd: 1002, title: "Win2", class: "C2", z: 2, pid: 200, isFocused: true,
+             workspaceName: "ws1", isCloaked: false, isMinimized: false,
+             isOnCurrentWorkspace: true, processName: "app2", iconHicon: 0, lastActivatedTick: 2000}
+        ]
+        next := [
+            {hwnd: 1001, title: "Win1", class: "C1", z: 1, pid: 100, isFocused: true,
+             workspaceName: "ws1", isCloaked: false, isMinimized: false,
+             isOnCurrentWorkspace: true, processName: "app1", iconHicon: 0, lastActivatedTick: 3000},
+            {hwnd: 1002, title: "Win2", class: "C2", z: 2, pid: 200, isFocused: false,
+             workspaceName: "ws1", isCloaked: false, isMinimized: false,
+             isOnCurrentWorkspace: true, processName: "app2", iconHicon: 0, lastActivatedTick: 2000}
+        ]
+
+        global gWS_DirtyHwnds
+        originalDirtyTracking := cfg.IPCUseDirtyTracking
+        gWS_DirtyHwnds := Map()
+
+        ; Create dirty snapshot marking ONLY hwnd 1001 (not 1002)
+        dirtySnapshot := Map()
+        dirtySnapshot[1001] := true
+
+        ; TEST 1: Dirty tracking ON - should return ONLY hwnd 1001 (skips 1002)
+        cfg.IPCUseDirtyTracking := true
+        deltaDirty := WindowStore_BuildDelta(prev, next, false, dirtySnapshot)
+
+        ; TEST 2: Dirty tracking OFF (debug mode) - should return BOTH 1001 and 1002
+        cfg.IPCUseDirtyTracking := false
+        deltaFull := WindowStore_BuildDelta(prev, next, false)
+
+        passed := true
+
+        ; Dirty tracking: only 1 upsert (hwnd 1001)
+        if (deltaDirty.upserts.Length != 1) {
+            Log("FAIL: Dirty tracking - expected 1 upsert (only marked hwnd), got " deltaDirty.upserts.Length)
+            passed := false
+        } else if (deltaDirty.upserts[1].hwnd != 1001) {
+            Log("FAIL: Dirty tracking - expected hwnd 1001")
+            passed := false
+        }
+
+        ; Debug mode: 2 upserts (both changed windows)
+        if (deltaFull.upserts.Length != 2) {
+            Log("FAIL: Debug mode - expected 2 upserts (all changes), got " deltaFull.upserts.Length)
+            passed := false
+        }
+
+        if (passed) {
+            Log("PASS: Dirty tracking correctly skips non-dirty; debug mode finds all")
+            TestPassed++
+        } else {
+            TestErrors++
+        }
+
+        ; Restore original config
+        cfg.IPCUseDirtyTracking := originalDirtyTracking
+        gWS_DirtyHwnds := Map()
+    } catch as e {
+        Log("FAIL: Dirty tracking test error: " e.Message)
+        TestErrors++
+    }
 
     ; ============================================================
     ; Sort Skip (gWS_SortDirty) Validation Tests

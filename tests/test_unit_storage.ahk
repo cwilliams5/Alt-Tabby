@@ -1,6 +1,7 @@
 ; Unit Tests - Storage
 ; WindowStore_UpdateFields, Icon Pump
 ; Included by test_unit.ahk
+#Include test_utils.ahk
 
 RunUnitTests_Storage() {
     global TestPassed, TestErrors, cfg

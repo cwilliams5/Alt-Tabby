@@ -43,6 +43,10 @@ gWS_Meta["currentWSName"] := ""
 ; Flag indicating workspace changed since last consumed - for OnChange delta style
 global gWS_WorkspaceChangedFlag := false
 
+; Dirty tracking: hwnds with fields changed since last delta
+; Key = hwnd, Value = true (presence in map = dirty)
+global gWS_DirtyHwnds := Map()
+
 ; Safely snapshot Map keys for iteration (prevents modification during iteration)
 ; Returns an Array of keys. Caller can iterate safely after Critical section ends.
 _WS_SnapshotMapKeys(mapObj) {
@@ -129,6 +133,7 @@ WindowStore_EndScan(graceMs := "") {
 
 WindowStore_UpsertWindow(records, source := "") {
     global gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortDirty, gWS_ProjectionFields
+    global gWS_InternalFields, gWS_DirtyHwnds
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
     added := 0
@@ -170,6 +175,9 @@ WindowStore_UpsertWindow(records, source := "") {
                         gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
                     row.%k% := v
                     rowChanged := true
+                    ; Mark dirty for delta tracking (new records or non-internal field changes)
+                    if (isNew || !gWS_InternalFields.Has(k))
+                        gWS_DirtyHwnds[hwnd] := true
                     if (gWS_ProjectionFields.Has(k))
                         projDirty := true
                 }
@@ -219,7 +227,7 @@ WindowStore_UpsertWindow(records, source := "") {
 global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true, "iconMethod", true, "iconLastRefreshTick", true)
 
 WindowStore_UpdateFields(hwnd, patch, source := "") {
-    global gWS_Store, gWS_Rev, gWS_InternalFields, gWS_SortDirty, gWS_ProjectionFields
+    global gWS_Store, gWS_Rev, gWS_InternalFields, gWS_SortDirty, gWS_ProjectionFields, gWS_DirtyHwnds
     ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
     ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
     Critical "On"
@@ -235,8 +243,10 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
                 ; Only count as "changed" if it's not an internal tracking field
-                if (!gWS_InternalFields.Has(k))
+                if (!gWS_InternalFields.Has(k)) {
                     changed := true
+                    gWS_DirtyHwnds[hwnd] := true
+                }
                 if (gWS_ProjectionFields.Has(k))
                     projDirty := true
             }
@@ -246,8 +256,10 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
             v := patch.%k%
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
-                if (!gWS_InternalFields.Has(k))
+                if (!gWS_InternalFields.Has(k)) {
                     changed := true
+                    gWS_DirtyHwnds[hwnd] := true
+                }
                 if (gWS_ProjectionFields.Has(k))
                     projDirty := true
             }
@@ -262,7 +274,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
 }
 
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {
-    global gWS_Store, gWS_Rev, gWS_SortDirty
+    global gWS_Store, gWS_Rev, gWS_SortDirty, gWS_DirtyHwnds
     removed := 0
     ; RACE FIX: Wrap delete loop + rev bump in Critical to prevent IPC requests
     ; from seeing inconsistent state (consistent with ValidateExistence/PurgeBlacklisted)
@@ -274,6 +286,8 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         ; Verify window is actually gone before removing (unless forced)
         if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
             continue  ; lint-ignore: critical-section
+        ; Mark dirty so removal appears in delta
+        gWS_DirtyHwnds[hwnd] := true
         ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
         try IconPump_CleanupWindow(hwnd)
         gWS_Store.Delete(hwnd)
@@ -464,7 +478,7 @@ WindowStore_GetByHwnd(hwnd) {
 }
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
-    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortDirty, gWS_WorkspaceChangedFlag
+    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortDirty, gWS_WorkspaceChangedFlag, gWS_DirtyHwnds
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
     ; and the iteration loop must be atomic so a timer can't observe stale meta values
     ; between the name comparison (line below) and the name write.
@@ -488,6 +502,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
         newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
         if (rec.isOnCurrentWorkspace != newIsOnCurrent) {
             rec.isOnCurrentWorkspace := newIsOnCurrent
+            gWS_DirtyHwnds[hwnd] := true  ; Mark dirty for delta tracking
             anyFlipped := true
         }
     }
@@ -1007,12 +1022,15 @@ WindowStore_CleanupAllIcons() {
 ; DESIGN: Sparse mode with periodic full-sync resync is intentional.
 ; The resync counter ensures client-side self-healing. Do not suggest going fully sparse.
 ; Parameters:
-;   prevItems - Array of previous projection items
-;   nextItems - Array of current projection items
-;   sparse    - When true, emit only changed fields + hwnd (reduces JSON payload)
-;               New records (hwnd not in prev) always emit full record regardless
+;   prevItems  - Array of previous projection items
+;   nextItems  - Array of current projection items
+;   sparse     - When true, emit only changed fields + hwnd (reduces JSON payload)
+;                New records (hwnd not in prev) always emit full record regardless
+;   dirtyHwnds - Map of dirty hwnds (from Store_PushToClients snapshot). When provided
+;                with IPCUseDirtyTracking enabled, skips comparison for clean hwnds.
 ; Returns: { upserts: [], removes: [] }
-WindowStore_BuildDelta(prevItems, nextItems, sparse := false) {
+WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
+    global cfg, gWS_DirtyHwnds
     ; Fields compared for delta detection. Using a loop avoids an AHK v2 parser bug
     ; where bare method calls after many consecutive single-line if statements silently fail.
     ; Must include ALL fields from _WS_ToItem that affect display or sort order.
@@ -1020,6 +1038,10 @@ WindowStore_BuildDelta(prevItems, nextItems, sparse := false) {
     static deltaFields := ["title", "class", "z", "pid", "isFocused", "workspaceName",
         "isCloaked", "isMinimized", "isOnCurrentWorkspace", "processName", "iconHicon",
         "lastActivatedTick"]
+
+    ; Dirty tracking setup: use passed snapshot or fall back to global (for direct calls/tests)
+    useDirtyTracking := cfg.IPCUseDirtyTracking
+    dirtySet := IsObject(dirtyHwnds) ? dirtyHwnds : gWS_DirtyHwnds
 
     prevMap := Map()
     for _, rec in prevItems
@@ -1037,6 +1059,10 @@ WindowStore_BuildDelta(prevItems, nextItems, sparse := false) {
             ; New record: always emit full record (even in sparse mode)
             upserts.Push(rec)
         } else {
+            ; Dirty tracking: skip unchanged windows entirely
+            if (useDirtyTracking && !dirtySet.Has(hwnd))
+                continue
+
             old := prevMap[hwnd]
             changed := false
             for _, field in deltaFields {

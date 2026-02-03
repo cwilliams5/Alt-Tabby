@@ -1,6 +1,7 @@
 ; Live Tests - Features
 ; MRU/Focus Tracking, Projection Options, Multi-Client, Blacklist E2E
 ; Included by test_live.ahk
+#Include test_utils.ahk
 
 RunLiveTests_Features() {
     global TestPassed, TestErrors, cfg

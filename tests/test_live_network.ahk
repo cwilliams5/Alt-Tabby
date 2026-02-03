@@ -1,6 +1,7 @@
 ; Live Tests - Network / I/O-bound Integration
 ; GitHub API, Workspace Data E2E, Store Liveness
 ; Included by test_live.ahk
+#Include test_utils.ahk
 
 RunLiveTests_Network() {
     global TestPassed, TestErrors, cfg

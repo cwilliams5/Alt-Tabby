@@ -7,6 +7,7 @@
 ; it a unique mutex (different InstallationId from different dir) and unique
 ; store pipe, so it runs without conflicting with other parallel test suites
 ; that also launch AltTabby.exe.
+#Include test_utils.ahk
 
 global LIFECYCLE_EXE_NAME := "AltTabby_lifecycle.exe"
 global LIFECYCLE_PIPE_NAME := "tabby_store_lifecycle"

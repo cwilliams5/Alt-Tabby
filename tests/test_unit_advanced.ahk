@@ -1,6 +1,7 @@
 ; Unit Tests - Advanced Scenarios
 ; Defensive Close, Update Race Guard, WindowStore_MetaChanged
 ; Included by test_unit.ahk
+#Include test_utils.ahk
 
 RunUnitTests_Advanced() {
     global TestPassed, TestErrors, cfg

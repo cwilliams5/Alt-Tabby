@@ -385,6 +385,7 @@ Store_FullScan() {
 Store_PushToClients() {
     global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_TestMode
     global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA, gStore_LastSendTick, gStore_ClientPushCount, cfg
+    global gWS_DirtyHwnds
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -401,6 +402,10 @@ Store_PushToClients() {
         if (gStore_ClientOpts.Has(hPipe))
             clientOptsSnapshot[hPipe] := gStore_ClientOpts[hPipe]
     }
+    ; Snapshot dirty set and clear immediately - any updates during this push
+    ; will mark the NEW dirty set and be caught on next push
+    dirtySnapshot := gWS_DirtyHwnds.Clone()
+    gWS_DirtyHwnds := Map()
     Critical "Off"
 
     ; In OnChange mode, send dedicated workspace_change message when workspace changes
@@ -470,7 +475,7 @@ Store_PushToClients() {
 
         ; Send delta if client has previous state, otherwise full snapshot
         if (prevItems.Length > 0) {
-            msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta)
+            msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot)
             ; Skip sending empty deltas ONLY if meta also didn't change
             ; Always send if meta changed (workspace switch) even with no window changes
             if (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
@@ -507,9 +512,9 @@ Store_PushToClients() {
 ; 'Always' mode includes meta in every delta (self-healing, default). 'OnChange' mode
 ; only includes meta when workspace changes, and sends workspace_change messages for
 ; dedicated notification. The includeMeta parameter reflects this configuration.
-Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true) {
+Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true, dirtyHwnds := 0) {
     global IPC_MSG_DELTA
-    delta := WindowStore_BuildDelta(prevItems, nextItems, sparse)
+    delta := WindowStore_BuildDelta(prevItems, nextItems, sparse, dirtyHwnds)
     payload := { upserts: delta.upserts, removes: delta.removes }
     if (includeMeta)
         payload.meta := meta

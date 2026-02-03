@@ -1,6 +1,7 @@
 ; Live Tests - Core Integration
 ; Compile, IPC, Store, Viewer, Komorebi, Producer State
 ; Included by test_live.ahk
+#Include test_utils.ahk
 
 RunLiveTests_Core() {
     global TestPassed, TestErrors, cfg

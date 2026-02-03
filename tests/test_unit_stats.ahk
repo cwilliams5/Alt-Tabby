@@ -1,6 +1,7 @@
 ; Unit Tests - Stats Engine
 ; Stats accumulation, flush/load round-trip, crash recovery, derived stats
 ; Included by test_unit.ahk
+#Include test_utils.ahk
 
 RunUnitTests_Stats() {
     global TestPassed, TestErrors, cfg

@@ -1,6 +1,7 @@
 ; Unit Tests - Cleanup & Shutdown
 ; LogTrim, Icon Cache Cleanup, IPC Critical Section
 ; Included by test_unit.ahk
+#Include test_utils.ahk
 
 RunUnitTests_Cleanup() {
     global TestPassed, TestErrors, cfg

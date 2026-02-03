@@ -504,6 +504,9 @@ global gConfigRegistry := [
     {s: "IPC", k: "FullSyncEvery", g: "IPCFullSyncEvery", t: "int", default: 60,
      d: "Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled."},
 
+    {s: "IPC", k: "UseDirtyTracking", g: "IPCUseDirtyTracking", t: "bool", default: true,
+     d: "Use dirty tracking for delta computation. Set false for debugging (full field comparison)."},
+
     ; ============================================================
     ; External Tools
     ; ============================================================
