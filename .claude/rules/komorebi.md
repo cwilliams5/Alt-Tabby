@@ -19,6 +19,9 @@ For workspace focus events:
 For move events:
 - Window is already on TARGET workspace in state data
 - Focus indices on source workspace point to OTHER windows
+- TARGET workspace focus indices ARE reliable (moved window is focused there)
+- Must update focused hwnd cache for target workspace before ProcessFullState runs
+  (otherwise stale cache gives MRU tick to wrong window)
 - Let ProcessFullState handle window updates by scanning ALL workspaces
 
 **Push AFTER ProcessFullState:**

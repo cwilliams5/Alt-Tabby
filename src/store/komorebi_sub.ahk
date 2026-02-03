@@ -628,6 +628,19 @@ _KSub_OnNotification(jsonLine) {
             ; will have consistent state and correctly update all windows including Signal.
             if (eventType = "MoveContainerToWorkspaceNumber" || eventType = "MoveContainerToNamedWorkspace") {
                 _KSub_DiagLog("  Move event: previousWS='" previousWsName "' targetWS='" wsName "' (letting ProcessFullState handle window update)")
+                ; For MOVE events, the state is reliable for the TARGET workspace
+                ; (the window has already been moved there in komorebi's state).
+                ; Update the focused hwnd cache for JUST the target workspace so
+                ; ProcessFullState gives the MRU tick to the moved window, not the
+                ; previously-focused window from a stale cache.
+                ; NOTE: Source workspace focus indices are unreliable ("point to OTHER
+                ; windows") so we don't refresh the whole cache — just the target.
+                global _KSub_FocusedHwndByWS
+                targetFocused := _KSub_GetFocusedHwndByWsName(stateObj, wsName)
+                if (targetFocused) {
+                    _KSub_FocusedHwndByWS[wsName] := targetFocused
+                    _KSub_DiagLog("  Move: updated cache for '" wsName "' -> focused hwnd=" targetFocused)
+                }
             }
 
             ; Immediately push to clients so they see the workspace change
