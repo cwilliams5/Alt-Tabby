@@ -32,7 +32,10 @@ global cfg := {}
 ; ============================================================
 
 ; Initialize config - call this early in startup
-ConfigLoader_Init(basePath := "") {
+; readOnly: if true, skip modifying existing config.ini (supplement/cleanup). Use for
+;           tests to avoid file contention when multiple processes run in parallel.
+;           Note: Creating a NEW config.ini is always allowed (no contention risk).
+ConfigLoader_Init(basePath := "", readOnly := false) {
     global gConfigIniPath, gConfigLoaded
 
     if (basePath = "") {
@@ -55,8 +58,11 @@ ConfigLoader_Init(basePath := "") {
     _CL_InitializeDefaults()
 
     if (!FileExist(gConfigIniPath)) {
+        ; Creating a new file is always safe (no contention - first writer wins)
         _CL_CreateDefaultIni(gConfigIniPath)
-    } else {
+    } else if (!readOnly) {
+        ; Only modify existing files if not in readOnly mode
+        ; This avoids contention when multiple test processes run in parallel
         _CL_SupplementIni(gConfigIniPath)  ; Add missing keys
         _CL_CleanupOrphanedKeys(gConfigIniPath)  ; Remove obsolete keys
     }

@@ -182,7 +182,8 @@ Log("Log file: " TestLogPath)
 ; ============================================================
 
 ; Initialize config (sets all defaults from gConfigRegistry)
-ConfigLoader_Init(A_ScriptDir "\..\src")
+; Use readOnly=true to avoid file contention when multiple test suites run in parallel
+ConfigLoader_Init(A_ScriptDir "\..\src", true)
 
 ; Initialize blacklist before tests
 Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")

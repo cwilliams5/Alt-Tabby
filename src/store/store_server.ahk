@@ -88,7 +88,10 @@ Store_Init() {
     ; Let ConfigLoader_Init() determine path based on A_IsCompiled:
     ; - Compiled: uses A_ScriptDir (exe directory)
     ; - Development: tries A_ScriptDir, then A_ScriptDir "\..\"
-    ConfigLoader_Init()
+    ; In test mode, use readOnly to avoid file contention when multiple
+    ; test processes run in parallel (they'd all try to supplement config.ini)
+    global gStore_TestMode
+    ConfigLoader_Init("", gStore_TestMode)
 
     ; Initialize stats tracking (loads lifetime stats from disk)
     Stats_Init()
