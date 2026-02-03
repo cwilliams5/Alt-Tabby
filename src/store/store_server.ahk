@@ -34,10 +34,10 @@ global gStore_LastClientLog := 0
 global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
 global gStore_LastClientProj := Map()  ; hPipe -> last projection items (for delta calc)
 global gStore_LastClientMeta := Map()  ; hPipe -> last meta sent (for workspace change detection)
-; DESIGN: Per-client push counter for periodic full-record resync.
-; Full records self-heal client state drift from missed deltas.
-; IPCSparseFullSyncEvery=0 disables sparse mode (all full records, legacy behavior).
-global gStore_ClientPushCount := Map() ; hPipe -> push count (for sparse/full sync cycling)
+; DESIGN: Per-client push counter for periodic full-row resync.
+; Full rows self-heal client state drift from missed deltas.
+; IPCFullRowEvery=0 disables sparse mode (all full rows, legacy behavior).
+global gStore_ClientPushCount := Map() ; hPipe -> push count (for sparse/full row cycling)
 global gStore_LastSendTick := 0       ; Tick of last message sent to ANY client (heartbeat or delta)
 global gStore_CachedHeartbeatJson := ""
 global gStore_CachedHeartbeatRev := -1
@@ -220,6 +220,14 @@ Store_HeartbeatTick() {
     if (Mod(gStore_HeartbeatCount, 60) = 0)
         try Stats_FlushToDisk()
 
+    ; Periodic full sync: send complete snapshot to all clients for full-state healing
+    ; This catches issues that per-row healing cannot fix (e.g., ghost rows, missing rows)
+    ; Placed BEFORE client count check so it fires regardless of recent send activity
+    if (cfg.IPCFullSyncEvery > 0 && Mod(gStore_HeartbeatCount, cfg.IPCFullSyncEvery) = 0) {
+        Store_ForceFullSync()
+        return  ; Full sync subsumes heartbeat
+    }
+
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
 
@@ -288,6 +296,30 @@ _Store_RotateDiagLogs() {
         LogTrim(LOG_PATH_PROCPUMP)
     if (cfg.DiagIPCLog)
         LogTrim(LOG_PATH_IPC)
+}
+
+; Force full snapshot to all clients - resets tracking so PushToClients sends SNAPSHOT not DELTA
+; Used by FullSyncEvery heartbeat-counted full-state healing to fix ghost/missing rows
+Store_ForceFullSync() {
+    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev
+    global gStore_LastClientProj, gStore_LastClientMeta, gStore_ClientPushCount
+
+    if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
+        return
+
+    ; Reset per-client tracking so PushToClients treats them as new
+    ; (empty prevItems → IPC_MSG_SNAPSHOT instead of delta)
+    Critical "On"
+    _Store_CleanupDisconnectedClients()
+    for hPipe, _ in gStore_Server.clients {
+        gStore_LastClientRev[hPipe] := -1   ; Bypass rev-skip check
+        gStore_LastClientProj[hPipe] := []  ; Force snapshot path
+        gStore_LastClientMeta[hPipe] := ""
+        gStore_ClientPushCount[hPipe] := 0
+    }
+    Critical "Off"
+
+    Store_PushToClients()
 }
 
 ; Z-Pump: triggers full scan when windows need Z-order enrichment
@@ -371,6 +403,23 @@ Store_PushToClients() {
     }
     Critical "Off"
 
+    ; In OnChange mode, send dedicated workspace_change message when workspace changes
+    global IPC_MSG_WORKSPACE_CHANGE
+    wsJustChanged := WindowStore_ConsumeWorkspaceChangedFlag()
+    if (wsJustChanged && cfg.IPCWorkspaceDeltaStyle = "OnChange") {
+        wsMeta := WindowStore_GetCurrentWorkspace()
+        wsMsg := JSON.Dump({
+            type: IPC_MSG_WORKSPACE_CHANGE,
+            payload: { meta: { currentWSId: wsMeta.id, currentWSName: wsMeta.name } }
+        })
+        for _, hPipe in clientHandles {
+            if (!clientOptsSnapshot.Has(hPipe))
+                continue
+            IPC_PipeServer_Send(gStore_Server, hPipe, wsMsg)
+        }
+        gStore_LastSendTick := A_TickCount
+    }
+
     ; Cache projections by normalized opts key within this push cycle.
     ; When multiple clients have equivalent opts (e.g. GUI + Viewer both default
     ; to MRU/items/includeCloaked), this avoids redundant store iteration + sort.
@@ -412,11 +461,12 @@ Store_PushToClients() {
             gStore_ClientPushCount[hPipe] := 0
         gStore_ClientPushCount[hPipe] += 1
 
-        ; Determine sparse vs full record mode
-        sparseN := cfg.IPCSparseFullSyncEvery
+        ; Determine sparse vs full row mode
+        sparseN := cfg.IPCFullRowEvery
         isSparse := sparseN > 0 && Mod(gStore_ClientPushCount[hPipe], sparseN) != 0
-        ; Meta inclusion: always on full sync; configurable on sparse pushes; always when meta changed
-        includeMeta := !isSparse || cfg.IPCDeltaIncludeMeta || metaChanged
+        ; Meta inclusion: always on full row sync; in Always mode; or when meta changed
+        isAlwaysMode := (cfg.IPCWorkspaceDeltaStyle = "Always")
+        includeMeta := !isSparse || isAlwaysMode || metaChanged
 
         ; Send delta if client has previous state, otherwise full snapshot
         if (prevItems.Length > 0) {
@@ -453,9 +503,10 @@ Store_PushToClients() {
 }
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)
-; DESIGN: Workspace metadata in every delta by default — self-healing property.
-; Meta inclusion is defensive and intentional. Controlled by IPCDeltaIncludeMeta
-; config (default: true). Do not remove the default or the config option.
+; DESIGN: Workspace metadata in deltas controlled by IPCWorkspaceDeltaStyle config.
+; 'Always' mode includes meta in every delta (self-healing, default). 'OnChange' mode
+; only includes meta when workspace changes, and sends workspace_change messages for
+; dedicated notification. The includeMeta parameter reflects this configuration.
 Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true) {
     global IPC_MSG_DELTA
     delta := WindowStore_BuildDelta(prevItems, nextItems, sparse)

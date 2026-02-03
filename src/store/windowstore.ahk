@@ -40,6 +40,9 @@ gWS_Config["MissingTTLms"] := 1200  ; Default, overridden from cfg in WindowStor
 gWS_Meta["currentWSId"] := ""
 gWS_Meta["currentWSName"] := ""
 
+; Flag indicating workspace changed since last consumed - for OnChange delta style
+global gWS_WorkspaceChangedFlag := false
+
 ; Safely snapshot Map keys for iteration (prevents modification during iteration)
 ; Returns an Array of keys. Caller can iterate safely after Critical section ends.
 _WS_SnapshotMapKeys(mapObj) {
@@ -461,7 +464,7 @@ WindowStore_GetByHwnd(hwnd) {
 }
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
-    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortDirty
+    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortDirty, gWS_WorkspaceChangedFlag
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
     ; and the iteration loop must be atomic so a timer can't observe stale meta values
     ; between the name comparison (line below) and the name write.
@@ -476,6 +479,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
         return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
 
     gWS_Meta["currentWSName"] := name
+    gWS_WorkspaceChangedFlag := true  ; Signal workspace change for OnChange delta style
 
     ; Update isOnCurrentWorkspace for all windows based on new workspace
     ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
@@ -1091,5 +1095,16 @@ WindowStore_MetaChanged(prevMeta, nextMeta) {
     }
 
     return (prevWSName != nextWSName)
+}
+
+; Atomically read and clear the workspace changed flag
+; Used by store_server for OnChange delta style to send workspace_change messages
+WindowStore_ConsumeWorkspaceChangedFlag() {
+    global gWS_WorkspaceChangedFlag
+    Critical "On"
+    result := gWS_WorkspaceChangedFlag
+    gWS_WorkspaceChangedFlag := false
+    Critical "Off"
+    return result
 }
 

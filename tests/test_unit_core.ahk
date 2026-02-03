@@ -1219,6 +1219,45 @@ RunUnitTests_Core() {
     WindowStore_RemoveWindow([1001, 1002, 1003], true)
 
     ; ============================================================
+    ; WorkspaceChangedFlag Tests
+    ; ============================================================
+    ; Tests for the gWS_WorkspaceChangedFlag used by OnChange delta style
+    Log("`n--- WorkspaceChangedFlag Tests ---")
+
+    ; Reset store and flag for clean test
+    WindowStore_Init()
+    global gWS_WorkspaceChangedFlag
+    gWS_WorkspaceChangedFlag := false
+
+    ; Test 1: Flag starts false
+    AssertEq(gWS_WorkspaceChangedFlag, false, "WorkspaceChangedFlag: starts false")
+
+    ; Test 2: SetCurrentWorkspace with new name sets flag true
+    WindowStore_SetCurrentWorkspace("", "TestWS1")
+    AssertEq(gWS_WorkspaceChangedFlag, true, "WorkspaceChangedFlag: set to true on workspace change")
+
+    ; Test 3: ConsumeWorkspaceChangedFlag returns true and resets to false
+    consumeResult := WindowStore_ConsumeWorkspaceChangedFlag()
+    AssertEq(consumeResult, true, "WorkspaceChangedFlag: ConsumeWorkspaceChangedFlag returns true")
+    AssertEq(gWS_WorkspaceChangedFlag, false, "WorkspaceChangedFlag: reset to false after consume")
+
+    ; Test 4: Second consume returns false (already consumed)
+    consumeResult2 := WindowStore_ConsumeWorkspaceChangedFlag()
+    AssertEq(consumeResult2, false, "WorkspaceChangedFlag: second consume returns false")
+
+    ; Test 5: SetCurrentWorkspace with same name does NOT set flag
+    gWS_WorkspaceChangedFlag := false  ; Ensure clean state
+    WindowStore_SetCurrentWorkspace("", "TestWS1")  ; Same name as currently set
+    AssertEq(gWS_WorkspaceChangedFlag, false, "WorkspaceChangedFlag: stays false when name unchanged")
+
+    ; Test 6: SetCurrentWorkspace with different name DOES set flag
+    WindowStore_SetCurrentWorkspace("", "TestWS2")
+    AssertEq(gWS_WorkspaceChangedFlag, true, "WorkspaceChangedFlag: set true when name changes")
+
+    ; Cleanup
+    gWS_WorkspaceChangedFlag := false
+
+    ; ============================================================
     ; Config INI Type Parsing & Formatting Tests
     ; ============================================================
     ; Verify _CL_FormatValue correctly formats typed values for INI output

@@ -220,6 +220,14 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         return
     }
 
+    ; Handle workspace_change message (OnChange delta style)
+    global IPC_MSG_WORKSPACE_CHANGE
+    if (type = IPC_MSG_WORKSPACE_CHANGE) {
+        if (obj.Has("payload"))
+            GUI_UpdateCurrentWSFromPayload(obj["payload"])
+        return
+    }
+
     ; Unknown message type - log for debugging (could mask IPC bugs)
     _GUI_LogEvent("IPC: unknown message type: " type)
 }

@@ -103,7 +103,7 @@ Viewer_OnMessage(line, hPipe := 0) {
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
     global gViewer_HeartbeatCount
     global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK, IPC_MSG_HEARTBEAT
-    global IPC_MSG_PRODUCER_STATUS
+    global IPC_MSG_PRODUCER_STATUS, IPC_MSG_WORKSPACE_CHANGE
     if (gViewer_ShuttingDown)
         return
     gViewer_LastMsgTick := A_TickCount
@@ -177,6 +177,10 @@ Viewer_OnMessage(line, hPipe := 0) {
         if (obj.Has("producers")) {
             _Viewer_UpdateProducerState(obj["producers"])
         }
+    } else if (type = IPC_MSG_WORKSPACE_CHANGE) {
+        ; Workspace change = dedicated notification in OnChange delta style
+        if (obj.Has("payload"))
+            _Viewer_UpdateCurrentWS(obj["payload"])
     }
 }
 

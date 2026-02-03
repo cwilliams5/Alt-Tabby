@@ -18,6 +18,7 @@ global IPC_MSG_PRODUCER_STATUS := "producer_status"
 global IPC_MSG_STATS_UPDATE := "stats_update"
 global IPC_MSG_STATS_REQUEST := "stats_request"
 global IPC_MSG_STATS_RESPONSE := "stats_response"
+global IPC_MSG_WORKSPACE_CHANGE := "workspace_change"
 
 ; IPC Timing Constants (milliseconds)
 global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)

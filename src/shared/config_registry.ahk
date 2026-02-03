@@ -495,11 +495,14 @@ global gConfigRegistry := [
     {s: "IPC", k: "IdleTickMs", g: "IPCIdleTickMs", t: "int", default: 100,
      d: "Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms."},
 
-    {s: "IPC", k: "SparseFullSyncEvery", g: "IPCSparseFullSyncEvery", t: "int", default: 10,
-     d: "Sparse delta mode: 0=disabled (full records always), N>0=every Nth push sends full records for self-healing."},
+    {s: "IPC", k: "FullRowEvery", g: "IPCFullRowEvery", t: "int", default: 10,
+     d: "Per-row healing: 0=always full rows (legacy, no sparse deltas), N>0=every Nth push sends full rows instead of changed-fields-only."},
 
-    {s: "IPC", k: "DeltaIncludeMeta", g: "IPCDeltaIncludeMeta", t: "bool", default: true,
-     d: "Include workspace meta in every delta (self-healing). Disable only for testing."},
+    {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle", t: "string", default: "Always",
+     d: "Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean)."},
+
+    {s: "IPC", k: "FullSyncEvery", g: "IPCFullSyncEvery", t: "int", default: 60,
+     d: "Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled."},
 
     ; ============================================================
     ; External Tools

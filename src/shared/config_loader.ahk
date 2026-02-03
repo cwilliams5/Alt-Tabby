@@ -476,8 +476,11 @@ _CL_ValidateSettings() {
 
     ; --- IPC Settings ---
     cfg.IPCIdleTickMs := clamp(cfg.IPCIdleTickMs, 15, 500)
-    cfg.IPCSparseFullSyncEvery := clamp(cfg.IPCSparseFullSyncEvery, 0, 1000)
-    ; IPCDeltaIncludeMeta is bool, no clamping needed
+    cfg.IPCFullRowEvery := clamp(cfg.IPCFullRowEvery, 0, 1000)
+    cfg.IPCFullSyncEvery := clamp(cfg.IPCFullSyncEvery, 0, 600)
+    ; WorkspaceDeltaStyle is a string enum - validate it
+    if (cfg.IPCWorkspaceDeltaStyle != "Always" && cfg.IPCWorkspaceDeltaStyle != "OnChange")
+        cfg.IPCWorkspaceDeltaStyle := "Always"
     global IPC_TICK_IDLE
     IPC_TICK_IDLE := cfg.IPCIdleTickMs
 
