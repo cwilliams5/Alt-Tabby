@@ -667,6 +667,9 @@ global gConfigRegistry := [
     {s: "Cache", k: "ExeIconMax", g: "ExeIconCacheMax", t: "int", default: 100,
      d: "Maximum number of cached exe icons. Older entries are evicted when limit is reached."},
 
+    {s: "Cache", k: "UwpLogoMax", g: "UwpLogoCacheMax", t: "int", default: 50,
+     d: "Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps."},
+
     {s: "Cache", k: "ProcNameMax", g: "ProcNameCacheMax", t: "int", default: 200,
      d: "Maximum number of cached process names. Older entries are evicted when limit is reached."},
 

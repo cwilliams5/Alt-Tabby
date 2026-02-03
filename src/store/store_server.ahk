@@ -979,6 +979,9 @@ Store_OnExit(reason, code) {
     try {
         WindowStore_CleanupExeIconCache()
     }
+    try {
+        IconPump_CleanupUwpCache()
+    }
 
     ; Flush stats to disk before stopping IPC (final persist)
     try Stats_FlushToDisk()

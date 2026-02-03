@@ -48,6 +48,11 @@ global _IP_Attempts := Map()            ; hwnd -> attempt count
 global _IP_IdleTicks := 0               ; Counter for consecutive empty ticks
 global _IP_IdleThreshold := 5           ; Default, overridden from config in IconPump_Init()
 
+; UWP logo path cache - keyed by packagePath, stores resolved logo file path
+; Eliminates repeated manifest parsing for multiple windows from same UWP app
+global _IP_UwpLogoCache := Map()
+global _IP_UwpLogoCacheMax := 50        ; Default, overridden from config
+
 ; Start the icon pump timer
 IconPump_Start() {
     global _IP_TimerOn, IconTimerIntervalMs, cfg
@@ -57,7 +62,7 @@ IconPump_Start() {
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (IconTimerIntervalMs = 0) {
-        global _IP_IdleThreshold
+        global _IP_IdleThreshold, _IP_UwpLogoCacheMax
         IconBatchPerTick := cfg.IconPumpBatchSize
         IconTimerIntervalMs := cfg.IconPumpIntervalMs
         IconMaxAttempts := cfg.IconPumpMaxAttempts
@@ -65,6 +70,7 @@ IconPump_Start() {
         IconAttemptBackoffMultiplier := cfg.IconPumpBackoffMultiplier
         IconGiveUpBackoffMs := cfg.IconPumpGiveUpBackoffMs
         _IP_IdleThreshold := cfg.HasOwnProp("IconPumpIdleThreshold") ? cfg.IconPumpIdleThreshold : 5
+        _IP_UwpLogoCacheMax := cfg.HasOwnProp("UwpLogoCacheMax") ? cfg.UwpLogoCacheMax : 50
 
         ; Initialize diagnostic logging
         _IP_DiagEnabled := cfg.HasOwnProp("DiagIconPumpLog") ? cfg.DiagIconPumpLog : false
@@ -104,6 +110,12 @@ IconPump_Stop() {
 IconPump_EnsureRunning() {
     global _IP_TimerOn, _IP_IdleTicks, IconTimerIntervalMs
     Pump_EnsureRunning(&_IP_TimerOn, &_IP_IdleTicks, IconTimerIntervalMs, _IP_Tick)
+}
+
+; Clear the UWP logo path cache (call during cleanup/shutdown)
+IconPump_CleanupUwpCache() {
+    global _IP_UwpLogoCache
+    _IP_UwpLogoCache := Map()
 }
 
 ; Clean up tracking state AND destroy HICON when windows are removed
@@ -409,7 +421,7 @@ _IP_AppHasPackage(pid) {
     return (result = 0 || result = 122)
 }
 
-; Get the UWP app's logo path from the package
+; Get the UWP app's logo path from the package (legacy wrapper, prefer _IP_GetUWPLogoPathCached)
 _IP_GetUWPLogoPath(hwnd) {
     ; Get PID from hwnd
     pid := 0
@@ -421,6 +433,43 @@ _IP_GetUWPLogoPath(hwnd) {
 
     ; Get package path
     packagePath := _IP_GetPackagePath(pid)
+    if (packagePath = "")
+        return ""
+
+    return _IP_GetUWPLogoPathFromPackage(packagePath)
+}
+
+; Get logo path from a package path (cached version)
+; Returns cached result if available, otherwise resolves and caches
+_IP_GetUWPLogoPathCached(packagePath) {
+    global _IP_UwpLogoCache, _IP_UwpLogoCacheMax
+
+    if (packagePath = "")
+        return ""
+
+    ; Check cache first
+    if (_IP_UwpLogoCache.Has(packagePath))
+        return _IP_UwpLogoCache[packagePath]
+
+    ; Resolve the logo path
+    logoPath := _IP_GetUWPLogoPathFromPackage(packagePath)
+
+    ; Cache the result (even empty string to avoid repeated failed lookups)
+    ; Evict oldest entry if cache is full
+    if (_IP_UwpLogoCache.Count >= _IP_UwpLogoCacheMax) {
+        ; Simple eviction: delete first key (Map iteration order is insertion order in AHK v2)
+        for k, _ in _IP_UwpLogoCache {
+            _IP_UwpLogoCache.Delete(k)
+            break
+        }
+    }
+    _IP_UwpLogoCache[packagePath] := logoPath
+
+    return logoPath
+}
+
+; Resolve UWP logo path from package path (does actual work - reads manifest, finds logo file)
+_IP_GetUWPLogoPathFromPackage(packagePath) {
     if (packagePath = "")
         return ""
 
@@ -541,13 +590,15 @@ _IP_GetPackagePath(pid) {
 }
 
 ; Try to extract icon from UWP package
+; Uses cached logo path lookup to avoid repeated manifest parsing for multiple windows from same app
 _IP_TryResolveFromUWP(hwnd, pid) {
-    ; Check if it's a UWP app
-    if (!_IP_AppHasPackage(pid))
+    ; Get package path first (also confirms it's a UWP app)
+    packagePath := _IP_GetPackagePath(pid)
+    if (packagePath = "")
         return 0
 
-    ; Get logo path
-    logoPath := _IP_GetUWPLogoPath(hwnd)
+    ; Get logo path (cached by packagePath)
+    logoPath := _IP_GetUWPLogoPathCached(packagePath)
     if (logoPath = "" || !FileExist(logoPath))
         return 0
 
