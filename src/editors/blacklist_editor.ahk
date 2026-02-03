@@ -188,7 +188,7 @@ _BE_SaveToFile() {
         FileAppend(content, gBlacklist_FilePath, "UTF-8")
         return true
     } catch as e {
-        MsgBox("Failed to save blacklist: " e.Message, "Error", "OK Icon!")
+        MsgBox("Failed to save blacklist: " e.Message, "Error", "OK Iconx")
         return false
     }
 }

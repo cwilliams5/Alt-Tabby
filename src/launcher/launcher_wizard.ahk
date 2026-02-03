@@ -243,7 +243,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
             }
         } else {
             ; Install was requested but failed - don't create task pointing to temp location
-            MsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", APP_NAME, "Icon!")
+            MsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", APP_NAME, "Iconx")
         }
     }
 

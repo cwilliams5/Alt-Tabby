@@ -82,7 +82,7 @@ Launcher_Init() {
                 }
             }
             if (!acquired) {
-                MsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", APP_NAME, "Icon!")
+                MsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", APP_NAME, "Iconx")
                 ExitApp()
             }
             ; Continue with normal startup below

@@ -199,7 +199,7 @@ if (g_AltTabbyMode = "wizard-continue") {
         ; Acquire mutex before running as launcher
         ; Bug fix: Without this, wizard-continue could run alongside another launcher
         if (!_Launcher_AcquireMutex()) {
-            MsgBox("Alt-Tabby is already running.", APP_NAME, "Icon!")
+            MsgBox("Alt-Tabby is already running.", APP_NAME, "Iconi")
             ExitApp()
         }
 
@@ -235,7 +235,7 @@ if (g_AltTabbyMode = "wizard-continue") {
         Persistent()
     } else {
         ; No wizard data found - exit
-        MsgBox("No wizard continuation data found.", APP_NAME, "Icon!")
+        MsgBox("No wizard continuation data found.", APP_NAME, "Iconx")
         ExitApp()
     }
 }
@@ -316,7 +316,7 @@ if (g_AltTabbyMode = "apply-update") {
     ConfigLoader_Init()  ; Required for admin task recreation in _Update_ApplyAndRelaunch
     ; Apply the downloaded update (we're now elevated)
     if (!_Update_ContinueFromElevation()) {
-        MsgBox("Update continuation failed. Please try updating again.", APP_NAME, "Icon!")
+        MsgBox("Update continuation failed. Please try updating again.", APP_NAME, "Iconx")
     }
     ExitApp()
 }
@@ -329,7 +329,7 @@ if (g_AltTabbyMode = "update-installed") {
     updateFile := A_Temp "\alttabby_install_update.txt"
 
     if (!FileExist(updateFile)) {
-        MsgBox("Update information not found.", APP_NAME, "Icon!")
+        MsgBox("Update information not found.", APP_NAME, "Iconx")
         ExitApp()
     }
 
@@ -339,7 +339,7 @@ if (g_AltTabbyMode = "update-installed") {
 
         parts := StrSplit(content, UPDATE_INFO_DELIMITER)
         if (parts.Length != 2) {
-            MsgBox("Invalid update information.", APP_NAME, "Icon!")
+            MsgBox("Invalid update information.", APP_NAME, "Iconx")
             ExitApp()
         }
 
@@ -348,7 +348,7 @@ if (g_AltTabbyMode = "update-installed") {
 
         ; Security validation: ensure paths are valid
         if (!FileExist(sourcePath)) {
-            MsgBox("Update source file not found:`n" sourcePath, APP_NAME, "Icon!")
+            MsgBox("Update source file not found:`n" sourcePath, APP_NAME, "Iconx")
             ExitApp()
         }
 
@@ -357,13 +357,13 @@ if (g_AltTabbyMode = "update-installed") {
         targetName := ""
         SplitPath(targetPath, &targetName)
         if (!RegExMatch(targetName, "i)\.exe$") || !InStr(StrLower(targetName), "tabby")) {
-            MsgBox("Invalid update target path:`n" targetPath, APP_NAME, "Icon!")
+            MsgBox("Invalid update target path:`n" targetPath, APP_NAME, "Iconx")
             ExitApp()
         }
 
         _Launcher_DoUpdateInstalled(sourcePath, targetPath)
     } catch as e {
-        MsgBox("Update failed:`n" e.Message, APP_NAME, "Icon!")
+        MsgBox("Update failed:`n" e.Message, APP_NAME, "Iconx")
     }
     ExitApp()
 }

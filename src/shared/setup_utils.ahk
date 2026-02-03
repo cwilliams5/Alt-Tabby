@@ -6,6 +6,8 @@
 ; ============================================================
 ; Shared functions for first-run wizard, admin mode, and updates.
 ; Included by alt_tabby.ahk and tests.
+;
+; MsgBox icon policy: Iconx=error, Icon!=warning, Icon?=question, Iconi=info
 
 ; Task name constant - used by all task scheduler functions
 global ALTTABBY_TASK_NAME := "Alt-Tabby"
@@ -447,7 +449,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
                         if (downloadUrl)
                             _Update_DownloadAndApply(downloadUrl, latestVersion)
                         else
-                            MsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Icon!")
+                            MsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Iconx")
                     }
                 }
             } else {
@@ -517,7 +519,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         whr.Send()
 
         if (whr.Status != 200) {
-            MsgBox("Download failed: HTTP " whr.Status, "Update Error", "Icon!")
+            MsgBox("Download failed: HTTP " whr.Status, "Update Error", "Iconx")
             whr := ""  ; Release COM before return
             return
         }
@@ -537,7 +539,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         ; Clean up partial download
         if (FileExist(tempExe))
             try FileDelete(tempExe)
-        MsgBox("Download failed:`n" e.Message, "Update Error", "Icon!")
+        MsgBox("Download failed:`n" e.Message, "Update Error", "Iconx")
         return
     }
 
@@ -555,7 +557,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
-            MsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Icon!")
+            MsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Iconx")
             try FileDelete(updateFile)
             try FileDelete(tempExe)  ; Clean up downloaded exe
             return
@@ -688,7 +690,7 @@ _Update_ApplyCore(opts) {
         } catch as renameErr {
             if (lockFile != "")
                 try FileDelete(lockFile)
-            MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Icon!")
+            MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Iconx")
             return
         }
 
@@ -698,7 +700,7 @@ _Update_ApplyCore(opts) {
                 FileMove(backupPath, targetPath)
             if (lockFile != "")
                 try FileDelete(lockFile)
-            MsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Icon!")
+            MsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Iconx")
             return
         }
 
@@ -804,9 +806,9 @@ _Update_ApplyCore(opts) {
             try FileDelete(lockFile)
 
         if (rollbackSuccess)
-            MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Icon!")
+            MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Iconx")
         else if (FileExist(targetPath))
-            MsgBox("Update failed:`n" e.Message, "Update Error", "Icon!")
+            MsgBox("Update failed:`n" e.Message, "Update Error", "Iconx")
         else
             MsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
     }
@@ -941,7 +943,7 @@ _Update_ContinueFromElevation() {
         global UPDATE_INFO_DELIMITER
         parts := StrSplit(content, UPDATE_INFO_DELIMITER)
         if (parts.Length != 2) {
-            MsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), APP_NAME, "Icon!")
+            MsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), APP_NAME, "Iconx")
             return false
         }
 
@@ -950,13 +952,13 @@ _Update_ContinueFromElevation() {
 
         ; Security validation: ensure source file exists
         if (!FileExist(newExePath)) {
-            MsgBox("Update source file not found:`n" newExePath, APP_NAME, "Icon!")
+            MsgBox("Update source file not found:`n" newExePath, APP_NAME, "Iconx")
             return false
         }
 
         ; Validate source path is in TEMP directory (expected from download)
         if (!InStr(newExePath, A_Temp)) {
-            MsgBox("Invalid update source path (not in temp):`n" newExePath, APP_NAME, "Icon!")
+            MsgBox("Invalid update source path (not in temp):`n" newExePath, APP_NAME, "Iconx")
             try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false
         }

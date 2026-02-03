@@ -470,7 +470,7 @@ ToggleAdminMode() {
     } else {
         ; Enable admin mode - requires elevation to create scheduled task
         if (!A_IsAdmin) {
-            result := MsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", APP_NAME, "OKCancel Icon!")
+            result := MsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", APP_NAME, "OKCancel Iconi")
             if (result = "Cancel")
                 return
 

@@ -20,13 +20,13 @@ InstallToProgramFiles() {
     srcDir := A_IsCompiled ? A_ScriptDir : ""
 
     if (!A_IsCompiled) {
-        MsgBox("Program Files installation only works with compiled exe.", APP_NAME, "Icon!")
+        MsgBox("Program Files installation only works with compiled exe.", APP_NAME, "Iconx")
         return ""
     }
 
     ; Check if we need admin
     if (!A_IsAdmin) {
-        MsgBox("Administrator privileges required to install to Program Files.", APP_NAME, "Icon!")
+        MsgBox("Administrator privileges required to install to Program Files.", APP_NAME, "Iconx")
         return ""
     }
 
@@ -173,7 +173,7 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
             Run('"' installedPath '"')
             ExitApp()
         } catch as e {
-            MsgBox("Could not launch installed version:`n" e.Message, APP_NAME, "Icon!")
+            MsgBox("Could not launch installed version:`n" e.Message, APP_NAME, "Iconx")
         }
     } else if (result = "Always") {
         ; Warn if committing to a temporary location
@@ -309,7 +309,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
-            MsgBox("Update requires administrator privileges.", APP_NAME, "Icon!")
+            MsgBox("Update requires administrator privileges.", APP_NAME, "Iconx")
             try FileDelete(updateFile)
             return
         }
