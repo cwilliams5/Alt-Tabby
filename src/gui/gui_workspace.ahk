@@ -20,7 +20,7 @@ GUI_UpdateFooterText() {
 ; ========================= CURRENT WORKSPACE TRACKING =========================
 
 GUI_UpdateCurrentWSFromPayload(payload) {
-    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch
+    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch, cfg
 
     if (!payload.Has("meta"))
         return
@@ -52,6 +52,14 @@ GUI_UpdateCurrentWSFromPayload(payload) {
             gGUI_Sel := 1
             gGUI_ScrollTop := 0
             gGUI_WSContextSwitch := true  ; Sticky for this overlay session
+
+            ; When frozen, the normal snapshot/delta paths are blocked.
+            ; Request a fresh projection that bypasses the freeze gate
+            ; (reuses the toggle-response mechanism).
+            if (cfg.FreezeWindowList) {
+                currentWSOnly := (gGUI_WorkspaceMode = "current")
+                GUI_RequestProjectionWithWSFilter(currentWSOnly)
+            }
         }
         Critical "Off"
     }

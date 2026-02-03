@@ -50,6 +50,10 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         isFrozen := cfg.FreezeWindowList
         isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection  ; lint-ignore: isset-with-default
 
+        ; Even when frozen, track workspace changes (may trigger thaw via projection request)
+        if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse && obj.Has("payload"))
+            GUI_UpdateCurrentWSFromPayload(obj["payload"])
+
         ; RACE FIX: Enter Critical before checking gGUI_PendingPhase to prevent
         ; a hotkey from starting async activation between the phase check and
         ; the array modifications below. Without this, a snapshot could be accepted
@@ -174,8 +178,12 @@ GUI_OnStoreMessage(line, hPipe := 0) {
         global cfg
         isFrozen := cfg.FreezeWindowList
 
+        ; Track workspace changes even when frozen (triggers thaw if workspace switched)
+        if (obj.Has("payload"))
+            GUI_UpdateCurrentWSFromPayload(obj["payload"])
+
         if (gGUI_State = "ACTIVE" && isFrozen) {
-            ; Frozen mode: ignore deltas
+            ; Frozen mode: ignore deltas (workspace thaw already handled above)
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -184,7 +192,6 @@ GUI_OnStoreMessage(line, hPipe := 0) {
 
         ; Apply delta incrementally to stay up-to-date
         if (obj.Has("payload")) {
-            GUI_UpdateCurrentWSFromPayload(obj["payload"])
             result := GUI_ApplyDelta(obj["payload"])
 
             ; If in ACTIVE state with FreezeWindowList=false, update live display
