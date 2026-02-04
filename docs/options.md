@@ -417,6 +417,7 @@ Settings for komorebi tiling window manager integration.
 |--------|------|---------|-------------|
 | `CrossWorkspaceMethod` | enum | `MimicNative` | How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails. |
 | `MimicNativeSettleMs` | int | `0` | Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems. |
+| `UseSocket` | bool | `false` | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster but experimental. Falls back to komorebic.exe if socket unavailable. |
 | `WorkspaceConfirmationMethod` | enum | `PollCloak` | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
 
 ## KomorebiSub
@@ -490,4 +491,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-03 with 193 total settings.*
+*Generated on 2026-02-03 with 194 total settings.*

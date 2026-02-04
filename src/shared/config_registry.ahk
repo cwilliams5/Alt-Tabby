@@ -688,6 +688,10 @@ global gConfigRegistry := [
      t: "int", default: 0,
      d: "Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems."},
 
+    {s: "Komorebi", k: "UseSocket", g: "KomorebiUseSocket",
+     t: "bool", default: false,
+     d: "Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster but experimental. Falls back to komorebic.exe if socket unavailable."},
+
     {s: "Komorebi", k: "WorkspaceConfirmationMethod", g: "KomorebiWorkspaceConfirmMethod",
      t: "enum", default: "PollCloak", options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
      d: "How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},

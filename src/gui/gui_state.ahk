@@ -569,9 +569,7 @@ GUI_ActivateItem(item) {
                 ; Step 3: Command komorebi to move the focused window to its workspace
                 ; This switches to that workspace WITH our window already focused
                 try {
-                    cmd := '"' cfg.KomorebicExe '" move-to-named-workspace "' wsName '"'
-                    _GUI_LogEvent("CROSS-WS: RevealMove executing: " cmd)
-                    ProcessUtils_RunHidden(cmd)
+                    _GUI_KomorebiMoveToWorkspace(wsName)
                 } catch as e {
                     _GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
                 }
@@ -634,11 +632,9 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
     if (!gGUI_PendingTempFile)
         gGUI_PendingTempFile := A_Temp "\tabby_ws_query.txt"
 
-    ; Trigger workspace switch via komorebic
+    ; Trigger workspace switch (via socket or komorebic.exe)
     try {
-        cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
-        _GUI_LogEvent("SWITCH-ACTIVATE: Running " cmd)
-        ProcessUtils_RunHidden(cmd)
+        _GUI_KomorebiFocusWorkspace(wsName)
     } catch as e {
         _GUI_LogEvent("SWITCH-ACTIVATE ERROR: " e.Message)
         ; Fall back to direct activation attempt
@@ -1189,6 +1185,99 @@ _GUI_TryComUncloak(hwnd) {
         _GUI_LogEvent("COM: Exception - " e.Message)
         return 0
     }
+}
+
+; ========================= KOMOREBI SOCKET COMMANDS =========================
+; Send commands directly to komorebi's named pipe instead of spawning komorebic.exe.
+; Much faster (no process spawn overhead), but experimental.
+
+; Send a command to komorebi via its named pipe
+; cmdType: Command type (e.g., "FocusNamedWorkspace", "MoveToNamedWorkspace")
+; content: Command argument (e.g., workspace name)
+; Returns: true on success, false on failure
+_GUI_SendKomorebiSocketCmd(cmdType, content) {
+    static GENERIC_WRITE := 0x40000000
+    static OPEN_EXISTING := 3
+    static INVALID_HANDLE := -1
+
+    pipePath := "\\.\pipe\komorebi"
+
+    ; Connect to komorebi's named pipe
+    hPipe := DllCall("CreateFileW"
+        , "str", pipePath
+        , "uint", GENERIC_WRITE
+        , "uint", 0          ; no sharing
+        , "ptr", 0           ; default security
+        , "uint", OPEN_EXISTING
+        , "uint", 0          ; normal attributes
+        , "ptr", 0           ; no template
+        , "ptr")
+
+    if (!hPipe || hPipe = INVALID_HANDLE) {
+        _GUI_LogEvent("SOCKET: Failed to connect to " pipePath " GLE=" DllCall("GetLastError", "uint"))
+        return false
+    }
+
+    ; Build JSON command: {"type":"CmdType","content":"value"}
+    ; Escape quotes in content (workspace names shouldn't have them, but be safe)
+    safeContent := StrReplace(content, '"', '\"')
+    json := '{"type":"' cmdType '","content":"' safeContent '"}'
+
+    ; Convert to UTF-8
+    len := StrPut(json, "UTF-8") - 1
+    buf := Buffer(len)
+    StrPut(json, buf, "UTF-8")
+
+    ; Write to pipe
+    wrote := 0
+    ok := DllCall("WriteFile", "ptr", hPipe, "ptr", buf.Ptr, "uint", len, "uint*", &wrote, "ptr", 0)
+
+    ; Close pipe
+    DllCall("CloseHandle", "ptr", hPipe)
+
+    if (!ok || wrote != len) {
+        _GUI_LogEvent("SOCKET: Write failed for " cmdType " GLE=" DllCall("GetLastError", "uint"))
+        return false
+    }
+
+    _GUI_LogEvent("SOCKET: Sent " cmdType '("' content '") via pipe')
+    return true
+}
+
+; Send focus-named-workspace command to komorebi
+; Uses socket if enabled, falls back to komorebic.exe
+_GUI_KomorebiFocusWorkspace(wsName) {
+    global cfg
+
+    if (cfg.KomorebiUseSocket) {
+        if (_GUI_SendKomorebiSocketCmd("FocusNamedWorkspace", wsName))
+            return true
+        _GUI_LogEvent("SOCKET: FocusNamedWorkspace failed, falling back to komorebic.exe")
+    }
+
+    ; Fallback: spawn komorebic.exe
+    cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
+    _GUI_LogEvent("KOMOREBIC: Running " cmd)
+    ProcessUtils_RunHidden(cmd)
+    return true
+}
+
+; Send move-to-named-workspace command to komorebi
+; Uses socket if enabled, falls back to komorebic.exe
+_GUI_KomorebiMoveToWorkspace(wsName) {
+    global cfg
+
+    if (cfg.KomorebiUseSocket) {
+        if (_GUI_SendKomorebiSocketCmd("MoveToNamedWorkspace", wsName))
+            return true
+        _GUI_LogEvent("SOCKET: MoveToNamedWorkspace failed, falling back to komorebic.exe")
+    }
+
+    ; Fallback: spawn komorebic.exe
+    cmd := '"' cfg.KomorebicExe '" move-to-named-workspace "' wsName '"'
+    _GUI_LogEvent("KOMOREBIC: Running " cmd)
+    ProcessUtils_RunHidden(cmd)
+    return true
 }
 
 ; ========================= ROBUST WINDOW ACTIVATION =========================
