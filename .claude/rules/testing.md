@@ -6,7 +6,7 @@
 .\tests\test.ps1 --live
 ```
 
-**Flags:** `--live` (integration tests), `--force-compile` (force recompilation), `--timing` (detailed hierarchical timing report)
+**Flags:** `--live` (integration tests), `--force-compile` (force recompilation), `--timing` (detailed hierarchical timing report), `--invasive` (tests that disrupt the desktop, e.g., workspace switching)
 
 **NEVER use `powershell -Command`** - it breaks argument parsing and fails hard:
 ```powershell

@@ -85,6 +85,7 @@ DoUnitSetup := false
 DoUnitCleanup := false
 DoUnitAdvanced := false
 DoUnitStats := false
+global DoInvasiveTests := false  ; Tests that disrupt desktop (workspace switching, etc.)
 for _, arg in A_Args {
     if (arg = "--live")
         DoLiveTests := true
@@ -114,6 +115,8 @@ for _, arg in A_Args {
         DoUnitAdvanced := true
     else if (arg = "--unit-stats")
         DoUnitStats := true
+    else if (arg = "--invasive")
+        DoInvasiveTests := true
 }
 
 ; Single-suite modes use a dedicated log file to avoid file locking

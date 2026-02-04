@@ -9,6 +9,7 @@ RunLiveTests_Network() {
     global gHbTestHeartbeats, gHbTestLastRev, gHbTestReceived
     global IPC_MSG_HELLO, IPC_MSG_PROJECTION_REQUEST
     global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST
+    global DoInvasiveTests
 
     storePath := A_ScriptDir "\..\src\store\store_server.ahk"
 
@@ -291,6 +292,137 @@ RunLiveTests_Network() {
                         } else {
                             Log("FAIL: isCloaked field missing from projection items")
                             TestErrors++
+                        }
+
+                        ; ============================================================
+                        ; Workspace Switching Test (Part 2 of Workspace E2E)
+                        ; ============================================================
+                        ; Tests that store tracks workspace switches and preserves data
+                        ; across workspaces. This is critical for cross-workspace activation.
+                        ; INVASIVE: Actually switches workspaces, so gated behind --invasive flag.
+                        if (!DoInvasiveTests) {
+                            Log("SKIP: Workspace switching test (requires --invasive flag)")
+                        } else if (FileExist(komorebicPath) && itemsWithWs >= 2) {
+                            Log("`n--- Workspace Switching Test ---")
+
+                            ; Build workspace -> windows map from current projection
+                            wsWindows := Map()
+                            for _, item in items {
+                                wsName := item.Has("workspaceName") ? item["workspaceName"] : ""
+                                if (wsName != "") {
+                                    if (!wsWindows.Has(wsName))
+                                        wsWindows[wsName] := 0
+                                    wsWindows[wsName]++
+                                }
+                            }
+
+                            ; Request projection with meta to get currentWSName
+                            metaProjMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items,meta", includeMinimized: true, includeCloaked: true } }
+                            gWsE2EResponse := ""
+                            gWsE2EReceived := false
+                            IPC_PipeClient_Send(wsE2EClient, JSON.Dump(metaProjMsg))
+
+                            waitStart := A_TickCount
+                            while (!gWsE2EReceived && (A_TickCount - waitStart) < 2000)
+                                Sleep(50)
+
+                            if (gWsE2EReceived) {
+                                try {
+                                    metaRespObj := JSON.Load(gWsE2EResponse)
+                                    currentWSName := ""
+                                    if (metaRespObj.Has("payload") && metaRespObj["payload"].Has("meta"))
+                                        currentWSName := metaRespObj["payload"]["meta"].Has("currentWSName") ? metaRespObj["payload"]["meta"]["currentWSName"] : ""
+
+                                    ; Find a different workspace with windows to switch to
+                                    targetWS := ""
+                                    for ws, cnt in wsWindows {
+                                        if (ws != currentWSName && cnt > 0) {
+                                            targetWS := ws
+                                            break
+                                        }
+                                    }
+
+                                    if (currentWSName = "" || targetWS = "") {
+                                        Log("SKIP: Cannot test workspace switching (currentWS='" currentWSName "', no target workspace available)")
+                                    } else {
+                                        Log("  Current workspace: '" currentWSName "', switching to: '" targetWS "'")
+
+                                        ; Use komorebic to switch workspace
+                                        switchCmd := 'cmd.exe /c ""' komorebicPath '" focus-named-workspace ' targetWS '"'
+                                        _Test_RunWaitSilent(switchCmd)
+
+                                        ; Poll for store to reflect workspace switch (adaptive, not fixed sleep)
+                                        switchPollStart := A_TickCount
+                                        switchedOk := false
+                                        newWSName := ""
+
+                                        while (!switchedOk && (A_TickCount - switchPollStart) < 5000) {
+                                            gWsE2EResponse := ""
+                                            gWsE2EReceived := false
+                                            IPC_PipeClient_Send(wsE2EClient, JSON.Dump(metaProjMsg))
+
+                                            waitStart := A_TickCount
+                                            while (!gWsE2EReceived && (A_TickCount - waitStart) < 1000)
+                                                Sleep(50)
+
+                                            if (gWsE2EReceived) {
+                                                try {
+                                                    switchRespObj := JSON.Load(gWsE2EResponse)
+                                                    if (switchRespObj.Has("payload") && switchRespObj["payload"].Has("meta")) {
+                                                        newWSName := switchRespObj["payload"]["meta"].Has("currentWSName") ? switchRespObj["payload"]["meta"]["currentWSName"] : ""
+                                                        if (newWSName = targetWS)
+                                                            switchedOk := true
+                                                    }
+                                                }
+                                            }
+
+                                            if (!switchedOk)
+                                                Sleep(200)
+                                        }
+
+                                        if (switchedOk) {
+                                            Log("PASS: Store tracked workspace switch ('" currentWSName "' -> '" newWSName "')")
+                                            TestPassed++
+
+                                            ; Verify original workspace data persists
+                                            try {
+                                                switchRespObj := JSON.Load(gWsE2EResponse)
+                                                switchItems := switchRespObj["payload"]["items"]
+                                                originalWsCount := 0
+                                                for _, item in switchItems {
+                                                    wsName := item.Has("workspaceName") ? item["workspaceName"] : ""
+                                                    if (wsName = currentWSName)
+                                                        originalWsCount++
+                                                }
+                                                if (originalWsCount > 0) {
+                                                    Log("PASS: Original workspace '" currentWSName "' data preserved (" originalWsCount " windows)")
+                                                    TestPassed++
+                                                } else {
+                                                    Log("FAIL: Original workspace '" currentWSName "' data lost after switch")
+                                                    TestErrors++
+                                                }
+                                            }
+                                        } else {
+                                            Log("FAIL: Store did not track workspace switch within timeout (expected '" targetWS "', got '" newWSName "')")
+                                            TestErrors++
+                                        }
+
+                                        ; Switch back to original workspace
+                                        Log("  Switching back to '" currentWSName "'...")
+                                        switchBackCmd := 'cmd.exe /c ""' komorebicPath '" focus-named-workspace ' currentWSName '"'
+                                        _Test_RunWaitSilent(switchBackCmd)
+                                        Sleep(500)  ; Brief wait for switch to complete
+                                    }
+                                } catch as e {
+                                    Log("SKIP: Workspace switching test parse error: " e.Message)
+                                }
+                            } else {
+                                Log("SKIP: Workspace switching test - no meta response")
+                            }
+                        } else if (!FileExist(komorebicPath)) {
+                            ; Already logged skip above
+                        } else {
+                            Log("SKIP: Workspace switching test (need >= 2 workspaces with windows, have " itemsWithWs ")")
                         }
                     } else {
                         Log("FAIL: E2E response missing payload/items")

@@ -1,12 +1,14 @@
 # Alt-Tabby Test Runner
-# Usage: .\tests\test.ps1 [--live] [--force-compile] [--timing]
+# Usage: .\tests\test.ps1 [--live] [--force-compile] [--timing] [--invasive]
 # --timing implies --live (bottleneck analysis requires the full pipeline)
+# --invasive enables tests that disrupt the desktop (workspace switching, etc.)
 
 param(
     [switch]$live,
     [Alias("force-compile")]
     [switch]$forceCompile,
     [switch]$timing,
+    [switch]$invasive,
     [Parameter(ValueFromRemainingArguments=$true)]
     $remainingArgs
 )
@@ -16,7 +18,7 @@ param(
 # This MUST fail hard - warnings get ignored by LLM agents
 if ($remainingArgs) {
     foreach ($arg in $remainingArgs) {
-        if ($arg -match '^-{1,2}(live|force-?compile|timing)$') {
+        if ($arg -match '^-{1,2}(live|force-?compile|timing|invasive)$') {
             Write-Host ""
             Write-Host "============================================================" -ForegroundColor Red
             Write-Host "FATAL FAILURE: Do NOT use 'powershell -Command'" -ForegroundColor Red
@@ -976,7 +978,9 @@ if ($live) {
     $coreHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-core', $coreStderrFile)
 
     Write-Host "  Starting Live/Network tests (background)..." -ForegroundColor Cyan
-    $networkHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-network', $networkStderrFile)
+    $networkArgs = '--live-network'
+    if ($invasive) { $networkArgs += ' --invasive' }
+    $networkHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" ' + $networkArgs, $networkStderrFile)
 
     Write-Host "  Starting Live/Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
