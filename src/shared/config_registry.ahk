@@ -689,8 +689,8 @@ global gConfigRegistry := [
      d: "Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems."},
 
     {s: "Komorebi", k: "UseSocket", g: "KomorebiUseSocket",
-     t: "bool", default: false,
-     d: "Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster but experimental. Falls back to komorebic.exe if socket unavailable."},
+     t: "bool", default: true,
+     d: "Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable."},
 
     {s: "Komorebi", k: "WorkspaceConfirmationMethod", g: "KomorebiWorkspaceConfirmMethod",
      t: "enum", default: "PollCloak", options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
