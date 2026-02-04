@@ -586,20 +586,49 @@ _CL_ValidateSettings() {
 
     ; --- Icon Pump GiveUp ---
     cfg.IconPumpGiveUpBackoffMs := clamp(cfg.IconPumpGiveUpBackoffMs, 1000, 30000)
+    cfg.IconPumpResolveTimeoutMs := clamp(cfg.IconPumpResolveTimeoutMs, 100, 2000)
 
     ; --- IPC Settings ---
     cfg.IPCIdleTickMs := clamp(cfg.IPCIdleTickMs, 15, 500)
     cfg.IPCFullRowEvery := clamp(cfg.IPCFullRowEvery, 0, 1000)
     cfg.IPCFullSyncEvery := clamp(cfg.IPCFullSyncEvery, 0, 600)
+    cfg.IPCMaxReconnectAttempts := clamp(cfg.IPCMaxReconnectAttempts, 1, 10)
+    cfg.IPCStoreStartWaitMs := clamp(cfg.IPCStoreStartWaitMs, 500, 5000)
     ; WorkspaceDeltaStyle is a string enum - validate it
     if (cfg.IPCWorkspaceDeltaStyle != "Always" && cfg.IPCWorkspaceDeltaStyle != "OnChange")
         cfg.IPCWorkspaceDeltaStyle := "Always"
     global IPC_TICK_IDLE
     IPC_TICK_IDLE := cfg.IPCIdleTickMs
+    ; Update global constants from config
+    global MAX_RECONNECT_ATTEMPTS, TIMING_STORE_START_WAIT
+    MAX_RECONNECT_ATTEMPTS := cfg.IPCMaxReconnectAttempts
+    TIMING_STORE_START_WAIT := cfg.IPCStoreStartWaitMs
 
     ; --- Heartbeat Settings ---
     cfg.StoreHeartbeatIntervalMs := clamp(cfg.StoreHeartbeatIntervalMs, 1000, 60000)
     cfg.ViewerHeartbeatTimeoutMs := clamp(cfg.ViewerHeartbeatTimeoutMs, 2000, 120000)
+
+    ; --- Tooltip Settings ---
+    cfg.GUI_TooltipDurationMs := clamp(cfg.GUI_TooltipDurationMs, 500, 10000)
+    cfg.GUI_HoverPollIntervalMs := clamp(cfg.GUI_HoverPollIntervalMs, 50, 500)
+
+    ; --- Diagnostic Log Size Settings ---
+    cfg.DiagLogMaxKB := clamp(cfg.DiagLogMaxKB, 50, 1000)
+    cfg.DiagLogKeepKB := clamp(cfg.DiagLogKeepKB, 25, 500)
+    ; Ensure LogKeepKB < LogMaxKB
+    if (cfg.DiagLogKeepKB >= cfg.DiagLogMaxKB)
+        cfg.DiagLogKeepKB := cfg.DiagLogMaxKB // 2
+    ; Update global constants from config
+    global LOG_MAX_BYTES, LOG_KEEP_BYTES
+    LOG_MAX_BYTES := cfg.DiagLogMaxKB * 1024
+    LOG_KEEP_BYTES := cfg.DiagLogKeepKB * 1024
+
+    ; --- Update Tooltip Constants from Config ---
+    ; All tooltip durations use the single config value
+    global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, TOOLTIP_DURATION_LONG
+    TOOLTIP_DURATION_SHORT := cfg.GUI_TooltipDurationMs
+    TOOLTIP_DURATION_DEFAULT := cfg.GUI_TooltipDurationMs
+    TOOLTIP_DURATION_LONG := cfg.GUI_TooltipDurationMs
 
     ; --- Launcher Settings ---
     cfg.LauncherSplashImageDurationMs := clamp(cfg.LauncherSplashImageDurationMs, 0, 10000)
@@ -661,8 +690,9 @@ LogInitSession(logPath, title) {
 }
 
 ; Log rotation constants (shared across all diagnostic logs)
-global LOG_MAX_BYTES := 102400   ; 100KB max before trim
-global LOG_KEEP_BYTES := 51200   ; Keep last ~50KB after trim
+; These are initialized from config values in _CL_ValidateSettings()
+global LOG_MAX_BYTES := 102400   ; Default 100KB, overridden from cfg.DiagLogMaxKB
+global LOG_KEEP_BYTES := 51200   ; Default 50KB, overridden from cfg.DiagLogKeepKB
 
 ; Trim a log file if it exceeds LOG_MAX_BYTES, keeping the tail
 ; Usage: LogTrim(LOG_PATH_EVENTS)
@@ -698,7 +728,7 @@ global TIMING_PROCESS_EXIT_WAIT := 500    ; Wait for processes to fully exit
 global TIMING_MUTEX_RELEASE_WAIT := 500   ; Wait for mutex to be released
 global TIMING_TASK_READY_WAIT := 500      ; Wait for scheduled task to be ready
 global TIMING_SUBPROCESS_LAUNCH := 300    ; Brief delay before launching subprocess
-global TIMING_STORE_START_WAIT := 1000    ; Wait for store to start
+global TIMING_STORE_START_WAIT := 1000    ; Default, overridden from cfg.IPCStoreStartWaitMs
 global TIMING_TASK_INIT_WAIT := 100      ; Wait for scheduled task to initialize
 global TIMING_PROCESS_TERMINATE_WAIT := 100  ; Wait for process to terminate
 global TIMING_FILE_WRITE_WAIT := 100     ; Wait for file to write
@@ -708,13 +738,14 @@ global TIMING_PIPE_RETRY_WAIT := 50      ; Pipe connection retry delay
 global TIMING_SETUP_SETTLE := 200        ; Setup settle delay
 global TIMING_SETUP_RETRY_WAIT := 100    ; Setup retry delay
 
-; Tooltip durations (milliseconds, negative for one-shot timer)
-global TOOLTIP_DURATION_SHORT := 1500     ; Quick feedback tooltips
-global TOOLTIP_DURATION_DEFAULT := 2000   ; Standard tooltip duration
-global TOOLTIP_DURATION_LONG := 3000      ; Extended tooltip for important messages
+; Tooltip durations (milliseconds)
+; All set to the same value from cfg.GUI_TooltipDurationMs in _CL_ValidateSettings()
+global TOOLTIP_DURATION_SHORT := 2000
+global TOOLTIP_DURATION_DEFAULT := 2000
+global TOOLTIP_DURATION_LONG := 2000
 
 ; Retry limits
-global MAX_RECONNECT_ATTEMPTS := 3        ; Pipe reconnection attempts before restart
+global MAX_RECONNECT_ATTEMPTS := 3        ; Default, overridden from cfg.IPCMaxReconnectAttempts
 global MAX_RESTART_ATTEMPTS := 2          ; Store restart attempts before giving up
 
 ; WM_COPYDATA command IDs (launcher <-> client control signals)

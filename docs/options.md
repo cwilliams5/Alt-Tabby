@@ -150,6 +150,15 @@ Selection and scroll behavior
 | `ScrollKeepHighlightOnTop` | bool | `true` | Keep selection at top when scrolling |
 | `EmptyListText` | string | `No Windows` | Text shown when no windows available |
 
+### Tooltips
+
+Feedback tooltip timing for accessibility
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `TooltipDurationMs` | int | `2000` | Tooltip display duration in milliseconds. Increase for accessibility. Range: 500-10000. |
+| `HoverPollIntervalMs` | int | `100` | Hover state polling interval (ms). Lower = more responsive but higher CPU. Range: 50-500. |
+
 ### Action Buttons
 
 Row action buttons shown on hover
@@ -327,6 +336,15 @@ Named pipe for store<->client communication.
 | `FullSyncEvery` | int | `60` | Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled. |
 | `UseDirtyTracking` | bool | `true` | Use dirty tracking for delta computation. Set false for debugging (full field comparison). |
 
+### Reliability
+
+Connection retry and recovery settings
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `MaxReconnectAttempts` | int | `3` | Maximum pipe reconnection attempts before triggering store restart. Range: 1-10. |
+| `StoreStartWaitMs` | int | `1000` | Time to wait for store to start on launch (ms). Increase on slow systems. Range: 500-5000. |
+
 ## Tools
 
 Paths to external executables used by Alt-Tabby.
@@ -408,6 +426,7 @@ Resolves window icons asynchronously with retry/backoff.
 | `GiveUpBackoffMs` | int | `5000` | Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps. Range: 1000-30000. |
 | `RefreshThrottleMs` | int | `30000` | Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay. |
 | `IdleThreshold` | int | `5` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
+| `ResolveTimeoutMs` | int | `500` | WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond. Range: 100-2000. |
 
 ## ProcPump
 
@@ -489,6 +508,15 @@ Debug options for troubleshooting. All disabled by default to minimize disk I/O 
 | `PaintTimingLog` | bool | `false` | Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle. |
 | `StatsTracking` | bool | `true` | Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard. |
 
+### Log Size Limits
+
+Control diagnostic log file sizes
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `LogMaxKB` | int | `100` | Maximum diagnostic log file size in KB before trimming. Range: 50-1000. |
+| `LogKeepKB` | int | `50` | Size to keep after log trim in KB. Must be less than LogMaxKB. Range: 25-500. |
+
 ## Testing
 
 Options for automated test suite.
@@ -511,4 +539,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-04 with 200 total settings.*
+*Generated on 2026-02-04 with 207 total settings.*

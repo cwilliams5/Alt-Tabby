@@ -202,6 +202,16 @@ global gConfigRegistry := [
     {s: "GUI", k: "EmptyListText", g: "GUI_EmptyListText", t: "string", default: "No Windows",
      d: "Text shown when no windows available"},
 
+    ; --- Tooltips ---
+    {type: "subsection", section: "GUI", name: "Tooltips",
+     desc: "Feedback tooltip timing for accessibility"},
+
+    {s: "GUI", k: "TooltipDurationMs", g: "GUI_TooltipDurationMs", t: "int", default: 2000,
+     d: "Tooltip display duration in milliseconds. Increase for accessibility. Range: 500-10000."},
+
+    {s: "GUI", k: "HoverPollIntervalMs", g: "GUI_HoverPollIntervalMs", t: "int", default: 100,
+     d: "Hover state polling interval (ms). Lower = more responsive but higher CPU. Range: 50-500."},
+
     ; --- Action Buttons ---
     {type: "subsection", section: "GUI", name: "Action Buttons",
      desc: "Row action buttons shown on hover"},
@@ -532,6 +542,15 @@ global gConfigRegistry := [
     {s: "IPC", k: "UseDirtyTracking", g: "IPCUseDirtyTracking", t: "bool", default: true,
      d: "Use dirty tracking for delta computation. Set false for debugging (full field comparison)."},
 
+    {type: "subsection", section: "IPC", name: "Reliability",
+     desc: "Connection retry and recovery settings"},
+
+    {s: "IPC", k: "MaxReconnectAttempts", g: "IPCMaxReconnectAttempts", t: "int", default: 3,
+     d: "Maximum pipe reconnection attempts before triggering store restart. Range: 1-10."},
+
+    {s: "IPC", k: "StoreStartWaitMs", g: "IPCStoreStartWaitMs", t: "int", default: 1000,
+     d: "Time to wait for store to start on launch (ms). Increase on slow systems. Range: 500-5000."},
+
     ; ============================================================
     ; External Tools
     ; ============================================================
@@ -665,6 +684,9 @@ global gConfigRegistry := [
 
     {s: "IconPump", k: "IdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
+
+    {s: "IconPump", k: "ResolveTimeoutMs", g: "IconPumpResolveTimeoutMs", t: "int", default: 500,
+     d: "WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond. Range: 100-2000."},
 
     ; ============================================================
     ; Process Pump Timing
@@ -811,6 +833,15 @@ global gConfigRegistry := [
 
     {s: "Diagnostics", k: "StatsTracking", g: "StatsTrackingEnabled", t: "bool", default: true,
      d: "Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard."},
+
+    {type: "subsection", section: "Diagnostics", name: "Log Size Limits",
+     desc: "Control diagnostic log file sizes"},
+
+    {s: "Diagnostics", k: "LogMaxKB", g: "DiagLogMaxKB", t: "int", default: 100,
+     d: "Maximum diagnostic log file size in KB before trimming. Range: 50-1000."},
+
+    {s: "Diagnostics", k: "LogKeepKB", g: "DiagLogKeepKB", t: "int", default: 50,
+     d: "Size to keep after log trim in KB. Must be less than LogMaxKB. Range: 25-500."},
 
     ; ============================================================
     ; Testing

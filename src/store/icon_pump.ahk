@@ -28,7 +28,7 @@ global IP_ICON_SMALL2 := 2
 global IP_GCLP_HICONSM := -34
 global IP_GCLP_HICON := -14
 global IP_SMTO_ABORTIFHUNG := 0x0002
-global IP_RESOLVE_TIMEOUT_MS := 500
+global IP_RESOLVE_TIMEOUT_MS := 500  ; Default, overridden from cfg.IconPumpResolveTimeoutMs in IconPump_Start()
 
 ; Configuration (set in IconPump_Start after ConfigLoader_Init)
 global IconBatchPerTick := 0
@@ -59,6 +59,7 @@ IconPump_Start() {
     global IconBatchPerTick, IconMaxAttempts
     global IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global _IP_DiagEnabled, _IP_LogPath
+    global IP_RESOLVE_TIMEOUT_MS
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (IconTimerIntervalMs = 0) {
@@ -71,6 +72,7 @@ IconPump_Start() {
         IconGiveUpBackoffMs := cfg.IconPumpGiveUpBackoffMs
         _IP_IdleThreshold := cfg.IconPumpIdleThreshold
         _IP_UwpLogoCacheMax := cfg.UwpLogoCacheMax
+        IP_RESOLVE_TIMEOUT_MS := cfg.IconPumpResolveTimeoutMs
 
         ; Initialize diagnostic logging
         _IP_DiagEnabled := cfg.DiagIconPumpLog

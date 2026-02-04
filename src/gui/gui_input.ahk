@@ -464,8 +464,10 @@ GUI_OnMouseLeave() {
 ; WM_MOUSELEAVE doesn't always fire reliably, so we poll
 
 GUI_StartHoverPolling() {
+    global cfg
     GUI_StopHoverPolling()  ; Stop any existing timer first (prevents duplication)
-    SetTimer(_GUI_HoverPollTick, 100)  ; Check every 100ms
+    interval := cfg.HasOwnProp("GUI_HoverPollIntervalMs") ? cfg.GUI_HoverPollIntervalMs : 100
+    SetTimer(_GUI_HoverPollTick, interval)
 }
 
 GUI_StopHoverPolling() {
