@@ -18,8 +18,15 @@ global gGUI_PendingWaitUntil := 0        ; End of post-switch wait
 global gGUI_PendingShell := ""           ; WScript.Shell COM object (reused)
 global gGUI_PendingTempFile := ""        ; Temp file for query results
 
+; COM interfaces for direct window uncloaking (mimic native Alt+Tab)
+; These allow us to uncloak a single window without switching workspaces,
+; letting komorebi's reconciliation handle the workspace switch after activation.
+global gGUI_ImmersiveShell := 0          ; ImmersiveShell COM object
+global gGUI_AppViewCollection := 0       ; IApplicationViewCollection interface
+
 ; Event buffering during async activation (queue events, don't cancel)
 global gGUI_EventBuffer := []            ; Queued events during async activation
+
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagEventLog (config.ini [Diagnostics] EventLog=true)
@@ -513,40 +520,73 @@ GUI_ActivateItem(item) {
     curWS := IsSet(gGUI_CurrentWSName) ? gGUI_CurrentWSName : "(unknown)"  ; lint-ignore: isset-with-default
     _GUI_LogEvent("ACTIVATE_COND: isOnCurrent=" isOnCurrent " wsName='" wsName "' curWS='" curWS "' komorebic='" komorebicPath "' exists=" komorebicExists)
 
-    ; === Cross-workspace: ASYNC activation (non-blocking) ===
-    if (!isOnCurrent && wsName != "" && cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe)) {
+    ; === Cross-workspace activation ===
+    if (!isOnCurrent && wsName != "") {
         global gStats_CrossWorkspace
         gStats_CrossWorkspace += 1
-        _GUI_LogEvent("ASYNC START: switching to workspace '" wsName "' for hwnd " hwnd)
 
-        ; Start workspace switch
-        try {
-            cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
-            ProcessUtils_RunHidden(cmd)
-        } catch as e {
-            _GUI_LogEvent("ASYNC ERROR: komorebic focus-named-workspace failed: " e.Message)
+        crossMethod := cfg.KomorebiCrossWorkspaceMethod
+        _GUI_LogEvent("CROSS-WS: method=" crossMethod " hwnd=" hwnd " ws='" wsName "'")
+
+        ; MimicNative: Direct uncloak + activate via COM (like native Alt+Tab)
+        ; Komorebi's reconciliation detects focus change and switches workspaces
+        if (crossMethod = "MimicNative") {
+            ; Returns: 0=failed, 1=uncloaked (need activate), 2=uncloaked+activated via SwitchTo
+            uncloakResult := _GUI_UncloakWindow(hwnd)
+            _GUI_LogEvent("CROSS-WS: MimicNative uncloakResult=" uncloakResult)
+
+            if (uncloakResult = 2) {
+                ; Full success - SwitchTo handled activation
+                _GUI_LogEvent("CROSS-WS: MimicNative success (SwitchTo)")
+                ; Optional settle delay for slower systems
+                if (cfg.KomorebiMimicNativeSettleMs > 0)
+                    Sleep(cfg.KomorebiMimicNativeSettleMs)
+                _GUI_UpdateLocalMRU(hwnd)
+                return
+            } else if (uncloakResult = 1) {
+                ; Uncloaked but SwitchTo failed - use manual activation
+                _GUI_LogEvent("CROSS-WS: MimicNative partial (manual activate)")
+                _GUI_RobustActivate(hwnd)
+                _GUI_UpdateLocalMRU(hwnd)
+                return
+            }
+            ; uncloakResult = 0: COM failed entirely, fall through to SwitchActivate
+            _GUI_LogEvent("CROSS-WS: MimicNative failed, falling back to SwitchActivate")
         }
 
-        ; Set up async state
-        gGUI_PendingHwnd := hwnd
-        gGUI_PendingWSName := wsName
-        wsPollTimeout := cfg.HasOwnProp("AltTabWSPollTimeoutMs") ? cfg.AltTabWSPollTimeoutMs : 200
-        gGUI_PendingDeadline := A_TickCount + wsPollTimeout
-        gGUI_PendingPhase := "polling"
-        gGUI_PendingWaitUntil := 0
+        ; RevealMove: Uncloak window, focus it, then command komorebi to move it back
+        ; This makes the window focused BEFORE the workspace switch, avoiding flash
+        if (crossMethod = "RevealMove") {
+            ; Step 1: Uncloak (we only need uncloaking, not SwitchTo)
+            uncloakResult := _GUI_UncloakWindow(hwnd)
+            _GUI_LogEvent("CROSS-WS: RevealMove uncloakResult=" uncloakResult)
 
-        ; Only initialize cmd.exe resources for PollKomorebic method (others don't need them)
-        if (cfg.KomorebiWorkspaceConfirmMethod = "PollKomorebic") {
-            gGUI_PendingTempFile := A_Temp "\tabby_ws_query_" A_TickCount ".tmp"
-            ; Create WScript.Shell once (reuse for all polls)
-            if (gGUI_PendingShell = "")
-                gGUI_PendingShell := ComObject("WScript.Shell")
+            if (uncloakResult > 0) {
+                ; Step 2: Focus the window (makes it the "focused window" for komorebic)
+                _GUI_RobustActivate(hwnd)
+                _GUI_LogEvent("CROSS-WS: RevealMove focused window")
+
+                ; Step 3: Command komorebi to move the focused window to its workspace
+                ; This switches to that workspace WITH our window already focused
+                try {
+                    cmd := '"' cfg.KomorebicExe '" move-to-named-workspace "' wsName '"'
+                    _GUI_LogEvent("CROSS-WS: RevealMove executing: " cmd)
+                    ProcessUtils_RunHidden(cmd)
+                } catch as e {
+                    _GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
+                }
+
+                _GUI_UpdateLocalMRU(hwnd)
+                return
+            }
+            ; uncloakResult = 0: COM failed, fall through to SwitchActivate
+            _GUI_LogEvent("CROSS-WS: RevealMove failed (COM), falling back to SwitchActivate")
         }
 
-        ; Start async timer - configurable via cfg.AltTabAsyncActivationPollMs
-        ; Lower = more responsive but higher CPU (spawns cmd.exe each poll)
-        SetTimer(_GUI_AsyncActivationTick, cfg.AltTabAsyncActivationPollMs)
-        return  ; Return immediately - keyboard events can now be processed!
+        ; SwitchActivate: Command komorebi to switch, poll for completion, then activate
+        ; This path is used when: config=SwitchActivate OR MimicNative/RevealMove failed
+        _GUI_StartSwitchActivate(hwnd, wsName)
+        return
     }
 
     ; === Same-workspace: SYNC activation (immediate, fast) ===
@@ -562,6 +602,59 @@ GUI_ActivateItem(item) {
     ; CRITICAL: After activation, keyboard events may have been queued but not processed
     ; Use SetTimer -1 to let message pump run, then resync keyboard state
     SetTimer(_GUI_ResyncKeyboardState, -1)
+}
+
+; ========================= SWITCH-ACTIVATE METHOD =========================
+
+; Start the SwitchActivate cross-workspace method:
+; 1. Command komorebi to switch workspaces
+; 2. Start async polling timer to detect completion
+; 3. Timer will activate window once switch completes
+_GUI_StartSwitchActivate(hwnd, wsName) {
+    global cfg
+    global gGUI_PendingHwnd, gGUI_PendingWSName
+    global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
+    global gGUI_PendingShell, gGUI_PendingTempFile
+    global gGUI_EventBuffer
+
+    _GUI_LogEvent("SWITCH-ACTIVATE: Starting for hwnd=" hwnd " ws='" wsName "'")
+
+    ; Initialize pending state
+    gGUI_PendingHwnd := hwnd
+    gGUI_PendingWSName := wsName
+    gGUI_PendingDeadline := A_TickCount + cfg.AltTabWSPollTimeoutMs
+    gGUI_PendingWaitUntil := 0
+    gGUI_EventBuffer := []
+
+    ; Create WScript.Shell for async command execution (reuse if exists)
+    if (!gGUI_PendingShell)
+        gGUI_PendingShell := ComObject("WScript.Shell")
+
+    ; Temp file for komorebic query output (PollKomorebic method)
+    if (!gGUI_PendingTempFile)
+        gGUI_PendingTempFile := A_Temp "\tabby_ws_query.txt"
+
+    ; Trigger workspace switch via komorebic
+    try {
+        cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
+        _GUI_LogEvent("SWITCH-ACTIVATE: Running " cmd)
+        ProcessUtils_RunHidden(cmd)
+    } catch as e {
+        _GUI_LogEvent("SWITCH-ACTIVATE ERROR: " e.Message)
+        ; Fall back to direct activation attempt
+        _GUI_RobustActivate(hwnd)
+        _GUI_UpdateLocalMRU(hwnd)
+        return
+    }
+
+    ; Start polling phase
+    Critical "On"
+    gGUI_PendingPhase := "polling"
+    Critical "Off"
+
+    ; Start async timer (15ms interval)
+    SetTimer(_GUI_AsyncActivationTick, 15)
+    _GUI_LogEvent("SWITCH-ACTIVATE: Polling started")
 }
 
 ; ========================= ASYNC ACTIVATION TIMER =========================
@@ -889,6 +982,213 @@ _GUI_UpdateLocalMRU(hwnd) {
     _GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
     Critical "Off"
     return false
+}
+
+; ========================= DIRECT WINDOW UNCLOAKING (COM) =========================
+; Mimics native Alt+Tab: uncloak target window directly, then activate.
+; Komorebi's reconciliation detects the focus change and switches workspaces to match.
+; This avoids the "flash" where komorebi's default focused window appears briefly.
+
+; Convert string GUID to binary CLSID structure
+_GUI_StringToGUID(guidStr, buf) {
+    ; Remove braces if present
+    guidStr := StrReplace(guidStr, "{", "")
+    guidStr := StrReplace(guidStr, "}", "")
+
+    ; Parse GUID: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    parts := StrSplit(guidStr, "-")
+    if (parts.Length != 5)
+        return false
+
+    ; Data1 (4 bytes, little-endian)
+    NumPut("UInt", Integer("0x" parts[1]), buf, 0)
+    ; Data2 (2 bytes)
+    NumPut("UShort", Integer("0x" parts[2]), buf, 4)
+    ; Data3 (2 bytes)
+    NumPut("UShort", Integer("0x" parts[3]), buf, 6)
+    ; Data4 (8 bytes, big-endian pairs)
+    d4 := parts[4] parts[5]  ; Concatenate last two parts
+    Loop 8 {
+        NumPut("UChar", Integer("0x" SubStr(d4, (A_Index - 1) * 2 + 1, 2)), buf, 7 + A_Index)
+    }
+    return true
+}
+
+; Initialize COM interfaces for direct uncloaking
+; Uses IServiceProvider::QueryService to get IApplicationViewCollection
+_GUI_InitAppViewCollection() {
+    global gGUI_ImmersiveShell, gGUI_AppViewCollection
+
+    if (gGUI_AppViewCollection)
+        return true  ; Already initialized
+
+    ; IApplicationViewCollection GUIDs for different Windows versions
+    static appViewCollectionGuids := [
+        "{1841C6D7-4F9D-42C0-AF41-8747538F10E5}",  ; Windows 10/11 common
+        "{2C08ADF0-A386-4B35-9250-0FE183476FCC}",  ; Windows 11 newer builds
+    ]
+
+    try {
+        ; Create ImmersiveShell
+        _GUI_LogEvent("COM: Creating ImmersiveShell...")
+        gGUI_ImmersiveShell := ComObject("{C2F03A33-21F5-47FA-B4BB-156362A2F239}", "{00000000-0000-0000-C000-000000000046}")
+        shellPtr := gGUI_ImmersiveShell.Ptr
+        _GUI_LogEvent("COM: ImmersiveShell ptr=" shellPtr)
+
+        ; Get IServiceProvider via QueryInterface
+        ; IServiceProvider IID: {6D5140C1-7436-11CE-8034-00AA006009FA}
+        _GUI_LogEvent("COM: Getting IServiceProvider...")
+        static iidServiceProvider := Buffer(16)
+        _GUI_StringToGUID("{6D5140C1-7436-11CE-8034-00AA006009FA}", iidServiceProvider)
+
+        pServiceProvider := 0
+        vtable := NumGet(shellPtr, "UPtr")
+        queryInterface := NumGet(vtable, 0, "UPtr")  ; vtable[0] = QueryInterface
+        hr := DllCall(queryInterface, "Ptr", shellPtr, "Ptr", iidServiceProvider.Ptr, "Ptr*", &pServiceProvider, "UInt")
+        _GUI_LogEvent("COM: QueryInterface(IServiceProvider) hr=" Format("0x{:08X}", hr) " ptr=" pServiceProvider)
+
+        if (hr != 0 || !pServiceProvider) {
+            _GUI_LogEvent("COM: Failed to get IServiceProvider")
+            return false
+        }
+
+        ; Try each IApplicationViewCollection GUID via QueryService
+        ; IServiceProvider vtable: [QI, AddRef, Release, QueryService]
+        ; QueryService(REFGUID guidService, REFIID riid, void** ppv)
+        spVtable := NumGet(pServiceProvider, "UPtr")
+        queryService := NumGet(spVtable, 3 * A_PtrSize, "UPtr")  ; vtable[3]
+
+        static guidBuf := Buffer(16)
+
+        for guidStr in appViewCollectionGuids {
+            _GUI_LogEvent("COM: Trying QueryService with " guidStr)
+            _GUI_StringToGUID(guidStr, guidBuf)
+
+            pCollection := 0
+            hr := DllCall(queryService, "Ptr", pServiceProvider, "Ptr", guidBuf.Ptr, "Ptr", guidBuf.Ptr, "Ptr*", &pCollection, "UInt")
+            _GUI_LogEvent("COM: QueryService hr=" Format("0x{:08X}", hr) " ptr=" pCollection)
+
+            if (hr = 0 && pCollection) {
+                gGUI_AppViewCollection := pCollection
+                _GUI_LogEvent("COM: Success! IApplicationViewCollection=" pCollection)
+                ; Release IServiceProvider (we're done with it)
+                release := NumGet(spVtable, 2 * A_PtrSize, "UPtr")
+                DllCall(release, "Ptr", pServiceProvider)
+                return true
+            }
+        }
+
+        ; Release IServiceProvider
+        release := NumGet(spVtable, 2 * A_PtrSize, "UPtr")
+        DllCall(release, "Ptr", pServiceProvider)
+
+        _GUI_LogEvent("COM: All GUIDs failed")
+        return false
+    } catch as e {
+        _GUI_LogEvent("COM INIT ERROR: " e.Message " | Extra: " (e.HasOwnProp("Extra") ? e.Extra : "none"))
+        gGUI_ImmersiveShell := 0
+        gGUI_AppViewCollection := 0
+        return false
+    }
+}
+
+; Check if a window is cloaked via DWM
+_GUI_IsCloaked(hwnd) {
+    static cloakBuf := Buffer(4, 0)
+    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakBuf.Ptr, "uint", 4, "int")
+    if (hr != 0)
+        return -1  ; Error
+    return NumGet(cloakBuf, 0, "UInt")
+}
+
+; Uncloak and activate a window via COM (MimicNative method)
+; Uses IApplicationView::SetCloak to uncloak, then IApplicationView::SwitchTo to activate
+; Returns: 0 = failed, 1 = uncloaked (need manual activate), 2 = uncloaked + activated via SwitchTo
+_GUI_UncloakWindow(hwnd) {
+    ; Check initial cloak state
+    cloakBefore := _GUI_IsCloaked(hwnd)
+    _GUI_LogEvent("UNCLOAK: hwnd=" hwnd " cloakBefore=" cloakBefore)
+
+    if (cloakBefore = 0) {
+        _GUI_LogEvent("UNCLOAK: Already uncloaked")
+        return 1  ; Already visible, but need manual activate
+    }
+
+    ; Use COM interface: SetCloak to uncloak, SwitchTo to activate
+    comResult := _GUI_TryComUncloak(hwnd)
+    cloakAfter := _GUI_IsCloaked(hwnd)
+    _GUI_LogEvent("UNCLOAK: comResult=" comResult " cloakAfter=" cloakAfter)
+
+    if (comResult = 2) {
+        return 2  ; Full success - uncloaked + activated
+    } else if (comResult = 1 && cloakAfter = 0) {
+        return 1  ; Uncloaked but SwitchTo failed - need manual activate
+    }
+
+    _GUI_LogEvent("UNCLOAK: COM failed")
+    return 0
+}
+
+; Try COM-based uncloaking and activation
+; Returns: 0 = failed, 1 = uncloak only, 2 = uncloak + SwitchTo succeeded
+_GUI_TryComUncloak(hwnd) {
+    global gGUI_AppViewCollection
+
+    ; Try to initialize if not already done
+    if (!gGUI_AppViewCollection && !_GUI_InitAppViewCollection())
+        return 0
+
+    try {
+        ; IApplicationViewCollection vtable:
+        ; [0-2] IUnknown, [3] GetViews, [4] GetViewsByZOrder, [5] GetViewsByAppUserModelId
+        ; [6] GetViewForHwnd(HWND, IApplicationView**)
+        collectionVtable := NumGet(gGUI_AppViewCollection, "UPtr")
+        getViewForHwnd := NumGet(collectionVtable, 6 * A_PtrSize, "UPtr")
+
+        pView := 0
+        hr := DllCall(getViewForHwnd, "Ptr", gGUI_AppViewCollection, "Ptr", hwnd, "Ptr*", &pView, "UInt")
+        _GUI_LogEvent("COM: GetViewForHwnd hr=" Format("0x{:08X}", hr) " pView=" pView)
+
+        if (hr != 0 || !pView) {
+            _GUI_LogEvent("COM: GetViewForHwnd failed")
+            return 0
+        }
+
+        ; IApplicationView vtable:
+        ; [0-2] IUnknown, [3-5] IInspectable
+        ; [6] SetFocus, [7] SwitchTo, [8] TryInvokeBack, [9] GetThumbnailWindow
+        ; [10] GetMonitor, [11] GetVisibility, [12] SetCloak(cloakType, flags)
+        viewVtable := NumGet(pView, "UPtr")
+
+        ; Step 1: SetCloak(1, 0) = uncloak
+        setCloak := NumGet(viewVtable, 12 * A_PtrSize, "UPtr")
+        hr := DllCall(setCloak, "Ptr", pView, "UInt", 1, "Int", 0, "UInt")
+        _GUI_LogEvent("COM: SetCloak(1,0) hr=" Format("0x{:08X}", hr))
+
+        uncloakOk := (hr = 0)
+
+        ; Step 2: Try SwitchTo - this is what native Alt+Tab likely uses
+        ; SwitchTo activates the window through the shell's view system
+        switchTo := NumGet(viewVtable, 7 * A_PtrSize, "UPtr")
+        hr := DllCall(switchTo, "Ptr", pView, "UInt")
+        _GUI_LogEvent("COM: SwitchTo hr=" Format("0x{:08X}", hr))
+
+        switchOk := (hr = 0)
+
+        ; Release IApplicationView
+        releaseView := NumGet(viewVtable, 2 * A_PtrSize, "UPtr")
+        DllCall(releaseView, "Ptr", pView)
+
+        if (uncloakOk && switchOk)
+            return 2  ; Full success
+        else if (uncloakOk)
+            return 1  ; Uncloak worked, SwitchTo failed
+        else
+            return 0  ; Failed
+    } catch as e {
+        _GUI_LogEvent("COM: Exception - " e.Message)
+        return 0
+    }
 }
 
 ; ========================= ROBUST WINDOW ACTIVATION =========================
