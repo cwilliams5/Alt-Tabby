@@ -168,20 +168,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gStats_AltTabs += 1
             gStats_TabSteps += 1
 
-            ; SAFETY: If gGUI_Items is empty and prewarm was requested, wait briefly for data
-            ; This handles the race where Tab is pressed before prewarm response arrives
-            if (gGUI_Items.Length = 0 && cfg.AltTabPrewarmOnAlt) {
-                waitStart := A_TickCount
-                prewarmWait := cfg.HasOwnProp("AltTabPrewarmWaitMs") ? cfg.AltTabPrewarmWaitMs : 50
-                while (gGUI_Items.Length = 0 && (A_TickCount - waitStart) < prewarmWait) {
-                    Sleep(TIMING_IPC_FIRE_WAIT)  ; Allow IPC timer to fire and process incoming messages
-                }
-            }
-
-            ; RACE FIX: Sleep() above temporarily makes thread interruptible.
-            ; Alt_Up could have fired during Sleep and set state to IDLE.
-            if (gGUI_State != "ACTIVE")
-                return  ; lint-ignore: critical-section
 
             ; Freeze: save ALL items (for workspace toggle), then filter
             ; CRITICAL: Create shallow copy - assignment creates a reference which breaks freeze!

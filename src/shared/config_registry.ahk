@@ -75,9 +75,6 @@ global gConfigRegistry := [
     {s: "AltTab", k: "WSPollTimeoutMs", g: "AltTabWSPollTimeoutMs", t: "int", default: 200,
      d: "Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation."},
 
-    {s: "AltTab", k: "PrewarmWaitMs", g: "AltTabPrewarmWaitMs", t: "int", default: 50,
-     d: "Max time to wait for prewarm data on Tab (ms). If items are empty when Tab is pressed, wait up to this long for data to arrive."},
-
     {s: "AltTab", k: "TabDecisionMs", g: "AltTabTabDecisionMs", t: "int", default: 24,
      d: "Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. Range: 15-40."},
 
