@@ -77,7 +77,9 @@ DoLiveNetwork := false
 DoLiveFeatures := false
 DoLiveExecution := false
 DoLiveLifecycle := false
-DoUnitCore := false
+DoUnitCoreStore := false
+DoUnitCoreParsing := false
+DoUnitCoreConfig := false
 DoUnitStorage := false
 DoUnitSetup := false
 DoUnitCleanup := false
@@ -96,8 +98,12 @@ for _, arg in A_Args {
         DoLiveExecution := true
     else if (arg = "--live-lifecycle")
         DoLiveLifecycle := true
-    else if (arg = "--unit-core")
-        DoUnitCore := true
+    else if (arg = "--unit-core-store")
+        DoUnitCoreStore := true
+    else if (arg = "--unit-core-parsing")
+        DoUnitCoreParsing := true
+    else if (arg = "--unit-core-config")
+        DoUnitCoreConfig := true
     else if (arg = "--unit-storage")
         DoUnitStorage := true
     else if (arg = "--unit-setup")
@@ -122,8 +128,12 @@ else if (DoLiveExecution)
     TestLogPath := A_Temp "\alt_tabby_tests_execution.log"
 else if (DoLiveLifecycle)
     TestLogPath := A_Temp "\alt_tabby_tests_lifecycle.log"
-else if (DoUnitCore)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_core.log"
+else if (DoUnitCoreStore)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_core_store.log"
+else if (DoUnitCoreParsing)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_core_parsing.log"
+else if (DoUnitCoreConfig)
+    TestLogPath := A_Temp "\alt_tabby_tests_unit_core_config.log"
 else if (DoUnitStorage)
     TestLogPath := A_Temp "\alt_tabby_tests_unit_storage.log"
 else if (DoUnitSetup)
@@ -190,13 +200,17 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
-isUnitSingle := DoUnitCore || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced || DoUnitStats
+isUnitSingle := DoUnitCoreStore || DoUnitCoreParsing || DoUnitCoreConfig || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced || DoUnitStats
 isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLiveLifecycle || isUnitSingle
 
 if (isUnitSingle) {
     ; --- Run a single unit subset ---
-    if (DoUnitCore)
-        RunUnitTests_Core()
+    if (DoUnitCoreStore)
+        RunUnitTests_CoreStore()
+    else if (DoUnitCoreParsing)
+        RunUnitTests_CoreParsing()
+    else if (DoUnitCoreConfig)
+        RunUnitTests_CoreConfig()
     else if (DoUnitStorage)
         RunUnitTests_Storage()
     else if (DoUnitSetup)

@@ -753,12 +753,14 @@ if ($syntaxFailed -gt 0 -or $saExit -ne 0) {
 
 # --- Unit Suite Metadata (data-driven, avoids 5x copy-paste) ---
 $unitSuites = @(
-    @{ Name = "UnitCore";     Flag = "--unit-core";     Label = "Unit/Core";     LogSuffix = "unit_core" },
-    @{ Name = "UnitStorage";  Flag = "--unit-storage";  Label = "Unit/Storage";  LogSuffix = "unit_storage" },
-    @{ Name = "UnitSetup";    Flag = "--unit-setup";    Label = "Unit/Setup";    LogSuffix = "unit_setup" },
-    @{ Name = "UnitCleanup";  Flag = "--unit-cleanup";  Label = "Unit/Cleanup";  LogSuffix = "unit_cleanup" },
-    @{ Name = "UnitAdvanced"; Flag = "--unit-advanced";  Label = "Unit/Advanced"; LogSuffix = "unit_advanced" },
-    @{ Name = "UnitStats";    Flag = "--unit-stats";     Label = "Unit/Stats";    LogSuffix = "unit_stats" }
+    @{ Name = "UnitCoreStore";   Flag = "--unit-core-store";   Label = "Unit/Core/Store";   LogSuffix = "unit_core_store" },
+    @{ Name = "UnitCoreParsing"; Flag = "--unit-core-parsing"; Label = "Unit/Core/Parsing"; LogSuffix = "unit_core_parsing" },
+    @{ Name = "UnitCoreConfig";  Flag = "--unit-core-config";  Label = "Unit/Core/Config";  LogSuffix = "unit_core_config" },
+    @{ Name = "UnitStorage";     Flag = "--unit-storage";      Label = "Unit/Storage";      LogSuffix = "unit_storage" },
+    @{ Name = "UnitSetup";       Flag = "--unit-setup";        Label = "Unit/Setup";        LogSuffix = "unit_setup" },
+    @{ Name = "UnitCleanup";     Flag = "--unit-cleanup";      Label = "Unit/Cleanup";      LogSuffix = "unit_cleanup" },
+    @{ Name = "UnitAdvanced";    Flag = "--unit-advanced";     Label = "Unit/Advanced";     LogSuffix = "unit_advanced" },
+    @{ Name = "UnitStats";       Flag = "--unit-stats";        Label = "Unit/Stats";        LogSuffix = "unit_stats" }
 )
 
 # --- Start GUI Tests + Unit Tests (Background) ---
@@ -1115,7 +1117,7 @@ if ($live) {
     $liveElapsed = ((Get-Date) - $liveStart).TotalSeconds
     Write-Host "`n  Live pipeline completed in $([math]::Round($liveElapsed, 1))s" -ForegroundColor Cyan
 } else {
-    # === Non-live mode: 5-way parallel unit tests ===
+    # === Non-live mode: 8-way parallel unit tests ===
     # Note: --timing implies --live, so this path never runs with timing enabled.
     Write-Host "`n--- Unit Tests Phase (parallel) ---" -ForegroundColor Yellow
 
