@@ -209,7 +209,7 @@ if (g_AltTabbyMode = "wizard-continue") {
         }
 
         ; Show splash screen if enabled (skip in testing mode)
-        if (cfg.LauncherShowSplash && !g_TestingMode)
+        if (cfg.LauncherSplashScreen != "None" && !g_TestingMode)
             ShowSplashScreen()
 
         SetupLauncherTray()
@@ -224,13 +224,27 @@ if (g_AltTabbyMode = "wizard-continue") {
         Sleep(TIMING_SUBPROCESS_LAUNCH)
         LaunchGui()
 
-        ; Hide splash after duration
-        if (cfg.LauncherShowSplash && !g_TestingMode) {
-            elapsed := A_TickCount - g_SplashStartTick
-            remaining := cfg.LauncherSplashDurationMs - elapsed
-            if (remaining > 0)
-                Sleep(remaining)
-            HideSplashScreen()
+        ; Hide splash after duration/loops complete
+        if (cfg.LauncherSplashScreen != "None" && !g_TestingMode) {
+            if (cfg.LauncherSplashScreen = "Image") {
+                ; Image mode: wait for configured duration
+                elapsed := A_TickCount - g_SplashStartTick
+                remaining := cfg.LauncherSplashImageDurationMs - elapsed
+                if (remaining > 0)
+                    Sleep(remaining)
+                HideSplashScreen()
+            } else if (cfg.LauncherSplashScreen = "Animation") {
+                ; Animation mode: wait for animation to complete its loops
+                maxLoops := cfg.LauncherSplashAnimLoops
+                if (maxLoops > 0) {
+                    ; Poll until animation completes (loop count reached or window destroyed)
+                    while (IsSplashActive()) {
+                        Sleep(100)
+                    }
+                }
+                ; Always call HideSplashScreen to ensure cleanup
+                HideSplashScreen()
+            }
         }
 
         ; Auto-update check if enabled

@@ -69,11 +69,11 @@ IconPump_Start() {
         IconAttemptBackoffMs := cfg.IconPumpAttemptBackoffMs
         IconAttemptBackoffMultiplier := cfg.IconPumpBackoffMultiplier
         IconGiveUpBackoffMs := cfg.IconPumpGiveUpBackoffMs
-        _IP_IdleThreshold := cfg.HasOwnProp("IconPumpIdleThreshold") ? cfg.IconPumpIdleThreshold : 5
-        _IP_UwpLogoCacheMax := cfg.HasOwnProp("UwpLogoCacheMax") ? cfg.UwpLogoCacheMax : 50
+        _IP_IdleThreshold := cfg.IconPumpIdleThreshold
+        _IP_UwpLogoCacheMax := cfg.UwpLogoCacheMax
 
         ; Initialize diagnostic logging
-        _IP_DiagEnabled := cfg.HasOwnProp("DiagIconPumpLog") ? cfg.DiagIconPumpLog : false
+        _IP_DiagEnabled := cfg.DiagIconPumpLog
         if (_IP_DiagEnabled) {
             global LOG_PATH_ICONPUMP
             _IP_LogPath := LOG_PATH_ICONPUMP
