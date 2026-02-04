@@ -127,3 +127,26 @@ _PP_GetProcessPath(pid) {
 _PP_Basename(path) {
     return ProcessUtils_Basename(path)
 }
+
+; Prune expired entries from negative cache (called from Store_HeartbeatTick)
+; Removes PIDs where TTL has expired AND process no longer exists
+; RACE FIX: Wrap in Critical - _PP_Tick reads cache on every tick
+ProcPump_PruneNegativeCache() {
+    global _PP_NegativeCache, _PP_NegativeCacheTTL
+    if (!IsObject(_PP_NegativeCache) || _PP_NegativeCache.Count = 0)
+        return 0
+
+    Critical "On"
+    now := A_TickCount
+    toDelete := []
+    for pid, tick in _PP_NegativeCache {
+        ; Only prune if TTL expired AND process no longer exists
+        ; (if process restarted with same PID, we want to retry)
+        if ((now - tick) >= _PP_NegativeCacheTTL && !ProcessExist(pid))
+            toDelete.Push(pid)
+    }
+    for _, pid in toDelete
+        _PP_NegativeCache.Delete(pid)
+    Critical "Off"
+    return toDelete.Length
+}

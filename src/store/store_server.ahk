@@ -221,6 +221,9 @@ Store_HeartbeatTick() {
     ; Prune dead PIDs from process name cache (prevents unbounded growth)
     try WindowStore_PruneProcNameCache()
 
+    ; Prune expired entries from proc pump negative cache
+    try ProcPump_PruneNegativeCache()
+
     ; Periodic log rotation for diagnostic logs (~every 60s)
     if (Mod(gStore_HeartbeatCount, 12) = 0)
         _Store_RotateDiagLogs()
