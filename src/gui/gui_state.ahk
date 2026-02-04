@@ -788,6 +788,8 @@ _GUI_AsyncActivationTick() {
         ; Also fixes stale freeze issue when FreezeWindowList=true
         if (gGUI_PendingWSName != "") {
             _GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_PendingWSName "'")
+            ; RACE FIX: Protect workspace name and items iteration from GUI_ApplyDelta (IPC timer)
+            Critical "On"
             gGUI_CurrentWSName := gGUI_PendingWSName
 
             ; Update isOnCurrentWorkspace flags in gGUI_Items to match new workspace
@@ -797,6 +799,7 @@ _GUI_AsyncActivationTick() {
                     item.isOnCurrentWorkspace := (item.WS = gGUI_CurrentWSName)
                 }
             }
+            Critical "Off"
         }
 
         ; CRITICAL: Update MRU order - move activated window to position 1

@@ -686,15 +686,21 @@ Store_OnMessage(line, hPipe := 0) {
     }
     if (type = IPC_MSG_STATS_UPDATE) {
         ; Accumulate GUI session stats into lifetime (GUI sends deltas since last send)
+        ; RACE FIX: Protect gStats_Lifetime from concurrent Stats_FlushToDisk (heartbeat timer)
+        Critical "On"
         for _, key in ["TotalAltTabs", "TotalQuickSwitches", "TotalTabSteps",
                        "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles"] {
             if (obj.Has(key))
                 gStats_Lifetime[key] := gStats_Lifetime.Get(key, 0) + obj[key]
         }
+        Critical "Off"
         return
     }
     if (type = IPC_MSG_STATS_REQUEST) {
         ; Build response combining lifetime + session stats + derived values
+        ; RACE FIX: Protect gStats_Lifetime/gStats_Session reads from Stats_FlushToDisk (heartbeat timer)
+        ; Release Critical before IPC_PipeServer_Send to avoid holding lock during I/O
+        Critical "On"
         resp := { type: IPC_MSG_STATS_RESPONSE }
 
         ; Copy all lifetime stats
@@ -728,6 +734,7 @@ Store_OnMessage(line, hPipe := 0) {
         resp.DerivedQuickSwitchPct := (totalActivations > 0) ? Round(totalQuick / totalActivations * 100, 1) : 0
         resp.DerivedCancelRate := (totalAltTabs + totalCancels > 0) ? Round(totalCancels / (totalAltTabs + totalCancels) * 100, 1) : 0
         resp.DerivedAvgTabsPerSwitch := (totalAltTabs > 0) ? Round(totalTabs / totalAltTabs, 1) : 0
+        Critical "Off"
 
         IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
         return
