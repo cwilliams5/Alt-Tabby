@@ -107,7 +107,7 @@ Blacklist_Reload() {
 
     currentSection := ""
 
-    Loop Parse, content, "`n", "`r" {
+    Loop Parse content, "`n", "`r" {
         line := Trim(A_LoopField)
 
         ; Skip empty lines and comments

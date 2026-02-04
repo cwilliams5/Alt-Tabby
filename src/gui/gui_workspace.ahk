@@ -71,7 +71,10 @@ GUI_ToggleWorkspaceMode() {
     global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
     global cfg, gStats_WorkspaceToggles
 
+    ; RACE FIX: Protect counter increment - callers may not have Critical
+    Critical "On"
     gStats_WorkspaceToggles += 1
+    Critical "Off"
 
     ; Toggle mode
     gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"

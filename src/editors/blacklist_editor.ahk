@@ -106,7 +106,7 @@ _BE_LoadValues() {
             gBE_OriginalContent := content
 
             currentSection := ""
-            Loop Parse, content, "`n", "`r" {
+            Loop Parse content, "`n", "`r" {
                 line := A_LoopField
 
                 ; Check for section header
@@ -153,7 +153,7 @@ _BE_SaveToFile() {
     content .= "[Title]`n"
     titleText := gBE_TitleEdit.Value
     if (titleText != "") {
-        Loop Parse, titleText, "`n", "`r" {
+        Loop Parse titleText, "`n", "`r" {
             if (A_LoopField != "")
                 content .= A_LoopField "`n"
         }
@@ -164,7 +164,7 @@ _BE_SaveToFile() {
     content .= "[Class]`n"
     classText := gBE_ClassEdit.Value
     if (classText != "") {
-        Loop Parse, classText, "`n", "`r" {
+        Loop Parse classText, "`n", "`r" {
             if (A_LoopField != "")
                 content .= A_LoopField "`n"
         }
@@ -176,7 +176,7 @@ _BE_SaveToFile() {
     content .= "; Format: Class|Title (both must match)`n"
     pairText := gBE_PairEdit.Value
     if (pairText != "") {
-        Loop Parse, pairText, "`n", "`r" {
+        Loop Parse pairText, "`n", "`r" {
             if (A_LoopField != "")
                 content .= A_LoopField "`n"
         }
@@ -222,7 +222,7 @@ _BE_HasChanges() {
     ; Extract comparable content from original
     oldContent := ""
     currentSection := ""
-    Loop Parse, gBE_OriginalContent, "`n", "`r" {
+    Loop Parse gBE_OriginalContent, "`n", "`r" {
         trimmed := Trim(A_LoopField)
         if (SubStr(trimmed, 1, 1) = "[")
             oldContent .= trimmed "`n"

@@ -199,9 +199,14 @@ Store_HeartbeatTick() {
 
     ; Safety net: clean up any orphaned client Map entries
     ; Primary cleanup happens in Store_OnClientDisconnect (via IPC callback)
+    ; RACE FIX: Include heartbeat counter in Critical section
     if (IsObject(gStore_Server)) {
         Critical "On"
         _Store_CleanupDisconnectedClients()
+        global gStore_HeartbeatCount
+        if (!IsSet(gStore_HeartbeatCount))
+            gStore_HeartbeatCount := 0
+        gStore_HeartbeatCount += 1
         Critical "Off"
     }
 
@@ -212,10 +217,6 @@ Store_HeartbeatTick() {
     try WindowStore_PruneProcNameCache()
 
     ; Periodic log rotation for diagnostic logs (~every 60s)
-    global gStore_HeartbeatCount
-    if (!IsSet(gStore_HeartbeatCount))
-        gStore_HeartbeatCount := 0
-    gStore_HeartbeatCount += 1
     if (Mod(gStore_HeartbeatCount, 12) = 0)
         _Store_RotateDiagLogs()
 
