@@ -3,15 +3,19 @@
 ; Handles workspace filtering and toggle between "all" and "current" modes
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+; Workspace mode constants
+global WS_MODE_ALL := "all"
+global WS_MODE_CURRENT := "current"
+
 ; ========================= FOOTER TEXT =========================
 
 GUI_UpdateFooterText() {
-    global gGUI_FooterText, gGUI_WorkspaceMode, gGUI_CurrentWSName
+    global gGUI_FooterText, gGUI_WorkspaceMode, gGUI_CurrentWSName, WS_MODE_ALL
 
-    if (gGUI_WorkspaceMode = "all") {
+    if (gGUI_WorkspaceMode = WS_MODE_ALL) {
         gGUI_FooterText := "All Workspaces"
     } else {
-        ; "current" mode
+        ; WS_MODE_CURRENT mode
         wsName := (gGUI_CurrentWSName != "") ? gGUI_CurrentWSName : "Unknown"
         gGUI_FooterText := "Current (" wsName ")"
     }
@@ -20,7 +24,7 @@ GUI_UpdateFooterText() {
 ; ========================= CURRENT WORKSPACE TRACKING =========================
 
 GUI_UpdateCurrentWSFromPayload(payload) {
-    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch, cfg
+    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch, cfg, WS_MODE_CURRENT
 
     if (!payload.Has("meta"))
         return
@@ -57,7 +61,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
             ; Request a fresh projection that bypasses the freeze gate
             ; (reuses the toggle-response mechanism).
             if (cfg.FreezeWindowList) {
-                currentWSOnly := (gGUI_WorkspaceMode = "current")
+                currentWSOnly := (gGUI_WorkspaceMode = WS_MODE_CURRENT)
                 GUI_RequestProjectionWithWSFilter(currentWSOnly)
             }
         }
@@ -69,7 +73,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 
 GUI_ToggleWorkspaceMode() {
     global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
-    global cfg, gStats_WorkspaceToggles
+    global cfg, gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT
 
     ; RACE FIX: Protect counter increment - callers may not have Critical
     Critical "On"
@@ -77,7 +81,7 @@ GUI_ToggleWorkspaceMode() {
     Critical "Off"
 
     ; Toggle mode
-    gGUI_WorkspaceMode := (gGUI_WorkspaceMode = "all") ? "current" : "all"
+    gGUI_WorkspaceMode := (gGUI_WorkspaceMode = WS_MODE_ALL) ? WS_MODE_CURRENT : WS_MODE_ALL
     GUI_UpdateFooterText()
 
     ; If GUI is visible and active, refresh the list
@@ -88,7 +92,7 @@ GUI_ToggleWorkspaceMode() {
         if (useServerFilter) {
             ; Request new projection from store with workspace filter
             ; Response will be handled by GUI_OnStoreMessage (gGUI_AwaitingToggleProjection flag)
-            currentWSOnly := (gGUI_WorkspaceMode = "current")
+            currentWSOnly := (gGUI_WorkspaceMode = WS_MODE_CURRENT)
             GUI_RequestProjectionWithWSFilter(currentWSOnly)
             ; Don't repaint yet - wait for response
         } else {
@@ -116,13 +120,13 @@ GUI_ToggleWorkspaceMode() {
 ; ========================= WORKSPACE FILTERING =========================
 
 GUI_FilterByWorkspaceMode(items) {
-    global gGUI_WorkspaceMode
+    global gGUI_WorkspaceMode, WS_MODE_ALL
 
-    if (gGUI_WorkspaceMode = "all") {
+    if (gGUI_WorkspaceMode = WS_MODE_ALL) {
         return items
     }
 
-    ; "current" mode - only items on current workspace
+    ; WS_MODE_CURRENT mode - only items on current workspace
     result := []
     for _, item in items {
         isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true

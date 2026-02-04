@@ -546,9 +546,9 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
     ; Check if we need elevation to write to exe directory
     if (_Update_NeedsElevation(exeDir)) {
         ; Save update info and self-elevate
-        global UPDATE_INFO_DELIMITER
+        global UPDATE_INFO_DELIMITER, TEMP_UPDATE_STATE
         updateInfo := tempExe UPDATE_INFO_DELIMITER currentExe
-        updateFile := A_Temp "\alttabby_update.txt"
+        updateFile := TEMP_UPDATE_STATE
         try FileDelete(updateFile)
         FileAppend(updateInfo, updateFile, "UTF-8")
 
@@ -591,37 +591,9 @@ _Update_NeedsElevation(targetDir) {
 
 ; Kill all instances of Alt-Tabby exes except the current one
 ; This releases file locks on the exe before updating
-; Handles renamed exes by killing processes matching:
-;   1. Current exe name (from A_ScriptFullPath)
-;   2. Target exe name (passed as parameter, for updates)
-;   3. Exe name from cfg.SetupExePath (installed location, may differ)
+; Wrapper for ProcessUtils_KillAllAltTabbyExceptSelf
 _Update_KillOtherProcesses(targetExeName := "") {
-    global TIMING_SETUP_SETTLE, TIMING_SETUP_RETRY_WAIT
-    myPID := ProcessExist()  ; Get our own PID
-
-    exeNames := ProcessUtils_BuildExeNameList(targetExeName)
-
-    ; Kill all matching processes (except ourselves)
-    ; Use taskkill for reliable multi-process termination, excluding our own PID
-    for exeName in exeNames {
-        ; /F = force, /IM = image name, /FI = filter to exclude our PID
-        cmd := 'taskkill /F /IM "' exeName '" /FI "PID ne ' myPID '"'
-        try RunWait(cmd,, "Hide")
-    }
-
-    ; Give processes time to fully terminate
-    Sleep(TIMING_SETUP_SETTLE)
-
-    ; Verify all are gone (except us) - retry with ProcessClose as fallback
-    for exeName in exeNames {
-        loop 10 {
-            pid := ProcessExist(exeName)
-            if (!pid || pid = myPID)
-                break
-            try ProcessClose(pid)
-            Sleep(TIMING_SETUP_RETRY_WAIT)
-        }
-    }
+    ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName)
 }
 
 ; ============================================================
@@ -654,7 +626,8 @@ _Update_ApplyCore(opts) {
 
     lockFile := ""
     if (useLockFile) {
-        lockFile := A_Temp "\alttabby_update.lock"
+        global TEMP_UPDATE_LOCK
+        lockFile := TEMP_UPDATE_LOCK
         if (FileExist(lockFile)) {
             try {
                 modTime := FileGetTime(lockFile, "M")
@@ -846,13 +819,13 @@ _Update_CleanupOldExe() {
 ; Clean up stale temp files from crashed wizard/update instances (Priority 3 fix)
 ; Called on startup after _Update_CleanupOldExe
 _Update_CleanupStaleTempFiles() {
-    global TEMP_ADMIN_TOGGLE_LOCK
+    global TEMP_ADMIN_TOGGLE_LOCK, TEMP_WIZARD_STATE, TEMP_UPDATE_STATE, TEMP_UPDATE_LOCK
     staleFiles := [
-        A_Temp "\alttabby_wizard.json",
-        A_Temp "\alttabby_update.txt",
+        TEMP_WIZARD_STATE,
+        TEMP_UPDATE_STATE,
         A_Temp "\alttabby_install_update.txt",
         TEMP_ADMIN_TOGGLE_LOCK,
-        A_Temp "\alttabby_update.lock"
+        TEMP_UPDATE_LOCK
     ]
 
     for filePath in staleFiles {
@@ -929,8 +902,8 @@ _Update_ValidatePEFile(filePath) {
 
 ; Called when launched with --apply-update flag (elevated)
 _Update_ContinueFromElevation() {
-    global APP_NAME
-    updateFile := A_Temp "\alttabby_update.txt"
+    global APP_NAME, TEMP_UPDATE_STATE
+    updateFile := TEMP_UPDATE_STATE
 
     if (!FileExist(updateFile))
         return false

@@ -559,38 +559,15 @@ _Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
 }
 
 ; Kill all processes matching exeName except ourselves
-; Uses taskkill as primary mechanism (immune to ProcessExist PID ordering),
-; with ProcessClose loop as fallback for stragglers.
-; Used by _Launcher_KillExistingInstances and _Launcher_OfferToStopInstalledInstance
+; Wrapper for ProcessUtils_KillByNameExceptSelf for backwards compatibility
 _Launcher_KillProcessByName(exeName, maxAttempts := 10, sleepMs := 0) {
-    global TIMING_PROCESS_TERMINATE_WAIT, TIMING_SETUP_SETTLE
-    if (sleepMs = 0)
-        sleepMs := TIMING_PROCESS_TERMINATE_WAIT
-    myPID := ProcessExist()
-
-    ; Primary: taskkill (reliable for same-name processes)
-    try RunWait('taskkill /F /IM "' exeName '" /FI "PID ne ' myPID '"',, "Hide")
-    Sleep(TIMING_SETUP_SETTLE)
-
-    ; Fallback: ProcessClose loop for any stragglers
-    loop maxAttempts {
-        pid := ProcessExist(exeName)
-        if (!pid || pid = myPID)
-            break
-        try ProcessClose(pid)
-        Sleep(sleepMs)
-    }
+    ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts, sleepMs)
 }
 
 ; Kill all existing instances of Alt-Tabby exes except ourselves
-; Uses ProcessExist/ProcessClose loop instead of WMI (WMI can fail with 0x800401F3)
-; Handles renamed exes by killing processes matching:
-;   1. Current exe name (from A_ScriptFullPath)
-;   2. Exe name from cfg.SetupExePath (installed location, may differ)
+; Wrapper for ProcessUtils_KillAllAltTabbyExceptSelf for backwards compatibility
 _Launcher_KillExistingInstances() {
-    for exeName in ProcessUtils_BuildExeNameList() {
-        _Launcher_KillProcessByName(exeName)
-    }
+    ProcessUtils_KillAllAltTabbyExceptSelf()
 }
 
 ; ============================================================

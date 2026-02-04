@@ -245,7 +245,7 @@ $CHECKS = @(
         Id       = "stale_file_cleanup"
         File     = "shared\setup_utils.ahk"
         Desc     = "Stale files array contains all expected temp files"
-        Patterns = @("alttabby_wizard.json", "alttabby_update.txt", "alttabby_install_update.txt", "TEMP_ADMIN_TOGGLE_LOCK")
+        Patterns = @("TEMP_WIZARD_STATE", "TEMP_UPDATE_STATE", "alttabby_install_update.txt", "TEMP_ADMIN_TOGGLE_LOCK")
     },
 
     # --- Update Race Guard (from test_unit_advanced.ahk) ---
@@ -299,9 +299,9 @@ $CHECKS = @(
     # --- Process Detection & Kill Reliability (from test_unit_setup.ahk) ---
     @{
         Id       = "kill_process_pattern"
-        File     = "launcher\launcher_main.ahk"
-        Desc     = "KillProcessByName uses taskkill /F /IM with PID ne filter"
-        Patterns = @("_Launcher_KillProcessByName(", "taskkill /F /IM", "PID ne")
+        File     = "shared\process_utils.ahk"
+        Desc     = "ProcessUtils_KillByNameExceptSelf uses taskkill /F /IM with PID ne filter"
+        Patterns = @("ProcessUtils_KillByNameExceptSelf(", "taskkill /F /IM", "PID ne")
     },
     @{
         Id       = "is_other_process_running"
@@ -326,14 +326,14 @@ $CHECKS = @(
 )
 
 # === Also check exe_name_dedup delegation from setup_utils ===
-# The original test checked BOTH process_utils.ahk AND setup_utils.ahk
-# Add a separate check for the delegation
+# _Update_KillOtherProcesses now delegates to ProcessUtils_KillAllAltTabbyExceptSelf,
+# which in turn uses ProcessUtils_BuildExeNameList
 $CHECKS += @(
     @{
         Id       = "exe_name_dedup_delegation"
         File     = "shared\setup_utils.ahk"
-        Desc     = "_Update_KillOtherProcesses delegates to ProcessUtils_BuildExeNameList"
-        Patterns = @("ProcessUtils_BuildExeNameList(")
+        Desc     = "_Update_KillOtherProcesses delegates to ProcessUtils_KillAllAltTabbyExceptSelf"
+        Patterns = @("ProcessUtils_KillAllAltTabbyExceptSelf(")
     }
 )
 

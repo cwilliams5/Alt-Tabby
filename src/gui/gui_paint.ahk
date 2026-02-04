@@ -468,6 +468,8 @@ GUI_EnsureResources(scale) {
         ["brCol", cfg.GUI_ColARGB],
         ["brColHi", cfg.GUI_ColARGBHi],
         ["brHdr", cfg.GUI_HdrARGB],
+        ; brHit: Nearly transparent black (alpha=0x01) for hit-test background.
+        ; Fully transparent (0x00) would make the window click-through.
         ["brHit", 0x01000000],
         ["brFooterText", cfg.GUI_FooterTextARGB]
     ]

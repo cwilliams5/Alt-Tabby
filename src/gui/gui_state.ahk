@@ -9,11 +9,16 @@
 ; NOTE: Workspace switch settle time now in config: cfg.AltTabWorkspaceSwitchSettleMs (default 75ms)
 global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 
-; Async cross-workspace activation state (non-blocking to allow keyboard events)
+; ============================================================
+; ASYNC CROSS-WORKSPACE ACTIVATION STATE
+; ============================================================
+; These 7 globals form a coherent state group for non-blocking workspace switches.
+; IMPORTANT: Always use _GUI_ClearPendingState() to reset ALL of them together.
+; Phase progression: "" -> "polling" -> "waiting" -> "flushing" -> ""
 global gGUI_PendingHwnd := 0             ; Target hwnd
 global gGUI_PendingWSName := ""          ; Target workspace name
 global gGUI_PendingDeadline := 0         ; Polling deadline (when to give up)
-global gGUI_PendingPhase := ""           ; "polling" or "waiting"
+global gGUI_PendingPhase := ""           ; "polling", "waiting", "flushing", or ""
 global gGUI_PendingWaitUntil := 0        ; End of post-switch wait
 global gGUI_PendingShell := ""           ; WScript.Shell COM object (reused)
 global gGUI_PendingTempFile := ""        ; Temp file for query results
@@ -349,6 +354,16 @@ _GUI_ResetSelectionToMRU(listRef := "") {
     return gGUI_Sel
 }
 
+; Helper to abort a show sequence (hide windows and reset state flags).
+; Called when state changes to non-ACTIVE during GUI_ShowOverlayWithFrozen.
+_GUI_AbortShowSequence() {
+    global gGUI_Overlay, gGUI_Base, gGUI_OverlayVisible, gGUI_Revealed
+    try gGUI_Overlay.Hide()
+    try gGUI_Base.Hide()
+    gGUI_OverlayVisible := false
+    gGUI_Revealed := false
+}
+
 GUI_ShowOverlayWithFrozen() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
@@ -391,13 +406,7 @@ GUI_ShowOverlayWithFrozen() {
     ; If state changed to IDLE, ALT_UP already called HideOverlay - abort show sequence
     if (gGUI_State != "ACTIVE") {
         _Paint_Log("ShowOverlay ABORT after Base.Show (state=" gGUI_State ")")
-        ; RACE FIX: Force-hide both windows. During Show()/DwmFlush(), the thread
-        ; can become interruptible - Alt_Up may call HideOverlay(), but the in-flight
-        ; Show() can re-show gGUI_Base after Hide(). Redundant Hide() is a safe no-op.
-        try gGUI_Overlay.Hide()
-        try gGUI_Base.Hide()
-        gGUI_OverlayVisible := false
-        gGUI_Revealed := false
+        _GUI_AbortShowSequence()
         return
     }
 
@@ -414,10 +423,7 @@ GUI_ShowOverlayWithFrozen() {
     ; RACE FIX: Check again after paint operations (GDI+ can pump messages)
     if (gGUI_State != "ACTIVE") {
         _Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
-        try gGUI_Overlay.Hide()
-        try gGUI_Base.Hide()
-        gGUI_OverlayVisible := false
-        gGUI_Revealed := false
+        _GUI_AbortShowSequence()
         return
     }
 
@@ -431,10 +437,7 @@ GUI_ShowOverlayWithFrozen() {
     ; RACE FIX: Final check before DwmFlush
     if (gGUI_State != "ACTIVE") {
         _Paint_Log("ShowOverlay ABORT after Overlay.Show (state=" gGUI_State ")")
-        try gGUI_Overlay.Hide()
-        try gGUI_Base.Hide()
-        gGUI_OverlayVisible := false
-        gGUI_Revealed := false
+        _GUI_AbortShowSequence()
         return
     }
 

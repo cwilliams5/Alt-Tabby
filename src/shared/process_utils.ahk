@@ -106,6 +106,52 @@ ProcessUtils_BuildExeNameList(targetExeName := "") {
 }
 
 ; ============================================================
+; Process Kill Helpers
+; ============================================================
+; Consolidated functions for killing Alt-Tabby processes.
+; Used by launcher (restart), update system, and mismatch handling.
+
+; Kill all processes matching exeName except ourselves
+; Uses taskkill as primary mechanism (immune to ProcessExist PID ordering),
+; with ProcessClose loop as fallback for stragglers.
+; Parameters:
+;   exeName     - Process image name to kill (e.g., "AltTabby.exe")
+;   maxAttempts - Max retry attempts for ProcessClose fallback (default 10)
+;   sleepMs     - Sleep between fallback attempts (default: TIMING_PROCESS_TERMINATE_WAIT)
+ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts := 10, sleepMs := 0) {
+    ; Note: TIMING_* globals are defined in config_loader.ahk
+    if (sleepMs = 0) {
+        global TIMING_PROCESS_TERMINATE_WAIT
+        sleepMs := TIMING_PROCESS_TERMINATE_WAIT
+    }
+    global TIMING_SETUP_SETTLE
+    myPID := ProcessExist()
+
+    ; Primary: taskkill (reliable for same-name processes)
+    try RunWait('taskkill /F /IM "' exeName '" /FI "PID ne ' myPID '"',, "Hide")
+    Sleep(TIMING_SETUP_SETTLE)
+
+    ; Fallback: ProcessClose loop for any stragglers
+    loop maxAttempts {
+        pid := ProcessExist(exeName)
+        if (!pid || pid = myPID)
+            break
+        try ProcessClose(pid)
+        Sleep(sleepMs)
+    }
+}
+
+; Kill all Alt-Tabby processes except ourselves
+; Iterates over exe names from ProcessUtils_BuildExeNameList().
+; Parameters:
+;   targetExeName - Optional extra exe name to include (for updates targeting different name)
+ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName := "") {
+    for exeName in ProcessUtils_BuildExeNameList(targetExeName) {
+        ProcessUtils_KillByNameExceptSelf(exeName)
+    }
+}
+
+; ============================================================
 ; Cursor Feedback Suppression Helpers
 ; ============================================================
 ; During test runs, Windows shows "app starting" cursor (hourglass+pointer)
