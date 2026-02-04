@@ -226,7 +226,7 @@ WindowStore_UpsertWindow(records, source := "") {
 ; Fields that are internal tracking and should not bump rev when changed
 global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true, "iconMethod", true, "iconLastRefreshTick", true)
 
-WindowStore_UpdateFields(hwnd, patch, source := "") {
+WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     global gWS_Store, gWS_Rev, gWS_InternalFields, gWS_SortDirty, gWS_ProjectionFields, gWS_DirtyHwnds
     ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
     ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
@@ -270,7 +270,68 @@ WindowStore_UpdateFields(hwnd, patch, source := "") {
     if (changed) {
         _WS_BumpRev("UpdateFields:" . source)
     }
+    ; Return row when requested to avoid redundant GetByHwnd lookups
+    if (returnRow)
+        return { changed: changed, exists: true, rev: gWS_Rev, row: row }  ; lint-ignore: critical-section
     return { changed: changed, exists: true, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+}
+
+; Batch update multiple windows with a single rev bump
+; patches: Map of hwnd -> patch (object with field: value)
+; Returns: { changed: count, rev: gWS_Rev }
+; Use this for bulk operations like workspace switches to minimize Critical section overhead
+WindowStore_BatchUpdateFields(patches, source := "") {
+    global gWS_Store, gWS_Rev, gWS_InternalFields, gWS_SortDirty, gWS_ProjectionFields, gWS_DirtyHwnds
+
+    Critical "On"
+    changedCount := 0
+    projDirty := false
+
+    for hwnd, patch in patches {
+        hwnd := hwnd + 0
+        if (!gWS_Store.Has(hwnd))
+            continue  ; lint-ignore: critical-section
+        row := gWS_Store[hwnd]
+        rowChanged := false
+
+        ; Handle both Map and plain object patches
+        if (patch is Map) {
+            for k, v in patch {
+                if (!row.HasOwnProp(k) || row.%k% != v) {
+                    row.%k% := v
+                    if (!gWS_InternalFields.Has(k)) {
+                        rowChanged := true
+                        gWS_DirtyHwnds[hwnd] := true
+                    }
+                    if (gWS_ProjectionFields.Has(k))
+                        projDirty := true
+                }
+            }
+        } else if (IsObject(patch)) {
+            for k in patch.OwnProps() {
+                v := patch.%k%
+                if (!row.HasOwnProp(k) || row.%k% != v) {
+                    row.%k% := v
+                    if (!gWS_InternalFields.Has(k)) {
+                        rowChanged := true
+                        gWS_DirtyHwnds[hwnd] := true
+                    }
+                    if (gWS_ProjectionFields.Has(k))
+                        projDirty := true
+                }
+            }
+        }
+        if (rowChanged)
+            changedCount++
+    }
+
+    if (projDirty)
+        gWS_SortDirty := true
+    if (changedCount > 0)
+        _WS_BumpRev("BatchUpdateFields:" . source)
+
+    Critical "Off"
+    return { changed: changedCount, rev: gWS_Rev }
 }
 
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {

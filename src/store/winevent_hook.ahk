@@ -265,6 +265,17 @@ _WEH_ProcessBatch() {
     }
     _WEH_IdleTicks := 0  ; Reset idle counter when we have work
 
+    ; Capture diagnostic info BEFORE Critical to avoid blocking on WinGetTitle
+    ; (WinGetTitle sends a window message that can block on hung windows)
+    diagOldTitle := ""
+    diagNewTitle := ""
+    diagOldHwnd := _WEH_LastFocusHwnd
+    diagNewHwnd := _WEH_PendingFocusHwnd
+    if (cfg.DiagWinEventLog && diagNewHwnd && diagNewHwnd != diagOldHwnd) {
+        try diagOldTitle := diagOldHwnd ? WinGetTitle("ahk_id " diagOldHwnd) : "(none)"
+        try diagNewTitle := WinGetTitle("ahk_id " diagNewHwnd)
+    }
+
     ; Process MRU focus changes first (no debounce needed)
     ; Wrap in Critical to prevent race conditions where old window retains isFocused:true
     ; if removed during focus transition
@@ -282,18 +293,15 @@ _WEH_ProcessBatch() {
         newFocus := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := 0  ; Clear pending
 
-        ; Debug: log the focus transition (only fetch titles when diagnostics enabled)
-        if (cfg.DiagWinEventLog) {
-            oldTitle := ""
-            newTitle := ""
-            try oldTitle := _WEH_LastFocusHwnd ? WinGetTitle("ahk_id " _WEH_LastFocusHwnd) : "(none)"
-            try newTitle := WinGetTitle("ahk_id " newFocus)
-            _WEH_DiagLog("BATCH PROCESS: " _WEH_LastFocusHwnd " '" SubStr(oldTitle, 1, 15) "' -> " newFocus " '" SubStr(newTitle, 1, 15) "'")
+        ; Debug: log the focus transition (using titles captured before Critical)
+        if (cfg.DiagWinEventLog && diagNewHwnd = newFocus) {
+            _WEH_DiagLog("BATCH PROCESS: " diagOldHwnd " '" SubStr(diagOldTitle, 1, 15) "' -> " newFocus " '" SubStr(diagNewTitle, 1, 15) "'")
         }
 
         ; Try to update the new window first - this tells us if it's in our store
+        ; returnRow=true avoids redundant GetByHwnd lookup for workspace mismatch check below
         result := { changed: false, exists: false }
-        try result := WindowStore_UpdateFields(newFocus, { lastActivatedTick: A_TickCount, isFocused: true }, "winevent_mru")
+        try result := WindowStore_UpdateFields(newFocus, { lastActivatedTick: A_TickCount, isFocused: true }, "winevent_mru", true)
         _WEH_DiagLog("  UpdateFields result: exists=" (result.exists ? 1 : 0) " changed=" (result.changed ? 1 : 0))
 
         ; CRITICAL: Only update _WEH_LastFocusHwnd if the window is actually in our store
@@ -308,13 +316,12 @@ _WEH_ProcessBatch() {
             ; Safety net: detect missed komorebi workspace switch.
             ; If focused window's workspaceName differs from current, komorebi must have
             ; switched workspaces but we missed the event (reconnect, pipe overflow, etc.)
-            try {
-                focusedRec := WindowStore_GetByHwnd(newFocus)
-                if (focusedRec && focusedRec.HasOwnProp("workspaceName") && focusedRec.workspaceName != ""
-                    && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
-                    _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
-                    WindowStore_SetCurrentWorkspace("", focusedRec.workspaceName)
-                }
+            ; Use row returned from UpdateFields to avoid redundant Map lookup
+            focusedRec := result.HasOwnProp("row") ? result.row : ""
+            if (focusedRec && focusedRec.HasOwnProp("workspaceName") && focusedRec.workspaceName != ""
+                && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
+                _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
+                try WindowStore_SetCurrentWorkspace("", focusedRec.workspaceName)
             }
 
             ; Enqueue icon refresh check (throttled) - allows updating window icons that change

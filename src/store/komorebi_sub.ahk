@@ -40,6 +40,7 @@ global _KSub_Connected := false
 global _KSub_ClientPid := 0
 global _KSub_LastEventTick := 0          ; Timestamp of last event (for idle detection)
 global _KSub_ReadBuffer := ""      ; Accumulated bytes from pipe reads
+global _KSub_ReadBufferLen := 0    ; Tracked length to avoid O(n) StrLen calls
 global _KSub_LastWorkspaceName := ""
 global _KSub_LastWsUpdateTick := 0         ; Tick when workspace was last set (for derivation cooldown)
 global _KSub_FallbackMode := false
@@ -310,7 +311,7 @@ _KSub_UpdateCacheEntry(hwnd, wsName, tick) {
 ; Poll timer - check connection and read data (non-blocking like POC)
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
-    global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer
+    global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer, _KSub_ReadBufferLen
     global ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
     static pollCount := 0, lastLogTick := 0
 
@@ -386,15 +387,18 @@ KomorebiSub_Poll() {
 
         _KSub_LastEventTick := A_TickCount
         chunk := StrGet(KSUB_READ_BUF.Ptr, read, "UTF-8")
+        chunkLen := StrLen(chunk)
 
-        ; Protect against unbounded buffer growth
+        ; Protect against unbounded buffer growth (use tracked length to avoid O(n) StrLen)
         ; This prevents OOM when komorebi sends incomplete JSON with opening brace
-        if (StrLen(_KSub_ReadBuffer) + StrLen(chunk) > KSUB_BUFFER_MAX_BYTES) {
-            _KSub_DiagLog("Buffer overflow protection: reset (was " StrLen(_KSub_ReadBuffer) ")")
+        if (_KSub_ReadBufferLen + chunkLen > KSUB_BUFFER_MAX_BYTES) {
+            _KSub_DiagLog("Buffer overflow protection: reset (was " _KSub_ReadBufferLen ")")
             _KSub_ReadBuffer := ""
+            _KSub_ReadBufferLen := 0
         }
 
         _KSub_ReadBuffer .= chunk
+        _KSub_ReadBufferLen += chunkLen
         bytesRead += read
 
         if (bytesRead >= KSUB_READ_CHUNK_SIZE)
@@ -409,6 +413,8 @@ KomorebiSub_Poll() {
         _KSub_DiagLog("Poll: Got JSON object, len=" StrLen(json))
         _KSub_OnNotification(json)
     }
+    ; Resync tracked length after extractions (extraction modifies buffer)
+    _KSub_ReadBufferLen := StrLen(_KSub_ReadBuffer)
 
     ; Recycle if idle too long
     if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs)
@@ -914,6 +920,12 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
 
     _KSub_DiagLog("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
 
+    ; Capture MRU tick early to preserve timing (before batch collection)
+    mruTick := A_TickCount
+
+    ; Collect all patches into a Map for batch update (one rev bump instead of N)
+    batchPatches := Map()
+
     addedCount := 0
     updatedCount := 0
     skippedIneligible := 0
@@ -949,12 +961,12 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
             try WindowStore_UpsertWindow([rec])
             addedCount++
         } else {
-            ; Window exists - update workspace info
-            try WindowStore_UpdateFields(hwnd, {
+            ; Window exists - collect patch for batch update
+            batchPatches[hwnd] := {
                 workspaceName: info.wsName,
                 isOnCurrentWorkspace: info.isCurrent,
                 isCloaked: !info.isCurrent
-            })
+            }
             updatedCount++
         }
     }
@@ -984,12 +996,16 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
         ; Let suppression auto-expire after 2s instead. Komorebi handles MRU correctly
         ; through the cache above, so WEH suppression during this window is harmless.
     }
-    ; Use cache for MRU update (reliable whether state was just cached or previously cached)
+    ; Add MRU update to batch (using tick captured at start for timing consistency)
     if (currentWsName != "") {
         focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
         if (focusedHwnd) {
-            try WindowStore_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount })
-            _KSub_DiagLog("ProcessFullState: updated MRU for focused hwnd=" focusedHwnd " on '" currentWsName "' (cache " (!skipWorkspaceUpdate ? "refreshed" : "used") ")")
+            ; Merge MRU tick into existing patch or create new one
+            if (batchPatches.Has(focusedHwnd))
+                batchPatches[focusedHwnd].lastActivatedTick := mruTick
+            else
+                batchPatches[focusedHwnd] := { lastActivatedTick: mruTick }
+            _KSub_DiagLog("ProcessFullState: batched MRU for focused hwnd=" focusedHwnd " on '" currentWsName "' (cache " (!skipWorkspaceUpdate ? "refreshed" : "used") ")")
         }
     }
 
@@ -1015,12 +1031,21 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
                 }
                 wsName := cached.wsName
                 isCurrent := (wsName = _KSub_LastWorkspaceName)
-                try WindowStore_UpdateFields(hwnd, {
-                    workspaceName: wsName,
-                    isOnCurrentWorkspace: isCurrent
-                })
+                ; Add to batch (don't overwrite if already in batch from wsMap)
+                if (!batchPatches.Has(hwnd)) {
+                    batchPatches[hwnd] := {
+                        workspaceName: wsName,
+                        isOnCurrentWorkspace: isCurrent
+                    }
+                }
             }
         }
+    }
+
+    ; Apply all updates in a single batch (one Critical section, one rev bump)
+    if (batchPatches.Count > 0) {
+        result := WindowStore_BatchUpdateFields(batchPatches, "komorebi_fullstate")
+        _KSub_DiagLog("ProcessFullState: batch updated " result.changed " windows (patches=" batchPatches.Count ")")
     }
 }
 
