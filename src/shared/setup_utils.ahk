@@ -689,11 +689,19 @@ _Update_ApplyCore(opts) {
                 try FileCopy(gConfigIniPath, targetConfigPath)
         }
 
-        ; Preserve lifetime stats at target location
+        ; Preserve/merge lifetime stats at target location (Bug 4 fix)
         srcStatsPath := gConfigIniPath "\..\stats.ini"
         targetStatsPath := targetDir "\stats.ini"
-        if (FileExist(srcStatsPath) && !FileExist(targetStatsPath))
-            try FileCopy(srcStatsPath, targetStatsPath)
+        if (FileExist(srcStatsPath)) {
+            if (!FileExist(targetStatsPath)) {
+                ; Target doesn't have stats - copy from source
+                try FileCopy(srcStatsPath, targetStatsPath)
+            } else {
+                ; Both have stats - merge counters additively
+                _Update_MergeStats(srcStatsPath, targetStatsPath)
+            }
+        }
+        ; Always copy backup if missing (don't merge backups)
         if (FileExist(srcStatsPath ".bak") && !FileExist(targetStatsPath ".bak"))
             try FileCopy(srcStatsPath ".bak", targetStatsPath ".bak")
 
@@ -732,6 +740,10 @@ _Update_ApplyCore(opts) {
                     try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
             }
         }
+
+        ; Recreate shortcuts to point to updated exe (Bug 5 fix)
+        ; This ensures shortcuts work after exe rename + auto-update
+        RecreateShortcuts()
 
         ; Success
         TrayTip("Update Complete", successMessage, "Iconi")
@@ -843,6 +855,40 @@ _Update_CleanupStaleTempFiles() {
         try {
             if (DateDiff(A_Now, A_LoopFileTimeModified, "Hours") >= 1)
                 FileDelete(A_LoopFilePath)
+        }
+    }
+}
+
+; Merge stats from source into target, adding counters together (Bug 4 fix)
+; This preserves both sets of stats when updating across installations
+_Update_MergeStats(srcPath, targetPath) {
+    ; List of all lifetime counter keys to merge
+    lifetimeKeys := [
+        "TotalSessions",
+        "TotalAltTabs",
+        "TotalQuickSwitches",
+        "TotalTabSteps",
+        "TotalCancellations",
+        "TotalCrossWS",
+        "TotalWSToggles"
+    ]
+
+    ; Read source and target values, add them, write to target
+    for key in lifetimeKeys {
+        try {
+            srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
+            targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
+            mergedVal := srcVal + targetVal
+            IniWrite(mergedVal, targetPath, "Lifetime", key)
+        }
+    }
+
+    ; Merge FirstSessionDate - keep the earliest date
+    try {
+        srcDate := IniRead(srcPath, "Lifetime", "FirstSessionDate", "")
+        targetDate := IniRead(targetPath, "Lifetime", "FirstSessionDate", "")
+        if (srcDate != "" && (targetDate = "" || srcDate < targetDate)) {
+            IniWrite(srcDate, targetPath, "Lifetime", "FirstSessionDate")
         }
     }
 }

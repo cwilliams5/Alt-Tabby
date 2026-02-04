@@ -204,6 +204,9 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
         ; Check if installed version is currently running to prevent multiple instances
         _Launcher_OfferToStopInstalledInstance(installedPath)
 
+        ; Clean up stale admin task pointing to old location (Bug 3 fix)
+        _Launcher_CleanupStaleAdminTask(installedPath, currentPath)
+
         ; Check for stale shortcuts that still point to the old installed path
         _Launcher_OfferToUpdateStaleShortcuts()
         ; Continue running from current location
@@ -247,7 +250,8 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
         ; Can't delegate to _Launcher_KillExistingInstances() — it searches by
         ; current exe name, which won't match the installed exe (e.g., "AltTabby.exe"
         ; vs "alttabby v4.exe").
-        _Launcher_KillProcessByName(installedExeName, 10, TIMING_MUTEX_RELEASE_WAIT)
+        ; Pass offerElevation=true to handle elevated instances
+        _Launcher_KillProcessByName(installedExeName, 10, TIMING_MUTEX_RELEASE_WAIT, true)
     }
 }
 
@@ -420,5 +424,52 @@ _Launcher_OfferToUpdateStaleShortcuts() {
 
     if (result = "Yes") {
         RecreateShortcuts()
+    }
+}
+
+; Clean up stale admin task pointing to old location when user chooses "Always run from here"
+; Offers to disable admin mode for the old installation to prevent confusing repair dialogs
+_Launcher_CleanupStaleAdminTask(oldPath, newPath) {
+    global cfg, gConfigIniPath, APP_NAME
+
+    ; Check if admin task exists and points to the old location
+    if (!AdminTaskExists())
+        return
+
+    taskPath := _AdminTask_GetCommandPath()
+    if (taskPath = "")
+        return
+
+    ; If task already points to us, nothing to do
+    if (StrLower(taskPath) = StrLower(newPath))
+        return
+
+    ; Task points to old location - ask user what to do
+    result := MsgBox(
+        "The installed version has Admin Mode enabled:`n" taskPath "`n`n"
+        "Disable Admin Mode for that location?`n"
+        "(Otherwise you may see confusing repair prompts later)",
+        APP_NAME " - Admin Mode Conflict",
+        "YesNo Icon?"
+    )
+
+    if (result = "Yes") {
+        if (A_IsAdmin) {
+            ; We have admin - delete task directly
+            DeleteAdminTask()
+            cfg.SetupRunAsAdmin := false
+            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        } else {
+            ; Need elevation to delete task
+            try {
+                if (_Launcher_RunAsAdmin("--disable-admin-task"))
+                    ; Elevated instance will handle it, update local config
+                    cfg.SetupRunAsAdmin := false
+                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+            } catch {
+                ; UAC refused - warn user
+                TrayTip("Admin Mode", "Could not disable Admin Mode.`nYou may see repair prompts later.", "Icon!")
+            }
+        }
     }
 }

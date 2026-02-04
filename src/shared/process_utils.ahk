@@ -115,10 +115,12 @@ ProcessUtils_BuildExeNameList(targetExeName := "") {
 ; Uses taskkill as primary mechanism (immune to ProcessExist PID ordering),
 ; with ProcessClose loop as fallback for stragglers.
 ; Parameters:
-;   exeName     - Process image name to kill (e.g., "AltTabby.exe")
-;   maxAttempts - Max retry attempts for ProcessClose fallback (default 10)
-;   sleepMs     - Sleep between fallback attempts (default: TIMING_PROCESS_TERMINATE_WAIT)
-ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts := 10, sleepMs := 0) {
+;   exeName        - Process image name to kill (e.g., "AltTabby.exe")
+;   maxAttempts    - Max retry attempts for ProcessClose fallback (default 10)
+;   sleepMs        - Sleep between fallback attempts (default: TIMING_PROCESS_TERMINATE_WAIT)
+;   offerElevation - If true and target is elevated, offer to elevate for kill (default false)
+ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts := 10, sleepMs := 0, offerElevation := false) {
+    global APP_NAME
     ; Note: TIMING_* globals are defined in config_loader.ahk
     if (sleepMs = 0) {
         global TIMING_PROCESS_TERMINATE_WAIT
@@ -139,6 +141,58 @@ ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts := 10, sleepMs := 0) {
         try ProcessClose(pid)
         Sleep(sleepMs)
     }
+
+    ; Check if any process still running (may be elevated)
+    if (offerElevation && !A_IsAdmin) {
+        pid := ProcessExist(exeName)
+        if (pid && pid != myPID && ProcessUtils_IsElevated(pid)) {
+            result := MsgBox(
+                "The running instance has administrator privileges.`n`n"
+                "Elevate to close it?",
+                APP_NAME,
+                "YesNo Icon?"
+            )
+            if (result = "Yes") {
+                try {
+                    Run('*RunAs taskkill /F /PID ' pid,, "Hide")
+                    Sleep(TIMING_SETUP_SETTLE)
+                }
+            }
+        }
+    }
+}
+
+; Check if a process is running elevated (has admin privileges)
+; Parameters:
+;   pid - Process ID to check
+; Returns: true if elevated, false otherwise
+ProcessUtils_IsElevated(pid) {
+    global PROCESS_QUERY_LIMITED_INFORMATION
+
+    hProcess := DllCall("kernel32\OpenProcess", "uint", PROCESS_QUERY_LIMITED_INFORMATION, "int", 0, "uint", pid, "ptr")
+    if (!hProcess)
+        return false  ; Can't open process - assume not elevated or doesn't exist
+
+    hToken := 0
+    if (!DllCall("advapi32\OpenProcessToken", "ptr", hProcess, "uint", 0x0008, "ptr*", &hToken)) {  ; TOKEN_QUERY = 0x0008
+        DllCall("kernel32\CloseHandle", "ptr", hProcess)
+        return false
+    }
+
+    ; Query TokenElevation
+    elevation := 0
+    returnLength := 0
+    DllCall("advapi32\GetTokenInformation",
+        "ptr", hToken,
+        "int", 20,  ; TokenElevation
+        "ptr*", &elevation,
+        "uint", 4,
+        "uint*", &returnLength)
+
+    DllCall("kernel32\CloseHandle", "ptr", hToken)
+    DllCall("kernel32\CloseHandle", "ptr", hProcess)
+
+    return (elevation != 0)
 }
 
 ; Kill all Alt-Tabby processes except ourselves

@@ -7,8 +7,11 @@
 ; Main entry point for launcher mode. Orchestrates startup:
 ; mutex, mismatch check, wizard, splash, subprocess launch.
 
-; Launcher mutex global
+; Launcher mutex global (per-InstallationId - allows renamed exes in same install)
 global g_LauncherMutex := 0
+
+; Global active mutex (system-wide - prevents multiple installations running)
+global g_ActiveMutex := 0
 
 ; WM_COPYDATA debounce state (IsSet pattern - unset until first signal received)
 global g_LastStoreRestartTick  ; Debounce RESTART_STORE signals
@@ -162,6 +165,30 @@ Launcher_Init() {
     ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)
     OnExit(_Launcher_OnExit)
 
+    ; Acquire system-wide active mutex before launching subprocesses
+    ; This prevents multiple installations from running simultaneously
+    ; Skip in testing mode to allow parallel test execution
+    if (!g_TestingMode && !_Launcher_AcquireActiveMutex()) {
+        result := MsgBox(
+            "Another Alt-Tabby installation is already running.`n`n"
+            "Only one installation can be active at a time.`n"
+            "Close the other installation and try again?",
+            APP_NAME,
+            "YesNo Iconx"
+        )
+        if (result = "Yes") {
+            ; Kill ALL Alt-Tabby processes system-wide
+            _Launcher_KillAllAltTabbyProcesses()
+            Sleep(TIMING_MUTEX_RELEASE_WAIT)
+            if (!_Launcher_AcquireActiveMutex()) {
+                MsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
+                ExitApp()
+            }
+        } else {
+            ExitApp()
+        }
+    }
+
     ; Launch store and GUI
     LaunchStore()
     Sleep(TIMING_SUBPROCESS_LAUNCH)
@@ -214,7 +241,7 @@ Launcher_Init() {
 
 ; Cleanup handler called on exit
 _Launcher_OnExit(exitReason, exitCode) {
-    global g_LauncherMutex, g_ConfigEditorPID, g_BlacklistEditorPID
+    global g_LauncherMutex, g_ActiveMutex, g_ConfigEditorPID, g_BlacklistEditorPID
     try HideSplashScreen()
     try {
         if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
@@ -226,6 +253,10 @@ _Launcher_OnExit(exitReason, exitCode) {
     if (g_LauncherMutex) {
         try DllCall("CloseHandle", "ptr", g_LauncherMutex)
         g_LauncherMutex := 0
+    }
+    if (g_ActiveMutex) {
+        try DllCall("CloseHandle", "ptr", g_ActiveMutex)
+        g_ActiveMutex := 0
     }
     return 0  ; Allow exit to proceed
 }
@@ -409,6 +440,59 @@ _Launcher_AcquireMutex() {
     return (g_LauncherMutex != 0)
 }
 
+; Try to acquire the system-wide active mutex
+; Returns true if acquired, false if another installation is running
+; This is separate from the launcher mutex (which uses InstallationId) to prevent
+; multiple installations from running simultaneously regardless of their ID.
+_Launcher_AcquireActiveMutex() {
+    global g_ActiveMutex, ERROR_ALREADY_EXISTS
+
+    ; System-wide mutex with no ID suffix
+    mutexName := "AltTabby_Active"
+
+    g_ActiveMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
+    lastError := DllCall("GetLastError")
+
+    if (lastError = ERROR_ALREADY_EXISTS) {
+        _Launcher_Log("ACTIVE_MUTEX: already exists, another installation running")
+        if (g_ActiveMutex) {
+            DllCall("CloseHandle", "ptr", g_ActiveMutex)
+            g_ActiveMutex := 0
+        }
+        return false
+    }
+
+    _Launcher_Log("ACTIVE_MUTEX: acquired successfully")
+    return (g_ActiveMutex != 0)
+}
+
+; Kill all Alt-Tabby processes system-wide (for cross-installation conflicts)
+; More aggressive than _Launcher_KillExistingInstances - kills any AltTabby*.exe
+_Launcher_KillAllAltTabbyProcesses() {
+    global TIMING_SETUP_SETTLE
+    myPID := ProcessExist()
+
+    ; Kill any process with "alttabby" in the name (case-insensitive)
+    ; Use WMI to find all matching processes
+    try {
+        wmi := ComObject("WbemScripting.SWbemLocator").ConnectServer(".", "root\cimv2")
+        query := "SELECT ProcessId, Name FROM Win32_Process WHERE Name LIKE '%tabby%'"
+        for process in wmi.ExecQuery(query) {
+            if (process.ProcessId != myPID) {
+                try ProcessClose(process.ProcessId)
+            }
+        }
+    } catch {
+        ; Fallback: use taskkill with wildcard patterns
+        ; Note: taskkill doesn't support wildcards in /IM, so we try common patterns
+        for pattern in ["AltTabby.exe", "alttabby.exe", "Alt-Tabby.exe"] {
+            try RunWait('taskkill /F /IM "' pattern '" /FI "PID ne ' myPID '"',, "Hide")
+        }
+    }
+
+    Sleep(TIMING_SETUP_SETTLE)
+}
+
 ; Ensure InstallationId exists, generate if missing
 ; Called early in startup before mutex acquisition
 ;
@@ -560,8 +644,8 @@ _Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
 
 ; Kill all processes matching exeName except ourselves
 ; Wrapper for ProcessUtils_KillByNameExceptSelf for backwards compatibility
-_Launcher_KillProcessByName(exeName, maxAttempts := 10, sleepMs := 0) {
-    ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts, sleepMs)
+_Launcher_KillProcessByName(exeName, maxAttempts := 10, sleepMs := 0, offerElevation := false) {
+    ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts, sleepMs, offerElevation)
 }
 
 ; Kill all existing instances of Alt-Tabby exes except ourselves

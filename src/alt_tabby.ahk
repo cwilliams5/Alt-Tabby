@@ -79,6 +79,9 @@ for _, arg in A_Args {
         case "--repair-admin-task":
             g_AltTabbyMode := "repair-admin-task"
             ; Repair stale admin task after self-elevation
+        case "--disable-admin-task":
+            g_AltTabbyMode := "disable-admin-task"
+            ; Delete admin task after self-elevation (from "Always run from here")
         case "--testing-mode":
             g_TestingMode := true
             A_IconHidden := true  ; No tray icon during automated testing
@@ -208,6 +211,28 @@ if (g_AltTabbyMode = "wizard-continue") {
             ExitApp()
         }
 
+        ; Acquire system-wide active mutex before launching subprocesses
+        ; Skip in testing mode to allow parallel test execution
+        if (!g_TestingMode && !_Launcher_AcquireActiveMutex()) {
+            result := MsgBox(
+                "Another Alt-Tabby installation is already running.`n`n"
+                "Only one installation can be active at a time.`n"
+                "Close the other installation and try again?",
+                APP_NAME,
+                "YesNo Iconx"
+            )
+            if (result = "Yes") {
+                _Launcher_KillAllAltTabbyProcesses()
+                Sleep(TIMING_MUTEX_RELEASE_WAIT)
+                if (!_Launcher_AcquireActiveMutex()) {
+                    MsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
+                    ExitApp()
+                }
+            } else {
+                ExitApp()
+            }
+        }
+
         ; Show splash screen if enabled (skip in testing mode)
         if (cfg.LauncherSplashScreen != "None" && !g_TestingMode)
             ShowSplashScreen()
@@ -325,6 +350,22 @@ if (g_AltTabbyMode = "repair-admin-task") {
         ; Fall back to direct launch
         Run('"' exePath '"')
     }
+    ExitApp()
+}
+
+; ============================================================
+; DISABLE-ADMIN-TASK MODE (After Self-Elevation from "Always run from here")
+; ============================================================
+if (g_AltTabbyMode = "disable-admin-task") {
+    ConfigLoader_Init()
+
+    ; Delete the admin task
+    if (AdminTaskExists()) {
+        DeleteAdminTask()
+        cfg.SetupRunAsAdmin := false
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+    }
+    ; Silently exit - the non-elevated caller will continue
     ExitApp()
 }
 
