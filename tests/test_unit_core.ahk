@@ -1762,6 +1762,93 @@ RunUnitTests_Core() {
     AssertEq(focusedHwnd, 333, "Parse+Navigate: focused hwnd is 333")
 
     ; ============================================================
+    ; cJson Malformed Input Error Handling Tests
+    ; ============================================================
+    ; Verify that JSON.Load throws on malformed input (not crash/hang).
+    ; Production code wraps JSON.Load in try-catch - this confirms the behavior.
+    Log("`n--- cJson Malformed Input Error Handling Tests ---")
+
+    ; Test 1: Truncated JSON (missing closing brace)
+    Log("Testing JSON.Load with truncated input...")
+    truncated := '{"type":"test","data":['
+    parseThrew := false
+    try {
+        result := JSON.Load(truncated)
+    } catch {
+        parseThrew := true
+    }
+    if (parseThrew) {
+        Log("PASS: JSON.Load throws on truncated input")
+        TestPassed++
+    } else {
+        Log("FAIL: JSON.Load should throw on truncated input")
+        TestErrors++
+    }
+
+    ; Test 2: Invalid JSON (unquoted key)
+    Log("Testing JSON.Load with unquoted key...")
+    invalidKey := '{unquoted: "value"}'
+    parseThrew := false
+    try {
+        result := JSON.Load(invalidKey)
+    } catch {
+        parseThrew := true
+    }
+    if (parseThrew) {
+        Log("PASS: JSON.Load throws on unquoted key")
+        TestPassed++
+    } else {
+        Log("FAIL: JSON.Load should throw on unquoted key")
+        TestErrors++
+    }
+
+    ; Test 3: Binary garbage
+    Log("Testing JSON.Load with binary garbage...")
+    garbage := Chr(0x00) . Chr(0xFF) . Chr(0xFE) . "garbage"
+    parseThrew := false
+    try {
+        result := JSON.Load(garbage)
+    } catch {
+        parseThrew := true
+    }
+    if (parseThrew) {
+        Log("PASS: JSON.Load throws on binary garbage")
+        TestPassed++
+    } else {
+        Log("FAIL: JSON.Load should throw on binary garbage")
+        TestErrors++
+    }
+
+    ; Test 4: Empty string
+    Log("Testing JSON.Load with empty string...")
+    parseThrew := false
+    try {
+        result := JSON.Load("")
+    } catch {
+        parseThrew := true
+    }
+    if (parseThrew) {
+        Log("PASS: JSON.Load throws on empty string")
+        TestPassed++
+    } else {
+        Log("FAIL: JSON.Load should throw on empty string")
+        TestErrors++
+    }
+
+    ; Test 5: Trailing garbage after valid JSON
+    Log("Testing JSON.Load with trailing garbage...")
+    trailingGarbage := '{"valid": true} extra stuff'
+    parseThrew := false
+    try {
+        result := JSON.Load(trailingGarbage)
+    } catch {
+        parseThrew := true
+    }
+    ; Note: Some parsers accept trailing garbage, some don't - just verify no crash
+    Log("INFO: JSON.Load with trailing garbage " (parseThrew ? "throws" : "accepts") " (no crash = OK)")
+    TestPassed++
+
+    ; ============================================================
     ; _BL_CompileWildcard Regex Metacharacter Escaping Tests
     ; ============================================================
     ; Verify that _BL_CompileWildcard correctly escapes regex metacharacters

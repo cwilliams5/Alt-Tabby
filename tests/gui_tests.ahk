@@ -315,7 +315,7 @@ RunGUITests() {
     global GUI_TestPassed, GUI_TestFailed, gMockIPCMessages, cfg
     global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
-    global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName
+    global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName, gGUI_WSContextSwitch
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gGUI_StoreRev, gGUI_ItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith
@@ -1359,6 +1359,85 @@ RunGUITests() {
     GUI_UpdateCurrentWSFromPayload(payload)
     GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload all: workspace updated")
     GUI_AssertEq(gGUI_Sel, 1, "WSPayload all: selection reset to 1")
+
+    ; ============================================================
+    ; WORKSPACE CONTEXT SWITCH SELECTION TESTS
+    ; ============================================================
+    ; Tests that workspace changes during ACTIVE state set gGUI_WSContextSwitch=true
+    ; and that this flag persists sel=1 during subsequent workspace toggles (Ctrl).
+
+    ; ----- Test: Normal Alt-Tab keeps WSContextSwitch=false -----
+    GUI_Log("Test: Normal Alt-Tab keeps WSContextSwitch=false")
+    ResetGUIState()
+    gGUI_WSContextSwitch := false
+    gGUI_Items := CreateTestItems(5)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+
+    GUI_AssertEq(gGUI_Sel, 2, "Normal Alt-Tab: sel=2 (previous window)")
+    GUI_AssertEq(gGUI_WSContextSwitch, false, "Normal Alt-Tab: WSContextSwitch stays false")
+
+    ; ----- Test: WS change during ACTIVE sets WSContextSwitch=true and sel=1 -----
+    GUI_Log("Test: WS change during ACTIVE sets WSContextSwitch=true")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "Alpha"
+    gGUI_Sel := 3  ; Start with different selection
+    gGUI_WSContextSwitch := false
+
+    ; Simulate workspace change notification from store
+    payload := Map("meta", Map("currentWSName", "Beta"))
+    GUI_UpdateCurrentWSFromPayload(payload)
+
+    GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WS change: workspace updated")
+    GUI_AssertEq(gGUI_Sel, 1, "WS change: sel reset to 1")
+    GUI_AssertEq(gGUI_WSContextSwitch, true, "WS change: WSContextSwitch set to true")
+
+    ; ----- Test: WSContextSwitch persists sel=1 during workspace toggles -----
+    ; After WS change sets flag, Ctrl toggles should keep sel=1
+    GUI_Log("Test: WSContextSwitch persists sel=1 during Ctrl toggle")
+    ResetGUIState()
+    cfg.FreezeWindowList := true
+    cfg.UseCurrentWSProjection := false
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_Items := CreateTestItems(10, 4)  ; 10 items, 4 on current WS
+    gGUI_FrozenItems := gGUI_Items.Clone()
+    gGUI_AllItems := gGUI_Items.Clone()
+    gGUI_WorkspaceMode := "all"
+    gGUI_CurrentWSName := "Alpha"
+    gGUI_Sel := 3
+    gGUI_WSContextSwitch := false
+
+    ; Trigger WS change to set the flag
+    payload := Map("meta", Map("currentWSName", "Beta"))
+    GUI_UpdateCurrentWSFromPayload(payload)
+    GUI_AssertEq(gGUI_WSContextSwitch, true, "WSContextSwitch persist: flag set")
+    GUI_AssertEq(gGUI_Sel, 1, "WSContextSwitch persist: initial sel=1")
+
+    ; Toggle to current workspace mode - sel should remain 1 (flag persists)
+    GUI_ToggleWorkspaceMode()
+    GUI_AssertEq(gGUI_Sel, 1, "WSContextSwitch persist: sel=1 after toggle to current")
+
+    ; Toggle back to all - sel should still be 1
+    GUI_ToggleWorkspaceMode()
+    GUI_AssertEq(gGUI_Sel, 1, "WSContextSwitch persist: sel=1 after toggle back to all")
+
+    ; ----- Test: WS change with single item list -----
+    GUI_Log("Test: WS change with single item → sel=1")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "Alpha"
+    gGUI_Sel := 1
+    gGUI_Items := CreateTestItems(1)
+
+    payload := Map("meta", Map("currentWSName", "Beta"))
+    GUI_UpdateCurrentWSFromPayload(payload)
+
+    GUI_AssertEq(gGUI_Sel, 1, "WS change single: sel=1")
 
     ; ============================================================
     ; GUI_MoveSelectionFrozen DIRECT TESTS
