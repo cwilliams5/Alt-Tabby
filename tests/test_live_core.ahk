@@ -18,95 +18,14 @@ RunLiveTests_Core() {
     compiledExePath := A_ScriptDir "\..\release\AltTabby.exe"
 
     ; ============================================================
-    ; Compile Binary (auto-skipped if recently compiled by Phase 0)
+    ; Compile Binary Check (compilation handled by test.ps1)
     ; ============================================================
-    Log("`n--- Compile Binary ---")
-
-    ; Check if exe was recently compiled (e.g., by test.ps1 Phase 0)
-    ; If fresh, skip compilation to save ~5-8s on the critical path
-    _compileSkipped := false
-    if (FileExist(compiledExePath)) {
-        _exeTime := FileGetTime(compiledExePath, "M")
-        _ageSec := DateDiff(FormatTime(, "yyyyMMddHHmmss"), _exeTime, "Seconds")
-        if (_ageSec <= 90) {
-            _compileSkipped := true
-            Log("  Exe is fresh (" _ageSec "s old) - skipping compilation")
-            Log("PASS: AltTabby.exe exists in release folder")
-            TestPassed++
-            Log("PASS: AltTabby.exe is fresh (modified " _ageSec "s ago)")
-            TestPassed++
-        }
-    }
-
-    if (!_compileSkipped) {
-        ; Full compilation path (backward compat for direct run_tests.ahk --live)
-        ; Kill any running AltTabby processes before compilation
-        ; This prevents "file in use" errors and avoids single-instance dialog
-        ; NOTE: Only reached when exe is stale (>90s old), never in test.ps1 pipeline
-        ; (test.ps1 compiles separately and the exe is always fresh)
-        _Test_KillAllAltTabby()
-
-        if (!FileExist(compileBat)) {
-            Log("FAIL: compile.bat not found at: " compileBat)
-            TestErrors++
-        } else {
-            ; Record pre-compile timestamp (if exe exists)
-            preCompileTime := 0
-            if (FileExist(compiledExePath)) {
-                preCompileTime := FileGetTime(compiledExePath, "M")
-            }
-
-            ; Run compile.bat via cmd /c with stdin from nul to skip pause
-            Log("  Running compile.bat...")
-
-            try {
-                ; RunWait with hidden window, pipe from nul to skip the pause
-                exitCode := _Test_RunWaitSilent('cmd.exe /c "' compileBat '" --force < nul', A_ScriptDir "\..")
-
-                if (exitCode != 0) {
-                    Log("FAIL: compile.bat failed with exit code " exitCode)
-                    TestErrors++
-                } else {
-                    Log("PASS: compile.bat completed successfully")
-                    TestPassed++
-                }
-            } catch as e {
-                Log("FAIL: Could not run compile.bat: " e.Message)
-                TestErrors++
-            }
-
-            ; Verify exe exists and is freshly compiled
-            if (!FileExist(compiledExePath)) {
-                Log("FAIL: AltTabby.exe not created after compilation")
-                TestErrors++
-            } else {
-                postCompileTime := FileGetTime(compiledExePath, "M")
-
-                ; Check timestamp changed (or was created)
-                if (preCompileTime = 0) {
-                    Log("PASS: AltTabby.exe created (new file)")
-                    TestPassed++
-                } else if (postCompileTime != preCompileTime) {
-                    Log("PASS: AltTabby.exe recompiled (timestamp changed)")
-                    TestPassed++
-                } else {
-                    Log("FAIL: AltTabby.exe timestamp unchanged - compilation may have failed silently")
-                    TestErrors++
-                }
-
-                ; Verify it's recent (within last 90 seconds to allow for compile time)
-                nowTime := FormatTime(, "yyyyMMddHHmmss")
-                timeDiff := DateDiff(nowTime, postCompileTime, "Seconds")
-
-                if (timeDiff <= 90) {
-                    Log("PASS: AltTabby.exe is fresh (modified " timeDiff "s ago)")
-                    TestPassed++
-                } else {
-                    Log("FAIL: AltTabby.exe is stale (modified " timeDiff "s ago, expected <90s)")
-                    TestErrors++
-                }
-            }
-        }
+    Log("`n--- Compile Binary Check ---")
+    if (!FileExist(compiledExePath)) {
+        Log("SKIP: AltTabby.exe not found in release folder")
+    } else {
+        Log("PASS: AltTabby.exe exists in release folder")
+        TestPassed++
     }
 
     ; ============================================================

@@ -139,8 +139,7 @@ RunLiveTests_Lifecycle() {
     ; ============================================================
     Log("`n--- RESTART_ALL Signal Test ---")
 
-    ; Wait for system to stabilize after first test
-    Sleep(1000)
+    ; WaitForStorePipe handles waiting - no fixed sleep needed
     if (!WaitForStorePipe(LIFECYCLE_PIPE_NAME, 3000)) {
         Log("SKIP: Store not available for RESTART_ALL test")
     } else {
@@ -167,8 +166,7 @@ RunLiveTests_Lifecycle() {
     ; ============================================================
     Log("`n--- Ordered Shutdown Test ---")
 
-    ; Wait for system to stabilize after RESTART_ALL
-    Sleep(1000)
+    ; WaitForStorePipe handles waiting - no fixed sleep needed
     if (!WaitForStorePipe(LIFECYCLE_PIPE_NAME, 3000)) {
         Log("SKIP: Store not available for shutdown order test")
     } else {
@@ -191,7 +189,7 @@ RunLiveTests_Lifecycle() {
             ; High-frequency poll both PIDs to detect exit order
             guiExitTick := 0
             storeExitTick := 0
-            shutdownTimeout := 12000  ; 3s GUI + 5s Store + 4s margin
+            shutdownTimeout := 9000  ; 3s GUI + 3s Store + 3s margin
 
             loop {
                 elapsed := A_TickCount - preShutdownTick
@@ -234,7 +232,7 @@ RunLiveTests_Lifecycle() {
             ; Assert: Launcher also exited (give it a moment after store dies)
             launcherGone := false
             launcherWait := A_TickCount
-            while (A_TickCount - launcherWait < 3000) {
+            while (A_TickCount - launcherWait < 2000) {
                 if (!ProcessExist(launcherPid)) {
                     launcherGone := true
                     break
@@ -245,7 +243,7 @@ RunLiveTests_Lifecycle() {
                 Log("PASS: Launcher exited after shutdown")
                 TestPassed++
             } else {
-                Log("FAIL: Launcher still alive 3s after store exited")
+                Log("FAIL: Launcher still alive 2s after store exited")
                 TestErrors++
             }
 
