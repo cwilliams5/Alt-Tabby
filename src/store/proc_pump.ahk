@@ -17,6 +17,11 @@ global _PP_TimerOn := false
 global _PP_IdleTicks := 0               ; Counter for consecutive empty ticks
 global _PP_IdleThreshold := 5           ; Default, overridden from config in ProcPump_Start()
 
+; Negative cache: PIDs that failed lookup are not retried for 60s
+; Prevents continuous retries for system processes (csrss, wininit, etc.)
+global _PP_NegativeCache := Map()       ; pid -> tick when failure recorded
+global _PP_NegativeCacheTTL := 60000    ; 60s before retry
+
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
 ; Log file: %TEMP%\tabby_procpump.log
@@ -87,7 +92,12 @@ _PP_Tick() {
         if (pid <= 0)
             continue
 
-        ; Check cache first
+        ; Check negative cache first - skip recently failed PIDs
+        global _PP_NegativeCache, _PP_NegativeCacheTTL
+        if (_PP_NegativeCache.Has(pid) && (A_TickCount - _PP_NegativeCache[pid]) < _PP_NegativeCacheTTL)
+            continue
+
+        ; Check positive cache
         cached := WindowStore_GetProcNameCached(pid)
         if (cached != "") {
             WindowStore_UpdateProcessName(pid, cached)
@@ -96,8 +106,11 @@ _PP_Tick() {
 
         ; Resolve process path
         path := _PP_GetProcessPath(pid)
-        if (path = "")
+        if (path = "") {
+            ; Record failure in negative cache
+            _PP_NegativeCache[pid] := A_TickCount
             continue
+        }
 
         name := _PP_Basename(path)
         if (name != "")

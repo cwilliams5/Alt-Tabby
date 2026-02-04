@@ -798,7 +798,12 @@ _WS_EnqueueIfNeeded(row) {
         needsIconWork := true
     } else if (row.iconHicon && row.iconMethod != "wm_geticon" && isVisible) {
         ; Has fallback icon (UWP/EXE), window is now visible - try to upgrade
-        needsIconWork := true
+        ; Throttle UPGRADE attempts: check iconLastRefreshTick (30s matches IconPumpRefreshThrottleMs)
+        ; Without this, same window re-queued every upsert cycle during workspace switches
+        global cfg
+        throttleMs := cfg.HasOwnProp("IconPumpRefreshThrottleMs") ? cfg.IconPumpRefreshThrottleMs : 30000
+        if (row.iconLastRefreshTick = 0 || (now - row.iconLastRefreshTick) >= throttleMs)
+            needsIconWork := true
     }
     ; Note: refresh-on-focus is handled by WindowStore_EnqueueIconRefresh, not here
 
@@ -1067,14 +1072,17 @@ WindowStore_PruneProcNameCache() {
 }
 
 ; Clean up all per-window icons in the store
+; RACE FIX: Wrap in Critical to prevent WinEventHook from modifying map during iteration
 WindowStore_CleanupAllIcons() {
     global gWS_Store
+    Critical "On"
     for hwnd, rec in gWS_Store {
         if (rec.HasOwnProp("iconHicon") && rec.iconHicon) {
             try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
             rec.iconHicon := 0
         }
     }
+    Critical "Off"
 }
 
 ; ============================================================
@@ -1127,24 +1135,23 @@ WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
                 continue
 
             old := prevMap[hwnd]
-            changed := false
-            for _, field in deltaFields {
-                if (rec.%field% != old.%field%) {
-                    changed := true
-                    break
+            if (sparse) {
+                ; Sparse mode: single loop - detect changes AND build sparse record together
+                sparseRec := {hwnd: hwnd}
+                for _, field in deltaFields {
+                    if (rec.%field% != old.%field%)
+                        sparseRec.%field% := rec.%field%
                 }
-            }
-            if (changed) {
-                if (sparse) {
-                    ; Sparse: emit only changed fields + hwnd
-                    sparseRec := {hwnd: hwnd}
-                    for _, field in deltaFields {
-                        if (rec.%field% != old.%field%)
-                            sparseRec.%field% := rec.%field%
-                    }
+                ; Only push if any fields changed (sparseRec has more than just hwnd)
+                if (ObjOwnPropCount(sparseRec) > 1)
                     upserts.Push(sparseRec)
-                } else {
-                    upserts.Push(rec)
+            } else {
+                ; Full mode: detect any change, push full record
+                for _, field in deltaFields {
+                    if (rec.%field% != old.%field%) {
+                        upserts.Push(rec)
+                        break
+                    }
                 }
             }
         }

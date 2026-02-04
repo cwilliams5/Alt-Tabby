@@ -210,6 +210,11 @@ Store_HeartbeatTick() {
         Critical "Off"
     }
 
+    ; Early exit if no clients - skip expensive pruning operations
+    ; (prune operations only matter when we're actively serving clients)
+    if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
+        return
+
     ; Prune stale workspace cache entries (Issue #3 - memory leak prevention)
     try KomorebiSub_PruneStaleCache()
 
@@ -226,14 +231,10 @@ Store_HeartbeatTick() {
 
     ; Periodic full sync: send complete snapshot to all clients for full-state healing
     ; This catches issues that per-row healing cannot fix (e.g., ghost rows, missing rows)
-    ; Placed BEFORE client count check so it fires regardless of recent send activity
     if (cfg.IPCFullSyncEvery > 0 && Mod(gStore_HeartbeatCount, cfg.IPCFullSyncEvery) = 0) {
         Store_ForceFullSync()
         return  ; Full sync subsumes heartbeat
     }
-
-    if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
-        return
 
     ; Log churn diagnostics (what fields and sources are triggering rev bumps)
     if (cfg.DiagChurnLog) {
