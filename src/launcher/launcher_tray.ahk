@@ -314,10 +314,6 @@ ExitAll() {
     ExitApp()
 }
 
-_KillAllSubprocesses() {
-    _GracefulShutdown()
-}
-
 _GracefulShutdown() {
     global g_StorePID, g_GuiPID, g_ViewerPID
 

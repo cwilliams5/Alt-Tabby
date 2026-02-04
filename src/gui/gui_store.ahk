@@ -8,7 +8,7 @@ global gGUI_ItemsMap := Map()
 
 ; ========================= STORE MESSAGE HANDLER =========================
 
-GUI_OnStoreMessage(line, hPipe := 0) {
+GUI_OnStoreMessage(line, _hPipe := 0) {
     global gGUI_StoreConnected, gGUI_StoreRev, gGUI_Items, gGUI_Sel, gGUI_ItemsMap
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText
     global gGUI_State, gGUI_FrozenItems, gGUI_AllItems  ; CRITICAL: All list state for updates
@@ -273,7 +273,6 @@ GUI_RebuildItemsMap(items) {
 GUI_ApplyDelta(payload) {
     global gGUI_Items, gGUI_Sel, gINT_BypassMode, gGUI_ItemsMap
 
-    changed := false
     mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
     changedHwnds := Map()    ; Track which hwnds were affected (for viewport-based repaint)
     focusChangedToHwnd := 0  ; Track if any window received focus
@@ -311,7 +310,6 @@ GUI_ApplyDelta(payload) {
                 if (gGUI_ItemsMap.Has(hwnd))
                     gGUI_ItemsMap.Delete(hwnd)
             }
-            changed := true
             mruChanged := true  ; Item count changed, layout affected
         }
     }
@@ -355,7 +353,6 @@ GUI_ApplyDelta(payload) {
                     focusChangedToHwnd := hwnd
                     mruChanged := true
                 }
-                changed := true
             } else {
                 ; Add new item using shared helper
                 newItem := _GUI_CreateItemFromRecord(hwnd, rec)
@@ -366,7 +363,6 @@ GUI_ApplyDelta(payload) {
                     _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
                     focusChangedToHwnd := hwnd
                 }
-                changed := true
                 mruChanged := true  ; New item added, layout affected
             }
         }
