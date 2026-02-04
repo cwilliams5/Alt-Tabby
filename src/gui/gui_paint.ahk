@@ -55,9 +55,7 @@ GUI_Repaint() {
 
     ; Log context for first paint or paint after long idle (>60s)
     if (paintNum = 1 || idleDuration > 60000) {
-        iconCacheSize := 0
-        for _ in gGdip_IconCache
-            iconCacheSize += 1
+        iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
         resCount := gGdip_Res.Count
         _Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
         _Paint_Log("  Context: items=" gGUI_Items.Length " frozen=" gGUI_FrozenItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
@@ -227,19 +225,40 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     scrollTop := gGUI_ScrollTop
 
-    RowH := Round(cfg.GUI_RowHeight * scale)
-    if (RowH < 1) {
-        RowH := 1
+    ; Cache layout metrics - only recalculate when scale changes
+    ; (avoids 13+ Round() calls per frame for values that only change on DPI change)
+    static cachedLayout := {}, cachedLayoutScale := 0.0
+    if (Abs(cachedLayoutScale - scale) >= 0.001) {
+        cachedLayout.RowH := Round(cfg.GUI_RowHeight * scale)
+        if (cachedLayout.RowH < 1)
+            cachedLayout.RowH := 1
+        cachedLayout.Mx := Round(cfg.GUI_MarginX * scale)
+        cachedLayout.My := Round(cfg.GUI_MarginY * scale)
+        cachedLayout.ISize := Round(cfg.GUI_IconSize * scale)
+        cachedLayout.Rad := Round(cfg.GUI_RowRadius * scale)
+        cachedLayout.gapText := Round(cfg.GUI_IconTextGapPx * scale)
+        cachedLayout.gapCols := Round(cfg.GUI_ColumnGapPx * scale)
+        cachedLayout.hdrY4 := Round(PAINT_HDR_Y_DIP * scale)
+        cachedLayout.hdrH28 := Round(cfg.GUI_HeaderHeightPx * scale)
+        cachedLayout.iconLeftDip := Round(cfg.GUI_IconLeftMargin * scale)
+        cachedLayout.titleY := Round(PAINT_TITLE_Y_DIP * scale)
+        cachedLayout.titleH := Round(PAINT_TITLE_H_DIP * scale)
+        cachedLayout.subY := Round(PAINT_SUB_Y_DIP * scale)
+        cachedLayout.subH := Round(PAINT_SUB_H_DIP * scale)
+        cachedLayout.colY := Round(PAINT_COL_Y_DIP * scale)
+        cachedLayout.colH := Round(PAINT_COL_H_DIP * scale)
+        cachedLayoutScale := scale
     }
-    Mx := Round(cfg.GUI_MarginX * scale)
-    My := Round(cfg.GUI_MarginY * scale)
-    ISize := Round(cfg.GUI_IconSize * scale)
-    Rad := Round(cfg.GUI_RowRadius * scale)
-    gapText := Round(cfg.GUI_IconTextGapPx * scale)
-    gapCols := Round(cfg.GUI_ColumnGapPx * scale)
-    hdrY4 := Round(PAINT_HDR_Y_DIP * scale)
-    hdrH28 := Round(cfg.GUI_HeaderHeightPx * scale)
-    iconLeftDip := Round(cfg.GUI_IconLeftMargin * scale)
+    RowH := cachedLayout.RowH
+    Mx := cachedLayout.Mx
+    My := cachedLayout.My
+    ISize := cachedLayout.ISize
+    Rad := cachedLayout.Rad
+    gapText := cachedLayout.gapText
+    gapCols := cachedLayout.gapCols
+    hdrY4 := cachedLayout.hdrY4
+    hdrH28 := cachedLayout.hdrH28
+    iconLeftDip := cachedLayout.iconLeftDip
 
     y := My
     leftX := Mx + iconLeftDip
@@ -254,16 +273,26 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         ["GUI_ColFixed3", "GUI_Col3Name", "PID"],
         ["GUI_ColFixed2", "GUI_Col2Name", "hwndHex"]
     ]
-    cols := []
-    rightX := wPhys - Mx
-    for _, def in colDefs {
-        colW := Round(cfg.%def[1]% * scale)
-        if (colW > 0) {
-            cx := rightX - colW
-            cols.Push({name: cfg.%def[2]%, w: colW, key: def[3], x: cx})
-            rightX := cx - gapCols
+
+    ; Cache column metrics - only rebuild when scale, width, margin, or gap changes
+    ; (avoids rebuilding cols array + Round() calls per column per frame)
+    static cachedCols := [], cachedColsKey := "", cachedColsRightX := 0
+    colsKey := scale "_" wPhys "_" Mx "_" gapCols
+    if (colsKey != cachedColsKey) {
+        cachedCols := []
+        cachedColsRightX := wPhys - Mx
+        for _, def in colDefs {
+            colW := Round(cfg.%def[1]% * scale)
+            if (colW > 0) {
+                cx := cachedColsRightX - colW
+                cachedCols.Push({name: cfg.%def[2]%, w: colW, key: def[3], x: cx})
+                cachedColsRightX := cx - gapCols
+            }
         }
+        cachedColsKey := colsKey
     }
+    cols := cachedCols
+    rightX := cachedColsRightX
 
     textW := (rightX - Round(PAINT_TEXT_RIGHT_PAD_DIP * scale)) - textX
     if (textW < 0) {
@@ -326,13 +355,13 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         i := 0
         yRow := y
 
-        ; Pre-compute scaled values (avoids ~90 Round() calls per frame)
-        titleY := Round(PAINT_TITLE_Y_DIP * scale)
-        titleH := Round(PAINT_TITLE_H_DIP * scale)
-        subY := Round(PAINT_SUB_Y_DIP * scale)
-        subH := Round(PAINT_SUB_H_DIP * scale)
-        colY := Round(PAINT_COL_Y_DIP * scale)
-        colH := Round(PAINT_COL_H_DIP * scale)
+        ; Use cached layout metrics (computed once per scale change above)
+        titleY := cachedLayout.titleY
+        titleH := cachedLayout.titleH
+        subY := cachedLayout.subY
+        subH := cachedLayout.subH
+        colY := cachedLayout.colY
+        colH := cachedLayout.colH
 
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
@@ -352,13 +381,8 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             iconDrawn := false
             iconWasCacheHit := false
             if (cur.HasOwnProp("iconHicon") && cur.iconHicon) {
-                ; Check if this will be a cache hit BEFORE drawing (for logging)
-                if (gGdip_IconCache.Has(cur.hwnd)) {
-                    cached := gGdip_IconCache[cur.hwnd]
-                    if (cached.hicon = cur.iconHicon && cached.pBmp)
-                        iconWasCacheHit := true
-                }
-                iconDrawn := Gdip_DrawCachedIcon(g, cur.hwnd, cur.iconHicon, ix, iy, ISize)
+                ; wasCacheHit is returned via ByRef parameter (avoids double cache lookup)
+                iconDrawn := Gdip_DrawCachedIcon(g, cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
                 if (iconWasCacheHit)
                     iconCacheHits += 1
                 else

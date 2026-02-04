@@ -223,10 +223,20 @@ Gdip_DisposeResources() {
 }
 
 ; Get or create a cached solid brush for the given ARGB color
+; FIFO eviction at 100 entries to prevent unbounded memory growth
 Gdip_GetCachedBrush(argb) {
     global gGdip_BrushCache
     if (gGdip_BrushCache.Has(argb))
         return gGdip_BrushCache[argb]
+    ; Evict oldest entry if at limit (FIFO via Map iteration order)
+    if (gGdip_BrushCache.Count >= 100) {
+        for k, v in gGdip_BrushCache {
+            if (v)
+                try DllCall("gdiplus\GdipDeleteBrush", "ptr", v)
+            gGdip_BrushCache.Delete(k)
+            break
+        }
+    }
     pBr := 0
     DllCall("gdiplus\GdipCreateSolidFill", "int", argb, "ptr*", &pBr)
     gGdip_BrushCache[argb] := pBr
@@ -234,11 +244,21 @@ Gdip_GetCachedBrush(argb) {
 }
 
 ; Get or create a cached pen for the given ARGB color and width
+; FIFO eviction at 100 entries to prevent unbounded memory growth
 Gdip_GetCachedPen(argb, width) {
     global gGdip_PenCache
     key := argb "_" width
     if (gGdip_PenCache.Has(key))
         return gGdip_PenCache[key]
+    ; Evict oldest entry if at limit (FIFO via Map iteration order)
+    if (gGdip_PenCache.Count >= 100) {
+        for k, v in gGdip_PenCache {
+            if (v)
+                try DllCall("gdiplus\GdipDeletePen", "ptr", v)
+            gGdip_PenCache.Delete(k)
+            break
+        }
+    }
     pPen := 0
     DllCall("gdiplus\GdipCreatePen1", "int", argb, "float", width, "int", 2, "ptr*", &pPen)
     gGdip_PenCache[key] := pPen
@@ -494,19 +514,25 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
 ; Draw icon with caching - avoids HICON->Bitmap conversion on every frame
 ; Cache key is hwnd; invalidates if hIcon value changes
 ; Note: hIcon from Store works cross-process (USER objects in win32k.sys shared memory)
-Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size) {
+; Parameters:
+;   &wasCacheHit - Optional ByRef: set to true if cache hit, false otherwise (for logging)
+Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     global gGdip_IconCache
 
     if (!hIcon || !g) {
+        if (IsSetRef(&wasCacheHit))
+            wasCacheHit := false
         return false
     }
 
     ; Check cache - O(1) lookup
     if (gGdip_IconCache.Has(hwnd)) {
         cached := gGdip_IconCache[hwnd]
-        ; Cache hit - verify hIcon hasn't changed
+        ; Cache hit - verify hIcon hasn't changed and pBmp exists
         if (cached.hicon = hIcon && cached.pBmp) {
             DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", cached.pBmp, "int", x, "int", y, "int", size, "int", size)
+            if (IsSetRef(&wasCacheHit))
+                wasCacheHit := true
             return true
         }
         ; hIcon changed - dispose old bitmap
@@ -516,11 +542,12 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size) {
     }
 
     ; Cache miss or stale - convert with alpha preservation and cache
+    if (IsSetRef(&wasCacheHit))
+        wasCacheHit := false
     pBmp := _Gdip_CreateBitmapFromHICON_Alpha(hIcon)
     if (!pBmp) {
-        ; Conversion failed - remove from cache if present
-        if (gGdip_IconCache.Has(hwnd))
-            gGdip_IconCache.Delete(hwnd)
+        ; Conversion failed - cache the failure to prevent repeated attempts
+        gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: 0}
         return false
     }
 

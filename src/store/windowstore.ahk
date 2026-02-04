@@ -374,7 +374,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
 ; for hidden windows (like Outlook message windows).
 
 WindowStore_ValidateExistence() {
-    global gWS_Store, gWS_Rev, gWS_SortDirty
+    global gWS_Store, gWS_Rev, gWS_SortDirty, gWS_DirtyHwnds
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)
@@ -434,6 +434,8 @@ WindowStore_ValidateExistence() {
     Critical "On"
     removed := 0
     for _, hwnd in toRemove {
+        ; Mark dirty BEFORE delete so removal appears in delta removes
+        gWS_DirtyHwnds[hwnd] := true
         ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
         try IconPump_CleanupWindow(hwnd)
         gWS_Store.Delete(hwnd)

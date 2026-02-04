@@ -102,19 +102,19 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             return  ; lint-ignore: critical-section
         }
 
-        ; Overflow protection: if buffer exceeds max events, something is wrong
+        ; Overflow protection: check BEFORE push to prevent exceeding max
         ; Normal rapid Alt+Tab produces ~4-6 events max (ALT_DN, TAB, TAB, ALT_UP)
         ; 50 events = ~12 complete Alt+Tab sequences queued = clearly pathological
-        ; Clear buffer and cancel pending activation to recover gracefully
-        if (gGUI_EventBuffer.Length > GUI_EVENT_BUFFER_MAX) {
-            _GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, clearing")
+        ; Drop event and cancel pending activation to recover gracefully
+        if (gGUI_EventBuffer.Length >= GUI_EVENT_BUFFER_MAX) {
+            _GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, dropping event and clearing")
             _GUI_CancelPendingActivation()
             gGUI_State := "IDLE"
             return  ; lint-ignore: critical-section
         }
 
-        _GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_PendingPhase ")")
         gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
+        _GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_PendingPhase ")")
         return  ; lint-ignore: critical-section
     }
 

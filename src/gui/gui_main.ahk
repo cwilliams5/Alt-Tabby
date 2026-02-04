@@ -63,6 +63,43 @@ global gGUI_Base := 0
 global gGUI_Overlay := 0
 global gGUI_BaseH := 0
 global gGUI_OverlayH := 0
+
+; ========================= THREE-ARRAY DESIGN =========================
+; gGUI_Items:       CANONICAL source - always current, updated by IPC deltas.
+;                   This is the live, unfiltered window list from the store.
+;
+; gGUI_AllItems:    Copy used for workspace toggle (Ctrl key) support.
+; gGUI_FrozenItems: DISPLAY list - what gets rendered and Tab cycles through.
+;
+; BEHAVIOR DEPENDS ON TWO CONFIG OPTIONS:
+;
+; === cfg.FreezeWindowList (controls delta handling during ACTIVE) ===
+;
+; When FreezeWindowList=false (default):
+;   - During ACTIVE: Each delta updates gGUI_Items, then BOTH arrays are
+;     recreated from it (gGUI_AllItems := gGUI_Items, then re-filter)
+;   - Result: Display is "live" - windows can appear/disappear mid-overlay
+;   - Note: Despite the names, arrays are NOT frozen in this mode
+;
+; When FreezeWindowList=true:
+;   - On first Tab: Both arrays are created as point-in-time snapshots
+;   - During ACTIVE: IPC deltas ignored (except workspace change tracking)
+;   - Result: Display shows frozen snapshot, windows won't appear/disappear
+;
+; === cfg.UseCurrentWSProjection (controls workspace toggle behavior) ===
+;
+; When UseCurrentWSProjection=false (default):
+;   - Ctrl toggle filters LOCALLY from gGUI_AllItems
+;   - gGUI_AllItems stays unfiltered, allowing instant toggle back/forth
+;   - No IPC roundtrip needed
+;
+; When UseCurrentWSProjection=true:
+;   - Ctrl toggle requests NEW projection from store with workspace filter
+;   - Server returns PRE-FILTERED data
+;   - gGUI_Items receives filtered data, gGUI_AllItems := gGUI_Items
+;   - gGUI_AllItems is now ALSO filtered (loses "all" semantics)
+;   - Toggling back requires another IPC request
+; ======================================================================
 global gGUI_Items := []
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
@@ -75,8 +112,8 @@ global gGUI_LastRowsDesired := -1
 global gGUI_State := "IDLE"
 global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
-global gGUI_FrozenItems := []  ; Snapshot of items when locking in
-global gGUI_AllItems := []     ; Unfiltered items - preserved for workspace toggle
+global gGUI_FrozenItems := []  ; DISPLAY list - filtered snapshot for rendering
+global gGUI_AllItems := []     ; FROZEN UNFILTERED - preserved for workspace toggle
 global gGUI_AwaitingToggleProjection := false  ; Flag for UseCurrentWSProjection mode
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
