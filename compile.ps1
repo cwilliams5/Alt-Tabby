@@ -131,7 +131,7 @@ $releaseDir = Join-Path $PSScriptRoot "release"
 $scriptDir = Join-Path $PSScriptRoot "src"
 $inputFile = Join-Path $scriptDir "alt_tabby.ahk"
 $outputFile = Join-Path $releaseDir "AltTabby.exe"
-$iconFile = Join-Path $PSScriptRoot "img\icon.ico"
+$iconFile = Join-Path $PSScriptRoot "resources\icon.ico"
 
 if (-not (Test-Path $releaseDir)) {
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null

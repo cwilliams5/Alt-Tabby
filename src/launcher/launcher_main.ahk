@@ -150,7 +150,7 @@ Launcher_Init() {
     }
 
     ; Show splash screen if enabled (skip in testing mode)
-    if (cfg.LauncherShowSplash && !g_TestingMode)
+    if (cfg.LauncherSplashScreen != "None" && !g_TestingMode)
         ShowSplashScreen()
 
     ; Set up tray with on-demand menu updates
@@ -180,14 +180,28 @@ Launcher_Init() {
         try FileAppend(A_ScriptHwnd, hwndPath)
     }
 
-    ; Hide splash after duration (or immediately if duration is 0)
-    if (cfg.LauncherShowSplash && !g_TestingMode) {
-        ; Calculate remaining time after launches
-        elapsed := A_TickCount - g_SplashStartTick
-        remaining := cfg.LauncherSplashDurationMs - elapsed
-        if (remaining > 0)
-            Sleep(remaining)
-        HideSplashScreen()
+    ; Hide splash after duration/loops complete
+    if (cfg.LauncherSplashScreen != "None" && !g_TestingMode) {
+        if (cfg.LauncherSplashScreen = "Image") {
+            ; Image mode: wait for configured duration
+            elapsed := A_TickCount - g_SplashStartTick
+            remaining := cfg.LauncherSplashImageDurationMs - elapsed
+            if (remaining > 0)
+                Sleep(remaining)
+            HideSplashScreen()
+        } else if (cfg.LauncherSplashScreen = "Animation") {
+            ; Animation mode: wait for animation to complete its loops
+            ; (timers stop automatically when loops are done)
+            maxLoops := cfg.LauncherSplashAnimLoops
+            if (maxLoops > 0) {
+                ; Poll until animation completes (loop count reached or window destroyed)
+                while (IsSplashActive()) {
+                    Sleep(100)
+                }
+            }
+            ; Always call HideSplashScreen to ensure cleanup
+            HideSplashScreen()
+        }
     }
 
     ; Auto-update check if enabled (skip if mismatch dialog was shown to avoid race)

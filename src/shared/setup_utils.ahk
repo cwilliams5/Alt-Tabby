@@ -371,7 +371,7 @@ _Shortcut_GetIconPath() {
     if (A_IsCompiled)
         return _Shortcut_GetEffectiveExePath()  ; Icon is embedded in exe - use same path as shortcut target
     else
-        return A_ScriptDir "\..\img\icon.ico"
+        return A_ScriptDir "\..\resources\icon.ico"
 }
 
 ; Get the effective exe path (installed location or current)

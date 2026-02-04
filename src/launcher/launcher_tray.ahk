@@ -32,7 +32,7 @@ SetupLauncherTray() {
         ; Icon is embedded in exe via /icon compile flag - use icon index 1
         TraySetIcon(A_ScriptFullPath, 1)
     } else {
-        iconPath := A_ScriptDir "\..\img\icon.ico"
+        iconPath := A_ScriptDir "\..\resources\icon.ico"
         if FileExist(iconPath)
             TraySetIcon(iconPath)
     }
@@ -240,7 +240,7 @@ _Tray_BuildSettingsMenu() {
 _Tray_GetIconPath() {
     if (A_IsCompiled)
         return A_ScriptFullPath
-    devIcon := A_ScriptDir "\..\img\icon.ico"
+    devIcon := A_ScriptDir "\..\resources\icon.ico"
     if (FileExist(devIcon))
         return devIcon
     return ""

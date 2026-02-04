@@ -17,8 +17,13 @@
 ; Embed resources - eliminates need for /img folder in compiled exe
 ; Icon is set via compile.bat /icon flag (becomes main exe icon)
 ; PNG is embedded as RCDATA resource with ID 10
-;@Ahk2Exe-AddResource ..\img\logo.png, 10
-;@Ahk2Exe-AddResource ..\img\icon.png, 11
+;@Ahk2Exe-AddResource ..\resources\logo.png, 10
+;@Ahk2Exe-AddResource ..\resources\icon.png, 11
+; Animation splash resources (WebP + DLLs)
+;@Ahk2Exe-AddResource ..\resources\animation.webp, 15
+;@Ahk2Exe-AddResource ..\resources\libsharpyuv-0.dll, 16
+;@Ahk2Exe-AddResource ..\resources\libwebp-7.dll, 17
+;@Ahk2Exe-AddResource ..\resources\libwebpdemux-2.dll, 18
 
 ; ============================================================
 ; Alt-Tabby - Unified Launcher & Mode Router

@@ -579,7 +579,7 @@ _GUI_ShowBlacklistDialog(class, title) {
     global gGUI_BlacklistChoice
     gGUI_BlacklistChoice := ""
 
-    dlg := Gui("+AlwaysOnTop +Owner +Center", "Blacklist Window")
+    dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
     dlg.SetFont("s10")
 
     dlg.AddText("x10 y10 w380", "Add to blacklist:")
@@ -605,7 +605,7 @@ _GUI_ShowBlacklistDialog(class, title) {
     dlg.OnEvent("Close", (*) => _GUI_BlacklistChoice(dlg, ""))
     dlg.OnEvent("Escape", (*) => _GUI_BlacklistChoice(dlg, ""))
 
-    dlg.Show("w400 h130")
+    dlg.Show("w400 h130 Center")
 
     ; Wait for dialog to close
     WinWaitClose(dlg)

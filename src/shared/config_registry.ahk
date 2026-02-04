@@ -91,14 +91,39 @@ global gConfigRegistry := [
      desc: "Launcher Settings",
      long: "Settings for the main Alt-Tabby launcher process (splash screen, startup behavior)."},
 
-    {s: "Launcher", k: "ShowSplash", g: "LauncherShowSplash", t: "bool", default: true,
-     d: "Show splash screen on startup. Displays logo briefly while store and GUI processes start."},
+    {s: "Launcher", k: "SplashScreen", g: "LauncherSplashScreen",
+     t: "enum", default: "Image", options: ["Image", "Animation", "None"],
+     d: "Splash screen mode. Image = static PNG logo with fade. Animation = animated WebP. None = disabled."},
 
-    {s: "Launcher", k: "SplashDurationMs", g: "LauncherSplashDurationMs", t: "int", default: 3000,
-     d: "Splash screen display duration in milliseconds (includes fade time). Set to 0 for minimum."},
+    {type: "subsection", section: "Launcher", name: "Image Splash",
+     desc: "Settings for static image splash screen"},
 
-    {s: "Launcher", k: "SplashFadeMs", g: "LauncherSplashFadeMs", t: "int", default: 500,
-     d: "Splash screen fade in/out duration in milliseconds."},
+    {s: "Launcher", k: "SplashImageDurationMs", g: "LauncherSplashImageDurationMs", t: "int", default: 3000,
+     d: "Image splash screen display duration in milliseconds (includes fade time). Set to 0 for minimum."},
+
+    {s: "Launcher", k: "SplashImageFadeMs", g: "LauncherSplashImageFadeMs", t: "int", default: 500,
+     d: "Image splash screen fade in/out duration in milliseconds."},
+
+    {type: "subsection", section: "Launcher", name: "Animation Splash",
+     desc: "Settings for animated WebP splash screen"},
+
+    {s: "Launcher", k: "SplashAnimFadeInFixedMs", g: "LauncherSplashAnimFadeInFixedMs", t: "int", default: 0,
+     d: "Fade in duration while frozen on first frame (ms). 0 = skip fixed fade in."},
+
+    {s: "Launcher", k: "SplashAnimFadeInAnimMs", g: "LauncherSplashAnimFadeInAnimMs", t: "int", default: 500,
+     d: "Fade in duration while animation plays (ms). 0 = skip animated fade in."},
+
+    {s: "Launcher", k: "SplashAnimFadeOutAnimMs", g: "LauncherSplashAnimFadeOutAnimMs", t: "int", default: 500,
+     d: "Fade out duration while animation plays (ms). 0 = skip animated fade out."},
+
+    {s: "Launcher", k: "SplashAnimFadeOutFixedMs", g: "LauncherSplashAnimFadeOutFixedMs", t: "int", default: 0,
+     d: "Fade out duration while frozen on last frame (ms). 0 = skip fixed fade out."},
+
+    {s: "Launcher", k: "SplashAnimLoops", g: "LauncherSplashAnimLoops", t: "int", default: 1,
+     d: "Number of animation loops before auto-closing. 0 = loop forever (requires manual dismiss)."},
+
+    {s: "Launcher", k: "SplashAnimBufferFrames", g: "LauncherSplashAnimBufferFrames", t: "int", default: 24,
+     d: "Streaming decode buffer size. 0 = load all frames upfront (~500MB). >0 = buffer N frames (~4MB per frame at 1280x720). Default 24 = ~88MB, 1 second buffer at 24fps."},
 
     ; ============================================================
     ; GUI Appearance

@@ -76,9 +76,29 @@ Settings for the main Alt-Tabby launcher process (splash screen, startup behavio
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ShowSplash` | bool | `true` | Show splash screen on startup. Displays logo briefly while store and GUI processes start. |
-| `SplashDurationMs` | int | `3000` | Splash screen display duration in milliseconds (includes fade time). Set to 0 for minimum. |
-| `SplashFadeMs` | int | `500` | Splash screen fade in/out duration in milliseconds. |
+| `SplashScreen` | enum | `Image` | Splash screen mode. Image = static PNG logo with fade. Animation = animated WebP. None = disabled. |
+
+### Image Splash
+
+Settings for static image splash screen
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `SplashImageDurationMs` | int | `3000` | Image splash screen display duration in milliseconds (includes fade time). Set to 0 for minimum. |
+| `SplashImageFadeMs` | int | `500` | Image splash screen fade in/out duration in milliseconds. |
+
+### Animation Splash
+
+Settings for animated WebP splash screen
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `SplashAnimFadeInFixedMs` | int | `0` | Fade in duration while frozen on first frame (ms). 0 = skip fixed fade in. |
+| `SplashAnimFadeInAnimMs` | int | `500` | Fade in duration while animation plays (ms). 0 = skip animated fade in. |
+| `SplashAnimFadeOutAnimMs` | int | `500` | Fade out duration while animation plays (ms). 0 = skip animated fade out. |
+| `SplashAnimFadeOutFixedMs` | int | `0` | Fade out duration while frozen on last frame (ms). 0 = skip fixed fade out. |
+| `SplashAnimLoops` | int | `1` | Number of animation loops before auto-closing. 0 = loop forever (requires manual dismiss). |
+| `SplashAnimBufferFrames` | int | `24` | Streaming decode buffer size. 0 = load all frames upfront (~500MB). >0 = buffer N frames (~4MB per frame at 1280x720). Default 24 = ~88MB, 1 second buffer at 24fps. |
 
 ## GUI
 
@@ -417,7 +437,7 @@ Settings for komorebi tiling window manager integration.
 |--------|------|---------|-------------|
 | `CrossWorkspaceMethod` | enum | `MimicNative` | How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails. |
 | `MimicNativeSettleMs` | int | `0` | Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems. |
-| `UseSocket` | bool | `false` | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster but experimental. Falls back to komorebic.exe if socket unavailable. |
+| `UseSocket` | bool | `true` | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable. |
 | `WorkspaceConfirmationMethod` | enum | `PollCloak` | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
 
 ## KomorebiSub
@@ -491,4 +511,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-03 with 194 total settings.*
+*Generated on 2026-02-04 with 200 total settings.*

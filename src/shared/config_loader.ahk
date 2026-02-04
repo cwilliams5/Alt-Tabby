@@ -602,8 +602,14 @@ _CL_ValidateSettings() {
     cfg.ViewerHeartbeatTimeoutMs := clamp(cfg.ViewerHeartbeatTimeoutMs, 2000, 120000)
 
     ; --- Launcher Settings ---
-    cfg.LauncherSplashDurationMs := clamp(cfg.LauncherSplashDurationMs, 0, 10000)
-    cfg.LauncherSplashFadeMs := clamp(cfg.LauncherSplashFadeMs, 0, 2000)
+    cfg.LauncherSplashImageDurationMs := clamp(cfg.LauncherSplashImageDurationMs, 0, 10000)
+    cfg.LauncherSplashImageFadeMs := clamp(cfg.LauncherSplashImageFadeMs, 0, 2000)
+    cfg.LauncherSplashAnimFadeInFixedMs := clamp(cfg.LauncherSplashAnimFadeInFixedMs, 0, 5000)
+    cfg.LauncherSplashAnimFadeInAnimMs := clamp(cfg.LauncherSplashAnimFadeInAnimMs, 0, 5000)
+    cfg.LauncherSplashAnimFadeOutAnimMs := clamp(cfg.LauncherSplashAnimFadeOutAnimMs, 0, 5000)
+    cfg.LauncherSplashAnimFadeOutFixedMs := clamp(cfg.LauncherSplashAnimFadeOutFixedMs, 0, 5000)
+    cfg.LauncherSplashAnimLoops := clamp(cfg.LauncherSplashAnimLoops, 0, 100)
+    cfg.LauncherSplashAnimBufferFrames := clamp(cfg.LauncherSplashAnimBufferFrames, 0, 500)
 }
 
 ; ============================================================

@@ -44,9 +44,9 @@ InstallToProgramFiles() {
         ; Copy exe
         FileCopy(srcExe, installDir "\AltTabby.exe", true)
 
-        ; Copy img folder if exists
-        if (DirExist(srcDir "\img"))
-            DirCopy(srcDir "\img", installDir "\img", true)
+        ; Copy resources folder if exists (dev mode only - compiled exe embeds these)
+        if (DirExist(srcDir "\resources"))
+            DirCopy(srcDir "\resources", installDir "\resources", true)
 
         ; Copy config if exists (so user keeps their settings)
         if (FileExist(srcDir "\config.ini"))
@@ -264,7 +264,7 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
     if (question = "")
         question := "Launch the installed version instead?"
 
-    mismatchGui := Gui("+AlwaysOnTop +Owner +Center", title)
+    mismatchGui := Gui("+AlwaysOnTop +Owner", title)
     mismatchGui.SetFont("s10", "Segoe UI")
 
     mismatchGui.AddText("w380", message)
@@ -282,7 +282,7 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
     btnAlways.OnEvent("Click", (*) => (result := "Always", mismatchGui.Destroy()))
     mismatchGui.OnEvent("Close", (*) => (result := "No", mismatchGui.Destroy()))
 
-    mismatchGui.Show()
+    mismatchGui.Show("Center")
     WinWaitClose(mismatchGui)
 
     return result

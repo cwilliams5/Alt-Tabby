@@ -27,7 +27,7 @@ _WizardMarkComplete() {
 ShowFirstRunWizard() {
     global g_WizardGui, cfg
 
-    g_WizardGui := Gui("+AlwaysOnTop +Center", "Welcome to Alt-Tabby")
+    g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
     g_WizardGui.SetFont("s10", "Segoe UI")
 
     g_WizardGui.AddText("w400", "Let's set up a few things to get you started:")
@@ -46,7 +46,7 @@ ShowFirstRunWizard() {
     g_WizardGui.AddButton("w120 x+10 Default", "Apply && Start").OnEvent("Click", WizardApply)
 
     g_WizardGui.OnEvent("Close", WizardSkip)
-    g_WizardGui.Show()
+    g_WizardGui.Show("Center")
     WinWaitClose(g_WizardGui)
 }
 
