@@ -378,6 +378,11 @@ if (g_AltTabbyMode = "apply-update") {
     ; Apply the downloaded update (we're now elevated)
     if (!_Update_ContinueFromElevation()) {
         MsgBox("Update continuation failed. Please try updating again.", APP_NAME, "Iconx")
+        ; Attempt to relaunch the current exe (rollback should have restored it)
+        ; This ensures user doesn't end up with no running instance after failed update
+        if (FileExist(A_ScriptFullPath)) {
+            try Run('"' A_ScriptFullPath '"')
+        }
     }
     ExitApp()
 }

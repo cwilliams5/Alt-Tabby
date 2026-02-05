@@ -979,7 +979,9 @@ _Update_ContinueFromElevation() {
         }
 
         ; Validate source path is in TEMP directory (expected from download)
-        if (!InStr(newExePath, A_Temp)) {
+        ; Use proper path prefix check, not substring (prevents edge cases like C:\MyTempBackup\...)
+        tempWithSep := RTrim(A_Temp, "\") "\"
+        if (SubStr(newExePath, 1, StrLen(tempWithSep)) != tempWithSep) {
             MsgBox("Invalid update source path (not in temp):`n" newExePath, APP_NAME, "Iconx")
             try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false

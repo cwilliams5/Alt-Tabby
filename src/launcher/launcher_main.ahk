@@ -353,9 +353,18 @@ _ShouldRedirectToScheduledTask() {
         currentId := (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
             ? cfg.SetupInstallationId : ""
 
-        ; If IDs match, auto-repair without prompting (same installation, just renamed/moved)
+        ; If IDs match, check if task target still exists before auto-repairing
         if (taskId != "" && currentId != "" && taskId = currentId) {
-            ; Self-elevate to auto-repair task
+            ; Check if task's target exe still exists - if so, no need to repair.
+            ; This prevents flip-flop when two differently-named exes in the same dir
+            ; share config/InstallationId (e.g., AltTabby.exe and AltTabby_backup.exe).
+            ; Only auto-repair when the task target is genuinely missing.
+            if (FileExist(taskPath)) {
+                _Launcher_Log("TASK_REDIRECT: skip auto-repair (task target exists: " taskPath ")")
+                return false  ; Don't redirect to task, run normally
+            }
+
+            ; Task target is missing - self-elevate to auto-repair task
             try {
                 if (!_Launcher_RunAsAdmin("--repair-admin-task"))
                     throw Error("RunAsAdmin failed")
