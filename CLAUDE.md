@@ -84,7 +84,9 @@ Windows batch files (`.bat`) run in cmd.exe - single slashes work there.
 - Update `VERSION` file, run `compile.bat` (thin wrapper for `compile.ps1`)
 - Upload `release/AltTabby.exe` directly (no zip)
 - Asset MUST be named `AltTabby.exe` (auto-update depends on this)
-- Do NOT include `config.ini` or `blacklist.txt`
+- Do NOT include `config.ini` or `blacklist.txt` or 'stats.ini'
+- Create a summary of changes and whats new
+- Have a specific Full Changelog linking the compare like compare/v0.8.4...v0.8.5
 
 ---
 
