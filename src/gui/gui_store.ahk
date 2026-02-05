@@ -110,8 +110,10 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
         if (obj.Has("payload") && obj["payload"].Has("items")) {
             ; Critical already held from above (phase check guard)
-            gGUI_LiveItems := GUI_ConvertStoreItems(obj["payload"]["items"])
-            gGUI_LiveItemsMap := GUI_RebuildItemsMap(gGUI_LiveItems)
+            ; Single-pass conversion: builds both items array and Map together
+            converted := GUI_ConvertStoreItemsWithMap(obj["payload"]["items"])
+            gGUI_LiveItems := converted.items
+            gGUI_LiveItemsMap := converted.map
             ; Note: Icon cache pruning moved outside Critical section (see below)
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
@@ -265,7 +267,22 @@ GUI_ConvertStoreItems(items) {
     return result
 }
 
+; Single-pass conversion returning both items array and hwnd->item Map
+; Eliminates redundant O(n) iteration vs calling ConvertStoreItems + RebuildItemsMap separately
+GUI_ConvertStoreItemsWithMap(items) {
+    result := []
+    resultMap := Map()
+    for _, item in items {
+        hwnd := item.Has("hwnd") ? item["hwnd"] : 0
+        converted := _GUI_CreateItemFromRecord(hwnd, item)
+        result.Push(converted)
+        resultMap[hwnd] := converted
+    }
+    return { items: result, map: resultMap }
+}
+
 ; Rebuild hwnd -> item Map from items array (call after replacing gGUI_LiveItems)
+; Still used by delta path when items are modified incrementally
 GUI_RebuildItemsMap(items) {
     m := Map()
     for _, item in items
