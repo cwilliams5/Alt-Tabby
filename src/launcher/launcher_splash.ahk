@@ -1232,8 +1232,10 @@ _Splash_ExtractResourceToTemp(resourceId, fileName, destDir := "") {
     filePath := destDir "\" fileName
     try {
         f := FileOpen(filePath, "w")
-        f.RawWrite(buf)
-        f.Close()
+        try
+            f.RawWrite(buf)
+        finally
+            f.Close()
         return filePath
     } catch {
         return ""
