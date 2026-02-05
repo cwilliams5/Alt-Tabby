@@ -497,6 +497,13 @@ Store_PushToClients() {
             }
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
+        ; NOTE: Per-client JSON.Dump() is intentional. Caching serialized JSON by
+        ; (optsKey + lastRev + sparse + meta) was considered but rejected because:
+        ; 1. Clients frequently desync (reconnections, missed deltas) → low cache hit rate
+        ; 2. Even "in sync" clients have different prevItems after any missed delta
+        ; 3. Complexity of tracking sync state outweighs marginal benefit
+        ; If revisiting: the SNAPSHOT case (identical for same optsKey) could be cached,
+        ; but delta caching requires tracking per-client sync lineage.
 
         ; RACE FIX: Wrap client tracking updates in Critical
         ; Store_OnMessage also modifies these maps when client sends HELLO or SET_PROJECTION_OPTS

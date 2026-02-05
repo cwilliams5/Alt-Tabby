@@ -66,6 +66,7 @@ global gKSub_MruSuppressUntilTick := 0
 ; Cloak event batching state
 global _KSub_CloakPushPending := false
 global _KSub_CloakBatchTimerFn := 0
+global _KSub_CloakBatchBuffer := Map()  ; hwnd -> isCloaked (bool)
 
 ; Initialize komorebi subscription
 KomorebiSub_Init() {
@@ -517,7 +518,7 @@ _KSub_QuickExtractHwnd(jsonLine) {
 ;   Layer 2: Quick event type extraction to skip full parse for Cloak/Uncloak/TitleUpdate
 ;   Layer 3: Full parse only for structural events (FocusChange, workspace moves, etc.)
 _KSub_OnNotification(jsonLine) {
-    global _KSub_LastWorkspaceName, _KSub_WorkspaceCache, gKSub_MruSuppressUntilTick
+    global _KSub_LastWorkspaceName, _KSub_WorkspaceCache, gKSub_MruSuppressUntilTick, _KSub_CloakBatchBuffer
 
     _KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
 
@@ -527,12 +528,15 @@ _KSub_OnNotification(jsonLine) {
 
     ; Fast path for Cloak/Uncloak: extract hwnd directly, skip 200KB state parse
     ; These fire 10+ times per workspace switch, so avoiding full parse saves ~400KB-1.6MB
+    ; Buffer changes instead of immediate update - batch applies when timer fires (single rev bump)
     if (eventType = "Cloak" || eventType = "Uncloak") {
         hwnd := _KSub_QuickExtractHwnd(jsonLine)
         if (hwnd) {
             isCloaked := (eventType = "Cloak")
-            try WindowStore_UpdateFields(hwnd, { isCloaked: isCloaked })
-            _KSub_DiagLog("  Cloak fast path: hwnd=" hwnd " cloaked=" isCloaked)
+            Critical "On"
+            _KSub_CloakBatchBuffer[hwnd] := isCloaked
+            Critical "Off"
+            _KSub_DiagLog("  Cloak buffered: hwnd=" hwnd " cloaked=" isCloaked)
         }
         _KSub_ScheduleCloakPush()
         return
@@ -723,12 +727,20 @@ _KSub_OnNotification(jsonLine) {
 
 ; Schedule a deferred push for batched Cloak/Uncloak events.
 ; If a timer is already pending, the new cloak change will be included
-; when it fires (no action needed — store already has the updated field).
+; when it fires (no action needed — buffer accumulates all changes).
 _KSub_ScheduleCloakPush() {
-    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn, cfg
+    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn, _KSub_CloakBatchBuffer, cfg
 
-    ; If batching disabled, push immediately
+    ; If batching disabled, flush buffer and push immediately
     if (!cfg.KomorebiSubBatchCloakEventsMs) {
+        Critical "On"
+        patches := Map()
+        for hwnd, isCloaked in _KSub_CloakBatchBuffer
+            patches[hwnd] := { isCloaked: isCloaked }
+        _KSub_CloakBatchBuffer := Map()
+        Critical "Off"
+        if (patches.Count > 0)
+            try WindowStore_BatchUpdateFields(patches, "cloak_immediate")
         try Store_PushToClients()
         return
     }
@@ -749,24 +761,40 @@ _KSub_ScheduleCloakPush() {
 
 ; Timer callback: push all accumulated cloak changes in one delta
 _KSub_FlushCloakBatch() {
-    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn
-    ; RACE FIX: Reset flags atomically so _KSub_ScheduleCloakPush() sees
-    ; consistent state if it interrupts between the two assignments
+    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn, _KSub_CloakBatchBuffer
+    ; RACE FIX: Reset flags and extract buffer atomically so _KSub_ScheduleCloakPush()
+    ; sees consistent state if it interrupts between assignments
     Critical "On"
     _KSub_CloakPushPending := false
     _KSub_CloakBatchTimerFn := 0
+    patches := Map()
+    for hwnd, isCloaked in _KSub_CloakBatchBuffer
+        patches[hwnd] := { isCloaked: isCloaked }
+    _KSub_CloakBatchBuffer := Map()
     Critical "Off"
+
+    if (patches.Count > 0)
+        try WindowStore_BatchUpdateFields(patches, "cloak_batch")
     try Store_PushToClients()
 }
 
 ; Cancel any pending cloak batch timer (called when a structural event pushes immediately)
+; Flushes buffered cloak changes before the structural event push to ensure consistent state
 _KSub_CancelCloakTimer() {
-    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn
+    global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn, _KSub_CloakBatchBuffer
     Critical "On"
     if (_KSub_CloakPushPending) {
         SetTimer(_KSub_CloakBatchTimerFn, 0)
         _KSub_CloakPushPending := false
         _KSub_CloakBatchTimerFn := 0
+        patches := Map()
+        for hwnd, isCloaked in _KSub_CloakBatchBuffer
+            patches[hwnd] := { isCloaked: isCloaked }
+        _KSub_CloakBatchBuffer := Map()
+        Critical "Off"
+        if (patches.Count > 0)
+            try WindowStore_BatchUpdateFields(patches, "cloak_cancel_flush")
+        return
     }
     Critical "Off"
 }
