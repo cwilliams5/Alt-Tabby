@@ -317,14 +317,14 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
     if (title = "")
         return false
 
-    ; Check Alt-Tab eligibility (keep HasOwnProp - may run before full init)
-    useAltTab := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
-    if (useAltTab && !_BL_IsAltTabEligible(hwnd))
+    ; Check Alt-Tab eligibility (use cached config value for hot path performance)
+    global gCfg_UseAltTabEligibility
+    if (gCfg_UseAltTabEligibility && !_BL_IsAltTabEligible(hwnd))
         return false
 
-    ; Check blacklist (keep HasOwnProp - may run before full init)
-    useBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
-    if (useBlacklist && Blacklist_IsMatch(title, class))
+    ; Check blacklist (use cached config value for hot path performance)
+    global gCfg_UseBlacklist
+    if (gCfg_UseBlacklist && Blacklist_IsMatch(title, class))
         return false
 
     return true
@@ -397,9 +397,9 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
     if (title = "")
         return false
 
-    ; Check Alt-Tab eligibility (keep HasOwnProp - may run before full init)
-    useAltTab := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
-    if (useAltTab) {
+    ; Check Alt-Tab eligibility (use cached config value for hot path performance)
+    global gCfg_UseAltTabEligibility
+    if (gCfg_UseAltTabEligibility) {
         if (!_BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak))
             return false
     } else {
@@ -411,9 +411,9 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
         outCloak := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
     }
 
-    ; Check blacklist (keep HasOwnProp - may run before full init)
-    useBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
-    if (useBlacklist && Blacklist_IsMatch(title, class))
+    ; Check blacklist (use cached config value for hot path performance)
+    global gCfg_UseBlacklist
+    if (gCfg_UseBlacklist && Blacklist_IsMatch(title, class))
         return false
 
     return true

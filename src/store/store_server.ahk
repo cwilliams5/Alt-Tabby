@@ -513,6 +513,16 @@ Store_PushToClients() {
     if (gStore_TestMode && sent > 0) {
         Store_LogError("pushed to " sent " clients")
     }
+
+    ; PERF: Bound diagnostic maps to prevent unbounded memory growth
+    ; Only clear when diagnostics enabled and maps exceed threshold
+    global gWS_DiagChurn, gWS_DiagSource
+    if (cfg.DiagChurnLog) {
+        if (gWS_DiagChurn.Count > 1000)
+            gWS_DiagChurn := Map()
+        if (gWS_DiagSource.Count > 1000)
+            gWS_DiagSource := Map()
+    }
 }
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)

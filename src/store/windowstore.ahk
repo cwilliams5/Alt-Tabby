@@ -13,7 +13,8 @@ global gWS_Meta := Map()
 
 ; Sort/projection cache - tracks when sort-affecting or filter-affecting fields change
 global gWS_SortDirty := true
-global gWS_CachedProjRecs := ""      ; Cached sorted record references
+global gWS_CachedProjRecs := ""      ; Cached sorted record references (raw)
+global gWS_CachedProjRows := ""      ; Cached transformed rows (result of _WS_ToItem)
 global gWS_CachedProjOptsKey := ""   ; Opts key used for cache
 ; Fields that affect projection membership or sort order
 global gWS_ProjectionFields := Map(
@@ -583,7 +584,7 @@ WindowStore_GetCurrentWorkspace() {
 }
 
 WindowStore_GetProjection(opts := 0) {
-    global gWS_Store, gWS_Meta, gWS_SortDirty, gWS_CachedProjRecs, gWS_CachedProjOptsKey
+    global gWS_Store, gWS_Meta, gWS_SortDirty, gWS_CachedProjRecs, gWS_CachedProjRows, gWS_CachedProjOptsKey
     sort := _WS_GetOpt(opts, "sort", "MRU")
     currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
     includeMin := _WS_GetOpt(opts, "includeMinimized", true)
@@ -592,18 +593,16 @@ WindowStore_GetProjection(opts := 0) {
 
     optsKey := sort "|" currentOnly "|" includeMin "|" includeCloaked "|" columns
 
-    ; Skip filter+sort and reuse cached sorted records when order unchanged
-    if (!gWS_SortDirty && IsObject(gWS_CachedProjRecs) && gWS_CachedProjOptsKey = optsKey) {
+    ; Skip filter+sort and reuse cached transformed rows when order unchanged
+    ; PERF: Cache stores already-transformed rows to avoid O(n) _WS_ToItem loop on cache hits
+    if (!gWS_SortDirty && IsObject(gWS_CachedProjRows) && gWS_CachedProjOptsKey = optsKey) {
         if (columns = "hwndsOnly") {
             hwnds := []
-            for _, rec in gWS_CachedProjRecs
-                hwnds.Push(rec.hwnd)
+            for _, row in gWS_CachedProjRows
+                hwnds.Push(row.hwnd)
             return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta }
         }
-        rows := []
-        for _, rec in gWS_CachedProjRecs
-            rows.Push(_WS_ToItem(rec))
-        return { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
+        return { rev: WindowStore_GetRev(), items: gWS_CachedProjRows, meta: gWS_Meta }
     }
 
     ; NOTE: Blacklist filtering happens at producer level (winenum, winevent, komorebi)
@@ -637,21 +636,25 @@ WindowStore_GetProjection(opts := 0) {
         _WS_TrySort(items, _WS_CmpMRU)
     }
 
-    ; Update projection cache
+    ; Transform records to items ONCE, then cache the result
+    ; PERF: Avoids O(n) _WS_ToItem loop on every cache hit
+    rows := []
+    for _, rec in items
+        rows.Push(_WS_ToItem(rec))
+
+    ; Update projection cache with transformed rows
     gWS_SortDirty := false
-    gWS_CachedProjRecs := items
+    gWS_CachedProjRecs := items       ; Keep raw for potential future use
+    gWS_CachedProjRows := rows        ; Cache transformed rows
     gWS_CachedProjOptsKey := optsKey
 
     if (columns = "hwndsOnly") {
         hwnds := []
-        for _, rec in items
-            hwnds.Push(rec.hwnd)
+        for _, row in rows
+            hwnds.Push(row.hwnd)
         return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta }
     }
 
-    rows := []
-    for _, rec in items
-        rows.Push(_WS_ToItem(rec))
     return { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
 }
 
@@ -1114,10 +1117,14 @@ WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
     useDirtyTracking := cfg.IPCUseDirtyTracking
     dirtySet := IsObject(dirtyHwnds) ? dirtyHwnds : gWS_DirtyHwnds
 
-    prevMap := Map()
+    ; PERF: Reuse static Maps instead of allocating new ones per call (O(2n) allocations avoided)
+    ; Clear() is O(n) but avoids GC pressure from frequent Map allocations
+    static prevMap := Map()
+    static nextMap := Map()
+    prevMap.Clear()
     for _, rec in prevItems
         prevMap[rec.hwnd] := rec
-    nextMap := Map()
+    nextMap.Clear()
     for _, rec in nextItems
         nextMap[rec.hwnd] := rec
 

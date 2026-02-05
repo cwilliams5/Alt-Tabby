@@ -535,7 +535,8 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 | `AutoUpdateCheck` | bool | `true` | Automatically check for updates on startup. |
 | `FirstRunCompleted` | bool | `false` | Set to true after first-run wizard completes. |
 | `InstallationId` | string | `(empty)` | Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification. |
+| `SuppressAdminRepairPrompt` | bool | `false` | Don't prompt to repair stale admin task. Set automatically when user clicks 'Don't ask again'. |
 
 ---
 
-*Generated on 2026-02-04 with 206 total settings.*
+*Generated on 2026-02-04 with 207 total settings.*

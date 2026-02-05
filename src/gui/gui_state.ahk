@@ -141,8 +141,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         if (cfg.AltTabPrewarmOnAlt) {
-            mruFreshness := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
-            if (mruAge > mruFreshness) {
+            global gCfg_MRUFreshnessMs
+            if (mruAge > gCfg_MRUFreshnessMs) {
                 GUI_RequestSnapshot()
             } else {
                 _GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
@@ -850,12 +850,13 @@ _GUI_ProcessEventBuffer() {
     _GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_Items.Length)
 
     ; Process all buffered events in order
-    ; CRITICAL: Clone+clear+phase-clear must be atomic to prevent race condition
-    ; where new events arrive after phase clear but before buffer clone
+    ; CRITICAL: Swap+phase-clear must be atomic to prevent race condition
+    ; where new events arrive after phase clear but before buffer swap
+    ; PERF: Swap pattern avoids Clone() allocation - just reassign references
     Critical "On"
-    events := gGUI_EventBuffer.Clone()
+    events := gGUI_EventBuffer
     gGUI_EventBuffer := []
-    _GUI_ClearPendingState()  ; Clear phase AFTER clone to prevent out-of-order events
+    _GUI_ClearPendingState()  ; Clear phase AFTER swap to prevent out-of-order events
     Critical "Off"
 
     if (events.Length = 0) {

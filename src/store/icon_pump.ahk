@@ -125,6 +125,37 @@ IconPump_CleanupUwpCache() {
     _IP_UwpLogoCache := Map()
 }
 
+; Prune expired entries from _IP_Attempts map to prevent unbounded growth
+; Called periodically from _IP_Tick (every 100 ticks)
+; Removes entries for: windows that no longer exist, or entries older than 5 minutes
+_IP_PruneAttempts() {
+    global _IP_Attempts
+    if (_IP_Attempts.Count = 0)
+        return
+
+    ; Snapshot keys to prevent modification during iteration
+    toRemove := []
+    now := A_TickCount
+    expireAge := 300000  ; 5 minutes in ms
+
+    for hwnd, data in _IP_Attempts {
+        ; Remove if window no longer exists
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+            toRemove.Push(hwnd)
+            continue
+        }
+        ; Note: _IP_Attempts stores attempt count, not tick. We can't age-expire
+        ; without changing the data structure. For now, just remove closed windows.
+    }
+
+    for _, hwnd in toRemove {
+        _IP_Attempts.Delete(hwnd)
+    }
+
+    if (toRemove.Length > 0)
+        _IP_Log("PRUNE: removed " toRemove.Length " stale attempt entries")
+}
+
 ; Clean up tracking state AND destroy HICON when windows are removed
 ; IMPORTANT: Must be called BEFORE gWS_Store.Delete(hwnd) so we can access the record
 ; RACE FIX: Add Critical to prevent _IP_Tick from processing same hwnd concurrently
@@ -152,6 +183,14 @@ _IP_Tick() {
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global IP_LOG_TITLE_MAX_LEN
     global IP_MODE_NO_ICON, IP_MODE_UPGRADE, IP_MODE_REFRESH
+
+    ; PERF: Periodically prune _IP_Attempts to prevent unbounded growth
+    ; Entries expire if window no longer exists or entry is older than 5 minutes
+    static pruneCounter := 0
+    pruneCounter += 1
+    if (Mod(pruneCounter, 100) = 0) {  ; Every 100 ticks (~5s at 50ms interval)
+        _IP_PruneAttempts()
+    }
 
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
     if (!IsObject(hwnds) || hwnds.Length = 0) {

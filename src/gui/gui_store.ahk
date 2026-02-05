@@ -99,8 +99,8 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         if (!IsSet(gGUI_LastLocalMRUTick))  ; lint-ignore: isset-with-default
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
-        mruFreshness := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
-        if (mruAge < mruFreshness && !isToggleResponse) {
+        global gCfg_MRUFreshnessMs
+        if (mruAge < gCfg_MRUFreshnessMs && !isToggleResponse) {
             _GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]

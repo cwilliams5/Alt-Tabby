@@ -70,6 +70,33 @@ ConfigLoader_Init(basePath := "", readOnly := false) {
     _CL_LoadAllSettings()  ; Load user overrides
     _CL_ValidateSettings() ; Clamp values to safe ranges
     gConfigLoaded := true
+
+    ; Cache frequently-accessed config values for hot paths
+    ; Config changes trigger full process restart, so cache invalidation is automatic
+    _CL_CacheHotPathValues()
+}
+
+; ============================================================
+; HOT PATH CONFIG CACHE
+; ============================================================
+; These globals cache frequently-accessed config values to avoid
+; cfg.HasOwnProp() lookups in hot paths (called 30+ times per Alt-Tab).
+; Config changes trigger process restart, so no invalidation needed.
+
+global gCfg_MRUFreshnessMs := 300
+global gCfg_PrewarmWaitMs := 50
+global gCfg_UseAltTabEligibility := true
+global gCfg_UseBlacklist := true
+
+_CL_CacheHotPathValues() {
+    global cfg
+    global gCfg_MRUFreshnessMs, gCfg_PrewarmWaitMs
+    global gCfg_UseAltTabEligibility, gCfg_UseBlacklist
+
+    gCfg_MRUFreshnessMs := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
+    gCfg_PrewarmWaitMs := cfg.HasOwnProp("AltTabPrewarmWaitMs") ? cfg.AltTabPrewarmWaitMs : 50
+    gCfg_UseAltTabEligibility := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
+    gCfg_UseBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
 }
 
 ; ============================================================

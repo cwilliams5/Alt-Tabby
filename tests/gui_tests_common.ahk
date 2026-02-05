@@ -67,6 +67,13 @@ global gStats_LastSent := Map()
 global TIMING_IPC_FIRE_WAIT := 10
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 
+; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
+; These are used in hot paths to avoid cfg.HasOwnProp lookups
+global gCfg_MRUFreshnessMs := 300
+global gCfg_PrewarmWaitMs := 50
+global gCfg_UseAltTabEligibility := true
+global gCfg_UseBlacklist := true
+
 ; Health check timestamp (used by gui_store.ahk)
 global gGUI_LastMsgTick := 0
 global gGUI_LauncherHwnd := 0  ; Not used in GUI tests, needed for production includes
