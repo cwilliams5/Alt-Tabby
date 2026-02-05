@@ -42,7 +42,7 @@ These control the Alt-Tab overlay behavior - tweak these first!
 | `QuickSwitchMs` | int | `100` | Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch. |
 | `PrewarmOnAlt` | bool | `true` | Pre-warm snapshot on Alt down (true = request data before Tab pressed). Ensures fresh window data is available when Tab is pressed. |
 | `FreezeWindowList` | bool | `false` | Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker). |
-| `ServerSideWorkspaceFilter` | bool | `false` | Use server-side workspace filtering. When true, CTRL workspace toggle requests a new projection from the store (IPC roundtrip required). When false, CTRL toggle filters the cached items locally (instant toggle, uses cached data). |
+| `ServerSideWorkspaceFilter` | bool | `false` | Use server-side workspace filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data). |
 | `SwitchOnClick` | bool | `true` | Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released. |
 | `AsyncActivationPollMs` | int | `15` | Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU (spawns cmd.exe each poll). Default: 15. |
 
