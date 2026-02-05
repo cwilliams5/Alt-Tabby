@@ -778,7 +778,6 @@ global TIMING_IPC_FIRE_WAIT := 10        ; Allow IPC timer to fire
 global TIMING_STORE_PROCESS_WAIT := 100  ; Wait for store to process
 global TIMING_PIPE_RETRY_WAIT := 50      ; Pipe connection retry delay
 global TIMING_SETUP_SETTLE := 200        ; Setup settle delay
-global TIMING_SETUP_RETRY_WAIT := 100    ; Setup retry delay
 
 ; Tooltip durations (milliseconds)
 ; All set to the same value from cfg.GUI_TooltipDurationMs in _CL_ValidateSettings()
