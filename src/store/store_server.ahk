@@ -400,15 +400,25 @@ Store_PushToClients() {
 
     ; Atomically clean up disconnected clients and snapshot current handles + opts
     ; This prevents race conditions if clients disconnect during iteration
-    ; RACE FIX: Also snapshot gStore_ClientOpts - it can be modified by Store_OnMessage
+    ; RACE FIX: Also snapshot gStore_ClientOpts and client tracking maps - they can be
+    ; modified by Store_OnMessage (HELLO, SET_PROJECTION_OPTS, PROJECTION_REQUEST)
     Critical "On"
     _Store_CleanupDisconnectedClients()
     clientHandles := []
     clientOptsSnapshot := Map()
+    clientPrevProj := Map()
+    clientPrevRev := Map()
+    clientPrevMeta := Map()
     for hPipe, _ in gStore_Server.clients {
         clientHandles.Push(hPipe)
         if (gStore_ClientOpts.Has(hPipe))
             clientOptsSnapshot[hPipe] := gStore_ClientOpts[hPipe]
+        if (gStore_LastClientProj.Has(hPipe))
+            clientPrevProj[hPipe] := gStore_LastClientProj[hPipe]
+        if (gStore_LastClientRev.Has(hPipe))
+            clientPrevRev[hPipe] := gStore_LastClientRev[hPipe]
+        if (gStore_LastClientMeta.Has(hPipe))
+            clientPrevMeta[hPipe] := gStore_LastClientMeta[hPipe]
     }
     ; Snapshot dirty set and clear immediately - any updates during this push
     ; will mark the NEW dirty set and be caught on next push
@@ -457,10 +467,10 @@ Store_PushToClients() {
             projCache[optsKey] := proj
         }
 
-        ; Get client's previous projection for delta calculation
-        prevItems := gStore_LastClientProj.Has(hPipe) ? gStore_LastClientProj[hPipe] : []
-        lastRev := gStore_LastClientRev.Has(hPipe) ? gStore_LastClientRev[hPipe] : -1
-        prevMeta := gStore_LastClientMeta.Has(hPipe) ? gStore_LastClientMeta[hPipe] : ""
+        ; Get client's previous projection for delta calculation (from snapshot)
+        prevItems := clientPrevProj.Has(hPipe) ? clientPrevProj[hPipe] : []
+        lastRev := clientPrevRev.Has(hPipe) ? clientPrevRev[hPipe] : -1
+        prevMeta := clientPrevMeta.Has(hPipe) ? clientPrevMeta[hPipe] : ""
 
         ; Skip if nothing changed for this client
         if (lastRev = proj.rev)
