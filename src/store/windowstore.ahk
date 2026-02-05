@@ -13,7 +13,6 @@ global gWS_Meta := Map()
 
 ; Sort/projection cache - tracks when sort-affecting or filter-affecting fields change
 global gWS_SortDirty := true
-global gWS_CachedProjRecs := ""      ; Cached sorted record references (raw)
 global gWS_CachedProjRows := ""      ; Cached transformed rows (result of _WS_ToItem)
 global gWS_CachedProjOptsKey := ""   ; Opts key used for cache
 ; Fields that affect projection membership or sort order
@@ -584,7 +583,7 @@ WindowStore_GetCurrentWorkspace() {
 }
 
 WindowStore_GetProjection(opts := 0) {
-    global gWS_Store, gWS_Meta, gWS_SortDirty, gWS_CachedProjRecs, gWS_CachedProjRows, gWS_CachedProjOptsKey
+    global gWS_Store, gWS_Meta, gWS_SortDirty, gWS_CachedProjRows, gWS_CachedProjOptsKey
     sort := _WS_GetOpt(opts, "sort", "MRU")
     currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
     includeMin := _WS_GetOpt(opts, "includeMinimized", true)
@@ -595,15 +594,22 @@ WindowStore_GetProjection(opts := 0) {
 
     ; Skip filter+sort and reuse cached transformed rows when order unchanged
     ; PERF: Cache stores already-transformed rows to avoid O(n) _WS_ToItem loop on cache hits
+    ; RACE FIX: Wrap cache hit path in Critical to prevent producer from bumping rev + setting
+    ; gWS_SortDirty between cache validation and return (would return stale rows with new rev)
+    Critical "On"
     if (!gWS_SortDirty && IsObject(gWS_CachedProjRows) && gWS_CachedProjOptsKey = optsKey) {
+        result := { rev: WindowStore_GetRev(), items: gWS_CachedProjRows, meta: gWS_Meta }
         if (columns = "hwndsOnly") {
             hwnds := []
             for _, row in gWS_CachedProjRows
                 hwnds.Push(row.hwnd)
-            return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta }
+            Critical "Off"
+            return { rev: result.rev, hwnds: hwnds, meta: result.meta }
         }
-        return { rev: WindowStore_GetRev(), items: gWS_CachedProjRows, meta: gWS_Meta }
+        Critical "Off"
+        return result
     }
+    Critical "Off"
 
     ; NOTE: Blacklist filtering happens at producer level (winenum, winevent, komorebi)
     ; so blacklisted windows never enter the store. No need to filter here.
@@ -644,7 +650,6 @@ WindowStore_GetProjection(opts := 0) {
 
     ; Update projection cache with transformed rows
     gWS_SortDirty := false
-    gWS_CachedProjRecs := items       ; Keep raw for potential future use
     gWS_CachedProjRows := rows        ; Cache transformed rows
     gWS_CachedProjOptsKey := optsKey
 

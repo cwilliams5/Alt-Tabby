@@ -551,6 +551,16 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
         return false
     }
 
+    ; FIFO eviction at 200 entries to prevent unbounded memory growth
+    if (gGdip_IconCache.Count >= 200) {
+        for oldHwnd, oldCached in gGdip_IconCache {
+            if (oldCached.pBmp)
+                try DllCall("gdiplus\GdipDisposeImage", "ptr", oldCached.pBmp)
+            gGdip_IconCache.Delete(oldHwnd)
+            break
+        }
+    }
+
     ; Store in cache
     gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: pBmp}
 
