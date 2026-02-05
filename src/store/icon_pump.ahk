@@ -125,9 +125,9 @@ IconPump_CleanupUwpCache() {
     _IP_UwpLogoCache := Map()
 }
 
-; Prune expired entries from _IP_Attempts map to prevent unbounded growth
+; Prune stale entries from _IP_Attempts map to prevent unbounded growth
 ; Called periodically from _IP_Tick (every 100 ticks)
-; Removes entries for: windows that no longer exist, or entries older than 5 minutes
+; Removes entries for windows that no longer exist
 _IP_PruneAttempts() {
     global _IP_Attempts
     if (_IP_Attempts.Count = 0)
@@ -135,8 +135,6 @@ _IP_PruneAttempts() {
 
     ; Snapshot keys to prevent modification during iteration
     toRemove := []
-    now := A_TickCount
-    expireAge := 300000  ; 5 minutes in ms
 
     for hwnd, data in _IP_Attempts {
         ; Remove if window no longer exists

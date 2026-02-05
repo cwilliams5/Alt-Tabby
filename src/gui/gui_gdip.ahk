@@ -608,14 +608,6 @@ Gdip_PruneIconCache(liveHwnds) {
     }
 }
 
-; Generate color from index (fallback when no icon)
-Gdip_ARGBFromIndex(i) {
-    r := (37 * i) & 0xFF
-    g := (71 * i) & 0xFF
-    b := (113 * i) & 0xFF
-    return (0xCC << 24) | (r << 16) | (g << 8) | b
-}
-
 ; Clear graphics surface
 Gdip_Clear(g, argb := 0x00000000) {
     DllCall("gdiplus\GdipGraphicsClear", "ptr", g, "int", argb)

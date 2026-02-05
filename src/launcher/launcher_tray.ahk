@@ -291,21 +291,9 @@ RestartViewer() {
     _Dash_StartRefreshTimer()
 }
 
-RestartAll() {
-    global TIMING_SUBPROCESS_LAUNCH
-
-    _GracefulShutdown()
-    _Dash_StartRefreshTimer()
-
-    ; Relaunch core processes
-    LaunchStore()
-    Sleep(TIMING_SUBPROCESS_LAUNCH)
-    LaunchGui()
-}
-
 ExitAll() {
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    ; Hard kill editors on full exit (not in _GracefulShutdown — editors survive RestartAll)
+    ; Hard kill editors on full exit (not in _GracefulShutdown — editors survive restarts)
     if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
         ProcessClose(g_ConfigEditorPID)
     if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
