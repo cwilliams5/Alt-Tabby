@@ -58,32 +58,31 @@ RunLiveTests_Features() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "mru_test", wants: { deltas: false } }
             IPC_PipeClient_Send(mruClient, JSON.Dump(helloMsg))
 
-            ; DISABLED: This block switches the user's active window to generate
-            ; real focus events for MRU tracking. It's disruptive when the user is
-            ; actively working during test runs (steals focus, interrupts typing).
-            ; The MRU sort order assertion below still works because the store
+            ; Generate real focus events for MRU tracking by switching windows.
+            ; INVASIVE: Steals focus, interrupts typing - gated behind --invasive flag.
+            ; The MRU sort order assertion below still works without this because the store
             ; populates MRU data from its own startup enumeration.
-            ; Re-enable for focused MRU validation if needed:
-            ;
-            ; origFg := 0
-            ; try origFg := WinGetID("A")
-            ; testWindows := WinEnumLite_ScanAll()
-            ; alternateHwnd := 0
-            ; for _, rec in testWindows {
-            ;     hwnd := rec["hwnd"]
-            ;     if (hwnd != origFg && !rec["isMinimized"] && !rec["isCloaked"]) {
-            ;         alternateHwnd := hwnd
-            ;         break
-            ;     }
-            ; }
-            ; if (alternateHwnd) {
-            ;     try WinActivate("ahk_id " alternateHwnd)
-            ;     Sleep(300)
-            ; }
-            ; if (origFg) {
-            ;     try WinActivate("ahk_id " origFg)
-            ;     Sleep(300)
-            ; }
+            if (DoInvasiveTests) {
+                origFg := 0
+                try origFg := WinGetID("A")
+                testWindows := WinEnumLite_ScanAll()
+                alternateHwnd := 0
+                for _, rec in testWindows {
+                    hwnd := rec["hwnd"]
+                    if (hwnd != origFg && !rec["isMinimized"] && !rec["isCloaked"]) {
+                        alternateHwnd := hwnd
+                        break
+                    }
+                }
+                if (alternateHwnd) {
+                    try WinActivate("ahk_id " alternateHwnd)
+                    Sleep(300)
+                }
+                if (origFg) {
+                    try WinActivate("ahk_id " origFg)
+                    Sleep(300)
+                }
+            }
 
             ; Poll for projection with >= 2 items (store may still be enumerating)
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "MRU", columns: "items" } }
