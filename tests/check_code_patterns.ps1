@@ -420,12 +420,14 @@ $CHECKS += @(
 )
 
 # Group C - WinEventHook Empty Title Filter (1 check)
+# Note: Empty title filtering happens in batch processor via WinUtils_ProbeWindow.
+# The probeTitle != "" check ensures system UI (like Task Switching) doesn't poison focus tracking.
 $CHECKS += @(
     @{
         Id       = "weh_empty_title_filter"
         File     = "store\winevent_hook.ahk"
         Desc     = "WinEventHook filters empty-title windows from focus tracking"
-        Patterns = @('if (title = "")', "FOCUS SKIP")
+        Patterns = @('probeTitle != ""', "NOT ELIGIBLE")
     }
 )
 

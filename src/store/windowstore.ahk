@@ -139,16 +139,20 @@ WindowStore_UpsertWindow(records, source := "") {
     added := 0
     updated := 0
     projDirty := false
+    ; Collect rows needing enrichment (enqueued after Critical section ends)
+    rowsToEnqueue := []
+
+    ; LATENCY FIX: Single Critical section for entire batch (was per-record).
+    ; For 30 windows this saves ~58 Critical enter/exit transitions (~1-2ms).
+    ; This matches the BatchUpdateFields pattern which already uses single-section.
+    ; Enrichment enqueue happens AFTER Critical ends (accesses different queues).
+    Critical "On"
     for _, rec in records {
         if (!IsObject(rec))
-            continue
+            continue  ; lint-ignore: critical-section
         hwnd := rec.Has("hwnd") ? (rec["hwnd"] + 0) : 0
         if (!hwnd)
-            continue
-        ; RACE FIX: Wrap check-then-insert AND field updates in Critical to prevent
-        ; multiple producers from interleaving on the same record (timer/hotkey interruption).
-        ; Per-record granularity: Critical wraps one record's processing, not the entire batch.
-        Critical "On"
+            continue  ; lint-ignore: critical-section
         isNew := !gWS_Store.Has(hwnd)
         if (isNew) {
             gWS_Store[hwnd] := _WS_NewRecord(hwnd)
@@ -170,7 +174,6 @@ WindowStore_UpsertWindow(records, source := "") {
                 ; Only update if value differs
                 if (!row.HasOwnProp(k) || row.%k% != v) {
                     ; Diagnostic: track which fields trigger changes (skip for new records)
-                    ; Protected by outer Critical — no inner Critical needed
                     if (!isNew)
                         gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
                     row.%k% := v
@@ -183,8 +186,7 @@ WindowStore_UpsertWindow(records, source := "") {
                 }
             }
         } else {
-            Critical "Off"
-            continue  ; lint-ignore: critical-section
+            continue  ; lint-ignore: critical-section (skip non-Map records)
         }
         ; Update presence flags - check for changes
         if (!row.present) {
@@ -198,19 +200,24 @@ WindowStore_UpsertWindow(records, source := "") {
         ; Always update scan tracking (these don't trigger rev bump)
         row.lastSeenScanId := gWS_ScanId
         row.lastSeenTick := A_TickCount
-        Critical "Off"
 
         if (rowChanged)
             updated += 1
 
-        ; Enqueue for enrichment if missing data
-        _WS_EnqueueIfNeeded(row)
+        ; Collect for enrichment (enqueued after Critical ends)
+        rowsToEnqueue.Push(row)
     }
     if (added || projDirty)
         gWS_SortDirty := true
     if (added || updated) {
         _WS_BumpRev("UpsertWindow:" . source)
     }
+    Critical "Off"
+
+    ; Enqueue for enrichment OUTSIDE Critical (queue operations have their own Critical)
+    for _, row in rowsToEnqueue
+        _WS_EnqueueIfNeeded(row)
+
     ; Update peak windows high-water mark
     if (added > 0) {
         global gStats_Session, gStats_Lifetime

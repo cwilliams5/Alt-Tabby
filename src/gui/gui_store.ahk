@@ -112,7 +112,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             ; Critical already held from above (phase check guard)
             gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
             gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
-            Gdip_PruneIconCache(gGUI_ItemsMap)      ; Dispose orphaned GDI+ icon bitmaps
+            ; Note: Icon cache pruning moved outside Critical section (see below)
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
             if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {
@@ -154,6 +154,11 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             ; Compare with gui_state.ahk where Critical was released BEFORE
             ; gGUI_FrozenItems was populated, causing race conditions.
             Critical "Off"
+
+            ; LATENCY FIX: Prune icon cache OUTSIDE Critical section.
+            ; Gdip_PruneIconCache iterates the cache and calls GdipDisposeImage DllCalls
+            ; which can take 2-5ms. gGUI_ItemsMap is stable after assignment above.
+            Gdip_PruneIconCache(gGUI_ItemsMap)
 
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
 

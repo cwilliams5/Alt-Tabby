@@ -191,7 +191,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; For focus/foreground events, capture for MRU update (processed in batch)
     if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS) {
-        ; Skip hung windows - WinGetTitle sends messages that block up to 5s
+        ; Skip hung windows - IsHungAppWindow is fast (no window message)
         try {
             if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int")) {
                 Critical "Off"
@@ -199,26 +199,24 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
             }
         }
 
-        ; Get window title to filter system UI
-        title := ""
-        try title := WinGetTitle("ahk_id " hwnd)
-
-        ; CRITICAL: Skip windows with empty titles UNLESS they're already in our store.
-        ; Empty title filter catches system UI like Task Switching that briefly get focus.
-        ; But apps like Outlook may have windows with no title momentarily - if we already
-        ; know about them (in store), we should still update their MRU.
-        if (title = "") {
-            ; Check if window is in store - if so, allow focus update
-            inStore := false
-            try inStore := WindowStore_GetByHwnd(hwnd) != 0
-            if (!inStore) {
-                _WEH_DiagLog("FOCUS SKIP (no title, not in store): hwnd=" hwnd " (keeping " _WEH_PendingFocusHwnd ")")
-                Critical "Off"
-                return
-            }
-            _WEH_DiagLog("FOCUS EVENT (no title but IN STORE): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
+        ; LATENCY FIX: Don't call WinGetTitle here - it sends WM_GETTEXT which can
+        ; block 10-50ms on slow windows. Let the batch processor handle title checks.
+        ;
+        ; Windows NOT in store: Batch processor's WinUtils_ProbeWindow will check
+        ; eligibility (including empty title) before adding. System UI gets filtered there.
+        ;
+        ; Windows IN store: Allow focus update regardless of title - they passed
+        ; eligibility when first added. Apps like Outlook may have empty title momentarily.
+        ;
+        ; The O(1) Map lookup is fast vs 10-50ms for WinGetTitle.
+        inStore := false
+        try inStore := WindowStore_GetByHwnd(hwnd) != 0
+        if (!inStore) {
+            ; Not in store yet - batch processor will check eligibility via WinUtils_ProbeWindow
+            ; which filters system UI (empty title, not visible, etc.)
+            _WEH_DiagLog("FOCUS EVENT (not in store): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
         } else {
-            _WEH_DiagLog("FOCUS EVENT: hwnd=" hwnd " title='" SubStr(title, 1, 25) "' (was " _WEH_PendingFocusHwnd ")")
+            _WEH_DiagLog("FOCUS EVENT (in store): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
         }
 
         _WEH_PendingFocusHwnd := hwnd
