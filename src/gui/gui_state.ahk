@@ -473,7 +473,15 @@ GUI_ActivateFromFrozen() {
     }
 
     item := gGUI_FrozenItems[gGUI_Sel]
+    hwnd := item.hwnd
     title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
+
+    ; Validate window still exists before activation (may have closed during overlay display)
+    if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+        _GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" title)
+        return
+    }
+
     ws := item.HasOwnProp("WS") ? item.WS : "?"
     onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "?"
     _GUI_LogEvent("ACTIVATE: '" title "' ws=" ws " onCurrent=" onCur)
@@ -1004,11 +1012,15 @@ _GUI_StringToGUID(guidStr, buf) {
 
 ; Initialize COM interfaces for direct uncloaking
 ; Uses IServiceProvider::QueryService to get IApplicationViewCollection
+; RACE FIX: Wrapped in Critical to prevent multiple hotkey callbacks from racing
 _GUI_InitAppViewCollection() {
+    Critical "On"  ; Prevent race between multiple hotkey callbacks
     global gGUI_ImmersiveShell, gGUI_AppViewCollection
 
-    if (gGUI_AppViewCollection)
+    if (gGUI_AppViewCollection) {
+        Critical "Off"
         return true  ; Already initialized
+    }
 
     ; IApplicationViewCollection GUIDs for different Windows versions
     static appViewCollectionGuids := [
@@ -1037,6 +1049,7 @@ _GUI_InitAppViewCollection() {
 
         if (hr != 0 || !pServiceProvider) {
             _GUI_LogEvent("COM: Failed to get IServiceProvider")
+            Critical "Off"
             return false
         }
 
@@ -1062,6 +1075,7 @@ _GUI_InitAppViewCollection() {
                 ; Release IServiceProvider (we're done with it)
                 release := NumGet(spVtable, 2 * A_PtrSize, "UPtr")
                 DllCall(release, "Ptr", pServiceProvider)
+                Critical "Off"
                 return true
             }
         }
@@ -1071,11 +1085,13 @@ _GUI_InitAppViewCollection() {
         DllCall(release, "Ptr", pServiceProvider)
 
         _GUI_LogEvent("COM: All GUIDs failed")
+        Critical "Off"
         return false
     } catch as e {
         _GUI_LogEvent("COM INIT ERROR: " e.Message " | Extra: " (e.HasOwnProp("Extra") ? e.Extra : "none"))
         gGUI_ImmersiveShell := 0
         gGUI_AppViewCollection := 0
+        Critical "Off"
         return false
     }
 }

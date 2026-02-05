@@ -21,6 +21,7 @@ global _PP_IdleThreshold := 5           ; Default, overridden from config in Pro
 ; Prevents continuous retries for system processes (csrss, wininit, etc.)
 global _PP_NegativeCache := Map()       ; pid -> tick when failure recorded
 global _PP_NegativeCacheTTL := 60000    ; 60s before retry
+global _PP_NegativeCacheMax := 200      ; Max entries before forced eviction
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
@@ -93,7 +94,7 @@ _PP_Tick() {
             continue
 
         ; Check negative cache first - skip recently failed PIDs
-        global _PP_NegativeCache, _PP_NegativeCacheTTL
+        global _PP_NegativeCache, _PP_NegativeCacheTTL, _PP_NegativeCacheMax
         if (_PP_NegativeCache.Has(pid) && (A_TickCount - _PP_NegativeCache[pid]) < _PP_NegativeCacheTTL)
             continue
 
@@ -108,6 +109,13 @@ _PP_Tick() {
         path := _PP_GetProcessPath(pid)
         if (path = "") {
             ; Record failure in negative cache
+            ; Evict oldest entry if at limit (prevents unbounded growth)
+            if (_PP_NegativeCache.Count >= _PP_NegativeCacheMax) {
+                for k, _ in _PP_NegativeCache {
+                    _PP_NegativeCache.Delete(k)
+                    break
+                }
+            }
             _PP_NegativeCache[pid] := A_TickCount
             continue
         }
