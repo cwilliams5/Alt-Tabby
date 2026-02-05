@@ -115,7 +115,8 @@ if (-not (Test-Path $SourceDir)) {
 
 # === Scan ===
 
-$files = @(Get-ChildItem -Path $SourceDir -Recurse -Filter '*.ahk')
+$files = @(Get-ChildItem -Path $SourceDir -Recurse -Filter '*.ahk' |
+    Where-Object { $_.FullName -notlike "*\lib\*" })
 $issues = @()
 $dllCallCount = 0
 

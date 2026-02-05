@@ -12,13 +12,18 @@ SendMode("Event")
 ; Alt-Tabby GUI - Main entry point
 ; This file orchestrates all GUI components by including sub-modules
 
-; Parse command-line arguments
-for _, arg in A_Args {
-    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
-    if (arg = "--test")
-        A_IconHidden := true
-    else if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
-        gGUI_LauncherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
+; Parse command-line arguments (only when running as GUI, not when included for other modes)
+; Use try to handle standalone execution where g_AltTabbyMode may not exist
+try {
+    if (g_AltTabbyMode = "gui" || g_AltTabbyMode = "launch") {
+        global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
+        for _, arg in A_Args {
+            if (arg = "--test")
+                A_IconHidden := true
+            else if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
+                gGUI_LauncherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
+        }
+    }
 }
 
 ; Use an inert mask key so Alt taps don't focus menus
@@ -27,7 +32,7 @@ A_MenuMaskKey := "vkE8"
 ; ========================= INCLUDES (SHARED UTILITIES) =========================
 ; Shared utilities first (use *i for unified exe compatibility)
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
-#Include *i %A_ScriptDir%\..\shared\cjson.ahk
+#Include *i %A_ScriptDir%\..\lib\cjson.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 #Include *i %A_ScriptDir%\..\shared\process_utils.ahk

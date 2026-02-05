@@ -81,7 +81,10 @@ In frequently-called functions (paint, input, per-window loops):
 - Flags: `--force` (skip smart-skip), `--test-mode` (machine-readable TIMING output), `--timing` (human-readable)
 - Ahk2Exe requires `/base "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"`
 - Embedded resources: icon via `/icon`, splash PNG via `@Ahk2Exe-AddResource`
-- Smart-skip: compares source `LastWriteTime` against exe — skips Ahk2Exe when exe is newer
+- **Ahk2Exe `.html` embedding breaks on CSS `%` values** (RT_HTML dereferencing) — use `.txt` extension
+- Smart-skip: compares source + resources `LastWriteTime` against exe — skips Ahk2Exe when exe is newer
+- `FileInstall` source paths resolve relative to the file containing the directive, not the main script
+- `src/lib/` files are excluded from static analysis (third-party code)
 
 ## Version Management
 

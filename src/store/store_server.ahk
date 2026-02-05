@@ -5,7 +5,7 @@
 ; - Standalone: files found via %A_ScriptDir%\..\ path
 ; - Included from alt_tabby.ahk: files already loaded, paths don't match but that's OK
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
-#Include *i %A_ScriptDir%\..\shared\cjson.ahk
+#Include *i %A_ScriptDir%\..\lib\cjson.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 #Include *i %A_ScriptDir%\..\shared\process_utils.ahk

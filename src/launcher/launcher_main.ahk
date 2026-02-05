@@ -301,9 +301,12 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
 
 _Launcher_RestartStoreAndGui() {
     global TIMING_SUBPROCESS_LAUNCH
-    RestartStore()
+    ; Graceful shutdown: GUI first (sends final stats), then Store (flushes to disk)
+    _GracefulShutdown()
+    ; Launch: Store first (so it's ready), then GUI
+    LaunchStore()
     Sleep(TIMING_SUBPROCESS_LAUNCH)
-    RestartGui()
+    LaunchGui()
 }
 
 ; Check if we should redirect to scheduled task instead of running directly

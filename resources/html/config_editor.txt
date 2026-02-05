@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alt-Tabby Settings</title>
+<style>
+  :root {
+    --bg-primary: #1a1b26;
+    --bg-secondary: #24283b;
+    --bg-tertiary: #2f3349;
+    --bg-input: #1a1b26;
+    --bg-hover: #3b3f57;
+    --text-primary: #c0caf5;
+    --text-secondary: #a9b1d6;
+    --text-muted: #565f89;
+    --text-desc: #7aa2f7;
+    --accent: #7aa2f7;
+    --accent-hover: #89b4fa;
+    --border: #3b3f57;
+    --border-input: #414868;
+    --success: #9ece6a;
+    --warning: #e0af68;
+    --danger: #f7768e;
+    --toggle-bg: #414868;
+    --toggle-active: #7aa2f7;
+    --sidebar-width: 220px;
+    --header-height: 56px;
+    --footer-height: 56px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 14px;
+  }
+
+  /* Header */
+  .header {
+    height: var(--header-height);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    flex-shrink: 0;
+    gap: 16px;
+  }
+  .header-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .header-search {
+    flex: 1;
+    max-width: 320px;
+    margin-left: auto;
+  }
+  .header-search input {
+    width: 100%;
+    padding: 6px 12px 6px 32px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .header-search input:focus {
+    border-color: var(--accent);
+  }
+  .header-search { position: relative; }
+  .header-search::before {
+    content: '⌕';
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 14px;
+    pointer-events: none;
+  }
+
+  /* Main layout */
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding: 8px 0;
+  }
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .sidebar-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    transition: all 0.1s;
+    border-left: 3px solid transparent;
+    user-select: none;
+  }
+  .sidebar-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .sidebar-item.active {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .sidebar-item .item-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* Content area */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 32px 32px;
+    scroll-behavior: smooth;
+  }
+  .content::-webkit-scrollbar { width: 8px; }
+  .content::-webkit-scrollbar-track { background: transparent; }
+  .content::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .content::-webkit-scrollbar-thumb:hover {
+    background: var(--bg-hover);
+  }
+
+  /* Section */
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .section-title {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+  }
+  .section-desc {
+    color: var(--text-desc);
+    font-size: 13px;
+    margin-bottom: 24px;
+    line-height: 1.5;
+    opacity: 0.8;
+  }
+
+  /* Subsection */
+  .subsection {
+    margin-top: 28px;
+    margin-bottom: 16px;
+  }
+  .subsection-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .subsection-desc {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  /* Setting row */
+  .setting {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-radius: 8px;
+    transition: background 0.1s;
+    gap: 24px;
+  }
+  .setting:hover {
+    background: var(--bg-tertiary);
+  }
+  .setting-info { flex: 1; min-width: 0; }
+  .setting-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+  .setting-key {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+  }
+  .setting-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.4;
+    opacity: 0.8;
+  }
+  .setting-control {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding-top: 2px;
+  }
+
+  /* Input styles */
+  input[type="text"], input[type="number"] {
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 140px;
+  }
+  input[type="text"] { width: 200px; }
+  input[type="number"] { width: 110px; }
+  input:focus {
+    border-color: var(--accent);
+  }
+  input.modified {
+    border-color: var(--warning);
+  }
+
+  select {
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    min-width: 160px;
+  }
+  select:focus { border-color: var(--accent); }
+
+  /* Toggle switch */
+  .toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .toggle input { display: none; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--toggle-bg);
+    border-radius: 12px;
+    transition: background 0.2s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    top: 3px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .toggle input:checked + .toggle-slider {
+    background: var(--toggle-active);
+  }
+  .toggle input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+    background: white;
+  }
+
+  /* Footer */
+  .footer {
+    height: var(--footer-height);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .footer-right {
+    display: flex;
+    gap: 8px;
+  }
+
+  button {
+    padding: 7px 18px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  button:hover {
+    background: var(--bg-hover);
+  }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #1a1b26;
+    font-weight: 600;
+  }
+  button.primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+  button.primary:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  button.danger {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: transparent;
+  }
+  button.danger:hover {
+    background: rgba(247, 118, 142, 0.1);
+  }
+
+  .change-count {
+    background: var(--warning);
+    color: #1a1b26;
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* Search results highlight */
+  .search-highlight {
+    background: rgba(224, 175, 104, 0.3);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+
+  /* Filter mode: hide non-matching, show all sections */
+  .filter-mode .section { display: block !important; }
+  .filter-mode .section.filter-empty { display: none !important; }
+  .filter-mode .setting.filter-hidden { display: none; }
+  .filter-mode .subsection.filter-hidden { display: none; }
+  .filter-mode .sidebar-item { display: none; }
+
+  /* Loading state */
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">Alt-Tabby Settings</div>
+  <div class="header-search">
+    <input type="text" id="searchBox" placeholder="Search settings..." autocomplete="off">
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar" id="sidebar">
+    <div class="loading">Loading...</div>
+  </div>
+  <div class="content" id="content">
+    <div class="loading">Initializing...</div>
+  </div>
+</div>
+
+<div class="footer">
+  <div class="footer-left">
+    <span id="changeInfo"></span>
+  </div>
+  <div class="footer-right">
+    <button class="danger" id="resetBtn">Reset to Defaults</button>
+    <button id="cancelBtn">Cancel</button>
+    <button class="primary" id="saveBtn" disabled>Save</button>
+  </div>
+</div>
+
+<script>
+// Config data - injected by AHK via initSettings()
+let configRegistry = [];
+let configValues = {};
+let originalValues = {};
+
+// Parsed sections for rendering
+let sections = [];
+let activeSection = '';
+let changeCount = 0;
+
+// Initialize settings - called by AHK after page loads
+window.initSettings = function(registry, values) {
+  configRegistry = registry;
+  configValues = values;
+  originalValues = JSON.parse(JSON.stringify(values));
+
+  // Parse registry into structured sections
+  sections = [];
+  let currentSection = null;
+  let currentSubsection = null;
+
+  for (const entry of configRegistry) {
+    if (entry.type === 'section') {
+      currentSection = { ...entry, subsections: [], settings: [] };
+      currentSubsection = null;
+      sections.push(currentSection);
+    } else if (entry.type === 'subsection') {
+      currentSubsection = { ...entry, settings: [] };
+      if (currentSection) currentSection.subsections.push(currentSubsection);
+    } else if (entry.s && entry.g) {
+      const setting = { ...entry };
+      if (currentSubsection && currentSubsection.section === entry.s) {
+        currentSubsection.settings.push(setting);
+      } else if (currentSection && currentSection.name === entry.s) {
+        currentSection.settings.push(setting);
+      }
+    }
+  }
+
+  activeSection = sections[0]?.name || '';
+  renderSidebar();
+  renderContent();
+  updateChangeCount();
+};
+
+// Format value for display (hex for large ints)
+function formatValue(val, type) {
+  if (type === 'int' && typeof val === 'number' && val > 255) {
+    return '0x' + val.toString(16).toUpperCase();
+  }
+  return val;
+}
+
+// Parse value from input
+function parseValue(val, type) {
+  if (type === 'int') {
+    if (typeof val === 'string' && val.toLowerCase().startsWith('0x')) {
+      return parseInt(val, 16) || 0;
+    }
+    return parseInt(val) || 0;
+  }
+  if (type === 'float') return parseFloat(val) || 0;
+  return val;
+}
+
+// Render sidebar
+function renderSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.innerHTML = sections.map(s => `
+    <div class="sidebar-item ${s.name === activeSection ? 'active' : ''}"
+         data-section="${s.name}" onclick="switchSection('${s.name}')">
+      ${s.desc || s.name}
+      <div class="item-desc">${s.subsections.length ? s.subsections.length + ' groups' : ''}</div>
+    </div>
+  `).join('');
+}
+
+// Create control HTML
+function controlHTML(setting) {
+  const id = `setting-${setting.s}-${setting.k}`;
+  const value = configValues[setting.g];
+
+  if (setting.t === 'bool') {
+    return `<label class="toggle">
+      <input type="checkbox" id="${id}" ${value ? 'checked' : ''}
+             onchange="updateValue('${setting.g}', this.checked, '${setting.t}')">
+      <span class="toggle-slider"></span>
+    </label>`;
+  }
+  if (setting.t === 'enum') {
+    const opts = (setting.options || []).map(o =>
+      `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`
+    ).join('');
+    return `<select id="${id}" onchange="updateValue('${setting.g}', this.value, '${setting.t}')">${opts}</select>`;
+  }
+  if (setting.t === 'int') {
+    return `<input type="text" id="${id}" value="${formatValue(value, 'int')}"
+            onchange="updateValue('${setting.g}', this.value, '${setting.t}')">`;
+  }
+  if (setting.t === 'float') {
+    return `<input type="number" id="${id}" value="${value}"
+            onchange="updateValue('${setting.g}', this.value, '${setting.t}')"
+            step="0.01">`;
+  }
+  return `<input type="text" id="${id}" value="${value ?? ''}"
+          onchange="updateValue('${setting.g}', this.value, '${setting.t}')">`;
+}
+
+// Render settings for a group
+function renderSettings(settings) {
+  return settings.map(s => `
+    <div class="setting" data-key="${s.k}" data-global="${s.g}" data-search="${(s.d + ' ' + s.k + ' ' + s.g).toLowerCase()}">
+      <div class="setting-info">
+        <div class="setting-label">${s.k}</div>
+        <div class="setting-key">[${s.s}] ${s.g}</div>
+        <div class="setting-desc">${s.d || ''}</div>
+      </div>
+      <div class="setting-control">${controlHTML(s)}</div>
+    </div>
+  `).join('');
+}
+
+// Render content
+function renderContent() {
+  const content = document.getElementById('content');
+  content.innerHTML = sections.map(s => {
+    let html = `<div class="section ${s.name === activeSection ? 'active' : ''}" data-section="${s.name}">`;
+    html += `<div class="section-title">${s.desc || s.name}</div>`;
+    if (s.long) html += `<div class="section-desc">${s.long}</div>`;
+
+    // Top-level settings (before any subsection)
+    if (s.settings.length) {
+      html += renderSettings(s.settings);
+    }
+
+    // Subsections
+    for (const sub of s.subsections) {
+      html += `<div class="subsection" data-search="${(sub.name + ' ' + (sub.desc||'')).toLowerCase()}">`;
+      html += `<div class="subsection-title">${sub.name}</div>`;
+      if (sub.desc) html += `<div class="subsection-desc">${sub.desc}</div>`;
+      html += renderSettings(sub.settings);
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }).join('');
+}
+
+// Switch section
+function switchSection(name) {
+  activeSection = name;
+  document.querySelectorAll('.sidebar-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === name);
+  });
+  document.querySelectorAll('.section').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === name);
+  });
+  document.getElementById('content').scrollTop = 0;
+}
+
+// Update value
+function updateValue(globalName, value, type) {
+  configValues[globalName] = parseValue(value, type);
+  updateChangeCount();
+}
+
+function updateChangeCount() {
+  changeCount = 0;
+  for (const key in configValues) {
+    if (configValues[key] !== originalValues[key]) changeCount++;
+  }
+  const info = document.getElementById('changeInfo');
+  const saveBtn = document.getElementById('saveBtn');
+  if (changeCount > 0) {
+    info.innerHTML = `<span class="change-count">${changeCount}</span> unsaved change${changeCount > 1 ? 's' : ''}`;
+    saveBtn.disabled = false;
+  } else {
+    info.textContent = '';
+    saveBtn.disabled = true;
+  }
+}
+
+function getModifiedValues() {
+  const changes = {};
+  for (const key in configValues) {
+    if (configValues[key] !== originalValues[key]) {
+      changes[key] = configValues[key];
+    }
+  }
+  return changes;
+}
+
+function saveChanges() {
+  const changes = getModifiedValues();
+  window.chrome.webview.postMessage(JSON.stringify({action: 'save', changes: changes}));
+}
+
+function cancelEditor() {
+  window.chrome.webview.postMessage(JSON.stringify({action: 'cancel'}));
+}
+
+function resetAll() {
+  if (!confirm('Reset all settings to defaults?')) return;
+
+  // Reset to defaults from registry
+  for (const entry of configRegistry) {
+    if (entry.g && entry.hasOwnProperty('default')) {
+      configValues[entry.g] = entry.default;
+      const id = `setting-${entry.s}-${entry.k}`;
+      const el = document.getElementById(id);
+      if (!el) continue;
+      if (entry.t === 'bool') el.checked = entry.default;
+      else el.value = formatValue(entry.default, entry.t);
+    }
+  }
+  updateChangeCount();
+}
+
+// Search
+document.getElementById('searchBox').addEventListener('input', function(e) {
+  const query = e.target.value.trim().toLowerCase();
+  const main = document.querySelector('.main');
+
+  if (!query) {
+    main.classList.remove('filter-mode');
+    document.querySelectorAll('.setting, .subsection, .section').forEach(el => {
+      el.classList.remove('filter-hidden', 'filter-empty');
+    });
+    switchSection(activeSection);
+    return;
+  }
+
+  main.classList.add('filter-mode');
+
+  // Filter settings
+  document.querySelectorAll('.section').forEach(sectionEl => {
+    let sectionHasMatch = false;
+
+    sectionEl.querySelectorAll('.setting').forEach(el => {
+      const match = el.dataset.search.includes(query);
+      el.classList.toggle('filter-hidden', !match);
+      if (match) sectionHasMatch = true;
+    });
+
+    // Hide subsections with no visible settings
+    sectionEl.querySelectorAll('.subsection').forEach(sub => {
+      const hasVisible = sub.querySelector('.setting:not(.filter-hidden)');
+      sub.classList.toggle('filter-hidden', !hasVisible);
+    });
+
+    sectionEl.classList.toggle('filter-empty', !sectionHasMatch);
+  });
+});
+
+// Keyboard nav
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    document.getElementById('searchBox').focus();
+  }
+  if (e.key === 'Escape') {
+    const search = document.getElementById('searchBox');
+    if (document.activeElement === search) {
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+      search.blur();
+    }
+  }
+});
+
+// Signal ready to AHK and bind button handlers
+// NOTE: Must use addEventListener - inline onclick attributes are blocked by WebView2 security
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.postMessage(JSON.stringify({action: 'ready'}));
+  }
+
+  // Bind footer buttons
+  document.getElementById('saveBtn').addEventListener('click', saveChanges);
+  document.getElementById('cancelBtn').addEventListener('click', cancelEditor);
+  document.getElementById('resetBtn').addEventListener('click', resetAll);
+});
+</script>
+</body>
+</html>

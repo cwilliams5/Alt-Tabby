@@ -52,9 +52,6 @@ global g_SplashHDemux := 0
 global g_SplashExtractedDlls := []  ; Paths to extracted DLLs (for cleanup)
 global g_SplashExtractedWebP := ""  ; Path to extracted animation.webp (for cleanup)
 
-; Win32 resource type constant
-global RT_RCDATA := 10                  ; Raw data resource type
-
 ; Streaming mode globals (when SplashAnimBufferFrames > 0)
 global g_SplashStreaming := false       ; True if streaming mode active
 global g_SplashDecoder := 0             ; WebP decoder (kept alive for streaming)
@@ -140,7 +137,7 @@ _Splash_ShowImage() {
     if (A_IsCompiled) {
         g_SplashBitmap := _Splash_LoadBitmapFromResource(10)  ; ID 10 = logo.png
     } else {
-        imgPath := A_ScriptDir "\..\resources\logo.png"
+        imgPath := A_ScriptDir "\..\resources\img\logo.png"
         if (FileExist(imgPath))
             DllCall("gdiplus\GdipCreateBitmapFromFile", "wstr", imgPath, "ptr*", &g_SplashBitmap)
     }
@@ -1205,39 +1202,7 @@ _Splash_LoadBitmapFromResource(resourceId) {
     return pBitmap
 }
 
-; Extract a resource to a temp file and return the path
+; Wrapper for shared ResourceExtractToTemp (maintains existing call signature)
 _Splash_ExtractResourceToTemp(resourceId, fileName, destDir := "") {
-    global RT_RCDATA
-    if (destDir = "")
-        destDir := A_Temp
-
-    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", RT_RCDATA, "ptr")
-    if (!hRes)
-        return ""
-
-    resSize := DllCall("SizeofResource", "ptr", 0, "ptr", hRes, "uint")
-    hMem := DllCall("LoadResource", "ptr", 0, "ptr", hRes, "ptr")
-    if (!hMem || !resSize)
-        return ""
-
-    pData := DllCall("LockResource", "ptr", hMem, "ptr")
-    if (!pData)
-        return ""
-
-    ; Copy to AHK buffer
-    buf := Buffer(resSize, 0)
-    DllCall("RtlMoveMemory", "ptr", buf.Ptr, "ptr", pData, "uptr", resSize)
-
-    ; Write to file
-    filePath := destDir "\" fileName
-    try {
-        f := FileOpen(filePath, "w")
-        try
-            f.RawWrite(buf)
-        finally
-            f.Close()
-        return filePath
-    } catch {
-        return ""
-    }
+    return ResourceExtractToTemp(resourceId, fileName, destDir)
 }

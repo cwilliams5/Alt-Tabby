@@ -1,14 +1,14 @@
 # Alt-Tabby
 
 <p align="center">
-  <img src="img/logo.png" alt="Alt-Tabby Logo" width="400">
+  <img src="resources/img/logo.png" alt="Alt-Tabby Logo" width="400">
 </p>
 
 A fast, customizable Alt-Tab replacement for Windows, built with AutoHotkey v2. Designed for power users who want responsive window switching with deep integration for tiling window managers like [Komorebi](https://github.com/LGUG2Z/komorebi).
 
 ## Features
 
-<img src="img/icon.png" alt="Alt-Tabby Icon" width="64" align="right">
+<img src="resources/img/icon.png" alt="Alt-Tabby Icon" width="64" align="right">
 
 - **Low Latency** - Keyboard hooks run in the GUI process for sub-5ms response times
 - **MRU Ordering** - Windows sorted by most-recently-used, matching native Windows behavior

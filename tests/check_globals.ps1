@@ -99,7 +99,8 @@ if (-not (Test-Path $SourceDir)) {
 }
 
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
-$srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse)
+$srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
+    Where-Object { $_.FullName -notlike "*\lib\*" })
 $testsDir = Join-Path $projectRoot "tests"
 $testFiles = @()
 $testsDirNorm = ""

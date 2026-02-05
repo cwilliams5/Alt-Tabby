@@ -13,6 +13,8 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 **Internal modes:** `--wizard-continue`, `--enable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`, `--skip-mismatch`
 
+**Editor flags:** `--force-native` (with --config): skip WebView2 detection, use native AHK editor
+
 ## Process Roles
 
 1. **Launcher**: Tray icon, subprocess PIDs, on-demand menu updates, lifecycle manager (WM_COPYDATA: store restart from GUI, full restart from config editor). Config/blacklist editors launched as subprocesses.
@@ -24,11 +26,18 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 - `VERSION` - Single source for version (e.g., `0.6.0`)
 - `src/alt_tabby.ahk` - Unified entry point
+- `src/lib/` - Third-party libraries (cjson, WebView2). NOT `src/shared/`.
 - `src/store/windowstore.ahk` - Core store API
 - `src/shared/ipc_pipe.ahk` - Multi-subscriber named pipe IPC
 - `src/shared/config_registry.ahk` - All config definitions
 - `src/shared/blacklist.ahk` - Window eligibility logic
 - `src/gui/gui_main.ahk` - Alt-Tab GUI overlay
+- `src/editors/config_editor.ahk` - Dispatcher: detects WebView2, falls back to native AHK
+- `src/editors/config_editor_native.ahk` - Native AHK editor (sidebar + viewport scroll pattern)
+- `src/editors/config_editor_webview.ahk` - WebView2 editor (HTML/JS UI)
+- `resources/img/` - Image assets (icon.ico, icon.png, logo.png)
+- `resources/dll/` - Native DLLs (WebView2Loader.dll)
+- `resources/html/` - HTML resources for WebView2 UI
 - `stats.ini` - Lifetime usage statistics (next to config.ini, crash-safe with `.bak` sentinel)
 
 ## Producer Architecture

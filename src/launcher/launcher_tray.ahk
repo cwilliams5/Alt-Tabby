@@ -33,7 +33,7 @@ SetupLauncherTray() {
         ; Icon is embedded in exe via /icon compile flag - use icon index 1
         TraySetIcon(A_ScriptFullPath, 1)
     } else {
-        iconPath := A_ScriptDir "\..\resources\icon.ico"
+        iconPath := A_ScriptDir "\..\resources\img\icon.ico"
         if FileExist(iconPath)
             TraySetIcon(iconPath)
     }
@@ -209,6 +209,7 @@ _Tray_BuildSettingsMenu() {
 
     ; Editors
     m.Add("Edit Config...", (*) => LaunchConfigEditor())
+    m.Add("Edit Config (AHK)...", (*) => LaunchConfigEditor(true))
     m.Add("Edit Blacklist...", (*) => LaunchBlacklistEditor())
     m.Add()
 
@@ -243,7 +244,7 @@ _Tray_BuildSettingsMenu() {
 _Tray_GetIconPath() {
     if (A_IsCompiled)
         return A_ScriptFullPath
-    devIcon := A_ScriptDir "\..\resources\icon.ico"
+    devIcon := A_ScriptDir "\..\resources\img\icon.ico"
     if (FileExist(devIcon))
         return devIcon
     return ""
@@ -344,17 +345,20 @@ _GracefulShutdown() {
     DetectHiddenWindows(prevDHW)
 }
 
-LaunchConfigEditor() {
+LaunchConfigEditor(forceNative := false) {
     global g_ConfigEditorPID
     ; If already running, activate existing window instead of launching duplicate
     if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID)) {
-        try WinActivate("Alt-Tabby Configuration ahk_pid " g_ConfigEditorPID)
+        try WinActivate("ahk_pid " g_ConfigEditorPID)
         return
     }
+    args := "--config --launcher-hwnd=" A_ScriptHwnd
+    if (forceNative)
+        args .= " --force-native"
     if (A_IsCompiled)
-        Run('"' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd, , , &g_ConfigEditorPID)
+        Run('"' A_ScriptFullPath '" ' args, , , &g_ConfigEditorPID)
     else
-        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --config --launcher-hwnd=' A_ScriptHwnd, , , &g_ConfigEditorPID)
+        Run('"' A_AhkPath '" "' A_ScriptFullPath '" ' args, , , &g_ConfigEditorPID)
     _Dash_StartRefreshTimer()
 }
 

@@ -28,11 +28,6 @@ ShowFirstRunWizard() {
     global g_WizardGui, cfg
 
     g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
-    ; Set window icon to match Alt-Tabby branding
-    if (A_IsCompiled)
-        g_WizardGui.Opt("+Icon" A_ScriptFullPath)
-    else if (FileExist(A_ScriptDir "\..\resources\icon.ico"))
-        g_WizardGui.Opt("+Icon" A_ScriptDir "\..\resources\icon.ico")
     g_WizardGui.SetFont("s10", "Segoe UI")
 
     g_WizardGui.AddText("w400", "Let's set up a few things to get you started:")

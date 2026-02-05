@@ -17,13 +17,17 @@
 ; Embed resources - eliminates need for /img folder in compiled exe
 ; Icon is set via compile.bat /icon flag (becomes main exe icon)
 ; PNG is embedded as RCDATA resource with ID 10
-;@Ahk2Exe-AddResource ..\resources\logo.png, 10
-;@Ahk2Exe-AddResource ..\resources\icon.png, 11
+;@Ahk2Exe-AddResource ..\resources\img\logo.png, 10
+;@Ahk2Exe-AddResource ..\resources\img\icon.png, 11
 ; Animation splash resources (WebP + DLLs)
 ;@Ahk2Exe-AddResource ..\resources\animation.webp, 15
-;@Ahk2Exe-AddResource ..\resources\libsharpyuv-0.dll, 16
-;@Ahk2Exe-AddResource ..\resources\libwebp-7.dll, 17
-;@Ahk2Exe-AddResource ..\resources\libwebpdemux-2.dll, 18
+;@Ahk2Exe-AddResource ..\resources\dll\libsharpyuv-0.dll, 16
+;@Ahk2Exe-AddResource ..\resources\dll\libwebp-7.dll, 17
+;@Ahk2Exe-AddResource ..\resources\dll\libwebpdemux-2.dll, 18
+; WebView2 config editor resources
+; NOTE: HTML uses .txt extension because Ahk2Exe silently fails to embed .html files
+;@Ahk2Exe-AddResource ..\resources\dll\WebView2Loader.dll, 20
+;@Ahk2Exe-AddResource ..\resources\html\config_editor.txt, 25
 
 ; ============================================================
 ; Alt-Tabby - Unified Launcher & Mode Router
@@ -60,10 +64,10 @@ for _, arg in A_Args {
             A_IconHidden := true
         case "--config":
             g_AltTabbyMode := "config"
-            ; Config editor shows its own window, no tray icon needed
+            A_IconHidden := true  ; Editors show their own window, no tray icon needed
         case "--blacklist":
             g_AltTabbyMode := "blacklist"
-            ; Blacklist editor shows its own window, no tray icon needed
+            A_IconHidden := true  ; Editors show their own window, no tray icon needed
         case "--wizard-continue":
             g_AltTabbyMode := "wizard-continue"
             ; Continue wizard after self-elevation (elevated instance)
@@ -113,20 +117,29 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; Use #Include <Dir> to set the include base directory before
 ; including each module, so relative paths resolve correctly.
 
+; Third-party libraries (from src/lib/)
+#Include %A_ScriptDir%\lib\
+#Include cjson.ahk
+#Include *i WebView2.ahk
+#Include *i ComVar.ahk
+#Include *i Promise.ahk
+
 ; Shared libraries (from src/shared/)
 #Include %A_ScriptDir%\shared\
 #Include config_loader.ahk
-#Include cjson.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
 #Include setup_utils.ahk
 #Include process_utils.ahk
 #Include win_utils.ahk
 #Include pump_utils.ahk
+#Include resource_utils.ahk
 
 ; Editor subprocesses (from src/editors/)
 #Include %A_ScriptDir%\editors\
 #Include config_editor.ahk
+#Include config_editor_native.ahk
+#Include config_editor_webview.ahk
 #Include blacklist_editor.ahk
 
 ; Launcher module (from src/launcher/)
@@ -174,14 +187,18 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; CONFIG MODE HANDLER
 ; ============================================================
 ; Run config editor and exit when launched with --config
+; Supports --force-native flag to skip WebView2 and use AHK GUI
 if (g_AltTabbyMode = "config") {
     global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
     launcherHwnd := 0
+    forceNative := false
     for _, arg in A_Args {
         if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
             launcherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
+        else if (arg = "--force-native")
+            forceNative := true
     }
-    ConfigEditor_Run(launcherHwnd)
+    ConfigEditor_Run(launcherHwnd, forceNative)
     ExitApp()
 }
 

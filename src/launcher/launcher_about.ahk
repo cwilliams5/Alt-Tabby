@@ -766,7 +766,7 @@ _Dash_CheckForUpdatesAsync() {
 _Dash_LoadLogo(dg) {
     ; Dev mode: load from file
     if (!A_IsCompiled) {
-        imgPath := A_ScriptDir "\..\resources\logo.png"
+        imgPath := A_ScriptDir "\..\resources\img\logo.png"
         if (FileExist(imgPath)) {
             dg.AddPicture("x20 y15 w116 h90", imgPath)
             return true

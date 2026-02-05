@@ -288,7 +288,8 @@ $srcDirNorm = [System.IO.Path]::GetFullPath($SourceDir).ToLower()
 
 # === Pass 1: Collect all file-scope global definitions from src/ ===
 
-$srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse)
+$srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
+    Where-Object { $_.FullName -notlike "*\lib\*" })
 $knownGlobals = @{}  # name -> relative path where defined
 
 foreach ($file in $srcFiles) {

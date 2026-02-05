@@ -131,7 +131,7 @@ $releaseDir = Join-Path $PSScriptRoot "release"
 $scriptDir = Join-Path $PSScriptRoot "src"
 $inputFile = Join-Path $scriptDir "alt_tabby.ahk"
 $outputFile = Join-Path $releaseDir "AltTabby.exe"
-$iconFile = Join-Path $PSScriptRoot "resources\icon.ico"
+$iconFile = Join-Path $PSScriptRoot "resources\img\icon.ico"
 
 if (-not (Test-Path $releaseDir)) {
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
@@ -162,7 +162,12 @@ if (-not $force -and (Test-Path $outputFile)) {
     $exeTime = (Get-Item $outputFile).LastWriteTime
     $srcFiles = @(Get-ChildItem -Path $scriptDir -Filter "*.ahk" -Recurse |
                   Where-Object { $_.Name -ne "version_info.ahk" })
-    $checkItems = $srcFiles + @(Get-Item $versionFile)
+    $resDir = Join-Path $PSScriptRoot "resources"
+    $resFiles = @()
+    if (Test-Path $resDir) {
+        $resFiles = @(Get-ChildItem -Path $resDir -Recurse -File -ErrorAction SilentlyContinue)
+    }
+    $checkItems = $srcFiles + $resFiles + @(Get-Item $versionFile)
     if (Test-Path $iconFile) {
         $checkItems += Get-Item $iconFile
     }

@@ -93,7 +93,8 @@ if (-not (Test-Path $SourceDir)) {
 }
 
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
-$files = Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse
+$files = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
+    Where-Object { $_.FullName -notlike "*\lib\*" })
 Write-Host "  Scanning $($files.Count) files for Critical section issues..." -ForegroundColor Cyan
 
 # ============================================================

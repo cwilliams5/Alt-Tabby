@@ -4,7 +4,7 @@
 
 ; Includes: Use *i (ignore if not found) for unified exe compatibility
 #Include *i ..\shared\config_loader.ahk
-#Include *i ..\shared\cjson.ahk
+#Include *i ..\lib\cjson.ahk
 #Include *i ..\shared\ipc_pipe.ahk
 #Include *i ..\shared\blacklist.ahk
 #Include *i ..\shared\process_utils.ahk

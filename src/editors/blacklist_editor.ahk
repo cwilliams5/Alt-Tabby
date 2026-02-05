@@ -28,6 +28,9 @@ global gBE_SavedChanges := false
 BlacklistEditor_Run() {
     global gBE_Gui, gBE_SavedChanges, gBlacklist_FilePath, gBlacklist_Loaded
 
+    ; Hide tray icon - only launcher should have one
+    A_IconHidden := true
+
     gBE_SavedChanges := false
 
     ; Initialize blacklist if not already done
@@ -54,11 +57,6 @@ _BE_CreateGui() {
     global gBE_Gui, gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
 
     gBE_Gui := Gui("+Resize +MinSize500x400", "Alt-Tabby Blacklist Editor")
-    ; Set window icon to match Alt-Tabby branding
-    if (A_IsCompiled)
-        gBE_Gui.Opt("+Icon" A_ScriptFullPath)
-    else if (FileExist(A_ScriptDir "\..\resources\icon.ico"))
-        gBE_Gui.Opt("+Icon" A_ScriptDir "\..\resources\icon.ico")
     gBE_Gui.OnEvent("Close", _BE_OnClose)
     gBE_Gui.OnEvent("Size", _BE_OnSize)
     gBE_Gui.SetFont("s9", "Segoe UI")

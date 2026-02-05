@@ -210,7 +210,7 @@ global gGUI_Overlay := _MockGui()
 ; These contain the REAL logic we want to test
 ; ============================================================
 
-#Include %A_ScriptDir%\..\src\shared\cjson.ahk
+#Include %A_ScriptDir%\..\src\lib\cjson.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_input.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_workspace.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_store.ahk

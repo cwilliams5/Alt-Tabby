@@ -47,7 +47,7 @@ $srcDest = Join-Path $tempRoot "src"
 $strippedCount = 0
 $fileCount = 0
 
-foreach ($file in Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse) {
+foreach ($file in Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse | Where-Object { $_.FullName -notlike "*\lib\*" }) {
     $relPath = $file.FullName.Substring($SourceDir.Length)
     $destPath = Join-Path $srcDest $relPath
     $destDir = Split-Path $destPath -Parent

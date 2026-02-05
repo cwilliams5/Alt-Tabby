@@ -539,4 +539,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-04 with 207 total settings.*
+*Generated on 2026-02-05 with 207 total settings.*

@@ -82,7 +82,8 @@ foreach ($entry in $check2Files) {
 # === Check 3: Legacy *_DebugLog global variables ===
 # These should be replaced with config-gated logging using cfg.Diag* options
 
-$allAhkFiles = @(Get-ChildItem -Path $SourceDir -Recurse -Filter '*.ahk')
+$allAhkFiles = @(Get-ChildItem -Path $SourceDir -Recurse -Filter '*.ahk' |
+    Where-Object { $_.FullName -notlike "*\lib\*" })
 
 foreach ($file in $allAhkFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)

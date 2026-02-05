@@ -215,7 +215,7 @@ _StatsCtl_Set(key, value) {
 _StatsDialog_LoadIcon(sg) {
     ; Dev mode: load from file
     if (!A_IsCompiled) {
-        imgPath := A_ScriptDir "\..\resources\icon.png"
+        imgPath := A_ScriptDir "\..\resources\img\icon.png"
         if (FileExist(imgPath)) {
             sg.AddPicture("x385 y349 w80 h80", imgPath)
         }
