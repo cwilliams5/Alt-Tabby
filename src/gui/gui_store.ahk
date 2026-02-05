@@ -298,6 +298,7 @@ GUI_ApplyDelta(payload) {
     mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
     changedHwnds := Map()    ; Track which hwnds were affected (for viewport-based repaint)
     focusChangedToHwnd := 0  ; Track if any window received focus
+    needsIconPrune := false  ; Track if icon cache should be pruned (after removes)
 
     ; Debug: log delta arrival when in bypass mode
     if (gINT_BypassMode) {
@@ -332,6 +333,8 @@ GUI_ApplyDelta(payload) {
                 if (gGUI_LiveItemsMap.Has(hwnd))
                     gGUI_LiveItemsMap.Delete(hwnd)
             }
+            ; Prune icon cache for removed windows (outside Critical below)
+            needsIconPrune := true
             mruChanged := true  ; Item count changed, layout affected
         }
     }
@@ -406,6 +409,11 @@ GUI_ApplyDelta(payload) {
 
     ; End critical section before bypass check (which may do significant work)
     Critical "Off"
+
+    ; Prune orphaned icon cache entries for removed windows (outside Critical
+    ; because GdipDisposeImage DllCalls can take 2-5ms)
+    if (needsIconPrune)
+        Gdip_PruneIconCache(gGUI_LiveItemsMap)
 
     ; AFTER all delta processing: check bypass state for newly focused window
     ; This runs ONCE per delta, not per upsert - minimizes blocking time

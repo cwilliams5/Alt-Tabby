@@ -30,7 +30,7 @@ ProcessUtils_GetPath(pid, logFunc := "") {
         return ""
     }
 
-    buf := Buffer(32767 * 2, 0)
+    static buf := Buffer(32767 * 2, 0)
     cch := 32767
     ok := DllCall("kernel32\QueryFullProcessImageNameW", "ptr", hProc, "uint", 0, "ptr", buf.Ptr, "uint*", &cch, "int")
     DllCall("kernel32\CloseHandle", "ptr", hProc)

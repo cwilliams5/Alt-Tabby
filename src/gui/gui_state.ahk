@@ -742,9 +742,9 @@ _GUI_AsyncActivationTick() {
                 _GUI_LogEvent("ASYNC AWAITDELTA: workspace name matches, switch complete")
             }
         } else {
-            ; PollKomorebic (default): Poll via cmd.exe spawning
+            ; PollKomorebic (fallback): Poll via cmd.exe spawning
             ; Spawns cmd.exe /c komorebic query focused-workspace-name every tick
-            ; Highest CPU but works on multi-monitor setups
+            ; Highest CPU but works on multi-monitor setups where PollCloak may not
             try {
                 try FileDelete(gGUI_PendingTempFile)
                 queryCmd := 'cmd.exe /c "' cfg.KomorebicExe '" query focused-workspace-name > "' gGUI_PendingTempFile '"'
