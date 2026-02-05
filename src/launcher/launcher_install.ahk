@@ -462,10 +462,11 @@ _Launcher_CleanupStaleAdminTask(oldPath, newPath) {
         } else {
             ; Need elevation to delete task
             try {
-                if (_Launcher_RunAsAdmin("--disable-admin-task"))
+                if (_Launcher_RunAsAdmin("--disable-admin-task")) {
                     ; Elevated instance will handle it, update local config
                     cfg.SetupRunAsAdmin := false
                     try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+                }
             } catch {
                 ; UAC refused - warn user
                 TrayTip("Admin Mode", "Could not disable Admin Mode.`nYou may see repair prompts later.", "Icon!")
