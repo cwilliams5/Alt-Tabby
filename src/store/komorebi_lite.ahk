@@ -9,6 +9,12 @@ global _KLite_StateObj := ""   ; Cached parsed JSON object (avoids re-parsing wi
 global _KLite_Stamp := 0
 global _KLite_TTL := 500
 
+; Async state machine for non-blocking komorebic state queries
+global _KLite_PendingPid := 0      ; PID of running komorebic process (0 = none)
+global _KLite_PendingTmp := ""     ; Temp file path for output
+global _KLite_PendingStart := 0    ; A_TickCount when query started
+global _KLite_PendingTimeout := 2000  ; Max wait time (ms)
+
 KomorebiLite_Init() {
     ; Check if komorebi is available before starting timer
     if (!KomorebiLite_IsAvailable())
@@ -45,45 +51,70 @@ KomorebiLite_IsAvailable() {
 }
 
 ; Get parsed komorebi state object (cached within TTL)
+; Non-blocking: returns cached result immediately while async query runs in background
 KomorebiLite_GetState() {
     global _KLite_StateText, _KLite_StateObj, _KLite_Stamp, _KLite_TTL, cfg
+    global _KLite_PendingPid, _KLite_PendingTmp, _KLite_PendingStart, _KLite_PendingTimeout
+
     now := A_TickCount
-    if (_KLite_StateObj is Map && (now - _KLite_Stamp) < _KLite_TTL)
-        return _KLite_StateObj
 
-    tmp := A_Temp "\komorebi_state_" A_TickCount "_" Random(1000,9999) ".tmp"
-    cmd := 'cmd.exe /c "' cfg.KomorebicExe '" state > "' tmp '" 2>&1'
+    ; Phase 2: Check if pending query has completed
+    if (_KLite_PendingPid) {
+        if (!ProcessExist(_KLite_PendingPid)) {
+            ; Process finished - read result
+            txt := ""
+            try txt := FileRead(_KLite_PendingTmp, "UTF-8")
+            try FileDelete(_KLite_PendingTmp)
+            _KLite_PendingPid := 0
+            _KLite_PendingTmp := ""
+            _KLite_PendingStart := 0
 
-    ; Use async Run + poll instead of blocking RunWait to avoid freezing the
-    ; store thread for 100-500ms every second. Poll with short sleep intervals
-    ; up to a timeout so we yield control back to AHK's message loop.
-    pid := ProcessUtils_RunHidden(cmd)
-    if (pid) {
-        timeout := 2000  ; Max wait 2s (RunWait had no timeout)
-        pollInterval := 25
-        waited := 0
-        while (ProcessExist(pid) && waited < timeout) {
-            Sleep(pollInterval)
-            waited += pollInterval
+            if (txt != "") {
+                parsed := ""
+                try parsed := JSON.Load(txt)
+                if (parsed is Map) {
+                    _KLite_StateText := txt
+                    _KLite_StateObj := parsed
+                    _KLite_Stamp := now
+                    return parsed
+                }
+            }
+            ; Query failed - fall through to return cached or start new
+        } else if ((now - _KLite_PendingStart) > _KLite_PendingTimeout) {
+            ; Timeout - kill stale process and clean up
+            try ProcessClose(_KLite_PendingPid)
+            try FileDelete(_KLite_PendingTmp)
+            _KLite_PendingPid := 0
+            _KLite_PendingTmp := ""
+            _KLite_PendingStart := 0
+            ; Fall through to return cached or start new
+        } else {
+            ; Still running within timeout - return cached result
+            if (_KLite_StateObj is Map)
+                return _KLite_StateObj
+            return ""
         }
     }
 
-    txt := ""
-    try txt := FileRead(tmp, "UTF-8")
-    try FileDelete(tmp)
-    if (txt = "")
-        return ""
+    ; Return cached if still valid
+    if (_KLite_StateObj is Map && (now - _KLite_Stamp) < _KLite_TTL)
+        return _KLite_StateObj
 
-    ; Parse JSON once (cJson parses typical komorebi state in <1ms)
-    parsed := ""
-    try parsed := JSON.Load(txt)
-    if !(parsed is Map)
-        return ""
+    ; Phase 1: Start new async query
+    tmp := A_Temp "\komorebi_state_" A_TickCount "_" Random(1000,9999) ".tmp"
+    cmd := 'cmd.exe /c "' cfg.KomorebicExe '" state > "' tmp '" 2>&1'
 
-    _KLite_StateText := txt
-    _KLite_StateObj := parsed
-    _KLite_Stamp := now
-    return parsed
+    pid := ProcessUtils_RunHidden(cmd)
+    if (pid) {
+        _KLite_PendingPid := pid
+        _KLite_PendingTmp := tmp
+        _KLite_PendingStart := now
+    }
+
+    ; Return cached result (may be stale) while query runs
+    if (_KLite_StateObj is Map)
+        return _KLite_StateObj
+    return ""
 }
 
 ; Find current workspace name from parsed state using navigation helpers

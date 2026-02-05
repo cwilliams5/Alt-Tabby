@@ -59,6 +59,10 @@ global _IP_IdleThreshold := 5           ; Default, overridden from config in Ico
 global _IP_UwpLogoCache := Map()
 global _IP_UwpLogoCacheMax := 50        ; Default, overridden from config
 
+; Tick-based timing for periodic pruning (avoids static counter per ahk-patterns.md)
+global _IP_LastPruneTick := 0
+global _IP_PruneIntervalMs := 5000      ; Prune every ~5s
+
 ; Start the icon pump timer
 IconPump_Start() {
     global _IP_TimerOn, IconTimerIntervalMs, cfg
@@ -187,10 +191,10 @@ _IP_Tick() {
     global IP_MODE_NO_ICON, IP_MODE_UPGRADE, IP_MODE_REFRESH
 
     ; PERF: Periodically prune _IP_Attempts to prevent unbounded growth
-    ; Entries expire if window no longer exists or entry is older than 5 minutes
-    static pruneCounter := 0
-    pruneCounter += 1
-    if (Mod(pruneCounter, 100) = 0) {  ; Every 100 ticks (~5s at 50ms interval)
+    ; Uses tick-based timing instead of static counter (per ahk-patterns.md)
+    global _IP_LastPruneTick, _IP_PruneIntervalMs
+    if (A_TickCount - _IP_LastPruneTick > _IP_PruneIntervalMs) {
+        _IP_LastPruneTick := A_TickCount
         _IP_PruneAttempts()
     }
 
