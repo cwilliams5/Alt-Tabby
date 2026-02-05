@@ -690,7 +690,9 @@ _Update_ApplyCore(opts) {
         }
 
         ; Preserve/merge lifetime stats at target location (Bug 4 fix)
-        srcStatsPath := gConfigIniPath "\..\stats.ini"
+        srcDir := ""
+        SplitPath(gConfigIniPath, , &srcDir)
+        srcStatsPath := srcDir "\stats.ini"
         targetStatsPath := targetDir "\stats.ini"
         if (FileExist(srcStatsPath)) {
             if (!FileExist(targetStatsPath)) {
@@ -762,8 +764,9 @@ _Update_ApplyCore(opts) {
                 shell := ComObject("Shell.Application")
                 shell.ShellExecute(targetPath, "", targetDir)
                 ExitApp()
+            } catch {
+                TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
             }
-            ; Fallback to direct launch if Shell.Application fails
         }
         Run('"' targetPath '"')
         ExitApp()
