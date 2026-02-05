@@ -158,8 +158,9 @@ Launcher_Init() {
 
     ; Set up tray with on-demand menu updates
     SetupLauncherTray()
-    OnMessage(0x404, TrayIconClick)  ; WM_TRAYICON
-    OnMessage(0x4A, _Launcher_OnCopyData)  ; WM_COPYDATA from child processes
+    global WM_TRAYICON, WM_COPYDATA
+    OnMessage(WM_TRAYICON, TrayIconClick)
+    OnMessage(WM_COPYDATA, _Launcher_OnCopyData)
 
     ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
     ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)

@@ -226,23 +226,22 @@ WindowStore_UpsertWindow(records, source := "") {
 ; Fields that are internal tracking and should not bump rev when changed
 global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true, "iconMethod", true, "iconLastRefreshTick", true)
 
-WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
-    global gWS_Store, gWS_Rev, gWS_InternalFields, gWS_SortDirty, gWS_ProjectionFields, gWS_DirtyHwnds
-    ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
-    ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
-    Critical "On"
-    hwnd := hwnd + 0
-    if (!gWS_Store.Has(hwnd))
-        return { changed: false, exists: false, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
-    row := gWS_Store[hwnd]
+; Helper to apply a patch (Map or plain Object) to a store row
+; Sets row.%k% := v for each field in patch, tracks changed/projDirty flags
+; Parameters:
+;   row - Store record to update
+;   patch - Map or Object with field:value pairs
+;   hwnd - Window handle (for dirty tracking)
+; Returns: { changed: bool, projDirty: bool }
+_WS_ApplyPatch(row, patch, hwnd) {
+    global gWS_InternalFields, gWS_ProjectionFields, gWS_DirtyHwnds
     changed := false
     projDirty := false
-    ; Handle both Map and plain object patches
+
     if (patch is Map) {
         for k, v in patch {
             if (!row.HasOwnProp(k) || row.%k% != v) {
                 row.%k% := v
-                ; Only count as "changed" if it's not an internal tracking field
                 if (!gWS_InternalFields.Has(k)) {
                     changed := true
                     gWS_DirtyHwnds[hwnd] := true
@@ -265,6 +264,24 @@ WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
             }
         }
     }
+    return { changed: changed, projDirty: projDirty }
+}
+
+WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
+    global gWS_Store, gWS_Rev, gWS_SortDirty
+    ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
+    ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
+    Critical "On"
+    hwnd := hwnd + 0
+    if (!gWS_Store.Has(hwnd))
+        return { changed: false, exists: false, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+    row := gWS_Store[hwnd]
+
+    ; Apply patch using shared helper
+    result := _WS_ApplyPatch(row, patch, hwnd)
+    changed := result.changed
+    projDirty := result.projDirty
+
     if (projDirty)
         gWS_SortDirty := true
     if (changed) {
@@ -281,7 +298,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
 ; Returns: { changed: count, rev: gWS_Rev }
 ; Use this for bulk operations like workspace switches to minimize Critical section overhead
 WindowStore_BatchUpdateFields(patches, source := "") {
-    global gWS_Store, gWS_Rev, gWS_InternalFields, gWS_SortDirty, gWS_ProjectionFields, gWS_DirtyHwnds
+    global gWS_Store, gWS_Rev, gWS_SortDirty
 
     Critical "On"
     changedCount := 0
@@ -292,37 +309,13 @@ WindowStore_BatchUpdateFields(patches, source := "") {
         if (!gWS_Store.Has(hwnd))
             continue  ; lint-ignore: critical-section
         row := gWS_Store[hwnd]
-        rowChanged := false
 
-        ; Handle both Map and plain object patches
-        if (patch is Map) {
-            for k, v in patch {
-                if (!row.HasOwnProp(k) || row.%k% != v) {
-                    row.%k% := v
-                    if (!gWS_InternalFields.Has(k)) {
-                        rowChanged := true
-                        gWS_DirtyHwnds[hwnd] := true
-                    }
-                    if (gWS_ProjectionFields.Has(k))
-                        projDirty := true
-                }
-            }
-        } else if (IsObject(patch)) {
-            for k in patch.OwnProps() {
-                v := patch.%k%
-                if (!row.HasOwnProp(k) || row.%k% != v) {
-                    row.%k% := v
-                    if (!gWS_InternalFields.Has(k)) {
-                        rowChanged := true
-                        gWS_DirtyHwnds[hwnd] := true
-                    }
-                    if (gWS_ProjectionFields.Has(k))
-                        projDirty := true
-                }
-            }
-        }
-        if (rowChanged)
+        ; Apply patch using shared helper
+        result := _WS_ApplyPatch(row, patch, hwnd)
+        if (result.changed)
             changedCount++
+        if (result.projDirty)
+            projDirty := true
     }
 
     if (projDirty)

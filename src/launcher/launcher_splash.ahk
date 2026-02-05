@@ -52,6 +52,9 @@ global g_SplashHDemux := 0
 global g_SplashExtractedDlls := []  ; Paths to extracted DLLs (for cleanup)
 global g_SplashExtractedWebP := ""  ; Path to extracted animation.webp (for cleanup)
 
+; Win32 resource type constant
+global RT_RCDATA := 10                  ; Raw data resource type
+
 ; Streaming mode globals (when SplashAnimBufferFrames > 0)
 global g_SplashStreaming := false       ; True if streaming mode active
 global g_SplashDecoder := 0             ; WebP decoder (kept alive for streaming)
@@ -1161,7 +1164,8 @@ _Splash_Fade(fromAlpha, toAlpha, durationMs) {
 
 ; Load a GDI+ bitmap from an embedded PE resource
 _Splash_LoadBitmapFromResource(resourceId) {
-    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", 10, "ptr")
+    global RT_RCDATA
+    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", RT_RCDATA, "ptr")
     if (!hRes)
         return 0
 
@@ -1203,10 +1207,11 @@ _Splash_LoadBitmapFromResource(resourceId) {
 
 ; Extract a resource to a temp file and return the path
 _Splash_ExtractResourceToTemp(resourceId, fileName, destDir := "") {
+    global RT_RCDATA
     if (destDir = "")
         destDir := A_Temp
 
-    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", 10, "ptr")
+    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", RT_RCDATA, "ptr")
     if (!hRes)
         return ""
 

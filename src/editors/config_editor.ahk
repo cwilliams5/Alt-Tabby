@@ -572,9 +572,10 @@ _CE_OnSave(*) {
         NumPut("uint", 0, cds, A_PtrSize)
         NumPut("ptr", 0, cds, 2 * A_PtrSize)
 
+        global WM_COPYDATA
         DllCall("user32\SendMessageTimeoutW"
             , "ptr", gCE_LauncherHwnd
-            , "uint", 0x4A
+            , "uint", WM_COPYDATA
             , "ptr", A_ScriptHwnd
             , "ptr", cds.Ptr
             , "uint", 0x0002

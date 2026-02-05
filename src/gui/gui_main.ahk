@@ -14,10 +14,11 @@ SendMode("Event")
 
 ; Parse command-line arguments
 for _, arg in A_Args {
+    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
     if (arg = "--test")
         A_IconHidden := true
-    else if (SubStr(arg, 1, 16) = "--launcher-hwnd=")
-        gGUI_LauncherHwnd := Integer(SubStr(arg, 17))
+    else if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
+        gGUI_LauncherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
 }
 
 ; Use an inert mask key so Alt taps don't focus menus
@@ -303,9 +304,10 @@ _GUI_RequestStoreRestart() {
         NumPut("uint", 0, cds, A_PtrSize)
         NumPut("ptr", 0, cds, 2 * A_PtrSize)
 
+        global WM_COPYDATA
         result := DllCall("user32\SendMessageTimeoutW"
             , "ptr", gGUI_LauncherHwnd
-            , "uint", 0x4A
+            , "uint", WM_COPYDATA
             , "ptr", A_ScriptHwnd
             , "ptr", cds.Ptr
             , "uint", 0x0002  ; SMTO_ABORTIFHUNG

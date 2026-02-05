@@ -175,10 +175,11 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; ============================================================
 ; Run config editor and exit when launched with --config
 if (g_AltTabbyMode = "config") {
+    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
     launcherHwnd := 0
     for _, arg in A_Args {
-        if (SubStr(arg, 1, 16) = "--launcher-hwnd=")
-            launcherHwnd := Integer(SubStr(arg, 17))
+        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
+            launcherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
     }
     ConfigEditor_Run(launcherHwnd)
     ExitApp()
@@ -238,8 +239,8 @@ if (g_AltTabbyMode = "wizard-continue") {
             ShowSplashScreen()
 
         SetupLauncherTray()
-        OnMessage(0x404, TrayIconClick)
-        OnMessage(0x4A, _Launcher_OnCopyData)  ; WM_COPYDATA from child processes
+        OnMessage(WM_TRAYICON, TrayIconClick)
+        OnMessage(WM_COPYDATA, _Launcher_OnCopyData)  ; WM_COPYDATA from child processes
 
         ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
         ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)

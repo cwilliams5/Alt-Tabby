@@ -1174,6 +1174,11 @@ _GUI_TryComUncloak(hwnd) {
         else
             return 0  ; Failed
     } catch as e {
+        ; Release pView if it was acquired before the exception
+        if (pView) {
+            releaseView := NumGet(viewVtable, 2 * A_PtrSize, "UPtr")
+            DllCall(releaseView, "Ptr", pView)
+        }
         _GUI_LogEvent("COM: Exception - " e.Message)
         return 0
     }

@@ -33,3 +33,11 @@ global IPC_COOLDOWN_PHASE2_TICKS := 16   ; Idle ticks before second step-up
 global IPC_COOLDOWN_PHASE3_TICKS := 20   ; Idle ticks before full idle
 global IPC_COOLDOWN_PHASE1_MS := 30      ; First step-up interval
 global IPC_COOLDOWN_PHASE2_MS := 50      ; Second step-up interval
+
+; Windows message constants
+global WM_COPYDATA := 0x4A              ; Standard WM_COPYDATA message
+global WM_TRAYICON := 0x404             ; Custom tray icon callback message
+
+; Command-line argument constants
+global ARG_LAUNCHER_HWND := "--launcher-hwnd="
+global ARG_LAUNCHER_HWND_LEN := 16      ; StrLen(ARG_LAUNCHER_HWND)
