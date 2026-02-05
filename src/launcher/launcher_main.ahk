@@ -371,16 +371,14 @@ _ShouldRedirectToScheduledTask() {
 
         ; IDs don't match or missing - prompt user to repair.
         ; This handles: different installs, legacy tasks without ID, etc.
-        ; NOTE: We intentionally prompt every time rather than using a cooldown.
-        ; A cooldown was confusing and non-deterministic. Users can dismiss if needed.
-        result := MsgBox(
-            "The Admin Mode scheduled task points to a different location:`n"
-            "Task: " taskPath "`n"
-            "Current: " A_ScriptFullPath "`n`n"
-            "Would you like to repair it? (requires elevation)",
-            APP_NAME " - Admin Mode Repair",
-            "YesNo Icon?"
-        )
+        ; Check if user previously said "Don't ask again"
+        if (cfg.SetupSuppressAdminRepairPrompt) {
+            _Launcher_Log("TASK_REDIRECT: skip (repair prompt suppressed by user)")
+            return false
+        }
+
+        ; Show custom dialog with "Don't ask again" option
+        result := _Launcher_ShowAdminRepairDialog(taskPath)
 
         if (result = "Yes") {
             ; Self-elevate to repair task
@@ -394,10 +392,11 @@ _ShouldRedirectToScheduledTask() {
             }
         }
 
-        ; User said No or UAC refused - disable admin mode and continue non-elevated
+        ; User said No or "Don't ask again" or UAC refused - disable admin mode and continue non-elevated
         cfg.SetupRunAsAdmin := false
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-        TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
+        if (result != "Yes")  ; Only show traytip if not attempting repair
+            TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
         return false
     }
 
@@ -409,6 +408,41 @@ _ShouldRedirectToScheduledTask() {
 
     _Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
     return true
+}
+
+; Custom dialog for admin task repair with "Don't ask again" option
+; Returns: "Yes" (repair), "No" (skip this time), or "Never" (don't ask again)
+_Launcher_ShowAdminRepairDialog(taskPath) {
+    global cfg, gConfigIniPath, APP_NAME
+
+    repairGui := Gui("+AlwaysOnTop +Owner", APP_NAME " - Admin Mode Repair")
+    repairGui.SetFont("s10", "Segoe UI")
+
+    repairGui.AddText("w400", "The Admin Mode scheduled task points to a different location:")
+    repairGui.AddText("w400 cGray", "Task: " taskPath)
+    repairGui.AddText("w400 cGray", "Current: " A_ScriptFullPath)
+    repairGui.AddText("w400 y+15", "Would you like to repair it? (requires elevation)")
+
+    result := ""  ; Will be set by button clicks
+
+    btnYes := repairGui.AddButton("w80 y+20 Default", "Yes")
+    btnNo := repairGui.AddButton("w80 x+10", "No")
+    btnNever := repairGui.AddButton("w120 x+10", "Don't ask again")
+
+    btnYes.OnEvent("Click", (*) => (result := "Yes", repairGui.Destroy()))
+    btnNo.OnEvent("Click", (*) => (result := "No", repairGui.Destroy()))
+    btnNever.OnEvent("Click", (*) => (
+        result := "Never",
+        cfg.SetupSuppressAdminRepairPrompt := true,
+        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "SuppressAdminRepairPrompt", true, false, "bool"),
+        repairGui.Destroy()
+    ))
+    repairGui.OnEvent("Close", (*) => (result := "No", repairGui.Destroy()))
+
+    repairGui.Show("Center")
+    WinWaitClose(repairGui)
+
+    return result
 }
 
 ; Try to acquire the launcher mutex

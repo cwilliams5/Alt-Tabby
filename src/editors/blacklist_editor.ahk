@@ -54,6 +54,11 @@ _BE_CreateGui() {
     global gBE_Gui, gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
 
     gBE_Gui := Gui("+Resize +MinSize500x400", "Alt-Tabby Blacklist Editor")
+    ; Set window icon to match Alt-Tabby branding
+    if (A_IsCompiled)
+        gBE_Gui.Opt("+Icon" A_ScriptFullPath)
+    else if (FileExist(A_ScriptDir "\..\resources\icon.ico"))
+        gBE_Gui.Opt("+Icon" A_ScriptDir "\..\resources\icon.ico")
     gBE_Gui.OnEvent("Close", _BE_OnClose)
     gBE_Gui.OnEvent("Size", _BE_OnSize)
     gBE_Gui.SetFont("s9", "Segoe UI")
@@ -255,7 +260,7 @@ _BE_OnSave(*) {
             msg .= " Store notified to reload."
         else
             msg .= " Store not running - changes will apply on next start."
-        MsgBox(msg, "Alt-Tabby Blacklist", "OK Icon!")
+        MsgBox(msg, "Alt-Tabby Blacklist", "OK Iconi")
     }
 }
 

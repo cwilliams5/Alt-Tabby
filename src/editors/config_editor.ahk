@@ -112,6 +112,11 @@ _CE_CreateGui() {
 
     ; Create GUI - WS_CLIPCHILDREN helps with redraw
     gCE_Gui := Gui("+Resize +MinSize700x500 +0x02000000", "Alt-Tabby Configuration")
+    ; Set window icon to match Alt-Tabby branding
+    if (A_IsCompiled)
+        gCE_Gui.Opt("+Icon" A_ScriptFullPath)
+    else if (FileExist(A_ScriptDir "\..\resources\icon.ico"))
+        gCE_Gui.Opt("+Icon" A_ScriptDir "\..\resources\icon.ico")
     gCE_Gui.OnEvent("Close", _CE_OnClose)
     gCE_Gui.OnEvent("Size", _CE_OnSize)
     gCE_Gui.SetFont("s9", "Segoe UI")
@@ -584,7 +589,7 @@ _CE_OnSave(*) {
             , "ptr")
     } else {
         MsgBox("Settings saved (" changeCount " changes). Restart Alt-Tabby to apply changes.",
-            "Alt-Tabby Configuration", "OK Icon!")
+            "Alt-Tabby Configuration", "OK Iconi")
     }
 }
 

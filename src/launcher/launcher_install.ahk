@@ -64,7 +64,12 @@ InstallToProgramFiles() {
 
         return installDir "\AltTabby.exe"
     } catch as e {
-        MsgBox("Failed to install to Program Files:`n" e.Message, APP_NAME, "IconX")
+        MsgBox("Could not install to Program Files.`n`n"
+            "This may happen if:`n"
+            "• Antivirus is blocking the operation`n"
+            "• Another program has the file open`n`n"
+            "Try closing other applications and retry, or check your antivirus settings.`n`n"
+            "Error: " e.Message, APP_NAME, "IconX")
         return ""
     }
 }

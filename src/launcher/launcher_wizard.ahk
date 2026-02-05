@@ -28,6 +28,11 @@ ShowFirstRunWizard() {
     global g_WizardGui, cfg
 
     g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
+    ; Set window icon to match Alt-Tabby branding
+    if (A_IsCompiled)
+        g_WizardGui.Opt("+Icon" A_ScriptFullPath)
+    else if (FileExist(A_ScriptDir "\..\resources\icon.ico"))
+        g_WizardGui.Opt("+Icon" A_ScriptDir "\..\resources\icon.ico")
     g_WizardGui.SetFont("s10", "Segoe UI")
 
     g_WizardGui.AddText("w400", "Let's set up a few things to get you started:")
@@ -36,7 +41,7 @@ ShowFirstRunWizard() {
     g_WizardGui.AddCheckbox("vStartMenu w400", "Add to Start Menu")
     g_WizardGui.AddCheckbox("vStartup w400 Checked", "Run at Startup (recommended)")
     g_WizardGui.AddCheckbox("vInstall w400", "Install to Program Files")
-    g_WizardGui.AddCheckbox("vAdmin w400", "Run as Administrator (for elevated windows)")
+    g_WizardGui.AddCheckbox("vAdmin w400", "Run as Administrator (switch to admin apps like Task Manager)")
     g_WizardGui.AddCheckbox("vAutoUpdate w400 Checked", "Check for updates automatically")
 
     g_WizardGui.AddText("w400 y+15 cGray", "Note: 'Install to Program Files' and 'Run as Administrator'")
@@ -61,6 +66,9 @@ WizardSkip(*) {
     _WizardMarkComplete()
 
     try g_WizardGui.Destroy()
+
+    ; Brief note about configuring later
+    TrayTip("Alt-Tabby", "Setup skipped. Configure later from tray menu.", "Icon!")
 }
 
 WizardApply(*) {
@@ -128,6 +136,9 @@ WizardApply(*) {
     ; Apply choices (without admin options if UAC was cancelled)
     _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate)
     try g_WizardGui.Destroy()
+
+    ; Show completion feedback (unless self-elevating, which exits before reaching here)
+    TrayTip("Alt-Tabby", "Setup complete! Alt-Tabby is now running.", "Icon!")
 }
 
 ; Called when --wizard-continue flag is passed (after elevation)

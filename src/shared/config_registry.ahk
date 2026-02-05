@@ -870,5 +870,8 @@ global gConfigRegistry := [
      d: "Set to true after first-run wizard completes."},
 
     {s: "Setup", k: "InstallationId", g: "SetupInstallationId", t: "string", default: "",
-     d: "Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification."}
+     d: "Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification."},
+
+    {s: "Setup", k: "SuppressAdminRepairPrompt", g: "SetupSuppressAdminRepairPrompt", t: "bool", default: false,
+     d: "Don't prompt to repair stale admin task. Set automatically when user clicks 'Don't ask again'."}
 ]
