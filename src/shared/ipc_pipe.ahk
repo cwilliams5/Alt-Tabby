@@ -552,7 +552,7 @@ _IPC_CloseHandle(h) {
 ; ============================== Timer policy ===============================
 
 _IPC_Server_AdjustTimer(server, activityBytes) {
-    global IPC_TICK_ACTIVE, IPC_TICK_SERVER_IDLE, IPC_TICK_IDLE
+    global IPC_TICK_ACTIVE, IPC_TICK_SERVER_IDLE, IPC_TICK_IDLE, IPC_SERVER_IDLE_STREAK_THRESHOLD
     ; Keep CPU low: slow tick when idle, speed up when active.
     if (activityBytes > 0) {
         server.idleStreak := 0
@@ -564,7 +564,7 @@ _IPC_Server_AdjustTimer(server, activityBytes) {
         return
     }
     server.idleStreak += 1
-    if (server.idleStreak >= 8)
+    if (server.idleStreak >= IPC_SERVER_IDLE_STREAK_THRESHOLD)
         _IPC_SetServerTick(server, IPC_TICK_IDLE)
 }
 

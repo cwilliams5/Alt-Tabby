@@ -645,8 +645,8 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
     gGUI_PendingPhase := "polling"
     Critical "Off"
 
-    ; Start async timer (15ms interval)
-    SetTimer(_GUI_AsyncActivationTick, 15)
+    ; Start async timer
+    SetTimer(_GUI_AsyncActivationTick, cfg.AltTabAsyncActivationPollMs)
     _GUI_LogEvent("SWITCH-ACTIVATE: Polling started")
 }
 

@@ -12,6 +12,7 @@
 global g_CachedAdminTaskActive := false
 global g_CachedStartMenuShortcut := false
 global g_CachedStartupShortcut := false
+global g_NeedsAdminReload := true  ; Flag for admin config reload (start true for initial load)
 
 TrayIconClick(wParam, lParam, msg, hwnd) {
     ; 0x205 = WM_RBUTTONUP (right-click release)
@@ -43,12 +44,14 @@ SetupLauncherTray() {
 }
 
 UpdateTrayMenu() {
-    global cfg, gConfigIniPath
+    global cfg, gConfigIniPath, g_NeedsAdminReload
 
-    ; Reload SetupRunAsAdmin from disk in case elevated instance changed it
-    if (FileExist(gConfigIniPath)) {
+    ; Reload SetupRunAsAdmin from disk only when admin toggle may have occurred
+    ; (avoids disk I/O on every right-click)
+    if (g_NeedsAdminReload && FileExist(gConfigIniPath)) {
         iniVal := IniRead(gConfigIniPath, "Setup", "RunAsAdmin", "false")
         cfg.SetupRunAsAdmin := (iniVal = "true" || iniVal = "1")
+        g_NeedsAdminReload := false
     }
 
     tray := A_TrayMenu
