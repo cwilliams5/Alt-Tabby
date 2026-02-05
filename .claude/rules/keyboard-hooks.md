@@ -86,7 +86,7 @@ Disables Tab hooks when fullscreen game or blacklisted process is focused.
 A previous attempt to improve keyboard responsiveness released `Critical "Off"` before GDI+ rendering (which takes ~16ms). This caused severe bugs:
 
 1. **Partial glass background** - IPC messages interrupted mid-render
-2. **Window mapping corruption** - gGUI_Items modified during render
+2. **Window mapping corruption** - gGUI_LiveItems modified during render
 3. **Stale projection data** - Snapshots accepted during async activation
 
 The ~16ms delay is acceptable. Users won't notice keyboard lag, but they WILL notice:
@@ -105,8 +105,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 ```
 
 **Only safe to release Critical before rendering when:**
-1. Rendering uses `gGUI_FrozenItems` (already populated inside Critical)
-2. Frozen items are independent of incoming IPC messages
+1. Rendering uses `gGUI_DisplayItems` (already populated inside Critical)
+2. Display items are independent of incoming IPC messages
 
 ## Async Activation Must Block Snapshots
 
@@ -119,7 +119,7 @@ if (gGUI_PendingPhase != "" && !isToggleResponse) {
 }
 ```
 
-Otherwise, workspace-filtered snapshots corrupt gGUI_Items during activation.
+Otherwise, workspace-filtered snapshots corrupt gGUI_LiveItems during activation.
 
 ## Defense Stack Summary
 

@@ -40,6 +40,9 @@ _PP_Log(msg) {
 ProcPump_Start() {
     global _PP_TimerOn, ProcTimerIntervalMs, ProcBatchPerTick, cfg
 
+    ; Fail fast if config not initialized (catches initialization order bugs)
+    _CL_AssertInitialized("ProcPump_Start")
+
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (ProcTimerIntervalMs = 0) {
         global _PP_IdleThreshold

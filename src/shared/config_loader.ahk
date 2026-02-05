@@ -19,6 +19,21 @@ global gConfigIniPath := ""
 global gConfigLoaded := false
 
 ; ============================================================
+; CONFIG INITIALIZATION SAFETY
+; ============================================================
+; Assert that ConfigLoader_Init() has been called before accessing cfg.
+; Use in module Start() functions to catch initialization order bugs early.
+
+_CL_AssertInitialized(caller := "") {
+    global gConfigLoaded
+    if (!gConfigLoaded) {
+        msg := "ConfigLoader_Init() must be called before "
+        msg .= caller ? caller : "accessing cfg"
+        throw Error(msg)
+    }
+}
+
+; ============================================================
 ; SINGLE GLOBAL CONFIG OBJECT
 ; ============================================================
 ; All config values are stored as properties on this object.

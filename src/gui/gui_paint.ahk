@@ -42,7 +42,7 @@ _Paint_LogStartSession() {
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {
-    global gGUI_BaseH, gGUI_OverlayH, gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
+    global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
     global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_BackHdc
@@ -58,11 +58,11 @@ GUI_Repaint() {
         iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
         resCount := gGdip_Res.Count
         _Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
-        _Paint_Log("  Context: items=" gGUI_Items.Length " frozen=" gGUI_FrozenItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
+        _Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
     }
 
-    ; Use frozen items when in ACTIVE state, live items otherwise
-    items := (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
+    ; Use display items when in ACTIVE state, live items otherwise
+    items := (gGUI_State = "ACTIVE") ? gGUI_DisplayItems : gGUI_LiveItems
 
     ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
     if (gGUI_State = "ACTIVE" && cfg.GUI_ScrollKeepHighlightOnTop && items.Length > 0) {

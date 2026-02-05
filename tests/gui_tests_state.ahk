@@ -14,11 +14,11 @@ A_IconHidden := true  ; No tray icon during tests
 
 RunGUITests_State() {
     global GUI_TestPassed, GUI_TestFailed, gMockIPCMessages, cfg
-    global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
+    global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName, gGUI_WSContextSwitch
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
-    global gGUI_StoreRev, gGUI_ItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
+    global gGUI_StoreRev, gGUI_LiveItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith
     global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_DELTA
     global IPC_MSG_PROJECTION, IPC_MSG_PROJECTION_REQUEST
@@ -81,20 +81,20 @@ RunGUITests_State() {
     ; ----- Test 2: Alt+Tab freezes list -----
     GUI_Log("Test: Alt+Tab freezes list")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
 
     GUI_AssertEq(gGUI_State, "ACTIVE", "Tab -> ACTIVE")
-    GUI_AssertEq(gGUI_FrozenItems.Length, 5, "Frozen items captured")
-    GUI_AssertEq(gGUI_AllItems.Length, 5, "All items captured")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 5, "Display items captured")
+    GUI_AssertEq(gGUI_ToggleBase.Length, 5, "All items captured")
     GUI_AssertEq(gGUI_Sel, 2, "Selection starts at 2 (previous window)")
 
     ; ----- Test 3: Selection wrapping -----
     GUI_Log("Test: Selection wrapping")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(3)
+    gGUI_LiveItems := CreateTestItems(3)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -112,7 +112,7 @@ RunGUITests_State() {
     ; ----- Test 4: Escape cancels -----
     GUI_Log("Test: Escape cancels")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -154,7 +154,7 @@ RunGUITests_State() {
     GUI_Log("Test: FreezeWindowList=true blocks deltas")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -164,7 +164,7 @@ RunGUITests_State() {
     deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(10) } })
     GUI_OnStoreMessage(deltaMsg)
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 5, "Frozen list unchanged (delta blocked)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 5, "Display list unchanged (delta blocked)")
 
     ; ----- Test 8: FreezeWindowList=false allows deltas -----
     GUI_Log("Test: FreezeWindowList=false allows deltas")
@@ -182,7 +182,7 @@ RunGUITests_State() {
     deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 10, payload: { upserts: CreateTestItems(8) } })
     GUI_OnStoreMessage(deltaMsg)
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 8, "Frozen list updated (live mode)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 8, "Display list updated (live mode)")
 
     cfg.FreezeWindowList := true  ; Restore default
 
@@ -190,45 +190,45 @@ RunGUITests_State() {
     GUI_Log("Test: Workspace filter (client-side)")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := false
+    cfg.ServerSideWorkspaceFilter := false
     gGUI_WorkspaceMode := "current"
-    gGUI_Items := CreateTestItems(10, 4)  ; 10 items, 4 on current WS
+    gGUI_LiveItems := CreateTestItems(10, 4)  ; 10 items, 4 on current WS
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
 
-    GUI_AssertEq(gGUI_AllItems.Length, 10, "All items preserved")
-    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Frozen filtered to current WS")
+    GUI_AssertEq(gGUI_ToggleBase.Length, 10, "All items preserved")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "Frozen filtered to current WS")
 
     ; ----- Test 10: Toggle workspace mode (client-side) -----
     GUI_Log("Test: Toggle workspace mode (client-side)")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := false
+    cfg.ServerSideWorkspaceFilter := false
     gGUI_WorkspaceMode := "all"
-    gGUI_Items := CreateTestItems(10, 4)
+    gGUI_LiveItems := CreateTestItems(10, 4)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
     gGUI_OverlayVisible := true
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 10, "Initially shows all")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 10, "Initially shows all")
 
     GUI_ToggleWorkspaceMode()
     GUI_AssertEq(gGUI_WorkspaceMode, "current", "Mode toggled to current")
-    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "After toggle: filtered to current WS")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "After toggle: filtered to current WS")
 
     GUI_ToggleWorkspaceMode()
     GUI_AssertEq(gGUI_WorkspaceMode, "all", "Mode toggled back to all")
-    GUI_AssertEq(gGUI_FrozenItems.Length, 10, "After toggle: shows all again")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 10, "After toggle: shows all again")
 
-    ; ----- Test 11: UseCurrentWSProjection sends request -----
-    GUI_Log("Test: UseCurrentWSProjection sends request")
+    ; ----- Test 11: ServerSideWorkspaceFilter sends request -----
+    GUI_Log("Test: ServerSideWorkspaceFilter sends request")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := true
+    cfg.ServerSideWorkspaceFilter := true
     gGUI_WorkspaceMode := "all"
-    gGUI_Items := CreateTestItems(10, 4)
+    gGUI_LiveItems := CreateTestItems(10, 4)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -255,15 +255,15 @@ RunGUITests_State() {
         }
     }
 
-    cfg.UseCurrentWSProjection := false  ; Restore default
+    cfg.ServerSideWorkspaceFilter := false  ; Restore default
 
     ; ----- Test 12: Toggle projection response accepted during ACTIVE -----
     GUI_Log("Test: Toggle projection response accepted during ACTIVE")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := true
+    cfg.ServerSideWorkspaceFilter := true
     gGUI_WorkspaceMode := "all"
-    gGUI_Items := CreateTestItems(10, 4)
+    gGUI_LiveItems := CreateTestItems(10, 4)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -276,23 +276,23 @@ RunGUITests_State() {
     SimulateServerResponse(filteredItems)
 
     GUI_AssertEq(gGUI_AwaitingToggleProjection, false, "Toggle flag cleared")
-    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Frozen items updated from projection")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "Display items updated from projection")
 
-    cfg.UseCurrentWSProjection := false  ; Restore default
+    cfg.ServerSideWorkspaceFilter := false  ; Restore default
 
     ; ----- Test 12b: Toggle from current->all shows ALL items (Bug 2 regression test) -----
     GUI_Log("Test: Toggle current->all shows all items (Bug 2 regression)")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := true
+    cfg.ServerSideWorkspaceFilter := true
     gGUI_WorkspaceMode := "current"  ; Start in current mode
-    gGUI_Items := CreateTestItems(4, 4)  ; Start with 4 current-WS items
+    gGUI_LiveItems := CreateTestItems(4, 4)  ; Start with 4 current-WS items
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
     gGUI_OverlayVisible := true
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Initially shows 4 current WS items")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "Initially shows 4 current WS items")
 
     ; Toggle to "all" mode
     GUI_ToggleWorkspaceMode()
@@ -304,16 +304,16 @@ RunGUITests_State() {
     SimulateServerResponse(allItems)
 
     ; CRITICAL: Verify ALL 10 items are now visible (Bug 2 fix verification)
-    GUI_AssertEq(gGUI_FrozenItems.Length, 10, "After toggle to all: shows ALL 10 items")
-    GUI_AssertEq(gGUI_AllItems.Length, 10, "gGUI_AllItems preserved ALL 10 items")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 10, "After toggle to all: shows ALL 10 items")
+    GUI_AssertEq(gGUI_ToggleBase.Length, 10, "gGUI_ToggleBase preserved ALL 10 items")
 
-    cfg.UseCurrentWSProjection := false  ; Restore default
+    cfg.ServerSideWorkspaceFilter := false  ; Restore default
 
     ; ----- Test 12c: Toggle all->current filters correctly (Bug 1 regression test) -----
     GUI_Log("Test: Toggle all->current filters correctly (Bug 1 regression)")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := false  ; Client-side filtering
+    cfg.ServerSideWorkspaceFilter := false  ; Client-side filtering
     gGUI_WorkspaceMode := "all"
     ; Create items where some have empty workspaceName (unmanaged windows)
     ; and some are explicitly NOT on current workspace
@@ -323,31 +323,31 @@ RunGUITests_State() {
     items.Push({ hwnd: 3000, title: "Win3", isOnCurrentWorkspace: false, workspaceName: "Other", lastActivatedTick: A_TickCount - 300 })
     items.Push({ hwnd: 4000, title: "Win4", isOnCurrentWorkspace: true, workspaceName: "", lastActivatedTick: A_TickCount - 400 })  ; Unmanaged
     items.Push({ hwnd: 5000, title: "Win5", isOnCurrentWorkspace: false, workspaceName: "Other", lastActivatedTick: A_TickCount - 500 })
-    gGUI_Items := items
+    gGUI_LiveItems := items
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
     gGUI_OverlayVisible := true
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 5, "Initially shows all 5 items")
-    GUI_AssertEq(gGUI_AllItems.Length, 5, "AllItems has 5 items")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 5, "Initially shows all 5 items")
+    GUI_AssertEq(gGUI_ToggleBase.Length, 5, "ToggleBase has 5 items")
 
     ; Toggle to "current" mode
     GUI_ToggleWorkspaceMode()
     GUI_AssertEq(gGUI_WorkspaceMode, "current", "Mode toggled to current")
 
     ; CRITICAL: Should show 3 items (2 on Main + 1 unmanaged)
-    GUI_AssertEq(gGUI_FrozenItems.Length, 3, "After toggle to current: 3 items (2 Main + 1 unmanaged)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 3, "After toggle to current: 3 items (2 Main + 1 unmanaged)")
 
     ; Toggle back to "all"
     GUI_ToggleWorkspaceMode()
-    GUI_AssertEq(gGUI_FrozenItems.Length, 5, "After toggle back to all: shows all 5 items")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 5, "After toggle back to all: shows all 5 items")
 
     ; ----- Test 13: Normal projection blocked during ACTIVE+frozen -----
     GUI_Log("Test: Normal projection blocked during ACTIVE+frozen")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -359,13 +359,13 @@ RunGUITests_State() {
     projMsg := JSON.Dump({ type: IPC_MSG_PROJECTION, rev: 30, payload: { items: CreateTestItems(20) } })
     GUI_OnStoreMessage(projMsg)
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 5, "Frozen items unchanged (projection blocked)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 5, "Display items unchanged (projection blocked)")
     GUI_AssertEq(gGUI_StoreRev, 30, "Rev still updated for tracking")
 
     ; ----- Test 14: Config combination matrix -----
     GUI_Log("Test: Config combination matrix (8 combinations)")
 
-    ; Test all 8 combinations of FreezeWindowList, UseCurrentWSProjection, AltTabPrewarmOnAlt
+    ; Test all 8 combinations of FreezeWindowList, ServerSideWorkspaceFilter, AltTabPrewarmOnAlt
     configCombos := [
         { freeze: true,  wsProj: false, prewarm: true,  desc: "F=T,WS=F,PW=T (default)" },
         { freeze: true,  wsProj: false, prewarm: false, desc: "F=T,WS=F,PW=F" },
@@ -380,7 +380,7 @@ RunGUITests_State() {
     for _, combo in configCombos {
         ResetGUIState()
         cfg.FreezeWindowList := combo.freeze
-        cfg.UseCurrentWSProjection := combo.wsProj
+        cfg.ServerSideWorkspaceFilter := combo.wsProj
         cfg.AltTabPrewarmOnAlt := combo.prewarm
         ; Simulate realistic flow: items arrive via snapshot before Alt+Tab
         snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(8, 3) } })
@@ -403,8 +403,8 @@ RunGUITests_State() {
         gGUI_OverlayVisible := true
 
         GUI_AssertEq(gGUI_State, "ACTIVE", combo.desc ": State is ACTIVE")
-        GUI_AssertEq(gGUI_AllItems.Length, 8, combo.desc ": AllItems has 8")
-        GUI_AssertEq(gGUI_FrozenItems.Length, 8, combo.desc ": FrozenItems has 8 (mode=all)")
+        GUI_AssertEq(gGUI_ToggleBase.Length, 8, combo.desc ": ToggleBase has 8")
+        GUI_AssertEq(gGUI_DisplayItems.Length, 8, combo.desc ": DisplayItems has 8 (mode=all)")
 
         ; Send delta during ACTIVE state
         deltaItems := CreateTestItems(12, 5)  ; Now 12 items
@@ -413,10 +413,10 @@ RunGUITests_State() {
 
         if (combo.freeze) {
             ; Delta should be blocked
-            GUI_AssertEq(gGUI_FrozenItems.Length, 8, combo.desc ": Delta blocked (frozen)")
+            GUI_AssertEq(gGUI_DisplayItems.Length, 8, combo.desc ": Delta blocked (frozen)")
         } else {
             ; Delta should be applied
-            GUI_AssertEq(gGUI_FrozenItems.Length, 12, combo.desc ": Delta applied (live)")
+            GUI_AssertEq(gGUI_DisplayItems.Length, 12, combo.desc ": Delta applied (live)")
         }
 
         ; Toggle workspace mode
@@ -429,13 +429,13 @@ RunGUITests_State() {
         } else {
             ; Should filter locally
             expectedCount := combo.freeze ? 3 : 5  ; 3 from original, 5 from delta
-            GUI_AssertEq(gGUI_FrozenItems.Length, expectedCount, combo.desc ": WS toggle filters locally")
+            GUI_AssertEq(gGUI_DisplayItems.Length, expectedCount, combo.desc ": WS toggle filters locally")
         }
     }
 
     ; Restore defaults
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := false
+    cfg.ServerSideWorkspaceFilter := false
     cfg.AltTabPrewarmOnAlt := true
 
     ; ============================================================
@@ -447,8 +447,8 @@ RunGUITests_State() {
     GUI_Log("Test: Bug1 - _GUI_GetDisplayItems returns correct array during ACTIVE")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := false
-    gGUI_Items := CreateTestItems(10, 4)
+    cfg.ServerSideWorkspaceFilter := false
+    gGUI_LiveItems := CreateTestItems(10, 4)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -456,19 +456,19 @@ RunGUITests_State() {
 
     GUI_ToggleWorkspaceMode()  ; Toggle to "current", should have 4 items
 
-    ; CRITICAL: _GUI_GetDisplayItems() must return gGUI_FrozenItems during ACTIVE
+    ; CRITICAL: _GUI_GetDisplayItems() must return gGUI_DisplayItems during ACTIVE
     displayItems := _GUI_GetDisplayItems()
     GUI_AssertEq(displayItems.Length, 4, "Bug1: _GUI_GetDisplayItems returns filtered 4 items")
-    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Bug1: gGUI_FrozenItems has 4 items")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "Bug1: gGUI_DisplayItems has 4 items")
     ; They should be the SAME array reference
-    GUI_AssertTrue(displayItems == gGUI_FrozenItems, "Bug1: DisplayItems IS FrozenItems during ACTIVE")
+    GUI_AssertTrue(displayItems == gGUI_DisplayItems, "Bug1: _GUI_GetDisplayItems returns gGUI_DisplayItems during ACTIVE")
 
-    ; ----- Bug 2: Double-filtering with UseCurrentWSProjection=true -----
+    ; ----- Bug 2: Double-filtering with ServerSideWorkspaceFilter=true -----
     GUI_Log("Test: Bug2 - No double-filtering with server-side projection")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := true
-    gGUI_Items := CreateTestItems(10, 4)
+    cfg.ServerSideWorkspaceFilter := true
+    gGUI_LiveItems := CreateTestItems(10, 4)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -484,19 +484,19 @@ RunGUITests_State() {
     SimulateServerResponse(serverFiltered)
 
     ; BUG FIX VERIFICATION: Should have 4 items, NOT 0
-    GUI_AssertEq(gGUI_FrozenItems.Length, 4, "Bug2: Server-filtered items NOT double-filtered (have 4)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "Bug2: Server-filtered items NOT double-filtered (have 4)")
     GUI_AssertEq(_GUI_GetDisplayItems().Length, 4, "Bug2: _GUI_GetDisplayItems shows all 4")
 
-    cfg.UseCurrentWSProjection := false  ; Restore
+    cfg.ServerSideWorkspaceFilter := false  ; Restore
 
     ; ----- Bug 3: Cross-session toggle persistence -----
     GUI_Log("Test: Bug3 - Cross-session toggle to all shows all windows")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := false
+    cfg.ServerSideWorkspaceFilter := false
 
     ; Session 1: Start with "all", toggle to "current"
-    gGUI_Items := CreateTestItems(10, 4)
+    gGUI_LiveItems := CreateTestItems(10, 4)
     gGUI_WorkspaceMode := "all"
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -507,7 +507,7 @@ RunGUITests_State() {
     GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
 
     ; Session 2: New data arrives
-    gGUI_Items := CreateTestItems(12, 5)  ; 12 total, 5 current
+    gGUI_LiveItems := CreateTestItems(12, 5)  ; 12 total, 5 current
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
     gGUI_OverlayVisible := true
@@ -527,7 +527,7 @@ RunGUITests_State() {
     GUI_Log("Test: Selection survives delta that removes items")
     ResetGUIState()
     cfg.FreezeWindowList := false  ; Live mode
-    gGUI_Items := CreateTestItems(10, 5)
+    gGUI_LiveItems := CreateTestItems(10, 5)
     gGUI_Sel := 8  ; Select item 8
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -552,7 +552,7 @@ RunGUITests_State() {
     ; ----- Test: Grace timer aborts when Alt_Up fires before timer -----
     GUI_Log("Test: Grace timer aborts when state is IDLE")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -571,7 +571,7 @@ RunGUITests_State() {
     ; ----- Test: Grace timer race - ShowOverlay aborts cleanly when state changed to IDLE -----
     GUI_Log("Test: Grace timer race - ShowOverlay aborts with force-hide")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -590,7 +590,7 @@ RunGUITests_State() {
     ; ----- Test: Event buffer overflow triggers recovery -----
     GUI_Log("Test: Event buffer overflow recovery")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
     gGUI_PendingPhase := "polling"  ; Simulate async activation in progress
     gGUI_State := "ACTIVE"
 
@@ -609,28 +609,28 @@ RunGUITests_State() {
     ; ----- Test: First Tab selection with 1-item list -----
     GUI_Log("Test: Selection clamps to 1 when list has only 1 item")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(1)  ; Only 1 window
+    gGUI_LiveItems := CreateTestItems(1)  ; Only 1 window
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 1, "Frozen has 1 item")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 1, "Frozen has 1 item")
     GUI_AssertEq(gGUI_Sel, 1, "Selection is 1 (clamped from default 2)")
 
     ; ----- Test: First Tab with empty list -----
     GUI_Log("Test: Selection handles empty list gracefully")
     ResetGUIState()
-    gGUI_Items := []  ; Empty list
+    gGUI_LiveItems := []  ; Empty list
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
 
-    GUI_AssertEq(gGUI_FrozenItems.Length, 0, "Frozen is empty")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 0, "Frozen is empty")
 
     ; ----- Test: Lost Tab detection synthesizes TAB_STEP -----
     GUI_Log("Test: Lost Tab detection synthesizes TAB_STEP")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
     gGUI_PendingPhase := "flushing"
     gGUI_FlushStartTick := A_TickCount - 50  ; Past the GUI_EVENT_FLUSH_WAIT_MS threshold
 
@@ -652,10 +652,10 @@ RunGUITests_State() {
     ; ALT_PENDING DATA FLOW TESTS
     ; ============================================================
 
-    ; ----- Test: Snapshot during ALT_PENDING updates gGUI_Items -----
-    GUI_Log("Test: Snapshot during ALT_PENDING updates gGUI_Items")
+    ; ----- Test: Snapshot during ALT_PENDING updates gGUI_LiveItems -----
+    GUI_Log("Test: Snapshot during ALT_PENDING updates gGUI_LiveItems")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(3)
+    gGUI_LiveItems := CreateTestItems(3)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_AssertEq(gGUI_State, "ALT_PENDING", "ALT_PENDING data: state is ALT_PENDING")
@@ -664,17 +664,17 @@ RunGUITests_State() {
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 150, payload: { items: CreateTestItems(8) } })
     GUI_OnStoreMessage(snapshotMsg)
 
-    GUI_AssertEq(gGUI_Items.Length, 8, "ALT_PENDING data: snapshot accepted (8 items)")
+    GUI_AssertEq(gGUI_LiveItems.Length, 8, "ALT_PENDING data: snapshot accepted (8 items)")
     GUI_AssertEq(gGUI_State, "ALT_PENDING", "ALT_PENDING data: state unchanged after snapshot")
 
-    ; ----- Test: Delta during ALT_PENDING updates gGUI_Items -----
-    GUI_Log("Test: Delta during ALT_PENDING updates gGUI_Items")
+    ; ----- Test: Delta during ALT_PENDING updates gGUI_LiveItems -----
+    GUI_Log("Test: Delta during ALT_PENDING updates gGUI_LiveItems")
     ResetGUIState()
     cfg.FreezeWindowList := false  ; Live mode for delta processing
     ; Load initial 5 items via snapshot
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
     GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertEq(gGUI_Items.Length, 5, "ALT_PENDING delta: initial 5 items")
+    GUI_AssertEq(gGUI_LiveItems.Length, 5, "ALT_PENDING delta: initial 5 items")
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_AssertEq(gGUI_State, "ALT_PENDING", "ALT_PENDING delta: state is ALT_PENDING")
@@ -684,15 +684,15 @@ RunGUITests_State() {
     deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [2000, 4000], upserts: [newRec] } })
     GUI_OnStoreMessage(deltaMsg)
 
-    GUI_AssertEq(gGUI_Items.Length, 4, "ALT_PENDING delta: 5 - 2 + 1 = 4 items")
-    GUI_AssertEq(gGUI_ItemsMap.Has(8888), true, "ALT_PENDING delta: new hwnd 8888 in map")
-    GUI_AssertEq(gGUI_ItemsMap.Has(2000), false, "ALT_PENDING delta: hwnd 2000 removed")
+    GUI_AssertEq(gGUI_LiveItems.Length, 4, "ALT_PENDING delta: 5 - 2 + 1 = 4 items")
+    GUI_AssertEq(gGUI_LiveItemsMap.Has(8888), true, "ALT_PENDING delta: new hwnd 8888 in map")
+    GUI_AssertEq(gGUI_LiveItemsMap.Has(2000), false, "ALT_PENDING delta: hwnd 2000 removed")
     cfg.FreezeWindowList := true  ; Restore
 
     ; ----- Test: Prewarm snapshot data used when Tab pressed -----
     GUI_Log("Test: Prewarm snapshot data used when Tab pressed")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(3)
+    gGUI_LiveItems := CreateTestItems(3)
 
     ; Alt down -> prewarm snapshot arrives -> Tab pressed
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -700,11 +700,11 @@ RunGUITests_State() {
     ; Send snapshot with 10 items (simulating prewarm response)
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 160, payload: { items: CreateTestItems(10) } })
     GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertEq(gGUI_Items.Length, 10, "Prewarm: items updated to 10 during ALT_PENDING")
+    GUI_AssertEq(gGUI_LiveItems.Length, 10, "Prewarm: items updated to 10 during ALT_PENDING")
 
     ; Now press Tab - should freeze the 10 prewarm items, not the stale 3
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
-    GUI_AssertEq(gGUI_FrozenItems.Length, 10, "Prewarm: frozen items = 10 (prewarm data, not stale 3)")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 10, "Prewarm: display items = 10 (prewarm data, not stale 3)")
     GUI_AssertEq(gGUI_State, "ACTIVE", "Prewarm: state is ACTIVE after Tab")
 
     ; ============================================================
@@ -714,46 +714,46 @@ RunGUITests_State() {
     ; ----- Test: Snapshot skipped during async activation -----
     GUI_Log("Test: Snapshot skipped during async activation")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
     gGUI_PendingPhase := "polling"  ; Simulate async activation in progress
 
     ; Send snapshot - should be skipped (items unchanged)
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 100, payload: { items: CreateTestItems(10) } })
     GUI_OnStoreMessage(snapshotMsg)
 
-    GUI_AssertEq(gGUI_Items.Length, 5, "Snapshot skipped: items unchanged during async")
+    GUI_AssertEq(gGUI_LiveItems.Length, 5, "Snapshot skipped: items unchanged during async")
     GUI_AssertEq(gGUI_StoreRev, 100, "Snapshot skipped: rev still updated")
     gGUI_PendingPhase := ""  ; Cleanup
 
     ; ----- Test: Snapshot skipped when local MRU is fresh -----
     GUI_Log("Test: Snapshot skipped when local MRU is fresh")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
     gGUI_LastLocalMRUTick := A_TickCount  ; Just updated MRU
 
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 101, payload: { items: CreateTestItems(10) } })
     GUI_OnStoreMessage(snapshotMsg)
 
-    GUI_AssertEq(gGUI_Items.Length, 5, "Snapshot skipped: items unchanged when MRU fresh")
+    GUI_AssertEq(gGUI_LiveItems.Length, 5, "Snapshot skipped: items unchanged when MRU fresh")
     GUI_AssertEq(gGUI_StoreRev, 101, "Snapshot skipped: rev still updated when MRU fresh")
 
     ; ----- Test: Snapshot accepted when local MRU is stale -----
     GUI_Log("Test: Snapshot accepted when local MRU is stale")
     ResetGUIState()
-    gGUI_Items := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItems(5)
     gGUI_LastLocalMRUTick := A_TickCount - 1000  ; MRU updated 1s ago
 
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 102, payload: { items: CreateTestItems(10) } })
     GUI_OnStoreMessage(snapshotMsg)
 
-    GUI_AssertEq(gGUI_Items.Length, 10, "Snapshot accepted: items updated when MRU stale")
+    GUI_AssertEq(gGUI_LiveItems.Length, 10, "Snapshot accepted: items updated when MRU stale")
 
     ; ----- Test: Toggle response bypasses BOTH guards -----
     GUI_Log("Test: Toggle response bypasses both guards")
     ResetGUIState()
     cfg.FreezeWindowList := true
-    cfg.UseCurrentWSProjection := true
-    gGUI_Items := CreateTestItems(5)
+    cfg.ServerSideWorkspaceFilter := true
+    gGUI_LiveItems := CreateTestItems(5)
 
     ; Set up ACTIVE state with pending toggle
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
@@ -774,10 +774,10 @@ RunGUITests_State() {
     GUI_OnStoreMessage(projMsg)
 
     GUI_AssertEq(gGUI_AwaitingToggleProjection, false, "Toggle guard: flag cleared")
-    GUI_AssertEq(gGUI_FrozenItems.Length, 3, "Toggle guard: items updated despite both guards")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 3, "Toggle guard: items updated despite both guards")
     gGUI_PendingPhase := ""  ; Cleanup
 
-    cfg.UseCurrentWSProjection := false  ; Restore
+    cfg.ServerSideWorkspaceFilter := false  ; Restore
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI State Tests Summary ===")

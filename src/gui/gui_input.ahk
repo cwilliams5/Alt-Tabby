@@ -7,11 +7,11 @@
 
 ; Returns the correct items array based on GUI state
 ; Paint and input must use the same array for consistent behavior
-; During ACTIVE state with workspace filtering, use gGUI_FrozenItems
-; Otherwise use gGUI_Items (live data from store)
+; During ACTIVE state with workspace filtering, use gGUI_DisplayItems
+; Otherwise use gGUI_LiveItems (live data from store)
 _GUI_GetDisplayItems() {
-    global gGUI_State, gGUI_Items, gGUI_FrozenItems
-    return (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
+    global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems
+    return (gGUI_State = "ACTIVE") ? gGUI_DisplayItems : gGUI_LiveItems
 }
 
 ; ========================= SELECTION MOVEMENT =========================
@@ -271,21 +271,21 @@ GUI_PerformAction(action, idx1 := 0) {
 }
 
 GUI_RemoveItemAt(idx1) {
-    global gGUI_Items, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
+    global gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
 
     Critical "On"
-    if (idx1 < 1 || idx1 > gGUI_Items.Length) {
+    if (idx1 < 1 || idx1 > gGUI_LiveItems.Length) {
         Critical "Off"
         return
     }
-    gGUI_Items.RemoveAt(idx1)
+    gGUI_LiveItems.RemoveAt(idx1)
 
-    if (gGUI_Items.Length = 0) {
+    if (gGUI_LiveItems.Length = 0) {
         gGUI_Sel := 1
         gGUI_ScrollTop := 0
     } else {
-        if (gGUI_Sel > gGUI_Items.Length) {
-            gGUI_Sel := gGUI_Items.Length
+        if (gGUI_Sel > gGUI_LiveItems.Length) {
+            gGUI_Sel := gGUI_LiveItems.Length
         }
     }
     Critical "Off"
@@ -297,8 +297,8 @@ GUI_RemoveItemAt(idx1) {
 ; ========================= MOUSE HANDLERS =========================
 
 GUI_OnClick(x, y) {
-    global gGUI_Items, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
-    global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State, gGUI_FrozenItems
+    global gGUI_LiveItems, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
+    global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State, gGUI_DisplayItems
 
     Critical "On"
 
@@ -379,7 +379,7 @@ GUI_OnClick(x, y) {
         ; Set state BEFORE releasing Critical to prevent interruption clobbering
         item := items[clickedIdx]
         gGUI_State := "IDLE"
-        gGUI_FrozenItems := []
+        gGUI_DisplayItems := []
         Critical "Off"
         GUI_HideOverlay()
         GUI_ActivateItem(item)
@@ -398,7 +398,7 @@ GUI_OnClick(x, y) {
 }
 
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
-    global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_Items, gGUI_Sel
+    global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
     global gGUI_MouseTracking
 
     if (hwnd != gGUI_OverlayH) {

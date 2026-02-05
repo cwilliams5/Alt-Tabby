@@ -72,7 +72,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 ; ========================= WORKSPACE TOGGLE =========================
 
 GUI_ToggleWorkspaceMode() {
-    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_FrozenItems, gGUI_AllItems, gGUI_Items, gGUI_Sel, gGUI_ScrollTop
+    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase, gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop
     global cfg, gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT
 
     ; RACE FIX: Protect counter increment - callers may not have Critical
@@ -87,7 +87,7 @@ GUI_ToggleWorkspaceMode() {
     ; If GUI is visible and active, refresh the list
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
         ; Check if we should request from store or filter locally
-        useServerFilter := cfg.UseCurrentWSProjection
+        useServerFilter := cfg.ServerSideWorkspaceFilter
 
         if (useServerFilter) {
             ; Request new projection from store with workspace filter
@@ -98,19 +98,19 @@ GUI_ToggleWorkspaceMode() {
         } else {
             ; Filter locally from cached items
             ; Critical required: GUI_OnClick releases Critical before calling us,
-            ; so an IPC timer could modify gGUI_Items/gGUI_AllItems mid-filter.
+            ; so an IPC timer could modify gGUI_LiveItems/gGUI_ToggleBase mid-filter.
             Critical "On"
             isFrozen := cfg.FreezeWindowList
-            sourceItems := isFrozen ? gGUI_AllItems : gGUI_Items
-            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(sourceItems)
+            sourceItems := isFrozen ? gGUI_ToggleBase : gGUI_LiveItems
+            gGUI_DisplayItems := GUI_FilterByWorkspaceMode(sourceItems)
             Critical "Off"
-            ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
+            ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
 
             ; Reset selection
             _GUI_ResetSelectionToMRU()
 
             ; Resize GUI if item count changed significantly
-            rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+            rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
             GUI_ResizeToRows(rowsDesired)
             GUI_Repaint()
         }

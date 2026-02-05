@@ -17,10 +17,10 @@ A_IconHidden := true  ; No tray icon during tests
 
 ; GUI state globals
 global gGUI_State := "IDLE"
-global gGUI_Items := []
-global gGUI_ItemsMap := Map()  ; hwnd -> item lookup for O(1) delta processing
-global gGUI_FrozenItems := []
-global gGUI_AllItems := []
+global gGUI_LiveItems := []
+global gGUI_LiveItemsMap := Map()  ; hwnd -> item lookup for O(1) delta processing
+global gGUI_DisplayItems := []
+global gGUI_ToggleBase := []
 global gGUI_AwaitingToggleProjection := false
 global gGUI_WSContextSwitch := false
 global gGUI_Sel := 1
@@ -86,7 +86,7 @@ global gMock_BypassResult := false  ; Controls INT_ShouldBypassWindow mock retur
 ; Config object mock (production code uses cfg.PropertyName)
 global cfg := {
     FreezeWindowList: true,
-    UseCurrentWSProjection: false,
+    ServerSideWorkspaceFilter: false,
     AltTabPrewarmOnAlt: true,
     AltTabGraceMs: 150,
     AltTabQuickSwitchMs: 100,
@@ -221,20 +221,20 @@ global gGUI_Overlay := _MockGui()
 ; ============================================================
 
 ResetGUIState() {
-    global gGUI_State, gGUI_Items, gGUI_FrozenItems, gGUI_AllItems
+    global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_FirstTabTick, gGUI_WorkspaceMode
     global gGUI_AwaitingToggleProjection, gGUI_WSContextSwitch, gMockIPCMessages, gGUI_CurrentWSName
-    global gGUI_FooterText, gGUI_Revealed, gGUI_ItemsMap, gGUI_LastLocalMRUTick
+    global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
 
     gGUI_State := "IDLE"
-    gGUI_Items := []
-    gGUI_ItemsMap := Map()
-    gGUI_FrozenItems := []
-    gGUI_AllItems := []
+    gGUI_LiveItems := []
+    gGUI_LiveItemsMap := Map()
+    gGUI_DisplayItems := []
+    gGUI_ToggleBase := []
     gGUI_Sel := 1
     gGUI_ScrollTop := 0
     gGUI_OverlayVisible := false
@@ -281,7 +281,7 @@ CreateTestItems(count, currentWSCount := -1) {
     return items
 }
 
-; Simulate a server projection response (for UseCurrentWSProjection=true tests)
+; Simulate a server projection response (for ServerSideWorkspaceFilter=true tests)
 SimulateServerResponse(items) {
     global gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION
     projMsg := JSON.Dump({ type: IPC_MSG_PROJECTION, rev: A_TickCount, payload: { items: items }})

@@ -50,6 +50,7 @@ global _IP_LogPath := ""
 ; State
 global _IP_TimerOn := false
 global _IP_Attempts := Map()            ; hwnd -> attempt count
+global _IP_AttemptsMax := 500           ; Max entries before size-based eviction
 global _IP_IdleTicks := 0               ; Counter for consecutive empty ticks
 global _IP_IdleThreshold := 5           ; Default, overridden from config in IconPump_Init()
 
@@ -65,6 +66,9 @@ IconPump_Start() {
     global IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global _IP_DiagEnabled, _IP_LogPath
     global IP_RESOLVE_TIMEOUT_MS
+
+    ; Fail fast if config not initialized (catches initialization order bugs)
+    _CL_AssertInitialized("IconPump_Start")
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (IconTimerIntervalMs = 0) {
@@ -177,7 +181,7 @@ IconPump_CleanupWindow(hwnd) {
 ; Main pump tick
 ; Uses Critical sections around per-window processing to prevent TOCTOU races
 _IP_Tick() {
-    global IconBatchPerTick, _IP_Attempts, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
+    global IconBatchPerTick, _IP_Attempts, _IP_AttemptsMax, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global IP_LOG_TITLE_MAX_LEN
     global IP_MODE_NO_ICON, IP_MODE_UPGRADE, IP_MODE_REFRESH
@@ -188,6 +192,19 @@ _IP_Tick() {
     pruneCounter += 1
     if (Mod(pruneCounter, 100) = 0) {  ; Every 100 ticks (~5s at 50ms interval)
         _IP_PruneAttempts()
+    }
+
+    ; PERF: Size-based eviction to enforce absolute limit on _IP_Attempts
+    ; Other caches (exe icons, brushes, UWP logo) have FIFO eviction - this one should too
+    if (_IP_Attempts.Count > _IP_AttemptsMax) {
+        toEvict := _IP_Attempts.Count - _IP_AttemptsMax + 50  ; Evict extra 50 to reduce frequency
+        evicted := 0
+        for hwnd, _ in _IP_Attempts {
+            _IP_Attempts.Delete(hwnd)
+            if (++evicted >= toEvict)
+                break
+        }
+        _IP_Log("SIZE EVICT: removed " evicted " entries (was " (_IP_Attempts.Count + evicted) ", now " _IP_Attempts.Count ")")
     }
 
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)

@@ -3,15 +3,15 @@
 ; Handles communication with WindowStore: messages, deltas, snapshots
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
-; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_Items)
-global gGUI_ItemsMap := Map()
+; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
+global gGUI_LiveItemsMap := Map()
 
 ; ========================= STORE MESSAGE HANDLER =========================
 
 GUI_OnStoreMessage(line, _hPipe := 0) {
-    global gGUI_StoreConnected, gGUI_StoreRev, gGUI_Items, gGUI_Sel, gGUI_ItemsMap
+    global gGUI_StoreConnected, gGUI_StoreRev, gGUI_LiveItems, gGUI_Sel, gGUI_LiveItemsMap
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText
-    global gGUI_State, gGUI_FrozenItems, gGUI_AllItems  ; CRITICAL: All list state for updates
+    global gGUI_State, gGUI_DisplayItems, gGUI_ToggleBase  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
     global gGUI_LastLocalMRUTick  ; For skipping stale in-flight snapshots
     global gGUI_LastMsgTick  ; For health check timeout detection
@@ -45,7 +45,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
     if (type = IPC_MSG_SNAPSHOT || type = IPC_MSG_PROJECTION) {
         ; When in ACTIVE state, list behavior depends on FreezeWindowList config
-        ; EXCEPTION: If awaiting a toggle-triggered projection (UseCurrentWSProjection mode), accept it
+        ; EXCEPTION: If awaiting a toggle-triggered projection (ServerSideWorkspaceFilter mode), accept it
         global gGUI_AwaitingToggleProjection, cfg, gGUI_PendingPhase
         isFrozen := cfg.FreezeWindowList
         isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection  ; lint-ignore: isset-with-default
@@ -76,7 +76,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ;   1. State is IDLE but we're still processing a switch
         ;   2. Events are being buffered for replay after activation
         ;   3. Incoming snapshots may contain filtered data (current WS only)
-        ; If we accept the snapshot, gGUI_Items gets corrupted with partial
+        ; If we accept the snapshot, gGUI_LiveItems gets corrupted with partial
         ; data, causing "only 1 window shown" on next Alt+Tab.
         ; Toggle responses are exempt (user explicitly requested refresh).
         ; ============================================================
@@ -110,27 +110,27 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
         if (obj.Has("payload") && obj["payload"].Has("items")) {
             ; Critical already held from above (phase check guard)
-            gGUI_Items := GUI_ConvertStoreItems(obj["payload"]["items"])
-            gGUI_ItemsMap := GUI_RebuildItemsMap(gGUI_Items)
+            gGUI_LiveItems := GUI_ConvertStoreItems(obj["payload"]["items"])
+            gGUI_LiveItemsMap := GUI_RebuildItemsMap(gGUI_LiveItems)
             ; Note: Icon cache pruning moved outside Critical section (see below)
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
             if (gGUI_State = "ACTIVE" && (!isFrozen || isToggleResponse)) {
-                gGUI_AllItems := gGUI_Items
+                gGUI_ToggleBase := gGUI_LiveItems
 
-                ; For server-side filtered toggle responses (UseCurrentWSProjection=true),
+                ; For server-side filtered toggle responses (ServerSideWorkspaceFilter=true),
                 ; the server already applied the currentWorkspaceOnly filter - don't re-filter
-                if (isToggleResponse && cfg.UseCurrentWSProjection) {
+                if (isToggleResponse && cfg.ServerSideWorkspaceFilter) {
                     ; Server already filtered - copy items directly
-                    gGUI_FrozenItems := []
-                    for _, item in gGUI_AllItems {
-                        gGUI_FrozenItems.Push(item)
+                    gGUI_DisplayItems := []
+                    for _, item in gGUI_ToggleBase {
+                        gGUI_DisplayItems.Push(item)
                     }
                 } else {
                     ; Client-side filter (local filtering mode)
-                    gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+                    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
                 }
-                ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
+                ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
 
                 ; Reset selection for toggle response
                 if (isToggleResponse) {
@@ -139,7 +139,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             }
 
             ; Clamp selection based on state - use filtered list when ACTIVE
-            displayItems := (gGUI_State = "ACTIVE") ? gGUI_FrozenItems : gGUI_Items
+            displayItems := (gGUI_State = "ACTIVE") ? gGUI_DisplayItems : gGUI_LiveItems
             if (gGUI_Sel > displayItems.Length && displayItems.Length > 0) {
                 gGUI_Sel := displayItems.Length
             }
@@ -148,23 +148,23 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             }
 
             ; NOTE: Critical "Off" here is SAFE (unlike gui_state.ahk) because:
-            ;   1. gGUI_FrozenItems is already populated inside this Critical section
-            ;   2. GUI_Repaint uses frozen items when ACTIVE, which won't be modified
+            ;   1. gGUI_DisplayItems is already populated inside this Critical section
+            ;   2. GUI_Repaint uses display items when ACTIVE, which won't be modified
             ;   3. If not ACTIVE, overlay isn't visible so repaint won't trigger
             ; Compare with gui_state.ahk where Critical was released BEFORE
-            ; gGUI_FrozenItems was populated, causing race conditions.
+            ; gGUI_DisplayItems was populated, causing race conditions.
             Critical "Off"
 
             ; LATENCY FIX: Prune icon cache OUTSIDE Critical section.
             ; Gdip_PruneIconCache iterates the cache and calls GdipDisposeImage DllCalls
-            ; which can take 2-5ms. gGUI_ItemsMap is stable after assignment above.
-            Gdip_PruneIconCache(gGUI_ItemsMap)
+            ; which can take 2-5ms. gGUI_LiveItemsMap is stable after assignment above.
+            Gdip_PruneIconCache(gGUI_LiveItemsMap)
 
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
 
             ; Resize and repaint OUTSIDE Critical (GDI+ can pump messages)
             if (isToggleResponse && gGUI_State = "ACTIVE") {
-                rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+                rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
                 GUI_ResizeToRows(rowsDesired)
             }
 
@@ -202,19 +202,19 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             ; If in ACTIVE state with FreezeWindowList=false, update live display
             if (gGUI_State = "ACTIVE" && !isFrozen) {
                 ; RACE FIX: Wrap both assignments in Critical so a hotkey (Tab, Ctrl)
-                ; can't interrupt between them and see new AllItems with old FrozenItems.
+                ; can't interrupt between them and see new ToggleBase with old DisplayItems.
                 ; Consistent with the snapshot path (lines 104-147) which already uses Critical.
-                ; Release before repaint is safe: frozen items are already populated.
+                ; Release before repaint is safe: display items are already populated.
                 Critical "On"
-                gGUI_AllItems := gGUI_Items
-                gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+                gGUI_ToggleBase := gGUI_LiveItems
+                gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
                 Critical "Off"
-                ; NOTE: Do NOT update gGUI_Items - it must stay unfiltered as the source of truth
+                ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
                 if (gGUI_OverlayVisible && gGUI_OverlayH) {
                     ; Only repaint if visible items were affected.
                     ; MRU changes always repaint (sort order or item count changed).
                     ; Cosmetic changes (icon, processName) only repaint if in viewport.
-                    if (result.mruChanged || _GUI_AnyVisibleItemChanged(gGUI_FrozenItems, result.changedHwnds))
+                    if (result.mruChanged || _GUI_AnyVisibleItemChanged(gGUI_DisplayItems, result.changedHwnds))
                         GUI_Repaint()
                 }
             }
@@ -265,7 +265,7 @@ GUI_ConvertStoreItems(items) {
     return result
 }
 
-; Rebuild hwnd -> item Map from items array (call after replacing gGUI_Items)
+; Rebuild hwnd -> item Map from items array (call after replacing gGUI_LiveItems)
 GUI_RebuildItemsMap(items) {
     m := Map()
     for _, item in items
@@ -276,7 +276,7 @@ GUI_RebuildItemsMap(items) {
 ; ========================= DELTA APPLICATION =========================
 
 GUI_ApplyDelta(payload) {
-    global gGUI_Items, gGUI_Sel, gINT_BypassMode, gGUI_ItemsMap
+    global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap
 
     mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
     changedHwnds := Map()    ; Track which hwnds were affected (for viewport-based repaint)
@@ -289,7 +289,7 @@ GUI_ApplyDelta(payload) {
     }
 
     ; CRITICAL: Protect array modifications from hotkey interruption
-    ; Hotkeys (Alt/Tab) may access gGUI_Items during state transitions
+    ; Hotkeys (Alt/Tab) may access gGUI_LiveItems during state transitions
     Critical "On"
 
     ; Handle removes - filter out items by hwnd using Set for O(1) lookup
@@ -304,16 +304,16 @@ GUI_ApplyDelta(payload) {
 
         ; Single pass filter O(n) instead of O(n*m)
         newItems := []
-        for _, item in gGUI_Items {
+        for _, item in gGUI_LiveItems {
             if (!removeSet.Has(item.hwnd))
                 newItems.Push(item)
         }
-        if (newItems.Length != gGUI_Items.Length) {
-            gGUI_Items := newItems
+        if (newItems.Length != gGUI_LiveItems.Length) {
+            gGUI_LiveItems := newItems
             ; Incremental map update: delete removed hwnds instead of rebuilding O(n)
             for _, hwnd in payload["removes"] {
-                if (gGUI_ItemsMap.Has(hwnd))
-                    gGUI_ItemsMap.Delete(hwnd)
+                if (gGUI_LiveItemsMap.Has(hwnd))
+                    gGUI_LiveItemsMap.Delete(hwnd)
             }
             mruChanged := true  ; Item count changed, layout affected
         }
@@ -331,9 +331,9 @@ GUI_ApplyDelta(payload) {
             changedHwnds[hwnd] := true
 
             ; O(1) lookup instead of O(n) scan
-            if (gGUI_ItemsMap.Has(hwnd)) {
+            if (gGUI_LiveItemsMap.Has(hwnd)) {
                 ; Update existing item
-                item := gGUI_ItemsMap[hwnd]
+                item := gGUI_LiveItemsMap[hwnd]
                 if (rec.Has("title"))
                     item.Title := rec["title"]
                 if (rec.Has("class"))
@@ -361,8 +361,8 @@ GUI_ApplyDelta(payload) {
             } else {
                 ; Add new item using shared helper
                 newItem := _GUI_CreateItemFromRecord(hwnd, rec)
-                gGUI_Items.Push(newItem)
-                gGUI_ItemsMap[hwnd] := newItem
+                gGUI_LiveItems.Push(newItem)
+                gGUI_LiveItemsMap[hwnd] := newItem
                 ; Track focus change for new item too
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
@@ -375,15 +375,15 @@ GUI_ApplyDelta(payload) {
 
     ; Only sort when MRU-relevant fields changed (lastActivatedTick, isFocused, items added/removed).
     ; Skip sort for cosmetic-only updates (icon, processName, title) — saves O(n) per delta.
-    if (mruChanged && gGUI_Items.Length > 1) {
+    if (mruChanged && gGUI_LiveItems.Length > 1) {
         GUI_SortItemsByMRU()
     }
 
     ; Clamp selection
-    if (gGUI_Sel > gGUI_Items.Length && gGUI_Items.Length > 0) {
-        gGUI_Sel := gGUI_Items.Length
+    if (gGUI_Sel > gGUI_LiveItems.Length && gGUI_LiveItems.Length > 0) {
+        gGUI_Sel := gGUI_LiveItems.Length
     }
-    if (gGUI_Sel < 1 && gGUI_Items.Length > 0) {
+    if (gGUI_Sel < 1 && gGUI_LiveItems.Length > 0) {
         gGUI_Sel := 1
     }
 
@@ -402,12 +402,12 @@ GUI_ApplyDelta(payload) {
 }
 
 GUI_SortItemsByMRU() {
-    global gGUI_Items
+    global gGUI_LiveItems
 
     ; Insertion sort by lastActivatedTick descending (higher = more recent = first)
     ; O(n) for nearly-sorted data (typical case - MRU order rarely changes much)
     ; O(n²) worst case, but still better than bubble sort in practice
-    n := gGUI_Items.Length
+    n := gGUI_LiveItems.Length
     if (n <= 1)
         return
 
@@ -415,15 +415,15 @@ GUI_SortItemsByMRU() {
         i := A_Index
         if (i = 1)
             continue
-        key := gGUI_Items[i]
+        key := gGUI_LiveItems[i]
         keyTick := key.lastActivatedTick
         j := i - 1
         ; Shift elements that are smaller (older) than key to the right
-        while (j >= 1 && gGUI_Items[j].lastActivatedTick < keyTick) {
-            gGUI_Items[j + 1] := gGUI_Items[j]
+        while (j >= 1 && gGUI_LiveItems[j].lastActivatedTick < keyTick) {
+            gGUI_LiveItems[j + 1] := gGUI_LiveItems[j]
             j -= 1
         }
-        gGUI_Items[j + 1] := key
+        gGUI_LiveItems[j + 1] := key
     }
 }
 
@@ -466,7 +466,7 @@ GUI_RequestSnapshot() {
     _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
 }
 
-; Request projection with optional workspace filtering (for UseCurrentWSProjection mode)
+; Request projection with optional workspace filtering (for ServerSideWorkspaceFilter mode)
 GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
     global gGUI_StoreClient, gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION_REQUEST
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {

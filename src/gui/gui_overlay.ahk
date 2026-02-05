@@ -155,11 +155,11 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
 ; ========================= WINDOW CREATION =========================
 
 GUI_CreateBase() {
-    global gGUI_Base, gGUI_BaseH, gGUI_Items, cfg
+    global gGUI_Base, gGUI_BaseH, gGUI_LiveItems, cfg
 
     opts := "+AlwaysOnTop -Caption"
 
-    rowsDesired := GUI_ComputeRowsToShow(gGUI_Items.Length)
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_LiveItems.Length)
 
     left := 0
     top := 0

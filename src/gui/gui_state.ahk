@@ -81,7 +81,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     Critical "On"
 
     global gGUI_State, gGUI_FirstTabTick, gGUI_TabCount
-    global gGUI_OverlayVisible, gGUI_Items, gGUI_Sel, gGUI_FrozenItems, gGUI_AllItems, cfg
+    global gGUI_OverlayVisible, gGUI_LiveItems, gGUI_Sel, gGUI_DisplayItems, gGUI_ToggleBase, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
     global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick, TIMING_IPC_FIRE_WAIT
 
@@ -89,7 +89,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     evName := _GUI_GetEventName(evCode)
 
     ; File-based debug logging (no performance impact from tooltips)
-    _GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_Items.Length " buf=" gGUI_EventBuffer.Length)
+    _GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
 
     ; If async activation is in progress, BUFFER events instead of processing
     ; This matches Windows native behavior: let first switch complete, then process next
@@ -171,17 +171,17 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; Freeze: save ALL items (for workspace toggle), then filter
             ; CRITICAL: Create shallow copy - assignment creates a reference which breaks freeze!
-            gGUI_AllItems := []
-            for _, item in gGUI_Items {
-                gGUI_AllItems.Push(item)
+            gGUI_ToggleBase := []
+            for _, item in gGUI_LiveItems {
+                gGUI_ToggleBase.Push(item)
             }
-            gGUI_FrozenItems := GUI_FilterByWorkspaceMode(gGUI_AllItems)
+            gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
 
-            ; DEBUG: Log workspace data of frozen items
-            _GUI_LogEvent("FREEZE: " gGUI_FrozenItems.Length " items frozen")
-            for i, item in gGUI_FrozenItems {
+            ; DEBUG: Log workspace data of display items
+            _GUI_LogEvent("FREEZE: " gGUI_DisplayItems.Length " items frozen")
+            for i, item in gGUI_DisplayItems {
                 if (i > 5) {
-                    _GUI_LogEvent("  ... and " (gGUI_FrozenItems.Length - 5) " more")
+                    _GUI_LogEvent("  ... and " (gGUI_DisplayItems.Length - 5) " more")
                     break
                 }
                 ws := item.HasOwnProp("WS") ? item.WS : "(none)"
@@ -194,7 +194,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; Position 1 = current window (we're already on it)
             ; Position 2 = previous window (what Alt+Tab should switch to)
             gGUI_Sel := 2
-            if (gGUI_Sel > gGUI_FrozenItems.Length) {
+            if (gGUI_Sel > gGUI_DisplayItems.Length) {
                 ; Only 1 window? Select it
                 gGUI_Sel := 1
             }
@@ -224,7 +224,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; improve keyboard responsiveness during GDI+ rendering (~16ms).
             ; This caused severe bugs:
             ;   1. Partial glass background draws (IPC interrupted mid-render)
-            ;   2. Window mapping corruption (gGUI_Items modified during render)
+            ;   2. Window mapping corruption (gGUI_LiveItems modified during render)
             ;   3. Stale projection data on quick re-open
             ; The ~16ms delay is acceptable - users won't notice, but they WILL
             ; notice corrupted UI. Keep Critical on through the entire handler.
@@ -273,7 +273,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 GUI_ActivateFromFrozen()
             }
 
-            gGUI_FrozenItems := []
+            gGUI_DisplayItems := []
             gGUI_State := "IDLE"
             _Stats_SendToStore()
 
@@ -294,7 +294,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             GUI_HideOverlay()
         }
         gGUI_State := "IDLE"
-        gGUI_FrozenItems := []
+        gGUI_DisplayItems := []
         _Stats_SendToStore()
 
         ; Resync with store - we may have missed deltas during ACTIVE
@@ -324,11 +324,11 @@ GUI_GraceTimerFired() {
 ; After a workspace switch, sel=1 (focused window on NEW workspace is what you want).
 ; Otherwise, sel=2 (the "previous" window — standard Alt-Tab behavior).
 ; Parameters:
-;   listRef - Optional reference to the list to use (default: gGUI_FrozenItems)
+;   listRef - Optional reference to the list to use (default: gGUI_DisplayItems)
 ; Returns: The new selection index
 _GUI_ResetSelectionToMRU(listRef := "") {
-    global gGUI_Sel, gGUI_ScrollTop, gGUI_FrozenItems, gGUI_WSContextSwitch
-    items := (listRef != "") ? listRef : gGUI_FrozenItems
+    global gGUI_Sel, gGUI_ScrollTop, gGUI_DisplayItems, gGUI_WSContextSwitch
+    items := (listRef != "") ? listRef : gGUI_DisplayItems
 
     ; After a workspace switch, the focused window on the new workspace is at position 1.
     ; Keep sel=1 for the entire overlay session so Ctrl toggles don't revert to sel=2.
@@ -352,7 +352,7 @@ _GUI_AbortShowSequence() {
 
 GUI_ShowOverlayWithFrozen() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
-    global gGUI_Items, gGUI_FrozenItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
+    global gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
     global gGUI_State
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
 
@@ -363,19 +363,19 @@ GUI_ShowOverlayWithFrozen() {
     ; ===== TIMING: Show sequence start =====
     tShow_Start := A_TickCount
     idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
-    _Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_FrozenItems.Length " items=" gGUI_Items.Length ")")
+    _Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_DisplayItems.Length " items=" gGUI_LiveItems.Length ")")
 
     ; Set visible flag FIRST to prevent re-entrancy issues
     ; (Show/DwmFlush can pump messages, allowing hotkeys to fire mid-function)
     gGUI_OverlayVisible := true
 
-    ; NOTE: Do NOT set gGUI_Items := gGUI_FrozenItems here!
-    ; gGUI_Items must remain the unfiltered source of truth for cross-session consistency.
-    ; Paint function correctly uses gGUI_FrozenItems when in ACTIVE state.
+    ; NOTE: Do NOT set gGUI_LiveItems := gGUI_DisplayItems here!
+    ; gGUI_LiveItems must remain the unfiltered source of truth for cross-session consistency.
+    ; Paint function correctly uses gGUI_DisplayItems when in ACTIVE state.
 
     ; ENFORCE: When ScrollKeepHighlightOnTop is true, selected item must be at top
     ; This catches any edge cases where scrollTop wasn't set correctly
-    if (cfg.GUI_ScrollKeepHighlightOnTop && gGUI_FrozenItems.Length > 0) {
+    if (cfg.GUI_ScrollKeepHighlightOnTop && gGUI_DisplayItems.Length > 0) {
         gGUI_ScrollTop := gGUI_Sel - 1
     }
 
@@ -398,7 +398,7 @@ GUI_ShowOverlayWithFrozen() {
 
     ; ===== TIMING: Resize + Repaint =====
     t1 := A_TickCount
-    rowsDesired := GUI_ComputeRowsToShow(gGUI_FrozenItems.Length)
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)
     tShow_Resize := A_TickCount - t1
 
@@ -441,13 +441,13 @@ GUI_ShowOverlayWithFrozen() {
 }
 
 GUI_MoveSelectionFrozen(delta) {
-    global gGUI_Sel, gGUI_FrozenItems, gGUI_ScrollTop
+    global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop
 
-    if (gGUI_FrozenItems.Length = 0) {
+    if (gGUI_DisplayItems.Length = 0) {
         return
     }
 
-    count := gGUI_FrozenItems.Length
+    count := gGUI_DisplayItems.Length
     newSel := gGUI_Sel + delta
 
     ; Wrap around
@@ -463,16 +463,16 @@ GUI_MoveSelectionFrozen(delta) {
 }
 
 GUI_ActivateFromFrozen() {
-    global gGUI_Sel, gGUI_FrozenItems, cfg
+    global gGUI_Sel, gGUI_DisplayItems, cfg
 
-    _GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_FrozenItems.Length)
+    _GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_DisplayItems.Length)
 
-    if (gGUI_Sel < 1 || gGUI_Sel > gGUI_FrozenItems.Length) {
+    if (gGUI_Sel < 1 || gGUI_Sel > gGUI_DisplayItems.Length) {
         _GUI_LogEvent("ACTIVATE FAILED: sel out of range!")
         return
     }
 
-    item := gGUI_FrozenItems[gGUI_Sel]
+    item := gGUI_DisplayItems[gGUI_Sel]
     hwnd := item.hwnd
     title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
 
@@ -500,7 +500,7 @@ GUI_ActivateItem(item) {
     global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingShell, gGUI_PendingTempFile
-    global gGUI_Items, gGUI_LastLocalMRUTick, gGUI_CurrentWSName  ; Needed for same-workspace MRU update
+    global gGUI_LiveItems, gGUI_LastLocalMRUTick, gGUI_CurrentWSName  ; Needed for same-workspace MRU update
 
     hwnd := item.hwnd
     if (!hwnd) {
@@ -660,7 +660,7 @@ _GUI_AsyncActivationTick() {
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingShell, gGUI_PendingTempFile
     global gGUI_EventBuffer, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
-    global gGUI_Items, gGUI_CurrentWSName, gGUI_LastLocalMRUTick
+    global gGUI_LiveItems, gGUI_CurrentWSName, gGUI_LastLocalMRUTick
 
     ; RACE FIX: Ensure phase reads and transitions are atomic
     ; Phase can be read by interceptor to decide whether to buffer events
@@ -800,9 +800,9 @@ _GUI_AsyncActivationTick() {
             Critical "On"
             gGUI_CurrentWSName := gGUI_PendingWSName
 
-            ; Update isOnCurrentWorkspace flags in gGUI_Items to match new workspace
-            ; This ensures frozen lists have correct workspace data
-            for item in gGUI_Items {
+            ; Update isOnCurrentWorkspace flags in gGUI_LiveItems to match new workspace
+            ; This ensures display lists have correct workspace data
+            for item in gGUI_LiveItems {
                 if (item.HasOwnProp("WS")) {
                     item.isOnCurrentWorkspace := (item.WS = gGUI_CurrentWSName)
                 }
@@ -839,7 +839,7 @@ _GUI_AsyncActivationTick() {
 ; Process buffered events after async activation completes
 ; Called via SetTimer -1 after async complete, with gGUI_PendingPhase="flushing"
 _GUI_ProcessEventBuffer() {
-    global gGUI_EventBuffer, gGUI_Items, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP
+    global gGUI_EventBuffer, gGUI_LiveItems, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP
 
     ; Validate we're in flushing phase - prevents stale timers from processing
     if (gGUI_PendingPhase != "flushing") {
@@ -847,7 +847,7 @@ _GUI_ProcessEventBuffer() {
         return
     }
 
-    _GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_Items.Length)
+    _GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_LiveItems.Length)
 
     ; Process all buffered events in order
     ; CRITICAL: Swap+phase-clear must be atomic to prevent race condition
@@ -956,20 +956,20 @@ _GUI_ResyncKeyboardState() {
 ; Called after successful activation to ensure rapid Alt+Tab sees correct order
 ; Parameters:
 ;   hwnd - Window handle that was activated
-; Updates: gGUI_Items array order, gGUI_LastLocalMRUTick
-; RACE FIX: Wrap in Critical - modifies gGUI_Items array which IPC deltas also modify
+; Updates: gGUI_LiveItems array order, gGUI_LastLocalMRUTick
+; RACE FIX: Wrap in Critical - modifies gGUI_LiveItems array which IPC deltas also modify
 _GUI_UpdateLocalMRU(hwnd) {
     Critical "On"
-    global gGUI_Items, gGUI_LastLocalMRUTick
+    global gGUI_LiveItems, gGUI_LastLocalMRUTick
 
-    _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_Items.Length " items")
-    for i, item in gGUI_Items {
+    _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_LiveItems.Length " items")
+    for i, item in gGUI_LiveItems {
         if (item.hwnd = hwnd) {
             item.lastActivatedTick := A_TickCount
             _GUI_LogEvent("MRU UPDATE: found at position " i ", moving to position 1")
             if (i > 1) {
-                gGUI_Items.RemoveAt(i)
-                gGUI_Items.InsertAt(1, item)
+                gGUI_LiveItems.RemoveAt(i)
+                gGUI_LiveItems.InsertAt(1, item)
             }
             gGUI_LastLocalMRUTick := A_TickCount
             Critical "Off"
