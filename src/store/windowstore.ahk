@@ -13,8 +13,8 @@ global gWS_Meta := Map()
 
 ; Sort/projection cache - tracks when sort-affecting or filter-affecting fields change
 global gWS_SortDirty := true
-global gWS_CachedProjRows := ""      ; Cached transformed rows (result of _WS_ToItem)
-global gWS_CachedProjOptsKey := ""   ; Opts key used for cache
+global gWS_ProjectionCache_Items := ""      ; Cached transformed items (result of _WS_ToItem)
+global gWS_ProjectionCache_OptsKey := ""   ; Opts key used for cache validation
 ; Fields that affect projection membership or sort order
 global gWS_ProjectionFields := Map(
     "lastActivatedTick", true, "isFocused", true, "z", true,
@@ -28,9 +28,9 @@ global gWS_DiagSource := Map() ; source -> count of rev bumps
 global gWS_IconQueue := []         ; hwnds needing icons
 global gWS_PidQueue := []          ; pids needing process info
 global gWS_ZQueue := []            ; hwnds needing Z-order (triggers winenum pump)
-global gWS_IconQueueSet := Map()   ; fast lookup for dedup
-global gWS_PidQueueSet := Map()    ; fast lookup for dedup
-global gWS_ZQueueSet := Map()      ; fast lookup for dedup
+global gWS_IconQueueDedup := Map()   ; hwnd -> true (prevents duplicate queue entries)
+global gWS_PidQueueDedup := Map()    ; pid -> true (prevents duplicate queue entries)
+global gWS_ZQueueDedup := Map()      ; hwnd -> true (prevents duplicate queue entries)
 
 ; Caches
 global gWS_ExeIconCache := Map()   ; exe path -> HICON (master copy)
@@ -43,9 +43,9 @@ gWS_Meta["currentWSName"] := ""
 ; Flag indicating workspace changed since last consumed - for OnChange delta style
 global gWS_WorkspaceChangedFlag := false
 
-; Dirty tracking: hwnds with fields changed since last delta
-; Key = hwnd, Value = true (presence in map = dirty)
-global gWS_DirtyHwnds := Map()
+; Delta tracking: hwnds with fields changed since last IPC push
+; Key = hwnd, Value = true (presence in map = pending for delta)
+global gWS_DeltaPendingHwnds := Map()
 
 ; Safely snapshot Map keys for iteration (prevents modification during iteration)
 ; Returns an Array of keys. Caller can iterate safely after Critical section ends.
@@ -133,7 +133,7 @@ WindowStore_EndScan(graceMs := "") {
 
 WindowStore_UpsertWindow(records, source := "") {
     global gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortDirty, gWS_ProjectionFields
-    global gWS_InternalFields, gWS_DirtyHwnds
+    global gWS_InternalFields, gWS_DeltaPendingHwnds
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
     added := 0
@@ -180,7 +180,7 @@ WindowStore_UpsertWindow(records, source := "") {
                     rowChanged := true
                     ; Mark dirty for delta tracking (new records or non-internal field changes)
                     if (isNew || !gWS_InternalFields.Has(k))
-                        gWS_DirtyHwnds[hwnd] := true
+                        gWS_DeltaPendingHwnds[hwnd] := true
                     if (gWS_ProjectionFields.Has(k))
                         projDirty := true
                 }
@@ -241,7 +241,7 @@ global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId"
 ;   hwnd - Window handle (for dirty tracking)
 ; Returns: { changed: bool, projDirty: bool }
 _WS_ApplyPatch(row, patch, hwnd) {
-    global gWS_InternalFields, gWS_ProjectionFields, gWS_DirtyHwnds
+    global gWS_InternalFields, gWS_ProjectionFields, gWS_DeltaPendingHwnds
     changed := false
     projDirty := false
 
@@ -251,7 +251,7 @@ _WS_ApplyPatch(row, patch, hwnd) {
                 row.%k% := v
                 if (!gWS_InternalFields.Has(k)) {
                     changed := true
-                    gWS_DirtyHwnds[hwnd] := true
+                    gWS_DeltaPendingHwnds[hwnd] := true
                 }
                 if (gWS_ProjectionFields.Has(k))
                     projDirty := true
@@ -264,7 +264,7 @@ _WS_ApplyPatch(row, patch, hwnd) {
                 row.%k% := v
                 if (!gWS_InternalFields.Has(k)) {
                     changed := true
-                    gWS_DirtyHwnds[hwnd] := true
+                    gWS_DeltaPendingHwnds[hwnd] := true
                 }
                 if (gWS_ProjectionFields.Has(k))
                     projDirty := true
@@ -335,7 +335,7 @@ WindowStore_BatchUpdateFields(patches, source := "") {
 }
 
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {
-    global gWS_Store, gWS_Rev, gWS_SortDirty, gWS_DirtyHwnds
+    global gWS_Store, gWS_Rev, gWS_SortDirty, gWS_DeltaPendingHwnds
     removed := 0
     ; RACE FIX: Wrap delete loop + rev bump in Critical to prevent IPC requests
     ; from seeing inconsistent state (consistent with ValidateExistence/PurgeBlacklisted)
@@ -348,7 +348,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
             continue  ; lint-ignore: critical-section
         ; Mark dirty so removal appears in delta
-        gWS_DirtyHwnds[hwnd] := true
+        gWS_DeltaPendingHwnds[hwnd] := true
         ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
         try IconPump_CleanupWindow(hwnd)
         gWS_Store.Delete(hwnd)
@@ -374,7 +374,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
 ; for hidden windows (like Outlook message windows).
 
 WindowStore_ValidateExistence() {
-    global gWS_Store, gWS_Rev, gWS_SortDirty, gWS_DirtyHwnds
+    global gWS_Store, gWS_Rev, gWS_SortDirty, gWS_DeltaPendingHwnds
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)
@@ -435,7 +435,7 @@ WindowStore_ValidateExistence() {
     removed := 0
     for _, hwnd in toRemove {
         ; Mark dirty BEFORE delete so removal appears in delta removes
-        gWS_DirtyHwnds[hwnd] := true
+        gWS_DeltaPendingHwnds[hwnd] := true
         ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
         try IconPump_CleanupWindow(hwnd)
         gWS_Store.Delete(hwnd)
@@ -541,7 +541,7 @@ WindowStore_GetByHwnd(hwnd) {
 }
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
-    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortDirty, gWS_WorkspaceChangedFlag, gWS_DirtyHwnds
+    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortDirty, gWS_WorkspaceChangedFlag, gWS_DeltaPendingHwnds
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
     ; and the iteration loop must be atomic so a timer can't observe stale meta values
     ; between the name comparison (line below) and the name write.
@@ -565,7 +565,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
         newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
         if (rec.isOnCurrentWorkspace != newIsOnCurrent) {
             rec.isOnCurrentWorkspace := newIsOnCurrent
-            gWS_DirtyHwnds[hwnd] := true  ; Mark dirty for delta tracking
+            gWS_DeltaPendingHwnds[hwnd] := true  ; Mark dirty for delta tracking
             anyFlipped := true
         }
     }
@@ -583,7 +583,7 @@ WindowStore_GetCurrentWorkspace() {
 }
 
 WindowStore_GetProjection(opts := 0) {
-    global gWS_Store, gWS_Meta, gWS_SortDirty, gWS_CachedProjRows, gWS_CachedProjOptsKey
+    global gWS_Store, gWS_Meta, gWS_SortDirty, gWS_ProjectionCache_Items, gWS_ProjectionCache_OptsKey
     sort := _WS_GetOpt(opts, "sort", "MRU")
     currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
     includeMin := _WS_GetOpt(opts, "includeMinimized", true)
@@ -597,11 +597,11 @@ WindowStore_GetProjection(opts := 0) {
     ; RACE FIX: Wrap cache hit path in Critical to prevent producer from bumping rev + setting
     ; gWS_SortDirty between cache validation and return (would return stale rows with new rev)
     Critical "On"
-    if (!gWS_SortDirty && IsObject(gWS_CachedProjRows) && gWS_CachedProjOptsKey = optsKey) {
-        result := { rev: WindowStore_GetRev(), items: gWS_CachedProjRows, meta: gWS_Meta }
+    if (!gWS_SortDirty && IsObject(gWS_ProjectionCache_Items) && gWS_ProjectionCache_OptsKey = optsKey) {
+        result := { rev: WindowStore_GetRev(), items: gWS_ProjectionCache_Items, meta: gWS_Meta }
         if (columns = "hwndsOnly") {
             hwnds := []
-            for _, row in gWS_CachedProjRows
+            for _, row in gWS_ProjectionCache_Items
                 hwnds.Push(row.hwnd)
             Critical "Off"
             return { rev: result.rev, hwnds: hwnds, meta: result.meta }
@@ -650,8 +650,8 @@ WindowStore_GetProjection(opts := 0) {
 
     ; Update projection cache with transformed rows
     gWS_SortDirty := false
-    gWS_CachedProjRows := rows        ; Cache transformed rows
-    gWS_CachedProjOptsKey := optsKey
+    gWS_ProjectionCache_Items := rows        ; Cache transformed rows
+    gWS_ProjectionCache_OptsKey := optsKey
 
     if (columns = "hwndsOnly") {
         hwnds := []
@@ -794,7 +794,7 @@ _WS_CmpMRU(a, b) {
 ; Wrapped in Critical to prevent race conditions in check-then-insert pattern
 _WS_EnqueueIfNeeded(row) {
     Critical "On"
-    global gWS_IconQueue, gWS_IconQueueSet, gWS_PidQueue, gWS_PidQueueSet
+    global gWS_IconQueue, gWS_IconQueueDedup, gWS_PidQueue, gWS_PidQueueDedup
     now := A_TickCount
 
     ; Determine if window needs icon work
@@ -818,9 +818,9 @@ _WS_EnqueueIfNeeded(row) {
     if (needsIconWork && row.present) {
         if (row.iconCooldownUntilTick = 0 || now >= row.iconCooldownUntilTick) {
             hwnd := row.hwnd + 0
-            if (!gWS_IconQueueSet.Has(hwnd)) {
+            if (!gWS_IconQueueDedup.Has(hwnd)) {
                 gWS_IconQueue.Push(hwnd)
-                gWS_IconQueueSet[hwnd] := true
+                gWS_IconQueueDedup[hwnd] := true
                 try IconPump_EnsureRunning()  ; Wake timer from idle pause
             }
         }
@@ -829,9 +829,9 @@ _WS_EnqueueIfNeeded(row) {
     ; Need process name?
     if (row.processName = "" && row.pid > 0 && row.present) {
         pid := row.pid + 0
-        if (!gWS_PidQueueSet.Has(pid)) {
+        if (!gWS_PidQueueDedup.Has(pid)) {
             gWS_PidQueue.Push(pid)
-            gWS_PidQueueSet[pid] := true
+            gWS_PidQueueDedup[pid] := true
             try ProcPump_EnsureRunning()  ; Wake timer from idle pause
         }
     }
@@ -841,7 +841,7 @@ _WS_EnqueueIfNeeded(row) {
 ; Enqueue window for icon refresh (called when window gains focus)
 ; This allows upgrading fallback icons or refreshing WM_GETICON icons that may have changed
 WindowStore_EnqueueIconRefresh(hwnd) {
-    global gWS_Store, gWS_IconQueue, gWS_IconQueueSet, cfg
+    global gWS_Store, gWS_IconQueue, gWS_IconQueueDedup, cfg
     hwnd := hwnd + 0
 
     if (!gWS_Store.Has(hwnd))
@@ -866,9 +866,9 @@ WindowStore_EnqueueIconRefresh(hwnd) {
     ; RACE FIX: Wrap in Critical - check-then-insert must be atomic
     ; (same pattern as _WS_EnqueueIfNeeded and WindowStore_PopIconBatch)
     Critical "On"
-    if (!gWS_IconQueueSet.Has(hwnd)) {
+    if (!gWS_IconQueueDedup.Has(hwnd)) {
         gWS_IconQueue.Push(hwnd)
-        gWS_IconQueueSet[hwnd] := true
+        gWS_IconQueueDedup[hwnd] := true
         try IconPump_EnsureRunning()  ; Wake timer from idle pause
     }
     Critical "Off"
@@ -879,11 +879,11 @@ WindowStore_EnqueueIconRefresh(hwnd) {
 ; RACE FIX: Wrap in Critical - push operations use Critical, so pop must too
 WindowStore_PopIconBatch(count := 16) {
     Critical "On"
-    global gWS_IconQueue, gWS_IconQueueSet
+    global gWS_IconQueue, gWS_IconQueueDedup
     batch := []
     while (gWS_IconQueue.Length > 0 && batch.Length < count) {
         hwnd := gWS_IconQueue.RemoveAt(1)
-        gWS_IconQueueSet.Delete(hwnd)
+        gWS_IconQueueDedup.Delete(hwnd)
         batch.Push(hwnd)
     }
     Critical "Off"
@@ -894,11 +894,11 @@ WindowStore_PopIconBatch(count := 16) {
 ; RACE FIX: Wrap in Critical - push operations use Critical, so pop must too
 WindowStore_PopPidBatch(count := 16) {
     Critical "On"
-    global gWS_PidQueue, gWS_PidQueueSet
+    global gWS_PidQueue, gWS_PidQueueDedup
     batch := []
     while (gWS_PidQueue.Length > 0 && batch.Length < count) {
         pid := gWS_PidQueue.RemoveAt(1)
-        gWS_PidQueueSet.Delete(pid)
+        gWS_PidQueueDedup.Delete(pid)
         batch.Push(pid)
     }
     Critical "Off"
@@ -913,14 +913,14 @@ WindowStore_PopPidBatch(count := 16) {
 ; Wrapped in Critical to prevent race with ClearZQueue
 WindowStore_EnqueueForZ(hwnd) {
     Critical "On"
-    global gWS_ZQueue, gWS_ZQueueSet
+    global gWS_ZQueue, gWS_ZQueueDedup
     hwnd := hwnd + 0
-    if (!hwnd || gWS_ZQueueSet.Has(hwnd)) {
+    if (!hwnd || gWS_ZQueueDedup.Has(hwnd)) {
         Critical "Off"
         return
     }
     gWS_ZQueue.Push(hwnd)
-    gWS_ZQueueSet[hwnd] := true
+    gWS_ZQueueDedup[hwnd] := true
     Critical "Off"
 }
 
@@ -938,9 +938,9 @@ WindowStore_HasPendingZ() {
 ; Wrapped in Critical to prevent race with EnqueueForZ
 WindowStore_ClearZQueue() {
     Critical "On"
-    global gWS_ZQueue, gWS_ZQueueSet
+    global gWS_ZQueue, gWS_ZQueueDedup
     gWS_ZQueue := []
-    gWS_ZQueueSet := Map()
+    gWS_ZQueueDedup := Map()
     Critical "Off"
 }
 
@@ -1109,7 +1109,7 @@ WindowStore_CleanupAllIcons() {
 ;                with IPCUseDirtyTracking enabled, skips comparison for clean hwnds.
 ; Returns: { upserts: [], removes: [] }
 WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
-    global cfg, gWS_DirtyHwnds
+    global cfg, gWS_DeltaPendingHwnds
     ; Fields compared for delta detection. Using a loop avoids an AHK v2 parser bug
     ; where bare method calls after many consecutive single-line if statements silently fail.
     ; Must include ALL fields from _WS_ToItem that affect display or sort order.
@@ -1120,7 +1120,7 @@ WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
 
     ; Dirty tracking setup: use passed snapshot or fall back to global (for direct calls/tests)
     useDirtyTracking := cfg.IPCUseDirtyTracking
-    dirtySet := IsObject(dirtyHwnds) ? dirtyHwnds : gWS_DirtyHwnds
+    dirtySet := IsObject(dirtyHwnds) ? dirtyHwnds : gWS_DeltaPendingHwnds
 
     ; PERF: Reuse static Maps instead of allocating new ones per call (O(2n) allocations avoided)
     ; Clear() is O(n) but avoids GC pressure from frequent Map allocations

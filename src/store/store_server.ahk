@@ -221,8 +221,8 @@ Store_HeartbeatTick() {
     ; Prune dead PIDs from process name cache (prevents unbounded growth)
     try WindowStore_PruneProcNameCache()
 
-    ; Prune expired entries from proc pump negative cache
-    try ProcPump_PruneNegativeCache()
+    ; Prune expired entries from proc pump failed PID cache
+    try ProcPump_PruneFailedPidCache()
 
     ; Periodic log rotation for diagnostic logs (~every 60s)
     if (Mod(gStore_HeartbeatCount, 12) = 0)
@@ -393,7 +393,7 @@ Store_FullScan() {
 Store_PushToClients() {
     global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_TestMode
     global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA, gStore_LastSendTick, gStore_ClientPushCount, cfg
-    global gWS_DirtyHwnds
+    global gWS_DeltaPendingHwnds
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -412,8 +412,8 @@ Store_PushToClients() {
     }
     ; Snapshot dirty set and clear immediately - any updates during this push
     ; will mark the NEW dirty set and be caught on next push
-    dirtySnapshot := gWS_DirtyHwnds.Clone()
-    gWS_DirtyHwnds := Map()
+    dirtySnapshot := gWS_DeltaPendingHwnds.Clone()
+    gWS_DeltaPendingHwnds := Map()
     Critical "Off"
 
     ; In OnChange mode, send dedicated workspace_change message when workspace changes

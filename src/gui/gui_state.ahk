@@ -141,8 +141,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         if (cfg.AltTabPrewarmOnAlt) {
-            global gCfg_MRUFreshnessMs
-            if (mruAge > gCfg_MRUFreshnessMs) {
+            global gCached_MRUFreshnessMs
+            if (mruAge > gCached_MRUFreshnessMs) {
                 GUI_RequestSnapshot()
             } else {
                 _GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")

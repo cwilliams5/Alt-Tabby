@@ -38,7 +38,7 @@ AHK v2 timers and hotkeys CAN interrupt each other. Use `Critical "On"` for:
 Critical "On"
 if (!gQueue.Has(hwnd)) {
     gQueue.Push(hwnd)
-    gQueueSet[hwnd] := true
+    gQueueDedup[hwnd] := true
 }
 Critical "Off"
 ```

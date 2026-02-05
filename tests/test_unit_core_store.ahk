@@ -139,9 +139,9 @@ RunUnitTests_CoreStore() {
     ; Test: Z-queue clear empties both queue and set
     WindowStore_EnqueueForZ(88888)
     WindowStore_ClearZQueue()
-    global gWS_ZQueueSet
+    global gWS_ZQueueDedup
     AssertEq(gWS_ZQueue.Length, 0, "Z-queue clear empties queue")
-    AssertEq(gWS_ZQueueSet.Count, 0, "Z-queue clear empties set")
+    AssertEq(gWS_ZQueueDedup.Count, 0, "Z-queue clear empties set")
 
     ; ============================================================
     ; WindowStore Advanced Tests
@@ -388,9 +388,9 @@ RunUnitTests_CoreStore() {
              isOnCurrentWorkspace: true, processName: "app2", iconHicon: 0, lastActivatedTick: 2000}
         ]
 
-        global gWS_DirtyHwnds
+        global gWS_DeltaPendingHwnds
         originalDirtyTracking := cfg.IPCUseDirtyTracking
-        gWS_DirtyHwnds := Map()
+        gWS_DeltaPendingHwnds := Map()
 
         ; Create dirty snapshot marking ONLY hwnd 1001 (not 1002)
         dirtySnapshot := Map()
@@ -430,7 +430,7 @@ RunUnitTests_CoreStore() {
 
         ; Restore original config
         cfg.IPCUseDirtyTracking := originalDirtyTracking
-        gWS_DirtyHwnds := Map()
+        gWS_DeltaPendingHwnds := Map()
     } catch as e {
         Log("FAIL: Dirty tracking test error: " e.Message)
         TestErrors++

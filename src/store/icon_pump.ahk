@@ -17,10 +17,10 @@
 ;   (via CopyIcon); they remain valid while Store runs.
 ; ============================================================
 
-; Icon pump processing modes
-global IP_MODE_NO_ICON := "NO_ICON"    ; No icon yet - try all methods
-global IP_MODE_UPGRADE := "UPGRADE"    ; Has fallback icon, window visible - try WM_GETICON
-global IP_MODE_REFRESH := "REFRESH"    ; Has WM_GETICON icon - check for changes
+; Icon pump processing modes (describes when/why each mode triggers)
+global IP_MODE_INITIAL := "INITIAL"              ; No icon yet - try all methods
+global IP_MODE_VISIBLE_RETRY := "VISIBLE_RETRY"  ; Window became visible - retry WM_GETICON
+global IP_MODE_FOCUS_RECHECK := "FOCUS_RECHECK"  ; Window got focus - recheck for icon changes
 
 ; NOTE: GiveUp backoff now in config: cfg.IconPumpGiveUpBackoffMs (default 5000)
 global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
@@ -188,7 +188,7 @@ _IP_Tick() {
     global IconBatchPerTick, _IP_Attempts, _IP_AttemptsMax, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global IP_LOG_TITLE_MAX_LEN
-    global IP_MODE_NO_ICON, IP_MODE_UPGRADE, IP_MODE_REFRESH
+    global IP_MODE_INITIAL, IP_MODE_VISIBLE_RETRY, IP_MODE_FOCUS_RECHECK
 
     ; PERF: Periodically prune _IP_Attempts to prevent unbounded growth
     ; Uses tick-based timing instead of static counter (per ahk-patterns.md)
@@ -250,16 +250,16 @@ _IP_Tick() {
         currentMethod := rec.HasOwnProp("iconMethod") ? rec.iconMethod : ""
 
         ; Determine processing mode:
-        ; 1. IP_MODE_NO_ICON: No icon yet - try all methods
-        ; 2. IP_MODE_UPGRADE: Has fallback icon, window visible - try WM_GETICON to upgrade
-        ; 3. IP_MODE_REFRESH: Has WM_GETICON icon - try WM_GETICON to check for changes
+        ; 1. IP_MODE_INITIAL: No icon yet - try all methods
+        ; 2. IP_MODE_VISIBLE_RETRY: Has fallback icon, window visible - try WM_GETICON to upgrade
+        ; 3. IP_MODE_FOCUS_RECHECK: Has WM_GETICON icon - try WM_GETICON to check for changes
         mode := ""
         if (!hasIcon) {
-            mode := IP_MODE_NO_ICON
+            mode := IP_MODE_INITIAL
         } else if (currentMethod != "wm_geticon" && !isHidden) {
-            mode := IP_MODE_UPGRADE
+            mode := IP_MODE_VISIBLE_RETRY
         } else if (currentMethod = "wm_geticon") {
-            mode := IP_MODE_REFRESH
+            mode := IP_MODE_FOCUS_RECHECK
         } else {
             ; Has fallback icon but still hidden - nothing to do
             _IP_Log("SKIP hwnd=" hwnd " '" title "' (has fallback, still hidden)")
@@ -268,15 +268,15 @@ _IP_Tick() {
         }
 
         ; Log what we're doing
-        if (mode = IP_MODE_NO_ICON) {
+        if (mode = IP_MODE_INITIAL) {
             if (isHidden) {
                 _IP_Log("PROC hwnd=" hwnd " '" title "' mode=NO_ICON (hidden) - try UWP/EXE")
             } else {
                 _IP_Log("PROC hwnd=" hwnd " '" title "' mode=NO_ICON - trying all methods")
             }
-        } else if (mode = IP_MODE_UPGRADE) {
+        } else if (mode = IP_MODE_VISIBLE_RETRY) {
             _IP_Log("PROC hwnd=" hwnd " '" title "' mode=UPGRADE (had " currentMethod ") - try WM_GETICON")
-        } else if (mode = IP_MODE_REFRESH) {
+        } else if (mode = IP_MODE_FOCUS_RECHECK) {
             _IP_Log("PROC hwnd=" hwnd " '" title "' mode=REFRESH - checking for icon change")
         }
 
@@ -284,14 +284,14 @@ _IP_Tick() {
         h := 0
         method := ""
 
-        if (mode = IP_MODE_UPGRADE || mode = IP_MODE_REFRESH) {
+        if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
             ; Only try WM_GETICON for upgrade/refresh (window must be visible)
             h := _IP_TryResolveFromWindow(hwnd)
             if (h) {
                 method := "wm_geticon"
             }
         } else {
-            ; IP_MODE_NO_ICON mode - try all methods
+            ; IP_MODE_INITIAL mode - try all methods
 
             ; Try WM_GETICON first (only if visible)
             if (!isHidden) {
@@ -334,7 +334,7 @@ _IP_Tick() {
         ; Handle result based on mode
         if (h) {
             ; Success - got a new icon
-            if (mode = IP_MODE_UPGRADE || mode = IP_MODE_REFRESH) {
+            if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
                 ; Destroy old icon before replacing
                 if (rec.iconHicon)
                     try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
@@ -353,7 +353,7 @@ _IP_Tick() {
         }
 
         ; Failed to get icon
-        if (mode = IP_MODE_UPGRADE || mode = IP_MODE_REFRESH) {
+        if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
             ; For upgrade/refresh, failure is OK - we keep existing icon
             ; Just update the refresh timestamp so we don't spam retries
             WindowStore_UpdateFields(hwnd, { iconLastRefreshTick: now }, "icons")
@@ -362,7 +362,7 @@ _IP_Tick() {
             continue
         }
 
-        ; IP_MODE_NO_ICON mode failure: bounded retries
+        ; IP_MODE_INITIAL mode failure: bounded retries
         tries := _IP_Attempts.Has(hwnd) ? (_IP_Attempts[hwnd] + 1) : 1
         _IP_Attempts[hwnd] := tries
         _IP_Log("FAIL hwnd=" hwnd " '" title "' attempt=" tries "/" IconMaxAttempts)

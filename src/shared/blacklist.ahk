@@ -318,13 +318,13 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
         return false
 
     ; Check Alt-Tab eligibility (use cached config value for hot path performance)
-    global gCfg_UseAltTabEligibility
-    if (gCfg_UseAltTabEligibility && !_BL_IsAltTabEligible(hwnd))
+    global gCached_UseAltTabEligibility
+    if (gCached_UseAltTabEligibility && !_BL_IsAltTabEligible(hwnd))
         return false
 
     ; Check blacklist (use cached config value for hot path performance)
-    global gCfg_UseBlacklist
-    if (gCfg_UseBlacklist && Blacklist_IsMatch(title, class))
+    global gCached_UseBlacklist
+    if (gCached_UseBlacklist && Blacklist_IsMatch(title, class))
         return false
 
     return true
@@ -398,8 +398,8 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
         return false
 
     ; Check Alt-Tab eligibility (use cached config value for hot path performance)
-    global gCfg_UseAltTabEligibility
-    if (gCfg_UseAltTabEligibility) {
+    global gCached_UseAltTabEligibility
+    if (gCached_UseAltTabEligibility) {
         if (!_BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak))
             return false
     } else {
@@ -412,8 +412,8 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
     }
 
     ; Check blacklist (use cached config value for hot path performance)
-    global gCfg_UseBlacklist
-    if (gCfg_UseBlacklist && Blacklist_IsMatch(title, class))
+    global gCached_UseBlacklist
+    if (gCached_UseBlacklist && Blacklist_IsMatch(title, class))
         return false
 
     return true

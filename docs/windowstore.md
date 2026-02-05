@@ -70,6 +70,6 @@ Producer responsibilities
 Note: Only winenum should call BeginScan/EndScan. Other producers use UpsertWindow/UpdateFields.
 
 Queues
-- `gWS_IconQueue` / `gWS_IconQueueSet` - hwnds needing icons
-- `gWS_PidQueue` / `gWS_PidQueueSet` - pids needing process names
-- `gWS_ZQueue` / `gWS_ZQueueSet` - hwnds needing Z-order (triggers winenum pump)
+- `gWS_IconQueue` / `gWS_IconQueueDedup` - hwnds needing icons
+- `gWS_PidQueue` / `gWS_PidQueueDedup` - pids needing process names
+- `gWS_ZQueue` / `gWS_ZQueueDedup` - hwnds needing Z-order (triggers winenum pump)

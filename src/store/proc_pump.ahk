@@ -17,11 +17,11 @@ global _PP_TimerOn := false
 global _PP_IdleTicks := 0               ; Counter for consecutive empty ticks
 global _PP_IdleThreshold := 5           ; Default, overridden from config in ProcPump_Start()
 
-; Negative cache: PIDs that failed lookup are not retried for 60s
+; Failed PID cache: PIDs that failed lookup are not retried for 60s
 ; Prevents continuous retries for system processes (csrss, wininit, etc.)
-global _PP_NegativeCache := Map()       ; pid -> tick when failure recorded
-global _PP_NegativeCacheTTL := 60000    ; 60s before retry
-global _PP_NegativeCacheMax := 200      ; Max entries before forced eviction
+global _PP_FailedPidCache := Map()       ; pid -> tick when failure recorded
+global _PP_FailedPidCacheTTL := 60000    ; 60s before retry
+global _PP_FailedPidCacheMax := 200      ; Max entries before forced eviction
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
@@ -96,9 +96,9 @@ _PP_Tick() {
         if (pid <= 0)
             continue
 
-        ; Check negative cache first - skip recently failed PIDs
-        global _PP_NegativeCache, _PP_NegativeCacheTTL, _PP_NegativeCacheMax
-        if (_PP_NegativeCache.Has(pid) && (A_TickCount - _PP_NegativeCache[pid]) < _PP_NegativeCacheTTL)
+        ; Check failed PID cache first - skip recently failed PIDs
+        global _PP_FailedPidCache, _PP_FailedPidCacheTTL, _PP_FailedPidCacheMax
+        if (_PP_FailedPidCache.Has(pid) && (A_TickCount - _PP_FailedPidCache[pid]) < _PP_FailedPidCacheTTL)
             continue
 
         ; Check positive cache
@@ -111,15 +111,15 @@ _PP_Tick() {
         ; Resolve process path
         path := _PP_GetProcessPath(pid)
         if (path = "") {
-            ; Record failure in negative cache
+            ; Record failure in failed PID cache
             ; Evict oldest entry if at limit (prevents unbounded growth)
-            if (_PP_NegativeCache.Count >= _PP_NegativeCacheMax) {
-                for k, _ in _PP_NegativeCache {
-                    _PP_NegativeCache.Delete(k)
+            if (_PP_FailedPidCache.Count >= _PP_FailedPidCacheMax) {
+                for k, _ in _PP_FailedPidCache {
+                    _PP_FailedPidCache.Delete(k)
                     break
                 }
             }
-            _PP_NegativeCache[pid] := A_TickCount
+            _PP_FailedPidCache[pid] := A_TickCount
             continue
         }
 
@@ -139,25 +139,25 @@ _PP_Basename(path) {
     return ProcessUtils_Basename(path)
 }
 
-; Prune expired entries from negative cache (called from Store_HeartbeatTick)
+; Prune expired entries from failed PID cache (called from Store_HeartbeatTick)
 ; Removes PIDs where TTL has expired AND process no longer exists
 ; RACE FIX: Wrap in Critical - _PP_Tick reads cache on every tick
-ProcPump_PruneNegativeCache() {
-    global _PP_NegativeCache, _PP_NegativeCacheTTL
-    if (!IsObject(_PP_NegativeCache) || _PP_NegativeCache.Count = 0)
+ProcPump_PruneFailedPidCache() {
+    global _PP_FailedPidCache, _PP_FailedPidCacheTTL
+    if (!IsObject(_PP_FailedPidCache) || _PP_FailedPidCache.Count = 0)
         return 0
 
     Critical "On"
     now := A_TickCount
     toDelete := []
-    for pid, tick in _PP_NegativeCache {
+    for pid, tick in _PP_FailedPidCache {
         ; Only prune if TTL expired AND process no longer exists
         ; (if process restarted with same PID, we want to retry)
-        if ((now - tick) >= _PP_NegativeCacheTTL && !ProcessExist(pid))
+        if ((now - tick) >= _PP_FailedPidCacheTTL && !ProcessExist(pid))
             toDelete.Push(pid)
     }
     for _, pid in toDelete
-        _PP_NegativeCache.Delete(pid)
+        _PP_FailedPidCache.Delete(pid)
     Critical "Off"
     return toDelete.Length
 }

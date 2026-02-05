@@ -1094,9 +1094,9 @@ RunUnitTests_Storage() {
     cfg.UseAltTabEligibility := false
     cfg.UseBlacklist := true
     ; Also update cached globals (production code reads these in hot paths)
-    global gCfg_UseAltTabEligibility, gCfg_UseBlacklist
-    gCfg_UseAltTabEligibility := false
-    gCfg_UseBlacklist := true
+    global gCached_UseAltTabEligibility, gCached_UseBlacklist
+    gCached_UseAltTabEligibility := false
+    gCached_UseBlacklist := true
 
     testBlDirElig := A_Temp "\tabby_bwelig_test_" A_TickCount
     testBlPathElig := testBlDirElig "\blacklist.txt"
@@ -1123,11 +1123,11 @@ RunUnitTests_Storage() {
 
         ; Test 4: UseBlacklist=false -> blacklisted title passes
         cfg.UseBlacklist := false
-        gCfg_UseBlacklist := false
+        gCached_UseBlacklist := false
         result := Blacklist_IsWindowEligible(0, "BadTitle Something", "SafeClass")
         AssertEq(result, true, "IsWindowEligible: UseBlacklist=false -> blacklisted passes")
         cfg.UseBlacklist := true
-        gCfg_UseBlacklist := true
+        gCached_UseBlacklist := true
 
         ; Test 5: Blacklisted class -> false
         result := Blacklist_IsWindowEligible(0, "Good Window", "BadClass")
@@ -1149,8 +1149,8 @@ RunUnitTests_Storage() {
     ; Restore original state
     cfg.UseAltTabEligibility := savedUseAltTab
     cfg.UseBlacklist := savedUseBlacklist
-    gCfg_UseAltTabEligibility := savedUseAltTab
-    gCfg_UseBlacklist := savedUseBlacklist
+    gCached_UseAltTabEligibility := savedUseAltTab
+    gCached_UseBlacklist := savedUseBlacklist
     Blacklist_Init(savedBlPathElig)
 
     ; Cleanup
