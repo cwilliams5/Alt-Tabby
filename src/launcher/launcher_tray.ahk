@@ -516,7 +516,7 @@ _AdminToggle_CheckComplete() {
     global g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_AdminToggleStartTick, g_CachedAdminTaskActive
     global ADMIN_TOGGLE_POLL_MS, ADMIN_TOGGLE_TIMEOUT_MS
     global TOOLTIP_DURATION_DEFAULT, APP_NAME
-    global ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT, cfg, gConfigIniPath
+    global ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT, TIMING_SUBPROCESS_LAUNCH, cfg, gConfigIniPath
 
     if (!FileExist(TEMP_ADMIN_TOGGLE_LOCK)) {
         ; Lock file gone entirely - elevated instance crashed or was killed
@@ -563,12 +563,18 @@ _AdminToggle_CheckComplete() {
         ; Offer restart so the user gets elevation immediately
         result := MsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")
         if (result = "Yes") {
-            ; Launch elevated instance via scheduled task
+            ; Shut down subprocesses FIRST so mutex releases before new instance boots
+            _GracefulShutdown()
+
             Sleep(TIMING_TASK_READY_WAIT)
             exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
             if (exitCode = 0) {
-                ExitAll()
+                ExitApp()
             } else {
+                ; Task failed - relaunch store+gui as fallback
+                LaunchStore()
+                Sleep(TIMING_SUBPROCESS_LAUNCH)
+                LaunchGui()
                 MsgBox("Failed to launch via scheduled task (exit code " exitCode ").`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
             }
         } else {
