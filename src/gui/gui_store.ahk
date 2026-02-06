@@ -11,6 +11,7 @@ global gGUI_LiveItemsMap := Map()
 GUI_OnStoreMessage(line, _hPipe := 0) {
     global gGUI_StoreConnected, gGUI_StoreRev, gGUI_LiveItems, gGUI_Sel, gGUI_LiveItemsMap
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText, cfg
+    global gGUI_Revealed  ; Used instead of gGUI_OverlayVisible for IPC repaint guards
     global gGUI_State, gGUI_DisplayItems, gGUI_ToggleBase  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
     global gGUI_LastLocalMRUTick  ; For skipping stale in-flight snapshots
@@ -178,7 +179,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
                 GUI_ResizeToRows(rowsDesired)
             }
 
-            if (gGUI_OverlayVisible && gGUI_OverlayH) {
+            if (gGUI_Revealed && gGUI_OverlayH) {
                 GUI_Repaint()
             }
         }
@@ -225,7 +226,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
                     Critical "Off"
                 }
                 ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
-                if (gGUI_OverlayVisible && gGUI_OverlayH) {
+                if (gGUI_Revealed && gGUI_OverlayH) {
                     ; Only repaint if visible items were affected.
                     ; MRU changes always repaint (sort order or item count changed).
                     ; Membership changes always repaint (items may appear/disappear from filtered list).

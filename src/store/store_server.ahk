@@ -272,9 +272,9 @@ Store_HeartbeatTick() {
         gStore_CachedHeartbeatJson := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
         gStore_CachedHeartbeatRev := rev
     }
-    ; Collect client wake hwnds for PostMessage after broadcast
-    wakeHwnds := _Store_CollectWakeHwnds()
-    IPC_PipeServer_Broadcast(gStore_Server, gStore_CachedHeartbeatJson, wakeHwnds)
+    ; No PostMessage wake for heartbeats — they're liveness-only (12s timeout).
+    ; Clients pick them up on the next timer tick (0-100ms), which is fine.
+    IPC_PipeServer_Broadcast(gStore_Server, gStore_CachedHeartbeatJson)
     gStore_LastSendTick := A_TickCount
 }
 
@@ -910,17 +910,6 @@ _Store_CleanupDisconnectedClients() {
     }
     for _, hPipe in stalePipes
         gStore_ClientState.Delete(hPipe)
-}
-
-; Collect all client wake hwnds into an array (for Broadcast calls)
-_Store_CollectWakeHwnds() {
-    global gStore_ClientState
-    hwnds := []
-    for hPipe, cs in gStore_ClientState {
-        if (cs.HasOwnProp("wakeHwnd") && cs.wakeHwnd)
-            hwnds.Push(cs.wakeHwnd)
-    }
-    return hwnds
 }
 
 ; Build a stable string key from projection opts for cache deduplication.

@@ -19,6 +19,12 @@ GUI_HideOverlay() {
     ; Stop hover polling
     GUI_StopHoverPolling()
 
+    ; Clear the overlay's layered content before hiding.
+    ; DWM caches the last UpdateLayeredWindow content for hidden layered windows.
+    ; Without this, re-showing the overlay can briefly flash stale content from
+    ; the previous session before the new paint's UpdateLayeredWindow takes effect.
+    _GUI_ClearLayeredContent()
+
     try {
         gGUI_Overlay.Hide()
     }
@@ -40,6 +46,35 @@ GUI_HideOverlay() {
         if (cfg.DiagEventLog)
             LogTrim(LOG_PATH_EVENTS)
     }
+}
+
+; Push a fully transparent buffer to the overlay's layered window.
+; This clears DWM's cached content so it has nothing stale to flash on next show.
+_GUI_ClearLayeredContent() {
+    global gGUI_OverlayH, gGdip_BackHdc, gGdip_BackW, gGdip_BackH
+
+    if (!gGdip_BackHdc || !gGUI_OverlayH || gGdip_BackW < 1 || gGdip_BackH < 1)
+        return
+
+    g := Gdip_EnsureGraphics()
+    if (!g)
+        return
+    Gdip_Clear(g, 0x00000000)
+
+    ; Push cleared buffer to overlay via UpdateLayeredWindow (pptDst=0 keeps position)
+    static bf := Buffer(4, 0)
+    static sz := Buffer(8, 0)
+    static ptSrc := Buffer(8, 0)
+    NumPut("UChar", 0, bf, 0)
+    NumPut("UChar", 0, bf, 1)
+    NumPut("UChar", 255, bf, 2)
+    NumPut("UChar", 0x01, bf, 3)
+    NumPut("Int", gGdip_BackW, sz, 0)
+    NumPut("Int", gGdip_BackH, sz, 4)
+
+    hdcScreen := DllCall("user32\GetDC", "ptr", 0, "ptr")
+    DllCall("user32\UpdateLayeredWindow", "ptr", gGUI_OverlayH, "ptr", hdcScreen, "ptr", 0, "ptr", sz.Ptr, "ptr", gGdip_BackHdc, "ptr", ptSrc.Ptr, "int", 0, "ptr", bf.Ptr, "uint", 0x2, "int")
+    DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
 }
 
 ; ========================= LAYOUT CALCULATIONS =========================
