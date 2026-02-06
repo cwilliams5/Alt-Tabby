@@ -885,15 +885,6 @@ _Update_MergeStats(srcPath, targetPath) {
             IniWrite(mergedVal, targetPath, "Lifetime", key)
         }
     }
-
-    ; Merge FirstSessionDate - keep the earliest date
-    try {
-        srcDate := IniRead(srcPath, "Lifetime", "FirstSessionDate", "")
-        targetDate := IniRead(targetPath, "Lifetime", "FirstSessionDate", "")
-        if (srcDate != "" && (targetDate = "" || srcDate < targetDate)) {
-            IniWrite(srcDate, targetPath, "Lifetime", "FirstSessionDate")
-        }
-    }
 }
 
 ; Validate that a file is a valid PE executable
