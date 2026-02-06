@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alt-Tabby Settings</title>
+<style>
+  :root {
+    --bg-primary: #1a1b26;
+    --bg-secondary: #24283b;
+    --bg-tertiary: #2f3349;
+    --bg-input: #1a1b26;
+    --bg-hover: #3b3f57;
+    --text-primary: #c0caf5;
+    --text-secondary: #a9b1d6;
+    --text-muted: #565f89;
+    --text-desc: #7aa2f7;
+    --accent: #7aa2f7;
+    --accent-hover: #89b4fa;
+    --border: #3b3f57;
+    --border-input: #414868;
+    --success: #9ece6a;
+    --warning: #e0af68;
+    --danger: #f7768e;
+    --toggle-bg: #414868;
+    --toggle-active: #7aa2f7;
+    --sidebar-width: 220px;
+    --header-height: 56px;
+    --footer-height: 56px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 14px;
+  }
+
+  /* Header */
+  .header {
+    height: var(--header-height);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    flex-shrink: 0;
+    gap: 16px;
+  }
+  .header-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .header-search {
+    flex: 1;
+    max-width: 320px;
+    margin-left: auto;
+  }
+  .header-search input {
+    width: 100%;
+    padding: 6px 12px 6px 32px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .header-search input:focus {
+    border-color: var(--accent);
+  }
+  .header-search { position: relative; }
+  .header-search::before {
+    content: '⌕';
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 14px;
+    pointer-events: none;
+  }
+
+  /* Main layout */
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding: 8px 0;
+  }
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .sidebar-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    transition: all 0.1s;
+    border-left: 3px solid transparent;
+    user-select: none;
+  }
+  .sidebar-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .sidebar-item.active {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .sidebar-item .item-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* Content area */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 32px 32px;
+    scroll-behavior: smooth;
+  }
+  .content::-webkit-scrollbar { width: 8px; }
+  .content::-webkit-scrollbar-track { background: transparent; }
+  .content::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .content::-webkit-scrollbar-thumb:hover {
+    background: var(--bg-hover);
+  }
+
+  /* Section */
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .section-title {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+  }
+  .section-desc {
+    color: var(--text-desc);
+    font-size: 13px;
+    margin-bottom: 24px;
+    line-height: 1.5;
+    opacity: 0.8;
+  }
+
+  /* Subsection */
+  .subsection {
+    margin-top: 28px;
+    margin-bottom: 16px;
+  }
+  .subsection-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  .subsection-desc {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  /* Setting row */
+  .setting {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-radius: 8px;
+    transition: background 0.1s;
+    gap: 24px;
+  }
+  .setting:hover {
+    background: var(--bg-tertiary);
+  }
+  .setting-info { flex: 1; min-width: 0; }
+  .setting-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+  .setting-key {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+  }
+  .setting-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.4;
+    opacity: 0.8;
+  }
+  .setting-control {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding-top: 2px;
+  }
+
+  /* Input styles */
+  input[type="text"], input[type="number"] {
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 140px;
+  }
+  input[type="text"] { width: 200px; }
+  input[type="number"] { width: 110px; }
+  input:focus {
+    border-color: var(--accent);
+  }
+  input.modified {
+    border-color: var(--warning);
+  }
+
+  select {
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    min-width: 160px;
+  }
+  select:focus { border-color: var(--accent); }
+
+  /* Toggle switch */
+  .toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .toggle input { display: none; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--toggle-bg);
+    border-radius: 12px;
+    transition: background 0.2s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    top: 3px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .toggle input:checked + .toggle-slider {
+    background: var(--toggle-active);
+  }
+  .toggle input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+    background: white;
+  }
+
+  /* Footer */
+  .footer {
+    height: var(--footer-height);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .footer-right {
+    display: flex;
+    gap: 8px;
+  }
+
+  button {
+    padding: 7px 18px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  button:hover {
+    background: var(--bg-hover);
+  }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #1a1b26;
+    font-weight: 600;
+  }
+  button.primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+  button.primary:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  button.danger {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: transparent;
+  }
+  button.danger:hover {
+    background: rgba(247, 118, 142, 0.1);
+  }
+
+  .change-count {
+    background: var(--warning);
+    color: #1a1b26;
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  /* Search results highlight */
+  .search-highlight {
+    background: rgba(224, 175, 104, 0.3);
+    border-radius: 2px;
+    padding: 0 2px;
+  }
+
+  /* Filter mode: hide non-matching, show all sections */
+  .filter-mode .section { display: block !important; }
+  .filter-mode .section.filter-empty { display: none !important; }
+  .filter-mode .setting.filter-hidden { display: none; }
+  .filter-mode .subsection.filter-hidden { display: none; }
+  .filter-mode .sidebar-item { display: none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">⚙ Alt-Tabby Settings</div>
+  <div class="header-search">
+    <input type="text" id="searchBox" placeholder="Search settings..." autocomplete="off">
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="content" id="content"></div>
+</div>
+
+<div class="footer">
+  <div class="footer-left">
+    <span id="changeInfo"></span>
+  </div>
+  <div class="footer-right">
+    <button class="danger" id="resetBtn">Reset to Defaults</button>
+    <button id="cancelBtn">Cancel</button>
+    <button class="primary" id="saveBtn" disabled>Save</button>
+  </div>
+</div>
+
+<script>
+// Config registry data (from config_registry.ahk)
+const configRegistry = [
+  {type:"section",name:"AltTab",desc:"Alt-Tab Behavior",long:"These control the Alt-Tab overlay behavior - tweak these first!"},
+  {s:"AltTab",k:"GraceMs",g:"AltTabGraceMs",t:"int",default:150,d:"Grace period before showing GUI (ms). During this time, if Alt is released, we do a quick switch without showing GUI."},
+  {s:"AltTab",k:"QuickSwitchMs",g:"AltTabQuickSwitchMs",t:"int",default:100,d:"Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch."},
+  {s:"AltTab",k:"PrewarmOnAlt",g:"AltTabPrewarmOnAlt",t:"bool",default:true,d:"Pre-warm snapshot on Alt down (true = request data before Tab pressed). Ensures fresh window data is available when Tab is pressed."},
+  {s:"AltTab",k:"FreezeWindowList",g:"FreezeWindowList",t:"bool",default:false,d:"Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction."},
+  {s:"AltTab",k:"UseCurrentWSProjection",g:"UseCurrentWSProjection",t:"bool",default:true,d:"Use server-side workspace projection filtering. When true, CTRL workspace toggle requests a new projection from the store."},
+  {s:"AltTab",k:"SwitchOnClick",g:"AltTabSwitchOnClick",t:"bool",default:true,d:"Activate window immediately when clicking a row (like Windows native)."},
+  {s:"AltTab",k:"AsyncActivationPollMs",g:"AltTabAsyncActivationPollMs",t:"int",default:15,d:"Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU."},
+  {type:"subsection",section:"AltTab",name:"Bypass",desc:"When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby"},
+  {s:"AltTab",k:"BypassFullscreen",g:"AltTabBypassFullscreen",t:"bool",default:true,d:"Bypass Alt-Tabby when the foreground window is fullscreen (covers ≥99% of screen)."},
+  {s:"AltTab",k:"BypassFullscreenThreshold",g:"AltTabBypassFullscreenThreshold",t:"float",default:0.99,d:"Fraction of screen dimensions a window must cover to be considered fullscreen (0.90-1.0)."},
+  {s:"AltTab",k:"BypassFullscreenTolerancePx",g:"AltTabBypassFullscreenTolerancePx",t:"int",default:5,d:"Maximum pixels from screen edge for a window to still be considered fullscreen (0-50)."},
+  {s:"AltTab",k:"BypassProcesses",g:"AltTabBypassProcesses",t:"string",default:"",d:"Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe')."},
+  {type:"subsection",section:"AltTab",name:"Internal Timing",desc:"Internal timing parameters (usually no need to change)"},
+  {s:"AltTab",k:"AltLeewayMs",g:"AltTabAltLeewayMs",t:"int",default:60,d:"Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab."},
+  {s:"AltTab",k:"MRUFreshnessMs",g:"AltTabMRUFreshnessMs",t:"int",default:300,d:"How long local MRU data is considered fresh after activation (ms)."},
+  {s:"AltTab",k:"WSPollTimeoutMs",g:"AltTabWSPollTimeoutMs",t:"int",default:200,d:"Timeout when polling for workspace switch completion (ms)."},
+  {s:"AltTab",k:"PrewarmWaitMs",g:"AltTabPrewarmWaitMs",t:"int",default:50,d:"Max time to wait for prewarm data on Tab (ms)."},
+  {s:"AltTab",k:"TabDecisionMs",g:"AltTabTabDecisionMs",t:"int",default:24,d:"Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay."},
+  {s:"AltTab",k:"WorkspaceSwitchSettleMs",g:"AltTabWorkspaceSwitchSettleMs",t:"int",default:75,d:"Wait time after workspace switch (ms)."},
+
+  {type:"section",name:"Launcher",desc:"Launcher Settings",long:"Settings for the main Alt-Tabby launcher process (splash screen, startup behavior)."},
+  {s:"Launcher",k:"ShowSplash",g:"LauncherShowSplash",t:"bool",default:true,d:"Show splash screen on startup."},
+  {s:"Launcher",k:"SplashDurationMs",g:"LauncherSplashDurationMs",t:"int",default:3000,d:"Splash screen display duration in milliseconds."},
+  {s:"Launcher",k:"SplashFadeMs",g:"LauncherSplashFadeMs",t:"int",default:500,d:"Splash screen fade in/out duration in milliseconds."},
+
+  {type:"section",name:"GUI",desc:"GUI Appearance",long:"Visual styling for the Alt-Tab overlay window."},
+  {type:"subsection",section:"GUI",name:"Background Window",desc:"Window background and frame styling"},
+  {s:"GUI",k:"AcrylicAlpha",g:"GUI_AcrylicAlpha",t:"int",default:0x33,d:"Background transparency (0x00=transparent, 0xFF=opaque)"},
+  {s:"GUI",k:"AcrylicBaseRgb",g:"GUI_AcrylicBaseRgb",t:"int",default:0x330000,d:"Background tint color (hex RGB)"},
+  {s:"GUI",k:"CornerRadiusPx",g:"GUI_CornerRadiusPx",t:"int",default:18,d:"Window corner radius in pixels"},
+  {type:"subsection",section:"GUI",name:"Size Config",desc:"Window and row sizing"},
+  {s:"GUI",k:"ScreenWidthPct",g:"GUI_ScreenWidthPct",t:"float",default:0.60,d:"GUI width as fraction of screen (0.0-1.0)"},
+  {s:"GUI",k:"RowsVisibleMin",g:"GUI_RowsVisibleMin",t:"int",default:1,d:"Minimum visible rows"},
+  {s:"GUI",k:"RowsVisibleMax",g:"GUI_RowsVisibleMax",t:"int",default:8,d:"Maximum visible rows"},
+  {s:"GUI",k:"RowHeight",g:"GUI_RowHeight",t:"int",default:56,d:"Height of each row in pixels"},
+  {s:"GUI",k:"MarginX",g:"GUI_MarginX",t:"int",default:18,d:"Horizontal margin in pixels"},
+  {s:"GUI",k:"MarginY",g:"GUI_MarginY",t:"int",default:18,d:"Vertical margin in pixels"},
+  {type:"subsection",section:"GUI",name:"Virtual List Look",desc:"Row and icon appearance"},
+  {s:"GUI",k:"IconSize",g:"GUI_IconSize",t:"int",default:36,d:"Icon size in pixels"},
+  {s:"GUI",k:"IconLeftMargin",g:"GUI_IconLeftMargin",t:"int",default:8,d:"Left margin before icon in pixels"},
+  {s:"GUI",k:"IconTextGapPx",g:"GUI_IconTextGapPx",t:"int",default:12,d:"Gap between icon and title text in pixels"},
+  {s:"GUI",k:"ColumnGapPx",g:"GUI_ColumnGapPx",t:"int",default:10,d:"Gap between right-side data columns in pixels"},
+  {s:"GUI",k:"HeaderHeightPx",g:"GUI_HeaderHeightPx",t:"int",default:28,d:"Header row height in pixels"},
+  {s:"GUI",k:"RowRadius",g:"GUI_RowRadius",t:"int",default:12,d:"Row corner radius in pixels"},
+  {s:"GUI",k:"SelARGB",g:"GUI_SelARGB",t:"int",default:0x662B5CAD,d:"Selection highlight color (ARGB)"},
+  {type:"subsection",section:"GUI",name:"Selection & Scrolling",desc:"Selection and scroll behavior"},
+  {s:"GUI",k:"ScrollKeepHighlightOnTop",g:"GUI_ScrollKeepHighlightOnTop",t:"bool",default:true,d:"Keep selection at top when scrolling"},
+  {s:"GUI",k:"EmptyListText",g:"GUI_EmptyListText",t:"string",default:"No Windows",d:"Text shown when no windows available"},
+  {type:"subsection",section:"GUI",name:"Action Buttons",desc:"Row action buttons shown on hover"},
+  {s:"GUI",k:"ShowCloseButton",g:"GUI_ShowCloseButton",t:"bool",default:true,d:"Show close button on hover"},
+  {s:"GUI",k:"ShowKillButton",g:"GUI_ShowKillButton",t:"bool",default:true,d:"Show kill button on hover"},
+  {s:"GUI",k:"ShowBlacklistButton",g:"GUI_ShowBlacklistButton",t:"bool",default:true,d:"Show blacklist button on hover"},
+  {s:"GUI",k:"ActionBtnSizePx",g:"GUI_ActionBtnSizePx",t:"int",default:24,d:"Action button size in pixels"},
+  {s:"GUI",k:"ActionBtnGapPx",g:"GUI_ActionBtnGapPx",t:"int",default:6,d:"Gap between action buttons in pixels"},
+  {s:"GUI",k:"ActionBtnRadiusPx",g:"GUI_ActionBtnRadiusPx",t:"int",default:6,d:"Action button corner radius"},
+  {s:"GUI",k:"ActionFontName",g:"GUI_ActionFontName",t:"string",default:"Segoe UI Symbol",d:"Action button font name"},
+  {s:"GUI",k:"ActionFontSize",g:"GUI_ActionFontSize",t:"int",default:18,d:"Action button font size"},
+  {s:"GUI",k:"ActionFontWeight",g:"GUI_ActionFontWeight",t:"int",default:700,d:"Action button font weight"},
+  {type:"subsection",section:"GUI",name:"Close Button Styling",desc:"Close button appearance"},
+  {s:"GUI",k:"CloseButtonBorderPx",g:"GUI_CloseButtonBorderPx",t:"int",default:1,d:"Close button border width"},
+  {s:"GUI",k:"CloseButtonBorderARGB",g:"GUI_CloseButtonBorderARGB",t:"int",default:0x88FFFFFF,d:"Close button border color (ARGB)"},
+  {s:"GUI",k:"CloseButtonBGARGB",g:"GUI_CloseButtonBGARGB",t:"int",default:0xFF000000,d:"Close button background color (ARGB)"},
+  {s:"GUI",k:"CloseButtonBGHoverARGB",g:"GUI_CloseButtonBGHoverARGB",t:"int",default:0xFF888888,d:"Close button background color on hover (ARGB)"},
+  {s:"GUI",k:"CloseButtonTextARGB",g:"GUI_CloseButtonTextARGB",t:"int",default:0xFFFFFFFF,d:"Close button text color (ARGB)"},
+  {s:"GUI",k:"CloseButtonTextHoverARGB",g:"GUI_CloseButtonTextHoverARGB",t:"int",default:0xFFFF0000,d:"Close button text color on hover (ARGB)"},
+  {s:"GUI",k:"CloseButtonGlyph",g:"GUI_CloseButtonGlyph",t:"string",default:"X",d:"Close button glyph character"},
+  {type:"subsection",section:"GUI",name:"Kill Button Styling",desc:"Kill button appearance"},
+  {s:"GUI",k:"KillButtonBorderPx",g:"GUI_KillButtonBorderPx",t:"int",default:1,d:"Kill button border width"},
+  {s:"GUI",k:"KillButtonBorderARGB",g:"GUI_KillButtonBorderARGB",t:"int",default:0x88FFB4A5,d:"Kill button border color (ARGB)"},
+  {s:"GUI",k:"KillButtonBGARGB",g:"GUI_KillButtonBGARGB",t:"int",default:0xFF300000,d:"Kill button background color (ARGB)"},
+  {s:"GUI",k:"KillButtonBGHoverARGB",g:"GUI_KillButtonBGHoverARGB",t:"int",default:0xFFD00000,d:"Kill button background color on hover (ARGB)"},
+  {s:"GUI",k:"KillButtonTextARGB",g:"GUI_KillButtonTextARGB",t:"int",default:0xFFFFE8E8,d:"Kill button text color (ARGB)"},
+  {s:"GUI",k:"KillButtonTextHoverARGB",g:"GUI_KillButtonTextHoverARGB",t:"int",default:0xFFFFFFFF,d:"Kill button text color on hover (ARGB)"},
+  {s:"GUI",k:"KillButtonGlyph",g:"GUI_KillButtonGlyph",t:"string",default:"K",d:"Kill button glyph character"},
+  {type:"subsection",section:"GUI",name:"Blacklist Button Styling",desc:"Blacklist button appearance"},
+  {s:"GUI",k:"BlacklistButtonBorderPx",g:"GUI_BlacklistButtonBorderPx",t:"int",default:1,d:"Blacklist button border width"},
+  {s:"GUI",k:"BlacklistButtonBorderARGB",g:"GUI_BlacklistButtonBorderARGB",t:"int",default:0x88999999,d:"Blacklist button border color (ARGB)"},
+  {s:"GUI",k:"BlacklistButtonBGARGB",g:"GUI_BlacklistButtonBGARGB",t:"int",default:0xFF000000,d:"Blacklist button background color (ARGB)"},
+  {s:"GUI",k:"BlacklistButtonBGHoverARGB",g:"GUI_BlacklistButtonBGHoverARGB",t:"int",default:0xFF888888,d:"Blacklist button background color on hover (ARGB)"},
+  {s:"GUI",k:"BlacklistButtonTextARGB",g:"GUI_BlacklistButtonTextARGB",t:"int",default:0xFFFFFFFF,d:"Blacklist button text color (ARGB)"},
+  {s:"GUI",k:"BlacklistButtonTextHoverARGB",g:"GUI_BlacklistButtonTextHoverARGB",t:"int",default:0xFFFF0000,d:"Blacklist button text color on hover (ARGB)"},
+  {s:"GUI",k:"BlacklistButtonGlyph",g:"GUI_BlacklistButtonGlyph",t:"string",default:"B",d:"Blacklist button glyph character"},
+  {type:"subsection",section:"GUI",name:"Columns",desc:"Extra data columns (0 = hidden)"},
+  {s:"GUI",k:"ShowHeader",g:"GUI_ShowHeader",t:"bool",default:true,d:"Show column headers"},
+  {s:"GUI",k:"ColFixed2",g:"GUI_ColFixed2",t:"int",default:70,d:"Column 2 width (HWND)"},
+  {s:"GUI",k:"ColFixed3",g:"GUI_ColFixed3",t:"int",default:50,d:"Column 3 width (PID)"},
+  {s:"GUI",k:"ColFixed4",g:"GUI_ColFixed4",t:"int",default:60,d:"Column 4 width (Workspace)"},
+  {s:"GUI",k:"ColFixed5",g:"GUI_ColFixed5",t:"int",default:0,d:"Column 5 width (0=hidden)"},
+  {s:"GUI",k:"ColFixed6",g:"GUI_ColFixed6",t:"int",default:0,d:"Column 6 width (0=hidden)"},
+  {s:"GUI",k:"Col2Name",g:"GUI_Col2Name",t:"string",default:"HWND",d:"Column 2 header name"},
+  {s:"GUI",k:"Col3Name",g:"GUI_Col3Name",t:"string",default:"PID",d:"Column 3 header name"},
+  {s:"GUI",k:"Col4Name",g:"GUI_Col4Name",t:"string",default:"WS",d:"Column 4 header name"},
+  {s:"GUI",k:"Col5Name",g:"GUI_Col5Name",t:"string",default:"",d:"Column 5 header name"},
+  {s:"GUI",k:"Col6Name",g:"GUI_Col6Name",t:"string",default:"",d:"Column 6 header name"},
+  {type:"subsection",section:"GUI",name:"Header Font",desc:"Column header text styling"},
+  {s:"GUI",k:"HdrFontName",g:"GUI_HdrFontName",t:"string",default:"Segoe UI",d:"Header font name"},
+  {s:"GUI",k:"HdrFontSize",g:"GUI_HdrFontSize",t:"int",default:12,d:"Header font size"},
+  {s:"GUI",k:"HdrFontWeight",g:"GUI_HdrFontWeight",t:"int",default:600,d:"Header font weight"},
+  {s:"GUI",k:"HdrARGB",g:"GUI_HdrARGB",t:"int",default:0xFFD0D6DE,d:"Header text color (ARGB)"},
+  {type:"subsection",section:"GUI",name:"Main Font",desc:"Window title text styling"},
+  {s:"GUI",k:"MainFontName",g:"GUI_MainFontName",t:"string",default:"Segoe UI",d:"Main font name"},
+  {s:"GUI",k:"MainFontSize",g:"GUI_MainFontSize",t:"int",default:20,d:"Main font size"},
+  {s:"GUI",k:"MainFontWeight",g:"GUI_MainFontWeight",t:"int",default:400,d:"Main font weight"},
+  {s:"GUI",k:"MainFontNameHi",g:"GUI_MainFontNameHi",t:"string",default:"Segoe UI",d:"Main font name when highlighted"},
+  {s:"GUI",k:"MainFontSizeHi",g:"GUI_MainFontSizeHi",t:"int",default:20,d:"Main font size when highlighted"},
+  {s:"GUI",k:"MainFontWeightHi",g:"GUI_MainFontWeightHi",t:"int",default:800,d:"Main font weight when highlighted"},
+  {s:"GUI",k:"MainARGB",g:"GUI_MainARGB",t:"int",default:0xFFF0F0F0,d:"Main text color (ARGB)"},
+  {s:"GUI",k:"MainARGBHi",g:"GUI_MainARGBHi",t:"int",default:0xFFF0F0F0,d:"Main text color when highlighted (ARGB)"},
+  {type:"subsection",section:"GUI",name:"Sub Font",desc:"Subtitle row text styling"},
+  {s:"GUI",k:"SubFontName",g:"GUI_SubFontName",t:"string",default:"Segoe UI",d:"Sub font name"},
+  {s:"GUI",k:"SubFontSize",g:"GUI_SubFontSize",t:"int",default:12,d:"Sub font size"},
+  {s:"GUI",k:"SubFontWeight",g:"GUI_SubFontWeight",t:"int",default:400,d:"Sub font weight"},
+  {s:"GUI",k:"SubFontNameHi",g:"GUI_SubFontNameHi",t:"string",default:"Segoe UI",d:"Sub font name when highlighted"},
+  {s:"GUI",k:"SubFontSizeHi",g:"GUI_SubFontSizeHi",t:"int",default:12,d:"Sub font size when highlighted"},
+  {s:"GUI",k:"SubFontWeightHi",g:"GUI_SubFontWeightHi",t:"int",default:600,d:"Sub font weight when highlighted"},
+  {s:"GUI",k:"SubARGB",g:"GUI_SubARGB",t:"int",default:0xFFB5C0CE,d:"Sub text color (ARGB)"},
+  {s:"GUI",k:"SubARGBHi",g:"GUI_SubARGBHi",t:"int",default:0xFFB5C0CE,d:"Sub text color when highlighted (ARGB)"},
+  {type:"subsection",section:"GUI",name:"Column Font",desc:"Column value text styling"},
+  {s:"GUI",k:"ColFontName",g:"GUI_ColFontName",t:"string",default:"Segoe UI",d:"Column font name"},
+  {s:"GUI",k:"ColFontSize",g:"GUI_ColFontSize",t:"int",default:12,d:"Column font size"},
+  {s:"GUI",k:"ColFontWeight",g:"GUI_ColFontWeight",t:"int",default:400,d:"Column font weight"},
+  {s:"GUI",k:"ColFontNameHi",g:"GUI_ColFontNameHi",t:"string",default:"Segoe UI",d:"Column font name when highlighted"},
+  {s:"GUI",k:"ColFontSizeHi",g:"GUI_ColFontSizeHi",t:"int",default:12,d:"Column font size when highlighted"},
+  {s:"GUI",k:"ColFontWeightHi",g:"GUI_ColFontWeightHi",t:"int",default:600,d:"Column font weight when highlighted"},
+  {s:"GUI",k:"ColARGB",g:"GUI_ColARGB",t:"int",default:0xFFF0F0F0,d:"Column text color (ARGB)"},
+  {s:"GUI",k:"ColARGBHi",g:"GUI_ColARGBHi",t:"int",default:0xFFF0F0F0,d:"Column text color when highlighted (ARGB)"},
+  {type:"subsection",section:"GUI",name:"Scrollbar",desc:"Scrollbar appearance"},
+  {s:"GUI",k:"ScrollBarEnabled",g:"GUI_ScrollBarEnabled",t:"bool",default:true,d:"Show scrollbar when content overflows"},
+  {s:"GUI",k:"ScrollBarWidthPx",g:"GUI_ScrollBarWidthPx",t:"int",default:6,d:"Scrollbar width in pixels"},
+  {s:"GUI",k:"ScrollBarMarginRightPx",g:"GUI_ScrollBarMarginRightPx",t:"int",default:8,d:"Scrollbar right margin in pixels"},
+  {s:"GUI",k:"ScrollBarThumbARGB",g:"GUI_ScrollBarThumbARGB",t:"int",default:0x88FFFFFF,d:"Scrollbar thumb color (ARGB)"},
+  {s:"GUI",k:"ScrollBarGutterEnabled",g:"GUI_ScrollBarGutterEnabled",t:"bool",default:false,d:"Show scrollbar gutter background"},
+  {s:"GUI",k:"ScrollBarGutterARGB",g:"GUI_ScrollBarGutterARGB",t:"int",default:0x30000000,d:"Scrollbar gutter color (ARGB)"},
+  {type:"subsection",section:"GUI",name:"Footer",desc:"Footer bar appearance"},
+  {s:"GUI",k:"ShowFooter",g:"GUI_ShowFooter",t:"bool",default:true,d:"Show footer bar"},
+  {s:"GUI",k:"FooterBorderPx",g:"GUI_FooterBorderPx",t:"int",default:0,d:"Footer border width in pixels"},
+  {s:"GUI",k:"FooterBorderARGB",g:"GUI_FooterBorderARGB",t:"int",default:0x33FFFFFF,d:"Footer border color (ARGB)"},
+  {s:"GUI",k:"FooterBGRadius",g:"GUI_FooterBGRadius",t:"int",default:0,d:"Footer background corner radius"},
+  {s:"GUI",k:"FooterBGARGB",g:"GUI_FooterBGARGB",t:"int",default:0x00000000,d:"Footer background color (ARGB)"},
+  {s:"GUI",k:"FooterTextARGB",g:"GUI_FooterTextARGB",t:"int",default:0xFFFFFFFF,d:"Footer text color (ARGB)"},
+  {s:"GUI",k:"FooterFontName",g:"GUI_FooterFontName",t:"string",default:"Segoe UI",d:"Footer font name"},
+  {s:"GUI",k:"FooterFontSize",g:"GUI_FooterFontSize",t:"int",default:14,d:"Footer font size"},
+  {s:"GUI",k:"FooterFontWeight",g:"GUI_FooterFontWeight",t:"int",default:600,d:"Footer font weight"},
+  {s:"GUI",k:"FooterHeightPx",g:"GUI_FooterHeightPx",t:"int",default:24,d:"Footer height in pixels"},
+  {s:"GUI",k:"FooterGapTopPx",g:"GUI_FooterGapTopPx",t:"int",default:8,d:"Gap between content and footer in pixels"},
+  {s:"GUI",k:"FooterPaddingX",g:"GUI_FooterPaddingX",t:"int",default:12,d:"Footer horizontal padding in pixels"},
+
+  {type:"section",name:"IPC",desc:"IPC & Pipes",long:"Named pipe for store<->client communication."},
+  {s:"IPC",k:"StorePipeName",g:"StorePipeName",t:"string",default:"tabby_store_v1",d:"Named pipe name for store communication"},
+  {s:"IPC",k:"IdleTickMs",g:"IPCIdleTickMs",t:"int",default:100,d:"Client poll interval when idle (ms). Active tick is always 15ms."},
+
+  {type:"section",name:"Tools",desc:"External Tools",long:"Paths to external executables used by Alt-Tabby."},
+  {s:"Tools",k:"AhkV2Path",g:"AhkV2Path",t:"string",default:"C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe",d:"Path to AHK v2 executable"},
+  {s:"Tools",k:"KomorebicExe",g:"KomorebicExe",t:"string",default:"C:\\Program Files\\komorebi\\bin\\komorebic.exe",d:"Path to komorebic.exe"},
+
+  {type:"section",name:"Producers",desc:"Producer Toggles",long:"WinEventHook and MRU are always enabled (core functionality). These control optional producers."},
+  {s:"Producers",k:"UseKomorebiSub",g:"UseKomorebiSub",t:"bool",default:true,d:"Komorebi subscription-based integration (preferred, event-driven)"},
+  {s:"Producers",k:"UseKomorebiLite",g:"UseKomorebiLite",t:"bool",default:false,d:"Komorebi polling-based fallback (use if subscription fails)"},
+  {s:"Producers",k:"UseIconPump",g:"UseIconPump",t:"bool",default:true,d:"Resolve window icons in background"},
+  {s:"Producers",k:"UseProcPump",g:"UseProcPump",t:"bool",default:true,d:"Resolve process names in background"},
+
+  {type:"section",name:"Filtering",desc:"Window Filtering",long:"Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist."},
+  {s:"Filtering",k:"UseAltTabEligibility",g:"UseAltTabEligibility",t:"bool",default:true,d:"Filter windows like native Alt-Tab (skip tool windows, etc.)"},
+  {s:"Filtering",k:"UseBlacklist",g:"UseBlacklist",t:"bool",default:true,d:"Apply blacklist from shared/blacklist.txt"},
+
+  {type:"section",name:"WinEventHook",desc:"WinEventHook Timing",long:"Event-driven window change detection. Events are queued then processed in batches."},
+  {s:"WinEventHook",k:"DebounceMs",g:"WinEventHookDebounceMs",t:"int",default:50,d:"Debounce rapid events (e.g., window moving fires many events)"},
+  {s:"WinEventHook",k:"BatchMs",g:"WinEventHookBatchMs",t:"int",default:100,d:"Batch processing interval"},
+  {s:"WinEventHook",k:"IdleThreshold",g:"WinEventHookIdleThreshold",t:"int",default:10,d:"Empty batch ticks before pausing timer"},
+  {s:"WinEventHook",k:"CosmeticBufferMs",g:"WinEventHookCosmeticBufferMs",t:"int",default:1000,d:"Min interval between proactive pushes for cosmetic-only changes"},
+
+  {type:"section",name:"ZPump",desc:"Z-Pump Timing",long:"When WinEventHook adds a window, we don't know its Z-order. Z-pump triggers a full WinEnum scan."},
+  {s:"ZPump",k:"IntervalMs",g:"ZPumpIntervalMs",t:"int",default:200,d:"How often to check if Z-queue has pending windows"},
+
+  {type:"section",name:"WinEnum",desc:"WinEnum Safety Polling",long:"WinEnum normally runs on-demand. Enable safety polling as a belt-and-suspenders."},
+  {s:"WinEnum",k:"MissingWindowTTLMs",g:"WinEnumMissingWindowTTLMs",t:"int",default:1200,d:"Grace period before removing a missing window (ms). Range: 100-10000."},
+  {s:"WinEnum",k:"FallbackScanIntervalMs",g:"WinEnumFallbackScanIntervalMs",t:"int",default:2000,d:"Polling interval when WinEventHook fails (ms). Range: 500-10000."},
+  {s:"WinEnum",k:"SafetyPollMs",g:"WinEnumSafetyPollMs",t:"int",default:0,d:"Safety polling interval (0=disabled, or 30000+)"},
+  {s:"WinEnum",k:"ValidateExistenceMs",g:"WinEnumValidateExistenceMs",t:"int",default:5000,d:"Lightweight zombie detection interval (ms). 0=disabled."},
+
+  {type:"section",name:"MruLite",desc:"MRU Lite Timing",long:"MRU_Lite only runs if WinEventHook fails. Polls the foreground window."},
+  {s:"MruLite",k:"PollMs",g:"MruLitePollMs",t:"int",default:250,d:"Polling interval for focus tracking fallback"},
+
+  {type:"section",name:"IconPump",desc:"Icon Pump Timing",long:"Resolves window icons asynchronously with retry/backoff."},
+  {s:"IconPump",k:"IntervalMs",g:"IconPumpIntervalMs",t:"int",default:80,d:"How often the pump processes its queue"},
+  {s:"IconPump",k:"BatchSize",g:"IconPumpBatchSize",t:"int",default:16,d:"Max icons to process per tick"},
+  {s:"IconPump",k:"MaxAttempts",g:"IconPumpMaxAttempts",t:"int",default:4,d:"Max attempts before giving up on a window's icon"},
+  {s:"IconPump",k:"AttemptBackoffMs",g:"IconPumpAttemptBackoffMs",t:"int",default:300,d:"Base backoff after failed attempt"},
+  {s:"IconPump",k:"BackoffMultiplier",g:"IconPumpBackoffMultiplier",t:"float",default:1.8,d:"Backoff multiplier for exponential backoff"},
+  {s:"IconPump",k:"GiveUpBackoffMs",g:"IconPumpGiveUpBackoffMs",t:"int",default:5000,d:"Long cooldown (ms) after max attempts exhausted. Range: 1000-30000."},
+  {s:"IconPump",k:"RefreshThrottleMs",g:"IconPumpRefreshThrottleMs",t:"int",default:30000,d:"Minimum time between icon refresh checks for focused windows (ms)."},
+  {s:"IconPump",k:"IdleThreshold",g:"IconPumpIdleThreshold",t:"int",default:5,d:"Empty queue ticks before pausing timer"},
+
+  {type:"section",name:"ProcPump",desc:"Process Pump Timing",long:"Resolves PID -> process name asynchronously."},
+  {s:"ProcPump",k:"IntervalMs",g:"ProcPumpIntervalMs",t:"int",default:100,d:"How often the pump processes its queue"},
+  {s:"ProcPump",k:"BatchSize",g:"ProcPumpBatchSize",t:"int",default:16,d:"Max PIDs to resolve per tick"},
+  {s:"ProcPump",k:"IdleThreshold",g:"ProcPumpIdleThreshold",t:"int",default:5,d:"Empty queue ticks before pausing timer"},
+
+  {type:"section",name:"Cache",desc:"Cache Limits",long:"Size limits for internal caches to prevent unbounded memory growth."},
+  {s:"Cache",k:"ExeIconMax",g:"ExeIconCacheMax",t:"int",default:100,d:"Maximum number of cached exe icons."},
+  {s:"Cache",k:"ProcNameMax",g:"ProcNameCacheMax",t:"int",default:200,d:"Maximum number of cached process names."},
+
+  {type:"section",name:"Komorebi",desc:"Komorebi Integration",long:"Settings for komorebi tiling window manager integration."},
+  {s:"Komorebi",k:"WorkspaceConfirmationMethod",g:"KomorebiWorkspaceConfirmMethod",t:"enum",default:"PollKomorebic",options:["PollKomorebic","IsWindow","AwaitDelta"],d:"How Alt-Tabby verifies a workspace switch completed."},
+
+  {type:"section",name:"KomorebiSub",desc:"Komorebi Subscription Timing",long:"Event-driven komorebi integration via named pipe."},
+  {s:"KomorebiSub",k:"PollMs",g:"KomorebiSubPollMs",t:"int",default:50,d:"Pipe poll interval"},
+  {s:"KomorebiSub",k:"IdleRecycleMs",g:"KomorebiSubIdleRecycleMs",t:"int",default:120000,d:"Restart subscription if no events for this long"},
+  {s:"KomorebiSub",k:"FallbackPollMs",g:"KomorebiSubFallbackPollMs",t:"int",default:2000,d:"Fallback polling interval if subscription fails"},
+  {s:"KomorebiSub",k:"CacheMaxAgeMs",g:"KomorebiSubCacheMaxAgeMs",t:"int",default:10000,d:"Maximum age (ms) for cached workspace assignments"},
+  {s:"KomorebiSub",k:"BatchCloakEventsMs",g:"KomorebiSubBatchCloakEventsMs",t:"int",default:50,d:"Batch cloak/uncloak events during workspace switches (ms)"},
+
+  {type:"section",name:"Heartbeat",desc:"Heartbeat & Connection Health",long:"Store broadcasts heartbeat to clients for liveness detection."},
+  {s:"Heartbeat",k:"StoreIntervalMs",g:"StoreHeartbeatIntervalMs",t:"int",default:5000,d:"Store sends heartbeat every N ms"},
+  {s:"Heartbeat",k:"ViewerTimeoutMs",g:"ViewerHeartbeatTimeoutMs",t:"int",default:12000,d:"Viewer considers connection dead after N ms"},
+
+  {type:"section",name:"Viewer",desc:"Viewer Settings",long:"Debug viewer GUI options."},
+  {s:"Viewer",k:"DebugLog",g:"DebugViewerLog",t:"bool",default:false,d:"Enable verbose logging"},
+  {s:"Viewer",k:"AutoStartStore",g:"ViewerAutoStartStore",t:"bool",default:false,d:"Auto-start store if not running"},
+
+  {type:"section",name:"Diagnostics",desc:"Diagnostics",long:"Debug options for troubleshooting. All disabled by default."},
+  {s:"Diagnostics",k:"ChurnLog",g:"DiagChurnLog",t:"bool",default:false,d:"Log revision bump sources"},
+  {s:"Diagnostics",k:"KomorebiLog",g:"DiagKomorebiLog",t:"bool",default:false,d:"Log komorebi subscription events"},
+  {s:"Diagnostics",k:"AltTabTooltips",g:"DebugAltTabTooltips",t:"bool",default:false,d:"Show tooltips for state machine debugging"},
+  {s:"Diagnostics",k:"EventLog",g:"DiagEventLog",t:"bool",default:false,d:"Log Alt-Tab events"},
+  {s:"Diagnostics",k:"WinEventLog",g:"DiagWinEventLog",t:"bool",default:false,d:"Log WinEventHook focus events"},
+  {s:"Diagnostics",k:"StoreLog",g:"DiagStoreLog",t:"bool",default:false,d:"Log store startup/operational info"},
+  {s:"Diagnostics",k:"IconPumpLog",g:"DiagIconPumpLog",t:"bool",default:false,d:"Log icon pump operations"},
+  {s:"Diagnostics",k:"ProcPumpLog",g:"DiagProcPumpLog",t:"bool",default:false,d:"Log process pump operations"},
+  {s:"Diagnostics",k:"LauncherLog",g:"DiagLauncherLog",t:"bool",default:false,d:"Log launcher startup"},
+  {s:"Diagnostics",k:"IPCLog",g:"DiagIPCLog",t:"bool",default:false,d:"Log IPC pipe operations"},
+  {s:"Diagnostics",k:"PaintTimingLog",g:"DiagPaintTimingLog",t:"bool",default:false,d:"Log GUI paint timing"},
+  {s:"Diagnostics",k:"StatsTracking",g:"StatsTrackingEnabled",t:"bool",default:true,d:"Track usage statistics"},
+
+  {type:"section",name:"Testing",desc:"Testing",long:"Options for automated test suite."},
+  {s:"Testing",k:"LiveDurationSec",g:"TestLiveDurationSec_Default",t:"int",default:30,d:"Default duration for test_live.ahk"},
+
+  {type:"section",name:"Setup",desc:"Setup & Installation",long:"Installation paths and first-run settings. Managed by the setup wizard."},
+  {s:"Setup",k:"ExePath",g:"SetupExePath",t:"string",default:"",d:"Full path to AltTabby.exe after installation."},
+  {s:"Setup",k:"RunAsAdmin",g:"SetupRunAsAdmin",t:"bool",default:false,d:"Run with administrator privileges via Task Scheduler."},
+  {s:"Setup",k:"AutoUpdateCheck",g:"SetupAutoUpdateCheck",t:"bool",default:true,d:"Automatically check for updates on startup."},
+  {s:"Setup",k:"FirstRunCompleted",g:"SetupFirstRunCompleted",t:"bool",default:false,d:"Set to true after first-run wizard completes."},
+  {s:"Setup",k:"InstallationId",g:"SetupInstallationId",t:"string",default:"",d:"Unique installation ID (8-char hex)."}
+];
+
+// Parse registry into structured sections
+const sections = [];
+let currentSection = null;
+let currentSubsection = null;
+
+for (const entry of configRegistry) {
+  if (entry.type === 'section') {
+    currentSection = { ...entry, subsections: [], settings: [] };
+    currentSubsection = null;
+    sections.push(currentSection);
+  } else if (entry.type === 'subsection') {
+    currentSubsection = { ...entry, settings: [] };
+    if (currentSection) currentSection.subsections.push(currentSubsection);
+  } else if (entry.s) {
+    const setting = { ...entry, value: entry.default, originalValue: entry.default };
+    if (currentSubsection && currentSubsection.section === entry.s) {
+      currentSubsection.settings.push(setting);
+    } else if (currentSection) {
+      currentSection.settings.push(setting);
+    }
+  }
+}
+
+// State
+let activeSection = sections[0]?.name;
+let changeCount = 0;
+
+// Format value for display
+function formatValue(val, type) {
+  if (type === 'int' && typeof val === 'number' && val > 255) {
+    return '0x' + val.toString(16).toUpperCase();
+  }
+  return val;
+}
+
+// Render sidebar
+function renderSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  sidebar.innerHTML = sections.map(s => `
+    <div class="sidebar-item ${s.name === activeSection ? 'active' : ''}"
+         data-section="${s.name}" onclick="switchSection('${s.name}')">
+      ${s.desc}
+      <div class="item-desc">${s.subsections.length ? s.subsections.length + ' groups' : ''}</div>
+    </div>
+  `).join('');
+}
+
+// Create control HTML
+function controlHTML(setting) {
+  const id = `setting-${setting.s}-${setting.k}`;
+  if (setting.t === 'bool') {
+    return `<label class="toggle">
+      <input type="checkbox" id="${id}" ${setting.value ? 'checked' : ''}
+             onchange="updateValue('${setting.s}','${setting.k}',this.checked)">
+      <span class="toggle-slider"></span>
+    </label>`;
+  }
+  if (setting.t === 'enum') {
+    const opts = (setting.options || []).map(o =>
+      `<option value="${o}" ${setting.value === o ? 'selected' : ''}>${o}</option>`
+    ).join('');
+    return `<select id="${id}" onchange="updateValue('${setting.s}','${setting.k}',this.value)">${opts}</select>`;
+  }
+  if (setting.t === 'int') {
+    return `<input type="number" id="${id}" value="${formatValue(setting.value, 'int')}"
+            onchange="updateValue('${setting.s}','${setting.k}',this.value)"
+            step="1">`;
+  }
+  if (setting.t === 'float') {
+    return `<input type="number" id="${id}" value="${setting.value}"
+            onchange="updateValue('${setting.s}','${setting.k}',this.value)"
+            step="0.01">`;
+  }
+  return `<input type="text" id="${id}" value="${setting.value ?? ''}"
+          onchange="updateValue('${setting.s}','${setting.k}',this.value)">`;
+}
+
+// Render settings for a group of settings
+function renderSettings(settings) {
+  return settings.map(s => `
+    <div class="setting" data-key="${s.k}" data-search="${(s.d + ' ' + s.k + ' ' + s.g).toLowerCase()}">
+      <div class="setting-info">
+        <div class="setting-label">${s.k}</div>
+        <div class="setting-key">[${s.s}] ${s.g}</div>
+        <div class="setting-desc">${s.d}</div>
+      </div>
+      <div class="setting-control">${controlHTML(s)}</div>
+    </div>
+  `).join('');
+}
+
+// Render content
+function renderContent() {
+  const content = document.getElementById('content');
+  content.innerHTML = sections.map(s => {
+    let html = `<div class="section ${s.name === activeSection ? 'active' : ''}" data-section="${s.name}">`;
+    html += `<div class="section-title">${s.desc}</div>`;
+    if (s.long) html += `<div class="section-desc">${s.long}</div>`;
+
+    // Top-level settings (before any subsection)
+    if (s.settings.length) {
+      html += renderSettings(s.settings);
+    }
+
+    // Subsections
+    for (const sub of s.subsections) {
+      html += `<div class="subsection" data-search="${(sub.name + ' ' + (sub.desc||'')).toLowerCase()}">`;
+      html += `<div class="subsection-title">${sub.name}</div>`;
+      if (sub.desc) html += `<div class="subsection-desc">${sub.desc}</div>`;
+      html += renderSettings(sub.settings);
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }).join('');
+}
+
+// Switch section
+function switchSection(name) {
+  activeSection = name;
+  document.querySelectorAll('.sidebar-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === name);
+  });
+  document.querySelectorAll('.section').forEach(el => {
+    el.classList.toggle('active', el.dataset.section === name);
+  });
+  document.getElementById('content').scrollTop = 0;
+}
+
+// Update value
+function updateValue(section, key, value) {
+  // Find setting in registry
+  for (const s of sections) {
+    const allSettings = [...s.settings, ...s.subsections.flatMap(sub => sub.settings)];
+    for (const setting of allSettings) {
+      if (setting.s === section && setting.k === key) {
+        if (setting.t === 'int') value = parseInt(value) || 0;
+        if (setting.t === 'float') value = parseFloat(value) || 0;
+        setting.value = value;
+        break;
+      }
+    }
+  }
+  updateChangeCount();
+}
+
+function updateChangeCount() {
+  changeCount = 0;
+  for (const s of sections) {
+    const allSettings = [...s.settings, ...s.subsections.flatMap(sub => sub.settings)];
+    for (const setting of allSettings) {
+      if (setting.value !== setting.originalValue) changeCount++;
+    }
+  }
+  const info = document.getElementById('changeInfo');
+  const saveBtn = document.getElementById('saveBtn');
+  if (changeCount > 0) {
+    info.innerHTML = `<span class="change-count">${changeCount}</span> unsaved change${changeCount > 1 ? 's' : ''}`;
+    saveBtn.disabled = false;
+  } else {
+    info.textContent = '';
+    saveBtn.disabled = true;
+  }
+}
+
+function save() {
+  // Collect changed values
+  const changes = {};
+  for (const s of sections) {
+    const allSettings = [...s.settings, ...s.subsections.flatMap(sub => sub.settings)];
+    for (const setting of allSettings) {
+      if (setting.value !== setting.originalValue) {
+        changes[setting.g] = setting.value;
+      }
+    }
+  }
+  // Post to AHK
+  if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.postMessage(JSON.stringify({action: 'save', changes: changes}));
+  } else {
+    alert('WebView2 not available - changes:\n' + JSON.stringify(changes, null, 2));
+  }
+  // Mark all as saved
+  for (const s of sections) {
+    const allSettings = [...s.settings, ...s.subsections.flatMap(sub => sub.settings)];
+    for (const setting of allSettings) {
+      setting.originalValue = setting.value;
+    }
+  }
+  updateChangeCount();
+}
+
+function cancelEditor() {
+  if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.postMessage(JSON.stringify({action: 'cancel'}));
+  } else {
+    window.close();
+  }
+}
+
+function resetAll() {
+  if (!confirm('Reset all settings to defaults?')) return;
+  for (const s of sections) {
+    const allSettings = [...s.settings, ...s.subsections.flatMap(sub => sub.settings)];
+    for (const setting of allSettings) {
+      setting.value = setting.default;
+      const id = `setting-${setting.s}-${setting.k}`;
+      const el = document.getElementById(id);
+      if (!el) continue;
+      if (setting.t === 'bool') el.checked = setting.default;
+      else el.value = formatValue(setting.default, setting.t);
+    }
+  }
+  updateChangeCount();
+}
+
+// Search
+document.getElementById('searchBox').addEventListener('input', function(e) {
+  const query = e.target.value.trim().toLowerCase();
+  const main = document.querySelector('.main');
+
+  if (!query) {
+    main.classList.remove('filter-mode');
+    document.querySelectorAll('.setting, .subsection, .section').forEach(el => {
+      el.classList.remove('filter-hidden', 'filter-empty');
+    });
+    switchSection(activeSection);
+    return;
+  }
+
+  main.classList.add('filter-mode');
+
+  // Filter settings
+  document.querySelectorAll('.section').forEach(sectionEl => {
+    let sectionHasMatch = false;
+
+    sectionEl.querySelectorAll('.setting').forEach(el => {
+      const match = el.dataset.search.includes(query);
+      el.classList.toggle('filter-hidden', !match);
+      if (match) sectionHasMatch = true;
+    });
+
+    // Hide subsections with no visible settings
+    sectionEl.querySelectorAll('.subsection').forEach(sub => {
+      const hasVisible = sub.querySelector('.setting:not(.filter-hidden)');
+      sub.classList.toggle('filter-hidden', !hasVisible);
+    });
+
+    sectionEl.classList.toggle('filter-empty', !sectionHasMatch);
+  });
+});
+
+// Keyboard nav
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    document.getElementById('searchBox').focus();
+  }
+  if (e.key === 'Escape') {
+    const search = document.getElementById('searchBox');
+    if (document.activeElement === search) {
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+      search.blur();
+    }
+  }
+});
+
+// Init
+renderSidebar();
+renderContent();
+updateChangeCount();
+
+// Button event listeners (onclick attributes blocked by WebView2 CSP)
+document.getElementById('saveBtn').addEventListener('click', save);
+document.getElementById('cancelBtn').addEventListener('click', cancelEditor);
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+// Notify AHK that page is ready
+if (window.chrome && window.chrome.webview) {
+  window.chrome.webview.postMessage(JSON.stringify({action: 'ready'}));
+}
+</script>
+</body>
+</html>

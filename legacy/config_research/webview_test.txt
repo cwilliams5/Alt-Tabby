@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head><title>WebView2 Test</title></head>
+<body style="background:#1a1b26;color:#fff;font-family:sans-serif;padding:20px;">
+<h1>WebView2 Message Test</h1>
+<p id="status">Waiting...</p>
+<button id="testBtn" style="padding:10px 20px;font-size:16px;">Send Test Message</button>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('status').textContent = 'DOM loaded, sending ready...';
+  window.chrome.webview.postMessage('ready');
+  document.getElementById('status').textContent = 'Ready sent!';
+
+  document.getElementById('testBtn').addEventListener('click', function() {
+    document.getElementById('status').textContent = 'Sending test...';
+    window.chrome.webview.postMessage('button_clicked');
+    document.getElementById('status').textContent = 'Test sent!';
+  });
+});
+</script>
+</body>
+</html>
