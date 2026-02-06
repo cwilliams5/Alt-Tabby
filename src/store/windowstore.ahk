@@ -15,10 +15,14 @@ global gWS_Meta := Map()
 global gWS_SortDirty := true
 global gWS_ProjectionCache_Items := ""      ; Cached transformed items (result of _WS_ToItem)
 global gWS_ProjectionCache_OptsKey := ""   ; Opts key used for cache validation
-; Fields that affect projection membership or sort order
+; Fields that affect projection content, membership, or sort order.
+; Changes to these fields invalidate the projection cache so clients get fresh data.
+; NOTE: iconHicon and processName MUST be here — without them, the projection cache
+; returns stale _WS_ToItem copies and icon/processName updates never reach the GUI.
 global gWS_ProjectionFields := Map(
     "lastActivatedTick", true, "isFocused", true, "z", true,
-    "isOnCurrentWorkspace", true, "isCloaked", true, "isMinimized", true)
+    "isOnCurrentWorkspace", true, "isCloaked", true, "isMinimized", true,
+    "iconHicon", true, "processName", true)
 
 ; Diagnostic: track what's causing rev bumps
 global gWS_DiagChurn := Map()  ; field -> count of changes

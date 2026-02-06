@@ -459,9 +459,11 @@ RunUnitTests_CoreStore() {
     WindowStore_GetProjection()
     AssertEq(gWS_SortDirty, false, "SortDirty: false after GetProjection")
 
-    ; Cosmetic field change (iconHicon) should NOT set dirty
+    ; iconHicon change MUST set dirty - without this, projection cache returns
+    ; stale _WS_ToItem copies and icon updates never reach the GUI (grey circles)
     WindowStore_UpdateFields(5001, Map("iconHicon", 9999), "test")
-    AssertEq(gWS_SortDirty, false, "SortDirty: iconHicon change keeps false")
+    AssertEq(gWS_SortDirty, true, "SortDirty: iconHicon change sets true")
+    gWS_SortDirty := false  ; Reset for next test
 
     ; Title change should NOT set dirty (title is not in ProjectionFields)
     WindowStore_UpdateFields(5001, Map("title", "New Title"), "test")
