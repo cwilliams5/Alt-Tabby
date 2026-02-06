@@ -206,6 +206,7 @@ _CEW_OnWebMessageRaw(this, sender, argsPtr) {
 _CEW_OnWebMessage(sender, args) {
     global gCEW_Gui, gCEW_SavedChanges, gCEW_LauncherHwnd
     global TABBY_CMD_RESTART_ALL, WM_COPYDATA
+    global cfg, LOG_PATH_WEBVIEW
 
     ; Parse JSON message from JavaScript
     try {
@@ -252,7 +253,8 @@ _CEW_OnWebMessage(sender, args) {
         }
     } catch as e {
         ; Log error for debugging
-        try FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") " WebMessage error: " e.Message "`n", A_Temp "\tabby_webview_debug.log")
+        if (cfg.DiagWebViewLog)
+            try LogAppend(LOG_PATH_WEBVIEW, "WebMessage error: " e.Message)
     }
 }
 

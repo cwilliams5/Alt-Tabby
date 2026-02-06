@@ -64,6 +64,11 @@ All in `[Diagnostics]` section of config.ini. Disabled by default.
 - **Enable**: `PaintTimingLog=true`
 - **Details**: Logs per-paint step timings (getRect, getScale, backbuf, paintOverlay, updateLayer). Logs first paint, paint after 60s+ idle, and any paint >100ms. Auto-trimmed to 100KB (keeps last 50KB). Log deleted on fresh boot.
 
+## DiagWebViewLog
+- **File**: `%TEMP%\tabby_webview_debug.log`
+- **Use when**: WebView2 config editor issues, messages not received
+- **Enable**: `WebViewLog=true`
+
 ## Store_LogError (Always Active)
 - **File**: `%TEMP%\tabby_store_error.log`
 - No config flag - errors always logged

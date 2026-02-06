@@ -292,6 +292,7 @@ _Store_RotateDiagLogs() {
     global cfg
     global LOG_PATH_STORE, LOG_PATH_KSUB, LOG_PATH_WINEVENT
     global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP, LOG_PATH_IPC
+    global LOG_PATH_WEBVIEW
     ; Always trim store log -- Store_LogError() writes unconditionally
     LogTrim(LOG_PATH_STORE)
     if (cfg.DiagKomorebiLog)
@@ -304,6 +305,8 @@ _Store_RotateDiagLogs() {
         LogTrim(LOG_PATH_PROCPUMP)
     if (cfg.DiagIPCLog)
         LogTrim(LOG_PATH_IPC)
+    if (cfg.DiagWebViewLog)
+        LogTrim(LOG_PATH_WEBVIEW)
 }
 
 ; Force full snapshot to all clients - resets tracking so PushToClients sends SNAPSHOT not DELTA
