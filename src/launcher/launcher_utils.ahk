@@ -15,28 +15,25 @@
 ; Returns: true if launched, false on failure
 LauncherUtils_Launch(component, &pidVar, logFunc := "") {
     ; Build command based on compiled status and component
+    launcherArg := " --launcher-hwnd=" A_ScriptHwnd
+
     if (A_IsCompiled) {
+        exe := '"' A_ScriptFullPath '" '
         switch component {
-            case "store":
-                cmd := '"' A_ScriptFullPath '" --store'
-            case "gui":
-                cmd := '"' A_ScriptFullPath '" --gui-only --launcher-hwnd=' A_ScriptHwnd
-            case "viewer":
-                cmd := '"' A_ScriptFullPath '" --viewer'
-            default:
-                return false
+            case "store":  cmd := exe "--store"
+            case "gui":    cmd := exe "--gui-only" launcherArg
+            case "viewer": cmd := exe "--viewer"
+            default:       return false
         }
     } else {
         ; Development mode - use appropriate script file
+        ahk := '"' A_AhkPath '" "'
+        srcDir := A_ScriptDir "\"
         switch component {
-            case "store":
-                cmd := '"' A_AhkPath '" "' A_ScriptDir '\store\store_server.ahk"'
-            case "gui":
-                cmd := '"' A_AhkPath '" "' A_ScriptDir '\gui\gui_main.ahk" --launcher-hwnd=' A_ScriptHwnd
-            case "viewer":
-                cmd := '"' A_AhkPath '" "' A_ScriptDir '\viewer\viewer.ahk"'
-            default:
-                return false
+            case "store":  cmd := ahk srcDir 'store\store_server.ahk"'
+            case "gui":    cmd := ahk srcDir 'gui\gui_main.ahk"' launcherArg
+            case "viewer": cmd := ahk srcDir 'viewer\viewer.ahk"'
+            default:       return false
         }
         ; In testing mode, pass --test to child processes so they hide tray icons
         global g_TestingMode

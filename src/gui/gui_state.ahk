@@ -566,7 +566,7 @@ GUI_ActivateItem(item) {
                 ; Step 3: Command komorebi to move the focused window to its workspace
                 ; This switches to that workspace WITH our window already focused
                 try {
-                    _GUI_KomorebiMoveToWorkspace(wsName)
+                    _GUI_KomorebiWorkspaceCmd("MoveToNamedWorkspace", "move-to-named-workspace", wsName)
                 } catch as e {
                     _GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
                 }
@@ -631,7 +631,7 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
 
     ; Trigger workspace switch (via socket or komorebic.exe)
     try {
-        _GUI_KomorebiFocusWorkspace(wsName)
+        _GUI_KomorebiWorkspaceCmd("FocusNamedWorkspace", "focus-named-workspace", wsName)
     } catch as e {
         _GUI_LogEvent("SWITCH-ACTIVATE ERROR: " e.Message)
         ; Fall back to direct activation attempt
@@ -1233,8 +1233,9 @@ _GUI_SendKomorebiSocketCmd(cmdType, content) {
     }
 
     ; Build JSON command: {"type":"CmdType","content":"value"}
-    ; Escape quotes in content (workspace names shouldn't have them, but be safe)
-    safeContent := StrReplace(content, '"', '\"')
+    ; Escape backslashes first, then quotes (order matters for correct JSON)
+    safeContent := StrReplace(content, '\', '\\')
+    safeContent := StrReplace(safeContent, '"', '\"')
     json := '{"type":"' cmdType '","content":"' safeContent '"}'
 
     ; Convert to UTF-8
@@ -1258,37 +1259,22 @@ _GUI_SendKomorebiSocketCmd(cmdType, content) {
     return true
 }
 
-; Send focus-named-workspace command to komorebi
-; Uses socket if enabled, falls back to komorebic.exe
-_GUI_KomorebiFocusWorkspace(wsName) {
+; Send a komorebi workspace command (focus or move).
+; Uses socket if enabled, falls back to komorebic.exe CLI.
+; socketCmd: Socket command type (e.g., "FocusNamedWorkspace")
+; cliCmd: CLI subcommand (e.g., "focus-named-workspace")
+; wsName: Target workspace name
+_GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
     global cfg
 
     if (cfg.KomorebiUseSocket) {
-        if (_GUI_SendKomorebiSocketCmd("FocusNamedWorkspace", wsName))
+        if (_GUI_SendKomorebiSocketCmd(socketCmd, wsName))
             return true
-        _GUI_LogEvent("SOCKET: FocusNamedWorkspace failed, falling back to komorebic.exe")
+        _GUI_LogEvent("SOCKET: " socketCmd " failed, falling back to komorebic.exe")
     }
 
     ; Fallback: spawn komorebic.exe
-    cmd := '"' cfg.KomorebicExe '" focus-named-workspace "' wsName '"'
-    _GUI_LogEvent("KOMOREBIC: Running " cmd)
-    ProcessUtils_RunHidden(cmd)
-    return true
-}
-
-; Send move-to-named-workspace command to komorebi
-; Uses socket if enabled, falls back to komorebic.exe
-_GUI_KomorebiMoveToWorkspace(wsName) {
-    global cfg
-
-    if (cfg.KomorebiUseSocket) {
-        if (_GUI_SendKomorebiSocketCmd("MoveToNamedWorkspace", wsName))
-            return true
-        _GUI_LogEvent("SOCKET: MoveToNamedWorkspace failed, falling back to komorebic.exe")
-    }
-
-    ; Fallback: spawn komorebic.exe
-    cmd := '"' cfg.KomorebicExe '" move-to-named-workspace "' wsName '"'
+    cmd := '"' cfg.KomorebicExe '" ' cliCmd ' "' wsName '"'
     _GUI_LogEvent("KOMOREBIC: Running " cmd)
     ProcessUtils_RunHidden(cmd)
     return true

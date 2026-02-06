@@ -123,40 +123,11 @@ _Tray_BuildDiagnosticsMenu() {
     m.Add()
 
     ; Subprocess rows — label includes status AND action
-    ; Store
-    storeRunning := LauncherUtils_IsRunning(g_StorePID)
-    storeLabel := storeRunning
-        ? "Store: Running (PID " g_StorePID ") | Restart"
-        : "Store: Not Running | Launch"
-    m.Add(storeLabel, (*) => (LauncherUtils_IsRunning(g_StorePID) ? RestartStore() : LaunchStore()))
-
-    ; GUI
-    guiRunning := LauncherUtils_IsRunning(g_GuiPID)
-    guiLabel := guiRunning
-        ? "GUI: Running (PID " g_GuiPID ") | Restart"
-        : "GUI: Not Running | Launch"
-    m.Add(guiLabel, (*) => (LauncherUtils_IsRunning(g_GuiPID) ? RestartGui() : LaunchGui()))
-
-    ; Config Editor
-    configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
-    configLabel := configRunning
-        ? "Config Editor: Running (PID " g_ConfigEditorPID ") | Restart"
-        : "Config Editor: Not Running | Launch"
-    m.Add(configLabel, (*) => (LauncherUtils_IsRunning(g_ConfigEditorPID) ? RestartConfigEditor() : LaunchConfigEditor()))
-
-    ; Blacklist Editor
-    blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-    blacklistLabel := blacklistRunning
-        ? "Blacklist Editor: Running (PID " g_BlacklistEditorPID ") | Restart"
-        : "Blacklist Editor: Not Running | Launch"
-    m.Add(blacklistLabel, (*) => (LauncherUtils_IsRunning(g_BlacklistEditorPID) ? RestartBlacklistEditor() : LaunchBlacklistEditor()))
-
-    ; Viewer
-    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-    viewerLabel := viewerRunning
-        ? "Viewer: Running (PID " g_ViewerPID ") | Restart"
-        : "Viewer: Not Running | Launch"
-    m.Add(viewerLabel, (*) => (LauncherUtils_IsRunning(g_ViewerPID) ? RestartViewer() : LaunchViewer()))
+    m.Add(_Tray_ComponentLabel("Store", g_StorePID), (*) => (LauncherUtils_IsRunning(g_StorePID) ? RestartStore() : LaunchStore()))
+    m.Add(_Tray_ComponentLabel("GUI", g_GuiPID), (*) => (LauncherUtils_IsRunning(g_GuiPID) ? RestartGui() : LaunchGui()))
+    m.Add(_Tray_ComponentLabel("Config Editor", g_ConfigEditorPID), (*) => (LauncherUtils_IsRunning(g_ConfigEditorPID) ? RestartConfigEditor() : LaunchConfigEditor()))
+    m.Add(_Tray_ComponentLabel("Blacklist Editor", g_BlacklistEditorPID), (*) => (LauncherUtils_IsRunning(g_BlacklistEditorPID) ? RestartBlacklistEditor() : LaunchBlacklistEditor()))
+    m.Add(_Tray_ComponentLabel("Viewer", g_ViewerPID), (*) => (LauncherUtils_IsRunning(g_ViewerPID) ? RestartViewer() : LaunchViewer()))
 
     m.Add()
 
@@ -240,6 +211,12 @@ _Tray_BuildSettingsMenu() {
 ; ============================================================
 ; TRAY MENU HELPERS
 ; ============================================================
+
+_Tray_ComponentLabel(label, pid) {
+    return LauncherUtils_IsRunning(pid)
+        ? label ": Running (PID " pid ") | Restart"
+        : label ": Not Running | Launch"
+}
 
 _Tray_GetIconPath() {
     if (A_IsCompiled)

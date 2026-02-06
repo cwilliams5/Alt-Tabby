@@ -62,6 +62,17 @@ _WS_SnapshotMapKeys(mapObj) {
     return keys
 }
 
+; Helper to delete a window from the store with proper icon cleanup.
+; markDelta: if true, marks hwnd dirty so removal appears in delta pushes.
+; Caller MUST hold Critical when calling this function.
+_WS_DeleteWindow(hwnd, markDelta := true) {
+    global gWS_Store, gWS_DeltaPendingHwnds
+    if (markDelta)
+        gWS_DeltaPendingHwnds[hwnd] := true
+    try IconPump_CleanupWindow(hwnd)
+    gWS_Store.Delete(hwnd)
+}
+
 WindowStore_Init(config := 0) {
     global gWS_Config, cfg
     if IsObject(config) {
@@ -114,9 +125,7 @@ WindowStore_EndScan(graceMs := "") {
             } else if (rec.missingSinceTick && (now - rec.missingSinceTick) >= ttl) {
                 ; Verify window is actually gone before removing
                 if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
-                    ; Clean up icon pump tracking state before deleting (prevents HICON leak)
-                    try IconPump_CleanupWindow(hwnd)
-                    gWS_Store.Delete(hwnd)
+                    _WS_DeleteWindow(hwnd, false)
                     removed += 1
                     changed := true
                 } else {
@@ -372,11 +381,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         ; Verify window is actually gone before removing (unless forced)
         if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
             continue  ; lint-ignore: critical-section
-        ; Mark dirty so removal appears in delta
-        gWS_DeltaPendingHwnds[hwnd] := true
-        ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
-        try IconPump_CleanupWindow(hwnd)
-        gWS_Store.Delete(hwnd)
+        _WS_DeleteWindow(hwnd)
         removed += 1
     }
     if (removed) {
@@ -466,11 +471,7 @@ WindowStore_ValidateExistence() {
     Critical "On"
     removed := 0
     for _, hwnd in toRemove {
-        ; Mark dirty BEFORE delete so removal appears in delta removes
-        gWS_DeltaPendingHwnds[hwnd] := true
-        ; Clean up icon pump tracking state BEFORE deleting (destroys HICON, prevents leak)
-        try IconPump_CleanupWindow(hwnd)
-        gWS_Store.Delete(hwnd)
+        _WS_DeleteWindow(hwnd)
         removed += 1
     }
 
@@ -509,9 +510,7 @@ WindowStore_PurgeBlacklisted() {
     ; from seeing deleted entries with stale rev (consistent with ValidateExistence)
     Critical "On"
     for _, hwnd in toRemove {
-        ; Clean up icon pump tracking state before deleting (prevents HICON leak)
-        try IconPump_CleanupWindow(hwnd)
-        gWS_Store.Delete(hwnd)
+        _WS_DeleteWindow(hwnd, false)
         removed += 1
     }
 

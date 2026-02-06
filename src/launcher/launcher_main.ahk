@@ -422,6 +422,12 @@ _ShouldRedirectToScheduledTask() {
     return true
 }
 
+; Write the SuppressAdminRepairPrompt flag, wrapped in try for use in fat-arrow closures
+_Launcher_WriteSuppressFlag() {
+    global gConfigIniPath
+    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "SuppressAdminRepairPrompt", true, false, "bool")
+}
+
 ; Custom dialog for admin task repair with "Don't ask again" option
 ; Returns: "Yes" (repair), "No" (skip this time), or "Never" (don't ask again)
 _Launcher_ShowAdminRepairDialog(taskPath) {
@@ -446,7 +452,7 @@ _Launcher_ShowAdminRepairDialog(taskPath) {
     btnNever.OnEvent("Click", (*) => (
         result := "Never",
         cfg.SetupSuppressAdminRepairPrompt := true,
-        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "SuppressAdminRepairPrompt", true, false, "bool"),
+        _Launcher_WriteSuppressFlag(),
         repairGui.Destroy()
     ))
     repairGui.OnEvent("Close", (*) => (result := "No", repairGui.Destroy()))
