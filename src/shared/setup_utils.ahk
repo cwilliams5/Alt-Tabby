@@ -694,7 +694,7 @@ _Update_ApplyCore(opts) {
         SplitPath(gConfigIniPath, , &srcDir)
         srcStatsPath := srcDir "\stats.ini"
         targetStatsPath := targetDir "\stats.ini"
-        if (FileExist(srcStatsPath)) {
+        if (FileExist(srcStatsPath) && StrLower(srcStatsPath) != StrLower(targetStatsPath)) {
             if (!FileExist(targetStatsPath)) {
                 ; Target doesn't have stats - copy from source
                 try FileCopy(srcStatsPath, targetStatsPath)
