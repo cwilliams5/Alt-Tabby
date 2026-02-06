@@ -150,6 +150,7 @@ IPC_PipeClient_Connect(pipeName, onMessageFn, timeoutMs := 2000) {
         onMessage: onMessageFn,
         hPipe: 0,
         buf: "",
+        bufLen: 0,
         timerFn: 0,
         tickMs: 100,
         idleStreak: 0
@@ -210,7 +211,7 @@ _IPC_Server_AcceptPending(server) {
     connected := []
     for idx, inst in server.pending {
         if (_IPC_CheckConnect(inst)) {
-            server.clients[inst.hPipe] := { buf: "" }
+            server.clients[inst.hPipe] := { buf: "", bufLen: 0 }
             connected.Push(idx)
             ; DON'T call _IPC_Server_AddPending here - modifies array during iteration!
         }
@@ -484,14 +485,18 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
     if (bytesRead <= 0)
         return 0
     chunk := StrGet(IPC_READ_BUF.Ptr, bytesRead, "UTF-8")
-    stateObj.buf .= chunk
+    chunkLen := StrLen(chunk)
 
-    ; Prevent unbounded buffer growth - protects against malformed clients
-    if (StrLen(stateObj.buf) > IPC_BUFFER_OVERFLOW) {
+    ; Prevent unbounded buffer growth - O(1) check using tracked length
+    if (stateObj.bufLen + chunkLen > IPC_BUFFER_OVERFLOW) {
         _IPC_Log("BUFFER OVERFLOW: client exceeded " IPC_BUFFER_OVERFLOW " bytes, disconnecting")
         stateObj.buf := ""
+        stateObj.bufLen := 0
         return -1  ; Signal error - disconnect client
     }
+
+    stateObj.buf .= chunk
+    stateObj.bufLen += chunkLen
 
     _IPC_ParseLines(stateObj, onMessageFn, hPipe)
     return bytesRead
@@ -504,6 +509,7 @@ _IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
             break
         line := SubStr(stateObj.buf, 1, pos - 1)
         stateObj.buf := SubStr(stateObj.buf, pos + 1)
+        stateObj.bufLen -= pos  ; Subtract consumed chars (line + newline)
         if (SubStr(line, -1) = "`r")
             line := SubStr(line, 1, -1)
         if (line != "") {

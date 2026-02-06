@@ -125,7 +125,7 @@ KomorebiSub_Start() {
 
     ; Create security attributes with NULL DACL to allow non-elevated processes
     ; to connect when we're running as administrator
-    pSA := _KSub_CreateOpenSecurityAttrs()
+    pSA := _IPC_CreateOpenSecurityAttrs()
 
     pipePath := "\\.\pipe\" _KSub_PipeName
     _KSub_hPipe := DllCall("CreateNamedPipeW"
@@ -1132,67 +1132,3 @@ _KSub_GetStateDirect() {
     return txt
 }
 
-; ============================================================
-; Security Helpers
-; ============================================================
-
-; Create SECURITY_ATTRIBUTES with NULL DACL to allow non-elevated processes to connect
-; This is needed when running as administrator - otherwise komorebic (non-elevated) can't connect
-_KSub_CreateOpenSecurityAttrs() {
-    ; Use static buffers so they persist for the lifetime of the pipe
-    static pSD := 0
-    static pSA := 0
-
-    ; SECURITY_DESCRIPTOR size: 20 bytes (32-bit) or 40 bytes (64-bit)
-    ; Using 40 to be safe
-    if (!pSD) {
-        pSD := Buffer(40, 0)
-
-        ; Initialize security descriptor
-        ; SECURITY_DESCRIPTOR_REVISION = 1
-        ok := DllCall("advapi32\InitializeSecurityDescriptor"
-            , "ptr", pSD.Ptr
-            , "uint", 1  ; SECURITY_DESCRIPTOR_REVISION
-            , "int")
-
-        if (!ok) {
-            _KSub_DiagLog("InitializeSecurityDescriptor failed: " A_LastError)
-            return 0
-        }
-
-        ; Set NULL DACL (grants full access to everyone)
-        ; SetSecurityDescriptorDacl(pSD, bDaclPresent=TRUE, pDacl=NULL, bDaclDefaulted=FALSE)
-        ok := DllCall("advapi32\SetSecurityDescriptorDacl"
-            , "ptr", pSD.Ptr
-            , "int", 1    ; bDaclPresent = TRUE (DACL is present)
-            , "ptr", 0    ; pDacl = NULL (NULL DACL = allow all access)
-            , "int", 0    ; bDaclDefaulted = FALSE
-            , "int")
-
-        if (!ok) {
-            _KSub_DiagLog("SetSecurityDescriptorDacl failed: " A_LastError)
-            return 0
-        }
-    }
-
-    ; Create SECURITY_ATTRIBUTES structure
-    ; struct SECURITY_ATTRIBUTES {
-    ;   DWORD  nLength;              // offset 0, size 4
-    ;   LPVOID lpSecurityDescriptor; // offset 4 (32-bit) or 8 (64-bit), size 4/8
-    ;   BOOL   bInheritHandle;       // offset 8 (32-bit) or 16 (64-bit), size 4
-    ; }
-    if (!pSA) {
-        saSize := (A_PtrSize = 8) ? 24 : 12
-        pSA := Buffer(saSize, 0)
-
-        ; nLength
-        NumPut("uint", saSize, pSA, 0)
-        ; lpSecurityDescriptor (at offset A_PtrSize due to alignment)
-        NumPut("ptr", pSD.Ptr, pSA, A_PtrSize)
-        ; bInheritHandle (at offset A_PtrSize + A_PtrSize)
-        NumPut("int", 0, pSA, A_PtrSize * 2)
-    }
-
-    _KSub_DiagLog("Created NULL DACL security attributes")
-    return pSA.Ptr
-}
