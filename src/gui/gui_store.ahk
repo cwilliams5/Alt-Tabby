@@ -281,15 +281,6 @@ GUI_ConvertStoreItemsWithMap(items) {
     return { items: result, map: resultMap }
 }
 
-; Rebuild hwnd -> item Map from items array (call after replacing gGUI_LiveItems)
-; Still used by delta path when items are modified incrementally
-GUI_RebuildItemsMap(items) {
-    m := Map()
-    for _, item in items
-        m[item.hwnd] := item
-    return m
-}
-
 ; ========================= DELTA APPLICATION =========================
 
 GUI_ApplyDelta(payload) {

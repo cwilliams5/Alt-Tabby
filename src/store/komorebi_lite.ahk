@@ -4,7 +4,6 @@
 ; Komorebi-lite: poll komorebic state and update current workspace + active window workspace.
 ; Uses JSON.Load() and komorebi_state.ahk navigation helpers for proper structured parsing.
 
-global _KLite_StateText := ""
 global _KLite_StateObj := ""   ; Cached parsed JSON object (avoids re-parsing within TTL)
 global _KLite_Stamp := 0
 global _KLite_TTL := 500
@@ -53,7 +52,7 @@ KomorebiLite_IsAvailable() {
 ; Get parsed komorebi state object (cached within TTL)
 ; Non-blocking: returns cached result immediately while async query runs in background
 KomorebiLite_GetState() {
-    global _KLite_StateText, _KLite_StateObj, _KLite_Stamp, _KLite_TTL, cfg
+    global _KLite_StateObj, _KLite_Stamp, _KLite_TTL, cfg
     global _KLite_PendingPid, _KLite_PendingTmp, _KLite_PendingStart, _KLite_PendingTimeout
 
     now := A_TickCount
@@ -73,7 +72,6 @@ KomorebiLite_GetState() {
                 parsed := ""
                 try parsed := JSON.Load(txt)
                 if (parsed is Map) {
-                    _KLite_StateText := txt
                     _KLite_StateObj := parsed
                     _KLite_Stamp := now
                     return parsed

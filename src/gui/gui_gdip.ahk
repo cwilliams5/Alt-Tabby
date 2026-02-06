@@ -525,8 +525,7 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     global gGdip_IconCache, GDIP_ICON_CACHE_MAX
 
     if (!hIcon || !g) {
-        if (IsSetRef(&wasCacheHit))
-            wasCacheHit := false
+        wasCacheHit := false
         return false
     }
 
@@ -536,8 +535,7 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
         ; Cache hit - verify hIcon hasn't changed and pBmp exists
         if (cached.hicon = hIcon && cached.pBmp) {
             DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", cached.pBmp, "int", x, "int", y, "int", size, "int", size)
-            if (IsSetRef(&wasCacheHit))
-                wasCacheHit := true
+            wasCacheHit := true
             return true
         }
         ; hIcon changed - dispose old bitmap
@@ -547,8 +545,7 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     }
 
     ; Cache miss or stale - convert with alpha preservation and cache
-    if (IsSetRef(&wasCacheHit))
-        wasCacheHit := false
+    wasCacheHit := false
     pBmp := _Gdip_CreateBitmapFromHICON_Alpha(hIcon)
     if (!pBmp) {
         ; Conversion failed - cache the failure to prevent repeated attempts

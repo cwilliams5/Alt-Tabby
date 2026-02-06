@@ -487,24 +487,6 @@ _IP_AppHasPackage(pid) {
     return (result = 0 || result = 122)
 }
 
-; Get the UWP app's logo path from the package (legacy wrapper, prefer _IP_GetUWPLogoPathCached)
-_IP_GetUWPLogoPath(hwnd) {
-    ; Get PID from hwnd
-    pid := 0
-    try {
-        pid := WinGetPID("ahk_id " hwnd)
-    }
-    if (!pid)
-        return ""
-
-    ; Get package path
-    packagePath := _IP_GetPackagePath(pid)
-    if (packagePath = "")
-        return ""
-
-    return _IP_GetUWPLogoPathFromPackage(packagePath)
-}
-
 ; Get logo path from a package path (cached version)
 ; Returns cached result if available, otherwise resolves and caches
 _IP_GetUWPLogoPathCached(packagePath) {

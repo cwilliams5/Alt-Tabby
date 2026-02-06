@@ -82,7 +82,6 @@ global gCEW_WebView := 0
 global gCEW_SavedChanges := false
 global gCEW_LauncherHwnd := 0
 global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage collection
-global gCEW_MessageToken := 0    ; Token for removal (optional)
 
 ; ============================================================
 ; PUBLIC API
@@ -93,7 +92,7 @@ global gCEW_MessageToken := 0    ; Token for removal (optional)
 ; Returns: true if changes were saved, false otherwise
 _CE_RunWebView2(launcherHwnd := 0) {
     global gCEW_Gui, gCEW_Controller, gCEW_WebView, gCEW_SavedChanges, gCEW_LauncherHwnd
-    global gCEW_MessageHandler, gCEW_MessageToken
+    global gCEW_MessageHandler
     global gConfigLoaded, CEW_RES_WEBVIEW2_DLL, CEW_RES_EDITOR_HTML
 
     gCEW_LauncherHwnd := launcherHwnd
@@ -159,7 +158,7 @@ _CE_RunWebView2(launcherHwnd := 0) {
         ; CRITICAL: Must store the Handler object to prevent GC!
         ; Use raw 3-param handler and manually wrap the args
         gCEW_MessageHandler := WebView2.Handler(_CEW_OnWebMessageRaw, 3)
-        gCEW_MessageToken := gCEW_WebView.add_WebMessageReceived(gCEW_MessageHandler)
+        gCEW_WebView.add_WebMessageReceived(gCEW_MessageHandler)
 
         ; Navigate to settings page
         gCEW_WebView.Navigate("file:///" StrReplace(htmlPath, "\", "/"))

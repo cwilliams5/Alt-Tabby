@@ -329,7 +329,8 @@ RunUnitTests_Storage() {
         calcPid := WinGetPID("ahk_id " calcHwnd)
         isUWP := _IP_AppHasPackage(calcPid)
         if (isUWP) {
-            logoPath := _IP_GetUWPLogoPath(calcHwnd)
+            packagePath := _IP_GetPackagePath(calcPid)
+            logoPath := _IP_GetUWPLogoPathCached(packagePath)
             if (logoPath != "" && FileExist(logoPath)) {
                 Log("PASS: Found Calculator logo at: " logoPath)
                 TestPassed++
