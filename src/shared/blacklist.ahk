@@ -25,8 +25,7 @@ global gBlacklist_Loaded := false
 ; Pre-compiled regex arrays (built during Blacklist_Reload, used in Blacklist_IsMatch hot path)
 global gBlacklist_TitleRegex := []
 global gBlacklist_ClassRegex := []
-global gBlacklist_PairClassRegex := []
-global gBlacklist_PairTitleRegex := []
+global gBlacklist_PairRegex := []  ; [{class: regex, title: regex}, ...]
 
 ; Window style constants for eligibility checks
 global BL_WS_CHILD := 0x40000000
@@ -68,7 +67,7 @@ Blacklist_Init(filePath := "") {
 ; Blacklist_IsMatch() during reload will see either old or new data, never empty arrays.
 Blacklist_Reload() {
     global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs
-    global gBlacklist_TitleRegex, gBlacklist_ClassRegex, gBlacklist_PairClassRegex, gBlacklist_PairTitleRegex
+    global gBlacklist_TitleRegex, gBlacklist_ClassRegex, gBlacklist_PairRegex
     global gBlacklist_FilePath, gBlacklist_Loaded, LOG_PATH_STORE
 
     ; Build new lists in LOCAL variables first (not globals)
@@ -89,8 +88,7 @@ Blacklist_Reload() {
         gBlacklist_Pairs := newPairs
         gBlacklist_TitleRegex := []
         gBlacklist_ClassRegex := []
-        gBlacklist_PairClassRegex := []
-        gBlacklist_PairTitleRegex := []
+        gBlacklist_PairRegex := []
         gBlacklist_Loaded := false
         Critical "Off"
         return false
@@ -141,12 +139,9 @@ Blacklist_Reload() {
     newClassRegex := []
     for _, p in newClasses
         newClassRegex.Push(_BL_CompileWildcard(p))
-    newPairClassRegex := []
-    newPairTitleRegex := []
-    for _, pair in newPairs {
-        newPairClassRegex.Push(_BL_CompileWildcard(pair.Class))
-        newPairTitleRegex.Push(_BL_CompileWildcard(pair.Title))
-    }
+    newPairRegex := []
+    for _, pair in newPairs
+        newPairRegex.Push({class: _BL_CompileWildcard(pair.Class), title: _BL_CompileWildcard(pair.Title)})
 
     ; ATOMIC SWAP: Replace all globals at once under Critical to prevent
     ; producers calling Blacklist_IsMatch() from seeing mismatched arrays
@@ -156,8 +151,7 @@ Blacklist_Reload() {
     gBlacklist_Pairs := newPairs
     gBlacklist_TitleRegex := newTitleRegex
     gBlacklist_ClassRegex := newClassRegex
-    gBlacklist_PairClassRegex := newPairClassRegex
-    gBlacklist_PairTitleRegex := newPairTitleRegex
+    gBlacklist_PairRegex := newPairRegex
     gBlacklist_Loaded := true
     Critical "Off"
     return true
@@ -167,7 +161,7 @@ Blacklist_Reload() {
 ; Uses pre-compiled regex arrays for hot-path performance (no per-match string building)
 Blacklist_IsMatch(title, class) {
     global gBlacklist_TitleRegex, gBlacklist_ClassRegex
-    global gBlacklist_PairClassRegex, gBlacklist_PairTitleRegex, gBlacklist_Loaded
+    global gBlacklist_PairRegex, gBlacklist_Loaded
 
     if (!gBlacklist_Loaded)
         return false
@@ -176,8 +170,7 @@ Blacklist_IsMatch(title, class) {
     ; shorter arrays mid-iteration can't cause index-out-of-bounds (zero-cost: AHK arrays are refs)
     titleRegex := gBlacklist_TitleRegex
     classRegex := gBlacklist_ClassRegex
-    pairClassRegex := gBlacklist_PairClassRegex
-    pairTitleRegex := gBlacklist_PairTitleRegex
+    pairRegex := gBlacklist_PairRegex
 
     ; Check title blacklist (pre-compiled regex)
     for _, regex in titleRegex {
@@ -196,8 +189,8 @@ Blacklist_IsMatch(title, class) {
     }
 
     ; Check pair blacklist (both must match, pre-compiled regex)
-    for i, _ in pairClassRegex {
-        if (RegExMatch(class, pairClassRegex[i]) && RegExMatch(title, pairTitleRegex[i])) {
+    for _, pr in pairRegex {
+        if (RegExMatch(class, pr.class) && RegExMatch(title, pr.title)) {
             _Blacklist_BumpSkipStat()
             return true
         }
