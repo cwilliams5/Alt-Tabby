@@ -1,6 +1,9 @@
 # Logs
 /tests/*.log
 
+# Config registry editor rolling backup
+src/shared/config_registry.ahk.bak
+
 # User config (created from defaults on first run)
 /src/config.ini
 /config.ini

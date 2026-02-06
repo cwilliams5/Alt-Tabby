@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Config Registry Editor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #202020; --surface: #2B2B2B; --surface2: #333333;
+  --input: #383838; --text: #E0E0E0; --subtext: #AAAAAA;
+  --muted: #888888; --blue: #60CDFF; --red: #F7768E;
+  --green: #9ECE6A; --yellow: #E0AF68; --border: #404040;
+  --hover: #404040;
+}
+html, body { height: 100%; overflow: hidden; }
+body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 13px; display: flex; flex-direction: column; }
+
+/* Header */
+#header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+#header h1 { font-size: 16px; font-weight: 600; }
+#header .stats { color: var(--subtext); font-size: 12px; margin-left: 16px; }
+#header .actions { display: flex; gap: 8px; }
+.btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); cursor: pointer; font-size: 12px; font-family: inherit; }
+.btn:hover { background: var(--hover); }
+.btn-primary { background: var(--blue); color: #202020; border-color: var(--blue); font-weight: 600; }
+.btn-primary:hover { opacity: 0.9; }
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: rgba(243,139,168,0.15); }
+.btn-success { border-color: var(--green); color: var(--green); }
+.btn-success:hover { background: rgba(166,227,161,0.15); }
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+.dirty-badge { background: var(--yellow); color: #202020; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; display: none; }
+
+/* Layout */
+#layout { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar */
+#sidebar { width: 200px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; padding: 8px 0; }
+.sidebar-item { padding: 7px 14px; cursor: pointer; font-size: 12px; color: var(--subtext); border-left: 3px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-item:hover { background: var(--hover); color: var(--text); }
+.sidebar-item.active { border-left-color: var(--blue); color: var(--blue); background: rgba(96,205,255,0.08); }
+.sidebar-item .count { color: var(--muted); font-size: 10px; margin-left: 4px; }
+
+/* Main */
+#main { flex: 1; overflow-y: auto; padding: 16px; }
+
+/* Section card */
+.section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; }
+.section-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; user-select: none; }
+.section-header .toggle { color: var(--muted); font-size: 10px; width: 16px; text-align: center; flex-shrink: 0; }
+.section-header .section-title { font-weight: 600; font-size: 14px; flex: 1; }
+.section-header .section-count { color: var(--muted); font-size: 11px; }
+.section-header .section-btns { display: flex; gap: 4px; }
+
+/* Section edit (shown when expanded) */
+.section-edit { padding: 0 14px 10px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border-bottom: 1px solid var(--border); }
+.section-edit .full { grid-column: 1 / -1; }
+
+/* Section body */
+.section-body { padding: 8px 14px 14px 14px; }
+
+/* Group header (subsection) */
+.group-header { display: flex; align-items: center; gap: 8px; padding: 8px 0 6px 0; margin-top: 8px; border-top: 1px dashed var(--border); }
+.group-header:first-child { border-top: none; margin-top: 0; }
+.group-header .group-label { font-weight: 600; font-size: 12px; color: var(--blue); flex: 1; }
+.group-header .group-btns { display: flex; gap: 4px; }
+
+/* Setting row */
+.setting-row { display: flex; gap: 6px; padding: 6px 8px; margin: 3px 0; background: var(--surface2); border: 1px solid transparent; border-radius: 6px; align-items: flex-start; transition: border-color 0.15s; }
+.setting-row:hover { border-color: var(--border); }
+.setting-row.dragging { opacity: 0.4; }
+
+.drag-handle { cursor: grab; color: var(--muted); font-size: 14px; padding: 2px 4px; user-select: none; flex-shrink: 0; line-height: 24px; }
+.drag-handle:active { cursor: grabbing; }
+
+.setting-fields { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.setting-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+/* Form controls */
+label.field { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--subtext); white-space: nowrap; }
+label.field.desc-label { align-items: flex-start; flex: 1; }
+input[type="text"], input[type="number"], select, textarea {
+  background: var(--input); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); padding: 3px 6px; font-size: 12px; font-family: inherit;
+}
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--blue);
+}
+input.key-input { width: 140px; font-family: 'Cascadia Code', 'Consolas', monospace; }
+input.global-input { width: 200px; font-family: 'Cascadia Code', 'Consolas', monospace; }
+input.default-input { width: 120px; }
+input.num-input { width: 70px; }
+input.name-input { width: 160px; }
+input.desc-input { flex: 1; min-width: 200px; }
+select.type-select { width: 80px; }
+select.fmt-select { width: 65px; }
+input.options-input { width: 200px; }
+textarea.desc-area { width: 100%; min-height: 40px; resize: vertical; font-size: 12px; }
+input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--blue); }
+
+/* Delete button */
+.del-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 24px; flex-shrink: 0; }
+.del-btn:hover { color: var(--red); }
+
+/* Move buttons */
+.move-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 2px; }
+.move-btn:hover { color: var(--blue); }
+
+/* Add row */
+.add-row { display: flex; gap: 6px; padding: 8px 0 0 0; }
+
+/* Drop indicator */
+.drop-before { border-top: 2px solid var(--blue) !important; }
+.drop-after { border-bottom: 2px solid var(--blue) !important; }
+.drop-into { background: rgba(96,205,255,0.1) !important; border: 1px dashed var(--blue) !important; }
+
+/* Empty group placeholder */
+.empty-group { padding: 12px; text-align: center; color: var(--muted); font-size: 12px; border: 1px dashed var(--border); border-radius: 6px; margin: 4px 0; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* Preview modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; width: 80%; max-width: 900px; max-height: 80vh; display: flex; flex-direction: column; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.modal-header h2 { font-size: 14px; }
+.modal-body { flex: 1; overflow: auto; padding: 16px; }
+.modal-body pre { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; white-space: pre; color: var(--text); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div style="display:flex;align-items:center">
+    <h1>Config Registry Editor</h1>
+    <span class="stats" id="stats"></span>
+    <span class="dirty-badge" id="dirty-badge">Unsaved</span>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btn-add-section">+ Section</button>
+    <button class="btn" id="btn-preview">Preview</button>
+    <button class="btn btn-primary" id="btn-save">Save</button>
+  </div>
+</div>
+
+<div id="layout">
+  <nav id="sidebar"><div id="sidebar-list"></div></nav>
+  <main id="main"><div id="main-content"><p style="color:var(--muted);padding:40px;text-align:center">Loading...</p></div></main>
+</div>
+
+<script>
+// ============================================================
+// DATA MODEL
+// ============================================================
+let model = { sections: [] };
+let isDirty = false;
+
+function parseRegistry(flat) {
+  let sections = [];
+  let curSection = null;
+  let curGroup = null;
+
+  for (const entry of flat) {
+    if (entry.type === 'section') {
+      curSection = {
+        name: entry.name || '', desc: entry.desc || '', long: entry.long || '',
+        collapsed: true,
+        groups: [{ type: 'top', name: null, desc: null, settings: [] }]
+      };
+      curGroup = curSection.groups[0];
+      sections.push(curSection);
+    } else if (entry.type === 'subsection') {
+      curGroup = { type: 'subsection', name: entry.name || '', desc: entry.desc || '', settings: [] };
+      if (curSection) curSection.groups.push(curGroup);
+    } else if (entry.s) {
+      const setting = { k: entry.k, g: entry.g, t: entry.t, default: entry.default, d: entry.d || '' };
+      if (entry.min !== undefined) { setting.min = entry.min; setting.max = entry.max; }
+      if (entry.fmt) setting.fmt = entry.fmt;
+      if (entry.options) setting.options = [...entry.options];
+      if (curGroup) curGroup.settings.push(setting);
+    }
+  }
+  if (sections.length > 0) sections[0].collapsed = false;
+  model.sections = sections;
+}
+
+function countSettings() {
+  let n = 0;
+  for (const s of model.sections)
+    for (const g of s.groups)
+      n += g.settings.length;
+  return n;
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function render() {
+  renderSidebar();
+  renderMain();
+  updateStats();
+}
+
+function renderSidebar() {
+  const el = document.getElementById('sidebar-list');
+  el.innerHTML = model.sections.map((s, i) => {
+    let n = 0;
+    for (const g of s.groups) n += g.settings.length;
+    return `<div class="sidebar-item" data-action="scroll-section" data-si="${i}">${esc(s.desc || s.name)}<span class="count">(${n})</span></div>`;
+  }).join('');
+}
+
+function renderMain() {
+  const el = document.getElementById('main-content');
+  el.innerHTML = model.sections.map((s, si) => renderSection(s, si)).join('');
+  setupDragAndDrop();
+}
+
+function renderSection(s, si) {
+  let settingsCount = 0;
+  for (const g of s.groups) settingsCount += g.settings.length;
+
+  let body = '';
+  for (let gi = 0; gi < s.groups.length; gi++) {
+    const g = s.groups[gi];
+    if (g.type === 'subsection') {
+      body += `<div class="group-header" data-si="${si}" data-gi="${gi}">
+        <span class="group-label">
+          <label class="field">Name: <input type="text" class="name-input" value="${esc(g.name)}" data-field="name" data-ctx="group" data-si="${si}" data-gi="${gi}"></label>
+          <label class="field" style="margin-left:8px">Desc: <input type="text" class="desc-input" value="${esc(g.desc)}" data-field="desc" data-ctx="group" data-si="${si}" data-gi="${gi}"></label>
+        </span>
+        <div class="group-btns">
+          ${gi > 1 ? `<button class="move-btn" data-action="move-group-up" data-si="${si}" data-gi="${gi}" title="Move up">\u25B2</button>` : ''}
+          ${gi < s.groups.length - 1 ? `<button class="move-btn" data-action="move-group-down" data-si="${si}" data-gi="${gi}" title="Move down">\u25BC</button>` : ''}
+          <button class="del-btn" data-action="delete-group" data-si="${si}" data-gi="${gi}" title="Delete subsection">\u00D7</button>
+        </div>
+      </div>`;
+    }
+    // Settings in this group
+    const groupDiv = `<div class="settings-group" data-si="${si}" data-gi="${gi}">`;
+    if (g.settings.length === 0) {
+      body += groupDiv + `<div class="empty-group" data-si="${si}" data-gi="${gi}">Drop settings here or click + Setting</div></div>`;
+    } else {
+      body += groupDiv + g.settings.map((st, ii) => renderSetting(st, si, gi, ii)).join('') + '</div>';
+    }
+    body += `<div class="add-row"><button class="btn btn-sm" data-action="add-setting" data-si="${si}" data-gi="${gi}">+ Setting</button></div>`;
+  }
+
+  return `<div class="section-card" id="section-${si}">
+    <div class="section-header" data-action="toggle-section" data-si="${si}">
+      <span class="toggle">${s.collapsed ? '\u25B6' : '\u25BC'}</span>
+      <span class="section-title">${esc(s.desc || s.name)}</span>
+      <span class="section-count">${settingsCount} settings</span>
+      <div class="section-btns">
+        ${si > 0 ? `<button class="move-btn" data-action="move-section-up" data-si="${si}" title="Move up">\u25B2</button>` : ''}
+        ${si < model.sections.length - 1 ? `<button class="move-btn" data-action="move-section-down" data-si="${si}" title="Move down">\u25BC</button>` : ''}
+        <button class="del-btn" data-action="delete-section" data-si="${si}" title="Delete section">\u00D7</button>
+      </div>
+    </div>
+    ${!s.collapsed ? `<div class="section-edit">
+      <label class="field">Name: <input type="text" class="name-input" value="${esc(s.name)}" data-field="name" data-ctx="section" data-si="${si}"></label>
+      <label class="field">Desc: <input type="text" class="desc-input" value="${esc(s.desc)}" data-field="desc" data-ctx="section" data-si="${si}"></label>
+      <label class="field full">Long: <input type="text" class="desc-input" value="${esc(s.long)}" data-field="long" data-ctx="section" data-si="${si}" style="flex:1"></label>
+    </div>
+    <div class="section-body">
+      ${body}
+      <div class="add-row" style="border-top:1px dashed var(--border);padding-top:8px;margin-top:8px">
+        <button class="btn btn-sm" data-action="add-subsection" data-si="${si}">+ Subsection</button>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+function renderSetting(st, si, gi, ii) {
+  const isNum = st.t === 'int' || st.t === 'float';
+  const isEnum = st.t === 'enum';
+  const isBool = st.t === 'bool';
+
+  let line2 = '';
+  if (isNum) {
+    line2 += `<label class="field">Min: <input type="number" class="num-input" value="${st.min ?? 0}" data-field="min"></label>`;
+    line2 += `<label class="field">Max: <input type="number" class="num-input" value="${st.max ?? 100}" data-field="max"></label>`;
+    line2 += `<label class="field">Fmt: <select class="fmt-select" data-field="fmt">
+      <option value=""${!st.fmt?' selected':''}>none</option>
+      <option value="hex"${st.fmt==='hex'?' selected':''}>hex</option>
+    </select></label>`;
+  }
+  if (isEnum) {
+    line2 += `<label class="field">Options: <input type="text" class="options-input" value="${esc((st.options||[]).join(', '))}" data-field="options" placeholder="opt1, opt2, opt3"></label>`;
+  }
+
+  let defaultField;
+  if (isBool) {
+    defaultField = `<label class="field">Default: <input type="checkbox"${st.default?' checked':''} data-field="default"></label>`;
+  } else {
+    defaultField = `<label class="field">Default: <input type="text" class="default-input" value="${esc(String(st.default ?? ''))}" data-field="default"></label>`;
+  }
+
+  return `<div class="setting-row" draggable="true" data-si="${si}" data-gi="${gi}" data-ii="${ii}">
+    <div class="drag-handle" title="Drag to move">\u2847</div>
+    <div class="setting-fields">
+      <div class="setting-line">
+        <label class="field">Key: <input type="text" class="key-input" value="${esc(st.k)}" data-field="k"></label>
+        <label class="field">Global: <input type="text" class="global-input" value="${esc(st.g)}" data-field="g"></label>
+        <label class="field">Type: <select class="type-select" data-field="t">
+          ${['string','int','float','bool','enum'].map(t => `<option${t===st.t?' selected':''}>${t}</option>`).join('')}
+        </select></label>
+        ${defaultField}
+      </div>
+      ${line2 ? `<div class="setting-line">${line2}</div>` : ''}
+      <div class="setting-line">
+        <label class="field desc-label" style="flex:1">Desc: <textarea class="desc-area" data-field="d" rows="1">${esc(st.d)}</textarea></label>
+      </div>
+    </div>
+    <button class="del-btn" data-action="delete-setting" data-si="${si}" data-gi="${gi}" data-ii="${ii}" title="Delete setting">\u00D7</button>
+  </div>`;
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function updateStats() {
+  const nSections = model.sections.length;
+  const nSettings = countSettings();
+  let nSubs = 0;
+  for (const s of model.sections) for (const g of s.groups) if (g.type === 'subsection') nSubs++;
+  document.getElementById('stats').textContent = `${nSections} sections \u2022 ${nSubs} subsections \u2022 ${nSettings} settings`;
+}
+
+function markDirty() {
+  isDirty = true;
+  document.getElementById('dirty-badge').style.display = 'inline';
+}
+
+// ============================================================
+// EVENT HANDLING
+// ============================================================
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+
+  const action = btn.dataset.action;
+  const si = parseInt(btn.dataset.si);
+  const gi = parseInt(btn.dataset.gi);
+  const ii = parseInt(btn.dataset.ii);
+
+  switch (action) {
+    case 'toggle-section':
+      model.sections[si].collapsed = !model.sections[si].collapsed;
+      render();
+      break;
+    case 'scroll-section':
+      model.sections[si].collapsed = false;
+      render();
+      setTimeout(() => {
+        const el = document.getElementById('section-' + si);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+      break;
+    case 'delete-section':
+      e.stopPropagation();
+      if (confirm(`Delete section "${model.sections[si].name}" and all its settings?`)) {
+        model.sections.splice(si, 1);
+        markDirty(); render();
+      }
+      break;
+    case 'delete-group':
+      if (confirm(`Delete subsection "${model.sections[si].groups[gi].name}" and its settings?`)) {
+        // Move settings to top-level group before deleting
+        model.sections[si].groups.splice(gi, 1);
+        markDirty(); render();
+      }
+      break;
+    case 'delete-setting':
+      model.sections[si].groups[gi].settings.splice(ii, 1);
+      markDirty(); render();
+      break;
+    case 'add-setting':
+      model.sections[si].groups[gi].settings.push({
+        k: 'NewKey', g: 'NewGlobal', t: 'int', default: 0, min: 0, max: 100, d: 'Description'
+      });
+      markDirty(); render();
+      break;
+    case 'add-subsection':
+      model.sections[si].groups.push({
+        type: 'subsection', name: 'NewSubsection', desc: 'Description', settings: []
+      });
+      markDirty(); render();
+      break;
+    case 'move-section-up':
+      e.stopPropagation();
+      if (si > 0) { [model.sections[si-1], model.sections[si]] = [model.sections[si], model.sections[si-1]]; markDirty(); render(); }
+      break;
+    case 'move-section-down':
+      e.stopPropagation();
+      if (si < model.sections.length - 1) { [model.sections[si], model.sections[si+1]] = [model.sections[si+1], model.sections[si]]; markDirty(); render(); }
+      break;
+    case 'move-group-up':
+      if (gi > 1) { [model.sections[si].groups[gi-1], model.sections[si].groups[gi]] = [model.sections[si].groups[gi], model.sections[si].groups[gi-1]]; markDirty(); render(); }
+      break;
+    case 'move-group-down':
+      if (gi < model.sections[si].groups.length - 1) { [model.sections[si].groups[gi], model.sections[si].groups[gi+1]] = [model.sections[si].groups[gi+1], model.sections[si].groups[gi]]; markDirty(); render(); }
+      break;
+  }
+});
+
+// Sync input changes to model without re-rendering
+document.addEventListener('input', (e) => {
+  const input = e.target;
+  const field = input.dataset.field;
+  if (!field) return;
+  const ctx = input.dataset.ctx;
+
+  if (ctx === 'section') {
+    const si = parseInt(input.dataset.si);
+    model.sections[si][field] = input.value;
+    markDirty();
+    // Update sidebar text live
+    if (field === 'desc' || field === 'name') renderSidebar();
+    return;
+  }
+
+  if (ctx === 'group') {
+    const si = parseInt(input.dataset.si);
+    const gi = parseInt(input.dataset.gi);
+    model.sections[si].groups[gi][field] = input.value;
+    markDirty();
+    return;
+  }
+
+  // Setting field
+  const row = input.closest('.setting-row');
+  if (!row) return;
+  const si = parseInt(row.dataset.si);
+  const gi = parseInt(row.dataset.gi);
+  const ii = parseInt(row.dataset.ii);
+  const setting = model.sections[si].groups[gi].settings[ii];
+
+  if (field === 't') {
+    // Type changed - update model and re-render this row
+    setting.t = input.value;
+    if (setting.t !== 'int' && setting.t !== 'float') { delete setting.min; delete setting.max; delete setting.fmt; }
+    if (setting.t !== 'enum') delete setting.options;
+    if ((setting.t === 'int' || setting.t === 'float') && setting.min === undefined) { setting.min = 0; setting.max = 100; }
+    if (setting.t === 'enum' && !setting.options) { setting.options = ['Option1']; setting.default = 'Option1'; }
+    if (setting.t === 'bool') setting.default = !!setting.default;
+    if (setting.t === 'string' && typeof setting.default !== 'string') setting.default = String(setting.default ?? '');
+    markDirty();
+    // Re-render just this row
+    row.outerHTML = renderSetting(setting, si, gi, ii);
+    setupDragAndDrop();
+    return;
+  }
+
+  if (field === 'default') {
+    if (input.type === 'checkbox') setting.default = input.checked;
+    else if (setting.t === 'int') setting.default = parseInt(input.value) || 0;
+    else if (setting.t === 'float') setting.default = parseFloat(input.value) || 0;
+    else setting.default = input.value;
+  } else if (field === 'min' || field === 'max') {
+    setting[field] = parseFloat(input.value) || 0;
+  } else if (field === 'options') {
+    setting.options = input.value.split(',').map(s => s.trim()).filter(Boolean);
+  } else if (field === 'fmt') {
+    if (input.value) setting.fmt = input.value;
+    else delete setting.fmt;
+  } else {
+    setting[field] = input.value;
+  }
+  markDirty();
+});
+
+// Add section button
+document.getElementById('btn-add-section').addEventListener('click', () => {
+  model.sections.push({
+    name: 'NewSection', desc: 'New Section', long: 'Description of this section.',
+    collapsed: false,
+    groups: [{ type: 'top', name: null, desc: null, settings: [] }]
+  });
+  markDirty(); render();
+  // Scroll to new section
+  setTimeout(() => {
+    const el = document.getElementById('section-' + (model.sections.length - 1));
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  }, 50);
+});
+
+// ============================================================
+// DRAG AND DROP
+// ============================================================
+let dragState = null;
+
+function setupDragAndDrop() {
+  document.querySelectorAll('.setting-row[draggable]').forEach(row => {
+    row.addEventListener('dragstart', onDragStart);
+    row.addEventListener('dragend', onDragEnd);
+    row.addEventListener('dragover', onDragOver);
+    row.addEventListener('dragleave', onDragLeave);
+    row.addEventListener('drop', onDrop);
+  });
+  document.querySelectorAll('.settings-group').forEach(group => {
+    group.addEventListener('dragover', onGroupDragOver);
+    group.addEventListener('dragleave', onDragLeave);
+    group.addEventListener('drop', onGroupDrop);
+  });
+  document.querySelectorAll('.empty-group').forEach(zone => {
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drop-into'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drop-into'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('drop-into');
+      if (!dragState) return;
+      const si = parseInt(zone.dataset.si);
+      const gi = parseInt(zone.dataset.gi);
+      moveSetting(dragState.si, dragState.gi, dragState.ii, si, gi, 0);
+    });
+  });
+}
+
+function onDragStart(e) {
+  const row = e.currentTarget;
+  dragState = { si: parseInt(row.dataset.si), gi: parseInt(row.dataset.gi), ii: parseInt(row.dataset.ii) };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', '');
+  requestAnimationFrame(() => row.classList.add('dragging'));
+}
+
+function onDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  dragState = null;
+  clearIndicators();
+}
+
+function onDragOver(e) {
+  if (!dragState) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  clearIndicators();
+  const row = e.currentTarget;
+  const rect = row.getBoundingClientRect();
+  const mid = rect.top + rect.height / 2;
+  if (e.clientY < mid) row.classList.add('drop-before');
+  else row.classList.add('drop-after');
+}
+
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drop-before', 'drop-after', 'drop-into');
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const row = e.currentTarget;
+  if (!dragState) return;
+
+  const tsi = parseInt(row.dataset.si);
+  const tgi = parseInt(row.dataset.gi);
+  let tii = parseInt(row.dataset.ii);
+
+  const rect = row.getBoundingClientRect();
+  const mid = rect.top + rect.height / 2;
+  if (e.clientY >= mid) tii++;
+
+  clearIndicators();
+  moveSetting(dragState.si, dragState.gi, dragState.ii, tsi, tgi, tii);
+}
+
+function onGroupDragOver(e) {
+  if (!dragState) return;
+  // Only handle if the event target is the group itself (not a child setting row)
+  if (e.target.closest('.setting-row')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function onGroupDrop(e) {
+  if (!dragState) return;
+  if (e.target.closest('.setting-row')) return;
+  e.preventDefault();
+  const group = e.currentTarget;
+  const si = parseInt(group.dataset.si);
+  const gi = parseInt(group.dataset.gi);
+  const settings = model.sections[si].groups[gi].settings;
+  clearIndicators();
+  moveSetting(dragState.si, dragState.gi, dragState.ii, si, gi, settings.length);
+}
+
+function moveSetting(fromSi, fromGi, fromIi, toSi, toGi, toIi) {
+  // Same position - no move needed
+  if (fromSi === toSi && fromGi === toGi && fromIi === toIi) return;
+
+  const setting = model.sections[fromSi].groups[fromGi].settings[fromIi];
+  model.sections[fromSi].groups[fromGi].settings.splice(fromIi, 1);
+
+  // Adjust target index if removing from same group before target
+  if (fromSi === toSi && fromGi === toGi && fromIi < toIi) toIi--;
+
+  model.sections[toSi].groups[toGi].settings.splice(toIi, 0, setting);
+  markDirty();
+  render();
+}
+
+function clearIndicators() {
+  document.querySelectorAll('.drop-before,.drop-after,.drop-into').forEach(el =>
+    el.classList.remove('drop-before', 'drop-after', 'drop-into'));
+}
+
+// ============================================================
+// AHK SOURCE GENERATION
+// ============================================================
+function generateAhkSource() {
+  const lines = [];
+  lines.push('#Requires AutoHotkey v2.0');
+  lines.push('');
+  lines.push('; ============================================================');
+  lines.push('; Config Registry - Single Source of Truth for All Settings');
+  lines.push('; ============================================================');
+  lines.push('; This file contains ONLY the config registry definition.');
+  lines.push('; All config loading/saving logic is in config_loader.ahk.');
+  lines.push(';');
+  lines.push('; Entry types:');
+  lines.push(';   Section:    {type: "section", name: "Name", desc: "Short", long: "Long description"}');
+  lines.push(';   Subsection: {type: "subsection", section: "Parent", name: "Name", desc: "Description"}');
+  lines.push(';   Setting:    {s: section, k: key, g: global, t: type, default: value, d: "Description"}');
+  lines.push(';');
+  lines.push('; Setting types: "string", "int", "float", "bool", "enum"');
+  lines.push(';   Enum settings also have: options: ["val1", "val2", ...]');
+  lines.push(';');
+  lines.push('; Optional constraint fields (int/float only):');
+  lines.push(';   min/max \u2014 numeric bounds (present together or not at all)');
+  lines.push(';   fmt     \u2014 format hint: "hex" for color values (hex display, no slider)');
+  lines.push(';');
+  lines.push('; To add a new config:');
+  lines.push('; 1. Add an entry to gConfigRegistry below (with default value)');
+  lines.push("; 2. That's it! The value is automatically available as cfg.YourConfigName");
+  lines.push('; ============================================================');
+  lines.push('');
+  lines.push('global gConfigRegistry := [');
+
+  for (let si = 0; si < model.sections.length; si++) {
+    const s = model.sections[si];
+
+    // Section divider
+    lines.push('    ; ============================================================');
+    lines.push('    ; ' + s.desc);
+    lines.push('    ; ============================================================');
+
+    // Section entry
+    lines.push('    {type: "section", name: "' + escAhk(s.name) + '",');
+    lines.push('     desc: "' + escAhk(s.desc) + '",');
+    lines.push('     long: "' + escAhk(s.long) + '"},');
+
+    for (let gi = 0; gi < s.groups.length; gi++) {
+      const g = s.groups[gi];
+
+      if (g.type === 'subsection') {
+        lines.push('');
+        lines.push('    {type: "subsection", section: "' + escAhk(s.name) + '", name: "' + escAhk(g.name) + '",');
+        lines.push('     desc: "' + escAhk(g.desc) + '"},');
+      }
+
+      for (let ii = 0; ii < g.settings.length; ii++) {
+        const st = g.settings[ii];
+        lines.push('');
+        lines.push(formatSetting(st, s.name));
+      }
+    }
+
+    // Blank line between sections
+    if (si < model.sections.length - 1) {
+      lines.push('');
+    }
+  }
+
+  lines.push(']');
+  lines.push('');
+  return lines.join('\r\n');
+}
+
+function formatSetting(st, sectionName) {
+  const parts = [];
+  parts.push('s: "' + escAhk(sectionName) + '"');
+  parts.push('k: "' + escAhk(st.k) + '"');
+  parts.push('g: "' + escAhk(st.g) + '"');
+  parts.push('t: "' + escAhk(st.t) + '"');
+
+  // Default value
+  if (st.t === 'bool') {
+    parts.push('default: ' + (st.default ? 'true' : 'false'));
+  } else if (st.t === 'int') {
+    parts.push('default: ' + formatIntValue(st.default, st.fmt));
+  } else if (st.t === 'float') {
+    parts.push('default: ' + formatFloatValue(st.default));
+  } else {
+    parts.push('default: "' + escAhk(String(st.default ?? '')) + '"');
+  }
+
+  const line1 = '    {' + parts.join(', ') + ',';
+
+  // Line 2: constraints
+  let line2 = '';
+  if ((st.t === 'int' || st.t === 'float') && st.min !== undefined) {
+    let minStr = st.t === 'int' ? formatIntValue(st.min, st.fmt) : formatFloatValue(st.min);
+    let maxStr = st.t === 'int' ? formatIntValue(st.max, st.fmt) : formatFloatValue(st.max);
+    line2 = '     min: ' + minStr + ', max: ' + maxStr;
+    if (st.fmt) line2 += ', fmt: "' + escAhk(st.fmt) + '"';
+    line2 += ',';
+  }
+  if (st.t === 'enum' && st.options) {
+    line2 = '     options: [' + st.options.map(o => '"' + escAhk(o) + '"').join(', ') + '],';
+  }
+
+  // Last line: description
+  const lineD = '     d: "' + escAhk(st.d) + '"},';
+
+  if (line2) return line1 + '\r\n' + line2 + '\r\n' + lineD;
+  return line1 + '\r\n' + lineD;
+}
+
+function formatIntValue(val, fmt) {
+  val = parseInt(val) || 0;
+  if (fmt === 'hex' && val !== 0) return '0x' + val.toString(16).toUpperCase();
+  return String(val);
+}
+
+function formatFloatValue(val) {
+  val = parseFloat(val) || 0;
+  let s = String(val);
+  if (!s.includes('.')) s += '.0';
+  return s;
+}
+
+function escAhk(s) {
+  if (s == null) return '';
+  s = String(s);
+  s = s.replace(/`/g, '``');
+  s = s.replace(/"/g, '""');
+  return s;
+}
+
+// ============================================================
+// PREVIEW & SAVE
+// ============================================================
+document.getElementById('btn-preview').addEventListener('click', () => {
+  const source = generateAhkSource();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal">
+    <div class="modal-header">
+      <h2>Generated config_registry.ahk</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" id="modal-copy">Copy</button>
+        <button class="btn btn-sm" id="modal-close">\u00D7 Close</button>
+      </div>
+    </div>
+    <div class="modal-body"><pre id="preview-code"></pre></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('preview-code').textContent = source;
+  document.getElementById('modal-close').onclick = () => overlay.remove();
+  document.getElementById('modal-copy').onclick = () => {
+    navigator.clipboard.writeText(source);
+    document.getElementById('modal-copy').textContent = 'Copied!';
+    setTimeout(() => document.getElementById('modal-copy').textContent = 'Copy', 1500);
+  };
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+});
+
+document.getElementById('btn-save').addEventListener('click', () => {
+  const source = generateAhkSource();
+  try {
+    window.chrome.webview.postMessage(JSON.stringify({ action: 'save', source: source }));
+    isDirty = false;
+    document.getElementById('dirty-badge').style.display = 'none';
+  } catch (e) {
+    alert('Failed to send save message: ' + e.message);
+  }
+});
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+function loadRegistry(data) {
+  parseRegistry(data);
+  render();
+}
+
+// Signal ready to AHK
+try {
+  window.chrome.webview.postMessage(JSON.stringify({ action: 'ready' }));
+} catch (e) {
+  // Running outside WebView2 (dev/debug) - do nothing
+}
+</script>
+</body>
+</html>
