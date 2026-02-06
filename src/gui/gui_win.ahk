@@ -202,32 +202,35 @@ Win_ApplyAcrylic(hWnd, alpha, baseRgb) {
 
 ; Enable dark title bar
 Win_EnableDarkTitleBar(hWnd) {
+    global DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_USE_IMMERSIVE_DARK_MODE_19
     buf := Buffer(4, 0)
     NumPut("Int", 1, buf, 0)
     try {
-        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "int", 20, "ptr", buf.Ptr, "int", 4, "int")
+        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "int", DWMWA_USE_IMMERSIVE_DARK_MODE, "ptr", buf.Ptr, "int", 4, "int")
     }
     try {
-        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "int", 19, "ptr", buf.Ptr, "int", 4, "int")
+        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "int", DWMWA_USE_IMMERSIVE_DARK_MODE_19, "ptr", buf.Ptr, "int", 4, "int")
     }
 }
 
 ; Set corner preference (rounded)
 Win_SetCornerPreference(hWnd, pref := 2) {
+    global DWMWA_WINDOW_CORNER_PREFERENCE
     buf := Buffer(4, 0)
     NumPut("Int", pref, buf, 0)
     try {
-        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "int", 33, "ptr", buf.Ptr, "int", 4, "int")
+        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "int", DWMWA_WINDOW_CORNER_PREFERENCE, "ptr", buf.Ptr, "int", 4, "int")
     }
 }
 
 ; Remove WS_EX_LAYERED style
 Win_ForceNoLayered(hWnd) {
+    global GWL_EXSTYLE, WS_EX_LAYERED
     try {
-        ex := DllCall("user32\GetWindowLongPtrW", "ptr", hWnd, "int", -20, "ptr")
-        if (ex & 0x00080000) {
-            ex := ex & ~0x00080000
-            DllCall("user32\SetWindowLongPtrW", "ptr", hWnd, "int", -20, "ptr", ex, "ptr")
+        ex := DllCall("user32\GetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr")
+        if (ex & WS_EX_LAYERED) {
+            ex := ex & ~WS_EX_LAYERED
+            DllCall("user32\SetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
             DllCall("user32\SetWindowPos", "ptr", hWnd, "ptr", 0, "int", 0, "int", 0, "int", 0, "int", 0, "uint", 0x0001 | 0x0002 | 0x0004 | 0x0020)
         }
     }

@@ -142,14 +142,11 @@ $CHECKS = @(
     @{
         Id       = "store_disconnect_cleanup"
         File     = "store\store_server.ahk"
-        Desc     = "Store registers disconnect callback and cleans all client Maps"
+        Desc     = "Store registers disconnect callback and cleans all client state"
         Patterns = @(
             "Store_OnClientDisconnect)",
             "Store_OnClientDisconnect(hPipe)",
-            "gStore_ClientOpts.Delete(",
-            "gStore_LastClientRev.Delete(",
-            "gStore_LastClientProj.Delete(",
-            "gStore_LastClientMeta.Delete("
+            "gStore_ClientState.Delete("
         )
     },
 

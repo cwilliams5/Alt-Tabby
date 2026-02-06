@@ -56,9 +56,9 @@ GUI_ComputeRowsToShow(count) {
 }
 
 GUI_HeaderBlockDip() {
-    global cfg
+    global cfg, PAINT_HEADER_BLOCK_DIP
     if (cfg.GUI_ShowHeader) {
-        return 32
+        return PAINT_HEADER_BLOCK_DIP
     }
     return 0
 }
@@ -161,61 +161,35 @@ GUI_CreateBase() {
 
     rowsDesired := GUI_ComputeRowsToShow(gGUI_LiveItems.Length)
 
-    left := 0
-    top := 0
-    right := 0
-    bottom := 0
-    MonitorGetWorkArea(0, &left, &top, &right, &bottom)
-    waW_phys := right - left
-    waH_phys := bottom - top
-
-    monScale := Win_GetMonitorScale(left, top, right, bottom)
-
-    pct := cfg.GUI_ScreenWidthPct
-    if (pct <= 0) {
-        pct := 0.10
-    }
-    if (pct > 1.0) {
-        pct := pct / 100.0
-    }
-
-    waW_dip := waW_phys / monScale
-    waH_dip := waH_phys / monScale
-    left_dip := left / monScale
-    top_dip := top / monScale
-
-    winW := Round(waW_dip * pct)
-    winH := cfg.GUI_MarginY + GUI_HeaderBlockDip() + rowsDesired * cfg.GUI_RowHeight + GUI_FooterBlockDip() + cfg.GUI_MarginY
-    winX := Round(left_dip + (waW_dip - winW) / 2)
-    winY := Round(top_dip + (waH_dip - winH) / 2)
-
     global APP_NAME
     gGUI_Base := Gui(opts, APP_NAME)
-    gGUI_Base.Show("Hide w" winW " h" winH)
+    gGUI_Base.Show("Hide w1 h1")  ; Dummy size — repositioned below
     gGUI_BaseH := gGUI_Base.Hwnd
 
-    curX := 0
-    curY := 0
-    curW := 0
-    curH := 0
-    Win_GetRectPhys(gGUI_BaseH, &curX, &curY, &curW, &curH)
+    ; Use GUI_GetWindowRect for layout (single source of truth for sizing/centering)
+    xDip := 0
+    yDip := 0
+    wDip := 0
+    hDip := 0
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
 
     waL := 0
     waT := 0
     waR := 0
     waB := 0
     Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
-    waW := waR - waL
-    waH := waB - waT
+    monScale := Win_GetMonitorScale(waL, waT, waR, waB)
 
-    tgtX := waL + (waW - curW) // 2
-    tgtY := waT + (waH - curH) // 2
-    Win_SetPosPhys(gGUI_BaseH, tgtX, tgtY, curW, curH)
+    xPhys := Round(xDip * monScale)
+    yPhys := Round(yDip * monScale)
+    wPhys := Round(wDip * monScale)
+    hPhys := Round(hDip * monScale)
+    Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
 
     Win_EnableDarkTitleBar(gGUI_BaseH)
     Win_SetCornerPreference(gGUI_BaseH, 2)
     Win_ForceNoLayered(gGUI_BaseH)
-    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, winW, winH)
+    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
     Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicAlpha, cfg.GUI_AcrylicBaseRgb)
     Win_DwmFlush()
 }

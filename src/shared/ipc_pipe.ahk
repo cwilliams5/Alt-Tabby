@@ -4,6 +4,7 @@
 
 ; Windows error codes
 global IPC_ERROR_IO_PENDING := 997
+global IPC_ERROR_BROKEN_PIPE := 109
 global IPC_ERROR_PIPE_CONNECTED := 535
 global IPC_ERROR_PIPE_BUSY := 231
 global IPC_ERROR_FILE_NOT_FOUND := 2

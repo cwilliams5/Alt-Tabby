@@ -14,10 +14,7 @@
 ; Based on working POC: legacy/components_legacy/komorebi_poc - WORKING.ahk
 ; ============================================================
 
-; Windows API Error Codes (for readability)
-global ERROR_IO_PENDING := 997
-global ERROR_BROKEN_PIPE := 109
-global ERROR_PIPE_CONNECTED := 535
+; Windows API Error Codes: uses IPC_ERROR_* from ipc_pipe.ahk (shared definitions)
 
 ; Buffer size limit (1MB) - prevents OOM from incomplete JSON
 global KSUB_BUFFER_MAX_BYTES := 1048576
@@ -103,7 +100,7 @@ KomorebiSub_IsAvailable() {
 KomorebiSub_Start() {
     global _KSub_PipeName, _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped
     global _KSub_Connected, _KSub_ClientPid, _KSub_LastEventTick, _KSub_FallbackMode
-    global KSub_FallbackPollMs, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, KSub_PollMs, KSUB_READ_CHUNK_SIZE
+    global KSub_FallbackPollMs, IPC_ERROR_IO_PENDING, IPC_ERROR_PIPE_CONNECTED, KSub_PollMs, KSUB_READ_CHUNK_SIZE
     global cfg
 
     KomorebiSub_Stop()
@@ -166,9 +163,9 @@ KomorebiSub_Start() {
     ok := DllCall("ConnectNamedPipe", "ptr", _KSub_hPipe, "ptr", _KSub_Overlapped.Ptr, "int")
     if (!ok) {
         gle := DllCall("GetLastError", "uint")
-        if (gle = ERROR_IO_PENDING)        ; Async operation in progress
+        if (gle = IPC_ERROR_IO_PENDING)        ; Async operation in progress
             _KSub_Connected := false
-        else if (gle = ERROR_PIPE_CONNECTED)   ; Already connected
+        else if (gle = IPC_ERROR_PIPE_CONNECTED)   ; Already connected
             _KSub_Connected := true
         else {
             KomorebiSub_Stop()
@@ -313,7 +310,7 @@ _KSub_UpdateCacheEntry(hwnd, wsName, tick) {
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
     global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer, _KSub_ReadBufferLen
-    global ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
+    global IPC_ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
     static pollCount := 0, lastLogTick := 0
 
     pollCount++
@@ -365,7 +362,7 @@ KomorebiSub_Poll() {
 
         if (!ok) {
             gle := DllCall("GetLastError", "uint")
-            if (gle = ERROR_BROKEN_PIPE)  ; Pipe disconnected, restart
+            if (gle = IPC_ERROR_BROKEN_PIPE)  ; Pipe disconnected, restart
                 KomorebiSub_Start()
             return
         }

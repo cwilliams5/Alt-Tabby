@@ -10,6 +10,11 @@ global TABBY_FLAG_SHIFT  := 1  ; Shift modifier flag
 global SW_RESTORE := 9
 global GWL_EXSTYLE := -20
 global WS_EX_LAYERED := 0x80000
+
+; DWM window attributes
+global DWMWA_USE_IMMERSIVE_DARK_MODE_19 := 19
+global DWMWA_USE_IMMERSIVE_DARK_MODE := 20
+global DWMWA_WINDOW_CORNER_PREFERENCE := 33
 global HWND_TOPMOST := -1
 global HWND_NOTOPMOST := -2
 global SWP_NOSIZE := 0x0001
@@ -37,6 +42,7 @@ global BITMAPINFOHEADER_SIZE := 40
 global BPP_32 := 32
 
 ; Paint layout (DIP values, pre-scale)
+global PAINT_HEADER_BLOCK_DIP := 32
 global PAINT_HDR_Y_DIP := 4
 global PAINT_TITLE_Y_DIP := 6
 global PAINT_TITLE_H_DIP := 24

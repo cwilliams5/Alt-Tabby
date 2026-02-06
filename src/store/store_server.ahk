@@ -25,19 +25,14 @@ global gStats_Lifetime := Map()   ; key -> integer, loaded from/flushed to stats
 global gStats_Session := Map()    ; key -> integer, this session only
 
 global gStore_Server := 0
-global gStore_ClientOpts := Map()      ; hPipe -> projection opts
+; Per-client state: hPipe -> {opts, lastRev, lastProj, lastMeta, pushCount}
+; Consolidates all per-client tracking into a single Map for simpler cleanup and iteration.
+global gStore_ClientState := Map()
 global gStore_LastBroadcastRev := -1
 global gStore_TestMode := false
 ; NOTE: Fallback scan interval now in config: cfg.WinEnumFallbackScanIntervalMs (default 2000)
 global gStore_ErrorLog := ""
 global gStore_LastClientLog := 0
-global gStore_LastClientRev := Map()   ; hPipe -> last rev sent
-global gStore_LastClientProj := Map()  ; hPipe -> last projection items (for delta calc)
-global gStore_LastClientMeta := Map()  ; hPipe -> last meta sent (for workspace change detection)
-; DESIGN: Per-client push counter for periodic full-row resync.
-; Full rows self-heal client state drift from missed deltas.
-; IPCFullRowEvery=0 disables sparse mode (all full rows, legacy behavior).
-global gStore_ClientPushCount := Map() ; hPipe -> push count (for sparse/full row cycling)
 global gStore_LastSendTick := 0       ; Tick of last message sent to ANY client (heartbeat or delta)
 global gStore_CachedHeartbeatJson := ""
 global gStore_CachedHeartbeatRev := -1
@@ -312,8 +307,7 @@ _Store_RotateDiagLogs() {
 ; Force full snapshot to all clients - resets tracking so PushToClients sends SNAPSHOT not DELTA
 ; Used by FullSyncEvery heartbeat-counted full-state healing to fix ghost/missing rows
 Store_ForceFullSync() {
-    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev
-    global gStore_LastClientProj, gStore_LastClientMeta, gStore_ClientPushCount
+    global gStore_Server, gStore_ClientState
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -323,10 +317,13 @@ Store_ForceFullSync() {
     Critical "On"
     _Store_CleanupDisconnectedClients()
     for hPipe, _ in gStore_Server.clients {
-        gStore_LastClientRev[hPipe] := -1   ; Bypass rev-skip check
-        gStore_LastClientProj[hPipe] := []  ; Force snapshot path
-        gStore_LastClientMeta[hPipe] := ""
-        gStore_ClientPushCount[hPipe] := 0
+        if (gStore_ClientState.Has(hPipe)) {
+            cs := gStore_ClientState[hPipe]
+            cs.lastRev := -1      ; Bypass rev-skip check
+            cs.lastProj := []     ; Force snapshot path
+            cs.lastMeta := ""
+            cs.pushCount := 0
+        }
     }
     Critical "Off"
 
@@ -394,17 +391,17 @@ Store_FullScan() {
 ; Uses Critical section to atomically snapshot client handles, preventing race
 ; conditions where clients disconnect during iteration
 Store_PushToClients() {
-    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_TestMode
-    global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA, gStore_LastSendTick, gStore_ClientPushCount, cfg
+    global gStore_Server, gStore_ClientState, gStore_TestMode
+    global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA, gStore_LastSendTick, cfg
     global gWS_DeltaPendingHwnds
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
 
-    ; Atomically clean up disconnected clients and snapshot current handles + opts
+    ; Atomically clean up disconnected clients and snapshot current handles + state
     ; This prevents race conditions if clients disconnect during iteration
-    ; RACE FIX: Also snapshot gStore_ClientOpts and client tracking maps - they can be
-    ; modified by Store_OnMessage (HELLO, SET_PROJECTION_OPTS, PROJECTION_REQUEST)
+    ; RACE FIX: Also snapshot client state - it can be modified by Store_OnMessage
+    ; (HELLO, SET_PROJECTION_OPTS, PROJECTION_REQUEST)
     Critical "On"
     _Store_CleanupDisconnectedClients()
     clientHandles := []
@@ -414,14 +411,13 @@ Store_PushToClients() {
     clientPrevMeta := Map()
     for hPipe, _ in gStore_Server.clients {
         clientHandles.Push(hPipe)
-        if (gStore_ClientOpts.Has(hPipe))
-            clientOptsSnapshot[hPipe] := gStore_ClientOpts[hPipe]
-        if (gStore_LastClientProj.Has(hPipe))
-            clientPrevProj[hPipe] := gStore_LastClientProj[hPipe]
-        if (gStore_LastClientRev.Has(hPipe))
-            clientPrevRev[hPipe] := gStore_LastClientRev[hPipe]
-        if (gStore_LastClientMeta.Has(hPipe))
-            clientPrevMeta[hPipe] := gStore_LastClientMeta[hPipe]
+        if (gStore_ClientState.Has(hPipe)) {
+            cs := gStore_ClientState[hPipe]
+            clientOptsSnapshot[hPipe] := cs.opts
+            clientPrevProj[hPipe] := cs.lastProj
+            clientPrevRev[hPipe] := cs.lastRev
+            clientPrevMeta[hPipe] := cs.lastMeta
+        }
     }
     ; Snapshot dirty set and clear immediately - any updates during this push
     ; will mark the NEW dirty set and be caught on next push
@@ -487,13 +483,13 @@ Store_PushToClients() {
         metaChanged := WindowStore_MetaChanged(prevMeta, proj.meta)
 
         ; Per-client push counter for sparse/full sync cycling
-        if (!gStore_ClientPushCount.Has(hPipe))
-            gStore_ClientPushCount[hPipe] := 0
-        gStore_ClientPushCount[hPipe] += 1
+        ; (read from snapshot, update live state after send)
+        cs := gStore_ClientState.Has(hPipe) ? gStore_ClientState[hPipe] : ""
+        pushCount := IsObject(cs) ? cs.pushCount + 1 : 1
 
         ; Determine sparse vs full row mode
         sparseN := cfg.IPCFullRowEvery
-        isSparse := sparseN > 0 && Mod(gStore_ClientPushCount[hPipe], sparseN) != 0
+        isSparse := sparseN > 0 && Mod(pushCount, sparseN) != 0
         ; Meta inclusion: always on full row sync; in Always mode; or when meta changed
         isAlwaysMode := (cfg.IPCWorkspaceDeltaStyle = "Always")
         includeMeta := !isSparse || isAlwaysMode || metaChanged
@@ -523,11 +519,15 @@ Store_PushToClients() {
         }
 
         ; RACE FIX: Wrap client tracking updates in Critical
-        ; Store_OnMessage also modifies these maps when client sends HELLO or SET_PROJECTION_OPTS
+        ; Store_OnMessage also modifies client state when client sends HELLO or SET_PROJECTION_OPTS
         Critical "On"
-        gStore_LastClientRev[hPipe] := proj.rev
-        gStore_LastClientProj[hPipe] := proj.items
-        gStore_LastClientMeta[hPipe] := proj.meta
+        if (gStore_ClientState.Has(hPipe)) {
+            cs := gStore_ClientState[hPipe]
+            cs.lastRev := proj.rev
+            cs.lastProj := proj.items
+            cs.lastMeta := proj.meta
+            cs.pushCount := pushCount
+        }
         Critical "Off"
         sent++
     }
@@ -579,8 +579,7 @@ Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false
 ; Parameters:
 ;   flips - Array of full _WS_ToItem records for windows whose isOnCurrentWorkspace changed
 Store_BroadcastWorkspaceFlips(flips) {
-    global gStore_Server, gStore_LastClientRev, gStore_LastSendTick, gStore_LastBroadcastRev
-    global gStore_ClientOpts
+    global gStore_Server, gStore_ClientState, gStore_LastSendTick, gStore_LastBroadcastRev
     global IPC_MSG_DELTA
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
@@ -603,9 +602,10 @@ Store_BroadcastWorkspaceFlips(flips) {
     ; Clients without opts haven't connected yet and will get a full snapshot on HELLO
     Critical "On"
     for hPipe, _ in gStore_Server.clients {
-        if (gStore_ClientOpts.Has(hPipe))
+        if (gStore_ClientState.Has(hPipe)) {
             IPC_PipeServer_Send(gStore_Server, hPipe, msg)
-        gStore_LastClientRev[hPipe] := rev
+            gStore_ClientState[hPipe].lastRev := rev
+        }
     }
     ; Consume workspace changed flag so the subsequent Store_PushToClients
     ; doesn't re-send the workspace_change message
@@ -616,8 +616,8 @@ Store_BroadcastWorkspaceFlips(flips) {
 }
 
 Store_OnMessage(line, hPipe := 0) {
-    global gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj
-    global gStore_Server, gStore_LastClientMeta, gStore_LastSendTick
+    global gStore_ClientState
+    global gStore_Server, gStore_LastSendTick
     global IPC_MSG_HELLO, IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION
     global IPC_MSG_SET_PROJECTION_OPTS, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_PROJECTION_REQUEST
     global IPC_MSG_RELOAD_BLACKLIST, IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
@@ -640,9 +640,7 @@ Store_OnMessage(line, hPipe := 0) {
         ; initial writes and final projection tracking updates
         Critical "On"
         opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : IPC_DefaultProjectionOpts()
-        gStore_ClientOpts[hPipe] := opts
-        gStore_LastClientRev[hPipe] := -1  ; Will get updated when we send initial projection
-        gStore_LastClientProj[hPipe] := [] ; No previous projection yet
+        gStore_ClientState[hPipe] := {opts: opts, lastRev: -1, lastProj: [], lastMeta: "", pushCount: 0}
 
         ; Send hello ack (no rev - it's just an ack, snapshot follows with rev)
         ack := {
@@ -665,20 +663,22 @@ Store_OnMessage(line, hPipe := 0) {
             payload: payload
         }
         IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
-        gStore_LastClientRev[hPipe] := proj.rev
-        gStore_LastClientProj[hPipe] := proj.HasOwnProp("items") ? proj.items : []
+        cs := gStore_ClientState[hPipe]
+        cs.lastRev := proj.rev
+        cs.lastProj := proj.HasOwnProp("items") ? proj.items : []
         gStore_LastSendTick := A_TickCount
         Critical "Off"
         return
     }
     if (type = IPC_MSG_SET_PROJECTION_OPTS) {
-        if (obj.Has("projectionOpts")) {
-            ; RACE FIX: Wrap client Map modifications in Critical
+        if (obj.Has("projectionOpts") && gStore_ClientState.Has(hPipe)) {
+            ; RACE FIX: Wrap client state modifications in Critical
             Critical "On"
-            gStore_ClientOpts[hPipe] := obj["projectionOpts"]
+            cs := gStore_ClientState[hPipe]
+            cs.opts := obj["projectionOpts"]
             ; Clear last projection/meta so client gets fresh snapshot with new opts
-            gStore_LastClientProj[hPipe] := []
-            gStore_LastClientMeta[hPipe] := ""
+            cs.lastProj := []
+            cs.lastMeta := ""
             Critical "Off"
         }
         return
@@ -690,15 +690,16 @@ Store_OnMessage(line, hPipe := 0) {
             WindowStore_ClearZQueue()
         }
         opts := IPC_DefaultProjectionOpts()
-        if (gStore_ClientOpts.Has(hPipe))
-            opts := gStore_ClientOpts[hPipe]
+        if (gStore_ClientState.Has(hPipe))
+            opts := gStore_ClientState[hPipe].opts
         if (obj.Has("projectionOpts")) {
             opts := obj["projectionOpts"]
             ; Persist opts for future pushes so Store_PushToClients uses the same
             ; filter (e.g. currentWorkspaceOnly) the client just requested.
             ; Without this, pushes use stale default opts, creating a mismatch
             ; between what the client has and what the store thinks it has.
-            gStore_ClientOpts[hPipe] := opts
+            if (gStore_ClientState.Has(hPipe))
+                gStore_ClientState[hPipe].opts := opts
         }
         ; Flush any pending komorebi data before building the projection.
         ; When the GUI toggles workspace mode (Ctrl) right after a workspace switch,
@@ -726,9 +727,12 @@ Store_OnMessage(line, hPipe := 0) {
         ; its items with workspace-filtered projection data, sparse deltas for items
         ; NOT in the GUI's map create ghost entries with empty fields.
         Critical "On"
-        gStore_LastClientRev[hPipe] := proj.rev
-        gStore_LastClientProj[hPipe] := proj.HasOwnProp("items") ? proj.items : []
-        gStore_LastClientMeta[hPipe] := proj.meta
+        if (gStore_ClientState.Has(hPipe)) {
+            cs := gStore_ClientState[hPipe]
+            cs.lastRev := proj.rev
+            cs.lastProj := proj.HasOwnProp("items") ? proj.items : []
+            cs.lastMeta := proj.meta
+        }
         Critical "Off"
         gStore_LastSendTick := A_TickCount
         return
@@ -745,9 +749,9 @@ Store_OnMessage(line, hPipe := 0) {
 
         ; Clear all client projections/meta to force fresh delta calculation
         Critical "On"
-        for clientPipe, _ in gStore_LastClientProj {
-            gStore_LastClientProj[clientPipe] := []
-            gStore_LastClientMeta[clientPipe] := ""
+        for _, cs in gStore_ClientState {
+            cs.lastProj := []
+            cs.lastMeta := ""
         }
         Critical "Off"
 
@@ -836,53 +840,25 @@ _Store_GetProducerStates() {
 ; Immediate cleanup callback when a client disconnects (called by IPC layer)
 ; This is the primary cleanup mechanism - prevents stale entries from accumulating
 Store_OnClientDisconnect(hPipe) {
-    global gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_ClientPushCount
+    global gStore_ClientState
     Critical "On"
-    gStore_ClientOpts.Delete(hPipe)
-    gStore_LastClientRev.Delete(hPipe)
-    gStore_LastClientProj.Delete(hPipe)
-    gStore_LastClientMeta.Delete(hPipe)
-    gStore_ClientPushCount.Delete(hPipe)
+    gStore_ClientState.Delete(hPipe)
     Critical "Off"
 }
 
-; Clean up tracking maps for disconnected clients (prevents memory leak)
-; Check ALL tracking maps, not just gStore_LastClientRev - this handles race
-; conditions where disconnect happens between map updates
+; Clean up tracking for disconnected clients (prevents memory leak)
 ; NOTE: This is now a safety net - primary cleanup is Store_OnClientDisconnect
 _Store_CleanupDisconnectedClients() {
-    global gStore_Server, gStore_ClientOpts, gStore_LastClientRev, gStore_LastClientProj, gStore_LastClientMeta, gStore_ClientPushCount
+    global gStore_Server, gStore_ClientState
 
-    ; Collect all known hPipes from all tracking maps
-    allPipes := Map()
-    for hPipe, _ in gStore_LastClientRev
-        allPipes[hPipe] := true
-    for hPipe, _ in gStore_LastClientProj
-        allPipes[hPipe] := true
-    for hPipe, _ in gStore_LastClientMeta
-        allPipes[hPipe] := true
-    for hPipe, _ in gStore_ClientOpts
-        allPipes[hPipe] := true
-    for hPipe, _ in gStore_ClientPushCount
-        allPipes[hPipe] := true
-
-    ; Clean up any that are no longer connected
-    ; NOTE: Check Has() before Delete() - a pipe may only exist in some maps
-    ; (due to race conditions or partial initialization during connect/disconnect)
-    for hPipe, _ in allPipes {
-        if (!gStore_Server.clients.Has(hPipe)) {
-            if (gStore_LastClientRev.Has(hPipe))
-                gStore_LastClientRev.Delete(hPipe)
-            if (gStore_LastClientProj.Has(hPipe))
-                gStore_LastClientProj.Delete(hPipe)
-            if (gStore_LastClientMeta.Has(hPipe))
-                gStore_LastClientMeta.Delete(hPipe)
-            if (gStore_ClientOpts.Has(hPipe))
-                gStore_ClientOpts.Delete(hPipe)
-            if (gStore_ClientPushCount.Has(hPipe))
-                gStore_ClientPushCount.Delete(hPipe)
-        }
+    ; Collect stale pipes first (cannot delete during iteration)
+    stalePipes := []
+    for hPipe, _ in gStore_ClientState {
+        if (!gStore_Server.clients.Has(hPipe))
+            stalePipes.Push(hPipe)
     }
+    for _, hPipe in stalePipes
+        gStore_ClientState.Delete(hPipe)
 }
 
 ; Build a stable string key from projection opts for cache deduplication.
