@@ -292,8 +292,8 @@ _Store_RotateDiagLogs() {
     global cfg
     global LOG_PATH_STORE, LOG_PATH_KSUB, LOG_PATH_WINEVENT
     global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP, LOG_PATH_IPC
-    if (cfg.DiagStoreLog)
-        LogTrim(LOG_PATH_STORE)
+    ; Always trim store log -- Store_LogError() writes unconditionally
+    LogTrim(LOG_PATH_STORE)
     if (cfg.DiagKomorebiLog)
         LogTrim(LOG_PATH_KSUB)
     if (cfg.DiagWinEventLog)
