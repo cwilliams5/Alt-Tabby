@@ -141,14 +141,28 @@ OnSettingChange(wParam, lParam, msg, hwnd) {
 - DDL hover highlight color in dropdown
 - GroupBox border color
 
+## Owner-Drawn Menus: NOT VIABLE in AHK v2
+AHK v2 blocks all OnMessage handlers for messages < 0x312 during menu modal loops
+(WM_ENTERMENULOOP sets uninterruptible flag). WM_MEASUREITEM (0x2C) and WM_DRAWITEM
+(0x2B) are both below that threshold, so they NEVER fire. Attempted workarounds:
+- OnMessage + WM_ENTERMENULOOP interception: FAILED (flag set before handler)
+- SetWindowSubclass (comctl32): FAILED (CallbackCreate callback not invoked during modal loop)
+- Raw SetWindowLongPtrW + CallbackCreate "Fast": FAILED (same issue)
+- No working AHK v2 owner-drawn menu exists in the wild (nperovic's GuiEnhancerKit uses SetPreferredAppMode)
+
+**Production decision: Use SetPreferredAppMode for all menu dark mode.**
+For fully custom menus (beyond what SetPreferredAppMode provides), use a GUI-based popup
+(borderless Gui window styled as a menu) instead of Win32 owner-drawn menus.
+
 ## Mock Files
 Located in `legacy/gui_mocks/` - standalone runnable AHK v2 demos:
 - mock_dark_titlebar.ahk - DWM dark title bar + Win11 custom colors
-- mock_dark_controls.ahk - All controls with theme support matrix
+- mock_dark_controls.ahk - All controls with theme support matrix (non-owner-draw)
+- mock_dark_controls_ownerdraw.ahk - Full owner-draw for controls (buttons, checkbox, radio, slider, ListView, status bar)
 - mock_theme_detect.ahk - Registry + WM_SETTINGCHANGE detection
 - mock_custom_msgbox.ahk - Drop-in DarkMsgBox() replacement
 - mock_dark_gui_complete.ahk - Full settings GUI (needs work)
-- mock_dark_tray_menu.ahk - SetPreferredAppMode vs owner-draw comparison
+- mock_dark_tray_menu.ahk - SetPreferredAppMode (working) + owner-draw (broken) + GUI popup alternative
 
 ## WebView2 Editor Dark Mode (separate from native GUIs)
 - Already uses CSS custom properties (Tokyo Night theme)
