@@ -383,6 +383,32 @@
   .filter-mode .subsection.filter-hidden { display: none; }
   .filter-mode .sidebar-item { display: none; }
 
+  /* Range slider+input dual control */
+  .range-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .range-control input[type="range"] {
+    width: 100px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .range-control input[type="number"],
+  .range-control input[type="text"] {
+    width: 80px;
+  }
+  .range-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .hex-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   /* Loading state */
   .loading {
     display: flex;
@@ -469,9 +495,9 @@ window.initSettings = function(registry, values) {
   updateChangeCount();
 };
 
-// Format value for display (hex for large ints)
-function formatValue(val, type) {
-  if (type === 'int' && typeof val === 'number' && val > 255) {
+// Format value for display (hex when fmt field says so)
+function formatValue(val, type, fmt) {
+  if (type === 'int' && typeof val === 'number' && fmt === 'hex') {
     return '0x' + val.toString(16).toUpperCase();
   }
   return val;
@@ -505,6 +531,8 @@ function renderSidebar() {
 function controlHTML(setting) {
   const id = `setting-${setting.s}-${setting.k}`;
   const value = configValues[setting.g];
+  const hasRange = setting.min !== undefined && setting.max !== undefined;
+  const isHex = setting.fmt === 'hex';
 
   if (setting.t === 'bool') {
     return `<label class="toggle">
@@ -519,8 +547,38 @@ function controlHTML(setting) {
     ).join('');
     return `<select id="${id}" onchange="updateValue('${setting.g}', this.value, '${setting.t}')">${opts}</select>`;
   }
+  if (setting.t === 'int' && hasRange && !isHex) {
+    // Slider + number input dual control
+    return `<div class="range-control">
+      <input type="range" id="${id}-slider" min="${setting.min}" max="${setting.max}" value="${value}"
+             oninput="syncSlider('${setting.g}', '${id}', this.value, '${setting.t}')">
+      <input type="number" id="${id}" min="${setting.min}" max="${setting.max}" value="${value}"
+             onblur="clampAndUpdate('${setting.g}', '${id}', '${setting.t}', ${setting.min}, ${setting.max})">
+      <span class="range-label">${setting.min} - ${setting.max}</span>
+    </div>`;
+  }
+  if (setting.t === 'float' && hasRange) {
+    // Slider + number input for floats
+    const step = (setting.max - setting.min) <= 1 ? 0.01 : 0.1;
+    return `<div class="range-control">
+      <input type="range" id="${id}-slider" min="${setting.min}" max="${setting.max}" step="${step}" value="${value}"
+             oninput="syncSlider('${setting.g}', '${id}', this.value, '${setting.t}')">
+      <input type="number" id="${id}" min="${setting.min}" max="${setting.max}" step="${step}" value="${value}"
+             onblur="clampAndUpdate('${setting.g}', '${id}', '${setting.t}', ${setting.min}, ${setting.max})">
+      <span class="range-label">${setting.min} - ${setting.max}</span>
+    </div>`;
+  }
+  if (setting.t === 'int' && isHex) {
+    // Hex input with range label
+    const rangeLabel = hasRange ? `<span class="range-label">0x${setting.min.toString(16).toUpperCase()} - 0x${setting.max.toString(16).toUpperCase()}</span>` : '';
+    return `<div class="hex-control">
+      <input type="text" id="${id}" value="${formatValue(value, 'int', 'hex')}"
+             onblur="${hasRange ? `clampAndUpdate('${setting.g}', '${id}', '${setting.t}', ${setting.min}, ${setting.max})` : `updateValue('${setting.g}', this.value, '${setting.t}')`}">
+      ${rangeLabel}
+    </div>`;
+  }
   if (setting.t === 'int') {
-    return `<input type="text" id="${id}" value="${formatValue(value, 'int')}"
+    return `<input type="text" id="${id}" value="${formatValue(value, 'int', setting.fmt)}"
             onchange="updateValue('${setting.g}', this.value, '${setting.t}')">`;
   }
   if (setting.t === 'float') {
@@ -591,6 +649,31 @@ function updateValue(globalName, value, type) {
   updateChangeCount();
 }
 
+// Sync slider -> number input
+function syncSlider(globalName, baseId, sliderValue, type) {
+  const textInput = document.getElementById(baseId);
+  if (textInput) textInput.value = sliderValue;
+  updateValue(globalName, sliderValue, type);
+}
+
+// Clamp number input value and sync slider
+function clampAndUpdate(globalName, baseId, type, min, max) {
+  const textInput = document.getElementById(baseId);
+  if (!textInput) return;
+  let val = parseValue(textInput.value, type);
+  if (val < min) val = min;
+  if (val > max) val = max;
+  // Preserve hex display for hex values
+  if (type === 'int' && String(textInput.value).toLowerCase().startsWith('0x')) {
+    textInput.value = '0x' + val.toString(16).toUpperCase();
+  } else {
+    textInput.value = val;
+  }
+  const slider = document.getElementById(baseId + '-slider');
+  if (slider) slider.value = val;
+  updateValue(globalName, val, type);
+}
+
 function updateChangeCount() {
   changeCount = 0;
   for (const key in configValues) {
@@ -637,7 +720,10 @@ function resetAll() {
       const el = document.getElementById(id);
       if (!el) continue;
       if (entry.t === 'bool') el.checked = entry.default;
-      else el.value = formatValue(entry.default, entry.t);
+      else el.value = formatValue(entry.default, entry.t, entry.fmt);
+      // Sync slider if present
+      const slider = document.getElementById(id + '-slider');
+      if (slider) slider.value = entry.default;
     }
   }
   updateChangeCount();

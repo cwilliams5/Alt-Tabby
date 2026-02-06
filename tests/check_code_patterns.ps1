@@ -469,13 +469,19 @@ $CHECKS += @(
     }
 )
 
-# Group F - Config Validation Completeness (1 check, uses MinCount)
+# Group F - Config Validation Completeness (registry-driven clamping)
 $CHECKS += @(
     @{
-        Id       = "config_validation_completeness"
+        Id       = "config_validation_completeness_loader"
         File     = "shared\config_loader.ahk"
-        Desc     = "_CL_ValidateSettings has sufficient clamp() coverage"
-        Patterns = @(":= clamp(")
+        Desc     = "_CL_ValidateSettings uses registry-driven clamping loop"
+        Patterns = @('entry.HasOwnProp("min")', ':= clamp(cfg.%entry.g%')
+    }
+    @{
+        Id       = "config_validation_completeness_registry"
+        File     = "shared\config_registry.ahk"
+        Desc     = "Config registry has sufficient min/max constraint entries"
+        Patterns = @("min:")
         MinCount = 50
     }
 )

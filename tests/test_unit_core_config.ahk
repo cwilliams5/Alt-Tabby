@@ -331,6 +331,22 @@ RunUnitTests_CoreConfig() {
         if (!entry.HasOwnProp("t")) {
             registryErrors.Push("Entry " (entry.HasOwnProp("k") ? entry.k : "?") " missing 't' (type)")
         }
+        ; Validate min/max consistency
+        if (entry.HasOwnProp("min")) {
+            if (!entry.HasOwnProp("max"))
+                registryErrors.Push("Entry " entry.k " has 'min' but no 'max'")
+            else if (entry.min > entry.max)
+                registryErrors.Push("Entry " entry.k " min > max")
+            if (entry.t != "int" && entry.t != "float")
+                registryErrors.Push("Entry " entry.k " has min/max but type is '" entry.t "'")
+            if (entry.default < entry.min || entry.default > entry.max)
+                registryErrors.Push("Entry " entry.k " default outside range")
+        }
+        if (entry.HasOwnProp("max") && !entry.HasOwnProp("min"))
+            registryErrors.Push("Entry " entry.k " has 'max' but no 'min'")
+        if (entry.HasOwnProp("fmt") && entry.fmt != "hex")
+            registryErrors.Push("Entry " entry.k " has unknown fmt '" entry.fmt "'")
+
         settingCount++
     }
 

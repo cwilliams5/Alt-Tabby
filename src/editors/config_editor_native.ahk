@@ -97,6 +97,11 @@ _CE_RunNative(launcherHwnd := 0) {
         _CEN_SwitchToPage(gCEN_Sections[1].name)
     }
 
+    ; Everything is built and populated — reveal.
+    ; Set alpha=255 FIRST (while still cloaked), THEN uncloak.
+    DllCall("SetLayeredWindowAttributes", "ptr", gCEN_MainGui.Hwnd, "uint", 0, "uchar", 255, "uint", 2)
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", gCEN_MainGui.Hwnd, "uint", 13, "int*", 0, "uint", 4)
+
     ; Block until GUI closes
     WinWaitClose(gCEN_MainGui.Hwnd)
 
@@ -143,6 +148,12 @@ _CEN_ParseRegistry() {
             }
             if (entry.HasOwnProp("options"))
                 setting.options := entry.options
+            if (entry.HasOwnProp("min")) {
+                setting.min := entry.min
+                setting.max := entry.max
+            }
+            if (entry.HasOwnProp("fmt"))
+                setting.fmt := entry.fmt
             if (curSubsection != "" && curSubsection.HasOwnProp("name"))
                 curSubsection.settings.Push(setting)
             else if (curSection != "")
@@ -161,7 +172,9 @@ _CEN_BuildMainGUI() {
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL, CEN_SIDEBAR_W, CEN_CONTENT_X
 
     ; Create main window with dark theme
-    gCEN_MainGui := Gui("+Resize +MinSize750x450 +0x02000000", "Alt-Tabby Configuration")
+    ; WS_EX_LAYERED (+E0x80000) lets us set alpha=0 before Show to prevent white flash.
+    ; Window is "visible" to Win32 (controls render) but invisible to user until revealed.
+    gCEN_MainGui := Gui("+Resize +MinSize750x450 +0x02000000 +E0x80000", "Alt-Tabby Configuration")
     gCEN_MainGui.BackColor := "16213e"
     gCEN_MainGui.MarginX := 0
     gCEN_MainGui.MarginY := 0
@@ -207,7 +220,13 @@ _CEN_BuildMainGUI() {
     gCEN_BoundScrollMsg := _CEN_OnVScroll
     OnMessage(CEN_WM_VSCROLL, gCEN_BoundScrollMsg)
 
-    ; Show window
+    ; .Hwnd access forces HWND creation. Two-layer anti-flash defense:
+    ; 1. DWM cloak (DWMWA_CLOAK=13): prevents DWM from compositing the window
+    ;    at all — no frame outline, no content, nothing. Same technique Chrome/
+    ;    Firefox use to prevent dark-mode white flash.
+    ; 2. WS_EX_LAYERED + alpha=0: fallback if cloaking isn't available.
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", gCEN_MainGui.Hwnd, "uint", 13, "int*", 1, "uint", 4)
+    DllCall("SetLayeredWindowAttributes", "ptr", gCEN_MainGui.Hwnd, "uint", 0, "uchar", 0, "uint", 2)
     gCEN_MainGui.Show("w800 h550")
 }
 
@@ -324,14 +343,56 @@ _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
         } else {
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 cBBBBCC", setting.k)
             controls.Push({ctrl: lbl, origY: y, origX: 24})
-            ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w200")
-            controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
-            gCEN_Controls[setting.g] := {ctrl: ed, type: setting.t}
+
+            isHex := setting.HasOwnProp("fmt") && setting.fmt = "hex"
+            hasRange := setting.HasOwnProp("min")
+            useUpDown := hasRange && setting.t = "int" && !isHex
+
+            if (useUpDown) {
+                ; Integer with range, not hex -> Edit + UpDown spinner
+                ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w180 Number")
+                controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
+                pageGui.AddUpDown("Range" setting.min "-" setting.max)
+                ctrlInfo := {ctrl: ed, type: setting.t}
+                gCEN_Controls[setting.g] := ctrlInfo
+            } else {
+                ; Float, hex, string, or no range -> plain Edit
+                ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w200")
+                controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
+                ctrlInfo := {ctrl: ed, type: setting.t}
+                if (isHex)
+                    ctrlInfo.fmt := "hex"
+                gCEN_Controls[setting.g] := ctrlInfo
+
+                ; Clamp-on-blur for float/hex with range
+                if (hasRange && (setting.t = "float" || isHex)) {
+                    boundClamp := _CEN_MakeClampHandler(setting.g, setting.min, setting.max)
+                    ed.OnEvent("LoseFocus", boundClamp)
+                }
+            }
+
             y += 26
             dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c556677 +Wrap", setting.d)
             dc.SetFont("s8", "Segoe UI")
             controls.Push({ctrl: dc, origY: y, origX: 24})
-            y += descH + 4
+            y += descH
+
+            ; Range hint for float/hex (UpDown shows its own range natively)
+            if (hasRange && !useUpDown) {
+                if (isHex)
+                    rangeText := Format("Range: 0x{:X} - 0x{:X}", setting.min, setting.max)
+                else if (setting.t = "float")
+                    rangeText := Format("Range: {:.2f} - {:.2f}", setting.min, setting.max)
+                else
+                    rangeText := ""
+                if (rangeText != "") {
+                    rc := pageGui.AddText("x40 y" y " w" (contentW - 24) " h14 c445566", rangeText)
+                    rc.SetFont("s7 italic", "Segoe UI")
+                    controls.Push({ctrl: rc, origY: y, origX: 40})
+                    y += 16
+                }
+            }
+            y += 4
         }
     }
     return y
@@ -392,11 +453,29 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
         try ctrlInfo.ctrl.Choose(String(val))
         catch
             try ctrlInfo.ctrl.Choose(1)
-    } else if (type = "int" && IsNumber(val) && val > 255) {
+    } else if (ctrlInfo.HasOwnProp("fmt") && ctrlInfo.fmt = "hex") {
         ctrlInfo.ctrl.Value := Format("0x{:X}", val)
     } else {
         ctrlInfo.ctrl.Value := String(val)
     }
+}
+
+; Create a clamp-on-blur handler bound to a specific setting's range
+_CEN_MakeClampHandler(globalName, minVal, maxVal) {
+    return (ctrl, *) => _CEN_ClampOnBlur(globalName, minVal, maxVal)
+}
+
+_CEN_ClampOnBlur(globalName, minVal, maxVal) {
+    global gCEN_Controls
+    if (!gCEN_Controls.Has(globalName))
+        return
+    ctrlInfo := gCEN_Controls[globalName]
+    val := _CEN_GetControlValue(ctrlInfo, ctrlInfo.type)
+    if (val < minVal)
+        val := minVal
+    else if (val > maxVal)
+        val := maxVal
+    _CEN_SetControlValue(ctrlInfo, val, ctrlInfo.type)
 }
 
 _CEN_GetControlValue(ctrlInfo, type) {

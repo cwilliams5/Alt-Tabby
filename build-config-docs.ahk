@@ -128,8 +128,8 @@ RenderSettingsTable(settings) {
     if (settings.Length = 0)
         return ""
 
-    md := "| Option | Type | Default | Description |`n"
-    md .= "|--------|------|---------|-------------|`n"
+    md := "| Option | Type | Default | Range | Description |`n"
+    md .= "|--------|------|---------|-------|-------------|`n"
 
     for _, entry in settings {
         ; INI key (what user edits)
@@ -138,25 +138,41 @@ RenderSettingsTable(settings) {
         ; Type
         typeStr := entry.t
 
-        ; Default value (formatted, pass key for hex detection)
-        defaultStr := FormatDefault(entry.default, entry.t, entry.k)
+        ; Default value (formatted using registry fmt field)
+        defaultStr := FormatDefault(entry)
+
+        ; Range
+        rangeStr := FormatRange(entry)
 
         ; Description (escape pipes for markdown table)
         desc := StrReplace(entry.d, "|", "\|")
 
-        md .= "| ``" key "`` | " typeStr " | ``" defaultStr "`` | " desc " |`n"
+        md .= "| ``" key "`` | " typeStr " | ``" defaultStr "`` | " rangeStr " | " desc " |`n"
     }
 
     md .= "`n"
     return md
 }
 
-FormatDefault(val, type, key := "") {
+FormatRange(entry) {
+    if (!entry.HasOwnProp("min"))
+        return "-"
+    isHex := entry.HasOwnProp("fmt") && entry.fmt = "hex"
+    if (isHex)
+        return Format("``0x{:X}`` - ``0x{:X}``", entry.min, entry.max)
+    if (entry.t = "float")
+        return "``" Format("{:.2f}", entry.min) "`` - ``" Format("{:.2f}", entry.max) "``"
+    return "``" entry.min "`` - ``" entry.max "``"
+}
+
+FormatDefault(entry) {
+    val := entry.default
+    type := entry.t
     if (type = "bool")
         return val ? "true" : "false"
     if (type = "int" && IsInteger(val)) {
-        ; Use hex for color values (ARGB/RGB patterns in key name)
-        if (RegExMatch(key, "i)(ARGB|Rgb|Alpha)$") && val > 0)
+        ; Use hex if registry has fmt: "hex"
+        if (entry.HasOwnProp("fmt") && entry.fmt = "hex")
             return Format("0x{:X}", val)
         return String(val)
     }

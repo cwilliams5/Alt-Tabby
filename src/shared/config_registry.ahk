@@ -14,6 +14,10 @@
 ; Setting types: "string", "int", "float", "bool", "enum"
 ;   Enum settings also have: options: ["val1", "val2", ...]
 ;
+; Optional constraint fields (int/float only):
+;   min/max — numeric bounds (present together or not at all)
+;   fmt     — format hint: "hex" for color values (hex display, no slider)
+;
 ; To add a new config:
 ; 1. Add an entry to gConfigRegistry below (with default value)
 ; 2. That's it! The value is automatically available as cfg.YourConfigName
@@ -28,9 +32,11 @@ global gConfigRegistry := [
      long: "These control the Alt-Tab overlay behavior - tweak these first!"},
 
     {s: "AltTab", k: "GraceMs", g: "AltTabGraceMs", t: "int", default: 150,
+     min: 0, max: 2000,
      d: "Grace period before showing GUI (ms). During this time, if Alt is released, we do a quick switch without showing GUI."},
 
     {s: "AltTab", k: "QuickSwitchMs", g: "AltTabQuickSwitchMs", t: "int", default: 100,
+     min: 0, max: 1000,
      d: "Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch."},
 
     {s: "AltTab", k: "PrewarmOnAlt", g: "AltTabPrewarmOnAlt", t: "bool", default: true,
@@ -46,19 +52,22 @@ global gConfigRegistry := [
      d: "Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released."},
 
     {s: "AltTab", k: "AsyncActivationPollMs", g: "AltTabAsyncActivationPollMs", t: "int", default: 15,
-     d: "Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU (spawns cmd.exe each poll). Default: 15."},
+     min: 10, max: 100,
+     d: "Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU (spawns cmd.exe each poll)."},
 
     {type: "subsection", section: "AltTab", name: "Bypass",
      desc: "When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby"},
 
     {s: "AltTab", k: "BypassFullscreen", g: "AltTabBypassFullscreen", t: "bool", default: true,
-     d: "Bypass Alt-Tabby when the foreground window is fullscreen (covers ≥99% of screen). Useful for games that need native Alt-Tab behavior."},
+     d: "Bypass Alt-Tabby when the foreground window is fullscreen (covers >=99%% of screen). Useful for games that need native Alt-Tab behavior."},
 
     {s: "AltTab", k: "BypassFullscreenThreshold", g: "AltTabBypassFullscreenThreshold", t: "float", default: 0.99,
-     d: "Fraction of screen dimensions a window must cover to be considered fullscreen (0.90-1.0). Lower values catch borderless windowed games that don't quite fill the screen."},
+     min: 0.90, max: 1.0,
+     d: "Fraction of screen dimensions a window must cover to be considered fullscreen. Lower values catch borderless windowed games that don't quite fill the screen."},
 
     {s: "AltTab", k: "BypassFullscreenTolerancePx", g: "AltTabBypassFullscreenTolerancePx", t: "int", default: 5,
-     d: "Maximum pixels from screen edge for a window to still be considered fullscreen (0-50). Increase if borderless windows are offset by more than 5px."},
+     min: 0, max: 50,
+     d: "Maximum pixels from screen edge for a window to still be considered fullscreen. Increase if borderless windows are offset by more than 5px."},
 
     {s: "AltTab", k: "BypassProcesses", g: "AltTabBypassProcesses", t: "string", default: "",
      d: "Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead."},
@@ -67,18 +76,23 @@ global gConfigRegistry := [
      desc: "Internal timing parameters (usually no need to change)"},
 
     {s: "AltTab", k: "AltLeewayMs", g: "AltTabAltLeewayMs", t: "int", default: 60,
-     d: "Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab. Increase for slower typing speeds. Range: 20-200."},
+     min: 20, max: 200,
+     d: "Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab. Increase for slower typing speeds."},
 
     {s: "AltTab", k: "MRUFreshnessMs", g: "AltTabMRUFreshnessMs", t: "int", default: 300,
+     min: 50, max: 2000,
      d: "How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations."},
 
     {s: "AltTab", k: "WSPollTimeoutMs", g: "AltTabWSPollTimeoutMs", t: "int", default: 200,
+     min: 50, max: 2000,
      d: "Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation."},
 
     {s: "AltTab", k: "TabDecisionMs", g: "AltTabTabDecisionMs", t: "int", default: 24,
-     d: "Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. Range: 15-40."},
+     min: 15, max: 40,
+     d: "Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers."},
 
     {s: "AltTab", k: "WorkspaceSwitchSettleMs", g: "AltTabWorkspaceSwitchSettleMs", t: "int", default: 75,
+     min: 0, max: 500,
      d: "Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems."},
 
     ; ============================================================
@@ -96,30 +110,38 @@ global gConfigRegistry := [
      desc: "Settings for static image splash screen"},
 
     {s: "Launcher", k: "SplashImageDurationMs", g: "LauncherSplashImageDurationMs", t: "int", default: 3000,
+     min: 0, max: 10000,
      d: "Image splash screen display duration in milliseconds (includes fade time). Set to 0 for minimum."},
 
     {s: "Launcher", k: "SplashImageFadeMs", g: "LauncherSplashImageFadeMs", t: "int", default: 500,
+     min: 0, max: 2000,
      d: "Image splash screen fade in/out duration in milliseconds."},
 
     {type: "subsection", section: "Launcher", name: "Animation Splash",
      desc: "Settings for animated WebP splash screen"},
 
     {s: "Launcher", k: "SplashAnimFadeInFixedMs", g: "LauncherSplashAnimFadeInFixedMs", t: "int", default: 0,
+     min: 0, max: 5000,
      d: "Fade in duration while frozen on first frame (ms). 0 = skip fixed fade in."},
 
     {s: "Launcher", k: "SplashAnimFadeInAnimMs", g: "LauncherSplashAnimFadeInAnimMs", t: "int", default: 500,
+     min: 0, max: 5000,
      d: "Fade in duration while animation plays (ms). 0 = skip animated fade in."},
 
     {s: "Launcher", k: "SplashAnimFadeOutAnimMs", g: "LauncherSplashAnimFadeOutAnimMs", t: "int", default: 500,
+     min: 0, max: 5000,
      d: "Fade out duration while animation plays (ms). 0 = skip animated fade out."},
 
     {s: "Launcher", k: "SplashAnimFadeOutFixedMs", g: "LauncherSplashAnimFadeOutFixedMs", t: "int", default: 0,
+     min: 0, max: 5000,
      d: "Fade out duration while frozen on last frame (ms). 0 = skip fixed fade out."},
 
     {s: "Launcher", k: "SplashAnimLoops", g: "LauncherSplashAnimLoops", t: "int", default: 1,
+     min: 0, max: 100,
      d: "Number of animation loops before auto-closing. 0 = loop forever (requires manual dismiss)."},
 
     {s: "Launcher", k: "SplashAnimBufferFrames", g: "LauncherSplashAnimBufferFrames", t: "int", default: 24,
+     min: 0, max: 500,
      d: "Streaming decode buffer size. 0 = load all frames upfront (~500MB). >0 = buffer N frames (~4MB per frame at 1280x720). Default 24 = ~88MB, 1 second buffer at 24fps."},
 
     ; ============================================================
@@ -134,12 +156,15 @@ global gConfigRegistry := [
      desc: "Window background and frame styling"},
 
     {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "int", default: 0x33,
+     min: 0, max: 255, fmt: "hex",
      d: "Background transparency (0x00=transparent, 0xFF=opaque)"},
 
     {s: "GUI", k: "AcrylicBaseRgb", g: "GUI_AcrylicBaseRgb", t: "int", default: 0x330000,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
      d: "Background tint color (hex RGB)"},
 
     {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", default: 18,
+     min: 0, max: 100,
      d: "Window corner radius in pixels"},
 
     ; --- Size Config ---
@@ -147,21 +172,27 @@ global gConfigRegistry := [
      desc: "Window and row sizing"},
 
     {s: "GUI", k: "ScreenWidthPct", g: "GUI_ScreenWidthPct", t: "float", default: 0.60,
-     d: "GUI width as fraction of screen (0.0-1.0)"},
+     min: 0.1, max: 1.0,
+     d: "GUI width as fraction of screen"},
 
     {s: "GUI", k: "RowsVisibleMin", g: "GUI_RowsVisibleMin", t: "int", default: 1,
+     min: 1, max: 20,
      d: "Minimum visible rows"},
 
     {s: "GUI", k: "RowsVisibleMax", g: "GUI_RowsVisibleMax", t: "int", default: 8,
+     min: 1, max: 50,
      d: "Maximum visible rows"},
 
     {s: "GUI", k: "RowHeight", g: "GUI_RowHeight", t: "int", default: 56,
+     min: 20, max: 200,
      d: "Height of each row in pixels"},
 
     {s: "GUI", k: "MarginX", g: "GUI_MarginX", t: "int", default: 18,
+     min: 0, max: 200,
      d: "Horizontal margin in pixels"},
 
     {s: "GUI", k: "MarginY", g: "GUI_MarginY", t: "int", default: 18,
+     min: 0, max: 200,
      d: "Vertical margin in pixels"},
 
     ; --- Virtual List Look ---
@@ -169,24 +200,31 @@ global gConfigRegistry := [
      desc: "Row and icon appearance"},
 
     {s: "GUI", k: "IconSize", g: "GUI_IconSize", t: "int", default: 36,
+     min: 8, max: 256,
      d: "Icon size in pixels"},
 
     {s: "GUI", k: "IconLeftMargin", g: "GUI_IconLeftMargin", t: "int", default: 8,
+     min: 0, max: 100,
      d: "Left margin before icon in pixels"},
 
     {s: "GUI", k: "IconTextGapPx", g: "GUI_IconTextGapPx", t: "int", default: 12,
+     min: 0, max: 50,
      d: "Gap between icon and title text in pixels"},
 
     {s: "GUI", k: "ColumnGapPx", g: "GUI_ColumnGapPx", t: "int", default: 10,
+     min: 0, max: 50,
      d: "Gap between right-side data columns in pixels"},
 
     {s: "GUI", k: "HeaderHeightPx", g: "GUI_HeaderHeightPx", t: "int", default: 28,
+     min: 16, max: 60,
      d: "Header row height in pixels"},
 
     {s: "GUI", k: "RowRadius", g: "GUI_RowRadius", t: "int", default: 12,
+     min: 0, max: 50,
      d: "Row corner radius in pixels"},
 
     {s: "GUI", k: "SelARGB", g: "GUI_SelARGB", t: "int", default: 0x662B5CAD,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Selection highlight color (ARGB)"},
 
     ; --- Selection & Scrolling ---
@@ -204,10 +242,12 @@ global gConfigRegistry := [
      desc: "Feedback tooltip timing for accessibility"},
 
     {s: "GUI", k: "TooltipDurationMs", g: "GUI_TooltipDurationMs", t: "int", default: 2000,
-     d: "Tooltip display duration in milliseconds. Increase for accessibility. Range: 500-10000."},
+     min: 500, max: 10000,
+     d: "Tooltip display duration in milliseconds. Increase for accessibility."},
 
     {s: "GUI", k: "HoverPollIntervalMs", g: "GUI_HoverPollIntervalMs", t: "int", default: 100,
-     d: "Hover state polling interval (ms). Lower = more responsive but higher CPU. Range: 50-500."},
+     min: 50, max: 500,
+     d: "Hover state polling interval (ms). Lower = more responsive but higher CPU."},
 
     ; --- Action Buttons ---
     {type: "subsection", section: "GUI", name: "Action Buttons",
@@ -223,21 +263,26 @@ global gConfigRegistry := [
      d: "Show blacklist button on hover"},
 
     {s: "GUI", k: "ActionBtnSizePx", g: "GUI_ActionBtnSizePx", t: "int", default: 24,
+     min: 12, max: 64,
      d: "Action button size in pixels"},
 
     {s: "GUI", k: "ActionBtnGapPx", g: "GUI_ActionBtnGapPx", t: "int", default: 6,
+     min: 0, max: 50,
      d: "Gap between action buttons in pixels"},
 
     {s: "GUI", k: "ActionBtnRadiusPx", g: "GUI_ActionBtnRadiusPx", t: "int", default: 6,
+     min: 0, max: 32,
      d: "Action button corner radius"},
 
     {s: "GUI", k: "ActionFontName", g: "GUI_ActionFontName", t: "string", default: "Segoe UI Symbol",
      d: "Action button font name"},
 
     {s: "GUI", k: "ActionFontSize", g: "GUI_ActionFontSize", t: "int", default: 18,
+     min: 8, max: 48,
      d: "Action button font size"},
 
     {s: "GUI", k: "ActionFontWeight", g: "GUI_ActionFontWeight", t: "int", default: 700,
+     min: 100, max: 900,
      d: "Action button font weight"},
 
     ; --- Close Button Styling ---
@@ -245,21 +290,27 @@ global gConfigRegistry := [
      desc: "Close button appearance"},
 
     {s: "GUI", k: "CloseButtonBorderPx", g: "GUI_CloseButtonBorderPx", t: "int", default: 1,
+     min: 0, max: 10,
      d: "Close button border width"},
 
     {s: "GUI", k: "CloseButtonBorderARGB", g: "GUI_CloseButtonBorderARGB", t: "int", default: 0x88FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Close button border color (ARGB)"},
 
     {s: "GUI", k: "CloseButtonBGARGB", g: "GUI_CloseButtonBGARGB", t: "int", default: 0xFF000000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Close button background color (ARGB)"},
 
     {s: "GUI", k: "CloseButtonBGHoverARGB", g: "GUI_CloseButtonBGHoverARGB", t: "int", default: 0xFF888888,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Close button background color on hover (ARGB)"},
 
     {s: "GUI", k: "CloseButtonTextARGB", g: "GUI_CloseButtonTextARGB", t: "int", default: 0xFFFFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Close button text color (ARGB)"},
 
     {s: "GUI", k: "CloseButtonTextHoverARGB", g: "GUI_CloseButtonTextHoverARGB", t: "int", default: 0xFFFF0000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Close button text color on hover (ARGB)"},
 
     {s: "GUI", k: "CloseButtonGlyph", g: "GUI_CloseButtonGlyph", t: "string", default: "X",
@@ -270,21 +321,27 @@ global gConfigRegistry := [
      desc: "Kill button appearance"},
 
     {s: "GUI", k: "KillButtonBorderPx", g: "GUI_KillButtonBorderPx", t: "int", default: 1,
+     min: 0, max: 10,
      d: "Kill button border width"},
 
     {s: "GUI", k: "KillButtonBorderARGB", g: "GUI_KillButtonBorderARGB", t: "int", default: 0x88FFB4A5,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Kill button border color (ARGB)"},
 
     {s: "GUI", k: "KillButtonBGARGB", g: "GUI_KillButtonBGARGB", t: "int", default: 0xFF300000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Kill button background color (ARGB)"},
 
     {s: "GUI", k: "KillButtonBGHoverARGB", g: "GUI_KillButtonBGHoverARGB", t: "int", default: 0xFFD00000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Kill button background color on hover (ARGB)"},
 
     {s: "GUI", k: "KillButtonTextARGB", g: "GUI_KillButtonTextARGB", t: "int", default: 0xFFFFE8E8,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Kill button text color (ARGB)"},
 
     {s: "GUI", k: "KillButtonTextHoverARGB", g: "GUI_KillButtonTextHoverARGB", t: "int", default: 0xFFFFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Kill button text color on hover (ARGB)"},
 
     {s: "GUI", k: "KillButtonGlyph", g: "GUI_KillButtonGlyph", t: "string", default: "K",
@@ -295,21 +352,27 @@ global gConfigRegistry := [
      desc: "Blacklist button appearance"},
 
     {s: "GUI", k: "BlacklistButtonBorderPx", g: "GUI_BlacklistButtonBorderPx", t: "int", default: 1,
+     min: 0, max: 10,
      d: "Blacklist button border width"},
 
     {s: "GUI", k: "BlacklistButtonBorderARGB", g: "GUI_BlacklistButtonBorderARGB", t: "int", default: 0x88999999,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Blacklist button border color (ARGB)"},
 
     {s: "GUI", k: "BlacklistButtonBGARGB", g: "GUI_BlacklistButtonBGARGB", t: "int", default: 0xFF000000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Blacklist button background color (ARGB)"},
 
     {s: "GUI", k: "BlacklistButtonBGHoverARGB", g: "GUI_BlacklistButtonBGHoverARGB", t: "int", default: 0xFF888888,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Blacklist button background color on hover (ARGB)"},
 
     {s: "GUI", k: "BlacklistButtonTextARGB", g: "GUI_BlacklistButtonTextARGB", t: "int", default: 0xFFFFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Blacklist button text color (ARGB)"},
 
     {s: "GUI", k: "BlacklistButtonTextHoverARGB", g: "GUI_BlacklistButtonTextHoverARGB", t: "int", default: 0xFFFF0000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Blacklist button text color on hover (ARGB)"},
 
     {s: "GUI", k: "BlacklistButtonGlyph", g: "GUI_BlacklistButtonGlyph", t: "string", default: "B",
@@ -323,18 +386,23 @@ global gConfigRegistry := [
      d: "Show column headers"},
 
     {s: "GUI", k: "ColFixed2", g: "GUI_ColFixed2", t: "int", default: 70,
+     min: 0, max: 500,
      d: "Column 2 width (HWND)"},
 
     {s: "GUI", k: "ColFixed3", g: "GUI_ColFixed3", t: "int", default: 50,
+     min: 0, max: 500,
      d: "Column 3 width (PID)"},
 
     {s: "GUI", k: "ColFixed4", g: "GUI_ColFixed4", t: "int", default: 60,
+     min: 0, max: 500,
      d: "Column 4 width (Workspace)"},
 
     {s: "GUI", k: "ColFixed5", g: "GUI_ColFixed5", t: "int", default: 0,
+     min: 0, max: 500,
      d: "Column 5 width (0=hidden)"},
 
     {s: "GUI", k: "ColFixed6", g: "GUI_ColFixed6", t: "int", default: 0,
+     min: 0, max: 500,
      d: "Column 6 width (0=hidden)"},
 
     {s: "GUI", k: "Col2Name", g: "GUI_Col2Name", t: "string", default: "HWND",
@@ -360,12 +428,15 @@ global gConfigRegistry := [
      d: "Header font name"},
 
     {s: "GUI", k: "HdrFontSize", g: "GUI_HdrFontSize", t: "int", default: 12,
+     min: 6, max: 48,
      d: "Header font size"},
 
     {s: "GUI", k: "HdrFontWeight", g: "GUI_HdrFontWeight", t: "int", default: 600,
+     min: 100, max: 900,
      d: "Header font weight"},
 
     {s: "GUI", k: "HdrARGB", g: "GUI_HdrARGB", t: "int", default: 0xFFD0D6DE,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Header text color (ARGB)"},
 
     ; --- Main Font ---
@@ -376,24 +447,30 @@ global gConfigRegistry := [
      d: "Main font name"},
 
     {s: "GUI", k: "MainFontSize", g: "GUI_MainFontSize", t: "int", default: 20,
+     min: 8, max: 72,
      d: "Main font size"},
 
     {s: "GUI", k: "MainFontWeight", g: "GUI_MainFontWeight", t: "int", default: 400,
+     min: 100, max: 900,
      d: "Main font weight"},
 
     {s: "GUI", k: "MainFontNameHi", g: "GUI_MainFontNameHi", t: "string", default: "Segoe UI",
      d: "Main font name when highlighted"},
 
     {s: "GUI", k: "MainFontSizeHi", g: "GUI_MainFontSizeHi", t: "int", default: 20,
+     min: 8, max: 72,
      d: "Main font size when highlighted"},
 
     {s: "GUI", k: "MainFontWeightHi", g: "GUI_MainFontWeightHi", t: "int", default: 800,
+     min: 100, max: 900,
      d: "Main font weight when highlighted"},
 
     {s: "GUI", k: "MainARGB", g: "GUI_MainARGB", t: "int", default: 0xFFF0F0F0,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Main text color (ARGB)"},
 
     {s: "GUI", k: "MainARGBHi", g: "GUI_MainARGBHi", t: "int", default: 0xFFF0F0F0,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Main text color when highlighted (ARGB)"},
 
     ; --- Sub Font ---
@@ -404,24 +481,30 @@ global gConfigRegistry := [
      d: "Sub font name"},
 
     {s: "GUI", k: "SubFontSize", g: "GUI_SubFontSize", t: "int", default: 12,
+     min: 6, max: 48,
      d: "Sub font size"},
 
     {s: "GUI", k: "SubFontWeight", g: "GUI_SubFontWeight", t: "int", default: 400,
+     min: 100, max: 900,
      d: "Sub font weight"},
 
     {s: "GUI", k: "SubFontNameHi", g: "GUI_SubFontNameHi", t: "string", default: "Segoe UI",
      d: "Sub font name when highlighted"},
 
     {s: "GUI", k: "SubFontSizeHi", g: "GUI_SubFontSizeHi", t: "int", default: 12,
+     min: 6, max: 48,
      d: "Sub font size when highlighted"},
 
     {s: "GUI", k: "SubFontWeightHi", g: "GUI_SubFontWeightHi", t: "int", default: 600,
+     min: 100, max: 900,
      d: "Sub font weight when highlighted"},
 
     {s: "GUI", k: "SubARGB", g: "GUI_SubARGB", t: "int", default: 0xFFB5C0CE,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Sub text color (ARGB)"},
 
     {s: "GUI", k: "SubARGBHi", g: "GUI_SubARGBHi", t: "int", default: 0xFFB5C0CE,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Sub text color when highlighted (ARGB)"},
 
     ; --- Column Font ---
@@ -432,24 +515,30 @@ global gConfigRegistry := [
      d: "Column font name"},
 
     {s: "GUI", k: "ColFontSize", g: "GUI_ColFontSize", t: "int", default: 12,
+     min: 6, max: 48,
      d: "Column font size"},
 
     {s: "GUI", k: "ColFontWeight", g: "GUI_ColFontWeight", t: "int", default: 400,
+     min: 100, max: 900,
      d: "Column font weight"},
 
     {s: "GUI", k: "ColFontNameHi", g: "GUI_ColFontNameHi", t: "string", default: "Segoe UI",
      d: "Column font name when highlighted"},
 
     {s: "GUI", k: "ColFontSizeHi", g: "GUI_ColFontSizeHi", t: "int", default: 12,
+     min: 6, max: 48,
      d: "Column font size when highlighted"},
 
     {s: "GUI", k: "ColFontWeightHi", g: "GUI_ColFontWeightHi", t: "int", default: 600,
+     min: 100, max: 900,
      d: "Column font weight when highlighted"},
 
     {s: "GUI", k: "ColARGB", g: "GUI_ColARGB", t: "int", default: 0xFFF0F0F0,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Column text color (ARGB)"},
 
     {s: "GUI", k: "ColARGBHi", g: "GUI_ColARGBHi", t: "int", default: 0xFFF0F0F0,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Column text color when highlighted (ARGB)"},
 
     ; --- Scrollbar ---
@@ -460,18 +549,22 @@ global gConfigRegistry := [
      d: "Show scrollbar when content overflows"},
 
     {s: "GUI", k: "ScrollBarWidthPx", g: "GUI_ScrollBarWidthPx", t: "int", default: 6,
+     min: 2, max: 30,
      d: "Scrollbar width in pixels"},
 
     {s: "GUI", k: "ScrollBarMarginRightPx", g: "GUI_ScrollBarMarginRightPx", t: "int", default: 8,
+     min: 0, max: 50,
      d: "Scrollbar right margin in pixels"},
 
     {s: "GUI", k: "ScrollBarThumbARGB", g: "GUI_ScrollBarThumbARGB", t: "int", default: 0x88FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Scrollbar thumb color (ARGB)"},
 
     {s: "GUI", k: "ScrollBarGutterEnabled", g: "GUI_ScrollBarGutterEnabled", t: "bool", default: false,
      d: "Show scrollbar gutter background"},
 
     {s: "GUI", k: "ScrollBarGutterARGB", g: "GUI_ScrollBarGutterARGB", t: "int", default: 0x30000000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Scrollbar gutter color (ARGB)"},
 
     ; --- Footer ---
@@ -482,36 +575,46 @@ global gConfigRegistry := [
      d: "Show footer bar"},
 
     {s: "GUI", k: "FooterBorderPx", g: "GUI_FooterBorderPx", t: "int", default: 0,
+     min: 0, max: 10,
      d: "Footer border width in pixels"},
 
     {s: "GUI", k: "FooterBorderARGB", g: "GUI_FooterBorderARGB", t: "int", default: 0x33FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Footer border color (ARGB)"},
 
     {s: "GUI", k: "FooterBGRadius", g: "GUI_FooterBGRadius", t: "int", default: 0,
+     min: 0, max: 50,
      d: "Footer background corner radius"},
 
     {s: "GUI", k: "FooterBGARGB", g: "GUI_FooterBGARGB", t: "int", default: 0x00000000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Footer background color (ARGB)"},
 
     {s: "GUI", k: "FooterTextARGB", g: "GUI_FooterTextARGB", t: "int", default: 0xFFFFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Footer text color (ARGB)"},
 
     {s: "GUI", k: "FooterFontName", g: "GUI_FooterFontName", t: "string", default: "Segoe UI",
      d: "Footer font name"},
 
     {s: "GUI", k: "FooterFontSize", g: "GUI_FooterFontSize", t: "int", default: 14,
+     min: 6, max: 48,
      d: "Footer font size"},
 
     {s: "GUI", k: "FooterFontWeight", g: "GUI_FooterFontWeight", t: "int", default: 600,
+     min: 100, max: 900,
      d: "Footer font weight"},
 
     {s: "GUI", k: "FooterHeightPx", g: "GUI_FooterHeightPx", t: "int", default: 24,
+     min: 0, max: 100,
      d: "Footer height in pixels"},
 
     {s: "GUI", k: "FooterGapTopPx", g: "GUI_FooterGapTopPx", t: "int", default: 8,
+     min: 0, max: 50,
      d: "Gap between content and footer in pixels"},
 
     {s: "GUI", k: "FooterPaddingX", g: "GUI_FooterPaddingX", t: "int", default: 12,
+     min: 0, max: 100,
      d: "Footer horizontal padding in pixels"},
 
     ; ============================================================
@@ -525,15 +628,18 @@ global gConfigRegistry := [
      d: "Named pipe name for store communication"},
 
     {s: "IPC", k: "IdleTickMs", g: "IPCIdleTickMs", t: "int", default: 100,
+     min: 15, max: 500,
      d: "Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms."},
 
     {s: "IPC", k: "FullRowEvery", g: "IPCFullRowEvery", t: "int", default: 10,
+     min: 0, max: 1000,
      d: "Per-row healing: 0=always full rows (legacy, no sparse deltas), N>0=every Nth push sends full rows instead of changed-fields-only."},
 
     {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle", t: "string", default: "Always",
      d: "Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean)."},
 
     {s: "IPC", k: "FullSyncEvery", g: "IPCFullSyncEvery", t: "int", default: 60,
+     min: 0, max: 600,
      d: "Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled."},
 
     {s: "IPC", k: "UseDirtyTracking", g: "IPCUseDirtyTracking", t: "bool", default: true,
@@ -543,10 +649,12 @@ global gConfigRegistry := [
      desc: "Connection retry and recovery settings"},
 
     {s: "IPC", k: "MaxReconnectAttempts", g: "IPCMaxReconnectAttempts", t: "int", default: 3,
-     d: "Maximum pipe reconnection attempts before triggering store restart. Range: 1-10."},
+     min: 1, max: 10,
+     d: "Maximum pipe reconnection attempts before triggering store restart."},
 
     {s: "IPC", k: "StoreStartWaitMs", g: "IPCStoreStartWaitMs", t: "int", default: 1000,
-     d: "Time to wait for store to start on launch (ms). Increase on slow systems. Range: 500-5000."},
+     min: 500, max: 5000,
+     d: "Time to wait for store to start on launch (ms). Increase on slow systems."},
 
     ; ============================================================
     ; External Tools
@@ -601,15 +709,19 @@ global gConfigRegistry := [
      long: "Event-driven window change detection. Events are queued then processed in batches to keep the callback fast."},
 
     {s: "WinEventHook", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", default: 50,
+     min: 10, max: 1000,
      d: "Debounce rapid events (e.g., window moving fires many events)"},
 
     {s: "WinEventHook", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", default: 100,
+     min: 10, max: 2000,
      d: "Batch processing interval - how often queued events are processed"},
 
     {s: "WinEventHook", k: "IdleThreshold", g: "WinEventHookIdleThreshold", t: "int", default: 10,
+     min: 1, max: 100,
      d: "Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
     {s: "WinEventHook", k: "CosmeticBufferMs", g: "WinEventHookCosmeticBufferMs", t: "int", default: 1000,
+     min: 100, max: 10000,
      d: "Min interval between proactive pushes for cosmetic-only changes (title updates). Structural changes (focus, create, destroy) always push immediately."},
 
     ; ============================================================
@@ -620,6 +732,7 @@ global gConfigRegistry := [
      long: "When WinEventHook adds a window, we don't know its Z-order. Z-pump triggers a full WinEnum scan to get accurate Z-order."},
 
     {s: "ZPump", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
+     min: 50, max: 5000,
      d: "How often to check if Z-queue has pending windows"},
 
     ; ============================================================
@@ -630,15 +743,19 @@ global gConfigRegistry := [
      long: "WinEnum normally runs on-demand (startup, snapshot, Z-pump). Enable safety polling as a paranoid belt-and-suspenders."},
 
     {s: "WinEnum", k: "MissingWindowTTLMs", g: "WinEnumMissingWindowTTLMs", t: "int", default: 1200,
-     d: "Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps. Range: 100-10000."},
+     min: 100, max: 10000,
+     d: "Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps."},
 
     {s: "WinEnum", k: "FallbackScanIntervalMs", g: "WinEnumFallbackScanIntervalMs", t: "int", default: 2000,
-     d: "Polling interval when WinEventHook fails and fallback scanning is active (ms). Lower = more responsive but higher CPU. Range: 500-10000."},
+     min: 500, max: 10000,
+     d: "Polling interval when WinEventHook fails and fallback scanning is active (ms). Lower = more responsive but higher CPU."},
 
     {s: "WinEnum", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", default: 0,
+     min: 0, max: 300000,
      d: "Safety polling interval (0=disabled, or 30000+ for safety net)"},
 
     {s: "WinEnum", k: "ValidateExistenceMs", g: "WinEnumValidateExistenceMs", t: "int", default: 5000,
+     min: 0, max: 60000,
      d: "Lightweight zombie detection interval (ms). Checks existing store entries via IsWindow() to remove dead windows. Much faster than full EnumWindows scan. 0=disabled."},
 
     ; ============================================================
@@ -649,6 +766,7 @@ global gConfigRegistry := [
      long: "MRU_Lite only runs if WinEventHook fails to start. It polls the foreground window to track focus changes."},
 
     {s: "MruLite", k: "PollMs", g: "MruLitePollMs", t: "int", default: 250,
+     min: 50, max: 5000,
      d: "Polling interval for focus tracking fallback"},
 
     ; ============================================================
@@ -659,31 +777,40 @@ global gConfigRegistry := [
      long: "Resolves window icons asynchronously with retry/backoff."},
 
     {s: "IconPump", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", default: 80,
+     min: 20, max: 1000,
      d: "How often the pump processes its queue"},
 
     {s: "IconPump", k: "BatchSize", g: "IconPumpBatchSize", t: "int", default: 16,
+     min: 1, max: 100,
      d: "Max icons to process per tick (prevents lag spikes)"},
 
     {s: "IconPump", k: "MaxAttempts", g: "IconPumpMaxAttempts", t: "int", default: 4,
+     min: 1, max: 20,
      d: "Max attempts before giving up on a window's icon"},
 
     {s: "IconPump", k: "AttemptBackoffMs", g: "IconPumpAttemptBackoffMs", t: "int", default: 300,
+     min: 50, max: 5000,
      d: "Base backoff after failed attempt (multiplied by attempt number)"},
 
     {s: "IconPump", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", default: 1.8,
+     min: 1.0, max: 5.0,
      d: "Backoff multiplier for exponential backoff (1.0 = linear)"},
 
     {s: "IconPump", k: "GiveUpBackoffMs", g: "IconPumpGiveUpBackoffMs", t: "int", default: 5000,
-     d: "Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps. Range: 1000-30000."},
+     min: 1000, max: 30000,
+     d: "Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps."},
 
     {s: "IconPump", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 30000,
+     min: 1000, max: 300000,
      d: "Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay."},
 
     {s: "IconPump", k: "IdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
+     min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
     {s: "IconPump", k: "ResolveTimeoutMs", g: "IconPumpResolveTimeoutMs", t: "int", default: 500,
-     d: "WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond. Range: 100-2000."},
+     min: 100, max: 2000,
+     d: "WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond."},
 
     ; ============================================================
     ; Process Pump Timing
@@ -693,12 +820,15 @@ global gConfigRegistry := [
      long: "Resolves PID -> process name asynchronously."},
 
     {s: "ProcPump", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", default: 100,
+     min: 20, max: 1000,
      d: "How often the pump processes its queue"},
 
     {s: "ProcPump", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", default: 16,
+     min: 1, max: 100,
      d: "Max PIDs to resolve per tick"},
 
     {s: "ProcPump", k: "IdleThreshold", g: "ProcPumpIdleThreshold", t: "int", default: 5,
+     min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
     ; ============================================================
@@ -709,12 +839,15 @@ global gConfigRegistry := [
      long: "Size limits for internal caches to prevent unbounded memory growth."},
 
     {s: "Cache", k: "ExeIconMax", g: "ExeIconCacheMax", t: "int", default: 100,
+     min: 10, max: 1000,
      d: "Maximum number of cached exe icons. Older entries are evicted when limit is reached."},
 
     {s: "Cache", k: "UwpLogoMax", g: "UwpLogoCacheMax", t: "int", default: 50,
+     min: 5, max: 500,
      d: "Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps."},
 
     {s: "Cache", k: "ProcNameMax", g: "ProcNameCacheMax", t: "int", default: 200,
+     min: 10, max: 2000,
      d: "Maximum number of cached process names. Older entries are evicted when limit is reached."},
 
     ; ============================================================
@@ -730,6 +863,7 @@ global gConfigRegistry := [
 
     {s: "Komorebi", k: "MimicNativeSettleMs", g: "KomorebiMimicNativeSettleMs",
      t: "int", default: 0,
+     min: 0, max: 1000,
      d: "Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems."},
 
     {s: "Komorebi", k: "UseSocket", g: "KomorebiUseSocket",
@@ -748,18 +882,23 @@ global gConfigRegistry := [
      long: "Event-driven komorebi integration via named pipe."},
 
     {s: "KomorebiSub", k: "PollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
+     min: 10, max: 1000,
      d: "Pipe poll interval (checking for incoming data)"},
 
     {s: "KomorebiSub", k: "IdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
+     min: 10000, max: 600000,
      d: "Restart subscription if no events for this long (stale detection)"},
 
     {s: "KomorebiSub", k: "FallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
+     min: 500, max: 30000,
      d: "Fallback polling interval if subscription fails"},
 
     {s: "KomorebiSub", k: "CacheMaxAgeMs", g: "KomorebiSubCacheMaxAgeMs", t: "int", default: 10000,
-     d: "Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. Range: 1000-60000."},
+     min: 1000, max: 60000,
+     d: "Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately."},
 
     {s: "KomorebiSub", k: "BatchCloakEventsMs", g: "KomorebiSubBatchCloakEventsMs", t: "int", default: 50,
+     min: 0, max: 500,
      d: "Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately."},
 
     ; ============================================================
@@ -770,9 +909,11 @@ global gConfigRegistry := [
      long: "Store broadcasts heartbeat to clients for liveness detection."},
 
     {s: "Heartbeat", k: "StoreIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", default: 5000,
+     min: 1000, max: 60000,
      d: "Store sends heartbeat every N ms"},
 
     {s: "Heartbeat", k: "ViewerTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", default: 12000,
+     min: 2000, max: 120000,
      d: "Viewer considers connection dead after N ms without any message"},
 
     ; ============================================================
@@ -835,10 +976,12 @@ global gConfigRegistry := [
      desc: "Control diagnostic log file sizes"},
 
     {s: "Diagnostics", k: "LogMaxKB", g: "DiagLogMaxKB", t: "int", default: 100,
-     d: "Maximum diagnostic log file size in KB before trimming. Range: 50-1000."},
+     min: 50, max: 1000,
+     d: "Maximum diagnostic log file size in KB before trimming."},
 
     {s: "Diagnostics", k: "LogKeepKB", g: "DiagLogKeepKB", t: "int", default: 50,
-     d: "Size to keep after log trim in KB. Must be less than LogMaxKB. Range: 25-500."},
+     min: 25, max: 500,
+     d: "Size to keep after log trim in KB. Must be less than LogMaxKB."},
 
     ; ============================================================
     ; Testing
@@ -848,6 +991,7 @@ global gConfigRegistry := [
      long: "Options for automated test suite."},
 
     {s: "Testing", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", default: 30,
+     min: 5, max: 300,
      d: "Default duration for test_live.ahk"},
 
     ; ============================================================

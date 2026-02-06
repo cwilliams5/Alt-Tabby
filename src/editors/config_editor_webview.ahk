@@ -28,11 +28,11 @@
 ;    - Use a 3-param callback: (this, sender, argsPtr)
 ;    - Manually wrap args: WebView2.WebMessageReceivedEventArgs(argsPtr)
 ;
-; 3. EXECUTESCRIPT CORRUPTS MESSAGE HANDLER
-;    Calling ExecuteScript() from INSIDE a WebMessageReceived callback corrupts
-;    the handler - subsequent messages will never be received. The "ready"
-;    message works but button clicks don't.
-;    FIX: Use SetTimer(func, -1) to defer ExecuteScript outside the callback.
+; 3. WIN32 CALLS INSIDE CALLBACK CORRUPT MESSAGE HANDLER
+;    Calling ExecuteScript() or GUI Show() from INSIDE a WebMessageReceived
+;    callback corrupts the handler - subsequent messages will never be received.
+;    Any Win32 call that pumps messages has this effect.
+;    FIX: Use SetTimer(func, -1) to defer ALL work outside the callback.
 ;
 ; 4. INLINE EVENT HANDLERS BLOCKED
 ;    WebView2's Content Security Policy blocks inline onclick="..." attributes.
@@ -99,15 +99,33 @@ _CE_RunWebView2(launcherHwnd := 0) {
     if (!FileExist(dllPath) || !FileExist(htmlPath))
         throw Error("WebView2 resources not found")
 
-    ; Create GUI window
-    gCEW_Gui := Gui("+Resize +MinSize600x400", "Alt-Tabby Configuration")
+    ; Create GUI window with WS_EX_LAYERED (+E0x80000) so we can set alpha=0
+    ; BEFORE Show(). The window is "visible" to Win32 (WS_VISIBLE set, so WebView2
+    ; initializes its render pipeline) but physically invisible to the user (alpha=0).
+    ; We reveal by setting alpha=255 after JS signals dark CSS is painted.
+    ; Show("Hide") does NOT work — WebView2 needs a visible parent to render.
+    gCEW_Gui := Gui("+Resize +MinSize600x400 +E0x80000", "Alt-Tabby Configuration")
+    gCEW_Gui.BackColor := "1a1b26"  ; Match CSS --bg-primary
     gCEW_Gui.OnEvent("Close", _CEW_OnClose)
     gCEW_Gui.OnEvent("Size", _CEW_OnSize)
-    gCEW_Gui.Show("w900 h650")
+    ; .Hwnd access forces HWND creation. Anti-flash defense:
+    ; WS_EX_LAYERED + alpha=0 + off-screen position. Window is "visible" to
+    ; Win32 (WebView2 renders) but invisible to user. DWM cloaking can't be
+    ; used here — WebView2 needs DWM composition active to initialize.
+    DllCall("SetLayeredWindowAttributes", "ptr", gCEW_Gui.Hwnd, "uint", 0, "uchar", 0, "uint", 2)
+    gCEW_Gui.Show("x-32000 y-32000 w900 h650")
+
+    ; Safety: reveal after 3s even if "ready" never fires (WebView2 error, etc.)
+    SetTimer(_CEW_ForceReveal, -3000)
 
     ; Create WebView2 control
     try {
         gCEW_Controller := WebView2.create(gCEW_Gui.Hwnd,,,,,, dllPath)
+
+        ; Set WebView2 default background to match dark theme BEFORE navigation.
+        ; COREWEBVIEW2_COLOR is ABGR: 0xAA_BB_GG_RR. For #1a1b26: 0xFF261B1A
+        try gCEW_Controller.DefaultBackgroundColor := 0xFF261B1A
+
         gCEW_Controller.Fill()
         gCEW_WebView := gCEW_Controller.CoreWebView2
 
@@ -200,11 +218,12 @@ _CEW_OnWebMessage(sender, args) {
             gCEW_Gui.Destroy()
 
         } else if (action = "ready") {
-            ; Page loaded - inject config data
-            ; IMPORTANT: Use SetTimer to defer ExecuteScript outside this callback.
-            ; Calling ExecuteScript from within WebMessageReceived corrupts the handler,
-            ; causing subsequent messages to never be received.
-            SetTimer(_CEW_InjectConfigData, -1)
+            ; Page loaded - dark CSS painted, safe to reveal and inject data.
+            ; IMPORTANT: Defer EVERYTHING out of this callback via SetTimer.
+            ; Lesson #3: ExecuteScript inside callback corrupts the handler.
+            ; Same applies to GUI Show() — any Win32 call that pumps messages
+            ; from inside WebMessageReceived can corrupt the handler.
+            SetTimer(_CEW_OnReady, -1)
         }
     } catch as e {
         ; Log error for debugging
@@ -273,6 +292,12 @@ _CEW_SerializeRegistry() {
             obj .= _CEW_JoinArray(optParts, ",")
             obj .= '],'
         }
+        if (entry.HasOwnProp("min")) {
+            obj .= '"min":' entry.min ','
+            obj .= '"max":' entry.max ','
+        }
+        if (entry.HasOwnProp("fmt"))
+            obj .= '"fmt":"' entry.fmt '",'
         ; Remove trailing comma and close
         if (SubStr(obj, -1) = ",")
             obj := SubStr(obj, 1, -1)
@@ -353,5 +378,47 @@ _CEW_JoinArray(arr, sep) {
         result .= item
     }
     return result
+}
+
+; ============================================================
+; WINDOW REVEAL (anti-flash)
+; ============================================================
+
+; Deferred handler for "ready" — runs outside the WebMessageReceived callback
+_CEW_OnReady() {
+    _CEW_RevealWindow()
+    _CEW_InjectConfigData()
+}
+
+_CEW_RevealWindow() {
+    global gCEW_Gui
+    if (!gCEW_Gui)
+        return
+    try {
+        SetTimer(_CEW_ForceReveal, 0)  ; Cancel safety timer
+        ; Center using raw Win32 calls — bypasses AHK DPI scaling issues.
+        ; All values in physical pixels: GetMonitorInfoW, GetWindowRect, SetWindowPos.
+        hwnd := gCEW_Gui.Hwnd
+        hMon := DllCall("user32\MonitorFromWindow", "ptr", hwnd, "uint", 2, "ptr")
+        mi := Buffer(40, 0)
+        NumPut("UInt", 40, mi, 0)
+        DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr)
+        wL := NumGet(mi, 20, "Int"), wT := NumGet(mi, 24, "Int")
+        wR := NumGet(mi, 28, "Int"), wB := NumGet(mi, 32, "Int")
+        rect := Buffer(16, 0)
+        DllCall("user32\GetWindowRect", "ptr", hwnd, "ptr", rect.Ptr)
+        winW := NumGet(rect, 8, "Int") - NumGet(rect, 0, "Int")
+        winH := NumGet(rect, 12, "Int") - NumGet(rect, 4, "Int")
+        cx := wL + (wR - wL - winW) // 2
+        cy := wT + (wB - wT - winH) // 2
+        ; SWP_NOSIZE=0x0001 | SWP_NOZORDER=0x0004 = 0x0005
+        DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", 0
+            , "int", cx, "int", cy, "int", 0, "int", 0, "uint", 0x0005)
+        DllCall("SetLayeredWindowAttributes", "ptr", hwnd, "uint", 0, "uchar", 255, "uint", 2)
+    }
+}
+
+_CEW_ForceReveal() {
+    _CEW_RevealWindow()
 }
 
