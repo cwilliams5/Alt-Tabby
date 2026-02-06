@@ -437,10 +437,11 @@ RunUnitTests_CoreStore() {
     }
 
     ; ============================================================
-    ; Sort Skip (gWS_SortDirty) Validation Tests
+    ; Two-Level Dirty Tracking Validation Tests
     ; ============================================================
-    Log("`n--- Sort Skip Validation Tests ---")
-    global gWS_SortDirty, gWS_ProjectionFields
+    Log("`n--- Two-Level Dirty Tracking Tests ---")
+    global gWS_SortOrderDirty, gWS_ProjectionContentDirty
+    global gWS_SortAffectingFields, gWS_ContentOnlyFields
 
     ; Setup: init store with test windows
     WindowStore_Init()
@@ -455,41 +456,92 @@ RunUnitTests_CoreStore() {
     WindowStore_UpsertWindow(sortTestRecs, "test")
     WindowStore_EndScan()
 
-    ; Force a projection to reset dirty flag
+    ; Force a projection to reset dirty flags
     WindowStore_GetProjection()
-    AssertEq(gWS_SortDirty, false, "SortDirty: false after GetProjection")
+    AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: false after GetProjection")
+    AssertEq(gWS_ProjectionContentDirty, false, "ContentDirty: false after GetProjection")
 
-    ; iconHicon change MUST set dirty - without this, projection cache returns
-    ; stale _WS_ToItem copies and icon updates never reach the GUI (grey circles)
+    ; iconHicon change should NOT set sort dirty (icon is cosmetic, doesn't affect order)
+    ; but MUST set content dirty so fresh _WS_ToItem copies are created (regression 514a45f)
     WindowStore_UpdateFields(5001, Map("iconHicon", 9999), "test")
-    AssertEq(gWS_SortDirty, true, "SortDirty: iconHicon change sets true")
-    gWS_SortDirty := false  ; Reset for next test
-
-    ; Title change should NOT set dirty (title is not in ProjectionFields)
-    WindowStore_UpdateFields(5001, Map("title", "New Title"), "test")
-    AssertEq(gWS_SortDirty, false, "SortDirty: title change keeps false")
-
-    ; Sort-affecting field (lastActivatedTick) should set dirty
-    WindowStore_UpdateFields(5001, Map("lastActivatedTick", 999), "test")
-    AssertEq(gWS_SortDirty, true, "SortDirty: lastActivatedTick sets true")
+    AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: iconHicon does NOT dirty sort order")
+    AssertEq(gWS_ProjectionContentDirty, true, "ContentDirty: iconHicon dirties projection content")
 
     ; Reset via GetProjection
     WindowStore_GetProjection()
-    AssertEq(gWS_SortDirty, false, "SortDirty: reset after second GetProjection")
 
-    ; Filter-affecting field (isCloaked) should set dirty
+    ; Title change MUST set content dirty (was previously untracked, masked by z=0 churn)
+    WindowStore_UpdateFields(5001, Map("title", "New Title"), "test")
+    AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: title does not dirty sort order")
+    AssertEq(gWS_ProjectionContentDirty, true, "ContentDirty: title dirties projection content")
+
+    ; Reset via GetProjection
+    WindowStore_GetProjection()
+
+    ; Sort-affecting field (lastActivatedTick) should set both dirty flags
+    WindowStore_UpdateFields(5001, Map("lastActivatedTick", 999), "test")
+    AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: lastActivatedTick sets true")
+    AssertEq(gWS_ProjectionContentDirty, true, "ContentDirty: lastActivatedTick sets true")
+
+    ; Reset via GetProjection
+    WindowStore_GetProjection()
+    AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: reset after GetProjection")
+    AssertEq(gWS_ProjectionContentDirty, false, "ContentDirty: reset after GetProjection")
+
+    ; Filter-affecting field (isCloaked) should set sort dirty
     WindowStore_UpdateFields(5001, Map("isCloaked", true), "test")
-    AssertEq(gWS_SortDirty, true, "SortDirty: isCloaked sets true")
+    AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: isCloaked sets true")
 
     ; Reset and test z field
     WindowStore_GetProjection()
     WindowStore_UpdateFields(5001, Map("z", 99), "test")
-    AssertEq(gWS_SortDirty, true, "SortDirty: z change sets true")
+    AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: z change sets true")
 
     ; Reset and test isFocused field
     WindowStore_GetProjection()
     WindowStore_UpdateFields(5001, Map("isFocused", true), "test")
-    AssertEq(gWS_SortDirty, true, "SortDirty: isFocused sets true")
+    AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: isFocused sets true")
+
+    ; --- Regression test: icon update MUST produce fresh data in projection (514a45f) ---
+    ; Reset isCloaked so window is visible in default projection (includeCloaked=false)
+    WindowStore_UpdateFields(5001, Map("isCloaked", false), "test")
+    WindowStore_GetProjection()  ; Reset — creates cached items with old icon
+    WindowStore_UpdateFields(5001, Map("iconHicon", 7777), "test")
+    proj := WindowStore_GetProjection()  ; Should use Path 2 — fresh _WS_ToItem
+    foundIcon := false
+    for _, item in proj.items {
+        if (item.hwnd = 5001) {
+            AssertEq(item.iconHicon, 7777, "Path 2 returns fresh iconHicon (regression 514a45f)")
+            foundIcon := true
+            break
+        }
+    }
+    AssertEq(foundIcon, true, "Path 2 regression: hwnd 5001 found in projection")
+
+    ; --- Regression test: title update MUST produce fresh data in projection ---
+    WindowStore_GetProjection()
+    WindowStore_UpdateFields(5001, Map("title", "Updated Title"), "test")
+    proj := WindowStore_GetProjection()
+    foundTitle := false
+    for _, item in proj.items {
+        if (item.hwnd = 5001) {
+            AssertEq(item.title, "Updated Title", "Path 2 returns fresh title")
+            foundTitle := true
+            break
+        }
+    }
+    AssertEq(foundTitle, true, "Path 2 title: hwnd 5001 found in projection")
+
+    ; --- Coverage test: every _WS_ToItem field must be tracked ---
+    ; Prevents future regressions where a new field is added to _WS_ToItem
+    ; but not tracked, silently causing stale cache data
+    coveredFields := ["title", "class", "pid", "z", "lastActivatedTick", "isFocused",
+        "isCloaked", "isMinimized", "workspaceName", "workspaceId",
+        "isOnCurrentWorkspace", "processName", "iconHicon"]
+    for _, field in coveredFields {
+        covered := gWS_SortAffectingFields.Has(field) || gWS_ContentOnlyFields.Has(field)
+        AssertEq(covered, true, "Field '" field "' must be tracked in SortAffecting or ContentOnly")
+    }
 
     ; Cleanup
     WindowStore_RemoveWindow([5001, 5002], true)

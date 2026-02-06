@@ -502,8 +502,13 @@ GUI_RequestSnapshot() {
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
-    req := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req), gGUI_StoreWakeHwnd)
+    ; PERF: Cache the JSON string — same request shape every time, avoids JSON.Dump per Alt press
+    static cachedJson := ""
+    if (cachedJson = "") {
+        cachedJson := JSON.Dump({ type: IPC_MSG_SNAPSHOT_REQUEST,
+            projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } })
+    }
+    IPC_PipeClient_Send(gGUI_StoreClient, cachedJson, gGUI_StoreWakeHwnd)
     ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
     gGUI_StoreClient.idleStreak := 0
     _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
@@ -515,13 +520,17 @@ GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
-    opts := { sort: "MRU", columns: "items", includeCloaked: true }
-    if (currentWSOnly) {
-        opts.currentWorkspaceOnly := true
+    ; PERF: Cache the two JSON variants — avoids JSON.Dump on every workspace toggle
+    static cachedJsonAll := ""
+    static cachedJsonCurrentOnly := ""
+    if (cachedJsonAll = "") {
+        cachedJsonAll := JSON.Dump({ type: IPC_MSG_PROJECTION_REQUEST,
+            projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } })
+        cachedJsonCurrentOnly := JSON.Dump({ type: IPC_MSG_PROJECTION_REQUEST,
+            projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true, currentWorkspaceOnly: true } })
     }
-    req := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: opts }
     gGUI_AwaitingToggleProjection := true  ; Flag to allow this response during ACTIVE state
-    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req), gGUI_StoreWakeHwnd)
+    IPC_PipeClient_Send(gGUI_StoreClient, currentWSOnly ? cachedJsonCurrentOnly : cachedJsonAll, gGUI_StoreWakeHwnd)
     ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
     global IPC_TICK_ACTIVE
     gGUI_StoreClient.idleStreak := 0

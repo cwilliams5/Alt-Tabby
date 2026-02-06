@@ -84,7 +84,11 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
     rec["title"] := title
     rec["class"] := class
     rec["pid"] := pid
-    rec["z"] := zOrder
+    ; Only include z when caller provided actual z-order data (> 0).
+    ; WEH probes pass zOrder=0 which would overwrite valid z from winenum,
+    ; causing unnecessary cache invalidation and z-order churn.
+    if (zOrder > 0)
+        rec["z"] := zOrder
     rec["isCloaked"] := isCloaked
     rec["isMinimized"] := isMin
     rec["isVisible"] := isVisible
