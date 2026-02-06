@@ -143,6 +143,13 @@ Gdip_PruneIconCache(liveHwnds) {
     gMock_PruneCalledWith := liveHwnds
 }
 
+; GDI+ icon pre-cache mock (called on IPC receive to eagerly convert HICON → bitmap)
+global gMock_PreCachedIcons := Map()
+Gdip_PreCacheIcon(hwnd, hIcon) {
+    global gMock_PreCachedIcons
+    gMock_PreCachedIcons[hwnd] := hIcon
+}
+
 ; Visible rows mock (called by _GUI_AnyVisibleItemChanged)
 global gMock_VisibleRows := 5
 GUI_GetVisibleRows() {
@@ -230,6 +237,7 @@ ResetGUIState() {
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
+    global gMock_PreCachedIcons
 
     gGUI_State := "IDLE"
     gGUI_LiveItems := []
@@ -257,6 +265,7 @@ ResetGUIState() {
     gMock_BypassResult := false
     gINT_BypassMode := false
     gMock_PruneCalledWith := ""
+    gMock_PreCachedIcons := Map()
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
 }

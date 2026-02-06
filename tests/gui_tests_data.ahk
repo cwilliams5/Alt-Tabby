@@ -19,7 +19,7 @@ RunGUITests_Data() {
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName, gGUI_WSContextSwitch
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gGUI_StoreRev, gGUI_LiveItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
-    global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith
+    global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
     global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_DELTA
     global IPC_MSG_PROJECTION, IPC_MSG_PROJECTION_REQUEST
     global gGUI_Base, gGUI_Overlay
@@ -747,6 +747,50 @@ RunGUITests_Data() {
     if (IsObject(gMock_PruneCalledWith)) {
         GUI_AssertEq(gMock_PruneCalledWith.Count, 2, "Prune 2nd: live map has 2 entries (orphans would be pruned)")
     }
+
+    ; ============================================================
+    ; ICON PRE-CACHE ON IPC RECEIVE TESTS (Grey circle fix)
+    ; ============================================================
+
+    ; ----- Test: Snapshot pre-caches icons for items with non-zero iconHicon -----
+    GUI_Log("Test: Snapshot pre-caches icons for items with non-zero iconHicon")
+    ResetGUIState()
+    items := CreateTestItems(3)
+    items[1].iconHicon := 99001
+    items[3].iconHicon := 99003
+    ; items[2] has no iconHicon (defaults to 0) - should NOT be pre-cached
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 300, payload: { items: items } })
+    GUI_OnStoreMessage(snapshotMsg)
+
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 2, "PreCache snapshot: 2 icons cached (skipped 0)")
+    GUI_AssertEq(gMock_PreCachedIcons[1000], 99001, "PreCache snapshot: hwnd 1000 has correct hicon")
+    GUI_AssertEq(gMock_PreCachedIcons[3000], 99003, "PreCache snapshot: hwnd 3000 has correct hicon")
+
+    ; ----- Test: Delta upsert pre-caches icon on update -----
+    GUI_Log("Test: Delta upsert pre-caches icon on update")
+    ResetGUIState()
+    ; Set up initial items (no icons)
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 301, payload: { items: CreateTestItems(2) } })
+    GUI_OnStoreMessage(snapshotMsg)
+    gMock_PreCachedIcons := Map()  ; Clear from snapshot
+
+    ; Delta: update existing item with a new icon
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 302, payload: { upserts: [{ hwnd: 1000, iconHicon: 55555 }], removes: [] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCache delta update: 1 icon cached")
+    GUI_AssertEq(gMock_PreCachedIcons[1000], 55555, "PreCache delta update: correct hicon")
+
+    ; ----- Test: Delta upsert pre-caches icon on new item -----
+    GUI_Log("Test: Delta upsert pre-caches icon on new item")
+    gMock_PreCachedIcons := Map()  ; Clear
+
+    ; Delta: add a brand new item with icon
+    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 303, payload: { upserts: [{ hwnd: 9000, title: "New", class: "C", iconHicon: 77777, lastActivatedTick: A_TickCount }], removes: [] } })
+    GUI_OnStoreMessage(deltaMsg)
+
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCache delta new: 1 icon cached")
+    GUI_AssertEq(gMock_PreCachedIcons[9000], 77777, "PreCache delta new: correct hicon")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")
