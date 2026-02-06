@@ -127,6 +127,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; Shared libraries (from src/shared/)
 #Include %A_ScriptDir%\shared\
 #Include config_loader.ahk
+#Include gui_antiflash.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
 #Include setup_utils.ahk

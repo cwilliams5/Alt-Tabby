@@ -97,10 +97,8 @@ _CE_RunNative(launcherHwnd := 0) {
         _CEN_SwitchToPage(gCEN_Sections[1].name)
     }
 
-    ; Everything is built and populated — reveal.
-    ; Set alpha=255 FIRST (while still cloaked), THEN uncloak.
-    DllCall("SetLayeredWindowAttributes", "ptr", gCEN_MainGui.Hwnd, "uint", 0, "uchar", 255, "uint", 2)
-    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", gCEN_MainGui.Hwnd, "uint", 13, "int*", 0, "uint", 4)
+    ; Everything is built and populated — reveal
+    _GUI_AntiFlashReveal(gCEN_MainGui, true)
 
     ; Block until GUI closes
     WinWaitClose(gCEN_MainGui.Hwnd)
@@ -171,11 +169,8 @@ _CEN_BuildMainGUI() {
     global gCEN_FooterBtns, gCEN_BoundWheelMsg, gCEN_BoundScrollMsg
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL, CEN_SIDEBAR_W, CEN_CONTENT_X
 
-    ; Create main window with dark theme
-    ; WS_EX_LAYERED (+E0x80000) lets us set alpha=0 before Show to prevent white flash.
-    ; Window is "visible" to Win32 (controls render) but invisible to user until revealed.
-    gCEN_MainGui := Gui("+Resize +MinSize750x450 +0x02000000 +E0x80000", "Alt-Tabby Configuration")
-    gCEN_MainGui.BackColor := "16213e"
+    ; Create main window with dark theme + anti-flash (DWM cloaking)
+    gCEN_MainGui := Gui("+Resize +MinSize750x450 +0x02000000", "Alt-Tabby Configuration")
     gCEN_MainGui.MarginX := 0
     gCEN_MainGui.MarginY := 0
     gCEN_MainGui.SetFont("s9", "Segoe UI")
@@ -220,13 +215,7 @@ _CEN_BuildMainGUI() {
     gCEN_BoundScrollMsg := _CEN_OnVScroll
     OnMessage(CEN_WM_VSCROLL, gCEN_BoundScrollMsg)
 
-    ; .Hwnd access forces HWND creation. Two-layer anti-flash defense:
-    ; 1. DWM cloak (DWMWA_CLOAK=13): prevents DWM from compositing the window
-    ;    at all — no frame outline, no content, nothing. Same technique Chrome/
-    ;    Firefox use to prevent dark-mode white flash.
-    ; 2. WS_EX_LAYERED + alpha=0: fallback if cloaking isn't available.
-    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", gCEN_MainGui.Hwnd, "uint", 13, "int*", 1, "uint", 4)
-    DllCall("SetLayeredWindowAttributes", "ptr", gCEN_MainGui.Hwnd, "uint", 0, "uchar", 0, "uint", 2)
+    _GUI_AntiFlashPrepare(gCEN_MainGui, "16213e", true)
     gCEN_MainGui.Show("w800 h550")
 }
 

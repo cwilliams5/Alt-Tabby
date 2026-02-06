@@ -92,6 +92,10 @@ In frequently-called functions (paint, input, per-window loops):
 - Compiled: `compile.ps1` reads VERSION for Ahk2Exe flags
 - Dev: `GetAppVersion()` searches up directories for VERSION file
 
+## Anti-Flash Window Show
+
+`_GUI_AntiFlashPrepare/Reveal` in `gui_antiflash.ahk`. DWM cloaking for normal GUIs, off-screen + raw-Win32-center for WebView2 (needs DWM composition active).
+
 ## Compiled vs Development Paths
 
 ```ahk
