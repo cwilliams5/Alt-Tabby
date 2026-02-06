@@ -25,7 +25,6 @@ global gGdip_PenCache := Map()     ; "argb_width" -> pPen
 ; Cache eviction limits (FIFO) to prevent unbounded memory growth
 global GDIP_BRUSH_CACHE_MAX := 100
 global GDIP_PEN_CACHE_MAX := 100
-global GDIP_ICON_CACHE_MAX := 200
 
 ; Start GDI+
 Gdip_Startup() {
@@ -522,7 +521,7 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
 ; DestroyIcon after sending a replacement via IPC, but the GUI's cached GDI+ bitmap
 ; (created here while the HICON was still valid) survives independently.
 Gdip_PreCacheIcon(hwnd, hIcon) {
-    global gGdip_IconCache, GDIP_ICON_CACHE_MAX
+    global gGdip_IconCache
     if (!hIcon)
         return
 
@@ -539,17 +538,8 @@ Gdip_PreCacheIcon(hwnd, hIcon) {
     ; Convert HICON to GDI+ bitmap while the handle is still valid
     pBmp := _Gdip_CreateBitmapFromHICON_Alpha(hIcon)
 
-    ; FIFO eviction if at capacity (only for genuinely new entries)
-    if (!gGdip_IconCache.Has(hwnd) && gGdip_IconCache.Count >= GDIP_ICON_CACHE_MAX) {
-        for oldHwnd, oldCached in gGdip_IconCache {
-            if (oldCached.pBmp)
-                try DllCall("gdiplus\GdipDisposeImage", "ptr", oldCached.pBmp)
-            gGdip_IconCache.Delete(oldHwnd)
-            break
-        }
-    }
-
-    ; Cache result (even pBmp=0 to avoid repeated failed conversions)
+    ; No FIFO eviction — cache grows with live window count.
+    ; Gdip_PruneIconCache cleans up entries for closed windows after every snapshot.
     gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: pBmp}
 }
 
@@ -559,7 +549,7 @@ Gdip_PreCacheIcon(hwnd, hIcon) {
 ; Parameters:
 ;   &wasCacheHit - Optional ByRef: set to true if cache hit, false otherwise (for logging)
 Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
-    global gGdip_IconCache, GDIP_ICON_CACHE_MAX
+    global gGdip_IconCache
 
     if (!hIcon || !g) {
         wasCacheHit := false
@@ -590,17 +580,8 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
         return false
     }
 
-    ; FIFO eviction at 200 entries to prevent unbounded memory growth
-    if (gGdip_IconCache.Count >= GDIP_ICON_CACHE_MAX) {
-        for oldHwnd, oldCached in gGdip_IconCache {
-            if (oldCached.pBmp)
-                try DllCall("gdiplus\GdipDisposeImage", "ptr", oldCached.pBmp)
-            gGdip_IconCache.Delete(oldHwnd)
-            break
-        }
-    }
-
-    ; Store in cache
+    ; No FIFO eviction — cache grows with live window count.
+    ; Gdip_PruneIconCache cleans up entries for closed windows after every snapshot.
     gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: pBmp}
 
     ; Draw
