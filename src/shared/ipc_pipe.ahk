@@ -172,8 +172,14 @@ IPC_PipeClient_Send(client, msgText) {
         return false
     if (!msgText || SubStr(msgText, -1) != "`n")
         msgText .= "`n"
+    ; RACE FIX: Protect global IPC_WRITE_BUF from concurrent access.
+    ; Not all callers hold Critical (e.g., GUI_OnClick releases Critical
+    ; before calling through to workspace toggle/blacklist reload).
+    Critical "On"
     bytes := _IPC_StrToUtf8(msgText)
-    return _IPC_WritePipe(client.hPipe, bytes.buf, bytes.len)
+    result := _IPC_WritePipe(client.hPipe, bytes.buf, bytes.len)
+    Critical "Off"
+    return result
 }
 
 IPC_PipeClient_Close(client) {
@@ -540,7 +546,7 @@ _IPC_StrToUtf8(str) {
     global IPC_WRITE_BUF, IPC_READ_CHUNK_SIZE
     ; Convert to UTF-8 buffer with exact length.
     ; Reuse pre-allocated write buffer when message fits (avoids heap alloc per send).
-    ; Safe: all callers consume the buffer synchronously within Critical "On".
+    ; Safe: IPC_PipeClient_Send wraps StrToUtf8+WritePipe in Critical "On".
     len := StrPut(str, "UTF-8") - 1
     if (len <= IPC_READ_CHUNK_SIZE) {
         StrPut(str, IPC_WRITE_BUF, "UTF-8")

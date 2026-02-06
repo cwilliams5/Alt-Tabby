@@ -233,13 +233,7 @@ WindowStore_UpsertWindow(records, source := "") {
     if (added || updated) {
         _WS_BumpRev("UpsertWindow:" . source)
     }
-    Critical "Off"
-
-    ; Enqueue for enrichment OUTSIDE Critical (queue operations have their own Critical)
-    for _, row in rowsToEnqueue
-        _WS_EnqueueIfNeeded(row)
-
-    ; Update peak windows high-water mark
+    ; RACE FIX: Update peak windows inside Critical - producers can interrupt after release
     if (added > 0) {
         global gStats_Session, gStats_Lifetime
         if (IsObject(gStats_Session) && gWS_Store.Count > gStats_Session.Get("peakWindows", 0)) {
@@ -248,6 +242,12 @@ WindowStore_UpsertWindow(records, source := "") {
                 gStats_Lifetime["PeakWindowsInSession"] := gWS_Store.Count
         }
     }
+    Critical "Off"
+
+    ; Enqueue for enrichment OUTSIDE Critical (queue operations have their own Critical)
+    for _, row in rowsToEnqueue
+        _WS_EnqueueIfNeeded(row)
+
     return { added: added, updated: updated, rev: gWS_Rev }
 }
 

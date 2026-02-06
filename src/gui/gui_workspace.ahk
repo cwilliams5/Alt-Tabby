@@ -75,13 +75,13 @@ GUI_ToggleWorkspaceMode() {
     global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase, gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop
     global cfg, gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT
 
-    ; RACE FIX: Protect counter increment - callers may not have Critical
+    ; RACE FIX: Protect counter increment and mode toggle atomically -
+    ; callers may not have Critical (GUI_OnClick releases it before calling us)
     Critical "On"
     gStats_WorkspaceToggles += 1
+    gGUI_WorkspaceMode := (gGUI_WorkspaceMode = WS_MODE_ALL) ? WS_MODE_CURRENT : WS_MODE_ALL
     Critical "Off"
 
-    ; Toggle mode
-    gGUI_WorkspaceMode := (gGUI_WorkspaceMode = WS_MODE_ALL) ? WS_MODE_CURRENT : WS_MODE_ALL
     GUI_UpdateFooterText()
 
     ; If GUI is visible and active, refresh the list
