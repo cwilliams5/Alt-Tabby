@@ -516,6 +516,43 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
     return pBmp
 }
 
+; Eagerly convert HICON to GDI+ bitmap and cache it, without drawing.
+; Called on IPC receive (snapshot/delta) so the bitmap is ready before paint.
+; This prevents grey circles from cross-process HICON destruction: the store may
+; DestroyIcon after sending a replacement via IPC, but the GUI's cached GDI+ bitmap
+; (created here while the HICON was still valid) survives independently.
+Gdip_PreCacheIcon(hwnd, hIcon) {
+    global gGdip_IconCache, GDIP_ICON_CACHE_MAX
+    if (!hIcon)
+        return
+
+    ; Already cached with same hIcon - nothing to do
+    if (gGdip_IconCache.Has(hwnd)) {
+        cached := gGdip_IconCache[hwnd]
+        if (cached.hicon = hIcon && cached.pBmp)
+            return
+        ; hIcon changed - dispose old bitmap
+        if (cached.pBmp)
+            try DllCall("gdiplus\GdipDisposeImage", "ptr", cached.pBmp)
+    }
+
+    ; Convert HICON to GDI+ bitmap while the handle is still valid
+    pBmp := _Gdip_CreateBitmapFromHICON_Alpha(hIcon)
+
+    ; FIFO eviction if at capacity (only for genuinely new entries)
+    if (!gGdip_IconCache.Has(hwnd) && gGdip_IconCache.Count >= GDIP_ICON_CACHE_MAX) {
+        for oldHwnd, oldCached in gGdip_IconCache {
+            if (oldCached.pBmp)
+                try DllCall("gdiplus\GdipDisposeImage", "ptr", oldCached.pBmp)
+            gGdip_IconCache.Delete(oldHwnd)
+            break
+        }
+    }
+
+    ; Cache result (even pBmp=0 to avoid repeated failed conversions)
+    gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: pBmp}
+}
+
 ; Draw icon with caching - avoids HICON->Bitmap conversion on every frame
 ; Cache key is hwnd; invalidates if hIcon value changes
 ; Note: hIcon from Store works cross-process (USER objects in win32k.sys shared memory)

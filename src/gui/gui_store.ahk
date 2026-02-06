@@ -284,6 +284,7 @@ GUI_ConvertStoreItems(items) {
 
 ; Single-pass conversion returning both items array and hwnd->item Map
 ; Eliminates redundant O(n) iteration vs calling ConvertStoreItems + RebuildItemsMap separately
+; Also eagerly pre-caches GDI+ bitmaps for all icons while HICONs are guaranteed valid.
 GUI_ConvertStoreItemsWithMap(items) {
     result := []
     resultMap := Map()
@@ -292,6 +293,9 @@ GUI_ConvertStoreItemsWithMap(items) {
         converted := _GUI_CreateItemFromRecord(hwnd, item)
         result.Push(converted)
         resultMap[hwnd] := converted
+        ; Pre-cache icon bitmap (skips if already cached with same hicon)
+        if (converted.iconHicon)
+            Gdip_PreCacheIcon(hwnd, converted.iconHicon)
     }
     return { items: result, map: resultMap }
 }
@@ -378,8 +382,12 @@ GUI_ApplyDelta(payload) {
                 }
                 if (rec.Has("processName"))
                     item.processName := rec["processName"]
-                if (rec.Has("iconHicon"))
+                if (rec.Has("iconHicon")) {
                     item.iconHicon := rec["iconHicon"]
+                    ; Pre-cache GDI+ bitmap while HICON is still valid (store may
+                    ; DestroyIcon after sending the replacement via next delta)
+                    Gdip_PreCacheIcon(hwnd, item.iconHicon)
+                }
                 if (rec.Has("lastActivatedTick")) {
                     newTick := rec["lastActivatedTick"]
                     if (item.lastActivatedTick != newTick) {
@@ -399,6 +407,9 @@ GUI_ApplyDelta(payload) {
                 newItem := _GUI_CreateItemFromRecord(hwnd, rec)
                 gGUI_LiveItems.Push(newItem)
                 gGUI_LiveItemsMap[hwnd] := newItem
+                ; Pre-cache icon bitmap for new item
+                if (newItem.iconHicon)
+                    Gdip_PreCacheIcon(hwnd, newItem.iconHicon)
                 ; Track focus change for new item too
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     if (cfg.DiagEventLog)

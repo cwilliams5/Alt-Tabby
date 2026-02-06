@@ -169,7 +169,8 @@ IconPump_CleanupWindow(hwnd) {
     Critical "On"
     global _IP_Attempts
 
-    ; Destroy the HICON first (before record is deleted from store)
+    ; Destroy the HICON (before record is deleted from store).
+    ; Safe: GUI eagerly pre-caches GDI+ bitmaps on IPC receive (see Gdip_PreCacheIcon).
     rec := WindowStore_GetByHwnd(hwnd)
     if (rec && rec.HasOwnProp("iconHicon") && rec.iconHicon) {
         try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
@@ -349,7 +350,9 @@ _IP_Tick() {
         if (h) {
             ; Success - got a new icon
             if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
-                ; Destroy old icon before replacing
+                ; Destroy old icon before replacing.
+                ; Safe: GUI eagerly pre-caches GDI+ bitmaps on IPC receive, so it never
+                ; needs to convert a stale HICON at paint time (see Gdip_PreCacheIcon).
                 if (rec.iconHicon)
                     try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
             }
