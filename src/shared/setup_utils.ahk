@@ -161,8 +161,10 @@ _Launcher_RunAsAdmin(args) {
 _AdminToggle_WriteResult(result) {
     global TEMP_ADMIN_TOGGLE_LOCK
     try {
-        try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
-        FileAppend(result, TEMP_ADMIN_TOGGLE_LOCK)
+        tempPath := TEMP_ADMIN_TOGGLE_LOCK ".tmp"
+        try FileDelete(tempPath)
+        FileAppend(result, tempPath)
+        FileMove(tempPath, TEMP_ADMIN_TOGGLE_LOCK, true)  ; Atomic overwrite
     }
 }
 
@@ -743,6 +745,9 @@ _Update_ApplyCore(opts) {
             }
         }
 
+        ; Sync runtime config for shortcut description (source config may differ from target)
+        cfg.SetupRunAsAdmin := targetRunAsAdmin
+
         ; Recreate shortcuts to point to updated exe (Bug 5 fix)
         ; This ensures shortcuts work after exe rename + auto-update
         RecreateShortcuts()
@@ -865,6 +870,13 @@ _Update_CleanupStaleTempFiles() {
 ; Merge stats from source into target, adding counters together (Bug 4 fix)
 ; This preserves both sets of stats when updating across installations
 _Update_MergeStats(srcPath, targetPath) {
+    ; Skip if already merged to this exact target (prevents double-counting)
+    try {
+        lastMerged := IniRead(srcPath, "Merged", "LastMergedTo", "")
+        if (StrLower(lastMerged) = StrLower(targetPath))
+            return
+    }
+
     ; List of all lifetime counter keys to merge
     lifetimeKeys := [
         "TotalSessions",
@@ -885,6 +897,9 @@ _Update_MergeStats(srcPath, targetPath) {
             IniWrite(mergedVal, targetPath, "Lifetime", key)
         }
     }
+
+    ; Mark source as merged to prevent double-counting on future updates
+    try IniWrite(targetPath, srcPath, "Merged", "LastMergedTo")
 }
 
 ; Validate that a file is a valid PE executable
