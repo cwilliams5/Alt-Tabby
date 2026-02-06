@@ -235,6 +235,10 @@ global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId"
 
 ; Helper to apply a patch (Map or plain Object) to a store row
 ; Sets row.%k% := v for each field in patch, tracks changed/projDirty flags
+; NOTE: Map and Object branches have identical inner logic but use different
+; AHK v2 iteration syntax. Both are needed because Map.OwnProps() iterates
+; property metadata (Count, CaseSense), not entries. Currently only Objects
+; are passed by callers, but Map support prevents silent failures if that changes.
 ; Parameters:
 ;   row - Store record to update
 ;   patch - Map or Object with field:value pairs

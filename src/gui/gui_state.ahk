@@ -785,9 +785,9 @@ _GUI_AsyncActivationTick() {
         ; Wait complete - do robust activation
         hwnd := gGUI_PendingHwnd
         _GUI_LogEvent("ASYNC COMPLETE: activating hwnd " hwnd " (buf=" gGUI_EventBuffer.Length ")")
-        _GUI_RobustActivate(hwnd)
+        try _GUI_RobustActivate(hwnd)
 
-        ; Stop the async timer
+        ; Stop the async timer (unconditional - must run even if activation threw)
         SetTimer(_GUI_AsyncActivationTick, 0)
 
         ; CRITICAL: Update current workspace name IMMEDIATELY

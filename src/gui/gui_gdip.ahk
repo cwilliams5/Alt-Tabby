@@ -22,6 +22,11 @@ global gGdip_IconCache := Map()
 global gGdip_BrushCache := Map()   ; argb -> pBrush
 global gGdip_PenCache := Map()     ; "argb_width" -> pPen
 
+; Cache eviction limits (FIFO) to prevent unbounded memory growth
+global GDIP_BRUSH_CACHE_MAX := 100
+global GDIP_PEN_CACHE_MAX := 100
+global GDIP_ICON_CACHE_MAX := 200
+
 ; Start GDI+
 Gdip_Startup() {
     global gGdip_Token
@@ -225,11 +230,11 @@ Gdip_DisposeResources() {
 ; Get or create a cached solid brush for the given ARGB color
 ; FIFO eviction at 100 entries to prevent unbounded memory growth
 Gdip_GetCachedBrush(argb) {
-    global gGdip_BrushCache
+    global gGdip_BrushCache, GDIP_BRUSH_CACHE_MAX
     if (gGdip_BrushCache.Has(argb))
         return gGdip_BrushCache[argb]
     ; Evict oldest entry if at limit (FIFO via Map iteration order)
-    if (gGdip_BrushCache.Count >= 100) {
+    if (gGdip_BrushCache.Count >= GDIP_BRUSH_CACHE_MAX) {
         for k, v in gGdip_BrushCache {
             if (v)
                 try DllCall("gdiplus\GdipDeleteBrush", "ptr", v)
@@ -246,12 +251,12 @@ Gdip_GetCachedBrush(argb) {
 ; Get or create a cached pen for the given ARGB color and width
 ; FIFO eviction at 100 entries to prevent unbounded memory growth
 Gdip_GetCachedPen(argb, width) {
-    global gGdip_PenCache
+    global gGdip_PenCache, GDIP_PEN_CACHE_MAX
     key := argb "_" width
     if (gGdip_PenCache.Has(key))
         return gGdip_PenCache[key]
     ; Evict oldest entry if at limit (FIFO via Map iteration order)
-    if (gGdip_PenCache.Count >= 100) {
+    if (gGdip_PenCache.Count >= GDIP_PEN_CACHE_MAX) {
         for k, v in gGdip_PenCache {
             if (v)
                 try DllCall("gdiplus\GdipDeletePen", "ptr", v)
@@ -517,7 +522,7 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
 ; Parameters:
 ;   &wasCacheHit - Optional ByRef: set to true if cache hit, false otherwise (for logging)
 Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
-    global gGdip_IconCache
+    global gGdip_IconCache, GDIP_ICON_CACHE_MAX
 
     if (!hIcon || !g) {
         if (IsSetRef(&wasCacheHit))
@@ -552,7 +557,7 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     }
 
     ; FIFO eviction at 200 entries to prevent unbounded memory growth
-    if (gGdip_IconCache.Count >= 200) {
+    if (gGdip_IconCache.Count >= GDIP_ICON_CACHE_MAX) {
         for oldHwnd, oldCached in gGdip_IconCache {
             if (oldCached.pBmp)
                 try DllCall("gdiplus\GdipDisposeImage", "ptr", oldCached.pBmp)
