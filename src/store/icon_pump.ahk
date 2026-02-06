@@ -137,7 +137,7 @@ IconPump_CleanupUwpCache() {
 ; Called periodically from _IP_Tick (every 100 ticks)
 ; Removes entries for windows that no longer exist
 _IP_PruneAttempts() {
-    global _IP_Attempts
+    global _IP_Attempts, _IP_DiagEnabled, _IP_LogPath
     if (_IP_Attempts.Count = 0)
         return
 
@@ -158,7 +158,7 @@ _IP_PruneAttempts() {
         _IP_Attempts.Delete(hwnd)
     }
 
-    if (toRemove.Length > 0)
+    if (toRemove.Length > 0 && _IP_DiagEnabled && _IP_LogPath != "")
         _IP_Log("PRUNE: removed " toRemove.Length " stale attempt entries")
 }
 
@@ -187,8 +187,10 @@ IconPump_CleanupWindow(hwnd) {
 _IP_Tick() {
     global IconBatchPerTick, _IP_Attempts, _IP_AttemptsMax, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
-    global IP_LOG_TITLE_MAX_LEN
+    global IP_LOG_TITLE_MAX_LEN, _IP_DiagEnabled, _IP_LogPath
     global IP_MODE_INITIAL, IP_MODE_VISIBLE_RETRY, IP_MODE_FOCUS_RECHECK
+
+    logEnabled := _IP_DiagEnabled && _IP_LogPath != ""
 
     ; PERF: Periodically prune _IP_Attempts to prevent unbounded growth
     ; Uses tick-based timing instead of static counter (per ahk-patterns.md)
@@ -213,7 +215,8 @@ _IP_Tick() {
         for _, hwnd in evictKeys
             _IP_Attempts.Delete(hwnd)
         Critical "Off"
-        _IP_Log("SIZE EVICT: removed " evictKeys.Length " entries (was " (_IP_Attempts.Count + evictKeys.Length) ", now " _IP_Attempts.Count ")")
+        if (logEnabled)
+            _IP_Log("SIZE EVICT: removed " evictKeys.Length " entries (was " (_IP_Attempts.Count + evictKeys.Length) ", now " _IP_Attempts.Count ")")
     }
 
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
@@ -234,18 +237,19 @@ _IP_Tick() {
         hwnd := hwnd + 0
         rec := WindowStore_GetByHwnd(hwnd)
         if (!rec) {
-            _IP_Log("SKIP hwnd=" hwnd " (not in store)")
+            if (logEnabled)
+                _IP_Log("SKIP hwnd=" hwnd " (not in store)")
             Critical "Off"
             continue
         }
 
-        title := rec.HasOwnProp("title") ? rec.title : ""
-        title := SubStr(title, 1, IP_LOG_TITLE_MAX_LEN)  ; Truncate for logging
-
         ; Window may have vanished - use IsWindow API, not WinExist
         ; WinExist doesn't see cloaked windows (other workspaces), but IsWindow does
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
-            _IP_Log("SKIP hwnd=" hwnd " '" title "' (window gone)")
+            if (logEnabled) {
+                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                _IP_Log("SKIP hwnd=" hwnd " '" title "' (window gone)")
+            }
             Critical "Off"
             continue
         }
@@ -267,22 +271,27 @@ _IP_Tick() {
             mode := IP_MODE_FOCUS_RECHECK
         } else {
             ; Has fallback icon but still hidden - nothing to do
-            _IP_Log("SKIP hwnd=" hwnd " '" title "' (has fallback, still hidden)")
+            if (logEnabled) {
+                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                _IP_Log("SKIP hwnd=" hwnd " '" title "' (has fallback, still hidden)")
+            }
             Critical "Off"
             continue
         }
 
         ; Log what we're doing
-        if (mode = IP_MODE_INITIAL) {
-            if (isHidden) {
-                _IP_Log("PROC hwnd=" hwnd " '" title "' mode=NO_ICON (hidden) - try UWP/EXE")
-            } else {
-                _IP_Log("PROC hwnd=" hwnd " '" title "' mode=NO_ICON - trying all methods")
+        if (logEnabled) {
+            title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+            if (mode = IP_MODE_INITIAL) {
+                if (isHidden)
+                    _IP_Log("PROC hwnd=" hwnd " '" title "' mode=NO_ICON (hidden) - try UWP/EXE")
+                else
+                    _IP_Log("PROC hwnd=" hwnd " '" title "' mode=NO_ICON - trying all methods")
+            } else if (mode = IP_MODE_VISIBLE_RETRY) {
+                _IP_Log("PROC hwnd=" hwnd " '" title "' mode=UPGRADE (had " currentMethod ") - try WM_GETICON")
+            } else if (mode = IP_MODE_FOCUS_RECHECK) {
+                _IP_Log("PROC hwnd=" hwnd " '" title "' mode=REFRESH - checking for icon change")
             }
-        } else if (mode = IP_MODE_VISIBLE_RETRY) {
-            _IP_Log("PROC hwnd=" hwnd " '" title "' mode=UPGRADE (had " currentMethod ") - try WM_GETICON")
-        } else if (mode = IP_MODE_FOCUS_RECHECK) {
-            _IP_Log("PROC hwnd=" hwnd " '" title "' mode=REFRESH - checking for icon change")
         }
 
         ; Try to get icon based on mode
@@ -352,7 +361,10 @@ _IP_Tick() {
                 iconGaveUp: false
             }, "icons")
             _IP_Attempts[hwnd] := 0
-            _IP_Log("SUCCESS hwnd=" hwnd " '" title "' mode=" mode " method=" method)
+            if (logEnabled) {
+                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                _IP_Log("SUCCESS hwnd=" hwnd " '" title "' mode=" mode " method=" method)
+            }
             Critical "Off"
             continue
         }
@@ -362,7 +374,10 @@ _IP_Tick() {
             ; For upgrade/refresh, failure is OK - we keep existing icon
             ; Just update the refresh timestamp so we don't spam retries
             WindowStore_UpdateFields(hwnd, { iconLastRefreshTick: now }, "icons")
-            _IP_Log("KEPT hwnd=" hwnd " '" title "' mode=" mode " (WM_GETICON failed, keeping existing)")
+            if (logEnabled) {
+                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                _IP_Log("KEPT hwnd=" hwnd " '" title "' mode=" mode " (WM_GETICON failed, keeping existing)")
+            }
             Critical "Off"
             continue
         }
@@ -370,7 +385,10 @@ _IP_Tick() {
         ; IP_MODE_INITIAL mode failure: bounded retries
         tries := _IP_Attempts.Has(hwnd) ? (_IP_Attempts[hwnd] + 1) : 1
         _IP_Attempts[hwnd] := tries
-        _IP_Log("FAIL hwnd=" hwnd " '" title "' attempt=" tries "/" IconMaxAttempts)
+        if (logEnabled) {
+            title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+            _IP_Log("FAIL hwnd=" hwnd " '" title "' attempt=" tries "/" IconMaxAttempts)
+        }
 
         if (tries < IconMaxAttempts) {
             step := IconAttemptBackoffMs
@@ -381,7 +399,8 @@ _IP_Tick() {
             ; Max attempts reached - mark as gave up so we don't retry forever
             WindowStore_UpdateFields(hwnd, { iconGaveUp: true }, "icons")
             _IP_Attempts.Delete(hwnd)  ; Clean up attempts tracking
-            _IP_Log("GAVE UP hwnd=" hwnd " '" title "' after " IconMaxAttempts " attempts")
+            if (logEnabled)
+                _IP_Log("GAVE UP hwnd=" hwnd " '" title "' after " IconMaxAttempts " attempts")
         }
 
         Critical "Off"
@@ -394,6 +413,7 @@ _IP_Tick() {
 _IP_TryResolveFromWindow(hWnd) {
     global IP_WM_GETICON, IP_ICON_BIG, IP_ICON_SMALL, IP_ICON_SMALL2
     global IP_GCLP_HICONSM, IP_GCLP_HICON, IP_SMTO_ABORTIFHUNG, IP_RESOLVE_TIMEOUT_MS
+    global _IP_DiagEnabled, _IP_LogPath
 
     try {
         ; Skip hung windows entirely - fast kernel check, no messages sent
@@ -420,7 +440,8 @@ _IP_TryResolveFromWindow(hWnd) {
         if (h)
             return DllCall("user32\CopyIcon", "ptr", h, "ptr")
     } catch as e {
-        _IP_Log("WARN: _IP_TryResolveFromWindow failed for hwnd=" hWnd " err=" e.Message)
+        if (_IP_DiagEnabled && _IP_LogPath != "")
+            _IP_Log("WARN: _IP_TryResolveFromWindow failed for hwnd=" hWnd " err=" e.Message)
     }
     return 0
 }
@@ -432,6 +453,7 @@ _IP_GetProcessPath(pid) {
 
 ; Try to extract an icon from a single exe path (prefer small, cleanup large if both)
 _IP_TryExtractIconFromPath(path) {
+    global _IP_DiagEnabled, _IP_LogPath
     hSmall := 0
     hLarge := 0
     try {
@@ -444,7 +466,8 @@ _IP_TryExtractIconFromPath(path) {
         if (hLarge)
             return hLarge
     } catch as e {
-        _IP_Log("WARN: ExtractIconExW failed for path=" path " err=" e.Message)
+        if (_IP_DiagEnabled && _IP_LogPath != "")
+            _IP_Log("WARN: ExtractIconExW failed for path=" path " err=" e.Message)
     }
     return 0
 }
@@ -648,6 +671,7 @@ _IP_GetPackagePath(pid) {
 ; Try to extract icon from UWP package
 ; Uses cached logo path lookup to avoid repeated manifest parsing for multiple windows from same app
 _IP_TryResolveFromUWP(hwnd, pid) {
+    global _IP_DiagEnabled, _IP_LogPath
     ; Get package path first (also confirms it's a UWP app)
     packagePath := _IP_GetPackagePath(pid)
     if (packagePath = "")
@@ -669,7 +693,8 @@ _IP_TryResolveFromUWP(hwnd, pid) {
         ; Convert HBITMAP to HICON
         hIcon := _IP_BitmapToIcon(hBitmap)
     } catch as e {
-        _IP_Log("UWP LoadPicture FAILED path=" logoPath " err=" e.Message)
+        if (_IP_DiagEnabled && _IP_LogPath != "")
+            _IP_Log("UWP LoadPicture FAILED path=" logoPath " err=" e.Message)
     }
 
     ; ALWAYS clean up hBitmap if allocated (whether success or failure)

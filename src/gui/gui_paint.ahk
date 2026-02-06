@@ -54,7 +54,7 @@ GUI_Repaint() {
     paintNum := gPaint_SessionPaintCount
 
     ; Log context for first paint or paint after long idle (>60s)
-    if (paintNum = 1 || idleDuration > 60000) {
+    if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000)) {
         iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
         resCount := gGdip_Res.Count
         _Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
@@ -149,7 +149,7 @@ GUI_Repaint() {
     gPaint_LastPaintTick := A_TickCount
 
     ; Log timing for first paint, paint after long idle, or slow paints (>100ms)
-    if (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100) {
+    if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)) {
         _Paint_Log("  Timing: total=" tTotalMs "ms | getRect=" tGetRect " getScale=" tGetScale " backbuf=" tBackbuf " paintOverlay=" tPaintOverlay " buffers=" tBuffers " updateLayer=" tUpdateLayer " reveal=" tReveal)
     }
 }
@@ -445,12 +445,14 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     tPO_Footer := A_TickCount - t1
 
     ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
-    tPO_Total := A_TickCount - tPO_Start
-    idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
-    if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
-        _Paint_Log("  PaintOverlay: total=" tPO_Total "ms | resources=" tPO_Resources " graphicsClear=" tPO_GraphicsClear " rows=" (IsSet(tPO_RowsTotal) ? tPO_RowsTotal : 0) " scrollbar=" tPO_Scrollbar " footer=" tPO_Footer)
-        if (IsSet(tPO_IconsTotal)) {
-            _Paint_Log("    Icons: totalTime=" tPO_IconsTotal "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
+    if (cfg.DiagPaintTimingLog) {
+        tPO_Total := A_TickCount - tPO_Start
+        idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+        if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
+            _Paint_Log("  PaintOverlay: total=" tPO_Total "ms | resources=" tPO_Resources " graphicsClear=" tPO_GraphicsClear " rows=" (IsSet(tPO_RowsTotal) ? tPO_RowsTotal : 0) " scrollbar=" tPO_Scrollbar " footer=" tPO_Footer)
+            if (IsSet(tPO_IconsTotal)) {
+                _Paint_Log("    Icons: totalTime=" tPO_IconsTotal "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
+            }
         }
     }
 }
@@ -469,8 +471,10 @@ GUI_EnsureResources(scale) {
     }
 
     ; Log resource recreation (this is potentially slow)
-    idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
-    _Paint_Log("  ** RECREATING RESOURCES (oldScale=" gGdip_ResScale " newScale=" scale " resCount=" gGdip_Res.Count " idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ")")
+    if (cfg.DiagPaintTimingLog) {
+        idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+        _Paint_Log("  ** RECREATING RESOURCES (oldScale=" gGdip_ResScale " newScale=" scale " resCount=" gGdip_Res.Count " idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ")")
+    }
 
     tRes_Start := A_TickCount
 
@@ -557,8 +561,10 @@ GUI_EnsureResources(scale) {
     gGdip_ResScale := scale
 
     ; Log resource recreation timing
-    tRes_Total := A_TickCount - tRes_Start
-    _Paint_Log("    Resources: total=" tRes_Total "ms | dispose=" tRes_Dispose " startup=" tRes_Startup " brushes=" tRes_Brushes " fonts=" tRes_Fonts " formats=" tRes_Formats)
+    if (cfg.DiagPaintTimingLog) {
+        tRes_Total := A_TickCount - tRes_Start
+        _Paint_Log("    Resources: total=" tRes_Total "ms | dispose=" tRes_Dispose " startup=" tRes_Startup " brushes=" tRes_Brushes " fonts=" tRes_Fonts " formats=" tRes_Formats)
+    }
 }
 
 ; ========================= ACTION BUTTONS =========================

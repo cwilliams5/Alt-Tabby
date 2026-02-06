@@ -10,7 +10,7 @@ global gGUI_LiveItemsMap := Map()
 
 GUI_OnStoreMessage(line, _hPipe := 0) {
     global gGUI_StoreConnected, gGUI_StoreRev, gGUI_LiveItems, gGUI_Sel, gGUI_LiveItemsMap
-    global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText
+    global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText, cfg
     global gGUI_State, gGUI_DisplayItems, gGUI_ToggleBase  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
     global gGUI_LastLocalMRUTick  ; For skipping stale in-flight snapshots
@@ -24,8 +24,10 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         obj := JSON.Load(line)
     } catch as err {
         ; Log malformed JSON when diagnostics enabled (helps debug IPC issues)
-        preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
-        _GUI_LogEvent("JSON parse error: " err.Message " | content: " preview)
+        if (cfg.DiagEventLog) {
+            preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
+            _GUI_LogEvent("JSON parse error: " err.Message " | content: " preview)
+        }
         return
     }
 
@@ -81,7 +83,8 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ; Toggle responses are exempt (user explicitly requested refresh).
         ; ============================================================
         if (gGUI_PendingPhase != "" && !isToggleResponse) {
-            _GUI_LogEvent("SNAPSHOT: skipped (async activation pending, phase=" gGUI_PendingPhase ")")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("SNAPSHOT: skipped (async activation pending, phase=" gGUI_PendingPhase ")")
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -101,7 +104,8 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         global gCached_MRUFreshnessMs
         if (mruAge < gCached_MRUFreshnessMs && !isToggleResponse) {
-            _GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -242,7 +246,8 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
     }
 
     ; Unknown message type - log for debugging (could mask IPC bugs)
-    _GUI_LogEvent("IPC: unknown message type: " type)
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("IPC: unknown message type: " type)
 }
 
 ; ========================= ITEM CONVERSION =========================
@@ -290,7 +295,7 @@ GUI_ConvertStoreItemsWithMap(items) {
 ; ========================= DELTA APPLICATION =========================
 
 GUI_ApplyDelta(payload) {
-    global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap
+    global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap, cfg
 
     mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
     membershipChanged := false  ; Track if workspace membership changed (isOnCurrentWorkspace flipped)
@@ -299,7 +304,7 @@ GUI_ApplyDelta(payload) {
     needsIconPrune := false  ; Track if icon cache should be pruned (after removes)
 
     ; Debug: log delta arrival when in bypass mode
-    if (gINT_BypassMode) {
+    if (gINT_BypassMode && cfg.DiagEventLog) {
         upsertCount := (payload.Has("upserts") && payload["upserts"].Length) ? payload["upserts"].Length : 0
         _GUI_LogEvent("DELTA IN BYPASS: " upsertCount " upserts")
     }
@@ -377,7 +382,8 @@ GUI_ApplyDelta(payload) {
                 }
                 ; Track focus change (don't process here, just record it)
                 if (rec.Has("isFocused") && rec["isFocused"]) {
-                    _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
+                    if (cfg.DiagEventLog)
+                        _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
                     focusChangedToHwnd := hwnd
                     mruChanged := true
                 }
@@ -388,7 +394,8 @@ GUI_ApplyDelta(payload) {
                 gGUI_LiveItemsMap[hwnd] := newItem
                 ; Track focus change for new item too
                 if (rec.Has("isFocused") && rec["isFocused"]) {
-                    _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
+                    if (cfg.DiagEventLog)
+                        _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
                     focusChangedToHwnd := hwnd
                 }
                 mruChanged := true  ; New item added, layout affected
@@ -422,7 +429,8 @@ GUI_ApplyDelta(payload) {
     ; This runs ONCE per delta, not per upsert - minimizes blocking time
     if (focusChangedToHwnd) {
         shouldBypass := INT_ShouldBypassWindow(focusChangedToHwnd)
-        _GUI_LogEvent("BYPASS CHECK: hwnd=" focusChangedToHwnd " shouldBypass=" shouldBypass)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("BYPASS CHECK: hwnd=" focusChangedToHwnd " shouldBypass=" shouldBypass)
         INT_SetBypassMode(shouldBypass)
     }
 

@@ -103,8 +103,9 @@ Store_Init() {
 
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
-        Store_LogInfo("blacklist.txt not found, using empty blacklist")
-    } else {
+        if (cfg.DiagStoreLog)
+            Store_LogInfo("blacklist.txt not found, using empty blacklist")
+    } else if (cfg.DiagStoreLog) {
         stats := Blacklist_GetStats()
         Store_LogInfo("blacklist loaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
     }
@@ -122,16 +123,18 @@ Store_Init() {
     if (cfg.UseKomorebiSub) {
         ksubOk := KomorebiSub_Init()
         gStore_ProducerState["komorebiSub"] := ksubOk ? "running" : "failed"
-        if (ksubOk)
-            Store_LogInfo("KomorebiSub active")
-        else
+        if (ksubOk) {
+            if (cfg.DiagStoreLog)
+                Store_LogInfo("KomorebiSub active")
+        } else
             Store_LogError("KomorebiSub failed to start")
     } else if (cfg.UseKomorebiLite) {
         kLiteOk := KomorebiLite_Init()
         gStore_ProducerState["komorebiLite"] := kLiteOk ? "running" : "failed"
-        if (kLiteOk)
-            Store_LogInfo("KomorebiLite active")
-        else
+        if (kLiteOk) {
+            if (cfg.DiagStoreLog)
+                Store_LogInfo("KomorebiLite active")
+        } else
             Store_LogError("KomorebiLite failed to start")
     }
 
@@ -160,7 +163,8 @@ Store_Init() {
         SetTimer(Store_FullScan, cfg.WinEnumFallbackScanIntervalMs)
     } else {
         ; Hook working - it handles MRU tracking internally
-        Store_LogInfo("WinEventHook active - MRU tracking via hook")
+        if (cfg.DiagStoreLog)
+            Store_LogInfo("WinEventHook active - MRU tracking via hook")
         gStore_ProducerState["wineventHook"] := "running"
         ; Start Z-pump for on-demand scans (staggered to avoid timer alignment)
         global STORE_STAGGER_ZPUMP_MS, STORE_STAGGER_VALIDATE_MS, STORE_STAGGER_HEARTBEAT_MS
@@ -623,12 +627,15 @@ Store_OnMessage(line, hPipe := 0) {
     global IPC_MSG_RELOAD_BLACKLIST, IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
     global IPC_MSG_STATS_UPDATE, IPC_MSG_STATS_REQUEST, IPC_MSG_STATS_RESPONSE
     global gStats_Lifetime, gStats_Session
+    global cfg
     obj := ""
     try obj := JSON.Load(line)
     catch as err {
         ; Log malformed JSON when diagnostics enabled (helps debug IPC issues)
-        preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
-        Store_LogInfo("JSON parse error: " err.Message " | content: " preview)
+        if (cfg.DiagStoreLog) {
+            preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
+            Store_LogInfo("JSON parse error: " err.Message " | content: " preview)
+        }
         return
     }
     if (!IsObject(obj) || !obj.Has("type"))
@@ -740,12 +747,15 @@ Store_OnMessage(line, hPipe := 0) {
     if (type = IPC_MSG_RELOAD_BLACKLIST) {
         ; Reload blacklist from file
         Blacklist_Reload()
-        stats := Blacklist_GetStats()
-        Store_LogInfo("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+        if (cfg.DiagStoreLog) {
+            stats := Blacklist_GetStats()
+            Store_LogInfo("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+        }
 
         ; Purge windows that now match the blacklist
         purgeResult := WindowStore_PurgeBlacklisted()
-        Store_LogInfo("blacklist purge removed " purgeResult.removed " windows")
+        if (cfg.DiagStoreLog)
+            Store_LogInfo("blacklist purge removed " purgeResult.removed " windows")
 
         ; Clear all client projections/meta to force fresh delta calculation
         Critical "On"

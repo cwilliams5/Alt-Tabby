@@ -120,7 +120,7 @@ GUI tests: `AutoHotkey64.exe //ErrorStdOut tests\gui_tests.ahk`
 
 ## Legacy Reference
 
-The `legacy/components_legacy/` folder contains original ChatGPT work. All ported to production - kept for reference only.
+The `legacy/` folder contains original POCs and Mocks. All ported to production - kept for reference only.
 
 ---
 

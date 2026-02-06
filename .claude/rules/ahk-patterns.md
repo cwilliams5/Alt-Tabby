@@ -69,6 +69,20 @@ In frequently-called functions (paint, input, per-window loops):
 - **Regex**: Pre-compile patterns at load time, not per-match (see `Blacklist_Reload`)
 - **Loop constants**: Hoist `Round(N * scale)` before loops, not per-iteration
 
+## Caller-Side Log Guards (CRITICAL)
+
+AHK v2 evaluates all function arguments **before** the call. A guard inside the log function is too late — the string is already built:
+```ahk
+; WRONG - string built unconditionally, discarded when logging disabled
+_GUI_LogEvent("SKIP hwnd=" hwnd " '" title "' mode=" mode)
+
+; CORRECT - string never built when logging disabled
+if (cfg.DiagEventLog)
+    _GUI_LogEvent("SKIP hwnd=" hwnd " '" title "' mode=" mode)
+```
+
+Move variables computed **only for logging** inside the guard too. Keep the guard inside the log function as a safety net.
+
 ## #SingleInstance in Multi-Process Architecture
 
 - Entry point (`alt_tabby.ahk`): `#SingleInstance Off`

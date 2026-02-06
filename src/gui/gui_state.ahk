@@ -85,18 +85,19 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
     global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick, TIMING_IPC_FIRE_WAIT
 
-    ; Get event name for logging
-    evName := _GUI_GetEventName(evCode)
-
     ; File-based debug logging (no performance impact from tooltips)
-    _GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
+    if (cfg.DiagEventLog) {
+        evName := _GUI_GetEventName(evCode)
+        _GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
+    }
 
     ; If async activation is in progress, BUFFER events instead of processing
     ; This matches Windows native behavior: let first switch complete, then process next
     ; Exception: ESC cancels immediately
     if (gGUI_PendingPhase != "") {
         if (evCode = TABBY_EV_ESCAPE) {
-            _GUI_LogEvent("ESC during async - canceling")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("ESC during async - canceling")
             _GUI_CancelPendingActivation()
             gGUI_State := "IDLE"
             return  ; lint-ignore: critical-section
@@ -107,14 +108,16 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; 50 events = ~12 complete Alt+Tab sequences queued = clearly pathological
         ; Drop event and cancel pending activation to recover gracefully
         if (gGUI_EventBuffer.Length >= GUI_EVENT_BUFFER_MAX) {
-            _GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, dropping event and clearing")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, dropping event and clearing")
             _GUI_CancelPendingActivation()
             gGUI_State := "IDLE"
             return  ; lint-ignore: critical-section
         }
 
         gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
-        _GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_PendingPhase ")")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_PendingPhase ")")
         return  ; lint-ignore: critical-section
     }
 
@@ -145,7 +148,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (mruAge > gCached_MRUFreshnessMs) {
                 GUI_RequestSnapshot()
             } else {
-                _GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
+                if (cfg.DiagEventLog)
+                    _GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
             }
         }
         return  ; lint-ignore: critical-section
@@ -178,16 +182,18 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
 
             ; DEBUG: Log workspace data of display items
-            _GUI_LogEvent("FREEZE: " gGUI_DisplayItems.Length " items frozen")
-            for i, item in gGUI_DisplayItems {
-                if (i > 5) {
-                    _GUI_LogEvent("  ... and " (gGUI_DisplayItems.Length - 5) " more")
-                    break
+            if (cfg.DiagEventLog) {
+                _GUI_LogEvent("FREEZE: " gGUI_DisplayItems.Length " items frozen")
+                for i, item in gGUI_DisplayItems {
+                    if (i > 5) {
+                        _GUI_LogEvent("  ... and " (gGUI_DisplayItems.Length - 5) " more")
+                        break
+                    }
+                    ws := item.HasOwnProp("WS") ? item.WS : "(none)"
+                    onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "(none)"
+                    title := item.HasOwnProp("Title") ? SubStr(item.Title, 1, 25) : "?"
+                    _GUI_LogEvent("  [" i "] '" title "' ws='" ws "' onCur=" onCur)
                 }
-                ws := item.HasOwnProp("WS") ? item.WS : "(none)"
-                onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "(none)"
-                title := item.HasOwnProp("Title") ? SubStr(item.Title, 1, 25) : "?"
-                _GUI_LogEvent("  [" i "] '" title "' ws='" ws "' onCur=" onCur)
             }
 
             ; Selection: First Alt+Tab selects the PREVIOUS window (position 2 in 1-based MRU list)
@@ -465,26 +471,31 @@ GUI_MoveSelectionFrozen(delta) {
 GUI_ActivateFromFrozen() {
     global gGUI_Sel, gGUI_DisplayItems, cfg
 
-    _GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_DisplayItems.Length)
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_DisplayItems.Length)
 
     if (gGUI_Sel < 1 || gGUI_Sel > gGUI_DisplayItems.Length) {
-        _GUI_LogEvent("ACTIVATE FAILED: sel out of range!")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("ACTIVATE FAILED: sel out of range!")
         return
     }
 
     item := gGUI_DisplayItems[gGUI_Sel]
     hwnd := item.hwnd
-    title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
 
     ; Validate window still exists before activation (may have closed during overlay display)
     if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
-        _GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" title)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
         return
     }
 
-    ws := item.HasOwnProp("WS") ? item.WS : "?"
-    onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "?"
-    _GUI_LogEvent("ACTIVATE: '" title "' ws=" ws " onCurrent=" onCur)
+    if (cfg.DiagEventLog) {
+        title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
+        ws := item.HasOwnProp("WS") ? item.WS : "?"
+        onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "?"
+        _GUI_LogEvent("ACTIVATE: '" title "' ws=" ws " onCurrent=" onCur)
+    }
 
     GUI_ActivateItem(item)
 }
@@ -512,10 +523,12 @@ GUI_ActivateItem(item) {
     wsName := item.HasOwnProp("WS") ? item.WS : ""
 
     ; DEBUG: Log all async activation conditions
-    komorebicPath := cfg.HasOwnProp("KomorebicExe") ? cfg.KomorebicExe : "(not set)"
-    komorebicExists := (komorebicPath != "(not set)" && FileExist(komorebicPath)) ? "yes" : "no"
-    curWS := IsSet(gGUI_CurrentWSName) ? gGUI_CurrentWSName : "(unknown)"  ; lint-ignore: isset-with-default
-    _GUI_LogEvent("ACTIVATE_COND: isOnCurrent=" isOnCurrent " wsName='" wsName "' curWS='" curWS "' komorebic='" komorebicPath "' exists=" komorebicExists)
+    if (cfg.DiagEventLog) {
+        komorebicPath := cfg.HasOwnProp("KomorebicExe") ? cfg.KomorebicExe : "(not set)"
+        komorebicExists := (komorebicPath != "(not set)" && FileExist(komorebicPath)) ? "yes" : "no"
+        curWS := IsSet(gGUI_CurrentWSName) ? gGUI_CurrentWSName : "(unknown)"  ; lint-ignore: isset-with-default
+        _GUI_LogEvent("ACTIVATE_COND: isOnCurrent=" isOnCurrent " wsName='" wsName "' curWS='" curWS "' komorebic='" komorebicPath "' exists=" komorebicExists)
+    }
 
     ; === Cross-workspace activation ===
     if (!isOnCurrent && wsName != "") {
@@ -523,18 +536,21 @@ GUI_ActivateItem(item) {
         gStats_CrossWorkspace += 1
 
         crossMethod := cfg.KomorebiCrossWorkspaceMethod
-        _GUI_LogEvent("CROSS-WS: method=" crossMethod " hwnd=" hwnd " ws='" wsName "'")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("CROSS-WS: method=" crossMethod " hwnd=" hwnd " ws='" wsName "'")
 
         ; MimicNative: Direct uncloak + activate via COM (like native Alt+Tab)
         ; Komorebi's reconciliation detects focus change and switches workspaces
         if (crossMethod = "MimicNative") {
             ; Returns: 0=failed, 1=uncloaked (need activate), 2=uncloaked+activated via SwitchTo
             uncloakResult := _GUI_UncloakWindow(hwnd)
-            _GUI_LogEvent("CROSS-WS: MimicNative uncloakResult=" uncloakResult)
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("CROSS-WS: MimicNative uncloakResult=" uncloakResult)
 
             if (uncloakResult = 2) {
                 ; Full success - SwitchTo handled activation
-                _GUI_LogEvent("CROSS-WS: MimicNative success (SwitchTo)")
+                if (cfg.DiagEventLog)
+                    _GUI_LogEvent("CROSS-WS: MimicNative success (SwitchTo)")
                 ; Optional settle delay for slower systems
                 if (cfg.KomorebiMimicNativeSettleMs > 0)
                     Sleep(cfg.KomorebiMimicNativeSettleMs)
@@ -542,13 +558,15 @@ GUI_ActivateItem(item) {
                 return
             } else if (uncloakResult = 1) {
                 ; Uncloaked but SwitchTo failed - use manual activation
-                _GUI_LogEvent("CROSS-WS: MimicNative partial (manual activate)")
+                if (cfg.DiagEventLog)
+                    _GUI_LogEvent("CROSS-WS: MimicNative partial (manual activate)")
                 _GUI_RobustActivate(hwnd)
                 _GUI_UpdateLocalMRU(hwnd)
                 return
             }
             ; uncloakResult = 0: COM failed entirely, fall through to SwitchActivate
-            _GUI_LogEvent("CROSS-WS: MimicNative failed, falling back to SwitchActivate")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("CROSS-WS: MimicNative failed, falling back to SwitchActivate")
         }
 
         ; RevealMove: Uncloak window, focus it, then command komorebi to move it back
@@ -556,26 +574,30 @@ GUI_ActivateItem(item) {
         if (crossMethod = "RevealMove") {
             ; Step 1: Uncloak (we only need uncloaking, not SwitchTo)
             uncloakResult := _GUI_UncloakWindow(hwnd)
-            _GUI_LogEvent("CROSS-WS: RevealMove uncloakResult=" uncloakResult)
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("CROSS-WS: RevealMove uncloakResult=" uncloakResult)
 
             if (uncloakResult > 0) {
                 ; Step 2: Focus the window (makes it the "focused window" for komorebic)
                 _GUI_RobustActivate(hwnd)
-                _GUI_LogEvent("CROSS-WS: RevealMove focused window")
+                if (cfg.DiagEventLog)
+                    _GUI_LogEvent("CROSS-WS: RevealMove focused window")
 
                 ; Step 3: Command komorebi to move the focused window to its workspace
                 ; This switches to that workspace WITH our window already focused
                 try {
                     _GUI_KomorebiWorkspaceCmd("MoveToNamedWorkspace", "move-to-named-workspace", wsName)
                 } catch as e {
-                    _GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
+                    if (cfg.DiagEventLog)
+                        _GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
                 }
 
                 _GUI_UpdateLocalMRU(hwnd)
                 return
             }
             ; uncloakResult = 0: COM failed, fall through to SwitchActivate
-            _GUI_LogEvent("CROSS-WS: RevealMove failed (COM), falling back to SwitchActivate")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("CROSS-WS: RevealMove failed (COM), falling back to SwitchActivate")
         }
 
         ; SwitchActivate: Command komorebi to switch, poll for completion, then activate
@@ -612,7 +634,8 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
     global gGUI_PendingShell, gGUI_PendingTempFile
     global gGUI_EventBuffer
 
-    _GUI_LogEvent("SWITCH-ACTIVATE: Starting for hwnd=" hwnd " ws='" wsName "'")
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("SWITCH-ACTIVATE: Starting for hwnd=" hwnd " ws='" wsName "'")
 
     ; Initialize pending state
     gGUI_PendingHwnd := hwnd
@@ -633,7 +656,8 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
     try {
         _GUI_KomorebiWorkspaceCmd("FocusNamedWorkspace", "focus-named-workspace", wsName)
     } catch as e {
-        _GUI_LogEvent("SWITCH-ACTIVATE ERROR: " e.Message)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("SWITCH-ACTIVATE ERROR: " e.Message)
         ; Fall back to direct activation attempt
         _GUI_RobustActivate(hwnd)
         _GUI_UpdateLocalMRU(hwnd)
@@ -647,7 +671,8 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
 
     ; Start async timer
     SetTimer(_GUI_AsyncActivationTick, cfg.AltTabAsyncActivationPollMs)
-    _GUI_LogEvent("SWITCH-ACTIVATE: Polling started")
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("SWITCH-ACTIVATE: Polling started")
 }
 
 ; ========================= ASYNC ACTIVATION TIMER =========================
@@ -696,7 +721,8 @@ _GUI_AsyncActivationTick() {
         }
         if (hasAltDn && !hasTab) {
             shiftFlag := GetKeyState("Shift", "P") ? TABBY_FLAG_SHIFT : 0
-            _GUI_LogEvent("ASYNC: detected missed Tab press, synthesizing TAB_STEP")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("ASYNC: detected missed Tab press, synthesizing TAB_STEP")
             gGUI_EventBuffer.Push({ev: TABBY_EV_TAB_STEP, flags: shiftFlag, lParam: 0})
         }
         Critical "Off"
@@ -709,7 +735,8 @@ _GUI_AsyncActivationTick() {
         ; Check if deadline exceeded
         if (now > gGUI_PendingDeadline) {
             ; Timeout - do activation anyway
-            _GUI_LogEvent("ASYNC TIMEOUT: workspace poll deadline exceeded for '" gGUI_PendingWSName "'")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("ASYNC TIMEOUT: workspace poll deadline exceeded for '" gGUI_PendingWSName "'")
             ; RACE FIX: Phase transition must be atomic
             Critical "On"
             gGUI_PendingPhase := "waiting"
@@ -732,14 +759,16 @@ _GUI_AsyncActivationTick() {
             isCloaked := (hr = 0) && (NumGet(cloakBuf, 0, "UInt") != 0)
             if (!isCloaked) {
                 switchComplete := true
-                _GUI_LogEvent("ASYNC POLLCLOAK: window uncloaked, switch complete")
+                if (cfg.DiagEventLog)
+                    _GUI_LogEvent("ASYNC POLLCLOAK: window uncloaked, switch complete")
             }
         } else if (confirmMethod = "AwaitDelta") {
             ; AwaitDelta: Watch gGUI_CurrentWSName (updated by deltas via GUI_UpdateCurrentWSFromPayload)
             ; Zero spawning, zero DllCalls - but depends on IPC latency
             if (gGUI_CurrentWSName = gGUI_PendingWSName) {
                 switchComplete := true
-                _GUI_LogEvent("ASYNC AWAITDELTA: workspace name matches, switch complete")
+                if (cfg.DiagEventLog)
+                    _GUI_LogEvent("ASYNC AWAITDELTA: workspace name matches, switch complete")
             }
         } else {
             ; PollKomorebic (fallback): Poll via cmd.exe spawning
@@ -758,7 +787,8 @@ _GUI_AsyncActivationTick() {
                     result := Trim(FileRead(gGUI_PendingTempFile))
                     if (result = gGUI_PendingWSName) {
                         switchComplete := true
-                        _GUI_LogEvent("ASYNC POLLKOMOREBIC: workspace name matches, switch complete")
+                        if (cfg.DiagEventLog)
+                            _GUI_LogEvent("ASYNC POLLKOMOREBIC: workspace name matches, switch complete")
                     }
                 }
             }
@@ -784,7 +814,8 @@ _GUI_AsyncActivationTick() {
 
         ; Wait complete - do robust activation
         hwnd := gGUI_PendingHwnd
-        _GUI_LogEvent("ASYNC COMPLETE: activating hwnd " hwnd " (buf=" gGUI_EventBuffer.Length ")")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("ASYNC COMPLETE: activating hwnd " hwnd " (buf=" gGUI_EventBuffer.Length ")")
         try _GUI_RobustActivate(hwnd)
 
         ; Stop the async timer (unconditional - must run even if activation threw)
@@ -795,7 +826,8 @@ _GUI_AsyncActivationTick() {
         ; This ensures buffered Alt+Tab events use correct workspace data
         ; Also fixes stale freeze issue when FreezeWindowList=true
         if (gGUI_PendingWSName != "") {
-            _GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_PendingWSName "'")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_PendingWSName "'")
             ; RACE FIX: Protect workspace name and items iteration from GUI_ApplyDelta (IPC timer)
             Critical "On"
             gGUI_CurrentWSName := gGUI_PendingWSName
@@ -830,7 +862,8 @@ _GUI_AsyncActivationTick() {
 
         ; Process any buffered events (user did Alt+Tab during our async activation)
         ; This will clear gGUI_PendingPhase when done
-        _GUI_LogEvent("ASYNC: scheduling buffer processing")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("ASYNC: scheduling buffer processing")
         SetTimer(_GUI_ProcessEventBuffer, -1)
         return
     }
@@ -839,15 +872,17 @@ _GUI_AsyncActivationTick() {
 ; Process buffered events after async activation completes
 ; Called via SetTimer -1 after async complete, with gGUI_PendingPhase="flushing"
 _GUI_ProcessEventBuffer() {
-    global gGUI_EventBuffer, gGUI_LiveItems, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP
+    global gGUI_EventBuffer, gGUI_LiveItems, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, cfg
 
     ; Validate we're in flushing phase - prevents stale timers from processing
     if (gGUI_PendingPhase != "flushing") {
-        _GUI_LogEvent("BUFFER SKIP: not in flushing phase (phase=" gGUI_PendingPhase ")")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("BUFFER SKIP: not in flushing phase (phase=" gGUI_PendingPhase ")")
         return
     }
 
-    _GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_LiveItems.Length)
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_LiveItems.Length)
 
     ; Process all buffered events in order
     ; CRITICAL: Swap+phase-clear must be atomic to prevent race condition
@@ -861,7 +896,8 @@ _GUI_ProcessEventBuffer() {
 
     if (events.Length = 0) {
         ; No buffered events - just resync keyboard state
-        _GUI_LogEvent("BUFFER: empty, resyncing keyboard state")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("BUFFER: empty, resyncing keyboard state")
         _GUI_ResyncKeyboardState()
         return
     }
@@ -886,15 +922,18 @@ _GUI_ProcessEventBuffer() {
     }
     if (hasAltDn && hasAltUp && !hasTab) {
         ; Lost Tab detected! Insert synthetic TAB after ALT_DN
-        _GUI_LogEvent("BUFFER: detected lost Tab (ALT_DN+ALT_UP without TAB), synthesizing TAB_STEP")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("BUFFER: detected lost Tab (ALT_DN+ALT_UP without TAB), synthesizing TAB_STEP")
         events.InsertAt(altDnIdx + 1, {ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0})
     }
 
-    _GUI_LogEvent("BUFFER: processing " events.Length " events now")
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("BUFFER: processing " events.Length " events now")
     for ev in events {
         GUI_OnInterceptorEvent(ev.ev, ev.flags, ev.lParam)
     }
-    _GUI_LogEvent("BUFFER: done processing")
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("BUFFER: done processing")
 }
 
 ; Cancel pending async activation (e.g., on ESC)
@@ -960,13 +999,15 @@ _GUI_ResyncKeyboardState() {
 ; RACE FIX: Wrap in Critical - modifies gGUI_LiveItems array which IPC deltas also modify
 _GUI_UpdateLocalMRU(hwnd) {
     Critical "On"
-    global gGUI_LiveItems, gGUI_LastLocalMRUTick
+    global gGUI_LiveItems, gGUI_LastLocalMRUTick, cfg
 
-    _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_LiveItems.Length " items")
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_LiveItems.Length " items")
     for i, item in gGUI_LiveItems {
         if (item.hwnd = hwnd) {
             item.lastActivatedTick := A_TickCount
-            _GUI_LogEvent("MRU UPDATE: found at position " i ", moving to position 1")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("MRU UPDATE: found at position " i ", moving to position 1")
             if (i > 1) {
                 gGUI_LiveItems.RemoveAt(i)
                 gGUI_LiveItems.InsertAt(1, item)
@@ -976,7 +1017,8 @@ _GUI_UpdateLocalMRU(hwnd) {
             return true
         }
     }
-    _GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
     Critical "Off"
     return false
 }
@@ -1016,7 +1058,7 @@ _GUI_StringToGUID(guidStr, buf) {
 ; RACE FIX: Wrapped in Critical to prevent multiple hotkey callbacks from racing
 _GUI_InitAppViewCollection() {
     Critical "On"  ; Prevent race between multiple hotkey callbacks
-    global gGUI_ImmersiveShell, gGUI_AppViewCollection
+    global gGUI_ImmersiveShell, gGUI_AppViewCollection, cfg
 
     if (gGUI_AppViewCollection) {
         Critical "Off"
@@ -1031,14 +1073,17 @@ _GUI_InitAppViewCollection() {
 
     try {
         ; Create ImmersiveShell
-        _GUI_LogEvent("COM: Creating ImmersiveShell...")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: Creating ImmersiveShell...")
         gGUI_ImmersiveShell := ComObject("{C2F03A33-21F5-47FA-B4BB-156362A2F239}", "{00000000-0000-0000-C000-000000000046}")
         shellPtr := gGUI_ImmersiveShell.Ptr
-        _GUI_LogEvent("COM: ImmersiveShell ptr=" shellPtr)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: ImmersiveShell ptr=" shellPtr)
 
         ; Get IServiceProvider via QueryInterface
         ; IServiceProvider IID: {6D5140C1-7436-11CE-8034-00AA006009FA}
-        _GUI_LogEvent("COM: Getting IServiceProvider...")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: Getting IServiceProvider...")
         static iidServiceProvider := Buffer(16)
         _GUI_StringToGUID("{6D5140C1-7436-11CE-8034-00AA006009FA}", iidServiceProvider)
 
@@ -1046,10 +1091,12 @@ _GUI_InitAppViewCollection() {
         vtable := NumGet(shellPtr, "UPtr")
         queryInterface := NumGet(vtable, 0, "UPtr")  ; vtable[0] = QueryInterface
         hr := DllCall(queryInterface, "Ptr", shellPtr, "Ptr", iidServiceProvider.Ptr, "Ptr*", &pServiceProvider, "UInt")
-        _GUI_LogEvent("COM: QueryInterface(IServiceProvider) hr=" Format("0x{:08X}", hr) " ptr=" pServiceProvider)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: QueryInterface(IServiceProvider) hr=" Format("0x{:08X}", hr) " ptr=" pServiceProvider)
 
         if (hr != 0 || !pServiceProvider) {
-            _GUI_LogEvent("COM: Failed to get IServiceProvider")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("COM: Failed to get IServiceProvider")
             Critical "Off"
             return false
         }
@@ -1063,16 +1110,19 @@ _GUI_InitAppViewCollection() {
         static guidBuf := Buffer(16)
 
         for guidStr in appViewCollectionGuids {
-            _GUI_LogEvent("COM: Trying QueryService with " guidStr)
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("COM: Trying QueryService with " guidStr)
             _GUI_StringToGUID(guidStr, guidBuf)
 
             pCollection := 0
             hr := DllCall(queryService, "Ptr", pServiceProvider, "Ptr", guidBuf.Ptr, "Ptr", guidBuf.Ptr, "Ptr*", &pCollection, "UInt")
-            _GUI_LogEvent("COM: QueryService hr=" Format("0x{:08X}", hr) " ptr=" pCollection)
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("COM: QueryService hr=" Format("0x{:08X}", hr) " ptr=" pCollection)
 
             if (hr = 0 && pCollection) {
                 gGUI_AppViewCollection := pCollection
-                _GUI_LogEvent("COM: Success! IApplicationViewCollection=" pCollection)
+                if (cfg.DiagEventLog)
+                    _GUI_LogEvent("COM: Success! IApplicationViewCollection=" pCollection)
                 ; Release IServiceProvider (we're done with it)
                 release := NumGet(spVtable, 2 * A_PtrSize, "UPtr")
                 DllCall(release, "Ptr", pServiceProvider)
@@ -1085,11 +1135,13 @@ _GUI_InitAppViewCollection() {
         release := NumGet(spVtable, 2 * A_PtrSize, "UPtr")
         DllCall(release, "Ptr", pServiceProvider)
 
-        _GUI_LogEvent("COM: All GUIDs failed")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: All GUIDs failed")
         Critical "Off"
         return false
     } catch as e {
-        _GUI_LogEvent("COM INIT ERROR: " e.Message " | Extra: " (e.HasOwnProp("Extra") ? e.Extra : "none"))
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM INIT ERROR: " e.Message " | Extra: " (e.HasOwnProp("Extra") ? e.Extra : "none"))
         gGUI_ImmersiveShell := 0
         gGUI_AppViewCollection := 0
         Critical "Off"
@@ -1110,19 +1162,24 @@ _GUI_IsCloaked(hwnd) {
 ; Uses IApplicationView::SetCloak to uncloak, then IApplicationView::SwitchTo to activate
 ; Returns: 0 = failed, 1 = uncloaked (need manual activate), 2 = uncloaked + activated via SwitchTo
 _GUI_UncloakWindow(hwnd) {
+    global cfg
+
     ; Check initial cloak state
     cloakBefore := _GUI_IsCloaked(hwnd)
-    _GUI_LogEvent("UNCLOAK: hwnd=" hwnd " cloakBefore=" cloakBefore)
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("UNCLOAK: hwnd=" hwnd " cloakBefore=" cloakBefore)
 
     if (cloakBefore = 0) {
-        _GUI_LogEvent("UNCLOAK: Already uncloaked")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("UNCLOAK: Already uncloaked")
         return 1  ; Already visible, but need manual activate
     }
 
     ; Use COM interface: SetCloak to uncloak, SwitchTo to activate
     comResult := _GUI_TryComUncloak(hwnd)
     cloakAfter := _GUI_IsCloaked(hwnd)
-    _GUI_LogEvent("UNCLOAK: comResult=" comResult " cloakAfter=" cloakAfter)
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("UNCLOAK: comResult=" comResult " cloakAfter=" cloakAfter)
 
     if (comResult = 2) {
         return 2  ; Full success - uncloaked + activated
@@ -1130,14 +1187,15 @@ _GUI_UncloakWindow(hwnd) {
         return 1  ; Uncloaked but SwitchTo failed - need manual activate
     }
 
-    _GUI_LogEvent("UNCLOAK: COM failed")
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("UNCLOAK: COM failed")
     return 0
 }
 
 ; Try COM-based uncloaking and activation
 ; Returns: 0 = failed, 1 = uncloak only, 2 = uncloak + SwitchTo succeeded
 _GUI_TryComUncloak(hwnd) {
-    global gGUI_AppViewCollection
+    global gGUI_AppViewCollection, cfg
 
     ; Try to initialize if not already done
     if (!gGUI_AppViewCollection && !_GUI_InitAppViewCollection())
@@ -1152,10 +1210,12 @@ _GUI_TryComUncloak(hwnd) {
 
         pView := 0
         hr := DllCall(getViewForHwnd, "Ptr", gGUI_AppViewCollection, "Ptr", hwnd, "Ptr*", &pView, "UInt")
-        _GUI_LogEvent("COM: GetViewForHwnd hr=" Format("0x{:08X}", hr) " pView=" pView)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: GetViewForHwnd hr=" Format("0x{:08X}", hr) " pView=" pView)
 
         if (hr != 0 || !pView) {
-            _GUI_LogEvent("COM: GetViewForHwnd failed")
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("COM: GetViewForHwnd failed")
             return 0
         }
 
@@ -1168,7 +1228,8 @@ _GUI_TryComUncloak(hwnd) {
         ; Step 1: SetCloak(1, 0) = uncloak
         setCloak := NumGet(viewVtable, 12 * A_PtrSize, "UPtr")
         hr := DllCall(setCloak, "Ptr", pView, "UInt", 1, "Int", 0, "UInt")
-        _GUI_LogEvent("COM: SetCloak(1,0) hr=" Format("0x{:08X}", hr))
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: SetCloak(1,0) hr=" Format("0x{:08X}", hr))
 
         uncloakOk := (hr = 0)
 
@@ -1176,7 +1237,8 @@ _GUI_TryComUncloak(hwnd) {
         ; SwitchTo activates the window through the shell's view system
         switchTo := NumGet(viewVtable, 7 * A_PtrSize, "UPtr")
         hr := DllCall(switchTo, "Ptr", pView, "UInt")
-        _GUI_LogEvent("COM: SwitchTo hr=" Format("0x{:08X}", hr))
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: SwitchTo hr=" Format("0x{:08X}", hr))
 
         switchOk := (hr = 0)
 
@@ -1196,7 +1258,8 @@ _GUI_TryComUncloak(hwnd) {
             releaseView := NumGet(viewVtable, 2 * A_PtrSize, "UPtr")
             DllCall(releaseView, "Ptr", pView)
         }
-        _GUI_LogEvent("COM: Exception - " e.Message)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("COM: Exception - " e.Message)
         return 0
     }
 }
@@ -1210,6 +1273,7 @@ _GUI_TryComUncloak(hwnd) {
 ; content: Command argument (e.g., workspace name)
 ; Returns: true on success, false on failure
 _GUI_SendKomorebiSocketCmd(cmdType, content) {
+    global cfg
     static GENERIC_WRITE := 0x40000000
     static OPEN_EXISTING := 3
     static INVALID_HANDLE := -1
@@ -1228,7 +1292,8 @@ _GUI_SendKomorebiSocketCmd(cmdType, content) {
         , "ptr")
 
     if (!hPipe || hPipe = INVALID_HANDLE) {
-        _GUI_LogEvent("SOCKET: Failed to connect to " pipePath " GLE=" DllCall("GetLastError", "uint"))
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("SOCKET: Failed to connect to " pipePath " GLE=" DllCall("GetLastError", "uint"))
         return false
     }
 
@@ -1251,11 +1316,13 @@ _GUI_SendKomorebiSocketCmd(cmdType, content) {
     DllCall("CloseHandle", "ptr", hPipe)
 
     if (!ok || wrote != len) {
-        _GUI_LogEvent("SOCKET: Write failed for " cmdType " GLE=" DllCall("GetLastError", "uint"))
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("SOCKET: Write failed for " cmdType " GLE=" DllCall("GetLastError", "uint"))
         return false
     }
 
-    _GUI_LogEvent("SOCKET: Sent " cmdType '("' content '") via pipe')
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("SOCKET: Sent " cmdType '("' content '") via pipe')
     return true
 }
 
@@ -1270,12 +1337,14 @@ _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
     if (cfg.KomorebiUseSocket) {
         if (_GUI_SendKomorebiSocketCmd(socketCmd, wsName))
             return true
-        _GUI_LogEvent("SOCKET: " socketCmd " failed, falling back to komorebic.exe")
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("SOCKET: " socketCmd " failed, falling back to komorebic.exe")
     }
 
     ; Fallback: spawn komorebic.exe
     cmd := '"' cfg.KomorebicExe '" ' cliCmd ' "' wsName '"'
-    _GUI_LogEvent("KOMOREBIC: Running " cmd)
+    if (cfg.DiagEventLog)
+        _GUI_LogEvent("KOMOREBIC: Running " cmd)
     ProcessUtils_RunHidden(cmd)
     return true
 }
@@ -1285,7 +1354,7 @@ _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
 ; Robust window activation using komorebi's pattern from windows_api.rs
 ; SendInput trick → SetWindowPos → SetForegroundWindow
 _GUI_RobustActivate(hwnd) {
-    global SW_RESTORE, HWND_TOPMOST, HWND_NOTOPMOST
+    global SW_RESTORE, HWND_TOPMOST, HWND_NOTOPMOST, cfg
     global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW, SWP_ASYNCWINDOWPOS
 
     ; NOTE: Do NOT manually uncloak windows - this interferes with komorebi's
@@ -1319,13 +1388,15 @@ _GUI_RobustActivate(hwnd) {
 
             ; Now SetForegroundWindow should work
             fgResult := DllCall("user32\SetForegroundWindow", "ptr", hwnd)
-            if (!fgResult)
+            if (!fgResult && cfg.DiagEventLog)
                 _GUI_LogEvent("ACTIVATE WARN: SetForegroundWindow returned 0 for hwnd=" hwnd)
         } else {
-            _GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
+            if (cfg.DiagEventLog)
+                _GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
         }
     } catch as e {
-        _GUI_LogEvent("ACTIVATE ERROR: " e.Message " for hwnd=" hwnd)
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("ACTIVATE ERROR: " e.Message " for hwnd=" hwnd)
     }
 }
 

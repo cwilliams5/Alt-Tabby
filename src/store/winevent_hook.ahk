@@ -156,6 +156,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     global WEH_EVENT_OBJECT_HIDE, WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
     global WEH_EVENT_SYSTEM_MINIMIZESTART, WEH_EVENT_SYSTEM_MINIMIZEEND, WEH_EVENT_OBJECT_FOCUS
     global WEH_EVENT_OBJECT_LOCATIONCHANGE
+    global cfg
 
     ; Only care about window-level events (idObject = OBJID_WINDOW = 0)
     if (idObject != 0)
@@ -201,14 +202,16 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         ; eligibility when first added. Apps like Outlook may have empty title momentarily.
         ;
         ; The O(1) Map lookup is fast vs 10-50ms for WinGetTitle.
-        inStore := false
-        try inStore := WindowStore_GetByHwnd(hwnd) != 0
-        if (!inStore) {
-            ; Not in store yet - batch processor will check eligibility via WinUtils_ProbeWindow
-            ; which filters system UI (empty title, not visible, etc.)
-            _WEH_DiagLog("FOCUS EVENT (not in store): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
-        } else {
-            _WEH_DiagLog("FOCUS EVENT (in store): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
+        if (cfg.DiagWinEventLog) {
+            inStore := false
+            try inStore := WindowStore_GetByHwnd(hwnd) != 0
+            if (!inStore) {
+                ; Not in store yet - batch processor will check eligibility via WinUtils_ProbeWindow
+                ; which filters system UI (empty title, not visible, etc.)
+                _WEH_DiagLog("FOCUS EVENT (not in store): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
+            } else {
+                _WEH_DiagLog("FOCUS EVENT (in store): hwnd=" hwnd " (was " _WEH_PendingFocusHwnd ")")
+            }
         }
 
         _WEH_PendingFocusHwnd := hwnd
@@ -276,7 +279,8 @@ _WEH_ProcessBatch() {
     ; 1) gives the wrong window a newer MRU tick, causing visible item "jiggle"
     ; 2) triggers WS MISMATCH correction (line ~307) that flips workspace back and forth
     if (_WEH_PendingFocusHwnd && gKSub_MruSuppressUntilTick > 0 && A_TickCount < gKSub_MruSuppressUntilTick) {
-        _WEH_DiagLog("FOCUS SUPPRESSED (ws switch): hwnd=" _WEH_PendingFocusHwnd)
+        if (cfg.DiagWinEventLog)
+            _WEH_DiagLog("FOCUS SUPPRESSED (ws switch): hwnd=" _WEH_PendingFocusHwnd)
         _WEH_PendingFocusHwnd := 0
     }
     if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != _WEH_LastFocusHwnd) {
@@ -292,7 +296,8 @@ _WEH_ProcessBatch() {
         ; returnRow=true avoids redundant GetByHwnd lookup for workspace mismatch check below
         result := { changed: false, exists: false }
         try result := WindowStore_UpdateFields(newFocus, { lastActivatedTick: A_TickCount, isFocused: true }, "winevent_mru", true)
-        _WEH_DiagLog("  UpdateFields result: exists=" (result.exists ? 1 : 0) " changed=" (result.changed ? 1 : 0))
+        if (cfg.DiagWinEventLog)
+            _WEH_DiagLog("  UpdateFields result: exists=" (result.exists ? 1 : 0) " changed=" (result.changed ? 1 : 0))
 
         ; CRITICAL: Only update _WEH_LastFocusHwnd if the window is actually in our store
         ; This prevents system UI windows (like Alt+Tab switcher) from poisoning our focus tracking
@@ -310,7 +315,8 @@ _WEH_ProcessBatch() {
             focusedRec := result.HasOwnProp("row") ? result.row : ""
             if (focusedRec && focusedRec.HasOwnProp("workspaceName") && focusedRec.workspaceName != ""
                 && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
-                _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
+                if (cfg.DiagWinEventLog)
+                    _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
                 try WindowStore_SetCurrentWorkspace("", focusedRec.workspaceName)
             }
 
@@ -321,7 +327,8 @@ _WEH_ProcessBatch() {
             ; Window not in store yet - check if it's eligible and add it with focus data
             ; This fixes the race condition where focus event arrives before WinEnum discovers the window
             ; Without this fix, newly opened windows appear at BOTTOM of MRU list (lastActivatedTick=0)
-            _WEH_DiagLog("  NOT IN STORE: checking eligibility...")
+            if (cfg.DiagWinEventLog)
+                _WEH_DiagLog("  NOT IN STORE: checking eligibility...")
             ; Single call: checkEligible=true does Alt-Tab + blacklist checks AND probes
             ; window properties in one pass, avoiding redundant WinGetTitle/WinGetClass/DllCalls
             probe := WinUtils_ProbeWindow(newFocus, 0, false, true)
@@ -332,7 +339,8 @@ _WEH_ProcessBatch() {
                 probe["present"] := true
                 probe["presentNow"] := true
                 try WindowStore_UpsertWindow([probe], "winevent_focus_add")
-                _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
+                if (cfg.DiagWinEventLog)
+                    _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
 
                 ; Clear focus on previous window
                 if (_WEH_LastFocusHwnd && _WEH_LastFocusHwnd != newFocus) {
@@ -340,12 +348,14 @@ _WEH_ProcessBatch() {
                 }
                 _WEH_LastFocusHwnd := newFocus
             } else {
-                _WEH_DiagLog("  NOT ELIGIBLE or probe failed (system UI or blacklisted)")
+                if (cfg.DiagWinEventLog)
+                    _WEH_DiagLog("  NOT ELIGIBLE or probe failed (system UI or blacklisted)")
             }
         }
     } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = _WEH_LastFocusHwnd) {
         ; Same hwnd - log why we're skipping
-        _WEH_DiagLog("FOCUS SKIP: same hwnd " _WEH_PendingFocusHwnd)
+        if (cfg.DiagWinEventLog)
+            _WEH_DiagLog("FOCUS SKIP: same hwnd " _WEH_PendingFocusHwnd)
         _WEH_PendingFocusHwnd := 0
     }
     Critical "Off"

@@ -79,6 +79,7 @@ IPC_PipeServer_Stop(server) {
 }
 
 IPC_PipeServer_Broadcast(server, msgText) {
+    global IPC_DebugLogPath, cfg
     if !IsObject(server)
         return 0
     if (!msgText || SubStr(msgText, -1) != "`n")
@@ -87,6 +88,7 @@ IPC_PipeServer_Broadcast(server, msgText) {
     ; RACE FIX: Critical covers UTF-8 conversion + writes to protect IPC_WRITE_BUF
     ; from being overwritten by an interrupting IPC_PipeServer_Send call
     Critical "On"
+    logEnabled := IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)  ; lint-ignore: isset-with-default
     bytes := _IPC_StrToUtf8(msgText)
     buf := bytes.buf
     len := bytes.len
@@ -100,7 +102,8 @@ IPC_PipeServer_Broadcast(server, msgText) {
     sent := 0
     for _, hPipe in handles {
         if (!_IPC_WritePipe(hPipe, buf, len)) {
-            _IPC_Log("WritePipe failed during broadcast hPipe=" hPipe)
+            if (logEnabled)
+                _IPC_Log("WritePipe failed during broadcast hPipe=" hPipe)
             dead.Push(hPipe)
         } else {
             sent += 1
@@ -120,6 +123,7 @@ IPC_PipeServer_Broadcast(server, msgText) {
 }
 
 IPC_PipeServer_Send(server, hPipe, msgText) {
+    global IPC_DebugLogPath, cfg
     if !IsObject(server)
         return false
     ; RACE FIX: Wrap check-then-act in Critical to prevent concurrent modification
@@ -133,7 +137,8 @@ IPC_PipeServer_Send(server, hPipe, msgText) {
         msgText .= "`n"
     bytes := _IPC_StrToUtf8(msgText)
     if (!_IPC_WritePipe(hPipe, bytes.buf, bytes.len)) {
-        _IPC_Log("WritePipe failed during send hPipe=" hPipe)
+        if (IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog))  ; lint-ignore: isset-with-default
+            _IPC_Log("WritePipe failed during send hPipe=" hPipe)
         if (server.onDisconnect)
             try server.onDisconnect.Call(hPipe)
         server.clients.Delete(hPipe)
@@ -335,6 +340,8 @@ _IPC_CreatePipeInstance(pipeName) {
     global IPC_PIPE_TYPE_MESSAGE, IPC_PIPE_READMODE_MESSAGE, IPC_PIPE_WAIT
     global IPC_READ_CHUNK_SIZE, IPC_OVERLAPPED_SIZE, IPC_OVERLAPPED_EVENT_OFFSET
     global IPC_ERROR_IO_PENDING, IPC_ERROR_PIPE_CONNECTED
+    global IPC_DebugLogPath, cfg
+    logEnabled := IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)  ; lint-ignore: isset-with-default
 
     ; Create security attributes with NULL DACL to allow non-elevated processes
     ; to connect when we're running as administrator
@@ -351,7 +358,8 @@ _IPC_CreatePipeInstance(pipeName) {
         , "ptr", pSA   ; security attrs (NULL DACL = allow all)
         , "ptr")
     if (!hPipe || hPipe = -1) {
-        _IPC_Log("CreateNamedPipeW failed GLE=" DllCall("GetLastError", "uint") " pipe=" pipeName)
+        if (logEnabled)
+            _IPC_Log("CreateNamedPipeW failed GLE=" DllCall("GetLastError", "uint") " pipe=" pipeName)
         return { hPipe: 0 }
     }
     hEvent := DllCall("CreateEventW", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
@@ -371,7 +379,8 @@ _IPC_CreatePipeInstance(pipeName) {
         } else if (gle = IPC_ERROR_PIPE_CONNECTED) {
             connected := true
         } else {
-            _IPC_Log("ConnectNamedPipe unexpected GLE=" gle " hPipe=" hPipe)
+            if (logEnabled)
+                _IPC_Log("ConnectNamedPipe unexpected GLE=" gle " hPipe=" hPipe)
             _IPC_CloseHandle(hEvent)
             _IPC_CloseHandle(hPipe)
             return { hPipe: 0 }
@@ -379,12 +388,13 @@ _IPC_CreatePipeInstance(pipeName) {
     } else {
         connected := true
     }
-    _IPC_Log("pipe_create hPipe=" hPipe " hEvent=" hEvent " pending=" pending " connected=" connected)
+    if (logEnabled)
+        _IPC_Log("pipe_create hPipe=" hPipe " hEvent=" hEvent " pending=" pending " connected=" connected)
     return { hPipe: hPipe, hEvent: hEvent, over: over, pending: pending, connected: connected }
 }
 
 _IPC_CheckConnect(inst) {
-    global IPC_WAIT_SINGLE_OBJ
+    global IPC_WAIT_SINGLE_OBJ, IPC_DebugLogPath, cfg
     if (!inst.hPipe)
         return false
     if (inst.connected) {
@@ -399,7 +409,8 @@ _IPC_CheckConnect(inst) {
             inst.connected := true
             inst.pending := false
             _IPC_CloseHandle(inst.hEvent)
-            _IPC_Log("pipe_connected hPipe=" inst.hPipe)
+            if (IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog))  ; lint-ignore: isset-with-default
+                _IPC_Log("pipe_connected hPipe=" inst.hPipe)
             return true
         }
         return false
@@ -435,6 +446,8 @@ _IPC_ClosePipeInstance(inst) {
 
 _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
     global IPC_WAIT_SINGLE_OBJ, IPC_ERROR_PIPE_BUSY, IPC_ERROR_FILE_NOT_FOUND, IPC_WAIT_PIPE_TIMEOUT, TIMING_PIPE_RETRY_WAIT
+    global IPC_DebugLogPath, cfg
+    logEnabled := IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)  ; lint-ignore: isset-with-default
     name := "\\.\pipe\" pipeName
     start := A_TickCount
     loop {
@@ -451,12 +464,14 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
         {
             mode := 0x00000002 ; PIPE_READMODE_MESSAGE
             DllCall("SetNamedPipeHandleState", "ptr", hPipe, "uint*", &mode, "ptr", 0, "ptr", 0)
-            _IPC_Log("pipe_client_connected hPipe=" hPipe)
+            if (logEnabled)
+                _IPC_Log("pipe_client_connected hPipe=" hPipe)
             return hPipe
         }
         gle := DllCall("GetLastError", "uint")
         if (gle != IPC_ERROR_PIPE_BUSY && gle != IPC_ERROR_FILE_NOT_FOUND) {
-            _IPC_Log("ClientConnect unexpected GLE=" gle " pipe=" pipeName)
+            if (logEnabled)
+                _IPC_Log("ClientConnect unexpected GLE=" gle " pipe=" pipeName)
             return 0
         }
         ; Non-blocking mode: single attempt, return immediately on failure
@@ -477,6 +492,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
 
 _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
     global IPC_READ_BUF, IPC_READ_CHUNK_SIZE, IPC_ERROR_MORE_DATA, IPC_BUFFER_OVERFLOW
+    global IPC_DebugLogPath, cfg
     avail := _IPC_PeekAvailable(hPipe)
     if (avail < 0)
         return -1
@@ -498,7 +514,8 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
 
     ; Prevent unbounded buffer growth - O(1) check using tracked length
     if (stateObj.bufLen + chunkLen > IPC_BUFFER_OVERFLOW) {
-        _IPC_Log("BUFFER OVERFLOW: client exceeded " IPC_BUFFER_OVERFLOW " bytes, disconnecting")
+        if (IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog))  ; lint-ignore: isset-with-default
+            _IPC_Log("BUFFER OVERFLOW: client exceeded " IPC_BUFFER_OVERFLOW " bytes, disconnecting")
         stateObj.buf := ""
         stateObj.bufLen := 0
         return -1  ; Signal error - disconnect client
@@ -512,6 +529,7 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
 }
 
 _IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
+    global IPC_DebugLogPath, cfg
     while true {
         pos := InStr(stateObj.buf, "`n")
         if (!pos)
@@ -524,7 +542,8 @@ _IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
         if (line != "") {
             try onMessageFn.Call(line, hPipe)
             catch as e {
-                _IPC_Log("Message callback error: " e.Message " | line: " SubStr(line, 1, 100))
+                if (IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog))  ; lint-ignore: isset-with-default
+                    _IPC_Log("Message callback error: " e.Message " | line: " SubStr(line, 1, 100))
             }
         }
     }
