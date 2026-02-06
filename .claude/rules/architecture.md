@@ -94,6 +94,7 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 3. **GUI always running** - Show/hide, don't create/destroy
 4. **Keyboard hooks in GUI process** - Zero IPC latency
 5. **Grace period ~150ms** - Quick Alt+Tab = instant switch
+6. **PostMessage pipe wake** - After pipe writes, PostMessage(IPC_WM_PIPE_WAKE) wakes the receiver immediately instead of waiting for next timer tick. Timer polling is the fallback. wakeHwnd param on Send functions is optional (default 0 = no wake, graceful degradation).
 
 ## Config System
 

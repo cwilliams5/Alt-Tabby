@@ -78,7 +78,16 @@ IPC_PipeServer_Stop(server) {
     server.clients := Map()
 }
 
-IPC_PipeServer_Broadcast(server, msgText) {
+; PostMessage wake: signal a peer process to check its pipe immediately.
+; Safe for dead/stale hwnds (PostMessageW returns FALSE, no side effect).
+; Safe during Critical "On" (messages queue, dispatch after Critical "Off").
+_IPC_WakePeer(hwnd) {
+    global IPC_WM_PIPE_WAKE
+    if (hwnd)
+        DllCall("user32\PostMessageW", "ptr", hwnd, "uint", IPC_WM_PIPE_WAKE, "ptr", 0, "ptr", 0)
+}
+
+IPC_PipeServer_Broadcast(server, msgText, wakeHwnds := 0) {
     global IPC_DebugLogPath, cfg
     if !IsObject(server)
         return 0
@@ -110,6 +119,12 @@ IPC_PipeServer_Broadcast(server, msgText) {
         }
     }
 
+    ; Wake all target clients after writes complete (before cleanup)
+    if (IsObject(wakeHwnds)) {
+        for _, wh in wakeHwnds
+            _IPC_WakePeer(wh)
+    }
+
     ; Cleanup dead handles
     for _, h in dead {
         if (server.onDisconnect)
@@ -122,7 +137,7 @@ IPC_PipeServer_Broadcast(server, msgText) {
     return sent
 }
 
-IPC_PipeServer_Send(server, hPipe, msgText) {
+IPC_PipeServer_Send(server, hPipe, msgText, wakeHwnd := 0) {
     global IPC_DebugLogPath, cfg
     if !IsObject(server)
         return false
@@ -146,6 +161,7 @@ IPC_PipeServer_Send(server, hPipe, msgText) {
         Critical "Off"
         return false
     }
+    _IPC_WakePeer(wakeHwnd)
     Critical "Off"
     return true
 }
@@ -170,7 +186,7 @@ IPC_PipeClient_Connect(pipeName, onMessageFn, timeoutMs := 2000) {
     return client
 }
 
-IPC_PipeClient_Send(client, msgText) {
+IPC_PipeClient_Send(client, msgText, wakeHwnd := 0) {
     if !IsObject(client)
         return false
     if (!client.hPipe)
@@ -183,6 +199,8 @@ IPC_PipeClient_Send(client, msgText) {
     Critical "On"
     bytes := _IPC_StrToUtf8(msgText)
     result := _IPC_WritePipe(client.hPipe, bytes.buf, bytes.len)
+    if (result)
+        _IPC_WakePeer(wakeHwnd)
     Critical "Off"
     return result
 }

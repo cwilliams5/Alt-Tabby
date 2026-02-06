@@ -39,6 +39,10 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
     if (type = IPC_MSG_HELLO_ACK) {
         gGUI_StoreConnected := true
+        ; Extract store's hwnd for PostMessage pipe wake
+        global gGUI_StoreWakeHwnd
+        if (obj.Has("hwnd"))
+            gGUI_StoreWakeHwnd := obj["hwnd"]
         if (obj.Has("rev")) {
             gGUI_StoreRev := obj["rev"]
         }
@@ -491,12 +495,12 @@ _GUI_AnyVisibleItemChanged(displayItems, changedHwnds) {
 ; ========================= SNAPSHOT/PROJECTION REQUESTS =========================
 
 GUI_RequestSnapshot() {
-    global gGUI_StoreClient, IPC_MSG_SNAPSHOT_REQUEST, IPC_TICK_ACTIVE
+    global gGUI_StoreClient, IPC_MSG_SNAPSHOT_REQUEST, IPC_TICK_ACTIVE, gGUI_StoreWakeHwnd
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
     req := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req))
+    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req), gGUI_StoreWakeHwnd)
     ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
     gGUI_StoreClient.idleStreak := 0
     _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
@@ -504,7 +508,7 @@ GUI_RequestSnapshot() {
 
 ; Request projection with optional workspace filtering (for ServerSideWorkspaceFilter mode)
 GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
-    global gGUI_StoreClient, gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION_REQUEST
+    global gGUI_StoreClient, gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION_REQUEST, gGUI_StoreWakeHwnd
     if (!gGUI_StoreClient || !gGUI_StoreClient.hPipe) {
         return
     }
@@ -514,7 +518,7 @@ GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
     }
     req := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: opts }
     gGUI_AwaitingToggleProjection := true  ; Flag to allow this response during ACTIVE state
-    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req))
+    IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(req), gGUI_StoreWakeHwnd)
     ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
     global IPC_TICK_ACTIVE
     gGUI_StoreClient.idleStreak := 0

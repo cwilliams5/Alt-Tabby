@@ -38,6 +38,7 @@ global IPC_COOLDOWN_PHASE2_MS := 50      ; Second step-up interval
 ; Windows message constants
 global WM_COPYDATA := 0x4A              ; Standard WM_COPYDATA message
 global WM_TRAYICON := 0x404             ; Custom tray icon callback message
+global IPC_WM_PIPE_WAKE := 0x8001       ; WM_APP+1: PostMessage signal to check pipe for data
 
 ; Command-line argument constants
 global ARG_LAUNCHER_HWND := "--launcher-hwnd="

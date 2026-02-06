@@ -117,6 +117,11 @@ Store_Init() {
     }
     gStore_Server := IPC_PipeServer_Start(cfg.StorePipeName, Store_OnMessage, Store_OnClientDisconnect)
 
+    ; Register PostMessage wake handler: clients PostMessage us after writing to the pipe
+    ; so we read data immediately instead of waiting for the next timer tick (0-100ms savings)
+    global IPC_WM_PIPE_WAKE
+    OnMessage(IPC_WM_PIPE_WAKE, _Store_OnPipeWake)
+
     ; Initialize producers BEFORE first scan so they can enrich data
 
     ; Komorebi is optional - graceful if not installed
@@ -267,7 +272,9 @@ Store_HeartbeatTick() {
         gStore_CachedHeartbeatJson := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
         gStore_CachedHeartbeatRev := rev
     }
-    IPC_PipeServer_Broadcast(gStore_Server, gStore_CachedHeartbeatJson)
+    ; Collect client wake hwnds for PostMessage after broadcast
+    wakeHwnds := _Store_CollectWakeHwnds()
+    IPC_PipeServer_Broadcast(gStore_Server, gStore_CachedHeartbeatJson, wakeHwnds)
     gStore_LastSendTick := A_TickCount
 }
 
@@ -284,6 +291,24 @@ _Store_StartValidateExistence() {
 _Store_StartHeartbeat() {
     global cfg
     SetTimer(Store_HeartbeatTick, cfg.StoreHeartbeatIntervalMs)
+}
+
+; PostMessage wake handler: a client wrote to our pipe and signaled us.
+; Read immediately instead of waiting for next timer tick.
+_Store_OnPipeWake(wParam, lParam, msg, hwnd) {
+    global gStore_Server
+    if (IsObject(gStore_Server))
+        IPC__ServerTick(gStore_Server)
+    return 0
+}
+
+; Deferred scan: runs after immediate snapshot response, catches recently-created windows.
+; Uses _WEH_PushIfRevChanged to send correction delta only if scan found changes.
+_Store_DeferredScanAndPush() {
+    Store_FullScan()
+    WindowStore_ClearZQueue()
+    ; Push correction delta if scan discovered changes
+    _WEH_PushIfRevChanged(true)
 }
 
 ; Rotate diagnostic logs that are enabled (called every 12th heartbeat, ~60s)
@@ -413,6 +438,7 @@ Store_PushToClients() {
     clientPrevProj := Map()
     clientPrevRev := Map()
     clientPrevMeta := Map()
+    clientWakeHwnds := Map()
     for hPipe, _ in gStore_Server.clients {
         clientHandles.Push(hPipe)
         if (gStore_ClientState.Has(hPipe)) {
@@ -421,6 +447,7 @@ Store_PushToClients() {
             clientPrevProj[hPipe] := cs.lastProj
             clientPrevRev[hPipe] := cs.lastRev
             clientPrevMeta[hPipe] := cs.lastMeta
+            clientWakeHwnds[hPipe] := cs.HasOwnProp("wakeHwnd") ? cs.wakeHwnd : 0
         }
     }
     ; Snapshot dirty set and clear immediately - any updates during this push
@@ -441,7 +468,8 @@ Store_PushToClients() {
         for _, hPipe in clientHandles {
             if (!clientOptsSnapshot.Has(hPipe))
                 continue
-            IPC_PipeServer_Send(gStore_Server, hPipe, wsMsg)
+            wh := clientWakeHwnds.Has(hPipe) ? clientWakeHwnds[hPipe] : 0
+            IPC_PipeServer_Send(gStore_Server, hPipe, wsMsg, wh)
         }
         gStore_LastSendTick := A_TickCount
     }
@@ -498,6 +526,9 @@ Store_PushToClients() {
         isAlwaysMode := (cfg.IPCWorkspaceDeltaStyle = "Always")
         includeMeta := !isSparse || isAlwaysMode || metaChanged
 
+        ; Resolve client wake hwnd for PostMessage after send
+        wh := clientWakeHwnds.Has(hPipe) ? clientWakeHwnds[hPipe] : 0
+
         ; Send delta if client has previous state, otherwise full snapshot
         if (prevItems.Length > 0) {
             msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot)
@@ -505,11 +536,11 @@ Store_PushToClients() {
             ; Always send if meta changed (workspace switch) even with no window changes
             if (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
                 continue
-            IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
+            IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg), wh)
         } else {
             ; Initial snapshot: identical for same optsKey, safe to cache serialized JSON
             if (jsonSnapshotCache.Has(optsKey)) {
-                IPC_PipeServer_Send(gStore_Server, hPipe, jsonSnapshotCache[optsKey])
+                IPC_PipeServer_Send(gStore_Server, hPipe, jsonSnapshotCache[optsKey], wh)
             } else {
                 msg := {
                     type: IPC_MSG_SNAPSHOT,
@@ -518,7 +549,7 @@ Store_PushToClients() {
                 }
                 jsonStr := JSON.Dump(msg)
                 jsonSnapshotCache[optsKey] := jsonStr
-                IPC_PipeServer_Send(gStore_Server, hPipe, jsonStr)
+                IPC_PipeServer_Send(gStore_Server, hPipe, jsonStr, wh)
             }
         }
 
@@ -607,8 +638,10 @@ Store_BroadcastWorkspaceFlips(flips) {
     Critical "On"
     for hPipe, _ in gStore_Server.clients {
         if (gStore_ClientState.Has(hPipe)) {
-            IPC_PipeServer_Send(gStore_Server, hPipe, msg)
-            gStore_ClientState[hPipe].lastRev := rev
+            cs := gStore_ClientState[hPipe]
+            wh := cs.HasOwnProp("wakeHwnd") ? cs.wakeHwnd : 0
+            IPC_PipeServer_Send(gStore_Server, hPipe, msg, wh)
+            cs.lastRev := rev
         }
     }
     ; Consume workspace changed flag so the subsequent Store_PushToClients
@@ -646,15 +679,18 @@ Store_OnMessage(line, hPipe := 0) {
         ; to prevent timer interrupts from seeing inconsistent state between
         ; initial writes and final projection tracking updates
         Critical "On"
+        ; Extract client's wake hwnd for PostMessage pipe wake (0 if not provided)
+        wakeHwnd := obj.Has("hwnd") ? obj["hwnd"] : 0
         opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : IPC_DefaultProjectionOpts()
-        gStore_ClientState[hPipe] := {opts: opts, lastRev: -1, lastProj: [], lastMeta: "", pushCount: 0}
+        gStore_ClientState[hPipe] := {opts: opts, lastRev: -1, lastProj: [], lastMeta: "", pushCount: 0, wakeHwnd: wakeHwnd}
 
-        ; Send hello ack (no rev - it's just an ack, snapshot follows with rev)
+        ; Send hello ack with store's hwnd so client can PostMessage us
         ack := {
             type: IPC_MSG_HELLO_ACK,
+            hwnd: A_ScriptHwnd,
             payload: { meta: WindowStore_GetCurrentWorkspace(), capabilities: { deltas: true } }
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(ack))
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(ack), wakeHwnd)
 
         ; Immediately send initial projection with client's opts
         proj := WindowStore_GetProjection(opts)
@@ -669,7 +705,7 @@ Store_OnMessage(line, hPipe := 0) {
             rev: proj.rev,
             payload: payload
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg), wakeHwnd)
         cs := gStore_ClientState[hPipe]
         cs.lastRev := proj.rev
         cs.lastProj := proj.HasOwnProp("items") ? proj.items : []
@@ -691,10 +727,12 @@ Store_OnMessage(line, hPipe := 0) {
         return
     }
     if (type = IPC_MSG_SNAPSHOT_REQUEST || type = IPC_MSG_PROJECTION_REQUEST) {
-        ; Snapshot requests trigger a full scan for accuracy
+        ; Snapshot requests: serve immediately from current state, then scan deferred.
+        ; WinEventHook already tracks window lifecycle, so current state is usually accurate.
+        ; The deferred scan catches edge cases (windows created in last ~100ms).
+        ; If the scan discovers changes, Store_PushToClients sends a correction delta.
         if (type = IPC_MSG_SNAPSHOT_REQUEST) {
-            Store_FullScan()
-            WindowStore_ClearZQueue()
+            SetTimer(_Store_DeferredScanAndPush, -1)
         }
         opts := IPC_DefaultProjectionOpts()
         if (gStore_ClientState.Has(hPipe))
@@ -727,7 +765,8 @@ Store_OnMessage(line, hPipe := 0) {
             rev: proj.rev,
             payload: payload
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
+        wh := (gStore_ClientState.Has(hPipe) && gStore_ClientState[hPipe].HasOwnProp("wakeHwnd")) ? gStore_ClientState[hPipe].wakeHwnd : 0
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp), wh)
         ; RACE FIX: Update ALL client tracking to match what was actually sent.
         ; Without this, Store_PushToClients computes deltas against stale prevItems
         ; (from the last push, not the projection response). When the GUI has replaced
@@ -776,7 +815,8 @@ Store_OnMessage(line, hPipe := 0) {
             type: IPC_MSG_PRODUCER_STATUS,
             producers: producers
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
+        wh := (gStore_ClientState.Has(hPipe) && gStore_ClientState[hPipe].HasOwnProp("wakeHwnd")) ? gStore_ClientState[hPipe].wakeHwnd : 0
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp), wh)
         return
     }
     if (type = IPC_MSG_STATS_UPDATE) {
@@ -831,7 +871,8 @@ Store_OnMessage(line, hPipe := 0) {
         resp.DerivedAvgTabsPerSwitch := (totalAltTabs > 0) ? Round(totalTabs / totalAltTabs, 1) : 0
         Critical "Off"
 
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp))
+        wh := (gStore_ClientState.Has(hPipe) && gStore_ClientState[hPipe].HasOwnProp("wakeHwnd")) ? gStore_ClientState[hPipe].wakeHwnd : 0
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(resp), wh)
         return
     }
 }
@@ -869,6 +910,17 @@ _Store_CleanupDisconnectedClients() {
     }
     for _, hPipe in stalePipes
         gStore_ClientState.Delete(hPipe)
+}
+
+; Collect all client wake hwnds into an array (for Broadcast calls)
+_Store_CollectWakeHwnds() {
+    global gStore_ClientState
+    hwnds := []
+    for hPipe, cs in gStore_ClientState {
+        if (cs.HasOwnProp("wakeHwnd") && cs.wakeHwnd)
+            hwnds.Push(cs.wakeHwnd)
+    }
+    return hwnds
 }
 
 ; Build a stable string key from projection opts for cache deduplication.
@@ -1008,6 +1060,9 @@ Store_OnExit(reason, code) {
     ; Stop core timers (periodic + one-shot stagger helpers)
     try {
         SetTimer(Store_FullScan, 0)
+    }
+    try {
+        SetTimer(_Store_DeferredScanAndPush, 0)
     }
     try {
         SetTimer(Store_ZPumpTick, 0)

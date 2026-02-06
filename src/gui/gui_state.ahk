@@ -1441,7 +1441,8 @@ _Stats_SendToStore() {
     ; Send to store (if connected)
     if (gGUI_StoreConnected && IsObject(gGUI_StoreClient)) {
         try {
-            IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(msg))
+            global gGUI_StoreWakeHwnd
+            IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(msg), gGUI_StoreWakeHwnd)
             ; Record what was sent
             gStats_LastSent["AltTabs"] := gStats_AltTabs
             gStats_LastSent["QuickSwitches"] := gStats_QuickSwitches

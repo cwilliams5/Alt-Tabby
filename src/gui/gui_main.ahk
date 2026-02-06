@@ -63,6 +63,7 @@ global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gGUI_StoreClient := 0
 global gGUI_StoreConnected := false
 global gGUI_StoreRev := -1
+global gGUI_StoreWakeHwnd := 0  ; Store's A_ScriptHwnd for PostMessage pipe wake
 
 global gGUI_OverlayVisible := false
 global gGUI_Base := 0
@@ -178,11 +179,17 @@ GUI_Main_Init() {
     ; Set up interceptor keyboard hooks (built-in, no IPC)
     INT_SetupHotkeys()
 
+    ; Register PostMessage wake handler: store signals us after writing to the pipe
+    ; so we read data immediately instead of waiting for next timer tick
+    global IPC_WM_PIPE_WAKE
+    OnMessage(IPC_WM_PIPE_WAKE, _GUI_OnPipeWake)
+
     ; Connect to WindowStore
     gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
     if (gGUI_StoreClient.hPipe) {
         ; Request deltas so we stay up to date like the viewer
-        hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
+        ; Include our hwnd so store can PostMessage us after pipe writes
+        hello := { type: IPC_MSG_HELLO, hwnd: A_ScriptHwnd, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
         IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
         gGUI_LastMsgTick := A_TickCount  ; Initialize last message time
     }
@@ -233,8 +240,8 @@ _GUI_StoreHealthCheck() {
             gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage, 0)
             Critical "Off"
             if (gGUI_StoreClient.hPipe) {
-                ; Reconnected successfully
-                hello := { type: IPC_MSG_HELLO, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
+                ; Reconnected successfully - include hwnd for PostMessage wake
+                hello := { type: IPC_MSG_HELLO, hwnd: A_ScriptHwnd, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
                 IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
                 gGUI_LastMsgTick := A_TickCount
                 gGUI_ReconnectAttempts := 0
@@ -339,6 +346,15 @@ _GUI_RequestStoreRestart() {
 
     ; Fallback: no launcher or signal failed
     _GUI_StartStore()
+}
+
+; PostMessage wake handler: store wrote to our pipe and signaled us.
+; Read immediately instead of waiting for next timer tick.
+_GUI_OnPipeWake(wParam, lParam, msg, hwnd) {
+    global gGUI_StoreClient
+    if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
+        IPC__ClientTick(gGUI_StoreClient)
+    return 0
 }
 
 ; Clean up resources on exit

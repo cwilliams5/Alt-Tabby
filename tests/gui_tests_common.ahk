@@ -33,6 +33,7 @@ global gGUI_WorkspaceMode := "all"
 global gGUI_CurrentWSName := ""
 global gGUI_StoreRev := 0
 global gGUI_StoreConnected := true
+global gGUI_StoreWakeHwnd := 0
 global gGUI_FooterText := ""
 global gGUI_Revealed := false
 global gGUI_HoverRow := 0
@@ -170,7 +171,7 @@ Win_GetScaleForWindow(hwnd) {
 #Include %A_ScriptDir%\..\src\gui\gui_math.ahk
 
 ; IPC mock - captures messages for assertions
-IPC_PipeClient_Send(client, msgText) {
+IPC_PipeClient_Send(client, msgText, wakeHwnd := 0) {
     global gMockIPCMessages
     gMockIPCMessages.Push(msgText)
     return true

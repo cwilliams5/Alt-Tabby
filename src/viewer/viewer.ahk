@@ -39,6 +39,7 @@ global gViewer_CurrentWSLabel := 0
 global gViewer_CurrentWSName := ""
 global gViewer_ProducerState := Map()  ; Producer states from store meta
 global gViewer_ShuttingDown := false  ; Shutdown coordination flag
+global gViewer_StoreWakeHwnd := 0    ; Store's A_ScriptHwnd for PostMessage pipe wake
 
 global gViewer_TestMode := false
 for _, arg in A_Args {
@@ -74,6 +75,10 @@ Viewer_Init() {
     if (!gViewer_Headless) {
         _Viewer_CreateGui()
     }
+    ; Register PostMessage wake handler: store signals us after writing to the pipe
+    global IPC_WM_PIPE_WAKE
+    OnMessage(IPC_WM_PIPE_WAKE, _Viewer_OnPipeWake)
+
     _Viewer_Log("Connecting to pipe: " cfg.StorePipeName)
     gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
     _Viewer_Log("Connection result: hPipe=" gViewer_Client.hPipe)
@@ -137,6 +142,14 @@ Viewer_OnMessage(line, hPipe := 0) {
             return
         }
         gViewer_LastRev := rev
+    }
+
+    if (type = IPC_MSG_HELLO_ACK) {
+        ; Extract store's hwnd for PostMessage pipe wake
+        global gViewer_StoreWakeHwnd
+        if (obj.Has("hwnd"))
+            gViewer_StoreWakeHwnd := obj["hwnd"]
+        return
     }
 
     if (type = IPC_MSG_SNAPSHOT) {
@@ -209,27 +222,29 @@ _Viewer_HandleItemsMessage(obj, &counter, label) {
 
 _Viewer_SendHello() {
     global gViewer_Client, IPC_MSG_HELLO
-    msg := { type: IPC_MSG_HELLO, clientId: "viewer", wants: { deltas: true }, projectionOpts: _Viewer_ProjectionOpts() }
+    msg := { type: IPC_MSG_HELLO, hwnd: A_ScriptHwnd, clientId: "viewer", wants: { deltas: true }, projectionOpts: _Viewer_ProjectionOpts() }
     IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
 }
 
 _Viewer_RequestProjection() {
-    global gViewer_Client, gViewer_LastRev, IPC_MSG_PROJECTION_REQUEST
+    global gViewer_Client, gViewer_LastRev, IPC_MSG_PROJECTION_REQUEST, gViewer_StoreWakeHwnd
     gViewer_LastRev := -1  ; Reset to allow next response
     msg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: _Viewer_ProjectionOpts() }
-    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
+    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg), gViewer_StoreWakeHwnd)
 }
 
 _Viewer_RequestProducerStatus() {
-    global gViewer_Client, IPC_MSG_PRODUCER_STATUS_REQUEST
+    global gViewer_Client, IPC_MSG_PRODUCER_STATUS_REQUEST, gViewer_StoreWakeHwnd
     if (!gViewer_Client || !gViewer_Client.hPipe)
         return
     msg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
-    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
+    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg), gViewer_StoreWakeHwnd)
 }
 
 ; Common reconnect sequence: send hello, request producer status, log
 _Viewer_OnConnected(logMsg) {
+    global gViewer_StoreWakeHwnd
+    gViewer_StoreWakeHwnd := 0  ; Reset until HELLO_ACK brings fresh store hwnd
     _Viewer_SendHello()
     _Viewer_RequestProducerStatus()
     _Viewer_Log(logMsg)
@@ -429,11 +444,11 @@ _Viewer_ToggleCloaked(*) {
 }
 
 _Viewer_SendProjectionOpts() {
-    global gViewer_Client, IPC_MSG_SET_PROJECTION_OPTS
+    global gViewer_Client, IPC_MSG_SET_PROJECTION_OPTS, gViewer_StoreWakeHwnd
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe)
         return
     msg := { type: IPC_MSG_SET_PROJECTION_OPTS, projectionOpts: _Viewer_ProjectionOpts() }
-    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
+    IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg), gViewer_StoreWakeHwnd)
 }
 
 _Viewer_UpdateList(items) {
@@ -866,8 +881,9 @@ _Viewer_OnBlacklist(lv, row) {
 
     ; Send reload message to store
     if (IsObject(gViewer_Client) && gViewer_Client.hPipe) {
+        global gViewer_StoreWakeHwnd
         msg := { type: IPC_MSG_RELOAD_BLACKLIST }
-        IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg))
+        IPC_PipeClient_Send(gViewer_Client, JSON.Dump(msg), gViewer_StoreWakeHwnd)
     }
 
     _Viewer_ShowToast(toastMsg)
@@ -917,6 +933,14 @@ _Viewer_ShowToast(message) {
         ToolTip(message)
         HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
     }
+}
+
+; PostMessage wake handler: store signals us after writing to the pipe
+_Viewer_OnPipeWake(wParam, lParam, msg, hwnd) {
+    global gViewer_Client
+    if (IsObject(gViewer_Client) && gViewer_Client.hPipe)
+        IPC__ClientTick(gViewer_Client)
+    return 0
 }
 
 ; OnExit wrapper for viewer cleanup
