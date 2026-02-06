@@ -12,10 +12,12 @@
 ;    Limitation: WebView2 needs DWM composition to initialize, so
 ;    cloaking at creation time crashes it.
 ;
-; 2. Off-screen + WS_EX_LAYERED: Show window at x=-32000 with alpha=0.
+; 2. Off-screen + deferred cloak: Show window at x=-32000 with alpha=0.
 ;    Window is "visible" to Win32 (controls render) but invisible to user.
-;    On reveal, center with raw Win32 calls (DPI-safe) and set alpha=255.
-;    Used for WebView2 windows as a cloaking alternative.
+;    WebView2 can't be cloaked at creation (needs DWM composition to init),
+;    but CAN be cloaked after initialization. On reveal: cloak first, then
+;    center with raw Win32 (DPI-safe), set alpha=255, and uncloak — same
+;    zero-flash result as technique 1, just deferred.
 ;
 ; Usage:
 ;   ; Normal GUI (dashboard, native editor):
@@ -41,8 +43,10 @@ _GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
     gui.BackColor := bgColor
     ; .Hwnd access forces HWND creation before Show
     hwnd := gui.Hwnd
-    if (useCloak)
-        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 1, "uint", 4)
+    ; Always cloak — prevents DWM from compositing the frame during Show().
+    ; For WebView2: caller must uncloak before WebView2.create() (needs DWM
+    ; composition to init), then Reveal re-cloaks for the center+show sequence.
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 1, "uint", 4)
     DllCall("SetLayeredWindowAttributes", "ptr", hwnd, "uint", 0, "uchar", 0, "uint", 2)
 }
 
@@ -53,6 +57,9 @@ _GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
 _GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
     hwnd := gui.Hwnd
     if (wasOffscreen) {
+        ; WebView2 path: cloak NOW (safe — WebView2 is already initialized),
+        ; then center while cloaked so the frame move is completely invisible.
+        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 1, "uint", 4)
         ; Center on current monitor using raw Win32 — bypasses AHK DPI scaling.
         ; GetMonitorInfoW work area (offsets 20-32) and GetWindowRect are both
         ; in physical pixels, and SetWindowPos takes physical pixels.
@@ -71,16 +78,14 @@ _GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
         ; SWP_NOSIZE=0x0001 | SWP_NOZORDER=0x0004
         DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", 0
             , "int", cx, "int", cy, "int", 0, "int", 0, "uint", 0x0005)
+        wasCloaked := true  ; Uncloak below after alpha is set
     }
-    ; Set alpha=255 FIRST (while still cloaked if applicable — invisible to user),
+    ; Set alpha=255 FIRST (while still cloaked — invisible to user),
     ; THEN uncloak. Ensures window is fully opaque the instant it becomes visible.
     DllCall("SetLayeredWindowAttributes", "ptr", hwnd, "uint", 0, "uchar", 255, "uint", 2)
     if (wasCloaked)
         DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 0, "uint", 4)
-    ; Remove WS_EX_LAYERED for cloaked (normal) GUIs — no longer needed after reveal,
-    ; and leaving it on causes flashing with WM_SETREDRAW + RedrawWindow (dashboard).
-    ; Off-screen (WebView2) GUIs keep it: removing triggers a style-change repaint
-    ; that can flash the frame before WebView2 recomposites.
-    if (!wasOffscreen)
-        gui.Opt("-E0x80000")
+    ; Remove WS_EX_LAYERED — no longer needed after reveal. Leaving it on causes
+    ; flashing with WM_SETREDRAW + RedrawWindow (dashboard refresh).
+    gui.Opt("-E0x80000")
 }

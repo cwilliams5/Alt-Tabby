@@ -40,13 +40,27 @@
 ;    FIX: Use addEventListener() in JavaScript instead:
 ;      document.getElementById('btn').addEventListener('click', handler);
 ;
-; 5. DWM CLOAKING CRASHES WEBVIEW2
-;    DWM cloaking (DWMWA_CLOAK=13) prevents DWM from compositing a window.
-;    It's the gold standard for preventing white flash on dark windows (used
-;    by Chrome/Firefox). But WebView2 needs DWM composition to initialize —
-;    calling WebView2.create() on a cloaked window crashes silently.
-;    FIX: Use off-screen positioning + WS_EX_LAYERED alpha=0 instead.
-;    See _GUI_AntiFlashPrepare() in gui_antiflash.ahk.
+; 5. DWM CLOAKING + WEBVIEW2: DEFERRED CLOAK PATTERN
+;    DWM cloaking (DWMWA_CLOAK=13) is the gold standard for preventing white
+;    flash — used by Chrome/Firefox. But WebView2.create() on a cloaked window
+;    crashes silently (needs DWM composition to initialize).
+;
+;    SOLUTION: Three-phase deferred cloaking:
+;      Phase 1 (Prepare): Cloak + WS_EX_LAYERED alpha=0 + off-screen (-32000).
+;        Cloaking prevents DWM from compositing the frame during Show().
+;      Phase 2 (Init): Uncloak right BEFORE WebView2.create(). Window is still
+;        alpha=0 and off-screen, so uncloaking is invisible. WebView2 gets the
+;        DWM composition it needs. Off-screen is defense-in-depth: if DWM
+;        frame leaks through alpha=0 during init, it leaks at -32000.
+;      Phase 3 (Reveal): Re-cloak, center via raw Win32, set alpha=255, uncloak,
+;        remove WS_EX_LAYERED. Window appears fully rendered in a single frame.
+;
+;    Why keep off-screen if we cloak? Between uncloak (Phase 2) and re-cloak
+;    (Phase 3), the window is uncloaked while WebView2 initializes. Only alpha=0
+;    hides it during this gap. Alpha=0 USUALLY hides the frame but can
+;    intermittently leak (DWM race). Off-screen ensures any leak is invisible.
+;
+;    See _GUI_AntiFlashPrepare/Reveal() in gui_antiflash.ahk.
 ;
 ; 6. OFF-SCREEN CENTERING REQUIRES RAW WIN32
 ;    AHK v2's Gui.Move() applies DPI scaling on coordinates. When a window
@@ -115,8 +129,9 @@ _CE_RunWebView2(launcherHwnd := 0) {
     if (!FileExist(dllPath) || !FileExist(htmlPath))
         throw Error("WebView2 resources not found")
 
-    ; Anti-flash: off-screen + alpha=0. Show("Hide") does NOT work — WebView2
-    ; needs a visible parent to render. DWM cloaking crashes WebView2 (lesson #5).
+    ; Anti-flash: cloaked + off-screen + alpha=0. Show("Hide") does NOT work —
+    ; WebView2 needs a visible parent to render. Cloak covers the Show() to prevent
+    ; frame flash, then we uncloak before WebView2.create() (needs DWM composition).
     gCEW_Gui := Gui("+Resize +MinSize600x400", "Alt-Tabby Configuration")
     gCEW_Gui.OnEvent("Close", _CEW_OnClose)
     gCEW_Gui.OnEvent("Size", _CEW_OnSize)
@@ -127,6 +142,9 @@ _CE_RunWebView2(launcherHwnd := 0) {
     SetTimer(_CEW_ForceReveal, -3000)
 
     ; Create WebView2 control
+    ; Uncloak first — WebView2 needs DWM composition to initialize (lesson #5).
+    ; Window is still alpha=0 and off-screen, so uncloaking is invisible to user.
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", gCEW_Gui.Hwnd, "uint", 13, "int*", 0, "uint", 4)
     try {
         gCEW_Controller := WebView2.create(gCEW_Gui.Hwnd,,,,,, dllPath)
 
