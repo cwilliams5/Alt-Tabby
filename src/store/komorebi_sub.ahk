@@ -859,7 +859,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     ; Used for FocusChange events which don't add/remove windows or change mappings.
     if (lightMode) {
         if (!skipWorkspaceUpdate) {
-            _KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS)
+            _KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS, monitorsArr)
             _KSub_DiagLog("ProcessFullState[light]: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
         }
         if (currentWsName != "") {
@@ -911,7 +911,6 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                             continue
 
                         wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
-                        _KSub_UpdateCacheEntry(hwnd, wsName, now)
                     }
                 }
 
@@ -922,7 +921,6 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                         hwnd := _KSafe_Int(winObj, "hwnd")
                         if (hwnd && !wsMap.Has(hwnd)) {
                             wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
-                            _KSub_UpdateCacheEntry(hwnd, wsName, now)
                         }
                     }
                 }
@@ -940,7 +938,6 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                             hwnd := _KSafe_Int(win, "hwnd")
                             if (hwnd && !wsMap.Has(hwnd)) {
                                 wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
-                                _KSub_UpdateCacheEntry(hwnd, wsName, now)
                             }
                         }
                     }
@@ -951,7 +948,6 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                             hwnd := _KSafe_Int(winObj, "hwnd")
                             if (hwnd && !wsMap.Has(hwnd)) {
                                 wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
-                                _KSub_UpdateCacheEntry(hwnd, wsName, now)
                             }
                         }
                     }
@@ -959,6 +955,17 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             }
         }
     }
+
+    ; Batch update workspace cache for all windows in wsMap (single Critical section
+    ; instead of per-window Critical enter/exit in _KSub_UpdateCacheEntry)
+    Critical "On"
+    for hwnd, info in wsMap {
+        if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = info.wsName)
+            _KSub_WorkspaceCache[hwnd].tick := now
+        else
+            _KSub_WorkspaceCache[hwnd] := { wsName: info.wsName, tick: now }
+    }
+    Critical "Off"
 
     ; Update/insert ALL windows from komorebi state
     if (!IsSet(gWS_Store)) {  ; lint-ignore: isset-with-default
@@ -1009,13 +1016,18 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             try WindowStore_UpsertWindow([rec])
             addedCount++
         } else {
-            ; Window exists - collect patch for batch update
-            batchPatches[hwnd] := {
-                workspaceName: info.wsName,
-                isOnCurrentWorkspace: info.isCurrent,
-                isCloaked: !info.isCurrent
+            ; Window exists - only patch if workspace data actually changed
+            row := gWS_Store[hwnd]
+            if (!row.HasOwnProp("workspaceName") || row.workspaceName != info.wsName
+                || !row.HasOwnProp("isOnCurrentWorkspace") || row.isOnCurrentWorkspace != info.isCurrent
+                || !row.HasOwnProp("isCloaked") || row.isCloaked != !info.isCurrent) {
+                batchPatches[hwnd] := {
+                    workspaceName: info.wsName,
+                    isOnCurrentWorkspace: info.isCurrent,
+                    isCloaked: !info.isCurrent
+                }
+                updatedCount++
             }
-            updatedCount++
         }
     }
     _KSub_DiagLog("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
@@ -1034,7 +1046,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     ; during unreliable workspace switch events.
     if (!skipWorkspaceUpdate) {
         ; State is reliable — cache focused hwnds for ALL workspaces
-        _KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS)
+        _KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS, monitorsArr)
         _KSub_DiagLog("ProcessFullState: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
 
         ; DON'T clear suppression here. During rapid workspace switches, clearing

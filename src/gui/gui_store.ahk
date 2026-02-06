@@ -381,8 +381,11 @@ GUI_ApplyDelta(payload) {
                 if (rec.Has("iconHicon"))
                     item.iconHicon := rec["iconHicon"]
                 if (rec.Has("lastActivatedTick")) {
-                    item.lastActivatedTick := rec["lastActivatedTick"]
-                    mruChanged := true
+                    newTick := rec["lastActivatedTick"]
+                    if (item.lastActivatedTick != newTick) {
+                        item.lastActivatedTick := newTick
+                        mruChanged := true
+                    }
                 }
                 ; Track focus change (don't process here, just record it)
                 if (rec.Has("isFocused") && rec["isFocused"]) {

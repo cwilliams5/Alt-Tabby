@@ -352,8 +352,9 @@ _KSub_GetFocusedHwndByWsName(stateObj, wsName) {
 ; Cache focused hwnd for ALL workspaces from a reliable state snapshot.
 ; Call this only when the state is known to be consistent (skipWorkspaceUpdate=false).
 ; Returns nothing — populates the provided Map (wsName -> hwnd).
-_KSub_CacheFocusedHwnds(stateObj, cache) {
-    monitorsArr := _KSub_GetMonitorsArray(stateObj)
+_KSub_CacheFocusedHwnds(stateObj, cache, monitorsArr := 0) {
+    if (!IsObject(monitorsArr))
+        monitorsArr := _KSub_GetMonitorsArray(stateObj)
     for _, monObj in monitorsArr {
         wsArr := _KSub_GetWorkspacesArray(monObj)
         for _, wsObj in wsArr {
