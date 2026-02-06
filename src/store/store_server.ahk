@@ -450,6 +450,10 @@ Store_PushToClients() {
     ; When multiple clients have equivalent opts (e.g. GUI + Viewer both default
     ; to MRU/items/includeCloaked), this avoids redundant store iteration + sort.
     projCache := Map()
+    ; Cache serialized JSON for snapshot messages by optsKey.
+    ; Snapshots are identical for the same optsKey (same projection, same rev),
+    ; so we can avoid redundant JSON.Dump calls when multiple clients need snapshots.
+    jsonSnapshotCache := Map()
 
     sent := 0
     for _, hPipe in clientHandles {
@@ -501,22 +505,22 @@ Store_PushToClients() {
             ; Always send if meta changed (workspace switch) even with no window changes
             if (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
                 continue
+            IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
         } else {
-            ; Initial snapshot: always full records + meta
-            msg := {
-                type: IPC_MSG_SNAPSHOT,
-                rev: proj.rev,
-                payload: { meta: proj.meta, items: proj.items }
+            ; Initial snapshot: identical for same optsKey, safe to cache serialized JSON
+            if (jsonSnapshotCache.Has(optsKey)) {
+                IPC_PipeServer_Send(gStore_Server, hPipe, jsonSnapshotCache[optsKey])
+            } else {
+                msg := {
+                    type: IPC_MSG_SNAPSHOT,
+                    rev: proj.rev,
+                    payload: { meta: proj.meta, items: proj.items }
+                }
+                jsonStr := JSON.Dump(msg)
+                jsonSnapshotCache[optsKey] := jsonStr
+                IPC_PipeServer_Send(gStore_Server, hPipe, jsonStr)
             }
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg))
-        ; NOTE: Per-client JSON.Dump() is intentional. Caching serialized JSON by
-        ; (optsKey + lastRev + sparse + meta) was considered but rejected because:
-        ; 1. Clients frequently desync (reconnections, missed deltas) → low cache hit rate
-        ; 2. Even "in sync" clients have different prevItems after any missed delta
-        ; 3. Complexity of tracking sync state outweighs marginal benefit
-        ; If revisiting: the SNAPSHOT case (identical for same optsKey) could be cached,
-        ; but delta caching requires tracking per-client sync lineage.
 
         ; RACE FIX: Wrap client tracking updates in Critical
         ; Store_OnMessage also modifies these maps when client sends HELLO or SET_PROJECTION_OPTS
@@ -565,6 +569,50 @@ Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false
         baseRev: baseRev,
         payload: payload
     }
+}
+
+; Broadcast workspace flip delta to all connected clients.
+; Called by komorebi_sub after SetCurrentWorkspace to deliver the workspace change
+; immediately (~0.5ms) instead of waiting for a full Store_PushToClients (~5ms).
+; The broadcast uses full _WS_ToItem records so SSF users get complete items
+; even after Ctrl-toggle (items entering the workspace create correctly).
+; Parameters:
+;   flips - Array of full _WS_ToItem records for windows whose isOnCurrentWorkspace changed
+Store_BroadcastWorkspaceFlips(flips) {
+    global gStore_Server, gStore_LastClientRev, gStore_LastSendTick, gStore_LastBroadcastRev
+    global gStore_ClientOpts
+    global IPC_MSG_DELTA
+
+    if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
+        return
+
+    wsMeta := WindowStore_GetCurrentWorkspace()
+    rev := WindowStore_GetRev()
+    msg := JSON.Dump({
+        type: IPC_MSG_DELTA,
+        rev: rev,
+        baseRev: rev - 1,
+        payload: {
+            meta: { currentWSId: wsMeta.id, currentWSName: wsMeta.name },
+            upserts: flips,
+            removes: []
+        }
+    })
+
+    ; Broadcast to all clients that have completed HELLO (have registered opts)
+    ; Clients without opts haven't connected yet and will get a full snapshot on HELLO
+    Critical "On"
+    for hPipe, _ in gStore_Server.clients {
+        if (gStore_ClientOpts.Has(hPipe))
+            IPC_PipeServer_Send(gStore_Server, hPipe, msg)
+        gStore_LastClientRev[hPipe] := rev
+    }
+    ; Consume workspace changed flag so the subsequent Store_PushToClients
+    ; doesn't re-send the workspace_change message
+    WindowStore_ConsumeWorkspaceChangedFlag()
+    Critical "Off"
+    gStore_LastBroadcastRev := rev
+    gStore_LastSendTick := A_TickCount
 }
 
 Store_OnMessage(line, hPipe := 0) {

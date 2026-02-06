@@ -203,20 +203,26 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
             ; If in ACTIVE state with FreezeWindowList=false, update live display
             if (gGUI_State = "ACTIVE" && !isFrozen) {
-                ; RACE FIX: Wrap both assignments in Critical so a hotkey (Tab, Ctrl)
-                ; can't interrupt between them and see new ToggleBase with old DisplayItems.
-                ; Consistent with the snapshot path (lines 104-147) which already uses Critical.
-                ; Release before repaint is safe: display items are already populated.
-                Critical "On"
-                gGUI_ToggleBase := gGUI_LiveItems
-                gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
-                Critical "Off"
+                ; Only rebuild display list when membership or MRU changed.
+                ; Cosmetic-only deltas (icon, processName, title) don't affect which items
+                ; are shown or their order, so skip the O(n) filter+allocation.
+                if (result.mruChanged || result.membershipChanged) {
+                    ; RACE FIX: Wrap both assignments in Critical so a hotkey (Tab, Ctrl)
+                    ; can't interrupt between them and see new ToggleBase with old DisplayItems.
+                    ; Consistent with the snapshot path (lines 104-147) which already uses Critical.
+                    ; Release before repaint is safe: display items are already populated.
+                    Critical "On"
+                    gGUI_ToggleBase := gGUI_LiveItems
+                    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+                    Critical "Off"
+                }
                 ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
                 if (gGUI_OverlayVisible && gGUI_OverlayH) {
                     ; Only repaint if visible items were affected.
                     ; MRU changes always repaint (sort order or item count changed).
+                    ; Membership changes always repaint (items may appear/disappear from filtered list).
                     ; Cosmetic changes (icon, processName) only repaint if in viewport.
-                    if (result.mruChanged || _GUI_AnyVisibleItemChanged(gGUI_DisplayItems, result.changedHwnds))
+                    if (result.mruChanged || result.membershipChanged || _GUI_AnyVisibleItemChanged(gGUI_DisplayItems, result.changedHwnds))
                         GUI_Repaint()
                 }
             }
@@ -287,6 +293,7 @@ GUI_ApplyDelta(payload) {
     global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap
 
     mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
+    membershipChanged := false  ; Track if workspace membership changed (isOnCurrentWorkspace flipped)
     changedHwnds := Map()    ; Track which hwnds were affected (for viewport-based repaint)
     focusChangedToHwnd := 0  ; Track if any window received focus
     needsIconPrune := false  ; Track if icon cache should be pruned (after removes)
@@ -353,8 +360,13 @@ GUI_ApplyDelta(payload) {
                     item.PID := "" rec["pid"]
                 if (rec.Has("workspaceName"))
                     item.WS := rec["workspaceName"]
-                if (rec.Has("isOnCurrentWorkspace"))
-                    item.isOnCurrentWorkspace := rec["isOnCurrentWorkspace"]
+                if (rec.Has("isOnCurrentWorkspace")) {
+                    newVal := rec["isOnCurrentWorkspace"]
+                    if (item.isOnCurrentWorkspace != newVal) {
+                        item.isOnCurrentWorkspace := newVal
+                        membershipChanged := true
+                    }
+                }
                 if (rec.Has("processName"))
                     item.processName := rec["processName"]
                 if (rec.Has("iconHicon"))
@@ -414,7 +426,7 @@ GUI_ApplyDelta(payload) {
         INT_SetBypassMode(shouldBypass)
     }
 
-    return { mruChanged: mruChanged, changedHwnds: changedHwnds }
+    return { mruChanged: mruChanged, membershipChanged: membershipChanged, changedHwnds: changedHwnds }
 }
 
 GUI_SortItemsByMRU() {

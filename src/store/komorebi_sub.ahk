@@ -673,13 +673,14 @@ _KSub_OnNotification(jsonLine) {
             global _KSub_LastWorkspaceName, _KSub_LastWsUpdateTick
             ; Capture old workspace BEFORE updating (needed for move events)
             previousWsName := _KSub_LastWorkspaceName
+            wsFlips := []  ; Initialize before conditional (used by broadcast below)
 
             if (wsName != _KSub_LastWorkspaceName) {
                 _KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
                 _KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
                 _KSub_LastWorkspaceName := wsName
                 _KSub_LastWsUpdateTick := A_TickCount
-                try WindowStore_SetCurrentWorkspace("", wsName)
+                try wsFlips := WindowStore_SetCurrentWorkspace("", wsName)
             }
 
             ; For MOVE events: DON'T try to explicitly update the moved window here.
@@ -706,8 +707,11 @@ _KSub_OnNotification(jsonLine) {
                 }
             }
 
-            ; Immediately push to clients so they see the workspace change
-            try Store_PushToClients()
+            ; Immediately broadcast workspace flips to clients (~0.5ms vs ~5ms full push).
+            ; Full _WS_ToItem records ensure SSF users get complete items after Ctrl-toggle.
+            ; The subsequent Store_PushToClients at the end handles any remaining changes.
+            if (IsObject(wsFlips) && wsFlips.Length > 0)
+                try Store_BroadcastWorkspaceFlips(wsFlips)
             handledWorkspaceEvent := true
         }
     }

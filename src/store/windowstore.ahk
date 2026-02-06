@@ -557,7 +557,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
     ; Only recalculate window state if workspace NAME changed
     ; ID is metadata only — GUI cares about name for filtering
     if (gWS_Meta["currentWSName"] = name)
-        return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+        return []  ; lint-ignore: critical-section
 
     gWS_Meta["currentWSName"] := name
     gWS_WorkspaceChangedFlag := true  ; Signal workspace change for OnChange delta style
@@ -565,20 +565,22 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
     ; Update isOnCurrentWorkspace for all windows based on new workspace
     ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
     anyFlipped := false
+    flipped := []  ; Full _WS_ToItem records for broadcast (SSF-safe: creates complete items on GUI side)
     for hwnd, rec in gWS_Store {
         newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
         if (rec.isOnCurrentWorkspace != newIsOnCurrent) {
             rec.isOnCurrentWorkspace := newIsOnCurrent
             gWS_DeltaPendingHwnds[hwnd] := true  ; Mark dirty for delta tracking
             anyFlipped := true
+            flipped.Push(_WS_ToItem(rec))
         }
     }
-    ; Critical auto-released on return
     ; Only bump rev if at least one window's state actually changed
     if (anyFlipped) {
         gWS_SortDirty := true
         _WS_BumpRev("SetCurrentWorkspace")
     }
+    return flipped  ; lint-ignore: critical-section
 }
 
 WindowStore_GetCurrentWorkspace() {
