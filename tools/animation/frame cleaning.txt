@@ -1,0 +1,6 @@
+any frames with black/white edge still looking bad
+photoshop automation
+select layer 1
+modify selection border 4px
+delete
+save
