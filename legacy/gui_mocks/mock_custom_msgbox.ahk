@@ -76,7 +76,7 @@ DarkMsgBox(text, title := "Message", buttons := "OK", icon := "", darkMode := -1
     totalH := 20 + contentH + btnPanelH
 
     ; Create GUI
-    msgGui := Gui("+Owner" ownerHwnd " -MinimizeBox -MaximizeBox +ToolWindow", title)
+    msgGui := Gui("+Owner" ownerHwnd " -MinimizeBox -MaximizeBox", title)
     msgGui.SetFont("s10", "Segoe UI")
 
     if (darkMode) {
