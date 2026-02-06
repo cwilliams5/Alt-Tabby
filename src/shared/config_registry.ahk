@@ -987,6 +987,17 @@ global gConfigRegistry := [
      d: "Size to keep after log trim in KB. Must be less than LogMaxKB."},
 
     ; ============================================================
+    ; Theme (Dark/Light Mode)
+    ; ============================================================
+    {type: "section", name: "Theme",
+     desc: "Theme & Dark Mode",
+     long: "Color theme for dialogs and editors. The main Alt-Tab overlay has its own color settings in GUI Appearance."},
+
+    {s: "Theme", k: "Theme", g: "Theme_Mode",
+     t: "enum", default: "Automatic", options: ["Automatic", "Dark", "Light"],
+     d: "Color theme for dialogs and editors. Automatic follows the Windows system setting."},
+
+    ; ============================================================
     ; Testing
     ; ============================================================
     {type: "section", name: "Testing",
