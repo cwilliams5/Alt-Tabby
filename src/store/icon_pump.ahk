@@ -201,14 +201,19 @@ _IP_Tick() {
     ; PERF: Size-based eviction to enforce absolute limit on _IP_Attempts
     ; Other caches (exe icons, brushes, UWP logo) have FIFO eviction - this one should too
     if (_IP_Attempts.Count > _IP_AttemptsMax) {
+        ; RACE FIX: Protect from IconPump_CleanupWindow (runs from other timers)
+        Critical "On"
         toEvict := _IP_Attempts.Count - _IP_AttemptsMax + 50  ; Evict extra 50 to reduce frequency
-        evicted := 0
+        evictKeys := []
         for hwnd, _ in _IP_Attempts {
-            _IP_Attempts.Delete(hwnd)
-            if (++evicted >= toEvict)
+            evictKeys.Push(hwnd)
+            if (evictKeys.Length >= toEvict)
                 break
         }
-        _IP_Log("SIZE EVICT: removed " evicted " entries (was " (_IP_Attempts.Count + evicted) ", now " _IP_Attempts.Count ")")
+        for _, hwnd in evictKeys
+            _IP_Attempts.Delete(hwnd)
+        Critical "Off"
+        _IP_Log("SIZE EVICT: removed " evictKeys.Length " entries (was " (_IP_Attempts.Count + evictKeys.Length) ", now " _IP_Attempts.Count ")")
     }
 
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
@@ -506,10 +511,13 @@ _IP_GetUWPLogoPathCached(packagePath) {
     ; Evict oldest entry if cache is full
     if (_IP_UwpLogoCache.Count >= _IP_UwpLogoCacheMax) {
         ; Simple eviction: delete first key (Map iteration order is insertion order in AHK v2)
+        evictKey := ""
         for k, _ in _IP_UwpLogoCache {
-            _IP_UwpLogoCache.Delete(k)
+            evictKey := k
             break
         }
+        if (evictKey != "")
+            _IP_UwpLogoCache.Delete(evictKey)
     }
     _IP_UwpLogoCache[packagePath] := logoPath
 

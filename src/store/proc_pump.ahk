@@ -98,8 +98,13 @@ _PP_Tick() {
 
         ; Check failed PID cache first - skip recently failed PIDs
         global _PP_FailedPidCache, _PP_FailedPidCacheTTL, _PP_FailedPidCacheMax
-        if (_PP_FailedPidCache.Has(pid) && (A_TickCount - _PP_FailedPidCache[pid]) < _PP_FailedPidCacheTTL)
+        ; RACE FIX: Protect cache read - ProcPump_PruneFailedPidCache runs from heartbeat timer
+        Critical "On"
+        if (_PP_FailedPidCache.Has(pid) && (A_TickCount - _PP_FailedPidCache[pid]) < _PP_FailedPidCacheTTL) {
+            Critical "Off"
             continue
+        }
+        Critical "Off"
 
         ; Check positive cache
         cached := WindowStore_GetProcNameCached(pid)
@@ -111,15 +116,19 @@ _PP_Tick() {
         ; Resolve process path
         path := _PP_GetProcessPath(pid)
         if (path = "") {
-            ; Record failure in failed PID cache
-            ; Evict oldest entry if at limit (prevents unbounded growth)
+            ; RACE FIX: Protect eviction + write from ProcPump_PruneFailedPidCache (heartbeat timer)
+            Critical "On"
             if (_PP_FailedPidCache.Count >= _PP_FailedPidCacheMax) {
+                evictKey := ""
                 for k, _ in _PP_FailedPidCache {
-                    _PP_FailedPidCache.Delete(k)
+                    evictKey := k
                     break
                 }
+                if (evictKey != "")
+                    _PP_FailedPidCache.Delete(evictKey)
             }
             _PP_FailedPidCache[pid] := A_TickCount
+            Critical "Off"
             continue
         }
 

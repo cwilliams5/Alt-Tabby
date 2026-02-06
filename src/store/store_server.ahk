@@ -538,10 +538,13 @@ Store_PushToClients() {
     ; Only clear when diagnostics enabled and maps exceed threshold
     global gWS_DiagChurn, gWS_DiagSource
     if (cfg.DiagChurnLog) {
+        ; RACE FIX: Protect map swap from UpsertWindow/_WS_BumpRev writing to old reference
+        Critical "On"
         if (gWS_DiagChurn.Count > 1000)
             gWS_DiagChurn := Map()
         if (gWS_DiagSource.Count > 1000)
             gWS_DiagSource := Map()
+        Critical "Off"
     }
 }
 
