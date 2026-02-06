@@ -722,7 +722,8 @@ _KSub_OnNotification(jsonLine) {
     ; - FocusChange: can signal external workspace switches (notification clicks)
     ; - Workspace/Move events: change window→workspace mapping
     ; - Manage/Unmanage: add/remove windows from komorebi tracking
-    _KSub_ProcessFullState(stateObj, handledWorkspaceEvent)
+    isLightMode := (eventType = "FocusChange")
+    _KSub_ProcessFullState(stateObj, handledWorkspaceEvent, isLightMode)
 
     ; Push changes to clients (flush any pending cloak batch first)
     _KSub_CancelCloakTimer()
@@ -806,7 +807,7 @@ _KSub_CancelCloakTimer() {
 ; Process full komorebi state and update all windows
 ; stateObj: parsed Map from cJson (NOT raw text)
 ; skipWorkspaceUpdate: set to true when called after a focus event (notification already handled workspace)
-_KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
+_KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := false) {
     global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache, _KSub_LastWsUpdateTick
     global _KSub_CacheMaxAgeMs, _KSub_FocusedHwndByWS, gKSub_MruSuppressUntilTick
 
@@ -854,6 +855,24 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false) {
         _KSub_LastWorkspaceName := currentWsName
         _KSub_LastWsUpdateTick := A_TickCount
         try WindowStore_SetCurrentWorkspace("", currentWsName)
+    }
+
+    ; Light mode: only workspace self-healing (above) + focused hwnd cache + MRU.
+    ; Skips the expensive wsMap build + batch patching (saves ~5-10ms).
+    ; Used for FocusChange events which don't add/remove windows or change mappings.
+    if (lightMode) {
+        if (!skipWorkspaceUpdate) {
+            _KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS)
+            _KSub_DiagLog("ProcessFullState[light]: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
+        }
+        if (currentWsName != "") {
+            focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
+            if (focusedHwnd) {
+                try WindowStore_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
+                _KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
+            }
+        }
+        return
     }
 
     ; Build map of ALL windows to their workspaces from komorebi state

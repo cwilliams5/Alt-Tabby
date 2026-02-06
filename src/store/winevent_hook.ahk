@@ -191,14 +191,6 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; For focus/foreground events, capture for MRU update (processed in batch)
     if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS) {
-        ; Skip hung windows - IsHungAppWindow is fast (no window message)
-        try {
-            if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int")) {
-                Critical "Off"
-                return
-            }
-        }
-
         ; LATENCY FIX: Don't call WinGetTitle here - it sends WM_GETTEXT which can
         ; block 10-50ms on slow windows. Let the batch processor handle title checks.
         ;

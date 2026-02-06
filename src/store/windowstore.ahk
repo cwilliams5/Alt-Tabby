@@ -171,22 +171,39 @@ WindowStore_UpsertWindow(records, source := "") {
         ; Track if any field actually changed
         rowChanged := false
         if (rec is Map) {
-            for k, v in rec {
-                ; Preserve komorebi workspace state if winenum tries to overwrite
-                if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
-                    continue  ; lint-ignore: critical-section
-                ; Only update if value differs
-                if (!row.HasOwnProp(k) || row.%k% != v) {
-                    ; Diagnostic: track which fields trigger changes (skip for new records)
-                    if (!isNew)
-                        gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
+            if (isNew) {
+                ; New record — all fields are different from defaults by definition.
+                ; Skip per-field HasOwnProp/!= checks. Just assign and mark dirty.
+                for k, v in rec {
+                    ; Guard kept even for new records: hasKomorebiWs is always false here
+                    ; (workspaceName starts as "") but guards against future call ordering
+                    ; changes where a record could be pre-populated before UpsertWindow.
+                    if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
+                        continue  ; lint-ignore: critical-section
                     row.%k% := v
-                    rowChanged := true
-                    ; Mark dirty for delta tracking (new records or non-internal field changes)
-                    if (isNew || !gWS_InternalFields.Has(k))
-                        gWS_DeltaPendingHwnds[hwnd] := true
-                    if (gWS_ProjectionFields.Has(k))
-                        projDirty := true
+                }
+                rowChanged := true
+                gWS_DeltaPendingHwnds[hwnd] := true
+                projDirty := true  ; New record always affects projection
+            } else {
+                ; Existing record — check each field for actual changes
+                for k, v in rec {
+                    ; Preserve komorebi workspace state if winenum tries to overwrite
+                    if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
+                        continue  ; lint-ignore: critical-section
+                    ; Only update if value differs
+                    if (!row.HasOwnProp(k) || row.%k% != v) {
+                        ; Diagnostic: track which fields trigger changes (skip for new records)
+                        if (!isNew)
+                            gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
+                        row.%k% := v
+                        rowChanged := true
+                        ; Mark dirty for delta tracking (new records or non-internal field changes)
+                        if (isNew || !gWS_InternalFields.Has(k))
+                            gWS_DeltaPendingHwnds[hwnd] := true
+                        if (gWS_ProjectionFields.Has(k))
+                            projDirty := true
+                    }
                 }
             }
         } else {
@@ -261,7 +278,7 @@ _WS_ApplyPatch(row, patch, hwnd) {
                     changed := true
                     gWS_DeltaPendingHwnds[hwnd] := true
                 }
-                if (gWS_ProjectionFields.Has(k))
+                if (!projDirty && gWS_ProjectionFields.Has(k))
                     projDirty := true
             }
         }
@@ -274,7 +291,7 @@ _WS_ApplyPatch(row, patch, hwnd) {
                     changed := true
                     gWS_DeltaPendingHwnds[hwnd] := true
                 }
-                if (gWS_ProjectionFields.Has(k))
+                if (!projDirty && gWS_ProjectionFields.Has(k))
                     projDirty := true
             }
         }
@@ -396,6 +413,13 @@ WindowStore_ValidateExistence() {
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             toRemove.Push(hwnd)
             continue
+        }
+
+        ; Check 1.5: Skip hung windows - subsequent DllCalls (IsWindowVisible, IsIconic)
+        ; send window messages that can block 10-50ms on hung windows
+        try {
+            if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int"))
+                continue
         }
 
         ; Check 2: Window exists but may no longer be eligible (ghost window)
