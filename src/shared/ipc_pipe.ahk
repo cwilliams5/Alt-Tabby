@@ -387,8 +387,10 @@ _IPC_CheckConnect(inst) {
     global IPC_WAIT_SINGLE_OBJ
     if (!inst.hPipe)
         return false
-    if (inst.connected)
+    if (inst.connected) {
+        _IPC_CloseHandle(inst.hEvent)
         return true
+    }
     if (inst.pending) {
         wait := DllCall("WaitForSingleObject", "ptr", inst.hEvent, "uint", IPC_WAIT_SINGLE_OBJ, "uint")
         if (wait = 0) { ; WAIT_OBJECT_0
