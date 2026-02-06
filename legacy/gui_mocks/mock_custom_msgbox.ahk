@@ -135,13 +135,21 @@ DarkMsgBox(text, title := "Message", buttons := "OK", icon := "", darkMode := -1
     totalBtnW := btnList.Length * btnW + (btnList.Length - 1) * btnSpacing
     btnX := msgWidth - totalBtnW - 20
 
+    btnCtrls := []
     for i, btnText in btnList {
         btn := msgGui.AddButton(
             "x" btnX " y" btnY " w" btnW " h" btnH
             (i = 1 ? " +Default" : ""),
             btnText)
         btn.OnEvent("Click", MsgBoxBtnClick.Bind(btnText, msgGui))
+        btnCtrls.Push(btn)
         btnX += btnW + btnSpacing
+    }
+
+    ; -- Dark theme for buttons --
+    if (darkMode) {
+        for btn in btnCtrls
+            DllCall("uxtheme\SetWindowTheme", "Ptr", btn.Hwnd, "Str", "DarkMode_Explorer", "Ptr", 0)
     }
 
     ; -- Dark title bar --

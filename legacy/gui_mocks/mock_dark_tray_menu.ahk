@@ -53,16 +53,21 @@ global gDarkMenuEnabled := false
 global gApproachANote := ""
 
 ; -- Approach A Functions --
+; These functions are ordinal-only exports (no named export), so we
+; resolve via GetProcAddress with ordinal numbers cast as Ptr.
+
+_GetUxthemeOrdinal(ordinal) {
+    static hMod := DllCall("GetModuleHandle", "Str", "uxtheme", "Ptr")
+    return DllCall("GetProcAddress", "Ptr", hMod, "Ptr", ordinal, "Ptr")
+}
 
 ; Enable dark mode for all menus in this process
 EnableDarkMenus() {
-    ; SetPreferredAppMode(2) = ForceDark
-    ; uxtheme ordinal #135
+    ; SetPreferredAppMode(2) = ForceDark (ordinal #135)
     try {
-        DllCall("uxtheme\SetPreferredAppMode", "Int", 2, "Int")
-        ; FlushMenuThemes() forces immediate update
-        ; uxtheme ordinal #136
-        DllCall("uxtheme\FlushMenuThemes")
+        DllCall(_GetUxthemeOrdinal(135), "Int", 2, "Int")
+        ; FlushMenuThemes() forces immediate update (ordinal #136)
+        DllCall(_GetUxthemeOrdinal(136))
         return true
     } catch as e {
         ; Ordinal exports may not exist on older Windows
@@ -73,9 +78,9 @@ EnableDarkMenus() {
 ; Disable dark mode for menus (restore system default)
 DisableDarkMenus() {
     try {
-        ; SetPreferredAppMode(0) = Default (follows system)
-        DllCall("uxtheme\SetPreferredAppMode", "Int", 0, "Int")
-        DllCall("uxtheme\FlushMenuThemes")
+        ; SetPreferredAppMode(0) = Default (ordinal #135)
+        DllCall(_GetUxthemeOrdinal(135), "Int", 0, "Int")
+        DllCall(_GetUxthemeOrdinal(136))
         return true
     } catch {
         return false
@@ -85,9 +90,9 @@ DisableDarkMenus() {
 ; Follow system theme for menus
 AutoDarkMenus() {
     try {
-        ; SetPreferredAppMode(1) = AllowDark (follows system preference)
-        DllCall("uxtheme\SetPreferredAppMode", "Int", 1, "Int")
-        DllCall("uxtheme\FlushMenuThemes")
+        ; SetPreferredAppMode(1) = AllowDark (ordinal #135)
+        DllCall(_GetUxthemeOrdinal(135), "Int", 1, "Int")
+        DllCall(_GetUxthemeOrdinal(136))
         return true
     } catch {
         return false
@@ -308,15 +313,16 @@ demoGui.AddText("x35 y445 w430 vNoteText +Wrap cGray", "Right-click the tray ico
 demoGui.AddGroupBox("x20 y480 w460 h170", "Code Comparison")
 
 demoGui.SetFont("s9", "Consolas")
-demoGui.AddText("x35 y505 w430 +Wrap",
-    "; --- APPROACH A: entire implementation ---`n"
-    "EnableDarkMenus() {`n"
-    "    DllCall(""uxtheme\SetPreferredAppMode"", ""Int"", 2, ""Int"")`n"
-    "    DllCall(""uxtheme\FlushMenuThemes"")`n"
-    "}`n`n"
-    "; --- APPROACH B: just the WM_DRAWITEM text portion ---`n"
-    "; (+ 150 more lines for background, separators,`n"
-    ";  icons, font, WM_MEASUREITEM, menu creation...)")
+codeText := "; --- APPROACH A: entire implementation ---"
+codeText .= "`nEnableDarkMenus() {"
+codeText .= "`n    DllCall(""uxtheme\SetPreferredAppMode"", ""Int"", 2, ""Int"")"
+codeText .= "`n    DllCall(""uxtheme\FlushMenuThemes"")"
+codeText .= "`n}"
+codeText .= "`n"
+codeText .= "`n; --- APPROACH B: just the WM_DRAWITEM text portion ---"
+codeText .= "`n; (+ 150 more lines for background, separators,"
+codeText .= "`n;  icons, font, WM_MEASUREITEM, menu creation...)"
+demoGui.AddText("x35 y505 w430 +Wrap", codeText)
 demoGui.SetFont("s10", "Segoe UI")
 
 demoGui.OnEvent("Close", (*) => ExitApp())

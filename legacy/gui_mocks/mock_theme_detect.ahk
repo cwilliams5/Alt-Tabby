@@ -48,17 +48,25 @@ myGui.AddText("x20 y55 w400", "(Settings > Personalization > Colors)")
 myGui.AddGroupBox("x20 y85 w420 h145", "Current Theme State")
 
 myGui.AddText("x35 y110 w130", "App Theme:")
-myGui.AddText("x170 y110 w250 vAppThemeText +Bold", "detecting...")
+myGui.SetFont("s10 Bold", "Segoe UI")
+myGui.AddText("x170 y110 w250 vAppThemeText", "detecting...")
+myGui.SetFont("s10 Norm", "Segoe UI")
 
 myGui.AddText("x35 y135 w130", "System Theme:")
-myGui.AddText("x170 y135 w250 vSystemThemeText +Bold", "detecting...")
+myGui.SetFont("s10 Bold", "Segoe UI")
+myGui.AddText("x170 y135 w250 vSystemThemeText", "detecting...")
+myGui.SetFont("s10 Norm", "Segoe UI")
 
 myGui.AddText("x35 y160 w130", "Accent Color:")
-myGui.AddText("x170 y160 w250 vAccentText +Bold", "detecting...")
+myGui.SetFont("s10 Bold", "Segoe UI")
+myGui.AddText("x170 y160 w250 vAccentText", "detecting...")
+myGui.SetFont("s10 Norm", "Segoe UI")
 myGui.AddProgress("x170 y182 w100 h18 vAccentSwatch", 100)
 
 myGui.AddText("x35 y205 w130", "High Contrast:")
-myGui.AddText("x170 y205 w250 vHighContrastText +Bold", "detecting...")
+myGui.SetFont("s10 Bold", "Segoe UI")
+myGui.AddText("x170 y205 w250 vHighContrastText", "detecting...")
+myGui.SetFont("s10 Norm", "Segoe UI")
 
 ; Change log
 myGui.AddGroupBox("x20 y240 w420 h190", "Change Log")

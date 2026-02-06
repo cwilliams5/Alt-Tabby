@@ -197,7 +197,7 @@ BuildPage(section, startX, contentW, contentH) {
     ; Section header
     pageGui.SetFont("s14 Bold", "Segoe UI")
     pageGui.AddText("x15 y" yPos " w" (contentW - 30) " vHeader_" section.section, section.section)
-    pageGui.SetFont("s10 Normal", "Segoe UI")
+    pageGui.SetFont("s10 Norm", "Segoe UI")
     yPos += 40
 
     ; Settings items

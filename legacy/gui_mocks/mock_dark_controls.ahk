@@ -134,7 +134,7 @@ OnMessage(0x0134, WM_CTLCOLOREDIT)   ; WM_CTLCOLORLISTBOX
 OnMessage(0x0138, WM_CTLCOLORSTATIC) ; WM_CTLCOLORSTATIC
 
 myGui.OnEvent("Close", (*) => ExitApp())
-myGui.Show("w600 h520")
+myGui.Show("w600 h560")
 
 ; ============================================================
 ; Toggle Function
@@ -168,11 +168,21 @@ ToggleTheme(*) {
     ApplyDarkThemeToControl(myGui["NameEdit"].Hwnd, gIsDark, "DarkMode_CFD")
     ApplyDarkThemeToControl(myGui["EmailEdit"].Hwnd, gIsDark, "DarkMode_CFD")
     ApplyDarkThemeToControl(myGui["NumEdit"].Hwnd, gIsDark, "DarkMode_CFD")
+    ApplyDarkThemeToControl(myGui["NumUpDown"].Hwnd, gIsDark, "DarkMode_Explorer")
     ApplyDarkThemeToControl(myGui["DDL"].Hwnd, gIsDark, "DarkMode_CFD")
     ApplyDarkThemeToControl(myGui["LV"].Hwnd, gIsDark, "DarkMode_Explorer")
     ApplyDarkThemeToControl(myGui["TabCtrl"].Hwnd, gIsDark, "DarkMode_Explorer")
     ApplyDarkThemeToControl(myGui["Slider"].Hwnd, gIsDark, "DarkMode_Explorer")
     ApplyDarkThemeToControl(myGui["SB"].Hwnd, gIsDark, "DarkMode_Explorer")
+
+    ; Buttons - apply DarkMode_Explorer theme
+    toggleBtn.Opt(gIsDark ? "+Background" DARK_CTRL : "+BackgroundDefault")
+    ApplyDarkThemeToControl(toggleBtn.Hwnd, gIsDark, "DarkMode_Explorer")
+
+    ; ListView header - get header child window and theme it
+    hHeader := SendMessage(0x101F, 0, 0, myGui["LV"].Hwnd)  ; LVM_GETHEADER
+    if (hHeader)
+        ApplyDarkThemeToControl(hHeader, gIsDark, "DarkMode_Explorer")
 
     ; ListView needs explicit colors for text and background
     if (gIsDark) {
