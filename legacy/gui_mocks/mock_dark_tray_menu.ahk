@@ -313,15 +313,18 @@ demoGui.AddText("x35 y445 w430 vNoteText +Wrap cGray", "Right-click the tray ico
 demoGui.AddGroupBox("x20 y480 w460 h170", "Code Comparison")
 
 demoGui.SetFont("s9", "Consolas")
-codeText := "; --- APPROACH A: entire implementation ---"
-codeText .= "`nEnableDarkMenus() {"
-codeText .= "`n    DllCall(""uxtheme\SetPreferredAppMode"", ""Int"", 2, ""Int"")"
-codeText .= "`n    DllCall(""uxtheme\FlushMenuThemes"")"
-codeText .= "`n}"
-codeText .= "`n"
-codeText .= "`n; --- APPROACH B: just the WM_DRAWITEM text portion ---"
-codeText .= "`n; (+ 150 more lines for background, separators,"
-codeText .= "`n;  icons, font, WM_MEASUREITEM, menu creation...)"
+codeText := "
+(
+; --- APPROACH A: entire implementation ---
+EnableDarkMenus() {
+    DllCall(GetOrd(135), "Int", 2, "Int")
+    DllCall(GetOrd(136))
+}
+
+; --- APPROACH B: just the WM_DRAWITEM handler ---
+; (+ 150 more lines for background, separators,
+;  icons, font, WM_MEASUREITEM, menu creation...)
+)"
 demoGui.AddText("x35 y505 w430 +Wrap", codeText)
 demoGui.SetFont("s10", "Segoe UI")
 

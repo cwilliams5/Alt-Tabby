@@ -147,6 +147,11 @@ DarkMsgBox(text, title := "Message", buttons := "OK", icon := "", darkMode := -1
     }
 
     ; -- Dark theme for buttons --
+    ; DarkMode_Explorer gives buttons dark background with standard hover.
+    ; Button hover/highlight color is theme-controlled. Custom colors (e.g.,
+    ; blue accent on primary button) require BS_OWNERDRAW + WM_DRAWITEM
+    ; (full owner-draw painting). This is the same limitation as checkbox
+    ; fill color - Win32 visual styles control the hover appearance.
     if (darkMode) {
         for btn in btnCtrls
             DllCall("uxtheme\SetWindowTheme", "Ptr", btn.Hwnd, "Str", "DarkMode_Explorer", "Ptr", 0)
