@@ -42,4 +42,4 @@ global IPC_WM_PIPE_WAKE := 0x8001       ; WM_APP+1: PostMessage signal to check 
 
 ; Command-line argument constants
 global ARG_LAUNCHER_HWND := "--launcher-hwnd="
-global ARG_LAUNCHER_HWND_LEN := 16      ; StrLen(ARG_LAUNCHER_HWND)
+global ARG_LAUNCHER_HWND_LEN := StrLen(ARG_LAUNCHER_HWND)
