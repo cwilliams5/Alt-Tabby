@@ -42,6 +42,7 @@ BlacklistEditor_Run() {
     _BE_LoadValues()
 
     gBE_Gui.Show()
+    _GUI_AntiFlashReveal(gBE_Gui, true)
 
     ; Block until GUI closes
     WinWaitClose(gBE_Gui.Hwnd)
@@ -57,6 +58,7 @@ _BE_CreateGui() {
     global gBE_Gui, gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
 
     gBE_Gui := Gui("+Resize +MinSize500x400", "Alt-Tabby Blacklist Editor")
+    _GUI_AntiFlashPrepare(gBE_Gui, "F0F0F0", true)
     gBE_Gui.OnEvent("Close", _BE_OnClose)
     gBE_Gui.OnEvent("Size", _BE_OnSize)
     gBE_Gui.SetFont("s9", "Segoe UI")

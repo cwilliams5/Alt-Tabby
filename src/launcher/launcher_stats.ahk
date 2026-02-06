@@ -24,6 +24,7 @@ ShowStatsDialog() {
         _Dash_QueryStats()
 
     sg := Gui("", "Alt-Tabby Statistics")
+    _GUI_AntiFlashPrepare(sg, "F0F0F0", true)
     sg.SetFont("s10", "Segoe UI")
     sg.MarginX := 20
     sg.MarginY := 15
@@ -39,6 +40,7 @@ ShowStatsDialog() {
         sg.OnEvent("Escape", (*) => _StatsDialog_Close())
         g_StatsGui := sg
         sg.Show("w440")
+        _GUI_AntiFlashReveal(sg, true)
         return
     }
 
@@ -145,6 +147,7 @@ ShowStatsDialog() {
     _StatsDialog_UpdateValues()
 
     sg.Show("w575")
+    _GUI_AntiFlashReveal(sg, true)
 }
 
 _StatsDialog_Close() {

@@ -56,6 +56,7 @@ ShowDashboardDialog() {
     g_DashControls := {}
 
     dg := Gui("", "Alt-Tabby Dashboard")
+    _GUI_AntiFlashPrepare(dg, "F0F0F0", true)
     dg.SetFont("s10", "Segoe UI")
     dg.MarginX := 20
     dg.MarginY := 15
@@ -385,6 +386,7 @@ ShowDashboardDialog() {
 
     g_DashboardGui := dg
     dg.Show("w780")
+    _GUI_AntiFlashReveal(dg, true)
     btnOK.Focus()
 
     ; Start background refresh in cool mode (no interaction yet)

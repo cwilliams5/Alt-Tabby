@@ -77,4 +77,10 @@ _GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
     DllCall("SetLayeredWindowAttributes", "ptr", hwnd, "uint", 0, "uchar", 255, "uint", 2)
     if (wasCloaked)
         DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 0, "uint", 4)
+    ; Remove WS_EX_LAYERED for cloaked (normal) GUIs — no longer needed after reveal,
+    ; and leaving it on causes flashing with WM_SETREDRAW + RedrawWindow (dashboard).
+    ; Off-screen (WebView2) GUIs keep it: removing triggers a style-change repaint
+    ; that can flash the frame before WebView2 recomposites.
+    if (!wasOffscreen)
+        gui.Opt("-E0x80000")
 }

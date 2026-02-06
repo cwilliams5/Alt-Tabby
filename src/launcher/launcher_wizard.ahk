@@ -28,6 +28,7 @@ ShowFirstRunWizard() {
     global g_WizardGui, cfg
 
     g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
+    _GUI_AntiFlashPrepare(g_WizardGui, "F0F0F0", true)
     g_WizardGui.SetFont("s10", "Segoe UI")
 
     g_WizardGui.AddText("w400", "Let's set up a few things to get you started:")
@@ -47,6 +48,7 @@ ShowFirstRunWizard() {
 
     g_WizardGui.OnEvent("Close", WizardSkip)
     g_WizardGui.Show("Center")
+    _GUI_AntiFlashReveal(g_WizardGui, true)
     WinWaitClose(g_WizardGui)
 }
 
