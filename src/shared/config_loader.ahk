@@ -84,6 +84,7 @@ ConfigLoader_Init(basePath := "", readOnly := false) {
 
     _CL_LoadAllSettings()  ; Load user overrides
     _CL_ValidateSettings() ; Clamp values to safe ranges
+    _CL_ResolveAhkV2Path()     ; Auto-discover AHK v2 if not set
     _CL_ResolveKomorebicPath() ; Auto-discover komorebic if not set
     gConfigLoaded := true
 
@@ -568,9 +569,9 @@ _CL_ValidateSettings() {
     if (cfg.DiagLogKeepKB >= cfg.DiagLogMaxKB)
         cfg.DiagLogKeepKB := cfg.DiagLogMaxKB // 2
 
-    ; --- String enum validation ---
-    if (cfg.IPCWorkspaceDeltaStyle != "Always" && cfg.IPCWorkspaceDeltaStyle != "OnChange")
-        cfg.IPCWorkspaceDeltaStyle := "Always"
+    ; --- Safety poll: 0=disabled, otherwise floor at 30000ms ---
+    if (cfg.WinEnumSafetyPollMs > 0 && cfg.WinEnumSafetyPollMs < 30000)
+        cfg.WinEnumSafetyPollMs := 30000
 
     ; --- Derived globals (must come after clamping) ---
     global IPC_TICK_IDLE
@@ -585,6 +586,49 @@ _CL_ValidateSettings() {
     TOOLTIP_DURATION_SHORT := cfg.GUI_TooltipDurationMs
     TOOLTIP_DURATION_DEFAULT := cfg.GUI_TooltipDurationMs
     TOOLTIP_DURATION_LONG := cfg.GUI_TooltipDurationMs
+}
+
+; ============================================================
+; AUTO-DISCOVER AHK V2 PATH
+; ============================================================
+_CL_ResolveAhkV2Path() {
+    global cfg
+
+    ; User override — non-empty and exists, use as-is
+    if (cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path))
+        return
+
+    ; Try PATH via `where AutoHotkey64`
+    tmpFile := A_Temp "\alttabby_where_ahk.tmp"
+    try {
+        RunWait('cmd.exe /c where AutoHotkey64 > "' tmpFile '" 2>nul',, "Hide")
+        if (FileExist(tmpFile)) {
+            result := Trim(FileRead(tmpFile), " `t`r`n")
+            try FileDelete(tmpFile)
+            firstLine := StrSplit(result, "`n", " `t`r")[1]
+            if (firstLine != "" && FileExist(firstLine)) {
+                cfg.AhkV2Path := firstLine
+                return
+            }
+        }
+    }
+    try FileDelete(tmpFile)
+
+    ; Try known install locations
+    knownPaths := [
+        "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
+        "C:\Program Files (x86)\AutoHotkey\v2\AutoHotkey64.exe",
+        EnvGet("USERPROFILE") "\scoop\apps\autohotkey\current\v2\AutoHotkey64.exe",
+        EnvGet("USERPROFILE") "\scoop\shims\AutoHotkey64.exe",
+    ]
+    for _, path in knownPaths {
+        if (FileExist(path)) {
+            cfg.AhkV2Path := path
+            return
+        }
+    }
+
+    ; Not found — leave empty; consumers fall back to A_AhkPath
 }
 
 ; ============================================================

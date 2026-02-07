@@ -635,7 +635,8 @@ global gConfigRegistry := [
      min: 0, max: 1000,
      d: "Per-row healing: 0=always full rows (legacy, no sparse deltas), N>0=every Nth push sends full rows instead of changed-fields-only."},
 
-    {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle", t: "string", default: "Always",
+    {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle",
+     t: "enum", default: "Always", options: ["Always", "OnChange"],
      d: "Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean)."},
 
     {s: "IPC", k: "FullSyncEvery", g: "IPCFullSyncEvery", t: "int", default: 60,
@@ -663,8 +664,8 @@ global gConfigRegistry := [
      desc: "External Tools",
      long: "Paths to external executables used by Alt-Tabby."},
 
-    {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", default: "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
-     d: "Path to AHK v2 executable (for spawning subprocesses)"},
+    {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", default: "",
+     d: "Path to AHK v2 executable (for spawning subprocesses). Leave empty to auto-discover via PATH and known install locations"},
 
     {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", default: "",
      d: "Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations"},
