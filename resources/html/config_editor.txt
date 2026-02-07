@@ -225,11 +225,6 @@
     color: var(--text-primary);
     margin-bottom: 2px;
   }
-  .setting-key {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-  }
   .setting-desc {
     font-size: 12px;
     color: var(--text-secondary);
@@ -397,6 +392,19 @@
   .filter-mode .subsection.filter-hidden { display: none; }
   .filter-mode .sidebar-item { display: none; }
 
+  /* Search results label in sidebar during filter mode */
+  .sidebar-search-label {
+    display: none;
+    padding: 8px 16px;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 500;
+    border-left: 3px solid var(--accent);
+    background: var(--bg-tertiary);
+    user-select: none;
+  }
+  .filter-mode .sidebar-search-label { display: block; }
+
   /* Range slider+input dual control */
   .range-control {
     display: flex;
@@ -543,7 +551,7 @@ function renderSidebar() {
       ${s.desc || s.name}
       <div class="item-desc">${s.subsections.length ? s.subsections.length + ' groups' : ''}</div>
     </div>
-  `).join('');
+  `).join('') + '<div class="sidebar-search-label" id="sidebarSearchLabel"></div>';
 }
 
 // Create control HTML
@@ -615,7 +623,6 @@ function renderSettings(settings) {
     <div class="setting" data-key="${s.k}" data-global="${s.g}" data-search="${(s.d + ' ' + s.k + ' ' + s.g).toLowerCase()}">
       <div class="setting-info">
         <div class="setting-label">${s.k}</div>
-        <div class="setting-key">[${s.s}] ${s.g}</div>
         <div class="setting-desc">${s.d || ''}</div>
       </div>
       <div class="setting-control">${controlHTML(s)}</div>
@@ -782,6 +789,13 @@ document.getElementById('searchBox').addEventListener('input', function(e) {
 
     sectionEl.classList.toggle('filter-empty', !sectionHasMatch);
   });
+
+  // Update search results label in sidebar
+  const label = document.getElementById('sidebarSearchLabel');
+  if (label) {
+    const matchCount = document.querySelectorAll('.setting:not(.filter-hidden)').length;
+    label.textContent = matchCount > 0 ? 'Search Results (' + matchCount + ')' : 'No results';
+  }
 });
 
 // Keyboard nav

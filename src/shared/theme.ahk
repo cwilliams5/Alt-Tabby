@@ -571,15 +571,15 @@ _Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {
 }
 
 _Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {
-    global gTheme_Initialized, gTheme_Palette, gTheme_BrushEditBg, gTheme_BrushBg
+    global gTheme_Initialized, gTheme_Palette, gTheme_BrushEditBg, gTheme_BrushBg, gTheme_BrushPanelBg
     global gTheme_SidebarHwnds
     if (!gTheme_Initialized)
         return
-    ; Sidebar listboxes use main bg (panel-like) instead of edit bg
+    ; Sidebar listboxes use panelBg (frame color) instead of edit bg
     if (gTheme_SidebarHwnds.Has(lParam)) {
-        DllCall("SetBkColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.bg))
+        DllCall("SetBkColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.panelBg))
         DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.text))
-        return gTheme_BrushBg
+        return gTheme_BrushPanelBg
     }
     DllCall("SetBkColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.editBg))
     DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.editText))
