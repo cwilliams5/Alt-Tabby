@@ -166,6 +166,15 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             ; gGUI_DisplayItems was populated, causing race conditions.
             Critical "Off"
 
+            ; LATENCY FIX: Pre-cache icon bitmaps OUTSIDE Critical section.
+            ; _Gdip_CreateBitmapFromHICON_Alpha takes 0.5-2ms per icon via GDI+ DllCall.
+            ; With 10-30 windows this blocked hotkeys for 5-60ms during snapshot processing.
+            ; Safe: no new IPC arrives mid-callback, Gdip_DrawCachedIcon handles misses on-demand.
+            for _, item in gGUI_LiveItems {
+                if (item.iconHicon)
+                    Gdip_PreCacheIcon(item.hwnd, item.iconHicon)
+            }
+
             ; LATENCY FIX: Prune icon cache OUTSIDE Critical section.
             ; Gdip_PruneIconCache iterates the cache and calls GdipDisposeImage DllCalls
             ; which can take 2-5ms. gGUI_LiveItemsMap is stable after assignment above.
@@ -285,7 +294,7 @@ GUI_ConvertStoreItems(items) {
 
 ; Single-pass conversion returning both items array and hwnd->item Map
 ; Eliminates redundant O(n) iteration vs calling ConvertStoreItems + RebuildItemsMap separately
-; Also eagerly pre-caches GDI+ bitmaps for all icons while HICONs are guaranteed valid.
+; Icon pre-caching is done separately outside Critical (see GUI_HandleSnapshot).
 GUI_ConvertStoreItemsWithMap(items) {
     result := []
     resultMap := Map()
@@ -294,9 +303,6 @@ GUI_ConvertStoreItemsWithMap(items) {
         converted := _GUI_CreateItemFromRecord(hwnd, item)
         result.Push(converted)
         resultMap[hwnd] := converted
-        ; Pre-cache icon bitmap (skips if already cached with same hicon)
-        if (converted.iconHicon)
-            Gdip_PreCacheIcon(hwnd, converted.iconHicon)
     }
     return { items: result, map: resultMap }
 }
@@ -311,6 +317,7 @@ GUI_ApplyDelta(payload) {
     changedHwnds := Map()    ; Track which hwnds were affected (for viewport-based repaint)
     focusChangedToHwnd := 0  ; Track if any window received focus
     needsIconPrune := false  ; Track if icon cache should be pruned (after removes)
+    iconsToPrecache := []    ; Collect icon pre-cache work for outside Critical
 
     ; Debug: log delta arrival when in bypass mode
     if (gINT_BypassMode && cfg.DiagEventLog) {
@@ -385,9 +392,8 @@ GUI_ApplyDelta(payload) {
                     item.processName := rec["processName"]
                 if (rec.Has("iconHicon")) {
                     item.iconHicon := rec["iconHicon"]
-                    ; Pre-cache GDI+ bitmap while HICON is still valid (store may
-                    ; DestroyIcon after sending the replacement via next delta)
-                    Gdip_PreCacheIcon(hwnd, item.iconHicon)
+                    ; Defer GDI+ pre-cache to outside Critical (0.5-2ms per icon DllCall)
+                    iconsToPrecache.Push({hwnd: hwnd, hicon: item.iconHicon})
                 }
                 if (rec.Has("lastActivatedTick")) {
                     newTick := rec["lastActivatedTick"]
@@ -408,9 +414,9 @@ GUI_ApplyDelta(payload) {
                 newItem := _GUI_CreateItemFromRecord(hwnd, rec)
                 gGUI_LiveItems.Push(newItem)
                 gGUI_LiveItemsMap[hwnd] := newItem
-                ; Pre-cache icon bitmap for new item
+                ; Defer GDI+ pre-cache to outside Critical (0.5-2ms per icon DllCall)
                 if (newItem.iconHicon)
-                    Gdip_PreCacheIcon(hwnd, newItem.iconHicon)
+                    iconsToPrecache.Push({hwnd: hwnd, hicon: newItem.iconHicon})
                 ; Track focus change for new item too
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     if (cfg.DiagEventLog)
@@ -438,6 +444,11 @@ GUI_ApplyDelta(payload) {
 
     ; End critical section before bypass check (which may do significant work)
     Critical "Off"
+
+    ; LATENCY FIX: Pre-cache icon bitmaps OUTSIDE Critical section.
+    ; Deferred from upsert loop to avoid blocking hotkeys during GDI+ DllCalls.
+    for _, ic in iconsToPrecache
+        Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
 
     ; Prune orphaned icon cache entries for removed windows (outside Critical
     ; because GdipDisposeImage DllCalls can take 2-5ms)
