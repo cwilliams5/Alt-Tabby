@@ -636,12 +636,59 @@ RunLiveTests_Features() {
                         TestErrors++
                     }
 
-                    ; Verify derived fields exist
+                    ; Verify derived fields exist and match production formula
+                    ; Use actual lifetime totals from response (store may have pre-existing stats)
                     hasDerived := respObj.Has("DerivedQuickSwitchPct") && respObj.Has("DerivedCancelRate")
                         && respObj.Has("DerivedAvgTabsPerSwitch")
                     if (hasDerived) {
                         Log("PASS: Stats response includes derived fields")
                         TestPassed++
+
+                        ; Recompute expected values from actual lifetime totals
+                        totalActivations := altTabs + quickSwitches
+                        expectedQuickPct := (totalActivations > 0) ? Round(quickSwitches / totalActivations * 100, 1) : 0
+                        expectedCancelRate := (altTabs + cancellations > 0) ? Round(cancellations / (altTabs + cancellations) * 100, 1) : 0
+                        expectedAvgTabs := (altTabs > 0) ? Round(tabSteps / altTabs, 1) : 0
+
+                        quickPct := respObj["DerivedQuickSwitchPct"]
+                        if (quickPct = expectedQuickPct) {
+                            Log("PASS: DerivedQuickSwitchPct = " quickPct " (matches formula)")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: DerivedQuickSwitchPct = " quickPct " (expected " expectedQuickPct ")")
+                            TestErrors++
+                        }
+
+                        cancelRate := respObj["DerivedCancelRate"]
+                        if (cancelRate = expectedCancelRate) {
+                            Log("PASS: DerivedCancelRate = " cancelRate " (matches formula)")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: DerivedCancelRate = " cancelRate " (expected " expectedCancelRate ")")
+                            TestErrors++
+                        }
+
+                        avgTabsVal := respObj["DerivedAvgTabsPerSwitch"]
+                        if (avgTabsVal = expectedAvgTabs) {
+                            Log("PASS: DerivedAvgTabsPerSwitch = " avgTabsVal " (matches formula)")
+                            TestPassed++
+                        } else {
+                            Log("FAIL: DerivedAvgTabsPerSwitch = " avgTabsVal " (expected " expectedAvgTabs ")")
+                            TestErrors++
+                        }
+
+                        ; AvgAltTabsPerHour depends on runtime (real seconds elapsed), so bounds-check
+                        if (respObj.Has("DerivedAvgAltTabsPerHour")) {
+                            avgPerHour := respObj["DerivedAvgAltTabsPerHour"]
+                            ; Store has altTabs > 0 and ran for real seconds, so rate should be > 0
+                            if (avgPerHour > 0) {
+                                Log("PASS: DerivedAvgAltTabsPerHour = " avgPerHour " (> 0, runtime-dependent)")
+                                TestPassed++
+                            } else {
+                                Log("FAIL: DerivedAvgAltTabsPerHour = " avgPerHour " (expected > 0)")
+                                TestErrors++
+                            }
+                        }
                     } else {
                         Log("FAIL: Missing derived fields in stats response")
                         TestErrors++
