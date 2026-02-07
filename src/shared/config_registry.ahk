@@ -666,8 +666,8 @@ global gConfigRegistry := [
     {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", default: "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
      d: "Path to AHK v2 executable (for spawning subprocesses)"},
 
-    {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", default: "C:\Program Files\komorebi\bin\komorebic.exe",
-     d: "Path to komorebic.exe (komorebi CLI)"},
+    {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", default: "",
+     d: "Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations"},
 
     ; ============================================================
     ; Producer Toggles

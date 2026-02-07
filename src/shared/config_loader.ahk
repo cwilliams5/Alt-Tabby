@@ -84,6 +84,7 @@ ConfigLoader_Init(basePath := "", readOnly := false) {
 
     _CL_LoadAllSettings()  ; Load user overrides
     _CL_ValidateSettings() ; Clamp values to safe ranges
+    _CL_ResolveKomorebicPath() ; Auto-discover komorebic if not set
     gConfigLoaded := true
 
     ; Cache frequently-accessed config values for hot paths
@@ -584,6 +585,50 @@ _CL_ValidateSettings() {
     TOOLTIP_DURATION_SHORT := cfg.GUI_TooltipDurationMs
     TOOLTIP_DURATION_DEFAULT := cfg.GUI_TooltipDurationMs
     TOOLTIP_DURATION_LONG := cfg.GUI_TooltipDurationMs
+}
+
+; ============================================================
+; AUTO-DISCOVER KOMOREBIC PATH
+; ============================================================
+_CL_ResolveKomorebicPath() {
+    global cfg
+
+    ; User override — non-empty and exists, use as-is
+    if (cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe))
+        return
+
+    ; Try PATH via `where komorebic`
+    tmpFile := A_Temp "\alttabby_where_komorebic.tmp"
+    try {
+        RunWait('cmd.exe /c where komorebic > "' tmpFile '" 2>nul',, "Hide")
+        if (FileExist(tmpFile)) {
+            result := Trim(FileRead(tmpFile), " `t`r`n")
+            try FileDelete(tmpFile)
+            ; `where` may return multiple lines — use first
+            firstLine := StrSplit(result, "`n", " `t`r")[1]
+            if (firstLine != "" && FileExist(firstLine)) {
+                cfg.KomorebicExe := firstLine
+                return
+            }
+        }
+    }
+    try FileDelete(tmpFile)
+
+    ; Try known install locations
+    knownPaths := [
+        "C:\Program Files\komorebi\bin\komorebic.exe",
+        "C:\Program Files (x86)\komorebi\bin\komorebic.exe",
+        EnvGet("USERPROFILE") "\scoop\shims\komorebic.exe",
+        EnvGet("USERPROFILE") "\.cargo\bin\komorebic.exe",
+    ]
+    for _, path in knownPaths {
+        if (FileExist(path)) {
+            cfg.KomorebicExe := path
+            return
+        }
+    }
+
+    ; Not found — leave empty; consumers already handle ""
 }
 
 ; ============================================================
