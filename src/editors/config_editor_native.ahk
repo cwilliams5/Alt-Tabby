@@ -228,6 +228,7 @@ _CEN_BuildMainGUI() {
     gCEN_SearchEdit := gCEN_MainGui.AddEdit("x524 y10 w260 h24")
     Theme_ApplyToControl(gCEN_SearchEdit, "Edit", themeEntry)
     DllCall("user32\SendMessageW", "Ptr", gCEN_SearchEdit.Hwnd, "UInt", 0x1501, "Ptr", 1, "WStr", "Search settings...")
+    DllCall("user32\SendMessageW", "Ptr", gCEN_SearchEdit.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
     gCEN_SearchEdit.OnEvent("Change", _CEN_OnSearchInput)
 
     ; Sidebar with section list (below header border)
@@ -239,7 +240,7 @@ _CEN_BuildMainGUI() {
     items := []
     gCEN_FilteredIndices := []
     for idx, section in gCEN_Sections {
-        items.Push(section.desc)
+        items.Push("   " section.desc)
         gCEN_FilteredIndices.Push(idx)
     }
     gCEN_Sidebar.Add(items)
@@ -432,6 +433,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
 
         if (setting.t = "bool") {
             cb := pageGui.AddCheckbox("x24 y" y " w" contentW " h20 c" gTheme_Palette.text, setting.k)
+            cb.SetFont("s9 bold", "Segoe UI")
             controls.Push({ctrl: cb, origY: y, origX: 24})
             settingCtrls.Push({ctrl: cb, origY: y, origX: 24})
             gCEN_Controls[setting.g] := {ctrl: cb, type: "bool"}
@@ -446,6 +448,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
 
         } else if (setting.t = "enum") {
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
+            lbl.SetFont("s9 bold", "Segoe UI")
             controls.Push({ctrl: lbl, origY: y, origX: 24})
             settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
             optList := []
@@ -467,6 +470,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
 
         } else {
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
+            lbl.SetFont("s9 bold", "Segoe UI")
             controls.Push({ctrl: lbl, origY: y, origX: 24})
             settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
 
@@ -475,17 +479,36 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             useUpDown := hasRange && setting.t = "int" && !isHex
 
             if (useUpDown) {
-                ; Integer with range, not hex -> Edit + UpDown spinner
-                ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w180 Number")
-                controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
-                settingCtrls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
+                ; Integer with range, not hex -> Slider + Edit + UpDown + range label
+                sliderX := CEN_INPUT_X
+                slider := pageGui.AddSlider("x" sliderX " y" y " w120 h24 +0x10 Range" setting.min "-" setting.max)
+                controls.Push({ctrl: slider, origY: y, origX: sliderX})
+                settingCtrls.Push({ctrl: slider, origY: y, origX: sliderX})
+                Theme_ApplyToControl(slider, "Slider", gCEN_ThemeEntry)
+                editX := sliderX + 126
+                ed := pageGui.AddEdit("x" editX " y" y " w80 Number")
+                controls.Push({ctrl: ed, origY: y, origX: editX})
+                settingCtrls.Push({ctrl: ed, origY: y, origX: editX})
                 ud := pageGui.AddUpDown("Range" setting.min "-" setting.max)
-                controls.Push({ctrl: ud, origY: y, origX: CEN_INPUT_X})
-                settingCtrls.Push({ctrl: ud, origY: y, origX: CEN_INPUT_X})
-                ctrlInfo := {ctrl: ed, type: setting.t}
-                gCEN_Controls[setting.g] := ctrlInfo
+                controls.Push({ctrl: ud, origY: y, origX: editX})
+                settingCtrls.Push({ctrl: ud, origY: y, origX: editX})
                 Theme_ApplyToControl(ed, "Edit", gCEN_ThemeEntry)
                 Theme_ApplyToControl(ud, "UpDown", gCEN_ThemeEntry)
+                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
+                rangeX := editX + 86
+                rc := pageGui.AddText("x" rangeX " y" (y + 3) " w120 h16 c" mutedColor, setting.min " - " setting.max)
+                rc.SetFont("s7 italic", "Segoe UI")
+                Theme_MarkMuted(rc)
+                controls.Push({ctrl: rc, origY: y, origX: rangeX})
+                settingCtrls.Push({ctrl: rc, origY: y, origX: rangeX})
+                ; Sync slider <-> edit with guard to prevent infinite loop
+                syncGuard := {v: false}
+                boundSliderSync := _CEN_MakeSliderSyncHandler(ed, syncGuard)
+                boundEditSync := _CEN_MakeEditSyncHandler(slider, syncGuard)
+                slider.OnEvent("Change", boundSliderSync)
+                ed.OnEvent("Change", boundEditSync)
+                ctrlInfo := {ctrl: ed, type: setting.t, slider: slider}
+                gCEN_Controls[setting.g] := ctrlInfo
             } else {
                 ; Float, hex, string, or no range -> plain Edit
                 ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w200")
@@ -496,6 +519,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                     ctrlInfo.fmt := "hex"
                 gCEN_Controls[setting.g] := ctrlInfo
                 Theme_ApplyToControl(ed, "Edit", gCEN_ThemeEntry)
+                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
 
                 ; Clamp-on-blur for float/hex with range
                 if (hasRange && (setting.t = "float" || isHex)) {
@@ -601,11 +625,39 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
     } else {
         ctrlInfo.ctrl.Value := String(val)
     }
+    if (ctrlInfo.HasOwnProp("slider"))
+        try ctrlInfo.slider.Value := Integer(val)
 }
 
 ; Create a clamp-on-blur handler bound to a specific setting's range
 _CEN_MakeClampHandler(globalName, minVal, maxVal) {
     return (ctrl, *) => _CEN_ClampOnBlur(globalName, minVal, maxVal)
+}
+
+; Create a handler that syncs slider value -> edit control
+_CEN_MakeSliderSyncHandler(editCtrl, guard) {
+    return (ctrl, *) => _CEN_SyncSliderToEdit(ctrl, editCtrl, guard)
+}
+
+_CEN_SyncSliderToEdit(sliderCtrl, editCtrl, guard) {
+    if (guard.v)
+        return
+    guard.v := true
+    try editCtrl.Value := sliderCtrl.Value
+    guard.v := false
+}
+
+; Create a handler that syncs edit value -> slider control
+_CEN_MakeEditSyncHandler(sliderCtrl, guard) {
+    return (ctrl, *) => _CEN_SyncEditToSlider(ctrl, sliderCtrl, guard)
+}
+
+_CEN_SyncEditToSlider(editCtrl, sliderCtrl, guard) {
+    if (guard.v)
+        return
+    guard.v := true
+    try sliderCtrl.Value := Integer(editCtrl.Value)
+    guard.v := false
 }
 
 _CEN_ClampOnBlur(globalName, minVal, maxVal) {
@@ -1121,9 +1173,9 @@ _CEN_ApplySearch() {
                 matchCount++
         }
         if (matchCount > 0)
-            gCEN_Sidebar.Add(["Search Results (" matchCount ")"])
+            gCEN_Sidebar.Add(["   Search Results (" matchCount ")"])
         else
-            gCEN_Sidebar.Add(["No results"])
+            gCEN_Sidebar.Add(["   No results"])
         gCEN_Sidebar.Value := 1
 
         if (gCEN_FilteredIndices.Length > 0) {
@@ -1154,7 +1206,7 @@ _CEN_ApplySearch() {
         ; No search: restore normal section sidebar
         items := []
         for _, idx in gCEN_FilteredIndices
-            items.Push(gCEN_Sections[idx].desc)
+            items.Push("   " gCEN_Sections[idx].desc)
         gCEN_Sidebar.Add(items)
 
         ; NORMAL MODE: single page view
