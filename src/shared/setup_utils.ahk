@@ -657,18 +657,18 @@ _Update_ApplyCore(opts) {
         _Update_KillOtherProcesses(targetExeName)
         Sleep(TIMING_PROCESS_EXIT_WAIT)
 
-        ; Remove any previous backup
-        if (FileExist(backupPath))
-            FileDelete(backupPath)
-
-        ; Rename existing exe to .old
-        try {
-            FileMove(targetPath, backupPath)
-        } catch as renameErr {
-            if (lockFile != "")
-                try FileDelete(lockFile)
-            ThemeMsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Iconx")
-            return
+        ; Rename existing exe to .old (skip if no exe at target, e.g., fresh PF directory)
+        if (FileExist(targetPath)) {
+            if (FileExist(backupPath))
+                FileDelete(backupPath)
+            try {
+                FileMove(targetPath, backupPath)
+            } catch as renameErr {
+                if (lockFile != "")
+                    try FileDelete(lockFile)
+                ThemeMsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Iconx")
+                return
+            }
         }
 
         ; Validate PE header if requested
