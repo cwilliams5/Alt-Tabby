@@ -387,63 +387,33 @@ GUI_ShowOverlayWithFrozen() {
 
     gGUI_Revealed := false
 
-    ; ===== TIMING: Base.Show (acrylic) =====
-    t1 := A_TickCount
-    try {
-        gGUI_Base.Show("NA")
-    }
-    tShow_BaseShow := A_TickCount - t1
-
-    ; RACE FIX: Check if Alt was released during Show (which pumps messages)
-    ; If state changed to IDLE, ALT_UP already called HideOverlay - abort show sequence
-    if (gGUI_State != "ACTIVE") {
-        _Paint_Log("ShowOverlay ABORT after Base.Show (state=" gGUI_State ")")
-        _GUI_AbortShowSequence()
-        return
-    }
-
     ; ===== TIMING: Resize + Repaint =====
+    ; Both windows stay hidden during resize+paint. GUI_RevealBoth() (called from
+    ; inside GUI_Repaint) shows both at the same DwmFlush, preventing any frame
+    ; where the acrylic base is visible without the overlay window list.
     t1 := A_TickCount
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)
     tShow_Resize := A_TickCount - t1
 
     t1 := A_TickCount
-    GUI_Repaint()  ; Paint with correct sel/scroll from the start
+    GUI_Repaint()  ; Paint + RevealBoth (shows both windows atomically)
     tShow_Repaint := A_TickCount - t1
 
-    ; RACE FIX: Check again after paint operations (GDI+ can pump messages)
+    ; RACE FIX: If Alt was released during paint/reveal, RevealBoth already hid
+    ; both windows. Abort here to clean up flags and skip hover polling.
     if (gGUI_State != "ACTIVE") {
         _Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
         return
     }
 
-    ; ===== TIMING: Overlay.Show =====
-    t1 := A_TickCount
-    try {
-        gGUI_Overlay.Show("NA")
-    }
-    tShow_OverlayShow := A_TickCount - t1
-
-    ; RACE FIX: Final check before DwmFlush
-    if (gGUI_State != "ACTIVE") {
-        _Paint_Log("ShowOverlay ABORT after Overlay.Show (state=" gGUI_State ")")
-        _GUI_AbortShowSequence()
-        return
-    }
-
-    ; ===== TIMING: DwmFlush =====
-    t1 := A_TickCount
-    Win_DwmFlush()
-    tShow_DwmFlush := A_TickCount - t1
-
     ; Start hover polling (fallback for WM_MOUSELEAVE)
     GUI_StartHoverPolling()
 
     ; ===== TIMING: Log show sequence =====
     tShow_Total := A_TickCount - tShow_Start
-    _Paint_Log("ShowOverlay END: total=" tShow_Total "ms | baseShow=" tShow_BaseShow " resize=" tShow_Resize " repaint=" tShow_Repaint " overlayShow=" tShow_OverlayShow " dwmFlush=" tShow_DwmFlush)
+    _Paint_Log("ShowOverlay END: total=" tShow_Total "ms | resize=" tShow_Resize " repaint=" tShow_Repaint)
 }
 
 GUI_MoveSelectionFrozen(delta) {
