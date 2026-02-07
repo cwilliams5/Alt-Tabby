@@ -144,8 +144,9 @@ RenderSettingsTable(settings) {
         ; Range
         rangeStr := FormatRange(entry)
 
-        ; Description (escape pipes for markdown table)
+        ; Description (escape pipes and convert line breaks for markdown table)
         desc := StrReplace(entry.d, "|", "\|")
+        desc := StrReplace(desc, "`n", "<br>")
 
         md .= "| ``" key "`` | " typeStr " | ``" defaultStr "`` | " rangeStr " | " desc " |`n"
     }

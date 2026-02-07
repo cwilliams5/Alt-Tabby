@@ -630,7 +630,11 @@ global gConfigRegistry := [
 
     {s: "Komorebi", k: "CrossWorkspaceMethod", g: "KomorebiCrossWorkspaceMethod", t: "enum", default: "MimicNative",
      options: ["MimicNative", "RevealMove", "SwitchActivate"],
-     d: "How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails."},
+     d: "How Alt-Tabby activates windows on other workspaces.`n"
+      . "MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile.`n"
+      . "RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace.`n"
+      . "SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window).`n"
+      . "MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails."},
 
     {s: "Komorebi", k: "MimicNativeSettleMs", g: "KomorebiMimicNativeSettleMs", t: "int", default: 0,
      min: 0, max: 1000,
@@ -641,7 +645,10 @@ global gConfigRegistry := [
 
     {s: "Komorebi", k: "WorkspaceConfirmationMethod", g: "KomorebiWorkspaceConfirmMethod", t: "enum", default: "PollCloak",
      options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
-     d: "How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},
+     d: "How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate).`n"
+      . "PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU.`n"
+      . "PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall).`n"
+      . "AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},
 
     {type: "subsection", section: "Komorebi", name: "Subscription",
      desc: "Event-driven komorebi integration via named pipe"},

@@ -165,6 +165,14 @@ _CEN_ParseRegistry() {
     }
 }
 
+; Estimate display lines for a description, accounting for explicit \n breaks and word wrap
+_CEN_CalcDescLines(text, charsPerLine) {
+    lines := 0
+    Loop Parse text, "`n"
+        lines += Max(1, Ceil(StrLen(A_LoopField) / charsPerLine))
+    return lines
+}
+
 ; ============================================================
 ; GUI BUILDING
 ; ============================================================
@@ -310,7 +318,7 @@ _CEN_BuildPage(section) {
 
     ; Section long description (accent color to match WebView editor)
     if (section.long != "") {
-        lines := Ceil(StrLen(section.long) / 70)
+        lines := _CEN_CalcDescLines(section.long, 70)
         h := Max(18, lines * CEN_DESC_LINE_H)
         c := pageGui.AddText("x16 y" y " w" contentW " h" h " c" gTheme_Palette.accent " +Wrap", section.long)
         c.SetFont("s8", "Segoe UI")
@@ -347,7 +355,7 @@ _CEN_BuildPage(section) {
 
         ; Subsection description
         if (sub.desc != "") {
-            lines := Ceil(StrLen(sub.desc) / 75)
+            lines := _CEN_CalcDescLines(sub.desc, 75)
             h := Max(16, lines * CEN_DESC_LINE_H)
             c := pageGui.AddText("x20 y" y " w" (contentW - 8) " h" h " c" Theme_GetMutedColor() " +Wrap", sub.desc)
             c.SetFont("s8 italic", "Segoe UI")
@@ -393,8 +401,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
 
         y += CEN_SETTING_PAD
 
-        descLen := StrLen(setting.d)
-        descLines := Ceil(descLen / 70)
+        descLines := _CEN_CalcDescLines(setting.d, 70)
         descH := Max(CEN_DESC_LINE_H, descLines * CEN_DESC_LINE_H)
 
         if (setting.t = "bool") {

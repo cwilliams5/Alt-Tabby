@@ -334,10 +334,10 @@ Settings for komorebi tiling window manager integration.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `CrossWorkspaceMethod` | enum | `MimicNative` | - | How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails. |
+| `CrossWorkspaceMethod` | enum | `MimicNative` | - | How Alt-Tabby activates windows on other workspaces.<br>MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile.<br>RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace.<br>SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window).<br>MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails. |
 | `MimicNativeSettleMs` | int | `0` | `0` - `1000` | Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems. |
 | `UseSocket` | bool | `true` | - | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable. |
-| `WorkspaceConfirmationMethod` | enum | `PollCloak` | - | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
+| `WorkspaceConfirmationMethod` | enum | `PollCloak` | - | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate).<br>PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU.<br>PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall).<br>AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
 
 ### Subscription
 
@@ -548,4 +548,4 @@ Options for automated test suite
 
 ---
 
-*Generated on 2026-02-06 with 209 total settings.*
+*Generated on 2026-02-07 with 209 total settings.*

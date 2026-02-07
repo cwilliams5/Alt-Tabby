@@ -716,8 +716,8 @@ function formatSetting(st, sectionName) {
     line2 = '     options: [' + st.options.map(o => '"' + escAhk(o) + '"').join(', ') + '],';
   }
 
-  // Last line: description
-  const lineD = '     d: "' + escAhk(st.d) + '"},';
+  // Last line: description (may be multi-line with \n breaks)
+  const lineD = formatDesc(st.d);
 
   if (line2) return line1 + '\r\n' + line2 + '\r\n' + lineD;
   return line1 + '\r\n' + lineD;
@@ -742,6 +742,20 @@ function escAhk(s) {
   s = s.replace(/`/g, '``');
   s = s.replace(/"/g, '""');
   return s;
+}
+
+function formatDesc(d) {
+  if (d == null) d = '';
+  // Split on newlines — if single line, emit simple d: "..."
+  const parts = String(d).split(/\r?\n/);
+  if (parts.length <= 1) return '     d: "' + escAhk(d) + '"},';
+  // Multi-line: use AHK continuation (. "line`n") per line
+  let out = '     d: "' + escAhk(parts[0]) + '`n"';
+  for (let i = 1; i < parts.length; i++) {
+    const suffix = i < parts.length - 1 ? '`n"' : '"},';
+    out += '\r\n      . "' + escAhk(parts[i]) + suffix;
+  }
+  return out;
 }
 
 // ============================================================
