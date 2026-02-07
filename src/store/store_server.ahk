@@ -432,12 +432,19 @@ Store_PushToClients() {
     ; (HELLO, SET_PROJECTION_OPTS, PROJECTION_REQUEST)
     Critical "On"
     _Store_CleanupDisconnectedClients()
-    clientHandles := []
-    clientOptsSnapshot := Map()
-    clientPrevProj := Map()
-    clientPrevRev := Map()
-    clientPrevMeta := Map()
-    clientWakeHwnds := Map()
+    ; PERF: Reuse static containers to avoid Map()/Array() allocation each push cycle
+    static clientHandles := []
+    static clientOptsSnapshot := Map()
+    static clientPrevProj := Map()
+    static clientPrevRev := Map()
+    static clientPrevMeta := Map()
+    static clientWakeHwnds := Map()
+    clientHandles.Length := 0
+    clientOptsSnapshot.Clear()
+    clientPrevProj.Clear()
+    clientPrevRev.Clear()
+    clientPrevMeta.Clear()
+    clientWakeHwnds.Clear()
     for hPipe, _ in gStore_Server.clients {
         clientHandles.Push(hPipe)
         if (gStore_ClientState.Has(hPipe)) {
@@ -476,11 +483,14 @@ Store_PushToClients() {
     ; Cache projections by normalized opts key within this push cycle.
     ; When multiple clients have equivalent opts (e.g. GUI + Viewer both default
     ; to MRU/items/includeCloaked), this avoids redundant store iteration + sort.
-    projCache := Map()
+    ; PERF: Reuse static containers to avoid Map() allocation each push cycle
+    static projCache := Map()
     ; Cache serialized JSON for snapshot messages by optsKey.
     ; Snapshots are identical for the same optsKey (same projection, same rev),
     ; so we can avoid redundant JSON.Dump calls when multiple clients need snapshots.
-    jsonSnapshotCache := Map()
+    static jsonSnapshotCache := Map()
+    projCache.Clear()
+    jsonSnapshotCache.Clear()
 
     sent := 0
     for _, hPipe in clientHandles {

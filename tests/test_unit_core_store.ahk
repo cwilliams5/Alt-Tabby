@@ -123,11 +123,14 @@ RunUnitTests_CoreStore() {
     _WS_BumpRev("test")
     AssertEq(gWS_Rev, startRev + 1, "_WS_BumpRev increments rev exactly once")
 
-    ; Test: _WS_BumpRev records source in diagnostics
+    ; Test: _WS_BumpRev records source in diagnostics (requires DiagChurnLog enabled)
     global gWS_DiagSource
+    origChurnLog := cfg.DiagChurnLog
+    cfg.DiagChurnLog := true
     prevCount := gWS_DiagSource.Has("test") ? gWS_DiagSource["test"] : 0
     _WS_BumpRev("test")
     AssertEq(gWS_DiagSource["test"], prevCount + 1, "_WS_BumpRev records diagnostic source")
+    cfg.DiagChurnLog := origChurnLog
 
     ; Test: Z-queue deduplication - same hwnd shouldn't be added twice
     WindowStore_ClearZQueue()

@@ -161,7 +161,7 @@ WindowStore_EndScan(graceMs := "") {
 }
 
 WindowStore_UpsertWindow(records, source := "") {
-    global gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty, gWS_ProjectionContentDirty
+    global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty, gWS_ProjectionContentDirty
     global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_DeltaPendingHwnds
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
@@ -220,7 +220,7 @@ WindowStore_UpsertWindow(records, source := "") {
                     ; Only update if value differs
                     if (!row.HasOwnProp(k) || row.%k% != v) {
                         ; Diagnostic: track which fields trigger changes (skip for new records)
-                        if (!isNew)
+                        if (!isNew && cfg.DiagChurnLog)
                             gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
                         row.%k% := v
                         rowChanged := true
@@ -598,11 +598,12 @@ _WS_DiagBump(source) {
 ; Wraps increment in Critical to prevent interruption by timers/hotkeys
 _WS_BumpRev(source) {
     Critical "On"
-    global gWS_Rev, gStats_Lifetime
+    global cfg, gWS_Rev, gStats_Lifetime
     gWS_Rev += 1
     if (gStats_Lifetime.Has("TotalWindowUpdates"))
         gStats_Lifetime["TotalWindowUpdates"] += 1
-    _WS_DiagBump(source)
+    if (cfg.DiagChurnLog)
+        _WS_DiagBump(source)
     Critical "Off"
 }
 
@@ -987,7 +988,7 @@ WindowStore_PopIconBatch(count := 16) {
     global gWS_IconQueue, gWS_IconQueueDedup
     batch := []
     while (gWS_IconQueue.Length > 0 && batch.Length < count) {
-        hwnd := gWS_IconQueue.RemoveAt(1)
+        hwnd := gWS_IconQueue.Pop()
         gWS_IconQueueDedup.Delete(hwnd)
         batch.Push(hwnd)
     }
@@ -1002,7 +1003,7 @@ WindowStore_PopPidBatch(count := 16) {
     global gWS_PidQueue, gWS_PidQueueDedup
     batch := []
     while (gWS_PidQueue.Length > 0 && batch.Length < count) {
-        pid := gWS_PidQueue.RemoveAt(1)
+        pid := gWS_PidQueue.Pop()
         gWS_PidQueueDedup.Delete(pid)
         batch.Push(pid)
     }
