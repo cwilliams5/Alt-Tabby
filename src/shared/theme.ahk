@@ -230,6 +230,12 @@ Theme_GetMutedColor() {
     return gTheme_Palette.textMuted
 }
 
+; Get the current accent color appropriate for the theme.
+Theme_GetAccentColor() {
+    global gTheme_Palette
+    return gTheme_Palette.accent
+}
+
 ; Register a callback to be called when the theme changes.
 ; Useful for GUIs with child windows or special re-theming needs.
 Theme_OnChange(callback) {

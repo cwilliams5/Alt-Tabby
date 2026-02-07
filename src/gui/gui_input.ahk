@@ -584,45 +584,69 @@ _GUI_ShowBlacklistDialog(class, title) {
 
     dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
     _GUI_AntiFlashPrepare(dlg, Theme_GetBgColor(), true)
-    dlg.SetFont("s10")
+    dlg.MarginX := 24
+    dlg.MarginY := 16
+    dlg.SetFont("s10", "Segoe UI")
     themeEntry := Theme_ApplyToGui(dlg)
 
-    dlg.AddText("x10 y10 w380", "Add to blacklist:")
-    dlg.AddText("x10 y35 w380", "Class: " class)
-    dlg.AddText("x10 y55 w380", "Title: " SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : ""))
+    contentW := 440
 
-    ; Only show buttons for non-empty values
-    btnX := 10
-    btns := []
+    ; Header in accent
+    hdr := dlg.AddText("w" contentW " c" Theme_GetAccentColor(), "Add to blacklist:")
+    Theme_MarkAccent(hdr)
+
+    ; Class label + value
     if (class != "") {
-        btn := dlg.AddButton("x" btnX " y90 w90 h30", "Add Class")
+        lblC := dlg.AddText("x24 w50 h20 y+12 +0x200", "Class:")
+        lblC.SetFont("s10 bold", "Segoe UI")
+        valC := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200", class)
+    }
+
+    ; Title label + value (truncated)
+    if (title != "") {
+        displayTitle := SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : "")
+        lblT := dlg.AddText("x24 w50 h20 y+4 +0x200", "Title:")
+        lblT.SetFont("s10 bold", "Segoe UI")
+        valT := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200", displayTitle)
+    }
+
+    ; Action buttons (left) + Cancel (right-aligned with gap)
+    ; Right edge: 24 + 440 = 464. Cancel w90 at x374.
+    ; Max 3 action buttons end at x340, giving 34px gap before Cancel.
+    cancelX := 24 + contentW - 90
+    btnY := "+20"
+    actionBtns := []
+    btnX := 24
+    if (class != "") {
+        btn := dlg.AddButton("x" btnX " y" btnY " w100 h30", "Add Class")
         btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "class"))
-        btns.Push(btn)
-        btnX += 100
+        actionBtns.Push(btn)
+        btnX += 108
+        btnY := "p"  ; same row for subsequent buttons
     }
     if (title != "") {
-        btn := dlg.AddButton("x" btnX " y90 w90 h30", "Add Title")
+        btn := dlg.AddButton("x" btnX " y" btnY " w100 h30", "Add Title")
         btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "title"))
-        btns.Push(btn)
-        btnX += 100
+        actionBtns.Push(btn)
+        btnX += 108
+        btnY := "p"
     }
     if (class != "" && title != "") {
-        btn := dlg.AddButton("x" btnX " y90 w90 h30", "Add Pair")
+        btn := dlg.AddButton("x" btnX " y" btnY " w100 h30", "Add Pair")
         btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "pair"))
-        btns.Push(btn)
-        btnX += 100
+        actionBtns.Push(btn)
     }
-    btnCancel := dlg.AddButton("x" btnX " y90 w80 h30", "Cancel")
+    btnCancel := dlg.AddButton("x" cancelX " yp w90 h30", "Cancel")
     btnCancel.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, ""))
-    btns.Push(btnCancel)
 
-    for btn in btns
+    for btn in actionBtns
         Theme_ApplyToControl(btn, "Button", themeEntry)
+    Theme_ApplyToControl(btnCancel, "Button", themeEntry)
 
     dlg.OnEvent("Close", (*) => _GUI_BlacklistChoice(dlg, ""))
     dlg.OnEvent("Escape", (*) => _GUI_BlacklistChoice(dlg, ""))
 
-    dlg.Show("w400 h130 Center")
+    dlg.Show("w488 Center")
     _GUI_AntiFlashReveal(dlg, true)
 
     ; Wait for dialog to close

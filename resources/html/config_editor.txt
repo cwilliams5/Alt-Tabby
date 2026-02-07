@@ -466,8 +466,8 @@
   </div>
   <div class="footer-right">
     <button class="danger" id="resetBtn">Reset to Defaults</button>
-    <button id="cancelBtn">Cancel</button>
     <button class="primary" id="saveBtn" disabled>Save</button>
+    <button id="cancelBtn">Cancel</button>
   </div>
 </div>
 

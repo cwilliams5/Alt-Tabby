@@ -896,21 +896,29 @@ _Viewer_ShowBlacklistDialog(class, title) {
         return ""
 
     dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
-    dlg.SetFont("s10")
+    dlg.MarginX := 24
+    dlg.MarginY := 16
+    dlg.SetFont("s10", "Segoe UI")
 
-    dlg.AddText("x10 y10 w380", "Add to blacklist:")
-    dlg.AddText("x10 y35 w380", "Class: " class)
-    dlg.AddText("x10 y55 w380", "Title: " SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : ""))
+    dlg.AddText("w440", "Add to blacklist:")
+    lblC := dlg.AddText("x24 w50 h20 y+12 +0x200", "Class:")
+    lblC.SetFont("s10 bold", "Segoe UI")
+    dlg.AddText("x78 yp w386 h20 +0x200", class)
+    displayTitle := SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : "")
+    lblT := dlg.AddText("x24 w50 h20 y+4 +0x200", "Title:")
+    lblT.SetFont("s10 bold", "Segoe UI")
+    dlg.AddText("x78 yp w386 h20 +0x200", displayTitle)
 
-    dlg.AddButton("x10 y90 w90 h30", "Add Class").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "class"))
-    dlg.AddButton("x110 y90 w90 h30", "Add Title").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "title"))
-    dlg.AddButton("x210 y90 w90 h30", "Add Pair").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "pair"))
-    dlg.AddButton("x310 y90 w80 h30", "Cancel").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, ""))
+    ; Action buttons (left) + Cancel (right-aligned with gap)
+    dlg.AddButton("x24 y+20 w100 h30", "Add Class").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "class"))
+    dlg.AddButton("x132 yp w100 h30", "Add Title").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "title"))
+    dlg.AddButton("x240 yp w100 h30", "Add Pair").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "pair"))
+    dlg.AddButton("x374 yp w90 h30", "Cancel").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, ""))
 
     dlg.OnEvent("Close", (*) => _Viewer_BlacklistChoice(dlg, ""))
     dlg.OnEvent("Escape", (*) => _Viewer_BlacklistChoice(dlg, ""))
 
-    dlg.Show("w400 h130")
+    dlg.Show("w488 Center")
 
     ; Wait for dialog to close
     WinWaitClose(dlg)

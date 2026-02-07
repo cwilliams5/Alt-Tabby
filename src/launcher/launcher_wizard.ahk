@@ -25,31 +25,42 @@ _WizardMarkComplete() {
 }
 
 ShowFirstRunWizard() {
-    global g_WizardGui, cfg
+    global g_WizardGui, cfg, gTheme_Palette
 
     g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
     _GUI_AntiFlashPrepare(g_WizardGui, Theme_GetBgColor(), true)
+    g_WizardGui.MarginX := 24
+    g_WizardGui.MarginY := 16
     g_WizardGui.SetFont("s10", "Segoe UI")
     themeEntry := Theme_ApplyToGui(g_WizardGui)
 
-    g_WizardGui.AddText("w400", "Let's set up a few things to get you started:")
-    g_WizardGui.AddText("w400 y+5", "")
+    ; Logo (centered in 468px client width)
+    _Wizard_LoadLogo(g_WizardGui)
 
-    chk1 := g_WizardGui.AddCheckbox("vStartMenu w400", "Add to Start Menu")
-    chk2 := g_WizardGui.AddCheckbox("vStartup w400 Checked", "Run at Startup (recommended)")
-    chk3 := g_WizardGui.AddCheckbox("vInstall w400", "Install to Program Files")
-    chk4 := g_WizardGui.AddCheckbox("vAdmin w400", "Run as Administrator (switch to admin apps like Task Manager)")
-    chk5 := g_WizardGui.AddCheckbox("vAutoUpdate w400 Checked", "Check for updates automatically")
+    ; Subtitle in accent color
+    sub := g_WizardGui.AddText("x24 w420 y+12 Center c" gTheme_Palette.accent, "Let's set up a few things to get you started:")
+    Theme_MarkAccent(sub)
 
-    mutedNote1 := g_WizardGui.AddText("w400 y+15 c" Theme_GetMutedColor(), "Note: 'Install to Program Files' and 'Run as Administrator'")
-    mutedNote2 := g_WizardGui.AddText("w400 c" Theme_GetMutedColor(), "require a one-time UAC elevation.")
-    Theme_MarkMuted(mutedNote1)
-    Theme_MarkMuted(mutedNote2)
+    ; Checkboxes - all pre-checked
+    chk1 := g_WizardGui.AddCheckbox("vStartMenu x24 w420 y+14 Checked", "Add to Start Menu")
+    chk2 := g_WizardGui.AddCheckbox("vStartup w420 y+8 Checked", "Run at Startup")
+    chk3 := g_WizardGui.AddCheckbox("vInstall w420 y+8 Checked", "Install to Program Files")
+    chk4 := g_WizardGui.AddCheckbox("vAdmin w420 y+8 Checked", "Run as Administrator")
+    chk5 := g_WizardGui.AddCheckbox("vAutoUpdate w420 y+8 Checked", "Check for updates automatically")
 
-    btn1 := g_WizardGui.AddButton("w100 y+20", "Skip")
-    btn1.OnEvent("Click", WizardSkip)
-    btn2 := g_WizardGui.AddButton("w120 x+10 Default", "Apply && Start")
+    ; Muted note
+    note := g_WizardGui.AddText("w420 y+16 c" Theme_GetMutedColor() " +Wrap",
+        "Run as Administrator allows detecting Alt-Tab from certain apps like Task Manager "
+        "that otherwise won't. This and Install to Program Files require a one-time "
+        "permissions approval (UAC).")
+    note.SetFont("s8", "Segoe UI")
+    Theme_MarkMuted(note)
+
+    ; Buttons - right-aligned (Apply + gap + Skip = 120+8+100 = 228, right edge at 444)
+    btn2 := g_WizardGui.AddButton("x216 w120 y+20 Default", "Apply && Start")
     btn2.OnEvent("Click", WizardApply)
+    btn1 := g_WizardGui.AddButton("w100 x+8", "Skip")
+    btn1.OnEvent("Click", WizardSkip)
 
     Theme_ApplyToControl(chk1, "Checkbox", themeEntry)
     Theme_ApplyToControl(chk2, "Checkbox", themeEntry)
@@ -60,9 +71,65 @@ ShowFirstRunWizard() {
     Theme_ApplyToControl(btn2, "Button", themeEntry)
 
     g_WizardGui.OnEvent("Close", WizardSkip)
-    g_WizardGui.Show("Center")
+    g_WizardGui.Show("w468 Center")
     _GUI_AntiFlashReveal(g_WizardGui, true)
     WinWaitClose(g_WizardGui)
+}
+
+; Load logo into wizard GUI (centered, 116x90)
+_Wizard_LoadLogo(wg) {
+    global gTheme_Palette
+    ; Center logo: (468 client width - 116 logo width) / 2 = 176
+    logoOpts := "x176 w116 h90"
+
+    ; Dev mode: load from file
+    if (!A_IsCompiled) {
+        imgPath := A_ScriptDir "\..\resources\img\logo.png"
+        if (FileExist(imgPath))
+            wg.AddPicture(logoOpts, imgPath)
+        return
+    }
+
+    ; Compiled mode: extract from embedded resource, convert to HBITMAP
+    hModule := DllCall("LoadLibrary", "str", "gdiplus", "ptr")
+    if (!hModule)
+        return
+
+    si := Buffer(A_PtrSize = 8 ? 24 : 16, 0)
+    NumPut("UInt", 1, si, 0)
+    token := 0
+    DllCall("gdiplus\GdiplusStartup", "ptr*", &token, "ptr", si.Ptr, "ptr", 0)
+    if (!token) {
+        DllCall("FreeLibrary", "ptr", hModule)
+        return
+    }
+
+    pBitmap := _Splash_LoadBitmapFromResource(10)  ; ID 10 = logo.png
+    if (!pBitmap) {
+        DllCall("gdiplus\GdiplusShutdown", "ptr", token)
+        DllCall("FreeLibrary", "ptr", hModule)
+        return
+    }
+
+    ; High-quality resize (707x548 -> 116x90)
+    pThumb := _GdipResizeHQ(pBitmap, 116, 90)
+    srcBitmap := pThumb ? pThumb : pBitmap
+
+    ; Convert to HBITMAP with theme-aware background color
+    argbBg := 0xFF000000 | Integer("0x" gTheme_Palette.bg)
+    hBitmap := 0
+    DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", srcBitmap, "ptr*", &hBitmap, "uint", argbBg)
+
+    if (pThumb)
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pThumb)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmap)
+    DllCall("gdiplus\GdiplusShutdown", "ptr", token)
+    DllCall("FreeLibrary", "ptr", hModule)
+
+    if (!hBitmap)
+        return
+
+    wg.AddPicture(logoOpts, "HBITMAP:*" hBitmap)
 }
 
 WizardSkip(*) {

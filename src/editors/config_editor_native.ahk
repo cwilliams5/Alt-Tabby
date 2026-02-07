@@ -278,10 +278,10 @@ _CEN_BuildMainGUI() {
     gCEN_SepFooter.MarginY := 0
     gCEN_SepFooter.Show("x0 y501 w800 h1 NoActivate")
 
-    ; Footer buttons: right-aligned group (Reset, Cancel, Save)
+    ; Footer buttons: right-aligned group (Reset, Save, Cancel)
     btnReset := gCEN_MainGui.AddButton("x490 y460 w120 h30", "Reset to Defaults")
-    btnCancel := gCEN_MainGui.AddButton("x620 y460 w80 h30", "Cancel")
-    btnSave := gCEN_MainGui.AddButton("x710 y460 w80 h30", "Save")
+    btnSave := gCEN_MainGui.AddButton("x620 y460 w80 h30", "Save")
+    btnCancel := gCEN_MainGui.AddButton("x710 y460 w80 h30", "Cancel")
     gCEN_FooterBtns.Push(btnSave, btnCancel, btnReset)
     btnReset.OnEvent("Click", _CEN_OnResetDefaults)
     btnSave.OnEvent("Click", _CEN_OnSave)
@@ -967,11 +967,11 @@ _CEN_OnResize(gui, minMax, w, h) {
     for name, page in gCEN_Pages
         page.gui.Move(0, , contentW)
 
-    ; Move buttons: right-aligned group (Reset, Cancel, Save)
+    ; Move buttons: right-aligned group (Reset, Save, Cancel)
     btnY := h - CEN_FOOTER_H + 8
     if (gCEN_FooterBtns.Length >= 3) {
-        gCEN_FooterBtns[1].Move(w - 100, btnY, 80, 30)       ; Save
-        gCEN_FooterBtns[2].Move(w - 190, btnY, 80, 30)       ; Cancel
+        gCEN_FooterBtns[2].Move(w - 100, btnY, 80, 30)       ; Cancel
+        gCEN_FooterBtns[1].Move(w - 190, btnY, 80, 30)       ; Save
         gCEN_FooterBtns[3].Move(w - 320, btnY, 120, 30)      ; Reset
     }
 

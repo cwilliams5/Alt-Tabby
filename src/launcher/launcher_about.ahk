@@ -347,9 +347,9 @@ ShowDashboardDialog() {
     Theme_MarkMuted(g_DashControls.updateText)
 
     dg.SetFont("s10")
-    btnOK := dg.AddButton("x675 y550 w80 Default", "OK")
-    btnOK.OnEvent("Click", _Dash_OnClose)
-    Theme_ApplyToControl(btnOK, "Button", themeEntry)
+    btnClose := dg.AddButton("x675 y550 w80 Default", "Close")
+    btnClose.OnEvent("Click", _Dash_OnClose)
+    Theme_ApplyToControl(btnClose, "Button", themeEntry)
 
     ; Close event
     dg.OnEvent("Close", _Dash_OnClose)
@@ -411,7 +411,7 @@ ShowDashboardDialog() {
             , "Komorebi tiling window manager — when running,`n"
             . "provides workspace data for filtering and labeling windows")
         _Dash_SetTip(hTT, g_DashControls.updateText, "Update status — auto-checks when stale (12+ hours)")
-        _Dash_SetTip(hTT, btnOK, "Close the dashboard")
+        _Dash_SetTip(hTT, btnClose, "Close the dashboard")
 
         ; Dynamic tooltips — must match current button state
         _Dash_SetTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
@@ -425,7 +425,7 @@ ShowDashboardDialog() {
     g_DashboardGui := dg
     dg.Show("w780")
     _GUI_AntiFlashReveal(dg, true)
-    btnOK.Focus()
+    btnClose.Focus()
 
     ; Start background refresh in cool mode (no interaction yet)
     SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_COOL)
