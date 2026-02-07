@@ -366,6 +366,77 @@ RunUnitTests_CoreStore() {
     AssertEq(delta.upserts.Length, 0, "Sparse: identical items = no upserts")
 
     ; ============================================================
+    ; Sparse + Dirty Tracking Combined Tests
+    ; ============================================================
+    ; Production calls BuildDelta(prev, next, true, dirtySnapshot) — both sparse AND dirty.
+    ; Individual tests cover each independently; this tests the combined interaction.
+    Log("`n--- Sparse + Dirty Tracking Combined Tests ---")
+
+    origDirtyTracking := cfg.IPCUseDirtyTracking
+    cfg.IPCUseDirtyTracking := true
+
+    ; 3 windows: A unchanged, B title changed, C new
+    sdPrev := [
+        {hwnd: 2001, title: "Unchanged", class: "C1", z: 1, pid: 100, isFocused: false,
+         workspaceName: "ws1", workspaceId: "", isCloaked: false, isMinimized: false,
+         isOnCurrentWorkspace: true, processName: "app1", iconHicon: 0, lastActivatedTick: 1000},
+        {hwnd: 2002, title: "OldTitle", class: "C2", z: 2, pid: 200, isFocused: false,
+         workspaceName: "ws1", workspaceId: "", isCloaked: false, isMinimized: false,
+         isOnCurrentWorkspace: true, processName: "app2", iconHicon: 0, lastActivatedTick: 2000}
+    ]
+    sdNext := [
+        {hwnd: 2001, title: "Unchanged", class: "C1", z: 1, pid: 100, isFocused: false,
+         workspaceName: "ws1", workspaceId: "", isCloaked: false, isMinimized: false,
+         isOnCurrentWorkspace: true, processName: "app1", iconHicon: 0, lastActivatedTick: 1000},
+        {hwnd: 2002, title: "NewTitle", class: "C2", z: 2, pid: 200, isFocused: false,
+         workspaceName: "ws1", workspaceId: "", isCloaked: false, isMinimized: false,
+         isOnCurrentWorkspace: true, processName: "app2", iconHicon: 0, lastActivatedTick: 2000},
+        {hwnd: 2003, title: "BrandNew", class: "C3", z: 3, pid: 300, isFocused: false,
+         workspaceName: "ws1", workspaceId: "", isCloaked: false, isMinimized: false,
+         isOnCurrentWorkspace: true, processName: "app3", iconHicon: 0, lastActivatedTick: 3000}
+    ]
+
+    ; Dirty set: only B (2002) is dirty. A (2001) is clean. C (2003) is new (not in prev).
+    sdDirty := Map()
+    sdDirty[2002] := true
+
+    sdDelta := WindowStore_BuildDelta(sdPrev, sdNext, true, sdDirty)
+
+    ; A (2001): clean + unchanged → skipped entirely
+    foundA := false
+    for _, u in sdDelta.upserts {
+        if (u.hwnd = 2001)
+            foundA := true
+    }
+    AssertEq(foundA, false, "Sparse+Dirty: clean unchanged window A skipped")
+
+    ; B (2002): dirty + title changed → sparse upsert (only changed fields + hwnd)
+    foundB := false
+    for _, u in sdDelta.upserts {
+        if (u.hwnd = 2002) {
+            foundB := true
+            AssertEq(u.title, "NewTitle", "Sparse+Dirty: B has changed title")
+            AssertEq(u.HasOwnProp("z"), false, "Sparse+Dirty: B omits unchanged z")
+            AssertEq(u.HasOwnProp("processName"), false, "Sparse+Dirty: B omits unchanged processName")
+        }
+    }
+    AssertEq(foundB, true, "Sparse+Dirty: dirty changed window B present")
+
+    ; C (2003): new window → full record (all fields, regardless of dirty set)
+    foundC := false
+    for _, u in sdDelta.upserts {
+        if (u.hwnd = 2003) {
+            foundC := true
+            AssertEq(u.HasOwnProp("title"), true, "Sparse+Dirty: new window C has title")
+            AssertEq(u.HasOwnProp("z"), true, "Sparse+Dirty: new window C has z")
+            AssertEq(u.HasOwnProp("processName"), true, "Sparse+Dirty: new window C has processName")
+        }
+    }
+    AssertEq(foundC, true, "Sparse+Dirty: new window C present with full fields")
+
+    cfg.IPCUseDirtyTracking := origDirtyTracking
+
+    ; ============================================================
     ; Dirty Tracking Equivalence Tests
     ; ============================================================
     ; Tests that dirty tracking skips non-dirty windows; debug mode compares all
@@ -571,7 +642,7 @@ RunUnitTests_CoreStore() {
     WindowStore_EndScan()
 
     startRev := WindowStore_GetRev()
-    WindowStore_SetCurrentWorkspace("", "Main")
+    flipped := WindowStore_SetCurrentWorkspace("", "Main")
 
     AssertEq(gWS_Store[1001].isOnCurrentWorkspace, true, "Main window on current")
     AssertEq(gWS_Store[1002].isOnCurrentWorkspace, false, "Other window NOT on current")
@@ -579,15 +650,25 @@ RunUnitTests_CoreStore() {
     AssertEq(gWS_Meta["currentWSName"], "Main", "Meta updated")
     AssertEq(WindowStore_GetRev(), startRev + 1, "Rev bumped exactly once")
 
-    ; Switch workspace
-    WindowStore_SetCurrentWorkspace("", "Other")
+    ; Return value: flipped array contains _WS_ToItem records for windows that CHANGED
+    ; Default isOnCurrentWorkspace is true (from _WS_NewRecord).
+    ; After SetCurrentWorkspace("Main"): 1001 stays true, 1002 flips false, 1003 stays true
+    AssertEq(flipped.Length, 1, "SetCurrentWorkspace return: only Other window flipped")
+    AssertEq(flipped[1].hwnd, 1002, "Flipped item is hwnd 1002 (Other)")
+    AssertEq(flipped[1].isOnCurrentWorkspace, false, "Flipped item: isOnCurrentWorkspace=false")
+    AssertEq(flipped[1].HasOwnProp("title"), true, "Flipped item has title (_WS_ToItem format)")
+
+    ; Switch workspace — both Main and Other flip
+    flipped2 := WindowStore_SetCurrentWorkspace("", "Other")
     AssertEq(gWS_Store[1001].isOnCurrentWorkspace, false, "Main now NOT current")
     AssertEq(gWS_Store[1002].isOnCurrentWorkspace, true, "Other now current")
+    AssertEq(flipped2.Length, 2, "SetCurrentWorkspace switch: 2 windows flipped (Main+Other)")
 
-    ; Same-name no-op (no rev bump)
+    ; Same-name no-op (no rev bump, empty return)
     revBefore := WindowStore_GetRev()
-    WindowStore_SetCurrentWorkspace("", "Other")  ; Same name as currently set
+    flipped3 := WindowStore_SetCurrentWorkspace("", "Other")  ; Same name as currently set
     AssertEq(WindowStore_GetRev(), revBefore, "SetCurrentWorkspace same name: no-op")
+    AssertEq(flipped3.Length, 0, "SetCurrentWorkspace same name: empty flipped array")
 
     ; Cleanup
     WindowStore_RemoveWindow([1001, 1002, 1003], true)
@@ -630,4 +711,123 @@ RunUnitTests_CoreStore() {
 
     ; Cleanup
     gWS_WorkspaceChangedFlag := false
+
+    ; ============================================================
+    ; BatchUpdateFields Contract Tests
+    ; ============================================================
+    ; BatchUpdateFields applies N patches with a single rev bump.
+    ; Production relies on this for efficient batching in store_server.ahk.
+    Log("`n--- BatchUpdateFields Contract Tests ---")
+
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    batchRecs := []
+    batchRecs.Push(Map("hwnd", 7001, "title", "Batch1", "class", "T", "pid", 1,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false,
+                       "z", 1, "lastActivatedTick", 100))
+    batchRecs.Push(Map("hwnd", 7002, "title", "Batch2", "class", "T", "pid", 2,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false,
+                       "z", 2, "lastActivatedTick", 200))
+    batchRecs.Push(Map("hwnd", 7003, "title", "Batch3", "class", "T", "pid", 3,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false,
+                       "z", 3, "lastActivatedTick", 300))
+    WindowStore_UpsertWindow(batchRecs, "test")
+    WindowStore_EndScan()
+
+    ; Reset dirty flags and capture rev before batch
+    WindowStore_GetProjection()
+    batchRevBefore := WindowStore_GetRev()
+
+    ; Batch: patch 2 windows with different fields (title = content-only, z = sort-affecting)
+    patches := Map()
+    patches[7001] := Map("title", "BatchUpdated1")     ; Content-only change
+    patches[7002] := Map("z", 99)                       ; Sort-affecting change
+    batchResult := WindowStore_BatchUpdateFields(patches, "test")
+
+    ; Assertions: return value
+    AssertEq(batchResult.changed, 2, "BatchUpdateFields: changed count = 2")
+
+    ; Assertions: rev bumped exactly once (not once per patch)
+    AssertEq(WindowStore_GetRev(), batchRevBefore + 1, "BatchUpdateFields: rev bumped exactly once")
+
+    ; Assertions: both windows updated
+    AssertEq(gWS_Store[7001].title, "BatchUpdated1", "BatchUpdateFields: window 1 title updated")
+    AssertEq(gWS_Store[7002].z, 99, "BatchUpdateFields: window 2 z updated")
+
+    ; Assertions: third window untouched
+    AssertEq(gWS_Store[7003].title, "Batch3", "BatchUpdateFields: window 3 title unchanged")
+
+    ; Assertions: dirty flags correct (z is sort-affecting → both dirty)
+    AssertEq(gWS_SortOrderDirty, true, "BatchUpdateFields: sort dirty (z changed)")
+    AssertEq(gWS_ProjectionContentDirty, true, "BatchUpdateFields: content dirty")
+
+    ; Test: content-only batch does NOT set sort dirty
+    WindowStore_GetProjection()  ; Reset dirty flags
+    patches2 := Map()
+    patches2[7001] := Map("iconHicon", 5555)
+    WindowStore_BatchUpdateFields(patches2, "test")
+    AssertEq(gWS_SortOrderDirty, false, "BatchUpdateFields content-only: sort NOT dirty")
+    AssertEq(gWS_ProjectionContentDirty, true, "BatchUpdateFields content-only: content dirty")
+
+    ; Test: patching non-existent hwnd is silently skipped
+    WindowStore_GetProjection()
+    batchRevBefore2 := WindowStore_GetRev()
+    patches3 := Map()
+    patches3[99999] := Map("title", "Ghost")
+    batchResult3 := WindowStore_BatchUpdateFields(patches3, "test")
+    AssertEq(batchResult3.changed, 0, "BatchUpdateFields: non-existent hwnd skipped")
+    AssertEq(WindowStore_GetRev(), batchRevBefore2, "BatchUpdateFields: no rev bump when nothing changed")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([7001, 7002, 7003], true)
+
+    ; ============================================================
+    ; Projection Cache Stale-Ref Fallback Tests (Path 2 → Path 3)
+    ; ============================================================
+    ; Path 2 (content-only refresh) checks rec.present on cached sorted refs.
+    ; If a stale ref is found, it falls through to Path 3 (full rebuild).
+    Log("`n--- Projection Cache Stale-Ref Fallback Tests ---")
+
+    global gWS_ProjectionCache_SortedRecs
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    staleRecs := []
+    staleRecs.Push(Map("hwnd", 8001, "title", "StaleTest1", "class", "T", "pid", 1,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false,
+                       "z", 1, "lastActivatedTick", 100))
+    staleRecs.Push(Map("hwnd", 8002, "title", "StaleTest2", "class", "T", "pid", 2,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false,
+                       "z", 2, "lastActivatedTick", 200))
+    WindowStore_UpsertWindow(staleRecs, "test")
+    WindowStore_EndScan()
+
+    ; Prime the cache (Path 3 runs, populates cache)
+    proj1 := WindowStore_GetProjection()
+    AssertEq(proj1.items.Length, 2, "StaleRef setup: 2 items in initial projection")
+    AssertEq(gWS_SortOrderDirty, false, "StaleRef setup: sort clean after projection")
+    AssertEq(gWS_ProjectionContentDirty, false, "StaleRef setup: content clean after projection")
+
+    ; Simulate stale ref: mark one cached record as not present
+    ; In production, this shouldn't happen (removal sets SortOrderDirty), but the defensive
+    ; check exists in case of edge cases
+    for _, cachedRec in gWS_ProjectionCache_SortedRecs {
+        if (cachedRec.hwnd = 8002) {
+            cachedRec.present := false
+            break
+        }
+    }
+
+    ; Force Path 2 entry: content dirty + sort clean
+    gWS_ProjectionContentDirty := true
+    gWS_SortOrderDirty := false
+
+    ; Get projection — Path 2 should detect stale ref, fall through to Path 3
+    proj2 := WindowStore_GetProjection()
+
+    ; Path 3 rebuilds from live store — only present window should appear
+    AssertEq(proj2.items.Length, 1, "StaleRef fallback: Path 3 returns only present window")
+    AssertEq(proj2.items[1].hwnd, 8001, "StaleRef fallback: correct window survived")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([8001, 8002], true)
 }
