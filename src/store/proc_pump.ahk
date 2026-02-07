@@ -21,7 +21,7 @@ global _PP_IdleThreshold := 5           ; Default, overridden from config in Pro
 ; Prevents continuous retries for system processes (csrss, wininit, etc.)
 global _PP_FailedPidCache := Map()       ; pid -> tick when failure recorded
 global _PP_FailedPidCacheTTL := 60000    ; 60s before retry
-global _PP_FailedPidCacheMax := 200      ; Max entries before forced eviction
+; No hard cap — ProcPump_PruneFailedPidCache() on heartbeat removes expired + dead PIDs.
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
@@ -97,7 +97,7 @@ _PP_Tick() {
             continue
 
         ; Check failed PID cache first - skip recently failed PIDs
-        global _PP_FailedPidCache, _PP_FailedPidCacheTTL, _PP_FailedPidCacheMax
+        global _PP_FailedPidCache, _PP_FailedPidCacheTTL
         ; RACE FIX: Protect cache read - ProcPump_PruneFailedPidCache runs from heartbeat timer
         Critical "On"
         if (_PP_FailedPidCache.Has(pid) && (A_TickCount - _PP_FailedPidCache[pid]) < _PP_FailedPidCacheTTL) {
@@ -116,17 +116,8 @@ _PP_Tick() {
         ; Resolve process path
         path := _PP_GetProcessPath(pid)
         if (path = "") {
-            ; RACE FIX: Protect eviction + write from ProcPump_PruneFailedPidCache (heartbeat timer)
+            ; No FIFO cap — ProcPump_PruneFailedPidCache() on heartbeat drains expired/dead PIDs.
             Critical "On"
-            if (_PP_FailedPidCache.Count >= _PP_FailedPidCacheMax) {
-                evictKey := ""
-                for k, _ in _PP_FailedPidCache {
-                    evictKey := k
-                    break
-                }
-                if (evictKey != "")
-                    _PP_FailedPidCache.Delete(evictKey)
-            }
             _PP_FailedPidCache[pid] := A_TickCount
             Critical "Off"
             continue

@@ -50,7 +50,7 @@ global _IP_LogPath := ""
 ; State
 global _IP_TimerOn := false
 global _IP_Attempts := Map()            ; hwnd -> attempt count
-global _IP_AttemptsMax := 500           ; Max entries before size-based eviction
+; No hard cap — _IP_PruneAttempts() removes dead windows every 5s.
 global _IP_IdleTicks := 0               ; Counter for consecutive empty ticks
 global _IP_IdleThreshold := 5           ; Default, overridden from config in IconPump_Init()
 
@@ -186,7 +186,7 @@ IconPump_CleanupWindow(hwnd) {
 ; Main pump tick
 ; Uses Critical sections around per-window processing to prevent TOCTOU races
 _IP_Tick() {
-    global IconBatchPerTick, _IP_Attempts, _IP_AttemptsMax, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
+    global IconBatchPerTick, _IP_Attempts, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global IP_LOG_TITLE_MAX_LEN, _IP_DiagEnabled, _IP_LogPath
     global IP_MODE_INITIAL, IP_MODE_VISIBLE_RETRY, IP_MODE_FOCUS_RECHECK
@@ -199,25 +199,6 @@ _IP_Tick() {
     if (A_TickCount - _IP_LastPruneTick > _IP_PruneIntervalMs) {
         _IP_LastPruneTick := A_TickCount
         _IP_PruneAttempts()
-    }
-
-    ; PERF: Size-based eviction to enforce absolute limit on _IP_Attempts
-    ; Other caches (exe icons, brushes, UWP logo) have FIFO eviction - this one should too
-    if (_IP_Attempts.Count > _IP_AttemptsMax) {
-        ; RACE FIX: Protect from IconPump_CleanupWindow (runs from other timers)
-        Critical "On"
-        toEvict := _IP_Attempts.Count - _IP_AttemptsMax + 50  ; Evict extra 50 to reduce frequency
-        evictKeys := []
-        for hwnd, _ in _IP_Attempts {
-            evictKeys.Push(hwnd)
-            if (evictKeys.Length >= toEvict)
-                break
-        }
-        for _, hwnd in evictKeys
-            _IP_Attempts.Delete(hwnd)
-        Critical "Off"
-        if (logEnabled)
-            _IP_Log("SIZE EVICT: removed " evictKeys.Length " entries (was " (_IP_Attempts.Count + evictKeys.Length) ", now " _IP_Attempts.Count ")")
     }
 
     hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
@@ -534,7 +515,8 @@ _IP_GetUWPLogoPathCached(packagePath) {
     logoPath := _IP_GetUWPLogoPathFromPackage(packagePath)
 
     ; Cache the result (even empty string to avoid repeated failed lookups)
-    ; Evict oldest entry if cache is full
+    ; FIFO cap: mapping windows back to UWP package paths for pruning is indirect and not worth
+    ; the complexity. Eviction cost is just a ~1ms manifest re-parse. Cap is appropriate here.
     if (_IP_UwpLogoCache.Count >= _IP_UwpLogoCacheMax) {
         ; Simple eviction: delete first key (Map iteration order is insertion order in AHK v2)
         evictKey := ""

@@ -1066,21 +1066,14 @@ WindowStore_GetProcNameCached(pid) {
 
 ; Update process name for all windows with this pid
 WindowStore_UpdateProcessName(pid, name) {
-    global gWS_Store, gWS_Rev, gWS_ProcNameCache, cfg
+    global gWS_Store, gWS_Rev, gWS_ProcNameCache
     pid := pid + 0
     if (pid <= 0 || name = "")
         return
 
-    ; FIFO eviction when at max (prevents unbounded memory growth)
-    ; RACE FIX: Wrap in Critical - iteration + delete must be atomic (same as ExeIconCachePut)
-    maxSize := cfg.HasOwnProp("ProcNameCacheMax") ? cfg.ProcNameCacheMax : 200
-    Critical "On"
-    if (gWS_ProcNameCache.Count >= maxSize)
-        _WS_EvictOldest(gWS_ProcNameCache)
-
-    ; Cache it
+    ; No FIFO cap — cache grows with live PID count.
+    ; WindowStore_PruneProcNameCache() on heartbeat removes dead PIDs.
     gWS_ProcNameCache[pid] := name
-    Critical "Off"
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)
@@ -1121,20 +1114,13 @@ WindowStore_GetExeIconCopy(exePath) {
 }
 
 ; Store master icon for exe (store owns it, don't destroy)
-; Cache limited to ExeIconCacheMax entries to prevent unbounded memory growth
+; No FIFO cap — cache grows with live exe count.
+; WindowStore_PruneExeIconCache() on heartbeat removes orphaned exe paths.
 WindowStore_ExeIconCachePut(exePath, hIcon) {
-    global gWS_ExeIconCache, cfg
+    global gWS_ExeIconCache
     if (!hIcon)
         return
-    ; Use config if available, fallback to 100
-    maxSize := cfg.HasOwnProp("ExeIconCacheMax") ? cfg.ExeIconCacheMax : 100
-    ; RACE FIX: Wrap FIFO eviction in Critical - prevents concurrent modification
-    ; during iteration (another producer calling ExeIconCachePut simultaneously)
-    Critical "On"
-    if (gWS_ExeIconCache.Count >= maxSize)
-        _WS_EvictOldest(gWS_ExeIconCache, _WS_DestroyIconValue)
     gWS_ExeIconCache[exePath] := hIcon
-    Critical "Off"
 }
 
 ; Clean up all cached exe icons - call on shutdown
@@ -1145,23 +1131,6 @@ WindowStore_CleanupExeIconCache() {
             try DllCall("user32\DestroyIcon", "ptr", hIcon)
     }
     gWS_ExeIconCache := Map()
-}
-
-; Evict the oldest (first-inserted) entry from a Map. Optional cleanup callback
-; receives the value before deletion (e.g., to destroy an HICON).
-_WS_EvictOldest(mapObj, cleanupFn := "") {
-    for k, v in mapObj {
-        if (cleanupFn != "")
-            try cleanupFn(v)
-        mapObj.Delete(k)
-        return
-    }
-}
-
-; Cleanup callback for icon cache eviction - destroys HICON
-_WS_DestroyIconValue(hIcon) {
-    if (hIcon)
-        try DllCall("user32\DestroyIcon", "ptr", hIcon)
 }
 
 ; Prune dead PIDs from process name cache (called from Store_HeartbeatTick)
@@ -1181,6 +1150,42 @@ WindowStore_PruneProcNameCache() {
     for _, pid in pids {
         if (!ProcessExist(pid)) {
             gWS_ProcNameCache.Delete(pid)
+            pruned++
+        }
+    }
+    Critical "Off"
+    return pruned
+}
+
+; Prune orphaned exe paths from icon cache (called from Store_HeartbeatTick)
+; Removes entries for exe paths not referenced by any live window in the store
+WindowStore_PruneExeIconCache() {
+    global gWS_ExeIconCache, gWS_Store
+    if (!IsObject(gWS_ExeIconCache) || gWS_ExeIconCache.Count = 0)
+        return 0
+
+    ; Collect live exe paths from store
+    Critical "On"
+    liveExePaths := Map()
+    for _, rec in gWS_Store {
+        if (rec.HasOwnProp("exePath") && rec.exePath != "")
+            liveExePaths[rec.exePath] := true
+    }
+    Critical "Off"
+
+    ; Snapshot cache keys to prevent iteration-during-modification
+    cacheKeys := _WS_SnapshotMapKeys(gWS_ExeIconCache)
+
+    ; RACE FIX: Wrap delete loop in Critical to prevent interleaving with
+    ; ExeIconCachePut which inserts under the same map
+    Critical "On"
+    pruned := 0
+    for _, exePath in cacheKeys {
+        if (!liveExePaths.Has(exePath)) {
+            hIcon := gWS_ExeIconCache[exePath]
+            if (hIcon)
+                try DllCall("user32\DestroyIcon", "ptr", hIcon)
+            gWS_ExeIconCache.Delete(exePath)
             pruned++
         }
     }

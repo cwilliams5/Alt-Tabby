@@ -227,7 +227,8 @@ Gdip_DisposeResources() {
 }
 
 ; Get or create a cached solid brush for the given ARGB color
-; FIFO eviction at 100 entries to prevent unbounded memory growth
+; FIFO cap at 100: working set is ~5-10 colors (UI palette), cap is 10-20x headroom.
+; No liveness signal to prune by (a color is "in use" only during paint), so FIFO is appropriate here.
 Gdip_GetCachedBrush(argb) {
     global gGdip_BrushCache, GDIP_BRUSH_CACHE_MAX
     if (gGdip_BrushCache.Has(argb))
@@ -248,7 +249,8 @@ Gdip_GetCachedBrush(argb) {
 }
 
 ; Get or create a cached pen for the given ARGB color and width
-; FIFO eviction at 100 entries to prevent unbounded memory growth
+; FIFO cap at 100: working set is ~3-5 pen styles, cap is 20-33x headroom.
+; No liveness signal to prune by, so FIFO is appropriate here.
 Gdip_GetCachedPen(argb, width) {
     global gGdip_PenCache, GDIP_PEN_CACHE_MAX
     key := argb "_" width

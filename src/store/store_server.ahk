@@ -225,6 +225,9 @@ Store_HeartbeatTick() {
     ; Prune dead PIDs from process name cache (prevents unbounded growth)
     try WindowStore_PruneProcNameCache()
 
+    ; Prune orphaned exe paths from icon cache (exe paths not used by any live window)
+    try WindowStore_PruneExeIconCache()
+
     ; Prune expired entries from proc pump failed PID cache
     try ProcPump_PruneFailedPidCache()
 

@@ -564,57 +564,52 @@ RunUnitTests_Storage() {
     WindowStore_RemoveWindow([upgradeHwnd], true)
 
     ; ============================================================
-    ; ExeIconCachePut FIFO Eviction Tests
+    ; ExeIconCache Prune Tests (no FIFO cap — prune-based cleanup)
     ; ============================================================
-    Log("`n--- ExeIconCachePut FIFO Eviction Tests ---")
+    Log("`n--- ExeIconCache Prune Tests ---")
 
     ; Use fake HICON values (DestroyIcon silently fails for invalid handles)
-    ; Override cfg.ExeIconCacheMax to 3 for testing
     global gWS_ExeIconCache
     savedCache := gWS_ExeIconCache
-    savedMax := cfg.HasOwnProp("ExeIconCacheMax") ? cfg.ExeIconCacheMax : 100
     gWS_ExeIconCache := Map()
-    cfg.ExeIconCacheMax := 3
 
+    ; Cache grows without eviction
     WindowStore_ExeIconCachePut("a.exe", 1001)
     WindowStore_ExeIconCachePut("b.exe", 1002)
     WindowStore_ExeIconCachePut("c.exe", 1003)
-    if (gWS_ExeIconCache.Count = 3) {
-        Log("PASS: ExeIconCache: 3 entries at max")
-        TestPassed++
-    } else {
-        Log("FAIL: ExeIconCache: expected 3 at max, got " gWS_ExeIconCache.Count)
-        TestErrors++
-    }
-
     WindowStore_ExeIconCachePut("d.exe", 1004)
-    if (gWS_ExeIconCache.Count = 3) {
-        Log("PASS: ExeIconCache: still 3 after eviction")
+    if (gWS_ExeIconCache.Count = 4) {
+        Log("PASS: ExeIconCache: grows to 4 (no FIFO cap)")
         TestPassed++
     } else {
-        Log("FAIL: ExeIconCache: expected 3 after eviction, got " gWS_ExeIconCache.Count)
+        Log("FAIL: ExeIconCache: expected 4, got " gWS_ExeIconCache.Count)
         TestErrors++
     }
 
-    if (!gWS_ExeIconCache.Has("a.exe")) {
-        Log("PASS: ExeIconCache FIFO: first entry (a.exe) evicted")
+    ; Prune removes orphaned exe paths not used by any live window
+    ; Add a window using b.exe so it survives pruning
+    gWS_Store := Map()
+    gWS_Store[9999] := _WS_NewRecord(9999)
+    gWS_Store[9999].exePath := "b.exe"
+    pruned := WindowStore_PruneExeIconCache()
+    if (pruned = 3) {
+        Log("PASS: ExeIconCache prune removed 3 orphaned exe paths")
         TestPassed++
     } else {
-        Log("FAIL: ExeIconCache FIFO: a.exe should have been evicted")
+        Log("FAIL: ExeIconCache prune expected 3 removed, got " pruned)
         TestErrors++
     }
-
-    if (gWS_ExeIconCache.Has("d.exe")) {
-        Log("PASS: ExeIconCache FIFO: newest entry (d.exe) present")
+    if (gWS_ExeIconCache.Has("b.exe") && gWS_ExeIconCache.Count = 1) {
+        Log("PASS: ExeIconCache prune kept live exe (b.exe)")
         TestPassed++
     } else {
-        Log("FAIL: ExeIconCache FIFO: d.exe should be present")
+        Log("FAIL: ExeIconCache prune should keep b.exe, count=" gWS_ExeIconCache.Count)
         TestErrors++
     }
+    gWS_Store := Map()  ; Clean up
 
     ; Restore original state
     gWS_ExeIconCache := savedCache
-    cfg.ExeIconCacheMax := savedMax
 
     ; ============================================================
     ; WindowStore_PruneProcNameCache Tests
@@ -707,7 +702,6 @@ RunUnitTests_Storage() {
     Log("`n--- WindowStore_UpdateProcessName Tests ---")
 
     savedProcCache2 := gWS_ProcNameCache
-    savedProcMax := cfg.HasOwnProp("ProcNameCacheMax") ? cfg.ProcNameCacheMax : 200
 
     ; Test 1: Guard - pid=0 and name="" both rejected
     Log("Testing UpdateProcessName guard: pid=0 and name='' rejected...")
@@ -793,56 +787,45 @@ RunUnitTests_Storage() {
         TestErrors++
     }
 
-    ; Test 6: ProcNameCache FIFO eviction (max=3, add 4)
-    Log("Testing ProcNameCache FIFO eviction...")
+    ; Test 6: ProcNameCache grows without cap (prune-based cleanup)
+    Log("Testing ProcNameCache grows without cap...")
     WindowStore_Init()
     gWS_ProcNameCache := Map()
-    cfg.ProcNameCacheMax := 3
 
-    ; Need windows so UpdateProcessName doesn't short-circuit before caching
-    ; But actually the guard only checks pid<=0 or name="", not store membership
-    ; The cache write happens before the fan-out, so we just need valid pid+name
+    ; Cache grows to 4 without eviction (no FIFO cap)
     WindowStore_UpdateProcessName(1001, "a.exe")
     WindowStore_UpdateProcessName(1002, "b.exe")
     WindowStore_UpdateProcessName(1003, "c.exe")
-
-    if (gWS_ProcNameCache.Count = 3) {
-        Log("PASS: ProcNameCache has 3 entries at max")
-        TestPassed++
-    } else {
-        Log("FAIL: ProcNameCache expected 3 at max, got " gWS_ProcNameCache.Count)
-        TestErrors++
-    }
-
     WindowStore_UpdateProcessName(1004, "d.exe")
 
-    if (gWS_ProcNameCache.Count = 3) {
-        Log("PASS: ProcNameCache still 3 after eviction")
+    if (gWS_ProcNameCache.Count = 4) {
+        Log("PASS: ProcNameCache grows to 4 (no FIFO cap)")
         TestPassed++
     } else {
-        Log("FAIL: ProcNameCache expected 3 after eviction, got " gWS_ProcNameCache.Count)
+        Log("FAIL: ProcNameCache expected 4, got " gWS_ProcNameCache.Count)
         TestErrors++
     }
 
-    if (!gWS_ProcNameCache.Has(1001)) {
-        Log("PASS: ProcNameCache FIFO: first entry (pid=1001) evicted")
+    if (gWS_ProcNameCache.Has(1001) && gWS_ProcNameCache.Has(1004)) {
+        Log("PASS: ProcNameCache all entries present (no eviction)")
         TestPassed++
     } else {
-        Log("FAIL: ProcNameCache FIFO: pid=1001 should have been evicted")
+        Log("FAIL: ProcNameCache should have all 4 entries")
         TestErrors++
     }
 
-    if (gWS_ProcNameCache.Has(1004)) {
-        Log("PASS: ProcNameCache FIFO: newest entry (pid=1004) present")
+    ; Verify prune removes dead PIDs (1001-1004 are fake PIDs that don't exist)
+    pruned := WindowStore_PruneProcNameCache()
+    if (pruned = 4) {
+        Log("PASS: ProcNameCache prune removed 4 dead PIDs")
         TestPassed++
     } else {
-        Log("FAIL: ProcNameCache FIFO: pid=1004 should be present")
+        Log("FAIL: ProcNameCache prune expected 4 removed, got " pruned)
         TestErrors++
     }
 
     ; Restore
     gWS_ProcNameCache := savedProcCache2
-    cfg.ProcNameCacheMax := savedProcMax
 
     ; ============================================================
     ; Blacklist Pattern Matching Stress Tests

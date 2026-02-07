@@ -25,7 +25,7 @@
 
 global gConfigRegistry := [
     ; ============================================================
-    ; Alt-Tab Behavior (Most Likely to Edit)
+    ; Alt-Tab Behavior
     ; ============================================================
     {type: "section", name: "AltTab",
      desc: "Alt-Tab Behavior",
@@ -62,7 +62,7 @@ global gConfigRegistry := [
      d: "Bypass Alt-Tabby when the foreground window is fullscreen (covers >=99%% of screen). Useful for games that need native Alt-Tab behavior."},
 
     {s: "AltTab", k: "BypassFullscreenThreshold", g: "AltTabBypassFullscreenThreshold", t: "float", default: 0.99,
-     min: 0.50, max: 1.0,
+     min: 0.5, max: 1.0,
      d: "Fraction of screen dimensions a window must cover to be considered fullscreen. Lower values catch borderless windowed games that don't quite fill the screen."},
 
     {s: "AltTab", k: "BypassFullscreenTolerancePx", g: "AltTabBypassFullscreenTolerancePx", t: "int", default: 5,
@@ -102,8 +102,8 @@ global gConfigRegistry := [
      desc: "Launcher Settings",
      long: "Settings for the main Alt-Tabby launcher process (splash screen, startup behavior)."},
 
-    {s: "Launcher", k: "SplashScreen", g: "LauncherSplashScreen",
-     t: "enum", default: "Image", options: ["Image", "Animation", "None"],
+    {s: "Launcher", k: "SplashScreen", g: "LauncherSplashScreen", t: "enum", default: "Image",
+     options: ["Image", "Animation", "None"],
      d: "Splash screen mode. Image = static PNG logo with fade. Animation = animated WebP. None = disabled."},
 
     {type: "subsection", section: "Launcher", name: "Image Splash",
@@ -145,18 +145,28 @@ global gConfigRegistry := [
      d: "Streaming decode buffer size. 0 = load all frames upfront (~500MB). >0 = buffer N frames (~4MB per frame at 1280x720). Default 24 = ~88MB, 1 second buffer at 24fps."},
 
     ; ============================================================
+    ; Theme & Dark Mode
+    ; ============================================================
+    {type: "section", name: "Theme",
+     desc: "Theme & Dark Mode",
+     long: "Color theme for dialogs and editors. The main Alt-Tab overlay has its own color settings in GUI Appearance."},
+
+    {s: "Theme", k: "Theme", g: "Theme_Mode", t: "enum", default: "Automatic",
+     options: ["Automatic", "Dark", "Light"],
+     d: "Color theme for dialogs and editors. Automatic follows the Windows system setting."},
+
+    ; ============================================================
     ; GUI Appearance
     ; ============================================================
     {type: "section", name: "GUI",
      desc: "GUI Appearance",
      long: "Visual styling for the Alt-Tab overlay window."},
 
-    ; --- Background Window ---
     {type: "subsection", section: "GUI", name: "Background Window",
      desc: "Window background and frame styling"},
 
     {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "int", default: 0x33,
-     min: 0, max: 255, fmt: "hex",
+     min: 0, max: 0xFF, fmt: "hex",
      d: "Background transparency (0x00=transparent, 0xFF=opaque)"},
 
     {s: "GUI", k: "AcrylicBaseRgb", g: "GUI_AcrylicBaseRgb", t: "int", default: 0x330000,
@@ -167,11 +177,10 @@ global gConfigRegistry := [
      min: 0, max: 100,
      d: "Window corner radius in pixels"},
 
-    ; --- Size Config ---
     {type: "subsection", section: "GUI", name: "Size Config",
      desc: "Window and row sizing"},
 
-    {s: "GUI", k: "ScreenWidthPct", g: "GUI_ScreenWidthPct", t: "float", default: 0.60,
+    {s: "GUI", k: "ScreenWidthPct", g: "GUI_ScreenWidthPct", t: "float", default: 0.6,
      min: 0.1, max: 1.0,
      d: "GUI width as fraction of screen"},
 
@@ -195,7 +204,6 @@ global gConfigRegistry := [
      min: 0, max: 200,
      d: "Vertical margin in pixels"},
 
-    ; --- Virtual List Look ---
     {type: "subsection", section: "GUI", name: "Virtual List Look",
      desc: "Row and icon appearance"},
 
@@ -227,7 +235,6 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Selection highlight color (ARGB)"},
 
-    ; --- Selection & Scrolling ---
     {type: "subsection", section: "GUI", name: "Selection & Scrolling",
      desc: "Selection and scroll behavior"},
 
@@ -237,7 +244,6 @@ global gConfigRegistry := [
     {s: "GUI", k: "EmptyListText", g: "GUI_EmptyListText", t: "string", default: "No Windows",
      d: "Text shown when no windows available"},
 
-    ; --- Tooltips ---
     {type: "subsection", section: "GUI", name: "Tooltips",
      desc: "Feedback tooltip timing for accessibility"},
 
@@ -249,7 +255,6 @@ global gConfigRegistry := [
      min: 50, max: 500,
      d: "Hover state polling interval (ms). Lower = more responsive but higher CPU."},
 
-    ; --- Action Buttons ---
     {type: "subsection", section: "GUI", name: "Action Buttons",
      desc: "Row action buttons shown on hover"},
 
@@ -285,7 +290,6 @@ global gConfigRegistry := [
      min: 100, max: 900,
      d: "Action button font weight"},
 
-    ; --- Close Button Styling ---
     {type: "subsection", section: "GUI", name: "Close Button Styling",
      desc: "Close button appearance"},
 
@@ -316,7 +320,6 @@ global gConfigRegistry := [
     {s: "GUI", k: "CloseButtonGlyph", g: "GUI_CloseButtonGlyph", t: "string", default: "X",
      d: "Close button glyph character"},
 
-    ; --- Kill Button Styling ---
     {type: "subsection", section: "GUI", name: "Kill Button Styling",
      desc: "Kill button appearance"},
 
@@ -347,7 +350,6 @@ global gConfigRegistry := [
     {s: "GUI", k: "KillButtonGlyph", g: "GUI_KillButtonGlyph", t: "string", default: "K",
      d: "Kill button glyph character"},
 
-    ; --- Blacklist Button Styling ---
     {type: "subsection", section: "GUI", name: "Blacklist Button Styling",
      desc: "Blacklist button appearance"},
 
@@ -378,7 +380,6 @@ global gConfigRegistry := [
     {s: "GUI", k: "BlacklistButtonGlyph", g: "GUI_BlacklistButtonGlyph", t: "string", default: "B",
      d: "Blacklist button glyph character"},
 
-    ; --- Columns ---
     {type: "subsection", section: "GUI", name: "Columns",
      desc: "Extra data columns (0 = hidden)"},
 
@@ -420,7 +421,6 @@ global gConfigRegistry := [
     {s: "GUI", k: "Col6Name", g: "GUI_Col6Name", t: "string", default: "",
      d: "Column 6 header name"},
 
-    ; --- Header Font ---
     {type: "subsection", section: "GUI", name: "Header Font",
      desc: "Column header text styling"},
 
@@ -439,7 +439,6 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Header text color (ARGB)"},
 
-    ; --- Main Font ---
     {type: "subsection", section: "GUI", name: "Main Font",
      desc: "Window title text styling"},
 
@@ -473,7 +472,6 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Main text color when highlighted (ARGB)"},
 
-    ; --- Sub Font ---
     {type: "subsection", section: "GUI", name: "Sub Font",
      desc: "Subtitle row text styling"},
 
@@ -507,7 +505,6 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Sub text color when highlighted (ARGB)"},
 
-    ; --- Column Font ---
     {type: "subsection", section: "GUI", name: "Column Font",
      desc: "Column value text styling"},
 
@@ -541,7 +538,6 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Column text color when highlighted (ARGB)"},
 
-    ; --- Scrollbar ---
     {type: "subsection", section: "GUI", name: "Scrollbar",
      desc: "Scrollbar appearance"},
 
@@ -567,7 +563,6 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Scrollbar gutter color (ARGB)"},
 
-    ; --- Footer ---
     {type: "subsection", section: "GUI", name: "Footer",
      desc: "Footer bar appearance"},
 
@@ -586,7 +581,7 @@ global gConfigRegistry := [
      min: 0, max: 50,
      d: "Footer background corner radius"},
 
-    {s: "GUI", k: "FooterBGARGB", g: "GUI_FooterBGARGB", t: "int", default: 0x00000000,
+    {s: "GUI", k: "FooterBGARGB", g: "GUI_FooterBGARGB", t: "int", default: 0,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Footer background color (ARGB)"},
 
@@ -618,6 +613,89 @@ global gConfigRegistry := [
      d: "Footer horizontal padding in pixels"},
 
     ; ============================================================
+    ; Komorebi Integration
+    ; ============================================================
+    {type: "section", name: "Komorebi",
+     desc: "Komorebi Integration",
+     long: "Settings for komorebi tiling window manager integration."},
+
+    {s: "Komorebi", k: "CrossWorkspaceMethod", g: "KomorebiCrossWorkspaceMethod", t: "enum", default: "MimicNative",
+     options: ["MimicNative", "RevealMove", "SwitchActivate"],
+     d: "How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails."},
+
+    {s: "Komorebi", k: "MimicNativeSettleMs", g: "KomorebiMimicNativeSettleMs", t: "int", default: 0,
+     min: 0, max: 1000,
+     d: "Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems."},
+
+    {s: "Komorebi", k: "UseSocket", g: "KomorebiUseSocket", t: "bool", default: true,
+     d: "Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable."},
+
+    {s: "Komorebi", k: "WorkspaceConfirmationMethod", g: "KomorebiWorkspaceConfirmMethod", t: "enum", default: "PollCloak",
+     options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
+     d: "How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},
+
+    {type: "subsection", section: "Komorebi", name: "Subscription",
+     desc: "Event-driven komorebi integration via named pipe"},
+
+    {s: "Komorebi", k: "SubPollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
+     min: 10, max: 1000,
+     d: "Pipe poll interval (checking for incoming data)"},
+
+    {s: "Komorebi", k: "SubIdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
+     min: 10000, max: 600000,
+     d: "Restart subscription if no events for this long (stale detection)"},
+
+    {s: "Komorebi", k: "SubFallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
+     min: 500, max: 30000,
+     d: "Fallback polling interval if subscription fails"},
+
+    {s: "Komorebi", k: "SubCacheMaxAgeMs", g: "KomorebiSubCacheMaxAgeMs", t: "int", default: 10000,
+     min: 1000, max: 60000,
+     d: "Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately."},
+
+    {s: "Komorebi", k: "SubBatchCloakEventsMs", g: "KomorebiSubBatchCloakEventsMs", t: "int", default: 50,
+     min: 0, max: 500,
+     d: "Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately."},
+
+    ; ============================================================
+    ; Setup & Installation
+    ; ============================================================
+    {type: "section", name: "Setup",
+     desc: "Setup & Installation",
+     long: "Installation paths and first-run settings. Managed automatically by the setup wizard."},
+
+    {s: "Setup", k: "ExePath", g: "SetupExePath", t: "string", default: "",
+     d: "Full path to AltTabby.exe after installation. Empty = use current location."},
+
+    {s: "Setup", k: "RunAsAdmin", g: "SetupRunAsAdmin", t: "bool", default: false,
+     d: "Run with administrator privileges via Task Scheduler (no UAC prompts after setup)."},
+
+    {s: "Setup", k: "AutoUpdateCheck", g: "SetupAutoUpdateCheck", t: "bool", default: true,
+     d: "Automatically check for updates on startup."},
+
+    {s: "Setup", k: "FirstRunCompleted", g: "SetupFirstRunCompleted", t: "bool", default: false,
+     d: "Set to true after first-run wizard completes."},
+
+    {s: "Setup", k: "InstallationId", g: "SetupInstallationId", t: "string", default: "",
+     d: "Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification."},
+
+    {s: "Setup", k: "SuppressAdminRepairPrompt", g: "SetupSuppressAdminRepairPrompt", t: "bool", default: false,
+     d: "Don't prompt to repair stale admin task. Set automatically when user clicks 'Don't ask again'."},
+
+    ; ============================================================
+    ; External Tools
+    ; ============================================================
+    {type: "section", name: "Tools",
+     desc: "External Tools",
+     long: "Paths to external executables used by Alt-Tabby."},
+
+    {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", default: "",
+     d: "Path to AHK v2 executable (for spawning subprocesses). Leave empty to auto-discover via PATH and known install locations"},
+
+    {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", default: "",
+     d: "Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations"},
+
+    ; ============================================================
     ; IPC & Communication
     ; ============================================================
     {type: "section", name: "IPC",
@@ -635,8 +713,8 @@ global gConfigRegistry := [
      min: 0, max: 1000,
      d: "How often to send complete window data instead of only changes (self-healing). 0 = always send complete data. Higher values = less bandwidth but slower recovery from missed updates."},
 
-    {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle",
-     t: "enum", default: "Always", options: ["Always", "OnChange"],
+    {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle", t: "enum", default: "Always",
+     options: ["Always", "OnChange"],
      d: "When to include workspace info in updates. 'Always' = every update. 'OnChange' = only when the active workspace changes (less data)."},
 
     {s: "IPC", k: "FullSyncEvery", g: "IPCFullSyncEvery", t: "int", default: 60,
@@ -669,26 +747,12 @@ global gConfigRegistry := [
      d: "Viewer considers connection dead after N ms without any message"},
 
     ; ============================================================
-    ; External Tools
-    ; ============================================================
-    {type: "section", name: "Tools",
-     desc: "External Tools",
-     long: "Paths to external executables used by Alt-Tabby."},
-
-    {s: "Tools", k: "AhkV2Path", g: "AhkV2Path", t: "string", default: "",
-     d: "Path to AHK v2 executable (for spawning subprocesses). Leave empty to auto-discover via PATH and known install locations"},
-
-    {s: "Tools", k: "KomorebicExe", g: "KomorebicExe", t: "string", default: "",
-     d: "Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations"},
-
-    ; ============================================================
     ; Window Store
     ; ============================================================
     {type: "section", name: "Store",
      desc: "Window Store",
      long: "Window store configuration: producers, filtering, timing, and caching. Most users won't need to change these."},
 
-    ; --- Producer Toggles ---
     {type: "subsection", section: "Store", name: "Producer Toggles",
      desc: "WinEventHook and MRU are always enabled (core). These control optional producers"},
 
@@ -704,7 +768,6 @@ global gConfigRegistry := [
     {s: "Store", k: "UseProcPump", g: "UseProcPump", t: "bool", default: true,
      d: "Resolve process names in background"},
 
-    ; --- Window Filtering ---
     {type: "subsection", section: "Store", name: "Window Filtering",
      desc: "Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist"},
 
@@ -714,180 +777,118 @@ global gConfigRegistry := [
     {s: "Store", k: "UseBlacklist", g: "UseBlacklist", t: "bool", default: true,
      d: "Apply blacklist from shared/blacklist.txt"},
 
-    ; --- WinEventHook ---
     {type: "subsection", section: "Store", name: "WinEventHook",
      desc: "Event-driven window change detection. Events are queued then processed in batches"},
 
-    {s: "WinEventHook", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", default: 50,
+    {s: "Store", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", default: 50,
      min: 10, max: 1000,
      d: "Debounce rapid events (e.g., window moving fires many events)"},
 
-    {s: "WinEventHook", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", default: 100,
+    {s: "Store", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", default: 100,
      min: 10, max: 2000,
      d: "Batch processing interval - how often queued events are processed"},
 
-    {s: "WinEventHook", k: "IdleThreshold", g: "WinEventHookIdleThreshold", t: "int", default: 10,
+    {s: "Store", k: "IdleThreshold", g: "WinEventHookIdleThreshold", t: "int", default: 10,
      min: 1, max: 100,
      d: "Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
-    {s: "WinEventHook", k: "CosmeticBufferMs", g: "WinEventHookCosmeticBufferMs", t: "int", default: 1000,
+    {s: "Store", k: "CosmeticBufferMs", g: "WinEventHookCosmeticBufferMs", t: "int", default: 1000,
      min: 100, max: 10000,
      d: "Minimum interval between updates for cosmetic changes like title text (ms). Important changes (focus, open, close) always update immediately."},
 
-    ; --- Z-Pump ---
     {type: "subsection", section: "Store", name: "Z-Pump",
      desc: "When WinEventHook adds a window, Z-pump triggers a WinEnum scan for accurate Z-order"},
 
-    {s: "ZPump", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
+    {s: "Store", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
      min: 50, max: 5000,
      d: "How often to check for windows needing Z-order updates (ms)"},
 
-    ; --- WinEnum ---
     {type: "subsection", section: "Store", name: "WinEnum",
      desc: "Full window enumeration (startup, snapshot, Z-pump, safety polling)"},
 
-    {s: "WinEnum", k: "MissingWindowGraceMs", g: "WinEnumMissingWindowTTLMs", t: "int", default: 1200,
+    {s: "Store", k: "MissingWindowGraceMs", g: "WinEnumMissingWindowTTLMs", t: "int", default: 1200,
      min: 100, max: 10000,
      d: "Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps."},
 
-    {s: "WinEnum", k: "FallbackScanIntervalMs", g: "WinEnumFallbackScanIntervalMs", t: "int", default: 2000,
+    {s: "Store", k: "FallbackScanIntervalMs", g: "WinEnumFallbackScanIntervalMs", t: "int", default: 2000,
      min: 500, max: 10000,
      d: "Polling interval when WinEventHook fails and fallback scanning is active (ms). Lower = more responsive but higher CPU."},
 
-    {s: "WinEnum", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", default: 0,
+    {s: "Store", k: "SafetyPollMs", g: "WinEnumSafetyPollMs", t: "int", default: 0,
      min: 0, max: 300000,
      d: "Safety polling interval (0=disabled, or 30000+ for safety net)"},
 
-    {s: "WinEnum", k: "ValidateExistenceMs", g: "WinEnumValidateExistenceMs", t: "int", default: 5000,
+    {s: "Store", k: "ValidateExistenceMs", g: "WinEnumValidateExistenceMs", t: "int", default: 5000,
      min: 0, max: 60000,
      d: "How often to check for dead/zombie windows (ms). Lightweight check that removes windows that no longer exist. 0 = disabled."},
 
-    ; --- MRU Lite ---
     {type: "subsection", section: "Store", name: "MRU Lite",
      desc: "Fallback focus tracker (only runs if WinEventHook fails to start)"},
 
-    {s: "MruLite", k: "PollMs", g: "MruLitePollMs", t: "int", default: 250,
+    {s: "Store", k: "PollMs", g: "MruLitePollMs", t: "int", default: 250,
      min: 50, max: 5000,
      d: "Polling interval for focus tracking fallback"},
 
-    ; --- Icon Pump ---
     {type: "subsection", section: "Store", name: "Icon Pump",
      desc: "Resolves window icons asynchronously with retry/backoff"},
 
-    {s: "IconPump", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", default: 80,
+    {s: "Store", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", default: 80,
      min: 20, max: 1000,
      d: "How often the pump processes its queue"},
 
-    {s: "IconPump", k: "BatchSize", g: "IconPumpBatchSize", t: "int", default: 16,
+    {s: "Store", k: "BatchSize", g: "IconPumpBatchSize", t: "int", default: 16,
      min: 1, max: 100,
      d: "Max icons to process per tick (prevents lag spikes)"},
 
-    {s: "IconPump", k: "MaxAttempts", g: "IconPumpMaxAttempts", t: "int", default: 4,
+    {s: "Store", k: "MaxAttempts", g: "IconPumpMaxAttempts", t: "int", default: 4,
      min: 1, max: 20,
      d: "Max attempts before giving up on a window's icon"},
 
-    {s: "IconPump", k: "AttemptBackoffMs", g: "IconPumpAttemptBackoffMs", t: "int", default: 300,
+    {s: "Store", k: "AttemptBackoffMs", g: "IconPumpAttemptBackoffMs", t: "int", default: 300,
      min: 50, max: 5000,
      d: "Base backoff after failed attempt (multiplied by attempt number)"},
 
-    {s: "IconPump", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", default: 1.8,
+    {s: "Store", k: "BackoffMultiplier", g: "IconPumpBackoffMultiplier", t: "float", default: 1.8,
      min: 1.0, max: 5.0,
      d: "Backoff multiplier for exponential backoff (1.0 = linear)"},
 
-    {s: "IconPump", k: "GiveUpBackoffMs", g: "IconPumpGiveUpBackoffMs", t: "int", default: 5000,
+    {s: "Store", k: "GiveUpBackoffMs", g: "IconPumpGiveUpBackoffMs", t: "int", default: 5000,
      min: 1000, max: 30000,
      d: "Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps."},
 
-    {s: "IconPump", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 30000,
+    {s: "Store", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 30000,
      min: 1000, max: 300000,
      d: "Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay."},
 
-    {s: "IconPump", k: "IdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
+    {s: "Store", k: "IdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
      min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
-    {s: "IconPump", k: "ResolveTimeoutMs", g: "IconPumpResolveTimeoutMs", t: "int", default: 500,
+    {s: "Store", k: "ResolveTimeoutMs", g: "IconPumpResolveTimeoutMs", t: "int", default: 500,
      min: 100, max: 2000,
      d: "WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond."},
 
-    ; --- Process Pump ---
     {type: "subsection", section: "Store", name: "Process Pump",
      desc: "Resolves PID -> process name asynchronously"},
 
-    {s: "ProcPump", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", default: 100,
+    {s: "Store", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", default: 100,
      min: 20, max: 1000,
      d: "How often the pump processes its queue"},
 
-    {s: "ProcPump", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", default: 16,
+    {s: "Store", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", default: 16,
      min: 1, max: 100,
      d: "Max PIDs to resolve per tick"},
 
-    {s: "ProcPump", k: "IdleThreshold", g: "ProcPumpIdleThreshold", t: "int", default: 5,
+    {s: "Store", k: "IdleThreshold", g: "ProcPumpIdleThreshold", t: "int", default: 5,
      min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
-    ; --- Cache Limits ---
     {type: "subsection", section: "Store", name: "Cache Limits",
      desc: "Size limits for internal caches to prevent unbounded memory growth"},
-
-    {s: "Store", k: "ExeIconMax", g: "ExeIconCacheMax", t: "int", default: 100,
-     min: 10, max: 1000,
-     d: "Maximum number of cached exe icons. Older entries are evicted when limit is reached."},
 
     {s: "Store", k: "UwpLogoMax", g: "UwpLogoCacheMax", t: "int", default: 50,
      min: 5, max: 500,
      d: "Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps."},
-
-    {s: "Store", k: "ProcNameMax", g: "ProcNameCacheMax", t: "int", default: 200,
-     min: 10, max: 2000,
-     d: "Maximum number of cached process names. Older entries are evicted when limit is reached."},
-
-    ; ============================================================
-    ; Komorebi Integration
-    ; ============================================================
-    {type: "section", name: "Komorebi",
-     desc: "Komorebi Integration",
-     long: "Settings for komorebi tiling window manager integration."},
-
-    {s: "Komorebi", k: "CrossWorkspaceMethod", g: "KomorebiCrossWorkspaceMethod",
-     t: "enum", default: "MimicNative", options: ["MimicNative", "RevealMove", "SwitchActivate"],
-     d: "How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails."},
-
-    {s: "Komorebi", k: "MimicNativeSettleMs", g: "KomorebiMimicNativeSettleMs",
-     t: "int", default: 0,
-     min: 0, max: 1000,
-     d: "Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems."},
-
-    {s: "Komorebi", k: "UseSocket", g: "KomorebiUseSocket",
-     t: "bool", default: true,
-     d: "Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable."},
-
-    {s: "Komorebi", k: "WorkspaceConfirmationMethod", g: "KomorebiWorkspaceConfirmMethod",
-     t: "enum", default: "PollCloak", options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
-     d: "How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},
-
-    {type: "subsection", section: "Komorebi", name: "Subscription",
-     desc: "Event-driven komorebi integration via named pipe"},
-
-    {s: "Komorebi", k: "SubPollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
-     min: 10, max: 1000,
-     d: "Pipe poll interval (checking for incoming data)"},
-
-    {s: "Komorebi", k: "SubIdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
-     min: 10000, max: 600000,
-     d: "Restart subscription if no events for this long (stale detection)"},
-
-    {s: "Komorebi", k: "SubFallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
-     min: 500, max: 30000,
-     d: "Fallback polling interval if subscription fails"},
-
-    {s: "Komorebi", k: "SubCacheMaxAgeMs", g: "KomorebiSubCacheMaxAgeMs", t: "int", default: 10000,
-     min: 1000, max: 60000,
-     d: "Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately."},
-
-    {s: "Komorebi", k: "SubBatchCloakEventsMs", g: "KomorebiSubBatchCloakEventsMs", t: "int", default: 50,
-     min: 0, max: 500,
-     d: "Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately."},
 
     ; ============================================================
     ; Diagnostics
@@ -961,40 +962,4 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", default: 30,
      min: 5, max: 300,
      d: "Default duration for test_live.ahk"},
-
-    ; ============================================================
-    ; Theme (Dark/Light Mode)
-    ; ============================================================
-    {type: "section", name: "Theme",
-     desc: "Theme & Dark Mode",
-     long: "Color theme for dialogs and editors. The main Alt-Tab overlay has its own color settings in GUI Appearance."},
-
-    {s: "Theme", k: "Theme", g: "Theme_Mode",
-     t: "enum", default: "Automatic", options: ["Automatic", "Dark", "Light"],
-     d: "Color theme for dialogs and editors. Automatic follows the Windows system setting."},
-
-    ; ============================================================
-    ; Setup (First-Run & Installation)
-    ; ============================================================
-    {type: "section", name: "Setup",
-     desc: "Setup & Installation",
-     long: "Installation paths and first-run settings. Managed automatically by the setup wizard."},
-
-    {s: "Setup", k: "ExePath", g: "SetupExePath", t: "string", default: "",
-     d: "Full path to AltTabby.exe after installation. Empty = use current location."},
-
-    {s: "Setup", k: "RunAsAdmin", g: "SetupRunAsAdmin", t: "bool", default: false,
-     d: "Run with administrator privileges via Task Scheduler (no UAC prompts after setup)."},
-
-    {s: "Setup", k: "AutoUpdateCheck", g: "SetupAutoUpdateCheck", t: "bool", default: true,
-     d: "Automatically check for updates on startup."},
-
-    {s: "Setup", k: "FirstRunCompleted", g: "SetupFirstRunCompleted", t: "bool", default: false,
-     d: "Set to true after first-run wizard completes."},
-
-    {s: "Setup", k: "InstallationId", g: "SetupInstallationId", t: "string", default: "",
-     d: "Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification."},
-
-    {s: "Setup", k: "SuppressAdminRepairPrompt", g: "SetupSuppressAdminRepairPrompt", t: "bool", default: false,
-     d: "Don't prompt to repair stale admin task. Set automatically when user clicks 'Don't ask again'."}
 ]
