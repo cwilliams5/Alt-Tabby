@@ -158,7 +158,10 @@ RunLiveTests_Execution() {
             }
             ; Wait for store to fully exit and release config.ini / pipe handles
             ; before launching launcher mode (which reads the same config)
-            Sleep(500)
+            waitStart := A_TickCount
+            while (ProcessExist(compiledStorePid) && (A_TickCount - waitStart) < 2000)
+                Sleep(20)
+            Sleep(50)  ; Brief grace for handle release after process exit
         }
 
         ; Test launcher mode (spawns multiple processes)
@@ -184,7 +187,7 @@ RunLiveTests_Execution() {
                 }
                 if (processCount >= 3)
                     break
-                Sleep(200)
+                Sleep(100)
             }
 
             if (processCount >= 3) {
@@ -225,7 +228,10 @@ RunLiveTests_Execution() {
                 try proc.Terminate()
             }
             try ProcessClose(launcherPid)
-            Sleep(500)
+            waitStart := A_TickCount
+            while (ProcessExist(launcherPid) && (A_TickCount - waitStart) < 2000)
+                Sleep(20)
+            Sleep(50)  ; Brief grace for handle release
         }
 
         ; --- Config/Blacklist Recreation Test ---

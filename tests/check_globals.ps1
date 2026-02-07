@@ -120,12 +120,14 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $fileGlobals = @{}  # globalName -> "relpath:lineNum" (src/ only)
 $testPerFileGlobals = @{}  # filepath -> @{ globalName -> "relpath:lineNum" }
 $testGlobalCount = 0
+$fileCache = @{}  # path -> string[] (reused in Pass 2)
 
 foreach ($file in $allFiles) {
     $isTestFile = $testsDirNorm -and $file.FullName.ToLower().StartsWith($testsDirNorm)
     $localGlobals = @{}  # per-file collection for test files
 
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $fileCache[$file.FullName] = $lines
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
@@ -200,7 +202,7 @@ foreach ($file in $allFiles) {
         $checkGlobals = $fileGlobals
     }
 
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $inFunc = $false

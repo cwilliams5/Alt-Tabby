@@ -224,6 +224,8 @@ function Resolve-AhkInclude {
     return $null
 }
 
+$script:includeLineCache = @{}  # filePath -> string[] (only #Include lines)
+
 function Build-IncludeTree {
     # Recursively trace #Include directives from an entry file.
     # Returns array of absolute file paths (entry file + all includes).
@@ -246,18 +248,21 @@ function Build-IncludeTree {
         if (-not (Test-Path $current)) { continue }
 
         $currentDir = [System.IO.Path]::GetDirectoryName($current)
-        $lines = [System.IO.File]::ReadAllLines($current)
 
-        foreach ($line in $lines) {
-            if ($line -match '^\s*#Include\s+') {
-                $resolved = Resolve-AhkInclude $line $currentDir $scriptDir
-                if ($resolved) {
-                    $key = $resolved.ToLower()
-                    if (-not $visited.ContainsKey($key)) {
-                        $visited[$key] = $true
-                        [void]$tree.Add($resolved)
-                        $queue.Enqueue($resolved)
-                    }
+        # Cache: extract only #Include lines per file
+        if (-not $script:includeLineCache.ContainsKey($current)) {
+            $allLines = [System.IO.File]::ReadAllLines($current)
+            $script:includeLineCache[$current] = @($allLines | Where-Object { $_ -match '^\s*#Include\s+' })
+        }
+
+        foreach ($line in $script:includeLineCache[$current]) {
+            $resolved = Resolve-AhkInclude $line $currentDir $scriptDir
+            if ($resolved) {
+                $key = $resolved.ToLower()
+                if (-not $visited.ContainsKey($key)) {
+                    $visited[$key] = $true
+                    [void]$tree.Add($resolved)
+                    $queue.Enqueue($resolved)
                 }
             }
         }
@@ -291,9 +296,12 @@ $srcDirNorm = [System.IO.Path]::GetFullPath($SourceDir).ToLower()
 $srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 $knownGlobals = @{}  # name -> relative path where defined
+$globalDefsCache = @{}  # filePath -> hashtable (cache for Get-FileScopeGlobalDefs)
+$funcUsageCache = @{}  # filePath -> ArrayList (cache for Get-FunctionGlobalUsage)
 
 foreach ($file in $srcFiles) {
     $defs = Get-FileScopeGlobalDefs $file.FullName
+    $globalDefsCache[$file.FullName] = $defs
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     foreach ($name in $defs.Keys) {
         if (-not $knownGlobals.ContainsKey($name)) {
@@ -341,7 +349,10 @@ foreach ($entry in $entryPoints) {
     # Collect all globals DEFINED (with :=) in the tree
     $availableGlobals = @{}
     foreach ($file in $tree) {
-        $defs = Get-FileScopeGlobalDefs $file
+        if (-not $globalDefsCache.ContainsKey($file)) {
+            $globalDefsCache[$file] = Get-FileScopeGlobalDefs $file
+        }
+        $defs = $globalDefsCache[$file]
         foreach ($name in $defs.Keys) {
             $availableGlobals[$name] = $true
         }
@@ -353,7 +364,10 @@ foreach ($entry in $entryPoints) {
         $fileLower = $file.ToLower()
         if (-not $fileLower.StartsWith($srcDirNorm)) { continue }
 
-        $usages = Get-FunctionGlobalUsage $file
+        if (-not $funcUsageCache.ContainsKey($file)) {
+            $funcUsageCache[$file] = Get-FunctionGlobalUsage $file
+        }
+        $usages = $funcUsageCache[$file]
         $relFile = $file.Replace("$projectRoot\", '')
 
         foreach ($usage in $usages) {

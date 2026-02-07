@@ -63,7 +63,7 @@ RunLiveTests_Lifecycle() {
             processCount++
         if (processCount >= 3)
             break
-        Sleep(200)
+        Sleep(50)
     }
     if (processCount < 3) {
         Log("SKIP: Only " processCount " process(es) of " LIFECYCLE_EXE_NAME ", need 3")
@@ -87,7 +87,7 @@ RunLiveTests_Lifecycle() {
         }
         if (launcherHwnd)
             break
-        Sleep(200)
+        Sleep(50)
     }
     if (!launcherHwnd) {
         Log("FAIL: Could not read launcher HWND from " LIFECYCLE_HWND_FILE)
@@ -115,7 +115,9 @@ RunLiveTests_Lifecycle() {
         TestErrors++
     } else {
         try ProcessClose(storePid)
-        Sleep(500)
+        waitStart := A_TickCount
+        while (ProcessExist(storePid) && (A_TickCount - waitStart) < 2000)
+            Sleep(20)
 
         response := _Lifecycle_SendCommand(launcherHwnd, 1)  ; RESTART_STORE
         if (response = 1) {
@@ -278,7 +280,7 @@ _Lifecycle_Cleanup() {
         "Select * from Win32_Process Where Name = '" LIFECYCLE_EXE_NAME "'") {
         try proc.Terminate()
     }
-    Sleep(200)
+    Sleep(50)
 
     try FileDelete(LIFECYCLE_HWND_FILE)
 
