@@ -765,6 +765,7 @@ _Update_ApplyCore(opts) {
                     ExitApp()
                 } catch {
                     TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
+                    return
                 }
             }
             Run('"' targetPath '"')
@@ -777,9 +778,9 @@ _Update_ApplyCore(opts) {
     } catch as e {
         ; Rollback - handle partial/corrupted targetPath from failed copy/move
         rollbackSuccess := false
-        if (FileExist(targetPath) && FileExist(backupPath)) {
+        if (FileExist(targetPath)) {
             ; targetPath exists but may be partial/corrupted from failed copy/move
-            ; Remove it so we can restore the known-good backup
+            ; Remove it so we can restore the known-good backup (or just clean up partial on fresh install)
             try FileDelete(targetPath)
         }
         if (!FileExist(targetPath) && FileExist(backupPath)) {

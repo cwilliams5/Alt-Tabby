@@ -190,6 +190,10 @@ _CEN_BuildMainGUI() {
     themeEntry := Theme_ApplyToGui(gCEN["MainGui"])
     gCEN["ThemeEntry"] := themeEntry
     Theme_OnChange(_CEN_OnThemeChange)
+    ; Register swatch color handler AFTER theme (last registered runs first)
+    OnMessage(0x0138, _CEN_OnSwatchCtlColor)
+    ; Register WM_NOTIFY for slider custom draw
+    OnMessage(0x004E, _CEN_OnWmNotify)
 
     ; Frame bg: panelBg (lighter) for sidebar/header/footer; content area uses bg (darker)
     gCEN["MainGui"].BackColor := gTheme_Palette.panelBg
@@ -390,7 +394,7 @@ _CEN_BuildPage(section) {
 }
 
 _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, subIdx) {
-    global gCEN, gTheme_Palette
+    global gCEN, gTheme_Palette, gCEN_SwatchHwnds, gCEN_SliderHwnds
     global CEN_SETTING_PAD, CEN_DESC_LINE_H, CEN_LABEL_W, CEN_INPUT_X
 
     mutedColor := Theme_GetMutedColor()
@@ -458,6 +462,10 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 controls.Push({ctrl: slider, origY: y, origX: sliderX})
                 settingCtrls.Push({ctrl: slider, origY: y, origX: sliderX})
                 Theme_ApplyToControl(slider, "Slider", gCEN["ThemeEntry"])
+                gCEN_SliderHwnds[slider.Hwnd] := true
+                ; Strip visual styles so CCM_SETBKCOLOR works (we custom-draw channel+thumb)
+                DllCall("uxtheme\SetWindowTheme", "Ptr", slider.Hwnd, "Str", "", "Ptr", 0)
+                SendMessage(0x2001, 0, _Theme_ColorToInt(gTheme_Palette.bg), slider.Hwnd)  ; CCM_SETBKCOLOR
                 editX := sliderX + 126
                 ed := pageGui.AddEdit("x" editX " y" y " w80 Number")
                 controls.Push({ctrl: ed, origY: y, origX: editX})
@@ -499,6 +507,43 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                     boundClamp := _CEN_MakeClampHandler(setting.g, setting.min, setting.max)
                     ed.OnEvent("LoseFocus", boundClamp)
                 }
+
+                ; Color swatch for hex fields with color component (max > 0xFF)
+                if (isHex && setting.HasOwnProp("max") && setting.max > 0xFF) {
+                    swatchX := CEN_INPUT_X + 206
+                    ; Text control colored via custom WM_CTLCOLORSTATIC handler
+                    sw := pageGui.AddText("x" swatchX " y" y " w28 h22 +0x100 +Border", "")
+                    ; +0x100 = SS_NOTIFY (enables Click), +Border for visual edge
+                    gCEN_SwatchHwnds[sw.Hwnd] := true
+                    controls.Push({ctrl: sw, origY: y, origX: swatchX})
+                    settingCtrls.Push({ctrl: sw, origY: y, origX: swatchX})
+                    ctrlInfo.swatch := sw
+                    ctrlInfo.isARGB := (setting.max > 0xFFFFFF)
+                    ctrlInfo.hexSyncGuard := {v: false}
+                    sw.OnEvent("Click", _CEN_MakeColorPickHandler(setting.g))
+                    ed.OnEvent("Change", _CEN_MakeHexChangeHandler(setting.g))
+
+                    ; Alpha slider for ARGB fields (max > 0xFFFFFF)
+                    if (setting.max > 0xFFFFFF) {
+                        alphaX := swatchX + 34
+                        alphaSlider := pageGui.AddSlider("x" alphaX " y" y " w70 h24 +0x10 Range0-100")
+                        controls.Push({ctrl: alphaSlider, origY: y, origX: alphaX})
+                        settingCtrls.Push({ctrl: alphaSlider, origY: y, origX: alphaX})
+                        Theme_ApplyToControl(alphaSlider, "Slider", gCEN["ThemeEntry"])
+                        gCEN_SliderHwnds[alphaSlider.Hwnd] := true
+                        DllCall("uxtheme\SetWindowTheme", "Ptr", alphaSlider.Hwnd, "Str", "", "Ptr", 0)
+                        SendMessage(0x2001, 0, _Theme_ColorToInt(gTheme_Palette.bg), alphaSlider.Hwnd)  ; CCM_SETBKCOLOR
+                        alphaLblX := alphaX + 74
+                        alphaLbl := pageGui.AddText("x" alphaLblX " y" (y + 3) " w36 h16 c" mutedColor, "100%")
+                        alphaLbl.SetFont("s7", "Segoe UI")
+                        Theme_MarkMuted(alphaLbl)
+                        controls.Push({ctrl: alphaLbl, origY: y + 3, origX: alphaLblX})
+                        settingCtrls.Push({ctrl: alphaLbl, origY: y + 3, origX: alphaLblX})
+                        ctrlInfo.alphaSlider := alphaSlider
+                        ctrlInfo.alphaLabel := alphaLbl
+                        alphaSlider.OnEvent("Change", _CEN_MakeAlphaSliderHandler(setting.g))
+                    }
+                }
             }
 
             y += 26
@@ -510,7 +555,9 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             y += descH
 
             ; Range hint for float/hex (UpDown shows its own range natively)
-            if (hasRange && !useUpDown) {
+            ; Skip for hex fields with color swatch — the swatch+picker replaces the label
+            hasSwatch := isHex && setting.HasOwnProp("max") && setting.max > 0xFF
+            if (hasRange && !useUpDown && !hasSwatch) {
                 if (isHex)
                     rangeText := Format("Range: 0x{:X} - 0x{:X}", setting.min, setting.max)
                 else if (setting.t = "float")
@@ -570,6 +617,10 @@ _CEN_LoadValues() {
 }
 
 _CEN_SetControlValue(ctrlInfo, val, type) {
+    ; Guard to prevent Change handler loops
+    if (ctrlInfo.HasOwnProp("hexSyncGuard"))
+        ctrlInfo.hexSyncGuard.v := true
+
     if (type = "bool") {
         ctrlInfo.ctrl.Value := val ? 1 : 0
     } else if (type = "enum") {
@@ -585,6 +636,20 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
     }
     if (ctrlInfo.HasOwnProp("slider"))
         try ctrlInfo.slider.Value := Integer(val)
+    if (ctrlInfo.HasOwnProp("swatch")) {
+        rgb := val & 0xFFFFFF
+        _CEN_UpdateSwatchColor(ctrlInfo.swatch, rgb)
+    }
+    if (ctrlInfo.HasOwnProp("alphaSlider")) {
+        alpha := (val >> 24) & 0xFF
+        pct := Round(alpha / 255 * 100)
+        try ctrlInfo.alphaSlider.Value := pct
+        if (ctrlInfo.HasOwnProp("alphaLabel"))
+            try ctrlInfo.alphaLabel.Value := pct "%"
+    }
+
+    if (ctrlInfo.HasOwnProp("hexSyncGuard"))
+        ctrlInfo.hexSyncGuard.v := false
 }
 
 ; Create a clamp-on-blur handler bound to a specific setting's range
@@ -603,6 +668,8 @@ _CEN_SyncSliderToEdit(sliderCtrl, editCtrl, guard) {
     guard.v := true
     try editCtrl.Value := sliderCtrl.Value
     guard.v := false
+    ; Force full repaint so channel fill covers entire track (chunk-clicks only invalidate partial areas)
+    DllCall("InvalidateRect", "Ptr", sliderCtrl.Hwnd, "Ptr", 0, "Int", 0)
 }
 
 ; Create a handler that syncs edit value -> slider control
@@ -616,6 +683,254 @@ _CEN_SyncEditToSlider(editCtrl, sliderCtrl, guard) {
     guard.v := true
     try sliderCtrl.Value := Integer(editCtrl.Value)
     guard.v := false
+}
+
+; ---- Slider Hover Fix ----
+; DarkMode_Explorer slider thumbs have a nearly-black hover color.
+; Use NM_CUSTOMDRAW to paint the thumb in accent colors on hover/press.
+
+; WM_NOTIFY handler for slider NM_CUSTOMDRAW (same technique as mock_dark_controls.ahk)
+_CEN_OnWmNotify(wParam, lParam, msg, hwnd) {
+    global gCEN_SliderHwnds
+    code := NumGet(lParam, 16, "Int")   ; NMHDR.code (offset 16 on x64: hwndFrom=8 + idFrom=8)
+    if (code != -12)  ; NM_CUSTOMDRAW
+        return
+    hwndFrom := NumGet(lParam, 0, "Ptr")
+    if (!gCEN_SliderHwnds.Has(hwndFrom))
+        return
+    return _CEN_DrawSlider(hwndFrom, lParam)
+}
+
+_CEN_DrawSlider(sliderHwnd, lParam) {
+    global gTheme_Palette
+    ; Use exact same offsets as working mock (hardcoded, verified on x64)
+    stage := NumGet(lParam, 24, "UInt")
+
+    if (stage = 0x01)   ; CDDS_PREPAINT
+        return 0x20     ; CDRF_NOTIFYITEMDRAW
+
+    if (stage != 0x10001) ; CDDS_ITEMPREPAINT
+        return 0
+
+    hdc   := NumGet(lParam, 32, "Ptr")
+    left  := NumGet(lParam, 40, "Int")
+    top   := NumGet(lParam, 44, "Int")
+    right := NumGet(lParam, 48, "Int")
+    bottom := NumGet(lParam, 52, "Int")
+    part  := NumGet(lParam, 56, "UPtr")       ; TBCD_CHANNEL=3, TBCD_THUMB=2, TBCD_TICS=1
+    itemState := NumGet(lParam, 64, "UInt")   ; CDIS_HOT=0x40, CDIS_SELECTED=0x01
+
+    accentClr := _Theme_ColorToInt(gTheme_Palette.accent)
+
+    if (part = 3) {  ; TBCD_CHANNEL — two-tone fill aligned to actual thumb position
+        ; Use TBM_GETTHUMBRECT for pixel-accurate fill
+        thumbRect := Buffer(16)
+        SendMessage(0x0419, 0, thumbRect.Ptr, sliderHwnd)  ; TBM_GETTHUMBRECT
+        thumbCenter := (NumGet(thumbRect, 0, "Int") + NumGet(thumbRect, 8, "Int")) >> 1
+        ; Clamp split point to channel bounds
+        splitX := (thumbCenter < left) ? left : (thumbCenter > right) ? right : thumbCenter
+
+        if (splitX > left) {
+            fb := DllCall("CreateSolidBrush", "UInt", accentClr, "Ptr")
+            frc := Buffer(16)
+            NumPut("Int", left, "Int", top, "Int", splitX, "Int", bottom, frc)
+            DllCall("FillRect", "Ptr", hdc, "Ptr", frc, "Ptr", fb)
+            DllCall("DeleteObject", "Ptr", fb)
+        }
+        if (splitX < right) {
+            gutterClr := Theme_IsDark() ? 0x4D4D4D : 0xCCCCCC
+            eb := DllCall("CreateSolidBrush", "UInt", gutterClr, "Ptr")
+            erc := Buffer(16)
+            NumPut("Int", splitX, "Int", top, "Int", right, "Int", bottom, erc)
+            DllCall("FillRect", "Ptr", hdc, "Ptr", erc, "Ptr", eb)
+            DllCall("DeleteObject", "Ptr", eb)
+        }
+        return 0x04  ; CDRF_SKIPDEFAULT
+    }
+
+    if (part = 2) {  ; TBCD_THUMB — always custom-draw (normal, hover, pressed)
+        if (itemState & 0x01)       ; CDIS_SELECTED (pressed)
+            thumbClr := _Theme_ColorToInt(gTheme_Palette.accentHover)
+        else
+            thumbClr := accentClr   ; Normal and hover = accent blue
+
+        thumbBrush := DllCall("CreateSolidBrush", "UInt", thumbClr, "Ptr")
+        thumbPen := DllCall("CreatePen", "Int", 0, "Int", 1, "UInt", thumbClr, "Ptr")
+        old1 := DllCall("SelectObject", "Ptr", hdc, "Ptr", thumbPen, "Ptr")
+        old2 := DllCall("SelectObject", "Ptr", hdc, "Ptr", thumbBrush, "Ptr")
+        DllCall("Ellipse", "Ptr", hdc, "Int", left, "Int", top, "Int", right, "Int", bottom)
+        DllCall("SelectObject", "Ptr", hdc, "Ptr", old1, "Ptr")
+        DllCall("SelectObject", "Ptr", hdc, "Ptr", old2, "Ptr")
+        DllCall("DeleteObject", "Ptr", thumbPen)
+        DllCall("DeleteObject", "Ptr", thumbBrush)
+        return 0x04  ; CDRF_SKIPDEFAULT
+    }
+
+    return 0  ; CDRF_DODEFAULT for tics
+}
+
+; ---- Color Swatch / Picker ----
+
+; Static buffer for ChooseColorW custom colors (16 COLORREFs = 64 bytes)
+global gCEN_CustomColors := Buffer(64, 0)
+
+; Swatch HWND -> GDI brush map (for WM_CTLCOLORSTATIC handler)
+global gCEN_SwatchBrushes := Map()
+global gCEN_SwatchHwnds := Map()  ; hwnd -> true
+
+; Slider HWNDs for WM_NOTIFY custom draw
+global gCEN_SliderHwnds := Map()  ; hwnd -> true
+
+; Update swatch color by creating/replacing its GDI brush
+_CEN_UpdateSwatchColor(swCtrl, rgb) {
+    global gCEN_SwatchBrushes
+    ; Convert RGB (0xRRGGBB) to COLORREF (0x00BBGGRR)
+    r := (rgb >> 16) & 0xFF
+    g := (rgb >> 8) & 0xFF
+    b := rgb & 0xFF
+    colorRef := (b << 16) | (g << 8) | r
+    ; Delete old brush if exists
+    hwnd := swCtrl.Hwnd
+    if (gCEN_SwatchBrushes.Has(hwnd)) {
+        DllCall("DeleteObject", "Ptr", gCEN_SwatchBrushes[hwnd])
+    }
+    gCEN_SwatchBrushes[hwnd] := DllCall("CreateSolidBrush", "UInt", colorRef, "Ptr")
+    DllCall("InvalidateRect", "Ptr", hwnd, "Ptr", 0, "Int", 1)
+}
+
+; WM_CTLCOLORSTATIC handler for swatch controls (runs before theme handler)
+_CEN_OnSwatchCtlColor(wParam, lParam, msg, hwnd) {
+    global gCEN_SwatchHwnds, gCEN_SwatchBrushes
+    if (!gCEN_SwatchHwnds.Has(lParam))
+        return  ; Fall through to theme handler
+    if (!gCEN_SwatchBrushes.Has(lParam))
+        return
+    ; Set text and background to same color (solid fill)
+    return gCEN_SwatchBrushes[lParam]
+}
+
+; Open Win32 ChooseColor dialog. Returns RGB (0xRRGGBB) or -1 on cancel.
+_CEN_OpenColorPicker(currentRGB, ownerHwnd := 0) {
+    global gCEN_CustomColors
+    ; Convert RGB (0xRRGGBB) to COLORREF (0x00BBGGRR)
+    r := (currentRGB >> 16) & 0xFF
+    g := (currentRGB >> 8) & 0xFF
+    b := currentRGB & 0xFF
+    colorRef := (b << 16) | (g << 8) | r
+
+    ; CHOOSECOLOR struct: size depends on pointer size
+    structSize := 9 * A_PtrSize  ; lStructSize + hwndOwner + hInstance + rgbResult + lpCustColors + Flags + lCustData + lpfnHook + lpTemplateName
+    ; Actually the struct is fixed layout: DWORD + HWND + HWND + COLORREF + LPCOLORREF + DWORD + LPARAM + ptr + ptr
+    ; Use exact offsets
+    cc := Buffer(A_PtrSize = 8 ? 72 : 36, 0)
+    NumPut("UInt", cc.Size, cc, 0)                          ; lStructSize
+    NumPut("Ptr", ownerHwnd, cc, A_PtrSize)                 ; hwndOwner
+    ; hInstance = 0 (offset 2*A_PtrSize)
+    off := 3 * A_PtrSize
+    NumPut("UInt", colorRef, cc, off)                        ; rgbResult
+    NumPut("Ptr", gCEN_CustomColors.Ptr, cc, off + A_PtrSize) ; lpCustColors
+    ; Flags: CC_FULLOPEN (2) | CC_RGBINIT (1) = 3
+    NumPut("UInt", 3, cc, off + 2 * A_PtrSize)              ; Flags
+
+    result := DllCall("comdlg32\ChooseColorW", "Ptr", cc.Ptr, "Int")
+    if (!result)
+        return -1
+
+    ; Read result COLORREF (0x00BBGGRR) and convert back to RGB
+    resultRef := NumGet(cc, off, "UInt")
+    rr := resultRef & 0xFF
+    gg := (resultRef >> 8) & 0xFF
+    bb := (resultRef >> 16) & 0xFF
+    return (rr << 16) | (gg << 8) | bb
+}
+
+; Create closure for swatch click -> color picker
+_CEN_MakeColorPickHandler(globalName) {
+    return (ctrl, *) => _CEN_OnSwatchClick(globalName)
+}
+
+_CEN_OnSwatchClick(globalName) {
+    global gCEN
+    if (!gCEN["Controls"].Has(globalName))
+        return
+    ctrlInfo := gCEN["Controls"][globalName]
+    ; Get current value
+    val := _CEN_GetControlValue(ctrlInfo, "int")
+    currentRGB := val & 0xFFFFFF
+
+    ownerHwnd := 0
+    try ownerHwnd := gCEN["MainGui"].Hwnd
+
+    newRGB := _CEN_OpenColorPicker(currentRGB, ownerHwnd)
+    if (newRGB = -1)
+        return
+
+    ; Combine: preserve alpha for ARGB, replace RGB
+    if (ctrlInfo.HasOwnProp("isARGB") && ctrlInfo.isARGB) {
+        alpha := (val >> 24) & 0xFF
+        newVal := (alpha << 24) | newRGB
+    } else {
+        newVal := newRGB
+    }
+
+    _CEN_SetControlValue(ctrlInfo, newVal, "int")
+}
+
+; Create closure for hex edit change -> swatch + alpha sync
+_CEN_MakeHexChangeHandler(globalName) {
+    return (ctrl, *) => _CEN_OnHexEditChange(globalName)
+}
+
+_CEN_OnHexEditChange(globalName) {
+    global gCEN
+    if (!gCEN["Controls"].Has(globalName))
+        return
+    ctrlInfo := gCEN["Controls"][globalName]
+    if (ctrlInfo.HasOwnProp("hexSyncGuard") && ctrlInfo.hexSyncGuard.v)
+        return
+    val := _CEN_GetControlValue(ctrlInfo, "int")
+    ; Update swatch color
+    if (ctrlInfo.HasOwnProp("swatch")) {
+        rgb := val & 0xFFFFFF
+        _CEN_UpdateSwatchColor(ctrlInfo.swatch, rgb)
+    }
+    ; Update alpha slider
+    if (ctrlInfo.HasOwnProp("alphaSlider")) {
+        alpha := (val >> 24) & 0xFF
+        pct := Round(alpha / 255 * 100)
+        try ctrlInfo.alphaSlider.Value := pct
+        if (ctrlInfo.HasOwnProp("alphaLabel"))
+            try ctrlInfo.alphaLabel.Value := pct "%"
+    }
+}
+
+; Create closure for alpha slider -> hex edit sync
+_CEN_MakeAlphaSliderHandler(globalName) {
+    return (ctrl, *) => _CEN_OnAlphaSliderChange(globalName)
+}
+
+_CEN_OnAlphaSliderChange(globalName) {
+    global gCEN
+    if (!gCEN["Controls"].Has(globalName))
+        return
+    ctrlInfo := gCEN["Controls"][globalName]
+    if (!ctrlInfo.HasOwnProp("alphaSlider"))
+        return
+    pct := ctrlInfo.alphaSlider.Value
+    alpha := Round(pct / 100 * 255)
+    ; Read current value and replace alpha byte
+    val := _CEN_GetControlValue(ctrlInfo, "int")
+    rgb := val & 0xFFFFFF
+    newVal := (alpha << 24) | rgb
+    ; Set edit with guard to prevent loop
+    ctrlInfo.hexSyncGuard.v := true
+    ctrlInfo.ctrl.Value := Format("0x{:X}", newVal)
+    ctrlInfo.hexSyncGuard.v := false
+    ; Update alpha label
+    if (ctrlInfo.HasOwnProp("alphaLabel"))
+        try ctrlInfo.alphaLabel.Value := pct "%"
+    ; Force full repaint so channel fill covers entire track
+    DllCall("InvalidateRect", "Ptr", ctrlInfo.alphaSlider.Hwnd, "Ptr", 0, "Int", 0)
 }
 
 _CEN_ClampOnBlur(globalName, minVal, maxVal) {
@@ -1038,6 +1353,16 @@ _CEN_Cleanup() {
     }
     gCEN["ThemeEntry"] := 0
 
+    ; Clean up swatch brushes and handler
+    global gCEN_SwatchBrushes, gCEN_SwatchHwnds, gCEN_SliderHwnds
+    for hwnd, hBrush in gCEN_SwatchBrushes
+        DllCall("DeleteObject", "Ptr", hBrush)
+    gCEN_SwatchBrushes := Map()
+    gCEN_SwatchHwnds := Map()
+    gCEN_SliderHwnds := Map()
+    OnMessage(0x0138, _CEN_OnSwatchCtlColor, 0)
+    OnMessage(0x004E, _CEN_OnWmNotify, 0)
+
     ; Remove message handlers
     if (gCEN["BoundWheelMsg"]) {
         OnMessage(CEN_WM_MOUSEWHEEL, gCEN["BoundWheelMsg"], 0)
@@ -1047,7 +1372,6 @@ _CEN_Cleanup() {
         OnMessage(CEN_WM_VSCROLL, gCEN["BoundScrollMsg"], 0)
         gCEN["BoundScrollMsg"] := 0
     }
-
     ; Destroy page GUIs
     for name, page in gCEN["Pages"] {
         try page.gui.Destroy()

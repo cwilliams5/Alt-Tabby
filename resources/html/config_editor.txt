@@ -433,6 +433,50 @@
     align-items: center;
     gap: 8px;
   }
+  .color-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid var(--border-input);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .color-swatch-checkerboard {
+    position: absolute; inset: 0;
+    background: repeating-conic-gradient(#808080 0% 25%, #c0c0c0 0% 50%) 0 0 / 10px 10px;
+    border-radius: 5px;
+  }
+  .color-swatch-fill {
+    position: absolute; inset: 0;
+    border-radius: 5px;
+  }
+  .color-swatch input[type="color"] {
+    position: absolute; inset: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+  }
+  .alpha-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .alpha-control input[type="range"] {
+    width: 60px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .alpha-control .alpha-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    min-width: 28px;
+  }
 
   /* Loading state */
   .loading {
@@ -599,11 +643,32 @@ function controlHTML(setting) {
     </div>`;
   }
   if (setting.t === 'int' && isHex) {
-    // Hex input with range label
-    const rangeLabel = hasRange ? `<span class="range-label">0x${setting.min.toString(16).toUpperCase()} - 0x${setting.max.toString(16).toUpperCase()}</span>` : '';
+    // Hex input with color swatch + range label
+    const hasColor = setting.max > 0xFF;
+    const isARGB = setting.max > 0xFFFFFF;
+    const rgbHex = '#' + (value & 0xFFFFFF).toString(16).padStart(6, '0');
+    const alpha = isARGB ? ((value >>> 24) & 0xFF) / 255 : 1;
+    const swatchHtml = hasColor ? `<div class="color-swatch" title="Click to pick color">
+        <div class="color-swatch-checkerboard"></div>
+        <div class="color-swatch-fill" id="${id}-fill" style="background:${rgbHex};opacity:${alpha}"></div>
+        <input type="color" id="${id}-picker" value="${rgbHex}"
+               oninput="onColorPick('${setting.g}', '${id}', this.value, ${isARGB})">
+    </div>` : '';
+    const alphaPct = isARGB ? Math.round(alpha * 100) : 0;
+    const alphaHtml = isARGB ? `<div class="alpha-control">
+        <input type="range" id="${id}-alpha" min="0" max="100" value="${alphaPct}"
+               oninput="onAlphaSlider('${setting.g}', '${id}', this.value)">
+        <span class="alpha-label" id="${id}-alpha-label">${alphaPct}%</span>
+    </div>` : '';
+    const rangeLabel = (hasRange && !hasColor) ? `<span class="range-label">0x${setting.min.toString(16).toUpperCase()} - 0x${setting.max.toString(16).toUpperCase()}</span>` : '';
+    const blurHandler = hasRange
+      ? `clampAndUpdate('${setting.g}', '${id}', '${setting.t}', ${setting.min}, ${setting.max});${hasColor ? `updateSwatch('${id}', ${isARGB})` : ''}`
+      : `updateValue('${setting.g}', this.value, '${setting.t}');${hasColor ? `updateSwatch('${id}', ${isARGB})` : ''}`;
     return `<div class="hex-control">
+      ${swatchHtml}
       <input type="text" id="${id}" value="${formatValue(value, 'int', 'hex')}"
-             onblur="${hasRange ? `clampAndUpdate('${setting.g}', '${id}', '${setting.t}', ${setting.min}, ${setting.max})` : `updateValue('${setting.g}', this.value, '${setting.t}')`}">
+             onblur="${blurHandler}">
+      ${alphaHtml}
       ${rangeLabel}
     </div>`;
   }
@@ -703,6 +768,61 @@ function clampAndUpdate(globalName, baseId, type, min, max) {
   updateValue(globalName, val, type);
 }
 
+// Color picker -> text input sync
+function onColorPick(globalName, baseId, hexColor, isARGB) {
+  const textInput = document.getElementById(baseId);
+  if (!textInput) return;
+  const rgb = parseInt(hexColor.substring(1), 16);
+  if (isARGB) {
+    const currentVal = parseValue(textInput.value, 'int');
+    const alpha = (currentVal >>> 24) & 0xFF;
+    const newVal = ((alpha << 24) >>> 0 | rgb) >>> 0;
+    textInput.value = '0x' + newVal.toString(16).toUpperCase().padStart(8, '0');
+  } else {
+    textInput.value = '0x' + rgb.toString(16).toUpperCase().padStart(6, '0');
+  }
+  updateValue(globalName, textInput.value, 'int');
+  updateSwatch(baseId, isARGB);
+}
+
+// Text input -> swatch + alpha slider sync
+function updateSwatch(baseId, isARGB) {
+  const textInput = document.getElementById(baseId);
+  const fill = document.getElementById(baseId + '-fill');
+  const picker = document.getElementById(baseId + '-picker');
+  if (!textInput || !fill) return;
+  const val = parseValue(textInput.value, 'int');
+  const rgb = '#' + (val & 0xFFFFFF).toString(16).padStart(6, '0');
+  const alpha = isARGB ? ((val >>> 24) & 0xFF) / 255 : 1;
+  fill.style.background = rgb;
+  fill.style.opacity = alpha;
+  if (picker) picker.value = rgb;
+  if (isARGB) {
+    const pct = Math.round(alpha * 100);
+    const alphaSlider = document.getElementById(baseId + '-alpha');
+    const alphaLabel = document.getElementById(baseId + '-alpha-label');
+    if (alphaSlider) alphaSlider.value = pct;
+    if (alphaLabel) alphaLabel.textContent = pct + '%';
+  }
+}
+
+// Alpha slider -> update hex value's alpha byte
+function onAlphaSlider(globalName, baseId, pct) {
+  const textInput = document.getElementById(baseId);
+  if (!textInput) return;
+  const alpha = Math.round(pct / 100 * 255);
+  const currentVal = parseValue(textInput.value, 'int');
+  const rgb = currentVal & 0xFFFFFF;
+  const newVal = ((alpha << 24) >>> 0 | rgb) >>> 0;
+  textInput.value = '0x' + newVal.toString(16).toUpperCase().padStart(8, '0');
+  updateValue(globalName, textInput.value, 'int');
+  // Update swatch fill opacity + label (skip full updateSwatch to avoid loop)
+  const fill = document.getElementById(baseId + '-fill');
+  if (fill) fill.style.opacity = pct / 100;
+  const alphaLabel = document.getElementById(baseId + '-alpha-label');
+  if (alphaLabel) alphaLabel.textContent = pct + '%';
+}
+
 function updateChangeCount() {
   changeCount = 0;
   for (const key in configValues) {
@@ -757,6 +877,10 @@ function resetAll() {
       // Sync slider if present
       const slider = document.getElementById(id + '-slider');
       if (slider) slider.value = entry.default;
+      // Sync color swatch if present
+      if (entry.t === 'int' && entry.fmt === 'hex' && entry.max > 0xFF) {
+        updateSwatch(id, entry.max > 0xFFFFFF);
+      }
     }
   }
   updateChangeCount();
