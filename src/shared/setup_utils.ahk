@@ -612,6 +612,7 @@ _Update_KillOtherProcesses(targetExeName := "") {
 ;   copyMode - true = FileCopy (keep source), false = FileMove (delete source)
 ;   successMessage - Message to show in TrayTip on success
 ;   cleanupSourceOnFailure - Delete source file if update fails
+;   relaunchAfter - After success: show TrayTip, cleanup .old, relaunch+exit (default: true)
 
 _Update_ApplyCore(opts) {
     global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_STORE_START_WAIT, APP_NAME
@@ -623,6 +624,7 @@ _Update_ApplyCore(opts) {
     copyMode := opts.HasOwnProp("copyMode") ? opts.copyMode : false
     successMessage := opts.HasOwnProp("successMessage") ? opts.successMessage : "Alt-Tabby has been updated."
     cleanupSourceOnFailure := opts.HasOwnProp("cleanupSourceOnFailure") ? opts.cleanupSourceOnFailure : false
+    relaunchAfter := opts.HasOwnProp("relaunchAfter") ? opts.relaunchAfter : true
 
     lockFile := ""
     if (useLockFile) {
@@ -735,29 +737,34 @@ _Update_ApplyCore(opts) {
         ; This ensures shortcuts work after exe rename + auto-update
         RecreateShortcuts()
 
-        ; Success
-        TrayTip("Update Complete", successMessage, "Iconi")
-        Sleep(TIMING_STORE_START_WAIT)
+        ; Success — relaunch unless caller handles it (e.g., wizard)
+        if (relaunchAfter) {
+            TrayTip("Update Complete", successMessage, "Iconi")
+            Sleep(TIMING_STORE_START_WAIT)
 
-        ; Cleanup command for backup
-        cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '")'
-        Run(cleanupCmd,, "Hide")
+            ; Cleanup command for backup
+            cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '")'
+            Run(cleanupCmd,, "Hide")
+
+            if (lockFile != "")
+                try FileDelete(lockFile)
+
+            ; Launch new version — de-elevate if admin mode is not configured
+            if (A_IsAdmin && !targetRunAsAdmin) {
+                try {
+                    shell := ComObject("Shell.Application")
+                    shell.ShellExecute(targetPath, "", targetDir)
+                    ExitApp()
+                } catch {
+                    TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
+                }
+            }
+            Run('"' targetPath '"')
+            ExitApp()
+        }
 
         if (lockFile != "")
             try FileDelete(lockFile)
-
-        ; Launch new version — de-elevate if admin mode is not configured
-        if (A_IsAdmin && !targetRunAsAdmin) {
-            try {
-                shell := ComObject("Shell.Application")
-                shell.ShellExecute(targetPath, "", targetDir)
-                ExitApp()
-            } catch {
-                TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
-            }
-        }
-        Run('"' targetPath '"')
-        ExitApp()
 
     } catch as e {
         ; Rollback - handle partial/corrupted targetPath from failed copy/move

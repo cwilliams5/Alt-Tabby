@@ -11,58 +11,6 @@
 ; PROGRAM FILES INSTALLATION
 ; ============================================================
 
-InstallToProgramFiles() {
-    global cfg, ALTTABBY_INSTALL_DIR, APP_NAME
-
-    ; Target: Program Files\Alt-Tabby (localized for non-English Windows)
-    installDir := ALTTABBY_INSTALL_DIR
-    srcExe := A_IsCompiled ? A_ScriptFullPath : ""
-    srcDir := A_IsCompiled ? A_ScriptDir : ""
-
-    if (!A_IsCompiled) {
-        ThemeMsgBox("Program Files installation only works with compiled exe.", APP_NAME, "Iconx")
-        return ""
-    }
-
-    ; Check if we need admin
-    if (!A_IsAdmin) {
-        ThemeMsgBox("Administrator privileges required to install to Program Files.", APP_NAME, "Iconx")
-        return ""
-    }
-
-    ; Check if already in Program Files (use exact path comparison, not substring)
-    normalizedDir := StrLower(A_ScriptDir)
-    if (normalizedDir = StrLower(installDir)) {
-        return A_ScriptFullPath  ; Already there
-    }
-
-    try {
-        ; Create directory
-        if (!DirExist(installDir))
-            DirCreate(installDir)
-
-        ; Copy exe
-        FileCopy(srcExe, installDir "\AltTabby.exe", true)
-
-        ; Copy resources folder if exists (dev mode only - compiled exe embeds these)
-        if (DirExist(srcDir "\resources"))
-            DirCopy(srcDir "\resources", installDir "\resources", true)
-
-        ; Copy user data files (config, stats, blacklist) - preserves existing
-        _Update_CopyUserData(srcDir, installDir)
-
-        return installDir "\AltTabby.exe"
-    } catch as e {
-        ThemeMsgBox("Could not install to Program Files.`n`n"
-            "This may happen if:`n"
-            "• Antivirus is blocking the operation`n"
-            "• Another program has the file open`n`n"
-            "Try closing other applications and retry, or check your antivirus settings.`n`n"
-            "Error: " e.Message, APP_NAME, "IconX")
-        return ""
-    }
-}
-
 ; ============================================================
 ; INSTALL MISMATCH DETECTION
 ; ============================================================

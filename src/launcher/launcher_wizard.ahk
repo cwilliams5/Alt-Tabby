@@ -267,7 +267,7 @@ WizardContinue() {
 ; Internal: Apply wizard choices (called from both wizard and continuation)
 ; Returns the installed exe path if we installed to a different location, empty string otherwise
 _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
-    global cfg, gConfigIniPath, APP_NAME, TIMING_PROCESS_EXIT_WAIT
+    global cfg, gConfigIniPath, APP_NAME, ALTTABBY_INSTALL_DIR
 
     ; Determine exe path
     exePath := A_ScriptFullPath
@@ -275,28 +275,35 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     installSucceeded := false
 
     ; Step 1: Install to Program Files (if selected)
+    ; Uses _Update_ApplyCore() — same code path as tray/dashboard install and auto-update
     if (install) {
-        ; Kill existing PF processes before installing to avoid dual instances.
-        ; Uses hardcoded "AltTabby.exe" since PF installs always use that name.
-        _Launcher_KillProcessByName("AltTabby.exe")
-        Sleep(TIMING_PROCESS_EXIT_WAIT)
-        newPath := InstallToProgramFiles()
-        if (newPath != "" && newPath != A_ScriptFullPath) {
-            exePath := newPath
-            installedElsewhere := newPath
+        targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
+        if (StrLower(A_ScriptDir) = StrLower(ALTTABBY_INSTALL_DIR)) {
+            ; Already in Program Files
             installSucceeded := true
-            ; Update config path to point to new location so subsequent writes go there
-            newDir := ""
-            SplitPath(newPath, , &newDir)
-            gConfigIniPath := newDir "\config.ini"
-            global STATS_INI_PATH
-            STATS_INI_PATH := newDir "\stats.ini"
-        } else if (newPath = "") {
-            ; Install failed - exePath stays at current location
-            installSucceeded := false
         } else {
-            ; newPath = A_ScriptFullPath means we were already in Program Files
-            installSucceeded := true
+            try {
+                _Update_ApplyCore({
+                    sourcePath: A_ScriptFullPath,
+                    targetPath: targetPath,
+                    useLockFile: false,
+                    validatePE: false,
+                    copyMode: true,
+                    cleanupSourceOnFailure: false,
+                    relaunchAfter: false
+                })
+            }
+            if (FileExist(targetPath)) {
+                exePath := targetPath
+                installedElsewhere := targetPath
+                installSucceeded := true
+                ; Update config path to point to new location so subsequent writes go there
+                newDir := ""
+                SplitPath(targetPath, , &newDir)
+                gConfigIniPath := newDir "\config.ini"
+                global STATS_INI_PATH
+                STATS_INI_PATH := newDir "\stats.ini"
+            }
         }
     }
 
