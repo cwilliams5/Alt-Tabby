@@ -22,7 +22,7 @@
 ; forceNative: true to skip WebView2 and always use native editor
 ; Returns: true if changes were saved, false otherwise
 ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
-    global gConfigLoaded
+    global gConfigLoaded, cfg
 
     ; Hide tray icon - only launcher should have one
     A_IconHidden := true
@@ -33,6 +33,10 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
 
     ; Initialize theme system (needs config loaded first)
     Theme_Init()
+
+    ; Respect config setting in addition to command-line flag
+    if (cfg.LauncherForceNativeEditor)
+        forceNative := true
 
     ; Try WebView2 first if not forcing native
     if (!forceNative && ConfigEditor_IsWebView2Available()) {

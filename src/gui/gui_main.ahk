@@ -36,6 +36,9 @@ A_MenuMaskKey := "vkE8"
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 #Include *i %A_ScriptDir%\..\shared\process_utils.ahk
+#Include *i %A_ScriptDir%\..\shared\theme.ahk
+#Include *i %A_ScriptDir%\..\shared\theme_msgbox.ahk
+#Include *i %A_ScriptDir%\..\shared\gui_antiflash.ahk
 
 ; GUI utilities
 #Include *i %A_ScriptDir%\gui_gdip.ahk

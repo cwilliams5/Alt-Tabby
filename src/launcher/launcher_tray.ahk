@@ -64,6 +64,12 @@ UpdateTrayMenu() {
     tray.Disable(header)
     tray.Add()
 
+    ; Dev submenu (above Diagnostics, only when enabled)
+    if (cfg.LauncherShowTrayDebugItems) {
+        tray.Add("Dev", _Tray_BuildDevMenu())
+        tray.Add()
+    }
+
     ; Submenus
     tray.Add("Diagnostics", _Tray_BuildDiagnosticsMenu())
     tray.Add("Update", _Tray_BuildUpdateMenu())
@@ -85,9 +91,6 @@ UpdateTrayMenu() {
         else
             tray.SetIcon(aboutLabel, iconPath)
     }
-    tray.Add()
-
-    tray.Add("Dev", _Tray_BuildDevMenu())
     tray.Add()
 
     tray.Add("Exit", (*) => ExitAll())
@@ -183,7 +186,10 @@ _Tray_BuildSettingsMenu() {
 
     ; Editors
     m.Add("Edit Config...", (*) => LaunchConfigEditor())
-    m.Add("Edit Config (AHK)...", (*) => LaunchConfigEditor(true))
+    if (cfg.LauncherShowTrayDebugItems) {
+        m.Add("Edit Config (AHK)...", (*) => LaunchConfigEditor(true))
+        m.Add("Edit Config Registry...", (*) => LaunchConfigRegistryEditor())
+    }
     m.Add("Edit Blacklist...", (*) => LaunchBlacklistEditor())
     m.Add()
 
@@ -214,6 +220,8 @@ _Tray_BuildSettingsMenu() {
 _Tray_BuildDevMenu() {
     m := Menu()
 
+    m.Add("Edit Config Registry...", (*) => LaunchConfigRegistryEditor())
+    m.Add()
     m.Add("First-Run Wizard", (*) => ShowFirstRunWizard())
     m.Add("Admin Repair Dialog", (*) => _Launcher_ShowAdminRepairDialog("C:\fake\task\path.exe"))
     m.Add("Install Mismatch Dialog", (*) => _Launcher_ShowMismatchDialog(
@@ -222,7 +230,6 @@ _Tray_BuildDevMenu() {
         "Alt-Tabby is already installed at a different location:",
         "Would you like to update the installed version?"))
     m.Add("Blacklist Dialog", (*) => _GUI_ShowBlacklistDialog("ExampleClass", "Example Window Title"))
-    m.Add()
     m.Add("ThemeMsgBox (All Features)", (*) => _Tray_TestThemeMsgBox())
 
     return m
@@ -353,14 +360,14 @@ _GracefulShutdown() {
 }
 
 LaunchConfigEditor(forceNative := false) {
-    global g_ConfigEditorPID
+    global g_ConfigEditorPID, cfg
     ; If already running, activate existing window instead of launching duplicate
     if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID)) {
         try WinActivate("ahk_pid " g_ConfigEditorPID)
         return
     }
     args := "--config --launcher-hwnd=" A_ScriptHwnd
-    if (forceNative)
+    if (forceNative || cfg.LauncherForceNativeEditor)
         args .= " --force-native"
     if (A_IsCompiled)
         Run('"' A_ScriptFullPath '" ' args, , , &g_ConfigEditorPID)
@@ -381,6 +388,42 @@ LaunchBlacklistEditor() {
     else
         Run('"' A_AhkPath '" "' A_ScriptFullPath '" --blacklist', , , &g_BlacklistEditorPID)
     _Dash_StartRefreshTimer()
+}
+
+LaunchConfigRegistryEditor() {
+    global APP_NAME
+    ; Standalone dev tool — not compiled into the exe, must find the .ahk file
+    ; Dev mode: A_ScriptDir = src/ (from alt_tabby.ahk), so editors\...
+    ; Compiled from project root: src\editors\...
+    ; Compiled from release/: ..\src\editors\...
+    scriptPath := ""
+    candidates := [
+        A_ScriptDir "\editors\config_registry_editor.ahk",
+        A_ScriptDir "\src\editors\config_registry_editor.ahk",
+        A_ScriptDir "\..\src\editors\config_registry_editor.ahk"
+    ]
+    for _, path in candidates {
+        if (FileExist(path)) {
+            scriptPath := path
+            break
+        }
+    }
+
+    if (scriptPath = "") {
+        ThemeMsgBox("The Config Registry Editor is a developer-only tool and was not found relative to this installation.", APP_NAME, "Iconx")
+        return
+    }
+
+    ; Need AHK v2 to run standalone script (cfg.AhkV2Path resolved at startup)
+    global cfg
+    ahkPath := (cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path)) ? cfg.AhkV2Path : A_AhkPath
+    if (ahkPath = "" || !FileExist(ahkPath)) {
+        ThemeMsgBox("AutoHotkey v2 not found. Set AhkV2Path in config or install AutoHotkey v2.", APP_NAME, "Iconx")
+        return
+    }
+    try Run('"' ahkPath '" "' scriptPath '"')
+    catch as e
+        ThemeMsgBox("Failed to launch Config Registry Editor:`n" e.Message, APP_NAME, "Iconx")
 }
 
 RestartConfigEditor() {

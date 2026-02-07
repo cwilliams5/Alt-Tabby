@@ -88,6 +88,15 @@ Settings for animated WebP splash screen
 | `SplashAnimLoops` | int | `1` | `0` - `100` | Number of animation loops before auto-closing. 0 = loop forever (requires manual dismiss). |
 | `SplashAnimBufferFrames` | int | `24` | `0` - `500` | Streaming decode buffer size. 0 = load all frames upfront (~500MB). >0 = buffer N frames (~4MB per frame at 1280x720). Default 24 = ~88MB, 1 second buffer at 24fps. |
 
+### Editor & Debug
+
+Config editor and debug menu options
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `ForceNativeEditor` | bool | `false` | - | Always use the native AHK config editor instead of the WebView2 version. |
+| `ShowTrayDebugItems` | bool | `false` | - | Show the Dev menu and extra editor options in the tray menu. Useful for testing dialogs and debugging. |
+
 ## Theme
 
 Color theme for dialogs and editors. The main Alt-Tab overlay has its own color settings in GUI Appearance.
@@ -539,4 +548,4 @@ Options for automated test suite
 
 ---
 
-*Generated on 2026-02-06 with 207 total settings.*
+*Generated on 2026-02-06 with 209 total settings.*

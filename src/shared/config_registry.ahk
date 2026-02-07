@@ -144,6 +144,15 @@ global gConfigRegistry := [
      min: 0, max: 500,
      d: "Streaming decode buffer size. 0 = load all frames upfront (~500MB). >0 = buffer N frames (~4MB per frame at 1280x720). Default 24 = ~88MB, 1 second buffer at 24fps."},
 
+    {type: "subsection", section: "Launcher", name: "Editor & Debug",
+     desc: "Config editor and debug menu options"},
+
+    {s: "Launcher", k: "ForceNativeEditor", g: "LauncherForceNativeEditor", t: "bool", default: false,
+     d: "Always use the native AHK config editor instead of the WebView2 version."},
+
+    {s: "Launcher", k: "ShowTrayDebugItems", g: "LauncherShowTrayDebugItems", t: "bool", default: false,
+     d: "Show the Dev menu and extra editor options in the tray menu. Useful for testing dialogs and debugging."},
+
     ; ============================================================
     ; Theme & Dark Mode
     ; ============================================================
