@@ -80,6 +80,7 @@ global gCEW_Gui := 0
 global gCEW_Controller := 0
 global gCEW_WebView := 0
 global gCEW_SavedChanges := false
+global gCEW_HasChanges := false
 global gCEW_LauncherHwnd := 0
 global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage collection
 
@@ -91,12 +92,13 @@ global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage 
 ; launcherHwnd: HWND of launcher process for WM_COPYDATA restart signal (0 = standalone)
 ; Returns: true if changes were saved, false otherwise
 _CE_RunWebView2(launcherHwnd := 0) {
-    global gCEW_Gui, gCEW_Controller, gCEW_WebView, gCEW_SavedChanges, gCEW_LauncherHwnd
+    global gCEW_Gui, gCEW_Controller, gCEW_WebView, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
     global gCEW_MessageHandler
     global gConfigLoaded, CEW_RES_WEBVIEW2_DLL, CEW_RES_EDITOR_HTML
 
     gCEW_LauncherHwnd := launcherHwnd
     gCEW_SavedChanges := false
+    gCEW_HasChanges := false
 
     ; Initialize config system if not already done
     if (!gConfigLoaded)
@@ -179,7 +181,18 @@ _CE_RunWebView2(launcherHwnd := 0) {
 ; ============================================================
 
 _CEW_OnClose(guiObj) {
-    global gCEW_Controller
+    global gCEW_Controller, gCEW_HasChanges
+    ; Warn about unsaved changes (matches native editor behavior)
+    if (gCEW_HasChanges) {
+        result := ThemeMsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Configuration", "YesNoCancel Icon?")
+        if (result = "Cancel")
+            return true  ; Prevent close
+        if (result = "Yes") {
+            ; Request save from JS, then close
+            SetTimer(_CEW_SaveAndClose, -1)
+            return true  ; Block this close, _CEW_SaveAndClose will destroy
+        }
+    }
     ; Clean up WebView2
     if (gCEW_Controller) {
         try gCEW_Controller := 0
@@ -204,7 +217,7 @@ _CEW_OnWebMessageRaw(this, sender, argsPtr) {
 }
 
 _CEW_OnWebMessage(sender, args) {
-    global gCEW_Gui, gCEW_SavedChanges, gCEW_LauncherHwnd
+    global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
     global TABBY_CMD_RESTART_ALL, WM_COPYDATA
     global cfg, LOG_PATH_WEBVIEW
 
@@ -242,6 +255,10 @@ _CEW_OnWebMessage(sender, args) {
 
         } else if (action = "cancel") {
             gCEW_Gui.Destroy()
+
+        } else if (action = "dirty") {
+            ; Track dirty state for X-button close handler
+            gCEW_HasChanges := msg["hasChanges"]
 
         } else if (action = "ready") {
             ; Page loaded - dark CSS painted, safe to reveal and inject data.
@@ -445,5 +462,12 @@ _CEW_RevealWindow() {
 
 _CEW_ForceReveal() {
     _CEW_RevealWindow()
+}
+
+; Trigger JS save (which posts "save" message back, applying changes and destroying GUI)
+_CEW_SaveAndClose() {
+    global gCEW_WebView
+    if (gCEW_WebView)
+        try gCEW_WebView.ExecuteScript("saveChanges()")
 }
 

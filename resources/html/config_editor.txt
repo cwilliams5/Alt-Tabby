@@ -714,6 +714,7 @@ function updateChangeCount() {
     info.textContent = '';
     saveBtn.disabled = true;
   }
+  window.chrome.webview.postMessage(JSON.stringify({action: 'dirty', hasChanges: changeCount > 0}));
 }
 
 function getModifiedValues() {
@@ -732,6 +733,9 @@ function saveChanges() {
 }
 
 function cancelEditor() {
+  if (changeCount > 0) {
+    if (!confirm('You have unsaved changes. Discard them?')) return;
+  }
   window.chrome.webview.postMessage(JSON.stringify({action: 'cancel'}));
 }
 
