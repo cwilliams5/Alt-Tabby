@@ -110,14 +110,25 @@ ShowDashboardDialog() {
     Theme_ApplyToControl(g_DashControls.chkStartup, "Checkbox", themeEntry)
     Theme_ApplyToControl(g_DashControls.chkAutoUpdate, "Checkbox", themeEntry)
 
-    ; Editor buttons
+    ; Action buttons row
     dg.SetFont("s9")
-    btnEditConfig := dg.AddButton("x400 y107 w170 h26", "Edit Config...")
+    btnEditConfig := dg.AddButton("x400 y107 w115 h26", "Edit Config...")
     btnEditConfig.OnEvent("Click", (*) => LaunchConfigEditor())
-    btnEditBlacklist := dg.AddButton("x580 y107 w170 h26", "Edit Blacklist...")
+    btnEditBlacklist := dg.AddButton("x520 y107 w115 h26", "Edit Blacklist...")
     btnEditBlacklist.OnEvent("Click", (*) => LaunchBlacklistEditor())
     Theme_ApplyToControl(btnEditConfig, "Button", themeEntry)
     Theme_ApplyToControl(btnEditBlacklist, "Button", themeEntry)
+
+    ; Install to Program Files (action or status label)
+    if (A_IsCompiled && !_IsInProgramFiles()) {
+        g_DashControls.installPFBtn := dg.AddButton("x640 y107 w115 h26", "Install to PF...")
+        g_DashControls.installPFBtn.OnEvent("Click", (*) => _Tray_InstallToProgramFiles())
+        Theme_ApplyToControl(g_DashControls.installPFBtn, "Button", themeEntry)
+    } else if (A_IsCompiled) {
+        pfLabel := dg.AddText("x640 y112 w115 h20 +0x100 c" Theme_GetMutedColor(), Chr(0x2713) " Program Files")
+        pfLabel.SetFont("s8", "Segoe UI")
+        Theme_MarkMuted(pfLabel)
+    }
 
     ; ============================================================
     ; MIDDLE ROW - Statistics
@@ -268,14 +279,8 @@ ShowDashboardDialog() {
 
     ; Info rows (read-only)
     subY += 28
-    installTextW := (A_IsCompiled && !_IsInProgramFiles()) ? 260 : 340
-    ctlInstallInfo := dg.AddText("x400 y" subY " w" installTextW " +0x100 c" Theme_GetMutedColor(), "Install: " _Dash_GetInstallInfo())
+    ctlInstallInfo := dg.AddText("x400 y" subY " w340 +0x100 c" Theme_GetMutedColor(), "Install: " _Dash_GetInstallInfo())
     Theme_MarkMuted(ctlInstallInfo)
-    if (A_IsCompiled && !_IsInProgramFiles()) {
-        g_DashControls.installPFBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", "Install")
-        g_DashControls.installPFBtn.OnEvent("Click", (*) => _Tray_InstallToProgramFiles())
-        Theme_ApplyToControl(g_DashControls.installPFBtn, "Button", themeEntry)
-    }
 
     subY += 20
     ctlAdminTask := dg.AddText("x400 y" subY " w340 +0x100 c" Theme_GetMutedColor(), "Admin Task: " _Dash_GetAdminTaskInfo())
@@ -320,6 +325,8 @@ ShowDashboardDialog() {
         _Dash_SetTip(hTT, g_DashControls.chkAutoUpdate, "Check GitHub for new releases on startup")
         _Dash_SetTip(hTT, btnEditConfig, "Open the configuration file editor")
         _Dash_SetTip(hTT, btnEditBlacklist, "Open the window blacklist editor")
+        if (g_DashControls.HasOwnProp("installPFBtn"))
+            _Dash_SetTip(hTT, g_DashControls.installPFBtn, "Install Alt-Tabby to Program Files`nRequires administrator privileges")
 
         ; Statistics
         if (cfg.StatsTrackingEnabled && IsSet(btnMoreStats))
@@ -355,8 +362,6 @@ ShowDashboardDialog() {
             . "WindowStore for troubleshooting")
         _Dash_SetTip(hTT, ctlInstallInfo
             , "Directory where Alt-Tabby is installed or running from")
-        if (g_DashControls.HasOwnProp("installPFBtn"))
-            _Dash_SetTip(hTT, g_DashControls.installPFBtn, "Install Alt-Tabby to Program Files")
         _Dash_SetTip(hTT, ctlAdminTask
             , "Windows Task Scheduler task that allows Alt-Tabby`n"
             . "to run with administrator privileges without UAC prompts")
