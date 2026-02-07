@@ -394,7 +394,7 @@ _CEN_BuildPage(section) {
 }
 
 _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, subIdx) {
-    global gCEN, gTheme_Palette, gCEN_SwatchHwnds, gCEN_SliderHwnds, gCEN_SliderSubclassPtr
+    global gCEN, gTheme_Palette, gCEN_SwatchHwnds, gCEN_SwatchSubclassPtr, gCEN_SliderHwnds, gCEN_SliderSubclassPtr
     global CEN_SETTING_PAD, CEN_DESC_LINE_H, CEN_LABEL_W, CEN_INPUT_X
 
     mutedColor := Theme_GetMutedColor()
@@ -510,10 +510,11 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 ; Color swatch for hex fields with color component (max > 0xFF)
                 if (isHex && setting.HasOwnProp("max") && setting.max > 0xFF) {
                     swatchX := CEN_INPUT_X + 206
-                    ; Text control colored via custom WM_CTLCOLORSTATIC handler
-                    sw := pageGui.AddText("x" swatchX " y" y " w28 h22 +0x100 +Border", "")
-                    ; +0x100 = SS_NOTIFY (enables Click), +Border for visual edge
+                    ; Text control with subclass WM_PAINT for checkerboard+alpha
+                    sw := pageGui.AddText("x" swatchX " y" y " w28 h22 +0x100", "")
+                    ; +0x100 = SS_NOTIFY (enables Click)
                     gCEN_SwatchHwnds[sw.Hwnd] := true
+                    DllCall("comctl32\SetWindowSubclass", "Ptr", sw.Hwnd, "Ptr", gCEN_SwatchSubclassPtr, "UPtr", sw.Hwnd, "UPtr", 0)
                     controls.Push({ctrl: sw, origY: y, origX: swatchX})
                     settingCtrls.Push({ctrl: sw, origY: y, origX: swatchX})
                     ctrlInfo.swatch := sw
@@ -637,7 +638,8 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
         try ctrlInfo.slider.Value := Integer(val)
     if (ctrlInfo.HasOwnProp("swatch")) {
         rgb := val & 0xFFFFFF
-        _CEN_UpdateSwatchColor(ctrlInfo.swatch, rgb)
+        swAlpha := (ctrlInfo.HasOwnProp("isARGB") && ctrlInfo.isARGB) ? ((val >> 24) & 0xFF) : 255
+        _CEN_UpdateSwatchColor(ctrlInfo.swatch, rgb, swAlpha)
     }
     if (ctrlInfo.HasOwnProp("alphaSlider")) {
         alpha := (val >> 24) & 0xFF
@@ -773,15 +775,17 @@ _CEN_DrawSlider(sliderHwnd, lParam) {
 ; Static buffer for ChooseColorW custom colors (16 COLORREFs = 64 bytes)
 global gCEN_CustomColors := Buffer(64, 0)
 
-; Swatch HWND -> GDI brush map (for WM_CTLCOLORSTATIC handler)
-global gCEN_SwatchBrushes := Map()
-global gCEN_SwatchHwnds := Map()  ; hwnd -> true
+; Swatch state: subclass WM_PAINT draws checkerboard + AlphaBlend
+global gCEN_SwatchHwnds := Map()   ; hwnd -> true
+global gCEN_SwatchColors := Map()  ; hwnd -> colorRef (BGR)
+global gCEN_SwatchAlphas := Map()  ; hwnd -> alpha 0-255
 
 ; Slider HWNDs for WM_NOTIFY custom draw
 global gCEN_SliderHwnds := Map()  ; hwnd -> true
 
-; Subclass callback for slider WM_ERASEBKGND (prevents white flash)
+; Subclass callbacks
 global gCEN_SliderSubclassPtr := CallbackCreate(_CEN_SliderSubclassProc, , 6)
+global gCEN_SwatchSubclassPtr := CallbackCreate(_CEN_SwatchSubclassProc, , 6)
 
 _CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
     global gCEN_SliderSubclassPtr, gTheme_Palette
@@ -799,32 +803,120 @@ _CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
     return DllCall("comctl32\DefSubclassProc", "Ptr", hwnd, "UInt", uMsg, "Ptr", wParam, "Ptr", lParam, "Ptr")
 }
 
-; Update swatch color by creating/replacing its GDI brush
-_CEN_UpdateSwatchColor(swCtrl, rgb) {
-    global gCEN_SwatchBrushes
+; Swatch subclass: WM_PAINT draws checkerboard + AlphaBlend overlay
+_CEN_SwatchSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
+    global gCEN_SwatchSubclassPtr, gCEN_SwatchColors, gCEN_SwatchAlphas, gTheme_Palette
+
+    if (uMsg = 0x000F) {  ; WM_PAINT
+        ps := Buffer(72, 0)
+        hdc := DllCall("BeginPaint", "Ptr", hwnd, "Ptr", ps, "Ptr")
+        rc := Buffer(16)
+        DllCall("GetClientRect", "Ptr", hwnd, "Ptr", rc)
+        w := NumGet(rc, 8, "Int")
+        h := NumGet(rc, 12, "Int")
+
+        colorRef := gCEN_SwatchColors.Has(hwnd) ? gCEN_SwatchColors[hwnd] : 0
+        alpha := gCEN_SwatchAlphas.Has(hwnd) ? gCEN_SwatchAlphas[hwnd] : 255
+
+        ; Step 1: Draw checkerboard (visible through semi-transparent color)
+        static CLR_CHECK1 := 0xC0C0C0, CLR_CHECK2 := 0x808080
+        checkSize := 5
+        hBr1 := DllCall("CreateSolidBrush", "UInt", CLR_CHECK1, "Ptr")
+        hBr2 := DllCall("CreateSolidBrush", "UInt", CLR_CHECK2, "Ptr")
+        cellRc := Buffer(16)
+        row := 0
+        cy := 0
+        while (cy < h) {
+            col := 0
+            cx := 0
+            while (cx < w) {
+                x2 := (cx + checkSize < w) ? cx + checkSize : w
+                y2 := (cy + checkSize < h) ? cy + checkSize : h
+                NumPut("Int", cx, cellRc, 0)
+                NumPut("Int", cy, cellRc, 4)
+                NumPut("Int", x2, cellRc, 8)
+                NumPut("Int", y2, cellRc, 12)
+                DllCall("FillRect", "Ptr", hdc, "Ptr", cellRc, "Ptr", (Mod(row + col, 2) = 0) ? hBr1 : hBr2)
+                cx += checkSize
+                col++
+            }
+            cy += checkSize
+            row++
+        }
+        DllCall("DeleteObject", "Ptr", hBr1)
+        DllCall("DeleteObject", "Ptr", hBr2)
+
+        ; Step 2: AlphaBlend the color overlay
+        if (alpha > 0) {
+            memDC := DllCall("CreateCompatibleDC", "Ptr", hdc, "Ptr")
+            bmi := Buffer(44, 0)
+            NumPut("UInt", 40, bmi, 0)
+            NumPut("Int", w, bmi, 4)
+            NumPut("Int", -h, bmi, 8)  ; top-down
+            NumPut("UShort", 1, bmi, 12)
+            NumPut("UShort", 32, bmi, 14)
+            ppvBits := 0
+            hBmp := DllCall("CreateDIBSection", "Ptr", memDC, "Ptr", bmi, "UInt", 0,
+                "Ptr*", &ppvBits, "Ptr", 0, "UInt", 0, "Ptr")
+            oldBmp := DllCall("SelectObject", "Ptr", memDC, "Ptr", hBmp, "Ptr")
+            ; Premultiplied ARGB pixel (colorRef is BGR: 0x00BBGGRR)
+            rr := colorRef & 0xFF
+            gg := (colorRef >> 8) & 0xFF
+            bb := (colorRef >> 16) & 0xFF
+            pixel := (alpha << 24) | (((rr * alpha) // 255) << 16) | (((gg * alpha) // 255) << 8) | ((bb * alpha) // 255)
+            totalPixels := w * h
+            offset := 0
+            loop totalPixels {
+                NumPut("UInt", pixel, ppvBits + offset)
+                offset += 4
+            }
+            ; BLENDFUNCTION: AC_SRC_OVER=0, flags=0, SCA=255, AC_SRC_ALPHA=1
+            DllCall("msimg32\AlphaBlend", "Ptr", hdc, "Int", 0, "Int", 0, "Int", w, "Int", h,
+                "Ptr", memDC, "Int", 0, "Int", 0, "Int", w, "Int", h, "UInt", (1 << 24) | (255 << 16))
+            DllCall("SelectObject", "Ptr", memDC, "Ptr", oldBmp)
+            DllCall("DeleteObject", "Ptr", hBmp)
+            DllCall("DeleteDC", "Ptr", memDC)
+        }
+
+        ; Step 3: Border
+        hPen := DllCall("CreatePen", "Int", 0, "Int", 1, "UInt", 0x555555, "Ptr")
+        oldPen := DllCall("SelectObject", "Ptr", hdc, "Ptr", hPen, "Ptr")
+        oldBr := DllCall("SelectObject", "Ptr", hdc, "Ptr", DllCall("GetStockObject", "Int", 5, "Ptr"), "Ptr")
+        DllCall("Rectangle", "Ptr", hdc, "Int", 0, "Int", 0, "Int", w, "Int", h)
+        DllCall("SelectObject", "Ptr", hdc, "Ptr", oldPen)
+        DllCall("SelectObject", "Ptr", hdc, "Ptr", oldBr)
+        DllCall("DeleteObject", "Ptr", hPen)
+
+        DllCall("EndPaint", "Ptr", hwnd, "Ptr", ps)
+        return 0
+    }
+    if (uMsg = 0x0014)  ; WM_ERASEBKGND
+        return 1
+    if (uMsg = 0x0082)  ; WM_NCDESTROY
+        DllCall("comctl32\RemoveWindowSubclass", "Ptr", hwnd, "Ptr", gCEN_SwatchSubclassPtr, "UPtr", uIdSubclass)
+    return DllCall("comctl32\DefSubclassProc", "Ptr", hwnd, "UInt", uMsg, "Ptr", wParam, "Ptr", lParam, "Ptr")
+}
+
+; Update swatch color + alpha and trigger repaint
+_CEN_UpdateSwatchColor(swCtrl, rgb, alpha := 255) {
+    global gCEN_SwatchColors, gCEN_SwatchAlphas
     ; Convert RGB (0xRRGGBB) to COLORREF (0x00BBGGRR)
     r := (rgb >> 16) & 0xFF
     g := (rgb >> 8) & 0xFF
     b := rgb & 0xFF
-    colorRef := (b << 16) | (g << 8) | r
-    ; Delete old brush if exists
     hwnd := swCtrl.Hwnd
-    if (gCEN_SwatchBrushes.Has(hwnd)) {
-        DllCall("DeleteObject", "Ptr", gCEN_SwatchBrushes[hwnd])
-    }
-    gCEN_SwatchBrushes[hwnd] := DllCall("CreateSolidBrush", "UInt", colorRef, "Ptr")
-    DllCall("InvalidateRect", "Ptr", hwnd, "Ptr", 0, "Int", 1)
+    gCEN_SwatchColors[hwnd] := (b << 16) | (g << 8) | r
+    gCEN_SwatchAlphas[hwnd] := alpha
+    DllCall("InvalidateRect", "Ptr", hwnd, "Ptr", 0, "Int", 0)
 }
 
-; WM_CTLCOLORSTATIC handler for swatch controls (runs before theme handler)
+; WM_CTLCOLORSTATIC handler: swatches return nothing (subclass handles paint)
 _CEN_OnSwatchCtlColor(wParam, lParam, msg, hwnd) {
-    global gCEN_SwatchHwnds, gCEN_SwatchBrushes
+    global gCEN_SwatchHwnds
     if (!gCEN_SwatchHwnds.Has(lParam))
         return  ; Fall through to theme handler
-    if (!gCEN_SwatchBrushes.Has(lParam))
-        return
-    ; Set text and background to same color (solid fill)
-    return gCEN_SwatchBrushes[lParam]
+    ; Swatch painting is handled by subclass WM_PAINT; skip theme handler
+    return
 }
 
 ; Open Win32 ChooseColor dialog. Returns RGB (0xRRGGBB) or -1 on cancel.
@@ -907,10 +999,11 @@ _CEN_OnHexEditChange(globalName) {
     if (ctrlInfo.HasOwnProp("hexSyncGuard") && ctrlInfo.hexSyncGuard.v)
         return
     val := _CEN_GetControlValue(ctrlInfo, "int")
-    ; Update swatch color
+    ; Update swatch color + alpha
     if (ctrlInfo.HasOwnProp("swatch")) {
         rgb := val & 0xFFFFFF
-        _CEN_UpdateSwatchColor(ctrlInfo.swatch, rgb)
+        swAlpha := (ctrlInfo.HasOwnProp("isARGB") && ctrlInfo.isARGB) ? ((val >> 24) & 0xFF) : 255
+        _CEN_UpdateSwatchColor(ctrlInfo.swatch, rgb, swAlpha)
     }
     ; Update alpha slider
     if (ctrlInfo.HasOwnProp("alphaSlider")) {
@@ -947,6 +1040,9 @@ _CEN_OnAlphaSliderChange(globalName) {
     ; Update alpha label
     if (ctrlInfo.HasOwnProp("alphaLabel"))
         try ctrlInfo.alphaLabel.Value := pct "%"
+    ; Update swatch with new alpha
+    if (ctrlInfo.HasOwnProp("swatch"))
+        _CEN_UpdateSwatchColor(ctrlInfo.swatch, rgb, alpha)
     ; Force full repaint so channel fill covers entire track
     DllCall("InvalidateRect", "Ptr", ctrlInfo.alphaSlider.Hwnd, "Ptr", 0, "Int", 0)
 }
@@ -1371,12 +1467,11 @@ _CEN_Cleanup() {
     }
     gCEN["ThemeEntry"] := 0
 
-    ; Clean up swatch brushes and handler
-    global gCEN_SwatchBrushes, gCEN_SwatchHwnds, gCEN_SliderHwnds
-    for hwnd, hBrush in gCEN_SwatchBrushes
-        DllCall("DeleteObject", "Ptr", hBrush)
-    gCEN_SwatchBrushes := Map()
+    ; Clean up swatch/slider state and handlers
+    global gCEN_SwatchHwnds, gCEN_SwatchColors, gCEN_SwatchAlphas, gCEN_SliderHwnds
     gCEN_SwatchHwnds := Map()
+    gCEN_SwatchColors := Map()
+    gCEN_SwatchAlphas := Map()
     gCEN_SliderHwnds := Map()
     OnMessage(0x0138, _CEN_OnSwatchCtlColor, 0)
     OnMessage(0x004E, _CEN_OnWmNotify, 0)
