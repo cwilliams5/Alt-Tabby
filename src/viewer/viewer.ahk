@@ -66,7 +66,7 @@ Viewer_Init() {
     ; Initialize blacklist for writing (viewer needs to know the file path)
     Blacklist_Init()
 
-    if (cfg.DebugViewerLog && !gViewer_LogPath) {
+    if (cfg.DiagViewerLog && !gViewer_LogPath) {
         global LOG_PATH_VIEWER
         gViewer_LogPath := LOG_PATH_VIEWER
         LogInitSession(gViewer_LogPath, "Alt-Tabby Viewer Log")

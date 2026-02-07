@@ -248,8 +248,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     if (evCode = TABBY_EV_ALT_UP) {
-        ; DEBUG: Show ALT_UP arrival (controlled by DebugAltTabTooltips config)
-        if (cfg.DebugAltTabTooltips) {
+        ; DEBUG: Show ALT_UP arrival (controlled by DiagAltTabTooltips config)
+        if (cfg.DiagAltTabTooltips) {
             ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
             SetTimer(() => ToolTip(,,,3), -2000)
         }

@@ -12,12 +12,12 @@ All in `[Diagnostics]` section of config.ini. Disabled by default.
 - **Use when**: Workspace tracking issues, CurWS not updating
 - **Enable**: `KomorebiLog=true`
 
-## DebugAltTabTooltips
+## DiagAltTabTooltips
 - **Output**: On-screen tooltips
 - **Use when**: Overlay not appearing, wrong state transitions
 - **Enable**: `AltTabTooltips=true`
 
-## DebugViewerLog
+## DiagViewerLog
 - **File**: `%TEMP%\tabby_viewer.log`
 - **Use when**: Viewer not receiving deltas
 - **Enable**: `DebugLog=true` in `[Viewer]` section

@@ -46,14 +46,14 @@ global gConfigRegistry := [
      d: "Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker)."},
 
     {s: "AltTab", k: "ServerSideWorkspaceFilter", g: "ServerSideWorkspaceFilter", t: "bool", default: false,
-     d: "Use server-side workspace filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data)."},
+     d: "When Ctrl toggles workspace filtering, fetch fresh data from the store (true) or filter cached data locally (false). Local is faster but may miss very recent changes."},
 
     {s: "AltTab", k: "SwitchOnClick", g: "AltTabSwitchOnClick", t: "bool", default: true,
      d: "Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released."},
 
     {s: "AltTab", k: "AsyncActivationPollMs", g: "AltTabAsyncActivationPollMs", t: "int", default: 15,
      min: 10, max: 100,
-     d: "Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU (spawns cmd.exe each poll)."},
+     d: "Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU."},
 
     {type: "subsection", section: "AltTab", name: "Bypass",
      desc: "When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby"},
@@ -62,7 +62,7 @@ global gConfigRegistry := [
      d: "Bypass Alt-Tabby when the foreground window is fullscreen (covers >=99%% of screen). Useful for games that need native Alt-Tab behavior."},
 
     {s: "AltTab", k: "BypassFullscreenThreshold", g: "AltTabBypassFullscreenThreshold", t: "float", default: 0.99,
-     min: 0.90, max: 1.0,
+     min: 0.50, max: 1.0,
      d: "Fraction of screen dimensions a window must cover to be considered fullscreen. Lower values catch borderless windowed games that don't quite fill the screen."},
 
     {s: "AltTab", k: "BypassFullscreenTolerancePx", g: "AltTabBypassFullscreenTolerancePx", t: "int", default: 5,
@@ -81,14 +81,14 @@ global gConfigRegistry := [
 
     {s: "AltTab", k: "MRUFreshnessMs", g: "AltTabMRUFreshnessMs", t: "int", default: 300,
      min: 50, max: 2000,
-     d: "How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations."},
+     d: "After switching windows, how long to trust local window order before accepting updates from the store (ms). Prevents the list from briefly reverting after a switch."},
 
     {s: "AltTab", k: "WSPollTimeoutMs", g: "AltTabWSPollTimeoutMs", t: "int", default: 200,
      min: 50, max: 2000,
      d: "Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation."},
 
     {s: "AltTab", k: "TabDecisionMs", g: "AltTabTabDecisionMs", t: "int", default: 24,
-     min: 15, max: 40,
+     min: 15, max: 100,
      d: "Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers."},
 
     {s: "AltTab", k: "WorkspaceSwitchSettleMs", g: "AltTabWorkspaceSwitchSettleMs", t: "int", default: 75,
@@ -629,19 +629,19 @@ global gConfigRegistry := [
 
     {s: "IPC", k: "IdleTickMs", g: "IPCIdleTickMs", t: "int", default: 100,
      min: 15, max: 500,
-     d: "Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms."},
+     d: "Client poll interval when idle (ms). Lower = more responsive but more CPU."},
 
     {s: "IPC", k: "FullRowEvery", g: "IPCFullRowEvery", t: "int", default: 10,
      min: 0, max: 1000,
-     d: "Per-row healing: 0=always full rows (legacy, no sparse deltas), N>0=every Nth push sends full rows instead of changed-fields-only."},
+     d: "How often to send complete window data instead of only changes (self-healing). 0 = always send complete data. Higher values = less bandwidth but slower recovery from missed updates."},
 
     {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle",
      t: "enum", default: "Always", options: ["Always", "OnChange"],
-     d: "Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean)."},
+     d: "When to include workspace info in updates. 'Always' = every update. 'OnChange' = only when the active workspace changes (less data)."},
 
     {s: "IPC", k: "FullSyncEvery", g: "IPCFullSyncEvery", t: "int", default: 60,
      min: 0, max: 600,
-     d: "Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled."},
+     d: "Every N heartbeats, send a complete snapshot to all clients to recover any missing or ghost windows. 0 = disabled."},
 
     {s: "IPC", k: "UseDirtyTracking", g: "IPCUseDirtyTracking", t: "bool", default: true,
      d: "Use dirty tracking for delta computation. Set false for debugging (full field comparison)."},
@@ -660,11 +660,11 @@ global gConfigRegistry := [
     {type: "subsection", section: "IPC", name: "Heartbeat",
      desc: "Store broadcasts heartbeat to clients for liveness detection"},
 
-    {s: "IPC", k: "StoreIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", default: 5000,
+    {s: "IPC", k: "HeartbeatIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", default: 5000,
      min: 1000, max: 60000,
      d: "Store sends heartbeat every N ms"},
 
-    {s: "IPC", k: "ViewerTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", default: 12000,
+    {s: "IPC", k: "HeartbeatTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", default: 12000,
      min: 2000, max: 120000,
      d: "Viewer considers connection dead after N ms without any message"},
 
@@ -732,7 +732,7 @@ global gConfigRegistry := [
 
     {s: "WinEventHook", k: "CosmeticBufferMs", g: "WinEventHookCosmeticBufferMs", t: "int", default: 1000,
      min: 100, max: 10000,
-     d: "Min interval between proactive pushes for cosmetic-only changes (title updates). Structural changes (focus, create, destroy) always push immediately."},
+     d: "Minimum interval between updates for cosmetic changes like title text (ms). Important changes (focus, open, close) always update immediately."},
 
     ; --- Z-Pump ---
     {type: "subsection", section: "Store", name: "Z-Pump",
@@ -740,13 +740,13 @@ global gConfigRegistry := [
 
     {s: "ZPump", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
      min: 50, max: 5000,
-     d: "How often to check if Z-queue has pending windows"},
+     d: "How often to check for windows needing Z-order updates (ms)"},
 
     ; --- WinEnum ---
     {type: "subsection", section: "Store", name: "WinEnum",
      desc: "Full window enumeration (startup, snapshot, Z-pump, safety polling)"},
 
-    {s: "WinEnum", k: "MissingWindowTTLMs", g: "WinEnumMissingWindowTTLMs", t: "int", default: 1200,
+    {s: "WinEnum", k: "MissingWindowGraceMs", g: "WinEnumMissingWindowTTLMs", t: "int", default: 1200,
      min: 100, max: 10000,
      d: "Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps."},
 
@@ -760,7 +760,7 @@ global gConfigRegistry := [
 
     {s: "WinEnum", k: "ValidateExistenceMs", g: "WinEnumValidateExistenceMs", t: "int", default: 5000,
      min: 0, max: 60000,
-     d: "Lightweight zombie detection interval (ms). Checks existing store entries via IsWindow() to remove dead windows. Much faster than full EnumWindows scan. 0=disabled."},
+     d: "How often to check for dead/zombie windows (ms). Lightweight check that removes windows that no longer exist. 0 = disabled."},
 
     ; --- MRU Lite ---
     {type: "subsection", section: "Store", name: "MRU Lite",
@@ -902,7 +902,7 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "KomorebiLog", g: "DiagKomorebiLog", t: "bool", default: false,
      d: "Log komorebi subscription events to %TEMP%\\tabby_ksub_diag.log. Use when workspace tracking has issues."},
 
-    {s: "Diagnostics", k: "AltTabTooltips", g: "DebugAltTabTooltips", t: "bool", default: false,
+    {s: "Diagnostics", k: "AltTabTooltips", g: "DiagAltTabTooltips", t: "bool", default: false,
      d: "Show tooltips for Alt-Tab state machine debugging. Use when overlay behavior is incorrect."},
 
     {s: "Diagnostics", k: "EventLog", g: "DiagEventLog", t: "bool", default: false,
@@ -949,7 +949,7 @@ global gConfigRegistry := [
     {type: "subsection", section: "Diagnostics", name: "Viewer",
      desc: "Debug viewer GUI options"},
 
-    {s: "Diagnostics", k: "ViewerDebugLog", g: "DebugViewerLog", t: "bool", default: false,
+    {s: "Diagnostics", k: "ViewerDebugLog", g: "DiagViewerLog", t: "bool", default: false,
      d: "Enable verbose viewer logging to error log"},
 
     {s: "Diagnostics", k: "ViewerAutoStartStore", g: "ViewerAutoStartStore", t: "bool", default: false,

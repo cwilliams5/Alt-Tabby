@@ -94,7 +94,7 @@ global cfg := {
     AltTabBypassFullscreen: true,
     AltTabBypassProcesses: "",
     GUI_ScrollKeepHighlightOnTop: false,
-    DebugAltTabTooltips: false,
+    DiagAltTabTooltips: false,
     DiagEventLog: false,  ; Disable event logging during tests
     DiagPaintTimingLog: false,  ; Disable paint timing log during tests
     DiagProcPumpLog: false,
