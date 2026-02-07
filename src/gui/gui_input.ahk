@@ -126,13 +126,10 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     }
 
     scale := Win_GetScaleForWindow(gGUI_OverlayH)
-    RowH := Round(cfg.GUI_RowHeight * scale)
-    if (RowH < 1) {
-        RowH := 1
-    }
-    My := Round(cfg.GUI_MarginY * scale)
-    hdr := Round(GUI_HeaderBlockDip() * scale)
-    topY := My + hdr
+    layout := _GUI_GetCachedLayout(scale)
+    RowH := layout.RowH
+    My := layout.My
+    topY := My + layout.hdrBlock
 
     if (yPhys < topY) {
         return
@@ -155,7 +152,7 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     metrics := _GUI_GetActionBtnMetrics(scale)
     size := metrics.size
     gap := metrics.gap
-    marR := Round(cfg.GUI_MarginX * scale)
+    marR := layout.Mx
 
     ox := 0
     oy := 0

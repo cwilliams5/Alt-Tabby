@@ -296,65 +296,32 @@ _CEW_InjectConfigData() {
 _CEW_SerializeRegistry() {
     global gConfigRegistry
 
-    ; Build JSON array of registry entries
-    parts := []
+    ; Build array of Maps for JSON.Dump serialization
+    entries := []
+    fields := ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"]
     for _, entry in gConfigRegistry {
-        obj := "{"
-        if (entry.HasOwnProp("type"))
-            obj .= '"type":"' entry.type '",'
-        if (entry.HasOwnProp("name"))
-            obj .= '"name":"' _CEW_EscapeJson(entry.name) '",'
-        if (entry.HasOwnProp("desc"))
-            obj .= '"desc":"' _CEW_EscapeJson(entry.desc) '",'
-        if (entry.HasOwnProp("long"))
-            obj .= '"long":"' _CEW_EscapeJson(entry.long) '",'
-        if (entry.HasOwnProp("section"))
-            obj .= '"section":"' entry.section '",'
-        if (entry.HasOwnProp("s"))
-            obj .= '"s":"' entry.s '",'
-        if (entry.HasOwnProp("k"))
-            obj .= '"k":"' entry.k '",'
-        if (entry.HasOwnProp("g"))
-            obj .= '"g":"' entry.g '",'
-        if (entry.HasOwnProp("t"))
-            obj .= '"t":"' entry.t '",'
-        if (entry.HasOwnProp("d"))
-            obj .= '"d":"' _CEW_EscapeJson(entry.d) '",'
-        if (entry.HasOwnProp("default")) {
-            if (entry.t = "bool")
-                obj .= '"default":' (entry.default ? "true" : "false") ','
-            else if (entry.t = "int" || entry.t = "float")
-                obj .= '"default":' entry.default ','
-            else
-                obj .= '"default":"' _CEW_EscapeJson(String(entry.default)) '",'
+        m := Map()
+        for _, f in fields {
+            if (entry.HasOwnProp(f))
+                m[f] := entry.%f%
         }
-        if (entry.HasOwnProp("options")) {
-            obj .= '"options":['
-            optParts := []
-            for _, opt in entry.options
-                optParts.Push('"' _CEW_EscapeJson(opt) '"')
-            obj .= _CEW_JoinArray(optParts, ",")
-            obj .= '],'
-        }
+        if (entry.HasOwnProp("default"))
+            m["default"] := entry.default
+        if (entry.HasOwnProp("options"))
+            m["options"] := entry.options
         if (entry.HasOwnProp("min")) {
-            obj .= '"min":' entry.min ','
-            obj .= '"max":' entry.max ','
+            m["min"] := entry.min
+            m["max"] := entry.max
         }
-        if (entry.HasOwnProp("fmt"))
-            obj .= '"fmt":"' entry.fmt '",'
-        ; Remove trailing comma and close
-        if (SubStr(obj, -1) = ",")
-            obj := SubStr(obj, 1, -1)
-        obj .= "}"
-        parts.Push(obj)
+        entries.Push(m)
     }
-    return "[" _CEW_JoinArray(parts, ",") "]"
+    return JSON.Dump(entries)
 }
 
 _CEW_SerializeCurrentValues() {
     global gConfigRegistry, gConfigIniPath
 
-    parts := []
+    values := Map()
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
@@ -363,65 +330,15 @@ _CEW_SerializeCurrentValues() {
         if (iniVal = "")
             val := entry.default
         else
-            val := _CEW_ParseValue(iniVal, entry.t)
+            val := _CL_ParseValue(iniVal, entry.t)
 
-        if (entry.t = "bool")
-            parts.Push('"' entry.g '":' (val ? "true" : "false"))
-        else if (entry.t = "int" || entry.t = "float")
-            parts.Push('"' entry.g '":' val)
-        else
-            parts.Push('"' entry.g '":"' _CEW_EscapeJson(String(val)) '"')
+        values[entry.g] := val
     }
-    return "{" _CEW_JoinArray(parts, ",") "}"
-}
-
-_CEW_ParseValue(iniVal, type) {
-    switch type {
-        case "bool":
-            return (iniVal = "true" || iniVal = "1" || iniVal = "yes")
-        case "int":
-            if (SubStr(iniVal, 1, 2) = "0x")
-                return Integer(iniVal)
-            return Integer(iniVal)
-        case "float":
-            return Float(iniVal)
-        default:
-            return iniVal
-    }
+    return JSON.Dump(values)
 }
 
 _CEW_ApplyChanges(changes) {
-    global gConfigRegistry, gConfigIniPath
-
-    for _, entry in gConfigRegistry {
-        if (!entry.HasOwnProp("default"))
-            continue
-
-        if (!changes.Has(entry.g))
-            continue
-
-        newVal := changes[entry.g]
-        _CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, newVal, entry.default, entry.t)
-    }
-}
-
-_CEW_EscapeJson(str) {
-    str := StrReplace(str, "\", "\\")
-    str := StrReplace(str, '"', '\"')
-    str := StrReplace(str, "`n", "\n")
-    str := StrReplace(str, "`r", "\r")
-    str := StrReplace(str, "`t", "\t")
-    return str
-}
-
-_CEW_JoinArray(arr, sep) {
-    result := ""
-    for i, item in arr {
-        if (i > 1)
-            result .= sep
-        result .= item
-    }
-    return result
+    _CL_SaveChanges(changes)
 }
 
 ; ============================================================

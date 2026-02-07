@@ -236,18 +236,7 @@ ShowDashboardDialog() {
 
     ; Store row (core — red when not running)
     subY := 322
-    storeRunning := LauncherUtils_IsRunning(g_StorePID)
-    storeDotColor := storeRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger
-    dg.SetFont("s9 " storeDotColor)
-    g_DashControls.storeDot := dg.AddText("x400 y" subY " w14", dot)
-    Theme_MarkSemantic(g_DashControls.storeDot)
-    g_DashControls.storeDotColor := storeDotColor
-    dg.SetFont("s9 cDefault")
-    storeLabel := "Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running")
-    g_DashControls.storeText := dg.AddText("x414 y" subY " w246 +0x100", storeLabel)
-    g_DashControls.storeBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", storeRunning ? "Restart" : "Launch")
-    g_DashControls.storeBtn.OnEvent("Click", _Dash_OnStoreBtn)
-    Theme_ApplyToControl(g_DashControls.storeBtn, "Button", themeEntry)
+    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "store", "Store", g_StorePID, true, _Dash_OnStoreBtn)
 
     ; Producer status line (dot shows overall health)
     subY += 20
@@ -263,63 +252,19 @@ ShowDashboardDialog() {
 
     ; GUI row (core — red when not running)
     subY += 18
-    guiRunning := LauncherUtils_IsRunning(g_GuiPID)
-    guiDotColor := guiRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger
-    dg.SetFont("s9 " guiDotColor)
-    g_DashControls.guiDot := dg.AddText("x400 y" subY " w14", dot)
-    Theme_MarkSemantic(g_DashControls.guiDot)
-    g_DashControls.guiDotColor := guiDotColor
-    dg.SetFont("s9 cDefault")
-    guiLabel := "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
-    g_DashControls.guiText := dg.AddText("x414 y" subY " w246 +0x100", guiLabel)
-    g_DashControls.guiBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", guiRunning ? "Restart" : "Launch")
-    g_DashControls.guiBtn.OnEvent("Click", _Dash_OnGuiBtn)
-    Theme_ApplyToControl(g_DashControls.guiBtn, "Button", themeEntry)
+    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "gui", "GUI", g_GuiPID, true, _Dash_OnGuiBtn)
 
     ; Config Editor row (optional — grey when not running)
     subY += 30
-    configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
-    configDotColor := configRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
-    dg.SetFont("s9 " configDotColor)
-    g_DashControls.configDot := dg.AddText("x400 y" subY " w14", dot)
-    Theme_MarkSemantic(g_DashControls.configDot)
-    g_DashControls.configDotColor := configDotColor
-    dg.SetFont("s9 cDefault")
-    configLabel := "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running")
-    g_DashControls.configText := dg.AddText("x414 y" subY " w246 +0x100", configLabel)
-    g_DashControls.configBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", configRunning ? "Restart" : "Launch")
-    g_DashControls.configBtn.OnEvent("Click", _Dash_OnConfigBtn)
-    Theme_ApplyToControl(g_DashControls.configBtn, "Button", themeEntry)
+    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "config", "Config Editor", g_ConfigEditorPID, false, _Dash_OnConfigBtn)
 
     ; Blacklist Editor row (optional — grey when not running)
     subY += 30
-    blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-    blacklistDotColor := blacklistRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
-    dg.SetFont("s9 " blacklistDotColor)
-    g_DashControls.blacklistDot := dg.AddText("x400 y" subY " w14", dot)
-    Theme_MarkSemantic(g_DashControls.blacklistDot)
-    g_DashControls.blacklistDotColor := blacklistDotColor
-    dg.SetFont("s9 cDefault")
-    blacklistLabel := "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running")
-    g_DashControls.blacklistText := dg.AddText("x414 y" subY " w246 +0x100", blacklistLabel)
-    g_DashControls.blacklistBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", blacklistRunning ? "Restart" : "Launch")
-    g_DashControls.blacklistBtn.OnEvent("Click", _Dash_OnBlacklistBtn)
-    Theme_ApplyToControl(g_DashControls.blacklistBtn, "Button", themeEntry)
+    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "blacklist", "Blacklist Editor", g_BlacklistEditorPID, false, _Dash_OnBlacklistBtn)
 
     ; Viewer row (optional — grey when not running)
     subY += 30
-    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-    viewerDotColor := viewerRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
-    dg.SetFont("s9 " viewerDotColor)
-    g_DashControls.viewerDot := dg.AddText("x400 y" subY " w14", dot)
-    Theme_MarkSemantic(g_DashControls.viewerDot)
-    g_DashControls.viewerDotColor := viewerDotColor
-    dg.SetFont("s9 cDefault")
-    viewerLabel := "Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running")
-    g_DashControls.viewerText := dg.AddText("x414 y" subY " w246 +0x100", viewerLabel)
-    g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerRunning ? "Restart" : "Launch")
-    g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
-    Theme_ApplyToControl(g_DashControls.viewerBtn, "Button", themeEntry)
+    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "viewer", "Viewer", g_ViewerPID, false, _Dash_OnViewerBtn)
 
     ; Info rows (read-only)
     subY += 28
@@ -864,6 +809,41 @@ _Dash_LoadLogo(dg) {
 }
 
 ; ============================================================
+; Subprocess Row Helper
+; ============================================================
+; Adds a subprocess row: colored dot + label + action button.
+; Parameters:
+;   dg         - Gui object
+;   themeEntry - theme entry for control theming
+;   dot        - dot character
+;   &subY      - y position (ByRef, not modified - caller manages offsets)
+;   prefix     - control name prefix (e.g. "store", "gui")
+;   displayName- human label (e.g. "Store", "GUI")
+;   pid        - process ID variable to check
+;   isCore     - true = red when not running, false = grey when not running
+;   clickFn    - function ref for button click handler
+
+_Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, prefix, displayName, pid, isCore, clickFn) {
+    global g_DashControls, gTheme_Palette
+    isRunning := LauncherUtils_IsRunning(pid)
+    notRunningColor := isCore ? gTheme_Palette.danger : gTheme_Palette.textMuted
+    dotColor := isRunning ? "c" gTheme_Palette.success : "c" notRunningColor
+    dg.SetFont("s9 " dotColor)
+    dotCtl := dg.AddText("x400 y" subY " w14", dot)
+    Theme_MarkSemantic(dotCtl)
+    dg.SetFont("s9 cDefault")
+    label := displayName ": " (isRunning ? "Running (PID " pid ")" : "Not running")
+    textCtl := dg.AddText("x414 y" subY " w246 +0x100", label)
+    btnCtl := dg.AddButton("x680 y" (subY - 4) " w65 h24", isRunning ? "Restart" : "Launch")
+    btnCtl.OnEvent("Click", clickFn)
+    Theme_ApplyToControl(btnCtl, "Button", themeEntry)
+    g_DashControls.%prefix%Dot := dotCtl
+    g_DashControls.%prefix%DotColor := dotColor
+    g_DashControls.%prefix%Text := textCtl
+    g_DashControls.%prefix%Btn := btnCtl
+}
+
+; ============================================================
 ; Info Helpers (read-only, snapshot at dialog-open or refresh)
 ; ============================================================
 
@@ -984,22 +964,12 @@ _Dash_QueryProducerStatus() {
 ; Also sets g_ProducerHasFailed: false if all OK, true if any failed
 ; Disabled producers omitted, MRU only shown if active (fallback)
 _Dash_FormatProducerStatus(producers) {
-    global g_ProducerHasFailed
-
-    abbrevs := [
-        ["WEH", "wineventHook"],
-        ["MRU", "mruLite"],
-        ["KS", "komorebiSub"],
-        ["KL", "komorebiLite"],
-        ["IP", "iconPump"],
-        ["PP", "procPump"]
-    ]
+    global g_ProducerHasFailed, PRODUCER_NAMES, PRODUCER_ABBREVS
 
     parts := []
     hasFailed := false
-    for _, pair in abbrevs {
-        abbrev := pair[1]
-        name := pair[2]
+    for _, name in PRODUCER_NAMES {
+        abbrev := PRODUCER_ABBREVS[name]
         state := ""
         if (producers is Map) {
             if (producers.Has(name))

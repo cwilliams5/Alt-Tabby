@@ -5,6 +5,13 @@
 
 global WS_SCAN_ID_MAX := 0x7FFFFFFF
 
+; Canonical list of fields copied from store records into projection items.
+; Used by _WS_ToItem (projection) and WindowStore_BuildDelta (delta detection).
+; hwnd is always included separately as the record key.
+global PROJECTION_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick",
+    "isFocused", "isCloaked", "isMinimized", "workspaceName", "workspaceId",
+    "isOnCurrentWorkspace", "processName", "iconHicon"]
+
 global gWS_Store := Map()
 global gWS_Rev := 0
 global gWS_ScanId := 0
@@ -803,22 +810,11 @@ _WS_NewRecord(hwnd) {
 }
 
 _WS_ToItem(rec) {
-    return {
-        hwnd: rec.hwnd,
-        title: rec.title,
-        class: rec.class,
-        pid: rec.pid,
-        z: rec.z,
-        lastActivatedTick: rec.lastActivatedTick,
-        isFocused: rec.isFocused,
-        isCloaked: rec.isCloaked,
-        isMinimized: rec.isMinimized,
-        workspaceName: rec.workspaceName,
-        workspaceId: rec.workspaceId,
-        isOnCurrentWorkspace: rec.isOnCurrentWorkspace,
-        processName: rec.processName,
-        iconHicon: rec.iconHicon
-    }
+    global PROJECTION_FIELDS
+    item := {hwnd: rec.hwnd}
+    for _, field in PROJECTION_FIELDS
+        item.%field% := rec.%field%
+    return item
 }
 
 _WS_TrySort(arr, cmp) {
@@ -1223,14 +1219,12 @@ WindowStore_CleanupAllIcons() {
 ;                with IPCUseDirtyTracking enabled, skips comparison for clean hwnds.
 ; Returns: { upserts: [], removes: [] }
 WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
-    global cfg, gWS_DeltaPendingHwnds
-    ; Fields compared for delta detection. Using a loop avoids an AHK v2 parser bug
-    ; where bare method calls after many consecutive single-line if statements silently fail.
-    ; Must include ALL fields from _WS_ToItem that affect display or sort order.
-    ; Notably: lastActivatedTick drives MRU sort - omitting it causes stale ordering in sparse mode.
-    static deltaFields := ["title", "class", "z", "pid", "isFocused", "workspaceName",
-        "isCloaked", "isMinimized", "isOnCurrentWorkspace", "processName", "iconHicon",
-        "lastActivatedTick"]
+    global cfg, gWS_DeltaPendingHwnds, PROJECTION_FIELDS
+    ; deltaFields is derived from PROJECTION_FIELDS — single source of truth for both
+    ; projection items (_WS_ToItem) and delta detection. Using a loop avoids an AHK v2
+    ; parser bug where bare method calls after many consecutive single-line if statements
+    ; silently fail.
+    deltaFields := PROJECTION_FIELDS
 
     ; Dirty tracking setup: use passed snapshot or fall back to global (for direct calls/tests)
     useDirtyTracking := cfg.IPCUseDirtyTracking

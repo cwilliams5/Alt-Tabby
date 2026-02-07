@@ -46,12 +46,8 @@ global STORE_STAGGER_HEARTBEAT_MS := -53
 
 ; Producer state tracking: "running", "disabled", "failed"
 global gStore_ProducerState := Map()
-gStore_ProducerState["wineventHook"] := "disabled"
-gStore_ProducerState["mruLite"] := "disabled"
-gStore_ProducerState["komorebiSub"] := "disabled"
-gStore_ProducerState["komorebiLite"] := "disabled"
-gStore_ProducerState["iconPump"] := "disabled"
-gStore_ProducerState["procPump"] := "disabled"
+for _, _name in PRODUCER_NAMES
+    gStore_ProducerState[_name] := "disabled"
 
 ; Parse command-line args into local vars first (ConfigLoader_Init will set defaults)
 global gStore_CmdLinePipe := ""  ; Command-line override for pipe name

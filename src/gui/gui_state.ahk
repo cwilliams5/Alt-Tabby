@@ -724,9 +724,8 @@ _GUI_AsyncActivationTick() {
             ; When komorebi switches workspaces, it uncloaks windows on the target workspace
             ; Sub-microsecond DllCall vs 50-100ms cmd.exe spawn
             ; DWMWA_CLOAKED = 14 (Windows constant)
-            static cloakBuf := Buffer(4, 0)
-            hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", gGUI_PendingHwnd, "uint", 14, "ptr", cloakBuf.Ptr, "uint", 4, "int")
-            isCloaked := (hr = 0) && (NumGet(cloakBuf, 0, "UInt") != 0)
+            cloakVal := _GUI_IsCloaked(gGUI_PendingHwnd)
+            isCloaked := (cloakVal > 0)
             if (!isCloaked) {
                 switchComplete := true
                 if (cfg.DiagEventLog)
@@ -1171,6 +1170,7 @@ _GUI_TryComUncloak(hwnd) {
     if (!gGUI_AppViewCollection && !_GUI_InitAppViewCollection())
         return 0
 
+    viewVtable := 0
     try {
         ; IApplicationViewCollection vtable:
         ; [0-2] IUnknown, [3] GetViews, [4] GetViewsByZOrder, [5] GetViewsByAppUserModelId
@@ -1224,7 +1224,7 @@ _GUI_TryComUncloak(hwnd) {
             return 0  ; Failed
     } catch as e {
         ; Release pView if it was acquired before the exception
-        if (pView) {
+        if (pView && viewVtable) {
             releaseView := NumGet(viewVtable, 2 * A_PtrSize, "UPtr")
             DllCall(releaseView, "Ptr", pView)
         }

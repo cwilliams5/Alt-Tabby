@@ -623,9 +623,9 @@ RunUnitTests_CoreConfig() {
     hexResult := _CL_FormatValue(255, "int")
     AssertEq(hexResult, "0xFF", "_CL_FormatValue(255, int) = '0xFF' (large int, hex)")
 
-    ; Test: _CL_FormatValue(0.5, "float") → string containing "0.50"
+    ; Test: _CL_FormatValue(0.5, "float") → string "0.5" (uses {:.6g} format)
     floatResult := _CL_FormatValue(0.5, "float")
-    AssertEq(floatResult, "0.50", "_CL_FormatValue(0.5, float) = '0.50'")
+    AssertEq(floatResult, "0.5", "_CL_FormatValue(0.5, float) = '0.5'")
 
     ; Test: _CL_FormatValue("hello", "string") → "hello"
     AssertEq(_CL_FormatValue("hello", "string"), "hello", "_CL_FormatValue('hello', string) = 'hello'")

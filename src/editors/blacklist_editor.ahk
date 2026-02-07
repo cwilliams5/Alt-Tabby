@@ -243,9 +243,20 @@ _BE_SendReloadIPC() {
 _BE_HasChanges() {
     global gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
     global gBE_OriginalTitle, gBE_OriginalClass, gBE_OriginalPair
-    return (gBE_TitleEdit.Value != gBE_OriginalTitle
-        || gBE_ClassEdit.Value != gBE_OriginalClass
-        || gBE_PairEdit.Value != gBE_OriginalPair)
+    return (_BE_NormalizeContent(gBE_TitleEdit.Value) != _BE_NormalizeContent(gBE_OriginalTitle)
+        || _BE_NormalizeContent(gBE_ClassEdit.Value) != _BE_NormalizeContent(gBE_OriginalClass)
+        || _BE_NormalizeContent(gBE_PairEdit.Value) != _BE_NormalizeContent(gBE_OriginalPair))
+}
+
+_BE_NormalizeContent(text) {
+    ; Strip trailing whitespace from each line and remove blank lines
+    result := ""
+    Loop Parse text, "`n", "`r" {
+        line := RTrim(A_LoopField)
+        if (line != "")
+            result .= line "`n"
+    }
+    return RTrim(result, "`n")
 }
 
 ; ============================================================

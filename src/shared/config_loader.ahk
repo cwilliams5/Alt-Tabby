@@ -387,8 +387,42 @@ _CL_FormatValue(val, type) {
     if (type = "int" && IsInteger(val) && val >= 0x10)
         return Format("0x{:X}", val)  ; Hex for large ints (colors, etc.)
     if (type = "float")
-        return Format("{:.2f}", val)  ; 2 decimal places for floats
+        return Format("{:.6g}", val)
     return String(val)
+}
+
+; Parse a raw INI string value into the correct AHK type
+_CL_ParseValue(iniVal, type) {
+    switch type {
+        case "bool":
+            return (iniVal = "true" || iniVal = "1" || iniVal = "yes")
+        case "int":
+            if (SubStr(iniVal, 1, 2) = "0x")
+                return Integer(iniVal)
+            return Integer(iniVal)
+        case "float":
+            return Float(iniVal)
+        default:
+            return iniVal
+    }
+}
+
+; Save a map of {globalName: value} changes to config.ini using format-preserving writes.
+; Returns the number of entries written.
+_CL_SaveChanges(changes) {
+    global gConfigRegistry, gConfigIniPath
+
+    changeCount := 0
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("default"))
+            continue
+        if (!changes.Has(entry.g))
+            continue
+
+        _CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t)
+        changeCount++
+    }
+    return changeCount
 }
 
 ; Write to INI preserving comments and structure (unlike IniWrite which reorganizes)
@@ -594,6 +628,35 @@ _CL_ValidateSettings() {
 }
 
 ; ============================================================
+; AUTO-DISCOVER EXECUTABLE PATH (shared helper)
+; ============================================================
+; Tries `where <exeName>` then known install locations.
+; Returns found path or "" if not found.
+_CL_ResolveExePath(exeName, tempSuffix, knownPaths) {
+    ; Try PATH via `where <exeName>`
+    tmpFile := A_Temp "\alttabby_where_" tempSuffix ".tmp"
+    try {
+        RunWait('cmd.exe /c where ' exeName ' > "' tmpFile '" 2>nul',, "Hide")
+        if (FileExist(tmpFile)) {
+            result := Trim(FileRead(tmpFile), " `t`r`n")
+            try FileDelete(tmpFile)
+            firstLine := StrSplit(result, "`n", " `t`r")[1]
+            if (firstLine != "" && FileExist(firstLine))
+                return firstLine
+        }
+    }
+    try FileDelete(tmpFile)
+
+    ; Try known install locations
+    for _, path in knownPaths {
+        if (FileExist(path))
+            return path
+    }
+
+    return ""
+}
+
+; ============================================================
 ; AUTO-DISCOVER AHK V2 PATH
 ; ============================================================
 _CL_ResolveAhkV2Path() {
@@ -603,37 +666,14 @@ _CL_ResolveAhkV2Path() {
     if (cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path))
         return
 
-    ; Try PATH via `where AutoHotkey64`
-    tmpFile := A_Temp "\alttabby_where_ahk.tmp"
-    try {
-        RunWait('cmd.exe /c where AutoHotkey64 > "' tmpFile '" 2>nul',, "Hide")
-        if (FileExist(tmpFile)) {
-            result := Trim(FileRead(tmpFile), " `t`r`n")
-            try FileDelete(tmpFile)
-            firstLine := StrSplit(result, "`n", " `t`r")[1]
-            if (firstLine != "" && FileExist(firstLine)) {
-                cfg.AhkV2Path := firstLine
-                return
-            }
-        }
-    }
-    try FileDelete(tmpFile)
-
-    ; Try known install locations
-    knownPaths := [
+    found := _CL_ResolveExePath("AutoHotkey64", "ahk", [
         "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
         "C:\Program Files (x86)\AutoHotkey\v2\AutoHotkey64.exe",
         EnvGet("USERPROFILE") "\scoop\apps\autohotkey\current\v2\AutoHotkey64.exe",
         EnvGet("USERPROFILE") "\scoop\shims\AutoHotkey64.exe",
-    ]
-    for _, path in knownPaths {
-        if (FileExist(path)) {
-            cfg.AhkV2Path := path
-            return
-        }
-    }
-
-    ; Not found — leave empty; consumers fall back to A_AhkPath
+    ])
+    if (found != "")
+        cfg.AhkV2Path := found
 }
 
 ; ============================================================
@@ -646,38 +686,14 @@ _CL_ResolveKomorebicPath() {
     if (cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe))
         return
 
-    ; Try PATH via `where komorebic`
-    tmpFile := A_Temp "\alttabby_where_komorebic.tmp"
-    try {
-        RunWait('cmd.exe /c where komorebic > "' tmpFile '" 2>nul',, "Hide")
-        if (FileExist(tmpFile)) {
-            result := Trim(FileRead(tmpFile), " `t`r`n")
-            try FileDelete(tmpFile)
-            ; `where` may return multiple lines — use first
-            firstLine := StrSplit(result, "`n", " `t`r")[1]
-            if (firstLine != "" && FileExist(firstLine)) {
-                cfg.KomorebicExe := firstLine
-                return
-            }
-        }
-    }
-    try FileDelete(tmpFile)
-
-    ; Try known install locations
-    knownPaths := [
+    found := _CL_ResolveExePath("komorebic", "komorebic", [
         "C:\Program Files\komorebi\bin\komorebic.exe",
         "C:\Program Files (x86)\komorebi\bin\komorebic.exe",
         EnvGet("USERPROFILE") "\scoop\shims\komorebic.exe",
         EnvGet("USERPROFILE") "\.cargo\bin\komorebic.exe",
-    ]
-    for _, path in knownPaths {
-        if (FileExist(path)) {
-            cfg.KomorebicExe := path
-            return
-        }
-    }
-
-    ; Not found — leave empty; consumers already handle ""
+    ])
+    if (found != "")
+        cfg.KomorebicExe := found
 }
 
 ; ============================================================

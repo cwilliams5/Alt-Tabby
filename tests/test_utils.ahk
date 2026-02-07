@@ -30,6 +30,41 @@ AssertTrue(condition, name) {
     }
 }
 
+; --- IPC Test Callback Factory ---
+; Creates a message handler closure that filters by type strings.
+; Parameters:
+;   &responseVar  - ByRef: stores the raw line when a matching message arrives
+;   &receivedVar  - ByRef: set to true when a matching message arrives
+;   filterTypes   - Array of type substrings to match (e.g., ['"type":"projection"', '"type":"snapshot"'])
+;   logLabel      - Optional label for logging (empty = no logging)
+; Returns: A closure suitable for IPC_PipeClient_Connect callback
+_CreateTestMessageHandler(&responseVar, &receivedVar, filterTypes, logLabel := "") {
+    return (line, hPipe := 0) => _TestMessageHandlerImpl(&responseVar, &receivedVar, filterTypes, logLabel, line)
+}
+
+_TestMessageHandlerImpl(&responseVar, &receivedVar, filterTypes, logLabel, line) {
+    matched := false
+    for _, ft in filterTypes {
+        if (InStr(line, ft)) {
+            matched := true
+            break
+        }
+    }
+    if (matched) {
+        if (logLabel != "")
+            Log("  [" logLabel "] Received: " SubStr(line, 1, 80))
+        responseVar := line
+        receivedVar := true
+    } else {
+        if (logLabel != "")
+            Log("  [" logLabel "] Got other msg: " SubStr(line, 1, 60))
+    }
+}
+
+; Common filter type arrays (allocated once)
+global TEST_FILTER_PROJECTION := ['"type":"projection"', '"type":"snapshot"']
+global TEST_FILTER_STATS := ['"type":"stats_response"']
+
 ; --- IPC Test Callbacks ---
 
 Test_OnServerMessage(line, hPipe := 0) {
@@ -73,41 +108,14 @@ Test_OnClientMessage(line, hPipe := 0) {
     gTestResponseReceived := true
 }
 
-Test_OnRealStoreMessage(line, hPipe := 0) {
-    global gRealStoreResponse, gRealStoreReceived
-    ; Skip hello_ack, we want the projection response
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        Log("  [Real Store] Received: " SubStr(line, 1, 80))
-        gRealStoreResponse := line
-        gRealStoreReceived := true
-    } else {
-        Log("  [Real Store] Got other msg type: " SubStr(line, 1, 60))
-    }
-}
+global gRealStoreResponse, gRealStoreReceived
+Test_OnRealStoreMessage := _CreateTestMessageHandler(&gRealStoreResponse, &gRealStoreReceived, TEST_FILTER_PROJECTION, "Real Store")
 
-Test_OnViewerMessage(line, hPipe := 0) {
-    global gViewerTestResponse, gViewerTestReceived
-    ; Skip hello_ack, we want the projection response
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        Log("  [Viewer Test] Received projection: " SubStr(line, 1, 80))
-        gViewerTestResponse := line
-        gViewerTestReceived := true
-    } else {
-        Log("  [Viewer Test] Got other msg: " SubStr(line, 1, 60))
-    }
-}
+global gViewerTestResponse, gViewerTestReceived
+Test_OnViewerMessage := _CreateTestMessageHandler(&gViewerTestResponse, &gViewerTestReceived, TEST_FILTER_PROJECTION, "Viewer Test")
 
-Test_OnWsE2EMessage(line, hPipe := 0) {
-    global gWsE2EResponse, gWsE2EReceived
-    ; Skip hello_ack, we want the projection response
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        Log("  [WS E2E] Received projection: " SubStr(line, 1, 80))
-        gWsE2EResponse := line
-        gWsE2EReceived := true
-    } else {
-        Log("  [WS E2E] Got other msg: " SubStr(line, 1, 60))
-    }
-}
+global gWsE2EResponse, gWsE2EReceived
+Test_OnWsE2EMessage := _CreateTestMessageHandler(&gWsE2EResponse, &gWsE2EReceived, TEST_FILTER_PROJECTION, "WS E2E")
 
 Test_OnHeartbeatMessage(line, hPipe := 0) {
     global gHbTestHeartbeats, gHbTestLastRev, gHbTestReceived
@@ -150,65 +158,23 @@ Test_OnProducerStateMessage(line, hPipe := 0) {
     }
 }
 
-Test_OnBlacklistMessage(line, hPipe := 0) {
-    global gBlTestResponse, gBlTestReceived
-    ; We want projection/snapshot responses
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        Log("  [BL Test] Received: " SubStr(line, 1, 60))
-        gBlTestResponse := line
-        gBlTestReceived := true
-    } else {
-        Log("  [BL Test] Got other msg: " SubStr(line, 1, 50))
-    }
-}
+global gBlTestResponse, gBlTestReceived
+Test_OnBlacklistMessage := _CreateTestMessageHandler(&gBlTestResponse, &gBlTestReceived, TEST_FILTER_PROJECTION, "BL Test")
 
-Test_OnStatsMessage(line, hPipe := 0) {
-    global gStatsTestResponse, gStatsTestReceived
-    if (InStr(line, '"type":"stats_response"')) {
-        Log("  [Stats Test] Received response")
-        gStatsTestResponse := line
-        gStatsTestReceived := true
-    } else {
-        ; Ignore other messages (hello_ack, deltas, etc.)
-    }
-}
+global gStatsTestResponse, gStatsTestReceived
+Test_OnStatsMessage := _CreateTestMessageHandler(&gStatsTestResponse, &gStatsTestReceived, TEST_FILTER_STATS, "Stats Test")
 
-Test_OnMruMessage(line, hPipe := 0) {
-    global gMruTestResponse, gMruTestReceived
-    ; We want projection/snapshot responses
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        Log("  [MRU Test] Received: " SubStr(line, 1, 60))
-        gMruTestResponse := line
-        gMruTestReceived := true
-    } else {
-        Log("  [MRU Test] Got other msg: " SubStr(line, 1, 50))
-    }
-}
+global gMruTestResponse, gMruTestReceived
+Test_OnMruMessage := _CreateTestMessageHandler(&gMruTestResponse, &gMruTestReceived, TEST_FILTER_PROJECTION, "MRU Test")
 
-Test_OnProjMessage(line, hPipe := 0) {
-    global gProjTestResponse, gProjTestReceived
-    ; We want projection/snapshot responses
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        gProjTestResponse := line
-        gProjTestReceived := true
-    }
-}
+global gProjTestResponse, gProjTestReceived
+Test_OnProjMessage := _CreateTestMessageHandler(&gProjTestResponse, &gProjTestReceived, TEST_FILTER_PROJECTION)
 
-Test_OnMultiClient1(line, hPipe := 0) {
-    global gMultiClient1Response, gMultiClient1Received
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        gMultiClient1Response := line
-        gMultiClient1Received := true
-    }
-}
+global gMultiClient1Response, gMultiClient1Received
+Test_OnMultiClient1 := _CreateTestMessageHandler(&gMultiClient1Response, &gMultiClient1Received, TEST_FILTER_PROJECTION)
 
-Test_OnMultiClient2(line, hPipe := 0) {
-    global gMultiClient2Response, gMultiClient2Received
-    if (InStr(line, '"type":"projection"') || InStr(line, '"type":"snapshot"')) {
-        gMultiClient2Response := line
-        gMultiClient2Received := true
-    }
-}
+global gMultiClient2Response, gMultiClient2Received
+Test_OnMultiClient2 := _CreateTestMessageHandler(&gMultiClient2Response, &gMultiClient2Received, TEST_FILTER_PROJECTION)
 
 Test_OnMultiClient3(line, hPipe := 0) {
     global gMultiClient3Response, gMultiClient3Received

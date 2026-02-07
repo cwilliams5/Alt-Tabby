@@ -202,8 +202,6 @@ GUI_RevealBoth() {
 GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
-    global PAINT_HDR_Y_DIP, PAINT_TITLE_Y_DIP, PAINT_TITLE_H_DIP
-    global PAINT_SUB_Y_DIP, PAINT_SUB_H_DIP, PAINT_COL_Y_DIP, PAINT_COL_H_DIP
     global PAINT_TEXT_RIGHT_PAD_DIP
 
     ; ===== TIMING: EnsureResources =====
@@ -225,30 +223,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     scrollTop := gGUI_ScrollTop
 
-    ; Cache layout metrics - only recalculate when scale changes
-    ; (avoids 13+ Round() calls per frame for values that only change on DPI change)
-    static cachedLayout := {}, cachedLayoutScale := 0.0
-    if (Abs(cachedLayoutScale - scale) >= 0.001) {
-        cachedLayout.RowH := Round(cfg.GUI_RowHeight * scale)
-        if (cachedLayout.RowH < 1)
-            cachedLayout.RowH := 1
-        cachedLayout.Mx := Round(cfg.GUI_MarginX * scale)
-        cachedLayout.My := Round(cfg.GUI_MarginY * scale)
-        cachedLayout.ISize := Round(cfg.GUI_IconSize * scale)
-        cachedLayout.Rad := Round(cfg.GUI_RowRadius * scale)
-        cachedLayout.gapText := Round(cfg.GUI_IconTextGapPx * scale)
-        cachedLayout.gapCols := Round(cfg.GUI_ColumnGapPx * scale)
-        cachedLayout.hdrY4 := Round(PAINT_HDR_Y_DIP * scale)
-        cachedLayout.hdrH28 := Round(cfg.GUI_HeaderHeightPx * scale)
-        cachedLayout.iconLeftDip := Round(cfg.GUI_IconLeftMargin * scale)
-        cachedLayout.titleY := Round(PAINT_TITLE_Y_DIP * scale)
-        cachedLayout.titleH := Round(PAINT_TITLE_H_DIP * scale)
-        cachedLayout.subY := Round(PAINT_SUB_Y_DIP * scale)
-        cachedLayout.subH := Round(PAINT_SUB_H_DIP * scale)
-        cachedLayout.colY := Round(PAINT_COL_Y_DIP * scale)
-        cachedLayout.colH := Round(PAINT_COL_H_DIP * scale)
-        cachedLayoutScale := scale
-    }
+    cachedLayout := _GUI_GetCachedLayout(scale)
     RowH := cachedLayout.RowH
     Mx := cachedLayout.Mx
     My := cachedLayout.My

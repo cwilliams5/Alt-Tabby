@@ -249,9 +249,9 @@ RunUnitTests_CoreStore() {
 
     baseItem := {
         hwnd: 12345, title: "Original", class: "TestClass", pid: 100, z: 1,
-        isFocused: false, workspaceName: "Main", isCloaked: false,
-        isMinimized: false, isOnCurrentWorkspace: true, processName: "test.exe",
-        iconHicon: 0, lastActivatedTick: 100
+        isFocused: false, workspaceName: "Main", workspaceId: "",
+        isCloaked: false, isMinimized: false, isOnCurrentWorkspace: true,
+        processName: "test.exe", iconHicon: 0, lastActivatedTick: 100
     }
 
     ; Fields that SHOULD trigger delta (from BuildDelta code)
@@ -260,6 +260,7 @@ RunUnitTests_CoreStore() {
         {field: "z", newVal: 2},
         {field: "isFocused", newVal: true},
         {field: "workspaceName", newVal: "Other"},
+        {field: "workspaceId", newVal: "ws-123"},
         {field: "isCloaked", newVal: true},
         {field: "isMinimized", newVal: true},
         {field: "isOnCurrentWorkspace", newVal: false},

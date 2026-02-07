@@ -31,52 +31,42 @@ global CEN_LABEL_W := 180
 global CEN_INPUT_X := 206
 global CEN_SEARCH_H := 44                  ; header bar height (title + search)
 
-; ---- State ----
-global gCEN_MainGui := 0
-global gCEN_Viewport := 0
-global gCEN_Sidebar := 0
-global gCEN_Pages := Map()
-global gCEN_CurrentPage := ""
-global gCEN_Sections := []
-global gCEN_FooterBtns := []
-global gCEN_ChangeLabel := 0
-global gCEN_Controls := Map()          ; Map of globalName -> {ctrl, type}
-global gCEN_OriginalValues := Map()    ; Map of globalName -> original value
+; ---- State (single Map) ----
+global gCEN := Map()
 
-; Scroll accumulator - prevents lost wheel messages
-global gCEN_ScrollAccum := 0
-global gCEN_ScrollTimer := 0
-
-; Message handler refs for cleanup
-global gCEN_BoundWheelMsg := 0
-global gCEN_BoundScrollMsg := 0
-
-; Production state
-global gCEN_SavedChanges := false
-global gCEN_LauncherHwnd := 0
-
-; Theme tracking entry for config editor
-global gCEN_ThemeEntry := 0
-
-; Search state
-global gCEN_SearchEdit := 0
-global gCEN_SearchText := ""
-global gCEN_SearchTimer := 0
-global gCEN_SettingGroups := Map()      ; globalName -> {pageKey, searchText, subIdx}
-global gCEN_FilteredIndices := []       ; sidebar indices matching search
-
-; Flat search mode (stacked pages)
-global gCEN_FlatMode := false
-global gCEN_FlatScrollPos := 0
-global gCEN_FlatContentH := 0
-
-; Change counter timer
-global gCEN_ChangeCountTimer := 0
-
-; Border separators (child GUIs for 1px lines between zones)
-global gCEN_SepHeader := 0
-global gCEN_SepSidebar := 0
-global gCEN_SepFooter := 0
+_CEN_ResetState() {
+    global gCEN
+    gCEN := Map()
+    gCEN["MainGui"] := 0
+    gCEN["Viewport"] := 0
+    gCEN["Sidebar"] := 0
+    gCEN["Pages"] := Map()
+    gCEN["CurrentPage"] := ""
+    gCEN["Sections"] := []
+    gCEN["FooterBtns"] := []
+    gCEN["ChangeLabel"] := 0
+    gCEN["Controls"] := Map()
+    gCEN["OriginalValues"] := Map()
+    gCEN["ScrollAccum"] := 0
+    gCEN["ScrollTimer"] := 0
+    gCEN["BoundWheelMsg"] := 0
+    gCEN["BoundScrollMsg"] := 0
+    gCEN["SavedChanges"] := false
+    gCEN["LauncherHwnd"] := 0
+    gCEN["ThemeEntry"] := 0
+    gCEN["SearchEdit"] := 0
+    gCEN["SearchText"] := ""
+    gCEN["SearchTimer"] := 0
+    gCEN["SettingGroups"] := Map()
+    gCEN["FilteredIndices"] := []
+    gCEN["FlatMode"] := false
+    gCEN["FlatScrollPos"] := 0
+    gCEN["FlatContentH"] := 0
+    gCEN["ChangeCountTimer"] := 0
+    gCEN["SepHeader"] := 0
+    gCEN["SepSidebar"] := 0
+    gCEN["SepFooter"] := 0
+}
 
 ; ============================================================
 ; PUBLIC API
@@ -86,37 +76,12 @@ global gCEN_SepFooter := 0
 ; launcherHwnd: HWND of launcher process for WM_COPYDATA restart signal (0 = standalone)
 ; Returns: true if changes were saved, false otherwise
 _CE_RunNative(launcherHwnd := 0) {
-    global gCEN_MainGui, gCEN_SavedChanges, gCEN_LauncherHwnd, gConfigLoaded
-    global gCEN_Sections, gCEN_Pages, gCEN_Controls, gCEN_OriginalValues
-    global gCEN_CurrentPage, gCEN_ScrollAccum, gCEN_ScrollTimer, gCEN_FooterBtns, gCEN_Sidebar, gCEN_ChangeLabel
-    global gCEN_SearchText, gCEN_SearchTimer, gCEN_SettingGroups, gCEN_FilteredIndices, gCEN_ChangeCountTimer
-    global gCEN_FlatMode, gCEN_FlatScrollPos, gCEN_FlatContentH
-    global gCEN_SepHeader, gCEN_SepSidebar, gCEN_SepFooter
+    global gCEN, gConfigLoaded
 
-    gCEN_LauncherHwnd := launcherHwnd
-    gCEN_SavedChanges := false
+    _CEN_ResetState()
 
-    ; Reset state for fresh invocation
-    gCEN_Sections := []
-    gCEN_Pages := Map()
-    gCEN_Controls := Map()
-    gCEN_OriginalValues := Map()
-    gCEN_CurrentPage := ""
-    gCEN_ScrollAccum := 0
-    gCEN_ScrollTimer := 0
-    gCEN_FooterBtns := []
-    gCEN_SearchText := ""
-    gCEN_SearchTimer := 0
-    gCEN_SettingGroups := Map()
-    gCEN_FilteredIndices := []
-    gCEN_FlatMode := false
-    gCEN_FlatScrollPos := 0
-    gCEN_FlatContentH := 0
-    gCEN_ChangeCountTimer := 0
-    gCEN_ChangeLabel := 0
-    gCEN_SepHeader := 0
-    gCEN_SepSidebar := 0
-    gCEN_SepFooter := 0
+    gCEN["LauncherHwnd"] := launcherHwnd
+    gCEN["SavedChanges"] := false
 
     ; Initialize config system if not already done
     if (!gConfigLoaded)
@@ -132,18 +97,18 @@ _CE_RunNative(launcherHwnd := 0) {
     _CEN_LoadValues()
 
     ; Show first section
-    if (gCEN_Sections.Length > 0) {
-        gCEN_Sidebar.Value := 1
-        _CEN_SwitchToPage(gCEN_Sections[1].name)
+    if (gCEN["Sections"].Length > 0) {
+        gCEN["Sidebar"].Value := 1
+        _CEN_SwitchToPage(gCEN["Sections"][1].name)
     }
 
     ; Everything is built and populated — reveal
-    _GUI_AntiFlashReveal(gCEN_MainGui, true)
+    _GUI_AntiFlashReveal(gCEN["MainGui"], true)
 
     ; Block until GUI closes
-    WinWaitClose(gCEN_MainGui.Hwnd)
+    WinWaitClose(gCEN["MainGui"].Hwnd)
 
-    return gCEN_SavedChanges
+    return gCEN["SavedChanges"]
 }
 
 ; ============================================================
@@ -151,7 +116,7 @@ _CE_RunNative(launcherHwnd := 0) {
 ; ============================================================
 
 _CEN_ParseRegistry() {
-    global gConfigRegistry, gCEN_Sections
+    global gConfigRegistry, gCEN
 
     curSection := ""
     curSubsection := ""
@@ -166,7 +131,7 @@ _CEN_ParseRegistry() {
                 subsections: []
             }
             curSubsection := ""
-            gCEN_Sections.Push(curSection)
+            gCEN["Sections"].Push(curSection)
         } else if (entry.HasOwnProp("type") && entry.type = "subsection") {
             curSubsection := {
                 name: entry.name,
@@ -205,88 +170,85 @@ _CEN_ParseRegistry() {
 ; ============================================================
 
 _CEN_BuildMainGUI() {
-    global gCEN_MainGui, gCEN_Viewport, gCEN_Sidebar, gCEN_Pages, gCEN_Sections
-    global gCEN_FooterBtns, gCEN_ChangeLabel, gCEN_BoundWheelMsg, gCEN_BoundScrollMsg
+    global gCEN
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL, CEN_SIDEBAR_W, CEN_CONTENT_X, CEN_SEARCH_H
-    global gCEN_SearchEdit, gCEN_FilteredIndices, gCEN_ChangeCountTimer
 
     ; Create main window with theme + anti-flash (DWM cloaking)
-    gCEN_MainGui := Gui("+Resize +MinSize750x450 +0x02000000", "Alt-Tabby Configuration")
-    gCEN_MainGui.MarginX := 0
-    gCEN_MainGui.MarginY := 0
-    gCEN_MainGui.SetFont("s9", "Segoe UI")
-    global gTheme_Palette, gCEN_ThemeEntry
-    themeEntry := Theme_ApplyToGui(gCEN_MainGui)
-    gCEN_ThemeEntry := themeEntry
+    gCEN["MainGui"] := Gui("+Resize +MinSize750x450 +0x02000000", "Alt-Tabby Configuration")
+    gCEN["MainGui"].MarginX := 0
+    gCEN["MainGui"].MarginY := 0
+    gCEN["MainGui"].SetFont("s9", "Segoe UI")
+    global gTheme_Palette
+    themeEntry := Theme_ApplyToGui(gCEN["MainGui"])
+    gCEN["ThemeEntry"] := themeEntry
     Theme_OnChange(_CEN_OnThemeChange)
 
     ; Frame bg: panelBg (lighter) for sidebar/header/footer; content area uses bg (darker)
-    gCEN_MainGui.BackColor := gTheme_Palette.panelBg
-    Theme_MarkPanel(gCEN_MainGui)
+    gCEN["MainGui"].BackColor := gTheme_Palette.panelBg
+    Theme_MarkPanel(gCEN["MainGui"])
 
     ; Header bar: title left, search right
-    hdrTitle := gCEN_MainGui.AddText("x20 y12 w300 h24", "Alt-Tabby Settings")
+    hdrTitle := gCEN["MainGui"].AddText("x20 y12 w300 h24", "Alt-Tabby Settings")
     hdrTitle.SetFont("s14 bold", "Segoe UI")
-    gCEN_SearchEdit := gCEN_MainGui.AddEdit("x524 y10 w260 h24")
-    Theme_ApplyToControl(gCEN_SearchEdit, "Edit", themeEntry)
-    DllCall("user32\SendMessageW", "Ptr", gCEN_SearchEdit.Hwnd, "UInt", 0x1501, "Ptr", 1, "WStr", "Search settings...")
-    DllCall("user32\SendMessageW", "Ptr", gCEN_SearchEdit.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
-    gCEN_SearchEdit.OnEvent("Change", _CEN_OnSearchInput)
+    gCEN["SearchEdit"] := gCEN["MainGui"].AddEdit("x524 y10 w260 h24")
+    Theme_ApplyToControl(gCEN["SearchEdit"], "Edit", themeEntry)
+    DllCall("user32\SendMessageW", "Ptr", gCEN["SearchEdit"].Hwnd, "UInt", 0x1501, "Ptr", 1, "WStr", "Search settings...")
+    DllCall("user32\SendMessageW", "Ptr", gCEN["SearchEdit"].Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
+    gCEN["SearchEdit"].OnEvent("Change", _CEN_OnSearchInput)
 
     ; Sidebar with section list (below header border)
     sidebarY := CEN_SEARCH_H + 1  ; +1 to leave room for header border
-    gCEN_Sidebar := gCEN_MainGui.AddListBox("x0 y" sidebarY " w" CEN_SIDEBAR_W " h400 +0x100", [])
-    gCEN_Sidebar.SetFont("s10", "Segoe UI")
-    Theme_ApplyToControl(gCEN_Sidebar, "ListBox", themeEntry)
-    Theme_MarkSidebar(gCEN_Sidebar)
+    gCEN["Sidebar"] := gCEN["MainGui"].AddListBox("x0 y" sidebarY " w" CEN_SIDEBAR_W " h400 +0x100", [])
+    gCEN["Sidebar"].SetFont("s10", "Segoe UI")
+    Theme_ApplyToControl(gCEN["Sidebar"], "ListBox", themeEntry)
+    Theme_MarkSidebar(gCEN["Sidebar"])
     items := []
-    gCEN_FilteredIndices := []
-    for idx, section in gCEN_Sections {
+    gCEN["FilteredIndices"] := []
+    for idx, section in gCEN["Sections"] {
         items.Push("   " section.desc)
-        gCEN_FilteredIndices.Push(idx)
+        gCEN["FilteredIndices"].Push(idx)
     }
-    gCEN_Sidebar.Add(items)
-    gCEN_Sidebar.OnEvent("Change", _CEN_OnSidebarChange)
+    gCEN["Sidebar"].Add(items)
+    gCEN["Sidebar"].OnEvent("Change", _CEN_OnSidebarChange)
 
     ; Viewport: clipping container for scrollable content
     ; WS_CLIPCHILDREN (0x02000000) prevents viewport bg from painting over page
     ; WS_VSCROLL (0x00200000) puts the scrollbar on this container
-    gCEN_Viewport := Gui("-Caption -Border +Parent" gCEN_MainGui.Hwnd " +0x02200000")
-    gCEN_Viewport.BackColor := gTheme_Palette.bg
-    gCEN_Viewport.MarginX := 0
-    gCEN_Viewport.MarginY := 0
-    Theme_ApplyToWindow(gCEN_Viewport.Hwnd)
+    gCEN["Viewport"] := Gui("-Caption -Border +Parent" gCEN["MainGui"].Hwnd " +0x02200000")
+    gCEN["Viewport"].BackColor := gTheme_Palette.bg
+    gCEN["Viewport"].MarginX := 0
+    gCEN["Viewport"].MarginY := 0
+    Theme_ApplyToWindow(gCEN["Viewport"].Hwnd)
     viewportY := CEN_SEARCH_H + 1  ; +1 to leave room for header border
-    gCEN_Viewport.Show("x" CEN_CONTENT_X " y" viewportY " w580 h466 NoActivate")
+    gCEN["Viewport"].Show("x" CEN_CONTENT_X " y" viewportY " w580 h466 NoActivate")
 
     ; Border separators (1px child GUIs in gaps between zones)
     ; Positioned in 1px gaps so they're never covered by sibling controls
-    global gCEN_SepHeader, gCEN_SepSidebar, gCEN_SepFooter
     borderColor := gTheme_Palette.border
     sepMiddleY := CEN_SEARCH_H + 1  ; sidebar/viewport start here
-    gCEN_SepHeader := Gui("-Caption -Border +Parent" gCEN_MainGui.Hwnd)
-    gCEN_SepHeader.BackColor := borderColor
-    gCEN_SepHeader.MarginX := 0
-    gCEN_SepHeader.MarginY := 0
-    gCEN_SepHeader.Show("x0 y" CEN_SEARCH_H " w800 h1 NoActivate")
-    gCEN_SepSidebar := Gui("-Caption -Border +Parent" gCEN_MainGui.Hwnd)
-    gCEN_SepSidebar.BackColor := borderColor
-    gCEN_SepSidebar.MarginX := 0
-    gCEN_SepSidebar.MarginY := 0
-    gCEN_SepSidebar.Show("x" CEN_SIDEBAR_W " y" sepMiddleY " w1 h400 NoActivate")
-    gCEN_SepFooter := Gui("-Caption -Border +Parent" gCEN_MainGui.Hwnd)
-    gCEN_SepFooter.BackColor := borderColor
-    gCEN_SepFooter.MarginX := 0
-    gCEN_SepFooter.MarginY := 0
-    gCEN_SepFooter.Show("x0 y501 w800 h1 NoActivate")
+    gCEN["SepHeader"] := Gui("-Caption -Border +Parent" gCEN["MainGui"].Hwnd)
+    gCEN["SepHeader"].BackColor := borderColor
+    gCEN["SepHeader"].MarginX := 0
+    gCEN["SepHeader"].MarginY := 0
+    gCEN["SepHeader"].Show("x0 y" CEN_SEARCH_H " w800 h1 NoActivate")
+    gCEN["SepSidebar"] := Gui("-Caption -Border +Parent" gCEN["MainGui"].Hwnd)
+    gCEN["SepSidebar"].BackColor := borderColor
+    gCEN["SepSidebar"].MarginX := 0
+    gCEN["SepSidebar"].MarginY := 0
+    gCEN["SepSidebar"].Show("x" CEN_SIDEBAR_W " y" sepMiddleY " w1 h400 NoActivate")
+    gCEN["SepFooter"] := Gui("-Caption -Border +Parent" gCEN["MainGui"].Hwnd)
+    gCEN["SepFooter"].BackColor := borderColor
+    gCEN["SepFooter"].MarginX := 0
+    gCEN["SepFooter"].MarginY := 0
+    gCEN["SepFooter"].Show("x0 y501 w800 h1 NoActivate")
 
     ; Footer: change counter (left) + buttons (right)
-    gCEN_ChangeLabel := gCEN_MainGui.AddText("x16 y468 w300 h20 +0x200 c" Theme_GetAccentColor(), "")
-    Theme_MarkAccent(gCEN_ChangeLabel)
-    btnReset := gCEN_MainGui.AddButton("x490 y460 w120 h30", "Reset to Defaults")
-    btnSave := gCEN_MainGui.AddButton("x620 y460 w80 h30", "Save")
-    btnCancel := gCEN_MainGui.AddButton("x710 y460 w80 h30", "Cancel")
-    gCEN_FooterBtns.Push(btnSave, btnCancel, btnReset)
+    gCEN["ChangeLabel"] := gCEN["MainGui"].AddText("x16 y468 w300 h20 +0x200 c" Theme_GetAccentColor(), "")
+    Theme_MarkAccent(gCEN["ChangeLabel"])
+    btnReset := gCEN["MainGui"].AddButton("x490 y460 w120 h30", "Reset to Defaults")
+    btnSave := gCEN["MainGui"].AddButton("x620 y460 w80 h30", "Save")
+    btnCancel := gCEN["MainGui"].AddButton("x710 y460 w80 h30", "Cancel")
+    gCEN["FooterBtns"].Push(btnSave, btnCancel, btnReset)
     btnReset.OnEvent("Click", _CEN_OnResetDefaults)
     btnSave.OnEvent("Click", _CEN_OnSave)
     btnCancel.OnEvent("Click", _CEN_OnCancel)
@@ -295,37 +257,37 @@ _CEN_BuildMainGUI() {
     Theme_ApplyToControl(btnCancel, "Button", themeEntry)
 
     ; Build page for each section
-    for section in gCEN_Sections
+    for section in gCEN["Sections"]
         _CEN_BuildPage(section)
 
     ; Event handlers
-    gCEN_MainGui.OnEvent("Size", _CEN_OnResize)
-    gCEN_MainGui.OnEvent("Close", _CEN_OnClose)
+    gCEN["MainGui"].OnEvent("Size", _CEN_OnResize)
+    gCEN["MainGui"].OnEvent("Close", _CEN_OnClose)
 
     ; Message handlers for scrolling
-    gCEN_BoundWheelMsg := _CEN_OnMouseWheel
-    OnMessage(CEN_WM_MOUSEWHEEL, gCEN_BoundWheelMsg)
+    gCEN["BoundWheelMsg"] := _CEN_OnMouseWheel
+    OnMessage(CEN_WM_MOUSEWHEEL, gCEN["BoundWheelMsg"])
 
-    gCEN_BoundScrollMsg := _CEN_OnVScroll
-    OnMessage(CEN_WM_VSCROLL, gCEN_BoundScrollMsg)
+    gCEN["BoundScrollMsg"] := _CEN_OnVScroll
+    OnMessage(CEN_WM_VSCROLL, gCEN["BoundScrollMsg"])
 
     ; Change counter timer (updates title bar every 500ms)
-    gCEN_ChangeCountTimer := 1
+    gCEN["ChangeCountTimer"] := 1
     SetTimer(_CEN_UpdateChangeCount, 500)
 
-    _GUI_AntiFlashPrepare(gCEN_MainGui, gTheme_Palette.panelBg, true)
-    gCEN_MainGui.Show("w800 h550")
+    _GUI_AntiFlashPrepare(gCEN["MainGui"], gTheme_Palette.panelBg, true)
+    gCEN["MainGui"].Show("w800 h550")
 }
 
 _CEN_BuildPage(section) {
-    global gCEN_Viewport, gCEN_Pages, gCEN_Controls
+    global gCEN
     global CEN_SETTING_PAD, CEN_DESC_LINE_H, CEN_LABEL_W, CEN_INPUT_X
 
     ; Page GUI: child of viewport, sized to FULL content height
     ; Controls are placed at fixed positions - they never move
     ; Scrolling moves the entire page within the viewport
     global gTheme_Palette
-    pageGui := Gui("-Caption -Border +Parent" gCEN_Viewport.Hwnd " +0x02000000")
+    pageGui := Gui("-Caption -Border +Parent" gCEN["Viewport"].Hwnd " +0x02000000")
     pageGui.BackColor := gTheme_Palette.bg
     pageGui.MarginX := 0
     pageGui.MarginY := 0
@@ -413,14 +375,14 @@ _CEN_BuildPage(section) {
 
     ; Store page info
     page := {gui: pageGui, controls: controls, blocks: blocks, contentH: y, origContentH: y, scrollPos: 0}
-    gCEN_Pages[section.name] := page
+    gCEN["Pages"][section.name] := page
 
     ; Size to FULL content height. Viewport clips the visible portion.
     pageGui.Show("x0 y0 w580 h" y " NoActivate Hide")
 }
 
 _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, subIdx) {
-    global gCEN_Controls, gCEN_ThemeEntry, gTheme_Palette, gCEN_SettingGroups
+    global gCEN, gTheme_Palette
     global CEN_SETTING_PAD, CEN_DESC_LINE_H, CEN_LABEL_W, CEN_INPUT_X
 
     mutedColor := Theme_GetMutedColor()
@@ -440,8 +402,8 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             cb.SetFont("s9 bold", "Segoe UI")
             controls.Push({ctrl: cb, origY: y, origX: 24})
             settingCtrls.Push({ctrl: cb, origY: y, origX: 24})
-            gCEN_Controls[setting.g] := {ctrl: cb, type: "bool"}
-            Theme_ApplyToControl(cb, "Checkbox", gCEN_ThemeEntry)
+            gCEN["Controls"][setting.g] := {ctrl: cb, type: "bool"}
+            Theme_ApplyToControl(cb, "Checkbox", gCEN["ThemeEntry"])
             y += 22
             dc := pageGui.AddText("x40 y" y " w" (contentW - 24) " h" descH " c" mutedColor " +Wrap", setting.d)
             dc.SetFont("s8", "Segoe UI")
@@ -462,8 +424,8 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             dd := pageGui.AddDropDownList("x" CEN_INPUT_X " y" y " w200", optList)
             controls.Push({ctrl: dd, origY: y, origX: CEN_INPUT_X})
             settingCtrls.Push({ctrl: dd, origY: y, origX: CEN_INPUT_X})
-            gCEN_Controls[setting.g] := {ctrl: dd, type: "enum"}
-            Theme_ApplyToControl(dd, "DDL", gCEN_ThemeEntry)
+            gCEN["Controls"][setting.g] := {ctrl: dd, type: "enum"}
+            Theme_ApplyToControl(dd, "DDL", gCEN["ThemeEntry"])
             y += 26
             dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c" mutedColor " +Wrap", setting.d)
             dc.SetFont("s8", "Segoe UI")
@@ -488,7 +450,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 slider := pageGui.AddSlider("x" sliderX " y" y " w120 h24 +0x10 Range" setting.min "-" setting.max)
                 controls.Push({ctrl: slider, origY: y, origX: sliderX})
                 settingCtrls.Push({ctrl: slider, origY: y, origX: sliderX})
-                Theme_ApplyToControl(slider, "Slider", gCEN_ThemeEntry)
+                Theme_ApplyToControl(slider, "Slider", gCEN["ThemeEntry"])
                 editX := sliderX + 126
                 ed := pageGui.AddEdit("x" editX " y" y " w80 Number")
                 controls.Push({ctrl: ed, origY: y, origX: editX})
@@ -496,8 +458,8 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 ud := pageGui.AddUpDown("Range" setting.min "-" setting.max)
                 controls.Push({ctrl: ud, origY: y, origX: editX})
                 settingCtrls.Push({ctrl: ud, origY: y, origX: editX})
-                Theme_ApplyToControl(ed, "Edit", gCEN_ThemeEntry)
-                Theme_ApplyToControl(ud, "UpDown", gCEN_ThemeEntry)
+                Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
+                Theme_ApplyToControl(ud, "UpDown", gCEN["ThemeEntry"])
                 DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
                 rangeX := editX + 86
                 rc := pageGui.AddText("x" rangeX " y" (y + 3) " w120 h16 c" mutedColor, setting.min " - " setting.max)
@@ -512,7 +474,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 slider.OnEvent("Change", boundSliderSync)
                 ed.OnEvent("Change", boundEditSync)
                 ctrlInfo := {ctrl: ed, type: setting.t, slider: slider}
-                gCEN_Controls[setting.g] := ctrlInfo
+                gCEN["Controls"][setting.g] := ctrlInfo
             } else {
                 ; Float, hex, string, or no range -> plain Edit
                 ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w200")
@@ -521,8 +483,8 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 ctrlInfo := {ctrl: ed, type: setting.t}
                 if (isHex)
                     ctrlInfo.fmt := "hex"
-                gCEN_Controls[setting.g] := ctrlInfo
-                Theme_ApplyToControl(ed, "Edit", gCEN_ThemeEntry)
+                gCEN["Controls"][setting.g] := ctrlInfo
+                Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
                 DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
 
                 ; Clamp-on-blur for float/hex with range
@@ -562,7 +524,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
 
         ; Track this setting's controls as a block for search reflow
         blocks.Push({kind: "setting", startY: startY, ctrls: settingCtrls, globalName: setting.g, subIdx: subIdx})
-        gCEN_SettingGroups[setting.g] := {pageKey: sectionName, searchText: StrLower(setting.k " " setting.g " " setting.d), subIdx: subIdx}
+        gCEN["SettingGroups"][setting.g] := {pageKey: sectionName, searchText: StrLower(setting.k " " setting.g " " setting.d), subIdx: subIdx}
     }
     return y
 }
@@ -572,46 +534,31 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
 ; ============================================================
 
 _CEN_LoadValues() {
-    global gCEN_Controls, gCEN_OriginalValues, gConfigRegistry, gConfigIniPath
+    global gCEN, gConfigRegistry, gConfigIniPath
 
-    gCEN_OriginalValues := Map()
+    gCEN["OriginalValues"] := Map()
 
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!gCEN_Controls.Has(entry.g))
+        if (!gCEN["Controls"].Has(entry.g))
             continue
 
-        ctrlInfo := gCEN_Controls[entry.g]
+        ctrlInfo := gCEN["Controls"][entry.g]
 
         ; Read from INI, fall back to default
         iniVal := IniRead(gConfigIniPath, entry.s, entry.k, "")
         if (iniVal = "") {
             val := entry.default
         } else {
-            val := _CEN_ParseValue(iniVal, entry.t)
+            val := _CL_ParseValue(iniVal, entry.t)
         }
 
         ; Set control value
         _CEN_SetControlValue(ctrlInfo, val, entry.t)
 
         ; Store original for change detection
-        gCEN_OriginalValues[entry.g] := val
-    }
-}
-
-_CEN_ParseValue(iniVal, type) {
-    switch type {
-        case "bool":
-            return (iniVal = "true" || iniVal = "1" || iniVal = "yes")
-        case "int":
-            if (SubStr(iniVal, 1, 2) = "0x")
-                return Integer(iniVal)
-            return Integer(iniVal)
-        case "float":
-            return Float(iniVal)
-        default:
-            return iniVal
+        gCEN["OriginalValues"][entry.g] := val
     }
 }
 
@@ -665,10 +612,10 @@ _CEN_SyncEditToSlider(editCtrl, sliderCtrl, guard) {
 }
 
 _CEN_ClampOnBlur(globalName, minVal, maxVal) {
-    global gCEN_Controls
-    if (!gCEN_Controls.Has(globalName))
+    global gCEN
+    if (!gCEN["Controls"].Has(globalName))
         return
-    ctrlInfo := gCEN_Controls[globalName]
+    ctrlInfo := gCEN["Controls"][globalName]
     val := _CEN_GetControlValue(ctrlInfo, ctrlInfo.type)
     if (val < minVal)
         val := minVal
@@ -702,17 +649,17 @@ _CEN_GetControlValue(ctrlInfo, type) {
 }
 
 _CEN_HasUnsavedChanges() {
-    global gCEN_Controls, gCEN_OriginalValues, gConfigRegistry
+    global gCEN, gConfigRegistry
 
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!gCEN_Controls.Has(entry.g))
+        if (!gCEN["Controls"].Has(entry.g))
             continue
 
-        ctrlInfo := gCEN_Controls[entry.g]
+        ctrlInfo := gCEN["Controls"][entry.g]
         currentVal := _CEN_GetControlValue(ctrlInfo, entry.t)
-        originalVal := gCEN_OriginalValues[entry.g]
+        originalVal := gCEN["OriginalValues"][entry.g]
 
         if (currentVal != originalVal)
             return true
@@ -721,27 +668,24 @@ _CEN_HasUnsavedChanges() {
 }
 
 _CEN_SaveToIni() {
-    global gCEN_Controls, gCEN_OriginalValues, gConfigRegistry, gConfigIniPath
+    global gCEN, gConfigRegistry
 
-    changeCount := 0
-
+    changes := Map()
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!gCEN_Controls.Has(entry.g))
+        if (!gCEN["Controls"].Has(entry.g))
             continue
 
-        ctrlInfo := gCEN_Controls[entry.g]
+        ctrlInfo := gCEN["Controls"][entry.g]
         currentVal := _CEN_GetControlValue(ctrlInfo, entry.t)
-        originalVal := gCEN_OriginalValues[entry.g]
+        originalVal := gCEN["OriginalValues"][entry.g]
 
-        if (currentVal != originalVal) {
-            _CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, currentVal, entry.default, entry.t)
-            changeCount++
-        }
+        if (currentVal != originalVal)
+            changes[entry.g] := currentVal
     }
 
-    return changeCount
+    return _CL_SaveChanges(changes)
 }
 
 ; ============================================================
@@ -749,31 +693,31 @@ _CEN_SaveToIni() {
 ; ============================================================
 
 _CEN_OnSidebarChange(ctrl, *) {
-    global gCEN_Sections, gCEN_FilteredIndices, gCEN_FlatMode
+    global gCEN
     idx := ctrl.Value
-    if (idx < 1 || idx > gCEN_FilteredIndices.Length)
+    if (idx < 1 || idx > gCEN["FilteredIndices"].Length)
         return
-    realIdx := gCEN_FilteredIndices[idx]
-    if (realIdx < 1 || realIdx > gCEN_Sections.Length)
+    realIdx := gCEN["FilteredIndices"][idx]
+    if (realIdx < 1 || realIdx > gCEN["Sections"].Length)
         return
-    if (gCEN_FlatMode)
-        _CEN_ScrollToFlatSection(gCEN_Sections[realIdx].name)
+    if (gCEN["FlatMode"])
+        _CEN_ScrollToFlatSection(gCEN["Sections"][realIdx].name)
     else
-        _CEN_SwitchToPage(gCEN_Sections[realIdx].name)
+        _CEN_SwitchToPage(gCEN["Sections"][realIdx].name)
 }
 
 _CEN_SwitchToPage(name) {
-    global gCEN_Pages, gCEN_CurrentPage, gCEN_ScrollAccum
+    global gCEN
 
-    if (gCEN_CurrentPage != "" && gCEN_Pages.Has(gCEN_CurrentPage))
-        gCEN_Pages[gCEN_CurrentPage].gui.Hide()
+    if (gCEN["CurrentPage"] != "" && gCEN["Pages"].Has(gCEN["CurrentPage"]))
+        gCEN["Pages"][gCEN["CurrentPage"]].gui.Hide()
 
-    gCEN_CurrentPage := name
-    gCEN_ScrollAccum := 0
-    if (!gCEN_Pages.Has(name))
+    gCEN["CurrentPage"] := name
+    gCEN["ScrollAccum"] := 0
+    if (!gCEN["Pages"].Has(name))
         return
 
-    page := gCEN_Pages[name]
+    page := gCEN["Pages"][name]
     page.scrollPos := 0
     page.gui.Move(0, 0)  ; reset to top of viewport
     _CEN_UpdateScrollBar(name)
@@ -785,16 +729,16 @@ _CEN_SwitchToPage(name) {
 ; ============================================================
 
 _CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {
-    global gCEN_CurrentPage, gCEN_Pages, gCEN_MainGui, CEN_SIDEBAR_W
-    global gCEN_ScrollAccum, gCEN_ScrollTimer
+    global gCEN
+    global CEN_SIDEBAR_W
 
-    if (gCEN_CurrentPage = "" || !gCEN_Pages.Has(gCEN_CurrentPage))
+    if (gCEN["CurrentPage"] = "" || !gCEN["Pages"].Has(gCEN["CurrentPage"]))
         return
 
     ; Hit test: only scroll if cursor is right of sidebar
     pt := Buffer(8, 0)
     DllCall("GetCursorPos", "Ptr", pt)
-    DllCall("ScreenToClient", "Ptr", gCEN_MainGui.Hwnd, "Ptr", pt)
+    DllCall("ScreenToClient", "Ptr", gCEN["MainGui"].Hwnd, "Ptr", pt)
     if (NumGet(pt, 0, "Int") < CEN_SIDEBAR_W)
         return
 
@@ -804,11 +748,11 @@ _CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {
         raw -= 0x10000
 
     ; Accumulate (negative = scroll down = positive offset)
-    gCEN_ScrollAccum -= raw
+    gCEN["ScrollAccum"] -= raw
 
     ; Start drain timer if not running
-    if (!gCEN_ScrollTimer) {
-        gCEN_ScrollTimer := 1
+    if (!gCEN["ScrollTimer"]) {
+        gCEN["ScrollTimer"] := 1
         SetTimer(_CEN_DrainScroll, -10)
     }
 
@@ -816,49 +760,49 @@ _CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {
 }
 
 _CEN_DrainScroll() {
-    global gCEN_ScrollAccum, gCEN_ScrollTimer, gCEN_CurrentPage, gCEN_Pages, CEN_SCROLL_STEP
-    global gCEN_FlatMode
+    global gCEN
+    global CEN_SCROLL_STEP
 
-    gCEN_ScrollTimer := 0
+    gCEN["ScrollTimer"] := 0
 
-    if (gCEN_ScrollAccum = 0) {
+    if (gCEN["ScrollAccum"] = 0) {
         return
     }
 
-    notches := gCEN_ScrollAccum / 120
+    notches := gCEN["ScrollAccum"] / 120
     scrollPx := Round(notches * CEN_SCROLL_STEP)
-    gCEN_ScrollAccum := 0
+    gCEN["ScrollAccum"] := 0
 
     if (scrollPx = 0)
         return
 
-    if (gCEN_FlatMode) {
+    if (gCEN["FlatMode"]) {
         _CEN_DoFlatScroll(scrollPx)
     } else {
-        if (gCEN_CurrentPage = "" || !gCEN_Pages.Has(gCEN_CurrentPage))
+        if (gCEN["CurrentPage"] = "" || !gCEN["Pages"].Has(gCEN["CurrentPage"]))
             return
-        page := gCEN_Pages[gCEN_CurrentPage]
+        page := gCEN["Pages"][gCEN["CurrentPage"]]
         _CEN_DoScroll(page, scrollPx)
     }
-    _CEN_UpdateScrollBar(gCEN_CurrentPage)
+    _CEN_UpdateScrollBar(gCEN["CurrentPage"])
 }
 
 _CEN_OnVScroll(wParam, lParam, msg, hwnd) {
-    global gCEN_CurrentPage, gCEN_Pages, gCEN_Viewport, CEN_SCROLL_STEP
-    global gCEN_FlatMode, gCEN_FlatScrollPos, gCEN_FlatContentH
+    global gCEN
+    global CEN_SCROLL_STEP
 
-    if (hwnd != gCEN_Viewport.Hwnd)
+    if (hwnd != gCEN["Viewport"].Hwnd)
         return
 
     viewH := _CEN_GetViewportHeight()
 
-    if (gCEN_FlatMode) {
-        scrollPos := gCEN_FlatScrollPos
-        maxScroll := Max(0, gCEN_FlatContentH - viewH)
+    if (gCEN["FlatMode"]) {
+        scrollPos := gCEN["FlatScrollPos"]
+        maxScroll := Max(0, gCEN["FlatContentH"] - viewH)
     } else {
-        if (gCEN_CurrentPage = "" || !gCEN_Pages.Has(gCEN_CurrentPage))
+        if (gCEN["CurrentPage"] = "" || !gCEN["Pages"].Has(gCEN["CurrentPage"]))
             return
-        page := gCEN_Pages[gCEN_CurrentPage]
+        page := gCEN["Pages"][gCEN["CurrentPage"]]
         scrollPos := page.scrollPos
         maxScroll := Max(0, page.contentH - viewH)
     }
@@ -877,13 +821,13 @@ _CEN_OnVScroll(wParam, lParam, msg, hwnd) {
     if (newPos = scrollPos)
         return
 
-    if (gCEN_FlatMode) {
-        gCEN_FlatScrollPos := newPos
+    if (gCEN["FlatMode"]) {
+        gCEN["FlatScrollPos"] := newPos
         _CEN_PositionFlatPages()
     } else {
         _CEN_DoScroll(page, newPos - page.scrollPos)
     }
-    _CEN_UpdateScrollBar(gCEN_CurrentPage)
+    _CEN_UpdateScrollBar(gCEN["CurrentPage"])
 }
 
 _CEN_DoScroll(page, delta) {
@@ -901,28 +845,28 @@ _CEN_DoScroll(page, delta) {
 }
 
 _CEN_UpdateScrollBar(sectionName) {
-    global gCEN_Pages, gCEN_Viewport, CEN_SB_VERT, CEN_SIF_ALL
-    global gCEN_FlatMode, gCEN_FlatContentH, gCEN_FlatScrollPos
+    global gCEN
+    global CEN_SB_VERT, CEN_SIF_ALL
 
     viewH := _CEN_GetViewportHeight()
 
-    if (gCEN_FlatMode) {
-        contentH := gCEN_FlatContentH
-        scrollPos := gCEN_FlatScrollPos
+    if (gCEN["FlatMode"]) {
+        contentH := gCEN["FlatContentH"]
+        scrollPos := gCEN["FlatScrollPos"]
     } else {
-        if (!gCEN_Pages.Has(sectionName))
+        if (!gCEN["Pages"].Has(sectionName))
             return
-        page := gCEN_Pages[sectionName]
+        page := gCEN["Pages"][sectionName]
         contentH := page.contentH
         scrollPos := page.scrollPos
     }
 
     if (contentH <= viewH) {
-        DllCall("ShowScrollBar", "Ptr", gCEN_Viewport.Hwnd, "Int", CEN_SB_VERT, "Int", 0)
+        DllCall("ShowScrollBar", "Ptr", gCEN["Viewport"].Hwnd, "Int", CEN_SB_VERT, "Int", 0)
         return
     }
 
-    DllCall("ShowScrollBar", "Ptr", gCEN_Viewport.Hwnd, "Int", CEN_SB_VERT, "Int", 1)
+    DllCall("ShowScrollBar", "Ptr", gCEN["Viewport"].Hwnd, "Int", CEN_SB_VERT, "Int", 1)
 
     si := Buffer(28, 0)
     NumPut("UInt", 28, si, 0)
@@ -932,12 +876,12 @@ _CEN_UpdateScrollBar(sectionName) {
     NumPut("UInt", viewH, si, 16)
     NumPut("Int", scrollPos, si, 20)
 
-    DllCall("SetScrollInfo", "Ptr", gCEN_Viewport.Hwnd, "Int", CEN_SB_VERT, "Ptr", si, "Int", 1)
+    DllCall("SetScrollInfo", "Ptr", gCEN["Viewport"].Hwnd, "Int", CEN_SB_VERT, "Ptr", si, "Int", 1)
 }
 
 _CEN_GetViewportHeight() {
-    global gCEN_Viewport
-    gCEN_Viewport.GetPos(,, &w, &h)
+    global gCEN
+    gCEN["Viewport"].GetPos(,, &w, &h)
     return h
 }
 
@@ -946,8 +890,7 @@ _CEN_GetViewportHeight() {
 ; ============================================================
 
 _CEN_OnResize(gui, minMax, w, h) {
-    global gCEN_Sidebar, gCEN_Viewport, gCEN_Pages, gCEN_CurrentPage, gCEN_FooterBtns
-    global gCEN_SearchEdit, gCEN_SepHeader, gCEN_SepSidebar, gCEN_SepFooter
+    global gCEN
     global CEN_SIDEBAR_W, CEN_CONTENT_X, CEN_FOOTER_H, CEN_SEARCH_H
 
     if (minMax = -1)
@@ -956,54 +899,53 @@ _CEN_OnResize(gui, minMax, w, h) {
     ; Middle row starts 1px below header border, ends 1px above footer border
     middleY := CEN_SEARCH_H + 1
     viewportH := h - CEN_FOOTER_H - middleY - 1  ; -1 for footer border pixel
-    gCEN_SearchEdit.Move(w - 276, 10, 260)
-    gCEN_Sidebar.Move(0, middleY, CEN_SIDEBAR_W, viewportH)
+    gCEN["SearchEdit"].Move(w - 276, 10, 260)
+    gCEN["Sidebar"].Move(0, middleY, CEN_SIDEBAR_W, viewportH)
 
     contentW := w - CEN_CONTENT_X
-    gCEN_Viewport.Move(CEN_CONTENT_X, middleY, contentW, viewportH)
+    gCEN["Viewport"].Move(CEN_CONTENT_X, middleY, contentW, viewportH)
 
     ; Reposition border separators (in 1px gaps between zones)
-    try gCEN_SepHeader.Move(0, CEN_SEARCH_H, w, 1)
-    try gCEN_SepSidebar.Move(CEN_SIDEBAR_W, middleY, 1, viewportH)
-    try gCEN_SepFooter.Move(0, h - CEN_FOOTER_H - 1, w, 1)
+    try gCEN["SepHeader"].Move(0, CEN_SEARCH_H, w, 1)
+    try gCEN["SepSidebar"].Move(CEN_SIDEBAR_W, middleY, 1, viewportH)
+    try gCEN["SepFooter"].Move(0, h - CEN_FOOTER_H - 1, w, 1)
 
     ; Update page widths
-    for name, page in gCEN_Pages
+    for name, page in gCEN["Pages"]
         page.gui.Move(0, , contentW)
 
     ; Move footer: change label (left) + buttons (right)
     btnY := h - CEN_FOOTER_H + 8
-    global gCEN_ChangeLabel
-    if (gCEN_ChangeLabel)
-        gCEN_ChangeLabel.Move(16, btnY + 5, 300, 20)
-    if (gCEN_FooterBtns.Length >= 3) {
-        gCEN_FooterBtns[2].Move(w - 100, btnY, 80, 30)       ; Cancel
-        gCEN_FooterBtns[1].Move(w - 190, btnY, 80, 30)       ; Save
-        gCEN_FooterBtns[3].Move(w - 320, btnY, 120, 30)      ; Reset
+    if (gCEN["ChangeLabel"])
+        gCEN["ChangeLabel"].Move(16, btnY + 5, 300, 20)
+    if (gCEN["FooterBtns"].Length >= 3) {
+        gCEN["FooterBtns"][2].Move(w - 100, btnY, 80, 30)       ; Cancel
+        gCEN["FooterBtns"][1].Move(w - 190, btnY, 80, 30)       ; Save
+        gCEN["FooterBtns"][3].Move(w - 320, btnY, 120, 30)      ; Reset
     }
 
-    if (gCEN_CurrentPage != "")
-        _CEN_UpdateScrollBar(gCEN_CurrentPage)
+    if (gCEN["CurrentPage"] != "")
+        _CEN_UpdateScrollBar(gCEN["CurrentPage"])
 }
 
 _CEN_OnSave(*) {
-    global gCEN_MainGui, gCEN_SavedChanges, gCEN_LauncherHwnd
+    global gCEN
     global TABBY_CMD_RESTART_ALL
 
     if (!_CEN_HasUnsavedChanges()) {
         _CEN_Cleanup()
-        gCEN_MainGui.Destroy()
+        gCEN["MainGui"].Destroy()
         return
     }
 
     changeCount := _CEN_SaveToIni()
-    gCEN_SavedChanges := true
+    gCEN["SavedChanges"] := true
 
     _CEN_Cleanup()
-    gCEN_MainGui.Destroy()
+    gCEN["MainGui"].Destroy()
 
     ; Send restart signal to launcher
-    if (gCEN_LauncherHwnd && DllCall("user32\IsWindow", "ptr", gCEN_LauncherHwnd)) {
+    if (gCEN["LauncherHwnd"] && DllCall("user32\IsWindow", "ptr", gCEN["LauncherHwnd"])) {
         cds := Buffer(3 * A_PtrSize, 0)
         NumPut("uptr", TABBY_CMD_RESTART_ALL, cds, 0)
         NumPut("uint", 0, cds, A_PtrSize)
@@ -1011,7 +953,7 @@ _CEN_OnSave(*) {
 
         global WM_COPYDATA
         DllCall("user32\SendMessageTimeoutW"
-            , "ptr", gCEN_LauncherHwnd
+            , "ptr", gCEN["LauncherHwnd"]
             , "uint", WM_COPYDATA
             , "ptr", A_ScriptHwnd
             , "ptr", cds.Ptr
@@ -1026,7 +968,7 @@ _CEN_OnSave(*) {
 }
 
 _CEN_OnCancel(*) {
-    global gCEN_MainGui
+    global gCEN
 
     if (_CEN_HasUnsavedChanges()) {
         result := ThemeMsgBox("You have unsaved changes. Discard them?", "Alt-Tabby Configuration", "YesNo Icon?")
@@ -1035,7 +977,7 @@ _CEN_OnCancel(*) {
     }
 
     _CEN_Cleanup()
-    gCEN_MainGui.Destroy()
+    gCEN["MainGui"].Destroy()
 }
 
 _CEN_OnClose(guiObj) {
@@ -1053,80 +995,76 @@ _CEN_OnClose(guiObj) {
 }
 
 _CEN_OnThemeChange() {
-    global gCEN_MainGui, gCEN_Viewport, gCEN_Pages, gTheme_Palette
-    global gCEN_SepHeader, gCEN_SepSidebar, gCEN_SepFooter
+    global gCEN, gTheme_Palette
     ; Re-override main GUI bg (frame = panelBg, content = bg)
-    try gCEN_MainGui.BackColor := gTheme_Palette.panelBg
+    try gCEN["MainGui"].BackColor := gTheme_Palette.panelBg
     try {
-        gCEN_Viewport.BackColor := gTheme_Palette.bg
-        Theme_ApplyToWindow(gCEN_Viewport.Hwnd)
+        gCEN["Viewport"].BackColor := gTheme_Palette.bg
+        Theme_ApplyToWindow(gCEN["Viewport"].Hwnd)
     }
-    for name, page in gCEN_Pages {
+    for name, page in gCEN["Pages"] {
         try page.gui.BackColor := gTheme_Palette.bg
     }
     ; Update border separator colors
-    try gCEN_SepHeader.BackColor := gTheme_Palette.border
-    try gCEN_SepSidebar.BackColor := gTheme_Palette.border
-    try gCEN_SepFooter.BackColor := gTheme_Palette.border
+    try gCEN["SepHeader"].BackColor := gTheme_Palette.border
+    try gCEN["SepSidebar"].BackColor := gTheme_Palette.border
+    try gCEN["SepFooter"].BackColor := gTheme_Palette.border
 }
 
 _CEN_Cleanup() {
-    global gCEN_BoundWheelMsg, gCEN_BoundScrollMsg
+    global gCEN
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL
-    global gCEN_Pages, gCEN_Viewport, gCEN_MainGui, gCEN_ThemeEntry
-    global gCEN_ChangeCountTimer, gCEN_SearchTimer
-    global gCEN_SepHeader, gCEN_SepSidebar, gCEN_SepFooter
 
     ; Stop timers
-    if (gCEN_ChangeCountTimer) {
+    if (gCEN["ChangeCountTimer"]) {
         SetTimer(_CEN_UpdateChangeCount, 0)
-        gCEN_ChangeCountTimer := 0
+        gCEN["ChangeCountTimer"] := 0
     }
-    if (gCEN_SearchTimer) {
+    if (gCEN["SearchTimer"]) {
         SetTimer(_CEN_DoSearch, 0)
-        gCEN_SearchTimer := 0
+        gCEN["SearchTimer"] := 0
     }
 
     ; Untrack GUI from theme system
-    if (gCEN_MainGui) {
-        try Theme_UntrackGui(gCEN_MainGui)
+    if (gCEN["MainGui"]) {
+        try Theme_UntrackGui(gCEN["MainGui"])
     }
-    gCEN_ThemeEntry := 0
+    gCEN["ThemeEntry"] := 0
 
     ; Remove message handlers
-    if (gCEN_BoundWheelMsg) {
-        OnMessage(CEN_WM_MOUSEWHEEL, gCEN_BoundWheelMsg, 0)
-        gCEN_BoundWheelMsg := 0
+    if (gCEN["BoundWheelMsg"]) {
+        OnMessage(CEN_WM_MOUSEWHEEL, gCEN["BoundWheelMsg"], 0)
+        gCEN["BoundWheelMsg"] := 0
     }
-    if (gCEN_BoundScrollMsg) {
-        OnMessage(CEN_WM_VSCROLL, gCEN_BoundScrollMsg, 0)
-        gCEN_BoundScrollMsg := 0
+    if (gCEN["BoundScrollMsg"]) {
+        OnMessage(CEN_WM_VSCROLL, gCEN["BoundScrollMsg"], 0)
+        gCEN["BoundScrollMsg"] := 0
     }
 
     ; Destroy page GUIs
-    for name, page in gCEN_Pages {
+    for name, page in gCEN["Pages"] {
         try page.gui.Destroy()
     }
-    gCEN_Pages := Map()
+    gCEN["Pages"] := Map()
 
     ; Destroy border separators
-    if (gCEN_SepHeader) {
-        try gCEN_SepHeader.Destroy()
-        gCEN_SepHeader := 0
+    if (gCEN["SepHeader"]) {
+        try gCEN["SepHeader"].Destroy()
+        gCEN["SepHeader"] := 0
     }
-    if (gCEN_SepSidebar) {
-        try gCEN_SepSidebar.Destroy()
-        gCEN_SepSidebar := 0
+    if (gCEN["SepSidebar"]) {
+        try gCEN["SepSidebar"].Destroy()
+        gCEN["SepSidebar"] := 0
     }
-    if (gCEN_SepFooter) {
-        try gCEN_SepFooter.Destroy()
-        gCEN_SepFooter := 0
+    if (gCEN["SepFooter"]) {
+        try gCEN["SepFooter"].Destroy()
+        gCEN["SepFooter"] := 0
     }
 
     ; Destroy viewport
-    if (gCEN_Viewport) {
-        try gCEN_Viewport.Destroy()
-        gCEN_Viewport := 0
+    if (gCEN["Viewport"]) {
+        try gCEN["Viewport"].Destroy()
+        gCEN["Viewport"] := 0
     }
 }
 
@@ -1135,113 +1073,111 @@ _CEN_Cleanup() {
 ; ============================================================
 
 _CEN_OnSearchInput(ctrl, *) {
-    global gCEN_SearchTimer
-    if (gCEN_SearchTimer)
+    global gCEN
+    if (gCEN["SearchTimer"])
         SetTimer(_CEN_DoSearch, 0)
-    gCEN_SearchTimer := 1
+    gCEN["SearchTimer"] := 1
     SetTimer(_CEN_DoSearch, -200)
 }
 
 _CEN_DoSearch() {
-    global gCEN_SearchEdit, gCEN_SearchText, gCEN_SearchTimer
-    gCEN_SearchTimer := 0
-    newText := StrLower(Trim(gCEN_SearchEdit.Value))
-    if (newText = gCEN_SearchText)
+    global gCEN
+    gCEN["SearchTimer"] := 0
+    newText := StrLower(Trim(gCEN["SearchEdit"].Value))
+    if (newText = gCEN["SearchText"])
         return
-    gCEN_SearchText := newText
+    gCEN["SearchText"] := newText
     _CEN_ApplySearch()
 }
 
 _CEN_ApplySearch() {
-    global gCEN_SearchText, gCEN_Sections, gCEN_Sidebar, gCEN_FilteredIndices
-    global gCEN_Pages, gCEN_CurrentPage, gCEN_FlatMode, gCEN_FlatScrollPos, gCEN_FlatContentH
-    global gCEN_SettingGroups
+    global gCEN
 
-    searchText := gCEN_SearchText
+    searchText := gCEN["SearchText"]
 
     ; Reflow all pages (show/hide settings based on search)
-    for name, page in gCEN_Pages
+    for name, page in gCEN["Pages"]
         _CEN_ReflowPage(page, name, searchText)
 
     ; Build filtered section indices (sections with matching settings)
-    gCEN_FilteredIndices := []
-    for idx, section in gCEN_Sections {
+    gCEN["FilteredIndices"] := []
+    for idx, section in gCEN["Sections"] {
         if (searchText = "" || _CEN_SectionHasMatch(section.name, searchText))
-            gCEN_FilteredIndices.Push(idx)
+            gCEN["FilteredIndices"].Push(idx)
     }
 
-    gCEN_Sidebar.Delete()
+    gCEN["Sidebar"].Delete()
 
     if (searchText != "") {
         ; Search active: single "Search Results" label in sidebar
         matchCount := 0
-        for _, group in gCEN_SettingGroups {
+        for _, group in gCEN["SettingGroups"] {
             if (InStr(group.searchText, searchText))
                 matchCount++
         }
         if (matchCount > 0)
-            gCEN_Sidebar.Add(["   Search Results (" matchCount ")"])
+            gCEN["Sidebar"].Add(["   Search Results (" matchCount ")"])
         else
-            gCEN_Sidebar.Add(["   No results"])
-        gCEN_Sidebar.Value := 1
+            gCEN["Sidebar"].Add(["   No results"])
+        gCEN["Sidebar"].Value := 1
 
-        if (gCEN_FilteredIndices.Length > 0) {
+        if (gCEN["FilteredIndices"].Length > 0) {
             ; FLAT MODE: show all matching pages stacked
-            gCEN_FlatMode := true
-            gCEN_FlatScrollPos := 0
-            for name, page in gCEN_Pages
+            gCEN["FlatMode"] := true
+            gCEN["FlatScrollPos"] := 0
+            for name, page in gCEN["Pages"]
                 page.gui.Hide()
             totalH := 0
-            for _, idx in gCEN_FilteredIndices {
-                section := gCEN_Sections[idx]
-                if (!gCEN_Pages.Has(section.name))
+            for _, idx in gCEN["FilteredIndices"] {
+                section := gCEN["Sections"][idx]
+                if (!gCEN["Pages"].Has(section.name))
                     continue
-                page := gCEN_Pages[section.name]
+                page := gCEN["Pages"][section.name]
                 page.gui.Show("NoActivate")
                 totalH += page.contentH
             }
-            gCEN_FlatContentH := totalH
+            gCEN["FlatContentH"] := totalH
             _CEN_PositionFlatPages()
         } else {
-            if (gCEN_FlatMode) {
-                gCEN_FlatMode := false
-                for name, page in gCEN_Pages
+            if (gCEN["FlatMode"]) {
+                gCEN["FlatMode"] := false
+                for name, page in gCEN["Pages"]
                     page.gui.Hide()
             }
         }
     } else {
         ; No search: restore normal section sidebar
         items := []
-        for _, idx in gCEN_FilteredIndices
-            items.Push("   " gCEN_Sections[idx].desc)
-        gCEN_Sidebar.Add(items)
+        for _, idx in gCEN["FilteredIndices"]
+            items.Push("   " gCEN["Sections"][idx].desc)
+        gCEN["Sidebar"].Add(items)
 
         ; NORMAL MODE: single page view
-        if (gCEN_FlatMode) {
-            gCEN_FlatMode := false
-            for name, page in gCEN_Pages
+        if (gCEN["FlatMode"]) {
+            gCEN["FlatMode"] := false
+            for name, page in gCEN["Pages"]
                 page.gui.Hide()
         }
-        if (gCEN_FilteredIndices.Length > 0) {
+        if (gCEN["FilteredIndices"].Length > 0) {
             selIdx := 1
-            for i, realIdx in gCEN_FilteredIndices {
-                if (gCEN_CurrentPage != "" && gCEN_Sections[realIdx].name = gCEN_CurrentPage) {
+            for i, realIdx in gCEN["FilteredIndices"] {
+                if (gCEN["CurrentPage"] != "" && gCEN["Sections"][realIdx].name = gCEN["CurrentPage"]) {
                     selIdx := i
                     break
                 }
             }
-            gCEN_Sidebar.Value := selIdx
-            realIdx := gCEN_FilteredIndices[selIdx]
-            _CEN_SwitchToPage(gCEN_Sections[realIdx].name)
+            gCEN["Sidebar"].Value := selIdx
+            realIdx := gCEN["FilteredIndices"][selIdx]
+            _CEN_SwitchToPage(gCEN["Sections"][realIdx].name)
         }
     }
 
-    _CEN_UpdateScrollBar(gCEN_CurrentPage)
+    _CEN_UpdateScrollBar(gCEN["CurrentPage"])
 }
 
 _CEN_SectionHasMatch(sectionName, searchText) {
-    global gCEN_SettingGroups
-    for globalName, group in gCEN_SettingGroups {
+    global gCEN
+    for globalName, group in gCEN["SettingGroups"] {
         if (group.pageKey = sectionName && InStr(group.searchText, searchText))
             return true
     }
@@ -1249,7 +1185,7 @@ _CEN_SectionHasMatch(sectionName, searchText) {
 }
 
 _CEN_ReflowPage(page, sectionName, searchText) {
-    global gCEN_SettingGroups
+    global gCEN
 
     if (searchText = "") {
         ; Restore all controls to original positions
@@ -1270,9 +1206,9 @@ _CEN_ReflowPage(page, sectionName, searchText) {
     for block in page.blocks {
         if (block.kind != "setting")
             continue
-        if (!gCEN_SettingGroups.Has(block.globalName))
+        if (!gCEN["SettingGroups"].Has(block.globalName))
             continue
-        group := gCEN_SettingGroups[block.globalName]
+        group := gCEN["SettingGroups"][block.globalName]
         if (InStr(group.searchText, searchText)) {
             matchSettings[block.globalName] := true
             if (block.subIdx > 0)
@@ -1313,49 +1249,48 @@ _CEN_ReflowPage(page, sectionName, searchText) {
 
 ; Position all visible pages stacked vertically based on flat scroll position
 _CEN_PositionFlatPages() {
-    global gCEN_FlatScrollPos, gCEN_FlatContentH
-    global gCEN_FilteredIndices, gCEN_Sections, gCEN_Pages
+    global gCEN
 
     y := 0
-    for _, idx in gCEN_FilteredIndices {
-        section := gCEN_Sections[idx]
-        if (!gCEN_Pages.Has(section.name))
+    for _, idx in gCEN["FilteredIndices"] {
+        section := gCEN["Sections"][idx]
+        if (!gCEN["Pages"].Has(section.name))
             continue
-        page := gCEN_Pages[section.name]
-        page.gui.Move(0, y - gCEN_FlatScrollPos)
+        page := gCEN["Pages"][section.name]
+        page.gui.Move(0, y - gCEN["FlatScrollPos"])
         y += page.contentH
     }
-    gCEN_FlatContentH := y
+    gCEN["FlatContentH"] := y
 }
 
 ; Scroll within flat mode
 _CEN_DoFlatScroll(delta) {
-    global gCEN_FlatScrollPos, gCEN_FlatContentH
+    global gCEN
 
     viewH := _CEN_GetViewportHeight()
-    maxScroll := Max(0, gCEN_FlatContentH - viewH)
-    newPos := Max(0, Min(maxScroll, gCEN_FlatScrollPos + delta))
-    if (newPos = gCEN_FlatScrollPos)
+    maxScroll := Max(0, gCEN["FlatContentH"] - viewH)
+    newPos := Max(0, Min(maxScroll, gCEN["FlatScrollPos"] + delta))
+    if (newPos = gCEN["FlatScrollPos"])
         return
-    gCEN_FlatScrollPos := newPos
+    gCEN["FlatScrollPos"] := newPos
     _CEN_PositionFlatPages()
 }
 
 ; Scroll flat view to a specific section (sidebar click)
 _CEN_ScrollToFlatSection(targetName) {
-    global gCEN_FlatScrollPos, gCEN_FilteredIndices, gCEN_Sections, gCEN_Pages
+    global gCEN
 
     y := 0
-    for _, idx in gCEN_FilteredIndices {
-        section := gCEN_Sections[idx]
+    for _, idx in gCEN["FilteredIndices"] {
+        section := gCEN["Sections"][idx]
         if (section.name = targetName) {
-            gCEN_FlatScrollPos := y
+            gCEN["FlatScrollPos"] := y
             _CEN_PositionFlatPages()
             _CEN_UpdateScrollBar("")
             return
         }
-        if (gCEN_Pages.Has(section.name))
-            y += gCEN_Pages[section.name].contentH
+        if (gCEN["Pages"].Has(section.name))
+            y += gCEN["Pages"][section.name].contentH
     }
 }
 
@@ -1364,7 +1299,7 @@ _CEN_ScrollToFlatSection(targetName) {
 ; ============================================================
 
 _CEN_OnResetDefaults(*) {
-    global gCEN_Controls, gConfigRegistry
+    global gCEN, gConfigRegistry
 
     result := ThemeMsgBox("Reset all settings to their default values?`n`nChanges won't be saved until you click Save.", "Alt-Tabby Configuration", "YesNo Icon?")
     if (result = "No")
@@ -1373,9 +1308,9 @@ _CEN_OnResetDefaults(*) {
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!gCEN_Controls.Has(entry.g))
+        if (!gCEN["Controls"].Has(entry.g))
             continue
-        ctrlInfo := gCEN_Controls[entry.g]
+        ctrlInfo := gCEN["Controls"][entry.g]
         _CEN_SetControlValue(ctrlInfo, entry.default, entry.t)
     }
 }
@@ -1385,24 +1320,24 @@ _CEN_OnResetDefaults(*) {
 ; ============================================================
 
 _CEN_UpdateChangeCount() {
-    global gCEN_MainGui, gCEN_Controls, gCEN_OriginalValues, gConfigRegistry, gCEN_ChangeLabel
+    global gCEN, gConfigRegistry
 
-    if (!gCEN_MainGui)
+    if (!gCEN["MainGui"])
         return
 
     count := 0
     for _, entry in gConfigRegistry {
-        if (!entry.HasOwnProp("default") || !gCEN_Controls.Has(entry.g))
+        if (!entry.HasOwnProp("default") || !gCEN["Controls"].Has(entry.g))
             continue
-        ctrlInfo := gCEN_Controls[entry.g]
+        ctrlInfo := gCEN["Controls"][entry.g]
         try {
-            if (_CEN_GetControlValue(ctrlInfo, entry.t) != gCEN_OriginalValues[entry.g])
+            if (_CEN_GetControlValue(ctrlInfo, entry.t) != gCEN["OriginalValues"][entry.g])
                 count++
         }
     }
 
-    if (gCEN_ChangeLabel) {
+    if (gCEN["ChangeLabel"]) {
         labelText := (count > 0) ? count " unsaved change" (count > 1 ? "s" : "") : ""
-        try gCEN_ChangeLabel.Value := labelText
+        try gCEN["ChangeLabel"].Value := labelText
     }
 }

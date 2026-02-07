@@ -252,7 +252,7 @@ _Viewer_OnConnected(logMsg) {
 
 ; Update producer state from IPC response (not from meta anymore)
 _Viewer_UpdateProducerState(producers) {
-    global gViewer_ProducerState, gViewer_Headless
+    global gViewer_ProducerState, gViewer_Headless, PRODUCER_NAMES
     if (!IsObject(producers))
         return
     gViewer_ProducerState := Map()
@@ -260,7 +260,7 @@ _Viewer_UpdateProducerState(producers) {
         for name, state in producers
             gViewer_ProducerState[name] := state
     } else {
-        for name in ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"] {
+        for _, name in PRODUCER_NAMES {
             try {
                 if (producers.HasOwnProp(name))
                     gViewer_ProducerState[name] := producers.%name%
@@ -662,21 +662,15 @@ _Viewer_Log(msg) {
 ; Format producer states for status bar display
 ; Shows abbreviated names with symbols: ✓=running, ✗=failed, -=disabled
 _Viewer_FormatProducerState() {
-    global gViewer_ProducerState
+    global gViewer_ProducerState, PRODUCER_NAMES, PRODUCER_ABBREVS
 
     if (!gViewer_ProducerState.Count)
         return "Producers: ?"
 
     parts := []
 
-    ; Show key producers with symbols
-    ; WEH = WinEventHook, MRU = MRU_Lite, KS = KomorebiSub, IP = IconPump, PP = ProcPump
-    _Viewer_AddProdStatus(&parts, "WEH", "wineventHook")
-    _Viewer_AddProdStatus(&parts, "MRU", "mruLite")
-    _Viewer_AddProdStatus(&parts, "KS", "komorebiSub")
-    _Viewer_AddProdStatus(&parts, "KL", "komorebiLite")
-    _Viewer_AddProdStatus(&parts, "IP", "iconPump")
-    _Viewer_AddProdStatus(&parts, "PP", "procPump")
+    for _, name in PRODUCER_NAMES
+        _Viewer_AddProdStatus(&parts, PRODUCER_ABBREVS[name], name)
 
     result := ""
     for _, part in parts
