@@ -367,6 +367,11 @@ ShowDashboardDialog() {
         _Dash_SetTip(hTT, btnClose, "Close the dashboard")
 
         ; Dynamic tooltips — must match current button state
+        storeRunning := LauncherUtils_IsRunning(g_StorePID)
+        guiRunning := LauncherUtils_IsRunning(g_GuiPID)
+        configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
+        blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
+        viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
         _Dash_SetTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
         _Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
         _Dash_SetTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
