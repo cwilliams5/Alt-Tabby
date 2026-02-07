@@ -24,17 +24,20 @@ ShowStatsDialog() {
         _Dash_QueryStats()
 
     sg := Gui("", "Alt-Tabby Statistics")
-    _GUI_AntiFlashPrepare(sg, "F0F0F0", true)
+    _GUI_AntiFlashPrepare(sg, Theme_GetBgColor(), true)
     sg.SetFont("s10", "Segoe UI")
     sg.MarginX := 20
     sg.MarginY := 15
+    themeEntry := Theme_ApplyToGui(sg)
 
     ; Check if tracking is enabled
     if (!cfg.StatsTrackingEnabled) {
         sg.AddText("w400", "Statistics tracking is disabled.")
-        sg.AddText("w400 y+4 cGray", "Enable via Edit Config > Diagnostics > StatsTracking")
+        mutedStatsHint := sg.AddText("w400 y+4 c" Theme_GetMutedColor(), "Enable via Edit Config > Diagnostics > StatsTracking")
+        Theme_MarkMuted(mutedStatsHint)
         sg.SetFont("s10")
         btnClose := sg.AddButton("w80 y+20 Default", "Close")
+        Theme_ApplyToControl(btnClose, "Button", themeEntry)
         btnClose.OnEvent("Click", (*) => _StatsDialog_Close())
         sg.OnEvent("Close", (*) => _StatsDialog_Close())
         sg.OnEvent("Escape", (*) => _StatsDialog_Close())
@@ -50,7 +53,8 @@ ShowStatsDialog() {
     hTT := _Dash_CreateTooltipCtl(sg.Hwnd)
 
     ; ---- Lifetime Stats (left column) ----
-    sg.AddGroupBox("x20 y10 w260 h310", "Lifetime")
+    gbLifetime := sg.AddGroupBox("x20 y10 w260 h310", "Lifetime")
+    Theme_ApplyToControl(gbLifetime, "GroupBox", themeEntry)
     sg.SetFont("s9")
 
     yPos := 35
@@ -80,7 +84,8 @@ ShowStatsDialog() {
 
     ; ---- This Session (right column) ----
     sg.SetFont("s10")
-    sg.AddGroupBox("x295 y10 w260 h310", "This Session")
+    gbSession := sg.AddGroupBox("x295 y10 w260 h310", "This Session")
+    Theme_ApplyToControl(gbSession, "GroupBox", themeEntry)
     sg.SetFont("s9")
 
     yPos := 35
@@ -108,7 +113,8 @@ ShowStatsDialog() {
 
     ; ---- Insights (left column, same width as Lifetime) ----
     sg.SetFont("s10")
-    sg.AddGroupBox("x20 y330 w260 h118", "Insights")
+    gbInsights := sg.AddGroupBox("x20 y330 w260 h118", "Insights")
+    Theme_ApplyToControl(gbInsights, "GroupBox", themeEntry)
     sg.SetFont("s9")
 
     yPos := 355
@@ -137,6 +143,8 @@ ShowStatsDialog() {
     btnRefresh.OnEvent("Click", (*) => _StatsDialog_Refresh())
     btnClose := sg.AddButton("x470 y480 w85 h28 Default", "Close")
     btnClose.OnEvent("Click", (*) => _StatsDialog_Close())
+    Theme_ApplyToControl(btnRefresh, "Button", themeEntry)
+    Theme_ApplyToControl(btnClose, "Button", themeEntry)
 
     sg.OnEvent("Close", (*) => _StatsDialog_Close())
     sg.OnEvent("Escape", (*) => _StatsDialog_Close())
@@ -153,6 +161,7 @@ ShowStatsDialog() {
 _StatsDialog_Close() {
     global g_StatsGui, g_StatsControls
     if (g_StatsGui) {
+        Theme_UntrackGui(g_StatsGui)
         g_StatsGui.Destroy()
         g_StatsGui := 0
     }
@@ -250,12 +259,9 @@ _StatsDialog_LoadIcon(sg) {
     pThumb := _GdipResizeHQ(pBitmap, 80, 80)
     srcBitmap := pThumb ? pThumb : pBitmap
 
-    ; Convert to HBITMAP with system button face color as background
-    bgColor := DllCall("user32\GetSysColor", "int", 15, "uint")  ; COLOR_3DFACE
-    r := (bgColor & 0xFF)
-    g := (bgColor >> 8) & 0xFF
-    b := (bgColor >> 16) & 0xFF
-    argbBg := 0xFF000000 | (r << 16) | (g << 8) | b
+    ; Convert to HBITMAP with theme-aware background color
+    global gTheme_Palette
+    argbBg := 0xFF000000 | Integer("0x" gTheme_Palette.bg)
 
     hBitmap := 0
     DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", srcBitmap, "ptr*", &hBitmap, "uint", argbBg)

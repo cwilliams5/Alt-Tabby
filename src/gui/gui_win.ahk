@@ -247,6 +247,6 @@ Win_DwmFlush() {
 
 ; Confirmation dialog (topmost)
 Win_ConfirmTopmost(text, title := "Confirm") {
-    res := MsgBox(text, title, "YesNo Icon! Default2 0x1000")
+    res := ThemeMsgBox(text, title, "YesNo Icon! Default2 0x1000")
     return (res = "Yes" || res = 6)
 }

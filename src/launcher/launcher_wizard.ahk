@@ -28,23 +28,36 @@ ShowFirstRunWizard() {
     global g_WizardGui, cfg
 
     g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
-    _GUI_AntiFlashPrepare(g_WizardGui, "F0F0F0", true)
+    _GUI_AntiFlashPrepare(g_WizardGui, Theme_GetBgColor(), true)
     g_WizardGui.SetFont("s10", "Segoe UI")
+    themeEntry := Theme_ApplyToGui(g_WizardGui)
 
     g_WizardGui.AddText("w400", "Let's set up a few things to get you started:")
     g_WizardGui.AddText("w400 y+5", "")
 
-    g_WizardGui.AddCheckbox("vStartMenu w400", "Add to Start Menu")
-    g_WizardGui.AddCheckbox("vStartup w400 Checked", "Run at Startup (recommended)")
-    g_WizardGui.AddCheckbox("vInstall w400", "Install to Program Files")
-    g_WizardGui.AddCheckbox("vAdmin w400", "Run as Administrator (switch to admin apps like Task Manager)")
-    g_WizardGui.AddCheckbox("vAutoUpdate w400 Checked", "Check for updates automatically")
+    chk1 := g_WizardGui.AddCheckbox("vStartMenu w400", "Add to Start Menu")
+    chk2 := g_WizardGui.AddCheckbox("vStartup w400 Checked", "Run at Startup (recommended)")
+    chk3 := g_WizardGui.AddCheckbox("vInstall w400", "Install to Program Files")
+    chk4 := g_WizardGui.AddCheckbox("vAdmin w400", "Run as Administrator (switch to admin apps like Task Manager)")
+    chk5 := g_WizardGui.AddCheckbox("vAutoUpdate w400 Checked", "Check for updates automatically")
 
-    g_WizardGui.AddText("w400 y+15 cGray", "Note: 'Install to Program Files' and 'Run as Administrator'")
-    g_WizardGui.AddText("w400 cGray", "require a one-time UAC elevation.")
+    mutedNote1 := g_WizardGui.AddText("w400 y+15 c" Theme_GetMutedColor(), "Note: 'Install to Program Files' and 'Run as Administrator'")
+    mutedNote2 := g_WizardGui.AddText("w400 c" Theme_GetMutedColor(), "require a one-time UAC elevation.")
+    Theme_MarkMuted(mutedNote1)
+    Theme_MarkMuted(mutedNote2)
 
-    g_WizardGui.AddButton("w100 y+20", "Skip").OnEvent("Click", WizardSkip)
-    g_WizardGui.AddButton("w120 x+10 Default", "Apply && Start").OnEvent("Click", WizardApply)
+    btn1 := g_WizardGui.AddButton("w100 y+20", "Skip")
+    btn1.OnEvent("Click", WizardSkip)
+    btn2 := g_WizardGui.AddButton("w120 x+10 Default", "Apply && Start")
+    btn2.OnEvent("Click", WizardApply)
+
+    Theme_ApplyToControl(chk1, "Checkbox", themeEntry)
+    Theme_ApplyToControl(chk2, "Checkbox", themeEntry)
+    Theme_ApplyToControl(chk3, "Checkbox", themeEntry)
+    Theme_ApplyToControl(chk4, "Checkbox", themeEntry)
+    Theme_ApplyToControl(chk5, "Checkbox", themeEntry)
+    Theme_ApplyToControl(btn1, "Button", themeEntry)
+    Theme_ApplyToControl(btn2, "Button", themeEntry)
 
     g_WizardGui.OnEvent("Close", WizardSkip)
     g_WizardGui.Show("Center")
@@ -107,7 +120,7 @@ WizardApply(*) {
         } catch as e {
             ; UAC was cancelled or failed - clean up temp file and ask user
             try FileDelete(choicesFile)
-            result := MsgBox(
+            result := ThemeMsgBox(
                 "Administrator privileges are required for:`n"
                 "- Install to Program Files`n"
                 "- Run as Administrator`n`n"
@@ -245,13 +258,13 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
                 } else {
                     ; Task creation failed - notify user
-                    MsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", APP_NAME, "Icon!")
+                    ThemeMsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", APP_NAME, "Icon!")
                     ; Don't set cfg.SetupRunAsAdmin since task creation failed
                 }
             }
         } else {
             ; Install was requested but failed - don't create task pointing to temp location
-            MsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", APP_NAME, "Iconx")
+            ThemeMsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", APP_NAME, "Iconx")
         }
     }
 
@@ -269,7 +282,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         currentDir := ""
         SplitPath(exePath, , &currentDir)
         if (IsTemporaryLocation(currentDir)) {
-            warnResult := MsgBox(
+            warnResult := ThemeMsgBox(
                 "Shortcuts will point to:`n" exePath "`n`n"
                 "This location may be temporary or cloud-synced.`n"
                 "If you delete or move this file, the shortcuts will break.`n`n"

@@ -146,7 +146,7 @@ ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts := 10, sleepMs := 0, offe
     if (offerElevation && !A_IsAdmin) {
         pid := ProcessExist(exeName)
         if (pid && pid != myPID && ProcessUtils_IsElevated(pid)) {
-            result := MsgBox(
+            result := ThemeMsgBox(
                 "The running instance has administrator privileges.`n`n"
                 "Elevate to close it?",
                 APP_NAME,

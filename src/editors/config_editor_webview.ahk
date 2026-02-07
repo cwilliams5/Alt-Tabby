@@ -134,7 +134,8 @@ _CE_RunWebView2(launcherHwnd := 0) {
     gCEW_Gui := Gui("+Resize +MinSize600x400", "Alt-Tabby Configuration")
     gCEW_Gui.OnEvent("Close", _CEW_OnClose)
     gCEW_Gui.OnEvent("Size", _CEW_OnSize)
-    _GUI_AntiFlashPrepare(gCEW_Gui, "1a1b26", false)
+    Theme_ApplyToGui(gCEW_Gui)
+    _GUI_AntiFlashPrepare(gCEW_Gui, Theme_GetBgColor(), false)
     gCEW_Gui.Show("x-32000 y-32000 w900 h650")
 
     ; Safety: reveal after 3s even if "ready" never fires (WebView2 error, etc.)
@@ -147,9 +148,8 @@ _CE_RunWebView2(launcherHwnd := 0) {
     try {
         gCEW_Controller := WebView2.create(gCEW_Gui.Hwnd,,,,,, dllPath)
 
-        ; Set WebView2 default background to match dark theme BEFORE navigation.
-        ; COREWEBVIEW2_COLOR is ABGR: 0xAA_BB_GG_RR. For #1a1b26: 0xFF261B1A
-        try gCEW_Controller.DefaultBackgroundColor := 0xFF261B1A
+        ; Set WebView2 default background to match theme BEFORE navigation.
+        try gCEW_Controller.DefaultBackgroundColor := Theme_GetWebViewBgColor()
 
         gCEW_Controller.Fill()
         gCEW_WebView := gCEW_Controller.CoreWebView2
@@ -413,8 +413,24 @@ _CEW_JoinArray(arr, sep) {
 
 ; Deferred handler for "ready" — runs outside the WebMessageReceived callback
 _CEW_OnReady() {
-    _CEW_RevealWindow()
+    global gCEW_WebView
+
+    ; Inject palette and data BEFORE reveal (window still hidden at alpha=0, off-screen)
+    try gCEW_WebView.ExecuteScript(Theme_GetWebViewJS())
     _CEW_InjectConfigData()
+
+    ; NOW reveal the fully-styled window
+    _CEW_RevealWindow()
+
+    ; Listen for live theme changes
+    Theme_OnChange(_CEW_OnThemeChange)
+}
+
+_CEW_OnThemeChange() {
+    global gCEW_WebView
+    if (!gCEW_WebView)
+        return
+    try gCEW_WebView.ExecuteScript(Theme_GetWebViewJS())
 }
 
 _CEW_RevealWindow() {

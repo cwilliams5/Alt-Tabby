@@ -13,21 +13,10 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [GUI](#gui)
 - [IPC](#ipc)
 - [Tools](#tools)
-- [Producers](#producers)
-- [Filtering](#filtering)
-- [WinEventHook](#wineventhook)
-- [ZPump](#zpump)
-- [WinEnum](#winenum)
-- [MruLite](#mrulite)
-- [IconPump](#iconpump)
-- [ProcPump](#procpump)
-- [Cache](#cache)
+- [Store](#store)
 - [Komorebi](#komorebi)
-- [KomorebiSub](#komorebisub)
-- [Heartbeat](#heartbeat)
-- [Viewer](#viewer)
 - [Diagnostics](#diagnostics)
-- [Testing](#testing)
+- [Theme](#theme)
 - [Setup](#setup)
 
 ---
@@ -324,14 +313,14 @@ Footer bar appearance
 
 ## IPC
 
-Named pipe for store<->client communication.
+Named pipe communication between store and clients, including heartbeat liveness detection.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `StorePipeName` | string | `tabby_store_v1` | - | Named pipe name for store communication |
 | `IdleTickMs` | int | `100` | `15` - `500` | Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms. |
 | `FullRowEvery` | int | `10` | `0` - `1000` | Per-row healing: 0=always full rows (legacy, no sparse deltas), N>0=every Nth push sends full rows instead of changed-fields-only. |
-| `WorkspaceDeltaStyle` | string | `Always` | - | Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean). |
+| `WorkspaceDeltaStyle` | enum | `Always` | - | Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean). |
 | `FullSyncEvery` | int | `60` | `0` - `600` | Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled. |
 | `UseDirtyTracking` | bool | `true` | - | Use dirty tracking for delta computation. Set false for debugging (full field comparison). |
 
@@ -344,18 +333,31 @@ Connection retry and recovery settings
 | `MaxReconnectAttempts` | int | `3` | `1` - `10` | Maximum pipe reconnection attempts before triggering store restart. |
 | `StoreStartWaitMs` | int | `1000` | `500` - `5000` | Time to wait for store to start on launch (ms). Increase on slow systems. |
 
+### Heartbeat
+
+Store broadcasts heartbeat to clients for liveness detection
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `StoreIntervalMs` | int | `5000` | `1000` - `60000` | Store sends heartbeat every N ms |
+| `ViewerTimeoutMs` | int | `12000` | `2000` - `120000` | Viewer considers connection dead after N ms without any message |
+
 ## Tools
 
 Paths to external executables used by Alt-Tabby.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `AhkV2Path` | string | `C:\Program Files\AutoHotkey\v2\AutoHo...` | - | Path to AHK v2 executable (for spawning subprocesses) |
-| `KomorebicExe` | string | `C:\Program Files\komorebi\bin\komoreb...` | - | Path to komorebic.exe (komorebi CLI) |
+| `AhkV2Path` | string | `(empty)` | - | Path to AHK v2 executable (for spawning subprocesses). Leave empty to auto-discover via PATH and known install locations |
+| `KomorebicExe` | string | `(empty)` | - | Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations |
 
-## Producers
+## Store
 
-WinEventHook and MRU are always enabled (core functionality). These control optional producers.
+Window store configuration: producers, filtering, timing, and caching. Most users won't need to change these.
+
+### Producer Toggles
+
+WinEventHook and MRU are always enabled (core). These control optional producers
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -364,18 +366,18 @@ WinEventHook and MRU are always enabled (core functionality). These control opti
 | `UseIconPump` | bool | `true` | - | Resolve window icons in background |
 | `UseProcPump` | bool | `true` | - | Resolve process names in background |
 
-## Filtering
+### Window Filtering
 
-Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist.
+Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `UseAltTabEligibility` | bool | `true` | - | Filter windows like native Alt-Tab (skip tool windows, etc.) |
 | `UseBlacklist` | bool | `true` | - | Apply blacklist from shared/blacklist.txt |
 
-## WinEventHook
+### WinEventHook
 
-Event-driven window change detection. Events are queued then processed in batches to keep the callback fast.
+Event-driven window change detection. Events are queued then processed in batches
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -384,17 +386,17 @@ Event-driven window change detection. Events are queued then processed in batche
 | `IdleThreshold` | int | `10` | `1` - `100` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 | `CosmeticBufferMs` | int | `1000` | `100` - `10000` | Min interval between proactive pushes for cosmetic-only changes (title updates). Structural changes (focus, create, destroy) always push immediately. |
 
-## ZPump
+### Z-Pump
 
-When WinEventHook adds a window, we don't know its Z-order. Z-pump triggers a full WinEnum scan to get accurate Z-order.
+When WinEventHook adds a window, Z-pump triggers a WinEnum scan for accurate Z-order
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `IntervalMs` | int | `200` | `50` - `5000` | How often to check if Z-queue has pending windows |
 
-## WinEnum
+### WinEnum
 
-WinEnum normally runs on-demand (startup, snapshot, Z-pump). Enable safety polling as a paranoid belt-and-suspenders.
+Full window enumeration (startup, snapshot, Z-pump, safety polling)
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -403,17 +405,17 @@ WinEnum normally runs on-demand (startup, snapshot, Z-pump). Enable safety polli
 | `SafetyPollMs` | int | `0` | `0` - `300000` | Safety polling interval (0=disabled, or 30000+ for safety net) |
 | `ValidateExistenceMs` | int | `5000` | `0` - `60000` | Lightweight zombie detection interval (ms). Checks existing store entries via IsWindow() to remove dead windows. Much faster than full EnumWindows scan. 0=disabled. |
 
-## MruLite
+### MRU Lite
 
-MRU_Lite only runs if WinEventHook fails to start. It polls the foreground window to track focus changes.
+Fallback focus tracker (only runs if WinEventHook fails to start)
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `PollMs` | int | `250` | `50` - `5000` | Polling interval for focus tracking fallback |
 
-## IconPump
+### Icon Pump
 
-Resolves window icons asynchronously with retry/backoff.
+Resolves window icons asynchronously with retry/backoff
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -427,9 +429,9 @@ Resolves window icons asynchronously with retry/backoff.
 | `IdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 | `ResolveTimeoutMs` | int | `500` | `100` - `2000` | WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond. |
 
-## ProcPump
+### Process Pump
 
-Resolves PID -> process name asynchronously.
+Resolves PID -> process name asynchronously
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -437,9 +439,9 @@ Resolves PID -> process name asynchronously.
 | `BatchSize` | int | `16` | `1` - `100` | Max PIDs to resolve per tick |
 | `IdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 
-## Cache
+### Cache Limits
 
-Size limits for internal caches to prevent unbounded memory growth.
+Size limits for internal caches to prevent unbounded memory growth
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -458,39 +460,21 @@ Settings for komorebi tiling window manager integration.
 | `UseSocket` | bool | `true` | - | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable. |
 | `WorkspaceConfirmationMethod` | enum | `PollCloak` | - | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
 
-## KomorebiSub
+### Subscription
 
-Event-driven komorebi integration via named pipe.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `PollMs` | int | `50` | `10` - `1000` | Pipe poll interval (checking for incoming data) |
-| `IdleRecycleMs` | int | `120000` | `10000` - `600000` | Restart subscription if no events for this long (stale detection) |
-| `FallbackPollMs` | int | `2000` | `500` - `30000` | Fallback polling interval if subscription fails |
-| `CacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
-| `BatchCloakEventsMs` | int | `50` | `0` - `500` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
-
-## Heartbeat
-
-Store broadcasts heartbeat to clients for liveness detection.
+Event-driven komorebi integration via named pipe
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `StoreIntervalMs` | int | `5000` | `1000` - `60000` | Store sends heartbeat every N ms |
-| `ViewerTimeoutMs` | int | `12000` | `2000` - `120000` | Viewer considers connection dead after N ms without any message |
-
-## Viewer
-
-Debug viewer GUI options.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `DebugLog` | bool | `false` | - | Enable verbose logging to error log |
-| `AutoStartStore` | bool | `false` | - | Auto-start store_server if not running when viewer connects |
+| `SubPollMs` | int | `50` | `10` - `1000` | Pipe poll interval (checking for incoming data) |
+| `SubIdleRecycleMs` | int | `120000` | `10000` - `600000` | Restart subscription if no events for this long (stale detection) |
+| `SubFallbackPollMs` | int | `2000` | `500` - `30000` | Fallback polling interval if subscription fails |
+| `SubCacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
+| `SubBatchCloakEventsMs` | int | `50` | `0` - `500` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
 
 ## Diagnostics
 
-Debug options for troubleshooting. All disabled by default to minimize disk I/O and resource usage.
+Debug options, viewer settings, and test configuration. All logging disabled by default.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -517,13 +501,30 @@ Control diagnostic log file sizes
 | `LogMaxKB` | int | `100` | `50` - `1000` | Maximum diagnostic log file size in KB before trimming. |
 | `LogKeepKB` | int | `50` | `25` - `500` | Size to keep after log trim in KB. Must be less than LogMaxKB. |
 
-## Testing
+### Viewer
 
-Options for automated test suite.
+Debug viewer GUI options
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `ViewerDebugLog` | bool | `false` | - | Enable verbose viewer logging to error log |
+| `ViewerAutoStartStore` | bool | `false` | - | Auto-start store_server if not running when viewer connects |
+
+### Testing
+
+Options for automated test suite
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `LiveDurationSec` | int | `30` | `5` - `300` | Default duration for test_live.ahk |
+
+## Theme
+
+Color theme for dialogs and editors. The main Alt-Tab overlay has its own color settings in GUI Appearance.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `Theme` | enum | `Automatic` | - | Color theme for dialogs and editors. Automatic follows the Windows system setting. |
 
 ## Setup
 
@@ -540,4 +541,4 @@ Installation paths and first-run settings. Managed automatically by the setup wi
 
 ---
 
-*Generated on 2026-02-05 with 208 total settings.*
+*Generated on 2026-02-06 with 209 total settings.*

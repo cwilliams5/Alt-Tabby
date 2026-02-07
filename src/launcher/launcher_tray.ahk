@@ -87,6 +87,9 @@ UpdateTrayMenu() {
     }
     tray.Add()
 
+    tray.Add("Dev", _Tray_BuildDevMenu())
+    tray.Add()
+
     tray.Add("Exit", (*) => ExitAll())
 }
 
@@ -206,6 +209,33 @@ _Tray_BuildSettingsMenu() {
         m.Check("Run as Administrator")
 
     return m
+}
+
+_Tray_BuildDevMenu() {
+    m := Menu()
+
+    m.Add("First-Run Wizard", (*) => ShowFirstRunWizard())
+    m.Add("Admin Repair Dialog", (*) => _Launcher_ShowAdminRepairDialog("C:\fake\task\path.exe"))
+    m.Add("Install Mismatch Dialog", (*) => _Launcher_ShowMismatchDialog(
+        "C:\Program Files\Alt-Tabby\AltTabby.exe",
+        "Installation Mismatch",
+        "Alt-Tabby is already installed at a different location:",
+        "Would you like to update the installed version?"))
+    m.Add("Blacklist Dialog", (*) => _GUI_ShowBlacklistDialog("ExampleClass", "Example Window Title"))
+    m.Add()
+    m.Add("ThemeMsgBox (All Features)", (*) => _Tray_TestThemeMsgBox())
+
+    return m
+}
+
+_Tray_TestThemeMsgBox() {
+    ; Exercise all icon types and button layouts
+    ThemeMsgBox("This is an error message.", "Error Test", "Iconx")
+    ThemeMsgBox("This is a warning message.", "Warning Test", "Icon!")
+    ThemeMsgBox("This is an info message.", "Info Test", "Iconi")
+    result := ThemeMsgBox("This is a question with YesNoCancel.`n`nDefault is button 2 (No).`n`nDo you want to proceed?",
+        "Question Test", "YesNoCancel Icon? Default2")
+    ThemeMsgBox("You chose: " result, "Result", "Iconi")
 }
 
 ; ============================================================
@@ -409,7 +439,7 @@ ToggleAdminMode() {
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
 
         ; Offer restart to apply change immediately
-        result := MsgBox("Admin mode disabled.`n`nRestart Alt-Tabby to run without elevation?", APP_NAME, "YesNo Icon?")
+        result := ThemeMsgBox("Admin mode disabled.`n`nRestart Alt-Tabby to run without elevation?", APP_NAME, "YesNo Icon?")
         if (result = "Yes") {
             ; Launch non-elevated via Explorer shell (de-escalation)
             launched := false
@@ -438,7 +468,7 @@ ToggleAdminMode() {
     } else {
         ; Enable admin mode - requires elevation to create scheduled task
         if (!A_IsAdmin) {
-            result := MsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", APP_NAME, "OKCancel Iconi")
+            result := ThemeMsgBox("Creating the admin task requires elevation.`n`nA UAC prompt will appear.", APP_NAME, "OKCancel Iconi")
             if (result = "Cancel")
                 return
 
@@ -460,7 +490,7 @@ ToggleAdminMode() {
             } catch {
                 g_AdminToggleInProgress := false
                 try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
-                MsgBox("UAC was cancelled. Admin mode was not enabled.", APP_NAME, "Icon!")
+                ThemeMsgBox("UAC was cancelled. Admin mode was not enabled.", APP_NAME, "Icon!")
             }
             return
         }
@@ -482,7 +512,7 @@ ToggleAdminMode() {
             ToolTip("Admin mode enabled")
             HideTooltipAfter(TOOLTIP_DURATION_SHORT)
         } else {
-            MsgBox("Failed to create scheduled task.", APP_NAME, "Iconx")
+            ThemeMsgBox("Failed to create scheduled task.", APP_NAME, "Iconx")
         }
     }
 }
@@ -538,7 +568,7 @@ _AdminToggle_CheckComplete() {
         }
 
         ; Offer restart so the user gets elevation immediately
-        result := MsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")
+        result := ThemeMsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")
         if (result = "Yes") {
             ; Shut down subprocesses FIRST so mutex releases before new instance boots
             _GracefulShutdown()
@@ -552,7 +582,7 @@ _AdminToggle_CheckComplete() {
                 LaunchStore()
                 Sleep(TIMING_SUBPROCESS_LAUNCH)
                 LaunchGui()
-                MsgBox("Failed to launch via scheduled task (exit code " exitCode ").`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
+                ThemeMsgBox("Failed to launch via scheduled task (exit code " exitCode ").`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
             }
         } else {
             ToolTip("Admin mode enabled - changes apply on next launch")
@@ -562,7 +592,7 @@ _AdminToggle_CheckComplete() {
         ToolTip("Admin mode setup was cancelled")
         HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
     } else if (content = "failed") {
-        MsgBox("Failed to create scheduled task.`nPlease try again.", APP_NAME, "Iconx")
+        ThemeMsgBox("Failed to create scheduled task.`nPlease try again.", APP_NAME, "Iconx")
     } else {
         TrayTip("Admin Mode", "Unexpected result: " content, "Icon!")
     }

@@ -67,7 +67,7 @@ Launcher_Init() {
         if (g_TestingMode)
             ExitApp()
 
-        result := MsgBox(
+        result := ThemeMsgBox(
             "Alt-Tabby is already running.`n`n"
             "Would you like to restart it?",
             APP_NAME,
@@ -85,7 +85,7 @@ Launcher_Init() {
                 }
             }
             if (!acquired) {
-                MsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", APP_NAME, "Iconx")
+                ThemeMsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", APP_NAME, "Iconx")
                 ExitApp()
             }
             ; Continue with normal startup below
@@ -170,7 +170,7 @@ Launcher_Init() {
     ; This prevents multiple installations from running simultaneously
     ; Skip in testing mode to allow parallel test execution
     if (!g_TestingMode && !_Launcher_AcquireActiveMutex()) {
-        result := MsgBox(
+        result := ThemeMsgBox(
             "Another Alt-Tabby installation is already running.`n`n"
             "Only one installation can be active at a time.`n"
             "Close the other installation and try again?",
@@ -182,7 +182,7 @@ Launcher_Init() {
             _Launcher_KillAllAltTabbyProcesses()
             Sleep(TIMING_MUTEX_RELEASE_WAIT)
             if (!_Launcher_AcquireActiveMutex()) {
-                MsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
+                ThemeMsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
                 ExitApp()
             }
         } else {
@@ -434,11 +434,15 @@ _Launcher_ShowAdminRepairDialog(taskPath) {
     global cfg, gConfigIniPath, APP_NAME
 
     repairGui := Gui("+AlwaysOnTop +Owner", APP_NAME " - Admin Mode Repair")
+    _GUI_AntiFlashPrepare(repairGui, Theme_GetBgColor(), true)
     repairGui.SetFont("s10", "Segoe UI")
+    themeEntry := Theme_ApplyToGui(repairGui)
 
     repairGui.AddText("w400", "The Admin Mode scheduled task points to a different location:")
-    repairGui.AddText("w400 cGray", "Task: " taskPath)
-    repairGui.AddText("w400 cGray", "Current: " A_ScriptFullPath)
+    mutedTask := repairGui.AddText("w400 c" Theme_GetMutedColor(), "Task: " taskPath)
+    mutedCurr := repairGui.AddText("w400 c" Theme_GetMutedColor(), "Current: " A_ScriptFullPath)
+    Theme_MarkMuted(mutedTask)
+    Theme_MarkMuted(mutedCurr)
     repairGui.AddText("w400 y+15", "Would you like to repair it? (requires elevation)")
 
     result := ""  ; Will be set by button clicks
@@ -447,17 +451,23 @@ _Launcher_ShowAdminRepairDialog(taskPath) {
     btnNo := repairGui.AddButton("w80 x+10", "No")
     btnNever := repairGui.AddButton("w120 x+10", "Don't ask again")
 
-    btnYes.OnEvent("Click", (*) => (result := "Yes", repairGui.Destroy()))
-    btnNo.OnEvent("Click", (*) => (result := "No", repairGui.Destroy()))
+    Theme_ApplyToControl(btnYes, "Button", themeEntry)
+    Theme_ApplyToControl(btnNo, "Button", themeEntry)
+    Theme_ApplyToControl(btnNever, "Button", themeEntry)
+
+    btnYes.OnEvent("Click", (*) => (result := "Yes", Theme_UntrackGui(repairGui), repairGui.Destroy()))
+    btnNo.OnEvent("Click", (*) => (result := "No", Theme_UntrackGui(repairGui), repairGui.Destroy()))
     btnNever.OnEvent("Click", (*) => (
         result := "Never",
         cfg.SetupSuppressAdminRepairPrompt := true,
         _Launcher_WriteSuppressFlag(),
+        Theme_UntrackGui(repairGui),
         repairGui.Destroy()
     ))
-    repairGui.OnEvent("Close", (*) => (result := "No", repairGui.Destroy()))
+    repairGui.OnEvent("Close", (*) => (result := "No", Theme_UntrackGui(repairGui), repairGui.Destroy()))
 
     repairGui.Show("Center")
+    _GUI_AntiFlashReveal(repairGui, true)
     WinWaitClose(repairGui)
 
     return result
@@ -726,8 +736,9 @@ _Launcher_KillExistingInstances() {
 ; ============================================================
 
 LaunchStore() {
-    global g_StorePID, g_ProducerStatusCache
+    global g_StorePID, g_ProducerStatusCache, g_ProducerHasFailed
     g_ProducerStatusCache := ""
+    g_ProducerHasFailed := ""
     LauncherUtils_Launch("store", &g_StorePID, _Launcher_Log)
     _Dash_StartRefreshTimer()
     ; Query producer status after store has time to initialize producers

@@ -127,6 +127,8 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; Shared libraries (from src/shared/)
 #Include %A_ScriptDir%\shared\
 #Include config_loader.ahk
+#Include theme.ahk
+#Include theme_msgbox.ahk
 #Include gui_antiflash.ahk
 #Include ipc_pipe.ahk
 #Include blacklist.ahk
@@ -199,12 +201,16 @@ if (g_AltTabbyMode = "config") {
         else if (arg = "--force-native")
             forceNative := true
     }
+    ; Theme_Init is called inside ConfigEditor_Run after ConfigLoader_Init
     ConfigEditor_Run(launcherHwnd, forceNative)
     ExitApp()
 }
 
 ; Run blacklist editor and exit when launched with --blacklist
 if (g_AltTabbyMode = "blacklist") {
+    ; Initialize config + theme for blacklist editor process
+    ConfigLoader_Init()
+    Theme_Init()
     BlacklistEditor_Run()
     ExitApp()
 }
@@ -214,6 +220,7 @@ if (g_AltTabbyMode = "blacklist") {
 ; ============================================================
 if (g_AltTabbyMode = "wizard-continue") {
     ConfigLoader_Init()
+    Theme_Init()
     _Launcher_EnsureInstallationId()  ; Must be before WizardContinue (may create admin task)
     wizardResult := WizardContinue()
 
@@ -226,14 +233,14 @@ if (g_AltTabbyMode = "wizard-continue") {
         ; Acquire mutex before running as launcher
         ; Bug fix: Without this, wizard-continue could run alongside another launcher
         if (!_Launcher_AcquireMutex()) {
-            MsgBox("Alt-Tabby is already running.", APP_NAME, "Iconi")
+            ThemeMsgBox("Alt-Tabby is already running.", APP_NAME, "Iconi")
             ExitApp()
         }
 
         ; Acquire system-wide active mutex before launching subprocesses
         ; Skip in testing mode to allow parallel test execution
         if (!g_TestingMode && !_Launcher_AcquireActiveMutex()) {
-            result := MsgBox(
+            result := ThemeMsgBox(
                 "Another Alt-Tabby installation is already running.`n`n"
                 "Only one installation can be active at a time.`n"
                 "Close the other installation and try again?",
@@ -244,7 +251,7 @@ if (g_AltTabbyMode = "wizard-continue") {
                 _Launcher_KillAllAltTabbyProcesses()
                 Sleep(TIMING_MUTEX_RELEASE_WAIT)
                 if (!_Launcher_AcquireActiveMutex()) {
-                    MsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
+                    ThemeMsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
                     ExitApp()
                 }
             } else {
@@ -298,7 +305,7 @@ if (g_AltTabbyMode = "wizard-continue") {
         Persistent()
     } else {
         ; No wizard data found - exit
-        MsgBox("No wizard continuation data found.", APP_NAME, "Iconx")
+        ThemeMsgBox("No wizard continuation data found.", APP_NAME, "Iconx")
         ExitApp()
     }
 }
@@ -308,6 +315,7 @@ if (g_AltTabbyMode = "wizard-continue") {
 ; ============================================================
 if (g_AltTabbyMode = "enable-admin-task") {
     ConfigLoader_Init()
+    Theme_Init()
     _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     exePath := A_ScriptFullPath
@@ -337,6 +345,7 @@ if (g_AltTabbyMode = "enable-admin-task") {
 ; ============================================================
 if (g_AltTabbyMode = "repair-admin-task") {
     ConfigLoader_Init()
+    Theme_Init()
     _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     ; Recreate task with current exe path
@@ -361,11 +370,11 @@ if (g_AltTabbyMode = "repair-admin-task") {
 
         if (exitCode != 0) {
             ; Task run failed - launch directly instead
-            MsgBox("Task repaired but failed to launch (code " exitCode ").`nLaunching directly.", APP_NAME, "Icon!")
+            ThemeMsgBox("Task repaired but failed to launch (code " exitCode ").`nLaunching directly.", APP_NAME, "Icon!")
             Run('"' exePath '"')
         }
     } else {
-        MsgBox("Failed to repair scheduled task.", APP_NAME, "Iconx")
+        ThemeMsgBox("Failed to repair scheduled task.", APP_NAME, "Iconx")
         ; Fall back to direct launch
         Run('"' exePath '"')
     }
@@ -377,6 +386,7 @@ if (g_AltTabbyMode = "repair-admin-task") {
 ; ============================================================
 if (g_AltTabbyMode = "disable-admin-task") {
     ConfigLoader_Init()
+    Theme_Init()
 
     ; Delete the admin task
     if (AdminTaskExists()) {
@@ -392,10 +402,11 @@ if (g_AltTabbyMode = "disable-admin-task") {
 ; APPLY-UPDATE MODE (After Self-Elevation for Update)
 ; ============================================================
 if (g_AltTabbyMode = "apply-update") {
-    ConfigLoader_Init()  ; Required for admin task recreation in _Update_ApplyAndRelaunch
+    ConfigLoader_Init()
+    Theme_Init()  ; Required for themed MsgBox dialogs
     ; Apply the downloaded update (we're now elevated)
     if (!_Update_ContinueFromElevation()) {
-        MsgBox("Update continuation failed. Please try updating again.", APP_NAME, "Iconx")
+        ThemeMsgBox("Update continuation failed. Please try updating again.", APP_NAME, "Iconx")
         ; Attempt to relaunch the current exe (rollback should have restored it)
         ; This ensures user doesn't end up with no running instance after failed update
         if (FileExist(A_ScriptFullPath)) {
@@ -409,11 +420,12 @@ if (g_AltTabbyMode = "apply-update") {
 ; UPDATE-INSTALLED MODE (After Self-Elevation for Install Mismatch)
 ; ============================================================
 if (g_AltTabbyMode = "update-installed") {
-    ConfigLoader_Init()  ; Required for admin task recreation
+    ConfigLoader_Init()
+    Theme_Init()
     updateFile := A_Temp "\alttabby_install_update.txt"
 
     if (!FileExist(updateFile)) {
-        MsgBox("Update information not found.", APP_NAME, "Iconx")
+        ThemeMsgBox("Update information not found.", APP_NAME, "Iconx")
         ExitApp()
     }
 
@@ -423,7 +435,7 @@ if (g_AltTabbyMode = "update-installed") {
 
         parts := StrSplit(content, UPDATE_INFO_DELIMITER)
         if (parts.Length != 2) {
-            MsgBox("Invalid update information.", APP_NAME, "Iconx")
+            ThemeMsgBox("Invalid update information.", APP_NAME, "Iconx")
             ExitApp()
         }
 
@@ -432,7 +444,7 @@ if (g_AltTabbyMode = "update-installed") {
 
         ; Security validation: ensure paths are valid
         if (!FileExist(sourcePath)) {
-            MsgBox("Update source file not found:`n" sourcePath, APP_NAME, "Iconx")
+            ThemeMsgBox("Update source file not found:`n" sourcePath, APP_NAME, "Iconx")
             ExitApp()
         }
 
@@ -441,13 +453,13 @@ if (g_AltTabbyMode = "update-installed") {
         targetName := ""
         SplitPath(targetPath, &targetName)
         if (!RegExMatch(targetName, "i)\.exe$") || !InStr(StrLower(targetName), "tabby")) {
-            MsgBox("Invalid update target path:`n" targetPath, APP_NAME, "Iconx")
+            ThemeMsgBox("Invalid update target path:`n" targetPath, APP_NAME, "Iconx")
             ExitApp()
         }
 
         _Launcher_DoUpdateInstalled(sourcePath, targetPath)
     } catch as e {
-        MsgBox("Update failed:`n" e.Message, APP_NAME, "Iconx")
+        ThemeMsgBox("Update failed:`n" e.Message, APP_NAME, "Iconx")
     }
     ExitApp()
 }
@@ -459,6 +471,9 @@ if (g_AltTabbyMode = "update-installed") {
 if (g_AltTabbyMode = "launch") {
     ; Initialize config first
     ConfigLoader_Init()
+
+    ; Initialize theme (before any GUIs are created)
+    Theme_Init()
 
     ; Run main launcher initialization
     Launcher_Init()

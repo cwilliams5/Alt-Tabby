@@ -158,6 +158,9 @@ GUI_Main_Init() {
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
 
+    ; Initialize theme (for blacklist dialog and MsgBox calls in GUI process)
+    Theme_Init()
+
     ; Initialize event name map for logging
     _GUI_InitEventNames()
 

@@ -31,6 +31,9 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
     if (!gConfigLoaded)
         ConfigLoader_Init()
 
+    ; Initialize theme system (needs config loaded first)
+    Theme_Init()
+
     ; Try WebView2 first if not forcing native
     if (!forceNative && ConfigEditor_IsWebView2Available()) {
         try {

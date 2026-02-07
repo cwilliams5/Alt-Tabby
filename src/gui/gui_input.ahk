@@ -583,7 +583,9 @@ _GUI_ShowBlacklistDialog(class, title) {
     gGUI_BlacklistChoice := ""
 
     dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
+    _GUI_AntiFlashPrepare(dlg, Theme_GetBgColor(), true)
     dlg.SetFont("s10")
+    themeEntry := Theme_ApplyToGui(dlg)
 
     dlg.AddText("x10 y10 w380", "Add to blacklist:")
     dlg.AddText("x10 y35 w380", "Class: " class)
@@ -591,24 +593,37 @@ _GUI_ShowBlacklistDialog(class, title) {
 
     ; Only show buttons for non-empty values
     btnX := 10
+    btns := []
     if (class != "") {
-        dlg.AddButton("x" btnX " y90 w90 h30", "Add Class").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "class"))
+        btn := dlg.AddButton("x" btnX " y90 w90 h30", "Add Class")
+        btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "class"))
+        btns.Push(btn)
         btnX += 100
     }
     if (title != "") {
-        dlg.AddButton("x" btnX " y90 w90 h30", "Add Title").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "title"))
+        btn := dlg.AddButton("x" btnX " y90 w90 h30", "Add Title")
+        btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "title"))
+        btns.Push(btn)
         btnX += 100
     }
     if (class != "" && title != "") {
-        dlg.AddButton("x" btnX " y90 w90 h30", "Add Pair").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "pair"))
+        btn := dlg.AddButton("x" btnX " y90 w90 h30", "Add Pair")
+        btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "pair"))
+        btns.Push(btn)
         btnX += 100
     }
-    dlg.AddButton("x" btnX " y90 w80 h30", "Cancel").OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, ""))
+    btnCancel := dlg.AddButton("x" btnX " y90 w80 h30", "Cancel")
+    btnCancel.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, ""))
+    btns.Push(btnCancel)
+
+    for btn in btns
+        Theme_ApplyToControl(btn, "Button", themeEntry)
 
     dlg.OnEvent("Close", (*) => _GUI_BlacklistChoice(dlg, ""))
     dlg.OnEvent("Escape", (*) => _GUI_BlacklistChoice(dlg, ""))
 
     dlg.Show("w400 h130 Center")
+    _GUI_AntiFlashReveal(dlg, true)
 
     ; Wait for dialog to close
     WinWaitClose(dlg)

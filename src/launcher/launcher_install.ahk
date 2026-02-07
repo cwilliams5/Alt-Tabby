@@ -20,13 +20,13 @@ InstallToProgramFiles() {
     srcDir := A_IsCompiled ? A_ScriptDir : ""
 
     if (!A_IsCompiled) {
-        MsgBox("Program Files installation only works with compiled exe.", APP_NAME, "Iconx")
+        ThemeMsgBox("Program Files installation only works with compiled exe.", APP_NAME, "Iconx")
         return ""
     }
 
     ; Check if we need admin
     if (!A_IsAdmin) {
-        MsgBox("Administrator privileges required to install to Program Files.", APP_NAME, "Iconx")
+        ThemeMsgBox("Administrator privileges required to install to Program Files.", APP_NAME, "Iconx")
         return ""
     }
 
@@ -64,7 +64,7 @@ InstallToProgramFiles() {
 
         return installDir "\AltTabby.exe"
     } catch as e {
-        MsgBox("Could not install to Program Files.`n`n"
+        ThemeMsgBox("Could not install to Program Files.`n`n"
             "This may happen if:`n"
             "• Antivirus is blocking the operation`n"
             "• Another program has the file open`n`n"
@@ -178,14 +178,14 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
             Run('"' installedPath '"')
             ExitApp()
         } catch as e {
-            MsgBox("Could not launch installed version:`n" e.Message, APP_NAME, "Iconx")
+            ThemeMsgBox("Could not launch installed version:`n" e.Message, APP_NAME, "Iconx")
         }
     } else if (result = "Always") {
         ; Warn if committing to a temporary location
         currentDir := ""
         SplitPath(currentPath, , &currentDir)
         if (IsTemporaryLocation(currentDir)) {
-            warnResult := MsgBox(
+            warnResult := ThemeMsgBox(
                 "You're choosing to always run from:`n" currentPath "`n`n"
                 "This location may be temporary or cloud-synced.`n"
                 "If you delete or move this file, Alt-Tabby won't start.`n`n"
@@ -243,7 +243,7 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
     if (!_Launcher_IsOtherProcessRunning(installedExeName))
         return  ; Not running or only us
 
-    result := MsgBox(
+    result := ThemeMsgBox(
         "The installed version is currently running.`n`n"
         "Close it to avoid conflicts? (Recommended)",
         APP_NAME " - Instance Running",
@@ -274,10 +274,13 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
         question := "Launch the installed version instead?"
 
     mismatchGui := Gui("+AlwaysOnTop +Owner", title)
+    _GUI_AntiFlashPrepare(mismatchGui, Theme_GetBgColor(), true)
     mismatchGui.SetFont("s10", "Segoe UI")
+    themeEntry := Theme_ApplyToGui(mismatchGui)
 
     mismatchGui.AddText("w380", message)
-    mismatchGui.AddText("w380 cGray", installedPath)
+    mutedPath := mismatchGui.AddText("w380 c" Theme_GetMutedColor(), installedPath)
+    Theme_MarkMuted(mutedPath)
     mismatchGui.AddText("w380 y+15", question)
 
     result := ""  ; Will be set by button clicks
@@ -286,12 +289,17 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
     btnNo := mismatchGui.AddButton("w100 x+10", "No")
     btnAlways := mismatchGui.AddButton("w140 x+10", "Always run from here")
 
-    btnYes.OnEvent("Click", (*) => (result := "Yes", mismatchGui.Destroy()))
-    btnNo.OnEvent("Click", (*) => (result := "No", mismatchGui.Destroy()))
-    btnAlways.OnEvent("Click", (*) => (result := "Always", mismatchGui.Destroy()))
-    mismatchGui.OnEvent("Close", (*) => (result := "No", mismatchGui.Destroy()))
+    Theme_ApplyToControl(btnYes, "Button", themeEntry)
+    Theme_ApplyToControl(btnNo, "Button", themeEntry)
+    Theme_ApplyToControl(btnAlways, "Button", themeEntry)
+
+    btnYes.OnEvent("Click", (*) => (result := "Yes", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
+    btnNo.OnEvent("Click", (*) => (result := "No", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
+    btnAlways.OnEvent("Click", (*) => (result := "Always", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
+    mismatchGui.OnEvent("Close", (*) => (result := "No", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
 
     mismatchGui.Show("Center")
+    _GUI_AntiFlashReveal(mismatchGui, true)
     WinWaitClose(mismatchGui)
 
     return result
@@ -318,7 +326,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
-            MsgBox("Update requires administrator privileges.", APP_NAME, "Iconx")
+            ThemeMsgBox("Update requires administrator privileges.", APP_NAME, "Iconx")
             try FileDelete(updateFile)
             return
         }
@@ -367,7 +375,7 @@ _Launcher_OfferOneTimeElevation() {
         return
 
     ; Offer one-time elevation for THIS session
-    result := MsgBox(
+    result := ThemeMsgBox(
         "The installed version runs as Administrator.`n`n"
         "Run this version elevated too?`n"
         "(This is one-time and won't affect the installed version)",
@@ -418,7 +426,7 @@ _Launcher_OfferToUpdateStaleShortcuts() {
     if (startMenuStale)
         staleList .= "- Start Menu shortcut`n"
 
-    result := MsgBox(
+    result := ThemeMsgBox(
         "The following shortcuts point to a different location:`n`n"
         staleList "`n"
         "Update them to point to this version?`n"
@@ -450,7 +458,7 @@ _Launcher_CleanupStaleAdminTask(oldPath, newPath) {
         return
 
     ; Task points to old location - ask user what to do
-    result := MsgBox(
+    result := ThemeMsgBox(
         "The installed version has Admin Mode enabled:`n" taskPath "`n`n"
         "Disable Admin Mode for that location?`n"
         "(Otherwise you may see confusing repair prompts later)",

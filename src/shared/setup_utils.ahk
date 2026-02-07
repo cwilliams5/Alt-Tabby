@@ -133,7 +133,7 @@ WarnIfTempLocation_AdminTask(exePath, dirPath := "", extraText := "") {
         msg .= extraText "`n`n"
     msg .= "Create admin task anyway?"
 
-    warnResult := MsgBox(msg, APP_NAME " - Temporary Location", "YesNo Icon?")
+    warnResult := ThemeMsgBox(msg, APP_NAME " - Temporary Location", "YesNo Icon?")
     return (warnResult != "No")
 }
 
@@ -189,7 +189,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
             if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
                 ; Auto-proceed in testing mode
             } else {
-                result := MsgBox(
+                result := ThemeMsgBox(
                     "Another Alt-Tabby installation has Admin Mode enabled:`n"
                     existingPath "`n`n"
                     "Enabling it here will disable it there.`n"
@@ -439,7 +439,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
 
                 ; Newer version available - offer to update
                 if (showModal) {
-                    result := MsgBox(
+                    result := ThemeMsgBox(
                         "Alt-Tabby " latestVersion " is available!`n"
                         "You have: " currentVersion "`n`n"
                         "Would you like to download and install the update now?",
@@ -451,7 +451,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
                         if (downloadUrl)
                             _Update_DownloadAndApply(downloadUrl, latestVersion)
                         else
-                            MsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Iconx")
+                            ThemeMsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Iconx")
                     }
                 }
             } else {
@@ -521,7 +521,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         whr.Send()
 
         if (whr.Status != 200) {
-            MsgBox("Download failed: HTTP " whr.Status, "Update Error", "Iconx")
+            ThemeMsgBox("Download failed: HTTP " whr.Status, "Update Error", "Iconx")
             whr := ""  ; Release COM before return
             return
         }
@@ -541,7 +541,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         ; Clean up partial download
         if (FileExist(tempExe))
             try FileDelete(tempExe)
-        MsgBox("Download failed:`n" e.Message, "Update Error", "Iconx")
+        ThemeMsgBox("Download failed:`n" e.Message, "Update Error", "Iconx")
         return
     }
 
@@ -559,7 +559,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
-            MsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Iconx")
+            ThemeMsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Iconx")
             try FileDelete(updateFile)
             try FileDelete(tempExe)  ; Clean up downloaded exe
             return
@@ -634,7 +634,7 @@ _Update_ApplyCore(opts) {
             try {
                 modTime := FileGetTime(lockFile, "M")
                 if (DateDiff(A_Now, modTime, "Minutes") < 5) {
-                    MsgBox("Another update is in progress. Please wait.", APP_NAME, "Icon!")
+                    ThemeMsgBox("Another update is in progress. Please wait.", APP_NAME, "Icon!")
                     return
                 }
                 FileDelete(lockFile)
@@ -665,7 +665,7 @@ _Update_ApplyCore(opts) {
         } catch as renameErr {
             if (lockFile != "")
                 try FileDelete(lockFile)
-            MsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Iconx")
+            ThemeMsgBox("Could not rename existing version:`n" renameErr.Message "`n`nUpdate aborted. The file may be locked by antivirus or another process.", "Update Error", "Iconx")
             return
         }
 
@@ -675,7 +675,7 @@ _Update_ApplyCore(opts) {
                 FileMove(backupPath, targetPath)
             if (lockFile != "")
                 try FileDelete(lockFile)
-            MsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Iconx")
+            ThemeMsgBox("Downloaded file appears to be corrupted (invalid PE header).`nUpdate aborted.", "Update Error", "Iconx")
             return
         }
 
@@ -736,7 +736,7 @@ _Update_ApplyCore(opts) {
 
             DeleteAdminTask()
             if (!CreateAdminTask(targetPath, targetInstallId)) {
-                MsgBox("Could not recreate admin task after update.`n`n"
+                ThemeMsgBox("Could not recreate admin task after update.`n`n"
                     "Admin mode has been disabled. You can re-enable it from the tray menu.",
                     APP_NAME " - Admin Mode Error", "Icon!")
                 cfg.SetupRunAsAdmin := false
@@ -799,11 +799,11 @@ _Update_ApplyCore(opts) {
             try FileDelete(lockFile)
 
         if (rollbackSuccess)
-            MsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Iconx")
+            ThemeMsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Iconx")
         else if (FileExist(targetPath))
-            MsgBox("Update failed:`n" e.Message, "Update Error", "Iconx")
+            ThemeMsgBox("Update failed:`n" e.Message, "Update Error", "Iconx")
         else
-            MsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
+            ThemeMsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
     }
 }
 
@@ -971,7 +971,7 @@ _Update_ContinueFromElevation() {
         global UPDATE_INFO_DELIMITER
         parts := StrSplit(content, UPDATE_INFO_DELIMITER)
         if (parts.Length != 2) {
-            MsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), APP_NAME, "Iconx")
+            ThemeMsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), APP_NAME, "Iconx")
             return false
         }
 
@@ -980,7 +980,7 @@ _Update_ContinueFromElevation() {
 
         ; Security validation: ensure source file exists
         if (!FileExist(newExePath)) {
-            MsgBox("Update source file not found:`n" newExePath, APP_NAME, "Iconx")
+            ThemeMsgBox("Update source file not found:`n" newExePath, APP_NAME, "Iconx")
             return false
         }
 
@@ -988,7 +988,7 @@ _Update_ContinueFromElevation() {
         ; Use proper path prefix check, not substring (prevents edge cases like C:\MyTempBackup\...)
         tempWithSep := RTrim(A_Temp, "\") "\"
         if (SubStr(newExePath, 1, StrLen(tempWithSep)) != tempWithSep) {
-            MsgBox("Invalid update source path (not in temp):`n" newExePath, APP_NAME, "Iconx")
+            ThemeMsgBox("Invalid update source path (not in temp):`n" newExePath, APP_NAME, "Iconx")
             try FileDelete(newExePath)  ; Clean up orphaned temp exe
             return false
         }
@@ -998,7 +998,7 @@ _Update_ContinueFromElevation() {
         ; matches the original target. Path equality is both more secure (exact match)
         ; and more permissive (works with any exe name, not just ones containing "tabby").
         if (StrLower(targetExePath) != StrLower(A_ScriptFullPath)) {
-            MsgBox("Update target doesn't match running executable.`n"
+            ThemeMsgBox("Update target doesn't match running executable.`n"
                 "Target: " targetExePath "`n"
                 "Running: " A_ScriptFullPath, APP_NAME, "Icon!")
             try FileDelete(newExePath)  ; Clean up orphaned temp exe

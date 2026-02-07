@@ -33,7 +33,7 @@ global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
 
 ; Producer status cache — queried once after store launch, shown in dashboard
 global g_ProducerStatusCache := ""
-global g_ProducerDotColor := ""  ; "c00AA00" (green) or "cCC0000" (red)
+global g_ProducerHasFailed := ""  ; "" = not queried, false = all OK, true = has failures
 
 ; Stats cache — queried from store on dashboard open and periodically
 global g_StatsCache := ""          ; Parsed stats response Map, or "" if not queried
@@ -44,7 +44,8 @@ ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashControls, g_DashUpdateState, g_ProducerStatusCache, g_ProducerDotColor, DASH_INTERVAL_COOL
+    global g_DashControls, g_DashUpdateState, g_ProducerStatusCache, g_ProducerHasFailed, DASH_INTERVAL_COOL
+    global gTheme_Palette
 
     ; If already open, focus existing dialog
     if (g_DashboardGui) {
@@ -56,10 +57,11 @@ ShowDashboardDialog() {
     g_DashControls := {}
 
     dg := Gui("", "Alt-Tabby Dashboard")
-    _GUI_AntiFlashPrepare(dg, "F0F0F0", true)
+    _GUI_AntiFlashPrepare(dg, Theme_GetBgColor(), true)
     dg.SetFont("s10", "Segoe UI")
     dg.MarginX := 20
     dg.MarginY := 15
+    themeEntry := Theme_ApplyToGui(dg)
 
     ; ---- Header: Logo + Title + Version + Links ----
     logo := _Dash_LoadLogo(dg)
@@ -70,18 +72,24 @@ ShowDashboardDialog() {
 
     dg.SetFont("s10 Norm")
     version := GetAppVersion()
-    dg.AddText("x" xAfterLogo " y+2 w225", "Version " version)
+    mutedVersion := dg.AddText("x" xAfterLogo " y+2 w225 c" Theme_GetMutedColor(), "Version " version)
+    Theme_MarkMuted(mutedVersion)
 
-    lnkGithub := dg.AddLink("x" xAfterLogo " y+4 w225",
-        '<a href="https://github.com/cwilliams5/Alt-Tabby">github.com/cwilliams5/Alt-Tabby</a>')
-    lnkOptions := dg.AddLink("x" xAfterLogo " y+2 w225",
-        '<a href="https://github.com/cwilliams5/Alt-Tabby/blob/main/docs/options.md">Configuration Options</a>')
+    dg.SetFont("s10 Underline")
+    lnkGithub := dg.AddText("x" xAfterLogo " y+4 w225 +0x100", "github.com/cwilliams5/Alt-Tabby")
+    lnkGithub.OnEvent("Click", (*) => Run("https://github.com/cwilliams5/Alt-Tabby"))
+    Theme_MarkAccent(lnkGithub)
+    lnkOptions := dg.AddText("x" xAfterLogo " y+2 w225 +0x100", "Configuration Options")
+    lnkOptions.OnEvent("Click", (*) => Run("https://github.com/cwilliams5/Alt-Tabby/blob/main/docs/options.md"))
+    Theme_MarkAccent(lnkOptions)
+    dg.SetFont("s10 Norm")
 
     ; ============================================================
     ; TOP-RIGHT - Settings
     ; ============================================================
     dg.SetFont("s10")
-    dg.AddGroupBox("x385 y10 w375 h130", "Settings")
+    gbSettings := dg.AddGroupBox("x385 y10 w375 h130", "Settings")
+    Theme_ApplyToControl(gbSettings, "GroupBox", themeEntry)
 
     ; Checkboxes — refresh timer corrects visual state if underlying toggle fails
     dg.SetFont("s9")
@@ -98,18 +106,25 @@ ShowDashboardDialog() {
     g_DashControls.chkAutoUpdate.Value := cfg.SetupAutoUpdateCheck ? 1 : 0
     g_DashControls.chkAutoUpdate.OnEvent("Click", _Dash_OnAutoUpdateChk)
 
+    Theme_ApplyToControl(g_DashControls.chkStartMenu, "Checkbox", themeEntry)
+    Theme_ApplyToControl(g_DashControls.chkStartup, "Checkbox", themeEntry)
+    Theme_ApplyToControl(g_DashControls.chkAutoUpdate, "Checkbox", themeEntry)
+
     ; Editor buttons
     dg.SetFont("s9")
-    btnEditConfig := dg.AddButton("x400 y113 w170 h26", "Edit Config...")
+    btnEditConfig := dg.AddButton("x400 y107 w170 h26", "Edit Config...")
     btnEditConfig.OnEvent("Click", (*) => LaunchConfigEditor())
-    btnEditBlacklist := dg.AddButton("x580 y113 w170 h26", "Edit Blacklist...")
+    btnEditBlacklist := dg.AddButton("x580 y107 w170 h26", "Edit Blacklist...")
     btnEditBlacklist.OnEvent("Click", (*) => LaunchBlacklistEditor())
+    Theme_ApplyToControl(btnEditConfig, "Button", themeEntry)
+    Theme_ApplyToControl(btnEditBlacklist, "Button", themeEntry)
 
     ; ============================================================
     ; MIDDLE ROW - Statistics
     ; ============================================================
     dg.SetFont("s10")
-    dg.AddGroupBox("x20 y150 w740 h110", "Statistics")
+    gbStats := dg.AddGroupBox("x20 y150 w740 h110", "Statistics")
+    Theme_ApplyToControl(gbStats, "GroupBox", themeEntry)
 
     if (cfg.StatsTrackingEnabled) {
         ; Session column (left)
@@ -142,18 +157,21 @@ ShowDashboardDialog() {
 
         ; More Stats button
         dg.SetFont("s9")
-        btnMoreStats := dg.AddButton("x655 y235 w90 h24", "More Stats")
+        btnMoreStats := dg.AddButton("x655 y229 w90 h24", "More Stats")
         btnMoreStats.OnEvent("Click", (*) => ShowStatsDialog())
+        Theme_ApplyToControl(btnMoreStats, "Button", themeEntry)
     } else {
         dg.SetFont("s9")
-        dg.AddText("x35 y185 w700 cGray", "Statistics tracking is disabled. Enable via Edit Config > Diagnostics > StatsTracking.")
+        mutedStatsText := dg.AddText("x35 y185 w700 c" Theme_GetMutedColor(), "Statistics tracking is disabled. Enable via Edit Config > Diagnostics > StatsTracking.")
+        Theme_MarkMuted(mutedStatsText)
     }
 
     ; ============================================================
     ; BOTTOM-LEFT - Keyboard Shortcuts
     ; ============================================================
     dg.SetFont("s10")
-    dg.AddGroupBox("x20 y270 w350 h265", "Keyboard Shortcuts")
+    gbShortcuts := dg.AddGroupBox("x20 y270 w350 h270", "Keyboard Shortcuts")
+    Theme_ApplyToControl(gbShortcuts, "GroupBox", themeEntry)
 
     ; "Always On" section — global hotkeys that work any time
     dg.SetFont("s9 Bold")
@@ -196,7 +214,8 @@ ShowDashboardDialog() {
     ; BOTTOM-RIGHT - Diagnostics
     ; ============================================================
     dg.SetFont("s10")
-    dg.AddGroupBox("x385 y270 w375 h265", "Diagnostics")
+    gbDiag := dg.AddGroupBox("x385 y270 w375 h270", "Diagnostics")
+    Theme_ApplyToControl(gbDiag, "GroupBox", themeEntry)
 
     ; Build + Elevation row
     buildType := A_IsCompiled ? "Compiled" : "Development"
@@ -208,6 +227,7 @@ ShowDashboardDialog() {
     escalateLabel := A_IsAdmin ? "De-escalate" : "Escalate"
     btnEscalate := dg.AddButton("x660 y291 w85 h24", escalateLabel)
     btnEscalate.OnEvent("Click", _Dash_OnEscalate)
+    Theme_ApplyToControl(btnEscalate, "Button", themeEntry)
 
     ; Subprocess rows with buttons — handlers check live state, refresh updates labels
     ; Order: Store, Producers, GUI, Config Editor, Blacklist Editor, Viewer
@@ -217,21 +237,25 @@ ShowDashboardDialog() {
     ; Store row (core — red when not running)
     subY := 322
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
-    storeDotColor := storeRunning ? "c00AA00" : "cCC0000"
+    storeDotColor := storeRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger
     dg.SetFont("s9 " storeDotColor)
     g_DashControls.storeDot := dg.AddText("x400 y" subY " w14", dot)
+    Theme_MarkSemantic(g_DashControls.storeDot)
     g_DashControls.storeDotColor := storeDotColor
     dg.SetFont("s9 cDefault")
     storeLabel := "Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running")
     g_DashControls.storeText := dg.AddText("x414 y" subY " w246 +0x100", storeLabel)
     g_DashControls.storeBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", storeRunning ? "Restart" : "Launch")
     g_DashControls.storeBtn.OnEvent("Click", _Dash_OnStoreBtn)
+    Theme_ApplyToControl(g_DashControls.storeBtn, "Button", themeEntry)
 
     ; Producer status line (dot shows overall health)
     subY += 20
-    prodDotColor := g_ProducerDotColor != "" ? g_ProducerDotColor : "c999999"
+    prodDotColor := (g_ProducerHasFailed = "") ? "c" gTheme_Palette.textMuted
+        : (g_ProducerHasFailed ? "c" gTheme_Palette.danger : "c" gTheme_Palette.success)
     dg.SetFont("s9 " prodDotColor)
     g_DashControls.producerDot := dg.AddText("x400 y" subY " w14", g_ProducerStatusCache != "" ? dot : "")
+    Theme_MarkSemantic(g_DashControls.producerDot)
     g_DashControls.producerDotColor := prodDotColor
     dg.SetFont("s9 cDefault")
     prodLabel := g_ProducerStatusCache != "" ? "Producers: " g_ProducerStatusCache : ""
@@ -240,78 +264,92 @@ ShowDashboardDialog() {
     ; GUI row (core — red when not running)
     subY += 18
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
-    guiDotColor := guiRunning ? "c00AA00" : "cCC0000"
+    guiDotColor := guiRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger
     dg.SetFont("s9 " guiDotColor)
     g_DashControls.guiDot := dg.AddText("x400 y" subY " w14", dot)
+    Theme_MarkSemantic(g_DashControls.guiDot)
     g_DashControls.guiDotColor := guiDotColor
     dg.SetFont("s9 cDefault")
     guiLabel := "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
     g_DashControls.guiText := dg.AddText("x414 y" subY " w246 +0x100", guiLabel)
     g_DashControls.guiBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", guiRunning ? "Restart" : "Launch")
     g_DashControls.guiBtn.OnEvent("Click", _Dash_OnGuiBtn)
+    Theme_ApplyToControl(g_DashControls.guiBtn, "Button", themeEntry)
 
     ; Config Editor row (optional — grey when not running)
     subY += 30
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
-    configDotColor := configRunning ? "c00AA00" : "c999999"
+    configDotColor := configRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
     dg.SetFont("s9 " configDotColor)
     g_DashControls.configDot := dg.AddText("x400 y" subY " w14", dot)
+    Theme_MarkSemantic(g_DashControls.configDot)
     g_DashControls.configDotColor := configDotColor
     dg.SetFont("s9 cDefault")
     configLabel := "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running")
     g_DashControls.configText := dg.AddText("x414 y" subY " w246 +0x100", configLabel)
     g_DashControls.configBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", configRunning ? "Restart" : "Launch")
     g_DashControls.configBtn.OnEvent("Click", _Dash_OnConfigBtn)
+    Theme_ApplyToControl(g_DashControls.configBtn, "Button", themeEntry)
 
     ; Blacklist Editor row (optional — grey when not running)
     subY += 30
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-    blacklistDotColor := blacklistRunning ? "c00AA00" : "c999999"
+    blacklistDotColor := blacklistRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
     dg.SetFont("s9 " blacklistDotColor)
     g_DashControls.blacklistDot := dg.AddText("x400 y" subY " w14", dot)
+    Theme_MarkSemantic(g_DashControls.blacklistDot)
     g_DashControls.blacklistDotColor := blacklistDotColor
     dg.SetFont("s9 cDefault")
     blacklistLabel := "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running")
     g_DashControls.blacklistText := dg.AddText("x414 y" subY " w246 +0x100", blacklistLabel)
     g_DashControls.blacklistBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", blacklistRunning ? "Restart" : "Launch")
     g_DashControls.blacklistBtn.OnEvent("Click", _Dash_OnBlacklistBtn)
+    Theme_ApplyToControl(g_DashControls.blacklistBtn, "Button", themeEntry)
 
     ; Viewer row (optional — grey when not running)
     subY += 30
     viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-    viewerDotColor := viewerRunning ? "c00AA00" : "c999999"
+    viewerDotColor := viewerRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
     dg.SetFont("s9 " viewerDotColor)
     g_DashControls.viewerDot := dg.AddText("x400 y" subY " w14", dot)
+    Theme_MarkSemantic(g_DashControls.viewerDot)
     g_DashControls.viewerDotColor := viewerDotColor
     dg.SetFont("s9 cDefault")
     viewerLabel := "Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running")
     g_DashControls.viewerText := dg.AddText("x414 y" subY " w246 +0x100", viewerLabel)
     g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerRunning ? "Restart" : "Launch")
     g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
+    Theme_ApplyToControl(g_DashControls.viewerBtn, "Button", themeEntry)
 
     ; Info rows (read-only)
     subY += 28
-    ctlInstallInfo := dg.AddText("x400 y" subY " w340 +0x100", "Install: " _Dash_GetInstallInfo())
+    ctlInstallInfo := dg.AddText("x400 y" subY " w340 +0x100 c" Theme_GetMutedColor(), "Install: " _Dash_GetInstallInfo())
+    Theme_MarkMuted(ctlInstallInfo)
 
     subY += 20
-    ctlAdminTask := dg.AddText("x400 y" subY " w340 +0x100", "Admin Task: " _Dash_GetAdminTaskInfo())
+    ctlAdminTask := dg.AddText("x400 y" subY " w340 +0x100 c" Theme_GetMutedColor(), "Admin Task: " _Dash_GetAdminTaskInfo())
+    Theme_MarkMuted(ctlAdminTask)
 
     subY += 20
-    g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340 +0x100", "Komorebi: " _Dash_GetKomorebiInfo())
+    g_DashControls.komorebiText := dg.AddText("x400 y" subY " w340 +0x100 c" Theme_GetMutedColor(), "Komorebi: " _Dash_GetKomorebiInfo())
+    Theme_MarkMuted(g_DashControls.komorebiText)
 
     ; ---- Bottom Row: action button + update status + OK ----
     dg.SetFont("s9")
     updateBtnLabel := _Dash_GetUpdateBtnLabel()
-    g_DashControls.updateBtn := dg.AddButton("x20 y545 w100 h24", updateBtnLabel)
+    g_DashControls.updateBtn := dg.AddButton("x20 y550 w100 h24", updateBtnLabel)
     g_DashControls.updateBtn.OnEvent("Click", _Dash_OnUpdateBtn)
     g_DashControls.updateBtn.Enabled := (g_DashUpdateState.status != "checking")
+    Theme_ApplyToControl(g_DashControls.updateBtn, "Button", themeEntry)
 
     updateLabel := _Dash_GetUpdateLabel()
-    g_DashControls.updateText := dg.AddText("x130 y550 w300 +0x100", updateLabel)
+    g_DashControls.updateText := dg.AddText("x130 y555 w300 +0x100 c" Theme_GetMutedColor(), updateLabel)
+    Theme_MarkMuted(g_DashControls.updateText)
 
     dg.SetFont("s10")
-    btnOK := dg.AddButton("x675 y545 w80 Default", "OK")
+    btnOK := dg.AddButton("x675 y550 w80 Default", "OK")
     btnOK.OnEvent("Click", _Dash_OnClose)
+    Theme_ApplyToControl(btnOK, "Button", themeEntry)
 
     ; Close event
     dg.OnEvent("Close", _Dash_OnClose)
@@ -488,6 +526,7 @@ _Dash_OnClose(*) {
     g_DashboardShuttingDown := true
     SetTimer(_Dash_RefreshDynamic, 0)
     if (g_DashboardGui) {
+        Theme_UntrackGui(g_DashboardGui)
         g_DashboardGui.Destroy()
         g_DashboardGui := 0
     }
@@ -512,7 +551,8 @@ _Dash_RefreshDynamic() {
     global g_DashboardGui, g_DashControls, g_DashRefreshTick
     global g_StorePID, g_GuiPID, g_ViewerPID, cfg
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashUpdateState, g_ProducerStatusCache, g_ProducerDotColor
+    global g_DashUpdateState, g_ProducerStatusCache, g_ProducerHasFailed
+    global gTheme_Palette
     global g_StatsCache, g_StatsLastQueryTick, DASH_STATS_QUERY_INTERVAL
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
@@ -549,22 +589,23 @@ _Dash_RefreshDynamic() {
 
     dot := Chr(0x25CF)
     hasProd := g_ProducerStatusCache != ""
-    prodDotColor := g_ProducerDotColor != "" ? g_ProducerDotColor : "c999999"
+    prodDotColor := (g_ProducerHasFailed = "") ? "c" gTheme_Palette.textMuted
+        : (g_ProducerHasFailed ? "c" gTheme_Palette.danger : "c" gTheme_Palette.success)
 
     newState := Map(
-        "storeDotColor", storeRunning ? "c00AA00" : "cCC0000",
+        "storeDotColor", storeRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger,
         "storeText", "Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running"),
         "storeBtn", storeRunning ? "Restart" : "Launch",
-        "guiDotColor", guiRunning ? "c00AA00" : "cCC0000",
+        "guiDotColor", guiRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger,
         "guiText", "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running"),
         "guiBtn", guiRunning ? "Restart" : "Launch",
-        "configDotColor", configRunning ? "c00AA00" : "c999999",
+        "configDotColor", configRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted,
         "configText", "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running"),
         "configBtn", configRunning ? "Restart" : "Launch",
-        "blacklistDotColor", blacklistRunning ? "c00AA00" : "c999999",
+        "blacklistDotColor", blacklistRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted,
         "blacklistText", "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running"),
         "blacklistBtn", blacklistRunning ? "Restart" : "Launch",
-        "viewerDotColor", viewerRunning ? "c00AA00" : "c999999",
+        "viewerDotColor", viewerRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted,
         "viewerText", "Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running"),
         "viewerBtn", viewerRunning ? "Restart" : "Launch",
         "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
@@ -801,12 +842,9 @@ _Dash_LoadLogo(dg) {
     pThumb := _GdipResizeHQ(pBitmap, 116, 90)
     srcBitmap := pThumb ? pThumb : pBitmap
 
-    ; Convert to HBITMAP with system button face color as background
-    bgColor := DllCall("user32\GetSysColor", "int", 15, "uint")  ; COLOR_3DFACE
-    r := (bgColor & 0xFF)
-    g := (bgColor >> 8) & 0xFF
-    b := (bgColor >> 16) & 0xFF
-    argbBg := 0xFF000000 | (r << 16) | (g << 8) | b
+    ; Convert to HBITMAP with theme-aware background color
+    global gTheme_Palette
+    argbBg := 0xFF000000 | Integer("0x" gTheme_Palette.bg)
 
     hBitmap := 0
     DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", srcBitmap, "ptr*", &hBitmap, "uint", argbBg)
@@ -872,7 +910,7 @@ _Dash_GetKomorebiInfo() {
 ; Called on a delayed timer after store launch/restart.
 
 _Dash_QueryProducerStatus() {
-    global g_ProducerStatusCache, g_ProducerDotColor, cfg
+    global g_ProducerStatusCache, g_ProducerHasFailed, cfg
     global IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
 
     pipeName := cfg.StorePipeName
@@ -943,10 +981,10 @@ _Dash_QueryProducerStatus() {
 }
 
 ; Format producer states: "WEH KS IP PP" (running) or "WEH !KS IP PP" (KS failed)
-; Also sets g_ProducerDotColor: green if all OK, red if any failed
+; Also sets g_ProducerHasFailed: false if all OK, true if any failed
 ; Disabled producers omitted, MRU only shown if active (fallback)
 _Dash_FormatProducerStatus(producers) {
-    global g_ProducerDotColor
+    global g_ProducerHasFailed
 
     abbrevs := [
         ["WEH", "wineventHook"],
@@ -981,7 +1019,7 @@ _Dash_FormatProducerStatus(producers) {
         ; Skip disabled — keeps line compact
     }
 
-    g_ProducerDotColor := hasFailed ? "cCC0000" : "c00AA00"
+    g_ProducerHasFailed := hasFailed
 
     result := ""
     for _, part in parts

@@ -58,10 +58,11 @@ _BE_CreateGui() {
     global gBE_Gui, gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
 
     gBE_Gui := Gui("+Resize +MinSize500x400", "Alt-Tabby Blacklist Editor")
-    _GUI_AntiFlashPrepare(gBE_Gui, "F0F0F0", true)
+    _GUI_AntiFlashPrepare(gBE_Gui, Theme_GetBgColor(), true)
     gBE_Gui.OnEvent("Close", _BE_OnClose)
     gBE_Gui.OnEvent("Size", _BE_OnSize)
     gBE_Gui.SetFont("s9", "Segoe UI")
+    themeEntry := Theme_ApplyToGui(gBE_Gui)
 
     ; Help text at top
     helpText := "Windows matching these patterns are excluded from the Alt-Tab list.`nWildcards: * (any chars), ? (single char) - case-insensitive."
@@ -69,27 +70,38 @@ _BE_CreateGui() {
 
     ; Tab control
     tabs := gBE_Gui.AddTab3("vTabs x10 y55 w580 h350", ["Title Patterns", "Class Patterns", "Pair Patterns"])
+    Theme_ApplyToControl(tabs, "Tab", themeEntry)
 
     ; Title tab
     tabs.UseTab("Title Patterns")
     gBE_Gui.AddText("x20 y90 w550", "Title patterns - match window titles (e.g., '*Calculator*', 'Notepad'):")
     gBE_TitleEdit := gBE_Gui.AddEdit("vTitleEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
+    Theme_ApplyToControl(gBE_TitleEdit, "Edit", themeEntry)
 
     ; Class tab
     tabs.UseTab("Class Patterns")
     gBE_Gui.AddText("x20 y90 w550", "Class patterns - match window class names (e.g., 'Notepad', 'Chrome_*'):")
     gBE_ClassEdit := gBE_Gui.AddEdit("vClassEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
+    Theme_ApplyToControl(gBE_ClassEdit, "Edit", themeEntry)
 
     ; Pair tab
     tabs.UseTab("Pair Patterns")
     gBE_Gui.AddText("x20 y90 w550", "Pair patterns - match Class|Title pairs (both must match). Format: ClassName|TitlePattern")
     gBE_PairEdit := gBE_Gui.AddEdit("vPairEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
+    Theme_ApplyToControl(gBE_PairEdit, "Edit", themeEntry)
 
     tabs.UseTab()
 
+    ; Install tab WndProc subclass for text color (must be AFTER all UseTab calls)
+    Theme_InstallTabSubclass(tabs)
+
     ; Buttons at bottom
-    gBE_Gui.AddButton("vBtnSave x400 y420 w90 h30", "Save").OnEvent("Click", _BE_OnSave)
-    gBE_Gui.AddButton("vBtnCancel x500 y420 w90 h30", "Cancel").OnEvent("Click", _BE_OnCancel)
+    btnSave := gBE_Gui.AddButton("vBtnSave x400 y420 w90 h30", "Save")
+    btnSave.OnEvent("Click", _BE_OnSave)
+    btnCancel := gBE_Gui.AddButton("vBtnCancel x500 y420 w90 h30", "Cancel")
+    btnCancel.OnEvent("Click", _BE_OnCancel)
+    Theme_ApplyToControl(btnSave, "Button", themeEntry)
+    Theme_ApplyToControl(btnCancel, "Button", themeEntry)
 }
 
 ; ============================================================
@@ -193,7 +205,7 @@ _BE_SaveToFile() {
         FileAppend(content, gBlacklist_FilePath, "UTF-8")
         return true
     } catch as e {
-        MsgBox("Failed to save blacklist: " e.Message, "Error", "OK Iconx")
+        ThemeMsgBox("Failed to save blacklist: " e.Message, "Error", "OK Iconx")
         return false
     }
 }
@@ -252,6 +264,7 @@ _BE_OnSave(*) {
         reloaded := _BE_SendReloadIPC()
 
         gBE_SavedChanges := true
+        Theme_UntrackGui(gBE_Gui)
         gBE_Gui.Destroy()
 
         ; Show success message
@@ -260,7 +273,7 @@ _BE_OnSave(*) {
             msg .= " Store notified to reload."
         else
             msg .= " Store not running - changes will apply on next start."
-        MsgBox(msg, "Alt-Tabby Blacklist", "OK Iconi")
+        ThemeMsgBox(msg, "Alt-Tabby Blacklist", "OK Iconi")
     }
 }
 
@@ -268,23 +281,27 @@ _BE_OnCancel(*) {
     global gBE_Gui
 
     if (_BE_HasChanges()) {
-        result := MsgBox("You have unsaved changes. Discard them?", "Alt-Tabby Blacklist", "YesNo Icon?")
+        result := ThemeMsgBox("You have unsaved changes. Discard them?", "Alt-Tabby Blacklist", "YesNo Icon?")
         if (result = "No")
             return
     }
 
+    Theme_UntrackGui(gBE_Gui)
     gBE_Gui.Destroy()
 }
 
 _BE_OnClose(guiObj) {
     if (_BE_HasChanges()) {
-        result := MsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Blacklist", "YesNoCancel Icon?")
+        result := ThemeMsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Blacklist", "YesNoCancel Icon?")
         if (result = "Cancel")
             return true  ; Prevent close
-        if (result = "Yes")
+        if (result = "Yes") {
             _BE_OnSave()
+            return false
+        }
         ; "No" falls through to close
     }
+    Theme_UntrackGui(guiObj)
     return false  ; Allow close
 }
 

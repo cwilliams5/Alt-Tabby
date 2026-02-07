@@ -29,7 +29,7 @@ _ToggleShortcut(lnkPath, locationName) {
             FileDelete(lnkPath)
             ToolTip("Removed from " locationName)
         } catch as e {
-            MsgBox("Failed to remove shortcut:`n" e.Message, APP_NAME, "Iconx")
+            ThemeMsgBox("Failed to remove shortcut:`n" e.Message, APP_NAME, "Iconx")
         }
     } else {
         ; Warn if shortcut will point to a temporary/cloud location
@@ -37,7 +37,7 @@ _ToggleShortcut(lnkPath, locationName) {
         exeDir := ""
         SplitPath(exePath, , &exeDir)
         if (IsTemporaryLocation(exeDir)) {
-            warnResult := MsgBox(
+            warnResult := ThemeMsgBox(
                 "This shortcut will point to:`n" exePath "`n`n"
                 "This location may be temporary or cloud-synced.`n"
                 "If you delete or move this file, the shortcut will break.`n`n"
@@ -77,7 +77,7 @@ _CreateShortcutForCurrentMode(lnkPath) {
 
             ; If shortcut points to a different location, warn user
             if (StrLower(existingTarget) != StrLower(ourTarget)) {
-                result := MsgBox(
+                result := ThemeMsgBox(
                     "A shortcut 'Alt-Tabby' already exists pointing to:`n" existingTarget "`n`n"
                     "Replace it with a shortcut to this installation?`n" ourTarget,
                     APP_NAME " - Shortcut Conflict",
@@ -120,7 +120,7 @@ _CreateShortcutForCurrentMode(lnkPath) {
         shortcut.Save()
         return true
     } catch as e {
-        MsgBox("Failed to create shortcut:`n" e.Message, APP_NAME, "Iconx")
+        ThemeMsgBox("Failed to create shortcut:`n" e.Message, APP_NAME, "Iconx")
         return false
     }
 }

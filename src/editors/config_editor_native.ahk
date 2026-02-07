@@ -53,6 +53,9 @@ global gCEN_BoundScrollMsg := 0
 global gCEN_SavedChanges := false
 global gCEN_LauncherHwnd := 0
 
+; Theme tracking entry for config editor
+global gCEN_ThemeEntry := 0
+
 ; ============================================================
 ; PUBLIC API
 ; ============================================================
@@ -169,15 +172,21 @@ _CEN_BuildMainGUI() {
     global gCEN_FooterBtns, gCEN_BoundWheelMsg, gCEN_BoundScrollMsg
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL, CEN_SIDEBAR_W, CEN_CONTENT_X
 
-    ; Create main window with dark theme + anti-flash (DWM cloaking)
+    ; Create main window with theme + anti-flash (DWM cloaking)
     gCEN_MainGui := Gui("+Resize +MinSize750x450 +0x02000000", "Alt-Tabby Configuration")
     gCEN_MainGui.MarginX := 0
     gCEN_MainGui.MarginY := 0
     gCEN_MainGui.SetFont("s9", "Segoe UI")
+    global gTheme_Palette, gCEN_ThemeEntry
+    themeEntry := Theme_ApplyToGui(gCEN_MainGui)
+    gCEN_ThemeEntry := themeEntry
+    Theme_OnChange(_CEN_OnThemeChange)
 
     ; Sidebar with section list
     gCEN_Sidebar := gCEN_MainGui.AddListBox("x0 y0 w" CEN_SIDEBAR_W " h400 +0x100", [])
     gCEN_Sidebar.SetFont("s10", "Segoe UI")
+    Theme_ApplyToControl(gCEN_Sidebar, "ListBox", themeEntry)
+    Theme_MarkSidebar(gCEN_Sidebar)
     items := []
     for section in gCEN_Sections
         items.Push(section.desc)
@@ -188,9 +197,10 @@ _CEN_BuildMainGUI() {
     ; WS_CLIPCHILDREN (0x02000000) prevents viewport bg from painting over page
     ; WS_VSCROLL (0x00200000) puts the scrollbar on this container
     gCEN_Viewport := Gui("-Caption -Border +Parent" gCEN_MainGui.Hwnd " +0x02200000")
-    gCEN_Viewport.BackColor := "16213e"
+    gCEN_Viewport.BackColor := gTheme_Palette.panelBg
     gCEN_Viewport.MarginX := 0
     gCEN_Viewport.MarginY := 0
+    Theme_ApplyToWindow(gCEN_Viewport.Hwnd)
     gCEN_Viewport.Show("x" CEN_CONTENT_X " y0 w580 h500 NoActivate")
 
     ; Footer buttons
@@ -199,6 +209,8 @@ _CEN_BuildMainGUI() {
     gCEN_FooterBtns.Push(btnSave, btnCancel)
     btnSave.OnEvent("Click", _CEN_OnSave)
     btnCancel.OnEvent("Click", _CEN_OnCancel)
+    Theme_ApplyToControl(btnSave, "Button", themeEntry)
+    Theme_ApplyToControl(btnCancel, "Button", themeEntry)
 
     ; Build page for each section
     for section in gCEN_Sections
@@ -215,7 +227,7 @@ _CEN_BuildMainGUI() {
     gCEN_BoundScrollMsg := _CEN_OnVScroll
     OnMessage(CEN_WM_VSCROLL, gCEN_BoundScrollMsg)
 
-    _GUI_AntiFlashPrepare(gCEN_MainGui, "16213e", true)
+    _GUI_AntiFlashPrepare(gCEN_MainGui, Theme_GetBgColor(), true)
     gCEN_MainGui.Show("w800 h550")
 }
 
@@ -226,18 +238,20 @@ _CEN_BuildPage(section) {
     ; Page GUI: child of viewport, sized to FULL content height
     ; Controls are placed at fixed positions - they never move
     ; Scrolling moves the entire page within the viewport
+    global gTheme_Palette
     pageGui := Gui("-Caption -Border +Parent" gCEN_Viewport.Hwnd " +0x02000000")
-    pageGui.BackColor := "16213e"
+    pageGui.BackColor := gTheme_Palette.panelBg
+    Theme_MarkPanel(pageGui)
     pageGui.MarginX := 0
     pageGui.MarginY := 0
-    pageGui.SetFont("s9", "Segoe UI")
+    pageGui.SetFont("s9 c" gTheme_Palette.text, "Segoe UI")
 
     controls := []
     y := 12
     contentW := 560
 
     ; Section title
-    c := pageGui.AddText("x16 y" y " w" contentW " h26 cDDDDDD", section.desc)
+    c := pageGui.AddText("x16 y" y " w" contentW " h26 c" gTheme_Palette.text, section.desc)
     c.SetFont("s15 bold", "Segoe UI")
     controls.Push({ctrl: c, origY: y, origX: 16})
     y += 30
@@ -246,8 +260,9 @@ _CEN_BuildPage(section) {
     if (section.long != "") {
         lines := Ceil(StrLen(section.long) / 70)
         h := Max(18, lines * CEN_DESC_LINE_H)
-        c := pageGui.AddText("x16 y" y " w" contentW " h" h " c7788AA +Wrap", section.long)
+        c := pageGui.AddText("x16 y" y " w" contentW " h" h " c" Theme_GetMutedColor() " +Wrap", section.long)
         c.SetFont("s8", "Segoe UI")
+        Theme_MarkMuted(c)
         controls.Push({ctrl: c, origY: y, origX: 16})
         y += h + 8
     }
@@ -263,7 +278,7 @@ _CEN_BuildPage(section) {
         controls.Push({ctrl: c, origY: y, origX: 16})
         y += 6
         ; Subsection title
-        c := pageGui.AddText("x16 y" y " w" contentW " h20 cAAAACC", sub.name)
+        c := pageGui.AddText("x16 y" y " w" contentW " h20 c" gTheme_Palette.text, sub.name)
         c.SetFont("s10 bold", "Segoe UI")
         controls.Push({ctrl: c, origY: y, origX: 16})
         y += 22
@@ -272,8 +287,9 @@ _CEN_BuildPage(section) {
         if (sub.desc != "") {
             lines := Ceil(StrLen(sub.desc) / 75)
             h := Max(16, lines * CEN_DESC_LINE_H)
-            c := pageGui.AddText("x20 y" y " w" (contentW - 8) " h" h " c667799 +Wrap", sub.desc)
+            c := pageGui.AddText("x20 y" y " w" (contentW - 8) " h" h " c" Theme_GetMutedColor() " +Wrap", sub.desc)
             c.SetFont("s8 italic", "Segoe UI")
+            Theme_MarkMuted(c)
             controls.Push({ctrl: c, origY: y, origX: 20})
             y += h + 4
         }
@@ -293,8 +309,10 @@ _CEN_BuildPage(section) {
 }
 
 _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
-    global gCEN_Controls
+    global gCEN_Controls, gCEN_ThemeEntry, gTheme_Palette
     global CEN_SETTING_PAD, CEN_DESC_LINE_H, CEN_LABEL_W, CEN_INPUT_X
+
+    mutedColor := Theme_GetMutedColor()
 
     for setting in settings {
         y += CEN_SETTING_PAD
@@ -304,17 +322,19 @@ _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
         descH := Max(CEN_DESC_LINE_H, descLines * CEN_DESC_LINE_H)
 
         if (setting.t = "bool") {
-            cb := pageGui.AddCheckbox("x24 y" y " w" contentW " h20 cCCCCDD", setting.k)
+            cb := pageGui.AddCheckbox("x24 y" y " w" contentW " h20 c" gTheme_Palette.text, setting.k)
             controls.Push({ctrl: cb, origY: y, origX: 24})
             gCEN_Controls[setting.g] := {ctrl: cb, type: "bool"}
+            Theme_ApplyToControl(cb, "Checkbox", gCEN_ThemeEntry)
             y += 22
-            dc := pageGui.AddText("x40 y" y " w" (contentW - 24) " h" descH " c556677 +Wrap", setting.d)
+            dc := pageGui.AddText("x40 y" y " w" (contentW - 24) " h" descH " c" mutedColor " +Wrap", setting.d)
             dc.SetFont("s8", "Segoe UI")
+            Theme_MarkMuted(dc)
             controls.Push({ctrl: dc, origY: y, origX: 40})
             y += descH + 4
 
         } else if (setting.t = "enum") {
-            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 cBBBBCC", setting.k)
+            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
             controls.Push({ctrl: lbl, origY: y, origX: 24})
             optList := []
             if (setting.HasOwnProp("options"))
@@ -323,14 +343,16 @@ _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
             dd := pageGui.AddDropDownList("x" CEN_INPUT_X " y" y " w200", optList)
             controls.Push({ctrl: dd, origY: y, origX: CEN_INPUT_X})
             gCEN_Controls[setting.g] := {ctrl: dd, type: "enum"}
+            Theme_ApplyToControl(dd, "DDL", gCEN_ThemeEntry)
             y += 26
-            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c556677 +Wrap", setting.d)
+            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c" mutedColor " +Wrap", setting.d)
             dc.SetFont("s8", "Segoe UI")
+            Theme_MarkMuted(dc)
             controls.Push({ctrl: dc, origY: y, origX: 24})
             y += descH + 4
 
         } else {
-            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 cBBBBCC", setting.k)
+            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
             controls.Push({ctrl: lbl, origY: y, origX: 24})
 
             isHex := setting.HasOwnProp("fmt") && setting.fmt = "hex"
@@ -341,9 +363,11 @@ _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
                 ; Integer with range, not hex -> Edit + UpDown spinner
                 ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w180 Number")
                 controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
-                pageGui.AddUpDown("Range" setting.min "-" setting.max)
+                ud := pageGui.AddUpDown("Range" setting.min "-" setting.max)
                 ctrlInfo := {ctrl: ed, type: setting.t}
                 gCEN_Controls[setting.g] := ctrlInfo
+                Theme_ApplyToControl(ed, "Edit", gCEN_ThemeEntry)
+                Theme_ApplyToControl(ud, "UpDown", gCEN_ThemeEntry)
             } else {
                 ; Float, hex, string, or no range -> plain Edit
                 ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w200")
@@ -352,6 +376,7 @@ _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
                 if (isHex)
                     ctrlInfo.fmt := "hex"
                 gCEN_Controls[setting.g] := ctrlInfo
+                Theme_ApplyToControl(ed, "Edit", gCEN_ThemeEntry)
 
                 ; Clamp-on-blur for float/hex with range
                 if (hasRange && (setting.t = "float" || isHex)) {
@@ -361,8 +386,9 @@ _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
             }
 
             y += 26
-            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c556677 +Wrap", setting.d)
+            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c" mutedColor " +Wrap", setting.d)
             dc.SetFont("s8", "Segoe UI")
+            Theme_MarkMuted(dc)
             controls.Push({ctrl: dc, origY: y, origX: 24})
             y += descH
 
@@ -375,8 +401,9 @@ _CEN_AddSettings(pageGui, settings, controls, y, contentW) {
                 else
                     rangeText := ""
                 if (rangeText != "") {
-                    rc := pageGui.AddText("x40 y" y " w" (contentW - 24) " h14 c445566", rangeText)
+                    rc := pageGui.AddText("x40 y" y " w" (contentW - 24) " h14 c" mutedColor, rangeText)
                     rc.SetFont("s7 italic", "Segoe UI")
+                    Theme_MarkMuted(rc)
                     controls.Push({ctrl: rc, origY: y, origX: 40})
                     y += 16
                 }
@@ -444,6 +471,8 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
             try ctrlInfo.ctrl.Choose(1)
     } else if (ctrlInfo.HasOwnProp("fmt") && ctrlInfo.fmt = "hex") {
         ctrlInfo.ctrl.Value := Format("0x{:X}", val)
+    } else if (type = "float") {
+        ctrlInfo.ctrl.Value := Format("{:.6g}", val)
     } else {
         ctrlInfo.ctrl.Value := String(val)
     }
@@ -764,7 +793,7 @@ _CEN_OnSave(*) {
             , "ptr*", &response := 0
             , "ptr")
     } else {
-        MsgBox("Settings saved (" changeCount " changes). Restart Alt-Tabby to apply changes.",
+        ThemeMsgBox("Settings saved (" changeCount " changes). Restart Alt-Tabby to apply changes.",
             "Alt-Tabby Configuration", "OK Iconi")
     }
 }
@@ -773,7 +802,7 @@ _CEN_OnCancel(*) {
     global gCEN_MainGui
 
     if (_CEN_HasUnsavedChanges()) {
-        result := MsgBox("You have unsaved changes. Discard them?", "Alt-Tabby Configuration", "YesNo Icon?")
+        result := ThemeMsgBox("You have unsaved changes. Discard them?", "Alt-Tabby Configuration", "YesNo Icon?")
         if (result = "No")
             return
     }
@@ -784,7 +813,7 @@ _CEN_OnCancel(*) {
 
 _CEN_OnClose(guiObj) {
     if (_CEN_HasUnsavedChanges()) {
-        result := MsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Configuration", "YesNoCancel Icon?")
+        result := ThemeMsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Configuration", "YesNoCancel Icon?")
         if (result = "Cancel")
             return true  ; Prevent close
         if (result = "Yes") {
@@ -796,10 +825,28 @@ _CEN_OnClose(guiObj) {
     return false
 }
 
+_CEN_OnThemeChange() {
+    global gCEN_Viewport, gCEN_Pages, gTheme_Palette
+    ; Update viewport and page backgrounds (child GUIs using panelBg)
+    try {
+        gCEN_Viewport.BackColor := gTheme_Palette.panelBg
+        Theme_ApplyToWindow(gCEN_Viewport.Hwnd)
+    }
+    for name, page in gCEN_Pages {
+        try page.gui.BackColor := gTheme_Palette.panelBg
+    }
+}
+
 _CEN_Cleanup() {
     global gCEN_BoundWheelMsg, gCEN_BoundScrollMsg
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL
-    global gCEN_Pages, gCEN_Viewport
+    global gCEN_Pages, gCEN_Viewport, gCEN_MainGui, gCEN_ThemeEntry
+
+    ; Untrack GUI from theme system
+    if (gCEN_MainGui) {
+        try Theme_UntrackGui(gCEN_MainGui)
+    }
+    gCEN_ThemeEntry := 0
 
     ; Remove message handlers
     if (gCEN_BoundWheelMsg) {

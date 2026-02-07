@@ -5,28 +5,53 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Alt-Tabby Settings</title>
 <style>
+  /* Fallback palette — overridden at runtime by Theme_GetWebViewJS() injection.
+     Values here match _Theme_MakeDarkPalette() / _Theme_MakeLightPalette(). */
   :root {
-    --bg-primary: #1a1b26;
-    --bg-secondary: #24283b;
-    --bg-tertiary: #2f3349;
-    --bg-input: #1a1b26;
-    --bg-hover: #3b3f57;
-    --text-primary: #c0caf5;
-    --text-secondary: #a9b1d6;
-    --text-muted: #565f89;
-    --text-desc: #7aa2f7;
-    --accent: #7aa2f7;
-    --accent-hover: #89b4fa;
-    --border: #3b3f57;
-    --border-input: #414868;
-    --success: #9ece6a;
-    --warning: #e0af68;
-    --danger: #f7768e;
-    --toggle-bg: #414868;
-    --toggle-active: #7aa2f7;
+    --bg-primary: #202020;
+    --bg-secondary: #2B2B2B;
+    --bg-tertiary: #333333;
+    --bg-input: #383838;
+    --bg-hover: #404040;
+    --text-primary: #E0E0E0;
+    --text-secondary: #AAAAAA;
+    --text-muted: #888888;
+    --text-desc: #60CDFF;
+    --accent: #60CDFF;
+    --accent-hover: #78D6FF;
+    --border: #404040;
+    --border-input: #505050;
+    --success: #9ECE6A;
+    --warning: #E0AF68;
+    --danger: #F7768E;
+    --toggle-bg: #505050;
+    --toggle-active: #60CDFF;
     --sidebar-width: 220px;
     --header-height: 56px;
     --footer-height: 56px;
+    --btn-primary-text: #202020;
+  }
+
+  :root[data-theme="light"] {
+    --bg-primary:    #F0F0F0;
+    --bg-secondary:  #FFFFFF;
+    --bg-tertiary:   #EBEBEB;
+    --bg-input:      #FFFFFF;
+    --bg-hover:      #E0E0E0;
+    --text-primary:  #000000;
+    --text-secondary: #444444;
+    --text-muted:    #666666;
+    --text-desc:     #0066CC;
+    --accent:        #0066CC;
+    --accent-hover:  #0055AA;
+    --border:        #D0D0D0;
+    --border-input:  #BBBBBB;
+    --success:       #2E7D32;
+    --warning:       #E65100;
+    --danger:        #C62828;
+    --toggle-bg:     #CCCCCC;
+    --toggle-active: #0066CC;
+    --btn-primary-text: #FFFFFF;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -65,7 +90,7 @@
   }
   .header-search input {
     width: 100%;
-    padding: 6px 12px 6px 32px;
+    padding: 6px 12px;
     background: var(--bg-input);
     border: 1px solid var(--border-input);
     border-radius: 6px;
@@ -76,17 +101,6 @@
   }
   .header-search input:focus {
     border-color: var(--accent);
-  }
-  .header-search { position: relative; }
-  .header-search::before {
-    content: '⌕';
-    position: absolute;
-    left: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-muted);
-    font-size: 14px;
-    pointer-events: none;
   }
 
   /* Main layout */
@@ -340,7 +354,7 @@
   button.primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #1a1b26;
+    color: var(--btn-primary-text);
     font-weight: 600;
   }
   button.primary:hover {
@@ -362,7 +376,7 @@
 
   .change-count {
     background: var(--warning);
-    color: #1a1b26;
+    color: var(--btn-primary-text);
     border-radius: 10px;
     padding: 2px 8px;
     font-size: 11px;
@@ -450,6 +464,11 @@
 </div>
 
 <script>
+// Theme switching - called by AHK after page loads
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+}
+
 // Config data - injected by AHK via initSettings()
 let configRegistry = [];
 let configValues = {};
