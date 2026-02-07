@@ -48,19 +48,26 @@ InstallToProgramFiles() {
         if (DirExist(srcDir "\resources"))
             DirCopy(srcDir "\resources", installDir "\resources", true)
 
-        ; Copy config if exists (so user keeps their settings)
-        if (FileExist(srcDir "\config.ini"))
-            FileCopy(srcDir "\config.ini", installDir "\config.ini", true)
+        ; Copy config if not present at target (preserve existing customizations)
+        ; Wizard writes specific keys via _CL_WriteIniPreserveFormat after this
+        if (FileExist(srcDir "\config.ini") && !FileExist(installDir "\config.ini"))
+            FileCopy(srcDir "\config.ini", installDir "\config.ini")
 
-        ; Copy blacklist if exists
-        if (FileExist(srcDir "\blacklist.txt"))
-            FileCopy(srcDir "\blacklist.txt", installDir "\blacklist.txt", true)
+        ; Copy blacklist if not present at target (preserve existing custom entries)
+        if (FileExist(srcDir "\blacklist.txt") && !FileExist(installDir "\blacklist.txt"))
+            FileCopy(srcDir "\blacklist.txt", installDir "\blacklist.txt")
 
-        ; Copy stats if exists (preserve lifetime statistics)
-        if (FileExist(srcDir "\stats.ini"))
-            FileCopy(srcDir "\stats.ini", installDir "\stats.ini", true)
-        if (FileExist(srcDir "\stats.ini.bak"))
-            FileCopy(srcDir "\stats.ini.bak", installDir "\stats.ini.bak", true)
+        ; Preserve/merge lifetime statistics (don't overwrite accumulated stats)
+        srcStats := srcDir "\stats.ini"
+        targetStats := installDir "\stats.ini"
+        if (FileExist(srcStats)) {
+            if (!FileExist(targetStats))
+                FileCopy(srcStats, targetStats)
+            else
+                _Update_MergeStats(srcStats, targetStats)
+        }
+        if (FileExist(srcDir "\stats.ini.bak") && !FileExist(installDir "\stats.ini.bak"))
+            FileCopy(srcDir "\stats.ini.bak", installDir "\stats.ini.bak")
 
         return installDir "\AltTabby.exe"
     } catch as e {
@@ -450,6 +457,12 @@ _Launcher_OfferToUpdateStaleShortcuts() {
     if (result = "Yes") {
         RecreateShortcuts()
     }
+}
+
+; Check if running from the Program Files install directory
+_IsInProgramFiles() {
+    global ALTTABBY_INSTALL_DIR
+    return StrLower(A_ScriptDir) = StrLower(ALTTABBY_INSTALL_DIR)
 }
 
 ; Clean up stale admin task pointing to old location when user chooses "Always run from here"

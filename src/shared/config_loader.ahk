@@ -809,7 +809,7 @@ global TABBY_CMD_RESTART_ALL := 2     ; Config editor -> launcher: restart store
 
 ; Shared path/delimiter constants
 global TEMP_ADMIN_TOGGLE_LOCK := A_Temp "\alttabby_admin_toggle.lock"
-global TEMP_INSTALL_PF_LOCK := A_Temp "\alttabby_install_pf.lock"
+global TEMP_INSTALL_PF_STATE := A_Temp "\alttabby_install_pf.txt"
 global TEMP_WIZARD_STATE := A_Temp "\alttabby_wizard.json"
 global TEMP_UPDATE_STATE := A_Temp "\alttabby_update.txt"
 global TEMP_UPDATE_LOCK := A_Temp "\alttabby_update.lock"

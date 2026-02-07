@@ -209,6 +209,17 @@ _Tray_BuildSettingsMenu() {
 
     m.Add()
 
+    ; Install to Program Files (action item, not toggle)
+    if (A_IsCompiled) {
+        if (_IsInProgramFiles()) {
+            pfLabel := "Installed to Program Files"
+            m.Add(pfLabel, (*) => 0)
+            m.Disable(pfLabel)
+        } else {
+            m.Add("Install to Program Files...", (*) => _Tray_InstallToProgramFiles())
+        }
+    }
+
     ; Admin mode toggle
     m.Add("Run as Administrator", (*) => ToggleAdminMode())
     if (cfg.SetupRunAsAdmin && g_CachedAdminTaskActive)
@@ -638,6 +649,40 @@ _AdminToggle_CheckComplete() {
         ThemeMsgBox("Failed to create scheduled task.`nPlease try again.", APP_NAME, "Iconx")
     } else {
         TrayTip("Admin Mode", "Unexpected result: " content, "Icon!")
+    }
+}
+
+_Tray_InstallToProgramFiles() {
+    global APP_NAME, ALTTABBY_INSTALL_DIR, UPDATE_INFO_DELIMITER, TEMP_INSTALL_PF_STATE
+
+    if (!A_IsCompiled || _IsInProgramFiles())
+        return
+
+    result := ThemeMsgBox(
+        "Install Alt-Tabby to Program Files?`n`n"
+        "Location: " ALTTABBY_INSTALL_DIR "`n`n"
+        "This requires administrator privileges.`n"
+        "Alt-Tabby will restart from the new location.",
+        APP_NAME " - Install to Program Files",
+        "OKCancel Icon?"
+    )
+    if (result = "Cancel")
+        return
+
+    ; Write state file: source<|>target (same format as update-installed)
+    targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
+    stateContent := A_ScriptFullPath UPDATE_INFO_DELIMITER targetPath
+    try FileDelete(TEMP_INSTALL_PF_STATE)
+    FileAppend(stateContent, TEMP_INSTALL_PF_STATE, "UTF-8")
+
+    ; Self-elevate and exit (elevated instance handles install + relaunch)
+    try {
+        if (!_Launcher_RunAsAdmin("--install-to-pf"))
+            throw Error("RunAsAdmin failed")
+        ExitAll()
+    } catch {
+        try FileDelete(TEMP_INSTALL_PF_STATE)
+        ThemeMsgBox("Installation requires administrator privileges.`nThe UAC prompt may have been cancelled.", APP_NAME, "Icon!")
     }
 }
 

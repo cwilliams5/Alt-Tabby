@@ -86,6 +86,9 @@ for _, arg in A_Args {
         case "--disable-admin-task":
             g_AltTabbyMode := "disable-admin-task"
             ; Delete admin task after self-elevation (from "Always run from here")
+        case "--install-to-pf":
+            g_AltTabbyMode := "install-to-pf"
+            ; Install to Program Files after self-elevation (from tray/dashboard)
         case "--testing-mode":
             g_TestingMode := true
             A_IconHidden := true  ; No tray icon during automated testing
@@ -460,6 +463,48 @@ if (g_AltTabbyMode = "update-installed") {
         _Launcher_DoUpdateInstalled(sourcePath, targetPath)
     } catch as e {
         ThemeMsgBox("Update failed:`n" e.Message, APP_NAME, "Iconx")
+    }
+    ExitApp()
+}
+
+; ============================================================
+; INSTALL-TO-PF MODE (After Self-Elevation from Tray/Dashboard)
+; ============================================================
+if (g_AltTabbyMode = "install-to-pf") {
+    ConfigLoader_Init()
+    Theme_Init()
+
+    global TEMP_INSTALL_PF_STATE, UPDATE_INFO_DELIMITER
+    stateFile := TEMP_INSTALL_PF_STATE
+
+    if (!FileExist(stateFile)) {
+        ThemeMsgBox("Install state information not found.", APP_NAME, "Iconx")
+        ExitApp()
+    }
+
+    try {
+        content := FileRead(stateFile, "UTF-8")
+        FileDelete(stateFile)
+
+        parts := StrSplit(content, UPDATE_INFO_DELIMITER)
+        if (parts.Length != 2) {
+            ThemeMsgBox("Invalid install state information.", APP_NAME, "Iconx")
+            ExitApp()
+        }
+
+        sourcePath := parts[1]
+        targetPath := parts[2]
+
+        if (!FileExist(sourcePath)) {
+            ThemeMsgBox("Source file not found:`n" sourcePath, APP_NAME, "Iconx")
+            ExitApp()
+        }
+
+        ; _Launcher_DoUpdateInstalled handles everything:
+        ; DirCreate, blacklist copy, stats merge, config copy, admin task, shortcuts, relaunch
+        _Launcher_DoUpdateInstalled(sourcePath, targetPath)
+    } catch as e {
+        ThemeMsgBox("Installation failed:`n" e.Message, APP_NAME, "Iconx")
     }
     ExitApp()
 }

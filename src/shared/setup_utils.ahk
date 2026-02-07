@@ -649,6 +649,10 @@ _Update_ApplyCore(opts) {
     backupPath := targetPath ".old"
 
     try {
+        ; Ensure target directory exists (e.g., fresh install to Program Files)
+        if (!DirExist(targetDir))
+            DirCreate(targetDir)
+
         ; Kill all other AltTabby.exe processes
         targetExeName := ""
         SplitPath(targetPath, &targetExeName)
@@ -708,6 +712,14 @@ _Update_ApplyCore(opts) {
         ; Always copy backup if missing (don't merge backups)
         if (FileExist(srcStatsPath ".bak") && !FileExist(targetStatsPath ".bak"))
             try FileCopy(srcStatsPath ".bak", targetStatsPath ".bak")
+
+        ; Copy blacklist.txt if exists at source and not present at target
+        srcBlacklist := srcDir "\blacklist.txt"
+        targetBlacklist := targetDir "\blacklist.txt"
+        if (FileExist(srcBlacklist) && StrLower(srcBlacklist) != StrLower(targetBlacklist)) {
+            if (!FileExist(targetBlacklist))
+                try FileCopy(srcBlacklist, targetBlacklist)
+        }
 
         ; Update config at target location
         cfg.SetupExePath := targetPath
@@ -839,13 +851,14 @@ _Update_CleanupOldExe() {
 ; Clean up stale temp files from crashed wizard/update instances (Priority 3 fix)
 ; Called on startup after _Update_CleanupOldExe
 _Update_CleanupStaleTempFiles() {
-    global TEMP_ADMIN_TOGGLE_LOCK, TEMP_WIZARD_STATE, TEMP_UPDATE_STATE, TEMP_UPDATE_LOCK
+    global TEMP_ADMIN_TOGGLE_LOCK, TEMP_WIZARD_STATE, TEMP_UPDATE_STATE, TEMP_UPDATE_LOCK, TEMP_INSTALL_PF_STATE
     staleFiles := [
         TEMP_WIZARD_STATE,
         TEMP_UPDATE_STATE,
         A_Temp "\alttabby_install_update.txt",
         TEMP_ADMIN_TOGGLE_LOCK,
-        TEMP_UPDATE_LOCK
+        TEMP_UPDATE_LOCK,
+        TEMP_INSTALL_PF_STATE
     ]
 
     for filePath in staleFiles {

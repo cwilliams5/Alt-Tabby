@@ -268,8 +268,14 @@ ShowDashboardDialog() {
 
     ; Info rows (read-only)
     subY += 28
-    ctlInstallInfo := dg.AddText("x400 y" subY " w340 +0x100 c" Theme_GetMutedColor(), "Install: " _Dash_GetInstallInfo())
+    installTextW := (A_IsCompiled && !_IsInProgramFiles()) ? 260 : 340
+    ctlInstallInfo := dg.AddText("x400 y" subY " w" installTextW " +0x100 c" Theme_GetMutedColor(), "Install: " _Dash_GetInstallInfo())
     Theme_MarkMuted(ctlInstallInfo)
+    if (A_IsCompiled && !_IsInProgramFiles()) {
+        g_DashControls.installPFBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", "Install")
+        g_DashControls.installPFBtn.OnEvent("Click", (*) => _Tray_InstallToProgramFiles())
+        Theme_ApplyToControl(g_DashControls.installPFBtn, "Button", themeEntry)
+    }
 
     subY += 20
     ctlAdminTask := dg.AddText("x400 y" subY " w340 +0x100 c" Theme_GetMutedColor(), "Admin Task: " _Dash_GetAdminTaskInfo())
@@ -349,6 +355,8 @@ ShowDashboardDialog() {
             . "WindowStore for troubleshooting")
         _Dash_SetTip(hTT, ctlInstallInfo
             , "Directory where Alt-Tabby is installed or running from")
+        if (g_DashControls.HasOwnProp("installPFBtn"))
+            _Dash_SetTip(hTT, g_DashControls.installPFBtn, "Install Alt-Tabby to Program Files")
         _Dash_SetTip(hTT, ctlAdminTask
             , "Windows Task Scheduler task that allows Alt-Tabby`n"
             . "to run with administrator privileges without UAC prompts")
