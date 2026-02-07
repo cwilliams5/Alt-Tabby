@@ -618,11 +618,11 @@ global gConfigRegistry := [
      d: "Footer horizontal padding in pixels"},
 
     ; ============================================================
-    ; IPC & Pipes
+    ; IPC & Communication
     ; ============================================================
     {type: "section", name: "IPC",
-     desc: "IPC & Pipes",
-     long: "Named pipe for store<->client communication."},
+     desc: "IPC & Communication",
+     long: "Named pipe communication between store and clients, including heartbeat liveness detection."},
 
     {s: "IPC", k: "StorePipeName", g: "StorePipeName", t: "string", default: "tabby_store_v1",
      d: "Named pipe name for store communication"},
@@ -657,6 +657,17 @@ global gConfigRegistry := [
      min: 500, max: 5000,
      d: "Time to wait for store to start on launch (ms). Increase on slow systems."},
 
+    {type: "subsection", section: "IPC", name: "Heartbeat",
+     desc: "Store broadcasts heartbeat to clients for liveness detection"},
+
+    {s: "IPC", k: "StoreIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", default: 5000,
+     min: 1000, max: 60000,
+     d: "Store sends heartbeat every N ms"},
+
+    {s: "IPC", k: "ViewerTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", default: 12000,
+     min: 2000, max: 120000,
+     d: "Viewer considers connection dead after N ms without any message"},
+
     ; ============================================================
     ; External Tools
     ; ============================================================
@@ -671,43 +682,41 @@ global gConfigRegistry := [
      d: "Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations"},
 
     ; ============================================================
-    ; Producer Toggles
+    ; Window Store
     ; ============================================================
-    {type: "section", name: "Producers",
-     desc: "Producer Toggles",
-     long: "WinEventHook and MRU are always enabled (core functionality). These control optional producers."},
+    {type: "section", name: "Store",
+     desc: "Window Store",
+     long: "Window store configuration: producers, filtering, timing, and caching. Most users won't need to change these."},
 
-    {s: "Producers", k: "UseKomorebiSub", g: "UseKomorebiSub", t: "bool", default: true,
+    ; --- Producer Toggles ---
+    {type: "subsection", section: "Store", name: "Producer Toggles",
+     desc: "WinEventHook and MRU are always enabled (core). These control optional producers"},
+
+    {s: "Store", k: "UseKomorebiSub", g: "UseKomorebiSub", t: "bool", default: true,
      d: "Komorebi subscription-based integration (preferred, event-driven)"},
 
-    {s: "Producers", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", default: false,
+    {s: "Store", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", default: false,
      d: "Komorebi polling-based fallback (use if subscription fails)"},
 
-    {s: "Producers", k: "UseIconPump", g: "UseIconPump", t: "bool", default: true,
+    {s: "Store", k: "UseIconPump", g: "UseIconPump", t: "bool", default: true,
      d: "Resolve window icons in background"},
 
-    {s: "Producers", k: "UseProcPump", g: "UseProcPump", t: "bool", default: true,
+    {s: "Store", k: "UseProcPump", g: "UseProcPump", t: "bool", default: true,
      d: "Resolve process names in background"},
 
-    ; ============================================================
-    ; Window Filtering
-    ; ============================================================
-    {type: "section", name: "Filtering",
-     desc: "Window Filtering",
-     long: "Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist."},
+    ; --- Window Filtering ---
+    {type: "subsection", section: "Store", name: "Window Filtering",
+     desc: "Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist"},
 
-    {s: "Filtering", k: "UseAltTabEligibility", g: "UseAltTabEligibility", t: "bool", default: true,
+    {s: "Store", k: "UseAltTabEligibility", g: "UseAltTabEligibility", t: "bool", default: true,
      d: "Filter windows like native Alt-Tab (skip tool windows, etc.)"},
 
-    {s: "Filtering", k: "UseBlacklist", g: "UseBlacklist", t: "bool", default: true,
+    {s: "Store", k: "UseBlacklist", g: "UseBlacklist", t: "bool", default: true,
      d: "Apply blacklist from shared/blacklist.txt"},
 
-    ; ============================================================
-    ; WinEventHook Timing
-    ; ============================================================
-    {type: "section", name: "WinEventHook",
-     desc: "WinEventHook Timing",
-     long: "Event-driven window change detection. Events are queued then processed in batches to keep the callback fast."},
+    ; --- WinEventHook ---
+    {type: "subsection", section: "Store", name: "WinEventHook",
+     desc: "Event-driven window change detection. Events are queued then processed in batches"},
 
     {s: "WinEventHook", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", default: 50,
      min: 10, max: 1000,
@@ -725,23 +734,17 @@ global gConfigRegistry := [
      min: 100, max: 10000,
      d: "Min interval between proactive pushes for cosmetic-only changes (title updates). Structural changes (focus, create, destroy) always push immediately."},
 
-    ; ============================================================
-    ; Z-Pump Timing
-    ; ============================================================
-    {type: "section", name: "ZPump",
-     desc: "Z-Pump Timing",
-     long: "When WinEventHook adds a window, we don't know its Z-order. Z-pump triggers a full WinEnum scan to get accurate Z-order."},
+    ; --- Z-Pump ---
+    {type: "subsection", section: "Store", name: "Z-Pump",
+     desc: "When WinEventHook adds a window, Z-pump triggers a WinEnum scan for accurate Z-order"},
 
     {s: "ZPump", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
      min: 50, max: 5000,
      d: "How often to check if Z-queue has pending windows"},
 
-    ; ============================================================
-    ; WinEnum (Full Scan) Safety Polling
-    ; ============================================================
-    {type: "section", name: "WinEnum",
-     desc: "WinEnum Safety Polling",
-     long: "WinEnum normally runs on-demand (startup, snapshot, Z-pump). Enable safety polling as a paranoid belt-and-suspenders."},
+    ; --- WinEnum ---
+    {type: "subsection", section: "Store", name: "WinEnum",
+     desc: "Full window enumeration (startup, snapshot, Z-pump, safety polling)"},
 
     {s: "WinEnum", k: "MissingWindowTTLMs", g: "WinEnumMissingWindowTTLMs", t: "int", default: 1200,
      min: 100, max: 10000,
@@ -759,23 +762,17 @@ global gConfigRegistry := [
      min: 0, max: 60000,
      d: "Lightweight zombie detection interval (ms). Checks existing store entries via IsWindow() to remove dead windows. Much faster than full EnumWindows scan. 0=disabled."},
 
-    ; ============================================================
-    ; MRU Lite Timing (Fallback Only)
-    ; ============================================================
-    {type: "section", name: "MruLite",
-     desc: "MRU Lite Timing",
-     long: "MRU_Lite only runs if WinEventHook fails to start. It polls the foreground window to track focus changes."},
+    ; --- MRU Lite ---
+    {type: "subsection", section: "Store", name: "MRU Lite",
+     desc: "Fallback focus tracker (only runs if WinEventHook fails to start)"},
 
     {s: "MruLite", k: "PollMs", g: "MruLitePollMs", t: "int", default: 250,
      min: 50, max: 5000,
      d: "Polling interval for focus tracking fallback"},
 
-    ; ============================================================
-    ; Icon Pump Timing
-    ; ============================================================
-    {type: "section", name: "IconPump",
-     desc: "Icon Pump Timing",
-     long: "Resolves window icons asynchronously with retry/backoff."},
+    ; --- Icon Pump ---
+    {type: "subsection", section: "Store", name: "Icon Pump",
+     desc: "Resolves window icons asynchronously with retry/backoff"},
 
     {s: "IconPump", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", default: 80,
      min: 20, max: 1000,
@@ -813,12 +810,9 @@ global gConfigRegistry := [
      min: 100, max: 2000,
      d: "WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond."},
 
-    ; ============================================================
-    ; Process Pump Timing
-    ; ============================================================
-    {type: "section", name: "ProcPump",
-     desc: "Process Pump Timing",
-     long: "Resolves PID -> process name asynchronously."},
+    ; --- Process Pump ---
+    {type: "subsection", section: "Store", name: "Process Pump",
+     desc: "Resolves PID -> process name asynchronously"},
 
     {s: "ProcPump", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", default: 100,
      min: 20, max: 1000,
@@ -832,22 +826,19 @@ global gConfigRegistry := [
      min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
-    ; ============================================================
-    ; Cache Limits
-    ; ============================================================
-    {type: "section", name: "Cache",
-     desc: "Cache Limits",
-     long: "Size limits for internal caches to prevent unbounded memory growth."},
+    ; --- Cache Limits ---
+    {type: "subsection", section: "Store", name: "Cache Limits",
+     desc: "Size limits for internal caches to prevent unbounded memory growth"},
 
-    {s: "Cache", k: "ExeIconMax", g: "ExeIconCacheMax", t: "int", default: 100,
+    {s: "Store", k: "ExeIconMax", g: "ExeIconCacheMax", t: "int", default: 100,
      min: 10, max: 1000,
      d: "Maximum number of cached exe icons. Older entries are evicted when limit is reached."},
 
-    {s: "Cache", k: "UwpLogoMax", g: "UwpLogoCacheMax", t: "int", default: 50,
+    {s: "Store", k: "UwpLogoMax", g: "UwpLogoCacheMax", t: "int", default: 50,
      min: 5, max: 500,
      d: "Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps."},
 
-    {s: "Cache", k: "ProcNameMax", g: "ProcNameCacheMax", t: "int", default: 200,
+    {s: "Store", k: "ProcNameMax", g: "ProcNameCacheMax", t: "int", default: 200,
      min: 10, max: 2000,
      d: "Maximum number of cached process names. Older entries are evicted when limit is reached."},
 
@@ -875,67 +866,35 @@ global gConfigRegistry := [
      t: "enum", default: "PollCloak", options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
      d: "How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},
 
-    ; ============================================================
-    ; Komorebi Subscription Timing
-    ; ============================================================
-    {type: "section", name: "KomorebiSub",
-     desc: "Komorebi Subscription Timing",
-     long: "Event-driven komorebi integration via named pipe."},
+    {type: "subsection", section: "Komorebi", name: "Subscription",
+     desc: "Event-driven komorebi integration via named pipe"},
 
-    {s: "KomorebiSub", k: "PollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
+    {s: "Komorebi", k: "SubPollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
      min: 10, max: 1000,
      d: "Pipe poll interval (checking for incoming data)"},
 
-    {s: "KomorebiSub", k: "IdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
+    {s: "Komorebi", k: "SubIdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
      min: 10000, max: 600000,
      d: "Restart subscription if no events for this long (stale detection)"},
 
-    {s: "KomorebiSub", k: "FallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
+    {s: "Komorebi", k: "SubFallbackPollMs", g: "KomorebiSubFallbackPollMs", t: "int", default: 2000,
      min: 500, max: 30000,
      d: "Fallback polling interval if subscription fails"},
 
-    {s: "KomorebiSub", k: "CacheMaxAgeMs", g: "KomorebiSubCacheMaxAgeMs", t: "int", default: 10000,
+    {s: "Komorebi", k: "SubCacheMaxAgeMs", g: "KomorebiSubCacheMaxAgeMs", t: "int", default: 10000,
      min: 1000, max: 60000,
      d: "Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately."},
 
-    {s: "KomorebiSub", k: "BatchCloakEventsMs", g: "KomorebiSubBatchCloakEventsMs", t: "int", default: 50,
+    {s: "Komorebi", k: "SubBatchCloakEventsMs", g: "KomorebiSubBatchCloakEventsMs", t: "int", default: 50,
      min: 0, max: 500,
      d: "Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately."},
-
-    ; ============================================================
-    ; Heartbeat & Connection Health
-    ; ============================================================
-    {type: "section", name: "Heartbeat",
-     desc: "Heartbeat & Connection Health",
-     long: "Store broadcasts heartbeat to clients for liveness detection."},
-
-    {s: "Heartbeat", k: "StoreIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", default: 5000,
-     min: 1000, max: 60000,
-     d: "Store sends heartbeat every N ms"},
-
-    {s: "Heartbeat", k: "ViewerTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", default: 12000,
-     min: 2000, max: 120000,
-     d: "Viewer considers connection dead after N ms without any message"},
-
-    ; ============================================================
-    ; Viewer Settings
-    ; ============================================================
-    {type: "section", name: "Viewer",
-     desc: "Viewer Settings",
-     long: "Debug viewer GUI options."},
-
-    {s: "Viewer", k: "DebugLog", g: "DebugViewerLog", t: "bool", default: false,
-     d: "Enable verbose logging to error log"},
-
-    {s: "Viewer", k: "AutoStartStore", g: "ViewerAutoStartStore", t: "bool", default: false,
-     d: "Auto-start store_server if not running when viewer connects"},
 
     ; ============================================================
     ; Diagnostics
     ; ============================================================
     {type: "section", name: "Diagnostics",
      desc: "Diagnostics",
-     long: "Debug options for troubleshooting. All disabled by default to minimize disk I/O and resource usage."},
+     long: "Debug options, viewer settings, and test configuration. All logging disabled by default."},
 
     {s: "Diagnostics", k: "ChurnLog", g: "DiagChurnLog", t: "bool", default: false,
      d: "Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle."},
@@ -987,6 +946,22 @@ global gConfigRegistry := [
      min: 25, max: 500,
      d: "Size to keep after log trim in KB. Must be less than LogMaxKB."},
 
+    {type: "subsection", section: "Diagnostics", name: "Viewer",
+     desc: "Debug viewer GUI options"},
+
+    {s: "Diagnostics", k: "ViewerDebugLog", g: "DebugViewerLog", t: "bool", default: false,
+     d: "Enable verbose viewer logging to error log"},
+
+    {s: "Diagnostics", k: "ViewerAutoStartStore", g: "ViewerAutoStartStore", t: "bool", default: false,
+     d: "Auto-start store_server if not running when viewer connects"},
+
+    {type: "subsection", section: "Diagnostics", name: "Testing",
+     desc: "Options for automated test suite"},
+
+    {s: "Diagnostics", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", default: 30,
+     min: 5, max: 300,
+     d: "Default duration for test_live.ahk"},
+
     ; ============================================================
     ; Theme (Dark/Light Mode)
     ; ============================================================
@@ -997,17 +972,6 @@ global gConfigRegistry := [
     {s: "Theme", k: "Theme", g: "Theme_Mode",
      t: "enum", default: "Automatic", options: ["Automatic", "Dark", "Light"],
      d: "Color theme for dialogs and editors. Automatic follows the Windows system setting."},
-
-    ; ============================================================
-    ; Testing
-    ; ============================================================
-    {type: "section", name: "Testing",
-     desc: "Testing",
-     long: "Options for automated test suite."},
-
-    {s: "Testing", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", default: 30,
-     min: 5, max: 300,
-     d: "Default duration for test_live.ahk"},
 
     ; ============================================================
     ; Setup (First-Run & Installation)

@@ -158,6 +158,11 @@ _CL_CreateDefaultIni(path) {
                 content .= ";;; " entry.desc "`n"
         }
         else if (entry.HasOwnProp("default")) {
+            ; Emit INI section header if this setting's s: differs from current
+            if (entry.s != currentSection) {
+                content .= "`n[" entry.s "]`n"
+                currentSection := entry.s
+            }
             ; Setting - description with ;;; and default value commented out with ;
             content .= ";;; " entry.d "`n"
             content .= "; " entry.k "=" _CL_FormatValue(entry.default, entry.t) "`n"
