@@ -152,6 +152,17 @@ Launcher_Init() {
         }
     }
 
+    _Launcher_StartSubprocesses()
+}
+
+; Shared subprocess launch sequence used by both Launcher_Init() and wizard-continue.
+; Handles: splash, tray, OnExit, active mutex, store+gui launch, HWND file, splash hide,
+; auto-update check, and Persistent().
+; skipMismatchGuard: true when called from wizard-continue (mismatch can't have happened)
+_Launcher_StartSubprocesses(skipMismatchGuard := false) {
+    global g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
+    global TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, g_SplashStartTick, APP_NAME
+
     ; Show splash screen if enabled (skip in testing mode)
     if (cfg.LauncherSplashScreen != "None" && !g_TestingMode)
         ShowSplashScreen()
@@ -233,7 +244,8 @@ Launcher_Init() {
     }
 
     ; Auto-update check if enabled (skip if mismatch dialog was shown to avoid race)
-    if (cfg.SetupAutoUpdateCheck && !g_MismatchDialogShown)
+    mismatchShown := skipMismatchGuard ? false : g_MismatchDialogShown
+    if (cfg.SetupAutoUpdateCheck && !mismatchShown)
         SetTimer(() => CheckForUpdates(false), -5000)
 
     ; Stay alive to manage subprocesses
@@ -697,6 +709,13 @@ _Launcher_RepairStaleExePath() {
         return  ; Already correct
     if (FileExist(cfg.SetupExePath))
         return  ; Old path still exists (mismatch check handles this)
+
+    ; If admin mode is active with a task, skip repair here — the admin repair path
+    ; in _ShouldRedirectToScheduledTask() handles ExePath, shortcuts, and task update.
+    ; If admin repair later fails (UAC refused), admin mode gets disabled, and next
+    ; launch hits this function normally.
+    if (cfg.SetupRunAsAdmin && AdminTaskExists())
+        return
 
     ; SetupExePath points to non-existent file - update to current path
     cfg.SetupExePath := A_ScriptFullPath

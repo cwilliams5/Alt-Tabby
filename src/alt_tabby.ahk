@@ -240,72 +240,8 @@ if (g_AltTabbyMode = "wizard-continue") {
             ExitApp()
         }
 
-        ; Acquire system-wide active mutex before launching subprocesses
-        ; Skip in testing mode to allow parallel test execution
-        if (!g_TestingMode && !_Launcher_AcquireActiveMutex()) {
-            result := ThemeMsgBox(
-                "Another Alt-Tabby installation is already running.`n`n"
-                "Only one installation can be active at a time.`n"
-                "Close the other installation and try again?",
-                APP_NAME,
-                "YesNo Iconx"
-            )
-            if (result = "Yes") {
-                _Launcher_KillAllAltTabbyProcesses()
-                Sleep(TIMING_MUTEX_RELEASE_WAIT)
-                if (!_Launcher_AcquireActiveMutex()) {
-                    ThemeMsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
-                    ExitApp()
-                }
-            } else {
-                ExitApp()
-            }
-        }
-
-        ; Show splash screen if enabled (skip in testing mode)
-        if (cfg.LauncherSplashScreen != "None" && !g_TestingMode)
-            ShowSplashScreen()
-
-        SetupLauncherTray()
-        OnMessage(WM_TRAYICON, TrayIconClick)
-        OnMessage(WM_COPYDATA, _Launcher_OnCopyData)  ; WM_COPYDATA from child processes
-
-        ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
-        ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)
-        OnExit(_Launcher_OnExit)
-
-        LaunchStore()
-        Sleep(TIMING_SUBPROCESS_LAUNCH)
-        LaunchGui()
-
-        ; Hide splash after duration/loops complete
-        if (cfg.LauncherSplashScreen != "None" && !g_TestingMode) {
-            if (cfg.LauncherSplashScreen = "Image") {
-                ; Image mode: wait for configured duration
-                elapsed := A_TickCount - g_SplashStartTick
-                remaining := cfg.LauncherSplashImageDurationMs - elapsed
-                if (remaining > 0)
-                    Sleep(remaining)
-                HideSplashScreen()
-            } else if (cfg.LauncherSplashScreen = "Animation") {
-                ; Animation mode: wait for animation to complete its loops
-                maxLoops := cfg.LauncherSplashAnimLoops
-                if (maxLoops > 0) {
-                    ; Poll until animation completes (loop count reached or window destroyed)
-                    while (IsSplashActive()) {
-                        Sleep(100)
-                    }
-                }
-                ; Always call HideSplashScreen to ensure cleanup
-                HideSplashScreen()
-            }
-        }
-
-        ; Auto-update check if enabled
-        if (cfg.SetupAutoUpdateCheck)
-            SetTimer(() => CheckForUpdates(false), -5000)
-
-        Persistent()
+        _Launcher_LogStartup()
+        _Launcher_StartSubprocesses(true)  ; skip mismatch guard (can't have happened)
     } else {
         ; No wizard data found - exit
         ThemeMsgBox("No wizard continuation data found.", APP_NAME, "Iconx")
@@ -451,12 +387,27 @@ if (g_AltTabbyMode = "update-installed") {
             ExitApp()
         }
 
-        ; Validate target path looks like an Alt-Tabby executable
-        ; Allow renamed exes (e.g., "alttabby v4.exe") as long as they contain "tabby"
+        ; Validate target is an exe in an expected directory (more secure than name-based,
+        ; more permissive for renamed exes that don't contain "tabby" in the name)
         targetName := ""
-        SplitPath(targetPath, &targetName)
-        if (!RegExMatch(targetName, "i)\.exe$") || !InStr(StrLower(targetName), "tabby")) {
+        targetDir := ""
+        SplitPath(targetPath, &targetName, &targetDir)
+        if (!RegExMatch(targetName, "i)\.exe$")) {
             ThemeMsgBox("Invalid update target path:`n" targetPath, APP_NAME, "Iconx")
+            ExitApp()
+        }
+        ; Target directory must be: same as source, SetupExePath's dir, or Program Files install dir
+        sourceDir := ""
+        SplitPath(sourcePath, , &sourceDir)
+        setupDir := ""
+        if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
+            SplitPath(cfg.SetupExePath, , &setupDir)
+        }
+        targetDirLower := StrLower(targetDir)
+        if (targetDirLower != StrLower(sourceDir)
+            && (setupDir = "" || targetDirLower != StrLower(setupDir))
+            && targetDirLower != StrLower(ALTTABBY_INSTALL_DIR)) {
+            ThemeMsgBox("Update target directory is not recognized:`n" targetPath, APP_NAME, "Iconx")
             ExitApp()
         }
 

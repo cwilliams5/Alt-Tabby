@@ -719,14 +719,22 @@ _Update_ApplyCore(opts) {
                     try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
             }
 
-            DeleteAdminTask()
-            if (!CreateAdminTask(targetPath, targetInstallId)) {
-                ThemeMsgBox("Could not recreate admin task after update.`n`n"
-                    "Admin mode has been disabled. You can re-enable it from the tray menu.",
-                    APP_NAME " - Admin Mode Error", "Icon!")
-                cfg.SetupRunAsAdmin := false
-                if (FileExist(targetConfigPath))
-                    try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
+            ; Only recreate task if path or ID differs from target (avoid unnecessary delete+create)
+            existingTaskPath := _AdminTask_GetCommandPath()
+            existingTaskId := _AdminTask_GetInstallationId()
+            taskNeedsUpdate := (StrLower(existingTaskPath) != StrLower(targetPath))
+                || (existingTaskId != targetInstallId)
+
+            if (taskNeedsUpdate) {
+                DeleteAdminTask()
+                if (!CreateAdminTask(targetPath, targetInstallId)) {
+                    ThemeMsgBox("Could not recreate admin task after update.`n`n"
+                        "Admin mode has been disabled. You can re-enable it from the tray menu.",
+                        APP_NAME " - Admin Mode Error", "Icon!")
+                    cfg.SetupRunAsAdmin := false
+                    if (FileExist(targetConfigPath))
+                        try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
+                }
             }
         }
 
