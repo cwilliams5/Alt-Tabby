@@ -590,6 +590,7 @@ _GUI_ShowBlacklistDialog(class, title) {
     themeEntry := Theme_ApplyToGui(dlg)
 
     contentW := 440
+    mutedColor := Theme_GetMutedColor()
 
     ; Header in accent
     hdr := dlg.AddText("w" contentW " c" Theme_GetAccentColor(), "Add to blacklist:")
@@ -599,7 +600,8 @@ _GUI_ShowBlacklistDialog(class, title) {
     if (class != "") {
         lblC := dlg.AddText("x24 w50 h20 y+12 +0x200", "Class:")
         lblC.SetFont("s10 bold", "Segoe UI")
-        valC := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200", class)
+        valC := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200 c" mutedColor, class)
+        Theme_MarkMuted(valC)
     }
 
     ; Title label + value (truncated)
@@ -607,36 +609,38 @@ _GUI_ShowBlacklistDialog(class, title) {
         displayTitle := SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : "")
         lblT := dlg.AddText("x24 w50 h20 y+4 +0x200", "Title:")
         lblT.SetFont("s10 bold", "Segoe UI")
-        valT := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200", displayTitle)
+        valT := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200 c" mutedColor, displayTitle)
+        Theme_MarkMuted(valT)
     }
 
-    ; Action buttons (left) + Cancel (right-aligned with gap)
-    ; Right edge: 24 + 440 = 464. Cancel w90 at x374.
-    ; Max 3 action buttons end at x340, giving 34px gap before Cancel.
-    cancelX := 24 + contentW - 90
-    btnY := "+20"
+    ; Action buttons (uniform width, left) + Cancel (right, separated)
+    btnW := 100
+    btnGap := 8
+    cancelGap := 24
+    btnY := "+24"
     actionBtns := []
     btnX := 24
     if (class != "") {
-        btn := dlg.AddButton("x" btnX " y" btnY " w100 h30", "Add Class")
+        btn := dlg.AddButton("x" btnX " y" btnY " w" btnW " h30", "Add Class")
         btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "class"))
         actionBtns.Push(btn)
-        btnX += 108
+        btnX += btnW + btnGap
         btnY := "p"  ; same row for subsequent buttons
     }
     if (title != "") {
-        btn := dlg.AddButton("x" btnX " y" btnY " w100 h30", "Add Title")
+        btn := dlg.AddButton("x" btnX " y" btnY " w" btnW " h30", "Add Title")
         btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "title"))
         actionBtns.Push(btn)
-        btnX += 108
+        btnX += btnW + btnGap
         btnY := "p"
     }
     if (class != "" && title != "") {
-        btn := dlg.AddButton("x" btnX " y" btnY " w100 h30", "Add Pair")
+        btn := dlg.AddButton("x" btnX " y" btnY " w" btnW " h30", "Add Pair")
         btn.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, "pair"))
         actionBtns.Push(btn)
+        btnX += btnW + cancelGap
     }
-    btnCancel := dlg.AddButton("x" cancelX " yp w90 h30", "Cancel")
+    btnCancel := dlg.AddButton("x" btnX " yp w" btnW " h30", "Cancel")
     btnCancel.OnEvent("Click", (*) => _GUI_BlacklistChoice(dlg, ""))
 
     for btn in actionBtns

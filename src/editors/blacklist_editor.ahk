@@ -16,7 +16,9 @@ global gBE_Gui := 0
 global gBE_TitleEdit := 0
 global gBE_ClassEdit := 0
 global gBE_PairEdit := 0
-global gBE_OriginalContent := ""
+global gBE_OriginalTitle := ""
+global gBE_OriginalClass := ""
+global gBE_OriginalPair := ""
 global gBE_SavedChanges := false
 
 ; ============================================================
@@ -96,10 +98,13 @@ _BE_CreateGui() {
     Theme_InstallTabSubclass(tabs)
 
     ; Buttons at bottom
+    btnTest := gBE_Gui.AddButton("vBtnTest x10 y420 w120 h30", "Test Patterns")
+    btnTest.OnEvent("Click", _BE_OnTestPatterns)
     btnSave := gBE_Gui.AddButton("vBtnSave x400 y420 w90 h30", "Save")
     btnSave.OnEvent("Click", _BE_OnSave)
     btnCancel := gBE_Gui.AddButton("vBtnCancel x500 y420 w90 h30", "Cancel")
     btnCancel.OnEvent("Click", _BE_OnCancel)
+    Theme_ApplyToControl(btnTest, "Button", themeEntry)
     Theme_ApplyToControl(btnSave, "Button", themeEntry)
     Theme_ApplyToControl(btnCancel, "Button", themeEntry)
 }
@@ -109,7 +114,8 @@ _BE_CreateGui() {
 ; ============================================================
 
 _BE_LoadValues() {
-    global gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit, gBE_OriginalContent
+    global gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
+    global gBE_OriginalTitle, gBE_OriginalClass, gBE_OriginalPair
     global gBlacklist_FilePath
 
     ; Read the blacklist file
@@ -120,7 +126,6 @@ _BE_LoadValues() {
     if (FileExist(gBlacklist_FilePath)) {
         try {
             content := FileRead(gBlacklist_FilePath, "UTF-8")
-            gBE_OriginalContent := content
 
             currentSection := ""
             Loop Parse content, "`n", "`r" {
@@ -152,6 +157,11 @@ _BE_LoadValues() {
     gBE_TitleEdit.Value := RTrim(titleLines, "`n")
     gBE_ClassEdit.Value := RTrim(classLines, "`n")
     gBE_PairEdit.Value := RTrim(pairLines, "`n")
+
+    ; Store initial state for change detection
+    gBE_OriginalTitle := gBE_TitleEdit.Value
+    gBE_OriginalClass := gBE_ClassEdit.Value
+    gBE_OriginalPair := gBE_PairEdit.Value
 }
 
 _BE_SaveToFile() {
@@ -231,25 +241,11 @@ _BE_SendReloadIPC() {
 }
 
 _BE_HasChanges() {
-    global gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit, gBE_OriginalContent
-
-    ; Rebuild content and compare
-    newContent := "[Title]`n" gBE_TitleEdit.Value "`n[Class]`n" gBE_ClassEdit.Value "`n[Pair]`n" gBE_PairEdit.Value
-
-    ; Extract comparable content from original
-    oldContent := ""
-    currentSection := ""
-    Loop Parse gBE_OriginalContent, "`n", "`r" {
-        trimmed := Trim(A_LoopField)
-        if (SubStr(trimmed, 1, 1) = "[")
-            oldContent .= trimmed "`n"
-        else if (trimmed != "" && SubStr(trimmed, 1, 1) != ";" && currentSection != "")
-            oldContent .= trimmed "`n"
-        if (SubStr(trimmed, 1, 1) = "[")
-            currentSection := trimmed
-    }
-
-    return (newContent != oldContent)
+    global gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
+    global gBE_OriginalTitle, gBE_OriginalClass, gBE_OriginalPair
+    return (gBE_TitleEdit.Value != gBE_OriginalTitle
+        || gBE_ClassEdit.Value != gBE_OriginalClass
+        || gBE_PairEdit.Value != gBE_OriginalPair)
 }
 
 ; ============================================================
@@ -344,5 +340,152 @@ _BE_OnSize(guiObj, minMax, width, height) {
     try {
         guiObj["BtnCancel"].Move(width - 100, height - 45)
         guiObj["BtnSave"].Move(width - 200, height - 45)
+        guiObj["BtnTest"].Move(10, height - 45)
     }
+}
+
+; ============================================================
+; TEST PATTERNS
+; ============================================================
+; Tests patterns from the active tab against all visible windows.
+; Shows a results popup with matches per pattern.
+
+_BE_OnTestPatterns(*) {
+    global gBE_Gui, gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
+    global DWMWA_CLOAKED
+
+    ; Get active tab
+    tabCtrl := gBE_Gui["Tabs"]
+    activeTab := tabCtrl.Value  ; 1=Title, 2=Class, 3=Pair
+
+    ; Get patterns from active tab
+    switch activeTab {
+        case 1: editCtrl := gBE_TitleEdit
+        case 2: editCtrl := gBE_ClassEdit
+        case 3: editCtrl := gBE_PairEdit
+        default: return
+    }
+
+    ; Parse non-empty, non-comment lines
+    patterns := []
+    Loop Parse editCtrl.Value, "`n", "`r" {
+        line := Trim(A_LoopField)
+        if (line != "" && SubStr(line, 1, 1) != ";")
+            patterns.Push(line)
+    }
+
+    if (patterns.Length = 0) {
+        ThemeMsgBox("No patterns to test on this tab.", "Test Patterns", "OK Iconi")
+        return
+    }
+
+    ; Enumerate visible, uncloaked windows with titles
+    windows := []
+    myHwnd := gBE_Gui.Hwnd
+    static cloakedBuf := Buffer(4, 0)
+    for hwnd in WinGetList() {
+        if (hwnd = myHwnd)
+            continue
+        try {
+            title := WinGetTitle(hwnd)
+            class := WinGetClass(hwnd)
+        } catch
+            continue
+        if (title = "")
+            continue
+        if (!DllCall("user32\IsWindowVisible", "Ptr", hwnd, "Int"))
+            continue
+        DllCall("dwmapi\DwmGetWindowAttribute", "Ptr", hwnd, "UInt", DWMWA_CLOAKED, "Ptr", cloakedBuf.Ptr, "UInt", 4)
+        if (NumGet(cloakedBuf, 0, "UInt"))
+            continue
+        windows.Push({title: title, class: class})
+    }
+
+    ; Test each pattern against windows
+    output := ""
+    matchedPatterns := 0
+    maxShown := 10
+
+    for _, pattern in patterns {
+        matches := []
+
+        switch activeTab {
+            case 1:  ; Title patterns match against window titles
+                try regex := _BL_CompileWildcard(pattern)
+                catch
+                    continue
+                for _, w in windows {
+                    if (RegExMatch(w.title, regex))
+                        matches.Push(w.title)
+                }
+            case 2:  ; Class patterns match against window classes
+                try regex := _BL_CompileWildcard(pattern)
+                catch
+                    continue
+                for _, w in windows {
+                    if (RegExMatch(w.class, regex))
+                        matches.Push(w.class " — " w.title)
+                }
+            case 3:  ; Pair patterns: Class|Title, both must match
+                parts := StrSplit(pattern, "|")
+                if (parts.Length < 2)
+                    continue
+                try {
+                    classRegex := _BL_CompileWildcard(parts[1])
+                    titleRegex := _BL_CompileWildcard(parts[2])
+                } catch
+                    continue
+                for _, w in windows {
+                    if (RegExMatch(w.class, classRegex) && RegExMatch(w.title, titleRegex))
+                        matches.Push(w.class " | " w.title)
+                }
+        }
+
+        output .= pattern "`r`n"
+        if (matches.Length > 0) {
+            matchedPatterns++
+            for i, m in matches {
+                if (i > maxShown) {
+                    output .= "    ... and " (matches.Length - maxShown) " more`r`n"
+                    break
+                }
+                output .= "    > " m "`r`n"
+            }
+        } else {
+            output .= "    (no matches)`r`n"
+        }
+        output .= "`r`n"
+    }
+
+    tabName := (activeTab = 1) ? "title" : (activeTab = 2) ? "class" : "pair"
+    summary := matchedPatterns " of " patterns.Length " " tabName " patterns matched against " windows.Length " visible windows."
+
+    _BE_ShowTestResults(summary, output)
+}
+
+_BE_ShowTestResults(summary, details) {
+    rg := Gui("+AlwaysOnTop -MinimizeBox", "Test Results")
+    _GUI_AntiFlashPrepare(rg, Theme_GetBgColor(), true)
+    rg.SetFont("s10", "Segoe UI")
+    rg.MarginX := 16
+    rg.MarginY := 12
+    themeEntry := Theme_ApplyToGui(rg)
+
+    hdr := rg.AddText("w456 c" Theme_GetAccentColor(), summary)
+    Theme_MarkAccent(hdr)
+
+    rg.SetFont("s9", "Consolas")
+    edit := rg.AddEdit("w456 h300 y+12 +ReadOnly +Multi +VScroll +HScroll", details)
+    Theme_ApplyToControl(edit, "Edit", themeEntry)
+
+    rg.SetFont("s10", "Segoe UI")
+    btnClose := rg.AddButton("x" (16 + 456 - 80) " w80 y+12 Default", "Close")
+    btnClose.OnEvent("Click", (*) => (Theme_UntrackGui(rg), rg.Destroy()))
+    Theme_ApplyToControl(btnClose, "Button", themeEntry)
+
+    rg.OnEvent("Close", (*) => (Theme_UntrackGui(rg), rg.Destroy()))
+    rg.OnEvent("Escape", (*) => (Theme_UntrackGui(rg), rg.Destroy()))
+
+    rg.Show("w488")
+    _GUI_AntiFlashReveal(rg, true)
 }

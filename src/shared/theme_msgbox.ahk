@@ -27,7 +27,7 @@ global gTMB_Result := ""
 ;   options - MsgBox-compatible option string: "Iconx", "YesNo Icon?", etc.
 ; Returns: "OK", "Yes", "No", or "Cancel"
 ThemeMsgBox(text, title := "Message", options := "") {
-    global gTMB_Result, gTheme_Initialized, gTheme_Palette
+    global gTMB_Result, gTheme_Initialized
 
     ; Fall back to native MsgBox if theme not initialized
     if (!gTheme_Initialized) {
@@ -43,37 +43,21 @@ ThemeMsgBox(text, title := "Message", options := "") {
     buttons := _TMB_ParseButtons(options)
     defaultBtn := _TMB_ParseDefault(options)
 
-    isDark := Theme_IsDark()
-    palette := {}
-    palette.bg := gTheme_Palette.bg
-    palette.panelBg := gTheme_Palette.panelBg
-    palette.text := gTheme_Palette.text
-
-    ; Calculate layout
-    textWidth := 340
-    iconWidth := (icon != "") ? 48 : 0
-    iconPad := (icon != "") ? 16 : 0
-    contentX := 20 + iconWidth + iconPad
-    msgWidth := contentX + textWidth + 20
-
-    ; Measure text height (approximate: 20px per line)
-    lines := StrSplit(text, "`n")
-    textHeight := Max(lines.Length * 20, 40)
-
-    ; Total height: padding + content + button panel
-    contentH := Max(textHeight, iconWidth) + 20
-    btnPanelH := 55
-    totalH := 20 + contentH + btnPanelH
-
     ; Create GUI
     msgGui := Gui("+AlwaysOnTop -MinimizeBox -MaximizeBox", title)
     _GUI_AntiFlashPrepare(msgGui, Theme_GetBgColor(), true)
+    msgGui.MarginX := 24
+    msgGui.MarginY := 16
     msgGui.SetFont("s10", "Segoe UI")
-
-    ; Apply theme
     themeEntry := Theme_ApplyToGui(msgGui)
 
-    ; -- Icon --
+    contentW := 440
+    iconW := 48
+    iconPad := 16
+    accentColor := Theme_GetAccentColor()
+    textW := (icon != "") ? (contentW - iconW - iconPad) : contentW
+
+    ; Icon (emoji) + message text
     if (icon != "") {
         iconChar := ""
         switch icon {
@@ -83,21 +67,24 @@ ThemeMsgBox(text, title := "Message", options := "") {
             case "Question": iconChar := Chr(0x2753)   ; Question mark
         }
         msgGui.SetFont("s28", "Segoe UI Emoji")
-        msgGui.AddText("x20 y20 w48 h48 +Center", iconChar)
-        ; Restore font
-        msgGui.SetFont("s10 c" palette.text, "Segoe UI")
+        msgGui.AddText("x24 w" iconW " h" iconW " +Center", iconChar)
+        msgGui.SetFont("s10", "Segoe UI")
+
+        ; Message text next to icon — vertically center single-line, top-align multi-line
+        isSingleLine := !InStr(text, "`n") && StrLen(text) < (textW / 7)
+        textYOff := isSingleLine ? 14 : 4
+        hdr := msgGui.AddText("x" (24 + iconW + iconPad) " yp+" textYOff " w" textW " +Wrap c" accentColor, text)
+        Theme_MarkAccent(hdr)
+    } else {
+        hdr := msgGui.AddText("w" contentW " +Wrap c" accentColor, text)
+        Theme_MarkAccent(hdr)
     }
 
-    ; -- Message text --
-    msgGui.AddText("x" contentX " y25 w" textWidth " +Wrap", text)
+    ; Buttons - right-aligned group, consistent sizing
+    btnW := 100
+    btnH := 30
+    btnGap := 8
 
-    ; -- Buttons --
-    btnW := 88
-    btnH := 32
-    btnY := 20 + contentH + 12
-    btnSpacing := 8
-
-    ; Determine button list
     btnList := []
     switch buttons {
         case "OK":           btnList := ["OK"]
@@ -106,23 +93,22 @@ ThemeMsgBox(text, title := "Message", options := "") {
         case "YesNoCancel":  btnList := ["Yes", "No", "Cancel"]
     }
 
-    ; Right-align buttons
-    totalBtnW := btnList.Length * btnW + (btnList.Length - 1) * btnSpacing
-    btnX := msgWidth - totalBtnW - 20
+    totalBtnW := btnList.Length * btnW + (btnList.Length - 1) * btnGap
+    btnStartX := 24 + contentW - totalBtnW
 
     for i, btnText in btnList {
         isDefault := (defaultBtn > 0) ? (i = defaultBtn) : (i = 1)
+        yOpt := (i = 1) ? "y+24" : "yp"
         btn := msgGui.AddButton(
-            "x" btnX " y" btnY " w" btnW " h" btnH
+            "x" btnStartX " " yOpt " w" btnW " h" btnH
             (isDefault ? " +Default" : ""),
             btnText)
         btn.OnEvent("Click", _TMB_BtnClick.Bind(btnText, msgGui))
         Theme_ApplyToControl(btn, "Button", themeEntry)
-        btnX += btnW + btnSpacing
+        btnStartX += btnW + btnGap
     }
 
-    ; -- Escape/Close handlers --
-    ; Determine cancel result based on button layout
+    ; Escape/Close handlers
     cancelResult := "Cancel"
     if (buttons = "OK")
         cancelResult := "OK"
@@ -132,11 +118,10 @@ ThemeMsgBox(text, title := "Message", options := "") {
     msgGui.OnEvent("Escape", (*) => (gTMB_Result := cancelResult, Theme_UntrackGui(msgGui), msgGui.Destroy()))
     msgGui.OnEvent("Close", (*) => (gTMB_Result := cancelResult, Theme_UntrackGui(msgGui), msgGui.Destroy()))
 
-    ; Show centered
-    msgGui.Show("w" msgWidth " h" totalH)
+    ; Show - fixed width, auto height
+    msgGui.Show("w488 Center")
     _GUI_AntiFlashReveal(msgGui, true)
 
-    ; Wait for result
     WinWaitClose(msgGui.Hwnd)
 
     return gTMB_Result

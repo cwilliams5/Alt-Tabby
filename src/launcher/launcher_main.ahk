@@ -435,21 +435,43 @@ _Launcher_ShowAdminRepairDialog(taskPath) {
 
     repairGui := Gui("+AlwaysOnTop +Owner", APP_NAME " - Admin Mode Repair")
     _GUI_AntiFlashPrepare(repairGui, Theme_GetBgColor(), true)
+    repairGui.MarginX := 24
+    repairGui.MarginY := 16
     repairGui.SetFont("s10", "Segoe UI")
     themeEntry := Theme_ApplyToGui(repairGui)
 
-    repairGui.AddText("w400", "The Admin Mode scheduled task points to a different location:")
-    mutedTask := repairGui.AddText("w400 c" Theme_GetMutedColor(), "Task: " taskPath)
-    mutedCurr := repairGui.AddText("w400 c" Theme_GetMutedColor(), "Current: " A_ScriptFullPath)
-    Theme_MarkMuted(mutedTask)
-    Theme_MarkMuted(mutedCurr)
-    repairGui.AddText("w400 y+15", "Would you like to repair it? (requires elevation)")
+    contentW := 440
+    mutedColor := Theme_GetMutedColor()
+
+    ; Header in accent
+    hdr := repairGui.AddText("w" contentW " c" Theme_GetAccentColor(), "The admin mode scheduled task points to a different location:")
+    Theme_MarkAccent(hdr)
+
+    ; Task path - bold label + muted value
+    lblTask := repairGui.AddText("x24 w50 h20 y+12 +0x200", "Task:")
+    lblTask.SetFont("s10 bold", "Segoe UI")
+    valTask := repairGui.AddText("x78 yp w" (contentW - 54) " h20 +0x200 c" mutedColor, taskPath)
+    Theme_MarkMuted(valTask)
+
+    ; Current path - bold label + muted value
+    lblCurr := repairGui.AddText("x24 w65 h20 y+4 +0x200", "Current:")
+    lblCurr.SetFont("s10 bold", "Segoe UI")
+    valCurr := repairGui.AddText("x93 yp w" (contentW - 69) " h20 +0x200 c" mutedColor, A_ScriptFullPath)
+    Theme_MarkMuted(valCurr)
+
+    ; Question + UAC note
+    repairGui.AddText("x24 w" contentW " y+16", "Would you like to repair it?")
+    noteUAC := repairGui.AddText("w" contentW " y+4 c" mutedColor, "Requires a one-time permissions approval (UAC).")
+    noteUAC.SetFont("s8", "Segoe UI")
+    Theme_MarkMuted(noteUAC)
 
     result := ""  ; Will be set by button clicks
 
-    btnYes := repairGui.AddButton("w80 y+20 Default", "Yes")
-    btnNo := repairGui.AddButton("w80 x+10", "No")
-    btnNever := repairGui.AddButton("w120 x+10", "Don't ask again")
+    ; Buttons: [Yes] ... gap ... [No] [Don't ask again]
+    btnW := 100
+    btnYes := repairGui.AddButton("x24 w" btnW " y+24 Default", "Yes")
+    btnNever := repairGui.AddButton("x" (24 + contentW - btnW - 8 - 140) " yp w140", "Don't ask again")
+    btnNo := repairGui.AddButton("x+8 w" btnW, "No")
 
     Theme_ApplyToControl(btnYes, "Button", themeEntry)
     Theme_ApplyToControl(btnNo, "Button", themeEntry)
@@ -466,7 +488,7 @@ _Launcher_ShowAdminRepairDialog(taskPath) {
     ))
     repairGui.OnEvent("Close", (*) => (result := "No", Theme_UntrackGui(repairGui), repairGui.Destroy()))
 
-    repairGui.Show("Center")
+    repairGui.Show("w488 Center")
     _GUI_AntiFlashReveal(repairGui, true)
     WinWaitClose(repairGui)
 

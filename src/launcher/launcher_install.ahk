@@ -275,30 +275,42 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
 
     mismatchGui := Gui("+AlwaysOnTop +Owner", title)
     _GUI_AntiFlashPrepare(mismatchGui, Theme_GetBgColor(), true)
+    mismatchGui.MarginX := 24
+    mismatchGui.MarginY := 16
     mismatchGui.SetFont("s10", "Segoe UI")
     themeEntry := Theme_ApplyToGui(mismatchGui)
 
-    mismatchGui.AddText("w380", message)
-    mutedPath := mismatchGui.AddText("w380 c" Theme_GetMutedColor(), installedPath)
+    contentW := 440
+
+    ; Header in accent
+    hdr := mismatchGui.AddText("w" contentW " c" Theme_GetAccentColor(), message)
+    Theme_MarkAccent(hdr)
+
+    ; Path in muted color
+    mutedPath := mismatchGui.AddText("w" contentW " y+8 c" Theme_GetMutedColor(), installedPath)
     Theme_MarkMuted(mutedPath)
-    mismatchGui.AddText("w380 y+15", question)
+
+    ; Question
+    mismatchGui.AddText("w" contentW " y+16", question)
 
     result := ""  ; Will be set by button clicks
 
-    btnYes := mismatchGui.AddButton("w100 y+20 Default", "Yes")
-    btnNo := mismatchGui.AddButton("w100 x+10", "No")
-    btnAlways := mismatchGui.AddButton("w140 x+10", "Always run from here")
+    ; Buttons: [Yes] [Always run from here] ... gap ... [No]
+    btnW := 100
+    btnYes := mismatchGui.AddButton("x24 w" btnW " y+24 Default", "Yes")
+    btnAlways := mismatchGui.AddButton("x+8 w160", "Always run from here")
+    btnNo := mismatchGui.AddButton("x" (24 + contentW - btnW) " yp w" btnW, "No")
 
     Theme_ApplyToControl(btnYes, "Button", themeEntry)
-    Theme_ApplyToControl(btnNo, "Button", themeEntry)
     Theme_ApplyToControl(btnAlways, "Button", themeEntry)
+    Theme_ApplyToControl(btnNo, "Button", themeEntry)
 
     btnYes.OnEvent("Click", (*) => (result := "Yes", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
     btnNo.OnEvent("Click", (*) => (result := "No", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
     btnAlways.OnEvent("Click", (*) => (result := "Always", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
     mismatchGui.OnEvent("Close", (*) => (result := "No", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
 
-    mismatchGui.Show("Center")
+    mismatchGui.Show("w488 Center")
     _GUI_AntiFlashReveal(mismatchGui, true)
     WinWaitClose(mismatchGui)
 

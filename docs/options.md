@@ -10,14 +10,14 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 
 - [AltTab](#alttab)
 - [Launcher](#launcher)
-- [GUI](#gui)
-- [IPC](#ipc)
-- [Tools](#tools)
-- [Store](#store)
-- [Komorebi](#komorebi)
-- [Diagnostics](#diagnostics)
 - [Theme](#theme)
+- [GUI](#gui)
+- [Komorebi](#komorebi)
 - [Setup](#setup)
+- [Tools](#tools)
+- [IPC](#ipc)
+- [Store](#store)
+- [Diagnostics](#diagnostics)
 
 ---
 
@@ -31,9 +31,9 @@ These control the Alt-Tab overlay behavior - tweak these first!
 | `QuickSwitchMs` | int | `100` | `0` - `1000` | Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch. |
 | `PrewarmOnAlt` | bool | `true` | - | Pre-warm snapshot on Alt down (true = request data before Tab pressed). Ensures fresh window data is available when Tab is pressed. |
 | `FreezeWindowList` | bool | `false` | - | Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker). |
-| `ServerSideWorkspaceFilter` | bool | `false` | - | Use server-side workspace filtering. When true, CTRL workspace toggle requests a new projection from the store. When false, CTRL toggle filters the cached items locally (faster, but uses cached data). |
+| `ServerSideWorkspaceFilter` | bool | `false` | - | When Ctrl toggles workspace filtering, fetch fresh data from the store (true) or filter cached data locally (false). Local is faster but may miss very recent changes. |
 | `SwitchOnClick` | bool | `true` | - | Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released. |
-| `AsyncActivationPollMs` | int | `15` | `10` - `100` | Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU (spawns cmd.exe each poll). |
+| `AsyncActivationPollMs` | int | `15` | `10` - `100` | Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU. |
 
 ### Bypass
 
@@ -42,7 +42,7 @@ When to let native Windows Alt-Tab handle the switch instead of Alt-Tabby
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `BypassFullscreen` | bool | `true` | - | Bypass Alt-Tabby when the foreground window is fullscreen (covers >=99%% of screen). Useful for games that need native Alt-Tab behavior. |
-| `BypassFullscreenThreshold` | float | `0.99` | `0.90` - `1.00` | Fraction of screen dimensions a window must cover to be considered fullscreen. Lower values catch borderless windowed games that don't quite fill the screen. |
+| `BypassFullscreenThreshold` | float | `0.99` | `0.50` - `1.00` | Fraction of screen dimensions a window must cover to be considered fullscreen. Lower values catch borderless windowed games that don't quite fill the screen. |
 | `BypassFullscreenTolerancePx` | int | `5` | `0` - `50` | Maximum pixels from screen edge for a window to still be considered fullscreen. Increase if borderless windows are offset by more than 5px. |
 | `BypassProcesses` | string | `(empty)` | - | Comma-separated list of process names to bypass (e.g., 'game.exe,vlc.exe'). When these processes are in the foreground, native Windows Alt-Tab is used instead. |
 
@@ -53,9 +53,9 @@ Internal timing parameters (usually no need to change)
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `AltLeewayMs` | int | `60` | `20` - `200` | Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab. Increase for slower typing speeds. |
-| `MRUFreshnessMs` | int | `300` | `50` - `2000` | How long local MRU data is considered fresh after activation (ms). Prewarmed snapshots are skipped within this window to prevent stale data overwriting recent activations. |
+| `MRUFreshnessMs` | int | `300` | `50` - `2000` | After switching windows, how long to trust local window order before accepting updates from the store (ms). Prevents the list from briefly reverting after a switch. |
 | `WSPollTimeoutMs` | int | `200` | `50` - `2000` | Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation. |
-| `TabDecisionMs` | int | `24` | `15` - `40` | Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. |
+| `TabDecisionMs` | int | `24` | `15` - `100` | Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. |
 | `WorkspaceSwitchSettleMs` | int | `75` | `0` - `500` | Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems. |
 
 ## Launcher
@@ -87,6 +87,14 @@ Settings for animated WebP splash screen
 | `SplashAnimFadeOutFixedMs` | int | `0` | `0` - `5000` | Fade out duration while frozen on last frame (ms). 0 = skip fixed fade out. |
 | `SplashAnimLoops` | int | `1` | `0` - `100` | Number of animation loops before auto-closing. 0 = loop forever (requires manual dismiss). |
 | `SplashAnimBufferFrames` | int | `24` | `0` - `500` | Streaming decode buffer size. 0 = load all frames upfront (~500MB). >0 = buffer N frames (~4MB per frame at 1280x720). Default 24 = ~88MB, 1 second buffer at 24fps. |
+
+## Theme
+
+Color theme for dialogs and editors. The main Alt-Tab overlay has its own color settings in GUI Appearance.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `Theme` | enum | `Automatic` | - | Color theme for dialogs and editors. Automatic follows the Windows system setting. |
 
 ## GUI
 
@@ -311,6 +319,51 @@ Footer bar appearance
 | `FooterGapTopPx` | int | `8` | `0` - `50` | Gap between content and footer in pixels |
 | `FooterPaddingX` | int | `12` | `0` - `100` | Footer horizontal padding in pixels |
 
+## Komorebi
+
+Settings for komorebi tiling window manager integration.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `CrossWorkspaceMethod` | enum | `MimicNative` | - | How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails. |
+| `MimicNativeSettleMs` | int | `0` | `0` - `1000` | Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems. |
+| `UseSocket` | bool | `true` | - | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable. |
+| `WorkspaceConfirmationMethod` | enum | `PollCloak` | - | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
+
+### Subscription
+
+Event-driven komorebi integration via named pipe
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `SubPollMs` | int | `50` | `10` - `1000` | Pipe poll interval (checking for incoming data) |
+| `SubIdleRecycleMs` | int | `120000` | `10000` - `600000` | Restart subscription if no events for this long (stale detection) |
+| `SubFallbackPollMs` | int | `2000` | `500` - `30000` | Fallback polling interval if subscription fails |
+| `SubCacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
+| `SubBatchCloakEventsMs` | int | `50` | `0` - `500` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
+
+## Setup
+
+Installation paths and first-run settings. Managed automatically by the setup wizard.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `ExePath` | string | `(empty)` | - | Full path to AltTabby.exe after installation. Empty = use current location. |
+| `RunAsAdmin` | bool | `false` | - | Run with administrator privileges via Task Scheduler (no UAC prompts after setup). |
+| `AutoUpdateCheck` | bool | `true` | - | Automatically check for updates on startup. |
+| `FirstRunCompleted` | bool | `false` | - | Set to true after first-run wizard completes. |
+| `InstallationId` | string | `(empty)` | - | Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification. |
+| `SuppressAdminRepairPrompt` | bool | `false` | - | Don't prompt to repair stale admin task. Set automatically when user clicks 'Don't ask again'. |
+
+## Tools
+
+Paths to external executables used by Alt-Tabby.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `AhkV2Path` | string | `(empty)` | - | Path to AHK v2 executable (for spawning subprocesses). Leave empty to auto-discover via PATH and known install locations |
+| `KomorebicExe` | string | `(empty)` | - | Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations |
+
 ## IPC
 
 Named pipe communication between store and clients, including heartbeat liveness detection.
@@ -318,10 +371,10 @@ Named pipe communication between store and clients, including heartbeat liveness
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `StorePipeName` | string | `tabby_store_v1` | - | Named pipe name for store communication |
-| `IdleTickMs` | int | `100` | `15` - `500` | Client poll interval when idle (ms). Lower = more responsive but more CPU. Active tick is always 15ms. |
-| `FullRowEvery` | int | `10` | `0` - `1000` | Per-row healing: 0=always full rows (legacy, no sparse deltas), N>0=every Nth push sends full rows instead of changed-fields-only. |
-| `WorkspaceDeltaStyle` | enum | `Always` | - | Workspace meta in deltas. 'Always'=every delta (redundant). 'OnChange'=only when workspace changes (lean). |
-| `FullSyncEvery` | int | `60` | `0` - `600` | Full-state healing: every Nth heartbeat, send complete snapshot to all clients. Heals missing/ghost rows that per-row healing cannot fix. 0=disabled. |
+| `IdleTickMs` | int | `100` | `15` - `500` | Client poll interval when idle (ms). Lower = more responsive but more CPU. |
+| `FullRowEvery` | int | `10` | `0` - `1000` | How often to send complete window data instead of only changes (self-healing). 0 = always send complete data. Higher values = less bandwidth but slower recovery from missed updates. |
+| `WorkspaceDeltaStyle` | enum | `Always` | - | When to include workspace info in updates. 'Always' = every update. 'OnChange' = only when the active workspace changes (less data). |
+| `FullSyncEvery` | int | `60` | `0` - `600` | Every N heartbeats, send a complete snapshot to all clients to recover any missing or ghost windows. 0 = disabled. |
 | `UseDirtyTracking` | bool | `true` | - | Use dirty tracking for delta computation. Set false for debugging (full field comparison). |
 
 ### Reliability
@@ -339,17 +392,8 @@ Store broadcasts heartbeat to clients for liveness detection
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `StoreIntervalMs` | int | `5000` | `1000` - `60000` | Store sends heartbeat every N ms |
-| `ViewerTimeoutMs` | int | `12000` | `2000` - `120000` | Viewer considers connection dead after N ms without any message |
-
-## Tools
-
-Paths to external executables used by Alt-Tabby.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `AhkV2Path` | string | `(empty)` | - | Path to AHK v2 executable (for spawning subprocesses). Leave empty to auto-discover via PATH and known install locations |
-| `KomorebicExe` | string | `(empty)` | - | Path to komorebic.exe. Leave empty to auto-discover via PATH and known install locations |
+| `HeartbeatIntervalMs` | int | `5000` | `1000` - `60000` | Store sends heartbeat every N ms |
+| `HeartbeatTimeoutMs` | int | `12000` | `2000` - `120000` | Viewer considers connection dead after N ms without any message |
 
 ## Store
 
@@ -384,7 +428,7 @@ Event-driven window change detection. Events are queued then processed in batche
 | `DebounceMs` | int | `50` | `10` - `1000` | Debounce rapid events (e.g., window moving fires many events) |
 | `BatchMs` | int | `100` | `10` - `2000` | Batch processing interval - how often queued events are processed |
 | `IdleThreshold` | int | `10` | `1` - `100` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
-| `CosmeticBufferMs` | int | `1000` | `100` - `10000` | Min interval between proactive pushes for cosmetic-only changes (title updates). Structural changes (focus, create, destroy) always push immediately. |
+| `CosmeticBufferMs` | int | `1000` | `100` - `10000` | Minimum interval between updates for cosmetic changes like title text (ms). Important changes (focus, open, close) always update immediately. |
 
 ### Z-Pump
 
@@ -392,7 +436,7 @@ When WinEventHook adds a window, Z-pump triggers a WinEnum scan for accurate Z-o
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `IntervalMs` | int | `200` | `50` - `5000` | How often to check if Z-queue has pending windows |
+| `IntervalMs` | int | `200` | `50` - `5000` | How often to check for windows needing Z-order updates (ms) |
 
 ### WinEnum
 
@@ -400,10 +444,10 @@ Full window enumeration (startup, snapshot, Z-pump, safety polling)
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `MissingWindowTTLMs` | int | `1200` | `100` - `10000` | Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps. |
+| `MissingWindowGraceMs` | int | `1200` | `100` - `10000` | Grace period before removing a missing window (ms). Shorter values remove ghost windows faster (Outlook/Teams). Longer values tolerate slow-starting apps. |
 | `FallbackScanIntervalMs` | int | `2000` | `500` - `10000` | Polling interval when WinEventHook fails and fallback scanning is active (ms). Lower = more responsive but higher CPU. |
 | `SafetyPollMs` | int | `0` | `0` - `300000` | Safety polling interval (0=disabled, or 30000+ for safety net) |
-| `ValidateExistenceMs` | int | `5000` | `0` - `60000` | Lightweight zombie detection interval (ms). Checks existing store entries via IsWindow() to remove dead windows. Much faster than full EnumWindows scan. 0=disabled. |
+| `ValidateExistenceMs` | int | `5000` | `0` - `60000` | How often to check for dead/zombie windows (ms). Lightweight check that removes windows that no longer exist. 0 = disabled. |
 
 ### MRU Lite
 
@@ -445,32 +489,7 @@ Size limits for internal caches to prevent unbounded memory growth
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `ExeIconMax` | int | `100` | `10` - `1000` | Maximum number of cached exe icons. Older entries are evicted when limit is reached. |
 | `UwpLogoMax` | int | `50` | `5` - `500` | Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps. |
-| `ProcNameMax` | int | `200` | `10` - `2000` | Maximum number of cached process names. Older entries are evicted when limit is reached. |
-
-## Komorebi
-
-Settings for komorebi tiling window manager integration.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `CrossWorkspaceMethod` | enum | `MimicNative` | - | How Alt-Tabby activates windows on other workspaces. MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile. RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace (switches with window already focused). SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window). MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails. |
-| `MimicNativeSettleMs` | int | `0` | `0` - `1000` | Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems. |
-| `UseSocket` | bool | `true` | - | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable. |
-| `WorkspaceConfirmationMethod` | enum | `PollCloak` | - | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate). PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU. PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall). AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
-
-### Subscription
-
-Event-driven komorebi integration via named pipe
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `SubPollMs` | int | `50` | `10` - `1000` | Pipe poll interval (checking for incoming data) |
-| `SubIdleRecycleMs` | int | `120000` | `10000` - `600000` | Restart subscription if no events for this long (stale detection) |
-| `SubFallbackPollMs` | int | `2000` | `500` - `30000` | Fallback polling interval if subscription fails |
-| `SubCacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
-| `SubBatchCloakEventsMs` | int | `50` | `0` - `500` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
 
 ## Diagnostics
 
@@ -518,27 +537,6 @@ Options for automated test suite
 |--------|------|---------|-------|-------------|
 | `LiveDurationSec` | int | `30` | `5` - `300` | Default duration for test_live.ahk |
 
-## Theme
-
-Color theme for dialogs and editors. The main Alt-Tab overlay has its own color settings in GUI Appearance.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `Theme` | enum | `Automatic` | - | Color theme for dialogs and editors. Automatic follows the Windows system setting. |
-
-## Setup
-
-Installation paths and first-run settings. Managed automatically by the setup wizard.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `ExePath` | string | `(empty)` | - | Full path to AltTabby.exe after installation. Empty = use current location. |
-| `RunAsAdmin` | bool | `false` | - | Run with administrator privileges via Task Scheduler (no UAC prompts after setup). |
-| `AutoUpdateCheck` | bool | `true` | - | Automatically check for updates on startup. |
-| `FirstRunCompleted` | bool | `false` | - | Set to true after first-run wizard completes. |
-| `InstallationId` | string | `(empty)` | - | Unique installation ID (8-char hex). Generated on first run. Used for mutex naming and admin task identification. |
-| `SuppressAdminRepairPrompt` | bool | `false` | - | Don't prompt to repair stale admin task. Set automatically when user clicks 'Don't ask again'. |
-
 ---
 
-*Generated on 2026-02-06 with 209 total settings.*
+*Generated on 2026-02-06 with 207 total settings.*

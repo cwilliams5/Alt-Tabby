@@ -903,17 +903,18 @@ _Viewer_ShowBlacklistDialog(class, title) {
     dlg.AddText("w440", "Add to blacklist:")
     lblC := dlg.AddText("x24 w50 h20 y+12 +0x200", "Class:")
     lblC.SetFont("s10 bold", "Segoe UI")
-    dlg.AddText("x78 yp w386 h20 +0x200", class)
+    dlg.AddText("x78 yp w386 h20 +0x200 c808080", class)
     displayTitle := SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : "")
     lblT := dlg.AddText("x24 w50 h20 y+4 +0x200", "Title:")
     lblT.SetFont("s10 bold", "Segoe UI")
-    dlg.AddText("x78 yp w386 h20 +0x200", displayTitle)
+    dlg.AddText("x78 yp w386 h20 +0x200 c808080", displayTitle)
 
-    ; Action buttons (left) + Cancel (right-aligned with gap)
-    dlg.AddButton("x24 y+20 w100 h30", "Add Class").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "class"))
+    ; Action buttons (uniform width, left) + Cancel (right, separated)
+    ; x: 24, 132, 240 (8px gaps), then 364 (24px gap before Cancel). All w100.
+    dlg.AddButton("x24 y+24 w100 h30", "Add Class").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "class"))
     dlg.AddButton("x132 yp w100 h30", "Add Title").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "title"))
     dlg.AddButton("x240 yp w100 h30", "Add Pair").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "pair"))
-    dlg.AddButton("x374 yp w90 h30", "Cancel").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, ""))
+    dlg.AddButton("x364 yp w100 h30", "Cancel").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, ""))
 
     dlg.OnEvent("Close", (*) => _Viewer_BlacklistChoice(dlg, ""))
     dlg.OnEvent("Escape", (*) => _Viewer_BlacklistChoice(dlg, ""))
