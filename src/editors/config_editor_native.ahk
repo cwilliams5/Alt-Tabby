@@ -394,7 +394,7 @@ _CEN_BuildPage(section) {
 }
 
 _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, subIdx) {
-    global gCEN, gTheme_Palette, gCEN_SwatchHwnds, gCEN_SliderHwnds
+    global gCEN, gTheme_Palette, gCEN_SwatchHwnds, gCEN_SliderHwnds, gCEN_SliderSubclassPtr
     global CEN_SETTING_PAD, CEN_DESC_LINE_H, CEN_LABEL_W, CEN_INPUT_X
 
     mutedColor := Theme_GetMutedColor()
@@ -463,9 +463,8 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 settingCtrls.Push({ctrl: slider, origY: y, origX: sliderX})
                 Theme_ApplyToControl(slider, "Slider", gCEN["ThemeEntry"])
                 gCEN_SliderHwnds[slider.Hwnd] := true
-                ; Strip visual styles so CCM_SETBKCOLOR works (we custom-draw channel+thumb)
                 DllCall("uxtheme\SetWindowTheme", "Ptr", slider.Hwnd, "Str", "", "Ptr", 0)
-                SendMessage(0x2001, 0, _Theme_ColorToInt(gTheme_Palette.bg), slider.Hwnd)  ; CCM_SETBKCOLOR
+                DllCall("comctl32\SetWindowSubclass", "Ptr", slider.Hwnd, "Ptr", gCEN_SliderSubclassPtr, "UPtr", slider.Hwnd, "UPtr", 0)
                 editX := sliderX + 126
                 ed := pageGui.AddEdit("x" editX " y" y " w80 Number")
                 controls.Push({ctrl: ed, origY: y, origX: editX})
@@ -532,7 +531,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                         Theme_ApplyToControl(alphaSlider, "Slider", gCEN["ThemeEntry"])
                         gCEN_SliderHwnds[alphaSlider.Hwnd] := true
                         DllCall("uxtheme\SetWindowTheme", "Ptr", alphaSlider.Hwnd, "Str", "", "Ptr", 0)
-                        SendMessage(0x2001, 0, _Theme_ColorToInt(gTheme_Palette.bg), alphaSlider.Hwnd)  ; CCM_SETBKCOLOR
+                        DllCall("comctl32\SetWindowSubclass", "Ptr", alphaSlider.Hwnd, "Ptr", gCEN_SliderSubclassPtr, "UPtr", alphaSlider.Hwnd, "UPtr", 0)
                         alphaLblX := alphaX + 74
                         alphaLbl := pageGui.AddText("x" alphaLblX " y" (y + 3) " w36 h16 c" mutedColor, "100%")
                         alphaLbl.SetFont("s7", "Segoe UI")
@@ -780,6 +779,25 @@ global gCEN_SwatchHwnds := Map()  ; hwnd -> true
 
 ; Slider HWNDs for WM_NOTIFY custom draw
 global gCEN_SliderHwnds := Map()  ; hwnd -> true
+
+; Subclass callback for slider WM_ERASEBKGND (prevents white flash)
+global gCEN_SliderSubclassPtr := CallbackCreate(_CEN_SliderSubclassProc, , 6)
+
+_CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
+    global gCEN_SliderSubclassPtr, gTheme_Palette
+    if (uMsg = 0x0014) {  ; WM_ERASEBKGND — fill with page bg instead of white
+        rc := Buffer(16)
+        DllCall("GetClientRect", "Ptr", hwnd, "Ptr", rc)
+        hBrush := DllCall("CreateSolidBrush", "UInt", _Theme_ColorToInt(gTheme_Palette.bg), "Ptr")
+        DllCall("FillRect", "Ptr", wParam, "Ptr", rc, "Ptr", hBrush)
+        DllCall("DeleteObject", "Ptr", hBrush)
+        return 1
+    }
+    if (uMsg = 0x0082) {  ; WM_NCDESTROY — clean up subclass
+        DllCall("comctl32\RemoveWindowSubclass", "Ptr", hwnd, "Ptr", gCEN_SliderSubclassPtr, "UPtr", uIdSubclass)
+    }
+    return DllCall("comctl32\DefSubclassProc", "Ptr", hwnd, "UInt", uMsg, "Ptr", wParam, "Ptr", lParam, "Ptr")
+}
 
 ; Update swatch color by creating/replacing its GDI brush
 _CEN_UpdateSwatchColor(swCtrl, rgb) {
