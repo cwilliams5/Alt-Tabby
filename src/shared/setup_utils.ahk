@@ -610,7 +610,6 @@ _Update_KillOtherProcesses(targetExeName := "") {
 ;   useLockFile - Use lock file to prevent concurrent updates
 ;   validatePE - Validate PE header before applying
 ;   copyMode - true = FileCopy (keep source), false = FileMove (delete source)
-;   ensureTargetConfig - Copy config.ini from source location if missing at target
 ;   successMessage - Message to show in TrayTip on success
 ;   cleanupSourceOnFailure - Delete source file if update fails
 
@@ -622,7 +621,6 @@ _Update_ApplyCore(opts) {
     useLockFile := opts.HasOwnProp("useLockFile") ? opts.useLockFile : false
     validatePE := opts.HasOwnProp("validatePE") ? opts.validatePE : false
     copyMode := opts.HasOwnProp("copyMode") ? opts.copyMode : false
-    ensureTargetConfig := opts.HasOwnProp("ensureTargetConfig") ? opts.ensureTargetConfig : false
     successMessage := opts.HasOwnProp("successMessage") ? opts.successMessage : "Alt-Tabby has been updated."
     cleanupSourceOnFailure := opts.HasOwnProp("cleanupSourceOnFailure") ? opts.cleanupSourceOnFailure : false
 
@@ -689,37 +687,10 @@ _Update_ApplyCore(opts) {
         else
             FileMove(sourcePath, targetPath)
 
-        ; Ensure target config exists if requested
-        if (ensureTargetConfig && !FileExist(targetConfigPath)) {
-            if (FileExist(gConfigIniPath))
-                try FileCopy(gConfigIniPath, targetConfigPath)
-        }
-
-        ; Preserve/merge lifetime stats at target location (Bug 4 fix)
+        ; Copy user data files (config, stats, blacklist) to target if missing/merge
         srcDir := ""
         SplitPath(gConfigIniPath, , &srcDir)
-        srcStatsPath := srcDir "\stats.ini"
-        targetStatsPath := targetDir "\stats.ini"
-        if (FileExist(srcStatsPath) && StrLower(srcStatsPath) != StrLower(targetStatsPath)) {
-            if (!FileExist(targetStatsPath)) {
-                ; Target doesn't have stats - copy from source
-                try FileCopy(srcStatsPath, targetStatsPath)
-            } else {
-                ; Both have stats - merge counters additively
-                _Update_MergeStats(srcStatsPath, targetStatsPath)
-            }
-        }
-        ; Always copy backup if missing (don't merge backups)
-        if (FileExist(srcStatsPath ".bak") && !FileExist(targetStatsPath ".bak"))
-            try FileCopy(srcStatsPath ".bak", targetStatsPath ".bak")
-
-        ; Copy blacklist.txt if exists at source and not present at target
-        srcBlacklist := srcDir "\blacklist.txt"
-        targetBlacklist := targetDir "\blacklist.txt"
-        if (FileExist(srcBlacklist) && StrLower(srcBlacklist) != StrLower(targetBlacklist)) {
-            if (!FileExist(targetBlacklist))
-                try FileCopy(srcBlacklist, targetBlacklist)
-        }
+        _Update_CopyUserData(srcDir, targetDir)
 
         ; Update config at target location
         cfg.SetupExePath := targetPath
@@ -828,7 +799,6 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         useLockFile: true,
         validatePE: true,
         copyMode: false,               ; FileMove (delete source after copy)
-        ensureTargetConfig: false,
         successMessage: "Alt-Tabby has been updated. Restarting...",
         cleanupSourceOnFailure: true
     })
@@ -878,6 +848,37 @@ _Update_CleanupStaleTempFiles() {
                 FileDelete(A_LoopFilePath)
         }
     }
+}
+
+; Copy user data files (config, blacklist, stats) from source to target directory.
+; Config and blacklist: copy only if not present at target (preserve customizations).
+; Stats: merge additively if both exist, copy if source-only.
+; No-op when srcDir == targetDir (e.g., auto-update in place).
+_Update_CopyUserData(srcDir, targetDir) {
+    if (StrLower(srcDir) = StrLower(targetDir))
+        return
+
+    ; Config: copy if not present (preserve existing customizations)
+    if (FileExist(srcDir "\config.ini") && !FileExist(targetDir "\config.ini"))
+        try FileCopy(srcDir "\config.ini", targetDir "\config.ini")
+
+    ; Blacklist: copy if not present (preserve existing custom entries)
+    if (FileExist(srcDir "\blacklist.txt") && !FileExist(targetDir "\blacklist.txt"))
+        try FileCopy(srcDir "\blacklist.txt", targetDir "\blacklist.txt")
+
+    ; Stats: merge if both exist, copy if source-only
+    srcStats := srcDir "\stats.ini"
+    targetStats := targetDir "\stats.ini"
+    if (FileExist(srcStats)) {
+        if (!FileExist(targetStats)) {
+            try FileCopy(srcStats, targetStats)
+        } else {
+            _Update_MergeStats(srcStats, targetStats)
+        }
+    }
+    ; Stats backup: copy if not present (don't merge backups)
+    if (FileExist(srcDir "\stats.ini.bak") && !FileExist(targetDir "\stats.ini.bak"))
+        try FileCopy(srcDir "\stats.ini.bak", targetDir "\stats.ini.bak")
 }
 
 ; Merge stats from source into target, adding counters together (Bug 4 fix)

@@ -48,26 +48,8 @@ InstallToProgramFiles() {
         if (DirExist(srcDir "\resources"))
             DirCopy(srcDir "\resources", installDir "\resources", true)
 
-        ; Copy config if not present at target (preserve existing customizations)
-        ; Wizard writes specific keys via _CL_WriteIniPreserveFormat after this
-        if (FileExist(srcDir "\config.ini") && !FileExist(installDir "\config.ini"))
-            FileCopy(srcDir "\config.ini", installDir "\config.ini")
-
-        ; Copy blacklist if not present at target (preserve existing custom entries)
-        if (FileExist(srcDir "\blacklist.txt") && !FileExist(installDir "\blacklist.txt"))
-            FileCopy(srcDir "\blacklist.txt", installDir "\blacklist.txt")
-
-        ; Preserve/merge lifetime statistics (don't overwrite accumulated stats)
-        srcStats := srcDir "\stats.ini"
-        targetStats := installDir "\stats.ini"
-        if (FileExist(srcStats)) {
-            if (!FileExist(targetStats))
-                FileCopy(srcStats, targetStats)
-            else
-                _Update_MergeStats(srcStats, targetStats)
-        }
-        if (FileExist(srcDir "\stats.ini.bak") && !FileExist(installDir "\stats.ini.bak"))
-            FileCopy(srcDir "\stats.ini.bak", installDir "\stats.ini.bak")
+        ; Copy user data files (config, stats, blacklist) - preserves existing
+        _Update_CopyUserData(srcDir, installDir)
 
         return installDir "\AltTabby.exe"
     } catch as e {
@@ -364,7 +346,6 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         useLockFile: false,
         validatePE: false,             ; Source is running exe, already valid
         copyMode: true,                ; FileCopy (keep source - it's the running exe)
-        ensureTargetConfig: true,      ; Copy config if missing at target
         successMessage: "Alt-Tabby has been updated at:`n" targetPath,
         cleanupSourceOnFailure: false  ; Don't delete source - it's the running exe
     })
