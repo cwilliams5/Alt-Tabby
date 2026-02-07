@@ -39,6 +39,7 @@ global gCEN_Pages := Map()
 global gCEN_CurrentPage := ""
 global gCEN_Sections := []
 global gCEN_FooterBtns := []
+global gCEN_ChangeLabel := 0
 global gCEN_Controls := Map()          ; Map of globalName -> {ctrl, type}
 global gCEN_OriginalValues := Map()    ; Map of globalName -> original value
 
@@ -87,7 +88,7 @@ global gCEN_SepFooter := 0
 _CE_RunNative(launcherHwnd := 0) {
     global gCEN_MainGui, gCEN_SavedChanges, gCEN_LauncherHwnd, gConfigLoaded
     global gCEN_Sections, gCEN_Pages, gCEN_Controls, gCEN_OriginalValues
-    global gCEN_CurrentPage, gCEN_ScrollAccum, gCEN_ScrollTimer, gCEN_FooterBtns, gCEN_Sidebar
+    global gCEN_CurrentPage, gCEN_ScrollAccum, gCEN_ScrollTimer, gCEN_FooterBtns, gCEN_Sidebar, gCEN_ChangeLabel
     global gCEN_SearchText, gCEN_SearchTimer, gCEN_SettingGroups, gCEN_FilteredIndices, gCEN_ChangeCountTimer
     global gCEN_FlatMode, gCEN_FlatScrollPos, gCEN_FlatContentH
     global gCEN_SepHeader, gCEN_SepSidebar, gCEN_SepFooter
@@ -112,6 +113,7 @@ _CE_RunNative(launcherHwnd := 0) {
     gCEN_FlatScrollPos := 0
     gCEN_FlatContentH := 0
     gCEN_ChangeCountTimer := 0
+    gCEN_ChangeLabel := 0
     gCEN_SepHeader := 0
     gCEN_SepSidebar := 0
     gCEN_SepFooter := 0
@@ -204,7 +206,7 @@ _CEN_ParseRegistry() {
 
 _CEN_BuildMainGUI() {
     global gCEN_MainGui, gCEN_Viewport, gCEN_Sidebar, gCEN_Pages, gCEN_Sections
-    global gCEN_FooterBtns, gCEN_BoundWheelMsg, gCEN_BoundScrollMsg
+    global gCEN_FooterBtns, gCEN_ChangeLabel, gCEN_BoundWheelMsg, gCEN_BoundScrollMsg
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL, CEN_SIDEBAR_W, CEN_CONTENT_X, CEN_SEARCH_H
     global gCEN_SearchEdit, gCEN_FilteredIndices, gCEN_ChangeCountTimer
 
@@ -278,7 +280,9 @@ _CEN_BuildMainGUI() {
     gCEN_SepFooter.MarginY := 0
     gCEN_SepFooter.Show("x0 y501 w800 h1 NoActivate")
 
-    ; Footer buttons: right-aligned group (Reset, Save, Cancel)
+    ; Footer: change counter (left) + buttons (right)
+    gCEN_ChangeLabel := gCEN_MainGui.AddText("x16 y468 w300 h20 +0x200 c" Theme_GetAccentColor(), "")
+    Theme_MarkAccent(gCEN_ChangeLabel)
     btnReset := gCEN_MainGui.AddButton("x490 y460 w120 h30", "Reset to Defaults")
     btnSave := gCEN_MainGui.AddButton("x620 y460 w80 h30", "Save")
     btnCancel := gCEN_MainGui.AddButton("x710 y460 w80 h30", "Cancel")
@@ -967,8 +971,11 @@ _CEN_OnResize(gui, minMax, w, h) {
     for name, page in gCEN_Pages
         page.gui.Move(0, , contentW)
 
-    ; Move buttons: right-aligned group (Reset, Save, Cancel)
+    ; Move footer: change label (left) + buttons (right)
     btnY := h - CEN_FOOTER_H + 8
+    global gCEN_ChangeLabel
+    if (gCEN_ChangeLabel)
+        gCEN_ChangeLabel.Move(16, btnY + 5, 300, 20)
     if (gCEN_FooterBtns.Length >= 3) {
         gCEN_FooterBtns[2].Move(w - 100, btnY, 80, 30)       ; Cancel
         gCEN_FooterBtns[1].Move(w - 190, btnY, 80, 30)       ; Save
@@ -1378,7 +1385,7 @@ _CEN_OnResetDefaults(*) {
 ; ============================================================
 
 _CEN_UpdateChangeCount() {
-    global gCEN_MainGui, gCEN_Controls, gCEN_OriginalValues, gConfigRegistry
+    global gCEN_MainGui, gCEN_Controls, gCEN_OriginalValues, gConfigRegistry, gCEN_ChangeLabel
 
     if (!gCEN_MainGui)
         return
@@ -1394,8 +1401,8 @@ _CEN_UpdateChangeCount() {
         }
     }
 
-    title := "Alt-Tabby Configuration"
-    if (count > 0)
-        title .= " (" count " unsaved change" (count > 1 ? "s" : "") ")"
-    try gCEN_MainGui.Title := title
+    if (gCEN_ChangeLabel) {
+        labelText := (count > 0) ? count " unsaved change" (count > 1 ? "s" : "") : ""
+        try gCEN_ChangeLabel.Value := labelText
+    }
 }
