@@ -842,6 +842,8 @@ global TEMP_INSTALL_PF_STATE := A_Temp "\alttabby_install_pf.txt"
 global TEMP_WIZARD_STATE := A_Temp "\alttabby_wizard.json"
 global TEMP_UPDATE_STATE := A_Temp "\alttabby_update.txt"
 global TEMP_UPDATE_LOCK := A_Temp "\alttabby_update.lock"
+global TEMP_INSTALL_UPDATE_STATE := A_Temp "\alttabby_install_update.txt"
+global TEMP_ADMIN_DECLINED_MARKER := A_Temp "\alttabby_admin_declined.marker"
 global UPDATE_INFO_DELIMITER := "<|>"
 
 ; Application name constant

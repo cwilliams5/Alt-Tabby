@@ -19,9 +19,8 @@ global g_WizardShuttingDown := false  ; Shutdown coordination flag
 _WizardMarkComplete() {
     global cfg, gConfigIniPath
     cfg.SetupFirstRunCompleted := true
-    cfg.SetupExePath := A_ScriptFullPath
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+    _Setup_SetExePath(A_ScriptFullPath)
 }
 
 ShowFirstRunWizard() {
@@ -251,8 +250,7 @@ WizardContinue() {
     if (installedPath != "") {
         if (cfg.SetupRunAsAdmin && AdminTaskExists()) {
             ; Launch via schtasks for immediate elevation (avoids intermediate non-elevated hop)
-            Sleep(TIMING_TASK_READY_WAIT)
-            exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
+            exitCode := _RunAdminTask(TIMING_TASK_READY_WAIT)
             if (exitCode != 0)
                 Run('"' installedPath '"')  ; Fallback to direct launch
         } else {
@@ -334,8 +332,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
 
             if (admin) {
                 if (CreateAdminTask(exePath)) {
-                    cfg.SetupRunAsAdmin := true
-                    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+                    _Setup_SetRunAsAdmin(true)
                 } else {
                     ; Task creation failed - notify user
                     ThemeMsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", APP_NAME, "Icon!")
@@ -349,10 +346,9 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     }
 
     ; Step 3: Save config
-    cfg.SetupExePath := exePath
     cfg.SetupAutoUpdateCheck := autoUpdate
     cfg.SetupFirstRunCompleted := true
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", exePath, "", "string")
+    _Setup_SetExePath(exePath)
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", autoUpdate, true, "bool")
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
 

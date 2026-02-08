@@ -242,7 +242,7 @@ $CHECKS = @(
         Id       = "stale_file_cleanup"
         File     = "shared\setup_utils.ahk"
         Desc     = "Stale files array contains all expected temp files"
-        Patterns = @("TEMP_WIZARD_STATE", "TEMP_UPDATE_STATE", "alttabby_install_update.txt", "TEMP_ADMIN_TOGGLE_LOCK")
+        Patterns = @("TEMP_WIZARD_STATE", "TEMP_UPDATE_STATE", "TEMP_INSTALL_UPDATE_STATE", "TEMP_ADMIN_TOGGLE_LOCK")
     },
 
     # --- Update Race Guard (from test_unit_advanced.ahk) ---
@@ -374,7 +374,33 @@ $CHECKS += @(
         File     = "launcher\launcher_main.ahk"
         Desc     = "_ShouldRedirectToScheduledTask syncs stale RunAsAdmin when task deleted"
         Regex    = $true
-        Patterns = @("!AdminTaskExists\(\)\)\s*\{[\s\S]*?cfg\.SetupRunAsAdmin\s*:=\s*false")
+        Patterns = @("!AdminTaskExists\(\)\)\s*\{[\s\S]*?_Setup_SetRunAsAdmin\(false\)")
+    }
+)
+
+# === Admin Declined Marker: cleanup on enable/repair ===
+$CHECKS += @(
+    @{
+        Id       = "admin_declined_marker_cleanup"
+        File     = "alt_tabby.ahk"
+        Desc     = "Enable/repair admin task modes clear admin-declined marker"
+        Patterns = @("_Setup_ClearAdminDeclinedMarker()")
+    },
+    @{
+        Id       = "admin_declined_marker_check"
+        File     = "launcher\launcher_main.ahk"
+        Desc     = "_ShouldRedirectToScheduledTask checks admin-declined marker"
+        Patterns = @("_Setup_HasAdminDeclinedMarker()")
+    }
+)
+
+# === Install Update State Constant Usage ===
+$CHECKS += @(
+    @{
+        Id       = "install_update_constant"
+        File     = "alt_tabby.ahk"
+        Desc     = "update-installed mode uses TEMP_INSTALL_UPDATE_STATE constant"
+        Patterns = @("TEMP_INSTALL_UPDATE_STATE")
     }
 )
 

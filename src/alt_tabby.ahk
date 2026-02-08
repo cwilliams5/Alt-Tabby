@@ -268,8 +268,8 @@ if (g_AltTabbyMode = "enable-admin-task") {
     }
 
     if (CreateAdminTask(exePath)) {
-        cfg.SetupRunAsAdmin := true
-        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        _Setup_SetRunAsAdmin(true)
+        _Setup_ClearAdminDeclinedMarker()
         RecreateShortcuts()  ; Update to point to schtasks
         _AdminToggle_WriteResult("ok")
     } else {
@@ -291,12 +291,11 @@ if (g_AltTabbyMode = "repair-admin-task") {
     exePath := A_ScriptFullPath
     DeleteAdminTask()
     if (CreateAdminTask(exePath)) {
-        cfg.SetupRunAsAdmin := true
-        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        _Setup_SetRunAsAdmin(true)
+        _Setup_ClearAdminDeclinedMarker()
 
         ; Update SetupExePath to current location (handles renamed exe case)
-        cfg.SetupExePath := exePath
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", exePath, "", "string")
+        _Setup_SetExePath(exePath)
 
         ; Update shortcuts to point to new exe path
         RecreateShortcuts()
@@ -304,8 +303,7 @@ if (g_AltTabbyMode = "repair-admin-task") {
         TrayTip("Admin Mode Repaired", "Scheduled task and shortcuts updated.", "Iconi")
 
         ; Now launch via the repaired task
-        Sleep(TIMING_TASK_READY_WAIT)  ; Brief pause for task to be ready
-        exitCode := RunWait('schtasks /run /tn "Alt-Tabby"',, "Hide")
+        exitCode := _RunAdminTask(TIMING_TASK_READY_WAIT)
 
         if (exitCode != 0) {
             ; Task run failed - launch directly instead
@@ -330,8 +328,7 @@ if (g_AltTabbyMode = "disable-admin-task") {
     ; Delete the admin task
     if (AdminTaskExists()) {
         DeleteAdminTask()
-        cfg.SetupRunAsAdmin := false
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        _Setup_SetRunAsAdmin(false)
     }
     ; Silently exit - the non-elevated caller will continue
     ExitApp()
@@ -361,31 +358,12 @@ if (g_AltTabbyMode = "apply-update") {
 if (g_AltTabbyMode = "update-installed") {
     ConfigLoader_Init()
     Theme_Init()
-    updateFile := A_Temp "\alttabby_install_update.txt"
-
-    if (!FileExist(updateFile)) {
-        ThemeMsgBox("Update information not found.", APP_NAME, "Iconx")
-        ExitApp()
-    }
+    global TEMP_INSTALL_UPDATE_STATE
 
     try {
-        content := FileRead(updateFile, "UTF-8")
-        FileDelete(updateFile)
-
-        parts := StrSplit(content, UPDATE_INFO_DELIMITER)
-        if (parts.Length != 2) {
-            ThemeMsgBox("Invalid update information.", APP_NAME, "Iconx")
-            ExitApp()
-        }
-
-        sourcePath := parts[1]
-        targetPath := parts[2]
-
-        ; Security validation: ensure paths are valid
-        if (!FileExist(sourcePath)) {
-            ThemeMsgBox("Update source file not found:`n" sourcePath, APP_NAME, "Iconx")
-            ExitApp()
-        }
+        state := _ReadStateFile(TEMP_INSTALL_UPDATE_STATE)
+        sourcePath := state.source
+        targetPath := state.target
 
         ; Validate target is an exe in an expected directory (more secure than name-based,
         ; more permissive for renamed exes that don't contain "tabby" in the name)
@@ -425,35 +403,14 @@ if (g_AltTabbyMode = "install-to-pf") {
     ConfigLoader_Init()
     Theme_Init()
 
-    global TEMP_INSTALL_PF_STATE, UPDATE_INFO_DELIMITER
-    stateFile := TEMP_INSTALL_PF_STATE
-
-    if (!FileExist(stateFile)) {
-        ThemeMsgBox("Install state information not found.", APP_NAME, "Iconx")
-        ExitApp()
-    }
+    global TEMP_INSTALL_PF_STATE
 
     try {
-        content := FileRead(stateFile, "UTF-8")
-        FileDelete(stateFile)
-
-        parts := StrSplit(content, UPDATE_INFO_DELIMITER)
-        if (parts.Length != 2) {
-            ThemeMsgBox("Invalid install state information.", APP_NAME, "Iconx")
-            ExitApp()
-        }
-
-        sourcePath := parts[1]
-        targetPath := parts[2]
-
-        if (!FileExist(sourcePath)) {
-            ThemeMsgBox("Source file not found:`n" sourcePath, APP_NAME, "Iconx")
-            ExitApp()
-        }
+        state := _ReadStateFile(TEMP_INSTALL_PF_STATE)
 
         ; _Launcher_DoUpdateInstalled handles everything:
         ; DirCreate, blacklist copy, stats merge, config copy, admin task, shortcuts, relaunch
-        _Launcher_DoUpdateInstalled(sourcePath, targetPath)
+        _Launcher_DoUpdateInstalled(state.source, state.target)
     } catch as e {
         ThemeMsgBox("Installation failed:`n" e.Message, APP_NAME, "Iconx")
     }

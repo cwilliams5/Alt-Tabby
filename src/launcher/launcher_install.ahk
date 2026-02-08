@@ -139,8 +139,7 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
         }
 
         ; Update SetupExePath to current location - never ask again
-        cfg.SetupExePath := currentPath
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", currentPath, "", "string")
+        _Setup_SetExePath(currentPath)
         g_MismatchDialogShown := false  ; Allow auto-update now that mismatch is resolved
 
         ; Check if installed version is currently running to prevent multiple instances
@@ -262,9 +261,9 @@ _Launcher_UpdateInstalledVersion(installedPath) {
     ; Check if we need elevation
     if (_Update_NeedsElevation(installedDir)) {
         ; Save update info and self-elevate
-        global UPDATE_INFO_DELIMITER
+        global UPDATE_INFO_DELIMITER, TEMP_INSTALL_UPDATE_STATE
         updateInfo := A_ScriptFullPath UPDATE_INFO_DELIMITER installedPath
-        updateFile := A_Temp "\alttabby_install_update.txt"
+        updateFile := TEMP_INSTALL_UPDATE_STATE
         try FileDelete(updateFile)
         FileAppend(updateInfo, updateFile, "UTF-8")
 
@@ -425,15 +424,13 @@ _Launcher_CleanupStaleAdminTask(oldPath, newPath) {
         if (A_IsAdmin) {
             ; We have admin - delete task directly
             DeleteAdminTask()
-            cfg.SetupRunAsAdmin := false
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+            _Setup_SetRunAsAdmin(false)
         } else {
             ; Need elevation to delete task
             try {
                 if (_Launcher_RunAsAdmin("--disable-admin-task")) {
                     ; Elevated instance will handle it, update local config
-                    cfg.SetupRunAsAdmin := false
-                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+                    _Setup_SetRunAsAdmin(false)
                 }
             } catch {
                 ; UAC refused - warn user

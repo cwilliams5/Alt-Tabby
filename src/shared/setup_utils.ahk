@@ -361,6 +361,60 @@ _AdminTask_PointsToUs() {
     return StrLower(data.commandPath) = StrLower(A_ScriptFullPath)
 }
 
+; Run the admin scheduled task via schtasks, with optional pre-delay.
+; Returns the schtasks exit code (0 = success).
+_RunAdminTask(sleepMs := 0) {
+    global ALTTABBY_TASK_NAME
+    if (sleepMs > 0)
+        Sleep(sleepMs)
+    return RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
+}
+
+; ============================================================
+; ADMIN DECLINED MARKER (BUG 3 fix)
+; ============================================================
+; Temp file marker for when UAC is declined but config write to PF fails.
+; Persists across sessions until config write succeeds. NOT cleaned up by
+; _Update_CleanupStaleTempFiles() — must persist until the loop is broken.
+
+_Setup_WriteAdminDeclinedMarker() {
+    global TEMP_ADMIN_DECLINED_MARKER
+    try FileAppend(A_Now, TEMP_ADMIN_DECLINED_MARKER, "UTF-8")
+}
+
+_Setup_HasAdminDeclinedMarker() {
+    global TEMP_ADMIN_DECLINED_MARKER
+    return FileExist(TEMP_ADMIN_DECLINED_MARKER) ? true : false
+}
+
+_Setup_ClearAdminDeclinedMarker() {
+    global TEMP_ADMIN_DECLINED_MARKER
+    try FileDelete(TEMP_ADMIN_DECLINED_MARKER)
+}
+
+; ============================================================
+; CONFIG SETUP WRITE HELPERS (DRY consolidation)
+; ============================================================
+; Centralized helpers for writing Setup config values to gConfigIniPath.
+; For cross-location writes (targetConfigPath), use _CL_WriteIniPreserveFormat directly.
+
+_Setup_SetRunAsAdmin(value, writeMarkerOnFail := false) {
+    global cfg, gConfigIniPath
+    cfg.SetupRunAsAdmin := value
+    writeOk := false
+    try writeOk := _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", value, false, "bool")
+    if (!writeOk && writeMarkerOnFail && !value)
+        _Setup_WriteAdminDeclinedMarker()
+    return writeOk
+}
+
+_Setup_SetExePath(value) {
+    global cfg, gConfigIniPath
+    cfg.SetupExePath := value
+    try return _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", value, "", "string")
+    return false
+}
+
 ; ============================================================
 ; SHORTCUT PATH HELPERS
 ; ============================================================
@@ -882,11 +936,11 @@ _Update_CleanupOldExe() {
 ; Clean up stale temp files from crashed wizard/update instances (Priority 3 fix)
 ; Called on startup after _Update_CleanupOldExe
 _Update_CleanupStaleTempFiles() {
-    global TEMP_ADMIN_TOGGLE_LOCK, TEMP_WIZARD_STATE, TEMP_UPDATE_STATE, TEMP_UPDATE_LOCK, TEMP_INSTALL_PF_STATE
+    global TEMP_ADMIN_TOGGLE_LOCK, TEMP_WIZARD_STATE, TEMP_UPDATE_STATE, TEMP_UPDATE_LOCK, TEMP_INSTALL_PF_STATE, TEMP_INSTALL_UPDATE_STATE
     staleFiles := [
         TEMP_WIZARD_STATE,
         TEMP_UPDATE_STATE,
-        A_Temp "\alttabby_install_update.txt",
+        TEMP_INSTALL_UPDATE_STATE,
         TEMP_ADMIN_TOGGLE_LOCK,
         TEMP_UPDATE_LOCK,
         TEMP_INSTALL_PF_STATE
@@ -1049,34 +1103,34 @@ _Update_ValidatePEFile(filePath) {
     }
 }
 
+; Read and consume a state file (source<|>target format).
+; Deletes the file after reading. Throws on missing/invalid file or missing source.
+; Returns {source, target} object. Callers handle their own post-validation.
+_ReadStateFile(filePath) {
+    global UPDATE_INFO_DELIMITER
+    if (!FileExist(filePath))
+        throw Error("State file not found: " filePath)
+    content := FileRead(filePath, "UTF-8")
+    FileDelete(filePath)
+    parts := StrSplit(content, UPDATE_INFO_DELIMITER)
+    if (parts.Length != 2)
+        throw Error("Invalid state file: expected 2 parts, got " parts.Length)
+    if (!FileExist(parts[1]))
+        throw Error("Source file not found: " parts[1])
+    return {source: parts[1], target: parts[2]}
+}
+
 ; Called when launched with --apply-update flag (elevated)
 _Update_ContinueFromElevation() {
     global APP_NAME, TEMP_UPDATE_STATE
-    updateFile := TEMP_UPDATE_STATE
 
-    if (!FileExist(updateFile))
+    if (!FileExist(TEMP_UPDATE_STATE))
         return false
 
     try {
-        content := FileRead(updateFile, "UTF-8")
-        FileDelete(updateFile)
-
-        ; Bug 6 fix: Add specific error for corrupted state file
-        global UPDATE_INFO_DELIMITER
-        parts := StrSplit(content, UPDATE_INFO_DELIMITER)
-        if (parts.Length != 2) {
-            ThemeMsgBox("Update state file was corrupted.`nExpected 2 parts, got " parts.Length ".`nContent: " SubStr(content, 1, 100), APP_NAME, "Iconx")
-            return false
-        }
-
-        newExePath := parts[1]
-        targetExePath := parts[2]
-
-        ; Security validation: ensure source file exists
-        if (!FileExist(newExePath)) {
-            ThemeMsgBox("Update source file not found:`n" newExePath, APP_NAME, "Iconx")
-            return false
-        }
+        state := _ReadStateFile(TEMP_UPDATE_STATE)
+        newExePath := state.source
+        targetExePath := state.target
 
         ; Validate source path is in TEMP directory (expected from download)
         ; Use proper path prefix check, not substring (prevents edge cases like C:\MyTempBackup\...)

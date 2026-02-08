@@ -115,7 +115,7 @@ Launcher_Init() {
     ; Showing task repair dialog after mismatch "No" would redirect to wrong version
     ; Skip in testing mode to avoid blocking automated tests
     if (!g_TestingMode && !g_MismatchDialogShown && _ShouldRedirectToScheduledTask()) {
-        exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
+        exitCode := _RunAdminTask()
 
         if (exitCode = 0) {
             Sleep(TIMING_TASK_INIT_WAIT)  ; Brief delay for task to initialize
@@ -125,8 +125,7 @@ Launcher_Init() {
             ; Without deletion, _ShouldRedirectToScheduledTask() syncs SetupRunAsAdmin
             ; back to true because the task still exists, creating an infinite loop.
             try DeleteAdminTask()
-            cfg.SetupRunAsAdmin := false
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+            _Setup_SetRunAsAdmin(false)
             _Launcher_Log("TASK_REDIRECT: schtasks /run failed (code " exitCode "), deleted broken task")
             TrayTip("Admin Mode", "Scheduled task failed (code " exitCode ") and was removed.`nRe-enable from tray menu if needed.", "Icon!")
             ; Continue with normal startup below
@@ -354,6 +353,16 @@ _ShouldRedirectToScheduledTask() {
         return false
     }
 
+    ; Check admin-declined marker (temp file for when PF config write fails).
+    ; Breaks the UAC prompt loop: declined -> can't write to PF -> disk still says true -> repeat.
+    if (_Setup_HasAdminDeclinedMarker()) {
+        writeOk := _Setup_SetRunAsAdmin(false)
+        if (writeOk)
+            _Setup_ClearAdminDeclinedMarker()
+        _Launcher_Log("TASK_REDIRECT: skip (admin declined marker, writeOk=" writeOk ")")
+        return false
+    }
+
     ; Fast path: if admin mode was never configured, skip schtasks query entirely.
     ; Saves ~200-300ms for non-admin users (the common case).
     if (!cfg.SetupRunAsAdmin) {
@@ -363,8 +372,7 @@ _ShouldRedirectToScheduledTask() {
 
     ; Check if task exists (cfg.SetupRunAsAdmin is true here — fast path returned above)
     if (!AdminTaskExists()) {
-        cfg.SetupRunAsAdmin := false
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        _Setup_SetRunAsAdmin(false)
         _Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
         return false
     }
@@ -403,8 +411,7 @@ _ShouldRedirectToScheduledTask() {
             } catch {
                 ; UAC refused - fall back to non-admin
                 TrayTip("Admin Mode", "Could not elevate to repair task. Running without admin privileges.", "Icon!")
-                cfg.SetupRunAsAdmin := false
-                try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+                _Setup_SetRunAsAdmin(false, true)  ; marker on fail: breaks PF UAC loop
                 _Launcher_RepairExePathAfterAdminDecline()
                 return false
             }
@@ -434,8 +441,7 @@ _ShouldRedirectToScheduledTask() {
         }
 
         ; User said No or "Don't ask again" or UAC refused - disable admin mode and continue non-elevated
-        cfg.SetupRunAsAdmin := false
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        _Setup_SetRunAsAdmin(false, true)  ; marker on fail: breaks PF UAC loop
         _Launcher_RepairExePathAfterAdminDecline()
         if (result != "Yes")  ; Only show traytip if not attempting repair
             TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
@@ -444,8 +450,7 @@ _ShouldRedirectToScheduledTask() {
 
     ; Sync config if needed (handles corrupted config case)
     if (!cfg.SetupRunAsAdmin) {
-        cfg.SetupRunAsAdmin := true
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+        _Setup_SetRunAsAdmin(true)
     }
 
     _Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
@@ -455,10 +460,9 @@ _ShouldRedirectToScheduledTask() {
 ; Repair ExePath + shortcuts when declining admin repair with a stale path.
 ; Without this, there's a one-boot gap where shortcuts point to the old exe name.
 _Launcher_RepairExePathAfterAdminDecline() {
-    global cfg, gConfigIniPath
+    global cfg
     if (cfg.SetupExePath != "" && StrLower(cfg.SetupExePath) != StrLower(A_ScriptFullPath) && !FileExist(cfg.SetupExePath)) {
-        cfg.SetupExePath := A_ScriptFullPath
-        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+        _Setup_SetExePath(A_ScriptFullPath)
         RecreateShortcuts()
     }
 }
@@ -747,8 +751,7 @@ _Launcher_RepairStaleExePath() {
         return
 
     ; SetupExePath points to non-existent file - update to current path
-    cfg.SetupExePath := A_ScriptFullPath
-    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+    _Setup_SetExePath(A_ScriptFullPath)
 
     ; Recreate shortcuts if they exist (they point to old name)
     RecreateShortcuts()

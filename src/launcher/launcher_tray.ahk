@@ -448,8 +448,7 @@ ToggleAdminMode() {
         ; Disable admin mode - doesn't require elevation
         DeleteAdminTask()
         g_CachedAdminTaskActive := false
-        cfg.SetupRunAsAdmin := false
-        _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        _Setup_SetRunAsAdmin(false)
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
 
         ; Offer restart to apply change immediately
@@ -520,8 +519,7 @@ ToggleAdminMode() {
 
         if (CreateAdminTask(exePath)) {
             g_CachedAdminTaskActive := true
-            cfg.SetupRunAsAdmin := true
-            _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", true, false, "bool")
+            _Setup_SetRunAsAdmin(true)
             RecreateShortcuts()  ; Update to point to schtasks
             ToolTip("Admin mode enabled")
             HideTooltipAfter(TOOLTIP_DURATION_SHORT)
@@ -589,8 +587,7 @@ _AdminToggle_CheckComplete() {
             ProcessUtils_KillAltTabby({pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}})
             g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
 
-            Sleep(TIMING_TASK_READY_WAIT)
-            exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
+            exitCode := _RunAdminTask(TIMING_TASK_READY_WAIT)
             if (exitCode = 0) {
                 ExitApp()
             } else {
