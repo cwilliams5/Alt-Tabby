@@ -60,49 +60,55 @@ global gTheme_fnAllowDarkModeForWindow := 0
 ; Unified palette for both native AHK GUIs and WebView2 editors.
 ; WebView2 consumes these via Theme_GetWebViewJS() injection.
 
+; Convert config int (0xRRGGBB) to 6-char hex string ("RRGGBB") for palette use.
+_Theme_CfgHex(cfgProp) {
+    global cfg
+    return Format("{:06X}", cfg.%cfgProp%)
+}
+
 _Theme_MakeDarkPalette() {
     p := {}
-    p.bg            := "202020"  ; Main background (matches Windows dark apps)
-    p.panelBg       := "2B2B2B"  ; Panel / secondary background
-    p.tertiary      := "333333"  ; Tertiary background (cards, hover zones)
-    p.editBg        := "383838"  ; Edit / input background
-    p.hover         := "404040"  ; Hover highlight
-    p.text          := "E0E0E0"  ; Primary text
-    p.editText      := "E0E0E0"  ; Edit / input text
-    p.textSecondary := "AAAAAA"  ; Secondary text
-    p.textMuted     := "888888"  ; Muted / disabled text
-    p.accent        := "60CDFF"  ; Accent / link color (Win11 blue)
-    p.accentHover   := "78D6FF"  ; Accent hover
-    p.accentText    := "202020"  ; Text on accent background
-    p.border        := "404040"  ; Standard border
-    p.borderInput   := "505050"  ; Input border
-    p.toggleBg      := "505050"  ; Toggle switch off state
-    p.success       := "9ECE6A"  ; Success indicator
-    p.warning       := "E0AF68"  ; Warning indicator
-    p.danger        := "F7768E"  ; Danger indicator
+    p.bg            := _Theme_CfgHex("Theme_DarkBg")
+    p.panelBg       := _Theme_CfgHex("Theme_DarkPanelBg")
+    p.tertiary      := _Theme_CfgHex("Theme_DarkTertiary")
+    p.editBg        := _Theme_CfgHex("Theme_DarkEditBg")
+    p.hover         := _Theme_CfgHex("Theme_DarkHover")
+    p.text          := _Theme_CfgHex("Theme_DarkText")
+    p.editText      := _Theme_CfgHex("Theme_DarkEditText")
+    p.textSecondary := _Theme_CfgHex("Theme_DarkTextSecondary")
+    p.textMuted     := _Theme_CfgHex("Theme_DarkTextMuted")
+    p.accent        := _Theme_CfgHex("Theme_DarkAccent")
+    p.accentHover   := _Theme_CfgHex("Theme_DarkAccentHover")
+    p.accentText    := _Theme_CfgHex("Theme_DarkAccentText")
+    p.border        := _Theme_CfgHex("Theme_DarkBorder")
+    p.borderInput   := _Theme_CfgHex("Theme_DarkBorderInput")
+    p.toggleBg      := _Theme_CfgHex("Theme_DarkToggleBg")
+    p.success       := _Theme_CfgHex("Theme_DarkSuccess")
+    p.warning       := _Theme_CfgHex("Theme_DarkWarning")
+    p.danger        := _Theme_CfgHex("Theme_DarkDanger")
     return p
 }
 
 _Theme_MakeLightPalette() {
     p := {}
-    p.bg            := "F0F0F0"  ; Standard Windows light bg
-    p.panelBg       := "FFFFFF"  ; White panels
-    p.tertiary      := "EBEBEB"  ; Subtle grey
-    p.editBg        := "FFFFFF"  ; White inputs
-    p.hover         := "E0E0E0"  ; Hover grey
-    p.text          := "000000"  ; Black text
-    p.editText      := "000000"  ; Black input text
-    p.textSecondary := "444444"  ; Grey text
-    p.textMuted     := "666666"  ; Light grey text
-    p.accent        := "0066CC"  ; Blue accent
-    p.accentHover   := "0055AA"  ; Darker blue
-    p.accentText    := "FFFFFF"  ; White text on blue
-    p.border        := "D0D0D0"  ; Light border
-    p.borderInput   := "BBBBBB"  ; Input border
-    p.toggleBg      := "CCCCCC"  ; Toggle off
-    p.success       := "2E7D32"  ; Dark green
-    p.warning       := "E65100"  ; Dark orange
-    p.danger        := "C62828"  ; Dark red
+    p.bg            := _Theme_CfgHex("Theme_LightBg")
+    p.panelBg       := _Theme_CfgHex("Theme_LightPanelBg")
+    p.tertiary      := _Theme_CfgHex("Theme_LightTertiary")
+    p.editBg        := _Theme_CfgHex("Theme_LightEditBg")
+    p.hover         := _Theme_CfgHex("Theme_LightHover")
+    p.text          := _Theme_CfgHex("Theme_LightText")
+    p.editText      := _Theme_CfgHex("Theme_LightEditText")
+    p.textSecondary := _Theme_CfgHex("Theme_LightTextSecondary")
+    p.textMuted     := _Theme_CfgHex("Theme_LightTextMuted")
+    p.accent        := _Theme_CfgHex("Theme_LightAccent")
+    p.accentHover   := _Theme_CfgHex("Theme_LightAccentHover")
+    p.accentText    := _Theme_CfgHex("Theme_LightAccentText")
+    p.border        := _Theme_CfgHex("Theme_LightBorder")
+    p.borderInput   := _Theme_CfgHex("Theme_LightBorderInput")
+    p.toggleBg      := _Theme_CfgHex("Theme_LightToggleBg")
+    p.success       := _Theme_CfgHex("Theme_LightSuccess")
+    p.warning       := _Theme_CfgHex("Theme_LightWarning")
+    p.danger        := _Theme_CfgHex("Theme_LightDanger")
     return p
 }
 

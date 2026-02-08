@@ -105,6 +105,56 @@ Color theme for dialogs and editors. The main Alt-Tab overlay has its own color 
 |--------|------|---------|-------|-------------|
 | `Theme` | enum | `Automatic` | - | Color theme for dialogs and editors. Automatic follows the Windows system setting. |
 
+### Customize Dark Mode Colors
+
+Override individual colors for dark mode. Leave at defaults for the standard dark theme.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `DarkBg` | int | `0x202020` | `0x0` - `0xFFFFFF` | Main background |
+| `DarkPanelBg` | int | `0x2B2B2B` | `0x0` - `0xFFFFFF` | Panel / secondary background |
+| `DarkTertiary` | int | `0x333333` | `0x0` - `0xFFFFFF` | Tertiary background (cards, hover zones) |
+| `DarkEditBg` | int | `0x383838` | `0x0` - `0xFFFFFF` | Edit / input background |
+| `DarkHover` | int | `0x404040` | `0x0` - `0xFFFFFF` | Hover highlight |
+| `DarkText` | int | `0xE0E0E0` | `0x0` - `0xFFFFFF` | Primary text |
+| `DarkEditText` | int | `0xE0E0E0` | `0x0` - `0xFFFFFF` | Edit / input text |
+| `DarkTextSecondary` | int | `0xAAAAAA` | `0x0` - `0xFFFFFF` | Secondary text |
+| `DarkTextMuted` | int | `0x888888` | `0x0` - `0xFFFFFF` | Muted / disabled text |
+| `DarkAccent` | int | `0x60CDFF` | `0x0` - `0xFFFFFF` | Accent / link color |
+| `DarkAccentHover` | int | `0x78D6FF` | `0x0` - `0xFFFFFF` | Accent hover state |
+| `DarkAccentText` | int | `0x202020` | `0x0` - `0xFFFFFF` | Text on accent background |
+| `DarkBorder` | int | `0x404040` | `0x0` - `0xFFFFFF` | Standard border |
+| `DarkBorderInput` | int | `0x505050` | `0x0` - `0xFFFFFF` | Input border |
+| `DarkToggleBg` | int | `0x505050` | `0x0` - `0xFFFFFF` | Toggle switch off state |
+| `DarkSuccess` | int | `0x9ECE6A` | `0x0` - `0xFFFFFF` | Success indicator |
+| `DarkWarning` | int | `0xE0AF68` | `0x0` - `0xFFFFFF` | Warning indicator |
+| `DarkDanger` | int | `0xF7768E` | `0x0` - `0xFFFFFF` | Danger indicator |
+
+### Customize Light Mode Colors
+
+Override individual colors for light mode. Leave at defaults for the standard light theme.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `LightBg` | int | `0xF0F0F0` | `0x0` - `0xFFFFFF` | Main background |
+| `LightPanelBg` | int | `0xFFFFFF` | `0x0` - `0xFFFFFF` | Panel / secondary background |
+| `LightTertiary` | int | `0xEBEBEB` | `0x0` - `0xFFFFFF` | Tertiary background (cards, hover zones) |
+| `LightEditBg` | int | `0xFFFFFF` | `0x0` - `0xFFFFFF` | Edit / input background |
+| `LightHover` | int | `0xE0E0E0` | `0x0` - `0xFFFFFF` | Hover highlight |
+| `LightText` | int | `0x000000` | `0x0` - `0xFFFFFF` | Primary text |
+| `LightEditText` | int | `0x000000` | `0x0` - `0xFFFFFF` | Edit / input text |
+| `LightTextSecondary` | int | `0x444444` | `0x0` - `0xFFFFFF` | Secondary text |
+| `LightTextMuted` | int | `0x666666` | `0x0` - `0xFFFFFF` | Muted / disabled text |
+| `LightAccent` | int | `0x0066CC` | `0x0` - `0xFFFFFF` | Accent / link color |
+| `LightAccentHover` | int | `0x0055AA` | `0x0` - `0xFFFFFF` | Accent hover state |
+| `LightAccentText` | int | `0xFFFFFF` | `0x0` - `0xFFFFFF` | Text on accent background |
+| `LightBorder` | int | `0xD0D0D0` | `0x0` - `0xFFFFFF` | Standard border |
+| `LightBorderInput` | int | `0xBBBBBB` | `0x0` - `0xFFFFFF` | Input border |
+| `LightToggleBg` | int | `0xCCCCCC` | `0x0` - `0xFFFFFF` | Toggle switch off state |
+| `LightSuccess` | int | `0x2E7D32` | `0x0` - `0xFFFFFF` | Success indicator |
+| `LightWarning` | int | `0xE65100` | `0x0` - `0xFFFFFF` | Warning indicator |
+| `LightDanger` | int | `0xC62828` | `0x0` - `0xFFFFFF` | Danger indicator |
+
 ## GUI
 
 Visual styling for the Alt-Tab overlay window.
