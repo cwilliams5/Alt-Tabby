@@ -26,6 +26,12 @@ global PE_SIG_2 := 69                       ; 'E' (0x45)
 ; Guard to prevent concurrent update checks (auto-update timer + manual button)
 global g_UpdateCheckInProgress := false
 
+; Cached admin task data — avoids redundant schtasks subprocess calls (~200-300ms each).
+; Populated on first access, invalidated after CreateAdminTask/DeleteAdminTask.
+; Only caches the default task name (ALTTABBY_TASK_NAME); overridden names bypass cache.
+global g_AdminTaskCacheValid := false
+global g_AdminTaskCache  ; {exists: bool, commandPath: str, installationId: str}
+
 ; ============================================================
 ; VERSION MANAGEMENT
 ; ============================================================
@@ -247,6 +253,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     result := RunWait('schtasks /create /tn "' taskName '" /xml "' xmlPath '" /f', , "Hide")
 
     try FileDelete(xmlPath)
+    _AdminTask_InvalidateCache()
 
     return (result = 0)
 }
@@ -256,13 +263,50 @@ DeleteAdminTask(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
     taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
     result := RunWait('schtasks /delete /tn "' taskName '" /f', , "Hide")
+    _AdminTask_InvalidateCache()
     return (result = 0)
+}
+
+; Get cached admin task data (exists, commandPath, installationId) in a single schtasks call.
+; First call fetches XML and parses both fields; subsequent calls return cached result.
+; Only caches the default task name; callers with taskNameOverride bypass the cache.
+_AdminTask_GetCachedData() {
+    global g_AdminTaskCacheValid, g_AdminTaskCache
+
+    if (g_AdminTaskCacheValid)
+        return g_AdminTaskCache
+
+    ; Fetch XML once and parse all fields
+    xml := _AdminTask_FetchXML()
+    result := {exists: false, commandPath: "", installationId: ""}
+
+    if (xml != "") {
+        result.exists := true
+        if (RegExMatch(xml, '<Command>"?([^"<]+)"?</Command>', &cmdMatch))
+            result.commandPath := cmdMatch[1]
+        if (RegExMatch(xml, '\[ID:([A-Fa-f0-9]{8})\]', &idMatch))
+            result.installationId := idMatch[1]
+    }
+
+    g_AdminTaskCache := result
+    g_AdminTaskCacheValid := true
+    return result
+}
+
+; Invalidate the admin task cache. Must be called after CreateAdminTask/DeleteAdminTask.
+_AdminTask_InvalidateCache() {
+    global g_AdminTaskCacheValid
+    g_AdminTaskCacheValid := false
 }
 
 ; Check if admin task exists
 AdminTaskExists(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
-    taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
+    ; Use cache for default task name (avoids ~200-300ms schtasks call)
+    if (taskNameOverride = "")
+        return _AdminTask_GetCachedData().exists
+
+    taskName := taskNameOverride
     result := RunWait('schtasks /query /tn "' taskName '"', , "Hide")
     return (result = 0)  ; 0 = task exists
 }
@@ -290,6 +334,10 @@ _AdminTask_FetchXML(taskNameOverride := "") {
 ; Extract command path from existing scheduled task XML
 ; Returns empty string if task doesn't exist or can't be parsed
 _AdminTask_GetCommandPath(taskNameOverride := "") {
+    ; Use cache for default task name
+    if (taskNameOverride = "")
+        return _AdminTask_GetCachedData().commandPath
+
     xml := _AdminTask_FetchXML(taskNameOverride)
     if (xml = "")
         return ""
@@ -301,23 +349,16 @@ _AdminTask_GetCommandPath(taskNameOverride := "") {
 ; Extract InstallationId from task description
 ; Returns empty string if task doesn't exist or has no ID
 _AdminTask_GetInstallationId() {
-    xml := _AdminTask_FetchXML()
-    if (xml = "")
-        return ""
-    if (RegExMatch(xml, '\[ID:([A-Fa-f0-9]{8})\]', &match))
-        return match[1]
-    return ""
+    return _AdminTask_GetCachedData().installationId
 }
 
 ; Check if admin task exists AND points to the current exe
 ; Used for tray menu checkmark - prevents misleading state when task points elsewhere
 _AdminTask_PointsToUs() {
-    if (!AdminTaskExists())
+    data := _AdminTask_GetCachedData()
+    if (!data.exists || data.commandPath = "")
         return false
-    taskPath := _AdminTask_GetCommandPath()
-    if (taskPath = "")
-        return false
-    return StrLower(taskPath) = StrLower(A_ScriptFullPath)
+    return StrLower(data.commandPath) = StrLower(A_ScriptFullPath)
 }
 
 ; ============================================================

@@ -305,6 +305,10 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                 gConfigIniPath := newDir "\config.ini"
                 global STATS_INI_PATH
                 STATS_INI_PATH := newDir "\stats.ini"
+
+                ; Ensure PF config has our InstallationId (may differ if PF had existing config)
+                if (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
+                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", cfg.SetupInstallationId, "", "string")
             }
         }
     }

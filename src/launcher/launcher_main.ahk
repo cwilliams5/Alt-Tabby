@@ -354,14 +354,18 @@ _ShouldRedirectToScheduledTask() {
         return false
     }
 
-    ; Check if task exists
+    ; Fast path: if admin mode was never configured, skip schtasks query entirely.
+    ; Saves ~200-300ms for non-admin users (the common case).
+    if (!cfg.SetupRunAsAdmin) {
+        _Launcher_Log("TASK_REDIRECT: skip (admin not configured)")
+        return false
+    }
+
+    ; Check if task exists (cfg.SetupRunAsAdmin is true here — fast path returned above)
     if (!AdminTaskExists()) {
-        if (cfg.SetupRunAsAdmin) {
-            cfg.SetupRunAsAdmin := false
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
-            _Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
-        }
-        _Launcher_Log("TASK_REDIRECT: skip (no task exists)")
+        cfg.SetupRunAsAdmin := false
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        _Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
         return false
     }
 
