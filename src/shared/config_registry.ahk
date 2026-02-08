@@ -174,13 +174,9 @@ global gConfigRegistry := [
     {type: "subsection", section: "GUI", name: "Background Window",
      desc: "Window background and frame styling"},
 
-    {s: "GUI", k: "AcrylicAlpha", g: "GUI_AcrylicAlpha", t: "int", default: 0x33,
-     min: 0, max: 0xFF, fmt: "hex",
-     d: "Background transparency (0x00=transparent, 0xFF=opaque)"},
-
-    {s: "GUI", k: "AcrylicBaseRgb", g: "GUI_AcrylicBaseRgb", t: "int", default: 0x330000,
-     min: 0, max: 0xFFFFFF, fmt: "hex",
-     d: "Background tint color (hex RGB)"},
+    {s: "GUI", k: "AcrylicColor", g: "GUI_AcrylicColor", t: "int", default: 0x33000033,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
+     d: "Background tint color with alpha (0xAARRGGBB)"},
 
     {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", default: 18,
      min: 0, max: 100,

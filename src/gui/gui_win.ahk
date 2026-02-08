@@ -179,11 +179,12 @@ Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) {
     }
 }
 
-; Apply acrylic blur effect
-Win_ApplyAcrylic(hWnd, alpha, baseRgb) {
-    bb := (baseRgb >> 16) & 0xFF
-    gg := (baseRgb >> 8) & 0xFF
-    rr := (baseRgb) & 0xFF
+; Apply acrylic blur effect (argbColor = 0xAARRGGBB)
+Win_ApplyAcrylic(hWnd, argbColor) {
+    alpha := (argbColor >> 24) & 0xFF
+    rr := (argbColor >> 16) & 0xFF
+    gg := (argbColor >> 8) & 0xFF
+    bb := (argbColor) & 0xFF
     grad := (alpha << 24) | (bb << 16) | (gg << 8) | rr
 
     accent := Buffer(16, 0)

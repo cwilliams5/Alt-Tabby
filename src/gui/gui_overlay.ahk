@@ -233,7 +233,7 @@ GUI_CreateBase() {
     Win_SetCornerPreference(gGUI_BaseH, 2)
     Win_ForceNoLayered(gGUI_BaseH)
     Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
-    Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicAlpha, cfg.GUI_AcrylicBaseRgb)
+    Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicColor)
     Win_DwmFlush()
 }
 

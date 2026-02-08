@@ -115,8 +115,7 @@ Window background and frame styling
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `AcrylicAlpha` | int | `0x33` | `0x0` - `0xFF` | Background transparency (0x00=transparent, 0xFF=opaque) |
-| `AcrylicBaseRgb` | int | `0x330000` | `0x0` - `0xFFFFFF` | Background tint color (hex RGB) |
+| `AcrylicColor` | int | `0x33000033` | `0x0` - `0xFFFFFFFF` | Background tint color with alpha (0xAARRGGBB) |
 | `CornerRadiusPx` | int | `18` | `0` - `100` | Window corner radius in pixels |
 
 ### Size Config

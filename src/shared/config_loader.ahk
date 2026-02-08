@@ -79,6 +79,7 @@ ConfigLoader_Init(basePath := "", readOnly := false) {
         ; Only modify existing files if not in readOnly mode
         ; This avoids contention when multiple test processes run in parallel
         _CL_SupplementIni(gConfigIniPath)  ; Add missing keys
+        _CL_MigrateKeys(gConfigIniPath)  ; Migrate renamed/combined keys
         _CL_CleanupOrphanedKeys(gConfigIniPath)  ; Remove obsolete keys
     }
 
@@ -272,6 +273,34 @@ _CL_SupplementIni(path) {
         ; Clean up temp file on failure
         try FileDelete(tempPath)
         throw e  ; Re-throw so caller knows it failed
+    }
+}
+
+; Migrate renamed/combined config keys from older versions.
+; Runs BEFORE cleanup so old keys still exist to read, and AFTER supplement so new keys exist.
+_CL_MigrateKeys(path) {
+    if (!FileExist(path))
+        return
+
+    ; v0.9.0: AcrylicAlpha + AcrylicBaseRgb -> AcrylicColor (single ARGB)
+    ; Old AcrylicBaseRgb was passed to DWM without RGB→BGR swap, so the stored
+    ; value was effectively in BGR order. Swap R↔B to convert to true ARGB.
+    oldAlpha := IniRead(path, "GUI", "AcrylicAlpha", "")
+    oldRgb := IniRead(path, "GUI", "AcrylicBaseRgb", "")
+    if (oldAlpha != "" || oldRgb != "") {
+        ; Only migrate if user hasn't already set AcrylicColor
+        newVal := IniRead(path, "GUI", "AcrylicColor", "")
+        if (newVal = "" || newVal = "0x33000033") {  ; default = not user-set
+            alpha := (oldAlpha != "") ? Integer(oldAlpha) : 0x33
+            oldVal := (oldRgb != "") ? Integer(oldRgb) : 0x330000
+            ; Swap R↔B: old 0xRRGGBB was actually BGR, convert to true RGB
+            rr := (oldVal >> 16) & 0xFF
+            gg := (oldVal >> 8) & 0xFF
+            bb := oldVal & 0xFF
+            trueRgb := (bb << 16) | (gg << 8) | rr
+            combined := ((alpha << 24) | trueRgb) >>> 0
+            IniWrite("0x" Format("{:08X}", combined), path, "GUI", "AcrylicColor")
+        }
     }
 }
 

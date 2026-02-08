@@ -979,7 +979,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (globalName && baseId) onColorPick(globalName, baseId, color, isARGB);
       }
     });
-    // RGB-only fields (e.g. AcrylicBaseRgb) - no alpha slider
+    // RGB-only fields (max <= 0xFFFFFF) - no alpha slider
     Coloris.setInstance('.coloris-rgb', { alpha: false, forceAlpha: false });
   }
 
