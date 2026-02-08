@@ -182,12 +182,9 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
 
-            ; Resize and repaint OUTSIDE Critical (GDI+ can pump messages)
-            if (isToggleResponse && gGUI_State = "ACTIVE") {
-                rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
-                GUI_ResizeToRows(rowsDesired)
-            }
-
+            ; NOTE: Removed explicit GUI_ResizeToRows() - GUI_Repaint handles resize
+            ; internally. The separate resize called DwmFlush() before the paint,
+            ; committing the new window size with stale overlay content.
             if (gGUI_Revealed && gGUI_OverlayH) {
                 GUI_Repaint()
             }
@@ -219,27 +216,14 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         if (obj.Has("payload")) {
             result := GUI_ApplyDelta(obj["payload"])
 
-            ; If in ACTIVE state with FreezeWindowList=false, update live display
             if (gGUI_State = "ACTIVE" && !isFrozen) {
-                ; Only rebuild display list when membership or MRU changed.
-                ; Cosmetic-only deltas (icon, processName, title) don't affect which items
-                ; are shown or their order, so skip the O(n) filter+allocation.
                 if (result.mruChanged || result.membershipChanged) {
-                    ; RACE FIX: Wrap both assignments in Critical so a hotkey (Tab, Ctrl)
-                    ; can't interrupt between them and see new ToggleBase with old DisplayItems.
-                    ; Consistent with the snapshot path (lines 104-147) which already uses Critical.
-                    ; Release before repaint is safe: display items are already populated.
                     Critical "On"
                     gGUI_ToggleBase := gGUI_LiveItems
                     gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
                     Critical "Off"
                 }
-                ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
                 if (gGUI_Revealed && gGUI_OverlayH) {
-                    ; Only repaint if visible items were affected.
-                    ; MRU changes always repaint (sort order or item count changed).
-                    ; Membership changes always repaint (items may appear/disappear from filtered list).
-                    ; Cosmetic changes (icon, processName) only repaint if in viewport.
                     if (result.mruChanged || result.membershipChanged || _GUI_AnyVisibleItemChanged(gGUI_DisplayItems, result.changedHwnds))
                         GUI_Repaint()
                 }

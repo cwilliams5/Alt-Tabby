@@ -6,7 +6,6 @@
 ; Timing constants (hardcoded - not user-configurable)
 ; These are internal implementation details that users shouldn't need to change.
 ; The main timing values (MRU freshness, WS poll timeout, prewarm wait) are in config.
-; NOTE: Workspace switch settle time now in config: cfg.AltTabWorkspaceSwitchSettleMs (default 75ms)
 global GUI_EVENT_BUFFER_MAX := 50           ; Max events to buffer during async
 
 ; ============================================================

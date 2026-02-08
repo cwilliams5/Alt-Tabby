@@ -130,7 +130,7 @@ GUI_GetVisibleRows() {
 
 ; ========================= RESIZE =========================
 
-GUI_ResizeToRows(rowsToShow) {
+GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH, cfg
 
     xDip := 0
@@ -152,9 +152,17 @@ GUI_ResizeToRows(rowsToShow) {
     hPhys := Round(hDip * monScale)
 
     Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
-    Win_SetPosPhys(gGUI_OverlayH, xPhys, yPhys, wPhys, hPhys)
+    ; ANTI-JIGGLE (Part 2 of 2 — see also store_server.ahk BroadcastWorkspaceFlips):
+    ; The overlay is a layered window whose content is managed exclusively by
+    ; UpdateLayeredWindow (ULW) in GUI_Repaint.  ULW accepts pptDst (position)
+    ; and psize (size) parameters, atomically setting position + size + bitmap
+    ; content in a single DWM composition.  DO NOT resize the overlay here via
+    ; SetWindowPos — that triggers a DWM frame with the new window size but the
+    ; OLD bitmap content (stale items from previous workspace), then ULW triggers
+    ; a SECOND frame with the correct bitmap = visible flash/jiggle on slot #1.
     Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
-    Win_DwmFlush()
+    if (!skipFlush)
+        Win_DwmFlush()
 }
 
 GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {

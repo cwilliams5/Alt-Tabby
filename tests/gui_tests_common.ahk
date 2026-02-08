@@ -120,7 +120,7 @@ global GUI_TestFailed := 0
 GUI_Repaint() {
 }
 
-GUI_ResizeToRows(n) {
+GUI_ResizeToRows(n, skipFlush := false) {
 }
 
 GUI_ComputeRowsToShow(n) {

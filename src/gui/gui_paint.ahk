@@ -72,7 +72,7 @@ GUI_Repaint() {
     count := items.Length
     rowsDesired := GUI_ComputeRowsToShow(count)
     if (rowsDesired != gGUI_LastRowsDesired) {
-        GUI_ResizeToRows(rowsDesired)
+        GUI_ResizeToRows(rowsDesired, true)  ; skipFlush: DwmFlush happens later in RevealBoth
         gGUI_LastRowsDesired := rowsDesired
     }
 
