@@ -389,6 +389,7 @@ _ShouldRedirectToScheduledTask() {
                 TrayTip("Admin Mode", "Could not elevate to repair task. Running without admin privileges.", "Icon!")
                 cfg.SetupRunAsAdmin := false
                 try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+                _Launcher_RepairExePathAfterAdminDecline()
                 return false
             }
         }
@@ -419,6 +420,7 @@ _ShouldRedirectToScheduledTask() {
         ; User said No or "Don't ask again" or UAC refused - disable admin mode and continue non-elevated
         cfg.SetupRunAsAdmin := false
         try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", false, false, "bool")
+        _Launcher_RepairExePathAfterAdminDecline()
         if (result != "Yes")  ; Only show traytip if not attempting repair
             TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
         return false
@@ -432,6 +434,17 @@ _ShouldRedirectToScheduledTask() {
 
     _Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
     return true
+}
+
+; Repair ExePath + shortcuts when declining admin repair with a stale path.
+; Without this, there's a one-boot gap where shortcuts point to the old exe name.
+_Launcher_RepairExePathAfterAdminDecline() {
+    global cfg, gConfigIniPath
+    if (cfg.SetupExePath != "" && StrLower(cfg.SetupExePath) != StrLower(A_ScriptFullPath) && !FileExist(cfg.SetupExePath)) {
+        cfg.SetupExePath := A_ScriptFullPath
+        try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", A_ScriptFullPath, "", "string")
+        RecreateShortcuts()
+    }
 }
 
 ; Write the SuppressAdminRepairPrompt flag, wrapped in try for use in fat-arrow closures
