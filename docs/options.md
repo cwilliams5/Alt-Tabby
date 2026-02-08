@@ -141,12 +141,12 @@ Override individual colors for light mode. Leave at defaults for the standard li
 | `LightTertiary` | int | `0xEBEBEB` | `0x0` - `0xFFFFFF` | Tertiary background (cards, hover zones) |
 | `LightEditBg` | int | `0xFFFFFF` | `0x0` - `0xFFFFFF` | Edit / input background |
 | `LightHover` | int | `0xE0E0E0` | `0x0` - `0xFFFFFF` | Hover highlight |
-| `LightText` | int | `0x000000` | `0x0` - `0xFFFFFF` | Primary text |
-| `LightEditText` | int | `0x000000` | `0x0` - `0xFFFFFF` | Edit / input text |
+| `LightText` | int | `0x0` | `0x0` - `0xFFFFFF` | Primary text |
+| `LightEditText` | int | `0x0` | `0x0` - `0xFFFFFF` | Edit / input text |
 | `LightTextSecondary` | int | `0x444444` | `0x0` - `0xFFFFFF` | Secondary text |
 | `LightTextMuted` | int | `0x666666` | `0x0` - `0xFFFFFF` | Muted / disabled text |
-| `LightAccent` | int | `0x0066CC` | `0x0` - `0xFFFFFF` | Accent / link color |
-| `LightAccentHover` | int | `0x0055AA` | `0x0` - `0xFFFFFF` | Accent hover state |
+| `LightAccent` | int | `0x66CC` | `0x0` - `0xFFFFFF` | Accent / link color |
+| `LightAccentHover` | int | `0x55AA` | `0x0` - `0xFFFFFF` | Accent hover state |
 | `LightAccentText` | int | `0xFFFFFF` | `0x0` - `0xFFFFFF` | Text on accent background |
 | `LightBorder` | int | `0xD0D0D0` | `0x0` - `0xFFFFFF` | Standard border |
 | `LightBorderInput` | int | `0xBBBBBB` | `0x0` - `0xFFFFFF` | Input border |
@@ -157,17 +157,25 @@ Override individual colors for light mode. Leave at defaults for the standard li
 
 ### Title Bar Colors (Win11)
 
-Custom title bar border, background, and text colors. Win11 22H2+ only; ignored on Win10.
+Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `CustomTitleBarColors` | bool | `false` | - | Enable custom title bar colors on Win11. When off, Windows manages title bar colors. |
+| `CustomTitleBarColors` | bool | `false` | - | Enable custom title bar background and text colors on Win11. When off, Windows manages title bar colors. |
 | `DarkTitleBarBg` | int | `0x202020` | `0x0` - `0xFFFFFF` | Dark mode title bar background |
 | `DarkTitleBarText` | int | `0xE0E0E0` | `0x0` - `0xFFFFFF` | Dark mode title bar text |
-| `DarkTitleBarBorder` | int | `0x60CDFF` | `0x0` - `0xFFFFFF` | Dark mode title bar border |
 | `LightTitleBarBg` | int | `0xF0F0F0` | `0x0` - `0xFFFFFF` | Light mode title bar background |
-| `LightTitleBarText` | int | `0x000000` | `0x0` - `0xFFFFFF` | Light mode title bar text |
-| `LightTitleBarBorder` | int | `0x0066CC` | `0x0` - `0xFFFFFF` | Light mode title bar border |
+| `LightTitleBarText` | int | `0x0` | `0x0` - `0xFFFFFF` | Light mode title bar text |
+
+### Title Bar Border Color (Win11)
+
+Custom window border color. Win11 22H2+ only; ignored on Win10. Independent of title bar colors above.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `CustomTitleBarBorder` | bool | `false` | - | Enable custom window border color on Win11. When off, Windows manages the border color. |
+| `DarkTitleBarBorder` | int | `0x60CDFF` | `0x0` - `0xFFFFFF` | Dark mode window border color |
+| `LightTitleBarBorder` | int | `0x66CC` | `0x0` - `0xFFFFFF` | Light mode window border color |
 
 ### Button Hover Colors
 
@@ -178,7 +186,7 @@ Custom accent-colored button hover. Uses owner-draw for full color control.
 | `CustomButtonColors` | bool | `false` | - | Enable custom button hover/pressed colors. When off, buttons use standard Windows theme. |
 | `DarkButtonHoverBg` | int | `0x60CDFF` | `0x0` - `0xFFFFFF` | Dark mode button hover background |
 | `DarkButtonHoverText` | int | `0x202020` | `0x0` - `0xFFFFFF` | Dark mode button hover text |
-| `LightButtonHoverBg` | int | `0x0066CC` | `0x0` - `0xFFFFFF` | Light mode button hover background |
+| `LightButtonHoverBg` | int | `0x66CC` | `0x0` - `0xFFFFFF` | Light mode button hover background |
 | `LightButtonHoverText` | int | `0xFFFFFF` | `0x0` - `0xFFFFFF` | Light mode button hover text |
 
 ## GUI
@@ -623,4 +631,4 @@ Options for automated test suite
 
 ---
 
-*Generated on 2026-02-07 with 209 total settings.*
+*Generated on 2026-02-08 with 257 total settings.*

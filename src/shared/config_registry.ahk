@@ -245,22 +245,28 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Danger indicator"},
 
     {type: "subsection", section: "Theme", name: "Title Bar Colors (Win11)",
-     desc: "Custom title bar border, background, and text colors. Win11 22H2+ only; ignored on Win10."},
+     desc: "Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10."},
 
     {s: "Theme", k: "CustomTitleBarColors", g: "Theme_CustomTitleBarColors", t: "bool", default: false,
-     d: "Enable custom title bar colors on Win11. When off, Windows manages title bar colors."},
+     d: "Enable custom title bar background and text colors on Win11. When off, Windows manages title bar colors."},
     {s: "Theme", k: "DarkTitleBarBg", g: "Theme_DarkTitleBarBg", t: "int", default: 0x202020,
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar background"},
     {s: "Theme", k: "DarkTitleBarText", g: "Theme_DarkTitleBarText", t: "int", default: 0xE0E0E0,
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar text"},
-    {s: "Theme", k: "DarkTitleBarBorder", g: "Theme_DarkTitleBarBorder", t: "int", default: 0x60CDFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar border"},
     {s: "Theme", k: "LightTitleBarBg", g: "Theme_LightTitleBarBg", t: "int", default: 0xF0F0F0,
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar background"},
     {s: "Theme", k: "LightTitleBarText", g: "Theme_LightTitleBarText", t: "int", default: 0x000000,
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar text"},
+
+    {type: "subsection", section: "Theme", name: "Title Bar Border Color (Win11)",
+     desc: "Custom window border color. Win11 22H2+ only; ignored on Win10. Independent of title bar colors above."},
+
+    {s: "Theme", k: "CustomTitleBarBorder", g: "Theme_CustomTitleBarBorder", t: "bool", default: false,
+     d: "Enable custom window border color on Win11. When off, Windows manages the border color."},
+    {s: "Theme", k: "DarkTitleBarBorder", g: "Theme_DarkTitleBarBorder", t: "int", default: 0x60CDFF,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode window border color"},
     {s: "Theme", k: "LightTitleBarBorder", g: "Theme_LightTitleBarBorder", t: "int", default: 0x0066CC,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar border"},
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode window border color"},
 
     {type: "subsection", section: "Theme", name: "Button Hover Colors",
      desc: "Custom accent-colored button hover. Uses owner-draw for full color control."},

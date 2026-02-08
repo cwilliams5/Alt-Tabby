@@ -893,23 +893,27 @@ _Theme_CfgToColorRef(cfgInt) {
 
 _Theme_ApplyTitleBarColors(hWnd) {
     global cfg, gTheme_IsDark
-    if (!cfg.Theme_CustomTitleBarColors)
-        return
 
     prefix := gTheme_IsDark ? "Theme_DarkTitleBar" : "Theme_LightTitleBar"
     static buf := Buffer(4, 0)
 
-    ; Caption background (DWMWA_CAPTION_COLOR = 35)
-    NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Bg"%), buf)
-    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 35, "Ptr", buf.Ptr, "Int", 4, "Int")
+    ; Caption background + text (gated by CustomTitleBarColors)
+    if (cfg.Theme_CustomTitleBarColors) {
+        ; Caption background (DWMWA_CAPTION_COLOR = 35)
+        NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Bg"%), buf)
+        try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 35, "Ptr", buf.Ptr, "Int", 4, "Int")
 
-    ; Title text (DWMWA_TEXT_COLOR = 36)
-    NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Text"%), buf)
-    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 36, "Ptr", buf.Ptr, "Int", 4, "Int")
+        ; Title text (DWMWA_TEXT_COLOR = 36)
+        NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Text"%), buf)
+        try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 36, "Ptr", buf.Ptr, "Int", 4, "Int")
+    }
 
-    ; Border (DWMWA_BORDER_COLOR = 34)
-    NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Border"%), buf)
-    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 34, "Ptr", buf.Ptr, "Int", 4, "Int")
+    ; Border (gated independently by CustomTitleBarBorder)
+    if (cfg.Theme_CustomTitleBarBorder) {
+        ; Border (DWMWA_BORDER_COLOR = 34)
+        NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Border"%), buf)
+        try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 34, "Ptr", buf.Ptr, "Int", 4, "Int")
+    }
 }
 
 ; ============================================================
