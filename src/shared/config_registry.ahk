@@ -244,6 +244,38 @@ global gConfigRegistry := [
     {s: "Theme", k: "LightDanger", g: "Theme_LightDanger", t: "int", default: 0xC62828,
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Danger indicator"},
 
+    {type: "subsection", section: "Theme", name: "Title Bar Colors (Win11)",
+     desc: "Custom title bar border, background, and text colors. Win11 22H2+ only; ignored on Win10."},
+
+    {s: "Theme", k: "CustomTitleBarColors", g: "Theme_CustomTitleBarColors", t: "bool", default: false,
+     d: "Enable custom title bar colors on Win11. When off, Windows manages title bar colors."},
+    {s: "Theme", k: "DarkTitleBarBg", g: "Theme_DarkTitleBarBg", t: "int", default: 0x202020,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar background"},
+    {s: "Theme", k: "DarkTitleBarText", g: "Theme_DarkTitleBarText", t: "int", default: 0xE0E0E0,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar text"},
+    {s: "Theme", k: "DarkTitleBarBorder", g: "Theme_DarkTitleBarBorder", t: "int", default: 0x60CDFF,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar border"},
+    {s: "Theme", k: "LightTitleBarBg", g: "Theme_LightTitleBarBg", t: "int", default: 0xF0F0F0,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar background"},
+    {s: "Theme", k: "LightTitleBarText", g: "Theme_LightTitleBarText", t: "int", default: 0x000000,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar text"},
+    {s: "Theme", k: "LightTitleBarBorder", g: "Theme_LightTitleBarBorder", t: "int", default: 0x0066CC,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar border"},
+
+    {type: "subsection", section: "Theme", name: "Button Hover Colors",
+     desc: "Custom accent-colored button hover. Uses owner-draw for full color control."},
+
+    {s: "Theme", k: "CustomButtonColors", g: "Theme_CustomButtonColors", t: "bool", default: false,
+     d: "Enable custom button hover/pressed colors. When off, buttons use standard Windows theme."},
+    {s: "Theme", k: "DarkButtonHoverBg", g: "Theme_DarkButtonHoverBg", t: "int", default: 0x60CDFF,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode button hover background"},
+    {s: "Theme", k: "DarkButtonHoverText", g: "Theme_DarkButtonHoverText", t: "int", default: 0x202020,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode button hover text"},
+    {s: "Theme", k: "LightButtonHoverBg", g: "Theme_LightButtonHoverBg", t: "int", default: 0x0066CC,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode button hover background"},
+    {s: "Theme", k: "LightButtonHoverText", g: "Theme_LightButtonHoverText", t: "int", default: 0xFFFFFF,
+     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode button hover text"},
+
     ; ============================================================
     ; GUI Appearance
     ; ============================================================

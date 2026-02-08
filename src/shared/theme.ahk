@@ -49,6 +49,11 @@ global gTheme_TabSubclass := Map()        ; Tab WndProc subclasses: hwnd -> {ori
 ; --- Change callbacks for GUIs with special re-theming needs ---
 global gTheme_ChangeCallbacks := []
 
+; --- Owner-draw button tracking ---
+; Map: btnHwnd -> {text, hover, isDefault, isDark}
+global gTheme_ButtonMap := Map()
+global gTheme_HoverTimerFn := 0
+
 ; --- uxtheme ordinal cache ---
 global gTheme_fnSetPreferredAppMode := 0
 global gTheme_fnFlushMenuThemes := 0
@@ -150,6 +155,9 @@ Theme_Init() {
     ; Listen for system theme changes (Automatic mode)
     OnMessage(0x001A, _Theme_OnSettingChange)     ; WM_SETTINGCHANGE
 
+    ; Owner-draw button support (WM_DRAWITEM)
+    OnMessage(0x002B, _Theme_OnDrawItem)
+
     gTheme_Initialized := true
 }
 
@@ -185,6 +193,9 @@ Theme_ApplyToGui(gui) {
             DllCall(gTheme_fnAllowDarkModeForWindow, "Ptr", gui.Hwnd, "Int", false)
     }
 
+    ; Custom title bar colors (Win11 22H2+)
+    _Theme_ApplyTitleBarColors(gui.Hwnd)
+
     ; Set default font color
     gui.SetFont("c" gTheme_Palette.text)
 
@@ -203,7 +214,11 @@ Theme_ApplyToGui(gui) {
 ;              "StatusBar", "GroupBox"
 ;   guiEntry - (optional) entry returned by Theme_ApplyToGui for tracking
 Theme_ApplyToControl(ctrl, ctrlType, guiEntry := "") {
-    global gTheme_IsDark, gTheme_Palette
+    global gTheme_IsDark, gTheme_Palette, cfg
+
+    ; Owner-draw buttons when custom button colors enabled
+    if (ctrlType = "Button" && cfg.Theme_CustomButtonColors)
+        _Theme_RegisterOwnerDrawButton(ctrl)
 
     if (gTheme_IsDark)
         _Theme_ApplyDarkControl(ctrl, ctrlType)
@@ -792,6 +807,7 @@ _Theme_ReapplyAll() {
 
         ; Update title bar
         _Theme_SetDarkTitleBar(gui.Hwnd, gTheme_IsDark)
+        _Theme_ApplyTitleBarColors(gui.Hwnd)
 
         ; AllowDarkModeForWindow
         if (gTheme_fnAllowDarkModeForWindow)
@@ -813,6 +829,11 @@ _Theme_ReapplyAll() {
         ; Force repaint (RDW_ALLCHILDREN ensures tab subclass WM_PAINT fires)
         try DllCall("user32\RedrawWindow", "Ptr", gui.Hwnd, "Ptr", 0, "Ptr", 0, "UInt", 0x0585)
     }
+
+    ; Update owner-draw button dark/light state
+    global gTheme_ButtonMap
+    for btnHwnd, info in gTheme_ButtonMap
+        info.isDark := gTheme_IsDark
 
     ; Notify registered callbacks (child GUIs, special re-theming)
     global gTheme_ChangeCallbacks
@@ -853,4 +874,194 @@ _Theme_ColorToInt(hexStr) {
     gg := (val >> 8) & 0xFF
     bb := val & 0xFF
     return (bb << 16) | (gg << 8) | rr
+}
+
+; Convert config int (0xRRGGBB) to COLORREF int (0x00BBGGRR)
+_Theme_CfgToColorRef(cfgInt) {
+    rr := (cfgInt >> 16) & 0xFF
+    gg := (cfgInt >> 8) & 0xFF
+    bb := cfgInt & 0xFF
+    return (bb << 16) | (gg << 8) | rr
+}
+
+; ============================================================
+; Custom Title Bar Colors (Win11 22H2+)
+; ============================================================
+; DWMWA_BORDER_COLOR=34, DWMWA_CAPTION_COLOR=35, DWMWA_TEXT_COLOR=36
+; Colors are COLORREF format (0x00BBGGRR). On Win10 or pre-22H2, the
+; DwmSetWindowAttribute calls silently fail — no harm done.
+
+_Theme_ApplyTitleBarColors(hWnd) {
+    global cfg, gTheme_IsDark
+    if (!cfg.Theme_CustomTitleBarColors)
+        return
+
+    prefix := gTheme_IsDark ? "Theme_DarkTitleBar" : "Theme_LightTitleBar"
+    static buf := Buffer(4, 0)
+
+    ; Caption background (DWMWA_CAPTION_COLOR = 35)
+    NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Bg"%), buf)
+    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 35, "Ptr", buf.Ptr, "Int", 4, "Int")
+
+    ; Title text (DWMWA_TEXT_COLOR = 36)
+    NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Text"%), buf)
+    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 36, "Ptr", buf.Ptr, "Int", 4, "Int")
+
+    ; Border (DWMWA_BORDER_COLOR = 34)
+    NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Border"%), buf)
+    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 34, "Ptr", buf.Ptr, "Int", 4, "Int")
+}
+
+; ============================================================
+; Owner-Draw Buttons
+; ============================================================
+; When Theme_CustomButtonColors is enabled, buttons are converted to
+; BS_OWNERDRAW and painted via WM_DRAWITEM with custom hover/pressed colors.
+
+_Theme_RegisterOwnerDrawButton(ctrl) {
+    global gTheme_ButtonMap, gTheme_HoverTimerFn, gTheme_IsDark
+
+    ; Get button text before converting to owner-draw
+    btnText := ctrl.Text
+
+    ; Check if this is a default button (BS_DEFPUSHBUTTON = 0x01)
+    style := DllCall("GetWindowLong", "Ptr", ctrl.Hwnd, "Int", -16, "Int")
+    isDefault := (style & 0x0F) = 0x01
+
+    ; Convert to BS_OWNERDRAW (0x0B) — clears low nibble, sets owner-draw
+    style := (style & ~0xF) | 0xB
+    DllCall("SetWindowLong", "Ptr", ctrl.Hwnd, "Int", -16, "Int", style)
+
+    ; Register in tracking map
+    gTheme_ButtonMap[ctrl.Hwnd] := {
+        text: btnText,
+        hover: false,
+        isDefault: isDefault,
+        isDark: gTheme_IsDark
+    }
+
+    ; Start hover tracking timer if not already running
+    if (!gTheme_HoverTimerFn) {
+        gTheme_HoverTimerFn := _Theme_CheckButtonHover
+        SetTimer(gTheme_HoverTimerFn, 30)
+    }
+}
+
+; WM_DRAWITEM handler for owner-draw buttons
+_Theme_OnDrawItem(wParam, lParam, msg, hwnd) {
+    global gTheme_ButtonMap, gTheme_Palette, cfg
+
+    ; Only handle buttons (ODT_BUTTON = 4)
+    if (NumGet(lParam, 0, "UInt") != 4)
+        return 0
+
+    btnHwnd := NumGet(lParam, 24, "Ptr")
+    if (!gTheme_ButtonMap.Has(btnHwnd))
+        return 0
+
+    btnInfo := gTheme_ButtonMap[btnHwnd]
+
+    ; Parse DRAWITEMSTRUCT
+    itemState := NumGet(lParam, 16, "UInt")
+    hdc       := NumGet(lParam, 32, "Ptr")
+    left      := NumGet(lParam, 40, "Int")
+    top       := NumGet(lParam, 44, "Int")
+    right     := NumGet(lParam, 48, "Int")
+    bottom    := NumGet(lParam, 52, "Int")
+
+    isPressed  := (itemState & 0x0001)  ; ODS_SELECTED
+    isFocused  := (itemState & 0x0010)  ; ODS_FOCUS
+    isHover    := btnInfo.hover
+
+    ; Get colors from config
+    prefix := btnInfo.isDark ? "Theme_DarkButton" : "Theme_LightButton"
+    hoverBg   := _Theme_CfgToColorRef(cfg.%prefix "HoverBg"%)
+    hoverText := _Theme_CfgToColorRef(cfg.%prefix "HoverText"%)
+
+    ; Derive pressed color (darken hover by 20%)
+    pressedBg := _Theme_DarkenColorRef(hoverBg)
+
+    ; Normal state uses palette colors
+    normalBg     := _Theme_ColorToInt(gTheme_Palette.tertiary)
+    normalBorder := _Theme_ColorToInt(gTheme_Palette.borderInput)
+    normalText   := _Theme_ColorToInt(gTheme_Palette.text)
+    defBorder    := hoverBg  ; Default button gets accent border
+
+    ; Choose colors based on state
+    if (isPressed) {
+        bgColor     := pressedBg
+        textColor   := hoverText
+        borderColor := pressedBg
+    } else if (isHover) {
+        bgColor     := hoverBg
+        textColor   := hoverText
+        borderColor := hoverBg
+    } else {
+        bgColor     := normalBg
+        textColor   := normalText
+        borderColor := btnInfo.isDefault ? defBorder : normalBorder
+    }
+
+    ; Paint rounded rectangle
+    pen := DllCall("CreatePen", "Int", 0, "Int", 1, "UInt", borderColor, "Ptr")
+    brush := DllCall("CreateSolidBrush", "UInt", bgColor, "Ptr")
+    oldPen := DllCall("SelectObject", "Ptr", hdc, "Ptr", pen, "Ptr")
+    oldBrush := DllCall("SelectObject", "Ptr", hdc, "Ptr", brush, "Ptr")
+    DllCall("RoundRect", "Ptr", hdc,
+        "Int", left, "Int", top, "Int", right, "Int", bottom,
+        "Int", 4, "Int", 4)
+    DllCall("SelectObject", "Ptr", hdc, "Ptr", oldPen, "Ptr")
+    DllCall("SelectObject", "Ptr", hdc, "Ptr", oldBrush, "Ptr")
+    DllCall("DeleteObject", "Ptr", pen)
+    DllCall("DeleteObject", "Ptr", brush)
+
+    ; Draw text
+    hFont := SendMessage(0x0031, 0, 0, btnHwnd)  ; WM_GETFONT
+    oldFont := 0
+    if (hFont)
+        oldFont := DllCall("SelectObject", "Ptr", hdc, "Ptr", hFont, "Ptr")
+    DllCall("SetTextColor", "Ptr", hdc, "UInt", textColor)
+    DllCall("SetBkMode", "Ptr", hdc, "Int", 1)  ; TRANSPARENT
+    static rc := Buffer(16, 0)
+    NumPut("Int", left, "Int", top, "Int", right, "Int", bottom, rc)
+    DllCall("DrawText", "Ptr", hdc, "Str", btnInfo.text, "Int", -1,
+        "Ptr", rc, "UInt", 0x25)  ; DT_CENTER | DT_VCENTER | DT_SINGLELINE
+    if (oldFont)
+        DllCall("SelectObject", "Ptr", hdc, "Ptr", oldFont, "Ptr")
+
+    ; Focus rectangle (keyboard only, not during hover/press)
+    if (isFocused && !isHover && !isPressed) {
+        static focusRc := Buffer(16, 0)
+        NumPut("Int", left + 3, "Int", top + 3, "Int", right - 3, "Int", bottom - 3, focusRc)
+        DllCall("DrawFocusRect", "Ptr", hdc, "Ptr", focusRc)
+    }
+
+    return 1
+}
+
+; Darken a COLORREF by ~20% for pressed state
+_Theme_DarkenColorRef(colorRef) {
+    bb := (colorRef >> 16) & 0xFF
+    gg := (colorRef >> 8) & 0xFF
+    rr := colorRef & 0xFF
+    return (Integer(bb * 0.75) << 16) | (Integer(gg * 0.75) << 8) | Integer(rr * 0.75)
+}
+
+; Timer: poll cursor position to track button hover state
+_Theme_CheckButtonHover() {
+    global gTheme_ButtonMap
+    if (gTheme_ButtonMap.Count = 0)
+        return
+
+    pt := Buffer(8, 0)
+    DllCall("GetCursorPos", "Ptr", pt)
+    hwndUnder := DllCall("WindowFromPoint",
+        "Int64", NumGet(pt, 0, "Int64"), "Ptr")
+
+    for btnHwnd, info in gTheme_ButtonMap {
+        wasHover := info.hover
+        info.hover := (hwndUnder = btnHwnd)
+        if (wasHover != info.hover)
+            DllCall("InvalidateRect", "Ptr", btnHwnd, "Ptr", 0, "Int", 1)
+    }
 }
