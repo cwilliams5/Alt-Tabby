@@ -245,7 +245,7 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Danger indicator"},
 
     {type: "subsection", section: "Theme", name: "Title Bar Colors (Win11)",
-     desc: "Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10."},
+     desc: "Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10. Disabling may require closing and reopening dialogs to fully revert."},
 
     {s: "Theme", k: "CustomTitleBarColors", g: "Theme_CustomTitleBarColors", t: "bool", default: false,
      d: "Enable custom title bar background and text colors on Win11. When off, Windows manages title bar colors."},
@@ -259,7 +259,7 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar text"},
 
     {type: "subsection", section: "Theme", name: "Title Bar Border Color (Win11)",
-     desc: "Custom window border color. Win11 22H2+ only; ignored on Win10. Independent of title bar colors above."},
+     desc: "Custom window border color. Win11 22H2+ only; ignored on Win10. Independent of title bar colors above. Disabling may require closing and reopening dialogs to fully revert."},
 
     {s: "Theme", k: "CustomTitleBarBorder", g: "Theme_CustomTitleBarBorder", t: "bool", default: false,
      d: "Enable custom window border color on Win11. When off, Windows manages the border color."},

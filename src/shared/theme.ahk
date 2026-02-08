@@ -161,6 +161,30 @@ Theme_Init() {
     gTheme_Initialized := true
 }
 
+; Reload theme from config. Call after ConfigLoader_Init() to pick up
+; changed palette colors, mode, title bar, button settings, etc.
+; Safe to call at any time — no-op if theme not initialized.
+Theme_Reload() {
+    global gTheme_IsDark, gTheme_Palette, gTheme_Initialized
+    if (!gTheme_Initialized)
+        return
+
+    ; Re-evaluate dark/light (config may have changed Theme_Mode)
+    gTheme_IsDark := _Theme_ShouldBeDark()
+
+    ; Rebuild palette from (now-refreshed) config values
+    gTheme_Palette := gTheme_IsDark ? _Theme_MakeDarkPalette() : _Theme_MakeLightPalette()
+
+    ; Update app mode for menus
+    _Theme_ApplyAppMode()
+
+    ; Recreate GDI brushes
+    _Theme_CreateBrushes()
+
+    ; Re-theme all tracked GUIs
+    _Theme_ReapplyAll()
+}
+
 ; Returns true if current theme is dark.
 Theme_IsDark() {
     global gTheme_IsDark

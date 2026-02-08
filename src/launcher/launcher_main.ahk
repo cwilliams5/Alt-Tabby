@@ -300,14 +300,26 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
             return 1
         }
         g_LastFullRestartTick := A_TickCount
-        ; DESIGN DECISION: Config changes restart store+GUI rather than hot-reload.
-        ; Avoids complexity of selective reload across dozens of values affecting
-        ; init, GDI+, IPC, hooks, etc.
-        SetTimer(_Launcher_RestartStoreAndGui, -1)
+        SetTimer(_Launcher_ApplyConfigChanges, -1)
         return 1
     }
 
     return 0
+}
+
+; Apply config changes: reload config for the launcher, re-theme launcher
+; surfaces in-place, then restart store+GUI (which read config fresh on launch).
+_Launcher_ApplyConfigChanges() {
+    _Launcher_Log("ApplyConfigChanges: reloading config and theme for launcher")
+
+    ; 1. Reload config from INI so launcher picks up new values
+    ConfigLoader_Init()
+
+    ; 2. Re-apply theme to launcher's own surfaces (tray menus, dashboard, etc.)
+    Theme_Reload()
+
+    ; 3. Restart store + GUI (they read config fresh on startup)
+    _Launcher_RestartStoreAndGui()
 }
 
 _Launcher_RestartStoreAndGui() {
