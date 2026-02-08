@@ -74,7 +74,7 @@ Launcher_Init() {
             "YesNo Icon?"
         )
         if (result = "Yes") {
-            _Launcher_KillExistingInstances()
+            ProcessUtils_KillAltTabby({force: true})
             ; Retry mutex acquisition with increasing delays for slow systems
             acquired := false
             loop 3 {
@@ -255,14 +255,13 @@ _Launcher_StartSubprocesses(skipMismatchGuard := false) {
 ; Cleanup handler called on exit
 _Launcher_OnExit(exitReason, exitCode) {
     global g_LauncherMutex, g_ActiveMutex, g_ConfigEditorPID, g_BlacklistEditorPID
+    global g_StorePID, g_GuiPID, g_ViewerPID
     try HideSplashScreen()
-    try {
-        if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
-            ProcessClose(g_ConfigEditorPID)
-        if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
-            ProcessClose(g_BlacklistEditorPID)
-    }
-    try _GracefulShutdown()
+    try ProcessUtils_KillAltTabby({
+        pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID},
+        editors: {config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID}
+    })
+    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
     if (g_LauncherMutex) {
         try DllCall("CloseHandle", "ptr", g_LauncherMutex)
         g_LauncherMutex := 0
@@ -312,9 +311,10 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
 }
 
 _Launcher_RestartStoreAndGui() {
-    global TIMING_SUBPROCESS_LAUNCH
+    global TIMING_SUBPROCESS_LAUNCH, g_StorePID, g_GuiPID, g_ViewerPID
     ; Graceful shutdown: GUI first (sends final stats), then Store (flushes to disk)
-    _GracefulShutdown()
+    ProcessUtils_KillAltTabby({pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}})
+    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
     ; Launch: Store first (so it's ready), then GUI
     LaunchStore()
     Sleep(TIMING_SUBPROCESS_LAUNCH)
@@ -564,7 +564,7 @@ _Launcher_AcquireActiveMutex() {
 }
 
 ; Kill all Alt-Tabby processes system-wide (for cross-installation conflicts)
-; More aggressive than _Launcher_KillExistingInstances - kills any AltTabby*.exe
+; More aggressive than ProcessUtils_KillAltTabby - kills any AltTabby*.exe via WMI
 _Launcher_KillAllAltTabbyProcesses() {
     global TIMING_SETUP_SETTLE
     myPID := ProcessExist()
@@ -758,18 +758,6 @@ _Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
         try FileDelete(tempFile)
     }
     return false
-}
-
-; Kill all processes matching exeName except ourselves
-; Wrapper for ProcessUtils_KillByNameExceptSelf for backwards compatibility
-_Launcher_KillProcessByName(exeName, maxAttempts := 10, sleepMs := 0, offerElevation := false) {
-    ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts, sleepMs, offerElevation)
-}
-
-; Kill all existing instances of Alt-Tabby exes except ourselves
-; Wrapper for ProcessUtils_KillAllAltTabbyExceptSelf for backwards compatibility
-_Launcher_KillExistingInstances() {
-    ProcessUtils_KillAllAltTabbyExceptSelf()
 }
 
 ; ============================================================

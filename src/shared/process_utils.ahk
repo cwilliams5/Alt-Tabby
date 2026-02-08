@@ -64,7 +64,7 @@ ProcessUtils_Basename(path) {
 ;   1. Current exe (A_ScriptFullPath)
 ;   2. Optional target exe name (e.g., from update target path)
 ;   3. cfg.SetupExePath (installed location, may differ if user renamed)
-; Used by _Launcher_KillExistingInstances and _Update_KillOtherProcesses.
+; Used by ProcessUtils_KillAltTabby for force-kill phase.
 
 ProcessUtils_BuildExeNameList(targetExeName := "") {
     global cfg
@@ -202,6 +202,116 @@ ProcessUtils_IsElevated(pid) {
 ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName := "") {
     for exeName in ProcessUtils_BuildExeNameList(targetExeName) {
         ProcessUtils_KillByNameExceptSelf(exeName)
+    }
+}
+
+; ============================================================
+; Unified Process Termination
+; ============================================================
+; Single entry point for all Alt-Tabby process killing.
+;
+; Behavior:
+;   1. Hard-kill editors (if provided)
+;   2. Graceful shutdown known PIDs in order: GUI→Store (if pids provided)
+;   3. Force sweep by process name (if force=true)
+;
+; Graceful always happens when PIDs are available — no caller with PIDs
+; should ever skip it. Force is the orthogonal axis: update/conflict flows
+; need it to release file locks and catch unknown processes. Normal exit
+; flows skip it to avoid killing other installations.
+;
+; Options object:
+;   pids            - Optional {gui: pid, store: pid, viewer: pid} for graceful shutdown
+;   force           - Kill all AltTabby processes by name after graceful (default false)
+;   targetExeName   - Optional extra exe name for force-kill name matching
+;   offerElevation  - If true, offer UAC elevation for elevated stragglers (default false)
+;   editors         - Optional {config: pid, blacklist: pid} to hard-kill editor processes
+
+ProcessUtils_KillAltTabby(opts := "") {
+    if (opts = "")
+        opts := {}
+    force := opts.HasOwnProp("force") ? opts.force : false
+    targetExeName := opts.HasOwnProp("targetExeName") ? opts.targetExeName : ""
+    offerElevation := opts.HasOwnProp("offerElevation") ? opts.offerElevation : false
+
+    ; Hard-kill editors (not part of graceful ordering — editors survive restarts)
+    if (opts.HasOwnProp("editors")) {
+        ed := opts.editors
+        if (ed.HasOwnProp("config") && ed.config && ProcessExist(ed.config))
+            try ProcessClose(ed.config)
+        if (ed.HasOwnProp("blacklist") && ed.blacklist && ProcessExist(ed.blacklist))
+            try ProcessClose(ed.blacklist)
+    }
+
+    ; Graceful phase: ordered WM_CLOSE to known PIDs
+    if (opts.HasOwnProp("pids"))
+        _PU_GracefulShutdownByPid(opts.pids)
+
+    ; Force phase: kill all AltTabby processes by name
+    if (force) {
+        ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName)
+        if (offerElevation) {
+            for exeName in ProcessUtils_BuildExeNameList(targetExeName) {
+                _PU_OfferElevatedKill(exeName)
+            }
+        }
+    }
+}
+
+; Internal: Graceful shutdown of known PIDs in correct order
+; Order: viewer (hard kill) → GUI (graceful, 3s) → Store (graceful, 5s)
+; GUI must exit before Store so it can send final stats to still-alive store.
+_PU_GracefulShutdownByPid(pids) {
+    ; 1. Hard kill viewer (non-core, no ordering dependency)
+    if (pids.HasOwnProp("viewer") && pids.viewer && ProcessExist(pids.viewer))
+        ProcessClose(pids.viewer)
+
+    prevDHW := A_DetectHiddenWindows
+    DetectHiddenWindows(true)
+
+    ; 2. Graceful GUI first (sends final stats to still-alive store)
+    if (pids.HasOwnProp("gui") && pids.gui && ProcessExist(pids.gui)) {
+        try PostMessage(0x0010, , , , "ahk_pid " pids.gui " ahk_class AutoHotkey")  ; WM_CLOSE
+        deadline := A_TickCount + 3000
+        while (ProcessExist(pids.gui) && A_TickCount < deadline)
+            Sleep(10)
+        if (ProcessExist(pids.gui))
+            ProcessClose(pids.gui)
+    }
+
+    ; 3. Graceful Store second (flushes stats to disk)
+    if (pids.HasOwnProp("store") && pids.store && ProcessExist(pids.store)) {
+        try PostMessage(0x0010, , , , "ahk_pid " pids.store " ahk_class AutoHotkey")  ; WM_CLOSE
+        deadline := A_TickCount + 5000
+        while (ProcessExist(pids.store) && A_TickCount < deadline)
+            Sleep(10)
+        if (ProcessExist(pids.store))
+            ProcessClose(pids.store)
+    }
+
+    DetectHiddenWindows(prevDHW)
+}
+
+; Internal: Offer UAC elevation to kill elevated straggler
+_PU_OfferElevatedKill(exeName) {
+    global APP_NAME, TIMING_SETUP_SETTLE
+    if (A_IsAdmin)
+        return
+    myPID := ProcessExist()
+    pid := ProcessExist(exeName)
+    if (pid && pid != myPID && ProcessUtils_IsElevated(pid)) {
+        result := ThemeMsgBox(
+            "The running instance has administrator privileges.`n`n"
+            "Elevate to close it?",
+            APP_NAME,
+            "YesNo Icon?"
+        )
+        if (result = "Yes") {
+            try {
+                Run('*RunAs taskkill /F /PID ' pid,, "Hide")
+                Sleep(TIMING_SETUP_SETTLE)
+            }
+        }
     }
 }
 

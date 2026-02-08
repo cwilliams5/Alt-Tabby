@@ -322,15 +322,13 @@ $CHECKS = @(
     }
 )
 
-# === Also check exe_name_dedup delegation from setup_utils ===
-# _Update_KillOtherProcesses now delegates to ProcessUtils_KillAllAltTabbyExceptSelf,
-# which in turn uses ProcessUtils_BuildExeNameList
+# === Unified kill function delegates to ProcessUtils_KillAllAltTabbyExceptSelf ===
 $CHECKS += @(
     @{
-        Id       = "exe_name_dedup_delegation"
-        File     = "shared\setup_utils.ahk"
-        Desc     = "_Update_KillOtherProcesses delegates to ProcessUtils_KillAllAltTabbyExceptSelf"
-        Patterns = @("ProcessUtils_KillAllAltTabbyExceptSelf(")
+        Id       = "unified_kill_delegation"
+        File     = "shared\process_utils.ahk"
+        Desc     = "ProcessUtils_KillAltTabby delegates to ProcessUtils_KillAllAltTabbyExceptSelf"
+        Patterns = @("ProcessUtils_KillAltTabby(", "ProcessUtils_KillAllAltTabbyExceptSelf(")
     }
 )
 
@@ -339,9 +337,9 @@ $CHECKS += @(
     @{
         Id       = "exit_handler_kills_subprocesses"
         File     = "launcher\launcher_main.ahk"
-        Desc     = "_Launcher_OnExit calls _GracefulShutdown before mutex release"
+        Desc     = "_Launcher_OnExit calls ProcessUtils_KillAltTabby before mutex release"
         Function = "_Launcher_OnExit"
-        Patterns = @("_GracefulShutdown()")
+        Patterns = @("ProcessUtils_KillAltTabby(")
     }
 )
 

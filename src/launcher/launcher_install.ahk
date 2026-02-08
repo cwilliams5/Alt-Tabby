@@ -189,11 +189,9 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
 
     if (result = "Yes") {
         ; Kill ALL processes matching the installed exe name (launcher + store + gui).
-        ; Can't delegate to _Launcher_KillExistingInstances() — it searches by
-        ; current exe name, which won't match the installed exe (e.g., "AltTabby.exe"
-        ; vs "alttabby v4.exe").
-        ; Pass offerElevation=true to handle elevated instances
-        _Launcher_KillProcessByName(installedExeName, 10, TIMING_MUTEX_RELEASE_WAIT, true)
+        ; Uses specific exe name (not BuildExeNameList) because installed exe may have
+        ; different name than current (e.g., "AltTabby.exe" vs "alttabby v4.exe").
+        ProcessUtils_KillByNameExceptSelf(installedExeName, 10, TIMING_MUTEX_RELEASE_WAIT, true)
     }
 }
 
@@ -288,6 +286,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 ; Actually perform the update (called directly or after elevation)
 ; Wrapper for mismatch update flow - uses _Update_ApplyCore with appropriate options
 _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
+    global g_StorePID, g_GuiPID, g_ViewerPID
     _Update_ApplyCore({
         sourcePath: sourcePath,
         targetPath: targetPath,
@@ -295,7 +294,9 @@ _Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         validatePE: false,             ; Source is running exe, already valid
         copyMode: true,                ; FileCopy (keep source - it's the running exe)
         successMessage: "Alt-Tabby has been updated at:`n" targetPath,
-        cleanupSourceOnFailure: false  ; Don't delete source - it's the running exe
+        cleanupSourceOnFailure: false, ; Don't delete source - it's the running exe
+        overwriteUserData: true,       ; Push active config to target (user expects their customizations to transfer)
+        killPids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}
     })
 }
 

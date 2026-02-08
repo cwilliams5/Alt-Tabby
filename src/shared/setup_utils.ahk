@@ -591,13 +591,6 @@ _Update_NeedsElevation(targetDir) {
     }
 }
 
-; Kill all instances of Alt-Tabby exes except the current one
-; This releases file locks on the exe before updating
-; Wrapper for ProcessUtils_KillAllAltTabbyExceptSelf
-_Update_KillOtherProcesses(targetExeName := "") {
-    ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName)
-}
-
 ; ============================================================
 ; UPDATE CORE - Shared logic for applying updates
 ; ============================================================
@@ -613,6 +606,8 @@ _Update_KillOtherProcesses(targetExeName := "") {
 ;   successMessage - Message to show in TrayTip on success
 ;   cleanupSourceOnFailure - Delete source file if update fails
 ;   relaunchAfter - After success: show TrayTip, cleanup .old, relaunch+exit (default: true)
+;   overwriteUserData - Copy config/blacklist even if target already has them (default: false)
+;   killPids - Optional {gui:, store:, viewer:} PIDs for graceful shutdown before force-kill
 
 _Update_ApplyCore(opts) {
     global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_STORE_START_WAIT, APP_NAME
@@ -625,6 +620,8 @@ _Update_ApplyCore(opts) {
     successMessage := opts.HasOwnProp("successMessage") ? opts.successMessage : "Alt-Tabby has been updated."
     cleanupSourceOnFailure := opts.HasOwnProp("cleanupSourceOnFailure") ? opts.cleanupSourceOnFailure : false
     relaunchAfter := opts.HasOwnProp("relaunchAfter") ? opts.relaunchAfter : true
+    overwriteUserData := opts.HasOwnProp("overwriteUserData") ? opts.overwriteUserData : false
+    killPids := opts.HasOwnProp("killPids") ? opts.killPids : ""
 
     lockFile := ""
     if (useLockFile) {
@@ -654,9 +651,14 @@ _Update_ApplyCore(opts) {
             DirCreate(targetDir)
 
         ; Kill all other AltTabby.exe processes
+        ; When killPids provided: graceful shutdown first (flush stats), then force sweep
+        ; When no PIDs: force-only (elevated CLI modes without launcher context)
         targetExeName := ""
         SplitPath(targetPath, &targetExeName)
-        _Update_KillOtherProcesses(targetExeName)
+        killOpts := {force: true, targetExeName: targetExeName}
+        if (killPids)
+            killOpts.pids := killPids
+        ProcessUtils_KillAltTabby(killOpts)
         Sleep(TIMING_PROCESS_EXIT_WAIT)
 
         ; Rename existing exe to .old (skip if no exe at target, e.g., fresh PF directory)
@@ -692,7 +694,7 @@ _Update_ApplyCore(opts) {
         ; Copy user data files (config, stats, blacklist) to target if missing/merge
         srcDir := ""
         SplitPath(gConfigIniPath, , &srcDir)
-        _Update_CopyUserData(srcDir, targetDir)
+        _Update_CopyUserData(srcDir, targetDir, overwriteUserData)
 
         ; Update config at target location
         cfg.SetupExePath := targetPath
@@ -809,6 +811,7 @@ _Update_ApplyCore(opts) {
 ; Apply update: rename current exe, move new exe, relaunch
 ; Wrapper for auto-update flow - uses _Update_ApplyCore with appropriate options
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
+    global g_StorePID, g_GuiPID, g_ViewerPID
     _Update_ApplyCore({
         sourcePath: newExePath,
         targetPath: targetExePath,
@@ -816,7 +819,8 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         validatePE: true,
         copyMode: false,               ; FileMove (delete source after copy)
         successMessage: "Alt-Tabby has been updated. Restarting...",
-        cleanupSourceOnFailure: true
+        cleanupSourceOnFailure: true,
+        killPids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}
     })
 }
 
@@ -868,19 +872,20 @@ _Update_CleanupStaleTempFiles() {
 
 ; Copy user data files (config, blacklist, stats) from source to target directory.
 ; Config and blacklist: copy only if not present at target (preserve customizations).
+; When overwrite=true, config and blacklist are always copied (mismatch-update flow).
 ; Stats: merge additively if both exist, copy if source-only.
 ; No-op when srcDir == targetDir (e.g., auto-update in place).
-_Update_CopyUserData(srcDir, targetDir) {
+_Update_CopyUserData(srcDir, targetDir, overwrite := false) {
     if (StrLower(srcDir) = StrLower(targetDir))
         return
 
-    ; Config: copy if not present (preserve existing customizations)
-    if (FileExist(srcDir "\config.ini") && !FileExist(targetDir "\config.ini"))
-        try FileCopy(srcDir "\config.ini", targetDir "\config.ini")
+    ; Config: copy if not present, or always if overwrite (mismatch-update pushes active config)
+    if (FileExist(srcDir "\config.ini") && (overwrite || !FileExist(targetDir "\config.ini")))
+        try FileCopy(srcDir "\config.ini", targetDir "\config.ini", true)
 
-    ; Blacklist: copy if not present (preserve existing custom entries)
-    if (FileExist(srcDir "\blacklist.txt") && !FileExist(targetDir "\blacklist.txt"))
-        try FileCopy(srcDir "\blacklist.txt", targetDir "\blacklist.txt")
+    ; Blacklist: copy if not present, or always if overwrite
+    if (FileExist(srcDir "\blacklist.txt") && (overwrite || !FileExist(targetDir "\blacklist.txt")))
+        try FileCopy(srcDir "\blacklist.txt", targetDir "\blacklist.txt", true)
 
     ; Stats: merge if both exist, copy if source-only
     srcStats := srcDir "\stats.ini"
@@ -900,7 +905,23 @@ _Update_CopyUserData(srcDir, targetDir) {
 ; Merge stats from source into target, adding counters together (Bug 4 fix)
 ; This preserves both sets of stats when updating across installations
 _Update_MergeStats(srcPath, targetPath) {
-    ; Skip if already merged to this exact target (prevents double-counting)
+    ; ID-based guard: skip if already merged to this installation (survives directory renames)
+    targetDir := ""
+    SplitPath(targetPath, , &targetDir)
+    targetConfigPath := targetDir "\config.ini"
+    targetInstallId := ""
+    if (FileExist(targetConfigPath))
+        try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
+
+    if (targetInstallId != "") {
+        try {
+            lastMergedToId := IniRead(srcPath, "Merged", "LastMergedToId", "")
+            if (lastMergedToId = targetInstallId)
+                return
+        }
+    }
+
+    ; Path-based guard: fallback for installations without InstallationId
     try {
         lastMerged := IniRead(srcPath, "Merged", "LastMergedTo", "")
         if (StrLower(lastMerged) = StrLower(targetPath))
@@ -930,6 +951,8 @@ _Update_MergeStats(srcPath, targetPath) {
 
     ; Mark source as merged to prevent double-counting on future updates
     try IniWrite(targetPath, srcPath, "Merged", "LastMergedTo")
+    if (targetInstallId != "")
+        try IniWrite(targetInstallId, srcPath, "Merged", "LastMergedToId")
 }
 
 ; Validate that a file is a valid PE executable

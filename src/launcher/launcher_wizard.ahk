@@ -282,6 +282,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
             ; Already in Program Files
             installSucceeded := true
         } else {
+            installOk := false
             try {
                 _Update_ApplyCore({
                     sourcePath: A_ScriptFullPath,
@@ -292,8 +293,9 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                     cleanupSourceOnFailure: false,
                     relaunchAfter: false
                 })
+                installOk := true
             }
-            if (FileExist(targetPath)) {
+            if (installOk && FileExist(targetPath)) {
                 exePath := targetPath
                 installedElsewhere := targetPath
                 installSucceeded := true

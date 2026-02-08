@@ -183,7 +183,7 @@ RunLiveTests_Lifecycle() {
             ; Record wall-clock time before shutdown to verify stats flush
             preShutdownTime := A_Now
 
-            ; Send WM_CLOSE to launcher to trigger _GracefulShutdown
+            ; Send WM_CLOSE to launcher to trigger graceful shutdown
             ; Use DllCall because AHK's PostMessage can't find hidden message windows
             preShutdownTick := A_TickCount
             DllCall("PostMessageW", "ptr", launcherHwnd, "uint", 0x0010, "ptr", 0, "ptr", 0)

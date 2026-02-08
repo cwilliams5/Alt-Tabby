@@ -321,53 +321,13 @@ RestartViewer() {
 }
 
 ExitAll() {
-    global g_ConfigEditorPID, g_BlacklistEditorPID
-    ; Hard kill editors on full exit (not in _GracefulShutdown — editors survive restarts)
-    if (g_ConfigEditorPID && ProcessExist(g_ConfigEditorPID))
-        ProcessClose(g_ConfigEditorPID)
-    if (g_BlacklistEditorPID && ProcessExist(g_BlacklistEditorPID))
-        ProcessClose(g_BlacklistEditorPID)
-    _GracefulShutdown()
+    global g_ConfigEditorPID, g_BlacklistEditorPID, g_StorePID, g_GuiPID, g_ViewerPID
+    ProcessUtils_KillAltTabby({
+        pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID},
+        editors: {config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID}
+    })
+    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
     ExitApp()
-}
-
-_GracefulShutdown() {
-    global g_StorePID, g_GuiPID, g_ViewerPID
-
-    ; 1. Hard kill non-core processes (viewer)
-    if (g_ViewerPID && ProcessExist(g_ViewerPID))
-        ProcessClose(g_ViewerPID)
-    g_ViewerPID := 0
-
-    ; PostMessage needs to find AHK's hidden message windows
-    prevDHW := A_DetectHiddenWindows
-    DetectHiddenWindows(true)
-
-    ; 2. Graceful shutdown GUI first (sends final stats to still-alive store)
-    if (g_GuiPID && ProcessExist(g_GuiPID)) {
-        ; Target AHK's hidden message window (class "AutoHotkey"), not GUI windows
-        ; (class "AutoHotkeyGUI") — WM_CLOSE on a Gui window just hides it
-        try PostMessage(0x0010, , , , "ahk_pid " g_GuiPID " ahk_class AutoHotkey")  ; WM_CLOSE
-        deadline := A_TickCount + 3000
-        while (ProcessExist(g_GuiPID) && A_TickCount < deadline)
-            Sleep(10)
-        if (ProcessExist(g_GuiPID))
-            ProcessClose(g_GuiPID)
-    }
-    g_GuiPID := 0
-
-    ; 3. Graceful shutdown store second (flushes stats to disk)
-    if (g_StorePID && ProcessExist(g_StorePID)) {
-        try PostMessage(0x0010, , , , "ahk_pid " g_StorePID " ahk_class AutoHotkey")  ; WM_CLOSE
-        deadline := A_TickCount + 5000
-        while (ProcessExist(g_StorePID) && A_TickCount < deadline)
-            Sleep(10)
-        if (ProcessExist(g_StorePID))
-            ProcessClose(g_StorePID)
-    }
-    g_StorePID := 0
-
-    DetectHiddenWindows(prevDHW)
 }
 
 LaunchConfigEditor(forceNative := false) {
@@ -625,7 +585,9 @@ _AdminToggle_CheckComplete() {
         result := ThemeMsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")
         if (result = "Yes") {
             ; Shut down subprocesses FIRST so mutex releases before new instance boots
-            _GracefulShutdown()
+            global g_StorePID, g_GuiPID, g_ViewerPID
+            ProcessUtils_KillAltTabby({pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}})
+            g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
 
             Sleep(TIMING_TASK_READY_WAIT)
             exitCode := RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
