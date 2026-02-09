@@ -49,7 +49,7 @@ _Launcher_CheckInstallMismatch() {
     currentPath := A_ScriptFullPath
 
     ; Normalize paths for comparison (case-insensitive)
-    if (StrLower(installedPath) = StrLower(currentPath))
+    if (PathsEqual(installedPath, currentPath))
         return  ; Running from installed location, all good
 
     ; Check if installed exe actually exists
@@ -379,7 +379,7 @@ _Launcher_OfferToUpdateStaleShortcuts() {
 ; Check if running from the Program Files install directory
 _IsInProgramFiles() {
     global ALTTABBY_INSTALL_DIR
-    return StrLower(A_ScriptDir) = StrLower(ALTTABBY_INSTALL_DIR)
+    return PathsEqual(A_ScriptDir, ALTTABBY_INSTALL_DIR)
 }
 
 ; Clean up stale admin task pointing to old location when user chooses "Always run from here"
@@ -396,7 +396,7 @@ _Launcher_CleanupStaleAdminTask(oldPath, newPath) {
         return
 
     ; If task already points to us, nothing to do
-    if (StrLower(taskPath) = StrLower(newPath))
+    if (PathsEqual(taskPath, newPath))
         return
 
     ; Task points to old location - ask user what to do

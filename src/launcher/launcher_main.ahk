@@ -379,7 +379,7 @@ _ShouldRedirectToScheduledTask() {
 
     ; Validate task points to current exe (handles renamed exe case)
     taskPath := _AdminTask_GetCommandPath()
-    if (taskPath = "" || StrLower(taskPath) != StrLower(A_ScriptFullPath)) {
+    if (taskPath = "" || !PathsEqual(taskPath, A_ScriptFullPath)) {
         ; If admin mode is disabled in config, don't attempt repair or prompt.
         ; This prevents UAC prompt loops after user previously declined.
         if (!cfg.SetupRunAsAdmin) {
@@ -461,7 +461,7 @@ _ShouldRedirectToScheduledTask() {
 ; Without this, there's a one-boot gap where shortcuts point to the old exe name.
 _Launcher_RepairExePathAfterAdminDecline() {
     global cfg
-    if (cfg.SetupExePath != "" && StrLower(cfg.SetupExePath) != StrLower(A_ScriptFullPath) && !FileExist(cfg.SetupExePath)) {
+    if (cfg.SetupExePath != "" && !PathsEqual(cfg.SetupExePath, A_ScriptFullPath) && !FileExist(cfg.SetupExePath)) {
         _Setup_SetExePath(A_ScriptFullPath)
         RecreateShortcuts()
     }
@@ -621,7 +621,7 @@ _Launcher_KillAllAltTabbyProcesses() {
         if (currentExeName != "") {
             alreadyCovered := false
             for p in fallbackPatterns {
-                if (StrLower(p) = StrLower(currentExeName)) {
+                if (PathsEqual(p, currentExeName)) {
                     alreadyCovered := true
                     break
                 }
@@ -662,7 +662,7 @@ _Launcher_EnsureInstallationId() {
             SplitPath(taskPath, , &taskDir)
 
             ; Only recover if we're in the same directory as the task target
-            if (taskDir != "" && StrLower(taskDir) = StrLower(A_ScriptDir)) {
+            if (taskDir != "" && PathsEqual(taskDir, A_ScriptDir)) {
                 existingId := _AdminTask_GetInstallationId()
                 if (existingId != "") {
                     cfg.SetupInstallationId := existingId
@@ -738,7 +738,7 @@ _Launcher_RepairStaleExePath() {
     ; Check if SetupExePath is set but stale (file doesn't exist)
     if (!cfg.HasOwnProp("SetupExePath") || cfg.SetupExePath = "")
         return
-    if (StrLower(cfg.SetupExePath) = StrLower(A_ScriptFullPath))
+    if (PathsEqual(cfg.SetupExePath, A_ScriptFullPath))
         return  ; Already correct
     if (FileExist(cfg.SetupExePath))
         return  ; Old path still exists (mismatch check handles this)

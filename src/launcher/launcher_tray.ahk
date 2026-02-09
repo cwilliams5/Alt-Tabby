@@ -222,7 +222,7 @@ _Tray_BuildSettingsMenu() {
 
     ; Admin mode toggle
     m.Add("Run as Administrator", (*) => ToggleAdminMode())
-    if (cfg.SetupRunAsAdmin && g_CachedAdminTaskActive)
+    if (IsAdminModeFullyActive())
         m.Check("Run as Administrator")
 
     return m
@@ -442,11 +442,22 @@ ToggleAdminMode() {
 
     ; Check BOTH config AND task existence AND that task points to us
     ; This prevents state mismatch when config says enabled but task points elsewhere
-    isCurrentlyEnabled := cfg.SetupRunAsAdmin && g_CachedAdminTaskActive
+    isCurrentlyEnabled := IsAdminModeFullyActive()
 
     if (isCurrentlyEnabled) {
-        ; Disable admin mode - doesn't require elevation
-        DeleteAdminTask()
+        ; Disable admin mode - try to delete task (may need elevation)
+        deleted := DeleteAdminTask()
+        if (!deleted && !A_IsAdmin) {
+            ; Non-elevated — elevate to delete the task
+            try {
+                if (_Launcher_RunAsAdmin("--disable-admin-task"))
+                    Sleep(500)  ; Brief wait for elevated instance
+                else
+                    throw Error("RunAsAdmin failed")
+            } catch {
+                TrayTip("Admin Mode", "Could not remove scheduled task. It will be cleaned up on next restart.", "Icon!")
+            }
+        }
         g_CachedAdminTaskActive := false
         _Setup_SetRunAsAdmin(false)
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
@@ -457,14 +468,10 @@ ToggleAdminMode() {
             ; Launch non-elevated via Explorer shell (de-escalation)
             launched := false
             if (A_IsAdmin) {
-                try {
-                    shell := ComObject("Shell.Application")
-                    shell.ShellExecute(
-                        A_IsCompiled ? A_ScriptFullPath : A_AhkPath,
-                        A_IsCompiled ? "" : '"' A_ScriptFullPath '"',
-                        A_ScriptDir)
-                    launched := true
-                }
+                launched := _LaunchDeElevated(
+                    A_IsCompiled ? A_ScriptFullPath : A_AhkPath,
+                    A_IsCompiled ? "" : '"' A_ScriptFullPath '"',
+                    A_ScriptDir)
             }
             if (!launched) {
                 ; Fallback: direct launch (still elevated if we're admin, but better than nothing)

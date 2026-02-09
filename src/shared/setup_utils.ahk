@@ -26,6 +26,22 @@ global PE_SIG_2 := 69                       ; 'E' (0x45)
 ; Guard to prevent concurrent update checks (auto-update timer + manual button)
 global g_UpdateCheckInProgress := false
 
+; ============================================================
+; PATH COMPARISON HELPER
+; ============================================================
+
+; Case-insensitive path comparison (Windows paths are case-insensitive)
+PathsEqual(a, b) {
+    return StrLower(a) = StrLower(b)
+}
+
+; Check if admin mode is fully active (both config AND task agree)
+; Used for tray menu checkmarks and shortcut descriptions
+IsAdminModeFullyActive() {
+    global cfg, g_CachedAdminTaskActive
+    return cfg.SetupRunAsAdmin && g_CachedAdminTaskActive
+}
+
 ; Cached admin task data — avoids redundant schtasks subprocess calls (~200-300ms each).
 ; Populated on first access, invalidated after CreateAdminTask/DeleteAdminTask.
 ; Only caches the default task name (ALTTABBY_TASK_NAME); overridden names bypass cache.
@@ -166,6 +182,23 @@ WarnIfTempLocation_AdminTask(exePath, dirPath := "", extraText := "") {
 }
 
 ; ============================================================
+; DE-ELEVATION HELPER
+; ============================================================
+
+; Launch a process de-elevated via Explorer shell (ComObject Shell.Application)
+; Returns true if launched successfully, false on failure
+_LaunchDeElevated(exePath, args := "", workDir := "") {
+    if (workDir = "")
+        SplitPath(exePath, , &workDir)
+    try {
+        shell := ComObject("Shell.Application")
+        shell.ShellExecute(exePath, args, workDir)
+        return true
+    }
+    return false
+}
+
+; ============================================================
 ; SELF-ELEVATION HELPER
 ; ============================================================
 
@@ -212,7 +245,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     ; Skip dialog in testing mode to avoid blocking automated tests
     if (AdminTaskExists(taskName)) {
         existingPath := _AdminTask_GetCommandPath(taskName)
-        if (existingPath != "" && StrLower(existingPath) != StrLower(exePath)) {
+        if (existingPath != "" && !PathsEqual(existingPath, exePath)) {
             ; In testing mode, just proceed without prompting
             if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
                 ; Auto-proceed in testing mode
@@ -380,7 +413,7 @@ _AdminTask_PointsToUs() {
     data := _AdminTask_GetCachedData()
     if (!data.exists || data.commandPath = "")
         return false
-    return StrLower(data.commandPath) = StrLower(A_ScriptFullPath)
+    return PathsEqual(data.commandPath, A_ScriptFullPath)
 }
 
 ; Run the admin scheduled task via schtasks, with optional pre-delay.
@@ -473,11 +506,11 @@ _Shortcut_ExistsAndPointsToUs(lnkPath) {
         shortcut := shell.CreateShortcut(lnkPath)
         targetPath := shortcut.TargetPath
 
-        ; In compiled mode, compare target to our exe path
+        ; In compiled mode, compare target to effective exe path (respects SetupExePath)
         ; In dev mode, compare to AutoHotkey.exe (we're run via AHK)
-        ourTarget := A_IsCompiled ? A_ScriptFullPath : A_AhkPath
+        ourTarget := A_IsCompiled ? _Shortcut_GetEffectiveExePath() : A_AhkPath
 
-        return (StrLower(targetPath) = StrLower(ourTarget))
+        return PathsEqual(targetPath, ourTarget)
     } catch {
         ; If we can't read the shortcut, assume it doesn't match
         return false
@@ -841,7 +874,7 @@ _Update_ApplyCore(opts) {
             ; Only recreate task if path or ID differs from target (avoid unnecessary delete+create)
             existingTaskPath := _AdminTask_GetCommandPath()
             existingTaskId := _AdminTask_GetInstallationId()
-            taskNeedsUpdate := (StrLower(existingTaskPath) != StrLower(targetPath))
+            taskNeedsUpdate := !PathsEqual(existingTaskPath, targetPath)
                 || (existingTaskId != targetInstallId)
 
             if (taskNeedsUpdate) {
@@ -878,14 +911,10 @@ _Update_ApplyCore(opts) {
 
             ; Launch new version — de-elevate if admin mode is not configured
             if (A_IsAdmin && !targetRunAsAdmin) {
-                try {
-                    shell := ComObject("Shell.Application")
-                    shell.ShellExecute(targetPath, "", targetDir)
+                if (_LaunchDeElevated(targetPath, "", targetDir))
                     ExitApp()
-                } catch {
-                    TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
-                    return
-                }
+                TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
+                return
             }
             Run('"' targetPath '"')
             ExitApp()
@@ -993,7 +1022,7 @@ _Update_CleanupStaleTempFiles() {
 ; Stats: merge additively if both exist, copy if source-only.
 ; No-op when srcDir == targetDir (e.g., auto-update in place).
 _Update_CopyUserData(srcDir, targetDir, overwrite := false) {
-    if (StrLower(srcDir) = StrLower(targetDir))
+    if (PathsEqual(srcDir, targetDir))
         return
 
     ; Config: copy if not present, or always if overwrite (mismatch-update pushes active config)
@@ -1041,7 +1070,7 @@ _Update_MergeStats(srcPath, targetPath) {
     ; Path-based guard: fallback for installations without InstallationId
     try {
         lastMerged := IniRead(srcPath, "Merged", "LastMergedTo", "")
-        if (StrLower(lastMerged) = StrLower(targetPath))
+        if (PathsEqual(lastMerged, targetPath))
             return
     }
 
@@ -1167,7 +1196,7 @@ _Update_ContinueFromElevation() {
         ; For --apply-update, the elevated instance IS the same exe, so A_ScriptFullPath
         ; matches the original target. Path equality is both more secure (exact match)
         ; and more permissive (works with any exe name, not just ones containing "tabby").
-        if (StrLower(targetExePath) != StrLower(A_ScriptFullPath)) {
+        if (!PathsEqual(targetExePath, A_ScriptFullPath)) {
             ThemeMsgBox("Update target doesn't match running executable.`n"
                 "Target: " targetExePath "`n"
                 "Running: " A_ScriptFullPath, APP_NAME, "Icon!")

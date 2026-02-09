@@ -276,7 +276,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     ; Uses _Update_ApplyCore() — same code path as tray/dashboard install and auto-update
     if (install) {
         targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
-        if (StrLower(A_ScriptDir) = StrLower(ALTTABBY_INSTALL_DIR)) {
+        if (PathsEqual(A_ScriptDir, ALTTABBY_INSTALL_DIR)) {
             ; Already in Program Files
             installSucceeded := true
         } else {

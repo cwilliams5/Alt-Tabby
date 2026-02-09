@@ -80,6 +80,12 @@ global g_ViewerPID := 0
 global g_ConfigEditorPID := 0
 global g_BlacklistEditorPID := 0
 
+; --- Admin mode cache (from launcher_tray.ahk, used by IsAdminModeFullyActive in setup_utils.ahk) ---
+global g_CachedAdminTaskActive := false
+
+; --- Theme palette (from theme.ahk, used by launcher_about.ahk) ---
+global gTheme_Palette := {}
+
 ; --- Check for flags (BEFORE log init to set suite-specific log paths) ---
 DoLiveTests := false
 DoLiveCore := false

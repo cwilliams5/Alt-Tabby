@@ -64,7 +64,7 @@ _CreateShortcutForCurrentMode(lnkPath) {
             ourTarget := A_IsCompiled ? exePath : A_AhkPath
 
             ; If shortcut points to a different location, warn user
-            if (StrLower(existingTarget) != StrLower(ourTarget)) {
+            if (!PathsEqual(existingTarget, ourTarget)) {
                 result := ThemeMsgBox(
                     "A shortcut 'Alt-Tabby' already exists pointing to:`n" existingTarget "`n`n"
                     "Replace it with a shortcut to this installation?`n" ourTarget,
@@ -87,7 +87,7 @@ _CreateShortcutForCurrentMode(lnkPath) {
         if (A_IsCompiled) {
             shortcut.TargetPath := exePath
             ; Only show "(Admin)" if task actually exists (not just config says so)
-            shortcut.Description := (cfg.SetupRunAsAdmin && AdminTaskExists())
+            shortcut.Description := IsAdminModeFullyActive()
                 ? "Alt-Tabby Window Switcher (Admin)"
                 : "Alt-Tabby Window Switcher"
         } else {

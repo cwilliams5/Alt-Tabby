@@ -183,29 +183,36 @@ RunLiveTests_Core() {
             projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
             IPC_PipeClient_Send(realClient, JSON.Dump(projMsg))
 
-            ; Wait for response
+            ; Wait for response with items (store may send empty snapshot first at rev 0
+            ; before producers finish enumeration — retry until items > 0 or timeout)
             waitStart := A_TickCount
-            while (!gRealStoreReceived && (A_TickCount - waitStart) < 5000) {
-                Sleep(100)
-            }
-
-            if (gRealStoreReceived) {
-                Log("PASS: Received response from real store")
-                TestPassed++
+            itemCount := 0
+            gotResponse := false
+            while ((A_TickCount - waitStart) < 5000) {
+                if (!gRealStoreReceived) {
+                    Sleep(100)
+                    continue
+                }
+                gotResponse := true
                 try {
                     respObj := JSON.Load(gRealStoreResponse)
                     if (respObj.Has("payload") && respObj["payload"].Has("items")) {
                         itemCount := respObj["payload"]["items"].Length
                         Log("  Real store returned " itemCount " items")
-                        AssertTrue(itemCount > 0, "Real store returns windows")
-                    } else {
-                        Log("FAIL: Real store response missing items")
-                        TestErrors++
+                        if (itemCount > 0)
+                            break
                     }
-                } catch as e {
-                    Log("FAIL: Real store response parse error: " e.Message)
-                    TestErrors++
                 }
+                ; Got empty response — reset flag and wait for next snapshot/delta
+                gRealStoreReceived := false
+                gRealStoreResponse := ""
+                Sleep(100)
+            }
+
+            if (gotResponse) {
+                Log("PASS: Received response from real store")
+                TestPassed++
+                AssertTrue(itemCount > 0, "Real store returns windows")
             } else {
                 Log("FAIL: Timeout waiting for real store response")
                 TestErrors++
