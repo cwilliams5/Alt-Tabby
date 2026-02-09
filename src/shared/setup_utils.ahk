@@ -118,6 +118,28 @@ IsTemporaryLocation(path) {
         || InStr(lowerPath, "\icloud"))
 }
 
+; Warn if path is a temporary/cloud-synced location
+; Returns "Yes" to proceed, "No" if user cancelled
+; Parameters:
+;   exePath  - Path to display in the warning
+;   subject  - What will be affected (e.g., "shortcut", "shortcuts", "Alt-Tabby")
+;   verb     - Action description (e.g., "will point to", "will always run from")
+;   consequence - What happens if file moves (e.g., "the shortcut will break")
+;   action   - Confirmation prompt (e.g., "Create shortcut anyway?")
+WarnTemporaryLocation(exePath, subject, verb, consequence, action) {
+    global APP_NAME
+    dirPath := ""
+    SplitPath(exePath, , &dirPath)
+    if (!IsTemporaryLocation(dirPath))
+        return "Yes"
+
+    msg := "This " subject " " verb ":`n" exePath "`n`n"
+        . "This location may be temporary or cloud-synced.`n"
+        . "If you delete or move this file, " consequence ".`n`n"
+        . action
+    return ThemeMsgBox(msg, APP_NAME " - Temporary Location", "YesNo Icon?")
+}
+
 ; Warn if admin task would point to a temporary location
 ; Returns true to proceed, false if user cancelled
 ; Parameters:

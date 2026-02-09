@@ -651,9 +651,9 @@ _CL_ValidateSettings() {
     LOG_MAX_BYTES := cfg.DiagLogMaxKB * 1024
     LOG_KEEP_BYTES := cfg.DiagLogKeepKB * 1024
     global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, TOOLTIP_DURATION_LONG
-    TOOLTIP_DURATION_SHORT := cfg.GUI_TooltipDurationMs
+    TOOLTIP_DURATION_SHORT := Max(500, Round(cfg.GUI_TooltipDurationMs * 0.5))
     TOOLTIP_DURATION_DEFAULT := cfg.GUI_TooltipDurationMs
-    TOOLTIP_DURATION_LONG := cfg.GUI_TooltipDurationMs
+    TOOLTIP_DURATION_LONG := Round(cfg.GUI_TooltipDurationMs * 2.0)
 }
 
 ; ============================================================
@@ -823,10 +823,10 @@ global TIMING_PIPE_RETRY_WAIT := 50      ; Pipe connection retry delay
 global TIMING_SETUP_SETTLE := 200        ; Setup settle delay
 
 ; Tooltip durations (milliseconds)
-; All set to the same value from cfg.GUI_TooltipDurationMs in _CL_ValidateSettings()
-global TOOLTIP_DURATION_SHORT := 2000
+; Derived from cfg.GUI_TooltipDurationMs in _CL_ValidateSettings()
+global TOOLTIP_DURATION_SHORT := 1000
 global TOOLTIP_DURATION_DEFAULT := 2000
-global TOOLTIP_DURATION_LONG := 2000
+global TOOLTIP_DURATION_LONG := 4000
 
 ; Retry limits
 global MAX_RECONNECT_ATTEMPTS := 3        ; Default, overridden from cfg.IPCMaxReconnectAttempts

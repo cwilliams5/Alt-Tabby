@@ -355,21 +355,9 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     ; Step 4: Create shortcuts AFTER admin mode is set (so they point correctly)
     ; Warn if shortcuts will point to a temporary location (unless PF install succeeded)
     if ((startMenu || startup) && !installSucceeded) {
-        currentDir := ""
-        SplitPath(exePath, , &currentDir)
-        if (IsTemporaryLocation(currentDir)) {
-            warnResult := ThemeMsgBox(
-                "Shortcuts will point to:`n" exePath "`n`n"
-                "This location may be temporary or cloud-synced.`n"
-                "If you delete or move this file, the shortcuts will break.`n`n"
-                "Create shortcuts anyway?",
-                APP_NAME " - Temporary Location",
-                "YesNo Icon?"
-            )
-            if (warnResult = "No") {
-                startMenu := false
-                startup := false
-            }
+        if (WarnTemporaryLocation(exePath, "shortcuts", "will point to", "the shortcuts will break", "Create shortcuts anyway?") = "No") {
+            startMenu := false
+            startup := false
         }
     }
     if (startMenu)

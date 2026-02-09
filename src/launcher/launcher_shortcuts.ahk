@@ -34,20 +34,8 @@ _ToggleShortcut(lnkPath, locationName) {
     } else {
         ; Warn if shortcut will point to a temporary/cloud location
         exePath := _Shortcut_GetEffectiveExePath()
-        exeDir := ""
-        SplitPath(exePath, , &exeDir)
-        if (IsTemporaryLocation(exeDir)) {
-            warnResult := ThemeMsgBox(
-                "This shortcut will point to:`n" exePath "`n`n"
-                "This location may be temporary or cloud-synced.`n"
-                "If you delete or move this file, the shortcut will break.`n`n"
-                "Create shortcut anyway?",
-                APP_NAME " - Temporary Location",
-                "YesNo Icon?"
-            )
-            if (warnResult = "No")
-                return
-        }
+        if (WarnTemporaryLocation(exePath, "shortcut", "will point to", "the shortcut will break", "Create shortcut anyway?") = "No")
+            return
         ; No shortcut or points elsewhere - create (handles conflict dialog internally)
         if (_CreateShortcutForCurrentMode(lnkPath)) {
             ToolTip("Added to " locationName)

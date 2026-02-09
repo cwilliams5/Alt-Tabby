@@ -97,9 +97,8 @@ Blacklist_Reload() {
     try {
         content := FileRead(gBlacklist_FilePath, "UTF-8")
     } catch as e {
-        ; Don't clear existing lists on read error - keep old data
+        ; Keep stale data usable on transient read error (e.g., file lock)
         LogAppend(LOG_PATH_STORE, "blacklist read error: " e.Message " path=" gBlacklist_FilePath)
-        gBlacklist_Loaded := false
         return false
     }
 

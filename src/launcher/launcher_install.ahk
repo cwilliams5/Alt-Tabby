@@ -119,23 +119,11 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
         }
     } else if (result = "Always") {
         ; Warn if committing to a temporary location
-        currentDir := ""
-        SplitPath(currentPath, , &currentDir)
-        if (IsTemporaryLocation(currentDir)) {
-            warnResult := ThemeMsgBox(
-                "You're choosing to always run from:`n" currentPath "`n`n"
-                "This location may be temporary or cloud-synced.`n"
-                "If you delete or move this file, Alt-Tabby won't start.`n`n"
-                "Always run from here anyway?",
-                APP_NAME " - Temporary Location",
-                "YesNo Icon?"
-            )
-            if (warnResult = "No") {
-                ; Treat as one-time "No" instead
-                _Launcher_OfferToStopInstalledInstance(installedPath)
-                _Launcher_OfferOneTimeElevation()
-                return
-            }
+        if (WarnTemporaryLocation(currentPath, "installation", "will always run from", "Alt-Tabby won't start", "Always run from here anyway?") = "No") {
+            ; Treat as one-time "No" instead
+            _Launcher_OfferToStopInstalledInstance(installedPath)
+            _Launcher_OfferOneTimeElevation()
+            return
         }
 
         ; Update SetupExePath to current location - never ask again
