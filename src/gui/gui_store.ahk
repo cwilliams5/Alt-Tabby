@@ -266,7 +266,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 ; ========================= ITEM CONVERSION =========================
 
 ; Helper: Create GUI item object from store record (Map with lowercase keys)
-; Used by both GUI_ConvertStoreItems and GUI_ApplyDelta for consistency
+; Used by GUI_ConvertStoreItemsWithMap and GUI_ApplyDelta for consistency
 _GUI_CreateItemFromRecord(hwnd, rec) {
     return {
         hwnd: hwnd,
@@ -280,15 +280,6 @@ _GUI_CreateItemFromRecord(hwnd, rec) {
         iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
         lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
     }
-}
-
-GUI_ConvertStoreItems(items) {
-    result := []
-    for _, item in items {
-        hwnd := item.Has("hwnd") ? item["hwnd"] : 0
-        result.Push(_GUI_CreateItemFromRecord(hwnd, item))
-    }
-    return result
 }
 
 ; Single-pass conversion returning both items array and hwnd->item Map

@@ -273,7 +273,7 @@ ResetGUIState() {
 CreateTestItems(count, currentWSCount := -1) {
     ; Create test items with workspace info
     ; If currentWSCount is -1, all items are on current workspace
-    ; NOTE: Uses lowercase keys to match JSON format from store (GUI_ConvertStoreItems expects lowercase)
+    ; NOTE: Uses lowercase keys to match JSON format from store (GUI_ConvertStoreItemsWithMap expects lowercase)
     items := []
     if (currentWSCount < 0)
         currentWSCount := count
