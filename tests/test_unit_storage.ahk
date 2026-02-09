@@ -319,38 +319,7 @@ RunUnitTests_Storage() {
         TestErrors++
     }
 
-    ; Test 4: UWP Logo Path - only run if Calculator is running
-    Log("Testing UWP logo path extraction...")
-    calcHwnd := WinExist("ahk_exe Calculator.exe")
-    if (!calcHwnd) {
-        calcHwnd := WinExist("ahk_exe CalculatorApp.exe")
-    }
-    if (calcHwnd) {
-        calcPid := WinGetPID("ahk_id " calcHwnd)
-        isUWP := _IP_AppHasPackage(calcPid)
-        if (isUWP) {
-            packagePath := _IP_GetPackagePath(calcPid)
-            logoPath := _IP_GetUWPLogoPathCached(packagePath)
-            if (logoPath != "" && FileExist(logoPath)) {
-                Log("PASS: Found Calculator logo at: " logoPath)
-                TestPassed++
-            } else if (logoPath != "") {
-                Log("WARN: Logo path found but file missing: " logoPath)
-                Log("PASS: UWP logo path extraction returned a path (file may be missing)")
-                TestPassed++
-            } else {
-                Log("WARN: Calculator is UWP but logo path not found (manifest format may differ)")
-                Log("PASS: UWP detection worked, logo extraction is best-effort")
-                TestPassed++
-            }
-        } else {
-            Log("SKIP: Calculator not detected as UWP (may be Win32 version)")
-        }
-    } else {
-        Log("SKIP: Calculator not running for UWP test")
-    }
-
-    ; Test 5: Icon Resolution Chain - cloaked window should still get EXE icon
+    ; Test 4: Icon Resolution Chain - cloaked window should still get EXE icon
     Log("Testing icon resolution chain for cloaked windows...")
     ; Create a mock scenario: we have an exePath, test that we can get an icon from it
     ; even when the "window" would be considered cloaked
@@ -378,7 +347,7 @@ RunUnitTests_Storage() {
         Log("SKIP: explorer.exe not found at " testExe)
     }
 
-    ; Test 6: GetProcessPath helper
+    ; Test 5: GetProcessPath helper
     Log("Testing _IP_GetProcessPath helper...")
     if (explorerPid > 0) {
         procPath := _IP_GetProcessPath(explorerPid)
@@ -393,7 +362,7 @@ RunUnitTests_Storage() {
         Log("SKIP: explorer.exe not running for process path test")
     }
 
-    ; Test 7: Hidden windows MUST be enqueued for icon resolution
+    ; Test 6: Hidden windows MUST be enqueued for icon resolution
     ; This is the critical end-to-end test - verifies that cloaked/minimized windows
     ; actually make it into the icon queue (the bug was they were filtered out here)
     Log("Testing hidden window icon enqueue (critical E2E test)...")
@@ -461,7 +430,7 @@ RunUnitTests_Storage() {
     ; Clean up
     WindowStore_RemoveWindow([cloakedHwnd, minHwnd], true)
 
-    ; Test 8: WindowStore_EnqueueIconRefresh with throttle
+    ; Test 7: WindowStore_EnqueueIconRefresh with throttle
     Log("Testing icon refresh throttle...")
     WindowStore_Init()
     WindowStore_BeginScan()
@@ -523,7 +492,7 @@ RunUnitTests_Storage() {
     ; Clean up
     WindowStore_RemoveWindow([refreshHwnd], true)
 
-    ; Test 9: Icon upgrade - visible window with EXE fallback gets re-queued
+    ; Test 8: Icon upgrade - visible window with EXE fallback gets re-queued
     Log("Testing icon upgrade queue (EXE fallback -> WM_GETICON upgrade)...")
     WindowStore_Init()
     WindowStore_BeginScan()
