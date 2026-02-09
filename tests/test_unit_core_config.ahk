@@ -305,6 +305,48 @@ RunUnitTests_CoreConfig() {
         try DirDelete(testCleanupDir, true)
     }
 
+    ; Test: _CL_MigrateKeys — BGR→RGB byte swap and AcrylicColor migration
+    Log("Testing _CL_MigrateKeys...")
+    testMigrateDir := A_Temp "\tabby_migrate_test_" A_TickCount
+    testMigratePath := testMigrateDir "\config.ini"
+    try {
+        DirCreate(testMigrateDir)
+
+        ; Case 1: Basic BGR→RGB migration (0xFF0000 BGR = blue → 0x0000FF RGB)
+        IniWrite("0x80", testMigratePath, "GUI", "AcrylicAlpha")
+        IniWrite("0xFF0000", testMigratePath, "GUI", "AcrylicBaseRgb")
+        _CL_MigrateKeys(testMigratePath)
+        AssertEq(IniRead(testMigratePath, "GUI", "AcrylicColor", ""), "0x800000FF", "MigrateKeys: BGR->RGB byte swap with explicit alpha")
+
+        ; Case 2: Default alpha (0x33) when only AcrylicBaseRgb present (green unaffected by swap)
+        try FileDelete(testMigratePath)
+        IniWrite("0x00FF00", testMigratePath, "GUI", "AcrylicBaseRgb")
+        _CL_MigrateKeys(testMigratePath)
+        AssertEq(IniRead(testMigratePath, "GUI", "AcrylicColor", ""), "0x3300FF00", "MigrateKeys: default alpha when only RGB present")
+
+        ; Case 3: Skip migration when AcrylicColor already user-set
+        try FileDelete(testMigratePath)
+        IniWrite("0x80", testMigratePath, "GUI", "AcrylicAlpha")
+        IniWrite("0xFF0000", testMigratePath, "GUI", "AcrylicBaseRgb")
+        IniWrite("0xAABBCCDD", testMigratePath, "GUI", "AcrylicColor")
+        _CL_MigrateKeys(testMigratePath)
+        AssertEq(IniRead(testMigratePath, "GUI", "AcrylicColor", ""), "0xAABBCCDD", "MigrateKeys: skip when AcrylicColor already user-set")
+
+        ; Case 4: No-op when no old keys exist
+        try FileDelete(testMigratePath)
+        IniWrite("123", testMigratePath, "GUI", "SomeOtherKey")
+        _CL_MigrateKeys(testMigratePath)
+        AssertEq(IniRead(testMigratePath, "GUI", "AcrylicColor", ""), "", "MigrateKeys: no-op when no old keys exist")
+
+        ; Cleanup
+        try FileDelete(testMigratePath)
+        try DirDelete(testMigrateDir)
+    } catch as e {
+        Log("FAIL: MigrateKeys test error: " e.Message)
+        TestErrors++
+        try DirDelete(testMigrateDir, true)
+    }
+
     ; Test 3: Config registry completeness - every setting has required fields
     Log("Testing config registry completeness...")
     registryErrors := []
