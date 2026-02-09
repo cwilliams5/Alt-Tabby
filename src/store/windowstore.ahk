@@ -33,21 +33,22 @@ global gWS_ProjectionCache_SortedRecs := ""    ; Cached sorted record refs for P
 
 ; Fields that affect sort order or filter membership — trigger full cache rebuild (Path 3)
 global gWS_SortAffectingFields := Map(
-    "lastActivatedTick", true, "isFocused", true, "z", true,
+    "lastActivatedTick", true, "z", true,
     "isOnCurrentWorkspace", true, "isCloaked", true, "isMinimized", true,
     "processName", true)  ; processName affects ProcessName sort mode
 
 ; Subset of sort-affecting fields that only affect MRU order (not filtering/membership).
 ; When ONLY these fields change, Path 1.5 can do an incremental move-to-front
 ; instead of a full Path 3 rebuild.
-global gWS_MRUOnlyFields := Map("lastActivatedTick", true, "isFocused", true)
+global gWS_MRUOnlyFields := Map("lastActivatedTick", true)
 
 ; Fields that affect projection content only (not sort/filter) — trigger content refresh (Path 2)
 ; Fresh _WS_ToItem copies are created from live records, avoiding stale cache data.
 ; NOTE: "title" is promoted to sort-affecting when Title sort mode is active (see gWS_TitleSortActive).
 global gWS_ContentOnlyFields := Map(
     "iconHicon", true, "title", true, "class", true,
-    "pid", true, "workspaceName", true, "workspaceId", true)
+    "pid", true, "workspaceName", true, "workspaceId", true,
+    "isFocused", true)
 
 ; When true, "title" field changes trigger sort rebuild instead of content-only refresh.
 ; Set by GetProjection when any client uses sort="Title", cleared on next GetProjection
@@ -317,7 +318,7 @@ global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId"
 ;   patch - Map or Object with field:value pairs
 ;   hwnd - Window handle (for dirty tracking)
 ; Returns: { changed: bool, sortDirty: bool, contentDirty: bool, mruOnly: bool }
-;   mruOnly: true when sortDirty was caused ONLY by MRU fields (lastActivatedTick/isFocused)
+;   mruOnly: true when sortDirty was caused ONLY by MRU fields (lastActivatedTick)
 _WS_ApplyPatch(row, patch, hwnd) {
     global gWS_InternalFields, gWS_SortAffectingFields, gWS_ContentOnlyFields
     global gWS_DeltaPendingHwnds, gWS_MRUOnlyFields, gWS_ProjectionDirtyHwnds
@@ -944,12 +945,25 @@ _WS_NewRecord(hwnd) {
     }
 }
 
+; PERF: Hardcoded fields avoid 13x dynamic %field% string-to-property-slot resolution per call.
+; Must stay in sync with PROJECTION_FIELDS (windowstore.ahk top of file).
 _WS_ToItem(rec) {
-    global PROJECTION_FIELDS
-    item := {hwnd: rec.hwnd}
-    for _, field in PROJECTION_FIELDS
-        item.%field% := rec.%field%
-    return item
+    return {
+        hwnd: rec.hwnd,
+        title: rec.title,
+        class: rec.class,
+        pid: rec.pid,
+        z: rec.z,
+        lastActivatedTick: rec.lastActivatedTick,
+        isFocused: rec.isFocused,
+        isCloaked: rec.isCloaked,
+        isMinimized: rec.isMinimized,
+        workspaceName: rec.workspaceName,
+        workspaceId: rec.workspaceId,
+        isOnCurrentWorkspace: rec.isOnCurrentWorkspace,
+        processName: rec.processName,
+        iconHicon: rec.iconHicon
+    }
 }
 
 _WS_TrySort(arr, cmp) {

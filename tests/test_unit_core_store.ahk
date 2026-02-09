@@ -572,10 +572,11 @@ RunUnitTests_CoreStore() {
     WindowStore_UpdateFields(5001, Map("z", 99), "test")
     AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: z change sets true")
 
-    ; Reset and test isFocused field
+    ; isFocused is content-only (not used by any sort comparator) — should set contentDirty, not sortDirty
     WindowStore_GetProjection()
     WindowStore_UpdateFields(5001, Map("isFocused", true), "test")
-    AssertEq(gWS_SortOrderDirty, true, "SortOrderDirty: isFocused sets true")
+    AssertEq(gWS_SortOrderDirty, false, "SortOrderDirty: isFocused is content-only, not sort-affecting")
+    AssertEq(gWS_ProjectionContentDirty, true, "ContentDirty: isFocused sets true")
 
     ; --- Regression test: icon update MUST produce fresh data in projection (514a45f) ---
     ; Reset isCloaked so window is visible in default projection (includeCloaked=false)
