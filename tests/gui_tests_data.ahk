@@ -119,7 +119,7 @@ RunGUITests_Data() {
     ; ----- Test: _GUI_UpdateLocalMRU moves item to position 1 -----
     GUI_Log("Test: _GUI_UpdateLocalMRU moves item to position 1")
     ResetGUIState()
-    gGUI_LiveItems := CreateTestItems(5)
+    gGUI_LiveItems := CreateTestItemsWithMap(5)
 
     ; Move item 3 (hwnd=3000) to position 1
     result := _GUI_UpdateLocalMRU(3000)
@@ -130,7 +130,7 @@ RunGUITests_Data() {
     ; ----- Test: _GUI_UpdateLocalMRU unknown hwnd returns false -----
     GUI_Log("Test: _GUI_UpdateLocalMRU unknown hwnd")
     ResetGUIState()
-    gGUI_LiveItems := CreateTestItems(3)
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
     origFirst := gGUI_LiveItems[1].hwnd
 
     result := _GUI_UpdateLocalMRU(99999)
@@ -141,7 +141,7 @@ RunGUITests_Data() {
     ; ----- Test: _GUI_UpdateLocalMRU already-first item -----
     GUI_Log("Test: _GUI_UpdateLocalMRU already-first item")
     ResetGUIState()
-    gGUI_LiveItems := CreateTestItems(3)
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
     firstHwnd := gGUI_LiveItems[1].hwnd
 
     result := _GUI_UpdateLocalMRU(firstHwnd)

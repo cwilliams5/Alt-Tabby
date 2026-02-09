@@ -291,6 +291,17 @@ CreateTestItems(count, currentWSCount := -1) {
     return items
 }
 
+; Create test items AND populate gGUI_LiveItemsMap for tests that use _GUI_UpdateLocalMRU
+; (which needs the Map for O(1) miss detection)
+CreateTestItemsWithMap(count, currentWSCount := -1) {
+    global gGUI_LiveItemsMap
+    items := CreateTestItems(count, currentWSCount)
+    gGUI_LiveItemsMap := Map()
+    for _, item in items
+        gGUI_LiveItemsMap[item.hwnd] := item
+    return items
+}
+
 ; Simulate a server projection response (for ServerSideWorkspaceFilter=true tests)
 SimulateServerResponse(items) {
     global gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION

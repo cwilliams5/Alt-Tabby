@@ -465,12 +465,17 @@ Store_PushToClients() {
     ; In OnChange mode, send dedicated workspace_change message when workspace changes
     global IPC_MSG_WORKSPACE_CHANGE
     wsJustChanged := WindowStore_ConsumeWorkspaceChangedFlag()
+
+    ; Early exit: if nothing changed and no workspace switch, skip all client work
+    if (dirtySnapshot.Count = 0 && !wsJustChanged) {
+        return
+    }
+
     if (wsJustChanged && cfg.IPCWorkspaceDeltaStyle = "OnChange") {
         wsMeta := WindowStore_GetCurrentWorkspace()
-        wsMsg := JSON.Dump({
-            type: IPC_MSG_WORKSPACE_CHANGE,
-            payload: { meta: { currentWSId: wsMeta.id, currentWSName: wsMeta.name } }
-        })
+        ; Direct string build — avoids cJSON object alloc + marshaling overhead for fixed-format template
+        safeName := StrReplace(StrReplace(wsMeta.name, '\', '\\'), '"', '\"')
+        wsMsg := '{"type":"workspace_change","payload":{"meta":{"currentWSId":' wsMeta.id ',"currentWSName":"' safeName '"}}}'
         for _, hPipe in clientHandles {
             if (!clientOptsSnapshot.Has(hPipe))
                 continue
@@ -657,16 +662,10 @@ Store_BroadcastWorkspaceFlips(flips) {
 
     wsMeta := WindowStore_GetCurrentWorkspace()
     rev := WindowStore_GetRev()
-    msg := JSON.Dump({
-        type: IPC_MSG_DELTA,
-        rev: rev,
-        baseRev: rev - 1,
-        payload: {
-            meta: { currentWSId: wsMeta.id, currentWSName: wsMeta.name },
-            upserts: [],
-            removes: []
-        }
-    })
+    ; Direct string build — avoids cJSON object alloc + marshaling overhead for fixed-format template
+    safeName := StrReplace(StrReplace(wsMeta.name, '\', '\\'), '"', '\"')
+    msg := '{"type":"delta","rev":' rev ',"baseRev":' (rev - 1)
+        . ',"payload":{"meta":{"currentWSId":' wsMeta.id ',"currentWSName":"' safeName '"},"upserts":[],"removes":[]}}'
 
     ; Broadcast to all clients that have completed HELLO (have registered opts)
     ; Clients without opts haven't connected yet and will get a full snapshot on HELLO

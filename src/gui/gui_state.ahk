@@ -967,7 +967,15 @@ _GUI_ResyncKeyboardState() {
 ; RACE FIX: Wrap in Critical - modifies gGUI_LiveItems array which IPC deltas also modify
 _GUI_UpdateLocalMRU(hwnd) {
     Critical "On"
-    global gGUI_LiveItems, gGUI_LastLocalMRUTick, cfg
+    global gGUI_LiveItems, gGUI_LastLocalMRUTick, gGUI_LiveItemsMap, cfg
+
+    ; O(1) miss detection: if hwnd not in Map, skip the O(n) linear scan
+    if (!gGUI_LiveItemsMap.Has(hwnd)) {
+        if (cfg.DiagEventLog)
+            _GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not in map, skip scan")
+        Critical "Off"
+        return false
+    }
 
     if (cfg.DiagEventLog)
         _GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_LiveItems.Length " items")

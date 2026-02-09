@@ -10,7 +10,7 @@ global gGUI_LiveItemsMap := Map()
 
 GUI_OnStoreMessage(line, _hPipe := 0) {
     global gGUI_StoreConnected, gGUI_StoreRev, gGUI_LiveItems, gGUI_Sel, gGUI_LiveItemsMap
-    global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText, cfg
+    global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText, gGUI_ScrollTop, cfg
     global gGUI_Revealed  ; Used instead of gGUI_OverlayVisible for IPC repaint guards
     global gGUI_State, gGUI_DisplayItems, gGUI_ToggleBase  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
@@ -170,9 +170,24 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             ; _Gdip_CreateBitmapFromHICON_Alpha takes 0.5-2ms per icon via GDI+ DllCall.
             ; With 10-30 windows this blocked hotkeys for 5-60ms during snapshot processing.
             ; Safe: no new IPC arrives mid-callback, Gdip_DrawCachedIcon handles misses on-demand.
-            for _, item in gGUI_LiveItems {
-                if (item.iconHicon)
-                    Gdip_PreCacheIcon(item.hwnd, item.iconHicon)
+            if (gGUI_OverlayVisible) {
+                ; Active overlay: only pre-cache viewport + scroll buffer for fast repaint
+                visRows := GUI_GetVisibleRows()
+                startIdx := Max(1, gGUI_ScrollTop + 1 - 3)
+                endIdx := Min(gGUI_LiveItems.Length, gGUI_ScrollTop + visRows + 3)
+                idx := startIdx
+                while (idx <= endIdx) {
+                    item := gGUI_LiveItems[idx]
+                    if (item.iconHicon)
+                        Gdip_PreCacheIcon(item.hwnd, item.iconHicon)
+                    idx++
+                }
+            } else {
+                ; Background: pre-cache everything while we have idle time
+                for _, item in gGUI_LiveItems {
+                    if (item.iconHicon)
+                        Gdip_PreCacheIcon(item.hwnd, item.iconHicon)
+                }
             }
 
             ; LATENCY FIX: Prune icon cache OUTSIDE Critical section.
@@ -295,6 +310,7 @@ GUI_ConvertStoreItemsWithMap(items) {
 
 GUI_ApplyDelta(payload) {
     global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap, cfg
+    global gGUI_OverlayVisible, gGUI_ScrollTop
 
     mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
     membershipChanged := false  ; Track if workspace membership changed (isOnCurrentWorkspace flipped)
@@ -431,8 +447,29 @@ GUI_ApplyDelta(payload) {
 
     ; LATENCY FIX: Pre-cache icon bitmaps OUTSIDE Critical section.
     ; Deferred from upsert loop to avoid blocking hotkeys during GDI+ DllCalls.
-    for _, ic in iconsToPrecache
-        Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
+    if (iconsToPrecache.Length > 0) {
+        if (gGUI_OverlayVisible) {
+            ; Active overlay: only pre-cache icons within viewport range
+            visRows := GUI_GetVisibleRows()
+            vpStart := Max(1, gGUI_ScrollTop + 1 - 3)
+            vpEnd := Min(gGUI_LiveItems.Length, gGUI_ScrollTop + visRows + 3)
+            for _, ic in iconsToPrecache {
+                idx := 0
+                for i, liveItem in gGUI_LiveItems {
+                    if (liveItem.hwnd = ic.hwnd) {
+                        idx := i
+                        break
+                    }
+                }
+                if (idx >= vpStart && idx <= vpEnd)
+                    Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
+            }
+        } else {
+            ; Background: pre-cache all new icons
+            for _, ic in iconsToPrecache
+                Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
+        }
+    }
 
     ; Prune orphaned icon cache entries for removed windows (outside Critical
     ; because GdipDisposeImage DllCalls can take 2-5ms)

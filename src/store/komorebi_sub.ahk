@@ -403,16 +403,20 @@ KomorebiSub_Poll() {
             break
     }
 
-    ; Extract complete JSON objects from buffer
+    ; Extract complete JSON objects from buffer (track length arithmetically)
+    consumed := 0
     while true {
-        json := _KSub_ExtractOneJson(&_KSub_ReadBuffer)
+        json := _KSub_ExtractOneJson(&_KSub_ReadBuffer, &consumed)
+        if (consumed > 0)
+            _KSub_ReadBufferLen -= consumed
         if (json = "")
             break
         _KSub_DiagLog("Poll: Got JSON object, len=" StrLen(json))
         _KSub_OnNotification(json)
     }
-    ; Resync tracked length after extractions (extraction modifies buffer)
-    _KSub_ReadBufferLen := StrLen(_KSub_ReadBuffer)
+    ; Safety clamp: if arithmetic drifted (edge cases), resync via O(n) StrLen
+    if (_KSub_ReadBufferLen < 0 || (_KSub_ReadBuffer = "" && _KSub_ReadBufferLen != 0))
+        _KSub_ReadBufferLen := StrLen(_KSub_ReadBuffer)
 
     ; Recycle if idle too long
     if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs)
@@ -422,7 +426,7 @@ KomorebiSub_Poll() {
 ; Extract one complete JSON notification from buffer.
 ; Komorebi sends newline-delimited JSON (one notification per line).
 ; This replaces the O(n) character-by-character scanner with O(1) InStr.
-_KSub_ExtractOneJson(&s) {
+_KSub_ExtractOneJson(&s, &consumed := 0) {
     if (s = "")
         return ""
 
@@ -434,6 +438,9 @@ _KSub_ExtractOneJson(&s) {
             s := ""  ; Prevent unbounded growth
         return ""
     }
+
+    ; Track consumed bytes for arithmetic buffer length tracking
+    consumed := nlPos
 
     ; Extract line (handle both \r\n and \n)
     line := SubStr(s, 1, nlPos - 1)
