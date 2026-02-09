@@ -600,6 +600,13 @@ _Shortcut_GetEffectiveExePath() {
 ; Flow: Check GitHub → Download to temp → Swap exe → Relaunch
 ; Handles elevation for Program Files installs.
 
+_Update_Log(msg) {
+    global cfg, LOG_PATH_UPDATE
+    if (!cfg.DiagUpdateLog)
+        return
+    try LogAppend(LOG_PATH_UPDATE, msg)
+}
+
 ; Check for updates and optionally offer to install
 ; showIfCurrent: If true, show message even when up to date
 CheckForUpdates(showIfCurrent := false, showModal := true) {
@@ -614,6 +621,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
     g_UpdateCheckInProgress := true
 
     currentVersion := GetAppVersion()
+    _Update_Log("CheckForUpdates: current=" currentVersion " showModal=" showModal)
     apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
     whr := ""  ; Declare outside try for cleanup
 
@@ -629,6 +637,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
 
             ; Parse JSON for tag_name and download URL
             if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
+                _Update_Log("CheckForUpdates: failed to parse tag_name from response")
                 g_DashUpdateState.status := "error"
                 g_LastUpdateCheckTick := A_TickCount
                 g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
@@ -639,6 +648,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
             latestVersion := tagMatch[1]
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
+            _Update_Log("CheckForUpdates: latest=" latestVersion " current=" currentVersion)
 
             if (CompareVersions(latestVersion, currentVersion) > 0) {
                 ; Sync dashboard state — update available
@@ -674,6 +684,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
             }
         } else {
             ; Sync dashboard state — HTTP error
+            _Update_Log("CheckForUpdates: HTTP error status=" whr.Status)
             g_DashUpdateState.status := "error"
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
@@ -684,6 +695,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
         }
     } catch as e {
         whr := ""  ; Ensure release on exception
+        _Update_Log("CheckForUpdates: exception: " e.Message)
         ; Sync dashboard state — exception
         g_DashUpdateState.status := "error"
         g_LastUpdateCheckTick := A_TickCount
@@ -710,6 +722,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
     exeDir := ""
     SplitPath(currentExe, , &exeDir)
     tempExe := A_Temp "\AltTabby_" newVersion ".exe"
+    _Update_Log("DownloadAndApply: version=" newVersion " target=" tempExe)
 
     ; Clean up any existing partial download from previous failed attempt
     if (FileExist(tempExe))
@@ -724,6 +737,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
 
     ; Download to temp
     try {
+        _Update_Log("DownloadAndApply: downloading from " downloadUrl)
         whr := ComObject("WinHttp.WinHttpRequest.5.1")
         whr.Open("GET", downloadUrl, false)
         whr.SetTimeouts(30000, 30000, 30000, 120000)  ; 30s connect/send/receive, 120s total
@@ -731,6 +745,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         whr.Send()
 
         if (whr.Status != 200) {
+            _Update_Log("DownloadAndApply: HTTP error status=" whr.Status)
             ThemeMsgBox("Download failed: HTTP " whr.Status, "Update Error", "Iconx")
             whr := ""  ; Release COM before return
             return
@@ -745,9 +760,11 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         stream.Close()
         stream := ""  ; Release ADODB.Stream after close
         whr := ""     ; Release WinHttp
+        _Update_Log("DownloadAndApply: download saved to " tempExe)
     } catch as e {
         stream := ""  ; Cleanup COM objects on error
         whr := ""
+        _Update_Log("DownloadAndApply: download exception: " e.Message)
         ; Clean up partial download
         if (FileExist(tempExe))
             try FileDelete(tempExe)
@@ -757,6 +774,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
 
     ; Check if we need elevation to write to exe directory
     if (_Update_NeedsElevation(exeDir)) {
+        _Update_Log("DownloadAndApply: elevation required for " exeDir)
         ; Save update info and self-elevate
         global UPDATE_INFO_DELIMITER, TEMP_UPDATE_STATE
         updateInfo := tempExe UPDATE_INFO_DELIMITER currentExe
@@ -769,6 +787,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
+            _Update_Log("DownloadAndApply: elevation failed")
             ThemeMsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Iconx")
             try FileDelete(updateFile)
             try FileDelete(tempExe)  ; Clean up downloaded exe
@@ -777,6 +796,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
     }
 
     ; Apply the update directly
+    _Update_Log("DownloadAndApply: applying directly (no elevation needed)")
     _Update_ApplyAndRelaunch(tempExe, currentExe)
 }
 

@@ -1163,14 +1163,18 @@ KomorebiSub_PollFallback() {
         return
 
     txt := _KSub_GetStateDirect()
-    if (txt = "")
+    if (txt = "") {
+        _KSub_DiagLog("PollFallback: GetStateDirect returned empty")
         return
+    }
 
     ; Parse JSON before passing to ProcessFullState (expects parsed Map)
     stateObj := ""
     try stateObj := JSON.Load(txt)
-    if !(stateObj is Map)
+    if !(stateObj is Map) {
+        _KSub_DiagLog("PollFallback: JSON.Load failed or result not Map (len=" StrLen(txt) ")")
         return
+    }
     _KSub_ProcessFullState(stateObj)
 }
 

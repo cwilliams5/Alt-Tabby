@@ -207,7 +207,7 @@ _Blacklist_BumpSkipStat() {
 
 ; Add a new pair entry to the blacklist file (appends to [Pair] section)
 Blacklist_AddPair(class, title) {
-    global gBlacklist_FilePath
+    global gBlacklist_FilePath, LOG_PATH_STORE
 
     if (gBlacklist_FilePath = "")
         return false
@@ -218,7 +218,8 @@ Blacklist_AddPair(class, title) {
     try {
         FileAppend(entry, gBlacklist_FilePath, "UTF-8")
         return true
-    } catch {
+    } catch as e {
+        LogAppend(LOG_PATH_STORE, "blacklist write error in Blacklist_AddPair: " e.Message)
         return false
     }
 }

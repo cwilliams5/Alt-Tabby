@@ -315,7 +315,7 @@ _Store_RotateDiagLogs() {
     global cfg
     global LOG_PATH_STORE, LOG_PATH_KSUB, LOG_PATH_WINEVENT
     global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP, LOG_PATH_IPC
-    global LOG_PATH_WEBVIEW
+    global LOG_PATH_WEBVIEW, LOG_PATH_UPDATE
     ; Always trim store log -- Store_LogError() writes unconditionally
     LogTrim(LOG_PATH_STORE)
     if (cfg.DiagKomorebiLog)
@@ -330,6 +330,8 @@ _Store_RotateDiagLogs() {
         LogTrim(LOG_PATH_IPC)
     if (cfg.DiagWebViewLog)
         LogTrim(LOG_PATH_WEBVIEW)
+    if (cfg.DiagUpdateLog)
+        LogTrim(LOG_PATH_UPDATE)
 }
 
 ; Force full snapshot to all clients - resets tracking so PushToClients sends SNAPSHOT not DELTA
@@ -1011,6 +1013,8 @@ Stats_Init() {
             try {
                 raw := IniRead(statsPath, "Lifetime", key, "0")
                 val := Integer(raw)
+            } catch as e {
+                Store_LogInfo("stats parse error for key=" key " raw=" SubStr(raw, 1, 50) ": " e.Message)
             }
         }
         gStats_Lifetime[key] := val

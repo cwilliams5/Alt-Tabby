@@ -269,9 +269,11 @@ _CEW_OnWebMessage(sender, args) {
             SetTimer(_CEW_OnReady, -1)
         }
     } catch as e {
-        ; Log error for debugging
-        if (cfg.DiagWebViewLog)
-            try LogAppend(LOG_PATH_WEBVIEW, "WebMessage error: " e.Message)
+        ; Log error for debugging — include truncated raw JSON for context
+        if (cfg.DiagWebViewLog) {
+            detail := IsSet(msgJson) ? " json=" SubStr(msgJson, 1, 200) : ""
+            try LogAppend(LOG_PATH_WEBVIEW, "WebMessage error: " e.Message detail)
+        }
     }
 }
 

@@ -1071,6 +1071,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "WebViewLog", g: "DiagWebViewLog", t: "bool", default: false,
      d: "Log WebView2 config editor errors to %TEMP%\\tabby_webview_debug.log. Use when debugging config editor issues."},
 
+    {s: "Diagnostics", k: "UpdateLog", g: "DiagUpdateLog", t: "bool", default: false,
+     d: "Log auto-update check and apply steps to %TEMP%\\tabby_update.log. Use when debugging update failures."},
+
     {s: "Diagnostics", k: "StatsTracking", g: "StatsTrackingEnabled", t: "bool", default: true,
      d: "Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard."},
 
