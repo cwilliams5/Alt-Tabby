@@ -179,18 +179,22 @@ RunLiveTests_Core() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "test", wants: { deltas: true } }
             IPC_PipeClient_Send(realClient, JSON.Dump(helloMsg))
 
-            ; Send projection request
-            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
-            IPC_PipeClient_Send(realClient, JSON.Dump(projMsg))
+            ; Use snapshot_request (not projection_request) — it triggers a deferred
+            ; scan cycle in the store, ensuring fresh enumeration even if the store
+            ; hasn't completed its initial scan yet (pipe is available before FullScan).
+            snapMsg := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
+            IPC_PipeClient_Send(realClient, JSON.Dump(snapMsg))
 
-            ; Wait for response with items (store may send empty snapshot first at rev 0
-            ; before producers finish enumeration — retry until items > 0 or timeout)
+            ; Active polling: re-request on empty responses instead of passively waiting.
+            ; The store pipe becomes available before Store_FullScan() completes, so the
+            ; first response may be empty. Each snapshot_request triggers a fresh scan,
+            ; driving the store to populate and respond with current data.
             waitStart := A_TickCount
             itemCount := 0
             gotResponse := false
             while ((A_TickCount - waitStart) < 5000) {
                 if (!gRealStoreReceived) {
-                    Sleep(100)
+                    Sleep(50)
                     continue
                 }
                 gotResponse := true
@@ -203,10 +207,11 @@ RunLiveTests_Core() {
                             break
                     }
                 }
-                ; Got empty response — reset flag and wait for next snapshot/delta
+                ; Empty response — re-request to trigger another scan cycle
                 gRealStoreReceived := false
                 gRealStoreResponse := ""
-                Sleep(100)
+                IPC_PipeClient_Send(realClient, JSON.Dump(snapMsg))
+                Sleep(250)
             }
 
             if (gotResponse) {
