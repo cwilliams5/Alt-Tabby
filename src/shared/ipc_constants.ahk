@@ -40,9 +40,18 @@ global WM_COPYDATA := 0x4A              ; Standard WM_COPYDATA message
 global WM_TRAYICON := 0x404             ; Custom tray icon callback message
 global IPC_WM_PIPE_WAKE := 0x8001       ; WM_APP+1: PostMessage signal to check pipe for data
 
-; Producer name constants
-global PRODUCER_NAMES := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
-global PRODUCER_ABBREVS := Map("wineventHook","WEH", "mruLite","MRU", "komorebiSub","KS", "komorebiLite","KL", "iconPump","IP", "procPump","PP")
+; Producer name constants - PRODUCER_ABBREVS is the single source of truth
+global PRODUCER_ABBREVS := Map(
+    "wineventHook", "WEH",
+    "mruLite",      "MRU",
+    "komorebiSub",  "KS",
+    "komorebiLite", "KL",
+    "iconPump",     "IP",
+    "procPump",     "PP"
+)
+global PRODUCER_NAMES := []
+for _name, _ in PRODUCER_ABBREVS
+    PRODUCER_NAMES.Push(_name)
 
 ; Command-line argument constants
 global ARG_LAUNCHER_HWND := "--launcher-hwnd="

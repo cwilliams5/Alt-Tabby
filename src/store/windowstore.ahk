@@ -1063,7 +1063,7 @@ _WS_EnqueueIfNeeded(row) {
         ; Throttle UPGRADE attempts: check iconLastRefreshTick (30s matches IconPumpRefreshThrottleMs)
         ; Without this, same window re-queued every upsert cycle during workspace switches
         global cfg
-        throttleMs := cfg.HasOwnProp("IconPumpRefreshThrottleMs") ? cfg.IconPumpRefreshThrottleMs : 30000
+        throttleMs := cfg.IconPumpRefreshThrottleMs
         if (row.iconLastRefreshTick = 0 || (now - row.iconLastRefreshTick) >= throttleMs)
             needsIconWork := true
     }
@@ -1113,7 +1113,7 @@ WindowStore_EnqueueIconRefresh(hwnd) {
 
     ; Check throttle - don't refresh too frequently
     now := A_TickCount
-    throttleMs := cfg.HasOwnProp("IconPumpRefreshThrottleMs") ? cfg.IconPumpRefreshThrottleMs : 30000
+    throttleMs := cfg.IconPumpRefreshThrottleMs
     if (row.iconLastRefreshTick > 0 && (now - row.iconLastRefreshTick) < throttleMs)
         return false
 

@@ -5,7 +5,7 @@
 
 RunUnitTests_Stats() {
     global TestPassed, TestErrors, cfg
-    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH
+    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_CUMULATIVE_KEYS, STATS_INI_PATH
 
     ; ============================================================
     ; Stats Accumulation Tests
@@ -31,8 +31,7 @@ RunUnitTests_Stats() {
             gStats_Lifetime[key] := 0
 
         ; Simulate receiving a stats_update (same keys as Store_OnMessage handler)
-        updateKeys := ["TotalAltTabs", "TotalQuickSwitches", "TotalTabSteps",
-                       "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles"]
+        updateKeys := STATS_CUMULATIVE_KEYS
         for _, key in updateKeys
             gStats_Lifetime[key] := gStats_Lifetime.Get(key, 0) + 5
 

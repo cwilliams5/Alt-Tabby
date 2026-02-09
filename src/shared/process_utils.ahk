@@ -143,23 +143,8 @@ ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts := 10, sleepMs := 0, offe
     }
 
     ; Check if any process still running (may be elevated)
-    if (offerElevation && !A_IsAdmin) {
-        pid := ProcessExist(exeName)
-        if (pid && pid != myPID && ProcessUtils_IsElevated(pid)) {
-            result := ThemeMsgBox(
-                "The running instance has administrator privileges.`n`n"
-                "Elevate to close it?",
-                APP_NAME,
-                "YesNo Icon?"
-            )
-            if (result = "Yes") {
-                try {
-                    Run('*RunAs taskkill /F /PID ' pid,, "Hide")
-                    Sleep(TIMING_SETUP_SETTLE)
-                }
-            }
-        }
-    }
+    if (offerElevation)
+        _PU_OfferElevatedKill(exeName)
 }
 
 ; Check if a process is running elevated (has admin privileges)

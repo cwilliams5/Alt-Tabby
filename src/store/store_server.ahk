@@ -675,7 +675,7 @@ Store_OnMessage(line, hPipe := 0) {
     global IPC_MSG_SET_PROJECTION_OPTS, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_PROJECTION_REQUEST
     global IPC_MSG_RELOAD_BLACKLIST, IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
     global IPC_MSG_STATS_UPDATE, IPC_MSG_STATS_REQUEST, IPC_MSG_STATS_RESPONSE
-    global gStats_Lifetime, gStats_Session
+    global gStats_Lifetime, gStats_Session, STATS_CUMULATIVE_KEYS
     global cfg
     obj := ""
     try obj := JSON.Load(line)
@@ -839,8 +839,7 @@ Store_OnMessage(line, hPipe := 0) {
         ; Accumulate GUI session stats into lifetime (GUI sends deltas since last send)
         ; RACE FIX: Protect gStats_Lifetime from concurrent Stats_FlushToDisk (heartbeat timer)
         Critical "On"
-        for _, key in ["TotalAltTabs", "TotalQuickSwitches", "TotalTabSteps",
-                       "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles"] {
+        for _, key in STATS_CUMULATIVE_KEYS {
             if (obj.Has(key))
                 gStats_Lifetime[key] := gStats_Lifetime.Get(key, 0) + obj[key]
         }
@@ -942,6 +941,12 @@ _Store_OptsKey(opts) {
 ; ============================================================
 ; STATS ENGINE
 ; ============================================================
+
+; Cumulative stat keys - GUI sends deltas for these via stats_update
+global STATS_CUMULATIVE_KEYS := [
+    "TotalAltTabs", "TotalQuickSwitches", "TotalTabSteps",
+    "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles"
+]
 
 ; All lifetime stat keys - used for initialization and serialization
 global STATS_LIFETIME_KEYS := [
