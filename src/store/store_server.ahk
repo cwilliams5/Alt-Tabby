@@ -302,12 +302,12 @@ _Store_OnPipeWake(wParam, lParam, msg, hwnd) {
 }
 
 ; Deferred scan: runs after immediate snapshot response, catches recently-created windows.
-; Uses _WEH_PushIfRevChanged to send correction delta only if scan found changes.
+; Uses WEH_PushIfRevChanged to send correction delta only if scan found changes.
 _Store_DeferredScanAndPush() {
     Store_FullScan()
     WindowStore_ClearZQueue()
     ; Push correction delta if scan discovered changes
-    _WEH_PushIfRevChanged(true)
+    WEH_PushIfRevChanged(true)
 }
 
 ; Rotate diagnostic logs that are enabled (called every 12th heartbeat, ~60s)
@@ -950,11 +950,11 @@ _Store_CleanupDisconnectedClients() {
 ; Build a stable string key from projection opts for cache deduplication.
 ; Two opts objects with the same 5 projection fields produce the same key.
 _Store_OptsKey(opts) {
-    s := _WS_GetOpt(opts, "sort", "MRU")
-    cw := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
-    im := _WS_GetOpt(opts, "includeMinimized", true)
-    ic := _WS_GetOpt(opts, "includeCloaked", false)
-    co := _WS_GetOpt(opts, "columns", "items")
+    s := WS_GetOpt(opts, "sort", "MRU")
+    cw := WS_GetOpt(opts, "currentWorkspaceOnly", false)
+    im := WS_GetOpt(opts, "includeMinimized", true)
+    ic := WS_GetOpt(opts, "includeCloaked", false)
+    co := WS_GetOpt(opts, "columns", "items")
     return s "|" cw "|" im "|" ic "|" co
 }
 

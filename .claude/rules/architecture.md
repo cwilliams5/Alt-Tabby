@@ -100,8 +100,21 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 
 - All values in `global cfg := {}` object
 - Single source: `gConfigRegistry` in `config_registry.ahk`
+- Registry entry fields: `s` (section), `k` (key), `g` (group), `t` (type), `default`, `d` (description) + optional `min`, `max`, `fmt`
+- `min/max` present on all numeric settings; `fmt: "hex"` on ARGB/RGB color values
+- Validation is registry-driven (`_CL_ValidateSettings()` loops the registry, not hardcoded clamps)
 - Access via `cfg.PropertyName`
 - **ConfigLoader_Init() must be called before using cfg**
+
+## Theme System
+
+- `src/shared/theme.ahk` + `theme_msgbox.ahk` — centralized dark/light mode for all native AHK GUIs
+- Main overlay and debug viewer are excluded (overlay has its own ARGB colors)
+- `Theme_Init()` must be called **before any `Gui()` constructor** (sets SetPreferredAppMode)
+- `Theme_ApplyToGui(gui)` after constructor, `Theme_ApplyToControl(ctrl, type)` after each control
+- `ThemeMsgBox()` is a drop-in MsgBox replacement — use it for all new message boxes
+- WebView2 editors: `Theme_GetWebViewJS()` generates CSS custom properties
+- Reacts to system theme changes via WM_SETTINGCHANGE automatically
 
 ## Stats IPC Messages
 

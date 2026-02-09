@@ -21,16 +21,16 @@
 ;
 ; Usage:
 ;   ; Normal GUI (dashboard, native editor):
-;   _GUI_AntiFlashPrepare(gui, "1a1b26", true)
+;   GUI_AntiFlashPrepare(gui, "1a1b26", true)
 ;   gui.Show("w800 h550")
 ;   ; ...build UI...
-;   _GUI_AntiFlashReveal(gui, true)
+;   GUI_AntiFlashReveal(gui, true)
 ;
 ;   ; WebView2 GUI (can't cloak):
-;   _GUI_AntiFlashPrepare(gui, "1a1b26", false)
+;   GUI_AntiFlashPrepare(gui, "1a1b26", false)
 ;   gui.Show("x-32000 y-32000 w900 h650")
 ;   ; ...create WebView2, navigate, wait for ready...
-;   _GUI_AntiFlashReveal(gui, false, true)
+;   GUI_AntiFlashReveal(gui, false, true)
 ; ============================================================
 
 ; Prepare a GUI for flash-free show. Call BEFORE Gui.Show().
@@ -38,7 +38,7 @@
 ;   gui      - Gui object (must not have been shown yet)
 ;   bgColor  - Background color to match dark theme (e.g., "1a1b26")
 ;   useCloak - true: DWM cloak (normal GUIs). false: caller must Show off-screen (WebView2)
-_GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
+GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
     gui.Opt("+E0x80000")  ; WS_EX_LAYERED
     gui.BackColor := bgColor
     ; .Hwnd access forces HWND creation before Show
@@ -52,9 +52,9 @@ _GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
 
 ; Reveal a prepared window. Sets alpha=255 and uncloaks/centers as needed.
 ;   gui          - Gui object
-;   wasCloaked   - true if _GUI_AntiFlashPrepare was called with useCloak=true
+;   wasCloaked   - true if GUI_AntiFlashPrepare was called with useCloak=true
 ;   wasOffscreen - true if window was shown at off-screen position (centers it)
-_GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
+GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
     hwnd := gui.Hwnd
     if (wasOffscreen) {
         ; WebView2 path: cloak NOW (safe — WebView2 is already initialized),

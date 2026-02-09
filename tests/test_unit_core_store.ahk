@@ -12,19 +12,19 @@ RunUnitTests_CoreStore() {
     ; ============================================================
     Log("`n--- WindowStore Unit Tests ---")
 
-    ; Test 1: _WS_GetOpt with Map
+    ; Test 1: WS_GetOpt with Map
     testMap := Map("sort", "Z", "includeMinimized", false)
-    AssertEq(_WS_GetOpt(testMap, "sort", "MRU"), "Z", "_WS_GetOpt with Map")
+    AssertEq(WS_GetOpt(testMap, "sort", "MRU"), "Z", "WS_GetOpt with Map")
 
-    ; Test 2: _WS_GetOpt with plain Object
+    ; Test 2: WS_GetOpt with plain Object
     testObj := { sort: "Title", columns: "hwndsOnly" }
-    AssertEq(_WS_GetOpt(testObj, "sort", "MRU"), "Title", "_WS_GetOpt with plain Object")
+    AssertEq(WS_GetOpt(testObj, "sort", "MRU"), "Title", "WS_GetOpt with plain Object")
 
-    ; Test 3: _WS_GetOpt default value
-    AssertEq(_WS_GetOpt(testObj, "missing", "default"), "default", "_WS_GetOpt default value")
+    ; Test 3: WS_GetOpt default value
+    AssertEq(WS_GetOpt(testObj, "missing", "default"), "default", "WS_GetOpt default value")
 
-    ; Test 4: _WS_GetOpt with non-object
-    AssertEq(_WS_GetOpt(0, "key", "fallback"), "fallback", "_WS_GetOpt with non-object")
+    ; Test 4: WS_GetOpt with non-object
+    AssertEq(WS_GetOpt(0, "key", "fallback"), "fallback", "WS_GetOpt with non-object")
 
     ; Test 5: WindowStore basic operations
     WindowStore_Init()

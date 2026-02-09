@@ -21,10 +21,10 @@ ShowStatsDialog() {
 
     ; Query fresh stats if store is running
     if (LauncherUtils_IsRunning(g_StorePID))
-        _Dash_QueryStats()
+        Dash_QueryStats()
 
     sg := Gui("", "Alt-Tabby Statistics")
-    _GUI_AntiFlashPrepare(sg, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(sg, Theme_GetBgColor(), true)
     sg.SetFont("s10", "Segoe UI")
     sg.MarginX := 20
     sg.MarginY := 15
@@ -43,14 +43,14 @@ ShowStatsDialog() {
         sg.OnEvent("Escape", (*) => _StatsDialog_Close())
         g_StatsGui := sg
         sg.Show("w440")
-        _GUI_AntiFlashReveal(sg, true)
+        GUI_AntiFlashReveal(sg, true)
         return
     }
 
     g_StatsControls := Map()
 
     ; Create Win32 tooltip control (SS_NOTIFY + tooltips_class32, same as dashboard)
-    hTT := _Dash_CreateTooltipCtl(sg.Hwnd)
+    hTT := Dash_CreateTooltipCtl(sg.Hwnd)
 
     ; ---- Lifetime Stats (left column) ----
     gbLifetime := sg.AddGroupBox("x20 y10 w260 h310", "Lifetime")
@@ -76,7 +76,7 @@ ShowStatsDialog() {
     for _, row in lifetimeKeys {
         lbl := sg.AddText("x35 y" yPos " w130 Right +0x100", row[1] ":")
         if (hTT)
-            _Dash_SetTip(hTT, lbl, row[3])
+            Dash_SetTip(hTT, lbl, row[3])
         ctrl := sg.AddText("x170 y" yPos " w100", "")
         g_StatsControls[row[2]] := ctrl
         yPos += 22
@@ -105,7 +105,7 @@ ShowStatsDialog() {
     for _, row in sessionKeys {
         lbl := sg.AddText("x310 y" yPos " w130 Right +0x100", row[1] ":")
         if (hTT)
-            _Dash_SetTip(hTT, lbl, row[3])
+            Dash_SetTip(hTT, lbl, row[3])
         ctrl := sg.AddText("x445 y" yPos " w100", "")
         g_StatsControls[row[2]] := ctrl
         yPos += 22
@@ -128,7 +128,7 @@ ShowStatsDialog() {
     for _, row in insightKeys {
         lbl := sg.AddText("x35 y" yPos " w150 Right +0x100", row[1] ":")
         if (hTT)
-            _Dash_SetTip(hTT, lbl, row[3])
+            Dash_SetTip(hTT, lbl, row[3])
         ctrl := sg.AddText("x190 y" yPos " w80", "")
         g_StatsControls[row[2]] := ctrl
         yPos += 22
@@ -155,7 +155,7 @@ ShowStatsDialog() {
     _StatsDialog_UpdateValues()
 
     sg.Show("w575")
-    _GUI_AntiFlashReveal(sg, true)
+    GUI_AntiFlashReveal(sg, true)
 }
 
 _StatsDialog_Close() {
@@ -173,7 +173,7 @@ _StatsDialog_Refresh() {
     if (!g_StatsGui)
         return
     if (LauncherUtils_IsRunning(g_StorePID))
-        _Dash_QueryStats()
+        Dash_QueryStats()
     _StatsDialog_UpdateValues()
 }
 
@@ -184,36 +184,36 @@ _StatsDialog_UpdateValues() {
     cache := IsObject(g_StatsCache) ? g_StatsCache : Map()
 
     ; Lifetime values
-    _StatsCtl_Set("lifetime_RunTime", _Stats_FormatDuration(_Stats_MapGet(cache, "TotalRunTimeSec") + _Stats_MapGet(cache, "SessionRunTimeSec")))
-    _StatsCtl_Set("lifetime_Sessions", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalSessions")))
-    _StatsCtl_Set("lifetime_AltTabs", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalAltTabs")))
-    _StatsCtl_Set("lifetime_QuickSwitches", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalQuickSwitches")))
-    _StatsCtl_Set("lifetime_TabSteps", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalTabSteps")))
-    _StatsCtl_Set("lifetime_Cancellations", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalCancellations")))
-    _StatsCtl_Set("lifetime_CrossWorkspace", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalCrossWorkspace")))
-    _StatsCtl_Set("lifetime_WorkspaceToggles", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalWorkspaceToggles")))
-    _StatsCtl_Set("lifetime_WindowUpdates", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalWindowUpdates")))
-    _StatsCtl_Set("lifetime_BlacklistSkips", _Stats_FormatNumber(_Stats_MapGet(cache, "TotalBlacklistSkips")))
-    _StatsCtl_Set("lifetime_PeakWindows", _Stats_FormatNumber(_Stats_MapGet(cache, "PeakWindowsInSession")))
-    _StatsCtl_Set("lifetime_LongestSession", _Stats_FormatDuration(_Stats_MapGet(cache, "LongestSessionSec")))
+    _StatsCtl_Set("lifetime_RunTime", Stats_FormatDuration(Stats_MapGet(cache, "TotalRunTimeSec") + Stats_MapGet(cache, "SessionRunTimeSec")))
+    _StatsCtl_Set("lifetime_Sessions", Stats_FormatNumber(Stats_MapGet(cache, "TotalSessions")))
+    _StatsCtl_Set("lifetime_AltTabs", Stats_FormatNumber(Stats_MapGet(cache, "TotalAltTabs")))
+    _StatsCtl_Set("lifetime_QuickSwitches", Stats_FormatNumber(Stats_MapGet(cache, "TotalQuickSwitches")))
+    _StatsCtl_Set("lifetime_TabSteps", Stats_FormatNumber(Stats_MapGet(cache, "TotalTabSteps")))
+    _StatsCtl_Set("lifetime_Cancellations", Stats_FormatNumber(Stats_MapGet(cache, "TotalCancellations")))
+    _StatsCtl_Set("lifetime_CrossWorkspace", Stats_FormatNumber(Stats_MapGet(cache, "TotalCrossWorkspace")))
+    _StatsCtl_Set("lifetime_WorkspaceToggles", Stats_FormatNumber(Stats_MapGet(cache, "TotalWorkspaceToggles")))
+    _StatsCtl_Set("lifetime_WindowUpdates", Stats_FormatNumber(Stats_MapGet(cache, "TotalWindowUpdates")))
+    _StatsCtl_Set("lifetime_BlacklistSkips", Stats_FormatNumber(Stats_MapGet(cache, "TotalBlacklistSkips")))
+    _StatsCtl_Set("lifetime_PeakWindows", Stats_FormatNumber(Stats_MapGet(cache, "PeakWindowsInSession")))
+    _StatsCtl_Set("lifetime_LongestSession", Stats_FormatDuration(Stats_MapGet(cache, "LongestSessionSec")))
 
     ; Session values
-    _StatsCtl_Set("session_RunTime", _Stats_FormatDuration(_Stats_MapGet(cache, "SessionRunTimeSec")))
-    _StatsCtl_Set("session_AltTabs", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionAltTabs")))
-    _StatsCtl_Set("session_QuickSwitches", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionQuickSwitches")))
-    _StatsCtl_Set("session_TabSteps", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionTabSteps")))
-    _StatsCtl_Set("session_Cancellations", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionCancellations")))
-    _StatsCtl_Set("session_CrossWorkspace", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionCrossWorkspace")))
-    _StatsCtl_Set("session_WorkspaceToggles", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionWorkspaceToggles")))
-    _StatsCtl_Set("session_WindowUpdates", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionWindowUpdates")))
-    _StatsCtl_Set("session_BlacklistSkips", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionBlacklistSkips")))
-    _StatsCtl_Set("session_PeakWindows", _Stats_FormatNumber(_Stats_MapGet(cache, "SessionPeakWindows")))
+    _StatsCtl_Set("session_RunTime", Stats_FormatDuration(Stats_MapGet(cache, "SessionRunTimeSec")))
+    _StatsCtl_Set("session_AltTabs", Stats_FormatNumber(Stats_MapGet(cache, "SessionAltTabs")))
+    _StatsCtl_Set("session_QuickSwitches", Stats_FormatNumber(Stats_MapGet(cache, "SessionQuickSwitches")))
+    _StatsCtl_Set("session_TabSteps", Stats_FormatNumber(Stats_MapGet(cache, "SessionTabSteps")))
+    _StatsCtl_Set("session_Cancellations", Stats_FormatNumber(Stats_MapGet(cache, "SessionCancellations")))
+    _StatsCtl_Set("session_CrossWorkspace", Stats_FormatNumber(Stats_MapGet(cache, "SessionCrossWorkspace")))
+    _StatsCtl_Set("session_WorkspaceToggles", Stats_FormatNumber(Stats_MapGet(cache, "SessionWorkspaceToggles")))
+    _StatsCtl_Set("session_WindowUpdates", Stats_FormatNumber(Stats_MapGet(cache, "SessionWindowUpdates")))
+    _StatsCtl_Set("session_BlacklistSkips", Stats_FormatNumber(Stats_MapGet(cache, "SessionBlacklistSkips")))
+    _StatsCtl_Set("session_PeakWindows", Stats_FormatNumber(Stats_MapGet(cache, "SessionPeakWindows")))
 
     ; Insight values
-    _StatsCtl_Set("insight_AvgPerHour", String(_Stats_MapGet(cache, "DerivedAvgAltTabsPerHour")))
-    _StatsCtl_Set("insight_QuickPct", String(_Stats_MapGet(cache, "DerivedQuickSwitchPct")) "%")
-    _StatsCtl_Set("insight_CancelRate", String(_Stats_MapGet(cache, "DerivedCancelRate")) "%")
-    _StatsCtl_Set("insight_AvgTabs", String(_Stats_MapGet(cache, "DerivedAvgTabsPerSwitch")))
+    _StatsCtl_Set("insight_AvgPerHour", String(Stats_MapGet(cache, "DerivedAvgAltTabsPerHour")))
+    _StatsCtl_Set("insight_QuickPct", String(Stats_MapGet(cache, "DerivedQuickSwitchPct")) "%")
+    _StatsCtl_Set("insight_CancelRate", String(Stats_MapGet(cache, "DerivedCancelRate")) "%")
+    _StatsCtl_Set("insight_AvgTabs", String(Stats_MapGet(cache, "DerivedAvgTabsPerSwitch")))
 }
 
 ; Set a stats control value by key (safe — skips if control not found)
@@ -249,7 +249,7 @@ _StatsDialog_LoadIcon(sg) {
         return
     }
 
-    pBitmap := _Splash_LoadBitmapFromResource(RES_ID_ICON)
+    pBitmap := Splash_LoadBitmapFromResource(RES_ID_ICON)
     if (!pBitmap) {
         DllCall("gdiplus\GdiplusShutdown", "ptr", token)
         DllCall("FreeLibrary", "ptr", hModule)
@@ -257,7 +257,7 @@ _StatsDialog_LoadIcon(sg) {
     }
 
     ; High-quality resize to 80x80
-    pThumb := _GdipResizeHQ(pBitmap, 80, 80)
+    pThumb := GdipResizeHQ(pBitmap, 80, 80)
     srcBitmap := pThumb ? pThumb : pBitmap
 
     ; Convert to HBITMAP with theme-aware background color
@@ -282,7 +282,7 @@ _StatsDialog_LoadIcon(sg) {
 
 ; High-quality GDI+ image resize using bicubic interpolation.
 ; Returns a new GDI+ bitmap pointer (caller must dispose), or 0 on failure.
-_GdipResizeHQ(pSrcBitmap, w, h) {
+GdipResizeHQ(pSrcBitmap, w, h) {
     pDst := 0
     DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", w, "int", h, "int", 0, "int", 0x26200A, "ptr", 0, "ptr*", &pDst)
     if (!pDst)

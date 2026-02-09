@@ -128,7 +128,7 @@ $CHECKS = @(
     @{
         Id       = "ksub_no_undefined_log"
         File     = "store\komorebi_sub.ahk"
-        Desc     = "No undefined _KSub_Log() calls (should be _KSub_DiagLog)"
+        Desc     = "No undefined _KSub_Log() calls (should be KSub_DiagLog)"
         NotPresent = @("_KSub_Log(")
     },
 
@@ -267,7 +267,7 @@ $CHECKS = @(
         Id       = "mismatch_optional_params"
         File     = "launcher\launcher_install.ahk"
         Desc     = "Mismatch dialog accepts optional parameters"
-        Patterns = @('_Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question := "")')
+        Patterns = @('Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question := "")')
     },
     @{
         Id       = "mismatch_result_handler"
@@ -304,13 +304,13 @@ $CHECKS = @(
         Id       = "is_other_process_running"
         File     = "launcher\launcher_main.ahk"
         Desc     = "IsOtherProcessRunning uses tasklist /FI with PID ne"
-        Patterns = @("_Launcher_IsOtherProcessRunning(", "tasklist /FI", "PID ne")
+        Patterns = @("Launcher_IsOtherProcessRunning(", "tasklist /FI", "PID ne")
     },
     @{
         Id       = "offer_stop_uses_helper"
         File     = "launcher\launcher_install.ahk"
         Desc     = "OfferToStopInstalledInstance calls IsOtherProcessRunning"
-        Patterns = @("_Launcher_OfferToStopInstalledInstance(", "_Launcher_IsOtherProcessRunning(")
+        Patterns = @("_Launcher_OfferToStopInstalledInstance(", "Launcher_IsOtherProcessRunning(")
     },
 
     # --- Wizard FirstRunCompleted (from test_unit_setup.ahk) ---
@@ -349,13 +349,13 @@ $CHECKS += @(
         Id       = "admin_toggle_write_result_exists"
         File     = "shared\setup_utils.ahk"
         Desc     = "_AdminToggle_WriteResult helper exists in setup_utils.ahk"
-        Patterns = @("_AdminToggle_WriteResult(result)", "TEMP_ADMIN_TOGGLE_LOCK")
+        Patterns = @("AdminToggle_WriteResult(result)", "TEMP_ADMIN_TOGGLE_LOCK")
     },
     @{
         Id       = "admin_toggle_handler_uses_write_result"
         File     = "alt_tabby.ahk"
         Desc     = "enable-admin-task handler uses _AdminToggle_WriteResult (not FileDelete)"
-        Patterns = @('_AdminToggle_WriteResult("ok")', '_AdminToggle_WriteResult("cancelled")', '_AdminToggle_WriteResult("failed")')
+        Patterns = @('AdminToggle_WriteResult("ok")', 'AdminToggle_WriteResult("cancelled")', 'AdminToggle_WriteResult("failed")')
         NotPresent = @("FileDelete(TEMP_ADMIN_TOGGLE_LOCK)")
     },
     @{
@@ -374,7 +374,7 @@ $CHECKS += @(
         File     = "launcher\launcher_main.ahk"
         Desc     = "_ShouldRedirectToScheduledTask syncs stale RunAsAdmin when task deleted"
         Regex    = $true
-        Patterns = @("!AdminTaskExists\(\)\)\s*\{[\s\S]*?_Setup_SetRunAsAdmin\(false\)")
+        Patterns = @("!AdminTaskExists\(\)\)\s*\{[\s\S]*?Setup_SetRunAsAdmin\(false\)")
     }
 )
 
@@ -384,13 +384,13 @@ $CHECKS += @(
         Id       = "admin_declined_marker_cleanup"
         File     = "alt_tabby.ahk"
         Desc     = "Enable/repair admin task modes clear admin-declined marker"
-        Patterns = @("_Setup_ClearAdminDeclinedMarker()")
+        Patterns = @("Setup_ClearAdminDeclinedMarker()")
     },
     @{
         Id       = "admin_declined_marker_check"
         File     = "launcher\launcher_main.ahk"
         Desc     = "_ShouldRedirectToScheduledTask checks admin-declined marker"
-        Patterns = @("_Setup_HasAdminDeclinedMarker()")
+        Patterns = @("Setup_HasAdminDeclinedMarker()")
     }
 )
 
@@ -436,7 +436,7 @@ $CHECKS += @(
         Id       = "bl_compile_wildcard"
         File     = "shared\blacklist.ahk"
         Desc     = "_BL_CompileWildcard compile helper exists"
-        Patterns = @("_BL_CompileWildcard(")
+        Patterns = @("BL_CompileWildcard(")
     }
 )
 

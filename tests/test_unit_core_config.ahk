@@ -115,7 +115,7 @@ RunUnitTests_CoreConfig() {
         try DirDelete(testConfigDir, true)
     }
 
-    ; Test 2.5: _CL_WriteIniPreserveFormat direct tests
+    ; Test 2.5: CL_WriteIniPreserveFormat direct tests
     Log("Testing WriteIniPreserveFormat...")
 
     testWipDir := A_Temp "\tabby_wip_test_" A_TickCount
@@ -132,7 +132,7 @@ RunUnitTests_CoreConfig() {
         wipContent := "[AltTab]`nPrewarmOnAlt=true`nQuickSwitchMs=25`n[GUI]`nRowHeight=40`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
         if (InStr(wipResult, "PrewarmOnAlt=false") && InStr(wipResult, "QuickSwitchMs=25")) {
@@ -150,7 +150,7 @@ RunUnitTests_CoreConfig() {
         wipContent := "[AltTab]`nPrewarmOnAlt=true`nQuickSwitchMs=25`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", true, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", true, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
         if (InStr(wipResult, "; PrewarmOnAlt=true")) {
@@ -168,7 +168,7 @@ RunUnitTests_CoreConfig() {
         wipContent := "[AltTab]`n; PrewarmOnAlt=true`nQuickSwitchMs=25`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
         if (InStr(wipResult, "PrewarmOnAlt=false") && !InStr(wipResult, "; PrewarmOnAlt=")) {
@@ -186,7 +186,7 @@ RunUnitTests_CoreConfig() {
         wipContent := "; Alt-Tabby Config`n`n[AltTab]`n; A comment about prewarm`nPrewarmOnAlt=true`n`n[GUI]`nRowHeight=40`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
         hasHeader := InStr(wipResult, "; Alt-Tabby Config")
@@ -208,7 +208,7 @@ RunUnitTests_CoreConfig() {
         wipContent := "[AltTab]`nPrewarmOnAlt=true`n[GUI]`nRowHeight=40`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        _CL_WriteIniPreserveFormat(testWipPath, "AltTab", "NewBool", false, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "NewBool", false, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
         ; NewBool equals default (false == true? No - false != true), so it should be uncommented

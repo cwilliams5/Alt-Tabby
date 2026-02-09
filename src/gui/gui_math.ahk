@@ -28,7 +28,7 @@ Win_Wrap1(i, count) {
 
 ; Shared layout metrics cache - used by gui_paint.ahk and gui_input.ahk
 ; Only recalculates when scale changes (avoids 13+ Round() calls per frame)
-_GUI_GetCachedLayout(scale) {
+GUI_GetCachedLayout(scale) {
     global cfg
     global PAINT_HDR_Y_DIP, PAINT_TITLE_Y_DIP, PAINT_TITLE_H_DIP
     global PAINT_SUB_Y_DIP, PAINT_SUB_H_DIP, PAINT_COL_Y_DIP, PAINT_COL_H_DIP

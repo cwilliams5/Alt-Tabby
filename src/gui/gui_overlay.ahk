@@ -42,7 +42,7 @@ GUI_HideOverlay() {
     ; Periodically trim diagnostic logs (every 10 hide cycles)
     gGUI_HideCount += 1
     if (Mod(gGUI_HideCount, 10) = 0) {
-        _Paint_LogTrim()
+        Paint_LogTrim()
         if (cfg.DiagEventLog)
             LogTrim(LOG_PATH_EVENTS)
     }

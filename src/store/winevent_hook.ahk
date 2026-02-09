@@ -385,7 +385,7 @@ _WEH_ProcessBatch() {
 
     if (_WEH_PendingHwnds.Count = 0) {
         ; Focus-only path: push if focus change bumped rev (no structural changes pending)
-        _WEH_PushIfRevChanged()
+        WEH_PushIfRevChanged()
         return
     }
 
@@ -467,7 +467,7 @@ _WEH_ProcessBatch() {
     hasRecords := (toProcess.Length > 0 && IsSet(records) && records.Length > 0)  ; lint-ignore: isset-with-default
     if (destroyed.Length > 0 || hasRecords) {
         isStructural := destroyed.Length > 0 || zSnapshot.Count > 0
-        _WEH_PushIfRevChanged(isStructural)
+        WEH_PushIfRevChanged(isStructural)
     }
 }
 
@@ -477,7 +477,7 @@ _WEH_ProcessBatch() {
 ;   isStructural - true for focus/create/destroy/Z-affecting changes (push immediately)
 ;                  false for cosmetic-only changes like title updates (throttled)
 ;                  Default true so the focus-only path at line 333 always pushes immediately.
-_WEH_PushIfRevChanged(isStructural := true) {
+WEH_PushIfRevChanged(isStructural := true) {
     global gStore_LastBroadcastRev, _WEH_LastCosmeticPushTick, cfg
     ; RACE FIX: Wrap read-check-write-push in Critical to prevent two timers
     ; from both reading same old rev and both pushing (duplicate broadcast)

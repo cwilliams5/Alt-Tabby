@@ -298,11 +298,11 @@ RunUnitTests_Stats() {
 
     ; Test seconds
     try {
-        if (_Stats_FormatDuration(45) = "45s") {
+        if (Stats_FormatDuration(45) = "45s") {
             Log("PASS: FormatDuration(45) = 45s")
             TestPassed++
         } else {
-            Log("FAIL: FormatDuration(45) = " _Stats_FormatDuration(45) " (expected 45s)")
+            Log("FAIL: FormatDuration(45) = " Stats_FormatDuration(45) " (expected 45s)")
             TestErrors++
         }
     } catch as e {
@@ -312,11 +312,11 @@ RunUnitTests_Stats() {
 
     ; Test minutes
     try {
-        if (_Stats_FormatDuration(720) = "12m") {
+        if (Stats_FormatDuration(720) = "12m") {
             Log("PASS: FormatDuration(720) = 12m")
             TestPassed++
         } else {
-            Log("FAIL: FormatDuration(720) = " _Stats_FormatDuration(720) " (expected 12m)")
+            Log("FAIL: FormatDuration(720) = " Stats_FormatDuration(720) " (expected 12m)")
             TestErrors++
         }
     } catch as e {
@@ -326,11 +326,11 @@ RunUnitTests_Stats() {
 
     ; Test hours + minutes
     try {
-        if (_Stats_FormatDuration(8100) = "2h 15m") {
+        if (Stats_FormatDuration(8100) = "2h 15m") {
             Log("PASS: FormatDuration(8100) = 2h 15m")
             TestPassed++
         } else {
-            Log("FAIL: FormatDuration(8100) = " _Stats_FormatDuration(8100) " (expected 2h 15m)")
+            Log("FAIL: FormatDuration(8100) = " Stats_FormatDuration(8100) " (expected 2h 15m)")
             TestErrors++
         }
     } catch as e {
@@ -340,7 +340,7 @@ RunUnitTests_Stats() {
 
     ; Test days + hours
     try {
-        result := _Stats_FormatDuration(273600)  ; 3d 4h = 3*86400 + 4*3600
+        result := Stats_FormatDuration(273600)  ; 3d 4h = 3*86400 + 4*3600
         if (result = "3d 4h") {
             Log("PASS: FormatDuration(273600) = 3d 4h")
             TestPassed++
@@ -355,7 +355,7 @@ RunUnitTests_Stats() {
 
     ; Test year tier: 400 days = 1y 35d
     try {
-        result := _Stats_FormatDuration(86400 * 400)
+        result := Stats_FormatDuration(86400 * 400)
         if (result = "1y 35d") {
             Log("PASS: FormatDuration(400 days) = 1y 35d")
             TestPassed++
@@ -370,7 +370,7 @@ RunUnitTests_Stats() {
 
     ; Test exact year: 365 days = 1y
     try {
-        result := _Stats_FormatDuration(86400 * 365)
+        result := Stats_FormatDuration(86400 * 365)
         if (result = "1y") {
             Log("PASS: FormatDuration(365 days) = 1y")
             TestPassed++
@@ -385,11 +385,11 @@ RunUnitTests_Stats() {
 
     ; Test zero
     try {
-        if (_Stats_FormatDuration(0) = "0s") {
+        if (Stats_FormatDuration(0) = "0s") {
             Log("PASS: FormatDuration(0) = 0s")
             TestPassed++
         } else {
-            Log("FAIL: FormatDuration(0) = " _Stats_FormatDuration(0) " (expected 0s)")
+            Log("FAIL: FormatDuration(0) = " Stats_FormatDuration(0) " (expected 0s)")
             TestErrors++
         }
     } catch as e {

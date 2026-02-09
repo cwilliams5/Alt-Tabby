@@ -17,8 +17,8 @@ global g_WizardShuttingDown := false  ; Shutdown coordination flag
 
 ; Mark first-run as completed and record exe path
 _WizardMarkComplete() {
-    _Setup_SetFirstRunCompleted(true)
-    _Setup_SetExePath(A_ScriptFullPath)
+    Setup_SetFirstRunCompleted(true)
+    Setup_SetExePath(A_ScriptFullPath)
 }
 
 ShowFirstRunWizard() {
@@ -96,7 +96,7 @@ _Wizard_LoadLogo(wg) {
         return
     }
 
-    pBitmap := _Splash_LoadBitmapFromResource(10)  ; ID 10 = logo.png
+    pBitmap := Splash_LoadBitmapFromResource(10)  ; ID 10 = logo.png
     if (!pBitmap) {
         DllCall("gdiplus\GdiplusShutdown", "ptr", token)
         DllCall("FreeLibrary", "ptr", hModule)
@@ -104,7 +104,7 @@ _Wizard_LoadLogo(wg) {
     }
 
     ; High-quality resize (707x548 -> 116x90)
-    pThumb := _GdipResizeHQ(pBitmap, 116, 90)
+    pThumb := GdipResizeHQ(pBitmap, 116, 90)
     srcBitmap := pThumb ? pThumb : pBitmap
 
     ; Convert to HBITMAP with theme-aware background color
@@ -171,7 +171,7 @@ WizardApply(*) {
         ; Self-elevate and continue wizard
         ; User may cancel UAC - handle gracefully
         try {
-            if (!_Launcher_RunAsAdmin("--wizard-continue"))
+            if (!Launcher_RunAsAdmin("--wizard-continue"))
                 throw Error("RunAsAdmin failed")
 
             g_WizardGui.Destroy()
@@ -243,7 +243,7 @@ WizardContinue() {
     if (installedPath != "") {
         if (cfg.SetupRunAsAdmin && AdminTaskExists()) {
             ; Launch via schtasks for immediate elevation (avoids intermediate non-elevated hop)
-            exitCode := _RunAdminTask(TIMING_TASK_READY_WAIT)
+            exitCode := RunAdminTask(TIMING_TASK_READY_WAIT)
             if (exitCode != 0)
                 Run('"' installedPath '"')  ; Fallback to direct launch
         } else {
@@ -266,7 +266,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     installSucceeded := false
 
     ; Step 1: Install to Program Files (if selected)
-    ; Uses _Update_ApplyCore() — same code path as tray/dashboard install and auto-update
+    ; Uses Update_ApplyCore() — same code path as tray/dashboard install and auto-update
     if (install) {
         targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
         if (PathsEqual(A_ScriptDir, ALTTABBY_INSTALL_DIR)) {
@@ -275,7 +275,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         } else {
             installOk := false
             try {
-                _Update_ApplyCore({
+                Update_ApplyCore({
                     sourcePath: A_ScriptFullPath,
                     targetPath: targetPath,
                     useLockFile: false,
@@ -299,7 +299,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
 
                 ; Ensure PF config has our InstallationId (may differ if PF had existing config)
                 if (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
-                    _Setup_SetInstallationId(cfg.SetupInstallationId)
+                    Setup_SetInstallationId(cfg.SetupInstallationId)
             }
         }
     }
@@ -325,7 +325,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
 
             if (admin) {
                 if (CreateAdminTask(exePath)) {
-                    _Setup_SetRunAsAdmin(true)
+                    Setup_SetRunAsAdmin(true)
                 } else {
                     ; Task creation failed - notify user
                     ThemeMsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", APP_NAME, "Icon!")
@@ -340,10 +340,10 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
 
     ; Step 3: Save config
     cfg.SetupAutoUpdateCheck := autoUpdate
-    _Setup_SetFirstRunCompleted(true)
-    _Setup_SetExePath(exePath)
-    _Setup_SetRunAsAdmin(admin)
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", autoUpdate, true, "bool")
+    Setup_SetFirstRunCompleted(true)
+    Setup_SetExePath(exePath)
+    Setup_SetRunAsAdmin(admin)
+    CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", autoUpdate, true, "bool")
 
     ; Step 4: Create shortcuts AFTER admin mode is set (so they point correctly)
     ; Warn if shortcuts will point to a temporary location (unless PF install succeeded)
@@ -354,9 +354,9 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         }
     }
     if (startMenu)
-        _CreateShortcutForCurrentMode(_Shortcut_GetStartMenuPath())
+        CreateShortcutForCurrentMode(Shortcut_GetStartMenuPath())
     if (startup)
-        _CreateShortcutForCurrentMode(_Shortcut_GetStartupPath())
+        CreateShortcutForCurrentMode(Shortcut_GetStartupPath())
 
     return installedElsewhere
 }

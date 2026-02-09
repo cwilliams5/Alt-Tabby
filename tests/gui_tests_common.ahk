@@ -160,11 +160,11 @@ GUI_GetVisibleRows() {
 ; Paint timing log mocks (gui_paint.ahk not included in tests)
 global gPaint_LastPaintTick := 0
 global gPaint_SessionPaintCount := 0
-_Paint_Log(msg) {
+Paint_Log(msg) {
 }
-_Paint_LogTrim() {
+Paint_LogTrim() {
 }
-_Paint_LogStartSession() {
+Paint_LogStartSession() {
 }
 
 Win_DwmFlush() {
@@ -186,7 +186,7 @@ IPC_PipeClient_Send(client, msgText, wakeHwnd := 0) {
 
 ; IPC polling mock (used by active-polling optimizations)
 global IPC_TICK_ACTIVE := 15
-_IPC_SetClientTick(client, ms) {
+IPC_SetClientTick(client, ms) {
 }
 
 ; Interceptor mocks (gui_interceptor.ahk functions - we don't include that file because it has hotkeys)

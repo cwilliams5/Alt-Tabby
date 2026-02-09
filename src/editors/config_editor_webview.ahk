@@ -67,7 +67,7 @@
 ;    is off-screen at x=-32000 and you compute center via MonitorGetWorkArea
 ;    or A_ScreenWidth, the DPI double-scaling puts it in the wrong position.
 ;    FIX: Use GetMonitorInfoW + GetWindowRect + SetWindowPos — all in physical
-;    pixels, bypassing AHK's DPI layer. See _GUI_AntiFlashReveal() in
+;    pixels, bypassing AHK's DPI layer. See GUI_AntiFlashReveal() in
 ;    gui_antiflash.ahk.
 ;
 ; ============================================================
@@ -91,7 +91,7 @@ global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage 
 ; Run the WebView2 config editor
 ; launcherHwnd: HWND of launcher process for WM_COPYDATA restart signal (0 = standalone)
 ; Returns: true if changes were saved, false otherwise
-_CE_RunWebView2(launcherHwnd := 0) {
+CE_RunWebView2(launcherHwnd := 0) {
     global gCEW_Gui, gCEW_Controller, gCEW_WebView, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
     global gCEW_MessageHandler
     global gConfigLoaded, CEW_RES_WEBVIEW2_DLL, CEW_RES_EDITOR_HTML
@@ -137,7 +137,7 @@ _CE_RunWebView2(launcherHwnd := 0) {
     gCEW_Gui.OnEvent("Close", _CEW_OnClose)
     gCEW_Gui.OnEvent("Size", _CEW_OnSize)
     Theme_ApplyToGui(gCEW_Gui)
-    _GUI_AntiFlashPrepare(gCEW_Gui, Theme_GetBgColor(), false)
+    GUI_AntiFlashPrepare(gCEW_Gui, Theme_GetBgColor(), false)
     gCEW_Gui.Show("x-32000 y-32000 w900 h650")
 
     ; Safety: reveal after 3s even if "ready" never fires (WebView2 error, etc.)
@@ -332,7 +332,7 @@ _CEW_SerializeCurrentValues() {
         if (iniVal = "")
             val := entry.default
         else
-            val := _CL_ParseValue(iniVal, entry.t)
+            val := CL_ParseValue(iniVal, entry.t)
 
         values[entry.g] := val
     }
@@ -340,7 +340,7 @@ _CEW_SerializeCurrentValues() {
 }
 
 _CEW_ApplyChanges(changes) {
-    _CL_SaveChanges(changes)
+    CL_SaveChanges(changes)
 }
 
 ; ============================================================
@@ -375,7 +375,7 @@ _CEW_RevealWindow() {
         return
     try {
         SetTimer(_CEW_ForceReveal, 0)  ; Cancel safety timer
-        _GUI_AntiFlashReveal(gCEW_Gui, false, true)
+        GUI_AntiFlashReveal(gCEW_Gui, false, true)
     }
 }
 

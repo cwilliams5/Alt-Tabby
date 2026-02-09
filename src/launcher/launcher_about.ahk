@@ -57,7 +57,7 @@ ShowDashboardDialog() {
     g_DashControls := {}
 
     dg := Gui("", "Alt-Tabby Dashboard")
-    _GUI_AntiFlashPrepare(dg, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(dg, Theme_GetBgColor(), true)
     dg.SetFont("s10", "Segoe UI")
     dg.MarginX := 20
     dg.MarginY := 15
@@ -95,11 +95,11 @@ ShowDashboardDialog() {
     dg.SetFont("s9")
 
     g_DashControls.chkStartMenu := dg.AddCheckbox("x400 y35 w340", "Add to Start Menu")
-    g_DashControls.chkStartMenu.Value := _Shortcut_StartMenuExists() ? 1 : 0
+    g_DashControls.chkStartMenu.Value := Shortcut_StartMenuExists() ? 1 : 0
     g_DashControls.chkStartMenu.OnEvent("Click", _Dash_OnStartMenuChk)
 
     g_DashControls.chkStartup := dg.AddCheckbox("x400 y59 w340", "Run at Startup")
-    g_DashControls.chkStartup.Value := _Shortcut_StartupExists() ? 1 : 0
+    g_DashControls.chkStartup.Value := Shortcut_StartupExists() ? 1 : 0
     g_DashControls.chkStartup.OnEvent("Click", _Dash_OnStartupChk)
 
     g_DashControls.chkAutoUpdate := dg.AddCheckbox("x400 y83 w340", "Auto-check for Updates")
@@ -120,9 +120,9 @@ ShowDashboardDialog() {
     Theme_ApplyToControl(btnEditBlacklist, "Button", themeEntry)
 
     ; Install to Program Files (action or status label)
-    if (A_IsCompiled && !_IsInProgramFiles()) {
+    if (A_IsCompiled && !IsInProgramFiles()) {
         g_DashControls.installPFBtn := dg.AddButton("x640 y107 w115 h26", "Install to PF...")
-        g_DashControls.installPFBtn.OnEvent("Click", (*) => _Tray_InstallToProgramFiles())
+        g_DashControls.installPFBtn.OnEvent("Click", (*) => Tray_InstallToProgramFiles())
         Theme_ApplyToControl(g_DashControls.installPFBtn, "Button", themeEntry)
     } else if (A_IsCompiled) {
         pfLabel := dg.AddText("x640 y112 w115 h20 +0x100 c" Theme_GetMutedColor(), Chr(0x2713) " Program Files")
@@ -312,37 +312,37 @@ ShowDashboardDialog() {
     dg.OnEvent("Escape", _Dash_OnClose)
 
     ; ---- Tooltips ----
-    hTT := _Dash_CreateTooltipCtl(dg.Hwnd)
+    hTT := Dash_CreateTooltipCtl(dg.Hwnd)
     g_DashControls.hTooltip := hTT
     if (hTT) {
         ; Header links
-        _Dash_SetTip(hTT, lnkGithub, "Open the project page on GitHub")
-        _Dash_SetTip(hTT, lnkOptions, "View all configuration options on GitHub")
+        Dash_SetTip(hTT, lnkGithub, "Open the project page on GitHub")
+        Dash_SetTip(hTT, lnkOptions, "View all configuration options on GitHub")
 
         ; Settings
-        _Dash_SetTip(hTT, g_DashControls.chkStartMenu, "Create a shortcut in the Windows Start Menu")
-        _Dash_SetTip(hTT, g_DashControls.chkStartup, "Launch Alt-Tabby automatically when you log in")
-        _Dash_SetTip(hTT, g_DashControls.chkAutoUpdate, "Check GitHub for new releases on startup")
-        _Dash_SetTip(hTT, btnEditConfig, "Open the configuration file editor")
-        _Dash_SetTip(hTT, btnEditBlacklist, "Open the window blacklist editor")
+        Dash_SetTip(hTT, g_DashControls.chkStartMenu, "Create a shortcut in the Windows Start Menu")
+        Dash_SetTip(hTT, g_DashControls.chkStartup, "Launch Alt-Tabby automatically when you log in")
+        Dash_SetTip(hTT, g_DashControls.chkAutoUpdate, "Check GitHub for new releases on startup")
+        Dash_SetTip(hTT, btnEditConfig, "Open the configuration file editor")
+        Dash_SetTip(hTT, btnEditBlacklist, "Open the window blacklist editor")
         if (g_DashControls.HasOwnProp("installPFBtn"))
-            _Dash_SetTip(hTT, g_DashControls.installPFBtn, "Install Alt-Tabby to Program Files`nRequires administrator privileges")
+            Dash_SetTip(hTT, g_DashControls.installPFBtn, "Install Alt-Tabby to Program Files`nRequires administrator privileges")
 
         ; Statistics
         if (cfg.StatsTrackingEnabled && IsSet(btnMoreStats))
-            _Dash_SetTip(hTT, btnMoreStats, "View all lifetime, session, and derived statistics")
+            Dash_SetTip(hTT, btnMoreStats, "View all lifetime, session, and derived statistics")
 
         ; Diagnostics — static tooltips on labels (SS_NOTIFY enables mouse tracking)
-        _Dash_SetTip(hTT, ctlBuildInfo
+        Dash_SetTip(hTT, ctlBuildInfo
             , "Build type and privilege level`n"
             . "Compiled = running from AltTabby.exe`n"
             . "Development = running from AHK source")
         escalateTip := A_IsAdmin ? "Restart without administrator elevation" : "Restart with administrator elevation (UAC prompt)"
-        _Dash_SetTip(hTT, btnEscalate, escalateTip)
-        _Dash_SetTip(hTT, g_DashControls.storeText
+        Dash_SetTip(hTT, btnEscalate, escalateTip)
+        Dash_SetTip(hTT, g_DashControls.storeText
             , "The WindowStore server tracks all open windows and`n"
             . "serves data to the GUI and other subscribers via named pipes")
-        _Dash_SetTip(hTT, g_DashControls.producerText
+        Dash_SetTip(hTT, g_DashControls.producerText
             , "Status of store data producers`n"
             . "WEH = Window Event Hook (tracks focus, title, window changes)`n"
             . "KS = Komorebi Subscription (workspace events from komorebi)`n"
@@ -350,26 +350,26 @@ ShowDashboardDialog() {
             . "IP = Icon Pump (resolves window icons asynchronously)`n"
             . "PP = Process Pump (resolves process names asynchronously)`n"
             . "MRU = MRU Tracker (focus tracking fallback if WEH fails)")
-        _Dash_SetTip(hTT, g_DashControls.guiText
+        Dash_SetTip(hTT, g_DashControls.guiText
             , "The Alt+Tab overlay — handles keyboard hooks,`n"
             . "window selection, and rendering")
-        _Dash_SetTip(hTT, g_DashControls.configText
+        Dash_SetTip(hTT, g_DashControls.configText
             , "Editor subprocess for modifying config.ini settings")
-        _Dash_SetTip(hTT, g_DashControls.blacklistText
+        Dash_SetTip(hTT, g_DashControls.blacklistText
             , "Editor subprocess for managing the window filter blacklist")
-        _Dash_SetTip(hTT, g_DashControls.viewerText
+        Dash_SetTip(hTT, g_DashControls.viewerText
             , "Debug viewer — displays live window data from the`n"
             . "WindowStore for troubleshooting")
-        _Dash_SetTip(hTT, ctlInstallInfo
+        Dash_SetTip(hTT, ctlInstallInfo
             , "Directory where Alt-Tabby is installed or running from")
-        _Dash_SetTip(hTT, ctlAdminTask
+        Dash_SetTip(hTT, ctlAdminTask
             , "Windows Task Scheduler task that allows Alt-Tabby`n"
             . "to run with administrator privileges without UAC prompts")
-        _Dash_SetTip(hTT, g_DashControls.komorebiText
+        Dash_SetTip(hTT, g_DashControls.komorebiText
             , "Komorebi tiling window manager — when running,`n"
             . "provides workspace data for filtering and labeling windows")
-        _Dash_SetTip(hTT, g_DashControls.updateText, "Update status — auto-checks when stale (12+ hours)")
-        _Dash_SetTip(hTT, btnClose, "Close the dashboard")
+        Dash_SetTip(hTT, g_DashControls.updateText, "Update status — auto-checks when stale (12+ hours)")
+        Dash_SetTip(hTT, btnClose, "Close the dashboard")
 
         ; Dynamic tooltips — must match current button state
         storeRunning := LauncherUtils_IsRunning(g_StorePID)
@@ -377,17 +377,17 @@ ShowDashboardDialog() {
         configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
         blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
         viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-        _Dash_SetTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
-        _Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
-        _Dash_SetTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
-        _Dash_SetTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
-        _Dash_SetTip(hTT, g_DashControls.viewerBtn, viewerRunning ? "Restart the debug viewer" : "Open the debug viewer")
-        _Dash_SetTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
+        Dash_SetTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
+        Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
+        Dash_SetTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
+        Dash_SetTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
+        Dash_SetTip(hTT, g_DashControls.viewerBtn, viewerRunning ? "Restart the debug viewer" : "Open the debug viewer")
+        Dash_SetTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
     }
 
     g_DashboardGui := dg
     dg.Show("w780")
-    _GUI_AntiFlashReveal(dg, true)
+    GUI_AntiFlashReveal(dg, true)
     btnClose.Focus()
 
     ; Start background refresh in cool mode (no interaction yet)
@@ -395,11 +395,11 @@ ShowDashboardDialog() {
 
     ; Query producer status if store is running but cache is empty
     if (LauncherUtils_IsRunning(g_StorePID) && g_ProducerStatusCache = "")
-        SetTimer(_Dash_QueryProducerStatus, -2000)
+        SetTimer(Dash_QueryProducerStatus, -2000)
 
     ; Query stats if store is running and tracking is enabled
     if (LauncherUtils_IsRunning(g_StorePID) && cfg.StatsTrackingEnabled)
-        SetTimer(_Dash_QueryStats, -500)
+        SetTimer(Dash_QueryStats, -500)
 
     ; Auto-check if stale (never checked, or >12h ago)
     _Dash_MaybeCheckForUpdates()
@@ -473,13 +473,13 @@ _Dash_OnUpdateBtn(*) {
         url := g_DashUpdateState.downloadUrl
         ver := g_DashUpdateState.version
         _Dash_OnClose()
-        _Update_DownloadAndApply(url, ver)
+        Update_DownloadAndApply(url, ver)
     } else {
         ; Check mode — trigger async version check
         g_DashUpdateState.status := "checking"
         g_DashUpdateState.version := ""
         g_DashUpdateState.downloadUrl := ""
-        _Dash_StartRefreshTimer()
+        Dash_StartRefreshTimer()
         SetTimer(_Dash_CheckForUpdatesAsync, -1)
     }
 }
@@ -502,7 +502,7 @@ _Dash_OnClose(*) {
 ; Always-on timer while dialog is open. Interactions boost to
 ; hot (250ms), decays to warm (1s) then cool (5s).
 
-_Dash_StartRefreshTimer() {
+Dash_StartRefreshTimer() {
     global g_DashboardGui, g_DashRefreshTick, DASH_INTERVAL_HOT
     if (!g_DashboardGui)
         return
@@ -541,7 +541,7 @@ _Dash_RefreshDynamic() {
     if (cfg.StatsTrackingEnabled && LauncherUtils_IsRunning(g_StorePID)
         && nextInterval <= DASH_INTERVAL_WARM
         && (A_TickCount - g_StatsLastQueryTick) >= DASH_STATS_QUERY_INTERVAL)
-        SetTimer(_Dash_QueryStats, -1)
+        SetTimer(Dash_QueryStats, -1)
 
     ; Build new state snapshot — compute all values before touching any controls
     storeRunning := LauncherUtils_IsRunning(g_StorePID)
@@ -572,8 +572,8 @@ _Dash_RefreshDynamic() {
         "viewerText", "Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running"),
         "viewerBtn", viewerRunning ? "Restart" : "Launch",
         "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
-        "chkStartMenu", _Shortcut_StartMenuExists() ? 1 : 0,
-        "chkStartup", _Shortcut_StartupExists() ? 1 : 0,
+        "chkStartMenu", Shortcut_StartMenuExists() ? 1 : 0,
+        "chkStartup", Shortcut_StartupExists() ? 1 : 0,
         "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0,
         "producerDotColor", prodDotColor,
         "producerDotText", hasProd ? dot : "",
@@ -586,12 +586,12 @@ _Dash_RefreshDynamic() {
     ; Add stats fields if tracking is enabled and controls exist
     if (g_DashControls.HasOwnProp("statsSessionTime")) {
         if (IsObject(g_StatsCache)) {
-            newState["statsSessionTime"] := _Stats_FormatDuration(_Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
-            newState["statsSessionAltTabs"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "SessionAltTabs"))
-            newState["statsSessionQuick"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "SessionQuickSwitches"))
-            newState["statsLifetimeTime"] := _Stats_FormatDuration(_Stats_MapGet(g_StatsCache, "TotalRunTimeSec") + _Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
-            newState["statsLifetimeAltTabs"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "TotalAltTabs"))
-            newState["statsLifetimeQuick"] := _Stats_FormatNumber(_Stats_MapGet(g_StatsCache, "TotalQuickSwitches"))
+            newState["statsSessionTime"] := Stats_FormatDuration(Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
+            newState["statsSessionAltTabs"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "SessionAltTabs"))
+            newState["statsSessionQuick"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "SessionQuickSwitches"))
+            newState["statsLifetimeTime"] := Stats_FormatDuration(Stats_MapGet(g_StatsCache, "TotalRunTimeSec") + Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
+            newState["statsLifetimeAltTabs"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "TotalAltTabs"))
+            newState["statsLifetimeQuick"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "TotalQuickSwitches"))
         } else {
             newState["statsSessionTime"] := "..."
             newState["statsSessionAltTabs"] := "..."
@@ -753,7 +753,7 @@ _Dash_MaybeCheckForUpdates() {
     ; Check if never checked or stale (>12h)
     if (g_LastUpdateCheckTick = 0 || (A_TickCount - g_LastUpdateCheckTick) >= DASH_UPDATE_STALE_MS) {
         g_DashUpdateState.status := "checking"
-        _Dash_StartRefreshTimer()
+        Dash_StartRefreshTimer()
         SetTimer(_Dash_CheckForUpdatesAsync, -1)
     }
 }
@@ -762,7 +762,7 @@ _Dash_CheckForUpdatesAsync() {
     global g_DashboardGui
     CheckForUpdates(false, false)
     if (g_DashboardGui)
-        _Dash_StartRefreshTimer()
+        Dash_StartRefreshTimer()
 }
 
 ; ============================================================
@@ -795,7 +795,7 @@ _Dash_LoadLogo(dg) {
         return false
     }
 
-    pBitmap := _Splash_LoadBitmapFromResource(RES_ID_LOGO)
+    pBitmap := Splash_LoadBitmapFromResource(RES_ID_LOGO)
     if (!pBitmap) {
         DllCall("gdiplus\GdiplusShutdown", "ptr", token)
         DllCall("FreeLibrary", "ptr", hModule)
@@ -803,7 +803,7 @@ _Dash_LoadLogo(dg) {
     }
 
     ; High-quality resize preserving aspect ratio (707x548 -> 116x90)
-    pThumb := _GdipResizeHQ(pBitmap, 116, 90)
+    pThumb := GdipResizeHQ(pBitmap, 116, 90)
     srcBitmap := pThumb ? pThumb : pBitmap
 
     ; Convert to HBITMAP with theme-aware background color
@@ -885,10 +885,10 @@ _Dash_GetAdminTaskInfo() {
     if (!AdminTaskExists())
         return "Not configured"
 
-    if (_AdminTask_PointsToUs())
+    if (AdminTask_PointsToUs())
         return "Active (points to this exe)"
 
-    taskPath := _AdminTask_GetCommandPath()
+    taskPath := AdminTask_GetCommandPath()
     if (taskPath != "")
         return "Active (points to: " taskPath ")"
 
@@ -908,7 +908,7 @@ _Dash_GetKomorebiInfo() {
 ; Connects to store pipe, requests producer status, caches result.
 ; Called on a delayed timer after store launch/restart.
 
-_Dash_QueryProducerStatus() {
+Dash_QueryProducerStatus() {
     global g_ProducerStatusCache, g_ProducerHasFailed, cfg
     global IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
 
@@ -972,7 +972,7 @@ _Dash_QueryProducerStatus() {
             obj := JSON.Load(line)
             if (obj.Has("type") && obj["type"] = IPC_MSG_PRODUCER_STATUS && obj.Has("producers")) {
                 g_ProducerStatusCache := _Dash_FormatProducerStatus(obj["producers"])
-                _Dash_StartRefreshTimer()
+                Dash_StartRefreshTimer()
                 return
             }
         }
@@ -1022,7 +1022,7 @@ _Dash_FormatProducerStatus(producers) {
 ; Connects to store pipe, requests stats, caches result.
 ; Called on dashboard open and periodically during HOT/WARM refresh.
 
-_Dash_QueryStats() {
+Dash_QueryStats() {
     global g_StatsCache, g_StatsLastQueryTick, cfg
     global IPC_MSG_STATS_REQUEST, IPC_MSG_STATS_RESPONSE
 
@@ -1085,7 +1085,7 @@ _Dash_QueryStats() {
             obj := JSON.Load(line)
             if (obj.Has("type") && obj["type"] = IPC_MSG_STATS_RESPONSE) {
                 g_StatsCache := obj
-                _Dash_StartRefreshTimer()
+                Dash_StartRefreshTimer()
                 return
             }
         }
@@ -1097,14 +1097,14 @@ _Dash_QueryStats() {
 ; ============================================================
 
 ; Safely get a numeric value from a Map (returns 0 if missing or not a Map)
-_Stats_MapGet(m, key) {
+Stats_MapGet(m, key) {
     if (!IsObject(m))
         return 0
     return m.Has(key) ? m[key] : 0
 }
 
 ; Format seconds into human-readable duration: "5s", "12m", "2h 15m", "3d 4h", "1y 42d"
-_Stats_FormatDuration(totalSec) {
+Stats_FormatDuration(totalSec) {
     totalSec := Integer(totalSec)
     if (totalSec < 60)
         return totalSec "s"
@@ -1134,7 +1134,7 @@ _Stats_FormatDuration(totalSec) {
 }
 
 ; Format an integer with comma separators: 47832 → "47,832"
-_Stats_FormatNumber(n) {
+Stats_FormatNumber(n) {
     s := String(Integer(n))
     len := StrLen(s)
     if (len <= 3)
@@ -1154,7 +1154,7 @@ _Stats_FormatNumber(n) {
 ; ============================================================
 
 ; Create a tooltip control attached to a parent window
-_Dash_CreateTooltipCtl(hwndParent) {
+Dash_CreateTooltipCtl(hwndParent) {
     hTT := DllCall("CreateWindowEx"
         , "uint", 0x8          ; WS_EX_TOPMOST
         , "str", "tooltips_class32"
@@ -1176,7 +1176,7 @@ _Dash_CreateTooltipCtl(hwndParent) {
 }
 
 ; Associate a tooltip string with a GUI control
-_Dash_SetTip(hTT, ctl, text) {
+Dash_SetTip(hTT, ctl, text) {
     ; TOOLINFOW struct offsets (platform-dependent)
     ptrOff := A_PtrSize = 8 ? 16 : 12     ; uId
     textOff := A_PtrSize = 8 ? 48 : 36    ; lpszText

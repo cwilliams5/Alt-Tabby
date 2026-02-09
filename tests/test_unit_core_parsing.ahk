@@ -348,19 +348,19 @@ RunUnitTests_CoreParsing() {
     ; ============================================================
     Log("`n--- Safe Navigation Helper Tests ---")
 
-    ; Test _KSafe_Elements with valid ring
+    ; Test KSafe_Elements with valid ring
     validRing := Map("elements", [1, 2, 3], "focused", 1)
-    elResult := _KSafe_Elements(validRing)
-    AssertEq(elResult.Length, 3, "_KSafe_Elements valid ring")
+    elResult := KSafe_Elements(validRing)
+    AssertEq(elResult.Length, 3, "KSafe_Elements valid ring")
 
-    ; Test _KSafe_Elements with empty Map
-    AssertEq(_KSafe_Elements(Map()).Length, 0, "_KSafe_Elements empty Map")
+    ; Test KSafe_Elements with empty Map
+    AssertEq(KSafe_Elements(Map()).Length, 0, "KSafe_Elements empty Map")
 
-    ; Test _KSafe_Elements with non-Map
-    AssertEq(_KSafe_Elements("not a map").Length, 0, "_KSafe_Elements non-Map")
+    ; Test KSafe_Elements with non-Map
+    AssertEq(KSafe_Elements("not a map").Length, 0, "KSafe_Elements non-Map")
 
-    ; Test _KSafe_Elements with Map without "elements" key
-    AssertEq(_KSafe_Elements(Map("other", 1)).Length, 0, "_KSafe_Elements no elements key")
+    ; Test KSafe_Elements with Map without "elements" key
+    AssertEq(KSafe_Elements(Map("other", 1)).Length, 0, "KSafe_Elements no elements key")
 
     ; Test _KSafe_Focused with valid ring
     AssertEq(_KSafe_Focused(validRing), 1, "_KSafe_Focused valid ring")
@@ -371,28 +371,28 @@ RunUnitTests_CoreParsing() {
     ; Test _KSafe_Focused with non-Map
     AssertEq(_KSafe_Focused(42), -1, "_KSafe_Focused non-Map")
 
-    ; Test _KSafe_Str with valid key
+    ; Test KSafe_Str with valid key
     testMap2 := Map("name", "TestWorkspace", "count", 5)
-    AssertEq(_KSafe_Str(testMap2, "name"), "TestWorkspace", "_KSafe_Str valid string")
+    AssertEq(KSafe_Str(testMap2, "name"), "TestWorkspace", "KSafe_Str valid string")
 
-    ; Test _KSafe_Str with integer value (should convert to string)
-    result := _KSafe_Str(testMap2, "count")
-    AssertEq(result, "5", "_KSafe_Str integer->string conversion")
+    ; Test KSafe_Str with integer value (should convert to string)
+    result := KSafe_Str(testMap2, "count")
+    AssertEq(result, "5", "KSafe_Str integer->string conversion")
 
-    ; Test _KSafe_Str with missing key
-    AssertEq(_KSafe_Str(testMap2, "missing"), "", "_KSafe_Str missing key")
+    ; Test KSafe_Str with missing key
+    AssertEq(KSafe_Str(testMap2, "missing"), "", "KSafe_Str missing key")
 
-    ; Test _KSafe_Str with non-Map
-    AssertEq(_KSafe_Str("string", "key"), "", "_KSafe_Str non-Map")
+    ; Test KSafe_Str with non-Map
+    AssertEq(KSafe_Str("string", "key"), "", "KSafe_Str non-Map")
 
-    ; Test _KSafe_Int with valid key
-    AssertEq(_KSafe_Int(testMap2, "count"), 5, "_KSafe_Int valid integer")
+    ; Test KSafe_Int with valid key
+    AssertEq(KSafe_Int(testMap2, "count"), 5, "KSafe_Int valid integer")
 
-    ; Test _KSafe_Int with missing key
-    AssertEq(_KSafe_Int(testMap2, "missing"), 0, "_KSafe_Int missing key")
+    ; Test KSafe_Int with missing key
+    AssertEq(KSafe_Int(testMap2, "missing"), 0, "KSafe_Int missing key")
 
-    ; Test _KSafe_Int with non-Map
-    AssertEq(_KSafe_Int(42, "key"), 0, "_KSafe_Int non-Map")
+    ; Test KSafe_Int with non-Map
+    AssertEq(KSafe_Int(42, "key"), 0, "KSafe_Int non-Map")
 
     ; ============================================================
     ; cJson Large-Input Correctness (Regression Guard)
@@ -457,7 +457,7 @@ RunUnitTests_CoreParsing() {
             }
 
             ; Navigate to workspace and check "focused"
-            monArr := _KSafe_Elements(monitors)
+            monArr := KSafe_Elements(monitors)
             if (monArr.Length > 0) {
                 wsRing := monArr[1]["workspaces"]
                 if (wsRing is Map && wsRing.Has("focused") && wsRing["focused"] = 2) {
@@ -469,7 +469,7 @@ RunUnitTests_CoreParsing() {
                 }
 
                 ; Check deep window's has_pending_raise_op
-                wsArr := _KSafe_Elements(wsRing)
+                wsArr := KSafe_Elements(wsRing)
                 if (wsArr.Length > 0) {
                     ws0 := wsArr[1]
                     if (ws0 is Map && ws0.Has("has_pending_raise_op")) {
@@ -501,24 +501,24 @@ RunUnitTests_CoreParsing() {
     miniObj := JSON.Load(miniState)
 
     ; Test focused monitor index
-    AssertEq(_KSub_GetFocusedMonitorIndex(miniObj), 0, "Parse+Navigate: focused monitor index")
+    AssertEq(KSub_GetFocusedMonitorIndex(miniObj), 0, "Parse+Navigate: focused monitor index")
 
     ; Test monitors array
-    miniMonArr := _KSub_GetMonitorsArray(miniObj)
+    miniMonArr := KSub_GetMonitorsArray(miniObj)
     AssertEq(miniMonArr.Length, 1, "Parse+Navigate: monitor count")
 
     ; Test focused workspace index
-    AssertEq(_KSub_GetFocusedWorkspaceIndex(miniMonArr[1]), 1, "Parse+Navigate: focused workspace index")
+    AssertEq(KSub_GetFocusedWorkspaceIndex(miniMonArr[1]), 1, "Parse+Navigate: focused workspace index")
 
     ; Test workspace name by index
-    AssertEq(_KSub_GetWorkspaceNameByIndex(miniMonArr[1], 0), "Alpha", "Parse+Navigate: ws 0 name")
-    AssertEq(_KSub_GetWorkspaceNameByIndex(miniMonArr[1], 1), "Beta", "Parse+Navigate: ws 1 name")
+    AssertEq(KSub_GetWorkspaceNameByIndex(miniMonArr[1], 0), "Alpha", "Parse+Navigate: ws 0 name")
+    AssertEq(KSub_GetWorkspaceNameByIndex(miniMonArr[1], 1), "Beta", "Parse+Navigate: ws 1 name")
 
     ; Test FindWorkspaceByHwnd
-    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 111), "Alpha", "Parse+Navigate: hwnd 111 in Alpha")
-    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 222), "Beta", "Parse+Navigate: hwnd 222 in Beta")
-    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 333), "Beta", "Parse+Navigate: hwnd 333 in Beta")
-    AssertEq(_KSub_FindWorkspaceByHwnd(miniObj, 999), "", "Parse+Navigate: hwnd 999 not found")
+    AssertEq(KSub_FindWorkspaceByHwnd(miniObj, 111), "Alpha", "Parse+Navigate: hwnd 111 in Alpha")
+    AssertEq(KSub_FindWorkspaceByHwnd(miniObj, 222), "Beta", "Parse+Navigate: hwnd 222 in Beta")
+    AssertEq(KSub_FindWorkspaceByHwnd(miniObj, 333), "Beta", "Parse+Navigate: hwnd 333 in Beta")
+    AssertEq(KSub_FindWorkspaceByHwnd(miniObj, 999), "", "Parse+Navigate: hwnd 999 not found")
 
     ; Test GetFocusedHwnd (should navigate to Beta ws, focused container 0, focused window 1 = hwnd 333)
     focusedHwnd := _KSub_GetFocusedHwnd(miniObj)
@@ -612,44 +612,44 @@ RunUnitTests_CoreParsing() {
     TestPassed++
 
     ; ============================================================
-    ; _BL_CompileWildcard Regex Metacharacter Escaping Tests
+    ; BL_CompileWildcard Regex Metacharacter Escaping Tests
     ; ============================================================
-    ; Verify that _BL_CompileWildcard correctly escapes regex metacharacters
+    ; Verify that BL_CompileWildcard correctly escapes regex metacharacters
     ; so that literal dots, brackets, pipes, etc. match literally, not as regex operators.
-    Log("`n--- _BL_CompileWildcard Metacharacter Escaping Tests ---")
+    Log("`n--- BL_CompileWildcard Metacharacter Escaping Tests ---")
 
     ; Test: Literal dot should NOT match arbitrary character
-    dotRegex := _BL_CompileWildcard("msedge.exe")
+    dotRegex := BL_CompileWildcard("msedge.exe")
     AssertEq(!!RegExMatch("msedge.exe", dotRegex), true, "Wildcard dot: 'msedge.exe' matches 'msedge.exe'")
     AssertEq(!!RegExMatch("msedgeXexe", dotRegex), false, "Wildcard dot: 'msedgeXexe' must NOT match 'msedge.exe'")
 
     ; Test: Literal brackets should match literally
-    bracketRegex := _BL_CompileWildcard("[Preview]*")
+    bracketRegex := BL_CompileWildcard("[Preview]*")
     AssertEq(!!RegExMatch("[Preview] Document", bracketRegex), true, "Wildcard brackets: '[Preview] Document' matches '[Preview]*'")
     AssertEq(!!RegExMatch("Preview Document", bracketRegex), false, "Wildcard brackets: 'Preview Document' must NOT match '[Preview]*'")
 
     ; Test: Literal pipe should match literally
-    pipeRegex := _BL_CompileWildcard("foo|bar")
+    pipeRegex := BL_CompileWildcard("foo|bar")
     AssertEq(!!RegExMatch("foo|bar", pipeRegex), true, "Wildcard pipe: 'foo|bar' matches 'foo|bar'")
     AssertEq(!!RegExMatch("foo", pipeRegex), false, "Wildcard pipe: 'foo' must NOT match 'foo|bar'")
 
     ; Test: Literal plus should match literally
-    plusRegex := _BL_CompileWildcard("C++")
+    plusRegex := BL_CompileWildcard("C++")
     AssertEq(!!RegExMatch("C++", plusRegex), true, "Wildcard plus: 'C++' matches 'C++'")
     AssertEq(!!RegExMatch("Cxx", plusRegex), false, "Wildcard plus: 'Cxx' must NOT match 'C++'")
 
     ; Test: Literal caret should match literally
-    caretRegex := _BL_CompileWildcard("^test")
+    caretRegex := BL_CompileWildcard("^test")
     AssertEq(!!RegExMatch("^test", caretRegex), true, "Wildcard caret: '^test' matches '^test'")
     AssertEq(!!RegExMatch("test", caretRegex), false, "Wildcard caret: 'test' must NOT match '^test'")
 
     ; Test: Literal parens should match literally
-    parenRegex := _BL_CompileWildcard("(untitled)")
+    parenRegex := BL_CompileWildcard("(untitled)")
     AssertEq(!!RegExMatch("(untitled)", parenRegex), true, "Wildcard parens: '(untitled)' matches '(untitled)'")
     AssertEq(!!RegExMatch("untitled", parenRegex), false, "Wildcard parens: 'untitled' must NOT match '(untitled)'")
 
     ; Test: Wildcard + metachar combined: *.exe
-    wildcardDotRegex := _BL_CompileWildcard("*.exe")
+    wildcardDotRegex := BL_CompileWildcard("*.exe")
     AssertEq(!!RegExMatch("foo.exe", wildcardDotRegex), true, "Wildcard+dot: 'foo.exe' matches '*.exe'")
     AssertEq(!!RegExMatch("fooXexe", wildcardDotRegex), false, "Wildcard+dot: 'fooXexe' must NOT match '*.exe'")
 

@@ -41,7 +41,7 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
     ; Try WebView2 first if not forcing native
     if (!forceNative && ConfigEditor_IsWebView2Available()) {
         try {
-            return _CE_RunWebView2(launcherHwnd)
+            return CE_RunWebView2(launcherHwnd)
         } catch as e {
             ; WebView2 detection succeeded but init failed - fall back to native
             ; This can happen if WebView2 is registered but DLL is missing/corrupt
@@ -49,7 +49,7 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
     }
 
     ; Use native AHK editor
-    return _CE_RunNative(launcherHwnd)
+    return CE_RunNative(launcherHwnd)
 }
 
 ; Check if WebView2 runtime is installed

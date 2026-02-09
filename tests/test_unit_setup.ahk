@@ -232,62 +232,62 @@ RunUnitTests_Setup() {
     ; ============================================================
     Log("`n--- Shortcut Helper Function Tests ---")
 
-    ; Test _Shortcut_GetStartMenuPath
-    Log("Testing _Shortcut_GetStartMenuPath()...")
-    startMenuPath := _Shortcut_GetStartMenuPath()
+    ; Test Shortcut_GetStartMenuPath
+    Log("Testing Shortcut_GetStartMenuPath()...")
+    startMenuPath := Shortcut_GetStartMenuPath()
     if (InStr(startMenuPath, "Start Menu") && InStr(startMenuPath, "Alt-Tabby.lnk")) {
-        Log("PASS: _Shortcut_GetStartMenuPath() returned valid path: " startMenuPath)
+        Log("PASS: Shortcut_GetStartMenuPath() returned valid path: " startMenuPath)
         TestPassed++
     } else {
-        Log("FAIL: _Shortcut_GetStartMenuPath() returned unexpected path: " startMenuPath)
+        Log("FAIL: Shortcut_GetStartMenuPath() returned unexpected path: " startMenuPath)
         TestErrors++
     }
 
-    ; Test _Shortcut_GetStartupPath
-    Log("Testing _Shortcut_GetStartupPath()...")
-    startupPath := _Shortcut_GetStartupPath()
+    ; Test Shortcut_GetStartupPath
+    Log("Testing Shortcut_GetStartupPath()...")
+    startupPath := Shortcut_GetStartupPath()
     if (InStr(startupPath, "Startup") && InStr(startupPath, "Alt-Tabby.lnk")) {
-        Log("PASS: _Shortcut_GetStartupPath() returned valid path: " startupPath)
+        Log("PASS: Shortcut_GetStartupPath() returned valid path: " startupPath)
         TestPassed++
     } else {
-        Log("FAIL: _Shortcut_GetStartupPath() returned unexpected path: " startupPath)
+        Log("FAIL: Shortcut_GetStartupPath() returned unexpected path: " startupPath)
         TestErrors++
     }
 
-    ; Test _Shortcut_GetIconPath
+    ; Test Shortcut_GetIconPath
     ; In dev mode: returns path to icon.ico file
     ; In compiled mode: returns effective exe path (icon is embedded)
-    Log("Testing _Shortcut_GetIconPath()...")
-    iconPath := _Shortcut_GetIconPath()
+    Log("Testing Shortcut_GetIconPath()...")
+    iconPath := Shortcut_GetIconPath()
     if (A_IsCompiled) {
         ; Compiled: should return effective exe path (same as shortcut target)
-        effectiveExe := _Shortcut_GetEffectiveExePath()
+        effectiveExe := Shortcut_GetEffectiveExePath()
         if (iconPath = effectiveExe) {
-            Log("PASS: _Shortcut_GetIconPath() returns effective exe path (compiled): " iconPath)
+            Log("PASS: Shortcut_GetIconPath() returns effective exe path (compiled): " iconPath)
             TestPassed++
         } else {
-            Log("FAIL: _Shortcut_GetIconPath() should match effective exe path. Got: " iconPath " Expected: " effectiveExe)
+            Log("FAIL: Shortcut_GetIconPath() should match effective exe path. Got: " iconPath " Expected: " effectiveExe)
             TestErrors++
         }
     } else {
         ; Dev mode: should return icon.ico path
         if (InStr(iconPath, "icon.ico")) {
-            Log("PASS: _Shortcut_GetIconPath() returned icon path: " iconPath)
+            Log("PASS: Shortcut_GetIconPath() returned icon path: " iconPath)
             TestPassed++
         } else {
-            Log("FAIL: _Shortcut_GetIconPath() returned unexpected path: " iconPath)
+            Log("FAIL: Shortcut_GetIconPath() returned unexpected path: " iconPath)
             TestErrors++
         }
     }
 
-    ; Test _Shortcut_GetEffectiveExePath
-    Log("Testing _Shortcut_GetEffectiveExePath()...")
-    effectivePath := _Shortcut_GetEffectiveExePath()
+    ; Test Shortcut_GetEffectiveExePath
+    Log("Testing Shortcut_GetEffectiveExePath()...")
+    effectivePath := Shortcut_GetEffectiveExePath()
     if (effectivePath != "") {
-        Log("PASS: _Shortcut_GetEffectiveExePath() returned: " effectivePath)
+        Log("PASS: Shortcut_GetEffectiveExePath() returned: " effectivePath)
         TestPassed++
     } else {
-        Log("FAIL: _Shortcut_GetEffectiveExePath() returned empty string")
+        Log("FAIL: Shortcut_GetEffectiveExePath() returned empty string")
         TestErrors++
     }
 

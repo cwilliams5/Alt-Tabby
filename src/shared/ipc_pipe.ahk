@@ -321,7 +321,7 @@ IPC__ClientTick(client) {
 
 ; Create SECURITY_ATTRIBUTES with NULL DACL to allow non-elevated processes to connect
 ; This is needed when running as administrator - otherwise non-elevated clients can't connect
-_IPC_CreateOpenSecurityAttrs() {
+IPC_CreateOpenSecurityAttrs() {
     global IPC_SECURITY_ATTRS_SIZE
     ; Use static buffers so they persist for the lifetime of the pipe
     static pSD := 0
@@ -385,7 +385,7 @@ _IPC_CreatePipeInstance(pipeName) {
 
     ; Create security attributes with NULL DACL to allow non-elevated processes
     ; to connect when we're running as administrator
-    pSA := _IPC_CreateOpenSecurityAttrs()
+    pSA := IPC_CreateOpenSecurityAttrs()
 
     hPipe := DllCall("CreateNamedPipeW"
         , "str", "\\.\pipe\" pipeName
@@ -660,7 +660,7 @@ _IPC_Client_AdjustTimer(client, activityBytes) {
     global IPC_COOLDOWN_PHASE1_MS, IPC_COOLDOWN_PHASE2_MS
     if (activityBytes > 0) {
         client.idleStreak := 0
-        _IPC_SetClientTick(client, IPC_TICK_ACTIVE)
+        IPC_SetClientTick(client, IPC_TICK_ACTIVE)
         return
     }
     ; Graduated cooldown: stay responsive during bursty activity (workspace switches,
@@ -670,14 +670,14 @@ _IPC_Client_AdjustTimer(client, activityBytes) {
     if (client.idleStreak < IPC_COOLDOWN_PHASE1_TICKS)
         return  ; Stay at current (active) tick
     if (client.idleStreak < IPC_COOLDOWN_PHASE2_TICKS)
-        _IPC_SetClientTick(client, IPC_COOLDOWN_PHASE1_MS)
+        IPC_SetClientTick(client, IPC_COOLDOWN_PHASE1_MS)
     else if (client.idleStreak < IPC_COOLDOWN_PHASE3_TICKS)
-        _IPC_SetClientTick(client, IPC_COOLDOWN_PHASE2_MS)
+        IPC_SetClientTick(client, IPC_COOLDOWN_PHASE2_MS)
     else
-        _IPC_SetClientTick(client, IPC_TICK_IDLE)
+        IPC_SetClientTick(client, IPC_TICK_IDLE)
 }
 
-_IPC_SetClientTick(client, ms) {
+IPC_SetClientTick(client, ms) {
     if (client.tickMs = ms)
         return
     client.tickMs := ms

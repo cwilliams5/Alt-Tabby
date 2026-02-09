@@ -136,7 +136,7 @@ _Splash_ShowImage() {
     ; Load PNG - from embedded resource (compiled) or file (dev mode)
     g_SplashBitmap := 0
     if (A_IsCompiled) {
-        g_SplashBitmap := _Splash_LoadBitmapFromResource(RES_ID_LOGO)
+        g_SplashBitmap := Splash_LoadBitmapFromResource(RES_ID_LOGO)
     } else {
         imgPath := A_ScriptDir "\..\resources\img\logo.png"
         if (FileExist(imgPath))
@@ -1162,7 +1162,7 @@ _Splash_Fade(fromAlpha, toAlpha, durationMs) {
 ; ============================================================
 
 ; Load a GDI+ bitmap from an embedded PE resource
-_Splash_LoadBitmapFromResource(resourceId) {
+Splash_LoadBitmapFromResource(resourceId) {
     global RT_RCDATA
     hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", RT_RCDATA, "ptr")
     if (!hRes)

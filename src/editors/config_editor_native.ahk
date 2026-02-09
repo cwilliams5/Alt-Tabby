@@ -75,7 +75,7 @@ _CEN_ResetState() {
 ; Run the native config editor
 ; launcherHwnd: HWND of launcher process for WM_COPYDATA restart signal (0 = standalone)
 ; Returns: true if changes were saved, false otherwise
-_CE_RunNative(launcherHwnd := 0) {
+CE_RunNative(launcherHwnd := 0) {
     global gCEN, gConfigLoaded
 
     _CEN_ResetState()
@@ -103,7 +103,7 @@ _CE_RunNative(launcherHwnd := 0) {
     }
 
     ; Everything is built and populated — reveal
-    _GUI_AntiFlashReveal(gCEN["MainGui"], true)
+    GUI_AntiFlashReveal(gCEN["MainGui"], true)
 
     ; Block until GUI closes
     WinWaitClose(gCEN["MainGui"].Hwnd)
@@ -287,7 +287,7 @@ _CEN_BuildMainGUI() {
     gCEN["ChangeCountTimer"] := 1
     SetTimer(_CEN_UpdateChangeCount, 500)
 
-    _GUI_AntiFlashPrepare(gCEN["MainGui"], gTheme_Palette.panelBg, true)
+    GUI_AntiFlashPrepare(gCEN["MainGui"], gTheme_Palette.panelBg, true)
     gCEN["MainGui"].Show("w800 h550")
 }
 
@@ -605,7 +605,7 @@ _CEN_LoadValues() {
         if (iniVal = "") {
             val := entry.default
         } else {
-            val := _CL_ParseValue(iniVal, entry.t)
+            val := CL_ParseValue(iniVal, entry.t)
         }
 
         ; Set control value
@@ -721,7 +721,7 @@ _CEN_DrawSlider(sliderHwnd, lParam) {
     part  := NumGet(lParam, 56, "UPtr")       ; TBCD_CHANNEL=3, TBCD_THUMB=2, TBCD_TICS=1
     itemState := NumGet(lParam, 64, "UInt")   ; CDIS_HOT=0x40, CDIS_SELECTED=0x01
 
-    accentClr := _Theme_ColorToInt(gTheme_Palette.accent)
+    accentClr := Theme_ColorToInt(gTheme_Palette.accent)
 
     if (part = 3) {  ; TBCD_CHANNEL — two-tone fill aligned to actual thumb position
         ; Use TBM_GETTHUMBRECT for pixel-accurate fill
@@ -751,7 +751,7 @@ _CEN_DrawSlider(sliderHwnd, lParam) {
 
     if (part = 2) {  ; TBCD_THUMB — always custom-draw (normal, hover, pressed)
         if (itemState & 0x01)       ; CDIS_SELECTED (pressed)
-            thumbClr := _Theme_ColorToInt(gTheme_Palette.accentHover)
+            thumbClr := Theme_ColorToInt(gTheme_Palette.accentHover)
         else
             thumbClr := accentClr   ; Normal and hover = accent blue
 
@@ -792,7 +792,7 @@ _CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
     if (uMsg = 0x0014) {  ; WM_ERASEBKGND — fill with page bg instead of white
         rc := Buffer(16)
         DllCall("GetClientRect", "Ptr", hwnd, "Ptr", rc)
-        hBrush := DllCall("CreateSolidBrush", "UInt", _Theme_ColorToInt(gTheme_Palette.bg), "Ptr")
+        hBrush := DllCall("CreateSolidBrush", "UInt", Theme_ColorToInt(gTheme_Palette.bg), "Ptr")
         DllCall("FillRect", "Ptr", wParam, "Ptr", rc, "Ptr", hBrush)
         DllCall("DeleteObject", "Ptr", hBrush)
         return 1
@@ -1121,7 +1121,7 @@ _CEN_SaveToIni() {
             changes[entry.g] := currentVal
     }
 
-    return _CL_SaveChanges(changes)
+    return CL_SaveChanges(changes)
 }
 
 ; ============================================================

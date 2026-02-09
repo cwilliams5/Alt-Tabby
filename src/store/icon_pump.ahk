@@ -72,7 +72,7 @@ IconPump_Start() {
     global IP_RESOLVE_TIMEOUT_MS
 
     ; Fail fast if config not initialized (catches initialization order bugs)
-    _CL_AssertInitialized("IconPump_Start")
+    CL_AssertInitialized("IconPump_Start")
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (IconTimerIntervalMs = 0) {

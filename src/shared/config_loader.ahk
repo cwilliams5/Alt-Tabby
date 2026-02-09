@@ -24,7 +24,7 @@ global gConfigLoaded := false
 ; Assert that ConfigLoader_Init() has been called before accessing cfg.
 ; Use in module Start() functions to catch initialization order bugs early.
 
-_CL_AssertInitialized(caller := "") {
+CL_AssertInitialized(caller := "") {
     global gConfigLoaded
     if (!gConfigLoaded) {
         msg := "ConfigLoader_Init() must be called before "
@@ -421,7 +421,7 @@ _CL_FormatValue(val, type) {
 }
 
 ; Parse a raw INI string value into the correct AHK type
-_CL_ParseValue(iniVal, type) {
+CL_ParseValue(iniVal, type) {
     switch type {
         case "bool":
             return (iniVal = "true" || iniVal = "1" || iniVal = "yes")
@@ -438,7 +438,7 @@ _CL_ParseValue(iniVal, type) {
 
 ; Save a map of {globalName: value} changes to config.ini using format-preserving writes.
 ; Returns the number of entries written.
-_CL_SaveChanges(changes) {
+CL_SaveChanges(changes) {
     global gConfigRegistry, gConfigIniPath
 
     changeCount := 0
@@ -448,7 +448,7 @@ _CL_SaveChanges(changes) {
         if (!changes.Has(entry.g))
             continue
 
-        _CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t)
+        CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t)
         changeCount++
     }
     return changeCount
@@ -456,7 +456,7 @@ _CL_SaveChanges(changes) {
 
 ; Write to INI preserving comments and structure (unlike IniWrite which reorganizes)
 ; If value equals default, comments out the line; otherwise uncomments it
-_CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType := "string") {
+CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType := "string") {
     if (!FileExist(path))
         return false
 

@@ -224,7 +224,7 @@ if (g_AltTabbyMode = "blacklist") {
 if (g_AltTabbyMode = "wizard-continue") {
     ConfigLoader_Init()
     Theme_Init()
-    _Launcher_EnsureInstallationId()  ; Must be before WizardContinue (may create admin task)
+    Launcher_EnsureInstallationId()  ; Must be before WizardContinue (may create admin task)
     wizardResult := WizardContinue()
 
     if (wizardResult = "installed") {
@@ -235,13 +235,13 @@ if (g_AltTabbyMode = "wizard-continue") {
 
         ; Acquire mutex before running as launcher
         ; Bug fix: Without this, wizard-continue could run alongside another launcher
-        if (!_Launcher_AcquireMutex()) {
+        if (!Launcher_AcquireMutex()) {
             ThemeMsgBox("Alt-Tabby is already running.", APP_NAME, "Iconi")
             ExitApp()
         }
 
-        _Launcher_LogStartup()
-        _Launcher_StartSubprocesses(true)  ; skip mismatch guard (can't have happened)
+        Launcher_LogStartup()
+        Launcher_StartSubprocesses(true)  ; skip mismatch guard (can't have happened)
     } else {
         ; No wizard data found - exit
         ThemeMsgBox("No wizard continuation data found.", APP_NAME, "Iconx")
@@ -255,7 +255,7 @@ if (g_AltTabbyMode = "wizard-continue") {
 if (g_AltTabbyMode = "enable-admin-task") {
     ConfigLoader_Init()
     Theme_Init()
-    _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
+    Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     exePath := A_ScriptFullPath
     exeDir := ""
@@ -263,17 +263,17 @@ if (g_AltTabbyMode = "enable-admin-task") {
 
     ; Warn if admin task would point to a temporary location
     if (!WarnIfTempLocation_AdminTask(exePath, exeDir)) {
-        _AdminToggle_WriteResult("cancelled")
+        AdminToggle_WriteResult("cancelled")
         ExitApp()
     }
 
     if (CreateAdminTask(exePath)) {
-        _Setup_SetRunAsAdmin(true)
-        _Setup_ClearAdminDeclinedMarker()
+        Setup_SetRunAsAdmin(true)
+        Setup_ClearAdminDeclinedMarker()
         RecreateShortcuts()  ; Update to point to schtasks
-        _AdminToggle_WriteResult("ok")
+        AdminToggle_WriteResult("ok")
     } else {
-        _AdminToggle_WriteResult("failed")
+        AdminToggle_WriteResult("failed")
     }
 
     ExitApp()
@@ -285,17 +285,17 @@ if (g_AltTabbyMode = "enable-admin-task") {
 if (g_AltTabbyMode = "repair-admin-task") {
     ConfigLoader_Init()
     Theme_Init()
-    _Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
+    Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     ; Recreate task with current exe path
     exePath := A_ScriptFullPath
     DeleteAdminTask()
     if (CreateAdminTask(exePath)) {
-        _Setup_SetRunAsAdmin(true)
-        _Setup_ClearAdminDeclinedMarker()
+        Setup_SetRunAsAdmin(true)
+        Setup_ClearAdminDeclinedMarker()
 
         ; Update SetupExePath to current location (handles renamed exe case)
-        _Setup_SetExePath(exePath)
+        Setup_SetExePath(exePath)
 
         ; Update shortcuts to point to new exe path
         RecreateShortcuts()
@@ -303,7 +303,7 @@ if (g_AltTabbyMode = "repair-admin-task") {
         TrayTip("Admin Mode Repaired", "Scheduled task and shortcuts updated.", "Iconi")
 
         ; Now launch via the repaired task
-        exitCode := _RunAdminTask(TIMING_TASK_READY_WAIT)
+        exitCode := RunAdminTask(TIMING_TASK_READY_WAIT)
 
         if (exitCode != 0) {
             ; Task run failed - launch directly instead
@@ -328,7 +328,7 @@ if (g_AltTabbyMode = "disable-admin-task") {
     ; Delete the admin task
     if (AdminTaskExists()) {
         DeleteAdminTask()
-        _Setup_SetRunAsAdmin(false)
+        Setup_SetRunAsAdmin(false)
     }
     ; Silently exit - the non-elevated caller will continue
     ExitApp()
@@ -341,7 +341,7 @@ if (g_AltTabbyMode = "apply-update") {
     ConfigLoader_Init()
     Theme_Init()  ; Required for themed MsgBox dialogs
     ; Apply the downloaded update (we're now elevated)
-    if (!_Update_ContinueFromElevation()) {
+    if (!Update_ContinueFromElevation()) {
         ThemeMsgBox("Update continuation failed. Please try updating again.", APP_NAME, "Iconx")
         ; Attempt to relaunch the current exe (rollback should have restored it)
         ; This ensures user doesn't end up with no running instance after failed update
@@ -361,7 +361,7 @@ if (g_AltTabbyMode = "update-installed") {
     global TEMP_INSTALL_UPDATE_STATE
 
     try {
-        state := _ReadStateFile(TEMP_INSTALL_UPDATE_STATE)
+        state := ReadStateFile(TEMP_INSTALL_UPDATE_STATE)
         sourcePath := state.source
         targetPath := state.target
 
@@ -389,7 +389,7 @@ if (g_AltTabbyMode = "update-installed") {
             ExitApp()
         }
 
-        _Launcher_DoUpdateInstalled(sourcePath, targetPath)
+        Launcher_DoUpdateInstalled(sourcePath, targetPath)
     } catch as e {
         ThemeMsgBox("Update failed:`n" e.Message, APP_NAME, "Iconx")
     }
@@ -406,11 +406,11 @@ if (g_AltTabbyMode = "install-to-pf") {
     global TEMP_INSTALL_PF_STATE
 
     try {
-        state := _ReadStateFile(TEMP_INSTALL_PF_STATE)
+        state := ReadStateFile(TEMP_INSTALL_PF_STATE)
 
-        ; _Launcher_DoUpdateInstalled handles everything:
+        ; Launcher_DoUpdateInstalled handles everything:
         ; DirCreate, blacklist copy, stats merge, config copy, admin task, shortcuts, relaunch
-        _Launcher_DoUpdateInstalled(state.source, state.target)
+        Launcher_DoUpdateInstalled(state.source, state.target)
     } catch as e {
         ThemeMsgBox("Installation failed:`n" e.Message, APP_NAME, "Iconx")
     }

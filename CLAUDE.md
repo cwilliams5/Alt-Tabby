@@ -54,12 +54,39 @@ global WinEventHookDebounceMs  ; Declare without value
 
 ---
 
-## Trust Test Failures
+## Static Analysis Boundaries
 
-- **Don't dismiss as "timing issues"** - investigate root cause
-- Tests passed before, fail after = your change broke something
-- Multiple failures with same pattern = common root cause
-- The test suite exists to catch issues - trust it
+### Global Ownership (`ownership.manifest`)
+
+Read `ownership.manifest` (project root) before investigating who mutates a global. The pre-gate enforces:
+- Global NOT in manifest → only the declaring file mutates it (guaranteed)
+- Global IS in manifest → only listed files mutate it (guaranteed)
+
+This eliminates grepping across files to verify mutation boundaries. When adding a new cross-file mutation, add the entry to the manifest or the pre-gate will block.
+
+When consolidating globals into Maps: only pack when ownership is uniform (all keys written by same files). Don't pack when ownership varies per key — it collapses precise manifest entries into one vague entry.
+
+### Function Visibility (`_` prefix)
+
+- `_FuncName()` = private to declaring file. Only that file may call or reference it.
+- `FuncName()` = public API. Any file may call or reference it.
+- To make a private function public, rename it to drop the `_` prefix.
+
+Enforced by pre-gate. Don't create `_` functions intended for cross-file use.
+
+---
+
+## Query Tools (context-efficient search)
+
+When investigating the codebase, prefer query tools over reading full files or grepping:
+- `check_global_ownership.ps1 -Query <globalName>` — who declares and mutates a global
+- `check_function_visibility.ps1 -Query <funcName>` — where defined, public/private, all callers
+- `query_interface.ps1 <filename>` — public functions + globals for a file (like help(module))
+- `query_config.ps1` — no args: shows section/group index. With keyword: fuzzy search config options
+
+These return semantic answers, not raw text. The work runs in PowerShell — only the answer enters context.
+
+When facing a new "load big file to find small answer" pattern, consider building a query tool rather than adding a rule. Rules cost context every session; query tools cost context only when called.
 
 ---
 
@@ -90,34 +117,6 @@ Windows batch files (`.bat`) run in cmd.exe - single slashes work there.
 
 ---
 
-## Testing
-
-```powershell
-.\tests\test.ps1 --live
-```
-
-**NEVER use `powershell -Command`** - it breaks argument parsing and the test will fail:
-```powershell
-# RIGHT - direct invocation
-.\tests\test.ps1 --live
-
-# RIGHT - if you must use powershell explicitly
-powershell -File .\tests\test.ps1 --live
-```
-
-Or run AHK directly (double-slash for Git Bash):
-```
-AutoHotkey64.exe //ErrorStdOut tests\run_tests.ahk --live
-```
-
-Log: `%TEMP%\alt_tabby_tests.log`
-
-GUI tests: `AutoHotkey64.exe //ErrorStdOut tests\gui_tests.ahk`
-
-**Never suppress output** - piping to `Out-Null` breaks child process spawning.
-
----
-
 ## Legacy Reference
 
 The `legacy/` folder contains original POCs and Mocks. All ported to production - kept for reference only.
@@ -126,16 +125,16 @@ The `legacy/` folder contains original POCs and Mocks. All ported to production 
 
 ## Additional Context
 
-**Updating this file:** Main CLAUDE.md is for "tattoo" rules needed in every session. Domain-specific lessons go in `.claude/rules/`. Before adding anything, ask: "Would removing this cause Claude to make mistakes?"
+**Updating this file:** Main CLAUDE.md is for "tattoo" rules needed in every session. Domain-specific lessons go in `.claude/rules/`. Before adding anything, ask: "Would removing this cause Claude to make mistakes?" Prefer building static analysis checks (`tests/check_*.ps1`, auto-discovered by pre-gate) over adding rules — machines enforce, rules explain judgment.
 
 See `.claude/rules/` for domain-specific knowledge:
 
 | File | Contents |
 |------|----------|
 | `ahk-patterns.md` | AHK v2 syntax, race conditions, Critical sections, compilation |
-| `architecture.md` | Process roles, producers, state machine, config system |
+| `architecture.md` | Process roles, producers, state machine, config system, theme system |
 | `testing.md` | Test architecture, mocking patterns, coverage requirements |
 | `komorebi.md` | Komorebi integration, cross-workspace activation |
 | `keyboard-hooks.md` | Rapid Alt-Tab, SendMode, hook preservation, bypass mode |
 | `installation.md` | Wizard, auto-update, elevation, admin mode |
-| `debugging.md` | All debug options with file paths and use cases |
+| `debugging.md` | Debug diagnostic options with file paths and use cases |

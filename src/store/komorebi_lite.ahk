@@ -38,7 +38,7 @@ KomorebiLite_Tick() {
         WindowStore_SetCurrentWorkspace("", ws)
     hwnd := WinGetID("A")
     if (hwnd) {
-        wsn := _KSub_FindWorkspaceByHwnd(stateObj, hwnd)
+        wsn := KSub_FindWorkspaceByHwnd(stateObj, hwnd)
         if (wsn != "")
             WindowStore_UpdateFields(hwnd, { workspaceName: wsn, isOnCurrentWorkspace: (wsn = ws) })
     }
@@ -119,11 +119,11 @@ KomorebiLite_GetState() {
 KomorebiLite_FindCurrentWorkspaceName(stateObj) {
     ; Navigate: focused monitor -> focused workspace -> name
     ; Uses the same helpers as KomorebiSub for consistency
-    focusedMonIdx := _KSub_GetFocusedMonitorIndex(stateObj)
-    monitorsArr := _KSub_GetMonitorsArray(stateObj)
+    focusedMonIdx := KSub_GetFocusedMonitorIndex(stateObj)
+    monitorsArr := KSub_GetMonitorsArray(stateObj)
     if (focusedMonIdx < 0 || focusedMonIdx >= monitorsArr.Length)
         return ""
     monObj := monitorsArr[focusedMonIdx + 1]  ; AHK 1-based
-    focusedWsIdx := _KSub_GetFocusedWorkspaceIndex(monObj)
-    return _KSub_GetWorkspaceNameByIndex(monObj, focusedWsIdx)
+    focusedWsIdx := KSub_GetFocusedWorkspaceIndex(monObj)
+    return KSub_GetWorkspaceNameByIndex(monObj, focusedWsIdx)
 }

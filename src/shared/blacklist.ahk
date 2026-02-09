@@ -134,13 +134,13 @@ Blacklist_Reload() {
     ; Pre-compile: avoids per-match regex string building in hot path
     newTitleRegex := []
     for _, p in newTitles
-        newTitleRegex.Push(_BL_CompileWildcard(p))
+        newTitleRegex.Push(BL_CompileWildcard(p))
     newClassRegex := []
     for _, p in newClasses
-        newClassRegex.Push(_BL_CompileWildcard(p))
+        newClassRegex.Push(BL_CompileWildcard(p))
     newPairRegex := []
     for _, pair in newPairs
-        newPairRegex.Push({class: _BL_CompileWildcard(pair.Class), title: _BL_CompileWildcard(pair.Title)})
+        newPairRegex.Push({class: BL_CompileWildcard(pair.Class), title: BL_CompileWildcard(pair.Title)})
 
     ; ATOMIC SWAP: Replace all globals at once under Critical to prevent
     ; producers calling Blacklist_IsMatch() from seeing mismatched arrays
@@ -413,7 +413,7 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
 }
 
 ; Pre-compile wildcard pattern to regex string (called during Blacklist_Reload)
-_BL_CompileWildcard(pattern) {
+BL_CompileWildcard(pattern) {
     regex := "i)^" RegExReplace(RegExReplace(pattern, "[.+^${}|()\\[\]]", "\$0"), "\*", ".*")
     regex := RegExReplace(regex, "\?", ".")
     regex .= "$"

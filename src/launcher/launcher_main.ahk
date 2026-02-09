@@ -24,7 +24,7 @@ global ERROR_ALREADY_EXISTS := 183
 ; Controlled by cfg.DiagLauncherLog (config.ini [Diagnostics] LauncherLog=true)
 ; Log file: %TEMP%\tabby_launcher.log
 
-_Launcher_Log(msg) {
+Launcher_Log(msg) {
     global cfg, LOG_PATH_LAUNCHER
     if (!cfg.DiagLauncherLog)
         return
@@ -34,7 +34,7 @@ _Launcher_Log(msg) {
 }
 
 ; Call at startup to mark new session
-_Launcher_LogStartup() {
+Launcher_LogStartup() {
     global cfg, LOG_PATH_LAUNCHER
     if (!cfg.DiagLauncherLog)
         return
@@ -53,10 +53,10 @@ Launcher_Init() {
     global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick, APP_NAME
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
-    _Launcher_LogStartup()
+    Launcher_LogStartup()
 
     ; Ensure InstallationId exists (generates on first run)
-    _Launcher_EnsureInstallationId()
+    Launcher_EnsureInstallationId()
 
     ; Check config writability early - warn once if settings can't be saved
     ; (e.g., read-only file, OneDrive sync lock, antivirus interference)
@@ -65,7 +65,7 @@ Launcher_Init() {
     ; Check if another launcher is already running (named mutex)
     ; Uses InstallationId so renamed exes in same install still share mutex
     ; MUST be before mismatch check to prevent race conditions
-    if (!_Launcher_AcquireMutex()) {
+    if (!Launcher_AcquireMutex()) {
         ; In testing mode, don't show dialog — just exit silently
         ; (avoids invisible MsgBox blocking automated tests when user's instance is running)
         if (g_TestingMode)
@@ -83,7 +83,7 @@ Launcher_Init() {
             acquired := false
             loop 3 {
                 Sleep(TIMING_MUTEX_RELEASE_WAIT * A_Index)  ; 500ms, 1000ms, 1500ms
-                if (_Launcher_AcquireMutex()) {
+                if (Launcher_AcquireMutex()) {
                     acquired := true
                     break
                 }
@@ -103,23 +103,23 @@ Launcher_Init() {
     ; May set g_MismatchDialogShown to prevent auto-update race
     ; Skip in testing mode to avoid blocking automated tests
     if (!g_TestingMode)
-        _Launcher_CheckInstallMismatch()
+        Launcher_CheckInstallMismatch()
 
     ; Repair stale SetupExePath if old file was renamed/deleted (no admin task to auto-repair)
     _Launcher_RepairStaleExePath()
 
     ; Clean up old exe from previous update
-    _Update_CleanupOldExe()
+    Update_CleanupOldExe()
 
     ; Clean up stale temp files from crashed wizard/update instances
-    _Update_CleanupStaleTempFiles()
+    Update_CleanupStaleTempFiles()
 
     ; Check if we should redirect to scheduled task (admin mode)
     ; Skip task redirect if mismatch was detected - user chose to run from current location
     ; Showing task repair dialog after mismatch "No" would redirect to wrong version
     ; Skip in testing mode to avoid blocking automated tests
     if (!g_TestingMode && !g_MismatchDialogShown && _ShouldRedirectToScheduledTask()) {
-        exitCode := _RunAdminTask()
+        exitCode := RunAdminTask()
 
         if (exitCode = 0) {
             Sleep(TIMING_TASK_INIT_WAIT)  ; Brief delay for task to initialize
@@ -129,8 +129,8 @@ Launcher_Init() {
             ; Without deletion, _ShouldRedirectToScheduledTask() syncs SetupRunAsAdmin
             ; back to true because the task still exists, creating an infinite loop.
             try DeleteAdminTask()
-            _Setup_SetRunAsAdmin(false)
-            _Launcher_Log("TASK_REDIRECT: schtasks /run failed (code " exitCode "), deleted broken task")
+            Setup_SetRunAsAdmin(false)
+            Launcher_Log("TASK_REDIRECT: schtasks /run failed (code " exitCode "), deleted broken task")
             TrayTip("Admin Mode", "Scheduled task failed (code " exitCode ") and was removed.`nRe-enable from tray menu if needed.", "Icon!")
             ; Continue with normal startup below
         }
@@ -145,7 +145,7 @@ Launcher_Init() {
         if (_Launcher_ShouldSkipWizardForExistingInstall()) {
             ; Mismatch check will run on next iteration (already ran above)
             ; Mark wizard as complete since user has existing setup
-            _Setup_SetFirstRunCompleted(true)
+            Setup_SetFirstRunCompleted(true)
         } else {
             ; Show first-run wizard
             ShowFirstRunWizard()
@@ -154,14 +154,14 @@ Launcher_Init() {
         }
     }
 
-    _Launcher_StartSubprocesses()
+    Launcher_StartSubprocesses()
 }
 
 ; Shared subprocess launch sequence used by both Launcher_Init() and wizard-continue.
 ; Handles: splash, tray, OnExit, active mutex, store+gui launch, HWND file, splash hide,
 ; auto-update check, and Persistent().
 ; skipMismatchGuard: true when called from wizard-continue (mismatch can't have happened)
-_Launcher_StartSubprocesses(skipMismatchGuard := false) {
+Launcher_StartSubprocesses(skipMismatchGuard := false) {
     global g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
     global TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, g_SplashStartTick, APP_NAME
 
@@ -285,9 +285,9 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     dwData := NumGet(lParam, 0, "uptr")
 
     if (dwData = TABBY_CMD_RESTART_STORE) {
-        _Launcher_Log("IPC: Received RESTART_STORE from hwnd=" wParam)
+        Launcher_Log("IPC: Received RESTART_STORE from hwnd=" wParam)
         if (IsSet(g_LastStoreRestartTick) && (A_TickCount - g_LastStoreRestartTick) < 5000) {
-            _Launcher_Log("IPC: RESTART_STORE debounced")
+            Launcher_Log("IPC: RESTART_STORE debounced")
             return 1
         }
         g_LastStoreRestartTick := A_TickCount
@@ -296,9 +296,9 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     }
 
     if (dwData = TABBY_CMD_RESTART_ALL) {
-        _Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
+        Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
         if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < 5000) {
-            _Launcher_Log("IPC: RESTART_ALL debounced")
+            Launcher_Log("IPC: RESTART_ALL debounced")
             return 1
         }
         g_LastFullRestartTick := A_TickCount
@@ -312,7 +312,7 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
 ; Apply config changes: reload config for the launcher, re-theme launcher
 ; surfaces in-place, then restart store+GUI (which read config fresh on launch).
 _Launcher_ApplyConfigChanges() {
-    _Launcher_Log("ApplyConfigChanges: reloading config and theme for launcher")
+    Launcher_Log("ApplyConfigChanges: reloading config and theme for launcher")
 
     ; 1. Reload config from INI so launcher picks up new values
     ConfigLoader_Init()
@@ -346,52 +346,52 @@ _ShouldRedirectToScheduledTask() {
 
     ; Skip in testing mode - never show dialogs during automated tests
     if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
-        _Launcher_Log("TASK_REDIRECT: skip (testing mode)")
+        Launcher_Log("TASK_REDIRECT: skip (testing mode)")
         return false
     }
 
     ; Already elevated - don't redirect (avoid infinite loop)
     if (A_IsAdmin) {
-        _Launcher_Log("TASK_REDIRECT: skip (already admin)")
+        Launcher_Log("TASK_REDIRECT: skip (already admin)")
         return false
     }
 
     ; Check admin-declined marker (temp file for when PF config write fails).
     ; Breaks the UAC prompt loop: declined -> can't write to PF -> disk still says true -> repeat.
-    if (_Setup_HasAdminDeclinedMarker()) {
-        writeOk := _Setup_SetRunAsAdmin(false)
+    if (Setup_HasAdminDeclinedMarker()) {
+        writeOk := Setup_SetRunAsAdmin(false)
         if (writeOk)
-            _Setup_ClearAdminDeclinedMarker()
-        _Launcher_Log("TASK_REDIRECT: skip (admin declined marker, writeOk=" writeOk ")")
+            Setup_ClearAdminDeclinedMarker()
+        Launcher_Log("TASK_REDIRECT: skip (admin declined marker, writeOk=" writeOk ")")
         return false
     }
 
     ; Fast path: if admin mode was never configured, skip schtasks query entirely.
     ; Saves ~200-300ms for non-admin users (the common case).
     if (!cfg.SetupRunAsAdmin) {
-        _Launcher_Log("TASK_REDIRECT: skip (admin not configured)")
+        Launcher_Log("TASK_REDIRECT: skip (admin not configured)")
         return false
     }
 
     ; Check if task exists (cfg.SetupRunAsAdmin is true here — fast path returned above)
     if (!AdminTaskExists()) {
-        _Setup_SetRunAsAdmin(false)
-        _Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
+        Setup_SetRunAsAdmin(false)
+        Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
         return false
     }
 
     ; Validate task points to current exe (handles renamed exe case)
-    taskPath := _AdminTask_GetCommandPath()
+    taskPath := AdminTask_GetCommandPath()
     if (taskPath = "" || !PathsEqual(taskPath, A_ScriptFullPath)) {
         ; If admin mode is disabled in config, don't attempt repair or prompt.
         ; This prevents UAC prompt loops after user previously declined.
         if (!cfg.SetupRunAsAdmin) {
-            _Launcher_Log("TASK_REDIRECT: skip (admin mode disabled in config, stale task ignored)")
+            Launcher_Log("TASK_REDIRECT: skip (admin mode disabled in config, stale task ignored)")
             return false
         }
 
         ; Task path doesn't match - check if InstallationId matches
-        taskId := _AdminTask_GetInstallationId()
+        taskId := AdminTask_GetInstallationId()
         currentId := (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
             ? cfg.SetupInstallationId : ""
 
@@ -402,19 +402,19 @@ _ShouldRedirectToScheduledTask() {
             ; share config/InstallationId (e.g., AltTabby.exe and AltTabby_backup.exe).
             ; Only auto-repair when the task target is genuinely missing.
             if (FileExist(taskPath)) {
-                _Launcher_Log("TASK_REDIRECT: skip auto-repair (task target exists: " taskPath ")")
+                Launcher_Log("TASK_REDIRECT: skip auto-repair (task target exists: " taskPath ")")
                 return false  ; Don't redirect to task, run normally
             }
 
             ; Task target is missing - self-elevate to auto-repair task
             try {
-                if (!_Launcher_RunAsAdmin("--repair-admin-task"))
+                if (!Launcher_RunAsAdmin("--repair-admin-task"))
                     throw Error("RunAsAdmin failed")
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
                 ; UAC refused - fall back to non-admin
                 TrayTip("Admin Mode", "Could not elevate to repair task. Running without admin privileges.", "Icon!")
-                _Setup_SetRunAsAdmin(false, true)  ; marker on fail: breaks PF UAC loop
+                Setup_SetRunAsAdmin(false, true)  ; marker on fail: breaks PF UAC loop
                 _Launcher_RepairExePathAfterAdminDecline()
                 return false
             }
@@ -424,17 +424,17 @@ _ShouldRedirectToScheduledTask() {
         ; This handles: different installs, legacy tasks without ID, etc.
         ; Check if user previously said "Don't ask again"
         if (cfg.SetupSuppressAdminRepairPrompt) {
-            _Launcher_Log("TASK_REDIRECT: skip (repair prompt suppressed by user)")
+            Launcher_Log("TASK_REDIRECT: skip (repair prompt suppressed by user)")
             return false
         }
 
         ; Show custom dialog with "Don't ask again" option
-        result := _Launcher_ShowAdminRepairDialog(taskPath)
+        result := Launcher_ShowAdminRepairDialog(taskPath)
 
         if (result = "Yes") {
             ; Self-elevate to repair task
             try {
-                if (!_Launcher_RunAsAdmin("--repair-admin-task"))
+                if (!Launcher_RunAsAdmin("--repair-admin-task"))
                     throw Error("RunAsAdmin failed")
                 ExitApp()  ; Elevated instance will handle launch
             } catch {
@@ -444,7 +444,7 @@ _ShouldRedirectToScheduledTask() {
         }
 
         ; User said No or "Don't ask again" or UAC refused - disable admin mode and continue non-elevated
-        _Setup_SetRunAsAdmin(false, true)  ; marker on fail: breaks PF UAC loop
+        Setup_SetRunAsAdmin(false, true)  ; marker on fail: breaks PF UAC loop
         _Launcher_RepairExePathAfterAdminDecline()
         if (result != "Yes")  ; Only show traytip if not attempting repair
             TrayTip("Admin Mode Disabled", "The scheduled task was stale.`nRe-enable from tray menu if needed.", "Icon!")
@@ -453,10 +453,10 @@ _ShouldRedirectToScheduledTask() {
 
     ; Sync config if needed (handles corrupted config case)
     if (!cfg.SetupRunAsAdmin) {
-        _Setup_SetRunAsAdmin(true)
+        Setup_SetRunAsAdmin(true)
     }
 
-    _Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
+    Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
     return true
 }
 
@@ -465,7 +465,7 @@ _ShouldRedirectToScheduledTask() {
 _Launcher_RepairExePathAfterAdminDecline() {
     global cfg
     if (cfg.SetupExePath != "" && !PathsEqual(cfg.SetupExePath, A_ScriptFullPath) && !FileExist(cfg.SetupExePath)) {
-        _Setup_SetExePath(A_ScriptFullPath)
+        Setup_SetExePath(A_ScriptFullPath)
         RecreateShortcuts()
     }
 }
@@ -473,12 +473,12 @@ _Launcher_RepairExePathAfterAdminDecline() {
 ; Write the SuppressAdminRepairPrompt flag, wrapped in try for use in fat-arrow closures
 _Launcher_WriteSuppressFlag() {
     global gConfigIniPath
-    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "SuppressAdminRepairPrompt", true, false, "bool")
+    try CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "SuppressAdminRepairPrompt", true, false, "bool")
 }
 
 ; Custom dialog for admin task repair with "Don't ask again" option
 ; Returns: "Yes" (repair), "No" (skip this time), or "Never" (don't ask again)
-_Launcher_ShowAdminRepairDialog(taskPath) {
+Launcher_ShowAdminRepairDialog(taskPath) {
     global cfg, gConfigIniPath, APP_NAME
 
     dlgResult := Theme_CreateModalDialog(APP_NAME " - Admin Mode Repair")
@@ -541,7 +541,7 @@ _Launcher_ShowAdminRepairDialog(taskPath) {
 ; Try to acquire the launcher mutex
 ; Returns true if acquired (we're the only launcher), false if already held
 ; Uses InstallationId so renamed exes within same installation share mutex
-_Launcher_AcquireMutex() {
+Launcher_AcquireMutex() {
     global g_LauncherMutex, cfg, ERROR_ALREADY_EXISTS
 
     ; Build mutex name using InstallationId (prevents different-named exes running together)
@@ -556,7 +556,7 @@ _Launcher_AcquireMutex() {
 
     if (lastError = ERROR_ALREADY_EXISTS) {
         ; Mutex already exists - another launcher is running
-        _Launcher_Log("MUTEX: already exists (err=" ERROR_ALREADY_EXISTS "), another launcher running")
+        Launcher_Log("MUTEX: already exists (err=" ERROR_ALREADY_EXISTS "), another launcher running")
         if (g_LauncherMutex) {
             DllCall("CloseHandle", "ptr", g_LauncherMutex)
             g_LauncherMutex := 0
@@ -564,7 +564,7 @@ _Launcher_AcquireMutex() {
         return false
     }
 
-    _Launcher_Log("MUTEX: acquired successfully (name=" mutexName ")")
+    Launcher_Log("MUTEX: acquired successfully (name=" mutexName ")")
     return (g_LauncherMutex != 0)
 }
 
@@ -582,7 +582,7 @@ _Launcher_AcquireActiveMutex() {
     lastError := DllCall("GetLastError")
 
     if (lastError = ERROR_ALREADY_EXISTS) {
-        _Launcher_Log("ACTIVE_MUTEX: already exists, another installation running")
+        Launcher_Log("ACTIVE_MUTEX: already exists, another installation running")
         if (g_ActiveMutex) {
             DllCall("CloseHandle", "ptr", g_ActiveMutex)
             g_ActiveMutex := 0
@@ -590,7 +590,7 @@ _Launcher_AcquireActiveMutex() {
         return false
     }
 
-    _Launcher_Log("ACTIVE_MUTEX: acquired successfully")
+    Launcher_Log("ACTIVE_MUTEX: acquired successfully")
     return (g_ActiveMutex != 0)
 }
 
@@ -645,7 +645,7 @@ _Launcher_KillAllAltTabbyProcesses() {
 ;   3. Auto-repair would silently redirect task to Downloads
 ;
 ; Auto-repair is still useful when user renames exe or deletes config in same directory.
-_Launcher_EnsureInstallationId() {
+Launcher_EnsureInstallationId() {
     global cfg, gConfigIniPath
 
     if (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
@@ -654,16 +654,16 @@ _Launcher_EnsureInstallationId() {
     ; Check if existing task has an ID we should reuse
     ; Only recover if we're in the SAME DIRECTORY as the task's target
     if (AdminTaskExists()) {
-        taskPath := _AdminTask_GetCommandPath()
+        taskPath := AdminTask_GetCommandPath()
         if (taskPath != "") {
             taskDir := ""
             SplitPath(taskPath, , &taskDir)
 
             ; Only recover if we're in the same directory as the task target
             if (taskDir != "" && PathsEqual(taskDir, A_ScriptDir)) {
-                existingId := _AdminTask_GetInstallationId()
+                existingId := AdminTask_GetInstallationId()
                 if (existingId != "") {
-                    _Setup_SetInstallationId(existingId)
+                    Setup_SetInstallationId(existingId)
                     return
                 }
             }
@@ -671,11 +671,11 @@ _Launcher_EnsureInstallationId() {
     }
 
     ; Generate new ID (different location or no matching task)
-    _Setup_SetInstallationId(_Launcher_GenerateId())
+    Setup_SetInstallationId(Launcher_GenerateId())
 }
 
 ; Generate an 8-character hex ID
-_Launcher_GenerateId() {
+Launcher_GenerateId() {
     ; Use combination of tick count and random for uniqueness
     DllCall("QueryPerformanceCounter", "Int64*", &counter := 0)
     seed := Random(0, 0x7FFFFFFF)  ; Random integer in valid range
@@ -705,7 +705,7 @@ _Launcher_CheckConfigWritable() {
     }
 
     ; Write failed — warn once per session
-    _Launcher_Log("CONFIG_WRITABLE: config.ini is not writable: " gConfigIniPath)
+    Launcher_Log("CONFIG_WRITABLE: config.ini is not writable: " gConfigIniPath)
     try ThemeMsgBox(
         "The config file is not writable:`n" gConfigIniPath "`n`n"
         "Settings changes won't be saved this session.`n"
@@ -773,7 +773,7 @@ _Launcher_RepairStaleExePath() {
         return
 
     ; SetupExePath points to non-existent file - update to current path
-    _Setup_SetExePath(A_ScriptFullPath)
+    Setup_SetExePath(A_ScriptFullPath)
 
     ; Recreate shortcuts if they exist (they point to old name)
     RecreateShortcuts()
@@ -783,7 +783,7 @@ _Launcher_RepairStaleExePath() {
 ; Fast path: ProcessExist returns PID != ours → true
 ; If returns 0: no process, false
 ; If returns our PID: use tasklist to check for other PIDs
-_Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
+Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
     if (excludePID = 0)
         excludePID := ProcessExist()
 
@@ -822,20 +822,20 @@ LaunchStore() {
     global g_StorePID, g_ProducerStatusCache, g_ProducerHasFailed
     g_ProducerStatusCache := ""
     g_ProducerHasFailed := ""
-    LauncherUtils_Launch("store", &g_StorePID, _Launcher_Log)
-    _Dash_StartRefreshTimer()
+    LauncherUtils_Launch("store", &g_StorePID, Launcher_Log)
+    Dash_StartRefreshTimer()
     ; Query producer status after store has time to initialize producers
-    SetTimer(_Dash_QueryProducerStatus, -5000)
+    SetTimer(Dash_QueryProducerStatus, -5000)
 }
 
 LaunchGui() {
     global g_GuiPID
-    LauncherUtils_Launch("gui", &g_GuiPID, _Launcher_Log)
-    _Dash_StartRefreshTimer()
+    LauncherUtils_Launch("gui", &g_GuiPID, Launcher_Log)
+    Dash_StartRefreshTimer()
 }
 
 LaunchViewer() {
     global g_ViewerPID
-    LauncherUtils_Launch("viewer", &g_ViewerPID, _Launcher_Log)
-    _Dash_StartRefreshTimer()
+    LauncherUtils_Launch("viewer", &g_ViewerPID, Launcher_Log)
+    Dash_StartRefreshTimer()
 }

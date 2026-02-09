@@ -126,7 +126,7 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     }
 
     scale := Win_GetScaleForWindow(gGUI_OverlayH)
-    layout := _GUI_GetCachedLayout(scale)
+    layout := GUI_GetCachedLayout(scale)
     RowH := layout.RowH
     My := layout.My
     topY := My + layout.hdrBlock
@@ -149,7 +149,7 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     idx0 := Win_Wrap0(gGUI_ScrollTop + (rowVis - 1), count)
     idx1 := idx0 + 1
 
-    metrics := _GUI_GetActionBtnMetrics(scale)
+    metrics := GUI_GetActionBtnMetrics(scale)
     size := metrics.size
     gap := metrics.gap
     marR := layout.Mx
@@ -236,7 +236,7 @@ GUI_PerformAction(action, idx1 := 0) {
         }
 
         ; Show blacklist options dialog
-        choice := _GUI_ShowBlacklistDialog(cls, ttl)
+        choice := GUI_ShowBlacklistDialog(cls, ttl)
         if (choice = "") {
             return
         }
@@ -575,12 +575,12 @@ global gGUI_BlacklistChoice := ""
 
 ; Show dialog with blacklist options (class, title, or pair)
 ; Returns: "class", "title", "pair", or "" (cancelled)
-_GUI_ShowBlacklistDialog(class, title) {
+GUI_ShowBlacklistDialog(class, title) {
     global gGUI_BlacklistChoice
     gGUI_BlacklistChoice := ""
 
     dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
-    _GUI_AntiFlashPrepare(dlg, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(dlg, Theme_GetBgColor(), true)
     dlg.MarginX := 24
     dlg.MarginY := 16
     dlg.SetFont("s10", "Segoe UI")
@@ -648,7 +648,7 @@ _GUI_ShowBlacklistDialog(class, title) {
     dlg.OnEvent("Escape", (*) => _GUI_BlacklistChoice(dlg, ""))
 
     dlg.Show("w488 Center")
-    _GUI_AntiFlashReveal(dlg, true)
+    GUI_AntiFlashReveal(dlg, true)
 
     ; Wait for dialog to close
     WinWaitClose(dlg)

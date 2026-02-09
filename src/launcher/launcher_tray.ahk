@@ -211,12 +211,12 @@ _Tray_BuildSettingsMenu() {
 
     ; Install to Program Files (action item, not toggle)
     if (A_IsCompiled) {
-        if (_IsInProgramFiles()) {
+        if (IsInProgramFiles()) {
             pfLabel := "Installed to Program Files"
             m.Add(pfLabel, (*) => 0)
             m.Disable(pfLabel)
         } else {
-            m.Add("Install to Program Files...", (*) => _Tray_InstallToProgramFiles())
+            m.Add("Install to Program Files...", (*) => Tray_InstallToProgramFiles())
         }
     }
 
@@ -234,13 +234,13 @@ _Tray_BuildDevMenu() {
     m.Add("Edit Config Registry...", (*) => LaunchConfigRegistryEditor())
     m.Add()
     m.Add("First-Run Wizard", (*) => ShowFirstRunWizard())
-    m.Add("Admin Repair Dialog", (*) => _Launcher_ShowAdminRepairDialog("C:\fake\task\path.exe"))
-    m.Add("Install Mismatch Dialog", (*) => _Launcher_ShowMismatchDialog(
+    m.Add("Admin Repair Dialog", (*) => Launcher_ShowAdminRepairDialog("C:\fake\task\path.exe"))
+    m.Add("Install Mismatch Dialog", (*) => Launcher_ShowMismatchDialog(
         "C:\Program Files\Alt-Tabby\AltTabby.exe",
         "Installation Mismatch",
         "Alt-Tabby is already installed at a different location:",
         "Would you like to update the installed version?"))
-    m.Add("Blacklist Dialog", (*) => _GUI_ShowBlacklistDialog("ExampleClass", "Example Window Title"))
+    m.Add("Blacklist Dialog", (*) => GUI_ShowBlacklistDialog("ExampleClass", "Example Window Title"))
     m.Add("ThemeMsgBox (All Features)", (*) => _Tray_TestThemeMsgBox())
 
     return m
@@ -291,33 +291,33 @@ _Tray_GetUpdateStatusLabel() {
 
 _Tray_RefreshCache() {
     global g_CachedAdminTaskActive, g_CachedStartMenuShortcut, g_CachedStartupShortcut
-    g_CachedAdminTaskActive := _AdminTask_PointsToUs()
-    g_CachedStartMenuShortcut := _Shortcut_StartMenuExists()
-    g_CachedStartupShortcut := _Shortcut_StartupExists()
+    g_CachedAdminTaskActive := AdminTask_PointsToUs()
+    g_CachedStartMenuShortcut := Shortcut_StartMenuExists()
+    g_CachedStartupShortcut := Shortcut_StartupExists()
 }
 
 _Tray_OnUpdateInstall() {
     global g_DashUpdateState
     if (g_DashUpdateState.status = "available" && g_DashUpdateState.downloadUrl != "")
-        _Update_DownloadAndApply(g_DashUpdateState.downloadUrl, g_DashUpdateState.version)
+        Update_DownloadAndApply(g_DashUpdateState.downloadUrl, g_DashUpdateState.version)
 }
 
 RestartStore() {
     global g_StorePID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
-    _Dash_StartRefreshTimer()
+    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    Dash_StartRefreshTimer()
 }
 
 RestartGui() {
     global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
-    _Dash_StartRefreshTimer()
+    LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    Dash_StartRefreshTimer()
 }
 
 RestartViewer() {
     global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH, _Launcher_Log)
-    _Dash_StartRefreshTimer()
+    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    Dash_StartRefreshTimer()
 }
 
 ExitAll() {
@@ -344,7 +344,7 @@ LaunchConfigEditor(forceNative := false) {
         Run('"' A_ScriptFullPath '" ' args, , , &g_ConfigEditorPID)
     else
         Run('"' A_AhkPath '" "' A_ScriptFullPath '" ' args, , , &g_ConfigEditorPID)
-    _Dash_StartRefreshTimer()
+    Dash_StartRefreshTimer()
 }
 
 LaunchBlacklistEditor() {
@@ -358,7 +358,7 @@ LaunchBlacklistEditor() {
         Run('"' A_ScriptFullPath '" --blacklist', , , &g_BlacklistEditorPID)
     else
         Run('"' A_AhkPath '" "' A_ScriptFullPath '" --blacklist', , , &g_BlacklistEditorPID)
-    _Dash_StartRefreshTimer()
+    Dash_StartRefreshTimer()
 }
 
 LaunchConfigRegistryEditor() {
@@ -450,7 +450,7 @@ ToggleAdminMode() {
         if (!deleted && !A_IsAdmin) {
             ; Non-elevated — elevate to delete the task
             try {
-                if (_Launcher_RunAsAdmin("--disable-admin-task"))
+                if (Launcher_RunAsAdmin("--disable-admin-task"))
                     Sleep(500)  ; Brief wait for elevated instance
                 else
                     throw Error("RunAsAdmin failed")
@@ -459,7 +459,7 @@ ToggleAdminMode() {
             }
         }
         g_CachedAdminTaskActive := false
-        _Setup_SetRunAsAdmin(false)
+        Setup_SetRunAsAdmin(false)
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
 
         ; Offer restart to apply change immediately
@@ -468,7 +468,7 @@ ToggleAdminMode() {
             ; Launch non-elevated via Explorer shell (de-escalation)
             launched := false
             if (A_IsAdmin) {
-                launched := _LaunchDeElevated(
+                launched := LaunchDeElevated(
                     A_IsCompiled ? A_ScriptFullPath : A_AhkPath,
                     A_IsCompiled ? "" : '"' A_ScriptFullPath '"',
                     A_ScriptDir)
@@ -500,7 +500,7 @@ ToggleAdminMode() {
                 g_AdminToggleInProgress := true
                 g_AdminToggleStartTick := A_TickCount  ; Track start time for timeout
 
-                if (!_Launcher_RunAsAdmin("--enable-admin-task"))
+                if (!Launcher_RunAsAdmin("--enable-admin-task"))
                     throw Error("RunAsAdmin failed")
 
                 ; Start polling for lock file deletion (elevated instance will delete it)
@@ -526,7 +526,7 @@ ToggleAdminMode() {
 
         if (CreateAdminTask(exePath)) {
             g_CachedAdminTaskActive := true
-            _Setup_SetRunAsAdmin(true)
+            Setup_SetRunAsAdmin(true)
             RecreateShortcuts()  ; Update to point to schtasks
             ToolTip("Admin mode enabled")
             HideTooltipAfter(TOOLTIP_DURATION_SHORT)
@@ -594,7 +594,7 @@ _AdminToggle_CheckComplete() {
             ProcessUtils_KillAltTabby({pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}})
             g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
 
-            exitCode := _RunAdminTask(TIMING_TASK_READY_WAIT)
+            exitCode := RunAdminTask(TIMING_TASK_READY_WAIT)
             if (exitCode = 0) {
                 ExitApp()
             } else {
@@ -618,11 +618,11 @@ _AdminToggle_CheckComplete() {
     }
 }
 
-_Tray_InstallToProgramFiles() {
+Tray_InstallToProgramFiles() {
     global APP_NAME, ALTTABBY_INSTALL_DIR, UPDATE_INFO_DELIMITER, TEMP_INSTALL_PF_STATE
     global g_UpdateCheckInProgress
 
-    if (!A_IsCompiled || _IsInProgramFiles())
+    if (!A_IsCompiled || IsInProgramFiles())
         return
 
     ; Prevent race with auto-update download (P4 fix)
@@ -650,7 +650,7 @@ _Tray_InstallToProgramFiles() {
 
     ; Self-elevate and exit (elevated instance handles install + relaunch)
     try {
-        if (!_Launcher_RunAsAdmin("--install-to-pf"))
+        if (!Launcher_RunAsAdmin("--install-to-pf"))
             throw Error("RunAsAdmin failed")
         ExitAll()
     } catch {
@@ -662,8 +662,8 @@ _Tray_InstallToProgramFiles() {
 ToggleAutoUpdate() {
     global cfg, gConfigIniPath, TOOLTIP_DURATION_SHORT
     cfg.SetupAutoUpdateCheck := !cfg.SetupAutoUpdateCheck
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", cfg.SetupAutoUpdateCheck, true, "bool")
-    _Dash_StartRefreshTimer()
+    CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", cfg.SetupAutoUpdateCheck, true, "bool")
+    Dash_StartRefreshTimer()
     ToolTip(cfg.SetupAutoUpdateCheck ? "Auto-update enabled" : "Auto-update disabled")
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }

@@ -10,20 +10,20 @@
 ; Toggle Start Menu shortcut
 ToggleStartMenuShortcut() {
     global g_CachedStartMenuShortcut
-    _ToggleShortcut(_Shortcut_GetStartMenuPath(), "Start Menu")
-    g_CachedStartMenuShortcut := _Shortcut_StartMenuExists()
+    _ToggleShortcut(Shortcut_GetStartMenuPath(), "Start Menu")
+    g_CachedStartMenuShortcut := Shortcut_StartMenuExists()
 }
 
 ; Toggle Startup shortcut
 ToggleStartupShortcut() {
     global g_CachedStartupShortcut
-    _ToggleShortcut(_Shortcut_GetStartupPath(), "Startup")
-    g_CachedStartupShortcut := _Shortcut_StartupExists()
+    _ToggleShortcut(Shortcut_GetStartupPath(), "Startup")
+    g_CachedStartupShortcut := Shortcut_StartupExists()
 }
 
 _ToggleShortcut(lnkPath, locationName) {
     global cfg, TOOLTIP_DURATION_SHORT, APP_NAME
-    if (_Shortcut_ExistsAndPointsToUs(lnkPath)) {
+    if (Shortcut_ExistsAndPointsToUs(lnkPath)) {
         ; Our shortcut exists - remove it
         try {
             FileDelete(lnkPath)
@@ -33,25 +33,25 @@ _ToggleShortcut(lnkPath, locationName) {
         }
     } else {
         ; Warn if shortcut will point to a temporary/cloud location
-        exePath := _Shortcut_GetEffectiveExePath()
+        exePath := Shortcut_GetEffectiveExePath()
         if (WarnTemporaryLocation(exePath, "shortcut", "will point to", "the shortcut will break", "Create shortcut anyway?") = "No")
             return
         ; No shortcut or points elsewhere - create (handles conflict dialog internally)
-        if (_CreateShortcutForCurrentMode(lnkPath)) {
+        if (CreateShortcutForCurrentMode(lnkPath)) {
             ToolTip("Added to " locationName)
         }
     }
-    _Dash_StartRefreshTimer()
+    Dash_StartRefreshTimer()
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }
 
 ; Create a shortcut that always points to the exe
 ; The exe will self-redirect to the scheduled task if admin mode is enabled
-_CreateShortcutForCurrentMode(lnkPath) {
+CreateShortcutForCurrentMode(lnkPath) {
     global cfg, APP_NAME
 
-    exePath := _Shortcut_GetEffectiveExePath()
-    iconPath := _Shortcut_GetIconPath()
+    exePath := Shortcut_GetEffectiveExePath()
+    iconPath := Shortcut_GetIconPath()
 
     ; Check for conflicting shortcut from different installation
     if (FileExist(lnkPath)) {
@@ -118,15 +118,15 @@ _CreateShortcutForCurrentMode(lnkPath) {
 ; shortcuts point to the old name (target doesn't match), but they still need updating.
 ; The shortcut filename is always "Alt-Tabby.lnk" — if it exists, it's ours.
 RecreateShortcuts() {
-    startMenuPath := _Shortcut_GetStartMenuPath()
+    startMenuPath := Shortcut_GetStartMenuPath()
     if (FileExist(startMenuPath)) {
         try FileDelete(startMenuPath)
-        _CreateShortcutForCurrentMode(startMenuPath)
+        CreateShortcutForCurrentMode(startMenuPath)
     }
 
-    startupPath := _Shortcut_GetStartupPath()
+    startupPath := Shortcut_GetStartupPath()
     if (FileExist(startupPath)) {
         try FileDelete(startupPath)
-        _CreateShortcutForCurrentMode(startupPath)
+        CreateShortcutForCurrentMode(startupPath)
     }
 }

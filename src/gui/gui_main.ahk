@@ -165,16 +165,16 @@ GUI_Main_Init() {
     Theme_Init()
 
     ; Initialize event name map for logging
-    _GUI_InitEventNames()
+    GUI_InitEventNames()
 
     ; Initialize blacklist for writing (needed for blacklist button in GUI)
     Blacklist_Init()
 
     ; Start debug event log (if enabled)
-    _GUI_LogEventStartup()
+    GUI_LogEventStartup()
 
     ; Start paint timing debug log (if enabled in config)
-    _Paint_LogStartSession()
+    Paint_LogStartSession()
 
     Win_InitDpiAwareness()
     Gdip_Startup()
@@ -232,7 +232,7 @@ _GUI_StoreHealthCheck() {
             ; This prevents the busy-wait loop in _IPC_ClientConnect from freezing
             ; keyboard/mouse input via blocked low-level hook callbacks.
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("HEALTH: Store disconnected, reconnect attempt " gGUI_ReconnectAttempts "/" maxReconnectAttempts)
+                GUI_LogEvent("HEALTH: Store disconnected, reconnect attempt " gGUI_ReconnectAttempts "/" maxReconnectAttempts)
             ToolTip("Alt-Tabby: Reconnecting to window tracker... (" gGUI_ReconnectAttempts "/" maxReconnectAttempts ")")
             HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
 
@@ -253,7 +253,7 @@ _GUI_StoreHealthCheck() {
                 gGUI_ReconnectAttempts := 0
                 gGUI_StoreConnected := true
                 if (cfg.DiagEventLog)
-                    _GUI_LogEvent("HEALTH: Reconnect succeeded")
+                    GUI_LogEvent("HEALTH: Reconnect succeeded")
                 ToolTip("Alt-Tabby: Reconnected")
                 HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
             }
@@ -264,7 +264,7 @@ _GUI_StoreHealthCheck() {
             gGUI_ReconnectAttempts := 0  ; Reset for next cycle
 
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("HEALTH: Reconnect exhausted, restarting store attempt " gGUI_StoreRestartAttempts "/" maxRestartAttempts)
+                GUI_LogEvent("HEALTH: Reconnect exhausted, restarting store attempt " gGUI_StoreRestartAttempts "/" maxRestartAttempts)
             ToolTip("Alt-Tabby: Restarting window tracker... (" gGUI_StoreRestartAttempts "/" maxRestartAttempts ")")
             HideTooltipAfter(TOOLTIP_DURATION_LONG)
 
@@ -273,7 +273,7 @@ _GUI_StoreHealthCheck() {
             ; attempt connection after the store has had time to start up.
         } else {
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("HEALTH: All restart attempts exhausted (" maxRestartAttempts " restarts, " maxReconnectAttempts " reconnects each)")
+                GUI_LogEvent("HEALTH: All restart attempts exhausted (" maxRestartAttempts " restarts, " maxReconnectAttempts " reconnects each)")
             ; Notify user that Alt+Tab functionality is lost
             ToolTip("Alt-Tabby: Connection lost. Restart from tray menu or relaunch.")
             TrayTip("Alt-Tabby", "Window tracker connection failed.`nRight-click tray icon to restart.", "Icon!")
@@ -342,11 +342,11 @@ _GUI_RequestStoreRestart() {
 
         if (result && response = 1) {
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("HEALTH: Signaled launcher to restart store")
+                GUI_LogEvent("HEALTH: Signaled launcher to restart store")
             return
         }
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("HEALTH: Launcher signal failed (result=" result "), falling back to direct restart")
+            GUI_LogEvent("HEALTH: Launcher signal failed (result=" result "), falling back to direct restart")
         gGUI_LauncherHwnd := 0  ; Invalidate — don't retry a dead launcher
     }
 
@@ -366,7 +366,7 @@ _GUI_OnPipeWake(wParam, lParam, msg, hwnd) {
 ; Clean up resources on exit
 _GUI_OnExit(reason, code) {
     ; Send any unsent stats to store before cleanup
-    try _Stats_SendToStore()
+    try Stats_SendToStore()
 
     ; Stop health check timer
     SetTimer(_GUI_StoreHealthCheck, 0)

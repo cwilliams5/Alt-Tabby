@@ -11,7 +11,7 @@
 global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
 global gPaint_SessionPaintCount := 0  ; How many paints this session
 global LOG_PATH_PAINT_TIMING  ; Defined in config_loader.ahk
-_Paint_Log(msg) {
+Paint_Log(msg) {
     global cfg, LOG_PATH_PAINT_TIMING
     if (!cfg.DiagPaintTimingLog)
         return
@@ -19,14 +19,14 @@ _Paint_Log(msg) {
 }
 
 ; Trim log file if it exceeds max size, keeping the tail
-_Paint_LogTrim() {
+Paint_LogTrim() {
     global cfg, LOG_PATH_PAINT_TIMING
     if (!cfg.DiagPaintTimingLog)
         return
     LogTrim(LOG_PATH_PAINT_TIMING)
 }
 
-_Paint_LogStartSession() {
+Paint_LogStartSession() {
     global cfg, LOG_PATH_PAINT_TIMING, gPaint_SessionPaintCount
     gPaint_SessionPaintCount := 0
     if (!cfg.DiagPaintTimingLog)
@@ -57,8 +57,8 @@ GUI_Repaint() {
     if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000)) {
         iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
         resCount := gGdip_Res.Count
-        _Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
-        _Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
+        Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
+        Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
     }
 
     ; Use display items when in ACTIVE state, live items otherwise
@@ -144,7 +144,7 @@ GUI_Repaint() {
 
     ; Log timing for first paint, paint after long idle, or slow paints (>100ms)
     if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)) {
-        _Paint_Log("  Timing: total=" tTotalMs "ms | getRect=" tGetRect " getScale=" tGetScale " backbuf=" tBackbuf " paintOverlay=" tPaintOverlay " buffers=" tBuffers " updateLayer=" tUpdateLayer " reveal=" tReveal)
+        Paint_Log("  Timing: total=" tTotalMs "ms | getRect=" tGetRect " getScale=" tGetScale " backbuf=" tBackbuf " paintOverlay=" tPaintOverlay " buffers=" tBuffers " updateLayer=" tUpdateLayer " reveal=" tReveal)
     }
 }
 
@@ -217,7 +217,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     scrollTop := gGUI_ScrollTop
 
-    cachedLayout := _GUI_GetCachedLayout(scale)
+    cachedLayout := GUI_GetCachedLayout(scale)
     RowH := cachedLayout.RowH
     Mx := cachedLayout.Mx
     My := cachedLayout.My
@@ -418,9 +418,9 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         tPO_Total := A_TickCount - tPO_Start
         idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
         if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
-            _Paint_Log("  PaintOverlay: total=" tPO_Total "ms | resources=" tPO_Resources " graphicsClear=" tPO_GraphicsClear " rows=" (IsSet(tPO_RowsTotal) ? tPO_RowsTotal : 0) " scrollbar=" tPO_Scrollbar " footer=" tPO_Footer)
+            Paint_Log("  PaintOverlay: total=" tPO_Total "ms | resources=" tPO_Resources " graphicsClear=" tPO_GraphicsClear " rows=" (IsSet(tPO_RowsTotal) ? tPO_RowsTotal : 0) " scrollbar=" tPO_Scrollbar " footer=" tPO_Footer)
             if (IsSet(tPO_IconsTotal)) {
-                _Paint_Log("    Icons: totalTime=" tPO_IconsTotal "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
+                Paint_Log("    Icons: totalTime=" tPO_IconsTotal "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
             }
         }
     }
@@ -442,7 +442,7 @@ GUI_EnsureResources(scale) {
     ; Log resource recreation (this is potentially slow)
     if (cfg.DiagPaintTimingLog) {
         idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
-        _Paint_Log("  ** RECREATING RESOURCES (oldScale=" gGdip_ResScale " newScale=" scale " resCount=" gGdip_Res.Count " idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ")")
+        Paint_Log("  ** RECREATING RESOURCES (oldScale=" gGdip_ResScale " newScale=" scale " resCount=" gGdip_Res.Count " idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ")")
     }
 
     tRes_Start := A_TickCount
@@ -532,7 +532,7 @@ GUI_EnsureResources(scale) {
     ; Log resource recreation timing
     if (cfg.DiagPaintTimingLog) {
         tRes_Total := A_TickCount - tRes_Start
-        _Paint_Log("    Resources: total=" tRes_Total "ms | dispose=" tRes_Dispose " startup=" tRes_Startup " brushes=" tRes_Brushes " fonts=" tRes_Fonts " formats=" tRes_Formats)
+        Paint_Log("    Resources: total=" tRes_Total "ms | dispose=" tRes_Dispose " startup=" tRes_Startup " brushes=" tRes_Brushes " fonts=" tRes_Fonts " formats=" tRes_Formats)
     }
 }
 
@@ -540,7 +540,7 @@ GUI_EnsureResources(scale) {
 
 ; Get scaled action button metrics with minimums enforced
 ; Returns: {size, gap, rad}
-_GUI_GetActionBtnMetrics(scale) {
+GUI_GetActionBtnMetrics(scale) {
     global cfg
     size := Round(cfg.GUI_ActionBtnSizePx * scale)
     if (size < 12)
@@ -589,7 +589,7 @@ _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bg
 GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
     global gGUI_HoverBtn, cfg
 
-    metrics := _GUI_GetActionBtnMetrics(scale)
+    metrics := GUI_GetActionBtnMetrics(scale)
     size := metrics.size
     gap := metrics.gap
     rad := metrics.rad

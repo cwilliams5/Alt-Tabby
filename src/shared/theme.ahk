@@ -281,7 +281,7 @@ Theme_GetAccentColor() {
 ;   width  - Dialog width in pixels (default: 488)
 Theme_CreateModalDialog(title, opts := "+AlwaysOnTop +Owner", width := 488) {
     g := Gui(opts, title)
-    _GUI_AntiFlashPrepare(g, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(g, Theme_GetBgColor(), true)
     g.MarginX := 24
     g.MarginY := 16
     g.SetFont("s10", "Segoe UI")
@@ -294,7 +294,7 @@ Theme_CreateModalDialog(title, opts := "+AlwaysOnTop +Owner", width := 488) {
 ;   width - Dialog width (default: 488)
 Theme_ShowModalDialog(g, width := 488) {
     g.Show("w" width " Center")
-    _GUI_AntiFlashReveal(g, true)
+    GUI_AntiFlashReveal(g, true)
     WinWaitClose(g)
 }
 
@@ -542,11 +542,11 @@ _Theme_ApplyDarkControl(ctrl, ctrlType) {
         case "StatusBar":
             themeStr := "DarkMode_Explorer"
             ; SB_SETBKCOLOR = 0x2001
-            SendMessage(0x2001, 0, _Theme_ColorToInt(gTheme_Palette.bg), ctrl.Hwnd)
+            SendMessage(0x2001, 0, Theme_ColorToInt(gTheme_Palette.bg), ctrl.Hwnd)
         case "Progress":
             ; Progress doesn't use SetWindowTheme
             ; PBM_SETBKCOLOR = 0x2001, PBM_SETBARCOLOR = 0x0409
-            SendMessage(0x2001, 0, _Theme_ColorToInt(gTheme_Palette.editBg), ctrl.Hwnd)
+            SendMessage(0x2001, 0, Theme_ColorToInt(gTheme_Palette.editBg), ctrl.Hwnd)
         case "GroupBox":
             ; GroupBox border follows theme, just set text color
             ctrl.SetFont("c" gTheme_Palette.text)
@@ -600,8 +600,8 @@ _Theme_ApplyLightControl(ctrl, ctrlType) {
 
 _Theme_ApplyDarkListView(ctrl) {
     global gTheme_Palette
-    textColor := _Theme_ColorToInt(gTheme_Palette.editText)
-    bgColor := _Theme_ColorToInt(gTheme_Palette.editBg)
+    textColor := Theme_ColorToInt(gTheme_Palette.editText)
+    bgColor := Theme_ColorToInt(gTheme_Palette.editBg)
     SendMessage(0x1024, 0, textColor, ctrl.Hwnd)  ; LVM_SETTEXTCOLOR
     SendMessage(0x1026, 0, bgColor, ctrl.Hwnd)     ; LVM_SETTEXTBKCOLOR
     SendMessage(0x1001, 0, bgColor, ctrl.Hwnd)     ; LVM_SETBKCOLOR
@@ -619,8 +619,8 @@ _Theme_ApplyDarkListView(ctrl) {
 
 _Theme_ApplyLightListView(ctrl) {
     global gTheme_Palette
-    textColor := _Theme_ColorToInt(gTheme_Palette.editText)
-    bgColor := _Theme_ColorToInt(gTheme_Palette.editBg)
+    textColor := Theme_ColorToInt(gTheme_Palette.editText)
+    bgColor := Theme_ColorToInt(gTheme_Palette.editBg)
     SendMessage(0x1024, 0, textColor, ctrl.Hwnd)
     SendMessage(0x1026, 0, bgColor, ctrl.Hwnd)
     SendMessage(0x1001, 0, bgColor, ctrl.Hwnd)
@@ -634,8 +634,8 @@ _Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {
     global gTheme_Initialized, gTheme_Palette, gTheme_BrushEditBg
     if (!gTheme_Initialized)
         return
-    DllCall("SetBkColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.editBg))
-    DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.editText))
+    DllCall("SetBkColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.editBg))
+    DllCall("SetTextColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.editText))
     return gTheme_BrushEditBg
 }
 
@@ -646,12 +646,12 @@ _Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {
         return
     ; Sidebar listboxes use panelBg (frame color) instead of edit bg
     if (gTheme_SidebarHwnds.Has(lParam)) {
-        DllCall("SetBkColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.panelBg))
-        DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.text))
+        DllCall("SetBkColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.panelBg))
+        DllCall("SetTextColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.text))
         return gTheme_BrushPanelBg
     }
-    DllCall("SetBkColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.editBg))
-    DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.editText))
+    DllCall("SetBkColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.editBg))
+    DllCall("SetTextColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.editText))
     return gTheme_BrushEditBg
 }
 
@@ -671,22 +671,22 @@ _Theme_OnCtlColorStatic(wParam, lParam, msg, hwnd) {
     bgStr := isPanel ? gTheme_Palette.panelBg : gTheme_Palette.bg
     bgBrush := isPanel ? gTheme_BrushPanelBg : gTheme_BrushBg
 
-    DllCall("SetBkColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(bgStr))
+    DllCall("SetBkColor", "Ptr", wParam, "UInt", Theme_ColorToInt(bgStr))
 
     ; Accent controls: use accent color (links, clickable text)
     if (gTheme_AccentHwnds.Has(lParam)) {
-        DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.accent))
+        DllCall("SetTextColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.accent))
         return bgBrush
     }
 
     ; Muted controls: use muted text color
     if (gTheme_MutedHwnds.Has(lParam)) {
-        DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.textMuted))
+        DllCall("SetTextColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.textMuted))
         return bgBrush
     }
 
     ; Normal: use palette text color
-    DllCall("SetTextColor", "Ptr", wParam, "UInt", _Theme_ColorToInt(gTheme_Palette.text))
+    DllCall("SetTextColor", "Ptr", wParam, "UInt", Theme_ColorToInt(gTheme_Palette.text))
     return bgBrush
 }
 
@@ -743,7 +743,7 @@ _Theme_TabWndProc(hWnd, uMsg, wParam, lParam) {
                 hOldFont := DllCall("gdi32\SelectObject", "Ptr", hdc, "Ptr", hFont, "Ptr")
 
             DllCall("gdi32\SetBkMode", "Ptr", hdc, "Int", 1)  ; TRANSPARENT
-            DllCall("gdi32\SetTextColor", "Ptr", hdc, "UInt", _Theme_ColorToInt(gTheme_Palette.text))
+            DllCall("gdi32\SetTextColor", "Ptr", hdc, "UInt", Theme_ColorToInt(gTheme_Palette.text))
 
             ; Static buffers — repopulated via NumPut before each use
             static tabRc := Buffer(16, 0)
@@ -901,9 +901,9 @@ _Theme_CreateBrushes() {
         DllCall("DeleteObject", "Ptr", gTheme_BrushEditBg)
 
     ; Create new brushes
-    gTheme_BrushBg := DllCall("CreateSolidBrush", "UInt", _Theme_ColorToInt(gTheme_Palette.bg), "Ptr")
-    gTheme_BrushPanelBg := DllCall("CreateSolidBrush", "UInt", _Theme_ColorToInt(gTheme_Palette.panelBg), "Ptr")
-    gTheme_BrushEditBg := DllCall("CreateSolidBrush", "UInt", _Theme_ColorToInt(gTheme_Palette.editBg), "Ptr")
+    gTheme_BrushBg := DllCall("CreateSolidBrush", "UInt", Theme_ColorToInt(gTheme_Palette.bg), "Ptr")
+    gTheme_BrushPanelBg := DllCall("CreateSolidBrush", "UInt", Theme_ColorToInt(gTheme_Palette.panelBg), "Ptr")
+    gTheme_BrushEditBg := DllCall("CreateSolidBrush", "UInt", Theme_ColorToInt(gTheme_Palette.editBg), "Ptr")
 }
 
 ; ============================================================
@@ -911,7 +911,7 @@ _Theme_CreateBrushes() {
 ; ============================================================
 
 ; Convert "RRGGBB" hex string to COLORREF int (0x00BBGGRR)
-_Theme_ColorToInt(hexStr) {
+Theme_ColorToInt(hexStr) {
     val := Integer("0x" hexStr)
     rr := (val >> 16) & 0xFF
     gg := (val >> 8) & 0xFF
@@ -964,6 +964,15 @@ _Theme_ApplyTitleBarColors(hWnd) {
 ; ============================================================
 ; When Theme_CustomButtonColors is enabled, buttons are converted to
 ; BS_OWNERDRAW and painted via WM_DRAWITEM with custom hover/pressed colors.
+;
+; NOTE: Owner-drawn MENUS are impossible in AHK v2. The menu modal loop
+; (WM_ENTERMENULOOP) sets an uninterruptible flag that blocks all OnMessage
+; handlers for messages < 0x312. WM_MEASUREITEM (0x2C) and WM_DRAWITEM (0x2B)
+; never fire during menu display. Use SetPreferredAppMode (uxtheme #135) for
+; menu dark mode instead. For fully custom menus, use a GUI-based popup.
+;
+; DRAWITEMSTRUCT x64 offsets: hDC=32, rcItem=40, itemData=56
+; (4-byte padding after itemState on x64)
 
 _Theme_RegisterOwnerDrawButton(ctrl) {
     global gTheme_ButtonMap, gTheme_HoverTimerFn, gTheme_IsDark
@@ -1029,9 +1038,9 @@ _Theme_OnDrawItem(wParam, lParam, msg, hwnd) {
     pressedBg := _Theme_DarkenColorRef(hoverBg)
 
     ; Normal state uses palette colors
-    normalBg     := _Theme_ColorToInt(gTheme_Palette.tertiary)
-    normalBorder := _Theme_ColorToInt(gTheme_Palette.borderInput)
-    normalText   := _Theme_ColorToInt(gTheme_Palette.text)
+    normalBg     := Theme_ColorToInt(gTheme_Palette.tertiary)
+    normalBorder := Theme_ColorToInt(gTheme_Palette.borderInput)
+    normalText   := Theme_ColorToInt(gTheme_Palette.text)
     defBorder    := hoverBg  ; Default button gets accent border
 
     ; Choose colors based on state

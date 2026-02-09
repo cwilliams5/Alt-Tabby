@@ -102,7 +102,7 @@ global gWS_ProjectionDirtyHwnds := Map()
 
 ; Safely snapshot Map keys for iteration (prevents modification during iteration)
 ; Returns an Array of keys. Caller can iterate safely after Critical section ends.
-_WS_SnapshotMapKeys(mapObj) {
+WS_SnapshotMapKeys(mapObj) {
     Critical "On"
     keys := []
     for k, _ in mapObj
@@ -149,7 +149,7 @@ WindowStore_EndScan(graceMs := "") {
     changed := false
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    hwnds := _WS_SnapshotMapKeys(gWS_Store)
+    hwnds := WS_SnapshotMapKeys(gWS_Store)
 
     for _, hwnd in hwnds {
         if (!gWS_Store.Has(hwnd))
@@ -489,7 +489,7 @@ WindowStore_ValidateExistence() {
     global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_DeltaPendingHwnds, gWS_MRUBumpOnly
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    hwnds := _WS_SnapshotMapKeys(gWS_Store)
+    hwnds := WS_SnapshotMapKeys(gWS_Store)
 
     toRemove := []
     for _, hwnd in hwnds {
@@ -574,7 +574,7 @@ WindowStore_PurgeBlacklisted() {
     toRemove := []
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    hwnds := _WS_SnapshotMapKeys(gWS_Store)
+    hwnds := WS_SnapshotMapKeys(gWS_Store)
 
     ; Collect hwnds that match blacklist
     for _, hwnd in hwnds {
@@ -702,12 +702,12 @@ WindowStore_GetProjection(opts := 0) {
     global gWS_Store, gWS_Meta, gWS_SortOrderDirty, gWS_ProjectionContentDirty
     global gWS_MRUBumpOnly, gWS_ProjectionDirtyHwnds, gWS_TitleSortActive
     global gWS_ProjectionCache_Items, gWS_ProjectionCache_OptsKey, gWS_ProjectionCache_SortedRecs
-    sort := _WS_GetOpt(opts, "sort", "MRU")
+    sort := WS_GetOpt(opts, "sort", "MRU")
     gWS_TitleSortActive := (sort = "Title")
-    currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
-    includeMin := _WS_GetOpt(opts, "includeMinimized", true)
-    includeCloaked := _WS_GetOpt(opts, "includeCloaked", false)
-    columns := _WS_GetOpt(opts, "columns", "items")
+    currentOnly := WS_GetOpt(opts, "currentWorkspaceOnly", false)
+    includeMin := WS_GetOpt(opts, "includeMinimized", true)
+    includeCloaked := WS_GetOpt(opts, "includeCloaked", false)
+    columns := WS_GetOpt(opts, "columns", "items")
 
     optsKey := sort "|" currentOnly "|" includeMin "|" includeCloaked "|" columns
 
@@ -983,7 +983,7 @@ _WS_InsertionSort(arr, cmp) {
 }
 
 ; Helper to get option from Map or plain Object
-_WS_GetOpt(opts, key, default) {
+WS_GetOpt(opts, key, default) {
     if (!IsObject(opts))
         return default
     if (opts is Map)
@@ -1218,7 +1218,7 @@ WindowStore_UpdateProcessName(pid, name) {
     gWS_ProcNameCache[pid] := { name: name, tick: A_TickCount }
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
-    hwnds := _WS_SnapshotMapKeys(gWS_Store)
+    hwnds := WS_SnapshotMapKeys(gWS_Store)
 
     ; RACE FIX: Wrap record writes + rev bump in Critical to prevent interleaving
     ; with other store mutation paths (consistent with UpdateFields)
@@ -1283,7 +1283,7 @@ WindowStore_PruneProcNameCache() {
         return 0
 
     ; Snapshot keys to prevent iteration-during-modification
-    pids := _WS_SnapshotMapKeys(gWS_ProcNameCache)
+    pids := WS_SnapshotMapKeys(gWS_ProcNameCache)
 
     ; RACE FIX: Wrap delete loop in Critical to prevent interleaving with
     ; UpdateProcessName which inserts under Critical
@@ -1316,7 +1316,7 @@ WindowStore_PruneExeIconCache() {
     Critical "Off"
 
     ; Snapshot cache keys to prevent iteration-during-modification
-    cacheKeys := _WS_SnapshotMapKeys(gWS_ExeIconCache)
+    cacheKeys := WS_SnapshotMapKeys(gWS_ExeIconCache)
 
     ; RACE FIX: Wrap delete loop in Critical to prevent interleaving with
     ; ExeIconCachePut which inserts under the same map

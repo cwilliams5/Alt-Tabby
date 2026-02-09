@@ -46,7 +46,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
         ; Reset selection to first item when workspace changes during ACTIVE state.
         ; A workspace switch is a context switch: position 1 is the focused window
         ; on the NEW workspace, not "the window you're already on".  Keeping sel=2
-        ; (the default from _GUI_ResetSelectionToMRU) would highlight the focused
+        ; (the default from GUI_ResetSelectionToMRU) would highlight the focused
         ; window from the OLD workspace — wrong after any workspace switch.
         ; Applies in both "current" and "all" mode (the context switch is the same).
         ; RACE FIX: Wrap in Critical to prevent a hotkey (Tab/Ctrl) from modifying
@@ -107,7 +107,7 @@ GUI_ToggleWorkspaceMode() {
             ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
 
             ; Reset selection
-            _GUI_ResetSelectionToMRU()
+            GUI_ResetSelectionToMRU()
 
             ; Resize GUI if item count changed significantly
             rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)

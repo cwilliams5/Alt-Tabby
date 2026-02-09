@@ -445,23 +445,23 @@ RunLiveTests_Core() {
                 wsCount := 0
                 hwndCount := 0
                 firstHwnd := 0
-                monitorsArr := _KSub_GetMonitorsArray(stateObj)
+                monitorsArr := KSub_GetMonitorsArray(stateObj)
                 for _, monObj in monitorsArr {
-                    for _, wsObj in _KSub_GetWorkspacesArray(monObj) {
-                        wsName := _KSafe_Str(wsObj, "name")
+                    for _, wsObj in KSub_GetWorkspacesArray(monObj) {
+                        wsName := KSafe_Str(wsObj, "name")
                         if (wsName != "")
                             wsCount++
                         ; Count hwnds in containers
                         if (wsObj is Map && wsObj.Has("containers")) {
-                            for _, cont in _KSafe_Elements(wsObj["containers"]) {
+                            for _, cont in KSafe_Elements(wsObj["containers"]) {
                                 if !(cont is Map)
                                     continue
                                 if (cont.Has("windows")) {
-                                    for _, win in _KSafe_Elements(cont["windows"]) {
+                                    for _, win in KSafe_Elements(cont["windows"]) {
                                         if (win is Map && win.Has("hwnd")) {
                                             hwndCount++
                                             if (!firstHwnd)
-                                                firstHwnd := _KSafe_Int(win, "hwnd")
+                                                firstHwnd := KSafe_Int(win, "hwnd")
                                         }
                                     }
                                 }
@@ -476,14 +476,14 @@ RunLiveTests_Core() {
                     Log("PASS: Komorebi has managed windows")
                     TestPassed++
 
-                    ; Test _KSub_FindWorkspaceByHwnd with parsed state
+                    ; Test KSub_FindWorkspaceByHwnd with parsed state
                     if (firstHwnd > 0) {
-                        wsName := _KSub_FindWorkspaceByHwnd(stateObj, firstHwnd)
+                        wsName := KSub_FindWorkspaceByHwnd(stateObj, firstHwnd)
                         if (wsName != "") {
-                            Log("PASS: _KSub_FindWorkspaceByHwnd returned '" wsName "' for hwnd " firstHwnd)
+                            Log("PASS: KSub_FindWorkspaceByHwnd returned '" wsName "' for hwnd " firstHwnd)
                             TestPassed++
                         } else {
-                            Log("FAIL: _KSub_FindWorkspaceByHwnd returned empty for hwnd " firstHwnd)
+                            Log("FAIL: KSub_FindWorkspaceByHwnd returned empty for hwnd " firstHwnd)
                             TestErrors++
                         }
                     }

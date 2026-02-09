@@ -157,7 +157,7 @@ Override individual colors for light mode. Leave at defaults for the standard li
 
 ### Title Bar Colors (Win11)
 
-Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10.
+Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10. Disabling may require closing and reopening dialogs to fully revert.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -169,7 +169,7 @@ Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10.
 
 ### Title Bar Border Color (Win11)
 
-Custom window border color. Win11 22H2+ only; ignored on Win10. Independent of title bar colors above.
+Custom window border color. Win11 22H2+ only; ignored on Win10. Independent of title bar colors above. Disabling may require closing and reopening dialogs to fully revert.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -433,6 +433,7 @@ Event-driven komorebi integration via named pipe
 | `SubFallbackPollMs` | int | `2000` | `500` - `30000` | Fallback polling interval if subscription fails |
 | `SubCacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
 | `SubBatchCloakEventsMs` | int | `50` | `0` - `500` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
+| `MruSuppressionMs` | int | `2000` | `500` - `5000` | Duration (ms) to suppress WinEventHook MRU updates after a workspace switch. Prevents focus events from corrupting window order during transitions. |
 
 ## Setup
 
@@ -574,6 +575,7 @@ Resolves PID -> process name asynchronously
 | `IntervalMs` | int | `100` | `20` - `1000` | How often the pump processes its queue |
 | `BatchSize` | int | `16` | `1` - `100` | Max PIDs to resolve per tick |
 | `IdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
+| `FailedPidRetryMs` | int | `60000` | `5000` - `300000` | How long (ms) before retrying process name lookup for a PID that previously failed. |
 
 ### Cache Limits
 
@@ -601,6 +603,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `IPCLog` | bool | `false` | - | Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues. |
 | `PaintTimingLog` | bool | `false` | - | Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle. |
 | `WebViewLog` | bool | `false` | - | Log WebView2 config editor errors to %TEMP%\\tabby_webview_debug.log. Use when debugging config editor issues. |
+| `UpdateLog` | bool | `false` | - | Log auto-update check and apply steps to %TEMP%\\tabby_update.log. Use when debugging update failures. |
 | `StatsTracking` | bool | `true` | - | Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard. |
 
 ### Log Size Limits
@@ -631,4 +634,4 @@ Options for automated test suite
 
 ---
 
-*Generated on 2026-02-08 with 257 total settings.*
+*Generated on 2026-02-08 with 260 total settings.*

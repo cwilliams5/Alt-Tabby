@@ -18,7 +18,7 @@
 ; Check if we're running from a different location than the installed version
 ; Offers to update or launch the installed version
 ; Sets g_MismatchDialogShown if a dialog was displayed (to prevent race with auto-update)
-_Launcher_CheckInstallMismatch() {
+Launcher_CheckInstallMismatch() {
     global cfg, g_MismatchDialogShown, g_SkipMismatchCheck, APP_NAME
 
     ; Skip if flag set (after one-time elevation from mismatch prompt)
@@ -71,7 +71,7 @@ _Launcher_CheckInstallMismatch() {
 
     if (versionCompare > 0) {
         ; Current version is NEWER than installed
-        result := _Launcher_ShowMismatchDialog(installedPath,
+        result := Launcher_ShowMismatchDialog(installedPath,
             APP_NAME " - Newer Version Running",
             "You're running a newer version (" currentVersion " vs " installedVersion ").`nInstalled at:",
             "Update the installed version?")
@@ -85,7 +85,7 @@ _Launcher_CheckInstallMismatch() {
         }
     } else if (versionCompare = 0) {
         ; Current version is SAME as installed - clearer message about duplicate installations
-        result := _Launcher_ShowMismatchDialog(installedPath,
+        result := Launcher_ShowMismatchDialog(installedPath,
             APP_NAME " - Same Version Running",
             "Alt-Tabby " currentVersion " is also installed at:",
             "You have the same version in two locations. Launch from the installed location instead?")
@@ -95,7 +95,7 @@ _Launcher_CheckInstallMismatch() {
     } else {
         ; Current version is OLDER than installed
         ; Use custom 3-button dialog: Yes (launch installed) / No (run from here once) / Always (run from here always)
-        result := _Launcher_ShowMismatchDialog(installedPath,
+        result := Launcher_ShowMismatchDialog(installedPath,
             APP_NAME " - Newer Version Installed",
             "A newer version (" installedVersion ") is installed at:",
             "Launch the newer installed version instead?")
@@ -127,7 +127,7 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
         }
 
         ; Update SetupExePath to current location - never ask again
-        _Setup_SetExePath(currentPath)
+        Setup_SetExePath(currentPath)
         g_MismatchDialogShown := false  ; Allow auto-update now that mismatch is resolved
 
         ; Check if installed version is currently running to prevent multiple instances
@@ -164,7 +164,7 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
         return
 
     ; Check if any process with that name is running (other than us)
-    if (!_Launcher_IsOtherProcessRunning(installedExeName))
+    if (!Launcher_IsOtherProcessRunning(installedExeName))
         return  ; Not running or only us
 
     result := ThemeMsgBox(
@@ -185,7 +185,7 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
 ; Custom 3-button dialog for mismatch: Yes / No / Always run from here
 ; Returns: "Yes", "No", or "Always"
 ; Optional params allow customization for same-version vs older-version scenarios
-_Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question := "") {
+Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question := "") {
     global cfg, APP_NAME
 
     if (title = "")
@@ -242,7 +242,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
     SplitPath(installedPath, , &installedDir)
 
     ; Check if we need elevation
-    if (_Update_NeedsElevation(installedDir)) {
+    if (Update_NeedsElevation(installedDir)) {
         ; Save update info and self-elevate
         global UPDATE_INFO_DELIMITER, TEMP_INSTALL_UPDATE_STATE
         updateInfo := A_ScriptFullPath UPDATE_INFO_DELIMITER installedPath
@@ -251,7 +251,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
         FileAppend(updateInfo, updateFile, "UTF-8")
 
         try {
-            if (!_Launcher_RunAsAdmin("--update-installed"))
+            if (!Launcher_RunAsAdmin("--update-installed"))
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
@@ -262,14 +262,14 @@ _Launcher_UpdateInstalledVersion(installedPath) {
     }
 
     ; Apply update directly
-    _Launcher_DoUpdateInstalled(A_ScriptFullPath, installedPath)
+    Launcher_DoUpdateInstalled(A_ScriptFullPath, installedPath)
 }
 
 ; Actually perform the update (called directly or after elevation)
-; Wrapper for mismatch update flow - uses _Update_ApplyCore with appropriate options
-_Launcher_DoUpdateInstalled(sourcePath, targetPath) {
+; Wrapper for mismatch update flow - uses Update_ApplyCore with appropriate options
+Launcher_DoUpdateInstalled(sourcePath, targetPath) {
     global cfg, g_StorePID, g_GuiPID, g_ViewerPID
-    _Update_ApplyCore({
+    Update_ApplyCore({
         sourcePath: sourcePath,
         targetPath: targetPath,
         useLockFile: false,
@@ -341,11 +341,11 @@ _Launcher_OfferToUpdateStaleShortcuts() {
         return
 
     ; Check if any shortcuts exist but DON'T point to us
-    startupPath := _Shortcut_GetStartupPath()
-    startMenuPath := _Shortcut_GetStartMenuPath()
+    startupPath := Shortcut_GetStartupPath()
+    startMenuPath := Shortcut_GetStartMenuPath()
 
-    startupStale := FileExist(startupPath) && !_Shortcut_ExistsAndPointsToUs(startupPath)
-    startMenuStale := FileExist(startMenuPath) && !_Shortcut_ExistsAndPointsToUs(startMenuPath)
+    startupStale := FileExist(startupPath) && !Shortcut_ExistsAndPointsToUs(startupPath)
+    startMenuStale := FileExist(startMenuPath) && !Shortcut_ExistsAndPointsToUs(startMenuPath)
 
     if (!startupStale && !startMenuStale)
         return
@@ -372,7 +372,7 @@ _Launcher_OfferToUpdateStaleShortcuts() {
 }
 
 ; Check if running from the Program Files install directory
-_IsInProgramFiles() {
+IsInProgramFiles() {
     global ALTTABBY_INSTALL_DIR
     return PathsEqual(A_ScriptDir, ALTTABBY_INSTALL_DIR)
 }
@@ -386,7 +386,7 @@ _Launcher_CleanupStaleAdminTask(oldPath, newPath) {
     if (!AdminTaskExists())
         return
 
-    taskPath := _AdminTask_GetCommandPath()
+    taskPath := AdminTask_GetCommandPath()
     if (taskPath = "")
         return
 
@@ -407,13 +407,13 @@ _Launcher_CleanupStaleAdminTask(oldPath, newPath) {
         if (A_IsAdmin) {
             ; We have admin - delete task directly
             DeleteAdminTask()
-            _Setup_SetRunAsAdmin(false)
+            Setup_SetRunAsAdmin(false)
         } else {
             ; Need elevation to delete task
             try {
-                if (_Launcher_RunAsAdmin("--disable-admin-task")) {
+                if (Launcher_RunAsAdmin("--disable-admin-task")) {
                     ; Elevated instance will handle it, update local config
-                    _Setup_SetRunAsAdmin(false)
+                    Setup_SetRunAsAdmin(false)
                 }
             } catch {
                 ; UAC refused - warn user

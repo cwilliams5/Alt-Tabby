@@ -1,0 +1,216 @@
+# query_config.ps1 - Config registry search
+#
+# Searches config_registry.ahk for settings matching a keyword.
+# Returns semantic answers: section, key, type, default, description.
+#
+# Usage:
+#   powershell -File tests/query_config.ps1                (show section/group index)
+#   powershell -File tests/query_config.ps1 theme          (fuzzy search for "theme")
+#   powershell -File tests/query_config.ps1 -Section GUI   (list all settings in a section)
+
+param(
+    [Parameter(Position=0)]
+    [string]$Search,
+    [string]$Section
+)
+
+$ErrorActionPreference = 'Stop'
+
+$registryPath = (Resolve-Path "$PSScriptRoot\..\src\shared\config_registry.ahk").Path
+$rawLines = [System.IO.File]::ReadAllLines($registryPath)
+
+# === Parse config registry entries ===
+$sections = [System.Collections.ArrayList]::new()
+$subsections = [System.Collections.ArrayList]::new()
+$settings = [System.Collections.ArrayList]::new()
+
+$entryText = ""
+$braceDepth = 0
+
+foreach ($rawLine in $rawLines) {
+    $trimmed = $rawLine.Trim()
+    if ($braceDepth -eq 0 -and $trimmed -match '^\s*;') { continue }
+
+    foreach ($c in $trimmed.ToCharArray()) {
+        if ($c -eq '{') {
+            if ($braceDepth -eq 0) { $entryText = "" }
+            $braceDepth++
+        }
+    }
+
+    if ($braceDepth -gt 0) {
+        $entryText += " " + $trimmed
+    }
+
+    foreach ($c in $trimmed.ToCharArray()) {
+        if ($c -eq '}') { $braceDepth-- }
+    }
+
+    if ($braceDepth -le 0 -and $entryText) {
+        $braceDepth = 0
+        $e = $entryText
+
+        if ($e -match 'type:\s*"section"') {
+            $eName = if ($e -match 'name:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eDesc = if ($e -match 'desc:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            [void]$sections.Add(@{ Name = $eName; Desc = $eDesc })
+        }
+        elseif ($e -match 'type:\s*"subsection"') {
+            $eSect = if ($e -match 'section:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eName = if ($e -match 'name:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eDesc = if ($e -match 'desc:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            [void]$subsections.Add(@{ Section = $eSect; Name = $eName; Desc = $eDesc })
+        }
+        elseif ($e -match '\bs:\s*"') {
+            $eS = if ($e -match '\bs:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eK = if ($e -match '\bk:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eG = if ($e -match '\bg:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eT = if ($e -match '\bt:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eD = if ($e -match '\bd:\s*"([^"]*)"') { $Matches[1] } else { "" }
+            $eDefault = ""
+            if ($e -match 'default:\s*"([^"]*)"') { $eDefault = $Matches[1] }
+            elseif ($e -match 'default:\s*(true|false)') { $eDefault = $Matches[1] }
+            elseif ($e -match 'default:\s*(0x[0-9A-Fa-f]+|\d+(?:\.\d+)?)') { $eDefault = $Matches[1] }
+
+            $eOptions = $null
+            if ($e -match 'options:\s*\[([^\]]+)\]') {
+                $q = [char]34
+                $eOptions = ($Matches[1] -split ',' | ForEach-Object { $_.Trim().Trim($q) }) -join ', '
+            }
+            $eFmt = if ($e -match 'fmt:\s*"([^"]*)"') { $Matches[1] } else { $null }
+
+            [void]$settings.Add(@{
+                S = $eS; K = $eK; G = $eG; T = $eT; D = $eD
+                Default = $eDefault; Options = $eOptions; Fmt = $eFmt
+            })
+        }
+
+        $entryText = ""
+    }
+}
+
+# === No arguments: show section/group index ===
+if (-not $Search -and -not $Section) {
+    $totalCount = $settings.Count
+    Write-Host ""
+    Write-Host "  Config Registry Index, $totalCount settings" -ForegroundColor White
+    Write-Host ""
+
+    foreach ($sec in $sections) {
+        $setCount = 0
+        foreach ($st in $settings) { if ($st.S -eq $sec.Name) { $setCount++ } }
+        Write-Host "  [$($sec.Name)] $($sec.Desc) - $setCount settings" -ForegroundColor Cyan
+
+        foreach ($sub in $subsections) {
+            if ($sub.Section -eq $sec.Name) {
+                Write-Host "    - $($sub.Name): $($sub.Desc)" -ForegroundColor DarkGray
+            }
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  Search: query_config.ps1 <keyword>" -ForegroundColor DarkGray
+    Write-Host "  List:   query_config.ps1 -Section <name>" -ForegroundColor DarkGray
+    Write-Host ""
+    exit 0
+}
+
+# === Section mode: list all settings in a section ===
+if ($Section) {
+    $matched = [System.Collections.ArrayList]::new()
+    foreach ($st in $settings) {
+        if ($st.S -eq $Section) { [void]$matched.Add($st) }
+    }
+    if ($matched.Count -eq 0) {
+        # Try case-insensitive partial match
+        foreach ($st in $settings) {
+            if ($st.S -like "*$Section*") { [void]$matched.Add($st) }
+        }
+    }
+
+    if ($matched.Count -eq 0) {
+        Write-Host "  No settings found in section: $Section" -ForegroundColor Red
+        Write-Host "  Run with no arguments to see available sections." -ForegroundColor DarkGray
+        exit 1
+    }
+
+    $sectionName = $matched[0].S
+    $matchedCount = $matched.Count
+    Write-Host ""
+    Write-Host "  [$sectionName] - $matchedCount settings" -ForegroundColor White
+    Write-Host ""
+
+    foreach ($st in $matched) {
+        $typeInfo = "type: $($st.T)"
+        if ($st.Options) { $typeInfo += "  options: $($st.Options)" }
+        $defaultInfo = "default: $($st.Default)"
+        if ($st.Fmt -eq 'hex') { $defaultInfo += " [hex]" }
+
+        Write-Host "  [$sectionName] $($st.K)  $($st.G)" -ForegroundColor Green
+        Write-Host "    $typeInfo  $defaultInfo" -ForegroundColor DarkGray
+        if ($st.D) {
+            Write-Host "    $($st.D)" -ForegroundColor DarkGray
+        }
+    }
+
+    Write-Host ""
+    exit 0
+}
+
+# === Fuzzy search mode ===
+$searchLower = $Search.ToLower()
+$results = [System.Collections.ArrayList]::new()
+
+foreach ($st in $settings) {
+    $score = 0
+
+    # Exact key match
+    if ($st.K.ToLower() -eq $searchLower -or $st.G.ToLower() -eq $searchLower) {
+        $score = 100
+    }
+    # Key contains search term
+    elseif ($st.K.ToLower().Contains($searchLower) -or $st.G.ToLower().Contains($searchLower)) {
+        $score = 80
+    }
+    # Section name matches
+    elseif ($st.S.ToLower().Contains($searchLower)) {
+        $score = 40
+    }
+    # Description contains search term
+    elseif ($st.D -and $st.D.ToLower().Contains($searchLower)) {
+        $score = 20
+    }
+
+    if ($score -gt 0) {
+        [void]$results.Add(@{ Setting = $st; Score = $score })
+    }
+}
+
+if ($results.Count -eq 0) {
+    Write-Host "  No matches for: $Search" -ForegroundColor Red
+    Write-Host "  Run with no arguments to see available sections and groups." -ForegroundColor DarkGray
+    exit 1
+}
+
+$sorted = $results | Sort-Object { $_.Score } -Descending
+
+Write-Host ""
+$resultCount = $results.Count
+Write-Host "  Matches for [$Search] - $resultCount results:" -ForegroundColor White
+Write-Host ""
+
+foreach ($r in $sorted) {
+    $st = $r.Setting
+    $typeInfo = "type: $($st.T)"
+    if ($st.Options) { $typeInfo += "  options: $($st.Options)" }
+    $defaultInfo = "default: $($st.Default)"
+    if ($st.Fmt -eq 'hex') { $defaultInfo += " [hex]" }
+
+    Write-Host "  [$($st.S)] $($st.K)  $($st.G)" -ForegroundColor Green
+    Write-Host "    $typeInfo  $defaultInfo" -ForegroundColor DarkGray
+    if ($st.D) {
+        Write-Host "    $($st.D)" -ForegroundColor DarkGray
+    }
+}
+
+Write-Host ""

@@ -151,19 +151,19 @@ RunLiveTests_Network() {
         directHwnds := 0
         firstTestHwnd := 0
         if (directObj is Map) {
-            for _, monObj in _KSub_GetMonitorsArray(directObj) {
-                for _, wsObj in _KSub_GetWorkspacesArray(monObj) {
+            for _, monObj in KSub_GetMonitorsArray(directObj) {
+                for _, wsObj in KSub_GetWorkspacesArray(monObj) {
                     if !(wsObj is Map) || !wsObj.Has("containers")
                         continue
-                    for _, cont in _KSafe_Elements(wsObj["containers"]) {
+                    for _, cont in KSafe_Elements(wsObj["containers"]) {
                         if !(cont is Map)
                             continue
                         if (cont.Has("windows")) {
-                            for _, win in _KSafe_Elements(cont["windows"]) {
+                            for _, win in KSafe_Elements(cont["windows"]) {
                                 if (win is Map && win.Has("hwnd")) {
                                     directHwnds++
                                     if (!firstTestHwnd)
-                                        firstTestHwnd := _KSafe_Int(win, "hwnd")
+                                        firstTestHwnd := KSafe_Int(win, "hwnd")
                                 }
                             }
                         }
@@ -175,7 +175,7 @@ RunLiveTests_Network() {
 
         ; Test lookup for a window
         if (directHwnds > 0 && firstTestHwnd > 0) {
-            testWs := _KSub_FindWorkspaceByHwnd(directObj, firstTestHwnd)
+            testWs := KSub_FindWorkspaceByHwnd(directObj, firstTestHwnd)
             Log("  [WS E2E] Direct lookup hwnd " firstTestHwnd " -> workspace '" testWs "'")
         }
     }

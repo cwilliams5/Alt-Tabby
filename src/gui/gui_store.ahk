@@ -27,7 +27,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ; Log malformed JSON when diagnostics enabled (helps debug IPC issues)
         if (cfg.DiagEventLog) {
             preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
-            _GUI_LogEvent("JSON parse error: " err.Message " | content: " preview)
+            GUI_LogEvent("JSON parse error: " err.Message " | content: " preview)
         }
         return
     }
@@ -89,7 +89,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ; ============================================================
         if (gGUI_PendingPhase != "" && !isToggleResponse) {
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("SNAPSHOT: skipped (async activation pending, phase=" gGUI_PendingPhase ")")
+                GUI_LogEvent("SNAPSHOT: skipped (async activation pending, phase=" gGUI_PendingPhase ")")
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -110,7 +110,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         global gCached_MRUFreshnessMs
         if (mruAge < gCached_MRUFreshnessMs && !isToggleResponse) {
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
+                GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -145,7 +145,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
                 ; Reset selection for toggle response
                 if (isToggleResponse) {
-                    _GUI_ResetSelectionToMRU()
+                    GUI_ResetSelectionToMRU()
                 }
             }
 
@@ -260,7 +260,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
     ; Unknown message type - log for debugging (could mask IPC bugs)
     if (cfg.DiagEventLog)
-        _GUI_LogEvent("IPC: unknown message type: " type)
+        GUI_LogEvent("IPC: unknown message type: " type)
 }
 
 ; ========================= ITEM CONVERSION =========================
@@ -313,7 +313,7 @@ GUI_ApplyDelta(payload) {
     ; Debug: log delta arrival when in bypass mode
     if (gINT_BypassMode && cfg.DiagEventLog) {
         upsertCount := (payload.Has("upserts") && payload["upserts"].Length) ? payload["upserts"].Length : 0
-        _GUI_LogEvent("DELTA IN BYPASS: " upsertCount " upserts")
+        GUI_LogEvent("DELTA IN BYPASS: " upsertCount " upserts")
     }
 
     ; CRITICAL: Protect array modifications from hotkey interruption
@@ -396,7 +396,7 @@ GUI_ApplyDelta(payload) {
                 ; Track focus change (don't process here, just record it)
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     if (cfg.DiagEventLog)
-                        _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
+                        GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
                     focusChangedToHwnd := hwnd
                     mruChanged := true
                 }
@@ -411,7 +411,7 @@ GUI_ApplyDelta(payload) {
                 ; Track focus change for new item too
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     if (cfg.DiagEventLog)
-                        _GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
+                        GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (new)")
                     focusChangedToHwnd := hwnd
                 }
                 mruChanged := true  ; New item added, layout affected
@@ -472,7 +472,7 @@ GUI_ApplyDelta(payload) {
     if (focusChangedToHwnd) {
         shouldBypass := INT_ShouldBypassWindow(focusChangedToHwnd)
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("BYPASS CHECK: hwnd=" focusChangedToHwnd " shouldBypass=" shouldBypass)
+            GUI_LogEvent("BYPASS CHECK: hwnd=" focusChangedToHwnd " shouldBypass=" shouldBypass)
         INT_SetBypassMode(shouldBypass)
     }
 
@@ -546,7 +546,7 @@ GUI_RequestSnapshot() {
     IPC_PipeClient_Send(gGUI_StoreClient, cachedJson, gGUI_StoreWakeHwnd)
     ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
     gGUI_StoreClient.idleStreak := 0
-    _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
+    IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
 }
 
 ; Request projection with optional workspace filtering (for ServerSideWorkspaceFilter mode)
@@ -569,5 +569,5 @@ GUI_RequestProjectionWithWSFilter(currentWSOnly := false) {
     ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
     global IPC_TICK_ACTIVE
     gGUI_StoreClient.idleStreak := 0
-    _IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
+    IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
 }

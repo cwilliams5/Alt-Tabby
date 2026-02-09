@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Functions like _CL_WriteIniPreserveFormat come from config_loader.ahk
+#Warn VarUnset, Off  ; Functions like CL_WriteIniPreserveFormat come from config_loader.ahk
 
 ; ============================================================
 ; Setup Utilities - Version, Task Scheduler, Shortcuts
@@ -190,7 +190,7 @@ WarnIfTempLocation_AdminTask(exePath, dirPath := "", extraText := "") {
 
 ; Launch a process de-elevated via Explorer shell (ComObject Shell.Application)
 ; Returns true if launched successfully, false on failure
-_LaunchDeElevated(exePath, args := "", workDir := "") {
+LaunchDeElevated(exePath, args := "", workDir := "") {
     if (workDir = "")
         SplitPath(exePath, , &workDir)
     try {
@@ -208,7 +208,7 @@ _LaunchDeElevated(exePath, args := "", workDir := "") {
 ; Run the current script as administrator with the specified command-line arguments
 ; Returns: true if elevation was initiated, false if failed
 ; Note: If successful, the current process should exit to let the elevated one run
-_Launcher_RunAsAdmin(args) {
+Launcher_RunAsAdmin(args) {
     try {
         if (A_IsCompiled)
             Run('*RunAs "' A_ScriptFullPath '" ' args)
@@ -222,7 +222,7 @@ _Launcher_RunAsAdmin(args) {
 
 ; Write result to admin toggle lock file for the non-elevated instance to read.
 ; Valid results: "ok", "cancelled", "failed"
-_AdminToggle_WriteResult(result) {
+AdminToggle_WriteResult(result) {
     global TEMP_ADMIN_TOGGLE_LOCK
     try {
         tempPath := TEMP_ADMIN_TOGGLE_LOCK ".tmp"
@@ -290,7 +290,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     ; Warn user before silently overwriting another installation's admin mode
     ; Skip dialog in testing mode to avoid blocking automated tests
     if (AdminTaskExists(taskName)) {
-        existingPath := _AdminTask_GetCommandPath(taskName)
+        existingPath := AdminTask_GetCommandPath(taskName)
         if (existingPath != "" && !PathsEqual(existingPath, exePath)) {
             ; In testing mode, just proceed without prompting
             if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
@@ -434,7 +434,7 @@ _AdminTask_FetchXML(taskNameOverride := "") {
 
 ; Extract command path from existing scheduled task XML
 ; Returns empty string if task doesn't exist or can't be parsed
-_AdminTask_GetCommandPath(taskNameOverride := "") {
+AdminTask_GetCommandPath(taskNameOverride := "") {
     ; Use cache for default task name
     if (taskNameOverride = "")
         return _AdminTask_GetCachedData().commandPath
@@ -449,13 +449,13 @@ _AdminTask_GetCommandPath(taskNameOverride := "") {
 
 ; Extract InstallationId from task description
 ; Returns empty string if task doesn't exist or has no ID
-_AdminTask_GetInstallationId() {
+AdminTask_GetInstallationId() {
     return _AdminTask_GetCachedData().installationId
 }
 
 ; Check if admin task exists AND points to the current exe
 ; Used for tray menu checkmark - prevents misleading state when task points elsewhere
-_AdminTask_PointsToUs() {
+AdminTask_PointsToUs() {
     data := _AdminTask_GetCachedData()
     if (!data.exists || data.commandPath = "")
         return false
@@ -464,7 +464,7 @@ _AdminTask_PointsToUs() {
 
 ; Run the admin scheduled task via schtasks, with optional pre-delay.
 ; Returns the schtasks exit code (0 = success).
-_RunAdminTask(sleepMs := 0) {
+RunAdminTask(sleepMs := 0) {
     global ALTTABBY_TASK_NAME
     if (sleepMs > 0)
         Sleep(sleepMs)
@@ -476,19 +476,19 @@ _RunAdminTask(sleepMs := 0) {
 ; ============================================================
 ; Temp file marker for when UAC is declined but config write to PF fails.
 ; Persists across sessions until config write succeeds. NOT cleaned up by
-; _Update_CleanupStaleTempFiles() — must persist until the loop is broken.
+; Update_CleanupStaleTempFiles() — must persist until the loop is broken.
 
 _Setup_WriteAdminDeclinedMarker() {
     global TEMP_ADMIN_DECLINED_MARKER
     try FileAppend(A_Now, TEMP_ADMIN_DECLINED_MARKER, "UTF-8")
 }
 
-_Setup_HasAdminDeclinedMarker() {
+Setup_HasAdminDeclinedMarker() {
     global TEMP_ADMIN_DECLINED_MARKER
     return FileExist(TEMP_ADMIN_DECLINED_MARKER) ? true : false
 }
 
-_Setup_ClearAdminDeclinedMarker() {
+Setup_ClearAdminDeclinedMarker() {
     global TEMP_ADMIN_DECLINED_MARKER
     try FileDelete(TEMP_ADMIN_DECLINED_MARKER)
 }
@@ -497,36 +497,36 @@ _Setup_ClearAdminDeclinedMarker() {
 ; CONFIG SETUP WRITE HELPERS (DRY consolidation)
 ; ============================================================
 ; Centralized helpers for writing Setup config values to gConfigIniPath.
-; For cross-location writes (targetConfigPath), use _CL_WriteIniPreserveFormat directly.
+; For cross-location writes (targetConfigPath), use CL_WriteIniPreserveFormat directly.
 
-_Setup_SetRunAsAdmin(value, writeMarkerOnFail := false) {
+Setup_SetRunAsAdmin(value, writeMarkerOnFail := false) {
     global cfg, gConfigIniPath
     cfg.SetupRunAsAdmin := value
     writeOk := false
-    try writeOk := _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", value, false, "bool")
+    try writeOk := CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "RunAsAdmin", value, false, "bool")
     if (!writeOk && writeMarkerOnFail && !value)
         _Setup_WriteAdminDeclinedMarker()
     return writeOk
 }
 
-_Setup_SetExePath(value) {
+Setup_SetExePath(value) {
     global cfg, gConfigIniPath
     cfg.SetupExePath := value
-    try return _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", value, "", "string")
+    try return CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", value, "", "string")
     return false
 }
 
-_Setup_SetFirstRunCompleted(value) {
+Setup_SetFirstRunCompleted(value) {
     global cfg, gConfigIniPath
     cfg.SetupFirstRunCompleted := value
-    try return _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", value, false, "bool")
+    try return CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", value, false, "bool")
     return false
 }
 
-_Setup_SetInstallationId(value) {
+Setup_SetInstallationId(value) {
     global cfg, gConfigIniPath
     cfg.SetupInstallationId := value
-    try return _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", value, "", "string")
+    try return CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", value, "", "string")
     return false
 }
 
@@ -535,29 +535,29 @@ _Setup_SetInstallationId(value) {
 ; ============================================================
 
 ; Get the path where Start Menu shortcut would be
-_Shortcut_GetStartMenuPath() {
+Shortcut_GetStartMenuPath() {
     return A_AppData "\Microsoft\Windows\Start Menu\Programs\Alt-Tabby.lnk"
 }
 
 ; Get the path where Startup shortcut would be
-_Shortcut_GetStartupPath() {
+Shortcut_GetStartupPath() {
     return A_Startup "\Alt-Tabby.lnk"
 }
 
 ; Check if Start Menu shortcut exists AND points to current exe
 ; Returns false if shortcut exists but points to different location (prevents misleading checkmarks)
-_Shortcut_StartMenuExists() {
-    return _Shortcut_ExistsAndPointsToUs(_Shortcut_GetStartMenuPath())
+Shortcut_StartMenuExists() {
+    return Shortcut_ExistsAndPointsToUs(Shortcut_GetStartMenuPath())
 }
 
 ; Check if Startup shortcut exists AND points to current exe
 ; Returns false if shortcut exists but points to different location (prevents misleading checkmarks)
-_Shortcut_StartupExists() {
-    return _Shortcut_ExistsAndPointsToUs(_Shortcut_GetStartupPath())
+Shortcut_StartupExists() {
+    return Shortcut_ExistsAndPointsToUs(Shortcut_GetStartupPath())
 }
 
 ; Helper: Check if shortcut exists and its target matches current exe
-_Shortcut_ExistsAndPointsToUs(lnkPath) {
+Shortcut_ExistsAndPointsToUs(lnkPath) {
     if (!FileExist(lnkPath))
         return false
 
@@ -568,7 +568,7 @@ _Shortcut_ExistsAndPointsToUs(lnkPath) {
 
         ; In compiled mode, compare target to effective exe path (respects SetupExePath)
         ; In dev mode, compare to AutoHotkey.exe (we're run via AHK)
-        ourTarget := A_IsCompiled ? _Shortcut_GetEffectiveExePath() : A_AhkPath
+        ourTarget := A_IsCompiled ? Shortcut_GetEffectiveExePath() : A_AhkPath
 
         return PathsEqual(targetPath, ourTarget)
     } catch {
@@ -579,15 +579,15 @@ _Shortcut_ExistsAndPointsToUs(lnkPath) {
 
 ; Get the icon path - in compiled mode, icon is embedded in exe
 ; Uses effective exe path to ensure icon remains valid even if user deletes the running exe
-_Shortcut_GetIconPath() {
+Shortcut_GetIconPath() {
     if (A_IsCompiled)
-        return _Shortcut_GetEffectiveExePath()  ; Icon is embedded in exe - use same path as shortcut target
+        return Shortcut_GetEffectiveExePath()  ; Icon is embedded in exe - use same path as shortcut target
     else
         return A_ScriptDir "\..\resources\img\icon.ico"
 }
 
 ; Get the effective exe path (installed location or current)
-_Shortcut_GetEffectiveExePath() {
+Shortcut_GetEffectiveExePath() {
     global cfg
     if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "" && FileExist(cfg.SetupExePath))  ; lint-ignore: isset-with-default
         return cfg.SetupExePath
@@ -669,7 +669,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
 
                     if (result = "Yes") {
                         if (downloadUrl)
-                            _Update_DownloadAndApply(downloadUrl, latestVersion)
+                            Update_DownloadAndApply(downloadUrl, latestVersion)
                         else
                             ThemeMsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Iconx")
                     }
@@ -716,7 +716,7 @@ _Update_FindExeDownloadUrl(jsonResponse) {
 }
 
 ; Download update and apply it
-_Update_DownloadAndApply(downloadUrl, newVersion) {
+Update_DownloadAndApply(downloadUrl, newVersion) {
     ; Determine paths
     currentExe := A_ScriptFullPath
     exeDir := ""
@@ -773,7 +773,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
     }
 
     ; Check if we need elevation to write to exe directory
-    if (_Update_NeedsElevation(exeDir)) {
+    if (Update_NeedsElevation(exeDir)) {
         _Update_Log("DownloadAndApply: elevation required for " exeDir)
         ; Save update info and self-elevate
         global UPDATE_INFO_DELIMITER, TEMP_UPDATE_STATE
@@ -783,7 +783,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
         FileAppend(updateInfo, updateFile, "UTF-8")
 
         try {
-            if (!_Launcher_RunAsAdmin("--apply-update"))
+            if (!Launcher_RunAsAdmin("--apply-update"))
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
@@ -801,7 +801,7 @@ _Update_DownloadAndApply(downloadUrl, newVersion) {
 }
 
 ; Check if we need elevation to write to the target directory
-_Update_NeedsElevation(targetDir) {
+Update_NeedsElevation(targetDir) {
     if (A_IsAdmin)
         return false
 
@@ -824,7 +824,7 @@ _Update_NeedsElevation(targetDir) {
 ; ============================================================
 ; UPDATE CORE - Shared logic for applying updates
 ; ============================================================
-; Used by both _Launcher_DoUpdateInstalled (mismatch update) and
+; Used by both Launcher_DoUpdateInstalled (mismatch update) and
 ; _Update_ApplyAndRelaunch (auto-update). Extracted to eliminate duplication.
 ;
 ; Options:
@@ -839,7 +839,7 @@ _Update_NeedsElevation(targetDir) {
 ;   overwriteUserData - Copy config/blacklist even if target already has them (default: false)
 ;   killPids - Optional {gui:, store:, viewer:} PIDs for graceful shutdown before force-kill
 
-_Update_ApplyCore(opts) {
+Update_ApplyCore(opts) {
     global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_STORE_START_WAIT, APP_NAME
 
     sourcePath := opts.HasOwnProp("sourcePath") ? opts.sourcePath : ""
@@ -929,7 +929,7 @@ _Update_ApplyCore(opts) {
         ; Update config at target location
         cfg.SetupExePath := targetPath
         if (FileExist(targetConfigPath)) {
-            try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
+            try CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
         }
 
         ; Read admin mode from target config
@@ -946,14 +946,14 @@ _Update_ApplyCore(opts) {
                 try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
             }
             if (targetInstallId = "") {
-                targetInstallId := _Launcher_GenerateId()
+                targetInstallId := Launcher_GenerateId()
                 if (FileExist(targetConfigPath))
-                    try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
+                    try CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
             }
 
             ; Only recreate task if path or ID differs from target (avoid unnecessary delete+create)
-            existingTaskPath := _AdminTask_GetCommandPath()
-            existingTaskId := _AdminTask_GetInstallationId()
+            existingTaskPath := AdminTask_GetCommandPath()
+            existingTaskId := AdminTask_GetInstallationId()
             taskNeedsUpdate := !PathsEqual(existingTaskPath, targetPath)
                 || (existingTaskId != targetInstallId)
 
@@ -965,7 +965,7 @@ _Update_ApplyCore(opts) {
                         APP_NAME " - Admin Mode Error", "Icon!")
                     cfg.SetupRunAsAdmin := false
                     if (FileExist(targetConfigPath))
-                        try _CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
+                        try CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
                 }
             }
         }
@@ -991,7 +991,7 @@ _Update_ApplyCore(opts) {
 
             ; Launch new version — de-elevate if admin mode is not configured
             if (A_IsAdmin && !targetRunAsAdmin) {
-                if (_LaunchDeElevated(targetPath, "", targetDir))
+                if (LaunchDeElevated(targetPath, "", targetDir))
                     ExitApp()
                 TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
                 return
@@ -1035,10 +1035,10 @@ _Update_ApplyCore(opts) {
 }
 
 ; Apply update: rename current exe, move new exe, relaunch
-; Wrapper for auto-update flow - uses _Update_ApplyCore with appropriate options
+; Wrapper for auto-update flow - uses Update_ApplyCore with appropriate options
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
     global g_StorePID, g_GuiPID, g_ViewerPID
-    _Update_ApplyCore({
+    Update_ApplyCore({
         sourcePath: newExePath,
         targetPath: targetExePath,
         useLockFile: true,
@@ -1054,7 +1054,7 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
 ; This is a fallback - the elevated updater schedules cleanup via cmd.exe,
 ; but this handles cases where: (1) exe is not in Program Files (no elevation needed),
 ; or (2) the scheduled cmd cleanup somehow failed
-_Update_CleanupOldExe() {
+Update_CleanupOldExe() {
     if (!A_IsCompiled)
         return
 
@@ -1065,8 +1065,8 @@ _Update_CleanupOldExe() {
 }
 
 ; Clean up stale temp files from crashed wizard/update instances (Priority 3 fix)
-; Called on startup after _Update_CleanupOldExe
-_Update_CleanupStaleTempFiles() {
+; Called on startup after Update_CleanupOldExe
+Update_CleanupStaleTempFiles() {
     global TEMP_ADMIN_TOGGLE_LOCK, TEMP_WIZARD_STATE, TEMP_UPDATE_STATE, TEMP_UPDATE_LOCK, TEMP_INSTALL_PF_STATE, TEMP_INSTALL_UPDATE_STATE
     staleFiles := [
         TEMP_WIZARD_STATE,
@@ -1238,7 +1238,7 @@ _Update_ValidatePEFile(filePath) {
 ; Read and consume a state file (source<|>target format).
 ; Deletes the file after reading. Throws on missing/invalid file or missing source.
 ; Returns {source, target} object. Callers handle their own post-validation.
-_ReadStateFile(filePath) {
+ReadStateFile(filePath) {
     global UPDATE_INFO_DELIMITER
     if (!FileExist(filePath))
         throw Error("State file not found: " filePath)
@@ -1253,14 +1253,14 @@ _ReadStateFile(filePath) {
 }
 
 ; Called when launched with --apply-update flag (elevated)
-_Update_ContinueFromElevation() {
+Update_ContinueFromElevation() {
     global APP_NAME, TEMP_UPDATE_STATE
 
     if (!FileExist(TEMP_UPDATE_STATE))
         return false
 
     try {
-        state := _ReadStateFile(TEMP_UPDATE_STATE)
+        state := ReadStateFile(TEMP_UPDATE_STATE)
         newExePath := state.source
         targetExePath := state.target
 

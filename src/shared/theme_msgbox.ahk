@@ -45,7 +45,7 @@ ThemeMsgBox(text, title := "Message", options := "") {
 
     ; Create GUI
     msgGui := Gui("+AlwaysOnTop -MinimizeBox -MaximizeBox", title)
-    _GUI_AntiFlashPrepare(msgGui, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(msgGui, Theme_GetBgColor(), true)
     msgGui.MarginX := 24
     msgGui.MarginY := 16
     msgGui.SetFont("s10", "Segoe UI")
@@ -120,7 +120,7 @@ ThemeMsgBox(text, title := "Message", options := "") {
 
     ; Show - fixed width, auto height
     msgGui.Show("w488 Center")
-    _GUI_AntiFlashReveal(msgGui, true)
+    GUI_AntiFlashReveal(msgGui, true)
 
     WinWaitClose(msgGui.Hwnd)
 

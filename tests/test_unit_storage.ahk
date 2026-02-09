@@ -799,7 +799,7 @@ RunUnitTests_Storage() {
     ; ============================================================
     ; Blacklist Pattern Matching Stress Tests
     ; ============================================================
-    ; Tests _BL_CompileWildcard regex escaping and Blacklist_IsMatch
+    ; Tests BL_CompileWildcard regex escaping and Blacklist_IsMatch
     ; with diverse patterns that stress metacharacter handling,
     ; wildcards, case sensitivity, and edge cases.
     Log("`n--- Blacklist Pattern Matching Stress Tests ---")
@@ -808,7 +808,7 @@ RunUnitTests_Storage() {
     savedBlPathPM := gBlacklist_FilePath
 
     ; --- Group 1: Regex metacharacters in patterns ---
-    ; _BL_CompileWildcard must escape . + ^ $ { } | ( ) \ [ ]
+    ; BL_CompileWildcard must escape . + ^ $ { } | ( ) \ [ ]
     Log("Testing pattern matching with regex metacharacters...")
 
     testBlDirPM := A_Temp "\tabby_blpm_test_" A_TickCount

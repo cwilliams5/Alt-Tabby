@@ -67,7 +67,7 @@ INT_Alt_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_LastAltDown, gINT_AltIsDown, TABBY_EV_ALT_DOWN, gINT_SessionActive, cfg
     if (cfg.DiagEventLog)
-        _GUI_LogEvent("INT: Alt_Down (session=" gINT_SessionActive ")")
+        GUI_LogEvent("INT: Alt_Down (session=" gINT_SessionActive ")")
     gINT_AltIsDown := true
     gINT_LastAltDown := A_TickCount
 
@@ -85,30 +85,30 @@ INT_Alt_Up(*) {
     global gGUI_PendingPhase  ; Check if GUI is buffering events
 
     if (cfg.DiagEventLog)
-        _GUI_LogEvent("INT: Alt_Up (session=" gINT_SessionActive " tabPending=" gINT_TabPending " presses=" gINT_PressCount ")")
+        GUI_LogEvent("INT: Alt_Up (session=" gINT_SessionActive " tabPending=" gINT_TabPending " presses=" gINT_PressCount ")")
     gINT_AltIsDown := false
 
     ; If Tab decision is pending, mark that Alt was released
     if (gINT_TabPending) {
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Alt_Up -> marking AltUpDuringPending")
+            GUI_LogEvent("INT: Alt_Up -> marking AltUpDuringPending")
         gINT_AltUpDuringPending := true
         ; Don't send ALT_UP here - Tab_Decide will handle it
     } else if (gINT_SessionActive && gINT_PressCount >= 1) {
         ; Session was active, send ALT_UP directly
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Alt_Up -> sending ALT_UP event")
+            GUI_LogEvent("INT: Alt_Up -> sending ALT_UP event")
         GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
     } else if (gGUI_PendingPhase != "") {
         ; GUI is buffering events during async - pass Alt_Up anyway
         ; This handles the case where Tab was lost during workspace switch
         ; (komorebic's SendInput briefly uninstalls keyboard hooks)
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Alt_Up -> forwarding to buffer (async pending)")
+            GUI_LogEvent("INT: Alt_Up -> forwarding to buffer (async pending)")
         GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
     } else {
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Alt_Up -> ignored (no active session)")
+            GUI_LogEvent("INT: Alt_Up -> ignored (no active session)")
     }
 
     gINT_SessionActive := false
@@ -126,7 +126,7 @@ INT_Tab_Down(*) {
     global TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
 
     if (cfg.DiagEventLog)
-        _GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
+        GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
 
     ; NOTE: Bypass check removed - now handled via focus-change detection in GUI_ApplyDelta
     ; When a bypass window is focused, INT_SetBypassMode disables Tab hooks entirely,
@@ -135,7 +135,7 @@ INT_Tab_Down(*) {
     ; If a decision is pending, commit it immediately before processing this Tab
     if (gINT_TabPending) {
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Tab_Down -> committing pending decision first")
+            GUI_LogEvent("INT: Tab_Down -> committing pending decision first")
         SetTimer(INT_Tab_Decide, 0)  ; Cancel pending timer
         gINT_PendingDecideArmed := false
         gINT_TabPending := false
@@ -150,7 +150,7 @@ INT_Tab_Down(*) {
         shiftHeld := GetKeyState("Shift", "P")
         shiftFlag := shiftHeld ? TABBY_FLAG_SHIFT : 0
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Tab_Down -> active session, sending TAB_STEP (press #" gINT_PressCount ")")
+            GUI_LogEvent("INT: Tab_Down -> active session, sending TAB_STEP (press #" gINT_PressCount ")")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
         ; NOTE: Don't set gINT_TabHeld here - we process ALL tabs during active session
         return  ; lint-ignore: critical-section
@@ -159,13 +159,13 @@ INT_Tab_Down(*) {
     ; FIRST TAB: Check TabHeld to block key repeat (user holding Tab before Alt)
     if (gINT_TabHeld) {
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Tab_Down -> blocked (TabHeld)")
+            GUI_LogEvent("INT: Tab_Down -> blocked (TabHeld)")
         return  ; lint-ignore: critical-section
     }
 
     ; Session not active yet - this is the FIRST Tab, needs decision delay
     if (cfg.DiagEventLog)
-        _GUI_LogEvent("INT: Tab_Down -> FIRST TAB, starting " cfg.AltTabTabDecisionMs "ms decision timer")
+        GUI_LogEvent("INT: Tab_Down -> FIRST TAB, starting " cfg.AltTabTabDecisionMs "ms decision timer")
     gINT_TabPending := true
     gINT_PendingShift := GetKeyState("Shift", "P")
     gINT_PendingDecideArmed := true
@@ -192,7 +192,7 @@ INT_Tab_Decide() {
     gINT_PendingDecideArmed := false
     ; Log state at timer fire time (before delay)
     if (cfg.DiagEventLog)
-        _GUI_LogEvent("INT: Tab_Decide (altIsDown=" gINT_AltIsDown " altUpFlag=" gINT_AltUpDuringPending ")")
+        GUI_LogEvent("INT: Tab_Decide (altIsDown=" gINT_AltIsDown " altUpFlag=" gINT_AltUpDuringPending ")")
     ; Delay to let Alt_Up hotkey run first if it's pending
     ; 1ms wasn't enough - Alt_Up hotkey may not have fired yet
     SetTimer(INT_Tab_Decide_Inner, -5)
@@ -212,7 +212,7 @@ INT_Tab_Decide_Inner() {
     isAltTab := altDownNow || altRecent || altUpFlag
 
     if (cfg.DiagEventLog)
-        _GUI_LogEvent("INT: Tab_Decide_Inner (altDown=" altDownNow " altUpFlag=" altUpFlag " altRecent=" altRecent " -> isAltTab=" isAltTab ")")
+        GUI_LogEvent("INT: Tab_Decide_Inner (altDown=" altDownNow " altUpFlag=" altUpFlag " altRecent=" altRecent " -> isAltTab=" isAltTab ")")
 
     if (isAltTab) {
         ; This is an Alt+Tab press
@@ -227,7 +227,7 @@ INT_Tab_Decide_Inner() {
         ; Send TAB_STEP directly to GUI handler
         shiftFlag := gINT_PendingShift ? TABBY_FLAG_SHIFT : 0
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Tab_Decide -> sending TAB_STEP")
+            GUI_LogEvent("INT: Tab_Decide -> sending TAB_STEP")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
 
         ; NOTE: We no longer set gINT_TabHeld here - during active session we process
@@ -236,7 +236,7 @@ INT_Tab_Decide_Inner() {
         ; CRITICAL: If Alt was released during decision window, send ALT_UP now
         if (!altDownNow || altUpFlag) {
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("INT: Tab_Decide -> Alt was released, sending ALT_UP")
+                GUI_LogEvent("INT: Tab_Decide -> Alt was released, sending ALT_UP")
             GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
             gINT_SessionActive := false
             gINT_PressCount := 0
@@ -245,7 +245,7 @@ INT_Tab_Decide_Inner() {
     } else {
         ; Not Alt+Tab - replay normal Tab
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Tab_Decide -> NOT Alt+Tab, replaying Tab")
+            GUI_LogEvent("INT: Tab_Decide -> NOT Alt+Tab, replaying Tab")
         gINT_TabPending := false
         Send(gINT_PendingShift ? "+{Tab}" : "{Tab}")
     }
@@ -284,26 +284,26 @@ INT_SetBypassMode(shouldBypass) {
     if (shouldBypass && !gINT_BypassMode) {
         ; Entering bypass mode - disable Tab hooks
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Entering BYPASS MODE, disabling Tab hotkey")
+            GUI_LogEvent("INT: Entering BYPASS MODE, disabling Tab hotkey")
         gINT_BypassMode := true
         try {
             Hotkey("$*Tab", "Off")
             Hotkey("$*Tab Up", "Off")
         } catch as e {
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("INT: BYPASS Hotkey Off FAILED: " e.Message)
+                GUI_LogEvent("INT: BYPASS Hotkey Off FAILED: " e.Message)
         }
     } else if (!shouldBypass && gINT_BypassMode) {
         ; Leaving bypass mode - re-enable Tab hooks
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("INT: Leaving BYPASS MODE, re-enabling Tab hotkey")
+            GUI_LogEvent("INT: Leaving BYPASS MODE, re-enabling Tab hotkey")
         gINT_BypassMode := false
         try {
             Hotkey("$*Tab", "On")
             Hotkey("$*Tab Up", "On")
         } catch as e {
             if (cfg.DiagEventLog)
-                _GUI_LogEvent("INT: BYPASS Hotkey On FAILED: " e.Message)
+                GUI_LogEvent("INT: BYPASS Hotkey On FAILED: " e.Message)
         }
     }
     Critical "Off"
@@ -330,7 +330,7 @@ INT_ShouldBypassWindow(hwnd := 0) {
                 nm := Trim(nm)
                 if (nm != "" && StrLower(nm) = lex) {
                     if (cfg.DiagEventLog)
-                        _GUI_LogEvent("BYPASS REASON: process='" exename "' hwnd=" hwnd)
+                        GUI_LogEvent("BYPASS REASON: process='" exename "' hwnd=" hwnd)
                     return true
                 }
             }
@@ -340,7 +340,7 @@ INT_ShouldBypassWindow(hwnd := 0) {
     ; Check fullscreen detection
     if (cfg.AltTabBypassFullscreen && INT_IsFullscreenHwnd(hwnd)) {
         if (cfg.DiagEventLog)
-            _GUI_LogEvent("BYPASS REASON: fullscreen hwnd=" hwnd)
+            GUI_LogEvent("BYPASS REASON: fullscreen hwnd=" hwnd)
         return true
     }
 
