@@ -736,4 +736,153 @@ RunUnitTests_CoreConfig() {
     cfg.GUI_RowHeight := origRowHeight
     cfg.GUI_RowsVisibleMin := origRowsMin
     cfg.GUI_RowsVisibleMax := origRowsMax
+
+    ; ============================================================
+    ; Theme Palette <-> Config Registry Cross-Reference Tests
+    ; ============================================================
+    ; Validates that every palette color field has matching Dark + Light
+    ; config entries, and vice versa. Catches silent breakage when a
+    ; palette field is added without the config entry (or vice versa).
+    Log("`n--- Theme Palette Cross-Reference Tests ---")
+
+    ; The canonical palette field list (must match gThemeColorFields in theme.ahk)
+    paletteFields := [
+        "bg", "panelBg", "tertiary", "editBg", "hover", "text", "editText",
+        "textSecondary", "textMuted", "accent", "accentHover", "accentText",
+        "border", "borderInput", "toggleBg", "success", "warning", "danger"
+    ]
+
+    ; Build lookup of all config globals from the registry
+    registryGlobals := Map()
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("g"))
+            registryGlobals[entry.g] := true
+    }
+
+    ; Test 1: Every palette field has a Dark + Light config entry
+    paletteErrors := []
+    for _, field in paletteFields {
+        suffix := StrUpper(SubStr(field, 1, 1)) SubStr(field, 2)
+        darkKey := "Theme_Dark" suffix
+        lightKey := "Theme_Light" suffix
+        if (!registryGlobals.Has(darkKey))
+            paletteErrors.Push("Missing config entry for palette field '" field "' (expected global " darkKey ")")
+        if (!registryGlobals.Has(lightKey))
+            paletteErrors.Push("Missing config entry for palette field '" field "' (expected global " lightKey ")")
+    }
+
+    if (paletteErrors.Length = 0) {
+        Log("PASS: All " paletteFields.Length " palette fields have Dark + Light config entries (" paletteFields.Length * 2 " total)")
+        TestPassed++
+    } else {
+        Log("FAIL: Palette <-> config cross-reference errors:")
+        for _, err in paletteErrors
+            Log("  - " err)
+        TestErrors++
+    }
+
+    ; Test 2: Every Theme_Dark*/Theme_Light* color config entry has a matching palette field
+    ; (catches orphaned config entries that no palette builder reads)
+    orphanErrors := []
+    paletteFieldMap := Map()
+    for _, field in paletteFields {
+        suffix := StrUpper(SubStr(field, 1, 1)) SubStr(field, 2)
+        paletteFieldMap["Dark" suffix] := true
+        paletteFieldMap["Light" suffix] := true
+    }
+
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("g"))
+            continue
+        g := entry.g
+        ; Match Theme_Dark* and Theme_Light* color entries (hex format, not booleans or other Theme_ entries)
+        if (entry.HasOwnProp("fmt") && entry.fmt = "hex") {
+            for _, prefix in ["Theme_Dark", "Theme_Light"] {
+                if (SubStr(g, 1, StrLen(prefix)) = prefix) {
+                    remainder := SubStr(g, StrLen(prefix) + 1)
+                    ; Skip non-palette entries (TitleBar*, Button* are progressive enhancements, not palette)
+                    if (SubStr(remainder, 1, 8) = "TitleBar" || SubStr(remainder, 1, 6) = "Button")
+                        continue
+                    variant := SubStr(prefix, 7)  ; "Dark" or "Light"
+                    lookupKey := variant remainder
+                    if (!paletteFieldMap.Has(lookupKey))
+                        orphanErrors.Push("Config entry " g " has no matching palette field (suffix: " remainder ")")
+                }
+            }
+        }
+    }
+
+    if (orphanErrors.Length = 0) {
+        Log("PASS: All Dark/Light palette config entries map to a palette field (no orphans)")
+        TestPassed++
+    } else {
+        Log("FAIL: Orphaned palette config entries (not consumed by palette builder):")
+        for _, err in orphanErrors
+            Log("  - " err)
+        TestErrors++
+    }
+
+    ; Test 3: Config reload populates all palette cfg values with valid hex ints
+    ; This validates the ConfigLoader_Init() -> Theme_Reload() data path:
+    ; after config load, every palette cfg property exists and is a valid integer.
+    Log("Testing palette config values are populated after ConfigLoader_Init()...")
+    paletteValueErrors := []
+    for _, field in paletteFields {
+        suffix := StrUpper(SubStr(field, 1, 1)) SubStr(field, 2)
+        for _, prefix in ["Theme_Dark", "Theme_Light"] {
+            prop := prefix suffix
+            if (!cfg.HasOwnProp(prop)) {
+                paletteValueErrors.Push(prop " not present on cfg after init")
+            } else {
+                val := cfg.%prop%
+                if (!IsInteger(val) || val < 0 || val > 0xFFFFFF)
+                    paletteValueErrors.Push(prop " has invalid value: " val " (expected 0x0-0xFFFFFF)")
+            }
+        }
+    }
+
+    if (paletteValueErrors.Length = 0) {
+        Log("PASS: All " paletteFields.Length * 2 " palette cfg values are valid hex ints in range")
+        TestPassed++
+    } else {
+        Log("FAIL: Palette cfg value errors:")
+        for _, err in paletteValueErrors
+            Log("  - " err)
+        TestErrors++
+    }
+
+    ; Test 4: ConfigLoader_Init() is re-entrant (supports config reload path)
+    ; _Launcher_ApplyConfigChanges calls ConfigLoader_Init() a second time
+    ; to reload INI. Verify re-calling doesn't corrupt state.
+    Log("Testing ConfigLoader_Init() re-entrancy for config reload...")
+    savedPipe := cfg.StorePipeName
+    savedGrace := cfg.AltTabGraceMs
+
+    ConfigLoader_Init()  ; Second call (first was during test startup)
+
+    reentryOk := true
+    if (!cfg.HasOwnProp("StorePipeName") || cfg.StorePipeName = "") {
+        Log("FAIL: StorePipeName empty after ConfigLoader_Init() re-call")
+        reentryOk := false
+    }
+    if (!cfg.HasOwnProp("AltTabGraceMs") || cfg.AltTabGraceMs <= 0) {
+        Log("FAIL: AltTabGraceMs invalid after ConfigLoader_Init() re-call")
+        reentryOk := false
+    }
+    ; Verify palette values survive re-init too
+    if (!cfg.HasOwnProp("Theme_DarkBg") || !IsInteger(cfg.Theme_DarkBg)) {
+        Log("FAIL: Theme_DarkBg missing/invalid after ConfigLoader_Init() re-call")
+        reentryOk := false
+    }
+
+    if (reentryOk) {
+        Log("PASS: ConfigLoader_Init() re-entrant - config values intact after second call")
+        TestPassed++
+    } else {
+        TestErrors++
+    }
+
+    ; Restore
+    cfg.StorePipeName := savedPipe
+    cfg.AltTabGraceMs := savedGrace
 }
