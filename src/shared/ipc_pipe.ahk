@@ -98,23 +98,28 @@ IPC_PipeServer_Broadcast(server, msgText, wakeHwnds := 0) {
     if (!msgText || SubStr(msgText, -1) != "`n")
         msgText .= "`n"
 
-    ; RACE FIX: Critical covers UTF-8 conversion + writes to protect IPC_WRITE_BUF
-    ; from being overwritten by an interrupting IPC_PipeServer_Send call
+    ; RACE FIX: Critical covers UTF-8 conversion + handle snapshot to protect
+    ; IPC_WRITE_BUF from being overwritten by an interrupting IPC_PipeServer_Send call.
+    ; Copy to a local buffer so we can release Critical before WriteFile calls.
     Critical "On"
     logEnabled := _IPC_IsLogEnabled()
     bytes := _IPC_StrToUtf8(msgText)
-    buf := bytes.buf
-    len := bytes.len
+    ; Copy to local buffer since IPC_WRITE_BUF may be overwritten after Critical release
+    localBuf := Buffer(bytes.len)
+    DllCall("ntdll\RtlMoveMemory", "ptr", localBuf.Ptr, "ptr", bytes.buf.Ptr, "uint", bytes.len)
+    localLen := bytes.len
 
     ; Snapshot handles atomically to prevent race with timer callback
     handles := []
     for hPipe, _ in server.clients
         handles.Push(hPipe)
+    Critical "Off"
 
+    ; Writes outside Critical — a blocked client only delays itself, not the message pump
     dead := []
     sent := 0
     for _, hPipe in handles {
-        if (!_IPC_WritePipe(hPipe, buf, len)) {
+        if (!_IPC_WritePipe(hPipe, localBuf, localLen)) {
             if (logEnabled)
                 _IPC_Log("WritePipe failed during broadcast hPipe=" hPipe)
             dead.Push(hPipe)
@@ -129,14 +134,17 @@ IPC_PipeServer_Broadcast(server, msgText, wakeHwnds := 0) {
             _IPC_WakePeer(wh)
     }
 
-    ; Cleanup dead handles
-    for _, h in dead {
-        if (server.onDisconnect)
-            try server.onDisconnect.Call(h)
-        server.clients.Delete(h)
-        _IPC_CloseHandle(h)
+    ; Cleanup dead handles under Critical (modifies server.clients)
+    if (dead.Length > 0) {
+        Critical "On"
+        for _, h in dead {
+            if (server.onDisconnect)
+                try server.onDisconnect.Call(h)
+            server.clients.Delete(h)
+            _IPC_CloseHandle(h)
+        }
+        Critical "Off"
     }
-    Critical "Off"
 
     return sent
 }
@@ -144,8 +152,8 @@ IPC_PipeServer_Broadcast(server, msgText, wakeHwnds := 0) {
 IPC_PipeServer_Send(server, hPipe, msgText, wakeHwnd := 0) {
     if !IsObject(server)
         return false
-    ; RACE FIX: Wrap check-then-act in Critical to prevent concurrent modification
-    ; of server.clients between Has() check and Delete() on failure
+    ; RACE FIX: Wrap check-then-act + UTF-8 conversion in Critical to protect
+    ; IPC_WRITE_BUF and server.clients. Copy buffer locally before release.
     Critical "On"
     if (!server.clients.Has(hPipe)) {
         Critical "Off"
@@ -154,9 +162,17 @@ IPC_PipeServer_Send(server, hPipe, msgText, wakeHwnd := 0) {
     if (!msgText || SubStr(msgText, -1) != "`n")
         msgText .= "`n"
     bytes := _IPC_StrToUtf8(msgText)
-    if (!_IPC_WritePipe(hPipe, bytes.buf, bytes.len)) {
+    ; Copy to local buffer since IPC_WRITE_BUF may be overwritten after Critical release
+    localBuf := Buffer(bytes.len)
+    DllCall("ntdll\RtlMoveMemory", "ptr", localBuf.Ptr, "ptr", bytes.buf.Ptr, "uint", bytes.len)
+    localLen := bytes.len
+    Critical "Off"
+
+    ; Write outside Critical — a blocked client only delays the caller, not the message pump
+    if (!_IPC_WritePipe(hPipe, localBuf, localLen)) {
         if (_IPC_IsLogEnabled())
             _IPC_Log("WritePipe failed during send hPipe=" hPipe)
+        Critical "On"
         if (server.onDisconnect)
             try server.onDisconnect.Call(hPipe)
         server.clients.Delete(hPipe)
@@ -165,7 +181,6 @@ IPC_PipeServer_Send(server, hPipe, msgText, wakeHwnd := 0) {
         return false
     }
     _IPC_WakePeer(wakeHwnd)
-    Critical "Off"
     return true
 }
 
@@ -199,12 +214,17 @@ IPC_PipeClient_Send(client, msgText, wakeHwnd := 0) {
     ; RACE FIX: Protect global IPC_WRITE_BUF from concurrent access.
     ; Not all callers hold Critical (e.g., GUI_OnClick releases Critical
     ; before calling through to workspace toggle/blacklist reload).
+    ; Copy to local buffer so WriteFile happens outside Critical.
     Critical "On"
     bytes := _IPC_StrToUtf8(msgText)
-    result := _IPC_WritePipe(client.hPipe, bytes.buf, bytes.len)
+    localBuf := Buffer(bytes.len)
+    DllCall("ntdll\RtlMoveMemory", "ptr", localBuf.Ptr, "ptr", bytes.buf.Ptr, "uint", bytes.len)
+    localLen := bytes.len
+    Critical "Off"
+
+    result := _IPC_WritePipe(client.hPipe, localBuf, localLen)
     if (result)
         _IPC_WakePeer(wakeHwnd)
-    Critical "Off"
     return result
 }
 
@@ -547,13 +567,15 @@ _IPC_ReadPipeLines(hPipe, stateObj, onMessageFn) {
 }
 
 _IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
+    ; Offset-based parsing: track position instead of slicing per-message.
+    ; Reduces from O(N) SubStr copies to O(1) final copy for N messages in a burst.
+    offset := 1
     while true {
-        pos := InStr(stateObj.buf, "`n")
+        pos := InStr(stateObj.buf, "`n", , offset)
         if (!pos)
             break
-        line := SubStr(stateObj.buf, 1, pos - 1)
-        stateObj.buf := SubStr(stateObj.buf, pos + 1)
-        stateObj.bufLen -= pos  ; Subtract consumed chars (line + newline)
+        line := SubStr(stateObj.buf, offset, pos - offset)
+        offset := pos + 1
         if (SubStr(line, -1) = "`r")
             line := SubStr(line, 1, -1)
         if (line != "") {
@@ -563,6 +585,11 @@ _IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
                     _IPC_Log("Message callback error: " e.Message " | line: " SubStr(line, 1, 100))
             }
         }
+    }
+    ; Single slice at end instead of per-message
+    if (offset > 1) {
+        stateObj.buf := SubStr(stateObj.buf, offset)
+        stateObj.bufLen := StrLen(stateObj.buf)
     }
 }
 

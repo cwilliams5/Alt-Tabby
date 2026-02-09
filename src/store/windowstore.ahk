@@ -69,7 +69,7 @@ global gWS_ZQueueDedup := Map()      ; hwnd -> true (prevents duplicate queue en
 
 ; Caches
 global gWS_ExeIconCache := Map()   ; exe path -> HICON (master copy)
-global gWS_ProcNameCache := Map()  ; pid -> process name
+global gWS_ProcNameCache := Map()  ; pid -> { name: string, tick: A_TickCount }
 
 gWS_Config["MissingTTLms"] := 1200  ; Default, overridden from cfg in WindowStore_Init()
 gWS_Meta["currentWSId"] := ""
@@ -1203,10 +1203,20 @@ WindowStore_ClearZQueue() {
 ; ============================================================
 
 ; Get cached process name for pid
+; Returns name string if cached and fresh, empty string otherwise.
+; Entries older than 60s are treated as stale and returned empty to force re-verification.
 WindowStore_GetProcNameCached(pid) {
     global gWS_ProcNameCache
+    static CACHE_TTL := 60000  ; 60s before re-verification
     pid := pid + 0
-    return gWS_ProcNameCache.Has(pid) ? gWS_ProcNameCache[pid] : ""
+    if (!gWS_ProcNameCache.Has(pid))
+        return ""
+    entry := gWS_ProcNameCache[pid]
+    ; Fresh entry - return cached name
+    if ((A_TickCount - entry.tick) < CACHE_TTL)
+        return entry.name
+    ; Stale entry - return empty to force re-verification by caller
+    return ""
 }
 
 ; Update process name for all windows with this pid
@@ -1218,7 +1228,7 @@ WindowStore_UpdateProcessName(pid, name) {
 
     ; No FIFO cap — cache grows with live PID count.
     ; WindowStore_PruneProcNameCache() on heartbeat removes dead PIDs.
-    gWS_ProcNameCache[pid] := name
+    gWS_ProcNameCache[pid] := { name: name, tick: A_TickCount }
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)

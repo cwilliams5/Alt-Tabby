@@ -272,6 +272,8 @@ _WEH_ProcessBatch() {
     ; Process MRU focus changes first (no debounce needed)
     ; Wrap in Critical to prevent race conditions where old window retains isFocused:true
     ; if removed during focus transition
+    pendingProbeHwnd := 0  ; Set inside Critical if probe needed outside
+    pendingPrevFocus := 0  ; Previous focus hwnd to clear if probe succeeds
     Critical "On"
     ; Suppress focus processing during komorebi workspace switch.
     ; Between FocusWorkspaceNumber and FocusChange (~1s), Windows fires
@@ -324,33 +326,14 @@ _WEH_ProcessBatch() {
             ; (e.g., browser favicons) when the window gains focus
             try WindowStore_EnqueueIconRefresh(newFocus)
         } else {
-            ; Window not in store yet - check if it's eligible and add it with focus data
-            ; This fixes the race condition where focus event arrives before WinEnum discovers the window
-            ; Without this fix, newly opened windows appear at BOTTOM of MRU list (lastActivatedTick=0)
+            ; Window not in store yet - defer probe to OUTSIDE Critical section.
+            ; WinUtils_ProbeWindow sends window messages (WinGetTitle, WinGetClass, WinGetPID)
+            ; that can block 10-50ms on slow windows (Electron, Chrome). Holding Critical
+            ; during that time freezes the entire store message pump.
             if (cfg.DiagWinEventLog)
-                _WEH_DiagLog("  NOT IN STORE: checking eligibility...")
-            ; Single call: checkEligible=true does Alt-Tab + blacklist checks AND probes
-            ; window properties in one pass, avoiding redundant WinGetTitle/WinGetClass/DllCalls
-            probe := WinUtils_ProbeWindow(newFocus, 0, false, true)
-            probeTitle := (probe && probe.Has("title")) ? probe["title"] : ""
-            if (probe && probeTitle != "") {
-                probe["lastActivatedTick"] := A_TickCount
-                probe["isFocused"] := true
-                probe["present"] := true
-                probe["presentNow"] := true
-                try WindowStore_UpsertWindow([probe], "winevent_focus_add")
-                if (cfg.DiagWinEventLog)
-                    _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
-
-                ; Clear focus on previous window
-                if (_WEH_LastFocusHwnd && _WEH_LastFocusHwnd != newFocus) {
-                    try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
-                }
-                _WEH_LastFocusHwnd := newFocus
-            } else {
-                if (cfg.DiagWinEventLog)
-                    _WEH_DiagLog("  NOT ELIGIBLE or probe failed (system UI or blacklisted)")
-            }
+                _WEH_DiagLog("  NOT IN STORE: deferring probe outside Critical...")
+            pendingProbeHwnd := newFocus
+            pendingPrevFocus := _WEH_LastFocusHwnd
         }
     } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = _WEH_LastFocusHwnd) {
         ; Same hwnd - log why we're skipping
@@ -359,6 +342,46 @@ _WEH_ProcessBatch() {
         _WEH_PendingFocusHwnd := 0
     }
     Critical "Off"
+
+    ; Deferred probe: runs OUTSIDE Critical so window messages don't block the message pump.
+    ; WindowStore_UpsertWindow has its own internal Critical for store mutation.
+    if (pendingProbeHwnd) {
+        ; Single call: checkEligible=true does Alt-Tab + blacklist checks AND probes
+        ; window properties in one pass, avoiding redundant WinGetTitle/WinGetClass/DllCalls
+        probe := WinUtils_ProbeWindow(pendingProbeHwnd, 0, false, true)
+        probeTitle := (probe && probe.Has("title")) ? probe["title"] : ""
+        if (probe && probeTitle != "") {
+            probe["lastActivatedTick"] := A_TickCount
+            probe["isFocused"] := true
+            probe["present"] := true
+            probe["presentNow"] := true
+
+            ; Re-check: if a newer focus event arrived during probe, skip the upsert.
+            ; _WEH_PendingFocusHwnd is set by the callback and means a newer focus superseded us.
+            Critical "On"
+            superseded := (_WEH_PendingFocusHwnd != 0 && _WEH_PendingFocusHwnd != pendingProbeHwnd)
+            Critical "Off"
+            if (!superseded) {
+                try WindowStore_UpsertWindow([probe], "winevent_focus_add")
+                if (cfg.DiagWinEventLog)
+                    _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
+
+                ; Clear focus on previous window
+                Critical "On"
+                if (pendingPrevFocus && pendingPrevFocus != pendingProbeHwnd) {
+                    try WindowStore_UpdateFields(pendingPrevFocus, { isFocused: false }, "winevent_mru")
+                }
+                _WEH_LastFocusHwnd := pendingProbeHwnd
+                Critical "Off"
+            } else {
+                if (cfg.DiagWinEventLog)
+                    _WEH_DiagLog("  PROBE SUPERSEDED: newer focus " _WEH_PendingFocusHwnd " arrived during probe")
+            }
+        } else {
+            if (cfg.DiagWinEventLog)
+                _WEH_DiagLog("  NOT ELIGIBLE or probe failed (system UI or blacklisted)")
+        }
+    }
 
     if (_WEH_PendingHwnds.Count = 0) {
         ; Focus-only path: push if focus change bumped rev (no structural changes pending)

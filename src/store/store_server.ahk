@@ -489,8 +489,14 @@ Store_PushToClients() {
     ; Snapshots are identical for the same optsKey (same projection, same rev),
     ; so we can avoid redundant JSON.Dump calls when multiple clients need snapshots.
     static jsonSnapshotCache := Map()
+    ; Cache serialized JSON for delta messages by composite key (optsKey|lastRev|isSparse|includeMeta).
+    ; When two clients have the same optsKey AND lastRev, their prevItems are identical
+    ; (they received the same projection at that rev), so deltas are identical.
+    ; Avoids redundant Store_BuildClientDelta + JSON.Dump per-client.
+    static deltaCache := Map()
     projCache.Clear()
     jsonSnapshotCache.Clear()
+    deltaCache.Clear()
 
     sent := 0
     for _, hPipe in clientHandles {
@@ -540,12 +546,25 @@ Store_PushToClients() {
 
         ; Send delta if client has previous state, otherwise full snapshot
         if (prevItems.Length > 0) {
-            msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot)
-            ; Skip sending empty deltas ONLY if meta also didn't change
-            ; Always send if meta changed (workspace switch) even with no window changes
-            if (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
-                continue
-            IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg), wh)
+            ; Delta cache: clients with same (optsKey, lastRev, isSparse, includeMeta)
+            ; produce identical deltas — reuse serialized JSON.
+            deltaKey := optsKey "|" lastRev "|" isSparse "|" includeMeta
+            if (deltaCache.Has(deltaKey)) {
+                cached := deltaCache[deltaKey]
+                if (cached.skip)
+                    continue
+                IPC_PipeServer_Send(gStore_Server, hPipe, cached.jsonStr, wh)
+            } else {
+                msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot)
+                ; Skip sending empty deltas ONLY if meta also didn't change
+                ; Always send if meta changed (workspace switch) even with no window changes
+                skip := (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
+                jsonStr := skip ? "" : JSON.Dump(msg)
+                deltaCache[deltaKey] := { skip: skip, jsonStr: jsonStr }
+                if (skip)
+                    continue
+                IPC_PipeServer_Send(gStore_Server, hPipe, jsonStr, wh)
+            }
         } else {
             ; Initial snapshot: identical for same optsKey, safe to cache serialized JSON
             if (jsonSnapshotCache.Has(optsKey)) {

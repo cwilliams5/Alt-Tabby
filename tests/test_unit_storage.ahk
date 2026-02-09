@@ -625,8 +625,8 @@ RunUnitTests_Storage() {
     livePid := ProcessExist("explorer.exe")
     if (livePid > 0) {
         deadPid := 4000000000  ; PID that does not exist
-        gWS_ProcNameCache[livePid] := "explorer.exe"
-        gWS_ProcNameCache[deadPid] := "ghost.exe"
+        gWS_ProcNameCache[livePid] := { name: "explorer.exe", tick: A_TickCount }
+        gWS_ProcNameCache[deadPid] := { name: "ghost.exe", tick: A_TickCount }
 
         pruned := WindowStore_PruneProcNameCache()
 
@@ -672,9 +672,9 @@ RunUnitTests_Storage() {
     ; Test 3: All-dead PIDs pruned
     Log("Testing PruneProcNameCache removes all dead PIDs...")
     gWS_ProcNameCache := Map()
-    gWS_ProcNameCache[4000000001] := "dead1.exe"
-    gWS_ProcNameCache[4000000002] := "dead2.exe"
-    gWS_ProcNameCache[4000000003] := "dead3.exe"
+    gWS_ProcNameCache[4000000001] := { name: "dead1.exe", tick: A_TickCount }
+    gWS_ProcNameCache[4000000002] := { name: "dead2.exe", tick: A_TickCount }
+    gWS_ProcNameCache[4000000003] := { name: "dead3.exe", tick: A_TickCount }
 
     pruned := WindowStore_PruneProcNameCache()
     if (pruned = 3) {
