@@ -21,8 +21,12 @@ global gWS_Meta := Map()
 ; Two-level projection cache dirty tracking:
 ;   gWS_SortOrderDirty — set when sort/filter-affecting fields change (needs full rebuild)
 ;   gWS_ProjectionContentDirty — set when content-only fields change (can skip re-sort)
+;   gWS_MRUBumpOnly — when true, sort-dirty was caused ONLY by MRU fields (lastActivatedTick/isFocused)
+;     This enables Path 1.5: incremental move-to-front instead of full rebuild.
+;     Reset to false if any non-MRU sort-affecting field changes in the same cycle.
 global gWS_SortOrderDirty := true
 global gWS_ProjectionContentDirty := true
+global gWS_MRUBumpOnly := false
 global gWS_ProjectionCache_Items := ""         ; Cached transformed items (result of _WS_ToItem)
 global gWS_ProjectionCache_OptsKey := ""       ; Opts key used for cache validation
 global gWS_ProjectionCache_SortedRecs := ""    ; Cached sorted record refs for Path 2 (content-only refresh)
@@ -33,11 +37,22 @@ global gWS_SortAffectingFields := Map(
     "isOnCurrentWorkspace", true, "isCloaked", true, "isMinimized", true,
     "processName", true)  ; processName affects ProcessName sort mode
 
+; Subset of sort-affecting fields that only affect MRU order (not filtering/membership).
+; When ONLY these fields change, Path 1.5 can do an incremental move-to-front
+; instead of a full Path 3 rebuild.
+global gWS_MRUOnlyFields := Map("lastActivatedTick", true, "isFocused", true)
+
 ; Fields that affect projection content only (not sort/filter) — trigger content refresh (Path 2)
 ; Fresh _WS_ToItem copies are created from live records, avoiding stale cache data.
+; NOTE: "title" is promoted to sort-affecting when Title sort mode is active (see gWS_TitleSortActive).
 global gWS_ContentOnlyFields := Map(
     "iconHicon", true, "title", true, "class", true,
     "pid", true, "workspaceName", true, "workspaceId", true)
+
+; When true, "title" field changes trigger sort rebuild instead of content-only refresh.
+; Set by GetProjection when any client uses sort="Title", cleared on next GetProjection
+; with a different sort mode. This ensures title changes update sort order correctly.
+global gWS_TitleSortActive := false
 
 ; Diagnostic: track what's causing rev bumps
 global gWS_DiagChurn := Map()  ; field -> count of changes
@@ -65,6 +80,12 @@ global gWS_WorkspaceChangedFlag := false
 ; Delta tracking: hwnds with fields changed since last IPC push
 ; Key = hwnd, Value = true (presence in map = pending for delta)
 global gWS_DeltaPendingHwnds := Map()
+
+; Projection-level dirty tracking: hwnds with any projection-visible field change
+; since the last GetProjection call. Unlike gWS_DeltaPendingHwnds (cleared per IPC push),
+; this persists until projection cache is rebuilt. Used by Path 1.5 and Path 2 for
+; selective _WS_ToItem refresh (only recreate items whose data actually changed).
+global gWS_ProjectionDirtyHwnds := Map()
 
 ; Safely snapshot Map keys for iteration (prevents modification during iteration)
 ; Returns an Array of keys. Caller can iterate safely after Critical section ends.
@@ -108,7 +129,7 @@ WindowStore_BeginScan() {
 }
 
 WindowStore_EndScan(graceMs := "") {
-    global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty
+    global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_MRUBumpOnly
     now := A_TickCount
     ttl := (graceMs != "" ? graceMs + 0 : gWS_Config["MissingTTLms"] + 0)
     removed := 0
@@ -155,6 +176,7 @@ WindowStore_EndScan(graceMs := "") {
     if (changed) {
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
+        gWS_MRUBumpOnly := false  ; Structural change (window removal)
         _WS_BumpRev("EndScan")
     }
     return { removed: removed, rev: gWS_Rev }
@@ -162,7 +184,7 @@ WindowStore_EndScan(graceMs := "") {
 
 WindowStore_UpsertWindow(records, source := "") {
     global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty, gWS_ProjectionContentDirty
-    global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_DeltaPendingHwnds
+    global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_DeltaPendingHwnds, gWS_MRUBumpOnly
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
     added := 0
@@ -259,6 +281,7 @@ WindowStore_UpsertWindow(records, source := "") {
     if (added || sortDirty) {
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
+        gWS_MRUBumpOnly := false  ; Structural change (new windows or sort-affecting fields via upsert)
     } else if (contentDirty) {
         gWS_ProjectionContentDirty := true
     }
@@ -288,36 +311,33 @@ global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId"
 
 ; Helper to apply a patch (Map or plain Object) to a store row
 ; Sets row.%k% := v for each field in patch, tracks changed/projDirty flags
-; NOTE: Map and Object branches have identical inner logic but use different
-; AHK v2 iteration syntax. Both are needed because Map.OwnProps() iterates
-; property metadata (Count, CaseSense), not entries. Currently only Objects
-; are passed by callers, but Map support prevents silent failures if that changes.
+; Normalizes Map patches to Object at entry to eliminate duplicate code branches.
 ; Parameters:
 ;   row - Store record to update
 ;   patch - Map or Object with field:value pairs
 ;   hwnd - Window handle (for dirty tracking)
-; Returns: { changed: bool, projDirty: bool }
+; Returns: { changed: bool, sortDirty: bool, contentDirty: bool, mruOnly: bool }
+;   mruOnly: true when sortDirty was caused ONLY by MRU fields (lastActivatedTick/isFocused)
 _WS_ApplyPatch(row, patch, hwnd) {
-    global gWS_InternalFields, gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_DeltaPendingHwnds
+    global gWS_InternalFields, gWS_SortAffectingFields, gWS_ContentOnlyFields
+    global gWS_DeltaPendingHwnds, gWS_MRUOnlyFields, gWS_ProjectionDirtyHwnds
+    global gWS_TitleSortActive
     changed := false
     sortDirty := false
     contentDirty := false
+    mruOnly := true  ; Assume MRU-only until a non-MRU sort field changes
 
+    ; Normalize: convert Map to Object at entry so we need only one iteration branch.
+    ; Map.OwnProps() iterates property metadata (Count, CaseSense), not entries,
+    ; so Map requires for k,v syntax. Converting once avoids maintaining two branches.
     if (patch is Map) {
-        for k, v in patch {
-            if (!row.HasOwnProp(k) || row.%k% != v) {
-                row.%k% := v
-                if (!gWS_InternalFields.Has(k)) {
-                    changed := true
-                    gWS_DeltaPendingHwnds[hwnd] := true
-                }
-                if (!sortDirty && gWS_SortAffectingFields.Has(k))
-                    sortDirty := true
-                else if (!contentDirty && gWS_ContentOnlyFields.Has(k))
-                    contentDirty := true
-            }
-        }
-    } else if (IsObject(patch)) {
+        obj := {}
+        for k, v in patch
+            obj.%k% := v
+        patch := obj
+    }
+
+    if (IsObject(patch)) {
         for k in patch.OwnProps() {
             v := patch.%k%
             if (!row.HasOwnProp(k) || row.%k% != v) {
@@ -325,19 +345,31 @@ _WS_ApplyPatch(row, patch, hwnd) {
                 if (!gWS_InternalFields.Has(k)) {
                     changed := true
                     gWS_DeltaPendingHwnds[hwnd] := true
+                    gWS_ProjectionDirtyHwnds[hwnd] := true
                 }
-                if (!sortDirty && gWS_SortAffectingFields.Has(k))
+                if (gWS_SortAffectingFields.Has(k)) {
                     sortDirty := true
-                else if (!contentDirty && gWS_ContentOnlyFields.Has(k))
+                    if (!gWS_MRUOnlyFields.Has(k))
+                        mruOnly := false
+                } else if (k = "title" && gWS_TitleSortActive) {
+                    ; Title is normally content-only, but in Title sort mode it affects order
+                    sortDirty := true
+                    mruOnly := false
+                } else if (!contentDirty && gWS_ContentOnlyFields.Has(k)) {
                     contentDirty := true
+                }
             }
         }
     }
-    return { changed: changed, sortDirty: sortDirty, contentDirty: contentDirty }
+    ; mruOnly is meaningful only when sortDirty is true
+    if (!sortDirty)
+        mruOnly := false
+    return { changed: changed, sortDirty: sortDirty, contentDirty: contentDirty, mruOnly: mruOnly }
 }
 
 WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty
+    global gWS_MRUBumpOnly
     ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
     ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
     Critical "On"
@@ -351,6 +383,13 @@ WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     changed := result.changed
 
     if (result.sortDirty) {
+        ; Track MRU-only: true only if ALL sort-dirty changes this cycle are MRU-only.
+        ; On first sort-dirty (transition false→true), take the value directly.
+        ; On subsequent sort-dirty calls, AND with existing: once false, stays false.
+        if (!gWS_SortOrderDirty)
+            gWS_MRUBumpOnly := result.mruOnly
+        else if (!result.mruOnly)
+            gWS_MRUBumpOnly := false
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
     } else if (result.contentDirty) {
@@ -371,11 +410,13 @@ WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
 ; Use this for bulk operations like workspace switches to minimize Critical section overhead
 WindowStore_BatchUpdateFields(patches, source := "") {
     global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty
+    global gWS_MRUBumpOnly
 
     Critical "On"
     changedCount := 0
     sortDirty := false
     contentDirty := false
+    batchMruOnly := true  ; Tracks MRU-only across all patches in this batch
 
     for hwnd, patch in patches {
         hwnd := hwnd + 0
@@ -387,13 +428,20 @@ WindowStore_BatchUpdateFields(patches, source := "") {
         result := _WS_ApplyPatch(row, patch, hwnd)
         if (result.changed)
             changedCount++
-        if (result.sortDirty)
+        if (result.sortDirty) {
             sortDirty := true
-        else if (result.contentDirty)
+            if (!result.mruOnly)
+                batchMruOnly := false
+        } else if (result.contentDirty) {
             contentDirty := true
+        }
     }
 
     if (sortDirty) {
+        if (!gWS_SortOrderDirty)
+            gWS_MRUBumpOnly := batchMruOnly
+        else if (!batchMruOnly)
+            gWS_MRUBumpOnly := false
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
     } else if (contentDirty) {
@@ -407,7 +455,7 @@ WindowStore_BatchUpdateFields(patches, source := "") {
 }
 
 WindowStore_RemoveWindow(hwnds, forceRemove := false) {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_DeltaPendingHwnds
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_DeltaPendingHwnds, gWS_MRUBumpOnly
     removed := 0
     ; RACE FIX: Wrap delete loop + rev bump in Critical to prevent IPC requests
     ; from seeing inconsistent state (consistent with ValidateExistence/PurgeBlacklisted)
@@ -425,6 +473,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
     if (removed) {
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
+        gWS_MRUBumpOnly := false  ; Structural change (window removal)
         _WS_BumpRev("RemoveWindow")
     }
     Critical "Off"
@@ -443,7 +492,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
 ; for hidden windows (like Outlook message windows).
 
 WindowStore_ValidateExistence() {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_DeltaPendingHwnds
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_DeltaPendingHwnds, gWS_MRUBumpOnly
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := _WS_SnapshotMapKeys(gWS_Store)
@@ -517,6 +566,7 @@ WindowStore_ValidateExistence() {
     if (removed > 0) {
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
+        gWS_MRUBumpOnly := false  ; Structural change (window removal)
         _WS_BumpRev("ValidateExistence")
     }
     Critical "Off"
@@ -527,7 +577,7 @@ WindowStore_ValidateExistence() {
 ; Purge all windows from store that match the current blacklist
 ; Called after blacklist reload to remove newly-blacklisted windows
 WindowStore_PurgeBlacklisted() {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_MRUBumpOnly
     removed := 0
     toRemove := []
 
@@ -557,6 +607,7 @@ WindowStore_PurgeBlacklisted() {
     if (removed) {
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
+        gWS_MRUBumpOnly := false  ; Structural change (blacklist purge)
         _WS_BumpRev("PurgeBlacklisted")
     }
     return { removed: removed, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
@@ -614,7 +665,7 @@ WindowStore_GetByHwnd(hwnd) {
 }
 
 WindowStore_SetCurrentWorkspace(id, name := "") {
-    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_WorkspaceChangedFlag, gWS_DeltaPendingHwnds
+    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_WorkspaceChangedFlag, gWS_DeltaPendingHwnds, gWS_MRUBumpOnly
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
     ; and the iteration loop must be atomic so a timer can't observe stale meta values
     ; between the name comparison (line below) and the name write.
@@ -648,6 +699,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
     if (anyFlipped) {
         gWS_SortOrderDirty := true
         gWS_ProjectionContentDirty := true
+        gWS_MRUBumpOnly := false  ; Filter-affecting change (workspace switch)
         _WS_BumpRev("SetCurrentWorkspace")
     }
     return flipped  ; lint-ignore: critical-section
@@ -660,8 +712,10 @@ WindowStore_GetCurrentWorkspace() {
 
 WindowStore_GetProjection(opts := 0) {
     global gWS_Store, gWS_Meta, gWS_SortOrderDirty, gWS_ProjectionContentDirty
+    global gWS_MRUBumpOnly, gWS_ProjectionDirtyHwnds, gWS_TitleSortActive
     global gWS_ProjectionCache_Items, gWS_ProjectionCache_OptsKey, gWS_ProjectionCache_SortedRecs
     sort := _WS_GetOpt(opts, "sort", "MRU")
+    gWS_TitleSortActive := (sort = "Title")
     currentOnly := _WS_GetOpt(opts, "currentWorkspaceOnly", false)
     includeMin := _WS_GetOpt(opts, "includeMinimized", true)
     includeCloaked := _WS_GetOpt(opts, "includeCloaked", false)
@@ -688,24 +742,102 @@ WindowStore_GetProjection(opts := 0) {
     }
     Critical "Off"
 
-    ; --- Path 2: Sort order clean + content dirty → re-transform from cached record order ---
-    ; Skips O(n) filter + O(n log n) sort, only does O(n) _WS_ToItem on live records.
-    ; Fresh _WS_ToItem copies prevent the stale-cache regression (commit 514a45f).
+    ; --- Path 1.5: Sort dirty BUT only MRU fields changed → incremental move-to-front ---
+    ; For MRU sort, a focus change only moves the focused item to position 1.
+    ; Instead of full Path 3 rebuild (filter + sort + transform ALL items), we:
+    ;   1. Find the item with highest lastActivatedTick in cached sorted records
+    ;   2. Move it to position 1 (O(n) shift vs O(n log n) sort)
+    ;   3. Re-transform all items via _WS_ToItem (same as Path 2)
+    ; Saves: O(n) filter + O(n log n) sort. Keeps: O(n) transform (unavoidable, same as Path 2,
+    ; because gWS_DeltaPendingHwnds is cleared by store_server before GetProjection runs).
+    ; Preconditions: MRU sort, MRU-only dirty, valid cache, same optsKey
     Critical "On"
-    if (!gWS_SortOrderDirty && gWS_ProjectionContentDirty
-        && IsObject(gWS_ProjectionCache_SortedRecs)
-        && gWS_ProjectionCache_OptsKey = optsKey) {
-        rows := []
+    if (gWS_SortOrderDirty && gWS_MRUBumpOnly
+        && sort = "MRU"
+        && IsObject(gWS_ProjectionCache_SortedRecs) && gWS_ProjectionCache_OptsKey = optsKey) {
+        sortedRecs := gWS_ProjectionCache_SortedRecs
         valid := true
-        for _, rec in gWS_ProjectionCache_SortedRecs {
+        ; Find the item with highest lastActivatedTick (the new MRU leader)
+        bestIdx := 0
+        bestTick := 0
+        Loop sortedRecs.Length {
+            rec := sortedRecs[A_Index]
             if (!rec.present) {
                 valid := false
                 break
             }
-            rows.Push(_WS_ToItem(rec))
+            if (rec.lastActivatedTick > bestTick) {
+                bestIdx := A_Index
+                bestTick := rec.lastActivatedTick
+            }
+        }
+        if (valid) {
+            ; Move the new leader to front if it's not already there
+            if (bestIdx > 1) {
+                movedRec := sortedRecs.RemoveAt(bestIdx)
+                sortedRecs.InsertAt(1, movedRec)
+            }
+            ; Selective refresh: only recreate _WS_ToItem for dirty items.
+            ; After RemoveAt/InsertAt, indices don't match cache — use hwnd lookup.
+            static cachedByHwnd := Map()
+            cachedByHwnd.Clear()
+            for _, item in gWS_ProjectionCache_Items
+                cachedByHwnd[item.hwnd] := item
+            rows := []
+            for _, rec in sortedRecs {
+                if (gWS_ProjectionDirtyHwnds.Has(rec.hwnd))
+                    rows.Push(_WS_ToItem(rec))
+                else if (cachedByHwnd.Has(rec.hwnd))
+                    rows.Push(cachedByHwnd[rec.hwnd])
+                else
+                    rows.Push(_WS_ToItem(rec))  ; Fallback: shouldn't happen
+            }
+            gWS_SortOrderDirty := false
+            gWS_ProjectionContentDirty := false
+            gWS_MRUBumpOnly := false
+            gWS_ProjectionDirtyHwnds := Map()
+            gWS_ProjectionCache_Items := rows
+            result := { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
+            if (columns = "hwndsOnly") {
+                hwnds := []
+                for _, row in rows
+                    hwnds.Push(row.hwnd)
+                Critical "Off"
+                return { rev: result.rev, hwnds: hwnds, meta: result.meta }
+            }
+            Critical "Off"
+            return result
+        }
+        ; !valid: stale ref detected — fall through to Path 3
+    }
+    Critical "Off"
+
+    ; --- Path 2: Sort order clean + content dirty → selective re-transform ---
+    ; Skips O(n) filter + O(n log n) sort. Only recreates _WS_ToItem for dirty items
+    ; (tracked by gWS_ProjectionDirtyHwnds), reuses cached items for clean ones.
+    ; gWS_ProjectionDirtyHwnds persists across IPC pushes (unlike gWS_DeltaPendingHwnds).
+    Critical "On"
+    if (!gWS_SortOrderDirty && gWS_ProjectionContentDirty
+        && IsObject(gWS_ProjectionCache_SortedRecs)
+        && IsObject(gWS_ProjectionCache_Items)
+        && gWS_ProjectionCache_OptsKey = optsKey) {
+        rows := []
+        valid := true
+        i := 0
+        for _, rec in gWS_ProjectionCache_SortedRecs {
+            i++
+            if (!rec.present) {
+                valid := false
+                break
+            }
+            if (gWS_ProjectionDirtyHwnds.Has(rec.hwnd))
+                rows.Push(_WS_ToItem(rec))
+            else
+                rows.Push(gWS_ProjectionCache_Items[i])
         }
         if (valid) {
             gWS_ProjectionContentDirty := false
+            gWS_ProjectionDirtyHwnds := Map()
             gWS_ProjectionCache_Items := rows
             result := { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
             if (columns = "hwndsOnly") {
@@ -767,6 +899,8 @@ WindowStore_GetProjection(opts := 0) {
     ; Update projection cache with transformed rows
     gWS_SortOrderDirty := false
     gWS_ProjectionContentDirty := false
+    gWS_MRUBumpOnly := false
+    gWS_ProjectionDirtyHwnds := Map()
     gWS_ProjectionCache_Items := rows        ; Cache transformed rows
     gWS_ProjectionCache_OptsKey := optsKey
 

@@ -830,4 +830,125 @@ RunUnitTests_CoreStore() {
 
     ; Cleanup
     WindowStore_RemoveWindow([8001, 8002], true)
+
+    ; ============================================================
+    ; Path 1.5: MRU Bump Optimization Tests
+    ; ============================================================
+    ; When only MRU fields change (lastActivatedTick/isFocused), Path 1.5 does an
+    ; incremental move-to-front instead of full Path 3 rebuild.
+    ; Verifies: flag tracking, correct output order, fallback on mixed changes.
+    Log("`n--- Path 1.5 MRU Bump Tests ---")
+
+    global gWS_MRUBumpOnly
+
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    mruRecs := []
+    mruRecs.Push(Map("hwnd", 9001, "title", "MRU_A", "class", "T", "pid", 1,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 1, "lastActivatedTick", 100))
+    mruRecs.Push(Map("hwnd", 9002, "title", "MRU_B", "class", "T", "pid", 2,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 2, "lastActivatedTick", 200))
+    mruRecs.Push(Map("hwnd", 9003, "title", "MRU_C", "class", "T", "pid", 3,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 3, "lastActivatedTick", 300))
+    WindowStore_UpsertWindow(mruRecs, "test")
+    WindowStore_EndScan()
+
+    ; Prime cache — MRU order should be C(300), B(200), A(100)
+    proj := WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(proj.items.Length, 3, "Path1.5 setup: 3 items")
+    AssertEq(proj.items[1].hwnd, 9003, "Path1.5 setup: C first (tick 300)")
+    AssertEq(gWS_MRUBumpOnly, false, "Path1.5 setup: MRUBumpOnly reset after projection")
+
+    ; MRU-only change: bump A to front
+    WindowStore_UpdateFields(9001, Map("lastActivatedTick", 500), "test")
+    AssertEq(gWS_SortOrderDirty, true, "Path1.5: sort dirty after MRU bump")
+    AssertEq(gWS_MRUBumpOnly, true, "Path1.5: MRUBumpOnly true for MRU-only change")
+
+    ; GetProjection should use Path 1.5 and return A first
+    proj2 := WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(proj2.items[1].hwnd, 9001, "Path1.5: A moved to front (tick 500)")
+    AssertEq(proj2.items[2].hwnd, 9003, "Path1.5: C second (tick 300)")
+    AssertEq(proj2.items[3].hwnd, 9002, "Path1.5: B third (tick 200)")
+
+    ; Verify dirty flags cleared
+    AssertEq(gWS_SortOrderDirty, false, "Path1.5: sort dirty cleared after projection")
+    AssertEq(gWS_MRUBumpOnly, false, "Path1.5: MRUBumpOnly cleared after projection")
+
+    ; Mixed change: MRU tick + non-MRU sort field → MRUBumpOnly must be false
+    WindowStore_UpdateFields(9002, Map("lastActivatedTick", 600, "z", 99), "test")
+    AssertEq(gWS_MRUBumpOnly, false, "Path1.5: MRUBumpOnly false for mixed change (tick+z)")
+
+    ; Projection still correct (falls through to Path 3)
+    proj3 := WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(proj3.items[1].hwnd, 9002, "Path1.5 fallback: B first after mixed change (tick 600)")
+
+    ; Path 1.5 selective refresh: dirty item gets fresh data, clean items reuse cache
+    WindowStore_GetProjection({ sort: "MRU" })  ; Reset
+    WindowStore_UpdateFields(9002, Map("lastActivatedTick", 700, "iconHicon", 4242), "test")
+    proj4 := WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(proj4.items[1].hwnd, 9002, "Path1.5 refresh: B moved to front")
+    found := false
+    for _, item in proj4.items {
+        if (item.hwnd = 9002) {
+            AssertEq(item.iconHicon, 4242, "Path1.5 refresh: dirty item has fresh iconHicon")
+            found := true
+            break
+        }
+    }
+    AssertEq(found, true, "Path1.5 refresh: B found in projection")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([9001, 9002, 9003], true)
+
+    ; ============================================================
+    ; TitleSortActive Tests (Issue 5)
+    ; ============================================================
+    ; "title" is content-only by default (MRU sort), but promoted to sort-affecting
+    ; when Title sort mode is active. Verifies the flag is set/cleared by GetProjection
+    ; and that dirty tracking responds correctly.
+    Log("`n--- TitleSortActive Tests ---")
+
+    global gWS_TitleSortActive
+
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    titleRecs := []
+    titleRecs.Push(Map("hwnd", 9101, "title", "Alpha", "class", "T", "pid", 1,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false,
+                       "z", 1, "lastActivatedTick", 100))
+    titleRecs.Push(Map("hwnd", 9102, "title", "Beta", "class", "T", "pid", 2,
+                       "isVisible", true, "isCloaked", false, "isMinimized", false,
+                       "z", 2, "lastActivatedTick", 200))
+    WindowStore_UpsertWindow(titleRecs, "test")
+    WindowStore_EndScan()
+
+    ; Default (MRU sort): title is content-only
+    WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(gWS_TitleSortActive, false, "TitleSort: inactive in MRU mode")
+    WindowStore_UpdateFields(9101, Map("title", "Alpha2"), "test")
+    AssertEq(gWS_SortOrderDirty, false, "TitleSort: title change is content-only in MRU mode")
+    AssertEq(gWS_ProjectionContentDirty, true, "TitleSort: title change sets content dirty in MRU mode")
+
+    ; Switch to Title sort: title becomes sort-affecting
+    WindowStore_GetProjection({ sort: "Title" })
+    AssertEq(gWS_TitleSortActive, true, "TitleSort: active after Title sort projection")
+    WindowStore_UpdateFields(9101, Map("title", "Zulu"), "test")
+    AssertEq(gWS_SortOrderDirty, true, "TitleSort: title change sets sort dirty in Title mode")
+
+    ; Verify projection reflects new title order (Zulu sorts after Beta)
+    proj := WindowStore_GetProjection({ sort: "Title" })
+    AssertEq(proj.items[1].hwnd, 9102, "TitleSort: Beta first alphabetically")
+    AssertEq(proj.items[2].hwnd, 9101, "TitleSort: Zulu second alphabetically")
+
+    ; Switch back to MRU: title reverts to content-only
+    WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(gWS_TitleSortActive, false, "TitleSort: deactivated after MRU sort projection")
+    WindowStore_UpdateFields(9101, Map("title", "Alpha3"), "test")
+    AssertEq(gWS_SortOrderDirty, false, "TitleSort: title change is content-only again in MRU mode")
+
+    ; Cleanup
+    WindowStore_RemoveWindow([9101, 9102], true)
 }
