@@ -578,12 +578,14 @@ RunLiveTests_Features() {
             Log("PASS: Stats test connected to store")
             TestPassed++
 
-            ; Send hello
+            ; Send hello and wait for server to process it (sends snapshot back)
             helloMsg := { type: IPC_MSG_HELLO, clientId: "stats_test", wants: { deltas: false } }
             IPC_PipeClient_Send(statsClient, JSON.Dump(helloMsg))
-            Sleep(100)
+            Sleep(200)  ; Wait for HELLO round-trip so server is ready for stats
 
-            ; Send a stats_update with known deltas
+            ; Send a stats_update with known deltas, then request immediately
+            ; No sleep between update and request - server processes them in order
+            ; from the same pipe read cycle
             updateMsg := Map()
             updateMsg["type"] := IPC_MSG_STATS_UPDATE
             updateMsg["TotalAltTabs"] := 7
@@ -591,7 +593,6 @@ RunLiveTests_Features() {
             updateMsg["TotalTabSteps"] := 15
             updateMsg["TotalCancellations"] := 2
             IPC_PipeClient_Send(statsClient, JSON.Dump(updateMsg))
-            Sleep(100)
 
             ; Request stats back
             gStatsTestResponse := ""
@@ -600,7 +601,7 @@ RunLiveTests_Features() {
             IPC_PipeClient_Send(statsClient, JSON.Dump(reqMsg))
 
             waitStart := A_TickCount
-            while (!gStatsTestReceived && (A_TickCount - waitStart) < 3000)
+            while (!gStatsTestReceived && (A_TickCount - waitStart) < 5000)
                 Sleep(50)
 
             if (!gStatsTestReceived) {

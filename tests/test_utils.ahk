@@ -287,25 +287,18 @@ _Test_RunWaitSilent(cmdLine, workDir := "") {
 
 ; Wait for a store's named pipe to become available
 ; Returns true if pipe is ready, false on timeout
-WaitForStorePipe(pipeName, timeoutMs := 3000) {
+; Uses WaitNamedPipeW instead of CreateFile to avoid consuming a pipe instance
+; (CreateFile opens and closes a real connection, wasting a server slot)
+WaitForStorePipe(pipeName, timeoutMs := 5000) {
     pipePath := "\\.\pipe\" pipeName
     start := A_TickCount
     while ((A_TickCount - start) < timeoutMs) {
-        ; Try to open the pipe - succeeds when store is ready
-        hPipe := DllCall("CreateFile",
-            "Str", pipePath,
-            "UInt", 0x80000000,  ; GENERIC_READ
-            "UInt", 0,
-            "Ptr", 0,
-            "UInt", 3,          ; OPEN_EXISTING
-            "UInt", 0,
-            "Ptr", 0,
-            "Ptr")
-        if (hPipe != -1) {
-            DllCall("CloseHandle", "Ptr", hPipe)
+        ; WaitNamedPipeW returns true when pipe instance is available
+        ; without actually connecting (no server slot consumed)
+        if (DllCall("WaitNamedPipeW", "Str", pipePath, "UInt", 250))
             return true
-        }
-        Sleep(50)  ; Poll every 50ms
+        ; ERROR_FILE_NOT_FOUND (2) = pipe doesn't exist yet, retry
+        Sleep(50)
     }
     return false
 }

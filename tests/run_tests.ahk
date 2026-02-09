@@ -3,6 +3,16 @@
 #Warn VarUnset, Off  ; Suppress warnings for functions defined in includes
 A_IconHidden := true  ; No tray icon during tests
 
+; Prevent error dialogs from blocking headless test processes.
+; Without this, an unhandled error in a timer callback (e.g., IPC pipe read)
+; shows a dialog that blocks the process indefinitely — the harness waits
+; forever for the process to exit.
+OnError(_TestOnError)
+_TestOnError(err, mode) {
+    try Log("FATAL: Unhandled error: " err.Message " (" err.File ":" err.Line ")")
+    ExitApp(1)
+}
+
 ; Automated test runner - Orchestrates all test suites
 ; Usage: AutoHotkey64.exe tests/run_tests.ahk [--live]
 ;
