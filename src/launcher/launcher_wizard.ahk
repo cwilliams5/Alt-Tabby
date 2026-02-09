@@ -17,9 +17,7 @@ global g_WizardShuttingDown := false  ; Shutdown coordination flag
 
 ; Mark first-run as completed and record exe path
 _WizardMarkComplete() {
-    global cfg, gConfigIniPath
-    cfg.SetupFirstRunCompleted := true
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+    _Setup_SetFirstRunCompleted(true)
     _Setup_SetExePath(A_ScriptFullPath)
 }
 
@@ -306,7 +304,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
 
                 ; Ensure PF config has our InstallationId (may differ if PF had existing config)
                 if (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")
-                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", cfg.SetupInstallationId, "", "string")
+                    _Setup_SetInstallationId(cfg.SetupInstallationId)
             }
         }
     }
@@ -347,10 +345,10 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
 
     ; Step 3: Save config
     cfg.SetupAutoUpdateCheck := autoUpdate
-    cfg.SetupFirstRunCompleted := true
+    _Setup_SetFirstRunCompleted(true)
     _Setup_SetExePath(exePath)
+    _Setup_SetRunAsAdmin(admin)
     _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", autoUpdate, true, "bool")
-    _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
 
     ; Step 4: Create shortcuts AFTER admin mode is set (so they point correctly)
     ; Warn if shortcuts will point to a temporary location (unless PF install succeeded)

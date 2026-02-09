@@ -230,6 +230,49 @@ _AdminToggle_WriteResult(result) {
 }
 
 ; ============================================================
+; SUBPROCESS TIMEOUT HELPER
+; ============================================================
+; Runs a command with a timeout. Returns the exit code, or -1 on timeout.
+; Uses Run (non-blocking) + ProcessWaitClose with timeout + ProcessClose on timeout.
+; Timeout in milliseconds; default 10 seconds (generous for schtasks).
+
+_RunWithTimeout(cmd, timeoutMs := 10000, options := "Hide") {
+    pid := 0
+    try {
+        Run(cmd, , options, &pid)
+    } catch {
+        return -1
+    }
+    if (!pid)
+        return -1
+
+    ; Wait for process to finish within timeout (seconds for ProcessWaitClose)
+    timeoutSec := timeoutMs / 1000
+    result := ProcessWaitClose(pid, timeoutSec)
+    if (result = 0 && ProcessExist(pid)) {
+        ; Timeout — process still running, force kill
+        try ProcessClose(pid)
+        return -1
+    }
+
+    ; Process finished (either caught by WaitClose or already exited) — get exit code
+    try return ProcessGetExitCode(pid)
+    return 0
+}
+
+; Get exit code of a recently-exited process via Win32 API
+ProcessGetExitCode(pid) {
+    static PROCESS_QUERY_LIMITED_INFORMATION := 0x1000
+    hProcess := DllCall("OpenProcess", "UInt", PROCESS_QUERY_LIMITED_INFORMATION, "Int", 0, "UInt", pid, "Ptr")
+    if (!hProcess)
+        return 0
+    exitCode := 0
+    DllCall("GetExitCodeProcess", "Ptr", hProcess, "UInt*", &exitCode)
+    DllCall("CloseHandle", "Ptr", hProcess)
+    return exitCode
+}
+
+; ============================================================
 ; TASK SCHEDULER (ADMIN MODE)
 ; ============================================================
 
@@ -305,7 +348,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     FileAppend(xml, xmlPath, "UTF-16")
 
     ; Import task via schtasks (requires admin for HighestAvailable)
-    result := RunWait('schtasks /create /tn "' taskName '" /xml "' xmlPath '" /f', , "Hide")
+    result := _RunWithTimeout('schtasks /create /tn "' taskName '" /xml "' xmlPath '" /f')
 
     try FileDelete(xmlPath)
     _AdminTask_InvalidateCache()
@@ -317,7 +360,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
 DeleteAdminTask(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
     taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
-    result := RunWait('schtasks /delete /tn "' taskName '" /f', , "Hide")
+    result := _RunWithTimeout('schtasks /delete /tn "' taskName '" /f')
     _AdminTask_InvalidateCache()
     return (result = 0)
 }
@@ -362,7 +405,7 @@ AdminTaskExists(taskNameOverride := "") {
         return _AdminTask_GetCachedData().exists
 
     taskName := taskNameOverride
-    result := RunWait('schtasks /query /tn "' taskName '"', , "Hide")
+    result := _RunWithTimeout('schtasks /query /tn "' taskName '"')
     return (result = 0)  ; 0 = task exists
 }
 
@@ -374,7 +417,7 @@ _AdminTask_FetchXML(taskNameOverride := "") {
     tempFile := A_Temp "\alttabby_task_query.xml"
     try FileDelete(tempFile)
 
-    result := RunWait('cmd.exe /c schtasks /query /tn "' taskName '" /xml > "' tempFile '"',, "Hide")
+    result := _RunWithTimeout('cmd.exe /c schtasks /query /tn "' taskName '" /xml > "' tempFile '"')
     if (result != 0 || !FileExist(tempFile))
         return ""
 
@@ -422,7 +465,7 @@ _RunAdminTask(sleepMs := 0) {
     global ALTTABBY_TASK_NAME
     if (sleepMs > 0)
         Sleep(sleepMs)
-    return RunWait('schtasks /run /tn "' ALTTABBY_TASK_NAME '"',, "Hide")
+    return _RunWithTimeout('schtasks /run /tn "' ALTTABBY_TASK_NAME '"')
 }
 
 ; ============================================================
@@ -467,6 +510,20 @@ _Setup_SetExePath(value) {
     global cfg, gConfigIniPath
     cfg.SetupExePath := value
     try return _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "ExePath", value, "", "string")
+    return false
+}
+
+_Setup_SetFirstRunCompleted(value) {
+    global cfg, gConfigIniPath
+    cfg.SetupFirstRunCompleted := value
+    try return _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", value, false, "bool")
+    return false
+}
+
+_Setup_SetInstallationId(value) {
+    global cfg, gConfigIniPath
+    cfg.SetupInstallationId := value
+    try return _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", value, "", "string")
     return false
 }
 

@@ -58,6 +58,10 @@ Launcher_Init() {
     ; Ensure InstallationId exists (generates on first run)
     _Launcher_EnsureInstallationId()
 
+    ; Check config writability early - warn once if settings can't be saved
+    ; (e.g., read-only file, OneDrive sync lock, antivirus interference)
+    _Launcher_CheckConfigWritable()
+
     ; Check if another launcher is already running (named mutex)
     ; Uses InstallationId so renamed exes in same install still share mutex
     ; MUST be before mismatch check to prevent race conditions
@@ -141,8 +145,7 @@ Launcher_Init() {
         if (_Launcher_ShouldSkipWizardForExistingInstall()) {
             ; Mismatch check will run on next iteration (already ran above)
             ; Mark wizard as complete since user has existing setup
-            cfg.SetupFirstRunCompleted := true
-            try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "FirstRunCompleted", true, false, "bool")
+            _Setup_SetFirstRunCompleted(true)
         } else {
             ; Show first-run wizard
             ShowFirstRunWizard()
@@ -665,8 +668,7 @@ _Launcher_EnsureInstallationId() {
             if (taskDir != "" && PathsEqual(taskDir, A_ScriptDir)) {
                 existingId := _AdminTask_GetInstallationId()
                 if (existingId != "") {
-                    cfg.SetupInstallationId := existingId
-                    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", existingId, "", "string")
+                    _Setup_SetInstallationId(existingId)
                     return
                 }
             }
@@ -674,9 +676,7 @@ _Launcher_EnsureInstallationId() {
     }
 
     ; Generate new ID (different location or no matching task)
-    installId := _Launcher_GenerateId()
-    cfg.SetupInstallationId := installId
-    try _CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", installId, "", "string")
+    _Setup_SetInstallationId(_Launcher_GenerateId())
 }
 
 ; Generate an 8-character hex ID
@@ -689,6 +689,33 @@ _Launcher_GenerateId() {
     ; Format as 8-char hex
     id := Format("{:08X}", combined & 0xFFFFFFFF)
     return id
+}
+
+; Check if config.ini is writable. Shows a one-time warning if not.
+; Catches: read-only attribute, antivirus locks, OneDrive/Dropbox sync locks.
+; Only warns — does NOT block startup.
+_Launcher_CheckConfigWritable() {
+    global gConfigIniPath, APP_NAME
+
+    ; Skip if config doesn't exist yet (wizard will create it)
+    if (!FileExist(gConfigIniPath))
+        return
+
+    ; Try writing a harmless test key, then remove it
+    testKey := "_WriteTest"
+    try {
+        IniWrite("1", gConfigIniPath, "Setup", testKey)
+        IniDelete(gConfigIniPath, "Setup", testKey)
+        return  ; Writable
+    }
+
+    ; Write failed — warn once per session
+    _Launcher_Log("CONFIG_WRITABLE: config.ini is not writable: " gConfigIniPath)
+    try ThemeMsgBox(
+        "The config file is not writable:`n" gConfigIniPath "`n`n"
+        "Settings changes won't be saved this session.`n"
+        "This can happen with read-only files, cloud-synced folders, or antivirus locks.",
+        APP_NAME " - Config Warning", "Icon!")
 }
 
 ; Check if we should skip wizard due to existing installation

@@ -620,9 +620,16 @@ _AdminToggle_CheckComplete() {
 
 _Tray_InstallToProgramFiles() {
     global APP_NAME, ALTTABBY_INSTALL_DIR, UPDATE_INFO_DELIMITER, TEMP_INSTALL_PF_STATE
+    global g_UpdateCheckInProgress
 
     if (!A_IsCompiled || _IsInProgramFiles())
         return
+
+    ; Prevent race with auto-update download (P4 fix)
+    if (g_UpdateCheckInProgress) {
+        ThemeMsgBox("An update check is in progress. Please wait for it to finish before installing.", APP_NAME, "Icon!")
+        return
+    }
 
     result := ThemeMsgBox(
         "Install Alt-Tabby to Program Files?`n`n"
