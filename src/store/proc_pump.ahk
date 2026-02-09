@@ -45,10 +45,11 @@ ProcPump_Start() {
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (ProcTimerIntervalMs = 0) {
-        global _PP_IdleThreshold
+        global _PP_IdleThreshold, _PP_FailedPidCacheTTL
         ProcBatchPerTick := cfg.ProcPumpBatchSize
         ProcTimerIntervalMs := cfg.ProcPumpIntervalMs
         _PP_IdleThreshold := cfg.HasOwnProp("ProcPumpIdleThreshold") ? cfg.ProcPumpIdleThreshold : 5
+        _PP_FailedPidCacheTTL := cfg.ProcPumpFailedPidRetryMs
     }
 
     ; Reset log for new session

@@ -787,6 +787,10 @@ global gConfigRegistry := [
      min: 0, max: 500,
      d: "Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately."},
 
+    {s: "Komorebi", k: "MruSuppressionMs", g: "KomorebiMruSuppressionMs", t: "int", default: 2000,
+     min: 500, max: 5000,
+     d: "Duration (ms) to suppress WinEventHook MRU updates after a workspace switch. Prevents focus events from corrupting window order during transitions."},
+
     ; ============================================================
     ; Setup & Installation
     ; ============================================================
@@ -1012,6 +1016,10 @@ global gConfigRegistry := [
     {s: "Store", k: "IdleThreshold", g: "ProcPumpIdleThreshold", t: "int", default: 5,
      min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
+
+    {s: "Store", k: "FailedPidRetryMs", g: "ProcPumpFailedPidRetryMs", t: "int", default: 60000,
+     min: 5000, max: 300000,
+     d: "How long (ms) before retrying process name lookup for a PID that previously failed."},
 
     {type: "subsection", section: "Store", name: "Cache Limits",
      desc: "Size limits for internal caches to prevent unbounded memory growth"},

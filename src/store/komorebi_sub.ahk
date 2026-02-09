@@ -38,6 +38,7 @@ global KSUB_READ_BUF := Buffer(KSUB_READ_CHUNK_SIZE)
 global KSub_PollMs := 0
 global KSub_IdleRecycleMs := 0
 global KSub_FallbackPollMs := 0
+global KSub_MruSuppressionMs := 2000
 
 ; State
 global _KSub_PipeName := ""
@@ -63,8 +64,8 @@ global _KSub_CacheMaxAgeMs := 10000  ; Default, overridden from cfg in KomorebiS
 global _KSub_FocusedHwndByWS := Map()
 
 ; MRU suppression: prevents WinEventHook from corrupting MRU during workspace switches.
-; Set to A_TickCount + 2000 on every FocusWorkspaceNumber/FocusNamedWorkspace event.
-; NEVER cleared early (not even on FocusChange) — always auto-expires after 2s.
+; Set to A_TickCount + KSub_MruSuppressionMs on every FocusWorkspaceNumber/FocusNamedWorkspace event.
+; NEVER cleared early (not even on FocusChange) — always auto-expires after configured duration.
 ; Clearing on FocusChange created a gap during rapid switching where stale WEH events
 ; triggered WS MISMATCH corrections, flip-flopping the workspace and causing visible jiggle.
 ; Komorebi handles MRU through the focused hwnd cache, so WEH suppression is harmless.
@@ -83,10 +84,12 @@ KomorebiSub_Init() {
     global _KSub_FallbackMode
 
     ; Load config values (ConfigLoader_Init has already run)
+    global KSub_MruSuppressionMs
     KSub_PollMs := cfg.KomorebiSubPollMs
     KSub_IdleRecycleMs := cfg.KomorebiSubIdleRecycleMs
     KSub_FallbackPollMs := cfg.KomorebiSubFallbackPollMs
     _KSub_CacheMaxAgeMs := cfg.KomorebiSubCacheMaxAgeMs
+    KSub_MruSuppressionMs := cfg.KomorebiMruSuppressionMs
 
     _KSub_PipeName := "tabby_" A_TickCount "_" Random(1000, 9999)
     _KSub_WorkspaceCache := Map()
@@ -536,7 +539,7 @@ _KSub_OnNotification(jsonLine) {
     global _KSub_LastWorkspaceName, _KSub_WorkspaceCache, gKSub_MruSuppressUntilTick, _KSub_CloakBatchBuffer
     global KSUB_EV_CLOAK, KSUB_EV_UNCLOAK, KSUB_EV_TITLE_UPDATE, KSUB_EV_FOCUS_CHANGE
     global KSUB_EV_FOCUS_MONITOR_WS_NUM, KSUB_EV_FOCUS_WS_NUM, KSUB_EV_FOCUS_NAMED_WS
-    global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS
+    global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS, KSub_MruSuppressionMs
 
     _KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
 
@@ -606,7 +609,7 @@ _KSub_OnNotification(jsonLine) {
         ; Without Critical, WEH's SetTimer(-1) can interrupt between lines here.
         ; The suppression must be active before any interruptible work happens.
         Critical "On"
-        gKSub_MruSuppressUntilTick := A_TickCount + 2000
+        gKSub_MruSuppressUntilTick := A_TickCount + KSub_MruSuppressionMs
         Critical "Off"
 
         ; content varies by event type:
