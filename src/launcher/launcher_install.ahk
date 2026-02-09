@@ -195,12 +195,9 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
     if (question = "")
         question := "Launch the installed version instead?"
 
-    mismatchGui := Gui("+AlwaysOnTop +Owner", title)
-    _GUI_AntiFlashPrepare(mismatchGui, Theme_GetBgColor(), true)
-    mismatchGui.MarginX := 24
-    mismatchGui.MarginY := 16
-    mismatchGui.SetFont("s10", "Segoe UI")
-    themeEntry := Theme_ApplyToGui(mismatchGui)
+    dlgResult := Theme_CreateModalDialog(title)
+    mismatchGui := dlgResult.gui
+    themeEntry := dlgResult.themeEntry
 
     contentW := 440
 
@@ -232,9 +229,7 @@ _Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question
     btnAlways.OnEvent("Click", (*) => (result := "Always", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
     mismatchGui.OnEvent("Close", (*) => (result := "No", Theme_UntrackGui(mismatchGui), mismatchGui.Destroy()))
 
-    mismatchGui.Show("w488 Center")
-    _GUI_AntiFlashReveal(mismatchGui, true)
-    WinWaitClose(mismatchGui)
+    Theme_ShowModalDialog(mismatchGui)
 
     return result
 }

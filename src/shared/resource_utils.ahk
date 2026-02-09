@@ -6,6 +6,14 @@
 
 global RT_RCDATA := 10
 
+; Embedded resource IDs (must match @Ahk2Exe-AddResource directives in compile.ps1)
+global RES_ID_LOGO := 10           ; logo.png
+global RES_ID_ICON := 11           ; icon.png
+global RES_ID_ANIMATION := 15      ; animation.webp
+global RES_ID_SHARPYUV_DLL := 16   ; libsharpyuv-0.dll
+global RES_ID_WEBP_DLL := 17       ; libwebp-7.dll
+global RES_ID_DEMUX_DLL := 18      ; libwebpdemux-2.dll
+
 ; Extract an embedded resource to a file
 ; resourceId: Resource ID from @Ahk2Exe-AddResource directive
 ; destPath: Full path to write the extracted file

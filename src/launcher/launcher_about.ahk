@@ -770,6 +770,7 @@ _Dash_CheckForUpdatesAsync() {
 ; ============================================================
 
 _Dash_LoadLogo(dg) {
+    global RES_ID_LOGO
     ; Dev mode: load from file
     if (!A_IsCompiled) {
         imgPath := A_ScriptDir "\..\resources\img\logo.png"
@@ -794,7 +795,7 @@ _Dash_LoadLogo(dg) {
         return false
     }
 
-    pBitmap := _Splash_LoadBitmapFromResource(10)
+    pBitmap := _Splash_LoadBitmapFromResource(RES_ID_LOGO)
     if (!pBitmap) {
         DllCall("gdiplus\GdiplusShutdown", "ptr", token)
         DllCall("FreeLibrary", "ptr", hModule)

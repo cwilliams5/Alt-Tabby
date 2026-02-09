@@ -105,16 +105,10 @@ GUI_Repaint() {
     t1 := A_TickCount
 
     ; static: marshal buffers reused per frame
-    static bf := Buffer(4, 0)
+    bf := Gdip_GetBlendFunction()
     static sz := Buffer(8, 0)
     static ptDst := Buffer(8, 0)
     static ptSrc := Buffer(8, 0)
-
-    ; BLENDFUNCTION
-    NumPut("UChar", 0x00, bf, 0)
-    NumPut("UChar", 0x00, bf, 1)
-    NumPut("UChar", 255, bf, 2)
-    NumPut("UChar", 0x01, bf, 3)
     NumPut("Int", phW, sz, 0)
     NumPut("Int", phH, sz, 4)
     NumPut("Int", phX, ptDst, 0)

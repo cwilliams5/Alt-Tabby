@@ -217,8 +217,8 @@ $CHECKS = @(
     },
     @{
         Id       = "gui_repaint_static_buf"
-        File     = "gui\gui_paint.ahk"
-        Desc     = "GUI_Repaint uses static bf buffer"
+        File     = "gui\gui_gdip.ahk"
+        Desc     = "Gdip_GetBlendFunction uses static bf buffer"
         Patterns = @("static bf := Buffer")
     },
     @{

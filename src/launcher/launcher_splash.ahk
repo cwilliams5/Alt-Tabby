@@ -116,6 +116,7 @@ _Splash_ShowImage() {
     global g_SplashHwnd, g_SplashBitmap, g_SplashHdc, g_SplashToken
     global g_SplashHdcScreen, g_SplashImgW, g_SplashImgH, g_SplashPosX, g_SplashPosY
     global g_SplashHModule, g_SplashDIB, g_SplashDIBOld, cfg
+    global RES_ID_LOGO
 
     ; Load GDI+ library first
     g_SplashHModule := DllCall("LoadLibrary", "str", "gdiplus", "ptr")
@@ -135,7 +136,7 @@ _Splash_ShowImage() {
     ; Load PNG - from embedded resource (compiled) or file (dev mode)
     g_SplashBitmap := 0
     if (A_IsCompiled) {
-        g_SplashBitmap := _Splash_LoadBitmapFromResource(10)  ; ID 10 = logo.png
+        g_SplashBitmap := _Splash_LoadBitmapFromResource(RES_ID_LOGO)
     } else {
         imgPath := A_ScriptDir "\..\resources\img\logo.png"
         if (FileExist(imgPath))
@@ -201,6 +202,7 @@ _Splash_ShowAnimation() {
     global g_SplashFrames, g_SplashFrameCount, g_SplashCurrentFrame, g_SplashTotalFrames
     global g_SplashAlpha, g_SplashFadeState, g_SplashFadeStartTick, g_SplashStreaming
     global g_SplashRunning, g_SplashFrameMs, g_SplashLoopCount, g_SplashExtractedWebP, cfg
+    global RES_ID_ANIMATION
 
     ; Load WebP DLLs
     if (!_Splash_LoadWebPDlls())
@@ -228,7 +230,7 @@ _Splash_ShowAnimation() {
     webpPath := ""
     if (A_IsCompiled) {
         ; Extract animation.webp from resources to temp
-        webpPath := _Splash_ExtractResourceToTemp(15, "animation.webp")  ; ID 15 = animation.webp
+        webpPath := _Splash_ExtractResourceToTemp(RES_ID_ANIMATION, "animation.webp")
         g_SplashExtractedWebP := webpPath  ; Save for cleanup
     } else {
         webpPath := A_ScriptDir "\..\resources\animation.webp"
@@ -375,6 +377,7 @@ _Splash_HideAnimation() {
 _Splash_LoadWebPDlls() {
     global g_SplashHWebP, g_SplashHSharpYuv, g_SplashHDemux
     global g_SplashDemuxDllName, g_SplashExtractedDlls
+    global RES_ID_SHARPYUV_DLL, RES_ID_WEBP_DLL, RES_ID_DEMUX_DLL
 
     dllDir := ""
     demuxDll := ""
@@ -387,10 +390,9 @@ _Splash_LoadWebPDlls() {
         if (!DirExist(dllDir))
             DirCreate(dllDir)
 
-        ; Extract each DLL (resource IDs: 16=sharpyuv, 17=webp, 18=demux)
-        sharpyuvDll := _Splash_ExtractResourceToTemp(16, "libsharpyuv-0.dll", dllDir)
-        webpDll := _Splash_ExtractResourceToTemp(17, "libwebp-7.dll", dllDir)
-        demuxDll := _Splash_ExtractResourceToTemp(18, "libwebpdemux-2.dll", dllDir)
+        sharpyuvDll := _Splash_ExtractResourceToTemp(RES_ID_SHARPYUV_DLL, "libsharpyuv-0.dll", dllDir)
+        webpDll := _Splash_ExtractResourceToTemp(RES_ID_WEBP_DLL, "libwebp-7.dll", dllDir)
+        demuxDll := _Splash_ExtractResourceToTemp(RES_ID_DEMUX_DLL, "libwebpdemux-2.dll", dllDir)
 
         if (sharpyuvDll)
             g_SplashExtractedDlls.Push(sharpyuvDll)

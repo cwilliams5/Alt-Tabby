@@ -24,12 +24,9 @@ _WizardMarkComplete() {
 ShowFirstRunWizard() {
     global g_WizardGui, cfg, gTheme_Palette
 
-    g_WizardGui := Gui("+AlwaysOnTop", "Welcome to Alt-Tabby")
-    _GUI_AntiFlashPrepare(g_WizardGui, Theme_GetBgColor(), true)
-    g_WizardGui.MarginX := 24
-    g_WizardGui.MarginY := 16
-    g_WizardGui.SetFont("s10", "Segoe UI")
-    themeEntry := Theme_ApplyToGui(g_WizardGui)
+    dlgResult := Theme_CreateModalDialog("Welcome to Alt-Tabby", "+AlwaysOnTop", 468)
+    g_WizardGui := dlgResult.gui
+    themeEntry := dlgResult.themeEntry
 
     ; Logo (centered in 468px client width)
     _Wizard_LoadLogo(g_WizardGui)
@@ -68,9 +65,7 @@ ShowFirstRunWizard() {
     Theme_ApplyToControl(btn2, "Button", themeEntry)
 
     g_WizardGui.OnEvent("Close", WizardSkip)
-    g_WizardGui.Show("w468 Center")
-    _GUI_AntiFlashReveal(g_WizardGui, true)
-    WinWaitClose(g_WizardGui)
+    Theme_ShowModalDialog(g_WizardGui, 468)
 }
 
 ; Load logo into wizard GUI (centered, 116x90)

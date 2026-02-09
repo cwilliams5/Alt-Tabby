@@ -26,6 +26,17 @@ global gGdip_PenCache := Map()     ; "argb_width" -> pPen
 global GDIP_BRUSH_CACHE_MAX := 100
 global GDIP_PEN_CACHE_MAX := 100
 
+; Pre-built BLENDFUNCTION for UpdateLayeredWindow (AC_SRC_OVER, fully opaque, AC_SRC_ALPHA).
+; Shared across gui_paint and gui_overlay to avoid duplication.
+Gdip_GetBlendFunction() {
+    static bf := Buffer(4, 0)
+    static _init := (NumPut("UChar", 0, bf, 0),     ; BlendOp: AC_SRC_OVER
+                     NumPut("UChar", 0, bf, 1),      ; BlendFlags: reserved
+                     NumPut("UChar", 255, bf, 2),    ; SourceConstantAlpha: fully opaque
+                     NumPut("UChar", 0x01, bf, 3))   ; AlphaFormat: AC_SRC_ALPHA
+    return bf
+}
+
 ; Start GDI+
 Gdip_Startup() {
     global gGdip_Token

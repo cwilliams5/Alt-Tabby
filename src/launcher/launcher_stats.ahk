@@ -225,6 +225,7 @@ _StatsCtl_Set(key, value) {
 
 ; Load icon.png into the stats dialog (dev: file, compiled: resource ID 11)
 _StatsDialog_LoadIcon(sg) {
+    global RES_ID_ICON
     ; Dev mode: load from file
     if (!A_IsCompiled) {
         imgPath := A_ScriptDir "\..\resources\img\icon.png"
@@ -248,7 +249,7 @@ _StatsDialog_LoadIcon(sg) {
         return
     }
 
-    pBitmap := _Splash_LoadBitmapFromResource(11)
+    pBitmap := _Splash_LoadBitmapFromResource(RES_ID_ICON)
     if (!pBitmap) {
         DllCall("gdiplus\GdiplusShutdown", "ptr", token)
         DllCall("FreeLibrary", "ptr", hModule)

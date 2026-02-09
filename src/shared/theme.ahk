@@ -22,6 +22,11 @@
 ; WM_SETTINGCHANGE is broadcast by Windows to all processes.
 ; ============================================================
 
+; --- Theme mode constants ---
+global THEME_MODE_AUTO := "Automatic"
+global THEME_MODE_DARK := "Dark"
+global THEME_MODE_LIGHT := "Light"
+
 ; --- Theme state ---
 global gTheme_IsDark := false
 global gTheme_Palette := {}
@@ -65,56 +70,38 @@ global gTheme_fnAllowDarkModeForWindow := 0
 ; Unified palette for both native AHK GUIs and WebView2 editors.
 ; WebView2 consumes these via Theme_GetWebViewJS() injection.
 
+; Palette field names → config suffix mapping (field "bg" → config "Theme_DarkBg" / "Theme_LightBg").
+; Adding a new color: add entry here AND in config_registry.ahk. Palette builders iterate this list.
+global gThemeColorFields := [
+    "bg", "panelBg", "tertiary", "editBg", "hover", "text", "editText",
+    "textSecondary", "textMuted", "accent", "accentHover", "accentText",
+    "border", "borderInput", "toggleBg", "success", "warning", "danger"
+]
+
 ; Convert config int (0xRRGGBB) to 6-char hex string ("RRGGBB") for palette use.
 _Theme_CfgHex(cfgProp) {
     global cfg
     return Format("{:06X}", cfg.%cfgProp%)
 }
 
-_Theme_MakeDarkPalette() {
+; Build palette object from config, using the given prefix ("Theme_Dark" or "Theme_Light").
+_Theme_MakePalette(prefix) {
+    global gThemeColorFields
     p := {}
-    p.bg            := _Theme_CfgHex("Theme_DarkBg")
-    p.panelBg       := _Theme_CfgHex("Theme_DarkPanelBg")
-    p.tertiary      := _Theme_CfgHex("Theme_DarkTertiary")
-    p.editBg        := _Theme_CfgHex("Theme_DarkEditBg")
-    p.hover         := _Theme_CfgHex("Theme_DarkHover")
-    p.text          := _Theme_CfgHex("Theme_DarkText")
-    p.editText      := _Theme_CfgHex("Theme_DarkEditText")
-    p.textSecondary := _Theme_CfgHex("Theme_DarkTextSecondary")
-    p.textMuted     := _Theme_CfgHex("Theme_DarkTextMuted")
-    p.accent        := _Theme_CfgHex("Theme_DarkAccent")
-    p.accentHover   := _Theme_CfgHex("Theme_DarkAccentHover")
-    p.accentText    := _Theme_CfgHex("Theme_DarkAccentText")
-    p.border        := _Theme_CfgHex("Theme_DarkBorder")
-    p.borderInput   := _Theme_CfgHex("Theme_DarkBorderInput")
-    p.toggleBg      := _Theme_CfgHex("Theme_DarkToggleBg")
-    p.success       := _Theme_CfgHex("Theme_DarkSuccess")
-    p.warning       := _Theme_CfgHex("Theme_DarkWarning")
-    p.danger        := _Theme_CfgHex("Theme_DarkDanger")
+    for _, field in gThemeColorFields {
+        ; Config suffix = first letter uppercased + rest (bg → Bg, panelBg → PanelBg)
+        suffix := StrUpper(SubStr(field, 1, 1)) SubStr(field, 2)
+        p.%field% := _Theme_CfgHex(prefix suffix)
+    }
     return p
 }
 
+_Theme_MakeDarkPalette() {
+    return _Theme_MakePalette("Theme_Dark")
+}
+
 _Theme_MakeLightPalette() {
-    p := {}
-    p.bg            := _Theme_CfgHex("Theme_LightBg")
-    p.panelBg       := _Theme_CfgHex("Theme_LightPanelBg")
-    p.tertiary      := _Theme_CfgHex("Theme_LightTertiary")
-    p.editBg        := _Theme_CfgHex("Theme_LightEditBg")
-    p.hover         := _Theme_CfgHex("Theme_LightHover")
-    p.text          := _Theme_CfgHex("Theme_LightText")
-    p.editText      := _Theme_CfgHex("Theme_LightEditText")
-    p.textSecondary := _Theme_CfgHex("Theme_LightTextSecondary")
-    p.textMuted     := _Theme_CfgHex("Theme_LightTextMuted")
-    p.accent        := _Theme_CfgHex("Theme_LightAccent")
-    p.accentHover   := _Theme_CfgHex("Theme_LightAccentHover")
-    p.accentText    := _Theme_CfgHex("Theme_LightAccentText")
-    p.border        := _Theme_CfgHex("Theme_LightBorder")
-    p.borderInput   := _Theme_CfgHex("Theme_LightBorderInput")
-    p.toggleBg      := _Theme_CfgHex("Theme_LightToggleBg")
-    p.success       := _Theme_CfgHex("Theme_LightSuccess")
-    p.warning       := _Theme_CfgHex("Theme_LightWarning")
-    p.danger        := _Theme_CfgHex("Theme_LightDanger")
-    return p
+    return _Theme_MakePalette("Theme_Light")
 }
 
 ; ============================================================
@@ -193,7 +180,9 @@ Theme_IsDark() {
 
 ; Returns background color string for anti-flash.
 Theme_GetBgColor() {
-    global gTheme_Palette
+    global gTheme_Palette, gTheme_Initialized
+    if (!gTheme_Initialized)
+        return "202020"
     return gTheme_Palette.bg
 }
 
@@ -271,14 +260,42 @@ Theme_SetTextColor(ctrl, color := "") {
 
 ; Get the current muted/gray text color appropriate for the theme.
 Theme_GetMutedColor() {
-    global gTheme_Palette
+    global gTheme_Palette, gTheme_Initialized
+    if (!gTheme_Initialized)
+        return "888888"
     return gTheme_Palette.textMuted
 }
 
 ; Get the current accent color appropriate for the theme.
 Theme_GetAccentColor() {
-    global gTheme_Palette
+    global gTheme_Palette, gTheme_Initialized
+    if (!gTheme_Initialized)
+        return "7AA2F7"
     return gTheme_Palette.accent
+}
+
+; Create a themed modal dialog with standard boilerplate (anti-flash, margins, font, theme).
+; Returns {gui, themeEntry, width} — caller adds controls, then calls Theme_ShowModalDialog().
+;   title  - Window title
+;   opts   - Gui options string (default: "+AlwaysOnTop +Owner")
+;   width  - Dialog width in pixels (default: 488)
+Theme_CreateModalDialog(title, opts := "+AlwaysOnTop +Owner", width := 488) {
+    g := Gui(opts, title)
+    _GUI_AntiFlashPrepare(g, Theme_GetBgColor(), true)
+    g.MarginX := 24
+    g.MarginY := 16
+    g.SetFont("s10", "Segoe UI")
+    themeEntry := Theme_ApplyToGui(g)
+    return {gui: g, themeEntry: themeEntry, width: width}
+}
+
+; Show a themed modal dialog and block until closed.
+;   g     - Gui object (from Theme_CreateModalDialog().gui)
+;   width - Dialog width (default: 488)
+Theme_ShowModalDialog(g, width := 488) {
+    g.Show("w" width " Center")
+    _GUI_AntiFlashReveal(g, true)
+    WinWaitClose(g)
 }
 
 ; Register a callback to be called when the theme changes.
@@ -409,16 +426,16 @@ Theme_UntrackGui(gui) {
 ; ============================================================
 
 _Theme_ShouldBeDark() {
-    global cfg
+    global cfg, THEME_MODE_AUTO, THEME_MODE_DARK, THEME_MODE_LIGHT
     mode := ""
     try mode := cfg.Theme_Mode
     if (mode = "")
-        mode := "Automatic"
+        mode := THEME_MODE_AUTO
 
     switch mode {
-        case "Dark":
+        case THEME_MODE_DARK:
             return true
-        case "Light":
+        case THEME_MODE_LIGHT:
             return false
         default:
             ; Automatic - follow system
@@ -452,6 +469,7 @@ _Theme_GetUxthemeOrdinal(ordinal) {
 
 _Theme_ApplyAppMode() {
     global gTheme_fnSetPreferredAppMode, gTheme_fnFlushMenuThemes, cfg
+    global THEME_MODE_AUTO, THEME_MODE_DARK, THEME_MODE_LIGHT
 
     if (!gTheme_fnSetPreferredAppMode)
         return
@@ -459,13 +477,13 @@ _Theme_ApplyAppMode() {
     mode := ""
     try mode := cfg.Theme_Mode
     if (mode = "")
-        mode := "Automatic"
+        mode := THEME_MODE_AUTO
 
     ; 0=Default, 1=AllowDark, 2=ForceDark, 3=ForceLight
     switch mode {
-        case "Dark":
+        case THEME_MODE_DARK:
             DllCall(gTheme_fnSetPreferredAppMode, "Int", 2, "Int")  ; ForceDark
-        case "Light":
+        case THEME_MODE_LIGHT:
             DllCall(gTheme_fnSetPreferredAppMode, "Int", 3, "Int")  ; ForceLight
         default:
             DllCall(gTheme_fnSetPreferredAppMode, "Int", 1, "Int")  ; AllowDark (follows system)
@@ -779,11 +797,12 @@ _Theme_OnSettingChange(wParam, lParam, msg, hwnd) {
     }
 
     ; Only re-evaluate in Automatic mode
+    global THEME_MODE_AUTO
     mode := ""
     try mode := cfg.Theme_Mode
     if (mode = "")
-        mode := "Automatic"
-    if (mode != "Automatic")
+        mode := THEME_MODE_AUTO
+    if (mode != THEME_MODE_AUTO)
         return
 
     ; Check if theme actually changed

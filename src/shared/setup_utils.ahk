@@ -12,6 +12,9 @@
 ; Task name constant - used by all task scheduler functions
 global ALTTABBY_TASK_NAME := "Alt-Tabby"
 
+; Admin task [ID:...] delimiter for embedding InstallationId in task description
+global ADMIN_TASK_ID_PATTERN := "\[ID:([A-Fa-f0-9]{8})\]"
+
 ; Install directory constant - uses localized Program Files path
 global ALTTABBY_INSTALL_DIR := A_ProgramFiles "\Alt-Tabby"
 
@@ -311,7 +314,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     if (installId = "" && IsSet(cfg) && cfg.HasOwnProp("SetupInstallationId"))  ; lint-ignore: isset-with-default
         installId := cfg.SetupInstallationId
 
-    ; Build description with embedded ID for later identification
+    ; Build description with embedded ID for later identification (see ADMIN_TASK_ID_PATTERN)
     taskDesc := "Alt-Tabby Admin Task"
     if (installId != "")
         taskDesc .= " [ID:" installId "]"
@@ -369,7 +372,7 @@ DeleteAdminTask(taskNameOverride := "") {
 ; First call fetches XML and parses both fields; subsequent calls return cached result.
 ; Only caches the default task name; callers with taskNameOverride bypass the cache.
 _AdminTask_GetCachedData() {
-    global g_AdminTaskCacheValid, g_AdminTaskCache
+    global g_AdminTaskCacheValid, g_AdminTaskCache, ADMIN_TASK_ID_PATTERN
 
     if (g_AdminTaskCacheValid)
         return g_AdminTaskCache
@@ -382,7 +385,7 @@ _AdminTask_GetCachedData() {
         result.exists := true
         if (RegExMatch(xml, '<Command>"?([^"<]+)"?</Command>', &cmdMatch))
             result.commandPath := cmdMatch[1]
-        if (RegExMatch(xml, '\[ID:([A-Fa-f0-9]{8})\]', &idMatch))
+        if (RegExMatch(xml, ADMIN_TASK_ID_PATTERN, &idMatch))
             result.installationId := idMatch[1]
     }
 
@@ -1131,7 +1134,8 @@ _Update_MergeStats(srcPath, targetPath) {
             return
     }
 
-    ; List of all lifetime counter keys to merge
+    ; IMPORTANT: These keys must match the lifetime counter keys written by Stats_FlushToDisk().
+    ; If you add/rename a lifetime stat, update this list too.
     lifetimeKeys := [
         "TotalSessions",
         "TotalAltTabs",

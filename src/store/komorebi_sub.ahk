@@ -16,6 +16,17 @@
 
 ; Windows API Error Codes: uses IPC_ERROR_* from ipc_pipe.ahk (shared definitions)
 
+; Komorebi event type strings (external API, centralized for maintainability)
+global KSUB_EV_CLOAK := "Cloak"
+global KSUB_EV_UNCLOAK := "Uncloak"
+global KSUB_EV_TITLE_UPDATE := "TitleUpdate"
+global KSUB_EV_FOCUS_CHANGE := "FocusChange"
+global KSUB_EV_FOCUS_MONITOR_WS_NUM := "FocusMonitorWorkspaceNumber"
+global KSUB_EV_FOCUS_WS_NUM := "FocusWorkspaceNumber"
+global KSUB_EV_FOCUS_NAMED_WS := "FocusNamedWorkspace"
+global KSUB_EV_MOVE_TO_WS_NUM := "MoveContainerToWorkspaceNumber"
+global KSUB_EV_MOVE_TO_NAMED_WS := "MoveContainerToNamedWorkspace"
+
 ; Buffer size limit (1MB) - prevents OOM from incomplete JSON
 global KSUB_BUFFER_MAX_BYTES := 1048576
 
@@ -523,6 +534,9 @@ _KSub_QuickExtractHwnd(jsonLine) {
 ;   Layer 3: Full parse only for structural events (FocusChange, workspace moves, etc.)
 _KSub_OnNotification(jsonLine) {
     global _KSub_LastWorkspaceName, _KSub_WorkspaceCache, gKSub_MruSuppressUntilTick, _KSub_CloakBatchBuffer
+    global KSUB_EV_CLOAK, KSUB_EV_UNCLOAK, KSUB_EV_TITLE_UPDATE, KSUB_EV_FOCUS_CHANGE
+    global KSUB_EV_FOCUS_MONITOR_WS_NUM, KSUB_EV_FOCUS_WS_NUM, KSUB_EV_FOCUS_NAMED_WS
+    global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS
 
     _KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
 
@@ -533,10 +547,10 @@ _KSub_OnNotification(jsonLine) {
     ; Fast path for Cloak/Uncloak: extract hwnd directly, skip 200KB state parse
     ; These fire 10+ times per workspace switch, so avoiding full parse saves ~400KB-1.6MB
     ; Buffer changes instead of immediate update - batch applies when timer fires (single rev bump)
-    if (eventType = "Cloak" || eventType = "Uncloak") {
+    if (eventType = KSUB_EV_CLOAK || eventType = KSUB_EV_UNCLOAK) {
         hwnd := _KSub_QuickExtractHwnd(jsonLine)
         if (hwnd) {
-            isCloaked := (eventType = "Cloak")
+            isCloaked := (eventType = KSUB_EV_CLOAK)
             Critical "On"
             _KSub_CloakBatchBuffer[hwnd] := isCloaked
             Critical "Off"
@@ -547,7 +561,7 @@ _KSub_OnNotification(jsonLine) {
     }
 
     ; Fast path for TitleUpdate: skip entirely (WinEventHook handles NAMECHANGE faster)
-    if (eventType = "TitleUpdate") {
+    if (eventType = KSUB_EV_TITLE_UPDATE) {
         _KSub_DiagLog("  TitleUpdate: skipped (WinEventHook handles)")
         return
     }
@@ -585,9 +599,9 @@ _KSub_OnNotification(jsonLine) {
 
     ; Handle workspace focus/move events - update current workspace from event
     ; MoveContainerToWorkspaceNumber: user moved focused window to another workspace (and followed it)
-    if (eventType = "FocusMonitorWorkspaceNumber" || eventType = "FocusWorkspaceNumber"
-        || eventType = "FocusNamedWorkspace" || eventType = "MoveContainerToWorkspaceNumber"
-        || eventType = "MoveContainerToNamedWorkspace") {
+    if (eventType = KSUB_EV_FOCUS_MONITOR_WS_NUM || eventType = KSUB_EV_FOCUS_WS_NUM
+        || eventType = KSUB_EV_FOCUS_NAMED_WS || eventType = KSUB_EV_MOVE_TO_WS_NUM
+        || eventType = KSUB_EV_MOVE_TO_NAMED_WS) {
         ; Suppress WinEventHook MRU IMMEDIATELY — before any content extraction.
         ; Without Critical, WEH's SetTimer(-1) can interrupt between lines here.
         ; The suppression must be active before any interruptible work happens.
@@ -611,13 +625,13 @@ _KSub_OnNotification(jsonLine) {
 
         wsName := ""
 
-        if (eventType = "FocusNamedWorkspace" || eventType = "MoveContainerToNamedWorkspace") {
+        if (eventType = KSUB_EV_FOCUS_NAMED_WS || eventType = KSUB_EV_MOVE_TO_NAMED_WS) {
             ; Content is the workspace name directly (string)
             if (content is String)
                 wsName := content
             else
                 wsName := String(content)
-        } else if (eventType = "MoveContainerToWorkspaceNumber") {
+        } else if (eventType = KSUB_EV_MOVE_TO_WS_NUM) {
             ; Content is the workspace index (integer or possibly in an array)
             wsIdx := -1
             if (content is Integer) {
@@ -694,7 +708,7 @@ _KSub_OnNotification(jsonLine) {
             ;
             ; Instead, rely on ProcessFullState from subsequent Cloak/Uncloak events which
             ; will have consistent state and correctly update all windows including Signal.
-            if (eventType = "MoveContainerToWorkspaceNumber" || eventType = "MoveContainerToNamedWorkspace") {
+            if (eventType = KSUB_EV_MOVE_TO_WS_NUM || eventType = KSUB_EV_MOVE_TO_NAMED_WS) {
                 _KSub_DiagLog("  Move event: previousWS='" previousWsName "' targetWS='" wsName "' (letting ProcessFullState handle window update)")
                 ; For MOVE events, the state is reliable for the TARGET workspace
                 ; (the window has already been moved there in komorebi's state).
@@ -726,7 +740,7 @@ _KSub_OnNotification(jsonLine) {
     ; - FocusChange: can signal external workspace switches (notification clicks)
     ; - Workspace/Move events: change window→workspace mapping
     ; - Manage/Unmanage: add/remove windows from komorebi tracking
-    isLightMode := (eventType = "FocusChange")
+    isLightMode := (eventType = KSUB_EV_FOCUS_CHANGE)
     _KSub_ProcessFullState(stateObj, handledWorkspaceEvent, isLightMode)
 
     ; Push changes to clients (flush any pending cloak batch first)

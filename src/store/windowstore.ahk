@@ -31,6 +31,18 @@ global gWS_ProjectionCache_Items := ""         ; Cached transformed items (resul
 global gWS_ProjectionCache_OptsKey := ""       ; Opts key used for cache validation
 global gWS_ProjectionCache_SortedRecs := ""    ; Cached sorted record refs for Path 2 (content-only refresh)
 
+; Mark store as needing re-sort and content update.
+; mruOnly: true if ONLY MRU fields changed (enables incremental move-to-front in projection).
+_WS_MarkDirty(mruOnly := false) {
+    global gWS_SortOrderDirty, gWS_ProjectionContentDirty, gWS_MRUBumpOnly
+    if (!gWS_SortOrderDirty)
+        gWS_MRUBumpOnly := mruOnly
+    else if (!mruOnly)
+        gWS_MRUBumpOnly := false
+    gWS_SortOrderDirty := true
+    gWS_ProjectionContentDirty := true
+}
+
 ; Fields that affect sort order or filter membership — trigger full cache rebuild (Path 3)
 global gWS_SortAffectingFields := Map(
     "lastActivatedTick", true, "z", true,
@@ -175,9 +187,7 @@ WindowStore_EndScan(graceMs := "") {
         }
     }
     if (changed) {
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
-        gWS_MRUBumpOnly := false  ; Structural change (window removal)
+        _WS_MarkDirty()  ; Structural change (window removal)
         _WS_BumpRev("EndScan")
     }
     return { removed: removed, rev: gWS_Rev }
@@ -280,9 +290,7 @@ WindowStore_UpsertWindow(records, source := "") {
         rowsToEnqueue.Push(row)
     }
     if (added || sortDirty) {
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
-        gWS_MRUBumpOnly := false  ; Structural change (new windows or sort-affecting fields via upsert)
+        _WS_MarkDirty()  ; Structural change (new windows or sort-affecting fields via upsert)
     } else if (contentDirty) {
         gWS_ProjectionContentDirty := true
     }
@@ -384,15 +392,7 @@ WindowStore_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     changed := result.changed
 
     if (result.sortDirty) {
-        ; Track MRU-only: true only if ALL sort-dirty changes this cycle are MRU-only.
-        ; On first sort-dirty (transition false→true), take the value directly.
-        ; On subsequent sort-dirty calls, AND with existing: once false, stays false.
-        if (!gWS_SortOrderDirty)
-            gWS_MRUBumpOnly := result.mruOnly
-        else if (!result.mruOnly)
-            gWS_MRUBumpOnly := false
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
+        _WS_MarkDirty(result.mruOnly)
     } else if (result.contentDirty) {
         gWS_ProjectionContentDirty := true
     }
@@ -439,12 +439,7 @@ WindowStore_BatchUpdateFields(patches, source := "") {
     }
 
     if (sortDirty) {
-        if (!gWS_SortOrderDirty)
-            gWS_MRUBumpOnly := batchMruOnly
-        else if (!batchMruOnly)
-            gWS_MRUBumpOnly := false
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
+        _WS_MarkDirty(batchMruOnly)
     } else if (contentDirty) {
         gWS_ProjectionContentDirty := true
     }
@@ -472,9 +467,7 @@ WindowStore_RemoveWindow(hwnds, forceRemove := false) {
         removed += 1
     }
     if (removed) {
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
-        gWS_MRUBumpOnly := false  ; Structural change (window removal)
+        _WS_MarkDirty()  ; Structural change (window removal)
         _WS_BumpRev("RemoveWindow")
     }
     Critical "Off"
@@ -565,9 +558,7 @@ WindowStore_ValidateExistence() {
     }
 
     if (removed > 0) {
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
-        gWS_MRUBumpOnly := false  ; Structural change (window removal)
+        _WS_MarkDirty()  ; Structural change (window removal)
         _WS_BumpRev("ValidateExistence")
     }
     Critical "Off"
@@ -606,9 +597,7 @@ WindowStore_PurgeBlacklisted() {
     }
 
     if (removed) {
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
-        gWS_MRUBumpOnly := false  ; Structural change (blacklist purge)
+        _WS_MarkDirty()  ; Structural change (blacklist purge)
         _WS_BumpRev("PurgeBlacklisted")
     }
     return { removed: removed, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
@@ -698,9 +687,7 @@ WindowStore_SetCurrentWorkspace(id, name := "") {
     }
     ; Only bump rev if at least one window's state actually changed
     if (anyFlipped) {
-        gWS_SortOrderDirty := true
-        gWS_ProjectionContentDirty := true
-        gWS_MRUBumpOnly := false  ; Filter-affecting change (workspace switch)
+        _WS_MarkDirty()  ; Filter-affecting change (workspace switch)
         _WS_BumpRev("SetCurrentWorkspace")
     }
     return flipped  ; lint-ignore: critical-section

@@ -481,12 +481,9 @@ _Launcher_WriteSuppressFlag() {
 _Launcher_ShowAdminRepairDialog(taskPath) {
     global cfg, gConfigIniPath, APP_NAME
 
-    repairGui := Gui("+AlwaysOnTop +Owner", APP_NAME " - Admin Mode Repair")
-    _GUI_AntiFlashPrepare(repairGui, Theme_GetBgColor(), true)
-    repairGui.MarginX := 24
-    repairGui.MarginY := 16
-    repairGui.SetFont("s10", "Segoe UI")
-    themeEntry := Theme_ApplyToGui(repairGui)
+    dlgResult := Theme_CreateModalDialog(APP_NAME " - Admin Mode Repair")
+    repairGui := dlgResult.gui
+    themeEntry := dlgResult.themeEntry
 
     contentW := 440
     mutedColor := Theme_GetMutedColor()
@@ -536,9 +533,7 @@ _Launcher_ShowAdminRepairDialog(taskPath) {
     ))
     repairGui.OnEvent("Close", (*) => (result := "No", Theme_UntrackGui(repairGui), repairGui.Destroy()))
 
-    repairGui.Show("w488 Center")
-    _GUI_AntiFlashReveal(repairGui, true)
-    WinWaitClose(repairGui)
+    Theme_ShowModalDialog(repairGui)
 
     return result
 }
