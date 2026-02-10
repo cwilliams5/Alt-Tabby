@@ -33,6 +33,7 @@ A_MenuMaskKey := "vkE8"
 ; Shared utilities first (use *i for unified exe compatibility)
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
 #Include *i %A_ScriptDir%\..\lib\cjson.ahk
+#Include *i %A_ScriptDir%\..\lib\icon_alpha.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 #Include *i %A_ScriptDir%\..\shared\process_utils.ahk

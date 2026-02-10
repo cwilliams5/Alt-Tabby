@@ -612,11 +612,13 @@ _IPC_StrToUtf8(str) {
     ; Convert to UTF-8 buffer with exact length.
     ; Reuse pre-allocated write buffer when message fits (avoids heap alloc per send).
     ; Safe: IPC_PipeClient_Send wraps StrToUtf8+WritePipe in Critical "On".
-    len := StrPut(str, "UTF-8") - 1
-    if (len <= IPC_READ_CHUNK_SIZE) {
-        StrPut(str, IPC_WRITE_BUF, "UTF-8")
+    ; Single-pass: encode directly into pre-sized buffer, get length from return value.
+    len := StrPut(str, IPC_WRITE_BUF, IPC_READ_CHUNK_SIZE, "UTF-8") - 1
+    if (len >= 0 && len <= IPC_READ_CHUNK_SIZE) {
         return { buf: IPC_WRITE_BUF, len: len }
     }
+    ; Oversized: fall back to exact-sized buffer
+    len := StrPut(str, "UTF-8") - 1
     buf := Buffer(len)
     StrPut(str, buf, "UTF-8")
     return { buf: buf, len: len }

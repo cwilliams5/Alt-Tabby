@@ -44,3 +44,10 @@ tools/animation/frames/
 tools/animation/Veo Inputs/
 tools/animation/Veo Outputs/
 tools/animation/webp_debug.log
+
+# Native benchmark build artifacts
+tools/native_benchmark/native_src/*.obj
+tools/native_benchmark/native_src/*.lib
+tools/native_benchmark/native_src/*.exp
+tools/native_benchmark/native_src/*.dll
+tools/native_benchmark/bench_results.txt

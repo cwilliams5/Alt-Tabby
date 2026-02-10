@@ -434,39 +434,19 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
         return 0
     }
 
-    ; Scan pixels to check if icon has real alpha channel
-    ; (some 32-bit icons have all alpha=0 and rely on mask instead)
-    ; Early exit: any non-zero alpha means icon has alpha channel
-    hasAlpha := false
-    loop pixelDataSize // 4 {
-        if (NumGet(pixels, (A_Index - 1) * 4 + 3, "uchar") > 0) {
-            hasAlpha := true
-            break
-        }
-    }
-
-    ; If no alpha detected, we need to use the mask to determine transparency
+    ; Native alpha scan + mask application (replaces AHK NumGet/NumPut loops)
+    ; Source: icon_alpha.c — 250-550x faster than AHK loops
+    pixelCount := w * h
+    hasAlpha := IconAlpha.ScanOnly(pixels, pixelCount)
     if (!hasAlpha && hbmMask) {
         ; Get mask bitmap data (request 32-bit for easier processing)
         maskBih := _Gdip_CreateBitmapInfoHeader(w, h)
-
         maskPixels := Buffer(pixelDataSize, 0)
         hdc := DllCall("user32\GetDC", "ptr", 0, "ptr")
         DllCall("gdi32\GetDIBits", "ptr", hdc, "ptr", hbmMask, "uint", 0, "uint", h, "ptr", maskPixels.Ptr, "ptr", maskBih.Ptr, "uint", 0, "int")
         DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
-
-        ; Apply mask: where mask is white (0xFFFFFF), pixel is transparent
-        loop pixelDataSize // 4 {
-            offset := (A_Index - 1) * 4
-            maskVal := NumGet(maskPixels, offset, "uint") & 0xFFFFFF
-            if (maskVal = 0) {
-                ; Mask is black = opaque
-                NumPut("uchar", 255, pixels, offset + 3)
-            } else {
-                ; Mask is white = transparent
-                NumPut("uchar", 0, pixels, offset + 3)
-            }
-        }
+        ; Apply mask natively (re-scan is trivial at native speed)
+        IconAlpha.ScanAndApplyMask(pixels, maskPixels, pixelCount)
     }
 
     ; Create GDI+ bitmap with GDI+ owning the memory (scan0 = 0)

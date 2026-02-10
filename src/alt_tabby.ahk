@@ -123,6 +123,7 @@ if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
 ; Third-party libraries (from src/lib/)
 #Include %A_ScriptDir%\lib\
 #Include cjson.ahk
+#Include icon_alpha.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk
