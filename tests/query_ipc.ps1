@@ -160,6 +160,49 @@ foreach ($file in $allFiles) {
     }
 }
 
+# === Supplementary scan: hand-built JSON with raw string message types ===
+# Catches patterns like '{"type":"delta",...}' that bypass IPC_MSG_* constants
+$rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
+foreach ($file in $allFiles) {
+    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $trimmed = $lines[$i].Trim()
+        if ($trimmed -match '^\s*;') { continue }
+        if ($trimmed -notmatch $rawPattern) { continue }
+
+        # Skip if already found by constant-reference scan (same file+line)
+        $lineNum = $i + 1
+        $alreadyFound = $false
+        foreach ($s in $sends) {
+            if ($s.File -eq $relPath -and $s.Line -eq $lineNum) { $alreadyFound = $true; break }
+        }
+        if ($alreadyFound) { continue }
+
+        # Find enclosing function
+        $funcName = "(file scope)"
+        for ($j = $i - 1; $j -ge 0; $j--) {
+            if ($lines[$j] -match '^(\w+)\s*\(') {
+                $candidate = $Matches[1]
+                if ($candidate.ToLower() -in $ahkKeywords) { continue }
+                $hasBody = $lines[$j].Contains('{')
+                if (-not $hasBody) {
+                    for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $lines.Count); $k++) {
+                        $next = $lines[$k].Trim()
+                        if ($next -eq '') { continue }
+                        if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
+                        break
+                    }
+                }
+                if ($hasBody) { $funcName = $candidate; break }
+            }
+        }
+
+        [void]$sends.Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
+    }
+}
+
 # === Output ===
 Write-Host "`n  $constValue" -ForegroundColor White
 Write-Host "    constant: $constName (ipc_constants.ahk:$constLine)" -ForegroundColor DarkGray

@@ -85,6 +85,7 @@ When investigating the codebase, prefer query tools over reading full files or g
 - `query_interface.ps1 <filename>` — public functions + globals for a file (like help(module))
 - `query_config.ps1` — no args: shows section/group index. With keyword: fuzzy search config options. `-Usage <key>`: which files consume a config value
 - `query_ipc.ps1 <msgType>` — who sends/handles an IPC message (or no args: list all types)
+- `query_timers.ps1` — SetTimer inventory grouped by file (or with keyword: fuzzy search by callback/file)
 
 These return semantic answers, not raw text. The work runs in PowerShell — only the answer enters context.
 
