@@ -337,6 +337,23 @@ GUI_GraceTimerFired() {
 
 ; ========================= FROZEN STATE HELPERS =========================
 
+; Handle workspace context switch during ACTIVE state.
+; Resets selection to top, marks sticky context switch, and requests fresh
+; projection when frozen. Caller must hold Critical "On".
+GUI_HandleWorkspaceSwitch() {
+    global gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch
+    global cfg, gGUI_WorkspaceMode, WS_MODE_CURRENT
+    if (gGUI_State != "ACTIVE")
+        return
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gGUI_WSContextSwitch := true
+    if (cfg.FreezeWindowList) {
+        currentWSOnly := (gGUI_WorkspaceMode = WS_MODE_CURRENT)
+        GUI_RequestProjectionWithWSFilter(currentWSOnly)
+    }
+}
+
 ; Reset selection to MRU position (1 or 2) and clamp to list bounds.
 ; After a workspace switch, sel=1 (focused window on NEW workspace is what you want).
 ; Otherwise, sel=2 (the "previous" window — standard Alt-Tab behavior).

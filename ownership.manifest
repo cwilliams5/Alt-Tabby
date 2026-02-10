@@ -51,15 +51,15 @@ gGUI_OverlayH: gui_overlay
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_RightArrowRect: gui_paint
-gGUI_ScrollTop: gui_input, gui_paint, gui_state, gui_workspace
-gGUI_Sel: gui_input, gui_state, gui_store, gui_workspace
+gGUI_ScrollTop: gui_input, gui_paint, gui_state
+gGUI_Sel: gui_input, gui_state, gui_store
 gGUI_State: gui_input, gui_state
 gGUI_StoreClient: gui_state, gui_store
 gGUI_StoreConnected: gui_store
 gGUI_StoreRev: gui_store
 gGUI_StoreWakeHwnd: gui_store
 gGUI_ToggleBase: gui_state, gui_store
-gGUI_WSContextSwitch: gui_state, gui_workspace
+gGUI_WSContextSwitch: gui_state
 gStats_Lifetime: blacklist, windowstore
 gStats_Session: windowstore
 gStore_LastBroadcastRev: winevent_hook

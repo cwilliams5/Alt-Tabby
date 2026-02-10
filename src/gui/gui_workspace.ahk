@@ -29,7 +29,7 @@ GUI_UpdateFooterText() {
 ; ========================= CURRENT WORKSPACE TRACKING =========================
 
 GUI_UpdateCurrentWSFromPayload(payload) {
-    global gGUI_CurrentWSName, gGUI_WorkspaceMode, gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch, cfg, WS_MODE_CURRENT
+    global gGUI_CurrentWSName
 
     if (!payload.Has("meta"))
         return
@@ -48,28 +48,10 @@ GUI_UpdateCurrentWSFromPayload(payload) {
         gGUI_CurrentWSName := wsName
         GUI_UpdateFooterText()
 
-        ; Reset selection to first item when workspace changes during ACTIVE state.
-        ; A workspace switch is a context switch: position 1 is the focused window
-        ; on the NEW workspace, not "the window you're already on".  Keeping sel=2
-        ; (the default from GUI_ResetSelectionToMRU) would highlight the focused
-        ; window from the OLD workspace — wrong after any workspace switch.
-        ; Applies in both "current" and "all" mode (the context switch is the same).
-        ; RACE FIX: Wrap in Critical to prevent a hotkey (Tab/Ctrl) from modifying
-        ; gGUI_Sel between the state check and the assignment.
+        ; Workspace switch is a context switch: reset selection to top,
+        ; mark sticky, and request fresh projection if frozen.
         Critical "On"
-        if (gGUI_State = "ACTIVE") {
-            gGUI_Sel := 1
-            gGUI_ScrollTop := 0
-            gGUI_WSContextSwitch := true  ; Sticky for this overlay session
-
-            ; When frozen, the normal snapshot/delta paths are blocked.
-            ; Request a fresh projection that bypasses the freeze gate
-            ; (reuses the toggle-response mechanism).
-            if (cfg.FreezeWindowList) {
-                currentWSOnly := (gGUI_WorkspaceMode = WS_MODE_CURRENT)
-                GUI_RequestProjectionWithWSFilter(currentWSOnly)
-            }
-        }
+        GUI_HandleWorkspaceSwitch()
         Critical "Off"
     }
 }
@@ -77,7 +59,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 ; ========================= WORKSPACE TOGGLE =========================
 
 GUI_ToggleWorkspaceMode() {
-    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase, gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop
+    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase, gGUI_LiveItems
     global cfg, gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT
 
     ; RACE FIX: Protect counter increment and mode toggle atomically -
