@@ -152,7 +152,8 @@ KomorebiSub_Start() {
 
     if (_KSub_hPipe = 0 || _KSub_hPipe = -1) {
         gle := DllCall("GetLastError", "uint")
-        KSub_DiagLog("KomorebiSub: CreateNamedPipeW FAILED err=" gle " path=" pipePath)
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("KomorebiSub: CreateNamedPipeW FAILED err=" gle " path=" pipePath)
         _KSub_hPipe := 0
         _KSub_FallbackMode := true
         SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
@@ -195,22 +196,26 @@ KomorebiSub_Start() {
     try {
         cmd := '"' cfg.KomorebicExe '" subscribe-pipe ' _KSub_PipeName
         _KSub_ClientPid := ProcessUtils_RunHidden(cmd)
-        KSub_DiagLog("KomorebiSub: Launched subscriber pid=" _KSub_ClientPid " cmd=" cmd)
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("KomorebiSub: Launched subscriber pid=" _KSub_ClientPid " cmd=" cmd)
     } catch as e {
-        KSub_DiagLog("KomorebiSub: Failed to launch subscriber: " e.Message)
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("KomorebiSub: Failed to launch subscriber: " e.Message)
         ; Keep server alive, client may connect later
     }
 
     _KSub_LastEventTick := A_TickCount
     _KSub_FallbackMode := false
-    KSub_DiagLog("KomorebiSub: Setting timer with interval=" KSub_PollMs)
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("KomorebiSub: Setting timer with interval=" KSub_PollMs)
     SetTimer(KomorebiSub_Poll, KSub_PollMs)
 
     ; Do initial poll to populate all windows with workspace data immediately
     ; Runs after 1500ms to ensure first winenum scan has populated the store
     SetTimer(_KSub_InitialPoll, -1500)
 
-    KSub_DiagLog("KomorebiSub: Start complete, pipe=" _KSub_PipeName)
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("KomorebiSub: Start complete, pipe=" _KSub_PipeName)
     return true
 }
 
@@ -225,32 +230,38 @@ KSub_DiagLog(msg) {
 
 ; One-time initial poll to populate workspace data on startup
 _KSub_InitialPoll() {
-    global _KSub_LastWorkspaceName
+    global _KSub_LastWorkspaceName, cfg
 
-    KSub_DiagLog("InitialPoll: Starting")
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("InitialPoll: Starting")
 
     if (!KomorebiSub_IsAvailable()) {
-        KSub_DiagLog("InitialPoll: komorebic not available")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("InitialPoll: komorebic not available")
         return
     }
 
     txt := _KSub_GetStateDirect()
     if (txt = "") {
-        KSub_DiagLog("InitialPoll: Got empty state")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("InitialPoll: Got empty state")
         return
     }
 
-    KSub_DiagLog("InitialPoll: Got state len=" StrLen(txt))
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("InitialPoll: Got state len=" StrLen(txt))
 
     ; Parse JSON and update all windows from full state
     stateObj := ""
     try stateObj := JSON.Load(txt)
     if !(stateObj is Map) {
-        KSub_DiagLog("InitialPoll: Failed to parse state JSON")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("InitialPoll: Failed to parse state JSON")
         return
     }
     _KSub_ProcessFullState(stateObj)
-    KSub_DiagLog("InitialPoll: Complete")
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("InitialPoll: Complete")
 }
 
 ; Stop subscription
@@ -325,11 +336,12 @@ KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
     global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer, _KSub_ReadBufferLen
     global IPC_ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
+    global cfg
     static pollCount := 0, lastLogTick := 0
 
     pollCount++
     ; Log every 5 seconds to avoid spam
-    if (A_TickCount - lastLogTick > 5000) {
+    if (cfg.DiagKomorebiLog && A_TickCount - lastLogTick > 5000) {
         KSub_DiagLog("Poll #" pollCount ": hPipe=" _KSub_hPipe " connected=" _KSub_Connected)
         lastLogTick := A_TickCount
     }
@@ -404,7 +416,8 @@ KomorebiSub_Poll() {
         ; Protect against unbounded buffer growth (use tracked length to avoid O(n) StrLen)
         ; This prevents OOM when komorebi sends incomplete JSON with opening brace
         if (_KSub_ReadBufferLen + chunkLen > KSUB_BUFFER_MAX_BYTES) {
-            KSub_DiagLog("Buffer overflow protection: reset (was " _KSub_ReadBufferLen ")")
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("Buffer overflow protection: reset (was " _KSub_ReadBufferLen ")")
             _KSub_ReadBuffer := ""
             _KSub_ReadBufferLen := 0
         }
@@ -425,7 +438,8 @@ KomorebiSub_Poll() {
             _KSub_ReadBufferLen -= consumed
         if (json = "")
             break
-        KSub_DiagLog("Poll: Got JSON object, len=" StrLen(json))
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("Poll: Got JSON object, len=" StrLen(json))
         _KSub_OnNotification(json)
     }
     ; Safety clamp: if arithmetic drifted (edge cases), resync via O(n) StrLen
@@ -540,12 +554,14 @@ _KSub_OnNotification(jsonLine) {
     global KSUB_EV_CLOAK, KSUB_EV_UNCLOAK, KSUB_EV_TITLE_UPDATE, KSUB_EV_FOCUS_CHANGE
     global KSUB_EV_FOCUS_MONITOR_WS_NUM, KSUB_EV_FOCUS_WS_NUM, KSUB_EV_FOCUS_NAMED_WS
     global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS, KSub_MruSuppressionMs
-
-    KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
+    global cfg
 
     ; ========== Layer 2: Quick event type extraction (no full JSON parse) ==========
     eventType := _KSub_QuickExtractEventType(jsonLine)
-    KSub_DiagLog("  Quick event type: '" eventType "'")
+    if (cfg.DiagKomorebiLog) {
+        KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
+        KSub_DiagLog("  Quick event type: '" eventType "'")
+    }
 
     ; Fast path for Cloak/Uncloak: extract hwnd directly, skip 200KB state parse
     ; These fire 10+ times per workspace switch, so avoiding full parse saves ~400KB-1.6MB
@@ -557,7 +573,8 @@ _KSub_OnNotification(jsonLine) {
             Critical "On"
             _KSub_CloakBatchBuffer[hwnd] := isCloaked
             Critical "Off"
-            KSub_DiagLog("  Cloak buffered: hwnd=" hwnd " cloaked=" isCloaked)
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("  Cloak buffered: hwnd=" hwnd " cloaked=" isCloaked)
         }
         _KSub_ScheduleCloakPush()
         return
@@ -565,7 +582,8 @@ _KSub_OnNotification(jsonLine) {
 
     ; Fast path for TitleUpdate: skip entirely (WinEventHook handles NAMECHANGE faster)
     if (eventType = KSUB_EV_TITLE_UPDATE) {
-        KSub_DiagLog("  TitleUpdate: skipped (WinEventHook handles)")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  TitleUpdate: skipped (WinEventHook handles)")
         return
     }
 
@@ -573,18 +591,21 @@ _KSub_OnNotification(jsonLine) {
     parsed := ""
     try parsed := JSON.Load(jsonLine)
     if !(parsed is Map) {
-        KSub_DiagLog("  Failed to parse notification JSON")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  Failed to parse notification JSON")
         return
     }
 
     ; Each notification has: { "event": {...}, "state": {...} }
     if (!parsed.Has("state")) {
-        KSub_DiagLog("  No state object found")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  No state object found")
         return
     }
     stateObj := parsed["state"]
     if !(stateObj is Map) {
-        KSub_DiagLog("  State is not a Map")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  State is not a Map")
         return
     }
 
@@ -595,7 +616,8 @@ _KSub_OnNotification(jsonLine) {
         ; eventType already extracted above via quick method
     }
 
-    KSub_DiagLog("Event: " eventType)
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("Event: " eventType)
 
     ; Track if we explicitly handled workspace change
     handledWorkspaceEvent := false
@@ -624,7 +646,8 @@ _KSub_OnNotification(jsonLine) {
         if (eventObj is Map && eventObj.Has("content"))
             content := eventObj["content"]
 
-        KSub_DiagLog("  FocusWorkspace content type: " Type(content))
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  FocusWorkspace content type: " Type(content))
 
         wsName := ""
 
@@ -644,7 +667,8 @@ _KSub_OnNotification(jsonLine) {
             } else if (content != "") {
                 try wsIdx := Integer(content)
             }
-            KSub_DiagLog("  MoveContainer wsIdx=" wsIdx)
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("  MoveContainer wsIdx=" wsIdx)
 
             if (wsIdx >= 0) {
                 ; Use focused monitor (we're moving on current monitor)
@@ -653,7 +677,8 @@ _KSub_OnNotification(jsonLine) {
                 if (focusedMonIdx >= 0 && monitorsArr.Length > focusedMonIdx) {
                     monObj := monitorsArr[focusedMonIdx + 1]
                     wsName := KSub_GetWorkspaceNameByIndex(monObj, wsIdx)
-                    KSub_DiagLog("  lookup wsName from focusMon[" focusedMonIdx "] ws[" wsIdx "] = '" wsName "'")
+                    if (cfg.DiagKomorebiLog)
+                        KSub_DiagLog("  lookup wsName from focusMon[" focusedMonIdx "] ws[" wsIdx "] = '" wsName "'")
                 }
             }
         } else {
@@ -663,7 +688,8 @@ _KSub_OnNotification(jsonLine) {
             wsIdx := -1
             monIdx := 0
             if (content is Array) {
-                KSub_DiagLog("  content array length: " content.Length)
+                if (cfg.DiagKomorebiLog)
+                    KSub_DiagLog("  content array length: " content.Length)
                 if (content.Length >= 2) {
                     monIdx := Integer(content[1])
                     wsIdx := Integer(content[2])
@@ -674,22 +700,27 @@ _KSub_OnNotification(jsonLine) {
                 wsIdx := content
             }
 
-            KSub_DiagLog("  monIdx=" monIdx " wsIdx=" wsIdx)
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("  monIdx=" monIdx " wsIdx=" wsIdx)
 
             if (wsIdx >= 0) {
                 monitorsArr := KSub_GetMonitorsArray(stateObj)
-                KSub_DiagLog("  monitors count: " monitorsArr.Length)
+                if (cfg.DiagKomorebiLog)
+                    KSub_DiagLog("  monitors count: " monitorsArr.Length)
                 if (monitorsArr.Length > monIdx) {
                     ; Use the correct monitor from the event
                     monObj := monitorsArr[monIdx + 1]  ; AHK is 1-based
                     wsName := KSub_GetWorkspaceNameByIndex(monObj, wsIdx)
-                    KSub_DiagLog("  lookup wsName from mon[" monIdx "] ws[" wsIdx "] = '" wsName "'")
+                    if (cfg.DiagKomorebiLog)
+                        KSub_DiagLog("  lookup wsName from mon[" monIdx "] ws[" wsIdx "] = '" wsName "'")
                 }
             }
         }
 
-        KSub_DiagLog("  Focus event resolved wsName='" wsName "'")
-        KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
+        if (cfg.DiagKomorebiLog) {
+            KSub_DiagLog("  Focus event resolved wsName='" wsName "'")
+            KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
+        }
         if (wsName != "") {
             global _KSub_LastWorkspaceName, _KSub_LastWsUpdateTick
             ; Capture old workspace BEFORE updating (needed for move events)
@@ -697,8 +728,10 @@ _KSub_OnNotification(jsonLine) {
             wsFlips := []  ; Initialize before conditional (used by broadcast below)
 
             if (wsName != _KSub_LastWorkspaceName) {
-                KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
-                KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
+                if (cfg.DiagKomorebiLog) {
+                    KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
+                    KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
+                }
                 _KSub_LastWorkspaceName := wsName
                 _KSub_LastWsUpdateTick := A_TickCount
                 try wsFlips := WindowStore_SetCurrentWorkspace("", wsName)
@@ -712,7 +745,8 @@ _KSub_OnNotification(jsonLine) {
             ; Instead, rely on ProcessFullState from subsequent Cloak/Uncloak events which
             ; will have consistent state and correctly update all windows including Signal.
             if (eventType = KSUB_EV_MOVE_TO_WS_NUM || eventType = KSUB_EV_MOVE_TO_NAMED_WS) {
-                KSub_DiagLog("  Move event: previousWS='" previousWsName "' targetWS='" wsName "' (letting ProcessFullState handle window update)")
+                if (cfg.DiagKomorebiLog)
+                    KSub_DiagLog("  Move event: previousWS='" previousWsName "' targetWS='" wsName "' (letting ProcessFullState handle window update)")
                 ; For MOVE events, the state is reliable for the TARGET workspace
                 ; (the window has already been moved there in komorebi's state).
                 ; Update the focused hwnd cache for JUST the target workspace so
@@ -724,7 +758,8 @@ _KSub_OnNotification(jsonLine) {
                 targetFocused := KSub_GetFocusedHwndByWsName(stateObj, wsName)
                 if (targetFocused) {
                     _KSub_FocusedHwndByWS[wsName] := targetFocused
-                    KSub_DiagLog("  Move: updated cache for '" wsName "' -> focused hwnd=" targetFocused)
+                    if (cfg.DiagKomorebiLog)
+                        KSub_DiagLog("  Move: updated cache for '" wsName "' -> focused hwnd=" targetFocused)
                 }
             }
 
@@ -831,6 +866,7 @@ _KSub_CancelCloakTimer() {
 _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := false) {
     global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache, _KSub_LastWsUpdateTick
     global _KSub_CacheMaxAgeMs, _KSub_FocusedHwndByWS, gKSub_MruSuppressUntilTick
+    global cfg
 
     if !(stateObj is Map)
         return
@@ -868,11 +904,13 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
         }
     }
 
-    KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" focusedWsIdx " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("ProcessState: mon=" focusedMonIdx " wsIdx=" focusedWsIdx " curWS='" currentWsName "' lastWS='" _KSub_LastWorkspaceName "' skip=" skipWorkspaceUpdate)
 
     ; Update current workspace if state disagrees with cached value
     if (!skipWorkspaceUpdate && currentWsName != "" && currentWsName != _KSub_LastWorkspaceName) {
-        KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
         _KSub_LastWsUpdateTick := A_TickCount
         try WindowStore_SetCurrentWorkspace("", currentWsName)
@@ -884,13 +922,15 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     if (lightMode) {
         if (!skipWorkspaceUpdate) {
             KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS, monitorsArr)
-            KSub_DiagLog("ProcessFullState[light]: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("ProcessFullState[light]: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
         }
         if (currentWsName != "") {
             focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
             if (focusedHwnd) {
                 try WindowStore_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
-                KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
+                if (cfg.DiagKomorebiLog)
+                    KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
             }
         }
         return
@@ -993,11 +1033,13 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
 
     ; Update/insert ALL windows from komorebi state
     if (!IsSet(gWS_Store)) {  ; lint-ignore: isset-with-default
-        KSub_DiagLog("ProcessFullState: gWS_Store not set, returning")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("ProcessFullState: gWS_Store not set, returning")
         return
     }
 
-    KSub_DiagLog("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
 
     ; Capture MRU tick early to preserve timing (before batch collection)
     mruTick := A_TickCount
@@ -1054,7 +1096,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             }
         }
     }
-    KSub_DiagLog("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("ProcessFullState: added " addedCount " updated " updatedCount " skipped(ineligible) " skippedIneligible)
 
     ; Update MRU for the focused window on the current workspace.
     ; This ensures correct MRU ordering when clients request projections during
@@ -1071,7 +1114,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     if (!skipWorkspaceUpdate) {
         ; State is reliable — cache focused hwnds for ALL workspaces
         KSub_CacheFocusedHwnds(stateObj, _KSub_FocusedHwndByWS, monitorsArr)
-        KSub_DiagLog("ProcessFullState: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("ProcessFullState: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
 
         ; DON'T clear suppression here. During rapid workspace switches, clearing
         ; on FocusChange creates a gap where stale WEH events sneak through before
@@ -1089,7 +1133,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                 batchPatches[focusedHwnd].lastActivatedTick := mruTick
             else
                 batchPatches[focusedHwnd] := { lastActivatedTick: mruTick }
-            KSub_DiagLog("ProcessFullState: batched MRU for focused hwnd=" focusedHwnd " on '" currentWsName "' (cache " (!skipWorkspaceUpdate ? "refreshed" : "used") ")")
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("ProcessFullState: batched MRU for focused hwnd=" focusedHwnd " on '" currentWsName "' (cache " (!skipWorkspaceUpdate ? "refreshed" : "used") ")")
         }
     }
 
@@ -1129,7 +1174,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     ; Apply all updates in a single batch (one Critical section, one rev bump)
     if (batchPatches.Count > 0) {
         result := WindowStore_BatchUpdateFields(batchPatches, "komorebi_fullstate")
-        KSub_DiagLog("ProcessFullState: batch updated " result.changed " windows (patches=" batchPatches.Count ")")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("ProcessFullState: batch updated " result.changed " windows (patches=" batchPatches.Count ")")
     }
 }
 
@@ -1159,12 +1205,14 @@ _KSub_GetWindowPid(hwnd) {
 
 ; Fallback polling mode (when subscription fails)
 KomorebiSub_PollFallback() {
+    global cfg
     if (!KomorebiSub_IsAvailable())
         return
 
     txt := _KSub_GetStateDirect()
     if (txt = "") {
-        KSub_DiagLog("PollFallback: GetStateDirect returned empty")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("PollFallback: GetStateDirect returned empty")
         return
     }
 
@@ -1172,7 +1220,8 @@ KomorebiSub_PollFallback() {
     stateObj := ""
     try stateObj := JSON.Load(txt)
     if !(stateObj is Map) {
-        KSub_DiagLog("PollFallback: JSON.Load failed or result not Map (len=" StrLen(txt) ")")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("PollFallback: JSON.Load failed or result not Map (len=" StrLen(txt) ")")
         return
     }
     _KSub_ProcessFullState(stateObj)

@@ -130,6 +130,7 @@ Launcher_Init() {
             ; back to true because the task still exists, creating an infinite loop.
             try DeleteAdminTask()
             Setup_SetRunAsAdmin(false)
+            if (cfg.DiagLauncherLog)
             Launcher_Log("TASK_REDIRECT: schtasks /run failed (code " exitCode "), deleted broken task")
             TrayTip("Admin Mode", "Scheduled task failed (code " exitCode ") and was removed.`nRe-enable from tray menu if needed.", "Icon!")
             ; Continue with normal startup below
@@ -285,7 +286,8 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     dwData := NumGet(lParam, 0, "uptr")
 
     if (dwData = TABBY_CMD_RESTART_STORE) {
-        Launcher_Log("IPC: Received RESTART_STORE from hwnd=" wParam)
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("IPC: Received RESTART_STORE from hwnd=" wParam)
         if (IsSet(g_LastStoreRestartTick) && (A_TickCount - g_LastStoreRestartTick) < 5000) {
             Launcher_Log("IPC: RESTART_STORE debounced")
             return 1
@@ -296,7 +298,8 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     }
 
     if (dwData = TABBY_CMD_RESTART_ALL) {
-        Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
         if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < 5000) {
             Launcher_Log("IPC: RESTART_ALL debounced")
             return 1
@@ -362,7 +365,8 @@ _ShouldRedirectToScheduledTask() {
         writeOk := Setup_SetRunAsAdmin(false)
         if (writeOk)
             Setup_ClearAdminDeclinedMarker()
-        Launcher_Log("TASK_REDIRECT: skip (admin declined marker, writeOk=" writeOk ")")
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("TASK_REDIRECT: skip (admin declined marker, writeOk=" writeOk ")")
         return false
     }
 
@@ -402,7 +406,8 @@ _ShouldRedirectToScheduledTask() {
             ; share config/InstallationId (e.g., AltTabby.exe and AltTabby_backup.exe).
             ; Only auto-repair when the task target is genuinely missing.
             if (FileExist(taskPath)) {
-                Launcher_Log("TASK_REDIRECT: skip auto-repair (task target exists: " taskPath ")")
+                if (cfg.DiagLauncherLog)
+                    Launcher_Log("TASK_REDIRECT: skip auto-repair (task target exists: " taskPath ")")
                 return false  ; Don't redirect to task, run normally
             }
 
@@ -556,7 +561,8 @@ Launcher_AcquireMutex() {
 
     if (lastError = ERROR_ALREADY_EXISTS) {
         ; Mutex already exists - another launcher is running
-        Launcher_Log("MUTEX: already exists (err=" ERROR_ALREADY_EXISTS "), another launcher running")
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("MUTEX: already exists (err=" ERROR_ALREADY_EXISTS "), another launcher running")
         if (g_LauncherMutex) {
             DllCall("CloseHandle", "ptr", g_LauncherMutex)
             g_LauncherMutex := 0
@@ -564,7 +570,8 @@ Launcher_AcquireMutex() {
         return false
     }
 
-    Launcher_Log("MUTEX: acquired successfully (name=" mutexName ")")
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("MUTEX: acquired successfully (name=" mutexName ")")
     return (g_LauncherMutex != 0)
 }
 
@@ -705,7 +712,8 @@ _Launcher_CheckConfigWritable() {
     }
 
     ; Write failed — warn once per session
-    Launcher_Log("CONFIG_WRITABLE: config.ini is not writable: " gConfigIniPath)
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("CONFIG_WRITABLE: config.ini is not writable: " gConfigIniPath)
     try ThemeMsgBox(
         "The config file is not writable:`n" gConfigIniPath "`n`n"
         "Settings changes won't be saved this session.`n"

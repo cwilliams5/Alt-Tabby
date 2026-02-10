@@ -1051,7 +1051,8 @@ Stats_Init() {
                 raw := IniRead(statsPath, "Lifetime", key, "0")
                 val := Integer(raw)
             } catch as e {
-                Store_LogInfo("stats parse error for key=" key " raw=" SubStr(raw, 1, 50) ": " e.Message)
+                if (cfg.DiagStoreLog)
+                    Store_LogInfo("stats parse error for key=" key " raw=" SubStr(raw, 1, 50) ": " e.Message)
             }
         }
         gStats_Lifetime[key] := val

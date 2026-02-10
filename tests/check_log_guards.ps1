@@ -37,7 +37,7 @@ $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 $logGuards = @{
     'GUI_LogEvent'  = @('cfg.DiagEventLog', 'DiagEventLog')
     'Paint_Log'     = @('cfg.DiagPaintTimingLog', 'DiagPaintTimingLog')
-    'Store_LogInfo' = @('cfg.DiagStoreLog', 'DiagStoreLog')
+    'Store_LogInfo' = @('cfg.DiagStoreLog', 'DiagStoreLog', 'cfg.DiagChurnLog', 'DiagChurnLog')
     'Launcher_Log'  = @('cfg.DiagLauncherLog', 'DiagLauncherLog')
     '_IPC_Log'      = @('logEnabled', '_IPC_IsLogEnabled')
     '_Update_Log'   = @('cfg.DiagUpdateLog', 'DiagUpdateLog')
@@ -196,7 +196,7 @@ foreach ($file in $files) {
                 }
 
                 foreach ($checkLine in $linesToCheck) {
-                    if ($checkLine -match '^\s*if[\s(]') {
+                    if ($checkLine -match '(?:^|\belse\s+)\s*if[\s(]') {
                         foreach ($guard in $guardPatterns) {
                             if ($checkLine.Contains($guard)) {
                                 $isGuarded = $true
@@ -209,6 +209,17 @@ foreach ($file in $files) {
 
                 $callDepth = $scanDepth
             }
+
+            # Handle "} else if (guard) {" — balanced braces net to zero depth change
+            # but the line still opens an enclosing block for lines inside it
+            if (-not $isGuarded -and $prevCleaned -match '\}\s*else\s+if[\s(]') {
+                foreach ($guard in $guardPatterns) {
+                    if ($prevCleaned.Contains($guard)) {
+                        $isGuarded = $true
+                        break
+                    }
+                }
+            }
         }
 
         # Check for braceless if-guard directly before the call
@@ -217,7 +228,7 @@ foreach ($file in $files) {
             for ($j = [Math]::Max(0, $i - 3); $j -lt $i; $j++) {
                 $prevCleaned = Clean-Line $lines[$j]
                 if ($prevCleaned -eq '') { continue }
-                if ($prevCleaned -match '^\s*if[\s(]' -and $prevCleaned -notmatch '\{') {
+                if ($prevCleaned -match '(?:^|\belse\s+)\s*if[\s(]' -and $prevCleaned -notmatch '\{') {
                     foreach ($guard in $guardPatterns) {
                         if ($prevCleaned.Contains($guard)) {
                             $isGuarded = $true

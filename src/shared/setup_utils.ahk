@@ -614,7 +614,7 @@ _Update_Log(msg) {
 ; Check for updates and optionally offer to install
 ; showIfCurrent: If true, show message even when up to date
 CheckForUpdates(showIfCurrent := false, showModal := true) {
-    global g_UpdateCheckInProgress, g_LastUpdateCheckTick, g_LastUpdateCheckTime
+    global g_UpdateCheckInProgress, g_LastUpdateCheckTick, g_LastUpdateCheckTime, cfg
 
     ; Prevent concurrent update checks (auto-update timer + manual button race)
     if (g_UpdateCheckInProgress) {
@@ -625,7 +625,8 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
     g_UpdateCheckInProgress := true
 
     currentVersion := GetAppVersion()
-    _Update_Log("CheckForUpdates: current=" currentVersion " showModal=" showModal)
+    if (cfg.DiagUpdateLog)
+        _Update_Log("CheckForUpdates: current=" currentVersion " showModal=" showModal)
     apiUrl := "https://api.github.com/repos/cwilliams5/Alt-Tabby/releases/latest"
     whr := ""  ; Declare outside try for cleanup
 
@@ -652,7 +653,8 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
             latestVersion := tagMatch[1]
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-            _Update_Log("CheckForUpdates: latest=" latestVersion " current=" currentVersion)
+            if (cfg.DiagUpdateLog)
+                _Update_Log("CheckForUpdates: latest=" latestVersion " current=" currentVersion)
 
             if (CompareVersions(latestVersion, currentVersion) > 0) {
                 ; Sync dashboard state — update available
@@ -684,7 +686,8 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
             }
         } else {
             ; Sync dashboard state — HTTP error
-            _Update_Log("CheckForUpdates: HTTP error status=" whr.Status)
+            if (cfg.DiagUpdateLog)
+                _Update_Log("CheckForUpdates: HTTP error status=" whr.Status)
             Dash_SetUpdateState("error")
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
@@ -695,7 +698,8 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
         }
     } catch as e {
         whr := ""  ; Ensure release on exception
-        _Update_Log("CheckForUpdates: exception: " e.Message)
+        if (cfg.DiagUpdateLog)
+            _Update_Log("CheckForUpdates: exception: " e.Message)
         ; Sync dashboard state — exception
         Dash_SetUpdateState("error")
         g_LastUpdateCheckTick := A_TickCount
@@ -717,12 +721,14 @@ _Update_FindExeDownloadUrl(jsonResponse) {
 
 ; Download update and apply it
 Update_DownloadAndApply(downloadUrl, newVersion) {
+    global cfg
     ; Determine paths
     currentExe := A_ScriptFullPath
     exeDir := ""
     SplitPath(currentExe, , &exeDir)
     tempExe := A_Temp "\AltTabby_" newVersion ".exe"
-    _Update_Log("DownloadAndApply: version=" newVersion " target=" tempExe)
+    if (cfg.DiagUpdateLog)
+        _Update_Log("DownloadAndApply: version=" newVersion " target=" tempExe)
 
     ; Clean up any existing partial download from previous failed attempt
     if (FileExist(tempExe))
@@ -737,7 +743,8 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
 
     ; Download to temp
     try {
-        _Update_Log("DownloadAndApply: downloading from " downloadUrl)
+        if (cfg.DiagUpdateLog)
+            _Update_Log("DownloadAndApply: downloading from " downloadUrl)
         whr := ComObject("WinHttp.WinHttpRequest.5.1")
         whr.Open("GET", downloadUrl, false)
         whr.SetTimeouts(30000, 30000, 30000, 120000)  ; 30s connect/send/receive, 120s total
@@ -745,7 +752,8 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
         whr.Send()
 
         if (whr.Status != 200) {
-            _Update_Log("DownloadAndApply: HTTP error status=" whr.Status)
+            if (cfg.DiagUpdateLog)
+                _Update_Log("DownloadAndApply: HTTP error status=" whr.Status)
             ThemeMsgBox("Download failed: HTTP " whr.Status, "Update Error", "Iconx")
             whr := ""  ; Release COM before return
             return
@@ -760,11 +768,13 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
         stream.Close()
         stream := ""  ; Release ADODB.Stream after close
         whr := ""     ; Release WinHttp
-        _Update_Log("DownloadAndApply: download saved to " tempExe)
+        if (cfg.DiagUpdateLog)
+            _Update_Log("DownloadAndApply: download saved to " tempExe)
     } catch as e {
         stream := ""  ; Cleanup COM objects on error
         whr := ""
-        _Update_Log("DownloadAndApply: download exception: " e.Message)
+        if (cfg.DiagUpdateLog)
+            _Update_Log("DownloadAndApply: download exception: " e.Message)
         ; Clean up partial download
         if (FileExist(tempExe))
             try FileDelete(tempExe)
@@ -774,7 +784,8 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
 
     ; Check if we need elevation to write to exe directory
     if (Update_NeedsElevation(exeDir)) {
-        _Update_Log("DownloadAndApply: elevation required for " exeDir)
+        if (cfg.DiagUpdateLog)
+            _Update_Log("DownloadAndApply: elevation required for " exeDir)
         ; Save update info and self-elevate
         global UPDATE_INFO_DELIMITER, TEMP_UPDATE_STATE
         updateInfo := tempExe UPDATE_INFO_DELIMITER currentExe

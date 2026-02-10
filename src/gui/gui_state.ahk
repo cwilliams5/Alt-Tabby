@@ -405,7 +405,8 @@ GUI_ShowOverlayWithFrozen() {
     ; ===== TIMING: Show sequence start =====
     tShow_Start := A_TickCount
     idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
-    Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_DisplayItems.Length " items=" gGUI_LiveItems.Length ")")
+    if (cfg.DiagPaintTimingLog)
+        Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_DisplayItems.Length " items=" gGUI_LiveItems.Length ")")
 
     ; Set visible flag FIRST to prevent re-entrancy issues
     ; (Show/DwmFlush can pump messages, allowing hotkeys to fire mid-function)
@@ -439,7 +440,8 @@ GUI_ShowOverlayWithFrozen() {
     ; RACE FIX: If Alt was released during paint/reveal, RevealBoth already hid
     ; both windows. Abort here to clean up flags and skip hover polling.
     if (gGUI_State != "ACTIVE") {
-        Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
         return
     }
@@ -449,7 +451,8 @@ GUI_ShowOverlayWithFrozen() {
 
     ; ===== TIMING: Log show sequence =====
     tShow_Total := A_TickCount - tShow_Start
-    Paint_Log("ShowOverlay END: total=" tShow_Total "ms | resize=" tShow_Resize " repaint=" tShow_Repaint)
+    if (cfg.DiagPaintTimingLog)
+        Paint_Log("ShowOverlay END: total=" tShow_Total "ms | resize=" tShow_Resize " repaint=" tShow_Repaint)
 }
 
 GUI_MoveSelectionFrozen(delta) {

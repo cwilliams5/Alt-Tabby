@@ -79,9 +79,12 @@ Viewer_Init() {
     global IPC_WM_PIPE_WAKE
     OnMessage(IPC_WM_PIPE_WAKE, _Viewer_OnPipeWake)
 
-    _Viewer_Log("Connecting to pipe: " cfg.StorePipeName)
+    if (gViewer_LogPath) {
+        _Viewer_Log("Connecting to pipe: " cfg.StorePipeName)
+    }
     gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
-    _Viewer_Log("Connection result: hPipe=" gViewer_Client.hPipe)
+    if (gViewer_LogPath)
+        _Viewer_Log("Connection result: hPipe=" gViewer_Client.hPipe)
     if (!gViewer_Client.hPipe && cfg.ViewerAutoStartStore) {
         _Viewer_Log("Starting store...")
         _Viewer_StartStore()
@@ -106,19 +109,21 @@ Viewer_Init() {
 Viewer_OnMessage(line, hPipe := 0) {
     global gViewer_LastMsgTick, gViewer_LastRev, gViewer_ShuttingDown
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
-    global gViewer_HeartbeatCount
+    global gViewer_HeartbeatCount, gViewer_LogPath
     global IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA, IPC_MSG_HELLO_ACK, IPC_MSG_HEARTBEAT
     global IPC_MSG_PRODUCER_STATUS, IPC_MSG_WORKSPACE_CHANGE
     if (gViewer_ShuttingDown)
         return
     gViewer_LastMsgTick := A_TickCount
     _Viewer_Log("=== MESSAGE RECEIVED ===")
-    _Viewer_Log("raw: " SubStr(line, 1, 300))
+    if (gViewer_LogPath)
+        _Viewer_Log("raw: " SubStr(line, 1, 300))
     obj := ""
     try {
         obj := JSON.Load(line)
     } catch as e {
-        _Viewer_Log("JSON parse error: " e.Message)
+        if (gViewer_LogPath)
+            _Viewer_Log("JSON parse error: " e.Message)
         return
     }
     if (!IsObject(obj)) {
@@ -130,15 +135,18 @@ Viewer_OnMessage(line, hPipe := 0) {
         return
     }
     type := obj["type"]
-    _Viewer_Log("type=" type " (expecting snapshot=" IPC_MSG_SNAPSHOT " or projection=" IPC_MSG_PROJECTION ")")
+    if (gViewer_LogPath)
+        _Viewer_Log("type=" type " (expecting snapshot=" IPC_MSG_SNAPSHOT " or projection=" IPC_MSG_PROJECTION ")")
 
     ; Check revision to avoid duplicate processing
     ; Skip heartbeats from this check - they should always be processed even with same rev
     if (obj.Has("rev")) {
         rev := obj["rev"]
-        _Viewer_Log("rev=" rev " lastRev=" gViewer_LastRev)
+        if (gViewer_LogPath)
+            _Viewer_Log("rev=" rev " lastRev=" gViewer_LastRev)
         if (rev = gViewer_LastRev && type != IPC_MSG_HELLO_ACK && type != IPC_MSG_HEARTBEAT) {
-            _Viewer_Log("skip duplicate rev=" rev)
+            if (gViewer_LogPath)
+                _Viewer_Log("skip duplicate rev=" rev)
             return
         }
         gViewer_LastRev := rev
@@ -180,7 +188,8 @@ Viewer_OnMessage(line, hPipe := 0) {
             storeRev := obj["rev"]
             ; If store rev is ahead, we missed something - request full projection
             if (storeRev > gViewer_LastRev && gViewer_LastRev >= 0) {
-                _Viewer_Log("heartbeat: store rev " storeRev " > local rev " gViewer_LastRev " - requesting resync")
+                if (gViewer_LogPath)
+                    _Viewer_Log("heartbeat: store rev " storeRev " > local rev " gViewer_LastRev " - requesting resync")
                 _Viewer_RequestProjection()
             }
         }
@@ -200,7 +209,7 @@ Viewer_OnMessage(line, hPipe := 0) {
 ; Shared handler for SNAPSHOT and PROJECTION messages
 ; Both have identical structure: bump counter, update WS, extract items, update list
 _Viewer_HandleItemsMessage(obj, &counter, label) {
-    global gViewer_LastUpdateType, gViewer_Headless
+    global gViewer_LastUpdateType, gViewer_Headless, gViewer_LogPath
     ; RACE FIX: Protect cache modifications from timer interruption
     Critical "On"
     counter++
@@ -210,7 +219,8 @@ _Viewer_HandleItemsMessage(obj, &counter, label) {
         _Viewer_UpdateCurrentWS(payload)
         if (payload.Has("items")) {
             items := payload["items"]
-            _Viewer_Log(label " items=" items.Length)
+            if (gViewer_LogPath)
+                _Viewer_Log(label " items=" items.Length)
             Critical "Off"
             if (!gViewer_Headless)
                 _Viewer_UpdateList(items)
@@ -243,11 +253,12 @@ _Viewer_RequestProducerStatus() {
 
 ; Common reconnect sequence: send hello, request producer status, log
 _Viewer_OnConnected(logMsg) {
-    global gViewer_StoreWakeHwnd
+    global gViewer_StoreWakeHwnd, gViewer_LogPath
     gViewer_StoreWakeHwnd := 0  ; Reset until HELLO_ACK brings fresh store hwnd
     _Viewer_SendHello()
     _Viewer_RequestProducerStatus()
-    _Viewer_Log(logMsg)
+    if (gViewer_LogPath)
+        _Viewer_Log(logMsg)
 }
 
 ; Update producer state from IPC response (not from meta anymore)
@@ -600,7 +611,7 @@ _Viewer_ApplyDelta(payload) {
 }
 
 _Viewer_Heartbeat() {
-    global gViewer_Client, gViewer_LastMsgTick, cfg, gViewer_ShuttingDown
+    global gViewer_Client, gViewer_LastMsgTick, cfg, gViewer_ShuttingDown, gViewer_LogPath
     global gViewer_Status, gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount
     global gViewer_HeartbeatCount, gViewer_LastUpdateType
 
@@ -621,7 +632,8 @@ _Viewer_Heartbeat() {
 
     ; Check for heartbeat timeout - if no message in timeoutMs, connection may be dead
     if (gViewer_LastMsgTick && (A_TickCount - gViewer_LastMsgTick) > timeoutMs) {
-        _Viewer_Log("Heartbeat timeout (" timeoutMs "ms) - attempting reconnect")
+        if (gViewer_LogPath)
+            _Viewer_Log("Heartbeat timeout (" timeoutMs "ms) - attempting reconnect")
         ; Close current connection and try non-blocking reconnect
         IPC_PipeClient_Close(gViewer_Client)
         gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage, 0)
@@ -758,7 +770,9 @@ _Viewer_StartStore() {
 }
 
 Viewer_OnError(err, *) {
-    _Viewer_Log("error " err.Message)
+    global gViewer_LogPath
+    if (gViewer_LogPath)
+        _Viewer_Log("error " err.Message)
     ExitApp(1)
     return true
 }

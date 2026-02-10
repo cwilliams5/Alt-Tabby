@@ -96,13 +96,15 @@ KSub_GetWorkspacesArray(monObj) {
 }
 
 KSub_GetFocusedWorkspaceIndex(monObj) {
+    global cfg
     ring := _KSub_GetWorkspacesRing(monObj)
     if (ring = "") {
         KSub_DiagLog("  GetFocusedWorkspaceIndex: no ring found")
         return -1
     }
     focusedIdx := _KSafe_Focused(ring)
-    KSub_DiagLog("  GetFocusedWorkspaceIndex: focused=" focusedIdx)
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("  GetFocusedWorkspaceIndex: focused=" focusedIdx)
     return focusedIdx
 }
 
@@ -188,6 +190,7 @@ _KSub_WorkspaceHasHwnd(wsObj, hwnd) {
 ; Get the focused window hwnd from komorebi state
 ; Must navigate: focused monitor -> focused workspace -> focused container -> focused window
 _KSub_GetFocusedHwnd(stateObj) {
+    global cfg
     ; 1. Get focused monitor
     focusedMonIdx := KSub_GetFocusedMonitorIndex(stateObj)
     monitorsArr := KSub_GetMonitorsArray(stateObj)
@@ -221,7 +224,8 @@ _KSub_GetFocusedHwnd(stateObj) {
                             winObj := winArr[focusedWinIdx + 1]
                             hwnd := KSafe_Int(winObj, "hwnd")
                             if (hwnd) {
-                                KSub_DiagLog("    GetFocusedHwnd: found via hierarchy hwnd=" hwnd)
+                                if (cfg.DiagKomorebiLog)
+                                    KSub_DiagLog("    GetFocusedHwnd: found via hierarchy hwnd=" hwnd)
                                 return hwnd
                             }
                         }
@@ -232,7 +236,8 @@ _KSub_GetFocusedHwnd(stateObj) {
                         winObj := contObj["window"]
                         hwnd := KSafe_Int(winObj, "hwnd")
                         if (hwnd) {
-                            KSub_DiagLog("    GetFocusedHwnd: found via container.window hwnd=" hwnd)
+                            if (cfg.DiagKomorebiLog)
+                                KSub_DiagLog("    GetFocusedHwnd: found via container.window hwnd=" hwnd)
                             return hwnd
                         }
                     }
@@ -249,7 +254,8 @@ _KSub_GetFocusedHwnd(stateObj) {
                         hwnd := KSafe_Int(winObj, "hwnd")
                     }
                     if (hwnd) {
-                        KSub_DiagLog("    GetFocusedHwnd: found via monocle_container hwnd=" hwnd)
+                        if (cfg.DiagKomorebiLog)
+                            KSub_DiagLog("    GetFocusedHwnd: found via monocle_container hwnd=" hwnd)
                         return hwnd
                     }
                 }
@@ -264,7 +270,8 @@ _KSub_GetFocusedHwnd(stateObj) {
             if (fw is Map) {
                 hwnd := KSafe_Int(fw, "hwnd")
                 if (hwnd) {
-                    KSub_DiagLog("    GetFocusedHwnd: found via focused_window fallback hwnd=" hwnd)
+                    if (cfg.DiagKomorebiLog)
+                        KSub_DiagLog("    GetFocusedHwnd: found via focused_window fallback hwnd=" hwnd)
                     return hwnd
                 }
             }
@@ -272,7 +279,8 @@ _KSub_GetFocusedHwnd(stateObj) {
         if (stateObj.Has("focused_hwnd")) {
             hwnd := KSafe_Int(stateObj, "focused_hwnd")
             if (hwnd) {
-                KSub_DiagLog("    GetFocusedHwnd: found via focused_hwnd fallback hwnd=" hwnd)
+                if (cfg.DiagKomorebiLog)
+                    KSub_DiagLog("    GetFocusedHwnd: found via focused_hwnd fallback hwnd=" hwnd)
                 return hwnd
             }
         }
@@ -281,7 +289,8 @@ _KSub_GetFocusedHwnd(stateObj) {
             if (lfw is Map) {
                 hwnd := KSafe_Int(lfw, "hwnd")
                 if (hwnd) {
-                    KSub_DiagLog("    GetFocusedHwnd: found via last_focused_window fallback hwnd=" hwnd)
+                    if (cfg.DiagKomorebiLog)
+                        KSub_DiagLog("    GetFocusedHwnd: found via last_focused_window fallback hwnd=" hwnd)
                     return hwnd
                 }
             }
