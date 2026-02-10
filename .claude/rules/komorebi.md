@@ -21,7 +21,7 @@
 - Must update focused hwnd cache for target workspace BEFORE ProcessFullState runs
 - Push to clients AFTER ProcessFullState completes
 
-Use `_KSafe_Str()`, `_KSafe_Int()` for safe property access on event content.
+Use `KSafe_Str()`, `KSafe_Int()` for safe property access on event content.
 
 ## MRU During Workspace Switches
 

@@ -108,7 +108,7 @@ Move variables computed **only for logging** inside the guard too. Keep the guar
 
 ## Anti-Flash Window Show
 
-`_GUI_AntiFlashPrepare/Reveal` in `gui_antiflash.ahk`:
+`GUI_AntiFlashPrepare/Reveal` in `gui_antiflash.ahk`:
 - **Normal GUIs**: DWM cloaking (DWMWA_CLOAK=13) — zero flash
 - **WebView2**: Off-screen (-32000) + WS_EX_LAYERED alpha=0 — cloaking crashes WebView2
 - **Centering**: Raw Win32 (GetMonitorInfoW + SetWindowPos) — AHK `Gui.Move` has DPI scaling issues

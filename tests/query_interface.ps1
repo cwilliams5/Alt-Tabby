@@ -118,7 +118,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     }
 
     # Global declarations at file scope
-    if (-not $inFunc -and $cleaned -match '^\s*global\s+(.+)') {
+    if (-not $inFunc -and $depth -eq 0 -and $cleaned -match '^\s*global\s+(.+)') {
         $declPart = $Matches[1]
         $stripped = Strip-Nested $declPart
         foreach ($part in $stripped -split ',') {

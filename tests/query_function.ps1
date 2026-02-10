@@ -33,6 +33,7 @@ $srcFiles = @(Get-ChildItem -Path $srcDir -Filter "*.ahk" -Recurse |
 function Clean-Line {
     param([string]$line)
     $cleaned = $line -replace '"[^"]*"', '""'
+    $cleaned = $cleaned -replace "'[^']*'", "''"
     $cleaned = $cleaned -replace '\s;.*$', ''
     if ($cleaned -match '^\s*;') { return '' }
     return $cleaned
@@ -69,10 +70,6 @@ foreach ($file in $srcFiles) {
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $cleaned = Clean-Line $lines[$i]
         if ($cleaned -eq '') {
-            # Still need to track braces in raw line for multiline blocks
-            $braces = Count-Braces (Clean-Line $lines[$i])
-            $depth += $braces[0] - $braces[1]
-            if ($depth -lt 0) { $depth = 0 }
             if ($inFunc -and $depth -le $funcDepth) {
                 $inFunc = $false
                 $funcDepth = -1
