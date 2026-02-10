@@ -271,7 +271,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 ; Actually perform the update (called directly or after elevation)
 ; Wrapper for mismatch update flow - uses Update_ApplyCore with appropriate options
 Launcher_DoUpdateInstalled(sourcePath, targetPath) {
-    global cfg, g_StorePID, g_GuiPID, g_ViewerPID
+    global cfg, g_StorePID, g_GuiPID, g_ViewerPID, g_WizardSkippedForExistingInstall
     Update_ApplyCore({
         sourcePath: sourcePath,
         targetPath: targetPath,
@@ -280,7 +280,7 @@ Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         copyMode: true,                ; FileCopy (keep source - it's the running exe)
         successMessage: "Alt-Tabby has been updated at:`n" targetPath,
         cleanupSourceOnFailure: false, ; Don't delete source - it's the running exe
-        overwriteUserData: cfg.SetupFirstRunCompleted,  ; Only push config if source was configured (prevents fresh download from overwriting target's customizations)
+        overwriteUserData: cfg.SetupFirstRunCompleted && !g_WizardSkippedForExistingInstall,  ; Only push config if source was user-configured (not auto-skipped wizard)
         killPids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}
     })
 }
@@ -319,8 +319,8 @@ _Launcher_OfferOneTimeElevation() {
 
     if (result = "Yes") {
         try {
-            ; Pass --skip-mismatch to avoid showing mismatch dialog again after restart
-            Run('*RunAs "' A_ScriptFullPath '" --skip-mismatch')
+            if (!Launcher_RunAsAdmin("--skip-mismatch"))
+                throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
             ; UAC refused - continue without elevation

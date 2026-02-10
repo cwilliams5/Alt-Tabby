@@ -224,6 +224,18 @@ Launcher_RunAsAdmin(args) {
     }
 }
 
+; Build a command line to relaunch the current script (compiled or dev mode)
+; DRY helper — replaces 7+ occurrences of the compiled/dev branch pattern
+BuildSelfCommand(args := "") {
+    if (A_IsCompiled)
+        cmd := '"' A_ScriptFullPath '"'
+    else
+        cmd := '"' A_AhkPath '" "' A_ScriptFullPath '"'
+    if (args != "")
+        cmd .= " " args
+    return cmd
+}
+
 ; Write result to admin toggle lock file for the non-elevated instance to read.
 ; Valid results: "ok", "cancelled", "failed"
 AdminToggle_WriteResult(result) {
@@ -466,6 +478,21 @@ AdminTask_PointsToUs() {
     return PathsEqual(data.commandPath, A_ScriptFullPath)
 }
 
+; Ensure admin task exists and points to the given exe with the given ID.
+; Skips delete+create if already correct (unless deleteFirst is true).
+; Returns true on success, false on failure.
+AdminTask_EnsurePointsTo(exePath, installId, deleteFirst := false) {
+    if (!deleteFirst && AdminTaskExists()) {
+        existingPath := AdminTask_GetCommandPath()
+        existingId := AdminTask_GetInstallationId()
+        if (PathsEqual(existingPath, exePath) && existingId = installId)
+            return true
+    }
+    if (AdminTaskExists())
+        DeleteAdminTask()
+    return CreateAdminTask(exePath, installId)
+}
+
 ; Run the admin scheduled task via schtasks, with optional pre-delay.
 ; Returns the schtasks exit code (0 = success).
 RunAdminTask(sleepMs := 0) {
@@ -532,6 +559,15 @@ Setup_SetInstallationId(value) {
     cfg.SetupInstallationId := value
     try return CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "InstallationId", value, "", "string")
     return false
+}
+
+; Read a boolean value from an INI file (handles "true"/"1" as true, everything else as false)
+ReadIniBool(filePath, section, key, default := false) {
+    try {
+        iniVal := IniRead(filePath, section, key, default ? "true" : "false")
+        return (iniVal = "true" || iniVal = "1")
+    }
+    return default
 }
 
 ; ============================================================
@@ -937,18 +973,19 @@ Update_ApplyCore(opts) {
         SplitPath(gConfigIniPath, , &srcDir)
         _Update_CopyUserData(srcDir, targetDir, overwriteUserData)
 
-        ; Update config at target location
+        ; Update config at target location (track write failures for user warning)
+        writeWarnings := []
         cfg.SetupExePath := targetPath
         if (FileExist(targetConfigPath)) {
-            try CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
+            try {
+                CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "ExePath", targetPath, "", "string")
+            } catch {
+                writeWarnings.Push("ExePath")
+            }
         }
 
         ; Read admin mode from target config
-        targetRunAsAdmin := false
-        if (FileExist(targetConfigPath)) {
-            iniVal := IniRead(targetConfigPath, "Setup", "RunAsAdmin", "false")
-            targetRunAsAdmin := (iniVal = "true" || iniVal = "1")
-        }
+        targetRunAsAdmin := ReadIniBool(targetConfigPath, "Setup", "RunAsAdmin")
 
         ; Update admin task if target has admin mode enabled
         if (targetRunAsAdmin && AdminTaskExists()) {
@@ -958,27 +995,36 @@ Update_ApplyCore(opts) {
             }
             if (targetInstallId = "") {
                 targetInstallId := Launcher_GenerateId()
-                if (FileExist(targetConfigPath))
-                    try CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
-            }
-
-            ; Only recreate task if path or ID differs from target (avoid unnecessary delete+create)
-            existingTaskPath := AdminTask_GetCommandPath()
-            existingTaskId := AdminTask_GetInstallationId()
-            taskNeedsUpdate := !PathsEqual(existingTaskPath, targetPath)
-                || (existingTaskId != targetInstallId)
-
-            if (taskNeedsUpdate) {
-                DeleteAdminTask()
-                if (!CreateAdminTask(targetPath, targetInstallId)) {
-                    ThemeMsgBox("Could not recreate admin task after update.`n`n"
-                        "Admin mode has been disabled. You can re-enable it from the tray menu.",
-                        APP_NAME " - Admin Mode Error", "Icon!")
-                    cfg.SetupRunAsAdmin := false
-                    if (FileExist(targetConfigPath))
-                        try CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
+                if (FileExist(targetConfigPath)) {
+                    try {
+                        CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "InstallationId", targetInstallId, "", "string")
+                    } catch {
+                        writeWarnings.Push("InstallationId")
+                    }
                 }
             }
+
+            if (!AdminTask_EnsurePointsTo(targetPath, targetInstallId)) {
+                ThemeMsgBox("Could not recreate admin task after update.`n`n"
+                    "Admin mode has been disabled. You can re-enable it from the tray menu.",
+                    APP_NAME " - Admin Mode Error", "Icon!")
+                cfg.SetupRunAsAdmin := false
+                if (FileExist(targetConfigPath)) {
+                    try {
+                        CL_WriteIniPreserveFormat(targetConfigPath, "Setup", "RunAsAdmin", false, false, "bool")
+                    } catch {
+                        writeWarnings.Push("RunAsAdmin")
+                    }
+                }
+            }
+        }
+
+        ; Warn about config write failures (exe update succeeded but config may be stale)
+        if (writeWarnings.Length > 0) {
+            failedFields := ""
+            for f in writeWarnings
+                failedFields .= (failedFields != "" ? ", " : "") f
+            ThemeMsgBox("Update succeeded, but some settings could not be saved:`n" failedFields "`n`nConfig: " targetConfigPath "`nYou may need to reconfigure from the tray menu.", APP_NAME " - Config Warning", "Icon!")
         }
 
         ; Sync runtime config for shortcut description (source config may differ from target)

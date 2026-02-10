@@ -53,8 +53,7 @@ UpdateTrayMenu() {
     ; Reload SetupRunAsAdmin from disk only when admin toggle may have occurred
     ; (avoids disk I/O on every right-click)
     if (g_NeedsAdminReload && FileExist(gConfigIniPath)) {
-        iniVal := IniRead(gConfigIniPath, "Setup", "RunAsAdmin", "false")
-        cfg.SetupRunAsAdmin := (iniVal = "true" || iniVal = "1")
+        cfg.SetupRunAsAdmin := ReadIniBool(gConfigIniPath, "Setup", "RunAsAdmin")
         g_NeedsAdminReload := false
     }
 
@@ -337,10 +336,7 @@ LaunchConfigEditor(forceNative := false) {
     args := "--config --launcher-hwnd=" A_ScriptHwnd
     if (forceNative || cfg.LauncherForceNativeEditor)
         args .= " --force-native"
-    if (A_IsCompiled)
-        Run('"' A_ScriptFullPath '" ' args, , , &g_ConfigEditorPID)
-    else
-        Run('"' A_AhkPath '" "' A_ScriptFullPath '" ' args, , , &g_ConfigEditorPID)
+    Run(BuildSelfCommand(args), , , &g_ConfigEditorPID)
     Dash_StartRefreshTimer()
 }
 
@@ -351,10 +347,7 @@ LaunchBlacklistEditor() {
         try WinActivate("Alt-Tabby Blacklist Editor ahk_pid " g_BlacklistEditorPID)
         return
     }
-    if (A_IsCompiled)
-        Run('"' A_ScriptFullPath '" --blacklist', , , &g_BlacklistEditorPID)
-    else
-        Run('"' A_AhkPath '" "' A_ScriptFullPath '" --blacklist', , , &g_BlacklistEditorPID)
+    Run(BuildSelfCommand("--blacklist"), , , &g_BlacklistEditorPID)
     Dash_StartRefreshTimer()
 }
 
@@ -472,10 +465,7 @@ ToggleAdminMode() {
             }
             if (!launched) {
                 ; Fallback: direct launch (still elevated if we're admin, but better than nothing)
-                if A_IsCompiled
-                    Run('"' A_ScriptFullPath '"')
-                else
-                    Run('"' A_AhkPath '" "' A_ScriptFullPath '"')
+                Run(BuildSelfCommand())
             }
             ExitAll()
         } else {
@@ -578,10 +568,7 @@ _AdminToggle_CheckComplete() {
     if (content = "ok") {
         g_CachedAdminTaskActive := true
         ; Re-read config from disk — the elevated instance wrote SetupRunAsAdmin=true
-        if (FileExist(gConfigIniPath)) {
-            iniVal := IniRead(gConfigIniPath, "Setup", "RunAsAdmin", "false")
-            cfg.SetupRunAsAdmin := (iniVal = "true" || iniVal = "1")
-        }
+        cfg.SetupRunAsAdmin := ReadIniBool(gConfigIniPath, "Setup", "RunAsAdmin")
 
         ; Offer restart so the user gets elevation immediately
         result := ThemeMsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")

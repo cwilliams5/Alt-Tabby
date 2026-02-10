@@ -280,8 +280,7 @@ if (g_AltTabbyMode = "repair-admin-task") {
 
     ; Recreate task with current exe path
     exePath := A_ScriptFullPath
-    DeleteAdminTask()
-    if (CreateAdminTask(exePath)) {
+    if (AdminTask_EnsurePointsTo(exePath, cfg.SetupInstallationId, true)) {
         Setup_SetRunAsAdmin(true)
         Setup_ClearAdminDeclinedMarker()
 

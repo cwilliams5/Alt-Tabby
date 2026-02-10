@@ -17,6 +17,10 @@ global g_ActiveMutex := 0
 global g_LastStoreRestartTick  ; Debounce RESTART_STORE signals
 global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
 
+; Bug 1 fix: Track when wizard was skipped due to existing PF install (not user-configured)
+; Used to prevent overwriteUserData false positive in Launcher_DoUpdateInstalled
+global g_WizardSkippedForExistingInstall := false
+
 ; Win32 error code
 global ERROR_ALREADY_EXISTS := 183
 
@@ -56,6 +60,7 @@ Launcher_LogStartup() {
 Launcher_Init() {
     global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
     global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick, APP_NAME
+    global g_WizardSkippedForExistingInstall
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
     Launcher_LogStartup()
@@ -150,8 +155,9 @@ Launcher_Init() {
         ; but there's a Program Files install with a valid config
         if (_Launcher_ShouldSkipWizardForExistingInstall()) {
             ; Mismatch check will run on next iteration (already ran above)
-            ; Mark wizard as complete since user has existing setup
-            cfg.SetupFirstRunCompleted := true  ; Memory only — don't persist (prevents overwriteUserData false positive)
+            ; Mark wizard as complete on disk + flag that source wasn't user-configured
+            g_WizardSkippedForExistingInstall := true
+            Setup_SetFirstRunCompleted(true)
         } else {
             ; Show first-run wizard
             ShowFirstRunWizard()
@@ -764,13 +770,10 @@ _Launcher_ShouldSkipWizardForExistingInstall() {
 
     ; Check if Program Files install exists with completed setup
     if (FileExist(pfPath) && FileExist(pfConfigPath)) {
-        try {
-            firstRunVal := IniRead(pfConfigPath, "Setup", "FirstRunCompleted", "false")
-            if (firstRunVal = "true" || firstRunVal = "1") {
-                ; Existing install has completed setup - skip wizard
-                ; The mismatch dialog will offer to launch installed version or run from here
-                return true
-            }
+        if (ReadIniBool(pfConfigPath, "Setup", "FirstRunCompleted")) {
+            ; Existing install has completed setup - skip wizard
+            ; The mismatch dialog will offer to launch installed version or run from here
+            return true
         }
     }
 
