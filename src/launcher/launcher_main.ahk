@@ -151,7 +151,7 @@ Launcher_Init() {
         if (_Launcher_ShouldSkipWizardForExistingInstall()) {
             ; Mismatch check will run on next iteration (already ran above)
             ; Mark wizard as complete since user has existing setup
-            Setup_SetFirstRunCompleted(true)
+            cfg.SetupFirstRunCompleted := true  ; Memory only — don't persist (prevents overwriteUserData false positive)
         } else {
             ; Show first-run wizard
             ShowFirstRunWizard()
@@ -633,7 +633,7 @@ _Launcher_KillAllAltTabbyProcesses() {
     ; Use WMI to find all matching processes
     try {
         wmi := ComObject("WbemScripting.SWbemLocator").ConnectServer(".", "root\cimv2")
-        query := "SELECT ProcessId, Name FROM Win32_Process WHERE Name LIKE '%tabby%'"
+        query := "SELECT ProcessId, Name FROM Win32_Process WHERE Name LIKE '%alt%tabby%'"
         for process in wmi.ExecQuery(query) {
             if (process.ProcessId != myPID) {
                 try ProcessClose(process.ProcessId)
