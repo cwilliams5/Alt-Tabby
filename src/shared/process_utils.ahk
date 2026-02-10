@@ -151,7 +151,7 @@ ProcessUtils_KillByNameExceptSelf(exeName, maxAttempts := 10, sleepMs := 0, offe
 ; Parameters:
 ;   pid - Process ID to check
 ; Returns: true if elevated, false otherwise
-ProcessUtils_IsElevated(pid) {
+_ProcessUtils_IsElevated(pid) {
     global PROCESS_QUERY_LIMITED_INFORMATION
 
     hProcess := DllCall("kernel32\OpenProcess", "uint", PROCESS_QUERY_LIMITED_INFORMATION, "int", 0, "uint", pid, "ptr")
@@ -284,7 +284,7 @@ _PU_OfferElevatedKill(exeName) {
         return
     myPID := ProcessExist()
     pid := ProcessExist(exeName)
-    if (pid && pid != myPID && ProcessUtils_IsElevated(pid)) {
+    if (pid && pid != myPID && _ProcessUtils_IsElevated(pid)) {
         result := ThemeMsgBox(
             "The running instance has administrator privileges.`n`n"
             "Elevate to close it?",

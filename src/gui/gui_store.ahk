@@ -124,7 +124,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         if (obj.Has("payload") && obj["payload"].Has("items")) {
             ; Critical already held from above (phase check guard)
             ; Single-pass conversion: builds both items array and Map together
-            converted := GUI_ConvertStoreItemsWithMap(obj["payload"]["items"])
+            converted := _GUI_ConvertStoreItemsWithMap(obj["payload"]["items"])
             gGUI_LiveItems := converted.items
             gGUI_LiveItemsMap := converted.map
             ; Note: Icon cache pruning moved outside Critical section (see below)
@@ -233,7 +233,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
         ; Apply delta incrementally to stay up-to-date
         if (obj.Has("payload")) {
-            result := GUI_ApplyDelta(obj["payload"])
+            result := _GUI_ApplyDelta(obj["payload"])
 
             if (gGUI_State = "ACTIVE" && !isFrozen) {
                 if (result.mruChanged || result.membershipChanged) {
@@ -270,7 +270,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 ; ========================= ITEM CONVERSION =========================
 
 ; Helper: Create GUI item object from store record (Map with lowercase keys)
-; Used by GUI_ConvertStoreItemsWithMap and GUI_ApplyDelta for consistency
+; Used by _GUI_ConvertStoreItemsWithMap and _GUI_ApplyDelta for consistency
 _GUI_CreateItemFromRecord(hwnd, rec) {
     return {
         hwnd: hwnd,
@@ -289,7 +289,7 @@ _GUI_CreateItemFromRecord(hwnd, rec) {
 ; Single-pass conversion returning both items array and hwnd->item Map
 ; Eliminates redundant O(n) iteration vs calling ConvertStoreItems + RebuildItemsMap separately
 ; Icon pre-caching is done separately outside Critical (see GUI_HandleSnapshot).
-GUI_ConvertStoreItemsWithMap(items) {
+_GUI_ConvertStoreItemsWithMap(items) {
     result := []
     resultMap := Map()
     for _, item in items {
@@ -303,7 +303,7 @@ GUI_ConvertStoreItemsWithMap(items) {
 
 ; ========================= DELTA APPLICATION =========================
 
-GUI_ApplyDelta(payload) {
+_GUI_ApplyDelta(payload) {
     global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap, cfg
     global gGUI_OverlayVisible, gGUI_ScrollTop
 
@@ -427,7 +427,7 @@ GUI_ApplyDelta(payload) {
     ; isFocused is content-only (matches store classification) — does NOT trigger re-sort.
     ; Skip sort for cosmetic-only updates (icon, processName, title) — saves O(n) per delta.
     if (mruChanged && gGUI_LiveItems.Length > 1) {
-        GUI_SortItemsByMRU()
+        _GUI_SortItemsByMRU()
     }
 
     ; Clamp selection
@@ -484,7 +484,7 @@ GUI_ApplyDelta(payload) {
     return { mruChanged: mruChanged, membershipChanged: membershipChanged, changedHwnds: changedHwnds }
 }
 
-GUI_SortItemsByMRU() {
+_GUI_SortItemsByMRU() {
     global gGUI_LiveItems
 
     ; Insertion sort by lastActivatedTick descending (higher = more recent = first)

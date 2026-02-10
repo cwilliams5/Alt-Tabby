@@ -98,7 +98,7 @@ GUI_HeaderBlockDip() {
     return 0
 }
 
-GUI_FooterBlockDip() {
+_GUI_FooterBlockDip() {
     global cfg
     if (cfg.GUI_ShowFooter) {
         return cfg.GUI_FooterGapTopPx + cfg.GUI_FooterHeightPx
@@ -119,7 +119,7 @@ GUI_GetVisibleRows() {
     ohDip := ohPhys / scale
 
     headerTopDip := cfg.GUI_MarginY + GUI_HeaderBlockDip()
-    footerDip := GUI_FooterBlockDip()
+    footerDip := _GUI_FooterBlockDip()
     usableDip := ohDip - headerTopDip - cfg.GUI_MarginY - footerDip
 
     if (usableDip < cfg.GUI_RowHeight) {
@@ -189,7 +189,7 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
     }
 
     w := Round(waW_dip * pct)
-    h := cfg.GUI_MarginY + GUI_HeaderBlockDip() + rowsToShow * cfg.GUI_RowHeight + GUI_FooterBlockDip() + cfg.GUI_MarginY
+    h := cfg.GUI_MarginY + GUI_HeaderBlockDip() + rowsToShow * cfg.GUI_RowHeight + _GUI_FooterBlockDip() + cfg.GUI_MarginY
 
     x := Round(left_dip + (waW_dip - w) / 2)
     y := Round(top_dip + (waH_dip - h) / 2)

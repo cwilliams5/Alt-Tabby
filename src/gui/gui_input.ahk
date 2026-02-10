@@ -16,7 +16,7 @@ _GUI_GetDisplayItems() {
 
 ; ========================= SELECTION MOVEMENT =========================
 
-GUI_MoveSelection(delta) {
+_GUI_MoveSelection(delta) {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH, cfg
 
     items := _GUI_GetDisplayItems()
@@ -181,7 +181,7 @@ GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
 
 ; ========================= ACTIONS =========================
 
-GUI_PerformAction(action, idx1 := 0) {
+_GUI_PerformAction(action, idx1 := 0) {
     global gGUI_Sel, gGUI_StoreClient, IPC_MSG_RELOAD_BLACKLIST
 
     if (idx1 = 0) {
@@ -329,7 +329,7 @@ GUI_OnClick(x, y) {
     GUI_DetectActionAtPoint(x, y, &act, &idx)
     if (act != "") {
         Critical "Off"
-        GUI_PerformAction(act, idx)
+        _GUI_PerformAction(act, idx)
         return
     }
 
@@ -530,13 +530,13 @@ GUI_OnWheel(wParam, lParam) {
     }
 
     if (cfg.GUI_ScrollKeepHighlightOnTop) {
-        GUI_MoveSelection(step)
+        _GUI_MoveSelection(step)
     } else {
-        GUI_ScrollBy(step)
+        _GUI_ScrollBy(step)
     }
 }
 
-GUI_ScrollBy(step) {
+_GUI_ScrollBy(step) {
     global gGUI_ScrollTop, gGUI_OverlayH, gGUI_Sel
 
     vis := GUI_GetVisibleRows()

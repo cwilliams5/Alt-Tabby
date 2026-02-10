@@ -140,7 +140,7 @@ GUI_Repaint() {
 
     ; ===== TIMING: RevealBoth =====
     t1 := A_TickCount
-    GUI_RevealBoth()
+    _GUI_RevealBoth()
     tReveal := A_TickCount - t1
 
     ; ===== TIMING: Total =====
@@ -153,7 +153,7 @@ GUI_Repaint() {
     }
 }
 
-GUI_RevealBoth() {
+_GUI_RevealBoth() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed, cfg
     global gGUI_State  ; Need access to state for race fix
 
@@ -394,7 +394,7 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             }
 
             if (idx1 = gGUI_HoverRow) {
-                GUI_DrawActionButtons(g, wPhys, yRow, RowH, scale)
+                _GUI_DrawActionButtons(g, wPhys, yRow, RowH, scale)
             }
 
             yRow := yRow + RowH
@@ -407,14 +407,14 @@ GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     ; Scrollbar
     t1 := A_TickCount
     if (count > rowsToDraw && rowsToDraw > 0) {
-        GUI_DrawScrollbar(g, wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
+        _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
     }
     tPO_Scrollbar := A_TickCount - t1
 
     ; Footer
     t1 := A_TickCount
     if (cfg.GUI_ShowFooter) {
-        GUI_DrawFooter(g, wPhys, hPhys, scale)
+        _GUI_DrawFooter(g, wPhys, hPhys, scale)
     }
     tPO_Footer := A_TickCount - t1
 
@@ -481,7 +481,7 @@ _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bg
     btnX := btnX - (size + gap)
 }
 
-GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
+_GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
     global gGUI_HoverBtn, cfg
 
     metrics := GUI_GetActionBtnMetrics(scale)
@@ -505,7 +505,7 @@ GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
 
 ; ========================= SCROLLBAR =========================
 
-GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
+_GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
     global cfg
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
         return
@@ -561,7 +561,7 @@ GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, 
 
 ; ========================= FOOTER =========================
 
-GUI_DrawFooter(g, wPhys, hPhys, scale) {
+_GUI_DrawFooter(g, wPhys, hPhys, scale) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, cfg, gGdip_Res
     global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
 

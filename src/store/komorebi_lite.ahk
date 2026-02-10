@@ -30,7 +30,7 @@ KomorebiLite_Tick() {
     global _KLite_StateObj
     if !KomorebiLite_IsAvailable()
         return
-    stateObj := KomorebiLite_GetState()
+    stateObj := _KomorebiLite_GetState()
     if !(stateObj is Map)
         return
     ws := _KomorebiLite_FindCurrentWorkspaceName(stateObj)
@@ -51,7 +51,7 @@ KomorebiLite_IsAvailable() {
 
 ; Get parsed komorebi state object (cached within TTL)
 ; Non-blocking: returns cached result immediately while async query runs in background
-KomorebiLite_GetState() {
+_KomorebiLite_GetState() {
     global _KLite_StateObj, _KLite_Stamp, _KLite_TTL, cfg
     global _KLite_PendingPid, _KLite_PendingTmp, _KLite_PendingStart, _KLite_PendingTimeout
 

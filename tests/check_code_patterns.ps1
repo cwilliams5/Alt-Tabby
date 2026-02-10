@@ -570,7 +570,7 @@ $CHECKS += @(
         Id       = "isfocused_no_mru_trigger"
         File     = "gui\gui_store.ahk"
         Desc     = "isFocused delta handler does NOT set mruChanged (content-only field)"
-        Function = "GUI_ApplyDelta"
+        Function = "_GUI_ApplyDelta"
         Regex    = $true
         NotPresent = @('isFocused[\s\S]{0,50}mruChanged\s*:=\s*true')
     }

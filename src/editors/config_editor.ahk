@@ -39,7 +39,7 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
         forceNative := true
 
     ; Try WebView2 first if not forcing native
-    if (!forceNative && ConfigEditor_IsWebView2Available()) {
+    if (!forceNative && _ConfigEditor_IsWebView2Available()) {
         try {
             return CE_RunWebView2(launcherHwnd)
         } catch as e {
@@ -54,7 +54,7 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
 
 ; Check if WebView2 runtime is installed
 ; Returns: true if WebView2 Evergreen runtime is available
-ConfigEditor_IsWebView2Available() {
+_ConfigEditor_IsWebView2Available() {
     ; WebView2 Evergreen runtime registers under EdgeUpdate\Clients with this GUID
     static GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 

@@ -236,7 +236,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             global gStats_TabSteps
             gStats_TabSteps += 1
             delta := shiftHeld ? -1 : 1
-            GUI_MoveSelectionFrozen(delta)
+            _GUI_MoveSelectionFrozen(delta)
 
             ; Recalculate hover based on current mouse position after scroll
             ; This ensures action buttons follow the mouse, not the row index
@@ -455,7 +455,7 @@ GUI_ShowOverlayWithFrozen() {
         Paint_Log("ShowOverlay END: total=" tShow_Total "ms | resize=" tShow_Resize " repaint=" tShow_Repaint)
 }
 
-GUI_MoveSelectionFrozen(delta) {
+_GUI_MoveSelectionFrozen(delta) {
     global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop
 
     if (gGUI_DisplayItems.Length = 0) {

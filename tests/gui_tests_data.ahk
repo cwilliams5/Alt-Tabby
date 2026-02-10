@@ -195,7 +195,7 @@ RunGUITests_Data() {
         gGUI_LiveItems.Push({ hwnd: A_Index * 1000, title: "W" A_Index, lastActivatedTick: ticks[A_Index] })
     }
 
-    GUI_SortItemsByMRU()
+    _GUI_SortItemsByMRU()
 
     GUI_AssertEq(gGUI_LiveItems[1].lastActivatedTick, 500, "Sort MRU: first item has tick 500")
     GUI_AssertEq(gGUI_LiveItems[2].lastActivatedTick, 400, "Sort MRU: second item has tick 400")
@@ -207,7 +207,7 @@ RunGUITests_Data() {
     GUI_Log("Test: GUI_SortItemsByMRU handles single item")
     ResetGUIState()
     gGUI_LiveItems := [{ hwnd: 1000, title: "Solo", lastActivatedTick: 42 }]
-    GUI_SortItemsByMRU()
+    _GUI_SortItemsByMRU()
     GUI_AssertEq(gGUI_LiveItems.Length, 1, "Sort MRU single: still 1 item")
     GUI_AssertEq(gGUI_LiveItems[1].lastActivatedTick, 42, "Sort MRU single: value preserved")
 
@@ -215,7 +215,7 @@ RunGUITests_Data() {
     GUI_Log("Test: GUI_SortItemsByMRU handles empty list")
     ResetGUIState()
     gGUI_LiveItems := []
-    GUI_SortItemsByMRU()
+    _GUI_SortItemsByMRU()
     GUI_AssertEq(gGUI_LiveItems.Length, 0, "Sort MRU empty: no error")
 
     ; ============================================================
@@ -429,7 +429,7 @@ RunGUITests_Data() {
     ResetGUIState()
     gGUI_DisplayItems := []
     gGUI_Sel := 1
-    GUI_MoveSelectionFrozen(1)
+    _GUI_MoveSelectionFrozen(1)
     GUI_AssertEq(gGUI_Sel, 1, "MoveSelectionFrozen: empty list is no-op")
 
     ; ----- Test: MoveSelectionFrozen forward wrap last->first -----
@@ -437,7 +437,7 @@ RunGUITests_Data() {
     ResetGUIState()
     gGUI_DisplayItems := CreateTestItems(5)
     gGUI_Sel := 5
-    GUI_MoveSelectionFrozen(1)
+    _GUI_MoveSelectionFrozen(1)
     GUI_AssertEq(gGUI_Sel, 1, "MoveSelectionFrozen: forward wrap last->first")
 
     ; ----- Test: MoveSelectionFrozen backward wrap first->last -----
@@ -445,7 +445,7 @@ RunGUITests_Data() {
     ResetGUIState()
     gGUI_DisplayItems := CreateTestItems(5)
     gGUI_Sel := 1
-    GUI_MoveSelectionFrozen(-1)
+    _GUI_MoveSelectionFrozen(-1)
     GUI_AssertEq(gGUI_Sel, 5, "MoveSelectionFrozen: backward wrap first->last")
 
     ; ============================================================
@@ -465,13 +465,13 @@ RunGUITests_Data() {
     cfg.GUI_ScrollKeepHighlightOnTop := false
 
     ; Move down to sel=5 (still visible at bottom), then sel=6 (should scroll)
-    GUI_MoveSelection(1)  ; sel=2
-    GUI_MoveSelection(1)  ; sel=3
-    GUI_MoveSelection(1)  ; sel=4
-    GUI_MoveSelection(1)  ; sel=5
+    _GUI_MoveSelection(1)  ; sel=2
+    _GUI_MoveSelection(1)  ; sel=3
+    _GUI_MoveSelection(1)  ; sel=4
+    _GUI_MoveSelection(1)  ; sel=5
     GUI_AssertEq(gGUI_Sel, 5, "ScrollDown: sel=5 after 4 moves")
     scrollBefore := gGUI_ScrollTop
-    GUI_MoveSelection(1)  ; sel=6, should scroll
+    _GUI_MoveSelection(1)  ; sel=6, should scroll
     GUI_AssertEq(gGUI_Sel, 6, "ScrollDown: sel=6")
     GUI_AssertTrue(gGUI_ScrollTop > scrollBefore, "ScrollDown: scrollTop advanced past visible window")
 
@@ -485,8 +485,8 @@ RunGUITests_Data() {
     gMock_VisibleRows := 5
     cfg.GUI_ScrollKeepHighlightOnTop := false
 
-    GUI_MoveSelection(-1)  ; sel=5, at top of viewport
-    GUI_MoveSelection(-1)  ; sel=4, should scroll up
+    _GUI_MoveSelection(-1)  ; sel=5, at top of viewport
+    _GUI_MoveSelection(-1)  ; sel=4, should scroll up
     GUI_AssertEq(gGUI_Sel, 4, "ScrollUp: sel=4")
     GUI_AssertTrue(gGUI_ScrollTop <= 3, "ScrollUp: scrollTop retreated (scrollTop=" gGUI_ScrollTop ")")
 
@@ -500,7 +500,7 @@ RunGUITests_Data() {
     gMock_VisibleRows := 5
     cfg.GUI_ScrollKeepHighlightOnTop := false
 
-    GUI_MoveSelection(1)  ; wrap to sel=1
+    _GUI_MoveSelection(1)  ; wrap to sel=1
     GUI_AssertEq(gGUI_Sel, 1, "WrapFwd: sel=1 after wrapping from 12")
 
     ; ----- Test: MoveSelection wraps from first to last -----
@@ -513,7 +513,7 @@ RunGUITests_Data() {
     gMock_VisibleRows := 5
     cfg.GUI_ScrollKeepHighlightOnTop := false
 
-    GUI_MoveSelection(-1)  ; wrap to sel=12
+    _GUI_MoveSelection(-1)  ; wrap to sel=12
     GUI_AssertEq(gGUI_Sel, 12, "WrapBack: sel=12 after wrapping from 1")
 
     ; ----- Test: ScrollKeepHighlightOnTop=true keeps highlight at top -----
@@ -526,17 +526,17 @@ RunGUITests_Data() {
     gMock_VisibleRows := 5
     cfg.GUI_ScrollKeepHighlightOnTop := true
 
-    GUI_MoveSelection(1)  ; sel=2, scrollTop should follow
+    _GUI_MoveSelection(1)  ; sel=2, scrollTop should follow
     GUI_AssertEq(gGUI_Sel, 2, "KeepTop: sel=2")
     GUI_AssertEq(gGUI_ScrollTop, 1, "KeepTop: scrollTop=sel-1=1")
 
-    GUI_MoveSelection(1)  ; sel=3
+    _GUI_MoveSelection(1)  ; sel=3
     GUI_AssertEq(gGUI_ScrollTop, 2, "KeepTop: scrollTop=sel-1=2")
 
     ; Wrap forward
     gGUI_Sel := 12
     gGUI_ScrollTop := 11
-    GUI_MoveSelection(1)  ; wrap to sel=1
+    _GUI_MoveSelection(1)  ; wrap to sel=1
     GUI_AssertEq(gGUI_Sel, 1, "KeepTop wrap: sel=1")
     GUI_AssertEq(gGUI_ScrollTop, 0, "KeepTop wrap: scrollTop=0")
 
@@ -552,10 +552,10 @@ RunGUITests_Data() {
     gMock_VisibleRows := 5
     cfg.GUI_ScrollKeepHighlightOnTop := false
 
-    GUI_MoveSelection(1)  ; sel=2
-    GUI_MoveSelection(1)  ; sel=3
+    _GUI_MoveSelection(1)  ; sel=2
+    _GUI_MoveSelection(1)  ; sel=3
     GUI_AssertEq(gGUI_Sel, 3, "FewItems: sel=3")
-    GUI_MoveSelection(1)  ; wrap to sel=1
+    _GUI_MoveSelection(1)  ; wrap to sel=1
     GUI_AssertEq(gGUI_Sel, 1, "FewItems: wrap to sel=1")
 
     ; ----- Test: Single item (no movement possible) -----
@@ -568,9 +568,9 @@ RunGUITests_Data() {
     gMock_VisibleRows := 5
     cfg.GUI_ScrollKeepHighlightOnTop := false
 
-    GUI_MoveSelection(1)  ; should stay at 1 (wraps to 1)
+    _GUI_MoveSelection(1)  ; should stay at 1 (wraps to 1)
     GUI_AssertEq(gGUI_Sel, 1, "SingleItem: sel stays 1 after move forward")
-    GUI_MoveSelection(-1)  ; should stay at 1
+    _GUI_MoveSelection(-1)  ; should stay at 1
     GUI_AssertEq(gGUI_Sel, 1, "SingleItem: sel stays 1 after move backward")
 
     ; ============================================================
