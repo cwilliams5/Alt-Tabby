@@ -470,7 +470,6 @@ Store_BumpLifetimeStat(key) {
 Store_PushToClients() {
     global gStore_Server, gStore_ClientState, gStore_TestMode
     global IPC_MSG_SNAPSHOT, IPC_MSG_DELTA, gStore_LastSendTick, cfg
-    global gWS_DeltaPendingHwnds
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
@@ -507,8 +506,7 @@ Store_PushToClients() {
     }
     ; Snapshot dirty set and clear immediately - any updates during this push
     ; will mark the NEW dirty set and be caught on next push
-    dirtySnapshot := gWS_DeltaPendingHwnds.Clone()
-    gWS_DeltaPendingHwnds := Map()
+    dirtySnapshot := WindowStore_ConsumeDirtySet()
     Critical "Off"
 
     ; In OnChange mode, send dedicated workspace_change message when workspace changes
@@ -656,15 +654,7 @@ Store_PushToClients() {
     }
 
     ; PERF: Bound diagnostic maps to prevent unbounded memory growth
-    ; Unconditional: maps may retain entries from when logging was previously enabled
-    global gWS_DiagChurn, gWS_DiagSource
-    ; RACE FIX: Protect map swap from UpsertWindow/_WS_BumpRev writing to old reference
-    Critical "On"
-    if (gWS_DiagChurn.Count > 1000)
-        gWS_DiagChurn := Map()
-    if (gWS_DiagSource.Count > 1000)
-        gWS_DiagSource := Map()
-    Critical "Off"
+    WindowStore_TrimDiagMaps()
 }
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)

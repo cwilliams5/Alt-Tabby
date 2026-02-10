@@ -102,11 +102,7 @@ global gGUI_LiveItems := []
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
 
-; State machine: IDLE -> ALT_PENDING -> ACTIVE
-; IDLE: Normal state, receiving/applying deltas, cache fresh
-; ALT_PENDING: Alt held, optional pre-warm, still receiving deltas
-; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
-global gGUI_State := "IDLE"
+; gGUI_State declared in gui_state.ahk (sole writer for state machine)
 ; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)
 global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by workspace mode)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)

@@ -23,10 +23,7 @@
 cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils, store_server
 g_CachedStartMenuShortcut: launcher_shortcuts, launcher_tray
 g_CachedStartupShortcut: launcher_shortcuts, launcher_tray
-g_DashUpdateState: launcher_about, setup_utils
 g_GuiPID: launcher_main, launcher_tray
-g_ProducerHasFailed: launcher_about, launcher_main
-g_ProducerStatusCache: launcher_about, launcher_main
 g_StorePID: launcher_main, launcher_tray
 g_ViewerPID: launcher_main, launcher_tray
 gConfigIniPath: launcher_wizard, config_loader
@@ -45,8 +42,4 @@ gGUI_Sel: gui_input, gui_state, gui_store
 gGUI_StoreClient: gui_main, gui_state, gui_store
 gGUI_StoreConnected: gui_main, gui_store
 gGUI_ToggleBase: gui_state, gui_store
-gGUI_State: gui_state
-gWS_DeltaPendingHwnds: store_server, windowstore
-gWS_DiagChurn: store_server, windowstore
-gWS_DiagSource: store_server, windowstore
 STATS_INI_PATH: launcher_wizard, config_loader

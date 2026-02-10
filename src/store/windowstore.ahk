@@ -1476,3 +1476,25 @@ WindowStore_ConsumeWorkspaceChangedFlag() {
     return result
 }
 
+; Atomically snapshot and clear the dirty set (hwnds changed since last push)
+; No internal Critical — caller manages the Critical section
+WindowStore_ConsumeDirtySet() {
+    global gWS_DeltaPendingHwnds
+    snapshot := gWS_DeltaPendingHwnds.Clone()
+    gWS_DeltaPendingHwnds := Map()
+    return snapshot
+}
+
+; Bound diagnostic maps to prevent unbounded memory growth
+; Unconditional: maps may retain entries from when logging was previously enabled
+WindowStore_TrimDiagMaps() {
+    global gWS_DiagChurn, gWS_DiagSource
+    ; RACE FIX: Protect map swap from UpsertWindow/_WS_BumpRev writing to old reference
+    Critical "On"
+    if (gWS_DiagChurn.Count > 1000)
+        gWS_DiagChurn := Map()
+    if (gWS_DiagSource.Count > 1000)
+        gWS_DiagSource := Map()
+    Critical "Off"
+}
+

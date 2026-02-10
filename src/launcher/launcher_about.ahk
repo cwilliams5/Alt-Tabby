@@ -500,6 +500,23 @@ _Dash_OnClose(*) {
 ; Always-on timer while dialog is open. Interactions boost to
 ; hot (250ms), decays to warm (1s) then cool (5s).
 
+; Update dashboard update-check state from external callers (e.g., setup_utils)
+Dash_SetUpdateState(status, version := "", url := "") {
+    global g_DashUpdateState
+    g_DashUpdateState.status := status
+    g_DashUpdateState.version := version
+    g_DashUpdateState.downloadUrl := url
+}
+
+; Reset dashboard producer state and restart monitoring after store (re)launch
+Dash_OnStoreRestart() {
+    global g_ProducerStatusCache, g_ProducerHasFailed
+    g_ProducerStatusCache := ""
+    g_ProducerHasFailed := ""
+    Dash_StartRefreshTimer()
+    SetTimer(Dash_QueryProducerStatus, -5000)
+}
+
 Dash_StartRefreshTimer() {
     global g_DashboardGui, g_DashRefreshTick, DASH_INTERVAL_HOT
     if (!g_DashboardGui)

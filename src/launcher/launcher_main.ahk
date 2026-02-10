@@ -819,13 +819,9 @@ Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
 ; ============================================================
 
 LaunchStore() {
-    global g_StorePID, g_ProducerStatusCache, g_ProducerHasFailed
-    g_ProducerStatusCache := ""
-    g_ProducerHasFailed := ""
+    global g_StorePID
     LauncherUtils_Launch("store", &g_StorePID, Launcher_Log)
-    Dash_StartRefreshTimer()
-    ; Query producer status after store has time to initialize producers
-    SetTimer(Dash_QueryProducerStatus, -5000)
+    Dash_OnStoreRestart()
 }
 
 LaunchGui() {

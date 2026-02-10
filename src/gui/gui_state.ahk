@@ -3,6 +3,12 @@
 ; Handles state transitions: IDLE -> ALT_PENDING -> ACTIVE -> IDLE
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+; State machine: IDLE -> ALT_PENDING -> ACTIVE
+; IDLE: Normal state, receiving/applying deltas, cache fresh
+; ALT_PENDING: Alt held, optional pre-warm, still receiving deltas
+; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
+global gGUI_State := "IDLE"
+
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 
 ; Timing constants (hardcoded - not user-configurable)

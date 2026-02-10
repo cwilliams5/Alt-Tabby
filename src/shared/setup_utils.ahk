@@ -614,7 +614,7 @@ _Update_Log(msg) {
 ; Check for updates and optionally offer to install
 ; showIfCurrent: If true, show message even when up to date
 CheckForUpdates(showIfCurrent := false, showModal := true) {
-    global g_UpdateCheckInProgress, g_DashUpdateState, g_LastUpdateCheckTick, g_LastUpdateCheckTime
+    global g_UpdateCheckInProgress, g_LastUpdateCheckTick, g_LastUpdateCheckTime
 
     ; Prevent concurrent update checks (auto-update timer + manual button race)
     if (g_UpdateCheckInProgress) {
@@ -642,7 +642,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
             ; Parse JSON for tag_name and download URL
             if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
                 _Update_Log("CheckForUpdates: failed to parse tag_name from response")
-                g_DashUpdateState.status := "error"
+                Dash_SetUpdateState("error")
                 g_LastUpdateCheckTick := A_TickCount
                 g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
                 g_UpdateCheckInProgress := false
@@ -657,9 +657,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
             if (CompareVersions(latestVersion, currentVersion) > 0) {
                 ; Sync dashboard state — update available
                 downloadUrl := _Update_FindExeDownloadUrl(response)
-                g_DashUpdateState.status := "available"
-                g_DashUpdateState.version := latestVersion
-                g_DashUpdateState.downloadUrl := downloadUrl ? downloadUrl : ""
+                Dash_SetUpdateState("available", latestVersion, downloadUrl ? downloadUrl : "")
 
                 ; Newer version available - offer to update
                 if (showModal) {
@@ -680,16 +678,14 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
                 }
             } else {
                 ; Sync dashboard state — up to date
-                g_DashUpdateState.status := "uptodate"
-                g_DashUpdateState.version := ""
-                g_DashUpdateState.downloadUrl := ""
+                Dash_SetUpdateState("uptodate")
                 if (showIfCurrent && showModal)
                     TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
             }
         } else {
             ; Sync dashboard state — HTTP error
             _Update_Log("CheckForUpdates: HTTP error status=" whr.Status)
-            g_DashUpdateState.status := "error"
+            Dash_SetUpdateState("error")
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
             if (showIfCurrent && showModal) {
@@ -701,7 +697,7 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
         whr := ""  ; Ensure release on exception
         _Update_Log("CheckForUpdates: exception: " e.Message)
         ; Sync dashboard state — exception
-        g_DashUpdateState.status := "error"
+        Dash_SetUpdateState("error")
         g_LastUpdateCheckTick := A_TickCount
         g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
         if (showIfCurrent && showModal)
