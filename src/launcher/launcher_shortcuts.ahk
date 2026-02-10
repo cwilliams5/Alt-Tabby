@@ -7,10 +7,6 @@
 ; Creates and manages shortcuts with proper admin mode handling.
 ; Shortcuts always point to the exe; exe self-redirects to task if needed.
 
-; Cached shortcut existence state — updated after toggle operations
-global g_CachedStartMenuShortcut := false
-global g_CachedStartupShortcut := false
-
 ; Toggle Start Menu shortcut
 ToggleStartMenuShortcut() {
     global g_CachedStartMenuShortcut

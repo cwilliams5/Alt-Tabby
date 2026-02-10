@@ -60,9 +60,9 @@ global WinEventHookDebounceMs  ; Declare without value
 
 Read `ownership.manifest` (project root) before investigating who mutates a global. The pre-gate enforces:
 - Global NOT in manifest → only the declaring file mutates it (guaranteed)
-- Global IS in manifest → only listed files mutate it (guaranteed)
+- Global IS in manifest → all writers are listed explicitly (guaranteed)
 
-Stale entries are auto-removed by the pre-gate, so the manifest always reflects actual code. When adding a new cross-file mutation, add the entry to the manifest or the pre-gate will block.
+The declaring file is also always authorized. Stale entries are auto-removed by the pre-gate, so the manifest always reflects actual code. When adding a new cross-file mutation, add the entry to the manifest or the pre-gate will block.
 
 When consolidating globals into Maps: only pack when ownership is uniform (all keys written by same files). Don't pack when ownership varies per key — it collapses precise manifest entries into one vague entry.
 

@@ -12,12 +12,11 @@
 #
 # Manifest format (ownership.manifest):
 #   # Comments start with #
-#   gGUI_State: gui_state, gui_input
-#   gGUI_Sel: gui_state, gui_input, gui_store, gui_workspace
+#   gGUI_State: gui_main, gui_state, gui_input
 #   cfg: config_loader, launcher_main, launcher_tray, ...
 #
-#   File names are basenames without extension or path. The declaring file
-#   is always implicitly authorized — no need to list it.
+#   All files that write to a global are listed (basenames without extension).
+#   The declaring file is also always authorized even if not listed.
 #
 # Discovery mode: Shows which globals are mutated in which files.
 #   powershell -File tests/check_global_ownership.ps1 -Discover [-Verbose]
@@ -371,8 +370,10 @@ if ($Query) {
         $writerNames = @()
         foreach ($filePath in ($byGlobal[$Query].Keys | Sort-Object)) {
             $basename = Get-Basename ($filePath.Replace("$projectRoot\", ''))
-            $tag = if ($basename -eq $declBasename) { " (declares)" } else { "" }
-            $writerNames += "$basename$tag"
+            $fnWrites = $byGlobal[$Query][$filePath].Count
+            $parts = @("$fnWrites fn write$(if ($fnWrites -ne 1) {'s'})")
+            if ($basename -eq $declBasename) { $parts += "declares" }
+            $writerNames += "$basename ($($parts -join ', '))"
         }
         Write-Host "    writers:  $($writerNames -join ', ')" -ForegroundColor DarkGray
     } else {
@@ -419,6 +420,7 @@ if ($Query) {
 # Discovery Mode
 # ============================================================
 if ($Discover) {
+    $sharedCount = 0; $movableCount = 0
     Write-Host ""
 
     if ($multiFileMutations.Count -gt 0) {
@@ -432,8 +434,27 @@ if ($Discover) {
             $decl = $globalDecl[$gName]
             $totalMuts = ($files.Values | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
 
+            # Classify: does the declaring file have fn-body writes?
+            $declHasWrites = $files.ContainsKey($decl.File)
+            if ($declHasWrites) {
+                $classTag = "[SHARED]"
+                $classColor = "DarkYellow"
+                $sharedCount++
+            } else {
+                $nonDeclWriters = @($files.Keys | Where-Object { $_ -ne $decl.File })
+                if ($nonDeclWriters.Count -eq 1) {
+                    $target = Get-Basename ($nonDeclWriters[0].Replace("$projectRoot\", ''))
+                    $classTag = "[MOVABLE -> $target]"
+                } else {
+                    $classTag = "[MOVABLE]"
+                }
+                $classColor = "Green"
+                $movableCount++
+            }
+
             Write-Host "  $gName  " -ForegroundColor White -NoNewline
-            Write-Host "($totalMuts mutations across $($files.Count) files)" -ForegroundColor DarkGray
+            Write-Host "($totalMuts mutations across $($files.Count) files) " -ForegroundColor DarkGray -NoNewline
+            Write-Host $classTag -ForegroundColor $classColor
             Write-Host "    declared: $($decl.RelPath):$($decl.Line)" -ForegroundColor DarkGray
 
             foreach ($filePath in ($files.Keys | Sort-Object)) {
@@ -484,6 +505,8 @@ if ($Discover) {
     Write-Host "  --- SUMMARY ---" -ForegroundColor Cyan
     Write-Host "    Total globals:         $($globalDecl.Count)" -ForegroundColor White
     Write-Host "    Coupling hotspots:     $($multiFileMutations.Count)  (mutated in 2+ files)" -ForegroundColor $(if ($multiFileMutations.Count -gt 0) { "Yellow" } else { "Green" })
+    Write-Host "      Shared writes:       $sharedCount  (declaring file writes - cannot reduce by moving)" -ForegroundColor DarkYellow
+    Write-Host "      Movable:             $movableCount  (declaring file doesn't write - safe to move)" -ForegroundColor Green
     Write-Host "    Clean ownership:       $($singleFileMutations.Count)  (mutated in 1 file)" -ForegroundColor Green
     Write-Host "    Constants/file-scope:  $($noMutations.Count)  (no function-body mutations)" -ForegroundColor DarkCyan
     Write-Host "    Total mutations found: $($mutations.Count)" -ForegroundColor White
@@ -506,18 +529,15 @@ function _BuildFreshManifest {
     )
     $entries = @{}
 
-    # Multi-writer globals (mutated in 2+ files)
+    # Multi-writer globals (mutated in 2+ files) — all writers listed explicitly
     foreach ($entry in $Multi.GetEnumerator()) {
         $gName = $entry.Key
         $files = $entry.Value
-        $declBasename = Get-Basename $Decl[$gName].RelPath
 
         $writerNames = @()
         foreach ($filePath in ($files.Keys | Sort-Object)) {
             $basename = Get-Basename ($filePath.Replace("$Root\", ''))
-            if ($basename -ne $declBasename) {
-                $writerNames += $basename
-            }
+            $writerNames += $basename
         }
         if ($writerNames.Count -gt 0) {
             $entries[$gName] = $writerNames
@@ -705,8 +725,8 @@ if ($Generate) {
     [void]$lines.Add("# ownership.manifest - Global variable write authorization")
     [void]$lines.Add("#")
     [void]$lines.Add("# Contract: If a global is NOT listed here, only the declaring file may")
-    [void]$lines.Add("# mutate it. If it IS listed, only the declaring file plus the listed files")
-    [void]$lines.Add("# may mutate it. Enforced by pre-gate (check_global_ownership.ps1).")
+    [void]$lines.Add("# mutate it. If it IS listed, all writers are shown explicitly.")
+    [void]$lines.Add("# The declaring file is always authorized. Enforced by check_global_ownership.ps1.")
     [void]$lines.Add("#")
     [void]$lines.Add("# Freshness: The pre-gate validates this manifest against actual code.")
     [void]$lines.Add("#   Stale entries (globals no longer cross-file) are auto-removed.")
@@ -717,7 +737,7 @@ if ($Generate) {
     [void]$lines.Add("#   2. Move the mutation to the declaring file (keep coupling tight)")
     [void]$lines.Add("#")
     [void]$lines.Add("# Format: globalName: file1, file2, file3")
-    [void]$lines.Add("#   Basenames without .ahk. The declaring file is always implicitly authorized.")
+    [void]$lines.Add("#   Basenames without .ahk. All files that write are listed.")
     [void]$lines.Add("#")
     [void]$lines.Add("# Maintenance:")
     [void]$lines.Add("#   Query a specific global: powershell -File tests/check_global_ownership.ps1 -Query <name>")

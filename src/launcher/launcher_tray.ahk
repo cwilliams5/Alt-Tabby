@@ -10,6 +10,8 @@
 ; Cached expensive checks — populated at startup, updated after toggle operations.
 ; Avoids ~500ms of schtasks subprocess + COM shortcut calls on every right-click.
 global g_CachedAdminTaskActive := false
+global g_CachedStartMenuShortcut := false
+global g_CachedStartupShortcut := false
 global g_NeedsAdminReload := true  ; Flag for admin config reload (start true for initial load)
 
 ; Editor PIDs — declared here (sole writer via LaunchConfigEditor/LaunchBlacklistEditor)

@@ -1,8 +1,8 @@
 ﻿# ownership.manifest - Global variable write authorization
 #
 # Contract: If a global is NOT listed here, only the declaring file may
-# mutate it. If it IS listed, only the declaring file plus the listed files
-# may mutate it. Enforced by pre-gate (check_global_ownership.ps1).
+# mutate it. If it IS listed, all writers are shown explicitly.
+# The declaring file is always authorized. Enforced by check_global_ownership.ps1.
 #
 # Freshness: The pre-gate validates this manifest against actual code.
 #   Stale entries (globals no longer cross-file) are auto-removed.
@@ -13,31 +13,31 @@
 #   2. Move the mutation to the declaring file (keep coupling tight)
 #
 # Format: globalName: file1, file2, file3
-#   Basenames without .ahk. The declaring file is always implicitly authorized.
+#   Basenames without .ahk. All files that write are listed.
 #
 # Maintenance:
 #   Query a specific global: powershell -File tests/check_global_ownership.ps1 -Query <name>
 #   Preview manifest changes: powershell -File tests/check_global_ownership.ps1 -Generate
 #   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover
 
-cfg: launcher_main, launcher_tray, launcher_wizard, setup_utils, store_server
-g_CachedStartMenuShortcut: launcher_tray
-g_CachedStartupShortcut: launcher_tray
-g_DashUpdateState: setup_utils
+cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils, store_server
+g_CachedStartMenuShortcut: launcher_shortcuts, launcher_tray
+g_CachedStartupShortcut: launcher_shortcuts, launcher_tray
+g_DashUpdateState: launcher_about, setup_utils
 g_GuiPID: launcher_main, launcher_tray
-g_ProducerHasFailed: launcher_main
-g_ProducerStatusCache: launcher_main
+g_ProducerHasFailed: launcher_about, launcher_main
+g_ProducerStatusCache: launcher_about, launcher_main
 g_StorePID: launcher_main, launcher_tray
 g_ViewerPID: launcher_main, launcher_tray
-gConfigIniPath: launcher_wizard
-gGdip_Res: gui_paint
-gGdip_ResScale: gui_paint
+gConfigIniPath: launcher_wizard, config_loader
+gGdip_Res: gui_gdip, gui_paint
+gGdip_ResScale: gui_gdip, gui_paint
 gGUI_CurrentWSName: gui_state, gui_workspace
 gGUI_DisplayItems: gui_input, gui_state, gui_store, gui_workspace
 gGUI_HoverBtn: gui_input, gui_overlay
 gGUI_HoverRow: gui_input, gui_overlay
 gGUI_LastLocalMRUTick: gui_state, gui_store
-gGUI_LastMsgTick: gui_store
+gGUI_LastMsgTick: gui_main, gui_store
 gGUI_LiveItems: gui_input, gui_state, gui_store
 gGUI_MouseTracking: gui_input, gui_overlay
 gGUI_OverlayVisible: gui_overlay, gui_state
@@ -45,14 +45,14 @@ gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
 gGUI_Sel: gui_input, gui_state, gui_store
 gGUI_State: gui_input, gui_state
-gGUI_StoreClient: gui_state, gui_store
-gGUI_StoreConnected: gui_store
+gGUI_StoreClient: gui_main, gui_state, gui_store
+gGUI_StoreConnected: gui_main, gui_store
 gGUI_ToggleBase: gui_state, gui_store
-gStats_Lifetime: blacklist, windowstore
-gStats_Session: windowstore
-gStore_LastBroadcastRev: winevent_hook
-gWS_DeltaPendingHwnds: store_server
-gWS_DiagChurn: store_server
-gWS_DiagSource: store_server
+gStats_Lifetime: blacklist, store_server, windowstore
+gStats_Session: store_server, windowstore
+gStore_LastBroadcastRev: store_server, winevent_hook
+gWS_DeltaPendingHwnds: store_server, windowstore
+gWS_DiagChurn: store_server, windowstore
+gWS_DiagSource: store_server, windowstore
 PROCESS_QUERY_LIMITED_INFORMATION: setup_utils
-STATS_INI_PATH: launcher_wizard
+STATS_INI_PATH: launcher_wizard, config_loader
