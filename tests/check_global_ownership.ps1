@@ -199,6 +199,14 @@ foreach ($name in $globalDecl.Keys) {
 
 $pass1Sw.Stop()
 
+# When -Query is set, scope Pass 2 to only the queried global
+# (the inner loop skips non-matching words via $globalSet.Contains)
+if ($Query) {
+    $globalSet = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    [void]$globalSet.Add($Query)
+}
+
 # ============================================================
 # Pass 2: Detect mutations in function bodies
 # ============================================================
@@ -213,6 +221,11 @@ $reads = @{}
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    # When querying a single global, skip files that don't contain it at all
+    if ($Query) {
+        if (-not ($lines -match [regex]::Escape($Query))) { continue }
+    }
 
     $depth = 0
     $inFunc = $false

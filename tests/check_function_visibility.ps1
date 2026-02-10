@@ -104,16 +104,20 @@ foreach ($file in $srcFiles) {
         $braces = Count-Braces $cleaned
 
         # Function definition at file scope (depth 0)
-        if ($depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(_\w+)\s*\(') {
-            $fname = $Matches[1]
-            $fkey = $fname.ToLower()
-            if ($fkey -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
-                if (-not $funcDefs.ContainsKey($fkey)) {
-                    $funcDefs[$fkey] = @{
-                        Name    = $fname
-                        File    = $file.FullName
-                        RelPath = $relPath
-                        Line    = ($i + 1)
+        # In Query mode, skip _ function collection once queryDef is found
+        # (Pass 2 is skipped in Query mode, so funcDefs/privateFuncKeys are unused)
+        if (-not ($Query -and $queryDef)) {
+            if ($depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(_\w+)\s*\(') {
+                $fname = $Matches[1]
+                $fkey = $fname.ToLower()
+                if ($fkey -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+                    if (-not $funcDefs.ContainsKey($fkey)) {
+                        $funcDefs[$fkey] = @{
+                            Name    = $fname
+                            File    = $file.FullName
+                            RelPath = $relPath
+                            Line    = ($i + 1)
+                        }
                     }
                 }
             }
@@ -259,8 +263,7 @@ if ($Query) {
         $qLines = $fileCache[$file.FullName]
 
         # Pre-filter: skip files that don't contain the function name at all
-        $fileText = [string]::Join("`n", $qLines)
-        if ($fileText.IndexOf($funcDef.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        if (-not ($qLines -match [regex]::Escape($funcDef.Name))) { continue }
 
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 

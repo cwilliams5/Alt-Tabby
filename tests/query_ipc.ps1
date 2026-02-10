@@ -94,12 +94,37 @@ $constLine = $target.Line
 $ahkKeywords = @('if','else','while','for','loop','switch','case','catch','finally',
     'try','return','throw','not','and','or','is','in','contains','isset')
 
+# === Helper: find enclosing function by scanning backwards ===
+function Find-EnclosingFunction {
+    param([string[]]$Lines, [int]$FromIndex, [string[]]$Keywords)
+    for ($j = $FromIndex - 1; $j -ge 0; $j--) {
+        if ($Lines[$j] -match '^(\w+)\s*\(') {
+            $candidate = $Matches[1]
+            if ($candidate.ToLower() -in $Keywords) { continue }
+            $hasBody = $Lines[$j].Contains('{')
+            if (-not $hasBody) {
+                for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $Lines.Count); $k++) {
+                    $next = $Lines[$k].Trim()
+                    if ($next -eq '') { continue }
+                    if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
+                    break
+                }
+            }
+            if ($hasBody) { return $candidate }
+        }
+    }
+    return "(file scope)"
+}
+
 # === Scan source files for references ===
 $allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 
 $sends = [System.Collections.ArrayList]::new()
 $handles = [System.Collections.ArrayList]::new()
+
+# Raw JSON pattern: '{"type":"delta",...}' bypassing IPC_MSG_* constants
+$rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
 
 foreach ($file in $allFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
@@ -109,97 +134,58 @@ foreach ($file in $allFiles) {
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
         $trimmed = $line.Trim()
-
-        # Word-boundary match (avoids IPC_MSG_SNAPSHOT matching IPC_MSG_SNAPSHOT_REQUEST)
-        if ($line -notmatch "\b$constName\b") { continue }
         if ($trimmed -match '^\s*;') { continue }
-        if ($isConstantsFile -and $trimmed -match "^\s*global\s+$constName\b\s*:=") { continue }
-        if ($trimmed -match '^\s*global\s+' -and $trimmed -notmatch ':=') { continue }
-        if ($trimmed -match '^\s*_\w*Log\(' -and $trimmed -notmatch '\btype\b') { continue }
 
-        # Find enclosing function: scan backwards for definition at column 0 with body brace
-        $funcName = "(file scope)"
-        for ($j = $i - 1; $j -ge 0; $j--) {
-            if ($lines[$j] -match '^(\w+)\s*\(') {
-                $candidate = $Matches[1]
-                if ($candidate.ToLower() -in $ahkKeywords) { continue }
-                $hasBody = $lines[$j].Contains('{')
-                if (-not $hasBody) {
-                    for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $lines.Count); $k++) {
-                        $next = $lines[$k].Trim()
-                        if ($next -eq '') { continue }
-                        if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
-                        break
-                    }
-                }
-                if ($hasBody) { $funcName = $candidate; break }
-            }
-        }
+        $hasConstRef = $line -match "\b$constName\b"
+        $hasRawJson = $trimmed -match $rawPattern
+
+        if (-not $hasConstRef -and -not $hasRawJson) { continue }
 
         $lineNum = $i + 1
-        $hit = @{ File = $relPath; Line = $lineNum; Func = $funcName }
 
-        # Classify: send vs handle
-        $isSend = $false; $isHandle = $false
-
-        # Handle: comparison (= but not :=), case match, != check
-        if ($trimmed -match "(?<!:)=\s*$constName\b" -or
-            $trimmed -match "case\s+$constName\b" -or
-            $trimmed -match "!=\s*$constName\b") { $isHandle = $true }
-
-        # Send: object literal type:, msg["type"] :=, string-built type, ternary
-        if ($trimmed -match "type:\s*$constName\b" -or
-            $trimmed -match "\[`"type`"\]\s*:=\s*$constName\b" -or
-            $trimmed -match "type`":\s*`".*\b$constName\b" -or
-            $trimmed -match "'.*type.*\b$constName\b" -or
-            $trimmed -match "\?\s*$constName\b" -or
-            $trimmed -match ":\s*$constName\s*$") { $isSend = $true }
-
-        if ($isSend) { [void]$sends.Add($hit) }
-        elseif ($isHandle) { [void]$handles.Add($hit) }
-    }
-}
-
-# === Supplementary scan: hand-built JSON with raw string message types ===
-# Catches patterns like '{"type":"delta",...}' that bypass IPC_MSG_* constants
-$rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
-foreach ($file in $allFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
-    $relPath = $file.FullName.Replace("$projectRoot\", '')
-
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $trimmed = $lines[$i].Trim()
-        if ($trimmed -match '^\s*;') { continue }
-        if ($trimmed -notmatch $rawPattern) { continue }
-
-        # Skip if already found by constant-reference scan (same file+line)
-        $lineNum = $i + 1
-        $alreadyFound = $false
-        foreach ($s in $sends) {
-            if ($s.File -eq $relPath -and $s.Line -eq $lineNum) { $alreadyFound = $true; break }
+        # Process constant reference
+        if ($hasConstRef) {
+            if ($isConstantsFile -and $trimmed -match "^\s*global\s+$constName\b\s*:=") { $hasConstRef = $false }
+            elseif ($trimmed -match '^\s*global\s+' -and $trimmed -notmatch ':=') { $hasConstRef = $false }
+            elseif ($trimmed -match '^\s*_\w*Log\(' -and $trimmed -notmatch '\btype\b') { $hasConstRef = $false }
         }
-        if ($alreadyFound) { continue }
 
-        # Find enclosing function
-        $funcName = "(file scope)"
-        for ($j = $i - 1; $j -ge 0; $j--) {
-            if ($lines[$j] -match '^(\w+)\s*\(') {
-                $candidate = $Matches[1]
-                if ($candidate.ToLower() -in $ahkKeywords) { continue }
-                $hasBody = $lines[$j].Contains('{')
-                if (-not $hasBody) {
-                    for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $lines.Count); $k++) {
-                        $next = $lines[$k].Trim()
-                        if ($next -eq '') { continue }
-                        if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
-                        break
-                    }
-                }
-                if ($hasBody) { $funcName = $candidate; break }
+        if ($hasConstRef) {
+            $funcName = Find-EnclosingFunction $lines $i $ahkKeywords
+            $hit = @{ File = $relPath; Line = $lineNum; Func = $funcName }
+
+            # Classify: send vs handle
+            $isSend = $false; $isHandle = $false
+
+            # Handle: comparison (= but not :=), case match, != check
+            if ($trimmed -match "(?<!:)=\s*$constName\b" -or
+                $trimmed -match "case\s+$constName\b" -or
+                $trimmed -match "!=\s*$constName\b") { $isHandle = $true }
+
+            # Send: object literal type:, msg["type"] :=, string-built type, ternary
+            if ($trimmed -match "type:\s*$constName\b" -or
+                $trimmed -match "\[`"type`"\]\s*:=\s*$constName\b" -or
+                $trimmed -match "type`":\s*`".*\b$constName\b" -or
+                $trimmed -match "'.*type.*\b$constName\b" -or
+                $trimmed -match "\?\s*$constName\b" -or
+                $trimmed -match ":\s*$constName\s*$") { $isSend = $true }
+
+            if ($isSend) { [void]$sends.Add($hit) }
+            elseif ($isHandle) { [void]$handles.Add($hit) }
+        }
+
+        # Process raw JSON pattern (supplementary - catches hand-built JSON)
+        if ($hasRawJson) {
+            # Skip if already found by constant-reference scan (same file+line)
+            $alreadyFound = $false
+            foreach ($s in $sends) {
+                if ($s.File -eq $relPath -and $s.Line -eq $lineNum) { $alreadyFound = $true; break }
+            }
+            if (-not $alreadyFound) {
+                $funcName = Find-EnclosingFunction $lines $i $ahkKeywords
+                [void]$sends.Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
             }
         }
-
-        [void]$sends.Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
     }
 }
 
