@@ -115,6 +115,12 @@ $CHECKS = @(
         Patterns = @("_GUI_OnExit", "OnExit(_GUI_OnExit)")
     },
     @{
+        Id       = "gui_onerror_handler"
+        File     = "gui\gui_main.ahk"
+        Desc     = "GUI has OnError handler registered"
+        Patterns = @("OnError(")
+    },
+    @{
         Id       = "store_onexit_icons"
         File     = "store\store_server.ahk"
         Desc     = "Store_OnExit calls both icon cleanup functions"

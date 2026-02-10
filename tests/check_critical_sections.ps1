@@ -1,6 +1,6 @@
 # check_critical_sections.ps1 - Static analysis for AHK v2 Critical section hygiene
 # Pre-gate test: runs before any AHK process launches.
-# Detects functions where return or continue occurs inside a Critical "On"
+# Detects functions where return, continue, or throw occurs inside a Critical "On"
 # section without a preceding Critical "Off", which would leave Critical on
 # after the function exits (or skip cleanup in a loop).
 #
@@ -149,10 +149,15 @@ foreach ($file in $files) {
             if ($criticalOn) {
                 $isReturn = $cleaned -match '(?i)^\s*return\b'
                 $isContinue = $cleaned -match '(?i)^\s*continue\b'
+                $isThrow = $cleaned -match '(?i)^\s*throw\b'
 
-                if ($isReturn -or $isContinue) {
-                    if (-not (Test-HasSuppression $rawLine)) {
-                        if ($isReturn) { $stmtType = 'return' } else { $stmtType = 'continue' }
+                if ($isReturn -or $isContinue -or $isThrow) {
+                    # throw inside Critical is always a bug — no suppression allowed
+                    $canSuppress = -not $isThrow
+                    if (-not $canSuppress -or -not (Test-HasSuppression $rawLine)) {
+                        if ($isReturn) { $stmtType = 'return' }
+                        elseif ($isContinue) { $stmtType = 'continue' }
+                        else { $stmtType = 'throw' }
                         [void]$issues.Add([PSCustomObject]@{
                             File      = $relPath
                             Line      = $i + 1
@@ -184,9 +189,10 @@ $statsLine  = "  Stats:  $funcCount functions, $($files.Count) files"
 if ($issues.Count -gt 0) {
     Write-Host ""
     Write-Host "  FAIL: $($issues.Count) Critical section issue(s) found." -ForegroundColor Red
-    Write-Host "  These return/continue while Critical is On, which may skip Critical `"Off`"." -ForegroundColor Red
+    Write-Host "  These return/continue/throw while Critical is On, which may skip Critical `"Off`"." -ForegroundColor Red
     Write-Host "  Fix: add Critical `"Off`" before the statement, or suppress with:" -ForegroundColor Yellow
     Write-Host "    return  ; lint-ignore: critical-section" -ForegroundColor Yellow
+    Write-Host "  Note: throw inside Critical cannot be suppressed (always a bug)." -ForegroundColor Yellow
 
     $grouped = $issues | Group-Object File
     foreach ($group in $grouped | Sort-Object Name) {
@@ -201,7 +207,7 @@ if ($issues.Count -gt 0) {
     Write-Host $statsLine -ForegroundColor Cyan
     exit 1
 } else {
-    Write-Host "  PASS: All Critical sections properly closed before return/continue" -ForegroundColor Green
+    Write-Host "  PASS: All Critical sections properly closed before return/continue/throw" -ForegroundColor Green
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan
     exit 0

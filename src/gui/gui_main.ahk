@@ -336,6 +336,15 @@ _GUI_OnPipeWake(wParam, lParam, msg, hwnd) {
     return 0
 }
 
+; Log unhandled errors and exit
+_GUI_OnError(err, *) {
+    global LOG_PATH_EVENTS
+    msg := "gui_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
+    try LogAppend(LOG_PATH_EVENTS, msg)
+    ExitApp(1)
+    return true
+}
+
 ; Clean up resources on exit
 _GUI_OnExit(reason, code) {
     ; Send any unsent stats to store before cleanup
@@ -381,7 +390,8 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {  ; lint-ignore: isset-wi
     OnMessage(0x0200, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
     OnMessage(0x02A3, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))  ; WM_MOUSELEAVE
 
-    ; Register exit handler for cleanup
+    ; Register error and exit handlers
+    OnError(_GUI_OnError)
     OnExit(_GUI_OnExit)
 
     Persistent()

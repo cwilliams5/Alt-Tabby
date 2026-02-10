@@ -522,7 +522,7 @@ Store_PushToClients() {
         wsMeta := WindowStore_GetCurrentWorkspace()
         ; Direct string build — avoids cJSON object alloc + marshaling overhead for fixed-format template
         safeName := StrReplace(StrReplace(wsMeta.name, '\', '\\'), '"', '\"')
-        wsMsg := '{"type":"workspace_change","payload":{"meta":{"currentWSId":' wsMeta.id ',"currentWSName":"' safeName '"}}}'
+        wsMsg := '{"type":"' IPC_MSG_WORKSPACE_CHANGE '","payload":{"meta":{"currentWSId":' wsMeta.id ',"currentWSName":"' safeName '"}}}'
         for _, hPipe in clientHandles {
             if (!clientOptsSnapshot.Has(hPipe))
                 continue
@@ -703,7 +703,7 @@ Store_BroadcastWorkspaceFlips(flips) {
     rev := WindowStore_GetRev()
     ; Direct string build — avoids cJSON object alloc + marshaling overhead for fixed-format template
     safeName := StrReplace(StrReplace(wsMeta.name, '\', '\\'), '"', '\"')
-    msg := '{"type":"delta","rev":' rev ',"baseRev":' (rev - 1)
+    msg := '{"type":"' IPC_MSG_DELTA '","rev":' rev ',"baseRev":' (rev - 1)
         . ',"payload":{"meta":{"currentWSId":' wsMeta.id ',"currentWSName":"' safeName '"},"upserts":[],"removes":[]}}'
 
     ; Broadcast to all clients that have completed HELLO (have registered opts)
