@@ -445,8 +445,8 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
         hdc := DllCall("user32\GetDC", "ptr", 0, "ptr")
         DllCall("gdi32\GetDIBits", "ptr", hdc, "ptr", hbmMask, "uint", 0, "uint", h, "ptr", maskPixels.Ptr, "ptr", maskBih.Ptr, "uint", 0, "int")
         DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
-        ; Apply mask natively (re-scan is trivial at native speed)
-        IconAlpha.ScanAndApplyMask(pixels, maskPixels, pixelCount)
+        ; Apply mask natively (no redundant re-scan)
+        IconAlpha.ApplyMaskOnly(pixels, maskPixels, pixelCount)
     }
 
     ; Create GDI+ bitmap with GDI+ owning the memory (scan0 = 0)

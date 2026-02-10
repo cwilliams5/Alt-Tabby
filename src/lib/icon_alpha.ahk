@@ -3,7 +3,7 @@
 ;
 ; Replaces AHK NumGet/NumPut pixel loops with embedded x64 machine code.
 ; Source: tools/native_benchmark/native_src/icon_alpha.c
-; Build:  tools/native_benchmark/native_src/build.bat (MSVC x64, /O2 /c /GS- /Zl)
+; Build:  tools/native_benchmark/native_src/_compile_mcode.ps1
 ; Extract: tools/native_benchmark/native_src/_extract_mcode.ps1
 ;
 ; No imports, no CRT, pure buffer computation. Position-independent.
@@ -14,8 +14,9 @@ class IconAlpha {
     static code := IconAlpha._LoadCode()
 
     ; Offsets into the code buffer for each exported function
-    static _offsetScanOnly := 0
-    static _offsetScanAndApplyMask := 106
+    static _offsetApplyMaskOnly := 0
+    static _offsetScanOnly := 71
+    static _offsetScanAndApplyMask := 177
 
     /**
      * Scan pixel buffer for any non-zero alpha byte.
@@ -26,6 +27,18 @@ class IconAlpha {
     static ScanOnly(pixelsBuf, pixelCount) {
         return DllCall(this.code.Ptr + this._offsetScanOnly
             , "ptr", pixelsBuf, "uint", pixelCount, "cdecl int")
+    }
+
+    /**
+     * Apply mask to pixel buffer without scanning for alpha first.
+     * Use after ScanOnly returns 0 to avoid redundant re-scan.
+     * @param pixelsBuf  Ptr to BGRA pixel buffer (modified in-place)
+     * @param maskBuf    Ptr to BGRA mask buffer
+     * @param pixelCount Number of pixels (width * height)
+     */
+    static ApplyMaskOnly(pixelsBuf, maskBuf, pixelCount) {
+        DllCall(this.code.Ptr + this._offsetApplyMaskOnly
+            , "ptr", pixelsBuf, "ptr", maskBuf, "uint", pixelCount, "cdecl")
     }
 
     /**
@@ -49,17 +62,18 @@ class IconAlpha {
      */
     static _LoadCode() {
         static b64 := ""
-            . "SIXJdFyF0nRYRTPASI1BA4P6CHI2QbkIAAAADx9EAAAPtkgcCkgYCkgU"
-            . "CkgQCkgMCkgICkgECgh1KkiDwCBBg8AIQYPBCEQ7ynbVRDvCcxGAOAB1"
-            . "D0iDwARB/8BEO8Jy7zPAw7gBAAAAw0iJXCQISIvaTIvRSIXJD4StAAAA"
-            . "RYXAD4SkAAAARTPJSI1BA0GD+AhyMUG7CAAAAA+2SBwKSBgKSBQKSBAK"
-            . "SAwKSAgKSAQKCHVdSIPAIEGDwQhBg8MIRTvYdtVFO8hzEYA4AHVCSIPA"
-            . "BEH/wUU7yHLvSIXbdEtFhcB0RkmL0kGLyEgr00kr2mYPH4QAAAAAAEL3"
-            . "BBP///8ASo0EE3UUQYEKAAAA/+sQuAEAAABIi1wkCMPGRBADAEmDwgRI"
-            . "g+kBdc9Ii1wkCDPAww=="
+            . "TIvKSIXJdD5IhdJ0OUGD+AFyM0yL0Uwr0kGL0EwryZBB9wQJ////AEmN"
+            . "BAl1CIEJAAAA/+sGQsZEEAMASIPBBEiD6gF12sNIhcl0XIXSdFhFM8BI"
+            . "jUEDg/oIcjZBuQgAAAAPH0QAAA+2SBwKSBgKSBQKSBAKSAwKSAgKSAQK"
+            . "CHUqSIPAIEGDwAhBg8EIRDvKdtVEO8JzEYA4AHUPSIPABEH/wEQ7wnLv"
+            . "M8DDuAEAAADDSIlcJAhIi9pMi9FIhckPhK0AAABFhcAPhKQAAABFM8lI"
+            . "jUEDQYP4CHIxQbsIAAAAD7ZIHApIGApIFApIEApIDApICApIBAoIdV1I"
+            . "g8AgQYPBCEGDwwhFO9h21UU7yHMRgDgAdUJIg8AEQf/BRTvIcu9Ihdt0"
+            . "S0WFwHRGSYvSQYvISCvTSSvaZg8fhAAAAAAAQvcEE////wBKjQQTdRRB"
+            . "gQoAAAD/6xC4AQAAAEiLXCQIw8ZEEAMASYPCBEiD6QF1z0iLXCQIM8DD"
 
-        ; 307 bytes of x64 machine code
-        static codeSize := 307
+        ; 378 bytes of x64 machine code (3 functions)
+        static codeSize := 378
 
         if (A_PtrSize != 8)
             throw Error("IconAlpha MCode requires 64-bit AHK")

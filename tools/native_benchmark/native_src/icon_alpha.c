@@ -107,6 +107,41 @@ int EXPORT icon_scan_and_apply_mask(
 }
 
 /*
+ * icon_apply_mask_only
+ *
+ * Apply mask without scanning for alpha first.
+ * Use when you already know alpha is absent (after icon_scan_alpha_only).
+ *
+ * Parameters:
+ *   pixels       - BGRA pixel buffer (modified in-place)
+ *   maskPixels   - BGRA mask buffer (must not be NULL)
+ *   pixelCount   - Number of pixels (width * height)
+ */
+void EXPORT icon_apply_mask_only(
+    uint8_t *pixels,
+    const uint8_t *maskPixels,
+    uint32_t pixelCount
+) {
+    uint32_t i;
+    uint32_t *pixel_ptr;
+    const uint32_t *mask_ptr;
+
+    if (!pixels || !maskPixels || pixelCount == 0)
+        return;
+
+    mask_ptr = (const uint32_t *)maskPixels;
+    pixel_ptr = (uint32_t *)pixels;
+
+    for (i = 0; i < pixelCount; i++) {
+        if ((mask_ptr[i] & 0x00FFFFFF) == 0) {
+            pixel_ptr[i] |= 0xFF000000;
+        } else {
+            pixel_ptr[i] &= 0x00FFFFFF;
+        }
+    }
+}
+
+/*
  * icon_scan_alpha_only
  *
  * Lightweight scan-only variant (no mask application).
