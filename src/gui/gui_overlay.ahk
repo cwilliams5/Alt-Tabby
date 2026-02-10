@@ -5,6 +5,10 @@
 
 ; ========================= SHOW/HIDE =========================
 
+global gGUI_Base := 0
+global gGUI_Overlay := 0
+global gGUI_BaseH := 0
+global gGUI_OverlayH := 0
 global gGUI_HideCount := 0  ; Track hides for periodic log trim
 
 GUI_HideOverlay() {

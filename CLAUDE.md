@@ -62,7 +62,7 @@ Read `ownership.manifest` (project root) before investigating who mutates a glob
 - Global NOT in manifest → only the declaring file mutates it (guaranteed)
 - Global IS in manifest → only listed files mutate it (guaranteed)
 
-This eliminates grepping across files to verify mutation boundaries. When adding a new cross-file mutation, add the entry to the manifest or the pre-gate will block.
+Stale entries are auto-removed by the pre-gate, so the manifest always reflects actual code. When adding a new cross-file mutation, add the entry to the manifest or the pre-gate will block.
 
 When consolidating globals into Maps: only pack when ownership is uniform (all keys written by same files). Don't pack when ownership varies per key — it collapses precise manifest entries into one vague entry.
 
@@ -79,7 +79,7 @@ Enforced by pre-gate. Don't create `_` functions intended for cross-file use.
 ## Query Tools (context-efficient search)
 
 When investigating the codebase, prefer query tools over reading full files or grepping:
-- `check_global_ownership.ps1 -Query <globalName>` — who declares, writes, and reads a global. `-Generate` regenerates manifest from code. `-Discover` shows all coupling hotspots
+- `check_global_ownership.ps1 -Query <globalName>` — who declares, writes, and reads a global. `-Generate` previews manifest diff. `-Discover` shows all coupling hotspots
 - `check_function_visibility.ps1 -Query <funcName>` — where defined, public/private, all callers
 - `query_function.ps1 <funcName>` — extract full function body without loading the entire file
 - `query_interface.ps1 <filename>` — public functions + globals for a file (like help(module))

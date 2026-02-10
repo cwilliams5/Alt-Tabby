@@ -59,14 +59,8 @@ global gGUI_CurrentWSName := ""  ; Cached from store meta
 
 global gGUI_StoreClient := 0
 global gGUI_StoreConnected := false
-global gGUI_StoreRev := -1
-global gGUI_StoreWakeHwnd := 0  ; Store's A_ScriptHwnd for PostMessage pipe wake
 
 global gGUI_OverlayVisible := false
-global gGUI_Base := 0
-global gGUI_Overlay := 0
-global gGUI_BaseH := 0
-global gGUI_OverlayH := 0
 
 ; ========================= THREE-ARRAY DESIGN =========================
 ; gGUI_LiveItems:       CANONICAL source - always current, updated by IPC deltas.
@@ -116,8 +110,6 @@ global gGUI_State := "IDLE"
 ; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)
 global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by workspace mode)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
-global gGUI_AwaitingToggleProjection := false  ; Flag for ServerSideWorkspaceFilter mode
-global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
 
 ; Session stats counters declared in gui_state.ahk / gui_workspace.ahk (sole writers)

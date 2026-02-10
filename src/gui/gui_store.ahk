@@ -3,6 +3,10 @@
 ; Handles communication with WindowStore: messages, deltas, snapshots
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+global gGUI_StoreRev := -1
+global gGUI_StoreWakeHwnd := 0  ; Store's A_ScriptHwnd for PostMessage pipe wake
+global gGUI_AwaitingToggleProjection := false  ; Flag for ServerSideWorkspaceFilter mode
+
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
 global gGUI_LiveItemsMap := Map()
 

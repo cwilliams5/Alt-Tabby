@@ -24,6 +24,10 @@ global DASH_INTERVAL_COOL := 5000
 global DASH_TIER_HOT_MS := 15000
 global DASH_TIER_WARM_MS := 75000
 
+; Producer status cache — queried once after store launch, shown in dashboard
+global g_ProducerStatusCache := ""
+global g_ProducerHasFailed := ""  ; "" = not queried, false = all OK, true = has failures
+
 ; Update check state — persists across dashboard open/close
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}

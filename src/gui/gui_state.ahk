@@ -3,6 +3,8 @@
 ; Handles state transitions: IDLE -> ALT_PENDING -> ACTIVE -> IDLE
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
+
 ; Timing constants (hardcoded - not user-configurable)
 ; These are internal implementation details that users shouldn't need to change.
 ; The main timing values (MRU freshness, WS poll timeout, prewarm wait) are in config.

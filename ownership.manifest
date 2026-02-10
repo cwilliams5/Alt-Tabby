@@ -4,6 +4,10 @@
 # mutate it. If it IS listed, only the declaring file plus the listed files
 # may mutate it. Enforced by pre-gate (check_global_ownership.ps1).
 #
+# Freshness: The pre-gate validates this manifest against actual code.
+#   Stale entries (globals no longer cross-file) are auto-removed.
+#   New or changed coupling fails the pre-gate until manually resolved.
+#
 # When the checker fails, either:
 #   1. Add the file to this manifest (intentional cross-file mutation)
 #   2. Move the mutation to the declaring file (keep coupling tight)
@@ -13,24 +17,21 @@
 #
 # Maintenance:
 #   Query a specific global: powershell -File tests/check_global_ownership.ps1 -Query <name>
-#   Re-generate from scratch: powershell -File tests/check_global_ownership.ps1 -Generate
-#   Discover full landscape:  powershell -File tests/check_global_ownership.ps1 -Discover
+#   Preview manifest changes: powershell -File tests/check_global_ownership.ps1 -Generate
+#   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover
 
 cfg: launcher_main, launcher_tray, launcher_wizard, setup_utils, store_server
 g_CachedStartMenuShortcut: launcher_tray
 g_CachedStartupShortcut: launcher_tray
 g_DashUpdateState: setup_utils
 g_GuiPID: launcher_main, launcher_tray
-g_ProducerHasFailed: launcher_about
-g_ProducerStatusCache: launcher_about
+g_ProducerHasFailed: launcher_main
+g_ProducerStatusCache: launcher_main
 g_StorePID: launcher_main, launcher_tray
 g_ViewerPID: launcher_main, launcher_tray
 gConfigIniPath: launcher_wizard
 gGdip_Res: gui_paint
 gGdip_ResScale: gui_paint
-gGUI_AwaitingToggleProjection: gui_store
-gGUI_Base: gui_overlay
-gGUI_BaseH: gui_overlay
 gGUI_CurrentWSName: gui_state, gui_workspace
 gGUI_DisplayItems: gui_input, gui_state, gui_store, gui_workspace
 gGUI_HoverBtn: gui_input, gui_overlay
@@ -39,8 +40,6 @@ gGUI_LastLocalMRUTick: gui_state, gui_store
 gGUI_LastMsgTick: gui_store
 gGUI_LiveItems: gui_input, gui_state, gui_store
 gGUI_MouseTracking: gui_input, gui_overlay
-gGUI_Overlay: gui_overlay
-gGUI_OverlayH: gui_overlay
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
@@ -48,10 +47,7 @@ gGUI_Sel: gui_input, gui_state, gui_store
 gGUI_State: gui_input, gui_state
 gGUI_StoreClient: gui_state, gui_store
 gGUI_StoreConnected: gui_store
-gGUI_StoreRev: gui_store
-gGUI_StoreWakeHwnd: gui_store
 gGUI_ToggleBase: gui_state, gui_store
-gGUI_WSContextSwitch: gui_state
 gStats_Lifetime: blacklist, windowstore
 gStats_Session: windowstore
 gStore_LastBroadcastRev: winevent_hook

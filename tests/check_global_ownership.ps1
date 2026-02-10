@@ -22,7 +22,7 @@
 # Discovery mode: Shows which globals are mutated in which files.
 #   powershell -File tests/check_global_ownership.ps1 -Discover [-Verbose]
 #
-# Generate mode: Auto-generates manifest from current codebase state.
+# Generate mode: Preview manifest diff against current codebase.
 #   powershell -File tests/check_global_ownership.ps1 -Generate
 #
 # Query mode: Returns ownership info for a specific global (declares, writes, reads).
@@ -46,6 +46,7 @@ param(
     [string]$Query,
     [switch]$Discover,
     [switch]$Generate,
+    [switch]$Force,
     [switch]$Verbose
 )
 
@@ -493,15 +494,223 @@ if ($Discover) {
 }
 
 # ============================================================
+# Shared: Build fresh manifest entries from analysis results
+# ============================================================
+
+function _BuildFreshManifest {
+    param(
+        [hashtable]$Multi,
+        [hashtable]$Single,
+        [hashtable]$Decl,
+        [string]$Root
+    )
+    $entries = @{}
+
+    # Multi-writer globals (mutated in 2+ files)
+    foreach ($entry in $Multi.GetEnumerator()) {
+        $gName = $entry.Key
+        $files = $entry.Value
+        $declBasename = Get-Basename $Decl[$gName].RelPath
+
+        $writerNames = @()
+        foreach ($filePath in ($files.Keys | Sort-Object)) {
+            $basename = Get-Basename ($filePath.Replace("$Root\", ''))
+            if ($basename -ne $declBasename) {
+                $writerNames += $basename
+            }
+        }
+        if ($writerNames.Count -gt 0) {
+            $entries[$gName] = $writerNames
+        }
+    }
+
+    # Cross-file single-writer globals (declared in A, mutated only in B)
+    foreach ($entry in $Single.GetEnumerator()) {
+        $gName = $entry.Key
+        $files = $entry.Value
+        $declBasename = Get-Basename $Decl[$gName].RelPath
+
+        $mutatorPath = @($files.Keys)[0]
+        $mutatorBasename = Get-Basename ($mutatorPath.Replace("$Root\", ''))
+
+        if ($mutatorBasename -ne $declBasename) {
+            $entries[$gName] = @($mutatorBasename)
+        }
+    }
+
+    return $entries
+}
+
+function _RewriteManifestWithout {
+    param([string]$Path, [array]$StaleNames)
+
+    $staleSet = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($n in $StaleNames) { [void]$staleSet.Add($n) }
+
+    $lines = [System.IO.File]::ReadAllLines($Path)
+    $kept = [System.Collections.ArrayList]::new()
+    foreach ($line in $lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -ne '' -and -not $trimmed.StartsWith('#')) {
+            $colonIdx = $trimmed.IndexOf(':')
+            if ($colonIdx -ge 1) {
+                $gName = $trimmed.Substring(0, $colonIdx).Trim()
+                if ($staleSet.Contains($gName)) { continue }
+            }
+        }
+        [void]$kept.Add($line)
+    }
+    $content = $kept -join "`n"
+    [System.IO.File]::WriteAllText($Path, $content + "`n", [System.Text.Encoding]::UTF8)
+}
+
+function _ValidateManifestFreshness {
+    param(
+        [hashtable]$FreshEntries,
+        [string]$ManifestPath
+    )
+
+    # Parse committed manifest into hashtable: globalName -> sorted writer string
+    $committedEntries = @{}
+    foreach ($line in [System.IO.File]::ReadAllLines($ManifestPath)) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
+        $colonIdx = $trimmed.IndexOf(':')
+        if ($colonIdx -lt 1) { continue }
+        $gName = $trimmed.Substring(0, $colonIdx).Trim()
+        $writers = (($trimmed.Substring($colonIdx + 1).Trim() -split '[,\s]+') |
+            Where-Object { $_ } | Sort-Object) -join ', '
+        $committedEntries[$gName] = $writers
+    }
+
+    $staleEntries = @()
+    $violations = @()
+
+    # Stale: in committed but not in fresh (no longer has cross-file mutations)
+    foreach ($gName in @($committedEntries.Keys | Sort-Object)) {
+        if (-not $FreshEntries.ContainsKey($gName)) {
+            $staleEntries += $gName
+        }
+    }
+
+    # New: in fresh but not in committed (unauthorized cross-file mutation)
+    foreach ($gName in @($FreshEntries.Keys | Sort-Object)) {
+        if (-not $committedEntries.ContainsKey($gName)) {
+            $writers = $FreshEntries[$gName] -join ', '
+            $violations += "  NEW: $gName requires manifest entry (writers: $writers)"
+        }
+    }
+
+    # Changed: same global, different writer list
+    foreach ($gName in @($FreshEntries.Keys | Sort-Object)) {
+        if ($committedEntries.ContainsKey($gName)) {
+            $freshWriters = ($FreshEntries[$gName] | Sort-Object) -join ', '
+            if ($freshWriters -ne $committedEntries[$gName]) {
+                $violations += "  CHANGED: $gName - manifest: [$($committedEntries[$gName])] actual: [$freshWriters]"
+            }
+        }
+    }
+
+    # Report and handle stale entries
+    if ($staleEntries.Count -gt 0) {
+        Write-Host "  Manifest freshness: removing $($staleEntries.Count) stale entry(ies):" -ForegroundColor Yellow
+        foreach ($gName in $staleEntries) {
+            Write-Host "    STALE: $gName (no longer has cross-file mutations)" -ForegroundColor Yellow
+        }
+        _RewriteManifestWithout $ManifestPath $staleEntries
+    }
+
+    # Report violations
+    if ($violations.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  MANIFEST FRESHNESS VIOLATIONS ($($violations.Count)):" -ForegroundColor Red
+        foreach ($v in $violations) {
+            Write-Host $v -ForegroundColor Red
+        }
+        Write-Host ""
+        Write-Host "  Fix: update ownership.manifest or fix the cross-file mutation" -ForegroundColor Yellow
+        return $false
+    }
+
+    if ($staleEntries.Count -eq 0) {
+        Write-Host "  Manifest freshness: OK" -ForegroundColor Green
+    }
+    return $true
+}
+
+# ============================================================
 # Generate Mode: Create manifest from current state
 # ============================================================
 if ($Generate) {
+    $manifestEntries = _BuildFreshManifest $multiFileMutations $singleFileMutations $globalDecl $projectRoot
+
+    if (-not $Force) {
+        # Dry-run: show what would change
+        $committedEntries = @{}
+        if (Test-Path $manifestPath) {
+            foreach ($line in [System.IO.File]::ReadAllLines($manifestPath)) {
+                $trimmed = $line.Trim()
+                if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
+                $colonIdx = $trimmed.IndexOf(':')
+                if ($colonIdx -lt 1) { continue }
+                $gName = $trimmed.Substring(0, $colonIdx).Trim()
+                $writers = (($trimmed.Substring($colonIdx + 1).Trim() -split '[,\s]+') |
+                    Where-Object { $_ } | Sort-Object) -join ', '
+                $committedEntries[$gName] = $writers
+            }
+        }
+
+        $additions = @()
+        $removals = @()
+        $changes = @()
+
+        $allKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($k in $manifestEntries.Keys) { [void]$allKeys.Add($k) }
+        foreach ($k in $committedEntries.Keys) { [void]$allKeys.Add($k) }
+
+        foreach ($gName in ($allKeys | Sort-Object)) {
+            $inFresh = $manifestEntries.ContainsKey($gName)
+            $inCommitted = $committedEntries.ContainsKey($gName)
+
+            if ($inFresh -and -not $inCommitted) {
+                $additions += "  + ${gName}: $($manifestEntries[$gName] -join ', ')"
+            } elseif (-not $inFresh -and $inCommitted) {
+                $removals += "  - ${gName}: $($committedEntries[$gName])"
+            } elseif ($inFresh -and $inCommitted) {
+                $freshWriters = ($manifestEntries[$gName] | Sort-Object) -join ', '
+                if ($freshWriters -ne $committedEntries[$gName]) {
+                    $changes += "  ~ ${gName}: $($committedEntries[$gName]) -> $freshWriters"
+                }
+            }
+        }
+
+        if ($additions.Count -eq 0 -and $removals.Count -eq 0 -and $changes.Count -eq 0) {
+            Write-Host "  Manifest is up to date ($($manifestEntries.Count) entries)" -ForegroundColor Green
+        } else {
+            Write-Host "  Manifest diff ($($manifestEntries.Count) entries vs $($committedEntries.Count) committed):" -ForegroundColor Cyan
+            foreach ($line in $removals) { Write-Host $line -ForegroundColor Red }
+            foreach ($line in $additions) { Write-Host $line -ForegroundColor Green }
+            foreach ($line in $changes) { Write-Host $line -ForegroundColor Yellow }
+            Write-Host ""
+            Write-Host "  If these coupling changes are intentional, apply with: -Generate -Force" -ForegroundColor DarkGray
+        }
+        $totalSw.Stop()
+        Write-Host "  Completed in $($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
+        exit 0
+    }
+
+    # -Force: write manifest to file
     $lines = [System.Collections.ArrayList]::new()
     [void]$lines.Add("# ownership.manifest - Global variable write authorization")
     [void]$lines.Add("#")
     [void]$lines.Add("# Contract: If a global is NOT listed here, only the declaring file may")
     [void]$lines.Add("# mutate it. If it IS listed, only the declaring file plus the listed files")
     [void]$lines.Add("# may mutate it. Enforced by pre-gate (check_global_ownership.ps1).")
+    [void]$lines.Add("#")
+    [void]$lines.Add("# Freshness: The pre-gate validates this manifest against actual code.")
+    [void]$lines.Add("#   Stale entries (globals no longer cross-file) are auto-removed.")
+    [void]$lines.Add("#   New or changed coupling fails the pre-gate until manually resolved.")
     [void]$lines.Add("#")
     [void]$lines.Add("# When the checker fails, either:")
     [void]$lines.Add("#   1. Add the file to this manifest (intentional cross-file mutation)")
@@ -512,48 +721,11 @@ if ($Generate) {
     [void]$lines.Add("#")
     [void]$lines.Add("# Maintenance:")
     [void]$lines.Add("#   Query a specific global: powershell -File tests/check_global_ownership.ps1 -Query <name>")
-    [void]$lines.Add("#   Re-generate from scratch: powershell -File tests/check_global_ownership.ps1 -Generate")
-    [void]$lines.Add("#   Discover full landscape:  powershell -File tests/check_global_ownership.ps1 -Discover")
+    [void]$lines.Add("#   Preview manifest changes: powershell -File tests/check_global_ownership.ps1 -Generate")
+    [void]$lines.Add("#   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover")
     [void]$lines.Add("")
 
-    # Collect all cross-boundary globals: multi-writer + cross-file single-writer
-    $manifestEntries = @{}
-
-    # Multi-writer globals (mutated in 2+ files)
-    foreach ($entry in $multiFileMutations.GetEnumerator()) {
-        $gName = $entry.Key
-        $files = $entry.Value
-        $decl = $globalDecl[$gName]
-        $declBasename = Get-Basename $decl.RelPath
-
-        $writerNames = @()
-        foreach ($filePath in ($files.Keys | Sort-Object)) {
-            $basename = Get-Basename ($filePath.Replace("$projectRoot\", ''))
-            if ($basename -ne $declBasename) {
-                $writerNames += $basename
-            }
-        }
-        if ($writerNames.Count -gt 0) {
-            $manifestEntries[$gName] = $writerNames
-        }
-    }
-
-    # Cross-file single-writer globals (declared in A, mutated only in B)
-    $crossFileSingle = 0
-    foreach ($entry in $singleFileMutations.GetEnumerator()) {
-        $gName = $entry.Key
-        $files = $entry.Value
-        $decl = $globalDecl[$gName]
-        $declBasename = Get-Basename $decl.RelPath
-
-        $mutatorPath = @($files.Keys)[0]
-        $mutatorBasename = Get-Basename ($mutatorPath.Replace("$projectRoot\", ''))
-
-        if ($mutatorBasename -ne $declBasename) {
-            $manifestEntries[$gName] = @($mutatorBasename)
-            $crossFileSingle++
-        }
-    }
+    $crossFileSingle = $manifestEntries.Count - $multiFileMutations.Count
 
     foreach ($gName in ($manifestEntries.Keys | Sort-Object)) {
         [void]$lines.Add("${gName}: $($manifestEntries[$gName] -join ', ')")
@@ -572,6 +744,17 @@ if ($Generate) {
 # ============================================================
 # Enforcement Mode: Manifest + implicit ownership
 # ============================================================
+
+# Validate manifest freshness before enforcement
+$freshEntries = _BuildFreshManifest $multiFileMutations $singleFileMutations $globalDecl $projectRoot
+if (Test-Path $manifestPath) {
+    $freshResult = _ValidateManifestFreshness $freshEntries $manifestPath
+    if (-not $freshResult) {
+        $totalSw.Stop()
+        Write-Host "  Completed in $($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
+        exit 1
+    }
+}
 
 # Build allowed-to-mutate map: globalName -> HashSet<basename>
 # Start with implicit: declaring file always authorized
