@@ -338,7 +338,7 @@ INT_ShouldBypassWindow(hwnd := 0) {
     }
 
     ; Check fullscreen detection
-    if (cfg.AltTabBypassFullscreen && INT_IsFullscreenHwnd(hwnd)) {
+    if (cfg.AltTabBypassFullscreen && _INT_IsFullscreenHwnd(hwnd)) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("BYPASS REASON: fullscreen hwnd=" hwnd)
         return true
@@ -347,7 +347,7 @@ INT_ShouldBypassWindow(hwnd := 0) {
     return false
 }
 
-INT_IsFullscreenHwnd(hwnd) {
+_INT_IsFullscreenHwnd(hwnd) {
     global cfg
     local x, y, w, h
     try {

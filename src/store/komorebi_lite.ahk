@@ -33,7 +33,7 @@ KomorebiLite_Tick() {
     stateObj := KomorebiLite_GetState()
     if !(stateObj is Map)
         return
-    ws := KomorebiLite_FindCurrentWorkspaceName(stateObj)
+    ws := _KomorebiLite_FindCurrentWorkspaceName(stateObj)
     if (ws != "")
         WindowStore_SetCurrentWorkspace("", ws)
     hwnd := WinGetID("A")
@@ -116,7 +116,7 @@ KomorebiLite_GetState() {
 }
 
 ; Find current workspace name from parsed state using navigation helpers
-KomorebiLite_FindCurrentWorkspaceName(stateObj) {
+_KomorebiLite_FindCurrentWorkspaceName(stateObj) {
     ; Navigate: focused monitor -> focused workspace -> name
     ; Uses the same helpers as KomorebiSub for consistency
     focusedMonIdx := KSub_GetFocusedMonitorIndex(stateObj)
