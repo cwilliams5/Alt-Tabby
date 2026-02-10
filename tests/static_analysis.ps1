@@ -103,13 +103,9 @@ foreach ($p in $procs) {
 
 $sw.Stop()
 
-# --- Display results sequentially (no interleaving) ---
+# --- Display results: only failures (passes are noise) ---
 foreach ($r in $results) {
-    if ($r.ExitCode -eq 0) {
-        # Passed — one-liner only (verbose output stays in temp log files)
-        Write-Host "  PASS: $($r.Label)" -ForegroundColor Green
-    } else {
-        # Failed — show full output so the agent/developer can fix issues
+    if ($r.ExitCode -ne 0) {
         $output = if (Test-Path $r.OutFile) { Get-Content $r.OutFile -Raw -ErrorAction SilentlyContinue } else { "" }
         if ($output) {
             Write-Host $output.TrimEnd()
@@ -118,7 +114,12 @@ foreach ($r in $results) {
     }
 }
 
-Write-Host "  Static analysis completed in $($sw.ElapsedMilliseconds)ms ($($checks.Count) check(s), $failures failure(s))" -ForegroundColor Cyan
+$passCount = $checks.Count - $failures
+if ($failures -gt 0) {
+    Write-Host "  Static analysis: $failures failure(s), $passCount passed ($($sw.ElapsedMilliseconds)ms)" -ForegroundColor Red
+} else {
+    Write-Host "  Static analysis: all $($checks.Count) checks passed ($($sw.ElapsedMilliseconds)ms)" -ForegroundColor Green
+}
 
 # Write per-check timing data for test.ps1 to consume
 if ($Timing) {
