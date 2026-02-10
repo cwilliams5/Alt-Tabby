@@ -25,7 +25,7 @@
 # Generate mode: Auto-generates manifest from current codebase state.
 #   powershell -File tests/check_global_ownership.ps1 -Generate
 #
-# Query mode: Returns ownership info for a specific global.
+# Query mode: Returns ownership info for a specific global (declares, writes, reads).
 #   powershell -File tests/check_global_ownership.ps1 -Query <globalName>
 #
 # Enforcement mode (default): Checks mutations against ownership rules.
@@ -207,6 +207,9 @@ $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
 # Each entry: @{ Global; File; RelPath; Line; Code; Func }
 $mutations = [System.Collections.ArrayList]::new()
 
+# Track read references per global: globalName -> HashSet<filePath>
+$reads = @{}
+
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
@@ -240,6 +243,9 @@ foreach ($file in $srcFiles) {
 
         # Only scan inside function bodies
         if (-not $inFunc) { continue }
+
+        # Check if this is a global declaration line (not a read)
+        $isGlobalDeclLine = $cleaned -match '^\s*global\s+'
 
         # Find word tokens that match known globals, then test for mutation
         $wordMatches = [regex]::Matches($cleaned, '\b[a-zA-Z_]\w+\b')
@@ -290,6 +296,15 @@ foreach ($file in $srcFiles) {
                     Code    = $lines[$i].Trim()
                     Func    = $funcName
                 })
+            }
+
+            # Track non-mutation, non-declaration references as reads
+            if (-not $isMutation -and -not $isGlobalDeclLine) {
+                if (-not $reads.ContainsKey($wName)) {
+                    $reads[$wName] = [System.Collections.Generic.HashSet[string]]::new(
+                        [System.StringComparer]::OrdinalIgnoreCase)
+                }
+                [void]$reads[$wName].Add($file.FullName)
             }
         }
     }
@@ -361,6 +376,18 @@ if ($Query) {
         Write-Host "    writers:  $($writerNames -join ', ')" -ForegroundColor DarkGray
     } else {
         Write-Host "    writers:  (none - constant or file-scope only)" -ForegroundColor DarkGray
+    }
+
+    # Collect readers
+    if ($reads.ContainsKey($Query)) {
+        $readerNames = @()
+        foreach ($filePath in ($reads[$Query] | Sort-Object)) {
+            $basename = Get-Basename ($filePath.Replace("$projectRoot\", ''))
+            $readerNames += $basename
+        }
+        Write-Host "    readers:  $($readerNames -join ', ')" -ForegroundColor DarkGray
+    } else {
+        Write-Host "    readers:  (none detected)" -ForegroundColor DarkGray
     }
 
     # Check manifest
