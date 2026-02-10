@@ -7,6 +7,11 @@
 global WS_MODE_ALL := "all"
 global WS_MODE_CURRENT := "current"
 
+; Workspace state
+global gGUI_WorkspaceMode := "all"
+global gGUI_FooterText := "All Windows"
+global gStats_WorkspaceToggles := 0
+
 ; ========================= FOOTER TEXT =========================
 
 GUI_UpdateFooterText() {

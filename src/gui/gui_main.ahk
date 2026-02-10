@@ -53,10 +53,7 @@ global gGUI_Revealed := false
 global gGUI_HoverRow := 0
 global gGUI_HoverBtn := ""
 global gGUI_MouseTracking := false  ; Whether we've requested WM_MOUSELEAVE notification
-global gGUI_FooterText := "All Windows"
-
-; Workspace mode: "all" = show all workspaces, "current" = show current workspace only
-global gGUI_WorkspaceMode := "all"
+; gGUI_FooterText, gGUI_WorkspaceMode declared in gui_workspace.ahk (sole writer)
 global gGUI_CurrentWSName := ""  ; Cached from store meta
 
 ; Footer arrow hit regions (physical coords, updated during paint)
@@ -120,22 +117,14 @@ global gGUI_LastRowsDesired := -1
 ; ALT_PENDING: Alt held, optional pre-warm, still receiving deltas
 ; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
 global gGUI_State := "IDLE"
-global gGUI_FirstTabTick := 0
-global gGUI_TabCount := 0
+; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)
 global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by workspace mode)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
 global gGUI_AwaitingToggleProjection := false  ; Flag for ServerSideWorkspaceFilter mode
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
 
-; Session stats counters (sent to store as deltas)
-global gStats_AltTabs := 0
-global gStats_QuickSwitches := 0
-global gStats_TabSteps := 0
-global gStats_Cancellations := 0
-global gStats_CrossWorkspace := 0
-global gStats_WorkspaceToggles := 0
-global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculation
+; Session stats counters declared in gui_state.ahk / gui_workspace.ahk (sole writers)
 
 ; Store health check state
 global gGUI_LastMsgTick := 0       ; Timestamp of last message from store

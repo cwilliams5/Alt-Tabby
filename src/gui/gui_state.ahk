@@ -31,6 +31,18 @@ global gGUI_AppViewCollection := 0       ; IApplicationViewCollection interface
 ; Event buffering during async activation (queue events, don't cancel)
 global gGUI_EventBuffer := []            ; Queued events during async activation
 
+; State machine timing
+global gGUI_FirstTabTick := 0
+global gGUI_TabCount := 0
+
+; Session stats counters (sent to store as deltas)
+global gStats_AltTabs := 0
+global gStats_QuickSwitches := 0
+global gStats_TabSteps := 0
+global gStats_Cancellations := 0
+global gStats_CrossWorkspace := 0
+global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculation
+
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagEventLog (config.ini [Diagnostics] EventLog=true)
