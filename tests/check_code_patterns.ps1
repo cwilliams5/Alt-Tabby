@@ -45,10 +45,10 @@ function Extract-FunctionBody {
     param([string]$Code, [string]$FuncName)
 
     # Match function DEFINITION, not call sites.
-    # Definitions: FuncName( is the first identifier on a line (with optional 'static' prefix).
-    # Call sites: always preceded by other tokens on the same line (if, :=, try, etc.).
+    # Definitions always end with ") {" on the same line.
+    # Call sites lack the opening brace, so the pattern skips them.
     $escaped = [regex]::Escape($FuncName)
-    $m = [regex]::Match($Code, "(?m)^[ \t]*(?:static\s+)?$escaped\(")
+    $m = [regex]::Match($Code, "(?m)^[ \t]*(?:static\s+)?$escaped\([^)]*\)\s*\{")
     if (-not $m.Success) { return $null }
     $idx = $m.Index
 
