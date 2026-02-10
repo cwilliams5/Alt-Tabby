@@ -25,15 +25,9 @@ global DASH_TIER_HOT_MS := 15000
 global DASH_TIER_WARM_MS := 75000
 
 ; Update check state — persists across dashboard open/close
-global g_LastUpdateCheckTick := 0
-global g_LastUpdateCheckTime := ""
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
-
-; Producer status cache — queried once after store launch, shown in dashboard
-global g_ProducerStatusCache := ""
-global g_ProducerHasFailed := ""  ; "" = not queried, false = all OK, true = has failures
 
 ; Stats cache — queried from store on dashboard open and periodically
 global g_StatsCache := ""          ; Parsed stats response Map, or "" if not queried

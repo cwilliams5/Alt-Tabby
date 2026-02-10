@@ -10,6 +10,11 @@
 
 global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
 global gPaint_SessionPaintCount := 0  ; How many paints this session
+
+; Layout state (written during paint, read by gui_main/gui_input)
+global gGUI_LastRowsDesired := -1
+global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
+global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global LOG_PATH_PAINT_TIMING  ; Defined in config_loader.ahk
 Paint_Log(msg) {
     global cfg, LOG_PATH_PAINT_TIMING

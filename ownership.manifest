@@ -17,17 +17,12 @@
 #   Discover full landscape:  powershell -File tests/check_global_ownership.ps1 -Discover
 
 cfg: launcher_main, launcher_tray, launcher_wizard, setup_utils, store_server
-g_BlacklistEditorPID: launcher_tray
-g_CachedStartMenuShortcut: launcher_shortcuts
-g_CachedStartupShortcut: launcher_shortcuts
-g_ConfigEditorPID: launcher_tray
+g_CachedStartMenuShortcut: launcher_tray
+g_CachedStartupShortcut: launcher_tray
 g_DashUpdateState: setup_utils
 g_GuiPID: launcher_main, launcher_tray
-g_LastUpdateCheckTick: setup_utils
-g_LastUpdateCheckTime: setup_utils
-g_MismatchDialogShown: launcher_install
-g_ProducerHasFailed: launcher_main
-g_ProducerStatusCache: launcher_main
+g_ProducerHasFailed: launcher_about
+g_ProducerStatusCache: launcher_about
 g_StorePID: launcher_main, launcher_tray
 g_ViewerPID: launcher_main, launcher_tray
 gConfigIniPath: launcher_wizard
@@ -42,15 +37,12 @@ gGUI_HoverBtn: gui_input, gui_overlay
 gGUI_HoverRow: gui_input, gui_overlay
 gGUI_LastLocalMRUTick: gui_state, gui_store
 gGUI_LastMsgTick: gui_store
-gGUI_LastRowsDesired: gui_paint
-gGUI_LeftArrowRect: gui_paint
 gGUI_LiveItems: gui_input, gui_state, gui_store
 gGUI_MouseTracking: gui_input, gui_overlay
 gGUI_Overlay: gui_overlay
 gGUI_OverlayH: gui_overlay
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
-gGUI_RightArrowRect: gui_paint
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
 gGUI_Sel: gui_input, gui_state, gui_store
 gGUI_State: gui_input, gui_state
@@ -66,6 +58,5 @@ gStore_LastBroadcastRev: winevent_hook
 gWS_DeltaPendingHwnds: store_server
 gWS_DiagChurn: store_server
 gWS_DiagSource: store_server
-IPC_TICK_IDLE: config_loader
 PROCESS_QUERY_LIMITED_INFORMATION: setup_utils
 STATS_INI_PATH: launcher_wizard

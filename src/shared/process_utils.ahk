@@ -8,7 +8,7 @@
 ; ============================================================
 
 ; Windows API constants
-global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000
+global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000  ; Keep here — moving to setup_utils causes unset-var crash in compiled store (icon_pump.ahk)
 global STARTF_USESHOWWINDOW := 0x01
 global STARTF_FORCEOFFFEEDBACK := 0x80
 global CREATE_NO_WINDOW := 0x08000000

@@ -57,10 +57,6 @@ global gGUI_MouseTracking := false  ; Whether we've requested WM_MOUSELEAVE noti
 ; gGUI_FooterText, gGUI_WorkspaceMode declared in gui_workspace.ahk (sole writer)
 global gGUI_CurrentWSName := ""  ; Cached from store meta
 
-; Footer arrow hit regions (physical coords, updated during paint)
-global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
-global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
-
 global gGUI_StoreClient := 0
 global gGUI_StoreConnected := false
 global gGUI_StoreRev := -1
@@ -111,7 +107,6 @@ global gGUI_OverlayH := 0
 global gGUI_LiveItems := []
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
-global gGUI_LastRowsDesired := -1
 
 ; State machine: IDLE -> ALT_PENDING -> ACTIVE
 ; IDLE: Normal state, receiving/applying deltas, cache fresh

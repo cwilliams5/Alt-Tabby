@@ -22,7 +22,6 @@ global IPC_MSG_WORKSPACE_CHANGE := "workspace_change"
 
 ; IPC Timing Constants (milliseconds)
 global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)
-global IPC_TICK_IDLE := 100         ; Client tick when no activity (overridable via cfg.IPCIdleTickMs)
 global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
 global IPC_SERVER_IDLE_STREAK_THRESHOLD := 8  ; Ticks before server enters IDLE (at 100ms = 800ms inactivity)
 global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect

@@ -29,6 +29,10 @@ global PE_SIG_2 := 69                       ; 'E' (0x45)
 ; Guard to prevent concurrent update checks (auto-update timer + manual button)
 global g_UpdateCheckInProgress := false
 
+; Update check state — persists across dashboard open/close
+global g_LastUpdateCheckTick := 0
+global g_LastUpdateCheckTime := ""
+
 ; ============================================================
 ; PATH COMPARISON HELPER
 ; ============================================================

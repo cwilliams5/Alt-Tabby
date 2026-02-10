@@ -7,6 +7,9 @@
 ; Handles installation to Program Files and detection of
 ; running from a different location than installed version.
 
+; Mismatch dialog state — prevents auto-update race condition
+global g_MismatchDialogShown := false
+
 ; ============================================================
 ; PROGRAM FILES INSTALLATION
 ; ============================================================

@@ -831,6 +831,7 @@ global TOOLTIP_DURATION_LONG := 4000
 
 ; Retry limits
 global MAX_RECONNECT_ATTEMPTS := 3        ; Default, overridden from cfg.IPCMaxReconnectAttempts
+global IPC_TICK_IDLE := 100              ; Default, overridden from cfg.IPCIdleTickMs
 global MAX_RESTART_ATTEMPTS := 2          ; Store restart attempts before giving up
 
 ; WM_COPYDATA command IDs (launcher <-> client control signals)

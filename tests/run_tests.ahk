@@ -67,11 +67,18 @@ global gStatsTestReceived := false
 global gStats_Lifetime := Map()
 global gStats_Session := Map()
 
-; --- Dashboard/Update check globals (from launcher_about.ahk, used by setup_utils.ahk) ---
+; --- Dashboard/Update check globals (setup_utils.ahk + launcher_about.ahk) ---
 global g_LastUpdateCheckTick := 0
 global g_LastUpdateCheckTime := ""
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
+
+; --- Producer status cache (from launcher_main.ahk, used by launcher_about.ahk) ---
+global g_ProducerStatusCache := ""
+global g_ProducerHasFailed := ""
+
+; --- Resource IDs (from resource_utils.ahk, used by launcher_about.ahk) ---
+global RES_ID_LOGO := 0
 
 ; --- Launcher subprocess PID globals (from alt_tabby.ahk, referenced by launcher_about.ahk) ---
 global g_StorePID := 0

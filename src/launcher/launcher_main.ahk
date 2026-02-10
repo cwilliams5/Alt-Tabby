@@ -17,6 +17,10 @@ global g_ActiveMutex := 0
 global g_LastStoreRestartTick  ; Debounce RESTART_STORE signals
 global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
 
+; Producer status cache — queried once after store launch, shown in dashboard
+global g_ProducerStatusCache := ""
+global g_ProducerHasFailed := ""  ; "" = not queried, false = all OK, true = has failures
+
 ; Win32 error code
 global ERROR_ALREADY_EXISTS := 183
 
