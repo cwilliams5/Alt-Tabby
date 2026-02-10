@@ -30,10 +30,8 @@ g_ProducerStatusCache: launcher_about, launcher_main
 g_StorePID: launcher_main, launcher_tray
 g_ViewerPID: launcher_main, launcher_tray
 gConfigIniPath: launcher_wizard, config_loader
-gGdip_Res: gui_gdip, gui_paint
-gGdip_ResScale: gui_gdip, gui_paint
 gGUI_CurrentWSName: gui_state, gui_workspace
-gGUI_DisplayItems: gui_input, gui_state, gui_store, gui_workspace
+gGUI_DisplayItems: gui_state, gui_store, gui_workspace
 gGUI_HoverBtn: gui_input, gui_overlay
 gGUI_HoverRow: gui_input, gui_overlay
 gGUI_LastLocalMRUTick: gui_state, gui_store
@@ -44,15 +42,11 @@ gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
 gGUI_Sel: gui_input, gui_state, gui_store
-gGUI_State: gui_input, gui_state
 gGUI_StoreClient: gui_main, gui_state, gui_store
 gGUI_StoreConnected: gui_main, gui_store
 gGUI_ToggleBase: gui_state, gui_store
-gStats_Lifetime: blacklist, store_server, windowstore
-gStats_Session: store_server, windowstore
-gStore_LastBroadcastRev: store_server, winevent_hook
+gGUI_State: gui_state
 gWS_DeltaPendingHwnds: store_server, windowstore
 gWS_DiagChurn: store_server, windowstore
 gWS_DiagSource: store_server, windowstore
-PROCESS_QUERY_LIMITED_INFORMATION: setup_utils
 STATS_INI_PATH: launcher_wizard, config_loader

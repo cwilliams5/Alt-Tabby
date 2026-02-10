@@ -374,13 +374,9 @@ GUI_OnClick(x, y) {
 
     ; Check if we should activate immediately on click (like Windows native)
     if (cfg.AltTabSwitchOnClick && gGUI_State = "ACTIVE") {
-        ; Set state BEFORE releasing Critical to prevent interruption clobbering
         item := items[clickedIdx]
-        gGUI_State := "IDLE"
-        gGUI_DisplayItems := []
         Critical "Off"
-        GUI_HideOverlay()
-        GUI_ActivateItem(item)
+        GUI_ClickActivate(item)
         return
     }
 

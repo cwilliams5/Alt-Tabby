@@ -237,6 +237,116 @@ Gdip_DisposeResources() {
     gGdip_ResScale := 0.0
 }
 
+; ========================= RESOURCE MANAGEMENT =========================
+
+GUI_EnsureResources(scale) {
+    global gGdip_Res, gGdip_ResScale, cfg
+    global gPaint_SessionPaintCount, gPaint_LastPaintTick
+    global GDIP_UNIT_PIXEL, GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_CENTER, GDIP_STRING_ALIGN_FAR
+    global GDIP_STRING_FORMAT_NO_WRAP, GDIP_STRING_FORMAT_LINE_LIMIT, GDIP_STRING_TRIMMING_ELLIPSIS
+
+    if (Abs(gGdip_ResScale - scale) < 0.001 && gGdip_Res.Count) {
+        ; Resources exist and scale unchanged - skip recreation
+        return
+    }
+
+    ; Log resource recreation (this is potentially slow)
+    if (cfg.DiagPaintTimingLog) {
+        idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
+        Paint_Log("  ** RECREATING RESOURCES (oldScale=" gGdip_ResScale " newScale=" scale " resCount=" gGdip_Res.Count " idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ")")
+    }
+
+    tRes_Start := A_TickCount
+
+    t1 := A_TickCount
+    Gdip_DisposeResources()
+    tRes_Dispose := A_TickCount - t1
+
+    t1 := A_TickCount
+    Gdip_Startup()
+    tRes_Startup := A_TickCount - t1
+
+    ; Brushes
+    t1 := A_TickCount
+    brushes := [
+        ["brMain", cfg.GUI_MainARGB],
+        ["brMainHi", cfg.GUI_MainARGBHi],
+        ["brSub", cfg.GUI_SubARGB],
+        ["brSubHi", cfg.GUI_SubARGBHi],
+        ["brCol", cfg.GUI_ColARGB],
+        ["brColHi", cfg.GUI_ColARGBHi],
+        ["brHdr", cfg.GUI_HdrARGB],
+        ; brHit: Nearly transparent black (alpha=0x01) for hit-test background.
+        ; Fully transparent (0x00) would make the window click-through.
+        ["brHit", 0x01000000],
+        ["brFooterText", cfg.GUI_FooterTextARGB]
+    ]
+    for _, b in brushes {
+        br := 0
+        DllCall("gdiplus\GdipCreateSolidFill", "int", b[2], "ptr*", &br)
+        gGdip_Res[b[1]] := br
+    }
+    tRes_Brushes := A_TickCount - t1
+
+    ; Fonts
+    t1 := A_TickCount
+
+    fonts := [
+        [cfg.GUI_MainFontName, cfg.GUI_MainFontSize, cfg.GUI_MainFontWeight, "ffMain", "fMain"],
+        [cfg.GUI_MainFontNameHi, cfg.GUI_MainFontSizeHi, cfg.GUI_MainFontWeightHi, "ffMainHi", "fMainHi"],
+        [cfg.GUI_SubFontName, cfg.GUI_SubFontSize, cfg.GUI_SubFontWeight, "ffSub", "fSub"],
+        [cfg.GUI_SubFontNameHi, cfg.GUI_SubFontSizeHi, cfg.GUI_SubFontWeightHi, "ffSubHi", "fSubHi"],
+        [cfg.GUI_ColFontName, cfg.GUI_ColFontSize, cfg.GUI_ColFontWeight, "ffCol", "fCol"],
+        [cfg.GUI_ColFontNameHi, cfg.GUI_ColFontSizeHi, cfg.GUI_ColFontWeightHi, "ffColHi", "fColHi"],
+        [cfg.GUI_HdrFontName, cfg.GUI_HdrFontSize, cfg.GUI_HdrFontWeight, "ffHdr", "fHdr"],
+        [cfg.GUI_ActionFontName, cfg.GUI_ActionFontSize, cfg.GUI_ActionFontWeight, "ffAction", "fAction"],
+        [cfg.GUI_FooterFontName, cfg.GUI_FooterFontSize, cfg.GUI_FooterFontWeight, "ffFooter", "fFooter"]
+    ]
+    for _, f in fonts {
+        fam := 0
+        font := 0
+        style := Gdip_FontStyleFromWeight(f[3])
+        DllCall("gdiplus\GdipCreateFontFamilyFromName", "wstr", f[1], "ptr", 0, "ptr*", &fam)
+        DllCall("gdiplus\GdipCreateFont", "ptr", fam, "float", f[2] * scale, "int", style, "int", GDIP_UNIT_PIXEL, "ptr*", &font)
+        gGdip_Res[f[4]] := fam
+        gGdip_Res[f[5]] := font
+    }
+    tRes_Fonts := A_TickCount - t1
+
+    ; String formats
+    t1 := A_TickCount
+    fmtFlags := GDIP_STRING_FORMAT_NO_WRAP | GDIP_STRING_FORMAT_LINE_LIMIT
+
+    formats := [
+        ["fmt", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtCenter", GDIP_STRING_ALIGN_CENTER, GDIP_STRING_ALIGN_NEAR],
+        ["fmtRight", GDIP_STRING_ALIGN_FAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtLeft", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtLeftCol", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_NEAR],
+        ["fmtFooterLeft", GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_CENTER],
+        ["fmtFooterCenter", GDIP_STRING_ALIGN_CENTER, GDIP_STRING_ALIGN_CENTER],
+        ["fmtFooterRight", GDIP_STRING_ALIGN_FAR, GDIP_STRING_ALIGN_CENTER]
+    ]
+    for _, fm in formats {
+        fmt := 0
+        DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "ushort", 0, "ptr*", &fmt)
+        DllCall("gdiplus\GdipSetStringFormatFlags", "ptr", fmt, "int", fmtFlags)
+        DllCall("gdiplus\GdipSetStringFormatTrimming", "ptr", fmt, "int", GDIP_STRING_TRIMMING_ELLIPSIS)
+        DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", fmt, "int", fm[2])
+        DllCall("gdiplus\GdipSetStringFormatLineAlign", "ptr", fmt, "int", fm[3])
+        gGdip_Res[fm[1]] := fmt
+    }
+    tRes_Formats := A_TickCount - t1
+
+    gGdip_ResScale := scale
+
+    ; Log resource recreation timing
+    if (cfg.DiagPaintTimingLog) {
+        tRes_Total := A_TickCount - tRes_Start
+        Paint_Log("    Resources: total=" tRes_Total "ms | dispose=" tRes_Dispose " startup=" tRes_Startup " brushes=" tRes_Brushes " fonts=" tRes_Fonts " formats=" tRes_Formats)
+    }
+}
+
 ; Get or create a cached solid brush for the given ARGB color
 ; FIFO cap at 100: working set is ~5-10 colors (UI palette), cap is 10-20x headroom.
 ; No liveness signal to prune by (a color is "in use" only during paint), so FIFO is appropriate here.

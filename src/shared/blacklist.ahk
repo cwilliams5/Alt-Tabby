@@ -174,7 +174,7 @@ Blacklist_IsMatch(title, class) {
     ; Check title blacklist (pre-compiled regex)
     for _, regex in titleRegex {
         if (RegExMatch(title, regex)) {
-            _Blacklist_BumpSkipStat()
+            Store_BumpLifetimeStat("TotalBlacklistSkips")
             return true
         }
     }
@@ -182,7 +182,7 @@ Blacklist_IsMatch(title, class) {
     ; Check class blacklist (pre-compiled regex)
     for _, regex in classRegex {
         if (RegExMatch(class, regex)) {
-            _Blacklist_BumpSkipStat()
+            Store_BumpLifetimeStat("TotalBlacklistSkips")
             return true
         }
     }
@@ -190,19 +190,12 @@ Blacklist_IsMatch(title, class) {
     ; Check pair blacklist (both must match, pre-compiled regex)
     for _, pr in pairRegex {
         if (RegExMatch(class, pr.class) && RegExMatch(title, pr.title)) {
-            _Blacklist_BumpSkipStat()
+            Store_BumpLifetimeStat("TotalBlacklistSkips")
             return true
         }
     }
 
     return false
-}
-
-; Increment blacklist skip stat (called from Blacklist_IsMatch hot path)
-_Blacklist_BumpSkipStat() {
-    global gStats_Lifetime
-    if (gStats_Lifetime.Has("TotalBlacklistSkips"))
-        gStats_Lifetime["TotalBlacklistSkips"] += 1
 }
 
 ; Add a new pair entry to the blacklist file (appends to [Pair] section)

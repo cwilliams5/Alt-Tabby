@@ -39,6 +39,9 @@ global gStore_CachedHeartbeatRev := -1
 global gStore_HeartbeatCount
 global gStore_ScanInProgress := false  ; Re-entrancy guard for Store_FullScan
 
+; Cosmetic buffer: throttle pushes for cosmetic-only batches (title changes)
+global _Store_LastCosmeticPushTick := 0
+
 ; Timer stagger offsets (negative = one-shot) to avoid thundering herd
 global STORE_STAGGER_ZPUMP_MS := -17
 global STORE_STAGGER_VALIDATE_MS := -37
@@ -302,12 +305,12 @@ _Store_OnPipeWake(wParam, lParam, msg, hwnd) {
 }
 
 ; Deferred scan: runs after immediate snapshot response, catches recently-created windows.
-; Uses WEH_PushIfRevChanged to send correction delta only if scan found changes.
+; Uses Store_PushIfRevChanged to send correction delta only if scan found changes.
 _Store_DeferredScanAndPush() {
     Store_FullScan()
     WindowStore_ClearZQueue()
     ; Push correction delta if scan discovered changes
-    WEH_PushIfRevChanged(true)
+    Store_PushIfRevChanged()
 }
 
 ; Rotate diagnostic logs that are enabled (called every 12th heartbeat, ~60s)
@@ -403,18 +406,62 @@ Store_FullScan() {
     if (IsObject(recs))
         WindowStore_UpsertWindow(recs, "winenum_lite")
     WindowStore_EndScan()
-    ; RACE FIX: Wrap read-check-write in Critical to prevent two callers
-    ; from both reading same old rev and both pushing (duplicate broadcast)
     Critical "On"
     gStore_ScanInProgress := false
+    Critical "Off"
+    Store_PushIfRevChanged()
+}
+
+; Push to clients if the store rev has changed since the last broadcast.
+; Called after focus, upsert, and destroy processing to ensure proactive delta delivery.
+; Parameters:
+;   isStructural - true for focus/create/destroy/Z-affecting changes (push immediately)
+;                  false for cosmetic-only changes like title updates (throttled)
+;                  Default true so the focus-only path always pushes immediately.
+Store_PushIfRevChanged(isStructural := true) {
+    global gStore_LastBroadcastRev, _Store_LastCosmeticPushTick, cfg
+    ; RACE FIX: Wrap read-check-write-push in Critical to prevent two timers
+    ; from both reading same old rev and both pushing (duplicate broadcast)
+    Critical "On"
     rev := WindowStore_GetRev()
-    if (rev != gStore_LastBroadcastRev) {
-        gStore_LastBroadcastRev := rev
+    if (rev = gStore_LastBroadcastRev) {
         Critical "Off"
-        Store_PushToClients()
-    } else {
-        Critical "Off"
+        return
     }
+
+    ; Cosmetic-only changes: throttle to avoid push floods from apps with
+    ; animated titles (terminal spinners, progress bars, etc.)
+    if (!isStructural) {
+        elapsed := A_TickCount - _Store_LastCosmeticPushTick
+        if (elapsed < cfg.WinEventHookCosmeticBufferMs) {
+            Critical "Off"
+            return
+        }
+        _Store_LastCosmeticPushTick := A_TickCount
+    }
+
+    gStore_LastBroadcastRev := rev
+    try Store_PushToClients()
+    Critical "Off"
+}
+
+; Update peak window count in session and lifetime stats.
+; Called from WindowStore_UpsertWindow/EndScan after adding windows.
+Store_UpdatePeakWindows(count) {
+    global gStats_Session, gStats_Lifetime
+    if (IsObject(gStats_Session) && count > gStats_Session.Get("peakWindows", 0)) {
+        gStats_Session["peakWindows"] := count
+        if (IsObject(gStats_Lifetime) && count > gStats_Lifetime.Get("PeakWindowsInSession", 0))
+            gStats_Lifetime["PeakWindowsInSession"] := count
+    }
+}
+
+; Increment a lifetime stat counter by 1.
+; Called from hot paths (e.g., blacklist skip counting) to centralize stats mutation.
+Store_BumpLifetimeStat(key) {
+    global gStats_Lifetime
+    if (IsObject(gStats_Lifetime) && gStats_Lifetime.Has(key))
+        gStats_Lifetime[key] += 1
 }
 
 ; Push tailored projections to each client based on their registered opts

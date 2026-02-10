@@ -269,7 +269,7 @@ _RunWithTimeout(cmd, timeoutMs := 10000, options := "Hide") {
 
 ; Get exit code of a recently-exited process via Win32 API
 ProcessGetExitCode(pid) {
-    static PROCESS_QUERY_LIMITED_INFORMATION := 0x1000
+    global PROCESS_QUERY_LIMITED_INFORMATION
     hProcess := DllCall("OpenProcess", "UInt", PROCESS_QUERY_LIMITED_INFORMATION, "Int", 0, "UInt", pid, "Ptr")
     if (!hProcess)
         return 0

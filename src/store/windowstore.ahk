@@ -298,14 +298,8 @@ WindowStore_UpsertWindow(records, source := "") {
         _WS_BumpRev("UpsertWindow:" . source)
     }
     ; RACE FIX: Update peak windows inside Critical - producers can interrupt after release
-    if (added > 0) {
-        global gStats_Session, gStats_Lifetime
-        if (IsObject(gStats_Session) && gWS_Store.Count > gStats_Session.Get("peakWindows", 0)) {
-            gStats_Session["peakWindows"] := gWS_Store.Count
-            if (IsObject(gStats_Lifetime) && gWS_Store.Count > gStats_Lifetime.Get("PeakWindowsInSession", 0))
-                gStats_Lifetime["PeakWindowsInSession"] := gWS_Store.Count
-        }
-    }
+    if (added > 0)
+        Store_UpdatePeakWindows(gWS_Store.Count)
     Critical "Off"
 
     ; Enqueue for enrichment OUTSIDE Critical (queue operations have their own Critical)
@@ -639,10 +633,9 @@ _WS_DiagBump(source) {
 ; Wraps increment in Critical to prevent interruption by timers/hotkeys
 _WS_BumpRev(source) {
     Critical "On"
-    global cfg, gWS_Rev, gStats_Lifetime
+    global cfg, gWS_Rev
     gWS_Rev += 1
-    if (gStats_Lifetime.Has("TotalWindowUpdates"))
-        gStats_Lifetime["TotalWindowUpdates"] += 1
+    Store_BumpLifetimeStat("TotalWindowUpdates")
     if (cfg.DiagChurnLog)
         _WS_DiagBump(source)
     Critical "Off"

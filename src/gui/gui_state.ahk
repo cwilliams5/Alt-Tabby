@@ -624,6 +624,21 @@ GUI_ActivateItem(item) {
     SetTimer(_GUI_ResyncKeyboardState, -1)
 }
 
+GUI_ClickActivate(item) {
+    global gGUI_State, gGUI_DisplayItems, cfg
+    Critical "On"
+    if (gGUI_State != "ACTIVE") {
+        Critical "Off"
+        return
+    }
+    gGUI_State := "IDLE"
+    gGUI_DisplayItems := []
+    Critical "Off"
+    GUI_HideOverlay()
+    GUI_ActivateItem(item)
+    Stats_SendToStore()
+}
+
 ; ========================= SWITCH-ACTIVATE METHOD =========================
 
 ; Start the SwitchActivate cross-workspace method:
