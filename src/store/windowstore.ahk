@@ -765,6 +765,19 @@ WindowStore_GetProjection(opts := 0) {
                 movedRec := sortedRecs.RemoveAt(bestIdx)
                 sortedRecs.InsertAt(1, movedRec)
             }
+            ; Sort invariant check: verify first few items are in descending tick order.
+            ; If multiple ticks changed in one cycle, move-to-front alone isn't enough.
+            ; Cost: O(3) — cheap safety net, falls through to Path 3 on failure.
+            if (sortedRecs.Length >= 2) {
+                Loop Min(sortedRecs.Length - 1, 3) {
+                    if (sortedRecs[A_Index].lastActivatedTick < sortedRecs[A_Index + 1].lastActivatedTick) {
+                        valid := false
+                        break
+                    }
+                }
+            }
+        }
+        if (valid) {
             ; Selective refresh: only recreate _WS_ToItem for dirty items.
             ; After RemoveAt/InsertAt, indices don't match cache — use hwnd lookup.
             static cachedByHwnd := Map()
@@ -796,7 +809,7 @@ WindowStore_GetProjection(opts := 0) {
             Critical "Off"
             return result
         }
-        ; !valid: stale ref detected — fall through to Path 3
+        ; !valid: stale ref or sort invariant broken — fall through to Path 3
     }
     Critical "Off"
 

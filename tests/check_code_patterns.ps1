@@ -44,8 +44,13 @@ function Get-CachedContent {
 function Extract-FunctionBody {
     param([string]$Code, [string]$FuncName)
 
-    $idx = $Code.IndexOf("$FuncName(")
-    if ($idx -lt 0) { return $null }
+    # Match function DEFINITION, not call sites.
+    # Definitions: FuncName( is the first identifier on a line (with optional 'static' prefix).
+    # Call sites: always preceded by other tokens on the same line (if, :=, try, etc.).
+    $escaped = [regex]::Escape($FuncName)
+    $m = [regex]::Match($Code, "(?m)^[ \t]*(?:static\s+)?$escaped\(")
+    if (-not $m.Success) { return $null }
+    $idx = $m.Index
 
     $braceIdx = $Code.IndexOf('{', $idx)
     if ($braceIdx -lt 0) { return $null }
@@ -504,6 +509,75 @@ $CHECKS += @(
         Desc     = "Config registry has sufficient min/max constraint entries"
         Patterns = @("min:")
         MinCount = 50
+    }
+)
+
+# === Activation MRU Gating (Regression guards for phantom MRU bug) ===
+
+# _GUI_RobustActivate must return bool (not void)
+$CHECKS += @(
+    @{
+        Id       = "activate_returns_bool"
+        File     = "gui\gui_state.ahk"
+        Desc     = "_GUI_RobustActivate returns success/failure boolean"
+        Function = "_GUI_RobustActivate"
+        Patterns = @("return true", "return false")
+    }
+)
+
+# _GUI_RobustActivate verifies foreground after SetForegroundWindow
+$CHECKS += @(
+    @{
+        Id       = "activate_verifies_foreground"
+        File     = "gui\gui_state.ahk"
+        Desc     = "_GUI_RobustActivate calls GetForegroundWindow to verify activation"
+        Function = "_GUI_RobustActivate"
+        Patterns = @("GetForegroundWindow")
+    }
+)
+
+# Same-workspace path gates MRU on activation success
+$CHECKS += @(
+    @{
+        Id       = "activate_gated_mru"
+        File     = "gui\gui_state.ahk"
+        Desc     = "GUI_ActivateItem gates _GUI_UpdateLocalMRU on _GUI_RobustActivate success"
+        Function = "GUI_ActivateItem"
+        Patterns = @("if (_GUI_RobustActivate(hwnd))")
+    }
+)
+
+# _GUI_UpdateLocalMRU does NOT release Critical (cross-function leak fix)
+$CHECKS += @(
+    @{
+        Id       = "mru_update_no_critical_off"
+        File     = "gui\gui_state.ahk"
+        Desc     = "_GUI_UpdateLocalMRU does not call Critical Off (callers hold Critical)"
+        Function = "_GUI_UpdateLocalMRU"
+        NotPresent = @('Critical "Off"')
+    }
+)
+
+# isFocused does NOT trigger MRU re-sort (store/GUI classification desync fix)
+$CHECKS += @(
+    @{
+        Id       = "isfocused_no_mru_trigger"
+        File     = "gui\gui_store.ahk"
+        Desc     = "isFocused delta handler does NOT set mruChanged (content-only field)"
+        Function = "GUI_ApplyDelta"
+        Regex    = $true
+        NotPresent = @('isFocused[\s\S]{0,50}mruChanged\s*:=\s*true')
+    }
+)
+
+# Path 1.5 validates sort invariant after move-to-front
+$CHECKS += @(
+    @{
+        Id       = "path15_sort_invariant"
+        File     = "store\windowstore.ahk"
+        Desc     = "Path 1.5 projection validates sort invariant after move-to-front"
+        Regex    = $true
+        Patterns = @('lastActivatedTick\s*<\s*sortedRecs')
     }
 )
 

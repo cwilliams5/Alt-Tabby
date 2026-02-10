@@ -394,11 +394,11 @@ GUI_ApplyDelta(payload) {
                     }
                 }
                 ; Track focus change (don't process here, just record it)
+                ; isFocused is content-only — MRU sort driven by lastActivatedTick
                 if (rec.Has("isFocused") && rec["isFocused"]) {
                     if (cfg.DiagEventLog)
                         GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
                     focusChangedToHwnd := hwnd
-                    mruChanged := true
                 }
             } else {
                 ; Add new item using shared helper
@@ -419,7 +419,8 @@ GUI_ApplyDelta(payload) {
         }
     }
 
-    ; Only sort when MRU-relevant fields changed (lastActivatedTick, isFocused, items added/removed).
+    ; Only sort when MRU-relevant fields changed (lastActivatedTick, items added/removed).
+    ; isFocused is content-only (matches store classification) — does NOT trigger re-sort.
     ; Skip sort for cosmetic-only updates (icon, processName, title) — saves O(n) per delta.
     if (mruChanged && gGUI_LiveItems.Length > 1) {
         GUI_SortItemsByMRU()

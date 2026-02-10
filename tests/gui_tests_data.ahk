@@ -149,6 +149,39 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, firstHwnd, "UpdateLocalMRU: first item stays first")
     GUI_AssertTrue(gGUI_LastLocalMRUTick > 0, "UpdateLocalMRU: tick set even for first item")
 
+    ; ----- Test: _GUI_RobustActivate returns false for invalid hwnd -----
+    ; Regression guard: ensures activation returns a testable result (not void)
+    GUI_Log("Test: _GUI_RobustActivate returns false for invalid hwnd")
+    result := _GUI_RobustActivate(0xDEAD)
+    GUI_AssertEq(result, false, "_GUI_RobustActivate: returns false for non-existent window")
+
+    ; ----- Test: _GUI_RobustActivate returns false for hwnd 0 -----
+    GUI_Log("Test: _GUI_RobustActivate returns false for hwnd 0")
+    result := _GUI_RobustActivate(0)
+    GUI_AssertEq(result, false, "_GUI_RobustActivate: returns false for hwnd 0")
+
+    ; ----- Test: Failed activation does NOT corrupt MRU order -----
+    ; Core regression test for phantom MRU bug: before the fix, _GUI_UpdateLocalMRU
+    ; ran unconditionally after _GUI_RobustActivate, corrupting MRU when activation
+    ; failed. After the fix, MRU only updates on success.
+    GUI_Log("Test: Failed activation does not corrupt MRU order")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(5)
+    origFirst := gGUI_LiveItems[1].hwnd
+    origSecond := gGUI_LiveItems[2].hwnd
+
+    ; Activation will fail (fake hwnd, WinExist returns false)
+    activateResult := _GUI_RobustActivate(origSecond)
+    GUI_AssertEq(activateResult, false, "FailedActivation: activation returns false for test hwnd")
+
+    ; Simulate the FIXED code path: only update MRU on success
+    if (activateResult)
+        _GUI_UpdateLocalMRU(origSecond)
+
+    ; MRU should be UNCHANGED — item 1 still in position 1
+    GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "FailedActivation: MRU order preserved (first item unchanged)")
+    GUI_AssertEq(gGUI_LastLocalMRUTick, 0, "FailedActivation: freshness tick NOT set (no phantom MRU update)")
+
     ; ============================================================
     ; GUI_SortItemsByMRU TESTS
     ; ============================================================

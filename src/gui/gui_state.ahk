@@ -529,8 +529,8 @@ GUI_ActivateItem(item) {
                 ; Uncloaked but SwitchTo failed - use manual activation
                 if (cfg.DiagEventLog)
                     GUI_LogEvent("CROSS-WS: MimicNative partial (manual activate)")
-                _GUI_RobustActivate(hwnd)
-                _GUI_UpdateLocalMRU(hwnd)
+                if (_GUI_RobustActivate(hwnd))
+                    _GUI_UpdateLocalMRU(hwnd)
                 return
             }
             ; uncloakResult = 0: COM failed entirely, fall through to SwitchActivate
@@ -548,20 +548,24 @@ GUI_ActivateItem(item) {
 
             if (uncloakResult > 0) {
                 ; Step 2: Focus the window (makes it the "focused window" for komorebic)
-                _GUI_RobustActivate(hwnd)
-                if (cfg.DiagEventLog)
-                    GUI_LogEvent("CROSS-WS: RevealMove focused window")
-
-                ; Step 3: Command komorebi to move the focused window to its workspace
-                ; This switches to that workspace WITH our window already focused
-                try {
-                    _GUI_KomorebiWorkspaceCmd("MoveToNamedWorkspace", "move-to-named-workspace", wsName)
-                } catch as e {
+                ; Gate on success — if activation fails, komorebic move would target wrong window
+                if (_GUI_RobustActivate(hwnd)) {
                     if (cfg.DiagEventLog)
-                        GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
-                }
+                        GUI_LogEvent("CROSS-WS: RevealMove focused window")
 
-                _GUI_UpdateLocalMRU(hwnd)
+                    ; Step 3: Command komorebi to move the focused window to its workspace
+                    ; This switches to that workspace WITH our window already focused
+                    try {
+                        _GUI_KomorebiWorkspaceCmd("MoveToNamedWorkspace", "move-to-named-workspace", wsName)
+                    } catch as e {
+                        if (cfg.DiagEventLog)
+                            GUI_LogEvent("CROSS-WS: RevealMove move command failed: " e.Message)
+                    }
+
+                    _GUI_UpdateLocalMRU(hwnd)
+                } else if (cfg.DiagEventLog) {
+                    GUI_LogEvent("CROSS-WS: RevealMove activation failed, skipping move")
+                }
                 return
             }
             ; uncloakResult = 0: COM failed, fall through to SwitchActivate
@@ -576,11 +580,10 @@ GUI_ActivateItem(item) {
     }
 
     ; === Same-workspace: SYNC activation (immediate, fast) ===
-    _GUI_RobustActivate(hwnd)
-
-    ; CRITICAL: Update MRU order locally for rapid Alt+Tab support
-    ; Without this, a quick second Alt+Tab sees stale MRU and may select wrong window
-    _GUI_UpdateLocalMRU(hwnd)
+    ; CRITICAL: Only update MRU on successful activation — prevents phantom MRU
+    ; corruption that causes "double failure" on next Alt+Tab
+    if (_GUI_RobustActivate(hwnd))
+        _GUI_UpdateLocalMRU(hwnd)
 
     ; NOTE: Do NOT request snapshot here - it would overwrite our local MRU update
     ; with stale store data. The store will get the focus update via WinEventHook.
@@ -628,8 +631,8 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("SWITCH-ACTIVATE ERROR: " e.Message)
         ; Fall back to direct activation attempt
-        _GUI_RobustActivate(hwnd)
-        _GUI_UpdateLocalMRU(hwnd)
+        if (_GUI_RobustActivate(hwnd))
+            _GUI_UpdateLocalMRU(hwnd)
         return
     }
 
@@ -964,17 +967,16 @@ _GUI_ResyncKeyboardState() {
 ; Parameters:
 ;   hwnd - Window handle that was activated
 ; Updates: gGUI_LiveItems array order, gGUI_LastLocalMRUTick
-; RACE FIX: Wrap in Critical - modifies gGUI_LiveItems array which IPC deltas also modify
+; NOTE: Callers hold Critical — do NOT call Critical "Off" here (leaks caller's Critical state)
 _GUI_UpdateLocalMRU(hwnd) {
-    Critical "On"
+    Critical "On"  ; Harmless assertion — documents that Critical is required
     global gGUI_LiveItems, gGUI_LastLocalMRUTick, gGUI_LiveItemsMap, cfg
 
     ; O(1) miss detection: if hwnd not in Map, skip the O(n) linear scan
     if (!gGUI_LiveItemsMap.Has(hwnd)) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not in map, skip scan")
-        Critical "Off"
-        return false
+        return false  ; lint-ignore: critical-section
     }
 
     if (cfg.DiagEventLog)
@@ -989,14 +991,12 @@ _GUI_UpdateLocalMRU(hwnd) {
                 gGUI_LiveItems.InsertAt(1, item)
             }
             gGUI_LastLocalMRUTick := A_TickCount
-            Critical "Off"
-            return true
+            return true  ; lint-ignore: critical-section
         }
     }
     if (cfg.DiagEventLog)
         GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
-    Critical "Off"
-    return false
+    return false  ; lint-ignore: critical-section
 }
 
 ; ========================= DIRECT WINDOW UNCLOAKING (COM) =========================
@@ -1332,7 +1332,7 @@ _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
 ; SendInput trick → SetWindowPos → SetForegroundWindow
 _GUI_RobustActivate(hwnd) {
     global SW_RESTORE, HWND_TOPMOST, HWND_NOTOPMOST, cfg
-    global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW, SWP_ASYNCWINDOWPOS
+    global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
 
     ; NOTE: Do NOT manually uncloak windows - this interferes with komorebi's
     ; workspace management and can pull windows to the wrong workspace.
@@ -1351,29 +1351,39 @@ _GUI_RobustActivate(hwnd) {
             NumPut("uint", 0, input, 0)  ; type = INPUT_MOUSE
             DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
 
-            ; Bring window to top with SWP_SHOWWINDOW
-            swpShow := SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS
+            ; Bring window to top with SWP_SHOWWINDOW (SYNC — no SWP_ASYNCWINDOWPOS)
+            ; Sync positioning ensures the TOPMOST/NOTOPMOST foreground-lock bypass
+            ; completes before SetForegroundWindow runs (~1ms, imperceptible)
+            swpFlags := SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
             DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_TOPMOST
                 , "int", 0, "int", 0, "int", 0, "int", 0
-                , "uint", swpShow)
+                , "uint", swpFlags)
 
             ; Reset to non-topmost (we just want it on top temporarily, not always-on-top)
-            swpNoShow := SWP_NOSIZE | SWP_NOMOVE | SWP_ASYNCWINDOWPOS
             DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_NOTOPMOST
                 , "int", 0, "int", 0, "int", 0, "int", 0
-                , "uint", swpNoShow)
+                , "uint", SWP_NOSIZE | SWP_NOMOVE)
 
             ; Now SetForegroundWindow should work
             fgResult := DllCall("user32\SetForegroundWindow", "ptr", hwnd)
-            if (!fgResult && cfg.DiagEventLog)
-                GUI_LogEvent("ACTIVATE WARN: SetForegroundWindow returned 0 for hwnd=" hwnd)
-        } else {
+
+            ; VERIFY: Don't trust SetForegroundWindow return alone — it can return
+            ; non-zero but still fail. Check the actual foreground window.
+            actualFg := DllCall("user32\GetForegroundWindow", "ptr")
+            if (actualFg = hwnd)
+                return true
+
             if (cfg.DiagEventLog)
-                GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
+                GUI_LogEvent("ACTIVATE VERIFY FAILED: wanted=" hwnd " got=" actualFg " sfwResult=" fgResult)
+            return false
         }
+        if (cfg.DiagEventLog)
+            GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
+        return false
     } catch as e {
         if (cfg.DiagEventLog)
             GUI_LogEvent("ACTIVATE ERROR: " e.Message " for hwnd=" hwnd)
+        return false
     }
 }
 
