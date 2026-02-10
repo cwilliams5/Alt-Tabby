@@ -82,7 +82,8 @@ When investigating the codebase, prefer query tools over reading full files or g
 - `check_global_ownership.ps1 -Query <globalName>` — who declares and mutates a global
 - `check_function_visibility.ps1 -Query <funcName>` — where defined, public/private, all callers
 - `query_interface.ps1 <filename>` — public functions + globals for a file (like help(module))
-- `query_config.ps1` — no args: shows section/group index. With keyword: fuzzy search config options
+- `query_config.ps1` — no args: shows section/group index. With keyword: fuzzy search config options. `-Usage <key>`: which files consume a config value
+- `query_ipc.ps1 <msgType>` — who sends/handles an IPC message (or no args: list all types)
 
 These return semantic answers, not raw text. The work runs in PowerShell — only the answer enters context.
 

@@ -285,11 +285,11 @@ if ($Query) {
             $braces = Count-Braces $cleaned
 
             if (-not $qInFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-                $fn = $Matches[1].ToLower()
-                if ($fn -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+                $fn = $Matches[1]
+                if ($fn.ToLower() -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
                     $qInFunc = $true
                     $qFuncDepth = $qDepth
-                    $qCurFunc = $Matches[1]
+                    $qCurFunc = $fn
                 }
             }
 

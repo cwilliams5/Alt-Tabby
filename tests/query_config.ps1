@@ -4,19 +4,22 @@
 # Returns semantic answers: section, key, type, default, description.
 #
 # Usage:
-#   powershell -File tests/query_config.ps1                (show section/group index)
-#   powershell -File tests/query_config.ps1 theme          (fuzzy search for "theme")
-#   powershell -File tests/query_config.ps1 -Section GUI   (list all settings in a section)
+#   powershell -File tests/query_config.ps1                       (show section/group index)
+#   powershell -File tests/query_config.ps1 theme                 (fuzzy search for "theme")
+#   powershell -File tests/query_config.ps1 -Section GUI          (list all settings in a section)
+#   powershell -File tests/query_config.ps1 -Usage GUI_RowHeight  (find all consumers of cfg.X)
 
 param(
     [Parameter(Position=0)]
     [string]$Search,
-    [string]$Section
+    [string]$Section,
+    [string]$Usage
 )
 
 $ErrorActionPreference = 'Stop'
 
-$registryPath = (Resolve-Path "$PSScriptRoot\..\src\shared\config_registry.ahk").Path
+$projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
+$registryPath = (Resolve-Path "$projectRoot\src\shared\config_registry.ahk").Path
 $rawLines = [System.IO.File]::ReadAllLines($registryPath)
 
 # === Parse config registry entries ===
@@ -90,7 +93,7 @@ foreach ($rawLine in $rawLines) {
 }
 
 # === No arguments: show section/group index ===
-if (-not $Search -and -not $Section) {
+if (-not $Search -and -not $Section -and -not $Usage) {
     $totalCount = $settings.Count
     Write-Host ""
     Write-Host "  Config Registry Index, $totalCount settings" -ForegroundColor White
@@ -111,6 +114,62 @@ if (-not $Search -and -not $Section) {
     Write-Host ""
     Write-Host "  Search: query_config.ps1 <keyword>" -ForegroundColor DarkGray
     Write-Host "  List:   query_config.ps1 -Section <name>" -ForegroundColor DarkGray
+    Write-Host "  Usage:  query_config.ps1 -Usage <propertyName>" -ForegroundColor DarkGray
+    Write-Host ""
+    exit 0
+}
+
+# === Usage mode: find all consumers of cfg.PropertyName ===
+if ($Usage) {
+    # Strip cfg. prefix if provided
+    $propertyName = $Usage -replace '^cfg\.', ''
+
+    # Find the config entry by its g: (global/property) field
+    $found = $null
+    foreach ($st in $settings) {
+        if ($st.G -eq $propertyName) {
+            $found = $st
+            break
+        }
+    }
+
+    if (-not $found) {
+        Write-Host "  cfg.$propertyName not found in config registry." -ForegroundColor Red
+        Write-Host "  Run with no arguments to see available sections, or search by keyword." -ForegroundColor DarkGray
+        exit 1
+    }
+
+    # Show the definition
+    $typeInfo = "type: $($found.T)"
+    $defaultInfo = "default: $($found.Default)"
+    if ($found.Fmt -eq 'hex') { $defaultInfo += " [hex]" }
+
+    Write-Host ""
+    Write-Host "  cfg.$propertyName" -ForegroundColor White
+    Write-Host "    defined:  [$($found.S)] $($found.K)  $typeInfo  $defaultInfo" -ForegroundColor DarkGray
+
+    # Grep src/ (excluding src/lib/) for cfg.<propertyName>
+    $srcPath = Join-Path $projectRoot "src"
+    $srcFiles = Get-ChildItem -Path $srcPath -Recurse -File -Filter "*.ahk" |
+        Where-Object { $_.FullName -notlike "*\lib\*" }
+
+    $matches = $srcFiles | Select-String -Pattern "cfg\.$propertyName" -CaseSensitive:$false
+
+    if ($matches.Count -eq 0) {
+        Write-Host "    used by: (none)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "    used by:" -ForegroundColor DarkGray
+
+        # Group by file, show relative paths
+        $grouped = $matches | Group-Object { $_.Path }
+        foreach ($group in $grouped) {
+            $relPath = $group.Name.Substring($projectRoot.Length + 1)
+            foreach ($m in $group.Group) {
+                Write-Host "      ${relPath}:$($m.LineNumber)" -ForegroundColor Green
+            }
+        }
+    }
+
     Write-Host ""
     exit 0
 }
