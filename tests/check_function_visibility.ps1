@@ -45,6 +45,9 @@ $srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
 
 if ($Query) {
     # Query mode: silent startup, output only the answer
+    $queryKey = $Query.ToLower()
+    $queryDef = $null
+    $queryParams = ""
 } elseif ($Discover) {
     Write-Host "  === Function Visibility Discovery ===" -ForegroundColor Cyan
     Write-Host "  Scanning $($srcFiles.Count) source files..." -ForegroundColor Cyan
@@ -116,6 +119,22 @@ foreach ($file in $srcFiles) {
             }
         }
 
+        # Query mode: capture queried function definition during Pass 1
+        if ($Query -and -not $queryDef -and $depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+            $fn = $Matches[1]
+            if ($fn.ToLower() -eq $queryKey -and $fn.ToLower() -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+                $queryDef = @{
+                    Name    = $fn
+                    File    = $file.FullName
+                    RelPath = $relPath
+                    Line    = ($i + 1)
+                }
+                if ($lines[$i] -match '\(([^)]*)\)') {
+                    $queryParams = $Matches[1].Trim()
+                }
+            }
+        }
+
         $depth += $braces[0] - $braces[1]
         if ($depth -lt 0) { $depth = 0 }
     }
@@ -130,126 +149,93 @@ foreach ($key in $funcDefs.Keys) {
 
 $pass1Sw.Stop()
 
-# ============================================================
-# Pass 2: Detect cross-file calls to _ functions
-# ============================================================
-$pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
+if (-not $Query) {
+    # ============================================================
+    # Pass 2: Detect cross-file calls to _ functions
+    # ============================================================
+    $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
 
-$violations = [System.Collections.ArrayList]::new()
+    $violations = [System.Collections.ArrayList]::new()
 
-foreach ($file in $srcFiles) {
-    $lines = $fileCache[$file.FullName]
-    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    foreach ($file in $srcFiles) {
+        $lines = $fileCache[$file.FullName]
+        $relPath = $file.FullName.Replace("$projectRoot\", '')
 
-    $depth = 0
-    $inFunc = $false
-    $funcDepth = -1
-    $funcName = ""
+        $depth = 0
+        $inFunc = $false
+        $funcDepth = -1
+        $funcName = ""
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = Clean-Line $lines[$i]
-        if ($cleaned -eq '') { continue }
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $cleaned = Clean-Line $lines[$i]
+            if ($cleaned -eq '') { continue }
 
-        $braces = Count-Braces $cleaned
+            $braces = Count-Braces $cleaned
 
-        # Track function context for reporting
-        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-            $fn = $Matches[1].ToLower()
-            if ($fn -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
-                $inFunc = $true
-                $funcDepth = $depth
-                $funcName = $Matches[1]
+            # Track function context for reporting
+            if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+                $fn = $Matches[1].ToLower()
+                if ($fn -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+                    $inFunc = $true
+                    $funcDepth = $depth
+                    $funcName = $Matches[1]
+                }
+            }
+
+            $depth += $braces[0] - $braces[1]
+            if ($depth -lt 0) { $depth = 0 }
+
+            if ($inFunc -and $depth -le $funcDepth) {
+                $inFunc = $false
+                $funcDepth = -1
+            }
+
+            # Find references to _ prefixed functions: both calls _Func() and
+            # references _Func (passed to SetTimer, OnEvent, OnMessage, etc.)
+            $callMatches = [regex]::Matches($cleaned, '(?<![.\w])(_\w+)(?=\s*[\(,\)\s\.\[]|$)')
+            $seen = [System.Collections.Generic.HashSet[string]]::new(
+                [System.StringComparer]::OrdinalIgnoreCase)
+
+            foreach ($cm in $callMatches) {
+                $calledName = $cm.Groups[1].Value
+                $calledKey = $calledName.ToLower()
+                if ($seen.Contains($calledKey)) { continue }
+                [void]$seen.Add($calledKey)
+
+                if (-not $privateFuncKeys.Contains($calledKey)) { continue }
+
+                $def = $funcDefs[$calledKey]
+
+                # Skip same-file calls (that's the whole point)
+                if ($def.File -eq $file.FullName) { continue }
+
+                # Skip definition lines (file-scope _ function defs in other files
+                # won't match because we already checked File equality)
+
+                [void]$violations.Add(@{
+                    CalledFunc = $def.Name
+                    CallFile   = $file.FullName
+                    CallRel    = $relPath
+                    CallLine   = ($i + 1)
+                    CallCode   = $lines[$i].Trim()
+                    CallFunc   = $funcName
+                    DefRel     = $def.RelPath
+                    DefLine    = $def.Line
+                })
             }
         }
-
-        $depth += $braces[0] - $braces[1]
-        if ($depth -lt 0) { $depth = 0 }
-
-        if ($inFunc -and $depth -le $funcDepth) {
-            $inFunc = $false
-            $funcDepth = -1
-        }
-
-        # Find references to _ prefixed functions: both calls _Func( and
-        # references _Func (passed to SetTimer, OnEvent, OnMessage, etc.)
-        $callMatches = [regex]::Matches($cleaned, '(?<![.\w])(_\w+)(?=\s*[\(,\)\s\.\[]|$)')
-        $seen = [System.Collections.Generic.HashSet[string]]::new(
-            [System.StringComparer]::OrdinalIgnoreCase)
-
-        foreach ($cm in $callMatches) {
-            $calledName = $cm.Groups[1].Value
-            $calledKey = $calledName.ToLower()
-            if ($seen.Contains($calledKey)) { continue }
-            [void]$seen.Add($calledKey)
-
-            if (-not $privateFuncKeys.Contains($calledKey)) { continue }
-
-            $def = $funcDefs[$calledKey]
-
-            # Skip same-file calls (that's the whole point)
-            if ($def.File -eq $file.FullName) { continue }
-
-            # Skip definition lines (file-scope _ function defs in other files
-            # won't match because we already checked File equality)
-
-            [void]$violations.Add(@{
-                CalledFunc = $def.Name
-                CallFile   = $file.FullName
-                CallRel    = $relPath
-                CallLine   = ($i + 1)
-                CallCode   = $lines[$i].Trim()
-                CallFunc   = $funcName
-                DefRel     = $def.RelPath
-                DefLine    = $def.Line
-            })
-        }
     }
-}
 
-$pass2Sw.Stop()
-$totalSw.Stop()
+    $pass2Sw.Stop()
+    $totalSw.Stop()
+}
 
 # ============================================================
 # Query Mode: Return definition, visibility, and all callers
 # ============================================================
 if ($Query) {
-    $queryKey = $Query.ToLower()
-
-    # Find function definition (any prefix, not just _)
-    $funcDef = $null
-    $funcParams = ""
-
-    foreach ($file in $srcFiles) {
-        $qLines = $fileCache[$file.FullName]
-        $relPath = $file.FullName.Replace("$projectRoot\", '')
-        $qDepth = 0
-
-        for ($qi = 0; $qi -lt $qLines.Count; $qi++) {
-            $cleaned = Clean-Line $qLines[$qi]
-            if ($cleaned -eq '') { continue }
-            $braces = Count-Braces $cleaned
-
-            if ($qDepth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-                $fn = $Matches[1]
-                if ($fn.ToLower() -eq $queryKey -and $fn.ToLower() -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
-                    $funcDef = @{
-                        Name    = $fn
-                        File    = $file.FullName
-                        RelPath = $relPath
-                        Line    = ($qi + 1)
-                    }
-                    # Extract params from raw line
-                    if ($qLines[$qi] -match '\(([^)]*)\)') {
-                        $funcParams = $Matches[1].Trim()
-                    }
-                    break
-                }
-            }
-            $qDepth += $braces[0] - $braces[1]
-            if ($qDepth -lt 0) { $qDepth = 0 }
-        }
-        if ($funcDef) { break }
-    }
+    $funcDef = $queryDef
+    $funcParams = $queryParams
 
     if (-not $funcDef) {
         Write-Host "  Unknown function: $Query" -ForegroundColor Red
@@ -271,6 +257,11 @@ if ($Query) {
 
     foreach ($file in $srcFiles) {
         $qLines = $fileCache[$file.FullName]
+
+        # Pre-filter: skip files that don't contain the function name at all
+        $fileText = [string]::Join("`n", $qLines)
+        if ($fileText.IndexOf($funcDef.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 
         $qDepth = 0
