@@ -23,9 +23,6 @@
 cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils, store_server
 g_CachedStartMenuShortcut: launcher_shortcuts, launcher_tray
 g_CachedStartupShortcut: launcher_shortcuts, launcher_tray
-g_GuiPID: launcher_main, launcher_tray
-g_StorePID: launcher_main, launcher_tray
-g_ViewerPID: launcher_main, launcher_tray
 gConfigIniPath: launcher_wizard, config_loader
 gGUI_CurrentWSName: gui_state, gui_workspace
 gGUI_DisplayItems: gui_state, gui_store, gui_workspace

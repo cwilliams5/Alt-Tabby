@@ -99,13 +99,6 @@ for _, arg in A_Args {
     }
 }
 
-; Launcher mode globals (declared early, initialization happens after includes)
-if (g_AltTabbyMode = "launch" || g_AltTabbyMode = "wizard-continue") {
-    global g_StorePID := 0
-    global g_GuiPID := 0
-    global g_ViewerPID := 0
-}
-
 ; Note: Subprocess tray icon hiding is done immediately in arg parsing above
 ; to minimize flicker (A_IconHidden := true set as soon as mode detected)
 

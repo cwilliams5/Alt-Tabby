@@ -20,6 +20,11 @@ global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
 ; Win32 error code
 global ERROR_ALREADY_EXISTS := 183
 
+; Subprocess PID tracking — owner (read by launcher_about, launcher_stats, etc.)
+global g_StorePID := 0
+global g_GuiPID := 0
+global g_ViewerPID := 0
+
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagLauncherLog (config.ini [Diagnostics] LauncherLog=true)
 ; Log file: %TEMP%\tabby_launcher.log
@@ -258,13 +263,8 @@ Launcher_StartSubprocesses(skipMismatchGuard := false) {
 ; Cleanup handler called on exit
 _Launcher_OnExit(exitReason, exitCode) {
     global g_LauncherMutex, g_ActiveMutex, g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_StorePID, g_GuiPID, g_ViewerPID
     try HideSplashScreen()
-    try ProcessUtils_KillAltTabby({
-        pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID},
-        editors: {config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID}
-    })
-    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
+    try Launcher_ShutdownSubprocesses({config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID})
     if (g_LauncherMutex) {
         try DllCall("CloseHandle", "ptr", g_LauncherMutex)
         g_LauncherMutex := 0
@@ -280,7 +280,7 @@ _Launcher_OnExit(exitReason, exitCode) {
 ; GUI sends RESTART_STORE when store health check fails
 ; Config editor sends RESTART_ALL when settings are saved
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
-    global TABBY_CMD_RESTART_STORE, TABBY_CMD_RESTART_ALL
+    global TABBY_CMD_RESTART_STORE, TABBY_CMD_RESTART_ALL, cfg
     global g_LastStoreRestartTick, g_LastFullRestartTick
 
     dwData := NumGet(lParam, 0, "uptr")
@@ -328,14 +328,36 @@ _Launcher_ApplyConfigChanges() {
 }
 
 _Launcher_RestartStoreAndGui() {
-    global TIMING_SUBPROCESS_LAUNCH, g_StorePID, g_GuiPID, g_ViewerPID
-    ; Graceful shutdown: GUI first (sends final stats), then Store (flushes to disk)
-    ProcessUtils_KillAltTabby({pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}})
-    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
-    ; Launch: Store first (so it's ready), then GUI
+    global TIMING_SUBPROCESS_LAUNCH
+    Launcher_ShutdownSubprocesses()
     LaunchStore()
     Sleep(TIMING_SUBPROCESS_LAUNCH)
     LaunchGui()
+}
+
+Launcher_RestartStore() {
+    global g_StorePID, TIMING_SUBPROCESS_LAUNCH
+    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+}
+
+Launcher_RestartGui() {
+    global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
+    LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+}
+
+Launcher_RestartViewer() {
+    global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
+    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+}
+
+; Kills subprocesses + resets PIDs. Optional editor PIDs passed by caller.
+Launcher_ShutdownSubprocesses(editors := 0) {
+    global g_StorePID, g_GuiPID, g_ViewerPID
+    opts := {pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}}
+    if (IsObject(editors))
+        opts.editors := editors
+    ProcessUtils_KillAltTabby(opts)
+    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
 }
 
 ; Check if we should redirect to scheduled task instead of running directly
@@ -697,7 +719,7 @@ Launcher_GenerateId() {
 ; Catches: read-only attribute, antivirus locks, OneDrive/Dropbox sync locks.
 ; Only warns — does NOT block startup.
 _Launcher_CheckConfigWritable() {
-    global gConfigIniPath, APP_NAME
+    global gConfigIniPath, APP_NAME, cfg
 
     ; Skip if config doesn't exist yet (wizard will create it)
     if (!FileExist(gConfigIniPath))

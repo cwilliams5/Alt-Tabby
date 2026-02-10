@@ -342,9 +342,9 @@ $CHECKS += @(
     @{
         Id       = "exit_handler_kills_subprocesses"
         File     = "launcher\launcher_main.ahk"
-        Desc     = "_Launcher_OnExit calls ProcessUtils_KillAltTabby before mutex release"
+        Desc     = "_Launcher_OnExit calls Launcher_ShutdownSubprocesses before mutex release"
         Function = "_Launcher_OnExit"
-        Patterns = @("ProcessUtils_KillAltTabby(")
+        Patterns = @("Launcher_ShutdownSubprocesses(")
     }
 )
 

@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Cross-file globals (cfg, g_StorePID, etc.) come from alt_tabby.ahk
+#Warn VarUnset, Off  ; Cross-file globals (cfg, g_TestingMode, etc.) come from alt_tabby.ahk
 
 ; ============================================================
 ; Launcher Tray Menu - On-Demand Updates
@@ -307,30 +307,23 @@ _Tray_OnUpdateInstall() {
 }
 
 RestartStore() {
-    global g_StorePID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    Launcher_RestartStore()
     Dash_StartRefreshTimer()
 }
 
 RestartGui() {
-    global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    Launcher_RestartGui()
     Dash_StartRefreshTimer()
 }
 
 RestartViewer() {
-    global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    Launcher_RestartViewer()
     Dash_StartRefreshTimer()
 }
 
 ExitAll() {
-    global g_ConfigEditorPID, g_BlacklistEditorPID, g_StorePID, g_GuiPID, g_ViewerPID
-    ProcessUtils_KillAltTabby({
-        pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID},
-        editors: {config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID}
-    })
-    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
+    global g_ConfigEditorPID, g_BlacklistEditorPID
+    Launcher_ShutdownSubprocesses({config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID})
     ExitApp()
 }
 
@@ -594,9 +587,7 @@ _AdminToggle_CheckComplete() {
         result := ThemeMsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")
         if (result = "Yes") {
             ; Shut down subprocesses FIRST so mutex releases before new instance boots
-            global g_StorePID, g_GuiPID, g_ViewerPID
-            ProcessUtils_KillAltTabby({pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}})
-            g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
+            Launcher_ShutdownSubprocesses()
 
             exitCode := RunAdminTask(TIMING_TASK_READY_WAIT)
             if (exitCode = 0) {
