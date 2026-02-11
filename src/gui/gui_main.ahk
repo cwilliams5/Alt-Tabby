@@ -329,7 +329,7 @@ _GUI_RequestStoreRestart() {
 
 ; PostMessage wake handler: store wrote to our pipe and signaled us.
 ; Read immediately instead of waiting for next timer tick.
-_GUI_OnPipeWake(wParam, lParam, msg, hwnd) {
+_GUI_OnPipeWake(wParam, lParam, msg, hwnd) {  ; lint-ignore: callback-critical (pure delegation to IPC__ClientTick)
     global gGUI_StoreClient
     if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
         IPC__ClientTick(gGUI_StoreClient)

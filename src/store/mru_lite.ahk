@@ -15,7 +15,7 @@ MRU_Lite_Init() {
     ; Load config values (ConfigLoader_Init has already run)
     MruLiteIntervalMs := cfg.MruLitePollMs
 
-    SetTimer(MRU_Lite_Tick, MruLiteIntervalMs)
+    SetTimer(MRU_Lite_Tick, MruLiteIntervalMs)  ; lint-ignore: timer-lifecycle (process-lifetime fallback poller)
 }
 
 MRU_Lite_Tick() {

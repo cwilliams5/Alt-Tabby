@@ -984,7 +984,7 @@ _Theme_RegisterOwnerDrawButton(ctrl) {
     ; Start hover tracking timer if not already running
     if (!gTheme_HoverTimerFn) {
         gTheme_HoverTimerFn := _Theme_CheckButtonHover
-        SetTimer(gTheme_HoverTimerFn, 30)
+        SetTimer(gTheme_HoverTimerFn, 30)  ; lint-ignore: timer-lifecycle (process-lifetime hover polling)
     }
 }
 

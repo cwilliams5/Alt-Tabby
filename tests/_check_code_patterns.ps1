@@ -588,6 +588,44 @@ $CHECKS += @(
     }
 )
 
+# === Ghost Window Detection (architecture.md CRITICAL) ===
+# ValidateExistence must check visibility+cloaked+minimized to detect ghost windows.
+# Without this, apps like Outlook that reuse HWNDs leave ghost entries in the window list.
+$CHECKS += @(
+    @{
+        Id       = "ghost_window_detection"
+        File     = "store\windowstore.ahk"
+        Desc     = "ValidateExistence detects ghost windows via visibility+cloaked+minimized checks"
+        Function = "WindowStore_ValidateExistence"
+        Patterns = @("IsWindowVisible", "DwmGetWindowAttribute", "IsIconic")
+    }
+)
+
+# === Snapshot Blocking During Async Activation (keyboard-hooks.md CRITICAL) ===
+# When gGUI_PendingPhase != "", skip incoming snapshots (except toggle responses).
+# Without this, workspace-filtered snapshots corrupt gGUI_LiveItems during activation.
+$CHECKS += @(
+    @{
+        Id       = "snapshot_blocking_during_async"
+        File     = "gui\gui_store.ahk"
+        Desc     = "Snapshot handler checks gGUI_PendingPhase (async activation guard)"
+        Function = "GUI_OnStoreMessage"
+        Patterns = @("gGUI_PendingPhase")
+    }
+)
+
+# === Local MRU Staleness Check (keyboard-hooks.md CRITICAL) ===
+# During rapid Alt+Tab, we're faster than store deltas. Track gGUI_LastLocalMRUTick
+# to skip stale snapshots. Without this, old snapshots overwrite local MRU state.
+$CHECKS += @(
+    @{
+        Id       = "local_mru_staleness_check"
+        File     = "gui\gui_store.ahk"
+        Desc     = "Snapshot handler has local MRU staleness check"
+        Patterns = @("gGUI_LastLocalMRUTick")
+    }
+)
+
 # === Run checks ===
 
 $passed = 0
