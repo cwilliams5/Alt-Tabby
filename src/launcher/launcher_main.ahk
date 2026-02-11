@@ -174,7 +174,7 @@ Launcher_Init() {
 ; auto-update check, and Persistent().
 ; skipMismatchGuard: true when called from wizard-continue (mismatch can't have happened)
 Launcher_StartSubprocesses(skipMismatchGuard := false) {
-    global g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
+    global g_MismatchDialogShown, g_TestingMode, g_SkipActiveMutex, cfg, gConfigIniPath
     global TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, g_SplashStartTick, APP_NAME
 
     ; Show splash screen if enabled (skip in testing mode)
@@ -194,7 +194,7 @@ Launcher_StartSubprocesses(skipMismatchGuard := false) {
     ; Acquire system-wide active mutex before launching subprocesses
     ; This prevents multiple installations from running simultaneously
     ; Skip in testing mode to allow parallel test execution
-    if (!g_TestingMode && !_Launcher_AcquireActiveMutex()) {
+    if (!g_TestingMode && !g_SkipActiveMutex && !_Launcher_AcquireActiveMutex()) {
         result := ThemeMsgBox(
             "Another Alt-Tabby installation is already running.`n`n"
             "Only one installation can be active at a time.`n"

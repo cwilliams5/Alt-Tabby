@@ -50,6 +50,7 @@
 global g_AltTabbyMode := "launch"
 global g_TestingMode := false  ; Skip wizard and install mismatch dialogs (for automated testing)
 global g_SkipMismatchCheck := false  ; Skip mismatch dialog (after one-time elevation from mismatch)
+global g_SkipActiveMutex := false  ; Skip active mutex check (user already declined killing other instance)
 
 for _, arg in A_Args {
     switch StrLower(arg) {
@@ -95,7 +96,8 @@ for _, arg in A_Args {
             ; Skip wizard and install mismatch dialogs (for automated testing)
         case "--skip-mismatch":
             g_SkipMismatchCheck := true
-            ; Skip mismatch dialog (after one-time elevation from mismatch prompt)
+            g_SkipActiveMutex := true
+            ; Skip mismatch dialog and active mutex check (after one-time elevation from mismatch prompt)
     }
 }
 
@@ -371,10 +373,9 @@ if (g_AltTabbyMode = "update-installed") {
         if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
             SplitPath(cfg.SetupExePath, , &setupDir)
         }
-        targetDirLower := StrLower(targetDir)
-        if (targetDirLower != StrLower(sourceDir)
-            && (setupDir = "" || targetDirLower != StrLower(setupDir))
-            && targetDirLower != StrLower(ALTTABBY_INSTALL_DIR)) {
+        if (!PathsEqual(targetDir, sourceDir)
+            && (setupDir = "" || !PathsEqual(targetDir, setupDir))
+            && !PathsEqual(targetDir, ALTTABBY_INSTALL_DIR)) {
             ThemeMsgBox("Update target directory is not recognized:`n" targetPath, APP_NAME, "Iconx")
             ExitApp()
         }

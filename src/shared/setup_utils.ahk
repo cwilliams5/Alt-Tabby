@@ -1186,31 +1186,10 @@ _Update_CopyUserData(srcDir, targetDir, overwrite := false) {
 }
 
 ; Merge stats from source into target, adding counters together (Bug 4 fix)
-; This preserves both sets of stats when updating across installations
+; This preserves both sets of stats when updating across installations.
+; Uses delta-based merge: tracks source snapshots at merge time so repeated
+; merges only add what's new (prevents double-counting AND silent data loss).
 _Update_MergeStats(srcPath, targetPath) {
-    ; ID-based guard: skip if already merged to this installation (survives directory renames)
-    targetDir := ""
-    SplitPath(targetPath, , &targetDir)
-    targetConfigPath := targetDir "\config.ini"
-    targetInstallId := ""
-    if (FileExist(targetConfigPath))
-        try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
-
-    if (targetInstallId != "") {
-        try {
-            lastMergedToId := IniRead(srcPath, "Merged", "LastMergedToId", "")
-            if (lastMergedToId = targetInstallId)
-                return
-        }
-    }
-
-    ; Path-based guard: fallback for installations without InstallationId
-    try {
-        lastMerged := IniRead(srcPath, "Merged", "LastMergedTo", "")
-        if (PathsEqual(lastMerged, targetPath))
-            return
-    }
-
     ; IMPORTANT: These keys must match the lifetime counter keys written by Stats_FlushToDisk().
     ; If you add/rename a lifetime stat, update this list too.
     lifetimeKeys := [
@@ -1223,20 +1202,80 @@ _Update_MergeStats(srcPath, targetPath) {
         "TotalWSToggles"
     ]
 
-    ; Read source and target values, add them, write to target
-    for key in lifetimeKeys {
+    ; Resolve target installation ID (survives directory renames)
+    targetDir := ""
+    SplitPath(targetPath, , &targetDir)
+    targetConfigPath := targetDir "\config.ini"
+    targetInstallId := ""
+    if (FileExist(targetConfigPath))
+        try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
+
+    ; Check if we've previously merged to this same target
+    previouslyMerged := false
+    if (targetInstallId != "") {
         try {
-            srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
-            targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
-            mergedVal := srcVal + targetVal
-            IniWrite(mergedVal, targetPath, "Lifetime", key)
+            lastMergedToId := IniRead(srcPath, "Merged", "LastMergedToId", "")
+            if (lastMergedToId = targetInstallId)
+                previouslyMerged := true
+        }
+    }
+    if (!previouslyMerged) {
+        try {
+            lastMerged := IniRead(srcPath, "Merged", "LastMergedTo", "")
+            if (PathsEqual(lastMerged, targetPath))
+                previouslyMerged := true
         }
     }
 
-    ; Mark source as merged to prevent double-counting on future updates
+    if (previouslyMerged) {
+        ; Delta merge: only add stats accumulated since last merge
+        hasNewStats := false
+        for key in lifetimeKeys {
+            try {
+                srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
+                snapVal := Integer(IniRead(srcPath, "Merged", "Snap_" key, "0"))
+                if (srcVal != snapVal) {
+                    hasNewStats := true
+                    break
+                }
+            }
+        }
+        if (!hasNewStats)
+            return  ; Source unchanged since last merge — true duplicate
+
+        ; Apply deltas (current source - snapshot) to target
+        for key in lifetimeKeys {
+            try {
+                srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
+                snapVal := Integer(IniRead(srcPath, "Merged", "Snap_" key, "0"))
+                delta := srcVal - snapVal
+                if (delta > 0) {
+                    targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
+                    IniWrite(targetVal + delta, targetPath, "Lifetime", key)
+                }
+            }
+        }
+    } else {
+        ; First merge to this target: add full source values
+        for key in lifetimeKeys {
+            try {
+                srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
+                targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
+                IniWrite(srcVal + targetVal, targetPath, "Lifetime", key)
+            }
+        }
+    }
+
+    ; Record merge marker and snapshot of current source values
     try IniWrite(targetPath, srcPath, "Merged", "LastMergedTo")
     if (targetInstallId != "")
         try IniWrite(targetInstallId, srcPath, "Merged", "LastMergedToId")
+    for key in lifetimeKeys {
+        try {
+            srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
+            IniWrite(srcVal, srcPath, "Merged", "Snap_" key)
+        }
+    }
 }
 
 ; Validate that a file is a valid PE executable
