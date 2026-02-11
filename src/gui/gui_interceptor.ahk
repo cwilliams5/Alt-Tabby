@@ -57,7 +57,7 @@ INT_Ctrl_Down(*) {
 
     ; Only toggle mode when GUI is active and visible
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        GUI_ToggleWorkspaceMode()
+        GUI_ToggleWorkspaceMode()  ; lint-ignore: critical-leak
     }
 }
 

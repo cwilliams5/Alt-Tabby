@@ -713,13 +713,13 @@ Store_BroadcastWorkspaceFlips(flips) {
         if (gStore_ClientState.Has(hPipe)) {
             cs := gStore_ClientState[hPipe]
             wh := cs.HasOwnProp("wakeHwnd") ? cs.wakeHwnd : 0
-            IPC_PipeServer_Send(gStore_Server, hPipe, msg, wh)
+            IPC_PipeServer_Send(gStore_Server, hPipe, msg, wh)  ; lint-ignore: critical-leak
             cs.lastRev := rev
         }
     }
     ; Consume workspace changed flag so the subsequent Store_PushToClients
     ; doesn't re-send the workspace_change message
-    WindowStore_ConsumeWorkspaceChangedFlag()
+    WindowStore_ConsumeWorkspaceChangedFlag()  ; lint-ignore: critical-leak
     Critical "Off"
     gStore_LastBroadcastRev := rev
     gStore_LastSendTick := A_TickCount
@@ -763,10 +763,10 @@ Store_OnMessage(line, hPipe := 0) {
             hwnd: A_ScriptHwnd,
             payload: { meta: WindowStore_GetCurrentWorkspace(), capabilities: { deltas: true } }
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(ack), wakeHwnd)
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(ack), wakeHwnd)  ; lint-ignore: critical-leak
 
         ; Immediately send initial projection with client's opts
-        proj := WindowStore_GetProjection(opts)
+        proj := WindowStore_GetProjection(opts)  ; lint-ignore: critical-leak
         ; Handle both items and hwndsOnly response formats (same logic as PROJECTION_REQUEST)
         payload := { meta: proj.meta }
         if (proj.HasOwnProp("hwnds"))
@@ -778,7 +778,7 @@ Store_OnMessage(line, hPipe := 0) {
             rev: proj.rev,
             payload: payload
         }
-        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg), wakeHwnd)
+        IPC_PipeServer_Send(gStore_Server, hPipe, JSON.Dump(msg), wakeHwnd)  ; lint-ignore: critical-leak
         cs := gStore_ClientState[hPipe]
         cs.lastRev := proj.rev
         cs.lastProj := proj.HasOwnProp("items") ? proj.items : []

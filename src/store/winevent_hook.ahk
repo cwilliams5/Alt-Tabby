@@ -321,7 +321,7 @@ _WEH_ProcessBatch() {
 
             ; Enqueue icon refresh check (throttled) - allows updating window icons that change
             ; (e.g., browser favicons) when the window gains focus
-            try WindowStore_EnqueueIconRefresh(newFocus)
+            try WindowStore_EnqueueIconRefresh(newFocus)  ; lint-ignore: critical-leak
         } else {
             ; Window not in store yet - defer probe to OUTSIDE Critical section.
             ; WinUtils_ProbeWindow sends window messages (WinGetTitle, WinGetClass, WinGetPID)

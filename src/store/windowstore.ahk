@@ -630,7 +630,8 @@ _WS_DiagBump(source) {
 }
 
 ; Atomic revision bump - prevents race conditions when multiple producers bump rev
-; Wraps increment in Critical to prevent interruption by timers/hotkeys
+; NOTE: No Critical "Off" — callers hold Critical and "Off" here would leak their state.
+; Critical "On" is kept for the rare caller without Critical (e.g., EndScan).
 _WS_BumpRev(source) {
     Critical "On"
     global cfg, gWS_Rev
@@ -638,7 +639,6 @@ _WS_BumpRev(source) {
     Store_BumpLifetimeStat("TotalWindowUpdates")
     if (cfg.DiagChurnLog)
         _WS_DiagBump(source)
-    Critical "Off"
 }
 
 WindowStore_GetByHwnd(hwnd) {
