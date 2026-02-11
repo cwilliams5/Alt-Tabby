@@ -107,6 +107,8 @@ WinEventHook_Start() {
         "ptr")
 
     if (!_WEH_Hook) {
+        CallbackFree(_WEH_CallbackObj)
+        _WEH_CallbackObj := 0
         return false
     }
 
