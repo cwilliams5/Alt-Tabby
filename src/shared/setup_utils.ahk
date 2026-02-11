@@ -129,7 +129,7 @@ CompareVersions(v1, v2) {
 
 ; Check if a path looks like a temporary or cloud-synced location
 ; Used to warn users before creating shortcuts to ephemeral paths
-IsTemporaryLocation(path) {
+_IsTemporaryLocation(path) {
     lowerPath := StrLower(path)
     return (InStr(lowerPath, "\downloads")
         || InStr(lowerPath, "\temp")
@@ -153,7 +153,7 @@ WarnTemporaryLocation(exePath, subject, verb, consequence, action) {
     global APP_NAME
     dirPath := ""
     SplitPath(exePath, , &dirPath)
-    if (!IsTemporaryLocation(dirPath))
+    if (!_IsTemporaryLocation(dirPath))
         return "Yes"
 
     msg := "This " subject " " verb ":`n" exePath "`n`n"
@@ -174,7 +174,7 @@ WarnIfTempLocation_AdminTask(exePath, dirPath := "", extraText := "") {
     if (dirPath = "") {
         SplitPath(exePath, , &dirPath)
     }
-    if (!IsTemporaryLocation(dirPath))
+    if (!_IsTemporaryLocation(dirPath))
         return true  ; Not temporary, proceed
 
     msg := "The admin task will point to:`n" exePath "`n`n"
@@ -275,12 +275,12 @@ _RunWithTimeout(cmd, timeoutMs := 10000, options := "Hide") {
     }
 
     ; Process finished (either caught by WaitClose or already exited) — get exit code
-    try return ProcessGetExitCode(pid)
+    try return _ProcessGetExitCode(pid)
     return 0
 }
 
 ; Get exit code of a recently-exited process via Win32 API
-ProcessGetExitCode(pid) {
+_ProcessGetExitCode(pid) {
     global PROCESS_QUERY_LIMITED_INFORMATION
     hProcess := DllCall("OpenProcess", "UInt", PROCESS_QUERY_LIMITED_INFORMATION, "Int", 0, "UInt", pid, "Ptr")
     if (!hProcess)

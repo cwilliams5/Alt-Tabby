@@ -563,7 +563,7 @@ RunGUITests_State() {
     GUI_AssertEq(gGUI_State, "IDLE", "State is IDLE after Alt_Up")
 
     ; Now simulate grace timer firing late (race condition)
-    GUI_GraceTimerFired()
+    _GUI_GraceTimerFired()
 
     ; Overlay should NOT have shown - grace timer should have aborted
     GUI_AssertEq(gGUI_OverlayVisible, false, "Grace timer correctly aborted (state was IDLE)")
@@ -579,7 +579,7 @@ RunGUITests_State() {
     GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
     ; State is IDLE, grace timer cancelled
     ; Simulate late grace timer firing (race condition)
-    GUI_GraceTimerFired()
+    _GUI_GraceTimerFired()
     ; OverlayVisible must be false after abort
     GUI_AssertEq(gGUI_OverlayVisible, false, "Race fix: overlay not visible after late grace fire")
     GUI_AssertEq(gGUI_State, "IDLE", "Race fix: state still IDLE after late grace fire")

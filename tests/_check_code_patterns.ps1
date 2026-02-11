@@ -98,8 +98,8 @@ $CHECKS = @(
     @{
         Id       = "gdip_shutdown_dispose"
         File     = "gui\gui_gdip.ahk"
-        Desc     = "Gdip_Shutdown() calls Gdip_DisposeResources()"
-        Patterns = @("Gdip_DisposeResources()")
+        Desc     = "Gdip_Shutdown() calls _Gdip_DisposeResources()"
+        Patterns = @("_Gdip_DisposeResources()")
     },
 
     # --- OnExit Handler Registration (from test_unit_cleanup.ahk) ---
@@ -124,8 +124,8 @@ $CHECKS = @(
     @{
         Id       = "store_onexit_icons"
         File     = "store\store_server.ahk"
-        Desc     = "Store_OnExit calls both icon cleanup functions"
-        Function = "Store_OnExit"
+        Desc     = "_Store_OnExit calls both icon cleanup functions"
+        Function = "_Store_OnExit"
         Patterns = @("WindowStore_CleanupAllIcons()", "WindowStore_CleanupExeIconCache()")
     },
     @{
@@ -156,8 +156,8 @@ $CHECKS = @(
         File     = "store\store_server.ahk"
         Desc     = "Store registers disconnect callback and cleans all client state"
         Patterns = @(
-            "Store_OnClientDisconnect)",
-            "Store_OnClientDisconnect(hPipe)",
+            "_Store_OnClientDisconnect)",
+            "_Store_OnClientDisconnect(hPipe)",
             "gStore_ClientState.Delete("
         )
     },
@@ -203,7 +203,7 @@ $CHECKS = @(
         Id       = "weh_idle_pause"
         File     = "store\winevent_hook.ahk"
         Desc     = "WinEvent hook has idle-pause pattern with EnsureTimerRunning"
-        Patterns = @("_WEH_IdleTicks", "_WEH_IdleThreshold", "SetTimer(_WEH_ProcessBatch, 0)", "WinEventHook_EnsureTimerRunning()")
+        Patterns = @("_WEH_IdleTicks", "_WEH_IdleThreshold", "SetTimer(_WEH_ProcessBatch, 0)", "_WinEventHook_EnsureTimerRunning()")
     },
     @{
         Id       = "windowstore_wakes_pumps"
@@ -300,8 +300,8 @@ $CHECKS = @(
     @{
         Id       = "exe_name_dedup"
         File     = "shared\process_utils.ahk"
-        Desc     = "ProcessUtils_BuildExeNameList uses StrLower + seenNames dedup"
-        Patterns = @("ProcessUtils_BuildExeNameList(", "StrLower(")
+        Desc     = "_ProcessUtils_BuildExeNameList uses StrLower + seenNames dedup"
+        Patterns = @("_ProcessUtils_BuildExeNameList(", "StrLower(")
         AnyOf    = @("seenNames.Has(", "seenNames[")
     },
 
@@ -339,8 +339,8 @@ $CHECKS += @(
     @{
         Id       = "unified_kill_delegation"
         File     = "shared\process_utils.ahk"
-        Desc     = "ProcessUtils_KillAltTabby delegates to ProcessUtils_KillAllAltTabbyExceptSelf"
-        Patterns = @("ProcessUtils_KillAltTabby(", "ProcessUtils_KillAllAltTabbyExceptSelf(")
+        Desc     = "ProcessUtils_KillAltTabby delegates to _ProcessUtils_KillAllAltTabbyExceptSelf"
+        Patterns = @("ProcessUtils_KillAltTabby(", "_ProcessUtils_KillAllAltTabbyExceptSelf(")
     }
 )
 
@@ -548,8 +548,8 @@ $CHECKS += @(
     @{
         Id       = "activate_gated_mru"
         File     = "gui\gui_state.ahk"
-        Desc     = "GUI_ActivateItem gates _GUI_UpdateLocalMRU on _GUI_RobustActivate success"
-        Function = "GUI_ActivateItem"
+        Desc     = "_GUI_ActivateItem gates _GUI_UpdateLocalMRU on _GUI_RobustActivate success"
+        Function = "_GUI_ActivateItem"
         Patterns = @("if (_GUI_RobustActivate(hwnd))")
     }
 )

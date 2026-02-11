@@ -248,52 +248,52 @@ RunGUITests_Data() {
     GUI_AssertTrue(!result, "Viewport: empty changedHwnds returns false")
 
     ; ============================================================
-    ; GUI_RemoveItemAt TESTS
+    ; _GUI_RemoveItemAt TESTS
     ; ============================================================
 
-    ; ----- Test: GUI_RemoveItemAt removes middle item -----
-    GUI_Log("Test: GUI_RemoveItemAt removes middle item")
+    ; ----- Test: _GUI_RemoveItemAt removes middle item -----
+    GUI_Log("Test: _GUI_RemoveItemAt removes middle item")
     ResetGUIState()
     gGUI_LiveItems := CreateTestItems(5)
     gGUI_Sel := 2
 
-    GUI_RemoveItemAt(3)  ; Remove middle item
+    _GUI_RemoveItemAt(3)  ; Remove middle item
 
     GUI_AssertEq(gGUI_LiveItems.Length, 4, "RemoveItemAt middle: 4 items remain")
     GUI_AssertEq(gGUI_Sel, 2, "RemoveItemAt middle: selection unchanged")
 
-    ; ----- Test: GUI_RemoveItemAt removes last item, clamps selection -----
-    GUI_Log("Test: GUI_RemoveItemAt clamps selection")
+    ; ----- Test: _GUI_RemoveItemAt removes last item, clamps selection -----
+    GUI_Log("Test: _GUI_RemoveItemAt clamps selection")
     ResetGUIState()
     gGUI_LiveItems := CreateTestItems(3)
     gGUI_Sel := 3  ; Select last item
 
-    GUI_RemoveItemAt(3)  ; Remove last item
+    _GUI_RemoveItemAt(3)  ; Remove last item
 
     GUI_AssertEq(gGUI_LiveItems.Length, 2, "RemoveItemAt last: 2 items remain")
     GUI_AssertEq(gGUI_Sel, 2, "RemoveItemAt last: selection clamped to 2")
 
-    ; ----- Test: GUI_RemoveItemAt removes only item -----
-    GUI_Log("Test: GUI_RemoveItemAt removes only item")
+    ; ----- Test: _GUI_RemoveItemAt removes only item -----
+    GUI_Log("Test: _GUI_RemoveItemAt removes only item")
     ResetGUIState()
     gGUI_LiveItems := CreateTestItems(1)
     gGUI_Sel := 1
 
-    GUI_RemoveItemAt(1)
+    _GUI_RemoveItemAt(1)
 
     GUI_AssertEq(gGUI_LiveItems.Length, 0, "RemoveItemAt only: list empty")
     GUI_AssertEq(gGUI_Sel, 1, "RemoveItemAt only: sel=1 (default)")
     GUI_AssertEq(gGUI_ScrollTop, 0, "RemoveItemAt only: scrollTop=0")
 
-    ; ----- Test: GUI_RemoveItemAt out-of-bounds is no-op -----
-    GUI_Log("Test: GUI_RemoveItemAt out-of-bounds")
+    ; ----- Test: _GUI_RemoveItemAt out-of-bounds is no-op -----
+    GUI_Log("Test: _GUI_RemoveItemAt out-of-bounds")
     ResetGUIState()
     gGUI_LiveItems := CreateTestItems(3)
 
-    GUI_RemoveItemAt(0)
+    _GUI_RemoveItemAt(0)
     GUI_AssertEq(gGUI_LiveItems.Length, 3, "RemoveItemAt 0: no-op")
 
-    GUI_RemoveItemAt(4)
+    _GUI_RemoveItemAt(4)
     GUI_AssertEq(gGUI_LiveItems.Length, 3, "RemoveItemAt 4: no-op (out of bounds)")
 
     ; ============================================================

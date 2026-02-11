@@ -16,19 +16,19 @@ global _KLite_PendingTimeout := 2000  ; Max wait time (ms)
 
 KomorebiLite_Init() {
     ; Check if komorebi is available before starting timer
-    if (!KomorebiLite_IsAvailable())
+    if (!_KomorebiLite_IsAvailable())
         return false
-    SetTimer(KomorebiLite_Tick, 1000)
+    SetTimer(_KomorebiLite_Tick, 1000)
     return true
 }
 
 KomorebiLite_Stop() {
-    SetTimer(KomorebiLite_Tick, 0)
+    SetTimer(_KomorebiLite_Tick, 0)
 }
 
-KomorebiLite_Tick() {
+_KomorebiLite_Tick() {
     global _KLite_StateObj
-    if !KomorebiLite_IsAvailable()
+    if !_KomorebiLite_IsAvailable()
         return
     stateObj := _KomorebiLite_GetState()
     if !(stateObj is Map)
@@ -44,7 +44,7 @@ KomorebiLite_Tick() {
     }
 }
 
-KomorebiLite_IsAvailable() {
+_KomorebiLite_IsAvailable() {
     global cfg
     return (cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe))
 }

@@ -52,9 +52,9 @@ ShowFirstRunWizard() {
 
     ; Buttons - right-aligned (Apply + gap + Skip = 120+8+100 = 228, right edge at 444)
     btn2 := g_WizardGui.AddButton("x216 w120 y+20 Default", "Apply && Start")
-    btn2.OnEvent("Click", WizardApply)
+    btn2.OnEvent("Click", _WizardApply)
     btn1 := g_WizardGui.AddButton("w100 x+8", "Skip")
-    btn1.OnEvent("Click", WizardSkip)
+    btn1.OnEvent("Click", _WizardSkip)
 
     Theme_ApplyToControl(chk1, "Checkbox", themeEntry)
     Theme_ApplyToControl(chk2, "Checkbox", themeEntry)
@@ -64,7 +64,7 @@ ShowFirstRunWizard() {
     Theme_ApplyToControl(btn1, "Button", themeEntry)
     Theme_ApplyToControl(btn2, "Button", themeEntry)
 
-    g_WizardGui.OnEvent("Close", WizardSkip)
+    g_WizardGui.OnEvent("Close", _WizardSkip)
     Theme_ShowModalDialog(g_WizardGui, 468)
 }
 
@@ -124,7 +124,7 @@ _Wizard_LoadLogo(wg) {
     wg.AddPicture(logoOpts, "HBITMAP:*" hBitmap)
 }
 
-WizardSkip(*) {
+_WizardSkip(*) {
     global g_WizardGui, g_WizardShuttingDown, cfg, gConfigIniPath
     if (g_WizardShuttingDown)
         return
@@ -140,7 +140,7 @@ WizardSkip(*) {
     TrayTip("Alt-Tabby", "Setup skipped. Configure later from tray menu.", "Icon!")
 }
 
-WizardApply(*) {
+_WizardApply(*) {
     global g_WizardGui, g_WizardShuttingDown, cfg, gConfigIniPath
     if (g_WizardShuttingDown)
         return

@@ -243,21 +243,6 @@ Theme_ApplyToControl(ctrl, ctrlType, guiEntry := "") {
         guiEntry.controls.Push({ctrl: ctrl, type: ctrlType})
 }
 
-; Convenience: apply theme to an array of {ctrl, type} pairs.
-Theme_ApplyToControls(pairs, guiEntry := "") {
-    for pair in pairs
-        Theme_ApplyToControl(pair.ctrl, pair.type, guiEntry)
-}
-
-; Set themed font color on a text control. Handles light/dark mode
-; and preserves semantic colors (like status dots).
-Theme_SetTextColor(ctrl, color := "") {
-    global gTheme_Palette
-    if (color = "")
-        color := gTheme_Palette.text
-    ctrl.SetFont("c" color)
-}
-
 ; Get the current muted/gray text color appropriate for the theme.
 Theme_GetMutedColor() {
     global gTheme_Palette, gTheme_Initialized

@@ -94,24 +94,24 @@ KomorebiSub_Init() {
     _KSub_PipeName := "tabby_" A_TickCount "_" Random(1000, 9999)
     _KSub_WorkspaceCache := Map()
 
-    if (!KomorebiSub_IsAvailable()) {
+    if (!_KomorebiSub_IsAvailable()) {
         ; Fall back to polling mode
         _KSub_FallbackMode := true
         SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
         return false
     }
 
-    return KomorebiSub_Start()
+    return _KomorebiSub_Start()
 }
 
 ; Check if komorebic is available
-KomorebiSub_IsAvailable() {
+_KomorebiSub_IsAvailable() {
     global cfg
     return (cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe))
 }
 
 ; Start subscription
-KomorebiSub_Start() {
+_KomorebiSub_Start() {
     global _KSub_PipeName, _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped
     global _KSub_Connected, _KSub_ClientPid, _KSub_LastEventTick, _KSub_FallbackMode
     global KSub_FallbackPollMs, IPC_ERROR_IO_PENDING, IPC_ERROR_PIPE_CONNECTED, KSub_PollMs, KSUB_READ_CHUNK_SIZE
@@ -125,7 +125,7 @@ KomorebiSub_Start() {
         LogInitSession(LOG_PATH_KSUB, "Alt-Tabby Komorebi Subscription Log")
     }
 
-    if (!KomorebiSub_IsAvailable())
+    if (!_KomorebiSub_IsAvailable())
         return false
 
     ; Create Named Pipe server (byte mode, non-wait for non-blocking accept)
@@ -235,7 +235,7 @@ _KSub_InitialPoll() {
     if (cfg.DiagKomorebiLog)
         KSub_DiagLog("InitialPoll: Starting")
 
-    if (!KomorebiSub_IsAvailable()) {
+    if (!_KomorebiSub_IsAvailable()) {
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("InitialPoll: komorebic not available")
         return
@@ -389,7 +389,7 @@ KomorebiSub_Poll() {
         if (!ok) {
             gle := DllCall("GetLastError", "uint")
             if (gle = IPC_ERROR_BROKEN_PIPE)  ; Pipe disconnected, restart
-                KomorebiSub_Start()
+                _KomorebiSub_Start()
             return
         }
 
@@ -448,7 +448,7 @@ KomorebiSub_Poll() {
 
     ; Recycle if idle too long
     if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs)
-        KomorebiSub_Start()
+        _KomorebiSub_Start()
 }
 
 ; Extract one complete JSON notification from buffer.
@@ -1206,7 +1206,7 @@ _KSub_GetWindowPid(hwnd) {
 ; Fallback polling mode (when subscription fails)
 KomorebiSub_PollFallback() {
     global cfg
-    if (!KomorebiSub_IsAvailable())
+    if (!_KomorebiSub_IsAvailable())
         return
 
     txt := _KSub_GetStateDirect()

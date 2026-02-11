@@ -104,7 +104,7 @@ GUI_RecalcHover() {
 
     act := ""
     idx := 0
-    GUI_DetectActionAtPoint(x, y, &act, &idx)
+    _GUI_DetectActionAtPoint(x, y, &act, &idx)
 
     Critical "On"
     changed := (idx != gGUI_HoverRow || act != gGUI_HoverBtn)
@@ -113,7 +113,7 @@ GUI_RecalcHover() {
     return changed  ; lint-ignore: critical-section
 }
 
-GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
+_GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     global gGUI_ScrollTop, gGUI_OverlayH, cfg
 
     action := ""
@@ -198,7 +198,7 @@ _GUI_PerformAction(action, idx1 := 0) {
         if (hwnd && WinExist("ahk_id " hwnd)) {
             PostMessage(0x0010, 0, 0, , "ahk_id " hwnd)
         }
-        GUI_RemoveItemAt(idx1)
+        _GUI_RemoveItemAt(idx1)
         return
     }
 
@@ -221,7 +221,7 @@ _GUI_PerformAction(action, idx1 := 0) {
                     ProcessClose(pid)
                 }
             }
-            GUI_RemoveItemAt(idx1)
+            _GUI_RemoveItemAt(idx1)
         }
         return
     }
@@ -262,12 +262,12 @@ _GUI_PerformAction(action, idx1 := 0) {
         }
 
         ; Remove item from local display
-        GUI_RemoveItemAt(idx1)
+        _GUI_RemoveItemAt(idx1)
         return
     }
 }
 
-GUI_RemoveItemAt(idx1) {
+_GUI_RemoveItemAt(idx1) {
     global gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
 
     Critical "On"
@@ -325,7 +325,7 @@ GUI_OnClick(x, y) {
 
     act := ""
     idx := 0
-    GUI_DetectActionAtPoint(x, y, &act, &idx)
+    _GUI_DetectActionAtPoint(x, y, &act, &idx)
     if (act != "") {
         Critical "Off"
         _GUI_PerformAction(act, idx)
@@ -420,7 +420,7 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
 
     act := ""
     idx := 0
-    GUI_DetectActionAtPoint(x, y, &act, &idx)
+    _GUI_DetectActionAtPoint(x, y, &act, &idx)
 
     Critical "On"
     prevRow := gGUI_HoverRow

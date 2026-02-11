@@ -9,8 +9,8 @@
 # Log function -> required guard:
 #   GUI_LogEvent    -> cfg.DiagEventLog
 #   Paint_Log       -> cfg.DiagPaintTimingLog
-#   Store_LogInfo   -> cfg.DiagStoreLog
-#   Launcher_Log    -> cfg.DiagLauncherLog
+#   _Store_LogInfo  -> cfg.DiagStoreLog
+#   _Launcher_Log   -> cfg.DiagLauncherLog
 #   _IPC_Log        -> logEnabled or _IPC_IsLogEnabled()
 #   _Update_Log     -> cfg.DiagUpdateLog
 #   _IP_Log         -> _IP_DiagEnabled or logEnabled
@@ -18,7 +18,7 @@
 #   _WEH_DiagLog    -> cfg.DiagWinEventLog
 #   KSub_DiagLog    -> cfg.DiagKomorebiLog
 #   _Viewer_Log     -> gViewer_LogPath
-#   Store_LogError  -> EXEMPT (always-on, no config flag)
+#   _Store_LogError -> EXEMPT (always-on, no config flag)
 #
 # No lint-ignore suppression. If a log function has a config flag and the call
 # has concatenation, it must be guarded. No exceptions.
@@ -37,8 +37,8 @@ $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 $logGuards = @{
     'GUI_LogEvent'  = @('cfg.DiagEventLog', 'DiagEventLog')
     'Paint_Log'     = @('cfg.DiagPaintTimingLog', 'DiagPaintTimingLog')
-    'Store_LogInfo' = @('cfg.DiagStoreLog', 'DiagStoreLog', 'cfg.DiagChurnLog', 'DiagChurnLog')
-    'Launcher_Log'  = @('cfg.DiagLauncherLog', 'DiagLauncherLog')
+    '_Store_LogInfo' = @('cfg.DiagStoreLog', 'DiagStoreLog', 'cfg.DiagChurnLog', 'DiagChurnLog')
+    '_Launcher_Log'  = @('cfg.DiagLauncherLog', 'DiagLauncherLog')
     '_IPC_Log'      = @('logEnabled', '_IPC_IsLogEnabled')
     '_Update_Log'   = @('cfg.DiagUpdateLog', 'DiagUpdateLog')
     '_IP_Log'       = @('_IP_DiagEnabled', 'logEnabled')

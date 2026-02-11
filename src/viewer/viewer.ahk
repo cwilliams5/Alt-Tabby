@@ -56,7 +56,7 @@ for _, arg in A_Args {
 if (gViewer_Headless || gViewer_TestMode)
     A_IconHidden := true
 
-Viewer_Init() {
+_Viewer_Init() {
     global gViewer_Client, gViewer_LogPath, cfg
     global gViewer_Headless
 
@@ -71,7 +71,7 @@ Viewer_Init() {
         gViewer_LogPath := LOG_PATH_VIEWER
         LogInitSession(gViewer_LogPath, "Alt-Tabby Viewer Log")
     }
-    try OnError(Viewer_OnError)
+    try OnError(_Viewer_OnError)
     if (!gViewer_Headless) {
         _Viewer_CreateGui()
     }
@@ -82,7 +82,7 @@ Viewer_Init() {
     if (gViewer_LogPath) {
         _Viewer_Log("Connecting to pipe: " cfg.StorePipeName)
     }
-    gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage)
+    gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, _Viewer_OnMessage)
     if (gViewer_LogPath)
         _Viewer_Log("Connection result: hPipe=" gViewer_Client.hPipe)
     if (!gViewer_Client.hPipe && cfg.ViewerAutoStartStore) {
@@ -106,7 +106,7 @@ Viewer_Init() {
     SetTimer(_Viewer_Heartbeat, healthCheckMs)
 }
 
-Viewer_OnMessage(line, hPipe := 0) {
+_Viewer_OnMessage(line, hPipe := 0) {
     global gViewer_LastMsgTick, gViewer_LastRev, gViewer_ShuttingDown
     global gViewer_PushSnapCount, gViewer_PushDeltaCount, gViewer_PollCount, gViewer_LastUpdateType, gViewer_Headless
     global gViewer_HeartbeatCount, gViewer_LogPath
@@ -623,7 +623,7 @@ _Viewer_Heartbeat() {
 
     if (!IsObject(gViewer_Client) || !gViewer_Client.hPipe) {
         ; Not connected - try non-blocking connect (single attempt, no busy-wait loop)
-        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage, 0)
+        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, _Viewer_OnMessage, 0)
         if (gViewer_Client.hPipe)
             _Viewer_OnConnected("Reconnected to store")
         try gViewer_Status.Text := "Disconnected"
@@ -636,7 +636,7 @@ _Viewer_Heartbeat() {
             _Viewer_Log("Heartbeat timeout (" timeoutMs "ms) - attempting reconnect")
         ; Close current connection and try non-blocking reconnect
         IPC_PipeClient_Close(gViewer_Client)
-        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, Viewer_OnMessage, 0)
+        gViewer_Client := IPC_PipeClient_Connect(cfg.StorePipeName, _Viewer_OnMessage, 0)
         if (gViewer_Client.hPipe)
             _Viewer_OnConnected("Reconnected after timeout")
         return
@@ -769,7 +769,7 @@ _Viewer_StartStore() {
     ProcessUtils_RunHidden('"' runner '" "' storePath '"')
 }
 
-Viewer_OnError(err, *) {
+_Viewer_OnError(err, *) {
     global gViewer_LogPath
     if (gViewer_LogPath)
         _Viewer_Log("error " err.Message)
@@ -968,6 +968,6 @@ _Viewer_OnExitWrapper(reason, code) {
 
 ; Auto-init only if running standalone or if mode is "viewer"
 if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "viewer") {  ; lint-ignore: isset-with-default
-    Viewer_Init()
+    _Viewer_Init()
     OnExit(_Viewer_OnExitWrapper)
 }

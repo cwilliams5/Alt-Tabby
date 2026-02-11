@@ -37,7 +37,7 @@ global gStore_LastSendTick := 0       ; Tick of last message sent to ANY client 
 global gStore_CachedHeartbeatJson := ""
 global gStore_CachedHeartbeatRev := -1
 global gStore_HeartbeatCount
-global gStore_ScanInProgress := false  ; Re-entrancy guard for Store_FullScan
+global gStore_ScanInProgress := false  ; Re-entrancy guard for _Store_FullScan
 
 ; Cosmetic buffer: throttle pushes for cosmetic-only batches (title changes)
 global _Store_LastCosmeticPushTick := 0
@@ -67,14 +67,14 @@ for _, arg in A_Args {
 }
 if (gStore_TestMode) {
     A_IconHidden := true  ; No tray icon when launched by test runner
-    try OnError(Store_OnError)
+    try OnError(_Store_OnError)
     IPC_DebugLogPath := A_ScriptDir "\..\..\tests\windowstore_ipc.log"
     try FileDelete(IPC_DebugLogPath)
-    Store_LogError("store_dir=" A_ScriptDir)
-    Store_LogError("ipc_exists=" (FileExist(A_ScriptDir "\..\shared\ipc_pipe.ahk") ? "1" : "0"))
+    _Store_LogError("store_dir=" A_ScriptDir)
+    _Store_LogError("ipc_exists=" (FileExist(A_ScriptDir "\..\shared\ipc_pipe.ahk") ? "1" : "0"))
 }
 
-Store_Init() {
+_Store_Init() {
     global gStore_Server, gStore_CmdLinePipe, cfg
     global gStore_CmdLineHeartbeatMs, gStore_ProducerState
 
@@ -88,9 +88,9 @@ Store_Init() {
     ConfigLoader_Init("", gStore_TestMode)
 
     ; Initialize stats tracking (loads lifetime stats from disk)
-    Stats_Init()
+    _Stats_Init()
 
-    ; Reset store log for new session (unconditional - Store_LogError is always-on)
+    ; Reset store log for new session (unconditional - _Store_LogError is always-on)
     global LOG_PATH_STORE
     LogInitSession(LOG_PATH_STORE, "Alt-Tabby Store Log")
 
@@ -103,18 +103,18 @@ Store_Init() {
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
         if (cfg.DiagStoreLog)
-            Store_LogInfo("blacklist.txt not found, using empty blacklist")
+            _Store_LogInfo("blacklist.txt not found, using empty blacklist")
     } else if (cfg.DiagStoreLog) {
         stats := Blacklist_GetStats()
-        Store_LogInfo("blacklist loaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+        _Store_LogInfo("blacklist loaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
     }
 
     WindowStore_Init()
     if (!_Store_HasIpcSymbols()) {
-        Store_LogError("ipc_pipe symbols missing")
+        _Store_LogError("ipc_pipe symbols missing")
         ExitApp(1)
     }
-    gStore_Server := IPC_PipeServer_Start(cfg.StorePipeName, Store_OnMessage, Store_OnClientDisconnect)
+    gStore_Server := IPC_PipeServer_Start(cfg.StorePipeName, _Store_OnMessage, _Store_OnClientDisconnect)
 
     ; Register PostMessage wake handler: clients PostMessage us after writing to the pipe
     ; so we read data immediately instead of waiting for the next timer tick (0-100ms savings)
@@ -129,17 +129,17 @@ Store_Init() {
         gStore_ProducerState["komorebiSub"] := ksubOk ? "running" : "failed"
         if (ksubOk) {
             if (cfg.DiagStoreLog)
-                Store_LogInfo("KomorebiSub active")
+                _Store_LogInfo("KomorebiSub active")
         } else
-            Store_LogError("KomorebiSub failed to start")
+            _Store_LogError("KomorebiSub failed to start")
     } else if (cfg.UseKomorebiLite) {
         kLiteOk := KomorebiLite_Init()
         gStore_ProducerState["komorebiLite"] := kLiteOk ? "running" : "failed"
         if (kLiteOk) {
             if (cfg.DiagStoreLog)
-                Store_LogInfo("KomorebiLite active")
+                _Store_LogInfo("KomorebiLite active")
         } else
-            Store_LogError("KomorebiLite failed to start")
+            _Store_LogError("KomorebiLite failed to start")
     }
 
     ; Pumps
@@ -153,22 +153,22 @@ Store_Init() {
     }
 
     ; Do initial full scan AFTER producers init so data includes komorebi workspace info
-    Store_FullScan()
+    _Store_FullScan()
 
     ; WinEventHook is always enabled (primary source of window changes + MRU tracking)
     hookOk := WinEventHook_Start()
     if (!hookOk) {
-        Store_LogError("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
+        _Store_LogError("WinEventHook failed to start - enabling MRU_Lite fallback and safety polling")
         gStore_ProducerState["wineventHook"] := "failed"
         ; Fallback: enable MRU_Lite for focus tracking
         MRU_Lite_Init()
         gStore_ProducerState["mruLite"] := "running"
         ; Fallback: enable safety polling if hook fails
-        SetTimer(Store_FullScan, cfg.WinEnumFallbackScanIntervalMs)
+        SetTimer(_Store_FullScan, cfg.WinEnumFallbackScanIntervalMs)
     } else {
         ; Hook working - it handles MRU tracking internally
         if (cfg.DiagStoreLog)
-            Store_LogInfo("WinEventHook active - MRU tracking via hook")
+            _Store_LogInfo("WinEventHook active - MRU tracking via hook")
         gStore_ProducerState["wineventHook"] := "running"
         ; Start Z-pump for on-demand scans (staggered to avoid timer alignment)
         global STORE_STAGGER_ZPUMP_MS, STORE_STAGGER_VALIDATE_MS, STORE_STAGGER_HEARTBEAT_MS
@@ -176,7 +176,7 @@ Store_Init() {
 
         ; Optional safety net polling (usually disabled)
         if (cfg.WinEnumSafetyPollMs > 0) {
-            SetTimer(Store_FullScan, cfg.WinEnumSafetyPollMs)
+            SetTimer(_Store_FullScan, cfg.WinEnumSafetyPollMs)
         }
     }
 
@@ -201,7 +201,7 @@ Store_HeartbeatTick() {
     global gStore_Server, IPC_MSG_HEARTBEAT, cfg
 
     ; Safety net: clean up any orphaned client Map entries
-    ; Primary cleanup happens in Store_OnClientDisconnect (via IPC callback)
+    ; Primary cleanup happens in _Store_OnClientDisconnect (via IPC callback)
     ; RACE FIX: Include heartbeat counter in Critical section
     if (IsObject(gStore_Server)) {
         Critical "On"
@@ -241,7 +241,7 @@ Store_HeartbeatTick() {
     ; Periodic full sync: send complete snapshot to all clients for full-state healing
     ; This catches issues that per-row healing cannot fix (e.g., ghost rows, missing rows)
     if (cfg.IPCFullSyncEvery > 0 && Mod(gStore_HeartbeatCount, cfg.IPCFullSyncEvery) = 0) {
-        Store_ForceFullSync()
+        _Store_ForceFullSync()
         return  ; Full sync subsumes heartbeat
     }
 
@@ -255,7 +255,7 @@ Store_HeartbeatTick() {
             fldParts := ""
             for fld, count in churn["fields"]
                 fldParts .= (fldParts ? ", " : "") . fld "=" count
-            Store_LogInfo("CHURN src=[" srcParts "] fields=[" fldParts "]")
+            _Store_LogInfo("CHURN src=[" srcParts "] fields=[" fldParts "]")
         }
     }
 
@@ -281,14 +281,14 @@ Store_HeartbeatTick() {
 }
 
 ; Timer stagger helpers: one-shot callbacks that start periodic timers.
-; Called from Store_Init with offset delays to prevent thundering herd.
+; Called from _Store_Init with offset delays to prevent thundering herd.
 _Store_StartZPump() {
     global cfg
-    SetTimer(Store_ZPumpTick, cfg.ZPumpIntervalMs)
+    SetTimer(_Store_ZPumpTick, cfg.ZPumpIntervalMs)
 }
 _Store_StartValidateExistence() {
     global cfg
-    SetTimer(Store_ValidateExistenceTick, cfg.WinEnumValidateExistenceMs)
+    SetTimer(_Store_ValidateExistenceTick, cfg.WinEnumValidateExistenceMs)
 }
 _Store_StartHeartbeat() {
     global cfg
@@ -307,7 +307,7 @@ _Store_OnPipeWake(wParam, lParam, msg, hwnd) {
 ; Deferred scan: runs after immediate snapshot response, catches recently-created windows.
 ; Uses Store_PushIfRevChanged to send correction delta only if scan found changes.
 _Store_DeferredScanAndPush() {
-    Store_FullScan()
+    _Store_FullScan()
     WindowStore_ClearZQueue()
     ; Push correction delta if scan discovered changes
     Store_PushIfRevChanged()
@@ -319,7 +319,7 @@ _Store_RotateDiagLogs() {
     global LOG_PATH_STORE, LOG_PATH_KSUB, LOG_PATH_WINEVENT
     global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP, LOG_PATH_IPC
     global LOG_PATH_WEBVIEW, LOG_PATH_UPDATE
-    ; Always trim store log -- Store_LogError() writes unconditionally
+    ; Always trim store log -- _Store_LogError() writes unconditionally
     LogTrim(LOG_PATH_STORE)
     if (cfg.DiagKomorebiLog)
         LogTrim(LOG_PATH_KSUB)
@@ -339,7 +339,7 @@ _Store_RotateDiagLogs() {
 
 ; Force full snapshot to all clients - resets tracking so PushToClients sends SNAPSHOT not DELTA
 ; Used by FullSyncEvery heartbeat-counted full-state healing to fix ghost/missing rows
-Store_ForceFullSync() {
+_Store_ForceFullSync() {
     global gStore_Server, gStore_ClientState
 
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
@@ -364,17 +364,17 @@ Store_ForceFullSync() {
 }
 
 ; Z-Pump: triggers full scan when windows need Z-order enrichment
-Store_ZPumpTick() {
+_Store_ZPumpTick() {
     if (!WindowStore_HasPendingZ())
         return
     ; Windows need Z-order - run full scan
-    Store_FullScan()
+    _Store_FullScan()
     ; Clear the queue after scan
     WindowStore_ClearZQueue()
 }
 
 ; Lightweight zombie detection - validates existing store entries still exist
-Store_ValidateExistenceTick() {
+_Store_ValidateExistenceTick() {
     result := WindowStore_ValidateExistence()
     if (result.removed > 0) {
         Store_PushToClients()
@@ -382,11 +382,11 @@ Store_ValidateExistenceTick() {
 }
 
 ; Full winenum scan - runs on startup, snapshot request, Z-pump trigger, or safety polling
-Store_FullScan() {
+_Store_FullScan() {
     global gStore_LastBroadcastRev, gStore_Server, gStore_TestMode, gStore_LastClientLog, gWS_Store
     global gStore_ScanInProgress
     ; RACE FIX: Re-entrancy guard — if WinEnumLite_ScanAll() is interrupted by an IPC
-    ; timer that triggers another Store_FullScan, the nested scan would corrupt gWS_ScanId
+    ; timer that triggers another _Store_FullScan, the nested scan would corrupt gWS_ScanId
     ; and cause EndScan to incorrectly mark windows as missing
     Critical "On"
     if (gStore_ScanInProgress) {
@@ -398,7 +398,7 @@ Store_FullScan() {
 
     if (gStore_TestMode && (A_TickCount - gStore_LastClientLog) > 3000) {
         gStore_LastClientLog := A_TickCount
-        try Store_LogError("clients=" gStore_Server.clients.Count " store=" gWS_Store.Count " rev=" WindowStore_GetRev())
+        try _Store_LogError("clients=" gStore_Server.clients.Count " store=" gWS_Store.Count " rev=" WindowStore_GetRev())
     }
     WindowStore_BeginScan()
     recs := ""
@@ -476,7 +476,7 @@ Store_PushToClients() {
 
     ; Atomically clean up disconnected clients and snapshot current handles + state
     ; This prevents race conditions if clients disconnect during iteration
-    ; RACE FIX: Also snapshot client state - it can be modified by Store_OnMessage
+    ; RACE FIX: Also snapshot client state - it can be modified by _Store_OnMessage
     ; (HELLO, SET_PROJECTION_OPTS, PROJECTION_REQUEST)
     Critical "On"
     _Store_CleanupDisconnectedClients()
@@ -544,7 +544,7 @@ Store_PushToClients() {
     ; Cache serialized JSON for delta messages by composite key (optsKey|lastRev|isSparse|includeMeta).
     ; When two clients have the same optsKey AND lastRev, their prevItems are identical
     ; (they received the same projection at that rev), so deltas are identical.
-    ; Avoids redundant Store_BuildClientDelta + JSON.Dump per-client.
+    ; Avoids redundant _Store_BuildClientDelta + JSON.Dump per-client.
     static deltaCache := Map()
     projCache.Clear()
     jsonSnapshotCache.Clear()
@@ -607,7 +607,7 @@ Store_PushToClients() {
                     continue
                 IPC_PipeServer_Send(gStore_Server, hPipe, cached.jsonStr, wh)
             } else {
-                msg := Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot)
+                msg := _Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot)
                 ; Skip sending empty deltas ONLY if meta also didn't change
                 ; Always send if meta changed (workspace switch) even with no window changes
                 skip := (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
@@ -634,7 +634,7 @@ Store_PushToClients() {
         }
 
         ; RACE FIX: Wrap client tracking updates in Critical
-        ; Store_OnMessage also modifies client state when client sends HELLO or SET_PROJECTION_OPTS
+        ; _Store_OnMessage also modifies client state when client sends HELLO or SET_PROJECTION_OPTS
         Critical "On"
         if (gStore_ClientState.Has(hPipe)) {
             cs := gStore_ClientState[hPipe]
@@ -650,7 +650,7 @@ Store_PushToClients() {
     if (sent > 0)
         gStore_LastSendTick := A_TickCount
     if (gStore_TestMode && sent > 0) {
-        Store_LogError("pushed to " sent " clients")
+        _Store_LogError("pushed to " sent " clients")
     }
 
     ; PERF: Bound diagnostic maps to prevent unbounded memory growth
@@ -662,7 +662,7 @@ Store_PushToClients() {
 ; 'Always' mode includes meta in every delta (self-healing, default). 'OnChange' mode
 ; only includes meta when workspace changes, and sends workspace_change messages for
 ; dedicated notification. The includeMeta parameter reflects this configuration.
-Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true, dirtyHwnds := 0) {
+_Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true, dirtyHwnds := 0) {
     global IPC_MSG_DELTA
     delta := WindowStore_BuildDelta(prevItems, nextItems, sparse, dirtyHwnds)
     payload := { upserts: delta.upserts, removes: delta.removes }
@@ -725,7 +725,7 @@ Store_BroadcastWorkspaceFlips(flips) {
     gStore_LastSendTick := A_TickCount
 }
 
-Store_OnMessage(line, hPipe := 0) {
+_Store_OnMessage(line, hPipe := 0) {
     global gStore_ClientState
     global gStore_Server, gStore_LastSendTick
     global IPC_MSG_HELLO, IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION
@@ -740,7 +740,7 @@ Store_OnMessage(line, hPipe := 0) {
         ; Log malformed JSON when diagnostics enabled (helps debug IPC issues)
         if (cfg.DiagStoreLog) {
             preview := (StrLen(line) > 80) ? SubStr(line, 1, 80) "..." : line
-            Store_LogInfo("JSON parse error: " err.Message " | content: " preview)
+            _Store_LogInfo("JSON parse error: " err.Message " | content: " preview)
         }
         return
     }
@@ -861,13 +861,13 @@ Store_OnMessage(line, hPipe := 0) {
         Blacklist_Reload()
         if (cfg.DiagStoreLog) {
             stats := Blacklist_GetStats()
-            Store_LogInfo("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
+            _Store_LogInfo("blacklist reloaded: " stats.titles " titles, " stats.classes " classes, " stats.pairs " pairs")
         }
 
         ; Purge windows that now match the blacklist
         purgeResult := WindowStore_PurgeBlacklisted()
         if (cfg.DiagStoreLog)
-            Store_LogInfo("blacklist purge removed " purgeResult.removed " windows")
+            _Store_LogInfo("blacklist purge removed " purgeResult.removed " windows")
 
         ; Clear all client projections/meta to force fresh delta calculation
         Critical "On"
@@ -962,7 +962,7 @@ _Store_GetProducerStates() {
 
 ; Immediate cleanup callback when a client disconnects (called by IPC layer)
 ; This is the primary cleanup mechanism - prevents stale entries from accumulating
-Store_OnClientDisconnect(hPipe) {
+_Store_OnClientDisconnect(hPipe) {
     global gStore_ClientState
     Critical "On"
     gStore_ClientState.Delete(hPipe)
@@ -970,7 +970,7 @@ Store_OnClientDisconnect(hPipe) {
 }
 
 ; Clean up tracking for disconnected clients (prevents memory leak)
-; NOTE: This is now a safety net - primary cleanup is Store_OnClientDisconnect
+; NOTE: This is now a safety net - primary cleanup is _Store_OnClientDisconnect
 _Store_CleanupDisconnectedClients() {
     global gStore_Server, gStore_ClientState
 
@@ -1014,7 +1014,7 @@ global STATS_LIFETIME_KEYS := [
     "PeakWindowsInSession", "LongestSessionSec"
 ]
 
-Stats_Init() {
+_Stats_Init() {
     global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
 
     if (!cfg.StatsTrackingEnabled)
@@ -1052,7 +1052,7 @@ Stats_Init() {
                 val := Integer(raw)
             } catch as e {
                 if (cfg.DiagStoreLog)
-                    Store_LogInfo("stats parse error for key=" key " raw=" SubStr(raw, 1, 50) ": " e.Message)
+                    _Store_LogInfo("stats parse error for key=" key " raw=" SubStr(raw, 1, 50) ": " e.Message)
             }
         }
         gStats_Lifetime[key] := val
@@ -1118,24 +1118,24 @@ Stats_FlushToDisk() {
 ; Auto-init only if running standalone or if mode is "store"
 ; When included from alt_tabby.ahk with a different mode, skip init.
 if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "store") {  ; lint-ignore: isset-with-default
-    Store_Init()
-    OnExit(Store_OnExit)
+    _Store_Init()
+    OnExit(_Store_OnExit)
     Persistent()
 }
 
-Store_OnExit(reason, code) {
+_Store_OnExit(reason, code) {
     global gStore_Server
     ; Stop all timers and hooks before exit to prevent errors
 
     ; Stop core timers (periodic + one-shot stagger helpers)
     try {
-        SetTimer(Store_FullScan, 0)
+        SetTimer(_Store_FullScan, 0)
     }
     try {
         SetTimer(_Store_DeferredScanAndPush, 0)
     }
     try {
-        SetTimer(Store_ZPumpTick, 0)
+        SetTimer(_Store_ZPumpTick, 0)
     }
     try {
         SetTimer(_Store_StartZPump, 0)
@@ -1147,7 +1147,7 @@ Store_OnExit(reason, code) {
         SetTimer(_Store_StartHeartbeat, 0)
     }
     try {
-        SetTimer(Store_ValidateExistenceTick, 0)
+        SetTimer(_Store_ValidateExistenceTick, 0)
     }
     try {
         SetTimer(_Store_StartValidateExistence, 0)
@@ -1202,19 +1202,19 @@ Store_OnExit(reason, code) {
     return 0  ; Allow exit
 }
 
-Store_OnError(err, *) {
+_Store_OnError(err, *) {
     msg := "store_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
     LogAppend(_Store_LogPath(), msg)
     ExitApp(1)
     return true
 }
 
-Store_LogError(msg) {
+_Store_LogError(msg) {
     LogAppend(_Store_LogPath(), "store_error " msg)
 }
 
 ; Informational logging - controlled by DiagStoreLog config flag
-Store_LogInfo(msg) {
+_Store_LogInfo(msg) {
     global cfg
     if (!cfg.DiagStoreLog)
         return

@@ -57,10 +57,10 @@ Gdip_Shutdown() {
     global gGdip_Token, gGdip_G, gGdip_BackHdc, gGdip_BackHBM, gGdip_BackPrev
 
     ; Clean icon cache first (before GDI+ shutdown)
-    Gdip_ClearIconCache()
+    _Gdip_ClearIconCache()
 
     ; Clean cached brushes/fonts
-    Gdip_DisposeResources()
+    _Gdip_DisposeResources()
 
     ; Delete graphics object
     if (gGdip_G) {
@@ -169,7 +169,7 @@ Gdip_EnsureGraphics() {
 }
 
 ; Get font style from weight
-Gdip_FontStyleFromWeight(w) {
+_Gdip_FontStyleFromWeight(w) {
     if (w >= 600) {
         return 1  ; Bold
     }
@@ -177,7 +177,7 @@ Gdip_FontStyleFromWeight(w) {
 }
 
 ; Dispose all cached GDI+ resources
-Gdip_DisposeResources() {
+_Gdip_DisposeResources() {
     global gGdip_Res, gGdip_ResScale, gGdip_BrushCache, gGdip_PenCache, gGdip_G, gGdip_GraphicsHdc
 
     ; Delete and invalidate cached Graphics object (force recreation on next EnsureGraphics call)
@@ -259,7 +259,7 @@ GUI_EnsureResources(scale) {
     tRes_Start := A_TickCount
 
     t1 := A_TickCount
-    Gdip_DisposeResources()
+    _Gdip_DisposeResources()
     tRes_Dispose := A_TickCount - t1
 
     t1 := A_TickCount
@@ -305,7 +305,7 @@ GUI_EnsureResources(scale) {
     for _, f in fonts {
         fam := 0
         font := 0
-        style := Gdip_FontStyleFromWeight(f[3])
+        style := _Gdip_FontStyleFromWeight(f[3])
         DllCall("gdiplus\GdipCreateFontFamilyFromName", "wstr", f[1], "ptr", 0, "ptr*", &fam)
         DllCall("gdiplus\GdipCreateFont", "ptr", fam, "float", f[2] * scale, "int", style, "int", GDIP_UNIT_PIXEL, "ptr*", &font)
         gGdip_Res[f[4]] := fam
@@ -707,7 +707,7 @@ Gdip_InvalidateIconCache(hwnd) {
 }
 
 ; Clear entire icon cache (call on shutdown or major state reset)
-Gdip_ClearIconCache() {
+_Gdip_ClearIconCache() {
     global gGdip_IconCache
 
     for hwnd, cached in gGdip_IconCache {

@@ -128,7 +128,7 @@ global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (
 
 ; ========================= INITIALIZATION =========================
 
-GUI_Main_Init() {
+_GUI_Main_Init() {
     global gGUI_StoreClient, cfg, IPC_MSG_HELLO, gGUI_LastMsgTick
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
@@ -363,7 +363,7 @@ _GUI_OnExit(reason, code) {
 
 ; Auto-init only if running standalone or if mode is "gui"
 if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {  ; lint-ignore: isset-with-default
-    GUI_Main_Init()
+    _GUI_Main_Init()
 
     ; DPI change handler
     OnMessage(0x02E0, (wParam, lParam, msg, hwnd) => (gGdip_ResScale := 0.0, 0))

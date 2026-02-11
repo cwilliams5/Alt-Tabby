@@ -393,7 +393,7 @@ ShowDashboardDialog() {
 
     ; Query producer status if store is running but cache is empty
     if (LauncherUtils_IsRunning(g_StorePID) && g_ProducerStatusCache = "")
-        SetTimer(Dash_QueryProducerStatus, -2000)
+        SetTimer(_Dash_QueryProducerStatus, -2000)
 
     ; Query stats if store is running and tracking is enabled
     if (LauncherUtils_IsRunning(g_StorePID) && cfg.StatsTrackingEnabled)
@@ -514,7 +514,7 @@ Dash_OnStoreRestart() {
     g_ProducerStatusCache := ""
     g_ProducerHasFailed := ""
     Dash_StartRefreshTimer()
-    SetTimer(Dash_QueryProducerStatus, -5000)
+    SetTimer(_Dash_QueryProducerStatus, -5000)
 }
 
 Dash_StartRefreshTimer() {
@@ -923,7 +923,7 @@ _Dash_GetKomorebiInfo() {
 ; Connects to store pipe, requests producer status, caches result.
 ; Called on a delayed timer after store launch/restart.
 
-Dash_QueryProducerStatus() {
+_Dash_QueryProducerStatus() {
     global g_ProducerStatusCache, g_ProducerHasFailed, cfg
     global IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
 

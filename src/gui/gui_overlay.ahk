@@ -137,7 +137,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, gGUI_BaseH)
+    _GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, gGUI_BaseH)
 
     waL := 0
     waT := 0
@@ -165,7 +165,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
         Win_DwmFlush()
 }
 
-GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
+_GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
     global cfg
     waL := 0
     waT := 0
@@ -209,12 +209,12 @@ GUI_CreateBase() {
     gGUI_Base.Show("Hide w1 h1")  ; Dummy size — repositioned below
     gGUI_BaseH := gGUI_Base.Hwnd
 
-    ; Use GUI_GetWindowRect for layout (single source of truth for sizing/centering)
+    ; Use _GUI_GetWindowRect for layout (single source of truth for sizing/centering)
     xDip := 0
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
+    _GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
 
     waL := 0
     waT := 0

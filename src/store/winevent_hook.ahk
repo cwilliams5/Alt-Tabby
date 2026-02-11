@@ -119,7 +119,7 @@ WinEventHook_Start() {
 
 ; Ensure the batch processing timer is running (wake from idle pause)
 ; Called by the callback when new events are queued
-WinEventHook_EnsureTimerRunning() {
+_WinEventHook_EnsureTimerRunning() {
     global _WEH_TimerOn, _WEH_IdleTicks, WinEventHook_BatchMs
     Pump_EnsureRunning(&_WEH_TimerOn, &_WEH_IdleTicks, WinEventHook_BatchMs, _WEH_ProcessBatch)
 }
@@ -238,7 +238,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         SetTimer(_WEH_ProcessBatch, -1)
 
     ; Wake timer if it was paused due to idle
-    WinEventHook_EnsureTimerRunning()
+    _WinEventHook_EnsureTimerRunning()
 }
 
 ; Process queued events in batches

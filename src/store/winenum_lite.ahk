@@ -16,7 +16,7 @@
 global _WN_ShellWindow := 0
 
 ; Initialize the module
-WinEnumLite_Init() {
+_WinEnumLite_Init() {
     global _WN_ShellWindow
     _WN_ShellWindow := DllCall("user32\GetShellWindow", "ptr")
 }
@@ -26,7 +26,7 @@ WinEnumLite_ScanAll() {
     global _WN_ShellWindow
 
     if (!_WN_ShellWindow)
-        WinEnumLite_Init()
+        _WinEnumLite_Init()
 
     records := []
     z := 0  ; Z-order counter for eligible windows only

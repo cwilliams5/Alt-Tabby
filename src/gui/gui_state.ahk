@@ -227,7 +227,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_ScrollTop := gGUI_Sel - 1
 
             ; Start grace timer - show GUI after delay
-            SetTimer(GUI_GraceTimerFired, -cfg.AltTabGraceMs)
+            SetTimer(_GUI_GraceTimerFired, -cfg.AltTabGraceMs)
             return  ; lint-ignore: critical-section
         }
 
@@ -257,8 +257,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; If GUI not yet visible (still in grace period), show it now on 2nd Tab
             if (!gGUI_OverlayVisible && gGUI_TabCount > 1) {
-                SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer
-                GUI_ShowOverlayWithFrozen()
+                SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
+                _GUI_ShowOverlayWithFrozen()
             } else if (gGUI_OverlayVisible) {
                 GUI_Repaint()
             }
@@ -280,7 +280,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         }
 
         if (gGUI_State = "ACTIVE") {
-            SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer
+            SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
 
             timeSinceTab := A_TickCount - gGUI_FirstTabTick
 
@@ -288,14 +288,14 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 ; Quick switch: Alt+Tab released quickly, no GUI shown
                 global gStats_QuickSwitches
                 gStats_QuickSwitches += 1
-                GUI_ActivateFromFrozen()
+                _GUI_ActivateFromFrozen()
             } else if (gGUI_OverlayVisible) {
                 ; Normal case: hide FIRST (feels snappy), then activate
                 GUI_HideOverlay()
-                GUI_ActivateFromFrozen()
+                _GUI_ActivateFromFrozen()
             } else {
                 ; Edge case: grace period expired but GUI not shown yet
-                GUI_ActivateFromFrozen()
+                _GUI_ActivateFromFrozen()
             }
 
             gGUI_DisplayItems := []
@@ -314,7 +314,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Cancel - hide without activating
         global gStats_Cancellations
         gStats_Cancellations += 1
-        SetTimer(GUI_GraceTimerFired, 0)  ; Cancel grace timer
+        SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
         if (gGUI_OverlayVisible) {
             GUI_HideOverlay()
         }
@@ -330,7 +330,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
 ; ========================= GRACE TIMER =========================
 
-GUI_GraceTimerFired() {
+_GUI_GraceTimerFired() {
     ; RACE FIX: Prevent race with Alt_Up hotkey - timer can fire while
     ; GUI_OnInterceptorEvent is processing ALT_UP, causing inconsistent state
     Critical "On"
@@ -338,7 +338,7 @@ GUI_GraceTimerFired() {
 
     ; Double-check state - may have changed between scheduling and firing
     if (gGUI_State = "ACTIVE" && !gGUI_OverlayVisible) {
-        GUI_ShowOverlayWithFrozen()
+        _GUI_ShowOverlayWithFrozen()
     }
     Critical "Off"
 }
@@ -383,7 +383,7 @@ GUI_ResetSelectionToMRU(listRef := "") {
 }
 
 ; Helper to abort a show sequence (hide windows and reset state flags).
-; Called when state changes to non-ACTIVE during GUI_ShowOverlayWithFrozen.
+; Called when state changes to non-ACTIVE during _GUI_ShowOverlayWithFrozen.
 _GUI_AbortShowSequence() {
     global gGUI_Overlay, gGUI_Base, gGUI_OverlayVisible, gGUI_Revealed
     try gGUI_Overlay.Hide()
@@ -392,7 +392,7 @@ _GUI_AbortShowSequence() {
     gGUI_Revealed := false
 }
 
-GUI_ShowOverlayWithFrozen() {
+_GUI_ShowOverlayWithFrozen() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
     global gGUI_State
@@ -477,7 +477,7 @@ _GUI_MoveSelectionFrozen(delta) {
     gGUI_ScrollTop := gGUI_Sel - 1
 }
 
-GUI_ActivateFromFrozen() {
+_GUI_ActivateFromFrozen() {
     global gGUI_Sel, gGUI_DisplayItems, cfg
 
     if (cfg.DiagEventLog)
@@ -506,7 +506,7 @@ GUI_ActivateFromFrozen() {
         GUI_LogEvent("ACTIVATE: '" title "' ws=" ws " onCurrent=" onCur)
     }
 
-    GUI_ActivateItem(item)
+    _GUI_ActivateItem(item)
 }
 
 ; ========================= ACTIVATION =========================
@@ -515,7 +515,7 @@ GUI_ActivateFromFrozen() {
 ; For cross-workspace: ASYNC (non-blocking) to allow keyboard events during switch
 ; For same-workspace: SYNC (immediate) for speed
 ; Uses komorebi's activation pattern: SendInput → SetWindowPos → SetForegroundWindow
-GUI_ActivateItem(item) {
+_GUI_ActivateItem(item) {
     global cfg
     global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
@@ -644,7 +644,7 @@ GUI_ClickActivate(item) {
     gGUI_DisplayItems := []
     Critical "Off"
     GUI_HideOverlay()
-    GUI_ActivateItem(item)
+    _GUI_ActivateItem(item)
     Stats_SendToStore()
 }
 

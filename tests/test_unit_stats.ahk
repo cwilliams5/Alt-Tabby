@@ -123,7 +123,7 @@ RunUnitTests_Stats() {
                 gStats_Session := Map()
                 gStats_Session["startTick"] := A_TickCount
                 gStats_Session["peakWindows"] := 0
-                Stats_Init()
+                _Stats_Init()
 
                 if (gStats_Lifetime.Get("TotalAltTabs", 0) = 42
                     && gStats_Lifetime.Get("TotalQuickSwitches", 0) = 15
@@ -171,11 +171,11 @@ RunUnitTests_Stats() {
         IniWrite(3, testStatsBak, "Lifetime", "TotalSessions")
         IniWrite("complete", testStatsBak, "Lifetime", "_FlushStatus")
 
-        ; No .ini file — Stats_Init should recover from .bak
+        ; No .ini file — _Stats_Init should recover from .bak
         gStats_Lifetime := Map()
         gStats_Session := Map()
         gStats_Session["startTick"] := A_TickCount
-        Stats_Init()
+        _Stats_Init()
 
         if (gStats_Lifetime.Get("TotalAltTabs", 0) = 99
             && gStats_Lifetime.Get("TotalSessions", 0) = 4) {  ; +1 for load
@@ -226,7 +226,7 @@ RunUnitTests_Stats() {
         gStats_Lifetime := Map()
         gStats_Session := Map()
         gStats_Session["startTick"] := A_TickCount
-        Stats_Init()
+        _Stats_Init()
 
         if (gStats_Lifetime.Get("TotalAltTabs", 0) = 200) {
             Log("PASS: Used .ini (complete), discarded .bak (AltTabs=200)")
@@ -273,7 +273,7 @@ RunUnitTests_Stats() {
         gStats_Lifetime := Map()
         gStats_Session := Map()
         gStats_Session["startTick"] := A_TickCount
-        Stats_Init()
+        _Stats_Init()
 
         if (gStats_Lifetime.Get("TotalAltTabs", 0) = 250) {
             Log("PASS: Fell back to .bak when .ini is partial (AltTabs=250)")

@@ -32,18 +32,18 @@ global gINT_BypassMode := false
 
 INT_SetupHotkeys() {
     ; Alt hooks (pass-through, just observe)
-    Hotkey("~*Alt", INT_Alt_Down)
-    Hotkey("~*Alt Up", INT_Alt_Up)
+    Hotkey("~*Alt", _INT_Alt_Down)
+    Hotkey("~*Alt Up", _INT_Alt_Up)
 
     ; Tab hooks (intercept for decision)
-    Hotkey("$*Tab", INT_Tab_Down)
-    Hotkey("$*Tab Up", INT_Tab_Up)
+    Hotkey("$*Tab", _INT_Tab_Down)
+    Hotkey("$*Tab Up", _INT_Tab_Up)
 
     ; Escape hook
-    Hotkey("$*Escape", INT_Escape_Down)
+    Hotkey("$*Escape", _INT_Escape_Down)
 
     ; Ctrl hook for workspace mode toggle (only when GUI active)
-    Hotkey("~*Ctrl", INT_Ctrl_Down)
+    Hotkey("~*Ctrl", _INT_Ctrl_Down)
 
     ; Exit hotkey
     Hotkey("$*!F12", (*) => ExitApp())
@@ -51,7 +51,7 @@ INT_SetupHotkeys() {
 
 ; ========================= CTRL HANDLER =========================
 
-INT_Ctrl_Down(*) {
+_INT_Ctrl_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gGUI_State, gGUI_OverlayVisible
 
@@ -63,7 +63,7 @@ INT_Ctrl_Down(*) {
 
 ; ========================= ALT HANDLERS =========================
 
-INT_Alt_Down(*) {
+_INT_Alt_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_LastAltDown, gINT_AltIsDown, TABBY_EV_ALT_DOWN, gINT_SessionActive, cfg
     if (cfg.DiagEventLog)
@@ -78,7 +78,7 @@ INT_Alt_Down(*) {
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
 }
 
-INT_Alt_Up(*) {
+_INT_Alt_Up(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, gINT_TabPending
     global gINT_AltUpDuringPending, gINT_AltIsDown, TABBY_EV_ALT_UP, cfg
@@ -118,7 +118,7 @@ INT_Alt_Up(*) {
 
 ; ========================= TAB HANDLERS =========================
 
-INT_Tab_Down(*) {
+_INT_Tab_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabPending, gINT_TabHeld, gINT_PendingShift
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, cfg
@@ -136,10 +136,10 @@ INT_Tab_Down(*) {
     if (gINT_TabPending) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("INT: Tab_Down -> committing pending decision first")
-        SetTimer(INT_Tab_Decide, 0)  ; Cancel pending timer
+        SetTimer(_INT_Tab_Decide, 0)  ; Cancel pending timer
         gINT_PendingDecideArmed := false
         gINT_TabPending := false
-        INT_Tab_Decide_Inner()  ; Commit immediately - may set gINT_SessionActive := true
+        _INT_Tab_Decide_Inner()  ; Commit immediately - may set gINT_SessionActive := true
     }
 
     ; ACTIVE SESSION: Process ALL Tabs immediately - no TabHeld blocking!
@@ -170,10 +170,10 @@ INT_Tab_Down(*) {
     gINT_PendingShift := GetKeyState("Shift", "P")
     gINT_PendingDecideArmed := true
     gINT_AltUpDuringPending := false
-    SetTimer(INT_Tab_Decide, -cfg.AltTabTabDecisionMs)
+    SetTimer(_INT_Tab_Decide, -cfg.AltTabTabDecisionMs)
 }
 
-INT_Tab_Up(*) {
+_INT_Tab_Up(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabHeld, gINT_TabPending
 
@@ -184,7 +184,7 @@ INT_Tab_Up(*) {
     }
 }
 
-INT_Tab_Decide() {
+_INT_Tab_Decide() {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_AltIsDown, cfg
     if (!gINT_PendingDecideArmed)
@@ -195,10 +195,10 @@ INT_Tab_Decide() {
         GUI_LogEvent("INT: Tab_Decide (altIsDown=" gINT_AltIsDown " altUpFlag=" gINT_AltUpDuringPending ")")
     ; Delay to let Alt_Up hotkey run first if it's pending
     ; 1ms wasn't enough - Alt_Up hotkey may not have fired yet
-    SetTimer(INT_Tab_Decide_Inner, -5)
+    SetTimer(_INT_Tab_Decide_Inner, -5)
 }
 
-INT_Tab_Decide_Inner() {
+_INT_Tab_Decide_Inner() {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabPending, gINT_PendingShift, gINT_AltUpDuringPending
     global gINT_LastAltDown, gINT_AltIsDown, cfg
@@ -253,7 +253,7 @@ INT_Tab_Decide_Inner() {
 
 ; ========================= ESCAPE HANDLER =========================
 
-INT_Escape_Down(*) {
+_INT_Escape_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, TABBY_EV_ESCAPE
 

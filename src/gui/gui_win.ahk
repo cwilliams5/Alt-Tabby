@@ -59,11 +59,11 @@ Win_GetMonitorScale(left, top, right, bottom) {
             return dpiX / 96.0
         }
     }
-    return Win_GetSystemScale()
+    return _Win_GetSystemScale()
 }
 
 ; Get system DPI scale
-Win_GetSystemScale() {
+_Win_GetSystemScale() {
     dpi := 0
     try {
         dpi := DllCall("user32\GetDpiForSystem", "uint")

@@ -24,7 +24,7 @@ TrayIconClick(wParam, lParam, msg, hwnd) {
         ; Dismiss splash screen if still showing — user wants to interact with tray,
         ; not wait for the splash duration to finish
         HideSplashScreen()
-        UpdateTrayMenu()
+        _UpdateTrayMenu()
         A_TrayMenu.Show()  ; Must explicitly show the menu
         return 1  ; Prevent default handling (we showed it ourselves)
     }
@@ -44,10 +44,10 @@ SetupLauncherTray() {
     global APP_NAME
     A_IconTip := APP_NAME
     _Tray_RefreshCache()
-    UpdateTrayMenu()
+    _UpdateTrayMenu()
 }
 
-UpdateTrayMenu() {
+_UpdateTrayMenu() {
     global cfg, gConfigIniPath, g_NeedsAdminReload
 
     ; Reload SetupRunAsAdmin from disk only when admin toggle may have occurred
@@ -96,7 +96,7 @@ UpdateTrayMenu() {
     }
     tray.Add()
 
-    tray.Add("Exit", (*) => ExitAll())
+    tray.Add("Exit", (*) => _ExitAll())
 }
 
 ; ============================================================
@@ -191,7 +191,7 @@ _Tray_BuildSettingsMenu() {
     m.Add("Edit Config...", (*) => LaunchConfigEditor())
     if (cfg.LauncherShowTrayDebugItems) {
         m.Add("Edit Config (AHK)...", (*) => LaunchConfigEditor(true))
-        m.Add("Edit Config Registry...", (*) => LaunchConfigRegistryEditor())
+        m.Add("Edit Config Registry...", (*) => _LaunchConfigRegistryEditor())
     }
     m.Add("Edit Blacklist...", (*) => LaunchBlacklistEditor())
     m.Add()
@@ -234,7 +234,7 @@ _Tray_BuildSettingsMenu() {
 _Tray_BuildDevMenu() {
     m := Menu()
 
-    m.Add("Edit Config Registry...", (*) => LaunchConfigRegistryEditor())
+    m.Add("Edit Config Registry...", (*) => _LaunchConfigRegistryEditor())
     m.Add()
     m.Add("First-Run Wizard", (*) => ShowFirstRunWizard())
     m.Add("Admin Repair Dialog", (*) => Launcher_ShowAdminRepairDialog("C:\fake\task\path.exe"))
@@ -320,7 +320,7 @@ RestartViewer() {
     Dash_StartRefreshTimer()
 }
 
-ExitAll() {
+_ExitAll() {
     global g_ConfigEditorPID, g_BlacklistEditorPID
     Launcher_ShutdownSubprocesses({config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID})
     ExitApp()
@@ -351,7 +351,7 @@ LaunchBlacklistEditor() {
     Dash_StartRefreshTimer()
 }
 
-LaunchConfigRegistryEditor() {
+_LaunchConfigRegistryEditor() {
     global APP_NAME
     ; Standalone dev tool — not compiled into the exe, must find the .ahk file
     ; Dev mode: A_ScriptDir = src/ (from alt_tabby.ahk), so editors\...
@@ -467,7 +467,7 @@ ToggleAdminMode() {
                 ; Fallback: direct launch (still elevated if we're admin, but better than nothing)
                 Run(BuildSelfCommand())
             }
-            ExitAll()
+            _ExitAll()
         } else {
             ToolTip("Admin mode disabled - changes apply on next launch")
             HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
@@ -634,7 +634,7 @@ Tray_InstallToProgramFiles() {
     try {
         if (!Launcher_RunAsAdmin("--install-to-pf"))
             throw Error("RunAsAdmin failed")
-        ExitAll()
+        _ExitAll()
     } catch {
         try FileDelete(TEMP_INSTALL_PF_STATE)
         ThemeMsgBox("Installation requires administrator privileges.`nThe UAC prompt may have been cancelled.", APP_NAME, "Icon!")

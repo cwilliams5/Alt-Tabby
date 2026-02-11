@@ -104,7 +104,7 @@ GUI_Repaint() {
 
     ; ===== TIMING: PaintOverlay (the big one) =====
     t1 := A_TickCount
-    GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale)
+    _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale)
     tPaintOverlay := A_TickCount - t1
 
     ; ===== TIMING: Buffer setup =====
@@ -199,7 +199,7 @@ _GUI_RevealBoth() {
 
 ; ========================= OVERLAY PAINTING =========================
 
-GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
+_GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP

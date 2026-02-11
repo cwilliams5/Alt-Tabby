@@ -4,7 +4,7 @@
 #   1. Unconditional FileAppend in catch blocks (hardcoded log paths)
 #   2. Duplicate *_Log / *_DiagLog function definitions in same file
 #   3. Legacy *_DebugLog global variables (should use cfg.Diag* pattern)
-#   4. Store_LogError must exist and be intentionally unconditional (no cfg.Diag check)
+#   4. _Store_LogError must exist and be intentionally unconditional (no cfg.Diag check)
 #
 # Usage: powershell -File tests\check_logging_hygiene.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all clear, 1 = issues found
@@ -107,29 +107,29 @@ foreach ($file in $allAhkFiles) {
     }
 }
 
-# === Check 4: Store_LogError must be unconditional ===
-# Store_LogError is for fatal errors and must NOT have a cfg.Diag* gate
+# === Check 4: _Store_LogError must be unconditional ===
+# _Store_LogError is for fatal errors and must NOT have a cfg.Diag* gate
 
 $storeServerPath = "$SourceDir\store\store_server.ahk"
 if (Test-Path $storeServerPath) {
     $content = [System.IO.File]::ReadAllText($storeServerPath)
 
-    $hasLogError = $content -match 'Store_LogError\(msg\)'
+    $hasLogError = $content -match '_Store_LogError\(msg\)'
     if (-not $hasLogError) {
         $issues += [PSCustomObject]@{
-            Check  = 'Store_LogError missing'
+            Check  = '_Store_LogError missing'
             File   = 'store_server.ahk'
-            Detail = 'Store_LogError(msg) function not found'
+            Detail = '_Store_LogError(msg) function not found'
         }
     } else {
         # Extract function body and check for cfg.Diag (should NOT be present)
-        if ($content -match 'Store_LogError\(msg\)\s*\{([^}]+)\}') {
+        if ($content -match '_Store_LogError\(msg\)\s*\{([^}]+)\}') {
             $funcBody = $Matches[1]
             if ($funcBody -match 'cfg\.Diag') {
                 $issues += [PSCustomObject]@{
-                    Check  = 'Store_LogError gated'
+                    Check  = '_Store_LogError gated'
                     File   = 'store_server.ahk'
-                    Detail = 'Store_LogError should be unconditional (no cfg.Diag check)'
+                    Detail = '_Store_LogError should be unconditional (no cfg.Diag check)'
                 }
             }
         }

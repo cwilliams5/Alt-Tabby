@@ -414,7 +414,7 @@ RunUnitTests_Setup() {
 
     ; ============================================================
     ; Temporary Location Detection Tests (Bug #5 fix)
-    ; Tests production IsTemporaryLocation() from setup_utils.ahk
+    ; Tests production _IsTemporaryLocation() from setup_utils.ahk
     ; ============================================================
     Log("`n--- Temporary Location Detection Tests ---")
 
@@ -431,7 +431,7 @@ RunUnitTests_Setup() {
     ]
 
     for _, testPath in tempPaths {
-        if (IsTemporaryLocation(testPath)) {
+        if (_IsTemporaryLocation(testPath)) {
             Log("PASS: '" testPath "' detected as temporary")
             TestPassed++
         } else {
@@ -448,7 +448,7 @@ RunUnitTests_Setup() {
     ]
 
     for _, testPath in nonTempPaths {
-        if (!IsTemporaryLocation(testPath)) {
+        if (!_IsTemporaryLocation(testPath)) {
             Log("PASS: '" testPath "' not detected as temporary")
             TestPassed++
         } else {
