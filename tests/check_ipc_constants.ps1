@@ -68,11 +68,17 @@ Write-Host "  Scanning $($files.Count) files for IPC constant issues ($($constan
 $scanSw = [System.Diagnostics.Stopwatch]::StartNew()
 $issues = [System.Collections.ArrayList]::new()
 
+# === Shared file cache (single read for all three parts) ===
+$fileCache = @{}
+foreach ($f in $files) {
+    $fileCache[$f.FullName] = [System.IO.File]::ReadAllLines($f.FullName)
+}
+
 # === Part A: No hardcoded type strings in JSON ===
 # Look for patterns like '"type":"<value>"' where <value> matches an IPC constant value
 # and the line does NOT reference the corresponding IPC_MSG_* constant name
 foreach ($file in $files) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -107,7 +113,7 @@ foreach ($file in $files) {
 # Build set of all constant names that appear in any source file
 $usedConstants = @{}
 foreach ($file in $files) {
-    $content = [System.IO.File]::ReadAllText($file.FullName)
+    $content = [string]::Join("`n", $fileCache[$file.FullName])
     foreach ($constName in $constants.Keys) {
         if ($content.Contains($constName)) {
             $usedConstants[$constName] = $true
@@ -129,7 +135,7 @@ foreach ($constName in $constants.Keys | Sort-Object) {
 # === Part C: No raw string comparisons in case statements ===
 # Scan for case "<ipc_value>": patterns where the value matches an IPC constant
 foreach ($file in $files) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     for ($i = 0; $i -lt $lines.Count; $i++) {

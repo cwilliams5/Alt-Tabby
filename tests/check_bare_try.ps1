@@ -328,6 +328,11 @@ $exemptCount = 0
 
 foreach ($file in $files) {
     $rawLines = [System.IO.File]::ReadAllLines($file.FullName)
+
+    # Pre-filter: skip files without "try" (can't have bare-try violations)
+    $joined = [string]::Join("`n", $rawLines)
+    if ($joined.IndexOf('try') -lt 0) { continue }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     # Pre-clean all lines for structural parsing

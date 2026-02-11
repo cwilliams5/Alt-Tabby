@@ -7,7 +7,8 @@
 # Exit codes: 0 = all pass, 1 = any check failed
 
 param(
-    [string]$SourceDir
+    [string]$SourceDir,
+    [switch]$BatchMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,7 +21,7 @@ if (-not $SourceDir) {
 }
 if (-not (Test-Path $SourceDir)) {
     Write-Host "  ERROR: Source directory not found: $SourceDir" -ForegroundColor Red
-    exit 1
+    if ($BatchMode) { return 1 } else { exit 1 }
 }
 
 # === Helpers ===
@@ -715,11 +716,13 @@ if ($failed -gt 0) {
     foreach ($f in $failures) {
         Write-Host "    $f" -ForegroundColor Red
     }
+    if ($BatchMode) { return 1 }
     Write-Host ""
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan
     exit 1
 } else {
+    if ($BatchMode) { return 0 }
     Write-Host "  PASS: All $passed code pattern checks passed" -ForegroundColor Green
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan

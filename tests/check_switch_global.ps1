@@ -61,6 +61,11 @@ $issues = [System.Collections.ArrayList]::new()
 
 foreach ($file in $files) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+
+    # Pre-filter: skip files without "switch" (can't have violations)
+    $joined = [string]::Join("`n", $lines)
+    if ($joined.IndexOf('switch') -lt 0) { continue }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
 

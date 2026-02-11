@@ -123,8 +123,20 @@ if ($failures -gt 0) {
 
 # Write per-check timing data for test.ps1 to consume
 if ($Timing) {
-    $timingData = $results | ForEach-Object { @{ Name = $_.Label; DurationMs = [math]::Round($_.DurationMs, 1) } }
-    $timingData | ConvertTo-Json -Compress | Set-Content "$env:TEMP\sa_timing.json" -Encoding UTF8
+    $timingData = @($results | ForEach-Object { @{ Name = $_.Label; DurationMs = [math]::Round($_.DurationMs, 1) } })
+
+    # Merge batch sub-timing into parent entries (adds Children array)
+    foreach ($entry in $timingData) {
+        $batchName = $entry.Name -replace '\.ps1$', '' -replace '^check_', ''
+        $subFile = "$env:TEMP\sa_${batchName}_timing.json"
+        if (Test-Path $subFile) {
+            $subData = Get-Content $subFile -Raw | ConvertFrom-Json
+            $entry['Children'] = @($subData | ForEach-Object { @{ Name = $_.Name; DurationMs = $_.DurationMs } })
+            Remove-Item -Force -ErrorAction SilentlyContinue $subFile
+        }
+    }
+
+    $timingData | ConvertTo-Json -Compress -Depth 4 | Set-Content "$env:TEMP\sa_timing.json" -Encoding UTF8
 }
 
 # Cleanup temp files

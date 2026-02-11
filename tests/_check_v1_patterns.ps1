@@ -9,7 +9,8 @@
 # Exit codes: 0 = all clear, 1 = v1 patterns found
 
 param(
-    [string]$SourceDir
+    [string]$SourceDir,
+    [switch]$BatchMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,7 +72,7 @@ if (-not $SourceDir) {
 }
 if (-not (Test-Path $SourceDir)) {
     Write-Host "  ERROR: Source directory not found: $SourceDir" -ForegroundColor Red
-    exit 1
+    if ($BatchMode) { return 1 } else { exit 1 }
 }
 
 # === Scan ===
@@ -171,11 +172,13 @@ if ($issues.Count -gt 0) {
         }
     }
 
+    if ($BatchMode) { return 1 }
     Write-Host ""
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan
     exit 1
 } else {
+    if ($BatchMode) { return 0 }
     Write-Host "  PASS: No AHK v1 patterns detected" -ForegroundColor Green
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan

@@ -51,6 +51,9 @@ $logGuards = @{
 # Build regex matching enforced log functions
 $logCallPattern = '(?<!\w)(' + ($logGuards.Keys -join '|') + ')\s*\('
 
+# All log function names for file-level pre-filter
+$allLogFuncNames = [string[]]@($logGuards.Keys)
+
 # === Helpers ===
 function Clean-Line {
     param([string]$line)
@@ -129,108 +132,115 @@ $files = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
 
 foreach ($file in $files) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+
+    # File-level pre-filter: skip files without any enforced log function
+    $hasLogFunc = $false
+    $joined = [string]::Join("`n", $lines)
+    foreach ($fn in $allLogFuncNames) {
+        if ($joined.Contains($fn)) { $hasLogFunc = $true; break }
+    }
+    if (-not $hasLogFunc) { continue }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
-    # Pre-compute brace depth at each line (O(n) per file, not O(n²) per call)
-    $depthAt = [int[]]::new($lines.Count)
-    $curDepth = 0
-    for ($k = 0; $k -lt $lines.Count; $k++) {
-        $depthAt[$k] = $curDepth
-        $cl = Clean-Line $lines[$k]
-        if ($cl -eq '') { continue }
-        $st = Strip-Strings $cl
-        foreach ($c in $st.ToCharArray()) {
-            if ($c -eq '{') { $curDepth++ }
-            elseif ($c -eq '}') { if ($curDepth -gt 0) { $curDepth-- } }
-        }
-    }
+    # Forward guard stack: tracks enclosing if-blocks with guard conditions.
+    # Each entry: @{ depth = <int>; line = <string> }
+    # An entry at depth D means "code at depth > D is inside this guard".
+    # Pop when depth drops to <= D (block closed).
+    $guardStack = [System.Collections.ArrayList]::new()
+    $currentDepth = 0
+    $prevCleanedLine = ''
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $rawLine = $lines[$i]
         $cleaned = Clean-Line $rawLine
-
         if ($cleaned -eq '') { continue }
+        $stripped = Strip-Strings $cleaned
+
+        # Count braces
+        $opens = 0; $closes = 0
+        foreach ($c in $stripped.ToCharArray()) {
+            if ($c -eq '{') { $opens++ }
+            elseif ($c -eq '}') { $closes++ }
+        }
+
+        # Depth after closing braces, before opening braces
+        $depthAfterClose = $currentDepth - $closes
+        if ($depthAfterClose -lt 0) { $depthAfterClose = 0 }
+
+        # Pop guards whose blocks have closed
+        while ($guardStack.Count -gt 0 -and $depthAfterClose -le $guardStack[$guardStack.Count - 1].depth) {
+            $guardStack.RemoveAt($guardStack.Count - 1)
+        }
+
+        # If a block opens ({ on this line), check if it's a guarded if.
+        # Check this line and the previous non-empty line (for multi-line if conditions).
+        if ($opens -gt 0) {
+            $guardLine = $null
+            if ($cleaned -match '(?:^|\belse\s+)\s*if[\s(]') {
+                $guardLine = $cleaned
+            } elseif ($prevCleanedLine -ne '' -and $prevCleanedLine -match '(?:^|\belse\s+)\s*if[\s(]') {
+                $guardLine = $prevCleanedLine
+            }
+
+            if ($null -ne $guardLine) {
+                [void]$guardStack.Add(@{ depth = $depthAfterClose; line = $guardLine })
+            }
+        }
+
+        $currentDepth = $depthAfterClose + $opens
 
         # Check if this line contains an enforced log function call
-        $stripped = Strip-Strings $cleaned
-        if ($stripped -notmatch $logCallPattern) { continue }
+        if ($stripped -notmatch $logCallPattern) {
+            $prevCleanedLine = $cleaned
+            continue
+        }
 
         $logFunc = $Matches[1]
 
         # Skip function DEFINITIONS
-        if ($stripped -match "^\s*(?:static\s+)?$logFunc\s*\([^)]*\)\s*\{") { continue }
+        if ($stripped -match "^\s*(?:static\s+)?$logFunc\s*\([^)]*\)\s*\{") {
+            $prevCleanedLine = $cleaned
+            continue
+        }
         if ($stripped -match "^\s*(?:static\s+)?$logFunc\s*\([^)]*\)\s*$") {
-            if ($i + 1 -lt $lines.Count -and $lines[$i + 1] -match '^\s*\{') { continue }
+            if ($i + 1 -lt $lines.Count -and $lines[$i + 1] -match '^\s*\{') {
+                $prevCleanedLine = $cleaned
+                continue
+            }
         }
 
         # Only check calls with string concatenation
-        if (-not (Has-Concatenation $rawLine $logFunc)) { continue }
+        if (-not (Has-Concatenation $rawLine $logFunc)) {
+            $prevCleanedLine = $cleaned
+            continue
+        }
 
         $callsChecked++
 
-        # Check if this call is inside a guarded if-block.
-        # Walk backwards through ALL enclosing blocks looking for a matching guard.
         $guardPatterns = $logGuards[$logFunc]
         $isGuarded = $false
 
-        $callDepth = $depthAt[$i]
-        $scanDepth = $callDepth
-        for ($j = $i - 1; $j -ge 0 -and -not $isGuarded; $j--) {
-            $prevCleaned = Clean-Line $lines[$j]
-            if ($prevCleaned -eq '') { continue }
-
-            $prevStripped = Strip-Strings $prevCleaned
-
-            # Track depth going backwards (} adds, { subtracts)
-            foreach ($c in $prevStripped.ToCharArray()) {
-                if ($c -eq '}') { $scanDepth++ }
-                elseif ($c -eq '{') { $scanDepth-- }
-            }
-
-            # Crossed into an outer block — check if it's a guarded if
-            if ($scanDepth -lt $callDepth) {
-                $linesToCheck = @($prevCleaned)
-                if ($j -gt 0) {
-                    $prevPrev = Clean-Line $lines[$j - 1]
-                    if ($prevPrev -ne '') { $linesToCheck += $prevPrev }
-                }
-
-                foreach ($checkLine in $linesToCheck) {
-                    if ($checkLine -match '(?:^|\belse\s+)\s*if[\s(]') {
-                        foreach ($guard in $guardPatterns) {
-                            if ($checkLine.Contains($guard)) {
-                                $isGuarded = $true
-                                break
-                            }
-                        }
-                        if ($isGuarded) { break }
-                    }
-                }
-
-                $callDepth = $scanDepth
-            }
-
-            # Handle "} else if (guard) {" — balanced braces net to zero depth change
-            # but the line still opens an enclosing block for lines inside it
-            if (-not $isGuarded -and $prevCleaned -match '\}\s*else\s+if[\s(]') {
-                foreach ($guard in $guardPatterns) {
-                    if ($prevCleaned.Contains($guard)) {
-                        $isGuarded = $true
-                        break
-                    }
+        # Check forward-built guard stack (O(1) — stack is typically 0-3 entries)
+        for ($s = 0; $s -lt $guardStack.Count; $s++) {
+            foreach ($guard in $guardPatterns) {
+                if ($guardStack[$s].line.Contains($guard)) {
+                    $isGuarded = $true
+                    break
                 }
             }
+            if ($isGuarded) { break }
         }
 
-        # Check for braceless if-guard directly before the call
+        # Braceless guard: look back 1-3 lines (fixed O(1) cost)
         # Pattern: if (guard)\n    LogFunc(...)
         if (-not $isGuarded) {
             for ($j = [Math]::Max(0, $i - 3); $j -lt $i; $j++) {
-                $prevCleaned = Clean-Line $lines[$j]
-                if ($prevCleaned -eq '') { continue }
-                if ($prevCleaned -match '(?:^|\belse\s+)\s*if[\s(]' -and $prevCleaned -notmatch '\{') {
+                $prevCl = Clean-Line $lines[$j]
+                if ($prevCl -eq '') { continue }
+                if ($prevCl -match '(?:^|\belse\s+)\s*if[\s(]' -and $prevCl -notmatch '\{') {
                     foreach ($guard in $guardPatterns) {
-                        if ($prevCleaned.Contains($guard)) {
+                        if ($prevCl.Contains($guard)) {
                             $isGuarded = $true
                             break
                         }
@@ -248,6 +258,8 @@ foreach ($file in $files) {
                 Code     = $rawLine.Trim()
             })
         }
+
+        $prevCleanedLine = $cleaned
     }
 }
 $scanSw.Stop()

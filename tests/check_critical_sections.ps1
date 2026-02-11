@@ -106,6 +106,11 @@ $funcCount = 0
 
 foreach ($file in $files) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+
+    # Pre-filter: skip files without "Critical" (can't have violations)
+    $joined = [string]::Join("`n", $lines)
+    if ($joined.IndexOf('Critical') -lt 0) { continue }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $inFunc = $false

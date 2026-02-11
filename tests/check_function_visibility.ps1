@@ -163,6 +163,17 @@ if (-not $Query) {
 
     foreach ($file in $srcFiles) {
         $lines = $fileCache[$file.FullName]
+
+        # Pre-filter: skip files without any private function name reference
+        $fileText = [string]::Join("`n", $lines)
+        $hasAnyRef = $false
+        foreach ($fkey in $privateFuncKeys) {
+            if ($fileText.IndexOf($funcDefs[$fkey].Name, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                $hasAnyRef = $true; break
+            }
+        }
+        if (-not $hasAnyRef) { continue }
+
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 
         $depth = 0

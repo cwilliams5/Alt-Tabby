@@ -58,9 +58,11 @@ Write-Host "  Scanning $($files.Count) files for static variables in timer callb
 # ============================================================
 $phase1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $timerCallbacks = @{}  # functionName -> list of "relpath:lineNum" where SetTimer is called
+$fileCache = @{}  # Cache file lines for reuse in Phase 2
 
 foreach ($file in $files) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -123,7 +125,18 @@ $AHK_KEYWORDS = @(
 $functionsScanned = 0
 
 foreach ($file in $files) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $lines = $fileCache[$file.FullName]
+
+    # Pre-filter: skip files without any timer callback function name
+    if ($timerCallbacks.Count -gt 0) {
+        $joined = [string]::Join("`n", $lines)
+        $hasCallback = $false
+        foreach ($cbName in $timerCallbacks.Keys) {
+            if ($joined.IndexOf($cbName) -ge 0) { $hasCallback = $true; break }
+        }
+        if (-not $hasCallback) { continue }
+    }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $inFunc = $false

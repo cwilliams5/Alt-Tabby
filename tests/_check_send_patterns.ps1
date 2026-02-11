@@ -13,7 +13,8 @@
 # Exit codes: 0 = all clear, 1 = issues found
 
 param(
-    [string]$SourceDir
+    [string]$SourceDir,
+    [switch]$BatchMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,7 +39,7 @@ if (-not $SourceDir) {
 }
 if (-not (Test-Path $SourceDir)) {
     Write-Host "  ERROR: Source directory not found: $SourceDir" -ForegroundColor Red
-    exit 1
+    if ($BatchMode) { return 1 } else { exit 1 }
 }
 
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
@@ -147,11 +148,13 @@ if ($issues.Count -gt 0) {
         }
     }
 
+    if ($BatchMode) { return 1 }
     Write-Host ""
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan
     exit 1
 } else {
+    if ($BatchMode) { return 0 }
     Write-Host "  PASS: Send/Hook patterns are safe" -ForegroundColor Green
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan

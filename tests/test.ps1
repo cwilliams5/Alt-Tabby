@@ -66,7 +66,7 @@ function Record-PhaseEnd {
 }
 
 function Record-ItemTiming {
-    param([string]$Phase, [string]$Item, [double]$DurationMs, [double]$OffsetMs = -1)
+    param([string]$Phase, [string]$Item, [double]$DurationMs, [double]$OffsetMs = -1, [string]$ParentItem = "")
     if (-not $script:timing) { return }
     [void]$script:timingEvents.Add(@{
         Type       = "item"
@@ -74,6 +74,7 @@ function Record-ItemTiming {
         Item       = $Item
         DurationMs = $DurationMs
         OffsetMs   = $OffsetMs
+        ParentItem = $ParentItem
     })
 }
 
@@ -104,7 +105,7 @@ function Show-TimingReport {
     foreach ($ev in $script:timingEvents) {
         if ($ev.Type -eq "item") {
             if (-not $phaseItems.ContainsKey($ev.Phase)) { $phaseItems[$ev.Phase] = [System.Collections.ArrayList]::new() }
-            [void]$phaseItems[$ev.Phase].Add(@{ Item = $ev.Item; DurationMs = $ev.DurationMs; OffsetMs = $ev.OffsetMs })
+            [void]$phaseItems[$ev.Phase].Add(@{ Item = $ev.Item; DurationMs = $ev.DurationMs; OffsetMs = $ev.OffsetMs; ParentItem = $ev.ParentItem })
         }
     }
 
@@ -228,12 +229,23 @@ function Show-TimingReport {
 
     # Pre-Gate sub-items
     if ($phaseItems.ContainsKey("Pre-Gate")) {
-        $pgItems = $phaseItems["Pre-Gate"] | Sort-Object { $_.DurationMs } -Descending
+        $allPgItems = $phaseItems["Pre-Gate"]
+        $pgItems = @($allPgItems | Where-Object { -not $_.ParentItem }) | Sort-Object { $_.DurationMs } -Descending
         $pgSlowestMs = $pgItems[0].DurationMs
         $pgBodyRole = if ($pgGateRole -eq "outer_start") { "outer_body" } elseif ($pgGateRole -eq "inner_start") { "inner_body" } else { "" }
         foreach ($item in $pgItems) {
             $itemMarker = if ($item.DurationMs -eq $pgSlowestMs -and @($pgItems).Count -gt 1) { $MRK_SLOWEST } else { "" }
             [void]$lines.Add(@{ Prefix = "       "; Name = $item.Item; OffsetMs = -1; DurMs = $item.DurationMs; Marker = $itemMarker; GateRole = $pgBodyRole })
+
+            # Render children of batch checks (one level deeper)
+            $children = @($allPgItems | Where-Object { $_.ParentItem -eq $item.Item }) | Sort-Object { $_.DurationMs } -Descending
+            if ($children.Count -gt 0) {
+                $childSlowestMs = $children[0].DurationMs
+                foreach ($child in $children) {
+                    $childMarker = if ($child.DurationMs -eq $childSlowestMs -and $children.Count -gt 1) { $MRK_SLOWEST } else { "" }
+                    [void]$lines.Add(@{ Prefix = "         "; Name = $child.Item; OffsetMs = -1; DurMs = $child.DurationMs; Marker = $childMarker; GateRole = "" })
+                }
+            }
         }
     }
 
@@ -704,6 +716,11 @@ if ($saHandle -ne [IntPtr]::Zero) {
         if ($saTimingData) {
             foreach ($entry in $saTimingData) {
                 Record-ItemTiming -Phase "Pre-Gate" -Item $entry.Name -DurationMs $entry.DurationMs
+                if ($entry.Children) {
+                    foreach ($child in $entry.Children) {
+                        Record-ItemTiming -Phase "Pre-Gate" -Item $child.Name -DurationMs $child.DurationMs -ParentItem $entry.Name
+                    }
+                }
             }
         }
         Remove-Item -Force -ErrorAction SilentlyContinue $saTimingFile
