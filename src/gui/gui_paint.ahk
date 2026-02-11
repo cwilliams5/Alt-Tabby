@@ -47,6 +47,7 @@ Paint_LogStartSession() {
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {
+    Critical "On"  ; Protect GDI+ back buffer from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount

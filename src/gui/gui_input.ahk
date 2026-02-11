@@ -67,6 +67,8 @@ _GUI_MoveSelection(delta) {
 
 ; ========================= HOVER DETECTION =========================
 
+; NOTE: No Critical "Off" here — callers may hold Critical (e.g., interceptor's TAB_STEP).
+; AHK v2 Critical is thread-level, so "Off" here would leak and break the caller's protection.
 GUI_RecalcHover() {
     global gGUI_OverlayH, gGUI_HoverRow, gGUI_HoverBtn
 
@@ -95,11 +97,9 @@ GUI_RecalcHover() {
         if (gGUI_HoverRow != 0 || gGUI_HoverBtn != "") {
             gGUI_HoverRow := 0
             gGUI_HoverBtn := ""
-            Critical "Off"
-            return true  ; Changed
+            return true  ; lint-ignore: critical-section
         }
-        Critical "Off"
-        return false
+        return false  ; lint-ignore: critical-section
     }
 
     act := ""
@@ -110,8 +110,7 @@ GUI_RecalcHover() {
     changed := (idx != gGUI_HoverRow || act != gGUI_HoverBtn)
     gGUI_HoverRow := idx
     gGUI_HoverBtn := act
-    Critical "Off"
-    return changed
+    return changed  ; lint-ignore: critical-section
 }
 
 GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
