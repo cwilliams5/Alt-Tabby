@@ -38,12 +38,19 @@ $AHK_BUILTINS = @('true', 'false', 'unset', 'this', 'super')
 # === Helpers ===
 function Clean-Line {
     param([string]$line)
-    # Remove quoted strings to avoid false matches on variable names inside strings
-    $cleaned = $line -replace '"[^"]*"', '""'
-    # Remove end-of-line comments (semicolon preceded by whitespace)
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    # Remove full-line comments
-    if ($cleaned -match '^\s*;') { return '' }
+    # Fast-path for common cases (avoids regex overhead on most lines)
+    if ($line.Length -eq 0) { return '' }
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0) { return '' }
+    if ($trimmed[0] -eq ';') { return '' }
+    # Only do expensive regex if line actually has quotes or semicolons
+    $cleaned = $line
+    if ($line.IndexOf('"') -ge 0) {
+        $cleaned = $cleaned -replace '"[^"]*"', '""'
+    }
+    if ($cleaned.IndexOf(';') -ge 0) {
+        $cleaned = $cleaned -replace '\s;.*$', ''
+    }
     return $cleaned
 }
 
@@ -203,6 +210,17 @@ foreach ($file in $allFiles) {
     }
 
     $lines = $fileCache[$file.FullName]
+
+    # Pre-filter: skip files that reference no globals (avoids parsing function boundaries)
+    $joinedText = [string]::Join("`n", $lines)
+    $hasAnyGlobal = $false
+    foreach ($gName in $checkGlobals.Keys) {
+        if ($joinedText.IndexOf($gName, [System.StringComparison]::Ordinal) -ge 0) {
+            $hasAnyGlobal = $true; break
+        }
+    }
+    if (-not $hasAnyGlobal) { continue }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $inFunc = $false

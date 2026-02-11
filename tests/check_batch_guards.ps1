@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical
+# Sub-checks: thememsgbox, callback_critical, log_guards
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -229,6 +229,207 @@ if ($ccIssues.Count -gt 0) {
 }
 
 # ============================================================
+# Sub-check 3: log_guards
+# Caller-side log guard enforcement for log calls with concatenation
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+# Log function -> acceptable guard patterns
+$lgGuards = @{
+    'GUI_LogEvent'  = @('cfg.DiagEventLog', 'DiagEventLog')
+    'Paint_Log'     = @('cfg.DiagPaintTimingLog', 'DiagPaintTimingLog')
+    '_Store_LogInfo' = @('cfg.DiagStoreLog', 'DiagStoreLog', 'cfg.DiagChurnLog', 'DiagChurnLog')
+    '_Launcher_Log'  = @('cfg.DiagLauncherLog', 'DiagLauncherLog')
+    '_IPC_Log'      = @('logEnabled', '_IPC_IsLogEnabled')
+    '_Update_Log'   = @('cfg.DiagUpdateLog', 'DiagUpdateLog')
+    '_IP_Log'       = @('_IP_DiagEnabled', 'logEnabled')
+    '_PP_Log'       = @('cfg.DiagProcPumpLog', 'DiagProcPumpLog')
+    '_WEH_DiagLog'  = @('cfg.DiagWinEventLog', 'DiagWinEventLog')
+    'KSub_DiagLog'  = @('cfg.DiagKomorebiLog', 'DiagKomorebiLog')
+    '_Viewer_Log'   = @('gViewer_LogPath')
+}
+
+$lgCallPattern = '(?<!\w)(' + ($lgGuards.Keys -join '|') + ')\s*\('
+$lgAllFuncNames = [string[]]@($lgGuards.Keys)
+
+function BG_LG_CleanLine {
+    param([string]$line)
+    if ($line -match '^\s*;') { return '' }
+    $cleaned = $line -replace '\s;.*$', ''
+    return $cleaned
+}
+
+function BG_LG_StripStrings {
+    param([string]$line)
+    $stripped = $line -replace '"[^"]*"', '""'
+    $stripped = $stripped -replace "'[^']*'", "''"
+    return $stripped
+}
+
+function BG_LG_HasConcat {
+    param([string]$rawLine, [string]$funcName)
+    $idx = $rawLine.IndexOf("$funcName(")
+    if ($idx -lt 0) { return $false }
+    $argStart = $idx + $funcName.Length + 1
+    if ($argStart -ge $rawLine.Length) { return $false }
+    $argPart = $rawLine.Substring($argStart)
+    $depth = 1; $end = 0
+    for ($k = 0; $k -lt $argPart.Length; $k++) {
+        $c = $argPart[$k]
+        if ($c -eq '(') { $depth++ }
+        elseif ($c -eq ')') {
+            $depth--
+            if ($depth -eq 0) { $end = $k; break }
+        }
+    }
+    if ($end -gt 0) { $argPart = $argPart.Substring(0, $end) }
+    $argTrimmed = $argPart.Trim()
+    if ($argTrimmed -match '^"[^"]*"$') { return $false }
+    if ($argTrimmed -notmatch '"') { return $true }
+    $withoutStrings = $argTrimmed -replace '"[^"]*"', ''
+    $withoutStrings = $withoutStrings.Trim()
+    if ($withoutStrings -match '[A-Za-z_]\w*') { return $true }
+    return $false
+}
+
+$lgIssues = [System.Collections.ArrayList]::new()
+$lgCallsChecked = 0
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+
+    # File-level pre-filter: skip files without any enforced log function
+    $hasLogFunc = $false
+    $joined = [string]::Join("`n", $lines)
+    foreach ($fn in $lgAllFuncNames) {
+        if ($joined.Contains($fn)) { $hasLogFunc = $true; break }
+    }
+    if (-not $hasLogFunc) { continue }
+
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $guardStack = [System.Collections.ArrayList]::new()
+    $currentDepth = 0
+    $prevCleanedLine = ''
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $rawLine = $lines[$i]
+        $cleaned = BG_LG_CleanLine $rawLine
+        if ($cleaned -eq '') { continue }
+        $stripped = BG_LG_StripStrings $cleaned
+
+        # Count braces
+        $opens = 0; $closes = 0
+        foreach ($c in $stripped.ToCharArray()) {
+            if ($c -eq '{') { $opens++ }
+            elseif ($c -eq '}') { $closes++ }
+        }
+
+        $depthAfterClose = $currentDepth - $closes
+        if ($depthAfterClose -lt 0) { $depthAfterClose = 0 }
+
+        # Pop guards whose blocks have closed
+        while ($guardStack.Count -gt 0 -and $depthAfterClose -le $guardStack[$guardStack.Count - 1].depth) {
+            $guardStack.RemoveAt($guardStack.Count - 1)
+        }
+
+        # If a block opens, check if it's a guarded if
+        if ($opens -gt 0) {
+            $guardLine = $null
+            if ($cleaned -match '(?:^|\belse\s+)\s*if[\s(]') {
+                $guardLine = $cleaned
+            } elseif ($prevCleanedLine -ne '' -and $prevCleanedLine -match '(?:^|\belse\s+)\s*if[\s(]') {
+                $guardLine = $prevCleanedLine
+            }
+            if ($null -ne $guardLine) {
+                [void]$guardStack.Add(@{ depth = $depthAfterClose; line = $guardLine })
+            }
+        }
+
+        $currentDepth = $depthAfterClose + $opens
+
+        # Check if this line contains an enforced log function call
+        if ($stripped -notmatch $lgCallPattern) {
+            $prevCleanedLine = $cleaned
+            continue
+        }
+
+        $logFunc = $Matches[1]
+
+        # Skip function DEFINITIONS
+        if ($stripped -match "^\s*(?:static\s+)?$logFunc\s*\([^)]*\)\s*\{") {
+            $prevCleanedLine = $cleaned; continue
+        }
+        if ($stripped -match "^\s*(?:static\s+)?$logFunc\s*\([^)]*\)\s*$") {
+            if ($i + 1 -lt $lines.Count -and $lines[$i + 1] -match '^\s*\{') {
+                $prevCleanedLine = $cleaned; continue
+            }
+        }
+
+        # Only check calls with string concatenation
+        if (-not (BG_LG_HasConcat $rawLine $logFunc)) {
+            $prevCleanedLine = $cleaned; continue
+        }
+
+        $lgCallsChecked++
+        $guardPatterns = $lgGuards[$logFunc]
+        $isGuarded = $false
+
+        # Check forward-built guard stack
+        for ($s = 0; $s -lt $guardStack.Count; $s++) {
+            foreach ($guard in $guardPatterns) {
+                if ($guardStack[$s].line.Contains($guard)) {
+                    $isGuarded = $true; break
+                }
+            }
+            if ($isGuarded) { break }
+        }
+
+        # Braceless guard: look back 1-3 lines
+        if (-not $isGuarded) {
+            for ($j = [Math]::Max(0, $i - 3); $j -lt $i; $j++) {
+                $prevCl = BG_LG_CleanLine $lines[$j]
+                if ($prevCl -eq '') { continue }
+                if ($prevCl -match '(?:^|\belse\s+)\s*if[\s(]' -and $prevCl -notmatch '\{') {
+                    foreach ($guard in $guardPatterns) {
+                        if ($prevCl.Contains($guard)) {
+                            $isGuarded = $true; break
+                        }
+                    }
+                    if ($isGuarded) { break }
+                }
+            }
+        }
+
+        if (-not $isGuarded) {
+            [void]$lgIssues.Add([PSCustomObject]@{
+                File = $relPath; Line = $i + 1
+                Function = $logFunc; Code = $rawLine.Trim()
+            })
+        }
+
+        $prevCleanedLine = $cleaned
+    }
+}
+
+if ($lgIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($lgIssues.Count) unguarded log call(s) with string concatenation found.")
+    [void]$failOutput.AppendLine("  AHK v2 evaluates arguments BEFORE the call - string concatenation runs")
+    [void]$failOutput.AppendLine("  unconditionally. Wrap log calls in caller-side if-guards.")
+    $grouped = $lgIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.Function)() missing guard")
+            [void]$failOutput.AppendLine("        $($issue.Code)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_log_guards"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -236,7 +437,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

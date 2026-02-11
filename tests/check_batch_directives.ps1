@@ -1,6 +1,6 @@
 # check_batch_directives.ps1 - Batched directive/keyword checks
-# Combines 4 simple checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: requires_directive, singleinstance, state_strings, winexist_cloaked
+# Combines 5 checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: requires_directive, singleinstance, state_strings, winexist_cloaked, bare_try
 #
 # Usage: powershell -File tests\check_batch_directives.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -264,6 +264,344 @@ if ($weIssues.Count -gt 0) {
 }
 
 # ============================================================
+# Sub-check 5: bare_try
+# Detects try statements without catch that silently swallow errors
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+function BD_BT_CleanLine {
+    param([string]$line)
+    $cleaned = $line -replace '"[^"]*"', '""'
+    $cleaned = $cleaned -replace "'[^']*'", "''"
+    $cleaned = $cleaned -replace '\s;.*$', ''
+    if ($cleaned -match '^\s*;') { return '' }
+    return $cleaned
+}
+
+function BD_BT_StripComments {
+    param([string]$line)
+    $stripped = $line -replace '\s;.*$', ''
+    if ($stripped -match '^\s*;') { return '' }
+    return $stripped
+}
+
+function BD_BT_TestAutoExempt {
+    param([string]$expr)
+    $t = $expr.Trim()
+    if ($t -match '(?i)DllCall\(\s*"[^"]*\\?(DestroyIcon|CloseHandle|DisconnectNamedPipe|FlushFileBuffers|DeleteObject|ReleaseDC|SelectObject|DeleteDC|DeleteFont)"') { return $true }
+    if ($t -match '(?i)DllCall\(\s*"gdiplus\\Gdip(Delete|Dispose|lusShutdown)') { return $true }
+    if ($t -match '(?i)DllCall\(\s*"gdi32\\(DeleteObject|SelectObject|DeleteDC)"') { return $true }
+    if ($t -match '(?i)DllCall\(\s*"dwmapi\\Dwm(SetWindowAttribute|Flush)"') { return $true }
+    if ($t -match '(?i)^FileDelete\(') { return $true }
+    if ($t -match '(?i)^FileCopy\(') { return $true }
+    if ($t -match '(?i)^FileMove\(') { return $true }
+    if ($t -match '(?i)^FileAppend\(') { return $true }
+    if ($t -match '(?i)^DirDelete\(') { return $true }
+    if ($t -match '(?i)^SetTimer\(.*,\s*0\s*\)') { return $true }
+    if ($t -match '(?i)^Gdip_(Delete|Dispose|Shutdown)') { return $true }
+    if ($t -match '(?i)^ProcessClose\(') { return $true }
+    if ($t -match '(?i)^WinClose\(') { return $true }
+    if ($t -match '(?i)^WinKill\(') { return $true }
+    if ($t -match '(?i)^WinActivate\(') { return $true }
+    if ($t -match '(?i)^WinSet(AlwaysOnTop|Transparent|ExStyle)\b') { return $true }
+    if ($t -match '(?i)^Ini(Write|Read|Delete)\(') { return $true }
+    if ($t -match '(?i)^Reg(Write|Read|Delete)\(') { return $true }
+    if ($t -match '(?i)^Hotkey\(') { return $true }
+    if ($t -match '(?i)^On(Error|Exit)\(') { return $true }
+    if ($t -match '(?i)^LogAppend\(') { return $true }
+    if ($t -match '(?i)^PostMessage\(') { return $true }
+    if ($t -match '(?i)^Send\(') { return $true }
+    if ($t -match '(?i)\.(Destroy|Hide|Move|Choose)\(') { return $true }
+    if ($t -match '(?i)\.(Value|Text|BackColor)\s*:=') { return $true }
+    if ($t -match '(?i)^Run(Wait)?\(') { return $true }
+    if ($t -match '(?i)^Theme_UntrackGui\(') { return $true }
+    if ($t -match '(?i)^Theme_ApplyToWindow\(') { return $true }
+    if ($t -match '(?i)^HideSplashScreen\(') { return $true }
+    if ($t -match '(?i)^GUI_AntiFlashReveal\(') { return $true }
+    if ($t -match '(?i)^(WinGetTitle|WinGetClass|WinGetProcessName|WinGetID)\(') { return $true }
+    if ($t -match '(?i):= (WinGetTitle|WinGetClass|WinGetProcessName|WinGetID)\(') { return $true }
+    if ($t -match '(?i):= WinGetTitle\(') { return $true }
+    if ($t -match '(?i)DllCall\(\s*"(user32|shcore)\\(SetProcess|GetDpi|GetDpiFor|SetWindowLongPtrW|GetWindowLongPtrW)') { return $true }
+    if ($t -match '(?i)^(hr\s*:=\s*)?DllCall\(') { return $true }
+    if ($t -match '(?i)^WindowStore_(UpdateFields|UpsertWindow|SetCurrentWorkspace|EnqueueIconRefresh|BatchUpdateFields|ValidateExistence|CleanupAllIcons|CleanupExeIconCache|PruneProcNameCache|PruneExeIconCache)\(') { return $true }
+    if ($t -match '(?i):= WindowStore_(UpdateFields|GetByHwnd|SetCurrentWorkspace)\(') { return $true }
+    if ($t -match '(?i)^Store_(PushToClients|BroadcastWorkspaceFlips|LogError|LogInfo)\(') { return $true }
+    if ($t -match '(?i)^IPC_PipeClient_Send\(') { return $true }
+    if ($t -match '(?i)^(IconPump|ProcPump|KomorebiSub|KomorebiLite|WinEventHook|MRU_Lite)_(Stop|EnsureRunning|PruneStaleCache|CleanupWindow|CleanupUwpCache|PruneProcNameCache|PruneExeIconCache|PruneFailedPidCache|Poll)\(') { return $true }
+    if ($t -match '(?i):= JSON\.Load\(') { return $true }
+    if ($t -match '(?i)^(parsed|stateObj|obj)\s*:= JSON\.Load\(') { return $true }
+    if ($t -match '(?i)^return Integer\(') { return $true }
+    if ($t -match '(?i):= Integer\(') { return $true }
+    if ($t -match '(?i):= Float\(') { return $true }
+    if ($t -match '(?i)^(\w+\s*:=\s*)?FileRead\(') { return $true }
+    if ($t -match '(?i):= FileRead\(') { return $true }
+    if ($t -match '(?i):= Trim\(FileRead\(') { return $true }
+    if ($t -match '(?i)^Stats_(FlushToDisk|SendToStore)\(') { return $true }
+    if ($t -match '(?i)^LogInitSession\(') { return $true }
+    if ($t -match '(?i):= \w+\.\w+$') { return $true }
+    if ($t -match '(?i):= BL_CompileWildcard\(') { return $true }
+    if ($t -match '(?i)WebView\.(ExecuteScript|Navigate|add_WebMessageReceived)\(') { return $true }
+    if ($t -match '(?i)Controller\.(Fill|DefaultBackgroundColor)') { return $true }
+    if ($t -match '(?i)Controller\s*:= 0') { return $true }
+    if ($t -match '(?i):= IPC_PipeClient_Connect\(') { return $true }
+    if ($t -match '(?i)^ProcessUtils_RunWaitHidden\(') { return $true }
+    if ($t -match '(?i)^Launcher_ShutdownSubprocesses\(') { return $true }
+    if ($t -match '(?i)^DeleteAdminTask\(') { return $true }
+    if ($t -match '(?i)^CL_WriteIniPreserveFormat\(') { return $true }
+    if ($t -match '(?i):= CL_WriteIniPreserveFormat\(') { return $true }
+    if ($t -match '(?i)^ThemeMsgBox\(') { return $true }
+    if ($t -match '(?i)\.(Show)\(') { return $true }
+    if ($t -match '(?i)\.Call\(') { return $true }
+    if ($t -match '(?i)^callback\(\)') { return $true }
+    if ($t -match '(?i)(FileExist|FileGetSize|FileGetTime|FileGetVersion)\(') { return $true }
+    if ($t -match '(?i)^return MsgBox\(') { return $true }
+    if ($t -match '(?i)DllCall\(') { return $true }
+    if ($t -match '(?i):= \w+\.\w+\b') { return $true }
+    if ($t -match '(?i)ComObject\(') { return $true }
+    if ($t -match '(?i)\.(ShellExecute|CreateShortcut|Run)\(') { return $true }
+    if ($t -match '(?i)\.(RawWrite)\(') { return $true }
+    if ($t -match '(?i)^(if|else|return|continue|break|global|local|static|Loop|for|while|switch)\b') { return $true }
+    if ($t -match '^\w+\s*:=') { return $true }
+    if ($t -match '^\w+\s*\.=') { return $true }
+    if ($t -match '^\w+\s*\+=') { return $true }
+    if ($t -match '^\w+\+\+') { return $true }
+    if ($t -match '^\w+\-\-') { return $true }
+    if ($t -match '^\w+\[') { return $true }
+    if ($t -match '^\w+\.\w+\(') { return $true }
+    if ($t -match '(?i)^try\b') { return $true }
+    if ($t -match '(?i)^_?(GUI|Store|Launcher|Viewer|Update|Blacklist|BL|CEN|CEW|CRE|Theme|IPC|WinEnum)') { return $true }
+    if ($t -match '(?i)^Sleep\(') { return $true }
+    return $false
+}
+
+function BD_BT_FindBlockEnd {
+    param([string[]]$cleanedLines, [string[]]$rawLines, [int]$openBraceLine, [int]$startDepth)
+    $result = @{ EndLine = -1; HasCatch = $false; Statements = [System.Collections.ArrayList]::new() }
+    $depth = $startDepth
+    for ($ln = $openBraceLine + 1; $ln -lt $cleanedLines.Count; $ln++) {
+        $cl = $cleanedLines[$ln]
+        if ($cl -eq '') { continue }
+        $depthBefore = $depth
+        $hitZero = $false
+        $afterZeroText = ''
+        foreach ($ch in $cl.ToCharArray()) {
+            if ($hitZero) {
+                $afterZeroText += $ch
+                if ($ch -eq '{') { $depth++ }
+                elseif ($ch -eq '}') { $depth-- }
+                continue
+            }
+            if ($ch -eq '{') { $depth++ }
+            elseif ($ch -eq '}') {
+                $depth--
+                if ($depth -le 0) { $hitZero = $true }
+            }
+        }
+        if ($hitZero) {
+            $result.EndLine = $ln
+            $after = $afterZeroText.Trim()
+            if ($after -match '(?i)^(catch|finally)\b') {
+                $result.HasCatch = $true
+            } else {
+                for ($m = $ln + 1; $m -lt $cleanedLines.Count; $m++) {
+                    $mcl = $cleanedLines[$m]
+                    if ($mcl -eq '') { continue }
+                    if ($mcl.Trim() -match '(?i)^(catch|finally)\b') { $result.HasCatch = $true }
+                    break
+                }
+            }
+            return $result
+        }
+        if ($depthBefore -eq 1) {
+            $trimmed = $cl.Trim()
+            if ($trimmed -ne '{' -and $trimmed -ne '}') {
+                $rawStmt = (BD_BT_StripComments $rawLines[$ln]).Trim()
+                if ($rawStmt -ne '') { [void]$result.Statements.Add($rawStmt) }
+            }
+        }
+    }
+    return $result
+}
+
+$BT_AHK_KEYWORDS = @(
+    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
+    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
+    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
+    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
+)
+
+$btIssues = [System.Collections.ArrayList]::new()
+$btTryCount = 0
+$btExemptCount = 0
+
+foreach ($file in $allFiles) {
+    $rawLines = $fileCache[$file.FullName]
+
+    # Pre-filter: skip files without "try"
+    $joined = [string]::Join("`n", $rawLines)
+    if ($joined.IndexOf('try') -lt 0) { continue }
+
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    # Pre-clean all lines
+    $cleanedLines = [string[]]::new($rawLines.Count)
+    for ($idx = 0; $idx -lt $rawLines.Count; $idx++) {
+        $cleanedLines[$idx] = BD_BT_CleanLine $rawLines[$idx]
+    }
+
+    # Pass 1: Identify OnExit handler boundaries
+    $onExitRanges = [System.Collections.ArrayList]::new()
+    $btDepth = 0; $btInFunc = $false; $btFuncDepth = -1; $btFuncStart = -1; $btFuncName = ""
+    for ($idx = 0; $idx -lt $rawLines.Count; $idx++) {
+        $cl = $cleanedLines[$idx]
+        if ($cl -eq '') { continue }
+        if (-not $btInFunc -and $cl -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+            $fname = $Matches[1]
+            if ($fname.ToLower() -notin $BT_AHK_KEYWORDS -and $cl -match '\{') {
+                $btInFunc = $true; $btFuncName = $fname; $btFuncDepth = $btDepth; $btFuncStart = $idx
+            }
+        }
+        foreach ($ch in $cl.ToCharArray()) {
+            if ($ch -eq '{') { $btDepth++ } elseif ($ch -eq '}') { $btDepth-- }
+        }
+        if ($btInFunc -and $btDepth -le $btFuncDepth) {
+            if ($btFuncName -match '(?i)OnExit') {
+                [void]$onExitRanges.Add([PSCustomObject]@{ Start = $btFuncStart; End = $idx })
+            }
+            $btInFunc = $false; $btFuncDepth = -1
+        }
+    }
+
+    # Pass 2: Find try statements
+    for ($i = 0; $i -lt $rawLines.Count; $i++) {
+        $cl = $cleanedLines[$i]
+        if ($cl -eq '') { continue }
+        if ($cl -notmatch '^\s*try\b') { continue }
+        $btTryCount++
+        $tryLineNum = $i + 1
+
+        # Check if inside OnExit handler
+        $inOnExit = $false
+        foreach ($r in $onExitRanges) {
+            if ($i -ge $r.Start -and $i -le $r.End) { $inOnExit = $true; break }
+        }
+        if ($inOnExit) { $btExemptCount++; continue }
+
+        $afterTry = ($cl -replace '^\s*try\s*', '').Trim()
+        $rawAfterTry = ((BD_BT_StripComments $rawLines[$i]) -replace '^\s*try\s*', '').Trim()
+
+        if ($afterTry -match '^\{') {
+            $initDepth = 0
+            foreach ($ch in $afterTry.ToCharArray()) {
+                if ($ch -eq '{') { $initDepth++ } elseif ($ch -eq '}') { $initDepth-- }
+            }
+            if ($initDepth -le 0) {
+                $hasCatch = $false
+                for ($j = $i + 1; $j -lt $rawLines.Count; $j++) {
+                    $jcl = $cleanedLines[$j]
+                    if ($jcl -eq '') { continue }
+                    if ($jcl.Trim() -match '(?i)^(catch|finally)\b') { $hasCatch = $true }
+                    break
+                }
+                if ($hasCatch) { continue }
+                $rawBraceContent = ((BD_BT_StripComments $rawLines[$i]) -replace '^\s*try\s*', '').Trim()
+                if ($rawBraceContent -match '^\{(.*)\}\s*$') {
+                    $inner = $Matches[1].Trim()
+                    if ($inner -ne '' -and -not (BD_BT_TestAutoExempt $inner)) {
+                        [void]$btIssues.Add([PSCustomObject]@{ File=$relPath; Line=$tryLineNum; Expr=$inner })
+                    } else { $btExemptCount++ }
+                }
+                continue
+            }
+            $block = BD_BT_FindBlockEnd $cleanedLines $rawLines $i $initDepth
+            if ($block.EndLine -lt 0) { continue }
+            $i = $block.EndLine
+            if ($block.HasCatch) { continue }
+            if ($block.Statements.Count -eq 0) { continue }
+            $allExempt = $true
+            foreach ($stmt in $block.Statements) {
+                if (-not (BD_BT_TestAutoExempt $stmt)) { $allExempt = $false; break }
+            }
+            if ($allExempt) { $btExemptCount++; continue }
+            foreach ($stmt in $block.Statements) {
+                if (-not (BD_BT_TestAutoExempt $stmt)) {
+                    [void]$btIssues.Add([PSCustomObject]@{ File=$relPath; Line=$tryLineNum; Expr=$stmt })
+                }
+            }
+        } elseif ($afterTry -eq '') {
+            for ($j = $i + 1; $j -lt $rawLines.Count; $j++) {
+                $jcl = $cleanedLines[$j]
+                if ($jcl -eq '') { continue }
+                $jTrimmed = $jcl.Trim()
+                if ($jTrimmed -match '^\{') {
+                    $initDepth = 0
+                    foreach ($ch in $jcl.ToCharArray()) {
+                        if ($ch -eq '{') { $initDepth++ } elseif ($ch -eq '}') { $initDepth-- }
+                    }
+                    if ($initDepth -le 0) {
+                        $hasCatch = $false
+                        for ($k = $j + 1; $k -lt $rawLines.Count; $k++) {
+                            $kcl = $cleanedLines[$k]
+                            if ($kcl -eq '') { continue }
+                            if ($kcl.Trim() -match '(?i)^(catch|finally)\b') { $hasCatch = $true }
+                            break
+                        }
+                        $i = $j; break
+                    }
+                    $block = BD_BT_FindBlockEnd $cleanedLines $rawLines $j $initDepth
+                    if ($block.EndLine -lt 0) { $i = $j; break }
+                    $i = $block.EndLine
+                    if ($block.HasCatch) { break }
+                    if ($block.Statements.Count -eq 0) { break }
+                    $allExempt = $true
+                    foreach ($stmt in $block.Statements) {
+                        if (-not (BD_BT_TestAutoExempt $stmt)) { $allExempt = $false; break }
+                    }
+                    if ($allExempt) { $btExemptCount++; break }
+                    foreach ($stmt in $block.Statements) {
+                        if (-not (BD_BT_TestAutoExempt $stmt)) {
+                            [void]$btIssues.Add([PSCustomObject]@{ File=$relPath; Line=$tryLineNum; Expr=$stmt })
+                        }
+                    }
+                    break
+                } else {
+                    $rawStmt = (BD_BT_StripComments $rawLines[$j]).Trim()
+                    if (BD_BT_TestAutoExempt $rawStmt) { $btExemptCount++ }
+                    else {
+                        [void]$btIssues.Add([PSCustomObject]@{ File=$relPath; Line=$tryLineNum; Expr=$rawStmt })
+                    }
+                    $i = $j; break
+                }
+            }
+        } else {
+            if (BD_BT_TestAutoExempt $rawAfterTry) { $btExemptCount++ }
+            else {
+                [void]$btIssues.Add([PSCustomObject]@{ File=$relPath; Line=$tryLineNum; Expr=$rawAfterTry })
+            }
+        }
+    }
+}
+
+if ($btIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($btIssues.Count) bare try issue(s) found.")
+    [void]$failOutput.AppendLine("  These try statements have no catch block and silently swallow errors.")
+    [void]$failOutput.AppendLine("  Fix: add a catch block, or if intentional, add the pattern to auto-exempt list.")
+    $grouped = $btIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            $exprShort = $issue.Expr
+            if ($exprShort.Length -gt 80) { $exprShort = $exprShort.Substring(0, 77) + "..." }
+            [void]$failOutput.AppendLine("      Line $($issue.Line): try without catch: $exprShort")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_bare_try"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -271,7 +609,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, winexist_cloaked)" -ForegroundColor Green
+    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, winexist_cloaked, bare_try)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
