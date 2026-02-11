@@ -1,6 +1,6 @@
 # check_batch_simple.ps1 - Batched simple pattern checks
-# Combines 3 lightweight checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: switch_global, ipc_constants, dllcall_types
+# Combines 4 lightweight checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_simple.ps1 [-SourceDir "path\to\src"]
@@ -477,6 +477,125 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_dllcall_types"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 4: isset_with_default
+# Detects IsSet() calls on globals declared with a default value.
+# IsSet() returns true for ANY assigned value (including 0, false, ""),
+# so such checks are always true -- likely a bug.
+# Suppress: ; lint-ignore: isset-with-default
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+# Phase 1: Collect file-scope global declarations WITH defaults
+$idGlobalsWithDefaults = @{}  # varName -> @{ Name; File; Line }
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $depth = 0
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $cleaned = BS_CleanLine $lines[$i]
+        if ($cleaned -eq '') { continue }
+
+        $braces = BS_CountBraces $cleaned
+
+        # Only look at file-scope (depth == 0) global declarations
+        if ($depth -eq 0 -and $cleaned -match '^\s*global\s+(.+)') {
+            $declContent = $Matches[1]
+
+            # Split on commas, respecting nested parens/brackets
+            $parenDepth = 0
+            $parts = [System.Collections.ArrayList]::new()
+            $current = [System.Text.StringBuilder]::new()
+            foreach ($ch in $declContent.ToCharArray()) {
+                if ($ch -eq '(' -or $ch -eq '[') { $parenDepth++ }
+                elseif ($ch -eq ')' -or $ch -eq ']') { if ($parenDepth -gt 0) { $parenDepth-- } }
+                if ($ch -eq ',' -and $parenDepth -eq 0) {
+                    [void]$parts.Add($current.ToString())
+                    [void]$current.Clear()
+                } else {
+                    [void]$current.Append($ch)
+                }
+            }
+            [void]$parts.Add($current.ToString())
+
+            foreach ($part in $parts) {
+                $trimmed = $part.Trim()
+                if ($trimmed -match '^(\w+)\s*:=') {
+                    $varName = $Matches[1]
+                    if (-not $idGlobalsWithDefaults.ContainsKey($varName)) {
+                        $idGlobalsWithDefaults[$varName] = @{
+                            Name = $varName
+                            File = $relPath
+                            Line = ($i + 1)
+                        }
+                    }
+                }
+            }
+        }
+
+        $depth += $braces[0] - $braces[1]
+        if ($depth -lt 0) { $depth = 0 }
+    }
+}
+
+# Phase 2: Find IsSet(VarName) calls where VarName has a default
+$idIssues = [System.Collections.ArrayList]::new()
+$idIssetCallCount = 0
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+
+        # Quick pre-filter
+        if (-not $raw.Contains('IsSet')) { continue }
+        if ($raw -match ';\s*lint-ignore:\s*isset-with-default') { continue }
+
+        $cleaned = BS_CleanLine $raw
+        if ($cleaned -eq '') { continue }
+
+        $regexMatches = [regex]::Matches($cleaned, '\bIsSet\(\s*(\w+)\s*\)')
+        foreach ($m in $regexMatches) {
+            $idIssetCallCount++
+            $varName = $m.Groups[1].Value
+
+            if ($idGlobalsWithDefaults.ContainsKey($varName)) {
+                $declInfo = $idGlobalsWithDefaults[$varName]
+                [void]$idIssues.Add([PSCustomObject]@{
+                    IsSetFile = $relPath
+                    IsSetLine = ($i + 1)
+                    VarName   = $varName
+                    DeclFile  = $declInfo.File
+                    DeclLine  = $declInfo.Line
+                })
+            }
+        }
+    }
+}
+
+if ($idIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($idIssues.Count) IsSet() call(s) on globals with default values.")
+    [void]$failOutput.AppendLine("  IsSet() always returns true when the variable has ANY assigned value (including 0, false, `"`").")
+    [void]$failOutput.AppendLine("  Fix: declare the global without a value: 'global VarName' (not 'global VarName := 0').")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: isset-with-default' on the IsSet() line.")
+    $grouped = $idIssues | Group-Object IsSetFile
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object IsSetLine) {
+            [void]$failOutput.AppendLine("      Line $($issue.IsSetLine): IsSet($($issue.VarName)) - always true")
+            [void]$failOutput.AppendLine("        declared with default at $($issue.DeclFile):$($issue.DeclLine)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_isset_with_default"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -484,7 +603,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types)" -ForegroundColor Green
+    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
