@@ -591,6 +591,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
+| `FlightRecorder` | bool | `true` | - | Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact. |
 | `ChurnLog` | bool | `false` | - | Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle. |
 | `KomorebiLog` | bool | `false` | - | Log komorebi subscription events to %TEMP%\\tabby_ksub_diag.log. Use when workspace tracking has issues. |
 | `AltTabTooltips` | bool | `false` | - | Show tooltips for Alt-Tab state machine debugging. Use when overlay behavior is incorrect. |
@@ -634,4 +635,4 @@ Options for automated test suite
 
 ---
 
-*Generated on 2026-02-08 with 260 total settings.*
+*Generated on 2026-02-11 with 261 total settings.*

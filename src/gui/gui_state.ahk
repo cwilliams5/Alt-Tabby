@@ -103,6 +103,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_OverlayVisible, gGUI_LiveItems, gGUI_Sel, gGUI_DisplayItems, gGUI_ToggleBase, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
     global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick, TIMING_IPC_FIRE_WAIT
+    global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_PREWARM_SKIP, FR_EV_QUICK_SWITCH
+    global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
 
     ; File-based debug logging (no performance impact from tooltips)
     if (cfg.DiagEventLog) {
@@ -118,6 +120,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ESC during async - canceling")
             _GUI_CancelPendingActivation()
+            FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
             return  ; lint-ignore: critical-section
         }
@@ -130,11 +133,13 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (cfg.DiagEventLog)
                 GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, dropping event and clearing")
             _GUI_CancelPendingActivation()
+            FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
             return  ; lint-ignore: critical-section
         }
 
         gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
+        FR_Record(FR_EV_BUFFER_PUSH, evCode, gGUI_EventBuffer.Length)
         if (cfg.DiagEventLog)
             GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_PendingPhase ")")
         return  ; lint-ignore: critical-section
@@ -142,6 +147,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ALT_DOWN) {
         ; Alt pressed - enter ALT_PENDING state
+        FR_Record(FR_EV_STATE, FR_ST_ALT_PENDING)
         gGUI_State := "ALT_PENDING"
         gGUI_FirstTabTick := 0
         gGUI_TabCount := 0
@@ -167,6 +173,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (mruAge > gCached_MRUFreshnessMs) {
                 GUI_RequestSnapshot()
             } else {
+                FR_Record(FR_EV_PREWARM_SKIP, mruAge)
                 if (cfg.DiagEventLog)
                     GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
             }
@@ -186,6 +193,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; First Tab - freeze with current data and go to ACTIVE
             gGUI_FirstTabTick := A_TickCount
             gGUI_TabCount := 1
+            FR_Record(FR_EV_STATE, FR_ST_ACTIVE)
             gGUI_State := "ACTIVE"
             global gStats_AltTabs, gStats_TabSteps
             gStats_AltTabs += 1
@@ -225,6 +233,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             }
             ; Pin selection at top (virtual scroll)
             gGUI_ScrollTop := gGUI_Sel - 1
+            FR_Record(FR_EV_FREEZE, gGUI_DisplayItems.Length, gGUI_Sel)
 
             ; Start grace timer - show GUI after delay
             SetTimer(_GUI_GraceTimerFired, -cfg.AltTabGraceMs)
@@ -275,6 +284,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         if (gGUI_State = "ALT_PENDING") {
             ; Alt released without Tab - return to IDLE
+            FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
             return  ; lint-ignore: critical-section
         }
@@ -286,6 +296,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             if (!gGUI_OverlayVisible && timeSinceTab < cfg.AltTabQuickSwitchMs) {
                 ; Quick switch: Alt+Tab released quickly, no GUI shown
+                FR_Record(FR_EV_QUICK_SWITCH, timeSinceTab)
                 global gStats_QuickSwitches
                 gStats_QuickSwitches += 1
                 _GUI_ActivateFromFrozen()
@@ -299,6 +310,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             }
 
             gGUI_DisplayItems := []
+            FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
             Stats_SendToStore()
 
@@ -318,6 +330,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (gGUI_OverlayVisible) {
             GUI_HideOverlay()
         }
+        FR_Record(FR_EV_STATE, FR_ST_IDLE)
         gGUI_State := "IDLE"
         gGUI_DisplayItems := []
         Stats_SendToStore()
@@ -334,7 +347,8 @@ _GUI_GraceTimerFired() {
     ; RACE FIX: Prevent race with Alt_Up hotkey - timer can fire while
     ; GUI_OnInterceptorEvent is processing ALT_UP, causing inconsistent state
     Critical "On"
-    global gGUI_State, gGUI_OverlayVisible
+    global gGUI_State, gGUI_OverlayVisible, FR_EV_GRACE_FIRE, FR_ST_ACTIVE
+    FR_Record(FR_EV_GRACE_FIRE, (gGUI_State = "ACTIVE" ? FR_ST_ACTIVE : 0), gGUI_OverlayVisible)
 
     ; Double-check state - may have changed between scheduling and firing
     if (gGUI_State = "ACTIVE" && !gGUI_OverlayVisible) {
@@ -530,6 +544,9 @@ _GUI_ActivateItem(item) {
     ; Check if window is on a different workspace
     isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
     wsName := item.HasOwnProp("WS") ? item.WS : ""
+
+    global FR_EV_ACTIVATE_START
+    FR_Record(FR_EV_ACTIVATE_START, hwnd, isOnCurrent)
 
     ; DEBUG: Log all async activation conditions
     if (cfg.DiagEventLog) {
@@ -1026,9 +1043,11 @@ _GUI_ResyncKeyboardState() {
 _GUI_UpdateLocalMRU(hwnd) {
     Critical "On"  ; Harmless assertion — documents that Critical is required
     global gGUI_LiveItems, gGUI_LastLocalMRUTick, gGUI_LiveItemsMap, cfg
+    global FR_EV_MRU_UPDATE
 
     ; O(1) miss detection: if hwnd not in Map, skip the O(n) linear scan
     if (!gGUI_LiveItemsMap.Has(hwnd)) {
+        FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
         if (cfg.DiagEventLog)
             GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not in map, skip scan")
         return false  ; lint-ignore: critical-section
@@ -1046,9 +1065,11 @@ _GUI_UpdateLocalMRU(hwnd) {
                 gGUI_LiveItems.InsertAt(1, item)
             }
             gGUI_LastLocalMRUTick := A_TickCount
+            FR_Record(FR_EV_MRU_UPDATE, hwnd, 1)
             return true  ; lint-ignore: critical-section
         }
     }
+    FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
     if (cfg.DiagEventLog)
         GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
     return false  ; lint-ignore: critical-section
@@ -1425,17 +1446,25 @@ _GUI_RobustActivate(hwnd) {
             ; VERIFY: Don't trust SetForegroundWindow return alone — it can return
             ; non-zero but still fail. Check the actual foreground window.
             actualFg := DllCall("user32\GetForegroundWindow", "ptr")
-            if (actualFg = hwnd)
+            global FR_EV_ACTIVATE_RESULT
+            if (actualFg = hwnd) {
+                FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 1, actualFg)
                 return true
+            }
 
+            FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, actualFg)
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ACTIVATE VERIFY FAILED: wanted=" hwnd " got=" actualFg " sfwResult=" fgResult)
             return false
         }
+        global FR_EV_ACTIVATE_RESULT
+        FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, 0)
         if (cfg.DiagEventLog)
             GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
         return false
     } catch as e {
+        global FR_EV_ACTIVATE_RESULT
+        FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, 0)
         if (cfg.DiagEventLog)
             GUI_LogEvent("ACTIVATE ERROR: " e.Message " for hwnd=" hwnd)
         return false

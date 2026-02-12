@@ -189,6 +189,18 @@ global IPC_TICK_ACTIVE := 15
 IPC_SetClientTick(client, ms) {
 }
 
+; Flight recorder mock (gui_flight_recorder.ahk not included - it registers F12 hotkey)
+global FR_EV_ALT_DN := 1, FR_EV_ALT_UP := 2, FR_EV_TAB_DN := 3, FR_EV_TAB_UP := 4
+global FR_EV_TAB_DECIDE := 5, FR_EV_TAB_DECIDE_INNER := 6, FR_EV_ESC := 7, FR_EV_BYPASS := 8
+global FR_EV_STATE := 10, FR_EV_FREEZE := 11, FR_EV_GRACE_FIRE := 12
+global FR_EV_ACTIVATE_START := 13, FR_EV_ACTIVATE_RESULT := 14, FR_EV_MRU_UPDATE := 15
+global FR_EV_BUFFER_PUSH := 16, FR_EV_QUICK_SWITCH := 17, FR_EV_PREWARM_SKIP := 18
+global FR_EV_SNAPSHOT_REQ := 20, FR_EV_SNAPSHOT_RECV := 21, FR_EV_SNAPSHOT_SKIP := 22
+global FR_EV_DELTA_RECV := 23, FR_EV_SESSION_START := 30
+global FR_ST_IDLE := 0, FR_ST_ALT_PENDING := 1, FR_ST_ACTIVE := 2
+FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
+}
+
 ; Interceptor mocks (gui_interceptor.ahk functions - we don't include that file because it has hotkeys)
 INT_ShouldBypassWindow(hwnd := 0) {
     global gMock_BypassResult

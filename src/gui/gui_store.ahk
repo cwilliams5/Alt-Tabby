@@ -71,8 +71,10 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ; when it should be rejected per the async guard's documented invariant.
         Critical "On"
 
+        global FR_EV_SNAPSHOT_SKIP, FR_EV_SNAPSHOT_RECV
         if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
             ; Frozen mode and not a toggle response: ignore incoming data
+            FR_Record(FR_EV_SNAPSHOT_SKIP, 1)
             if (obj.Has("rev")) {
                 gGUI_StoreRev := obj["rev"]
             }
@@ -92,6 +94,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ; Toggle responses are exempt (user explicitly requested refresh).
         ; ============================================================
         if (gGUI_PendingPhase != "" && !isToggleResponse) {
+            FR_Record(FR_EV_SNAPSHOT_SKIP, 2)
             if (cfg.DiagEventLog)
                 GUI_LogEvent("SNAPSHOT: skipped (async activation pending, phase=" gGUI_PendingPhase ")")
             if (obj.Has("rev")) {
@@ -113,6 +116,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         global gCached_MRUFreshnessMs
         if (mruAge < gCached_MRUFreshnessMs && !isToggleResponse) {
+            FR_Record(FR_EV_SNAPSHOT_SKIP, 3)
             if (cfg.DiagEventLog)
                 GUI_LogEvent("SNAPSHOT: skipped (local MRU is fresh, age=" mruAge "ms)")
             if (obj.Has("rev")) {
@@ -127,6 +131,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             converted := _GUI_ConvertStoreItemsWithMap(obj["payload"]["items"])
             gGUI_LiveItems := converted.items
             gGUI_LiveItemsMap := converted.map
+            FR_Record(FR_EV_SNAPSHOT_RECV, gGUI_LiveItems.Length)
             ; Note: Icon cache pruning moved outside Critical section (see below)
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
@@ -232,8 +237,10 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         }
 
         ; Apply delta incrementally to stay up-to-date
+        global FR_EV_DELTA_RECV
         if (obj.Has("payload")) {
             result := _GUI_ApplyDelta(obj["payload"])
+            FR_Record(FR_EV_DELTA_RECV, result.mruChanged, result.membershipChanged, result.focusHwnd)
 
             if (gGUI_State = "ACTIVE" && !isFrozen) {
                 if (result.mruChanged || result.membershipChanged) {
@@ -481,7 +488,7 @@ _GUI_ApplyDelta(payload) {
         INT_SetBypassMode(shouldBypass)
     }
 
-    return { mruChanged: mruChanged, membershipChanged: membershipChanged, changedHwnds: changedHwnds }
+    return { mruChanged: mruChanged, membershipChanged: membershipChanged, changedHwnds: changedHwnds, focusHwnd: focusChangedToHwnd }
 }
 
 _GUI_SortItemsByMRU() {
@@ -548,6 +555,8 @@ GUI_RequestSnapshot() {
         cachedJson := JSON.Dump({ type: IPC_MSG_SNAPSHOT_REQUEST,
             projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } })
     }
+    global FR_EV_SNAPSHOT_REQ
+    FR_Record(FR_EV_SNAPSHOT_REQ)
     IPC_PipeClient_Send(gGUI_StoreClient, cachedJson, gGUI_StoreWakeHwnd)
     ; Drop to active polling so the response is read within ~15ms instead of up to 100ms
     gGUI_StoreClient.idleStreak := 0

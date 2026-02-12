@@ -1035,6 +1035,9 @@ global gConfigRegistry := [
      desc: "Diagnostics",
      long: "Debug options, viewer settings, and test configuration. All logging disabled by default."},
 
+    {s: "Diagnostics", k: "FlightRecorder", g: "DiagFlightRecorder", t: "bool", default: true,
+     d: "Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact."},
+
     {s: "Diagnostics", k: "ChurnLog", g: "DiagChurnLog", t: "bool", default: false,
      d: "Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle."},
 

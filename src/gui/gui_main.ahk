@@ -122,6 +122,7 @@ global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (
 #Include *i %A_ScriptDir%\gui_workspace.ahk
 #Include *i %A_ScriptDir%\gui_paint.ahk
 #Include *i %A_ScriptDir%\gui_input.ahk
+#Include *i %A_ScriptDir%\gui_flight_recorder.ahk
 #Include *i %A_ScriptDir%\gui_store.ahk
 #Include *i %A_ScriptDir%\gui_state.ahk
 #Include *i %A_ScriptDir%\gui_interceptor.ahk
@@ -142,6 +143,9 @@ _GUI_Main_Init() {
 
     ; Initialize blacklist for writing (needed for blacklist button in GUI)
     Blacklist_Init()
+
+    ; Initialize flight recorder (if enabled) — must be before hotkey setup
+    FR_Init()
 
     ; Start debug event log (if enabled)
     GUI_LogEventStartup()
