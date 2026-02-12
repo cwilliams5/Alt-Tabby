@@ -1452,6 +1452,14 @@ _GUI_RobustActivate(hwnd) {
                 return true
             }
 
+            ; fg=0 is a documented transient state during activation transitions.
+            ; Windows returns NULL while the foreground is changing — not a rejection.
+            ; Treat as success for state machine; recorder preserves nuance (success=2).
+            if (actualFg = 0) {
+                FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 2, 0)
+                return true
+            }
+
             FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, actualFg)
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ACTIVATE VERIFY FAILED: wanted=" hwnd " got=" actualFg " sfwResult=" fgResult)

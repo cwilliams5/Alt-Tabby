@@ -66,7 +66,7 @@ Chronological (newest first) list of events with millisecond timestamps relative
 | `GRACE_FIRE` | state, visible | Grace timer fired (delayed overlay show). |
 | `QUICK_SWITCH` | timeSinceTab | Alt released quickly — no overlay, direct switch. |
 | `ACTIVATE_START` | hwnd, onCurrentWS | Activation attempt beginning. |
-| `ACTIVATE_RESULT` | hwnd, success, fg | Activation outcome. success=0 means SetForegroundWindow failed. fg=actual foreground. |
+| `ACTIVATE_RESULT` | hwnd, success, fg | Activation outcome. success: 0=failed (fg is a different window), 1=confirmed, 2=transitional (fg was NULL during activation transition — treated as success). |
 | `MRU_UPDATE` | hwnd, result | Local MRU reorder after activation. result=0 means hwnd not found. |
 | `BUFFER_PUSH` | event, bufLen | Event buffered during async activation. |
 | `PREWARM_SKIP` | mruAge | Prewarm snapshot skipped because local MRU is fresh. |

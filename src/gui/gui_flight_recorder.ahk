@@ -22,7 +22,7 @@ global FR_EV_STATE            := 10  ; d1=newState (0=IDLE 1=ALT_PENDING 2=ACTIV
 global FR_EV_FREEZE           := 11  ; d1=displayItemCount d2=sel
 global FR_EV_GRACE_FIRE       := 12  ; d1=state(2=ACTIVE) d2=overlayVisible
 global FR_EV_ACTIVATE_START   := 13  ; d1=hwnd d2=isOnCurrentWS
-global FR_EV_ACTIVATE_RESULT  := 14  ; d1=hwnd d2=success d3=actualFgHwnd
+global FR_EV_ACTIVATE_RESULT  := 14  ; d1=hwnd d2=success(0=fail,1=ok,2=transitional) d3=actualFgHwnd
 global FR_EV_MRU_UPDATE       := 15  ; d1=hwnd d2=result(1=ok,0=notfound)
 global FR_EV_BUFFER_PUSH      := 16  ; d1=evCode d2=bufferLen
 global FR_EV_QUICK_SWITCH     := 17  ; d1=timeSinceTab
@@ -406,7 +406,8 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
         case FR_EV_ACTIVATE_START:
             return _FR_HwndStr(d1, hwndMap) "  onCurrentWS=" d2
         case FR_EV_ACTIVATE_RESULT:
-            return _FR_HwndStr(d1, hwndMap) "  success=" d2 "  fg=" _FR_HwndStr(d3, hwndMap)
+            successStr := (d2 = 2) ? "2(transitional)" : String(d2)
+            return _FR_HwndStr(d1, hwndMap) "  success=" successStr "  fg=" _FR_HwndStr(d3, hwndMap)
         case FR_EV_MRU_UPDATE:
             return _FR_HwndStr(d1, hwndMap) "  result=" d2
         case FR_EV_BUFFER_PUSH:
