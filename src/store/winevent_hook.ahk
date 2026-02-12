@@ -186,6 +186,20 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     if (event = WEH_EVENT_OBJECT_DESTROY) {
         _WEH_PendingHwnds[hwnd] := -1  ; -1 = destroyed
         Critical "Off"
+        SetTimer(_WEH_ProcessBatch, -1)
+        _WinEventHook_EnsureTimerRunning()
+        return
+    }
+
+    ; For hide events, mark for eligibility check (window may have become a ghost).
+    ; Apps like Outlook reuse HWNDs — closing an email hides the HWND instead of
+    ; destroying it. Without this, hidden windows linger in the store for up to 5s
+    ; (until ValidateExistence catches them).
+    if (event = WEH_EVENT_OBJECT_HIDE) {
+        _WEH_PendingHwnds[hwnd] := -2  ; -2 = hidden, check eligibility in batch
+        Critical "Off"
+        SetTimer(_WEH_ProcessBatch, -1)
+        _WinEventHook_EnsureTimerRunning()
         return
     }
 
@@ -232,11 +246,14 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     Critical "Off"
 
-    ; Fast-path: fire immediate batch for focus events instead of waiting
+    ; Fast-path: fire immediate batch for discrete events instead of waiting
     ; up to WinEventHook_BatchMs (default 100ms) for periodic timer.
     ; SetTimer(-1) fires on next message pump cycle (~1-5ms).
     ; Double-fire with periodic timer is harmless: ProcessBatch handles empty queues.
-    if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS)
+    ; SHOW is discrete (not noisy like NAMECHANGE/LOCATIONCHANGE) and may represent
+    ; a window becoming eligible — process quickly for fresh Alt-Tab data.
+    if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS
+        || event = WEH_EVENT_OBJECT_SHOW)
         SetTimer(_WEH_ProcessBatch, -1)
 
     ; Wake timer if it was paused due to idle
@@ -402,11 +419,16 @@ _WEH_ProcessBatch() {
     toProcess := []
     toRemove := []
     destroyed := []
+    hidden := []
 
     for _, entry in entries {
         if (entry.tick = -1) {
             ; Destroyed window
             destroyed.Push(entry.hwnd)
+            toRemove.Push(entry.hwnd)
+        } else if (entry.tick = -2) {
+            ; Hidden window — check eligibility, remove if ghost
+            hidden.Push(entry.hwnd)
             toRemove.Push(entry.hwnd)
         } else if ((now - entry.tick) >= WinEventHook_DebounceMs) {
             ; Ready to process
@@ -433,6 +455,23 @@ _WEH_ProcessBatch() {
     ; Handle destroyed windows
     if (destroyed.Length > 0) {
         WindowStore_RemoveWindow(destroyed, true)  ; forceRemove=true - trust the OS
+    }
+
+    ; Handle hidden windows — probe and remove if no longer eligible.
+    ; Apps like Outlook HIDE windows instead of destroying them when closing
+    ; sub-windows (emails, etc.). Without this, ghosts linger until ValidateExistence.
+    hiddenRemoved := []
+    if (hidden.Length > 0) {
+        for _, hwnd in hidden {
+            rec := _WEH_ProbeWindow(hwnd)
+            if (!rec) {
+                ; Not eligible (hidden, no title, etc.) — remove from store
+                hiddenRemoved.Push(hwnd)
+            }
+            ; If still eligible, window got a transient HIDE — leave it alone
+        }
+        if (hiddenRemoved.Length > 0)
+            WindowStore_RemoveWindow(hiddenRemoved, true)
     }
 
     ; Probe and update changed windows
@@ -464,8 +503,8 @@ _WEH_ProcessBatch() {
     ; Cosmetic-only changes (title/location) are throttled to avoid push floods
     ; from apps with animated titles (e.g., terminal spinners).
     hasRecords := (toProcess.Length > 0 && IsSet(records) && records.Length > 0)  ; lint-ignore: isset-with-default
-    if (destroyed.Length > 0 || hasRecords) {
-        isStructural := destroyed.Length > 0 || zSnapshot.Count > 0
+    if (destroyed.Length > 0 || hiddenRemoved.Length > 0 || hasRecords) {
+        isStructural := destroyed.Length > 0 || hiddenRemoved.Length > 0 || zSnapshot.Count > 0
         Store_PushIfRevChanged(isStructural)
     }
 }
