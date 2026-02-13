@@ -38,6 +38,15 @@ global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 ; NAMECHANGE and LOCATIONCHANGE fire frequently but don't affect Z — skip them
 global _WEH_PendingZNeeded := Map()       ; hwnd -> true if Z-affecting event received
 
+; Fast-path one-shot wrapper: calls ProcessBatch without killing the periodic timer.
+; AHK v2 identifies timers by callback function — SetTimer(func, -1) replaces any
+; existing timer for that function. Using _WEH_ProcessBatch directly for one-shots
+; kills the periodic timer (SetTimer(_WEH_ProcessBatch, BatchMs)), leaving pending
+; hwnds stranded until the next event. This wrapper has its own timer slot.
+_WEH_FastPathBatch() {
+    _WEH_ProcessBatch()
+}
+
 ; Debug logging for focus events - controlled by DiagWinEventLog config flag
 _WEH_DiagLog(msg) {
     global cfg, LOG_PATH_WINEVENT
@@ -186,7 +195,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     if (event = WEH_EVENT_OBJECT_DESTROY) {
         _WEH_PendingHwnds[hwnd] := -1  ; -1 = destroyed
         Critical "Off"
-        SetTimer(_WEH_ProcessBatch, -1)
+        SetTimer(_WEH_FastPathBatch, -1)
         _WinEventHook_EnsureTimerRunning()
         return
     }
@@ -198,7 +207,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     if (event = WEH_EVENT_OBJECT_HIDE) {
         _WEH_PendingHwnds[hwnd] := -2  ; -2 = hidden, check eligibility in batch
         Critical "Off"
-        SetTimer(_WEH_ProcessBatch, -1)
+        SetTimer(_WEH_FastPathBatch, -1)
         _WinEventHook_EnsureTimerRunning()
         return
     }
@@ -254,7 +263,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     ; a window becoming eligible — process quickly for fresh Alt-Tab data.
     if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS
         || event = WEH_EVENT_OBJECT_SHOW)
-        SetTimer(_WEH_ProcessBatch, -1)
+        SetTimer(_WEH_FastPathBatch, -1)
 
     ; Wake timer if it was paused due to idle
     _WinEventHook_EnsureTimerRunning()
@@ -290,6 +299,7 @@ _WEH_ProcessBatch() {
     ; if removed during focus transition
     pendingProbeHwnd := 0  ; Set inside Critical if probe needed outside
     pendingPrevFocus := 0  ; Previous focus hwnd to clear if probe succeeds
+    focusProcessed := false ; Track if focus was updated (for immediate push below)
     Critical "On"
     ; Suppress focus processing during komorebi workspace switch.
     ; Between FocusWorkspaceNumber and FocusChange (~1s), Windows fires
@@ -325,6 +335,7 @@ _WEH_ProcessBatch() {
                 try WindowStore_UpdateFields(_WEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
             }
             _WEH_LastFocusHwnd := newFocus
+            focusProcessed := true
 
             ; Safety net: detect missed komorebi workspace switch.
             ; If focused window's workspaceName differs from current, komorebi must have
@@ -389,6 +400,7 @@ _WEH_ProcessBatch() {
                 }
                 _WEH_LastFocusHwnd := pendingProbeHwnd
                 Critical "Off"
+                focusProcessed := true
             } else {
                 if (cfg.DiagWinEventLog)
                     _WEH_DiagLog("  PROBE SUPERSEDED: newer focus " _WEH_PendingFocusHwnd " arrived during probe")
@@ -399,11 +411,17 @@ _WEH_ProcessBatch() {
         }
     }
 
-    if (_WEH_PendingHwnds.Count = 0) {
-        ; Focus-only path: push if focus change bumped rev (no structural changes pending)
+    ; Push focus/MRU changes immediately — don't wait for pending hwnds to pass debounce.
+    ; When a fast-path batch fires (e.g., FOREGROUND), the focus UpdateFields above bumps
+    ; the store rev, but the push at the bottom of this function is gated by hasRecords
+    ; (which requires pending hwnds to pass the 50ms debounce). Since the FOREGROUND event
+    ; itself queued an entry in _WEH_PendingHwnds, the Count=0 early-exit below is bypassed.
+    ; Without this push, the GUI sees the new window with lastActivatedTick=0 (wrong MRU).
+    if (focusProcessed)
         Store_PushIfRevChanged()
+
+    if (_WEH_PendingHwnds.Count = 0)
         return
-    }
 
     now := A_TickCount
 
