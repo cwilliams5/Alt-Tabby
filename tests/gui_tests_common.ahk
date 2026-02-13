@@ -54,7 +54,6 @@ global gGUI_PendingShell := ""
 global gGUI_PendingTempFile := ""
 global gGUI_EventBuffer := []
 global gGUI_LastLocalMRUTick := 0
-global gGUI_FlushStartTick := 0  ; For tick-based flushing wait (race condition fix)
 
 ; Stats globals (from gui_main.ahk, used by gui_state.ahk and gui_workspace.ahk)
 global gStats_AltTabs := 0
@@ -259,7 +258,7 @@ ResetGUIState() {
     global gGUI_FirstTabTick, gGUI_WorkspaceMode
     global gGUI_AwaitingToggleProjection, gGUI_WSContextSwitch, gMockIPCMessages, gGUI_CurrentWSName
     global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gGUI_LastLocalMRUTick
-    global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
+    global gGUI_EventBuffer, gGUI_PendingPhase
     global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
     global gMock_PreCachedIcons, gGdip_IconCache
@@ -285,7 +284,6 @@ ResetGUIState() {
     gMockIPCMessages := []
     gGUI_EventBuffer := []
     gGUI_PendingPhase := ""
-    gGUI_FlushStartTick := 0
     gMock_VisibleRows := 5
     gGUI_LastMsgTick := 0
     gMock_BypassResult := false

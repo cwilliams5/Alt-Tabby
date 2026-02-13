@@ -455,40 +455,19 @@ RunLiveTests_Features() {
                     resp2 := JSON.Load(gMultiClient2Response)
                     resp3 := JSON.Load(gMultiClient3Response)
 
-                    ; Client 1 should have items (Z-sorted)
+                    ; Client 1 should have items (Z-sort requested)
                     if (resp1["payload"].Has("items") && resp1["payload"]["items"].Length > 0) {
-                        items1 := resp1["payload"]["items"]
-                        ; Verify Z-sort (lower z = earlier in list)
-                        if (items1.Length >= 2 && items1[1]["z"] <= items1[2]["z"]) {
-                            Log("PASS: Client 1 received Z-sorted items (" items1.Length " items)")
-                            TestPassed++
-                        } else {
-                            Log("PASS: Client 1 received items (" items1.Length " items, single item or z-sorted)")
-                            TestPassed++
-                        }
+                        Log("PASS: Client 1 received items (" resp1["payload"]["items"].Length " items)")
+                        TestPassed++
                     } else {
                         Log("FAIL: Client 1 missing items")
                         TestErrors++
                     }
 
-                    ; Client 2 should have items (MRU-sorted)
+                    ; Client 2 should have items (MRU-sort requested)
                     if (resp2["payload"].Has("items") && resp2["payload"]["items"].Length > 0) {
-                        items2 := resp2["payload"]["items"]
-                        ; Verify MRU-sort (higher tick = earlier in list)
-                        if (items2.Length >= 2) {
-                            tick1 := items2[1]["lastActivatedTick"]
-                            tick2 := items2[2]["lastActivatedTick"]
-                            if (tick1 >= tick2) {
-                                Log("PASS: Client 2 received MRU-sorted items (" items2.Length " items)")
-                                TestPassed++
-                            } else {
-                                Log("WARN: Client 2 MRU sort may be off (tick1=" tick1 ", tick2=" tick2 ")")
-                                TestPassed++  ; Don't fail, MRU can be tricky
-                            }
-                        } else {
-                            Log("PASS: Client 2 received items (" items2.Length " items)")
-                            TestPassed++
-                        }
+                        Log("PASS: Client 2 received items (" resp2["payload"]["items"].Length " items)")
+                        TestPassed++
                     } else {
                         Log("FAIL: Client 2 missing items")
                         TestErrors++

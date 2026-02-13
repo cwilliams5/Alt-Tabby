@@ -17,7 +17,7 @@ RunGUITests_Data() {
     global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName, gGUI_WSContextSwitch
-    global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
+    global gGUI_EventBuffer, gGUI_PendingPhase
     global gGUI_StoreRev, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
     global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_DELTA
@@ -184,19 +184,19 @@ RunGUITests_Data() {
     ; Core regression test for phantom MRU bug: before the fix, _GUI_UpdateLocalMRU
     ; ran unconditionally after _GUI_RobustActivate, corrupting MRU when activation
     ; failed. After the fix, MRU only updates on success.
+    ; Calls the REAL production function _GUI_ActivateItem (gui_state.ahk line 641)
+    ; which contains the guard: if (_GUI_RobustActivate(hwnd)) _GUI_UpdateLocalMRU(hwnd)
     GUI_Log("Test: Failed activation does not corrupt MRU order")
     ResetGUIState()
     gGUI_LiveItems := CreateTestItemsWithMap(5)
     origFirst := gGUI_LiveItems[1].hwnd
     origSecond := gGUI_LiveItems[2].hwnd
 
-    ; Activation will fail (fake hwnd, WinExist returns false)
-    activateResult := _GUI_RobustActivate(origSecond)
-    GUI_AssertEq(activateResult, false, "FailedActivation: activation returns false for test hwnd")
-
-    ; Simulate the FIXED code path: only update MRU on success
-    if (activateResult)
-        _GUI_UpdateLocalMRU(origSecond)
+    ; Call the real production activation function with a fake item.
+    ; _GUI_RobustActivate will return false (WinExist fails for fake hwnds),
+    ; so the production guard should prevent _GUI_UpdateLocalMRU from running.
+    fakeItem := { hwnd: origSecond, isOnCurrentWorkspace: true, WS: "" }
+    _GUI_ActivateItem(fakeItem)
 
     ; MRU should be UNCHANGED — item 1 still in position 1
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "FailedActivation: MRU order preserved (first item unchanged)")
@@ -432,7 +432,7 @@ RunGUITests_Data() {
     gGUI_State := "ACTIVE"
     gGUI_OverlayVisible := true
     gGUI_CurrentWSName := "Alpha"
-    gGUI_Sel := 1
+    gGUI_Sel := 3  ; Start at non-1 to verify production code resets it
     gGUI_LiveItems := CreateTestItems(1)
 
     payload := Map("meta", Map("currentWSName", "Beta"))
@@ -632,7 +632,6 @@ RunGUITests_Data() {
     ResetGUIState()
     gGUI_LiveItems := CreateTestItems(5)
     gGUI_PendingPhase := "flushing"
-    gGUI_FlushStartTick := A_TickCount - 50  ; Past the flush wait threshold
 
     ; Buffer: normal Alt+Tab sequence (Tab NOT lost)
     gGUI_EventBuffer := [
@@ -652,7 +651,6 @@ RunGUITests_Data() {
     ResetGUIState()
     gGUI_LiveItems := CreateTestItems(5)
     gGUI_PendingPhase := "flushing"
-    gGUI_FlushStartTick := A_TickCount - 50
 
     ; Buffer: Alt+Tab with 3 Tab presses (user cycling through windows)
     gGUI_EventBuffer := [

@@ -14,19 +14,6 @@ RunLiveTests_Core() {
     global IPC_MSG_PRODUCER_STATUS_REQUEST
 
     storePath := A_ScriptDir "\..\src\store\store_server.ahk"
-    compileBat := A_ScriptDir "\..\compile.bat"
-    compiledExePath := A_ScriptDir "\..\release\AltTabby.exe"
-
-    ; ============================================================
-    ; Compile Binary Check (compilation handled by test.ps1)
-    ; ============================================================
-    Log("`n--- Compile Binary Check ---")
-    if (!FileExist(compiledExePath)) {
-        Log("SKIP: AltTabby.exe not found in release folder")
-    } else {
-        Log("PASS: AltTabby.exe exists in release folder")
-        TestPassed++
-    }
 
     ; ============================================================
     ; Live Integration Tests (WinEnumLite, WindowStore pipeline)

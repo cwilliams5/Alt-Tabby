@@ -17,7 +17,7 @@ RunGUITests_State() {
     global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName, gGUI_WSContextSwitch
-    global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
+    global gGUI_EventBuffer, gGUI_PendingPhase
     global gGUI_StoreRev, gGUI_LiveItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith
     global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_DELTA
@@ -632,7 +632,6 @@ RunGUITests_State() {
     ResetGUIState()
     gGUI_LiveItems := CreateTestItems(5)
     gGUI_PendingPhase := "flushing"
-    gGUI_FlushStartTick := A_TickCount - 50  ; Past the GUI_EVENT_FLUSH_WAIT_MS threshold
 
     ; Buffer: ALT_DN + ALT_UP but NO TAB (Tab was lost during komorebic's SendInput)
     gGUI_EventBuffer := [
