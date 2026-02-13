@@ -363,6 +363,7 @@ _Store_ForceFullSync() {
             cs := gStore_ClientState[hPipe]
             cs.lastRev := -1      ; Bypass rev-skip check
             cs.lastProj := []     ; Force snapshot path
+            cs.lastProjMap := 0
             cs.lastMeta := ""
             cs.pushCount := 0
         }
@@ -508,12 +509,14 @@ Store_PushToClients() {
     static clientHandles := []
     static clientOptsSnapshot := Map()
     static clientPrevProj := Map()
+    static clientPrevProjMap := Map()
     static clientPrevRev := Map()
     static clientPrevMeta := Map()
     static clientWakeHwnds := Map()
     clientHandles.Length := 0
     clientOptsSnapshot.Clear()
     clientPrevProj.Clear()
+    clientPrevProjMap.Clear()
     clientPrevRev.Clear()
     clientPrevMeta.Clear()
     clientWakeHwnds.Clear()
@@ -523,6 +526,7 @@ Store_PushToClients() {
             cs := gStore_ClientState[hPipe]
             clientOptsSnapshot[hPipe] := cs.opts
             clientPrevProj[hPipe] := cs.lastProj
+            clientPrevProjMap[hPipe] := cs.HasOwnProp("lastProjMap") ? cs.lastProjMap : 0
             clientPrevRev[hPipe] := cs.lastRev
             clientPrevMeta[hPipe] := cs.lastMeta
             clientWakeHwnds[hPipe] := cs.HasOwnProp("wakeHwnd") ? cs.wakeHwnd : 0
@@ -622,6 +626,10 @@ Store_PushToClients() {
         wh := clientWakeHwnds.Has(hPipe) ? clientWakeHwnds[hPipe] : 0
 
         ; Send delta if client has previous state, otherwise full snapshot
+        ; Resolve previous and next item maps for delta building
+        prevProjMap := clientPrevProjMap.Has(hPipe) ? clientPrevProjMap[hPipe] : 0
+        nextProjMap := proj.HasOwnProp("itemsMap") ? proj.itemsMap : 0
+
         if (prevItems.Length > 0) {
             ; Delta cache: clients with same (optsKey, lastRev, isSparse, includeMeta)
             ; produce identical deltas — reuse serialized JSON.
@@ -632,7 +640,7 @@ Store_PushToClients() {
                     continue
                 IPC_PipeServer_Send(gStore_Server, hPipe, cached.jsonStr, wh)
             } else {
-                msg := _Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot)
+                msg := _Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot, prevProjMap, nextProjMap)
                 ; Skip sending empty deltas ONLY if meta also didn't change
                 ; Always send if meta changed (workspace switch) even with no window changes
                 skip := (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
@@ -665,6 +673,7 @@ Store_PushToClients() {
             cs := gStore_ClientState[hPipe]
             cs.lastRev := proj.rev
             cs.lastProj := proj.items
+            cs.lastProjMap := nextProjMap
             cs.lastMeta := proj.meta
             cs.pushCount := pushCount
         }
@@ -689,9 +698,9 @@ Store_PushToClients() {
 ; 'Always' mode includes meta in every delta (self-healing, default). 'OnChange' mode
 ; only includes meta when workspace changes, and sends workspace_change messages for
 ; dedicated notification. The includeMeta parameter reflects this configuration.
-_Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true, dirtyHwnds := 0) {
+_Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true, dirtyHwnds := 0, prevItemsMap := 0, nextItemsMap := 0) {
     global IPC_MSG_DELTA
-    delta := WindowStore_BuildDelta(prevItems, nextItems, sparse, dirtyHwnds)
+    delta := WindowStore_BuildDelta(prevItems, nextItems, sparse, dirtyHwnds, prevItemsMap, nextItemsMap)
     payload := { upserts: delta.upserts, removes: delta.removes }
     if (includeMeta)
         payload.meta := meta
@@ -777,7 +786,7 @@ _Store_OnMessage(line, hPipe := 0) {
         ; Extract client's wake hwnd for PostMessage pipe wake (0 if not provided)
         wakeHwnd := obj.Has("hwnd") ? obj["hwnd"] : 0
         opts := obj.Has("projectionOpts") ? obj["projectionOpts"] : IPC_DefaultProjectionOpts()
-        gStore_ClientState[hPipe] := {opts: opts, lastRev: -1, lastProj: [], lastMeta: "", pushCount: 0, wakeHwnd: wakeHwnd}
+        gStore_ClientState[hPipe] := {opts: opts, lastRev: -1, lastProj: [], lastProjMap: 0, lastMeta: "", pushCount: 0, wakeHwnd: wakeHwnd}
 
         ; Send hello ack with store's hwnd so client can PostMessage us
         ack := {
@@ -804,6 +813,7 @@ _Store_OnMessage(line, hPipe := 0) {
         cs := gStore_ClientState[hPipe]
         cs.lastRev := proj.rev
         cs.lastProj := proj.HasOwnProp("items") ? proj.items : []
+        cs.lastProjMap := proj.HasOwnProp("itemsMap") ? proj.itemsMap : 0
         gStore_LastSendTick := A_TickCount
         Critical "Off"
         return
@@ -816,6 +826,7 @@ _Store_OnMessage(line, hPipe := 0) {
             cs.opts := obj["projectionOpts"]
             ; Clear last projection/meta so client gets fresh snapshot with new opts
             cs.lastProj := []
+            cs.lastProjMap := 0
             cs.lastMeta := ""
             Critical "Off"
         }
@@ -872,6 +883,7 @@ _Store_OnMessage(line, hPipe := 0) {
             cs := gStore_ClientState[hPipe]
             cs.lastRev := proj.rev
             cs.lastProj := proj.HasOwnProp("items") ? proj.items : []
+            cs.lastProjMap := proj.HasOwnProp("itemsMap") ? proj.itemsMap : 0
             cs.lastMeta := proj.meta
         }
         Critical "Off"
@@ -895,6 +907,7 @@ _Store_OnMessage(line, hPipe := 0) {
         Critical "On"
         for _, cs in gStore_ClientState {
             cs.lastProj := []
+            cs.lastProjMap := 0
             cs.lastMeta := ""
         }
         Critical "Off"

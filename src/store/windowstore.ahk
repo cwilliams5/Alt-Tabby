@@ -28,6 +28,7 @@ global gWS_SortOrderDirty := true
 global gWS_ProjectionContentDirty := true
 global gWS_MRUBumpOnly := false
 global gWS_ProjectionCache_Items := ""         ; Cached transformed items (result of _WS_ToItem)
+global gWS_ProjectionCache_ItemsMap := Map()   ; Persistent hwnd→item Map (avoids O(n) rebuild per push cycle)
 global gWS_ProjectionCache_OptsKey := ""       ; Opts key used for cache validation
 global gWS_ProjectionCache_SortedRecs := ""    ; Cached sorted record refs for Path 2 (content-only refresh)
 
@@ -692,7 +693,7 @@ WindowStore_GetCurrentWorkspace() {
 WindowStore_GetProjection(opts := 0) {
     global gWS_Store, gWS_Meta, gWS_SortOrderDirty, gWS_ProjectionContentDirty
     global gWS_MRUBumpOnly, gWS_ProjectionDirtyHwnds, gWS_TitleSortActive
-    global gWS_ProjectionCache_Items, gWS_ProjectionCache_OptsKey, gWS_ProjectionCache_SortedRecs
+    global gWS_ProjectionCache_Items, gWS_ProjectionCache_ItemsMap, gWS_ProjectionCache_OptsKey, gWS_ProjectionCache_SortedRecs
     sort := WS_GetOpt(opts, "sort", "MRU")
     gWS_TitleSortActive := (sort = "Title")
     currentOnly := WS_GetOpt(opts, "currentWorkspaceOnly", false)
@@ -708,7 +709,7 @@ WindowStore_GetProjection(opts := 0) {
     Critical "On"
     if (!gWS_SortOrderDirty && !gWS_ProjectionContentDirty
         && IsObject(gWS_ProjectionCache_Items) && gWS_ProjectionCache_OptsKey = optsKey) {
-        result := { rev: WindowStore_GetRev(), items: gWS_ProjectionCache_Items, meta: gWS_Meta }
+        result := { rev: WindowStore_GetRev(), items: gWS_ProjectionCache_Items, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
         if (columns = "hwndsOnly") {
             hwnds := []
             for _, row in gWS_ProjectionCache_Items
@@ -770,26 +771,27 @@ WindowStore_GetProjection(opts := 0) {
         }
         if (valid) {
             ; Selective refresh: only recreate _WS_ToItem for dirty items.
-            ; After RemoveAt/InsertAt, indices don't match cache — use hwnd lookup.
-            static cachedByHwnd := Map()
-            cachedByHwnd.Clear()
-            for _, item in gWS_ProjectionCache_Items
-                cachedByHwnd[item.hwnd] := item
+            ; After RemoveAt/InsertAt, indices don't match cache — use persistent map.
             rows := []
             for _, rec in sortedRecs {
-                if (gWS_ProjectionDirtyHwnds.Has(rec.hwnd))
-                    rows.Push(_WS_ToItem(rec))
-                else if (cachedByHwnd.Has(rec.hwnd))
-                    rows.Push(cachedByHwnd[rec.hwnd])
-                else
-                    rows.Push(_WS_ToItem(rec))  ; Fallback: shouldn't happen
+                if (gWS_ProjectionDirtyHwnds.Has(rec.hwnd)) {
+                    newItem := _WS_ToItem(rec)
+                    rows.Push(newItem)
+                    gWS_ProjectionCache_ItemsMap[rec.hwnd] := newItem
+                } else if (gWS_ProjectionCache_ItemsMap.Has(rec.hwnd))
+                    rows.Push(gWS_ProjectionCache_ItemsMap[rec.hwnd])
+                else {
+                    newItem := _WS_ToItem(rec)
+                    rows.Push(newItem)
+                    gWS_ProjectionCache_ItemsMap[rec.hwnd] := newItem
+                }
             }
             gWS_SortOrderDirty := false
             gWS_ProjectionContentDirty := false
             gWS_MRUBumpOnly := false
             gWS_ProjectionDirtyHwnds := Map()
             gWS_ProjectionCache_Items := rows
-            result := { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
+            result := { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
             if (columns = "hwndsOnly") {
                 hwnds := []
                 for _, row in rows
@@ -822,16 +824,18 @@ WindowStore_GetProjection(opts := 0) {
                 valid := false
                 break
             }
-            if (gWS_ProjectionDirtyHwnds.Has(rec.hwnd))
-                rows.Push(_WS_ToItem(rec))
-            else
+            if (gWS_ProjectionDirtyHwnds.Has(rec.hwnd)) {
+                newItem := _WS_ToItem(rec)
+                rows.Push(newItem)
+                gWS_ProjectionCache_ItemsMap[rec.hwnd] := newItem
+            } else
                 rows.Push(gWS_ProjectionCache_Items[i])
         }
         if (valid) {
             gWS_ProjectionContentDirty := false
             gWS_ProjectionDirtyHwnds := Map()
             gWS_ProjectionCache_Items := rows
-            result := { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
+            result := { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
             if (columns = "hwndsOnly") {
                 hwnds := []
                 for _, row in rows
@@ -885,8 +889,12 @@ WindowStore_GetProjection(opts := 0) {
     ; Transform records to items ONCE, then cache the result
     ; PERF: Avoids O(n) _WS_ToItem loop on every cache hit
     rows := []
-    for _, rec in items
-        rows.Push(_WS_ToItem(rec))
+    gWS_ProjectionCache_ItemsMap := Map()
+    for _, rec in items {
+        item := _WS_ToItem(rec)
+        rows.Push(item)
+        gWS_ProjectionCache_ItemsMap[rec.hwnd] := item
+    }
 
     ; Update projection cache with transformed rows
     gWS_SortOrderDirty := false
@@ -903,7 +911,7 @@ WindowStore_GetProjection(opts := 0) {
         return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta }
     }
 
-    return { rev: WindowStore_GetRev(), items: rows, meta: gWS_Meta }
+    return { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
 }
 
 _WS_NewRecord(hwnd) {
@@ -1368,7 +1376,7 @@ WindowStore_CleanupAllIcons() {
 ;   dirtyHwnds - Map of dirty hwnds (from Store_PushToClients snapshot). When provided
 ;                with IPCUseDirtyTracking enabled, skips comparison for clean hwnds.
 ; Returns: { upserts: [], removes: [] }
-WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
+WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0, prevItemsMap := 0, nextItemsMap := 0) {
     global cfg, gWS_DeltaPendingHwnds, PROJECTION_FIELDS
     ; deltaFields is derived from PROJECTION_FIELDS — single source of truth for both
     ; projection items (_WS_ToItem) and delta detection. Using a loop avoids an AHK v2
@@ -1380,16 +1388,27 @@ WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0) {
     useDirtyTracking := cfg.IPCUseDirtyTracking
     dirtySet := IsObject(dirtyHwnds) ? dirtyHwnds : gWS_DeltaPendingHwnds
 
-    ; PERF: Reuse static Maps instead of allocating new ones per call (O(2n) allocations avoided)
-    ; Clear() is O(n) but avoids GC pressure from frequent Map allocations
-    static prevMap := Map()
-    static nextMap := Map()
-    prevMap.Clear()
-    for _, rec in prevItems
-        prevMap[rec.hwnd] := rec
-    nextMap.Clear()
-    for _, rec in nextItems
-        nextMap[rec.hwnd] := rec
+    ; Use pre-built maps when provided (from projection cache / client state),
+    ; otherwise build from arrays (fallback for tests/direct calls).
+    ; Pre-built maps eliminate 2×O(n) Map builds per push cycle.
+    if (IsObject(prevItemsMap)) {
+        prevMap := prevItemsMap
+    } else {
+        static _prevMap := Map()
+        _prevMap.Clear()
+        for _, rec in prevItems
+            _prevMap[rec.hwnd] := rec
+        prevMap := _prevMap
+    }
+    if (IsObject(nextItemsMap)) {
+        nextMap := nextItemsMap
+    } else {
+        static _nextMap := Map()
+        _nextMap.Clear()
+        for _, rec in nextItems
+            _nextMap[rec.hwnd] := rec
+        nextMap := _nextMap
+    }
 
     upserts := []
     removes := []

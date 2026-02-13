@@ -412,43 +412,45 @@ _GUI_ApplyDelta(payload) {
 
             ; O(1) lookup instead of O(n) scan
             if (gGUI_LiveItemsMap.Has(hwnd)) {
-                ; Update existing item
+                ; Update existing item - iterate present keys only (rec is a Map from JSON.Load).
+                ; Typical sparse delta has 3 keys (hwnd + 2 fields): 3 iterations vs 10 Has() calls.
                 item := gGUI_LiveItemsMap[hwnd]
-                if (rec.Has("title"))
-                    item.Title := rec["title"]
-                if (rec.Has("class"))
-                    item.Class := rec["class"]
-                if (rec.Has("pid"))
-                    item.PID := "" rec["pid"]
-                if (rec.Has("workspaceName"))
-                    item.WS := rec["workspaceName"]
-                if (rec.Has("isOnCurrentWorkspace")) {
-                    newVal := rec["isOnCurrentWorkspace"]
-                    if (item.isOnCurrentWorkspace != newVal) {
-                        item.isOnCurrentWorkspace := newVal
-                        membershipChanged := true
+                for key, val in rec {
+                    if (key = "hwnd")
+                        continue  ; lint-ignore: critical-section
+                    if (key = "title")
+                        item.Title := val
+                    else if (key = "class")
+                        item.Class := val
+                    else if (key = "pid")
+                        item.PID := "" val
+                    else if (key = "workspaceName")
+                        item.WS := val
+                    else if (key = "isOnCurrentWorkspace") {
+                        if (item.isOnCurrentWorkspace != val) {
+                            item.isOnCurrentWorkspace := val
+                            membershipChanged := true
+                        }
+                    } else if (key = "processName")
+                        item.processName := val
+                    else if (key = "iconHicon") {
+                        item.iconHicon := val
+                        ; Defer GDI+ pre-cache to outside Critical (0.5-2ms per icon DllCall)
+                        iconsToPrecache.Push({hwnd: hwnd, hicon: val})
+                    } else if (key = "lastActivatedTick") {
+                        if (item.lastActivatedTick != val) {
+                            item.lastActivatedTick := val
+                            mruChanged := true
+                        }
+                    } else if (key = "isFocused") {
+                        ; Track focus change (don't process here, just record it)
+                        ; isFocused is content-only — MRU sort driven by lastActivatedTick
+                        if (val) {
+                            if (cfg.DiagEventLog)
+                                GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
+                            focusChangedToHwnd := hwnd
+                        }
                     }
-                }
-                if (rec.Has("processName"))
-                    item.processName := rec["processName"]
-                if (rec.Has("iconHicon")) {
-                    item.iconHicon := rec["iconHicon"]
-                    ; Defer GDI+ pre-cache to outside Critical (0.5-2ms per icon DllCall)
-                    iconsToPrecache.Push({hwnd: hwnd, hicon: item.iconHicon})
-                }
-                if (rec.Has("lastActivatedTick")) {
-                    newTick := rec["lastActivatedTick"]
-                    if (item.lastActivatedTick != newTick) {
-                        item.lastActivatedTick := newTick
-                        mruChanged := true
-                    }
-                }
-                ; Track focus change (don't process here, just record it)
-                ; isFocused is content-only — MRU sort driven by lastActivatedTick
-                if (rec.Has("isFocused") && rec["isFocused"]) {
-                    if (cfg.DiagEventLog)
-                        GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
-                    focusChangedToHwnd := hwnd
                 }
             } else {
                 ; Add new item using shared helper

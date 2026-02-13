@@ -73,6 +73,9 @@ global g_LastUpdateCheckTime := ""
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 
+; --- WinEventHook globals (winevent_hook.ahk not included in test chain) ---
+global gWEH_LastFocusHwnd := 0
+
 ; --- Producer status cache (from launcher_main.ahk, used by launcher_about.ahk) ---
 global g_ProducerStatusCache := ""
 global g_ProducerHasFailed := ""

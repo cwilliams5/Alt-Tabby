@@ -917,9 +917,17 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
         if (currentWsName != "") {
             focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
             if (focusedHwnd) {
-                try WindowStore_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
-                if (cfg.DiagKomorebiLog)
-                    KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
+                ; Skip MRU update if WEH already confirmed focus for this exact hwnd.
+                ; Prevents redundant push cycle (BuildDelta + JSON.Dump + IPC + GUI parse + repaint).
+                ; When WEH is disabled/failed, gWEH_LastFocusHwnd stays 0 → never matches → update proceeds.
+                global gWEH_LastFocusHwnd
+                if (focusedHwnd != gWEH_LastFocusHwnd) {
+                    try WindowStore_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
+                    if (cfg.DiagKomorebiLog)
+                        KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
+                } else if (cfg.DiagKomorebiLog) {
+                    KSub_DiagLog("ProcessFullState[light]: MRU skip (WEH match) hwnd=" focusedHwnd)
+                }
             }
         }
         return

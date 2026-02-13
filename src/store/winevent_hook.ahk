@@ -31,7 +31,7 @@ global _WEH_IdleTicks := 0                ; Counter for consecutive empty ticks
 global _WEH_IdleThreshold := 10           ; Default, overridden from config in WinEventHook_Start()
 
 ; MRU tracking (replaces MRU_Lite when hook is active)
-global _WEH_PreviousFocusHwnd := 0
+global gWEH_LastFocusHwnd := 0
 global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 
 ; Z-order tracking: only events that change Z-order should trigger full winenum scan
@@ -272,7 +272,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 ; Process queued events in batches
 _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, WinEventHook_DebounceMs, _WEH_PendingZNeeded
-    global _WEH_PreviousFocusHwnd, _WEH_PendingFocusHwnd
+    global gWEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
     global cfg, gWS_Meta, gKSub_MruSuppressUntilTick
 
@@ -287,7 +287,7 @@ _WEH_ProcessBatch() {
     ; (WinGetTitle sends a window message that can block on hung windows)
     diagOldTitle := ""
     diagNewTitle := ""
-    diagOldHwnd := _WEH_PreviousFocusHwnd
+    diagOldHwnd := gWEH_LastFocusHwnd
     diagNewHwnd := _WEH_PendingFocusHwnd
     if (cfg.DiagWinEventLog && diagNewHwnd && diagNewHwnd != diagOldHwnd) {
         try diagOldTitle := diagOldHwnd ? WinGetTitle("ahk_id " diagOldHwnd) : "(none)"
@@ -311,7 +311,7 @@ _WEH_ProcessBatch() {
             _WEH_DiagLog("FOCUS SUPPRESSED (ws switch): hwnd=" _WEH_PendingFocusHwnd)
         _WEH_PendingFocusHwnd := 0
     }
-    if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != _WEH_PreviousFocusHwnd) {
+    if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != gWEH_LastFocusHwnd) {
         newFocus := _WEH_PendingFocusHwnd
         _WEH_PendingFocusHwnd := 0  ; Clear pending
 
@@ -327,14 +327,14 @@ _WEH_ProcessBatch() {
         if (cfg.DiagWinEventLog)
             _WEH_DiagLog("  UpdateFields result: exists=" (result.exists ? 1 : 0) " changed=" (result.changed ? 1 : 0))
 
-        ; CRITICAL: Only update _WEH_PreviousFocusHwnd if the window is actually in our store
+        ; CRITICAL: Only update gWEH_LastFocusHwnd if the window is actually in our store
         ; This prevents system UI windows (like Alt+Tab switcher) from poisoning our focus tracking
         if (result.exists) {
             ; Clear focus on previous window (only if we're actually switching to a tracked window)
-            if (_WEH_PreviousFocusHwnd && _WEH_PreviousFocusHwnd != newFocus) {
-                try WindowStore_UpdateFields(_WEH_PreviousFocusHwnd, { isFocused: false }, "winevent_mru")
+            if (gWEH_LastFocusHwnd && gWEH_LastFocusHwnd != newFocus) {
+                try WindowStore_UpdateFields(gWEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
             }
-            _WEH_PreviousFocusHwnd := newFocus
+            gWEH_LastFocusHwnd := newFocus
             focusProcessed := true
 
             ; Safety net: detect missed komorebi workspace switch.
@@ -360,9 +360,9 @@ _WEH_ProcessBatch() {
             if (cfg.DiagWinEventLog)
                 _WEH_DiagLog("  NOT IN STORE: deferring probe outside Critical...")
             pendingProbeHwnd := newFocus
-            pendingPrevFocus := _WEH_PreviousFocusHwnd
+            pendingPrevFocus := gWEH_LastFocusHwnd
         }
-    } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = _WEH_PreviousFocusHwnd) {
+    } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = gWEH_LastFocusHwnd) {
         ; Same hwnd - log why we're skipping
         if (cfg.DiagWinEventLog)
             _WEH_DiagLog("FOCUS SKIP: same hwnd " _WEH_PendingFocusHwnd)
@@ -398,7 +398,7 @@ _WEH_ProcessBatch() {
                 if (pendingPrevFocus && pendingPrevFocus != pendingProbeHwnd) {
                     try WindowStore_UpdateFields(pendingPrevFocus, { isFocused: false }, "winevent_mru")
                 }
-                _WEH_PreviousFocusHwnd := pendingProbeHwnd
+                gWEH_LastFocusHwnd := pendingProbeHwnd
                 Critical "Off"
                 focusProcessed := true
             } else {
