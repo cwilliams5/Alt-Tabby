@@ -13,15 +13,14 @@ global gGUI_HideCount := 0  ; Track hides for periodic log trim
 
 GUI_HideOverlay() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Overlay, gGUI_Revealed
-    global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking
     global gGUI_HideCount, cfg, LOG_PATH_EVENTS
 
     if (!gGUI_OverlayVisible) {
         return
     }
 
-    ; Stop hover polling
-    GUI_StopHoverPolling()
+    ; Stop hover polling and clear hover state
+    GUI_ClearHoverState()
 
     ; Clear the overlay's layered content before hiding.
     ; DWM caches the last UpdateLayeredWindow content for hidden layered windows.
@@ -37,11 +36,6 @@ GUI_HideOverlay() {
     }
     gGUI_OverlayVisible := false
     gGUI_Revealed := false
-
-    ; Clear hover state and mouse tracking when hiding
-    gGUI_HoverRow := 0
-    gGUI_HoverBtn := ""
-    gGUI_MouseTracking := false
 
     ; Periodically trim diagnostic logs (every 10 hide cycles)
     gGUI_HideCount += 1

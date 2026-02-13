@@ -467,6 +467,14 @@ GUI_StopHoverPolling() {
     SetTimer(_GUI_HoverPollTick, 0)
 }
 
+GUI_ClearHoverState() {
+    global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking
+    GUI_StopHoverPolling()
+    gGUI_HoverRow := 0
+    gGUI_HoverBtn := ""
+    gGUI_MouseTracking := false
+}
+
 _GUI_HoverPollTick() {
     global gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_OverlayH
 

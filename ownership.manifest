@@ -26,12 +26,12 @@ g_CachedStartupShortcut: launcher_shortcuts, launcher_tray
 gConfigIniPath: launcher_wizard, config_loader
 gGUI_CurrentWSName: gui_state, gui_workspace
 gGUI_DisplayItems: gui_state, gui_store, gui_workspace
-gGUI_HoverBtn: gui_input, gui_overlay
-gGUI_HoverRow: gui_input, gui_overlay
+gGUI_HoverBtn: gui_input
+gGUI_HoverRow: gui_input
 gGUI_LastLocalMRUTick: gui_state, gui_store
 gGUI_LastMsgTick: gui_main, gui_store
 gGUI_LiveItems: gui_input, gui_state, gui_store
-gGUI_MouseTracking: gui_input, gui_overlay
+gGUI_MouseTracking: gui_input
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
