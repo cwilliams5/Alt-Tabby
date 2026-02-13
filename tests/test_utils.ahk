@@ -193,17 +193,27 @@ Test_OnStandaloneMessage(line, hPipe := 0) {
 Test_OnCompiledStoreMessage(line, hPipe := 0) {
 }
 
+; --- Temp Directory Helper ---
+; Creates a temp directory, runs testFn(dir), and guarantees cleanup.
+; prefix: unique name prefix for the temp dir
+; testFn: callback that receives the temp dir path
+_Test_WithTempDir(prefix, testFn) {
+    dir := A_Temp "\" prefix "_" A_TickCount
+    DirCreate(dir)
+    try testFn(dir)
+    finally {
+        try DirDelete(dir, true)
+    }
+}
+
 ; --- Process Launch Helpers ---
 ; Windows shows the "app starting" cursor (pointer+hourglass) whenever a new
 ; process is launched via Run(). These helpers use CreateProcessW with
 ; STARTF_FORCEOFFFEEDBACK (0x80) to suppress that cursor change during tests.
 
-; Launch a process hidden without cursor feedback.
-; Returns true on success. Sets outPid to the new process ID.
-_Test_RunSilent(cmdLine, &outPid := 0) {
-    outPid := 0
-
-    ; CreateProcessW requires writable command line buffer
+; Prepare CreateProcessW buffers: writable command line, STARTUPINFOW, PROCESS_INFORMATION.
+; Returns object with {cmdBuf, si, pi} ready for DllCall("CreateProcessW", ...).
+_Test_PrepareCreateProcessBuffers(cmdLine) {
     cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
     StrPut(cmdLine, cmdBuf, "UTF-16")
 
@@ -216,23 +226,33 @@ _Test_RunSilent(cmdLine, &outPid := 0) {
     ; PROCESS_INFORMATION (24 bytes on 64-bit)
     pi := Buffer(24, 0)
 
+    return {cmdBuf: cmdBuf, si: si, pi: pi}
+}
+
+; Launch a process hidden without cursor feedback.
+; Returns true on success. Sets outPid to the new process ID.
+_Test_RunSilent(cmdLine, &outPid := 0) {
+    outPid := 0
+
+    bufs := _Test_PrepareCreateProcessBuffers(cmdLine)
+
     result := DllCall("CreateProcessW",
         "Ptr", 0,            ; lpApplicationName
-        "Ptr", cmdBuf,       ; lpCommandLine (writable)
+        "Ptr", bufs.cmdBuf,  ; lpCommandLine (writable)
         "Ptr", 0,            ; lpProcessAttributes
         "Ptr", 0,            ; lpThreadAttributes
         "Int", 0,            ; bInheritHandles
         "UInt", 0x08000000,  ; dwCreationFlags: CREATE_NO_WINDOW
         "Ptr", 0,            ; lpEnvironment
         "Ptr", 0,            ; lpCurrentDirectory
-        "Ptr", si,           ; lpStartupInfo
-        "Ptr", pi,           ; lpProcessInformation
+        "Ptr", bufs.si,      ; lpStartupInfo
+        "Ptr", bufs.pi,      ; lpProcessInformation
         "Int")
 
     if (result) {
-        outPid := NumGet(pi, 16, "UInt")                     ; dwProcessId
-        DllCall("CloseHandle", "Ptr", NumGet(pi, 0, "Ptr"))  ; hProcess
-        DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))  ; hThread
+        outPid := NumGet(bufs.pi, 16, "UInt")                     ; dwProcessId
+        DllCall("CloseHandle", "Ptr", NumGet(bufs.pi, 0, "Ptr"))  ; hProcess
+        DllCall("CloseHandle", "Ptr", NumGet(bufs.pi, 8, "Ptr"))  ; hThread
     }
 
     return result
@@ -241,14 +261,7 @@ _Test_RunSilent(cmdLine, &outPid := 0) {
 ; Launch a process hidden without cursor feedback and wait for it to exit.
 ; Returns the process exit code, or -1 on failure.
 _Test_RunWaitSilent(cmdLine, workDir := "") {
-    cmdBuf := Buffer((StrLen(cmdLine) + 1) * 2)
-    StrPut(cmdLine, cmdBuf, "UTF-16")
-
-    si := Buffer(104, 0)
-    NumPut("UInt", 104, si, 0)
-    NumPut("UInt", 0x81, si, 60)
-
-    pi := Buffer(24, 0)
+    bufs := _Test_PrepareCreateProcessBuffers(cmdLine)
 
     wdBuf := 0
     wdPtr := 0
@@ -259,20 +272,20 @@ _Test_RunWaitSilent(cmdLine, workDir := "") {
     }
 
     result := DllCall("CreateProcessW",
-        "Ptr", 0, "Ptr", cmdBuf,
+        "Ptr", 0, "Ptr", bufs.cmdBuf,
         "Ptr", 0, "Ptr", 0,
         "Int", 0,
         "UInt", 0x08000000,
         "Ptr", 0,
         "Ptr", wdPtr,
-        "Ptr", si, "Ptr", pi,
+        "Ptr", bufs.si, "Ptr", bufs.pi,
         "Int")
 
     if (!result)
         return -1
 
-    hProcess := NumGet(pi, 0, "Ptr")
-    DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))  ; hThread
+    hProcess := NumGet(bufs.pi, 0, "Ptr")
+    DllCall("CloseHandle", "Ptr", NumGet(bufs.pi, 8, "Ptr"))  ; hThread
 
     DllCall("WaitForSingleObject", "Ptr", hProcess, "UInt", 0xFFFFFFFF)
 

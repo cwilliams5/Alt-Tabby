@@ -6,6 +6,8 @@
 
 global _KLite_StateObj := ""   ; Cached parsed JSON object (avoids re-parsing within TTL)
 global _KLite_Stamp := 0
+; 500ms TTL + 2s timeout is acceptable: komorebi_sub is the primary producer;
+; komorebi_lite is a best-effort fallback for when subscription is unavailable.
 global _KLite_TTL := 500
 
 ; Async state machine for non-blocking komorebic state queries

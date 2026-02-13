@@ -111,6 +111,9 @@ Blacklist_Reload() {
         if (line = "" || SubStr(line, 1, 1) = ";")
             continue
 
+        ; Trim again for section headers like "[ Title ]"
+        line := Trim(line)
+
         ; Check for section header
         if (SubStr(line, 1, 1) = "[" && SubStr(line, -1) = "]") {
             currentSection := SubStr(line, 2, -1)

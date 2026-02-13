@@ -57,11 +57,10 @@ RunUnitTests_CoreConfig() {
 
     ; Test 2: INI Supplementing - partial config gets new keys added
     Log("Testing INI supplementing (partial config gets new keys)...")
-    testConfigDir := A_Temp "\tabby_config_test_" A_TickCount
-    testConfigPath := testConfigDir "\config.ini"
-
-    try {
-        DirCreate(testConfigDir)
+    _Test_WithTempDir("tabby_config_test", _Test_IniSupplementing)
+    _Test_IniSupplementing(dir) {
+        global TestPassed, TestErrors
+        testConfigPath := dir "\config.ini"
 
         ; Create a minimal config.ini with only one setting
         partialIni := "[AltTab]`nGraceMs=999`n"
@@ -105,27 +104,18 @@ RunUnitTests_CoreConfig() {
                 TestErrors++
             }
         }
-
-        ; Cleanup
-        try FileDelete(testConfigPath)
-        try DirDelete(testConfigDir)
-    } catch as e {
-        Log("FAIL: INI supplementing test error: " e.Message)
-        TestErrors++
-        try DirDelete(testConfigDir, true)
     }
 
     ; Test 2.5: CL_WriteIniPreserveFormat direct tests
     Log("Testing WriteIniPreserveFormat...")
 
-    testWipDir := A_Temp "\tabby_wip_test_" A_TickCount
-    testWipPath := testWipDir "\config.ini"
-
     ; Note: _CL_FormatValue formats ints >= 0x10 as hex (e.g., 150 -> "0x96", 200 -> "0xC8")
     ; Use "string" type to test pure write logic without hex formatting, or expect hex output
 
-    try {
-        DirCreate(testWipDir)
+    _Test_WithTempDir("tabby_wip_test", _Test_WriteIniPreserveFormat)
+    _Test_WriteIniPreserveFormat(dir) {
+        global TestPassed, TestErrors
+        testWipPath := dir "\config.ini"
 
         ; Test 1: Update existing value (using bool type to avoid hex conversion)
         Log("Testing WriteIniPreserveFormat updates existing value...")
@@ -224,23 +214,14 @@ RunUnitTests_CoreConfig() {
             Log("  Got: " SubStr(wipResult, 1, 200))
             TestErrors++
         }
-
-        ; Cleanup
-        try FileDelete(testWipPath)
-        try DirDelete(testWipDir)
-    } catch as e {
-        Log("FAIL: WriteIniPreserveFormat test error: " e.Message)
-        TestErrors++
-        try DirDelete(testWipDir, true)
     }
 
     ; Test 2.6: _CL_CleanupOrphanedKeys removes orphaned keys from known sections
     Log("Testing CleanupOrphanedKeys...")
-    testCleanupDir := A_Temp "\tabby_cleanup_test_" A_TickCount
-    testCleanupPath := testCleanupDir "\config.ini"
-
-    try {
-        DirCreate(testCleanupDir)
+    _Test_WithTempDir("tabby_cleanup_test", _Test_CleanupOrphanedKeys)
+    _Test_CleanupOrphanedKeys(dir) {
+        global TestPassed, TestErrors
+        testCleanupPath := dir "\config.ini"
 
         ; Create config.ini with:
         ; - Valid key in known section (should keep)
@@ -295,24 +276,16 @@ RunUnitTests_CoreConfig() {
             Log("  Content after cleanup: " SubStr(cleanedContent, 1, 300))
             TestErrors++
         }
-
-        ; Cleanup
-        try FileDelete(testCleanupPath)
-        try DirDelete(testCleanupDir)
-    } catch as e {
-        Log("FAIL: CleanupOrphanedKeys test error: " e.Message)
-        TestErrors++
-        try DirDelete(testCleanupDir, true)
     }
 
-    ; Test: _CL_MigrateKeys — BGR→RGB byte swap and AcrylicColor migration
+    ; Test: _CL_MigrateKeys — BGR->RGB byte swap and AcrylicColor migration
     Log("Testing _CL_MigrateKeys...")
-    testMigrateDir := A_Temp "\tabby_migrate_test_" A_TickCount
-    testMigratePath := testMigrateDir "\config.ini"
-    try {
-        DirCreate(testMigrateDir)
+    _Test_WithTempDir("tabby_migrate_test", _Test_MigrateKeys)
+    _Test_MigrateKeys(dir) {
+        global TestPassed, TestErrors
+        testMigratePath := dir "\config.ini"
 
-        ; Case 1: Basic BGR→RGB migration (0xFF0000 BGR = blue → 0x0000FF RGB)
+        ; Case 1: Basic BGR->RGB migration (0xFF0000 BGR = blue -> 0x0000FF RGB)
         IniWrite("0x80", testMigratePath, "GUI", "AcrylicAlpha")
         IniWrite("0xFF0000", testMigratePath, "GUI", "AcrylicBaseRgb")
         _CL_MigrateKeys(testMigratePath)
@@ -337,14 +310,6 @@ RunUnitTests_CoreConfig() {
         IniWrite("123", testMigratePath, "GUI", "SomeOtherKey")
         _CL_MigrateKeys(testMigratePath)
         AssertEq(IniRead(testMigratePath, "GUI", "AcrylicColor", ""), "", "MigrateKeys: no-op when no old keys exist")
-
-        ; Cleanup
-        try FileDelete(testMigratePath)
-        try DirDelete(testMigrateDir)
-    } catch as e {
-        Log("FAIL: MigrateKeys test error: " e.Message)
-        TestErrors++
-        try DirDelete(testMigrateDir, true)
     }
 
     ; Test 3: Config registry completeness - every setting has required fields

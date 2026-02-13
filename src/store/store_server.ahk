@@ -101,6 +101,14 @@ _Store_Init() {
     if (gStore_CmdLineHeartbeatMs > 0)
         cfg.StoreHeartbeatIntervalMs := gStore_CmdLineHeartbeatMs
 
+    ; CRITICAL INITIALIZATION ORDER (do not reorder):
+    ; 1. Config + Blacklist (filtering rules must load first)
+    ; 2. WindowStore + IPC (data layer must exist before producers)
+    ; 3. Komorebi (workspace enrichment for initial scan)
+    ; 4. Icon/Proc Pumps (data enrichers)
+    ; 5. WinEnum initial scan (uses all above)
+    ; 6. WinEventHook (requires initialized store + completed scan)
+
     ; Load blacklist before anything else
     if (!Blacklist_Init()) {
         if (cfg.DiagStoreLog)

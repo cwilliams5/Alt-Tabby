@@ -640,6 +640,22 @@ _CL_ValidateSettings() {
         cfg.%entry.g% := clamp(cfg.%entry.g%, entry.min, entry.max)
     }
 
+    ; --- Enum validation (invalid values fall back to default) ---
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("t") && entry.t = "enum" && entry.HasOwnProp("options")) {
+            val := cfg.%entry.g%
+            found := false
+            for _, opt in entry.options {
+                if (val = opt) {
+                    found := true
+                    break
+                }
+            }
+            if (!found)
+                cfg.%entry.g% := entry.default
+        }
+    }
+
     ; --- Cross-field constraints (can't be expressed as simple min/max) ---
     if (cfg.GUI_RowsVisibleMin > cfg.GUI_RowsVisibleMax)
         cfg.GUI_RowsVisibleMin := cfg.GUI_RowsVisibleMax

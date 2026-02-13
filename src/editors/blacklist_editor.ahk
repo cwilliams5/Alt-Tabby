@@ -439,34 +439,17 @@ _BE_OnTestPatterns(*) {
 
         switch activeTab {
             case 1:  ; Title patterns match against window titles
-                try regex := BL_CompileWildcard(pattern)
-                catch
-                    continue
-                for _, w in windows {
-                    if (RegExMatch(w.title, regex))
-                        matches.Push(w.title)
-                }
+                for _, w in _BE_MatchWindows(windows, pattern, "title")
+                    matches.Push(w.title)
             case 2:  ; Class patterns match against window classes
-                try regex := BL_CompileWildcard(pattern)
-                catch
-                    continue
-                for _, w in windows {
-                    if (RegExMatch(w.class, regex))
-                        matches.Push(w.class " — " w.title)
-                }
+                for _, w in _BE_MatchWindows(windows, pattern, "class")
+                    matches.Push(w.class " — " w.title)
             case 3:  ; Pair patterns: Class|Title, both must match
                 parts := StrSplit(pattern, "|")
                 if (parts.Length < 2)
                     continue
-                try {
-                    classRegex := BL_CompileWildcard(parts[1])
-                    titleRegex := BL_CompileWildcard(parts[2])
-                } catch
-                    continue
-                for _, w in windows {
-                    if (RegExMatch(w.class, classRegex) && RegExMatch(w.title, titleRegex))
-                        matches.Push(w.class " | " w.title)
-                }
+                for _, w in _BE_MatchWindows(_BE_MatchWindows(windows, parts[1], "class"), parts[2], "title")
+                    matches.Push(w.class " | " w.title)
         }
 
         output .= pattern "`r`n"
@@ -489,6 +472,23 @@ _BE_OnTestPatterns(*) {
     summary := matchedPatterns " of " patterns.Length " " tabName " patterns matched against " windows.Length " visible windows."
 
     _BE_ShowTestResults(summary, output)
+}
+
+; Match windows whose field matches a wildcard pattern
+; windows: array of {title, class} objects
+; pattern: wildcard string (passed to BL_CompileWildcard)
+; fieldName: property name to match against ("title" or "class")
+; Returns: array of matching window objects
+_BE_MatchWindows(windows, pattern, fieldName) {
+    try regex := BL_CompileWildcard(pattern)
+    catch
+        return []
+    matched := []
+    for _, w in windows {
+        if (RegExMatch(w.%fieldName%, regex))
+            matched.Push(w)
+    }
+    return matched
 }
 
 _BE_ShowTestResults(summary, details) {

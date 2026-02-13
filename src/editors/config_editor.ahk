@@ -13,6 +13,8 @@
 ; Both share the same INI save logic and restart signaling.
 ; ============================================================
 
+global WEBVIEW2_EVERGREEN_GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
 ; ============================================================
 ; PUBLIC API
 ; ============================================================
@@ -55,13 +57,12 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
 ; Check if WebView2 runtime is installed
 ; Returns: true if WebView2 Evergreen runtime is available
 _ConfigEditor_IsWebView2Available() {
-    ; WebView2 Evergreen runtime registers under EdgeUpdate\Clients with this GUID
-    static GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    global WEBVIEW2_EVERGREEN_GUID
 
     ; Check both 32-bit and 64-bit registry locations
-    for regKey in ["HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\" GUID,
-                   "HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\" GUID,
-                   "HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\" GUID] {
+    for regKey in ["HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
+                   "HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
+                   "HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID] {
         try {
             ver := RegRead(regKey, "pv")
             if (ver != "")

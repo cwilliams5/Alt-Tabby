@@ -38,7 +38,11 @@ global gViewer_LastUpdateType := ""
 global gViewer_CurrentWSLabel := 0
 global gViewer_CurrentWSName := ""
 global gViewer_ProducerState := Map()  ; Producer states from store meta
-global gViewer_ShuttingDown := false  ; Shutdown coordination flag
+; Shutdown guard convention: all timer/IPC/GUI callbacks check
+; `if (gViewer_ShuttingDown) return` at entry. Intentionally inline
+; (not extracted) — a function adds call overhead for a trivial check.
+global gViewer_ShuttingDown := false
+global gBlacklistChoice := ""  ; Blacklist dialog result (shared between dialog + button callbacks)
 global gViewer_StoreWakeHwnd := 0    ; Store's A_ScriptHwnd for PostMessage pipe wake
 
 global gViewer_TestMode := false
@@ -907,7 +911,8 @@ _Viewer_OnBlacklist(lv, row) {
 
 ; Show dialog with blacklist options
 _Viewer_ShowBlacklistDialog(class, title) {
-    global gBlacklistChoice := "", gViewer_ShuttingDown
+    global gBlacklistChoice, gViewer_ShuttingDown
+    gBlacklistChoice := ""
     if (gViewer_ShuttingDown)
         return ""
 

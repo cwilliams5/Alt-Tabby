@@ -23,6 +23,8 @@
 #Include theme.ahk
 #Include theme_msgbox.ahk
 
+global WEBVIEW2_EVERGREEN_GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
 global gCRE_Gui := 0
 global gCRE_Controller := 0
 global gCRE_WebView := 0
@@ -80,10 +82,10 @@ _CRE_Main() {
 ; ============================================================
 
 _CRE_IsWebView2Available() {
-    static GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-    for regKey in ["HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\" GUID,
-                   "HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\" GUID,
-                   "HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\" GUID] {
+    global WEBVIEW2_EVERGREEN_GUID
+    for regKey in ["HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
+                   "HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
+                   "HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID] {
         try {
             ver := RegRead(regKey, "pv")
             if (ver != "")
