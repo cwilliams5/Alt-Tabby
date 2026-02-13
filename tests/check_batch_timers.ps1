@@ -92,6 +92,9 @@ $stIssues = [System.Collections.ArrayList]::new()
 $timerCallbacks = @{}  # functionName -> list of "relpath:lineNum"
 
 foreach ($file in $allFiles) {
+    # Pre-filter: skip files that don't contain "SetTimer"
+    if ($fileCacheText[$file.FullName].IndexOf('SetTimer', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
     $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 

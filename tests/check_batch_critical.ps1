@@ -287,6 +287,10 @@ $csFuncCount = 0
 
 foreach ($file in $allFiles) {
     if ($fileCacheText[$file.FullName].IndexOf('Critical') -lt 0) { continue }
+
+    # Reuse pre-processed line data from sub-check 1 (avoids re-cleaning/re-counting)
+    $hasLineData = $lineDataCache.ContainsKey($file.FullName)
+    $lineData = if ($hasLineData) { $lineDataCache[$file.FullName] } else { $null }
     $lines = $fileCache[$file.FullName]
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
@@ -297,11 +301,19 @@ foreach ($file in $allFiles) {
     $criticalOn = $false
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $rawLine = $lines[$i]
-        $cleaned = BC_CleanLine $rawLine
+        if ($hasLineData) {
+            $ld = $lineData[$i]
+            $rawLine = $ld.Raw
+            $cleaned = $ld.Cleaned
+            $commentStripped = $ld.Stripped
+            $braceData = $ld.Braces
+        } else {
+            $rawLine = $lines[$i]
+            $cleaned = BC_CleanLine $rawLine
+            $commentStripped = if ($cleaned -ne '') { BC_StripComments $rawLine } else { '' }
+            $braceData = if ($cleaned -ne '') { BC_CountBraces $cleaned } else { @(0, 0) }
+        }
         if ($cleaned -eq '') { continue }
-
-        $commentStripped = BC_StripComments $rawLine
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -314,8 +326,7 @@ foreach ($file in $allFiles) {
             }
         }
 
-        $braces = BC_CountBraces $cleaned
-        $depth += $braces[0] - $braces[1]
+        $depth += $braceData[0] - $braceData[1]
 
         if ($inFunc) {
             if (BC_TestCriticalOn $commentStripped) {

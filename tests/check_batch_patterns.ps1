@@ -756,7 +756,13 @@ $v1BuiltinVarExclude = '^A_'
 
 $v1Issues = @()
 
+# Pre-filter: compiled regex matching any v1 pattern keyword (skips modern AHK v2 files)
+$v1PreFilter = [regex]::new('(?:Func\s*\(|%\w+%|IfEqual|IfNotEqual|IfGreater|IfLess|IfInString|IfNotInString|StringLeft|StringRight|StringMid|StringLen|StringReplace|StringGetPos|StringLower|StringUpper|StringTrimLeft|StringTrimRight|EnvAdd|EnvSub|EnvMult|EnvDiv|SetEnv|Transform)', 'Compiled')
+
 foreach ($file in $allFiles) {
+    # Skip files that can't contain any v1 patterns
+    if (-not $v1PreFilter.IsMatch($fileCacheText[$file.FullName])) { continue }
+
     $lines = $fileCache[$file.FullName]
     $inBlockComment = $false
 

@@ -237,7 +237,7 @@ foreach ($file in $srcFiles) {
 
     # File-level pre-filter: skip files that don't reference ANY known global
     if (-not $Query) {
-        $fileText = [System.IO.File]::ReadAllText($file.FullName)
+        $fileText = [string]::Join("`n", $fileCache[$file.FullName])
         if (-not $globalPreFilter.IsMatch($fileText)) { continue }
     }
 

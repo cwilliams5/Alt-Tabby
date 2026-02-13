@@ -78,9 +78,10 @@ $sgIssues = [System.Collections.ArrayList]::new()
 foreach ($file in $allFiles) {
     $lines = $fileCache[$file.FullName]
 
-    # Pre-filter: skip files without "switch"
+    # Pre-filter: skip files without both "switch" and "global" (need both for violation)
     $joined = [string]::Join("`n", $lines)
-    if ($joined.IndexOf('switch') -lt 0) { continue }
+    if ($joined.IndexOf('switch', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+    if ($joined.IndexOf('global', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0

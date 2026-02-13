@@ -351,6 +351,22 @@ if ($entryPoints.Count -gt 0) {
             $fileLower = $file.ToLower()
             if (-not $fileLower.StartsWith($srcDirNorm)) { continue }
 
+            # Pre-filter: skip src files that don't mention any of the test's available globals
+            # (can't have undeclared usage of globals it doesn't reference at all)
+            if ($availableGlobals.Count -gt 0 -and $knownGlobals.Count -gt 0) {
+                $fileLines = Get-CachedFileLines $file
+                $fileText = [string]::Join("`n", $fileLines)
+                $hasRelevantGlobal = $false
+                foreach ($gName in $knownGlobals.Keys) {
+                    if (-not $availableGlobals.ContainsKey($gName)) {
+                        if ($fileText.IndexOf($gName, [System.StringComparison]::Ordinal) -ge 0) {
+                            $hasRelevantGlobal = $true; break
+                        }
+                    }
+                }
+                if (-not $hasRelevantGlobal) { continue }
+            }
+
             if (-not $funcUsageCache.ContainsKey($file)) {
                 $funcUsageCache[$file] = BT_GetFunctionGlobalUsage $file
             }

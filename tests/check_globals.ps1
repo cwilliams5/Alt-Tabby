@@ -303,22 +303,19 @@ foreach ($file in $allFiles) {
 
             # End of function - analyze body
             if ($depth -le $funcDepth) {
-                # Extract all unique word tokens from the function body
                 $allText = ($funcBodyLines | ForEach-Object { $_.Text }) -join " "
-                $tokenSet = @{}
-                foreach ($m in [regex]::Matches($allText, '\b([A-Za-z_]\w{1,})\b')) {
-                    $tokenSet[$m.Groups[1].Value] = $true
-                }
 
-                # Check each known global
+                # Check each known global (IndexOf-first: skip expensive regex when substring absent)
                 foreach ($gName in $checkGlobals.Keys) {
-                    if (-not $tokenSet.ContainsKey($gName)) { continue }
+                    if ($allText.IndexOf($gName, [System.StringComparison]::Ordinal) -lt 0) { continue }
                     if ($funcDeclaredGlobals.ContainsKey($gName)) { continue }
                     if ($funcParams.ContainsKey($gName)) { continue }
                     if ($funcLocals.ContainsKey($gName)) { continue }
+                    # Validate word boundary (IndexOf may match substrings)
+                    $escapedName = [regex]::Escape($gName)
+                    if ($allText -notmatch "\b$escapedName\b") { continue }
 
                     # Find first occurrence for line number
-                    $escapedName = [regex]::Escape($gName)
                     $foundLine = $null
                     foreach ($bodyLine in $funcBodyLines) {
                         if ($bodyLine.Text -match "\b$escapedName\b" -and $bodyLine.Text -notmatch '^\s*(?:global|static|local)\s') {
