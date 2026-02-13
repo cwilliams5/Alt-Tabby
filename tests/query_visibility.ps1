@@ -69,7 +69,7 @@ $fileTexts = @{}
 
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
-    $fileTexts[$file.FullName] = [string]::Join("`n", $lines)
+    $fileTexts[$file.FullName] = [System.IO.File]::ReadAllText($file.FullName)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -103,6 +103,9 @@ $pass1Sw.Stop()
 
 # ============================================================
 # Pass 2: Count external callers for each public function
+# NOTE: O(F*N) looks invertible via a single combined regex scanning each file once,
+# but a 320-way alternation regex is ~2x SLOWER in .NET (1612ms vs 727ms).
+# The per-function IndexOf pre-filter + early exit is faster for this workload.
 # ============================================================
 $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
 

@@ -94,7 +94,9 @@ $fileCacheText = @{}
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $fileCache[$file.FullName] = $lines
-    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
+    if (-not $Query) {
+        $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
+    }
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0

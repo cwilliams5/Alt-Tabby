@@ -34,19 +34,19 @@ foreach ($rawLine in $rawLines) {
     $trimmed = $rawLine.Trim()
     if ($braceDepth -eq 0 -and $trimmed -match '^\s*;') { continue }
 
+    $wasInBraces = $braceDepth -gt 0
     foreach ($c in $trimmed.ToCharArray()) {
         if ($c -eq '{') {
             if ($braceDepth -eq 0) { $entryText = "" }
             $braceDepth++
+            $wasInBraces = $true
+        } elseif ($c -eq '}') {
+            $braceDepth--
         }
     }
 
-    if ($braceDepth -gt 0) {
+    if ($wasInBraces) {
         $entryText += " " + $trimmed
-    }
-
-    foreach ($c in $trimmed.ToCharArray()) {
-        if ($c -eq '}') { $braceDepth-- }
     }
 
     if ($braceDepth -le 0 -and $entryText) {

@@ -131,6 +131,7 @@ $allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
 
 $sends = [System.Collections.ArrayList]::new()
 $handles = [System.Collections.ArrayList]::new()
+$sendLocations = [System.Collections.Generic.HashSet[string]]::new()
 
 # Raw JSON pattern: '{"type":"delta",...}' bypassing IPC_MSG_* constants
 $rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
@@ -141,9 +142,12 @@ foreach ($file in $allFiles) {
     $isConstantsFile = ($file.Name -eq "ipc_constants.ahk")
 
     # File-level pre-filter: skip files that reference neither the constant nor raw JSON value
-    $joinedText = [string]::Join("`n", $lines)
-    if ($joinedText.IndexOf($constName, [StringComparison]::Ordinal) -lt 0 -and
-        $joinedText.IndexOf($constValue, [StringComparison]::Ordinal) -lt 0) { continue }
+    $hasRef = $false
+    foreach ($ln in $lines) {
+        if ($ln.IndexOf($constName, [StringComparison]::Ordinal) -ge 0 -or
+            $ln.IndexOf($constValue, [StringComparison]::Ordinal) -ge 0) { $hasRef = $true; break }
+    }
+    if (-not $hasRef) { continue }
 
     # Pre-build function boundary map for this file
     $funcBounds = Build-FuncBounds $lines $ahkKeywords
@@ -187,18 +191,17 @@ foreach ($file in $allFiles) {
                 $trimmed -match "\?\s*$constName\b" -or
                 $trimmed -match ":\s*$constName\s*$") { $isSend = $true }
 
-            if ($isSend) { [void]$sends.Add($hit) }
+            if ($isSend) {
+                [void]$sends.Add($hit)
+                [void]$sendLocations.Add("$($hit.File):$($hit.Line)")
+            }
             elseif ($isHandle) { [void]$handles.Add($hit) }
         }
 
         # Process raw JSON pattern (supplementary - catches hand-built JSON)
         if ($hasRawJson) {
             # Skip if already found by constant-reference scan (same file+line)
-            $alreadyFound = $false
-            foreach ($s in $sends) {
-                if ($s.File -eq $relPath -and $s.Line -eq $lineNum) { $alreadyFound = $true; break }
-            }
-            if (-not $alreadyFound) {
+            if (-not $sendLocations.Contains("${relPath}:${lineNum}")) {
                 $funcName = Find-FuncCached $funcBounds $i
                 [void]$sends.Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
             }

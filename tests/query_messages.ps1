@@ -134,8 +134,7 @@ foreach ($file in $allFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
-    # Pre-build function boundary map for this file (Opt 5)
-    $funcBounds = Build-FunctionBoundaries $lines $ahkKeywords
+    $funcBounds = $null  # lazy init: defer boundary building to first match
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
@@ -148,6 +147,11 @@ foreach ($file in $allFiles) {
             $line.IndexOf('PostMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
             $line.IndexOf('DllCall', [StringComparison]::OrdinalIgnoreCase) -lt 0) {
             continue
+        }
+
+        # Lazy init function boundaries on first keyword-matching line
+        if (-not $funcBounds) {
+            $funcBounds = Build-FunctionBoundaries $lines $ahkKeywords
         }
 
         # OnMessage(0xNNNN, handler) or OnMessage(0xNNNN, handler, addRemove)

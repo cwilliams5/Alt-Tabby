@@ -33,8 +33,11 @@ foreach ($file in $allFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
 
     # File-level pre-filter: skip files without SetTimer
-    $joinedText = [string]::Join("`n", $lines)
-    if ($joinedText.IndexOf('SetTimer', [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+    $found = $false
+    foreach ($ln in $lines) {
+        if ($ln.IndexOf('SetTimer', [StringComparison]::OrdinalIgnoreCase) -ge 0) { $found = $true; break }
+    }
+    if (-not $found) { continue }
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 

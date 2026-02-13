@@ -136,13 +136,11 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $globalDecl = @{}
 # fileCache: filePath -> string[]
 $fileCache = @{}
-# fileCacheText: filePath -> joined string (for pre-filter)
-$fileCacheText = @{}
+# (fileCacheText removed — pre-filter uses combined regex inline)
 
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $fileCache[$file.FullName] = $lines
-    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -210,6 +208,13 @@ if ($Query) {
     [void]$globalSet.Add($Query)
 }
 
+# Build combined regex for file pre-filter (non-Query mode)
+$globalPreFilter = $null
+if (-not $Query -and $globalSet.Count -gt 0) {
+    $globalPreFilter = [regex]::new('(?:' + (($globalSet | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')',
+        'Compiled, IgnoreCase')
+}
+
 # ============================================================
 # Pass 2: Detect mutations in function bodies
 # ============================================================
@@ -232,14 +237,8 @@ foreach ($file in $srcFiles) {
 
     # File-level pre-filter: skip files that don't reference ANY known global
     if (-not $Query) {
-        $fileText = $fileCacheText[$file.FullName]
-        $hasAnyGlobal = $false
-        foreach ($gName in $globalSet) {
-            if ($fileText.IndexOf($gName, [System.StringComparison]::Ordinal) -ge 0) {
-                $hasAnyGlobal = $true; break
-            }
-        }
-        if (-not $hasAnyGlobal) { continue }
+        $fileText = [System.IO.File]::ReadAllText($file.FullName)
+        if (-not $globalPreFilter.IsMatch($fileText)) { continue }
     }
 
     $depth = 0
