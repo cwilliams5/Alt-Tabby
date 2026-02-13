@@ -467,18 +467,18 @@ GUI_OnMouseLeave() {
 
 GUI_StartHoverPolling() {
     global cfg
-    GUI_StopHoverPolling()  ; Stop any existing timer first (prevents duplication)
+    _GUI_StopHoverPolling()  ; Stop any existing timer first (prevents duplication)
     interval := cfg.HasOwnProp("GUI_HoverPollIntervalMs") ? cfg.GUI_HoverPollIntervalMs : 100
     SetTimer(_GUI_HoverPollTick, interval)
 }
 
-GUI_StopHoverPolling() {
+_GUI_StopHoverPolling() {
     SetTimer(_GUI_HoverPollTick, 0)
 }
 
 GUI_ClearHoverState() {
     global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking
-    GUI_StopHoverPolling()
+    _GUI_StopHoverPolling()
     gGUI_HoverRow := 0
     gGUI_HoverBtn := ""
     gGUI_MouseTracking := false
@@ -489,7 +489,7 @@ _GUI_HoverPollTick() {
 
     ; Stop polling if overlay not visible
     if (!gGUI_OverlayVisible) {
-        GUI_StopHoverPolling()
+        _GUI_StopHoverPolling()
         return
     }
 
