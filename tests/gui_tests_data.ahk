@@ -747,36 +747,33 @@ RunGUITests_Data() {
     ; ICON CACHE PRUNE ON SNAPSHOT TESTS (Resource leak fix)
     ; ============================================================
 
-    ; ----- Test: Snapshot calls Gdip_PruneIconCache with live hwnd map -----
-    GUI_Log("Test: Snapshot calls Gdip_PruneIconCache with live hwnd map")
+    ; ----- Test: Snapshot skips prune when count increased (no orphans possible) -----
+    GUI_Log("Test: Snapshot skips prune when count increased (no orphans possible)")
     ResetGUIState()
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 200, payload: { items: CreateTestItems(3) } })
     GUI_OnStoreMessage(snapshotMsg)
 
-    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune: called on snapshot")
-    if (IsObject(gMock_PruneCalledWith)) {
-        ; The live hwnds map should contain exactly the 3 hwnds from the snapshot
-        GUI_AssertEq(gMock_PruneCalledWith.Count, 3, "Prune: live map has 3 entries")
-        GUI_AssertTrue(gMock_PruneCalledWith.Has(1000), "Prune: live map has hwnd 1000")
-        GUI_AssertTrue(gMock_PruneCalledWith.Has(2000), "Prune: live map has hwnd 2000")
-        GUI_AssertTrue(gMock_PruneCalledWith.Has(3000), "Prune: live map has hwnd 3000")
-    }
+    GUI_AssertTrue(!IsObject(gMock_PruneCalledWith), "Prune: skipped when 0->3 items (no orphans)")
+    GUI_AssertEq(gGUI_LiveItemsMap.Count, 3, "Prune: live map has 3 entries")
+    GUI_AssertTrue(gGUI_LiveItemsMap.Has(1000), "Prune: live map has hwnd 1000")
+    GUI_AssertTrue(gGUI_LiveItemsMap.Has(2000), "Prune: live map has hwnd 2000")
+    GUI_AssertTrue(gGUI_LiveItemsMap.Has(3000), "Prune: live map has hwnd 3000")
 
-    ; ----- Test: Prune called with updated map after second snapshot -----
-    GUI_Log("Test: Prune called with updated map after second snapshot")
+    ; ----- Test: Prune called only when items removed (count decreased) -----
+    GUI_Log("Test: Prune called only when items removed (count decreased)")
     ResetGUIState()
     ; First snapshot: 5 items
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 201, payload: { items: CreateTestItems(5) } })
     GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called on first snapshot")
+    GUI_AssertTrue(!IsObject(gMock_PruneCalledWith), "Prune 2nd: skipped on first snapshot (0->5)")
 
-    ; Second snapshot: only 2 items (windows closed)
+    ; Second snapshot: only 2 items (windows closed) — prune needed
     gMock_PruneCalledWith := ""
     items2 := CreateTestItems(2)
     snapshotMsg2 := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 202, payload: { items: items2 } })
     GUI_OnStoreMessage(snapshotMsg2)
 
-    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called on second snapshot")
+    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called when items removed (5->2)")
     if (IsObject(gMock_PruneCalledWith)) {
         GUI_AssertEq(gMock_PruneCalledWith.Count, 2, "Prune 2nd: live map has 2 entries (orphans would be pruned)")
     }

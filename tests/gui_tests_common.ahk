@@ -244,7 +244,7 @@ ResetGUIState() {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_FirstTabTick, gGUI_WorkspaceMode
     global gGUI_AwaitingToggleProjection, gGUI_WSContextSwitch, gMockIPCMessages, gGUI_CurrentWSName
-    global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap, gGUI_LastLocalMRUTick
+    global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gGUI_LastLocalMRUTick
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
@@ -253,6 +253,7 @@ ResetGUIState() {
     gGUI_State := "IDLE"
     gGUI_LiveItems := []
     gGUI_LiveItemsMap := Map()
+    gGUI_LiveItemsIndex := Map()
     gGUI_DisplayItems := []
     gGUI_ToggleBase := []
     gGUI_Sel := 1

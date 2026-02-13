@@ -9,6 +9,8 @@ global gGUI_AwaitingToggleProjection := false  ; Flag for ServerSideWorkspaceFil
 
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
 global gGUI_LiveItemsMap := Map()
+; hwnd -> 1-based position in gGUI_LiveItems for O(1) viewport range checks
+global gGUI_LiveItemsIndex := Map()
 
 ; ========================= STORE MESSAGE HANDLER =========================
 
@@ -126,6 +128,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         if (obj.Has("payload") && obj["payload"].Has("items")) {
             ; Critical already held from above (phase check guard)
             ; Single-pass conversion: builds both items array and Map together
+            prevMapCount := gGUI_LiveItemsMap.Count  ; O(1) — for conditional icon prune below
             converted := _GUI_ConvertStoreItemsWithMap(obj["payload"]["items"])
             gGUI_LiveItems := converted.items
             gGUI_LiveItemsMap := converted.map
@@ -198,9 +201,11 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             }
 
             ; LATENCY FIX: Prune icon cache OUTSIDE Critical section.
-            ; Gdip_PruneIconCache iterates the cache and calls GdipDisposeImage DllCalls
-            ; which can take 2-5ms. gGUI_LiveItemsMap is stable after assignment above.
-            Gdip_PruneIconCache(gGUI_LiveItemsMap)
+            ; Only prune when items were actually removed (count decreased).
+            ; Same-count case (different hwnds) is harmless — orphans cleaned on next
+            ; snapshot with different count or by the delta path's conditional prune.
+            if (converted.map.Count < prevMapCount)
+                Gdip_PruneIconCache(gGUI_LiveItemsMap)
 
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
 
@@ -295,13 +300,16 @@ _GUI_CreateItemFromRecord(hwnd, rec) {
 ; Eliminates redundant O(n) iteration vs calling ConvertStoreItems + RebuildItemsMap separately
 ; Icon pre-caching is done separately outside Critical (see GUI_HandleSnapshot).
 _GUI_ConvertStoreItemsWithMap(items) {
+    global gGUI_LiveItemsIndex
     result := []
     resultMap := Map()
+    gGUI_LiveItemsIndex := Map()
     for _, item in items {
         hwnd := item.Has("hwnd") ? item["hwnd"] : 0
         converted := _GUI_CreateItemFromRecord(hwnd, item)
         result.Push(converted)
         resultMap[hwnd] := converted
+        gGUI_LiveItemsIndex[hwnd] := result.Length
     }
     return { items: result, map: resultMap }
 }
@@ -309,7 +317,7 @@ _GUI_ConvertStoreItemsWithMap(items) {
 ; ========================= DELTA APPLICATION =========================
 
 _GUI_ApplyDelta(payload) {
-    global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap, cfg
+    global gGUI_LiveItems, gGUI_Sel, gINT_BypassMode, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, cfg
     global gGUI_OverlayVisible, gGUI_ScrollTop
 
     mruChanged := false      ; Track if sort-relevant fields changed (MRU order or item count)
@@ -455,13 +463,9 @@ _GUI_ApplyDelta(payload) {
             vpStart := Max(1, gGUI_ScrollTop + 1 - 3)
             vpEnd := Min(gGUI_LiveItems.Length, gGUI_ScrollTop + visRows + 3)
             for _, ic in iconsToPrecache {
-                idx := 0
-                for i, liveItem in gGUI_LiveItems {
-                    if (liveItem.hwnd = ic.hwnd) {
-                        idx := i
-                        break
-                    }
-                }
+                if (!gGUI_LiveItemsIndex.Has(ic.hwnd))
+                    continue  ; removed since delta was built
+                idx := gGUI_LiveItemsIndex[ic.hwnd]
                 if (idx >= vpStart && idx <= vpEnd)
                     Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
             }
@@ -490,7 +494,7 @@ _GUI_ApplyDelta(payload) {
 }
 
 _GUI_SortItemsByMRU() {
-    global gGUI_LiveItems
+    global gGUI_LiveItems, gGUI_LiveItemsIndex
 
     ; Insertion sort by lastActivatedTick descending (higher = more recent = first)
     ; O(n) for nearly-sorted data (typical case - MRU order rarely changes much)
@@ -513,6 +517,11 @@ _GUI_SortItemsByMRU() {
         }
         gGUI_LiveItems[j + 1] := key
     }
+
+    ; Rebuild position index after sort (O(n) but only runs when MRU order changes)
+    gGUI_LiveItemsIndex := Map()
+    loop n
+        gGUI_LiveItemsIndex[gGUI_LiveItems[A_Index].hwnd] := A_Index
 }
 
 ; ========================= VIEWPORT CHANGE DETECTION =========================

@@ -338,6 +338,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         colY := cachedLayout.colY
         colH := cachedLayout.colH
 
+        ; Hoist loop-invariant gGdip_Res lookups (14 keys × N rows → 14 lookups total)
+        fMain := gGdip_Res["fMain"], fMainHi := gGdip_Res["fMainHi"]
+        fSub := gGdip_Res["fSub"], fSubHi := gGdip_Res["fSubHi"]
+        fCol := gGdip_Res["fCol"], fColHi := gGdip_Res["fColHi"]
+        brMain := gGdip_Res["brMain"], brMainHi := gGdip_Res["brMainHi"]
+        brSub := gGdip_Res["brSub"], brSubHi := gGdip_Res["brSubHi"]
+        brCol := gGdip_Res["brCol"], brColHi := gGdip_Res["brColHi"]
+        fmtCol := gGdip_Res["fmt"]
+
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
             idx1 := idx0 + 1
@@ -355,7 +364,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             tIcon := A_TickCount
             iconDrawn := false
             iconWasCacheHit := false
-            if (cur.HasOwnProp("iconHicon") && cur.iconHicon) {
+            ; Schema guarantee: _GUI_CreateItemFromRecord always sets iconHicon (0 if absent)
+            if (cur.iconHicon) {
                 ; wasCacheHit is returned via ByRef parameter (avoids double cache lookup)
                 iconDrawn := Gdip_DrawCachedIcon(g, cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
                 if (iconWasCacheHit)
@@ -368,20 +378,20 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             }
             tPO_IconsTotal += A_TickCount - tIcon
 
-            fMainUse := isSel ? gGdip_Res["fMainHi"] : gGdip_Res["fMain"]
-            fSubUse := isSel ? gGdip_Res["fSubHi"] : gGdip_Res["fSub"]
-            fColUse := isSel ? gGdip_Res["fColHi"] : gGdip_Res["fCol"]
-            brMainUse := isSel ? gGdip_Res["brMainHi"] : gGdip_Res["brMain"]
-            brSubUse := isSel ? gGdip_Res["brSubHi"] : gGdip_Res["brSub"]
-            brColUse := isSel ? gGdip_Res["brColHi"] : gGdip_Res["brCol"]
+            fMainUse := isSel ? fMainHi : fMain
+            fSubUse := isSel ? fSubHi : fSub
+            fColUse := isSel ? fColHi : fCol
+            brMainUse := isSel ? brMainHi : brMain
+            brSubUse := isSel ? brSubHi : brSub
+            brColUse := isSel ? brColHi : brCol
 
-            title := cur.HasOwnProp("Title") ? cur.Title : ""
+            title := cur.Title
             Gdip_DrawText(g, title, textX, yRow + titleY, textW, titleH, brMainUse, fMainUse, fmtLeft)
 
             sub := ""
-            if (cur.HasOwnProp("processName") && cur.processName != "") {
+            if (cur.processName != "") {
                 sub := cur.processName
-            } else if (cur.HasOwnProp("Class")) {
+            } else {
                 sub := "Class: " cur.Class
             }
             Gdip_DrawText(g, sub, textX, yRow + subY, textW, subH, brSubUse, fSubUse, fmtLeft)
@@ -391,7 +401,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
                 if (cur.HasOwnProp(col.key)) {
                     val := cur.%col.key%
                 }
-                Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, gGdip_Res["fmt"])
+                Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, fmtCol)
             }
 
             if (idx1 = gGUI_HoverRow) {
