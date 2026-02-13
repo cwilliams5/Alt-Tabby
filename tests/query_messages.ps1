@@ -68,9 +68,10 @@ foreach ($kv in $WM_NAMES.GetEnumerator()) {
 $ahkKeywords = @('if','else','while','for','loop','switch','case','catch','finally',
     'try','return','throw','not','and','or','is','in','contains','isset')
 
-function Find-EnclosingFunction {
-    param([string[]]$Lines, [int]$FromIndex, [string[]]$Keywords)
-    for ($j = $FromIndex - 1; $j -ge 0; $j--) {
+function Build-FunctionBoundaries {
+    param([string[]]$Lines, [string[]]$Keywords)
+    $boundaries = [System.Collections.ArrayList]::new()
+    for ($j = 0; $j -lt $Lines.Count; $j++) {
         if ($Lines[$j] -match '^(\w+)\s*\(') {
             $candidate = $Matches[1]
             if ($candidate.ToLower() -in $Keywords) { continue }
@@ -83,13 +84,44 @@ function Find-EnclosingFunction {
                     break
                 }
             }
-            if ($hasBody) { return $candidate }
+            if ($hasBody) { [void]$boundaries.Add(@{ Name = $candidate; Line = $j }) }
         }
+    }
+    return $boundaries
+}
+
+function Find-EnclosingFunctionCached {
+    param($Boundaries, [int]$FromIndex)
+    for ($b = $Boundaries.Count - 1; $b -ge 0; $b--) {
+        if ($Boundaries[$b].Line -le $FromIndex) { return $Boundaries[$b].Name }
     }
     return "(file scope)"
 }
 
 function Format-MsgHex { param([int]$val) return "0x{0:X04}" -f $val }
+
+# === Pre-cache ipc_constants.ahk hex constants for O(1) resolution ===
+$ipcConstCache = @{}
+$ipcConstFile = Join-Path $srcDir "shared\ipc_constants.ahk"
+if (Test-Path $ipcConstFile) {
+    foreach ($cl in [System.IO.File]::ReadAllLines($ipcConstFile)) {
+        if ($cl -match '^\s*global\s+(\w+)\s*:=\s*(0x[0-9A-Fa-f]+)') {
+            $ipcConstCache[$Matches[1]] = [int]$Matches[2]
+        }
+    }
+}
+
+# Helper: resolve a named constant to hex value (file-local then ipc_constants cache)
+function Resolve-HexConstant {
+    param([string]$Name, [string[]]$FileLines)
+    for ($j = 0; $j -lt $FileLines.Count; $j++) {
+        if ($FileLines[$j] -match "^\s*(?:global\s+)?$Name\s*:=\s*(0x[0-9A-Fa-f]+)") {
+            return [int]$Matches[1]
+        }
+    }
+    if ($ipcConstCache.ContainsKey($Name)) { return $ipcConstCache[$Name] }
+    return $null
+}
 
 # === Scan source files ===
 $allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
@@ -102,10 +134,21 @@ foreach ($file in $allFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
+    # Pre-build function boundary map for this file (Opt 5)
+    $funcBounds = Build-FunctionBoundaries $lines $ahkKeywords
+
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
         $trimmed = $line.Trim()
-        if ($trimmed -match '^\s*;') { continue }
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+
+        # Quick keyword gate: skip lines that can't match any pattern (Opt 2)
+        if ($line.IndexOf('OnMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+            $line.IndexOf('SendMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+            $line.IndexOf('PostMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+            $line.IndexOf('DllCall', [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            continue
+        }
 
         # OnMessage(0xNNNN, handler) or OnMessage(0xNNNN, handler, addRemove)
         if ($trimmed -match 'OnMessage\(\s*(0x[0-9A-Fa-f]+)\s*,\s*(\w+)') {
@@ -119,7 +162,7 @@ foreach ($file in $allFiles) {
                 Handler = $handler
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunction $lines $i $ahkKeywords
+                Func    = Find-EnclosingFunctionCached $funcBounds $i
             })
             continue
         }
@@ -139,7 +182,7 @@ foreach ($file in $allFiles) {
                 Handler = $handler
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunction $lines $i $ahkKeywords
+                Func    = Find-EnclosingFunctionCached $funcBounds $i
             })
             continue
         }
@@ -148,26 +191,7 @@ foreach ($file in $allFiles) {
         if ($trimmed -match 'OnMessage\(\s*(\w+)\s*,\s*(\w+)') {
             $constName = $Matches[1]
             $handler = $Matches[2]
-            # Try to resolve the constant from the same file
-            $resolved = $null
-            for ($j = 0; $j -lt $lines.Count; $j++) {
-                if ($lines[$j] -match "^\s*(?:global\s+)?$constName\s*:=\s*(0x[0-9A-Fa-f]+)") {
-                    $resolved = [int]$Matches[1]
-                    break
-                }
-            }
-            # Also check ipc_constants.ahk
-            if (-not $resolved) {
-                $constFile = Join-Path $srcDir "shared\ipc_constants.ahk"
-                if (Test-Path $constFile) {
-                    foreach ($cl in [System.IO.File]::ReadAllLines($constFile)) {
-                        if ($cl -match "^\s*global\s+$constName\s*:=\s*(0x[0-9A-Fa-f]+)") {
-                            $resolved = [int]$Matches[1]
-                            break
-                        }
-                    }
-                }
-            }
+            $resolved = Resolve-HexConstant $constName $lines
             if ($resolved) {
                 $addRemove = ""
                 if ($trimmed -match 'OnMessage\([^,]+,[^,]+,\s*(-?\d+)') { $addRemove = $Matches[1] }
@@ -177,7 +201,7 @@ foreach ($file in $allFiles) {
                     Handler = $handler
                     File    = $relPath
                     Line    = $i + 1
-                    Func    = Find-EnclosingFunction $lines $i $ahkKeywords
+                    Func    = Find-EnclosingFunctionCached $funcBounds $i
                 })
             }
             continue
@@ -193,7 +217,7 @@ foreach ($file in $allFiles) {
                 Handler = ""
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunction $lines $i $ahkKeywords
+                Func    = Find-EnclosingFunctionCached $funcBounds $i
             })
             continue
         }
@@ -208,12 +232,13 @@ foreach ($file in $allFiles) {
                 Handler = ""
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunction $lines $i $ahkKeywords
+                Func    = Find-EnclosingFunctionCached $funcBounds $i
             })
             continue
         }
 
         # SendMessage with named constant in DllCall (e.g., IP_WM_GETICON)
+        # Note: only resolves from current file (not ipc_constants) to match original behavior
         if ($trimmed -match 'DllCall\(\s*"[^"]*(?:SendMessage|PostMessage)\w*"[^)]*?\b(\w+_WM_\w+|WM_\w+)') {
             $constName = $Matches[1]
             $resolved = $null
@@ -231,7 +256,7 @@ foreach ($file in $allFiles) {
                     Handler = ""
                     File    = $relPath
                     Line    = $i + 1
-                    Func    = Find-EnclosingFunction $lines $i $ahkKeywords
+                    Func    = Find-EnclosingFunctionCached $funcBounds $i
                 })
             }
             continue
@@ -240,24 +265,7 @@ foreach ($file in $allFiles) {
         # PostMessage with named constant (non-DllCall)
         if ($trimmed -match 'PostMessage\s*\(\s*(\w+_WM_\w+|WM_\w+)') {
             $constName = $Matches[1]
-            $resolved = $null
-            $constFile = Join-Path $srcDir "shared\ipc_constants.ahk"
-            if (Test-Path $constFile) {
-                foreach ($cl in [System.IO.File]::ReadAllLines($constFile)) {
-                    if ($cl -match "^\s*global\s+$constName\s*:=\s*(0x[0-9A-Fa-f]+)") {
-                        $resolved = [int]$Matches[1]
-                        break
-                    }
-                }
-            }
-            if (-not $resolved) {
-                for ($j = 0; $j -lt $lines.Count; $j++) {
-                    if ($lines[$j] -match "^\s*(?:global\s+)?$constName\s*:=\s*(0x[0-9A-Fa-f]+)") {
-                        $resolved = [int]$Matches[1]
-                        break
-                    }
-                }
-            }
+            $resolved = Resolve-HexConstant $constName $lines
             if ($resolved) {
                 [void]$entries.Add(@{
                     Hex     = $resolved
@@ -265,7 +273,7 @@ foreach ($file in $allFiles) {
                     Handler = ""
                     File    = $relPath
                     Line    = $i + 1
-                    Func    = Find-EnclosingFunction $lines $i $ahkKeywords
+                    Func    = Find-EnclosingFunctionCached $funcBounds $i
                 })
             }
             continue

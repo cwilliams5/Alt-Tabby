@@ -33,20 +33,21 @@ Write-Host "  Scanning $($srcFiles.Count) source files..." -ForegroundColor Cyan
 # === Helpers ===
 function Clean-Line {
     param([string]$line)
-    $cleaned = $line -replace '"[^"]*"', '""'
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
+    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
+        return $trimmed
+    }
+    $cleaned = $trimmed -replace '"[^"]*"', '""'
     $cleaned = $cleaned -replace "'[^']*'", "''"
     $cleaned = $cleaned -replace '\s;.*$', ''
-    if ($cleaned -match '^\s*;') { return '' }
     return $cleaned
 }
 
 function Count-Braces {
     param([string]$line)
-    $opens = 0; $closes = 0
-    foreach ($c in $line.ToCharArray()) {
-        if ($c -eq '{') { $opens++ }
-        elseif ($c -eq '}') { $closes++ }
-    }
+    $opens = $line.Length - $line.Replace('{', '').Length
+    $closes = $line.Length - $line.Replace('}', '').Length
     return @($opens, $closes)
 }
 
@@ -64,11 +65,11 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 # funcDefs: list of @{ Name; File; RelPath; Line }
 $funcDefs = [System.Collections.ArrayList]::new()
-$fileCache = @{}
+$fileTexts = @{}
 
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
-    $fileCache[$file.FullName] = $lines
+    $fileTexts[$file.FullName] = [string]::Join("`n", $lines)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -104,12 +105,6 @@ $pass1Sw.Stop()
 # Pass 2: Count external callers for each public function
 # ============================================================
 $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
-
-# Pre-join file contents for fast searching
-$fileTexts = @{}
-foreach ($file in $srcFiles) {
-    $fileTexts[$file.FullName] = [string]::Join("`n", $fileCache[$file.FullName])
-}
 
 $results = [System.Collections.ArrayList]::new()
 

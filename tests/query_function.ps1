@@ -32,20 +32,21 @@ $srcFiles = @(Get-ChildItem -Path $srcDir -Filter "*.ahk" -Recurse |
 # === Helpers ===
 function Clean-Line {
     param([string]$line)
-    $cleaned = $line -replace '"[^"]*"', '""'
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
+    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
+        return $trimmed
+    }
+    $cleaned = $trimmed -replace '"[^"]*"', '""'
     $cleaned = $cleaned -replace "'[^']*'", "''"
     $cleaned = $cleaned -replace '\s;.*$', ''
-    if ($cleaned -match '^\s*;') { return '' }
     return $cleaned
 }
 
 function Count-Braces {
     param([string]$line)
-    $opens = 0; $closes = 0
-    foreach ($c in $line.ToCharArray()) {
-        if ($c -eq '{') { $opens++ }
-        elseif ($c -eq '}') { $closes++ }
-    }
+    $opens = $line.Length - $line.Replace('{', '').Length
+    $closes = $line.Length - $line.Replace('}', '').Length
     return @($opens, $closes)
 }
 
@@ -61,6 +62,11 @@ $found = $null
 
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+
+    # File-level pre-filter: skip files that don't contain the function name
+    $joinedText = [string]::Join("`n", $lines)
+    if ($joinedText.IndexOf($FuncName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0

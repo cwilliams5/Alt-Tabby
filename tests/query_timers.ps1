@@ -31,11 +31,35 @@ $timers = [System.Collections.ArrayList]::new()
 
 foreach ($file in $allFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+
+    # File-level pre-filter: skip files without SetTimer
+    $joinedText = [string]::Join("`n", $lines)
+    if ($joinedText.IndexOf('SetTimer', [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
     $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    # Pre-build function boundary map for this file
+    $funcBounds = [System.Collections.ArrayList]::new()
+    for ($j = 0; $j -lt $lines.Count; $j++) {
+        if ($lines[$j] -match '^(\w+)\s*\(') {
+            $candidate = $Matches[1]
+            if ($candidate.ToLower() -in $ahkKeywords) { continue }
+            $hasBody = $lines[$j].Contains('{')
+            if (-not $hasBody) {
+                for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $lines.Count); $k++) {
+                    $next = $lines[$k].Trim()
+                    if ($next -eq '') { continue }
+                    if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
+                    break
+                }
+            }
+            if ($hasBody) { [void]$funcBounds.Add(@{ Name = $candidate; Line = $j }) }
+        }
+    }
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $trimmed = $lines[$i].Trim()
-        if ($trimmed -match '^\s*;') { continue }
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
 
         # Match SetTimer( or SetTimer  (with paren or space)
         if ($trimmed -notmatch '\bSetTimer\s*[\(,]') { continue }
@@ -66,23 +90,10 @@ foreach ($file in $allFiles) {
             $timerType = "dynamic"
         }
 
-        # Find enclosing function
+        # Find enclosing function via pre-built boundary map
         $funcName = "(file scope)"
-        for ($j = $i - 1; $j -ge 0; $j--) {
-            if ($lines[$j] -match '^(\w+)\s*\(') {
-                $candidate = $Matches[1]
-                if ($candidate.ToLower() -in $ahkKeywords) { continue }
-                $hasBody = $lines[$j].Contains('{')
-                if (-not $hasBody) {
-                    for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $lines.Count); $k++) {
-                        $next = $lines[$k].Trim()
-                        if ($next -eq '') { continue }
-                        if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
-                        break
-                    }
-                }
-                if ($hasBody) { $funcName = $candidate; break }
-            }
+        for ($b = $funcBounds.Count - 1; $b -ge 0; $b--) {
+            if ($funcBounds[$b].Line -le $i) { $funcName = $funcBounds[$b].Name; break }
         }
 
         $lineNum = $i + 1

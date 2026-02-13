@@ -94,10 +94,11 @@ $constLine = $target.Line
 $ahkKeywords = @('if','else','while','for','loop','switch','case','catch','finally',
     'try','return','throw','not','and','or','is','in','contains','isset')
 
-# === Helper: find enclosing function by scanning backwards ===
-function Find-EnclosingFunction {
-    param([string[]]$Lines, [int]$FromIndex, [string[]]$Keywords)
-    for ($j = $FromIndex - 1; $j -ge 0; $j--) {
+# === Helper: build function boundary map for a file ===
+function Build-FuncBounds {
+    param([string[]]$Lines, [string[]]$Keywords)
+    $bounds = [System.Collections.ArrayList]::new()
+    for ($j = 0; $j -lt $Lines.Count; $j++) {
         if ($Lines[$j] -match '^(\w+)\s*\(') {
             $candidate = $Matches[1]
             if ($candidate.ToLower() -in $Keywords) { continue }
@@ -110,8 +111,16 @@ function Find-EnclosingFunction {
                     break
                 }
             }
-            if ($hasBody) { return $candidate }
+            if ($hasBody) { [void]$bounds.Add(@{ Name = $candidate; Line = $j }) }
         }
+    }
+    return $bounds
+}
+
+function Find-FuncCached {
+    param($Bounds, [int]$FromIndex)
+    for ($b = $Bounds.Count - 1; $b -ge 0; $b--) {
+        if ($Bounds[$b].Line -le $FromIndex) { return $Bounds[$b].Name }
     }
     return "(file scope)"
 }
@@ -131,10 +140,18 @@ foreach ($file in $allFiles) {
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $isConstantsFile = ($file.Name -eq "ipc_constants.ahk")
 
+    # File-level pre-filter: skip files that reference neither the constant nor raw JSON value
+    $joinedText = [string]::Join("`n", $lines)
+    if ($joinedText.IndexOf($constName, [StringComparison]::Ordinal) -lt 0 -and
+        $joinedText.IndexOf($constValue, [StringComparison]::Ordinal) -lt 0) { continue }
+
+    # Pre-build function boundary map for this file
+    $funcBounds = Build-FuncBounds $lines $ahkKeywords
+
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
         $trimmed = $line.Trim()
-        if ($trimmed -match '^\s*;') { continue }
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
 
         $hasConstRef = $line -match "\b$constName\b"
         $hasRawJson = $trimmed -match $rawPattern
@@ -151,7 +168,7 @@ foreach ($file in $allFiles) {
         }
 
         if ($hasConstRef) {
-            $funcName = Find-EnclosingFunction $lines $i $ahkKeywords
+            $funcName = Find-FuncCached $funcBounds $i
             $hit = @{ File = $relPath; Line = $lineNum; Func = $funcName }
 
             # Classify: send vs handle
@@ -182,7 +199,7 @@ foreach ($file in $allFiles) {
                 if ($s.File -eq $relPath -and $s.Line -eq $lineNum) { $alreadyFound = $true; break }
             }
             if (-not $alreadyFound) {
-                $funcName = Find-EnclosingFunction $lines $i $ahkKeywords
+                $funcName = Find-FuncCached $funcBounds $i
                 [void]$sends.Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
             }
         }
