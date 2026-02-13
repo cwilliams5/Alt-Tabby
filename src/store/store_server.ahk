@@ -38,6 +38,7 @@ global gStore_CachedHeartbeatJson := ""
 global gStore_CachedHeartbeatRev := -1
 global gStore_HeartbeatCount
 global gStore_ScanInProgress := false  ; Re-entrancy guard for _Store_FullScan
+global gStore_PushInProgress := false  ; Re-entrancy guard for Store_PushToClients
 
 ; Cosmetic buffer: throttle pushes for cosmetic-only batches (title changes)
 global _Store_LastCosmeticPushTick := 0
@@ -460,6 +461,10 @@ Store_UpdatePeakWindows(count) {
 ; Called from hot paths (e.g., blacklist skip counting) to centralize stats mutation.
 Store_BumpLifetimeStat(key) {
     global gStats_Lifetime
+    ; NOTE: += 1 is non-atomic but Critical is not used here because _WS_BumpRev
+    ; calls this inside its own Critical section — adding Critical "Off" here would
+    ; leak the caller's Critical state. Blacklist callers are unprotected but losing
+    ; a rare cosmetic stat increment is acceptable (VERY LOW impact).
     if (IsObject(gStats_Lifetime) && gStats_Lifetime.Has(key))
         gStats_Lifetime[key] += 1
 }
@@ -474,11 +479,22 @@ Store_PushToClients() {
     if (!IsObject(gStore_Server) || !gStore_Server.clients.Count)
         return
 
+    ; RACE FIX: Re-entrancy guard. Multiple timers (WinEventHook batch, Komorebi poll,
+    ; ValidateExistence) can trigger pushes. If one push is past its Critical section
+    ; (per-client iteration), a re-entrant call would corrupt static containers.
+    ; Skipping is safe: unconsumed dirty entries persist for next push cycle.
+    Critical "On"
+    global gStore_PushInProgress
+    if (gStore_PushInProgress) {
+        Critical "Off"
+        return
+    }
+    gStore_PushInProgress := true
+
     ; Atomically clean up disconnected clients and snapshot current handles + state
     ; This prevents race conditions if clients disconnect during iteration
     ; RACE FIX: Also snapshot client state - it can be modified by _Store_OnMessage
     ; (HELLO, SET_PROJECTION_OPTS, PROJECTION_REQUEST)
-    Critical "On"
     _Store_CleanupDisconnectedClients()
     ; PERF: Reuse static containers to avoid Map()/Array() allocation each push cycle
     static clientHandles := []
@@ -515,6 +531,7 @@ Store_PushToClients() {
 
     ; Early exit: if nothing changed and no workspace switch, skip all client work
     if (dirtySnapshot.Count = 0 && !wsJustChanged) {
+        gStore_PushInProgress := false
         return
     }
 
@@ -655,6 +672,8 @@ Store_PushToClients() {
 
     ; PERF: Bound diagnostic maps to prevent unbounded memory growth
     WindowStore_TrimDiagMaps()
+
+    gStore_PushInProgress := false
 }
 
 ; Build delta message for a specific client (uses WindowStore_BuildDelta for core logic)
@@ -1085,6 +1104,10 @@ Stats_FlushToDisk() {
 
     statsPath := STATS_INI_PATH
 
+    ; RACE FIX: Wrap in-memory stat mutations in Critical. Stats_FlushToDisk runs from
+    ; HeartbeatTick timer and can be interrupted by IPC_MSG_STATS_UPDATE/REQUEST handlers
+    ; which also modify gStats_Lifetime/gStats_Session.
+    Critical "On"
     ; Compute run time: existing lifetime + current session
     sessionSec := (A_TickCount - gStats_Session.Get("startTick", A_TickCount)) / 1000
     gStats_Lifetime["TotalRunTimeSec"] := gStats_Lifetime.Get("TotalRunTimeSec", 0) + Round(sessionSec)
@@ -1095,6 +1118,9 @@ Stats_FlushToDisk() {
     totalSessionSec := (A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000
     if (totalSessionSec > gStats_Lifetime.Get("LongestSessionSec", 0))
         gStats_Lifetime["LongestSessionSec"] := Round(totalSessionSec)
+    Critical "Off"
+
+    ; File I/O below runs outside Critical (safe: TotalRunTimeSec/LongestSessionSec only written here)
 
     ; Crash protection: backup existing file
     if (FileExist(statsPath))
