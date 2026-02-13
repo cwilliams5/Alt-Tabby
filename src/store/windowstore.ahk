@@ -1478,8 +1478,8 @@ WindowStore_ConsumeWorkspaceChangedFlag() {
 ; No internal Critical — caller manages the Critical section
 WindowStore_ConsumeDirtySet() {
     global gWS_DeltaPendingHwnds
-    snapshot := gWS_DeltaPendingHwnds.Clone()
-    gWS_DeltaPendingHwnds := Map()
+    snapshot := gWS_DeltaPendingHwnds        ; Take ownership of current Map (O(1) ref swap)
+    gWS_DeltaPendingHwnds := Map()           ; New writes go to fresh empty Map
     return snapshot
 }
 

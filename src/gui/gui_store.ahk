@@ -284,15 +284,15 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 _GUI_CreateItemFromRecord(hwnd, rec) {
     return {
         hwnd: hwnd,
-        Title: rec.Has("title") ? rec["title"] : "",
-        Class: rec.Has("class") ? rec["class"] : "",
+        Title: rec.Get("title", ""),
+        Class: rec.Get("class", ""),
         hwndHex: Format("0x{:X}", hwnd),
         PID: rec.Has("pid") ? "" rec["pid"] : "",
-        WS: rec.Has("workspaceName") ? rec["workspaceName"] : "",
-        isOnCurrentWorkspace: rec.Has("isOnCurrentWorkspace") ? rec["isOnCurrentWorkspace"] : true,
-        processName: rec.Has("processName") ? rec["processName"] : "",
-        iconHicon: rec.Has("iconHicon") ? rec["iconHicon"] : 0,
-        lastActivatedTick: rec.Has("lastActivatedTick") ? rec["lastActivatedTick"] : 0
+        WS: rec.Get("workspaceName", ""),
+        isOnCurrentWorkspace: rec.Get("isOnCurrentWorkspace", true),
+        processName: rec.Get("processName", ""),
+        iconHicon: rec.Get("iconHicon", 0),
+        lastActivatedTick: rec.Get("lastActivatedTick", 0)
     }
 }
 
@@ -457,8 +457,14 @@ _GUI_ApplyDelta(payload) {
     ; LATENCY FIX: Pre-cache icon bitmaps OUTSIDE Critical section.
     ; Deferred from upsert loop to avoid blocking hotkeys during GDI+ DllCalls.
     if (iconsToPrecache.Length > 0) {
-        if (gGUI_OverlayVisible) {
-            ; Active overlay: only pre-cache icons within viewport range
+        if (!gGUI_OverlayVisible || iconsToPrecache.Length <= 5) {
+            ; Small batch or background: pre-cache all unconditionally.
+            ; Viewport filtering only helps for large snapshots (30+), not 1-3 icon deltas
+            ; where the changed icon is almost always in viewport anyway.
+            for _, ic in iconsToPrecache
+                Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
+        } else {
+            ; Active overlay with large batch: only pre-cache icons within viewport range
             visRows := GUI_GetVisibleRows()
             vpStart := Max(1, gGUI_ScrollTop + 1 - 3)
             vpEnd := Min(gGUI_LiveItems.Length, gGUI_ScrollTop + visRows + 3)
@@ -469,10 +475,6 @@ _GUI_ApplyDelta(payload) {
                 if (idx >= vpStart && idx <= vpEnd)
                     Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
             }
-        } else {
-            ; Background: pre-cache all new icons
-            for _, ic in iconsToPrecache
-                Gdip_PreCacheIcon(ic.hwnd, ic.hicon)
         }
     }
 
