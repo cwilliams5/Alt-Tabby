@@ -69,6 +69,9 @@ Launcher_CheckInstallMismatch() {
 
     versionCompare := CompareVersions(currentVersion, installedVersion)
 
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("MISMATCH detected: current=" currentPath " v" currentVersion " vs installed=" installedPath " v" installedVersion " cmp=" versionCompare)
+
     ; Mark that we're showing a mismatch dialog (prevents auto-update race)
     g_MismatchDialogShown := true
 
@@ -111,6 +114,9 @@ Launcher_CheckInstallMismatch() {
 ; Common handler for mismatch dialog results
 _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
     global cfg, gConfigIniPath, g_MismatchDialogShown, APP_NAME
+
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("MISMATCH user chose: " result)
 
     if (result = "Yes") {
         ; Launch installed version and exit
@@ -269,6 +275,8 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 ; Wrapper for mismatch update flow - uses Update_ApplyCore with appropriate options
 Launcher_DoUpdateInstalled(sourcePath, targetPath) {
     global cfg, g_StorePID, g_GuiPID, g_ViewerPID, g_WizardSkippedForExistingInstall
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("UPDATE_INSTALLED source=" sourcePath " target=" targetPath)
     Update_ApplyCore({
         sourcePath: sourcePath,
         targetPath: targetPath,
@@ -291,7 +299,7 @@ Launcher_DoUpdateInstalled(sourcePath, targetPath) {
 ; Normal users typically don't have admin mode enabled, so they won't see this.
 
 _Launcher_OfferOneTimeElevation() {
-    global APP_NAME
+    global cfg, APP_NAME
     ; Already elevated - nothing to offer
     if (A_IsAdmin)
         return
@@ -304,6 +312,9 @@ _Launcher_OfferOneTimeElevation() {
     ; (This means the user explicitly set up admin mode before)
     if (!AdminTaskExists())
         return
+
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("ELEVATE offering one-time elevation (admin task exists, not elevated)")
 
     ; Offer one-time elevation for THIS session
     result := ThemeMsgBox(
@@ -393,6 +404,9 @@ _Launcher_CleanupStaleAdminTask(oldPath, newPath) {
     ; If task already points to us, nothing to do
     if (PathsEqual(taskPath, newPath))
         return
+
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("ADMIN_CLEANUP stale task points to " taskPath " (new=" newPath ")")
 
     ; Task points to old location - ask user what to do
     result := ThemeMsgBox(

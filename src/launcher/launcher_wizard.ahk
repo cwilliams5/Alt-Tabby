@@ -286,7 +286,8 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                 })
                 installOk := true
             } catch as e {
-                OutputDebug("Alt-Tabby wizard PF install failed: " e.Message)
+                if (cfg.DiagLauncherLog)
+                    Launcher_Log("WIZARD PF install failed: " e.Message)
             }
             if (installOk && FileExist(targetPath)) {
                 exePath := targetPath

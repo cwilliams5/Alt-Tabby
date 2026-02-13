@@ -1063,6 +1063,8 @@ _Stats_Init() {
 
     if (bakExists && !iniExists) {
         ; Crash before any writes completed -- .bak is the last known good
+        if (cfg.DiagStoreLog)
+            _Store_LogInfo("stats recovery: bak exists, ini missing — restoring from backup")
         try FileMove(statsPath ".bak", statsPath)
     } else if (bakExists && iniExists) {
         ; Crash during or after write -- check sentinel
@@ -1070,12 +1072,21 @@ _Stats_Init() {
         try flushStatus := IniRead(statsPath, "Lifetime", "_FlushStatus", "")
         if (flushStatus = "complete") {
             ; .ini write finished fully -- discard .bak
+            if (cfg.DiagStoreLog)
+                _Store_LogInfo("stats recovery: flush was complete — discarding backup")
             try FileDelete(statsPath ".bak")
         } else {
             ; .ini is partial -- .bak has previous good state
+            if (cfg.DiagStoreLog)
+                _Store_LogInfo("stats recovery: partial flush detected — restoring from backup")
             try FileDelete(statsPath)
             try FileMove(statsPath ".bak", statsPath)
         }
+    } else if (cfg.DiagStoreLog) {
+        if (iniExists)
+            _Store_LogInfo("stats init: clean startup, loading from " statsPath)
+        else
+            _Store_LogInfo("stats init: no stats file, starting fresh")
     }
 
     ; --- Load lifetime stats from disk ---
@@ -1146,15 +1157,19 @@ Stats_FlushToDisk() {
     try IniDelete(statsPath, "Lifetime", "_FlushStatus")
 
     ; Write all stats
-    for _, key in STATS_LIFETIME_KEYS {
-        try IniWrite(gStats_Lifetime.Get(key, 0), statsPath, "Lifetime", key)
+    try {
+        for _, key in STATS_LIFETIME_KEYS {
+            IniWrite(gStats_Lifetime.Get(key, 0), statsPath, "Lifetime", key)
+        }
+
+        ; Sentinel: MUST be last write
+        IniWrite("complete", statsPath, "Lifetime", "_FlushStatus")
+
+        ; Success -- remove backup
+        try FileDelete(statsPath ".bak")
+    } catch as e {
+        _Store_LogError("stats flush failed: " e.Message)
     }
-
-    ; Sentinel: MUST be last write
-    try IniWrite("complete", statsPath, "Lifetime", "_FlushStatus")
-
-    ; Success -- remove backup
-    try FileDelete(statsPath ".bak")
 }
 
 ; Auto-init only if running standalone or if mode is "store"
