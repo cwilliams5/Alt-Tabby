@@ -31,6 +31,7 @@ gGUI_HoverRow: gui_input
 gGUI_LastLocalMRUTick: gui_state
 gGUI_LastMsgTick: gui_main, gui_store
 gGUI_LiveItems: gui_input, gui_state, gui_store
+gGUI_LiveItemsIndex: gui_state, gui_store
 gGUI_LiveItemsMap: gui_input, gui_store
 gGUI_MouseTracking: gui_input
 gGUI_OverlayVisible: gui_overlay, gui_state

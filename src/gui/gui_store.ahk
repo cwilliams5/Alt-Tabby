@@ -179,7 +179,11 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             ; LATENCY FIX: Pre-cache icon bitmaps OUTSIDE Critical section.
             ; _Gdip_CreateBitmapFromHICON_Alpha takes 0.5-2ms per icon via GDI+ DllCall.
             ; With 10-30 windows this blocked hotkeys for 5-60ms during snapshot processing.
-            ; Safe: no new IPC arrives mid-callback, Gdip_DrawCachedIcon handles misses on-demand.
+            ; Safe outside Critical because:
+            ;   1. No IPC re-enters mid-callback (single-threaded message dispatch)
+            ;   2. Hotkeys CAN fire _GUI_UpdateLocalMRU (RemoveAt/InsertAt), but array
+            ;      length is preserved — no out-of-bounds. Gdip_DrawCachedIcon handles
+            ;      misses on-demand if an item shifts position during iteration.
             if (gGUI_OverlayVisible) {
                 ; Active overlay: only pre-cache viewport + scroll buffer for fast repaint
                 visRows := GUI_GetVisibleRows()

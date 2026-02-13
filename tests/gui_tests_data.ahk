@@ -18,7 +18,7 @@ RunGUITests_Data() {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName, gGUI_WSContextSwitch
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
-    global gGUI_StoreRev, gGUI_LiveItemsMap, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
+    global gGUI_StoreRev, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
     global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_DELTA
     global IPC_MSG_PROJECTION, IPC_MSG_PROJECTION_REQUEST
@@ -148,6 +148,26 @@ RunGUITests_Data() {
     GUI_AssertTrue(result, "UpdateLocalMRU: returns true for first item")
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, firstHwnd, "UpdateLocalMRU: first item stays first")
     GUI_AssertTrue(gGUI_LastLocalMRUTick > 0, "UpdateLocalMRU: tick set even for first item")
+
+    ; ----- Test: _GUI_UpdateLocalMRU rebuilds gGUI_LiveItemsIndex -----
+    GUI_Log("Test: _GUI_UpdateLocalMRU rebuilds gGUI_LiveItemsIndex")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(5)
+    ; Build initial index (mirrors what _GUI_ConvertStoreItemsWithMap does)
+    gGUI_LiveItemsIndex := Map()
+    for idx, itm in gGUI_LiveItems
+        gGUI_LiveItemsIndex[itm.hwnd] := idx
+    ; Verify initial state: item 3 is at position 3
+    GUI_AssertEq(gGUI_LiveItemsIndex[3000], 3, "IndexRebuild: initial position of hwnd 3000 is 3")
+
+    ; Move item 3 to position 1
+    _GUI_UpdateLocalMRU(3000)
+    ; After move: [3000, 1000, 2000, 4000, 5000]
+    GUI_AssertEq(gGUI_LiveItemsIndex[3000], 1, "IndexRebuild: hwnd 3000 now at position 1")
+    GUI_AssertEq(gGUI_LiveItemsIndex[1000], 2, "IndexRebuild: hwnd 1000 shifted to position 2")
+    GUI_AssertEq(gGUI_LiveItemsIndex[2000], 3, "IndexRebuild: hwnd 2000 shifted to position 3")
+    GUI_AssertEq(gGUI_LiveItemsIndex[4000], 4, "IndexRebuild: hwnd 4000 stays at position 4")
+    GUI_AssertEq(gGUI_LiveItemsIndex[5000], 5, "IndexRebuild: hwnd 5000 stays at position 5")
 
     ; ----- Test: _GUI_RobustActivate returns false for invalid hwnd -----
     ; Regression guard: ensures activation returns a testable result (not void)
