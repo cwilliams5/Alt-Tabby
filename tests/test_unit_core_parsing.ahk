@@ -520,8 +520,8 @@ RunUnitTests_CoreParsing() {
     AssertEq(KSub_FindWorkspaceByHwnd(miniObj, 333), "Beta", "Parse+Navigate: hwnd 333 in Beta")
     AssertEq(KSub_FindWorkspaceByHwnd(miniObj, 999), "", "Parse+Navigate: hwnd 999 not found")
 
-    ; Test GetFocusedHwnd (should navigate to Beta ws, focused container 0, focused window 1 = hwnd 333)
-    focusedHwnd := _KSub_GetFocusedHwnd(miniObj)
+    ; Test GetFocusedHwnd via ws name (should find Beta ws, focused container 0, focused window 1 = hwnd 333)
+    focusedHwnd := KSub_GetFocusedHwndByWsName(miniObj, "Beta")
     AssertEq(focusedHwnd, 333, "Parse+Navigate: focused hwnd is 333")
 
     ; ============================================================

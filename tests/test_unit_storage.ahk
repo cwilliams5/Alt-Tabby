@@ -292,34 +292,7 @@ RunUnitTests_Storage() {
         Log("SKIP: notepad.exe not found at " exePath)
     }
 
-    ; Test 2: UWP Detection - explorer.exe is NOT a UWP app
-    Log("Testing UWP detection (explorer.exe should not be UWP)...")
-    explorerPid := ProcessExist("explorer.exe")
-    if (explorerPid > 0) {
-        isUWP := _IP_AppHasPackage(explorerPid)
-        if (!isUWP) {
-            Log("PASS: explorer.exe correctly detected as non-UWP")
-            TestPassed++
-        } else {
-            Log("FAIL: explorer.exe incorrectly detected as UWP")
-            TestErrors++
-        }
-    } else {
-        Log("SKIP: explorer.exe not running")
-    }
-
-    ; Test 3: UWP Detection - invalid PID should return false
-    Log("Testing UWP detection with invalid PID...")
-    isUWP := _IP_AppHasPackage(0)
-    if (!isUWP) {
-        Log("PASS: Invalid PID (0) correctly returns false for UWP check")
-        TestPassed++
-    } else {
-        Log("FAIL: Invalid PID should return false for UWP check")
-        TestErrors++
-    }
-
-    ; Test 4: Icon Resolution Chain - cloaked window should still get EXE icon
+    ; Test 2: Icon Resolution Chain - cloaked window should still get EXE icon
     Log("Testing icon resolution chain for cloaked windows...")
     ; Create a mock scenario: we have an exePath, test that we can get an icon from it
     ; even when the "window" would be considered cloaked
@@ -347,8 +320,9 @@ RunUnitTests_Storage() {
         Log("SKIP: explorer.exe not found at " testExe)
     }
 
-    ; Test 5: GetProcessPath helper
+    ; Test 3: GetProcessPath helper
     Log("Testing _IP_GetProcessPath helper...")
+    explorerPid := ProcessExist("explorer.exe")
     if (explorerPid > 0) {
         procPath := _IP_GetProcessPath(explorerPid)
         if (procPath != "" && InStr(procPath, "explorer.exe")) {
@@ -362,7 +336,7 @@ RunUnitTests_Storage() {
         Log("SKIP: explorer.exe not running for process path test")
     }
 
-    ; Test 6: Hidden windows MUST be enqueued for icon resolution
+    ; Test 4: Hidden windows MUST be enqueued for icon resolution
     ; This is the critical end-to-end test - verifies that cloaked/minimized windows
     ; actually make it into the icon queue (the bug was they were filtered out here)
     Log("Testing hidden window icon enqueue (critical E2E test)...")
@@ -430,7 +404,7 @@ RunUnitTests_Storage() {
     ; Clean up
     WindowStore_RemoveWindow([cloakedHwnd, minHwnd], true)
 
-    ; Test 7: WindowStore_EnqueueIconRefresh with throttle
+    ; Test 5: WindowStore_EnqueueIconRefresh with throttle
     Log("Testing icon refresh throttle...")
     WindowStore_Init()
     WindowStore_BeginScan()
@@ -492,7 +466,7 @@ RunUnitTests_Storage() {
     ; Clean up
     WindowStore_RemoveWindow([refreshHwnd], true)
 
-    ; Test 8: Icon upgrade - visible window with EXE fallback gets re-queued
+    ; Test 6: Icon upgrade - visible window with EXE fallback gets re-queued
     Log("Testing icon upgrade queue (EXE fallback -> WM_GETICON upgrade)...")
     WindowStore_Init()
     WindowStore_BeginScan()

@@ -404,63 +404,6 @@ Gdip_GetCachedPen(argb, width) {
     return pPen
 }
 
-; Fill rounded rectangle (pBr = pre-cached brush pointer)
-Gdip_FillRoundRect(g, pBr, x, y, w, h, r) {
-    if (w <= 0 || h <= 0) {
-        return
-    }
-
-    if (r <= 0) {
-        DllCall("gdiplus\GdipFillRectangle", "ptr", g, "ptr", pBr, "float", x, "float", y, "float", w, "float", h)
-        return
-    }
-
-    pPath := 0
-    r2 := r * 2.0
-
-    DllCall("gdiplus\GdipCreatePath", "int", 0, "ptr*", &pPath)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x, "float", y, "float", r2, "float", r2, "float", 180.0, "float", 90.0)
-    DllCall("gdiplus\GdipAddPathLine", "ptr", pPath, "float", x + r, "float", y, "float", x + w - r, "float", y)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x + w - r2, "float", y, "float", r2, "float", r2, "float", 270.0, "float", 90.0)
-    DllCall("gdiplus\GdipAddPathLine", "ptr", pPath, "float", x + w, "float", y + r, "float", x + w, "float", y + h - r)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x + w - r2, "float", y + h - r2, "float", r2, "float", r2, "float", 0.0, "float", 90.0)
-    DllCall("gdiplus\GdipAddPathLine", "ptr", pPath, "float", x + w - r, "float", y + h, "float", x + r, "float", y + h)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x, "float", y + h - r2, "float", r2, "float", r2, "float", 90.0, "float", 90.0)
-    DllCall("gdiplus\GdipClosePathFigure", "ptr", pPath)
-
-    DllCall("gdiplus\GdipFillPath", "ptr", g, "ptr", pBr, "ptr", pPath)
-
-    if (pPath) {
-        DllCall("gdiplus\GdipDeletePath", "ptr", pPath)
-    }
-}
-
-; Stroke rounded rectangle (pPen = pre-cached pen pointer)
-Gdip_StrokeRoundRect(g, pPen, x, y, w, h, r) {
-    if (w <= 0 || h <= 0) {
-        return
-    }
-
-    pPath := 0
-    r2 := r * 2.0
-
-    DllCall("gdiplus\GdipCreatePath", "int", 0, "ptr*", &pPath)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x, "float", y, "float", r2, "float", r2, "float", 180.0, "float", 90.0)
-    DllCall("gdiplus\GdipAddPathLine", "ptr", pPath, "float", x + r, "float", y, "float", x + w - r, "float", y)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x + w - r2, "float", y, "float", r2, "float", r2, "float", 270.0, "float", 90.0)
-    DllCall("gdiplus\GdipAddPathLine", "ptr", pPath, "float", x + w, "float", y + r, "float", x + w, "float", y + h - r)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x + w - r2, "float", y + h - r2, "float", r2, "float", r2, "float", 0.0, "float", 90.0)
-    DllCall("gdiplus\GdipAddPathLine", "ptr", pPath, "float", x + w - r, "float", y + h, "float", x + r, "float", y + h)
-    DllCall("gdiplus\GdipAddPathArc", "ptr", pPath, "float", x, "float", y + h - r2, "float", r2, "float", r2, "float", 90.0, "float", 90.0)
-    DllCall("gdiplus\GdipClosePathFigure", "ptr", pPath)
-
-    DllCall("gdiplus\GdipDrawPath", "ptr", g, "ptr", pPen, "ptr", pPath)
-
-    if (pPath) {
-        DllCall("gdiplus\GdipDeletePath", "ptr", pPath)
-    }
-}
-
 ; ========================= CACHED ROUND RECT PATH =========================
 
 ; Get or create a cached GDI+ path for the given (w, h, r) at origin (0,0).

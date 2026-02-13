@@ -474,31 +474,6 @@ _IP_SetCooldown(hwnd, ms) {
 ; UWP apps don't have traditional EXE icons - their icons are PNG files
 ; in the app package folder, referenced via AppxManifest.xml.
 
-; Check if a process is a UWP/packaged app (has a package identity)
-_IP_AppHasPackage(pid) {
-    global PROCESS_QUERY_LIMITED_INFORMATION
-    if (!pid || pid <= 0)
-        return false
-
-    ; Open process with PROCESS_QUERY_LIMITED_INFORMATION (0x1000)
-    hProc := DllCall("kernel32\OpenProcess", "uint", PROCESS_QUERY_LIMITED_INFORMATION, "int", 0, "uint", pid, "ptr")
-    if (!hProc)
-        return false
-
-    ; Try GetPackageId - returns 0 if app has no package identity
-    ; Buffer for PACKAGE_ID structure (variable size, use 1024 bytes)
-    bufLen := 1024
-    buf := Buffer(bufLen, 0)
-
-    ; GetPackageId returns ERROR_SUCCESS (0) if app has package
-    ; ERROR_INSUFFICIENT_BUFFER (122) also means it has a package (just needs bigger buffer)
-    result := DllCall("kernel32\GetPackageId", "ptr", hProc, "uint*", &bufLen, "ptr", buf.Ptr, "int")
-    DllCall("kernel32\CloseHandle", "ptr", hProc)
-
-    ; SUCCESS or INSUFFICIENT_BUFFER means it's a UWP app
-    return (result = 0 || result = 122)
-}
-
 ; Get logo path from a package path (cached version)
 ; Returns cached result if available, otherwise resolves and caches
 _IP_GetUWPLogoPathCached(packagePath) {
