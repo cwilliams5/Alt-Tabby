@@ -383,12 +383,12 @@ Theme_MarkSidebar(ctrl) {
 
 ; Untrack a GUI (call before Gui.Destroy() to prevent stale references).
 Theme_UntrackGui(gui) {
-    global gTheme_TrackedGuis, gTheme_TabSubclass
+    global gTheme_TrackedGuis, gTheme_TabSubclass, gTheme_ButtonMap, gTheme_HoverTimerFn
     idx := 0
     for i, entry in gTheme_TrackedGuis {
         try {
             if (entry.gui.Hwnd = gui.Hwnd) {
-                ; Restore tab WndProc subclasses before destruction
+                ; Restore tab WndProc subclasses and clean up button map entries
                 for ctrlEntry in entry.controls {
                     if (ctrlEntry.type = "Tab" && gTheme_TabSubclass.Has(ctrlEntry.ctrl.Hwnd)) {
                         sub := gTheme_TabSubclass[ctrlEntry.ctrl.Hwnd]
@@ -396,6 +396,13 @@ Theme_UntrackGui(gui) {
                         CallbackFree(sub.callback)
                         gTheme_TabSubclass.Delete(ctrlEntry.ctrl.Hwnd)
                     }
+                    if (ctrlEntry.type = "Button" && gTheme_ButtonMap.Has(ctrlEntry.ctrl.Hwnd))
+                        gTheme_ButtonMap.Delete(ctrlEntry.ctrl.Hwnd)
+                }
+                ; Stop hover timer if no buttons remain
+                if (gTheme_ButtonMap.Count = 0 && gTheme_HoverTimerFn) {
+                    SetTimer(gTheme_HoverTimerFn, 0)
+                    gTheme_HoverTimerFn := 0
                 }
                 idx := i
                 break

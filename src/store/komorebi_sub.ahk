@@ -267,7 +267,7 @@ _KSub_InitialPoll() {
 ; Stop subscription
 KomorebiSub_Stop() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected, _KSub_ClientPid
-    global _KSub_FallbackMode
+    global _KSub_FallbackMode, _KSub_ReadBuffer, _KSub_ReadBufferLen
 
     ; Stop all timers
     SetTimer(KomorebiSub_Poll, 0)
@@ -297,6 +297,8 @@ KomorebiSub_Stop() {
 
     _KSub_Overlapped := 0
     _KSub_Connected := false
+    _KSub_ReadBuffer := ""
+    _KSub_ReadBufferLen := 0
 }
 
 ; Prune stale workspace cache entries (called from Store_HeartbeatTick)

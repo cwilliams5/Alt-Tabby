@@ -23,7 +23,16 @@ KomorebiLite_Init() {
 }
 
 KomorebiLite_Stop() {
+    global _KLite_PendingPid, _KLite_PendingTmp
     SetTimer(_KomorebiLite_Tick, 0)
+    if (_KLite_PendingPid) {
+        try ProcessClose(_KLite_PendingPid)
+        _KLite_PendingPid := 0
+    }
+    if (_KLite_PendingTmp != "") {
+        try FileDelete(_KLite_PendingTmp)
+        _KLite_PendingTmp := ""
+    }
 }
 
 _KomorebiLite_Tick() {
