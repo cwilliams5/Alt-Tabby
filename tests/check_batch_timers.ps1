@@ -260,6 +260,7 @@ $sw.Stop()
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 $TL_SUPPRESSION = 'lint-ignore: timer-lifecycle'
+$bindIdentityIssues = [System.Collections.ArrayList]::new()
 
 # Phase 1: Collect all SetTimer starts and cancellations per file
 $fileTimerData = @{}
@@ -306,6 +307,18 @@ foreach ($file in $allFiles) {
                 continue
             }
             if ($periodStr -match '^-') { continue }
+
+            # Bind identity check: inline .Bind() with positive period creates
+            # an uncancellable repeating timer (each .Bind() creates a new object).
+            # Correct pattern: store bound ref in a variable first.
+            if ($periodStr -match '^\d+$' -and [int]$periodStr -gt 0) {
+                [void]$bindIdentityIssues.Add([PSCustomObject]@{
+                    File     = $relPath
+                    Line     = ($i + 1)
+                    Callback = $cbName
+                    Period   = $periodStr
+                })
+            }
 
             if (-not $starts.ContainsKey($cbName)) {
                 $starts[$cbName] = [System.Collections.ArrayList]::new()
@@ -400,6 +413,26 @@ if ($tlIssues.Count -gt 0) {
         [void]$failOutput.AppendLine("    $($group.Name):")
         foreach ($issue in $group.Group | Sort-Object Line) {
             [void]$failOutput.AppendLine("      Line $($issue.Line): SetTimer($($issue.Callback), ...) - no cancellation found")
+        }
+    }
+}
+
+if ($bindIdentityIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($bindIdentityIssues.Count) repeating timer(s) with inline .Bind() found.")
+    [void]$failOutput.AppendLine("  Each .Bind() creates a new object, so SetTimer(fn.Bind(x), 0) won't cancel")
+    [void]$failOutput.AppendLine("  a timer started with SetTimer(fn.Bind(x), period) - different objects.")
+    [void]$failOutput.AppendLine("  Fix: store the bound ref in a variable first:")
+    [void]$failOutput.AppendLine("    boundRef := Func.Bind(args)")
+    [void]$failOutput.AppendLine("    SetTimer(boundRef, period)")
+    [void]$failOutput.AppendLine("    SetTimer(boundRef, 0)  ; same object - cancellation works")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: timer-lifecycle' on the SetTimer line.")
+    $grouped = $bindIdentityIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): SetTimer($($issue.Callback).Bind(...), $($issue.Period)) - inline .Bind() creates uncancellable timer")
         }
     }
 }

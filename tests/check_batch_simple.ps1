@@ -1,6 +1,6 @@
 # check_batch_simple.ps1 - Batched simple pattern checks
-# Combines 4 lightweight checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default
+# Combines 6 lightweight checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_simple.ps1 [-SourceDir "path\to\src"]
@@ -601,6 +601,182 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_isset_with_default"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 5: cfg_properties
+# Verifies that all cfg.PropertyName accesses match entries in
+# the config registry (g: field). Catches typos that would
+# silently return "" at runtime.
+# Suppress: ; lint-ignore: cfg-property
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$cpIssues = [System.Collections.ArrayList]::new()
+
+# Phase 1: Extract valid property names from config_registry.ahk
+$registryFile = @($allFiles | Where-Object { $_.Name -eq 'config_registry.ahk' })
+$validCfgProps = [System.Collections.Generic.HashSet[string]]::new()
+
+if ($registryFile.Count -eq 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: config_registry.ahk not found in source directory")
+} else {
+    $regLines = $fileCache[$registryFile[0].FullName]
+    foreach ($line in $regLines) {
+        if ($line -match '\bg:\s*"(\w+)"') {
+            [void]$validCfgProps.Add($Matches[1])
+        }
+    }
+
+    # Built-in object methods to skip
+    $cfgMethodSkip = [System.Collections.Generic.HashSet[string]]::new()
+    @('HasOwnProp', 'DefineProp', 'GetOwnPropDesc', 'OwnProps',
+      'HasProp', 'HasMethod', 'GetMethod', '__Class', '__Init',
+      'Clone', 'Ptr', 'Base') | ForEach-Object { [void]$cfgMethodSkip.Add($_) }
+
+    # Phase 2: Scan all src/ files for cfg.PropertyName accesses
+    foreach ($file in $allFiles) {
+        $lines = $fileCache[$file.FullName]
+
+        # Pre-filter: skip files without "cfg."
+        $joined = [string]::Join("`n", $lines)
+        if ($joined.IndexOf('cfg.', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $raw = $lines[$i]
+            if ($raw -match '^\s*;') { continue }
+            if ($raw -match ';\s*lint-ignore:\s*cfg-property') { continue }
+            if ($raw.IndexOf('cfg.', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+            $cleaned = BS_CleanLine $raw
+            if ($cleaned -eq '') { continue }
+
+            # Skip dynamic property access: cfg.%variable%
+            if ($cleaned -match 'cfg\.%') { continue }
+
+            $propMatches = [regex]::Matches($cleaned, '\bcfg\.([A-Za-z_]\w*)\b')
+            foreach ($m in $propMatches) {
+                $prop = $m.Groups[1].Value
+                if ($cfgMethodSkip.Contains($prop)) { continue }
+                if (-not $validCfgProps.Contains($prop)) {
+                    [void]$cpIssues.Add([PSCustomObject]@{
+                        File = $relPath; Line = ($i + 1); Property = $prop
+                    })
+                }
+            }
+        }
+    }
+}
+
+if ($cpIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($cpIssues.Count) cfg property access(es) not found in config registry.")
+    [void]$failOutput.AppendLine("  cfg.PropertyName silently returns `"`" if the property doesn't exist.")
+    [void]$failOutput.AppendLine("  Fix: check spelling against g: field in config_registry.ahk.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: cfg-property' on the access line.")
+    $grouped = $cpIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): cfg.$($issue.Property) - not in registry")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_cfg_properties"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 6: duplicate_functions
+# Detects function names defined in more than one file.
+# In AHK v2 with #Include, the last definition wins silently.
+# Suppress: ; lint-ignore: duplicate-function
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$dfIssues = [System.Collections.ArrayList]::new()
+
+# Phase 1: Collect file-scope function definitions
+$funcDefs = @{}  # funcName -> list of @{ File; Line }
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $depth = 0
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match ';\s*lint-ignore:\s*duplicate-function') {
+            # Skip this definition
+            $cleaned = BS_CleanLine $raw
+            if ($cleaned -ne '') {
+                $braces = BS_CountBraces $cleaned
+                $depth += $braces[0] - $braces[1]
+            }
+            continue
+        }
+
+        $cleaned = BS_CleanLine $raw
+        if ($cleaned -eq '') { continue }
+
+        $braces = BS_CountBraces $cleaned
+
+        # Only match at file scope (depth == 0)
+        if ($depth -eq 0 -and $cleaned -match '^\s*(\w+)\s*\([^)]*\)\s*\{') {
+            $funcName = $Matches[1]
+            # Skip AHK keywords that look like function defs (if, while, etc.)
+            $lower = $funcName.ToLower()
+            if ($lower -in @('if', 'else', 'while', 'for', 'loop', 'switch', 'catch',
+                'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
+                'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
+                'new', 'super', 'this', 'true', 'false', 'unset', 'isset')) {
+                $depth += $braces[0] - $braces[1]
+                if ($depth -lt 0) { $depth = 0 }
+                continue
+            }
+            if (-not $funcDefs.ContainsKey($funcName)) {
+                $funcDefs[$funcName] = [System.Collections.ArrayList]::new()
+            }
+            [void]$funcDefs[$funcName].Add(@{ File = $relPath; Line = ($i + 1) })
+        }
+
+        $depth += $braces[0] - $braces[1]
+        if ($depth -lt 0) { $depth = 0 }
+    }
+}
+
+# Phase 2: Flag any function defined in 2+ files
+foreach ($funcName in $funcDefs.Keys | Sort-Object) {
+    $defs = $funcDefs[$funcName]
+    if ($defs.Count -lt 2) { continue }
+
+    # Check if definitions span multiple files
+    $uniqueFiles = @($defs | ForEach-Object { $_.File } | Sort-Object -Unique)
+    if ($uniqueFiles.Count -lt 2) { continue }
+
+    [void]$dfIssues.Add([PSCustomObject]@{
+        FuncName = $funcName
+        Defs     = $defs
+    })
+}
+
+if ($dfIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($dfIssues.Count) function(s) defined in multiple files.")
+    [void]$failOutput.AppendLine("  AHK v2 silently uses the last #Include'd definition - earlier ones are replaced.")
+    [void]$failOutput.AppendLine("  Fix: rename one definition, or consolidate into a single file.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: duplicate-function' on the function definition line.")
+    foreach ($issue in $dfIssues) {
+        [void]$failOutput.AppendLine("    $($issue.FuncName):")
+        foreach ($def in $issue.Defs) {
+            [void]$failOutput.AppendLine("      $($def.File):$($def.Line)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_duplicate_functions"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -608,7 +784,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default)" -ForegroundColor Green
+    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
