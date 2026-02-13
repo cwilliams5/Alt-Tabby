@@ -12,19 +12,21 @@ global gGUI_LiveItemsMap := Map()
 ; hwnd -> 1-based position in gGUI_LiveItems for O(1) viewport range checks
 global gGUI_LiveItemsIndex := Map()
 
+; Amortized idle icon pre-cache state (shared across snapshot/delta paths)
+global _gIdleCacheIdx := 0
+global _gIdleCacheGen := 0
+
 ; ========================= STORE MESSAGE HANDLER =========================
 
 GUI_OnStoreMessage(line, _hPipe := 0) {
     global gGUI_StoreConnected, gGUI_StoreRev, gGUI_LiveItems, gGUI_Sel, gGUI_LiveItemsMap
     global gGUI_OverlayVisible, gGUI_OverlayH, gGUI_FooterText, gGUI_ScrollTop, cfg
+    global gGdip_IconCache  ; For icon cache vs live items count comparison in prune check
     global gGUI_Revealed  ; Used instead of gGUI_OverlayVisible for IPC repaint guards
     global gGUI_State, gGUI_DisplayItems, gGUI_ToggleBase  ; CRITICAL: All list state for updates
     global IPC_MSG_HELLO_ACK, IPC_MSG_SNAPSHOT, IPC_MSG_PROJECTION, IPC_MSG_DELTA
     global gGUI_LastLocalMRUTick  ; For skipping stale in-flight snapshots
     global gGUI_LastMsgTick  ; For health check timeout detection
-
-    ; Track last message time for health check
-    gGUI_LastMsgTick := A_TickCount
 
     obj := ""
     try {
@@ -41,6 +43,10 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
     if (!IsObject(obj) || !obj.Has("type")) {
         return
     }
+
+    ; Track last successful message time for health check (after parse + type validation).
+    ; Moving this after the parse guard ensures corrupted JSON doesn't mask stale connections.
+    gGUI_LastMsgTick := A_TickCount
 
     type := obj["type"]
 
@@ -128,7 +134,6 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         if (obj.Has("payload") && obj["payload"].Has("items")) {
             ; Critical already held from above (phase check guard)
             ; Single-pass conversion: builds both items array and Map together
-            prevMapCount := gGUI_LiveItemsMap.Count  ; O(1) — for conditional icon prune below
             converted := _GUI_ConvertStoreItemsWithMap(obj["payload"]["items"])
             gGUI_LiveItems := converted.items
             gGUI_LiveItemsMap := converted.map
@@ -197,18 +202,16 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
                     idx++
                 }
             } else {
-                ; Background: pre-cache everything while we have idle time
-                for _, item in gGUI_LiveItems {
-                    if (item.iconHicon)
-                        Gdip_PreCacheIcon(item.hwnd, item.iconHicon)
-                }
+                ; Background: amortized batch pre-cache (10 icons per IPC callback).
+                ; Avoids blocking IPC for 100-400ms with 200+ windows.
+                _GUI_IdlePreCacheBatch()
             }
 
-            ; LATENCY FIX: Prune icon cache OUTSIDE Critical section.
-            ; Only prune when items were actually removed (count decreased).
-            ; Same-count case (different hwnds) is harmless — orphans cleaned on next
-            ; snapshot with different count or by the delta path's conditional prune.
-            if (converted.map.Count < prevMapCount)
+            ; Prune icon cache after every snapshot when cache is non-empty.
+            ; The old count-decrease-only check missed same-count churn orphans.
+            ; Gdip_PruneIconCache iterates cache and removes hwnds not in liveHwnds.
+            ; Cheap when no orphans (Map.Has per entry), and snapshots are infrequent.
+            if (gGdip_IconCache.Count)
                 Gdip_PruneIconCache(gGUI_LiveItemsMap)
 
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
@@ -316,6 +319,30 @@ _GUI_ConvertStoreItemsWithMap(items) {
         gGUI_LiveItemsIndex[hwnd] := result.Length
     }
     return { items: result, map: resultMap }
+}
+
+; ========================= IDLE ICON PRE-CACHE =========================
+
+; Amortized idle icon pre-caching: process 10 icons per IPC callback.
+; Called from both snapshot and delta paths when overlay is hidden.
+; Shared cursor (_gIdleCacheIdx) ensures progress regardless of message type.
+_GUI_IdlePreCacheBatch() {
+    global gGUI_LiveItems, _gIdleCacheIdx, _gIdleCacheGen
+    ; Simple proxy for "list changed" — length change means new ordering
+    thisGen := gGUI_LiveItems.Length
+    if (thisGen != _gIdleCacheGen) {
+        _gIdleCacheIdx := 0
+        _gIdleCacheGen := thisGen
+    }
+    if (_gIdleCacheIdx >= gGUI_LiveItems.Length)
+        return  ; fully cached, nothing to do
+    endIdx := Min(_gIdleCacheIdx + 10, gGUI_LiveItems.Length)
+    while (_gIdleCacheIdx < endIdx) {
+        _gIdleCacheIdx++
+        item := gGUI_LiveItems[_gIdleCacheIdx]
+        if (item.iconHicon)
+            Gdip_PreCacheIcon(item.hwnd, item.iconHicon)
+    }
 }
 
 ; ========================= DELTA APPLICATION =========================
@@ -486,6 +513,12 @@ _GUI_ApplyDelta(payload) {
     ; because GdipDisposeImage DllCalls can take 2-5ms)
     if (needsIconPrune)
         Gdip_PruneIconCache(gGUI_LiveItemsMap)
+
+    ; Advance background amortization cursor when hidden.
+    ; Ensures pre-caching progresses on deltas too (deltas arrive on every
+    ; focus change; snapshots may be rare/disabled without occasional-snapshots).
+    if (!gGUI_OverlayVisible)
+        _GUI_IdlePreCacheBatch()
 
     ; AFTER all delta processing: check bypass state for newly focused window
     ; This runs ONCE per delta, not per upsert - minimizes blocking time

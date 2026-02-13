@@ -19,6 +19,7 @@ A_IconHidden := true  ; No tray icon during tests
 global gGUI_State := "IDLE"
 global gGUI_LiveItems := []
 global gGUI_LiveItemsMap := Map()  ; hwnd -> item lookup for O(1) delta processing
+global gGdip_IconCache := Map()   ; Icon cache stub for prune condition in gui_store
 global gGUI_DisplayItems := []
 global gGUI_ToggleBase := []
 global gGUI_AwaitingToggleProjection := false
@@ -133,20 +134,33 @@ GUI_HideOverlay() {
 
 ; GDI+ icon cache invalidation mock (called by GUI_ApplyDelta on removes)
 Gdip_InvalidateIconCache(hwnd) {
+    global gGdip_IconCache
+    if (gGdip_IconCache.Has(hwnd))
+        gGdip_IconCache.Delete(hwnd)
 }
 
 ; GDI+ icon cache prune mock (called by snapshot handler to dispose orphaned bitmaps)
 global gMock_PruneCalledWith := ""
 Gdip_PruneIconCache(liveHwnds) {
-    global gMock_PruneCalledWith
+    global gMock_PruneCalledWith, gGdip_IconCache
     gMock_PruneCalledWith := liveHwnds
+    ; Mirror production: remove entries not in live hwnds
+    stale := []
+    for hwnd, _ in gGdip_IconCache {
+        if (!liveHwnds.Has(hwnd))
+            stale.Push(hwnd)
+    }
+    for _, hwnd in stale
+        gGdip_IconCache.Delete(hwnd)
 }
 
 ; GDI+ icon pre-cache mock (called on IPC receive to eagerly convert HICON → bitmap)
 global gMock_PreCachedIcons := Map()
 Gdip_PreCacheIcon(hwnd, hIcon) {
-    global gMock_PreCachedIcons
+    global gMock_PreCachedIcons, gGdip_IconCache
     gMock_PreCachedIcons[hwnd] := hIcon
+    ; Mirror production behavior: keep gGdip_IconCache in sync for prune condition
+    gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: 0}
 }
 
 ; Visible rows mock (called by _GUI_AnyVisibleItemChanged)
@@ -248,7 +262,7 @@ ResetGUIState() {
     global gGUI_EventBuffer, gGUI_PendingPhase, gGUI_FlushStartTick
     global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
-    global gMock_PreCachedIcons
+    global gMock_PreCachedIcons, gGdip_IconCache
 
     gGUI_State := "IDLE"
     gGUI_LiveItems := []
@@ -278,6 +292,10 @@ ResetGUIState() {
     gINT_BypassMode := false
     gMock_PruneCalledWith := ""
     gMock_PreCachedIcons := Map()
+    gGdip_IconCache := Map()  ; Reset icon cache for prune condition
+    global _gIdleCacheIdx, _gIdleCacheGen
+    _gIdleCacheIdx := 0
+    _gIdleCacheGen := 0
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
 }

@@ -354,7 +354,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             isSel := (idx1 = selIndex)
 
             if (isSel) {
-                Gdip_FillRoundRect(g, Gdip_GetCachedBrush(cfg.GUI_SelARGB), Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad)
+                Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_SelARGB), Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad)
             }
 
             ix := leftX
@@ -484,9 +484,9 @@ _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bg
     bgCol := hovered ? cfg.%bgProp "BGHoverARGB"% : cfg.%bgProp "BGARGB"%
     txCol := hovered ? cfg.%bgProp "TextHoverARGB"% : cfg.%bgProp "TextARGB"%
 
-    Gdip_FillRoundRect(g, Gdip_GetCachedBrush(bgCol), btnX, btnY, size, size, rad)
+    Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(bgCol), btnX, btnY, size, size, rad)
     if (borderPx > 0) {
-        Gdip_StrokeRoundRect(g, Gdip_GetCachedPen(cfg.%bgProp "BorderARGB"%, Round(borderPx * scale)), btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad)
+        Gdip_StrokeRoundRectCached(g, Gdip_GetCachedPen(cfg.%bgProp "BorderARGB"%, Round(borderPx * scale)), btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad)
     }
     Gdip_DrawCenteredText(g, glyph, btnX, btnY, size, size, Gdip_GetCachedBrush(txCol), gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
     btnX := btnX - (size + gap)
@@ -552,20 +552,20 @@ _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count,
     yEnd := y + trackH
 
     if (cfg.GUI_ScrollBarGutterEnabled) {
-        Gdip_FillRoundRect(g, Gdip_GetCachedBrush(cfg.GUI_ScrollBarGutterARGB), x, y, trackW, trackH, r)
+        Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_ScrollBarGutterARGB), x, y, trackW, trackH, r)
     }
 
     thumbBr := Gdip_GetCachedBrush(cfg.GUI_ScrollBarThumbARGB)
     if (y2 <= yEnd) {
-        Gdip_FillRoundRect(g, thumbBr, x, y1, trackW, thumbH, r)
+        Gdip_FillRoundRectCached(g, thumbBr, x, y1, trackW, thumbH, r)
     } else {
         h1 := yEnd - y1
         if (h1 > 0) {
-            Gdip_FillRoundRect(g, thumbBr, x, y1, trackW, h1, r)
+            Gdip_FillRoundRectCached(g, thumbBr, x, y1, trackW, h1, r)
         }
         h2 := y2 - yEnd
         if (h2 > 0) {
-            Gdip_FillRoundRect(g, thumbBr, x, y, trackW, h2, r)
+            Gdip_FillRoundRectCached(g, thumbBr, x, y, trackW, h2, r)
         }
     }
 }
@@ -596,9 +596,9 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     }
 
     ; Draw footer background
-    Gdip_FillRoundRect(g, Gdip_GetCachedBrush(cfg.GUI_FooterBGARGB), fx, fy, fw, fh, fr)
+    Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_FooterBGARGB), fx, fy, fw, fh, fr)
     if (cfg.GUI_FooterBorderPx > 0) {
-        Gdip_StrokeRoundRect(g, Gdip_GetCachedPen(cfg.GUI_FooterBorderARGB, Round(cfg.GUI_FooterBorderPx * scale)), fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr)
+        Gdip_StrokeRoundRectCached(g, Gdip_GetCachedPen(cfg.GUI_FooterBorderARGB, Round(cfg.GUI_FooterBorderPx * scale)), fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr)
     }
 
     pad := Round(cfg.GUI_FooterPaddingX * scale)

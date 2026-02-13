@@ -779,21 +779,26 @@ RunGUITests_Data() {
     GUI_AssertTrue(gGUI_LiveItemsMap.Has(2000), "Prune: live map has hwnd 2000")
     GUI_AssertTrue(gGUI_LiveItemsMap.Has(3000), "Prune: live map has hwnd 3000")
 
-    ; ----- Test: Prune called only when items removed (count decreased) -----
-    GUI_Log("Test: Prune called only when items removed (count decreased)")
+    ; ----- Test: Prune called when cache has orphans after snapshot -----
+    GUI_Log("Test: Prune called when cache has orphans after snapshot")
     ResetGUIState()
-    ; First snapshot: 5 items
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 201, payload: { items: CreateTestItems(5) } })
+    ; First snapshot: 5 items with icons (so cache gets populated)
+    items5 := CreateTestItems(5)
+    for _, item in items5
+        item["iconHicon"] := 90000 + item["hwnd"]
+    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 201, payload: { items: items5 } })
     GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertTrue(!IsObject(gMock_PruneCalledWith), "Prune 2nd: skipped on first snapshot (0->5)")
+    GUI_AssertTrue(gGdip_IconCache.Count > 0, "Prune 2nd: cache populated after first snapshot")
 
-    ; Second snapshot: only 2 items (windows closed) — prune needed
+    ; Second snapshot: only 2 items (windows closed) — cache has orphans
     gMock_PruneCalledWith := ""
     items2 := CreateTestItems(2)
+    for _, item in items2
+        item["iconHicon"] := 90000 + item["hwnd"]
     snapshotMsg2 := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 202, payload: { items: items2 } })
     GUI_OnStoreMessage(snapshotMsg2)
 
-    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called when items removed (5->2)")
+    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called when cache has orphans (5->2)")
     if (IsObject(gMock_PruneCalledWith)) {
         GUI_AssertEq(gMock_PruneCalledWith.Count, 2, "Prune 2nd: live map has 2 entries (orphans would be pruned)")
     }
@@ -839,7 +844,7 @@ RunGUITests_Data() {
     deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 303, payload: { upserts: [{ hwnd: 9000, title: "New", class: "C", iconHicon: 77777, lastActivatedTick: A_TickCount }], removes: [] } })
     GUI_OnStoreMessage(deltaMsg)
 
-    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCache delta new: 1 icon cached")
+    GUI_AssertTrue(gMock_PreCachedIcons.Has(9000), "PreCache delta new: new item icon cached")
     GUI_AssertEq(gMock_PreCachedIcons[9000], 77777, "PreCache delta new: correct hicon")
 
     ; ----- Summary -----
