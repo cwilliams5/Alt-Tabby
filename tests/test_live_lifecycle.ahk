@@ -250,8 +250,19 @@ RunLiveTests_Lifecycle() {
             }
 
             ; Assert: stats.ini was flushed during graceful shutdown
+            ; Poll for stats.ini to appear (file I/O may lag process exit)
             statsPath := testDir "\stats.ini"
-            if (FileExist(statsPath)) {
+            statsFound := false
+            statsWait := A_TickCount
+            while (A_TickCount - statsWait < 1000) {
+                if (FileExist(statsPath)) {
+                    statsFound := true
+                    break
+                }
+                Sleep(50)
+            }
+
+            if (statsFound) {
                 statsModTime := FileGetTime(statsPath, "M")
                 if (statsModTime >= preShutdownTime) {
                     Log("PASS: stats.ini flushed during shutdown (modified=" statsModTime ")")

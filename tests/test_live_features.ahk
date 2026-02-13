@@ -156,13 +156,6 @@ RunLiveTests_Features() {
             helloMsg := { type: IPC_MSG_HELLO, clientId: "proj_test", wants: { deltas: false } }
             IPC_PipeClient_Send(projClient, JSON.Dump(helloMsg))
 
-            ; Drain the initial snapshot sent after HELLO before running projection tests
-            gProjTestResponse := ""
-            gProjTestReceived := false
-            waitStart := A_TickCount
-            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
-                Sleep(50)
-
             ; === Test columns: hwndsOnly ===
             gProjTestResponse := ""
             gProjTestReceived := false

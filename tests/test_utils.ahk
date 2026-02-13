@@ -168,7 +168,7 @@ global gMruTestResponse, gMruTestReceived
 Test_OnMruMessage := _CreateTestMessageHandler(&gMruTestResponse, &gMruTestReceived, TEST_FILTER_PROJECTION, "MRU Test")
 
 global gProjTestResponse, gProjTestReceived
-Test_OnProjMessage := _CreateTestMessageHandler(&gProjTestResponse, &gProjTestReceived, TEST_FILTER_PROJECTION)
+Test_OnProjMessage := _CreateTestMessageHandler(&gProjTestResponse, &gProjTestReceived, ['"type":"projection"'])
 
 global gMultiClient1Response, gMultiClient1Received
 Test_OnMultiClient1 := _CreateTestMessageHandler(&gMultiClient1Response, &gMultiClient1Received, TEST_FILTER_PROJECTION)
