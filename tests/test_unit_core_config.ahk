@@ -5,7 +5,7 @@
 #Include test_utils.ahk
 
 RunUnitTests_CoreConfig() {
-    global TestPassed, TestErrors, cfg
+    global TestPassed, TestErrors, cfg, LOG_KEEP_BYTES
 
     ; ============================================================
     ; Config System Tests
@@ -701,6 +701,81 @@ RunUnitTests_CoreConfig() {
     cfg.GUI_RowHeight := origRowHeight
     cfg.GUI_RowsVisibleMin := origRowsMin
     cfg.GUI_RowsVisibleMax := origRowsMax
+
+    ; Test 5: Enum invalid value falls back to default
+    origThemeMode := cfg.Theme_Mode
+    cfg.Theme_Mode := "BogusValue"
+    _CL_ValidateSettings()
+    if (cfg.Theme_Mode = "Automatic") {
+        Log("PASS: Theme_Mode='BogusValue' reset to default 'Automatic'")
+        TestPassed++
+    } else {
+        Log("FAIL: Theme_Mode='BogusValue' not reset, got '" cfg.Theme_Mode "'")
+        TestErrors++
+    }
+    cfg.Theme_Mode := origThemeMode
+
+    ; Test 6: Enum valid value preserved
+    origThemeMode := cfg.Theme_Mode
+    cfg.Theme_Mode := "Dark"
+    _CL_ValidateSettings()
+    if (cfg.Theme_Mode = "Dark") {
+        Log("PASS: Theme_Mode='Dark' preserved (valid enum)")
+        TestPassed++
+    } else {
+        Log("FAIL: Theme_Mode='Dark' not preserved, got '" cfg.Theme_Mode "'")
+        TestErrors++
+    }
+    cfg.Theme_Mode := origThemeMode
+
+    ; Test 7: LogKeepKB >= LogMaxKB forced to half
+    origKeepKB := cfg.DiagLogKeepKB
+    origMaxKB := cfg.DiagLogMaxKB
+    cfg.DiagLogKeepKB := 500
+    cfg.DiagLogMaxKB := 500
+    _CL_ValidateSettings()
+    if (cfg.DiagLogKeepKB = 250) {
+        Log("PASS: DiagLogKeepKB=500 with DiagLogMaxKB=500 forced to 250 (half)")
+        TestPassed++
+    } else {
+        Log("FAIL: DiagLogKeepKB not forced to half, got " cfg.DiagLogKeepKB)
+        TestErrors++
+    }
+    if (LOG_KEEP_BYTES = 250 * 1024) {
+        Log("PASS: LOG_KEEP_BYTES derived correctly (" LOG_KEEP_BYTES ")")
+        TestPassed++
+    } else {
+        Log("FAIL: LOG_KEEP_BYTES expected " (250 * 1024) ", got " LOG_KEEP_BYTES)
+        TestErrors++
+    }
+    cfg.DiagLogKeepKB := origKeepKB
+    cfg.DiagLogMaxKB := origMaxKB
+
+    ; Test 8: SafetyPollMs floor — low value floored to 30000
+    origSafetyPoll := cfg.WinEnumSafetyPollMs
+    cfg.WinEnumSafetyPollMs := 5000
+    _CL_ValidateSettings()
+    if (cfg.WinEnumSafetyPollMs = 30000) {
+        Log("PASS: WinEnumSafetyPollMs=5000 floored to 30000")
+        TestPassed++
+    } else {
+        Log("FAIL: WinEnumSafetyPollMs=5000 not floored, got " cfg.WinEnumSafetyPollMs)
+        TestErrors++
+    }
+    cfg.WinEnumSafetyPollMs := origSafetyPoll
+
+    ; Test 8b: SafetyPollMs floor — zero passes through (disabled)
+    origSafetyPoll := cfg.WinEnumSafetyPollMs
+    cfg.WinEnumSafetyPollMs := 0
+    _CL_ValidateSettings()
+    if (cfg.WinEnumSafetyPollMs = 0) {
+        Log("PASS: WinEnumSafetyPollMs=0 preserved (disabled)")
+        TestPassed++
+    } else {
+        Log("FAIL: WinEnumSafetyPollMs=0 not preserved, got " cfg.WinEnumSafetyPollMs)
+        TestErrors++
+    }
+    cfg.WinEnumSafetyPollMs := origSafetyPoll
 
     ; ============================================================
     ; Theme Palette <-> Config Registry Cross-Reference Tests
