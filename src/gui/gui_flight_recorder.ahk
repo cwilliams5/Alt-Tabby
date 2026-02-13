@@ -69,7 +69,7 @@ FR_Init() {
     gFR_Enabled := true
 
     ; F12 hotkey: pass-through (apps still receive F12) + keyboard hook
-    Hotkey("~$F12", (*) => FR_Dump())
+    Hotkey("~$F12", (*) => _FR_Dump())
 
     FR_Record(FR_EV_SESSION_START)
 }
@@ -93,7 +93,7 @@ FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 
 ; ========================= DUMP (F12) =========================
 
-FR_Dump() {
+_FR_Dump() {
     global gFR_Enabled, gFR_Buffer, gFR_Idx, gFR_Size, gFR_Count
     global gGUI_State, gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_Sel, gGUI_DisplayItems
     global gGUI_PendingPhase, gGUI_LastLocalMRUTick, gGUI_CurrentWSName

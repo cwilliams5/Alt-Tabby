@@ -97,7 +97,7 @@ KomorebiSub_Init() {
     if (!_KomorebiSub_IsAvailable()) {
         ; Fall back to polling mode
         _KSub_FallbackMode := true
-        SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
+        SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
         return false
     }
 
@@ -156,7 +156,7 @@ _KomorebiSub_Start() {
             KSub_DiagLog("KomorebiSub: CreateNamedPipeW FAILED err=" gle " path=" pipePath)
         _KSub_hPipe := 0
         _KSub_FallbackMode := true
-        SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
+        SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
         return false
     }
 
@@ -165,7 +165,7 @@ _KomorebiSub_Start() {
     if (!_KSub_hEvent) {
         KomorebiSub_Stop()
         _KSub_FallbackMode := true
-        SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
+        SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
         return false
     }
 
@@ -185,7 +185,7 @@ _KomorebiSub_Start() {
         else {
             KomorebiSub_Stop()
             _KSub_FallbackMode := true
-            SetTimer(KomorebiSub_PollFallback, KSub_FallbackPollMs)
+            SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
             return false
         }
     } else {
@@ -275,7 +275,7 @@ KomorebiSub_Stop() {
 
     ; Stop fallback timer if active
     if (_KSub_FallbackMode) {
-        SetTimer(KomorebiSub_PollFallback, 0)
+        SetTimer(_KomorebiSub_PollFallback, 0)
         _KSub_FallbackMode := false
     }
 
@@ -1194,7 +1194,7 @@ _KSub_GetWindowPid(hwnd) {
 }
 
 ; Fallback polling mode (when subscription fails)
-KomorebiSub_PollFallback() {
+_KomorebiSub_PollFallback() {
     global cfg
     if (!_KomorebiSub_IsAvailable())
         return
