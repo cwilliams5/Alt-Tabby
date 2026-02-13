@@ -1236,6 +1236,12 @@ _Store_OnExit(reason, code) {
         KomorebiLite_Stop()
     }
 
+    ; Flush stats to disk FIRST — before expensive cleanup operations.
+    ; Icon cleanup is O(window_count) DestroyIcon DllCalls and can exceed
+    ; the launcher's 5s graceful shutdown deadline, causing a hard-kill
+    ; before stats persist. Stats flush is just a few IniWrite calls (~10ms).
+    try Stats_FlushToDisk()
+
     ; Clean up icons before exit (prevents HICON resource leaks)
     try {
         WindowStore_CleanupAllIcons()
@@ -1246,9 +1252,6 @@ _Store_OnExit(reason, code) {
     try {
         IconPump_CleanupUwpCache()
     }
-
-    ; Flush stats to disk before stopping IPC (final persist)
-    try Stats_FlushToDisk()
 
     ; Stop IPC server
     try {

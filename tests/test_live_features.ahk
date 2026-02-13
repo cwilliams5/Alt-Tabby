@@ -31,7 +31,9 @@ RunLiveTests_Features() {
     }
 
     if (sharedFeatStorePid) {
-        if (!WaitForStorePipe(sharedFeatStorePipe, 3000)) {
+        ; NOTE: Do NOT reduce this timeout. Store startup (parse + config + blacklist +
+        ; pipe creation) is I/O-bound and competes with 15+ parallel test processes.
+        if (!WaitForStorePipe(sharedFeatStorePipe, 5000)) {
             Log("FAIL: Shared features store pipe not ready within timeout")
             TestErrors++
             try ProcessClose(sharedFeatStorePid)
@@ -105,7 +107,7 @@ RunLiveTests_Features() {
                             break
                     }
                 }
-                Sleep(200)
+                Sleep(100)
             }
 
             Log("  MRU test received " items.Length " items")
@@ -152,9 +154,20 @@ RunLiveTests_Features() {
             Log("PASS: Projection test connected to store")
             TestPassed++
 
-            ; Send hello
+            ; Send hello and wait for initial snapshot response before projection tests.
+            ; HELLO triggers a full window scan + snapshot build in the store. Under
+            ; parallel load this can take seconds. If we send projection requests before
+            ; HELLO completes, they queue behind it and the projection timeout expires.
             helloMsg := { type: IPC_MSG_HELLO, clientId: "proj_test", wants: { deltas: false } }
             IPC_PipeClient_Send(projClient, JSON.Dump(helloMsg))
+
+            ; Drain: wait for store to process HELLO. When the snapshot response arrives,
+            ; the client timer reads it and drops tickMs from 100 to IPC_TICK_ACTIVE (8).
+            ; NOTE: Do NOT reduce this timeout. The store must finish HELLO processing
+            ; (full scan + snapshot) before projection requests will be serviced.
+            waitStart := A_TickCount
+            while (projClient.tickMs > 8 && (A_TickCount - waitStart) < 5000)
+                Sleep(50)
 
             ; === Test columns: hwndsOnly ===
             gProjTestResponse := ""
@@ -163,7 +176,7 @@ RunLiveTests_Features() {
             IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
-            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 3000)
                 Sleep(50)
 
             if (gProjTestReceived) {
@@ -206,7 +219,7 @@ RunLiveTests_Features() {
             IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
-            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 3000)
                 Sleep(50)
 
             countWithMin := 0
@@ -230,7 +243,7 @@ RunLiveTests_Features() {
             IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
-            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 3000)
                 Sleep(50)
 
             if (gProjTestReceived) {
@@ -271,7 +284,7 @@ RunLiveTests_Features() {
             IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
-            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 3000)
                 Sleep(50)
 
             countWithCloaked := 0
@@ -294,7 +307,7 @@ RunLiveTests_Features() {
             IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
-            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 3000)
                 Sleep(50)
 
             if (gProjTestReceived) {
@@ -335,7 +348,7 @@ RunLiveTests_Features() {
             IPC_PipeClient_Send(projClient, JSON.Dump(projMsg))
 
             waitStart := A_TickCount
-            while (!gProjTestReceived && (A_TickCount - waitStart) < 2000)
+            while (!gProjTestReceived && (A_TickCount - waitStart) < 3000)
                 Sleep(50)
 
             if (gProjTestReceived) {
@@ -684,6 +697,11 @@ RunLiveTests_Features() {
     ; Kill the shared store (done with MRU, Projection, Multi-client, and Stats tests)
     if (sharedFeatStorePid) {
         try ProcessClose(sharedFeatStorePid)
+        ; Wait for process to fully exit before launching blacklist store
+        ; (avoids resource contention — file locks, handle cleanup)
+        waitStart := A_TickCount
+        while (ProcessExist(sharedFeatStorePid) && (A_TickCount - waitStart) < 2000)
+            Sleep(20)
     }
 
     ; ============================================================
@@ -702,7 +720,9 @@ RunLiveTests_Features() {
 
     if (blTestPid) {
         ; Wait for store pipe to become available (adaptive)
-        if (!WaitForStorePipe(blTestPipe, 3000)) {
+        ; NOTE: Do NOT reduce this timeout. This store launches right after killing
+        ; the shared store — system resource cleanup adds to startup latency.
+        if (!WaitForStorePipe(blTestPipe, 5000)) {
             Log("FAIL: Blacklist test store pipe not ready within timeout")
             TestErrors++
             try ProcessClose(blTestPid)
@@ -753,7 +773,7 @@ RunLiveTests_Features() {
                         stableSince := A_TickCount
                     }
                 }
-                Sleep(200)
+                Sleep(100)
             }
             Log("  Store stabilized at " stableCount " windows (" (A_TickCount - stabilizeStart) "ms)")
 

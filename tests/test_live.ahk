@@ -6,12 +6,14 @@
 #Include "test_live_network.ahk"
 #Include "test_live_features.ahk"
 #Include "test_live_execution.ahk"
+#Include "test_live_execution_standalone.ahk"
 #Include "test_live_lifecycle.ahk"
 
 RunLiveTests() {
     RunLiveTests_Core()
     RunLiveTests_Network()
     RunLiveTests_Features()
+    RunLiveTests_ExecutionStandalone()
     RunLiveTests_Execution()
     RunLiveTests_Lifecycle()
 }

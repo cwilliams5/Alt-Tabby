@@ -308,10 +308,10 @@ WaitForStorePipe(pipeName, timeoutMs := 5000) {
     while ((A_TickCount - start) < timeoutMs) {
         ; WaitNamedPipeW returns true when pipe instance is available
         ; without actually connecting (no server slot consumed)
-        if (DllCall("WaitNamedPipeW", "Str", pipePath, "UInt", 250))
+        if (DllCall("WaitNamedPipeW", "Str", pipePath, "UInt", 100))
             return true
         ; ERROR_FILE_NOT_FOUND (2) = pipe doesn't exist yet, retry
-        Sleep(50)
+        Sleep(10)
     }
     return false
 }

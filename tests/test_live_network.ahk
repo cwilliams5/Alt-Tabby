@@ -505,7 +505,7 @@ RunLiveTests_Network() {
             Log("  Waiting for liveness messages (timeout=" hbTimeoutMs "ms)...")
             waitStart := A_TickCount
             while (gHbTestLivenessCount < 2 && (A_TickCount - waitStart) < hbTimeoutMs) {
-                Sleep(200)
+                Sleep(100)
             }
 
             if (gHbTestLivenessCount >= 2) {

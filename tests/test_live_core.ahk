@@ -139,7 +139,9 @@ RunLiveTests_Core() {
     }
 
     if (sharedStorePid) {
-        if (!WaitForStorePipe(sharedStorePipe, 3000)) {
+        ; NOTE: Do NOT reduce this timeout. Store startup (parse + config + blacklist +
+        ; pipe creation) is I/O-bound and competes with 15+ parallel test processes.
+        if (!WaitForStorePipe(sharedStorePipe, 5000)) {
             Log("FAIL: Shared store pipe not ready within timeout")
             TestErrors++
             try ProcessClose(sharedStorePid)
@@ -198,7 +200,7 @@ RunLiveTests_Core() {
                 gRealStoreReceived := false
                 gRealStoreResponse := ""
                 IPC_PipeClient_Send(realClient, JSON.Dump(snapMsg))
-                Sleep(250)
+                Sleep(100)
             }
 
             if (gotResponse) {
