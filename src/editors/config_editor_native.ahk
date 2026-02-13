@@ -1121,7 +1121,7 @@ _CEN_SaveToIni() {
             changes[entry.g] := currentVal
     }
 
-    return CL_SaveChanges(changes)
+    return CL_SaveChanges(changes)  ; Returns {saved: N, failed: N}
 }
 
 ; ============================================================
@@ -1374,7 +1374,22 @@ _CEN_OnSave(*) {
         return
     }
 
-    changeCount := _CEN_SaveToIni()
+    result := _CEN_SaveToIni()
+
+    ; Check for write failures before proceeding
+    if (result.failed > 0) {
+        if (result.saved = 0) {
+            ThemeMsgBox("Could not save settings — the config file may be`n"
+                "read-only, locked by another program, or on a full disk.`n`n"
+                "No changes were written.",
+                "Alt-Tabby Configuration", "Iconx")
+            return  ; Don't close editor — let user retry or cancel
+        }
+        ThemeMsgBox(result.saved " setting(s) saved, but " result.failed " failed to write.`n`n"
+            "The config file may be partially locked or the disk may be full.",
+            "Alt-Tabby Configuration", "Icon!")
+    }
+
     gCEN["SavedChanges"] := true
 
     _CEN_Cleanup()
@@ -1398,7 +1413,7 @@ _CEN_OnSave(*) {
             , "ptr*", &response := 0
             , "ptr")
     } else {
-        ThemeMsgBox("Settings saved (" changeCount " changes). Restart Alt-Tabby to apply changes.",
+        ThemeMsgBox("Settings saved (" result.saved " changes). Restart Alt-Tabby to apply changes.",
             "Alt-Tabby Configuration", "OK Iconi")
     }
 }

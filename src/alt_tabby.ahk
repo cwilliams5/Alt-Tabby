@@ -238,7 +238,8 @@ if (g_AltTabbyMode = "wizard-continue") {
         Launcher_StartSubprocesses()
     } else {
         ; No wizard data found - exit
-        ThemeMsgBox("No wizard continuation data found.", APP_NAME, "Iconx")
+        ThemeMsgBox("Setup could not continue — required data was not found.`n`n"
+            "Please restart Alt-Tabby to try again.", APP_NAME, "Iconx")
         ExitApp()
     }
 }
@@ -300,11 +301,16 @@ if (g_AltTabbyMode = "repair-admin-task") {
 
         if (exitCode != 0) {
             ; Task run failed - launch directly instead
-            ThemeMsgBox("Task repaired but failed to launch (code " exitCode ").`nLaunching directly.", APP_NAME, "Icon!")
+            ThemeMsgBox("Admin mode was repaired, but the scheduled task could not start`n"
+                "(exit code " exitCode ").`n`nLaunching Alt-Tabby directly instead.", APP_NAME, "Icon!")
             Run('"' exePath '"')
         }
     } else {
-        ThemeMsgBox("Failed to repair scheduled task.", APP_NAME, "Iconx")
+        ThemeMsgBox("Could not repair the admin mode scheduled task.`n`n"
+            "Possible causes:`n"
+            "  - Task Scheduler service is not running`n"
+            "  - Insufficient permissions`n`n"
+            "Alt-Tabby will launch without admin privileges.", APP_NAME, "Iconx")
         ; Fall back to direct launch
         Run('"' exePath '"')
     }
@@ -335,7 +341,9 @@ if (g_AltTabbyMode = "apply-update") {
     Theme_Init()  ; Required for themed MsgBox dialogs
     ; Apply the downloaded update (we're now elevated)
     if (!Update_ContinueFromElevation()) {
-        ThemeMsgBox("Update continuation failed. Please try updating again.", APP_NAME, "Iconx")
+        ThemeMsgBox("The update could not be completed after elevation.`n`n"
+            "The previous version should still be intact.`n"
+            "Please try updating again from the tray menu.", APP_NAME, "Iconx")
         ; Attempt to relaunch the current exe (rollback should have restored it)
         ; This ensures user doesn't end up with no running instance after failed update
         if (FileExist(A_ScriptFullPath)) {
@@ -383,7 +391,12 @@ if (g_AltTabbyMode = "update-installed") {
 
         Launcher_DoUpdateInstalled(sourcePath, targetPath)
     } catch as e {
-        ThemeMsgBox("Update failed:`n" e.Message, APP_NAME, "Iconx")
+        ThemeMsgBox("Update failed`n`n" e.Message "`n`n"
+            "Possible causes:`n"
+            "  - Another program is using Alt-Tabby files`n"
+            "  - Insufficient disk space or permissions`n`n"
+            "The previous version is still intact. Try closing all Alt-Tabby`n"
+            "processes and running the update again.", APP_NAME, "Iconx")
     }
     ExitApp()
 }
@@ -404,7 +417,12 @@ if (g_AltTabbyMode = "install-to-pf") {
         ; DirCreate, blacklist copy, stats merge, config copy, admin task, shortcuts, relaunch
         Launcher_DoUpdateInstalled(state.source, state.target)
     } catch as e {
-        ThemeMsgBox("Installation failed:`n" e.Message, APP_NAME, "Iconx")
+        ThemeMsgBox("Installation failed`n`n" e.Message "`n`n"
+            "Possible causes:`n"
+            "  - Insufficient permissions (try Run as Administrator)`n"
+            "  - Another program is using the target files`n"
+            "  - Insufficient disk space`n`n"
+            "The original file has not been modified.", APP_NAME, "Iconx")
     }
     ExitApp()
 }

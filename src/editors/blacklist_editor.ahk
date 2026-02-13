@@ -97,6 +97,11 @@ _BE_CreateGui() {
     ; Install tab WndProc subclass for text color (must be AFTER all UseTab calls)
     Theme_InstallTabSubclass(tabs)
 
+    ; Register change listeners for dirty indicator
+    gBE_TitleEdit.OnEvent("Change", _BE_OnContentChange)
+    gBE_ClassEdit.OnEvent("Change", _BE_OnContentChange)
+    gBE_PairEdit.OnEvent("Change", _BE_OnContentChange)
+
     ; Buttons at bottom
     btnTest := gBE_Gui.AddButton("vBtnTest x10 y420 w120 h30", "Test Patterns")
     btnTest.OnEvent("Click", _BE_OnTestPatterns)
@@ -262,6 +267,18 @@ _BE_NormalizeContent(text) {
 ; ============================================================
 ; EVENT HANDLERS
 ; ============================================================
+
+_BE_OnContentChange(*) {
+    _BE_UpdateTitle()
+}
+
+_BE_UpdateTitle() {
+    global gBE_Gui
+    if (!_BE_IsGuiValid())
+        return
+    title := _BE_HasChanges() ? "Alt-Tabby Blacklist *" : "Alt-Tabby Blacklist Editor"
+    gBE_Gui.Title := title
+}
 
 _BE_OnSave(*) {
     global gBE_Gui, gBE_SavedChanges

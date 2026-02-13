@@ -132,8 +132,8 @@ _Tray_BuildDiagnosticsMenu() {
     m.Add()
 
     ; Subprocess rows — label includes status AND action
-    m.Add(_Tray_ComponentLabel("Store", g_StorePID), (*) => (LauncherUtils_IsRunning(g_StorePID) ? RestartStore() : LaunchStore()))
-    m.Add(_Tray_ComponentLabel("GUI", g_GuiPID), (*) => (LauncherUtils_IsRunning(g_GuiPID) ? RestartGui() : LaunchGui()))
+    m.Add(_Tray_ComponentLabel("Window Tracker", g_StorePID), (*) => (LauncherUtils_IsRunning(g_StorePID) ? RestartStore() : LaunchStore()))
+    m.Add(_Tray_ComponentLabel("Overlay", g_GuiPID), (*) => (LauncherUtils_IsRunning(g_GuiPID) ? RestartGui() : LaunchGui()))
     m.Add(_Tray_ComponentLabel("Config Editor", g_ConfigEditorPID), (*) => (LauncherUtils_IsRunning(g_ConfigEditorPID) ? RestartConfigEditor() : LaunchConfigEditor()))
     m.Add(_Tray_ComponentLabel("Blacklist Editor", g_BlacklistEditorPID), (*) => (LauncherUtils_IsRunning(g_BlacklistEditorPID) ? RestartBlacklistEditor() : LaunchBlacklistEditor()))
     m.Add(_Tray_ComponentLabel("Viewer", g_ViewerPID), (*) => (LauncherUtils_IsRunning(g_ViewerPID) ? RestartViewer() : LaunchViewer()))

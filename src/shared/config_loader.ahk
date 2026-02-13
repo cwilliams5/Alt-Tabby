@@ -435,21 +435,24 @@ CL_ParseValue(iniVal, type) {
 }
 
 ; Save a map of {globalName: value} changes to config.ini using format-preserving writes.
-; Returns the number of entries written.
+; Returns {saved: N, failed: N} where failed counts write errors.
 CL_SaveChanges(changes) {
     global gConfigRegistry, gConfigIniPath
 
     changeCount := 0
+    failCount := 0
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
         if (!changes.Has(entry.g))
             continue
 
-        CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t)
-        changeCount++
+        if (CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t))
+            changeCount++
+        else
+            failCount++
     }
-    return changeCount
+    return {saved: changeCount, failed: failCount}
 }
 
 ; Write to INI preserving comments and structure (unlike IniWrite which reorganizes)

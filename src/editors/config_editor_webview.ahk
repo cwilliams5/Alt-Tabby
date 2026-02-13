@@ -340,7 +340,11 @@ _CEW_SerializeCurrentValues() {
 }
 
 _CEW_ApplyChanges(changes) {
-    CL_SaveChanges(changes)
+    result := CL_SaveChanges(changes)
+    if (result.failed > 0 && result.saved = 0)
+        ThemeMsgBox("Could not save settings — the config file may be`nread-only, locked, or on a full disk.", "Alt-Tabby Configuration", "Iconx")
+    else if (result.failed > 0)
+        ThemeMsgBox(result.saved " saved, " result.failed " failed to write.", "Alt-Tabby Configuration", "Icon!")
 }
 
 ; ============================================================

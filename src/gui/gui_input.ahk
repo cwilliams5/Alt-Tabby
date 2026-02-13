@@ -208,14 +208,20 @@ _GUI_PerformAction(action, idx1 := 0) {
         pname := cur.HasOwnProp("processName") ? cur.processName : ""
 
         ; Build detailed confirmation message
-        msg := "Kill process?"
+        msg := ""
+        ; Warn about critical system processes
+        static systemProcs := "explorer.exe|svchost.exe|csrss.exe|dwm.exe|winlogon.exe|lsass.exe|services.exe"
+        if (pname != "" && InStr(systemProcs, StrLower(pname)))
+            msg .= "WARNING: This is a Windows system process.`nKilling it may cause instability.`n`n"
+        msg .= "Force quit this process?"
         msg .= "`n`nWindow: " SubStr(ttl, 1, 50) (StrLen(ttl) > 50 ? "..." : "")
         if (pname != "") {
             msg .= "`nProcess: " pname
         }
         msg .= "`nPID: " pid
+        msg .= "`n`nUnsaved work in this application will be lost."
 
-        if (Win_ConfirmTopmost(msg, "Confirm Kill")) {
+        if (Win_ConfirmTopmost(msg, "Force Quit Process")) {
             if (pid != "") {
                 try {
                     ProcessClose(pid)

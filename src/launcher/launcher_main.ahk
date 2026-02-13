@@ -99,7 +99,11 @@ Launcher_Init() {
                 }
             }
             if (!acquired) {
-                ThemeMsgBox("Could not restart Alt-Tabby after multiple attempts.`nPlease close any remaining Alt-Tabby processes and try again.", APP_NAME, "Iconx")
+                ThemeMsgBox("Could not restart Alt-Tabby after multiple attempts.`n`n"
+                    "To resolve this:`n"
+                    "  1. Open Task Manager (Ctrl+Shift+Esc)`n"
+                    "  2. End any 'AltTabby.exe' or 'AutoHotkey64.exe' processes`n"
+                    "  3. Launch Alt-Tabby again", APP_NAME, "Iconx")
                 ExitApp()
             }
             ; Continue with normal startup below
@@ -206,7 +210,9 @@ Launcher_StartSubprocesses() {
             _Launcher_KillAllAltTabbyProcesses()
             Sleep(TIMING_MUTEX_RELEASE_WAIT)
             if (!_Launcher_AcquireActiveMutex()) {
-                ThemeMsgBox("Could not acquire active lock.`nPlease close Alt-Tabby manually and try again.", APP_NAME, "Iconx")
+                ThemeMsgBox("Another Alt-Tabby instance is already running.`n`n"
+                    "Close all Alt-Tabby windows and try again.`n"
+                    "If the problem persists, end 'AltTabby.exe' in Task Manager.", APP_NAME, "Iconx")
                 ExitApp()
             }
         } else {
@@ -850,8 +856,14 @@ Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
 ; ============================================================
 
 LaunchStore() {
-    global g_StorePID
-    LauncherUtils_Launch("store", &g_StorePID, _Launcher_Log)
+    global g_StorePID, APP_NAME
+    if (!LauncherUtils_Launch("store", &g_StorePID, _Launcher_Log)) {
+        ThemeMsgBox(
+            "The window tracker (store) could not be started.`n`n"
+            "Alt-Tabby will not function correctly without it.`n"
+            "Try restarting Alt-Tabby from the tray menu.",
+            APP_NAME, "Iconx")
+    }
     Dash_OnStoreRestart()
 }
 
