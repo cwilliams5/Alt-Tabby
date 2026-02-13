@@ -785,7 +785,7 @@ RunGUITests_Data() {
     ; First snapshot: 5 items with icons (so cache gets populated)
     items5 := CreateTestItems(5)
     for _, item in items5
-        item["iconHicon"] := 90000 + item["hwnd"]
+        item.iconHicon := 90000 + item.hwnd
     snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 201, payload: { items: items5 } })
     GUI_OnStoreMessage(snapshotMsg)
     GUI_AssertTrue(gGdip_IconCache.Count > 0, "Prune 2nd: cache populated after first snapshot")
@@ -794,7 +794,7 @@ RunGUITests_Data() {
     gMock_PruneCalledWith := ""
     items2 := CreateTestItems(2)
     for _, item in items2
-        item["iconHicon"] := 90000 + item["hwnd"]
+        item.iconHicon := 90000 + item.hwnd
     snapshotMsg2 := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 202, payload: { items: items2 } })
     GUI_OnStoreMessage(snapshotMsg2)
 

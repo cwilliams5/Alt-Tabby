@@ -247,7 +247,7 @@ _CEW_OnWebMessage(sender, args) {
                     , "ptr", cds.Ptr
                     , "uint", 0x0002
                     , "uint", 3000
-                    , "ptr*", &response := 0
+                    , "ptr*", &_ := 0
                     , "ptr")
             }
 

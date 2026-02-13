@@ -20,7 +20,6 @@ global HWND_NOTOPMOST := -2
 global SWP_NOSIZE := 0x0001
 global SWP_NOMOVE := 0x0002
 global SWP_SHOWWINDOW := 0x0040
-global SWP_ASYNCWINDOWPOS := 0x4000
 
 ; GDI+ enums
 global GDIP_UNIT_PIXEL := 2

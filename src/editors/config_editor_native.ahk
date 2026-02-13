@@ -1410,7 +1410,7 @@ _CEN_OnSave(*) {
             , "ptr", cds.Ptr
             , "uint", 0x0002
             , "uint", 3000
-            , "ptr*", &response := 0
+            , "ptr*", &_ := 0
             , "ptr")
     } else {
         ThemeMsgBox("Settings saved (" result.saved " changes). Restart Alt-Tabby to apply changes.",

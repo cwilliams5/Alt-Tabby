@@ -1010,7 +1010,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     }
 
     ; Batch update workspace cache for all windows in wsMap (single Critical section
-    ; instead of per-window Critical enter/exit in _KSub_UpdateCacheEntry)
+    ; instead of per-window Critical enter/exit)
     Critical "On"
     for hwnd, info in wsMap {
         if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = info.wsName)
