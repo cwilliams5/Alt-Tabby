@@ -256,7 +256,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
             ExitApp()
         } catch {
             ThemeMsgBox("Update requires administrator privileges.", APP_NAME, "Iconx")
-            try FileDelete(updateFile)
+            try FileDelete(TEMP_INSTALL_UPDATE_STATE)
             return
         }
     }

@@ -462,7 +462,11 @@ ToggleAdminMode() {
                     A_ScriptDir)
             }
             if (!launched) {
-                ; Fallback: direct launch (still elevated if we're admin, but better than nothing)
+                if (A_IsAdmin) {
+                    ; De-elevation failed and we're admin — don't silently restart elevated
+                    TrayTip("Running elevated", "De-elevation failed. Please restart manually to run without elevation.", 2)
+                    return
+                }
                 Run(BuildSelfCommand())
             }
             _ExitAll()
