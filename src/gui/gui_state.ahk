@@ -1037,6 +1037,8 @@ _GUI_ResyncKeyboardState() {
 ; Parameters:
 ;   hwnd - Window handle that was activated
 ; Updates: gGUI_LiveItems array order, gGUI_LastLocalMRUTick
+; NOTE: gGUI_LiveItemsMap does NOT need updating here — Map stores object references,
+;   and RemoveAt/InsertAt moves the same object. The reference stays valid at any index.
 ; NOTE: Callers hold Critical — do NOT call Critical "Off" here (leaks caller's Critical state)
 _GUI_UpdateLocalMRU(hwnd) {
     Critical "On"  ; Harmless assertion — documents that Critical is required

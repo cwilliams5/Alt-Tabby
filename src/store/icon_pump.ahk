@@ -679,7 +679,7 @@ _IP_TryResolveFromUWP(hwnd, pid) {
         hIcon := _IP_BitmapToIcon(hBitmap)
     } catch as e {
         if (_IP_DiagEnabled && _IP_LogPath != "")
-            _IP_Log("UWP LoadPicture FAILED path=" logoPath " err=" e.Message)
+            _IP_Log("WARN: UWP LoadPicture failed path=" logoPath " err=" e.Message)
     }
 
     ; ALWAYS clean up hBitmap if allocated (whether success or failure)

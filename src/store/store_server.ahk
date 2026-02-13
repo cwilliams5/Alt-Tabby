@@ -700,18 +700,13 @@ _Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := fals
 ; immediately (~0.5ms) instead of waiting for a full Store_PushToClients (~5ms).
 ;
 ; ANTI-JIGGLE (Part 1 of 2 — see also gui_overlay.ahk GUI_ResizeToRows):
-; Sends META ONLY (workspace name/id), NOT item upserts.  The flips array
-; contains _WS_ToItem records whose isOnCurrentWorkspace just changed, but
-; their lastActivatedTick values are STALE (ProcessFullState hasn't updated
-; MRU yet).  Sending these stale items causes the GUI to repaint with the
-; correct item COUNT but wrong MRU ORDER (old focused window at slot #1),
-; then PushToClients ~5ms later sends correct MRU → second repaint → jiggle.
+; Sends META ONLY (workspace name/id), NOT item upserts.  Item upserts with
+; stale lastActivatedTick values would cause the GUI to repaint with wrong MRU
+; ORDER, then PushToClients ~5ms later sends correct MRU → second repaint → jiggle.
 ; Fix: send only meta here.  PushToClients sends ONE delta with both the
 ; workspace flips AND correct MRU data, so the GUI gets one clean repaint.
 ;
-; Parameters:
-;   flips - Array of _WS_ToItem records (kept for API compat, not sent to clients)
-Store_BroadcastWorkspaceFlips(flips) {
+Store_BroadcastWorkspaceFlips() {
     global gStore_Server, gStore_ClientState, gStore_LastSendTick, gStore_LastBroadcastRev
     global IPC_MSG_DELTA
 

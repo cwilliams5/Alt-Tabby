@@ -8,7 +8,7 @@ global WS_MODE_ALL := "all"
 global WS_MODE_CURRENT := "current"
 
 ; Workspace state
-global gGUI_WorkspaceMode := "all"
+global gGUI_WorkspaceMode := WS_MODE_ALL
 global gGUI_FooterText := "All Windows"
 global gStats_WorkspaceToggles := 0
 

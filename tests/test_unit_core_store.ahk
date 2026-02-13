@@ -651,25 +651,22 @@ RunUnitTests_CoreStore() {
     AssertEq(gWS_Meta["currentWSName"], "Main", "Meta updated")
     AssertEq(WindowStore_GetRev(), startRev + 1, "Rev bumped exactly once")
 
-    ; Return value: flipped array contains _WS_ToItem records for windows that CHANGED
+    ; Return value: boolean indicating whether any windows flipped
     ; Default isOnCurrentWorkspace is true (from _WS_NewRecord).
     ; After SetCurrentWorkspace("Main"): 1001 stays true, 1002 flips false, 1003 stays true
-    AssertEq(flipped.Length, 1, "SetCurrentWorkspace return: only Other window flipped")
-    AssertEq(flipped[1].hwnd, 1002, "Flipped item is hwnd 1002 (Other)")
-    AssertEq(flipped[1].isOnCurrentWorkspace, false, "Flipped item: isOnCurrentWorkspace=false")
-    AssertEq(flipped[1].HasOwnProp("title"), true, "Flipped item has title (_WS_ToItem format)")
+    AssertEq(flipped, true, "SetCurrentWorkspace return: some windows flipped")
 
     ; Switch workspace — both Main and Other flip
     flipped2 := WindowStore_SetCurrentWorkspace("", "Other")
     AssertEq(gWS_Store[1001].isOnCurrentWorkspace, false, "Main now NOT current")
     AssertEq(gWS_Store[1002].isOnCurrentWorkspace, true, "Other now current")
-    AssertEq(flipped2.Length, 2, "SetCurrentWorkspace switch: 2 windows flipped (Main+Other)")
+    AssertEq(flipped2, true, "SetCurrentWorkspace switch: windows flipped")
 
     ; Same-name no-op (no rev bump, empty return)
     revBefore := WindowStore_GetRev()
     flipped3 := WindowStore_SetCurrentWorkspace("", "Other")  ; Same name as currently set
     AssertEq(WindowStore_GetRev(), revBefore, "SetCurrentWorkspace same name: no-op")
-    AssertEq(flipped3.Length, 0, "SetCurrentWorkspace same name: empty flipped array")
+    AssertEq(flipped3, false, "SetCurrentWorkspace same name: returns false")
 
     ; Cleanup
     WindowStore_RemoveWindow([1001, 1002, 1003], true)

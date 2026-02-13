@@ -570,11 +570,19 @@ _Viewer_ApplyDelta(payload) {
             existing := gViewer_RecByHwnd[hwnd]
             old := existing  ; Reference for sort comparison before merge
 
-            ; Check if sort order might have changed (use old value as fallback for sparse records)
-            if (gViewer_Sort = "Z" && _Viewer_Get(rec, "z", _Viewer_Get(old, "z", 0)) != _Viewer_Get(old, "z", 0)) {
-                needsRefresh := true
-            } else if (gViewer_Sort = "MRU" && _Viewer_Get(rec, "lastActivatedTick", _Viewer_Get(old, "lastActivatedTick", 0)) != _Viewer_Get(old, "lastActivatedTick", 0)) {
-                needsRefresh := true
+            ; Check if sort order might have changed
+            ; For sparse deltas: rec may lack the key, so fall back to old value for "new"
+            ; and compare against old value — only detects actual changes
+            if (gViewer_Sort = "Z") {
+                newZ := _Viewer_Get(rec, "z", _Viewer_Get(old, "z", 0))
+                oldZ := _Viewer_Get(old, "z", 0)
+                if (newZ != oldZ)
+                    needsRefresh := true
+            } else if (gViewer_Sort = "MRU") {
+                newMRU := _Viewer_Get(rec, "lastActivatedTick", _Viewer_Get(old, "lastActivatedTick", 0))
+                oldMRU := _Viewer_Get(old, "lastActivatedTick", 0)
+                if (newMRU != oldMRU)
+                    needsRefresh := true
             }
 
             ; Merge: update only fields present in the sparse record
