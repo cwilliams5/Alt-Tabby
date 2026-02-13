@@ -89,10 +89,12 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 # funcDefs: funcName (lowercase) -> @{ Name; File; RelPath; Line }
 $funcDefs = @{}
 $fileCache = @{}
+$fileCacheText = @{}
 
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $fileCache[$file.FullName] = $lines
+    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -154,6 +156,13 @@ foreach ($key in $funcDefs.Keys) {
 $pass1Sw.Stop()
 
 if (-not $Query) {
+    # Build combined regex for private function names (O(1) file pre-filter in Pass 2)
+    $privateFuncRegex = $null
+    if ($privateFuncKeys.Count -gt 0) {
+        $escapedNames = @($privateFuncKeys | ForEach-Object { [regex]::Escape($funcDefs[$_].Name) })
+        $privateFuncRegex = [regex]::new('(?i)(?:' + ($escapedNames -join '|') + ')', 'Compiled, IgnoreCase')
+    }
+
     # ============================================================
     # Pass 2: Detect cross-file calls to _ functions
     # ============================================================
@@ -165,14 +174,7 @@ if (-not $Query) {
         $lines = $fileCache[$file.FullName]
 
         # Pre-filter: skip files without any private function name reference
-        $fileText = [string]::Join("`n", $lines)
-        $hasAnyRef = $false
-        foreach ($fkey in $privateFuncKeys) {
-            if ($fileText.IndexOf($funcDefs[$fkey].Name, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                $hasAnyRef = $true; break
-            }
-        }
-        if (-not $hasAnyRef) { continue }
+        if ($privateFuncRegex -and -not $privateFuncRegex.IsMatch($fileCacheText[$file.FullName])) { continue }
 
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 

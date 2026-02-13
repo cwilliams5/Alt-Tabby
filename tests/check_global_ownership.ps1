@@ -136,10 +136,13 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $globalDecl = @{}
 # fileCache: filePath -> string[]
 $fileCache = @{}
+# fileCacheText: filePath -> joined string (for pre-filter)
+$fileCacheText = @{}
 
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $fileCache[$file.FullName] = $lines
+    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -225,6 +228,18 @@ foreach ($file in $srcFiles) {
     # When querying a single global, skip files that don't contain it at all
     if ($Query) {
         if (-not ($lines -match [regex]::Escape($Query))) { continue }
+    }
+
+    # File-level pre-filter: skip files that don't reference ANY known global
+    if (-not $Query) {
+        $fileText = $fileCacheText[$file.FullName]
+        $hasAnyGlobal = $false
+        foreach ($gName in $globalSet) {
+            if ($fileText.IndexOf($gName, [System.StringComparison]::Ordinal) -ge 0) {
+                $hasAnyGlobal = $true; break
+            }
+        }
+        if (-not $hasAnyGlobal) { continue }
     }
 
     $depth = 0

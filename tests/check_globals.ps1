@@ -128,6 +128,7 @@ $fileGlobals = @{}  # globalName -> "relpath:lineNum" (src/ only)
 $testPerFileGlobals = @{}  # filepath -> @{ globalName -> "relpath:lineNum" }
 $testGlobalCount = 0
 $fileCache = @{}  # path -> string[] (reused in Pass 2)
+$fileCacheText = @{}  # path -> joined string (for pre-filter)
 
 foreach ($file in $allFiles) {
     $isTestFile = $testsDirNorm -and $file.FullName.ToLower().StartsWith($testsDirNorm)
@@ -135,6 +136,7 @@ foreach ($file in $allFiles) {
 
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $fileCache[$file.FullName] = $lines
+    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
@@ -186,6 +188,13 @@ foreach ($file in $allFiles) {
 }
 $pass1Sw.Stop()
 
+# Build combined regex for src/ global names (O(1) file pre-filter in Pass 2)
+$srcGlobalRegex = $null
+if ($fileGlobals.Count -gt 0) {
+    $escapedNames = @($fileGlobals.Keys | ForEach-Object { [regex]::Escape($_) })
+    $srcGlobalRegex = [regex]::new('(?:' + ($escapedNames -join '|') + ')', 'Compiled')
+}
+
 # ============================================================
 # Pass 2: Check every function for undeclared global references
 #   - src/ functions checked against $fileGlobals (all src/ globals)
@@ -212,14 +221,20 @@ foreach ($file in $allFiles) {
     $lines = $fileCache[$file.FullName]
 
     # Pre-filter: skip files that reference no globals (avoids parsing function boundaries)
-    $joinedText = [string]::Join("`n", $lines)
-    $hasAnyGlobal = $false
-    foreach ($gName in $checkGlobals.Keys) {
-        if ($joinedText.IndexOf($gName, [System.StringComparison]::Ordinal) -ge 0) {
-            $hasAnyGlobal = $true; break
+    $joinedText = $fileCacheText[$file.FullName]
+    if (-not $isTestFile) {
+        # For src files, use pre-built combined regex (O(1) vs O(N) IndexOf)
+        if (-not $srcGlobalRegex.IsMatch($joinedText)) { continue }
+    } else {
+        # For test files, per-file global set is small — IndexOf loop is fine
+        $hasAnyGlobal = $false
+        foreach ($gName in $checkGlobals.Keys) {
+            if ($joinedText.IndexOf($gName, [System.StringComparison]::Ordinal) -ge 0) {
+                $hasAnyGlobal = $true; break
+            }
         }
+        if (-not $hasAnyGlobal) { continue }
     }
-    if (-not $hasAnyGlobal) { continue }
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0

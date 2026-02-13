@@ -27,8 +27,11 @@ $projectRoot = (Resolve-Path "$SourceDir\..").Path
 $allFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 $fileCache = @{}
+$fileCacheText = @{}
 foreach ($f in $allFiles) {
-    $fileCache[$f.FullName] = [System.IO.File]::ReadAllLines($f.FullName)
+    $lines = [System.IO.File]::ReadAllLines($f.FullName)
+    $fileCache[$f.FullName] = $lines
+    $fileCacheText[$f.FullName] = [string]::Join("`n", $lines)
 }
 
 # === Sub-check tracking ===
@@ -438,7 +441,7 @@ foreach ($file in $allFiles) {
     $rawLines = $fileCache[$file.FullName]
 
     # Pre-filter: skip files without "try"
-    $joined = [string]::Join("`n", $rawLines)
+    $joined = $fileCacheText[$file.FullName]
     if ($joined.IndexOf('try') -lt 0) { continue }
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')

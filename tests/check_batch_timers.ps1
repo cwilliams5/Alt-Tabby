@@ -28,8 +28,11 @@ $projectRoot = (Resolve-Path "$SourceDir\..").Path
 $allFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 $fileCache = @{}
+$fileCacheText = @{}
 foreach ($f in $allFiles) {
-    $fileCache[$f.FullName] = [System.IO.File]::ReadAllLines($f.FullName)
+    $lines = [System.IO.File]::ReadAllLines($f.FullName)
+    $fileCache[$f.FullName] = $lines
+    $fileCacheText[$f.FullName] = [string]::Join("`n", $lines)
 }
 
 # === Sub-check tracking ===
@@ -135,7 +138,7 @@ foreach ($file in $allFiles) {
 
     # Pre-filter: skip files without any timer callback function name
     if ($timerCallbacks.Count -gt 0) {
-        $joined = [string]::Join("`n", $lines)
+        $joined = $fileCacheText[$file.FullName]
         $hasCallback = $false
         foreach ($cbName in $timerCallbacks.Keys) {
             if ($joined.IndexOf($cbName) -ge 0) { $hasCallback = $true; break }

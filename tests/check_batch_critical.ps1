@@ -125,25 +125,36 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $clIssues = [System.Collections.ArrayList]::new()
 
 # Pass 1: Identify functions that contain Critical "Off"
+# Also cache processed line data (cleaned, stripped, braces) for reuse in Pass 2
 $criticalOffFunctions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 $clFuncCount = 0
+$lineDataCache = @{}  # file -> array of @{ Raw; Cleaned; Stripped; Braces }
 
 foreach ($file in $allFiles) {
     if ($fileCacheText[$file.FullName].IndexOf('Critical') -lt 0) { continue }
     $lines = $fileCache[$file.FullName]
+
+    # Pre-process all lines and cache results
+    $lineData = [System.Collections.ArrayList]::new($lines.Count)
+    for ($li = 0; $li -lt $lines.Count; $li++) {
+        $rawLine = $lines[$li]
+        $cleaned = BC_CleanLine $rawLine
+        $stripped = if ($cleaned -ne '') { BC_StripComments $rawLine } else { '' }
+        $braces = if ($cleaned -ne '') { BC_CountBraces $cleaned } else { @(0, 0) }
+        [void]$lineData.Add(@{ Raw = $rawLine; Cleaned = $cleaned; Stripped = $stripped; Braces = $braces })
+    }
+    $lineDataCache[$file.FullName] = $lineData
 
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
     $funcName = ""
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $rawLine = $lines[$i]
-        $cleaned = BC_CleanLine $rawLine
+    for ($i = 0; $i -lt $lineData.Count; $i++) {
+        $ld = $lineData[$i]
+        $cleaned = $ld.Cleaned
         if ($cleaned -eq '') { continue }
-
-        $commentStripped = BC_StripComments $rawLine
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -155,11 +166,10 @@ foreach ($file in $allFiles) {
             }
         }
 
-        $braces = BC_CountBraces $cleaned
-        $depth += $braces[0] - $braces[1]
+        $depth += $ld.Braces[0] - $ld.Braces[1]
 
         if ($inFunc) {
-            if (BC_TestCriticalOff $commentStripped) {
+            if (BC_TestCriticalOff $ld.Stripped) {
                 [void]$criticalOffFunctions.Add($funcName)
             }
 
@@ -172,11 +182,18 @@ foreach ($file in $allFiles) {
 }
 
 # Pass 2: Find calls to those functions inside Critical sections
+# Uses cached line data from Pass 1 (no re-cleaning, re-stripping, or re-counting braces)
 if ($criticalOffFunctions.Count -gt 0) {
-    foreach ($file in $allFiles) {
-        if ($fileCacheText[$file.FullName].IndexOf('Critical') -lt 0) { continue }
-        $lines = $fileCache[$file.FullName]
+    # Pre-filter: build regex to skip files that don't mention any leaked function
+    $escapedLeaked = @($criticalOffFunctions | ForEach-Object { [regex]::Escape($_) })
+    $leakedPattern = [regex]::new('(?:' + ($escapedLeaked -join '|') + ')', 'Compiled')
 
+    foreach ($file in $allFiles) {
+        if (-not $lineDataCache.ContainsKey($file.FullName)) { continue }
+        # Skip files that don't call any leaked function
+        if (-not $leakedPattern.IsMatch($fileCacheText[$file.FullName])) { continue }
+
+        $lineData = $lineDataCache[$file.FullName]
         $relPath = $file.FullName.Replace("$projectRoot\", '')
         $depth = 0
         $inFunc = $false
@@ -184,12 +201,10 @@ if ($criticalOffFunctions.Count -gt 0) {
         $funcName = ""
         $criticalOn = $false
 
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            $rawLine = $lines[$i]
-            $cleaned = BC_CleanLine $rawLine
+        for ($i = 0; $i -lt $lineData.Count; $i++) {
+            $ld = $lineData[$i]
+            $cleaned = $ld.Cleaned
             if ($cleaned -eq '') { continue }
-
-            $commentStripped = BC_StripComments $rawLine
 
             if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
                 $fname = $Matches[1]
@@ -201,14 +216,13 @@ if ($criticalOffFunctions.Count -gt 0) {
                 }
             }
 
-            $braces = BC_CountBraces $cleaned
-            $depth += $braces[0] - $braces[1]
+            $depth += $ld.Braces[0] - $ld.Braces[1]
 
             if ($inFunc) {
-                if (BC_TestCriticalOn $commentStripped) {
+                if (BC_TestCriticalOn $ld.Stripped) {
                     $criticalOn = $true
                 }
-                elseif (BC_TestCriticalOff $commentStripped) {
+                elseif (BC_TestCriticalOff $ld.Stripped) {
                     $criticalOn = $false
                 }
 
@@ -220,7 +234,7 @@ if ($criticalOffFunctions.Count -gt 0) {
                         if ($callee -eq $funcName) { continue }
 
                         if ($criticalOffFunctions.Contains($callee)) {
-                            if ($rawLine -notmatch 'lint-ignore:\s*critical-leak') {
+                            if ($ld.Raw -notmatch 'lint-ignore:\s*critical-leak') {
                                 [void]$clIssues.Add([PSCustomObject]@{
                                     File   = $relPath
                                     Line   = $i + 1
