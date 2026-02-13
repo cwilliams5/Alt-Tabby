@@ -99,7 +99,8 @@ KSub_GetFocusedWorkspaceIndex(monObj) {
     global cfg
     ring := _KSub_GetWorkspacesRing(monObj)
     if (ring = "") {
-        KSub_DiagLog("  GetFocusedWorkspaceIndex: no ring found")
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  GetFocusedWorkspaceIndex: no ring found")
         return -1
     }
     focusedIdx := _KSafe_Focused(ring)

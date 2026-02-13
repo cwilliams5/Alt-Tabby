@@ -163,6 +163,8 @@ _KomorebiSub_Start() {
     ; Create event for overlapped operations
     _KSub_hEvent := DllCall("CreateEventW", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
     if (!_KSub_hEvent) {
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("KomorebiSub: CreateEventW FAILED")
         KomorebiSub_Stop()
         _KSub_FallbackMode := true
         SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
@@ -183,6 +185,8 @@ _KomorebiSub_Start() {
         else if (gle = IPC_ERROR_PIPE_CONNECTED)   ; Already connected
             _KSub_Connected := true
         else {
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("KomorebiSub: ConnectNamedPipe FAILED err=" gle)
             KomorebiSub_Stop()
             _KSub_FallbackMode := true
             SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
