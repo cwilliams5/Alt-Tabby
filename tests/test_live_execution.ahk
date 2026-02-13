@@ -57,9 +57,12 @@ RunLiveTests_Execution() {
             TestErrors++
         }
 
-        try {
-            ProcessClose(standaloneStorePid)
-        }
+        try ProcessClose(standaloneStorePid)
+        ; Wait for process to fully exit before launching compiled store
+        ; (avoids resource contention that slows compiled exe startup)
+        waitStart := A_TickCount
+        while (ProcessExist(standaloneStorePid) && (A_TickCount - waitStart) < 2000)
+            Sleep(20)
     }
 
     ; ============================================================
@@ -124,7 +127,7 @@ RunLiveTests_Execution() {
 
         if (compiledStorePid) {
             ; Wait for store pipe to become available (adaptive)
-            if (!WaitForStorePipe(compiledStorePipe, 3000)) {
+            if (!WaitForStorePipe(compiledStorePipe, 5000)) {
                 Log("FAIL: Compiled store pipe not ready within timeout")
                 TestErrors++
                 try ProcessClose(compiledStorePid)
