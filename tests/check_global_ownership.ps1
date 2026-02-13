@@ -137,9 +137,10 @@ $fileCache = @{}
 $fileCacheText = @{}
 
 foreach ($file in $srcFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $text = [System.IO.File]::ReadAllText($file.FullName)
+    $fileCacheText[$file.FullName] = $text
+    $lines = $text -split "`r?`n"
     $fileCache[$file.FullName] = $lines
-    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -214,6 +215,19 @@ if (-not $Query -and $globalSet.Count -gt 0) {
         'Compiled, IgnoreCase')
 }
 
+# Pre-compile per-global mutation regex (avoids re-parsing patterns in inner loop)
+$mutationRegex = @{}
+foreach ($name in $globalSet) {
+    $e = [regex]::Escape($name)
+    $mutationRegex[$name] = @(
+        [regex]::new("(?<![.\w])$e\s*[:+\-\*\/\.]+\="),
+        [regex]::new("(?<![.\w])$e\s*(\+\+|--)"),
+        [regex]::new("(?<![.\w])$e\[.+?\]\s*[:+\-\*\/\.]+\="),
+        [regex]::new("\b$e\.($MUTATING_METHODS)\s*\("),
+        [regex]::new("\b$e\.\w+\s*[:+\-\*\/\.]+\=")
+    )
+}
+
 # ============================================================
 # Pass 2: Detect mutations in function bodies
 # ============================================================
@@ -283,34 +297,12 @@ foreach ($file in $srcFiles) {
             [void]$seen.Add($wName)
             if (-not $globalSet.Contains($wName)) { continue }
 
-            $escaped = [regex]::Escape($wName)
-            $isMutation = $false
-
-            # Pattern 1: Direct/compound assignment - gVar := / += / -= / .= / *= / /=
-            # Negative lookbehind for \w and \. prevents matching property writes
-            if ($cleaned -match "(?<![.\w])$escaped\s*[:+\-\*\/\.]+\=") {
-                $isMutation = $true
-            }
-
-            # Pattern 2: Increment/decrement - gVar++ / gVar--
-            if (-not $isMutation -and $cleaned -match "(?<![.\w])$escaped\s*(\+\+|--)") {
-                $isMutation = $true
-            }
-
-            # Pattern 3: Index write - gVar[...] :=
-            if (-not $isMutation -and $cleaned -match "(?<![.\w])$escaped\[.+?\]\s*[:+\-\*\/\.]+\=") {
-                $isMutation = $true
-            }
-
-            # Pattern 4: Mutating methods - gVar.Push( / .Pop( / .Delete( etc.
-            if (-not $isMutation -and $cleaned -match "\b$escaped\.($MUTATING_METHODS)\s*\(") {
-                $isMutation = $true
-            }
-
-            # Pattern 5: Property write - gVar.propName :=
-            if (-not $isMutation -and $cleaned -match "\b$escaped\.\w+\s*[:+\-\*\/\.]+\=") {
-                $isMutation = $true
-            }
+            $patterns = $mutationRegex[$wName]
+            $isMutation = $patterns[0].IsMatch($cleaned) -or
+                          $patterns[1].IsMatch($cleaned) -or
+                          $patterns[2].IsMatch($cleaned) -or
+                          $patterns[3].IsMatch($cleaned) -or
+                          $patterns[4].IsMatch($cleaned)
 
             if ($isMutation) {
                 [void]$mutations.Add(@{

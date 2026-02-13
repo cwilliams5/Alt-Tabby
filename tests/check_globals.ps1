@@ -134,9 +134,10 @@ foreach ($file in $allFiles) {
     $isTestFile = $testsDirNorm -and $file.FullName.ToLower().StartsWith($testsDirNorm)
     $localGlobals = @{}  # per-file collection for test files
 
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $text = [System.IO.File]::ReadAllText($file.FullName)
+    $fileCacheText[$file.FullName] = $text
+    $lines = $text -split "`r?`n"
     $fileCache[$file.FullName] = $lines
-    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
@@ -193,6 +194,13 @@ $srcGlobalRegex = $null
 if ($fileGlobals.Count -gt 0) {
     $escapedNames = @($fileGlobals.Keys | ForEach-Object { [regex]::Escape($_) })
     $srcGlobalRegex = [regex]::new('(?:' + ($escapedNames -join '|') + ')', 'Compiled')
+}
+
+# Pre-compile per-global boundary regex (avoids re-parsing \b patterns in inner loop)
+$globalBoundaryRegex = @{}
+foreach ($gName in $fileGlobals.Keys) {
+    $e = [regex]::Escape($gName)
+    $globalBoundaryRegex[$gName] = [regex]::new("\b$e\b")
 }
 
 # ============================================================
@@ -303,7 +311,11 @@ foreach ($file in $allFiles) {
 
             # End of function - analyze body
             if ($depth -le $funcDepth) {
-                $allText = ($funcBodyLines | ForEach-Object { $_.Text }) -join " "
+                $texts = [string[]]::new($funcBodyLines.Count)
+                for ($t = 0; $t -lt $funcBodyLines.Count; $t++) {
+                    $texts[$t] = $funcBodyLines[$t].Text
+                }
+                $allText = [string]::Join(" ", $texts)
 
                 # Check each known global (IndexOf-first: skip expensive regex when substring absent)
                 foreach ($gName in $checkGlobals.Keys) {
@@ -312,13 +324,24 @@ foreach ($file in $allFiles) {
                     if ($funcParams.ContainsKey($gName)) { continue }
                     if ($funcLocals.ContainsKey($gName)) { continue }
                     # Validate word boundary (IndexOf may match substrings)
-                    $escapedName = [regex]::Escape($gName)
-                    if ($allText -notmatch "\b$escapedName\b") { continue }
+                    $boundaryRx = $globalBoundaryRegex[$gName]
+                    if ($null -ne $boundaryRx) {
+                        if (-not $boundaryRx.IsMatch($allText)) { continue }
+                    } else {
+                        # Fallback for test-file globals (not in pre-compiled set)
+                        $escapedName = [regex]::Escape($gName)
+                        if ($allText -notmatch "\b$escapedName\b") { continue }
+                    }
 
                     # Find first occurrence for line number
                     $foundLine = $null
                     foreach ($bodyLine in $funcBodyLines) {
-                        if ($bodyLine.Text -match "\b$escapedName\b" -and $bodyLine.Text -notmatch '^\s*(?:global|static|local)\s') {
+                        if ($null -ne $boundaryRx) {
+                            $lineMatch = $boundaryRx.IsMatch($bodyLine.Text)
+                        } else {
+                            $lineMatch = $bodyLine.Text -match "\b$escapedName\b"
+                        }
+                        if ($lineMatch -and $bodyLine.Text -notmatch '^\s*(?:global|static|local)\s') {
                             $foundLine = $bodyLine
                             break
                         }

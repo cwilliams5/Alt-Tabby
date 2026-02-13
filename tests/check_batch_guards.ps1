@@ -28,8 +28,11 @@ $projectRoot = (Resolve-Path "$SourceDir\..").Path
 $allFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 $fileCache = @{}
+$fileCacheText = @{}
 foreach ($f in $allFiles) {
-    $fileCache[$f.FullName] = [System.IO.File]::ReadAllLines($f.FullName)
+    $text = [System.IO.File]::ReadAllText($f.FullName)
+    $fileCacheText[$f.FullName] = $text
+    $fileCache[$f.FullName] = $text -split "`r?`n"
 }
 
 # === Sub-check tracking ===
@@ -300,7 +303,7 @@ foreach ($file in $allFiles) {
 
     # File-level pre-filter: skip files without any enforced log function
     $hasLogFunc = $false
-    $joined = [string]::Join("`n", $lines)
+    $joined = $fileCacheText[$file.FullName]
     foreach ($fn in $lgAllFuncNames) {
         if ($joined.Contains($fn)) { $hasLogFunc = $true; break }
     }

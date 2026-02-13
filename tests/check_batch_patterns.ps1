@@ -30,9 +30,10 @@ $fileCache = @{}        # fullPath -> string[] (lines)
 $fileCacheText = @{}    # fullPath -> string (joined text)
 $relToFull = @{}        # relPath (from src/) -> fullPath
 foreach ($f in $allFiles) {
-    $lines = [System.IO.File]::ReadAllLines($f.FullName)
+    $text = [System.IO.File]::ReadAllText($f.FullName)
+    $fileCacheText[$f.FullName] = $text
+    $lines = $text -split "`r?`n"
     $fileCache[$f.FullName] = $lines
-    $fileCacheText[$f.FullName] = [string]::Join("`n", $lines)
     $relPath = $f.FullName
     if ($relPath.StartsWith($SourceDir)) {
         $relPath = $relPath.Substring($SourceDir.Length).TrimStart('\', '/')
@@ -910,6 +911,110 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_send_patterns"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 5: projection_fields
+# Verify PROJECTION_FIELDS and _WS_ToItem stay in sync
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+$storeRelPath = "store\windowstore.ahk"
+$storeFullPath = if ($relToFull.ContainsKey($storeRelPath)) { $relToFull[$storeRelPath] } else { $null }
+
+if ($null -ne $storeFullPath -and $fileCache.ContainsKey($storeFullPath)) {
+    $wsLines = $fileCache[$storeFullPath]
+    $wsContent = $fileCacheText[$storeFullPath]
+
+    # Extract PROJECTION_FIELDS
+    $projFieldNames = [System.Collections.ArrayList]::new()
+    if ($wsContent -match '(?s)global\s+PROJECTION_FIELDS\s*:=\s*\[(.*?)\]') {
+        $arrayContent = $Matches[1]
+        $fieldMatches = [regex]::Matches($arrayContent, '"(\w+)"')
+        foreach ($m in $fieldMatches) {
+            [void]$projFieldNames.Add($m.Groups[1].Value)
+        }
+    }
+
+    # Extract _WS_ToItem return object keys
+    $toItemKeys = [System.Collections.ArrayList]::new()
+    $funcStartIdx = -1
+    for ($wi = 0; $wi -lt $wsLines.Count; $wi++) {
+        if ($wsLines[$wi] -match '^\s*_WS_ToItem\s*\(') {
+            $funcStartIdx = $wi
+            break
+        }
+    }
+
+    if ($funcStartIdx -ge 0) {
+        $funcBody = [System.Text.StringBuilder]::new()
+        $pfDepth = 0; $pfStarted = $false
+        for ($wi = $funcStartIdx; $wi -lt $wsLines.Count; $wi++) {
+            $wLine = $wsLines[$wi]
+            [void]$funcBody.AppendLine($wLine)
+            foreach ($c in $wLine.ToCharArray()) {
+                if ($c -eq '{') { $pfDepth++; $pfStarted = $true }
+                elseif ($c -eq '}') { $pfDepth-- }
+            }
+            if ($pfStarted -and $pfDepth -le 0) { break }
+        }
+        $funcText = $funcBody.ToString()
+
+        $keyMatches = [regex]::Matches($funcText, '(?m)^\s*(\w+)\s*:\s*rec\.')
+        foreach ($m in $keyMatches) {
+            [void]$toItemKeys.Add($m.Groups[1].Value)
+        }
+        $returnLineMatch = [regex]::Match($funcText, 'return\s*\{\s*(\w+)\s*:')
+        if ($returnLineMatch.Success) {
+            $firstKey = $returnLineMatch.Groups[1].Value
+            if ($firstKey -notin $toItemKeys) {
+                [void]$toItemKeys.Add($firstKey)
+            }
+        }
+    }
+
+    # Compare (excluding 'hwnd')
+    if ($projFieldNames.Count -eq 0) {
+        $anyFailed = $true
+        [void]$failOutput.AppendLine("")
+        [void]$failOutput.AppendLine("  FAIL: PROJECTION_FIELDS array not found or empty in windowstore.ahk")
+    } elseif ($toItemKeys.Count -eq 0) {
+        $anyFailed = $true
+        [void]$failOutput.AppendLine("")
+        [void]$failOutput.AppendLine("  FAIL: Could not extract keys from _WS_ToItem return object")
+    } else {
+        $projSet = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($f in $projFieldNames) { [void]$projSet.Add($f) }
+
+        $toItemSet = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($k in $toItemKeys) {
+            if ($k -ne 'hwnd') { [void]$toItemSet.Add($k) }
+        }
+
+        $inProjNotToItem = [System.Collections.ArrayList]::new()
+        foreach ($f in $projFieldNames) {
+            if (-not $toItemSet.Contains($f)) { [void]$inProjNotToItem.Add($f) }
+        }
+
+        $inToItemNotProj = [System.Collections.ArrayList]::new()
+        foreach ($k in $toItemKeys) {
+            if ($k -ne 'hwnd' -and -not $projSet.Contains($k)) { [void]$inToItemNotProj.Add($k) }
+        }
+
+        if ($inProjNotToItem.Count -gt 0 -or $inToItemNotProj.Count -gt 0) {
+            $anyFailed = $true
+            [void]$failOutput.AppendLine("")
+            [void]$failOutput.AppendLine("  FAIL: PROJECTION_FIELDS/_WS_ToItem mismatch:")
+            if ($inProjNotToItem.Count -gt 0) {
+                [void]$failOutput.AppendLine("    In PROJECTION_FIELDS but not _WS_ToItem: $($inProjNotToItem -join ', ')")
+            }
+            if ($inToItemNotProj.Count -gt 0) {
+                [void]$failOutput.AppendLine("    In _WS_ToItem but not PROJECTION_FIELDS: $($inToItemNotProj -join ', ')")
+            }
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_projection_fields"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -917,7 +1022,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, projection_fields)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

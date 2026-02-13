@@ -28,8 +28,11 @@ $projectRoot = (Resolve-Path "$SourceDir\..").Path
 $allFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 $fileCache = @{}
+$fileCacheText = @{}
 foreach ($f in $allFiles) {
-    $fileCache[$f.FullName] = [System.IO.File]::ReadAllLines($f.FullName)
+    $text = [System.IO.File]::ReadAllText($f.FullName)
+    $fileCacheText[$f.FullName] = $text
+    $fileCache[$f.FullName] = $text -split "`r?`n"
 }
 
 # === Sub-check tracking ===
@@ -79,7 +82,7 @@ foreach ($file in $allFiles) {
     $lines = $fileCache[$file.FullName]
 
     # Pre-filter: skip files without both "switch" and "global" (need both for violation)
-    $joined = [string]::Join("`n", $lines)
+    $joined = $fileCacheText[$file.FullName]
     if ($joined.IndexOf('switch', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
     if ($joined.IndexOf('global', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
@@ -211,7 +214,7 @@ if (-not (Test-Path $constantsFile)) {
         # Part B: All constants referenced outside ipc_constants.ahk
         $usedConstants = @{}
         foreach ($file in $ipcFiles) {
-            $content = [string]::Join("`n", $fileCache[$file.FullName])
+            $content = $fileCacheText[$file.FullName]
             foreach ($constName in $constants.Keys) {
                 if ($content.Contains($constName)) { $usedConstants[$constName] = $true }
             }
@@ -637,7 +640,7 @@ if ($registryFile.Count -eq 0) {
         $lines = $fileCache[$file.FullName]
 
         # Pre-filter: skip files without "cfg."
-        $joined = [string]::Join("`n", $lines)
+        $joined = $fileCacheText[$file.FullName]
         if ($joined.IndexOf('cfg.', [System.StringComparison]::Ordinal) -lt 0) { continue }
 
         $relPath = $file.FullName.Replace("$projectRoot\", '')

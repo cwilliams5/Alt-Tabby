@@ -29,9 +29,9 @@ $allFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
 $fileCache = @{}
 $fileCacheText = @{}
 foreach ($f in $allFiles) {
-    $lines = [System.IO.File]::ReadAllLines($f.FullName)
-    $fileCache[$f.FullName] = $lines
-    $fileCacheText[$f.FullName] = [string]::Join("`n", $lines)
+    $text = [System.IO.File]::ReadAllText($f.FullName)
+    $fileCacheText[$f.FullName] = $text
+    $fileCache[$f.FullName] = $text -split "`r?`n"
 }
 
 # === Sub-check tracking ===
