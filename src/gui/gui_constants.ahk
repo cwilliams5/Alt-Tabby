@@ -11,7 +11,14 @@ global SW_RESTORE := 9
 global GWL_EXSTYLE := -20
 global WS_EX_LAYERED := 0x80000
 
+; Window messages
+global WM_MOUSEMOVE := 0x0200
+global WM_LBUTTONDOWN := 0x0201
+global WM_MOUSELEAVE := 0x02A3
+global WM_DPICHANGED := 0x02E0
+
 ; DWM window attributes
+global DWMWA_CLOAK := 13
 global DWMWA_USE_IMMERSIVE_DARK_MODE_19 := 19
 global DWMWA_USE_IMMERSIVE_DARK_MODE := 20
 global DWMWA_WINDOW_CORNER_PREFERENCE := 33
@@ -19,7 +26,13 @@ global HWND_TOPMOST := -1
 global HWND_NOTOPMOST := -2
 global SWP_NOSIZE := 0x0001
 global SWP_NOMOVE := 0x0002
+global SWP_NOZORDER := 0x0004
+global SWP_NOACTIVATE := 0x0010
 global SWP_SHOWWINDOW := 0x0040
+global SWP_NOOWNERZORDER := 0x0200
+
+; Monitor
+global MONITOR_DEFAULTTONEAREST := 2
 
 ; GDI+ enums
 global GDIP_UNIT_PIXEL := 2

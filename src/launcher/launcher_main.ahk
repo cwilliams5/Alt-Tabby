@@ -16,6 +16,7 @@ global g_ActiveMutex := 0
 ; WM_COPYDATA debounce state (IsSet pattern - unset until first signal received)
 global g_LastStoreRestartTick  ; Debounce RESTART_STORE signals
 global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
+global LAUNCHER_RESTART_DEBOUNCE_MS := 5000
 
 ; Bug 1 fix: Track when wizard was skipped due to existing PF install (not user-configured)
 ; Used to prevent overwriteUserData false positive in Launcher_DoUpdateInstalled
@@ -291,14 +292,14 @@ _Launcher_OnExit(exitReason, exitCode) {
 ; Config editor sends RESTART_ALL when settings are saved
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     global TABBY_CMD_RESTART_STORE, TABBY_CMD_RESTART_ALL, cfg
-    global g_LastStoreRestartTick, g_LastFullRestartTick
+    global g_LastStoreRestartTick, g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
 
     dwData := NumGet(lParam, 0, "uptr")
 
     if (dwData = TABBY_CMD_RESTART_STORE) {
         if (cfg.DiagLauncherLog)
             Launcher_Log("IPC: Received RESTART_STORE from hwnd=" wParam)
-        if (IsSet(g_LastStoreRestartTick) && (A_TickCount - g_LastStoreRestartTick) < 5000) {
+        if (IsSet(g_LastStoreRestartTick) && (A_TickCount - g_LastStoreRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
             Launcher_Log("IPC: RESTART_STORE debounced")
             return 1
         }
@@ -310,7 +311,7 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     if (dwData = TABBY_CMD_RESTART_ALL) {
         if (cfg.DiagLauncherLog)
             Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
-        if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < 5000) {
+        if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
             Launcher_Log("IPC: RESTART_ALL debounced")
             return 1
         }

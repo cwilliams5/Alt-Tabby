@@ -368,7 +368,8 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     _GUI_Main_Init()
 
     ; DPI change handler
-    OnMessage(0x02E0, (wParam, lParam, msg, hwnd) => (gGdip_ResScale := 0.0, 0))
+    global WM_DPICHANGED
+    OnMessage(WM_DPICHANGED, (wParam, lParam, msg, hwnd) => (gGdip_ResScale := 0.0, 0))
 
     ; Create windows
     GUI_CreateBase()
@@ -387,10 +388,11 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     gGUI_Revealed := false
 
     ; Mouse handlers
-    OnMessage(0x0201, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : 0))
+    global WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSELEAVE
+    OnMessage(WM_LBUTTONDOWN, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : 0))
     OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))  ; lint-ignore: onmessage-collision
-    OnMessage(0x0200, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
-    OnMessage(0x02A3, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))  ; WM_MOUSELEAVE
+    OnMessage(WM_MOUSEMOVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
+    OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))
 
     ; Register error and exit handlers
     OnError(_GUI_OnError)

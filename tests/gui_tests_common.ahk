@@ -64,6 +64,9 @@ global gStats_CrossWorkspace := 0
 global gStats_WorkspaceToggles := 0
 global gStats_LastSent := Map()
 
+; Win32 constants (from win_utils.ahk - not included in GUI test chain)
+global DWMWA_CLOAKED := 14
+
 ; Constants from config_loader.ahk
 global TIMING_IPC_FIRE_WAIT := 10
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"

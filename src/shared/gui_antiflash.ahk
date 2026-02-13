@@ -39,6 +39,7 @@
 ;   bgColor  - Background color to match dark theme (e.g., "1a1b26")
 ;   useCloak - true: DWM cloak (normal GUIs). false: caller must Show off-screen (WebView2)
 GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
+    global DWMWA_CLOAK
     gui.Opt("+E0x80000")  ; WS_EX_LAYERED
     gui.BackColor := bgColor
     ; .Hwnd access forces HWND creation before Show
@@ -46,7 +47,7 @@ GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
     ; Always cloak — prevents DWM from compositing the frame during Show().
     ; For WebView2: caller must uncloak before WebView2.create() (needs DWM
     ; composition to init), then Reveal re-cloaks for the center+show sequence.
-    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 1, "uint", 4)
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAK, "int*", 1, "uint", 4)
     DllCall("SetLayeredWindowAttributes", "ptr", hwnd, "uint", 0, "uchar", 0, "uint", 2)
 }
 
@@ -55,15 +56,16 @@ GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
 ;   wasCloaked   - true if GUI_AntiFlashPrepare was called with useCloak=true
 ;   wasOffscreen - true if window was shown at off-screen position (centers it)
 GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
+    global DWMWA_CLOAK, MONITOR_DEFAULTTONEAREST, SWP_NOSIZE, SWP_NOZORDER
     hwnd := gui.Hwnd
     if (wasOffscreen) {
         ; WebView2 path: cloak NOW (safe — WebView2 is already initialized),
         ; then center while cloaked so the frame move is completely invisible.
-        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 1, "uint", 4)
+        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAK, "int*", 1, "uint", 4)
         ; Center on current monitor using raw Win32 — bypasses AHK DPI scaling.
         ; GetMonitorInfoW work area (offsets 20-32) and GetWindowRect are both
         ; in physical pixels, and SetWindowPos takes physical pixels.
-        hMon := DllCall("user32\MonitorFromWindow", "ptr", hwnd, "uint", 2, "ptr")
+        hMon := DllCall("user32\MonitorFromWindow", "ptr", hwnd, "uint", MONITOR_DEFAULTTONEAREST, "ptr")
         mi := Buffer(40, 0)
         NumPut("UInt", 40, mi, 0)
         DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr)
@@ -75,16 +77,15 @@ GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
         winH := NumGet(rect, 12, "Int") - NumGet(rect, 4, "Int")
         cx := wL + (wR - wL - winW) // 2
         cy := wT + (wB - wT - winH) // 2
-        ; SWP_NOSIZE=0x0001 | SWP_NOZORDER=0x0004
         DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", 0
-            , "int", cx, "int", cy, "int", 0, "int", 0, "uint", 0x0005)
+            , "int", cx, "int", cy, "int", 0, "int", 0, "uint", SWP_NOSIZE | SWP_NOZORDER)
         wasCloaked := true  ; Uncloak below after alpha is set
     }
     ; Set alpha=255 FIRST (while still cloaked — invisible to user),
     ; THEN uncloak. Ensures window is fully opaque the instant it becomes visible.
     DllCall("SetLayeredWindowAttributes", "ptr", hwnd, "uint", 0, "uchar", 255, "uint", 2)
     if (wasCloaked)
-        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", 13, "int*", 0, "uint", 4)
+        DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAK, "int*", 0, "uint", 4)
     ; Remove WS_EX_LAYERED — no longer needed after reveal. Leaving it on causes
     ; flashing with WM_SETREDRAW + RedrawWindow (dashboard refresh).
     gui.Opt("-E0x80000")

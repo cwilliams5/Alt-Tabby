@@ -109,7 +109,8 @@ Win_GetRectPhys(hWnd, &x, &y, &w, &h) {
 
 ; Set window position in physical pixels
 Win_SetPosPhys(hWnd, xPhys, yPhys, wPhys, hPhys) {
-    flags := 0x0004 | 0x0200 | 0x0010  ; SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE
+    global SWP_NOZORDER, SWP_NOOWNERZORDER, SWP_NOACTIVATE
+    flags := SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE
     return DllCall("user32\SetWindowPos", "ptr", hWnd, "ptr", 0, "int", xPhys, "int", yPhys, "int", wPhys, "int", hPhys, "uint", flags, "int")
 }
 

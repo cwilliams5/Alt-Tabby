@@ -585,7 +585,14 @@ _CL_LoadAllSettings() {
         ; Parse value based on type
         switch entry.t {
             case "bool":
-                parsedVal := (val = "true" || val = "1" || val = "yes")
+                if (val = "true" || val = "1" || val = "yes")
+                    parsedVal := true
+                else if (val = "false" || val = "0" || val = "no")
+                    parsedVal := false
+                else {
+                    LogAppend(LOG_PATH_STORE, "config parse warning: " entry.k "=" val " (expected true/false), treating as false")
+                    parsedVal := false
+                }
             case "int":
                 try {
                     parsedVal := Integer(val)

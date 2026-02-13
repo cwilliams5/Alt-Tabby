@@ -1210,8 +1210,9 @@ _GUI_InitAppViewCollection() {
 
 ; Check if a window is cloaked via DWM
 _GUI_IsCloaked(hwnd) {
+    global DWMWA_CLOAKED
     static cloakBuf := Buffer(4, 0)
-    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakBuf.Ptr, "uint", 4, "int")
+    hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakBuf.Ptr, "uint", 4, "int")
     if (hr != 0)
         return -1  ; Error
     return NumGet(cloakBuf, 0, "UInt")

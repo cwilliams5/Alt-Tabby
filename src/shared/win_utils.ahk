@@ -11,6 +11,10 @@
 ; Load dwmapi once at startup (safe to call multiple times)
 DllCall("LoadLibrary", "str", "dwmapi.dll")
 
+; Win32 window constants
+global GWL_STYLE := -16
+global GW_OWNER := 4
+
 ; DWM cloaking attribute constant
 global DWMWA_CLOAKED := 14
 
