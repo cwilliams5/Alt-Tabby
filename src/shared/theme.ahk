@@ -137,7 +137,7 @@ Theme_Init() {
     ; Register WM_CTLCOLOR handlers
     OnMessage(0x0133, _Theme_OnCtlColorEdit)     ; WM_CTLCOLOREDIT
     OnMessage(0x0134, _Theme_OnCtlColorListBox)   ; WM_CTLCOLORLISTBOX
-    OnMessage(0x0138, _Theme_OnCtlColorStatic)    ; WM_CTLCOLORSTATIC
+    OnMessage(0x0138, _Theme_OnCtlColorStatic)    ; WM_CTLCOLORSTATIC  ; lint-ignore: onmessage-collision
 
     ; Listen for system theme changes (Automatic mode)
     OnMessage(0x001A, _Theme_OnSettingChange)     ; WM_SETTINGCHANGE
@@ -622,7 +622,7 @@ _Theme_ApplyLightListView(ctrl) {
 ; Internal: WM_CTLCOLOR handlers
 ; ============================================================
 
-_Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {
+_Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
     global gTheme_Initialized, gTheme_Palette, gTheme_BrushEditBg
     if (!gTheme_Initialized)
         return
@@ -631,7 +631,7 @@ _Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {
     return gTheme_BrushEditBg
 }
 
-_Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {
+_Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
     global gTheme_Initialized, gTheme_Palette, gTheme_BrushEditBg, gTheme_BrushBg, gTheme_BrushPanelBg
     global gTheme_SidebarHwnds
     if (!gTheme_Initialized)
@@ -647,7 +647,7 @@ _Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {
     return gTheme_BrushEditBg
 }
 
-_Theme_OnCtlColorStatic(wParam, lParam, msg, hwnd) {
+_Theme_OnCtlColorStatic(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
     global gTheme_Initialized, gTheme_Palette, gTheme_BrushBg, gTheme_BrushPanelBg
     global gTheme_SemanticHwnds, gTheme_MutedHwnds, gTheme_AccentHwnds, gTheme_PanelParentHwnds
     if (!gTheme_Initialized)

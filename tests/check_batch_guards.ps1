@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -430,6 +430,235 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_log_guards"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 4: onmessage_collision
+# Flags when multiple files register OnMessage handlers for the
+# same Windows message number. AHK v2 stacks handlers LIFO —
+# if the later handler returns a value, earlier handlers are
+# silently skipped. Cross-file collisions create fragile
+# implicit dependencies.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$OM_SUPPRESSION = 'lint-ignore: onmessage-collision'
+
+# Phase 1: Collect all global constant values (for resolving named constants)
+$omConstants = @{}
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*global\s+(\w+)\s*:=\s*(0x[0-9A-Fa-f]+|\d+)') {
+            $cName = $Matches[1]
+            $cVal = $Matches[2]
+            if ($cVal -like '0x*') {
+                $omConstants[$cName] = [Convert]::ToInt32($cVal, 16)
+            } else {
+                $omConstants[$cName] = [int]$cVal
+            }
+        }
+    }
+}
+
+# Phase 2: Collect all OnMessage registrations (skip deregistrations)
+$omRegistrations = @{}  # msgNum -> list of @{ File; Line; Raw; MsgExpr }
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($raw.Contains($OM_SUPPRESSION)) { continue }
+
+        # Match OnMessage( <msgExpr>, <handler> [, <addRemove>] )
+        if ($raw -notmatch 'OnMessage\s*\(') { continue }
+
+        # Extract the first argument (message identifier)
+        $afterParen = $raw.Substring($raw.IndexOf('OnMessage(') + 10)
+
+        # Find first comma (end of msg argument)
+        $parenD = 0; $commaIdx = -1
+        for ($j = 0; $j -lt $afterParen.Length; $j++) {
+            if ($afterParen[$j] -eq '(') { $parenD++ }
+            elseif ($afterParen[$j] -eq ')') {
+                if ($parenD -eq 0) { break }
+                $parenD--
+            }
+            elseif ($afterParen[$j] -eq ',' -and $parenD -eq 0) {
+                $commaIdx = $j; break
+            }
+        }
+        if ($commaIdx -lt 0) { continue }
+
+        $msgExpr = $afterParen.Substring(0, $commaIdx).Trim()
+
+        # Check for deregistration: 3rd argument is 0
+        # Find the rest after the handler argument
+        $restAfterHandler = $afterParen.Substring($commaIdx + 1)
+        # Find second comma
+        $parenD = 0; $comma2Idx = -1
+        for ($j = 0; $j -lt $restAfterHandler.Length; $j++) {
+            if ($restAfterHandler[$j] -eq '(') { $parenD++ }
+            elseif ($restAfterHandler[$j] -eq ')') {
+                if ($parenD -eq 0) { break }
+                $parenD--
+            }
+            elseif ($restAfterHandler[$j] -eq ',' -and $parenD -eq 0) {
+                $comma2Idx = $j; break
+            }
+        }
+        if ($comma2Idx -ge 0) {
+            $thirdArg = $restAfterHandler.Substring($comma2Idx + 1).Trim().TrimEnd(')')
+            if ($thirdArg -eq '0') { continue }  # Deregistration, skip
+        }
+
+        # Resolve message number
+        $msgNum = $null
+        if ($msgExpr -match '^0x[0-9A-Fa-f]+$') {
+            $msgNum = [Convert]::ToInt32($msgExpr, 16)
+        } elseif ($msgExpr -match '^\d+$') {
+            $msgNum = [int]$msgExpr
+        } elseif ($omConstants.ContainsKey($msgExpr)) {
+            $msgNum = $omConstants[$msgExpr]
+        }
+        if ($null -eq $msgNum) { continue }  # Can't resolve, skip
+
+        if (-not $omRegistrations.ContainsKey($msgNum)) {
+            $omRegistrations[$msgNum] = [System.Collections.ArrayList]::new()
+        }
+        [void]$omRegistrations[$msgNum].Add([PSCustomObject]@{
+            File = $relPath; Line = ($i + 1); Raw = $raw.Trim(); MsgExpr = $msgExpr
+        })
+    }
+}
+
+# Phase 3: Flag message numbers with registrations in >1 file
+$omIssues = [System.Collections.ArrayList]::new()
+foreach ($msgNum in $omRegistrations.Keys) {
+    $regs = $omRegistrations[$msgNum]
+    $uniqueFiles = @($regs | ForEach-Object { $_.File } | Sort-Object -Unique)
+    if ($uniqueFiles.Count -gt 1) {
+        [void]$omIssues.Add([PSCustomObject]@{
+            MsgNum = '0x{0:X4}' -f $msgNum
+            Registrations = $regs
+            FileCount = $uniqueFiles.Count
+        })
+    }
+}
+
+if ($omIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($omIssues.Count) OnMessage collision(s) found across files.")
+    [void]$failOutput.AppendLine("  AHK v2 stacks handlers LIFO - if the later handler returns a value,")
+    [void]$failOutput.AppendLine("  earlier handlers are silently skipped. Cross-file collisions are fragile.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: onmessage-collision' on the OnMessage() line.")
+    foreach ($issue in $omIssues | Sort-Object MsgNum) {
+        [void]$failOutput.AppendLine("    Message $($issue.MsgNum) registered in $($issue.FileCount) files:")
+        foreach ($reg in $issue.Registrations | Sort-Object File, Line) {
+            [void]$failOutput.AppendLine("      $($reg.File):$($reg.Line) - OnMessage($($reg.MsgExpr), ...)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_onmessage_collision"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 5: postmessage_safety
+# Flags PostMessage/SendMessage to external window handles
+# (ahk_id pattern) that aren't wrapped in a try block.
+# TOCTOU race: window can be destroyed between validation and send.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$PM_SUPPRESSION = 'lint-ignore: postmessage-unsafe'
+$pmIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+
+    # Pre-filter: skip files without PostMessage/SendMessage + ahk_id
+    $hasPattern = $false
+    foreach ($line in $lines) {
+        if ($line -match '(?:Post|Send)Message\s*\(' -and $line -match 'ahk_id') {
+            $hasPattern = $true; break
+        }
+    }
+    if (-not $hasPattern) { continue }
+
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $tryDepths = [System.Collections.ArrayList]::new()  # stack of brace depths where try blocks started
+    $braceDepth = 0
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        $trimmed = $raw.TrimStart()
+        if ($trimmed -eq '' -or $trimmed[0] -eq ';') { continue }
+
+        # Strip strings and comments for brace counting
+        $cleaned = $raw
+        if ($cleaned.IndexOf('"') -ge 0) {
+            $cleaned = $cleaned -replace '"[^"]*"', '""'
+        }
+        if ($cleaned.IndexOf("'") -ge 0) {
+            $cleaned = $cleaned -replace "'[^']*'", "''"
+        }
+        if ($cleaned.IndexOf(';') -ge 0) {
+            $cleaned = $cleaned -replace '\s;.*$', ''
+        }
+
+        # Count braces and track try blocks
+        foreach ($c in $cleaned.ToCharArray()) {
+            if ($c -eq '{') {
+                $braceDepth++
+            }
+            elseif ($c -eq '}') {
+                $braceDepth--
+                if ($braceDepth -lt 0) { $braceDepth = 0 }
+                # Pop any try blocks that ended
+                while ($tryDepths.Count -gt 0 -and $tryDepths[$tryDepths.Count - 1] -ge $braceDepth) {
+                    $tryDepths.RemoveAt($tryDepths.Count - 1)
+                }
+            }
+        }
+
+        # Detect try block start (braced or single-line)
+        if ($trimmed -match '^try\s*\{') {
+            [void]$tryDepths.Add($braceDepth - 1)  # opened brace already counted above
+        }
+
+        # Check for PostMessage/SendMessage with ahk_id
+        if ($raw -match '(?:Post|Send)Message\s*\(' -and $raw -match 'ahk_id') {
+            if ($raw.Contains($PM_SUPPRESSION)) { continue }
+
+            # Check if inside a try block OR preceded by 'try' on the same line
+            $inTry = $tryDepths.Count -gt 0
+            if (-not $inTry -and $trimmed -match '^try\s+(?:Post|Send)Message') {
+                $inTry = $true
+            }
+
+            if (-not $inTry) {
+                [void]$pmIssues.Add([PSCustomObject]@{
+                    File = $relPath; Line = ($i + 1); Code = $raw.Trim()
+                })
+            }
+        }
+    }
+}
+
+if ($pmIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($pmIssues.Count) PostMessage/SendMessage to external hwnd without try.")
+    [void]$failOutput.AppendLine("  Window can be destroyed between WinExist() and PostMessage() (TOCTOU race).")
+    [void]$failOutput.AppendLine("  Fix: wrap in try { PostMessage(...) } or use try PostMessage(...).")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: postmessage-unsafe' on the same line.")
+    foreach ($issue in $pmIssues | Sort-Object File, Line) {
+        [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line): $($issue.Code)")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_postmessage_safety"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -437,7 +666,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

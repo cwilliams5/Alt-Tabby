@@ -77,7 +77,7 @@ _Viewer_Init() {
     }
     ; Register PostMessage wake handler: store signals us after writing to the pipe
     global IPC_WM_PIPE_WAKE
-    OnMessage(IPC_WM_PIPE_WAKE, _Viewer_OnPipeWake)
+    OnMessage(IPC_WM_PIPE_WAKE, _Viewer_OnPipeWake)  ; lint-ignore: onmessage-collision
 
     if (gViewer_LogPath) {
         _Viewer_Log("Connecting to pipe: " cfg.StorePipeName)

@@ -191,7 +191,7 @@ _CEN_BuildMainGUI() {
     gCEN["ThemeEntry"] := themeEntry
     Theme_OnChange(_CEN_OnThemeChange)
     ; Register swatch color handler AFTER theme (last registered runs first)
-    OnMessage(0x0138, _CEN_OnSwatchCtlColor)
+    OnMessage(0x0138, _CEN_OnSwatchCtlColor)  ; lint-ignore: onmessage-collision
     ; Register WM_NOTIFY for slider custom draw
     OnMessage(0x004E, _CEN_OnWmNotify)
 
@@ -278,7 +278,7 @@ _CEN_BuildMainGUI() {
 
     ; Message handlers for scrolling
     gCEN["BoundWheelMsg"] := _CEN_OnMouseWheel
-    OnMessage(CEN_WM_MOUSEWHEEL, gCEN["BoundWheelMsg"])
+    OnMessage(CEN_WM_MOUSEWHEEL, gCEN["BoundWheelMsg"])  ; lint-ignore: onmessage-collision
 
     gCEN["BoundScrollMsg"] := _CEN_OnVScroll
     OnMessage(CEN_WM_VSCROLL, gCEN["BoundScrollMsg"])
@@ -691,7 +691,7 @@ _CEN_SyncEditToSlider(editCtrl, sliderCtrl, guard) {
 ; Use NM_CUSTOMDRAW to paint the thumb in accent colors on hover/press.
 
 ; WM_NOTIFY handler for slider NM_CUSTOMDRAW (same technique as mock_dark_controls.ahk)
-_CEN_OnWmNotify(wParam, lParam, msg, hwnd) {
+_CEN_OnWmNotify(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
     global gCEN_SliderHwnds
     code := NumGet(lParam, 16, "Int")   ; NMHDR.code (offset 16 on x64: hwndFrom=8 + idFrom=8)
     if (code != -12)  ; NM_CUSTOMDRAW
@@ -1164,7 +1164,7 @@ _CEN_SwitchToPage(name) {
 ; SCROLL ENGINE
 ; ============================================================
 
-_CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {
+_CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
     global gCEN
     global CEN_SIDEBAR_W
 

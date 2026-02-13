@@ -165,7 +165,7 @@ _GUI_Main_Init() {
     ; Register PostMessage wake handler: store signals us after writing to the pipe
     ; so we read data immediately instead of waiting for next timer tick
     global IPC_WM_PIPE_WAKE
-    OnMessage(IPC_WM_PIPE_WAKE, _GUI_OnPipeWake)
+    OnMessage(IPC_WM_PIPE_WAKE, _GUI_OnPipeWake)  ; lint-ignore: onmessage-collision
 
     ; Connect to WindowStore
     gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
@@ -390,7 +390,7 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
 
     ; Mouse handlers
     OnMessage(0x0201, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : 0))
-    OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))
+    OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))  ; lint-ignore: onmessage-collision
     OnMessage(0x0200, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
     OnMessage(0x02A3, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))  ; WM_MOUSELEAVE
 

@@ -79,7 +79,7 @@ WinEventHook_Start() {
     }
 
     if (_WEH_Hook)
-        return  ; Already running
+        return true  ; Already running
 
     _WEH_ShellWindow := DllCall("user32\GetShellWindow", "ptr")
 

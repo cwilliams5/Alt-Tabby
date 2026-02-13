@@ -120,7 +120,7 @@ _Store_Init() {
     ; Register PostMessage wake handler: clients PostMessage us after writing to the pipe
     ; so we read data immediately instead of waiting for the next timer tick (0-100ms savings)
     global IPC_WM_PIPE_WAKE
-    OnMessage(IPC_WM_PIPE_WAKE, _Store_OnPipeWake)
+    OnMessage(IPC_WM_PIPE_WAKE, _Store_OnPipeWake)  ; lint-ignore: onmessage-collision
 
     ; Initialize producers BEFORE first scan so they can enrich data
 
