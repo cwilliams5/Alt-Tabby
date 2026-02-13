@@ -285,6 +285,8 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                     relaunchAfter: false
                 })
                 installOk := true
+            } catch as e {
+                OutputDebug("Alt-Tabby wizard PF install failed: " e.Message)
             }
             if (installOk && FileExist(targetPath)) {
                 exePath := targetPath

@@ -601,7 +601,7 @@ _AdminToggle_CheckComplete() {
 }
 
 Tray_InstallToProgramFiles() {
-    global APP_NAME, ALTTABBY_INSTALL_DIR, UPDATE_INFO_DELIMITER, TEMP_INSTALL_PF_STATE
+    global APP_NAME, ALTTABBY_INSTALL_DIR, TEMP_INSTALL_PF_STATE
     global g_UpdateCheckInProgress
 
     if (!A_IsCompiled || IsInProgramFiles())
@@ -626,9 +626,7 @@ Tray_InstallToProgramFiles() {
 
     ; Write state file: source<|>target (same format as update-installed)
     targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
-    stateContent := A_ScriptFullPath UPDATE_INFO_DELIMITER targetPath
-    try FileDelete(TEMP_INSTALL_PF_STATE)
-    FileAppend(stateContent, TEMP_INSTALL_PF_STATE, "UTF-8")
+    WriteStateFile(TEMP_INSTALL_PF_STATE, A_ScriptFullPath, targetPath)
 
     ; Self-elevate and exit (elevated instance handles install + relaunch)
     try {
@@ -642,10 +640,16 @@ Tray_InstallToProgramFiles() {
 }
 
 ToggleAutoUpdate() {
-    global cfg, gConfigIniPath, TOOLTIP_DURATION_SHORT
-    cfg.SetupAutoUpdateCheck := !cfg.SetupAutoUpdateCheck
-    CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", cfg.SetupAutoUpdateCheck, true, "bool")
+    global cfg, gConfigIniPath, TOOLTIP_DURATION_SHORT, APP_NAME
+    newValue := !cfg.SetupAutoUpdateCheck
+    writeOk := false
+    try writeOk := CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", newValue, true, "bool")
+    if (!writeOk) {
+        ThemeMsgBox("Could not save setting. Config file may be read-only or locked.", APP_NAME, "Icon!")
+        return
+    }
+    cfg.SetupAutoUpdateCheck := newValue
     Dash_StartRefreshTimer()
-    ToolTip(cfg.SetupAutoUpdateCheck ? "Auto-update enabled" : "Auto-update disabled")
+    ToolTip(newValue ? "Auto-update enabled" : "Auto-update disabled")
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }

@@ -247,11 +247,8 @@ _Launcher_UpdateInstalledVersion(installedPath) {
     ; Check if we need elevation
     if (Update_NeedsElevation(installedDir)) {
         ; Save update info and self-elevate
-        global UPDATE_INFO_DELIMITER, TEMP_INSTALL_UPDATE_STATE
-        updateInfo := A_ScriptFullPath UPDATE_INFO_DELIMITER installedPath
-        updateFile := TEMP_INSTALL_UPDATE_STATE
-        try FileDelete(updateFile)
-        FileAppend(updateInfo, updateFile, "UTF-8")
+        global TEMP_INSTALL_UPDATE_STATE
+        WriteStateFile(TEMP_INSTALL_UPDATE_STATE, A_ScriptFullPath, installedPath)
 
         try {
             if (!Launcher_RunAsAdmin("--update-installed"))

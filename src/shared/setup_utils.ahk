@@ -823,11 +823,8 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
         if (cfg.DiagUpdateLog)
             _Update_Log("DownloadAndApply: elevation required for " exeDir)
         ; Save update info and self-elevate
-        global UPDATE_INFO_DELIMITER, TEMP_UPDATE_STATE
-        updateInfo := tempExe UPDATE_INFO_DELIMITER currentExe
-        updateFile := TEMP_UPDATE_STATE
-        try FileDelete(updateFile)
-        FileAppend(updateInfo, updateFile, "UTF-8")
+        global TEMP_UPDATE_STATE
+        WriteStateFile(TEMP_UPDATE_STATE, tempExe, currentExe)
 
         try {
             if (!Launcher_RunAsAdmin("--apply-update"))
@@ -1346,6 +1343,13 @@ ReadStateFile(filePath) {
     if (!FileExist(parts[1]))
         throw Error("Source file not found: " parts[1])
     return {source: parts[1], target: parts[2]}
+}
+
+; Write a state file in source<|>target format (companion to ReadStateFile).
+WriteStateFile(filePath, sourcePath, targetPath) {
+    global UPDATE_INFO_DELIMITER
+    try FileDelete(filePath)
+    FileAppend(sourcePath UPDATE_INFO_DELIMITER targetPath, filePath, "UTF-8")
 }
 
 ; Called when launched with --apply-update flag (elevated)

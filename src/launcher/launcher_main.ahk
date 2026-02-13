@@ -172,9 +172,8 @@ Launcher_Init() {
 ; Shared subprocess launch sequence used by both Launcher_Init() and wizard-continue.
 ; Handles: splash, tray, OnExit, active mutex, store+gui launch, HWND file, splash hide,
 ; auto-update check, and Persistent().
-; skipMismatchGuard: true when called from wizard-continue (mismatch can't have happened)
-Launcher_StartSubprocesses(skipMismatchGuard := false) {
-    global g_MismatchDialogShown, g_TestingMode, g_SkipActiveMutex, cfg, gConfigIniPath
+Launcher_StartSubprocesses() {
+    global g_TestingMode, g_SkipActiveMutex, cfg, gConfigIniPath
     global TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, g_SplashStartTick, APP_NAME
 
     ; Show splash screen if enabled (skip in testing mode)
@@ -257,9 +256,8 @@ Launcher_StartSubprocesses(skipMismatchGuard := false) {
         }
     }
 
-    ; Auto-update check if enabled (skip if mismatch dialog was shown to avoid race)
-    mismatchShown := skipMismatchGuard ? false : g_MismatchDialogShown
-    if (cfg.SetupAutoUpdateCheck && !mismatchShown)
+    ; Auto-update check if enabled (deferred 5s — mismatch dialog is modal, always dismissed by now)
+    if (cfg.SetupAutoUpdateCheck)
         SetTimer(() => CheckForUpdates(false), -5000)
 
     ; Stay alive to manage subprocesses

@@ -235,7 +235,7 @@ if (g_AltTabbyMode = "wizard-continue") {
         }
 
         Launcher_LogStartup()
-        Launcher_StartSubprocesses(true)  ; skip mismatch guard (can't have happened)
+        Launcher_StartSubprocesses()
     } else {
         ; No wizard data found - exit
         ThemeMsgBox("No wizard continuation data found.", APP_NAME, "Iconx")

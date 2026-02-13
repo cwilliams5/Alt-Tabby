@@ -502,10 +502,12 @@ _Dash_OnClose(*) {
 
 ; Update dashboard update-check state from external callers (e.g., setup_utils)
 Dash_SetUpdateState(status, version := "", url := "") {
-    global g_DashUpdateState
+    global g_DashUpdateState, g_DashboardGui
     g_DashUpdateState.status := status
     g_DashUpdateState.version := version
     g_DashUpdateState.downloadUrl := url
+    if (g_DashboardGui)
+        Dash_StartRefreshTimer()
 }
 
 ; Reset dashboard producer state and restart monitoring after store (re)launch
