@@ -967,7 +967,7 @@ _Viewer_OnExitWrapper(reason, code) {
 }
 
 ; Auto-init only if running standalone or if mode is "viewer"
-if (g_AltTabbyMode = "viewer") {
+if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "viewer") {
     _Viewer_Init()
     OnExit(_Viewer_OnExitWrapper)
 }

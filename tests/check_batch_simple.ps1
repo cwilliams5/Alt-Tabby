@@ -564,6 +564,10 @@ foreach ($file in $allFiles) {
 
             if ($idGlobalsWithDefaults.ContainsKey($varName)) {
                 $declInfo = $idGlobalsWithDefaults[$varName]
+                # Only flag when declaration is in the SAME file as the IsSet() call.
+                # Cross-file declarations may not be loaded at runtime (standalone execution),
+                # so IsSet() serves a real purpose there.
+                if ($declInfo.File -ne $relPath) { continue }
                 [void]$idIssues.Add([PSCustomObject]@{
                     IsSetFile = $relPath
                     IsSetLine = ($i + 1)

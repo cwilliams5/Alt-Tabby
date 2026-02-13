@@ -1143,7 +1143,7 @@ Stats_FlushToDisk() {
 
 ; Auto-init only if running standalone or if mode is "store"
 ; When included from alt_tabby.ahk with a different mode, skip init.
-if (g_AltTabbyMode = "store") {
+if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "store") {
     _Store_Init()
     OnExit(_Store_OnExit)
     Persistent()
