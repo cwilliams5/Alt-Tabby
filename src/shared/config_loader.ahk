@@ -94,6 +94,14 @@ ConfigLoader_Init(basePath := "", readOnly := false) {
     _CL_CacheHotPathValues()
 }
 
+; Redirect config and stats paths to a new base directory.
+; Used by the wizard when installing to Program Files.
+ConfigLoader_SetBasePath(dir) {
+    global gConfigIniPath, STATS_INI_PATH
+    gConfigIniPath := dir "\config.ini"
+    STATS_INI_PATH := dir "\stats.ini"
+}
+
 ; ============================================================
 ; HOT PATH CACHED CONFIG VALUES
 ; ============================================================

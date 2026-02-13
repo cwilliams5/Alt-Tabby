@@ -3,6 +3,25 @@
 ; Handles mouse events, selection movement, hover detection, and actions
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
+; ========================= HOVER / MOUSE STATE =========================
+global gGUI_HoverRow := 0
+global gGUI_HoverBtn := ""
+global gGUI_MouseTracking := false  ; Whether we've requested WM_MOUSELEAVE notification
+
+; ========================= SELECTION CLAMPING =========================
+
+; Clamp gGUI_Sel to valid range for the given items array.
+; Called after item list changes (snapshots, deltas) to prevent out-of-bounds selection.
+GUI_ClampSelection(items) {
+    global gGUI_Sel
+    if (items.Length > 0) {
+        if (gGUI_Sel > items.Length)
+            gGUI_Sel := items.Length
+        if (gGUI_Sel < 1)
+            gGUI_Sel := 1
+    }
+}
+
 ; ========================= DISPLAY ITEMS HELPER =========================
 
 ; Returns the correct items array based on GUI state

@@ -295,9 +295,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                 ; Update config path to point to new location so subsequent writes go there
                 newDir := ""
                 SplitPath(targetPath, , &newDir)
-                gConfigIniPath := newDir "\config.ini"
-                global STATS_INI_PATH
-                STATS_INI_PATH := newDir "\stats.ini"
+                ConfigLoader_SetBasePath(newDir)
 
                 ; Ensure PF config has our InstallationId (may differ if PF had existing config)
                 if (cfg.HasOwnProp("SetupInstallationId") && cfg.SetupInstallationId != "")

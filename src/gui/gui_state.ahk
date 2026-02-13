@@ -42,6 +42,7 @@ global gGUI_EventBuffer := []            ; Queued events during async activation
 ; State machine timing
 global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
+global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
 
 ; Session stats counters (sent to store as deltas)
 global gStats_AltTabs := 0

@@ -5,6 +5,13 @@
 
 global gGUI_StoreRev := -1
 global gGUI_StoreWakeHwnd := 0  ; Store's A_ScriptHwnd for PostMessage pipe wake
+global gGUI_LastMsgTick := 0    ; Timestamp of last message from store (for health check timeout)
+
+; Record store activity (called on connect, reconnect, and every incoming message)
+GUI_StoreRecordActivity() {
+    global gGUI_LastMsgTick
+    gGUI_LastMsgTick := A_TickCount
+}
 global gGUI_AwaitingToggleProjection := false  ; Flag for ServerSideWorkspaceFilter mode
 
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
@@ -166,12 +173,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
             ; Clamp selection based on state - use filtered list when ACTIVE
             displayItems := (gGUI_State = "ACTIVE") ? gGUI_DisplayItems : gGUI_LiveItems
-            if (gGUI_Sel > displayItems.Length && displayItems.Length > 0) {
-                gGUI_Sel := displayItems.Length
-            }
-            if (gGUI_Sel < 1 && displayItems.Length > 0) {
-                gGUI_Sel := 1
-            }
+            GUI_ClampSelection(displayItems)
 
             ; NOTE: Critical "Off" here is SAFE (unlike gui_state.ahk) because:
             ;   1. gGUI_DisplayItems is already populated inside this Critical section
@@ -475,12 +477,7 @@ _GUI_ApplyDelta(payload) {
     }
 
     ; Clamp selection
-    if (gGUI_Sel > gGUI_LiveItems.Length && gGUI_LiveItems.Length > 0) {
-        gGUI_Sel := gGUI_LiveItems.Length
-    }
-    if (gGUI_Sel < 1 && gGUI_LiveItems.Length > 0) {
-        gGUI_Sel := 1
-    }
+    GUI_ClampSelection(gGUI_LiveItems)
 
     ; End critical section before bypass check (which may do significant work)
     Critical "Off"

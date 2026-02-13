@@ -21,24 +21,15 @@
 #   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover
 
 cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils, store_server
-g_CachedStartMenuShortcut: launcher_shortcuts, launcher_tray
-g_CachedStartupShortcut: launcher_shortcuts, launcher_tray
-gConfigIniPath: launcher_wizard, config_loader
 gGUI_CurrentWSName: gui_state, gui_workspace
 gGUI_DisplayItems: gui_state, gui_store, gui_workspace
-gGUI_HoverBtn: gui_input
-gGUI_HoverRow: gui_input
-gGUI_LastLocalMRUTick: gui_state
-gGUI_LastMsgTick: gui_main, gui_store
 gGUI_LiveItems: gui_input, gui_state, gui_store
 gGUI_LiveItemsIndex: gui_state, gui_store
 gGUI_LiveItemsMap: gui_input, gui_store
-gGUI_MouseTracking: gui_input
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
-gGUI_Sel: gui_input, gui_state, gui_store
+gGUI_Sel: gui_input, gui_state
 gGUI_StoreClient: gui_main, gui_state, gui_store
 gGUI_StoreConnected: gui_main, gui_store
 gGUI_ToggleBase: gui_state, gui_store
-STATS_INI_PATH: launcher_wizard, config_loader

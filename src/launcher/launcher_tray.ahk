@@ -10,8 +10,7 @@
 ; Cached expensive checks — populated at startup, updated after toggle operations.
 ; Avoids ~500ms of schtasks subprocess + COM shortcut calls on every right-click.
 global g_CachedAdminTaskActive := false
-global g_CachedStartMenuShortcut := false
-global g_CachedStartupShortcut := false
+; g_CachedStartMenuShortcut, g_CachedStartupShortcut declared in launcher_shortcuts.ahk (sole writer)
 global g_NeedsAdminReload := true  ; Flag for admin config reload (start true for initial load)
 
 ; Editor PIDs — declared here (sole writer via LaunchConfigEditor/LaunchBlacklistEditor)
@@ -293,10 +292,9 @@ _Tray_GetUpdateStatusLabel() {
 }
 
 _Tray_RefreshCache() {
-    global g_CachedAdminTaskActive, g_CachedStartMenuShortcut, g_CachedStartupShortcut
+    global g_CachedAdminTaskActive
     g_CachedAdminTaskActive := AdminTask_PointsToUs()
-    g_CachedStartMenuShortcut := Shortcut_StartMenuExists()
-    g_CachedStartupShortcut := Shortcut_StartupExists()
+    Shortcut_RefreshCaches()
 }
 
 _Tray_OnUpdateInstall() {

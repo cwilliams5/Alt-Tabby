@@ -51,9 +51,7 @@ A_MenuMaskKey := "vkE8"
 ; Sub-modules reference these globals and need them to exist at parse time
 
 global gGUI_Revealed := false
-global gGUI_HoverRow := 0
-global gGUI_HoverBtn := ""
-global gGUI_MouseTracking := false  ; Whether we've requested WM_MOUSELEAVE notification
+; gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking declared in gui_input.ahk (sole writer)
 ; gGUI_FooterText, gGUI_WorkspaceMode declared in gui_workspace.ahk (sole writer)
 global gGUI_CurrentWSName := ""  ; Cached from store meta
 
@@ -106,12 +104,12 @@ global gGUI_ScrollTop := 0
 ; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)
 global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by workspace mode)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
-global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
+; gGUI_LastLocalMRUTick declared in gui_state.ahk (sole writer via _GUI_UpdateLocalMRU)
 
 ; Session stats counters declared in gui_state.ahk / gui_workspace.ahk (sole writers)
 
 ; Store health check state
-global gGUI_LastMsgTick := 0       ; Timestamp of last message from store
+; gGUI_LastMsgTick declared in gui_store.ahk (sole writer via GUI_StoreRecordActivity)
 global gGUI_ReconnectAttempts := 0 ; Counter for failed reconnection attempts
 global gGUI_StoreRestartAttempts := 0  ; Counter for store restart attempts
 global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (0 = no launcher)
@@ -130,7 +128,7 @@ global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (
 ; ========================= INITIALIZATION =========================
 
 _GUI_Main_Init() {
-    global gGUI_StoreClient, cfg, IPC_MSG_HELLO, gGUI_LastMsgTick
+    global gGUI_StoreClient, cfg, IPC_MSG_HELLO
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
@@ -174,7 +172,7 @@ _GUI_Main_Init() {
         ; Include our hwnd so store can PostMessage us after pipe writes
         hello := { type: IPC_MSG_HELLO, hwnd: A_ScriptHwnd, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
         IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
-        gGUI_LastMsgTick := A_TickCount  ; Initialize last message time
+        GUI_StoreRecordActivity()  ; Initialize last message time
     }
 
     ; Start store health check timer (uses heartbeat interval from config)
@@ -226,7 +224,7 @@ _GUI_StoreHealthCheck() {
                 ; Reconnected successfully - include hwnd for PostMessage wake
                 hello := { type: IPC_MSG_HELLO, hwnd: A_ScriptHwnd, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
                 IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
-                gGUI_LastMsgTick := A_TickCount
+                GUI_StoreRecordActivity()
                 gGUI_ReconnectAttempts := 0
                 gGUI_StoreConnected := true
                 if (cfg.DiagEventLog)
