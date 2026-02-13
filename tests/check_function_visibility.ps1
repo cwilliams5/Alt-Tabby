@@ -90,7 +90,9 @@ $fileCacheText = @{}
 
 foreach ($file in $srcFiles) {
     if ($Query) {
-        $lines = [System.IO.File]::ReadAllLines($file.FullName)
+        $text = [System.IO.File]::ReadAllText($file.FullName)
+        $fileCacheText[$file.FullName] = $text
+        $lines = $text -split "`r?`n"
         $fileCache[$file.FullName] = $lines
     } else {
         $text = [System.IO.File]::ReadAllText($file.FullName)
@@ -282,7 +284,7 @@ if ($Query) {
         $qLines = $fileCache[$file.FullName]
 
         # Pre-filter: skip files that don't contain the function name at all
-        if (-not ($qLines -match [regex]::Escape($funcDef.Name))) { continue }
+        if ($fileCacheText[$file.FullName].IndexOf($funcDef.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 

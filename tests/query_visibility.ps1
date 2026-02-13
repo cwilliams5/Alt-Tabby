@@ -68,8 +68,9 @@ $funcDefs = [System.Collections.ArrayList]::new()
 $fileTexts = @{}
 
 foreach ($file in $srcFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
-    $fileTexts[$file.FullName] = [System.IO.File]::ReadAllText($file.FullName)
+    $text = [System.IO.File]::ReadAllText($file.FullName)
+    $fileTexts[$file.FullName] = $text
+    $lines = $text -split '\r?\n'
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -111,9 +112,14 @@ $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 $results = [System.Collections.ArrayList]::new()
 
+# Pre-compile regex per function (avoids re-parsing in inner file loop)
 foreach ($def in $funcDefs) {
     $escaped = [regex]::Escape($def.Name)
     $pattern = "(?<![.\w])$escaped(?=\s*[\(,\)\s\.\[]|$)"
+    $def.CompiledRegex = [regex]::new($pattern, 'Compiled, IgnoreCase')
+}
+
+foreach ($def in $funcDefs) {
     $externalFiles = 0
 
     foreach ($file in $srcFiles) {
@@ -125,7 +131,7 @@ foreach ($def in $funcDefs) {
         # Quick string check before regex
         if ($text.IndexOf($def.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
-        if ([regex]::IsMatch($text, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+        if ($def.CompiledRegex.IsMatch($text)) {
             $externalFiles++
             # Once we exceed MinCallers threshold, no need to count further
             if ($externalFiles -gt $MinCallers) { break }

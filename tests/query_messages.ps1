@@ -131,7 +131,13 @@ $allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
 $entries = [System.Collections.ArrayList]::new()
 
 foreach ($file in $allFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    # File-level pre-filter: skip files without any message keyword
+    $fileText = [System.IO.File]::ReadAllText($file.FullName)
+    if ($fileText.IndexOf('OnMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+        $fileText.IndexOf('SendMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+        $fileText.IndexOf('PostMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+        $fileText.IndexOf('DllCall', [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+    $lines = $fileText -split '\r?\n'
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $funcBounds = $null  # lazy init: defer boundary building to first match

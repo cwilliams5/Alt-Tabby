@@ -245,7 +245,7 @@ foreach ($file in $srcFiles) {
 
     # When querying a single global, skip files that don't contain it at all
     if ($Query) {
-        if (-not ($lines -match [regex]::Escape($Query))) { continue }
+        if ($fileCacheText[$file.FullName].IndexOf($Query, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
     }
 
     # File-level pre-filter: skip files that don't reference ANY known global

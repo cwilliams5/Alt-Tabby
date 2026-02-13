@@ -30,14 +30,10 @@ $allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
 $timers = [System.Collections.ArrayList]::new()
 
 foreach ($file in $allFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
-
     # File-level pre-filter: skip files without SetTimer
-    $found = $false
-    foreach ($ln in $lines) {
-        if ($ln.IndexOf('SetTimer', [StringComparison]::OrdinalIgnoreCase) -ge 0) { $found = $true; break }
-    }
-    if (-not $found) { continue }
+    $fileText = [System.IO.File]::ReadAllText($file.FullName)
+    if ($fileText.IndexOf('SetTimer', [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+    $lines = $fileText -split '\r?\n'
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
