@@ -66,11 +66,8 @@ function Clean-Line {
 
 function Count-Braces {
     param([string]$line)
-    $opens = 0; $closes = 0
-    foreach ($c in $line.ToCharArray()) {
-        if ($c -eq '{') { $opens++ }
-        elseif ($c -eq '}') { $closes++ }
-    }
+    $opens = $line.Length - $line.Replace('{', '').Length
+    $closes = $line.Length - $line.Replace('}', '').Length
     return @($opens, $closes)
 }
 
@@ -165,6 +162,9 @@ if (-not $Query) {
         $privateFuncRegex = [regex]::new('(?i)(?:' + ($escapedNames -join '|') + ')', 'Compiled, IgnoreCase')
     }
 
+    # Pre-compile per-line reference pattern (avoids recompilation per line)
+    $privateCallPattern = [regex]::new('(?<![.\w])(_\w+)(?=\s*[\(,\)\s\.\[]|$)', 'Compiled')
+
     # ============================================================
     # Pass 2: Detect cross-file calls to _ functions
     # ============================================================
@@ -211,7 +211,7 @@ if (-not $Query) {
 
             # Find references to _ prefixed functions: both calls _Func() and
             # references _Func (passed to SetTimer, OnEvent, OnMessage, etc.)
-            $callMatches = [regex]::Matches($cleaned, '(?<![.\w])(_\w+)(?=\s*[\(,\)\s\.\[]|$)')
+            $callMatches = $privateCallPattern.Matches($cleaned)
             $seen = [System.Collections.Generic.HashSet[string]]::new(
                 [System.StringComparer]::OrdinalIgnoreCase)
 

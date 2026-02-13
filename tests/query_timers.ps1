@@ -107,6 +107,9 @@ foreach ($file in $allFiles) {
             Interval = $interval
             Type     = $timerType
             Func     = $funcName
+            _cb = $callback.ToLower(); _iv = $interval.ToLower()
+            _fl = $relPath.ToLower(); _fn = $funcName.ToLower()
+            _tp = $timerType.ToLower()
         })
     }
 }
@@ -116,11 +119,11 @@ if ($Search) {
     $searchLower = $Search.ToLower()
     $filtered = [System.Collections.ArrayList]::new()
     foreach ($t in $timers) {
-        if ($t.Callback.ToLower().Contains($searchLower) -or
-            $t.Interval.ToLower().Contains($searchLower) -or
-            $t.File.ToLower().Contains($searchLower) -or
-            $t.Func.ToLower().Contains($searchLower) -or
-            $t.Type.ToLower().Contains($searchLower)) {
+        if ($t._cb.Contains($searchLower) -or
+            $t._iv.Contains($searchLower) -or
+            $t._fl.Contains($searchLower) -or
+            $t._fn.Contains($searchLower) -or
+            $t._tp.Contains($searchLower)) {
             [void]$filtered.Add($t)
         }
     }

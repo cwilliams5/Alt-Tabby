@@ -137,17 +137,14 @@ $sendLocations = [System.Collections.Generic.HashSet[string]]::new()
 $rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
 
 foreach ($file in $allFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    # File-level pre-filter: ReadAllText for single IndexOf check, split only on match
+    $fileText = [System.IO.File]::ReadAllText($file.FullName)
+    if ($fileText.IndexOf($constName, [StringComparison]::Ordinal) -lt 0 -and
+        $fileText.IndexOf($constValue, [StringComparison]::Ordinal) -lt 0) { continue }
+
+    $lines = $fileText -split '\r?\n'
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $isConstantsFile = ($file.Name -eq "ipc_constants.ahk")
-
-    # File-level pre-filter: skip files that reference neither the constant nor raw JSON value
-    $hasRef = $false
-    foreach ($ln in $lines) {
-        if ($ln.IndexOf($constName, [StringComparison]::Ordinal) -ge 0 -or
-            $ln.IndexOf($constValue, [StringComparison]::Ordinal) -ge 0) { $hasRef = $true; break }
-    }
-    if (-not $hasRef) { continue }
 
     # Pre-build function boundary map for this file
     $funcBounds = Build-FuncBounds $lines $ahkKeywords

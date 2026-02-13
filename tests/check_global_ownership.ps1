@@ -89,11 +89,8 @@ function Clean-Line {
 
 function Count-Braces {
     param([string]$line)
-    $opens = 0; $closes = 0
-    foreach ($c in $line.ToCharArray()) {
-        if ($c -eq '{') { $opens++ }
-        elseif ($c -eq '}') { $closes++ }
-    }
+    $opens = $line.Length - $line.Replace('{', '').Length
+    $closes = $line.Length - $line.Replace('}', '').Length
     return @($opens, $closes)
 }
 
@@ -136,11 +133,13 @@ $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $globalDecl = @{}
 # fileCache: filePath -> string[]
 $fileCache = @{}
-# (fileCacheText removed — pre-filter uses combined regex inline)
+# fileCacheText: filePath -> joined string (for pre-filter IndexOf)
+$fileCacheText = @{}
 
 foreach ($file in $srcFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $fileCache[$file.FullName] = $lines
+    $fileCacheText[$file.FullName] = [string]::Join("`n", $lines)
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -237,8 +236,7 @@ foreach ($file in $srcFiles) {
 
     # File-level pre-filter: skip files that don't reference ANY known global
     if (-not $Query) {
-        $fileText = [string]::Join("`n", $fileCache[$file.FullName])
-        if (-not $globalPreFilter.IsMatch($fileText)) { continue }
+        if (-not $globalPreFilter.IsMatch($fileCacheText[$file.FullName])) { continue }
     }
 
     $depth = 0

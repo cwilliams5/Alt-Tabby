@@ -85,6 +85,8 @@ foreach ($rawLine in $rawLines) {
             [void]$settings.Add(@{
                 S = $eS; K = $eK; G = $eG; T = $eT; D = $eD
                 Default = $eDefault; Options = $eOptions; Fmt = $eFmt
+                SL = $eS.ToLower(); KL = $eK.ToLower(); GL = $eG.ToLower()
+                DL = $eD.ToLower()
             })
         }
 
@@ -224,19 +226,19 @@ foreach ($st in $settings) {
     $score = 0
 
     # Exact key match
-    if ($st.K.ToLower() -eq $searchLower -or $st.G.ToLower() -eq $searchLower) {
+    if ($st.KL -eq $searchLower -or $st.GL -eq $searchLower) {
         $score = 100
     }
     # Key contains search term
-    elseif ($st.K.ToLower().Contains($searchLower) -or $st.G.ToLower().Contains($searchLower)) {
+    elseif ($st.KL.Contains($searchLower) -or $st.GL.Contains($searchLower)) {
         $score = 80
     }
     # Section name matches
-    elseif ($st.S.ToLower().Contains($searchLower)) {
+    elseif ($st.SL.Contains($searchLower)) {
         $score = 40
     }
     # Description contains search term
-    elseif ($st.D -and $st.D.ToLower().Contains($searchLower)) {
+    elseif ($st.DL.Contains($searchLower)) {
         $score = 20
     }
 

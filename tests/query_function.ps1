@@ -61,11 +61,11 @@ $AHK_KEYWORDS = @(
 $found = $null
 
 foreach ($file in $srcFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    # File-level pre-filter: ReadAllText for IndexOf, split only on match
+    $fileText = [System.IO.File]::ReadAllText($file.FullName)
+    if ($fileText.IndexOf($FuncName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
-    # File-level pre-filter: skip files that don't contain the function name
-    $joinedText = [string]::Join("`n", $lines)
-    if ($joinedText.IndexOf($FuncName, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+    $lines = $fileText -split '\r?\n'
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 

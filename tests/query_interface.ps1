@@ -51,11 +51,8 @@ function Clean-Line {
 
 function Count-Braces {
     param([string]$line)
-    $opens = 0; $closes = 0
-    foreach ($c in $line.ToCharArray()) {
-        if ($c -eq '{') { $opens++ }
-        elseif ($c -eq '}') { $closes++ }
-    }
+    $opens = $line.Length - $line.Replace('{', '').Length
+    $closes = $line.Length - $line.Replace('}', '').Length
     return @($opens, $closes)
 }
 
