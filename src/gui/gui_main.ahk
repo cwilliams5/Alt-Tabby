@@ -366,7 +366,7 @@ _GUI_OnExit(reason, code) {
 ; ========================= MAIN AUTO-INIT =========================
 
 ; Auto-init only if running standalone or if mode is "gui"
-if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {  ; lint-ignore: isset-with-default
+if (g_AltTabbyMode = "gui") {
     _GUI_Main_Init()
 
     ; DPI change handler

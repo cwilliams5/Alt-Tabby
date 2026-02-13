@@ -311,7 +311,7 @@ _PU_OfferElevatedKill(exeName) {
 ; Check if any test mode flag is active (store --test or alt_tabby --testing-mode)
 _PU_IsTestMode() {
     global gStore_TestMode, g_TestingMode
-    return (IsSet(gStore_TestMode) && gStore_TestMode) || (IsSet(g_TestingMode) && g_TestingMode)  ; lint-ignore: isset-with-default
+    return gStore_TestMode || g_TestingMode
 }
 
 ; Run a command hidden (no window). Suppresses cursor feedback in test mode.

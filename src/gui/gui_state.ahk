@@ -165,8 +165,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Pre-warm: request snapshot now so data is ready when Tab pressed
         ; SKIP if we just did a local MRU update - our data is fresher than the store's
         ; (The store hasn't processed our focus change via WinEventHook yet)
-        if (!IsSet(gGUI_LastLocalMRUTick))  ; lint-ignore: isset-with-default
-            gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         if (cfg.AltTabPrewarmOnAlt) {
             global gCached_MRUFreshnessMs
@@ -552,7 +550,7 @@ _GUI_ActivateItem(item) {
     if (cfg.DiagEventLog) {
         komorebicPath := cfg.HasOwnProp("KomorebicExe") ? cfg.KomorebicExe : "(not set)"
         komorebicExists := (komorebicPath != "(not set)" && FileExist(komorebicPath)) ? "yes" : "no"
-        curWS := IsSet(gGUI_CurrentWSName) ? gGUI_CurrentWSName : "(unknown)"  ; lint-ignore: isset-with-default
+        curWS := gGUI_CurrentWSName != "" ? gGUI_CurrentWSName : "(unknown)"
         GUI_LogEvent("ACTIVATE_COND: isOnCurrent=" isOnCurrent " wsName='" wsName "' curWS='" curWS "' komorebic='" komorebicPath "' exists=" komorebicExists)
     }
 

@@ -28,7 +28,7 @@ gGUI_CurrentWSName: gui_state, gui_workspace
 gGUI_DisplayItems: gui_state, gui_store, gui_workspace
 gGUI_HoverBtn: gui_input
 gGUI_HoverRow: gui_input
-gGUI_LastLocalMRUTick: gui_state, gui_store
+gGUI_LastLocalMRUTick: gui_state
 gGUI_LastMsgTick: gui_main, gui_store
 gGUI_LiveItems: gui_input, gui_state, gui_store
 gGUI_MouseTracking: gui_input

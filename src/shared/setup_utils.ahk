@@ -309,7 +309,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
         existingPath := AdminTask_GetCommandPath(taskName)
         if (existingPath != "" && !PathsEqual(existingPath, exePath)) {
             ; In testing mode, just proceed without prompting
-            if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
+            if (g_TestingMode) {
                 ; Auto-proceed in testing mode
             } else {
                 result := ThemeMsgBox(

@@ -59,7 +59,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ; EXCEPTION: If awaiting a toggle-triggered projection (ServerSideWorkspaceFilter mode), accept it
         global gGUI_AwaitingToggleProjection, cfg, gGUI_PendingPhase
         isFrozen := cfg.FreezeWindowList
-        isToggleResponse := IsSet(gGUI_AwaitingToggleProjection) && gGUI_AwaitingToggleProjection  ; lint-ignore: isset-with-default
+        isToggleResponse := gGUI_AwaitingToggleProjection
 
         ; Even when frozen, track workspace changes (may trigger thaw via projection request)
         if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse && obj.Has("payload"))
@@ -111,8 +111,6 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         ; CRITICAL: Skip snapshot if local MRU was updated recently
         ; This prevents stale in-flight snapshots from overwriting fresh local MRU order
         ; Exception: toggle responses should always be applied (user explicitly requested)
-        if (!IsSet(gGUI_LastLocalMRUTick))  ; lint-ignore: isset-with-default
-            gGUI_LastLocalMRUTick := 0
         mruAge := A_TickCount - gGUI_LastLocalMRUTick
         global gCached_MRUFreshnessMs
         if (mruAge < gCached_MRUFreshnessMs && !isToggleResponse) {

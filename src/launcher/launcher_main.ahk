@@ -374,7 +374,7 @@ _ShouldRedirectToScheduledTask() {
     global cfg, gConfigIniPath, g_TestingMode, APP_NAME
 
     ; Skip in testing mode - never show dialogs during automated tests
-    if (IsSet(g_TestingMode) && g_TestingMode) {  ; lint-ignore: isset-with-default
+    if (g_TestingMode) {
         _Launcher_Log("TASK_REDIRECT: skip (testing mode)")
         return false
     }
