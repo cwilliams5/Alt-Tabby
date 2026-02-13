@@ -391,12 +391,13 @@ if (g_AltTabbyMode = "update-installed") {
 
         Launcher_DoUpdateInstalled(sourcePath, targetPath)
     } catch as e {
-        ThemeMsgBox("Update failed`n`n" e.Message "`n`n"
+        ThemeMsgBox("The update could not be completed.`n`n"
             "Possible causes:`n"
             "  - Another program is using Alt-Tabby files`n"
             "  - Insufficient disk space or permissions`n`n"
             "The previous version is still intact. Try closing all Alt-Tabby`n"
-            "processes and running the update again.", APP_NAME, "Iconx")
+            "processes and running the update again.`n`n"
+            "Details: " e.Message, APP_NAME, "Iconx")
     }
     ExitApp()
 }
@@ -417,12 +418,13 @@ if (g_AltTabbyMode = "install-to-pf") {
         ; DirCreate, blacklist copy, stats merge, config copy, admin task, shortcuts, relaunch
         Launcher_DoUpdateInstalled(state.source, state.target)
     } catch as e {
-        ThemeMsgBox("Installation failed`n`n" e.Message "`n`n"
+        ThemeMsgBox("The installation could not be completed.`n`n"
             "Possible causes:`n"
             "  - Insufficient permissions (try Run as Administrator)`n"
             "  - Another program is using the target files`n"
             "  - Insufficient disk space`n`n"
-            "The original file has not been modified.", APP_NAME, "Iconx")
+            "The original file has not been modified.`n`n"
+            "Details: " e.Message, APP_NAME, "Iconx")
     }
     ExitApp()
 }

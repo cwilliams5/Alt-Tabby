@@ -80,6 +80,9 @@ ShowDashboardDialog() {
     lnkOptions := dg.AddText("x" xAfterLogo " y+2 w225 +0x100", "Configuration Options")
     lnkOptions.OnEvent("Click", (*) => Run("https://github.com/cwilliams5/Alt-Tabby/blob/main/docs/options.md"))
     Theme_MarkAccent(lnkOptions)
+    lnkChangelog := dg.AddText("x" xAfterLogo " y+2 w225 +0x100", "What's New")
+    lnkChangelog.OnEvent("Click", (*) => Run("https://github.com/cwilliams5/Alt-Tabby/releases"))
+    Theme_MarkAccent(lnkChangelog)
     dg.SetFont("s10 Norm")
 
     ; ============================================================
@@ -316,6 +319,7 @@ ShowDashboardDialog() {
         ; Header links
         Dash_SetTip(hTT, lnkGithub, "Open the project page on GitHub")
         Dash_SetTip(hTT, lnkOptions, "View all configuration options on GitHub")
+        Dash_SetTip(hTT, lnkChangelog, "View release notes and changelog on GitHub")
 
         ; Settings
         Dash_SetTip(hTT, g_DashControls.chkStartMenu, "Create a shortcut in the Windows Start Menu")

@@ -51,7 +51,7 @@ ShowFirstRunWizard() {
     Theme_MarkMuted(note)
 
     ; Buttons - right-aligned (Apply + gap + Skip = 120+8+100 = 228, right edge at 444)
-    btn2 := g_WizardGui.AddButton("x216 w120 y+20 Default", "Apply && Start")
+    btn2 := g_WizardGui.AddButton("x216 w120 y+20 Default", "Apply && Launch")
     btn2.OnEvent("Click", _WizardApply)
     btn1 := g_WizardGui.AddButton("w100 x+8", "Skip")
     btn1.OnEvent("Click", _WizardSkip)
@@ -330,7 +330,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                     Setup_SetRunAsAdmin(true)
                 } else {
                     ; Task creation failed - notify user
-                    ThemeMsgBox("Warning: Could not create administrator task.`nAlt-Tabby will run without admin privileges.", APP_NAME, "Icon!")
+                    ThemeMsgBox("Admin mode could not be enabled.`nAlt-Tabby will run with standard permissions — most features still work.", APP_NAME, "Icon!")
                     ; Don't set cfg.SetupRunAsAdmin since task creation failed
                 }
             }

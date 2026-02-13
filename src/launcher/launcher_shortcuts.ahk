@@ -29,7 +29,7 @@ _ToggleShortcut(lnkPath, locationName) {
             FileDelete(lnkPath)
             ToolTip("Removed from " locationName)
         } catch as e {
-            ThemeMsgBox("Failed to remove shortcut:`n" e.Message, APP_NAME, "Iconx")
+            ThemeMsgBox("Could not remove the shortcut. The file may be in use or the location protected.`n`nDetails: " e.Message, APP_NAME, "Iconx")
         }
     } else {
         ; Warn if shortcut will point to a temporary/cloud location
@@ -108,7 +108,7 @@ CreateShortcutForCurrentMode(lnkPath) {
         shortcut.Save()
         return true
     } catch as e {
-        ThemeMsgBox("Failed to create shortcut:`n" e.Message, APP_NAME, "Iconx")
+        ThemeMsgBox("Could not create the shortcut. The file may be locked or the location protected.`n`nDetails: " e.Message, APP_NAME, "Iconx")
         return false
     }
 }

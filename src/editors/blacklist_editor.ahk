@@ -88,7 +88,7 @@ _BE_CreateGui() {
 
     ; Pair tab
     tabs.UseTab("Pair Patterns")
-    gBE_Gui.AddText("x20 y90 w550", "Pair patterns - match Class|Title pairs (both must match). Format: ClassName|TitlePattern")
+    gBE_Gui.AddText("x20 y90 w550", "Pair patterns — match class and title together (e.g., 'Chrome_WidgetWin_1|*YouTube*'):")
     gBE_PairEdit := gBE_Gui.AddEdit("vPairEdit x20 y115 w550 h250 +Multi +WantReturn +VScroll")
     Theme_ApplyToControl(gBE_PairEdit, "Edit", themeEntry)
 
@@ -220,7 +220,7 @@ _BE_SaveToFile() {
         FileAppend(content, gBlacklist_FilePath, "UTF-8")
         return true
     } catch as e {
-        ThemeMsgBox("Failed to save blacklist: " e.Message, "Error", "OK Iconx")
+        ThemeMsgBox("Could not save the blacklist file. It may be read-only or locked by another program.`n`nDetails: " e.Message, "Error", "OK Iconx")
         return false
     }
 }

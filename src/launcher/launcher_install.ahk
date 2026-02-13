@@ -118,7 +118,7 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
             Run('"' installedPath '"')
             ExitApp()
         } catch as e {
-            ThemeMsgBox("Could not launch installed version:`n" e.Message, APP_NAME, "Iconx")
+            ThemeMsgBox("Could not launch the installed version. The file may have been moved or deleted.`n`nDetails: " e.Message, APP_NAME, "Iconx")
         }
     } else if (result = "Always") {
         ; Warn if committing to a temporary location

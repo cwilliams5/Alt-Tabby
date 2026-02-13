@@ -145,8 +145,8 @@ Launcher_Init() {
             try DeleteAdminTask()
             Setup_SetRunAsAdmin(false)
             if (cfg.DiagLauncherLog)
-            _Launcher_Log("TASK_REDIRECT: schtasks /run failed (code " exitCode "), deleted broken task")
-            TrayTip("Admin Mode", "Scheduled task failed (code " exitCode ") and was removed.`nRe-enable from tray menu if needed.", "Icon!")
+                _Launcher_Log("TASK_REDIRECT: schtasks /run failed (code " exitCode "), deleted broken task")
+            TrayTip("Admin Mode", "The admin scheduled task couldn't start and was removed.`nRe-enable from the tray menu if needed.", "Icon!")
             ; Continue with normal startup below
         }
     }
@@ -868,8 +868,14 @@ LaunchStore() {
 }
 
 LaunchGui() {
-    global g_GuiPID
-    LauncherUtils_Launch("gui", &g_GuiPID, _Launcher_Log)
+    global g_GuiPID, APP_NAME
+    if (!LauncherUtils_Launch("gui", &g_GuiPID, _Launcher_Log)) {
+        ThemeMsgBox(
+            "The Alt-Tab overlay could not be started.`n`n"
+            "Alt-Tabby's keyboard shortcuts won't work until this is resolved.`n"
+            "Try restarting Alt-Tabby from the tray menu.",
+            APP_NAME, "Iconx")
+    }
     Dash_StartRefreshTimer()
 }
 

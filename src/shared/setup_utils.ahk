@@ -814,7 +814,7 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
         ; Clean up partial download
         if (FileExist(tempExe))
             try FileDelete(tempExe)
-        ThemeMsgBox("Download failed:`n" e.Message, "Update Error", "Iconx")
+        ThemeMsgBox("The update could not be downloaded. Check your internet connection and try again.`n`nDetails: " e.Message, "Update Error", "Iconx")
         return
     }
 
@@ -1080,11 +1080,11 @@ Update_ApplyCore(opts) {
             try FileDelete(lockFile)
 
         if (rollbackSuccess)
-            ThemeMsgBox("Update failed:`n" e.Message "`n`nThe previous version has been restored.", "Update Error", "Iconx")
+            ThemeMsgBox("The update could not be applied. The previous version has been restored.`n`nDetails: " e.Message, "Update Error", "Iconx")
         else if (FileExist(targetPath))
-            ThemeMsgBox("Update failed:`n" e.Message, "Update Error", "Iconx")
+            ThemeMsgBox("The update could not be applied. The file may be locked by antivirus or another process.`n`nDetails: " e.Message, "Update Error", "Iconx")
         else
-            ThemeMsgBox("Update failed and could not restore previous version.`n`n" e.Message "`n`nPlease reinstall Alt-Tabby.", "Alt-Tabby Critical", "Iconx")
+            ThemeMsgBox("The update failed and the previous version could not be restored.`nPlease reinstall Alt-Tabby.`n`nDetails: " e.Message, "Alt-Tabby Critical", "Iconx")
     }
 }
 

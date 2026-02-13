@@ -283,11 +283,11 @@ _Tray_GetUpdateStatusLabel() {
     timeSuffix := (g_LastUpdateCheckTime != "") ? " | " g_LastUpdateCheckTime : ""
 
     switch g_DashUpdateState.status {
-        case "unchecked": return "Not Checked"
+        case "unchecked": return "Not checked yet"
         case "checking": return "Checking..."
         case "uptodate": return "Up to Date" timeSuffix
         case "available": return "v" g_DashUpdateState.version " Available" timeSuffix
-        case "error": return "Check Failed" timeSuffix
+        case "error": return "Check failed" timeSuffix
         default: return "Not Checked"
     }
 }
@@ -384,7 +384,7 @@ _LaunchConfigRegistryEditor() {
     }
     try Run('"' ahkPath '" "' scriptPath '"')
     catch as e
-        ThemeMsgBox("Failed to launch Config Registry Editor:`n" e.Message, APP_NAME, "Iconx")
+        ThemeMsgBox("Could not launch the Config Registry Editor. AutoHotkey may not be configured correctly.`n`nDetails: " e.Message, APP_NAME, "Iconx")
 }
 
 RestartConfigEditor() {
@@ -553,7 +553,7 @@ _AdminToggle_CheckComplete() {
         if (elapsed >= ADMIN_TOGGLE_TIMEOUT_MS) {
             g_AdminToggleInProgress := false
             try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
-            TrayTip("Admin Mode", "Operation timed out. Please try again.`nIf the problem persists, restart Alt-Tabby.", "Icon!")
+            TrayTip("Admin Mode", "The admin mode change took too long. Please try again from the tray menu.", "Icon!")
             return
         }
         ; Keep checking
@@ -584,7 +584,7 @@ _AdminToggle_CheckComplete() {
                 LaunchStore()
                 Sleep(TIMING_SUBPROCESS_LAUNCH)
                 LaunchGui()
-                ThemeMsgBox("Failed to launch via scheduled task (exit code " exitCode ").`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
+                ThemeMsgBox("The scheduled task could not start Alt-Tabby.`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
             }
         } else {
             ToolTip("Admin mode enabled - changes apply on next launch")

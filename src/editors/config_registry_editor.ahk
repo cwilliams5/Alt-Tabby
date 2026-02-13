@@ -19,6 +19,9 @@
 ; Config registry (read-only, provides gConfigRegistry)
 #Include %A_ScriptDir%\..\shared\
 #Include config_registry.ahk
+#Include config_loader.ahk
+#Include theme.ahk
+#Include theme_msgbox.ahk
 
 global gCRE_Gui := 0
 global gCRE_Controller := 0
@@ -27,6 +30,8 @@ global gCRE_MsgHandler := 0
 global gCRE_RegistryPath := A_ScriptDir "\..\shared\config_registry.ahk"
 
 A_IconHidden := true
+ConfigLoader_Init()
+Theme_Init()
 _CRE_Main()
 
 _CRE_Main() {
@@ -34,7 +39,7 @@ _CRE_Main() {
 
     ; Verify WebView2 runtime
     if (!_CRE_IsWebView2Available()) {
-        MsgBox("WebView2 runtime not found.`nInstall Microsoft Edge WebView2 Runtime.", "Error", "Iconx")
+        ThemeMsgBox("WebView2 runtime is not installed.`nInstall Microsoft Edge WebView2 Runtime to use this editor.", "Error", "Iconx")
         ExitApp()
     }
 
@@ -42,11 +47,11 @@ _CRE_Main() {
     htmlPath := A_ScriptDir "\config_registry_editor.html"
 
     if (!FileExist(dllPath)) {
-        MsgBox("WebView2Loader.dll not found at:`n" dllPath, "Error", "Iconx")
+        ThemeMsgBox("A required file (WebView2Loader.dll) is missing from the resources folder.", "Error", "Iconx")
         ExitApp()
     }
     if (!FileExist(htmlPath)) {
-        MsgBox("HTML file not found at:`n" htmlPath, "Error", "Iconx")
+        ThemeMsgBox("A required file (config_registry_editor.html) is missing from the editors folder.", "Error", "Iconx")
         ExitApp()
     }
 
@@ -121,7 +126,7 @@ _CRE_OnWebMessage(sender, args) {
         else if (action = "save")
             SetTimer(_CRE_SaveRegistry.Bind(msg["source"]), -1)
     } catch as e {
-        MsgBox("Message error: " e.Message, "Error", "Iconx")
+        ThemeMsgBox("Could not process a message from the editor.`n`nDetails: " e.Message, "Error", "Iconx")
     }
 }
 
@@ -192,9 +197,9 @@ _CRE_SaveRegistry(source) {
         f := FileOpen(gCRE_RegistryPath, "w", "UTF-8-RAW")
         f.Write(source)
         f.Close()
-        MsgBox("Registry saved!`n`nBackup at:`n" backupPath, "Saved", "Iconi")
+        ThemeMsgBox("Registry saved successfully.`n`nA backup was created at:`n" backupPath, "Saved", "Iconi")
     } catch as e {
-        MsgBox("Save failed: " e.Message, "Error", "Iconx")
+        ThemeMsgBox("Could not save the registry file. It may be read-only or locked.`n`nDetails: " e.Message, "Error", "Iconx")
     }
 }
 
