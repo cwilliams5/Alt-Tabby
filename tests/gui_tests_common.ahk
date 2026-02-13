@@ -71,7 +71,6 @@ global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 ; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
 ; These are used in hot paths to avoid cfg.HasOwnProp lookups
 global gCached_MRUFreshnessMs := 300
-global gCached_PrewarmWaitMs := 50
 global gCached_UseAltTabEligibility := true
 global gCached_UseBlacklist := true
 

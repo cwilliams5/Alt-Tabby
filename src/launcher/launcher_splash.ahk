@@ -164,7 +164,7 @@ _Splash_ShowImage() {
 
     ; Show and fade in
     DllCall("ShowWindow", "ptr", g_SplashHwnd, "int", 8)  ; SW_SHOWNA
-    _Splash_UpdateLayeredWindow(0)
+    _Splash_UpdateLayeredWindowAlpha(0)
     _Splash_Fade(0, 255, cfg.LauncherSplashImageFadeMs)
 }
 
@@ -1096,10 +1096,6 @@ _Splash_DrawBitmapToHdc(pBitmap) {
     DllCall("gdiplus\GdipDeleteGraphics", "ptr", pGraphics)
 }
 
-_Splash_UpdateLayeredWindow(alpha) {
-    _Splash_UpdateLayeredWindowAlpha(alpha)
-}
-
 _Splash_UpdateLayeredWindowAlpha(alpha) {
     global g_SplashHwnd, g_SplashHdc, g_SplashHdcScreen, g_SplashShuttingDown
     global g_SplashImgW, g_SplashImgH, g_SplashPosX, g_SplashPosY
@@ -1133,7 +1129,7 @@ _Splash_Fade(fromAlpha, toAlpha, durationMs) {
         return
 
     if (durationMs <= 0) {
-        _Splash_UpdateLayeredWindow(toAlpha)
+        _Splash_UpdateLayeredWindowAlpha(toAlpha)
         return
     }
 
@@ -1148,13 +1144,13 @@ _Splash_Fade(fromAlpha, toAlpha, durationMs) {
         elapsed := A_TickCount - startTick
         progress := Min(elapsed / durationMs, 1.0)
         alpha := Integer(fromAlpha + (toAlpha - fromAlpha) * progress)
-        _Splash_UpdateLayeredWindow(alpha)
+        _Splash_UpdateLayeredWindowAlpha(alpha)
         if (progress >= 1.0)
             break
         Sleep(16)
     }
     if (g_SplashHwnd && !g_SplashShuttingDown)
-        _Splash_UpdateLayeredWindow(toAlpha)
+        _Splash_UpdateLayeredWindowAlpha(toAlpha)
 }
 
 ; ============================================================

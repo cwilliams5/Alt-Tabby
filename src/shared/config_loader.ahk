@@ -103,17 +103,15 @@ ConfigLoader_Init(basePath := "", readOnly := false) {
 ; Named gCached_* to distinguish from cfg.* properties.
 
 global gCached_MRUFreshnessMs := 300
-global gCached_PrewarmWaitMs := 50
 global gCached_UseAltTabEligibility := true
 global gCached_UseBlacklist := true
 
 _CL_CacheHotPathValues() {
     global cfg
-    global gCached_MRUFreshnessMs, gCached_PrewarmWaitMs
+    global gCached_MRUFreshnessMs
     global gCached_UseAltTabEligibility, gCached_UseBlacklist
 
     gCached_MRUFreshnessMs := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
-    gCached_PrewarmWaitMs := cfg.HasOwnProp("AltTabPrewarmWaitMs") ? cfg.AltTabPrewarmWaitMs : 50
     gCached_UseAltTabEligibility := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
     gCached_UseBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
 }

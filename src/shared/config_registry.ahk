@@ -1100,10 +1100,4 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "ViewerAutoStartStore", g: "ViewerAutoStartStore", t: "bool", default: false,
      d: "Auto-start store_server if not running when viewer connects"},
 
-    {type: "subsection", section: "Diagnostics", name: "Testing",
-     desc: "Options for automated test suite"},
-
-    {s: "Diagnostics", k: "LiveDurationSec", g: "TestLiveDurationSec_Default", t: "int", default: 30,
-     min: 5, max: 300,
-     d: "Default duration for test_live.ahk"},
 ]

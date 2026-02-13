@@ -321,18 +321,6 @@ KomorebiSub_PruneStaleCache() {
     Critical "Off"
 }
 
-; Update workspace cache entry: refresh tick if wsName unchanged, else create new entry
-; RACE FIX: PruneStaleCache (heartbeat timer) can interrupt between Has() check and write
-_KSub_UpdateCacheEntry(hwnd, wsName, tick) {
-    global _KSub_WorkspaceCache
-    Critical "On"
-    if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = wsName)
-        _KSub_WorkspaceCache[hwnd].tick := tick
-    else
-        _KSub_WorkspaceCache[hwnd] := { wsName: wsName, tick: tick }
-    Critical "Off"
-}
-
 ; Poll timer - check connection and read data (non-blocking like POC)
 KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
