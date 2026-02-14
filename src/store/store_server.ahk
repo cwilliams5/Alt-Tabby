@@ -280,7 +280,7 @@ Store_HeartbeatTick() {
     rev := WindowStore_GetRev()
     global gStore_CachedHeartbeatJson, gStore_CachedHeartbeatRev
     if (rev != gStore_CachedHeartbeatRev) {
-        gStore_CachedHeartbeatJson := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev })
+        gStore_CachedHeartbeatJson := JSON.Dump({ type: IPC_MSG_HEARTBEAT, rev: rev }) "`n"
         gStore_CachedHeartbeatRev := rev
     }
     ; No PostMessage wake for heartbeats — they're liveness-only (12s timeout).
@@ -640,11 +640,12 @@ Store_PushToClients() {
                     continue
                 IPC_PipeServer_Send(gStore_Server, hPipe, cached.jsonStr, wh)
             } else {
-                msg := _Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot, prevProjMap, nextProjMap)
+                skipRemove := (proj.HasOwnProp("projPath") && (proj.projPath = "mru" || proj.projPath = "cache"))
+                msg := _Store_BuildClientDelta(prevItems, proj.items, proj.meta, proj.rev, lastRev, isSparse, includeMeta, dirtySnapshot, prevProjMap, nextProjMap, skipRemove)
                 ; Skip sending empty deltas ONLY if meta also didn't change
                 ; Always send if meta changed (workspace switch) even with no window changes
                 skip := (msg.payload.upserts.Length = 0 && msg.payload.removes.Length = 0 && !metaChanged)
-                jsonStr := skip ? "" : JSON.Dump(msg)
+                jsonStr := skip ? "" : JSON.Dump(msg) "`n"
                 deltaCache[deltaKey] := { skip: skip, jsonStr: jsonStr }
                 if (skip)
                     continue
@@ -660,7 +661,7 @@ Store_PushToClients() {
                     rev: proj.rev,
                     payload: { meta: proj.meta, items: proj.items }
                 }
-                jsonStr := JSON.Dump(msg)
+                jsonStr := JSON.Dump(msg) "`n"
                 jsonSnapshotCache[optsKey] := jsonStr
                 IPC_PipeServer_Send(gStore_Server, hPipe, jsonStr, wh)
             }
@@ -698,9 +699,9 @@ Store_PushToClients() {
 ; 'Always' mode includes meta in every delta (self-healing, default). 'OnChange' mode
 ; only includes meta when workspace changes, and sends workspace_change messages for
 ; dedicated notification. The includeMeta parameter reflects this configuration.
-_Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true, dirtyHwnds := 0, prevItemsMap := 0, nextItemsMap := 0) {
+_Store_BuildClientDelta(prevItems, nextItems, meta, rev, baseRev, sparse := false, includeMeta := true, dirtyHwnds := 0, prevItemsMap := 0, nextItemsMap := 0, skipRemoveCheck := false) {
     global IPC_MSG_DELTA
-    delta := WindowStore_BuildDelta(prevItems, nextItems, sparse, dirtyHwnds, prevItemsMap, nextItemsMap)
+    delta := WindowStore_BuildDelta(prevItems, nextItems, sparse, dirtyHwnds, prevItemsMap, nextItemsMap, skipRemoveCheck)
     payload := { upserts: delta.upserts, removes: delta.removes }
     if (includeMeta)
         payload.meta := meta

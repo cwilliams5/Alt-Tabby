@@ -164,7 +164,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     global WEH_EVENT_OBJECT_HIDE, WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
     global WEH_EVENT_SYSTEM_MINIMIZESTART, WEH_EVENT_SYSTEM_MINIMIZEEND, WEH_EVENT_OBJECT_FOCUS
     global WEH_EVENT_OBJECT_LOCATIONCHANGE
-    global cfg
+    global cfg, gWS_Store
 
     ; Only care about window-level events (idObject = OBJID_WINDOW = 0)
     if (idObject != 0)
@@ -210,6 +210,16 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         SetTimer(_WEH_FastPathBatch, -1)
         _WinEventHook_EnsureTimerRunning()
         return
+    }
+
+    ; Filter cosmetic events for non-store windows.
+    ; NAMECHANGE alone can't make a window eligible (CREATE/SHOW handles new windows).
+    ; LOCATIONCHANGE doesn't affect any stored field (no position tracking).
+    if (event = WEH_EVENT_OBJECT_NAMECHANGE || event = WEH_EVENT_OBJECT_LOCATIONCHANGE) {
+        if (!gWS_Store.Has(hwnd + 0)) {
+            Critical "Off"
+            return
+        }
     }
 
     ; For focus/foreground events, capture for MRU update (processed in batch)
@@ -274,7 +284,7 @@ _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, WinEventHook_DebounceMs, _WEH_PendingZNeeded
     global gWEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
-    global cfg, gWS_Meta, gKSub_MruSuppressUntilTick
+    global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
@@ -320,29 +330,33 @@ _WEH_ProcessBatch() {
             _WEH_DiagLog("BATCH PROCESS: " diagOldHwnd " '" SubStr(diagOldTitle, 1, 15) "' -> " newFocus " '" SubStr(diagNewTitle, 1, 15) "'")
         }
 
-        ; Try to update the new window first - this tells us if it's in our store
-        ; returnRow=true avoids redundant GetByHwnd lookup for workspace mismatch check below
-        result := { changed: false, exists: false }
-        try result := WindowStore_UpdateFields(newFocus, { lastActivatedTick: A_TickCount, isFocused: true }, "winevent_mru", true)
+        ; Check if the new focus window is in our store
+        inStore := gWS_Store.Has(newFocus + 0)
         if (cfg.DiagWinEventLog)
-            _WEH_DiagLog("  UpdateFields result: exists=" (result.exists ? 1 : 0) " changed=" (result.changed ? 1 : 0))
+            _WEH_DiagLog("  inStore=" (inStore ? 1 : 0))
 
         ; CRITICAL: Only update gWEH_LastFocusHwnd if the window is actually in our store
         ; This prevents system UI windows (like Alt+Tab switcher) from poisoning our focus tracking
-        if (result.exists) {
-            ; Clear focus on previous window (only if we're actually switching to a tracked window)
-            if (gWEH_LastFocusHwnd && gWEH_LastFocusHwnd != newFocus) {
-                try WindowStore_UpdateFields(gWEH_LastFocusHwnd, { isFocused: false }, "winevent_mru")
-            }
+        if (inStore) {
+            ; Read workspace before batch (workspaceName not modified by focus batch)
+            focusedRec := gWS_Store[newFocus + 0]
+
+            ; Batch old+new focus into a single rev bump + MarkDirty call
+            patches := Map()
+            patches[newFocus] := { lastActivatedTick: A_TickCount, isFocused: true }
+            if (gWEH_LastFocusHwnd && gWEH_LastFocusHwnd != newFocus)
+                patches[gWEH_LastFocusHwnd] := { isFocused: false }
+            try WindowStore_BatchUpdateFields(patches, "winevent_mru")  ; lint-ignore: critical-leak
+            Critical "On"  ; Re-enter: BatchUpdateFields' Critical "Off" clears thread-level state
+
             gWEH_LastFocusHwnd := newFocus
             focusProcessed := true
 
             ; Safety net: detect missed komorebi workspace switch.
             ; If focused window's workspaceName differs from current, komorebi must have
             ; switched workspaces but we missed the event (reconnect, pipe overflow, etc.)
-            ; Use row returned from UpdateFields to avoid redundant Map lookup
-            focusedRec := result.HasOwnProp("row") ? result.row : ""
-            if (focusedRec && focusedRec.HasOwnProp("workspaceName") && focusedRec.workspaceName != ""
+            ; focusedRec read before batch — workspaceName is unaffected by focus updates
+            if (focusedRec.HasOwnProp("workspaceName") && focusedRec.workspaceName != ""
                 && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
                 if (cfg.DiagWinEventLog)
                     _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")

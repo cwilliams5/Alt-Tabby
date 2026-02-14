@@ -709,13 +709,13 @@ WindowStore_GetProjection(opts := 0) {
     Critical "On"
     if (!gWS_SortOrderDirty && !gWS_ProjectionContentDirty
         && IsObject(gWS_ProjectionCache_Items) && gWS_ProjectionCache_OptsKey = optsKey) {
-        result := { rev: WindowStore_GetRev(), items: gWS_ProjectionCache_Items, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
+        result := { rev: WindowStore_GetRev(), items: gWS_ProjectionCache_Items, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta, projPath: "cache" }
         if (columns = "hwndsOnly") {
             hwnds := []
             for _, row in gWS_ProjectionCache_Items
                 hwnds.Push(row.hwnd)
             Critical "Off"
-            return { rev: result.rev, hwnds: hwnds, meta: result.meta }
+            return { rev: result.rev, hwnds: hwnds, meta: result.meta, projPath: "cache" }
         }
         Critical "Off"
         return result
@@ -791,13 +791,13 @@ WindowStore_GetProjection(opts := 0) {
             gWS_MRUBumpOnly := false
             gWS_ProjectionDirtyHwnds := Map()
             gWS_ProjectionCache_Items := rows
-            result := { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
+            result := { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta, projPath: "mru" }
             if (columns = "hwndsOnly") {
                 hwnds := []
                 for _, row in rows
                     hwnds.Push(row.hwnd)
                 Critical "Off"
-                return { rev: result.rev, hwnds: hwnds, meta: result.meta }
+                return { rev: result.rev, hwnds: hwnds, meta: result.meta, projPath: "mru" }
             }
             Critical "Off"
             return result
@@ -835,13 +835,13 @@ WindowStore_GetProjection(opts := 0) {
             gWS_ProjectionContentDirty := false
             gWS_ProjectionDirtyHwnds := Map()
             gWS_ProjectionCache_Items := rows
-            result := { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
+            result := { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta, projPath: "content" }
             if (columns = "hwndsOnly") {
                 hwnds := []
                 for _, row in rows
                     hwnds.Push(row.hwnd)
                 Critical "Off"
-                return { rev: result.rev, hwnds: hwnds, meta: result.meta }
+                return { rev: result.rev, hwnds: hwnds, meta: result.meta, projPath: "content" }
             }
             Critical "Off"
             return result
@@ -908,10 +908,10 @@ WindowStore_GetProjection(opts := 0) {
         hwnds := []
         for _, row in rows
             hwnds.Push(row.hwnd)
-        return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta }
+        return { rev: WindowStore_GetRev(), hwnds: hwnds, meta: gWS_Meta, projPath: "full" }
     }
 
-    return { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta }
+    return { rev: WindowStore_GetRev(), items: rows, itemsMap: gWS_ProjectionCache_ItemsMap, meta: gWS_Meta, projPath: "full" }
 }
 
 _WS_NewRecord(hwnd) {
@@ -1376,7 +1376,7 @@ WindowStore_CleanupAllIcons() {
 ;   dirtyHwnds - Map of dirty hwnds (from Store_PushToClients snapshot). When provided
 ;                with IPCUseDirtyTracking enabled, skips comparison for clean hwnds.
 ; Returns: { upserts: [], removes: [] }
-WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0, prevItemsMap := 0, nextItemsMap := 0) {
+WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0, prevItemsMap := 0, nextItemsMap := 0, skipRemoveCheck := false) {
     global cfg, gWS_DeltaPendingHwnds, PROJECTION_FIELDS
     ; deltaFields is derived from PROJECTION_FIELDS — single source of truth for both
     ; projection items (_WS_ToItem) and delta detection. Using a loop avoids an AHK v2
@@ -1414,42 +1414,77 @@ WindowStore_BuildDelta(prevItems, nextItems, sparse := false, dirtyHwnds := 0, p
     removes := []
 
     ; Find new/changed items
-    for hwnd, rec in nextMap {
-        if (!prevMap.Has(hwnd)) {
-            ; New record: always emit full record (even in sparse mode)
-            upserts.Push(rec)
-        } else {
-            ; Dirty tracking: skip unchanged windows entirely
-            if (useDirtyTracking && !dirtySet.Has(hwnd))
-                continue
-
-            old := prevMap[hwnd]
-            if (sparse) {
-                ; Sparse mode: single loop - detect changes AND build sparse record together
-                sparseRec := {hwnd: hwnd}
-                for _, field in deltaFields {
-                    if (rec.%field% != old.%field%)
-                        sparseRec.%field% := rec.%field%
-                }
-                ; Only push if any fields changed (sparseRec has more than just hwnd)
-                if (ObjOwnPropCount(sparseRec) > 1)
-                    upserts.Push(sparseRec)
+    if (useDirtyTracking && dirtySet.Count > 0) {
+        ; Fast path: iterate only dirty hwnds (O(dirty) instead of O(n))
+        for hwnd, _ in dirtySet {
+            if (!nextMap.Has(hwnd))
+                continue  ; Filtered from projection
+            rec := nextMap[hwnd]
+            if (!prevMap.Has(hwnd)) {
+                upserts.Push(rec)  ; New window
             } else {
-                ; Full mode: detect any change, push full record
-                for _, field in deltaFields {
-                    if (rec.%field% != old.%field%) {
-                        upserts.Push(rec)
-                        break
+                old := prevMap[hwnd]
+                if (sparse) {
+                    sparseRec := {hwnd: hwnd}
+                    for _, field in deltaFields {
+                        if (rec.%field% != old.%field%)
+                            sparseRec.%field% := rec.%field%
+                    }
+                    if (ObjOwnPropCount(sparseRec) > 1)
+                        upserts.Push(sparseRec)
+                } else {
+                    for _, field in deltaFields {
+                        if (rec.%field% != old.%field%) {
+                            upserts.Push(rec)
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        ; Supplementary: catch new windows not in dirtySet (race between ConsumeDirtySet
+        ; and GetProjection — window added in the ~10µs gap). Only needed if membership changed.
+        if (nextMap.Count != prevMap.Count) {
+            for hwnd, rec in nextMap {
+                if (!prevMap.Has(hwnd) && !dirtySet.Has(hwnd))
+                    upserts.Push(rec)
+            }
+        }
+    } else {
+        ; Full scan fallback (when dirty tracking disabled or dirtySet empty)
+        for hwnd, rec in nextMap {
+            if (!prevMap.Has(hwnd)) {
+                upserts.Push(rec)
+            } else {
+                if (useDirtyTracking && !dirtySet.Has(hwnd))
+                    continue
+                old := prevMap[hwnd]
+                if (sparse) {
+                    sparseRec := {hwnd: hwnd}
+                    for _, field in deltaFields {
+                        if (rec.%field% != old.%field%)
+                            sparseRec.%field% := rec.%field%
+                    }
+                    if (ObjOwnPropCount(sparseRec) > 1)
+                        upserts.Push(sparseRec)
+                } else {
+                    for _, field in deltaFields {
+                        if (rec.%field% != old.%field%) {
+                            upserts.Push(rec)
+                            break
+                        }
                     }
                 }
             }
         }
     }
 
-    ; Find removed items
-    for hwnd, _ in prevMap {
-        if (!nextMap.Has(hwnd))
-            removes.Push(hwnd)
+    ; Find removed items (skip when projection guarantees no membership change)
+    if (!skipRemoveCheck) {
+        for hwnd, _ in prevMap {
+            if (!nextMap.Has(hwnd))
+                removes.Push(hwnd)
+        }
     }
 
     return { upserts: upserts, removes: removes }
