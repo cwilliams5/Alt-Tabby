@@ -625,14 +625,6 @@ Debug viewer GUI options
 | `ViewerDebugLog` | bool | `false` | - | Enable verbose viewer logging to error log |
 | `ViewerAutoStartStore` | bool | `false` | - | Auto-start store_server if not running when viewer connects |
 
-### Testing
-
-Options for automated test suite
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `LiveDurationSec` | int | `30` | `5` - `300` | Default duration for test_live.ahk |
-
 ---
 
-*Generated on 2026-02-11 with 261 total settings.*
+*Generated on 2026-02-14 with 260 total settings.*

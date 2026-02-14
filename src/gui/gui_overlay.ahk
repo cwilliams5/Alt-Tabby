@@ -194,7 +194,7 @@ _GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
 GUI_CreateBase() {
     global gGUI_Base, gGUI_BaseH, gGUI_LiveItems, cfg
 
-    opts := "+AlwaysOnTop -Caption"
+    opts := "+AlwaysOnTop -Caption +ToolWindow"
 
     rowsDesired := GUI_ComputeRowsToShow(gGUI_LiveItems.Length)
 
