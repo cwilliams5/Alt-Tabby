@@ -245,7 +245,7 @@ Store_HeartbeatTick() {
 
     ; Flush stats to disk every ~5 minutes (60 heartbeats at 5s interval)
     if (Mod(gStore_HeartbeatCount, 60) = 0)
-        try Stats_FlushToDisk()
+        try _Stats_FlushToDisk()
 
     ; Periodic full sync: send complete snapshot to all clients for full-state healing
     ; This catches issues that per-row healing cannot fix (e.g., ghost rows, missing rows)
@@ -930,7 +930,7 @@ _Store_OnMessage(line, hPipe := 0) {
     }
     if (type = IPC_MSG_STATS_UPDATE) {
         ; Accumulate GUI session stats into lifetime (GUI sends deltas since last send)
-        ; RACE FIX: Protect gStats_Lifetime from concurrent Stats_FlushToDisk (heartbeat timer)
+        ; RACE FIX: Protect gStats_Lifetime from concurrent _Stats_FlushToDisk (heartbeat timer)
         Critical "On"
         for _, key in STATS_CUMULATIVE_KEYS {
             if (obj.Has(key))
@@ -941,7 +941,7 @@ _Store_OnMessage(line, hPipe := 0) {
     }
     if (type = IPC_MSG_STATS_REQUEST) {
         ; Build response combining lifetime + session stats + derived values
-        ; RACE FIX: Protect gStats_Lifetime/gStats_Session reads from Stats_FlushToDisk (heartbeat timer)
+        ; RACE FIX: Protect gStats_Lifetime/gStats_Session reads from _Stats_FlushToDisk (heartbeat timer)
         ; Release Critical before IPC_PipeServer_Send to avoid holding lock during I/O
         Critical "On"
         resp := { type: IPC_MSG_STATS_RESPONSE }
@@ -1124,7 +1124,7 @@ _Stats_Init() {
     gStats_Session["baselineBlacklistSkips"] := gStats_Lifetime.Get("TotalBlacklistSkips", 0)
 }
 
-Stats_FlushToDisk() {
+_Stats_FlushToDisk() {
     global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
 
     if (!cfg.StatsTrackingEnabled)
@@ -1132,7 +1132,7 @@ Stats_FlushToDisk() {
 
     statsPath := STATS_INI_PATH
 
-    ; RACE FIX: Wrap in-memory stat mutations in Critical. Stats_FlushToDisk runs from
+    ; RACE FIX: Wrap in-memory stat mutations in Critical. _Stats_FlushToDisk runs from
     ; HeartbeatTick timer and can be interrupted by IPC_MSG_STATS_UPDATE/REQUEST handlers
     ; which also modify gStats_Lifetime/gStats_Session.
     Critical "On"
@@ -1241,7 +1241,7 @@ _Store_OnExit(reason, code) {
     ; Icon cleanup is O(window_count) DestroyIcon DllCalls and can exceed
     ; the launcher's 5s graceful shutdown deadline, causing a hard-kill
     ; before stats persist. Stats flush is just a few IniWrite calls (~10ms).
-    try Stats_FlushToDisk()
+    try _Stats_FlushToDisk()
 
     ; Clean up icons before exit (prevents HICON resource leaks)
     try {

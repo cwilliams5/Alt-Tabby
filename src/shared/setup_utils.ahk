@@ -1187,7 +1187,7 @@ _Update_CopyUserData(srcDir, targetDir, overwrite := false) {
 ; Uses delta-based merge: tracks source snapshots at merge time so repeated
 ; merges only add what's new (prevents double-counting AND silent data loss).
 _Update_MergeStats(srcPath, targetPath) {
-    ; IMPORTANT: These keys must match the lifetime counter keys written by Stats_FlushToDisk().
+    ; IMPORTANT: These keys must match the lifetime counter keys written by _Stats_FlushToDisk().
     ; If you add/rename a lifetime stat, update this list too.
     lifetimeKeys := [
         "TotalSessions",

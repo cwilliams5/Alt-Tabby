@@ -106,7 +106,7 @@ RunUnitTests_Stats() {
         gStats_Session["peakWindows"] := 0
 
         ; Flush to disk
-        Stats_FlushToDisk()
+        _Stats_FlushToDisk()
 
         if (!FileExist(testStatsPath)) {
             Log("FAIL: Stats file not created after flush")

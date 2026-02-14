@@ -339,7 +339,7 @@ function BD_BT_TestAutoExempt {
     if ($t -match '(?i)^(\w+\s*:=\s*)?FileRead\(') { return $true }
     if ($t -match '(?i):= FileRead\(') { return $true }
     if ($t -match '(?i):= Trim\(FileRead\(') { return $true }
-    if ($t -match '(?i)^Stats_(FlushToDisk|SendToStore)\(') { return $true }
+    if ($t -match '(?i)^_?Stats_(FlushToDisk|SendToStore)\(') { return $true }
     if ($t -match '(?i)^LogInitSession\(') { return $true }
     if ($t -match '(?i):= \w+\.\w+$') { return $true }
     if ($t -match '(?i):= BL_CompileWildcard\(') { return $true }
