@@ -34,6 +34,7 @@ global FR_EV_SNAPSHOT_REQ     := 20
 global FR_EV_SNAPSHOT_RECV    := 21  ; d1=itemCount
 global FR_EV_SNAPSHOT_SKIP    := 22  ; d1=reason (1=frozen 2=async 3=freshness)
 global FR_EV_DELTA_RECV       := 23  ; d1=mruChanged d2=membershipChanged d3=focusHwnd
+global FR_EV_SNAPSHOT_TOP    := 25  ; d1=items[1].hwnd d2=items[2].hwnd d3=items[3].hwnd
 
 ; Session events (30+)
 global FR_EV_SESSION_START    := 30
@@ -254,11 +255,19 @@ _FR_GetRecorderDir() {
 
 _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
     global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE, FR_EV_DELTA_RECV
-    global FR_EV_FG_RECONCILE
+    global FR_EV_FG_RECONCILE, FR_EV_SNAPSHOT_TOP
     ; Collect all unique hwnds from entries + items + foreground
     hwnds := Map()
     for _, entry in entries {
         ev := entry[2]
+        ; Events that carry hwnds in d1-d3
+        if (ev = FR_EV_SNAPSHOT_TOP) {
+            Loop 3 {
+                h := entry[2 + A_Index]
+                if (h)
+                    hwnds[h] := true
+            }
+        }
         ; Events that carry hwnds in d1
         if (ev = FR_EV_ACTIVATE_START || ev = FR_EV_ACTIVATE_RESULT
             || ev = FR_EV_MRU_UPDATE || ev = FR_EV_FG_RECONCILE) {
@@ -326,7 +335,7 @@ _FR_GetEventName(ev) {
     global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, FR_EV_PREWARM_SKIP
     global FR_EV_FG_RECONCILE
     global FR_EV_SNAPSHOT_REQ, FR_EV_SNAPSHOT_RECV, FR_EV_SNAPSHOT_SKIP
-    global FR_EV_DELTA_RECV, FR_EV_SESSION_START
+    global FR_EV_DELTA_RECV, FR_EV_SNAPSHOT_TOP, FR_EV_SESSION_START
 
     switch ev {
         case FR_EV_ALT_DN:           return "ALT_DN"
@@ -383,7 +392,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, FR_EV_PREWARM_SKIP
     global FR_EV_FG_RECONCILE
     global FR_EV_SNAPSHOT_REQ, FR_EV_SNAPSHOT_RECV, FR_EV_SNAPSHOT_SKIP
-    global FR_EV_DELTA_RECV, FR_EV_SESSION_START
+    global FR_EV_DELTA_RECV, FR_EV_SNAPSHOT_TOP, FR_EV_SESSION_START
 
     switch ev {
         case FR_EV_ALT_DN:
@@ -430,6 +439,8 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return "items=" d1
         case FR_EV_SNAPSHOT_SKIP:
             return "reason=" _FR_SkipReason(d1)
+        case FR_EV_SNAPSHOT_TOP:
+            return "#1=" _FR_HwndStr(d1, hwndMap) "  #2=" _FR_HwndStr(d2, hwndMap) "  #3=" _FR_HwndStr(d3, hwndMap)
         case FR_EV_DELTA_RECV:
             return "mruChanged=" d1 "  memberChanged=" d2 "  focusHwnd=" _FR_HwndStr(d3, hwndMap)
         case FR_EV_SESSION_START:

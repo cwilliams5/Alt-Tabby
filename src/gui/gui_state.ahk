@@ -177,6 +177,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (cfg.DiagEventLog)
                 GUI_LogEvent("FG_RECONCILE: foreground 0x" Format("{:X}", fgHwnd) " was at pos " oldPos ", moving to #1")
             _GUI_UpdateLocalMRU(fgHwnd)
+        } else if (fgHwnd && gGUI_LiveItems.Length > 0 && gGUI_LiveItems[1].hwnd = fgHwnd) {
+            ; Foreground matches local MRU #1 — no reorder needed, but mark
+            ; MRU as verified so the prewarm snapshot doesn't overwrite a
+            ; correct ordering during ALT_PENDING.
+            gGUI_LastLocalMRUTick := A_TickCount
         }
 
         ; Alt pressed - enter ALT_PENDING state

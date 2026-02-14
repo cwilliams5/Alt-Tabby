@@ -31,7 +31,7 @@ gGUI_LiveItemsMap: gui_input, gui_store
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
-gGUI_Sel: gui_input, gui_state
+gGUI_Sel: gui_input, gui_state, gui_store
 gGUI_StoreClient: gui_main, gui_state, gui_store
 gGUI_StoreConnected: gui_main, gui_store
 gGUI_ToggleBase: gui_state, gui_store

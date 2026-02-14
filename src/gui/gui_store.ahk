@@ -77,7 +77,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         isToggleResponse := gGUI_AwaitingToggleProjection
 
         ; Even when frozen, track workspace changes (may trigger thaw via projection request)
-        if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse && obj.Has("payload"))
+        if (gGUI_State = "ACTIVE" && !isToggleResponse && obj.Has("payload"))
             GUI_UpdateCurrentWSFromPayload(obj["payload"])
 
         ; RACE FIX: Enter Critical before checking gGUI_PendingPhase to prevent
@@ -87,7 +87,7 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
         Critical "On"
 
         global FR_EV_SNAPSHOT_SKIP, FR_EV_SNAPSHOT_RECV
-        if (gGUI_State = "ACTIVE" && isFrozen && !isToggleResponse) {
+        if (gGUI_State = "ACTIVE" && !isToggleResponse) {
             ; Frozen mode and not a toggle response: ignore incoming data
             FR_Record(FR_EV_SNAPSHOT_SKIP, 1)
             if (obj.Has("rev")) {
@@ -145,6 +145,14 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             gGUI_LiveItems := converted.items
             gGUI_LiveItemsMap := converted.map
             FR_Record(FR_EV_SNAPSHOT_RECV, gGUI_LiveItems.Length)
+
+            ; Record top-3 MRU items for diagnostic analysis of MRU corruption
+            global FR_EV_SNAPSHOT_TOP
+            if (gGUI_LiveItems.Length >= 3)
+                FR_Record(FR_EV_SNAPSHOT_TOP, gGUI_LiveItems[1].hwnd, gGUI_LiveItems[2].hwnd, gGUI_LiveItems[3].hwnd)
+            else if (gGUI_LiveItems.Length >= 1)
+                FR_Record(FR_EV_SNAPSHOT_TOP, gGUI_LiveItems[1].hwnd
+                    , gGUI_LiveItems.Length >= 2 ? gGUI_LiveItems[2].hwnd : 0, 0)
             ; Note: Icon cache pruning moved outside Critical section (see below)
 
             ; If in ACTIVE state (either !frozen or toggle response), update display
@@ -257,8 +265,20 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
             if (gGUI_State = "ACTIVE" && !isFrozen) {
                 if (result.mruChanged || result.membershipChanged) {
                     Critical "On"
+                    ; Remember currently-selected hwnd before rebuild
+                    selHwnd := (gGUI_Sel >= 1 && gGUI_Sel <= gGUI_DisplayItems.Length)
+                        ? gGUI_DisplayItems[gGUI_Sel].hwnd : 0
                     gGUI_ToggleBase := gGUI_LiveItems
                     gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+                    ; Remap sel to track the same window after rebuild
+                    if (selHwnd) {
+                        for idx, item in gGUI_DisplayItems {
+                            if (item.hwnd = selHwnd) {
+                                gGUI_Sel := idx
+                                break
+                            }
+                        }
+                    }
                     Critical "Off"
                 }
                 if (gGUI_Revealed && gGUI_OverlayH) {

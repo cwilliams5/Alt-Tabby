@@ -79,6 +79,7 @@ Chronological (newest first) list of events with millisecond timestamps relative
 | `SNAPSHOT_REQ` | | Requested snapshot from store. |
 | `SNAPSHOT_RECV` | items | Received snapshot with N items. |
 | `SNAPSHOT_SKIP` | reason | Snapshot rejected. reason: frozen/async_pending/mru_fresh |
+| `SNAPSHOT_TOP` | hwnd1, hwnd2, hwnd3 | Top 3 MRU items after accepting a snapshot. Helps diagnose MRU corruption from store data. |
 | `DELTA_RECV` | mruChanged, memberChanged, focusHwnd | Incremental update received. |
 
 ## Analyzing Dumps
