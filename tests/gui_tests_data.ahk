@@ -112,7 +112,7 @@ RunGUITests_Data() {
 
     cfg.FreezeWindowList := true  ; Restore
 
-    ; ----- Test: Delta upsert field mapping completeness (class, pid, WS, isOnCurrentWorkspace) -----
+    ; ----- Test: Delta upsert field mapping completeness (class, pid, workspaceName, isOnCurrentWorkspace) -----
     GUI_Log("Test: Delta upsert field mapping completeness")
     ResetGUIState()
     cfg.FreezeWindowList := false
@@ -120,7 +120,7 @@ RunGUITests_Data() {
     GUI_OnStoreMessage(snapshotMsg)
 
     ; Verify baseline values from CreateTestItems
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].Class, "TestClass", "Delta field map: baseline class")
+    GUI_AssertEq(gGUI_LiveItemsMap[1000].class, "TestClass", "Delta field map: baseline class")
     GUI_AssertEq(gGUI_LiveItemsMap[1000].isOnCurrentWorkspace, true, "Delta field map: baseline isOnCurrentWS")
 
     ; Send delta updating all 4 untested fields on item 1000
@@ -128,9 +128,9 @@ RunGUITests_Data() {
     deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
     GUI_OnStoreMessage(deltaMsg)
 
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].Class, "UpdatedClass", "Delta field map: class -> .Class")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].PID, "999", "Delta field map: pid -> .PID (string coerced)")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].WS, "Desktop 2", "Delta field map: workspaceName -> .WS")
+    GUI_AssertEq(gGUI_LiveItemsMap[1000].class, "UpdatedClass", "Delta field map: class updated")
+    GUI_AssertEq(gGUI_LiveItemsMap[1000].pid, 999, "Delta field map: pid updated")
+    GUI_AssertEq(gGUI_LiveItemsMap[1000].workspaceName, "Desktop 2", "Delta field map: workspaceName updated")
     GUI_AssertEq(gGUI_LiveItemsMap[1000].isOnCurrentWorkspace, false, "Delta field map: isOnCurrentWorkspace flipped")
 
     cfg.FreezeWindowList := true  ; Restore

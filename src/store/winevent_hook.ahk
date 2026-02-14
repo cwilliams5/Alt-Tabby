@@ -22,7 +22,7 @@ global WinEventHook_DebounceMs := 0
 global WinEventHook_BatchMs := 0
 
 ; State
-global _WEH_Hook := 0
+global _WEH_Hooks := []                   ; Array of hook handles (split into narrow ranges)
 global _WEH_CallbackObj := 0              ; Callback object - MUST be global to prevent GC
 global _WEH_PendingHwnds := Map()         ; hwnd -> tick of last event
 global _WEH_TimerOn := false
@@ -69,7 +69,7 @@ global WEH_EVENT_SYSTEM_MINIMIZEEND := 0x0017
 
 ; Initialize and install the hook
 WinEventHook_Start() {
-    global _WEH_Hook, _WEH_ShellWindow, _WEH_TimerOn, cfg
+    global _WEH_Hooks, _WEH_ShellWindow, _WEH_TimerOn, cfg
     global WinEventHook_DebounceMs, WinEventHook_BatchMs
     global _WEH_CallbackObj
 
@@ -87,38 +87,59 @@ WinEventHook_Start() {
         LogInitSession(LOG_PATH_WINEVENT, "Alt-Tabby WinEvent Log")
     }
 
-    if (_WEH_Hook)
+    if (_WEH_Hooks.Length > 0)
         return true  ; Already running
 
     _WEH_ShellWindow := DllCall("user32\GetShellWindow", "ptr")
-
-    ; Hook range covers all events we care about
-    ; EVENT_MIN = 0x0001, but we only need from SYSTEM_FOREGROUND to OBJECT_NAMECHANGE
-    global WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
-    minEvent := WEH_EVENT_SYSTEM_FOREGROUND
-    maxEvent := WEH_EVENT_OBJECT_NAMECHANGE
 
     ; Create the callback - store globally to prevent GC (CRITICAL!)
     ; If stored in a local variable, the callback can be garbage collected while
     ; the hook is still active, causing crashes or silent failures.
     _WEH_CallbackObj := CallbackCreate(_WEH_WinEventProc, "F", 7)
 
-    ; Install out-of-context hook (WINEVENT_OUTOFCONTEXT = 0)
-    ; This allows us to receive events from all processes
-    _WEH_Hook := DllCall("user32\SetWinEventHook",
-        "uint", minEvent,       ; eventMin
-        "uint", maxEvent,       ; eventMax
-        "ptr", 0,               ; hmodWinEventProc (0 for out-of-context)
-        "ptr", _WEH_CallbackObj, ; pfnWinEventProc
-        "uint", 0,              ; idProcess (0 = all)
-        "uint", 0,              ; idThread (0 = all)
-        "uint", 0,              ; dwFlags (WINEVENT_OUTOFCONTEXT)
-        "ptr")
+    ; PERF: Split into 3 narrow hooks instead of one wide range (0x0003-0x800C).
+    ; A single wide range dispatches thousands of irrelevant events per second
+    ; (menus, dialogs, scroll, drag-drop, selections) that we immediately filter
+    ; in the callback. Narrow ranges let Windows skip those events entirely —
+    ; they never reach our callback at all.
+    ;
+    ; We need 10 event types across 3 clusters:
+    ;   System:  FOREGROUND (0x0003)
+    ;   System:  MINIMIZESTART (0x0016), MINIMIZEEND (0x0017)
+    ;   Object:  CREATE-HIDE (0x8000-0x8003), FOCUS (0x8005),
+    ;            LOCATIONCHANGE (0x800B), NAMECHANGE (0x800C)
+    ;
+    ; Gaps eliminated from dispatch:
+    ;   0x0004-0x0015: menu, capture, movesize, dialog, scrolling, switch events
+    ;   0x0018-0x7FFF: other system events
+    ;   0x8004, 0x8006-0x800A: reorder, selection, state change
+    ;     (these still reach hook 3 but are filtered by the cheap idObject != 0 check)
+    hookRanges := [
+        [0x0003, 0x0003],   ; EVENT_SYSTEM_FOREGROUND
+        [0x0016, 0x0017],   ; EVENT_SYSTEM_MINIMIZESTART/END
+        [0x8000, 0x800C]    ; Object events (CREATE through NAMECHANGE)
+    ]
 
-    if (!_WEH_Hook) {
-        CallbackFree(_WEH_CallbackObj)
-        _WEH_CallbackObj := 0
-        return false
+    for _, range in hookRanges {
+        h := DllCall("user32\SetWinEventHook",
+            "uint", range[1],       ; eventMin
+            "uint", range[2],       ; eventMax
+            "ptr", 0,               ; hmodWinEventProc (0 for out-of-context)
+            "ptr", _WEH_CallbackObj, ; pfnWinEventProc
+            "uint", 0,              ; idProcess (0 = all)
+            "uint", 0,              ; idThread (0 = all)
+            "uint", 0,              ; dwFlags (WINEVENT_OUTOFCONTEXT)
+            "ptr")
+        if (!h) {
+            ; Cleanup on partial failure
+            for _, existing in _WEH_Hooks
+                DllCall("user32\UnhookWinEvent", "ptr", existing)
+            _WEH_Hooks := []
+            CallbackFree(_WEH_CallbackObj)
+            _WEH_CallbackObj := 0
+            return false
+        }
+        _WEH_Hooks.Push(h)
     }
 
     ; Start the batch processing timer
@@ -137,17 +158,16 @@ _WinEventHook_EnsureTimerRunning() {
 
 ; Stop and uninstall the hook
 WinEventHook_Stop() {
-    global _WEH_Hook, _WEH_TimerOn, _WEH_CallbackObj
+    global _WEH_Hooks, _WEH_TimerOn, _WEH_CallbackObj
 
     if (_WEH_TimerOn) {
         SetTimer(_WEH_ProcessBatch, 0)
         _WEH_TimerOn := false
     }
 
-    if (_WEH_Hook) {
-        DllCall("user32\UnhookWinEvent", "ptr", _WEH_Hook)
-        _WEH_Hook := 0
-    }
+    for _, h in _WEH_Hooks
+        DllCall("user32\UnhookWinEvent", "ptr", h)
+    _WEH_Hooks := []
 
     ; Free the callback object to prevent memory leak
     if (_WEH_CallbackObj) {
@@ -158,12 +178,26 @@ WinEventHook_Stop() {
 
 ; Hook callback - called for each window event
 ; Keep this FAST - just queue the hwnd for later processing
+; PERF: Inline event constants in hot-path callback — by design.
+; Named globals (WEH_EVENT_*) exist at file scope for non-hot-path code (batch
+; processor, diagnostics). In this callback, which fires hundreds of times per
+; second, each `global` declaration costs a name lookup on every invocation.
+; AHK v2 does NOT cache global references across calls. Inlining eliminates
+; 10 global lookups per callback.
+;
+; Event constant map:
+;   0x0003 = EVENT_SYSTEM_FOREGROUND
+;   0x0016 = EVENT_SYSTEM_MINIMIZESTART
+;   0x0017 = EVENT_SYSTEM_MINIMIZEEND
+;   0x8000 = EVENT_OBJECT_CREATE
+;   0x8001 = EVENT_OBJECT_DESTROY
+;   0x8002 = EVENT_OBJECT_SHOW
+;   0x8003 = EVENT_OBJECT_HIDE
+;   0x8005 = EVENT_OBJECT_FOCUS
+;   0x800B = EVENT_OBJECT_LOCATIONCHANGE
+;   0x800C = EVENT_OBJECT_NAMECHANGE
 _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
     global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd, _WEH_PendingZNeeded
-    global WEH_EVENT_OBJECT_CREATE, WEH_EVENT_OBJECT_DESTROY, WEH_EVENT_OBJECT_SHOW
-    global WEH_EVENT_OBJECT_HIDE, WEH_EVENT_SYSTEM_FOREGROUND, WEH_EVENT_OBJECT_NAMECHANGE
-    global WEH_EVENT_SYSTEM_MINIMIZESTART, WEH_EVENT_SYSTEM_MINIMIZEEND, WEH_EVENT_OBJECT_FOCUS
-    global WEH_EVENT_OBJECT_LOCATIONCHANGE
     global cfg, gWS_Store
 
     ; Only care about window-level events (idObject = OBJID_WINDOW = 0)
@@ -174,17 +208,10 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     if (hwnd = _WEH_ShellWindow)
         return
 
-    ; Filter to relevant events
-    if (event != WEH_EVENT_OBJECT_CREATE
-        && event != WEH_EVENT_OBJECT_DESTROY
-        && event != WEH_EVENT_OBJECT_SHOW
-        && event != WEH_EVENT_OBJECT_HIDE
-        && event != WEH_EVENT_SYSTEM_FOREGROUND
-        && event != WEH_EVENT_OBJECT_NAMECHANGE
-        && event != WEH_EVENT_SYSTEM_MINIMIZESTART
-        && event != WEH_EVENT_SYSTEM_MINIMIZEEND
-        && event != WEH_EVENT_OBJECT_FOCUS
-        && event != WEH_EVENT_OBJECT_LOCATIONCHANGE)
+    ; Filter to relevant events (see constant map above)
+    if (event != 0x8000 && event != 0x8001 && event != 0x8002 && event != 0x8003
+        && event != 0x0003 && event != 0x800C && event != 0x0016 && event != 0x0017
+        && event != 0x8005 && event != 0x800B)
         return
 
     ; RACE FIX: Protect Map writes from batch processor interruption
@@ -192,7 +219,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     Critical "On"
 
     ; For destroy events, mark for removal
-    if (event = WEH_EVENT_OBJECT_DESTROY) {
+    if (event = 0x8001) {
         _WEH_PendingHwnds[hwnd] := -1  ; -1 = destroyed
         Critical "Off"
         SetTimer(_WEH_FastPathBatch, -1)
@@ -204,7 +231,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     ; Apps like Outlook reuse HWNDs — closing an email hides the HWND instead of
     ; destroying it. Without this, hidden windows linger in the store for up to 5s
     ; (until ValidateExistence catches them).
-    if (event = WEH_EVENT_OBJECT_HIDE) {
+    if (event = 0x8003) {
         _WEH_PendingHwnds[hwnd] := -2  ; -2 = hidden, check eligibility in batch
         Critical "Off"
         SetTimer(_WEH_FastPathBatch, -1)
@@ -215,7 +242,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     ; Filter cosmetic events for non-store windows.
     ; NAMECHANGE alone can't make a window eligible (CREATE/SHOW handles new windows).
     ; LOCATIONCHANGE doesn't affect any stored field (no position tracking).
-    if (event = WEH_EVENT_OBJECT_NAMECHANGE || event = WEH_EVENT_OBJECT_LOCATIONCHANGE) {
+    if (event = 0x800C || event = 0x800B) {
         if (!gWS_Store.Has(hwnd + 0)) {
             Critical "Off"
             return
@@ -223,7 +250,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     }
 
     ; For focus/foreground events, capture for MRU update (processed in batch)
-    if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS) {
+    if (event = 0x0003 || event = 0x8005) {
         ; LATENCY FIX: Don't call WinGetTitle here - it sends WM_GETTEXT which can
         ; block 10-50ms on slow windows. Let the batch processor handle title checks.
         ;
@@ -254,12 +281,9 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; Flag Z-order enrichment only for events that change Z-order
     ; NAMECHANGE and LOCATIONCHANGE are frequent but don't affect Z — skip them
-    if (event = WEH_EVENT_OBJECT_CREATE
-        || event = WEH_EVENT_OBJECT_SHOW
-        || event = WEH_EVENT_SYSTEM_FOREGROUND
-        || event = WEH_EVENT_OBJECT_FOCUS
-        || event = WEH_EVENT_SYSTEM_MINIMIZESTART
-        || event = WEH_EVENT_SYSTEM_MINIMIZEEND) {
+    if (event = 0x8000 || event = 0x8002
+        || event = 0x0003 || event = 0x8005
+        || event = 0x0016 || event = 0x0017) {
         _WEH_PendingZNeeded[hwnd] := true
     }
 
@@ -271,8 +295,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     ; Double-fire with periodic timer is harmless: ProcessBatch handles empty queues.
     ; SHOW is discrete (not noisy like NAMECHANGE/LOCATIONCHANGE) and may represent
     ; a window becoming eligible — process quickly for fresh Alt-Tab data.
-    if (event = WEH_EVENT_SYSTEM_FOREGROUND || event = WEH_EVENT_OBJECT_FOCUS
-        || event = WEH_EVENT_OBJECT_SHOW)
+    if (event = 0x0003 || event = 0x8005 || event = 0x8002)
         SetTimer(_WEH_FastPathBatch, -1)
 
     ; Wake timer if it was paused due to idle
@@ -346,7 +369,7 @@ _WEH_ProcessBatch() {
             patches[newFocus] := { lastActivatedTick: A_TickCount, isFocused: true }
             if (gWEH_LastFocusHwnd && gWEH_LastFocusHwnd != newFocus)
                 patches[gWEH_LastFocusHwnd] := { isFocused: false }
-            try WindowStore_BatchUpdateFields(patches, "winevent_mru")  ; lint-ignore: critical-leak
+            WindowStore_BatchUpdateFields(patches, "winevent_mru")  ; lint-ignore: critical-leak
             Critical "On"  ; Re-enter: BatchUpdateFields' Critical "Off" clears thread-level state
 
             gWEH_LastFocusHwnd := newFocus
@@ -360,12 +383,12 @@ _WEH_ProcessBatch() {
                 && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
                 if (cfg.DiagWinEventLog)
                     _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
-                try WindowStore_SetCurrentWorkspace("", focusedRec.workspaceName)
+                WindowStore_SetCurrentWorkspace("", focusedRec.workspaceName)
             }
 
             ; Enqueue icon refresh check (throttled) - allows updating window icons that change
             ; (e.g., browser favicons) when the window gains focus
-            try WindowStore_EnqueueIconRefresh(newFocus)  ; lint-ignore: critical-leak
+            WindowStore_EnqueueIconRefresh(newFocus)  ; lint-ignore: critical-leak
         } else {
             ; Window not in store yet - defer probe to OUTSIDE Critical section.
             ; WinUtils_ProbeWindow sends window messages (WinGetTitle, WinGetClass, WinGetPID)
@@ -403,14 +426,14 @@ _WEH_ProcessBatch() {
             superseded := (_WEH_PendingFocusHwnd != 0 && _WEH_PendingFocusHwnd != pendingProbeHwnd)
             Critical "Off"
             if (!superseded) {
-                try WindowStore_UpsertWindow([probe], "winevent_focus_add")
+                WindowStore_UpsertWindow([probe], "winevent_focus_add")
                 if (cfg.DiagWinEventLog)
                     _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
 
                 ; Clear focus on previous window
                 Critical "On"
                 if (pendingPrevFocus && pendingPrevFocus != pendingProbeHwnd) {
-                    try WindowStore_UpdateFields(pendingPrevFocus, { isFocused: false }, "winevent_mru")
+                    WindowStore_UpdateFields(pendingPrevFocus, { isFocused: false }, "winevent_mru")
                 }
                 gWEH_LastFocusHwnd := pendingProbeHwnd
                 Critical "Off"
@@ -441,10 +464,16 @@ _WEH_ProcessBatch() {
 
     ; RACE FIX: Snapshot map entries atomically to prevent callback interruption
     ; (callback _WEH_WinEventProc modifies _WEH_PendingHwnds with Critical)
+    ; PERF: Static parallel arrays avoid per-batch object allocation.
+    ; .Length := 0 resets without dealloc; Push reuses existing capacity.
     Critical "On"
-    entries := []
-    for hwnd, tick in _WEH_PendingHwnds
-        entries.Push({hwnd: hwnd, tick: tick})
+    static snapHwnds := [], snapTicks := []  ; lint-ignore: static-in-timer
+    snapHwnds.Length := 0
+    snapTicks.Length := 0
+    for hwnd, tick in _WEH_PendingHwnds {
+        snapHwnds.Push(hwnd)
+        snapTicks.Push(tick)
+    }
     Critical "Off"
 
     ; Collect hwnds ready to process (past debounce period)
@@ -453,20 +482,23 @@ _WEH_ProcessBatch() {
     destroyed := []
     hidden := []
 
-    for _, entry in entries {
-        if (entry.tick = -1) {
+    idx := 1
+    while (idx <= snapHwnds.Length) {
+        h := snapHwnds[idx], t := snapTicks[idx]
+        if (t = -1) {
             ; Destroyed window
-            destroyed.Push(entry.hwnd)
-            toRemove.Push(entry.hwnd)
-        } else if (entry.tick = -2) {
+            destroyed.Push(h)
+            toRemove.Push(h)
+        } else if (t = -2) {
             ; Hidden window — check eligibility, remove if ghost
-            hidden.Push(entry.hwnd)
-            toRemove.Push(entry.hwnd)
-        } else if ((now - entry.tick) >= WinEventHook_DebounceMs) {
+            hidden.Push(h)
+            toRemove.Push(h)
+        } else if ((now - t) >= WinEventHook_DebounceMs) {
             ; Ready to process
-            toProcess.Push(entry.hwnd)
-            toRemove.Push(entry.hwnd)
+            toProcess.Push(h)
+            toRemove.Push(h)
         }
+        idx++
     }
 
     ; RACE FIX: Snapshot Z flags before cleanup (needed for conditional enqueue below)

@@ -241,11 +241,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     ; Right columns (data-driven: widthProp, nameProp, dataKey)
     ; static: allocated once per process, not per-paint (hot-path rule)
+    ; dataKey matches store wire format property names directly
     static colDefs := [
         ["GUI_ColFixed6", "GUI_Col6Name", "Col6"],
         ["GUI_ColFixed5", "GUI_Col5Name", "Col5"],
-        ["GUI_ColFixed4", "GUI_Col4Name", "WS"],
-        ["GUI_ColFixed3", "GUI_Col3Name", "PID"],
+        ["GUI_ColFixed4", "GUI_Col4Name", "workspaceName"],
+        ["GUI_ColFixed3", "GUI_Col3Name", "pid"],
         ["GUI_ColFixed2", "GUI_Col2Name", "hwndHex"]
     ]
 
@@ -398,9 +399,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
             for _, col in cols {
                 val := ""
-                if (cur.HasOwnProp(col.key)) {
+                if (col.key = "hwndHex")
+                    val := Format("0x{:X}", cur.hwnd)
+                else if (cur.HasOwnProp(col.key))
                     val := cur.%col.key%
-                }
                 Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, fmtCol)
             }
 

@@ -288,16 +288,16 @@ GUI_OnStoreMessage(line, _hPipe := 0) {
 
 ; ========================= ITEM CONVERSION =========================
 
-; Helper: Create GUI item object from store record (Map with lowercase keys)
-; Used by _GUI_ConvertStoreItemsWithMap and _GUI_ApplyDelta for consistency
+; Create GUI item object from store record (Map with lowercase keys).
+; Property names match store wire format directly — no renaming needed.
+; AHK v2 property access is case-insensitive, so .title and .Title both work.
 _GUI_CreateItemFromRecord(hwnd, rec) {
     return {
         hwnd: hwnd,
-        Title: rec.Get("title", ""),
-        Class: rec.Get("class", ""),
-        hwndHex: Format("0x{:X}", hwnd),
-        PID: rec.Has("pid") ? "" rec["pid"] : "",
-        WS: rec.Get("workspaceName", ""),
+        title: rec.Get("title", ""),
+        class: rec.Get("class", ""),
+        pid: rec.Get("pid", ""),
+        workspaceName: rec.Get("workspaceName", ""),
         isOnCurrentWorkspace: rec.Get("isOnCurrentWorkspace", true),
         processName: rec.Get("processName", ""),
         iconHicon: rec.Get("iconHicon", 0),
@@ -412,45 +412,32 @@ _GUI_ApplyDelta(payload) {
 
             ; O(1) lookup instead of O(n) scan
             if (gGUI_LiveItemsMap.Has(hwnd)) {
-                ; Update existing item - iterate present keys only (rec is a Map from JSON.Load).
-                ; Typical sparse delta has 3 keys (hwnd + 2 fields): 3 iterations vs 10 Has() calls.
+                ; Update existing item — property names match store wire format directly.
+                ; Iterate present keys only (rec is a Map from JSON.Load).
+                ; Typical sparse delta has 3 keys (hwnd + 2 fields).
                 item := gGUI_LiveItemsMap[hwnd]
                 for key, val in rec {
                     if (key = "hwnd")
                         continue  ; lint-ignore: critical-section
-                    if (key = "title")
-                        item.Title := val
-                    else if (key = "class")
-                        item.Class := val
-                    else if (key = "pid")
-                        item.PID := "" val
-                    else if (key = "workspaceName")
-                        item.WS := val
-                    else if (key = "isOnCurrentWorkspace") {
-                        if (item.isOnCurrentWorkspace != val) {
-                            item.isOnCurrentWorkspace := val
+                    ; Track special side effects before setting value
+                    if (key = "lastActivatedTick") {
+                        if (item.lastActivatedTick != val)
+                            mruChanged := true
+                    } else if (key = "isOnCurrentWorkspace") {
+                        if (item.isOnCurrentWorkspace != val)
                             membershipChanged := true
-                        }
-                    } else if (key = "processName")
-                        item.processName := val
-                    else if (key = "iconHicon") {
-                        item.iconHicon := val
+                    } else if (key = "iconHicon") {
                         ; Defer GDI+ pre-cache to outside Critical (0.5-2ms per icon DllCall)
                         iconsToPrecache.Push({hwnd: hwnd, hicon: val})
-                    } else if (key = "lastActivatedTick") {
-                        if (item.lastActivatedTick != val) {
-                            item.lastActivatedTick := val
-                            mruChanged := true
-                        }
                     } else if (key = "isFocused") {
-                        ; Track focus change (don't process here, just record it)
-                        ; isFocused is content-only — MRU sort driven by lastActivatedTick
                         if (val) {
                             if (cfg.DiagEventLog)
                                 GUI_LogEvent("DELTA FOCUS: hwnd=" hwnd " isFocused=true (update)")
                             focusChangedToHwnd := hwnd
                         }
                     }
+                    ; Set property directly — no renaming needed
+                    item.%key% := val
                 }
             } else {
                 ; Add new item using shared helper
