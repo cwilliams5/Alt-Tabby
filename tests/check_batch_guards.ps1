@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -662,6 +662,150 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_postmessage_safety"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 6: callback_signatures
+# Validates that SetTimer callbacks accept 0 params (or variadic)
+# and OnMessage callbacks accept <=4 params (or variadic).
+# In AHK v2, wrong param count = runtime crash when the callback fires.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$CS_SUPPRESSION = 'lint-ignore: callback-signature'
+
+# Phase 1: Build function definition index (name -> param info)
+$csFuncParams = @{}  # funcName -> @{ RequiredCount; HasVariadic; File; Line }
+
+$CS_KEYWORDS = @(
+    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
+    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
+    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
+    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
+)
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+
+        # Match function definition with param list
+        if ($raw -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{?') {
+            $funcName = $Matches[1]
+            $paramStr = $Matches[2].Trim()
+            if ($funcName.ToLower() -in $CS_KEYWORDS) { continue }
+
+            # Parse parameter string
+            $hasVariadic = $paramStr -match '\*'
+            $requiredCount = 0
+            if ($paramStr -ne '' -and -not $hasVariadic) {
+                # Count parameters that have no default value
+                foreach ($param in $paramStr -split ',') {
+                    $p = $param.Trim()
+                    if ($p -eq '') { continue }
+                    # Has default? param := value or param = value
+                    if ($p -match ':=|=') { continue }
+                    # ByRef? &param — still counts as required
+                    $requiredCount++
+                }
+            }
+
+            if (-not $csFuncParams.ContainsKey($funcName)) {
+                $csFuncParams[$funcName] = @{
+                    RequiredCount = $requiredCount
+                    HasVariadic   = $hasVariadic
+                    TotalParams   = if ($paramStr -eq '') { 0 } else { ($paramStr -split ',').Count }
+                    File          = $relPath
+                    Line          = $i + 1
+                }
+            }
+        }
+    }
+}
+
+# Phase 2: Find SetTimer and OnMessage registrations, validate signatures
+$csIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($raw.Contains($CS_SUPPRESSION)) { continue }
+
+        # --- SetTimer(callbackRef, ...) ---
+        if ($raw -match 'SetTimer\s*\(\s*([A-Za-z_]\w+)\s*[,)]') {
+            $cbName = $Matches[1]
+
+            # Skip deregistrations: SetTimer(ref, 0)
+            if ($raw -match 'SetTimer\s*\(\s*[A-Za-z_]\w+\s*,\s*0\s*\)') { continue }
+
+            # Skip .Bind() references (handled by binding)
+            if ($raw -match "$cbName\s*\.\s*Bind\s*\(") { continue }
+
+            # Lookup the function definition
+            if ($csFuncParams.ContainsKey($cbName)) {
+                $info = $csFuncParams[$cbName]
+                if (-not $info.HasVariadic -and $info.RequiredCount -gt 0) {
+                    [void]$csIssues.Add([PSCustomObject]@{
+                        File     = $relPath
+                        Line     = $i + 1
+                        Kind     = 'SetTimer'
+                        Callback = $cbName
+                        Detail   = "SetTimer callback '$cbName' has $($info.RequiredCount) required param(s), needs 0 (defined at $($info.File):$($info.Line))"
+                    })
+                }
+            }
+        }
+
+        # --- OnMessage(msg, callbackRef) ---
+        if ($raw -match 'OnMessage\s*\(\s*[^,]+,\s*([A-Za-z_]\w+)\s*[\),]') {
+            $cbName = $Matches[1]
+
+            # Skip deregistrations (3rd arg = 0)
+            if ($raw -match 'OnMessage\s*\([^,]+,\s*[A-Za-z_]\w+\s*,\s*0\s*\)') { continue }
+
+            # Skip .Bind() references
+            if ($raw -match "$cbName\s*\.\s*Bind\s*\(") { continue }
+
+            if ($csFuncParams.ContainsKey($cbName)) {
+                $info = $csFuncParams[$cbName]
+                # OnMessage callbacks receive up to 4 params (wParam, lParam, msg, hwnd)
+                # Having >4 required params is always wrong
+                if (-not $info.HasVariadic -and $info.RequiredCount -gt 4) {
+                    [void]$csIssues.Add([PSCustomObject]@{
+                        File     = $relPath
+                        Line     = $i + 1
+                        Kind     = 'OnMessage'
+                        Callback = $cbName
+                        Detail   = "OnMessage callback '$cbName' has $($info.RequiredCount) required param(s), max 4 (defined at $($info.File):$($info.Line))"
+                    })
+                }
+            }
+        }
+    }
+}
+
+if ($csIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($csIssues.Count) callback signature issue(s) found.")
+    [void]$failOutput.AppendLine("  SetTimer callbacks must accept 0 params; OnMessage callbacks max 4.")
+    [void]$failOutput.AppendLine("  Wrong param count causes runtime crash when the callback fires.")
+    [void]$failOutput.AppendLine("  Fix: adjust the callback signature, or suppress with '; lint-ignore: callback-signature'.")
+    $grouped = $csIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): [$($issue.Kind)] $($issue.Detail)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_callback_signatures"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -669,7 +813,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

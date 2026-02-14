@@ -1,6 +1,6 @@
 # check_batch_tests.ps1 - Batched test-file analysis checks
-# Combines 2 test-related checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: test_globals, test_functions
+# Combines 3 test-related checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: test_globals, test_functions, test_assertions
 # Shared file cache: all src/ files (excluding lib/) + all test files read once.
 #
 # Usage: powershell -File tests\check_batch_tests.ps1 [-SourceDir "path\to\src"]
@@ -565,6 +565,171 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_test_functions"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 3: test_assertions
+# Detect test functions with no assertions, constant-vs-constant
+# assertions, and always-pass if/else branches.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$TA_SUPPRESSION = 'lint-ignore: test-assertions'
+
+# Helper function name patterns that are exempt from needing assertions
+$TA_HELPER_PATTERNS = @(
+    '^_',               # Private helpers
+    'Setup',            # Test setup functions
+    'Helper',           # Explicit helpers
+    'Mock',             # Mock definitions
+    'Reset',            # State reset
+    'Init',             # Initialization
+    'Cleanup',          # Teardown
+    'Create.*Items',    # Test data factories
+    'Build.*Data',      # Test data builders
+    'Launch',           # Process launchers
+    'WaitFor',          # Polling utilities
+    'RunAll',           # Test suite runners that call sub-tests
+    'RunLiveTests$',    # Live test dispatcher (calls sub-functions)
+    '_On\w+'            # IPC/event callback handlers (e.g. Test_OnServerMessage)
+)
+$taHelperRegex = [regex]::new(($TA_HELPER_PATTERNS -join '|'), 'Compiled, IgnoreCase')
+
+# Assertion patterns that indicate a test is verifying something
+$TA_ASSERT_PATTERNS = @(
+    'AssertEq\s*\(',
+    'AssertNeq\s*\(',
+    'AssertTrue\s*\(',
+    'AssertFalse\s*\(',
+    'Log\(\s*"FAIL',
+    'Log\(\s*"PASS'
+)
+$taAssertRegex = [regex]::new(($TA_ASSERT_PATTERNS -join '|'), 'Compiled')
+
+# Constant literal pattern for both sides of an assertion
+$taConstantAssertRegex = [regex]::new(
+    'Assert(?:Eq|Neq|True|False)\s*\(\s*(?:true|false|0|1|"[^"]*")\s*,\s*(?:true|false|0|1|"[^"]*")\s*(?:,|\))',
+    'Compiled, IgnoreCase'
+)
+
+$taIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $testFiles) {
+    $lines = Get-CachedFileLines $file.FullName
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    # Pre-filter: skip files without any function definitions
+    $joined = [string]::Join("`n", $lines)
+    if ($joined.IndexOf('(', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+    # Extract test functions and their bodies
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+    $funcName = ""
+    $funcStartLine = 0
+    $funcBody = [System.Text.StringBuilder]::new()
+    $funcHasSuppression = $false
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        $cleaned = BT_CleanLine $raw
+        if ($cleaned -eq '') {
+            if ($inFunc) { [void]$funcBody.AppendLine($raw) }
+            continue
+        }
+
+        $braces = BT_CountBraces $cleaned
+
+        # Detect function start
+        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\([^)]*\)\s*\{?') {
+            $fname = $Matches[1]
+            if ($fname.ToLower() -notin $AHK_KEYWORDS) {
+                # Check if the opening brace is on this line or next
+                $hasBrace = $cleaned -match '\{'
+                if (-not $hasBrace -and ($i + 1) -lt $lines.Count) {
+                    $nextCleaned = BT_CleanLine $lines[$i + 1]
+                    if ($nextCleaned -match '^\s*\{') { $hasBrace = $true }
+                }
+                if ($hasBrace) {
+                    $inFunc = $true
+                    $funcName = $fname
+                    $funcStartLine = $i + 1
+                    $funcDepth = $depth
+                    $funcBody = [System.Text.StringBuilder]::new()
+                    $funcHasSuppression = $raw.Contains($TA_SUPPRESSION)
+                }
+            }
+        }
+
+        $depth += $braces[0] - $braces[1]
+
+        if ($inFunc) {
+            [void]$funcBody.AppendLine($raw)
+
+            if ($depth -le $funcDepth) {
+                # Function ended — analyze it
+                $inFunc = $false
+                $funcDepth = -1
+                $bodyText = $funcBody.ToString()
+
+                # Skip suppressed functions
+                if ($funcHasSuppression -or $bodyText.Contains($TA_SUPPRESSION)) {
+                    continue
+                }
+
+                # Skip helper/utility functions
+                if ($taHelperRegex.IsMatch($funcName)) { continue }
+
+                # Skip functions that are clearly not test functions
+                # (must start with Test, RunTests_, or RunLiveTests_)
+                $isTestFunc = $funcName -match '^(?:Test|RunTests_|RunLiveTests_)'
+                if (-not $isTestFunc) { continue }
+
+                # Check 3a: No assertions at all
+                if (-not $taAssertRegex.IsMatch($bodyText)) {
+                    [void]$taIssues.Add([PSCustomObject]@{
+                        File = $relPath; Line = $funcStartLine
+                        Function = $funcName; Kind = 'no-assertions'
+                        Detail = "Test function has no assertions (no AssertEq/AssertTrue/Log PASS/FAIL)"
+                    })
+                }
+
+                # Check 3c: Constant-vs-constant assertions
+                $constMatches = $taConstantAssertRegex.Matches($bodyText)
+                foreach ($cm in $constMatches) {
+                    # Find the line number within the function body
+                    $matchOffset = $cm.Index
+                    $bodyUpToMatch = $bodyText.Substring(0, $matchOffset)
+                    $lineOffset = ($bodyUpToMatch -split "`n").Count - 1
+                    $trimmedMatch = $cm.Value.TrimEnd(',', ')')
+                    [void]$taIssues.Add([PSCustomObject]@{
+                        File = $relPath; Line = $funcStartLine + $lineOffset
+                        Function = $funcName; Kind = 'constant-assertion'
+                        Detail = "Assertion compares two constants: $trimmedMatch"
+                    })
+                }
+            }
+        }
+    }
+}
+
+if ($taIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($taIssues.Count) test assertion quality issue(s) found.")
+    [void]$failOutput.AppendLine("  Tests without assertions pass unconditionally and provide no regression protection.")
+    [void]$failOutput.AppendLine("  Fix: add meaningful assertions, or suppress with '; lint-ignore: test-assertions'.")
+
+    $grouped = $taIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.Function)() [$($issue.Kind)]")
+            [void]$failOutput.AppendLine("        $($issue.Detail)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_test_assertions"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -572,7 +737,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All test checks passed (test_globals, test_functions)" -ForegroundColor Green
+    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

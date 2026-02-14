@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
-# Combines 4 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns
+# Combines 5 pattern checks into one PowerShell process with shared file cache.
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, projection_fields, map_dot_access
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -1015,6 +1015,144 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_projection_fields"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 6: map_dot_access
+# Detects .property access on variables assigned from Map-creating
+# expressions (Map(), cJSON.Parse(), JSON.Parse()). In AHK v2,
+# Maps use ["key"] indexing; .property access throws MethodError.
+# Origin-aware: only flags variables traced to Map constructors,
+# NOT plain Objects from gWS_Store or _WS_NewRecord().
+# CLAUDE.md: "Store expects Map records: use rec["key"] not rec.key"
+# Suppress: ; lint-ignore: map-dot-access
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$mdaIssues = [System.Collections.ArrayList]::new()
+$MDA_SUPPRESSION = 'lint-ignore: map-dot-access'
+
+# Allowed Map method/property names (not field access)
+$MDA_ALLOWED_METHODS = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+)
+foreach ($method in @('Has', 'Get', 'Set', 'Delete', 'Clear', 'Clone',
+                       'Count', 'Capacity', 'Default', 'CaseSense',
+                       '__Class', '__New', '__Enum', '__Item',
+                       'OwnProps', 'HasOwnProp', 'DefineProp',
+                       'GetOwnPropDesc', 'HasProp', 'HasMethod',
+                       'GetMethod', 'Ptr', 'Base', 'Length',
+                       'Push', 'Pop', 'InsertAt', 'RemoveAt')) {
+    [void]$MDA_ALLOWED_METHODS.Add($method)
+}
+
+# Regex to detect Map-creating assignments: varName := Map( | cJSON.Parse( | JSON.Parse(
+$mdaMapAssignRegex = [regex]::new(
+    '^\s*(\w+)\s*:=\s*(?:Map\s*\(|cJSON\.Parse\s*\(|JSON\.Parse\s*\()',
+    'Compiled'
+)
+
+# Regex to detect function start (resets Map variable scope)
+$mdaFuncStartRegex = [regex]::new(
+    '^\s*(?:static\s+)?[A-Za-z_]\w*\s*\([^)]*\)\s*\{?',
+    'Compiled'
+)
+
+# Only check store-side and IPC files (where Maps are the primary data structure)
+$mdaStoreFiles = @($allFiles | Where-Object {
+    $_.FullName -like "*\store\*" -or $_.FullName -like "*\shared\ipc*"
+})
+
+foreach ($file in $mdaStoreFiles) {
+    $lines = $fileCache[$file.FullName]
+    $text = $fileCacheText[$file.FullName]
+
+    # Pre-filter: does this file create any Maps?
+    if (-not ($text.Contains('Map(') -or $text.Contains('cJSON.Parse(') -or $text.Contains('JSON.Parse('))) {
+        continue
+    }
+
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $inBlockComment = $false
+    # Track Map variables per function scope (reset on new function definition)
+    $mapVarsInScope = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+
+        if ($inBlockComment) {
+            if ($raw -match '\*/') { $inBlockComment = $false }
+            continue
+        }
+        if ($raw -match '^\s*/\*') { $inBlockComment = $true; continue }
+        if ($raw -match '^\s*;') { continue }
+        if ($raw.Contains($MDA_SUPPRESSION)) { continue }
+
+        $cleaned = BP_Clean-Line $raw
+        if ($cleaned -eq '') { continue }
+
+        # Reset Map tracking on new function definition
+        if ($mdaFuncStartRegex.IsMatch($cleaned)) {
+            $mapVarsInScope.Clear()
+        }
+
+        # Track Map-creating assignments
+        $assignMatch = $mdaMapAssignRegex.Match($cleaned)
+        if ($assignMatch.Success) {
+            [void]$mapVarsInScope.Add($assignMatch.Groups[1].Value)
+        }
+
+        # Only check dot access if we have tracked Map variables
+        if ($mapVarsInScope.Count -eq 0) { continue }
+
+        # Check for dot access on tracked Map variables
+        foreach ($mapVar in @($mapVarsInScope)) {
+            $dotPrefix = "$mapVar."
+            if ($cleaned.IndexOf($dotPrefix, [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+            $escapedVar = [regex]::Escape($mapVar)
+            $dotMatches = [regex]::Matches($cleaned, "\b$escapedVar\.(\w+)")
+            foreach ($m in $dotMatches) {
+                $fieldName = $m.Groups[1].Value
+
+                # Skip method calls (followed by parenthesis)
+                $afterEnd = $m.Index + $m.Length
+                if ($afterEnd -lt $cleaned.Length -and $cleaned[$afterEnd] -eq '(') { continue }
+
+                # Skip allowed methods/properties
+                if ($MDA_ALLOWED_METHODS.Contains($fieldName)) { continue }
+
+                [void]$mdaIssues.Add([PSCustomObject]@{
+                    File  = $relPath
+                    Line  = $i + 1
+                    Var   = $mapVar
+                    Field = $fieldName
+                    Code  = $raw.Trim()
+                })
+            }
+        }
+    }
+}
+
+if ($mdaIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($mdaIssues.Count) Map dot-access issue(s) found.")
+    [void]$failOutput.AppendLine('  Maps from Map()/cJSON.Parse() use ["key"] not .key in AHK v2.')
+    [void]$failOutput.AppendLine("  .property access on Maps throws MethodError.")
+    [void]$failOutput.AppendLine('  Fix: use var["fieldName"] syntax, or suppress with ''; lint-ignore: map-dot-access''.')
+    $grouped = $mdaIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            $dotForm = "$($issue.Var).$($issue.Field)"
+            $bracketForm = $issue.Var + '["' + $issue.Field + '"]'
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $dotForm - use $bracketForm")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_map_dot_access"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1022,7 +1160,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, projection_fields)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, projection_fields, map_dot_access)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
