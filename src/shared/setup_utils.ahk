@@ -1156,25 +1156,43 @@ Update_CleanupStaleTempFiles() {
 ; Stats: merge additively if both exist, copy if source-only.
 ; No-op when srcDir == targetDir (e.g., auto-update in place).
 _Update_CopyUserData(srcDir, targetDir, overwrite := false) {
+    global cfg
     if (PathsEqual(srcDir, targetDir))
         return
 
     ; Config: copy if not present, or always if overwrite (mismatch-update pushes active config)
-    if (FileExist(srcDir "\config.ini") && (overwrite || !FileExist(targetDir "\config.ini")))
-        try FileCopy(srcDir "\config.ini", targetDir "\config.ini", true)
+    if (FileExist(srcDir "\config.ini") && (overwrite || !FileExist(targetDir "\config.ini"))) {
+        try {
+            FileCopy(srcDir "\config.ini", targetDir "\config.ini", true)
+        } catch as e {
+            if (cfg.DiagUpdateLog)
+                _Update_Log("WARN: config.ini copy failed: " e.Message)
+        }
+    }
 
     ; Blacklist: copy if not present, or always if overwrite
-    if (FileExist(srcDir "\blacklist.txt") && (overwrite || !FileExist(targetDir "\blacklist.txt")))
-        try FileCopy(srcDir "\blacklist.txt", targetDir "\blacklist.txt", true)
+    if (FileExist(srcDir "\blacklist.txt") && (overwrite || !FileExist(targetDir "\blacklist.txt"))) {
+        try {
+            FileCopy(srcDir "\blacklist.txt", targetDir "\blacklist.txt", true)
+        } catch as e {
+            if (cfg.DiagUpdateLog)
+                _Update_Log("WARN: blacklist.txt copy failed: " e.Message)
+        }
+    }
 
     ; Stats: merge if both exist, copy if source-only
     srcStats := srcDir "\stats.ini"
     targetStats := targetDir "\stats.ini"
     if (FileExist(srcStats)) {
         if (!FileExist(targetStats)) {
-            try FileCopy(srcStats, targetStats)
+            try {
+                FileCopy(srcStats, targetStats)
+            } catch as e {
+                if (cfg.DiagUpdateLog)
+                    _Update_Log("WARN: stats.ini copy failed: " e.Message)
+            }
         } else {
-            _Update_MergeStats(srcStats, targetStats)
+            try _Update_MergeStats(srcStats, targetStats)
         }
     }
     ; Stats backup: copy if not present (don't merge backups)
@@ -1187,6 +1205,7 @@ _Update_CopyUserData(srcDir, targetDir, overwrite := false) {
 ; Uses delta-based merge: tracks source snapshots at merge time so repeated
 ; merges only add what's new (prevents double-counting AND silent data loss).
 _Update_MergeStats(srcPath, targetPath) {
+    global cfg
     ; IMPORTANT: These keys must match the lifetime counter keys written by _Stats_FlushToDisk().
     ; If you add/rename a lifetime stat, update this list too.
     lifetimeKeys := [
@@ -1198,6 +1217,17 @@ _Update_MergeStats(srcPath, targetPath) {
         "TotalCrossWS",
         "TotalWSToggles"
     ]
+
+    ; Pre-check: ensure srcPath is writable for merge markers.
+    ; If we can't record the merge, skip it — prevents double-counting on retry.
+    try {
+        IniWrite(A_TickCount, srcPath, "Merged", "_WriteTest")
+        IniDelete(srcPath, "Merged", "_WriteTest")
+    } catch {
+        if (cfg.DiagUpdateLog)
+            _Update_Log("WARN: stats merge skipped (source not writable for markers): " srcPath)
+        return
+    }
 
     ; Resolve target installation ID (survives directory renames)
     targetDir := ""

@@ -331,7 +331,7 @@ _Launcher_OfferOneTimeElevation() {
                 throw Error("RunAsAdmin failed")
             ExitApp()
         } catch {
-            ; UAC refused - continue without elevation
+            TrayTip("Elevation Declined", "Running without administrator privileges.", "Iconi")
         }
     }
     ; "No" - continue without elevation
