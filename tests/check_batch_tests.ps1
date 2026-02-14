@@ -37,20 +37,34 @@ $srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 $testFiles = @(Get-ChildItem -Path $testsDir -Filter "*.ahk" -File)
 
-# Cache: filePath -> string[] (lines)
+# Cache: filePath -> string[] (lines), filePath -> string (full text)
 $script:fileContentCache = @{}
+$script:fileTextCache = @{}
 foreach ($f in $srcFiles) {
-    $script:fileContentCache[$f.FullName] = [System.IO.File]::ReadAllLines($f.FullName)
+    $text = [System.IO.File]::ReadAllText($f.FullName)
+    $script:fileTextCache[$f.FullName] = $text
+    $script:fileContentCache[$f.FullName] = $text -split "`r?`n"
 }
 foreach ($f in $testFiles) {
-    $script:fileContentCache[$f.FullName] = [System.IO.File]::ReadAllLines($f.FullName)
+    $text = [System.IO.File]::ReadAllText($f.FullName)
+    $script:fileTextCache[$f.FullName] = $text
+    $script:fileContentCache[$f.FullName] = $text -split "`r?`n"
 }
 
 function Get-CachedFileLines($path) {
     if (-not $script:fileContentCache.ContainsKey($path)) {
-        $script:fileContentCache[$path] = [System.IO.File]::ReadAllLines($path)
+        $text = [System.IO.File]::ReadAllText($path)
+        $script:fileTextCache[$path] = $text
+        $script:fileContentCache[$path] = $text -split "`r?`n"
     }
     return $script:fileContentCache[$path]
+}
+
+function Get-CachedFileText($path) {
+    if (-not $script:fileTextCache.ContainsKey($path)) {
+        $script:fileTextCache[$path] = [System.IO.File]::ReadAllText($path)
+    }
+    return $script:fileTextCache[$path]
 }
 
 # === Sub-check tracking ===
@@ -365,7 +379,7 @@ if ($entryPoints.Count -gt 0) {
             # (can't have undeclared usage of globals it doesn't reference at all)
             if ($availableGlobals.Count -gt 0 -and $knownGlobals.Count -gt 0) {
                 $fileLines = Get-CachedFileLines $file
-                $fileText = [string]::Join("`n", $fileLines)
+                $fileText = Get-CachedFileText $file
                 $hasRelevantGlobal = $false
                 foreach ($gName in $knownGlobals.Keys) {
                     if (-not $availableGlobals.ContainsKey($gName)) {

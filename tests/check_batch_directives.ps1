@@ -288,92 +288,99 @@ function BD_BT_StripComments {
     return $stripped
 }
 
+# Pre-compiled exempt patterns for bare_try (avoids per-call regex compilation)
+$script:BD_BT_ExemptPatterns = @(
+    [regex]::new('(?i)DllCall\(\s*"[^"]*\\?(DestroyIcon|CloseHandle|DisconnectNamedPipe|FlushFileBuffers|DeleteObject|ReleaseDC|SelectObject|DeleteDC|DeleteFont)"')
+    [regex]::new('(?i)DllCall\(\s*"gdiplus\\Gdip(Delete|Dispose|lusShutdown)')
+    [regex]::new('(?i)DllCall\(\s*"gdi32\\(DeleteObject|SelectObject|DeleteDC)"')
+    [regex]::new('(?i)DllCall\(\s*"dwmapi\\Dwm(SetWindowAttribute|Flush)"')
+    [regex]::new('(?i)^FileDelete\(')
+    [regex]::new('(?i)^FileCopy\(')
+    [regex]::new('(?i)^FileMove\(')
+    [regex]::new('(?i)^FileAppend\(')
+    [regex]::new('(?i)^DirDelete\(')
+    [regex]::new('(?i)^SetTimer\(.*,\s*0\s*\)')
+    [regex]::new('(?i)^Gdip_(Delete|Dispose|Shutdown)')
+    [regex]::new('(?i)^ProcessClose\(')
+    [regex]::new('(?i)^WinClose\(')
+    [regex]::new('(?i)^WinKill\(')
+    [regex]::new('(?i)^WinActivate\(')
+    [regex]::new('(?i)^WinSet(AlwaysOnTop|Transparent|ExStyle)\b')
+    [regex]::new('(?i)^Ini(Write|Read|Delete)\(')
+    [regex]::new('(?i)^Reg(Write|Read|Delete)\(')
+    [regex]::new('(?i)^Hotkey\(')
+    [regex]::new('(?i)^On(Error|Exit)\(')
+    [regex]::new('(?i)^LogAppend\(')
+    [regex]::new('(?i)^PostMessage\(')
+    [regex]::new('(?i)^Send\(')
+    [regex]::new('(?i)\.(Destroy|Hide|Move|Choose)\(')
+    [regex]::new('(?i)\.(Value|Text|BackColor)\s*:=')
+    [regex]::new('(?i)^Run(Wait)?\(')
+    [regex]::new('(?i)^Theme_UntrackGui\(')
+    [regex]::new('(?i)^Theme_ApplyToWindow\(')
+    [regex]::new('(?i)^HideSplashScreen\(')
+    [regex]::new('(?i)^GUI_AntiFlashReveal\(')
+    [regex]::new('(?i)^(WinGetTitle|WinGetClass|WinGetProcessName|WinGetID)\(')
+    [regex]::new('(?i):= (WinGetTitle|WinGetClass|WinGetProcessName|WinGetID)\(')
+    [regex]::new('(?i):= WinGetTitle\(')
+    [regex]::new('(?i)DllCall\(\s*"(user32|shcore)\\(SetProcess|GetDpi|GetDpiFor|SetWindowLongPtrW|GetWindowLongPtrW)')
+    [regex]::new('(?i)^(hr\s*:=\s*)?DllCall\(')
+    [regex]::new('(?i)^WindowStore_(UpdateFields|UpsertWindow|SetCurrentWorkspace|EnqueueIconRefresh|BatchUpdateFields|ValidateExistence|CleanupAllIcons|CleanupExeIconCache|PruneProcNameCache|PruneExeIconCache)\(')
+    [regex]::new('(?i):= WindowStore_(UpdateFields|GetByHwnd|SetCurrentWorkspace)\(')
+    [regex]::new('(?i)^Store_(PushToClients|BroadcastWorkspaceFlips|LogError|LogInfo)\(')
+    [regex]::new('(?i)^IPC_PipeClient_Send\(')
+    [regex]::new('(?i)^(IconPump|ProcPump|KomorebiSub|KomorebiLite|WinEventHook|MRU_Lite)_(Stop|EnsureRunning|PruneStaleCache|CleanupWindow|CleanupUwpCache|PruneProcNameCache|PruneExeIconCache|PruneFailedPidCache|Poll)\(')
+    [regex]::new('(?i):= JSON\.Load\(')
+    [regex]::new('(?i)^(parsed|stateObj|obj)\s*:= JSON\.Load\(')
+    [regex]::new('(?i)^return Integer\(')
+    [regex]::new('(?i):= Integer\(')
+    [regex]::new('(?i):= Float\(')
+    [regex]::new('(?i)^(\w+\s*:=\s*)?FileRead\(')
+    [regex]::new('(?i):= FileRead\(')
+    [regex]::new('(?i):= Trim\(FileRead\(')
+    [regex]::new('(?i)^_?Stats_(FlushToDisk|SendToStore)\(')
+    [regex]::new('(?i)^LogInitSession\(')
+    [regex]::new('(?i):= \w+\.\w+$')
+    [regex]::new('(?i):= BL_CompileWildcard\(')
+    [regex]::new('(?i)WebView\.(ExecuteScript|Navigate|add_WebMessageReceived)\(')
+    [regex]::new('(?i)Controller\.(Fill|DefaultBackgroundColor)')
+    [regex]::new('(?i)Controller\s*:= 0')
+    [regex]::new('(?i):= IPC_PipeClient_Connect\(')
+    [regex]::new('(?i)^ProcessUtils_RunWaitHidden\(')
+    [regex]::new('(?i)^Launcher_ShutdownSubprocesses\(')
+    [regex]::new('(?i)^DeleteAdminTask\(')
+    [regex]::new('(?i)^CL_WriteIniPreserveFormat\(')
+    [regex]::new('(?i):= CL_WriteIniPreserveFormat\(')
+    [regex]::new('(?i)^ThemeMsgBox\(')
+    [regex]::new('(?i)\.(Show)\(')
+    [regex]::new('(?i)\.Call\(')
+    [regex]::new('(?i)^callback\(\)')
+    [regex]::new('(?i)(FileExist|FileGetSize|FileGetTime|FileGetVersion)\(')
+    [regex]::new('(?i)^return MsgBox\(')
+    [regex]::new('(?i)DllCall\(')
+    [regex]::new('(?i):= \w+\.\w+\b')
+    [regex]::new('(?i)ComObject\(')
+    [regex]::new('(?i)\.(ShellExecute|CreateShortcut|Run)\(')
+    [regex]::new('(?i)\.(RawWrite)\(')
+    [regex]::new('(?i)^(if|else|return|continue|break|global|local|static|Loop|for|while|switch)\b')
+    [regex]::new('^\w+\s*:=')
+    [regex]::new('^\w+\s*\.=')
+    [regex]::new('^\w+\s*\+=')
+    [regex]::new('^\w+\+\+')
+    [regex]::new('^\w+\-\-')
+    [regex]::new('^\w+\[')
+    [regex]::new('^\w+\.\w+\(')
+    [regex]::new('(?i)^try\b')
+    [regex]::new('(?i)^_?(GUI|Store|Launcher|Viewer|Update|Blacklist|BL|CEN|CEW|CRE|Theme|IPC|WinEnum)')
+    [regex]::new('(?i)^Sleep\(')
+)
+
 function BD_BT_TestAutoExempt {
     param([string]$expr)
     $t = $expr.Trim()
-    if ($t -match '(?i)DllCall\(\s*"[^"]*\\?(DestroyIcon|CloseHandle|DisconnectNamedPipe|FlushFileBuffers|DeleteObject|ReleaseDC|SelectObject|DeleteDC|DeleteFont)"') { return $true }
-    if ($t -match '(?i)DllCall\(\s*"gdiplus\\Gdip(Delete|Dispose|lusShutdown)') { return $true }
-    if ($t -match '(?i)DllCall\(\s*"gdi32\\(DeleteObject|SelectObject|DeleteDC)"') { return $true }
-    if ($t -match '(?i)DllCall\(\s*"dwmapi\\Dwm(SetWindowAttribute|Flush)"') { return $true }
-    if ($t -match '(?i)^FileDelete\(') { return $true }
-    if ($t -match '(?i)^FileCopy\(') { return $true }
-    if ($t -match '(?i)^FileMove\(') { return $true }
-    if ($t -match '(?i)^FileAppend\(') { return $true }
-    if ($t -match '(?i)^DirDelete\(') { return $true }
-    if ($t -match '(?i)^SetTimer\(.*,\s*0\s*\)') { return $true }
-    if ($t -match '(?i)^Gdip_(Delete|Dispose|Shutdown)') { return $true }
-    if ($t -match '(?i)^ProcessClose\(') { return $true }
-    if ($t -match '(?i)^WinClose\(') { return $true }
-    if ($t -match '(?i)^WinKill\(') { return $true }
-    if ($t -match '(?i)^WinActivate\(') { return $true }
-    if ($t -match '(?i)^WinSet(AlwaysOnTop|Transparent|ExStyle)\b') { return $true }
-    if ($t -match '(?i)^Ini(Write|Read|Delete)\(') { return $true }
-    if ($t -match '(?i)^Reg(Write|Read|Delete)\(') { return $true }
-    if ($t -match '(?i)^Hotkey\(') { return $true }
-    if ($t -match '(?i)^On(Error|Exit)\(') { return $true }
-    if ($t -match '(?i)^LogAppend\(') { return $true }
-    if ($t -match '(?i)^PostMessage\(') { return $true }
-    if ($t -match '(?i)^Send\(') { return $true }
-    if ($t -match '(?i)\.(Destroy|Hide|Move|Choose)\(') { return $true }
-    if ($t -match '(?i)\.(Value|Text|BackColor)\s*:=') { return $true }
-    if ($t -match '(?i)^Run(Wait)?\(') { return $true }
-    if ($t -match '(?i)^Theme_UntrackGui\(') { return $true }
-    if ($t -match '(?i)^Theme_ApplyToWindow\(') { return $true }
-    if ($t -match '(?i)^HideSplashScreen\(') { return $true }
-    if ($t -match '(?i)^GUI_AntiFlashReveal\(') { return $true }
-    if ($t -match '(?i)^(WinGetTitle|WinGetClass|WinGetProcessName|WinGetID)\(') { return $true }
-    if ($t -match '(?i):= (WinGetTitle|WinGetClass|WinGetProcessName|WinGetID)\(') { return $true }
-    if ($t -match '(?i):= WinGetTitle\(') { return $true }
-    if ($t -match '(?i)DllCall\(\s*"(user32|shcore)\\(SetProcess|GetDpi|GetDpiFor|SetWindowLongPtrW|GetWindowLongPtrW)') { return $true }
-    if ($t -match '(?i)^(hr\s*:=\s*)?DllCall\(') { return $true }
-    if ($t -match '(?i)^WindowStore_(UpdateFields|UpsertWindow|SetCurrentWorkspace|EnqueueIconRefresh|BatchUpdateFields|ValidateExistence|CleanupAllIcons|CleanupExeIconCache|PruneProcNameCache|PruneExeIconCache)\(') { return $true }
-    if ($t -match '(?i):= WindowStore_(UpdateFields|GetByHwnd|SetCurrentWorkspace)\(') { return $true }
-    if ($t -match '(?i)^Store_(PushToClients|BroadcastWorkspaceFlips|LogError|LogInfo)\(') { return $true }
-    if ($t -match '(?i)^IPC_PipeClient_Send\(') { return $true }
-    if ($t -match '(?i)^(IconPump|ProcPump|KomorebiSub|KomorebiLite|WinEventHook|MRU_Lite)_(Stop|EnsureRunning|PruneStaleCache|CleanupWindow|CleanupUwpCache|PruneProcNameCache|PruneExeIconCache|PruneFailedPidCache|Poll)\(') { return $true }
-    if ($t -match '(?i):= JSON\.Load\(') { return $true }
-    if ($t -match '(?i)^(parsed|stateObj|obj)\s*:= JSON\.Load\(') { return $true }
-    if ($t -match '(?i)^return Integer\(') { return $true }
-    if ($t -match '(?i):= Integer\(') { return $true }
-    if ($t -match '(?i):= Float\(') { return $true }
-    if ($t -match '(?i)^(\w+\s*:=\s*)?FileRead\(') { return $true }
-    if ($t -match '(?i):= FileRead\(') { return $true }
-    if ($t -match '(?i):= Trim\(FileRead\(') { return $true }
-    if ($t -match '(?i)^_?Stats_(FlushToDisk|SendToStore)\(') { return $true }
-    if ($t -match '(?i)^LogInitSession\(') { return $true }
-    if ($t -match '(?i):= \w+\.\w+$') { return $true }
-    if ($t -match '(?i):= BL_CompileWildcard\(') { return $true }
-    if ($t -match '(?i)WebView\.(ExecuteScript|Navigate|add_WebMessageReceived)\(') { return $true }
-    if ($t -match '(?i)Controller\.(Fill|DefaultBackgroundColor)') { return $true }
-    if ($t -match '(?i)Controller\s*:= 0') { return $true }
-    if ($t -match '(?i):= IPC_PipeClient_Connect\(') { return $true }
-    if ($t -match '(?i)^ProcessUtils_RunWaitHidden\(') { return $true }
-    if ($t -match '(?i)^Launcher_ShutdownSubprocesses\(') { return $true }
-    if ($t -match '(?i)^DeleteAdminTask\(') { return $true }
-    if ($t -match '(?i)^CL_WriteIniPreserveFormat\(') { return $true }
-    if ($t -match '(?i):= CL_WriteIniPreserveFormat\(') { return $true }
-    if ($t -match '(?i)^ThemeMsgBox\(') { return $true }
-    if ($t -match '(?i)\.(Show)\(') { return $true }
-    if ($t -match '(?i)\.Call\(') { return $true }
-    if ($t -match '(?i)^callback\(\)') { return $true }
-    if ($t -match '(?i)(FileExist|FileGetSize|FileGetTime|FileGetVersion)\(') { return $true }
-    if ($t -match '(?i)^return MsgBox\(') { return $true }
-    if ($t -match '(?i)DllCall\(') { return $true }
-    if ($t -match '(?i):= \w+\.\w+\b') { return $true }
-    if ($t -match '(?i)ComObject\(') { return $true }
-    if ($t -match '(?i)\.(ShellExecute|CreateShortcut|Run)\(') { return $true }
-    if ($t -match '(?i)\.(RawWrite)\(') { return $true }
-    if ($t -match '(?i)^(if|else|return|continue|break|global|local|static|Loop|for|while|switch)\b') { return $true }
-    if ($t -match '^\w+\s*:=') { return $true }
-    if ($t -match '^\w+\s*\.=') { return $true }
-    if ($t -match '^\w+\s*\+=') { return $true }
-    if ($t -match '^\w+\+\+') { return $true }
-    if ($t -match '^\w+\-\-') { return $true }
-    if ($t -match '^\w+\[') { return $true }
-    if ($t -match '^\w+\.\w+\(') { return $true }
-    if ($t -match '(?i)^try\b') { return $true }
-    if ($t -match '(?i)^_?(GUI|Store|Launcher|Viewer|Update|Blacklist|BL|CEN|CEW|CRE|Theme|IPC|WinEnum)') { return $true }
-    if ($t -match '(?i)^Sleep\(') { return $true }
+    foreach ($p in $script:BD_BT_ExemptPatterns) {
+        if ($p.IsMatch($t)) { return $true }
+    }
     return $false
 }
 
