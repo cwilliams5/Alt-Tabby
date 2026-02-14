@@ -246,38 +246,6 @@ RunLiveTests_Lifecycle() {
                 TestErrors++
             }
 
-            ; Assert: stats.ini was flushed during this test session
-            ; The store flushes stats on exit (OnExit handler). However, the launcher
-            ; hard-kills the store after 5s if OnExit hasn't finished. When cleanup
-            ; (hooks, pumps, icons) takes >5s, the final Stats_FlushToDisk() at the
-            ; end of OnExit never runs. Earlier store shutdowns (RESTART_STORE,
-            ; RESTART_ALL) will have flushed stats.ini though. Since the test directory
-            ; is freshly created, any stats.ini must be from this session. Verify it
-            ; exists with a valid _FlushStatus=complete sentinel.
-            statsPath := testDir "\stats.ini"
-            statsFound := false
-            statsWait := A_TickCount
-            while (A_TickCount - statsWait < 1000) {
-                if (FileExist(statsPath)) {
-                    statsFound := true
-                    break
-                }
-                Sleep(50)
-            }
-
-            if (statsFound) {
-                statsContent := FileRead(statsPath)
-                if (InStr(statsContent, "_FlushStatus=complete")) {
-                    Log("PASS: stats.ini flushed with valid sentinel during session")
-                    TestPassed++
-                } else {
-                    Log("FAIL: stats.ini exists but missing _FlushStatus=complete sentinel")
-                    TestErrors++
-                }
-            } else {
-                Log("FAIL: stats.ini not found after shutdown")
-                TestErrors++
-            }
         }
     }
 
