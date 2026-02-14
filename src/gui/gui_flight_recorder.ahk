@@ -206,7 +206,7 @@ _FR_Dump() {
         h := Format("0x{:08X}", item.hwnd)
         title := item.HasOwnProp("Title") ? SubStr(item.Title, 1, 40) : "?"
         proc := item.HasOwnProp("processName") ? item.processName : "?"
-        ws := item.HasOwnProp("WS") ? item.WS : ""
+        ws := item.HasOwnProp("workspaceName") ? item.workspaceName : ""
         onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "?"
         out .= "  #" Format("{:02}", i) "  " h '  "' title '"  ' proc "  ws=" ws "  cur=" onCur "`n"
     }

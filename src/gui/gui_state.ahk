@@ -215,7 +215,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                         GUI_LogEvent("  ... and " (gGUI_DisplayItems.Length - 5) " more")
                         break
                     }
-                    ws := item.HasOwnProp("WS") ? item.WS : "(none)"
+                    ws := item.HasOwnProp("workspaceName") ? item.workspaceName : "(none)"
                     onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "(none)"
                     title := item.HasOwnProp("Title") ? SubStr(item.Title, 1, 25) : "?"
                     GUI_LogEvent("  [" i "] '" title "' ws='" ws "' onCur=" onCur)
@@ -514,7 +514,7 @@ _GUI_ActivateFromFrozen() {
 
     if (cfg.DiagEventLog) {
         title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
-        ws := item.HasOwnProp("WS") ? item.WS : "?"
+        ws := item.HasOwnProp("workspaceName") ? item.workspaceName : "?"
         onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "?"
         GUI_LogEvent("ACTIVATE: '" title "' ws=" ws " onCurrent=" onCur)
     }
@@ -542,7 +542,7 @@ _GUI_ActivateItem(item) {
 
     ; Check if window is on a different workspace
     isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
-    wsName := item.HasOwnProp("WS") ? item.WS : ""
+    wsName := item.HasOwnProp("workspaceName") ? item.workspaceName : ""
 
     global FR_EV_ACTIVATE_START
     FR_Record(FR_EV_ACTIVATE_START, hwnd, isOnCurrent)
@@ -877,8 +877,8 @@ _GUI_AsyncActivationTick() {
             ; Update isOnCurrentWorkspace flags in gGUI_LiveItems to match new workspace
             ; This ensures display lists have correct workspace data
             for item in gGUI_LiveItems {
-                if (item.HasOwnProp("WS")) {
-                    item.isOnCurrentWorkspace := (item.WS = gGUI_CurrentWSName)
+                if (item.HasOwnProp("workspaceName")) {
+                    item.isOnCurrentWorkspace := (item.workspaceName = gGUI_CurrentWSName)
                 }
             }
             Critical "Off"
