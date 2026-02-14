@@ -236,7 +236,7 @@ _FR_Dump() {
         out .= "  " timeCol "  " Format("{:-20}", evName) " " details "`n"
     }
 
-    try FileAppend(out, filePath)
+    try FileAppend(out, filePath, "UTF-8")
 
     ; Tooltip confirmation
     ToolTip("Flight recorder saved: " fileName)

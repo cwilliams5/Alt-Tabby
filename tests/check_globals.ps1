@@ -210,6 +210,7 @@ foreach ($gName in $fileGlobals.Keys) {
 # ============================================================
 $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
 $issues = [System.Collections.ArrayList]::new()
+$phantomIssues = [System.Collections.ArrayList]::new()
 $funcCount = 0
 
 foreach ($file in $allFiles) {
@@ -268,6 +269,7 @@ foreach ($file in $allFiles) {
                 $funcStartLine = $i + 1
                 $funcDepth = $depth
                 $funcDeclaredGlobals = @{}
+                $funcGlobalDeclLines = @{}
                 $funcLocals = @{}
                 $funcParams = @{}
                 $funcBodyLines = [System.Collections.ArrayList]::new()
@@ -291,6 +293,9 @@ foreach ($file in $allFiles) {
                 if ($cleaned -match '^\s*global\s+(.+)') {
                     foreach ($gn in (Extract-GlobalNames $Matches[1])) {
                         $funcDeclaredGlobals[$gn] = $true
+                        if (-not $funcGlobalDeclLines.ContainsKey($gn)) {
+                            $funcGlobalDeclLines[$gn] = @{ Line = ($i + 1); Raw = $lines[$i] }
+                        }
                     }
                 }
                 # Collect static declarations
@@ -362,6 +367,23 @@ foreach ($file in $allFiles) {
                     }
                 }
 
+                # Phantom global check: declared globals that don't exist at file scope
+                # Skip test files — tests use complex #Include chains and function-scope
+                # global initialization patterns that produce false positives.
+                if (-not $isTestFile) {
+                foreach ($gn in $funcDeclaredGlobals.Keys) {
+                    if ($checkGlobals.ContainsKey($gn)) { continue }
+                    $declInfo = $funcGlobalDeclLines[$gn]
+                    if ($declInfo -and $declInfo.Raw -match 'lint-ignore:\s*phantom-global') { continue }
+                    [void]$phantomIssues.Add([PSCustomObject]@{
+                        File     = $relPath
+                        Line     = $declInfo.Line
+                        Function = $funcName
+                        Global   = $gn
+                    })
+                }
+                } # end if not test file
+
                 $inFunc = $false
                 $funcDepth = -1
             }
@@ -377,7 +399,10 @@ $totalSw.Stop()
 $timingLine = "  Timing: pass1=$($pass1Sw.ElapsedMilliseconds)ms  pass2=$($pass2Sw.ElapsedMilliseconds)ms  total=$($totalSw.ElapsedMilliseconds)ms"
 $statsLine  = "  Stats:  $($fileGlobals.Count) src globals, $testGlobalCount test globals (per-file), $funcCount functions, $($allFiles.Count) files"
 
+$anyFailed = $false
+
 if ($issues.Count -gt 0) {
+    $anyFailed = $true
     Write-Host ""
     Write-Host "  FAIL: $($issues.Count) undeclared global reference(s) found." -ForegroundColor Red
     Write-Host "  These will silently become empty strings at runtime (#Warn VarUnset is Off)." -ForegroundColor Red
@@ -391,7 +416,27 @@ if ($issues.Count -gt 0) {
             Write-Host "        (declared at $($issue.Declared))" -ForegroundColor DarkGray
         }
     }
+}
 
+if ($phantomIssues.Count -gt 0) {
+    $anyFailed = $true
+    Write-Host ""
+    Write-Host "  FAIL: $($phantomIssues.Count) phantom global declaration(s) found." -ForegroundColor Red
+    Write-Host "  These declare globals that don't exist at file scope - likely stale after refactoring." -ForegroundColor Red
+    Write-Host "  The variable silently becomes an empty local instead of the intended global." -ForegroundColor Red
+    Write-Host "  Fix: update the name to match the current global, or remove the declaration." -ForegroundColor Yellow
+    Write-Host "  Suppress: add '; lint-ignore: phantom-global' on the declaration line." -ForegroundColor Yellow
+
+    $grouped = $phantomIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        Write-Host "`n    $($group.Name):" -ForegroundColor Yellow
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            Write-Host "      Line $($issue.Line): $($issue.Function)() declares 'global $($issue.Global)' but no such global exists" -ForegroundColor Red
+        }
+    }
+}
+
+if ($anyFailed) {
     Write-Host ""
     Write-Host $timingLine -ForegroundColor Cyan
     Write-Host $statsLine -ForegroundColor Cyan

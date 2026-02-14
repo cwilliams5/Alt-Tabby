@@ -236,7 +236,7 @@ Launcher_StartSubprocesses() {
         exeBase := RegExReplace(exeName, "\.exe$", "")
         hwndPath := A_Temp "\" StrLower(exeBase) "_hwnd.txt"
         try FileDelete(hwndPath)
-        try FileAppend(A_ScriptHwnd, hwndPath)
+        try FileAppend(A_ScriptHwnd, hwndPath)  ; lint-ignore: fileappend-encoding
     }
 
     ; Hide splash after duration/loops complete

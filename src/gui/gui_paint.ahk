@@ -40,7 +40,7 @@ Paint_LogStartSession() {
         ; Delete old log on fresh boot for clean slate
         if (FileExist(LOG_PATH_PAINT_TIMING))
             FileDelete(LOG_PATH_PAINT_TIMING)
-        FileAppend("========== NEW SESSION " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ==========`n", LOG_PATH_PAINT_TIMING)
+        FileAppend("========== NEW SESSION " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ==========`n", LOG_PATH_PAINT_TIMING, "UTF-8")
     }
 }
 

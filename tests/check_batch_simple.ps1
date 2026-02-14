@@ -1,6 +1,6 @@
 # check_batch_simple.ps1 - Batched simple pattern checks
-# Combines 6 lightweight checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions
+# Combines 8 lightweight checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_simple.ps1 [-SourceDir "path\to\src"]
@@ -785,6 +785,176 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_duplicate_functions"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 7: fileappend_encoding
+# Detects FileAppend() calls without an explicit encoding argument.
+# Without encoding, AHK v2 uses the system's ANSI codepage, which
+# corrupts Unicode text (window titles, etc.) on non-English systems.
+# Suppress: ; lint-ignore: fileappend-encoding
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$faIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+
+        # Quick pre-filter
+        if ($raw.IndexOf('FileAppend(', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        if ($raw -match '^\s*;') { continue }
+        if ($raw -match ';\s*lint-ignore:\s*fileappend-encoding') { continue }
+
+        $cleaned = BS_CleanLine $raw
+        if ($cleaned -eq '') { continue }
+
+        # Match FileAppend( and extract everything to closing paren
+        # Handle multi-line by joining continuation lines
+        $callText = $cleaned
+        $parenDelta = (BS_CountBraces $cleaned)  # reuse for line info, but need paren count
+        $openParens = ($callText.Split('(')).Count - ($callText.Split(')')).Count
+        $joinedLineNum = $i
+        while ($openParens -gt 0 -and ($joinedLineNum + 1) -lt $lines.Count) {
+            $joinedLineNum++
+            $nextLine = BS_CleanLine $lines[$joinedLineNum]
+            if ($nextLine -eq '') { continue }
+            $callText += ' ' + $nextLine
+            $openParens = ($callText.Split('(')).Count - ($callText.Split(')')).Count
+        }
+
+        # Find FileAppend( call and extract arguments
+        if ($callText -match '(?<![.\w])FileAppend\s*\(') {
+            $matchPos = $callText.IndexOf('FileAppend')
+            $parenStart = $callText.IndexOf('(', $matchPos)
+            if ($parenStart -lt 0) { continue }
+
+            # Extract content between matching parens
+            $depth = 0; $inStr = $false; $endPos = -1
+            for ($ci = $parenStart; $ci -lt $callText.Length; $ci++) {
+                $ch = $callText[$ci]
+                if ($inStr) { if ($ch -eq '"') { $inStr = $false }; continue }
+                if ($ch -eq '"') { $inStr = $true; continue }
+                if ($ch -eq '(') { $depth++ }
+                elseif ($ch -eq ')') { $depth--; if ($depth -eq 0) { $endPos = $ci; break } }
+            }
+            if ($endPos -lt 0) { continue }
+
+            $inner = $callText.Substring($parenStart + 1, $endPos - $parenStart - 1)
+
+            # Count top-level commas (arguments) — skip commas inside nested parens/strings
+            $argCount = 1; $pd = 0; $inS = $false
+            foreach ($ch in $inner.ToCharArray()) {
+                if ($inS) { if ($ch -eq '"') { $inS = $false }; continue }
+                if ($ch -eq '"') { $inS = $true; continue }
+                if ($ch -eq '(' -or $ch -eq '[') { $pd++ }
+                elseif ($ch -eq ')' -or $ch -eq ']') { if ($pd -gt 0) { $pd-- } }
+                elseif ($ch -eq ',' -and $pd -eq 0) { $argCount++ }
+            }
+
+            # FileAppend(text, path) = 2 args (missing encoding)
+            # FileAppend(text, path, encoding) = 3 args (OK)
+            if ($argCount -eq 2) {
+                [void]$faIssues.Add([PSCustomObject]@{
+                    File = $relPath; Line = ($i + 1)
+                    Text = $raw.Trim()
+                })
+            }
+        }
+    }
+}
+
+if ($faIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($faIssues.Count) FileAppend() call(s) without explicit encoding.")
+    [void]$failOutput.AppendLine("  Without encoding, AHK v2 uses the system ANSI codepage - Unicode text gets corrupted on non-English systems.")
+    [void]$failOutput.AppendLine("  Fix: add encoding argument: FileAppend(text, path, `"UTF-8`")")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: fileappend-encoding' on the FileAppend line.")
+    $grouped = $faIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.Text)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_fileappend_encoding"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 8: lint_ignore_orphans
+# Detects ; lint-ignore: <name> comments where <name> is not a
+# recognized check name. Catches typos and stale suppressions.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$liIssues = [System.Collections.ArrayList]::new()
+
+# Registry of all valid lint-ignore check names
+$validLintNames = [System.Collections.Generic.HashSet[string]]::new()
+@(
+    'phantom-global',
+    'singleinstance', 'winexist-cloaked', 'mixed-returns',
+    'critical-leak', 'critical-section',
+    'ipc-constant', 'dllcall-types', 'isset-with-default',
+    'cfg-property', 'duplicate-function',
+    'fileappend-encoding',
+    'send-pattern', 'map-dot-access',
+    'thememsgbox', 'callback-critical', 'onmessage-collision',
+    'postmessage-unsafe', 'callback-signature',
+    'static-in-timer', 'timer-lifecycle',
+    'dead-function', 'test-assertions',
+    'arity'
+) | ForEach-Object { [void]$validLintNames.Add($_) }
+
+# Scan all src/ and test .ahk files
+$testsDir2 = Join-Path $projectRoot "tests"
+$lintFiles = @($allFiles)
+if (Test-Path $testsDir2) {
+    $lintFiles += @(Get-ChildItem -Path $testsDir2 -Filter "*.ahk" -Recurse)
+}
+
+foreach ($file in $lintFiles) {
+    $lines = if ($fileCache.ContainsKey($file.FullName)) { $fileCache[$file.FullName] }
+             else { [System.IO.File]::ReadAllLines($file.FullName) }
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw.IndexOf('lint-ignore:', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        # Extract check name(s) from lint-ignore comment
+        $lintMatches = [regex]::Matches($raw, 'lint-ignore:\s*([a-zA-Z][a-zA-Z0-9-]*)')
+        foreach ($m in $lintMatches) {
+            $checkName = $m.Groups[1].Value
+            if (-not $validLintNames.Contains($checkName)) {
+                [void]$liIssues.Add([PSCustomObject]@{
+                    File = $relPath; Line = ($i + 1); Name = $checkName
+                })
+            }
+        }
+    }
+}
+
+if ($liIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($liIssues.Count) lint-ignore comment(s) with unrecognized check name.")
+    [void]$failOutput.AppendLine("  These suppressions have no effect - the check name doesn't match any known check.")
+    [void]$failOutput.AppendLine("  Fix: correct the check name spelling, or remove the suppression if no longer needed.")
+    [void]$failOutput.AppendLine("  Valid names: $($validLintNames | Sort-Object | Join-String -Separator ', ')")
+    $grouped = $liIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): unknown check '$($issue.Name)'")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_lint_ignore_orphans"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -792,7 +962,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions)" -ForegroundColor Green
+    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

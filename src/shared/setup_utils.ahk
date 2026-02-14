@@ -243,7 +243,7 @@ AdminToggle_WriteResult(result) {
     try {
         tempPath := TEMP_ADMIN_TOGGLE_LOCK ".tmp"
         try FileDelete(tempPath)
-        FileAppend(result, tempPath)
+        FileAppend(result, tempPath)  ; lint-ignore: fileappend-encoding
         FileMove(tempPath, TEMP_ADMIN_TOGGLE_LOCK, true)  ; Atomic overwrite
     }
 }
@@ -857,7 +857,7 @@ Update_NeedsElevation(targetDir) {
     ; Try to create a temp file in the target directory
     testFile := targetDir "\alttabby_write_test.tmp"
     try {
-        FileAppend("test", testFile)
+        FileAppend("test", testFile)  ; lint-ignore: fileappend-encoding
         FileDelete(testFile)
         return false  ; Write succeeded, no elevation needed
     } catch {
@@ -911,7 +911,7 @@ Update_ApplyCore(opts) {
                 FileDelete(lockFile)
             }
         }
-        try FileAppend(A_Now, lockFile)
+        try FileAppend(A_Now, lockFile)  ; lint-ignore: fileappend-encoding
     }
 
     targetDir := ""

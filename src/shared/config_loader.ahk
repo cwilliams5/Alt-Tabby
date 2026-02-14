@@ -830,7 +830,7 @@ LogTrim(logPath) {
             if (nlPos > 0)
                 tail := SubStr(tail, nlPos + 1)
             FileDelete(logPath)
-            FileAppend("... (log trimmed) ...`n" tail, logPath)
+            FileAppend("... (log trimmed) ...`n" tail, logPath, "UTF-8")
         }
     }
 }
