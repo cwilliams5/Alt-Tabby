@@ -901,6 +901,92 @@ RunUnitTests_CoreStore() {
     ; Cleanup
     WindowStore_RemoveWindow([9001, 9002, 9003], true)
 
+    ; --- hwndsOnly through cached paths (Path 1, 1.5, 2) ---
+    Log("`n--- hwndsOnly Through Cached Paths ---")
+
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    hwndsRecs := []
+    hwndsRecs.Push(Map("hwnd", 9001, "title", "HO_A", "class", "T", "pid", 1,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 1, "lastActivatedTick", 100))
+    hwndsRecs.Push(Map("hwnd", 9002, "title", "HO_B", "class", "T", "pid", 2,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 2, "lastActivatedTick", 200))
+    hwndsRecs.Push(Map("hwnd", 9003, "title", "HO_C", "class", "T", "pid", 3,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 3, "lastActivatedTick", 300))
+    WindowStore_UpsertWindow(hwndsRecs, "test")
+    WindowStore_EndScan()
+
+    ; Path 3 (cold cache) — baseline
+    proj := WindowStore_GetProjection({ sort: "MRU", columns: "hwndsOnly" })
+    AssertEq(proj.HasOwnProp("hwnds"), true, "hwndsOnly Path3: has hwnds")
+    AssertEq(proj.HasOwnProp("items"), false, "hwndsOnly Path3: no items")
+    AssertEq(proj.hwnds.Length, 3, "hwndsOnly Path3: 3 hwnds")
+
+    ; Path 1 (cache hit) — immediate re-call, no changes
+    proj := WindowStore_GetProjection({ sort: "MRU", columns: "hwndsOnly" })
+    AssertEq(proj.HasOwnProp("hwnds"), true, "hwndsOnly Path1: has hwnds")
+    AssertEq(proj.HasOwnProp("items"), false, "hwndsOnly Path1: no items")
+    AssertEq(proj.hwnds.Length, 3, "hwndsOnly Path1: 3 hwnds")
+
+    ; Path 2 (content refresh) — change non-sort field
+    WindowStore_UpdateFields(9001, Map("processName", "updated.exe"), "test")
+    proj := WindowStore_GetProjection({ sort: "MRU", columns: "hwndsOnly" })
+    AssertEq(proj.HasOwnProp("hwnds"), true, "hwndsOnly Path2: has hwnds")
+    AssertEq(proj.HasOwnProp("items"), false, "hwndsOnly Path2: no items")
+    AssertEq(proj.hwnds.Length, 3, "hwndsOnly Path2: 3 hwnds")
+
+    ; Path 1.5 (MRU bump) — change lastActivatedTick only
+    WindowStore_UpdateFields(9001, Map("lastActivatedTick", 500), "test")
+    proj := WindowStore_GetProjection({ sort: "MRU", columns: "hwndsOnly" })
+    AssertEq(proj.HasOwnProp("hwnds"), true, "hwndsOnly Path1.5: has hwnds")
+    AssertEq(proj.HasOwnProp("items"), false, "hwndsOnly Path1.5: no items")
+    AssertEq(proj.hwnds.Length, 3, "hwndsOnly Path1.5: 3 hwnds")
+
+    WindowStore_RemoveWindow([9001, 9002, 9003], true)
+
+    ; --- Path 1.5 multi-MRU-bump sort invariant fallback ---
+    Log("`n--- Path 1.5 Multi-MRU-Bump Invariant Fallback ---")
+
+    WindowStore_Init()
+    WindowStore_BeginScan()
+    invRecs := []
+    invRecs.Push(Map("hwnd", 9001, "title", "INV_A", "class", "T", "pid", 1,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 1, "lastActivatedTick", 100))
+    invRecs.Push(Map("hwnd", 9002, "title", "INV_B", "class", "T", "pid", 2,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 2, "lastActivatedTick", 200))
+    invRecs.Push(Map("hwnd", 9003, "title", "INV_C", "class", "T", "pid", 3,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 3, "lastActivatedTick", 300))
+    invRecs.Push(Map("hwnd", 9004, "title", "INV_D", "class", "T", "pid", 4,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 4, "lastActivatedTick", 400))
+    WindowStore_UpsertWindow(invRecs, "test")
+    WindowStore_EndScan()
+
+    ; Prime cache — MRU order: D(400), C(300), B(200), A(100)
+    proj := WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(proj.items[1].hwnd, 9004, "InvFallback setup: D first (tick 400)")
+
+    ; Bump BOTH A and B past D without calling GetProjection between
+    WindowStore_UpdateFields(9001, Map("lastActivatedTick", 500), "test")
+    WindowStore_UpdateFields(9002, Map("lastActivatedTick", 600), "test")
+
+    ; Path 1.5 moves highest-tick item (B=600) to front, then checks invariant:
+    ; [B(600), D(400), C(300), A(500)] — D(400) > C(300) OK, but C(300) < A(500) FAILS
+    ; Falls through to Path 3 for correct full sort
+    proj := WindowStore_GetProjection({ sort: "MRU" })
+    AssertEq(proj.items[1].hwnd, 9002, "InvFallback: B first (tick 600)")
+    AssertEq(proj.items[2].hwnd, 9001, "InvFallback: A second (tick 500)")
+    AssertEq(proj.items[3].hwnd, 9004, "InvFallback: D third (tick 400)")
+    AssertEq(proj.items[4].hwnd, 9003, "InvFallback: C fourth (tick 300)")
+
+    WindowStore_RemoveWindow([9001, 9002, 9003, 9004], true)
+
     ; ============================================================
     ; TitleSortActive Tests (Issue 5)
     ; ============================================================
