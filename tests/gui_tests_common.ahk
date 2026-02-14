@@ -255,6 +255,9 @@ global gGUI_Overlay := _MockGui()
 ; 4. TEST UTILITIES
 ; ============================================================
 
+; WARNING: When adding new GUI globals to this test file, you MUST add them
+; to both the global declarations above AND the reset assignments below.
+; Missing a reset causes test pollution (state carries between tests).
 ResetGUIState() {
     global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount

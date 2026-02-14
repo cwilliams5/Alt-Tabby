@@ -177,7 +177,7 @@ _Viewer_OnMessage(line, hPipe := 0) {
         if (obj.Has("payload")) {
             payload := obj["payload"]
             _Viewer_UpdateCurrentWS(payload)
-            Critical "Off"
+            Critical "Off"  ; Intentional: release before rendering — _Viewer_ApplyDelta only touches GUI, not shared state
             if (payload.Has("upserts") && !gViewer_Headless) {
                 _Viewer_ApplyDelta(payload)
             }

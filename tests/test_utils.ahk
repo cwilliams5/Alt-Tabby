@@ -229,6 +229,25 @@ _Test_PrepareCreateProcessBuffers(cmdLine) {
     return {cmdBuf: cmdBuf, si: si, pi: pi}
 }
 
+; Launch a process hidden with CREATE_NO_WINDOW. Returns true/false.
+; Caller must use bufs.pi to extract handles/PID afterward.
+_Test_LaunchProcess(bufs, workDir := "") {
+    wdPtr := 0
+    if (workDir != "") {
+        wdBuf := Buffer((StrLen(workDir) + 1) * 2)
+        StrPut(workDir, wdBuf, "UTF-16")
+        wdPtr := wdBuf.Ptr
+    }
+    return DllCall("CreateProcessW",
+        "Ptr", 0, "Ptr", bufs.cmdBuf,
+        "Ptr", 0, "Ptr", 0,
+        "Int", 0,
+        "UInt", 0x08000000,
+        "Ptr", 0, "Ptr", wdPtr,
+        "Ptr", bufs.si, "Ptr", bufs.pi,
+        "Int")
+}
+
 ; Launch a process hidden without cursor feedback.
 ; Returns true on success. Sets outPid to the new process ID.
 _Test_RunSilent(cmdLine, &outPid := 0) {
@@ -236,18 +255,7 @@ _Test_RunSilent(cmdLine, &outPid := 0) {
 
     bufs := _Test_PrepareCreateProcessBuffers(cmdLine)
 
-    result := DllCall("CreateProcessW",
-        "Ptr", 0,            ; lpApplicationName
-        "Ptr", bufs.cmdBuf,  ; lpCommandLine (writable)
-        "Ptr", 0,            ; lpProcessAttributes
-        "Ptr", 0,            ; lpThreadAttributes
-        "Int", 0,            ; bInheritHandles
-        "UInt", 0x08000000,  ; dwCreationFlags: CREATE_NO_WINDOW
-        "Ptr", 0,            ; lpEnvironment
-        "Ptr", 0,            ; lpCurrentDirectory
-        "Ptr", bufs.si,      ; lpStartupInfo
-        "Ptr", bufs.pi,      ; lpProcessInformation
-        "Int")
+    result := _Test_LaunchProcess(bufs)
 
     if (result) {
         outPid := NumGet(bufs.pi, 16, "UInt")                     ; dwProcessId
@@ -263,23 +271,7 @@ _Test_RunSilent(cmdLine, &outPid := 0) {
 _Test_RunWaitSilent(cmdLine, workDir := "") {
     bufs := _Test_PrepareCreateProcessBuffers(cmdLine)
 
-    wdBuf := 0
-    wdPtr := 0
-    if (workDir != "") {
-        wdBuf := Buffer((StrLen(workDir) + 1) * 2)
-        StrPut(workDir, wdBuf, "UTF-16")
-        wdPtr := wdBuf.Ptr
-    }
-
-    result := DllCall("CreateProcessW",
-        "Ptr", 0, "Ptr", bufs.cmdBuf,
-        "Ptr", 0, "Ptr", 0,
-        "Int", 0,
-        "UInt", 0x08000000,
-        "Ptr", 0,
-        "Ptr", wdPtr,
-        "Ptr", bufs.si, "Ptr", bufs.pi,
-        "Int")
+    result := _Test_LaunchProcess(bufs, workDir)
 
     if (!result)
         return -1

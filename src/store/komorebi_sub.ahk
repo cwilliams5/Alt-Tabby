@@ -779,6 +779,17 @@ _KSub_OnNotification(jsonLine) {
     try Store_PushToClients()
 }
 
+; Extract all pending cloak changes and reset buffer.
+; MUST be called inside Critical section (caller's responsibility).
+_KSub_ExtractCloakPatches() {
+    global _KSub_CloakBatchBuffer
+    patches := Map()
+    for hwnd, isCloaked in _KSub_CloakBatchBuffer
+        patches[hwnd] := { isCloaked: isCloaked }
+    _KSub_CloakBatchBuffer := Map()
+    return patches
+}
+
 ; Schedule a deferred push for batched Cloak/Uncloak events.
 ; If a timer is already pending, the new cloak change will be included
 ; when it fires (no action needed — buffer accumulates all changes).
@@ -788,10 +799,7 @@ _KSub_ScheduleCloakPush() {
     ; If batching disabled, flush buffer and push immediately
     if (!cfg.KomorebiSubBatchCloakEventsMs) {
         Critical "On"
-        patches := Map()
-        for hwnd, isCloaked in _KSub_CloakBatchBuffer
-            patches[hwnd] := { isCloaked: isCloaked }
-        _KSub_CloakBatchBuffer := Map()
+        patches := _KSub_ExtractCloakPatches()
         Critical "Off"
         if (patches.Count > 0)
             try WindowStore_BatchUpdateFields(patches, "cloak_immediate")
@@ -821,10 +829,7 @@ _KSub_FlushCloakBatch() {
     Critical "On"
     _KSub_CloakPushPending := false
     _KSub_CloakBatchTimerFn := 0
-    patches := Map()
-    for hwnd, isCloaked in _KSub_CloakBatchBuffer
-        patches[hwnd] := { isCloaked: isCloaked }
-    _KSub_CloakBatchBuffer := Map()
+    patches := _KSub_ExtractCloakPatches()
     Critical "Off"
 
     if (patches.Count > 0)
@@ -841,10 +846,7 @@ _KSub_CancelCloakTimer() {
         SetTimer(_KSub_CloakBatchTimerFn, 0)
         _KSub_CloakPushPending := false
         _KSub_CloakBatchTimerFn := 0
-        patches := Map()
-        for hwnd, isCloaked in _KSub_CloakBatchBuffer
-            patches[hwnd] := { isCloaked: isCloaked }
-        _KSub_CloakBatchBuffer := Map()
+        patches := _KSub_ExtractCloakPatches()
         Critical "Off"
         if (patches.Count > 0)
             try WindowStore_BatchUpdateFields(patches, "cloak_cancel_flush")
