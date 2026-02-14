@@ -256,6 +256,67 @@ if (-not (Test-Path $constantsFile)) {
                 }
             }
         }
+
+        # Part D: IPC send/handle symmetry
+        # Verifies each used constant appears in BOTH handler (type comparison) AND sender (type construction) contexts.
+        # A constant only in send = message sent but nobody handles it.
+        # A constant only in handle = handler exists but nobody sends the message.
+        # Detection: "type: IPC_MSG_*" = send (object construction), "type = IPC_MSG_*" = handle (dispatch comparison).
+        # Suppress: ; lint-ignore: ipc-symmetry (on the constant definition in ipc_constants.ahk)
+        $constInHandle = [System.Collections.Generic.HashSet[string]]::new()
+        $constInSend = [System.Collections.Generic.HashSet[string]]::new()
+        $ipcSymSuppressed = [System.Collections.Generic.HashSet[string]]::new()
+
+        # Check for suppression on constant definition lines
+        foreach ($line in $constantLines) {
+            if ($line -match 'lint-ignore:\s*ipc-symmetry' -and $line -match 'global\s+(IPC_MSG_\w+)') {
+                [void]$ipcSymSuppressed.Add($Matches[1])
+            }
+        }
+
+        foreach ($file in $ipcFiles) {
+            $content = $fileCacheText[$file.FullName]
+            $lines = $fileCache[$file.FullName]
+            foreach ($constName in $constants.Keys) {
+                if (-not $content.Contains($constName)) { continue }
+                $escapedName = [regex]::Escape($constName)
+                for ($i = 0; $i -lt $lines.Count; $i++) {
+                    $rawLine = $lines[$i]
+                    if (-not $rawLine.Contains($constName)) { continue }
+                    if ($rawLine -match '^\s*;') { continue }
+                    # Handle context: type equality comparison
+                    if ($rawLine -match "type\s*={1,2}\s*$escapedName\b" -or
+                        $rawLine -match "\[.type.\]\s*={1,2}\s*$escapedName\b" -or
+                        $rawLine -match "^\s*case\b.*\b$escapedName\b") {
+                        [void]$constInHandle.Add($constName)
+                    }
+                    # Send context: type construction (object literal, Map assignment, string concat)
+                    if ($rawLine -match "type:\s*$escapedName\b" -or
+                        $rawLine -match "\[.type.\]\s*:=\s*$escapedName\b" -or
+                        $rawLine -match "['""]type['""].*['""].*$escapedName\b") {
+                        [void]$constInSend.Add($constName)
+                    }
+                }
+            }
+        }
+
+        foreach ($constName in $constants.Keys | Sort-Object) {
+            if (-not $usedConstants.ContainsKey($constName)) { continue }
+            if ($ipcSymSuppressed.Contains($constName)) { continue }
+            $inHandle = $constInHandle.Contains($constName)
+            $inSend = $constInSend.Contains($constName)
+            if ($inSend -and -not $inHandle) {
+                [void]$ipcIssues.Add([PSCustomObject]@{
+                    File = "src\shared\ipc_constants.ahk"; Line = 0; Part = 'D'
+                    Message = "$constName is sent but no handler dispatches it"
+                })
+            } elseif ($inHandle -and -not $inSend) {
+                [void]$ipcIssues.Add([PSCustomObject]@{
+                    File = "src\shared\ipc_constants.ahk"; Line = 0; Part = 'D'
+                    Message = "$constName has a handler but no send-side construction"
+                })
+            }
+        }
     }
 }
 
@@ -286,6 +347,15 @@ if ($ipcIssues.Count -gt 0) {
         [void]$failOutput.AppendLine("    ; lint-ignore: ipc-constant")
         foreach ($issue in $partCIssues | Sort-Object File, Line) {
             [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line): $($issue.Message)")
+        }
+    }
+    $partDIssues = @($ipcIssues | Where-Object { $_.Part -eq 'D' })
+    if ($partDIssues.Count -gt 0) {
+        [void]$failOutput.AppendLine("  Part D - IPC send/handle symmetry ($($partDIssues.Count)):")
+        [void]$failOutput.AppendLine("  Each IPC constant should appear in both send (type: CONST) and handler (type = CONST) contexts.")
+        [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: ipc-symmetry' on the constant definition line.")
+        foreach ($issue in $partDIssues | Sort-Object Message) {
+            [void]$failOutput.AppendLine("    $($issue.Message)")
         }
     }
 }
@@ -904,7 +974,9 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
     'postmessage-unsafe', 'callback-signature',
     'static-in-timer', 'timer-lifecycle',
     'dead-function', 'test-assertions',
-    'arity'
+    'arity',
+    'onevent-name', 'destroy-untrack',
+    'unreachable-code', 'ipc-symmetry'
 ) | ForEach-Object { [void]$validLintNames.Add($_) }
 
 # Scan all src/ and test .ahk files

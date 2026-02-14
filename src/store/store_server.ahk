@@ -1267,7 +1267,6 @@ _Store_OnError(err, *) {
     msg := "store_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
     LogAppend(_Store_LogPath(), msg)
     ExitApp(1)
-    return true
 }
 
 _Store_LogError(msg) {

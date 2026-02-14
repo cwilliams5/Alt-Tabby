@@ -1,6 +1,6 @@
 # check_batch_directives.ps1 - Batched directive/keyword checks
 # Combines 6 checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: requires_directive, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths
+# Sub-checks: requires_directive, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths, unreachable_code
 #
 # Usage: powershell -File tests\check_batch_directives.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -795,6 +795,189 @@ if ($rpIssues.Count -gt 0) {
 }
 
 # ============================================================
+# Sub-check 7: unreachable_code
+# Detects code after unconditional return/throw/ExitApp that can
+# never execute. Often indicates logic errors or leftover code.
+# Only flags code at the same brace depth as the terminator.
+# Skips braceless conditionals (if/else/while/for/loop without {).
+# Suppress: ; lint-ignore: unreachable-code
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$UC_SUPPRESSION = 'lint-ignore: unreachable-code'
+
+$BT_KEYWORDS_UC = @(
+    'if', 'else', 'while', 'for', 'loop', 'switch', 'catch',
+    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
+    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
+    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
+)
+
+$ucIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+
+    # Pre-filter: skip files without any terminator keyword
+    $joined = $fileCacheText[$file.FullName]
+    if ($joined.IndexOf('return') -lt 0 -and
+        $joined.IndexOf('throw') -lt 0 -and
+        $joined.IndexOf('ExitApp') -lt 0) { continue }
+
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+
+    # State for tracking unconditional terminators
+    $afterTerminator = $false
+    $terminatorDepth = 0
+    $terminatorLine = 0
+    $terminatorParenDepth = 0
+    $terminatorBracketDepth = 0
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $cleaned = BD_RP_CleanLine $lines[$i]
+        if ($cleaned -eq '') { continue }
+
+        # Compute depth changes
+        $depthBefore = $depth
+        foreach ($c in $cleaned.ToCharArray()) {
+            if ($c -eq '{') { $depth++ }
+            elseif ($c -eq '}') { $depth-- }
+        }
+
+        # Detect function boundaries
+        if (-not $inFunc -and $cleaned -match '^(\w+)\s*\([^)]*\)\s*\{') {
+            $fnName = $Matches[1]
+            if ($fnName.ToLower() -notin $BT_KEYWORDS_UC) {
+                $inFunc = $true
+                $funcDepth = $depthBefore
+                $afterTerminator = $false
+            }
+        }
+        if ($inFunc -and $depth -le $funcDepth -and $depthBefore -gt $funcDepth) {
+            $inFunc = $false
+            $afterTerminator = $false
+            continue
+        }
+
+        if (-not $inFunc) { continue }
+
+        # Check for unreachable code after a terminator
+        if ($afterTerminator) {
+            # If still in multi-line terminator (unclosed parens/brackets), skip as continuation
+            if ($terminatorParenDepth -gt 0 -or $terminatorBracketDepth -gt 0) {
+                foreach ($c in $cleaned.ToCharArray()) {
+                    if ($c -eq '(') { $terminatorParenDepth++ }
+                    elseif ($c -eq ')') { $terminatorParenDepth-- }
+                    elseif ($c -eq '[') { $terminatorBracketDepth++ }
+                    elseif ($c -eq ']') { $terminatorBracketDepth-- }
+                }
+                # Update terminator line to the end of the multi-line statement
+                if ($terminatorParenDepth -le 0 -and $terminatorBracketDepth -le 0) {
+                    $terminatorLine = $i + 1
+                }
+                continue
+            }
+
+            if ($depthBefore -lt $terminatorDepth) {
+                # Scope closed — stop checking
+                $afterTerminator = $false
+            } elseif ($depthBefore -eq $terminatorDepth) {
+                $trimmed = $cleaned.Trim()
+
+                # Skip braces, labels, compound statement continuations
+                if ($trimmed -match '^\}') { $afterTerminator = $false; continue }
+                if ($trimmed -eq '{') { continue }
+                if ($trimmed -match '^(else|catch|finally)\b') { $afterTerminator = $false; continue }
+                if ($trimmed -match '^case\s') { $afterTerminator = $false; continue }
+                if ($trimmed -match '^default\s*:') { $afterTerminator = $false; continue }
+                if ($trimmed -match '^\w+:\s*$') { $afterTerminator = $false; continue }
+
+                # Skip continuation lines (expression continues from previous line)
+                if ($trimmed -match '^[.+\-*/?,:([\[&|~^!<>=]') { continue }
+                if ($trimmed -match '^(not|and|or|is|in|contains)\b') { continue }
+
+                # Check suppression
+                if ($lines[$i].Contains($UC_SUPPRESSION)) {
+                    $afterTerminator = $false
+                    continue
+                }
+
+                # This line is unreachable
+                [void]$ucIssues.Add([PSCustomObject]@{
+                    File = $relPath
+                    Line = ($i + 1)
+                    AfterLine = $terminatorLine
+                    Text = $lines[$i].Trim()
+                })
+                $afterTerminator = $false
+            }
+        }
+
+        # Detect unconditional terminator
+        if (-not $afterTerminator) {
+            $trimmed = $cleaned.Trim()
+            if ($trimmed -match '^(return\b|throw\b|ExitApp\b)') {
+                # Check if preceded by a braceless conditional
+                $isBracelessConditional = $false
+                for ($j = $i - 1; $j -ge 0; $j--) {
+                    $prevCleaned = BD_RP_CleanLine $lines[$j]
+                    if ($prevCleaned -eq '') { continue }
+                    $prevTrimmed = $prevCleaned.Trim()
+                    # Skip continuation lines (multi-line if conditions, etc.)
+                    if ($prevTrimmed -match '^[.+\-*/?,:([\[&|~^!<>=]') { continue }
+                    if ($prevTrimmed -match '^(not|and|or|is|in|contains)\b') { continue }
+
+                    if ($prevTrimmed -match '(?:^|\})\s*(if\b|else\s+if\b|else\b|while\b|for\b|loop\b|catch\b|try\b)' -and
+                        $prevTrimmed -notmatch '\{\s*$') {
+                        $isBracelessConditional = $true
+                    }
+                    break
+                }
+
+                if (-not $isBracelessConditional) {
+                    # Track paren/bracket balance for multi-line statements
+                    $tpd = 0; $tbd = 0
+                    foreach ($c in $cleaned.ToCharArray()) {
+                        if ($c -eq '(') { $tpd++ }
+                        elseif ($c -eq ')') { $tpd-- }
+                        elseif ($c -eq '[') { $tbd++ }
+                        elseif ($c -eq ']') { $tbd-- }
+                    }
+                    $afterTerminator = $true
+                    $terminatorDepth = $depthBefore
+                    $terminatorLine = $i + 1
+                    $terminatorParenDepth = $tpd
+                    $terminatorBracketDepth = $tbd
+                }
+            }
+        }
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_unreachable_code"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+if ($ucIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($ucIssues.Count) unreachable code line(s) found.")
+    [void]$failOutput.AppendLine("  Code after unconditional return/throw/ExitApp can never execute.")
+    [void]$failOutput.AppendLine("  This often indicates logic errors or leftover code from refactoring.")
+    [void]$failOutput.AppendLine("  Fix: remove the unreachable code, or restructure the control flow.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: unreachable-code' on the unreachable line.")
+    $grouped = $ucIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): unreachable after line $($issue.AfterLine)")
+            [void]$failOutput.AppendLine("        $($issue.Text)")
+        }
+    }
+}
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -802,7 +985,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths)" -ForegroundColor Green
+    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths, unreachable_code)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

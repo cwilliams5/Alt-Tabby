@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -806,6 +806,159 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_callback_signatures"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 7: onevent_names
+# Validates OnEvent() event name strings against AHK v2 valid
+# event names. AHK v2 silently ignores OnEvent() with an
+# invalid name — the handler never fires, with no error.
+# Suppress: ; lint-ignore: onevent-name
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$OE_SUPPRESSION = 'lint-ignore: onevent-name'
+
+# Registry of valid AHK v2 GUI/control event names (case-insensitive in AHK)
+$validEventNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+@(
+    # Gui events
+    'Close', 'Escape', 'Size', 'DropFiles', 'ContextMenu',
+    # Common control events
+    'Click', 'DoubleClick', 'Change', 'Focus', 'LoseFocus',
+    # ListView/TreeView events
+    'ColClick', 'ItemCheck', 'ItemEdit', 'ItemExpand', 'ItemFocus', 'ItemSelect',
+    # StatusBar events
+    'RightClick'
+) | ForEach-Object { [void]$validEventNames.Add($_) }
+
+$oeIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+
+    # Pre-filter: skip files without OnEvent
+    $joined = $fileCacheText[$file.FullName]
+    if ($joined.IndexOf('OnEvent') -lt 0) { continue }
+
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($raw.Contains($OE_SUPPRESSION)) { continue }
+        if ($raw.IndexOf('OnEvent') -lt 0) { continue }
+
+        # Match .OnEvent("EventName", ...)
+        $oeMatches = [regex]::Matches($raw, '\.OnEvent\(\s*"([^"]+)"')
+        foreach ($m in $oeMatches) {
+            $eventName = $m.Groups[1].Value
+            if (-not $validEventNames.Contains($eventName)) {
+                [void]$oeIssues.Add([PSCustomObject]@{
+                    File = $relPath; Line = ($i + 1); EventName = $eventName
+                })
+            }
+        }
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_onevent_names"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+if ($oeIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($oeIssues.Count) OnEvent() call(s) with unrecognized event name.")
+    [void]$failOutput.AppendLine("  AHK v2 silently ignores OnEvent() with an invalid name - the handler never fires.")
+    [void]$failOutput.AppendLine("  Valid names: $($validEventNames | Sort-Object | Join-String -Separator ', ')")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: onevent-name' on the OnEvent line.")
+    $grouped = $oeIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): .OnEvent(``""$($issue.EventName)``"", ...) - unknown event name")
+        }
+    }
+}
+
+# ============================================================
+# Sub-check 8: destroy_untrack
+# Flags Gui.Destroy() in files that use Theme_ApplyToGui without
+# a nearby Theme_UntrackGui() call. Destroying a themed GUI
+# without untracking leaves stale references that crash on
+# system theme change (WM_SETTINGCHANGE).
+# Suppress: ; lint-ignore: destroy-untrack
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$DU_SUPPRESSION = 'lint-ignore: destroy-untrack'
+
+# Phase 1: For each file with Theme_ApplyToGui, extract the GUI expressions
+# that are themed. Only Theme_ApplyToGui adds to the tracked array —
+# Theme_ApplyToControl applies visual styles but does NOT track for lifecycle.
+# Phase 2: Check if Theme_UntrackGui is called for the same expression.
+# Phase 3: Only flag if the GUI is also .Destroy()'d without untracking.
+$duIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $joined = $fileCacheText[$file.FullName]
+    if (-not $joined.Contains('Theme_ApplyToGui')) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    # Find all Theme_ApplyToGui(expr) calls — extract the GUI expression
+    $themedExprs = @{}
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($raw -match 'Theme_ApplyToGui\((\w+(?:\[[^\]]*\])*)\)') {
+            $themedExprs[$Matches[1]] = $i + 1
+        }
+    }
+    if ($themedExprs.Count -eq 0) { continue }
+
+    # For each themed expression, check for matching UntrackGui and Destroy calls
+    foreach ($expr in @($themedExprs.Keys)) {
+        $escaped = [regex]::Escape($expr)
+        $hasUntrack = $false
+        $destroyLines = [System.Collections.ArrayList]::new()
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match "Theme_UntrackGui\($escaped\)") { $hasUntrack = $true }
+            if ($lines[$i] -match "$escaped\.Destroy\(\)" -and
+                $lines[$i] -notmatch '^\s*;' -and
+                -not $lines[$i].Contains($DU_SUPPRESSION)) {
+                [void]$destroyLines.Add($i + 1)
+            }
+        }
+        # Only flag if themed AND destroyed AND never untracked
+        if ($hasUntrack -or $destroyLines.Count -eq 0) { continue }
+
+        foreach ($ln in $destroyLines) {
+            [void]$duIssues.Add([PSCustomObject]@{
+                File = $relPath; Line = $ln
+                GuiVar = $expr; Text = $lines[$ln - 1].Trim()
+            })
+        }
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_destroy_untrack"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+if ($duIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($duIssues.Count) Gui.Destroy() call(s) in themed files without Theme_UntrackGui().")
+    [void]$failOutput.AppendLine("  Theme system tracks GUIs via Theme_ApplyToGui(). Destroying without untracking")
+    [void]$failOutput.AppendLine("  leaves stale references that crash on system theme change (WM_SETTINGCHANGE).")
+    [void]$failOutput.AppendLine("  Fix: call Theme_UntrackGui(gui) before gui.Destroy().")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: destroy-untrack' on the .Destroy() line.")
+    $grouped = $duIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.GuiVar).Destroy() - missing Theme_UntrackGui()")
+        }
+    }
+}
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -813,7 +966,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

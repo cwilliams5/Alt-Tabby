@@ -690,5 +690,6 @@ GUI_ShowBlacklistDialog(class, title) {
 _GUI_BlacklistChoice(dlg, choice) {
     global gGUI_BlacklistChoice
     gGUI_BlacklistChoice := choice
+    try Theme_UntrackGui(dlg)
     dlg.Destroy()
 }

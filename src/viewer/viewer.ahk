@@ -786,7 +786,6 @@ _Viewer_OnError(err, *) {
     if (gViewer_LogPath)
         _Viewer_Log("error " err.Message)
     ExitApp(1)
-    return true
 }
 
 ; Sort items array locally based on sort mode

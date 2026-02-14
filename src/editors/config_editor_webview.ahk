@@ -166,6 +166,7 @@ CE_RunWebView2(launcherHwnd := 0) {
         gCEW_WebView.Navigate("file:///" StrReplace(htmlPath, "\", "/"))
 
     } catch as e {
+        try Theme_UntrackGui(gCEW_Gui)
         gCEW_Gui.Destroy()
         throw Error("Failed to create WebView2: " e.Message)
     }
@@ -251,9 +252,11 @@ _CEW_OnWebMessage(sender, args) {
                     , "ptr")
             }
 
+            try Theme_UntrackGui(gCEW_Gui)
             gCEW_Gui.Destroy()
 
         } else if (action = "cancel") {
+            try Theme_UntrackGui(gCEW_Gui)
             gCEW_Gui.Destroy()
 
         } else if (action = "dirty") {

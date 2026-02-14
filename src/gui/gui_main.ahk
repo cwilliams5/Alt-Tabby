@@ -344,7 +344,6 @@ _GUI_OnError(err, *) {
     msg := "gui_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
     try LogAppend(LOG_PATH_EVENTS, msg)
     ExitApp(1)
-    return true
 }
 
 ; Clean up resources on exit
