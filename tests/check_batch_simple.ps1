@@ -32,7 +32,8 @@ $fileCacheText = @{}
 foreach ($f in $allFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $fileCacheText[$f.FullName] = $text
-    $fileCache[$f.FullName] = $text -split "`r?`n"
+    $lines = $text -split "`r?`n"
+    $fileCache[$f.FullName] = $lines
 }
 
 # === Sub-check tracking ===
@@ -71,6 +72,19 @@ function BS_CountBraces {
     return @($opens, $closes)
 }
 
+# === Pre-compute cleaned lines and brace counts (reused by multiple sub-checks) ===
+$processedCache = @{}
+foreach ($f in $allFiles) {
+    $lines = $fileCache[$f.FullName]
+    $processed = [object[]]::new($lines.Count)
+    for ($li = 0; $li -lt $lines.Count; $li++) {
+        $cleaned = BS_CleanLine $lines[$li]
+        $braces = if ($cleaned -ne '') { BS_CountBraces $cleaned } else { @(0, 0) }
+        $processed[$li] = @{ Raw = $lines[$li]; Cleaned = $cleaned; Braces = $braces }
+    }
+    $processedCache[$f.FullName] = $processed
+}
+
 # ============================================================
 # Sub-check 1: switch_global
 # Catches global declarations inside switch/case blocks
@@ -79,43 +93,39 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $sgIssues = [System.Collections.ArrayList]::new()
 
 foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
-
     # Pre-filter: skip files without both "switch" and "global" (need both for violation)
     $joined = $fileCacheText[$file.FullName]
     if ($joined.IndexOf('switch', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
     if ($joined.IndexOf('global', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
+    $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $switchDepthStack = [System.Collections.Generic.Stack[int]]::new()
     $pendingSwitch = $false
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $raw = $lines[$i]
-        $cleaned = BS_CleanLine $raw
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $ld = $processed[$i]
+        $cleaned = $ld.Cleaned
         if ($cleaned -eq '') { continue }
 
         # Detect switch statement
         if ($cleaned -match '(?<![.\w])switch\b') {
             if ($cleaned -match '\{') {
                 $pendingSwitch = $false
-                $braces = BS_CountBraces $cleaned
-                $newDepth = $depth + $braces[0] - $braces[1]
+                $newDepth = $depth + $ld.Braces[0] - $ld.Braces[1]
                 $switchDepthStack.Push($depth + 1)
                 $depth = $newDepth
                 continue
             } else {
                 $pendingSwitch = $true
-                $braces = BS_CountBraces $cleaned
-                $depth += $braces[0] - $braces[1]
+                $depth += $ld.Braces[0] - $ld.Braces[1]
                 continue
             }
         }
 
-        $braces = BS_CountBraces $cleaned
-        $opensOnLine = $braces[0]
-        $closesOnLine = $braces[1]
+        $opensOnLine = $ld.Braces[0]
+        $closesOnLine = $ld.Braces[1]
 
         if ($pendingSwitch -and $opensOnLine -gt 0) {
             $pendingSwitch = $false
@@ -126,7 +136,7 @@ foreach ($file in $allFiles) {
         if ($switchDepthStack.Count -gt 0 -and $depth -ge $switchDepthStack.Peek()) {
             if ($cleaned -match '(?<![.\w])global\s+\w') {
                 [void]$sgIssues.Add([PSCustomObject]@{
-                    File = $relPath; Line = $i + 1; Text = $raw.TrimEnd()
+                    File = $relPath; Line = $i + 1; Text = $ld.Raw.TrimEnd()
                 })
             }
         }
@@ -493,15 +503,14 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $idGlobalsWithDefaults = @{}  # varName -> @{ Name; File; Line }
 
 foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
+    $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BS_CleanLine $lines[$i]
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $ld = $processed[$i]
+        $cleaned = $ld.Cleaned
         if ($cleaned -eq '') { continue }
-
-        $braces = BS_CountBraces $cleaned
 
         # Only look at file-scope (depth == 0) global declarations
         if ($depth -eq 0 -and $cleaned -match '^\s*global\s+(.+)') {
@@ -538,7 +547,7 @@ foreach ($file in $allFiles) {
             }
         }
 
-        $depth += $braces[0] - $braces[1]
+        $depth += $ld.Braces[0] - $ld.Braces[1]
         if ($depth -lt 0) { $depth = 0 }
     }
 }
@@ -702,26 +711,22 @@ $dfIssues = [System.Collections.ArrayList]::new()
 $funcDefs = @{}  # funcName -> list of @{ File; Line }
 
 foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
+    $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $raw = $lines[$i]
-        if ($raw -match ';\s*lint-ignore:\s*duplicate-function') {
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $ld = $processed[$i]
+        if ($ld.Raw -match ';\s*lint-ignore:\s*duplicate-function') {
             # Skip this definition
-            $cleaned = BS_CleanLine $raw
-            if ($cleaned -ne '') {
-                $braces = BS_CountBraces $cleaned
-                $depth += $braces[0] - $braces[1]
+            if ($ld.Cleaned -ne '') {
+                $depth += $ld.Braces[0] - $ld.Braces[1]
             }
             continue
         }
 
-        $cleaned = BS_CleanLine $raw
+        $cleaned = $ld.Cleaned
         if ($cleaned -eq '') { continue }
-
-        $braces = BS_CountBraces $cleaned
 
         # Only match at file scope (depth == 0)
         if ($depth -eq 0 -and $cleaned -match '^\s*(\w+)\s*\([^)]*\)\s*\{') {
@@ -732,7 +737,7 @@ foreach ($file in $allFiles) {
                 'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
                 'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
                 'new', 'super', 'this', 'true', 'false', 'unset', 'isset')) {
-                $depth += $braces[0] - $braces[1]
+                $depth += $ld.Braces[0] - $ld.Braces[1]
                 if ($depth -lt 0) { $depth = 0 }
                 continue
             }
@@ -742,7 +747,7 @@ foreach ($file in $allFiles) {
             [void]$funcDefs[$funcName].Add(@{ File = $relPath; Line = ($i + 1) })
         }
 
-        $depth += $braces[0] - $braces[1]
+        $depth += $ld.Braces[0] - $ld.Braces[1]
         if ($depth -lt 0) { $depth = 0 }
     }
 }

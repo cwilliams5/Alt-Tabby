@@ -32,7 +32,8 @@ $fileCacheText = @{}
 foreach ($f in $allFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $fileCacheText[$f.FullName] = $text
-    $fileCache[$f.FullName] = $text -split "`r?`n"
+    $lines = $text -split "`r?`n"
+    $fileCache[$f.FullName] = $lines
 }
 
 # === Sub-check tracking ===
@@ -78,6 +79,19 @@ $BT_AHK_KEYWORDS = @(
     'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
 )
 
+# === Pre-compute cleaned lines and brace counts (reused by both sub-checks) ===
+$processedCache = @{}
+foreach ($f in $allFiles) {
+    $lines = $fileCache[$f.FullName]
+    $processed = [object[]]::new($lines.Count)
+    for ($li = 0; $li -lt $lines.Count; $li++) {
+        $cleaned = BT_CleanLine $lines[$li]
+        $braces = if ($cleaned -ne '') { BT_CountBraces $cleaned } else { @(0, 0) }
+        $processed[$li] = @{ Raw = $lines[$li]; Cleaned = $cleaned; Braces = $braces }
+    }
+    $processedCache[$f.FullName] = $processed
+}
+
 # ============================================================
 # Sub-check 1: static_in_timers
 # Detects static variables used for state tracking inside timer
@@ -95,11 +109,11 @@ foreach ($file in $allFiles) {
     # Pre-filter: skip files that don't contain "SetTimer"
     if ($fileCacheText[$file.FullName].IndexOf('SetTimer', [System.StringComparison]::Ordinal) -lt 0) { continue }
 
-    $lines = $fileCache[$file.FullName]
+    $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BT_CleanLine $lines[$i]
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $cleaned = $processed[$i].Cleaned
         if ($cleaned -eq '') { continue }
 
         # Direct function reference: SetTimer(FuncName  or  SetTimer FuncName
@@ -137,8 +151,6 @@ foreach ($file in $allFiles) {
 $stFunctionsScanned = 0
 
 foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
-
     # Pre-filter: skip files without any timer callback function name
     if ($timerCallbacks.Count -gt 0) {
         $joined = $fileCacheText[$file.FullName]
@@ -149,14 +161,16 @@ foreach ($file in $allFiles) {
         if (-not $hasCallback) { continue }
     }
 
+    $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
     $funcName = ""
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BT_CleanLine $lines[$i]
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $ld = $processed[$i]
+        $cleaned = $ld.Cleaned
 
         if (-not $inFunc -and $cleaned -ne '' -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -168,14 +182,13 @@ foreach ($file in $allFiles) {
             }
         }
 
-        $braces = BT_CountBraces $cleaned
-        $depth += $braces[0] - $braces[1]
+        $depth += $ld.Braces[0] - $ld.Braces[1]
 
         if ($inFunc) {
             if ($timerCallbacks.ContainsKey($funcName) -and $cleaned -ne '') {
                 if ($cleaned -match '^\s*static\s+(.+)') {
                     $staticContent = $Matches[1]
-                    $rawLine = $lines[$i]
+                    $rawLine = $ld.Raw
 
                     if ($rawLine -match 'lint-ignore:\s*static-in-timer') {
                         # Suppressed
@@ -266,19 +279,19 @@ $bindIdentityIssues = [System.Collections.ArrayList]::new()
 $fileTimerData = @{}
 
 foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
+    $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $starts = @{}    # callbackName -> list of line numbers
     $cancels = [System.Collections.Generic.HashSet[string]]::new()
     $boundVars = @{}  # varName -> callbackBaseName
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $raw = $lines[$i]
-        $cleaned = BT_CleanLine $raw
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $ld = $processed[$i]
+        $cleaned = $ld.Cleaned
         if ($cleaned -eq '') { continue }
 
-        if ($raw.Contains($TL_SUPPRESSION)) { continue }
+        if ($ld.Raw.Contains($TL_SUPPRESSION)) { continue }
 
         # Pattern 1: SetTimer(FuncName, period) - direct function reference
         if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\s*,\s*(.+?)\s*\)') {

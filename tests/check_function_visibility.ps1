@@ -89,17 +89,10 @@ $fileCache = @{}
 $fileCacheText = @{}
 
 foreach ($file in $srcFiles) {
-    if ($Query) {
-        $text = [System.IO.File]::ReadAllText($file.FullName)
-        $fileCacheText[$file.FullName] = $text
-        $lines = $text -split "`r?`n"
-        $fileCache[$file.FullName] = $lines
-    } else {
-        $text = [System.IO.File]::ReadAllText($file.FullName)
-        $fileCacheText[$file.FullName] = $text
-        $lines = $text -split "`r?`n"
-        $fileCache[$file.FullName] = $lines
-    }
+    $text = [System.IO.File]::ReadAllText($file.FullName)
+    $fileCacheText[$file.FullName] = $text
+    $lines = $text -split "`r?`n"
+    $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0

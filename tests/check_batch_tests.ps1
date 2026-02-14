@@ -72,10 +72,20 @@ $AHK_KEYWORDS = @(
 
 function BT_CleanLine {
     param([string]$line)
-    $cleaned = $line -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace "'[^']*'", "''"
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    if ($cleaned -match '^\s*;') { return '' }
+    if ($line.Length -eq 0) { return '' }
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0) { return '' }
+    if ($trimmed[0] -eq ';') { return '' }
+    $cleaned = $line
+    if ($line.IndexOf('"') -ge 0) {
+        $cleaned = $cleaned -replace '"[^"]*"', '""'
+    }
+    if ($line.IndexOf("'") -ge 0) {
+        $cleaned = $cleaned -replace "'[^']*'", "''"
+    }
+    if ($cleaned.IndexOf(';') -ge 0) {
+        $cleaned = $cleaned -replace '\s;.*$', ''
+    }
     return $cleaned
 }
 

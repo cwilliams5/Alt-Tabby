@@ -317,28 +317,32 @@ foreach ($file in $allFiles) {
                 }
                 $allText = [string]::Join(" ", $texts)
 
-                # Check each known global (IndexOf-first: skip expensive regex when substring absent)
-                foreach ($gName in $checkGlobals.Keys) {
-                    if ($allText.IndexOf($gName, [System.StringComparison]::Ordinal) -lt 0) { continue }
+                # Extract all words from function body, check each against global set
+                # O(words) instead of O(globals) — faster when words << globals
+                $wordMatches = [regex]::Matches($allText, '\b[a-zA-Z_]\w+\b')
+                $seenGlobals = [System.Collections.Generic.HashSet[string]]::new(
+                    [System.StringComparer]::Ordinal)
+
+                foreach ($wm in $wordMatches) {
+                    $gName = $wm.Value
+                    if ($gName.Length -lt $MIN_GLOBAL_NAME_LENGTH) { continue }
+                    if ($seenGlobals.Contains($gName)) { continue }
+                    [void]$seenGlobals.Add($gName)
+                    if (-not $checkGlobals.ContainsKey($gName)) { continue }
                     if ($funcDeclaredGlobals.ContainsKey($gName)) { continue }
                     if ($funcParams.ContainsKey($gName)) { continue }
                     if ($funcLocals.ContainsKey($gName)) { continue }
-                    # Validate word boundary (IndexOf may match substrings)
-                    $boundaryRx = $globalBoundaryRegex[$gName]
-                    if ($null -ne $boundaryRx) {
-                        if (-not $boundaryRx.IsMatch($allText)) { continue }
-                    } else {
-                        # Fallback for test-file globals (not in pre-compiled set)
-                        $escapedName = [regex]::Escape($gName)
-                        if ($allText -notmatch "\b$escapedName\b") { continue }
-                    }
 
-                    # Find first occurrence for line number
+                    # Word was found via \b boundary in the regex, so boundary is guaranteed.
+                    # Find first occurrence line for reporting.
+                    $boundaryRx = $globalBoundaryRegex[$gName]
                     $foundLine = $null
                     foreach ($bodyLine in $funcBodyLines) {
                         if ($null -ne $boundaryRx) {
                             $lineMatch = $boundaryRx.IsMatch($bodyLine.Text)
                         } else {
+                            # Fallback for test-file globals (not in pre-compiled set)
+                            $escapedName = [regex]::Escape($gName)
                             $lineMatch = $bodyLine.Text -match "\b$escapedName\b"
                         }
                         if ($lineMatch -and $bodyLine.Text -notmatch '^\s*(?:global|static|local)\s') {

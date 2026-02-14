@@ -1,6 +1,6 @@
 # check_batch_directives.ps1 - Batched directive/keyword checks
-# Combines 5 checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: requires_directive, singleinstance, state_strings, winexist_cloaked, bare_try
+# Combines 6 checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: requires_directive, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths
 #
 # Usage: powershell -File tests\check_batch_directives.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -605,6 +605,196 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_bare_try"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 6: return_paths
+# Detects functions with inconsistent return paths (mixed value/void)
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+function BD_RP_CleanLine {
+    param([string]$line)
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
+    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
+        return $trimmed
+    }
+    $cleaned = $trimmed -replace '"[^"]*"', '""'
+    $cleaned = $cleaned -replace "'[^']*'", "''"
+    $cleaned = $cleaned -replace '\s;.*$', ''
+    return $cleaned
+}
+
+$RP_SUPPRESSION = 'lint-ignore: mixed-returns'
+$rpIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    $i = 0
+    while ($i -lt $lines.Count) {
+        $cleaned = BD_RP_CleanLine $lines[$i]
+
+        # Detect function definition: FuncName(params) {
+        if ($cleaned -match '^(\w+)\s*\([^)]*\)\s*\{?\s*$') {
+            $funcName = $Matches[1]
+            $defLine = $i
+
+            # Skip AHK keywords that look like functions
+            if ($funcName -match '^(if|while|for|loop|switch|catch|else|try|class|return)$') {
+                $i++; continue
+            }
+
+            # Check for suppression on the definition line
+            $isSuppressed = $lines[$defLine].Contains($RP_SUPPRESSION)
+
+            # Find opening brace (might be on same line or next line)
+            $braceOnSameLine = $cleaned -match '\{\s*$'
+            $funcStart = $i
+            if (-not $braceOnSameLine) {
+                $j = $i + 1
+                while ($j -lt $lines.Count) {
+                    $nextCleaned = BD_RP_CleanLine $lines[$j]
+                    if ($nextCleaned -ne '') {
+                        if ($nextCleaned -match '^\{') {
+                            $funcStart = $j
+                        } else {
+                            $funcStart = -1
+                        }
+                        break
+                    }
+                    $j++
+                }
+                if ($funcStart -eq $i) { $i++; continue }
+                if ($funcStart -eq -1) { $i++; continue }
+            }
+
+            # Extract function body by tracking brace depth
+            $depth = 0
+            $bodyStart = $funcStart
+            $bodyEnd = -1
+            $foundOpenBrace = $false
+
+            for ($j = $bodyStart; $j -lt $lines.Count; $j++) {
+                $bodyCleaned = BD_RP_CleanLine $lines[$j]
+                if ($bodyCleaned -eq '') { continue }
+
+                foreach ($c in $bodyCleaned.ToCharArray()) {
+                    if ($c -eq '{') {
+                        $depth++
+                        $foundOpenBrace = $true
+                    }
+                    elseif ($c -eq '}') {
+                        $depth--
+                        if ($foundOpenBrace -and $depth -eq 0) {
+                            $bodyEnd = $j
+                            break
+                        }
+                    }
+                }
+                if ($bodyEnd -ge 0) { break }
+            }
+
+            if ($bodyEnd -lt 0) { $i++; continue }
+
+            # Analyze return statements within the function body
+            $valueReturns = [System.Collections.ArrayList]::new()
+            $voidReturns = [System.Collections.ArrayList]::new()
+            $innerDepth = 0
+
+            for ($j = $bodyStart; $j -le $bodyEnd; $j++) {
+                $bodyCleaned = BD_RP_CleanLine $lines[$j]
+                if ($bodyCleaned -eq '') { continue }
+
+                $prevInnerDepth = $innerDepth
+                foreach ($c in $bodyCleaned.ToCharArray()) {
+                    if ($c -eq '{') { $innerDepth++ }
+                    elseif ($c -eq '}') { $innerDepth-- }
+                }
+
+                if ($j -eq $bodyStart) { continue }
+                if ($j -eq $bodyEnd) { continue }
+
+                # Skip nested function bodies
+                if ($bodyCleaned -match '^\w+\s*\([^)]*\)\s*\{' -and $prevInnerDepth -ge 1) {
+                    $skipToDepth = $prevInnerDepth
+                    $j++
+                    while ($j -le $bodyEnd) {
+                        $skipCleaned = BD_RP_CleanLine $lines[$j]
+                        if ($skipCleaned -ne '') {
+                            foreach ($c in $skipCleaned.ToCharArray()) {
+                                if ($c -eq '{') { $innerDepth++ }
+                                elseif ($c -eq '}') { $innerDepth-- }
+                            }
+                            if ($innerDepth -le $skipToDepth) { break }
+                        }
+                        $j++
+                    }
+                    continue
+                }
+
+                # Check for return statements
+                if ($bodyCleaned -match '(?<![.\w])return(?!\w)') {
+                    $afterReturn = ''
+                    if ($bodyCleaned -match '(?<![.\w])return\s+(.+)') {
+                        $afterReturn = $Matches[1].Trim()
+                    } elseif ($bodyCleaned -match '(?<![.\w])return\s*$') {
+                        $afterReturn = ''
+                    } else {
+                        continue
+                    }
+
+                    $afterReturn = $afterReturn.TrimEnd()
+                    if ($afterReturn -match '^(.+?)\s*\}\s*$') {
+                        $afterReturn = $Matches[1].Trim()
+                    }
+
+                    if ($afterReturn -eq '' -or $afterReturn -eq '}') {
+                        [void]$voidReturns.Add($j + 1)
+                    } else {
+                        [void]$valueReturns.Add($j + 1)
+                    }
+                }
+            }
+
+            if ($valueReturns.Count -gt 0 -and $voidReturns.Count -gt 0 -and -not $isSuppressed) {
+                [void]$rpIssues.Add([PSCustomObject]@{
+                    File = $relPath
+                    Line = ($defLine + 1)
+                    Function = $funcName
+                    ValueReturns = $valueReturns
+                    VoidReturns = $voidReturns
+                })
+            }
+
+            $i = $bodyEnd + 1
+            continue
+        }
+
+        $i++
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_return_paths"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+if ($rpIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($rpIssues.Count) function(s) with inconsistent return paths.")
+    [void]$failOutput.AppendLine("  AHK v2 bare 'return' silently returns `"`"`. If some paths return a value")
+    [void]$failOutput.AppendLine("  and others use bare return, callers may get `"`"` instead of the expected type.")
+    [void]$failOutput.AppendLine("  Fix: ensure all return paths return a value, or convert all to bare returns.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: mixed-returns' on the function definition line.")
+    foreach ($issue in $rpIssues | Sort-Object File, Line) {
+        [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line) $($issue.Function)()")
+        $vrLines = ($issue.ValueReturns | ForEach-Object { "L$_" }) -join ', '
+        $brLines = ($issue.VoidReturns | ForEach-Object { "L$_" }) -join ', '
+        [void]$failOutput.AppendLine("      Value returns: $vrLines")
+        [void]$failOutput.AppendLine("      Void returns:  $brLines")
+    }
+}
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -612,7 +802,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, winexist_cloaked, bare_try)" -ForegroundColor Green
+    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
