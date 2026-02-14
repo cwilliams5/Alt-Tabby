@@ -147,6 +147,38 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     if (evCode = TABBY_EV_ALT_DOWN) {
+        ; ── Foreground reconciliation ──────────────────────────────────
+        ; The local MRU is only updated by Alt-Tab activations we perform.
+        ; External focus changes (taskbar clicks, mouse clicks on other
+        ; windows) reach us via Store deltas, which traverse the full
+        ; WinEventHook → Store → named-pipe → GUI pipeline.  That IPC
+        ; latency means a fast user can press Alt+Tab before the delta
+        ; arrives, causing us to freeze a stale MRU and switch to the
+        ; wrong window.
+        ;
+        ; Fix: query the real foreground window directly (~1µs DllCall).
+        ; If it's in our live items but not at position #1, an external
+        ; focus change happened that we missed.  Move it to #1 so the
+        ; MRU reflects reality before we freeze.
+        ;
+        ; This is a deliberate break from "Store owns all window data":
+        ; the Store remains authoritative for window membership, properties,
+        ; and eligibility (blacklist).  But for MRU *ordering*, the GUI
+        ; needs ground-truth focus data to avoid the IPC race.  We only
+        ; reconcile windows already in our list — if the foreground is
+        ; blacklisted or unknown, we skip (the Store hasn't told us about
+        ; it, so we can't add it, and we shouldn't).
+        global FR_EV_FG_RECONCILE, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
+        fgHwnd := DllCall("GetForegroundWindow", "Ptr")
+        if (fgHwnd && gGUI_LiveItemsMap.Has(fgHwnd)
+            && gGUI_LiveItems.Length > 0 && gGUI_LiveItems[1].hwnd != fgHwnd) {
+            oldPos := gGUI_LiveItemsIndex.Has(fgHwnd) ? gGUI_LiveItemsIndex[fgHwnd] : 0
+            FR_Record(FR_EV_FG_RECONCILE, fgHwnd, oldPos)
+            if (cfg.DiagEventLog)
+                GUI_LogEvent("FG_RECONCILE: foreground 0x" Format("{:X}", fgHwnd) " was at pos " oldPos ", moving to #1")
+            _GUI_UpdateLocalMRU(fgHwnd)
+        }
+
         ; Alt pressed - enter ALT_PENDING state
         FR_Record(FR_EV_STATE, FR_ST_ALT_PENDING)
         gGUI_State := "ALT_PENDING"

@@ -70,6 +70,7 @@ Chronological (newest first) list of events with millisecond timestamps relative
 | `MRU_UPDATE` | hwnd, result | Local MRU reorder after activation. result=0 means hwnd not found. |
 | `BUFFER_PUSH` | event, bufLen | Event buffered during async activation. |
 | `PREWARM_SKIP` | mruAge | Prewarm snapshot skipped because local MRU is fresh. |
+| `FG_RECONCILE` | hwnd, wasPos | External focus change detected at Alt press. Foreground window was at position `wasPos` in MRU, moved to #1. Fixes race where taskbar/mouse clicks haven't arrived as store deltas yet. |
 
 ### IPC Events (store communication)
 

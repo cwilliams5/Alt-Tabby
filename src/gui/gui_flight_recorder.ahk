@@ -27,6 +27,7 @@ global FR_EV_MRU_UPDATE       := 15  ; d1=hwnd d2=result(1=ok,0=notfound)
 global FR_EV_BUFFER_PUSH      := 16  ; d1=evCode d2=bufferLen
 global FR_EV_QUICK_SWITCH     := 17  ; d1=timeSinceTab
 global FR_EV_PREWARM_SKIP     := 18  ; d1=mruAge
+global FR_EV_FG_RECONCILE    := 19  ; d1=fgHwnd d2=oldPos — external focus change detected at Alt press
 
 ; IPC events (20-29)
 global FR_EV_SNAPSHOT_REQ     := 20
@@ -253,13 +254,14 @@ _FR_GetRecorderDir() {
 
 _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
     global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE, FR_EV_DELTA_RECV
+    global FR_EV_FG_RECONCILE
     ; Collect all unique hwnds from entries + items + foreground
     hwnds := Map()
     for _, entry in entries {
         ev := entry[2]
         ; Events that carry hwnds in d1
         if (ev = FR_EV_ACTIVATE_START || ev = FR_EV_ACTIVATE_RESULT
-            || ev = FR_EV_MRU_UPDATE) {
+            || ev = FR_EV_MRU_UPDATE || ev = FR_EV_FG_RECONCILE) {
             h := entry[3]
             if (h)
                 hwnds[h] := true
@@ -322,6 +324,7 @@ _FR_GetEventName(ev) {
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_GRACE_FIRE
     global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE
     global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, FR_EV_PREWARM_SKIP
+    global FR_EV_FG_RECONCILE
     global FR_EV_SNAPSHOT_REQ, FR_EV_SNAPSHOT_RECV, FR_EV_SNAPSHOT_SKIP
     global FR_EV_DELTA_RECV, FR_EV_SESSION_START
 
@@ -343,6 +346,7 @@ _FR_GetEventName(ev) {
         case FR_EV_BUFFER_PUSH:      return "BUFFER_PUSH"
         case FR_EV_QUICK_SWITCH:     return "QUICK_SWITCH"
         case FR_EV_PREWARM_SKIP:     return "PREWARM_SKIP"
+        case FR_EV_FG_RECONCILE:     return "FG_RECONCILE"
         case FR_EV_SNAPSHOT_REQ:     return "SNAPSHOT_REQ"
         case FR_EV_SNAPSHOT_RECV:    return "SNAPSHOT_RECV"
         case FR_EV_SNAPSHOT_SKIP:    return "SNAPSHOT_SKIP"
@@ -377,6 +381,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_GRACE_FIRE
     global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE
     global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, FR_EV_PREWARM_SKIP
+    global FR_EV_FG_RECONCILE
     global FR_EV_SNAPSHOT_REQ, FR_EV_SNAPSHOT_RECV, FR_EV_SNAPSHOT_SKIP
     global FR_EV_DELTA_RECV, FR_EV_SESSION_START
 
@@ -417,6 +422,8 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return "timeSinceTab=" d1 "ms"
         case FR_EV_PREWARM_SKIP:
             return "mruAge=" d1 "ms"
+        case FR_EV_FG_RECONCILE:
+            return _FR_HwndStr(d1, hwndMap) "  wasPos=" d2
         case FR_EV_SNAPSHOT_REQ:
             return ""
         case FR_EV_SNAPSHOT_RECV:
