@@ -32,6 +32,7 @@ tmpclaude-*
 
 # Plan files (created by Claude agents)
 PLAN.md
+PLAN_*.md
 
 # Temp folder for examples/screenshots (never commit)
 /temp/
@@ -41,6 +42,9 @@ src/version_info.ahk
 
 # Python cache
 __pycache__/
+
+# Screenshots (tooling artifacts)
+tools/screenshots/
 
 # Animation tooling working directories
 tools/animation/frames/
