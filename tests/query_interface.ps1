@@ -43,9 +43,13 @@ $relPath = $file.FullName.Replace("$projectRoot\", '')
 # === Helpers ===
 function Clean-Line {
     param([string]$line)
-    $cleaned = $line -replace '"[^"]*"', '""'
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
+    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
+        return $trimmed
+    }
+    $cleaned = $trimmed -replace '"[^"]*"', '""'
     $cleaned = $cleaned -replace '\s;.*$', ''
-    if ($cleaned -match '^\s*;') { return '' }
     return $cleaned
 }
 

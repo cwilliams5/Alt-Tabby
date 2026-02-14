@@ -26,6 +26,11 @@ $ahkKeywords = @('if','else','while','for','loop','switch','case','catch','final
 $allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
     Where-Object { $_.FullName -notlike "*\lib\*" })
 
+# Pre-compile hot-loop regex
+$setTimerCheckRx = [regex]::new('\bSetTimer\s*[\(,]')
+$setTimerExtractRx = [regex]::new('SetTimer\s*\(\s*([^,\)]+?)(?:\s*,\s*([^)]+))?\s*\)')
+$funcBoundaryRx = [regex]::new('^(\w+)\s*\(')
+
 # === Scan for SetTimer calls ===
 $timers = [System.Collections.ArrayList]::new()
 
@@ -40,8 +45,9 @@ foreach ($file in $allFiles) {
     # Pre-build function boundary map for this file
     $funcBounds = [System.Collections.ArrayList]::new()
     for ($j = 0; $j -lt $lines.Count; $j++) {
-        if ($lines[$j] -match '^(\w+)\s*\(') {
-            $candidate = $Matches[1]
+        $m = $funcBoundaryRx.Match($lines[$j])
+        if ($m.Success) {
+            $candidate = $m.Groups[1].Value
             if ($candidate.ToLower() -in $ahkKeywords) { continue }
             $hasBody = $lines[$j].Contains('{')
             if (-not $hasBody) {
@@ -61,7 +67,7 @@ foreach ($file in $allFiles) {
         if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
 
         # Match SetTimer( or SetTimer  (with paren or space)
-        if ($trimmed -notmatch '\bSetTimer\s*[\(,]') { continue }
+        if (-not $setTimerCheckRx.IsMatch($trimmed)) { continue }
 
         # Extract callback and interval from the SetTimer call
         $callback = ""
@@ -70,10 +76,11 @@ foreach ($file in $allFiles) {
 
         # Pattern: SetTimer(callback, interval) or SetTimer(callback)
         # Callback can be: FuncName, _FuncName, ObjBindMethod(...), () => ..., func.Bind(...)
-        if ($trimmed -match 'SetTimer\s*\(\s*([^,\)]+?)(?:\s*,\s*([^)]+))?\s*\)') {
-            $callback = $Matches[1].Trim()
-            if ($Matches[2]) {
-                $interval = $Matches[2].Trim()
+        $m = $setTimerExtractRx.Match($trimmed)
+        if ($m.Success) {
+            $callback = $m.Groups[1].Value.Trim()
+            if ($m.Groups[2].Success) {
+                $interval = $m.Groups[2].Value.Trim()
             }
         }
 

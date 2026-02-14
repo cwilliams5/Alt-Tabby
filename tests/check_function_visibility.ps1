@@ -58,9 +58,13 @@ if ($Query) {
 # === Helpers ===
 function Clean-Line {
     param([string]$line)
-    $cleaned = $line -replace '"[^"]*"', '""'
+    $trimmed = $line.TrimStart()
+    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
+    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
+        return $trimmed
+    }
+    $cleaned = $trimmed -replace '"[^"]*"', '""'
     $cleaned = $cleaned -replace '\s;.*$', ''
-    if ($cleaned -match '^\s*;') { return '' }
     return $cleaned
 }
 
@@ -94,6 +98,9 @@ foreach ($file in $srcFiles) {
     $lines = $text -split "`r?`n"
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    # Query mode: skip line parsing once the queried definition is found
+    if ($Query -and $queryDef) { continue }
 
     $depth = 0
 

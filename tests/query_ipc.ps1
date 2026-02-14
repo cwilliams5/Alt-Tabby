@@ -94,6 +94,20 @@ $constLine = $target.Line
 $ahkKeywords = @('if','else','while','for','loop','switch','case','catch','finally',
     'try','return','throw','not','and','or','is','in','contains','isset')
 
+# Pre-compile hot-loop regex (avoids per-iteration string interpolation and regex cache lookups)
+$constNameRx = [regex]::new("\b$constName\b")
+$rawPatternRx = [regex]::new($rawPattern)
+$constDeclRx = [regex]::new("^\s*global\s+$constName\b\s*:=")
+$handleEqRx = [regex]::new("(?<!:)=\s*$constName\b")
+$handleCaseRx = [regex]::new("case\s+$constName\b")
+$handleNeqRx = [regex]::new("!=\s*$constName\b")
+$sendTypeRx = [regex]::new("type:\s*$constName\b")
+$sendBracketRx = [regex]::new("\[`"type`"\]\s*:=\s*$constName\b")
+$sendJsonRx = [regex]::new("type`":\s*`".*\b$constName\b")
+$sendQuoteRx = [regex]::new("'.*type.*\b$constName\b")
+$sendTernaryRx = [regex]::new("\?\s*$constName\b")
+$sendTailRx = [regex]::new(":\s*$constName\s*$")
+
 # === Helper: build function boundary map for a file ===
 function Build-FuncBounds {
     param([string[]]$Lines, [string[]]$Keywords)
@@ -154,8 +168,8 @@ foreach ($file in $allFiles) {
         $trimmed = $line.Trim()
         if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
 
-        $hasConstRef = $line -match "\b$constName\b"
-        $hasRawJson = $trimmed -match $rawPattern
+        $hasConstRef = $constNameRx.IsMatch($line)
+        $hasRawJson = $rawPatternRx.IsMatch($trimmed)
 
         if (-not $hasConstRef -and -not $hasRawJson) { continue }
 
@@ -163,7 +177,7 @@ foreach ($file in $allFiles) {
 
         # Process constant reference
         if ($hasConstRef) {
-            if ($isConstantsFile -and $trimmed -match "^\s*global\s+$constName\b\s*:=") { $hasConstRef = $false }
+            if ($isConstantsFile -and $constDeclRx.IsMatch($trimmed)) { $hasConstRef = $false }
             elseif ($trimmed -match '^\s*global\s+' -and $trimmed -notmatch ':=') { $hasConstRef = $false }
             elseif ($trimmed -match '^\s*_\w*Log\(' -and $trimmed -notmatch '\btype\b') { $hasConstRef = $false }
         }
@@ -176,17 +190,17 @@ foreach ($file in $allFiles) {
             $isSend = $false; $isHandle = $false
 
             # Handle: comparison (= but not :=), case match, != check
-            if ($trimmed -match "(?<!:)=\s*$constName\b" -or
-                $trimmed -match "case\s+$constName\b" -or
-                $trimmed -match "!=\s*$constName\b") { $isHandle = $true }
+            if ($handleEqRx.IsMatch($trimmed) -or
+                $handleCaseRx.IsMatch($trimmed) -or
+                $handleNeqRx.IsMatch($trimmed)) { $isHandle = $true }
 
             # Send: object literal type:, msg["type"] :=, string-built type, ternary
-            if ($trimmed -match "type:\s*$constName\b" -or
-                $trimmed -match "\[`"type`"\]\s*:=\s*$constName\b" -or
-                $trimmed -match "type`":\s*`".*\b$constName\b" -or
-                $trimmed -match "'.*type.*\b$constName\b" -or
-                $trimmed -match "\?\s*$constName\b" -or
-                $trimmed -match ":\s*$constName\s*$") { $isSend = $true }
+            if ($sendTypeRx.IsMatch($trimmed) -or
+                $sendBracketRx.IsMatch($trimmed) -or
+                $sendJsonRx.IsMatch($trimmed) -or
+                $sendQuoteRx.IsMatch($trimmed) -or
+                $sendTernaryRx.IsMatch($trimmed) -or
+                $sendTailRx.IsMatch($trimmed)) { $isSend = $true }
 
             if ($isSend) {
                 [void]$sends.Add($hit)
