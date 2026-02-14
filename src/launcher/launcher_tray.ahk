@@ -575,8 +575,18 @@ _AdminToggle_CheckComplete() {
         ; Offer restart so the user gets elevation immediately
         result := ThemeMsgBox("Admin mode enabled.`n`nRestart Alt-Tabby now to run with elevation?", APP_NAME, "YesNo Icon?")
         if (result = "Yes") {
-            ; Shut down subprocesses FIRST so mutex releases before new instance boots
+            ; Shut down subprocesses and release mutexes BEFORE spawning new instance via task,
+            ; otherwise the new instance hits "already running" because we still hold the mutex
             Launcher_ShutdownSubprocesses()
+            global g_LauncherMutex, g_ActiveMutex
+            if (g_LauncherMutex) {
+                try DllCall("CloseHandle", "ptr", g_LauncherMutex)
+                g_LauncherMutex := 0
+            }
+            if (g_ActiveMutex) {
+                try DllCall("CloseHandle", "ptr", g_ActiveMutex)
+                g_ActiveMutex := 0
+            }
 
             exitCode := RunAdminTask(TIMING_TASK_READY_WAIT)
             if (exitCode = 0) {

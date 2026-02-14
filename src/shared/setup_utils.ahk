@@ -833,7 +833,7 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
         } catch {
             _Update_Log("DownloadAndApply: elevation failed")
             ThemeMsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Iconx")
-            try FileDelete(updateFile)
+            try FileDelete(TEMP_UPDATE_STATE)
             try FileDelete(tempExe)  ; Clean up downloaded exe
             return
         }

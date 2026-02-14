@@ -414,9 +414,19 @@ if (g_AltTabbyMode = "install-to-pf") {
     try {
         state := ReadStateFile(TEMP_INSTALL_PF_STATE)
 
-        ; Launcher_DoUpdateInstalled handles everything:
-        ; DirCreate, blacklist copy, stats merge, config copy, admin task, shortcuts, relaunch
-        Launcher_DoUpdateInstalled(state.source, state.target)
+        ; Call Update_ApplyCore directly instead of Launcher_DoUpdateInstalled —
+        ; "Install to PF" should never overwrite existing PF config with defaults.
+        ; The user's intent is "put my exe there", not "push my config there".
+        Update_ApplyCore({
+            sourcePath: state.source,
+            targetPath: state.target,
+            useLockFile: true,
+            validatePE: false,
+            copyMode: true,
+            cleanupSourceOnFailure: false,
+            overwriteUserData: false,
+            successMessage: "Alt-Tabby has been installed to:`n" state.target
+        })
     } catch as e {
         ThemeMsgBox("The installation could not be completed.`n`n"
             "Possible causes:`n"

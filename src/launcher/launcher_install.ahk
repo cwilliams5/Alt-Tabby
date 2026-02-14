@@ -280,7 +280,7 @@ Launcher_DoUpdateInstalled(sourcePath, targetPath) {
     Update_ApplyCore({
         sourcePath: sourcePath,
         targetPath: targetPath,
-        useLockFile: false,
+        useLockFile: true,
         validatePE: false,             ; Source is running exe, already valid
         copyMode: true,                ; FileCopy (keep source - it's the running exe)
         successMessage: "Alt-Tabby has been updated at:`n" targetPath,
