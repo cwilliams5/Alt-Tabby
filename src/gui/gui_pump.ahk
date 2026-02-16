@@ -203,6 +203,11 @@ _GUIPump_OnMessage(msg, hPipe) {
             iconCount++
         }
 
+        ; Always update refresh tick when enrichment ran (even without icon result).
+        ; Prevents re-enqueue before throttle period expires when pump returns "unchanged".
+        ; iconLastRefreshTick is in gWS_InternalFields — no rev bump or dirty marking.
+        fields["iconLastRefreshTick"] := A_TickCount
+
         if (fields.Count > 0) {
             WL_UpdateFields(hwnd, fields, "pump_enrich")
             applied++

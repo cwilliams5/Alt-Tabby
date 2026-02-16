@@ -959,9 +959,12 @@ global gConfigRegistry := [
      min: 1000, max: 30000,
      d: "Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps."},
 
-    {s: "Store", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 30000,
+    {s: "Store", k: "RefreshThrottleMs", g: "IconPumpRefreshThrottleMs", t: "int", default: 5000,
      min: 1000, max: 300000,
-     d: "Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay."},
+     d: "Minimum time between icon refresh checks per window (ms). Icons are rechecked on focus and title change. The per-window throttle prevents spam from terminals with animated titles."},
+
+    {s: "Store", k: "IconRefreshOnTitleChange", g: "IconRefreshOnTitleChange", t: "bool", default: true,
+     d: "Re-check window icons when title changes (e.g., browser tab switch). Per-window throttle (RefreshThrottleMs) prevents spam."},
 
     {s: "Store", k: "IdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
      min: 1, max: 100,

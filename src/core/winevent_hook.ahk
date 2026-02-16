@@ -560,6 +560,15 @@ _WEH_ProcessBatch() {
                 if (zSnapshot.Has(rec["hwnd"]))
                     WL_EnqueueForZ(rec["hwnd"])
             }
+            ; Enqueue icon refresh for title-change events (NAMECHANGE, not Z-affecting).
+            ; Icons often change when titles change (browser tab switch, app state change).
+            ; Per-window throttle (IconPumpRefreshThrottleMs) prevents spam.
+            if (cfg.IconRefreshOnTitleChange) {
+                for _, rec in records {
+                    if (!zSnapshot.Has(rec["hwnd"]))
+                        WL_EnqueueIconRefresh(rec["hwnd"])
+                }
+            }
         }
     }
 

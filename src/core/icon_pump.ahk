@@ -425,26 +425,21 @@ _IP_Tick() {
     }
 }
 
-; Try to get icon from window via WM_GETICON or class icon
-; Prefer larger icons (ICON_BIG=32x32) over small (16x16) since we display at 36px+
-; Uses SendMessageTimeoutW with SMTO_ABORTIFHUNG to avoid blocking on hung windows.
-IP_TryResolveFromWindow(hWnd) {
+; Get raw HICON from window via WM_GETICON or class icon (no CopyIcon).
+; Returns the window's own icon handle — caller does NOT own it, do NOT DestroyIcon.
+; Used by EnrichmentPump for nochange detection (raw handle is stable for unchanged icons).
+IP_GetRawWindowIcon(hWnd) {
     global IP_WM_GETICON, IP_ICON_BIG, IP_ICON_SMALL, IP_ICON_SMALL2
     global IP_GCLP_HICONSM, IP_GCLP_HICON, IP_SMTO_ABORTIFHUNG, IP_RESOLVE_TIMEOUT_MS
     global _IP_DiagEnabled, _IP_LogPath
 
     try {
-        ; Skip hung windows entirely - fast kernel check, no messages sent
         if (DllCall("user32\IsHungAppWindow", "ptr", hWnd, "int"))
             return 0
 
-        ; Use SendMessageTimeoutW instead of SendMessage to avoid blocking
-        ; on windows that become hung between the IsHungAppWindow check and the send.
-        ; SMTO_ABORTIFHUNG returns immediately if target thread is not responding.
         h := 0
         result := 0
 
-        ; Prefer large icons first for better quality at display size
         for _, iconType in [IP_ICON_BIG, IP_ICON_SMALL2, IP_ICON_SMALL] {
             h := 0
             result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", iconType, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
@@ -455,12 +450,21 @@ IP_TryResolveFromWindow(hWnd) {
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", IP_GCLP_HICON, "ptr")
         if (!h)
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", IP_GCLP_HICONSM, "ptr")
-        if (h)
-            return DllCall("user32\CopyIcon", "ptr", h, "ptr")
+        return h
     } catch as e {
         if (_IP_DiagEnabled && _IP_LogPath != "")
-            _IP_Log("WARN: IP_TryResolveFromWindow failed for hwnd=" hWnd " err=" e.Message)
+            _IP_Log("WARN: IP_GetRawWindowIcon failed for hwnd=" hWnd " err=" e.Message)
     }
+    return 0
+}
+
+; Try to get icon from window via WM_GETICON or class icon (returns owned copy).
+; Prefer larger icons (ICON_BIG=32x32) over small (16x16) since we display at 36px+
+; Uses SendMessageTimeoutW with SMTO_ABORTIFHUNG to avoid blocking on hung windows.
+IP_TryResolveFromWindow(hWnd) {
+    h := IP_GetRawWindowIcon(hWnd)
+    if (h)
+        return DllCall("user32\CopyIcon", "ptr", h, "ptr")
     return 0
 }
 

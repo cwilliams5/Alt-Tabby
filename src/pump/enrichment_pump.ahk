@@ -24,6 +24,7 @@ global _Pump_Server := ""
 global _Pump_ClientPipe := 0        ; hPipe of connected MainProcess client
 global _Pump_OwnedIcons := Map()    ; hwnd → HICON (ownership tracking for cleanup)
 global _Pump_ExeIconCache := Map()  ; exePath → master HICON (dedup across windows)
+global _Pump_PrevIconSource := Map() ; hwnd → {method, rawH, exePath} (nochange detection)
 global _Pump_ProcNameCache := Map() ; pid → processName (positive cache)
 global _Pump_FailedPidCache := Map() ; pid → tick (negative cache)
 global _Pump_FailedPidCacheTTL := 60000
@@ -187,29 +188,50 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
 ; Uses icon_pump.ahk resolution functions (included via alt_tabby.ahk).
 ; These are pure Win32 DllCalls — no WindowList dependency.
 
-; Returns {h: HICON, method: string} or {h: 0, method: ""}
+; Returns {h: HICON, method: string} or {h: 0, method: ""/"unchanged"}
+; "unchanged" = icon source matches previous resolution, skip IPC/GDI+ reconversion
 _Pump_ResolveIcon(hwnd, pid, exePath) {
-    global _Pump_OwnedIcons, _Pump_ExeIconCache
+    global _Pump_OwnedIcons, _Pump_ExeIconCache, _Pump_PrevIconSource
 
-    ; Try WM_GETICON / class icon (window must be visible for reliable results)
     h := 0
     method := ""
     isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int")
+
+    ; Try WM_GETICON / class icon — use raw handle for nochange detection
     if (isVisible) {
-        h := IP_TryResolveFromWindow(hwnd)
-        if (h)
-            method := "wm_geticon"
+        rawH := IP_GetRawWindowIcon(hwnd)
+        if (rawH) {
+            ; Nochange: same raw handle = window icon hasn't changed
+            if (_Pump_PrevIconSource.Has(hwnd)) {
+                prev := _Pump_PrevIconSource[hwnd]
+                if (prev.method = "wm_geticon" && prev.rawH = rawH)
+                    return {h: 0, method: "unchanged"}
+            }
+            h := DllCall("user32\CopyIcon", "ptr", rawH, "ptr")
+            if (h) {
+                method := "wm_geticon"
+                _Pump_PrevIconSource[hwnd] := {method: "wm_geticon", rawH: rawH, exePath: ""}
+            }
+        }
     }
 
-    ; Try UWP package icon
+    ; Try UWP package icon (no nochange optimization — rare, always re-resolve)
     if (!h && pid > 0) {
         h := IP_TryResolveFromUWP(hwnd, pid)
-        if (h)
+        if (h) {
             method := "uwp"
+            _Pump_PrevIconSource[hwnd] := {method: "uwp", rawH: 0, exePath: ""}
+        }
     }
 
     ; Fallback: process EXE icon (cached per exe path)
     if (!h && exePath != "") {
+        ; Nochange: same exePath = same exe icon (master is cached)
+        if (_Pump_PrevIconSource.Has(hwnd)) {
+            prev := _Pump_PrevIconSource[hwnd]
+            if (prev.method = "exe" && prev.exePath = exePath)
+                return {h: 0, method: "unchanged"}
+        }
         if (_Pump_ExeIconCache.Has(exePath)) {
             h := DllCall("user32\CopyIcon", "ptr", _Pump_ExeIconCache[exePath], "ptr")
         } else {
@@ -219,8 +241,10 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
                 h := DllCall("user32\CopyIcon", "ptr", master, "ptr")
             }
         }
-        if (h)
+        if (h) {
             method := "exe"
+            _Pump_PrevIconSource[hwnd] := {method: "exe", rawH: 0, exePath: exePath}
+        }
     }
 
     if (h) {
@@ -272,8 +296,8 @@ _Pump_ResolveProcessName(pid) {
 ; Configurable interval (default 5 minutes) — icons are small, leak is slow.
 
 _Pump_PruneOwnedIcons() {
-    global _Pump_OwnedIcons
-    if (_Pump_OwnedIcons.Count = 0)
+    global _Pump_OwnedIcons, _Pump_PrevIconSource
+    if (_Pump_OwnedIcons.Count = 0 && _Pump_PrevIconSource.Count = 0)
         return
 
     toRemove := []
@@ -285,10 +309,21 @@ _Pump_PruneOwnedIcons() {
     for _, hwnd in toRemove {
         try DllCall("user32\DestroyIcon", "ptr", _Pump_OwnedIcons[hwnd])
         _Pump_OwnedIcons.Delete(hwnd)
+        _Pump_PrevIconSource.Delete(hwnd)
     }
 
-    if (toRemove.Length > 0)
-        _Pump_Log("PRUNE: destroyed " toRemove.Length " orphaned HICONs, " _Pump_OwnedIcons.Count " remaining")
+    ; Also prune prev source entries for windows not in OwnedIcons
+    toRemovePrev := []
+    for hwnd, _ in _Pump_PrevIconSource {
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+            toRemovePrev.Push(hwnd)
+    }
+    for _, hwnd in toRemovePrev
+        _Pump_PrevIconSource.Delete(hwnd)
+
+    pruned := toRemove.Length + toRemovePrev.Length
+    if (pruned > 0)
+        _Pump_Log("PRUNE: destroyed " toRemove.Length " orphaned HICONs, " _Pump_OwnedIcons.Count " remaining, " toRemovePrev.Length " stale source entries")
 }
 
 ; ========================= LOGGING =========================
@@ -303,7 +338,7 @@ _Pump_Log(msg) {
 ; ========================= CLEANUP =========================
 
 _Pump_Cleanup() {
-    global _Pump_Server, _Pump_OwnedIcons, _Pump_ExeIconCache
+    global _Pump_Server, _Pump_OwnedIcons, _Pump_ExeIconCache, _Pump_PrevIconSource
 
     ; Stop prune timer
     try SetTimer(_Pump_PruneOwnedIcons, 0)
@@ -317,6 +352,9 @@ _Pump_Cleanup() {
     for exe, hIcon in _Pump_ExeIconCache
         try DllCall("user32\DestroyIcon", "ptr", hIcon)
     _Pump_ExeIconCache := Map()
+
+    ; Clear nochange detection cache
+    _Pump_PrevIconSource := Map()
 
     ; Stop pipe server
     if (IsObject(_Pump_Server))

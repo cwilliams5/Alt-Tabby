@@ -541,7 +541,8 @@ Resolves window icons asynchronously with retry/backoff
 | `AttemptBackoffMs` | int | `300` | `50` - `5000` | Base backoff after failed attempt (multiplied by attempt number) |
 | `BackoffMultiplier` | float | `1.80` | `1.00` - `5.00` | Backoff multiplier for exponential backoff (1.0 = linear) |
 | `GiveUpBackoffMs` | int | `5000` | `1000` - `30000` | Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps. |
-| `RefreshThrottleMs` | int | `30000` | `1000` - `300000` | Minimum time between icon refresh checks for focused windows (ms). Windows can change icons (e.g., browser favicons), so we recheck WM_GETICON when focused after this delay. |
+| `RefreshThrottleMs` | int | `5000` | `1000` - `300000` | Minimum time between icon refresh checks per window (ms). Icons are rechecked on focus and title change. The per-window throttle prevents spam from terminals with animated titles. |
+| `IconRefreshOnTitleChange` | bool | `true` | - | Re-check window icons when title changes (e.g., browser tab switch). Per-window throttle (RefreshThrottleMs) prevents spam. |
 | `IdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 | `ResolveTimeoutMs` | int | `500` | `100` - `2000` | WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond. |
 
@@ -610,4 +611,4 @@ Debug viewer GUI options
 
 ---
 
-*Generated on 2026-02-16 with 257 total settings.*
+*Generated on 2026-02-16 with 258 total settings.*
