@@ -781,6 +781,7 @@ global LOG_PATH_VIEWER     := A_Temp "\tabby_viewer.log"
 global LOG_PATH_PAINT_TIMING := A_Temp "\tabby_paint_timing.log"
 global LOG_PATH_WEBVIEW    := A_Temp "\tabby_webview_debug.log"
 global LOG_PATH_UPDATE     := A_Temp "\tabby_update.log"
+global LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch.log"
 
 ; Stats file path -- set properly in ConfigLoader_Init() alongside gConfigIniPath
 global STATS_INI_PATH

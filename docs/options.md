@@ -587,6 +587,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `PaintTimingLog` | bool | `false` | - | Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle. |
 | `WebViewLog` | bool | `false` | - | Log WebView2 config editor errors to %TEMP%\\tabby_webview_debug.log. Use when debugging config editor issues. |
 | `UpdateLog` | bool | `false` | - | Log auto-update check and apply steps to %TEMP%\\tabby_update.log. Use when debugging update failures. |
+| `CosmeticPatchLog` | bool | `false` | - | Log cosmetic patch operations during ACTIVE state to %TEMP%\\tabby_cosmetic_patch.log. Use when debugging title/icon/processName updates in the overlay. |
 | `StatsTracking` | bool | `true` | - | Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard. |
 
 ### Log Size Limits
@@ -609,4 +610,4 @@ Debug viewer GUI options
 
 ---
 
-*Generated on 2026-02-16 with 256 total settings.*
+*Generated on 2026-02-16 with 257 total settings.*

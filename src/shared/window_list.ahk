@@ -1023,7 +1023,7 @@ WL_GetProcNameCached(pid) {
 
 ; Update process name for all windows with this pid
 WL_UpdateProcessName(pid, name) {
-    global gWS_Store, gWS_Rev, gWS_ProcNameCache
+    global gWS_Store, gWS_Rev, gWS_ProcNameCache, gWS_DirtyHwnds
     pid := pid + 0
     if (pid <= 0 || name = "")
         return
@@ -1046,6 +1046,7 @@ WL_UpdateProcessName(pid, name) {
         rec := gWS_Store[hwnd]
         if (rec.pid = pid && rec.processName != name) {
             rec.processName := name
+            gWS_DirtyHwnds[hwnd] := true
             changed := true
         }
     }

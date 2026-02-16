@@ -36,6 +36,10 @@ global _Pump_DiagEnabled := false
 _Pump_Init() {
     global cfg, _Pump_Server, _Pump_IconPruneIntervalMs, _Pump_DiagEnabled
 
+    ; Cloaked windows (other komorebi workspaces) are hidden from AHK by default.
+    ; Without this, WinGetPID/WinGetTitle fail for cloaked windows → no processName/icon.
+    DetectHiddenWindows(true)
+
     ; Load config
     ConfigLoader_Init()
 
