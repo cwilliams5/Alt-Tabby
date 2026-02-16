@@ -39,7 +39,8 @@ gPP_UpdateProcessName: gui_main
 IconTimerIntervalMs: icon_pump, gui_pump
 ProcTimerIntervalMs: proc_pump, gui_pump
 gGUI_CurrentWSName: gui_main, gui_state, gui_workspace
-gGUI_DisplayItems: gui_data, gui_state, gui_workspace
+gGUI_DisplayItems: gui_data, gui_flight_recorder, gui_state, gui_workspace
+gGUI_State: gui_flight_recorder, gui_state
 _gGUI_LastCosmeticRepaintTick: gui_data
 gGUI_LiveItems: gui_input, gui_state, gui_data
 gGUI_LiveItemsIndex: gui_state, gui_data

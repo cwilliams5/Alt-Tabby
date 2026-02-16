@@ -187,9 +187,18 @@ GUI_Repaint() {
 
 _GUI_RevealBoth() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed, cfg
-    global gGUI_State  ; Need access to state for race fix
+    global gGUI_State, gGUI_OverlayVisible  ; Need access to state for race fix
 
     if (gGUI_Revealed) {
+        return
+    }
+
+    ; Gate: only reveal if the show sequence explicitly requested it.
+    ; Without this, cosmetic patches during the grace period trigger paint →
+    ; _GUI_RevealBoth, showing the overlay while gGUI_OverlayVisible is still
+    ; false. The quick-switch path then skips GUI_HideOverlay() (thinks overlay
+    ; was never shown), leaving a non-interactive ghost overlay on screen.
+    if (!gGUI_OverlayVisible) {
         return
     }
 

@@ -107,6 +107,13 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
 
+    ; Flight recorder dump in progress — freeze state machine completely.
+    ; The interceptor layer still tracks key state (gINT_AltIsDown etc.),
+    ; but the state machine ignores all events until _FR_Dump cleanup runs.
+    global gFR_DumpInProgress
+    if (gFR_DumpInProgress)
+        return  ; lint-ignore: critical-section
+
     ; File-based debug logging (no performance impact from tooltips)
     if (cfg.DiagEventLog) {
         evName := _GUI_GetEventName(evCode)
@@ -259,18 +266,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (cfg.DiagAltTabTooltips) {
             ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
             SetTimer(() => ToolTip(,,,3), -2000)
-        }
-
-        ; Flight recorder dump in progress — user released Alt to type in InputBox.
-        ; Skip hide/activate so the overlay stays visible for reference.
-        ; _FR_Dump() handles cleanup (hide overlay) when InputBox closes.
-        global gFR_DumpInProgress
-        if (gFR_DumpInProgress) {
-            SetTimer(_GUI_GraceTimerFired, 0)
-            gGUI_DisplayItems := []
-            FR_Record(FR_EV_STATE, FR_ST_IDLE)
-            gGUI_State := "IDLE"
-            return  ; lint-ignore: critical-section
         }
 
         if (gGUI_State = "ALT_PENDING") {

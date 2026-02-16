@@ -204,10 +204,16 @@ _FR_Dump() {
         , "Alt-Tabby Flight Recorder", "w500 h110")
     note := (result.Result = "OK") ? result.Value : ""
 
-    ; Clean up: hide overlay (without activating) and clear flag
+    ; Clean up: reset state machine (was frozen during dump) and hide overlay.
+    ; Order matters: set IDLE before clearing flag so any paint triggered by
+    ; hide sees IDLE state. Clear flag before hide so hide isn't blocked.
+    gGUI_DisplayItems := []
+    gGUI_State := "IDLE"
     gFR_DumpInProgress := false
-    if (wasOverlayVisible)
-        GUI_HideOverlay()
+    ; Always hide — grace timer may have shown overlay during dump even if
+    ; wasOverlayVisible was false at capture time. GUI_HideOverlay() is a
+    ; no-op when gGUI_OverlayVisible is already false.
+    GUI_HideOverlay()
 
     ; --- 4. Build and write dump file ---
     recorderDir := _FR_GetRecorderDir()
