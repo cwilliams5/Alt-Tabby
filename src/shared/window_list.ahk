@@ -240,6 +240,7 @@ WL_EndScan(graceMs := "") {
 WL_UpsertWindow(records, source := "") {
     global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty, gWS_ContentDirty
     global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_MRUBumpOnly, FR_EV_WINDOW_ADD
+    global gWS_DirtyHwnds
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
     added := 0
@@ -306,6 +307,9 @@ WL_UpsertWindow(records, source := "") {
                             sortDirty := true
                         else if (gWS_ContentOnlyFields.Has(k))
                             contentDirty := true
+                        ; Mark hwnd dirty for cosmetic patch during ACTIVE state
+                        if (!gWS_InternalFields.Has(k))
+                            gWS_DirtyHwnds[hwnd] := true
                     }
                 }
             }
