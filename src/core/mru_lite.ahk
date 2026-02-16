@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
+#Warn VarUnset, Off  ; Expected: file is included after window_list.ahk
 
 ; MRU-lite: track active window and update lastActivatedTick in store.
 ; This is a FALLBACK - only used if WinEventHook fails to start.
@@ -35,12 +35,12 @@ MRU_Lite_Tick() {
     ; Clear focus on previous window
     if (_MRU_LastHwnd) {
         try {
-            WindowStore_UpdateFields(_MRU_LastHwnd, { isFocused: false })
+            WL_UpdateFields(_MRU_LastHwnd, { isFocused: false })
         }
     }
     _MRU_LastHwnd := hwnd
     try {
-        WindowStore_UpdateFields(hwnd, { lastActivatedTick: A_TickCount, isFocused: true })
+        WL_UpdateFields(hwnd, { lastActivatedTick: A_TickCount, isFocused: true })
     }
     Critical "Off"
 }

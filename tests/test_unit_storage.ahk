@@ -1,5 +1,5 @@
 ; Unit Tests - Storage
-; WindowStore_UpdateFields, Icon Pump
+; WL_UpdateFields, Icon Pump
 ; Included by test_unit.ahk
 #Include test_utils.ahk
 
@@ -7,13 +7,13 @@ RunUnitTests_Storage() {
     global TestPassed, TestErrors, cfg
 
     ; ============================================================
-    ; WindowStore_UpdateFields 'exists' field test
+    ; WL_UpdateFields 'exists' field test
     ; ============================================================
-    Log("`n--- WindowStore_UpdateFields Tests ---")
+    Log("`n--- WL_UpdateFields Tests ---")
 
     ; Ensure store is initialized
-    WindowStore_Init()
-    WindowStore_BeginScan()
+    WL_Init()
+    WL_BeginScan()
 
     ; Add a test window
     testHwnd := 99999
@@ -27,59 +27,59 @@ RunUnitTests_Storage() {
     testRec["isMinimized"] := false
     testRec["z"] := 1
     testRec["isFocused"] := false
-    WindowStore_UpsertWindow([testRec], "test")
-    WindowStore_EndScan()
+    WL_UpsertWindow([testRec], "test")
+    WL_EndScan()
 
     ; Test: UpdateFields on existing window should return exists=true
-    result := WindowStore_UpdateFields(testHwnd, { isFocused: true }, "test")
+    result := WL_UpdateFields(testHwnd, { isFocused: true }, "test")
     if (result.exists = true) {
-        Log("PASS: WindowStore_UpdateFields returns exists=true for window in store")
+        Log("PASS: WL_UpdateFields returns exists=true for window in store")
         TestPassed++
     } else {
-        Log("FAIL: WindowStore_UpdateFields should return exists=true for window in store")
+        Log("FAIL: WL_UpdateFields should return exists=true for window in store")
         TestErrors++
     }
 
     ; Test: UpdateFields on non-existent window should return exists=false
-    result := WindowStore_UpdateFields(88888, { isFocused: true }, "test")
+    result := WL_UpdateFields(88888, { isFocused: true }, "test")
     if (result.exists = false) {
-        Log("PASS: WindowStore_UpdateFields returns exists=false for window not in store")
+        Log("PASS: WL_UpdateFields returns exists=false for window not in store")
         TestPassed++
     } else {
-        Log("FAIL: WindowStore_UpdateFields should return exists=false for window not in store")
+        Log("FAIL: WL_UpdateFields should return exists=false for window not in store")
         TestErrors++
     }
 
     ; Test: UpdateFields changed field - updating same value should be changed=false
-    result := WindowStore_UpdateFields(testHwnd, { isFocused: true }, "test")
+    result := WL_UpdateFields(testHwnd, { isFocused: true }, "test")
     if (result.changed = false && result.exists = true) {
-        Log("PASS: WindowStore_UpdateFields returns changed=false when value unchanged")
+        Log("PASS: WL_UpdateFields returns changed=false when value unchanged")
         TestPassed++
     } else {
-        Log("FAIL: WindowStore_UpdateFields should return changed=false when value unchanged (got changed=" result.changed ")")
+        Log("FAIL: WL_UpdateFields should return changed=false when value unchanged (got changed=" result.changed ")")
         TestErrors++
     }
 
     ; Clean up - remove test window
-    WindowStore_RemoveWindow([testHwnd], true)
+    WL_RemoveWindow([testHwnd], true)
 
     ; ============================================================
-    ; WindowStore_ValidateExistence Tests (Ghost Window Detection)
+    ; WL_ValidateExistence Tests (Ghost Window Detection)
     ; ============================================================
-    Log("`n--- WindowStore_ValidateExistence Tests ---")
+    Log("`n--- WL_ValidateExistence Tests ---")
 
     ; Test 1: Fake HWNDs removed (IsWindow returns false for non-existent windows)
     Log("Testing ValidateExistence removes fake HWNDs...")
-    WindowStore_Init()
+    WL_Init()
     global gWS_Store
 
-    WindowStore_BeginScan()
+    WL_BeginScan()
     fakeRec1 := Map("hwnd", 0x9999001, "title", "Fake Win 1", "class", "FakeClass", "pid", 1,
                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
     fakeRec2 := Map("hwnd", 0x9999002, "title", "Fake Win 2", "class", "FakeClass", "pid", 2,
                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
-    WindowStore_UpsertWindow([fakeRec1, fakeRec2], "test")
-    WindowStore_EndScan()
+    WL_UpsertWindow([fakeRec1, fakeRec2], "test")
+    WL_EndScan()
 
     ; Both should be in store before validation
     if (gWS_Store.Has(0x9999001) && gWS_Store.Has(0x9999002)) {
@@ -90,7 +90,7 @@ RunUnitTests_Storage() {
         TestErrors++
     }
 
-    result := WindowStore_ValidateExistence()
+    result := WL_ValidateExistence()
 
     if (!gWS_Store.Has(0x9999001) && !gWS_Store.Has(0x9999002)) {
         Log("PASS: ValidateExistence removed both fake HWNDs (IsWindow=false)")
@@ -111,16 +111,16 @@ RunUnitTests_Storage() {
 
     ; Test 2: Rev bumped on removal
     Log("Testing ValidateExistence bumps rev on removal...")
-    WindowStore_Init()
-    WindowStore_BeginScan()
+    WL_Init()
+    WL_BeginScan()
     fakeRec3 := Map("hwnd", 0x9999003, "title", "Fake Win 3", "class", "FakeClass", "pid", 3,
                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-    WindowStore_UpsertWindow([fakeRec3], "test")
-    WindowStore_EndScan()
+    WL_UpsertWindow([fakeRec3], "test")
+    WL_EndScan()
 
     global gWS_Rev
     revBefore := gWS_Rev
-    WindowStore_ValidateExistence()
+    WL_ValidateExistence()
     if (gWS_Rev > revBefore) {
         Log("PASS: ValidateExistence bumped rev after removal")
         TestPassed++
@@ -131,12 +131,12 @@ RunUnitTests_Storage() {
 
     ; Test 3: Empty store is no-op
     Log("Testing ValidateExistence no-op on empty store...")
-    WindowStore_Init()
+    WL_Init()
     ; Drain any queued icon work from previous tests
-    WindowStore_PopIconBatch(100)
+    WL_PopIconBatch(100)
     gWS_Store := Map()
     revBefore := gWS_Rev
-    result := WindowStore_ValidateExistence()
+    result := WL_ValidateExistence()
     if (result.removed = 0 && gWS_Rev = revBefore) {
         Log("PASS: ValidateExistence no-op on empty store (removed=0, rev unchanged)")
         TestPassed++
@@ -146,9 +146,9 @@ RunUnitTests_Storage() {
     }
 
     ; ============================================================
-    ; WindowStore_PurgeBlacklisted Tests
+    ; WL_PurgeBlacklisted Tests
     ; ============================================================
-    Log("`n--- WindowStore_PurgeBlacklisted Tests ---")
+    Log("`n--- WL_PurgeBlacklisted Tests ---")
 
     ; Save original blacklist path to restore later
     global gBlacklist_FilePath
@@ -168,16 +168,16 @@ RunUnitTests_Storage() {
 
         ; Test 1: Title match removed
         Log("Testing PurgeBlacklisted removes title-matched windows...")
-        WindowStore_Init()
-        WindowStore_BeginScan()
+        WL_Init()
+        WL_BeginScan()
         badRec := Map("hwnd", 0xAA01, "title", "BadTitle Test Window", "class", "SafeClass", "pid", 10,
                       "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
         goodRec := Map("hwnd", 0xAA02, "title", "GoodTitle Window", "class", "SafeClass", "pid", 11,
                        "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
-        WindowStore_UpsertWindow([badRec, goodRec], "test")
-        WindowStore_EndScan()
+        WL_UpsertWindow([badRec, goodRec], "test")
+        WL_EndScan()
 
-        result := WindowStore_PurgeBlacklisted()
+        result := WL_PurgeBlacklisted()
 
         if (!gWS_Store.Has(0xAA01)) {
             Log("PASS: PurgeBlacklisted removed title-matched window (BadTitle*)")
@@ -206,14 +206,14 @@ RunUnitTests_Storage() {
 
         ; Test 3: Class match removed
         Log("Testing PurgeBlacklisted removes class-matched windows...")
-        WindowStore_Init()
-        WindowStore_BeginScan()
+        WL_Init()
+        WL_BeginScan()
         classRec := Map("hwnd", 0xAA03, "title", "Safe Title", "class", "BadClass", "pid", 12,
                         "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-        WindowStore_UpsertWindow([classRec], "test")
-        WindowStore_EndScan()
+        WL_UpsertWindow([classRec], "test")
+        WL_EndScan()
 
-        result := WindowStore_PurgeBlacklisted()
+        result := WL_PurgeBlacklisted()
         if (!gWS_Store.Has(0xAA03) && result.removed = 1) {
             Log("PASS: PurgeBlacklisted removed class-matched window (BadClass)")
             TestPassed++
@@ -224,15 +224,15 @@ RunUnitTests_Storage() {
 
         ; Test 4: Rev bumped only when something removed
         Log("Testing PurgeBlacklisted rev behavior...")
-        WindowStore_Init()
-        WindowStore_BeginScan()
+        WL_Init()
+        WL_BeginScan()
         safeRec := Map("hwnd", 0xAA04, "title", "Completely Safe", "class", "SafeClass", "pid", 13,
                        "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-        WindowStore_UpsertWindow([safeRec], "test")
-        WindowStore_EndScan()
+        WL_UpsertWindow([safeRec], "test")
+        WL_EndScan()
 
         revBefore := gWS_Rev
-        result := WindowStore_PurgeBlacklisted()
+        result := WL_PurgeBlacklisted()
         if (result.removed = 0 && gWS_Rev = revBefore) {
             Log("PASS: PurgeBlacklisted no rev bump when nothing removed")
             TestPassed++
@@ -240,13 +240,13 @@ RunUnitTests_Storage() {
             Log("FAIL: PurgeBlacklisted should not bump rev when nothing removed (removed=" result.removed ")")
             TestErrors++
         }
-        WindowStore_RemoveWindow([0xAA04], true)
+        WL_RemoveWindow([0xAA04], true)
 
         ; Test 5: Empty store is no-op
         Log("Testing PurgeBlacklisted no-op on empty store...")
-        WindowStore_Init()
+        WL_Init()
         gWS_Store := Map()
-        result := WindowStore_PurgeBlacklisted()
+        result := WL_PurgeBlacklisted()
         if (result.removed = 0) {
             Log("PASS: PurgeBlacklisted no-op on empty store")
             TestPassed++
@@ -256,7 +256,7 @@ RunUnitTests_Storage() {
         }
 
         ; Drain icon queue to prevent bleeding into subsequent tests
-        WindowStore_PopIconBatch(100)
+        WL_PopIconBatch(100)
 
         ; Cleanup temp files and restore blacklist
         try FileDelete(testBlPathStorage)
@@ -278,7 +278,7 @@ RunUnitTests_Storage() {
     Log("Testing EXE icon extraction from notepad.exe...")
     exePath := A_WinDir "\notepad.exe"
     if (FileExist(exePath)) {
-        hIcon := _IP_ExtractExeIcon(exePath)
+        hIcon := IP_ExtractExeIcon(exePath)
         if (hIcon != 0) {
             Log("PASS: Extracted icon from notepad.exe (hIcon=" hIcon ")")
             TestPassed++
@@ -299,9 +299,9 @@ RunUnitTests_Storage() {
     testExe := A_WinDir "\explorer.exe"
     if (FileExist(testExe)) {
         ; Get icon via EXE fallback (simulating what happens for cloaked windows)
-        hCopy := WindowStore_GetExeIconCopy(testExe)
+        hCopy := WL_GetExeIconCopy(testExe)
         if (!hCopy) {
-            master := _IP_ExtractExeIcon(testExe)
+            master := IP_ExtractExeIcon(testExe)
             if (master) {
                 ; Don't actually cache in store during test
                 hCopy := DllCall("user32\CopyIcon", "ptr", master, "ptr")
@@ -340,8 +340,8 @@ RunUnitTests_Storage() {
     ; This is the critical end-to-end test - verifies that cloaked/minimized windows
     ; actually make it into the icon queue (the bug was they were filtered out here)
     Log("Testing hidden window icon enqueue (critical E2E test)...")
-    WindowStore_Init()
-    WindowStore_BeginScan()
+    WL_Init()
+    WL_BeginScan()
 
     ; Create a cloaked window record (simulating a window on another workspace)
     cloakedHwnd := 77777
@@ -355,7 +355,7 @@ RunUnitTests_Storage() {
     cloakedRec["isMinimized"] := false
     cloakedRec["z"] := 1
     cloakedRec["exePath"] := A_WinDir "\notepad.exe"
-    WindowStore_UpsertWindow([cloakedRec], "test")
+    WL_UpsertWindow([cloakedRec], "test")
 
     ; Create a minimized window record
     minHwnd := 88888
@@ -369,12 +369,12 @@ RunUnitTests_Storage() {
     minRec["isMinimized"] := true  ; MINIMIZED
     minRec["z"] := 2
     minRec["exePath"] := A_WinDir "\explorer.exe"
-    WindowStore_UpsertWindow([minRec], "test")
+    WL_UpsertWindow([minRec], "test")
 
-    WindowStore_EndScan()
+    WL_EndScan()
 
     ; Pop the icon batch - both windows should be in the queue
-    batch := WindowStore_PopIconBatch(10)
+    batch := WL_PopIconBatch(10)
 
     cloakedInQueue := false
     minInQueue := false
@@ -402,12 +402,12 @@ RunUnitTests_Storage() {
     }
 
     ; Clean up
-    WindowStore_RemoveWindow([cloakedHwnd, minHwnd], true)
+    WL_RemoveWindow([cloakedHwnd, minHwnd], true)
 
-    ; Test 5: WindowStore_EnqueueIconRefresh with throttle
+    ; Test 5: WL_EnqueueIconRefresh with throttle
     Log("Testing icon refresh throttle...")
-    WindowStore_Init()
-    WindowStore_BeginScan()
+    WL_Init()
+    WL_BeginScan()
 
     ; Create a window with WM_GETICON icon (eligible for refresh)
     refreshHwnd := 66666
@@ -423,12 +423,12 @@ RunUnitTests_Storage() {
     refreshRec["iconHicon"] := 12345  ; Has icon
     refreshRec["iconMethod"] := "wm_geticon"  ; Got it via WM_GETICON
     refreshRec["iconLastRefreshTick"] := 0  ; Never refreshed
-    WindowStore_UpsertWindow([refreshRec], "test")
-    WindowStore_EndScan()
+    WL_UpsertWindow([refreshRec], "test")
+    WL_EndScan()
 
     ; First refresh should enqueue (never refreshed before)
-    WindowStore_EnqueueIconRefresh(refreshHwnd)
-    batch1 := WindowStore_PopIconBatch(10)
+    WL_EnqueueIconRefresh(refreshHwnd)
+    batch1 := WL_PopIconBatch(10)
     firstRefreshEnqueued := false
     for _, hwnd in batch1 {
         if (hwnd = refreshHwnd)
@@ -444,11 +444,11 @@ RunUnitTests_Storage() {
     }
 
     ; Update the refresh tick to simulate recent refresh
-    WindowStore_UpdateFields(refreshHwnd, { iconLastRefreshTick: A_TickCount }, "test")
+    WL_UpdateFields(refreshHwnd, { iconLastRefreshTick: A_TickCount }, "test")
 
     ; Second refresh immediately should be throttled
-    WindowStore_EnqueueIconRefresh(refreshHwnd)
-    batch2 := WindowStore_PopIconBatch(10)
+    WL_EnqueueIconRefresh(refreshHwnd)
+    batch2 := WL_PopIconBatch(10)
     secondRefreshEnqueued := false
     for _, hwnd in batch2 {
         if (hwnd = refreshHwnd)
@@ -464,12 +464,12 @@ RunUnitTests_Storage() {
     }
 
     ; Clean up
-    WindowStore_RemoveWindow([refreshHwnd], true)
+    WL_RemoveWindow([refreshHwnd], true)
 
     ; Test 6: Icon upgrade - visible window with EXE fallback gets re-queued
     Log("Testing icon upgrade queue (EXE fallback -> WM_GETICON upgrade)...")
-    WindowStore_Init()
-    WindowStore_BeginScan()
+    WL_Init()
+    WL_BeginScan()
 
     ; Create a window that started cloaked (got EXE icon), now visible
     upgradeHwnd := 55555
@@ -484,11 +484,11 @@ RunUnitTests_Storage() {
     upgradeRec["z"] := 1
     upgradeRec["iconHicon"] := 12345  ; Has icon
     upgradeRec["iconMethod"] := "exe"  ; Got it via EXE fallback (not WM_GETICON)
-    WindowStore_UpsertWindow([upgradeRec], "test")
-    WindowStore_EndScan()
+    WL_UpsertWindow([upgradeRec], "test")
+    WL_EndScan()
 
     ; Check if upgrade gets queued
-    batch3 := WindowStore_PopIconBatch(10)
+    batch3 := WL_PopIconBatch(10)
     upgradeEnqueued := false
     for _, hwnd in batch3 {
         if (hwnd = upgradeHwnd)
@@ -504,7 +504,7 @@ RunUnitTests_Storage() {
     }
 
     ; Clean up
-    WindowStore_RemoveWindow([upgradeHwnd], true)
+    WL_RemoveWindow([upgradeHwnd], true)
 
     ; ============================================================
     ; ExeIconCache Prune Tests (no FIFO cap — prune-based cleanup)
@@ -517,10 +517,10 @@ RunUnitTests_Storage() {
     gWS_ExeIconCache := Map()
 
     ; Cache grows without eviction
-    WindowStore_ExeIconCachePut("a.exe", 1001)
-    WindowStore_ExeIconCachePut("b.exe", 1002)
-    WindowStore_ExeIconCachePut("c.exe", 1003)
-    WindowStore_ExeIconCachePut("d.exe", 1004)
+    WL_ExeIconCachePut("a.exe", 1001)
+    WL_ExeIconCachePut("b.exe", 1002)
+    WL_ExeIconCachePut("c.exe", 1003)
+    WL_ExeIconCachePut("d.exe", 1004)
     if (gWS_ExeIconCache.Count = 4) {
         Log("PASS: ExeIconCache: grows to 4 (no FIFO cap)")
         TestPassed++
@@ -534,7 +534,7 @@ RunUnitTests_Storage() {
     gWS_Store := Map()
     gWS_Store[9999] := _WS_NewRecord(9999)
     gWS_Store[9999].exePath := "b.exe"
-    pruned := WindowStore_PruneExeIconCache()
+    pruned := WL_PruneExeIconCache()
     if (pruned = 3) {
         Log("PASS: ExeIconCache prune removed 3 orphaned exe paths")
         TestPassed++
@@ -555,9 +555,9 @@ RunUnitTests_Storage() {
     gWS_ExeIconCache := savedCache
 
     ; ============================================================
-    ; WindowStore_PruneProcNameCache Tests
+    ; WL_PruneProcNameCache Tests
     ; ============================================================
-    Log("`n--- WindowStore_PruneProcNameCache Tests ---")
+    Log("`n--- WL_PruneProcNameCache Tests ---")
 
     global gWS_ProcNameCache
     savedProcCache := gWS_ProcNameCache
@@ -571,7 +571,7 @@ RunUnitTests_Storage() {
         gWS_ProcNameCache[livePid] := { name: "explorer.exe", tick: A_TickCount }
         gWS_ProcNameCache[deadPid] := { name: "ghost.exe", tick: A_TickCount }
 
-        pruned := WindowStore_PruneProcNameCache()
+        pruned := WL_PruneProcNameCache()
 
         if (pruned = 1) {
             Log("PASS: PruneProcNameCache pruned 1 dead PID")
@@ -603,7 +603,7 @@ RunUnitTests_Storage() {
     ; Test 2: Empty cache returns 0
     Log("Testing PruneProcNameCache on empty cache...")
     gWS_ProcNameCache := Map()
-    pruned := WindowStore_PruneProcNameCache()
+    pruned := WL_PruneProcNameCache()
     if (pruned = 0) {
         Log("PASS: PruneProcNameCache returns 0 for empty cache")
         TestPassed++
@@ -619,7 +619,7 @@ RunUnitTests_Storage() {
     gWS_ProcNameCache[4000000002] := { name: "dead2.exe", tick: A_TickCount }
     gWS_ProcNameCache[4000000003] := { name: "dead3.exe", tick: A_TickCount }
 
-    pruned := WindowStore_PruneProcNameCache()
+    pruned := WL_PruneProcNameCache()
     if (pruned = 3) {
         Log("PASS: PruneProcNameCache pruned all 3 dead PIDs")
         TestPassed++
@@ -640,18 +640,18 @@ RunUnitTests_Storage() {
     gWS_ProcNameCache := savedProcCache
 
     ; ============================================================
-    ; WindowStore_UpdateProcessName Tests
+    ; WL_UpdateProcessName Tests
     ; ============================================================
-    Log("`n--- WindowStore_UpdateProcessName Tests ---")
+    Log("`n--- WL_UpdateProcessName Tests ---")
 
     savedProcCache2 := gWS_ProcNameCache
 
     ; Test 1: Guard - pid=0 and name="" both rejected
     Log("Testing UpdateProcessName guard: pid=0 and name='' rejected...")
-    WindowStore_Init()
+    WL_Init()
     gWS_ProcNameCache := Map()
-    WindowStore_UpdateProcessName(0, "ghost.exe")
-    WindowStore_UpdateProcessName(999, "")
+    WL_UpdateProcessName(0, "ghost.exe")
+    WL_UpdateProcessName(999, "")
     if (gWS_ProcNameCache.Count = 0) {
         Log("PASS: UpdateProcessName guard rejected pid=0 and name=''")
         TestPassed++
@@ -662,21 +662,21 @@ RunUnitTests_Storage() {
 
     ; Test 2: Fan-out - two windows with same PID both updated
     Log("Testing UpdateProcessName fan-out: two windows same PID both updated...")
-    WindowStore_Init()
+    WL_Init()
     gWS_ProcNameCache := Map()
-    WindowStore_BeginScan()
+    WL_BeginScan()
     fanRec1 := Map("hwnd", 0xBB01, "title", "Fan Win 1", "class", "Test", "pid", 500,
                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
     fanRec2 := Map("hwnd", 0xBB02, "title", "Fan Win 2", "class", "Test", "pid", 500,
                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
     fanRec3 := Map("hwnd", 0xBB03, "title", "Other PID", "class", "Test", "pid", 600,
                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 3)
-    WindowStore_UpsertWindow([fanRec1, fanRec2, fanRec3], "test")
-    WindowStore_EndScan()
+    WL_UpsertWindow([fanRec1, fanRec2, fanRec3], "test")
+    WL_EndScan()
     ; Drain icon queue from upserts
-    WindowStore_PopIconBatch(100)
+    WL_PopIconBatch(100)
 
-    WindowStore_UpdateProcessName(500, "notepad.exe")
+    WL_UpdateProcessName(500, "notepad.exe")
 
     if (gWS_Store[0xBB01].processName = "notepad.exe" && gWS_Store[0xBB02].processName = "notepad.exe") {
         Log("PASS: Both pid=500 windows updated to notepad.exe")
@@ -699,17 +699,17 @@ RunUnitTests_Storage() {
 
     ; Test 4: Rev bumped exactly once
     Log("Testing UpdateProcessName rev bump...")
-    WindowStore_Init()
+    WL_Init()
     gWS_ProcNameCache := Map()
-    WindowStore_BeginScan()
+    WL_BeginScan()
     revRec := Map("hwnd", 0xBB04, "title", "Rev Test", "class", "Test", "pid", 700,
                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-    WindowStore_UpsertWindow([revRec], "test")
-    WindowStore_EndScan()
-    WindowStore_PopIconBatch(100)
+    WL_UpsertWindow([revRec], "test")
+    WL_EndScan()
+    WL_PopIconBatch(100)
 
     revBefore := gWS_Rev
-    WindowStore_UpdateProcessName(700, "calc.exe")
+    WL_UpdateProcessName(700, "calc.exe")
     if (gWS_Rev = revBefore + 1) {
         Log("PASS: Rev bumped exactly once after UpdateProcessName")
         TestPassed++
@@ -721,7 +721,7 @@ RunUnitTests_Storage() {
     ; Test 5: No rev bump when name unchanged
     Log("Testing UpdateProcessName no rev bump when name unchanged...")
     revBefore := gWS_Rev
-    WindowStore_UpdateProcessName(700, "calc.exe")  ; Same name again
+    WL_UpdateProcessName(700, "calc.exe")  ; Same name again
     if (gWS_Rev = revBefore) {
         Log("PASS: No rev bump when name unchanged")
         TestPassed++
@@ -732,14 +732,14 @@ RunUnitTests_Storage() {
 
     ; Test 6: ProcNameCache grows without cap (prune-based cleanup)
     Log("Testing ProcNameCache grows without cap...")
-    WindowStore_Init()
+    WL_Init()
     gWS_ProcNameCache := Map()
 
     ; Cache grows to 4 without eviction (no FIFO cap)
-    WindowStore_UpdateProcessName(1001, "a.exe")
-    WindowStore_UpdateProcessName(1002, "b.exe")
-    WindowStore_UpdateProcessName(1003, "c.exe")
-    WindowStore_UpdateProcessName(1004, "d.exe")
+    WL_UpdateProcessName(1001, "a.exe")
+    WL_UpdateProcessName(1002, "b.exe")
+    WL_UpdateProcessName(1003, "c.exe")
+    WL_UpdateProcessName(1004, "d.exe")
 
     if (gWS_ProcNameCache.Count = 4) {
         Log("PASS: ProcNameCache grows to 4 (no FIFO cap)")
@@ -758,7 +758,7 @@ RunUnitTests_Storage() {
     }
 
     ; Verify prune removes dead PIDs (1001-1004 are fake PIDs that don't exist)
-    pruned := WindowStore_PruneProcNameCache()
+    pruned := WL_PruneProcNameCache()
     if (pruned = 4) {
         Log("PASS: ProcNameCache prune removed 4 dead PIDs")
         TestPassed++
@@ -1117,14 +1117,14 @@ RunUnitTests_Storage() {
     AssertEq(_WS_CmpProcessName(pnA, pnC), 0, "CmpProcessName: chrome = chrome returns 0")
 
     ; ============================================================
-    ; WindowStore_GetProjection Filtering Tests
+    ; WL_GetDisplayList Filtering Tests
     ; ============================================================
-    Log("`n--- WindowStore_GetProjection Filtering Tests ---")
+    Log("`n--- WL_GetDisplayList Filtering Tests ---")
 
     ; Set up store with 5 synthetic windows with varied properties
-    WindowStore_Init()
-    WindowStore_SetCurrentWorkspace("ws-1", "Desktop 1")
-    WindowStore_BeginScan()
+    WL_Init()
+    WL_SetCurrentWorkspace("ws-1", "Desktop 1")
+    WL_BeginScan()
 
     ; Window 1: normal, visible, on current workspace, MRU=1000
     projRec1 := Map("hwnd", 0xF001, "title", "Zulu Window", "class", "Test", "pid", 10,
@@ -1152,69 +1152,69 @@ RunUnitTests_Storage() {
                      "lastActivatedTick", 100, "isFocused", false,
                      "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false, "processName", "echo.exe")
 
-    WindowStore_UpsertWindow([projRec1, projRec2, projRec3, projRec4, projRec5], "test")
-    WindowStore_EndScan()
-    WindowStore_PopIconBatch(100)
+    WL_UpsertWindow([projRec1, projRec2, projRec3, projRec4, projRec5], "test")
+    WL_EndScan()
+    WL_PopIconBatch(100)
 
-    ; Test 1: Default projection excludes cloaked (2 cloaked out of 5)
-    proj := WindowStore_GetProjection()
-    AssertEq(proj.items.Length, 3, "GetProjection default: 3 items (excludes 2 cloaked)")
+    ; Test 1: Default display list excludes cloaked (2 cloaked out of 5)
+    proj := WL_GetDisplayList()
+    AssertEq(proj.items.Length, 3, "GetDisplayList default: 3 items (excludes 2 cloaked)")
 
     ; Test 2: includeCloaked=true shows all 5
-    proj := WindowStore_GetProjection({includeCloaked: true})
-    AssertEq(proj.items.Length, 5, "GetProjection includeCloaked=true: all 5 items")
+    proj := WL_GetDisplayList({includeCloaked: true})
+    AssertEq(proj.items.Length, 5, "GetDisplayList includeCloaked=true: all 5 items")
 
     ; Test 3: includeMinimized=false excludes minimized (rec3 is minimized + not cloaked)
-    proj := WindowStore_GetProjection({includeMinimized: false})
-    AssertEq(proj.items.Length, 2, "GetProjection includeMinimized=false: 2 items (excludes minimized+cloaked)")
+    proj := WL_GetDisplayList({includeMinimized: false})
+    AssertEq(proj.items.Length, 2, "GetDisplayList includeMinimized=false: 2 items (excludes minimized+cloaked)")
 
     ; Test 4: currentWorkspaceOnly=true filters to Desktop 1
-    proj := WindowStore_GetProjection({includeCloaked: true, currentWorkspaceOnly: true})
-    AssertEq(proj.items.Length, 3, "GetProjection currentWorkspaceOnly: 3 items on Desktop 1")
+    proj := WL_GetDisplayList({includeCloaked: true, currentWorkspaceOnly: true})
+    AssertEq(proj.items.Length, 3, "GetDisplayList currentWorkspaceOnly: 3 items on Desktop 1")
 
     ; Test 5: Combined strict filters (currentWorkspaceOnly + no minimized + no cloaked)
-    proj := WindowStore_GetProjection({currentWorkspaceOnly: true, includeMinimized: false, includeCloaked: false})
-    AssertEq(proj.items.Length, 2, "GetProjection strict: 2 items (current WS, not min, not cloaked)")
+    proj := WL_GetDisplayList({currentWorkspaceOnly: true, includeMinimized: false, includeCloaked: false})
+    AssertEq(proj.items.Length, 2, "GetDisplayList strict: 2 items (current WS, not min, not cloaked)")
 
     ; Test 6: MRU sort order (default) - highest lastActivatedTick first
-    proj := WindowStore_GetProjection({includeCloaked: true})
-    AssertEq(proj.items[1].hwnd + 0, 0xF002, "GetProjection MRU sort: first item is 0xF002 (tick=3000)")
-    AssertEq(proj.items[5].hwnd + 0, 0xF005, "GetProjection MRU sort: last item is 0xF005 (tick=100)")
+    proj := WL_GetDisplayList({includeCloaked: true})
+    AssertEq(proj.items[1].hwnd + 0, 0xF002, "GetDisplayList MRU sort: first item is 0xF002 (tick=3000)")
+    AssertEq(proj.items[5].hwnd + 0, 0xF005, "GetDisplayList MRU sort: last item is 0xF005 (tick=100)")
 
     ; Test 7: hwndsOnly columns
-    proj := WindowStore_GetProjection({columns: "hwndsOnly", includeCloaked: true})
-    AssertEq(proj.HasOwnProp("hwnds"), true, "GetProjection hwndsOnly: has 'hwnds' property")
-    AssertEq(proj.HasOwnProp("items"), false, "GetProjection hwndsOnly: no 'items' property")
-    AssertEq(proj.hwnds.Length, 5, "GetProjection hwndsOnly: 5 hwnds")
+    proj := WL_GetDisplayList({columns: "hwndsOnly", includeCloaked: true})
+    AssertEq(proj.HasOwnProp("hwnds"), true, "GetDisplayList hwndsOnly: has 'hwnds' property")
+    AssertEq(proj.HasOwnProp("items"), false, "GetDisplayList hwndsOnly: no 'items' property")
+    AssertEq(proj.hwnds.Length, 5, "GetDisplayList hwndsOnly: 5 hwnds")
 
     ; Test 8: Sort="Title" produces alphabetical order
-    proj := WindowStore_GetProjection({sort: "Title", includeCloaked: true})
-    AssertEq(proj.items[1].title, "Alpha Window", "GetProjection Title sort: first is Alpha")
-    AssertEq(proj.items[5].title, "Zulu Window", "GetProjection Title sort: last is Zulu")
+    proj := WL_GetDisplayList({sort: "Title", includeCloaked: true})
+    AssertEq(proj.items[1].title, "Alpha Window", "GetDisplayList Title sort: first is Alpha")
+    AssertEq(proj.items[5].title, "Zulu Window", "GetDisplayList Title sort: last is Zulu")
 
     ; Test 9: Sort="Pid" produces numeric order
-    proj := WindowStore_GetProjection({sort: "Pid", includeCloaked: true})
-    AssertEq(proj.items[1].pid + 0, 5, "GetProjection Pid sort: first pid=5")
-    AssertEq(proj.items[5].pid + 0, 30, "GetProjection Pid sort: last pid=30")
+    proj := WL_GetDisplayList({sort: "Pid", includeCloaked: true})
+    AssertEq(proj.items[1].pid + 0, 5, "GetDisplayList Pid sort: first pid=5")
+    AssertEq(proj.items[5].pid + 0, 30, "GetDisplayList Pid sort: last pid=30")
 
     ; Test 10: Sort="ProcessName" produces alphabetical order
-    proj := WindowStore_GetProjection({sort: "ProcessName", includeCloaked: true})
-    AssertEq(proj.items[1].processName, "alpha.exe", "GetProjection ProcessName sort: first is alpha.exe")
-    AssertEq(proj.items[5].processName, "zulu.exe", "GetProjection ProcessName sort: last is zulu.exe")
+    proj := WL_GetDisplayList({sort: "ProcessName", includeCloaked: true})
+    AssertEq(proj.items[1].processName, "alpha.exe", "GetDisplayList ProcessName sort: first is alpha.exe")
+    AssertEq(proj.items[5].processName, "zulu.exe", "GetDisplayList ProcessName sort: last is zulu.exe")
 
     ; Test 11: Empty store returns empty items
-    WindowStore_Init()
+    WL_Init()
     gWS_Store := Map()
-    proj := WindowStore_GetProjection()
-    AssertEq(proj.items.Length, 0, "GetProjection empty store: 0 items")
+    proj := WL_GetDisplayList()
+    AssertEq(proj.items.Length, 0, "GetDisplayList empty store: 0 items")
 
     ; Drain icon queue
-    WindowStore_PopIconBatch(100)
+    WL_PopIconBatch(100)
 
     ; ============================================================
-    ; Blacklist_Reload + GetStats Functional Tests
+    ; _Blacklist_Reload Functional Tests
     ; ============================================================
-    Log("`n--- Blacklist_Reload + GetStats Tests ---")
+    Log("`n--- _Blacklist_Reload Tests ---")
 
     global gBlacklist_FilePath, gBlacklist_Loaded
     savedBlPathReload := gBlacklist_FilePath
@@ -1235,18 +1235,12 @@ RunUnitTests_Storage() {
         AssertEq(Blacklist_IsMatch("ExactTitleA", "OtherClass"), true, "Reload: patterns A exact title matches")
         AssertEq(Blacklist_IsMatch("AnyTitle", "ClassA"), true, "Reload: patterns A class matches")
 
-        ; Verify GetStats reflects patterns A
-        stats := Blacklist_GetStats()
-        AssertEq(stats.titles, 2, "GetStats: 2 title patterns after init A")
-        AssertEq(stats.classes, 1, "GetStats: 1 class pattern after init A")
-        AssertEq(stats.pairs, 1, "GetStats: 1 pair pattern after init A")
-
         ; Step 2: Overwrite file with patterns B and call Reload()
         FileDelete(testBlPathReload)
         blContentB := "[Title]`nPatternB*`n[Class]`nClassB`n[Pair]`nPairClassB|PairTitleB*`n"
         FileAppend(blContentB, testBlPathReload, "UTF-8")
 
-        reloadResult := Blacklist_Reload()
+        reloadResult := _Blacklist_Reload()
         AssertEq(reloadResult, true, "Reload: returns true on successful reload")
 
         ; Step 3: New patterns B match
@@ -1261,18 +1255,12 @@ RunUnitTests_Storage() {
         ; Step 5: Pair patterns work after reload
         AssertEq(Blacklist_IsMatch("PairTitleB_Suffix", "PairClassB"), true, "Reload: pair B matches after reload")
 
-        ; Step 6: GetStats reflects updated counts
-        stats := Blacklist_GetStats()
-        AssertEq(stats.titles, 1, "GetStats: 1 title pattern after reload B")
-        AssertEq(stats.classes, 1, "GetStats: 1 class pattern after reload B")
-        AssertEq(stats.pairs, 1, "GetStats: 1 pair pattern after reload B")
-
         ; Cleanup
         try FileDelete(testBlPathReload)
         try DirDelete(testBlDirReload)
         Blacklist_Init(savedBlPathReload)
     } catch as e {
-        Log("FAIL: Blacklist_Reload test error: " e.Message)
+        Log("FAIL: _Blacklist_Reload test error: " e.Message)
         TestErrors++
         try DirDelete(testBlDirReload, true)
         Blacklist_Init(savedBlPathReload)

@@ -14,7 +14,6 @@ global g_LauncherMutex := 0
 global g_ActiveMutex := 0
 
 ; WM_COPYDATA debounce state (IsSet pattern - unset until first signal received)
-global g_LastStoreRestartTick  ; Debounce RESTART_STORE signals
 global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
 global LAUNCHER_RESTART_DEBOUNCE_MS := 5000
 
@@ -26,9 +25,9 @@ global g_WizardSkippedForExistingInstall := false
 global ERROR_ALREADY_EXISTS := 183
 
 ; Subprocess PID tracking — owner (read by launcher_about, launcher_stats, etc.)
-global g_StorePID := 0
 global g_GuiPID := 0
-global g_ViewerPID := 0
+global g_PumpPID := 0
+; (g_ViewerPID removed — viewer is now in-process within GUI)
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagLauncherLog (config.ini [Diagnostics] LauncherLog=true)
@@ -59,7 +58,7 @@ Launcher_LogStartup() {
 ; Main launcher initialization
 ; Called from alt_tabby.ahk when g_AltTabbyMode = "launch"
 Launcher_Init() {
-    global g_StorePID, g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
+    global g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
     global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick, APP_NAME
     global g_WizardSkippedForExistingInstall
 
@@ -221,9 +220,10 @@ Launcher_StartSubprocesses() {
         }
     }
 
-    ; Launch store and GUI
-    LaunchStore()
-    Sleep(TIMING_SUBPROCESS_LAUNCH)
+    ; Launch EnrichmentPump (before GUI so pipe is ready for connection)
+    LaunchPump()
+
+    ; Launch GUI (store runs in-process within GUI)
     LaunchGui()
 
     ; In testing mode, write our HWND to temp file so lifecycle tests can send WM_COPYDATA
@@ -288,25 +288,14 @@ _Launcher_OnExit(exitReason, exitCode) {
 }
 
 ; Handle WM_COPYDATA control signals from child processes
-; GUI sends RESTART_STORE when store health check fails
-; Config editor sends RESTART_ALL when settings are saved
+; Config editor sends RESTART_ALL, blacklist editor sends RELOAD_BLACKLIST
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
-    global TABBY_CMD_RESTART_STORE, TABBY_CMD_RESTART_ALL, cfg
-    global g_LastStoreRestartTick, g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
+    global TABBY_CMD_RESTART_ALL, TABBY_CMD_RELOAD_BLACKLIST, cfg
+    global TABBY_CMD_STATS_RESPONSE
+    global g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
+    global g_StatsCache
 
     dwData := NumGet(lParam, 0, "uptr")
-
-    if (dwData = TABBY_CMD_RESTART_STORE) {
-        if (cfg.DiagLauncherLog)
-            Launcher_Log("IPC: Received RESTART_STORE from hwnd=" wParam)
-        if (IsSet(g_LastStoreRestartTick) && (A_TickCount - g_LastStoreRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
-            Launcher_Log("IPC: RESTART_STORE debounced")
-            return 1
-        }
-        g_LastStoreRestartTick := A_TickCount
-        SetTimer(() => RestartStore(), -1)
-        return 1
-    }
 
     if (dwData = TABBY_CMD_RESTART_ALL) {
         if (cfg.DiagLauncherLog)
@@ -320,11 +309,45 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
         return 1
     }
 
+    if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("IPC: Received RELOAD_BLACKLIST from hwnd=" wParam)
+        Launcher_RelayToGui(TABBY_CMD_RELOAD_BLACKLIST)
+        return 1
+    }
+
+    if (dwData = TABBY_CMD_STATS_RESPONSE) {
+        cbData := NumGet(lParam, A_PtrSize, "uptr")
+        lpData := NumGet(lParam, A_PtrSize * 2, "uptr")
+        if (cbData > 0 && lpData) {
+            json := StrGet(lpData, cbData, "UTF-8")
+            try g_StatsCache := JSON.Load(json)
+        }
+        return 1
+    }
+
     return 0
 }
 
+; Relay a WM_COPYDATA command to the GUI process
+Launcher_RelayToGui(cmd) {
+    global g_GuiPID, WM_COPYDATA
+    if (!LauncherUtils_IsRunning(g_GuiPID))
+        return
+    DetectHiddenWindows(true)
+    guiHwnd := WinGetID("ahk_pid " g_GuiPID)
+    DetectHiddenWindows(false)
+    if (!guiHwnd)
+        return
+    cds := Buffer(A_PtrSize * 3, 0)
+    NumPut("uptr", cmd, cds, 0)
+    NumPut("uptr", 0, cds, A_PtrSize)
+    NumPut("uptr", 0, cds, A_PtrSize * 2)
+    try SendMessage(WM_COPYDATA, 0, cds.Ptr, , "ahk_id " guiHwnd)
+}
+
 ; Apply config changes: reload config for the launcher, re-theme launcher
-; surfaces in-place, then restart store+GUI (which read config fresh on launch).
+; surfaces in-place, then restart subprocesses (which read config fresh on launch).
 _Launcher_ApplyConfigChanges() {
     Launcher_Log("ApplyConfigChanges: reloading config and theme for launcher")
 
@@ -334,21 +357,14 @@ _Launcher_ApplyConfigChanges() {
     ; 2. Re-apply theme to launcher's own surfaces (tray menus, dashboard, etc.)
     Theme_Reload()
 
-    ; 3. Restart store + GUI (they read config fresh on startup)
-    _Launcher_RestartStoreAndGui()
+    ; 3. Restart pump + GUI (they read config fresh on startup)
+    _Launcher_RestartSubprocesses()
 }
 
-_Launcher_RestartStoreAndGui() {
-    global TIMING_SUBPROCESS_LAUNCH
+_Launcher_RestartSubprocesses() {
     Launcher_ShutdownSubprocesses()
-    LaunchStore()
-    Sleep(TIMING_SUBPROCESS_LAUNCH)
+    LaunchPump()
     LaunchGui()
-}
-
-Launcher_RestartStore() {
-    global g_StorePID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("store", &g_StorePID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
 }
 
 Launcher_RestartGui() {
@@ -356,19 +372,14 @@ Launcher_RestartGui() {
     LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
 }
 
-Launcher_RestartViewer() {
-    global g_ViewerPID, TIMING_SUBPROCESS_LAUNCH
-    LauncherUtils_Restart("viewer", &g_ViewerPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
-}
-
 ; Kills subprocesses + resets PIDs. Optional editor PIDs passed by caller.
 Launcher_ShutdownSubprocesses(editors := 0) {
-    global g_StorePID, g_GuiPID, g_ViewerPID
-    opts := {pids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}}
+    global g_GuiPID, g_PumpPID
+    opts := {pids: {gui: g_GuiPID, pump: g_PumpPID}}
     if (IsObject(editors))
         opts.editors := editors
     ProcessUtils_KillAltTabby(opts)
-    g_GuiPID := 0, g_StorePID := 0, g_ViewerPID := 0
+    g_GuiPID := 0, g_PumpPID := 0
 }
 
 ; Check if we should redirect to scheduled task instead of running directly
@@ -856,16 +867,11 @@ Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
 ; SUBPROCESS LAUNCH
 ; ============================================================
 
-LaunchStore() {
-    global g_StorePID, APP_NAME
-    if (!LauncherUtils_Launch("store", &g_StorePID, Launcher_Log)) {
-        ThemeMsgBox(
-            "The window tracker (store) could not be started.`n`n"
-            "Alt-Tabby will not function correctly without it.`n"
-            "Try restarting Alt-Tabby from the tray menu.",
-            APP_NAME, "Iconx")
-    }
-    Dash_OnStoreRestart()
+LaunchPump() {
+    global g_PumpPID, cfg
+    if (!cfg.UseEnrichmentPump)
+        return
+    LauncherUtils_Launch("pump", &g_PumpPID, Launcher_Log)
 }
 
 LaunchGui() {
@@ -880,8 +886,4 @@ LaunchGui() {
     Dash_StartRefreshTimer()
 }
 
-LaunchViewer() {
-    global g_ViewerPID
-    LauncherUtils_Launch("viewer", &g_ViewerPID, Launcher_Log)
-    Dash_StartRefreshTimer()
-}
+; (LaunchViewer removed — viewer is now in-process within GUI, toggled via tray menu)

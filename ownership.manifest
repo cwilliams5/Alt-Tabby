@@ -20,18 +20,32 @@
 #   Preview manifest changes: powershell -File tests/check_global_ownership.ps1 -Generate
 #   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover
 
-cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils, store_server
+cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils
 g_ActiveMutex: launcher_main, launcher_tray
+g_StatsCache: launcher_main
 g_LauncherMutex: launcher_main, launcher_tray
-gGUI_CurrentWSName: gui_state, gui_workspace
-gGUI_DisplayItems: gui_state, gui_store, gui_workspace
-gGUI_LiveItems: gui_input, gui_state, gui_store
-gGUI_LiveItemsIndex: gui_state, gui_store
-gGUI_LiveItemsMap: gui_input, gui_store
+gStats_LogError: gui_main
+gStats_LogInfo: gui_main
+gWS_OnStoreChanged: gui_main
+gWS_OnWorkspaceChanged: gui_main
+gIP_GetExeIcon: gui_main
+gIP_GetRecord: gui_main
+gIP_PopBatch: gui_main
+gIP_PutExeIcon: gui_main
+gIP_UpdateFields: gui_main
+gPP_GetProcNameCached: gui_main
+gPP_PopBatch: gui_main
+gPP_UpdateProcessName: gui_main
+IconTimerIntervalMs: icon_pump, gui_pump
+ProcTimerIntervalMs: proc_pump, gui_pump
+gGUI_CurrentWSName: gui_main, gui_state, gui_workspace
+gGUI_DisplayItems: gui_data, gui_state, gui_workspace
+_gGUI_LastCosmeticRepaintTick: gui_data
+gGUI_LiveItems: gui_input, gui_state, gui_data
+gGUI_LiveItemsIndex: gui_state, gui_data
+gGUI_LiveItemsMap: gui_input, gui_data
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
-gGUI_ScrollTop: gui_input, gui_paint, gui_state
-gGUI_Sel: gui_input, gui_state, gui_store
-gGUI_StoreClient: gui_main, gui_state, gui_store
-gGUI_StoreConnected: gui_main, gui_store
-gGUI_ToggleBase: gui_state, gui_store
+gGUI_ScrollTop: gui_data, gui_input, gui_paint, gui_state
+gGUI_Sel: gui_data, gui_input, gui_state
+gGUI_ToggleBase: gui_state

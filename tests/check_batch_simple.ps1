@@ -291,15 +291,16 @@ if (-not (Test-Path $constantsFile)) {
                     $rawLine = $lines[$i]
                     if (-not $rawLine.Contains($constName)) { continue }
                     if ($rawLine -match '^\s*;') { continue }
-                    # Handle context: type equality comparison
-                    if ($rawLine -match "type\s*={1,2}\s*$escapedName\b" -or
-                        $rawLine -match "\[.type.\]\s*={1,2}\s*$escapedName\b" -or
+                    # Handle context: type equality/inequality comparison (guard clause: != is also a handler)
+                    if ($rawLine -match "type\s*!?={1,2}\s*$escapedName\b" -or
+                        $rawLine -match "\[.type.\]\s*!?={1,2}\s*$escapedName\b" -or
                         $rawLine -match "^\s*case\b.*\b$escapedName\b") {
                         [void]$constInHandle.Add($constName)
                     }
-                    # Send context: type construction (object literal, Map assignment, string concat)
+                    # Send context: type construction (object literal, Map assignment, Map constructor, string concat)
                     if ($rawLine -match "type:\s*$escapedName\b" -or
                         $rawLine -match "\[.type.\]\s*:=\s*$escapedName\b" -or
+                        $rawLine -match "Map\s*\(\s*['""]type['""].*$escapedName\b" -or
                         $rawLine -match "['""]type['""].*['""].*$escapedName\b") {
                         [void]$constInSend.Add($constName)
                     }

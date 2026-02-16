@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Cross-file globals (cfg, g_StorePID, etc.) come from alt_tabby.ahk
+#Warn VarUnset, Off  ; Cross-file globals (cfg, g_PumpPID, etc.) come from alt_tabby.ahk
 
 ; ============================================================
 ; Launcher Dashboard
@@ -24,25 +24,19 @@ global DASH_INTERVAL_COOL := 5000
 global DASH_TIER_HOT_MS := 15000
 global DASH_TIER_WARM_MS := 75000
 
-; Producer status cache — queried once after store launch, shown in dashboard
-global g_ProducerStatusCache := ""
-global g_ProducerHasFailed := ""  ; "" = not queried, false = all OK, true = has failures
-
 ; Update check state — persists across dashboard open/close
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
 
-; Stats cache — queried from store on dashboard open and periodically
-global g_StatsCache := ""          ; Parsed stats response Map, or "" if not queried
-global g_StatsLastQueryTick := 0   ; Last time stats were queried from store
-global DASH_STATS_QUERY_INTERVAL := 5000  ; Query store at most every 5 seconds
+; Stats cache — read from stats.ini [Snapshot] section (written by GUI heartbeat)
+global g_StatsCache := ""          ; Parsed stats snapshot Map, or "" if not loaded
 
 ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
-    global g_StorePID, g_GuiPID, g_ViewerPID, ALTTABBY_INSTALL_DIR
+    global g_PumpPID, g_GuiPID, ALTTABBY_INSTALL_DIR
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashControls, g_DashUpdateState, g_ProducerStatusCache, g_ProducerHasFailed, DASH_INTERVAL_COOL
+    global g_DashControls, g_DashUpdateState, DASH_INTERVAL_COOL
     global gTheme_Palette
 
     ; If already open, focus existing dialog
@@ -242,28 +236,16 @@ ShowDashboardDialog() {
     Theme_ApplyToControl(btnEscalate, "Button", themeEntry)
 
     ; Subprocess rows with buttons — handlers check live state, refresh updates labels
-    ; Order: Store, Producers, GUI, Config Editor, Blacklist Editor, Viewer
+    ; Order: Pump, GUI, Config Editor, Blacklist Editor
     ; Colored dot controls: green=running, red=core not running, grey=optional not running
     dot := Chr(0x25CF)  ; ● BLACK CIRCLE — renders solid in any font
 
-    ; Store row (core — red when not running)
+    ; Pump row (core — red when not running)
     subY := 322
-    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "store", "Store", g_StorePID, true, _Dash_OnStoreBtn)
-
-    ; Producer status line (dot shows overall health)
-    subY += 20
-    prodDotColor := (g_ProducerHasFailed = "") ? "c" gTheme_Palette.textMuted
-        : (g_ProducerHasFailed ? "c" gTheme_Palette.danger : "c" gTheme_Palette.success)
-    dg.SetFont("s9 " prodDotColor)
-    g_DashControls.producerDot := dg.AddText("x400 y" subY " w14", g_ProducerStatusCache != "" ? dot : "")
-    Theme_MarkSemantic(g_DashControls.producerDot)
-    g_DashControls.producerDotColor := prodDotColor
-    dg.SetFont("s9 cDefault")
-    prodLabel := g_ProducerStatusCache != "" ? "Producers: " g_ProducerStatusCache : ""
-    g_DashControls.producerText := dg.AddText("x414 y" subY " w261 +0x100", prodLabel)
+    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "pump", "Enrichment Pump", g_PumpPID, true, _Dash_OnPumpBtn)
 
     ; GUI row (core — red when not running)
-    subY += 18
+    subY += 30
     _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "gui", "GUI", g_GuiPID, true, _Dash_OnGuiBtn)
 
     ; Config Editor row (optional — grey when not running)
@@ -274,9 +256,12 @@ ShowDashboardDialog() {
     subY += 30
     _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "blacklist", "Blacklist Editor", g_BlacklistEditorPID, false, _Dash_OnBlacklistBtn)
 
-    ; Viewer row (optional — grey when not running)
+    ; Viewer toggle (in-process debug window — no subprocess to track)
     subY += 30
-    _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "viewer", "Viewer", g_ViewerPID, false, _Dash_OnViewerBtn)
+    dg.AddText("x400 y" subY " w14", "")  ; spacer for alignment
+    viewerLabel := dg.AddText("x420 y" subY " w170 +0x100 c" gTheme_Palette.text, "Debug Viewer")
+    viewerToggleBtn := dg.AddButton("x600 y" (subY - 3) " w80 h22", "Toggle")
+    viewerToggleBtn.OnEvent("Click", (*) => Tray_ToggleViewer())
 
     ; Info rows (read-only)
     subY += 28
@@ -341,17 +326,9 @@ ShowDashboardDialog() {
             . "Development = running from AHK source")
         escalateTip := A_IsAdmin ? "Restart without administrator elevation" : "Restart with administrator elevation (UAC prompt)"
         Dash_SetTip(hTT, btnEscalate, escalateTip)
-        Dash_SetTip(hTT, g_DashControls.storeText
-            , "The WindowStore server tracks all open windows and`n"
-            . "serves data to the GUI and other subscribers via named pipes")
-        Dash_SetTip(hTT, g_DashControls.producerText
-            , "Status of store data producers`n"
-            . "WEH = Window Event Hook (tracks focus, title, window changes)`n"
-            . "KS = Komorebi Subscription (workspace events from komorebi)`n"
-            . "KL = Komorebi Lite (workspace polling fallback)`n"
-            . "IP = Icon Pump (resolves window icons asynchronously)`n"
-            . "PP = Process Pump (resolves process names asynchronously)`n"
-            . "MRU = MRU Tracker (focus tracking fallback if WEH fails)")
+        Dash_SetTip(hTT, g_DashControls.pumpText
+            , "The Enrichment Pump resolves window icons and process`n"
+            . "names asynchronously in a subprocess via named pipe IPC")
         Dash_SetTip(hTT, g_DashControls.guiText
             , "The Alt+Tab overlay — handles keyboard hooks,`n"
             . "window selection, and rendering")
@@ -359,9 +336,9 @@ ShowDashboardDialog() {
             , "Editor subprocess for modifying config.ini settings")
         Dash_SetTip(hTT, g_DashControls.blacklistText
             , "Editor subprocess for managing the window filter blacklist")
-        Dash_SetTip(hTT, g_DashControls.viewerText
+        Dash_SetTip(hTT, viewerLabel
             , "Debug viewer — displays live window data from the`n"
-            . "WindowStore for troubleshooting")
+            . "WindowList for troubleshooting")
         Dash_SetTip(hTT, ctlInstallInfo
             , "Directory where Alt-Tabby is installed or running from")
         Dash_SetTip(hTT, ctlAdminTask
@@ -374,16 +351,14 @@ ShowDashboardDialog() {
         Dash_SetTip(hTT, btnClose, "Close the dashboard")
 
         ; Dynamic tooltips — must match current button state
-        storeRunning := LauncherUtils_IsRunning(g_StorePID)
+        pumpRunning := LauncherUtils_IsRunning(g_PumpPID)
         guiRunning := LauncherUtils_IsRunning(g_GuiPID)
         configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
         blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
-        viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
-        Dash_SetTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
+        Dash_SetTip(hTT, g_DashControls.pumpBtn, pumpRunning ? "Stop and restart the EnrichmentPump" : "Start the EnrichmentPump")
         Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
         Dash_SetTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
         Dash_SetTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
-        Dash_SetTip(hTT, g_DashControls.viewerBtn, viewerRunning ? "Restart the debug viewer" : "Open the debug viewer")
         Dash_SetTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
     }
 
@@ -395,12 +370,8 @@ ShowDashboardDialog() {
     ; Start background refresh in cool mode (no interaction yet)
     SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_COOL)
 
-    ; Query producer status if store is running but cache is empty
-    if (LauncherUtils_IsRunning(g_StorePID) && g_ProducerStatusCache = "")
-        SetTimer(_Dash_QueryProducerStatus, -2000)
-
-    ; Query stats if store is running and tracking is enabled
-    if (LauncherUtils_IsRunning(g_StorePID) && cfg.StatsTrackingEnabled)
+    ; Query stats if tracking is enabled (reads stats.ini written by GUI heartbeat)
+    if (cfg.StatsTrackingEnabled)
         SetTimer(Dash_QueryStats, -500)
 
     ; Auto-check if stale (never checked, or >12h ago)
@@ -411,12 +382,12 @@ ShowDashboardDialog() {
 ; Interaction Handlers — check live state, act, trigger refresh
 ; ============================================================
 
-_Dash_OnStoreBtn(*) {
-    global g_StorePID
-    if (LauncherUtils_IsRunning(g_StorePID))
-        RestartStore()
+_Dash_OnPumpBtn(*) {
+    global g_PumpPID
+    if (LauncherUtils_IsRunning(g_PumpPID))
+        RestartPump()
     else
-        LaunchStore()
+        LaunchPump()
 }
 
 _Dash_OnGuiBtn(*) {
@@ -427,13 +398,7 @@ _Dash_OnGuiBtn(*) {
         LaunchGui()
 }
 
-_Dash_OnViewerBtn(*) {
-    global g_ViewerPID
-    if (LauncherUtils_IsRunning(g_ViewerPID))
-        RestartViewer()
-    else
-        LaunchViewer()
-}
+; (Viewer is now in-process — toggled via Tray_ToggleViewer)
 
 _Dash_OnConfigBtn(*) {
     global g_ConfigEditorPID
@@ -514,15 +479,6 @@ Dash_SetUpdateState(status, version := "", url := "") {
         Dash_StartRefreshTimer()
 }
 
-; Reset dashboard producer state and restart monitoring after store (re)launch
-Dash_OnStoreRestart() {
-    global g_ProducerStatusCache, g_ProducerHasFailed
-    g_ProducerStatusCache := ""
-    g_ProducerHasFailed := ""
-    Dash_StartRefreshTimer()
-    SetTimer(_Dash_QueryProducerStatus, -5000)
-}
-
 Dash_StartRefreshTimer() {
     global g_DashboardGui, g_DashRefreshTick, DASH_INTERVAL_HOT
     if (!g_DashboardGui)
@@ -533,11 +489,11 @@ Dash_StartRefreshTimer() {
 
 _Dash_RefreshDynamic() {
     global g_DashboardGui, g_DashControls, g_DashRefreshTick
-    global g_StorePID, g_GuiPID, g_ViewerPID, cfg
+    global g_GuiPID, g_PumpPID, cfg
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashUpdateState, g_ProducerStatusCache, g_ProducerHasFailed
+    global g_DashUpdateState
     global gTheme_Palette
-    global g_StatsCache, g_StatsLastQueryTick, DASH_STATS_QUERY_INTERVAL
+    global g_StatsCache
     global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
     global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
 
@@ -558,28 +514,20 @@ _Dash_RefreshDynamic() {
         nextInterval := DASH_INTERVAL_COOL
     SetTimer(_Dash_RefreshDynamic, nextInterval)
 
-    ; Re-query stats if in HOT/WARM interval and enough time has elapsed
-    if (cfg.StatsTrackingEnabled && LauncherUtils_IsRunning(g_StorePID)
-        && nextInterval <= DASH_INTERVAL_WARM
-        && (A_TickCount - g_StatsLastQueryTick) >= DASH_STATS_QUERY_INTERVAL)
+    ; Re-query stats from disk during HOT/WARM intervals
+    if (cfg.StatsTrackingEnabled && nextInterval <= DASH_INTERVAL_WARM)
         SetTimer(Dash_QueryStats, -1)
 
     ; Build new state snapshot — compute all values before touching any controls
-    storeRunning := LauncherUtils_IsRunning(g_StorePID)
+    pumpRunning := LauncherUtils_IsRunning(g_PumpPID)
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
-    viewerRunning := LauncherUtils_IsRunning(g_ViewerPID)
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
 
-    dot := Chr(0x25CF)
-    hasProd := g_ProducerStatusCache != ""
-    prodDotColor := (g_ProducerHasFailed = "") ? "c" gTheme_Palette.textMuted
-        : (g_ProducerHasFailed ? "c" gTheme_Palette.danger : "c" gTheme_Palette.success)
-
     newState := Map(
-        "storeDotColor", storeRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger,
-        "storeText", "Store: " (storeRunning ? "Running (PID " g_StorePID ")" : "Not running"),
-        "storeBtn", storeRunning ? "Restart" : "Launch",
+        "pumpDotColor", pumpRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger,
+        "pumpText", "Pump: " (pumpRunning ? "Running (PID " g_PumpPID ")" : "Not running"),
+        "pumpBtn", pumpRunning ? "Restart" : "Launch",
         "guiDotColor", guiRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger,
         "guiText", "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running"),
         "guiBtn", guiRunning ? "Restart" : "Launch",
@@ -589,16 +537,10 @@ _Dash_RefreshDynamic() {
         "blacklistDotColor", blacklistRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted,
         "blacklistText", "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running"),
         "blacklistBtn", blacklistRunning ? "Restart" : "Launch",
-        "viewerDotColor", viewerRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted,
-        "viewerText", "Viewer: " (viewerRunning ? "Running (PID " g_ViewerPID ")" : "Not running"),
-        "viewerBtn", viewerRunning ? "Restart" : "Launch",
         "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
         "chkStartMenu", Shortcut_StartMenuExists() ? 1 : 0,
         "chkStartup", Shortcut_StartupExists() ? 1 : 0,
         "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0,
-        "producerDotColor", prodDotColor,
-        "producerDotText", hasProd ? dot : "",
-        "producerText", hasProd ? "Producers: " g_ProducerStatusCache : "",
         "updateText", _Dash_GetUpdateLabel(),
         "updateBtn", _Dash_GetUpdateBtnLabel(),
         "updateBtnEnabled", (g_DashUpdateState.status != "checking") ? 1 : 0
@@ -625,12 +567,12 @@ _Dash_RefreshDynamic() {
 
     ; Diff against current control values — skip redraw if nothing changed
     ; Guard: controls may have been destroyed between state build and diff
-    if (!g_DashControls.HasOwnProp("storeDotColor"))
+    if (!g_DashControls.HasOwnProp("pumpDotColor"))
         return
     changed := false
-    if (g_DashControls.storeDotColor != newState["storeDotColor"]
-        || g_DashControls.storeText.Value != newState["storeText"]
-        || g_DashControls.storeBtn.Text != newState["storeBtn"]
+    if (g_DashControls.pumpDotColor != newState["pumpDotColor"]
+        || g_DashControls.pumpText.Value != newState["pumpText"]
+        || g_DashControls.pumpBtn.Text != newState["pumpBtn"]
         || g_DashControls.guiDotColor != newState["guiDotColor"]
         || g_DashControls.guiText.Value != newState["guiText"]
         || g_DashControls.guiBtn.Text != newState["guiBtn"]
@@ -640,16 +582,10 @@ _Dash_RefreshDynamic() {
         || g_DashControls.blacklistDotColor != newState["blacklistDotColor"]
         || g_DashControls.blacklistText.Value != newState["blacklistText"]
         || g_DashControls.blacklistBtn.Text != newState["blacklistBtn"]
-        || g_DashControls.viewerDotColor != newState["viewerDotColor"]
-        || g_DashControls.viewerText.Value != newState["viewerText"]
-        || g_DashControls.viewerBtn.Text != newState["viewerBtn"]
         || g_DashControls.komorebiText.Value != newState["komorebiText"]
         || g_DashControls.chkStartMenu.Value != newState["chkStartMenu"]
         || g_DashControls.chkStartup.Value != newState["chkStartup"]
         || g_DashControls.chkAutoUpdate.Value != newState["chkAutoUpdate"]
-        || g_DashControls.producerDotColor != newState["producerDotColor"]
-        || g_DashControls.producerDot.Value != newState["producerDotText"]
-        || g_DashControls.producerText.Value != newState["producerText"]
         || g_DashControls.updateText.Value != newState["updateText"]
         || g_DashControls.updateBtn.Text != newState["updateBtn"]
         || g_DashControls.updateBtn.Enabled != newState["updateBtnEnabled"])
@@ -674,9 +610,9 @@ _Dash_RefreshDynamic() {
     DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 0, "ptr", 0)  ; WM_SETREDRAW FALSE
 
     ; Update dot colors via SetFont (only when changed to avoid flicker)
-    if (g_DashControls.storeDotColor != newState["storeDotColor"]) {
-        g_DashControls.storeDot.SetFont(newState["storeDotColor"])
-        g_DashControls.storeDotColor := newState["storeDotColor"]
+    if (g_DashControls.pumpDotColor != newState["pumpDotColor"]) {
+        g_DashControls.pumpDot.SetFont(newState["pumpDotColor"])
+        g_DashControls.pumpDotColor := newState["pumpDotColor"]
     }
     if (g_DashControls.guiDotColor != newState["guiDotColor"]) {
         g_DashControls.guiDot.SetFont(newState["guiDotColor"])
@@ -690,31 +626,19 @@ _Dash_RefreshDynamic() {
         g_DashControls.blacklistDot.SetFont(newState["blacklistDotColor"])
         g_DashControls.blacklistDotColor := newState["blacklistDotColor"]
     }
-    if (g_DashControls.viewerDotColor != newState["viewerDotColor"]) {
-        g_DashControls.viewerDot.SetFont(newState["viewerDotColor"])
-        g_DashControls.viewerDotColor := newState["viewerDotColor"]
-    }
-    if (g_DashControls.producerDotColor != newState["producerDotColor"]) {
-        g_DashControls.producerDot.SetFont(newState["producerDotColor"])
-        g_DashControls.producerDotColor := newState["producerDotColor"]
-    }
-    g_DashControls.producerDot.Value := newState["producerDotText"]
 
-    g_DashControls.storeText.Value := newState["storeText"]
-    g_DashControls.storeBtn.Text := newState["storeBtn"]
+    g_DashControls.pumpText.Value := newState["pumpText"]
+    g_DashControls.pumpBtn.Text := newState["pumpBtn"]
     g_DashControls.guiText.Value := newState["guiText"]
     g_DashControls.guiBtn.Text := newState["guiBtn"]
     g_DashControls.configText.Value := newState["configText"]
     g_DashControls.configBtn.Text := newState["configBtn"]
     g_DashControls.blacklistText.Value := newState["blacklistText"]
     g_DashControls.blacklistBtn.Text := newState["blacklistBtn"]
-    g_DashControls.viewerText.Value := newState["viewerText"]
-    g_DashControls.viewerBtn.Text := newState["viewerBtn"]
     g_DashControls.komorebiText.Value := newState["komorebiText"]
     g_DashControls.chkStartMenu.Value := newState["chkStartMenu"]
     g_DashControls.chkStartup.Value := newState["chkStartup"]
     g_DashControls.chkAutoUpdate.Value := newState["chkAutoUpdate"]
-    g_DashControls.producerText.Value := newState["producerText"]
     g_DashControls.updateText.Value := newState["updateText"]
     g_DashControls.updateBtn.Text := newState["updateBtn"]
     g_DashControls.updateBtn.Enabled := newState["updateBtnEnabled"]
@@ -732,11 +656,10 @@ _Dash_RefreshDynamic() {
     ; Update dynamic tooltips to match button state
     if (g_DashControls.HasOwnProp("hTooltip") && g_DashControls.hTooltip) {
         hTT := g_DashControls.hTooltip
-        _Dash_UpdateTip(hTT, g_DashControls.storeBtn, storeRunning ? "Stop and restart the WindowStore" : "Start the WindowStore server")
+        _Dash_UpdateTip(hTT, g_DashControls.pumpBtn, pumpRunning ? "Stop and restart the Enrichment Pump" : "Start the Enrichment Pump")
         _Dash_UpdateTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
         _Dash_UpdateTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
         _Dash_UpdateTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
-        _Dash_UpdateTip(hTT, g_DashControls.viewerBtn, viewerRunning ? "Restart the debug viewer" : "Open the debug viewer")
         _Dash_UpdateTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
     }
 
@@ -924,193 +847,33 @@ _Dash_GetKomorebiInfo() {
 }
 
 ; ============================================================
-; Producer Status Query (one-shot IPC to store)
+; Stats Query (reads stats.ini written by GUI heartbeat)
 ; ============================================================
-; Connects to store pipe, requests producer status, caches result.
-; Called on a delayed timer after store launch/restart.
-
-_Dash_QueryProducerStatus() {
-    global g_ProducerStatusCache, g_ProducerHasFailed, cfg
-    global IPC_MSG_PRODUCER_STATUS_REQUEST, IPC_MSG_PRODUCER_STATUS
-
-    pipeName := cfg.StorePipeName
-    g_ProducerStatusCache := ""
-
-    ; One-shot IPC: connect, send request, read response, disconnect
-    client := IPC_PipeClient_Connect(pipeName, (*) => 0, 2000)
-    if (!client.hPipe)
-        return
-
-    ; Stop the client's internal read timer BEFORE sending to prevent it
-    ; from consuming our response via the no-op callback
-    if (client.timerFn)
-        SetTimer(client.timerFn, 0)
-
-    ; Send producer status request
-    msg := '{"type":"' IPC_MSG_PRODUCER_STATUS_REQUEST '"}'
-    IPC_PipeClient_Send(client, msg)
-
-    ; Poll with PeekNamedPipe (non-blocking) then ReadFile when data arrives
-    readBuf := Buffer(4096, 0)
-    bytesRead := 0
-    response := ""
-    startTick := A_TickCount
-    while ((A_TickCount - startTick) < 3000) {
-        bytesAvail := 0
-        DllCall("kernel32\PeekNamedPipe"
-            , "ptr", client.hPipe
-            , "ptr", 0, "uint", 0, "ptr", 0
-            , "uint*", &bytesAvail
-            , "ptr", 0)
-        if (bytesAvail > 0) {
-            result := DllCall("kernel32\ReadFile"
-                , "ptr", client.hPipe
-                , "ptr", readBuf.Ptr
-                , "uint", 4096
-                , "uint*", &bytesRead
-                , "ptr", 0
-                , "int")
-            if (result && bytesRead > 0) {
-                response := StrGet(readBuf, bytesRead, "UTF-8")
-                break
-            }
-        }
-        Sleep(50)
-    }
-
-    IPC_PipeClient_Close(client)
-
-    if (response = "")
-        return
-
-    ; Parse response — may contain multiple newline-delimited messages
-    ; (hello/snapshot may arrive before producer_status)
-    for _, line in StrSplit(response, "`n") {
-        line := Trim(line, " `t`r")
-        if (line = "")
-            continue
-        try {
-            obj := JSON.Load(line)
-            if (obj.Has("type") && obj["type"] = IPC_MSG_PRODUCER_STATUS && obj.Has("producers")) {
-                g_ProducerStatusCache := _Dash_FormatProducerStatus(obj["producers"])
-                Dash_StartRefreshTimer()
-                return
-            }
-        }
-    }
-}
-
-; Format producer states: "WEH KS IP PP" (running) or "WEH !KS IP PP" (KS failed)
-; Also sets g_ProducerHasFailed: false if all OK, true if any failed
-; Disabled producers omitted, MRU only shown if active (fallback)
-_Dash_FormatProducerStatus(producers) {
-    global g_ProducerHasFailed, PRODUCER_NAMES, PRODUCER_ABBREVS
-
-    parts := []
-    hasFailed := false
-    for _, name in PRODUCER_NAMES {
-        abbrev := PRODUCER_ABBREVS[name]
-        state := ""
-        if (producers is Map) {
-            if (producers.Has(name))
-                state := producers[name]
-        } else {
-            try {
-                if (producers.HasOwnProp(name))
-                    state := producers.%name%
-            }
-        }
-        if (state = "running")
-            parts.Push(abbrev)
-        else if (state = "failed") {
-            parts.Push("!" abbrev)
-            hasFailed := true
-        }
-        ; Skip disabled — keeps line compact
-    }
-
-    g_ProducerHasFailed := hasFailed
-
-    result := ""
-    for _, part in parts
-        result .= (result ? " " : "") part
-    return result
-}
-
-; ============================================================
-; Stats Query (one-shot IPC to store)
-; ============================================================
-; Connects to store pipe, requests stats, caches result.
+; Reads [Snapshot] section from stats.ini for dashboard display.
 ; Called on dashboard open and periodically during HOT/WARM refresh.
 
 Dash_QueryStats() {
-    global g_StatsCache, g_StatsLastQueryTick, cfg
-    global IPC_MSG_STATS_REQUEST, IPC_MSG_STATS_RESPONSE
+    global g_StatsCache, g_GuiPID, WM_COPYDATA, TABBY_CMD_QUERY_STATS
 
-    pipeName := cfg.StorePipeName
-
-    ; One-shot IPC: connect, send request, read response, disconnect
-    client := IPC_PipeClient_Connect(pipeName, (*) => 0, 2000)
-    if (!client.hPipe)
+    if (!LauncherUtils_IsRunning(g_GuiPID))
         return
 
-    ; Stop the client's internal read timer BEFORE sending
-    if (client.timerFn)
-        SetTimer(client.timerFn, 0)
-
-    ; Send stats request
-    msg := '{"type":"' IPC_MSG_STATS_REQUEST '"}'
-    IPC_PipeClient_Send(client, msg)
-
-    ; Poll with PeekNamedPipe (non-blocking) then ReadFile when data arrives
-    readBuf := Buffer(8192, 0)
-    bytesRead := 0
-    response := ""
-    startTick := A_TickCount
-    while ((A_TickCount - startTick) < 3000) {
-        bytesAvail := 0
-        DllCall("kernel32\PeekNamedPipe"
-            , "ptr", client.hPipe
-            , "ptr", 0, "uint", 0, "ptr", 0
-            , "uint*", &bytesAvail
-            , "ptr", 0)
-        if (bytesAvail > 0) {
-            result := DllCall("kernel32\ReadFile"
-                , "ptr", client.hPipe
-                , "ptr", readBuf.Ptr
-                , "uint", 8192
-                , "uint*", &bytesRead
-                , "ptr", 0
-                , "int")
-            if (result && bytesRead > 0) {
-                response := StrGet(readBuf, bytesRead, "UTF-8")
-                break
-            }
-        }
-        Sleep(50)
-    }
-
-    IPC_PipeClient_Close(client)
-    g_StatsLastQueryTick := A_TickCount
-
-    if (response = "")
+    ; Send stats request to GUI — response arrives synchronously via
+    ; _Launcher_OnCopyData which populates g_StatsCache before SendMessage returns
+    DetectHiddenWindows(true)
+    guiHwnd := WinGetID("ahk_pid " g_GuiPID)
+    DetectHiddenWindows(false)
+    if (!guiHwnd)
         return
 
-    ; Parse response — may contain multiple newline-delimited messages
-    ; (hello/snapshot may arrive before stats_response)
-    for _, line in StrSplit(response, "`n") {
-        line := Trim(line, " `t`r")
-        if (line = "")
-            continue
-        try {
-            obj := JSON.Load(line)
-            if (obj.Has("type") && obj["type"] = IPC_MSG_STATS_RESPONSE) {
-                g_StatsCache := obj
-                Dash_StartRefreshTimer()
-                return
-            }
-        }
-    }
+    cds := Buffer(A_PtrSize * 3, 0)
+    NumPut("uptr", TABBY_CMD_QUERY_STATS, cds, 0)
+    NumPut("uptr", 0, cds, A_PtrSize)
+    NumPut("uptr", 0, cds, A_PtrSize * 2)
+    try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " guiHwnd)
+
+    if (IsObject(g_StatsCache))
+        Dash_StartRefreshTimer()
 }
 
 ; ============================================================

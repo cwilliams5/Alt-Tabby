@@ -327,7 +327,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     }
 
     ; Get InstallationId if not provided
-    if (installId = "" && IsSet(cfg) && cfg.HasOwnProp("SetupInstallationId"))  ; lint-ignore: isset-with-default
+    if (installId = "" && IsSet(cfg) && cfg.HasOwnProp("SetupInstallationId"))
         installId := cfg.SetupInstallationId
 
     ; Build description with embedded ID for later identification (see ADMIN_TASK_ID_PATTERN)
@@ -629,7 +629,7 @@ Shortcut_GetIconPath() {
 ; Get the effective exe path (installed location or current)
 Shortcut_GetEffectiveExePath() {
     global cfg
-    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "" && FileExist(cfg.SetupExePath))  ; lint-ignore: isset-with-default
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "" && FileExist(cfg.SetupExePath))
         return cfg.SetupExePath
     return A_IsCompiled ? A_ScriptFullPath : A_ScriptFullPath
 }
@@ -1091,7 +1091,7 @@ Update_ApplyCore(opts) {
 ; Apply update: rename current exe, move new exe, relaunch
 ; Wrapper for auto-update flow - uses Update_ApplyCore with appropriate options
 _Update_ApplyAndRelaunch(newExePath, targetExePath) {
-    global g_StorePID, g_GuiPID, g_ViewerPID
+    global g_PumpPID, g_GuiPID
     Update_ApplyCore({
         sourcePath: newExePath,
         targetPath: targetExePath,
@@ -1100,7 +1100,7 @@ _Update_ApplyAndRelaunch(newExePath, targetExePath) {
         copyMode: false,               ; FileMove (delete source after copy)
         successMessage: "Alt-Tabby has been updated. Restarting...",
         cleanupSourceOnFailure: true,
-        killPids: {gui: g_GuiPID, store: g_StorePID, viewer: g_ViewerPID}
+        killPids: {gui: g_GuiPID, pump: g_PumpPID}
     })
 }
 
@@ -1206,7 +1206,7 @@ _Update_CopyUserData(srcDir, targetDir, overwrite := false) {
 ; merges only add what's new (prevents double-counting AND silent data loss).
 _Update_MergeStats(srcPath, targetPath) {
     global cfg
-    ; IMPORTANT: These keys must match the lifetime counter keys written by _Stats_FlushToDisk().
+    ; IMPORTANT: These keys must match the lifetime counter keys written by Stats_FlushToDisk().
     ; If you add/rename a lifetime stat, update this list too.
     lifetimeKeys := [
         "TotalSessions",

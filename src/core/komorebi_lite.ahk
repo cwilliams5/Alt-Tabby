@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
+#Warn VarUnset, Off  ; Expected: file is included after window_list.ahk
 
 ; Komorebi-lite: poll komorebic state and update current workspace + active window workspace.
 ; Uses JSON.Load() and komorebi_state.ahk navigation helpers for proper structured parsing.
@@ -46,12 +46,12 @@ _KomorebiLite_Tick() {
         return
     ws := _KomorebiLite_FindCurrentWorkspaceName(stateObj)
     if (ws != "")
-        WindowStore_SetCurrentWorkspace("", ws)
+        WL_SetCurrentWorkspace("", ws)
     hwnd := WinGetID("A")
     if (hwnd) {
         wsn := KSub_FindWorkspaceByHwnd(stateObj, hwnd)
         if (wsn != "")
-            WindowStore_UpdateFields(hwnd, { workspaceName: wsn, isOnCurrentWorkspace: (wsn = ws) })
+            WL_UpdateFields(hwnd, { workspaceName: wsn, isOnCurrentWorkspace: (wsn = ws) })
     }
 }
 

@@ -1,14 +1,12 @@
 # Alt-Tabby Architecture
 
-## Multi-Process Model
+## Process Model
 
 Single `AltTabby.exe` serves as launcher and all process modes:
 
 **User-facing modes:**
-- `AltTabby.exe` - Launcher (spawns store + gui, manages tray)
-- `--store` - WindowStore server only
-- `--gui-only` - GUI only (requires store)
-- `--viewer` - Debug viewer
+- `AltTabby.exe` - Launcher (spawns gui + pump, manages tray)
+- `--gui-only` - MainProcess only (window data + overlay + producers)
 - `--config` / `--blacklist` - Editor GUIs
 
 **Internal modes:** `--wizard-continue`, `--enable-admin-task`, `--repair-admin-task`, `--apply-update`, `--update-installed`, `--skip-mismatch`
@@ -17,24 +15,28 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 ## Process Roles
 
-1. **Launcher**: Tray icon, subprocess PIDs, on-demand menu updates, lifecycle manager (WM_COPYDATA: store restart from GUI, full restart from config editor). Config/blacklist editors launched as subprocesses.
-2. **WindowStore + Producers**: Named pipe server, window data, stats accumulation and persistence (`stats.ini`)
-3. **AltLogic + GUI**: Overlay, MRU selection, window activation
-4. **Debug Viewer**: Z/MRU-ordered window list display
+1. **Launcher**: Tray icon, subprocess PIDs, on-demand menu updates, lifecycle manager (WM_COPYDATA: full restart from config editor). Config/blacklist editors launched as subprocesses.
+2. **MainProcess (gui_main.ahk)**: Window data (WindowList), all producers, overlay, MRU selection, window activation, stats accumulation and persistence (`stats.ini`)
+3. **EnrichmentPump**: Subprocess for blocking icon/process name resolution via named pipe IPC
+4. **Debug Viewer (in-process)**: In-process window within MainProcess, reads WL_GetDisplayList() directly. Toggled via tray menu (WM_COPYDATA from launcher).
 
 ## Key Files
 
 - `VERSION` - Single source for version (e.g., `0.6.0`)
 - `src/alt_tabby.ahk` - Unified entry point
 - `src/lib/` - Third-party libraries (cjson, WebView2). NOT `src/shared/`.
-- `src/store/windowstore.ahk` - Core store API
-- `src/shared/ipc_pipe.ahk` - Multi-subscriber named pipe IPC
+- `src/shared/window_list.ahk` - Core window data API (store, display list, dirty tracking)
+- `src/shared/ipc_pipe.ahk` - Named pipe IPC (used by EnrichmentPump)
 - `src/shared/config_registry.ahk` - All config definitions
 - `src/shared/blacklist.ahk` - Window eligibility logic
-- `src/gui/gui_main.ahk` - Alt-Tab GUI overlay
+- `src/shared/stats.ahk` - Lifetime & session usage statistics
+- `src/gui/gui_main.ahk` - MainProcess init, producers, heartbeat, cleanup
+- `src/gui/gui_data.ahk` - Snapshot + pre-cache functions (replaces gui_store.ahk)
 - `src/editors/config_editor.ahk` - Dispatcher: detects WebView2, falls back to native AHK
 - `src/editors/config_editor_native.ahk` - Native AHK editor (sidebar + viewport scroll pattern)
 - `src/editors/config_editor_webview.ahk` - WebView2 editor (HTML/JS UI)
+- `src/core/` - Producer modules (WinEventHook, Komorebi, IconPump, ProcPump, etc.)
+- `src/pump/` - EnrichmentPump subprocess
 - `resources/img/` - Image assets (icon.ico, icon.png, logo.png)
 - `resources/dll/` - Native DLLs (WebView2Loader.dll)
 - `resources/html/` - HTML resources for WebView2 UI
@@ -50,7 +52,7 @@ Single `AltTabby.exe` serves as launcher and all process modes:
 
 ## Producer Observability
 
-States in projection meta: `"running"`, `"failed"`, `"disabled"`
+States in display list meta: `"running"`, `"failed"`, `"disabled"`
 - `meta.producers`: `{ wineventHook, mruLite, komorebiSub, komorebiLite, iconPump, procPump }`
 - No automatic retry - if producer fails at startup, it stays failed
 
@@ -89,10 +91,10 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 
 ## Critical Design Decisions
 
-1. **Lock-in on first Tab** - Projection frozen when Tab pressed (not Alt)
-2. **Pre-warm on Alt** - Request snapshot early for fresh data
+1. **Lock-in on first Tab** - Display list frozen when Tab pressed (not Alt)
+2. **Pre-warm on Alt** - Refresh live items early for fresh data
 3. **GUI always running** - Show/hide, don't create/destroy
-4. **Keyboard hooks in GUI process** - Zero IPC latency
+4. **Single-process data** - Producers + window data + GUI all in MainProcess (no IPC latency for window list)
 5. **Grace period ~150ms** - Quick Alt+Tab = instant switch
 6. **PostMessage pipe wake** - After pipe writes, PostMessage(IPC_WM_PIPE_WAKE) wakes the receiver immediately instead of waiting for next timer tick. Timer polling is the fallback. wakeHwnd param on Send functions is optional (default 0 = no wake, graceful degradation).
 
@@ -116,11 +118,13 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 - WebView2 editors: `Theme_GetWebViewJS()` generates CSS custom properties
 - Reacts to system theme changes via WM_SETTINGCHANGE automatically
 
-## Stats IPC Messages
+## Flight Recorder
 
-- `stats_update` - GUI → Store: delta counters (alt-tabs, quick switches, tab steps, cancellations, cross-workspace, workspace toggles)
-- `stats_request` - Launcher → Store: on-demand query for dashboard/stats dialog
-- `stats_response` - Store → Launcher: lifetime + session + derived stats
+In-memory ring buffer (`gui_flight_recorder.ahk`) in MainProcess. `FR_Record(ev, d1..d4)` is the hot path (~1μs, zero allocation — writes into pre-allocated array slots). F12 (configurable) dumps state snapshot + WindowList state + live items + event trace to `recorder/` folder. Events cover keyboard hooks, state machine, activation, focus tracking, workspace switches, scans, and producer init. See `USING_RECORDER.md` for analysis guide.
+
+## Stats
+
+Stats engine (`stats.ahk`) runs in-process within MainProcess. `Stats_Accumulate()` for GUI delta counters, `Stats_FlushToDisk()` on heartbeat timer, `Stats_GetSnapshot()` for dashboard queries. Crash-safe with `.bak` sentinel pattern.
 
 ## Key Metrics
 

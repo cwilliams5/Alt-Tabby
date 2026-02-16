@@ -5,7 +5,6 @@
 
 RunLiveTests_Execution() {
     global TestPassed, TestErrors, cfg
-    global IPC_MSG_HELLO
 
     compiledExePath := A_ScriptDir "\..\release\AltTabby.exe"
 
@@ -59,64 +58,9 @@ RunLiveTests_Execution() {
     ; --testing-mode will exit silently (acceptable — just a SKIP).
 
     if (FileExist(compiledExePath)) {
-        ; Test --store mode
-        compiledStorePipe := "tabby_compiled_store_" A_TickCount
-        compiledStorePid := 0
-
-        if (!_Test_RunSilent('"' compiledExePath '" --store --test --pipe=' compiledStorePipe, &compiledStorePid)) {
-            Log("FAIL: Could not launch AltTabby.exe --store")
-            TestErrors++
-            compiledStorePid := 0
-        }
-
-        if (compiledStorePid) {
-            ; Wait for store pipe to become available (adaptive)
-            ; NOTE: Do NOT reduce this timeout. Compiled exe startup includes config loading,
-            ; blacklist init, pipe creation, full scan, and hook installation — all I/O-bound.
-            ; Under parallel test load (15+ processes), 5s is the minimum reliable budget.
-            if (!WaitForStorePipe(compiledStorePipe, 5000)) {
-                Log("FAIL: Compiled store pipe not ready within timeout")
-                TestErrors++
-                try ProcessClose(compiledStorePid)
-                compiledStorePid := 0
-            }
-        }
-
-        if (compiledStorePid) {
-            if (ProcessExist(compiledStorePid)) {
-                Log("PASS: AltTabby.exe --store launched (PID=" compiledStorePid ")")
-                TestPassed++
-
-                ; Try to connect
-                compiledClient := IPC_PipeClient_Connect(compiledStorePipe, Test_OnCompiledStoreMessage)
-
-                if (compiledClient.hPipe) {
-                    Log("PASS: Connected to compiled store pipe")
-                    TestPassed++
-                    IPC_PipeClient_Close(compiledClient)
-                } else {
-                    Log("FAIL: Could not connect to compiled store pipe")
-                    TestErrors++
-                }
-            } else {
-                Log("FAIL: AltTabby.exe --store exited unexpectedly")
-                TestErrors++
-            }
-
-            try {
-                ProcessClose(compiledStorePid)
-            }
-            ; Wait for store to fully exit and release config.ini / pipe handles
-            ; before launching launcher mode (which reads the same config)
-            waitStart := A_TickCount
-            while (ProcessExist(compiledStorePid) && (A_TickCount - waitStart) < 2000)
-                Sleep(20)
-            Sleep(50)  ; Brief grace for handle release after process exit
-        }
-
-        ; Test launcher mode (spawns multiple processes)
+        ; Test launcher mode (spawns gui subprocess)
         ; Use --testing-mode to prevent wizard and install mismatch dialogs from blocking
-        Log("  Testing launcher mode (spawns store + gui)...")
+        Log("  Testing launcher mode (spawns gui)...")
         launcherPid := 0
 
         if (!_Test_RunSilent('"' compiledExePath '" --testing-mode', &launcherPid)) {
@@ -127,7 +71,7 @@ RunLiveTests_Execution() {
 
         if (launcherPid) {
             ; Poll for subprocess spawning instead of fixed sleep
-            ; Launcher spawns store + gui, so expect 3+ AltTabby.exe processes
+            ; Launcher spawns gui, so expect 2+ AltTabby.exe processes (pump is optional)
             processCount := 0
             spawnStart := A_TickCount
             while ((A_TickCount - spawnStart) < 5000) {
@@ -135,16 +79,13 @@ RunLiveTests_Execution() {
                 for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
                     processCount++
                 }
-                if (processCount >= 3)
+                if (processCount >= 2)
                     break
                 Sleep(100)
             }
 
-            if (processCount >= 3) {
-                Log("PASS: Launcher mode spawned " processCount " processes (launcher + store + gui)")
-                TestPassed++
-            } else if (processCount >= 2) {
-                Log("PASS: Launcher mode spawned " processCount " processes (may not include launcher)")
+            if (processCount >= 2) {
+                Log("PASS: Launcher mode spawned " processCount " processes (launcher + gui" (processCount > 2 ? " + pump" : "") ")")
                 TestPassed++
             } else {
                 ; Diagnostics: is the launcher still alive or did it exit?
@@ -163,7 +104,7 @@ RunLiveTests_Execution() {
                     if (launcherLog != "")
                         Log("  Launcher log:`n" launcherLog)
                 } else {
-                    Log("FAIL: Launcher mode only has " processCount " process(es), expected 3")
+                    Log("FAIL: Launcher mode only has " processCount " process(es), expected 2+")
                     Log("  Diagnostic: launcher PID " launcherPid " alive=" (launcherAlive ? "yes" : "no"))
                     if (launcherLog != "")
                         Log("  Launcher log:`n" launcherLog)
@@ -210,18 +151,14 @@ RunLiveTests_Execution() {
         } else {
             Log("  Deleted config.ini and blacklist.txt for recreation test")
 
-            ; Run compiled store briefly - it should recreate the files
-            recreatePipe := "tabby_recreate_test_" A_TickCount
+            ; Run compiled gui briefly - it should recreate the files during init
             recreatePid := 0
 
-            _Test_RunSilent('"' compiledExePath '" --store --test --pipe=' recreatePipe, &recreatePid)
+            _Test_RunSilent('"' compiledExePath '" --gui-only --test', &recreatePid)
 
             if (recreatePid) {
-                ; Wait for store pipe to become available (adaptive)
-                ; Files are created during init, so pipe ready = files created
-                if (!WaitForStorePipe(recreatePipe, 3000)) {
-                    Log("WARN: Recreation test store pipe not ready, checking files anyway")
-                }
+                ; Wait for gui to start up (files are created during ConfigLoader_Init)
+                Sleep(2000)
 
                 ; Check if files were recreated
                 configRecreated := FileExist(configPath)
@@ -243,7 +180,7 @@ RunLiveTests_Execution() {
                     TestErrors++
                 }
 
-                ; Kill the test store
+                ; Kill the test process
                 try {
                     ProcessClose(recreatePid)
                 }

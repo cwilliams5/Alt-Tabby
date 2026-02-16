@@ -131,7 +131,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     yDip := 0
     wDip := 0
     hDip := 0
-    _GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, gGUI_BaseH)
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, gGUI_BaseH)
 
     waL := 0
     waT := 0
@@ -146,7 +146,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     hPhys := Round(hDip * monScale)
 
     Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
-    ; ANTI-JIGGLE (Part 2 of 2 — see also store_server.ahk BroadcastWorkspaceFlips):
+    ; ANTI-JIGGLE (Part 2 of 2 — see also gui_main.ahk _GUI_OnWorkspaceFlips):
     ; The overlay is a layered window whose content is managed exclusively by
     ; UpdateLayeredWindow (ULW) in GUI_Repaint.  ULW accepts pptDst (position)
     ; and psize (size) parameters, atomically setting position + size + bitmap
@@ -159,7 +159,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
         Win_DwmFlush()
 }
 
-_GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
+GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
     global cfg
     waL := 0
     waT := 0
@@ -208,7 +208,7 @@ GUI_CreateBase() {
     yDip := 0
     wDip := 0
     hDip := 0
-    _GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
 
     waL := 0
     waT := 0

@@ -77,25 +77,33 @@ GUI_Repaint() {
 
     count := items.Length
     rowsDesired := GUI_ComputeRowsToShow(count)
-    if (rowsDesired != gGUI_LastRowsDesired) {
-        GUI_ResizeToRows(rowsDesired, true)  ; skipFlush: DwmFlush happens later in RevealBoth
+    oldRows := gGUI_LastRowsDesired
+    rowsChanged := (rowsDesired != oldRows)
+    if (rowsChanged)
         gGUI_LastRowsDesired := rowsDesired
-    }
 
-    phX := 0
-    phY := 0
-    phW := 0
-    phH := 0
-
-    ; ===== TIMING: GetRect =====
+    ; ===== TIMING: ComputeRect =====
+    ; Compute target rect from layout, not from the window.  The base window may
+    ; not be resized yet — SetWindowPos is DEFERRED to right before
+    ; UpdateLayeredWindow so DWM can't present a frame with mismatched
+    ; base/overlay sizes (the 1-frame flash on workspace switches).
     t1 := A_TickCount
-    Win_GetRectPhys(gGUI_BaseH, &phX, &phY, &phW, &phH)
-    tGetRect := A_TickCount - t1
-
-    ; ===== TIMING: GetScale =====
-    t1 := A_TickCount
-    scale := Win_GetScaleForWindow(gGUI_BaseH)
-    tGetScale := A_TickCount - t1
+    xDip := 0
+    yDip := 0
+    wDip := 0
+    hDip := 0
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
+    waL := 0
+    waT := 0
+    waR := 0
+    waB := 0
+    Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
+    scale := Win_GetMonitorScale(waL, waT, waR, waB)
+    phX := Round(xDip * scale)
+    phY := Round(yDip * scale)
+    phW := Round(wDip * scale)
+    phH := Round(hDip * scale)
+    tComputeRect := A_TickCount - t1
 
     ; ===== TIMING: EnsureBackbuffer =====
     t1 := A_TickCount
@@ -133,9 +141,32 @@ GUI_Repaint() {
         DllCall("user32\SetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
     }
 
+    ; SPLIT RESIZE: Ensure the base window is always >= the overlay during
+    ; transition frames.  DWM can present between any two Win32 calls, so
+    ; we order SetWindowPos (base) vs UpdateLayeredWindow (overlay) to
+    ; guarantee the "bad" interim frame is base-too-big (extra acrylic at
+    ; bottom — barely visible) rather than overlay-too-big (old content
+    ; floating outside the acrylic window — very visible).
+    ;
+    ; GROWING  → expand base BEFORE ULW  (interim: small overlay on big base)
+    ; SHRINKING → shrink base AFTER ULW  (interim: small overlay on big base)
+    ;
+    ; Only when overlay is already revealed — initial show is handled by
+    ; _GUI_ShowOverlayWithFrozen → GUI_ResizeToRows → _GUI_RevealBoth.
+    needsResize := (rowsChanged && gGUI_Revealed)
+    if (needsResize && rowsDesired > oldRows) {
+        Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
+        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
+    }
+
     hdcScreen := DllCall("user32\GetDC", "ptr", 0, "ptr")
     DllCall("user32\UpdateLayeredWindow", "ptr", gGUI_OverlayH, "ptr", hdcScreen, "ptr", ptDst.Ptr, "ptr", sz.Ptr, "ptr", gGdip_BackHdc, "ptr", ptSrc.Ptr, "int", 0, "ptr", bf.Ptr, "uint", 0x2, "int")
     DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
+
+    if (needsResize && rowsDesired <= oldRows) {
+        Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
+        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
+    }
 
     tUpdateLayer := A_TickCount - t1
 
@@ -150,7 +181,7 @@ GUI_Repaint() {
 
     ; Log timing for first paint, paint after long idle, or slow paints (>100ms)
     if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)) {
-        Paint_Log("  Timing: total=" tTotalMs "ms | getRect=" tGetRect " getScale=" tGetScale " backbuf=" tBackbuf " paintOverlay=" tPaintOverlay " buffers=" tBuffers " updateLayer=" tUpdateLayer " reveal=" tReveal)
+        Paint_Log("  Timing: total=" tTotalMs "ms | computeRect=" tComputeRect " backbuf=" tBackbuf " paintOverlay=" tPaintOverlay " buffers=" tBuffers " updateLayer=" tUpdateLayer " reveal=" tReveal)
     }
 }
 
@@ -386,14 +417,14 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             brSubUse := isSel ? brSubHi : brSub
             brColUse := isSel ? brColHi : brCol
 
-            title := cur.Title
+            title := cur.title
             Gdip_DrawText(g, title, textX, yRow + titleY, textW, titleH, brMainUse, fMainUse, fmtLeft)
 
             sub := ""
             if (cur.processName != "") {
                 sub := cur.processName
             } else {
-                sub := "Class: " cur.Class
+                sub := "Class: " cur.class
             }
             Gdip_DrawText(g, sub, textX, yRow + subY, textW, subH, brSubUse, fSubUse, fmtLeft)
 

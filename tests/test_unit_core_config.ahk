@@ -19,8 +19,8 @@ RunUnitTests_CoreConfig() {
 
     ; These should all have non-zero/non-empty values after init
     ; Uses cfg object (single global config container)
-    if (!cfg.HasOwnProp("StorePipeName") || cfg.StorePipeName = "") {
-        configErrors.Push("cfg.StorePipeName is empty")
+    if (!cfg.HasOwnProp("PumpPipeName") || cfg.PumpPipeName = "") {
+        configErrors.Push("cfg.PumpPipeName is empty")
         configDefaultsOk := false
     }
     if (!cfg.HasOwnProp("AltTabGraceMs") || cfg.AltTabGraceMs <= 0) {
@@ -39,8 +39,8 @@ RunUnitTests_CoreConfig() {
         configErrors.Push("cfg.WinEventHookDebounceMs is 0 or unset")
         configDefaultsOk := false
     }
-    if (!cfg.HasOwnProp("StoreHeartbeatIntervalMs") || cfg.StoreHeartbeatIntervalMs <= 0) {
-        configErrors.Push("cfg.StoreHeartbeatIntervalMs is 0 or unset")
+    if (!cfg.HasOwnProp("AltTabGraceMs")) {
+        configErrors.Push("cfg.AltTabGraceMs is unset")
         configDefaultsOk := false
     }
 
@@ -83,10 +83,10 @@ RunUnitTests_CoreConfig() {
             ; Check that new keys were added (commented out with ; prefix)
             hasGraceMs := InStr(supplementedContent, "GraceMs=999")  ; Original preserved (uncommented since customized)
             hasQuickSwitch := InStr(supplementedContent, "; QuickSwitchMs=")  ; New key added (commented - default)
-            hasPrewarm := InStr(supplementedContent, "; PrewarmOnAlt=")  ; New key added (commented - default)
+            hasSwitchOnClick := InStr(supplementedContent, "; SwitchOnClick=")  ; New key added (commented - default)
             hasGuiSection := InStr(supplementedContent, "[GUI]")  ; New section added
 
-            if (hasGraceMs && hasQuickSwitch && hasPrewarm && hasGuiSection) {
+            if (hasGraceMs && hasQuickSwitch && hasSwitchOnClick && hasGuiSection) {
                 Log("PASS: INI supplementing added missing keys (commented) while preserving existing")
                 TestPassed++
 
@@ -100,7 +100,7 @@ RunUnitTests_CoreConfig() {
                 }
             } else {
                 Log("FAIL: INI supplementing did not add expected keys")
-                Log("  hasGraceMs=" hasGraceMs ", hasQuickSwitch=" hasQuickSwitch ", hasPrewarm=" hasPrewarm ", hasGuiSection=" hasGuiSection)
+                Log("  hasGraceMs=" hasGraceMs ", hasQuickSwitch=" hasQuickSwitch ", hasSwitchOnClick=" hasSwitchOnClick ", hasGuiSection=" hasGuiSection)
                 TestErrors++
             }
         }
@@ -119,17 +119,17 @@ RunUnitTests_CoreConfig() {
 
         ; Test 1: Update existing value (using bool type to avoid hex conversion)
         Log("Testing WriteIniPreserveFormat updates existing value...")
-        wipContent := "[AltTab]`nPrewarmOnAlt=true`nQuickSwitchMs=25`n[GUI]`nRowHeight=40`n"
+        wipContent := "[AltTab]`nSwitchOnClick=true`nQuickSwitchMs=25`n[GUI]`nRowHeight=40`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "SwitchOnClick", false, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
-        if (InStr(wipResult, "PrewarmOnAlt=false") && InStr(wipResult, "QuickSwitchMs=25")) {
-            Log("PASS: WriteIniPreserveFormat updated PrewarmOnAlt to false, preserved QuickSwitchMs")
+        if (InStr(wipResult, "SwitchOnClick=false") && InStr(wipResult, "QuickSwitchMs=25")) {
+            Log("PASS: WriteIniPreserveFormat updated SwitchOnClick to false, preserved QuickSwitchMs")
             TestPassed++
         } else {
-            Log("FAIL: WriteIniPreserveFormat should update PrewarmOnAlt=false and keep QuickSwitchMs=25")
+            Log("FAIL: WriteIniPreserveFormat should update SwitchOnClick=false and keep QuickSwitchMs=25")
             Log("  Got: " SubStr(wipResult, 1, 200))
             TestErrors++
         }
@@ -137,14 +137,14 @@ RunUnitTests_CoreConfig() {
         ; Test 2: Comment out default value
         Log("Testing WriteIniPreserveFormat comments out default value...")
         try FileDelete(testWipPath)
-        wipContent := "[AltTab]`nPrewarmOnAlt=true`nQuickSwitchMs=25`n"
+        wipContent := "[AltTab]`nSwitchOnClick=true`nQuickSwitchMs=25`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", true, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "SwitchOnClick", true, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
-        if (InStr(wipResult, "; PrewarmOnAlt=true")) {
-            Log("PASS: WriteIniPreserveFormat commented out default value (;PrewarmOnAlt=true)")
+        if (InStr(wipResult, "; SwitchOnClick=true")) {
+            Log("PASS: WriteIniPreserveFormat commented out default value (;SwitchOnClick=true)")
             TestPassed++
         } else {
             Log("FAIL: WriteIniPreserveFormat should comment out value when it equals default")
@@ -155,14 +155,14 @@ RunUnitTests_CoreConfig() {
         ; Test 3: Uncomment custom value
         Log("Testing WriteIniPreserveFormat uncomments custom value...")
         try FileDelete(testWipPath)
-        wipContent := "[AltTab]`n; PrewarmOnAlt=true`nQuickSwitchMs=25`n"
+        wipContent := "[AltTab]`n; SwitchOnClick=true`nQuickSwitchMs=25`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "SwitchOnClick", false, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
-        if (InStr(wipResult, "PrewarmOnAlt=false") && !InStr(wipResult, "; PrewarmOnAlt=")) {
-            Log("PASS: WriteIniPreserveFormat uncommented and set PrewarmOnAlt=false")
+        if (InStr(wipResult, "SwitchOnClick=false") && !InStr(wipResult, "; SwitchOnClick=")) {
+            Log("PASS: WriteIniPreserveFormat uncommented and set SwitchOnClick=false")
             TestPassed++
         } else {
             Log("FAIL: WriteIniPreserveFormat should uncomment and set custom value")
@@ -173,14 +173,14 @@ RunUnitTests_CoreConfig() {
         ; Test 4: Preserve other content (comments, blank lines, other sections)
         Log("Testing WriteIniPreserveFormat preserves surrounding content...")
         try FileDelete(testWipPath)
-        wipContent := "; Alt-Tabby Config`n`n[AltTab]`n; A comment about prewarm`nPrewarmOnAlt=true`n`n[GUI]`nRowHeight=40`n"
+        wipContent := "; Alt-Tabby Config`n`n[AltTab]`n; A comment about click behavior`nSwitchOnClick=true`n`n[GUI]`nRowHeight=40`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
-        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "PrewarmOnAlt", false, true, "bool")
+        CL_WriteIniPreserveFormat(testWipPath, "AltTab", "SwitchOnClick", false, true, "bool")
 
         wipResult := FileRead(testWipPath, "UTF-8")
         hasHeader := InStr(wipResult, "; Alt-Tabby Config")
-        hasComment := InStr(wipResult, "; A comment about prewarm")
+        hasComment := InStr(wipResult, "; A comment about click behavior")
         hasGuiSection := InStr(wipResult, "[GUI]")
         hasRowHeight := InStr(wipResult, "RowHeight=40")
         if (hasHeader && hasComment && hasGuiSection && hasRowHeight) {
@@ -195,7 +195,7 @@ RunUnitTests_CoreConfig() {
         ; Test 5: Add key to non-last section (key doesn't exist yet)
         Log("Testing WriteIniPreserveFormat adds key to non-last section...")
         try FileDelete(testWipPath)
-        wipContent := "[AltTab]`nPrewarmOnAlt=true`n[GUI]`nRowHeight=40`n"
+        wipContent := "[AltTab]`nSwitchOnClick=true`n[GUI]`nRowHeight=40`n"
         FileAppend(wipContent, testWipPath, "UTF-8")
 
         CL_WriteIniPreserveFormat(testWipPath, "AltTab", "NewBool", false, true, "bool")
@@ -379,10 +379,10 @@ RunUnitTests_CoreConfig() {
     savedLoaded := gConfigLoaded
 
     ; Save cfg values we'll be testing
-    savedPrewarm := cfg.AltTabPrewarmOnAlt
+    savedSwitchOnClick := cfg.AltTabSwitchOnClick
     savedGraceMs := cfg.AltTabGraceMs
     savedWidthPct := cfg.GUI_ScreenWidthPct
-    savedPipeName := cfg.StorePipeName
+    savedPipeName := cfg.PumpPipeName
 
     testCfgDir := A_Temp "\tabby_cfgparse_test_" A_TickCount
     testCfgPath := testCfgDir "\config.ini"
@@ -392,10 +392,10 @@ RunUnitTests_CoreConfig() {
 
         ; Write INI values using IniWrite (ensures IniRead-compatible format)
         gConfigIniPath := testCfgPath
-        IniWrite("true", testCfgPath, "AltTab", "PrewarmOnAlt")
+        IniWrite("true", testCfgPath, "AltTab", "SwitchOnClick")
         IniWrite("200", testCfgPath, "AltTab", "GraceMs")
         IniWrite("0.75", testCfgPath, "GUI", "ScreenWidthPct")
-        IniWrite("test_custom_pipe", testCfgPath, "IPC", "StorePipeName")
+        IniWrite("test_custom_pipe", testCfgPath, "IPC", "PumpPipeName")
 
         ; Reinitialize from temp INI
         _CL_InitializeDefaults()
@@ -403,7 +403,7 @@ RunUnitTests_CoreConfig() {
         _CL_ValidateSettings()
 
         ; Test 1: Bool "true" -> true
-        AssertEq(cfg.AltTabPrewarmOnAlt, true, "Config parse: bool 'true' -> true")
+        AssertEq(cfg.AltTabSwitchOnClick, true, "Config parse: bool 'true' -> true")
 
         ; Test 2: Int valid -> 200
         AssertEq(cfg.AltTabGraceMs, 200, "Config parse: int '200' -> 200")
@@ -412,19 +412,19 @@ RunUnitTests_CoreConfig() {
         AssertEq(cfg.GUI_ScreenWidthPct, 0.75, "Config parse: float '0.75' -> 0.75")
 
         ; Test 4: String -> "test_custom_pipe"
-        AssertEq(cfg.StorePipeName, "test_custom_pipe", "Config parse: string 'test_custom_pipe'")
+        AssertEq(cfg.PumpPipeName, "test_custom_pipe", "Config parse: string 'test_custom_pipe'")
 
         ; Test 5: Bool "yes" variant
-        IniWrite("yes", testCfgPath, "AltTab", "PrewarmOnAlt")
+        IniWrite("yes", testCfgPath, "AltTab", "SwitchOnClick")
         _CL_InitializeDefaults()
         _CL_LoadAllSettings()
-        AssertEq(cfg.AltTabPrewarmOnAlt, true, "Config parse: bool 'yes' -> true")
+        AssertEq(cfg.AltTabSwitchOnClick, true, "Config parse: bool 'yes' -> true")
 
         ; Test 6: Bool "false" -> false
-        IniWrite("false", testCfgPath, "AltTab", "PrewarmOnAlt")
+        IniWrite("false", testCfgPath, "AltTab", "SwitchOnClick")
         _CL_InitializeDefaults()
         _CL_LoadAllSettings()
-        AssertEq(cfg.AltTabPrewarmOnAlt, false, "Config parse: bool 'false' -> false")
+        AssertEq(cfg.AltTabSwitchOnClick, false, "Config parse: bool 'false' -> false")
 
         ; Test 7: Int invalid -> default preserved
         try FileDelete(testCfgPath)
@@ -450,10 +450,10 @@ RunUnitTests_CoreConfig() {
     _CL_InitializeDefaults()
     _CL_LoadAllSettings()
     _CL_ValidateSettings()
-    cfg.AltTabPrewarmOnAlt := savedPrewarm
+    cfg.AltTabSwitchOnClick := savedSwitchOnClick
     cfg.AltTabGraceMs := savedGraceMs
     cfg.GUI_ScreenWidthPct := savedWidthPct
-    cfg.StorePipeName := savedPipeName
+    cfg.PumpPipeName := savedPipeName
 
     ; Cleanup
     try FileDelete(testCfgPath)
@@ -468,7 +468,7 @@ RunUnitTests_CoreConfig() {
 
     ; Test 1: Verify all diagnostic config options default to false
     diagOptions := ["DiagChurnLog", "DiagKomorebiLog", "DiagEventLog", "DiagWinEventLog",
-                    "DiagStoreLog", "DiagIconPumpLog", "DiagProcPumpLog", "DiagLauncherLog", "DiagIPCLog"]
+                    "DiagStoreLog", "DiagIconPumpLog", "DiagProcPumpLog", "DiagPumpLog", "DiagLauncherLog", "DiagIPCLog"]
     allDefaultFalse := true
     for _, opt in diagOptions {
         if (!cfg.HasOwnProp(opt)) {
@@ -525,7 +525,6 @@ RunUnitTests_CoreConfig() {
     Log("Testing that entry points initialize without runtime errors...")
 
     entryPoints := [
-        {name: "store_server.ahk", path: A_ScriptDir "\..\src\store\store_server.ahk", args: "--test --pipe=entry_test_store_" A_TickCount},
         {name: "viewer.ahk", path: A_ScriptDir "\..\src\viewer\viewer.ahk", args: "--nogui"},
         {name: "gui_main.ahk", path: A_ScriptDir "\..\src\gui\gui_main.ahk", args: "--test"},
         {name: "alt_tabby.ahk (launcher)", path: A_ScriptDir "\..\src\alt_tabby.ahk", args: "--testing-mode"}
@@ -895,14 +894,14 @@ RunUnitTests_CoreConfig() {
     ; _Launcher_ApplyConfigChanges calls ConfigLoader_Init() a second time
     ; to reload INI. Verify re-calling doesn't corrupt state.
     Log("Testing ConfigLoader_Init() re-entrancy for config reload...")
-    savedPipe := cfg.StorePipeName
+    savedPipe := cfg.PumpPipeName
     savedGrace := cfg.AltTabGraceMs
 
     ConfigLoader_Init()  ; Second call (first was during test startup)
 
     reentryOk := true
-    if (!cfg.HasOwnProp("StorePipeName") || cfg.StorePipeName = "") {
-        Log("FAIL: StorePipeName empty after ConfigLoader_Init() re-call")
+    if (!cfg.HasOwnProp("PumpPipeName") || cfg.PumpPipeName = "") {
+        Log("FAIL: PumpPipeName empty after ConfigLoader_Init() re-call")
         reentryOk := false
     }
     if (!cfg.HasOwnProp("AltTabGraceMs") || cfg.AltTabGraceMs <= 0) {
@@ -923,6 +922,6 @@ RunUnitTests_CoreConfig() {
     }
 
     ; Restore
-    cfg.StorePipeName := savedPipe
+    cfg.PumpPipeName := savedPipe
     cfg.AltTabGraceMs := savedGrace
 }

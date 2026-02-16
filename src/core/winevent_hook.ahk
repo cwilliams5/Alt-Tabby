@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
+#Warn VarUnset, Off  ; Expected: file is included after window_list.ahk
 
 ; ============================================================
 ; WinEvent Hook - Event-driven window change detection
@@ -263,7 +263,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         ; The O(1) Map lookup is fast vs 10-50ms for WinGetTitle.
         if (cfg.DiagWinEventLog) {
             inStore := false
-            try inStore := WindowStore_GetByHwnd(hwnd) != 0
+            try inStore := WL_GetByHwnd(hwnd) != 0
             if (!inStore) {
                 ; Not in store yet - batch processor will check eligibility via WinUtils_ProbeWindow
                 ; which filters system UI (empty title, not visible, etc.)
@@ -307,7 +307,8 @@ _WEH_ProcessBatch() {
     global _WEH_PendingHwnds, WinEventHook_DebounceMs, _WEH_PendingZNeeded
     global gWEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
-    global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store
+    global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store, gWS_OnStoreChanged
+    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
@@ -342,6 +343,7 @@ _WEH_ProcessBatch() {
     if (_WEH_PendingFocusHwnd && gKSub_MruSuppressUntilTick > 0 && A_TickCount < gKSub_MruSuppressUntilTick) {
         if (cfg.DiagWinEventLog)
             _WEH_DiagLog("FOCUS SUPPRESSED (ws switch): hwnd=" _WEH_PendingFocusHwnd)
+        FR_Record(FR_EV_FOCUS_SUPPRESS, _WEH_PendingFocusHwnd, gKSub_MruSuppressUntilTick - A_TickCount)
         _WEH_PendingFocusHwnd := 0
     }
     if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != gWEH_LastFocusHwnd) {
@@ -369,10 +371,11 @@ _WEH_ProcessBatch() {
             patches[newFocus] := { lastActivatedTick: A_TickCount, isFocused: true }
             if (gWEH_LastFocusHwnd && gWEH_LastFocusHwnd != newFocus)
                 patches[gWEH_LastFocusHwnd] := { isFocused: false }
-            WindowStore_BatchUpdateFields(patches, "winevent_mru")  ; lint-ignore: critical-leak
+            WL_BatchUpdateFields(patches, "winevent_mru")  ; lint-ignore: critical-leak
             Critical "On"  ; Re-enter: BatchUpdateFields' Critical "Off" clears thread-level state
 
             gWEH_LastFocusHwnd := newFocus
+            FR_Record(FR_EV_FOCUS, newFocus)
             focusProcessed := true
 
             ; Safety net: detect missed komorebi workspace switch.
@@ -383,12 +386,12 @@ _WEH_ProcessBatch() {
                 && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
                 if (cfg.DiagWinEventLog)
                     _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
-                WindowStore_SetCurrentWorkspace("", focusedRec.workspaceName)
+                WL_SetCurrentWorkspace("", focusedRec.workspaceName)
             }
 
             ; Enqueue icon refresh check (throttled) - allows updating window icons that change
             ; (e.g., browser favicons) when the window gains focus
-            WindowStore_EnqueueIconRefresh(newFocus)  ; lint-ignore: critical-leak
+            WL_EnqueueIconRefresh(newFocus)  ; lint-ignore: critical-leak
         } else {
             ; Window not in store yet - defer probe to OUTSIDE Critical section.
             ; WinUtils_ProbeWindow sends window messages (WinGetTitle, WinGetClass, WinGetPID)
@@ -408,7 +411,7 @@ _WEH_ProcessBatch() {
     Critical "Off"
 
     ; Deferred probe: runs OUTSIDE Critical so window messages don't block the message pump.
-    ; WindowStore_UpsertWindow has its own internal Critical for store mutation.
+    ; WL_UpsertWindow has its own internal Critical for store mutation.
     if (pendingProbeHwnd) {
         ; Single call: checkEligible=true does Alt-Tab + blacklist checks AND probes
         ; window properties in one pass, avoiding redundant WinGetTitle/WinGetClass/DllCalls
@@ -426,14 +429,14 @@ _WEH_ProcessBatch() {
             superseded := (_WEH_PendingFocusHwnd != 0 && _WEH_PendingFocusHwnd != pendingProbeHwnd)
             Critical "Off"
             if (!superseded) {
-                WindowStore_UpsertWindow([probe], "winevent_focus_add")
+                WL_UpsertWindow([probe], "winevent_focus_add")
                 if (cfg.DiagWinEventLog)
                     _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
 
                 ; Clear focus on previous window
                 Critical "On"
                 if (pendingPrevFocus && pendingPrevFocus != pendingProbeHwnd) {
-                    WindowStore_UpdateFields(pendingPrevFocus, { isFocused: false }, "winevent_mru")
+                    WL_UpdateFields(pendingPrevFocus, { isFocused: false }, "winevent_mru")
                 }
                 gWEH_LastFocusHwnd := pendingProbeHwnd
                 Critical "Off"
@@ -454,8 +457,8 @@ _WEH_ProcessBatch() {
     ; (which requires pending hwnds to pass the 50ms debounce). Since the FOREGROUND event
     ; itself queued an entry in _WEH_PendingHwnds, the Count=0 early-exit below is bypassed.
     ; Without this push, the GUI sees the new window with lastActivatedTick=0 (wrong MRU).
-    if (focusProcessed)
-        Store_PushIfRevChanged()
+    if (focusProcessed && gWS_OnStoreChanged)
+        gWS_OnStoreChanged()
 
     if (_WEH_PendingHwnds.Count = 0)
         return
@@ -518,7 +521,7 @@ _WEH_ProcessBatch() {
 
     ; Handle destroyed windows
     if (destroyed.Length > 0) {
-        WindowStore_RemoveWindow(destroyed, true)  ; forceRemove=true - trust the OS
+        WL_RemoveWindow(destroyed, true)  ; forceRemove=true - trust the OS
     }
 
     ; Handle hidden windows — probe and remove if no longer eligible.
@@ -535,7 +538,7 @@ _WEH_ProcessBatch() {
             ; If still eligible, window got a transient HIDE — leave it alone
         }
         if (hiddenRemoved.Length > 0)
-            WindowStore_RemoveWindow(hiddenRemoved, true)
+            WL_RemoveWindow(hiddenRemoved, true)
     }
 
     ; Probe and update changed windows
@@ -549,13 +552,13 @@ _WEH_ProcessBatch() {
                 records.Push(rec)
         }
         if (records.Length > 0) {
-            WindowStore_UpsertWindow(records, "winevent_hook")
+            WL_UpsertWindow(records, "winevent_hook")
             ; Only enqueue Z-order enrichment for events that change Z-order
             ; (CREATE, SHOW, FOREGROUND, FOCUS, MINIMIZE, RESTORE)
             ; Skips NAMECHANGE and LOCATIONCHANGE which fire frequently but don't affect Z
             for _, rec in records {
                 if (zSnapshot.Has(rec["hwnd"]))
-                    WindowStore_EnqueueForZ(rec["hwnd"])
+                    WL_EnqueueForZ(rec["hwnd"])
             }
         }
     }
@@ -566,10 +569,11 @@ _WEH_ProcessBatch() {
     ; Structural changes (destroy, Z-affecting events) push immediately.
     ; Cosmetic-only changes (title/location) are throttled to avoid push floods
     ; from apps with animated titles (e.g., terminal spinners).
-    hasRecords := (toProcess.Length > 0 && IsSet(records) && records.Length > 0)  ; lint-ignore: isset-with-default
+    hasRecords := (toProcess.Length > 0 && IsSet(records) && records.Length > 0)
     if (destroyed.Length > 0 || hiddenRemoved.Length > 0 || hasRecords) {
         isStructural := destroyed.Length > 0 || hiddenRemoved.Length > 0 || zSnapshot.Count > 0
-        Store_PushIfRevChanged(isStructural)
+        if (gWS_OnStoreChanged)
+            gWS_OnStoreChanged(isStructural)
     }
 }
 

@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
+#Warn VarUnset, Off  ; Expected: file is included after window_list.ahk
 
 ; ============================================================
 ; Icon Pump - Resolves window icons asynchronously
@@ -62,6 +62,14 @@ global _IP_UwpLogoCacheMax := 50        ; Default, overridden from config
 ; Tick-based timing for periodic pruning (avoids static counter per ahk-patterns.md)
 global _IP_LastPruneTick := 0
 global _IP_PruneIntervalMs := 5000      ; Prune every ~5s
+
+; Callback globals for WindowList decoupling (wired by host process)
+; In MainProcess: point to WindowList functions. In EnrichmentPump: pump-local implementations.
+global gIP_PopBatch := 0        ; fn(n) → returns array of hwnds needing icon resolution
+global gIP_GetRecord := 0       ; fn(hwnd) → returns record object or ""
+global gIP_UpdateFields := 0    ; fn(hwnd, fields, source) → updates record fields
+global gIP_GetExeIcon := 0      ; fn(exe) → returns cached HICON copy or 0
+global gIP_PutExeIcon := 0      ; fn(exe, hIcon) → caches master HICON for exe path
 
 ; Start the icon pump timer
 IconPump_Start() {
@@ -171,7 +179,8 @@ IconPump_CleanupWindow(hwnd) {
 
     ; Destroy the HICON (before record is deleted from store).
     ; Safe: GUI eagerly pre-caches GDI+ bitmaps on IPC receive (see Gdip_PreCacheIcon).
-    rec := WindowStore_GetByHwnd(hwnd)
+    global gIP_GetRecord
+    rec := gIP_GetRecord(hwnd)
     if (rec && rec.HasOwnProp("iconHicon") && rec.iconHicon) {
         try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
         rec.iconHicon := 0  ; Defensive: prevent use-after-free
@@ -183,13 +192,16 @@ IconPump_CleanupWindow(hwnd) {
     Critical "Off"
 }
 
-; Main pump tick
-; Uses Critical sections around per-window processing to prevent TOCTOU races
+; Main pump tick — 3-phase per-window processing to avoid holding Critical across blocking calls.
+;   Phase 1 (Critical ON):  Read record state, determine mode, capture locals
+;   Phase 2 (Critical OFF): Icon resolution (SendMessageTimeoutW may block up to 500ms)
+;   Phase 3 (Critical ON):  Re-validate record, apply results (discard if removed during Phase 2)
 _IP_Tick() {
     global IconBatchPerTick, _IP_Attempts, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
     global IP_LOG_TITLE_MAX_LEN, _IP_DiagEnabled, _IP_LogPath
     global IP_MODE_INITIAL, IP_MODE_VISIBLE_RETRY, IP_MODE_FOCUS_RECHECK
+    global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
 
     logEnabled := _IP_DiagEnabled && _IP_LogPath != ""
 
@@ -201,7 +213,8 @@ _IP_Tick() {
         _IP_PruneAttempts()
     }
 
-    hwnds := WindowStore_PopIconBatch(IconBatchPerTick)
+    global gIP_PopBatch
+    hwnds := gIP_PopBatch(IconBatchPerTick)
     if (!IsObject(hwnds) || hwnds.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
         Pump_HandleIdle(&_IP_IdleTicks, _IP_IdleThreshold, &_IP_TimerOn, _IP_Tick, _IP_Log)
@@ -212,12 +225,11 @@ _IP_Tick() {
     now := A_TickCount
 
     for _, hwnd in hwnds {
-        ; Wrap per-window processing in Critical to prevent race conditions
-        ; between checking window state and updating it
+        ; === Phase 1: Read state under Critical ===
         Critical "On"
 
         hwnd := hwnd + 0
-        rec := WindowStore_GetByHwnd(hwnd)
+        rec := gIP_GetRecord(hwnd)
         if (!rec) {
             if (logEnabled)
                 _IP_Log("SKIP hwnd=" hwnd " (not in store)")
@@ -276,13 +288,18 @@ _IP_Tick() {
             }
         }
 
-        ; Try to get icon based on mode
+        ; Capture locals for Phase 2 (rec reference invalid after Critical release)
+        recPid := rec.pid
+        recExePath := rec.exePath
+        Critical "Off"
+
+        ; === Phase 2: Icon resolution outside Critical (may block up to 500ms) ===
         h := 0
         method := ""
 
         if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
             ; Only try WM_GETICON for upgrade/refresh (window must be visible)
-            h := _IP_TryResolveFromWindow(hwnd)
+            h := IP_TryResolveFromWindow(hwnd)
             if (h) {
                 method := "wm_geticon"
             }
@@ -291,7 +308,7 @@ _IP_Tick() {
 
             ; Try WM_GETICON first (only if visible)
             if (!isHidden) {
-                h := _IP_TryResolveFromWindow(hwnd)
+                h := IP_TryResolveFromWindow(hwnd)
                 if (h) {
                     method := "wm_geticon"
                 }
@@ -299,7 +316,7 @@ _IP_Tick() {
 
             ; Try UWP package icon
             if (!h) {
-                h := _IP_TryResolveFromUWP(hwnd, rec.pid)
+                h := IP_TryResolveFromUWP(hwnd, recPid)
                 if (h) {
                     method := "uwp"
                 }
@@ -307,15 +324,15 @@ _IP_Tick() {
 
             ; Fallback: process EXE icon
             if (!h) {
-                exe := rec.exePath
-                if (exe = "" && rec.pid > 0)
-                    exe := _IP_GetProcessPath(rec.pid)
+                exe := recExePath
+                if (exe = "" && recPid > 0)
+                    exe := _IP_GetProcessPath(recPid)
                 if (exe != "") {
-                    hCopy := WindowStore_GetExeIconCopy(exe)
+                    hCopy := gIP_GetExeIcon(exe)
                     if (!hCopy) {
-                        master := _IP_ExtractExeIcon(exe)
+                        master := IP_ExtractExeIcon(exe)
                         if (master) {
-                            WindowStore_ExeIconCachePut(exe, master)
+                            gIP_PutExeIcon(exe, master)
                             hCopy := DllCall("user32\CopyIcon", "ptr", master, "ptr")
                         }
                     }
@@ -327,9 +344,26 @@ _IP_Tick() {
             }
         }
 
+        ; === Phase 3: Apply results under Critical ===
+        Critical "On"
+
+        ; Re-validate record (may have been removed during Phase 2)
+        rec := gIP_GetRecord(hwnd)
+        if (!rec) {
+            ; Window removed during resolution — discard acquired icon
+            if (h)
+                try DllCall("user32\DestroyIcon", "ptr", h)
+            if (logEnabled)
+                _IP_Log("DISCARD hwnd=" hwnd " (removed during resolution)")
+            Critical "Off"
+            continue
+        }
+
         ; Handle result based on mode
         if (h) {
             ; Success - got a new icon
+            if (_IP_DiagEnabled)
+                _IP_Log("RESOLVED hwnd=" hwnd " h=" h " method=" method)
             if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
                 ; Destroy old icon before replacing.
                 ; Safe: GUI eagerly pre-caches GDI+ bitmaps on IPC receive, so it never
@@ -337,7 +371,7 @@ _IP_Tick() {
                 if (rec.iconHicon)
                     try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
             }
-            WindowStore_UpdateFields(hwnd, {
+            gIP_UpdateFields(hwnd, {
                 iconHicon: h,
                 iconCooldownUntilTick: 0,
                 iconMethod: method,
@@ -357,7 +391,7 @@ _IP_Tick() {
         if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
             ; For upgrade/refresh, failure is OK - we keep existing icon
             ; Just update the refresh timestamp so we don't spam retries
-            WindowStore_UpdateFields(hwnd, { iconLastRefreshTick: now }, "icons")
+            gIP_UpdateFields(hwnd, { iconLastRefreshTick: now }, "icons")
             if (logEnabled) {
                 title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
                 _IP_Log("KEPT hwnd=" hwnd " '" title "' mode=" mode " (WM_GETICON failed, keeping existing)")
@@ -381,7 +415,7 @@ _IP_Tick() {
             _IP_SetCooldown(hwnd, step)
         } else {
             ; Max attempts reached - mark as gave up so we don't retry forever
-            WindowStore_UpdateFields(hwnd, { iconGaveUp: true }, "icons")
+            gIP_UpdateFields(hwnd, { iconGaveUp: true }, "icons")
             _IP_Attempts.Delete(hwnd)  ; Clean up attempts tracking
             if (logEnabled)
                 _IP_Log("GAVE UP hwnd=" hwnd " '" title "' after " IconMaxAttempts " attempts")
@@ -394,7 +428,7 @@ _IP_Tick() {
 ; Try to get icon from window via WM_GETICON or class icon
 ; Prefer larger icons (ICON_BIG=32x32) over small (16x16) since we display at 36px+
 ; Uses SendMessageTimeoutW with SMTO_ABORTIFHUNG to avoid blocking on hung windows.
-_IP_TryResolveFromWindow(hWnd) {
+IP_TryResolveFromWindow(hWnd) {
     global IP_WM_GETICON, IP_ICON_BIG, IP_ICON_SMALL, IP_ICON_SMALL2
     global IP_GCLP_HICONSM, IP_GCLP_HICON, IP_SMTO_ABORTIFHUNG, IP_RESOLVE_TIMEOUT_MS
     global _IP_DiagEnabled, _IP_LogPath
@@ -425,7 +459,7 @@ _IP_TryResolveFromWindow(hWnd) {
             return DllCall("user32\CopyIcon", "ptr", h, "ptr")
     } catch as e {
         if (_IP_DiagEnabled && _IP_LogPath != "")
-            _IP_Log("WARN: _IP_TryResolveFromWindow failed for hwnd=" hWnd " err=" e.Message)
+            _IP_Log("WARN: IP_TryResolveFromWindow failed for hwnd=" hWnd " err=" e.Message)
     }
     return 0
 }
@@ -457,15 +491,16 @@ _IP_TryExtractIconFromPath(path) {
 }
 
 ; Extract icon from exe file, falling back to explorer.exe
-_IP_ExtractExeIcon(exePath) {
+IP_ExtractExeIcon(exePath) {
     h := _IP_TryExtractIconFromPath(exePath)
     return h ? h : _IP_TryExtractIconFromPath(A_WinDir "\explorer.exe")
 }
 
 ; Set cooldown on a window
 _IP_SetCooldown(hwnd, ms) {
+    global gIP_UpdateFields
     next := A_TickCount + (ms + 0)
-    WindowStore_UpdateFields(hwnd, { iconCooldownUntilTick: next }, "icons")
+    gIP_UpdateFields(hwnd, { iconCooldownUntilTick: next }, "icons")
 }
 
 ; ============================================================
@@ -630,7 +665,7 @@ _IP_GetPackagePath(pid) {
 
 ; Try to extract icon from UWP package
 ; Uses cached logo path lookup to avoid repeated manifest parsing for multiple windows from same app
-_IP_TryResolveFromUWP(hwnd, pid) {
+IP_TryResolveFromUWP(hwnd, pid) {
     global _IP_DiagEnabled, _IP_LogPath
     ; Get package path first (also confirms it's a UWP app)
     packagePath := _IP_GetPackagePath(pid)

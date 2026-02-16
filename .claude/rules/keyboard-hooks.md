@@ -10,27 +10,26 @@
 
 - **Async activation**: Buffer events in `gGUI_EventBuffer` while `gGUI_PendingPhase != ""`. Escape cancels pending activation.
 - **Lost Tab detection**: ALT_DN + ALT_UP without TAB = Tab was lost. Synthesize it.
-- **Local MRU tracking**: During rapid Alt+Tab, we're faster than store deltas. Track `gGUI_LastLocalMRUTick`, skip stale snapshots (<300ms old).
-- **Snapshot blocking during async**: When `gGUI_PendingPhase != ""`, skip incoming snapshots (except toggle responses) — otherwise workspace-filtered snapshots corrupt gGUI_LiveItems.
+- **In-process MRU**: Window data lives in MainProcess — MRU is always authoritative, no stale snapshot risk.
 
 ## Game Mode Bypass
 
-Disables Tab hooks when fullscreen game or blacklisted process is focused. Store sends `isFocused: true` in deltas → GUI calls `INT_ShouldBypassWindow(hwnd)` → `Hotkey("$*Tab", "Off")`. When focus leaves, Tab hotkeys re-enabled.
+Disables Tab hooks when fullscreen game or blacklisted process is focused. WinEventHook sets `isFocused: true` → GUI calls `INT_ShouldBypassWindow(hwnd)` → `Hotkey("$*Tab", "Off")`. When focus leaves, Tab hotkeys re-enabled.
 
 **Critical fix:** Filter windows with empty titles in WinEventHook callback — prevents Task Switching UI from poisoning focus tracking.
 
 ## CRITICAL: Do NOT Release Critical Before Rendering
 
 **This is an optimization trap.** A previous attempt released `Critical "Off"` before GDI+ rendering (~16ms) and caused:
-1. **Partial glass background** — IPC messages interrupted mid-render
+1. **Partial glass background** — timer callbacks interrupted mid-render
 2. **Window mapping corruption** — gGUI_LiveItems modified during render
-3. **Stale projection data** — Snapshots accepted during async activation
+3. **Stale projection data** — producer callbacks accepted during async activation
 
 Keep `Critical "On"` for the entire `GUI_OnInterceptorEvent` handler. The ~16ms delay is acceptable — users won't notice keyboard lag but WILL notice corrupted GUI.
 
 **Only safe to release before rendering when:**
 1. Rendering uses `gGUI_DisplayItems` (already populated inside Critical)
-2. Display items are independent of incoming IPC messages
+2. Display items are independent of producer callbacks
 
 ## Defense Stack
 
@@ -38,8 +37,5 @@ Keep `Critical "On"` for the entire `GUI_OnInterceptorEvent` handler. The ~16ms 
 2. `Critical "On"` — prevents callback interruption
 3. Keep Critical during render — prevents data corruption
 4. Async activation — non-blocking
-5. Block snapshots during async — prevents stale data
-6. Event buffering — queue during async
-7. Lost Tab detection — synthesize if needed
-8. Local MRU tracking — skip stale snapshots
-9. Local WS update — immediate, don't wait for IPC
+5. Event buffering — queue during async
+6. Lost Tab detection — synthesize if needed

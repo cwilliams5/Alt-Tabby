@@ -200,7 +200,7 @@ _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
 ; ========================= ACTIONS =========================
 
 _GUI_PerformAction(action, idx1 := 0) {
-    global gGUI_Sel, gGUI_StoreClient, IPC_MSG_RELOAD_BLACKLIST
+    global gGUI_Sel
 
     if (idx1 = 0) {
         idx1 := gGUI_Sel
@@ -222,8 +222,8 @@ _GUI_PerformAction(action, idx1 := 0) {
     }
 
     if (action = "kill") {
-        pid := cur.HasOwnProp("PID") ? cur.PID : ""
-        ttl := cur.HasOwnProp("Title") ? cur.Title : "window"
+        pid := cur.HasOwnProp("pid") ? cur.pid : ""
+        ttl := cur.HasOwnProp("title") ? cur.title : "window"
         pname := cur.HasOwnProp("processName") ? cur.processName : ""
 
         ; Build detailed confirmation message
@@ -252,8 +252,8 @@ _GUI_PerformAction(action, idx1 := 0) {
     }
 
     if (action = "blacklist") {
-        ttl := cur.HasOwnProp("Title") ? cur.Title : ""
-        cls := cur.HasOwnProp("Class") ? cur.Class : ""
+        ttl := cur.HasOwnProp("title") ? cur.title : ""
+        cls := cur.HasOwnProp("class") ? cur.class : ""
 
         if (cls = "" && ttl = "") {
             return
@@ -279,12 +279,9 @@ _GUI_PerformAction(action, idx1 := 0) {
             return
         }
 
-        ; Send reload message to store via IPC
-        if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe) {
-            global gGUI_StoreWakeHwnd
-            msg := { type: IPC_MSG_RELOAD_BLACKLIST }
-            IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(msg), gGUI_StoreWakeHwnd)
-        }
+        ; Reload blacklist and purge newly-blacklisted windows from store
+        Blacklist_Init()
+        WL_PurgeBlacklisted()
 
         ; Remove item from local display
         _GUI_RemoveItemAt(idx1)

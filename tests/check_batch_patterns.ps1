@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, projection_fields, map_dot_access
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -113,12 +113,6 @@ $CHECKS = @(
         Patterns = @("_Gdip_DisposeResources()")
     },
     @{
-        Id       = "viewer_onexit"
-        File     = "viewer\viewer.ahk"
-        Desc     = "Viewer has _Viewer_OnExitWrapper and registers OnExit"
-        Patterns = @("_Viewer_OnExitWrapper", "OnExit(_Viewer_OnExitWrapper)")
-    },
-    @{
         Id       = "gui_onexit"
         File     = "gui\gui_main.ahk"
         Desc     = "GUI has _GUI_OnExit and registers OnExit"
@@ -131,13 +125,6 @@ $CHECKS = @(
         Patterns = @("OnError(")
     },
     @{
-        Id       = "store_onexit_icons"
-        File     = "store\store_server.ahk"
-        Desc     = "_Store_OnExit calls both icon cleanup functions"
-        Function = "_Store_OnExit"
-        Patterns = @("WindowStore_CleanupAllIcons()", "WindowStore_CleanupExeIconCache()")
-    },
-    @{
         Id       = "gui_onexit_gdip"
         File     = "gui\gui_main.ahk"
         Desc     = "GUI _GUI_OnExit calls Gdip_Shutdown()"
@@ -146,7 +133,7 @@ $CHECKS = @(
     },
     @{
         Id       = "ksub_no_undefined_log"
-        File     = "store\komorebi_sub.ahk"
+        File     = "core\komorebi_sub.ahk"
         Desc     = "No undefined _KSub_Log() calls (should be KSub_DiagLog)"
         NotPresent = @("_KSub_Log(")
     },
@@ -157,53 +144,40 @@ $CHECKS = @(
         Patterns = @("onDisconnectFn", "onDisconnect:", "server.onDisconnect")
     },
     @{
-        Id       = "store_disconnect_cleanup"
-        File     = "store\store_server.ahk"
-        Desc     = "Store registers disconnect callback and cleans all client state"
-        Patterns = @("_Store_OnClientDisconnect)", "_Store_OnClientDisconnect(hPipe)", "gStore_ClientState.Delete(")
-    },
-    @{
         Id       = "ksub_buffer_overflow"
-        File     = "store\komorebi_sub.ahk"
+        File     = "core\komorebi_sub.ahk"
         Desc     = "Komorebi subscription has 1MB buffer overflow protection"
         Patterns = @('_KSub_ReadBuffer := ""')
         AnyOf    = @("1048576", "KSUB_BUFFER_MAX_BYTES")
     },
     @{
         Id       = "ksub_cache_prune_func"
-        File     = "store\komorebi_sub.ahk"
+        File     = "core\komorebi_sub.ahk"
         Desc     = "KomorebiSub has cache pruning function with TTL check"
         Patterns = @("KomorebiSub_PruneStaleCache()", "_KSub_CacheMaxAgeMs", "_KSub_WorkspaceCache.Delete(")
     },
     @{
-        Id       = "heartbeat_calls_prune"
-        File     = "store\store_server.ahk"
-        Desc     = "Store_HeartbeatTick calls KomorebiSub_PruneStaleCache"
-        Function = "Store_HeartbeatTick"
-        Patterns = @("KomorebiSub_PruneStaleCache")
-    },
-    @{
         Id       = "icon_pump_idle_pause"
-        File     = "store\icon_pump.ahk"
+        File     = "core\icon_pump.ahk"
         Desc     = "Icon pump has idle-pause pattern with EnsureRunning"
         Patterns = @("_IP_IdleTicks", "_IP_IdleThreshold", "SetTimer(_IP_Tick, 0)", "IconPump_EnsureRunning()")
     },
     @{
         Id       = "proc_pump_idle_pause"
-        File     = "store\proc_pump.ahk"
+        File     = "core\proc_pump.ahk"
         Desc     = "Proc pump has idle-pause pattern with EnsureRunning"
         Patterns = @("_PP_IdleTicks", "_PP_IdleThreshold", "SetTimer(_PP_Tick, 0)", "ProcPump_EnsureRunning()")
     },
     @{
         Id       = "weh_idle_pause"
-        File     = "store\winevent_hook.ahk"
+        File     = "core\winevent_hook.ahk"
         Desc     = "WinEvent hook has idle-pause pattern with EnsureTimerRunning"
         Patterns = @("_WEH_IdleTicks", "_WEH_IdleThreshold", "SetTimer(_WEH_ProcessBatch, 0)", "_WinEventHook_EnsureTimerRunning()")
     },
     @{
-        Id       = "windowstore_wakes_pumps"
-        File     = "store\windowstore.ahk"
-        Desc     = "WindowStore wakes both pumps when enqueuing work"
+        Id       = "windowlist_wakes_pumps"
+        File     = "shared\window_list.ahk"
+        Desc     = "WindowList wakes both pumps when enqueuing work"
         Patterns = @("IconPump_EnsureRunning()", "ProcPump_EnsureRunning()")
     },
     @{
@@ -232,12 +206,6 @@ $CHECKS = @(
         Desc     = "GUI_RecalcHover uses static pt buffer"
         Regex    = $true
         Patterns = @("GUI_RecalcHover\([\s\S]*?static pt\s*:=\s*Buffer")
-    },
-    @{
-        Id       = "gui_defensive_close"
-        File     = "gui\gui_main.ahk"
-        Desc     = "GUI has defensive IPC_PipeClient_Close before reconnect"
-        Patterns = @("IPC_PipeClient_Close(gGUI_StoreClient)")
     },
     @{
         Id       = "stale_file_cleanup"
@@ -395,19 +363,19 @@ $CHECKS = @(
     },
     @{
         Id       = "weh_empty_title_filter"
-        File     = "store\winevent_hook.ahk"
+        File     = "core\winevent_hook.ahk"
         Desc     = "WinEventHook filters empty-title windows from focus tracking"
         Patterns = @('probeTitle != ""', "NOT ELIGIBLE")
     },
     @{
         Id       = "weh_focus_unknown_window"
-        File     = "store\winevent_hook.ahk"
+        File     = "core\winevent_hook.ahk"
         Desc     = "_WEH_ProcessBatch has focus-on-unknown-window path (probes + upserts)"
         Patterns = @("NOT IN STORE", "UpsertWindow", "WinUtils_ProbeWindow", "winevent_focus_add")
     },
     @{
         Id       = "weh_focus_add_sets_tick"
-        File     = "store\winevent_hook.ahk"
+        File     = "core\winevent_hook.ahk"
         Desc     = "Focus-add path sets lastActivatedTick and isFocused on new window"
         Patterns = @('probe["lastActivatedTick"]', 'probe["isFocused"]')
     },
@@ -471,39 +439,18 @@ $CHECKS = @(
         NotPresent = @('Critical "Off"')
     },
     @{
-        Id       = "isfocused_no_mru_trigger"
-        File     = "gui\gui_store.ahk"
-        Desc     = "isFocused delta handler does NOT set mruChanged (content-only field)"
-        Function = "_GUI_ApplyDelta"
-        Regex    = $true
-        NotPresent = @('isFocused[\s\S]{0,50}mruChanged\s*:=\s*true')
-    },
-    @{
         Id       = "path15_sort_invariant"
-        File     = "store\windowstore.ahk"
-        Desc     = "Path 1.5 projection validates sort invariant after move-to-front"
+        File     = "shared\window_list.ahk"
+        Desc     = "Path 1.5 display list validates sort invariant after move-to-front"
         Regex    = $true
         Patterns = @('lastActivatedTick\s*<\s*sortedRecs')
     },
     @{
         Id       = "ghost_window_detection"
-        File     = "store\windowstore.ahk"
+        File     = "shared\window_list.ahk"
         Desc     = "ValidateExistence detects ghost windows via visibility+cloaked+minimized checks"
-        Function = "WindowStore_ValidateExistence"
+        Function = "WL_ValidateExistence"
         Patterns = @("IsWindowVisible", "DwmGetWindowAttribute", "IsIconic")
-    },
-    @{
-        Id       = "snapshot_blocking_during_async"
-        File     = "gui\gui_store.ahk"
-        Desc     = "Snapshot handler checks gGUI_PendingPhase (async activation guard)"
-        Function = "GUI_OnStoreMessage"
-        Patterns = @("gGUI_PendingPhase")
-    },
-    @{
-        Id       = "local_mru_staleness_check"
-        File     = "gui\gui_store.ahk"
-        Desc     = "Snapshot handler has local MRU staleness check"
-        Patterns = @("gGUI_LastLocalMRUTick")
     }
 )
 
@@ -645,7 +592,7 @@ $lhIssues = @()
 # Check 1: Unconditional FileAppend in catch blocks
 $lhCheck1Files = @(
     (Join-Path $SourceDir "gui\gui_state.ahk"),
-    (Join-Path $SourceDir "store\komorebi_sub.ahk"),
+    (Join-Path $SourceDir "core\komorebi_sub.ahk"),
     (Join-Path $SourceDir "shared\ipc_pipe.ahk")
 )
 foreach ($filePath in $lhCheck1Files) {
@@ -662,8 +609,7 @@ foreach ($filePath in $lhCheck1Files) {
 
 # Check 2: Duplicate *_Log / *_DiagLog function patterns
 $lhCheck2 = @(
-    @{ Path = (Join-Path $SourceDir "store\komorebi_sub.ahk"); Prefix = '_KSub' },
-    @{ Path = (Join-Path $SourceDir "store\store_server.ahk"); Prefix = 'Store' },
+    @{ Path = (Join-Path $SourceDir "core\komorebi_sub.ahk"); Prefix = '_KSub' },
     @{ Path = (Join-Path $SourceDir "gui\gui_state.ahk");     Prefix = '_GUI' }
 )
 foreach ($entry in $lhCheck2) {
@@ -695,29 +641,6 @@ foreach ($file in $allFiles) {
             $lhIssues += [PSCustomObject]@{
                 Check = 'Legacy DebugLog'; File = $relPath
                 Detail = "Line $($i + 1): legacy *_DebugLog variable (convert to cfg.Diag* pattern)"
-            }
-        }
-    }
-}
-
-# Check 4: _Store_LogError must be unconditional
-$storeServerPath = Join-Path $SourceDir "store\store_server.ahk"
-if ($fileCache.ContainsKey($storeServerPath)) {
-    $content = $fileCacheText[$storeServerPath]
-    $hasLogError = $content -match '_Store_LogError\(msg\)'
-    if (-not $hasLogError) {
-        $lhIssues += [PSCustomObject]@{
-            Check = '_Store_LogError missing'; File = 'store_server.ahk'
-            Detail = '_Store_LogError(msg) function not found'
-        }
-    } else {
-        if ($content -match '_Store_LogError\(msg\)\s*\{([^}]+)\}') {
-            $funcBody = $Matches[1]
-            if ($funcBody -match 'cfg\.Diag') {
-                $lhIssues += [PSCustomObject]@{
-                    Check = '_Store_LogError gated'; File = 'store_server.ahk'
-                    Detail = '_Store_LogError should be unconditional (no cfg.Diag check)'
-                }
             }
         }
     }
@@ -911,21 +834,21 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_send_patterns"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
-# Sub-check 5: projection_fields
-# Verify PROJECTION_FIELDS and _WS_ToItem stay in sync
+# Sub-check 5: display_fields
+# Verify DISPLAY_FIELDS and _WS_ToItem stay in sync
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
-$storeRelPath = "store\windowstore.ahk"
+$storeRelPath = "shared\window_list.ahk"
 $storeFullPath = if ($relToFull.ContainsKey($storeRelPath)) { $relToFull[$storeRelPath] } else { $null }
 
 if ($null -ne $storeFullPath -and $fileCache.ContainsKey($storeFullPath)) {
     $wsLines = $fileCache[$storeFullPath]
     $wsContent = $fileCacheText[$storeFullPath]
 
-    # Extract PROJECTION_FIELDS
+    # Extract DISPLAY_FIELDS
     $projFieldNames = [System.Collections.ArrayList]::new()
-    if ($wsContent -match '(?s)global\s+PROJECTION_FIELDS\s*:=\s*\[(.*?)\]') {
+    if ($wsContent -match '(?s)global\s+DISPLAY_FIELDS\s*:=\s*\[(.*?)\]') {
         $arrayContent = $Matches[1]
         $fieldMatches = [regex]::Matches($arrayContent, '"(\w+)"')
         foreach ($m in $fieldMatches) {
@@ -974,7 +897,7 @@ if ($null -ne $storeFullPath -and $fileCache.ContainsKey($storeFullPath)) {
     if ($projFieldNames.Count -eq 0) {
         $anyFailed = $true
         [void]$failOutput.AppendLine("")
-        [void]$failOutput.AppendLine("  FAIL: PROJECTION_FIELDS array not found or empty in windowstore.ahk")
+        [void]$failOutput.AppendLine("  FAIL: DISPLAY_FIELDS array not found or empty in window_list.ahk")
     } elseif ($toItemKeys.Count -eq 0) {
         $anyFailed = $true
         [void]$failOutput.AppendLine("")
@@ -1001,18 +924,18 @@ if ($null -ne $storeFullPath -and $fileCache.ContainsKey($storeFullPath)) {
         if ($inProjNotToItem.Count -gt 0 -or $inToItemNotProj.Count -gt 0) {
             $anyFailed = $true
             [void]$failOutput.AppendLine("")
-            [void]$failOutput.AppendLine("  FAIL: PROJECTION_FIELDS/_WS_ToItem mismatch:")
+            [void]$failOutput.AppendLine("  FAIL: DISPLAY_FIELDS/_WS_ToItem mismatch:")
             if ($inProjNotToItem.Count -gt 0) {
-                [void]$failOutput.AppendLine("    In PROJECTION_FIELDS but not _WS_ToItem: $($inProjNotToItem -join ', ')")
+                [void]$failOutput.AppendLine("    In DISPLAY_FIELDS but not _WS_ToItem: $($inProjNotToItem -join ', ')")
             }
             if ($inToItemNotProj.Count -gt 0) {
-                [void]$failOutput.AppendLine("    In _WS_ToItem but not PROJECTION_FIELDS: $($inToItemNotProj -join ', ')")
+                [void]$failOutput.AppendLine("    In _WS_ToItem but not DISPLAY_FIELDS: $($inToItemNotProj -join ', ')")
             }
         }
     }
 }
 $sw.Stop()
-[void]$subTimings.Add(@{ Name = "check_projection_fields"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+[void]$subTimings.Add(@{ Name = "check_display_fields"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
 # Sub-check 6: map_dot_access
@@ -1054,9 +977,9 @@ $mdaFuncStartRegex = [regex]::new(
     'Compiled'
 )
 
-# Only check store-side and IPC files (where Maps are the primary data structure)
+# Only check core producer and IPC files (where Maps are the primary data structure)
 $mdaStoreFiles = @($allFiles | Where-Object {
-    $_.FullName -like "*\store\*" -or $_.FullName -like "*\shared\ipc*"
+    $_.FullName -like "*\core\*" -or $_.FullName -like "*\shared\ipc*"
 })
 
 foreach ($file in $mdaStoreFiles) {
@@ -1160,7 +1083,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, projection_fields, map_dot_access)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

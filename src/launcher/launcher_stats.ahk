@@ -11,7 +11,7 @@ global g_StatsGui := 0
 global g_StatsControls := Map()  ; key -> control reference for in-place refresh
 
 ShowStatsDialog() {
-    global g_StatsGui, g_StatsControls, g_StatsCache, cfg, g_StorePID
+    global g_StatsGui, g_StatsControls, g_StatsCache, cfg, g_GuiPID
 
     ; If already open, focus existing dialog
     if (g_StatsGui) {
@@ -19,8 +19,8 @@ ShowStatsDialog() {
         return
     }
 
-    ; Query fresh stats if store is running
-    if (LauncherUtils_IsRunning(g_StorePID))
+    ; Query fresh stats if GUI is running (stats run in-process)
+    if (LauncherUtils_IsRunning(g_GuiPID))
         Dash_QueryStats()
 
     sg := Gui("", "Alt-Tabby Statistics")
@@ -169,10 +169,10 @@ _StatsDialog_Close() {
 }
 
 _StatsDialog_Refresh() {
-    global g_StatsGui, g_StorePID
+    global g_StatsGui, g_GuiPID
     if (!g_StatsGui)
         return
-    if (LauncherUtils_IsRunning(g_StorePID))
+    if (LauncherUtils_IsRunning(g_GuiPID))
         Dash_QueryStats()
     _StatsDialog_UpdateValues()
 }

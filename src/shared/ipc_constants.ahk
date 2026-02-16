@@ -3,22 +3,10 @@
 ; IPC Message Type Constants
 ; Shared between production code and tests to avoid duplication.
 
-global IPC_MSG_HELLO := "hello"
-global IPC_MSG_HELLO_ACK := "hello_ack"
-global IPC_MSG_SNAPSHOT_REQUEST := "snapshot_request"
-global IPC_MSG_SNAPSHOT := "snapshot"
-global IPC_MSG_DELTA := "delta"
-global IPC_MSG_PROJECTION_REQUEST := "projection_request"
-global IPC_MSG_PROJECTION := "projection"  ; lint-ignore: ipc-symmetry (sent indirectly via respType variable)
-global IPC_MSG_SET_PROJECTION_OPTS := "set_projection_opts"
-global IPC_MSG_RELOAD_BLACKLIST := "reload_blacklist"
-global IPC_MSG_HEARTBEAT := "heartbeat"
-global IPC_MSG_PRODUCER_STATUS_REQUEST := "producer_status_request"
-global IPC_MSG_PRODUCER_STATUS := "producer_status"
-global IPC_MSG_STATS_UPDATE := "stats_update"
-global IPC_MSG_STATS_REQUEST := "stats_request"
-global IPC_MSG_STATS_RESPONSE := "stats_response"
-global IPC_MSG_WORKSPACE_CHANGE := "workspace_change"
+; EnrichmentPump IPC message types
+global IPC_MSG_ENRICH := "enrich"              ; Main → Pump: request icon/title/proc for hwnds
+global IPC_MSG_ENRICHMENT := "enrichment"      ; Pump → Main: enrichment results
+global IPC_MSG_PUMP_SHUTDOWN := "shutdown"      ; Main → Pump: clean exit
 
 ; IPC Timing Constants (milliseconds)
 global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)

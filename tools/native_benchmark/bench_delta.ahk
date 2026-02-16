@@ -1,7 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Off
 
-; bench_delta.ahk — Benchmark projection diffing (WindowStore_BuildDelta)
+; bench_delta.ahk — Benchmark display list diffing (WindowStore_BuildDelta)
 ;
 ; Measures:
 ; 1. Map construction from item arrays
@@ -10,11 +10,11 @@
 
 #Include %A_ScriptDir%\bench_common.ahk
 
-FileAppend("bench_delta.ahk — Projection Diffing Benchmark`n", "*")
+FileAppend("bench_delta.ahk — DisplayList Diffing Benchmark`n", "*")
 FileAppend("===============================================`n", "*")
 
-; --- Field definitions (matches production PROJECTION_FIELDS) ---
-global PROJECTION_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick",
+; --- Field definitions (matches production DISPLAY_FIELDS) ---
+global DISPLAY_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick",
     "isFocused", "isCloaked", "isMinimized", "workspaceName",
     "workspaceId", "isOnCurrentWorkspace", "processName", "iconHicon"]
 
@@ -72,8 +72,8 @@ _MutateItems(items, changeRate) {
 
 ; --- Production BuildDelta (simplified, no dirty tracking for benchmark purity) ---
 _BuildDelta(prevItems, nextItems, sparse := false) {
-    global PROJECTION_FIELDS
-    deltaFields := PROJECTION_FIELDS
+    global DISPLAY_FIELDS
+    deltaFields := DISPLAY_FIELDS
 
     static prevMap := Map()
     static nextMap := Map()
@@ -229,8 +229,8 @@ for _, count in windowCounts {
 Bench_Header("4. Field Comparison Cost (14 fields, two objects)")
 
 _CompareFields(a, b) {
-    global PROJECTION_FIELDS
-    for _, field in PROJECTION_FIELDS {
+    global DISPLAY_FIELDS
+    for _, field in DISPLAY_FIELDS {
         if (a.%field% != b.%field%)
             return true
     }

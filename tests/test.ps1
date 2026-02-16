@@ -623,16 +623,14 @@ Record-PhaseStart "Pre-Gate"
 Write-Host "`n--- Pre-Gate: Syntax Check + Static Analysis (Parallel) ---" -ForegroundColor Yellow
 
 $filesToCheck = @(
-    "$srcRoot\store\windowstore.ahk",
-    "$srcRoot\store\store_server.ahk",
-    "$srcRoot\store\winenum_lite.ahk",
-    "$srcRoot\store\icon_pump.ahk",
-    "$srcRoot\store\proc_pump.ahk",
+    "$srcRoot\core\winenum_lite.ahk",
+    "$srcRoot\core\icon_pump.ahk",
+    "$srcRoot\core\proc_pump.ahk",
     "$srcRoot\viewer\viewer.ahk",
     "$srcRoot\gui\gui_main.ahk",
     "$srcRoot\gui\gui_interceptor.ahk",
     "$srcRoot\gui\gui_state.ahk",
-    "$srcRoot\gui\gui_store.ahk",
+    "$srcRoot\gui\gui_data.ahk",
     "$srcRoot\gui\gui_workspace.ahk",
     "$srcRoot\gui\gui_paint.ahk",
     "$srcRoot\gui\gui_input.ahk",
@@ -959,24 +957,22 @@ if ($live) {
     $networkLogFile = "$env:TEMP\alt_tabby_tests_network.log"
     $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
     $executionLogFile = "$env:TEMP\alt_tabby_tests_execution.log"
-    $executionStandaloneLogFile = "$env:TEMP\alt_tabby_tests_execution_standalone.log"
     $lifecycleLogFile = "$env:TEMP\alt_tabby_tests_lifecycle.log"
     $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
     $networkStderrFile = "$env:TEMP\ahk_network_stderr.log"
     $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
     $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
-    $executionStandaloneStderrFile = "$env:TEMP\ahk_execution_standalone_stderr.log"
     $lifecycleStderrFile = "$env:TEMP\ahk_lifecycle_stderr.log"
 
     # Clean live suite log files
-    foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $executionStandaloneLogFile, $lifecycleLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile, $executionStandaloneStderrFile, $lifecycleStderrFile)) {
+    foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $lifecycleLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile, $lifecycleStderrFile)) {
         Remove-Item -Force -ErrorAction SilentlyContinue $f
     }
 
     $liveStart = Get-Date
 
-    # --- Live suites (5 parallel, gated by compilation) ---
-    Write-Host "`n--- Live Test Execution (6 suites, parallel) ---" -ForegroundColor Yellow
+    # --- Live suites (parallel, gated by compilation) ---
+    Write-Host "`n--- Live Test Execution (5 suites, parallel) ---" -ForegroundColor Yellow
 
     # The "Tests" phase starts at the earliest test launch (GUI + Unit, already running).
     if ($timing) {
@@ -1004,9 +1000,6 @@ if ($live) {
     Write-Host "  Starting Live/Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
-    Write-Host "  Starting Live/Execution-Standalone tests (background)..." -ForegroundColor Cyan
-    $executionStandaloneHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution-standalone', $executionStandaloneStderrFile)
-
     Write-Host "  Starting Live/Lifecycle tests (background)..." -ForegroundColor Cyan
     $lifecycleHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-lifecycle', $lifecycleStderrFile)
 
@@ -1017,7 +1010,6 @@ if ($live) {
             "Live/Core"      = $coreHandle
             "Live/Network"   = $networkHandle
             "Live/Execution" = $executionHandle
-            "Live/Execution-Standalone" = $executionStandaloneHandle
             "Live/Lifecycle" = $lifecycleHandle
         }
         foreach ($us in $unitSuites) {
@@ -1116,18 +1108,6 @@ if ($live) {
     Show-TestSummary -LogPath $executionLogFile -Label "Execution"
 
     if ($execExitCode -ne 0) { $mainExitCode = $execExitCode }
-
-    Write-Host "`n--- Execution-Standalone Test Results ---" -ForegroundColor Yellow
-    $execStandaloneExitCode = [SilentProcess]::WaitAndGetExitCode($executionStandaloneHandle)
-
-    $executionStandaloneStderr = Get-Content $executionStandaloneStderrFile -ErrorAction SilentlyContinue
-    if ($executionStandaloneStderr) {
-        Write-Host "=== EXECUTION-STANDALONE TEST ERRORS ===" -ForegroundColor Red
-        Write-Host $executionStandaloneStderr
-    }
-    Show-TestSummary -LogPath $executionStandaloneLogFile -Label "Execution-Standalone"
-
-    if ($execStandaloneExitCode -ne 0) { $mainExitCode = $execStandaloneExitCode }
 
     Write-Host "`n--- Features Test Results ---" -ForegroundColor Yellow
     $featuresExitCode = [SilentProcess]::WaitAndGetExitCode($featuresHandle)

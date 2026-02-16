@@ -6,7 +6,7 @@
 - **Auto-update trick**: Renames running exe to `.old` (Windows allows this), moves new exe in place, relaunches.
 - **Elevation pattern**: Save state to `%TEMP%` file → relaunch with `--flag` via `*RunAs` → elevated instance reads state file.
 - **Config path for updates**: Write to TARGET config.ini, not source.
-- **Single-instance**: Named mutex "AltTabby_Launcher" — does NOT affect store/gui subprocesses.
+- **Single-instance**: Named mutex "AltTabby_Launcher" — does NOT affect gui/pump subprocesses.
 
 ## InstallationId Recovery Rules
 

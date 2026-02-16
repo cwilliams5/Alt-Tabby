@@ -1,11 +1,11 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
+#Warn VarUnset, Off  ; Expected: file is included after window_list.ahk
 
 ; ============================================================
 ; Process Pump - Resolves PID -> process name asynchronously
 ; ============================================================
 ; Uses QueryFullProcessImageNameW (fast, limited privilege)
-; Caches results and fans out to all WindowStore rows with same PID
+; Caches results and fans out to all WindowList rows with same PID
 ; ============================================================
 
 ; Configuration (set in ProcPump_Start after ConfigLoader_Init)
@@ -22,6 +22,12 @@ global _PP_IdleThreshold := 5           ; Default, overridden from config in Pro
 global _PP_FailedPidCache := Map()       ; pid -> tick when failure recorded
 global _PP_FailedPidCacheTTL := 60000    ; 60s before retry
 ; No hard cap — ProcPump_PruneFailedPidCache() on heartbeat removes expired + dead PIDs.
+
+; Callback globals for WindowList decoupling (wired by host process)
+; In MainProcess: point to WindowList functions. In EnrichmentPump: pump-local implementations.
+global gPP_PopBatch := 0               ; fn(n) → returns array of PIDs needing resolution
+global gPP_GetProcNameCached := 0       ; fn(pid) → returns cached name or ""
+global gPP_UpdateProcessName := 0       ; fn(pid, name) → updates all records with this PID
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
@@ -84,7 +90,8 @@ ProcPump_EnsureRunning() {
 _PP_Tick() {
     global ProcBatchPerTick, _PP_IdleTicks, _PP_IdleThreshold, _PP_TimerOn
 
-    pids := WindowStore_PopPidBatch(ProcBatchPerTick)
+    global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
+    pids := gPP_PopBatch(ProcBatchPerTick)
     if (!IsObject(pids) || pids.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
         Pump_HandleIdle(&_PP_IdleTicks, _PP_IdleThreshold, &_PP_TimerOn, _PP_Tick, _PP_Log)
@@ -108,9 +115,9 @@ _PP_Tick() {
         Critical "Off"
 
         ; Check positive cache
-        cached := WindowStore_GetProcNameCached(pid)
+        cached := gPP_GetProcNameCached(pid)
         if (cached != "") {
-            WindowStore_UpdateProcessName(pid, cached)
+            gPP_UpdateProcessName(pid, cached)
             continue
         }
 
@@ -126,7 +133,7 @@ _PP_Tick() {
 
         name := _PP_Basename(path)
         if (name != "")
-            WindowStore_UpdateProcessName(pid, name)
+            gPP_UpdateProcessName(pid, name)
     }
 }
 
@@ -140,7 +147,7 @@ _PP_Basename(path) {
     return ProcessUtils_Basename(path)
 }
 
-; Prune expired entries from failed PID cache (called from Store_HeartbeatTick)
+; Prune expired entries from failed PID cache (called from _GUI_Housekeeping)
 ; Removes PIDs where TTL has expired AND process no longer exists
 ; RACE FIX: Wrap in Critical - _PP_Tick reads cache on every tick
 ProcPump_PruneFailedPidCache() {

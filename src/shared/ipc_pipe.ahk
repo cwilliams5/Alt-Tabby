@@ -35,18 +35,9 @@ global IPC_DebugLogPath := ""
 
 _IPC_IsLogEnabled() {
     global IPC_DebugLogPath, cfg
-    return IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)  ; lint-ignore: isset-with-default
+    return IPC_DebugLogPath || (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)
 }
 
-IPC_DefaultProjectionOpts() {
-    return {
-        currentWorkspaceOnly: false,
-        includeMinimized: true,
-        includeCloaked: false,
-        sort: "MRU",
-        columns: "items"
-    }
-}
 
 IPC_PipeServer_Start(pipeName, onMessageFn, onDisconnectFn := 0) {
     ; Reset log for new session (defensive cfg guard - cfg may not be initialized early)
@@ -90,63 +81,6 @@ _IPC_WakePeer(hwnd) {
     global IPC_WM_PIPE_WAKE
     if (hwnd)
         DllCall("user32\PostMessageW", "ptr", hwnd, "uint", IPC_WM_PIPE_WAKE, "ptr", 0, "ptr", 0)
-}
-
-IPC_PipeServer_Broadcast(server, msgText, wakeHwnds := 0) {
-    if !IsObject(server)
-        return 0
-    if (!msgText || SubStr(msgText, -1) != "`n")
-        msgText .= "`n"
-
-    ; RACE FIX: Critical covers UTF-8 conversion + handle snapshot to protect
-    ; IPC_WRITE_BUF from being overwritten by an interrupting IPC_PipeServer_Send call.
-    ; Copy to a local buffer so we can release Critical before WriteFile calls.
-    Critical "On"
-    logEnabled := _IPC_IsLogEnabled()
-    bytes := _IPC_StrToUtf8(msgText)
-    ; Copy to local buffer since IPC_WRITE_BUF may be overwritten after Critical release
-    localBuf := Buffer(bytes.len)
-    DllCall("ntdll\RtlMoveMemory", "ptr", localBuf.Ptr, "ptr", bytes.buf.Ptr, "uint", bytes.len)
-    localLen := bytes.len
-
-    ; Snapshot handles atomically to prevent race with timer callback
-    handles := []
-    for hPipe, _ in server.clients
-        handles.Push(hPipe)
-    Critical "Off"
-
-    ; Writes outside Critical — a blocked client only delays itself, not the message pump
-    dead := []
-    sent := 0
-    for _, hPipe in handles {
-        if (!_IPC_WritePipe(hPipe, localBuf, localLen)) {
-            if (logEnabled)
-                _IPC_Log("WritePipe failed during broadcast hPipe=" hPipe)
-            dead.Push(hPipe)
-        } else {
-            sent += 1
-        }
-    }
-
-    ; Wake all target clients after writes complete (before cleanup)
-    if (IsObject(wakeHwnds)) {
-        for _, wh in wakeHwnds
-            _IPC_WakePeer(wh)
-    }
-
-    ; Cleanup dead handles under Critical (modifies server.clients)
-    if (dead.Length > 0) {
-        Critical "On"
-        for _, h in dead {
-            if (server.onDisconnect)
-                try server.onDisconnect.Call(h)
-            server.clients.Delete(h)
-            _IPC_CloseHandle(h)
-        }
-        Critical "Off"
-    }
-
-    return sent
 }
 
 IPC_PipeServer_Send(server, hPipe, msgText, wakeHwnd := 0) {
@@ -464,7 +398,7 @@ _IPC_Log(msg) {
     logPath := IPC_DebugLogPath
     if (!logPath) {
         ; Check config flag - cfg may not be initialized early in startup
-        if (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)  ; lint-ignore: isset-with-default
+        if (IsSet(cfg) && IsObject(cfg) && cfg.HasOwnProp("DiagIPCLog") && cfg.DiagIPCLog)
             logPath := LOG_PATH_IPC
         else
             return
@@ -604,6 +538,7 @@ _IPC_PeekAvailable(hPipe) {
 _IPC_WritePipe(hPipe, bufPtr, len) {
     wrote := 0
     ok := DllCall("WriteFile", "ptr", hPipe, "ptr", bufPtr, "uint", len, "uint*", &wrote, "ptr", 0)
+    gle := ok ? 0 : DllCall("GetLastError", "uint")
     return ok && (wrote = len)
 }
 
@@ -662,7 +597,7 @@ _IPC_Client_AdjustTimer(client, activityBytes) {
     global IPC_COOLDOWN_PHASE1_MS, IPC_COOLDOWN_PHASE2_MS
     if (activityBytes > 0) {
         client.idleStreak := 0
-        IPC_SetClientTick(client, IPC_TICK_ACTIVE)
+        _IPC_SetClientTick(client, IPC_TICK_ACTIVE)
         return
     }
     ; Graduated cooldown: stay responsive during bursty activity (workspace switches,
@@ -672,14 +607,14 @@ _IPC_Client_AdjustTimer(client, activityBytes) {
     if (client.idleStreak < IPC_COOLDOWN_PHASE1_TICKS)
         return  ; Stay at current (active) tick
     if (client.idleStreak < IPC_COOLDOWN_PHASE2_TICKS)
-        IPC_SetClientTick(client, IPC_COOLDOWN_PHASE1_MS)
+        _IPC_SetClientTick(client, IPC_COOLDOWN_PHASE1_MS)
     else if (client.idleStreak < IPC_COOLDOWN_PHASE3_TICKS)
-        IPC_SetClientTick(client, IPC_COOLDOWN_PHASE2_MS)
+        _IPC_SetClientTick(client, IPC_COOLDOWN_PHASE2_MS)
     else
-        IPC_SetClientTick(client, IPC_TICK_IDLE)
+        _IPC_SetClientTick(client, IPC_TICK_IDLE)
 }
 
-IPC_SetClientTick(client, ms) {
+_IPC_SetClientTick(client, ms) {
     if (client.tickMs = ms)
         return
     client.tickMs := ms

@@ -92,7 +92,6 @@ $siIssues = [System.Collections.ArrayList]::new()
 $entryPoint = Join-Path $SourceDir "alt_tabby.ahk"
 $standaloneEntryPoints = @(
     (Join-Path $SourceDir "editors\config_registry_editor.ahk")
-    (Join-Path $SourceDir "store\store_server.ahk")
 )
 
 # Rule 1: Entry point must have #SingleInstance Off
@@ -213,12 +212,12 @@ if ($ssIssues.Count -gt 0) {
 
 # ============================================================
 # Sub-check 4: winexist_cloaked
-# Flags WinExist("ahk_id ...") in store/shared code
+# Flags WinExist("ahk_id ...") in core/shared code
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $weIssues = [System.Collections.ArrayList]::new()
 $weFiles = @($allFiles | Where-Object {
-    $_.FullName -like "*\store\*" -or $_.FullName -like "*\shared\*"
+    $_.FullName -like "*\core\*" -or $_.FullName -like "*\shared\*"
 })
 $WE_SUPPRESSION = 'lint-ignore: winexist-cloaked'
 
@@ -325,9 +324,10 @@ $script:BD_BT_ExemptPatterns = @(
     [regex]::new('(?i):= WinGetTitle\(')
     [regex]::new('(?i)DllCall\(\s*"(user32|shcore)\\(SetProcess|GetDpi|GetDpiFor|SetWindowLongPtrW|GetWindowLongPtrW)')
     [regex]::new('(?i)^(hr\s*:=\s*)?DllCall\(')
-    [regex]::new('(?i)^WindowStore_(UpdateFields|UpsertWindow|SetCurrentWorkspace|EnqueueIconRefresh|BatchUpdateFields|ValidateExistence|CleanupAllIcons|CleanupExeIconCache|PruneProcNameCache|PruneExeIconCache)\(')
-    [regex]::new('(?i):= WindowStore_(UpdateFields|GetByHwnd|SetCurrentWorkspace)\(')
+    [regex]::new('(?i)^WL_(UpdateFields|UpsertWindow|SetCurrentWorkspace|EnqueueIconRefresh|BatchUpdateFields|ValidateExistence|CleanupAllIcons|CleanupExeIconCache|PruneProcNameCache|PruneExeIconCache)\(')
+    [regex]::new('(?i):= WL_(UpdateFields|GetByHwnd|SetCurrentWorkspace)\(')
     [regex]::new('(?i)^Store_(PushToClients|BroadcastWorkspaceFlips|LogError|LogInfo)\(')
+    [regex]::new('(?i)^gWS_(PushToClients|PushIfRevChanged|BroadcastWorkspaceFlips)\(')
     [regex]::new('(?i)^IPC_PipeClient_Send\(')
     [regex]::new('(?i)^(IconPump|ProcPump|KomorebiSub|KomorebiLite|WinEventHook|MRU_Lite)_(Stop|EnsureRunning|PruneStaleCache|CleanupWindow|CleanupUwpCache|PruneProcNameCache|PruneExeIconCache|PruneFailedPidCache|Poll)\(')
     [regex]::new('(?i):= JSON\.Load\(')
@@ -373,6 +373,7 @@ $script:BD_BT_ExemptPatterns = @(
     [regex]::new('(?i)^try\b')
     [regex]::new('(?i)^_?(GUI|Store|Launcher|Viewer|Update|Blacklist|BL|CEN|CEW|CRE|Theme|IPC|WinEnum)')
     [regex]::new('(?i)^Sleep\(')
+    [regex]::new('(?i)^SendMessage\(')
 )
 
 function BD_BT_TestAutoExempt {

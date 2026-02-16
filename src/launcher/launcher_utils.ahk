@@ -9,7 +9,7 @@
 
 ; Launch a subprocess, handling compiled vs development mode
 ; Parameters:
-;   component - "store", "gui", or "viewer"
+;   component - "gui", "pump", or "viewer"
 ;   pidVar    - Reference to PID variable (will be set to new PID)
 ;   logFunc   - Optional log function(msg) for diagnostics
 ; Returns: true if launched, false on failure
@@ -20,8 +20,8 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
     if (A_IsCompiled) {
         exe := '"' A_ScriptFullPath '" '
         switch component {
-            case "store":  cmd := exe "--store"
             case "gui":    cmd := exe "--gui-only" launcherArg
+            case "pump":   cmd := exe "--pump"
             case "viewer": cmd := exe "--viewer"
             default:       return false
         }
@@ -30,8 +30,8 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
         ahk := '"' A_AhkPath '" "'
         srcDir := A_ScriptDir "\"
         switch component {
-            case "store":  cmd := ahk srcDir 'store\store_server.ahk"'
             case "gui":    cmd := ahk srcDir 'gui\gui_main.ahk"' launcherArg
+            case "pump":   cmd := ahk srcDir 'alt_tabby.ahk" --pump'
             case "viewer": cmd := ahk srcDir 'viewer\viewer.ahk"'
             default:       return false
         }
@@ -67,7 +67,7 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
 
 ; Restart a subprocess (kill if running, then launch)
 ; Parameters:
-;   component  - "store", "gui", or "viewer"
+;   component  - "gui", "pump", or "viewer"
 ;   pidVar     - Reference to PID variable
 ;   waitMs     - Milliseconds to wait between kill and launch (default 200)
 ;   logFunc    - Optional log function(msg) for diagnostics

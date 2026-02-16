@@ -867,8 +867,11 @@ global IPC_TICK_IDLE := 100              ; Default, overridden from cfg.IPCIdleT
 global MAX_RESTART_ATTEMPTS := 2          ; Store restart attempts before giving up
 
 ; WM_COPYDATA command IDs (launcher <-> client control signals)
-global TABBY_CMD_RESTART_STORE := 1   ; GUI -> launcher: restart store only
-global TABBY_CMD_RESTART_ALL := 2     ; Config editor -> launcher: restart store + GUI
+global TABBY_CMD_RESTART_ALL := 2     ; Config editor -> launcher: restart all subprocesses
+global TABBY_CMD_TOGGLE_VIEWER := 3   ; Launcher -> GUI: toggle debug viewer window
+global TABBY_CMD_RELOAD_BLACKLIST := 4  ; Blacklist editor -> launcher -> GUI: reload blacklist
+global TABBY_CMD_QUERY_STATS := 5      ; Launcher -> GUI: request stats snapshot
+global TABBY_CMD_STATS_RESPONSE := 6   ; GUI -> launcher: stats snapshot JSON payload
 
 ; Shared path/delimiter constants
 global TEMP_ADMIN_TOGGLE_LOCK := A_Temp "\alttabby_admin_toggle.lock"

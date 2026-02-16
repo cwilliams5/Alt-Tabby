@@ -1,5 +1,5 @@
 ; Unit Tests - Advanced Scenarios
-; Defensive Close, Update Race Guard, WindowStore_MetaChanged
+; Defensive Close, Update Race Guard
 ; Included by test_unit.ahk
 #Include test_utils.ahk
 
@@ -69,91 +69,4 @@ RunUnitTests_Advanced() {
         TestErrors++
     }
 
-    ; ============================================================
-    ; WindowStore_MetaChanged Functional Tests
-    ; ============================================================
-    Log("`n--- WindowStore_MetaChanged Functional Tests ---")
-
-    ; Test 1: Empty previous meta returns true (first-time case)
-    Log("Testing WindowStore_MetaChanged() with empty previous meta...")
-    try {
-        nextMeta := Map("currentWSName", "workspace1")
-        result := WindowStore_MetaChanged("", nextMeta)
-        if (result = true) {
-            Log("PASS: WindowStore_MetaChanged returns true for empty previous meta")
-            TestPassed++
-        } else {
-            Log("FAIL: Should return true for empty previous meta, got: " result)
-            TestErrors++
-        }
-    } catch as e {
-        Log("FAIL: WindowStore_MetaChanged empty meta error: " e.Message)
-        TestErrors++
-    }
-
-    ; Test 2: Same workspace name returns false (no change)
-    Log("Testing WindowStore_MetaChanged() with identical workspace names...")
-    try {
-        prev := Map("currentWSName", "workspace1")
-        next := Map("currentWSName", "workspace1")
-        result := WindowStore_MetaChanged(prev, next)
-        if (result = false) {
-            Log("PASS: WindowStore_MetaChanged returns false when workspace unchanged")
-            TestPassed++
-        } else {
-            Log("FAIL: Should return false for same workspace, got: " result)
-            TestErrors++
-        }
-    } catch as e {
-        Log("FAIL: WindowStore_MetaChanged same workspace error: " e.Message)
-        TestErrors++
-    }
-
-    ; Test 3: Different workspace names returns true (changed)
-    Log("Testing WindowStore_MetaChanged() with different workspace names...")
-    try {
-        prev := Map("currentWSName", "workspace1")
-        next := Map("currentWSName", "workspace2")
-        result := WindowStore_MetaChanged(prev, next)
-        if (result = true) {
-            Log("PASS: WindowStore_MetaChanged returns true when workspace changed")
-            TestPassed++
-        } else {
-            Log("FAIL: Should return true for different workspaces, got: " result)
-            TestErrors++
-        }
-    } catch as e {
-        Log("FAIL: WindowStore_MetaChanged different workspace error: " e.Message)
-        TestErrors++
-    }
-
-    ; Test 4: Handles plain Object meta (not Map)
-    Log("Testing WindowStore_MetaChanged() with plain Object meta...")
-    try {
-        prev := { currentWSName: "ws_a" }
-        next := { currentWSName: "ws_b" }
-        result := WindowStore_MetaChanged(prev, next)
-        if (result = true) {
-            Log("PASS: WindowStore_MetaChanged handles plain Object meta")
-            TestPassed++
-        } else {
-            Log("FAIL: Should return true for different Object meta workspaces, got: " result)
-            TestErrors++
-        }
-
-        ; Also test same name with Object
-        prev2 := { currentWSName: "ws_a" }
-        next2 := { currentWSName: "ws_a" }
-        result2 := WindowStore_MetaChanged(prev2, next2)
-        if (result2 = false) {
-            Log("PASS: WindowStore_MetaChanged returns false for same Object meta workspace")
-            TestPassed++
-        } else {
-            Log("FAIL: Should return false for same Object meta workspace, got: " result2)
-            TestErrors++
-        }
-    } catch as e {
-        Log("FAIL: WindowStore_MetaChanged Object meta error: " e.Message)
-        TestErrors++
-    }
 }

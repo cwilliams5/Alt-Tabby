@@ -33,10 +33,8 @@
 ; Alt-Tabby - Unified Launcher & Mode Router
 ; ============================================================
 ; Usage:
-;   alt_tabby.exe             - Launch GUI + Store (default)
-;   alt_tabby.exe --store     - Run as WindowStore server
-;   alt_tabby.exe --viewer    - Run as Debug Viewer
-;   alt_tabby.exe --gui-only  - Run as GUI only (store must be running)
+;   alt_tabby.exe             - Launch MainProcess + Pump (default)
+;   alt_tabby.exe --gui-only  - Run as MainProcess only
 ;   alt_tabby.exe --config    - Run Config Editor
 ;   alt_tabby.exe --blacklist - Run Blacklist Editor
 ;
@@ -54,11 +52,8 @@ global g_SkipActiveMutex := false  ; Skip active mutex check (user already decli
 
 for _, arg in A_Args {
     switch StrLower(arg) {
-        case "--store":
-            g_AltTabbyMode := "store"
-            A_IconHidden := true  ; Hide tray icon IMMEDIATELY to minimize flicker
-        case "--viewer":
-            g_AltTabbyMode := "viewer"
+        case "--pump":
+            g_AltTabbyMode := "pump"
             A_IconHidden := true
         case "--gui-only":
             g_AltTabbyMode := "gui"
@@ -133,6 +128,8 @@ for _, arg in A_Args {
 #Include win_utils.ahk
 #Include pump_utils.ahk
 #Include resource_utils.ahk
+#Include stats.ahk
+#Include window_list.ahk
 
 ; Editor subprocesses (from src/editors/)
 #Include %A_ScriptDir%\editors\
@@ -153,9 +150,8 @@ for _, arg in A_Args {
 #Include launcher_tray.ahk
 #Include launcher_main.ahk
 
-; Store module (from src/store/)
-#Include %A_ScriptDir%\store\
-#Include windowstore.ahk
+; Core producers (from src/core/)
+#Include %A_ScriptDir%\core\
 #Include winenum_lite.ahk
 #Include mru_lite.ahk
 #Include komorebi_lite.ahk
@@ -163,7 +159,10 @@ for _, arg in A_Args {
 #Include icon_pump.ahk
 #Include proc_pump.ahk
 #Include winevent_hook.ahk
-#Include store_server.ahk
+
+; Pump module (from src/pump/)
+#Include %A_ScriptDir%\pump\
+#Include enrichment_pump.ahk
 
 ; Viewer module (from src/viewer/)
 #Include %A_ScriptDir%\viewer\
@@ -178,7 +177,8 @@ for _, arg in A_Args {
 #Include gui_paint.ahk
 #Include gui_input.ahk
 #Include gui_flight_recorder.ahk
-#Include gui_store.ahk
+#Include gui_data.ahk
+#Include gui_pump.ahk
 #Include gui_state.ahk
 #Include gui_interceptor.ahk
 #Include gui_main.ahk
@@ -205,10 +205,16 @@ if (g_AltTabbyMode = "config") {
 
 ; Run blacklist editor and exit when launched with --blacklist
 if (g_AltTabbyMode = "blacklist") {
+    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
+    launcherHwnd := 0
+    for _, arg in A_Args {
+        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
+            launcherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
+    }
     ; Initialize config + theme for blacklist editor process
     ConfigLoader_Init()
     Theme_Init()
-    BlacklistEditor_Run()
+    BlacklistEditor_Run(launcherHwnd)
     ExitApp()
 }
 

@@ -29,9 +29,6 @@ These control the Alt-Tab overlay behavior - tweak these first!
 |--------|------|---------|-------|-------------|
 | `GraceMs` | int | `150` | `0` - `2000` | Grace period before showing GUI (ms). During this time, if Alt is released, we do a quick switch without showing GUI. |
 | `QuickSwitchMs` | int | `100` | `0` - `1000` | Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch. |
-| `PrewarmOnAlt` | bool | `true` | - | Pre-warm snapshot on Alt down (true = request data before Tab pressed). Ensures fresh window data is available when Tab is pressed. |
-| `FreezeWindowList` | bool | `false` | - | Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker). |
-| `ServerSideWorkspaceFilter` | bool | `false` | - | When Ctrl toggles workspace filtering, fetch fresh data from the store (true) or filter cached data locally (false). Local is faster but may miss very recent changes. |
 | `SwitchOnClick` | bool | `true` | - | Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released. |
 | `AsyncActivationPollMs` | int | `15` | `10` - `100` | Polling interval (ms) when switching to a window on a different workspace. Lower = more responsive but higher CPU. |
 
@@ -459,34 +456,14 @@ Paths to external executables used by Alt-Tabby.
 
 ## IPC
 
-Named pipe communication between store and clients, including heartbeat liveness detection.
+Named pipe IPC for enrichment pump and launcher control signals.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `StorePipeName` | string | `tabby_store_v1` | - | Named pipe name for store communication |
-| `IdleTickMs` | int | `100` | `15` - `500` | Client poll interval when idle (ms). Lower = more responsive but more CPU. |
-| `FullRowEvery` | int | `10` | `0` - `1000` | How often to send complete window data instead of only changes (self-healing). 0 = always send complete data. Higher values = less bandwidth but slower recovery from missed updates. |
-| `WorkspaceDeltaStyle` | enum | `Always` | - | When to include workspace info in updates. 'Always' = every update. 'OnChange' = only when the active workspace changes (less data). |
-| `FullSyncEvery` | int | `60` | `0` - `600` | Every N heartbeats, send a complete snapshot to all clients to recover any missing or ghost windows. 0 = disabled. |
-| `UseDirtyTracking` | bool | `true` | - | Use dirty tracking for delta computation. Set false for debugging (full field comparison). |
-
-### Reliability
-
-Connection retry and recovery settings
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `MaxReconnectAttempts` | int | `3` | `1` - `10` | Maximum pipe reconnection attempts before triggering store restart. |
-| `StoreStartWaitMs` | int | `1000` | `500` - `5000` | Time to wait for store to start on launch (ms). Increase on slow systems. |
-
-### Heartbeat
-
-Store broadcasts heartbeat to clients for liveness detection
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `HeartbeatIntervalMs` | int | `5000` | `1000` - `60000` | Store sends heartbeat every N ms |
-| `HeartbeatTimeoutMs` | int | `12000` | `2000` - `120000` | Viewer considers connection dead after N ms without any message |
+| `PumpPipeName` | string | `tabby_pump_v1` | - | Named pipe name for enrichment pump communication |
+| `IdleTickMs` | int | `100` | `15` - `500` | Pump poll interval when idle (ms). Lower = more responsive but more CPU. |
+| `MaxReconnectAttempts` | int | `3` | `1` - `10` | Maximum pump pipe reconnection attempts before triggering restart. |
+| `StoreStartWaitMs` | int | `1000` | `500` - `5000` | Time to wait for main process to start on launch (ms). Increase on slow systems. |
 
 ## Store
 
@@ -500,8 +477,10 @@ WinEventHook and MRU are always enabled (core). These control optional producers
 |--------|------|---------|-------|-------------|
 | `UseKomorebiSub` | bool | `true` | - | Komorebi subscription-based integration (preferred, event-driven) |
 | `UseKomorebiLite` | bool | `false` | - | Komorebi polling-based fallback (use if subscription fails) |
+| `UseEnrichmentPump` | bool | `true` | - | Use separate process for blocking icon/title/proc resolution (recommended for responsiveness) |
 | `UseIconPump` | bool | `true` | - | Resolve window icons in background |
 | `UseProcPump` | bool | `true` | - | Resolve process names in background |
+| `PumpIconPruneIntervalMs` | int | `300000` | `10000` - `3600000` | Interval (ms) for pump to prune HICONs of closed windows |
 
 ### Window Filtering
 
@@ -521,7 +500,7 @@ Event-driven window change detection. Events are queued then processed in batche
 | `DebounceMs` | int | `50` | `10` - `1000` | Debounce rapid events (e.g., window moving fires many events) |
 | `BatchMs` | int | `100` | `10` - `2000` | Batch processing interval - how often queued events are processed |
 | `IdleThreshold` | int | `10` | `1` - `100` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
-| `CosmeticBufferMs` | int | `1000` | `100` - `10000` | Minimum interval between updates for cosmetic changes like title text (ms). Important changes (focus, open, close) always update immediately. |
+| `ActiveRepaintDebounceMs` | int | `250` | `0` - `2000` | Minimum interval between cosmetic repaints while overlay is active (ms). Prevents animated titles from flooding repaints. 0 = no debounce. |
 
 ### Z-Pump
 
@@ -592,6 +571,8 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `FlightRecorder` | bool | `true` | - | Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact. |
+| `FlightRecorderBufferSize` | int | `2000` | `500` - `10000` | Number of events kept in the flight recorder ring buffer. 2000 ≈ 30s of typical activity. Higher values capture more history at ~48 bytes per slot. |
+| `FlightRecorderHotkey` | string | `*F12` | - | Hotkey to dump the flight recorder buffer. Use AHK v2 hotkey syntax (e.g. *F12, ^F12, +F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Pass-through: the key still reaches other apps. |
 | `ChurnLog` | bool | `false` | - | Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle. |
 | `KomorebiLog` | bool | `false` | - | Log komorebi subscription events to %TEMP%\\tabby_ksub_diag.log. Use when workspace tracking has issues. |
 | `AltTabTooltips` | bool | `false` | - | Show tooltips for Alt-Tab state machine debugging. Use when overlay behavior is incorrect. |
@@ -600,6 +581,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `StoreLog` | bool | `false` | - | Log store startup and operational info to %TEMP%\\tabby_store_error.log. Use for general store debugging. |
 | `IconPumpLog` | bool | `false` | - | Log icon pump operations to %TEMP%\\tabby_iconpump.log. Use when debugging icon resolution issues (cloaked windows, UWP apps). |
 | `ProcPumpLog` | bool | `false` | - | Log process pump operations to %TEMP%\\tabby_procpump.log. Use when debugging process name resolution failures. |
+| `PumpLog` | bool | `false` | - | Log EnrichmentPump operations to %TEMP%\\tabby_pump.log. Use when debugging icon/title/process enrichment in the pump subprocess. |
 | `LauncherLog` | bool | `false` | - | Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems. |
 | `IPCLog` | bool | `false` | - | Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues. |
 | `PaintTimingLog` | bool | `false` | - | Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle. |
@@ -627,4 +609,4 @@ Debug viewer GUI options
 
 ---
 
-*Generated on 2026-02-14 with 260 total settings.*
+*Generated on 2026-02-16 with 256 total settings.*

@@ -197,8 +197,8 @@ RunUnitTests_Cleanup() {
     ; ============================================================
     Log("`n--- Icon Cache Cleanup Tests ---")
 
-    ; Test 1: WindowStore_CleanupExeIconCache clears the cache
-    Log("Testing WindowStore_CleanupExeIconCache()...")
+    ; Test 1: WL_CleanupExeIconCache clears the cache
+    Log("Testing WL_CleanupExeIconCache()...")
     try {
         global gWS_ExeIconCache
 
@@ -215,11 +215,11 @@ RunUnitTests_Cleanup() {
             TestErrors++
         } else {
             ; Call cleanup
-            WindowStore_CleanupExeIconCache()
+            WL_CleanupExeIconCache()
 
             ; Verify cache is empty
             if (gWS_ExeIconCache.Count = 0) {
-                Log("PASS: WindowStore_CleanupExeIconCache() clears all entries")
+                Log("PASS: WL_CleanupExeIconCache() clears all entries")
                 TestPassed++
             } else {
                 Log("FAIL: Cache should be empty after cleanup, has " gWS_ExeIconCache.Count " entries")
@@ -227,18 +227,18 @@ RunUnitTests_Cleanup() {
             }
         }
     } catch as e {
-        Log("FAIL: WindowStore_CleanupExeIconCache() error: " e.Message)
+        Log("FAIL: WL_CleanupExeIconCache() error: " e.Message)
         TestErrors++
     }
 
-    ; Test 2: WindowStore_CleanupAllIcons zeros iconHicon in store records
-    Log("Testing WindowStore_CleanupAllIcons()...")
+    ; Test 2: WL_CleanupAllIcons zeros iconHicon in store records
+    Log("Testing WL_CleanupAllIcons()...")
     try {
         global gWS_Store
 
         ; Initialize store and add test window with fake icon
-        WindowStore_Init()
-        WindowStore_BeginScan()
+        WL_Init()
+        WL_BeginScan()
 
         testHwnd := 44444
         testRec := Map()
@@ -251,8 +251,8 @@ RunUnitTests_Cleanup() {
         testRec["isMinimized"] := false
         testRec["z"] := 1
         testRec["iconHicon"] := 99999  ; Fake icon handle
-        WindowStore_UpsertWindow([testRec], "test")
-        WindowStore_EndScan()
+        WL_UpsertWindow([testRec], "test")
+        WL_EndScan()
 
         ; Verify icon is set
         if (!gWS_Store.Has(testHwnd) || gWS_Store[testHwnd].iconHicon != 99999) {
@@ -261,11 +261,11 @@ RunUnitTests_Cleanup() {
         } else {
             ; Call actual production function
             ; Note: DestroyIcon on fake handles fails silently (returns 0) - safe to test
-            WindowStore_CleanupAllIcons()
+            WL_CleanupAllIcons()
 
             ; Verify icon was cleared
             if (gWS_Store[testHwnd].iconHicon = 0) {
-                Log("PASS: WindowStore_CleanupAllIcons() zeros iconHicon field")
+                Log("PASS: WL_CleanupAllIcons() zeros iconHicon field")
                 TestPassed++
             } else {
                 Log("FAIL: iconHicon should be 0 after cleanup")
@@ -274,9 +274,9 @@ RunUnitTests_Cleanup() {
         }
 
         ; Clean up test window
-        WindowStore_RemoveWindow([testHwnd], true)
+        WL_RemoveWindow([testHwnd], true)
     } catch as e {
-        Log("FAIL: WindowStore_CleanupAllIcons() error: " e.Message)
+        Log("FAIL: WL_CleanupAllIcons() error: " e.Message)
         TestErrors++
     }
 
@@ -285,35 +285,7 @@ RunUnitTests_Cleanup() {
     ; ============================================================
     Log("`n--- IPC Critical Section Tests ---")
 
-    ; Test 1: IPC_PipeServer_Broadcast handles empty client map
-    Log("Testing IPC_PipeServer_Broadcast() with empty clients...")
-    try {
-        ; Create a mock server with no clients
-        mockServer := {
-            pipeName: "test_pipe",
-            clients: Map(),
-            pending: [],
-            timerFn: 0,
-            tickMs: 100,
-            idleStreak: 0
-        }
-
-        ; Broadcast should return 0 and not crash
-        result := IPC_PipeServer_Broadcast(mockServer, "test message")
-
-        if (result = 0) {
-            Log("PASS: Broadcast with empty clients returns 0")
-            TestPassed++
-        } else {
-            Log("FAIL: Broadcast with empty clients should return 0, got " result)
-            TestErrors++
-        }
-    } catch as e {
-        Log("FAIL: Broadcast empty clients test error: " e.Message)
-        TestErrors++
-    }
-
-    ; Test 2: IPC__ServerTick handles empty server gracefully
+    ; Test 1: IPC__ServerTick handles empty server gracefully
     Log("Testing IPC__ServerTick() with minimal server...")
     try {
         ; Create a minimal mock server

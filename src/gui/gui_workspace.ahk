@@ -49,7 +49,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
         GUI_UpdateFooterText()
 
         ; Workspace switch is a context switch: reset selection to top,
-        ; mark sticky, and request fresh projection if frozen.
+        ; mark sticky, and request fresh display list if frozen.
         Critical "On"
         GUI_HandleWorkspaceSwitch()
         Critical "Off"
@@ -59,8 +59,8 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 ; ========================= WORKSPACE TOGGLE =========================
 
 GUI_ToggleWorkspaceMode() {
-    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase, gGUI_LiveItems
-    global cfg, gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT
+    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase
+    global gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT, FR_EV_WS_TOGGLE
 
     ; RACE FIX: Protect counter increment and mode toggle atomically -
     ; callers may not have Critical (GUI_OnClick releases it before calling us)
@@ -68,39 +68,22 @@ GUI_ToggleWorkspaceMode() {
     gStats_WorkspaceToggles += 1
     gGUI_WorkspaceMode := (gGUI_WorkspaceMode = WS_MODE_ALL) ? WS_MODE_CURRENT : WS_MODE_ALL
     Critical "Off"
+    FR_Record(FR_EV_WS_TOGGLE, (gGUI_WorkspaceMode = WS_MODE_ALL) ? 1 : 2, gGUI_DisplayItems.Length)
 
     GUI_UpdateFooterText()
 
-    ; If GUI is visible and active, refresh the list
+    ; If GUI is visible and active, filter locally from cached items
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        ; Check if we should request from store or filter locally
-        useServerFilter := cfg.ServerSideWorkspaceFilter
+        Critical "On"
+        sourceItems := gGUI_ToggleBase
+        gGUI_DisplayItems := GUI_FilterByWorkspaceMode(sourceItems)
+        Critical "Off"
 
-        if (useServerFilter) {
-            ; Request new projection from store with workspace filter
-            ; Response will be handled by GUI_OnStoreMessage (gGUI_AwaitingToggleProjection flag)
-            currentWSOnly := (gGUI_WorkspaceMode = WS_MODE_CURRENT)
-            GUI_RequestProjectionWithWSFilter(currentWSOnly)
-            ; Don't repaint yet - wait for response
-        } else {
-            ; Filter locally from cached items
-            ; Critical required: GUI_OnClick releases Critical before calling us,
-            ; so an IPC timer could modify gGUI_LiveItems/gGUI_ToggleBase mid-filter.
-            Critical "On"
-            isFrozen := cfg.FreezeWindowList
-            sourceItems := isFrozen ? gGUI_ToggleBase : gGUI_LiveItems
-            gGUI_DisplayItems := GUI_FilterByWorkspaceMode(sourceItems)
-            Critical "Off"
-            ; NOTE: Do NOT update gGUI_LiveItems - it must stay unfiltered as the source of truth
+        GUI_ResetSelectionToMRU()
 
-            ; Reset selection
-            GUI_ResetSelectionToMRU()
-
-            ; Resize GUI if item count changed significantly
-            rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
-            GUI_ResizeToRows(rowsDesired)
-            GUI_Repaint()
-        }
+        rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
+        GUI_ResizeToRows(rowsDesired)
+        GUI_Repaint()
     }
 }
 

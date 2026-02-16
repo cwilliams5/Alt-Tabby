@@ -82,7 +82,7 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
         isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
     }
 
-    ; Build record as Map (required by WindowStore)
+    ; Build record as Map (required by WindowList)
     rec := Map()
     rec["hwnd"] := hwnd
     rec["title"] := title

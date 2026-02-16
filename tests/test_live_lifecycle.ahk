@@ -1,21 +1,19 @@
 ; Live Tests - Process Lifecycle
-; Launcher WM_COPYDATA control signal tests
+; Launcher WM_COPYDATA control signal tests (2-process model: launcher + gui)
 ; Included by test_live.ahk
 ;
 ; ISOLATION: Copies AltTabby.exe to a temp dir as AltTabby_lifecycle.exe with
-; its own config.ini (unique pipe name, FirstRunCompleted=true). This gives
-; it a unique mutex (different InstallationId from different dir) and unique
-; store pipe, so it runs without conflicting with other parallel test suites
-; that also launch AltTabby.exe.
+; its own config.ini (FirstRunCompleted=true). This gives it a unique mutex
+; (different InstallationId from different dir) so it runs without conflicting
+; with other parallel test suites that also launch AltTabby.exe.
 #Include test_utils.ahk
 
 global LIFECYCLE_EXE_NAME := "AltTabby_lifecycle.exe"
-global LIFECYCLE_PIPE_NAME := "tabby_store_lifecycle"
 global LIFECYCLE_HWND_FILE := A_Temp "\alttabby_lifecycle_hwnd.txt"
 
 RunLiveTests_Lifecycle() {
     global TestPassed, TestErrors
-    global LIFECYCLE_EXE_NAME, LIFECYCLE_PIPE_NAME, LIFECYCLE_HWND_FILE
+    global LIFECYCLE_EXE_NAME, LIFECYCLE_HWND_FILE
 
     compiledExePath := A_ScriptDir "\..\release\AltTabby.exe"
 
@@ -38,8 +36,8 @@ RunLiveTests_Lifecycle() {
     DirCreate(testDir)
     FileCopy(compiledExePath, testExe, true)
 
-    ; Write config.ini with unique pipe name and wizard skip
-    configContent := "[Setup]`nFirstRunCompleted=true`n`n[IPC]`nStorePipeName=" LIFECYCLE_PIPE_NAME "`n"
+    ; Write config.ini with wizard skip (no store pipe needed — store is in-process)
+    configContent := "[Setup]`nFirstRunCompleted=true`n"
     FileAppend(configContent, testDir "\config.ini", "UTF-8")
 
     ; Launch
@@ -51,7 +49,7 @@ RunLiveTests_Lifecycle() {
         return
     }
 
-    ; Wait for 3 processes (launcher + store + gui)
+    ; Wait for 2 processes (launcher + gui). Pump is optional and may not spawn.
     processCount := 0
     spawnStart := A_TickCount
     loop {
@@ -61,15 +59,18 @@ RunLiveTests_Lifecycle() {
         for proc in ComObjGet("winmgmts:").ExecQuery(
             "Select * from Win32_Process Where Name = '" LIFECYCLE_EXE_NAME "'")
             processCount++
-        if (processCount >= 3)
+        if (processCount >= 2)
             break
         Sleep(50)
     }
-    if (processCount < 3) {
-        Log("SKIP: Only " processCount " process(es) of " LIFECYCLE_EXE_NAME ", need 3")
+    if (processCount < 2) {
+        Log("SKIP: Only " processCount " process(es) of " LIFECYCLE_EXE_NAME ", need 2 (launcher + gui)")
         _Lifecycle_Cleanup()
         return
     }
+
+    Log("PASS: " processCount " processes spawned (launcher + gui" (processCount > 2 ? " + pump" : "") ")")
+    TestPassed++
 
     ; Read launcher HWND from temp file (launcher writes it in --testing-mode
     ; because CREATE_NO_WINDOW hides AHK's message window from WinGetList)
@@ -96,65 +97,40 @@ RunLiveTests_Lifecycle() {
         return
     }
 
-    if (!WaitForStorePipe(LIFECYCLE_PIPE_NAME, 3000)) {
-        Log("FAIL: Store pipe '" LIFECYCLE_PIPE_NAME "' not ready")
-        TestErrors++
-        _Lifecycle_Cleanup()
-        return
-    }
+    ; Give GUI time to initialize (no store pipe to wait for — poll process count)
+    Sleep(1000)
 
     ; ============================================================
-    ; Test 1: RESTART_STORE signal
-    ; ============================================================
-    Log("`n--- RESTART_STORE Signal Test ---")
-
-    ; Find and kill store process
-    storePid := _Lifecycle_FindStorePid(launcherPid)
-    if (!storePid) {
-        Log("FAIL: Could not identify store process")
-        TestErrors++
-    } else {
-        try ProcessClose(storePid)
-        waitStart := A_TickCount
-        while (ProcessExist(storePid) && (A_TickCount - waitStart) < 2000)
-            Sleep(20)
-
-        response := _Lifecycle_SendCommand(launcherHwnd, 1)  ; RESTART_STORE
-        if (response = 1) {
-            Log("PASS: Launcher acknowledged RESTART_STORE")
-            TestPassed++
-            if (WaitForStorePipe(LIFECYCLE_PIPE_NAME, 5000)) {
-                Log("PASS: Store pipe available after restart")
-                TestPassed++
-            } else {
-                Log("FAIL: Store pipe not available after restart (5s)")
-                TestErrors++
-            }
-        } else {
-            Log("FAIL: RESTART_STORE signal failed (response=" response ")")
-            TestErrors++
-        }
-    }
-
-    ; ============================================================
-    ; Test 2: RESTART_ALL signal (config editor path)
+    ; Test 1: RESTART_ALL signal (config editor path)
     ; ============================================================
     Log("`n--- RESTART_ALL Signal Test ---")
 
-    ; WaitForStorePipe handles waiting - no fixed sleep needed
-    if (!WaitForStorePipe(LIFECYCLE_PIPE_NAME, 3000)) {
-        Log("SKIP: Store not available for RESTART_ALL test")
+    guiPidBefore := _Lifecycle_FindGuiPid(launcherPid)
+    if (!guiPidBefore) {
+        Log("SKIP: Could not find GUI process for RESTART_ALL test")
     } else {
         response := _Lifecycle_SendCommand(launcherHwnd, 2)  ; RESTART_ALL
         if (response = 1) {
             Log("PASS: Launcher acknowledged RESTART_ALL")
             TestPassed++
-            ; Wait for processes to restart and store pipe to come back
-            if (WaitForStorePipe(LIFECYCLE_PIPE_NAME, 5000)) {
-                Log("PASS: Store pipe available after RESTART_ALL")
+
+            ; Wait for GUI process to restart (new PID)
+            restartStart := A_TickCount
+            newGuiPid := 0
+            while ((A_TickCount - restartStart) < 8000) {
+                candidate := _Lifecycle_FindGuiPid(launcherPid)
+                if (candidate && candidate != guiPidBefore) {
+                    newGuiPid := candidate
+                    break
+                }
+                Sleep(100)
+            }
+
+            if (newGuiPid) {
+                Log("PASS: GUI process restarted with new PID (old=" guiPidBefore ", new=" newGuiPid ")")
                 TestPassed++
             } else {
-                Log("FAIL: Store pipe not available after RESTART_ALL (5s)")
+                Log("FAIL: GUI process did not restart within timeout")
                 TestErrors++
             }
         } else {
@@ -164,92 +140,80 @@ RunLiveTests_Lifecycle() {
     }
 
     ; ============================================================
-    ; Test 3: Ordered WM_CLOSE shutdown (GUI exits before Store)
+    ; Test 2: Ordered WM_CLOSE shutdown (GUI exits, then launcher)
     ; ============================================================
     Log("`n--- Ordered Shutdown Test ---")
 
-    ; WaitForStorePipe handles waiting - no fixed sleep needed
-    if (!WaitForStorePipe(LIFECYCLE_PIPE_NAME, 3000)) {
-        Log("SKIP: Store not available for shutdown order test")
+    ; Re-find GUI PID after potential restart
+    Sleep(500)
+    guiPid := _Lifecycle_FindGuiPid(launcherPid)
+
+    if (!guiPid) {
+        Log("SKIP: Could not find GUI pid for shutdown test")
     } else {
-        guiPid := _Lifecycle_FindGuiPid(launcherPid)
-        storePid := _Lifecycle_FindStorePid(launcherPid)
+        Log("Shutdown test: launcher=" launcherPid " gui=" guiPid)
 
-        if (!guiPid || !storePid) {
-            Log("SKIP: Could not find GUI pid (" guiPid ") or Store pid (" storePid ") for shutdown test")
+        ; Send WM_CLOSE to launcher to trigger graceful shutdown
+        ; Use DllCall because AHK's PostMessage can't find hidden message windows
+        preShutdownTick := A_TickCount
+        DllCall("PostMessageW", "ptr", launcherHwnd, "uint", 0x0010, "ptr", 0, "ptr", 0)
+
+        ; High-frequency poll both PIDs to detect exit order
+        guiExitTick := 0
+        launcherExitTick := 0
+        shutdownTimeout := 9000  ; 3s GUI + 3s margin + 3s launcher
+
+        loop {
+            elapsed := A_TickCount - preShutdownTick
+            if (elapsed >= shutdownTimeout)
+                break
+
+            if (!guiExitTick && !ProcessExist(guiPid))
+                guiExitTick := A_TickCount
+            if (!launcherExitTick && !ProcessExist(launcherPid))
+                launcherExitTick := A_TickCount
+
+            ; Both gone, done
+            if (guiExitTick && launcherExitTick)
+                break
+
+            Sleep(20)
+        }
+
+        ; Assert: GUI exited
+        if (guiExitTick) {
+            Log("PASS: GUI process exited (" (guiExitTick - preShutdownTick) "ms after WM_CLOSE)")
+            TestPassed++
         } else {
-            Log("Shutdown test: launcher=" launcherPid " gui=" guiPid " store=" storePid)
+            Log("FAIL: GUI process did not exit within " shutdownTimeout "ms")
+            TestErrors++
+        }
 
-            ; Send WM_CLOSE to launcher to trigger graceful shutdown
-            ; Use DllCall because AHK's PostMessage can't find hidden message windows
-            preShutdownTick := A_TickCount
-            DllCall("PostMessageW", "ptr", launcherHwnd, "uint", 0x0010, "ptr", 0, "ptr", 0)
-
-            ; High-frequency poll both PIDs to detect exit order
-            guiExitTick := 0
-            storeExitTick := 0
-            shutdownTimeout := 9000  ; 3s GUI + 3s Store + 3s margin
-
-            loop {
-                elapsed := A_TickCount - preShutdownTick
-                if (elapsed >= shutdownTimeout)
-                    break
-
-                if (!guiExitTick && !ProcessExist(guiPid))
-                    guiExitTick := A_TickCount
-                if (!storeExitTick && !ProcessExist(storePid))
-                    storeExitTick := A_TickCount
-
-                ; Both gone, done
-                if (guiExitTick && storeExitTick)
-                    break
-
-                Sleep(20)
-            }
-
-            ; Assert: GUI and Store both exited
-            if (guiExitTick && storeExitTick) {
-                ; Assert: GUI exited before or same tick as Store
-                if (guiExitTick <= storeExitTick) {
-                    Log("PASS: Shutdown order correct - GUI exited before Store (gui=" (guiExitTick - preShutdownTick) "ms, store=" (storeExitTick - preShutdownTick) "ms)")
-                    TestPassed++
-                } else {
-                    Log("FAIL: Shutdown order wrong - Store exited before GUI (gui=" (guiExitTick - preShutdownTick) "ms, store=" (storeExitTick - preShutdownTick) "ms)")
-                    TestErrors++
-                }
-            } else {
-                if (!guiExitTick) {
-                    Log("FAIL: GUI process did not exit within " shutdownTimeout "ms")
-                    TestErrors++
-                }
-                if (!storeExitTick) {
-                    Log("FAIL: Store process did not exit within " shutdownTimeout "ms")
-                    TestErrors++
-                }
-            }
-
-            ; Assert: Launcher also exited (give it a moment after store dies)
-            launcherGone := false
+        ; Assert: Launcher also exited
+        if (launcherExitTick) {
+            Log("PASS: Launcher exited after shutdown (" (launcherExitTick - preShutdownTick) "ms)")
+            TestPassed++
+        } else {
+            ; Give it a bit more time
             launcherWait := A_TickCount
             while (A_TickCount - launcherWait < 2000) {
                 if (!ProcessExist(launcherPid)) {
-                    launcherGone := true
+                    launcherExitTick := A_TickCount
                     break
                 }
                 Sleep(50)
             }
-            if (launcherGone) {
-                Log("PASS: Launcher exited after shutdown")
+            if (launcherExitTick) {
+                Log("PASS: Launcher exited after extended wait")
                 TestPassed++
             } else {
-                Log("FAIL: Launcher still alive 2s after store exited")
+                Log("FAIL: Launcher still alive 2s after GUI exited")
                 TestErrors++
             }
-
         }
     }
 
-    ; Cleanup (safety net - processes should already be gone after Test 3)
+    ; Cleanup (safety net - processes should already be gone after Test 2)
     _Lifecycle_Cleanup()
 }
 
@@ -280,20 +244,6 @@ _Lifecycle_FindGuiPid(launcherPid) {
         cmdLine := ""
         try cmdLine := proc.CommandLine
         if (pid != launcherPid && InStr(cmdLine, "--gui-only"))
-            return pid
-    }
-    return 0
-}
-
-; Helper: find store PID by WMI (--store in command line, not launcher)
-_Lifecycle_FindStorePid(launcherPid) {
-    global LIFECYCLE_EXE_NAME
-    for proc in ComObjGet("winmgmts:").ExecQuery(
-        "Select ProcessId, CommandLine from Win32_Process Where Name = '" LIFECYCLE_EXE_NAME "'") {
-        pid := proc.ProcessId
-        cmdLine := ""
-        try cmdLine := proc.CommandLine
-        if (pid != launcherPid && InStr(cmdLine, "--store"))
             return pid
     }
     return 0

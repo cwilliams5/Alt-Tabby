@@ -53,48 +53,23 @@ A_MenuMaskKey := "vkE8"
 global gGUI_Revealed := false
 ; gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking declared in gui_input.ahk (sole writer)
 ; gGUI_FooterText, gGUI_WorkspaceMode declared in gui_workspace.ahk (sole writer)
-global gGUI_CurrentWSName := ""  ; Cached from store meta
-
-global gGUI_StoreClient := 0
-global gGUI_StoreConnected := false
+global gGUI_CurrentWSName := ""  ; Cached from gWS_Meta
 
 global gGUI_OverlayVisible := false
 
 ; ========================= THREE-ARRAY DESIGN =========================
-; gGUI_LiveItems:       CANONICAL source - always current, updated by IPC deltas.
-;                   This is the live, unfiltered window list from the store.
+; gGUI_LiveItems:    CANONICAL source - always current, refreshed from WindowList.
+;                    This is the live, unfiltered window list.
 ;
-; gGUI_ToggleBase:    Copy used for workspace toggle (Ctrl key) support.
+; gGUI_ToggleBase:   Copy used for workspace toggle (Ctrl key) support.
 ; gGUI_DisplayItems: DISPLAY list - what gets rendered and Tab cycles through.
 ;
-; BEHAVIOR DEPENDS ON TWO CONFIG OPTIONS:
+; === Structural Freeze During ACTIVE ===
 ;
-; === cfg.FreezeWindowList (controls delta handling during ACTIVE) ===
-;
-; When FreezeWindowList=false (default):
-;   - During ACTIVE: Each delta updates gGUI_LiveItems, then BOTH arrays are
-;     recreated from it (gGUI_ToggleBase := gGUI_LiveItems, then re-filter)
-;   - Result: Display is "live" - windows can appear/disappear mid-overlay
-;   - Note: Despite the names, arrays are NOT frozen in this mode
-;
-; When FreezeWindowList=true:
-;   - On first Tab: Both arrays are created as point-in-time snapshots
-;   - During ACTIVE: IPC deltas ignored (except workspace change tracking)
-;   - Result: Display shows frozen snapshot, windows won't appear/disappear
-;
-; === cfg.ServerSideWorkspaceFilter (controls workspace toggle behavior) ===
-;
-; When ServerSideWorkspaceFilter=false (default):
-;   - Ctrl toggle filters LOCALLY from gGUI_ToggleBase
-;   - gGUI_ToggleBase stays unfiltered, allowing instant toggle back/forth
-;   - No IPC roundtrip needed
-;
-; When ServerSideWorkspaceFilter=true:
-;   - Ctrl toggle requests NEW projection from store with workspace filter
-;   - Server returns PRE-FILTERED data
-;   - gGUI_LiveItems receives filtered data, gGUI_ToggleBase := gGUI_LiveItems
-;   - gGUI_ToggleBase is now ALSO filtered (loses "all" semantics)
-;   - Toggling back requires another IPC request
+; On first Tab: gGUI_ToggleBase = shallow copy of gGUI_LiveItems (frozen positions).
+; During ACTIVE: structural changes (add/remove/reorder) are ignored to prevent
+; selection position corruption. Cosmetic changes (title, icon) are patched in-place.
+; Workspace toggle: filters LOCALLY from gGUI_ToggleBase (instant).
 ; ======================================================================
 global gGUI_LiveItems := []
 global gGUI_Sel := 1
@@ -104,31 +79,22 @@ global gGUI_ScrollTop := 0
 ; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)
 global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by workspace mode)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
-; gGUI_LastLocalMRUTick declared in gui_state.ahk (sole writer via _GUI_UpdateLocalMRU)
 
 ; Session stats counters declared in gui_state.ahk / gui_workspace.ahk (sole writers)
 
-; Store health check state
-; gGUI_LastMsgTick declared in gui_store.ahk (sole writer via GUI_StoreRecordActivity)
-global gGUI_ReconnectAttempts := 0 ; Counter for failed reconnection attempts
-global gGUI_StoreRestartAttempts := 0  ; Counter for store restart attempts
+; Producer state
+global _gGUI_ScanInProgress := false  ; Re-entrancy guard for full WinEnum scan
+global HOUSEKEEPING_INTERVAL_MS := 300000  ; 5 minutes — cache pruning, log rotation, stats flush
+global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints during ACTIVE
+
 global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (0 = no launcher)
 
-; ========================= INCLUDES (SUB-MODULES) =========================
-; These sub-modules reference the globals declared above
-#Include *i %A_ScriptDir%\gui_overlay.ahk
-#Include *i %A_ScriptDir%\gui_workspace.ahk
-#Include *i %A_ScriptDir%\gui_paint.ahk
-#Include *i %A_ScriptDir%\gui_input.ahk
-#Include *i %A_ScriptDir%\gui_flight_recorder.ahk
-#Include *i %A_ScriptDir%\gui_store.ahk
-#Include *i %A_ScriptDir%\gui_state.ahk
-#Include *i %A_ScriptDir%\gui_interceptor.ahk
-
 ; ========================= INITIALIZATION =========================
+; Sub-modules (gui_overlay, gui_state, gui_pump, etc.) are included
+; by alt_tabby.ahk before this file. They reference globals declared above.
 
 _GUI_Main_Init() {
-    global gGUI_StoreClient, cfg, IPC_MSG_HELLO
+    global cfg, FR_EV_PRODUCER_INIT
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
@@ -139,7 +105,7 @@ _GUI_Main_Init() {
     ; Initialize event name map for logging
     GUI_InitEventNames()
 
-    ; Initialize blacklist for writing (needed for blacklist button in GUI)
+    ; Initialize blacklist (filtering rules must load before producers)
     Blacklist_Init()
 
     ; Initialize flight recorder (if enabled) — must be before hotkey setup
@@ -157,186 +123,261 @@ _GUI_Main_Init() {
     ; Initialize footer text based on workspace mode
     GUI_UpdateFooterText()
 
-    ; Set up interceptor keyboard hooks (built-in, no IPC)
-    INT_SetupHotkeys()
+    ; ========================= PRODUCER INIT =========================
+    ; CRITICAL INITIALIZATION ORDER (do not reorder):
+    ; 1. Config + Blacklist (done above)
+    ; 2. WindowList (data layer must exist before producers)
+    ; 3. Stats engine (logging callbacks wired first)
+    ; 4. Komorebi (workspace enrichment for initial scan)
+    ; 5. Icon/Proc Pumps (data enrichers)
+    ; 6. WinEnum initial scan (uses all above)
+    ; 7. WinEventHook (requires initialized store + completed scan)
+    ; 8. Hotkeys LAST (no hotkeys before data is populated)
 
-    ; Register PostMessage wake handler: store signals us after writing to the pipe
-    ; so we read data immediately instead of waiting for next timer tick
-    global IPC_WM_PIPE_WAKE
-    OnMessage(IPC_WM_PIPE_WAKE, _GUI_OnPipeWake)  ; lint-ignore: onmessage-collision
+    WL_Init()
 
-    ; Connect to WindowStore
-    gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage)
-    if (gGUI_StoreClient.hPipe) {
-        ; Request deltas so we stay up to date like the viewer
-        ; Include our hwnd so store can PostMessage us after pipe writes
-        hello := { type: IPC_MSG_HELLO, hwnd: A_ScriptHwnd, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-        IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
-        GUI_StoreRecordActivity()  ; Initialize last message time
+    ; Wire producer callbacks so producers don't call Store_* directly
+    global gWS_OnStoreChanged, gWS_OnWorkspaceChanged
+    gWS_OnStoreChanged := _GUI_OnProducerRevChanged
+    gWS_OnWorkspaceChanged := _GUI_OnWorkspaceFlips
+
+    ; Register stats logging callbacks and initialize stats tracking
+    global gStats_LogError, gStats_LogInfo
+    gStats_LogError := _GUI_StatsLogError
+    gStats_LogInfo := _GUI_StatsLogInfo
+    Stats_Init()
+
+    ; Komorebi is optional - graceful if not installed.
+    ; KomorebiSub and KomorebiLite are mutually exclusive — running both causes
+    ; KomorebiLite's 1s polling to overwrite KomorebiSub's real-time updates
+    ; with stale data. KomorebiSub has its own InitialPoll for priming state.
+    if (cfg.UseKomorebiSub) {
+        ksubOk := KomorebiSub_Init()
+        FR_Record(FR_EV_PRODUCER_INIT, 1, ksubOk ? 1 : 0)
+        if (!ksubOk && cfg.DiagEventLog)
+            GUI_LogEvent("INIT: KomorebiSub failed to start")
+    } else if (cfg.UseKomorebiLite) {
+        KomorebiLite_Init()
     }
 
-    ; Start store health check timer (uses heartbeat interval from config)
-    ; Timer fires every heartbeat interval to check if we've received messages recently
-    healthCheckMs := cfg.StoreHeartbeatIntervalMs
-    SetTimer(_GUI_StoreHealthCheck, healthCheckMs)
+    ; Wire icon/proc pump callbacks to WindowList (inline fallback mode).
+    ; When EnrichmentPump is connected, gui_pump.ahk overrides these to no-op
+    ; (pump handles resolution, MainProcess receives results via IPC).
+    global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
+    gIP_PopBatch := WL_PopIconBatch
+    gIP_GetRecord := WL_GetByHwnd
+    gIP_UpdateFields := WL_UpdateFields
+    gIP_GetExeIcon := WL_GetExeIconCopy
+    gIP_PutExeIcon := WL_ExeIconCachePut
+
+    global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
+    gPP_PopBatch := WL_PopPidBatch
+    gPP_GetProcNameCached := WL_GetProcNameCached
+    gPP_UpdateProcessName := WL_UpdateProcessName
+
+    ; Try connecting to EnrichmentPump for offloaded icon/title/proc resolution.
+    ; If pump is unavailable, fall back to local inline pumps.
+    pumpConnected := GUIPump_Init()
+    FR_Record(FR_EV_PRODUCER_INIT, 3, pumpConnected ? 1 : 0)
+    if (!pumpConnected) {
+        ; Local inline fallback — blocking calls run in MainProcess
+        if (cfg.UseIconPump)
+            IconPump_Start()
+        if (cfg.UseProcPump)
+            ProcPump_Start()
+    }
+
+    ; Initial full scan AFTER producers init so data includes komorebi workspace info
+    _GUI_FullScan()
+
+    ; WinEventHook is always enabled (primary source of window changes + MRU tracking)
+    hookOk := WinEventHook_Start()
+    FR_Record(FR_EV_PRODUCER_INIT, 2, hookOk ? 1 : 0)
+    if (!hookOk) {
+        if (cfg.DiagEventLog)
+            GUI_LogEvent("INIT: WinEventHook failed - enabling MRU_Lite fallback")
+        ; Fallback: enable MRU_Lite for focus tracking
+        MRU_Lite_Init()
+        ; Fallback: enable safety polling if hook fails
+        SetTimer(_GUI_FullScan, cfg.WinEnumFallbackScanIntervalMs)
+    } else {
+        ; Hook working - start Z-pump for on-demand scans (staggered)
+        SetTimer(_GUI_StartZPump, -17)
+
+        ; Optional safety net polling (usually disabled)
+        if (cfg.WinEnumSafetyPollMs > 0)
+            SetTimer(_GUI_FullScan, cfg.WinEnumSafetyPollMs)
+    }
+
+    ; Start lightweight existence validation (staggered)
+    if (cfg.WinEnumValidateExistenceMs > 0)
+        SetTimer(_GUI_StartValidateExistence, -37)
+
+    ; Start housekeeping timer for cache pruning, log rotation, stats flush (staggered)
+    SetTimer(_GUI_StartHousekeeping, -53)
+
+    ; Set up interceptor keyboard hooks — MUST be LAST (no hotkeys before data is populated)
+    INT_SetupHotkeys()
 
     ; Check initial bypass state based on current focused window
-    ; If a fullscreen game is already focused when Alt-Tabby starts, enable bypass immediately
     INT_SetBypassMode(INT_ShouldBypassWindow(0))
 }
 
-; ========================= STORE HEALTH CHECK =========================
+; ========================= PRODUCER CALLBACKS =========================
 
-_GUI_StoreHealthCheck() {
-    global gGUI_StoreClient, gGUI_StoreConnected, gGUI_LastMsgTick
-    global gGUI_ReconnectAttempts, gGUI_StoreRestartAttempts, cfg
-    global IPC_MSG_HELLO
+; Called by producers (via gWS_OnStoreChanged) after modifying the store.
+; Triggers GUI refresh when overlay is visible or pre-warming.
+_GUI_OnProducerRevChanged(isStructural := true) {
+    global gGUI_State
 
-    global MAX_RECONNECT_ATTEMPTS, MAX_RESTART_ATTEMPTS, TOOLTIP_DURATION_DEFAULT, TOOLTIP_DURATION_LONG
-    timeoutMs := cfg.ViewerHeartbeatTimeoutMs  ; Same timeout as viewer (default 12s)
-    maxReconnectAttempts := MAX_RECONNECT_ATTEMPTS
-    maxRestartAttempts := MAX_RESTART_ATTEMPTS
-
-    ; Case 1: Pipe handle is invalid (store disconnected or never connected)
-    if (!IsObject(gGUI_StoreClient) || !gGUI_StoreClient.hPipe) {
-        gGUI_StoreConnected := false
-        gGUI_ReconnectAttempts++
-
-        if (gGUI_ReconnectAttempts <= maxReconnectAttempts) {
-            ; Try to reconnect - NON-BLOCKING (timeoutMs=0 = single attempt, no loop)
-            ; This prevents the busy-wait loop in _IPC_ClientConnect from freezing
-            ; keyboard/mouse input via blocked low-level hook callbacks.
-            if (cfg.DiagEventLog)
-                GUI_LogEvent("HEALTH: Store disconnected, reconnect attempt " gGUI_ReconnectAttempts "/" maxReconnectAttempts)
-            ToolTip("Alt-Tabby: Reconnecting to window tracker... (" gGUI_ReconnectAttempts "/" maxReconnectAttempts ")")
-            HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
-
-            ; RACE FIX: Wrap close + reconnect in Critical to prevent hotkey
-            ; from writing to closed handle between close and reassign
-            Critical "On"
-            ; Defensive close before reconnect (in case of stale handle)
-            if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
-                IPC_PipeClient_Close(gGUI_StoreClient)
-
-            gGUI_StoreClient := IPC_PipeClient_Connect(cfg.StorePipeName, GUI_OnStoreMessage, 0)
-            Critical "Off"
-            if (gGUI_StoreClient.hPipe) {
-                ; Reconnected successfully - include hwnd for PostMessage wake
-                hello := { type: IPC_MSG_HELLO, hwnd: A_ScriptHwnd, wants: { deltas: true }, projectionOpts: { sort: "MRU", columns: "items", includeCloaked: true } }
-                IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(hello))
-                GUI_StoreRecordActivity()
-                gGUI_ReconnectAttempts := 0
-                gGUI_StoreConnected := true
-                if (cfg.DiagEventLog)
-                    GUI_LogEvent("HEALTH: Reconnect succeeded")
-                ToolTip("Alt-Tabby: Reconnected")
-                HideTooltipAfter(TOOLTIP_DURATION_DEFAULT)
-            }
-            ; If failed, next health check tick will retry (no blocking)
-        } else if (gGUI_StoreRestartAttempts < maxRestartAttempts) {
-            ; Reconnection failed repeatedly - restart store
-            gGUI_StoreRestartAttempts++
-            gGUI_ReconnectAttempts := 0  ; Reset for next cycle
-
-            if (cfg.DiagEventLog)
-                GUI_LogEvent("HEALTH: Reconnect exhausted, restarting store attempt " gGUI_StoreRestartAttempts "/" maxRestartAttempts)
-            ToolTip("Alt-Tabby: Restarting window tracker... (" gGUI_StoreRestartAttempts "/" maxRestartAttempts ")")
-            HideTooltipAfter(TOOLTIP_DURATION_LONG)
-
-            _GUI_RequestStoreRestart()
-            ; Don't Sleep or block here - the next health check tick (5s) will
-            ; attempt connection after the store has had time to start up.
-        } else {
-            if (cfg.DiagEventLog)
-                GUI_LogEvent("HEALTH: All restart attempts exhausted (" maxRestartAttempts " restarts, " maxReconnectAttempts " reconnects each)")
-            ; Notify user that Alt+Tab functionality is lost
-            ToolTip("Alt-Tabby: Connection lost. Restart from tray menu or relaunch.")
-            TrayTip("Alt-Tabby", "Window tracker connection failed.`nRight-click tray icon to restart.", "Icon!")
+    ; During IDLE: kick background icon→bitmap pre-cache.
+    ; During ALT_PENDING: refresh live items to keep pre-warm data fresh.
+    ; During ACTIVE: structural changes skip (selection stability),
+    ;   cosmetic changes patch in-place and repaint.
+    if (gGUI_State = "IDLE") {
+        GUI_KickPreCache()
+    } else if (gGUI_State = "ALT_PENDING") {
+        GUI_RefreshLiveItems()
+    } else if (gGUI_State = "ACTIVE") {
+        ; Cosmetic changes: patch title/icon/processName in-place
+        if (!isStructural)
+            GUI_PatchCosmeticUpdates()
+        ; Always check bypass mode on focus changes
+        fgHwnd := DllCall("GetForegroundWindow", "Ptr")
+        if (fgHwnd) {
+            shouldBypass := INT_ShouldBypassWindow(fgHwnd)
+            INT_SetBypassMode(shouldBypass)
         }
-        ; If all restart attempts exhausted, stop trying (avoid infinite loop)
-        return
+    }
+}
+
+; Called by KomorebiSub (via gWS_OnWorkspaceChanged) when workspace changes.
+_GUI_OnWorkspaceFlips() {
+    global gGUI_CurrentWSName, gWS_Meta, cfg
+
+    ; Read workspace name directly from gWS_Meta (in-process, no IPC)
+    wsName := ""
+    if (IsObject(gWS_Meta)) {
+        Critical "On"
+        wsName := gWS_Meta.Has("currentWSName") ? gWS_Meta["currentWSName"] : ""
+        Critical "Off"
     }
 
-    ; Case 2: Pipe handle valid but no messages received in timeout period
-    if (gGUI_LastMsgTick && (A_TickCount - gGUI_LastMsgTick) > timeoutMs) {
-        ; RACE FIX: Wrap close + reassign in Critical to prevent hotkey
-        ; from writing to closed handle between close and reassign
+    if (wsName != "" && wsName != gGUI_CurrentWSName) {
+        gGUI_CurrentWSName := wsName
+        GUI_UpdateFooterText()
+
+        ; Handle workspace switch during ACTIVE state
         Critical "On"
-        ; Connection may be stale - close and try reconnecting
-        gGUI_StoreConnected := false
-        IPC_PipeClient_Close(gGUI_StoreClient)
-        gGUI_StoreClient := { hPipe: 0 }  ; Reset to trigger reconnect on next tick
+        GUI_HandleWorkspaceSwitch()
+        Critical "Off"
+    }
+}
+
+; ========================= FULL SCAN =========================
+
+_GUI_FullScan() {
+    global _gGUI_ScanInProgress, gWS_Store, FR_EV_SCAN_COMPLETE
+    ; RACE FIX: Re-entrancy guard - if WinEnumLite_ScanAll() is interrupted by a
+    ; timer that triggers another _GUI_FullScan, the nested scan would corrupt gWS_ScanId
+    Critical "On"
+    if (_gGUI_ScanInProgress) {
         Critical "Off"
         return
     }
+    _gGUI_ScanInProgress := true
+    Critical "Off"
 
-    ; Case 3: All good - reset counters
-    if (gGUI_StoreClient.hPipe && gGUI_StoreConnected) {
-        gGUI_ReconnectAttempts := 0
-        gGUI_StoreRestartAttempts := 0
-    }
+    WL_BeginScan()
+    recs := ""
+    try recs := WinEnumLite_ScanAll()
+    foundCount := IsObject(recs) ? recs.Length : 0
+    if (IsObject(recs))
+        WL_UpsertWindow(recs, "winenum_lite")
+    WL_EndScan()
+    FR_Record(FR_EV_SCAN_COMPLETE, foundCount, gWS_Store.Count)
+    Critical "On"
+    _gGUI_ScanInProgress := false
+    Critical "Off"
+    _GUI_OnProducerRevChanged()
 }
 
-_GUI_StartStore() {
+; ========================= PERIODIC TIMERS =========================
+
+_GUI_StartZPump() {
     global cfg
-
-    ; Determine how to start the store based on compiled vs dev mode
-    if (A_IsCompiled) {
-        ; Compiled: run same exe with --store flag
-        ProcessUtils_RunHidden('"' A_ScriptFullPath '" --store')
-    } else {
-        ; Dev mode: run store_server.ahk directly
-        storePath := A_ScriptDir "\..\store\store_server.ahk"
-        runner := (cfg.HasOwnProp("AhkV2Path") && cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path))
-            ? cfg.AhkV2Path : A_AhkPath
-        ProcessUtils_RunHidden('"' runner '" "' storePath '"')
-    }
+    SetTimer(_GUI_ZPumpTick, cfg.ZPumpIntervalMs)
 }
 
-; Request store restart: signal launcher (preferred) or start store directly (fallback)
-_GUI_RequestStoreRestart() {
-    global gGUI_LauncherHwnd, TABBY_CMD_RESTART_STORE, cfg
-
-    ; Try launcher first: it tracks the store PID and kills the old process
-    if (gGUI_LauncherHwnd && DllCall("user32\IsWindow", "ptr", gGUI_LauncherHwnd)) {
-        cds := Buffer(3 * A_PtrSize, 0)
-        NumPut("uptr", TABBY_CMD_RESTART_STORE, cds, 0)
-        NumPut("uint", 0, cds, A_PtrSize)
-        NumPut("ptr", 0, cds, 2 * A_PtrSize)
-
-        global WM_COPYDATA
-        result := DllCall("user32\SendMessageTimeoutW"
-            , "ptr", gGUI_LauncherHwnd
-            , "uint", WM_COPYDATA
-            , "ptr", A_ScriptHwnd
-            , "ptr", cds.Ptr
-            , "uint", 0x0002  ; SMTO_ABORTIFHUNG
-            , "uint", 3000
-            , "ptr*", &response := 0
-            , "ptr")
-
-        if (result && response = 1) {
-            if (cfg.DiagEventLog)
-                GUI_LogEvent("HEALTH: Signaled launcher to restart store")
-            return
-        }
-        if (cfg.DiagEventLog)
-            GUI_LogEvent("HEALTH: Launcher signal failed (result=" result "), falling back to direct restart")
-        gGUI_LauncherHwnd := 0  ; Invalidate — don't retry a dead launcher
-    }
-
-    ; Fallback: no launcher or signal failed
-    _GUI_StartStore()
+_GUI_ZPumpTick() {
+    if (!WL_HasPendingZ())
+        return
+    _GUI_FullScan()
+    WL_ClearZQueue()
 }
 
-; PostMessage wake handler: store wrote to our pipe and signaled us.
-; Read immediately instead of waiting for next timer tick.
-_GUI_OnPipeWake(wParam, lParam, msg, hwnd) {  ; lint-ignore: callback-critical (pure delegation to IPC__ClientTick)
-    global gGUI_StoreClient
-    if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe)
-        IPC__ClientTick(gGUI_StoreClient)
-    return 0
+_GUI_StartValidateExistence() {
+    global cfg
+    SetTimer(_GUI_ValidateExistenceTick, cfg.WinEnumValidateExistenceMs)
 }
+
+_GUI_ValidateExistenceTick() {
+    result := WL_ValidateExistence()
+    if (result.removed > 0)
+        _GUI_OnProducerRevChanged()
+}
+
+_GUI_StartHousekeeping() {
+    global HOUSEKEEPING_INTERVAL_MS
+    SetTimer(_GUI_Housekeeping, HOUSEKEEPING_INTERVAL_MS)
+}
+
+_GUI_Housekeeping() {
+    ; Cache pruning
+    try KomorebiSub_PruneStaleCache()
+    try WL_PruneProcNameCache()
+    try WL_PruneExeIconCache()
+    try ProcPump_PruneFailedPidCache()
+
+    ; Log rotation
+    _GUI_RotateDiagLogs()
+
+    ; Flush stats to disk
+    try Stats_FlushToDisk()
+}
+
+; ========================= DIAGNOSTIC LOG ROTATION =========================
+
+_GUI_RotateDiagLogs() {
+    global cfg
+    global LOG_PATH_EVENTS, LOG_PATH_KSUB, LOG_PATH_WINEVENT
+    global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP
+    if (cfg.DiagEventLog)
+        LogTrim(LOG_PATH_EVENTS)
+    if (cfg.DiagKomorebiLog)
+        LogTrim(LOG_PATH_KSUB)
+    if (cfg.DiagWinEventLog)
+        LogTrim(LOG_PATH_WINEVENT)
+    if (cfg.DiagIconPumpLog)
+        LogTrim(LOG_PATH_ICONPUMP)
+    if (cfg.DiagProcPumpLog)
+        LogTrim(LOG_PATH_PROCPUMP)
+}
+
+; ========================= STATS LOGGING CALLBACKS =========================
+
+_GUI_StatsLogError(msg) {
+    global LOG_PATH_EVENTS
+    try LogAppend(LOG_PATH_EVENTS, "stats_error " msg)
+}
+
+_GUI_StatsLogInfo(msg) {
+    global cfg, LOG_PATH_EVENTS
+    if (cfg.DiagEventLog)
+        try LogAppend(LOG_PATH_EVENTS, "stats_info " msg)
+}
+
+; ========================= ERROR / EXIT HANDLERS =========================
 
 ; Log unhandled errors and exit
 _GUI_OnError(err, *) {
@@ -348,11 +389,42 @@ _GUI_OnError(err, *) {
 
 ; Clean up resources on exit
 _GUI_OnExit(reason, code) {
-    ; Send any unsent stats to store before cleanup
+    ; Send any unsent stats, then flush to disk
     try Stats_SendToStore()
+    try Stats_FlushToDisk()
 
-    ; Stop health check timer
-    SetTimer(_GUI_StoreHealthCheck, 0)
+    ; Stop all timers
+    try SetTimer(_GUI_FullScan, 0)
+    try SetTimer(_GUI_ZPumpTick, 0)
+    try SetTimer(_GUI_StartZPump, 0)
+    try SetTimer(_GUI_Housekeeping, 0)
+    try SetTimer(_GUI_StartHousekeeping, 0)
+    try SetTimer(_GUI_ValidateExistenceTick, 0)
+    try SetTimer(_GUI_StartValidateExistence, 0)
+    try GUI_StopPreCache()
+
+    ; Stop WinEventHook
+    try WinEventHook_Stop()
+
+    ; Stop MRU fallback timer
+    try SetTimer(MRU_Lite_Tick, 0)
+
+    ; Stop viewer (if open)
+    try Viewer_Shutdown()
+
+    ; Stop pumps (pump client or local inline)
+    try GUIPump_Stop()
+    try IconPump_Stop()
+    try ProcPump_Stop()
+
+    ; Stop Komorebi producers
+    try KomorebiSub_Stop()
+    try KomorebiLite_Stop()
+
+    ; Clean up icons (prevent HICON resource leaks)
+    try WL_CleanupAllIcons()
+    try WL_CleanupExeIconCache()
+    try IconPump_CleanupUwpCache()
 
     ; Clean up GDI+
     Gdip_Shutdown()
@@ -393,9 +465,55 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     OnMessage(WM_MOUSEMOVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
     OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))
 
+    ; WM_COPYDATA handler for launcher commands (e.g., toggle viewer)
+    global WM_COPYDATA
+    OnMessage(WM_COPYDATA, _GUI_OnCopyData)  ; lint-ignore: onmessage-collision (launcher_main.ahk registers in separate process)
+
     ; Register error and exit handlers
     OnError(_GUI_OnError)
     OnExit(_GUI_OnExit)
 
     Persistent()
+}
+
+_GUI_OnCopyData(wParam, lParam, msg, hwnd) {
+    Critical "On"
+    global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_RELOAD_BLACKLIST
+    global TABBY_CMD_QUERY_STATS, TABBY_CMD_STATS_RESPONSE, WM_COPYDATA
+    dwData := NumGet(lParam, 0, "uptr")
+    if (dwData = TABBY_CMD_TOGGLE_VIEWER) {
+        Viewer_Toggle()
+        Critical "Off"
+        return true
+    }
+    if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
+        Blacklist_Init()
+        WL_PurgeBlacklisted()
+        Critical "Off"
+        return true
+    }
+    if (dwData = TABBY_CMD_QUERY_STATS) {
+        senderHwnd := wParam
+        if (senderHwnd) {
+            snap := Stats_GetSnapshot()
+            ; Convert Object to Map for JSON.Dump
+            snapMap := Map()
+            for prop in snap.OwnProps()
+                snapMap[prop] := snap.%prop%
+            json := JSON.Dump(snapMap)
+            ; Build COPYDATASTRUCT with JSON payload
+            cbData := StrPut(json, "UTF-8")
+            payload := Buffer(cbData, 0)
+            StrPut(json, payload, "UTF-8")
+            cds := Buffer(A_PtrSize * 3, 0)
+            NumPut("uptr", TABBY_CMD_STATS_RESPONSE, cds, 0)
+            NumPut("uptr", cbData, cds, A_PtrSize)
+            NumPut("uptr", payload.Ptr, cds, A_PtrSize * 2)
+            try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " senderHwnd)
+        }
+        Critical "Off"
+        return true
+    }
+    Critical "Off"
+    return 0
 }

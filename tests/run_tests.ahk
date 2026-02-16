@@ -4,9 +4,8 @@
 A_IconHidden := true  ; No tray icon during tests
 
 ; Prevent error dialogs from blocking headless test processes.
-; Without this, an unhandled error in a timer callback (e.g., IPC pipe read)
-; shows a dialog that blocks the process indefinitely — the harness waits
-; forever for the process to exit.
+; Without this, an unhandled error in a timer callback shows a dialog that
+; blocks the process indefinitely — the harness waits forever for exit.
 OnError(_TestOnError)
 _TestOnError(err, mode) {
     try Log("FATAL: Unhandled error: " err.Message " (" err.File ":" err.Line ")")
@@ -17,8 +16,8 @@ _TestOnError(err, mode) {
 ; Usage: AutoHotkey64.exe tests/run_tests.ahk [--live]
 ;
 ; Test files:
-;   - test_utils.ahk: Log, Assert helpers, IPC test callbacks
-;   - test_unit.ahk:  Unit tests (WindowStore, Config, Entry Points)
+;   - test_utils.ahk: Log, Assert helpers, process launch helpers
+;   - test_unit.ahk:  Unit tests (WindowList, Config, Entry Points)
 ;   - test_live.ahk:  Live integration tests (require --live flag)
 
 ; --- Global test state ---
@@ -28,42 +27,9 @@ global TestPassed := 0
 
 ; --- Testing mode flag (suppresses dialogs in setup_utils.ahk) ---
 global g_TestingMode := true
-global gStore_TestMode := false  ; Process utils test mode (from store_server.ahk)
-global g_AltTabbyMode := "test"  ; Prevent store_server.ahk auto-init when included
+global g_AltTabbyMode := "test"  ; Prevent auto-init gates when included
 
-; --- IPC test globals (used by test_utils.ahk callbacks) ---
-global testServer := 0
-global gTestClient := 0
-global gTestResponse := ""
-global gTestResponseReceived := false
-global gRealStoreResponse := ""
-global gRealStoreReceived := false
-global gViewerTestResponse := ""
-global gViewerTestReceived := false
-global gWsE2EResponse := ""
-global gWsE2EReceived := false
-global gHbTestHeartbeats := 0
-global gHbTestLastRev := -1
-global gHbTestReceived := false
-global gProdTestProducers := ""
-global gProdTestReceived := false
-global gMruTestResponse := ""
-global gMruTestReceived := false
-global gProjTestResponse := ""
-global gProjTestReceived := false
-global gMultiClient1Response := ""
-global gMultiClient1Received := false
-global gMultiClient2Response := ""
-global gMultiClient2Received := false
-global gMultiClient3Response := ""
-global gMultiClient3Received := false
-global gBlTestResponse := ""
-global gBlTestReceived := false
-global gStatsTestResponse := ""
-global gStatsTestReceived := false
-
-; --- Stats globals (re-declared here so they exist before store_server.ahk include) ---
-; store_server.ahk will re-assign these, which is fine.
+; --- Stats globals (re-declared here so they exist before stats.ahk include) ---
 global gStats_Lifetime := Map()
 global gStats_Session := Map()
 
@@ -76,15 +42,21 @@ g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 ; --- WinEventHook globals (winevent_hook.ahk not included in test chain) ---
 global gWEH_LastFocusHwnd := 0
 
-; --- Producer status cache (from launcher_main.ahk, used by launcher_about.ahk) ---
-global g_ProducerStatusCache := ""
-global g_ProducerHasFailed := ""
+; --- Flight recorder stubs (gui_flight_recorder.ahk not included in test chain) ---
+global FR_EV_REFRESH := 20, FR_EV_ENRICH_REQ := 22, FR_EV_ENRICH_RESP := 23
+global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 26, FR_EV_BLACKLIST_PURGE := 27
+global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
+global FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32
+global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41
+global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51
+FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
+}
 
 ; --- Resource IDs (from resource_utils.ahk, used by launcher_about.ahk) ---
 global RES_ID_LOGO := 0
 
 ; --- Launcher subprocess PID globals (from alt_tabby.ahk, referenced by launcher_about.ahk) ---
-global g_StorePID := 0
+global g_PumpPID := 0
 global g_GuiPID := 0
 global g_ViewerPID := 0
 global g_ConfigEditorPID := 0
@@ -102,7 +74,6 @@ DoLiveCore := false
 DoLiveNetwork := false
 DoLiveFeatures := false
 DoLiveExecution := false
-DoLiveExecutionStandalone := false
 DoLiveLifecycle := false
 DoUnitCoreStore := false
 DoUnitCoreParsing := false
@@ -124,8 +95,6 @@ for _, arg in A_Args {
         DoLiveFeatures := true
     else if (arg = "--live-execution")
         DoLiveExecution := true
-    else if (arg = "--live-execution-standalone")
-        DoLiveExecutionStandalone := true
     else if (arg = "--live-lifecycle")
         DoLiveLifecycle := true
     else if (arg = "--unit-core-store")
@@ -158,8 +127,6 @@ else if (DoLiveFeatures)
     TestLogPath := A_Temp "\alt_tabby_tests_features.log"
 else if (DoLiveExecution)
     TestLogPath := A_Temp "\alt_tabby_tests_execution.log"
-else if (DoLiveExecutionStandalone)
-    TestLogPath := A_Temp "\alt_tabby_tests_execution_standalone.log"
 else if (DoLiveLifecycle)
     TestLogPath := A_Temp "\alt_tabby_tests_lifecycle.log"
 else if (DoUnitCoreStore)
@@ -207,11 +174,11 @@ Log("Log file: " TestLogPath)
 #Include %A_ScriptDir%\..\src\shared\setup_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\process_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\win_utils.ahk
-#Include %A_ScriptDir%\..\src\store\windowstore.ahk
-#Include %A_ScriptDir%\..\src\store\winenum_lite.ahk
-#Include %A_ScriptDir%\..\src\store\komorebi_sub.ahk
-#Include %A_ScriptDir%\..\src\store\icon_pump.ahk
-#Include %A_ScriptDir%\..\src\store\store_server.ahk
+#Include %A_ScriptDir%\..\src\shared\stats.ahk
+#Include %A_ScriptDir%\..\src\shared\window_list.ahk
+#Include %A_ScriptDir%\..\src\core\winenum_lite.ahk
+#Include %A_ScriptDir%\..\src\core\komorebi_sub.ahk
+#Include %A_ScriptDir%\..\src\core\icon_pump.ahk
 #Include %A_ScriptDir%\..\src\launcher\launcher_about.ahk
 
 ; ============================================================
@@ -235,7 +202,7 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
 isUnitSingle := DoUnitCoreStore || DoUnitCoreParsing || DoUnitCoreConfig || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced || DoUnitStats
-isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLiveExecutionStandalone || DoLiveLifecycle || isUnitSingle
+isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLiveLifecycle || isUnitSingle
 
 if (isUnitSingle) {
     ; --- Run a single unit subset ---
@@ -272,8 +239,6 @@ if (DoLiveTests) {
     RunLiveTests_Features()
 } else if (DoLiveExecution) {
     RunLiveTests_Execution()
-} else if (DoLiveExecutionStandalone) {
-    RunLiveTests_ExecutionStandalone()
 } else if (DoLiveLifecycle) {
     RunLiveTests_Lifecycle()
 }

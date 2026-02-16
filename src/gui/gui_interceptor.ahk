@@ -45,8 +45,8 @@ INT_SetupHotkeys() {
     ; Ctrl hook for workspace mode toggle (only when GUI active)
     Hotkey("~*Ctrl", _INT_Ctrl_Down)
 
-    ; Exit hotkey
-    Hotkey("$*!F12", (*) => ExitApp())
+    ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
+    Hotkey("$*^!F12", (*) => ExitApp())
 }
 
 ; ========================= CTRL HANDLER =========================

@@ -22,7 +22,7 @@ global gBlacklist_Pairs := []
 global gBlacklist_FilePath := ""
 global gBlacklist_Loaded := false
 
-; Pre-compiled regex arrays (built during Blacklist_Reload, used in Blacklist_IsMatch hot path)
+; Pre-compiled regex arrays (built during _Blacklist_Reload, used in Blacklist_IsMatch hot path)
 global gBlacklist_TitleRegex := []
 global gBlacklist_ClassRegex := []
 global gBlacklist_PairRegex := []  ; [{class: regex, title: regex}, ...]
@@ -59,13 +59,13 @@ Blacklist_Init(filePath := "") {
         gBlacklist_FilePath := filePath
     }
 
-    return Blacklist_Reload()
+    return _Blacklist_Reload()
 }
 
 ; Reload blacklist from file (creates default if missing)
 ; Uses atomic swap pattern to prevent race conditions - producers calling
 ; Blacklist_IsMatch() during reload will see either old or new data, never empty arrays.
-Blacklist_Reload() {
+_Blacklist_Reload() {
     global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs
     global gBlacklist_TitleRegex, gBlacklist_ClassRegex, gBlacklist_PairRegex
     global gBlacklist_FilePath, gBlacklist_Loaded, LOG_PATH_STORE
@@ -168,7 +168,7 @@ Blacklist_IsMatch(title, class) {
     if (!gBlacklist_Loaded)
         return false
 
-    ; RACE FIX: Snapshot globals into locals so a concurrent Blacklist_Reload() swapping
+    ; RACE FIX: Snapshot globals into locals so a concurrent _Blacklist_Reload() swapping
     ; shorter arrays mid-iteration can't cause index-out-of-bounds (zero-cost: AHK arrays are refs)
     titleRegex := gBlacklist_TitleRegex
     classRegex := gBlacklist_ClassRegex
@@ -177,7 +177,7 @@ Blacklist_IsMatch(title, class) {
     ; Check title blacklist (pre-compiled regex)
     for _, regex in titleRegex {
         if (RegExMatch(title, regex)) {
-            Store_BumpLifetimeStat("TotalBlacklistSkips")
+            Stats_BumpLifetimeStat("TotalBlacklistSkips")
             return true
         }
     }
@@ -185,7 +185,7 @@ Blacklist_IsMatch(title, class) {
     ; Check class blacklist (pre-compiled regex)
     for _, regex in classRegex {
         if (RegExMatch(class, regex)) {
-            Store_BumpLifetimeStat("TotalBlacklistSkips")
+            Stats_BumpLifetimeStat("TotalBlacklistSkips")
             return true
         }
     }
@@ -193,7 +193,7 @@ Blacklist_IsMatch(title, class) {
     ; Check pair blacklist (both must match, pre-compiled regex)
     for _, pr in pairRegex {
         if (RegExMatch(class, pr.class) && RegExMatch(title, pr.title)) {
-            Store_BumpLifetimeStat("TotalBlacklistSkips")
+            Stats_BumpLifetimeStat("TotalBlacklistSkips")
             return true
         }
     }
@@ -411,23 +411,12 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
     return true
 }
 
-; Pre-compile wildcard pattern to regex string (called during Blacklist_Reload)
+; Pre-compile wildcard pattern to regex string (called during _Blacklist_Reload)
 BL_CompileWildcard(pattern) {
     regex := "i)^" RegExReplace(RegExReplace(pattern, "[.+^${}|()\\[\]]", "\$0"), "\*", ".*")
     regex := RegExReplace(regex, "\?", ".")
     regex .= "$"
     return regex
-}
-
-; Get current blacklist stats (for debugging)
-Blacklist_GetStats() {
-    global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs, gBlacklist_FilePath
-    return {
-        filePath: gBlacklist_FilePath,
-        titles: gBlacklist_Titles.Length,
-        classes: gBlacklist_Classes.Length,
-        pairs: gBlacklist_Pairs.Length
-    }
 }
 
 ; Create default blacklist file with common Windows exclusions

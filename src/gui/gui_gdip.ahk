@@ -635,10 +635,10 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
 }
 
 ; Eagerly convert HICON to GDI+ bitmap and cache it, without drawing.
-; Called on IPC receive (snapshot/delta) so the bitmap is ready before paint.
-; This prevents grey circles from cross-process HICON destruction: the store may
-; DestroyIcon after sending a replacement via IPC, but the GUI's cached GDI+ bitmap
-; (created here while the HICON was still valid) survives independently.
+; Called when icons are resolved so the bitmap is ready before paint.
+; Pre-caching prevents grey circles: the store may DestroyIcon after sending a
+; replacement, but the GUI's cached GDI+ bitmap (created here while the HICON
+; was still valid) survives independently.
 Gdip_PreCacheIcon(hwnd, hIcon) {
     global gGdip_IconCache
     if (!hIcon)
@@ -706,20 +706,6 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
     ; Draw
     DllCall("gdiplus\GdipDrawImageRectI", "ptr", g, "ptr", pBmp, "int", x, "int", y, "int", size, "int", size)
     return true
-}
-
-; Invalidate cache entry for a specific hwnd (call when window removed)
-Gdip_InvalidateIconCache(hwnd) {
-    global gGdip_IconCache
-
-    if (!gGdip_IconCache.Has(hwnd))
-        return
-
-    cached := gGdip_IconCache[hwnd]
-    if (cached.pBmp) {
-        try DllCall("gdiplus\GdipDisposeImage", "ptr", cached.pBmp)
-    }
-    gGdip_IconCache.Delete(hwnd)
 }
 
 ; Clear entire icon cache (call on shutdown or major state reset)

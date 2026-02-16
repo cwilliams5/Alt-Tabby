@@ -90,7 +90,7 @@ _ProcessUtils_BuildExeNameList(targetExeName := "") {
     }
 
     ; 3. Configured install path exe name (may be different if user renamed)
-    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {  ; lint-ignore: isset-with-default
+    if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
         configName := ""
         SplitPath(cfg.SetupExePath, &configName)
         if (configName != "") {
@@ -197,7 +197,7 @@ _ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName := "") {
 ;
 ; Behavior:
 ;   1. Hard-kill editors (if provided)
-;   2. Graceful shutdown known PIDs in order: GUI→Store (if pids provided)
+;   2. Graceful shutdown known PIDs in order: GUI→Pump (if pids provided)
 ;   3. Force sweep by process name (if force=true)
 ;
 ; Graceful always happens when PIDs are available — no caller with PIDs
@@ -206,7 +206,7 @@ _ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName := "") {
 ; flows skip it to avoid killing other installations.
 ;
 ; Options object:
-;   pids            - Optional {gui: pid, store: pid, viewer: pid} for graceful shutdown
+;   pids            - Optional {gui: pid, pump: pid, viewer: pid} for graceful shutdown
 ;   force           - Kill all AltTabby processes by name after graceful (default false)
 ;   targetExeName   - Optional extra exe name for force-kill name matching
 ;   offerElevation  - If true, offer UAC elevation for elevated stragglers (default false)
@@ -244,8 +244,8 @@ ProcessUtils_KillAltTabby(opts := "") {
 }
 
 ; Internal: Graceful shutdown of known PIDs in correct order
-; Order: viewer (hard kill) → GUI (graceful, 3s) → Store (graceful, 5s)
-; GUI must exit before Store so it can send final stats to still-alive store.
+; Order: viewer (hard kill) → GUI (graceful, 3s) → Pump (graceful, 2s)
+; GUI must exit before Pump so it can send IPC shutdown to still-alive pump.
 _PU_GracefulShutdownByPid(pids) {
     ; 1. Hard kill viewer (non-core, no ordering dependency)
     if (pids.HasOwnProp("viewer") && pids.viewer && ProcessExist(pids.viewer))
@@ -254,7 +254,7 @@ _PU_GracefulShutdownByPid(pids) {
     prevDHW := A_DetectHiddenWindows
     DetectHiddenWindows(true)
 
-    ; 2. Graceful GUI first (sends final stats to still-alive store)
+    ; 2. Graceful GUI first (sends IPC shutdown to pump during cleanup)
     if (pids.HasOwnProp("gui") && pids.gui && ProcessExist(pids.gui)) {
         try PostMessage(0x0010, , , , "ahk_pid " pids.gui " ahk_class AutoHotkey")  ; WM_CLOSE
         deadline := A_TickCount + 3000
@@ -264,14 +264,14 @@ _PU_GracefulShutdownByPid(pids) {
             ProcessClose(pids.gui)
     }
 
-    ; 3. Graceful Store second (flushes stats to disk)
-    if (pids.HasOwnProp("store") && pids.store && ProcessExist(pids.store)) {
-        try PostMessage(0x0010, , , , "ahk_pid " pids.store " ahk_class AutoHotkey")  ; WM_CLOSE
-        deadline := A_TickCount + 5000
-        while (ProcessExist(pids.store) && A_TickCount < deadline)
+    ; 3. Kill pump after GUI (GUI sends IPC shutdown to pump during its cleanup)
+    if (pids.HasOwnProp("pump") && pids.pump && ProcessExist(pids.pump)) {
+        ; Give pump a moment to exit from IPC shutdown
+        deadline := A_TickCount + 2000
+        while (ProcessExist(pids.pump) && A_TickCount < deadline)
             Sleep(10)
-        if (ProcessExist(pids.store))
-            ProcessClose(pids.store)
+        if (ProcessExist(pids.pump))
+            ProcessClose(pids.pump)
     }
 
     DetectHiddenWindows(prevDHW)
@@ -308,10 +308,10 @@ _PU_OfferElevatedKill(exeName) {
 ; with STARTF_FORCEOFFFEEDBACK (0x80) to suppress that in test mode.
 ; In normal mode, they fall back to standard Run()/RunWait().
 
-; Check if any test mode flag is active (store --test or alt_tabby --testing-mode)
+; Check if test mode flag is active (alt_tabby --testing-mode)
 _PU_IsTestMode() {
-    global gStore_TestMode, g_TestingMode
-    return gStore_TestMode || g_TestingMode
+    global g_TestingMode
+    return g_TestingMode
 }
 
 ; Run a command hidden (no window). Suppresses cursor feedback in test mode.

@@ -1,4 +1,4 @@
-; GUI Data Processing Tests - Deltas, MRU, Selection, Bypass
+; GUI Data Processing Tests - MRU, Selection, Viewport, Icon Cache
 ; Tests ACTUAL production GUI code with mocked visual layer
 ; Split from gui_tests.ahk for context window optimization
 #Requires AutoHotkey v2.0
@@ -13,127 +13,17 @@ A_IconHidden := true  ; No tray icon during tests
 ; ============================================================
 
 RunGUITests_Data() {
-    global GUI_TestPassed, GUI_TestFailed, gMockIPCMessages, cfg
+    global GUI_TestPassed, GUI_TestFailed, cfg
     global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
-    global gGUI_WorkspaceMode, gGUI_AwaitingToggleProjection, gGUI_CurrentWSName, gGUI_WSContextSwitch
+    global gGUI_WorkspaceMode, gGUI_CurrentWSName, gGUI_WSContextSwitch
     global gGUI_EventBuffer, gGUI_PendingPhase
-    global gGUI_StoreRev, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gGUI_LastLocalMRUTick, gGUI_LastMsgTick, gMock_VisibleRows
+    global gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
-    global IPC_MSG_SNAPSHOT, IPC_MSG_SNAPSHOT_REQUEST, IPC_MSG_DELTA
-    global IPC_MSG_PROJECTION, IPC_MSG_PROJECTION_REQUEST
-    global gGUI_Base, gGUI_Overlay
+    global gGUI_Base, gGUI_Overlay, gGdip_IconCache
+    global gMock_StoreItems, gMock_StoreItemsMap
 
     GUI_Log("`n=== GUI Data Processing Tests ===`n")
-
-    ; ============================================================
-    ; DELTA PROCESSING TESTS
-    ; ============================================================
-
-    ; ----- Test: Delta removes items -----
-    GUI_Log("Test: Delta removes items")
-    ResetGUIState()
-    cfg.FreezeWindowList := false  ; Live mode for delta processing
-    ; Load initial items via snapshot
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertEq(gGUI_LiveItems.Length, 5, "Delta remove: initial 5 items")
-
-    ; Remove items with hwnd 2000 and 4000
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [2000, 4000] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gGUI_LiveItems.Length, 3, "Delta remove: 3 items remain")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(2000), false, "Delta remove: hwnd 2000 gone from map")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(4000), false, "Delta remove: hwnd 4000 gone from map")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(1000), true, "Delta remove: hwnd 1000 still in map")
-
-    ; ----- Test: Delta remove clamps selection -----
-    GUI_Log("Test: Delta remove clamps selection")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    gGUI_Sel := 5  ; Select last item
-
-    ; Remove items 4000 and 5000 (last two)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [4000, 5000] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gGUI_LiveItems.Length, 3, "Delta remove clamp: 3 items remain")
-    GUI_AssertTrue(gGUI_Sel <= 3, "Delta remove clamp: selection clamped to " gGUI_Sel)
-
-    ; ----- Test: Delta upsert updates existing item (cosmetic) -----
-    GUI_Log("Test: Delta upsert updates existing item (cosmetic)")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
-    GUI_OnStoreMessage(snapshotMsg)
-
-    ; Update title and processName of existing item (cosmetic, no MRU change)
-    upsertRec := Map("hwnd", 1000, "title", "Updated Title", "processName", "updated.exe")
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gGUI_LiveItems.Length, 5, "Delta upsert cosmetic: still 5 items")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].Title, "Updated Title", "Delta upsert cosmetic: title updated")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].processName, "updated.exe", "Delta upsert cosmetic: processName updated")
-
-    ; ----- Test: Delta upsert updates MRU field (triggers sort) -----
-    GUI_Log("Test: Delta upsert updates MRU field")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
-    GUI_OnStoreMessage(snapshotMsg)
-
-    ; Update lastActivatedTick of item 3000 to make it most recent
-    upsertRec := Map("hwnd", 3000, "lastActivatedTick", A_TickCount + 99999)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    ; Item 3000 should now be first (highest tick)
-    GUI_AssertEq(gGUI_LiveItems[1].hwnd, 3000, "Delta upsert MRU: item 3000 moved to first position")
-
-    ; ----- Test: Delta upsert adds new item -----
-    GUI_Log("Test: Delta upsert adds new item")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(3) } })
-    GUI_OnStoreMessage(snapshotMsg)
-
-    ; Add a brand new item via upsert
-    newRec := Map("hwnd", 9999, "title", "New Window", "class", "NewClass", "lastActivatedTick", A_TickCount + 99999)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [newRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gGUI_LiveItems.Length, 4, "Delta upsert new: 4 items total")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(9999), true, "Delta upsert new: hwnd 9999 in map")
-    GUI_AssertEq(gGUI_LiveItemsMap[9999].Title, "New Window", "Delta upsert new: title correct")
-
-    cfg.FreezeWindowList := true  ; Restore
-
-    ; ----- Test: Delta upsert field mapping completeness (class, pid, workspaceName, isOnCurrentWorkspace) -----
-    GUI_Log("Test: Delta upsert field mapping completeness")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(3) } })
-    GUI_OnStoreMessage(snapshotMsg)
-
-    ; Verify baseline values from CreateTestItems
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].class, "TestClass", "Delta field map: baseline class")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].isOnCurrentWorkspace, true, "Delta field map: baseline isOnCurrentWS")
-
-    ; Send delta updating all 4 untested fields on item 1000
-    upsertRec := Map("hwnd", 1000, "class", "UpdatedClass", "pid", 999, "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].class, "UpdatedClass", "Delta field map: class updated")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].pid, 999, "Delta field map: pid updated")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].workspaceName, "Desktop 2", "Delta field map: workspaceName updated")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].isOnCurrentWorkspace, false, "Delta field map: isOnCurrentWorkspace flipped")
-
-    cfg.FreezeWindowList := true  ; Restore
 
     ; ============================================================
     ; LOCAL MRU UPDATE TESTS
@@ -148,7 +38,6 @@ RunGUITests_Data() {
     result := _GUI_UpdateLocalMRU(3000)
     GUI_AssertTrue(result, "UpdateLocalMRU: returns true for known hwnd")
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, 3000, "UpdateLocalMRU: hwnd 3000 moved to position 1")
-    GUI_AssertTrue(gGUI_LastLocalMRUTick > 0, "UpdateLocalMRU: freshness tick set")
 
     ; ----- Test: _GUI_UpdateLocalMRU unknown hwnd returns false -----
     GUI_Log("Test: _GUI_UpdateLocalMRU unknown hwnd")
@@ -159,7 +48,6 @@ RunGUITests_Data() {
     result := _GUI_UpdateLocalMRU(99999)
     GUI_AssertTrue(!result, "UpdateLocalMRU: returns false for unknown hwnd")
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "UpdateLocalMRU: items unchanged for unknown hwnd")
-    GUI_AssertEq(gGUI_LastLocalMRUTick, 0, "UpdateLocalMRU: tick NOT set for unknown hwnd")
 
     ; ----- Test: _GUI_UpdateLocalMRU already-first item -----
     GUI_Log("Test: _GUI_UpdateLocalMRU already-first item")
@@ -170,13 +58,12 @@ RunGUITests_Data() {
     result := _GUI_UpdateLocalMRU(firstHwnd)
     GUI_AssertTrue(result, "UpdateLocalMRU: returns true for first item")
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, firstHwnd, "UpdateLocalMRU: first item stays first")
-    GUI_AssertTrue(gGUI_LastLocalMRUTick > 0, "UpdateLocalMRU: tick set even for first item")
 
     ; ----- Test: _GUI_UpdateLocalMRU rebuilds gGUI_LiveItemsIndex -----
     GUI_Log("Test: _GUI_UpdateLocalMRU rebuilds gGUI_LiveItemsIndex")
     ResetGUIState()
     gGUI_LiveItems := CreateTestItemsWithMap(5)
-    ; Build initial index (mirrors what _GUI_ConvertStoreItemsWithMap does)
+    ; Build initial index
     gGUI_LiveItemsIndex := Map()
     for idx, itm in gGUI_LiveItems
         gGUI_LiveItemsIndex[itm.hwnd] := idx
@@ -207,8 +94,6 @@ RunGUITests_Data() {
     ; Core regression test for phantom MRU bug: before the fix, _GUI_UpdateLocalMRU
     ; ran unconditionally after _GUI_RobustActivate, corrupting MRU when activation
     ; failed. After the fix, MRU only updates on success.
-    ; Calls the REAL production function _GUI_ActivateItem (gui_state.ahk line 641)
-    ; which contains the guard: if (_GUI_RobustActivate(hwnd)) _GUI_UpdateLocalMRU(hwnd)
     GUI_Log("Test: Failed activation does not corrupt MRU order")
     ResetGUIState()
     gGUI_LiveItems := CreateTestItemsWithMap(5)
@@ -223,43 +108,6 @@ RunGUITests_Data() {
 
     ; MRU should be UNCHANGED — item 1 still in position 1
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "FailedActivation: MRU order preserved (first item unchanged)")
-    GUI_AssertEq(gGUI_LastLocalMRUTick, 0, "FailedActivation: freshness tick NOT set (no phantom MRU update)")
-
-    ; ============================================================
-    ; GUI_SortItemsByMRU TESTS
-    ; ============================================================
-
-    ; ----- Test: GUI_SortItemsByMRU sorts by lastActivatedTick descending -----
-    GUI_Log("Test: GUI_SortItemsByMRU sorts correctly")
-    ResetGUIState()
-    gGUI_LiveItems := []
-    ticks := [100, 300, 200, 500, 400]
-    Loop ticks.Length {
-        gGUI_LiveItems.Push({ hwnd: A_Index * 1000, title: "W" A_Index, lastActivatedTick: ticks[A_Index] })
-    }
-
-    _GUI_SortItemsByMRU()
-
-    GUI_AssertEq(gGUI_LiveItems[1].lastActivatedTick, 500, "Sort MRU: first item has tick 500")
-    GUI_AssertEq(gGUI_LiveItems[2].lastActivatedTick, 400, "Sort MRU: second item has tick 400")
-    GUI_AssertEq(gGUI_LiveItems[3].lastActivatedTick, 300, "Sort MRU: third item has tick 300")
-    GUI_AssertEq(gGUI_LiveItems[4].lastActivatedTick, 200, "Sort MRU: fourth item has tick 200")
-    GUI_AssertEq(gGUI_LiveItems[5].lastActivatedTick, 100, "Sort MRU: fifth item has tick 100")
-
-    ; ----- Test: GUI_SortItemsByMRU handles single item -----
-    GUI_Log("Test: GUI_SortItemsByMRU handles single item")
-    ResetGUIState()
-    gGUI_LiveItems := [{ hwnd: 1000, title: "Solo", lastActivatedTick: 42 }]
-    _GUI_SortItemsByMRU()
-    GUI_AssertEq(gGUI_LiveItems.Length, 1, "Sort MRU single: still 1 item")
-    GUI_AssertEq(gGUI_LiveItems[1].lastActivatedTick, 42, "Sort MRU single: value preserved")
-
-    ; ----- Test: GUI_SortItemsByMRU handles empty list -----
-    GUI_Log("Test: GUI_SortItemsByMRU handles empty list")
-    ResetGUIState()
-    gGUI_LiveItems := []
-    _GUI_SortItemsByMRU()
-    GUI_AssertEq(gGUI_LiveItems.Length, 0, "Sort MRU empty: no error")
 
     ; ============================================================
     ; VIEWPORT CHANGE DETECTION TESTS
@@ -355,6 +203,7 @@ RunGUITests_Data() {
     ; ----- Test: GUI_UpdateCurrentWSFromPayload resets selection in current mode -----
     GUI_Log("Test: GUI_UpdateCurrentWSFromPayload resets selection in current mode")
     ResetGUIState()
+    SetupTestItems(5)  ; Mock store needed for workspace switch context
     gGUI_WorkspaceMode := "current"
     gGUI_State := "ACTIVE"
     gGUI_CurrentWSName := "Alpha"
@@ -372,6 +221,7 @@ RunGUITests_Data() {
     ; Position 1 = focused window on the NEW workspace, which is what the user wants.
     GUI_Log("Test: GUI_UpdateCurrentWSFromPayload resets in all mode")
     ResetGUIState()
+    SetupTestItems(5)  ; Mock store needed for workspace switch context
     gGUI_WorkspaceMode := "all"
     gGUI_State := "ACTIVE"
     gGUI_CurrentWSName := "Alpha"
@@ -394,7 +244,7 @@ RunGUITests_Data() {
     GUI_Log("Test: Normal Alt-Tab keeps WSContextSwitch=false")
     ResetGUIState()
     gGUI_WSContextSwitch := false
-    gGUI_LiveItems := CreateTestItems(5)
+    SetupTestItems(5)
 
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
@@ -405,13 +255,14 @@ RunGUITests_Data() {
     ; ----- Test: WS change during ACTIVE sets WSContextSwitch=true and sel=1 -----
     GUI_Log("Test: WS change during ACTIVE sets WSContextSwitch=true")
     ResetGUIState()
+    SetupTestItems(5)  ; Mock store needed for workspace switch context
     gGUI_State := "ACTIVE"
     gGUI_OverlayVisible := true
     gGUI_CurrentWSName := "Alpha"
     gGUI_Sel := 3  ; Start with different selection
     gGUI_WSContextSwitch := false
 
-    ; Simulate workspace change notification from store
+    ; Simulate workspace change notification
     payload := Map("meta", Map("currentWSName", "Beta"))
     GUI_UpdateCurrentWSFromPayload(payload)
 
@@ -423,20 +274,19 @@ RunGUITests_Data() {
     ; After WS change sets flag, Ctrl toggles should keep sel=1
     GUI_Log("Test: WSContextSwitch persists sel=1 during Ctrl toggle")
     ResetGUIState()
-    cfg.FreezeWindowList := true
-    cfg.ServerSideWorkspaceFilter := false
+    ; Structural freeze is always on during ACTIVE (no config needed)
     gGUI_State := "ACTIVE"
     gGUI_OverlayVisible := true
-    gGUI_LiveItems := CreateTestItems(10, 4)  ; 10 items, 4 on current WS
-    gGUI_DisplayItems := gGUI_LiveItems.Clone()
-    gGUI_ToggleBase := gGUI_LiveItems.Clone()
+    items := SetupTestItems(10, 4)  ; 10 items, 4 on current WS ("Main"), 6 on "Other"
+    gGUI_DisplayItems := items.Clone()
+    gGUI_ToggleBase := items.Clone()
     gGUI_WorkspaceMode := "all"
-    gGUI_CurrentWSName := "Alpha"
+    gGUI_CurrentWSName := "Main"
     gGUI_Sel := 3
     gGUI_WSContextSwitch := false
 
-    ; Trigger WS change to set the flag
-    payload := Map("meta", Map("currentWSName", "Beta"))
+    ; Trigger WS change to set the flag (switch to "Other" which has 6 items)
+    payload := Map("meta", Map("currentWSName", "Other"))
     GUI_UpdateCurrentWSFromPayload(payload)
     GUI_AssertEq(gGUI_WSContextSwitch, true, "WSContextSwitch persist: flag set")
     GUI_AssertEq(gGUI_Sel, 1, "WSContextSwitch persist: initial sel=1")
@@ -456,7 +306,7 @@ RunGUITests_Data() {
     gGUI_OverlayVisible := true
     gGUI_CurrentWSName := "Alpha"
     gGUI_Sel := 3  ; Start at non-1 to verify production code resets it
-    gGUI_LiveItems := CreateTestItems(1)
+    SetupTestItems(1)
 
     payload := Map("meta", Map("currentWSName", "Beta"))
     GUI_UpdateCurrentWSFromPayload(payload)
@@ -623,7 +473,7 @@ RunGUITests_Data() {
     ; ----- Test: ESC during async activation cancels and clears state -----
     GUI_Log("Test: ESC during async activation")
     ResetGUIState()
-    gGUI_LiveItems := CreateTestItems(5)
+    SetupTestItems(5)
     gGUI_PendingPhase := "polling"
     gGUI_State := "ACTIVE"
     gGUI_EventBuffer := [{ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0}]
@@ -653,7 +503,7 @@ RunGUITests_Data() {
     ; ----- Test: Normal buffer replay [ALT_DN, TAB_STEP, ALT_UP] completes full cycle -----
     GUI_Log("Test: Normal buffer replay completes full cycle")
     ResetGUIState()
-    gGUI_LiveItems := CreateTestItems(5)
+    SetupTestItems(5)
     gGUI_PendingPhase := "flushing"
 
     ; Buffer: normal Alt+Tab sequence (Tab NOT lost)
@@ -672,7 +522,7 @@ RunGUITests_Data() {
     ; ----- Test: Multi-Tab buffer replay completes full cycle -----
     GUI_Log("Test: Multi-Tab buffer replay completes full cycle")
     ResetGUIState()
-    gGUI_LiveItems := CreateTestItems(5)
+    SetupTestItems(5)
     gGUI_PendingPhase := "flushing"
 
     ; Buffer: Alt+Tab with 3 Tab presses (user cycling through windows)
@@ -690,183 +540,151 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_PendingPhase, "", "Multi-Tab replay: pending phase cleared")
 
     ; ============================================================
-    ; BYPASS MODE PROPAGATION TESTS (Gap 1: isFocused in delta)
+    ; ICON CACHE PRUNE ON REFRESH TESTS (Resource leak fix)
     ; ============================================================
 
-    ; ----- Test: Delta isFocused=true on existing item sets bypass mode -----
-    GUI_Log("Test: Delta isFocused=true on existing item sets bypass mode")
+    ; ----- Test: Refresh with no prior cache skips prune -----
+    GUI_Log("Test: Refresh with no prior cache skips prune")
     ResetGUIState()
-    cfg.FreezeWindowList := false  ; Live mode for delta processing
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    gMock_BypassResult := true  ; Mock: window should trigger bypass
+    MockStore_SetItems(CreateTestItems(3))
+    GUI_RefreshLiveItems()
 
-    ; Send delta with isFocused=true on existing item
-    upsertRec := Map("hwnd", 1000, "isFocused", true)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gINT_BypassMode, true, "Bypass: isFocused=true on existing item enables bypass")
-
-    ; ----- Test: Delta isFocused=true on new item sets bypass mode -----
-    GUI_Log("Test: Delta isFocused=true on new item sets bypass mode")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(3) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    gMock_BypassResult := true
-
-    ; Send delta adding a NEW item with isFocused=true
-    newRec := Map("hwnd", 9999, "title", "Game Window", "class", "GameClass", "isFocused", true, "lastActivatedTick", A_TickCount + 99999)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [newRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gINT_BypassMode, true, "Bypass: isFocused=true on new item enables bypass")
-    GUI_AssertEq(gGUI_LiveItems.Length, 4, "Bypass: new item added to list")
-
-    ; ----- Test: Bypass mock returning false resets bypass mode -----
-    GUI_Log("Test: Bypass mock returning false resets bypass mode")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    gINT_BypassMode := true  ; Pre-set bypass to true
-    gMock_BypassResult := false  ; Mock: window should NOT trigger bypass
-
-    ; Send delta with isFocused=true - bypass check should disable bypass
-    upsertRec := Map("hwnd", 2000, "isFocused", true)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { upserts: [upsertRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gINT_BypassMode, false, "Bypass: isFocused=true with non-bypass window disables bypass")
-
-    cfg.FreezeWindowList := true  ; Restore
-
-    ; ============================================================
-    ; COMBINED REMOVES+UPSERTS DELTA TESTS (Gap 2)
-    ; ============================================================
-
-    ; ----- Test: Delta with both removes and upserts -----
-    GUI_Log("Test: Combined removes + upserts in single delta")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(5) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertEq(gGUI_LiveItems.Length, 5, "Combined delta: initial 5 items")
-
-    ; Single delta: remove hwnd 2000 and 4000, add hwnd 8888
-    newRec := Map("hwnd", 8888, "title", "Brand New", "class", "NewClass", "lastActivatedTick", A_TickCount + 99999)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [2000, 4000], upserts: [newRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gGUI_LiveItems.Length, 4, "Combined delta: 5 - 2 removed + 1 added = 4")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(2000), false, "Combined delta: hwnd 2000 removed")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(4000), false, "Combined delta: hwnd 4000 removed")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(8888), true, "Combined delta: hwnd 8888 added")
-    GUI_AssertEq(gGUI_LiveItemsMap[8888].Title, "Brand New", "Combined delta: new item title correct")
-
-    ; ----- Test: Remove then re-add same hwnd (HWND reuse) -----
-    GUI_Log("Test: Remove then re-add same hwnd (HWND reuse)")
-    ResetGUIState()
-    cfg.FreezeWindowList := false
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 1, payload: { items: CreateTestItems(3) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].Title, "Window 1", "HWND reuse: original title")
-
-    ; Remove hwnd 1000 and re-add with new title (simulates HWND reuse by OS)
-    reusedRec := Map("hwnd", 1000, "title", "Reused Window", "class", "NewApp", "lastActivatedTick", A_TickCount + 99999)
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 2, payload: { removes: [1000], upserts: [reusedRec] } })
-    GUI_OnStoreMessage(deltaMsg)
-
-    GUI_AssertEq(gGUI_LiveItems.Length, 3, "HWND reuse: still 3 items")
-    GUI_AssertEq(gGUI_LiveItemsMap.Has(1000), true, "HWND reuse: hwnd 1000 exists")
-    GUI_AssertEq(gGUI_LiveItemsMap[1000].Title, "Reused Window", "HWND reuse: title updated to new app")
-
-    cfg.FreezeWindowList := true  ; Restore
-
-    ; ============================================================
-    ; ICON CACHE PRUNE ON SNAPSHOT TESTS (Resource leak fix)
-    ; ============================================================
-
-    ; ----- Test: Snapshot skips prune when count increased (no orphans possible) -----
-    GUI_Log("Test: Snapshot skips prune when count increased (no orphans possible)")
-    ResetGUIState()
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 200, payload: { items: CreateTestItems(3) } })
-    GUI_OnStoreMessage(snapshotMsg)
-
-    GUI_AssertTrue(!IsObject(gMock_PruneCalledWith), "Prune: skipped when 0->3 items (no orphans)")
+    GUI_AssertEq(gGUI_LiveItems.Length, 3, "Prune: 3 items loaded")
     GUI_AssertEq(gGUI_LiveItemsMap.Count, 3, "Prune: live map has 3 entries")
-    GUI_AssertTrue(gGUI_LiveItemsMap.Has(1000), "Prune: live map has hwnd 1000")
-    GUI_AssertTrue(gGUI_LiveItemsMap.Has(2000), "Prune: live map has hwnd 2000")
-    GUI_AssertTrue(gGUI_LiveItemsMap.Has(3000), "Prune: live map has hwnd 3000")
 
-    ; ----- Test: Prune called when cache has orphans after snapshot -----
-    GUI_Log("Test: Prune called when cache has orphans after snapshot")
+    ; ----- Test: Prune called when cache has orphans after refresh -----
+    GUI_Log("Test: Prune called when cache has orphans after refresh")
     ResetGUIState()
-    ; First snapshot: 5 items with icons (so cache gets populated)
-    items5 := CreateTestItems(5)
-    for _, item in items5
-        item.iconHicon := 90000 + item.hwnd
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 201, payload: { items: items5 } })
-    GUI_OnStoreMessage(snapshotMsg)
-    GUI_AssertTrue(gGdip_IconCache.Count > 0, "Prune 2nd: cache populated after first snapshot")
+    ; Pre-populate icon cache with 5 items (simulates previous state)
+    Loop 5
+        gGdip_IconCache[A_Index * 1000] := {hicon: 90000 + A_Index * 1000, pBmp: 0}
 
-    ; Second snapshot: only 2 items (windows closed) — cache has orphans
+    ; Refresh with only 2 items (windows closed) — cache has orphans
     gMock_PruneCalledWith := ""
-    items2 := CreateTestItems(2)
-    for _, item in items2
-        item.iconHicon := 90000 + item.hwnd
-    snapshotMsg2 := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 202, payload: { items: items2 } })
-    GUI_OnStoreMessage(snapshotMsg2)
+    MockStore_SetItems(CreateTestItems(2))
+    GUI_RefreshLiveItems()
 
-    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune 2nd: called when cache has orphans (5->2)")
+    GUI_AssertTrue(IsObject(gMock_PruneCalledWith), "Prune: called when cache has orphans (5->2)")
     if (IsObject(gMock_PruneCalledWith)) {
-        GUI_AssertEq(gMock_PruneCalledWith.Count, 2, "Prune 2nd: live map has 2 entries (orphans would be pruned)")
+        GUI_AssertEq(gMock_PruneCalledWith.Count, 2, "Prune: live map has 2 entries (orphans would be pruned)")
     }
 
     ; ============================================================
-    ; ICON PRE-CACHE ON IPC RECEIVE TESTS (Grey circle fix)
+    ; ICON PRE-CACHE ON REFRESH TESTS (Grey circle fix)
     ; ============================================================
 
-    ; ----- Test: Snapshot pre-caches icons for items with non-zero iconHicon -----
-    GUI_Log("Test: Snapshot pre-caches icons for items with non-zero iconHicon")
+    ; ----- Test: Refresh pre-caches visible icons synchronously (A1 path) -----
+    GUI_Log("Test: Refresh pre-caches visible icons for items with non-zero iconHicon")
     ResetGUIState()
     items := CreateTestItems(3)
     items[1].iconHicon := 99001
     items[3].iconHicon := 99003
-    ; items[2] has no iconHicon (defaults to 0) - should NOT be pre-cached
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 300, payload: { items: items } })
-    GUI_OnStoreMessage(snapshotMsg)
+    ; items[2] has iconHicon 0 - should NOT be pre-cached
+    MockStore_SetItems(items)
+    ; Overlay visible → A1 path pre-caches viewport rows synchronously
+    gGUI_OverlayVisible := true
+    gGUI_ScrollTop := 0
+    GUI_RefreshLiveItems()
 
-    GUI_AssertEq(gMock_PreCachedIcons.Count, 2, "PreCache snapshot: 2 icons cached (skipped 0)")
-    GUI_AssertEq(gMock_PreCachedIcons[1000], 99001, "PreCache snapshot: hwnd 1000 has correct hicon")
-    GUI_AssertEq(gMock_PreCachedIcons[3000], 99003, "PreCache snapshot: hwnd 3000 has correct hicon")
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 2, "PreCache refresh: 2 icons cached (skipped 0)")
+    GUI_AssertEq(gMock_PreCachedIcons[1000], 99001, "PreCache refresh: hwnd 1000 has correct hicon")
+    GUI_AssertEq(gMock_PreCachedIcons[3000], 99003, "PreCache refresh: hwnd 3000 has correct hicon")
 
-    ; ----- Test: Delta upsert pre-caches icon on update -----
-    GUI_Log("Test: Delta upsert pre-caches icon on update")
+    ; ============================================================
+    ; BACKGROUND PRE-CACHE TIMER TESTS (_GUI_PreCacheTick)
+    ; ============================================================
+
+    ; ----- Test: _GUI_PreCacheTick skips during ACTIVE state -----
+    GUI_Log("Test: _GUI_PreCacheTick skips during ACTIVE state")
     ResetGUIState()
-    ; Set up initial items (no icons)
-    snapshotMsg := JSON.Dump({ type: IPC_MSG_SNAPSHOT, rev: 301, payload: { items: CreateTestItems(2) } })
-    GUI_OnStoreMessage(snapshotMsg)
-    gMock_PreCachedIcons := Map()  ; Clear from snapshot
+    gGUI_State := "ACTIVE"
+    gWS_Store[1000] := {present: true, iconHicon: 50001}
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "PreCacheTick ACTIVE: no icons cached")
 
-    ; Delta: update existing item with a new icon
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 302, payload: { upserts: [{ hwnd: 1000, iconHicon: 55555 }], removes: [] } })
-    GUI_OnStoreMessage(deltaMsg)
+    ; ----- Test: _GUI_PreCacheTick caches uncached icons from gWS_Store -----
+    GUI_Log("Test: _GUI_PreCacheTick caches uncached icons from gWS_Store")
+    ResetGUIState()
+    gWS_Store[1000] := {present: true, iconHicon: 50001}
+    gWS_Store[2000] := {present: true, iconHicon: 50002}
+    gWS_Store[3000] := {present: true, iconHicon: 50003}
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 3, "PreCacheTick: 3 icons cached")
+    GUI_AssertEq(gMock_PreCachedIcons[1000], 50001, "PreCacheTick: hwnd 1000 cached with correct hicon")
+    GUI_AssertEq(gMock_PreCachedIcons[2000], 50002, "PreCacheTick: hwnd 2000 cached with correct hicon")
+    GUI_AssertEq(gMock_PreCachedIcons[3000], 50003, "PreCacheTick: hwnd 3000 cached with correct hicon")
 
-    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCache delta update: 1 icon cached")
-    GUI_AssertEq(gMock_PreCachedIcons[1000], 55555, "PreCache delta update: correct hicon")
+    ; ----- Test: _GUI_PreCacheTick skips non-present items -----
+    GUI_Log("Test: _GUI_PreCacheTick skips non-present items")
+    ResetGUIState()
+    gWS_Store[1000] := {present: false, iconHicon: 50001}
+    gWS_Store[2000] := {present: true, iconHicon: 50002}
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCacheTick non-present: only 1 cached")
+    GUI_AssertTrue(gMock_PreCachedIcons.Has(2000), "PreCacheTick non-present: hwnd 2000 cached")
+    GUI_AssertTrue(!gMock_PreCachedIcons.Has(1000), "PreCacheTick non-present: hwnd 1000 skipped")
 
-    ; ----- Test: Delta upsert pre-caches icon on new item -----
-    GUI_Log("Test: Delta upsert pre-caches icon on new item")
-    gMock_PreCachedIcons := Map()  ; Clear
+    ; ----- Test: _GUI_PreCacheTick skips items with iconHicon=0 -----
+    GUI_Log("Test: _GUI_PreCacheTick skips items with no icon")
+    ResetGUIState()
+    gWS_Store[1000] := {present: true, iconHicon: 0}
+    gWS_Store[2000] := {present: true, iconHicon: 0}
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "PreCacheTick no-icon: nothing cached")
 
-    ; Delta: add a brand new item with icon
-    deltaMsg := JSON.Dump({ type: IPC_MSG_DELTA, rev: 303, payload: { upserts: [{ hwnd: 9000, title: "New", class: "C", iconHicon: 77777, lastActivatedTick: A_TickCount }], removes: [] } })
-    GUI_OnStoreMessage(deltaMsg)
+    ; ----- Test: _GUI_PreCacheTick skips already-cached icons -----
+    GUI_Log("Test: _GUI_PreCacheTick skips already-cached icons")
+    ResetGUIState()
+    gWS_Store[1000] := {present: true, iconHicon: 50001}
+    gWS_Store[2000] := {present: true, iconHicon: 50002}
+    ; Pre-populate icon cache with matching entries
+    gGdip_IconCache[1000] := {hicon: 50001, pBmp: 1}
+    gGdip_IconCache[2000] := {hicon: 50002, pBmp: 1}
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "PreCacheTick cached: nothing re-cached")
 
-    GUI_AssertTrue(gMock_PreCachedIcons.Has(9000), "PreCache delta new: new item icon cached")
-    GUI_AssertEq(gMock_PreCachedIcons[9000], 77777, "PreCache delta new: correct hicon")
+    ; ----- Test: _GUI_PreCacheTick replaces stale cache entry (hicon changed) -----
+    GUI_Log("Test: _GUI_PreCacheTick replaces stale cache entry")
+    ResetGUIState()
+    gWS_Store[1000] := {present: true, iconHicon: 60001}  ; New icon
+    gGdip_IconCache[1000] := {hicon: 50001, pBmp: 1}      ; Old cached icon
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCacheTick stale: 1 icon re-cached")
+    GUI_AssertEq(gMock_PreCachedIcons[1000], 60001, "PreCacheTick stale: new hicon cached")
+
+    ; ----- Test: _GUI_PreCacheTick batch limit of 4 per tick -----
+    GUI_Log("Test: _GUI_PreCacheTick batch limit of 4")
+    ResetGUIState()
+    loop 6
+        gWS_Store[A_Index * 1000] := {present: true, iconHicon: 70000 + A_Index}
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 4, "PreCacheTick batch: only 4 icons cached per tick")
+
+    ; ----- Test: _GUI_PreCacheTick drains remaining on next tick -----
+    GUI_Log("Test: _GUI_PreCacheTick drains remaining on subsequent tick")
+    ; Continue from previous test (6 items, 4 already cached by mock)
+    ; gGdip_IconCache was populated by mock Gdip_PreCacheIcon, so 4 entries exist
+    gMock_PreCachedIcons := Map()  ; Reset tracker without full state reset
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 2, "PreCacheTick drain: remaining 2 icons cached on next tick")
+
+    ; ----- Test: _GUI_PreCacheTick cache entry with pBmp=0 is stale -----
+    GUI_Log("Test: _GUI_PreCacheTick treats pBmp=0 as needing re-cache")
+    ResetGUIState()
+    gWS_Store[1000] := {present: true, iconHicon: 50001}
+    gGdip_IconCache[1000] := {hicon: 50001, pBmp: 0}  ; Same hicon but failed conversion
+    _GUI_PreCacheTick()
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCacheTick pBmp=0: icon re-cached")
+
+    ; ----- Test: GUI_KickPreCache skips during ACTIVE state -----
+    GUI_Log("Test: GUI_KickPreCache skips during ACTIVE state")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gWS_Store[1000] := {present: true, iconHicon: 50001}
+    GUI_KickPreCache()
+    ; Timer should NOT have been set; verify by calling tick manually after brief wait
+    Sleep(60)
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "KickPreCache ACTIVE: timer not set, no icons cached")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")

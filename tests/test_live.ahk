@@ -1,19 +1,17 @@
 ; Live Integration Tests - All tests that require --live flag
-; Tests that spawn store processes and do E2E validation
+; In-process data pipeline + compiled exe E2E tests
 ; Included by run_tests.ahk
 
 #Include "test_live_core.ahk"
 #Include "test_live_network.ahk"
 #Include "test_live_features.ahk"
 #Include "test_live_execution.ahk"
-#Include "test_live_execution_standalone.ahk"
 #Include "test_live_lifecycle.ahk"
 
 RunLiveTests() {
     RunLiveTests_Core()
     RunLiveTests_Network()
     RunLiveTests_Features()
-    RunLiveTests_ExecutionStandalone()
     RunLiveTests_Execution()
     RunLiveTests_Lifecycle()
 }

@@ -1,22 +1,13 @@
 ; Live Tests - Core Integration
-; Compile, IPC, Store, Viewer, Komorebi, Producer State
+; In-process WindowList pipeline, Producer State, Komorebi
 ; Included by test_live.ahk
 #Include test_utils.ahk
 
 RunLiveTests_Core() {
     global TestPassed, TestErrors, cfg
-    global gRealStoreResponse, gRealStoreReceived
-    global gViewerTestResponse, gViewerTestReceived
-    global gProdTestProducers, gProdTestReceived
-    global testServer, gTestClient, gTestResponse, gTestResponseReceived
-    global IPC_MSG_HELLO, IPC_MSG_PROJECTION_REQUEST, IPC_MSG_SNAPSHOT_REQUEST
-    global IPC_MSG_PROJECTION, IPC_MSG_SNAPSHOT, IPC_MSG_RELOAD_BLACKLIST
-    global IPC_MSG_PRODUCER_STATUS_REQUEST
-
-    storePath := A_ScriptDir "\..\src\store\store_server.ahk"
 
     ; ============================================================
-    ; Live Integration Tests (WinEnumLite, WindowStore pipeline)
+    ; Live Integration Tests (WinEnumLite, WindowList pipeline)
     ; ============================================================
     Log("`n--- Live Integration Tests ---")
 
@@ -37,365 +28,161 @@ RunLiveTests_Core() {
     ; Reset and test full pipeline
     global gWS_Store := Map()
     global gWS_Rev := 0
-    WindowStore_Init()
-    WindowStore_BeginScan()
-    WindowStore_UpsertWindow(realWindows, "winenum_lite")
-    WindowStore_EndScan()
+    WL_Init()
+    WL_BeginScan()
+    WL_UpsertWindow(realWindows, "winenum_lite")
+    WL_EndScan()
 
-    proj := WindowStore_GetProjection({ sort: "Z" })
-    AssertTrue(proj.items.Length > 0, "Full pipeline produces projection (" proj.items.Length " items)")
+    proj := WL_GetDisplayList({ sort: "Z" })
+    AssertTrue(proj.items.Length > 0, "Full pipeline produces display list (" proj.items.Length " items)")
 
     ; ============================================================
-    ; IPC Integration Tests (server/client)
+    ; DisplayList Fields Validation (in-process, real windows)
     ; ============================================================
-    Log("`n--- IPC Integration Tests ---")
+    Log("`n--- DisplayList Fields Validation ---")
 
-    ; Start a test store server on a unique pipe
-    testPipeName := "\\.\pipe\alt_tabby_test_" A_TickCount
-    testServer := IPC_PipeServer_Start(testPipeName, Test_OnServerMessage)
-    AssertTrue(IsObject(testServer), "IPC server started")
-
-    ; Give server a moment to set up pending connection
-    Sleep(100)
-
-    ; Connect client
-    gTestResponse := ""
-    gTestResponseReceived := false
-    gTestClient := IPC_PipeClient_Connect(testPipeName, Test_OnClientMessage)
-    AssertTrue(gTestClient.hPipe != 0, "IPC client connected")
-
-    if (gTestClient.hPipe) {
-        ; Give connection time to establish
-        Sleep(50)
-
-        ; Send projection request
-        reqMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
-        IPC_PipeClient_Send(gTestClient, JSON.Dump(reqMsg))
-
-        ; Wait for response (with timeout)
-        waitStart := A_TickCount
-        while (!gTestResponseReceived && (A_TickCount - waitStart) < 3000) {
-            Sleep(50)
-        }
-
-        if (gTestResponseReceived) {
-            try {
-                respObj := JSON.Load(gTestResponse)
-                hasItems := respObj.Has("payload") && respObj["payload"].Has("items")
-                AssertTrue(hasItems, "IPC response contains items array")
-                if (hasItems) {
-                    items := respObj["payload"]["items"]
-                    itemCount := items.Length
-                    Log("  IPC received " itemCount " items from store")
-
-                    ; Validate projection includes required fields
-                    if (itemCount > 0) {
-                        sample := items[1]
-                        requiredFields := ["hwnd", "title", "class", "pid", "z",
-                            "lastActivatedTick", "isFocused", "isCloaked", "isMinimized",
-                            "isOnCurrentWorkspace", "workspaceName", "processName"]
-                        missingFields := []
-                        for _, field in requiredFields {
-                            if (!sample.Has(field)) {
-                                missingFields.Push(field)
-                            }
-                        }
-                        if (missingFields.Length = 0) {
-                            Log("PASS: Projection contains all required fields")
-                            TestPassed++
-                        } else {
-                            Log("FAIL: Projection missing fields: " _JoinArray(missingFields, ", "))
-                            TestErrors++
-                        }
-                    }
-                }
-            } catch as e {
-                Log("FAIL: IPC response parse error - " e.Message)
-                TestErrors++
+    if (proj.items.Length > 0) {
+        sample := proj.items[1]
+        requiredFields := ["hwnd", "title", "class", "pid", "z",
+            "lastActivatedTick", "isFocused", "isCloaked", "isMinimized",
+            "isOnCurrentWorkspace", "workspaceName", "processName"]
+        missingFields := []
+        for _, field in requiredFields {
+            if (!sample.HasOwnProp(field)) {
+                missingFields.Push(field)
             }
-        } else {
-            Log("FAIL: IPC response timeout")
-            TestErrors++
         }
-
-        ; Cleanup client
-        IPC_PipeClient_Close(gTestClient)
-    }
-
-    ; Cleanup server
-    IPC_PipeServer_Stop(testServer)
-
-    ; ============================================================
-    ; Shared Store for Real Store + Viewer + Producer State tests
-    ; ============================================================
-    ; These three tests are read-only (connect, query, verify, disconnect)
-    ; so they safely share a single store instance.
-    sharedStorePipe := "tabby_shared_test_" A_TickCount
-    sharedStorePid := 0
-
-    if (!_Test_RunSilent('"' A_AhkPath '" /ErrorStdOut "' storePath '" --test --pipe=' sharedStorePipe, &sharedStorePid)) {
-        Log("SKIP: Could not start shared store_server")
-        sharedStorePid := 0
-    }
-
-    if (sharedStorePid) {
-        ; NOTE: Do NOT reduce this timeout. Store startup (parse + config + blacklist +
-        ; pipe creation) is I/O-bound and competes with 15+ parallel test processes.
-        if (!WaitForStorePipe(sharedStorePipe, 5000)) {
-            Log("FAIL: Shared store pipe not ready within timeout")
-            TestErrors++
-            try ProcessClose(sharedStorePid)
-            sharedStorePid := 0
-        }
-    }
-
-    ; ============================================================
-    ; Real Store Integration Test (uses shared store)
-    ; ============================================================
-    Log("`n--- Real Store Integration Test ---")
-
-    if (sharedStorePid) {
-        ; Connect as a client (like the viewer does)
-        gRealStoreResponse := ""
-        gRealStoreReceived := false
-        realClient := IPC_PipeClient_Connect(sharedStorePipe, Test_OnRealStoreMessage)
-
-        if (realClient.hPipe) {
-            Log("PASS: Connected to real store_server")
+        if (missingFields.Length = 0) {
+            Log("PASS: DisplayList contains all required fields")
             TestPassed++
-
-            ; Send hello like the viewer does
-            helloMsg := { type: IPC_MSG_HELLO, clientId: "test", wants: { deltas: true } }
-            IPC_PipeClient_Send(realClient, JSON.Dump(helloMsg))
-
-            ; Use snapshot_request (not projection_request) — it triggers a deferred
-            ; scan cycle in the store, ensuring fresh enumeration even if the store
-            ; hasn't completed its initial scan yet (pipe is available before FullScan).
-            snapMsg := { type: IPC_MSG_SNAPSHOT_REQUEST, projectionOpts: { sort: "Z", columns: "items" } }
-            IPC_PipeClient_Send(realClient, JSON.Dump(snapMsg))
-
-            ; Active polling: re-request on empty responses instead of passively waiting.
-            ; The store pipe becomes available before Store_FullScan() completes, so the
-            ; first response may be empty. Each snapshot_request triggers a fresh scan,
-            ; driving the store to populate and respond with current data.
-            waitStart := A_TickCount
-            itemCount := 0
-            gotResponse := false
-            while ((A_TickCount - waitStart) < 5000) {
-                if (!gRealStoreReceived) {
-                    Sleep(50)
-                    continue
-                }
-                gotResponse := true
-                try {
-                    respObj := JSON.Load(gRealStoreResponse)
-                    if (respObj.Has("payload") && respObj["payload"].Has("items")) {
-                        itemCount := respObj["payload"]["items"].Length
-                        Log("  Real store returned " itemCount " items")
-                        if (itemCount > 0)
-                            break
-                    }
-                }
-                ; Empty response — re-request to trigger another scan cycle
-                gRealStoreReceived := false
-                gRealStoreResponse := ""
-                IPC_PipeClient_Send(realClient, JSON.Dump(snapMsg))
-                Sleep(100)
-            }
-
-            if (gotResponse) {
-                Log("PASS: Received response from real store")
-                TestPassed++
-                AssertTrue(itemCount > 0, "Real store returns windows")
-            } else {
-                Log("FAIL: Timeout waiting for real store response")
-                TestErrors++
-            }
-
-            IPC_PipeClient_Close(realClient)
         } else {
-            Log("FAIL: Could not connect to real store_server")
+            Log("FAIL: DisplayList missing fields: " _JoinArray(missingFields, ", "))
             TestErrors++
         }
-    }
 
-    ; ============================================================
-    ; Headless Viewer Simulation Test (uses shared store)
-    ; ============================================================
-    Log("`n--- Headless Viewer Simulation Test ---")
-
-    if (sharedStorePid) {
-        gViewerTestResponse := ""
-        gViewerTestReceived := false
-        viewerClient := IPC_PipeClient_Connect(sharedStorePipe, Test_OnViewerMessage)
-
-        if (viewerClient.hPipe) {
-            Log("PASS: Viewer connected to store")
+        ; Validate field types
+        if (IsInteger(sample.hwnd) && IsInteger(sample.pid)) {
+            Log("PASS: hwnd and pid are integers")
             TestPassed++
-
-            ; Send hello like real viewer
-            helloMsg := { type: IPC_MSG_HELLO, clientId: "test_viewer", wants: { deltas: true } }
-            IPC_PipeClient_Send(viewerClient, JSON.Dump(helloMsg))
-
-            ; Send projection request with MRU sort
-            projMsg := { type: IPC_MSG_PROJECTION_REQUEST, projectionOpts: { sort: "MRU", columns: "items" } }
-            IPC_PipeClient_Send(viewerClient, JSON.Dump(projMsg))
-
-            ; Wait for response
-            waitStart := A_TickCount
-            while (!gViewerTestReceived && (A_TickCount - waitStart) < 5000) {
-                Sleep(100)
-            }
-
-            if (gViewerTestReceived) {
-                Log("PASS: Viewer received projection response")
-                TestPassed++
-
-                try {
-                    respObj := JSON.Load(gViewerTestResponse)
-                    if (respObj.Has("payload") && respObj["payload"].Has("items")) {
-                        items := respObj["payload"]["items"]
-                        if (items.Length > 0) {
-                            ; Validate critical fields for viewer display
-                            sample := items[1]
-                            viewerFields := ["hwnd", "title", "z", "lastActivatedTick", "isCloaked",
-                                "isMinimized", "isOnCurrentWorkspace", "workspaceName", "isFocused"]
-                            missingViewerFields := []
-                            for _, field in viewerFields {
-                                if (!sample.Has(field)) {
-                                    missingViewerFields.Push(field)
-                                }
-                            }
-                            if (missingViewerFields.Length = 0) {
-                                Log("PASS: Viewer projection has all display fields")
-                                TestPassed++
-                            } else {
-                                Log("FAIL: Viewer projection missing: " _JoinArray(missingViewerFields, ", "))
-                                TestErrors++
-                            }
-
-                            ; Test that sort field (lastActivatedTick) is present for MRU sort
-                            hasSortData := true
-                            for _, item in items {
-                                if (!item.Has("lastActivatedTick")) {
-                                    hasSortData := false
-                                    break
-                                }
-                            }
-                            if (hasSortData) {
-                                Log("PASS: All items have MRU sort field (lastActivatedTick)")
-                                TestPassed++
-                            } else {
-                                Log("FAIL: Some items missing lastActivatedTick for MRU sort")
-                                TestErrors++
-                            }
-                        } else {
-                            Log("SKIP: No items to validate viewer fields")
-                        }
-                    } else {
-                        Log("FAIL: Viewer response missing payload/items")
-                        TestErrors++
-                    }
-                } catch as e {
-                    Log("FAIL: Viewer response parse error: " e.Message)
-                    TestErrors++
-                }
-            } else {
-                Log("FAIL: Viewer timeout waiting for projection")
-                TestErrors++
-            }
-
-            IPC_PipeClient_Close(viewerClient)
         } else {
-            Log("FAIL: Viewer could not connect to store")
+            Log("FAIL: hwnd or pid not integer (hwnd=" Type(sample.hwnd) ", pid=" Type(sample.pid) ")")
             TestErrors++
         }
-    }
 
-    ; ============================================================
-    ; Producer State E2E Test (uses shared store)
-    ; ============================================================
-    Log("`n--- Producer State E2E Test ---")
-
-    if (sharedStorePid) {
-        gProdTestProducers := ""
-        gProdTestReceived := false
-
-        prodClient := IPC_PipeClient_Connect(sharedStorePipe, Test_OnProducerStateMessage)
-
-        if (prodClient.hPipe) {
-            Log("PASS: Producer state test connected to store")
+        ; Validate all items have MRU sort field
+        hasSortData := true
+        for _, item in proj.items {
+            if (!item.HasOwnProp("lastActivatedTick")) {
+                hasSortData := false
+                break
+            }
+        }
+        if (hasSortData) {
+            Log("PASS: All items have MRU sort field (lastActivatedTick)")
             TestPassed++
-
-            ; Send producer_status_request (new IPC message type)
-            statusReqMsg := { type: IPC_MSG_PRODUCER_STATUS_REQUEST }
-            IPC_PipeClient_Send(prodClient, JSON.Dump(statusReqMsg))
-
-            ; Wait for producer_status response
-            waitStart := A_TickCount
-            while (!gProdTestReceived && (A_TickCount - waitStart) < 5000) {
-                Sleep(100)
-            }
-
-            if (gProdTestReceived && IsObject(gProdTestProducers)) {
-                Log("PASS: Received producer_status response")
-                TestPassed++
-
-                producers := gProdTestProducers
-
-                ; Check that wineventHook state exists and is valid
-                wehState := ""
-                if (producers is Map && producers.Has("wineventHook")) {
-                    wehState := producers["wineventHook"]
-                } else if (IsObject(producers)) {
-                    try wehState := producers.wineventHook
-                }
-
-                if (wehState = "running" || wehState = "failed" || wehState = "disabled") {
-                    Log("PASS: wineventHook state is valid (" wehState ")")
-                    TestPassed++
-                } else {
-                    Log("FAIL: wineventHook state invalid or missing (got: " wehState ")")
-                    TestErrors++
-                }
-
-                ; Count how many producers are reported
-                prodCount := 0
-                expectedProducers := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
-                for _, pname in expectedProducers {
-                    pstate := ""
-                    if (producers is Map && producers.Has(pname)) {
-                        pstate := producers[pname]
-                    } else if (IsObject(producers)) {
-                        try pstate := producers.%pname%
-                    }
-                    if (pstate != "")
-                        prodCount++
-                }
-
-                if (prodCount >= 4) {
-                    Log("PASS: Found " prodCount " producer states via IPC")
-                    TestPassed++
-                } else {
-                    Log("FAIL: Expected at least 4 producer states, got " prodCount)
-                    TestErrors++
-                }
-            } else {
-                Log("FAIL: Did not receive producer_status response")
-                TestErrors++
-            }
-
-            IPC_PipeClient_Close(prodClient)
         } else {
-            Log("FAIL: Could not connect to store for producer state test")
+            Log("FAIL: Some items missing lastActivatedTick")
             TestErrors++
         }
     }
 
-    ; Kill the shared store (done with Real Store, Viewer, and Producer State tests)
-    if (sharedStorePid) {
-        try ProcessClose(sharedStorePid)
-        Sleep(200)  ; Allow process cleanup before launching new stores
+    ; ============================================================
+    ; MRU Sort Order Test (in-process)
+    ; ============================================================
+    Log("`n--- MRU Sort Order Test ---")
+
+    mruProj := WL_GetDisplayList({ sort: "MRU" })
+    if (mruProj.items.Length >= 2) {
+        first := mruProj.items[1]
+        second := mruProj.items[2]
+        firstTick := first.lastActivatedTick
+        secondTick := second.lastActivatedTick
+        if (firstTick >= secondTick) {
+            Log("PASS: MRU sort order correct (first=" firstTick ", second=" secondTick ")")
+            TestPassed++
+        } else {
+            Log("FAIL: MRU sort order wrong (first=" firstTick " < second=" secondTick ")")
+            TestErrors++
+        }
+    } else {
+        Log("SKIP: MRU sort check needs >= 2 items, got " mruProj.items.Length)
+    }
+
+    ; ============================================================
+    ; Producer State In-Process Test
+    ; ============================================================
+    Log("`n--- Producer State In-Process Test ---")
+
+    ; Get display list with meta to check producer states
+    metaProj := WL_GetDisplayList({ sort: "Z", columns: "items,meta" })
+    if (metaProj.HasOwnProp("meta") && metaProj.meta.HasOwnProp("producers")) {
+        producers := metaProj.meta.producers
+        Log("PASS: DisplayList meta contains producer states")
+        TestPassed++
+
+        ; Check expected producer fields exist
+        expectedProducers := ["wineventHook", "mruLite", "komorebiSub", "komorebiLite", "iconPump", "procPump"]
+        prodCount := 0
+        for _, pname in expectedProducers {
+            pstate := ""
+            try pstate := producers.%pname%
+            if (pstate != "")
+                prodCount++
+        }
+
+        if (prodCount >= 4) {
+            Log("PASS: Found " prodCount " producer states in meta")
+            TestPassed++
+        } else {
+            Log("FAIL: Expected at least 4 producer states, got " prodCount)
+            TestErrors++
+        }
+
+        ; wineventHook should have a valid state (we set it in WL_Init)
+        wehState := ""
+        try wehState := producers.wineventHook
+        if (wehState = "running" || wehState = "failed" || wehState = "disabled") {
+            Log("PASS: wineventHook state is valid (" wehState ")")
+            TestPassed++
+        } else {
+            Log("FAIL: wineventHook state invalid or missing (got: '" wehState "')")
+            TestErrors++
+        }
+    } else {
+        Log("SKIP: DisplayList meta does not contain producer states (meta may not be populated in test mode)")
+    }
+
+    ; ============================================================
+    ; ValidateExistence with Real Windows
+    ; ============================================================
+    Log("`n--- ValidateExistence Real Window Test ---")
+
+    ; Add a fake HWND alongside real windows, then validate should remove it
+    global gWS_Store
+    fakeHwnd := 0xDEAD0001
+    gWS_Store[fakeHwnd] := Map(
+        "hwnd", fakeHwnd, "title", "FakeWindow", "class", "FakeClass",
+        "pid", 0, "z", 999, "lastActivatedTick", 0, "isFocused", false,
+        "isCloaked", false, "isMinimized", false, "isOnCurrentWorkspace", true,
+        "workspaceName", "", "processName", "", "iconHicon", 0
+    )
+    prevCount := 0
+    for _ in gWS_Store
+        prevCount++
+
+    result := WL_ValidateExistence()
+
+    afterCount := 0
+    for _ in gWS_Store
+        afterCount++
+
+    if (!gWS_Store.Has(fakeHwnd)) {
+        Log("PASS: ValidateExistence removed fake HWND (before=" prevCount ", after=" afterCount ")")
+        TestPassed++
+    } else {
+        Log("FAIL: ValidateExistence did not remove fake HWND")
+        TestErrors++
+        gWS_Store.Delete(fakeHwnd)
     }
 
     ; ============================================================

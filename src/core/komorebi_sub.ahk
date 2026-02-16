@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0
-#Warn VarUnset, Off  ; Expected: file is included after windowstore.ahk
+#Warn VarUnset, Off  ; Expected: file is included after window_list.ahk
 
 ; Include extracted modules
 #Include komorebi_state.ahk  ; State navigation helpers (accepts parsed Map/Array objects)
@@ -212,7 +212,7 @@ _KomorebiSub_Start() {
     _KSub_FallbackMode := false
     if (cfg.DiagKomorebiLog)
         KSub_DiagLog("KomorebiSub: Setting timer with interval=" KSub_PollMs)
-    SetTimer(KomorebiSub_Poll, KSub_PollMs)
+    SetTimer(_KomorebiSub_Poll, KSub_PollMs)
 
     ; Do initial poll to populate all windows with workspace data immediately
     ; Runs after 1500ms to ensure first winenum scan has populated the store
@@ -274,7 +274,7 @@ KomorebiSub_Stop() {
     global _KSub_FallbackMode, _KSub_ReadBuffer, _KSub_ReadBufferLen
 
     ; Stop all timers
-    SetTimer(KomorebiSub_Poll, 0)
+    SetTimer(_KomorebiSub_Poll, 0)
     SetTimer(_KSub_InitialPoll, 0)  ; Cancel one-shot timer if pending
 
     ; Stop fallback timer if active
@@ -305,7 +305,7 @@ KomorebiSub_Stop() {
     _KSub_ReadBufferLen := 0
 }
 
-; Prune stale workspace cache entries (called from Store_HeartbeatTick)
+; Prune stale workspace cache entries (called from _GUI_Housekeeping)
 ; Removes entries older than _KSub_CacheMaxAgeMs to prevent unbounded growth
 ; RACE FIX: Wrap in Critical - _KSub_ProcessFullState writes to cache on komorebi notifications
 KomorebiSub_PruneStaleCache() {
@@ -326,7 +326,7 @@ KomorebiSub_PruneStaleCache() {
 }
 
 ; Poll timer - check connection and read data (non-blocking like POC)
-KomorebiSub_Poll() {
+_KomorebiSub_Poll() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
     global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer, _KSub_ReadBufferLen
     global IPC_ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
@@ -548,7 +548,7 @@ _KSub_OnNotification(jsonLine) {
     global KSUB_EV_CLOAK, KSUB_EV_UNCLOAK, KSUB_EV_TITLE_UPDATE, KSUB_EV_FOCUS_CHANGE
     global KSUB_EV_FOCUS_MONITOR_WS_NUM, KSUB_EV_FOCUS_WS_NUM, KSUB_EV_FOCUS_NAMED_WS
     global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS, KSub_MruSuppressionMs
-    global cfg
+    global cfg, gWS_OnWorkspaceChanged, FR_EV_WS_SWITCH
 
     ; ========== Layer 2: Quick event type extraction (no full JSON parse) ==========
     eventType := _KSub_QuickExtractEventType(jsonLine)
@@ -615,6 +615,12 @@ _KSub_OnNotification(jsonLine) {
 
     ; Track if we explicitly handled workspace change
     handledWorkspaceEvent := false
+    ; Move event: saved for explicit post-ProcessFullState patch
+    moveTargetHwnd := 0
+    moveTargetWsName := ""
+    ; Deferred WL_SetCurrentWorkspace: used ONLY for move events (need correct store
+    ; data before GUI callback fires). Switch events fire immediately.
+    deferredWsName := ""
 
     ; Handle workspace focus/move events - update current workspace from event
     ; MoveContainerToWorkspaceNumber: user moved focused window to another workspace (and followed it)
@@ -728,39 +734,45 @@ _KSub_OnNotification(jsonLine) {
                 }
                 _KSub_LastWorkspaceName := wsName
                 _KSub_LastWsUpdateTick := A_TickCount
-                try anyFlipped := WindowStore_SetCurrentWorkspace("", wsName)
-            }
 
-            ; For MOVE events: DON'T try to explicitly update the moved window here.
-            ; The state at this point is inconsistent - Signal has already moved to the TARGET
-            ; workspace in the state data, but focus indices on the SOURCE workspace point to
-            ; a DIFFERENT window. Any attempt to find "the moved window" will fail.
-            ;
-            ; Instead, rely on ProcessFullState from subsequent Cloak/Uncloak events which
-            ; will have consistent state and correctly update all windows including Signal.
-            if (eventType = KSUB_EV_MOVE_TO_WS_NUM || eventType = KSUB_EV_MOVE_TO_NAMED_WS) {
-                if (cfg.DiagKomorebiLog)
-                    KSub_DiagLog("  Move event: previousWS='" previousWsName "' targetWS='" wsName "' (letting ProcessFullState handle window update)")
-                ; For MOVE events, the state is reliable for the TARGET workspace
-                ; (the window has already been moved there in komorebi's state).
-                ; Update the focused hwnd cache for JUST the target workspace so
-                ; ProcessFullState gives the MRU tick to the moved window, not the
-                ; previously-focused window from a stale cache.
-                ; NOTE: Source workspace focus indices are unreliable ("point to OTHER
-                ; windows") so we don't refresh the whole cache — just the target.
-                global _KSub_FocusedHwndByWS
-                targetFocused := KSub_GetFocusedHwndByWsName(stateObj, wsName)
-                if (targetFocused) {
-                    _KSub_FocusedHwndByWS[wsName] := targetFocused
-                    if (cfg.DiagKomorebiLog)
-                        KSub_DiagLog("  Move: updated cache for '" wsName "' -> focused hwnd=" targetFocused)
+                isMoveEvent := (eventType = KSUB_EV_MOVE_TO_WS_NUM || eventType = KSUB_EV_MOVE_TO_NAMED_WS)
+                if (!isMoveEvent) {
+                    ; SWITCH events: fire WL_SetCurrentWorkspace IMMEDIATELY.
+                    ; GUI re-filters frozen items (which have correct workspaceNames
+                    ; for pure switches) and repaints before ProcessFullState blocks
+                    ; the thread. Matches old BroadcastWorkspaceFlips pattern — the
+                    ; GUI had all the data it needed, just needed to know which WS.
+                    try WL_SetCurrentWorkspace("", wsName)
+                } else {
+                    ; MOVE events: defer until AFTER ProcessFullState + post-fix
+                    ; so the moved window's workspace data is correct when the
+                    ; GUI callback fires.
+                    deferredWsName := wsName
                 }
+                FR_Record(FR_EV_WS_SWITCH)
             }
 
-            ; Immediately broadcast workspace meta to clients (~0.5ms vs ~5ms full push).
-            ; The subsequent Store_PushToClients at the end handles any remaining changes.
-            if (anyFlipped)
-                try Store_BroadcastWorkspaceFlips()
+            ; For MOVE events: identify the moved window from the focused hwnd
+            ; CACHE (not from the state data — state is pre-move, the window is
+            ; still on the source workspace). The moved window was the focused
+            ; window on the SOURCE workspace before the move.
+            ; NOTE: Source workspace focus indices in the STATE are unreliable
+            ; ("point to OTHER windows") but our CACHE was populated from
+            ; previous reliable events (FocusChange, initial poll).
+            if (eventType = KSUB_EV_MOVE_TO_WS_NUM || eventType = KSUB_EV_MOVE_TO_NAMED_WS) {
+                global _KSub_FocusedHwndByWS
+                moveTargetWsName := wsName
+                ; Look up the focused hwnd on the SOURCE workspace from cache
+                if (previousWsName != "" && _KSub_FocusedHwndByWS.Has(previousWsName))
+                    moveTargetHwnd := _KSub_FocusedHwndByWS[previousWsName]
+                ; Update cache: moved window is now focused on TARGET workspace
+                if (moveTargetHwnd)
+                    _KSub_FocusedHwndByWS[wsName] := moveTargetHwnd
+                if (cfg.DiagKomorebiLog)
+                    KSub_DiagLog("  Move: src='" previousWsName "' dst='" wsName "' movedHwnd=" moveTargetHwnd)
+            }
+
+            ; GUI notification is now handled inside WL_SetCurrentWorkspace itself.
             handledWorkspaceEvent := true
         }
     }
@@ -774,9 +786,41 @@ _KSub_OnNotification(jsonLine) {
     isLightMode := (eventType = KSUB_EV_FOCUS_CHANGE)
     _KSub_ProcessFullState(stateObj, handledWorkspaceEvent, isLightMode)
 
-    ; Push changes to clients (flush any pending cloak batch first)
+    ; Flush any pending cloak batch before returning
     _KSub_CancelCloakTimer()
-    try Store_PushToClients()
+
+    ; Explicit post-fix for MOVE events: the notification state is PRE-MOVE
+    ; (window still on source workspace), so ProcessFullState sees no change.
+    ; We identified the moved window from the focused hwnd cache (source WS's
+    ; focused window = the one being moved). Patch it to the target workspace
+    ; AFTER ProcessFullState to override any stale data.
+    if (moveTargetHwnd && moveTargetWsName != "") {
+        global _KSub_WorkspaceCache
+        try WL_UpdateFields(moveTargetHwnd, {
+            workspaceName: moveTargetWsName,
+            isOnCurrentWorkspace: true,
+            isCloaked: false
+        }, "ksub_move_explicit")
+        ; Also fix the workspace cache so subsequent ProcessFullState calls
+        ; don't revert the correction using a stale cache entry.
+        _KSub_WorkspaceCache[moveTargetHwnd] := { wsName: moveTargetWsName, tick: A_TickCount }
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("  Move post-fix: hwnd=" moveTargetHwnd " -> ws='" moveTargetWsName "'")
+    }
+
+    ; Deferred workspace update: MOVE events only. Now that ProcessFullState + post-fix
+    ; have updated the store with correct workspace data, fire WL_SetCurrentWorkspace
+    ; to flip isOnCurrentWorkspace flags and notify the GUI.
+    ; (Switch events already fired WL_SetCurrentWorkspace immediately above.)
+    if (deferredWsName != "")
+        try WL_SetCurrentWorkspace("", deferredWsName)
+
+    ; Notify GUI of cosmetic changes (title/icon/processName/workspace updates during
+    ; ACTIVE). For move events, this patches the moved window's workspace data in
+    ; frozen items. For switch events, ProcessFullState may have updated cosmetic data.
+    global gWS_OnStoreChanged
+    if (gWS_OnStoreChanged)
+        gWS_OnStoreChanged(false)
 }
 
 ; Extract all pending cloak changes and reset buffer.
@@ -796,14 +840,13 @@ _KSub_ExtractCloakPatches() {
 _KSub_ScheduleCloakPush() {
     global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn, _KSub_CloakBatchBuffer, cfg
 
-    ; If batching disabled, flush buffer and push immediately
+    ; If batching disabled, flush buffer immediately
     if (!cfg.KomorebiSubBatchCloakEventsMs) {
         Critical "On"
         patches := _KSub_ExtractCloakPatches()
         Critical "Off"
         if (patches.Count > 0)
-            try WindowStore_BatchUpdateFields(patches, "cloak_immediate")
-        try Store_PushToClients()
+            try WL_BatchUpdateFields(patches, "cloak_immediate")
         return
     }
 
@@ -833,8 +876,7 @@ _KSub_FlushCloakBatch() {
     Critical "Off"
 
     if (patches.Count > 0)
-        try WindowStore_BatchUpdateFields(patches, "cloak_batch")
-    try Store_PushToClients()
+        try WL_BatchUpdateFields(patches, "cloak_batch")
 }
 
 ; Cancel any pending cloak batch timer (called when a structural event pushes immediately)
@@ -849,7 +891,7 @@ _KSub_CancelCloakTimer() {
         patches := _KSub_ExtractCloakPatches()
         Critical "Off"
         if (patches.Count > 0)
-            try WindowStore_BatchUpdateFields(patches, "cloak_cancel_flush")
+            try WL_BatchUpdateFields(patches, "cloak_cancel_flush")
         return
     }
     Critical "Off"
@@ -908,7 +950,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
         _KSub_LastWsUpdateTick := A_TickCount
-        try WindowStore_SetCurrentWorkspace("", currentWsName)
+        try WL_SetCurrentWorkspace("", currentWsName)
     }
 
     ; Light mode: only workspace self-healing (above) + focused hwnd cache + MRU.
@@ -924,11 +966,11 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
             if (focusedHwnd) {
                 ; Skip MRU update if WEH already confirmed focus for this exact hwnd.
-                ; Prevents redundant push cycle (BuildDelta + JSON.Dump + IPC + GUI parse + repaint).
+                ; Prevents redundant push cycle (rev bump + display list rebuild + repaint).
                 ; When WEH is disabled/failed, gWEH_LastFocusHwnd stays 0 → never matches → update proceeds.
                 global gWEH_LastFocusHwnd
                 if (focusedHwnd != gWEH_LastFocusHwnd) {
-                    try WindowStore_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
+                    try WL_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
                     if (cfg.DiagKomorebiLog)
                         KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
                 } else if (cfg.DiagKomorebiLog) {
@@ -977,7 +1019,11 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                         if (!hwnd)
                             continue
 
-                        wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
+                        ; Prefer current workspace for duplicates: during move events,
+                        ; mid-operation snapshot may have window on BOTH source and target.
+                        ; If source is iterated after target, source would overwrite target.
+                        if (!wsMap.Has(hwnd) || isCurrentWs)
+                            wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
                     }
                 }
 
@@ -986,7 +1032,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                     winObj := cont["window"]
                     if (winObj is Map && winObj.Has("hwnd")) {
                         hwnd := KSafe_Int(winObj, "hwnd")
-                        if (hwnd && !wsMap.Has(hwnd)) {
+                        if (!wsMap.Has(hwnd) || isCurrentWs) {
                             wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
                         }
                     }
@@ -1003,7 +1049,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                             if !(win is Map) || !win.Has("hwnd")
                                 continue
                             hwnd := KSafe_Int(win, "hwnd")
-                            if (hwnd && !wsMap.Has(hwnd)) {
+                            if (hwnd && (!wsMap.Has(hwnd) || isCurrentWs)) {
                                 wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: win }
                             }
                         }
@@ -1013,7 +1059,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                         winObj := mono["window"]
                         if (winObj is Map && winObj.Has("hwnd")) {
                             hwnd := KSafe_Int(winObj, "hwnd")
-                            if (hwnd && !wsMap.Has(hwnd)) {
+                            if (hwnd && (!wsMap.Has(hwnd) || isCurrentWs)) {
                                 wsMap[hwnd] := { wsName: wsName, isCurrent: isCurrentWs, winObj: winObj }
                             }
                         }
@@ -1035,7 +1081,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     Critical "Off"
 
     ; Update/insert ALL windows from komorebi state
-    if (!IsSet(gWS_Store)) {  ; lint-ignore: isset-with-default
+    if (!IsSet(gWS_Store)) {
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("ProcessFullState: gWS_Store not set, returning")
         return
@@ -1082,7 +1128,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             rec["workspaceName"] := info.wsName
             rec["isOnCurrentWorkspace"] := info.isCurrent
 
-            try WindowStore_UpsertWindow([rec])
+            try WL_UpsertWindow([rec])
             addedCount++
         } else {
             ; Window exists - only patch if workspace data actually changed
@@ -1176,7 +1222,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
 
     ; Apply all updates in a single batch (one Critical section, one rev bump)
     if (batchPatches.Count > 0) {
-        result := WindowStore_BatchUpdateFields(batchPatches, "komorebi_fullstate")
+        result := WL_BatchUpdateFields(batchPatches, "komorebi_fullstate")
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("ProcessFullState: batch updated " result.changed " windows (patches=" batchPatches.Count ")")
     }

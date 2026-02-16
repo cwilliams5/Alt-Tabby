@@ -114,6 +114,8 @@ global g_SkipMismatchCheck := false
 #Include process_utils.ahk
 #Include win_utils.ahk
 #Include *i pump_utils.ahk
+#Include stats.ahk
+#Include window_list.ahk
 
 ; Editors
 #Include %A_ScriptDir%\src\editors\
@@ -132,9 +134,8 @@ global g_SkipMismatchCheck := false
 #Include *i launcher_tray.ahk
 #Include *i launcher_main.ahk
 
-; Store (data layer)
-#Include %A_ScriptDir%\src\store\
-#Include windowstore.ahk
+; Core producers (data layer)
+#Include %A_ScriptDir%\src\core\
 #Include winenum_lite.ahk
 #Include *i mru_lite.ahk
 #Include *i komorebi_lite.ahk
@@ -142,7 +143,6 @@ global g_SkipMismatchCheck := false
 #Include icon_pump.ahk
 #Include *i proc_pump.ahk
 #Include *i winevent_hook.ahk
-#Include store_server.ahk
 
 ; Viewer
 #Include %A_ScriptDir%\src\viewer\
@@ -156,7 +156,7 @@ global g_SkipMismatchCheck := false
 #Include *i gui_workspace.ahk
 #Include *i gui_paint.ahk
 #Include *i gui_input.ahk
-#Include *i gui_store.ahk
+#Include *i gui_data.ahk
 #Include *i gui_state.ahk
 #Include *i gui_interceptor.ahk
 #Include *i gui_main.ahk

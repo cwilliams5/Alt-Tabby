@@ -109,7 +109,6 @@ Key settings:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | GraceMs | 150 | Delay before showing GUI (quick-switch window) |
-| FreezeWindowList | false | Lock list on first Tab press |
 | BypassFullscreen | true | Use native Alt-Tab in fullscreen apps |
 | BypassProcesses | "" | Comma-separated process names to bypass |
 
@@ -138,19 +137,20 @@ Configuration is stored in `config.ini` next to the executable.
 ```
 src/
   alt_tabby.ahk       # Unified entry point
-  gui/                # Alt-Tab overlay
-    gui_main.ahk      # Entry, globals, init
+  gui/                # Alt-Tab overlay + MainProcess
+    gui_main.ahk      # Entry, globals, init, producers
     gui_interceptor.ahk # Keyboard hooks
     gui_state.ahk     # State machine
-    gui_store.ahk     # Store IPC client
+    gui_data.ahk      # Snapshot + pre-cache
     gui_paint.ahk     # Rendering
-  store/              # WindowStore server
-    store_server.ahk  # Main process
-    windowstore.ahk   # Core API
-    winevent_hook.ahk # Window events
+  core/               # Producer modules
+    winevent_hook.ahk # Window events + MRU
     komorebi_sub.ahk  # Komorebi integration
+    icon_pump.ahk     # Icon resolution
+    proc_pump.ahk     # Process name resolution
+  pump/               # EnrichmentPump subprocess
   viewer/             # Debug viewer
-  shared/             # IPC, JSON, config
+  shared/             # Window data, IPC, config, stats
 tests/
   run_tests.ahk       # Test orchestrator
   gui_tests.ahk       # State machine tests

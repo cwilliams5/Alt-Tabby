@@ -12,17 +12,16 @@ A_IconHidden := true  ; No tray icon during tests
 ; Event codes (from production gui_constants.ahk)
 #Include %A_ScriptDir%\..\src\gui\gui_constants.ahk
 
-; IPC message types (from shared constants - no hardcoded copies)
+; IPC message types (from shared constants - still needed for flight recorder constants)
 #Include %A_ScriptDir%\..\src\shared\ipc_constants.ahk
 
 ; GUI state globals
 global gGUI_State := "IDLE"
 global gGUI_LiveItems := []
-global gGUI_LiveItemsMap := Map()  ; hwnd -> item lookup for O(1) delta processing
-global gGdip_IconCache := Map()   ; Icon cache stub for prune condition in gui_store
+global gGUI_LiveItemsMap := Map()  ; hwnd -> item lookup for O(1) access
+global gGdip_IconCache := Map()   ; Icon cache stub for prune condition in gui_data
 global gGUI_DisplayItems := []
 global gGUI_ToggleBase := []
-global gGUI_AwaitingToggleProjection := false
 global gGUI_WSContextSwitch := false
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
@@ -32,9 +31,6 @@ global gGUI_TabCount := 0
 global gGUI_FirstTabTick := 0
 global gGUI_WorkspaceMode := "all"
 global gGUI_CurrentWSName := ""
-global gGUI_StoreRev := 0
-global gGUI_StoreConnected := true
-global gGUI_StoreWakeHwnd := 0
 global gGUI_FooterText := ""
 global gGUI_Revealed := false
 global gGUI_HoverRow := 0
@@ -53,7 +49,6 @@ global gGUI_PendingWaitUntil := 0
 global gGUI_PendingShell := ""
 global gGUI_PendingTempFile := ""
 global gGUI_EventBuffer := []
-global gGUI_LastLocalMRUTick := 0
 
 ; Stats globals (from gui_main.ahk, used by gui_state.ahk and gui_workspace.ahk)
 global gStats_AltTabs := 0
@@ -64,6 +59,13 @@ global gStats_CrossWorkspace := 0
 global gStats_WorkspaceToggles := 0
 global gStats_LastSent := Map()
 
+; Store globals (from window_list.ahk - not included in GUI test chain)
+global gWS_Store := Map()
+global gWS_DirtyHwnds := Map()
+
+; Cosmetic repaint debounce (from gui_main.ahk - not included in GUI test chain)
+global _gGUI_LastCosmeticRepaintTick := 0
+
 ; Win32 constants (from win_utils.ahk - not included in GUI test chain)
 global DWMWA_CLOAKED := 14
 
@@ -72,13 +74,9 @@ global TIMING_IPC_FIRE_WAIT := 10
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 
 ; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
-; These are used in hot paths to avoid cfg.HasOwnProp lookups
-global gCached_MRUFreshnessMs := 300
 global gCached_UseAltTabEligibility := true
 global gCached_UseBlacklist := true
 
-; Health check timestamp (used by gui_store.ahk)
-global gGUI_LastMsgTick := 0
 global gGUI_LauncherHwnd := 0  ; Not used in GUI tests, needed for production includes
 
 ; Interceptor globals (from gui_interceptor.ahk - mocked here since we don't include that file)
@@ -88,26 +86,23 @@ global gMock_BypassResult := false  ; Controls INT_ShouldBypassWindow mock retur
 
 ; Config object mock (production code uses cfg.PropertyName)
 global cfg := {
-    FreezeWindowList: true,
-    ServerSideWorkspaceFilter: false,
-    AltTabPrewarmOnAlt: true,
+    AltTabSwitchOnClick: true,
     AltTabGraceMs: 150,
     AltTabQuickSwitchMs: 100,
     AltTabBypassFullscreen: true,
     AltTabBypassProcesses: "",
+    GUI_ActiveRepaintDebounceMs: 250,
     GUI_ScrollKeepHighlightOnTop: false,
     DiagAltTabTooltips: false,
     DiagEventLog: false,  ; Disable event logging during tests
     DiagPaintTimingLog: false,  ; Disable paint timing log during tests
     DiagProcPumpLog: false,
+    DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
+    UseEnrichmentPump: false,
     KomorebicExe: ""
 }
-
-; IPC client mock
-global gGUI_StoreClient := { hPipe: 1, idleStreak: 0, tickMs: 100, timerFn: "" }
-global gMockIPCMessages := []
 
 ; Test tracking
 global GUI_TestPassed := 0
@@ -134,14 +129,14 @@ GUI_HideOverlay() {
     gGUI_OverlayVisible := false
 }
 
-; GDI+ icon cache invalidation mock (called by GUI_ApplyDelta on removes)
+; GDI+ icon cache invalidation mock
 Gdip_InvalidateIconCache(hwnd) {
     global gGdip_IconCache
     if (gGdip_IconCache.Has(hwnd))
         gGdip_IconCache.Delete(hwnd)
 }
 
-; GDI+ icon cache prune mock (called by snapshot handler to dispose orphaned bitmaps)
+; GDI+ icon cache prune mock (called by GUI_RefreshLiveItems)
 global gMock_PruneCalledWith := ""
 Gdip_PruneIconCache(liveHwnds) {
     global gMock_PruneCalledWith, gGdip_IconCache
@@ -156,16 +151,17 @@ Gdip_PruneIconCache(liveHwnds) {
         gGdip_IconCache.Delete(hwnd)
 }
 
-; GDI+ icon pre-cache mock (called on IPC receive to eagerly convert HICON → bitmap)
+; GDI+ icon pre-cache mock (called by GUI_RefreshLiveItems for visible items)
 global gMock_PreCachedIcons := Map()
 Gdip_PreCacheIcon(hwnd, hIcon) {
     global gMock_PreCachedIcons, gGdip_IconCache
     gMock_PreCachedIcons[hwnd] := hIcon
     ; Mirror production behavior: keep gGdip_IconCache in sync for prune condition
-    gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: 0}
+    ; pBmp: 1 simulates a valid GDI+ bitmap pointer (0 = failed conversion, would trigger retry)
+    gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: 1}
 }
 
-; Visible rows mock (called by _GUI_AnyVisibleItemChanged)
+; Visible rows mock (called by _GUI_AnyVisibleItemChanged and GUI_RefreshLiveItems)
 global gMock_VisibleRows := 5
 GUI_GetVisibleRows() {
     global gMock_VisibleRows
@@ -192,26 +188,63 @@ Win_GetScaleForWindow(hwnd) {
 ; Win_Wrap0, Win_Wrap1 from production (gui_math.ahk)
 #Include %A_ScriptDir%\..\src\gui\gui_math.ahk
 
-; IPC mock - captures messages for assertions
-IPC_PipeClient_Send(client, msgText, wakeHwnd := 0) {
-    global gMockIPCMessages
-    gMockIPCMessages.Push(msgText)
-    return true
+; ============================================================
+; WindowStore mocks — GUI_RefreshLiveItems calls these directly
+; ============================================================
+
+; Mock store data: tests populate this, then call GUI_RefreshLiveItems()
+global gMock_StoreItems := []
+global gMock_StoreItemsMap := Map()
+
+WL_GetDisplayList(opts := "") {
+    global gMock_StoreItems, gMock_StoreItemsMap
+    ; Filter by currentWorkspaceOnly if requested
+    items := gMock_StoreItems
+    itemsMap := gMock_StoreItemsMap
+    if (IsObject(opts) && opts.HasOwnProp("currentWorkspaceOnly") && opts.currentWorkspaceOnly) {
+        items := []
+        itemsMap := Map()
+        for _, item in gMock_StoreItems {
+            isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
+            if (isOnCurrent) {
+                items.Push(item)
+                itemsMap[item.hwnd] := item
+            }
+        }
+    }
+    return { items: items, itemsMap: itemsMap, rev: 1, meta: {}, cachePath: "mock" }
 }
 
-; IPC polling mock (used by active-polling optimizations)
-global IPC_TICK_ACTIVE := 15
-IPC_SetClientTick(client, ms) {
+WL_UpdateFields(hwnd, fields, source := "") {
+    ; No-op in tests
+}
+
+WL_PurgeBlacklisted() {
+    ; No-op in tests
+}
+
+Blacklist_Init() {
+    ; No-op in tests (gui_input.ahk calls this for blacklist reload)
+}
+
+; Stats mock (gui_state.ahk calls Stats_Accumulate directly)
+Stats_Accumulate(msg) {
+    ; No-op in tests
 }
 
 ; Flight recorder mock (gui_flight_recorder.ahk not included - it registers F12 hotkey)
+global gFR_DumpInProgress := false
 global FR_EV_ALT_DN := 1, FR_EV_ALT_UP := 2, FR_EV_TAB_DN := 3, FR_EV_TAB_UP := 4
 global FR_EV_TAB_DECIDE := 5, FR_EV_TAB_DECIDE_INNER := 6, FR_EV_ESC := 7, FR_EV_BYPASS := 8
 global FR_EV_STATE := 10, FR_EV_FREEZE := 11, FR_EV_GRACE_FIRE := 12
 global FR_EV_ACTIVATE_START := 13, FR_EV_ACTIVATE_RESULT := 14, FR_EV_MRU_UPDATE := 15
-global FR_EV_BUFFER_PUSH := 16, FR_EV_QUICK_SWITCH := 17, FR_EV_PREWARM_SKIP := 18, FR_EV_FG_RECONCILE := 19
-global FR_EV_SNAPSHOT_REQ := 20, FR_EV_SNAPSHOT_RECV := 21, FR_EV_SNAPSHOT_SKIP := 22
-global FR_EV_DELTA_RECV := 23, FR_EV_SNAPSHOT_TOP := 25, FR_EV_SESSION_START := 30
+global FR_EV_BUFFER_PUSH := 16, FR_EV_QUICK_SWITCH := 17
+global FR_EV_REFRESH := 20, FR_EV_ENRICH_REQ := 22, FR_EV_ENRICH_RESP := 23
+global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 26, FR_EV_BLACKLIST_PURGE := 27
+global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
+global FR_EV_SESSION_START := 30, FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32
+global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41
+global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51
 global FR_ST_IDLE := 0, FR_ST_ALT_PENDING := 1, FR_ST_ACTIVE := 2
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 }
@@ -248,7 +281,7 @@ global gGUI_Overlay := _MockGui()
 #Include %A_ScriptDir%\..\src\lib\cjson.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_input.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_workspace.ahk
-#Include %A_ScriptDir%\..\src\gui\gui_store.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_data.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_state.ahk
 
 ; ============================================================
@@ -262,12 +295,13 @@ ResetGUIState() {
     global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_FirstTabTick, gGUI_WorkspaceMode
-    global gGUI_AwaitingToggleProjection, gGUI_WSContextSwitch, gMockIPCMessages, gGUI_CurrentWSName
-    global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gGUI_LastLocalMRUTick
+    global gGUI_WSContextSwitch, gGUI_CurrentWSName
+    global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
     global gGUI_EventBuffer, gGUI_PendingPhase
-    global gMock_VisibleRows, gGUI_LastMsgTick, gMock_BypassResult
+    global gMock_VisibleRows, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
     global gMock_PreCachedIcons, gGdip_IconCache
+    global gMock_StoreItems, gMock_StoreItemsMap
 
     gGUI_State := "IDLE"
     gGUI_LiveItems := []
@@ -284,30 +318,31 @@ ResetGUIState() {
     gGUI_CurrentWSName := ""
     gGUI_FooterText := ""
     gGUI_Revealed := false
-    gGUI_AwaitingToggleProjection := false
     gGUI_WSContextSwitch := false
-    gGUI_LastLocalMRUTick := 0  ; Reset to avoid MRU freshness skip in snapshot handler
-    gMockIPCMessages := []
     gGUI_EventBuffer := []
     gGUI_PendingPhase := ""
     gMock_VisibleRows := 5
-    gGUI_LastMsgTick := 0
     gMock_BypassResult := false
     gINT_BypassMode := false
     gMock_PruneCalledWith := ""
     gMock_PreCachedIcons := Map()
-    gGdip_IconCache := Map()  ; Reset icon cache for prune condition
-    global _gIdleCacheIdx, _gIdleCacheGen
-    _gIdleCacheIdx := 0
-    _gIdleCacheGen := 0
+    gGdip_IconCache := Map()
+    gMock_StoreItems := []
+    gMock_StoreItemsMap := Map()
+    global _gGUI_LastCosmeticRepaintTick
+    global gWS_Store, gWS_DirtyHwnds
+    _gGUI_LastCosmeticRepaintTick := 0
+    gWS_Store := Map()
+    gWS_DirtyHwnds := Map()
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
+    ; Cancel any pending pre-cache timer from previous test
+    try GUI_StopPreCache()
 }
 
 CreateTestItems(count, currentWSCount := -1) {
     ; Create test items with workspace info
     ; If currentWSCount is -1, all items are on current workspace
-    ; NOTE: Uses lowercase keys to match JSON format from store (GUI_ConvertStoreItemsWithMap expects lowercase)
     items := []
     if (currentWSCount < 0)
         currentWSCount := count
@@ -319,7 +354,8 @@ CreateTestItems(count, currentWSCount := -1) {
             class: "TestClass",
             isOnCurrentWorkspace: (A_Index <= currentWSCount),
             workspaceName: (A_Index <= currentWSCount) ? "Main" : "Other",
-            lastActivatedTick: A_TickCount - (A_Index * 100)  ; MRU order: lower index = more recent
+            lastActivatedTick: A_TickCount - (A_Index * 100),  ; MRU order: lower index = more recent
+            iconHicon: 0
         })
     }
     return items
@@ -336,11 +372,30 @@ CreateTestItemsWithMap(count, currentWSCount := -1) {
     return items
 }
 
-; Simulate a server projection response (for ServerSideWorkspaceFilter=true tests)
-SimulateServerResponse(items) {
-    global gGUI_AwaitingToggleProjection, IPC_MSG_PROJECTION
-    projMsg := JSON.Dump({ type: IPC_MSG_PROJECTION, rev: A_TickCount, payload: { items: items }})
-    GUI_OnStoreMessage(projMsg)
+; Setup test items for state machine tests.  Populates both direct globals
+; (gGUI_LiveItems/Map/Index) AND mock store so GUI_RefreshLiveItems() during
+; ALT_DOWN prewarm returns the same data.
+SetupTestItems(count, currentWSCount := -1) {
+    global gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
+    items := CreateTestItems(count, currentWSCount)
+    MockStore_SetItems(items)
+    gGUI_LiveItems := items
+    gGUI_LiveItemsMap := Map()
+    gGUI_LiveItemsIndex := Map()
+    for idx, item in items {
+        gGUI_LiveItemsMap[item.hwnd] := item
+        gGUI_LiveItemsIndex[item.hwnd] := idx
+    }
+    return items
+}
+
+; Set up mock store with items, making them available to GUI_RefreshLiveItems()
+MockStore_SetItems(items) {
+    global gMock_StoreItems, gMock_StoreItemsMap
+    gMock_StoreItems := items
+    gMock_StoreItemsMap := Map()
+    for _, item in items
+        gMock_StoreItemsMap[item.hwnd] := item
 }
 
 GUI_AssertEq(actual, expected, testName) {

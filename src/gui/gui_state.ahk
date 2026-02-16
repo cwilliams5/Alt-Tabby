@@ -42,7 +42,7 @@ global gGUI_EventBuffer := []            ; Queued events during async activation
 ; State machine timing
 global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
-global gGUI_LastLocalMRUTick := 0  ; Timestamp of last local MRU update (to skip stale prewarns)
+; gGUI_LastLocalMRUTick removed — no competing MRU sources in MainProcess
 
 ; Session stats counters (sent to store as deltas)
 global gStats_AltTabs := 0
@@ -103,8 +103,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_State, gGUI_FirstTabTick, gGUI_TabCount
     global gGUI_OverlayVisible, gGUI_LiveItems, gGUI_Sel, gGUI_DisplayItems, gGUI_ToggleBase, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
-    global gGUI_PendingPhase, gGUI_EventBuffer, gGUI_LastLocalMRUTick, TIMING_IPC_FIRE_WAIT
-    global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_PREWARM_SKIP, FR_EV_QUICK_SWITCH
+    global gGUI_PendingPhase, gGUI_EventBuffer
+    global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
 
     ; File-based debug logging (no performance impact from tooltips)
@@ -147,43 +147,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     if (evCode = TABBY_EV_ALT_DOWN) {
-        ; ── Foreground reconciliation ──────────────────────────────────
-        ; The local MRU is only updated by Alt-Tab activations we perform.
-        ; External focus changes (taskbar clicks, mouse clicks on other
-        ; windows) reach us via Store deltas, which traverse the full
-        ; WinEventHook → Store → named-pipe → GUI pipeline.  That IPC
-        ; latency means a fast user can press Alt+Tab before the delta
-        ; arrives, causing us to freeze a stale MRU and switch to the
-        ; wrong window.
-        ;
-        ; Fix: query the real foreground window directly (~1µs DllCall).
-        ; If it's in our live items but not at position #1, an external
-        ; focus change happened that we missed.  Move it to #1 so the
-        ; MRU reflects reality before we freeze.
-        ;
-        ; This is a deliberate break from "Store owns all window data":
-        ; the Store remains authoritative for window membership, properties,
-        ; and eligibility (blacklist).  But for MRU *ordering*, the GUI
-        ; needs ground-truth focus data to avoid the IPC race.  We only
-        ; reconcile windows already in our list — if the foreground is
-        ; blacklisted or unknown, we skip (the Store hasn't told us about
-        ; it, so we can't add it, and we shouldn't).
-        global FR_EV_FG_RECONCILE, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
-        fgHwnd := DllCall("GetForegroundWindow", "Ptr")
-        if (fgHwnd && gGUI_LiveItemsMap.Has(fgHwnd)
-            && gGUI_LiveItems.Length > 0 && gGUI_LiveItems[1].hwnd != fgHwnd) {
-            oldPos := gGUI_LiveItemsIndex.Has(fgHwnd) ? gGUI_LiveItemsIndex[fgHwnd] : 0
-            FR_Record(FR_EV_FG_RECONCILE, fgHwnd, oldPos)
-            if (cfg.DiagEventLog)
-                GUI_LogEvent("FG_RECONCILE: foreground 0x" Format("{:X}", fgHwnd) " was at pos " oldPos ", moving to #1")
-            _GUI_UpdateLocalMRU(fgHwnd)
-        } else if (fgHwnd && gGUI_LiveItems.Length > 0 && gGUI_LiveItems[1].hwnd = fgHwnd) {
-            ; Foreground matches local MRU #1 — no reorder needed, but mark
-            ; MRU as verified so the prewarm snapshot doesn't overwrite a
-            ; correct ordering during ALT_PENDING.
-            gGUI_LastLocalMRUTick := A_TickCount
-        }
-
         ; Alt pressed - enter ALT_PENDING state
         FR_Record(FR_EV_STATE, FR_ST_ALT_PENDING)
         gGUI_State := "ALT_PENDING"
@@ -192,28 +155,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         global gGUI_WSContextSwitch
         gGUI_WSContextSwitch := false
 
-        ; Drop client to active polling on Alt keypress — ensures we're ready to
-        ; read pending deltas or prewarm response, even if prewarm is skipped
-        global gGUI_StoreClient, IPC_TICK_ACTIVE
-        if (IsObject(gGUI_StoreClient) && gGUI_StoreClient.hPipe) {
-            gGUI_StoreClient.idleStreak := 0
-            IPC_SetClientTick(gGUI_StoreClient, IPC_TICK_ACTIVE)
-        }
-
-        ; Pre-warm: request snapshot now so data is ready when Tab pressed
-        ; SKIP if we just did a local MRU update - our data is fresher than the store's
-        ; (The store hasn't processed our focus change via WinEventHook yet)
-        mruAge := A_TickCount - gGUI_LastLocalMRUTick
-        if (cfg.AltTabPrewarmOnAlt) {
-            global gCached_MRUFreshnessMs
-            if (mruAge > gCached_MRUFreshnessMs) {
-                GUI_RequestSnapshot()
-            } else {
-                FR_Record(FR_EV_PREWARM_SKIP, mruAge)
-                if (cfg.DiagEventLog)
-                    GUI_LogEvent("PREWARM: skipped (local MRU is fresh, age=" mruAge "ms)")
-            }
-        }
+        ; Pre-warm: refresh display list and icon cache before Tab arrives.
+        GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
         return  ; lint-ignore: critical-section
     }
 
@@ -254,7 +197,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                     }
                     ws := item.HasOwnProp("workspaceName") ? item.workspaceName : "(none)"
                     onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "(none)"
-                    title := item.HasOwnProp("Title") ? SubStr(item.Title, 1, 25) : "?"
+                    title := item.HasOwnProp("title") ? SubStr(item.title, 1, 25) : "?"
                     GUI_LogEvent("  [" i "] '" title "' ws='" ws "' onCur=" onCur)
                 }
             }
@@ -295,7 +238,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; This caused severe bugs:
             ;   1. Partial glass background draws (IPC interrupted mid-render)
             ;   2. Window mapping corruption (gGUI_LiveItems modified during render)
-            ;   3. Stale projection data on quick re-open
+            ;   3. Stale display list data on quick re-open
             ; The ~16ms delay is acceptable - users won't notice, but they WILL
             ; notice corrupted UI. Keep Critical on through the entire handler.
             ; ============================================================
@@ -316,6 +259,18 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (cfg.DiagAltTabTooltips) {
             ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
             SetTimer(() => ToolTip(,,,3), -2000)
+        }
+
+        ; Flight recorder dump in progress — user released Alt to type in InputBox.
+        ; Skip hide/activate so the overlay stays visible for reference.
+        ; _FR_Dump() handles cleanup (hide overlay) when InputBox closes.
+        global gFR_DumpInProgress
+        if (gFR_DumpInProgress) {
+            SetTimer(_GUI_GraceTimerFired, 0)
+            gGUI_DisplayItems := []
+            FR_Record(FR_EV_STATE, FR_ST_IDLE)
+            gGUI_State := "IDLE"
+            return  ; lint-ignore: critical-section
         }
 
         if (gGUI_State = "ALT_PENDING") {
@@ -352,8 +307,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; NOTE: Activation is now async (non-blocking) for cross-workspace switches.
             ; Keyboard events are processed normally between timer fires.
-            ; No buffering needed - just request snapshot to resync after activation completes.
-            ; The async timer will call GUI_RequestSnapshot() when done.
         }
         return  ; lint-ignore: critical-section
     }
@@ -371,8 +324,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         gGUI_DisplayItems := []
         Stats_SendToStore()
 
-        ; Resync with store - we may have missed deltas during ACTIVE
-        GUI_RequestSnapshot()
+        ; Resync — refresh live items after ACTIVE state
+        GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
         return  ; lint-ignore: critical-section
     }
 }
@@ -397,19 +350,58 @@ _GUI_GraceTimerFired() {
 
 ; Handle workspace context switch during ACTIVE state.
 ; Resets selection to top, marks sticky context switch, and requests fresh
-; projection when frozen. Caller must hold Critical "On".
+; display list when frozen. Caller must hold Critical "On".
 GUI_HandleWorkspaceSwitch() {
     global gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch
+    global gGUI_CurrentWSName, gGUI_ToggleBase, gGUI_DisplayItems, gGUI_OverlayVisible
     global cfg, gGUI_WorkspaceMode, WS_MODE_CURRENT
     if (gGUI_State != "ACTIVE")
         return
-    gGUI_Sel := 1
-    gGUI_ScrollTop := 0
     gGUI_WSContextSwitch := true
-    if (cfg.FreezeWindowList) {
-        currentWSOnly := (gGUI_WorkspaceMode = WS_MODE_CURRENT)
-        GUI_RequestProjectionWithWSFilter(currentWSOnly)
+
+    ; Patch workspace data on frozen items from gWS_Store before re-filtering.
+    ; For SWITCH events: workspaceNames haven't changed, this is a no-op.
+    ; For MOVE events (deferred path): ProcessFullState + post-fix already updated
+    ; the store. Without this patch, the moved window's frozen item still has its
+    ; OLD workspaceName → re-filter excludes it → first paint without it → cosmetic
+    ; patch corrects it → second paint with it = visible jiggle.
+    ; Patching here makes the refilter see correct data: one paint, no jiggle.
+    global gWS_Store
+    wsName := gGUI_CurrentWSName
+    for _, item in gGUI_ToggleBase {
+        hwnd := item.hwnd
+        if (gWS_Store.Has(hwnd)) {
+            storeWs := gWS_Store[hwnd].workspaceName
+            if (storeWs != item.workspaceName)
+                item.workspaceName := storeWs
+        }
+        ws := item.HasOwnProp("workspaceName") ? item.workspaceName : ""
+        item.isOnCurrentWorkspace := (ws = wsName) || (ws = "")
     }
+
+    ; Re-filter display items from updated frozen base
+    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    gGUI_ScrollTop := 0
+
+    ; Try to select the foreground window (the workspace's focused app).
+    ; Without this, sel=1 is always the same window because the frozen MRU
+    ; order doesn't update during ACTIVE state.
+    gGUI_Sel := 1
+    fgHwnd := DllCall("GetForegroundWindow", "Ptr")
+    if (fgHwnd) {
+        for idx, item in gGUI_DisplayItems {
+            if (item.hwnd = fgHwnd) {
+                gGUI_Sel := idx
+                break
+            }
+        }
+    }
+
+    ; Repaint if overlay is visible.  GUI_Repaint handles resize internally
+    ; with deferred SetWindowPos (right before ULW) so DWM can't present a
+    ; frame with the resized acrylic base but stale overlay content.
+    if (gGUI_OverlayVisible)
+        GUI_Repaint()
 }
 
 ; Reset selection to MRU position (1 or 2) and clamp to list bounds.
@@ -528,7 +520,7 @@ _GUI_MoveSelectionFrozen(delta) {
 }
 
 _GUI_ActivateFromFrozen() {
-    global gGUI_Sel, gGUI_DisplayItems, cfg
+    global gGUI_Sel, gGUI_DisplayItems, cfg, FR_EV_ACTIVATE_GONE
 
     if (cfg.DiagEventLog)
         GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_DisplayItems.Length)
@@ -544,6 +536,7 @@ _GUI_ActivateFromFrozen() {
 
     ; Validate window still exists before activation (may have closed during overlay display)
     if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+        FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
         if (cfg.DiagEventLog)
             GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
         return
@@ -570,7 +563,7 @@ _GUI_ActivateItem(item) {
     global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingShell, gGUI_PendingTempFile
-    global gGUI_LiveItems, gGUI_LastLocalMRUTick, gGUI_CurrentWSName  ; Needed for same-workspace MRU update
+    global gGUI_LiveItems, gGUI_CurrentWSName  ; Needed for same-workspace MRU update
 
     hwnd := item.hwnd
     if (!hwnd) {
@@ -765,7 +758,7 @@ _GUI_AsyncActivationTick() {
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
     global gGUI_PendingShell, gGUI_PendingTempFile
     global gGUI_EventBuffer, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
-    global gGUI_LiveItems, gGUI_CurrentWSName, gGUI_LastLocalMRUTick
+    global gGUI_LiveItems, gGUI_CurrentWSName
 
     ; RACE FIX: Ensure phase reads and transitions are atomic
     ; Phase can be read by interceptor to decide whether to buffer events
@@ -903,7 +896,7 @@ _GUI_AsyncActivationTick() {
         ; CRITICAL: Update current workspace name IMMEDIATELY
         ; Don't wait for IPC - we know we just switched to gGUI_PendingWSName
         ; This ensures buffered Alt+Tab events use correct workspace data
-        ; Also fixes stale freeze issue when FreezeWindowList=true
+        ; Also fixes stale workspace data when buffered events replay
         if (gGUI_PendingWSName != "") {
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_PendingWSName "'")
@@ -1022,7 +1015,7 @@ _GUI_CancelPendingActivation() {
         _GUI_ClearPendingState()
         SetTimer(_GUI_AsyncActivationTick, 0)
         gGUI_EventBuffer := []  ; Clear any buffered events
-        GUI_RequestSnapshot()
+        GUI_RefreshLiveItems()
     }
 }
 
@@ -1074,7 +1067,7 @@ _GUI_ResyncKeyboardState() {
 ; Called after successful activation to ensure rapid Alt+Tab sees correct order
 ; Parameters:
 ;   hwnd - Window handle that was activated
-; Updates: gGUI_LiveItems array order, gGUI_LiveItemsIndex positions, gGUI_LastLocalMRUTick
+; Updates: gGUI_LiveItems array order, gGUI_LiveItemsIndex positions
 ; NOTE: gGUI_LiveItemsMap does NOT need updating here — Map stores object references,
 ;   and RemoveAt/InsertAt moves the same object. The reference stays valid at any index.
 ; NOTE: gGUI_LiveItemsIndex DOES need rebuilding — it stores positions (not references),
@@ -1082,7 +1075,7 @@ _GUI_ResyncKeyboardState() {
 ; NOTE: Callers hold Critical — do NOT call Critical "Off" here (leaks caller's Critical state)
 _GUI_UpdateLocalMRU(hwnd) {
     Critical "On"  ; Harmless assertion — documents that Critical is required
-    global gGUI_LiveItems, gGUI_LastLocalMRUTick, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, cfg
+    global gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, cfg
     global FR_EV_MRU_UPDATE
 
     ; O(1) miss detection: if hwnd not in Map, skip the O(n) linear scan
@@ -1108,7 +1101,8 @@ _GUI_UpdateLocalMRU(hwnd) {
                 for idx, itm in gGUI_LiveItems
                     gGUI_LiveItemsIndex[itm.hwnd] := idx
             }
-            gGUI_LastLocalMRUTick := A_TickCount
+            ; Keep gWS_Store in sync with local MRU update
+            WL_UpdateFields(hwnd, {lastActivatedTick: A_TickCount, isFocused: true}, "gui_activate")
             FR_Record(FR_EV_MRU_UPDATE, hwnd, 1)
             return true  ; lint-ignore: critical-section
         }
@@ -1529,11 +1523,9 @@ _GUI_RobustActivate(hwnd) {
 ; Send accumulated session stats to store as deltas
 ; Called at session end (IDLE transition) and on exit
 Stats_SendToStore() {
-    global gGUI_StoreClient, gGUI_StoreConnected
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps
     global gStats_Cancellations, gStats_CrossWorkspace, gStats_WorkspaceToggles
     global gStats_LastSent
-    global IPC_MSG_STATS_UPDATE
 
     ; Calculate deltas since last send
     dAltTabs := gStats_AltTabs - gStats_LastSent.Get("AltTabs", 0)
@@ -1547,8 +1539,8 @@ Stats_SendToStore() {
     if (dAltTabs = 0 && dQuick = 0 && dTabs = 0 && dCancels = 0 && dCrossWS = 0 && dToggles = 0)
         return
 
+    ; Accumulate directly into lifetime stats (in-process, no IPC)
     msg := Map()
-    msg["type"] := IPC_MSG_STATS_UPDATE
     if (dAltTabs > 0)
         msg["TotalAltTabs"] := dAltTabs
     if (dQuick > 0)
@@ -1562,19 +1554,13 @@ Stats_SendToStore() {
     if (dToggles > 0)
         msg["TotalWorkspaceToggles"] := dToggles
 
-    ; Send to store (if connected)
-    if (gGUI_StoreConnected && IsObject(gGUI_StoreClient)) {
-        try {
-            global gGUI_StoreWakeHwnd
-            IPC_PipeClient_Send(gGUI_StoreClient, JSON.Dump(msg), gGUI_StoreWakeHwnd)
-            ; Record what was sent
-            gStats_LastSent["AltTabs"] := gStats_AltTabs
-            gStats_LastSent["QuickSwitches"] := gStats_QuickSwitches
-            gStats_LastSent["TabSteps"] := gStats_TabSteps
-            gStats_LastSent["Cancellations"] := gStats_Cancellations
-            gStats_LastSent["CrossWorkspace"] := gStats_CrossWorkspace
-            gStats_LastSent["WorkspaceToggles"] := gStats_WorkspaceToggles
-        }
-        ; On failure, deltas accumulate and are retried next session end
-    }
+    Stats_Accumulate(msg)
+
+    ; Record what was sent
+    gStats_LastSent["AltTabs"] := gStats_AltTabs
+    gStats_LastSent["QuickSwitches"] := gStats_QuickSwitches
+    gStats_LastSent["TabSteps"] := gStats_TabSteps
+    gStats_LastSent["Cancellations"] := gStats_Cancellations
+    gStats_LastSent["CrossWorkspace"] := gStats_CrossWorkspace
+    gStats_LastSent["WorkspaceToggles"] := gStats_WorkspaceToggles
 }

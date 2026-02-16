@@ -165,14 +165,14 @@ RunUnitTests_CoreParsing() {
     }
 
     ; Test 10: Round-trip test - Load -> Dump -> Load
-    originalJson := '{"type":"projection","rev":123,"payload":{"items":[{"hwnd":1,"title":"Test"}]}}'
+    originalJson := '{"type":"displayList","rev":123,"payload":{"items":[{"hwnd":1,"title":"Test"}]}}'
     try {
         parsed1 := JSON.Load(originalJson)
         dumped := JSON.Dump(parsed1)
         parsed2 := JSON.Load(dumped)
 
         ; Verify key values survive round-trip
-        if (parsed2["type"] = "projection" && parsed2["rev"] = 123 && parsed2["payload"]["items"][1]["title"] = "Test") {
+        if (parsed2["type"] = "displayList" && parsed2["rev"] = 123 && parsed2["payload"]["items"][1]["title"] = "Test") {
             Log("PASS: JXON round-trip (Load->Dump->Load) preserves data")
             TestPassed++
         } else {

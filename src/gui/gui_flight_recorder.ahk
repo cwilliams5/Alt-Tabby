@@ -26,18 +26,30 @@ global FR_EV_ACTIVATE_RESULT  := 14  ; d1=hwnd d2=success(0=fail,1=ok,2=transiti
 global FR_EV_MRU_UPDATE       := 15  ; d1=hwnd d2=result(1=ok,0=notfound)
 global FR_EV_BUFFER_PUSH      := 16  ; d1=evCode d2=bufferLen
 global FR_EV_QUICK_SWITCH     := 17  ; d1=timeSinceTab
-global FR_EV_PREWARM_SKIP     := 18  ; d1=mruAge
-global FR_EV_FG_RECONCILE    := 19  ; d1=fgHwnd d2=oldPos — external focus change detected at Alt press
 
-; IPC events (20-29)
-global FR_EV_SNAPSHOT_REQ     := 20
-global FR_EV_SNAPSHOT_RECV    := 21  ; d1=itemCount
-global FR_EV_SNAPSHOT_SKIP    := 22  ; d1=reason (1=frozen 2=async 3=freshness)
-global FR_EV_DELTA_RECV       := 23  ; d1=mruChanged d2=membershipChanged d3=focusHwnd
-global FR_EV_SNAPSHOT_TOP    := 25  ; d1=items[1].hwnd d2=items[2].hwnd d3=items[3].hwnd
+; Data events (20-29)
+global FR_EV_REFRESH          := 20  ; d1=itemCount — live items refreshed from WindowList
+global FR_EV_ENRICH_REQ       := 22  ; d1=hwndCount — enrichment batch sent to pump
+global FR_EV_ENRICH_RESP      := 23  ; d1=appliedCount — enrichment results applied
+global FR_EV_WINDOW_ADD       := 24  ; d1=hwnd d2=storeCount — window added to WindowList
+global FR_EV_WINDOW_REMOVE    := 25  ; d1=hwnd d2=storeCount — window removed from WindowList
+global FR_EV_GHOST_PURGE      := 26  ; d1=removedCount — zombie windows purged by ValidateExistence
+global FR_EV_BLACKLIST_PURGE  := 27  ; d1=removedCount — windows purged by PurgeBlacklisted
+global FR_EV_COSMETIC_PATCH   := 28  ; d1=patchedCount d2=baseCount — title/icon/proc patched during ACTIVE
+global FR_EV_SCAN_COMPLETE    := 29  ; d1=foundCount d2=storeCount — WinEnum full scan completed
 
-; Session events (30+)
+; Session/lifecycle events (30-39)
 global FR_EV_SESSION_START    := 30
+global FR_EV_PRODUCER_INIT    := 31  ; d1=producerType(1=ksub,2=weh,3=pump) d2=success(0/1)
+global FR_EV_ACTIVATE_GONE    := 32  ; d1=hwnd — target window closed before activation
+
+; Workspace events (40-49)
+global FR_EV_WS_SWITCH        := 40  ; d1=0 — komorebi workspace changed (name in dump state)
+global FR_EV_WS_TOGGLE        := 41  ; d1=newMode(1=all,2=current) d2=displayCount
+
+; WinEvent hook events (50-59)
+global FR_EV_FOCUS             := 50  ; d1=hwnd — focus changed to window in store
+global FR_EV_FOCUS_SUPPRESS    := 51  ; d1=hwnd d2=remainingMs — focus blocked by MRU suppression
 
 ; State code constants (for FR_EV_STATE d1)
 global FR_ST_IDLE := 0
@@ -47,6 +59,7 @@ global FR_ST_ACTIVE := 2
 ; ========================= RING BUFFER =========================
 
 global gFR_Enabled := false
+global gFR_DumpInProgress := false  ; Suppresses ALT_UP hide/activate during dump
 global gFR_Buffer := []
 global gFR_Size := 2000
 global gFR_Idx := 0
@@ -61,6 +74,9 @@ FR_Init() {
     if (!cfg.DiagFlightRecorder)
         return
 
+    ; Apply configurable buffer size (default 2000 from registry)
+    gFR_Size := cfg.DiagFlightRecorderBufferSize
+
     ; Pre-allocate ring buffer (reused on every record — zero GC pressure)
     gFR_Buffer := []
     gFR_Buffer.Length := gFR_Size
@@ -70,8 +86,12 @@ FR_Init() {
     gFR_Count := 0
     gFR_Enabled := true
 
-    ; F12 hotkey: pass-through (apps still receive F12) + keyboard hook
-    Hotkey("~$F12", (*) => _FR_Dump())
+    ; Dump hotkey: pass-through + keyboard hook + wildcard (fire regardless of modifiers).
+    ; Force * prefix so it works during Alt-Tab (Alt held) even if config has bare "F12".
+    hk := cfg.DiagFlightRecorderHotkey
+    if (SubStr(hk, 1, 1) != "*")
+        hk := "*" hk
+    Hotkey("~$" hk, (*) => _FR_Dump())
 
     FR_Record(FR_EV_SESSION_START)
 }
@@ -98,13 +118,21 @@ FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 _FR_Dump() {
     global gFR_Enabled, gFR_Buffer, gFR_Idx, gFR_Size, gFR_Count
     global gGUI_State, gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_Sel, gGUI_DisplayItems
-    global gGUI_PendingPhase, gGUI_LastLocalMRUTick, gGUI_CurrentWSName
+    global gGUI_PendingPhase, gGUI_CurrentWSName
     global gINT_SessionActive, gINT_BypassMode, gINT_AltIsDown, gINT_TabPending
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_PressCount, gINT_TabHeld
-    global gGUI_OverlayVisible, gGUI_ScrollTop, gCached_MRUFreshnessMs
+    global gGUI_OverlayVisible, gGUI_ScrollTop
+    global gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
+    global gWS_DirtyHwnds, gWS_IconQueue, gWS_PidQueue, gWS_ZQueue
 
     if (!gFR_Enabled || gFR_Count = 0)
         return
+
+    ; Set flag IMMEDIATELY — before Critical section and hwnd resolution.
+    ; ALT_UP checks this flag; if we delay, user releasing Alt during the
+    ; ~50ms of state capture + hwnd resolution races past the check.
+    global gFR_DumpInProgress
+    gFR_DumpInProgress := true
 
     ; --- 1. Capture state atomically (inside Critical) ---
     Critical "On"
@@ -127,10 +155,18 @@ _FR_Dump() {
     snap.overlayVisible := gGUI_OverlayVisible
     snap.sel := gGUI_Sel
     snap.scrollTop := gGUI_ScrollTop
-    snap.lastMRUTick := gGUI_LastLocalMRUTick
-    snap.mruAge := dumpTick - gGUI_LastLocalMRUTick
-    snap.mruFreshnessMs := gCached_MRUFreshnessMs
     snap.currentWS := gGUI_CurrentWSName
+
+    ; Copy WindowList state (in-process — trivially cheap)
+    snap.wsRev := gWS_Rev
+    snap.wsStoreCount := gWS_Store.Count
+    snap.wsSortDirty := gWS_SortOrderDirty
+    snap.wsContentDirty := gWS_ContentDirty
+    snap.wsMRUBumpOnly := gWS_MRUBumpOnly
+    snap.wsDirtyCount := gWS_DirtyHwnds.Count
+    snap.wsIconQueueLen := gWS_IconQueue.Length
+    snap.wsPidQueueLen := gWS_PidQueue.Length
+    snap.wsZQueueLen := gWS_ZQueue.Length
 
     ; Copy live items (shallow — title/process are strings, safe to read later)
     itemsCopy := []
@@ -157,9 +193,21 @@ _FR_Dump() {
     hwndMap := _FR_BuildHwndMap(entries, itemsCopy, fgHwnd)
 
     ; --- 3. Show InputBox for user note ---
+    ; Hold the overlay open while user types their note — they're describing what they see.
+    ; gFR_DumpInProgress was set at function entry (before Critical section) to win the
+    ; race against ALT_UP. It suppresses hide/activate in the state machine.
+    global gGUI_OverlayVisible
+    wasOverlayVisible := gGUI_OverlayVisible
+
+    SetTimer(_FR_FocusInputBox, -50)
     result := InputBox("What happened? (e.g. 'Alt-tabbing from Word to Outlook, nothing happened')"
         , "Alt-Tabby Flight Recorder", "w500 h110")
     note := (result.Result = "OK") ? result.Value : ""
+
+    ; Clean up: hide overlay (without activating) and clear flag
+    gFR_DumpInProgress := false
+    if (wasOverlayVisible)
+        GUI_HideOverlay()
 
     ; --- 4. Build and write dump file ---
     recorderDir := _FR_GetRecorderDir()
@@ -198,15 +246,27 @@ _FR_Dump() {
     out .= "gGUI_Sel                = " snap.sel "`n"
     out .= "gGUI_ScrollTop          = " snap.scrollTop "`n"
     out .= "gGUI_CurrentWSName      = " snap.currentWS "`n"
-    out .= "LastLocalMRUTick        = " snap.lastMRUTick " (age=" snap.mruAge "ms, freshness=" snap.mruFreshnessMs "ms)`n"
     out .= "Foreground Window       = " _FR_HwndStr(fgHwnd, hwndMap) "`n"
+    out .= "`n"
+
+    ; WindowList state (in-process data, invisible in old IPC architecture)
+    out .= "--- WINDOW LIST STATE ----------------------------------------------`n"
+    out .= "gWS_Rev                 = " snap.wsRev "`n"
+    out .= "gWS_Store.Count         = " snap.wsStoreCount "`n"
+    out .= "SortOrderDirty          = " snap.wsSortDirty "`n"
+    out .= "ContentDirty            = " snap.wsContentDirty "`n"
+    out .= "MRUBumpOnly             = " snap.wsMRUBumpOnly "`n"
+    out .= "DirtyHwnds.Count        = " snap.wsDirtyCount "`n"
+    out .= "IconQueue.Length         = " snap.wsIconQueueLen "`n"
+    out .= "PidQueue.Length          = " snap.wsPidQueueLen "`n"
+    out .= "ZQueue.Length            = " snap.wsZQueueLen "`n"
     out .= "`n"
 
     ; Live items
     out .= "--- LIVE ITEMS (" snap.liveItemCount " windows, " snap.displayItemCount " displayed) ---`n"
     for i, item in itemsCopy {
         h := Format("0x{:08X}", item.hwnd)
-        title := item.HasOwnProp("Title") ? SubStr(item.Title, 1, 40) : "?"
+        title := item.HasOwnProp("title") ? SubStr(item.title, 1, 40) : "?"
         proc := item.HasOwnProp("processName") ? item.processName : "?"
         ws := item.HasOwnProp("workspaceName") ? item.workspaceName : ""
         onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "?"
@@ -254,35 +314,24 @@ _FR_GetRecorderDir() {
 }
 
 _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
-    global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE, FR_EV_DELTA_RECV
-    global FR_EV_FG_RECONCILE, FR_EV_SNAPSHOT_TOP
+    global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE
+    global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
+    global FR_EV_ACTIVATE_GONE, FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     ; Collect all unique hwnds from entries + items + foreground
     hwnds := Map()
     for _, entry in entries {
         ev := entry[2]
-        ; Events that carry hwnds in d1-d3
-        if (ev = FR_EV_SNAPSHOT_TOP) {
-            Loop 3 {
-                h := entry[2 + A_Index]
-                if (h)
-                    hwnds[h] := true
-            }
-        }
         ; Events that carry hwnds in d1
         if (ev = FR_EV_ACTIVATE_START || ev = FR_EV_ACTIVATE_RESULT
-            || ev = FR_EV_MRU_UPDATE || ev = FR_EV_FG_RECONCILE) {
+            || ev = FR_EV_MRU_UPDATE
+            || ev = FR_EV_WINDOW_ADD || ev = FR_EV_WINDOW_REMOVE
+            || ev = FR_EV_ACTIVATE_GONE || ev = FR_EV_FOCUS || ev = FR_EV_FOCUS_SUPPRESS) {
             h := entry[3]
             if (h)
                 hwnds[h] := true
         }
         ; ACTIVATE_RESULT also has actualFg in d3
         if (ev = FR_EV_ACTIVATE_RESULT) {
-            h := entry[5]
-            if (h)
-                hwnds[h] := true
-        }
-        ; DELTA_RECV has focusHwnd in d3
-        if (ev = FR_EV_DELTA_RECV) {
             h := entry[5]
             if (h)
                 hwnds[h] := true
@@ -296,7 +345,7 @@ _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
     resolved := Map()
     for _, item in itemsCopy {
         if (hwnds.Has(item.hwnd)) {
-            title := item.HasOwnProp("Title") ? SubStr(item.Title, 1, 30) : ""
+            title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : ""
             proc := item.HasOwnProp("processName") ? item.processName : ""
             if (title != "" || proc != "")
                 resolved[item.hwnd] := title (proc != "" ? " (" proc ")" : "")
@@ -332,36 +381,49 @@ _FR_GetEventName(ev) {
     global FR_EV_TAB_DECIDE, FR_EV_TAB_DECIDE_INNER, FR_EV_ESC, FR_EV_BYPASS
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_GRACE_FIRE
     global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE
-    global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, FR_EV_PREWARM_SKIP
-    global FR_EV_FG_RECONCILE
-    global FR_EV_SNAPSHOT_REQ, FR_EV_SNAPSHOT_RECV, FR_EV_SNAPSHOT_SKIP
-    global FR_EV_DELTA_RECV, FR_EV_SNAPSHOT_TOP, FR_EV_SESSION_START
+    global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH
+    global FR_EV_REFRESH, FR_EV_COSMETIC_PATCH, FR_EV_SCAN_COMPLETE
+    global FR_EV_ENRICH_REQ, FR_EV_ENRICH_RESP
+    global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
+    global FR_EV_GHOST_PURGE, FR_EV_BLACKLIST_PURGE
+    global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
+    global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE
+    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
 
     switch ev {
-        case FR_EV_ALT_DN:           return "ALT_DN"
-        case FR_EV_ALT_UP:           return "ALT_UP"
-        case FR_EV_TAB_DN:           return "TAB_DN"
-        case FR_EV_TAB_UP:           return "TAB_UP"
-        case FR_EV_TAB_DECIDE:       return "TAB_DECIDE"
-        case FR_EV_TAB_DECIDE_INNER: return "TAB_DECIDE_INNER"
-        case FR_EV_ESC:              return "ESC"
-        case FR_EV_BYPASS:           return "BYPASS"
-        case FR_EV_STATE:            return "STATE"
-        case FR_EV_FREEZE:           return "FREEZE"
-        case FR_EV_GRACE_FIRE:       return "GRACE_FIRE"
-        case FR_EV_ACTIVATE_START:   return "ACTIVATE_START"
-        case FR_EV_ACTIVATE_RESULT:  return "ACTIVATE_RESULT"
-        case FR_EV_MRU_UPDATE:       return "MRU_UPDATE"
-        case FR_EV_BUFFER_PUSH:      return "BUFFER_PUSH"
-        case FR_EV_QUICK_SWITCH:     return "QUICK_SWITCH"
-        case FR_EV_PREWARM_SKIP:     return "PREWARM_SKIP"
-        case FR_EV_FG_RECONCILE:     return "FG_RECONCILE"
-        case FR_EV_SNAPSHOT_REQ:     return "SNAPSHOT_REQ"
-        case FR_EV_SNAPSHOT_RECV:    return "SNAPSHOT_RECV"
-        case FR_EV_SNAPSHOT_SKIP:    return "SNAPSHOT_SKIP"
-        case FR_EV_DELTA_RECV:       return "DELTA_RECV"
-        case FR_EV_SESSION_START:    return "SESSION_START"
-        default:                     return "UNKNOWN(" ev ")"
+        case FR_EV_ALT_DN:            return "ALT_DN"
+        case FR_EV_ALT_UP:            return "ALT_UP"
+        case FR_EV_TAB_DN:            return "TAB_DN"
+        case FR_EV_TAB_UP:            return "TAB_UP"
+        case FR_EV_TAB_DECIDE:        return "TAB_DECIDE"
+        case FR_EV_TAB_DECIDE_INNER:  return "TAB_DECIDE_INNER"
+        case FR_EV_ESC:               return "ESC"
+        case FR_EV_BYPASS:            return "BYPASS"
+        case FR_EV_STATE:             return "STATE"
+        case FR_EV_FREEZE:            return "FREEZE"
+        case FR_EV_GRACE_FIRE:        return "GRACE_FIRE"
+        case FR_EV_ACTIVATE_START:    return "ACTIVATE_START"
+        case FR_EV_ACTIVATE_RESULT:   return "ACTIVATE_RESULT"
+        case FR_EV_MRU_UPDATE:        return "MRU_UPDATE"
+        case FR_EV_BUFFER_PUSH:       return "BUFFER_PUSH"
+        case FR_EV_QUICK_SWITCH:      return "QUICK_SWITCH"
+        case FR_EV_REFRESH:           return "REFRESH"
+        case FR_EV_ENRICH_REQ:        return "ENRICH_REQ"
+        case FR_EV_ENRICH_RESP:       return "ENRICH_RESP"
+        case FR_EV_WINDOW_ADD:        return "WINDOW_ADD"
+        case FR_EV_WINDOW_REMOVE:     return "WINDOW_REMOVE"
+        case FR_EV_GHOST_PURGE:       return "GHOST_PURGE"
+        case FR_EV_BLACKLIST_PURGE:   return "BLACKLIST_PURGE"
+        case FR_EV_COSMETIC_PATCH:    return "COSMETIC_PATCH"
+        case FR_EV_SCAN_COMPLETE:     return "SCAN_COMPLETE"
+        case FR_EV_SESSION_START:     return "SESSION_START"
+        case FR_EV_PRODUCER_INIT:     return "PRODUCER_INIT"
+        case FR_EV_ACTIVATE_GONE:     return "ACTIVATE_GONE"
+        case FR_EV_WS_SWITCH:         return "WS_SWITCH"
+        case FR_EV_WS_TOGGLE:         return "WS_TOGGLE"
+        case FR_EV_FOCUS:             return "FOCUS"
+        case FR_EV_FOCUS_SUPPRESS:    return "FOCUS_SUPPRESS"
+        default:                      return "UNKNOWN(" ev ")"
     }
 }
 
@@ -375,24 +437,20 @@ _FR_StateName(code) {
     }
 }
 
-_FR_SkipReason(code) {
-    switch code {
-        case 1: return "frozen"
-        case 2: return "async_pending"
-        case 3: return "mru_fresh"
-        default: return "?(" code ")"
-    }
-}
 
 _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_ALT_DN, FR_EV_ALT_UP, FR_EV_TAB_DN, FR_EV_TAB_UP
     global FR_EV_TAB_DECIDE, FR_EV_TAB_DECIDE_INNER, FR_EV_ESC, FR_EV_BYPASS
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_GRACE_FIRE
     global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE
-    global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, FR_EV_PREWARM_SKIP
-    global FR_EV_FG_RECONCILE
-    global FR_EV_SNAPSHOT_REQ, FR_EV_SNAPSHOT_RECV, FR_EV_SNAPSHOT_SKIP
-    global FR_EV_DELTA_RECV, FR_EV_SNAPSHOT_TOP, FR_EV_SESSION_START
+    global FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH
+    global FR_EV_REFRESH, FR_EV_COSMETIC_PATCH, FR_EV_SCAN_COMPLETE
+    global FR_EV_ENRICH_REQ, FR_EV_ENRICH_RESP
+    global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
+    global FR_EV_GHOST_PURGE, FR_EV_BLACKLIST_PURGE
+    global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
+    global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE
+    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
 
     switch ev {
         case FR_EV_ALT_DN:
@@ -429,23 +487,52 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return "event=" evName "  bufLen=" d2
         case FR_EV_QUICK_SWITCH:
             return "timeSinceTab=" d1 "ms"
-        case FR_EV_PREWARM_SKIP:
-            return "mruAge=" d1 "ms"
-        case FR_EV_FG_RECONCILE:
-            return _FR_HwndStr(d1, hwndMap) "  wasPos=" d2
-        case FR_EV_SNAPSHOT_REQ:
-            return ""
-        case FR_EV_SNAPSHOT_RECV:
+        case FR_EV_REFRESH:
             return "items=" d1
-        case FR_EV_SNAPSHOT_SKIP:
-            return "reason=" _FR_SkipReason(d1)
-        case FR_EV_SNAPSHOT_TOP:
-            return "#1=" _FR_HwndStr(d1, hwndMap) "  #2=" _FR_HwndStr(d2, hwndMap) "  #3=" _FR_HwndStr(d3, hwndMap)
-        case FR_EV_DELTA_RECV:
-            return "mruChanged=" d1 "  memberChanged=" d2 "  focusHwnd=" _FR_HwndStr(d3, hwndMap)
+        case FR_EV_ENRICH_REQ:
+            return "hwnds=" d1
+        case FR_EV_ENRICH_RESP:
+            return "applied=" d1
+        case FR_EV_WINDOW_ADD:
+            return _FR_HwndStr(d1, hwndMap) "  storeCount=" d2
+        case FR_EV_WINDOW_REMOVE:
+            return _FR_HwndStr(d1, hwndMap) "  storeCount=" d2
+        case FR_EV_GHOST_PURGE:
+            return "removed=" d1
+        case FR_EV_BLACKLIST_PURGE:
+            return "removed=" d1
+        case FR_EV_COSMETIC_PATCH:
+            return "patched=" d1 "  baseCount=" d2
+        case FR_EV_SCAN_COMPLETE:
+            return "found=" d1 "  storeCount=" d2
         case FR_EV_SESSION_START:
             return ""
+        case FR_EV_PRODUCER_INIT:
+            prodName := (d1 = 1) ? "KomorebiSub" : (d1 = 2) ? "WinEventHook" : (d1 = 3) ? "Pump" : "?(" d1 ")"
+            return prodName "  ok=" d2
+        case FR_EV_ACTIVATE_GONE:
+            return _FR_HwndStr(d1, hwndMap)
+        case FR_EV_WS_SWITCH:
+            return ""
+        case FR_EV_WS_TOGGLE:
+            modeStr := (d1 = 1) ? "all" : (d1 = 2) ? "current" : "?(" d1 ")"
+            return "mode=" modeStr "  displayCount=" d2
+        case FR_EV_FOCUS:
+            return _FR_HwndStr(d1, hwndMap)
+        case FR_EV_FOCUS_SUPPRESS:
+            return _FR_HwndStr(d1, hwndMap) "  remainMs=" d2
         default:
             return "d1=" d1 " d2=" d2 " d3=" d3 " d4=" d4
+    }
+}
+
+; Keep the InputBox always-on-top — user is reporting a critical issue that just occurred.
+; Also ensures visibility early after launch when AHK has no foreground window history.
+_FR_FocusInputBox() {
+    try {
+        if WinExist("Alt-Tabby Flight Recorder") {
+            WinSetAlwaysOnTop(true, "Alt-Tabby Flight Recorder")
+            WinActivate("Alt-Tabby Flight Recorder")
+        }
     }
 }

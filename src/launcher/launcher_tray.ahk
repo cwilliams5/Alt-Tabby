@@ -103,7 +103,7 @@ _UpdateTrayMenu() {
 ; ============================================================
 
 _Tray_BuildDiagnosticsMenu() {
-    global g_StorePID, g_GuiPID, g_ViewerPID, g_CachedAdminTaskActive
+    global g_PumpPID, g_GuiPID, g_CachedAdminTaskActive
     global g_ConfigEditorPID, g_BlacklistEditorPID, cfg
 
     m := Menu()
@@ -131,11 +131,11 @@ _Tray_BuildDiagnosticsMenu() {
     m.Add()
 
     ; Subprocess rows — label includes status AND action
-    m.Add(_Tray_ComponentLabel("Window Tracker", g_StorePID), (*) => (LauncherUtils_IsRunning(g_StorePID) ? RestartStore() : LaunchStore()))
+    m.Add(_Tray_ComponentLabel("Enrichment Pump", g_PumpPID), (*) => (LauncherUtils_IsRunning(g_PumpPID) ? RestartPump() : LaunchPump()))
     m.Add(_Tray_ComponentLabel("Overlay", g_GuiPID), (*) => (LauncherUtils_IsRunning(g_GuiPID) ? RestartGui() : LaunchGui()))
     m.Add(_Tray_ComponentLabel("Config Editor", g_ConfigEditorPID), (*) => (LauncherUtils_IsRunning(g_ConfigEditorPID) ? RestartConfigEditor() : LaunchConfigEditor()))
     m.Add(_Tray_ComponentLabel("Blacklist Editor", g_BlacklistEditorPID), (*) => (LauncherUtils_IsRunning(g_BlacklistEditorPID) ? RestartBlacklistEditor() : LaunchBlacklistEditor()))
-    m.Add(_Tray_ComponentLabel("Viewer", g_ViewerPID), (*) => (LauncherUtils_IsRunning(g_ViewerPID) ? RestartViewer() : LaunchViewer()))
+    m.Add("Viewer: Toggle", (*) => Tray_ToggleViewer())
 
     m.Add()
 
@@ -262,6 +262,12 @@ _Tray_TestThemeMsgBox() {
 ; TRAY MENU HELPERS
 ; ============================================================
 
+; Send TABBY_CMD_TOGGLE_VIEWER to GUI process via WM_COPYDATA
+Tray_ToggleViewer() {
+    global TABBY_CMD_TOGGLE_VIEWER
+    Launcher_RelayToGui(TABBY_CMD_TOGGLE_VIEWER)
+}
+
 _Tray_ComponentLabel(label, pid) {
     return LauncherUtils_IsRunning(pid)
         ? label ": Running (PID " pid ") | Restart"
@@ -303,18 +309,14 @@ _Tray_OnUpdateInstall() {
         Update_DownloadAndApply(g_DashUpdateState.downloadUrl, g_DashUpdateState.version)
 }
 
-RestartStore() {
-    Launcher_RestartStore()
+RestartPump() {
+    global g_PumpPID, TIMING_SUBPROCESS_LAUNCH
+    LauncherUtils_Restart("pump", &g_PumpPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
     Dash_StartRefreshTimer()
 }
 
 RestartGui() {
     Launcher_RestartGui()
-    Dash_StartRefreshTimer()
-}
-
-RestartViewer() {
-    Launcher_RestartViewer()
     Dash_StartRefreshTimer()
 }
 
@@ -345,7 +347,7 @@ LaunchBlacklistEditor() {
         try WinActivate("Alt-Tabby Blacklist Editor ahk_pid " g_BlacklistEditorPID)
         return
     }
-    Run(BuildSelfCommand("--blacklist"), , , &g_BlacklistEditorPID)
+    Run(BuildSelfCommand("--blacklist --launcher-hwnd=" A_ScriptHwnd), , , &g_BlacklistEditorPID)
     Dash_StartRefreshTimer()
 }
 
@@ -592,9 +594,8 @@ _AdminToggle_CheckComplete() {
             if (exitCode = 0) {
                 ExitApp()
             } else {
-                ; Task failed - relaunch store+gui as fallback
-                LaunchStore()
-                Sleep(TIMING_SUBPROCESS_LAUNCH)
+                ; Task failed - relaunch subprocesses as fallback
+                LaunchPump()
                 LaunchGui()
                 ThemeMsgBox("The scheduled task could not start Alt-Tabby.`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
             }

@@ -21,7 +21,7 @@ _WinEnumLite_Init() {
     _WN_ShellWindow := DllCall("user32\GetShellWindow", "ptr")
 }
 
-; Full scan - returns array of Maps suitable for WindowStore_UpsertWindow
+; Full scan - returns array of Maps suitable for WL_UpsertWindow
 WinEnumLite_ScanAll() {
     global _WN_ShellWindow
 

@@ -8,8 +8,8 @@
 ; Or from tray menu: "Edit Blacklist..."
 ;
 ; Shows 3 tabs for Title, Class, and Pair blacklist patterns.
-; Changes are saved to blacklist.txt and IPC reload message
-; is sent to the store to apply changes immediately.
+; Changes are saved to blacklist.txt and WM_COPYDATA reload
+; signal is sent via launcher to apply changes immediately.
 ; ============================================================
 
 global gBE_Gui := 0
@@ -20,6 +20,7 @@ global gBE_OriginalTitle := ""
 global gBE_OriginalClass := ""
 global gBE_OriginalPair := ""
 global gBE_SavedChanges := false
+global gBE_LauncherHwnd := 0
 
 ; ============================================================
 ; PUBLIC API
@@ -27,8 +28,9 @@ global gBE_SavedChanges := false
 
 ; Run the blacklist editor
 ; Returns: true if changes were saved, false otherwise
-BlacklistEditor_Run() {
-    global gBE_Gui, gBE_SavedChanges, gBlacklist_FilePath, gBlacklist_Loaded
+BlacklistEditor_Run(launcherHwnd := 0) {
+    global gBE_Gui, gBE_SavedChanges, gBE_LauncherHwnd, gBlacklist_FilePath, gBlacklist_Loaded
+    gBE_LauncherHwnd := launcherHwnd
 
     ; Hide tray icon - only launcher should have one
     A_IconHidden := true
@@ -225,24 +227,27 @@ _BE_SaveToFile() {
     }
 }
 
-_BE_SendReloadIPC() {
-    global cfg, IPC_MSG_RELOAD_BLACKLIST, TIMING_STORE_PROCESS_WAIT
+_BE_SendReloadNotify() {
+    global gBE_LauncherHwnd, TABBY_CMD_RELOAD_BLACKLIST, WM_COPYDATA
 
-    ; Get store pipe name
-    pipeName := cfg.HasOwnProp("StorePipeName") ? cfg.StorePipeName : "tabby_store_v1"
+    if (!gBE_LauncherHwnd || !DllCall("user32\IsWindow", "ptr", gBE_LauncherHwnd, "int"))
+        return false
 
-    ; Try to connect to store
-    try {
-        client := IPC_PipeClient_Connect(pipeName, (*) => 0)
-        if (client.hPipe) {
-            msg := { type: IPC_MSG_RELOAD_BLACKLIST }
-            IPC_PipeClient_Send(client, JSON.Dump(msg))
-            Sleep(TIMING_STORE_PROCESS_WAIT)  ; Give store time to process
-            IPC_PipeClient_Close(client)
-            return true
-        }
-    }
-    return false
+    cds := Buffer(A_PtrSize * 3, 0)
+    NumPut("uptr", TABBY_CMD_RELOAD_BLACKLIST, cds, 0)
+    NumPut("uptr", 0, cds, A_PtrSize)
+    NumPut("uptr", 0, cds, A_PtrSize * 2)
+
+    DllCall("user32\SendMessageTimeoutW"
+        , "ptr", gBE_LauncherHwnd
+        , "uint", WM_COPYDATA
+        , "ptr", A_ScriptHwnd
+        , "ptr", cds.Ptr
+        , "uint", 0x0002   ; SMTO_ABORTIFHUNG
+        , "uint", 3000
+        , "ptr*", &_ := 0
+        , "ptr")
+    return true
 }
 
 _BE_HasChanges() {
@@ -284,8 +289,8 @@ _BE_OnSave(*) {
     global gBE_Gui, gBE_SavedChanges
 
     if (_BE_SaveToFile()) {
-        ; Try to notify store
-        reloaded := _BE_SendReloadIPC()
+        ; Notify launcher → GUI to reload blacklist
+        reloaded := _BE_SendReloadNotify()
 
         gBE_SavedChanges := true
         Theme_UntrackGui(gBE_Gui)
@@ -294,9 +299,9 @@ _BE_OnSave(*) {
         ; Show success message
         msg := "Blacklist saved."
         if (reloaded)
-            msg .= " Store notified to reload."
+            msg .= " Changes applied immediately."
         else
-            msg .= " Store not running - changes will apply on next start."
+            msg .= " Alt-Tabby not running - changes will apply on next start."
         ThemeMsgBox(msg, "Alt-Tabby Blacklist", "OK Iconi")
     }
 }

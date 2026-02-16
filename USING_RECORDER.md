@@ -1,16 +1,24 @@
 # Flight Recorder — Analysis Guide
 
-The flight recorder is an always-on, in-memory ring buffer that captures the last ~2000 events from Alt-Tabby's keyboard hook, state machine, activation logic, and IPC layer. When the user presses F12, it dumps everything to a timestamped file for analysis.
+The flight recorder is an always-on, in-memory ring buffer that captures the last ~2000 events (configurable) from Alt-Tabby's keyboard hook, state machine, activation logic, focus tracking, and workspace management. When the user presses the dump hotkey (F12 by default), it dumps everything to a timestamped file for analysis.
 
 ## Enabling
 
 `[Diagnostics] FlightRecorder=true` in config.ini (default: enabled).
 
-When enabled, the F12 hotkey is registered (pass-through — F12 still works in other apps). When disabled, no memory is allocated and no hotkey exists.
+When enabled, the dump hotkey is registered (pass-through — the key still works in other apps). When disabled, no memory is allocated and no hotkey exists.
+
+### Config Options
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `FlightRecorder` | bool | true | Enable/disable the flight recorder |
+| `FlightRecorderBufferSize` | int | 2000 | Ring buffer size (500–10000). 2000 ≈ 30s of typical activity. |
+| `FlightRecorderHotkey` | string | F12 | Dump hotkey (AHK v2 syntax, e.g. `F12`, `^F12`, `+F11`) |
 
 ## Triggering a Dump
 
-Press **F12** immediately after experiencing a problem. An InputBox appears for an optional note describing what happened. The dump is saved to the `recorder/` folder (next to the exe or project root in dev mode).
+Press the dump hotkey (**F12** by default) immediately after experiencing a problem. An InputBox appears for an optional note describing what happened. The dump is saved to the `recorder/` folder (next to the exe or project root in dev mode).
 
 Each dump is a separate file: `fr_YYYYMMDD_HHMMSS.txt`
 
@@ -31,14 +39,23 @@ Captured atomically at dump time. Shows the state of every relevant global varia
 - **gINT_BypassMode** — whether Tab hooks are disabled (fullscreen/game bypass)
 - **gINT_AltIsDown / TabPending / TabHeld** — keyboard hook state
 - **gGUI_PendingPhase** — async cross-workspace activation state (`""` = none)
-- **LastLocalMRUTick** — age of last local MRU update (freshness guard)
 - **Foreground Window** — what Windows considers the active window at dump time
 
-### 2. Live Items
+### 2. Window List State
+
+Shows the internal state of the WindowList data layer:
+
+- **gWS_Rev** — current revision counter (increments on every change)
+- **gWS_Store.Count** — number of tracked windows
+- **SortOrderDirty / ContentDirty / MRUBumpOnly** — dirty flags indicating pending updates
+- **DirtyHwnds.Count** — number of hwnds with pending cosmetic changes
+- **IconQueue / PidQueue / ZQueue lengths** — enrichment work queues
+
+### 3. Live Items
 
 The current window list as Alt-Tabby knows it. Shows hwnd, title, process name, workspace, and whether it's on the current workspace. This is what the user would see if they pressed Alt-Tab right now.
 
-### 3. Event Trace
+### 4. Event Trace
 
 Chronological (newest first) list of events with millisecond timestamps relative to the dump time. This is the core diagnostic data.
 
@@ -67,20 +84,28 @@ Chronological (newest first) list of events with millisecond timestamps relative
 | `QUICK_SWITCH` | timeSinceTab | Alt released quickly — no overlay, direct switch. |
 | `ACTIVATE_START` | hwnd, onCurrentWS | Activation attempt beginning. |
 | `ACTIVATE_RESULT` | hwnd, success, fg | Activation outcome. success: 0=failed (fg is a different window), 1=confirmed, 2=transitional (fg was NULL during activation transition — treated as success). |
+| `ACTIVATE_GONE` | hwnd | Selected window no longer exists at activation time. |
 | `MRU_UPDATE` | hwnd, result | Local MRU reorder after activation. result=0 means hwnd not found. |
 | `BUFFER_PUSH` | event, bufLen | Event buffered during async activation. |
-| `PREWARM_SKIP` | mruAge | Prewarm snapshot skipped because local MRU is fresh. |
-| `FG_RECONCILE` | hwnd, wasPos | External focus change detected at Alt press. Foreground window was at position `wasPos` in MRU, moved to #1. Fixes race where taskbar/mouse clicks haven't arrived as store deltas yet. |
 
-### IPC Events (store communication)
+### Focus & Workspace Events
 
 | Event | Fields | Meaning |
 |-------|--------|---------|
-| `SNAPSHOT_REQ` | | Requested snapshot from store. |
-| `SNAPSHOT_RECV` | items | Received snapshot with N items. |
-| `SNAPSHOT_SKIP` | reason | Snapshot rejected. reason: frozen/async_pending/mru_fresh |
-| `SNAPSHOT_TOP` | hwnd1, hwnd2, hwnd3 | Top 3 MRU items after accepting a snapshot. Helps diagnose MRU corruption from store data. |
-| `DELTA_RECV` | mruChanged, memberChanged, focusHwnd | Incremental update received. |
+| `FOCUS` | hwnd | WinEventHook detected a new foreground window. |
+| `FOCUS_SUPPRESS` | hwnd, remainingMs | Focus event suppressed (komorebi workspace transition). remainingMs = time until suppression expires. |
+| `WS_SWITCH` | | Komorebi workspace switch detected. |
+| `WS_TOGGLE` | newMode, displayCount | User toggled workspace filter. newMode: 1=all, 2=current. |
+
+### Data Layer Events
+
+| Event | Fields | Meaning |
+|-------|--------|---------|
+| `REFRESH` | items | Live items refreshed from WindowList. |
+| `SCAN_COMPLETE` | foundCount, storeCount | Full window enumeration finished. foundCount=windows discovered, storeCount=total in store after scan. |
+| `COSMETIC_PATCH` | patchedCount, baseCount | In-place title/icon/process update during ACTIVE state. |
+| `PRODUCER_INIT` | type, success | Producer startup result. type: 1=KomorebiSub, 2=WinEventHook, 3=Pump. success: 0/1. |
+| `SESSION_START` | | Flight recorder initialized (process startup). |
 
 ## Analyzing Dumps
 
@@ -101,9 +126,11 @@ Look for deviations from this pattern. Common things to check:
 
 **Is BYPASS mode on?** If BYPASS=ON appears, Tab hooks are disabled. No TAB_DN events will appear until BYPASS=OFF.
 
-**Are snapshots being skipped?** SNAPSHOT_SKIP with reason=mru_fresh means the freshness guard is blocking store data. Check the PREWARM_SKIP mruAge to see how stale the local MRU is.
+**Is focus being suppressed?** FOCUS_SUPPRESS events mean komorebi workspace switching is active. Focus events are ignored during the suppression window to prevent MRU corruption from transient windows.
 
 **Is the buffer being used?** BUFFER_PUSH events mean async cross-workspace activation is in progress. Events are queued, not processed immediately.
+
+**Are scans finding everything?** Compare SCAN_COMPLETE's foundCount with storeCount. If storeCount >> foundCount, ghost windows may be accumulating.
 
 ### Multiple Dumps
 
@@ -121,5 +148,5 @@ Hwnds in the event trace are resolved to window titles and process names at dump
 
 - **Compiled**: `<exe dir>\recorder\`
 - **Dev mode**: `<project root>\recorder\`
-- **Config entry**: `[Diagnostics] FlightRecorder` (`cfg.DiagFlightRecorder`)
+- **Config entries**: `[Diagnostics] FlightRecorder`, `FlightRecorderBufferSize`, `FlightRecorderHotkey`
 - **Source**: `src/gui/gui_flight_recorder.ahk`

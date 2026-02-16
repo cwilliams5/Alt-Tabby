@@ -147,7 +147,7 @@ $sends = [System.Collections.ArrayList]::new()
 $handles = [System.Collections.ArrayList]::new()
 $sendLocations = [System.Collections.Generic.HashSet[string]]::new()
 
-# Raw JSON pattern: '{"type":"delta",...}' bypassing IPC_MSG_* constants
+# Raw JSON pattern: '{"type":"<msgType>",...}' bypassing IPC_MSG_* constants
 $rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
 
 foreach ($file in $allFiles) {

@@ -39,15 +39,6 @@ global gConfigRegistry := [
      min: 0, max: 1000,
      d: "Maximum time for quick switch without showing GUI (ms). If Alt+Tab and release happen within this time, instant switch."},
 
-    {s: "AltTab", k: "PrewarmOnAlt", g: "AltTabPrewarmOnAlt", t: "bool", default: true,
-     d: "Pre-warm snapshot on Alt down (true = request data before Tab pressed). Ensures fresh window data is available when Tab is pressed."},
-
-    {s: "AltTab", k: "FreezeWindowList", g: "FreezeWindowList", t: "bool", default: false,
-     d: "Freeze window list on first Tab press. When true, the list is locked and won't change during Alt+Tab interaction. When false, the list updates in real-time (may cause visual flicker)."},
-
-    {s: "AltTab", k: "ServerSideWorkspaceFilter", g: "ServerSideWorkspaceFilter", t: "bool", default: false,
-     d: "When Ctrl toggles workspace filtering, fetch fresh data from the store (true) or filter cached data locally (false). Local is faster but may miss very recent changes."},
-
     {s: "AltTab", k: "SwitchOnClick", g: "AltTabSwitchOnClick", t: "bool", default: true,
      d: "Activate window immediately when clicking a row (like Windows native). When false, clicking selects the row and activation happens when Alt is released."},
 
@@ -834,51 +825,22 @@ global gConfigRegistry := [
     ; ============================================================
     {type: "section", name: "IPC",
      desc: "IPC & Communication",
-     long: "Named pipe communication between store and clients, including heartbeat liveness detection."},
+     long: "Named pipe IPC for enrichment pump and launcher control signals."},
 
-    {s: "IPC", k: "StorePipeName", g: "StorePipeName", t: "string", default: "tabby_store_v1",
-     d: "Named pipe name for store communication"},
+    {s: "IPC", k: "PumpPipeName", g: "PumpPipeName", t: "string", default: "tabby_pump_v1",
+     d: "Named pipe name for enrichment pump communication"},
 
     {s: "IPC", k: "IdleTickMs", g: "IPCIdleTickMs", t: "int", default: 100,
      min: 15, max: 500,
-     d: "Client poll interval when idle (ms). Lower = more responsive but more CPU."},
-
-    {s: "IPC", k: "FullRowEvery", g: "IPCFullRowEvery", t: "int", default: 10,
-     min: 0, max: 1000,
-     d: "How often to send complete window data instead of only changes (self-healing). 0 = always send complete data. Higher values = less bandwidth but slower recovery from missed updates."},
-
-    {s: "IPC", k: "WorkspaceDeltaStyle", g: "IPCWorkspaceDeltaStyle", t: "enum", default: "Always",
-     options: ["Always", "OnChange"],
-     d: "When to include workspace info in updates. 'Always' = every update. 'OnChange' = only when the active workspace changes (less data)."},
-
-    {s: "IPC", k: "FullSyncEvery", g: "IPCFullSyncEvery", t: "int", default: 60,
-     min: 0, max: 600,
-     d: "Every N heartbeats, send a complete snapshot to all clients to recover any missing or ghost windows. 0 = disabled."},
-
-    {s: "IPC", k: "UseDirtyTracking", g: "IPCUseDirtyTracking", t: "bool", default: true,
-     d: "Use dirty tracking for delta computation. Set false for debugging (full field comparison)."},
-
-    {type: "subsection", section: "IPC", name: "Reliability",
-     desc: "Connection retry and recovery settings"},
+     d: "Pump poll interval when idle (ms). Lower = more responsive but more CPU."},
 
     {s: "IPC", k: "MaxReconnectAttempts", g: "IPCMaxReconnectAttempts", t: "int", default: 3,
      min: 1, max: 10,
-     d: "Maximum pipe reconnection attempts before triggering store restart."},
+     d: "Maximum pump pipe reconnection attempts before triggering restart."},
 
     {s: "IPC", k: "StoreStartWaitMs", g: "IPCStoreStartWaitMs", t: "int", default: 1000,
      min: 500, max: 5000,
-     d: "Time to wait for store to start on launch (ms). Increase on slow systems."},
-
-    {type: "subsection", section: "IPC", name: "Heartbeat",
-     desc: "Store broadcasts heartbeat to clients for liveness detection"},
-
-    {s: "IPC", k: "HeartbeatIntervalMs", g: "StoreHeartbeatIntervalMs", t: "int", default: 5000,
-     min: 1000, max: 60000,
-     d: "Store sends heartbeat every N ms"},
-
-    {s: "IPC", k: "HeartbeatTimeoutMs", g: "ViewerHeartbeatTimeoutMs", t: "int", default: 12000,
-     min: 2000, max: 120000,
-     d: "Viewer considers connection dead after N ms without any message"},
+     d: "Time to wait for main process to start on launch (ms). Increase on slow systems."},
 
     ; ============================================================
     ; Window Store
@@ -896,11 +858,18 @@ global gConfigRegistry := [
     {s: "Store", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", default: false,
      d: "Komorebi polling-based fallback (use if subscription fails)"},
 
+    {s: "Store", k: "UseEnrichmentPump", g: "UseEnrichmentPump", t: "bool", default: true,
+     d: "Use separate process for blocking icon/title/proc resolution (recommended for responsiveness)"},
+
     {s: "Store", k: "UseIconPump", g: "UseIconPump", t: "bool", default: true,
      d: "Resolve window icons in background"},
 
     {s: "Store", k: "UseProcPump", g: "UseProcPump", t: "bool", default: true,
      d: "Resolve process names in background"},
+
+    {s: "Store", k: "PumpIconPruneIntervalMs", g: "PumpIconPruneIntervalMs", t: "int", default: 300000,
+     min: 10000, max: 3600000,
+     d: "Interval (ms) for pump to prune HICONs of closed windows"},
 
     {type: "subsection", section: "Store", name: "Window Filtering",
      desc: "Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist"},
@@ -926,9 +895,9 @@ global gConfigRegistry := [
      min: 1, max: 100,
      d: "Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
-    {s: "Store", k: "CosmeticBufferMs", g: "WinEventHookCosmeticBufferMs", t: "int", default: 1000,
-     min: 100, max: 10000,
-     d: "Minimum interval between updates for cosmetic changes like title text (ms). Important changes (focus, open, close) always update immediately."},
+    {s: "GUI", k: "ActiveRepaintDebounceMs", g: "GUI_ActiveRepaintDebounceMs", t: "int", default: 250,
+     min: 0, max: 2000,
+     d: "Minimum interval between cosmetic repaints while overlay is active (ms). Prevents animated titles from flooding repaints. 0 = no debounce."},
 
     {type: "subsection", section: "Store", name: "Z-Pump",
      desc: "When WinEventHook adds a window, Z-pump triggers a WinEnum scan for accurate Z-order"},
@@ -1038,6 +1007,12 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "FlightRecorder", g: "DiagFlightRecorder", t: "bool", default: true,
      d: "Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact."},
 
+    {s: "Diagnostics", k: "FlightRecorderBufferSize", g: "DiagFlightRecorderBufferSize", t: "int", default: 2000, min: 500, max: 10000,
+     d: "Number of events kept in the flight recorder ring buffer. 2000 ≈ 30s of typical activity. Higher values capture more history at ~48 bytes per slot."},
+
+    {s: "Diagnostics", k: "FlightRecorderHotkey", g: "DiagFlightRecorderHotkey", t: "string", default: "*F12",
+     d: "Hotkey to dump the flight recorder buffer. Use AHK v2 hotkey syntax (e.g. *F12, ^F12, +F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Pass-through: the key still reaches other apps."},
+
     {s: "Diagnostics", k: "ChurnLog", g: "DiagChurnLog", t: "bool", default: false,
      d: "Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle."},
 
@@ -1061,6 +1036,9 @@ global gConfigRegistry := [
 
     {s: "Diagnostics", k: "ProcPumpLog", g: "DiagProcPumpLog", t: "bool", default: false,
      d: "Log process pump operations to %TEMP%\\tabby_procpump.log. Use when debugging process name resolution failures."},
+
+    {s: "Diagnostics", k: "PumpLog", g: "DiagPumpLog", t: "bool", default: false,
+     d: "Log EnrichmentPump operations to %TEMP%\\tabby_pump.log. Use when debugging icon/title/process enrichment in the pump subprocess."},
 
     {s: "Diagnostics", k: "LauncherLog", g: "DiagLauncherLog", t: "bool", default: false,
      d: "Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems."},
