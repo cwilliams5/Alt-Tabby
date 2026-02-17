@@ -164,12 +164,57 @@ _RepeatStr(str, count) {
 
 ; Kill all running AltTabby.exe processes
 _Test_KillAllAltTabby() {
-    ; Use WMI to find and kill all AltTabby.exe processes
-    for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
-        try {
-            proc.Terminate()
-        }
+    for _, proc in _Test_EnumProcesses("AltTabby.exe") {
+        try ProcessClose(proc.pid)
     }
     ; Give processes time to fully exit
     Sleep(200)
+}
+
+; --- Process Enumeration via CreateToolhelp32Snapshot ---
+; Returns array of {pid, parentPid, exeName} for processes matching exeFilter.
+; If exeFilter is "", returns all processes. Uses Win32 Toolhelp API (no WMI/COM).
+_Test_EnumProcesses(exeFilter := "") {
+    results := []
+    TH32CS_SNAPPROCESS := 0x2
+    hSnap := DllCall("CreateToolhelp32Snapshot", "uint", TH32CS_SNAPPROCESS, "uint", 0, "ptr")
+    if (hSnap = -1)
+        return results
+
+    peSize := 568  ; sizeof(PROCESSENTRY32W) on x64
+    pe := Buffer(peSize, 0)
+    NumPut("uint", peSize, pe, 0)
+
+    if (DllCall("Process32FirstW", "ptr", hSnap, "ptr", pe)) {
+        loop {
+            exeName := StrGet(pe.Ptr + 44, "UTF-16")
+            if (exeFilter = "" || exeName = exeFilter) {
+                results.Push({
+                    pid: NumGet(pe, 8, "uint"),
+                    parentPid: NumGet(pe, 32, "uint"),
+                    exeName: exeName
+                })
+            }
+            NumPut("uint", peSize, pe, 0)
+            if (!DllCall("Process32NextW", "ptr", hSnap, "ptr", pe))
+                break
+        }
+    }
+    DllCall("CloseHandle", "ptr", hSnap)
+    return results
+}
+
+; Count processes matching exeFilter name
+_Test_CountProcesses(exeFilter) {
+    return _Test_EnumProcesses(exeFilter).Length
+}
+
+; Find child processes of parentPid matching exeFilter name
+_Test_FindChildProcesses(parentPid, exeFilter := "") {
+    results := []
+    for _, proc in _Test_EnumProcesses(exeFilter) {
+        if (proc.parentPid = parentPid)
+            results.Push(proc)
+    }
+    return results
 }

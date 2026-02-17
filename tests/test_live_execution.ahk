@@ -75,10 +75,7 @@ RunLiveTests_Execution() {
             processCount := 0
             spawnStart := A_TickCount
             while ((A_TickCount - spawnStart) < 5000) {
-                processCount := 0
-                for proc in ComObjGet("winmgmts:").ExecQuery("Select * from Win32_Process Where Name = 'AltTabby.exe'") {
-                    processCount++
-                }
+                processCount := _Test_CountProcesses("AltTabby.exe")
                 if (processCount >= 2)
                     break
                 Sleep(100)
@@ -113,10 +110,8 @@ RunLiveTests_Execution() {
             }
 
             ; Kill launcher and its children (targeted by PID, not blanket process name kill)
-            for proc in ComObjGet("winmgmts:").ExecQuery(
-                "Select * from Win32_Process Where ParentProcessId = " launcherPid
-                " And Name = 'AltTabby.exe'") {
-                try proc.Terminate()
+            for _, child in _Test_FindChildProcesses(launcherPid, "AltTabby.exe") {
+                try ProcessClose(child.pid)
             }
             try ProcessClose(launcherPid)
             waitStart := A_TickCount

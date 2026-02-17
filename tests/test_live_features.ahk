@@ -118,7 +118,7 @@ RunLiveTests_Features() {
         first := titleProj.items[1]
         second := titleProj.items[2]
         ; Title sort should be alphabetical (case-insensitive)
-        if (StrCompare(first.title, second.title, true) <= 0) {
+        if (StrCompare(first.title, second.title, "Locale") <= 0) {
             Log("PASS: Title sort order correct ('" SubStr(first.title, 1, 20) "' <= '" SubStr(second.title, 1, 20) "')")
             TestPassed++
         } else {

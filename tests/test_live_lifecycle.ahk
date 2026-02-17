@@ -55,10 +55,7 @@ RunLiveTests_Lifecycle() {
     loop {
         if ((A_TickCount - spawnStart) >= 5000)
             break
-        processCount := 0
-        for proc in ComObjGet("winmgmts:").ExecQuery(
-            "Select * from Win32_Process Where Name = '" LIFECYCLE_EXE_NAME "'")
-            processCount++
+        processCount := _Test_CountProcesses(LIFECYCLE_EXE_NAME)
         if (processCount >= 2)
             break
         Sleep(50)
@@ -222,9 +219,8 @@ _Lifecycle_Cleanup() {
     global LIFECYCLE_EXE_NAME, LIFECYCLE_HWND_FILE
 
     ; Kill processes by name (only lifecycle copies, not other AltTabby.exe)
-    for proc in ComObjGet("winmgmts:").ExecQuery(
-        "Select * from Win32_Process Where Name = '" LIFECYCLE_EXE_NAME "'") {
-        try proc.Terminate()
+    for _, proc in _Test_EnumProcesses(LIFECYCLE_EXE_NAME) {
+        try ProcessClose(proc.pid)
     }
     Sleep(50)
 
@@ -235,16 +231,14 @@ _Lifecycle_Cleanup() {
     try DirDelete(testDir, true)
 }
 
-; Helper: find GUI PID by WMI (--gui-only in command line, not launcher)
+; Helper: find GUI PID (child of launcher, not the launcher itself)
 _Lifecycle_FindGuiPid(launcherPid) {
     global LIFECYCLE_EXE_NAME
-    for proc in ComObjGet("winmgmts:").ExecQuery(
-        "Select ProcessId, CommandLine from Win32_Process Where Name = '" LIFECYCLE_EXE_NAME "'") {
-        pid := proc.ProcessId
-        cmdLine := ""
-        try cmdLine := proc.CommandLine
-        if (pid != launcherPid && InStr(cmdLine, "--gui-only"))
-            return pid
+    children := _Test_FindChildProcesses(launcherPid, LIFECYCLE_EXE_NAME)
+    ; Return first child that isn't the launcher itself
+    for _, child in children {
+        if (child.pid != launcherPid)
+            return child.pid
     }
     return 0
 }
