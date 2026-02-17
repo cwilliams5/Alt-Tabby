@@ -1072,13 +1072,4 @@ global gConfigRegistry := [
      min: 25, max: 500,
      d: "Size to keep after log trim in KB. Must be less than LogMaxKB."},
 
-    {type: "subsection", section: "Diagnostics", name: "Viewer",
-     desc: "Debug viewer GUI options"},
-
-    {s: "Diagnostics", k: "ViewerDebugLog", g: "DiagViewerLog", t: "bool", default: false,
-     d: "Enable verbose viewer logging to error log"},
-
-    {s: "Diagnostics", k: "ViewerAutoStartStore", g: "ViewerAutoStartStore", t: "bool", default: false,
-     d: "Auto-start store_server if not running when viewer connects"},
-
 ]
