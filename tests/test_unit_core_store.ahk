@@ -5,7 +5,7 @@
 #Include test_utils.ahk
 
 RunUnitTests_CoreStore() {
-    global TestPassed, TestErrors, cfg
+    global TestPassed, TestErrors, cfg, gWS_DirtyHwnds
 
     ; ============================================================
     ; WindowList Unit Tests
@@ -731,4 +731,49 @@ RunUnitTests_CoreStore() {
 
     ; Cleanup
     WL_RemoveWindow([9101, 9102], true)
+
+    ; ============================================================
+    ; Dirty-Tracking Contract Tests
+    ; ============================================================
+    ; Contract: any store mutation that modifies display-visible fields
+    ; MUST mark gWS_DirtyHwnds. Pure data-layer tests — no mocking, no OS deps.
+    ; Would have caught: Bugs #2 (WL_UpdateProcessName) and #3 (WL_UpsertWindow)
+    Log("`n--- Dirty-Tracking Contract Tests ---")
+
+    ; Test: WL_UpsertWindow marks DirtyHwnds on field change
+    WL_Init()
+    WL_BeginScan()
+    dtRec := Map("hwnd", 99901, "title", "Original", "class", "C", "pid", 1,
+                 "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    WL_UpsertWindow([dtRec], "test")
+    WL_EndScan()
+    gWS_DirtyHwnds := Map()  ; clear
+
+    dtRec2 := Map("hwnd", 99901, "title", "Changed", "class", "C", "pid", 1,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    WL_UpsertWindow([dtRec2], "test")
+    AssertEq(gWS_DirtyHwnds.Has(99901), true, "DirtyContract: UpsertWindow marks dirty on title change")
+
+    ; Test: WL_UpsertWindow does NOT mark dirty when no fields changed
+    gWS_DirtyHwnds := Map()
+    WL_UpsertWindow([dtRec2], "test")  ; same data again
+    AssertEq(gWS_DirtyHwnds.Has(99901), false, "DirtyContract: UpsertWindow no dirty when unchanged")
+
+    ; Test: WL_UpdateProcessName marks DirtyHwnds
+    gWS_DirtyHwnds := Map()
+    WL_UpdateProcessName(1, "notepad.exe")
+    hasDirty := false
+    for hwnd, _ in gWS_DirtyHwnds
+        hasDirty := true
+    AssertEq(hasDirty, true, "DirtyContract: UpdateProcessName marks dirty hwnd")
+
+    ; Test: WL_UpdateFields marks DirtyHwnds
+    gWS_DirtyHwnds := Map()
+    WL_UpdateFields(99901, Map("title", "Updated"), "test")
+    AssertEq(gWS_DirtyHwnds.Has(99901), true, "DirtyContract: UpdateFields marks dirty")
+
+    ; Test: WL_RemoveWindow sets SortOrderDirty (no per-hwnd dirty — window is deleted)
+    gWS_SortOrderDirty := false
+    WL_RemoveWindow([99901], true)
+    AssertEq(gWS_SortOrderDirty, true, "DirtyContract: RemoveWindow marks sort dirty")
 }

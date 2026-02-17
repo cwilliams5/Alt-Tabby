@@ -22,6 +22,7 @@ RunGUITests_State() {
     global gMock_BypassResult, gINT_BypassMode
     global gGUI_Base, gGUI_Overlay
     global gMock_StoreItems, gMock_StoreItemsMap
+    global gFR_DumpInProgress
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -401,6 +402,51 @@ RunGUITests_State() {
     ; Toggle back
     GUI_ToggleWorkspaceMode()
     GUI_AssertEq(gGUI_DisplayItems.Length, 8, "WS toggle: back shows all 8")
+
+    ; ============================================================
+    ; FLIGHT RECORDER DUMP BLOCKING TEST
+    ; State machine must be frozen while gFR_DumpInProgress is true
+    ; ============================================================
+
+    ; ----- Test: Events blocked during flight recorder dump (ACTIVE state) -----
+    GUI_Log("Test: Events blocked during FR dump (ACTIVE)")
+    ResetGUIState()
+    SetupTestItems(3)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "FR dump setup: state is ACTIVE")
+
+    gFR_DumpInProgress := true
+
+    ; All events should be swallowed
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "FR dump: ALT_UP blocked during dump")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 3, "FR dump: DisplayItems preserved during dump")
+
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "FR dump: TAB_STEP blocked during dump")
+
+    GUI_OnInterceptorEvent(TABBY_EV_ESCAPE, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "FR dump: ESCAPE blocked during dump")
+
+    gFR_DumpInProgress := false
+
+    ; After dump completes, events should work again
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    GUI_AssertEq(gGUI_State, "IDLE", "FR dump: ALT_UP works after dump ends")
+
+    ; ----- Test: Events blocked during flight recorder dump (IDLE state) -----
+    GUI_Log("Test: Events blocked during FR dump (IDLE)")
+    ResetGUIState()
+    SetupTestItems(3)
+
+    gFR_DumpInProgress := true
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_AssertEq(gGUI_State, "IDLE", "FR dump IDLE: ALT_DOWN blocked during dump")
+
+    gFR_DumpInProgress := false
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI State Tests Summary ===")

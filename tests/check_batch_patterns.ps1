@@ -451,6 +451,26 @@ $CHECKS = @(
         Desc     = "ValidateExistence detects ghost windows via visibility+cloaked+minimized checks"
         Function = "WL_ValidateExistence"
         Patterns = @("IsWindowVisible", "DwmGetWindowAttribute", "IsIconic")
+    },
+    @{
+        Id       = "reveal_both_overlay_gate"
+        File     = "gui\gui_paint.ahk"
+        Desc     = "_GUI_RevealBoth gates on gGUI_OverlayVisible before showing windows"
+        Function = "_GUI_RevealBoth"
+        Patterns = @("!gGUI_OverlayVisible")
+    },
+    @{
+        Id       = "event_handler_dump_guard"
+        File     = "gui\gui_state.ahk"
+        Desc     = "GUI_OnInterceptorEvent blocks events during gFR_DumpInProgress"
+        Function = "GUI_OnInterceptorEvent"
+        Patterns = @("gFR_DumpInProgress")
+    },
+    @{
+        Id       = "pump_detect_hidden"
+        File     = "pump\enrichment_pump.ahk"
+        Desc     = "EnrichmentPump enables DetectHiddenWindows for cloaked window resolution"
+        Patterns = @("DetectHiddenWindows(true)")
     }
 )
 
@@ -1076,6 +1096,89 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_map_dot_access"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 7: dirty_tracking_contract
+# Any function in window_list.ahk that bumps gWS_Rev AND modifies
+# display-visible fields must also reference gWS_DirtyHwnds.
+# Catches "forgot to add dirty tracking" bugs at the static level.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+$dtRelPath = "shared\window_list.ahk"
+$dtFullPath = if ($relToFull.ContainsKey($dtRelPath)) { $relToFull[$dtRelPath] } else { $null }
+
+if ($null -ne $dtFullPath -and $fileCacheText.ContainsKey($dtFullPath)) {
+    $dtContent = $fileCacheText[$dtFullPath]
+
+    # Extract DISPLAY_FIELDS for field matching
+    $dtDisplayFields = [System.Collections.Generic.HashSet[string]]::new()
+    if ($dtContent -match '(?s)global\s+DISPLAY_FIELDS\s*:=\s*\[(.*?)\]') {
+        $dfArrayContent = $Matches[1]
+        foreach ($m in [regex]::Matches($dfArrayContent, '"(\w+)"')) {
+            [void]$dtDisplayFields.Add($m.Groups[1].Value)
+        }
+    }
+
+    # Exempt functions (canonical implementations, bulk ops, read-only)
+    $dtExempt = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+    foreach ($name in @("_WS_ApplyPatch", "_WS_MarkDirty", "WL_Init", "WL_BeginScan",
+                         "WL_EndScan", "WL_GetDisplayList", "_WS_BumpRev",
+                         "WL_SetCurrentWorkspace", "WL_BatchUpdateFields",
+                         "_WS_ToItem", "_WS_NewRecord", "WS_SnapshotMapKeys",
+                         "WL_EnqueueForZ", "WL_ClearZQueue", "_WL_GetRev",
+                         "_WS_InsertionSort", "_WS_CmpMRU", "_WS_CmpZ",
+                         "_WS_CmpTitle", "_WS_CmpProcessName", "_WS_GetOpt")) {
+        [void]$dtExempt.Add($name)
+    }
+
+    # Extract all function bodies from window_list.ahk
+    $dtIssues = @()
+    $dtFuncRegex = [regex]::new('(?m)^[ \t]*(?:static\s+)?([A-Za-z_]\w*)\s*\([^)]*\)\s*\{', 'Compiled')
+    $dtFuncMatches = $dtFuncRegex.Matches($dtContent)
+
+    foreach ($fm in $dtFuncMatches) {
+        $funcName = $fm.Groups[1].Value
+        if ($dtExempt.Contains($funcName)) { continue }
+
+        $body = BP_Extract-FunctionBody $dtContent $funcName
+        if ($null -eq $body) { continue }
+
+        # Check: does this function bump rev? (calls _WS_BumpRev or _WS_MarkDirty or directly modifies gWS_Rev)
+        $bumpsRev = $body.Contains("_WS_BumpRev") -or $body.Contains("_WS_MarkDirty") -or ($body -match 'gWS_Rev\s*(\+\+|\+=|:=)')
+        if (-not $bumpsRev) { continue }
+
+        # Check: does this function modify any display-visible field on a store record?
+        $touchesDisplayField = $false
+        foreach ($field in $dtDisplayFields) {
+            # Match rec.field := or rec["field"] := patterns
+            if ($body -match "\.\s*$field\s*:=" -or $body -match "\[`"$field`"\]\s*:=") {
+                $touchesDisplayField = $true
+                break
+            }
+        }
+        if (-not $touchesDisplayField) { continue }
+
+        # This function bumps rev AND writes display fields — must also touch gWS_DirtyHwnds
+        if (-not $body.Contains("gWS_DirtyHwnds")) {
+            $dtIssues += "${funcName}: bumps rev and modifies display fields but does not reference gWS_DirtyHwnds"
+        }
+    }
+
+    if ($dtIssues.Count -gt 0) {
+        $anyFailed = $true
+        [void]$failOutput.AppendLine("")
+        [void]$failOutput.AppendLine("  FAIL: $($dtIssues.Count) dirty-tracking contract violation(s) in window_list.ahk")
+        [void]$failOutput.AppendLine("  Functions that bump gWS_Rev and modify display fields must also mark gWS_DirtyHwnds.")
+        foreach ($issue in $dtIssues) {
+            [void]$failOutput.AppendLine("    $issue")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_dirty_tracking"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1083,7 +1186,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

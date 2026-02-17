@@ -744,6 +744,49 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_test_assertions"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 4: no_wmi_in_tests
+# Ban WMI ComObjGet("winmgmts:") in test files.
+# WMI COM calls degrade under test process churn — use
+# _Test_EnumProcesses/CountProcesses/FindChildProcesses instead.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$wmiIssues = [System.Collections.ArrayList]::new()
+$wmiPattern = [regex]::new('ComObjGet\s*\(\s*"winmgmts', 'Compiled')
+
+foreach ($file in $testFiles) {
+    $text = Get-CachedFileText $file.FullName
+    $lines = Get-CachedFileLines $file.FullName
+
+    if (-not $wmiPattern.IsMatch($text)) { continue }
+
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($wmiPattern.IsMatch($raw)) {
+            [void]$wmiIssues.Add([PSCustomObject]@{
+                File = $relPath
+                Line = $i + 1
+                Code = $raw.Trim()
+            })
+        }
+    }
+}
+
+if ($wmiIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($wmiIssues.Count) WMI usage(s) found in test files.")
+    [void]$failOutput.AppendLine("  WMI COM calls (ComObjGet(`"winmgmts:`")) degrade under process churn and hang.")
+    [void]$failOutput.AppendLine("  Use _Test_EnumProcesses/_Test_CountProcesses/_Test_FindChildProcesses from test_utils.ahk instead.")
+    foreach ($issue in $wmiIssues) {
+        [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line): $($issue.Code)")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_no_wmi_in_tests"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -751,7 +794,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions)" -ForegroundColor Green
+    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
