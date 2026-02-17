@@ -858,14 +858,9 @@ global gConfigRegistry := [
     {s: "Store", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", default: false,
      d: "Komorebi polling-based fallback (use if subscription fails)"},
 
-    {s: "Store", k: "UseEnrichmentPump", g: "UseEnrichmentPump", t: "bool", default: true,
-     d: "Use separate process for blocking icon/title/proc resolution (recommended for responsiveness)"},
-
-    {s: "Store", k: "UseIconPump", g: "UseIconPump", t: "bool", default: true,
-     d: "Resolve window icons in background"},
-
-    {s: "Store", k: "UseProcPump", g: "UseProcPump", t: "bool", default: true,
-     d: "Resolve process names in background"},
+    {s: "Store", k: "AdditionalWindowInformation", g: "AdditionalWindowInformation", t: "enum",
+     default: "Always", options: ["Always", "NonBlocking", "ProcessOnly", "Never"],
+     d: "How to resolve window icons and process names. Always = separate process with in-process fallback (recommended). NonBlocking = separate process only, no fallback. ProcessOnly = in-process only, saves memory. Never = disabled."},
 
     {s: "Store", k: "PumpIconPruneIntervalMs", g: "PumpIconPruneIntervalMs", t: "int", default: 300000,
      min: 10000, max: 3600000,

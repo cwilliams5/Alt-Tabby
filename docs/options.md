@@ -477,9 +477,7 @@ WinEventHook and MRU are always enabled (core). These control optional producers
 |--------|------|---------|-------|-------------|
 | `UseKomorebiSub` | bool | `true` | - | Komorebi subscription-based integration (preferred, event-driven) |
 | `UseKomorebiLite` | bool | `false` | - | Komorebi polling-based fallback (use if subscription fails) |
-| `UseEnrichmentPump` | bool | `true` | - | Use separate process for blocking icon/title/proc resolution (recommended for responsiveness) |
-| `UseIconPump` | bool | `true` | - | Resolve window icons in background |
-| `UseProcPump` | bool | `true` | - | Resolve process names in background |
+| `AdditionalWindowInformation` | enum | `Always` | `Always`, `NonBlocking`, `ProcessOnly`, `Never` | How to resolve window icons and process names. Always = separate process with in-process fallback (recommended). NonBlocking = separate process only, no fallback. ProcessOnly = in-process only, saves memory. Never = disabled. |
 | `PumpIconPruneIntervalMs` | int | `300000` | `10000` - `3600000` | Interval (ms) for pump to prune HICONs of closed windows |
 | `PumpHangTimeoutMs` | int | `15000` | `5000` - `60000` | Time (ms) without a pump response before declaring it hung and restarting |
 

@@ -184,10 +184,11 @@ _GUI_Main_Init() {
     FR_Record(FR_EV_PRODUCER_INIT, 3, pumpConnected ? 1 : 0)
     if (!pumpConnected) {
         ; Local inline fallback — blocking calls run in MainProcess
-        if (cfg.UseIconPump)
+        mode := cfg.AdditionalWindowInformation
+        if (mode = "Always" || mode = "ProcessOnly") {
             IconPump_Start()
-        if (cfg.UseProcPump)
             ProcPump_Start()
+        }
     }
 
     ; Initial full scan AFTER producers init so data includes komorebi workspace info

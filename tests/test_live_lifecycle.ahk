@@ -376,6 +376,11 @@ _Lifecycle_Cleanup() {
 
     try FileDelete(LIFECYCLE_HWND_FILE)
 
+    ; Delete stale pump/launcher logs from previous runs (shared %TEMP% files,
+    ; not inside testDir). Prevents false-positive detection of "Connected" messages.
+    try FileDelete(A_Temp "\tabby_pump.log")
+    try FileDelete(A_Temp "\tabby_launcher.log")
+
     ; Remove temp directory
     testDir := A_Temp "\alttabby_lifecycle_test"
     try DirDelete(testDir, true)

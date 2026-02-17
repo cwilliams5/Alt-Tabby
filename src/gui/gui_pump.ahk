@@ -47,7 +47,8 @@ GUIPump_Init() {
     global _gPump_TimerOn, _gPump_IdleTicks, _gPump_ClientTimerOn
     global _gPump_PumpHwnd, _gPump_HelloSent
 
-    if (!cfg.UseEnrichmentPump)
+    mode := cfg.AdditionalWindowInformation
+    if (mode != "Always" && mode != "NonBlocking")
         return false
 
     ; Connect to pump pipe
@@ -415,10 +416,13 @@ GUIPump_Reconnect() {
 
 _GUIPump_RestartLocalPumps() {
     global cfg
-    if (cfg.UseIconPump)
-        IconPump_Start()
-    if (cfg.UseProcPump)
-        ProcPump_Start()
+    if (cfg.AdditionalWindowInformation != "Always") {
+        if (cfg.DiagPumpLog)
+            _GUIPump_Log("FALLBACK: Skipped local pumps (mode=" cfg.AdditionalWindowInformation ")")
+        return
+    }
+    IconPump_Start()
+    ProcPump_Start()
     if (cfg.DiagPumpLog)
         _GUIPump_Log("FALLBACK: Restarted local icon/proc pumps")
 }

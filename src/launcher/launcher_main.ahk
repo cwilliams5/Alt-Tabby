@@ -894,7 +894,8 @@ Launcher_IsOtherProcessRunning(exeName, excludePID := 0) {
 
 LaunchPump() {
     global g_PumpPID, cfg
-    if (!cfg.UseEnrichmentPump)
+    mode := cfg.AdditionalWindowInformation
+    if (mode != "Always" && mode != "NonBlocking")
         return
     LauncherUtils_Launch("pump", &g_PumpPID, Launcher_Log)
 }

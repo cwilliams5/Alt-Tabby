@@ -100,7 +100,7 @@ global cfg := {
     DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
-    UseEnrichmentPump: false,
+    AdditionalWindowInformation: "Never",
     KomorebicExe: ""
 }
 
