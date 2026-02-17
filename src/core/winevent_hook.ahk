@@ -308,7 +308,7 @@ _WEH_ProcessBatch() {
     global gWEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
     global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store, gWS_OnStoreChanged
-    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
+    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS, gFR_Enabled
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
@@ -343,7 +343,8 @@ _WEH_ProcessBatch() {
     if (_WEH_PendingFocusHwnd && gKSub_MruSuppressUntilTick > 0 && A_TickCount < gKSub_MruSuppressUntilTick) {
         if (cfg.DiagWinEventLog)
             _WEH_DiagLog("FOCUS SUPPRESSED (ws switch): hwnd=" _WEH_PendingFocusHwnd)
-        FR_Record(FR_EV_FOCUS_SUPPRESS, _WEH_PendingFocusHwnd, gKSub_MruSuppressUntilTick - A_TickCount)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_FOCUS_SUPPRESS, _WEH_PendingFocusHwnd, gKSub_MruSuppressUntilTick - A_TickCount)
         _WEH_PendingFocusHwnd := 0
     }
     if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd != gWEH_LastFocusHwnd) {
@@ -375,7 +376,8 @@ _WEH_ProcessBatch() {
             Critical "On"  ; Re-enter: BatchUpdateFields' Critical "Off" clears thread-level state
 
             gWEH_LastFocusHwnd := newFocus
-            FR_Record(FR_EV_FOCUS, newFocus)
+            if (gFR_Enabled)
+                FR_Record(FR_EV_FOCUS, newFocus)
             focusProcessed := true
 
             ; Safety net: detect missed komorebi workspace switch.

@@ -548,7 +548,7 @@ _KSub_OnNotification(jsonLine) {
     global KSUB_EV_CLOAK, KSUB_EV_UNCLOAK, KSUB_EV_TITLE_UPDATE, KSUB_EV_FOCUS_CHANGE
     global KSUB_EV_FOCUS_MONITOR_WS_NUM, KSUB_EV_FOCUS_WS_NUM, KSUB_EV_FOCUS_NAMED_WS
     global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS, KSub_MruSuppressionMs
-    global cfg, gWS_OnWorkspaceChanged, FR_EV_WS_SWITCH
+    global cfg, gWS_OnWorkspaceChanged, FR_EV_WS_SWITCH, gFR_Enabled
 
     ; ========== Layer 2: Quick event type extraction (no full JSON parse) ==========
     eventType := _KSub_QuickExtractEventType(jsonLine)
@@ -749,7 +749,8 @@ _KSub_OnNotification(jsonLine) {
                     ; GUI callback fires.
                     deferredWsName := wsName
                 }
-                FR_Record(FR_EV_WS_SWITCH)
+                if (gFR_Enabled)
+                    FR_Record(FR_EV_WS_SWITCH)
             }
 
             ; For MOVE events: identify the moved window from the focused hwnd

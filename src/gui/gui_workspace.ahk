@@ -60,7 +60,7 @@ GUI_UpdateCurrentWSFromPayload(payload) {
 
 GUI_ToggleWorkspaceMode() {
     global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase
-    global gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT, FR_EV_WS_TOGGLE
+    global gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT, FR_EV_WS_TOGGLE, gFR_Enabled
 
     ; RACE FIX: Protect counter increment and mode toggle atomically -
     ; callers may not have Critical (GUI_OnClick releases it before calling us)
@@ -68,7 +68,8 @@ GUI_ToggleWorkspaceMode() {
     gStats_WorkspaceToggles += 1
     gGUI_WorkspaceMode := (gGUI_WorkspaceMode = WS_MODE_ALL) ? WS_MODE_CURRENT : WS_MODE_ALL
     Critical "Off"
-    FR_Record(FR_EV_WS_TOGGLE, (gGUI_WorkspaceMode = WS_MODE_ALL) ? 1 : 2, gGUI_DisplayItems.Length)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_WS_TOGGLE, (gGUI_WorkspaceMode = WS_MODE_ALL) ? 1 : 2, gGUI_DisplayItems.Length)
 
     GUI_UpdateFooterText()
 

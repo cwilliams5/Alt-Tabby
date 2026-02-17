@@ -102,7 +102,7 @@ FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
     global gFR_Enabled, gFR_Buffer, gFR_Idx, gFR_Size, gFR_Count
     if (!gFR_Enabled)
         return
-    gFR_Idx := Mod(gFR_Idx, gFR_Size) + 1
+    gFR_Idx := gFR_Idx >= gFR_Size ? 1 : gFR_Idx + 1
     b := gFR_Buffer[gFR_Idx]
     b[1] := A_TickCount
     b[2] := ev

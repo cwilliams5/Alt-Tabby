@@ -97,7 +97,7 @@ global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints duri
 ; by alt_tabby.ahk before this file. They reference globals declared above.
 
 _GUI_Main_Init() {
-    global cfg, FR_EV_PRODUCER_INIT
+    global cfg, FR_EV_PRODUCER_INIT, gFR_Enabled
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
@@ -154,7 +154,8 @@ _GUI_Main_Init() {
     kMode := cfg.KomorebiIntegration
     if (kMode = "Always") {
         ksubOk := KomorebiSub_Init()
-        FR_Record(FR_EV_PRODUCER_INIT, 1, ksubOk ? 1 : 0)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_PRODUCER_INIT, 1, ksubOk ? 1 : 0)
         if (!ksubOk && cfg.DiagEventLog)
             GUI_LogEvent("INIT: KomorebiSub failed to start")
     } else if (kMode = "Polling") {
@@ -179,7 +180,8 @@ _GUI_Main_Init() {
     ; Try connecting to EnrichmentPump for offloaded icon/title/proc resolution.
     ; If pump is unavailable, fall back to local inline pumps.
     pumpConnected := GUIPump_Init()
-    FR_Record(FR_EV_PRODUCER_INIT, 3, pumpConnected ? 1 : 0)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_PRODUCER_INIT, 3, pumpConnected ? 1 : 0)
     if (!pumpConnected) {
         ; Local inline fallback — blocking calls run in MainProcess
         mode := cfg.AdditionalWindowInformation
@@ -194,7 +196,8 @@ _GUI_Main_Init() {
 
     ; WinEventHook is always enabled (primary source of window changes + MRU tracking)
     hookOk := WinEventHook_Start()
-    FR_Record(FR_EV_PRODUCER_INIT, 2, hookOk ? 1 : 0)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_PRODUCER_INIT, 2, hookOk ? 1 : 0)
     if (!hookOk) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("INIT: WinEventHook failed - enabling MRU_Lite fallback")
@@ -279,7 +282,7 @@ _GUI_OnWorkspaceFlips() {
 ; ========================= FULL SCAN =========================
 
 _GUI_FullScan() {
-    global _gGUI_ScanInProgress, gWS_Store, FR_EV_SCAN_COMPLETE
+    global _gGUI_ScanInProgress, gWS_Store, FR_EV_SCAN_COMPLETE, gFR_Enabled
     ; RACE FIX: Re-entrancy guard - if WinEnumLite_ScanAll() is interrupted by a
     ; timer that triggers another _GUI_FullScan, the nested scan would corrupt gWS_ScanId
     Critical "On"
@@ -297,7 +300,8 @@ _GUI_FullScan() {
     if (IsObject(recs))
         WL_UpsertWindow(recs, "winenum_lite")
     WL_EndScan()
-    FR_Record(FR_EV_SCAN_COMPLETE, foundCount, gWS_Store.Count)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_SCAN_COMPLETE, foundCount, gWS_Store.Count)
     Critical "On"
     _gGUI_ScanInProgress := false
     Critical "Off"

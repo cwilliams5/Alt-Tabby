@@ -234,6 +234,7 @@ Stats_Accumulate(msg) {
 }
 
 ; Flight recorder mock (gui_flight_recorder.ahk not included - it registers F12 hotkey)
+global gFR_Enabled := false
 global gFR_DumpInProgress := false
 global FR_EV_ALT_DN := 1, FR_EV_ALT_UP := 2, FR_EV_TAB_DN := 3, FR_EV_TAB_UP := 4
 global FR_EV_TAB_DECIDE := 5, FR_EV_TAB_DECIDE_INNER := 6, FR_EV_ESC := 7, FR_EV_BYPASS := 8

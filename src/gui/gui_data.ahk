@@ -15,10 +15,11 @@ global gGUI_LiveItemsIndex := Map()
 GUI_RefreshLiveItems() {
     global gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
     global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_OverlayH
-    global gGdip_IconCache, FR_EV_REFRESH
+    global gGdip_IconCache, FR_EV_REFRESH, gFR_Enabled
 
     proj := WL_GetDisplayList({ sort: "MRU", columns: "items", includeCloaked: true })
-    FR_Record(FR_EV_REFRESH, proj.items.Length)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_REFRESH, proj.items.Length)
     Critical "On"
     gGUI_LiveItems := proj.items
     gGUI_LiveItemsMap := proj.itemsMap
@@ -72,7 +73,7 @@ GUI_RefreshLiveItems() {
 GUI_PatchCosmeticUpdates() {
     global gGUI_ToggleBase, gWS_Store, gWS_DirtyHwnds, cfg
     global gGUI_CurrentWSName, gGUI_DisplayItems, gGUI_OverlayVisible
-    global _gGUI_LastCosmeticRepaintTick, FR_EV_COSMETIC_PATCH
+    global _gGUI_LastCosmeticRepaintTick, FR_EV_COSMETIC_PATCH, gFR_Enabled
 
     ; Debounce: skip if last cosmetic repaint was too recent
     if (cfg.GUI_ActiveRepaintDebounceMs > 0
@@ -153,7 +154,8 @@ GUI_PatchCosmeticUpdates() {
     }
 
     if (patched > 0) {
-        FR_Record(FR_EV_COSMETIC_PATCH, patched, gGUI_ToggleBase.Length)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_COSMETIC_PATCH, patched, gGUI_ToggleBase.Length)
         _gGUI_LastCosmeticRepaintTick := A_TickCount
         GUI_Repaint()
     } else if (cfg.DiagCosmeticPatchLog && gWS_DirtyHwnds.Count > 0) {

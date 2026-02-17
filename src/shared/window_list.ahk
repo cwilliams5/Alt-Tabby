@@ -239,7 +239,7 @@ WL_EndScan(graceMs := "") {
 
 WL_UpsertWindow(records, source := "") {
     global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty, gWS_ContentDirty
-    global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_MRUBumpOnly, FR_EV_WINDOW_ADD
+    global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_MRUBumpOnly, FR_EV_WINDOW_ADD, gFR_Enabled
     global gWS_DirtyHwnds
     if (!IsObject(records) || !(records is Array))
         return { added: 0, updated: 0, rev: gWS_Rev }
@@ -265,7 +265,8 @@ WL_UpsertWindow(records, source := "") {
         if (isNew) {
             gWS_Store[hwnd] := _WS_NewRecord(hwnd)
             added += 1
-            FR_Record(FR_EV_WINDOW_ADD, hwnd, gWS_Store.Count)
+            if (gFR_Enabled)
+                FR_Record(FR_EV_WINDOW_ADD, hwnd, gWS_Store.Count)
         }
         row := gWS_Store[hwnd]
 
@@ -487,7 +488,7 @@ WL_BatchUpdateFields(patches, source := "") {
 }
 
 WL_RemoveWindow(hwnds, forceRemove := false) {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_WINDOW_REMOVE
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_WINDOW_REMOVE, gFR_Enabled
     removed := 0
     ; RACE FIX: Wrap delete loop + rev bump in Critical to prevent IPC requests
     ; from seeing inconsistent state (consistent with ValidateExistence/PurgeBlacklisted)
@@ -501,7 +502,8 @@ WL_RemoveWindow(hwnds, forceRemove := false) {
             continue  ; lint-ignore: critical-section
         _WS_DeleteWindow(hwnd)
         removed += 1
-        FR_Record(FR_EV_WINDOW_REMOVE, hwnd, gWS_Store.Count)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_WINDOW_REMOVE, hwnd, gWS_Store.Count)
     }
     if (removed) {
         _WS_MarkDirty()  ; Structural change (window removal)
@@ -523,7 +525,7 @@ WL_RemoveWindow(hwnds, forceRemove := false) {
 ; for hidden windows (like Outlook message windows).
 
 WL_ValidateExistence() {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_GHOST_PURGE
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_GHOST_PURGE, gFR_Enabled
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
     hwnds := WS_SnapshotMapKeys(gWS_Store)
@@ -597,7 +599,8 @@ WL_ValidateExistence() {
     if (removed > 0) {
         _WS_MarkDirty()  ; Structural change (window removal)
         _WS_BumpRev("ValidateExistence")
-        FR_Record(FR_EV_GHOST_PURGE, removed)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_GHOST_PURGE, removed)
     }
     Critical "Off"
 
@@ -607,7 +610,7 @@ WL_ValidateExistence() {
 ; Purge all windows from store that match the current blacklist
 ; Called after blacklist reload to remove newly-blacklisted windows
 WL_PurgeBlacklisted() {
-    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_BLACKLIST_PURGE
+    global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_BLACKLIST_PURGE, gFR_Enabled
     removed := 0
     toRemove := []
 
@@ -637,7 +640,8 @@ WL_PurgeBlacklisted() {
     if (removed) {
         _WS_MarkDirty()  ; Structural change (blacklist purge)
         _WS_BumpRev("PurgeBlacklisted")
-        FR_Record(FR_EV_BLACKLIST_PURGE, removed)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_BLACKLIST_PURGE, removed)
     }
     return { removed: removed, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
 }

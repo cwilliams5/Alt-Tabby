@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -1179,6 +1179,96 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_dirty_tracking"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 8: fr_guard
+# Every FR_Record() call must be guarded by if (gFR_Enabled).
+# Flight recorder is near-zero cost when enabled, but when disabled
+# the caller-side guard eliminates function call dispatch overhead
+# in hot paths (keyboard hooks, state machine, WinEvent callbacks).
+# Suppress: ; lint-ignore: fr-guard
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$frIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    # Skip the flight recorder itself (FR_Record definition + FR_Init call after gFR_Enabled := true)
+    if ($file.Name -eq 'gui_flight_recorder.ahk') { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName
+    if ($relPath.StartsWith($SourceDir)) {
+        $relPath = $relPath.Substring($SourceDir.Length).TrimStart('\', '/')
+    }
+
+    for ($li = 0; $li -lt $lines.Count; $li++) {
+        $line = $lines[$li]
+
+        # Skip comments
+        $trimmed = $line.TrimStart()
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+
+        # Check for FR_Record( on this line
+        if ($line.IndexOf('FR_Record(', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        # Strip string literals and trailing comments to avoid false positives
+        $cleaned = BP_Clean-Line $line
+        if ($cleaned.IndexOf('FR_Record(', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        # Check for lint-ignore on this line or the preceding line
+        $suppressed = $false
+        if ($line.IndexOf('lint-ignore:', [System.StringComparison]::Ordinal) -ge 0 -and $line -match 'lint-ignore:\s*fr-guard') {
+            $suppressed = $true
+        }
+        if (-not $suppressed -and $li -gt 0) {
+            $prevLine = $lines[$li - 1]
+            if ($prevLine.IndexOf('lint-ignore:', [System.StringComparison]::Ordinal) -ge 0 -and $prevLine -match 'lint-ignore:\s*fr-guard') {
+                $suppressed = $true
+            }
+        }
+        if ($suppressed) { continue }
+
+        # Check if the preceding non-blank, non-comment line contains 'if (gFR_Enabled)'
+        # or if FR_Record is on the same line after 'if (gFR_Enabled)'
+        $guarded = $false
+
+        # Same-line guard: if (gFR_Enabled) FR_Record(...)
+        if ($cleaned -match 'if\s*\(\s*gFR_Enabled\s*\)') {
+            $guarded = $true
+        }
+
+        # Previous-line guard: if (gFR_Enabled)\n    FR_Record(...)
+        if (-not $guarded) {
+            for ($pi = $li - 1; $pi -ge 0 -and $pi -ge ($li - 3); $pi--) {
+                $prevLine = $lines[$pi].TrimStart()
+                if ($prevLine.Length -eq 0 -or $prevLine[0] -eq ';') { continue }
+                if ($prevLine -match '^\s*if\s*\(\s*gFR_Enabled\s*\)') {
+                    $guarded = $true
+                }
+                break  # Stop at first non-blank, non-comment line
+            }
+        }
+
+        if (-not $guarded) {
+            $lineNum = $li + 1
+            $snippet = $trimmed.Substring(0, [Math]::Min(60, $trimmed.Length))
+            [void]$frIssues.Add("${relPath}:${lineNum}: $snippet")
+        }
+    }
+}
+
+if ($frIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($frIssues.Count) ungated FR_Record() call(s)")
+    [void]$failOutput.AppendLine("  Every FR_Record() call must be guarded by 'if (gFR_Enabled)' on the preceding line.")
+    [void]$failOutput.AppendLine("  This eliminates function dispatch overhead when flight recorder is disabled.")
+    foreach ($issue in $frIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_fr_guard"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1186,7 +1276,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

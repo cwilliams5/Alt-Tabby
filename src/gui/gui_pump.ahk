@@ -141,7 +141,7 @@ GUIPump_EnsureRunning() {
 ; Event-driven: started by GUIPump_EnsureRunning, pauses after idle threshold.
 
 _GUIPump_CollectTick() {
-    global _gPump_Client, _gPump_Connected, cfg, FR_EV_ENRICH_REQ
+    global _gPump_Client, _gPump_Connected, cfg, FR_EV_ENRICH_REQ, gFR_Enabled
     global _gPump_LastRequestTick, _gPump_LastResponseTick
     global _gPump_IdleTicks, _gPump_IdleThreshold, _gPump_TimerOn, _gPump_CollectTimerFn
     global _gPump_HelloSent, _gPump_PumpHwnd
@@ -197,7 +197,8 @@ _GUIPump_CollectTick() {
     _gPump_IdleTicks := 0
 
     ; Build enrich request
-    FR_Record(FR_EV_ENRICH_REQ, hwnds.Length)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_ENRICH_REQ, hwnds.Length)
     global IPC_MSG_ENRICH
     request := Map("type", IPC_MSG_ENRICH, "hwnds", hwnds)
 
@@ -227,7 +228,7 @@ _GUIPump_CollectTick() {
 ; ========================= MESSAGE HANDLER =========================
 
 _GUIPump_OnMessage(msg, hPipe) {
-    global cfg, FR_EV_ENRICH_RESP, _gPump_LastResponseTick, _gPump_LastRequestTick
+    global cfg, FR_EV_ENRICH_RESP, _gPump_LastResponseTick, _gPump_LastRequestTick, gFR_Enabled
     global _gPump_PumpHwnd
     _gPump_LastResponseTick := A_TickCount
 
@@ -308,7 +309,8 @@ _GUIPump_OnMessage(msg, hPipe) {
 
     if (cfg.DiagPumpLog)
         _GUIPump_Log("OnMessage: applied=" applied " iconCount=" iconCount)
-    FR_Record(FR_EV_ENRICH_RESP, applied)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_ENRICH_RESP, applied)
 
     ; Trigger a cosmetic rev bump so GUI sees new icons/titles
     if (applied > 0) {

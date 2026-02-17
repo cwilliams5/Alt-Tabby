@@ -43,6 +43,7 @@ g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 global gWEH_LastFocusHwnd := 0
 
 ; --- Flight recorder stubs (gui_flight_recorder.ahk not included in test chain) ---
+global gFR_Enabled := false
 global FR_EV_REFRESH := 20, FR_EV_ENRICH_REQ := 22, FR_EV_ENRICH_RESP := 23
 global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 26, FR_EV_BLACKLIST_PURGE := 27
 global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29

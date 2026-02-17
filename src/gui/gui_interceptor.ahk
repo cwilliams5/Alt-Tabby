@@ -66,8 +66,9 @@ _INT_Ctrl_Down(*) {
 _INT_Alt_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_LastAltDown, gINT_AltIsDown, TABBY_EV_ALT_DOWN, gINT_SessionActive, cfg
-    global FR_EV_ALT_DN
-    FR_Record(FR_EV_ALT_DN, gINT_SessionActive)
+    global FR_EV_ALT_DN, gFR_Enabled
+    if (gFR_Enabled)
+        FR_Record(FR_EV_ALT_DN, gINT_SessionActive)
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Alt_Down (session=" gINT_SessionActive ")")
     gINT_AltIsDown := true
@@ -85,8 +86,9 @@ _INT_Alt_Up(*) {
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, gINT_TabPending
     global gINT_AltUpDuringPending, gINT_AltIsDown, TABBY_EV_ALT_UP, cfg
     global gGUI_PendingPhase  ; Check if GUI is buffering events
-    global FR_EV_ALT_UP
-    FR_Record(FR_EV_ALT_UP, gINT_SessionActive, gINT_PressCount, gINT_TabPending, gGUI_PendingPhase != "")
+    global FR_EV_ALT_UP, gFR_Enabled
+    if (gFR_Enabled)
+        FR_Record(FR_EV_ALT_UP, gINT_SessionActive, gINT_PressCount, gINT_TabPending, gGUI_PendingPhase != "")
 
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Alt_Up (session=" gINT_SessionActive " tabPending=" gINT_TabPending " presses=" gINT_PressCount ")")
@@ -128,8 +130,9 @@ _INT_Tab_Down(*) {
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, cfg
     global gINT_SessionActive, gINT_PressCount, gINT_AltIsDown
     global TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
-    global FR_EV_TAB_DN
-    FR_Record(FR_EV_TAB_DN, gINT_SessionActive, gINT_AltIsDown, gINT_TabPending, gINT_TabHeld)
+    global FR_EV_TAB_DN, gFR_Enabled
+    if (gFR_Enabled)
+        FR_Record(FR_EV_TAB_DN, gINT_SessionActive, gINT_AltIsDown, gINT_TabPending, gINT_TabHeld)
 
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
@@ -182,8 +185,9 @@ _INT_Tab_Down(*) {
 _INT_Tab_Up(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_TabHeld, gINT_TabPending
-    global FR_EV_TAB_UP
-    FR_Record(FR_EV_TAB_UP, gINT_TabHeld)
+    global FR_EV_TAB_UP, gFR_Enabled
+    if (gFR_Enabled)
+        FR_Record(FR_EV_TAB_UP, gINT_TabHeld)
 
     if (gINT_TabHeld) {
         ; Released from Alt+Tab step
@@ -195,11 +199,12 @@ _INT_Tab_Up(*) {
 _INT_Tab_Decide() {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_AltIsDown, cfg
-    global FR_EV_TAB_DECIDE
+    global FR_EV_TAB_DECIDE, gFR_Enabled
     if (!gINT_PendingDecideArmed)
         return  ; lint-ignore: critical-section
     gINT_PendingDecideArmed := false
-    FR_Record(FR_EV_TAB_DECIDE, gINT_AltIsDown, gINT_AltUpDuringPending)
+    if (gFR_Enabled)
+        FR_Record(FR_EV_TAB_DECIDE, gINT_AltIsDown, gINT_AltUpDuringPending)
     ; Log state at timer fire time (before delay)
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Tab_Decide (altIsDown=" gINT_AltIsDown " altUpFlag=" gINT_AltUpDuringPending ")")
@@ -224,8 +229,9 @@ _INT_Tab_Decide_Inner() {
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Tab_Decide_Inner (altDown=" altDownNow " altUpFlag=" altUpFlag " altRecent=" altRecent " -> isAltTab=" isAltTab ")")
 
-    global FR_EV_TAB_DECIDE_INNER
-    FR_Record(FR_EV_TAB_DECIDE_INNER, isAltTab, altDownNow, altUpFlag, altRecent)
+    global FR_EV_TAB_DECIDE_INNER, gFR_Enabled
+    if (gFR_Enabled)
+        FR_Record(FR_EV_TAB_DECIDE_INNER, isAltTab, altDownNow, altUpFlag, altRecent)
 
     if (isAltTab) {
         ; This is an Alt+Tab press
@@ -269,8 +275,9 @@ _INT_Tab_Decide_Inner() {
 _INT_Escape_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, TABBY_EV_ESCAPE
-    global FR_EV_ESC
-    FR_Record(FR_EV_ESC, gINT_SessionActive, gINT_PressCount)
+    global FR_EV_ESC, gFR_Enabled
+    if (gFR_Enabled)
+        FR_Record(FR_EV_ESC, gINT_SessionActive, gINT_PressCount)
 
     ; Only consume Escape if in active Alt+Tab session
     if (!gINT_SessionActive || gINT_PressCount < 1) {
@@ -296,10 +303,11 @@ INT_SetBypassMode(shouldBypass) {
     Critical "On"
     global gINT_BypassMode, cfg
 
-    global FR_EV_BYPASS
+    global FR_EV_BYPASS, gFR_Enabled
     if (shouldBypass && !gINT_BypassMode) {
         ; Entering bypass mode - disable Tab hooks
-        FR_Record(FR_EV_BYPASS, 1)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_BYPASS, 1)
         if (cfg.DiagEventLog)
             GUI_LogEvent("INT: Entering BYPASS MODE, disabling Tab hotkey")
         gINT_BypassMode := true
@@ -312,7 +320,8 @@ INT_SetBypassMode(shouldBypass) {
         }
     } else if (!shouldBypass && gINT_BypassMode) {
         ; Leaving bypass mode - re-enable Tab hooks
-        FR_Record(FR_EV_BYPASS, 0)
+        if (gFR_Enabled)
+            FR_Record(FR_EV_BYPASS, 0)
         if (cfg.DiagEventLog)
             GUI_LogEvent("INT: Leaving BYPASS MODE, re-enabling Tab hotkey")
         gINT_BypassMode := false
