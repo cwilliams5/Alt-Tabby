@@ -291,7 +291,7 @@ _Launcher_OnExit(exitReason, exitCode) {
 ; Config editor sends RESTART_ALL, blacklist editor sends RELOAD_BLACKLIST
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     global TABBY_CMD_RESTART_ALL, TABBY_CMD_RELOAD_BLACKLIST, cfg
-    global TABBY_CMD_STATS_RESPONSE
+    global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED
     global g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
     global g_StatsCache
 
@@ -323,9 +323,17 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
             jsonStr := StrGet(lpData, cbData, "UTF-8")
             try g_StatsCache := JSON.Load(jsonStr)
         }
-        ; Async response arrived — kick dashboard refresh timer
-        if (IsObject(g_StatsCache))
-            Dash_StartRefreshTimer()
+        ; Async response arrived — refresh dashboard + stats dialog
+        if (IsObject(g_StatsCache)) {
+            Dash_Refresh()
+            StatsDialog_UpdateValues()
+        }
+        return 1
+    }
+
+    if (dwData = TABBY_CMD_EDITOR_CLOSED) {
+        ; Editor process is about to exit — delay refresh so PID is gone
+        SetTimer(Dash_Refresh, -500)
         return 1
     }
 
@@ -889,7 +897,7 @@ LaunchGui() {
             "Try restarting Alt-Tabby from the tray menu.",
             APP_NAME, "Iconx")
     }
-    Dash_StartRefreshTimer()
+    Dash_Refresh()
 }
 
 ; (LaunchViewer removed — viewer is now in-process within GUI, toggled via tray menu)

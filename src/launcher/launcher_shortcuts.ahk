@@ -52,7 +52,7 @@ _ToggleShortcut(lnkPath, locationName) {
             ToolTip("Added to " locationName)
         }
     }
-    Dash_StartRefreshTimer()
+    Dash_Refresh()
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }
 

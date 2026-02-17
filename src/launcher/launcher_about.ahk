@@ -8,21 +8,13 @@
 ; + Settings (right). Subprocess controls, settings toggles,
 ; and system information.
 ;
-; Adaptive refresh: always-on slow timer while dialog is open,
-; interactions temporarily boost to rapid polling, then decay:
-;   Hot  (0-15s after click)  250ms  — catch subprocess settle
-;   Warm (15-75s)             1s     — catch slower changes
-;   Cool (75s+ / idle)        5s     — prevent deep staleness
+; Event-driven refresh: Dash_Refresh() called from launcher event
+; points (subprocess launch/restart, editor open/close, settings
+; toggle, stats response, update check). No polling timer.
 
 global g_DashboardGui := 0
 global g_DashboardShuttingDown := false
 global g_DashControls := {}
-global g_DashRefreshTick := 0
-global DASH_INTERVAL_HOT := 250
-global DASH_INTERVAL_WARM := 1000
-global DASH_INTERVAL_COOL := 5000
-global DASH_TIER_HOT_MS := 15000
-global DASH_TIER_WARM_MS := 75000
 
 ; Update check state — persists across dashboard open/close
 global g_DashUpdateState
@@ -36,7 +28,7 @@ ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME
     global g_PumpPID, g_GuiPID, ALTTABBY_INSTALL_DIR
     global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashControls, g_DashUpdateState, DASH_INTERVAL_COOL
+    global g_DashControls, g_DashUpdateState
     global gTheme_Palette
 
     ; If already open, focus existing dialog
@@ -161,9 +153,12 @@ ShowDashboardDialog() {
         dg.AddText("x395 y226 w90 Right", "Quick:")
         g_DashControls.statsLifetimeQuick := dg.AddText("x490 y226 w110 +0x100", "...")
 
-        ; More Stats button
+        ; Stats action buttons (stacked)
         dg.SetFont("s9")
-        btnMoreStats := dg.AddButton("x655 y229 w90 h24", "More Stats")
+        btnRefreshStats := dg.AddButton("x655 y205 w90 h24", "Refresh")
+        btnRefreshStats.OnEvent("Click", _Dash_OnRefreshStats)
+        Theme_ApplyToControl(btnRefreshStats, "Button", themeEntry)
+        btnMoreStats := dg.AddButton("x655 y233 w90 h24", "More Stats")
         btnMoreStats.OnEvent("Click", (*) => ShowStatsDialog())
         Theme_ApplyToControl(btnMoreStats, "Button", themeEntry)
     } else {
@@ -256,12 +251,19 @@ ShowDashboardDialog() {
     subY += 30
     _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, "blacklist", "Blacklist Editor", g_BlacklistEditorPID, false, _Dash_OnBlacklistBtn)
 
-    ; Viewer toggle (in-process debug window — no subprocess to track)
+    ; Viewer row (in-process within GUI — detect via window title)
     subY += 30
-    dg.AddText("x400 y" subY " w14", "")  ; spacer for alignment
-    viewerLabel := dg.AddText("x420 y" subY " w170 +0x100 c" gTheme_Palette.text, "Debug Viewer")
-    viewerToggleBtn := dg.AddButton("x600 y" (subY - 3) " w80 h22", "Toggle")
-    viewerToggleBtn.OnEvent("Click", (*) => Tray_ToggleViewer())
+    viewerOpen := _Dash_IsViewerOpen()
+    viewerDotColor := viewerOpen ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
+    dg.SetFont("s9 " viewerDotColor)
+    g_DashControls.viewerDot := dg.AddText("x400 y" subY " w14", dot)
+    Theme_MarkSemantic(g_DashControls.viewerDot)
+    g_DashControls.viewerDotColor := viewerDotColor
+    dg.SetFont("s9 cDefault")
+    g_DashControls.viewerText := dg.AddText("x414 y" subY " w246 +0x100", "Debug Viewer: " (viewerOpen ? "Open" : "Not open"))
+    g_DashControls.viewerBtn := dg.AddButton("x680 y" (subY - 4) " w65 h24", viewerOpen ? "Close" : "Open")
+    g_DashControls.viewerBtn.OnEvent("Click", _Dash_OnViewerBtn)
+    Theme_ApplyToControl(g_DashControls.viewerBtn, "Button", themeEntry)
 
     ; Info rows (read-only)
     subY += 28
@@ -316,6 +318,8 @@ ShowDashboardDialog() {
             Dash_SetTip(hTT, g_DashControls.installPFBtn, "Install Alt-Tabby to Program Files`nRequires administrator privileges")
 
         ; Statistics
+        if (cfg.StatsTrackingEnabled && IsSet(btnRefreshStats))
+            Dash_SetTip(hTT, btnRefreshStats, "Request fresh statistics from the GUI process")
         if (cfg.StatsTrackingEnabled && IsSet(btnMoreStats))
             Dash_SetTip(hTT, btnMoreStats, "View all lifetime, session, and derived statistics")
 
@@ -336,7 +340,7 @@ ShowDashboardDialog() {
             , "Editor subprocess for modifying config.ini settings")
         Dash_SetTip(hTT, g_DashControls.blacklistText
             , "Editor subprocess for managing the window filter blacklist")
-        Dash_SetTip(hTT, viewerLabel
+        Dash_SetTip(hTT, g_DashControls.viewerText
             , "Debug viewer — displays live window data from the`n"
             . "WindowList for troubleshooting")
         Dash_SetTip(hTT, ctlInstallInfo
@@ -359,6 +363,7 @@ ShowDashboardDialog() {
         Dash_SetTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
         Dash_SetTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
         Dash_SetTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
+        Dash_SetTip(hTT, g_DashControls.viewerBtn, _Dash_IsViewerOpen() ? "Close the debug viewer window" : "Open the debug viewer window")
         Dash_SetTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
     }
 
@@ -367,12 +372,12 @@ ShowDashboardDialog() {
     GUI_AntiFlashReveal(dg, true)
     btnClose.Focus()
 
-    ; Start background refresh in cool mode (no interaction yet)
-    SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_COOL)
+    ; Fill initial values
+    Dash_Refresh()
 
-    ; Query stats if tracking is enabled (reads stats.ini written by GUI heartbeat)
+    ; Query stats if tracking is enabled (async — response triggers Dash_Refresh)
     if (cfg.StatsTrackingEnabled)
-        SetTimer(Dash_QueryStats, -500)
+        Dash_QueryStats()
 
     ; Auto-check if stale (never checked, or >12h ago)
     _Dash_MaybeCheckForUpdates()
@@ -416,6 +421,16 @@ _Dash_OnBlacklistBtn(*) {
         LaunchBlacklistEditor()
 }
 
+_Dash_OnViewerBtn(*) {
+    Tray_ToggleViewer()
+    ; Delay refresh — viewer window takes a moment to appear/disappear
+    SetTimer(Dash_Refresh, -300)
+}
+
+_Dash_OnRefreshStats(*) {
+    Dash_QueryStats()
+}
+
 _Dash_OnStartMenuChk(*) {
     ToggleStartMenuShortcut()
 }
@@ -446,7 +461,7 @@ _Dash_OnUpdateBtn(*) {
         g_DashUpdateState.status := "checking"
         g_DashUpdateState.version := ""
         g_DashUpdateState.downloadUrl := ""
-        Dash_StartRefreshTimer()
+        Dash_Refresh()
         SetTimer(_Dash_CheckForUpdatesAsync, -1)
     }
 }
@@ -454,7 +469,6 @@ _Dash_OnUpdateBtn(*) {
 _Dash_OnClose(*) {
     global g_DashboardGui, g_DashboardShuttingDown, g_DashControls
     g_DashboardShuttingDown := true
-    SetTimer(_Dash_RefreshDynamic, 0)
     if (g_DashboardGui) {
         Theme_UntrackGui(g_DashboardGui)
         g_DashboardGui.Destroy()
@@ -464,10 +478,8 @@ _Dash_OnClose(*) {
 }
 
 ; ============================================================
-; Adaptive Refresh
+; Dashboard Refresh
 ; ============================================================
-; Always-on timer while dialog is open. Interactions boost to
-; hot (250ms), decays to warm (1s) then cool (5s).
 
 ; Update dashboard update-check state from external callers (e.g., setup_utils)
 Dash_SetUpdateState(status, version := "", url := "") {
@@ -476,190 +488,110 @@ Dash_SetUpdateState(status, version := "", url := "") {
     g_DashUpdateState.version := version
     g_DashUpdateState.downloadUrl := url
     if (g_DashboardGui)
-        Dash_StartRefreshTimer()
+        Dash_Refresh()
 }
 
-Dash_StartRefreshTimer() {
-    global g_DashboardGui, g_DashRefreshTick, DASH_INTERVAL_HOT
-    if (!g_DashboardGui)
+; Event-driven dashboard refresh — called from launcher event points
+; (subprocess launch/restart, editor open/close, settings toggle,
+; stats response, update check). No polling needed.
+Dash_Refresh() {
+    global g_DashboardGui, g_DashboardShuttingDown, g_DashControls
+    global g_GuiPID, g_PumpPID, g_ConfigEditorPID, g_BlacklistEditorPID
+    global gTheme_Palette, g_DashUpdateState, g_StatsCache, cfg
+
+    if (!g_DashboardGui || g_DashboardShuttingDown)
         return
-    g_DashRefreshTick := A_TickCount
-    SetTimer(_Dash_RefreshDynamic, DASH_INTERVAL_HOT)
-}
-
-_Dash_RefreshDynamic() {
-    global g_DashboardGui, g_DashControls, g_DashRefreshTick
-    global g_GuiPID, g_PumpPID, cfg
-    global g_ConfigEditorPID, g_BlacklistEditorPID
-    global g_DashUpdateState
-    global gTheme_Palette
-    global g_StatsCache
-    global DASH_INTERVAL_HOT, DASH_INTERVAL_WARM, DASH_INTERVAL_COOL
-    global DASH_TIER_HOT_MS, DASH_TIER_WARM_MS
-
-    ; Stop if dialog closed or shutting down
-    global g_DashboardShuttingDown
-    if (!g_DashboardGui || g_DashboardShuttingDown) {
-        SetTimer(_Dash_RefreshDynamic, 0)
+    if (!g_DashControls.HasOwnProp("pumpDotColor"))
         return
-    }
 
-    ; Adaptive interval: decay from hot → warm → cool
-    elapsed := A_TickCount - g_DashRefreshTick
-    if (elapsed < DASH_TIER_HOT_MS)
-        nextInterval := DASH_INTERVAL_HOT
-    else if (elapsed < DASH_TIER_WARM_MS)
-        nextInterval := DASH_INTERVAL_WARM
-    else
-        nextInterval := DASH_INTERVAL_COOL
-    SetTimer(_Dash_RefreshDynamic, nextInterval)
-
-    ; Re-query stats from disk during HOT/WARM intervals
-    if (cfg.StatsTrackingEnabled && nextInterval <= DASH_INTERVAL_WARM)
-        SetTimer(Dash_QueryStats, -1)
-
-    ; Build new state snapshot — compute all values before touching any controls
+    ; Query current state
     pumpRunning := LauncherUtils_IsRunning(g_PumpPID)
     guiRunning := LauncherUtils_IsRunning(g_GuiPID)
     configRunning := LauncherUtils_IsRunning(g_ConfigEditorPID)
     blacklistRunning := LauncherUtils_IsRunning(g_BlacklistEditorPID)
 
-    newState := Map(
-        "pumpDotColor", pumpRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger,
-        "pumpText", "Pump: " (pumpRunning ? "Running (PID " g_PumpPID ")" : "Not running"),
-        "pumpBtn", pumpRunning ? "Restart" : "Launch",
-        "guiDotColor", guiRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger,
-        "guiText", "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running"),
-        "guiBtn", guiRunning ? "Restart" : "Launch",
-        "configDotColor", configRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted,
-        "configText", "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running"),
-        "configBtn", configRunning ? "Restart" : "Launch",
-        "blacklistDotColor", blacklistRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted,
-        "blacklistText", "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running"),
-        "blacklistBtn", blacklistRunning ? "Restart" : "Launch",
-        "komorebiText", "Komorebi: " _Dash_GetKomorebiInfo(),
-        "chkStartMenu", Shortcut_StartMenuExists() ? 1 : 0,
-        "chkStartup", Shortcut_StartupExists() ? 1 : 0,
-        "chkAutoUpdate", cfg.SetupAutoUpdateCheck ? 1 : 0,
-        "updateText", _Dash_GetUpdateLabel(),
-        "updateBtn", _Dash_GetUpdateBtnLabel(),
-        "updateBtnEnabled", (g_DashUpdateState.status != "checking") ? 1 : 0
-    )
-
-    ; Add stats fields if tracking is enabled and controls exist
-    if (g_DashControls.HasOwnProp("statsSessionTime")) {
-        if (IsObject(g_StatsCache)) {
-            newState["statsSessionTime"] := Stats_FormatDuration(Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
-            newState["statsSessionAltTabs"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "SessionAltTabs"))
-            newState["statsSessionQuick"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "SessionQuickSwitches"))
-            newState["statsLifetimeTime"] := Stats_FormatDuration(Stats_MapGet(g_StatsCache, "TotalRunTimeSec") + Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
-            newState["statsLifetimeAltTabs"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "TotalAltTabs"))
-            newState["statsLifetimeQuick"] := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "TotalQuickSwitches"))
-        } else {
-            newState["statsSessionTime"] := "..."
-            newState["statsSessionAltTabs"] := "..."
-            newState["statsSessionQuick"] := "..."
-            newState["statsLifetimeTime"] := "..."
-            newState["statsLifetimeAltTabs"] := "..."
-            newState["statsLifetimeQuick"] := "..."
-        }
-    }
-
-    ; Diff against current control values — skip redraw if nothing changed
-    ; Guard: controls may have been destroyed between state build and diff
-    if (!g_DashControls.HasOwnProp("pumpDotColor"))
-        return
-    changed := false
-    if (g_DashControls.pumpDotColor != newState["pumpDotColor"]
-        || g_DashControls.pumpText.Value != newState["pumpText"]
-        || g_DashControls.pumpBtn.Text != newState["pumpBtn"]
-        || g_DashControls.guiDotColor != newState["guiDotColor"]
-        || g_DashControls.guiText.Value != newState["guiText"]
-        || g_DashControls.guiBtn.Text != newState["guiBtn"]
-        || g_DashControls.configDotColor != newState["configDotColor"]
-        || g_DashControls.configText.Value != newState["configText"]
-        || g_DashControls.configBtn.Text != newState["configBtn"]
-        || g_DashControls.blacklistDotColor != newState["blacklistDotColor"]
-        || g_DashControls.blacklistText.Value != newState["blacklistText"]
-        || g_DashControls.blacklistBtn.Text != newState["blacklistBtn"]
-        || g_DashControls.komorebiText.Value != newState["komorebiText"]
-        || g_DashControls.chkStartMenu.Value != newState["chkStartMenu"]
-        || g_DashControls.chkStartup.Value != newState["chkStartup"]
-        || g_DashControls.chkAutoUpdate.Value != newState["chkAutoUpdate"]
-        || g_DashControls.updateText.Value != newState["updateText"]
-        || g_DashControls.updateBtn.Text != newState["updateBtn"]
-        || g_DashControls.updateBtn.Enabled != newState["updateBtnEnabled"])
-        changed := true
-
-    ; Check stats controls for changes
-    if (!changed && g_DashControls.HasOwnProp("statsSessionTime") && newState.Has("statsSessionTime")) {
-        if (g_DashControls.statsSessionTime.Value != newState["statsSessionTime"]
-            || g_DashControls.statsSessionAltTabs.Value != newState["statsSessionAltTabs"]
-            || g_DashControls.statsSessionQuick.Value != newState["statsSessionQuick"]
-            || g_DashControls.statsLifetimeTime.Value != newState["statsLifetimeTime"]
-            || g_DashControls.statsLifetimeAltTabs.Value != newState["statsLifetimeAltTabs"]
-            || g_DashControls.statsLifetimeQuick.Value != newState["statsLifetimeQuick"])
-            changed := true
-    }
-
-    if (!changed)
-        return
-
-    ; Suppress repaints while updating controls
+    ; Suppress repaints during batch update
     hWnd := g_DashboardGui.Hwnd
     DllCall("user32\SendMessage", "ptr", hWnd, "uint", 0xB, "ptr", 0, "ptr", 0)  ; WM_SETREDRAW FALSE
 
-    ; Update dot colors via SetFont (only when changed to avoid flicker)
-    if (g_DashControls.pumpDotColor != newState["pumpDotColor"]) {
-        g_DashControls.pumpDot.SetFont(newState["pumpDotColor"])
-        g_DashControls.pumpDotColor := newState["pumpDotColor"]
+    ; Subprocess dots (color via SetFont, only when changed to avoid flicker)
+    newPumpDot := pumpRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger
+    if (g_DashControls.pumpDotColor != newPumpDot) {
+        g_DashControls.pumpDot.SetFont(newPumpDot)
+        g_DashControls.pumpDotColor := newPumpDot
     }
-    if (g_DashControls.guiDotColor != newState["guiDotColor"]) {
-        g_DashControls.guiDot.SetFont(newState["guiDotColor"])
-        g_DashControls.guiDotColor := newState["guiDotColor"]
+    newGuiDot := guiRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.danger
+    if (g_DashControls.guiDotColor != newGuiDot) {
+        g_DashControls.guiDot.SetFont(newGuiDot)
+        g_DashControls.guiDotColor := newGuiDot
     }
-    if (g_DashControls.configDotColor != newState["configDotColor"]) {
-        g_DashControls.configDot.SetFont(newState["configDotColor"])
-        g_DashControls.configDotColor := newState["configDotColor"]
+    newConfigDot := configRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
+    if (g_DashControls.configDotColor != newConfigDot) {
+        g_DashControls.configDot.SetFont(newConfigDot)
+        g_DashControls.configDotColor := newConfigDot
     }
-    if (g_DashControls.blacklistDotColor != newState["blacklistDotColor"]) {
-        g_DashControls.blacklistDot.SetFont(newState["blacklistDotColor"])
-        g_DashControls.blacklistDotColor := newState["blacklistDotColor"]
-    }
-
-    g_DashControls.pumpText.Value := newState["pumpText"]
-    g_DashControls.pumpBtn.Text := newState["pumpBtn"]
-    g_DashControls.guiText.Value := newState["guiText"]
-    g_DashControls.guiBtn.Text := newState["guiBtn"]
-    g_DashControls.configText.Value := newState["configText"]
-    g_DashControls.configBtn.Text := newState["configBtn"]
-    g_DashControls.blacklistText.Value := newState["blacklistText"]
-    g_DashControls.blacklistBtn.Text := newState["blacklistBtn"]
-    g_DashControls.komorebiText.Value := newState["komorebiText"]
-    g_DashControls.chkStartMenu.Value := newState["chkStartMenu"]
-    g_DashControls.chkStartup.Value := newState["chkStartup"]
-    g_DashControls.chkAutoUpdate.Value := newState["chkAutoUpdate"]
-    g_DashControls.updateText.Value := newState["updateText"]
-    g_DashControls.updateBtn.Text := newState["updateBtn"]
-    g_DashControls.updateBtn.Enabled := newState["updateBtnEnabled"]
-
-    ; Update stats controls
-    if (g_DashControls.HasOwnProp("statsSessionTime") && newState.Has("statsSessionTime")) {
-        g_DashControls.statsSessionTime.Value := newState["statsSessionTime"]
-        g_DashControls.statsSessionAltTabs.Value := newState["statsSessionAltTabs"]
-        g_DashControls.statsSessionQuick.Value := newState["statsSessionQuick"]
-        g_DashControls.statsLifetimeTime.Value := newState["statsLifetimeTime"]
-        g_DashControls.statsLifetimeAltTabs.Value := newState["statsLifetimeAltTabs"]
-        g_DashControls.statsLifetimeQuick.Value := newState["statsLifetimeQuick"]
+    newBlacklistDot := blacklistRunning ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
+    if (g_DashControls.blacklistDotColor != newBlacklistDot) {
+        g_DashControls.blacklistDot.SetFont(newBlacklistDot)
+        g_DashControls.blacklistDotColor := newBlacklistDot
     }
 
-    ; Update dynamic tooltips to match button state
+    ; Viewer dot (in-process within GUI — detect via window title)
+    viewerOpen := _Dash_IsViewerOpen()
+    newViewerDot := viewerOpen ? "c" gTheme_Palette.success : "c" gTheme_Palette.textMuted
+    if (g_DashControls.viewerDotColor != newViewerDot) {
+        g_DashControls.viewerDot.SetFont(newViewerDot)
+        g_DashControls.viewerDotColor := newViewerDot
+    }
+
+    ; Subprocess labels + buttons
+    g_DashControls.pumpText.Value := "Pump: " (pumpRunning ? "Running (PID " g_PumpPID ")" : "Not running")
+    g_DashControls.pumpBtn.Text := pumpRunning ? "Restart" : "Launch"
+    g_DashControls.guiText.Value := "GUI: " (guiRunning ? "Running (PID " g_GuiPID ")" : "Not running")
+    g_DashControls.guiBtn.Text := guiRunning ? "Restart" : "Launch"
+    g_DashControls.configText.Value := "Config Editor: " (configRunning ? "Running (PID " g_ConfigEditorPID ")" : "Not running")
+    g_DashControls.configBtn.Text := configRunning ? "Restart" : "Launch"
+    g_DashControls.blacklistText.Value := "Blacklist Editor: " (blacklistRunning ? "Running (PID " g_BlacklistEditorPID ")" : "Not running")
+    g_DashControls.blacklistBtn.Text := blacklistRunning ? "Restart" : "Launch"
+    g_DashControls.viewerText.Value := "Debug Viewer: " (viewerOpen ? "Open" : "Not open")
+    g_DashControls.viewerBtn.Text := viewerOpen ? "Close" : "Open"
+
+    ; Komorebi, checkboxes, update status
+    g_DashControls.komorebiText.Value := "Komorebi: " _Dash_GetKomorebiInfo()
+    g_DashControls.chkStartMenu.Value := Shortcut_StartMenuExists() ? 1 : 0
+    g_DashControls.chkStartup.Value := Shortcut_StartupExists() ? 1 : 0
+    g_DashControls.chkAutoUpdate.Value := cfg.SetupAutoUpdateCheck ? 1 : 0
+    g_DashControls.updateText.Value := _Dash_GetUpdateLabel()
+    g_DashControls.updateBtn.Text := _Dash_GetUpdateBtnLabel()
+    g_DashControls.updateBtn.Enabled := (g_DashUpdateState.status != "checking") ? 1 : 0
+
+    ; Stats (from g_StatsCache if available)
+    if (g_DashControls.HasOwnProp("statsSessionTime")) {
+        if (IsObject(g_StatsCache)) {
+            g_DashControls.statsSessionTime.Value := Stats_FormatDuration(Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
+            g_DashControls.statsSessionAltTabs.Value := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "SessionAltTabs"))
+            g_DashControls.statsSessionQuick.Value := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "SessionQuickSwitches"))
+            g_DashControls.statsLifetimeTime.Value := Stats_FormatDuration(Stats_MapGet(g_StatsCache, "TotalRunTimeSec") + Stats_MapGet(g_StatsCache, "SessionRunTimeSec"))
+            g_DashControls.statsLifetimeAltTabs.Value := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "TotalAltTabs"))
+            g_DashControls.statsLifetimeQuick.Value := Stats_FormatNumber(Stats_MapGet(g_StatsCache, "TotalQuickSwitches"))
+        } else {
+            g_DashControls.statsSessionTime.Value := "..."
+            g_DashControls.statsSessionAltTabs.Value := "..."
+            g_DashControls.statsSessionQuick.Value := "..."
+            g_DashControls.statsLifetimeTime.Value := "..."
+            g_DashControls.statsLifetimeAltTabs.Value := "..."
+            g_DashControls.statsLifetimeQuick.Value := "..."
+        }
+    }
+
+    ; Dynamic tooltips
     if (g_DashControls.HasOwnProp("hTooltip") && g_DashControls.hTooltip) {
         hTT := g_DashControls.hTooltip
         _Dash_UpdateTip(hTT, g_DashControls.pumpBtn, pumpRunning ? "Stop and restart the Enrichment Pump" : "Start the Enrichment Pump")
         _Dash_UpdateTip(hTT, g_DashControls.guiBtn, guiRunning ? "Stop and restart the GUI overlay" : "Start the GUI overlay")
         _Dash_UpdateTip(hTT, g_DashControls.configBtn, configRunning ? "Restart the configuration editor" : "Open the configuration editor")
         _Dash_UpdateTip(hTT, g_DashControls.blacklistBtn, blacklistRunning ? "Restart the blacklist editor" : "Open the blacklist editor")
+        _Dash_UpdateTip(hTT, g_DashControls.viewerBtn, viewerOpen ? "Close the debug viewer window" : "Open the debug viewer window")
         _Dash_UpdateTip(hTT, g_DashControls.updateBtn, _Dash_GetUpdateBtnTip())
     }
 
@@ -697,7 +629,7 @@ _Dash_MaybeCheckForUpdates() {
     ; Check if never checked or stale (>12h)
     if (g_LastUpdateCheckTick = 0 || (A_TickCount - g_LastUpdateCheckTick) >= DASH_UPDATE_STALE_MS) {
         g_DashUpdateState.status := "checking"
-        Dash_StartRefreshTimer()
+        Dash_Refresh()
         SetTimer(_Dash_CheckForUpdatesAsync, -1)
     }
 }
@@ -706,7 +638,7 @@ _Dash_CheckForUpdatesAsync() {
     global g_DashboardGui
     CheckForUpdates(false, false)
     if (g_DashboardGui)
-        Dash_StartRefreshTimer()
+        Dash_Refresh()
 }
 
 ; ============================================================
@@ -837,6 +769,16 @@ _Dash_GetAdminTaskInfo() {
         return "Active (points to: " taskPath ")"
 
     return "Active (unknown target)"
+}
+
+_Dash_IsViewerOpen() {
+    global g_GuiPID
+    if (!LauncherUtils_IsRunning(g_GuiPID))
+        return false
+    DetectHiddenWindows(false)
+    result := WinExist("WindowList Viewer ahk_pid " g_GuiPID) ? true : false
+    DetectHiddenWindows(true)
+    return result
 }
 
 _Dash_GetKomorebiInfo() {

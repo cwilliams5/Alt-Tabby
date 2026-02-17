@@ -873,6 +873,7 @@ global TABBY_CMD_TOGGLE_VIEWER := 3   ; Launcher -> GUI: toggle debug viewer win
 global TABBY_CMD_RELOAD_BLACKLIST := 4  ; Blacklist editor -> launcher -> GUI: reload blacklist
 global TABBY_CMD_QUERY_STATS := 5      ; Launcher -> GUI: request stats snapshot
 global TABBY_CMD_STATS_RESPONSE := 6   ; GUI -> launcher: stats snapshot JSON payload
+global TABBY_CMD_EDITOR_CLOSED := 7   ; Editor -> launcher: editor process closing (dashboard refresh)
 
 ; Shared path/delimiter constants
 global TEMP_ADMIN_TOGGLE_LOCK := A_Temp "\alttabby_admin_toggle.lock"

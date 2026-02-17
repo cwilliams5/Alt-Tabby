@@ -151,9 +151,8 @@ ShowStatsDialog() {
 
     g_StatsGui := sg
 
-    ; Populate from cache (may be stale or empty), then schedule async refresh
-    _StatsDialog_UpdateValues()
-    SetTimer(_StatsDialog_UpdateValues, -200)
+    ; Populate from cache (may be stale or empty — async response triggers StatsDialog_UpdateValues)
+    StatsDialog_UpdateValues()
 
     sg.Show("w575")
     GUI_AntiFlashReveal(sg, true)
@@ -175,13 +174,12 @@ _StatsDialog_Refresh() {
         return
     if (LauncherUtils_IsRunning(g_GuiPID))
         Dash_QueryStats()
-    ; Async — update from cache now, then refresh after response arrives
-    _StatsDialog_UpdateValues()
-    SetTimer(_StatsDialog_UpdateValues, -200)
+    ; Update from cache now — async response triggers StatsDialog_UpdateValues via launcher_main
+    StatsDialog_UpdateValues()
 }
 
 ; Update all value controls in-place from current g_StatsCache
-_StatsDialog_UpdateValues() {
+StatsDialog_UpdateValues() {
     global g_StatsControls, g_StatsCache
 
     cache := IsObject(g_StatsCache) ? g_StatsCache : Map()

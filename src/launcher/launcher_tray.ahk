@@ -312,12 +312,12 @@ _Tray_OnUpdateInstall() {
 RestartPump() {
     global g_PumpPID, TIMING_SUBPROCESS_LAUNCH
     LauncherUtils_Restart("pump", &g_PumpPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
-    Dash_StartRefreshTimer()
+    Dash_Refresh()
 }
 
 RestartGui() {
     Launcher_RestartGui()
-    Dash_StartRefreshTimer()
+    Dash_Refresh()
 }
 
 _ExitAll() {
@@ -337,7 +337,7 @@ LaunchConfigEditor(forceNative := false) {
     if (forceNative || cfg.LauncherForceNativeEditor)
         args .= " --force-native"
     Run(BuildSelfCommand(args), , , &g_ConfigEditorPID)
-    Dash_StartRefreshTimer()
+    Dash_Refresh()
 }
 
 LaunchBlacklistEditor() {
@@ -348,7 +348,7 @@ LaunchBlacklistEditor() {
         return
     }
     Run(BuildSelfCommand("--blacklist --launcher-hwnd=" A_ScriptHwnd), , , &g_BlacklistEditorPID)
-    Dash_StartRefreshTimer()
+    Dash_Refresh()
 }
 
 _LaunchConfigRegistryEditor() {
@@ -662,7 +662,7 @@ ToggleAutoUpdate() {
         return
     }
     cfg.SetupAutoUpdateCheck := newValue
-    Dash_StartRefreshTimer()
+    Dash_Refresh()
     ToolTip(newValue ? "Auto-update enabled" : "Auto-update disabled")
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)
 }

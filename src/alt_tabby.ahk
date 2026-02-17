@@ -200,6 +200,7 @@ if (g_AltTabbyMode = "config") {
     }
     ; Theme_Init is called inside ConfigEditor_Run after ConfigLoader_Init
     ConfigEditor_Run(launcherHwnd, forceNative)
+    _NotifyEditorClosed(launcherHwnd)
     ExitApp()
 }
 
@@ -215,7 +216,27 @@ if (g_AltTabbyMode = "blacklist") {
     ConfigLoader_Init()
     Theme_Init()
     BlacklistEditor_Run(launcherHwnd)
+    _NotifyEditorClosed(launcherHwnd)
     ExitApp()
+}
+
+; Notify launcher that an editor process is closing (for dashboard refresh).
+; Uses DllCall to bypass DetectHiddenWindows (launcher's message window is hidden).
+_NotifyEditorClosed(launcherHwnd) {
+    global TABBY_CMD_EDITOR_CLOSED, WM_COPYDATA
+    if (!launcherHwnd || !DllCall("user32\IsWindow", "ptr", launcherHwnd, "int"))
+        return
+    cds := Buffer(A_PtrSize * 3, 0)
+    NumPut("uptr", TABBY_CMD_EDITOR_CLOSED, cds, 0)
+    DllCall("user32\SendMessageTimeoutW"
+        , "ptr", launcherHwnd
+        , "uint", WM_COPYDATA
+        , "ptr", A_ScriptHwnd
+        , "ptr", cds.Ptr
+        , "uint", 0x0002   ; SMTO_ABORTIFHUNG
+        , "uint", 3000
+        , "ptr*", &_ := 0
+        , "ptr")
 }
 
 ; ============================================================
