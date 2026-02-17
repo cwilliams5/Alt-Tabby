@@ -852,11 +852,9 @@ global gConfigRegistry := [
     {type: "subsection", section: "Store", name: "Producer Toggles",
      desc: "WinEventHook and MRU are always enabled (core). These control optional producers"},
 
-    {s: "Store", k: "UseKomorebiSub", g: "UseKomorebiSub", t: "bool", default: true,
-     d: "Komorebi subscription-based integration (preferred, event-driven)"},
-
-    {s: "Store", k: "UseKomorebiLite", g: "UseKomorebiLite", t: "bool", default: false,
-     d: "Komorebi polling-based fallback (use if subscription fails)"},
+    {s: "Store", k: "KomorebiIntegration", g: "KomorebiIntegration", t: "enum",
+     default: "Always", options: ["Always", "Polling", "Never"],
+     d: "Komorebi integration mode. Always = subscription with polling fallback and auto-retry (recommended). Polling = periodic state polling only. Never = disabled."},
 
     {s: "Store", k: "AdditionalWindowInformation", g: "AdditionalWindowInformation", t: "enum",
      default: "Always", options: ["Always", "NonBlocking", "ProcessOnly", "Never"],

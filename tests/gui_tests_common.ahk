@@ -101,6 +101,7 @@ global cfg := {
     DiagLauncherLog: false,
     DiagIPCLog: false,
     AdditionalWindowInformation: "Never",
+    KomorebiIntegration: "Never",
     KomorebicExe: ""
 }
 

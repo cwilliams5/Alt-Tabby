@@ -150,16 +150,14 @@ _GUI_Main_Init() {
     gStats_LogInfo := _GUI_StatsLogInfo
     Stats_Init()
 
-    ; Komorebi is optional - graceful if not installed.
-    ; KomorebiSub and KomorebiLite are mutually exclusive — running both causes
-    ; KomorebiLite's 1s polling to overwrite KomorebiSub's real-time updates
-    ; with stale data. KomorebiSub has its own InitialPoll for priming state.
-    if (cfg.UseKomorebiSub) {
+    ; Komorebi is optional — graceful if not installed.
+    kMode := cfg.KomorebiIntegration
+    if (kMode = "Always") {
         ksubOk := KomorebiSub_Init()
         FR_Record(FR_EV_PRODUCER_INIT, 1, ksubOk ? 1 : 0)
         if (!ksubOk && cfg.DiagEventLog)
             GUI_LogEvent("INIT: KomorebiSub failed to start")
-    } else if (cfg.UseKomorebiLite) {
+    } else if (kMode = "Polling") {
         KomorebiLite_Init()
     }
 

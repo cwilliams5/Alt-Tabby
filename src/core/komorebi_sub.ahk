@@ -53,6 +53,8 @@ global _KSub_ReadBufferLen := 0    ; Tracked length to avoid O(n) StrLen calls
 global _KSub_LastWorkspaceName := ""
 global _KSub_LastWsUpdateTick := 0         ; Tick when workspace was last set (for derivation cooldown)
 global _KSub_FallbackMode := false
+global _KSub_LastPromotionTick := 0
+global _KSub_PromotionIntervalMs := 30000  ; 30s between subscription promotion attempts
 
 ; Cache of window workspace assignments (persists even when windows leave komorebi)
 ; Each entry is { wsName: "name", tick: timestamp } for staleness detection
@@ -95,9 +97,7 @@ KomorebiSub_Init() {
     _KSub_WorkspaceCache := Map()
 
     if (!_KomorebiSub_IsAvailable()) {
-        ; Fall back to polling mode
-        _KSub_FallbackMode := true
-        SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
+        ; komorebic.exe not found — nothing to retry, give up until restart
         return false
     }
 
@@ -1253,8 +1253,32 @@ _KSub_GetWindowPid(hwnd) {
 }
 
 ; Fallback polling mode (when subscription fails)
+; Also handles subscription promotion retry every ~30s
 _KomorebiSub_PollFallback() {
-    global cfg
+    global cfg, _KSub_LastPromotionTick, _KSub_PromotionIntervalMs, _KSub_FallbackMode
+
+    ; Periodically try to promote back to subscription
+    if ((A_TickCount - _KSub_LastPromotionTick) >= _KSub_PromotionIntervalMs) {
+        _KSub_LastPromotionTick := A_TickCount
+        if (!_KomorebiSub_IsAvailable()) {
+            ; komorebic.exe removed — give up
+            SetTimer(_KomorebiSub_PollFallback, 0)
+            _KSub_FallbackMode := false
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("Promotion: komorebic unavailable, stopping fallback")
+            return
+        }
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("Promotion: attempting subscription restart")
+        if (_KomorebiSub_Start()) {
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("Promotion: subscription restored")
+            return
+        }
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("Promotion: failed, staying in fallback")
+    }
+
     if (!_KomorebiSub_IsAvailable())
         return
 
