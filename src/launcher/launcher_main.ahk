@@ -226,17 +226,20 @@ Launcher_StartSubprocesses() {
     ; Launch GUI (store runs in-process within GUI)
     LaunchGui()
 
-    ; In testing mode, write our HWND to temp file so lifecycle tests can send WM_COPYDATA
+    ; In testing mode, write our HWND + child PIDs to temp file so lifecycle tests
+    ; can send WM_COPYDATA and identify which child is GUI vs pump.
     ; (test processes are launched with CREATE_NO_WINDOW which hides AHK's message window
     ; from WinGetList/WinGetID, so tests can't discover the HWND externally)
     ; Filename derived from exe name so renamed copies (e.g., AltTabby_lifecycle.exe) don't collide
     if (g_TestingMode) {
+        global g_GuiPID, g_PumpPID
         exeName := ""
         SplitPath(A_ScriptFullPath, &exeName)
         exeBase := RegExReplace(exeName, "\.exe$", "")
         hwndPath := A_Temp "\" StrLower(exeBase) "_hwnd.txt"
         try FileDelete(hwndPath)
-        try FileAppend(A_ScriptHwnd, hwndPath)  ; lint-ignore: fileappend-encoding
+        ; Line 1: launcher HWND, Line 2: gui PID, Line 3: pump PID
+        try FileAppend(A_ScriptHwnd "`n" g_GuiPID "`n" g_PumpPID, hwndPath)  ; lint-ignore: fileappend-encoding
     }
 
     ; Hide splash after duration/loops complete
@@ -291,7 +294,7 @@ _Launcher_OnExit(exitReason, exitCode) {
 ; Config editor sends RESTART_ALL, blacklist editor sends RELOAD_BLACKLIST
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     global TABBY_CMD_RESTART_ALL, TABBY_CMD_RELOAD_BLACKLIST, cfg
-    global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED
+    global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED, TABBY_CMD_PUMP_FAILED
     global g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
     global g_StatsCache
 
@@ -334,6 +337,14 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
     if (dwData = TABBY_CMD_EDITOR_CLOSED) {
         ; Editor process is about to exit — delay refresh so PID is gone
         SetTimer(Dash_Refresh, -500)
+        return 1
+    }
+
+    if (dwData = TABBY_CMD_PUMP_FAILED) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("IPC: Received PUMP_FAILED from GUI, restarting pump")
+        ; Kill hung pump if still alive, restart, then notify GUI to reconnect
+        SetTimer(_Launcher_RestartPumpAndNotify, -50)
         return 1
     }
 
@@ -886,6 +897,14 @@ LaunchPump() {
     if (!cfg.UseEnrichmentPump)
         return
     LauncherUtils_Launch("pump", &g_PumpPID, Launcher_Log)
+}
+
+; Auto-restart pump after GUI reports crash or hang, then notify GUI to reconnect
+_Launcher_RestartPumpAndNotify() {
+    global g_PumpPID, TIMING_SUBPROCESS_LAUNCH, TABBY_CMD_PUMP_RESTARTED
+    LauncherUtils_Restart("pump", &g_PumpPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    Launcher_RelayToGui(TABBY_CMD_PUMP_RESTARTED)
+    Dash_Refresh()
 }
 
 LaunchGui() {

@@ -874,6 +874,8 @@ global TABBY_CMD_RELOAD_BLACKLIST := 4  ; Blacklist editor -> launcher -> GUI: r
 global TABBY_CMD_QUERY_STATS := 5      ; Launcher -> GUI: request stats snapshot
 global TABBY_CMD_STATS_RESPONSE := 6   ; GUI -> launcher: stats snapshot JSON payload
 global TABBY_CMD_EDITOR_CLOSED := 7   ; Editor -> launcher: editor process closing (dashboard refresh)
+global TABBY_CMD_PUMP_FAILED := 8     ; GUI -> launcher: pump crashed or hung, please restart
+global TABBY_CMD_PUMP_RESTARTED := 9  ; Launcher -> GUI: pump restarted, reconnect
 
 ; Shared path/delimiter constants
 global TEMP_ADMIN_TOGGLE_LOCK := A_Temp "\alttabby_admin_toggle.lock"

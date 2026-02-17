@@ -12,6 +12,9 @@ SendMode("Event")
 ; Alt-Tabby GUI - Main entry point
 ; This file orchestrates all GUI components by including sub-modules
 
+; Declare before arg parsing so the default isn't clobbered by a later file-scope := 0
+global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (0 = no launcher)
+
 ; Parse command-line arguments (only when running as GUI, not when included for other modes)
 ; Use try to handle standalone execution where g_AltTabbyMode may not exist
 try {
@@ -87,7 +90,7 @@ global _gGUI_ScanInProgress := false  ; Re-entrancy guard for full WinEnum scan
 global HOUSEKEEPING_INTERVAL_MS := 300000  ; 5 minutes — cache pruning, log rotation, stats flush
 global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints during ACTIVE
 
-global gGUI_LauncherHwnd := 0  ; Launcher HWND for WM_COPYDATA control signals (0 = no launcher)
+; gGUI_LauncherHwnd declared+defaulted before arg parsing (line 14), assigned there if --launcher-hwnd= present
 
 ; ========================= INITIALIZATION =========================
 ; Sub-modules (gui_overlay, gui_state, gui_pump, etc.) are included
@@ -479,7 +482,7 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
 
 _GUI_OnCopyData(wParam, lParam, msg, hwnd) {
     Critical "On"
-    global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_RELOAD_BLACKLIST
+    global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_RELOAD_BLACKLIST, TABBY_CMD_PUMP_RESTARTED
     dwData := NumGet(lParam, 0, "uptr")
     if (dwData = TABBY_CMD_TOGGLE_VIEWER) {
         Viewer_Toggle()
@@ -489,6 +492,11 @@ _GUI_OnCopyData(wParam, lParam, msg, hwnd) {
     if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
         Blacklist_Init()
         WL_PurgeBlacklisted()
+        Critical "Off"
+        return true
+    }
+    if (dwData = TABBY_CMD_PUMP_RESTARTED) {
+        GUIPump_Reconnect()
         Critical "Off"
         return true
     }

@@ -871,6 +871,10 @@ global gConfigRegistry := [
      min: 10000, max: 3600000,
      d: "Interval (ms) for pump to prune HICONs of closed windows"},
 
+    {s: "Store", k: "PumpHangTimeoutMs", g: "PumpHangTimeoutMs", t: "int", default: 15000,
+     min: 5000, max: 60000,
+     d: "Time (ms) without a pump response before declaring it hung and restarting"},
+
     {type: "subsection", section: "Store", name: "Window Filtering",
      desc: "Filter windows like native Alt-Tab (skip tool windows, etc.) and apply blacklist"},
 

@@ -37,7 +37,9 @@ RunLiveTests_Lifecycle() {
     FileCopy(compiledExePath, testExe, true)
 
     ; Write config.ini with wizard skip (no store pipe needed — store is in-process)
-    configContent := "[Setup]`nFirstRunCompleted=true`n"
+    ; Enable pump diagnostics so we can see what GUIPump_Init does
+    ; Use unique pipe name to avoid collision with execution test's AltTabby.exe (both default to tabby_pump_v1)
+    configContent := "[Setup]`nFirstRunCompleted=true`n[Diagnostics]`nPumpLog=true`nLauncherLog=true`n[IPC]`nPumpPipeName=tabby_pump_lifecycle`n"
     FileAppend(configContent, testDir "\config.ini", "UTF-8")
 
     ; Launch
@@ -69,18 +71,27 @@ RunLiveTests_Lifecycle() {
     Log("PASS: " processCount " processes spawned (launcher + gui" (processCount > 2 ? " + pump" : "") ")")
     TestPassed++
 
-    ; Read launcher HWND from temp file (launcher writes it in --testing-mode
-    ; because CREATE_NO_WINDOW hides AHK's message window from WinGetList)
+    ; Read launcher HWND + child PIDs from temp file (launcher writes them in
+    ; --testing-mode because CREATE_NO_WINDOW hides AHK's message window from
+    ; WinGetList; child PIDs needed because GUI and pump are same exe)
+    ; Format: line 1 = launcher HWND, line 2 = gui PID, line 3 = pump PID
     launcherHwnd := 0
+    knownGuiPid := 0
+    knownPumpPid := 0
     hwndStart := A_TickCount
     loop {
         if ((A_TickCount - hwndStart) >= 5000)
             break
         if (FileExist(LIFECYCLE_HWND_FILE)) {
             try {
-                hwndStr := Trim(FileRead(LIFECYCLE_HWND_FILE), " `t`r`n")
-                if (hwndStr != "")
-                    launcherHwnd := Integer(hwndStr)
+                content := Trim(FileRead(LIFECYCLE_HWND_FILE), " `t`r`n")
+                lines := StrSplit(content, "`n", "`r")
+                if (lines.Length >= 1 && lines[1] != "")
+                    launcherHwnd := Integer(Trim(lines[1]))
+                if (lines.Length >= 2 && lines[2] != "" && lines[2] != "0")
+                    knownGuiPid := Integer(Trim(lines[2]))
+                if (lines.Length >= 3 && lines[3] != "" && lines[3] != "0")
+                    knownPumpPid := Integer(Trim(lines[3]))
             }
         }
         if (launcherHwnd)
@@ -93,17 +104,156 @@ RunLiveTests_Lifecycle() {
         _Lifecycle_Cleanup()
         return
     }
+    if (knownGuiPid)
+        Log("Launcher reported: gui PID=" knownGuiPid ", pump PID=" knownPumpPid)
 
-    ; Give GUI time to initialize (no store pipe to wait for — poll process count)
-    Sleep(1000)
+    ; Wait for GUI to connect to pump (GUI logs "INIT: Connected" when pipe connect succeeds).
+    ; Can't just Sleep — GUI init takes 2-5s depending on WinEnum scope.
+    pumpLogPath := A_Temp "\tabby_pump.log"
+    connectStart := A_TickCount
+    guiConnected := false
+    while ((A_TickCount - connectStart) < 8000) {
+        if (FileExist(pumpLogPath)) {
+            try {
+                logContent := FileRead(pumpLogPath)
+                if (InStr(logContent, "Connected to EnrichmentPump"))
+                    guiConnected := true
+            }
+        }
+        if (guiConnected)
+            break
+        Sleep(100)
+    }
+    if (!guiConnected)
+        Log("WARNING: GUI did not log pump connection within 8s (pump test may fail)")
 
     ; ============================================================
-    ; Test 1: RESTART_ALL signal (config editor path)
+    ; Test 1: Pump kill → auto-restart (end-to-end)
+    ; ============================================================
+    ; Tests the full cycle: kill pump → GUI detects pipe write failure
+    ; → GUI sends PUMP_FAILED → launcher restarts pump → new PID appears.
+    ; This is the real-world scenario (user kills pump, or it crashes).
+    ; Kill immediately after GUI connects — initial WinEnum queue is still
+    ; draining so collection timer is active and will hit pipe write failure.
+    Log("`n--- Pump Kill Auto-Restart Test ---")
+
+    ; Use authoritative pump PID from launcher (GUI and pump are same exe,
+    ; can't distinguish by process name alone)
+    pumpPid := knownPumpPid
+    if (!pumpPid || !ProcessExist(pumpPid)) {
+        Log("SKIP: Pump not running, cannot test pump kill auto-restart")
+    } else {
+        Log("Pump PID before kill: " pumpPid " (from launcher)")
+        ProcessClose(pumpPid)
+
+        ; Verify kill actually worked
+        Sleep(100)
+        if (ProcessExist(pumpPid))
+            Log("WARNING: Pump process " pumpPid " still alive after ProcessClose!")
+        else
+            Log("Pump process " pumpPid " confirmed dead")
+
+        newPumpPid := 0
+        killRestartStart := A_TickCount
+        while ((A_TickCount - killRestartStart) < 10000) {
+            candidate := _Lifecycle_FindNonGuiChild(launcherPid, knownGuiPid)
+            if (candidate && candidate != pumpPid) {
+                newPumpPid := candidate
+                break
+            }
+            Sleep(100)
+        }
+
+        if (newPumpPid) {
+            Log("PASS: Pump auto-restarted after kill (old=" pumpPid ", new=" newPumpPid ") in " (A_TickCount - killRestartStart) "ms")
+            TestPassed++
+        } else {
+            Log("FAIL: Pump did not auto-restart within 10s after kill")
+            TestErrors++
+            ; Dump diagnostic logs for debugging
+            pumpLogPath := A_Temp "\tabby_pump.log"
+            launcherLogPath := A_Temp "\tabby_launcher.log"
+            if (FileExist(pumpLogPath)) {
+                try {
+                    pumpLog := FileRead(pumpLogPath)
+                    Log("--- Pump Log (last 2000 chars) ---")
+                    Log(SubStr(pumpLog, -2000))
+                }
+            } else {
+                Log("(no pump log found at " pumpLogPath ")")
+            }
+            if (FileExist(launcherLogPath)) {
+                try {
+                    launcherLog := FileRead(launcherLogPath)
+                    Log("--- Launcher Log (last 2000 chars) ---")
+                    Log(SubStr(launcherLog, -2000))
+                }
+            } else {
+                Log("(no launcher log found at " launcherLogPath ")")
+            }
+        }
+    }
+
+    ; ============================================================
+    ; Test 2: PUMP_FAILED signal triggers pump restart
+    ; ============================================================
+    ; Tests the launcher-side contract: when GUI reports pump failure,
+    ; launcher kills the old pump and starts a new one.
+    ; (GUI-side detection is internal — pipe write failure or response
+    ; timeout both call _GUIPump_HandleFailure which sends this signal.)
+    Log("`n--- PUMP_FAILED Signal Test ---")
+
+    ; Let system stabilize after pump kill auto-restart
+    Sleep(1500)
+
+    ; Find current pump PID (not knownPumpPid which is stale after Test 1 restarted it)
+    ; Use knownGuiPid to exclude the GUI — it hasn't changed
+    pumpPid := _Lifecycle_FindNonGuiChild(launcherPid, knownGuiPid)
+    if (!pumpPid) {
+        Log("SKIP: Pump not running, cannot test PUMP_FAILED signal")
+    } else {
+        Log("Pump PID before PUMP_FAILED signal: " pumpPid)
+        response := _Lifecycle_SendCommand(launcherHwnd, 8)  ; TABBY_CMD_PUMP_FAILED = 8
+        if (response = 1) {
+            Log("PASS: Launcher acknowledged PUMP_FAILED")
+            TestPassed++
+
+            ; Verify pump process restarted (new PID)
+            newPumpPid := 0
+            signalRestartStart := A_TickCount
+            while ((A_TickCount - signalRestartStart) < 10000) {
+                candidate := _Lifecycle_FindNonGuiChild(launcherPid, knownGuiPid)
+                if (candidate && candidate != pumpPid) {
+                    newPumpPid := candidate
+                    break
+                }
+                Sleep(100)
+            }
+
+            if (newPumpPid) {
+                Log("PASS: Pump restarted via PUMP_FAILED signal (old=" pumpPid ", new=" newPumpPid ") in " (A_TickCount - signalRestartStart) "ms")
+                TestPassed++
+            } else {
+                Log("FAIL: Pump did not restart within 10s after PUMP_FAILED signal")
+                TestErrors++
+            }
+        } else {
+            Log("FAIL: PUMP_FAILED signal not acknowledged (response=" response ")")
+            TestErrors++
+        }
+    }
+
+    ; ============================================================
+    ; Test 3: RESTART_ALL signal (config editor path)
     ; ============================================================
     Log("`n--- RESTART_ALL Signal Test ---")
 
-    guiPidBefore := _Lifecycle_FindGuiPid(launcherPid)
-    if (!guiPidBefore) {
+    ; Let system stabilize after PUMP_FAILED test
+    Sleep(1500)
+
+    ; Use authoritative GUI PID from launcher (knownGuiPid is still valid — only pump changed)
+    guiPidBefore := knownGuiPid
+    if (!guiPidBefore || !ProcessExist(guiPidBefore)) {
         Log("SKIP: Could not find GUI process for RESTART_ALL test")
     } else {
         response := _Lifecycle_SendCommand(launcherHwnd, 2)  ; RESTART_ALL
@@ -137,7 +287,7 @@ RunLiveTests_Lifecycle() {
     }
 
     ; ============================================================
-    ; Test 2: Ordered WM_CLOSE shutdown (GUI exits, then launcher)
+    ; Test 4: Ordered WM_CLOSE shutdown (GUI exits, then launcher)
     ; ============================================================
     Log("`n--- Ordered Shutdown Test ---")
 
@@ -238,6 +388,34 @@ _Lifecycle_FindGuiPid(launcherPid) {
     ; Return first child that isn't the launcher itself
     for _, child in children {
         if (child.pid != launcherPid)
+            return child.pid
+    }
+    return 0
+}
+
+; Helper: find pump PID (child of launcher that isn't the GUI)
+; CAUTION: _Lifecycle_FindGuiPid returns the first child which may be the pump
+; (launcher launches pump before GUI). Use _Lifecycle_FindNonGuiChild with a
+; known GUI PID for reliable pump identification.
+_Lifecycle_FindPumpPid(launcherPid) {
+    global LIFECYCLE_EXE_NAME
+    guiPid := _Lifecycle_FindGuiPid(launcherPid)
+    children := _Test_FindChildProcesses(launcherPid, LIFECYCLE_EXE_NAME)
+    for _, child in children {
+        if (child.pid != launcherPid && child.pid != guiPid)
+            return child.pid
+    }
+    return 0
+}
+
+; Helper: find child of launcher that is NOT the known GUI PID
+; Used when the launcher writes authoritative PIDs to the HWND file
+; (GUI and pump are the same exe — can't distinguish by process name)
+_Lifecycle_FindNonGuiChild(launcherPid, guiPid) {
+    global LIFECYCLE_EXE_NAME
+    children := _Test_FindChildProcesses(launcherPid, LIFECYCLE_EXE_NAME)
+    for _, child in children {
+        if (child.pid != launcherPid && child.pid != guiPid)
             return child.pid
     }
     return 0

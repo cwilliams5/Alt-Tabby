@@ -31,6 +31,8 @@ global _Pump_FailedPidCacheTTL := 60000
 global _Pump_IconPruneIntervalMs := 300000  ; Default 5min, overridden from config
 global _Pump_LastPruneTick := 0
 global _Pump_DiagEnabled := false
+global _Pump_GuiHwnd := 0             ; GUI process hwnd (for PostMessage wake on response)
+global _Pump_HelloAcked := false       ; Whether we've sent our pumpHwnd back to GUI
 
 ; ========================= INIT =========================
 
@@ -114,8 +116,16 @@ _Pump_OnPipeWake(wParam, lParam, msg, hwnd) {
 ; ========================= ENRICHMENT =========================
 
 _Pump_HandleEnrich(server, hPipe, parsed) {
+    global _Pump_GuiHwnd, _Pump_HelloAcked
+
     if (!parsed.Has("hwnds"))
         return
+
+    ; Extract GUI hwnd from hello (first request includes guiHwnd for PostMessage wake)
+    if (!_Pump_GuiHwnd && parsed.Has("guiHwnd")) {
+        _Pump_GuiHwnd := parsed["guiHwnd"] + 0
+        _Pump_Log("HELLO: Received guiHwnd=" _Pump_GuiHwnd)
+    }
 
     hwnds := parsed["hwnds"]
     if (!IsObject(hwnds) || hwnds.Length = 0)
@@ -173,15 +183,20 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
     _Pump_Log("HandleEnrich: " hwnds.Length " hwnds requested, " results.Count " results, " iconResultCount " with icons")
 
     response := Map("type", IPC_MSG_ENRICHMENT, "results", results)
+
+    ; Include our hwnd on first response so GUI can PostMessage wake us
+    if (_Pump_GuiHwnd && !_Pump_HelloAcked) {
+        response["pumpHwnd"] := A_ScriptHwnd
+        _Pump_HelloAcked := true
+        _Pump_Log("HELLO: Sending pumpHwnd=" A_ScriptHwnd " to GUI")
+    }
+
     responseJson := JSON.Dump(response)
 
     _Pump_Log("Response JSON length: " StrLen(responseJson))
 
-    ; Send response with wake
-    global IPC_WM_PIPE_WAKE
-    wakeHwnd := 0
-    ; MainProcess sets wakeHwnd via hello — for now, send without wake
-    IPC_PipeServer_Send(server, hPipe, responseJson, wakeHwnd)
+    ; Send response with PostMessage wake to GUI (if hwnd known)
+    IPC_PipeServer_Send(server, hPipe, responseJson, _Pump_GuiHwnd)
 }
 
 ; ========================= ICON RESOLUTION =========================

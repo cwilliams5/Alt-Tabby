@@ -481,6 +481,7 @@ WinEventHook and MRU are always enabled (core). These control optional producers
 | `UseIconPump` | bool | `true` | - | Resolve window icons in background |
 | `UseProcPump` | bool | `true` | - | Resolve process names in background |
 | `PumpIconPruneIntervalMs` | int | `300000` | `10000` - `3600000` | Interval (ms) for pump to prune HICONs of closed windows |
+| `PumpHangTimeoutMs` | int | `15000` | `5000` - `60000` | Time (ms) without a pump response before declaring it hung and restarting |
 
 ### Window Filtering
 
@@ -611,4 +612,4 @@ Debug viewer GUI options
 
 ---
 
-*Generated on 2026-02-16 with 258 total settings.*
+*Generated on 2026-02-16 with 259 total settings.*

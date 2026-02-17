@@ -882,6 +882,7 @@ _WS_EnqueueIfNeeded(row) {
                 gWS_IconQueue.Push(hwnd)
                 gWS_IconQueueDedup[hwnd] := true
                 try IconPump_EnsureRunning()  ; Wake timer from idle pause
+                try GUIPump_EnsureRunning()   ; Wake pump collection timer from idle pause
             }
         }
     }
@@ -893,6 +894,7 @@ _WS_EnqueueIfNeeded(row) {
             gWS_PidQueue.Push(pid)
             gWS_PidQueueDedup[pid] := true
             try ProcPump_EnsureRunning()  ; Wake timer from idle pause
+            try GUIPump_EnsureRunning()   ; Wake pump collection timer from idle pause
         }
     }
     Critical "Off"
@@ -930,6 +932,7 @@ WL_EnqueueIconRefresh(hwnd) {
         gWS_IconQueue.Push(hwnd)
         gWS_IconQueueDedup[hwnd] := true
         try IconPump_EnsureRunning()  ; Wake timer from idle pause
+        try GUIPump_EnsureRunning()   ; Wake pump collection timer from idle pause
     }
     Critical "Off"
     return true
