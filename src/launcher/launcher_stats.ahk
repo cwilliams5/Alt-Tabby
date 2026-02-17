@@ -19,7 +19,7 @@ ShowStatsDialog() {
         return
     }
 
-    ; Query fresh stats if GUI is running (stats run in-process)
+    ; Query fresh stats if GUI is running (async — response arrives via OnMessage)
     if (LauncherUtils_IsRunning(g_GuiPID))
         Dash_QueryStats()
 
@@ -151,8 +151,9 @@ ShowStatsDialog() {
 
     g_StatsGui := sg
 
-    ; Populate values before showing
+    ; Populate from cache (may be stale or empty), then schedule async refresh
     _StatsDialog_UpdateValues()
+    SetTimer(_StatsDialog_UpdateValues, -200)
 
     sg.Show("w575")
     GUI_AntiFlashReveal(sg, true)
@@ -174,7 +175,9 @@ _StatsDialog_Refresh() {
         return
     if (LauncherUtils_IsRunning(g_GuiPID))
         Dash_QueryStats()
+    ; Async — update from cache now, then refresh after response arrives
     _StatsDialog_UpdateValues()
+    SetTimer(_StatsDialog_UpdateValues, -200)
 }
 
 ; Update all value controls in-place from current g_StatsCache

@@ -466,8 +466,9 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))
 
     ; WM_COPYDATA handler for launcher commands (e.g., toggle viewer)
-    global WM_COPYDATA
+    global WM_COPYDATA, IPC_WM_STATS_REQUEST
     OnMessage(WM_COPYDATA, _GUI_OnCopyData)  ; lint-ignore: onmessage-collision (launcher_main.ahk registers in separate process)
+    OnMessage(IPC_WM_STATS_REQUEST, _GUI_OnStatsRequest)
 
     ; Register error and exit handlers
     OnError(_GUI_OnError)
@@ -479,7 +480,6 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
 _GUI_OnCopyData(wParam, lParam, msg, hwnd) {
     Critical "On"
     global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_RELOAD_BLACKLIST
-    global TABBY_CMD_QUERY_STATS, TABBY_CMD_STATS_RESPONSE, WM_COPYDATA
     dwData := NumGet(lParam, 0, "uptr")
     if (dwData = TABBY_CMD_TOGGLE_VIEWER) {
         Viewer_Toggle()
@@ -492,28 +492,36 @@ _GUI_OnCopyData(wParam, lParam, msg, hwnd) {
         Critical "Off"
         return true
     }
-    if (dwData = TABBY_CMD_QUERY_STATS) {
-        senderHwnd := wParam
-        if (senderHwnd) {
-            snap := Stats_GetSnapshot()
-            ; Convert Object to Map for JSON.Dump
-            snapMap := Map()
-            for prop in snap.OwnProps()
-                snapMap[prop] := snap.%prop%
-            json := JSON.Dump(snapMap)
-            ; Build COPYDATASTRUCT with JSON payload
-            cbData := StrPut(json, "UTF-8")
-            payload := Buffer(cbData, 0)
-            StrPut(json, payload, "UTF-8")
-            cds := Buffer(A_PtrSize * 3, 0)
-            NumPut("uptr", TABBY_CMD_STATS_RESPONSE, cds, 0)
-            NumPut("uptr", cbData, cds, A_PtrSize)
-            NumPut("uptr", payload.Ptr, cds, A_PtrSize * 2)
-            try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " senderHwnd)
-        }
-        Critical "Off"
-        return true
-    }
     Critical "Off"
     return 0
+}
+
+; Stats request handler — receives PostMessage(IPC_WM_STATS_REQUEST) from launcher.
+; Responds with WM_COPYDATA containing JSON stats snapshot.
+; Separate from WM_COPYDATA to avoid nested SendMessage deadlock in AHK v2.
+_GUI_OnStatsRequest(wParam, lParam, msg, hwnd) {
+    Critical "On"
+    global TABBY_CMD_STATS_RESPONSE, WM_COPYDATA
+    senderHwnd := wParam
+    if (!senderHwnd) {
+        Critical "Off"
+        return 0
+    }
+    snap := Stats_GetSnapshot()
+    snapMap := Map()
+    for prop in snap.OwnProps()
+        snapMap[prop] := snap.%prop%
+    jsonStr := JSON.Dump(snapMap)
+    cbData := StrPut(jsonStr, "UTF-8")
+    payload := Buffer(cbData, 0)
+    StrPut(jsonStr, payload, "UTF-8")
+    cds := Buffer(A_PtrSize * 3, 0)
+    NumPut("uptr", TABBY_CMD_STATS_RESPONSE, cds, 0)
+    NumPut("uptr", cbData, cds, A_PtrSize)
+    NumPut("uptr", payload.Ptr, cds, A_PtrSize * 2)
+    DetectHiddenWindows(true)
+    try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " senderHwnd)
+    DetectHiddenWindows(false)
+    Critical "Off"
+    return 1
 }

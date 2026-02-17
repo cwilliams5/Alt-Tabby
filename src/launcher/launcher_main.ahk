@@ -320,9 +320,12 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
         cbData := NumGet(lParam, A_PtrSize, "uptr")
         lpData := NumGet(lParam, A_PtrSize * 2, "uptr")
         if (cbData > 0 && lpData) {
-            json := StrGet(lpData, cbData, "UTF-8")
-            try g_StatsCache := JSON.Load(json)
+            jsonStr := StrGet(lpData, cbData, "UTF-8")
+            try g_StatsCache := JSON.Load(jsonStr)
         }
+        ; Async response arrived — kick dashboard refresh timer
+        if (IsObject(g_StatsCache))
+            Dash_StartRefreshTimer()
         return 1
     }
 
@@ -335,15 +338,18 @@ Launcher_RelayToGui(cmd) {
     if (!LauncherUtils_IsRunning(g_GuiPID))
         return
     DetectHiddenWindows(true)
-    guiHwnd := WinGetID("ahk_pid " g_GuiPID)
-    DetectHiddenWindows(false)
-    if (!guiHwnd)
+    guiHwnd := 0
+    try guiHwnd := WinGetID("ahk_pid " g_GuiPID)
+    if (!guiHwnd) {
+        DetectHiddenWindows(false)
         return
+    }
     cds := Buffer(A_PtrSize * 3, 0)
     NumPut("uptr", cmd, cds, 0)
     NumPut("uptr", 0, cds, A_PtrSize)
     NumPut("uptr", 0, cds, A_PtrSize * 2)
     try SendMessage(WM_COPYDATA, 0, cds.Ptr, , "ahk_id " guiHwnd)
+    DetectHiddenWindows(false)
 }
 
 ; Apply config changes: reload config for the launcher, re-theme launcher

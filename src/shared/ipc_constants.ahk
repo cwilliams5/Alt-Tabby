@@ -26,6 +26,7 @@ global IPC_COOLDOWN_PHASE2_MS := 50      ; Second step-up interval
 global WM_COPYDATA := 0x4A              ; Standard WM_COPYDATA message
 global WM_TRAYICON := 0x404             ; Custom tray icon callback message
 global IPC_WM_PIPE_WAKE := 0x8001       ; WM_APP+1: PostMessage signal to check pipe for data
+global IPC_WM_STATS_REQUEST := 0x8002   ; WM_APP+2: PostMessage from launcher to GUI requesting stats snapshot
 
 ; Producer name constants - PRODUCER_ABBREVS is the single source of truth
 global PRODUCER_ABBREVS := Map(

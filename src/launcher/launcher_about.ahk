@@ -853,27 +853,23 @@ _Dash_GetKomorebiInfo() {
 ; Called on dashboard open and periodically during HOT/WARM refresh.
 
 Dash_QueryStats() {
-    global g_StatsCache, g_GuiPID, WM_COPYDATA, TABBY_CMD_QUERY_STATS
+    global g_GuiPID, IPC_WM_STATS_REQUEST
 
     if (!LauncherUtils_IsRunning(g_GuiPID))
         return
 
-    ; Send stats request to GUI — response arrives synchronously via
-    ; _Launcher_OnCopyData which populates g_StatsCache before SendMessage returns
+    ; PostMessage (non-blocking) — GUI will respond asynchronously via WM_COPYDATA.
+    ; Cannot use SendMessage here: AHK v2 can't dispatch the GUI's WM_COPYDATA
+    ; response back to our OnMessage handler while we're blocked in SendMessage.
     DetectHiddenWindows(true)
-    guiHwnd := WinGetID("ahk_pid " g_GuiPID)
-    DetectHiddenWindows(false)
-    if (!guiHwnd)
+    guiHwnd := 0
+    try guiHwnd := WinGetID("ahk_pid " g_GuiPID)
+    if (!guiHwnd) {
+        DetectHiddenWindows(false)
         return
-
-    cds := Buffer(A_PtrSize * 3, 0)
-    NumPut("uptr", TABBY_CMD_QUERY_STATS, cds, 0)
-    NumPut("uptr", 0, cds, A_PtrSize)
-    NumPut("uptr", 0, cds, A_PtrSize * 2)
-    try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " guiHwnd)
-
-    if (IsObject(g_StatsCache))
-        Dash_StartRefreshTimer()
+    }
+    try PostMessage(IPC_WM_STATS_REQUEST, A_ScriptHwnd, 0, , "ahk_id " guiHwnd)
+    DetectHiddenWindows(false)
 }
 
 ; ============================================================
