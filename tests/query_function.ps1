@@ -104,8 +104,34 @@ foreach ($file in $srcFiles) {
                     $startLine = $i
                     $startDepth = $depth
 
+                    # Walk backwards to capture leading comment block
+                    $commentLines = @()
+                    $ci = $i - 1
+                    while ($ci -ge 0) {
+                        $cTrimmed = $lines[$ci].TrimStart()
+                        if ($cTrimmed -match '^\s*;') {
+                            # Comment line — prepend
+                            $commentLines = @($lines[$ci]) + $commentLines
+                            $ci--
+                        } elseif ($cTrimmed -eq '') {
+                            # Blank line — skip over it (might separate comment groups)
+                            # But only if there's a comment above it
+                            if ($ci -gt 0 -and $lines[$ci - 1].TrimStart() -match '^\s*;') {
+                                $commentLines = @($lines[$ci]) + $commentLines
+                                $ci--
+                            } else {
+                                break
+                            }
+                        } else {
+                            break
+                        }
+                    }
+                    if ($commentLines.Count -gt 0) {
+                        $startLine = $ci + 1
+                    }
+
                     # Now find the end of this function
-                    $funcBody = @($lines[$i])
+                    $funcBody = @($commentLines) + @($lines[$i])
                     $currentDepth = $depth + $braces[0] - $braces[1]
 
                     for ($j = $i + 1; $j -lt $lines.Count; $j++) {
