@@ -5,15 +5,13 @@
 
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
 global gGUI_LiveItemsMap := Map()
-; hwnd -> 1-based position in gGUI_LiveItems for O(1) viewport range checks
-global gGUI_LiveItemsIndex := Map()
 
 ; ========================= LIVE ITEMS REFRESH =========================
 
 ; Refresh gGUI_LiveItems from WindowList (direct, no IPC).
 ; Replaces GUI_RequestSnapshot() — synchronous, always returns fresh data.
 GUI_RefreshLiveItems() {
-    global gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
+    global gGUI_LiveItems, gGUI_LiveItemsMap
     global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_OverlayH
     global gGdip_IconCache, FR_EV_REFRESH, gFR_Enabled
 
@@ -23,11 +21,6 @@ GUI_RefreshLiveItems() {
     Critical "On"
     gGUI_LiveItems := proj.items
     gGUI_LiveItemsMap := proj.itemsMap
-
-    ; Build position index (hwnd -> 1-based index) for viewport checks
-    gGUI_LiveItemsIndex := Map()
-    loop gGUI_LiveItems.Length
-        gGUI_LiveItemsIndex[gGUI_LiveItems[A_Index].hwnd] := A_Index
 
     GUI_ClampSelection(gGUI_LiveItems)
     localItems := gGUI_LiveItems  ; Capture before releasing Critical (reentrant-safe)
@@ -226,28 +219,4 @@ _GUI_PreCacheTick() {
     ; Re-arm if we hit the batch cap (more may remain)
     if (hasMore)
         SetTimer(_GUI_PreCacheTick, -50)
-}
-
-; ========================= VIEWPORT CHANGE DETECTION =========================
-
-; Check if any of the changed hwnds are in the currently visible viewport.
-; Used to skip expensive GDI+ repaints when only off-screen items changed.
-_GUI_AnyVisibleItemChanged(displayItems, changedHwnds) {
-    global gGUI_ScrollTop
-    if (changedHwnds.Count = 0 || displayItems.Length = 0)
-        return false
-    vis := GUI_GetVisibleRows()
-    if (vis <= 0)
-        return false
-    startIdx := gGUI_ScrollTop + 1
-    endIdx := gGUI_ScrollTop + vis
-    if (endIdx > displayItems.Length)
-        endIdx := displayItems.Length
-    idx := startIdx
-    while (idx <= endIdx) {
-        if (changedHwnds.Has(displayItems[idx].hwnd))
-            return true
-        idx++
-    }
-    return false
 }

@@ -70,7 +70,6 @@ global _gGUI_LastCosmeticRepaintTick := 0
 global DWMWA_CLOAKED := 14
 
 ; Constants from config_loader.ahk
-global TIMING_IPC_FIRE_WAIT := 10
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
 
 ; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
@@ -298,7 +297,7 @@ ResetGUIState() {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_FirstTabTick, gGUI_WorkspaceMode
     global gGUI_WSContextSwitch, gGUI_CurrentWSName
-    global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
+    global gGUI_FooterText, gGUI_Revealed, gGUI_LiveItemsMap
     global gGUI_EventBuffer, gGUI_PendingPhase
     global gMock_VisibleRows, gMock_BypassResult
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
@@ -308,7 +307,6 @@ ResetGUIState() {
     gGUI_State := "IDLE"
     gGUI_LiveItems := []
     gGUI_LiveItemsMap := Map()
-    gGUI_LiveItemsIndex := Map()
     gGUI_DisplayItems := []
     gGUI_ToggleBase := []
     gGUI_Sel := 1
@@ -375,19 +373,16 @@ CreateTestItemsWithMap(count, currentWSCount := -1) {
 }
 
 ; Setup test items for state machine tests.  Populates both direct globals
-; (gGUI_LiveItems/Map/Index) AND mock store so GUI_RefreshLiveItems() during
+; (gGUI_LiveItems/Map) AND mock store so GUI_RefreshLiveItems() during
 ; ALT_DOWN prewarm returns the same data.
 SetupTestItems(count, currentWSCount := -1) {
-    global gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_LiveItemsIndex
+    global gGUI_LiveItems, gGUI_LiveItemsMap
     items := CreateTestItems(count, currentWSCount)
     MockStore_SetItems(items)
     gGUI_LiveItems := items
     gGUI_LiveItemsMap := Map()
-    gGUI_LiveItemsIndex := Map()
-    for idx, item in items {
+    for idx, item in items
         gGUI_LiveItemsMap[item.hwnd] := item
-        gGUI_LiveItemsIndex[item.hwnd] := idx
-    }
     return items
 }
 

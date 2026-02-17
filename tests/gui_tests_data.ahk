@@ -18,7 +18,7 @@ RunGUITests_Data() {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_CurrentWSName, gGUI_WSContextSwitch
     global gGUI_EventBuffer, gGUI_PendingPhase
-    global gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gMock_VisibleRows
+    global gGUI_LiveItemsMap, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
     global gGUI_Base, gGUI_Overlay, gGdip_IconCache
     global gMock_StoreItems, gMock_StoreItemsMap
@@ -59,26 +59,6 @@ RunGUITests_Data() {
     GUI_AssertTrue(result, "UpdateLocalMRU: returns true for first item")
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, firstHwnd, "UpdateLocalMRU: first item stays first")
 
-    ; ----- Test: _GUI_UpdateLocalMRU rebuilds gGUI_LiveItemsIndex -----
-    GUI_Log("Test: _GUI_UpdateLocalMRU rebuilds gGUI_LiveItemsIndex")
-    ResetGUIState()
-    gGUI_LiveItems := CreateTestItemsWithMap(5)
-    ; Build initial index
-    gGUI_LiveItemsIndex := Map()
-    for idx, itm in gGUI_LiveItems
-        gGUI_LiveItemsIndex[itm.hwnd] := idx
-    ; Verify initial state: item 3 is at position 3
-    GUI_AssertEq(gGUI_LiveItemsIndex[3000], 3, "IndexRebuild: initial position of hwnd 3000 is 3")
-
-    ; Move item 3 to position 1
-    _GUI_UpdateLocalMRU(3000)
-    ; After move: [3000, 1000, 2000, 4000, 5000]
-    GUI_AssertEq(gGUI_LiveItemsIndex[3000], 1, "IndexRebuild: hwnd 3000 now at position 1")
-    GUI_AssertEq(gGUI_LiveItemsIndex[1000], 2, "IndexRebuild: hwnd 1000 shifted to position 2")
-    GUI_AssertEq(gGUI_LiveItemsIndex[2000], 3, "IndexRebuild: hwnd 2000 shifted to position 3")
-    GUI_AssertEq(gGUI_LiveItemsIndex[4000], 4, "IndexRebuild: hwnd 4000 stays at position 4")
-    GUI_AssertEq(gGUI_LiveItemsIndex[5000], 5, "IndexRebuild: hwnd 5000 stays at position 5")
-
     ; ----- Test: _GUI_RobustActivate returns false for invalid hwnd -----
     ; Regression guard: ensures activation returns a testable result (not void)
     GUI_Log("Test: _GUI_RobustActivate returns false for invalid hwnd")
@@ -108,35 +88,6 @@ RunGUITests_Data() {
 
     ; MRU should be UNCHANGED — item 1 still in position 1
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "FailedActivation: MRU order preserved (first item unchanged)")
-
-    ; ============================================================
-    ; VIEWPORT CHANGE DETECTION TESTS
-    ; ============================================================
-
-    ; ----- Test: _GUI_AnyVisibleItemChanged - item in viewport -----
-    GUI_Log("Test: Viewport change detection")
-    ResetGUIState()
-    gGUI_ScrollTop := 0
-    gMock_VisibleRows := 5
-    items := CreateTestItems(10)
-    changedHwnds := Map()
-    changedHwnds[3000] := true  ; Item 3 is in viewport (indices 1-5)
-
-    result := _GUI_AnyVisibleItemChanged(items, changedHwnds)
-    GUI_AssertTrue(result, "Viewport: changed item 3 in viewport detected")
-
-    ; ----- Test: _GUI_AnyVisibleItemChanged - item off-screen -----
-    GUI_Log("Test: Viewport change detection - off-screen")
-    changedHwnds2 := Map()
-    changedHwnds2[8000] := true  ; Item 8 is off-screen (viewport is 1-5)
-
-    result := _GUI_AnyVisibleItemChanged(items, changedHwnds2)
-    GUI_AssertTrue(!result, "Viewport: changed item 8 off-screen not detected")
-
-    ; ----- Test: _GUI_AnyVisibleItemChanged - empty changedHwnds -----
-    GUI_Log("Test: Viewport change detection - empty changes")
-    result := _GUI_AnyVisibleItemChanged(items, Map())
-    GUI_AssertTrue(!result, "Viewport: empty changedHwnds returns false")
 
     ; ============================================================
     ; _GUI_RemoveItemAt TESTS

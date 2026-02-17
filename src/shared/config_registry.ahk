@@ -834,14 +834,6 @@ global gConfigRegistry := [
      min: 15, max: 500,
      d: "Pump poll interval when idle (ms). Lower = more responsive but more CPU."},
 
-    {s: "IPC", k: "MaxReconnectAttempts", g: "IPCMaxReconnectAttempts", t: "int", default: 3,
-     min: 1, max: 10,
-     d: "Maximum pump pipe reconnection attempts before triggering restart."},
-
-    {s: "IPC", k: "StoreStartWaitMs", g: "IPCStoreStartWaitMs", t: "int", default: 1000,
-     min: 500, max: 5000,
-     d: "Time to wait for main process to start on launch (ms). Increase on slow systems."},
-
     ; ============================================================
     ; Window Store
     ; ============================================================

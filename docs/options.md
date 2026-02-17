@@ -462,8 +462,6 @@ Named pipe IPC for enrichment pump and launcher control signals.
 |--------|------|---------|-------|-------------|
 | `PumpPipeName` | string | `tabby_pump_v1` | - | Named pipe name for enrichment pump communication |
 | `IdleTickMs` | int | `100` | `15` - `500` | Pump poll interval when idle (ms). Lower = more responsive but more CPU. |
-| `MaxReconnectAttempts` | int | `3` | `1` - `10` | Maximum pump pipe reconnection attempts before triggering restart. |
-| `StoreStartWaitMs` | int | `1000` | `500` - `5000` | Time to wait for main process to start on launch (ms). Increase on slow systems. |
 
 ## Store
 

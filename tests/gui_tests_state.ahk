@@ -18,7 +18,7 @@ RunGUITests_State() {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_CurrentWSName, gGUI_WSContextSwitch
     global gGUI_EventBuffer, gGUI_PendingPhase
-    global gGUI_LiveItemsMap, gGUI_LiveItemsIndex, gMock_VisibleRows
+    global gGUI_LiveItemsMap, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode
     global gGUI_Base, gGUI_Overlay
     global gMock_StoreItems, gMock_StoreItemsMap

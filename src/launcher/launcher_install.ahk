@@ -184,7 +184,7 @@ _Launcher_OfferToStopInstalledInstance(installedPath) {
     )
 
     if (result = "Yes") {
-        ; Kill ALL processes matching the installed exe name (launcher + store + gui).
+        ; Kill ALL processes matching the installed exe name (launcher + gui + pump).
         ; Uses specific exe name (not BuildExeNameList) because installed exe may have
         ; different name than current (e.g., "AltTabby.exe" vs "alttabby v4.exe").
         ProcessUtils_KillByNameExceptSelf(installedExeName, 10, TIMING_MUTEX_RELEASE_WAIT, true)

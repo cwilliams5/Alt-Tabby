@@ -1,6 +1,6 @@
 # check_batch_tests.ps1 - Batched test-file analysis checks
-# Combines 3 test-related checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: test_globals, test_functions, test_assertions
+# Combines test-related checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls
 # Shared file cache: all src/ files (excluding lib/) + all test files read once.
 #
 # Usage: powershell -File tests\check_batch_tests.ps1 [-SourceDir "path\to\src"]
@@ -787,6 +787,249 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_no_wmi_in_tests"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 5: test_undefined_calls
+# Detect test files calling functions that don't exist anywhere
+# in the project. AHK v2 only reports these at runtime with a
+# dialog popup, blocking automated test execution.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+# Build global function definition set from ALL project files
+$tucAllDefs = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+
+# From cached files (src/ + tests/)
+foreach ($path in $script:fileContentCache.Keys) {
+    $defs = BT_GetFunctionDefinitions $path
+    foreach ($name in $defs.Keys) { [void]$tucAllDefs.Add($name) }
+}
+
+# Class names from cached files (constructors callable as ClassName())
+foreach ($path in $script:fileContentCache.Keys) {
+    foreach ($line in $script:fileContentCache[$path]) {
+        if ($line -match '^\s*class\s+(\w+)') {
+            [void]$tucAllDefs.Add($Matches[1])
+        }
+    }
+}
+
+# From lib/ files (not in shared cache — third-party code)
+# Uses lenient scanner: doesn't require { on same line as definition
+$tucLibDir = Join-Path $SourceDir "lib"
+if (Test-Path $tucLibDir) {
+    foreach ($f in @(Get-ChildItem -Path $tucLibDir -Filter "*.ahk" -Recurse)) {
+        $libLines = [System.IO.File]::ReadAllLines($f.FullName)
+        for ($li = 0; $li -lt $libLines.Count; $li++) {
+            $lt = $libLines[$li].TrimStart()
+            if ($lt -match '^(?:static\s+)?([A-Za-z_]\w*)\s*\(') {
+                $fn = $Matches[1]
+                if ($fn -notin @('if','while','for','loop','switch','catch','return',
+                    'throw','class','try','else','static','global','local')) {
+                    [void]$tucAllDefs.Add($fn)
+                }
+            }
+            if ($lt -match '^class\s+(\w+)') { [void]$tucAllDefs.Add($Matches[1]) }
+        }
+    }
+}
+
+# AHK v2 built-in functions and constructors (not defined in .ahk files)
+$tucBuiltins = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($b in @(
+    'Abs','Ceil','Exp','Floor','Log','Ln','Max','Min','Mod','Round','Sqrt',
+    'Sin','Cos','Tan','ASin','ACos','ATan','Random','Integer','Float','Number',
+    'Chr','Format','FormatTime','InStr','LTrim','Ord','RegExMatch','RegExReplace',
+    'RTrim','Sort','StrCompare','StrGet','StrLen','StrLower','StrPtr','StrPut',
+    'StrReplace','StrSplit','StrUpper','SubStr','Trim','String',
+    'HasBase','HasMethod','HasProp','IsAlnum','IsAlpha','IsDigit','IsFloat',
+    'IsInteger','IsLabel','IsLower','IsNumber','IsObject','IsSet','IsSetRef',
+    'IsSpace','IsTime','IsUpper','IsXDigit','Type','GetMethod',
+    'Array','Map','Object','Buffer',
+    'ObjAddRef','ObjBindMethod','ObjFromPtr','ObjFromPtrAddRef','ObjGetBase',
+    'ObjGetCapacity','ObjHasOwnProp','ObjOwnPropCount','ObjOwnProps','ObjPtr',
+    'ObjPtrAddRef','ObjRelease','ObjSetBase','ObjSetCapacity',
+    'NumGet','NumPut','VarSetStrCapacity',
+    'Gui','GuiCtrlFromHwnd','GuiFromHwnd','LoadPicture','MenuFromHandle',
+    'IL_Add','IL_Create','IL_Destroy','MenuBar','Menu',
+    'InputBox','MsgBox','ToolTip','TrayTip','TraySetIcon','FileSelect','DirSelect',
+    'DirCopy','DirCreate','DirDelete','DirExist','DirMove','Download',
+    'FileAppend','FileCopy','FileCreateShortcut','FileDelete','FileEncoding',
+    'FileExist','FileGetAttrib','FileGetShortcut','FileGetSize','FileGetTime',
+    'FileGetVersion','FileInstall','FileMove','FileOpen','FileRead',
+    'FileRecycle','FileRecycleEmpty','FileSetAttrib','FileSetTime','SplitPath',
+    'RegDelete','RegDeleteKey','RegRead','RegWrite','SetRegView',
+    'IniDelete','IniRead','IniWrite',
+    'WinActivate','WinActivateBottom','WinActive','WinClose','WinExist',
+    'WinGetClass','WinGetClientPos','WinGetControls','WinGetControlsHwnd',
+    'WinGetCount','WinGetExStyle','WinGetID','WinGetIDLast','WinGetList',
+    'WinGetMinMax','WinGetPID','WinGetPos','WinGetProcessName','WinGetProcessPath',
+    'WinGetStyle','WinGetText','WinGetTitle','WinGetTransColor','WinGetTransparent',
+    'WinHide','WinKill','WinMaximize','WinMinimize','WinMove','WinMoveBottom',
+    'WinMoveTop','WinRedraw','WinRestore','WinSetAlwaysOnTop','WinSetEnabled',
+    'WinSetExStyle','WinSetRegion','WinSetStyle','WinSetTitle','WinSetTransColor',
+    'WinSetTransparent','WinShow','WinWait','WinWaitActive','WinWaitClose',
+    'WinWaitNotActive','DetectHiddenText','DetectHiddenWindows','SetTitleMatchMode',
+    'SetWinDelay','StatusBarGetText','StatusBarWait',
+    'ControlClick','ControlFocus','ControlGetChecked','ControlGetChoice',
+    'ControlGetClassNN','ControlGetEnabled','ControlGetFocus','ControlGetHwnd',
+    'ControlGetIndex','ControlGetItems','ControlGetPos','ControlGetStyle',
+    'ControlGetExStyle','ControlGetText','ControlGetVisible','ControlHide',
+    'ControlMove','ControlSend','ControlSendText','ControlSetChecked',
+    'ControlSetEnabled','ControlSetStyle','ControlSetExStyle','ControlSetText',
+    'ControlShow','EditGetCurrentCol','EditGetCurrentLine','EditGetLine',
+    'EditGetLineCount','EditGetSelectedText','EditPaste','ListViewGetContent',
+    'MenuSelect','SetControlDelay',
+    'ProcessClose','ProcessExist','ProcessGetName','ProcessGetPath',
+    'ProcessSetPriority','ProcessWait','ProcessWaitClose','Run','RunAs','RunWait',
+    'Shutdown',
+    'BlockInput','Click','CoordMode','GetKeyName','GetKeySC','GetKeyState',
+    'GetKeyVK','Hotkey','HotIf','HotIfWinActive','HotIfWinExist',
+    'HotIfWinNotActive','HotIfWinNotExist','Hotstring','InputHook',
+    'InstallKeybdHook','InstallMouseHook','KeyHistory','KeyWait',
+    'MouseClick','MouseClickDrag','MouseGetPos','MouseMove',
+    'Send','SendEvent','SendInput','SendLevel','SendMode','SendPlay','SendText',
+    'SetCapsLockState','SetDefaultMouseSpeed','SetKeyDelay','SetMouseDelay',
+    'SetNumLockState','SetScrollLockState','SetStoreCapsLockMode','CaretGetPos',
+    'ComCall','ComObjActive','ComObjConnect','ComObjGet','ComObjQuery',
+    'ComObjType','ComObjValue','ComObject','ComValue',
+    'CallbackCreate','CallbackFree','DllCall',
+    'OnClipboardChange','OnError','OnExit','OnMessage','PostMessage','SendMessage',
+    'SetTimer','Critical','Persistent','Thread',
+    'EnvGet','EnvSet','MonitorGet','MonitorGetCount','MonitorGetName',
+    'MonitorGetPrimary','MonitorGetWorkArea','SysGet','SysGetIPAddresses',
+    'DriveGetCapacity','DriveGetFileSystem','DriveGetLabel','DriveGetList',
+    'DriveGetSerial','DriveGetSpaceFree','DriveGetStatus','DriveGetStatusCD',
+    'DriveGetType','DriveSetLabel','DriveLock','DriveUnlock','DriveEject','DriveRetract',
+    'SoundBeep','SoundGetInterface','SoundGetMute','SoundGetName',
+    'SoundGetVolume','SoundPlay','SoundSetMute','SoundSetVolume',
+    'DateAdd','DateDiff',
+    'ClipboardAll','ClipWait','Edit','ExitApp','GroupActivate','GroupAdd',
+    'GroupClose','GroupDeactivate','ImageSearch','ListHotkeys','ListLines',
+    'ListVars','OutputDebug','Pause','PixelGetColor','PixelSearch',
+    'Reload','SetWorkingDir','Sleep','Suspend',
+    'Error','IndexError','MemberError','MethodError','OSError',
+    'PropertyError','TargetError','TimeoutError','TypeError',
+    'UnsetError','UnsetItemError','ValueError','ZeroDivisionError',
+    'Func','BoundFunc','Closure','Enumerator','File','RegExMatchInfo','VarRef'
+)) { [void]$tucBuiltins.Add($b) }
+
+# Keywords that syntactically look like function calls
+$tucKeywords = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($kw in @('if','while','for','loop','switch','catch','return','throw',
+    'class','static','try','else','finally','until','not','and','or',
+    'global','local','new','super','this','isset','in','contains')) {
+    [void]$tucKeywords.Add($kw)
+}
+
+# Global variable names (callback pattern: varName() where varName holds a func ref)
+$tucGlobalVars = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($path in $script:fileContentCache.Keys) {
+    foreach ($line in $script:fileContentCache[$path]) {
+        if ($line -match '^\s*global\s+(.+)') {
+            foreach ($chunk in $Matches[1].Split(',')) {
+                $ct = $chunk.Trim()
+                if ($ct -match '^(\w+)') {
+                    [void]$tucGlobalVars.Add($Matches[1])
+                }
+            }
+        }
+    }
+}
+
+# Function parameter names (callback pattern: paramName() inside function body)
+foreach ($path in $script:fileContentCache.Keys) {
+    foreach ($line in $script:fileContentCache[$path]) {
+        $trimmed = $line.TrimStart()
+        if ($trimmed -match '^(?:static\s+)?([A-Za-z_]\w*)\s*\((.+)') {
+            $fn = $Matches[1].ToLower()
+            if ($fn -in @('if','while','for','loop','switch','catch','return',
+                'throw','class','try','else','static','global','local')) { continue }
+            $paramText = $Matches[2]
+            $closeIdx = $paramText.IndexOf(')')
+            if ($closeIdx -ge 0) { $paramText = $paramText.Substring(0, $closeIdx) }
+            foreach ($param in $paramText.Split(',')) {
+                $p = $param.Trim() -replace '^\*', '' -replace '^&', ''
+                if ($p -match '^(\w+)') {
+                    [void]$tucGlobalVars.Add($Matches[1])
+                }
+            }
+        }
+    }
+}
+
+# Strict bare function call regex (excludes method calls: obj.Method())
+$tucCallRx = [regex]::new('(?<![.\w])([A-Za-z_]\w*)\s*\(', 'Compiled')
+
+$tucIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $testFiles) {
+    $lines = Get-CachedFileLines $file.FullName
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $inBlockComment = $false
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        $trimmed = $line.TrimStart()
+
+        if ($trimmed.StartsWith('/*')) { $inBlockComment = $true }
+        if ($inBlockComment) {
+            if ($trimmed.Contains('*/')) { $inBlockComment = $false }
+            continue
+        }
+        if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) { continue }
+
+        # Strip strings and inline comments
+        $cleaned = $line
+        if ($line.IndexOf('"') -ge 0) { $cleaned = $cleaned -replace '"[^"]*"', '""' }
+        if ($line.IndexOf("'") -ge 0) { $cleaned = $cleaned -replace "'[^']*'", "''" }
+        $semiIdx = $cleaned.IndexOf(' ;')
+        if ($semiIdx -ge 0) { $cleaned = $cleaned.Substring(0, $semiIdx) }
+
+        foreach ($m in $tucCallRx.Matches($cleaned)) {
+            $funcName = $m.Groups[1].Value
+            if ($tucKeywords.Contains($funcName)) { continue }
+            if ($tucAllDefs.Contains($funcName)) { continue }
+            if ($tucBuiltins.Contains($funcName)) { continue }
+            if ($tucGlobalVars.Contains($funcName)) { continue }
+
+            [void]$tucIssues.Add([PSCustomObject]@{
+                File     = $relPath
+                Line     = $i + 1
+                Function = $funcName
+                Context  = $trimmed.Substring(0, [Math]::Min($trimmed.Length, 100)).Trim()
+            })
+        }
+    }
+}
+
+# Deduplicate: same function in same file only reported once
+$tucDeduped = @($tucIssues | Sort-Object File, Function -Unique)
+
+if ($tucDeduped.Count -gt 0) {
+    $anyFailed = $true
+    $grouped = $tucDeduped | Group-Object Function | Sort-Object Name
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($grouped.Count) undefined function(s) called in test files:")
+    [void]$failOutput.AppendLine("  These functions don't exist anywhere in the project. Tests will show")
+    [void]$failOutput.AppendLine("  'local variable has not been assigned a value' popup at runtime.")
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  Fix: Remove stale call, or add mock/stub definition to the test file.")
+    foreach ($group in $grouped) {
+        [void]$failOutput.AppendLine("")
+        [void]$failOutput.AppendLine("    UNDEFINED: $($group.Name) ($($group.Count) call site(s))")
+        foreach ($call in $group.Group) {
+            [void]$failOutput.AppendLine("      $($call.File):$($call.Line): $($call.Context)")
+        }
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_test_undefined_calls"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -794,7 +1037,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests)" -ForegroundColor Green
+    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

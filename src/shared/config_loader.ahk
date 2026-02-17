@@ -676,9 +676,6 @@ _CL_ValidateSettings() {
     ; --- Derived globals (must come after clamping) ---
     global IPC_TICK_IDLE
     IPC_TICK_IDLE := cfg.IPCIdleTickMs
-    global MAX_RECONNECT_ATTEMPTS, TIMING_STORE_START_WAIT
-    MAX_RECONNECT_ATTEMPTS := cfg.IPCMaxReconnectAttempts
-    TIMING_STORE_START_WAIT := cfg.IPCStoreStartWaitMs
     global LOG_MAX_BYTES, LOG_KEEP_BYTES
     LOG_MAX_BYTES := cfg.DiagLogMaxKB * 1024
     LOG_KEEP_BYTES := cfg.DiagLogKeepKB * 1024
@@ -847,12 +844,10 @@ global TIMING_PROCESS_EXIT_WAIT := 500    ; Wait for processes to fully exit
 global TIMING_MUTEX_RELEASE_WAIT := 500   ; Wait for mutex to be released
 global TIMING_TASK_READY_WAIT := 500      ; Wait for scheduled task to be ready
 global TIMING_SUBPROCESS_LAUNCH := 300    ; Brief delay before launching subprocess
-global TIMING_STORE_START_WAIT := 1000    ; Default, overridden from cfg.IPCStoreStartWaitMs
+global TIMING_UPDATE_TRAY_WAIT := 1000    ; How long to display TrayTip after update before relaunching
 global TIMING_TASK_INIT_WAIT := 100      ; Wait for scheduled task to initialize
 global TIMING_PROCESS_TERMINATE_WAIT := 100  ; Wait for process to terminate
 global TIMING_FILE_WRITE_WAIT := 100     ; Wait for file to write
-global TIMING_IPC_FIRE_WAIT := 10        ; Allow IPC timer to fire
-global TIMING_STORE_PROCESS_WAIT := 100  ; Wait for store to process
 global TIMING_PIPE_RETRY_WAIT := 50      ; Pipe connection retry delay
 global TIMING_SETUP_SETTLE := 200        ; Setup settle delay
 
@@ -863,15 +858,12 @@ global TOOLTIP_DURATION_DEFAULT := 2000
 global TOOLTIP_DURATION_LONG := 4000
 
 ; Retry limits
-global MAX_RECONNECT_ATTEMPTS := 3        ; Default, overridden from cfg.IPCMaxReconnectAttempts
 global IPC_TICK_IDLE := 100              ; Default, overridden from cfg.IPCIdleTickMs
-global MAX_RESTART_ATTEMPTS := 2          ; Store restart attempts before giving up
 
 ; WM_COPYDATA command IDs (launcher <-> client control signals)
 global TABBY_CMD_RESTART_ALL := 2     ; Config editor -> launcher: restart all subprocesses
 global TABBY_CMD_TOGGLE_VIEWER := 3   ; Launcher -> GUI: toggle debug viewer window
 global TABBY_CMD_RELOAD_BLACKLIST := 4  ; Blacklist editor -> launcher -> GUI: reload blacklist
-global TABBY_CMD_QUERY_STATS := 5      ; Launcher -> GUI: request stats snapshot
 global TABBY_CMD_STATS_RESPONSE := 6   ; GUI -> launcher: stats snapshot JSON payload
 global TABBY_CMD_EDITOR_CLOSED := 7   ; Editor -> launcher: editor process closing (dashboard refresh)
 global TABBY_CMD_PUMP_FAILED := 8     ; GUI -> launcher: pump crashed or hung, please restart

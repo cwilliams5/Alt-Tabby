@@ -881,10 +881,10 @@ Update_NeedsElevation(targetDir) {
 ;   cleanupSourceOnFailure - Delete source file if update fails
 ;   relaunchAfter - After success: show TrayTip, cleanup .old, relaunch+exit (default: true)
 ;   overwriteUserData - Copy config/blacklist even if target already has them (default: false)
-;   killPids - Optional {gui:, store:, viewer:} PIDs for graceful shutdown before force-kill
+;   killPids - Optional {gui:, pump:} PIDs for graceful shutdown before force-kill
 
 Update_ApplyCore(opts) {
-    global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_STORE_START_WAIT, APP_NAME
+    global cfg, gConfigIniPath, TIMING_PROCESS_EXIT_WAIT, TIMING_UPDATE_TRAY_WAIT, APP_NAME
 
     sourcePath := opts.HasOwnProp("sourcePath") ? opts.sourcePath : ""
     targetPath := opts.HasOwnProp("targetPath") ? opts.targetPath : ""
@@ -1034,7 +1034,7 @@ Update_ApplyCore(opts) {
         ; Success — relaunch unless caller handles it (e.g., wizard)
         if (relaunchAfter) {
             TrayTip("Update Complete", successMessage, "Iconi")
-            Sleep(TIMING_STORE_START_WAIT)
+            Sleep(TIMING_UPDATE_TRAY_WAIT)
 
             ; Cleanup command for backup
             cleanupCmd := 'cmd.exe /c timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '" 2>nul || (timeout /t 4 /nobreak > nul 2>&1 && del "' backupPath '")'

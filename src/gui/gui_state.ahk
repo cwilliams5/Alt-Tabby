@@ -1075,15 +1075,11 @@ _GUI_ResyncKeyboardState() {
 ; Called after successful activation to ensure rapid Alt+Tab sees correct order
 ; Parameters:
 ;   hwnd - Window handle that was activated
-; Updates: gGUI_LiveItems array order, gGUI_LiveItemsIndex positions
-; NOTE: gGUI_LiveItemsMap does NOT need updating here — Map stores object references,
-;   and RemoveAt/InsertAt moves the same object. The reference stays valid at any index.
-; NOTE: gGUI_LiveItemsIndex DOES need rebuilding — it stores positions (not references),
-;   so RemoveAt/InsertAt invalidates all entries after the moved item.
+; Updates: gGUI_LiveItems array order
 ; NOTE: Callers hold Critical — do NOT call Critical "Off" here (leaks caller's Critical state)
 _GUI_UpdateLocalMRU(hwnd) {
     Critical "On"  ; Harmless assertion — documents that Critical is required
-    global gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_LiveItemsIndex, cfg
+    global gGUI_LiveItems, gGUI_LiveItemsMap, cfg
     global FR_EV_MRU_UPDATE, gFR_Enabled
 
     ; O(1) miss detection: if hwnd not in Map, skip the O(n) linear scan
@@ -1105,10 +1101,6 @@ _GUI_UpdateLocalMRU(hwnd) {
             if (i > 1) {
                 gGUI_LiveItems.RemoveAt(i)
                 gGUI_LiveItems.InsertAt(1, item)
-                ; Rebuild position index — RemoveAt/InsertAt shifted all positions
-                gGUI_LiveItemsIndex := Map()
-                for idx, itm in gGUI_LiveItems
-                    gGUI_LiveItemsIndex[itm.hwnd] := idx
             }
             ; Keep gWS_Store in sync with local MRU update
             WL_UpdateFields(hwnd, {lastActivatedTick: A_TickCount, isFocused: true}, "gui_activate")
