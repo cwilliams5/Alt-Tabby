@@ -432,8 +432,8 @@ _GUIPump_RestartLocalPumps() {
 ; ========================= LOGGING =========================
 
 _GUIPump_Log(msg) {
-    global cfg
+    global cfg, LOG_PATH_PUMP
     if (!cfg.DiagPumpLog)
         return
-    try LogAppend(A_Temp "\tabby_pump.log", msg)
+    try LogAppend(LOG_PATH_PUMP, msg)
 }

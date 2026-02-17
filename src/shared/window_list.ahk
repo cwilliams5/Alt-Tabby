@@ -661,6 +661,42 @@ _WS_DiagBump(source) {
     gWS_DiagSource[source] := (gWS_DiagSource.Has(source) ? gWS_DiagSource[source] : 0) + 1
 }
 
+; Flush churn diagnostic maps to the store error log and reset.
+; Called from _GUI_Housekeeping when DiagChurnLog is enabled.
+WL_FlushChurnLog() {
+    global gWS_DiagChurn, gWS_DiagSource, cfg, LOG_PATH_STORE
+    if (!cfg.DiagChurnLog)
+        return
+
+    ; Snapshot and reset under Critical to avoid race with _WS_BumpRev / UpsertWindow
+    Critical "On"
+    if (gWS_DiagChurn.Count = 0 && gWS_DiagSource.Count = 0) {
+        Critical "Off"
+        return
+    }
+
+    churnSnap := Map()
+    for k, v in gWS_DiagChurn
+        churnSnap[k] := v
+    sourceSnap := Map()
+    for k, v in gWS_DiagSource
+        sourceSnap[k] := v
+
+    gWS_DiagChurn := Map()
+    gWS_DiagSource := Map()
+    Critical "Off"
+
+    ; Build summary outside Critical
+    msg := "churn_summary fields:"
+    for k, v in churnSnap
+        msg .= " " k "=" v
+    msg .= " | sources:"
+    for k, v in sourceSnap
+        msg .= " " k "=" v
+
+    try LogAppend(LOG_PATH_STORE, msg)
+}
+
 ; Atomic revision bump - prevents race conditions when multiple producers bump rev
 ; NOTE: No Critical "Off" — callers hold Critical and "Off" here would leak their state.
 ; Critical "On" is kept for the rare caller without Critical (e.g., EndScan).

@@ -345,6 +345,9 @@ _GUI_Housekeeping() {
     try WL_PruneExeIconCache()
     try ProcPump_PruneFailedPidCache()
 
+    ; Flush churn diagnostics (if enabled)
+    WL_FlushChurnLog()
+
     ; Log rotation
     _GUI_RotateDiagLogs()
 
@@ -358,6 +361,7 @@ _GUI_RotateDiagLogs() {
     global cfg
     global LOG_PATH_EVENTS, LOG_PATH_KSUB, LOG_PATH_WINEVENT
     global LOG_PATH_ICONPUMP, LOG_PATH_PROCPUMP
+    global LOG_PATH_IPC, LOG_PATH_PUMP, LOG_PATH_COSMETIC_PATCH
     if (cfg.DiagEventLog)
         LogTrim(LOG_PATH_EVENTS)
     if (cfg.DiagKomorebiLog)
@@ -368,13 +372,19 @@ _GUI_RotateDiagLogs() {
         LogTrim(LOG_PATH_ICONPUMP)
     if (cfg.DiagProcPumpLog)
         LogTrim(LOG_PATH_PROCPUMP)
+    if (cfg.DiagIPCLog)
+        LogTrim(LOG_PATH_IPC)
+    if (cfg.DiagPumpLog)
+        LogTrim(LOG_PATH_PUMP)
+    if (cfg.DiagCosmeticPatchLog)
+        LogTrim(LOG_PATH_COSMETIC_PATCH)
 }
 
 ; ========================= STATS LOGGING CALLBACKS =========================
 
 _GUI_StatsLogError(msg) {
-    global LOG_PATH_EVENTS
-    try LogAppend(LOG_PATH_EVENTS, "stats_error " msg)
+    global LOG_PATH_STORE
+    try LogAppend(LOG_PATH_STORE, "stats_error " msg)
 }
 
 _GUI_StatsLogInfo(msg) {
@@ -387,9 +397,9 @@ _GUI_StatsLogInfo(msg) {
 
 ; Log unhandled errors and exit
 _GUI_OnError(err, *) {
-    global LOG_PATH_EVENTS
+    global LOG_PATH_STORE
     msg := "gui_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
-    try LogAppend(LOG_PATH_EVENTS, msg)
+    try LogAppend(LOG_PATH_STORE, msg)
     ExitApp(1)
 }
 
