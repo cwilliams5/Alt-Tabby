@@ -1,6 +1,6 @@
 # check_batch_simple.ps1 - Batched simple pattern checks
-# Combines 10 lightweight checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle
+# Combines 11 lightweight checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_simple.ps1 [-SourceDir "path\to\src"]
@@ -981,7 +981,7 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
     'thememsgbox', 'callback-critical', 'onmessage-collision',
     'postmessage-unsafe', 'callback-signature',
     'static-in-timer', 'timer-lifecycle',
-    'dead-function', 'test-assertions',
+    'dead-function', 'dead-config', 'test-assertions',
     'arity',
     'onevent-name', 'destroy-untrack',
     'unreachable-code', 'ipc-symmetry'
@@ -1395,6 +1395,113 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_timer_lifecycle"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 11: dead_config
+# Detects config registry entries that are never accessed via
+# cfg.PropertyName. These are dead entries that can be removed.
+# Handles dynamic access (cfg.%expr%) by extracting string literal
+# prefixes from files that use dynamic property access.
+# Suppress: ; lint-ignore: dead-config
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$dcfgIssues = [System.Collections.ArrayList]::new()
+
+# Phase 1: Find all literal cfg.PropertyName accesses across src/ files
+$dcfgAccessedKeys = [System.Collections.Generic.HashSet[string]]::new()
+
+foreach ($file in $allFiles) {
+    if ($file.Name -eq 'config_registry.ahk') { continue }
+    $text = $fileCacheText[$file.FullName]
+    if ($text.IndexOf('cfg.', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+    $cfgMatches = [regex]::Matches($text, '\bcfg\.([A-Za-z_]\w*)')
+    foreach ($m in $cfgMatches) {
+        [void]$dcfgAccessedKeys.Add($m.Groups[1].Value)
+    }
+}
+
+# Also scan test files (tests may access cfg.PropertyName)
+$dcfgTestsDir = Join-Path $projectRoot "tests"
+if (Test-Path $dcfgTestsDir) {
+    foreach ($file in @(Get-ChildItem -Path $dcfgTestsDir -Filter "*.ahk" -Recurse)) {
+        $text = if ($fileCacheText.ContainsKey($file.FullName)) { $fileCacheText[$file.FullName] }
+                else { [System.IO.File]::ReadAllText($file.FullName) }
+        if ($text.IndexOf('cfg.', [System.StringComparison]::Ordinal) -lt 0) { continue }
+        $cfgMatches = [regex]::Matches($text, '\bcfg\.([A-Za-z_]\w*)')
+        foreach ($m in $cfgMatches) {
+            [void]$dcfgAccessedKeys.Add($m.Groups[1].Value)
+        }
+    }
+}
+
+# Phase 2: Detect dynamic cfg.% access patterns
+# Collect quoted string literals from files that use cfg.%expr% (excluding
+# config infrastructure). These strings may be prefixes used to construct
+# config key names dynamically (e.g., "Theme_Dark" + suffix → Theme_DarkBg).
+$dcfgDynPrefixes = [System.Collections.Generic.HashSet[string]]::new()
+
+foreach ($file in $allFiles) {
+    if ($file.Name -eq 'config_registry.ahk' -or $file.Name -eq 'config_loader.ahk') { continue }
+    $text = $fileCacheText[$file.FullName]
+    if ($text.IndexOf('cfg.%', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+    # Extract quoted strings (length >= 5) as potential dynamic prefixes
+    $strMatches = [regex]::Matches($text, '"([A-Za-z_]\w{4,})"')
+    foreach ($m in $strMatches) {
+        [void]$dcfgDynPrefixes.Add($m.Groups[1].Value)
+    }
+}
+
+# Phase 3: Check for lint-ignore suppression on registry entries
+$dcfgSuppressed = [System.Collections.Generic.HashSet[string]]::new()
+if ($registryFile.Count -gt 0) {
+    $regLines = $fileCache[$registryFile[0].FullName]
+    for ($ri = 0; $ri -lt $regLines.Count; $ri++) {
+        $regLine = $regLines[$ri]
+        if ($regLine.IndexOf('lint-ignore:', [System.StringComparison]::Ordinal) -lt 0) { continue }
+        if ($regLine -notmatch 'lint-ignore:\s*dead-config') { continue }
+        # Find g: "KeyName" on this line or adjacent lines (within same entry)
+        for ($rj = [Math]::Max(0, $ri - 2); $rj -le [Math]::Min($regLines.Count - 1, $ri + 2); $rj++) {
+            if ($regLines[$rj] -match 'g:\s*"(\w+)"') {
+                [void]$dcfgSuppressed.Add($Matches[1])
+            }
+        }
+    }
+}
+
+# Phase 4: Find dead keys
+foreach ($key in $validCfgProps) {
+    if ($dcfgAccessedKeys.Contains($key)) { continue }
+    if ($dcfgSuppressed.Contains($key)) { continue }
+
+    # Check if key could be dynamically accessed via prefix matching
+    # (e.g., key "Theme_DarkBg" starts with prefix "Theme_Dark" from a cfg.% file)
+    $isDynamic = $false
+    foreach ($prefix in $dcfgDynPrefixes) {
+        if ($key.StartsWith($prefix)) {
+            $isDynamic = $true
+            break
+        }
+    }
+    if ($isDynamic) { continue }
+
+    [void]$dcfgIssues.Add($key)
+}
+
+if ($dcfgIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($dcfgIssues.Count) dead config registry entry(ies).")
+    [void]$failOutput.AppendLine("  Keys defined in the registry but never accessed via cfg.PropertyName.")
+    [void]$failOutput.AppendLine("  Fix: remove the entry from config_registry.ahk.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: dead-config' on the registry entry line.")
+    foreach ($key in $dcfgIssues | Sort-Object) {
+        [void]$failOutput.AppendLine("    $key")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_dead_config"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1402,7 +1509,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle)" -ForegroundColor Green
+    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
