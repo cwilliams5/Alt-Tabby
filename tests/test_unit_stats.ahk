@@ -398,6 +398,306 @@ RunUnitTests_Stats() {
     }
 
     ; ============================================================
+    ; Stats_BumpLifetimeStat Tests
+    ; ============================================================
+    Log("`n--- Stats_BumpLifetimeStat Tests ---")
+
+    ; Test: BumpLifetimeStat increments existing key
+    Log("Testing BumpLifetimeStat: increment existing key...")
+    try {
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["TotalAltTabs"] := 10
+
+        Stats_BumpLifetimeStat("TotalAltTabs")
+
+        if (gStats_Lifetime["TotalAltTabs"] = 11) {
+            Log("PASS: BumpLifetimeStat increments TotalAltTabs from 10 to 11")
+            TestPassed++
+        } else {
+            Log("FAIL: Expected 11, got " gStats_Lifetime["TotalAltTabs"])
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: BumpLifetimeStat increment error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: BumpLifetimeStat with non-existent key is no-op (no crash)
+    Log("Testing BumpLifetimeStat: non-existent key is no-op...")
+    try {
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        prevCount := gStats_Lifetime.Count
+
+        Stats_BumpLifetimeStat("NonExistentKey")
+
+        if (gStats_Lifetime.Count = prevCount && !gStats_Lifetime.Has("NonExistentKey")) {
+            Log("PASS: BumpLifetimeStat no-op for non-existent key")
+            TestPassed++
+        } else {
+            Log("FAIL: BumpLifetimeStat created unexpected key")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: BumpLifetimeStat non-existent key error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Stats_UpdatePeakWindows Tests
+    ; ============================================================
+    Log("`n--- Stats_UpdatePeakWindows Tests ---")
+
+    ; Test: UpdatePeakWindows sets new session peak
+    Log("Testing UpdatePeakWindows: new session peak...")
+    try {
+        gStats_Session := Map()
+        gStats_Session["peakWindows"] := 5
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["PeakWindowsInSession"] := 20  ; Lifetime peak higher
+
+        Stats_UpdatePeakWindows(10)
+
+        if (gStats_Session["peakWindows"] = 10) {
+            Log("PASS: Session peak updated from 5 to 10")
+            TestPassed++
+        } else {
+            Log("FAIL: Expected session peak 10, got " gStats_Session["peakWindows"])
+            TestErrors++
+        }
+        ; Lifetime should NOT change (10 < 20)
+        if (gStats_Lifetime["PeakWindowsInSession"] = 20) {
+            Log("PASS: Lifetime peak unchanged (10 < 20)")
+            TestPassed++
+        } else {
+            Log("FAIL: Expected lifetime peak 20, got " gStats_Lifetime["PeakWindowsInSession"])
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: UpdatePeakWindows session peak error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: UpdatePeakWindows sets both session AND lifetime peak
+    Log("Testing UpdatePeakWindows: new lifetime peak...")
+    try {
+        gStats_Session := Map()
+        gStats_Session["peakWindows"] := 5
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["PeakWindowsInSession"] := 8
+
+        Stats_UpdatePeakWindows(15)
+
+        if (gStats_Session["peakWindows"] = 15 && gStats_Lifetime["PeakWindowsInSession"] = 15) {
+            Log("PASS: Both session and lifetime peak updated to 15")
+            TestPassed++
+        } else {
+            Log("FAIL: Session=" gStats_Session["peakWindows"] " Lifetime=" gStats_Lifetime["PeakWindowsInSession"] " (expected both 15)")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: UpdatePeakWindows lifetime peak error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: UpdatePeakWindows below current peak is no-op
+    Log("Testing UpdatePeakWindows: below session peak is no-op...")
+    try {
+        gStats_Session := Map()
+        gStats_Session["peakWindows"] := 20
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["PeakWindowsInSession"] := 25
+
+        Stats_UpdatePeakWindows(10)
+
+        if (gStats_Session["peakWindows"] = 20 && gStats_Lifetime["PeakWindowsInSession"] = 25) {
+            Log("PASS: Peaks unchanged when count below current (session=20, lifetime=25)")
+            TestPassed++
+        } else {
+            Log("FAIL: Session=" gStats_Session["peakWindows"] " Lifetime=" gStats_Lifetime["PeakWindowsInSession"])
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: UpdatePeakWindows below peak error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
+    ; Stats_GetSnapshot Derived Calculation Tests
+    ; ============================================================
+    Log("`n--- Stats_GetSnapshot Derived Calculation Tests ---")
+
+    ; Test: Session delta calculation (lifetime - baseline)
+    Log("Testing GetSnapshot: session delta calculation...")
+    try {
+        cfg.StatsTrackingEnabled := true
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["TotalAltTabs"] := 100
+        gStats_Lifetime["TotalQuickSwitches"] := 30
+        gStats_Lifetime["TotalTabSteps"] := 250
+        gStats_Lifetime["TotalCancellations"] := 10
+        gStats_Lifetime["TotalCrossWorkspace"] := 5
+        gStats_Lifetime["TotalWorkspaceToggles"] := 8
+        gStats_Lifetime["TotalWindowUpdates"] := 50
+        gStats_Lifetime["TotalBlacklistSkips"] := 20
+
+        gStats_Session := Map()
+        gStats_Session["sessionStartTick"] := A_TickCount
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["peakWindows"] := 12
+        ; Baselines: simulate starting with some lifetime stats already
+        gStats_Session["baselineAltTabs"] := 60
+        gStats_Session["baselineQuickSwitches"] := 20
+        gStats_Session["baselineTabSteps"] := 150
+        gStats_Session["baselineCancellations"] := 5
+        gStats_Session["baselineCrossWorkspace"] := 2
+        gStats_Session["baselineWorkspaceToggles"] := 3
+        gStats_Session["baselineWindowUpdates"] := 30
+        gStats_Session["baselineBlacklistSkips"] := 10
+
+        snap := Stats_GetSnapshot()
+
+        ; Session deltas = lifetime - baseline
+        deltaOk := (snap.SessionAltTabs = 40
+            && snap.SessionQuickSwitches = 10
+            && snap.SessionTabSteps = 100
+            && snap.SessionCancellations = 5
+            && snap.SessionCrossWorkspace = 3
+            && snap.SessionWorkspaceToggles = 5
+            && snap.SessionWindowUpdates = 20
+            && snap.SessionBlacklistSkips = 10)
+
+        if (deltaOk) {
+            Log("PASS: Session deltas correct (lifetime - baseline)")
+            TestPassed++
+        } else {
+            Log("FAIL: Session deltas: AltTabs=" snap.SessionAltTabs " Quick=" snap.SessionQuickSwitches
+                " Tabs=" snap.SessionTabSteps " Cancels=" snap.SessionCancellations)
+            TestErrors++
+        }
+
+        ; SessionPeakWindows should match session peak
+        if (snap.SessionPeakWindows = 12) {
+            Log("PASS: SessionPeakWindows = 12")
+            TestPassed++
+        } else {
+            Log("FAIL: SessionPeakWindows = " snap.SessionPeakWindows " (expected 12)")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: GetSnapshot session delta error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: Derived AvgAltTabsPerHour
+    Log("Testing GetSnapshot: derived AvgAltTabsPerHour...")
+    try {
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["TotalAltTabs"] := 360
+        gStats_Lifetime["TotalRunTimeSec"] := 3600  ; 1 hour
+
+        gStats_Session := Map()
+        gStats_Session["sessionStartTick"] := A_TickCount  ; ~0 seconds session
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["peakWindows"] := 0
+
+        snap := Stats_GetSnapshot()
+
+        ; AvgAltTabsPerHour = 360 / ((3600 + ~0) / 3600) ≈ 360.0
+        ; With ~0s session time, totalRunSec ≈ 3600
+        if (snap.DerivedAvgAltTabsPerHour >= 359 && snap.DerivedAvgAltTabsPerHour <= 361) {
+            Log("PASS: AvgAltTabsPerHour ≈ 360 (got " snap.DerivedAvgAltTabsPerHour ")")
+            TestPassed++
+        } else {
+            Log("FAIL: AvgAltTabsPerHour = " snap.DerivedAvgAltTabsPerHour " (expected ~360)")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: GetSnapshot AvgAltTabsPerHour error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: Derived QuickSwitchPct
+    Log("Testing GetSnapshot: derived QuickSwitchPct...")
+    try {
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["TotalAltTabs"] := 80
+        gStats_Lifetime["TotalQuickSwitches"] := 20
+
+        gStats_Session := Map()
+        gStats_Session["sessionStartTick"] := A_TickCount
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["peakWindows"] := 0
+
+        snap := Stats_GetSnapshot()
+
+        ; QuickSwitchPct = 20 / (80 + 20) * 100 = 20.0
+        if (snap.DerivedQuickSwitchPct = 20.0) {
+            Log("PASS: QuickSwitchPct = 20.0")
+            TestPassed++
+        } else {
+            Log("FAIL: QuickSwitchPct = " snap.DerivedQuickSwitchPct " (expected 20.0)")
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: GetSnapshot QuickSwitchPct error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: Derived stats with zero divisors (no crash, returns 0)
+    Log("Testing GetSnapshot: derived stats with zero divisors...")
+    try {
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        ; Everything is zero — all derived stats should be 0
+
+        gStats_Session := Map()
+        gStats_Session["sessionStartTick"] := A_TickCount
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["peakWindows"] := 0
+
+        snap := Stats_GetSnapshot()
+
+        allZero := (snap.DerivedAvgAltTabsPerHour = 0
+            && snap.DerivedQuickSwitchPct = 0
+            && snap.DerivedCancelRate = 0
+            && snap.DerivedAvgTabsPerSwitch = 0)
+
+        if (allZero) {
+            Log("PASS: All derived stats = 0 with zero divisors")
+            TestPassed++
+        } else {
+            Log("FAIL: Derived with zeros: AvgHour=" snap.DerivedAvgAltTabsPerHour
+                " QuickPct=" snap.DerivedQuickSwitchPct
+                " CancelRate=" snap.DerivedCancelRate
+                " AvgTabs=" snap.DerivedAvgTabsPerSwitch)
+            TestErrors++
+        }
+    } catch as e {
+        Log("FAIL: GetSnapshot zero divisors error: " e.Message)
+        TestErrors++
+    }
+
+    ; ============================================================
     ; Restore original state
     ; ============================================================
     gStats_Lifetime := origLifetime

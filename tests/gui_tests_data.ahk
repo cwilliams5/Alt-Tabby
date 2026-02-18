@@ -22,6 +22,7 @@ RunGUITests_Data() {
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
     global gGUI_Base, gGUI_Overlay, gGdip_IconCache
     global gMock_StoreItems, gMock_StoreItemsMap
+    global _gGUI_LastCosmeticRepaintTick, gWS_Store, gWS_DirtyHwnds, gMock_RepaintCount
 
     GUI_Log("`n=== GUI Data Processing Tests ===`n")
 
@@ -586,6 +587,139 @@ RunGUITests_Data() {
     ; Timer should NOT have been set; verify by calling tick manually after brief wait
     Sleep(60)
     GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "KickPreCache ACTIVE: timer not set, no icons cached")
+
+    ; ============================================================
+    ; GUI_PatchCosmeticUpdates TESTS
+    ; ============================================================
+
+    ; ----- Test: Cosmetic patch: title update -----
+    GUI_Log("Test: Cosmetic patch updates title in-place")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(3)
+    items[2].title := "Old Title"
+    items[2].iconHicon := 5000
+    items[2].processName := "old.exe"
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    ; Populate store with updated title for item 2 (hwnd=2000)
+    gWS_Store[2000] := {title: "New Title", iconHicon: 5000, processName: "old.exe", workspaceName: "Main"}
+    gWS_DirtyHwnds[2000] := true
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(items[2].title, "New Title", "CosmeticPatch title: item.title patched in-place")
+
+    ; ----- Test: Cosmetic patch: icon update -----
+    GUI_Log("Test: Cosmetic patch updates icon in-place")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(3)
+    items[1].iconHicon := 1000
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    gWS_Store[1000] := {title: "Window 1", iconHicon: 9999, processName: "", workspaceName: "Main"}
+    gWS_DirtyHwnds[1000] := true
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(items[1].iconHicon, 9999, "CosmeticPatch icon: item.iconHicon patched in-place")
+
+    ; ----- Test: Cosmetic patch: processName update -----
+    GUI_Log("Test: Cosmetic patch updates processName in-place")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(3)
+    items[3].processName := "old.exe"
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    gWS_Store[3000] := {title: "Window 3", iconHicon: 0, processName: "new.exe", workspaceName: "Main"}
+    gWS_DirtyHwnds[3000] := true
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(items[3].processName, "new.exe", "CosmeticPatch proc: item.processName patched in-place")
+
+    ; ----- Test: Cosmetic patch: workspace move updates workspaceName + isOnCurrentWorkspace -----
+    GUI_Log("Test: Cosmetic patch updates workspace data")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_CurrentWSName := "Main"
+    items := CreateTestItems(2)
+    items[1].workspaceName := "Main"
+    items[1].isOnCurrentWorkspace := true
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    ; Store says window moved to "Other" workspace
+    gWS_Store[1000] := {title: "Window 1", iconHicon: 0, processName: "", workspaceName: "Other"}
+    gWS_DirtyHwnds[1000] := true
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(items[1].workspaceName, "Other", "CosmeticPatch WS: workspaceName updated")
+    GUI_AssertEq(items[1].isOnCurrentWorkspace, false, "CosmeticPatch WS: isOnCurrentWorkspace recalculated (Other != Main)")
+
+    ; ----- Test: Cosmetic patch: debounce skips when too recent -----
+    GUI_Log("Test: Cosmetic patch debounce skips")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(2)
+    items[1].title := "Old"
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    gWS_Store[1000] := {title: "New", iconHicon: 0, processName: "", workspaceName: "Main"}
+    gWS_DirtyHwnds[1000] := true
+    ; Set last repaint to NOW — debounce should skip (250ms threshold)
+    _gGUI_LastCosmeticRepaintTick := A_TickCount
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(items[1].title, "Old", "CosmeticPatch debounce: title NOT patched (debounced)")
+    GUI_AssertEq(gMock_RepaintCount, 0, "CosmeticPatch debounce: GUI_Repaint not called")
+
+    ; ----- Test: Cosmetic patch: no dirty hwnds = no repaint -----
+    GUI_Log("Test: Cosmetic patch no dirty hwnds is no-op")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(3)
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    ; No dirty hwnds, no store entries needed
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(gMock_RepaintCount, 0, "CosmeticPatch no-dirty: GUI_Repaint not called")
+
+    ; ----- Test: Cosmetic patch: dirty hwnd not in frozen set is skipped -----
+    GUI_Log("Test: Cosmetic patch skips dirty hwnd not in frozen set")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(2)
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    ; Dirty hwnd 9999 is NOT in the ToggleBase (hwnds 1000, 2000)
+    gWS_Store[9999] := {title: "Ghost", iconHicon: 0, processName: "", workspaceName: "Main"}
+    gWS_DirtyHwnds[9999] := true
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(gMock_RepaintCount, 0, "CosmeticPatch not-in-frozen: GUI_Repaint not called (patched=0)")
+
+    ; ----- Test: Cosmetic patch: repaint called when patched > 0 -----
+    GUI_Log("Test: Cosmetic patch calls repaint when items patched")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    items := CreateTestItems(2)
+    items[1].title := "Old"
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    gWS_Store[1000] := {title: "New", iconHicon: 0, processName: "", workspaceName: "Main"}
+    gWS_DirtyHwnds[1000] := true
+
+    GUI_PatchCosmeticUpdates()
+
+    GUI_AssertEq(gMock_RepaintCount, 1, "CosmeticPatch repaint: GUI_Repaint called once")
+    GUI_AssertTrue(_gGUI_LastCosmeticRepaintTick > 0, "CosmeticPatch repaint: debounce tick updated")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")

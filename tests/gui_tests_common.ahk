@@ -97,6 +97,7 @@ global cfg := {
     DiagEventLog: false,  ; Disable event logging during tests
     DiagPaintTimingLog: false,  ; Disable paint timing log during tests
     DiagProcPumpLog: false,
+    DiagCosmeticPatchLog: false,
     DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
@@ -114,8 +115,11 @@ global GUI_TestFailed := 0
 ; These replace gui_paint.ahk, gui_overlay.ahk functions
 ; ============================================================
 
-; Visual operations - no-op in tests
+; Visual operations - tracked via mock counter for cosmetic patch tests
+global gMock_RepaintCount := 0
 GUI_Repaint() {
+    global gMock_RepaintCount
+    gMock_RepaintCount++
 }
 
 GUI_ResizeToRows(n, skipFlush := false) {
@@ -304,6 +308,7 @@ ResetGUIState() {
     global gGUI_Base, gGUI_Overlay, gINT_BypassMode, gMock_PruneCalledWith
     global gMock_PreCachedIcons, gGdip_IconCache
     global gMock_StoreItems, gMock_StoreItemsMap
+    global gMock_RepaintCount
 
     gGUI_State := "IDLE"
     gGUI_LiveItems := []
@@ -330,6 +335,7 @@ ResetGUIState() {
     gGdip_IconCache := Map()
     gMock_StoreItems := []
     gMock_StoreItemsMap := Map()
+    gMock_RepaintCount := 0
     global _gGUI_LastCosmeticRepaintTick
     global gWS_Store, gWS_DirtyHwnds
     _gGUI_LastCosmeticRepaintTick := 0
@@ -356,7 +362,8 @@ CreateTestItems(count, currentWSCount := -1) {
             isOnCurrentWorkspace: (A_Index <= currentWSCount),
             workspaceName: (A_Index <= currentWSCount) ? "Main" : "Other",
             lastActivatedTick: A_TickCount - (A_Index * 100),  ; MRU order: lower index = more recent
-            iconHicon: 0
+            iconHicon: 0,
+            processName: ""
         })
     }
     return items

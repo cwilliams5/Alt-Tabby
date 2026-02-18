@@ -776,4 +776,65 @@ RunUnitTests_CoreStore() {
     gWS_SortOrderDirty := false
     WL_RemoveWindow([99901], true)
     AssertEq(gWS_SortOrderDirty, true, "DirtyContract: RemoveWindow marks sort dirty")
+
+    ; ============================================================
+    ; OptsKey Cache Invalidation Tests
+    ; ============================================================
+    ; Verifies display list cache invalidates when sort mode or filter changes.
+    ; Prevents a bug where switching sort modes returns stale-sorted data.
+    Log("`n--- OptsKey Cache Invalidation Tests ---")
+
+    WL_Init()
+    WL_BeginScan()
+    okRecs := []
+    okRecs.Push(Map("hwnd", 9201, "title", "Charlie", "class", "T", "pid", 1,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 1, "lastActivatedTick", 300))
+    okRecs.Push(Map("hwnd", 9202, "title", "Alpha", "class", "T", "pid", 2,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 2, "lastActivatedTick", 100))
+    okRecs.Push(Map("hwnd", 9203, "title", "Bravo", "class", "T", "pid", 3,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 3, "lastActivatedTick", 200))
+    WL_UpsertWindow(okRecs, "test")
+    WL_EndScan()
+
+    ; Get MRU-sorted list: Charlie(300) > Bravo(200) > Alpha(100)
+    projMRU := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(projMRU.items[1].hwnd, 9201, "OptsKey MRU: Charlie first (tick 300)")
+    AssertEq(projMRU.items[2].hwnd, 9203, "OptsKey MRU: Bravo second (tick 200)")
+    AssertEq(projMRU.items[3].hwnd, 9202, "OptsKey MRU: Alpha third (tick 100)")
+
+    ; Switch to Title sort: Alpha < Bravo < Charlie (different order!)
+    projTitle := WL_GetDisplayList({ sort: "Title" })
+    AssertEq(projTitle.items[1].hwnd, 9202, "OptsKey Title: Alpha first")
+    AssertEq(projTitle.items[2].hwnd, 9203, "OptsKey Title: Bravo second")
+    AssertEq(projTitle.items[3].hwnd, 9201, "OptsKey Title: Charlie third")
+
+    ; Switch back to MRU: must NOT return Title-sorted cache
+    projMRU2 := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(projMRU2.items[1].hwnd, 9201, "OptsKey MRU->Title->MRU: Charlie first again")
+    AssertEq(projMRU2.items[2].hwnd, 9203, "OptsKey MRU->Title->MRU: Bravo second again")
+    AssertEq(projMRU2.items[3].hwnd, 9202, "OptsKey MRU->Title->MRU: Alpha third again")
+
+    ; Same opts reuses cache (verify by checking dirty flags stay clean)
+    projMRU3 := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(projMRU3.items[1].hwnd, 9201, "OptsKey cache hit: same opts returns same result")
+    AssertEq(gWS_SortOrderDirty, false, "OptsKey cache hit: sort dirty stays false")
+
+    ; Filter change: currentWorkspaceOnly toggle invalidates cache
+    ; Set workspace names FIRST, then call SetCurrentWorkspace to recalculate isOnCurrentWorkspace
+    WL_UpdateFields(9201, Map("workspaceName", "WS_A"), "test")
+    WL_UpdateFields(9202, Map("workspaceName", "WS_B"), "test")
+    WL_UpdateFields(9203, Map("workspaceName", "WS_A"), "test")
+    WL_SetCurrentWorkspace("", "WS_A")
+
+    projAll := WL_GetDisplayList({ sort: "MRU", currentWorkspaceOnly: false })
+    AssertEq(projAll.items.Length, 3, "OptsKey filter: all mode returns 3 items")
+
+    projCurrent := WL_GetDisplayList({ sort: "MRU", currentWorkspaceOnly: true })
+    AssertEq(projCurrent.items.Length, 2, "OptsKey filter: currentOnly returns 2 items (WS_A only)")
+
+    ; Cleanup
+    WL_RemoveWindow([9201, 9202, 9203], true)
 }
