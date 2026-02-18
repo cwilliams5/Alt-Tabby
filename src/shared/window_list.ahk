@@ -11,9 +11,9 @@
 global WS_SCAN_ID_MAX := 0x7FFFFFFF
 
 ; Canonical list of fields copied from store records into display list items.
-; Used by _WS_ToItem (display list output) and dirty tracking (field categorization).
+; Used by static analysis (check_batch_patterns) to verify _WS_ToItem stays in sync.
 ; hwnd is always included separately as the record key.
-global DISPLAY_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick",
+global DISPLAY_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick", ; lint-ignore: dead-global
     "isFocused", "isCloaked", "isMinimized", "workspaceName", "workspaceId",
     "isOnCurrentWorkspace", "processName", "iconHicon"]
 
@@ -94,9 +94,6 @@ global gWS_ProcNameCache := Map()  ; pid -> { name: string, tick: A_TickCount }
 gWS_Config["MissingTTLms"] := 1200  ; Default, overridden from cfg in WL_Init()
 gWS_Meta["currentWSId"] := ""
 gWS_Meta["currentWSName"] := ""
-
-; Flag indicating workspace changed since last consumed - for OnChange delta style
-global gWS_WorkspaceChangedFlag := false
 
 ; Display-list-level dirty tracking: hwnds with any display-visible field change
 ; since the last WL_GetDisplayList call. Persists until display list cache is rebuilt.
@@ -723,7 +720,7 @@ WL_GetByHwnd(hwnd) {
 }
 
 WL_SetCurrentWorkspace(id, name := "") {
-    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ContentDirty, gWS_WorkspaceChangedFlag, gWS_MRUBumpOnly
+    global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
     global gWS_OnWorkspaceChanged
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
     ; and the iteration loop must be atomic so a timer can't observe stale meta values
@@ -739,12 +736,11 @@ WL_SetCurrentWorkspace(id, name := "") {
         return false  ; lint-ignore: critical-section
 
     gWS_Meta["currentWSName"] := name
-    gWS_WorkspaceChangedFlag := true  ; Signal workspace change for OnChange delta style
 
     ; Update isOnCurrentWorkspace for all windows based on new workspace
     ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
     anyFlipped := false
-    for hwnd, rec in gWS_Store {
+    for _, rec in gWS_Store {
         newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
         if (rec.isOnCurrentWorkspace != newIsOnCurrent) {
             rec.isOnCurrentWorkspace := newIsOnCurrent
@@ -1138,7 +1134,7 @@ WL_ExeIconCachePut(exePath, hIcon) {
 ; Clean up all cached exe icons - call on shutdown
 WL_CleanupExeIconCache() {
     global gWS_ExeIconCache
-    for exePath, hIcon in gWS_ExeIconCache {
+    for _, hIcon in gWS_ExeIconCache {
         if (hIcon)
             try DllCall("user32\DestroyIcon", "ptr", hIcon)
     }
@@ -1225,7 +1221,7 @@ WL_GetHwndsByPids(pidSet) {
 WL_CleanupAllIcons() {
     global gWS_Store
     Critical "On"
-    for hwnd, rec in gWS_Store {
+    for _, rec in gWS_Store {
         if (rec.HasOwnProp("iconHicon") && rec.iconHicon) {
             try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
             rec.iconHicon := 0

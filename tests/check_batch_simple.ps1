@@ -1,6 +1,6 @@
 # check_batch_simple.ps1 - Batched simple pattern checks
-# Combines 11 lightweight checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config
+# Combines 14 lightweight checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_simple.ps1 [-SourceDir "path\to\src"]
@@ -981,7 +981,7 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
     'thememsgbox', 'callback-critical', 'onmessage-collision',
     'postmessage-unsafe', 'callback-signature',
     'static-in-timer', 'timer-lifecycle',
-    'dead-function', 'dead-config', 'test-assertions',
+    'dead-function', 'dead-config', 'dead-global', 'dead-local', 'dead-param', 'test-assertions',
     'arity',
     'onevent-name', 'destroy-untrack',
     'unreachable-code', 'ipc-symmetry'
@@ -1502,6 +1502,531 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_dead_config"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 12: dead_globals
+# Detects file-scope global declarations that are never referenced
+# outside their declaring file. These are dead globals that can
+# be removed.
+# Suppress: ; lint-ignore: dead-global
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$dgIssues = [System.Collections.ArrayList]::new()
+
+# Phase 1: Collect ALL file-scope global declarations from src/ files
+$dgAllGlobals = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $processed = $processedCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $depth = 0
+
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $ld = $processed[$i]
+        $cleaned = $ld.Cleaned
+        if ($cleaned -eq '') { continue }
+
+        # Only look at file-scope (depth == 0) global declarations
+        if ($depth -eq 0 -and $cleaned -match '^\s*global\s+(.+)') {
+            # Check for lint-ignore suppression
+            if ($ld.Raw -match 'lint-ignore:\s*dead-global') {
+                $depth += $ld.Braces[0] - $ld.Braces[1]
+                if ($depth -lt 0) { $depth = 0 }
+                continue
+            }
+
+            $declContent = $Matches[1]
+
+            # Split on commas, respecting nested parens/brackets
+            $dgParenDepth = 0
+            $dgParts = [System.Collections.ArrayList]::new()
+            $dgCurrent = [System.Text.StringBuilder]::new()
+            foreach ($ch in $declContent.ToCharArray()) {
+                if ($ch -eq '(' -or $ch -eq '[') { $dgParenDepth++ }
+                elseif ($ch -eq ')' -or $ch -eq ']') { if ($dgParenDepth -gt 0) { $dgParenDepth-- } }
+                if ($ch -eq ',' -and $dgParenDepth -eq 0) {
+                    [void]$dgParts.Add($dgCurrent.ToString())
+                    [void]$dgCurrent.Clear()
+                } else {
+                    [void]$dgCurrent.Append($ch)
+                }
+            }
+            [void]$dgParts.Add($dgCurrent.ToString())
+
+            foreach ($part in $dgParts) {
+                $trimmed = $part.Trim()
+                if ($trimmed -match '^(\w+)') {
+                    $varName = $Matches[1]
+                    [void]$dgAllGlobals.Add(@{
+                        Name = $varName
+                        File = $relPath
+                        Line = ($i + 1)
+                        FullPath = $file.FullName
+                    })
+                }
+            }
+        }
+
+        $depth += $ld.Braces[0] - $ld.Braces[1]
+        if ($depth -lt 0) { $depth = 0 }
+    }
+}
+
+# Phase 2: Build text cache for test files (src/ already in $fileCacheText)
+$dgTestTexts = @{}
+$dgTestsDir = Join-Path $projectRoot "tests"
+if (Test-Path $dgTestsDir) {
+    foreach ($file in @(Get-ChildItem -Path $dgTestsDir -Filter "*.ahk" -Recurse)) {
+        if (-not $fileCacheText.ContainsKey($file.FullName)) {
+            $dgTestTexts[$file.FullName] = [System.IO.File]::ReadAllText($file.FullName)
+        }
+    }
+}
+
+# Phase 3: For each global, check if it appears in any file OTHER than its declaring file.
+# For globals only in their declaring file, check if they have any reads (not just writes).
+# A global is "dead" if it has no external references AND no reads within its declaring file
+# (only declarations, global access statements, and pure assignments like VarName := expr).
+foreach ($g in $dgAllGlobals) {
+    $varName = $g.Name
+    $declFullPath = $g.FullPath
+    $foundElsewhere = $false
+
+    # Check all src/ files (excluding declaring file)
+    foreach ($f in $allFiles) {
+        if ($f.FullName -eq $declFullPath) { continue }
+        if ($fileCacheText[$f.FullName].IndexOf($varName, [System.StringComparison]::Ordinal) -ge 0) {
+            $foundElsewhere = $true
+            break
+        }
+    }
+
+    # Check test files if not found in src/
+    if (-not $foundElsewhere) {
+        foreach ($kv in $dgTestTexts.GetEnumerator()) {
+            if ($kv.Value.IndexOf($varName, [System.StringComparison]::Ordinal) -ge 0) {
+                $foundElsewhere = $true
+                break
+            }
+        }
+    }
+
+    if ($foundElsewhere) { continue }
+
+    # Global only in declaring file — check if it has any reads (not just writes).
+    # A line is a "read" if VarName appears on a non-global, non-assignment line.
+    # This catches write-only globals (declared + assigned but never consumed).
+    $hasRead = $false
+    $dgLines = $fileCache[$declFullPath]
+    $escapedName = [regex]::Escape($varName)
+
+    for ($li = 0; $li -lt $dgLines.Count; $li++) {
+        $dgRaw = $dgLines[$li]
+        if ($dgRaw.IndexOf($varName, [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        $dgCleaned = BS_CleanLine $dgRaw
+        if ($dgCleaned -eq '') { continue }
+
+        # Skip global declaration/access lines (global VarName ... at any depth)
+        if ($dgCleaned -match '^\s*global\b') { continue }
+
+        # Skip pure assignment lines: VarName := expr (VarName is the LHS target)
+        if ($dgCleaned -match "^\s*$escapedName\s*:=") { continue }
+
+        # Any other occurrence means VarName is being read (used as value, passed to
+        # function, indexed, iterated, compared, etc.)
+        $hasRead = $true
+        break
+    }
+
+    if (-not $hasRead) {
+        [void]$dgIssues.Add([PSCustomObject]@{
+            Name = $varName
+            File = $g.File
+            Line = $g.Line
+        })
+    }
+}
+
+if ($dgIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($dgIssues.Count) dead global(s) found.")
+    [void]$failOutput.AppendLine("  Global declared at file scope but never referenced outside its file, and write-only within it.")
+    [void]$failOutput.AppendLine("  Fix: remove the global declaration if unused, or move it to local scope.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: dead-global' on the declaration line.")
+    $grouped = $dgIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.Name)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_dead_globals"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# === Shared: Extract function definitions for sub-checks 13-14 ===
+# Parses file-scope function defs: name, param string, body range.
+$bsFuncDefs = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $bfProc = $processedCache[$file.FullName]
+    $bfRel = $file.FullName.Replace("$projectRoot\", '')
+    $bfDepth = 0
+    $bfInFunc = $false
+    $bfPending = $false
+    $bfName = ''; $bfParams = ''; $bfDefIdx = 0; $bfStartLine = 0
+
+    for ($bfi = 0; $bfi -lt $bfProc.Count; $bfi++) {
+        $bfLd = $bfProc[$bfi]
+        $bfCl = $bfLd.Cleaned
+        if ($bfCl -eq '') { continue }
+        $bfO = $bfLd.Braces[0]; $bfC = $bfLd.Braces[1]
+
+        if (-not $bfInFunc -and -not $bfPending -and $bfDepth -eq 0) {
+            if ($bfCl -match '^\s*(\w+)\s*\(') {
+                $bfCandName = $Matches[1]
+                if ($bfCandName -notin $BS_AHK_KEYWORDS) {
+                    # Extract param string with paren matching
+                    $bfPS = $bfCl.IndexOf('(')
+                    $bfPD = 0; $bfPE = -1
+                    for ($bfci = $bfPS; $bfci -lt $bfCl.Length; $bfci++) {
+                        if ($bfCl[$bfci] -eq '(') { $bfPD++ }
+                        elseif ($bfCl[$bfci] -eq ')') { $bfPD--; if ($bfPD -eq 0) { $bfPE = $bfci; break } }
+                    }
+                    if ($bfPE -gt $bfPS) {
+                        $bfName = $bfCandName
+                        $bfParams = $bfCl.Substring($bfPS + 1, $bfPE - $bfPS - 1)
+                        $bfStartLine = $bfi + 1
+                        $bfDefIdx = $bfi
+                        if ($bfO -gt 0) {
+                            $bfInFunc = $true
+                            $bfDepth += $bfO - $bfC
+                            if ($bfDepth -le 0) {
+                                [void]$bsFuncDefs.Add(@{
+                                    Name = $bfName; Params = $bfParams; DefIdx = $bfDefIdx
+                                    EndIdx = $bfi; File = $bfRel; FullPath = $file.FullName
+                                    StartLine = $bfStartLine
+                                })
+                                $bfInFunc = $false; $bfDepth = 0
+                            }
+                        } else {
+                            $bfPending = $true
+                        }
+                        continue
+                    }
+                }
+            }
+        }
+
+        if ($bfPending) {
+            if ($bfO -gt 0) {
+                $bfInFunc = $true
+                $bfPending = $false
+                $bfDepth += $bfO - $bfC
+                if ($bfDepth -le 0) {
+                    [void]$bsFuncDefs.Add(@{
+                        Name = $bfName; Params = $bfParams; DefIdx = $bfDefIdx
+                        EndIdx = $bfi; File = $bfRel; FullPath = $file.FullName
+                        StartLine = $bfStartLine
+                    })
+                    $bfInFunc = $false; $bfDepth = 0
+                }
+            } else {
+                $bfPending = $false
+                $bfDepth += $bfO - $bfC
+                if ($bfDepth -lt 0) { $bfDepth = 0 }
+            }
+            continue
+        }
+
+        if ($bfInFunc) {
+            $bfDepth += $bfO - $bfC
+            if ($bfDepth -le 0) {
+                [void]$bsFuncDefs.Add(@{
+                    Name = $bfName; Params = $bfParams; DefIdx = $bfDefIdx
+                    EndIdx = $bfi; File = $bfRel; FullPath = $file.FullName
+                    StartLine = $bfStartLine
+                })
+                $bfInFunc = $false; $bfDepth = 0
+            }
+        } else {
+            $bfDepth += $bfO - $bfC
+            if ($bfDepth -lt 0) { $bfDepth = 0 }
+        }
+    }
+}
+
+# Shared helper: parse param names from a param string
+function BS_ParseParamNames {
+    param([string]$paramStr)
+    $result = @{}
+    $ps = $paramStr.Trim()
+    if ($ps -eq '' -or $ps -eq '*') { return $result }
+    $ppd = 0
+    $parts = [System.Collections.ArrayList]::new()
+    $buf = [System.Text.StringBuilder]::new()
+    foreach ($ch in $ps.ToCharArray()) {
+        if ($ch -eq '(' -or $ch -eq '[') { $ppd++ }
+        elseif ($ch -eq ')' -or $ch -eq ']') { if ($ppd -gt 0) { $ppd-- } }
+        if ($ch -eq ',' -and $ppd -eq 0) {
+            [void]$parts.Add($buf.ToString()); [void]$buf.Clear()
+        } else { [void]$buf.Append($ch) }
+    }
+    [void]$parts.Add($buf.ToString())
+    foreach ($pp in $parts) {
+        $ppt = $pp.Trim()
+        if ($ppt -eq '*' -or $ppt.EndsWith('*')) { continue }
+        $ppt = $ppt -replace '^(?:ByRef\s+|&)', ''
+        if ($ppt -match '^(\w+)') { $result[$Matches[1]] = $true }
+    }
+    return $result
+}
+
+# ============================================================
+# Sub-check 13: dead_locals
+# Detects local variables inside functions that are assigned but
+# never read. Write-only locals are dead code.
+# Suppress: ; lint-ignore: dead-local (on assignment or function def line)
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$dlIssues = [System.Collections.ArrayList]::new()
+
+foreach ($fd in $bsFuncDefs) {
+    $dlProc = $processedCache[$fd.FullPath]
+    $dlDefIdx = $fd.DefIdx
+    $dlEndIdx = $fd.EndIdx
+
+    # Function-level suppression
+    if ($dlProc[$dlDefIdx].Raw -match 'lint-ignore:\s*dead-local') { continue }
+
+    $dlParamNames = BS_ParseParamNames $fd.Params
+
+    # Collect globals, statics, and local assignments within function body
+    $dlGlobals = @{}
+    $dlStatics = @{}
+    $dlLocals = @{}  # varName -> @{ Line = int; Idx = int }
+
+    for ($dli = $dlDefIdx + 1; $dli -lt $dlEndIdx; $dli++) {
+        $dlCl = $dlProc[$dli].Cleaned
+        if ($dlCl -eq '') { continue }
+
+        # Collect global declarations
+        if ($dlCl -match '^\s*global\b\s+(.*)') {
+            foreach ($gp in $Matches[1].Split(',')) {
+                if ($gp.Trim() -match '^(\w+)') { $dlGlobals[$Matches[1]] = $true }
+            }
+            continue
+        }
+
+        # Collect static declarations
+        if ($dlCl -match '^\s*static\b\s+(.*)') {
+            foreach ($sp in $Matches[1].Split(',')) {
+                if ($sp.Trim() -match '^(\w+)') { $dlStatics[$Matches[1]] = $true }
+            }
+            continue
+        }
+
+        # Collect for-loop variables (two-var form)
+        if ($dlCl -match '^\s*for\s+(\w+)\s*,\s*(\w+)\s+in\b') {
+            foreach ($fv in @($Matches[1], $Matches[2])) {
+                if ($fv -ne '_' -and -not $dlGlobals.ContainsKey($fv) -and
+                    -not $dlStatics.ContainsKey($fv) -and -not $dlParamNames.ContainsKey($fv) -and
+                    -not $dlLocals.ContainsKey($fv)) {
+                    $dlLocals[$fv] = @{ Line = $dli + 1; Idx = $dli }
+                }
+            }
+            continue
+        }
+        # Collect for-loop variables (single-var form)
+        if ($dlCl -match '^\s*for\s+(\w+)\s+in\b') {
+            $fv = $Matches[1]
+            if ($fv -ne '_' -and -not $dlGlobals.ContainsKey($fv) -and
+                -not $dlStatics.ContainsKey($fv) -and -not $dlParamNames.ContainsKey($fv) -and
+                -not $dlLocals.ContainsKey($fv)) {
+                $dlLocals[$fv] = @{ Line = $dli + 1; Idx = $dli }
+            }
+            continue
+        }
+
+        # Collect catch-as variables
+        if ($dlCl -match '^\s*catch\b.*\bas\s+(\w+)') {
+            $cv = $Matches[1]
+            if ($cv -ne '_' -and -not $dlGlobals.ContainsKey($cv) -and
+                -not $dlStatics.ContainsKey($cv) -and -not $dlParamNames.ContainsKey($cv) -and
+                -not $dlLocals.ContainsKey($cv)) {
+                $dlLocals[$cv] = @{ Line = $dli + 1; Idx = $dli }
+            }
+        }
+
+        # Collect explicit local declarations: local varName :=
+        if ($dlCl -match '^\s*local\s+(\w+)\s*:=') {
+            $lv = $Matches[1]
+            if ($lv -ne '_' -and -not $dlLocals.ContainsKey($lv)) {
+                $dlLocals[$lv] = @{ Line = $dli + 1; Idx = $dli }
+            }
+            continue
+        }
+
+        # Collect implicit local assignments: varName :=
+        if ($dlCl -match '^\s*(\w+)\s*:=') {
+            $av = $Matches[1]
+            if ($null -ne $av -and $av -ne '_' -and $av -notin $BS_AHK_KEYWORDS -and
+                -not $av.StartsWith('A_') -and -not $dlLocals.ContainsKey($av)) {
+                if (-not $dlGlobals.ContainsKey($av) -and -not $dlStatics.ContainsKey($av) -and
+                    -not $dlParamNames.ContainsKey($av)) {
+                    $dlLocals[$av] = @{ Line = $dli + 1; Idx = $dli }
+                }
+            }
+        }
+    }
+
+    # Check each local for reads in the function body
+    foreach ($dlVar in @($dlLocals.Keys)) {
+        $dlHasRead = $false
+        $dlEsc = [regex]::Escape($dlVar)
+
+        for ($dli = $dlDefIdx + 1; $dli -lt $dlEndIdx; $dli++) {
+            $dlCl = $dlProc[$dli].Cleaned
+            if ($dlCl -eq '') { continue }
+            if ($dlCl.IndexOf($dlVar, [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+            # Skip global/static/local declaration lines
+            if ($dlCl -match '^\s*(global|static|local)\b') { continue }
+
+            # Skip pure assignment lines: VarName :=
+            if ($dlCl -match "^\s*$dlEsc\s*:=") { continue }
+
+            # Skip for-loop header lines where this var is being defined
+            if ($dlCl -match '^\s*for\b') {
+                if ($dlCl -match "^\s*for\s+(?:(\w+)\s*,\s*)?(\w+)\s+in\b") {
+                    if ($dlVar -eq $Matches[1] -or $dlVar -eq $Matches[2]) { continue }
+                }
+            }
+
+            # Skip catch-as definition lines for this variable
+            if ($dlCl -match "^\s*catch\b.*\bas\s+$dlEsc\b") { continue }
+
+            # Word-bounded occurrence = a read
+            if ($dlCl -match "(?<![.\w])$dlEsc(?!\w)") {
+                $dlHasRead = $true
+                break
+            }
+        }
+
+        if (-not $dlHasRead) {
+            $dlInfo = $dlLocals[$dlVar]
+            if ($null -eq $dlInfo) { continue }
+
+            # Fallback: check raw lines for mixed-quote string concatenation
+            # (BS_CleanLine can eat variables between alternating quote styles)
+            $dlRawHit = $false
+            for ($dli = $dlDefIdx + 1; $dli -lt $dlEndIdx; $dli++) {
+                if ($dli -eq $dlInfo['Idx']) { continue }  # skip definition line
+                $dlRawLine = $dlProc[$dli].Raw
+                if ($dlRawLine.IndexOf($dlVar, [System.StringComparison]::Ordinal) -lt 0) { continue }
+                $dlRawTrimmed = $dlRawLine.TrimStart()
+                if ($dlRawTrimmed.Length -gt 0 -and $dlRawTrimmed[0] -ne ';') {
+                    $dlRawHit = $true; break
+                }
+            }
+            if ($dlRawHit) { continue }
+
+            # Check per-line lint-ignore
+            $dlRaw = $dlProc[$dlInfo['Idx']].Raw
+            if ($dlRaw -match 'lint-ignore:\s*dead-local') { continue }
+
+            [void]$dlIssues.Add([PSCustomObject]@{
+                Func = $fd.Name; Var = $dlVar
+                File = $fd.File; Line = $dlInfo['Line']
+            })
+        }
+    }
+}
+
+if ($dlIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($dlIssues.Count) dead local variable(s) found.")
+    [void]$failOutput.AppendLine("  Local variable assigned but never read within its function.")
+    [void]$failOutput.AppendLine("  Fix: remove the variable, or use '_' for intentional throwaway.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: dead-local' on assignment or function line.")
+    $dlGrouped = $dlIssues | Group-Object File
+    foreach ($group in $dlGrouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line) ($($issue.Func)): $($issue.Var)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_dead_locals"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 14: dead_params
+# Detects function parameters never referenced in the function
+# body. Excludes variadic (*) and throwaway (_).
+# Suppress: ; lint-ignore: dead-param (on function definition line)
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$dpIssues = [System.Collections.ArrayList]::new()
+
+foreach ($fd in $bsFuncDefs) {
+    $dpProc = $processedCache[$fd.FullPath]
+    $dpDefIdx = $fd.DefIdx
+    $dpEndIdx = $fd.EndIdx
+
+    # Function-level suppression
+    if ($dpProc[$dpDefIdx].Raw -match 'lint-ignore:\s*dead-param') { continue }
+
+    $dpParamStr = $fd.Params.Trim()
+    if ($dpParamStr -eq '' -or $dpParamStr -eq '*') { continue }
+
+    $dpNames = BS_ParseParamNames $dpParamStr
+
+    foreach ($dpName in @($dpNames.Keys)) {
+        if ($dpName -eq '_') { continue }
+
+        $dpFound = $false
+        $dpEsc = [regex]::Escape($dpName)
+
+        for ($dpi = $dpDefIdx + 1; $dpi -lt $dpEndIdx; $dpi++) {
+            $dpCl = $dpProc[$dpi].Cleaned
+            if ($dpCl -eq '') { continue }
+            if ($dpCl.IndexOf($dpName, [System.StringComparison]::Ordinal) -lt 0) { continue }
+            if ($dpCl -match "(?<![.\w])$dpEsc(?!\w)") {
+                $dpFound = $true
+                break
+            }
+        }
+
+        if (-not $dpFound) {
+            [void]$dpIssues.Add([PSCustomObject]@{
+                Func = $fd.Name; Param = $dpName
+                File = $fd.File; Line = $fd.StartLine
+            })
+        }
+    }
+}
+
+if ($dpIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($dpIssues.Count) dead parameter(s) found.")
+    [void]$failOutput.AppendLine("  Function parameter never referenced in function body.")
+    [void]$failOutput.AppendLine("  Fix: remove param, rename to '_', or use it. For callbacks with fixed")
+    [void]$failOutput.AppendLine("  signatures, add '; lint-ignore: dead-param' on the function definition line.")
+    $dpGrouped = $dpIssues | Group-Object File
+    foreach ($group in $dpGrouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line) ($($issue.Func)): $($issue.Param)")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_dead_params"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1509,7 +2034,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config)" -ForegroundColor Green
+    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

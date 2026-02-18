@@ -124,9 +124,9 @@ KSub_FindWorkspaceByHwnd(stateObj, hwnd) {
     if (!hwnd)
         return ""
     monitorsArr := KSub_GetMonitorsArray(stateObj)
-    for mi, monObj in monitorsArr {
+    for _, monObj in monitorsArr {
         wsArr := KSub_GetWorkspacesArray(monObj)
-        for wi, wsObj in wsArr {
+        for _, wsObj in wsArr {
             wsName := KSafe_Str(wsObj, "name")
             if (wsName = "")
                 continue

@@ -17,7 +17,7 @@ global g_NeedsAdminReload := true  ; Flag for admin config reload (start true fo
 global g_ConfigEditorPID := 0
 global g_BlacklistEditorPID := 0
 
-TrayIconClick(wParam, lParam, msg, hwnd) {
+TrayIconClick(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     ; 0x205 = WM_RBUTTONUP (right-click release)
     if (lParam = 0x205) {
         ; Dismiss splash screen if still showing — user wants to interact with tray,

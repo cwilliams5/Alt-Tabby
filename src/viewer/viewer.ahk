@@ -310,7 +310,7 @@ _Viewer_ForceRefresh() {
 
 ; ========================= RESIZE =========================
 
-_Viewer_OnResize(gui, minMax, w, h) {
+_Viewer_OnResize(gui, minMax, w, h) { ; lint-ignore: dead-param
     global gViewer_LV, gViewer_Status, gViewer_ShuttingDown
 
     if (gViewer_ShuttingDown)

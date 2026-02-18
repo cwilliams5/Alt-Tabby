@@ -278,7 +278,7 @@ Launcher_StartSubprocesses() {
 }
 
 ; Cleanup handler called on exit
-_Launcher_OnExit(exitReason, exitCode) {
+_Launcher_OnExit(exitReason, exitCode) { ; lint-ignore: dead-param
     global g_LauncherMutex, g_ActiveMutex, g_ConfigEditorPID, g_BlacklistEditorPID
     try HideSplashScreen()
     try Launcher_ShutdownSubprocesses({config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID})
@@ -302,7 +302,7 @@ Launcher_ReleaseMutexes() {
 
 ; Handle WM_COPYDATA control signals from child processes
 ; Config editor sends RESTART_ALL, blacklist editor sends RELOAD_BLACKLIST
-_Launcher_OnCopyData(wParam, lParam, msg, hwnd) {
+_Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global TABBY_CMD_RESTART_ALL, TABBY_CMD_RELOAD_BLACKLIST, cfg
     global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED, TABBY_CMD_PUMP_FAILED
     global g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS

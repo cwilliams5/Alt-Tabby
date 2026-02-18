@@ -287,7 +287,7 @@ _CEN_BuildMainGUI() {
     gCEN["ChangeCountTimer"] := 1
     SetTimer(_CEN_UpdateChangeCount, 500)
 
-    GUI_AntiFlashPrepare(gCEN["MainGui"], gTheme_Palette.panelBg, true)
+    GUI_AntiFlashPrepare(gCEN["MainGui"], gTheme_Palette.panelBg)
     gCEN["MainGui"].Show("w800 h550")
 }
 
@@ -691,7 +691,7 @@ _CEN_SyncEditToSlider(editCtrl, sliderCtrl, guard) {
 ; Use NM_CUSTOMDRAW to paint the thumb in accent colors on hover/press.
 
 ; WM_NOTIFY handler for slider NM_CUSTOMDRAW (same technique as mock_dark_controls.ahk)
-_CEN_OnWmNotify(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
+_CEN_OnWmNotify(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param
     global gCEN_SliderHwnds
     code := NumGet(lParam, 16, "Int")   ; NMHDR.code (offset 16 on x64: hwndFrom=8 + idFrom=8)
     if (code != -12)  ; NM_CUSTOMDRAW
@@ -787,7 +787,7 @@ global gCEN_SliderHwnds := Map()  ; hwnd -> true
 global gCEN_SliderSubclassPtr := CallbackCreate(_CEN_SliderSubclassProc, , 6)
 global gCEN_SwatchSubclassPtr := CallbackCreate(_CEN_SwatchSubclassProc, , 6)
 
-_CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
+_CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; lint-ignore: dead-param
     global gCEN_SliderSubclassPtr, gTheme_Palette
     if (uMsg = 0x0014) {  ; WM_ERASEBKGND — fill with page bg instead of white
         rc := Buffer(16)
@@ -804,7 +804,7 @@ _CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
 }
 
 ; Swatch subclass: WM_PAINT draws checkerboard + AlphaBlend overlay
-_CEN_SwatchSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
+_CEN_SwatchSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; lint-ignore: dead-param
     global gCEN_SwatchSubclassPtr, gCEN_SwatchColors, gCEN_SwatchAlphas, gTheme_Palette
 
     if (uMsg = 0x000F) {  ; WM_PAINT
@@ -911,7 +911,7 @@ _CEN_UpdateSwatchColor(swCtrl, rgb, alpha := 255) {
 }
 
 ; WM_CTLCOLORSTATIC handler: swatches return nothing (subclass handles paint)
-_CEN_OnSwatchCtlColor(wParam, lParam, msg, hwnd) {
+_CEN_OnSwatchCtlColor(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gCEN_SwatchHwnds
     if (!gCEN_SwatchHwnds.Has(lParam))
         return  ; Fall through to theme handler
@@ -928,10 +928,7 @@ _CEN_OpenColorPicker(currentRGB, ownerHwnd := 0) {
     b := currentRGB & 0xFF
     colorRef := (b << 16) | (g << 8) | r
 
-    ; CHOOSECOLOR struct: size depends on pointer size
-    structSize := 9 * A_PtrSize  ; lStructSize + hwndOwner + hInstance + rgbResult + lpCustColors + Flags + lCustData + lpfnHook + lpTemplateName
-    ; Actually the struct is fixed layout: DWORD + HWND + HWND + COLORREF + LPCOLORREF + DWORD + LPARAM + ptr + ptr
-    ; Use exact offsets
+    ; CHOOSECOLOR struct: fixed layout DWORD + HWND + HWND + COLORREF + LPCOLORREF + DWORD + LPARAM + ptr + ptr
     cc := Buffer(A_PtrSize = 8 ? 72 : 36, 0)
     NumPut("UInt", cc.Size, cc, 0)                          ; lStructSize
     NumPut("Ptr", ownerHwnd, cc, A_PtrSize)                 ; hwndOwner
@@ -1164,7 +1161,7 @@ _CEN_SwitchToPage(name) {
 ; SCROLL ENGINE
 ; ============================================================
 
-_CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
+_CEN_OnMouseWheel(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param
     global gCEN
     global CEN_SIDEBAR_W
 
@@ -1223,7 +1220,7 @@ _CEN_DrainScroll() {
     _CEN_UpdateScrollBar(gCEN["CurrentPage"])
 }
 
-_CEN_OnVScroll(wParam, lParam, msg, hwnd) {
+_CEN_OnVScroll(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gCEN
     global CEN_SCROLL_STEP
 
@@ -1325,7 +1322,7 @@ _CEN_GetViewportHeight() {
 ; EVENT HANDLERS
 ; ============================================================
 
-_CEN_OnResize(gui, minMax, w, h) {
+_CEN_OnResize(gui, minMax, w, h) { ; lint-ignore: dead-param
     global gCEN
     global CEN_SIDEBAR_W, CEN_CONTENT_X, CEN_FOOTER_H, CEN_SEARCH_H
 
@@ -1347,7 +1344,7 @@ _CEN_OnResize(gui, minMax, w, h) {
     try gCEN["SepFooter"].Move(0, h - CEN_FOOTER_H - 1, w, 1)
 
     ; Update page widths
-    for name, page in gCEN["Pages"]
+    for _, page in gCEN["Pages"]
         page.gui.Move(0, , contentW)
 
     ; Move footer: change label (left) + buttons (right)
@@ -1431,7 +1428,7 @@ _CEN_OnCancel(*) {
     gCEN["MainGui"].Destroy()
 }
 
-_CEN_OnClose(guiObj) {
+_CEN_OnClose(guiObj) { ; lint-ignore: dead-param
     if (_CEN_HasUnsavedChanges()) {
         result := ThemeMsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Configuration", "YesNoCancel Icon?")
         if (result = "Cancel")
@@ -1453,7 +1450,7 @@ _CEN_OnThemeChange() {
         gCEN["Viewport"].BackColor := gTheme_Palette.bg
         Theme_ApplyToWindow(gCEN["Viewport"].Hwnd)
     }
-    for name, page in gCEN["Pages"] {
+    for _, page in gCEN["Pages"] {
         try page.gui.BackColor := gTheme_Palette.bg
     }
     ; Update border separator colors
@@ -1501,7 +1498,7 @@ _CEN_Cleanup() {
         gCEN["BoundScrollMsg"] := 0
     }
     ; Destroy page GUIs
-    for name, page in gCEN["Pages"] {
+    for _, page in gCEN["Pages"] {
         try page.gui.Destroy()
     }
     gCEN["Pages"] := Map()
@@ -1531,7 +1528,7 @@ _CEN_Cleanup() {
 ; SEARCH
 ; ============================================================
 
-_CEN_OnSearchInput(ctrl, *) {
+_CEN_OnSearchInput(ctrl, *) { ; lint-ignore: dead-param
     global gCEN
     if (gCEN["SearchTimer"])
         SetTimer(_CEN_DoSearch, 0)
@@ -1556,7 +1553,7 @@ _CEN_ApplySearch() {
 
     ; Reflow all pages (show/hide settings based on search)
     for name, page in gCEN["Pages"]
-        _CEN_ReflowPage(page, name, searchText)
+        _CEN_ReflowPage(page, searchText)
 
     ; Build filtered section indices (sections with matching settings)
     gCEN["FilteredIndices"] := []
@@ -1636,14 +1633,14 @@ _CEN_ApplySearch() {
 
 _CEN_SectionHasMatch(sectionName, searchText) {
     global gCEN
-    for globalName, group in gCEN["SettingGroups"] {
+    for _, group in gCEN["SettingGroups"] {
         if (group.pageKey = sectionName && InStr(group.searchText, searchText))
             return true
     }
     return false
 }
 
-_CEN_ReflowPage(page, sectionName, searchText) {
+_CEN_ReflowPage(page, searchText) {
     global gCEN
 
     if (searchText = "") {

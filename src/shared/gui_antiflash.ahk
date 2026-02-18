@@ -21,13 +21,13 @@
 ;
 ; Usage:
 ;   ; Normal GUI (dashboard, native editor):
-;   GUI_AntiFlashPrepare(gui, "1a1b26", true)
+;   GUI_AntiFlashPrepare(gui, "1a1b26")
 ;   gui.Show("w800 h550")
 ;   ; ...build UI...
 ;   GUI_AntiFlashReveal(gui, true)
 ;
 ;   ; WebView2 GUI (can't cloak):
-;   GUI_AntiFlashPrepare(gui, "1a1b26", false)
+;   GUI_AntiFlashPrepare(gui, "1a1b26")
 ;   gui.Show("x-32000 y-32000 w900 h650")
 ;   ; ...create WebView2, navigate, wait for ready...
 ;   GUI_AntiFlashReveal(gui, false, true)
@@ -37,8 +37,7 @@
 ; Adds WS_EX_LAYERED, sets background color, sets alpha=0.
 ;   gui      - Gui object (must not have been shown yet)
 ;   bgColor  - Background color to match dark theme (e.g., "1a1b26")
-;   useCloak - true: DWM cloak (normal GUIs). false: caller must Show off-screen (WebView2)
-GUI_AntiFlashPrepare(gui, bgColor, useCloak) {
+GUI_AntiFlashPrepare(gui, bgColor) {
     global DWMWA_CLOAK
     gui.Opt("+E0x80000")  ; WS_EX_LAYERED
     gui.BackColor := bgColor

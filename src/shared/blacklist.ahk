@@ -16,9 +16,6 @@
 ; ============================================================
 
 ; Parsed blacklist data
-global gBlacklist_Titles := []
-global gBlacklist_Classes := []
-global gBlacklist_Pairs := []
 global gBlacklist_FilePath := ""
 global gBlacklist_Loaded := false
 
@@ -66,7 +63,6 @@ Blacklist_Init(filePath := "") {
 ; Uses atomic swap pattern to prevent race conditions - producers calling
 ; Blacklist_IsMatch() during reload will see either old or new data, never empty arrays.
 _Blacklist_Reload() {
-    global gBlacklist_Titles, gBlacklist_Classes, gBlacklist_Pairs
     global gBlacklist_TitleRegex, gBlacklist_ClassRegex, gBlacklist_PairRegex
     global gBlacklist_FilePath, gBlacklist_Loaded, LOG_PATH_STORE
 
@@ -83,9 +79,6 @@ _Blacklist_Reload() {
     if (!FileExist(gBlacklist_FilePath)) {
         ; Atomic swap to empty lists (including regex arrays)
         Critical "On"
-        gBlacklist_Titles := newTitles
-        gBlacklist_Classes := newClasses
-        gBlacklist_Pairs := newPairs
         gBlacklist_TitleRegex := []
         gBlacklist_ClassRegex := []
         gBlacklist_PairRegex := []
@@ -148,9 +141,6 @@ _Blacklist_Reload() {
     ; ATOMIC SWAP: Replace all globals at once under Critical to prevent
     ; producers calling Blacklist_IsMatch() from seeing mismatched arrays
     Critical "On"
-    gBlacklist_Titles := newTitles
-    gBlacklist_Classes := newClasses
-    gBlacklist_Pairs := newPairs
     gBlacklist_TitleRegex := newTitleRegex
     gBlacklist_ClassRegex := newClassRegex
     gBlacklist_PairRegex := newPairRegex

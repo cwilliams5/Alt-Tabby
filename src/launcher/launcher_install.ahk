@@ -143,7 +143,7 @@ _Launcher_HandleMismatchResult(result, installedPath, currentPath) {
         _Launcher_OfferToStopInstalledInstance(installedPath)
 
         ; Clean up stale admin task pointing to old location (Bug 3 fix)
-        _Launcher_CleanupStaleAdminTask(installedPath, currentPath)
+        _Launcher_CleanupStaleAdminTask(currentPath)
 
         ; Check for stale shortcuts that still point to the old installed path
         _Launcher_OfferToUpdateStaleShortcuts()
@@ -390,7 +390,7 @@ IsInProgramFiles() {
 
 ; Clean up stale admin task pointing to old location when user chooses "Always run from here"
 ; Offers to disable admin mode for the old installation to prevent confusing repair dialogs
-_Launcher_CleanupStaleAdminTask(oldPath, newPath) {
+_Launcher_CleanupStaleAdminTask(newPath) {
     global cfg, gConfigIniPath, APP_NAME
 
     ; Check if admin task exists and points to the old location

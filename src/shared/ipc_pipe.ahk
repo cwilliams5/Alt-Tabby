@@ -538,7 +538,6 @@ _IPC_PeekAvailable(hPipe) {
 _IPC_WritePipe(hPipe, bufPtr, len) {
     wrote := 0
     ok := DllCall("WriteFile", "ptr", hPipe, "ptr", bufPtr, "uint", len, "uint*", &wrote, "ptr", 0)
-    gle := ok ? 0 : DllCall("GetLastError", "uint")
     return ok && (wrote = len)
 }
 

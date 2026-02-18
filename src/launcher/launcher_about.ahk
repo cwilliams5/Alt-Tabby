@@ -40,7 +40,7 @@ ShowDashboardDialog() {
     g_DashControls := {}
 
     dg := Gui("", "Alt-Tabby Dashboard")
-    GUI_AntiFlashPrepare(dg, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(dg, Theme_GetBgColor())
     dg.SetFont("s10", "Segoe UI")
     dg.MarginX := 20
     dg.MarginY := 15

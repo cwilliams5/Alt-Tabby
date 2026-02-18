@@ -137,7 +137,7 @@ CE_RunWebView2(launcherHwnd := 0) {
     gCEW_Gui.OnEvent("Close", _CEW_OnClose)
     gCEW_Gui.OnEvent("Size", _CEW_OnSize)
     Theme_ApplyToGui(gCEW_Gui)
-    GUI_AntiFlashPrepare(gCEW_Gui, Theme_GetBgColor(), false)
+    GUI_AntiFlashPrepare(gCEW_Gui, Theme_GetBgColor())
     gCEW_Gui.Show("x-32000 y-32000 w900 h650")
 
     ; Safety: reveal after 3s even if "ready" never fires (WebView2 error, etc.)
@@ -181,7 +181,7 @@ CE_RunWebView2(launcherHwnd := 0) {
 ; EVENT HANDLERS
 ; ============================================================
 
-_CEW_OnClose(guiObj) {
+_CEW_OnClose(guiObj) { ; lint-ignore: dead-param
     global gCEW_Controller, gCEW_HasChanges
     ; Warn about unsaved changes (matches native editor behavior)
     if (gCEW_HasChanges) {
@@ -201,7 +201,7 @@ _CEW_OnClose(guiObj) {
     return false  ; Allow close
 }
 
-_CEW_OnSize(guiObj, minMax, width, height) {
+_CEW_OnSize(guiObj, minMax, width, height) { ; lint-ignore: dead-param
     global gCEW_Controller
     if (minMax = -1)  ; Minimized
         return
@@ -212,12 +212,12 @@ _CEW_OnSize(guiObj, minMax, width, height) {
 }
 
 ; Raw 3-param handler wrapper - manually wraps args pointer
-_CEW_OnWebMessageRaw(this, sender, argsPtr) {
+_CEW_OnWebMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param
     args := WebView2.WebMessageReceivedEventArgs(argsPtr)
     _CEW_OnWebMessage(sender, args)
 }
 
-_CEW_OnWebMessage(sender, args) {
+_CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
     global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
     global TABBY_CMD_RESTART_ALL, WM_COPYDATA
     global cfg, LOG_PATH_WEBVIEW

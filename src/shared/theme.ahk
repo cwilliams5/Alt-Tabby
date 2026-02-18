@@ -266,7 +266,7 @@ Theme_GetAccentColor() {
 ;   width  - Dialog width in pixels (default: 488)
 Theme_CreateModalDialog(title, opts := "+AlwaysOnTop +Owner", width := 488) {
     g := Gui(opts, title)
-    GUI_AntiFlashPrepare(g, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(g, Theme_GetBgColor())
     g.MarginX := 24
     g.MarginY := 16
     g.SetFont("s10", "Segoe UI")
@@ -622,7 +622,7 @@ _Theme_ApplyLightListView(ctrl) {
 ; Internal: WM_CTLCOLOR handlers
 ; ============================================================
 
-_Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
+_Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param
     global gTheme_Initialized, gTheme_Palette, gTheme_BrushEditBg
     if (!gTheme_Initialized)
         return
@@ -631,7 +631,7 @@ _Theme_OnCtlColorEdit(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns
     return gTheme_BrushEditBg
 }
 
-_Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
+_Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param
     global gTheme_Initialized, gTheme_Palette, gTheme_BrushEditBg, gTheme_BrushBg, gTheme_BrushPanelBg
     global gTheme_SidebarHwnds
     if (!gTheme_Initialized)
@@ -647,7 +647,7 @@ _Theme_OnCtlColorListBox(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-retu
     return gTheme_BrushEditBg
 }
 
-_Theme_OnCtlColorStatic(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
+_Theme_OnCtlColorStatic(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param
     global gTheme_Initialized, gTheme_Palette, gTheme_BrushBg, gTheme_BrushPanelBg
     global gTheme_SemanticHwnds, gTheme_MutedHwnds, gTheme_AccentHwnds, gTheme_PanelParentHwnds
     if (!gTheme_Initialized)
@@ -772,7 +772,7 @@ _Theme_TabWndProc(hWnd, uMsg, wParam, lParam) {
 ; Internal: WM_SETTINGCHANGE listener
 ; ============================================================
 
-_Theme_OnSettingChange(wParam, lParam, msg, hwnd) {
+_Theme_OnSettingChange(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gTheme_IsDark, gTheme_Palette, gTheme_Initialized, cfg
     if (!gTheme_Initialized)
         return
@@ -867,7 +867,7 @@ _Theme_ReapplyAll() {
 
     ; Update owner-draw button dark/light state
     global gTheme_ButtonMap
-    for btnHwnd, info in gTheme_ButtonMap
+    for _, info in gTheme_ButtonMap
         info.isDark := gTheme_IsDark
 
     ; Notify registered callbacks (child GUIs, special re-theming)
@@ -996,7 +996,7 @@ _Theme_RegisterOwnerDrawButton(ctrl) {
 }
 
 ; WM_DRAWITEM handler for owner-draw buttons
-_Theme_OnDrawItem(wParam, lParam, msg, hwnd) {
+_Theme_OnDrawItem(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gTheme_ButtonMap, gTheme_Palette, cfg
 
     ; Only handle buttons (ODT_BUTTON = 4)

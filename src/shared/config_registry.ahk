@@ -70,10 +70,6 @@ global gConfigRegistry := [
      min: 20, max: 200,
      d: "Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab. Increase for slower typing speeds."},
 
-    {s: "AltTab", k: "MRUFreshnessMs", g: "AltTabMRUFreshnessMs", t: "int", default: 300,
-     min: 50, max: 2000,
-     d: "After switching windows, how long to trust local window order before accepting updates from the store (ms). Prevents the list from briefly reverting after a switch."},
-
     {s: "AltTab", k: "WSPollTimeoutMs", g: "AltTabWSPollTimeoutMs", t: "int", default: 200,
      min: 50, max: 2000,
      d: "Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation."},

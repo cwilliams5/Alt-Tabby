@@ -183,7 +183,7 @@ WinEventHook_Stop() {
 ;   0x8005 = EVENT_OBJECT_FOCUS
 ;   0x800B = EVENT_OBJECT_LOCATIONCHANGE
 ;   0x800C = EVENT_OBJECT_NAMECHANGE
-_WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
+_WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) { ; lint-ignore: dead-param
     global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd, _WEH_PendingZNeeded
     global cfg, gWS_Store
 

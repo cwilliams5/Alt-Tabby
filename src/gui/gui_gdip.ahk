@@ -712,7 +712,7 @@ Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {
 _Gdip_ClearIconCache() {
     global gGdip_IconCache
 
-    for hwnd, cached in gGdip_IconCache {
+    for _, cached in gGdip_IconCache {
         if (cached.pBmp) {
             try DllCall("gdiplus\GdipDisposeImage", "ptr", cached.pBmp)
         }

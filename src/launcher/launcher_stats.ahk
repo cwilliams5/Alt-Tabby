@@ -24,7 +24,7 @@ ShowStatsDialog() {
         Dash_QueryStats()
 
     sg := Gui("", "Alt-Tabby Statistics")
-    GUI_AntiFlashPrepare(sg, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(sg, Theme_GetBgColor())
     sg.SetFont("s10", "Segoe UI")
     sg.MarginX := 20
     sg.MarginY := 15

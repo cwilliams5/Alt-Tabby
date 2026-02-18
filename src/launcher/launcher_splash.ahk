@@ -330,7 +330,7 @@ _Splash_HideAnimation() {
     ; Dispose frame resources based on mode
     if (g_SplashStreaming) {
         ; Streaming mode: dispose buffered bitmaps
-        for frameNum, data in g_SplashFrameBuffer {
+        for _, data in g_SplashFrameBuffer {
             if (data.bitmap)
                 DllCall("gdiplus\GdipDisposeImage", "ptr", data.bitmap)
         }
@@ -544,7 +544,6 @@ _Splash_LoadWebPFrames(webpPath) {
 
     g_SplashImgW := NumGet(animInfo, 0, "uint")
     g_SplashImgH := NumGet(animInfo, 4, "uint")
-    frameCount := NumGet(animInfo, 16, "uint")
 
     ; Calculate frame timing from first two frames
     prevTimestamp := 0
@@ -738,10 +737,9 @@ _Splash_DecodeNextFrame() {
 }
 
 _Splash_EvictOldFrames(currentFrame) {
-    global g_SplashFrameBuffer, cfg
+    global g_SplashFrameBuffer
 
-    bufferFrames := cfg.LauncherSplashAnimBufferFrames
-    ; Keep frames from (currentFrame - 2) to (currentFrame + bufferFrames)
+    ; Keep frames from (currentFrame - 2) onward; evict older frames
     minKeep := Max(1, currentFrame - 2)
 
     toDelete := []
@@ -758,7 +756,7 @@ _Splash_EvictOldFrames(currentFrame) {
     }
 }
 
-_Splash_BufferAhead(currentFrame) {
+_Splash_BufferAhead() {
     global g_SplashFrameBuffer, g_SplashTotalFrames, g_SplashDecoderExhausted, cfg
 
     bufferFrames := cfg.LauncherSplashAnimBufferFrames
@@ -776,7 +774,7 @@ _Splash_ResetStreamingDecoder() {
     global g_SplashTotalFrames, cfg
 
     ; Clean up old buffer
-    for frameNum, data in g_SplashFrameBuffer {
+    for _, data in g_SplashFrameBuffer {
         if (data.bitmap)
             DllCall("gdiplus\GdipDisposeImage", "ptr", data.bitmap)
     }
@@ -835,7 +833,7 @@ _Splash_AnimNextFrame() {
     ; Streaming mode: evict old frames and buffer ahead
     if (g_SplashStreaming) {
         _Splash_EvictOldFrames(g_SplashCurrentFrame)
-        _Splash_BufferAhead(g_SplashCurrentFrame)
+        _Splash_BufferAhead()
     }
 
     ; Check if we need to start fade out (while still animating)

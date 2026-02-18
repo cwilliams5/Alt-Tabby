@@ -62,7 +62,7 @@ _BE_CreateGui() {
     global gBE_Gui, gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
 
     gBE_Gui := Gui("+Resize +MinSize500x400", "Alt-Tabby Blacklist Editor")
-    GUI_AntiFlashPrepare(gBE_Gui, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(gBE_Gui, Theme_GetBgColor())
     gBE_Gui.OnEvent("Close", _BE_OnClose)
     gBE_Gui.OnEvent("Size", _BE_OnSize)
     gBE_Gui.SetFont("s9", "Segoe UI")
@@ -498,7 +498,7 @@ _BE_MatchWindows(windows, pattern, fieldName) {
 
 _BE_ShowTestResults(summary, details) {
     rg := Gui("+AlwaysOnTop -MinimizeBox", "Test Results")
-    GUI_AntiFlashPrepare(rg, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(rg, Theme_GetBgColor())
     rg.SetFont("s10", "Segoe UI")
     rg.MarginX := 16
     rg.MarginY := 12

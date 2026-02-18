@@ -41,7 +41,6 @@ global IconTimerIntervalMs := 0
 global IconMaxAttempts := 0
 global IconAttemptBackoffMs := 0
 global IconAttemptBackoffMultiplier := 0
-global IconGiveUpBackoffMs := 5000  ; Default, overridden from cfg in IconPump_Start()
 
 ; Diagnostic logging
 global _IP_DiagEnabled := false
@@ -85,7 +84,7 @@ IconPump_SetCallbacks(popBatch, getRecord, updateFields, getExeIcon, putExeIcon)
 IconPump_Start() {
     global _IP_TimerOn, IconTimerIntervalMs, cfg
     global IconBatchPerTick, IconMaxAttempts
-    global IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
+    global IconAttemptBackoffMs, IconAttemptBackoffMultiplier
     global _IP_DiagEnabled, _IP_LogPath
     global IP_RESOLVE_TIMEOUT_MS
 
@@ -100,7 +99,6 @@ IconPump_Start() {
         IconMaxAttempts := cfg.IconPumpMaxAttempts
         IconAttemptBackoffMs := cfg.IconPumpAttemptBackoffMs
         IconAttemptBackoffMultiplier := cfg.IconPumpBackoffMultiplier
-        IconGiveUpBackoffMs := cfg.IconPumpGiveUpBackoffMs
         _IP_IdleThreshold := cfg.IconPumpIdleThreshold
         _IP_UwpLogoCacheMax := cfg.UwpLogoCacheMax
         IP_RESOLVE_TIMEOUT_MS := cfg.IconPumpResolveTimeoutMs
@@ -169,7 +167,7 @@ _IP_PruneAttempts() {
     ; Snapshot keys to prevent modification during iteration
     toRemove := []
 
-    for hwnd, data in _IP_Attempts {
+    for hwnd, _ in _IP_Attempts {
         ; Remove if window no longer exists
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             toRemove.Push(hwnd)
@@ -215,7 +213,7 @@ IconPump_CleanupWindow(hwnd) {
 ;   Phase 3 (Critical ON):  Re-validate record, apply results (discard if removed during Phase 2)
 _IP_Tick() {
     global IconBatchPerTick, _IP_Attempts, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
-    global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier, IconGiveUpBackoffMs
+    global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier
     global IP_LOG_TITLE_MAX_LEN, _IP_DiagEnabled, _IP_LogPath
     global IP_MODE_INITIAL, IP_MODE_VISIBLE_RETRY, IP_MODE_FOCUS_RECHECK
     global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
@@ -333,7 +331,7 @@ _IP_Tick() {
 
             ; Try UWP package icon
             if (!h) {
-                h := IP_TryResolveFromUWP(hwnd, recPid)
+                h := IP_TryResolveFromUWP(recPid)
                 if (h) {
                     method := "uwp"
                 }
@@ -686,7 +684,7 @@ _IP_GetPackagePath(pid) {
 
 ; Try to extract icon from UWP package
 ; Uses cached logo path lookup to avoid repeated manifest parsing for multiple windows from same app
-IP_TryResolveFromUWP(hwnd, pid) {
+IP_TryResolveFromUWP(pid) {
     global _IP_DiagEnabled, _IP_LogPath
     ; Get package path first (also confirms it's a UWP app)
     packagePath := _IP_GetPackagePath(pid)

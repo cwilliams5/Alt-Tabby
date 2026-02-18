@@ -106,18 +106,18 @@ _CRE_OnClose(*) {
     ExitApp()
 }
 
-_CRE_OnSize(guiObj, minMax, width, height) {
+_CRE_OnSize(guiObj, minMax, width, height) { ; lint-ignore: dead-param
     global gCRE_Controller
     if (minMax != -1 && gCRE_Controller)
         try gCRE_Controller.Fill()
 }
 
-_CRE_OnMessageRaw(this, sender, argsPtr) {
+_CRE_OnMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param
     args := WebView2.WebMessageReceivedEventArgs(argsPtr)
     _CRE_OnWebMessage(sender, args)
 }
 
-_CRE_OnWebMessage(sender, args) {
+_CRE_OnWebMessage(sender, args) { ; lint-ignore: dead-param
     try {
         msgJson := args.TryGetWebMessageAsString()
         msg := JSON.Load(msgJson)

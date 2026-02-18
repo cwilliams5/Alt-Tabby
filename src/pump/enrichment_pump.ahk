@@ -105,7 +105,7 @@ _Pump_OnDisconnect(hPipe) {
         _Pump_ClientPipe := 0
 }
 
-_Pump_OnPipeWake(wParam, lParam, msg, hwnd) {
+_Pump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global _Pump_Server
     if (IsObject(_Pump_Server))
         IPC__ServerTick(_Pump_Server)
@@ -231,7 +231,7 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
 
     ; Try UWP package icon (no nochange optimization — rare, always re-resolve)
     if (!h && pid > 0) {
-        h := IP_TryResolveFromUWP(hwnd, pid)
+        h := IP_TryResolveFromUWP(pid)
         if (h) {
             method := "uwp"
             _Pump_PrevIconSource[hwnd] := {method: "uwp", rawH: 0, exePath: ""}
@@ -315,7 +315,7 @@ _Pump_PruneOwnedIcons() {
         return
 
     toRemove := []
-    for hwnd, hIcon in _Pump_OwnedIcons {
+    for hwnd, _ in _Pump_OwnedIcons {
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
             toRemove.Push(hwnd)
     }
@@ -358,12 +358,12 @@ _Pump_Cleanup() {
     try SetTimer(_Pump_PruneOwnedIcons, 0)
 
     ; Destroy all owned HICONs
-    for hwnd, hIcon in _Pump_OwnedIcons
+    for _, hIcon in _Pump_OwnedIcons
         try DllCall("user32\DestroyIcon", "ptr", hIcon)
     _Pump_OwnedIcons := Map()
 
     ; Destroy exe icon cache masters
-    for exe, hIcon in _Pump_ExeIconCache
+    for _, hIcon in _Pump_ExeIconCache
         try DllCall("user32\DestroyIcon", "ptr", hIcon)
     _Pump_ExeIconCache := Map()
 

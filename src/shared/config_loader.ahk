@@ -110,16 +110,13 @@ ConfigLoader_SetBasePath(dir) {
 ; Config changes trigger process restart, so no invalidation needed.
 ; Named gCached_* to distinguish from cfg.* properties.
 
-global gCached_MRUFreshnessMs := 300
 global gCached_UseAltTabEligibility := true
 global gCached_UseBlacklist := true
 
 _CL_CacheHotPathValues() {
     global cfg
-    global gCached_MRUFreshnessMs
     global gCached_UseAltTabEligibility, gCached_UseBlacklist
 
-    gCached_MRUFreshnessMs := cfg.HasOwnProp("AltTabMRUFreshnessMs") ? cfg.AltTabMRUFreshnessMs : 300
     gCached_UseAltTabEligibility := cfg.HasOwnProp("UseAltTabEligibility") ? cfg.UseAltTabEligibility : true
     gCached_UseBlacklist := cfg.HasOwnProp("UseBlacklist") ? cfg.UseBlacklist : true
 }
@@ -224,7 +221,7 @@ _CL_SupplementIni(path) {
     newLines := []
     currentSection := ""
 
-    for idx, line in lines {
+    for _, line in lines {
         trimmed := Trim(line)
 
         ; Detect section change
@@ -679,10 +676,9 @@ _CL_ValidateSettings() {
     global LOG_MAX_BYTES, LOG_KEEP_BYTES
     LOG_MAX_BYTES := cfg.DiagLogMaxKB * 1024
     LOG_KEEP_BYTES := cfg.DiagLogKeepKB * 1024
-    global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT, TOOLTIP_DURATION_LONG
+    global TOOLTIP_DURATION_SHORT, TOOLTIP_DURATION_DEFAULT
     TOOLTIP_DURATION_SHORT := Max(500, Round(cfg.GUI_TooltipDurationMs * 0.5))
     TOOLTIP_DURATION_DEFAULT := cfg.GUI_TooltipDurationMs
-    TOOLTIP_DURATION_LONG := Round(cfg.GUI_TooltipDurationMs * 2.0)
 }
 
 ; ============================================================
@@ -855,7 +851,6 @@ global TIMING_SETUP_SETTLE := 200        ; Setup settle delay
 ; Derived from cfg.GUI_TooltipDurationMs in _CL_ValidateSettings()
 global TOOLTIP_DURATION_SHORT := 1000
 global TOOLTIP_DURATION_DEFAULT := 2000
-global TOOLTIP_DURATION_LONG := 4000
 
 ; Retry limits
 global IPC_TICK_IDLE := 100              ; Default, overridden from cfg.IPCIdleTickMs

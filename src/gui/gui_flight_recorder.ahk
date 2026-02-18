@@ -196,9 +196,6 @@ _FR_Dump() {
     ; Hold the overlay open while user types their note — they're describing what they see.
     ; gFR_DumpInProgress was set at function entry (before Critical section) to win the
     ; race against ALT_UP. It suppresses hide/activate in the state machine.
-    global gGUI_OverlayVisible
-    wasOverlayVisible := gGUI_OverlayVisible
-
     SetTimer(_FR_FocusInputBox, -50)
     result := InputBox("What happened? (e.g. 'Alt-tabbing from Word to Outlook, nothing happened')"
         , "Alt-Tabby Flight Recorder", "w500 h110")
@@ -210,8 +207,8 @@ _FR_Dump() {
     GUI_ForceReset()
     gFR_DumpInProgress := false
     ; Always hide — grace timer may have shown overlay during dump even if
-    ; wasOverlayVisible was false at capture time. GUI_HideOverlay() is a
-    ; no-op when gGUI_OverlayVisible is already false.
+    ; it was not visible at capture time. GUI_HideOverlay() is a no-op when
+    ; gGUI_OverlayVisible is already false.
     GUI_HideOverlay()
 
     ; --- 4. Build and write dump file ---

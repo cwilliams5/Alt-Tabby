@@ -410,7 +410,7 @@ GUI_OnClick(x, y) {
     GUI_Repaint()
 }
 
-GUI_OnMouseMove(wParam, lParam, msg, hwnd) {
+GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
     global gGUI_MouseTracking
 
@@ -539,7 +539,7 @@ _GUI_HoverPollTick() {
     }
 }
 
-GUI_OnWheel(wParam, lParam) {
+GUI_OnWheel(wParam, lParam) { ; lint-ignore: dead-param
     global gGUI_OverlayVisible, cfg
 
     ; Don't process wheel if overlay isn't visible
@@ -603,7 +603,7 @@ GUI_ShowBlacklistDialog(class, title) {
     gGUI_BlacklistChoice := ""
 
     dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
-    GUI_AntiFlashPrepare(dlg, Theme_GetBgColor(), true)
+    GUI_AntiFlashPrepare(dlg, Theme_GetBgColor())
     dlg.MarginX := 24
     dlg.MarginY := 16
     dlg.SetFont("s10", "Segoe UI")

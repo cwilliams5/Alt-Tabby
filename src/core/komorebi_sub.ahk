@@ -51,7 +51,6 @@ global _KSub_LastEventTick := 0          ; Timestamp of last event (for idle det
 global _KSub_ReadBuffer := ""      ; Accumulated bytes from pipe reads
 global _KSub_ReadBufferLen := 0    ; Tracked length to avoid O(n) StrLen calls
 global _KSub_LastWorkspaceName := ""
-global _KSub_LastWsUpdateTick := 0         ; Tick when workspace was last set (for derivation cooldown)
 global _KSub_FallbackMode := false
 global _KSub_LastPromotionTick := 0
 global _KSub_PromotionIntervalMs := 30000  ; 30s between subscription promotion attempts
@@ -722,18 +721,15 @@ _KSub_OnNotification(jsonLine) {
             KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
         }
         if (wsName != "") {
-            global _KSub_LastWorkspaceName, _KSub_LastWsUpdateTick
+            global _KSub_LastWorkspaceName
             ; Capture old workspace BEFORE updating (needed for move events)
             previousWsName := _KSub_LastWorkspaceName
-            anyFlipped := false  ; Initialize before conditional (used by broadcast below)
-
             if (wsName != _KSub_LastWorkspaceName) {
                 if (cfg.DiagKomorebiLog) {
                     KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
                     KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
                 }
                 _KSub_LastWorkspaceName := wsName
-                _KSub_LastWsUpdateTick := A_TickCount
 
                 isMoveEvent := (eventType = KSUB_EV_MOVE_TO_WS_NUM || eventType = KSUB_EV_MOVE_TO_NAMED_WS)
                 if (!isMoveEvent) {
@@ -902,7 +898,7 @@ _KSub_CancelCloakTimer() {
 ; stateObj: parsed Map from cJson (NOT raw text)
 ; skipWorkspaceUpdate: set to true when called after a focus event (notification already handled workspace)
 _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := false) {
-    global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache, _KSub_LastWsUpdateTick
+    global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache
     global _KSub_CacheMaxAgeMs, _KSub_FocusedHwndByWS, gKSub_MruSuppressUntilTick
     global cfg
 
@@ -950,7 +946,6 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("  WS change via state: '" _KSub_LastWorkspaceName "' -> '" currentWsName "'")
         _KSub_LastWorkspaceName := currentWsName
-        _KSub_LastWsUpdateTick := A_TickCount
         try WL_SetCurrentWorkspace("", currentWsName)
     }
 
