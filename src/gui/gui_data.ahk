@@ -158,6 +158,9 @@ GUI_PatchCosmeticUpdates() {
 }
 
 _GUI_CosmeticLog(msg) {
+    global cfg
+    if (!cfg.DiagCosmeticPatchLog)
+        return
     static logPath := ""
     if (logPath = "")
         logPath := A_Temp "\tabby_cosmetic_patch.log"
