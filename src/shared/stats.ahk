@@ -36,6 +36,13 @@ global STATS_LIFETIME_KEYS := [
 global gStats_LogError := 0
 global gStats_LogInfo := 0
 
+; Wire logging callbacks (called by host process during init)
+Stats_SetCallbacks(logError, logInfo) {
+    global gStats_LogError, gStats_LogInfo
+    gStats_LogError := logError
+    gStats_LogInfo := logInfo
+}
+
 ; ---------- Internal helpers ----------
 
 _Stats_LogError(msg) {

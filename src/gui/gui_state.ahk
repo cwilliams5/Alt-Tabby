@@ -10,6 +10,7 @@
 global gGUI_State := "IDLE"
 
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
+global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
 
 ; Timing constants (hardcoded - not user-configurable)
 ; These are internal implementation details that users shouldn't need to change.
@@ -52,6 +53,15 @@ global gStats_Cancellations := 0
 global gStats_CrossWorkspace := 0
 global gStats_LastSent := Map()  ; Tracks what was last sent for delta calculation
 
+
+; Force-reset state machine to IDLE and clear display items.
+; Used by flight recorder dump to cleanly exit frozen state.
+; Does NOT hide overlay — caller controls ordering between reset and hide.
+GUI_ForceReset() {
+    global gGUI_State, gGUI_DisplayItems
+    gGUI_DisplayItems := []
+    gGUI_State := "IDLE"
+}
 
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagEventLog (config.ini [Diagnostics] EventLog=true)

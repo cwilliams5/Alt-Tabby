@@ -71,6 +71,16 @@ global gIP_UpdateFields := 0    ; fn(hwnd, fields, source) → updates record fi
 global gIP_GetExeIcon := 0      ; fn(exe) → returns cached HICON copy or 0
 global gIP_PutExeIcon := 0      ; fn(exe, hIcon) → caches master HICON for exe path
 
+; Wire all callback globals at once (called by host process during init)
+IconPump_SetCallbacks(popBatch, getRecord, updateFields, getExeIcon, putExeIcon) {
+    global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
+    gIP_PopBatch := popBatch
+    gIP_GetRecord := getRecord
+    gIP_UpdateFields := updateFields
+    gIP_GetExeIcon := getExeIcon
+    gIP_PutExeIcon := putExeIcon
+}
+
 ; Start the icon pump timer
 IconPump_Start() {
     global _IP_TimerOn, IconTimerIntervalMs, cfg
@@ -126,6 +136,13 @@ IconPump_Stop() {
         return
     _IP_TimerOn := false
     SetTimer(_IP_Tick, 0)
+}
+
+; Permanently disable the icon pump (stop + prevent restart via EnsureRunning)
+IconPump_Disable() {
+    global IconTimerIntervalMs
+    IconPump_Stop()
+    IconTimerIntervalMs := 0
 }
 
 ; Ensure the icon pump timer is running (wake from idle pause)

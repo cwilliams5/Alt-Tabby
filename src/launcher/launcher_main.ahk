@@ -24,6 +24,9 @@ global g_WizardSkippedForExistingInstall := false
 ; Win32 error code
 global ERROR_ALREADY_EXISTS := 183
 
+; Stats cache — read from stats.ini [Snapshot] section (written by GUI heartbeat)
+global g_StatsCache := ""          ; Parsed stats snapshot Map, or "" if not loaded
+
 ; Subprocess PID tracking — owner (read by launcher_about, launcher_stats, etc.)
 global g_GuiPID := 0
 global g_PumpPID := 0

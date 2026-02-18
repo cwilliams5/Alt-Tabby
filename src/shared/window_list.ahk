@@ -110,6 +110,13 @@ global gWS_DirtyHwnds := Map()
 global gWS_OnStoreChanged := 0           ; fn(isStructural) — called by producers when store is modified
 global gWS_OnWorkspaceChanged := 0       ; fn() — called by KomorebiSub when workspace changes
 
+; Wire producer notification callbacks (called by gui_main during init)
+WL_SetCallbacks(onStoreChanged, onWorkspaceChanged) {
+    global gWS_OnStoreChanged, gWS_OnWorkspaceChanged
+    gWS_OnStoreChanged := onStoreChanged
+    gWS_OnWorkspaceChanged := onWorkspaceChanged
+}
+
 ; Fields that are internal tracking and should not bump rev when changed
 global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId", true, "lastSeenTick", true, "missingSinceTick", true, "iconGaveUp", true, "iconMethod", true, "iconLastRefreshTick", true)
 

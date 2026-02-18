@@ -21,8 +21,7 @@ global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 global DASH_UPDATE_STALE_MS := 43200000  ; 12 hours
 
-; Stats cache — read from stats.ini [Snapshot] section (written by GUI heartbeat)
-global g_StatsCache := ""          ; Parsed stats snapshot Map, or "" if not loaded
+; g_StatsCache declared in launcher_main.ahk (sole writer)
 
 ShowDashboardDialog() {
     global g_DashboardGui, g_DashboardShuttingDown, cfg, APP_NAME

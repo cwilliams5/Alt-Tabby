@@ -29,6 +29,14 @@ global gPP_PopBatch := 0               ; fn(n) → returns array of PIDs needing
 global gPP_GetProcNameCached := 0       ; fn(pid) → returns cached name or ""
 global gPP_UpdateProcessName := 0       ; fn(pid, name) → updates all records with this PID
 
+; Wire all callback globals at once (called by host process during init)
+ProcPump_SetCallbacks(popBatch, getProcNameCached, updateProcessName) {
+    global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
+    gPP_PopBatch := popBatch
+    gPP_GetProcNameCached := getProcNameCached
+    gPP_UpdateProcessName := updateProcessName
+}
+
 ; ========================= DEBUG LOGGING =========================
 ; Controlled by cfg.DiagProcPumpLog (config.ini [Diagnostics] ProcPumpLog=true)
 ; Log file: %TEMP%\tabby_procpump.log
@@ -77,6 +85,13 @@ ProcPump_Stop() {
         return
     _PP_TimerOn := false
     SetTimer(_PP_Tick, 0)
+}
+
+; Permanently disable the process pump (stop + prevent restart via EnsureRunning)
+ProcPump_Disable() {
+    global ProcTimerIntervalMs
+    ProcPump_Stop()
+    ProcTimerIntervalMs := 0
 }
 
 ; Ensure the process pump timer is running (wake from idle pause)

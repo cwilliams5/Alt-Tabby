@@ -81,14 +81,14 @@ global gGUI_ScrollTop := 0
 ; gGUI_State declared in gui_state.ahk (sole writer for state machine)
 ; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)
 global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by workspace mode)
-global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
+; gGUI_ToggleBase declared in gui_state.ahk (sole writer for toggle support)
 
 ; Session stats counters declared in gui_state.ahk / gui_workspace.ahk (sole writers)
 
 ; Producer state
 global _gGUI_ScanInProgress := false  ; Re-entrancy guard for full WinEnum scan
 global HOUSEKEEPING_INTERVAL_MS := 300000  ; 5 minutes — cache pruning, log rotation, stats flush
-global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints during ACTIVE
+; _gGUI_LastCosmeticRepaintTick declared in gui_data.ahk (sole writer)
 
 ; gGUI_LauncherHwnd declared+defaulted before arg parsing (line 14), assigned there if --launcher-hwnd= present
 
@@ -140,14 +140,10 @@ _GUI_Main_Init() {
     WL_Init()
 
     ; Wire producer callbacks so producers don't call Store_* directly
-    global gWS_OnStoreChanged, gWS_OnWorkspaceChanged
-    gWS_OnStoreChanged := _GUI_OnProducerRevChanged
-    gWS_OnWorkspaceChanged := _GUI_OnWorkspaceFlips
+    WL_SetCallbacks(_GUI_OnProducerRevChanged, _GUI_OnWorkspaceFlips)
 
     ; Register stats logging callbacks and initialize stats tracking
-    global gStats_LogError, gStats_LogInfo
-    gStats_LogError := _GUI_StatsLogError
-    gStats_LogInfo := _GUI_StatsLogInfo
+    Stats_SetCallbacks(_GUI_StatsLogError, _GUI_StatsLogInfo)
     Stats_Init()
 
     ; Komorebi is optional — graceful if not installed.
@@ -165,17 +161,8 @@ _GUI_Main_Init() {
     ; Wire icon/proc pump callbacks to WindowList (inline fallback mode).
     ; When EnrichmentPump is connected, gui_pump.ahk overrides these to no-op
     ; (pump handles resolution, MainProcess receives results via IPC).
-    global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
-    gIP_PopBatch := WL_PopIconBatch
-    gIP_GetRecord := WL_GetByHwnd
-    gIP_UpdateFields := WL_UpdateFields
-    gIP_GetExeIcon := WL_GetExeIconCopy
-    gIP_PutExeIcon := WL_ExeIconCachePut
-
-    global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
-    gPP_PopBatch := WL_PopPidBatch
-    gPP_GetProcNameCached := WL_GetProcNameCached
-    gPP_UpdateProcessName := WL_UpdateProcessName
+    IconPump_SetCallbacks(WL_PopIconBatch, WL_GetByHwnd, WL_UpdateFields, WL_GetExeIconCopy, WL_ExeIconCachePut)
+    ProcPump_SetCallbacks(WL_PopPidBatch, WL_GetProcNameCached, WL_UpdateProcessName)
 
     ; Try connecting to EnrichmentPump for offloaded icon/title/proc resolution.
     ; If pump is unavailable, fall back to local inline pumps.

@@ -33,7 +33,8 @@ global g_AltTabbyMode := "test"  ; Prevent auto-init gates when included
 global gStats_Lifetime := Map()
 global gStats_Session := Map()
 
-; --- Dashboard/Update check globals (setup_utils.ahk + launcher_about.ahk) ---
+; --- Dashboard/Update check globals (setup_utils.ahk + launcher_about/launcher_main.ahk) ---
+global g_StatsCache := ""
 global g_LastUpdateCheckTick := 0
 global g_LastUpdateCheckTime := ""
 global g_DashUpdateState

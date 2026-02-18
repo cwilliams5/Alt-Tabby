@@ -73,14 +73,11 @@ GUIPump_Init() {
         SetTimer(_gPump_Client.timerFn, 0)
     _gPump_ClientTimerOn := false
 
-    ; Stop local icon/proc pumps — pump handles all enrichment.
-    ; Zero out interval globals to prevent _WS_EnqueueIfNeeded from restarting
+    ; Permanently disable local icon/proc pumps — pump handles all enrichment.
+    ; Disable zeroes interval globals to prevent _WS_EnqueueIfNeeded from restarting
     ; local pump timers via EnsureRunning (interval=0 → early return).
-    try IconPump_Stop()
-    try ProcPump_Stop()
-    global IconTimerIntervalMs, ProcTimerIntervalMs
-    IconTimerIntervalMs := 0
-    ProcTimerIntervalMs := 0
+    try IconPump_Disable()
+    try ProcPump_Disable()
 
     ; Start collection timer — drains queues and sends to pump
     _gPump_CollectTimerFn := _GUIPump_CollectTick.Bind()

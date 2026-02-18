@@ -5,6 +5,7 @@
 
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
 global gGUI_LiveItemsMap := Map()
+global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints during ACTIVE
 
 ; ========================= LIVE ITEMS REFRESH =========================
 

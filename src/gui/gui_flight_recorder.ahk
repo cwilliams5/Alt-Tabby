@@ -207,8 +207,7 @@ _FR_Dump() {
     ; Clean up: reset state machine (was frozen during dump) and hide overlay.
     ; Order matters: set IDLE before clearing flag so any paint triggered by
     ; hide sees IDLE state. Clear flag before hide so hide isn't blocked.
-    gGUI_DisplayItems := []
-    gGUI_State := "IDLE"
+    GUI_ForceReset()
     gFR_DumpInProgress := false
     ; Always hide — grace timer may have shown overlay during dump even if
     ; wasOverlayVisible was false at capture time. GUI_HideOverlay() is a
