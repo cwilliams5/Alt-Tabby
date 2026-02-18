@@ -254,7 +254,7 @@ _FR_Dump() {
     out .= "Foreground Window       = " _FR_HwndStr(fgHwnd, hwndMap) "`n"
     out .= "`n"
 
-    ; WindowList state (in-process data, invisible in old IPC architecture)
+    ; WindowList state
     out .= "--- WINDOW LIST STATE ----------------------------------------------`n"
     out .= "gWS_Rev                 = " snap.wsRev "`n"
     out .= "gWS_Store.Count         = " snap.wsStoreCount "`n"

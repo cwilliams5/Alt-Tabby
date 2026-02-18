@@ -1,6 +1,6 @@
 #Requires AutoHotkey v2.0
 ; Alt-Tabby GUI - Data Layer
-; Direct WindowList access: replaces IPC-based gui_store.ahk
+; Direct WindowList access for GUI data layer
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; hwnd -> item reference Map for O(1) lookups (populated alongside gGUI_LiveItems)
@@ -10,7 +10,7 @@ global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints duri
 ; ========================= LIVE ITEMS REFRESH =========================
 
 ; Refresh gGUI_LiveItems from WindowList (direct, no IPC).
-; Replaces GUI_RequestSnapshot() — synchronous, always returns fresh data.
+; Refresh gGUI_LiveItems from WindowList — synchronous, always returns fresh data.
 GUI_RefreshLiveItems() {
     global gGUI_LiveItems, gGUI_LiveItemsMap
     global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_OverlayH

@@ -1021,7 +1021,7 @@ global gConfigRegistry := [
      d: "Log WinEventHook focus events to %TEMP%\\tabby_weh_focus.log. Use when focus tracking issues occur."},
 
     {s: "Diagnostics", k: "StoreLog", g: "DiagStoreLog", t: "bool", default: false,
-     d: "Log store startup and operational info to %TEMP%\\tabby_store_error.log. Use for general store debugging."},
+     d: "Log MainProcess startup and operational info to %TEMP%\\tabby_store_error.log. Use for general debugging."},
 
     {s: "Diagnostics", k: "IconPumpLog", g: "DiagIconPumpLog", t: "bool", default: false,
      d: "Log icon pump operations to %TEMP%\\tabby_iconpump.log. Use when debugging icon resolution issues (cloaked windows, UWP apps)."},
