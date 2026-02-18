@@ -229,22 +229,6 @@ _KSub_GetFocusedHwndFromWsObj(wsObj) {
     return 0
 }
 
-; Get focused hwnd for a specific workspace by name.
-; Searches all monitors/workspaces for the named workspace.
-KSub_GetFocusedHwndByWsName(stateObj, wsName) {
-    if (wsName = "")
-        return 0
-    monitorsArr := KSub_GetMonitorsArray(stateObj)
-    for _, monObj in monitorsArr {
-        wsArr := KSub_GetWorkspacesArray(monObj)
-        for _, wsObj in wsArr {
-            if (KSafe_Str(wsObj, "name") = wsName)
-                return _KSub_GetFocusedHwndFromWsObj(wsObj)
-        }
-    }
-    return 0
-}
-
 ; Cache focused hwnd for ALL workspaces from a reliable state snapshot.
 ; Call this only when the state is known to be consistent (skipWorkspaceUpdate=false).
 ; Returns nothing — populates the provided Map (wsName -> hwnd).

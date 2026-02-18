@@ -23,7 +23,7 @@
 cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils
 g_ActiveMutex: launcher_main, launcher_tray
 g_LauncherMutex: launcher_main, launcher_tray
-gGUI_CurrentWSName: gui_main, gui_state, gui_workspace
+gGUI_CurrentWSName: gui_main, gui_state
 gGUI_DisplayItems: gui_data, gui_state, gui_workspace
 gGUI_LiveItems: gui_input, gui_state, gui_data
 gGUI_LiveItemsMap: gui_input, gui_data

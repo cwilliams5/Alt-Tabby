@@ -26,36 +26,6 @@ GUI_UpdateFooterText() {
     }
 }
 
-; ========================= CURRENT WORKSPACE TRACKING =========================
-
-GUI_UpdateCurrentWSFromPayload(payload) {
-    global gGUI_CurrentWSName
-
-    if (!payload.Has("meta"))
-        return
-
-    meta := payload["meta"]
-    wsName := ""
-
-    ; Handle both Map and Object types for meta
-    if (meta is Map) {
-        wsName := meta.Has("currentWSName") ? meta["currentWSName"] : ""
-    } else if (IsObject(meta)) {
-        try wsName := meta.currentWSName
-    }
-
-    if (wsName != "" && wsName != gGUI_CurrentWSName) {
-        gGUI_CurrentWSName := wsName
-        GUI_UpdateFooterText()
-
-        ; Workspace switch is a context switch: reset selection to top,
-        ; mark sticky, and request fresh display list if frozen.
-        Critical "On"
-        GUI_HandleWorkspaceSwitch()
-        Critical "Off"
-    }
-}
-
 ; ========================= WORKSPACE TOGGLE =========================
 
 GUI_ToggleWorkspaceMode() {

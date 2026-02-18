@@ -853,8 +853,8 @@ _GUI_AsyncActivationTick() {
                     GUI_LogEvent("ASYNC POLLCLOAK: window uncloaked, switch complete")
             }
         } else if (confirmMethod = "AwaitDelta") {
-            ; AwaitDelta: Watch gGUI_CurrentWSName (updated by deltas via GUI_UpdateCurrentWSFromPayload)
-            ; Zero spawning, zero DllCalls - but depends on IPC latency
+            ; AwaitDelta: Watch gGUI_CurrentWSName (updated by heartbeat via direct gWS_Meta read in gui_main)
+            ; Zero spawning, zero DllCalls - but depends on heartbeat latency
             if (gGUI_CurrentWSName = gGUI_PendingWSName) {
                 switchComplete := true
                 if (cfg.DiagEventLog)

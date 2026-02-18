@@ -1036,7 +1036,7 @@ global gConfigRegistry := [
      d: "Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems."},
 
     {s: "Diagnostics", k: "IPCLog", g: "DiagIPCLog", t: "bool", default: false,
-     d: "Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues."},
+     d: "Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging pump IPC communication issues."},
 
     {s: "Diagnostics", k: "PaintTimingLog", g: "DiagPaintTimingLog", t: "bool", default: false,
      d: "Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle."},

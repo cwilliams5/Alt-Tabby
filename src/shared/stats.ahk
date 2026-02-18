@@ -32,7 +32,7 @@ global STATS_LIFETIME_KEYS := [
     "PeakWindowsInSession", "LongestSessionSec"
 ]
 
-; Logging callbacks - set by host process (e.g., store_server)
+; Logging callbacks - set by host process (e.g., gui_main)
 global gStats_LogError := 0
 global gStats_LogInfo := 0
 

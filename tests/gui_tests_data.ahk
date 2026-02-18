@@ -139,53 +139,6 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_LiveItems.Length, 3, "RemoveItemAt 4: no-op (out of bounds)")
 
     ; ============================================================
-    ; WORKSPACE PAYLOAD TRACKING TESTS
-    ; ============================================================
-
-    ; ----- Test: GUI_UpdateCurrentWSFromPayload extracts workspace name -----
-    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload extracts workspace name")
-    ResetGUIState()
-    payload := Map()
-    payload["meta"] := Map("currentWSName", "Alpha")
-
-    GUI_UpdateCurrentWSFromPayload(payload)
-    GUI_AssertEq(gGUI_CurrentWSName, "Alpha", "WSPayload: workspace name extracted")
-
-    ; ----- Test: GUI_UpdateCurrentWSFromPayload resets selection in current mode -----
-    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload resets selection in current mode")
-    ResetGUIState()
-    SetupTestItems(5)  ; Mock store needed for workspace switch context
-    gGUI_WorkspaceMode := "current"
-    gGUI_State := "ACTIVE"
-    gGUI_CurrentWSName := "Alpha"
-    gGUI_Sel := 5
-
-    payload := Map()
-    payload["meta"] := Map("currentWSName", "Beta")
-
-    GUI_UpdateCurrentWSFromPayload(payload)
-    GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload reset: workspace updated")
-    GUI_AssertEq(gGUI_Sel, 1, "WSPayload reset: selection reset to 1")
-
-    ; ----- Test: GUI_UpdateCurrentWSFromPayload ALSO resets in all mode -----
-    ; A workspace switch is a context switch regardless of display mode.
-    ; Position 1 = focused window on the NEW workspace, which is what the user wants.
-    GUI_Log("Test: GUI_UpdateCurrentWSFromPayload resets in all mode")
-    ResetGUIState()
-    SetupTestItems(5)  ; Mock store needed for workspace switch context
-    gGUI_WorkspaceMode := "all"
-    gGUI_State := "ACTIVE"
-    gGUI_CurrentWSName := "Alpha"
-    gGUI_Sel := 5
-
-    payload := Map()
-    payload["meta"] := Map("currentWSName", "Beta")
-
-    GUI_UpdateCurrentWSFromPayload(payload)
-    GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSPayload all: workspace updated")
-    GUI_AssertEq(gGUI_Sel, 1, "WSPayload all: selection reset to 1")
-
-    ; ============================================================
     ; WORKSPACE CONTEXT SWITCH SELECTION TESTS
     ; ============================================================
     ; Tests that workspace changes during ACTIVE state set gGUI_WSContextSwitch=true
@@ -209,15 +162,13 @@ RunGUITests_Data() {
     SetupTestItems(5)  ; Mock store needed for workspace switch context
     gGUI_State := "ACTIVE"
     gGUI_OverlayVisible := true
-    gGUI_CurrentWSName := "Alpha"
+    gGUI_CurrentWSName := "Beta"
     gGUI_Sel := 3  ; Start with different selection
     gGUI_WSContextSwitch := false
 
-    ; Simulate workspace change notification
-    payload := Map("meta", Map("currentWSName", "Beta"))
-    GUI_UpdateCurrentWSFromPayload(payload)
+    ; Simulate workspace change (direct state + production function)
+    GUI_HandleWorkspaceSwitch()
 
-    GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WS change: workspace updated")
     GUI_AssertEq(gGUI_Sel, 1, "WS change: sel reset to 1")
     GUI_AssertEq(gGUI_WSContextSwitch, true, "WS change: WSContextSwitch set to true")
 
@@ -237,8 +188,8 @@ RunGUITests_Data() {
     gGUI_WSContextSwitch := false
 
     ; Trigger WS change to set the flag (switch to "Other" which has 6 items)
-    payload := Map("meta", Map("currentWSName", "Other"))
-    GUI_UpdateCurrentWSFromPayload(payload)
+    gGUI_CurrentWSName := "Other"
+    GUI_HandleWorkspaceSwitch()
     GUI_AssertEq(gGUI_WSContextSwitch, true, "WSContextSwitch persist: flag set")
     GUI_AssertEq(gGUI_Sel, 1, "WSContextSwitch persist: initial sel=1")
 
@@ -255,12 +206,11 @@ RunGUITests_Data() {
     ResetGUIState()
     gGUI_State := "ACTIVE"
     gGUI_OverlayVisible := true
-    gGUI_CurrentWSName := "Alpha"
+    gGUI_CurrentWSName := "Beta"
     gGUI_Sel := 3  ; Start at non-1 to verify production code resets it
     SetupTestItems(1)
 
-    payload := Map("meta", Map("currentWSName", "Beta"))
-    GUI_UpdateCurrentWSFromPayload(payload)
+    GUI_HandleWorkspaceSwitch()
 
     GUI_AssertEq(gGUI_Sel, 1, "WS change single: sel=1")
 

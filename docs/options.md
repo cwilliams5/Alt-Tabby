@@ -580,7 +580,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `ProcPumpLog` | bool | `false` | - | Log process pump operations to %TEMP%\\tabby_procpump.log. Use when debugging process name resolution failures. |
 | `PumpLog` | bool | `false` | - | Log EnrichmentPump operations to %TEMP%\\tabby_pump.log. Use when debugging icon/title/process enrichment in the pump subprocess. |
 | `LauncherLog` | bool | `false` | - | Log launcher startup to %TEMP%\\tabby_launcher.log. Use when debugging startup issues, subprocess launch, or mutex problems. |
-| `IPCLog` | bool | `false` | - | Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging store-GUI communication issues. |
+| `IPCLog` | bool | `false` | - | Log IPC pipe operations to %TEMP%\\tabby_ipc.log. Use when debugging pump IPC communication issues. |
 | `PaintTimingLog` | bool | `false` | - | Log GUI paint timing to %TEMP%\\tabby_paint_timing.log. Use when debugging slow overlay rendering after extended idle. |
 | `WebViewLog` | bool | `false` | - | Log WebView2 config editor errors to %TEMP%\\tabby_webview_debug.log. Use when debugging config editor issues. |
 | `UpdateLog` | bool | `false` | - | Log auto-update check and apply steps to %TEMP%\\tabby_update.log. Use when debugging update failures. |
