@@ -45,7 +45,7 @@ global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
 ; gGUI_LastLocalMRUTick removed — no competing MRU sources in MainProcess
 
-; Session stats counters (sent to store as deltas)
+; Session stats counters (accumulated into lifetime stats)
 global gStats_AltTabs := 0
 global gStats_QuickSwitches := 0
 global gStats_TabSteps := 0
@@ -317,7 +317,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
-            Stats_SendToStore()
+            Stats_AccumulateSession()
 
             ; NOTE: Activation is now async (non-blocking) for cross-workspace switches.
             ; Keyboard events are processed normally between timer fires.
@@ -337,7 +337,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             FR_Record(FR_EV_STATE, FR_ST_IDLE)
         gGUI_State := "IDLE"
         gGUI_DisplayItems := []
-        Stats_SendToStore()
+        Stats_AccumulateSession()
 
         ; Resync — refresh live items after ACTIVE state
         GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
@@ -386,8 +386,9 @@ GUI_HandleWorkspaceSwitch() {
     wsName := gGUI_CurrentWSName
     for _, item in gGUI_ToggleBase {
         hwnd := item.hwnd
-        if (gWS_Store.Has(hwnd)) {
-            storeWs := gWS_Store[hwnd].workspaceName
+        rec := gWS_Store.Get(hwnd, 0)
+        if (rec) {
+            storeWs := rec.workspaceName
             if (storeWs != item.workspaceName)
                 item.workspaceName := storeWs
         }
@@ -726,7 +727,7 @@ GUI_ClickActivate(item) {
     Critical "Off"
     GUI_HideOverlay()
     _GUI_ActivateItem(item)
-    Stats_SendToStore()
+    Stats_AccumulateSession()
 }
 
 ; ========================= SWITCH-ACTIVATE METHOD =========================
@@ -1553,11 +1554,11 @@ _GUI_RobustActivate(hwnd) {
     }
 }
 
-; ========================= STATS SEND =========================
+; ========================= STATS ACCUMULATION =========================
 
-; Send accumulated session stats to store as deltas
+; Accumulate session stats into lifetime counters
 ; Called at session end (IDLE transition) and on exit
-Stats_SendToStore() {
+Stats_AccumulateSession() {
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps
     global gStats_Cancellations, gStats_CrossWorkspace, gStats_WorkspaceToggles
     global gStats_LastSent

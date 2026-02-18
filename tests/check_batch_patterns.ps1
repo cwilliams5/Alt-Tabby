@@ -471,6 +471,35 @@ $CHECKS = @(
         File     = "pump\enrichment_pump.ahk"
         Desc     = "EnrichmentPump enables DetectHiddenWindows for cloaked window resolution"
         Patterns = @("DetectHiddenWindows(true)")
+    },
+    # --- Callback wiring order: SetCallbacks must precede Start/Init consumers ---
+    @{
+        Id       = "wl_setcallbacks_before_init"
+        File     = "gui\gui_main.ahk"
+        Desc     = "WL_SetCallbacks() called before Stats_Init (data layer wired before consumers)"
+        Regex    = $true
+        Patterns = @("WL_SetCallbacks\([\s\S]*?Stats_Init\(\)")
+    },
+    @{
+        Id       = "stats_setcallbacks_before_init"
+        File     = "gui\gui_main.ahk"
+        Desc     = "Stats_SetCallbacks() called before Stats_Init() (logging wired before use)"
+        Regex    = $true
+        Patterns = @("Stats_SetCallbacks\([\s\S]*?Stats_Init\(\)")
+    },
+    @{
+        Id       = "iconpump_setcallbacks_before_start"
+        File     = "gui\gui_main.ahk"
+        Desc     = "IconPump_SetCallbacks() called before IconPump_Start() (callbacks wired before timer)"
+        Regex    = $true
+        Patterns = @("IconPump_SetCallbacks\([\s\S]*?IconPump_Start\(\)")
+    },
+    @{
+        Id       = "procpump_setcallbacks_before_start"
+        File     = "gui\gui_main.ahk"
+        Desc     = "ProcPump_SetCallbacks() called before ProcPump_Start() (callbacks wired before timer)"
+        Regex    = $true
+        Patterns = @("ProcPump_SetCallbacks\([\s\S]*?ProcPump_Start\(\)")
     }
 )
 
@@ -1269,6 +1298,82 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_fr_guard"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 9: copydata_contract
+# Validates WM_COPYDATA TABBY_CMD_* constants have symmetric
+# sender (NumPut) and handler (dwData = TABBY_CMD_*) coverage.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$cdIssues = [System.Collections.ArrayList]::new()
+
+# Collect all TABBY_CMD_* definitions
+$cmdDefs = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($path in $fileCacheText.Keys) {
+    $text = $fileCacheText[$path]
+    $defMatches = [regex]::Matches($text, 'global\s+(TABBY_CMD_\w+)\s*:=')
+    foreach ($m in $defMatches) {
+        [void]$cmdDefs.Add($m.Groups[1].Value)
+    }
+}
+
+# Collect send sites: NumPut("uptr", TABBY_CMD_*, ...) or relay functions like Launcher_RelayToGui(TABBY_CMD_*)
+$cmdSent = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($path in $fileCacheText.Keys) {
+    $text = $fileCacheText[$path]
+    $sendMatches = [regex]::Matches($text, 'NumPut\([^)]*?(TABBY_CMD_\w+)')
+    foreach ($m in $sendMatches) {
+        [void]$cmdSent.Add($m.Groups[1].Value)
+    }
+    # Indirect sends via relay functions that wrap WM_COPYDATA sending
+    $relayMatches = [regex]::Matches($text, 'Launcher_RelayToGui\(\s*(TABBY_CMD_\w+)')
+    foreach ($m in $relayMatches) {
+        [void]$cmdSent.Add($m.Groups[1].Value)
+    }
+}
+
+# Collect handler sites: dwData = TABBY_CMD_*
+$cmdHandled = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($path in $fileCacheText.Keys) {
+    $text = $fileCacheText[$path]
+    $handleMatches = [regex]::Matches($text, 'dwData\s*=\s*(TABBY_CMD_\w+)')
+    foreach ($m in $handleMatches) {
+        [void]$cmdHandled.Add($m.Groups[1].Value)
+    }
+}
+
+# Check: defined but never sent (dead command)
+foreach ($cmd in $cmdDefs) {
+    if (-not $cmdSent.Contains($cmd) -and -not $cmdHandled.Contains($cmd)) {
+        [void]$cdIssues.Add("${cmd}: defined but never sent or handled (dead command)")
+    }
+}
+
+# Check: sent but never handled (silent message drop)
+foreach ($cmd in $cmdSent) {
+    if (-not $cmdHandled.Contains($cmd)) {
+        [void]$cdIssues.Add("${cmd}: sent via NumPut but no handler checks dwData = ${cmd} (silent drop)")
+    }
+}
+
+# Check: handled but never sent (dead handler)
+foreach ($cmd in $cmdHandled) {
+    if (-not $cmdSent.Contains($cmd)) {
+        [void]$cdIssues.Add("${cmd}: handler exists (dwData = ${cmd}) but never sent via NumPut (dead handler)")
+    }
+}
+
+if ($cdIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($cdIssues.Count) WM_COPYDATA contract issue(s) found.")
+    [void]$failOutput.AppendLine("  Every TABBY_CMD_* must have both a sender (NumPut) and a handler (dwData = CMD).")
+    foreach ($issue in $cdIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_copydata_contract"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1276,7 +1381,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

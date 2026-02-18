@@ -1,6 +1,6 @@
 # check_batch_directives.ps1 - Batched directive/keyword checks
 # Combines 6 checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: requires_directive, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths, unreachable_code
+# Sub-checks: requires_directive, singleinstance, state_strings, phase_strings, winexist_cloaked, bare_try, return_paths, unreachable_code
 #
 # Usage: powershell -File tests\check_batch_directives.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -206,6 +206,65 @@ if ($ssIssues.Count -gt 0) {
         [void]$failOutput.AppendLine("    $($group.Name):")
         foreach ($issue in $group.Group | Sort-Object Line) {
             [void]$failOutput.AppendLine("      Line $($issue.Line): invalid state `"$($issue.State)`"  ->  $($issue.Context)")
+        }
+    }
+}
+
+# ============================================================
+# Sub-check 3b: phase_strings
+# Validates gGUI_PendingPhase string literals ("", "polling", "waiting", "flushing")
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$VALID_PHASES = @('', 'polling', 'waiting', 'flushing')
+$psIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        if ($line -match '^\s*;') { continue }
+        if ($line -notmatch 'gGUI_PendingPhase') { continue }
+        # Strip string contents to avoid matching the variable name inside string literals
+        # (e.g., flight recorder: out .= "gGUI_PendingPhase = " ...)
+        $stripped = $line -replace '\s;.*$', ''
+        $stripped = $stripped -replace '"[^"]*"', '""'
+        if ($stripped -notmatch 'gGUI_PendingPhase') { continue }
+        # Re-strip from original (we need real string content for regex captures)
+        $stripped = $line -replace '\s;.*$', ''
+        $phasePatterns = @(
+            'gGUI_PendingPhase\s*:=\s*"([^"]*)"',
+            'gGUI_PendingPhase\s*[!=]=?\s*"([^"]*)"',
+            '"([^"]*)"\s*[!=]=?\s*gGUI_PendingPhase'
+        )
+        foreach ($pattern in $phasePatterns) {
+            $regex = [regex]$pattern
+            $m = $regex.Matches($stripped)
+            foreach ($match in $m) {
+                $phaseStr = $match.Groups[1].Value
+                if ($phaseStr -cnotin $VALID_PHASES) {
+                    [void]$psIssues.Add([PSCustomObject]@{
+                        File = $relPath; Line = ($i + 1)
+                        Phase = $phaseStr; Context = $stripped.Trim()
+                    })
+                }
+            }
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_phase_strings"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+if ($psIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($psIssues.Count) invalid gGUI_PendingPhase string(s) found.")
+    [void]$failOutput.AppendLine("  Valid phases: `"`"`, polling, waiting, flushing")
+    $grouped = $psIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): invalid phase `"$($issue.Phase)`"  ->  $($issue.Context)")
         }
     }
 }
@@ -993,7 +1052,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, winexist_cloaked, bare_try, return_paths, unreachable_code)" -ForegroundColor Green
+    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, phase_strings, winexist_cloaked, bare_try, return_paths, unreachable_code)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

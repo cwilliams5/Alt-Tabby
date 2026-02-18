@@ -1372,6 +1372,97 @@ if ($tlIssues.Count -gt 0) {
     }
 }
 
+# Phase 3: Cross-file dead cancel detection
+# Find SetTimer(fn, 0) where fn is never registered (SetTimer(fn, ...)) in ANY file
+# AND fn is not a known function definition or bound variable.
+# This catches renamed/removed timer callbacks whose cancellation is now a no-op.
+$allRegistered = [System.Collections.Generic.HashSet[string]]::new()
+$allBoundVars = [System.Collections.Generic.HashSet[string]]::new()
+$allFuncDefs = [System.Collections.Generic.HashSet[string]]::new()
+$allCancels = [System.Collections.ArrayList]::new()
+
+# Collect all registrations (positive AND negative periods) across all files
+foreach ($relPath in $fileTimerData.Keys) {
+    $data = $fileTimerData[$relPath]
+    foreach ($cbName in $data.Starts.Keys) {
+        [void]$allRegistered.Add($cbName)
+    }
+}
+
+foreach ($file in $allFiles) {
+    $processed = $processedCache[$file.FullName]
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $cleaned = $processed[$i].Cleaned
+        if ($cleaned -eq '') { continue }
+        # Any SetTimer registration (positive or negative period) — ignore lint-ignore
+        # because Phase 3 checks existence, not same-file balance
+        if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\s*,') {
+            $regName = $Matches[1]
+            if ($cleaned -notmatch 'SetTimer\(\s*\w+\s*,\s*0\s*\)') {
+                [void]$allRegistered.Add($regName)
+            }
+        }
+        # Bound variable assignments: varName := FuncName.Bind(...)
+        if ($cleaned -match '(\w+)\s*:=\s*[A-Za-z_]\w+\.Bind\(') {
+            [void]$allBoundVars.Add($Matches[1])
+        }
+        # Direct function ref stored in variable: varName := FuncName (no parens)
+        if ($cleaned -match '(\w+)\s*:=\s*([A-Za-z_]\w+)\s*$') {
+            [void]$allBoundVars.Add($Matches[1])
+        }
+        # Function definitions: FuncName(params) {
+        if ($cleaned -match '^([A-Za-z_]\w+)\s*\(') {
+            [void]$allFuncDefs.Add($Matches[1])
+        }
+    }
+}
+
+# Collect all cancellations across all files
+foreach ($file in $allFiles) {
+    $processed = $processedCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $cleaned = $processed[$i].Cleaned
+        if ($cleaned -eq '') { continue }
+        if ($processed[$i].Raw.Contains($TL_SUPPRESSION)) { continue }
+        if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\s*,\s*0\s*\)') {
+            $cbName = $Matches[1]
+            [void]$allCancels.Add([PSCustomObject]@{
+                File = $relPath; Line = ($i + 1); Callback = $cbName
+            })
+        }
+    }
+}
+
+$deadCancelIssues = [System.Collections.ArrayList]::new()
+foreach ($cancel in $allCancels) {
+    $cb = $cancel.Callback
+    # Known via any registration (positive or one-shot)
+    if ($allRegistered.Contains($cb)) { continue }
+    # Known bound variable (stores a .Bind() ref)
+    if ($allBoundVars.Contains($cb)) { continue }
+    # Known function definition (may be registered dynamically)
+    if ($allFuncDefs.Contains($cb)) { continue }
+    [void]$deadCancelIssues.Add($cancel)
+}
+
+if ($deadCancelIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($deadCancelIssues.Count) dead timer cancellation(s) found.")
+    [void]$failOutput.AppendLine("  SetTimer(fn, 0) where fn is not a known function, bound variable, or registered timer.")
+    [void]$failOutput.AppendLine("  This means the callback was renamed or removed but the cancel is now a no-op.")
+    [void]$failOutput.AppendLine("  Fix: remove the dead SetTimer(fn, 0) or fix the callback name.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: timer-lifecycle' on the SetTimer line.")
+    $grouped = $deadCancelIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): SetTimer($($issue.Callback), 0) - callback never registered")
+        }
+    }
+}
+
 if ($bindIdentityIssues.Count -gt 0) {
     $anyFailed = $true
     [void]$failOutput.AppendLine("")

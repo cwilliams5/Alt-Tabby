@@ -222,24 +222,33 @@ _GUI_Main_Init() {
 _GUI_OnProducerRevChanged(isStructural := true) {
     global gGUI_State
 
-    ; During IDLE: kick background icon→bitmap pre-cache.
-    ; During ALT_PENDING: refresh live items to keep pre-warm data fresh.
-    ; During ACTIVE: structural changes skip (selection stability),
-    ;   cosmetic changes patch in-place and repaint.
-    if (gGUI_State = "IDLE") {
-        GUI_KickPreCache()
-    } else if (gGUI_State = "ALT_PENDING") {
-        GUI_RefreshLiveItems()
-    } else if (gGUI_State = "ACTIVE") {
-        ; Cosmetic changes: patch title/icon/processName in-place
-        if (!isStructural)
-            GUI_PatchCosmeticUpdates()
-        ; Always check bypass mode on focus changes
-        fgHwnd := DllCall("GetForegroundWindow", "Ptr")
-        if (fgHwnd) {
-            shouldBypass := INT_ShouldBypassWindow(fgHwnd)
-            INT_SetBypassMode(shouldBypass)
+    ; Error boundary: producer callback errors must not crash the app.
+    ; In the old store-as-process architecture, a store crash was isolated.
+    ; Now that producers run in-process, an unhandled error here would propagate
+    ; to _GUI_OnError → ExitApp(1). Log and skip — next cycle self-corrects.
+    try {
+        ; During IDLE: kick background icon→bitmap pre-cache.
+        ; During ALT_PENDING: refresh live items to keep pre-warm data fresh.
+        ; During ACTIVE: structural changes skip (selection stability),
+        ;   cosmetic changes patch in-place and repaint.
+        if (gGUI_State = "IDLE") {
+            GUI_KickPreCache()
+        } else if (gGUI_State = "ALT_PENDING") {
+            GUI_RefreshLiveItems()
+        } else if (gGUI_State = "ACTIVE") {
+            ; Cosmetic changes: patch title/icon/processName in-place
+            if (!isStructural)
+                GUI_PatchCosmeticUpdates()
+            ; Always check bypass mode on focus changes
+            fgHwnd := DllCall("GetForegroundWindow", "Ptr")
+            if (fgHwnd) {
+                shouldBypass := INT_ShouldBypassWindow(fgHwnd)
+                INT_SetBypassMode(shouldBypass)
+            }
         }
+    } catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "producer_rev_callback err=" e.Message " file=" e.File " line=" e.Line)
     }
 }
 
@@ -247,22 +256,29 @@ _GUI_OnProducerRevChanged(isStructural := true) {
 _GUI_OnWorkspaceFlips() {
     global gGUI_CurrentWSName, gWS_Meta, cfg
 
-    ; Read workspace name directly from gWS_Meta (in-process, no IPC)
-    wsName := ""
-    if (IsObject(gWS_Meta)) {
-        Critical "On"
-        wsName := gWS_Meta.Has("currentWSName") ? gWS_Meta["currentWSName"] : ""
-        Critical "Off"
-    }
+    ; Error boundary: same rationale as _GUI_OnProducerRevChanged above.
+    try {
+        ; Read workspace name directly from gWS_Meta (in-process, no IPC)
+        wsName := ""
+        if (IsObject(gWS_Meta)) {
+            Critical "On"
+            wsName := gWS_Meta.Has("currentWSName") ? gWS_Meta["currentWSName"] : ""
+            Critical "Off"
+        }
 
-    if (wsName != "" && wsName != gGUI_CurrentWSName) {
-        gGUI_CurrentWSName := wsName
-        GUI_UpdateFooterText()
+        if (wsName != "" && wsName != gGUI_CurrentWSName) {
+            gGUI_CurrentWSName := wsName
+            GUI_UpdateFooterText()
 
-        ; Handle workspace switch during ACTIVE state
-        Critical "On"
-        GUI_HandleWorkspaceSwitch()
-        Critical "Off"
+            ; Handle workspace switch during ACTIVE state
+            Critical "On"
+            GUI_HandleWorkspaceSwitch()
+            Critical "Off"
+        }
+    } catch as e {
+        Critical "Off"  ; Ensure Critical is released on error (AHK v2 auto-releases on return, but be explicit)
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "workspace_flip_callback err=" e.Message " file=" e.File " line=" e.Line)
     }
 }
 
@@ -393,7 +409,7 @@ _GUI_OnError(err, *) {
 ; Clean up resources on exit
 _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     ; Send any unsent stats, then flush to disk
-    try Stats_SendToStore()
+    try Stats_AccumulateSession()
     try Stats_FlushToDisk()
 
     ; Stop all timers

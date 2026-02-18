@@ -79,6 +79,7 @@ GUI_RemoveLiveItemAt(idx1) {
 ; NOTE: Reads gWS_Store/gWS_DirtyHwnds without Critical. Accepted risk: a producer
 ; could modify a record mid-iteration, yielding one frame of mixed old/new cosmetic
 ; data. Self-corrects on next cycle; individual AHK property reads are atomic.
+; Map access uses .Get(key, 0) to avoid TOCTOU crash if key is deleted mid-iteration.
 GUI_PatchCosmeticUpdates() {
     global gGUI_ToggleBase, gWS_Store, gWS_DirtyHwnds, cfg
     global gGUI_CurrentWSName, gGUI_OverlayVisible
@@ -103,9 +104,9 @@ GUI_PatchCosmeticUpdates() {
         hwnd := item.hwnd
         if (!gWS_DirtyHwnds.Has(hwnd))
             continue
-        if (!gWS_Store.Has(hwnd))
+        rec := gWS_Store.Get(hwnd, 0)
+        if (!rec)
             continue
-        rec := gWS_Store[hwnd]
         ; Patch cosmetic fields in-place (no position change)
         titleChanged := (rec.title != item.title)
         iconChanged := (rec.iconHicon != item.iconHicon)
