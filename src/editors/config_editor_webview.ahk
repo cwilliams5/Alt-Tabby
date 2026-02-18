@@ -72,10 +72,6 @@
 ;
 ; ============================================================
 
-; Resource IDs (must match alt_tabby.ahk @Ahk2Exe-AddResource directives)
-global CEW_RES_WEBVIEW2_DLL := 20
-global CEW_RES_EDITOR_HTML := 25
-
 global gCEW_Gui := 0
 global gCEW_Controller := 0
 global gCEW_WebView := 0
@@ -94,7 +90,7 @@ global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage 
 CE_RunWebView2(launcherHwnd := 0) {
     global gCEW_Gui, gCEW_Controller, gCEW_WebView, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
     global gCEW_MessageHandler
-    global gConfigLoaded, CEW_RES_WEBVIEW2_DLL, CEW_RES_EDITOR_HTML
+    global gConfigLoaded, RES_ID_WEBVIEW2_DLL, RES_ID_EDITOR_HTML
 
     gCEW_LauncherHwnd := launcherHwnd
     gCEW_SavedChanges := false
@@ -112,9 +108,9 @@ CE_RunWebView2(launcherHwnd := 0) {
         ; Extract DLL if missing or corrupt
         dllSize := FileExist(dllPath) ? FileGetSize(dllPath) : 0
         if (dllSize < 1000)
-            ResourceExtract(CEW_RES_WEBVIEW2_DLL, dllPath)
+            ResourceExtract(RES_ID_WEBVIEW2_DLL, dllPath)
         ; HTML always extracted (may have updates)
-        ResourceExtract(CEW_RES_EDITOR_HTML, htmlPath)
+        ResourceExtract(RES_ID_EDITOR_HTML, htmlPath)
     } else {
         ; Dev mode: copy from source
         srcDll := A_ScriptDir "\..\resources\dll\WebView2Loader.dll"

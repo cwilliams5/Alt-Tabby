@@ -20,10 +20,9 @@
 #Include %A_ScriptDir%\..\shared\
 #Include config_registry.ahk
 #Include config_loader.ahk
+#Include resource_utils.ahk
 #Include theme.ahk
 #Include theme_msgbox.ahk
-
-global WEBVIEW2_EVERGREEN_GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
 global gCRE_Gui := 0
 global gCRE_Controller := 0
@@ -40,7 +39,7 @@ _CRE_Main() {
     global gCRE_Gui, gCRE_Controller, gCRE_WebView, gCRE_MsgHandler
 
     ; Verify WebView2 runtime
-    if (!_CRE_IsWebView2Available()) {
+    if (!IsWebView2Available()) {
         ThemeMsgBox("WebView2 runtime is not installed.`nInstall Microsoft Edge WebView2 Runtime to use this editor.", "Error", "Iconx")
         ExitApp()
     }
@@ -75,24 +74,6 @@ _CRE_Main() {
 
     ; Navigate to editor HTML
     gCRE_WebView.Navigate("file:///" StrReplace(htmlPath, "\", "/"))
-}
-
-; ============================================================
-; WebView2 Detection
-; ============================================================
-
-_CRE_IsWebView2Available() {
-    global WEBVIEW2_EVERGREEN_GUID
-    for regKey in ["HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
-                   "HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
-                   "HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID] {
-        try {
-            ver := RegRead(regKey, "pv")
-            if (ver != "")
-                return true
-        }
-    }
-    return false
 }
 
 ; ============================================================

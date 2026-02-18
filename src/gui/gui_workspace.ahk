@@ -12,6 +12,18 @@ global gGUI_WorkspaceMode := WS_MODE_ALL
 global gGUI_FooterText := "All Windows"
 global gStats_WorkspaceToggles := 0
 
+; ========================= WORKSPACE PROPERTY HELPERS =========================
+
+; Get workspace name for display/logging (returns "?" if unknown)
+GUI_GetItemWSName(item) {
+    return item.HasOwnProp("workspaceName") ? item.workspaceName : "?"
+}
+
+; Check if item is on current workspace (defaults to true if unknown)
+GUI_GetItemIsOnCurrent(item) {
+    return item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
+}
+
 ; ========================= FOOTER TEXT =========================
 
 GUI_UpdateFooterText() {
@@ -70,8 +82,7 @@ GUI_FilterByWorkspaceMode(items) {
     ; WS_MODE_CURRENT mode - only items on current workspace
     result := []
     for _, item in items {
-        isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
-        if (isOnCurrent) {
+        if (GUI_GetItemIsOnCurrent(item)) {
             result.Push(item)
         }
     }

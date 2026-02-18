@@ -321,7 +321,7 @@ _BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak) {
 ; Used by Blacklist_IsWindowEligibleEx to avoid redundant DllCalls in WinUtils_ProbeWindow
 _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
     global BL_WS_CHILD, BL_WS_EX_TOOLWINDOW, BL_WS_EX_APPWINDOW, BL_WS_EX_NOACTIVATE
-    global GWL_STYLE, GW_OWNER
+    global GWL_STYLE, GWL_EXSTYLE, GW_OWNER
 
     ; Get visibility state via shared helper
     _BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak)
@@ -334,7 +334,7 @@ _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
         return false
 
     ; Get extended window style
-    ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", -20, "ptr")  ; GWL_EXSTYLE
+    ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", GWL_EXSTYLE, "ptr")
 
     isTool := (ex & BL_WS_EX_TOOLWINDOW) != 0
     isApp := (ex & BL_WS_EX_APPWINDOW) != 0

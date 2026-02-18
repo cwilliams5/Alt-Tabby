@@ -23,14 +23,19 @@ global STATS_CUMULATIVE_KEYS := [
     "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles"
 ]
 
-; All lifetime stat keys - used for initialization and serialization
-global STATS_LIFETIME_KEYS := [
+; Lifetime-only stat keys (not accumulated from GUI deltas)
+global STATS_LIFETIME_ONLY_KEYS := [
     "TotalRunTimeSec", "TotalSessions",
-    "TotalAltTabs", "TotalQuickSwitches", "TotalTabSteps",
-    "TotalCancellations", "TotalCrossWorkspace", "TotalWorkspaceToggles",
     "TotalWindowUpdates", "TotalBlacklistSkips",
     "PeakWindowsInSession", "LongestSessionSec"
 ]
+
+; All lifetime stat keys - derived from above to avoid duplication
+global STATS_LIFETIME_KEYS := []
+for _, k in STATS_LIFETIME_ONLY_KEYS
+    STATS_LIFETIME_KEYS.Push(k)
+for _, k in STATS_CUMULATIVE_KEYS
+    STATS_LIFETIME_KEYS.Push(k)
 
 ; Logging callbacks - set by host process (e.g., gui_main)
 global gStats_LogError := 0

@@ -158,13 +158,10 @@ GUI_PatchCosmeticUpdates() {
 }
 
 _GUI_CosmeticLog(msg) {
-    global cfg
+    global cfg, LOG_PATH_COSMETIC_PATCH
     if (!cfg.DiagCosmeticPatchLog)
         return
-    static logPath := ""
-    if (logPath = "")
-        logPath := A_Temp "\tabby_cosmetic_patch.log"
-    try LogAppend(logPath, msg)
+    try LogAppend(LOG_PATH_COSMETIC_PATCH, msg)
 }
 
 ; ========================= BACKGROUND ICON PRE-CACHE =========================

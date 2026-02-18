@@ -217,8 +217,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                         GUI_LogEvent("  ... and " (gGUI_DisplayItems.Length - 5) " more")
                         break
                     }
-                    ws := item.HasOwnProp("workspaceName") ? item.workspaceName : "(none)"
-                    onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "(none)"
+                    ws := GUI_GetItemWSName(item)
+                    onCur := GUI_GetItemIsOnCurrent(item)
                     title := item.HasOwnProp("title") ? SubStr(item.title, 1, 25) : "?"
                     GUI_LogEvent("  [" i "] '" title "' ws='" ws "' onCur=" onCur)
                 }
@@ -566,9 +566,7 @@ _GUI_ActivateFromFrozen() {
 
     if (cfg.DiagEventLog) {
         title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
-        ws := item.HasOwnProp("workspaceName") ? item.workspaceName : "?"
-        onCur := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : "?"
-        GUI_LogEvent("ACTIVATE: '" title "' ws=" ws " onCurrent=" onCur)
+        GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item))
     }
 
     _GUI_ActivateItem(item)
@@ -593,7 +591,7 @@ _GUI_ActivateItem(item) {
     }
 
     ; Check if window is on a different workspace
-    isOnCurrent := item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true
+    isOnCurrent := GUI_GetItemIsOnCurrent(item)
     wsName := item.HasOwnProp("workspaceName") ? item.workspaceName : ""
 
     global FR_EV_ACTIVATE_START, gFR_Enabled

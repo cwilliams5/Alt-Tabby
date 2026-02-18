@@ -54,6 +54,9 @@ global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 }
 
+; --- Win32 constants (from gui_constants.ahk, needed by blacklist.ahk) ---
+global GWL_EXSTYLE := -20
+
 ; --- Resource IDs (from resource_utils.ahk, used by launcher_about.ahk) ---
 global RES_ID_LOGO := 0
 

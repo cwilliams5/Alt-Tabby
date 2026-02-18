@@ -455,7 +455,8 @@ _KSub_ExtractOneJson(&s, &consumed := 0) {
     nlPos := InStr(s, "`n")
     if (!nlPos) {
         ; No complete line yet - check buffer limits
-        if (StrLen(s) > 1000000)
+        global KSUB_BUFFER_MAX_BYTES
+        if (StrLen(s) > KSUB_BUFFER_MAX_BYTES)
             s := ""  ; Prevent unbounded growth
         return ""
     }

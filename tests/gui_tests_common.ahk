@@ -71,6 +71,7 @@ global DWMWA_CLOAKED := 14
 
 ; Constants from config_loader.ahk
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
+global LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch.log"
 
 ; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
 global gCached_UseAltTabEligibility := true

@@ -13,6 +13,11 @@ global RES_ID_ANIMATION := 15      ; animation.webp
 global RES_ID_SHARPYUV_DLL := 16   ; libsharpyuv-0.dll
 global RES_ID_WEBP_DLL := 17       ; libwebp-7.dll
 global RES_ID_DEMUX_DLL := 18      ; libwebpdemux-2.dll
+global RES_ID_WEBVIEW2_DLL := 20   ; WebView2Loader.dll
+global RES_ID_EDITOR_HTML := 25    ; config_editor.txt (HTML content)
+
+; WebView2 Evergreen runtime GUID (shared by all editors)
+global WEBVIEW2_EVERGREEN_GUID := "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
 ; Extract an embedded resource to a file
 ; resourceId: Resource ID from @Ahk2Exe-AddResource directive
@@ -62,4 +67,20 @@ ResourceExtractToTemp(resourceId, fileName, destDir := "") {
     } catch {
         return ""
     }
+}
+
+; Check if WebView2 Evergreen runtime is installed
+; Returns: true if WebView2 runtime is available
+IsWebView2Available() {
+    global WEBVIEW2_EVERGREEN_GUID
+    for regKey in ["HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
+                   "HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID,
+                   "HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\" WEBVIEW2_EVERGREEN_GUID] {
+        try {
+            ver := RegRead(regKey, "pv")
+            if (ver != "")
+                return true
+        }
+    }
+    return false
 }
