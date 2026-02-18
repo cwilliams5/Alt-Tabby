@@ -62,6 +62,9 @@ WinEventHook_Start() {
     global WinEventHook_DebounceMs, WinEventHook_BatchMs
     global _WEH_CallbackObj
 
+    ; Fail fast if config not initialized (catches initialization order bugs)
+    CL_AssertInitialized("WinEventHook_Start")
+
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (WinEventHook_DebounceMs = 0) {
         global _WEH_IdleThreshold

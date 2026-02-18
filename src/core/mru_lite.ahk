@@ -12,6 +12,9 @@ global _MRU_LastHwnd := 0
 MRU_Lite_Init() {
     global MruLiteIntervalMs, cfg
 
+    ; Fail fast if config not initialized (catches initialization order bugs)
+    CL_AssertInitialized("MRU_Lite_Init")
+
     ; Load config values (ConfigLoader_Init has already run)
     MruLiteIntervalMs := cfg.MruLitePollMs
 

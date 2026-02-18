@@ -183,6 +183,12 @@ for _, arg in A_Args {
 #Include gui_interceptor.ahk
 #Include gui_main.ahk
 
+; Common init for mode handlers: config + theme (called by 9 modes below)
+_ModeInit() {
+    ConfigLoader_Init()
+    Theme_Init()
+}
+
 ; ============================================================
 ; CONFIG MODE HANDLER
 ; ============================================================
@@ -213,8 +219,7 @@ if (g_AltTabbyMode = "blacklist") {
             launcherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
     }
     ; Initialize config + theme for blacklist editor process
-    ConfigLoader_Init()
-    Theme_Init()
+    _ModeInit()
     BlacklistEditor_Run(launcherHwnd)
     _NotifyEditorClosed(launcherHwnd)
     ExitApp()
@@ -243,8 +248,7 @@ _NotifyEditorClosed(launcherHwnd) {
 ; WIZARD-CONTINUE MODE (After Self-Elevation)
 ; ============================================================
 if (g_AltTabbyMode = "wizard-continue") {
-    ConfigLoader_Init()
-    Theme_Init()
+    _ModeInit()
     Launcher_EnsureInstallationId()  ; Must be before WizardContinue (may create admin task)
     wizardResult := WizardContinue()
 
@@ -275,8 +279,7 @@ if (g_AltTabbyMode = "wizard-continue") {
 ; ENABLE-ADMIN-TASK MODE (After Self-Elevation from Tray Menu)
 ; ============================================================
 if (g_AltTabbyMode = "enable-admin-task") {
-    ConfigLoader_Init()
-    Theme_Init()
+    _ModeInit()
     Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     exePath := A_ScriptFullPath
@@ -305,8 +308,7 @@ if (g_AltTabbyMode = "enable-admin-task") {
 ; REPAIR-ADMIN-TASK MODE (After Self-Elevation for Stale Task)
 ; ============================================================
 if (g_AltTabbyMode = "repair-admin-task") {
-    ConfigLoader_Init()
-    Theme_Init()
+    _ModeInit()
     Launcher_EnsureInstallationId()  ; Must be before CreateAdminTask
 
     ; Recreate task with current exe path
@@ -348,8 +350,7 @@ if (g_AltTabbyMode = "repair-admin-task") {
 ; DISABLE-ADMIN-TASK MODE (After Self-Elevation from "Always run from here")
 ; ============================================================
 if (g_AltTabbyMode = "disable-admin-task") {
-    ConfigLoader_Init()
-    Theme_Init()
+    _ModeInit()
 
     ; Delete the admin task
     if (AdminTaskExists()) {
@@ -364,8 +365,7 @@ if (g_AltTabbyMode = "disable-admin-task") {
 ; APPLY-UPDATE MODE (After Self-Elevation for Update)
 ; ============================================================
 if (g_AltTabbyMode = "apply-update") {
-    ConfigLoader_Init()
-    Theme_Init()  ; Required for themed MsgBox dialogs
+    _ModeInit()  ; Required for themed MsgBox dialogs
     ; Apply the downloaded update (we're now elevated)
     if (!Update_ContinueFromElevation()) {
         ThemeMsgBox("The update could not be completed after elevation.`n`n"
@@ -384,8 +384,7 @@ if (g_AltTabbyMode = "apply-update") {
 ; UPDATE-INSTALLED MODE (After Self-Elevation for Install Mismatch)
 ; ============================================================
 if (g_AltTabbyMode = "update-installed") {
-    ConfigLoader_Init()
-    Theme_Init()
+    _ModeInit()
     global TEMP_INSTALL_UPDATE_STATE
 
     try {
@@ -433,8 +432,7 @@ if (g_AltTabbyMode = "update-installed") {
 ; INSTALL-TO-PF MODE (After Self-Elevation from Tray/Dashboard)
 ; ============================================================
 if (g_AltTabbyMode = "install-to-pf") {
-    ConfigLoader_Init()
-    Theme_Init()
+    _ModeInit()
 
     global TEMP_INSTALL_PF_STATE
 
@@ -471,11 +469,7 @@ if (g_AltTabbyMode = "install-to-pf") {
 ; ============================================================
 ; Must be after includes so we can use ConfigLoader_Init
 if (g_AltTabbyMode = "launch") {
-    ; Initialize config first
-    ConfigLoader_Init()
-
-    ; Initialize theme (before any GUIs are created)
-    Theme_Init()
+    _ModeInit()
 
     ; Run main launcher initialization
     Launcher_Init()

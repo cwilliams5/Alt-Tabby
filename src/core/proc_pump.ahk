@@ -53,9 +53,14 @@ _PP_Log(msg) {
 ; Start the process pump timer
 ProcPump_Start() {
     global _PP_TimerOn, ProcTimerIntervalMs, ProcBatchPerTick, cfg
+    global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
 
     ; Fail fast if config not initialized (catches initialization order bugs)
     CL_AssertInitialized("ProcPump_Start")
+
+    ; Fail fast if callbacks not wired (catches initialization order bugs)
+    if (!IsObject(gPP_PopBatch) || !IsObject(gPP_GetProcNameCached) || !IsObject(gPP_UpdateProcessName))
+        throw Error("ProcPump callbacks not wired — call ProcPump_SetCallbacks() before ProcPump_Start()")
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (ProcTimerIntervalMs = 0) {

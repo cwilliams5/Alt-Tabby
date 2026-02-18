@@ -78,9 +78,21 @@ Stats_Init() {
 
     if (bakExists && !iniExists) {
         ; Crash before any writes completed -- .bak is the last known good
-        if (cfg.DiagStoreLog)
-            _Stats_LogInfo("stats recovery: bak exists, ini missing — restoring from backup")
-        try FileMove(statsPath ".bak", statsPath)
+        ; Validate .bak is parseable before restoring (guards against truncated disk writes)
+        bakValid := false
+        try {
+            testVal := IniRead(statsPath ".bak", "Lifetime", "TotalSessions", "")
+            bakValid := (testVal != "")
+        }
+        if (bakValid) {
+            if (cfg.DiagStoreLog)
+                _Stats_LogInfo("stats recovery: bak exists, ini missing — restoring from backup")
+            try FileMove(statsPath ".bak", statsPath)
+        } else {
+            if (cfg.DiagStoreLog)
+                _Stats_LogInfo("stats recovery: bak exists but unparseable — starting fresh")
+            try FileDelete(statsPath ".bak")
+        }
     } else if (bakExists && iniExists) {
         ; Crash during or after write -- check sentinel
         flushStatus := ""

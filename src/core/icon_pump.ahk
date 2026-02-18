@@ -87,9 +87,14 @@ IconPump_Start() {
     global IconAttemptBackoffMs, IconAttemptBackoffMultiplier
     global _IP_DiagEnabled, _IP_LogPath
     global IP_RESOLVE_TIMEOUT_MS
+    global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields
 
     ; Fail fast if config not initialized (catches initialization order bugs)
     CL_AssertInitialized("IconPump_Start")
+
+    ; Fail fast if callbacks not wired (catches initialization order bugs)
+    if (!IsObject(gIP_PopBatch) || !IsObject(gIP_GetRecord) || !IsObject(gIP_UpdateFields))
+        throw Error("IconPump callbacks not wired — call IconPump_SetCallbacks() before IconPump_Start()")
 
     ; Load config values on first start (ConfigLoader_Init has already run)
     if (IconTimerIntervalMs = 0) {
