@@ -29,7 +29,6 @@ global _Pump_ProcNameCache := Map() ; pid → processName (positive cache)
 global _Pump_FailedPidCache := Map() ; pid → tick (negative cache)
 global _Pump_FailedPidCacheTTL := 60000
 global _Pump_IconPruneIntervalMs := 300000  ; Default 5min, overridden from config
-global _Pump_LastPruneTick := 0
 global _Pump_DiagEnabled := false
 global _Pump_GuiHwnd := 0             ; GUI process hwnd (for PostMessage wake on response)
 global _Pump_HelloAcked := false       ; Whether we've sent our pumpHwnd back to GUI

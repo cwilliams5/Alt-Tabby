@@ -55,17 +55,6 @@ _WEH_DiagLog(msg) {
     LogAppend(LOG_PATH_WINEVENT, msg)
 }
 
-; Event constants
-global WEH_EVENT_OBJECT_CREATE := 0x8000
-global WEH_EVENT_OBJECT_DESTROY := 0x8001
-global WEH_EVENT_OBJECT_SHOW := 0x8002
-global WEH_EVENT_OBJECT_HIDE := 0x8003
-global WEH_EVENT_OBJECT_FOCUS := 0x8005
-global WEH_EVENT_OBJECT_LOCATIONCHANGE := 0x800B
-global WEH_EVENT_OBJECT_NAMECHANGE := 0x800C
-global WEH_EVENT_SYSTEM_FOREGROUND := 0x0003
-global WEH_EVENT_SYSTEM_MINIMIZESTART := 0x0016
-global WEH_EVENT_SYSTEM_MINIMIZEEND := 0x0017
 
 ; Initialize and install the hook
 WinEventHook_Start() {
@@ -178,12 +167,10 @@ WinEventHook_Stop() {
 
 ; Hook callback - called for each window event
 ; Keep this FAST - just queue the hwnd for later processing
-; PERF: Inline event constants in hot-path callback — by design.
-; Named globals (WEH_EVENT_*) exist at file scope for non-hot-path code (batch
-; processor, diagnostics). In this callback, which fires hundreds of times per
-; second, each `global` declaration costs a name lookup on every invocation.
-; AHK v2 does NOT cache global references across calls. Inlining eliminates
-; 10 global lookups per callback.
+; PERF: Event constants inlined in hot-path callback — by design.
+; This callback fires hundreds of times per second; each `global` declaration
+; costs a name lookup on every invocation (AHK v2 does NOT cache global
+; references across calls). Inlining eliminates 10 global lookups per callback.
 ;
 ; Event constant map:
 ;   0x0003 = EVENT_SYSTEM_FOREGROUND
