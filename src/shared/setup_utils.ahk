@@ -1061,8 +1061,9 @@ Update_ApplyCore(opts) {
             if (A_IsAdmin && !targetRunAsAdmin) {
                 if (LaunchDeElevated(targetPath, "", targetDir))
                     ExitApp()
-                TrayTip("Note", "Running elevated. Restart manually for non-admin mode.", "Icon!")
-                return
+                ; De-elevation failed — launch elevated as safety net rather than leaving no instance
+                Run('"' targetPath '"')
+                ExitApp()
             }
             Run('"' targetPath '"')
             ExitApp()

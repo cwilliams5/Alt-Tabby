@@ -300,6 +300,13 @@ Launcher_ReleaseMutexes() {
     }
 }
 
+; Re-acquire both mutexes after a failed restart attempt.
+; Called from launcher_tray admin toggle fallback path.
+Launcher_ReacquireMutexes() {
+    Launcher_AcquireMutex()
+    _Launcher_AcquireActiveMutex()
+}
+
 ; Handle WM_COPYDATA control signals from child processes
 ; Config editor sends RESTART_ALL, blacklist editor sends RELOAD_BLACKLIST
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param

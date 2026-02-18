@@ -586,7 +586,9 @@ _AdminToggle_CheckComplete() {
             if (exitCode = 0) {
                 ExitApp()
             } else {
-                ; Task failed - relaunch subprocesses as fallback
+                ; Task failed - re-acquire mutexes before relaunching subprocesses,
+                ; otherwise another instance could start in the unprotected window
+                Launcher_ReacquireMutexes()
                 LaunchPump()
                 LaunchGui()
                 ThemeMsgBox("The scheduled task could not start Alt-Tabby.`nPlease restart Alt-Tabby manually.", APP_NAME, "Iconx")
