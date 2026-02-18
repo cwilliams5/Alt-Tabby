@@ -554,12 +554,6 @@ _Launcher_RepairExePathAfterAdminDecline() {
     }
 }
 
-; Write the SuppressAdminRepairPrompt flag, wrapped in try for use in fat-arrow closures
-_Launcher_WriteSuppressFlag() {
-    global gConfigIniPath
-    try CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "SuppressAdminRepairPrompt", true, false, "bool")
-}
-
 ; Custom dialog for admin task repair with "Don't ask again" option
 ; Returns: "Yes" (repair), "No" (skip this time), or "Never" (don't ask again)
 Launcher_ShowAdminRepairDialog(taskPath) {
@@ -610,8 +604,7 @@ Launcher_ShowAdminRepairDialog(taskPath) {
     btnNo.OnEvent("Click", (*) => (result := "No", Theme_UntrackGui(repairGui), repairGui.Destroy()))
     btnNever.OnEvent("Click", (*) => (
         result := "Never",
-        cfg.SetupSuppressAdminRepairPrompt := true,
-        _Launcher_WriteSuppressFlag(),
+        Setup_SetSuppressAdminRepairPrompt(true),
         Theme_UntrackGui(repairGui),
         repairGui.Destroy()
     ))

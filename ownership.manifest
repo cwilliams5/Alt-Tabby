@@ -20,7 +20,7 @@
 #   Preview manifest changes: powershell -File tests/check_global_ownership.ps1 -Generate
 #   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover
 
-cfg: launcher_main, launcher_tray, launcher_wizard, config_loader, setup_utils
+cfg: config_loader, launcher_tray, setup_utils
 gGUI_CurrentWSName: gui_main, gui_state
 gGUI_DisplayItems: gui_state, gui_workspace
 gGUI_LiveItems: gui_state, gui_data

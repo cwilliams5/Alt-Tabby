@@ -561,6 +561,20 @@ Setup_SetInstallationId(value) {
     return false
 }
 
+Setup_SetAutoUpdateCheck(value) {
+    global cfg, gConfigIniPath
+    cfg.SetupAutoUpdateCheck := value
+    try return CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", value, true, "bool")
+    return false
+}
+
+Setup_SetSuppressAdminRepairPrompt(value) {
+    global cfg, gConfigIniPath
+    cfg.SetupSuppressAdminRepairPrompt := value
+    try return CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "SuppressAdminRepairPrompt", value, false, "bool")
+    return false
+}
+
 ; Read a boolean value from an INI file (handles "true"/"1" as true, everything else as false)
 ReadIniBool(filePath, section, key, default := false) {
     try {

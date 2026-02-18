@@ -645,15 +645,12 @@ Tray_InstallToProgramFiles() {
 }
 
 ToggleAutoUpdate() {
-    global cfg, gConfigIniPath, TOOLTIP_DURATION_SHORT, APP_NAME
+    global cfg, TOOLTIP_DURATION_SHORT, APP_NAME
     newValue := !cfg.SetupAutoUpdateCheck
-    writeOk := false
-    try writeOk := CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", newValue, true, "bool")
-    if (!writeOk) {
+    if (!Setup_SetAutoUpdateCheck(newValue)) {
         ThemeMsgBox("Could not save setting. Config file may be read-only or locked.", APP_NAME, "Icon!")
         return
     }
-    cfg.SetupAutoUpdateCheck := newValue
     Dash_Refresh()
     ToolTip(newValue ? "Auto-update enabled" : "Auto-update disabled")
     HideTooltipAfter(TOOLTIP_DURATION_SHORT)

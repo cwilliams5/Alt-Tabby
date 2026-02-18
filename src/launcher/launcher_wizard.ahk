@@ -340,11 +340,10 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
     }
 
     ; Step 3: Save config
-    cfg.SetupAutoUpdateCheck := autoUpdate
+    Setup_SetAutoUpdateCheck(autoUpdate)
     Setup_SetFirstRunCompleted(true)
     Setup_SetExePath(exePath)
     Setup_SetRunAsAdmin(admin)
-    CL_WriteIniPreserveFormat(gConfigIniPath, "Setup", "AutoUpdateCheck", autoUpdate, true, "bool")
 
     ; Step 4: Create shortcuts AFTER admin mode is set (so they point correctly)
     ; Warn if shortcuts will point to a temporary location (unless PF install succeeded)
