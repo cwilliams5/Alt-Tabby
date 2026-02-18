@@ -32,7 +32,7 @@ if ($checks.Count -eq 0) {
 }
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-Write-Host "  Running $($checks.Count) static analysis check(s) in parallel..." -ForegroundColor Cyan
+Write-Host "  Running $($checks.Count) static analysis check bundle(s) in parallel..." -ForegroundColor Cyan
 
 # --- Launch all checks in parallel ---
 # Each check runs as a separate powershell.exe process.
@@ -103,6 +103,23 @@ foreach ($p in $procs) {
 
 $sw.Stop()
 
+# --- Count total checks (batch bundles expand to sub-checks via their timing JSON) ---
+$totalChecks = 0
+foreach ($r in $results) {
+    $batchName = $r.Name -replace '^check_', ''
+    $subFile = "$env:TEMP\sa_${batchName}_timing.json"
+    if (Test-Path $subFile) {
+        try {
+            $subData = Get-Content $subFile -Raw | ConvertFrom-Json
+            $totalChecks += @($subData).Count
+        } catch {
+            $totalChecks += 1
+        }
+    } else {
+        $totalChecks += 1
+    }
+}
+
 # --- Display results: only failures (passes are noise) ---
 foreach ($r in $results) {
     if ($r.ExitCode -ne 0) {
@@ -116,9 +133,9 @@ foreach ($r in $results) {
 
 $passCount = $checks.Count - $failures
 if ($failures -gt 0) {
-    Write-Host "  Static analysis: $failures failure(s), $passCount passed ($($sw.ElapsedMilliseconds)ms)" -ForegroundColor Red
+    Write-Host "  Static analysis: $failures bundle failure(s), $passCount passed ($totalChecks total checks) ($($sw.ElapsedMilliseconds)ms)" -ForegroundColor Red
 } else {
-    Write-Host "  Static analysis: all $($checks.Count) checks passed ($($sw.ElapsedMilliseconds)ms)" -ForegroundColor Green
+    Write-Host "  Static analysis: all $totalChecks checks passed ($($sw.ElapsedMilliseconds)ms)" -ForegroundColor Green
 }
 
 # Write per-check timing data for test.ps1 to consume
@@ -139,9 +156,11 @@ if ($Timing) {
     $timingData | ConvertTo-Json -Compress -Depth 4 | Set-Content "$env:TEMP\sa_timing.json" -Encoding UTF8
 }
 
-# Cleanup temp files
+# Cleanup temp files (output logs + any remaining sub-timing JSONs not consumed by $Timing block)
 foreach ($r in $results) {
     Remove-Item -Force -ErrorAction SilentlyContinue $r.OutFile
+    $batchName = $r.Name -replace '^check_', ''
+    Remove-Item -Force -ErrorAction SilentlyContinue "$env:TEMP\sa_${batchName}_timing.json"
 }
 
 if ($failures -gt 0) {
