@@ -22,7 +22,7 @@
 
 cfg: config_loader, launcher_tray, setup_utils
 gGUI_CurrentWSName: gui_main, gui_state
-gGUI_DisplayItems: gui_state, gui_workspace
+gGUI_DisplayItems: gui_state
 gGUI_LiveItems: gui_state, gui_data
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state

@@ -41,7 +41,7 @@ GUI_UpdateFooterText() {
 ; ========================= WORKSPACE TOGGLE =========================
 
 GUI_ToggleWorkspaceMode() {
-    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems, gGUI_ToggleBase
+    global gGUI_WorkspaceMode, gGUI_State, gGUI_OverlayVisible, gGUI_DisplayItems
     global gStats_WorkspaceToggles, WS_MODE_ALL, WS_MODE_CURRENT, FR_EV_WS_TOGGLE, gFR_Enabled
 
     ; RACE FIX: Protect counter increment and mode toggle atomically -
@@ -55,19 +55,9 @@ GUI_ToggleWorkspaceMode() {
 
     GUI_UpdateFooterText()
 
-    ; If GUI is visible and active, filter locally from cached items
-    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
-        Critical "On"
-        sourceItems := gGUI_ToggleBase
-        gGUI_DisplayItems := GUI_FilterByWorkspaceMode(sourceItems)
-        Critical "Off"
-
-        GUI_ResetSelectionToMRU()
-
-        rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
-        GUI_ResizeToRows(rowsDesired)
-        GUI_Repaint()
-    }
+    ; If GUI is visible and active, re-filter from cached items
+    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible)
+        GUI_ApplyWorkspaceFilter()
 }
 
 ; ========================= WORKSPACE FILTERING =========================

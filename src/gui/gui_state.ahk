@@ -425,6 +425,20 @@ GUI_RefilterForWorkspaceChange() {
     GUI_ClampSelection(gGUI_DisplayItems)
 }
 
+; Re-filter display items after workspace mode toggle.
+; Unlike RefilterForWorkspaceChange (which selects foreground window),
+; this preserves MRU-based selection since the user is browsing, not switching.
+GUI_ApplyWorkspaceFilter() {
+    global gGUI_DisplayItems, gGUI_ToggleBase
+    Critical "On"
+    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    Critical "Off"
+    GUI_ResetSelectionToMRU()
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
+    GUI_ResizeToRows(rowsDesired)
+    GUI_Repaint()
+}
+
 ; Reset selection to MRU position (1 or 2) and clamp to list bounds.
 ; After a workspace switch, sel=1 (focused window on NEW workspace is what you want).
 ; Otherwise, sel=2 (the "previous" window — standard Alt-Tab behavior).
