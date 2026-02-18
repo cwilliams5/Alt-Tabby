@@ -282,6 +282,14 @@ _Launcher_OnExit(exitReason, exitCode) {
     global g_LauncherMutex, g_ActiveMutex, g_ConfigEditorPID, g_BlacklistEditorPID
     try HideSplashScreen()
     try Launcher_ShutdownSubprocesses({config: g_ConfigEditorPID, blacklist: g_BlacklistEditorPID})
+    Launcher_ReleaseMutexes()
+    return 0  ; Allow exit to proceed
+}
+
+; Release launcher and active mutexes (idempotent).
+; Called from _Launcher_OnExit and from launcher_tray admin toggle restart.
+Launcher_ReleaseMutexes() {
+    global g_LauncherMutex, g_ActiveMutex
     if (g_LauncherMutex) {
         try DllCall("CloseHandle", "ptr", g_LauncherMutex)
         g_LauncherMutex := 0
@@ -290,7 +298,6 @@ _Launcher_OnExit(exitReason, exitCode) {
         try DllCall("CloseHandle", "ptr", g_ActiveMutex)
         g_ActiveMutex := 0
     }
-    return 0  ; Allow exit to proceed
 }
 
 ; Handle WM_COPYDATA control signals from child processes

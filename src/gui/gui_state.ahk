@@ -395,13 +395,23 @@ GUI_HandleWorkspaceSwitch() {
         item.isOnCurrentWorkspace := (ws = wsName) || (ws = "")
     }
 
-    ; Re-filter display items from updated frozen base
+    ; Re-filter display items and select foreground window
+    GUI_RefilterForWorkspaceChange()
+
+    ; Repaint if overlay is visible.  GUI_Repaint handles resize internally
+    ; with deferred SetWindowPos (right before ULW) so DWM can't present a
+    ; frame with the resized acrylic base but stale overlay content.
+    if (gGUI_OverlayVisible)
+        GUI_Repaint()
+}
+
+; Re-filter display items for a workspace change (window moved or workspace switched).
+; Resets scroll/selection and tries to select the foreground window, since a workspace
+; change is a context switch — the moved/focused window is what the user wants.
+GUI_RefilterForWorkspaceChange() {
+    global gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_ToggleBase
     gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
     gGUI_ScrollTop := 0
-
-    ; Try to select the foreground window (the workspace's focused app).
-    ; Without this, sel=1 is always the same window because the frozen MRU
-    ; order doesn't update during ACTIVE state.
     gGUI_Sel := 1
     fgHwnd := DllCall("GetForegroundWindow", "Ptr")
     if (fgHwnd) {
@@ -412,12 +422,7 @@ GUI_HandleWorkspaceSwitch() {
             }
         }
     }
-
-    ; Repaint if overlay is visible.  GUI_Repaint handles resize internally
-    ; with deferred SetWindowPos (right before ULW) so DWM can't present a
-    ; frame with the resized acrylic base but stale overlay content.
-    if (gGUI_OverlayVisible)
-        GUI_Repaint()
+    GUI_ClampSelection(gGUI_DisplayItems)
 }
 
 ; Reset selection to MRU position (1 or 2) and clamp to list bounds.

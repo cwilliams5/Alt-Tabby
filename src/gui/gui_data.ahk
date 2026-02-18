@@ -66,7 +66,7 @@ GUI_RefreshLiveItems() {
 ; data. Self-corrects on next cycle; individual AHK property reads are atomic.
 GUI_PatchCosmeticUpdates() {
     global gGUI_ToggleBase, gWS_Store, gWS_DirtyHwnds, cfg
-    global gGUI_CurrentWSName, gGUI_DisplayItems, gGUI_OverlayVisible
+    global gGUI_CurrentWSName, gGUI_OverlayVisible
     global _gGUI_LastCosmeticRepaintTick, FR_EV_COSMETIC_PATCH, gFR_Enabled
 
     ; Debounce: skip if last cosmetic repaint was too recent
@@ -129,22 +129,7 @@ GUI_PatchCosmeticUpdates() {
     ; A window move is a context switch (like a workspace switch): select the
     ; foreground window (the moved window) instead of keeping stale selection.
     if (wsPatched) {
-        global gGUI_Sel, gGUI_ScrollTop
-        gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
-        gGUI_ScrollTop := 0
-        gGUI_Sel := 1
-        fgHwnd := DllCall("GetForegroundWindow", "Ptr")
-        if (fgHwnd) {
-            for idx, item in gGUI_DisplayItems {
-                if (item.hwnd = fgHwnd) {
-                    gGUI_Sel := idx
-                    break
-                }
-            }
-        }
-        GUI_ClampSelection(gGUI_DisplayItems)
-        ; GUI_Repaint handles resize with deferred SetWindowPos (right before
-        ; ULW) to prevent DWM frame desync between base and overlay.
+        GUI_RefilterForWorkspaceChange()
     }
 
     if (patched > 0) {
