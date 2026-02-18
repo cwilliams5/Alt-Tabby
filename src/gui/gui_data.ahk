@@ -48,6 +48,21 @@ GUI_RefreshLiveItems() {
         Gdip_PruneIconCache(gGUI_LiveItemsMap)
 }
 
+; ========================= LIVE ITEM REMOVAL =========================
+
+; Remove item at index from live items array and map.
+; Caller must hold Critical. Returns remaining item count.
+GUI_RemoveLiveItemAt(idx1) {
+    global gGUI_LiveItems, gGUI_LiveItemsMap
+    if (idx1 < 1 || idx1 > gGUI_LiveItems.Length)
+        return gGUI_LiveItems.Length
+    item := gGUI_LiveItems[idx1]
+    gGUI_LiveItems.RemoveAt(idx1)
+    if (item.HasOwnProp("hwnd") && gGUI_LiveItemsMap.Has(item.hwnd))
+        gGUI_LiveItemsMap.Delete(item.hwnd)
+    return gGUI_LiveItems.Length
+}
+
 ; ========================= COSMETIC PATCH DURING ACTIVE =========================
 
 ; Patch title/icon/processName/workspace in-place for displayed items during ACTIVE state.

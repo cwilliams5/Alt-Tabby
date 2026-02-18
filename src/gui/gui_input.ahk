@@ -290,25 +290,20 @@ _GUI_PerformAction(action, idx1 := 0) {
 }
 
 _GUI_RemoveItemAt(idx1) {
-    global gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
+    global gGUI_LiveItems, gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH
 
     Critical "On"
     if (idx1 < 1 || idx1 > gGUI_LiveItems.Length) {
         Critical "Off"
         return
     }
-    item := gGUI_LiveItems[idx1]
-    gGUI_LiveItems.RemoveAt(idx1)
-    if (item.HasOwnProp("hwnd") && gGUI_LiveItemsMap.Has(item.hwnd))
-        gGUI_LiveItemsMap.Delete(item.hwnd)
+    remaining := GUI_RemoveLiveItemAt(idx1)
 
-    if (gGUI_LiveItems.Length = 0) {
+    if (remaining = 0) {
         gGUI_Sel := 1
         gGUI_ScrollTop := 0
-    } else {
-        if (gGUI_Sel > gGUI_LiveItems.Length) {
-            gGUI_Sel := gGUI_LiveItems.Length
-        }
+    } else if (gGUI_Sel > remaining) {
+        gGUI_Sel := remaining
     }
     Critical "Off"
 
