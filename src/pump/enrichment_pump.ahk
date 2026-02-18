@@ -57,6 +57,10 @@ _Pump_Init() {
 
     ; Start pipe server (single client — MainProcess)
     _Pump_Server := IPC_PipeServer_Start(cfg.PumpPipeName, _Pump_OnMessage, _Pump_OnDisconnect)
+    if (!IsObject(_Pump_Server)) {
+        _Pump_Log("FATAL: Failed to start pipe server, exiting")
+        ExitApp(1)
+    }
 
     ; Register PostMessage wake handler
     global IPC_WM_PIPE_WAKE
@@ -199,7 +203,7 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
 }
 
 ; ========================= ICON RESOLUTION =========================
-; Uses icon_pump.ahk resolution functions (included via alt_tabby.ahk).
+; Uses icon resolution functions from src/core/icon_pump.ahk (global scope via alt_tabby.ahk includes).
 ; These are pure Win32 DllCalls — no WindowList dependency.
 
 ; Returns {h: HICON, method: string} or {h: 0, method: ""/"unchanged"}

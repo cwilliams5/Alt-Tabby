@@ -191,23 +191,11 @@ Blacklist_IsMatch(title, class) {
     return false
 }
 
-; Add a new pair entry to the blacklist file (appends to [Pair] section)
+; Add a new pair entry to the blacklist file (inserts into [Pair] section)
 Blacklist_AddPair(class, title) {
-    global gBlacklist_FilePath, LOG_PATH_STORE
-
-    if (gBlacklist_FilePath = "")
+    if (class = "" || title = "")
         return false
-
-    ; Format: Class|Title
-    entry := class "|" title "`n"
-
-    try {
-        FileAppend(entry, gBlacklist_FilePath, "UTF-8")
-        return true
-    } catch as e {
-        LogAppend(LOG_PATH_STORE, "blacklist write error in Blacklist_AddPair: " e.Message)
-        return false
-    }
+    return _BL_AddToSection("Pair", class "|" title)
 }
 
 ; Add a class pattern to the blacklist file

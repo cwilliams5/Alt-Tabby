@@ -167,7 +167,7 @@ CE_RunWebView2(launcherHwnd := 0) {
 
     } catch as e {
         try Theme_UntrackGui(gCEW_Gui)
-        gCEW_Gui.Destroy()
+        try gCEW_Gui.Destroy()
         throw Error("Failed to create WebView2: " e.Message)
     }
 
