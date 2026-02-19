@@ -50,7 +50,6 @@ Internal timing parameters (usually no need to change)
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `AltLeewayMs` | int | `60` | `20` - `200` | Alt key timing tolerance window (ms). After Alt is released, Tab presses within this window are still treated as Alt+Tab. Increase for slower typing speeds. |
-| `MRUFreshnessMs` | int | `300` | `50` - `2000` | After switching windows, how long to trust local window order before accepting updates from the store (ms). Prevents the list from briefly reverting after a switch. |
 | `WSPollTimeoutMs` | int | `200` | `50` - `2000` | Timeout when polling for workspace switch completion (ms). Used during cross-workspace activation. |
 | `TabDecisionMs` | int | `24` | `15` - `100` | Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. |
 | `WorkspaceSwitchSettleMs` | int | `75` | `0` - `500` | Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems. |
@@ -575,7 +574,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `AltTabTooltips` | bool | `false` | - | Show tooltips for Alt-Tab state machine debugging. Use when overlay behavior is incorrect. |
 | `EventLog` | bool | `false` | - | Log Alt-Tab events to %TEMP%\\tabby_events.log. Use when debugging rapid Alt-Tab or event timing issues. |
 | `WinEventLog` | bool | `false` | - | Log WinEventHook focus events to %TEMP%\\tabby_weh_focus.log. Use when focus tracking issues occur. |
-| `StoreLog` | bool | `false` | - | Log store startup and operational info to %TEMP%\\tabby_store_error.log. Use for general store debugging. |
+| `StoreLog` | bool | `false` | - | Log MainProcess startup and operational info to %TEMP%\\tabby_store_error.log. Use for general debugging. |
 | `IconPumpLog` | bool | `false` | - | Log icon pump operations to %TEMP%\\tabby_iconpump.log. Use when debugging icon resolution issues (cloaked windows, UWP apps). |
 | `ProcPumpLog` | bool | `false` | - | Log process pump operations to %TEMP%\\tabby_procpump.log. Use when debugging process name resolution failures. |
 | `PumpLog` | bool | `false` | - | Log EnrichmentPump operations to %TEMP%\\tabby_pump.log. Use when debugging icon/title/process enrichment in the pump subprocess. |
@@ -598,4 +597,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-17 with 252 total settings.*
+*Generated on 2026-02-19 with 251 total settings.*

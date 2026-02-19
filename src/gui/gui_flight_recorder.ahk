@@ -64,6 +64,9 @@ global FR_ST_ACTIVE := 2
 
 global gFR_Enabled := false
 global gFR_DumpInProgress := false  ; Suppresses ALT_UP hide/activate during dump
+global gFR_NoteResult := ""         ; Modal result for note dialog
+global gFR_NoteSubmitted := false   ; true only when OK clicked (Cancel/Esc = abort dump)
+global gFR_PendingDump := ""        ; Captured data passed from hotkey thread to timer thread
 global gFR_Buffer := []
 global gFR_Size := 2000
 global gFR_Idx := 0
@@ -196,14 +199,33 @@ _FR_Dump() {
     fgHwnd := DllCall("user32\GetForegroundWindow", "ptr")
     hwndMap := _FR_BuildHwndMap(entries, itemsCopy, fgHwnd)
 
-    ; --- 3. Show InputBox for user note ---
-    ; Hold the overlay open while user types their note — they're describing what they see.
-    ; gFR_DumpInProgress was set at function entry (before Critical section) to win the
-    ; race against ALT_UP. It suppresses hide/activate in the state machine.
+    ; --- 3. Defer dialog + file write to timer thread ---
+    ; Hotkey pseudo-threads can't run modal GUI loops (WinWaitClose blocks but
+    ; child control messages aren't dispatched). Defer to a timer thread where
+    ; the message pump works normally — same context as ThemeMsgBox from tray menu.
+    global gFR_PendingDump
+    gFR_PendingDump := {snap: snap, entries: entries, evCount: evCount,
+        itemsCopy: itemsCopy, dumpTick: dumpTick, fgHwnd: fgHwnd, hwndMap: hwndMap}
+    SetTimer(_FR_DumpPhase2, -1)
+}
+
+; Phase 2: dialog + file write, runs in a timer thread (clean message pump).
+_FR_DumpPhase2() {
+    global gFR_PendingDump, gFR_DumpInProgress, gFR_NoteSubmitted
+    d := gFR_PendingDump
+    gFR_PendingDump := ""
+
+    snap := d.snap
+    entries := d.entries
+    evCount := d.evCount
+    itemsCopy := d.itemsCopy
+    dumpTick := d.dumpTick
+    fgHwnd := d.fgHwnd
+    hwndMap := d.hwndMap
+
+    ; Show note dialog (overlay stays open so user can describe what they see)
     SetTimer(_FR_FocusInputBox, -50)
-    result := InputBox("What happened? (e.g. 'Alt-tabbing from Word to Outlook, nothing happened')"
-        , "Alt-Tabby Flight Recorder", "w500 h110")
-    note := (result.Result = "OK") ? result.Value : ""
+    note := _FR_ShowNoteDialog()
 
     ; Clean up: reset state machine (was frozen during dump) and hide overlay.
     ; Order matters: set IDLE before clearing flag so any paint triggered by
@@ -215,7 +237,11 @@ _FR_Dump() {
     ; gGUI_OverlayVisible is already false.
     GUI_HideOverlay()
 
-    ; --- 4. Build and write dump file ---
+    ; User cancelled — skip file write
+    if (!gFR_NoteSubmitted)
+        return
+
+    ; --- Build and write dump file ---
     recorderDir := _FR_GetRecorderDir()
     if (!DirExist(recorderDir))
         DirCreate(recorderDir)
@@ -538,6 +564,69 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
         default:
             return "d1=" d1 " d2=" d2 " d3=" d3 " d4=" d4
     }
+}
+
+; Themed modal dialog for user note — replaces native InputBox().
+; Sets gFR_NoteSubmitted=true + gFR_NoteResult=text on OK.
+; Cancel/Escape leave gFR_NoteSubmitted=false (caller skips file write).
+; Follows the exact ThemeMsgBox pattern (OnEvent + WinWaitClose).
+_FR_ShowNoteDialog() {
+    global gFR_NoteResult, gFR_NoteSubmitted
+    gFR_NoteResult := ""
+    gFR_NoteSubmitted := false
+
+    noteGui := Gui("+AlwaysOnTop -MinimizeBox -MaximizeBox", "Alt-Tabby Flight Recorder")
+    GUI_AntiFlashPrepare(noteGui, Theme_GetBgColor())
+    noteGui.MarginX := 24
+    noteGui.MarginY := 16
+    noteGui.SetFont("s10", "Segoe UI")
+    themeEntry := Theme_ApplyToGui(noteGui)
+
+    contentW := 440
+    accentColor := Theme_GetAccentColor()
+
+    ; Prompt label
+    hdr := noteGui.AddText("w" contentW " +Wrap c" accentColor,
+        "What happened? (e.g. 'Alt-tabbing from Word to Outlook, nothing happened')")
+    Theme_MarkAccent(hdr)
+
+    ; Multi-line edit for user note
+    edit := noteGui.AddEdit("w" contentW " h80 +Multi")
+    Theme_ApplyToControl(edit, "Edit", themeEntry)
+
+    ; Buttons — right-aligned, OK then Cancel (matches ThemeMsgBox)
+    btnW := 100
+    btnH := 30
+    btnGap := 8
+    totalBtnW := 2 * btnW + btnGap
+    btnStartX := 24 + contentW - totalBtnW
+
+    btnOK := noteGui.AddButton("x" btnStartX " y+24 w" btnW " h" btnH " +Default", "OK")
+    btnOK.OnEvent("Click", _FR_NoteBtnClick.Bind("OK", noteGui, edit))
+    Theme_ApplyToControl(btnOK, "Button", themeEntry)
+
+    btnCancel := noteGui.AddButton("x+" btnGap " yp w" btnW " h" btnH, "Cancel")
+    btnCancel.OnEvent("Click", _FR_NoteBtnClick.Bind("Cancel", noteGui, edit))
+    Theme_ApplyToControl(btnCancel, "Button", themeEntry)
+
+    noteGui.OnEvent("Escape", (*) => (Theme_UntrackGui(noteGui), noteGui.Destroy()))
+    noteGui.OnEvent("Close", (*) => (Theme_UntrackGui(noteGui), noteGui.Destroy()))
+
+    noteGui.Show("w488 Center")
+    GUI_AntiFlashReveal(noteGui, true)
+    WinWaitClose(noteGui.Hwnd)
+
+    return gFR_NoteResult
+}
+
+_FR_NoteBtnClick(action, gui, edit, *) {
+    global gFR_NoteResult, gFR_NoteSubmitted
+    if (action = "OK") {
+        gFR_NoteSubmitted := true
+        gFR_NoteResult := edit.Value
+    }
+    Theme_UntrackGui(gui)
+    gui.Destroy()
 }
 
 ; Keep the InputBox always-on-top — user is reporting a critical issue that just occurred.

@@ -510,10 +510,15 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
 
     ; Mouse handlers
     global WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_MOUSELEAVE
-    OnMessage(WM_LBUTTONDOWN, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : 0))
-    OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : 0))  ; lint-ignore: onmessage-collision
-    OnMessage(WM_MOUSEMOVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : 0))
-    OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : 0))
+    ; IMPORTANT: Non-overlay branch must return "" (empty string), NOT 0.
+    ; Returning any integer from OnMessage suppresses the message — AHK won't
+    ; dispatch it to child controls.  Returning "" means "not handled, continue
+    ; normal processing."  Returning 0 here previously ate WM_LBUTTONDOWN for
+    ; every window in MainProcess, breaking buttons/edits in themed dialogs.
+    OnMessage(WM_LBUTTONDOWN, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnClick(lParam & 0xFFFF, (lParam >> 16) & 0xFFFF), 0) : ""))
+    OnMessage(0x020A, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? (GUI_OnWheel(wParam, lParam), 0) : ""))  ; lint-ignore: onmessage-collision
+    OnMessage(WM_MOUSEMOVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseMove(wParam, lParam, msg, hwnd) : ""))
+    OnMessage(WM_MOUSELEAVE, (wParam, lParam, msg, hwnd) => (hwnd = gGUI_OverlayH ? GUI_OnMouseLeave() : ""))
 
     ; WM_COPYDATA handler for launcher commands (e.g., toggle viewer)
     global WM_COPYDATA, IPC_WM_STATS_REQUEST
