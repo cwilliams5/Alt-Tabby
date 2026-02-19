@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -1304,6 +1304,221 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_critical_sections"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 11: producer_error_boundary
+# Enforces try-catch error boundaries in producer callbacks.
+# After the store→MainProcess refactor, producer errors crash
+# the entire app. Commit 67fa152 added error boundaries to all
+# 12 timer callbacks + 2 notification callbacks. This check
+# prevents regression if boundaries are removed or new callbacks
+# are added without them.
+#
+# Two categories:
+#   A. Notification callbacks: functions wired via *_SetCallbacks()
+#   B. Producer timer callbacks: functions registered via SetTimer()
+#      in producer files (core/*.ahk, gui_main.ahk timer section)
+#
+# Suppress: ; lint-ignore: error-boundary (on function definition line)
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$EB_SUPPRESSION = 'lint-ignore: error-boundary'
+$ebIssues = [System.Collections.ArrayList]::new()
+
+# Producer/core files where timer callbacks must have error boundaries
+$EB_PRODUCER_FILES = @(
+    'winevent_hook.ahk', 'komorebi_sub.ahk', 'icon_pump.ahk',
+    'proc_pump.ahk', 'mru_lite.ahk', 'winenum_lite.ahk'
+)
+
+# Build function definition index: funcName -> @{ File; Line; Lines (body start) }
+# Reuse $allFiles and $fileCache from shared cache
+$ebFuncDefs = @{}
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $cleaned = BC_CleanLine $lines[$i]
+        if ($cleaned -eq '') { continue }
+
+        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+            $fname = $Matches[1]
+            if (-not $BC_keywordSet.Contains($fname) -and $cleaned -match '\{') {
+                $inFunc = $true
+                $funcDepth = $depth
+                if (-not $ebFuncDefs.ContainsKey($fname)) {
+                    $ebFuncDefs[$fname] = @{
+                        File = $relPath; DefLine = $i; FileName = $file.Name
+                        Lines = $lines; Raw = $lines[$i]
+                    }
+                }
+            }
+        }
+
+        $braces = BC_CountBraces $cleaned
+        $depth += $braces[0] - $braces[1]
+
+        if ($inFunc -and $depth -le $funcDepth) {
+            $inFunc = $false
+            $funcDepth = -1
+        }
+    }
+}
+
+# Helper: check if a function body has try { within first N non-blank statements
+function EB_HasTryCatch {
+    param([string[]]$lines, [int]$defLine)
+    $statementsChecked = 0
+    # Scan up to 30 lines — try may appear after Critical guards & re-entrancy checks
+    for ($j = $defLine + 1; $j -lt [Math]::Min($defLine + 30, $lines.Count); $j++) {
+        $checkLine = $lines[$j].Trim()
+        if ($checkLine -eq '' -or $checkLine -match '^\s*;') { continue }
+        # Skip global/static/local declarations (common preamble)
+        if ($checkLine -match '^\s*(?:global|static|local)\s') { continue }
+        $statementsChecked++
+        if ($checkLine -match '^\s*try[\s{]' -or $checkLine -match '^\s*try$') {
+            return $true
+        }
+        # Stop after checking 8 real statements — allows Critical guards before try
+        if ($statementsChecked -ge 8) { return $false }
+    }
+    return $false
+}
+
+# Helper: check if a function body is trivial (<=2 non-blank, non-comment, non-decl statements)
+# Trivial wrappers (e.g., one-shot starters, thin delegators) are exempt.
+function EB_IsTrivial {
+    param([string[]]$lines, [int]$defLine)
+    $stmtCount = 0
+    $depth = 0
+    for ($j = $defLine + 1; $j -lt [Math]::Min($defLine + 20, $lines.Count); $j++) {
+        $checkLine = $lines[$j].Trim()
+        if ($checkLine -eq '' -or $checkLine -match '^\s*;') { continue }
+        if ($checkLine -match '^\s*(?:global|static|local)\s') { continue }
+        foreach ($c in $checkLine.ToCharArray()) {
+            if ($c -eq '{') { $depth++ }
+            elseif ($c -eq '}') { $depth--; if ($depth -le 0) { return ($stmtCount -le 2) } }
+        }
+        $stmtCount++
+    }
+    return ($stmtCount -le 2)
+}
+
+# Category A: Notification callbacks wired via WL_SetCallbacks()
+# These are the store→GUI notification interface — called by producers when data changes.
+# Other *_SetCallbacks() (IconPump, ProcPump, Stats) wire utility functions that are
+# called FROM WITHIN already-protected pump tick callbacks, so they don't need their own boundary.
+$ebNotificationCallbacks = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        # Match: WL_SetCallbacks(funcRef1, funcRef2, ...)
+        if ($raw -match 'WL_SetCallbacks\s*\(([^)]+)\)') {
+            $argStr = $Matches[1]
+            foreach ($arg in $argStr -split ',') {
+                $trimmed = $arg.Trim()
+                # Only match direct function references (not strings, not expressions)
+                if ($trimmed -match '^([A-Za-z_]\w+)$') {
+                    [void]$ebNotificationCallbacks.Add($Matches[1])
+                }
+            }
+        }
+    }
+}
+
+# Category B: Producer timer callbacks registered via SetTimer() in producer files
+$ebTimerCallbacks = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+
+foreach ($file in $allFiles) {
+    # Only check producer files and gui_main.ahk
+    $isProducerFile = $file.Name -in $EB_PRODUCER_FILES -or $file.Name -eq 'gui_main.ahk'
+    if (-not $isProducerFile) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+
+        # SetTimer(CallbackFunc, interval) — direct function ref
+        if ($raw -match 'SetTimer\s*\(\s*([A-Za-z_]\w+)\s*,') {
+            $cbName = $Matches[1]
+            # Skip deregistrations: SetTimer(ref, 0)
+            if ($raw -match 'SetTimer\s*\(\s*[A-Za-z_]\w+\s*,\s*0\s*\)') { continue }
+            [void]$ebTimerCallbacks.Add($cbName)
+        }
+
+        # SetTimer(boundRef, interval) — variable holding a .Bind() result
+        # Pattern: varName := FuncName.Bind(...) then SetTimer(varName, ...)
+        # Resolve the original function name from the Bind assignment
+        if ($raw -match 'SetTimer\s*\(\s*([A-Za-z_]\w+)\s*,') {
+            $varName = $Matches[1]
+            # Skip if already a known function name (handled above)
+            if ($ebFuncDefs.ContainsKey($varName)) { continue }
+            # Search backward (up to 50 lines) for varName := SomeFunc.Bind(
+            for ($j = [Math]::Max(0, $i - 50); $j -lt $i; $j++) {
+                if ($lines[$j] -match "$([regex]::Escape($varName))\s*:=\s*(\w+)\s*\.\s*Bind\s*\(") {
+                    $origFunc = $Matches[1]
+                    [void]$ebTimerCallbacks.Add($origFunc)
+                    break
+                }
+            }
+        }
+    }
+}
+
+# Validate all identified callbacks have try-catch
+$allCallbacks = [System.Collections.Generic.HashSet[string]]::new($ebNotificationCallbacks, [System.StringComparer]::Ordinal)
+foreach ($cb in $ebTimerCallbacks) { [void]$allCallbacks.Add($cb) }
+
+foreach ($cbName in $allCallbacks) {
+    if (-not $ebFuncDefs.ContainsKey($cbName)) { continue }
+    $info = $ebFuncDefs[$cbName]
+
+    # Check suppression on definition line
+    if ($info.Raw.Contains($EB_SUPPRESSION)) { continue }
+
+    # Skip trivial wrappers (<=2 statements): one-shot starters, thin delegators.
+    # These delegate to functions that already have their own error boundaries.
+    if (EB_IsTrivial $info.Lines $info.DefLine) { continue }
+
+    if (-not (EB_HasTryCatch $info.Lines $info.DefLine)) {
+        $category = if ($ebNotificationCallbacks.Contains($cbName)) { 'notification' } else { 'timer' }
+        [void]$ebIssues.Add([PSCustomObject]@{
+            File     = $info.File
+            Line     = $info.DefLine + 1
+            Function = $cbName
+            Category = $category
+        })
+    }
+}
+
+if ($ebIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($ebIssues.Count) producer callback(s) missing try-catch error boundary.")
+    [void]$failOutput.AppendLine("  After the store->MainProcess refactor, producer errors crash the entire app.")
+    [void]$failOutput.AppendLine("  All producer callbacks MUST wrap their body in try { ... } catch { log + disable }.")
+    [void]$failOutput.AppendLine("  Fix: add try { at the top of the function body (after global declarations).")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: error-boundary' on the function definition line.")
+    $grouped = $ebIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.Function)() [$($issue.Category)] - missing try-catch error boundary")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_producer_error_boundary"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1311,7 +1526,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
