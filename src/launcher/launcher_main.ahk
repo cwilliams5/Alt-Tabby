@@ -191,7 +191,7 @@ Launcher_StartSubprocesses() {
     SetupLauncherTray()
     global WM_TRAYICON, WM_COPYDATA
     OnMessage(WM_TRAYICON, TrayIconClick)
-    OnMessage(WM_COPYDATA, _Launcher_OnCopyData)
+    OnMessage(WM_COPYDATA, _Launcher_OnCopyData, 2)
 
     ; Register cleanup BEFORE launching subprocesses to prevent orphaned processes
     ; Safe to call early: handler guards all operations (try blocks, PID checks, mutex check)
