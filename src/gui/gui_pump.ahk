@@ -143,6 +143,9 @@ _GUIPump_CollectTick() {
     global _gPump_IdleTicks, _gPump_IdleThreshold, _gPump_TimerOn, _gPump_CollectTimerFn
     global _gPump_HelloSent, _gPump_PumpHwnd
     static _errCount := 0
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
         if (!_gPump_Connected)
             return
@@ -222,9 +225,10 @@ _GUIPump_CollectTick() {
         ; Start IPC client timer as safety-net poll for response (8ms)
         _GUIPump_StartClientTimer()
         _errCount := 0
+        _backoffUntil := 0
     } catch as e {
         global LOG_PATH_IPC
-        HandleTimerError(e, &_errCount, _gPump_CollectTimerFn, LOG_PATH_IPC, "GUIPump_CollectTick")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_IPC, "GUIPump_CollectTick")
     }
 }
 

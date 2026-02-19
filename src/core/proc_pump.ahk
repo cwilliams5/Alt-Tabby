@@ -112,6 +112,9 @@ _PP_Tick() {
 
     global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
     static _errCount := 0  ; Error boundary: consecutive error tracking
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
     pids := gPP_PopBatch(ProcBatchPerTick)
     if (!IsObject(pids) || pids.Length = 0) {
@@ -170,9 +173,10 @@ _PP_Tick() {
         }
     }
     _errCount := 0
+    _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _PP_Tick, LOG_PATH_STORE, "PP_Tick")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "PP_Tick")
     }
 }
 

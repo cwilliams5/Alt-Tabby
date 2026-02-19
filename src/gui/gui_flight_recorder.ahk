@@ -51,6 +51,10 @@ global FR_EV_WS_TOGGLE        := 41  ; d1=newMode(1=all,2=current) d2=displayCou
 global FR_EV_FOCUS             := 50  ; d1=hwnd — focus changed to window in store
 global FR_EV_FOCUS_SUPPRESS    := 51  ; d1=hwnd d2=remainingMs — focus blocked by MRU suppression
 
+; Producer health events (60-69)
+global FR_EV_PRODUCER_BACKOFF  := 60  ; d1=errCount d2=backoffMs — producer entering backoff
+global FR_EV_PRODUCER_RECOVER  := 61  ; d1=errCount d2=backoffMs — producer recovered from backoff
+
 ; State code constants (for FR_EV_STATE d1)
 global FR_ST_IDLE := 0
 global FR_ST_ALT_PENDING := 1
@@ -391,6 +395,7 @@ _FR_GetEventName(ev) {
     global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
     global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
+    global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
 
     switch ev {
         case FR_EV_ALT_DN:            return "ALT_DN"
@@ -425,6 +430,8 @@ _FR_GetEventName(ev) {
         case FR_EV_WS_TOGGLE:         return "WS_TOGGLE"
         case FR_EV_FOCUS:             return "FOCUS"
         case FR_EV_FOCUS_SUPPRESS:    return "FOCUS_SUPPRESS"
+        case FR_EV_PRODUCER_BACKOFF:  return "PRODUCER_BACKOFF"
+        case FR_EV_PRODUCER_RECOVER:  return "PRODUCER_RECOVER"
         default:                      return "UNKNOWN(" ev ")"
     }
 }
@@ -453,6 +460,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
     global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
+    global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
 
     switch ev {
         case FR_EV_ALT_DN:
@@ -523,6 +531,10 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return _FR_HwndStr(d1, hwndMap)
         case FR_EV_FOCUS_SUPPRESS:
             return _FR_HwndStr(d1, hwndMap) "  remainMs=" d2
+        case FR_EV_PRODUCER_BACKOFF:
+            return "errCount=" d1 "  backoffMs=" d2
+        case FR_EV_PRODUCER_RECOVER:
+            return "errCount=" d1 "  wasBackoffMs=" d2
         default:
             return "d1=" d1 " d2=" d2 " d3=" d3 " d4=" d4
     }

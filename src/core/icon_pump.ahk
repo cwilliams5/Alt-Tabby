@@ -230,6 +230,9 @@ _IP_Tick() {
 
     logEnabled := _IP_DiagEnabled && _IP_LogPath != ""
     static _errCount := 0  ; Error boundary: consecutive error tracking
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
 
     ; PERF: Periodically prune _IP_Attempts to prevent unbounded growth
@@ -451,9 +454,10 @@ _IP_Tick() {
         Critical "Off"
     }
     _errCount := 0
+    _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _IP_Tick, LOG_PATH_STORE, "IP_Tick")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "IP_Tick")
     }
 }
 

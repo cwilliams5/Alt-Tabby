@@ -343,6 +343,9 @@ _KomorebiSub_Poll() {
     global cfg
     static lastLogTick := 0
     static _errCount := 0  ; Error boundary: consecutive error tracking
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
 
     ; Log every 5 seconds to avoid spam (tick-based, no unbounded counter per ahk-patterns.md)
@@ -455,9 +458,10 @@ _KomorebiSub_Poll() {
     if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs)
         _KomorebiSub_Start()
     _errCount := 0
+    _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _KomorebiSub_Poll, LOG_PATH_STORE, "KomorebiSub_Poll")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "KomorebiSub_Poll")
     }
 }
 
@@ -1277,6 +1281,9 @@ _KSub_GetWindowPid(hwnd) {
 _KomorebiSub_PollFallback() {
     global cfg, _KSub_LastPromotionTick, _KSub_PromotionIntervalMs, _KSub_FallbackMode
     static _errCount := 0  ; Error boundary: consecutive error tracking
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
 
     ; Periodically try to promote back to subscription
@@ -1321,9 +1328,10 @@ _KomorebiSub_PollFallback() {
     }
     _KSub_ProcessFullState(stateObj)
     _errCount := 0
+    _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _KomorebiSub_PollFallback, LOG_PATH_STORE, "KomorebiSub_PollFallback")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "KomorebiSub_PollFallback")
     }
 }
 

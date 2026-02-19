@@ -37,6 +37,7 @@ global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 ; Z-order tracking: only events that change Z-order should trigger full winenum scan
 ; NAMECHANGE and LOCATIONCHANGE fire frequently but don't affect Z — skip them
 global _WEH_PendingZNeeded := Map()       ; hwnd -> true if Z-affecting event received
+global _WEH_MruFallbackActive := false   ; True when MRU_Lite is running as WEH backoff fallback
 
 ; Fast-path one-shot wrapper: calls ProcessBatch without killing the periodic timer.
 ; AHK v2 identifies timers by callback function — SetTimer(func, -1) replaces any
@@ -304,8 +305,12 @@ _WEH_ProcessBatch() {
     global gWEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
     global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store, gWS_OnStoreChanged
-    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS, gFR_Enabled
+    global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS, FR_EV_PRODUCER_RECOVER, gFR_Enabled
+    global LOG_PATH_STORE
     static _errCount := 0  ; Error boundary: consecutive error tracking
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
@@ -584,10 +589,45 @@ _WEH_ProcessBatch() {
         if (gWS_OnStoreChanged)
             gWS_OnStoreChanged(isStructural)
     }
+    ; Recovery: if we were in backoff and succeeded, log recovery + stop MRU fallback
+    if (_backoffUntil) {
+        prevBackoff := _backoffUntil - A_TickCount  ; negative = how far past backoff we are
+        if (gFR_Enabled)
+            FR_Record(FR_EV_PRODUCER_RECOVER, _errCount, Abs(prevBackoff))
+        try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch RECOVERED after " _errCount " consecutive errors")
+        ; Stop MRU_Lite fallback if it was activated during our backoff
+        _WEH_StopMruFallback()
+    }
     _errCount := 0
+    _backoffUntil := 0
     } catch as e {
-        global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _WEH_ProcessBatch, LOG_PATH_STORE, "WEH_ProcessBatch")
+        backoffMs := HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "WEH_ProcessBatch")
+        ; WEH-specific: enable MRU_Lite as runtime fallback during backoff
+        if (backoffMs > 0)
+            _WEH_StartMruFallback()
+    }
+}
+
+; WEH-specific: activate MRU_Lite as runtime fallback when WEH enters backoff
+_WEH_StartMruFallback() {
+    global _WEH_MruFallbackActive, LOG_PATH_STORE
+    if (!_WEH_MruFallbackActive) {
+        _WEH_MruFallbackActive := true
+        try {
+            MRU_Lite_Init()
+        } catch {
+        }
+        try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch: MRU_Lite fallback ACTIVATED during backoff")
+    }
+}
+
+; Stop MRU_Lite fallback when WEH recovers
+_WEH_StopMruFallback() {
+    global _WEH_MruFallbackActive, LOG_PATH_STORE
+    if (_WEH_MruFallbackActive) {
+        _WEH_MruFallbackActive := false
+        try SetTimer(MRU_Lite_Tick, 0)
+        try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch: MRU_Lite fallback STOPPED (WEH recovered)")
     }
 }
 

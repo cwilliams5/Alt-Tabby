@@ -329,15 +329,19 @@ _GUI_StartZPump() {
 
 _GUI_ZPumpTick() {
     static _errCount := 0  ; Error boundary: consecutive error tracking
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
         if (!WL_HasPendingZ())
             return
         _GUI_FullScan()
         WL_ClearZQueue()
         _errCount := 0
+        _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _GUI_ZPumpTick, LOG_PATH_STORE, "GUI_ZPumpTick")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "GUI_ZPumpTick")
     }
 }
 
@@ -348,14 +352,18 @@ _GUI_StartValidateExistence() {
 
 _GUI_ValidateExistenceTick() {
     static _errCount := 0  ; Error boundary: consecutive error tracking
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
         result := WL_ValidateExistence()
         if (result.removed > 0)
             _GUI_OnProducerRevChanged()
         _errCount := 0
+        _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _GUI_ValidateExistenceTick, LOG_PATH_STORE, "GUI_ValidateExistenceTick")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "GUI_ValidateExistenceTick")
     }
 }
 

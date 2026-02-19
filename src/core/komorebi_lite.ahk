@@ -40,6 +40,9 @@ KomorebiLite_Stop() {
 _KomorebiLite_Tick() {
     global _KLite_StateObj
     static _errCount := 0
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
         if !_KomorebiLite_IsAvailable()
             return
@@ -56,9 +59,10 @@ _KomorebiLite_Tick() {
                 WL_UpdateFields(hwnd, { workspaceName: wsn, isOnCurrentWorkspace: (wsn = ws) })
         }
         _errCount := 0
+        _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, _KomorebiLite_Tick, LOG_PATH_STORE, "KomorebiLite_Tick")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "KomorebiLite_Tick")
     }
 }
 

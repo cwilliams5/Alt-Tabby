@@ -24,6 +24,9 @@ MRU_Lite_Init() {
 MRU_Lite_Tick() {
     global _MRU_LastHwnd
     static _errCount := 0  ; Error boundary: consecutive error tracking (safe static — reset on success, conservative on timer restart)
+    static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
+    if (A_TickCount < _backoffUntil)
+        return
     try {
         hwnd := 0
         try {
@@ -49,8 +52,9 @@ MRU_Lite_Tick() {
         }
         Critical "Off"
         _errCount := 0
+        _backoffUntil := 0
     } catch as e {
         global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, MRU_Lite_Tick, LOG_PATH_STORE, "MRU_Lite_Tick")
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "MRU_Lite_Tick")
     }
 }
