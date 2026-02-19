@@ -137,11 +137,6 @@ _INT_Tab_Down(*) {
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
 
-    ; NOTE: Bypass check removed - now handled via _GUI_OnProducerRevChanged() which
-    ; calls INT_ShouldBypassWindow() -> INT_SetBypassMode() on focus changes.
-    ; When a bypass window is focused, INT_SetBypassMode disables Tab hooks entirely,
-    ; so Tab never reaches here and native Windows Alt-Tab works
-
     ; If a decision is pending, commit it immediately before processing this Tab
     if (gINT_TabPending) {
         if (cfg.DiagEventLog)

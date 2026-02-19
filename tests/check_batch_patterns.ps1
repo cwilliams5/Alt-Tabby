@@ -1340,9 +1340,13 @@ foreach ($path in $fileCacheText.Keys) {
     foreach ($m in $sendMatches) {
         [void]$cmdSent.Add($m.Groups[1].Value)
     }
-    # Indirect sends via relay functions that wrap WM_COPYDATA sending
+    # Indirect sends via relay/helper functions that wrap WM_COPYDATA sending
     $relayMatches = [regex]::Matches($text, 'Launcher_RelayToGui\(\s*(TABBY_CMD_\w+)')
     foreach ($m in $relayMatches) {
+        [void]$cmdSent.Add($m.Groups[1].Value)
+    }
+    $helperMatches = [regex]::Matches($text, 'IPC_SendWmCopyData\([^,]*,\s*(TABBY_CMD_\w+)')
+    foreach ($m in $helperMatches) {
         [void]$cmdSent.Add($m.Groups[1].Value)
     }
 }

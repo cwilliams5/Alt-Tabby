@@ -240,6 +240,8 @@ IPC__ClientTick(client) {
         return
     readStatus := _IPC_ReadPipeLines(client.hPipe, client, client.onMessage)
     if (readStatus < 0) {
+        if (_IPC_IsLogEnabled())
+            _IPC_Log("Client disconnected: readStatus=" readStatus " pipe=" client.pipeName)
         _IPC_CloseHandle(client.hPipe)
         client.hPipe := 0
         if (client.timerFn)

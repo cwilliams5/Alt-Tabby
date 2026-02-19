@@ -228,26 +228,8 @@ _BE_SaveToFile() {
 }
 
 _BE_SendReloadNotify() {
-    global gBE_LauncherHwnd, TABBY_CMD_RELOAD_BLACKLIST, WM_COPYDATA
-
-    if (!gBE_LauncherHwnd || !DllCall("user32\IsWindow", "ptr", gBE_LauncherHwnd, "int"))
-        return false
-
-    cds := Buffer(A_PtrSize * 3, 0)
-    NumPut("uptr", TABBY_CMD_RELOAD_BLACKLIST, cds, 0)
-    NumPut("uptr", 0, cds, A_PtrSize)
-    NumPut("uptr", 0, cds, A_PtrSize * 2)
-
-    DllCall("user32\SendMessageTimeoutW"
-        , "ptr", gBE_LauncherHwnd
-        , "uint", WM_COPYDATA
-        , "ptr", A_ScriptHwnd
-        , "ptr", cds.Ptr
-        , "uint", 0x0002   ; SMTO_ABORTIFHUNG
-        , "uint", 3000
-        , "ptr*", &_ := 0
-        , "ptr")
-    return true
+    global gBE_LauncherHwnd, TABBY_CMD_RELOAD_BLACKLIST
+    return IPC_SendWmCopyData(gBE_LauncherHwnd, TABBY_CMD_RELOAD_BLACKLIST)
 }
 
 _BE_HasChanges() {

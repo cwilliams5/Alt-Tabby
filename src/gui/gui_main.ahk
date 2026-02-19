@@ -35,9 +35,11 @@ A_MenuMaskKey := "vkE8"
 ; ========================= INCLUDES (SHARED UTILITIES) =========================
 ; Shared utilities first (use *i for unified exe compatibility)
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
+#Include *i %A_ScriptDir%\..\shared\error_boundary.ahk
 #Include *i %A_ScriptDir%\..\lib\cjson.ahk
 #Include *i %A_ScriptDir%\..\lib\icon_alpha.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
+#Include *i %A_ScriptDir%\..\shared\ipc_wmcopydata.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk
 #Include *i %A_ScriptDir%\..\shared\process_utils.ahk
 #Include *i %A_ScriptDir%\..\shared\theme.ahk
@@ -334,14 +336,8 @@ _GUI_ZPumpTick() {
         WL_ClearZQueue()
         _errCount := 0
     } catch as e {
-        Critical "Off"
-        _errCount++
         global LOG_PATH_STORE
-        try LogAppend(LOG_PATH_STORE, "GUI_ZPumpTick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
-        if (_errCount >= 3) {
-            try LogAppend(LOG_PATH_STORE, "GUI_ZPumpTick DISABLED after " _errCount " consecutive errors")
-            SetTimer(_GUI_ZPumpTick, 0)
-        }
+        HandleTimerError(e, &_errCount, _GUI_ZPumpTick, LOG_PATH_STORE, "GUI_ZPumpTick")
     }
 }
 
@@ -358,14 +354,8 @@ _GUI_ValidateExistenceTick() {
             _GUI_OnProducerRevChanged()
         _errCount := 0
     } catch as e {
-        Critical "Off"
-        _errCount++
         global LOG_PATH_STORE
-        try LogAppend(LOG_PATH_STORE, "GUI_ValidateExistenceTick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
-        if (_errCount >= 3) {
-            try LogAppend(LOG_PATH_STORE, "GUI_ValidateExistenceTick DISABLED after " _errCount " consecutive errors")
-            SetTimer(_GUI_ValidateExistenceTick, 0)
-        }
+        HandleTimerError(e, &_errCount, _GUI_ValidateExistenceTick, LOG_PATH_STORE, "GUI_ValidateExistenceTick")
     }
 }
 

@@ -171,14 +171,8 @@ _PP_Tick() {
     }
     _errCount := 0
     } catch as e {
-        Critical "Off"
-        _errCount++
         global LOG_PATH_STORE
-        try LogAppend(LOG_PATH_STORE, "PP_Tick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
-        if (_errCount >= 3) {
-            try LogAppend(LOG_PATH_STORE, "PP_Tick DISABLED after " _errCount " consecutive errors")
-            SetTimer(_PP_Tick, 0)
-        }
+        HandleTimerError(e, &_errCount, _PP_Tick, LOG_PATH_STORE, "PP_Tick")
     }
 }
 

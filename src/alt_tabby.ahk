@@ -118,10 +118,12 @@ for _, arg in A_Args {
 ; Shared libraries (from src/shared/)
 #Include %A_ScriptDir%\shared\
 #Include config_loader.ahk
+#Include error_boundary.ahk
 #Include theme.ahk
 #Include theme_msgbox.ahk
 #Include gui_antiflash.ahk
 #Include ipc_pipe.ahk
+#Include ipc_wmcopydata.ahk
 #Include blacklist.ahk
 #Include setup_utils.ahk
 #Include process_utils.ahk
@@ -228,20 +230,8 @@ if (g_AltTabbyMode = "blacklist") {
 ; Notify launcher that an editor process is closing (for dashboard refresh).
 ; Uses DllCall to bypass DetectHiddenWindows (launcher's message window is hidden).
 _NotifyEditorClosed(launcherHwnd) {
-    global TABBY_CMD_EDITOR_CLOSED, WM_COPYDATA
-    if (!launcherHwnd || !DllCall("user32\IsWindow", "ptr", launcherHwnd, "int"))
-        return
-    cds := Buffer(A_PtrSize * 3, 0)
-    NumPut("uptr", TABBY_CMD_EDITOR_CLOSED, cds, 0)
-    DllCall("user32\SendMessageTimeoutW"
-        , "ptr", launcherHwnd
-        , "uint", WM_COPYDATA
-        , "ptr", A_ScriptHwnd
-        , "ptr", cds.Ptr
-        , "uint", 0x0002   ; SMTO_ABORTIFHUNG
-        , "uint", 3000
-        , "ptr*", &_ := 0
-        , "ptr")
+    global TABBY_CMD_EDITOR_CLOSED
+    IPC_SendWmCopyData(launcherHwnd, TABBY_CMD_EDITOR_CLOSED)
 }
 
 ; ============================================================

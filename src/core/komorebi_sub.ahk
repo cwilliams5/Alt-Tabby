@@ -456,14 +456,8 @@ _KomorebiSub_Poll() {
         _KomorebiSub_Start()
     _errCount := 0
     } catch as e {
-        Critical "Off"
-        _errCount++
         global LOG_PATH_STORE
-        try LogAppend(LOG_PATH_STORE, "KomorebiSub_Poll err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
-        if (_errCount >= 3) {
-            try LogAppend(LOG_PATH_STORE, "KomorebiSub_Poll DISABLED after " _errCount " consecutive errors")
-            SetTimer(_KomorebiSub_Poll, 0)
-        }
+        HandleTimerError(e, &_errCount, _KomorebiSub_Poll, LOG_PATH_STORE, "KomorebiSub_Poll")
     }
 }
 
@@ -1328,14 +1322,8 @@ _KomorebiSub_PollFallback() {
     _KSub_ProcessFullState(stateObj)
     _errCount := 0
     } catch as e {
-        Critical "Off"
-        _errCount++
         global LOG_PATH_STORE
-        try LogAppend(LOG_PATH_STORE, "KomorebiSub_PollFallback err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
-        if (_errCount >= 3) {
-            try LogAppend(LOG_PATH_STORE, "KomorebiSub_PollFallback DISABLED after " _errCount " consecutive errors")
-            SetTimer(_KomorebiSub_PollFallback, 0)
-        }
+        HandleTimerError(e, &_errCount, _KomorebiSub_PollFallback, LOG_PATH_STORE, "KomorebiSub_PollFallback")
     }
 }
 
