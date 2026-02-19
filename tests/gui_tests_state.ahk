@@ -23,6 +23,7 @@ RunGUITests_State() {
     global gGUI_Base, gGUI_Overlay
     global gMock_StoreItems, gMock_StoreItemsMap
     global gFR_DumpInProgress
+    global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps, gStats_Cancellations
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -354,6 +355,41 @@ RunGUITests_State() {
     ; ALT_DN -> ALT_PENDING -> TAB (synthesized) -> ACTIVE -> ALT_UP -> IDLE
     GUI_AssertEq(gGUI_State, "IDLE", "Cycle completed after synthesized Tab (state=IDLE)")
     GUI_AssertEq(gGUI_PendingPhase, "", "Pending phase cleared after buffer processed")
+
+    ; ----- Test: Quick-switch path (Alt+Tab released before overlay shown) -----
+    GUI_Log("Test: Quick-switch activates without overlay")
+    ResetGUIState()
+    SetupTestItems(3)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "QS: state is ACTIVE after Tab")
+    GUI_AssertEq(gGUI_OverlayVisible, false, "QS: overlay not visible (grace period)")
+    ; Alt released within QuickSwitchMs (test runs in <1ms, threshold=100ms)
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+    GUI_AssertEq(gGUI_State, "IDLE", "QS: state returns to IDLE via quick-switch path")
+    GUI_AssertEq(gGUI_OverlayVisible, false, "QS: overlay was never shown")
+    GUI_AssertTrue(gStats_QuickSwitches >= 1, "QS: gStats_QuickSwitches incremented")
+
+    ; ----- Test: Stats counters wired to state transitions -----
+    GUI_Log("Test: Stats counters increment during state transitions")
+    ResetGUIState()
+    SetupTestItems(5)
+
+    ; Tab_Down should increment AltTabs and TabSteps
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertTrue(gStats_AltTabs >= 1, "Stats: gStats_AltTabs incremented on first Tab")
+    GUI_AssertTrue(gStats_TabSteps >= 1, "Stats: gStats_TabSteps incremented on first Tab")
+
+    ; Additional Tab should increment TabSteps again
+    prevSteps := gStats_TabSteps
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertTrue(gStats_TabSteps > prevSteps, "Stats: gStats_TabSteps incremented on subsequent Tab")
+
+    ; Escape should increment Cancellations
+    GUI_OnInterceptorEvent(TABBY_EV_ESCAPE, 0, 0)
+    GUI_AssertTrue(gStats_Cancellations >= 1, "Stats: gStats_Cancellations incremented on Escape")
 
     ; ============================================================
     ; ALT_PENDING PREWARM DATA FLOW TESTS
