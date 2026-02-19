@@ -522,7 +522,7 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
 
     ; WM_COPYDATA handler for launcher commands (e.g., toggle viewer)
     global WM_COPYDATA, IPC_WM_STATS_REQUEST
-    OnMessage(WM_COPYDATA, _GUI_OnCopyData)  ; lint-ignore: onmessage-collision (launcher_main.ahk registers in separate process)
+    OnMessage(WM_COPYDATA, _GUI_OnCopyData, 2)  ; lint-ignore: onmessage-collision (launcher_main.ahk registers in separate process)
     OnMessage(IPC_WM_STATS_REQUEST, _GUI_OnStatsRequest)
 
     ; Register error and exit handlers
@@ -544,7 +544,9 @@ _GUI_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
         }
         if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
             Blacklist_Init()
-            WL_PurgeBlacklisted()
+            result := WL_PurgeBlacklisted()
+            global LOG_PATH_STORE
+            try LogAppend(LOG_PATH_STORE, "RELOAD_BLACKLIST: reloaded, purged=" result.removed)
             Critical "Off"
             return true
         }

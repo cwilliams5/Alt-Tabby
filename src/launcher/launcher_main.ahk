@@ -332,8 +332,7 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
         if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
             if (cfg.DiagLauncherLog)
                 Launcher_Log("IPC: Received RELOAD_BLACKLIST from hwnd=" wParam)
-            Launcher_RelayToGui(TABBY_CMD_RELOAD_BLACKLIST)
-            return 1
+            return Launcher_RelayToGui(TABBY_CMD_RELOAD_BLACKLIST) ? 1 : 0
         }
 
         if (dwData = TABBY_CMD_STATS_RESPONSE) {
@@ -375,22 +374,33 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 
 ; Relay a WM_COPYDATA command to the GUI process
 Launcher_RelayToGui(cmd) {
-    global g_GuiPID, WM_COPYDATA
-    if (!LauncherUtils_IsRunning(g_GuiPID))
-        return
+    global g_GuiPID, WM_COPYDATA, cfg
+    if (!LauncherUtils_IsRunning(g_GuiPID)) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("RelayToGui: GUI not running (PID=" g_GuiPID "), cmd=" cmd)
+        return 0
+    }
     DetectHiddenWindows(true)
     guiHwnd := 0
     try guiHwnd := WinGetID("ahk_pid " g_GuiPID)
     if (!guiHwnd) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("RelayToGui: WinGetID failed for PID=" g_GuiPID ", cmd=" cmd)
         DetectHiddenWindows(false)
-        return
+        return 0
     }
     cds := Buffer(A_PtrSize * 3, 0)
     NumPut("uptr", cmd, cds, 0)
     NumPut("uptr", 0, cds, A_PtrSize)
     NumPut("uptr", 0, cds, A_PtrSize * 2)
-    try SendMessage(WM_COPYDATA, 0, cds.Ptr, , "ahk_id " guiHwnd)
+    guiResult := 0
+    try {
+        guiResult := SendMessage(WM_COPYDATA, 0, cds.Ptr, , "ahk_id " guiHwnd) ; lint-ignore: postmessage-unsafe
+    }
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("RelayToGui: cmd=" cmd " hwnd=" guiHwnd " result=" guiResult)
     DetectHiddenWindows(false)
+    return guiResult
 }
 
 ; Apply config changes: reload config for the launcher, re-theme launcher

@@ -39,7 +39,7 @@ RunLiveTests_Lifecycle() {
     ; Write config.ini with wizard skip (no store pipe needed — store is in-process)
     ; Enable pump diagnostics so we can see what GUIPump_Init does
     ; Use unique pipe name to avoid collision with execution test's AltTabby.exe (both default to tabby_pump_v1)
-    configContent := "[Setup]`nFirstRunCompleted=true`n[Diagnostics]`nPumpLog=true`nLauncherLog=true`n[IPC]`nPumpPipeName=tabby_pump_lifecycle`n"
+    configContent := "[Setup]`nFirstRunCompleted=true`n[Diagnostics]`nPumpLog=true`nLauncherLog=true`nStoreLog=true`n[IPC]`nPumpPipeName=tabby_pump_lifecycle`n"
     FileAppend(configContent, testDir "\config.ini", "UTF-8")
 
     ; Launch
@@ -244,7 +244,39 @@ RunLiveTests_Lifecycle() {
     }
 
     ; ============================================================
-    ; Test 3: RESTART_ALL signal (config editor path)
+    ; Test 3: RELOAD_BLACKLIST signal (blacklist editor path)
+    ; ============================================================
+    ; Tests that the launcher relays RELOAD_BLACKLIST to the GUI
+    ; and the GUI processes it (Blacklist_Init + WL_PurgeBlacklisted).
+    ; Launcher_RelayToGui propagates the GUI's synchronous response,
+    ; so response=1 proves the GUI handler executed and returned true.
+    Log("`n--- RELOAD_BLACKLIST Signal Test ---")
+
+    ; Let system stabilize after PUMP_FAILED test — pump restart cycle sends
+    ; PUMP_RESTARTED via synchronous relay to GUI (GUIPump_Reconnect), need
+    ; that to complete before sending RELOAD_BLACKLIST
+    Sleep(1500)
+
+    response := _Lifecycle_SendCommand(launcherHwnd, 4)  ; TABBY_CMD_RELOAD_BLACKLIST = 4
+    if (response = 1) {
+        Log("PASS: RELOAD_BLACKLIST relayed to GUI and acknowledged (response=1)")
+        TestPassed++
+    } else {
+        Log("FAIL: RELOAD_BLACKLIST relay failed (response=" response ")")
+        TestErrors++
+        ; Dump launcher log for diagnosis
+        launcherLogPath := A_Temp "\tabby_launcher.log"
+        if (FileExist(launcherLogPath)) {
+            try {
+                launcherLog := FileRead(launcherLogPath)
+                Log("--- Launcher Log (last 1000 chars) ---")
+                Log(SubStr(launcherLog, -1000))
+            }
+        }
+    }
+
+    ; ============================================================
+    ; Test 4: RESTART_ALL signal (config editor path)
     ; ============================================================
     Log("`n--- RESTART_ALL Signal Test ---")
 
@@ -287,7 +319,7 @@ RunLiveTests_Lifecycle() {
     }
 
     ; ============================================================
-    ; Test 4: Ordered WM_CLOSE shutdown (GUI exits, then launcher)
+    ; Test 5: Ordered WM_CLOSE shutdown (GUI exits, then launcher)
     ; ============================================================
     Log("`n--- Ordered Shutdown Test ---")
 
@@ -360,7 +392,7 @@ RunLiveTests_Lifecycle() {
         }
     }
 
-    ; Cleanup (safety net - processes should already be gone after Test 2)
+    ; Cleanup (safety net - processes should already be gone after Test 5)
     _Lifecycle_Cleanup()
 }
 
@@ -380,6 +412,7 @@ _Lifecycle_Cleanup() {
     ; not inside testDir). Prevents false-positive detection of "Connected" messages.
     try FileDelete(A_Temp "\tabby_pump.log")
     try FileDelete(A_Temp "\tabby_launcher.log")
+    try FileDelete(A_Temp "\tabby_store_error.log")
 
     ; Remove temp directory
     testDir := A_Temp "\alttabby_lifecycle_test"
