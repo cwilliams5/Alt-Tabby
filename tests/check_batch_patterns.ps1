@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -1395,6 +1395,81 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_copydata_contract"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 10: scan_pairing
+# Every WL_BeginScan() call must be inside a try block with
+# WL_EndScan() in the corresponding finally clause.
+# If EndScan never runs (exception, early return), gWS_ScanId
+# stays incremented and every window fails the lastSeenScanId
+# check — total window list corruption.
+# Suppress: ; lint-ignore: scan-pairing
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$scanIssues = [System.Collections.ArrayList]::new()
+$scanFuncRegex = [regex]::new('(?m)^[ \t]*(?:static\s+)?([A-Za-z_]\w*)\s*\([^)]*\)\s*\{', 'Compiled')
+$scanKeywords = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@('if', 'while', 'for', 'loop', 'switch', 'catch', 'try', 'else'),
+    [System.StringComparer]::OrdinalIgnoreCase
+)
+
+foreach ($file in $allFiles) {
+    $text = $fileCacheText[$file.FullName]
+    if ($text.IndexOf('WL_BeginScan()', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+    $relPath = $file.FullName
+    if ($relPath.StartsWith($SourceDir)) {
+        $relPath = $relPath.Substring($SourceDir.Length).TrimStart('\', '/')
+    }
+
+    # Per-function scan: find functions that call WL_BeginScan() and verify pairing
+    $funcMatches = $scanFuncRegex.Matches($text)
+    foreach ($fm in $funcMatches) {
+        $funcName = $fm.Groups[1].Value
+        if ($scanKeywords.Contains($funcName)) { continue }
+        # Skip the WL_BeginScan definition itself
+        if ($funcName -eq 'WL_BeginScan') { continue }
+
+        $body = BP_Extract-FunctionBody $text $funcName
+        if ($null -eq $body) { continue }
+        if ($body.IndexOf('WL_BeginScan()', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        # Check for lint-ignore suppression anywhere in the function body
+        if ($body.Contains('lint-ignore: scan-pairing')) { continue }
+
+        # Verify: try keyword before BeginScan, and finally with EndScan after BeginScan
+        $beginPos = $body.IndexOf('WL_BeginScan()')
+        $hasTryBefore = $body.Substring(0, $beginPos).Contains('try')
+        $finallyIdx = $body.IndexOf('finally', $beginPos)
+        $hasEndScanInFinally = $false
+        if ($finallyIdx -ge 0) {
+            $hasEndScanInFinally = $body.IndexOf('WL_EndScan()', $finallyIdx) -ge 0
+        }
+
+        if (-not $hasTryBefore -or -not $hasEndScanInFinally) {
+            # Find approximate line number for the error message
+            $funcStartLine = ($text.Substring(0, $fm.Index) -split "`n").Count
+            $bodyBefore = $body.Substring(0, $beginPos)
+            $lineOffset = ($bodyBefore -split "`n").Count
+            $approxLine = $funcStartLine + $lineOffset
+            [void]$scanIssues.Add("${relPath}:${approxLine}: WL_BeginScan() in ${funcName}() not paired with try { ... } finally { WL_EndScan() }")
+        }
+    }
+}
+
+if ($scanIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($scanIssues.Count) scan-pairing violation(s) found.")
+    [void]$failOutput.AppendLine("  Every WL_BeginScan() must be in try { ... } finally { WL_EndScan() }.")
+    [void]$failOutput.AppendLine("  Without finally, exceptions leave gWS_ScanId stuck - corrupting the window list.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: scan-pairing' on the WL_BeginScan() line.")
+    foreach ($issue in $scanIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_scan_pairing"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1402,7 +1477,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
