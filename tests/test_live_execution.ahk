@@ -152,12 +152,22 @@ RunLiveTests_Execution() {
             _Test_RunSilent('"' compiledExePath '" --gui-only --test', &recreatePid)
 
             if (recreatePid) {
-                ; Wait for gui to start up (files are created during ConfigLoader_Init)
-                Sleep(2000)
-
-                ; Check if files were recreated
-                configRecreated := FileExist(configPath)
-                blacklistRecreated := FileExist(blacklistPath)
+                ; Poll for both files to appear (adaptive wait, not fixed sleep)
+                ; Files are created early in _GUI_Main_Init: ConfigLoader_Init → config.ini,
+                ; Blacklist_Init → blacklist.txt. Under parallel test load, compiled exe
+                ; startup can exceed 2s, so poll instead of sleeping a fixed duration.
+                waitStart := A_TickCount
+                configRecreated := false
+                blacklistRecreated := false
+                while ((A_TickCount - waitStart) < 8000) {
+                    if (!configRecreated)
+                        configRecreated := FileExist(configPath)
+                    if (!blacklistRecreated)
+                        blacklistRecreated := FileExist(blacklistPath)
+                    if (configRecreated && blacklistRecreated)
+                        break
+                    Sleep(100)
+                }
 
                 if (configRecreated) {
                     Log("PASS: config.ini recreated by compiled exe")
