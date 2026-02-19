@@ -70,7 +70,7 @@ ShowFirstRunWizard() {
 
 ; Load logo into wizard GUI (centered, 116x90)
 _Wizard_LoadLogo(wg) {
-    global gTheme_Palette
+    global gTheme_Palette, RES_ID_LOGO
     ; Center logo: (468 client width - 116 logo width) / 2 = 176
     logoOpts := "x176 w116 h90"
 
@@ -82,42 +82,8 @@ _Wizard_LoadLogo(wg) {
         return
     }
 
-    ; Compiled mode: extract from embedded resource, convert to HBITMAP
-    hModule := DllCall("LoadLibrary", "str", "gdiplus", "ptr")
-    if (!hModule)
-        return
-
-    si := Buffer(A_PtrSize = 8 ? 24 : 16, 0)
-    NumPut("UInt", 1, si, 0)
-    token := 0
-    DllCall("gdiplus\GdiplusStartup", "ptr*", &token, "ptr", si.Ptr, "ptr", 0)
-    if (!token) {
-        DllCall("FreeLibrary", "ptr", hModule)
-        return
-    }
-
-    pBitmap := Splash_LoadBitmapFromResource(10)  ; ID 10 = logo.png
-    if (!pBitmap) {
-        DllCall("gdiplus\GdiplusShutdown", "ptr", token)
-        DllCall("FreeLibrary", "ptr", hModule)
-        return
-    }
-
-    ; High-quality resize (707x548 -> 116x90)
-    pThumb := GdipResizeHQ(pBitmap, 116, 90)
-    srcBitmap := pThumb ? pThumb : pBitmap
-
-    ; Convert to HBITMAP with theme-aware background color
-    argbBg := 0xFF000000 | Integer("0x" gTheme_Palette.bg)
-    hBitmap := 0
-    DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", srcBitmap, "ptr*", &hBitmap, "uint", argbBg)
-
-    if (pThumb)
-        DllCall("gdiplus\GdipDisposeImage", "ptr", pThumb)
-    DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmap)
-    DllCall("gdiplus\GdiplusShutdown", "ptr", token)
-    DllCall("FreeLibrary", "ptr", hModule)
-
+    ; Compiled mode: use shared GDI+ thumbnail loader
+    hBitmap := LauncherUtils_LoadGdipThumb(RES_ID_LOGO, 116, 90)
     if (!hBitmap)
         return
 

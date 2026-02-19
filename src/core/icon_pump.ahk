@@ -25,6 +25,12 @@ global IP_MODE_FOCUS_RECHECK := "FOCUS_RECHECK"  ; Window got focus - recheck fo
 ; NOTE: GiveUp backoff now in config: cfg.IconPumpGiveUpBackoffMs (default 5000)
 global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
 
+; Helper: truncate title for diagnostic logging
+_IP_TruncTitle(rec) {
+    global IP_LOG_TITLE_MAX_LEN
+    return rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+}
+
 ; Win32 constants for WM_GETICON icon resolution
 global IP_WM_GETICON := 0x7F
 global IP_ICON_BIG := 1
@@ -169,22 +175,21 @@ _IP_PruneAttempts() {
     if (_IP_Attempts.Count = 0)
         return
 
-    ; Snapshot keys to prevent modification during iteration
+    ; RACE FIX: Wrap in Critical — _IP_Tick writes to _IP_Attempts under Critical,
+    ; and AHK v2 timers can interrupt each other during map iteration.
+    Critical "On"
     toRemove := []
 
     for hwnd, _ in _IP_Attempts {
-        ; Remove if window no longer exists
-        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+        ; Collect windows that no longer exist
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
             toRemove.Push(hwnd)
-            continue
-        }
-        ; Note: _IP_Attempts stores attempt count, not tick. We can't age-expire
-        ; without changing the data structure. For now, just remove closed windows.
     }
 
     for _, hwnd in toRemove {
         _IP_Attempts.Delete(hwnd)
     }
+    Critical "Off"
 
     if (toRemove.Length > 0 && _IP_DiagEnabled && _IP_LogPath != "")
         _IP_Log("PRUNE: removed " toRemove.Length " stale attempt entries")
@@ -261,7 +266,7 @@ _IP_Tick() {
         ; WinExist doesn't see cloaked windows (other workspaces), but IsWindow does
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             if (logEnabled) {
-                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                title := _IP_TruncTitle(rec)
                 _IP_Log("SKIP hwnd=" hwnd " '" title "' (window gone)")
             }
             Critical "Off"
@@ -286,7 +291,7 @@ _IP_Tick() {
         } else {
             ; Has fallback icon but still hidden - nothing to do
             if (logEnabled) {
-                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                title := _IP_TruncTitle(rec)
                 _IP_Log("SKIP hwnd=" hwnd " '" title "' (has fallback, still hidden)")
             }
             Critical "Off"
@@ -295,7 +300,7 @@ _IP_Tick() {
 
         ; Log what we're doing
         if (logEnabled) {
-            title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+            title := _IP_TruncTitle(rec)
             if (mode = IP_MODE_INITIAL) {
                 if (isHidden)
                     _IP_Log("PROC hwnd=" hwnd " '" title "' mode=NO_ICON (hidden) - try UWP/EXE")
@@ -400,7 +405,7 @@ _IP_Tick() {
             }, "icons")
             _IP_Attempts[hwnd] := 0
             if (logEnabled) {
-                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                title := _IP_TruncTitle(rec)
                 _IP_Log("SUCCESS hwnd=" hwnd " '" title "' mode=" mode " method=" method)
             }
             Critical "Off"
@@ -413,7 +418,7 @@ _IP_Tick() {
             ; Just update the refresh timestamp so we don't spam retries
             gIP_UpdateFields(hwnd, { iconLastRefreshTick: now }, "icons")
             if (logEnabled) {
-                title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+                title := _IP_TruncTitle(rec)
                 _IP_Log("KEPT hwnd=" hwnd " '" title "' mode=" mode " (WM_GETICON failed, keeping existing)")
             }
             Critical "Off"
@@ -424,7 +429,7 @@ _IP_Tick() {
         tries := _IP_Attempts.Has(hwnd) ? (_IP_Attempts[hwnd] + 1) : 1
         _IP_Attempts[hwnd] := tries
         if (logEnabled) {
-            title := rec.HasOwnProp("title") ? SubStr(rec.title, 1, IP_LOG_TITLE_MAX_LEN) : ""
+            title := _IP_TruncTitle(rec)
             _IP_Log("FAIL hwnd=" hwnd " '" title "' attempt=" tries "/" IconMaxAttempts)
         }
 

@@ -93,3 +93,56 @@ LauncherUtils_Restart(component, &pidVar, waitMs := 200, logFunc := "") {
 LauncherUtils_IsRunning(pid) {
     return (pid && ProcessExist(pid))
 }
+
+; ============================================================
+; GDI+ Thumbnail Loader (compiled mode only)
+; ============================================================
+; Loads an embedded resource image, resizes it with high-quality bicubic
+; interpolation, and returns an HBITMAP suitable for Gui.AddPicture().
+; Uses theme-aware background color for transparency compositing.
+;
+; Parameters:
+;   resId - Resource ID (e.g., RES_ID_LOGO, RES_ID_ICON)
+;   w, h  - Target dimensions
+; Returns: HBITMAP handle, or 0 on failure. Caller owns the HBITMAP.
+LauncherUtils_LoadGdipThumb(resId, w, h) {
+    hModule := DllCall("LoadLibrary", "str", "gdiplus", "ptr")
+    if (!hModule)
+        return 0
+
+    si := Buffer(A_PtrSize = 8 ? 24 : 16, 0)
+    NumPut("UInt", 1, si, 0)
+    token := 0
+    DllCall("gdiplus\GdiplusStartup", "ptr*", &token, "ptr", si.Ptr, "ptr", 0)
+    if (!token) {
+        DllCall("FreeLibrary", "ptr", hModule)
+        return 0
+    }
+
+    pBitmap := Splash_LoadBitmapFromResource(resId)
+    if (!pBitmap) {
+        DllCall("gdiplus\GdiplusShutdown", "ptr", token)
+        DllCall("FreeLibrary", "ptr", hModule)
+        return 0
+    }
+
+    ; High-quality resize preserving aspect ratio
+    pThumb := GdipResizeHQ(pBitmap, w, h)
+    srcBitmap := pThumb ? pThumb : pBitmap
+
+    ; Convert to HBITMAP with theme-aware background color
+    global gTheme_Palette
+    argbBg := 0xFF000000 | Integer("0x" gTheme_Palette.bg)
+
+    hBitmap := 0
+    DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", srcBitmap, "ptr*", &hBitmap, "uint", argbBg)
+
+    ; Cleanup GDI+ resources
+    if (pThumb)
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pThumb)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmap)
+    DllCall("gdiplus\GdiplusShutdown", "ptr", token)
+    DllCall("FreeLibrary", "ptr", hModule)
+
+    return hBitmap
+}

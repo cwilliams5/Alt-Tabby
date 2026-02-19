@@ -711,43 +711,34 @@ _CL_ResolveExePath(exeName, tempSuffix, knownPaths) {
 }
 
 ; ============================================================
-; AUTO-DISCOVER AHK V2 PATH
+; AUTO-DISCOVER EXECUTABLE PATHS
 ; ============================================================
-_CL_ResolveAhkV2Path() {
+; Parameterized resolver: checks cfg.%cfgKey%, falls back to PATH + known locations.
+_CL_ResolveConfigPath(cfgKey, exeName, tempSuffix, knownPaths) {
     global cfg
-
-    ; User override — non-empty and exists, use as-is
-    if (cfg.AhkV2Path != "" && FileExist(cfg.AhkV2Path))
+    if (cfg.%cfgKey% != "" && FileExist(cfg.%cfgKey%))
         return
+    found := _CL_ResolveExePath(exeName, tempSuffix, knownPaths)
+    if (found != "")
+        cfg.%cfgKey% := found
+}
 
-    found := _CL_ResolveExePath("AutoHotkey64", "ahk", [
+_CL_ResolveAhkV2Path() {
+    _CL_ResolveConfigPath("AhkV2Path", "AutoHotkey64", "ahk", [
         "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe",
         "C:\Program Files (x86)\AutoHotkey\v2\AutoHotkey64.exe",
         EnvGet("USERPROFILE") "\scoop\apps\autohotkey\current\v2\AutoHotkey64.exe",
         EnvGet("USERPROFILE") "\scoop\shims\AutoHotkey64.exe",
     ])
-    if (found != "")
-        cfg.AhkV2Path := found
 }
 
-; ============================================================
-; AUTO-DISCOVER KOMOREBIC PATH
-; ============================================================
 _CL_ResolveKomorebicPath() {
-    global cfg
-
-    ; User override — non-empty and exists, use as-is
-    if (cfg.KomorebicExe != "" && FileExist(cfg.KomorebicExe))
-        return
-
-    found := _CL_ResolveExePath("komorebic", "komorebic", [
+    _CL_ResolveConfigPath("KomorebicExe", "komorebic", "komorebic", [
         "C:\Program Files\komorebi\bin\komorebic.exe",
         "C:\Program Files (x86)\komorebi\bin\komorebic.exe",
         EnvGet("USERPROFILE") "\scoop\shims\komorebic.exe",
         EnvGet("USERPROFILE") "\.cargo\bin\komorebic.exe",
     ])
-    if (found != "")
-        cfg.KomorebicExe := found
 }
 
 ; ============================================================

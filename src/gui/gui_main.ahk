@@ -139,7 +139,7 @@ _GUI_Main_Init() {
 
     WL_Init()
 
-    ; Wire producer callbacks so producers don't call Store_* directly
+    ; Wire producer callbacks (rev-changed, workspace-flips) so producers notify GUI of state changes
     WL_SetCallbacks(_GUI_OnProducerRevChanged, _GUI_OnWorkspaceFlips)
 
     ; Register stats logging callbacks and initialize stats tracking

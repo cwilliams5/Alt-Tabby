@@ -73,6 +73,9 @@ global _KSub_FocusedHwndByWS := Map()
 ; Value: A_TickCount deadline (0 = not suppressed).
 global gKSub_MruSuppressUntilTick := 0
 
+; Delay before initial komorebi poll (wait for winenum to populate store first)
+global KSUB_INITIAL_POLL_DELAY_MS := 1500
+
 ; Cloak event batching state
 global _KSub_CloakPushPending := false
 global _KSub_CloakBatchTimerFn := 0
@@ -162,8 +165,9 @@ _KomorebiSub_Start() {
     ; Create event for overlapped operations
     _KSub_hEvent := DllCall("CreateEventW", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
     if (!_KSub_hEvent) {
+        gle := DllCall("GetLastError", "uint")
         if (cfg.DiagKomorebiLog)
-            KSub_DiagLog("KomorebiSub: CreateEventW FAILED")
+            KSub_DiagLog("KomorebiSub: CreateEventW FAILED err=" gle)
         KomorebiSub_Stop()
         _KSub_FallbackMode := true
         SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
@@ -214,8 +218,9 @@ _KomorebiSub_Start() {
     SetTimer(_KomorebiSub_Poll, KSub_PollMs)
 
     ; Do initial poll to populate all windows with workspace data immediately
-    ; Runs after 1500ms to ensure first winenum scan has populated the store
-    SetTimer(_KSub_InitialPoll, -1500)
+    ; Runs after delay to ensure first winenum scan has populated the store
+    global KSUB_INITIAL_POLL_DELAY_MS
+    SetTimer(_KSub_InitialPoll, -KSUB_INITIAL_POLL_DELAY_MS)
 
     if (cfg.DiagKomorebiLog)
         KSub_DiagLog("KomorebiSub: Start complete, pipe=" _KSub_PipeName)
@@ -330,12 +335,11 @@ _KomorebiSub_Poll() {
     global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_ReadBuffer, _KSub_ReadBufferLen
     global IPC_ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
     global cfg
-    static pollCount := 0, lastLogTick := 0
+    static lastLogTick := 0
 
-    pollCount++
-    ; Log every 5 seconds to avoid spam
+    ; Log every 5 seconds to avoid spam (tick-based, no unbounded counter per ahk-patterns.md)
     if (cfg.DiagKomorebiLog && A_TickCount - lastLogTick > 5000) {
-        KSub_DiagLog("Poll #" pollCount ": hPipe=" _KSub_hPipe " connected=" _KSub_Connected)
+        KSub_DiagLog("Poll: hPipe=" _KSub_hPipe " connected=" _KSub_Connected)
         lastLogTick := A_TickCount
     }
 

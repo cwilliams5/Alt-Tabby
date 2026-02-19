@@ -656,45 +656,8 @@ _Dash_LoadLogo(dg) {
         return false
     }
 
-    ; Compiled mode: extract from embedded resource, convert to HBITMAP
-    hModule := DllCall("LoadLibrary", "str", "gdiplus", "ptr")
-    if (!hModule)
-        return false
-
-    si := Buffer(A_PtrSize = 8 ? 24 : 16, 0)
-    NumPut("UInt", 1, si, 0)
-    token := 0
-    DllCall("gdiplus\GdiplusStartup", "ptr*", &token, "ptr", si.Ptr, "ptr", 0)
-    if (!token) {
-        DllCall("FreeLibrary", "ptr", hModule)
-        return false
-    }
-
-    pBitmap := Splash_LoadBitmapFromResource(RES_ID_LOGO)
-    if (!pBitmap) {
-        DllCall("gdiplus\GdiplusShutdown", "ptr", token)
-        DllCall("FreeLibrary", "ptr", hModule)
-        return false
-    }
-
-    ; High-quality resize preserving aspect ratio (707x548 -> 116x90)
-    pThumb := GdipResizeHQ(pBitmap, 116, 90)
-    srcBitmap := pThumb ? pThumb : pBitmap
-
-    ; Convert to HBITMAP with theme-aware background color
-    global gTheme_Palette
-    argbBg := 0xFF000000 | Integer("0x" gTheme_Palette.bg)
-
-    hBitmap := 0
-    DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", srcBitmap, "ptr*", &hBitmap, "uint", argbBg)
-
-    ; Cleanup GDI+ resources
-    if (pThumb)
-        DllCall("gdiplus\GdipDisposeImage", "ptr", pThumb)
-    DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmap)
-    DllCall("gdiplus\GdiplusShutdown", "ptr", token)
-    DllCall("FreeLibrary", "ptr", hModule)
-
+    ; Compiled mode: use shared GDI+ thumbnail loader
+    hBitmap := LauncherUtils_LoadGdipThumb(RES_ID_LOGO, 116, 90)
     if (!hBitmap)
         return false
 

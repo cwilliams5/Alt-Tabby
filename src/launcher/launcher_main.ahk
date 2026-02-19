@@ -177,7 +177,7 @@ Launcher_Init() {
 }
 
 ; Shared subprocess launch sequence used by both Launcher_Init() and wizard-continue.
-; Handles: splash, tray, OnExit, active mutex, store+gui launch, HWND file, splash hide,
+; Handles: splash, tray, OnExit, active mutex, gui launch, HWND file, splash hide,
 ; auto-update check, and Persistent().
 Launcher_StartSubprocesses() {
     global g_TestingMode, g_SkipActiveMutex, cfg, gConfigIniPath

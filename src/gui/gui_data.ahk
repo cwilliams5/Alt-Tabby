@@ -9,7 +9,6 @@ global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints duri
 
 ; ========================= LIVE ITEMS REFRESH =========================
 
-; Refresh gGUI_LiveItems from WindowList (direct, no IPC).
 ; Refresh gGUI_LiveItems from WindowList — synchronous, always returns fresh data.
 GUI_RefreshLiveItems() {
     global gGUI_LiveItems, gGUI_LiveItemsMap
