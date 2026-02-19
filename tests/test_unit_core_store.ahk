@@ -476,6 +476,131 @@ RunUnitTests_CoreStore() {
     WL_RemoveWindow([7001, 7002, 7003], true)
 
     ; ============================================================
+    ; BatchUpdateFields MRU-Only Tracking Tests
+    ; ============================================================
+    ; BatchUpdateFields tracks batchMruOnly across all patches.
+    ; When ALL patches change ONLY MRU fields (lastActivatedTick), it sets
+    ; gWS_MRUBumpOnly=true so GetDisplayList can use Path 1.5 (incremental).
+    ; When ANY patch changes a non-MRU sort field, batchMruOnly must be false.
+    Log("`n--- BatchUpdateFields MRU-Only Tracking Tests ---")
+
+    WL_Init()
+    WL_BeginScan()
+    mruBatchRecs := []
+    mruBatchRecs.Push(Map("hwnd", 8001, "title", "MRUBatch_A", "class", "T", "pid", 1,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 1, "lastActivatedTick", 100))
+    mruBatchRecs.Push(Map("hwnd", 8002, "title", "MRUBatch_B", "class", "T", "pid", 2,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 2, "lastActivatedTick", 200))
+    mruBatchRecs.Push(Map("hwnd", 8003, "title", "MRUBatch_C", "class", "T", "pid", 3,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 3, "lastActivatedTick", 300))
+    WL_UpsertWindow(mruBatchRecs, "test")
+    WL_EndScan()
+
+    ; Prime cache (Path 3) — order: C(300), B(200), A(100)
+    proj := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(proj.items.Length, 3, "BatchMRU setup: 3 items")
+    AssertEq(proj.items[1].hwnd, 8003, "BatchMRU setup: C first (tick 300)")
+
+    ; MRU-only batch with SINGLE item: bump A tick, no other sort fields.
+    ; Single-item batch avoids Path 1.5 sort invariant fallback (multi-item
+    ; batches can break intermediate sort order, causing valid fallback to Path 3).
+    mruPatches := Map()
+    mruPatches[8001] := Map("lastActivatedTick", 500)  ; A → front
+    WL_BatchUpdateFields(mruPatches, "test")
+    AssertEq(gWS_MRUBumpOnly, true, "BatchMRU: MRUBumpOnly true for MRU-only batch")
+    AssertEq(gWS_SortOrderDirty, true, "BatchMRU: sort dirty after MRU batch")
+
+    ; GetDisplayList should use Path 1.5 → correct sort
+    projMru := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(projMru.cachePath, "mru", "BatchMRU: Path 1.5 used for single-item MRU batch")
+    AssertEq(projMru.items[1].hwnd, 8001, "BatchMRU: A first (tick 500)")
+    AssertEq(projMru.items[2].hwnd, 8003, "BatchMRU: C second (tick 300)")
+    AssertEq(projMru.items[3].hwnd, 8002, "BatchMRU: B third (tick 200)")
+
+    ; Multi-item MRU batch: flags are set correctly even though Path 1.5
+    ; may fall through to Path 3 due to sort invariant check (correct behavior).
+    mruPatches2 := Map()
+    mruPatches2[8002] := Map("lastActivatedTick", 600)
+    mruPatches2[8003] := Map("lastActivatedTick", 550)
+    WL_BatchUpdateFields(mruPatches2, "test")
+    AssertEq(gWS_MRUBumpOnly, true, "BatchMRU multi: MRUBumpOnly true for multi-item MRU batch")
+
+    ; Verify correct sort order regardless of which path was used
+    projMru2 := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(projMru2.items[1].hwnd, 8002, "BatchMRU multi: B first (tick 600)")
+    AssertEq(projMru2.items[2].hwnd, 8003, "BatchMRU multi: C second (tick 550)")
+    AssertEq(projMru2.items[3].hwnd, 8001, "BatchMRU multi: A third (tick 500)")
+
+    ; Mixed batch: MRU tick + z (non-MRU sort field) → MRUBumpOnly must be false
+    mixedPatches := Map()
+    mixedPatches[8003] := Map("lastActivatedTick", 700)  ; MRU field (highest)
+    mixedPatches[8001] := Map("z", 99)                    ; Non-MRU sort field
+    WL_BatchUpdateFields(mixedPatches, "test")
+    AssertEq(gWS_MRUBumpOnly, false, "BatchMRU: MRUBumpOnly false for mixed batch (tick+z)")
+
+    ; GetDisplayList should use Path 3 (full rebuild), not Path 1.5
+    projMixed := WL_GetDisplayList({ sort: "MRU" })
+    AssertEq(projMixed.items[1].hwnd, 8003, "BatchMRU mixed: C first (tick 700)")
+
+    ; Cleanup
+    WL_RemoveWindow([8001, 8002, 8003], true)
+
+    ; ============================================================
+    ; EndScan: Real Window Survives (IsWindow=true skips toRemove)
+    ; ============================================================
+    ; When a window is not re-upserted during a scan but IsWindow still returns true,
+    ; it should NOT be added to toRemove in Phase 1 (line 183). This means a still-valid
+    ; window stays in the store even after TTL expires — it's just not removed.
+    ; The next WinEnum scan that re-upserts it will reset its presence flags.
+    ;
+    ; The Phase 2 recovery branch (lines 226-232) handles a narrower race: a window that
+    ; failed IsWindow in Phase 1 but passes it in Phase 2 (flickered between the two checks).
+    ; That race condition is untestable without DllCall mocking.
+    Log("`n--- EndScan Real Window Survival Tests ---")
+
+    WL_Init()
+
+    ; Use the test process's own hwnd — guaranteed to pass IsWindow()
+    testHwnd := A_ScriptHwnd + 0
+
+    ; Add our hwnd to the store via upsert
+    WL_BeginScan()
+    reappearRec := Map("hwnd", testHwnd, "title", "TestProcess", "class", "TestClass",
+                       "pid", ProcessExist(), "isVisible", true, "isCloaked", false,
+                       "isMinimized", false, "z", 1, "lastActivatedTick", A_TickCount)
+    WL_UpsertWindow([reappearRec], "test")
+    WL_EndScan()
+
+    ; Verify it's in the store
+    AssertTrue(gWS_Store.Has(testHwnd), "RealWin setup: test hwnd in store")
+    AssertEq(gWS_Store[testHwnd].present, true, "RealWin setup: present=true")
+
+    ; Scan cycle 1: window not re-upserted → marks it as MISSING
+    WL_BeginScan()
+    WL_EndScan(0)  ; graceMs=0 so TTL expires immediately
+    AssertTrue(gWS_Store.Has(testHwnd), "RealWin cycle1: window still in store (marked missing)")
+    AssertEq(gWS_Store[testHwnd].present, false, "RealWin cycle1: present=false")
+
+    ; Scan cycle 2: TTL expired BUT IsWindow=true → window NOT removed (stays in store)
+    ; Phase 1 skips it because IsWindow returns true (line 183: !IsWindow is false → no push)
+    WL_BeginScan()
+    result := WL_EndScan(0)
+    AssertTrue(gWS_Store.Has(testHwnd), "RealWin cycle2: real window NOT removed (IsWindow=true)")
+    AssertEq(result.removed, 0, "RealWin cycle2: removed=0 (real window survives)")
+
+    ; Re-upsert recovers the window (simulates next WinEnum scan finding it again)
+    WL_BeginScan()
+    WL_UpsertWindow([reappearRec], "test")
+    WL_EndScan()
+    AssertEq(gWS_Store[testHwnd].present, true, "RealWin re-upsert: present=true after re-discovery")
+
+    ; Cleanup
+    WL_RemoveWindow([testHwnd], true)
+
+    ; ============================================================
     ; DisplayList Cache Stale-Ref Fallback Tests (Path 2 → Path 3)
     ; ============================================================
     ; Path 2 (content-only refresh) checks rec.present on cached sorted refs.

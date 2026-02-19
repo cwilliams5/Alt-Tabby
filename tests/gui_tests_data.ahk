@@ -726,6 +726,81 @@ RunGUITests_Data() {
     GUI_AssertTrue(_gGUI_LastCosmeticRepaintTick > 0, "CosmeticPatch repaint: debounce tick updated")
 
     ; ============================================================
+    ; COSMETIC PATCH WORKSPACE RE-FILTER TESTS
+    ; ============================================================
+    ; When cosmetic patching detects workspace data changed (wsPatched=true),
+    ; it calls GUI_RefilterForWorkspaceChange() to update the display list.
+    ; This tests the link between "workspace data changed" and "display list re-filtered".
+
+    ; ----- Test: WS cosmetic patch triggers re-filter (item count drops in current mode) -----
+    GUI_Log("Test: CosmeticPatch WS re-filter drops item from display in current mode")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_CurrentWSName := "Main"
+    global WS_MODE_CURRENT
+    gGUI_WorkspaceMode := WS_MODE_CURRENT
+
+    ; Create 3 items: 2 on "Main" (current), 1 on "Other"
+    items := CreateTestItems(3, 2)
+    gGUI_ToggleBase := items
+    ; In "current" mode, display should show only 2 items (on Main)
+    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    GUI_AssertEq(gGUI_DisplayItems.Length, 2, "CosmeticPatch WS refilter setup: 2 items in current mode")
+
+    ; Simulate store says item 1 moved to "Other" workspace
+    gWS_Store[1000] := {title: "Window 1", iconHicon: 0, processName: "", workspaceName: "Other"}
+    gWS_DirtyHwnds[1000] := true
+
+    GUI_PatchCosmeticUpdates()
+
+    ; After patch: item 1 now has workspaceName="Other", re-filter should exclude it
+    GUI_AssertEq(items[1].workspaceName, "Other", "CosmeticPatch WS refilter: item 1 workspace patched to Other")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 1, "CosmeticPatch WS refilter: display items reduced to 1 (re-filtered)")
+
+    ; ============================================================
+    ; _GUI_ActivateFromFrozen GUARD TESTS
+    ; ============================================================
+    ; _GUI_ActivateFromFrozen validates sel range and window existence.
+    ; These tests verify the guards by triggering ALT_UP with rigged state.
+
+    ; ----- Test: sel out of range → no activation (guard catches) -----
+    GUI_Log("Test: ActivateFromFrozen sel out of range is safe")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FirstTabTick := A_TickCount - 500  ; Past quick-switch threshold
+    gGUI_OverlayVisible := true
+    gGUI_DisplayItems := CreateTestItems(3)
+    gGUI_Sel := 5  ; Out of range (only 3 items)
+    origMRUFirst := gGUI_LiveItems.Length > 0 ? gGUI_LiveItems[1].hwnd : 0
+
+    ; Fire ALT_UP — calls _GUI_ActivateFromFrozen internally
+    global TABBY_EV_ALT_UP
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+
+    GUI_AssertEq(gGUI_State, "IDLE", "ActivateFromFrozen guard: state returns to IDLE")
+    ; No crash = guard worked. MRU should be unchanged (no activation happened).
+
+    ; ----- Test: valid sel but dead hwnd → no activation (IsWindow guard) -----
+    GUI_Log("Test: ActivateFromFrozen dead hwnd is safe")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FirstTabTick := A_TickCount - 500
+    gGUI_OverlayVisible := true
+    ; Create items with a fake hwnd that will fail IsWindow
+    deadItems := [{hwnd: 0xDEAD, title: "Dead Window", class: "X",
+                   isOnCurrentWorkspace: true, workspaceName: "Main",
+                   lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""}]
+    gGUI_DisplayItems := deadItems
+    gGUI_Sel := 1
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+    origFirst := gGUI_LiveItems[1].hwnd
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+
+    GUI_AssertEq(gGUI_State, "IDLE", "ActivateFromFrozen dead hwnd: state returns to IDLE")
+    GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "ActivateFromFrozen dead hwnd: MRU unchanged (no activation)")
+
+    ; ============================================================
     ; Stats_AccumulateSession DELTA TRACKING TESTS
     ; ============================================================
 
