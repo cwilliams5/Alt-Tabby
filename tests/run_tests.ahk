@@ -48,7 +48,7 @@ global gFR_Enabled := false
 global FR_EV_REFRESH := 20, FR_EV_ENRICH_REQ := 22, FR_EV_ENRICH_RESP := 23
 global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 26, FR_EV_BLACKLIST_PURGE := 27
 global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
-global FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32
+global FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32, FR_EV_PRODUCER_BACKOFF := 60
 global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41
 global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
@@ -179,6 +179,7 @@ Log("Log file: " TestLogPath)
 #Include %A_ScriptDir%\..\src\shared\process_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\win_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\stats.ahk
+#Include %A_ScriptDir%\..\src\shared\error_boundary.ahk
 #Include %A_ScriptDir%\..\src\shared\window_list.ahk
 #Include %A_ScriptDir%\..\src\core\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\core\komorebi_sub.ahk

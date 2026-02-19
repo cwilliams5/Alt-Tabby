@@ -44,7 +44,7 @@ Blacklist_Init(filePath := "") {
             ; From src/ (alt_tabby.ahk)
             gBlacklist_FilePath := A_ScriptDir "\shared\blacklist.txt"
             if (!FileExist(gBlacklist_FilePath)) {
-                ; From src/store/ or src/gui/
+                ; From src/core/ or src/gui/
                 gBlacklist_FilePath := A_ScriptDir "\..\shared\blacklist.txt"
             }
             if (!FileExist(gBlacklist_FilePath)) {

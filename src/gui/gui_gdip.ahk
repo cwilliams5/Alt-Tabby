@@ -652,7 +652,7 @@ Gdip_PreCacheIcon(hwnd, hIcon) {
 
 ; Draw icon with caching - avoids HICON->Bitmap conversion on every frame
 ; Cache key is hwnd; invalidates if hIcon value changes
-; Note: hIcon from Store works cross-process (USER objects in win32k.sys shared memory)
+; Note: hIcon from pump works cross-process (USER objects in win32k.sys shared memory)
 ; Parameters:
 ;   &wasCacheHit - Optional ByRef: set to true if cache hit, false otherwise (for logging)
 Gdip_DrawCachedIcon(g, hwnd, hIcon, x, y, size, &wasCacheHit := "") {

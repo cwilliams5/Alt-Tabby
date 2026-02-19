@@ -69,4 +69,57 @@ RunUnitTests_Advanced() {
         TestErrors++
     }
 
+    ; ============================================================
+    ; HandleTimerError Unit Tests
+    ; ============================================================
+    ; The shared error boundary used by ALL timer callbacks (~12+).
+    ; Tests backoff progression, threshold behavior, and counter tracking.
+    Log("`n--- HandleTimerError Tests ---")
+
+    mockErr := { Message: "test error", File: "test.ahk", Line: 1, What: "" }
+    mockLogPath := A_Temp "\tabby_test_hte.log"
+    try FileDelete(mockLogPath)
+
+    ; Test 1-2: Below threshold — returns 0, no backoff
+    errCount := 0
+    backoffUntil := 0
+    result := HandleTimerError(mockErr, &errCount, &backoffUntil, mockLogPath, "test")
+    AssertEq(errCount, 1, "HandleTimerError: errCount increments to 1")
+    AssertEq(result, 0, "HandleTimerError: below threshold returns 0")
+
+    result := HandleTimerError(mockErr, &errCount, &backoffUntil, mockLogPath, "test")
+    AssertEq(errCount, 2, "HandleTimerError: errCount increments to 2")
+    AssertEq(result, 0, "HandleTimerError: still below threshold returns 0")
+
+    ; Test 3: Hits threshold (3) — first backoff is 5000ms
+    result := HandleTimerError(mockErr, &errCount, &backoffUntil, mockLogPath, "test")
+    AssertEq(errCount, 3, "HandleTimerError: errCount reaches threshold")
+    AssertEq(result, 5000, "HandleTimerError: first backoff is 5000ms")
+    AssertTrue(backoffUntil > 0, "HandleTimerError: backoffUntil is set")
+
+    ; Test 4: 4th error — backoff doubles to 10000ms
+    result := HandleTimerError(mockErr, &errCount, &backoffUntil, mockLogPath, "test")
+    AssertEq(result, 10000, "HandleTimerError: second backoff doubles to 10000ms")
+
+    ; Test 5: 5th error — backoff doubles to 20000ms
+    result := HandleTimerError(mockErr, &errCount, &backoffUntil, mockLogPath, "test")
+    AssertEq(result, 20000, "HandleTimerError: third backoff doubles to 20000ms")
+
+    ; Test 6: Backoff caps at 300000ms (5 min)
+    ; Simulate many consecutive errors to hit cap: need errCount-maxErrors >= 6 (5000*2^6=320000 > 300000)
+    errCount := 10
+    backoffUntil := 0
+    result := HandleTimerError(mockErr, &errCount, &backoffUntil, mockLogPath, "test")
+    ; errCount is now 11, overshoot = 11-3 = 8, 5000 * 2^8 = 1280000 > 300000 → capped
+    AssertEq(result, 300000, "HandleTimerError: backoff caps at 300000ms (5 min)")
+
+    ; Test 7: Custom maxErrors parameter
+    errCount := 0
+    backoffUntil := 0
+    result := HandleTimerError(mockErr, &errCount, &backoffUntil, mockLogPath, "test", 1)
+    AssertEq(result, 5000, "HandleTimerError: custom maxErrors=1 triggers on first error")
+
+    ; Cleanup
+    try FileDelete(mockLogPath)
+
 }
