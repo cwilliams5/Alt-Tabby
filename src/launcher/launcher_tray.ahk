@@ -445,11 +445,11 @@ ToggleAdminMode() {
                 else
                     throw Error("RunAsAdmin failed")
             } catch {
-                TrayTip("Admin Mode", "Could not remove scheduled task. It will be cleaned up on next restart.", "Icon!")
+                TrayTip("Admin Mode", "Could not remove scheduled task. Re-try from the tray menu when running as administrator.", "Icon!")
             }
         }
         g_CachedAdminTaskActive := false
-        Setup_SetRunAsAdmin(false)
+        Setup_SetRunAsAdmin(false, true)
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)
 
         ; Offer restart to apply change immediately

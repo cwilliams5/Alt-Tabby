@@ -91,9 +91,7 @@ global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 
 ; --- Launcher subprocess PID globals ---
-global g_StorePID := 0
 global g_GuiPID := 0
-global g_ViewerPID := 0
 global g_ConfigEditorPID := 0
 global g_BlacklistEditorPID := 0
 

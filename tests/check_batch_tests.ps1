@@ -450,8 +450,6 @@ $TEST_UTIL_FUNCTIONS = @(
     'AssertTrue',
     'AssertFalse',
     'WaitForFlag',
-    'WaitForStorePipe',
-    'LaunchTestStore',
     '_Test_RunSilent',
     '_Test_RunWaitSilent'
 )

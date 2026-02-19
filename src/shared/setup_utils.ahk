@@ -1220,18 +1220,9 @@ _Update_CopyUserData(srcDir, targetDir, overwrite := false) {
 ; Uses delta-based merge: tracks source snapshots at merge time so repeated
 ; merges only add what's new (prevents double-counting AND silent data loss).
 _Update_MergeStats(srcPath, targetPath) {
-    global cfg
-    ; IMPORTANT: These keys must match the lifetime counter keys written by Stats_FlushToDisk().
-    ; If you add/rename a lifetime stat, update this list too.
-    lifetimeKeys := [
-        "TotalSessions",
-        "TotalAltTabs",
-        "TotalQuickSwitches",
-        "TotalTabSteps",
-        "TotalCancellations",
-        "TotalCrossWS",
-        "TotalWSToggles"
-    ]
+    global cfg, STATS_LIFETIME_KEYS
+    ; Max-value keys use Max() instead of addition (high-water marks, not counters)
+    static maxKeys := Map("PeakWindowsInSession", true, "LongestSessionSec", true)
 
     ; Pre-check: ensure srcPath is writable for merge markers.
     ; If we can't record the merge, skip it — prevents double-counting on retry.
@@ -1272,13 +1263,21 @@ _Update_MergeStats(srcPath, targetPath) {
     if (previouslyMerged) {
         ; Delta merge: only add stats accumulated since last merge
         hasNewStats := false
-        for key in lifetimeKeys {
+        for key in STATS_LIFETIME_KEYS {
             try {
                 srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
-                snapVal := Integer(IniRead(srcPath, "Merged", "Snap_" key, "0"))
-                if (srcVal != snapVal) {
-                    hasNewStats := true
-                    break
+                if (maxKeys.Has(key)) {
+                    targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
+                    if (srcVal > targetVal) {
+                        hasNewStats := true
+                        break
+                    }
+                } else {
+                    snapVal := Integer(IniRead(srcPath, "Merged", "Snap_" key, "0"))
+                    if (srcVal != snapVal) {
+                        hasNewStats := true
+                        break
+                    }
                 }
             }
         }
@@ -1286,24 +1285,35 @@ _Update_MergeStats(srcPath, targetPath) {
             return  ; Source unchanged since last merge — true duplicate
 
         ; Apply deltas (current source - snapshot) to target
-        for key in lifetimeKeys {
+        for key in STATS_LIFETIME_KEYS {
             try {
                 srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
-                snapVal := Integer(IniRead(srcPath, "Merged", "Snap_" key, "0"))
-                delta := srcVal - snapVal
-                if (delta > 0) {
+                if (maxKeys.Has(key)) {
+                    ; High-water marks: take the larger value
                     targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
-                    IniWrite(targetVal + delta, targetPath, "Lifetime", key)
+                    if (srcVal > targetVal)
+                        IniWrite(srcVal, targetPath, "Lifetime", key)
+                } else {
+                    ; Counters: add delta since last snapshot
+                    snapVal := Integer(IniRead(srcPath, "Merged", "Snap_" key, "0"))
+                    delta := srcVal - snapVal
+                    if (delta > 0) {
+                        targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
+                        IniWrite(targetVal + delta, targetPath, "Lifetime", key)
+                    }
                 }
             }
         }
     } else {
-        ; First merge to this target: add full source values
-        for key in lifetimeKeys {
+        ; First merge to this target: add counters, max high-water marks
+        for key in STATS_LIFETIME_KEYS {
             try {
                 srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
                 targetVal := Integer(IniRead(targetPath, "Lifetime", key, "0"))
-                IniWrite(srcVal + targetVal, targetPath, "Lifetime", key)
+                if (maxKeys.Has(key))
+                    IniWrite(Max(srcVal, targetVal), targetPath, "Lifetime", key)
+                else
+                    IniWrite(srcVal + targetVal, targetPath, "Lifetime", key)
             }
         }
     }
@@ -1312,7 +1322,7 @@ _Update_MergeStats(srcPath, targetPath) {
     try IniWrite(targetPath, srcPath, "Merged", "LastMergedTo")
     if (targetInstallId != "")
         try IniWrite(targetInstallId, srcPath, "Merged", "LastMergedToId")
-    for key in lifetimeKeys {
+    for key in STATS_LIFETIME_KEYS {
         try {
             srcVal := Integer(IniRead(srcPath, "Lifetime", key, "0"))
             IniWrite(srcVal, srcPath, "Merged", "Snap_" key)

@@ -95,8 +95,8 @@ Tests state transitions, freeze behavior, workspace toggle, config combinations.
 
 ## Test Patterns
 
-- **Poll, don't sleep** — Use `WaitForFlag(&flag)` / `WaitForStorePipe(name)` from `test_utils.ahk`, not fixed `Sleep()`. Adaptive polling exits as soon as data arrives.
-- **Process launching** — Use `LaunchTestStore(pipeName)` and `_Test_RunSilent(cmdLine)` from `test_utils.ahk`. These handle cursor suppression and cleanup.
+- **Poll, don't sleep** — Use `WaitForFlag(&flag)` from `test_utils.ahk`, not fixed `Sleep()`. Adaptive polling exits as soon as data arrives.
+- **Process launching** — Use `_Test_RunSilent(cmdLine)` from `test_utils.ahk`. Handles cursor suppression and cleanup.
 
 ## Performance Benchmarking
 

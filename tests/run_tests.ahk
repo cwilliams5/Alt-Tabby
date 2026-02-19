@@ -63,7 +63,6 @@ global RES_ID_LOGO := 0
 ; --- Launcher subprocess PID globals (from alt_tabby.ahk, referenced by launcher_about.ahk) ---
 global g_PumpPID := 0
 global g_GuiPID := 0
-global g_ViewerPID := 0
 global g_ConfigEditorPID := 0
 global g_BlacklistEditorPID := 0
 

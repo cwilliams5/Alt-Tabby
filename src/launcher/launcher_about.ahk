@@ -674,8 +674,8 @@ _Dash_LoadLogo(dg) {
 ;   themeEntry - theme entry for control theming
 ;   dot        - dot character
 ;   &subY      - y position (ByRef, not modified - caller manages offsets)
-;   prefix     - control name prefix (e.g. "store", "gui")
-;   displayName- human label (e.g. "Store", "GUI")
+;   prefix     - control name prefix (e.g. "gui", "pump")
+;   displayName- human label (e.g. "GUI", "Pump")
 ;   pid        - process ID variable to check
 ;   isCore     - true = red when not running, false = grey when not running
 ;   clickFn    - function ref for button click handler

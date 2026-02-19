@@ -8,7 +8,7 @@
 ; ============================================================
 
 ; Windows API constants
-global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000  ; Keep here — moving to setup_utils causes unset-var crash in compiled store (icon_pump.ahk)
+global PROCESS_QUERY_LIMITED_INFORMATION := 0x1000  ; Keep here — used by icon_pump.ahk, must be in shared include
 global STARTF_USESHOWWINDOW := 0x01
 global STARTF_FORCEOFFFEEDBACK := 0x80
 global CREATE_NO_WINDOW := 0x08000000
@@ -206,7 +206,7 @@ _ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName := "") {
 ; flows skip it to avoid killing other installations.
 ;
 ; Options object:
-;   pids            - Optional {gui: pid, pump: pid, viewer: pid} for graceful shutdown
+;   pids            - Optional {gui: pid, pump: pid} for graceful shutdown
 ;   force           - Kill all AltTabby processes by name after graceful (default false)
 ;   targetExeName   - Optional extra exe name for force-kill name matching
 ;   offerElevation  - If true, offer UAC elevation for elevated stragglers (default false)
@@ -244,13 +244,9 @@ ProcessUtils_KillAltTabby(opts := "") {
 }
 
 ; Internal: Graceful shutdown of known PIDs in correct order
-; Order: viewer (hard kill) → GUI (graceful, 3s) → Pump (graceful, 2s)
+; Order: GUI (graceful, 3s) → Pump (graceful, 2s)
 ; GUI must exit before Pump so it can send IPC shutdown to still-alive pump.
 _PU_GracefulShutdownByPid(pids) {
-    ; 1. Hard kill viewer (non-core, no ordering dependency)
-    if (pids.HasOwnProp("viewer") && pids.viewer && ProcessExist(pids.viewer))
-        ProcessClose(pids.viewer)
-
     prevDHW := A_DetectHiddenWindows
     DetectHiddenWindows(true)
 
