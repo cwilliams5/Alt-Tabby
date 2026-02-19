@@ -132,6 +132,21 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_Sel, 1, "RemoveItemAt only: sel=1 (default)")
     GUI_AssertEq(gGUI_ScrollTop, 0, "RemoveItemAt only: scrollTop=0")
 
+    ; ----- Test: _GUI_RemoveItemAt maintains map consistency -----
+    GUI_Log("Test: _GUI_RemoveItemAt maintains map consistency")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(5)
+
+    removedHwnd := gGUI_LiveItems[3].hwnd
+    _GUI_RemoveItemAt(3)
+
+    GUI_AssertEq(gGUI_LiveItems.Length, 4, "RemoveItemAt map: 4 items remain")
+    GUI_AssertEq(gGUI_LiveItemsMap.Count, 4, "RemoveItemAt map: map has 4 entries")
+    GUI_AssertTrue(!gGUI_LiveItemsMap.Has(removedHwnd), "RemoveItemAt map: removed hwnd absent from map")
+    ; Verify remaining items are all in the map
+    for _, item in gGUI_LiveItems
+        GUI_AssertTrue(gGUI_LiveItemsMap.Has(item.hwnd), "RemoveItemAt map: remaining hwnd " item.hwnd " in map")
+
     ; ----- Test: _GUI_RemoveItemAt out-of-bounds is no-op -----
     GUI_Log("Test: _GUI_RemoveItemAt out-of-bounds")
     ResetGUIState()

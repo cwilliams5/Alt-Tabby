@@ -358,6 +358,107 @@ RunUnitTests_CoreStore() {
     ; Cleanup
     WL_RemoveWindow([5001, 5002], true)
 
+    ; ============================================================
+    ; GetDisplayList itemsMap Validation Tests
+    ; ============================================================
+    ; itemsMap is a Map<hwnd, item> returned by all cache paths.
+    ; Consumed by icon cache pruning, live item removal, and MRU miss detection.
+    ; If corrupt/missing, icon pruning deletes all cached icons and MRU breaks.
+    Log("`n--- GetDisplayList itemsMap Validation Tests ---")
+
+    WL_Init()
+    WL_BeginScan()
+    imRecs := []
+    imRecs.Push(Map("hwnd", 6001, "title", "IM_A", "class", "T", "pid", 1,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 1, "lastActivatedTick", 100))
+    imRecs.Push(Map("hwnd", 6002, "title", "IM_B", "class", "T", "pid", 2,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 2, "lastActivatedTick", 200))
+    imRecs.Push(Map("hwnd", 6003, "title", "IM_C", "class", "T", "pid", 3,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 3, "lastActivatedTick", 300))
+    WL_UpsertWindow(imRecs, "test")
+    WL_EndScan()
+
+    ; Path 3 (full rebuild) — cold cache
+    proj := WL_GetDisplayList({ sort: "MRU" })
+    AssertTrue(proj.HasOwnProp("itemsMap"), "itemsMap Path3: returned by GetDisplayList")
+    AssertEq(proj.itemsMap.Count, proj.items.Length, "itemsMap Path3: count matches items")
+    AssertTrue(proj.itemsMap.Has(6001), "itemsMap Path3: contains hwnd 6001")
+    AssertTrue(proj.itemsMap.Has(6003), "itemsMap Path3: contains hwnd 6003")
+
+    ; Path 1 (cache hit) — no changes between calls
+    proj := WL_GetDisplayList({ sort: "MRU" })
+    AssertTrue(proj.HasOwnProp("itemsMap"), "itemsMap Path1: returned on cache hit")
+    AssertEq(proj.itemsMap.Count, proj.items.Length, "itemsMap Path1: count matches items")
+    AssertTrue(proj.itemsMap.Has(6002), "itemsMap Path1: contains hwnd 6002")
+
+    ; Path 2 (content-only refresh) — change non-sort field
+    WL_UpdateFields(6001, Map("iconHicon", 8888), "test")
+    proj := WL_GetDisplayList({ sort: "MRU" })
+    AssertTrue(proj.HasOwnProp("itemsMap"), "itemsMap Path2: returned on content refresh")
+    AssertEq(proj.itemsMap.Count, proj.items.Length, "itemsMap Path2: count matches items")
+    AssertTrue(proj.itemsMap.Has(6001), "itemsMap Path2: contains updated hwnd 6001")
+
+    ; Path 1.5 (MRU bump) — change MRU-only field
+    WL_UpdateFields(6001, Map("lastActivatedTick", 500), "test")
+    proj := WL_GetDisplayList({ sort: "MRU" })
+    AssertTrue(proj.HasOwnProp("itemsMap"), "itemsMap Path1.5: returned on MRU bump")
+    AssertEq(proj.itemsMap.Count, proj.items.Length, "itemsMap Path1.5: count matches items")
+    AssertTrue(proj.itemsMap.Has(6001), "itemsMap Path1.5: contains bumped hwnd 6001")
+
+    ; Verify itemsMap entries reference the same objects as items array
+    for _, item in proj.items {
+        AssertTrue(proj.itemsMap.Has(item.hwnd), "itemsMap consistency: array item hwnd " item.hwnd " exists in map")
+    }
+
+    ; Cleanup
+    WL_RemoveWindow([6001, 6002, 6003], true)
+
+    ; ============================================================
+    ; SetCurrentWorkspace Callback Notification Tests
+    ; ============================================================
+    ; WL_SetCurrentWorkspace fires gWS_OnWorkspaceChanged when workspace changes.
+    ; This is the sole mechanism for the GUI to learn about workspace switches.
+    Log("`n--- SetCurrentWorkspace Callback Notification Tests ---")
+
+    WL_Init()
+
+    ; Wire a test callback
+    callbackFired := false
+    WL_SetCallbacks(0, () => (callbackFired := true))
+
+    ; Add windows so SetCurrentWorkspace has work to do
+    WL_BeginScan()
+    cbRecs := []
+    cbRecs.Push(Map("hwnd", 6101, "title", "CB1", "class", "T", "pid", 1,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 1, "workspaceName", "Alpha"))
+    cbRecs.Push(Map("hwnd", 6102, "title", "CB2", "class", "T", "pid", 2,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false,
+                     "z", 2, "workspaceName", "Beta"))
+    WL_UpsertWindow(cbRecs, "test")
+    WL_EndScan()
+
+    ; Workspace change fires callback
+    WL_SetCurrentWorkspace("", "Alpha")
+    AssertEq(callbackFired, true, "SetCurrentWorkspace fires workspace callback on change")
+
+    ; Same workspace name does NOT fire callback (no-op)
+    callbackFired := false
+    WL_SetCurrentWorkspace("", "Alpha")
+    AssertEq(callbackFired, false, "SetCurrentWorkspace does NOT fire callback on no-op")
+
+    ; Different workspace fires callback again
+    callbackFired := false
+    WL_SetCurrentWorkspace("", "Beta")
+    AssertEq(callbackFired, true, "SetCurrentWorkspace fires callback on second change")
+
+    ; Cleanup
+    WL_SetCallbacks(0, 0)
+    WL_RemoveWindow([6101, 6102], true)
+
     ; Test: WL_SetCurrentWorkspace updates all windows
     Log("Testing SetCurrentWorkspace consistency...")
 
