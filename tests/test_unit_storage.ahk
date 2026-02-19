@@ -1265,4 +1265,320 @@ RunUnitTests_Storage() {
         try DirDelete(testBlDirReload, true)
         Blacklist_Init(savedBlPathReload)
     }
+
+    ; ============================================================
+    ; WL_PopPidBatch + WL_GetHwndsByPids Tests
+    ; ============================================================
+    Log("`n--- WL_PopPidBatch + WL_GetHwndsByPids Tests ---")
+
+    ; Test 1: PID enqueue via UpsertWindow (empty processName) and PopPidBatch
+    Log("Testing PID enqueue via UpsertWindow with empty processName...")
+    WL_Init()
+    ; Drain any leftover queues
+    WL_PopIconBatch(100)
+    global gWS_PidQueue, gWS_PidQueueDedup
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    pidRec1 := Map("hwnd", 0xDD01, "title", "PID Win 1", "class", "Test", "pid", 7001,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                   "processName", "")
+    pidRec2 := Map("hwnd", 0xDD02, "title", "PID Win 2", "class", "Test", "pid", 7002,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
+                   "processName", "")
+    WL_UpsertWindow([pidRec1, pidRec2], "test")
+    WL_EndScan()
+    WL_PopIconBatch(100)  ; Drain icon queue (not testing icons here)
+
+    pidBatch := WL_PopPidBatch(10)
+    pid7001Found := false
+    pid7002Found := false
+    for _, pid in pidBatch {
+        if (pid = 7001)
+            pid7001Found := true
+        if (pid = 7002)
+            pid7002Found := true
+    }
+
+    if (pid7001Found) {
+        Log("PASS: PopPidBatch returned pid 7001 (from empty processName window)")
+        TestPassed++
+    } else {
+        Log("FAIL: PopPidBatch should return pid 7001")
+        TestErrors++
+    }
+
+    if (pid7002Found) {
+        Log("PASS: PopPidBatch returned pid 7002 (from empty processName window)")
+        TestPassed++
+    } else {
+        Log("FAIL: PopPidBatch should return pid 7002")
+        TestErrors++
+    }
+
+    ; Test 2: PID deduplication - same PID from two windows appears only once
+    Log("Testing PID deduplication in queue...")
+    WL_Init()
+    WL_PopIconBatch(100)
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    dedupRec1 := Map("hwnd", 0xDD03, "title", "Dedup Win 1", "class", "Test", "pid", 8001,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                     "processName", "")
+    dedupRec2 := Map("hwnd", 0xDD04, "title", "Dedup Win 2", "class", "Test", "pid", 8001,
+                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
+                     "processName", "")
+    WL_UpsertWindow([dedupRec1, dedupRec2], "test")
+    WL_EndScan()
+    WL_PopIconBatch(100)
+
+    pidBatch := WL_PopPidBatch(10)
+    pid8001Count := 0
+    for _, pid in pidBatch {
+        if (pid = 8001)
+            pid8001Count++
+    }
+
+    if (pid8001Count = 1) {
+        Log("PASS: PID 8001 appears exactly once in batch (deduplicated)")
+        TestPassed++
+    } else {
+        Log("FAIL: PID 8001 should appear once, got " pid8001Count)
+        TestErrors++
+    }
+
+    ; Test 3: Empty PID queue returns empty batch
+    Log("Testing PopPidBatch on empty queue...")
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+    pidBatch := WL_PopPidBatch(10)
+    if (pidBatch.Length = 0) {
+        Log("PASS: PopPidBatch returns empty array when queue empty")
+        TestPassed++
+    } else {
+        Log("FAIL: PopPidBatch should return empty array, got length=" pidBatch.Length)
+        TestErrors++
+    }
+
+    ; Test 4: WL_GetHwndsByPids returns correct hwnds for matching PIDs
+    Log("Testing WL_GetHwndsByPids matches by PID...")
+    WL_Init()
+    WL_PopIconBatch(100)
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    ghRec1 := Map("hwnd", 0xEE01, "title", "GH Win 1", "class", "Test", "pid", 9001,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    ghRec2 := Map("hwnd", 0xEE02, "title", "GH Win 2", "class", "Test", "pid", 9002,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+    ghRec3 := Map("hwnd", 0xEE03, "title", "GH Win 3", "class", "Test", "pid", 9001,
+                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 3)
+    WL_UpsertWindow([ghRec1, ghRec2, ghRec3], "test")
+    WL_EndScan()
+
+    pidSet := Map(9001, true)
+    result := WL_GetHwndsByPids(pidSet)
+
+    ee01Found := false
+    ee03Found := false
+    ee02Found := false
+    for _, hwnd in result {
+        if (hwnd = 0xEE01)
+            ee01Found := true
+        if (hwnd = 0xEE02)
+            ee02Found := true
+        if (hwnd = 0xEE03)
+            ee03Found := true
+    }
+
+    if (ee01Found && ee03Found) {
+        Log("PASS: GetHwndsByPids returned both pid=9001 hwnds (0xEE01, 0xEE03)")
+        TestPassed++
+    } else {
+        Log("FAIL: GetHwndsByPids should return both pid=9001 hwnds (ee01=" ee01Found " ee03=" ee03Found ")")
+        TestErrors++
+    }
+
+    if (!ee02Found) {
+        Log("PASS: GetHwndsByPids excluded pid=9002 hwnd (0xEE02)")
+        TestPassed++
+    } else {
+        Log("FAIL: GetHwndsByPids should exclude pid=9002 hwnd")
+        TestErrors++
+    }
+
+    ; Test 5: WL_GetHwndsByPids with empty pidSet returns empty
+    Log("Testing WL_GetHwndsByPids with empty pidSet...")
+    result := WL_GetHwndsByPids(Map())
+    if (result.Length = 0) {
+        Log("PASS: GetHwndsByPids returns empty for empty pidSet")
+        TestPassed++
+    } else {
+        Log("FAIL: GetHwndsByPids should return empty for empty pidSet, got length=" result.Length)
+        TestErrors++
+    }
+
+    ; Drain queues
+    WL_PopIconBatch(100)
+    WL_PopPidBatch(100)
+
+    ; ============================================================
+    ; _WS_EnqueueIfNeeded Enqueue Decision Tests
+    ; ============================================================
+    ; Tests observable effects via icon/PID queue state after UpsertWindow
+    Log("`n--- _WS_EnqueueIfNeeded Enqueue Decision Tests ---")
+
+    ; Test 1: UpsertWindow with no icon, visible → hwnd in icon queue
+    Log("Testing enqueue: no icon + visible -> icon queue...")
+    WL_Init()
+    WL_PopIconBatch(100)
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    enqRec1 := Map("hwnd", 0xFF01, "title", "Enq Win 1", "class", "Test", "pid", 5001,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                   "processName", "test.exe")  ; Has processName (no PID enqueue)
+    WL_UpsertWindow([enqRec1], "test")
+    WL_EndScan()
+
+    iconBatch := WL_PopIconBatch(10)
+    ff01InIconQ := false
+    for _, hwnd in iconBatch {
+        if (hwnd = 0xFF01)
+            ff01InIconQ := true
+    }
+    if (ff01InIconQ) {
+        Log("PASS: No-icon visible window enqueued for icon resolution")
+        TestPassed++
+    } else {
+        Log("FAIL: No-icon visible window should be enqueued for icon resolution")
+        TestErrors++
+    }
+
+    ; Test 2: UpsertWindow with EXE fallback icon, visible → icon upgrade queue
+    Log("Testing enqueue: EXE fallback icon + visible -> icon upgrade queue...")
+    WL_Init()
+    WL_PopIconBatch(100)
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    enqRec2 := Map("hwnd", 0xFF02, "title", "Enq Win 2", "class", "Test", "pid", 5002,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                   "iconHicon", 12345, "iconMethod", "exe",
+                   "processName", "test.exe")
+    WL_UpsertWindow([enqRec2], "test")
+    WL_EndScan()
+
+    iconBatch := WL_PopIconBatch(10)
+    ff02InIconQ := false
+    for _, hwnd in iconBatch {
+        if (hwnd = 0xFF02)
+            ff02InIconQ := true
+    }
+    if (ff02InIconQ) {
+        Log("PASS: EXE fallback icon visible window enqueued for icon upgrade")
+        TestPassed++
+    } else {
+        Log("FAIL: EXE fallback icon visible window should be enqueued for icon upgrade")
+        TestErrors++
+    }
+
+    ; Test 3: UpsertWindow with wm_geticon icon, visible → NOT in icon queue
+    Log("Testing enqueue: wm_geticon icon + visible -> NOT in icon queue...")
+    WL_Init()
+    WL_PopIconBatch(100)
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    enqRec3 := Map("hwnd", 0xFF03, "title", "Enq Win 3", "class", "Test", "pid", 5003,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                   "iconHicon", 12345, "iconMethod", "wm_geticon",
+                   "processName", "test.exe")
+    WL_UpsertWindow([enqRec3], "test")
+    WL_EndScan()
+
+    iconBatch := WL_PopIconBatch(10)
+    ff03InIconQ := false
+    for _, hwnd in iconBatch {
+        if (hwnd = 0xFF03)
+            ff03InIconQ := true
+    }
+    if (!ff03InIconQ) {
+        Log("PASS: wm_geticon window NOT enqueued (already has best icon)")
+        TestPassed++
+    } else {
+        Log("FAIL: wm_geticon window should NOT be enqueued for icon resolution")
+        TestErrors++
+    }
+
+    ; Test 4: UpsertWindow with empty processName → PID in PID queue
+    Log("Testing enqueue: empty processName -> PID queue...")
+    WL_Init()
+    WL_PopIconBatch(100)
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    enqRec4 := Map("hwnd", 0xFF04, "title", "Enq Win 4", "class", "Test", "pid", 5004,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                   "iconHicon", 12345, "iconMethod", "wm_geticon",
+                   "processName", "")  ; Empty processName
+    WL_UpsertWindow([enqRec4], "test")
+    WL_EndScan()
+    WL_PopIconBatch(100)  ; Drain icon queue
+
+    pidBatch := WL_PopPidBatch(10)
+    pid5004Found := false
+    for _, pid in pidBatch {
+        if (pid = 5004)
+            pid5004Found := true
+    }
+    if (pid5004Found) {
+        Log("PASS: Empty processName window's PID enqueued for resolution")
+        TestPassed++
+    } else {
+        Log("FAIL: Empty processName window's PID should be enqueued")
+        TestErrors++
+    }
+
+    ; Test 5: UpsertWindow with processName set → PID NOT in PID queue
+    Log("Testing enqueue: processName set -> PID NOT in queue...")
+    WL_Init()
+    WL_PopIconBatch(100)
+    gWS_PidQueue := []
+    gWS_PidQueueDedup := Map()
+
+    WL_BeginScan()
+    enqRec5 := Map("hwnd", 0xFF05, "title", "Enq Win 5", "class", "Test", "pid", 5005,
+                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
+                   "iconHicon", 12345, "iconMethod", "wm_geticon",
+                   "processName", "already.exe")  ; Has processName
+    WL_UpsertWindow([enqRec5], "test")
+    WL_EndScan()
+    WL_PopIconBatch(100)
+
+    pidBatch := WL_PopPidBatch(10)
+    pid5005Found := false
+    for _, pid in pidBatch {
+        if (pid = 5005)
+            pid5005Found := true
+    }
+    if (!pid5005Found) {
+        Log("PASS: Window with processName set has PID NOT enqueued")
+        TestPassed++
+    } else {
+        Log("FAIL: Window with processName should NOT have PID enqueued")
+        TestErrors++
+    }
+
+    ; Clean up all queues
+    WL_PopIconBatch(100)
+    WL_PopPidBatch(100)
 }

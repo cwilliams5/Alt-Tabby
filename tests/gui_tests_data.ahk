@@ -23,6 +23,10 @@ RunGUITests_Data() {
     global gGUI_Base, gGUI_Overlay, gGdip_IconCache
     global gMock_StoreItems, gMock_StoreItemsMap
     global _gGUI_LastCosmeticRepaintTick, gWS_Store, gWS_DirtyHwnds, gMock_RepaintCount
+    global gMock_LastStatsMsg
+    global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps
+    global gStats_Cancellations, gStats_CrossWorkspace, gStats_WorkspaceToggles
+    global gStats_LastSent
 
     GUI_Log("`n=== GUI Data Processing Tests ===`n")
 
@@ -720,6 +724,107 @@ RunGUITests_Data() {
 
     GUI_AssertEq(gMock_RepaintCount, 1, "CosmeticPatch repaint: GUI_Repaint called once")
     GUI_AssertTrue(_gGUI_LastCosmeticRepaintTick > 0, "CosmeticPatch repaint: debounce tick updated")
+
+    ; ============================================================
+    ; Stats_AccumulateSession DELTA TRACKING TESTS
+    ; ============================================================
+
+    ; ----- Test: All-zero counters → skip (no Stats_Accumulate call) -----
+    GUI_Log("Test: Stats_AccumulateSession skips when all counters zero")
+    ResetGUIState()
+    gMock_LastStatsMsg := ""
+    Stats_AccumulateSession()
+    GUI_AssertEq(gMock_LastStatsMsg, "", "StatsAccum zero: no message sent (skip-on-zero)")
+
+    ; ----- Test: Non-zero counters → correct delta Map with only non-zero keys -----
+    GUI_Log("Test: Stats_AccumulateSession sends correct deltas")
+    ResetGUIState()
+    gStats_AltTabs := 5
+    gStats_TabSteps := 3
+    Stats_AccumulateSession()
+    GUI_AssertTrue(IsObject(gMock_LastStatsMsg), "StatsAccum deltas: message is a Map")
+    if (IsObject(gMock_LastStatsMsg)) {
+        GUI_AssertEq(gMock_LastStatsMsg["TotalAltTabs"], 5, "StatsAccum deltas: TotalAltTabs=5")
+        GUI_AssertEq(gMock_LastStatsMsg["TotalTabSteps"], 3, "StatsAccum deltas: TotalTabSteps=3")
+        GUI_AssertTrue(!gMock_LastStatsMsg.Has("TotalQuickSwitches"), "StatsAccum deltas: zero-delta key omitted (QuickSwitches)")
+        GUI_AssertTrue(!gMock_LastStatsMsg.Has("TotalCancellations"), "StatsAccum deltas: zero-delta key omitted (Cancellations)")
+    }
+
+    ; ----- Test: Second call without new increments → skip (LastSent bookkeeping) -----
+    GUI_Log("Test: Stats_AccumulateSession skips on repeated call (LastSent tracks sent)")
+    ; Continue from previous test — counters unchanged, LastSent recorded
+    gMock_LastStatsMsg := ""
+    Stats_AccumulateSession()
+    GUI_AssertEq(gMock_LastStatsMsg, "", "StatsAccum repeat: no message (deltas are zero)")
+
+    ; ----- Test: Incremental delta after previous send -----
+    GUI_Log("Test: Stats_AccumulateSession sends only new increments")
+    ; Continue from previous — LastSent has AltTabs=5, TabSteps=3
+    gStats_Cancellations := 1
+    gMock_LastStatsMsg := ""
+    Stats_AccumulateSession()
+    GUI_AssertTrue(IsObject(gMock_LastStatsMsg), "StatsAccum incr: message sent")
+    if (IsObject(gMock_LastStatsMsg)) {
+        GUI_AssertEq(gMock_LastStatsMsg["TotalCancellations"], 1, "StatsAccum incr: TotalCancellations=1")
+        GUI_AssertTrue(!gMock_LastStatsMsg.Has("TotalAltTabs"), "StatsAccum incr: AltTabs omitted (no new increment)")
+    }
+
+    ; ============================================================
+    ; GUI_HandleWorkspaceSwitch WORKSPACE DATA PATCHING TESTS
+    ; ============================================================
+
+    ; ----- Test: Frozen items patched from gWS_Store before re-filter -----
+    GUI_Log("Test: HandleWorkspaceSwitch patches frozen items from store")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "New"
+
+    ; Build frozen items with OLD workspace names
+    items := CreateTestItems(3)
+    items[1].workspaceName := "Old"
+    items[1].isOnCurrentWorkspace := false
+    items[2].workspaceName := "Old"
+    items[2].isOnCurrentWorkspace := false
+    items[3].workspaceName := "Other"
+    items[3].isOnCurrentWorkspace := false
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+
+    ; Populate gWS_Store with updated workspace for items 1 and 2 (hwnd 1000, 2000)
+    gWS_Store[1000] := {workspaceName: "New"}
+    gWS_Store[2000] := {workspaceName: "New"}
+    ; Item 3 (hwnd 3000) NOT in store — should remain unpatched
+
+    GUI_HandleWorkspaceSwitch()
+
+    GUI_AssertEq(items[1].workspaceName, "New", "WSPatch: item 1 workspaceName patched to 'New'")
+    GUI_AssertEq(items[1].isOnCurrentWorkspace, true, "WSPatch: item 1 isOnCurrentWorkspace recalculated (New=New)")
+    GUI_AssertEq(items[2].workspaceName, "New", "WSPatch: item 2 workspaceName patched to 'New'")
+    GUI_AssertEq(items[2].isOnCurrentWorkspace, true, "WSPatch: item 2 isOnCurrentWorkspace recalculated")
+    GUI_AssertEq(items[3].workspaceName, "Other", "WSPatch: item 3 unpatched (not in store)")
+    GUI_AssertEq(items[3].isOnCurrentWorkspace, false, "WSPatch: item 3 isOnCurrentWorkspace false (Other!=New)")
+
+    ; ----- Test: Items with matching store but unchanged WS stay the same -----
+    GUI_Log("Test: HandleWorkspaceSwitch no-op when store matches frozen items")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "Main"
+
+    items := CreateTestItems(2)
+    items[1].workspaceName := "Main"
+    items[1].isOnCurrentWorkspace := true
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+
+    ; Store has same workspace name
+    gWS_Store[1000] := {workspaceName: "Main"}
+
+    GUI_HandleWorkspaceSwitch()
+
+    GUI_AssertEq(items[1].workspaceName, "Main", "WSPatch noop: workspaceName unchanged")
+    GUI_AssertEq(items[1].isOnCurrentWorkspace, true, "WSPatch noop: isOnCurrentWorkspace still true")
 
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")

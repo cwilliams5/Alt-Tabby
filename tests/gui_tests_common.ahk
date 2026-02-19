@@ -141,6 +141,9 @@ Gdip_InvalidateIconCache(hwnd) {
         gGdip_IconCache.Delete(hwnd)
 }
 
+; Stats accumulate capture mock (called by gui_state.ahk Stats_AccumulateSession)
+global gMock_LastStatsMsg := ""
+
 ; GDI+ icon cache prune mock (called by GUI_RefreshLiveItems)
 global gMock_PruneCalledWith := ""
 Gdip_PruneIconCache(liveHwnds) {
@@ -233,8 +236,10 @@ Blacklist_Init() {
 }
 
 ; Stats mock (gui_state.ahk calls Stats_Accumulate directly)
+global gMock_LastStatsMsg := ""
 Stats_Accumulate(msg) {
-    ; No-op in tests
+    global gMock_LastStatsMsg
+    gMock_LastStatsMsg := msg
 }
 
 ; Flight recorder mock (gui_flight_recorder.ahk not included - it registers F12 hotkey)
@@ -338,9 +343,21 @@ ResetGUIState() {
     gMock_RepaintCount := 0
     global _gGUI_LastCosmeticRepaintTick
     global gWS_Store, gWS_DirtyHwnds
+    global gMock_LastStatsMsg
+    global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps
+    global gStats_Cancellations, gStats_CrossWorkspace, gStats_WorkspaceToggles
+    global gStats_LastSent
     _gGUI_LastCosmeticRepaintTick := 0
     gWS_Store := Map()
     gWS_DirtyHwnds := Map()
+    gMock_LastStatsMsg := ""
+    gStats_AltTabs := 0
+    gStats_QuickSwitches := 0
+    gStats_TabSteps := 0
+    gStats_Cancellations := 0
+    gStats_CrossWorkspace := 0
+    gStats_WorkspaceToggles := 0
+    gStats_LastSent := Map()
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
     ; Cancel any pending pre-cache timer from previous test
