@@ -15,6 +15,26 @@ global IPC_SERVER_IDLE_STREAK_THRESHOLD := 8  ; Ticks before server enters IDLE 
 global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect
 global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)
 
+; ============================================================
+; IPC Client Cooldown State Machine
+; ============================================================
+; When a client has no pending work, it progressively slows polling:
+;
+;   ACTIVE (8ms ticks)
+;     │ response received, idle streak starts
+;     ▼
+;   Phase 0: 8ms ticks for 10 empty ticks (80ms)
+;     ▼
+;   Phase 1: 30ms ticks for 6 more ticks (16-10=6 ticks, ~180ms)
+;     ▼
+;   Phase 2: 50ms ticks for 4 more ticks (20-16=4 ticks, ~200ms)
+;     ▼
+;   Phase 3: IDLE (timer off, wakes on PostMessage)
+;
+; Total ramp-down: ~460ms from last activity to full idle.
+; Tuned for keyboard-driven UX: fast response when active, near-zero CPU when idle.
+; ============================================================
+
 ; Client cooldown thresholds (graduated idle back-off)
 global IPC_COOLDOWN_PHASE1_TICKS := 10   ; Idle ticks before first step-up
 global IPC_COOLDOWN_PHASE2_TICKS := 16   ; Idle ticks before second step-up

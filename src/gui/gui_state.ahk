@@ -202,11 +202,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
 
             ; Freeze: save ALL items (for workspace toggle), then filter
-            ; CRITICAL: Create shallow copy - assignment creates a reference which breaks freeze!
-            gGUI_ToggleBase := []
-            for _, item in gGUI_LiveItems {
-                gGUI_ToggleBase.Push(item)
-            }
+            ; Shallow copy — same item refs, independent array container
+            gGUI_ToggleBase := gGUI_LiveItems.Clone()
             gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
 
             ; DEBUG: Log workspace data of display items

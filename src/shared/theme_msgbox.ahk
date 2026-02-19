@@ -18,6 +18,15 @@
 ; Falls back to native MsgBox if theme system is not initialized.
 ; ============================================================
 
+; ThemeMsgBox layout constants (DIP)
+global TMB_CONTENT_W := 440       ; Dialog content area width
+global TMB_ICON_W := 48           ; Icon column width
+global TMB_ICON_PAD := 16         ; Gap between icon and text
+global TMB_BTN_W := 100           ; Button width
+global TMB_BTN_H := 30            ; Button height
+global TMB_BTN_GAP := 8           ; Gap between buttons
+global TMB_DIALOG_W := 488        ; Total dialog width (used in Show)
+
 ; Result storage for modal wait
 global gTMB_Result := ""
 
@@ -28,6 +37,7 @@ global gTMB_Result := ""
 ; Returns: "OK", "Yes", "No", or "Cancel"
 ThemeMsgBox(text, title := "Message", options := "") {
     global gTMB_Result, gTheme_Initialized
+    global TMB_CONTENT_W, TMB_ICON_W, TMB_ICON_PAD, TMB_BTN_W, TMB_BTN_H, TMB_BTN_GAP, TMB_DIALOG_W
 
     ; Fall back to native MsgBox if theme not initialized
     if (!gTheme_Initialized) {
@@ -51,9 +61,9 @@ ThemeMsgBox(text, title := "Message", options := "") {
     msgGui.SetFont("s10", "Segoe UI")
     themeEntry := Theme_ApplyToGui(msgGui)
 
-    contentW := 440
-    iconW := 48
-    iconPad := 16
+    contentW := TMB_CONTENT_W
+    iconW := TMB_ICON_W
+    iconPad := TMB_ICON_PAD
     accentColor := Theme_GetAccentColor()
     textW := (icon != "") ? (contentW - iconW - iconPad) : contentW
 
@@ -71,6 +81,7 @@ ThemeMsgBox(text, title := "Message", options := "") {
         msgGui.SetFont("s10", "Segoe UI")
 
         ; Message text next to icon — vertically center single-line, top-align multi-line
+        ; ~7 chars per 10px Segoe UI at s10 — heuristic for single-line detection
         isSingleLine := !InStr(text, "`n") && StrLen(text) < (textW / 7)
         textYOff := isSingleLine ? 14 : 4
         hdr := msgGui.AddText("x" (24 + iconW + iconPad) " yp+" textYOff " w" textW " +Wrap c" accentColor, text)
@@ -81,9 +92,9 @@ ThemeMsgBox(text, title := "Message", options := "") {
     }
 
     ; Buttons - right-aligned group, consistent sizing
-    btnW := 100
-    btnH := 30
-    btnGap := 8
+    btnW := TMB_BTN_W
+    btnH := TMB_BTN_H
+    btnGap := TMB_BTN_GAP
 
     btnList := []
     switch buttons {
@@ -119,7 +130,7 @@ ThemeMsgBox(text, title := "Message", options := "") {
     msgGui.OnEvent("Close", (*) => (gTMB_Result := cancelResult, Theme_UntrackGui(msgGui), msgGui.Destroy()))
 
     ; Show - fixed width, auto height
-    msgGui.Show("w488 Center")
+    msgGui.Show("w" TMB_DIALOG_W " Center")
     GUI_AntiFlashReveal(msgGui, true)
 
     WinWaitClose(msgGui.Hwnd)

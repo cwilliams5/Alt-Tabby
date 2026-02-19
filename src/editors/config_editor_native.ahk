@@ -30,6 +30,10 @@ global CEN_DESC_LINE_H := 15
 global CEN_LABEL_W := 180
 global CEN_INPUT_X := 206
 global CEN_SEARCH_H := 44                  ; header bar height (title + search)
+global CEN_EM_SETCUEBANNER := 0x1501       ; Edit control: set placeholder/cue text
+global CEN_EM_SETMARGINS := 0xD3           ; Edit control: set left/right margins
+global CEN_EC_LEFTMARGIN := 1              ; EM_SETMARGINS: set left margin
+global CEN_EC_RIGHTMARGIN := 2             ; EM_SETMARGINS: set right margin
 
 ; ---- State (single Map) ----
 global gCEN := Map()
@@ -180,6 +184,7 @@ _CEN_CalcDescLines(text, charsPerLine) {
 _CEN_BuildMainGUI() {
     global gCEN
     global CEN_WM_MOUSEWHEEL, CEN_WM_VSCROLL, CEN_SIDEBAR_W, CEN_CONTENT_X, CEN_SEARCH_H
+    global CEN_EM_SETCUEBANNER, CEN_EM_SETMARGINS, CEN_EC_LEFTMARGIN, CEN_EC_RIGHTMARGIN
 
     ; Create main window with theme + anti-flash (DWM cloaking)
     gCEN["MainGui"] := Gui("+Resize +MinSize750x450 +0x02000000", "Alt-Tabby Configuration")
@@ -204,8 +209,8 @@ _CEN_BuildMainGUI() {
     hdrTitle.SetFont("s14 bold", "Segoe UI")
     gCEN["SearchEdit"] := gCEN["MainGui"].AddEdit("x524 y10 w260 h24")
     Theme_ApplyToControl(gCEN["SearchEdit"], "Edit", themeEntry)
-    DllCall("user32\SendMessageW", "Ptr", gCEN["SearchEdit"].Hwnd, "UInt", 0x1501, "Ptr", 1, "WStr", "Search settings...")
-    DllCall("user32\SendMessageW", "Ptr", gCEN["SearchEdit"].Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
+    DllCall("user32\SendMessageW", "Ptr", gCEN["SearchEdit"].Hwnd, "UInt", CEN_EM_SETCUEBANNER, "Ptr", 1, "WStr", "Search settings...")
+    DllCall("user32\SendMessageW", "Ptr", gCEN["SearchEdit"].Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
     gCEN["SearchEdit"].OnEvent("Change", _CEN_OnSearchInput)
 
     ; Sidebar with section list (below header border)
@@ -396,6 +401,7 @@ _CEN_BuildPage(section) {
 _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, subIdx) {
     global gCEN, gTheme_Palette, gCEN_SwatchHwnds, gCEN_SwatchSubclassPtr, gCEN_SliderHwnds, gCEN_SliderSubclassPtr
     global CEN_SETTING_PAD, CEN_DESC_LINE_H, CEN_LABEL_W, CEN_INPUT_X
+    global CEN_EM_SETMARGINS, CEN_EC_LEFTMARGIN, CEN_EC_RIGHTMARGIN
 
     mutedColor := Theme_GetMutedColor()
 
@@ -474,7 +480,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                 settingCtrls.Push({ctrl: ud, origY: y, origX: editX})
                 Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
                 Theme_ApplyToControl(ud, "UpDown", gCEN["ThemeEntry"])
-                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
+                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
                 rangeX := editX + 86
                 rc := pageGui.AddText("x" rangeX " y" (y + 3) " w120 h16 c" mutedColor, setting.min " - " setting.max)
                 rc.SetFont("s7 italic", "Segoe UI")
@@ -499,7 +505,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
                     ctrlInfo.fmt := "hex"
                 gCEN["Controls"][setting.g] := ctrlInfo
                 Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
-                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", 0xD3, "Ptr", 3, "Ptr", (6 << 16) | 6)
+                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
 
                 ; Clamp-on-blur for float/hex with range
                 if (hasRange && (setting.t = "float" || isHex)) {

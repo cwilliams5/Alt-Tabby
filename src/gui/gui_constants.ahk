@@ -53,7 +53,20 @@ global GDIP_IMAGE_LOCK_WRITE := 2
 global BITMAPINFOHEADER_SIZE := 40
 global BPP_32 := 32
 
-; Paint layout (DIP values, pre-scale)
+; ============================================================
+; Paint Layout Constants (DIP = Device-Independent Pixels)
+; ============================================================
+; Each row in the overlay has this vertical structure:
+;
+;   y=0  ┌─────────────────────────────────────────┐
+;        │ HDR_Y=4: Header text (workspace label)  │ HEADER_BLOCK=32
+;        │ TITLE_Y=6: Main title  (h=TITLE_H=24)   │
+;        │ SUB_Y=28: Subtitle     (h=SUB_H=18)      │
+;   y=32 └─────────────────────────────────────────┘
+;
+; Horizontal: [ARROW_W=24][ARROW_PAD=8][ content ][ TEXT_RIGHT_PAD=16]
+; Column headers: COL_Y=10, COL_H=20
+; ============================================================
 global PAINT_HEADER_BLOCK_DIP := 32
 global PAINT_HDR_Y_DIP := 4
 global PAINT_TITLE_Y_DIP := 6

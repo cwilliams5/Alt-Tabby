@@ -262,9 +262,8 @@ _BL_InsertInSection(content, sectionName, entry) {
 
 ; Check if a window should be included (passes Alt-Tab eligibility AND blacklist)
 ; Returns true if window should be included, false if it should be filtered out
+; Delegates to Blacklist_IsWindowEligibleEx (DRY — single source for eligibility + blacklist logic)
 Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
-    global cfg
-
     ; Get window info if not provided
     if (title = "" || class = "") {
         ; Skip hung windows - WinGetTitle/WinGetClass send messages that block up to 5s
@@ -282,21 +281,10 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
         }
     }
 
-    ; Skip windows with no title
-    if (title = "")
-        return false
-
-    ; Check Alt-Tab eligibility (use cached config value for hot path performance)
-    global gCached_UseAltTabEligibility
-    if (gCached_UseAltTabEligibility && !_BL_IsAltTabEligible(hwnd))
-        return false
-
-    ; Check blacklist (use cached config value for hot path performance)
-    global gCached_UseBlacklist
-    if (gCached_UseBlacklist && Blacklist_IsMatch(title, class))
-        return false
-
-    return true
+    ; Delegate to Ex variant (vis/min/clk refs discarded — no extra cost since
+    ; the same DllCalls happen either way via _BL_ProbeVisMinCloak)
+    vis := false, min := false, clk := false
+    return Blacklist_IsWindowEligibleEx(hwnd, title, class, &vis, &min, &clk)
 }
 
 ; Alt-Tab eligibility rules (matches Windows behavior)
