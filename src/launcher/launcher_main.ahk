@@ -314,58 +314,63 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED, TABBY_CMD_PUMP_FAILED
     global g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
     global g_StatsCache
+    try {
+        dwData := NumGet(lParam, 0, "uptr")
 
-    dwData := NumGet(lParam, 0, "uptr")
-
-    if (dwData = TABBY_CMD_RESTART_ALL) {
-        if (cfg.DiagLauncherLog)
-            Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
-        if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
-            Launcher_Log("IPC: RESTART_ALL debounced")
+        if (dwData = TABBY_CMD_RESTART_ALL) {
+            if (cfg.DiagLauncherLog)
+                Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
+            if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
+                Launcher_Log("IPC: RESTART_ALL debounced")
+                return 1
+            }
+            g_LastFullRestartTick := A_TickCount
+            SetTimer(_Launcher_ApplyConfigChanges, -1)
             return 1
         }
-        g_LastFullRestartTick := A_TickCount
-        SetTimer(_Launcher_ApplyConfigChanges, -1)
-        return 1
-    }
 
-    if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
-        if (cfg.DiagLauncherLog)
-            Launcher_Log("IPC: Received RELOAD_BLACKLIST from hwnd=" wParam)
-        Launcher_RelayToGui(TABBY_CMD_RELOAD_BLACKLIST)
-        return 1
-    }
-
-    if (dwData = TABBY_CMD_STATS_RESPONSE) {
-        cbData := NumGet(lParam, A_PtrSize, "uptr")
-        lpData := NumGet(lParam, A_PtrSize * 2, "uptr")
-        if (cbData > 0 && lpData) {
-            jsonStr := StrGet(lpData, cbData, "UTF-8")
-            try g_StatsCache := JSON.Load(jsonStr)
+        if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
+            if (cfg.DiagLauncherLog)
+                Launcher_Log("IPC: Received RELOAD_BLACKLIST from hwnd=" wParam)
+            Launcher_RelayToGui(TABBY_CMD_RELOAD_BLACKLIST)
+            return 1
         }
-        ; Async response arrived — refresh dashboard + stats dialog
-        if (IsObject(g_StatsCache)) {
-            Dash_Refresh()
-            StatsDialog_UpdateValues()
+
+        if (dwData = TABBY_CMD_STATS_RESPONSE) {
+            cbData := NumGet(lParam, A_PtrSize, "uptr")
+            lpData := NumGet(lParam, A_PtrSize * 2, "uptr")
+            if (cbData > 0 && lpData) {
+                jsonStr := StrGet(lpData, cbData, "UTF-8")
+                try g_StatsCache := JSON.Load(jsonStr)
+            }
+            ; Async response arrived — refresh dashboard + stats dialog
+            if (IsObject(g_StatsCache)) {
+                Dash_Refresh()
+                StatsDialog_UpdateValues()
+            }
+            return 1
         }
-        return 1
-    }
 
-    if (dwData = TABBY_CMD_EDITOR_CLOSED) {
-        ; Editor process is about to exit — delay refresh so PID is gone
-        SetTimer(Dash_Refresh, -500)
-        return 1
-    }
+        if (dwData = TABBY_CMD_EDITOR_CLOSED) {
+            ; Editor process is about to exit — delay refresh so PID is gone
+            SetTimer(Dash_Refresh, -500)
+            return 1
+        }
 
-    if (dwData = TABBY_CMD_PUMP_FAILED) {
-        if (cfg.DiagLauncherLog)
-            Launcher_Log("IPC: Received PUMP_FAILED from GUI, restarting pump")
-        ; Kill hung pump if still alive, restart, then notify GUI to reconnect
-        SetTimer(_Launcher_RestartPumpAndNotify, -50)
-        return 1
-    }
+        if (dwData = TABBY_CMD_PUMP_FAILED) {
+            if (cfg.DiagLauncherLog)
+                Launcher_Log("IPC: Received PUMP_FAILED from GUI, restarting pump")
+            ; Kill hung pump if still alive, restart, then notify GUI to reconnect
+            SetTimer(_Launcher_RestartPumpAndNotify, -50)
+            return 1
+        }
 
-    return 0
+        return 0
+    } catch as e {
+        global LOG_PATH_LAUNCHER
+        try LogAppend(LOG_PATH_LAUNCHER, "Launcher_OnCopyData err=" e.Message " file=" e.File " line=" e.Line)
+        return 0
+    }
 }
 
 ; Relay a WM_COPYDATA command to the GUI process

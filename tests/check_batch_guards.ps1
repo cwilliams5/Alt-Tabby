@@ -1305,17 +1305,17 @@ $sw.Stop()
 
 # ============================================================
 # Sub-check 11: producer_error_boundary
-# Enforces try-catch error boundaries in producer callbacks.
+# Enforces try-catch error boundaries in producer callbacks and OnMessage handlers.
 # After the store→MainProcess refactor, producer errors crash
-# the entire app. Commit 67fa152 added error boundaries to all
-# 12 timer callbacks + 2 notification callbacks. This check
-# prevents regression if boundaries are removed or new callbacks
-# are added without them.
+# the entire app. This check prevents regression if boundaries
+# are removed or new callbacks/handlers are added without them.
 #
-# Two categories:
+# Three categories:
 #   A. Notification callbacks: functions wired via *_SetCallbacks()
 #   B. Producer timer callbacks: functions registered via SetTimer()
-#      in producer files (core/*.ahk, gui_main.ahk timer section)
+#      in core/*.ahk, gui_pump.ahk, gui_main.ahk (auto-discovered)
+#   C. OnMessage handlers: functions registered via OnMessage()
+#      in MainProcess (gui/, core/) and Launcher (launcher/) files
 #
 # Suppress: ; lint-ignore: error-boundary (on function definition line)
 # ============================================================
@@ -1323,11 +1323,9 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $EB_SUPPRESSION = 'lint-ignore: error-boundary'
 $ebIssues = [System.Collections.ArrayList]::new()
 
-# Producer/core files where timer callbacks must have error boundaries
-$EB_PRODUCER_FILES = @(
-    'winevent_hook.ahk', 'komorebi_sub.ahk', 'icon_pump.ahk',
-    'proc_pump.ahk', 'mru_lite.ahk', 'winenum_lite.ahk'
-)
+# Auto-discover producer files: all core/*.ahk + gui_pump.ahk + gui_main.ahk
+# Using auto-discovery prevents new producer files from being silently missed.
+$EB_PRODUCER_PATTERNS = @('src\core\*.ahk', 'src\gui\gui_pump.ahk', 'src\gui\gui_main.ahk')
 
 # Build function definition index: funcName -> @{ File; Line; Lines (body start) }
 # Reuse $allFiles and $fileCache from shared cache
@@ -1437,8 +1435,12 @@ $ebTimerCallbacks = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::Ordinal)
 
 foreach ($file in $allFiles) {
-    # Only check producer files and gui_main.ahk
-    $isProducerFile = $file.Name -in $EB_PRODUCER_FILES -or $file.Name -eq 'gui_main.ahk'
+    # Only check auto-discovered producer files (core/*.ahk, gui_pump.ahk, gui_main.ahk)
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $isProducerFile = $false
+    foreach ($pattern in $EB_PRODUCER_PATTERNS) {
+        if ($relPath -like $pattern) { $isProducerFile = $true; break }
+    }
     if (-not $isProducerFile) { continue }
 
     $lines = $fileCache[$file.FullName]
@@ -1473,9 +1475,38 @@ foreach ($file in $allFiles) {
     }
 }
 
+# Category C: OnMessage handlers — external entry points from Windows message pump.
+# If these throw, the app crashes (same risk as timer callbacks post-refactor).
+# Scoped to MainProcess (gui/, core/) and Launcher (launcher/) files only —
+# handlers in separate subprocesses (pump/, editors/) or shared infrastructure
+# (shared/theme.ahk) are either crash-contained or pre-existing low-risk paint callbacks.
+$ebOnMessageCallbacks = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+$EB_ONMSG_SCOPE = @('src\gui\*', 'src\core\*', 'src\launcher\*')
+
+foreach ($file in $allFiles) {
+    $omRelPath = $file.FullName.Replace("$projectRoot\", '')
+    $inScope = $false
+    foreach ($pattern in $EB_ONMSG_SCOPE) {
+        if ($omRelPath -like $pattern) { $inScope = $true; break }
+    }
+    if (-not $inScope) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        # Match: OnMessage(msgId, callbackFunc) — direct function reference
+        if ($raw -match 'OnMessage\s*\(\s*\w+\s*,\s*([A-Za-z_]\w+)\s*[,)]') {
+            [void]$ebOnMessageCallbacks.Add($Matches[1])
+        }
+    }
+}
+
 # Validate all identified callbacks have try-catch
 $allCallbacks = [System.Collections.Generic.HashSet[string]]::new($ebNotificationCallbacks, [System.StringComparer]::Ordinal)
 foreach ($cb in $ebTimerCallbacks) { [void]$allCallbacks.Add($cb) }
+foreach ($cb in $ebOnMessageCallbacks) { [void]$allCallbacks.Add($cb) }
 
 foreach ($cbName in $allCallbacks) {
     if (-not $ebFuncDefs.ContainsKey($cbName)) { continue }
@@ -1489,7 +1520,9 @@ foreach ($cbName in $allCallbacks) {
     if (EB_IsTrivial $info.Lines $info.DefLine) { continue }
 
     if (-not (EB_HasTryCatch $info.Lines $info.DefLine)) {
-        $category = if ($ebNotificationCallbacks.Contains($cbName)) { 'notification' } else { 'timer' }
+        $category = if ($ebNotificationCallbacks.Contains($cbName)) { 'notification' }
+                    elseif ($ebOnMessageCallbacks.Contains($cbName)) { 'onmessage' }
+                    else { 'timer' }
         [void]$ebIssues.Add([PSCustomObject]@{
             File     = $info.File
             Line     = $info.DefLine + 1
@@ -1502,9 +1535,9 @@ foreach ($cbName in $allCallbacks) {
 if ($ebIssues.Count -gt 0) {
     $anyFailed = $true
     [void]$failOutput.AppendLine("")
-    [void]$failOutput.AppendLine("  FAIL: $($ebIssues.Count) producer callback(s) missing try-catch error boundary.")
-    [void]$failOutput.AppendLine("  After the store->MainProcess refactor, producer errors crash the entire app.")
-    [void]$failOutput.AppendLine("  All producer callbacks MUST wrap their body in try { ... } catch { log + disable }.")
+    [void]$failOutput.AppendLine("  FAIL: $($ebIssues.Count) callback(s) missing try-catch error boundary.")
+    [void]$failOutput.AppendLine("  After the store->MainProcess refactor, unhandled errors crash the entire app.")
+    [void]$failOutput.AppendLine("  All producer callbacks and OnMessage handlers MUST wrap their body in try { ... } catch { ... }.")
     [void]$failOutput.AppendLine("  Fix: add try { at the top of the function body (after global declarations).")
     [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: error-boundary' on the function definition line.")
     $grouped = $ebIssues | Group-Object File

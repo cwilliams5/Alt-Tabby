@@ -982,7 +982,7 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
     'postmessage-unsafe', 'callback-signature',
     'static-in-timer', 'timer-lifecycle',
     'dead-function', 'dead-config', 'dead-global', 'dead-local', 'dead-param', 'test-assertions',
-    'arity',
+    'arity', 'error-boundary',
     'onevent-name', 'destroy-untrack',
     'unreachable-code', 'ipc-symmetry'
 ) | ForEach-Object { [void]$validLintNames.Add($_) }
@@ -1022,7 +1022,7 @@ if ($liIssues.Count -gt 0) {
     [void]$failOutput.AppendLine("  FAIL: $($liIssues.Count) lint-ignore comment(s) with unrecognized check name.")
     [void]$failOutput.AppendLine("  These suppressions have no effect - the check name doesn't match any known check.")
     [void]$failOutput.AppendLine("  Fix: correct the check name spelling, or remove the suppression if no longer needed.")
-    [void]$failOutput.AppendLine("  Valid names: $($validLintNames | Sort-Object | Join-String -Separator ', ')")
+    [void]$failOutput.AppendLine("  Valid names: $(($validLintNames | Sort-Object) -join ', ')")
     $grouped = $liIssues | Group-Object File
     foreach ($group in $grouped | Sort-Object Name) {
         [void]$failOutput.AppendLine("    $($group.Name):")
@@ -1281,6 +1281,22 @@ foreach ($file in $allFiles) {
             [void]$starts[$cbName].Add($i + 1)
         }
 
+        # Pattern 2b: SetTimer(() => ..., period) - arrow function (uncancellable)
+        # Arrow functions create a new object each call, same problem as inline .Bind().
+        if ($cleaned -match 'SetTimer\(\s*\(' -and $cleaned -match '=>') {
+            if ($cleaned -match 'SetTimer\(\s*\(.*?\)\s*=>.*?,\s*(.+?)\s*\)') {
+                $periodStr = $Matches[1].Trim()
+                if ($periodStr -ne '0' -and $periodStr -notmatch '^-' -and $periodStr -match '^\d+$' -and [int]$periodStr -gt 0) {
+                    [void]$bindIdentityIssues.Add([PSCustomObject]@{
+                        File     = $relPath
+                        Line     = ($i + 1)
+                        Callback = '() =>'
+                        Period   = $periodStr
+                    })
+                }
+            }
+        }
+
         # Pattern 3: varName := FuncName.Bind(...) - track bound variable
         if ($cleaned -match '(\w+)\s*:=\s*([A-Za-z_]\w+)\.Bind\(') {
             $varName = $Matches[1]
@@ -1466,8 +1482,8 @@ if ($deadCancelIssues.Count -gt 0) {
 if ($bindIdentityIssues.Count -gt 0) {
     $anyFailed = $true
     [void]$failOutput.AppendLine("")
-    [void]$failOutput.AppendLine("  FAIL: $($bindIdentityIssues.Count) repeating timer(s) with inline .Bind() found.")
-    [void]$failOutput.AppendLine("  Each .Bind() creates a new object, so SetTimer(fn.Bind(x), 0) won't cancel")
+    [void]$failOutput.AppendLine("  FAIL: $($bindIdentityIssues.Count) repeating timer(s) with inline .Bind() or arrow function found.")
+    [void]$failOutput.AppendLine("  Each .Bind()/arrow creates a new object, so SetTimer(fn.Bind(x), 0) won't cancel")
     [void]$failOutput.AppendLine("  a timer started with SetTimer(fn.Bind(x), period) - different objects.")
     [void]$failOutput.AppendLine("  Fix: store the bound ref in a variable first:")
     [void]$failOutput.AppendLine("    boundRef := Func.Bind(args)")
@@ -1478,7 +1494,11 @@ if ($bindIdentityIssues.Count -gt 0) {
     foreach ($group in $grouped | Sort-Object Name) {
         [void]$failOutput.AppendLine("    $($group.Name):")
         foreach ($issue in $group.Group | Sort-Object Line) {
-            [void]$failOutput.AppendLine("      Line $($issue.Line): SetTimer($($issue.Callback).Bind(...), $($issue.Period)) - inline .Bind() creates uncancellable timer")
+            if ($issue.Callback -eq '() =>') {
+                [void]$failOutput.AppendLine("      Line $($issue.Line): SetTimer(() => ..., $($issue.Period)) - arrow function creates uncancellable timer")
+            } else {
+                [void]$failOutput.AppendLine("      Line $($issue.Line): SetTimer($($issue.Callback).Bind(...), $($issue.Period)) - inline .Bind() creates uncancellable timer")
+            }
         }
     }
 }

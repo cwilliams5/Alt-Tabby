@@ -142,84 +142,90 @@ _GUIPump_CollectTick() {
     global _gPump_LastRequestTick, _gPump_LastResponseTick
     global _gPump_IdleTicks, _gPump_IdleThreshold, _gPump_TimerOn, _gPump_CollectTimerFn
     global _gPump_HelloSent, _gPump_PumpHwnd
+    static _errCount := 0
+    try {
+        if (!_gPump_Connected)
+            return
 
-    if (!_gPump_Connected)
-        return
+        ; Hang detection: sent request but no response within timeout.
+        ; Must run before idle check — timer must stay running while request is in flight.
+        if (_gPump_LastRequestTick > _gPump_LastResponseTick
+            && (A_TickCount - _gPump_LastRequestTick) > cfg.PumpHangTimeoutMs) {
+            if (cfg.DiagPumpLog)
+                _GUIPump_Log("HUNG: No response for " (A_TickCount - _gPump_LastRequestTick) "ms, declaring pump hung")
+            _GUIPump_HandleFailure("hung")
+            return
+        }
 
-    ; Hang detection: sent request but no response within timeout.
-    ; Must run before idle check — timer must stay running while request is in flight.
-    if (_gPump_LastRequestTick > _gPump_LastResponseTick
-        && (A_TickCount - _gPump_LastRequestTick) > cfg.PumpHangTimeoutMs) {
-        if (cfg.DiagPumpLog)
-            _GUIPump_Log("HUNG: No response for " (A_TickCount - _gPump_LastRequestTick) "ms, declaring pump hung")
-        _GUIPump_HandleFailure("hung")
-        return
-    }
+        ; Drain icon queue — collect hwnds that need enrichment
+        hwnds := WL_PopIconBatch(32)
 
-    ; Drain icon queue — collect hwnds that need enrichment
-    hwnds := WL_PopIconBatch(32)
-
-    ; Also drain PID queue — collect PIDs, then resolve to hwnds
-    ; The pump resolves processName by hwnd (via WinGetPID + OpenProcess),
-    ; so we need hwnds, not PIDs. Merge PID windows into the hwnd batch.
-    pids := WL_PopPidBatch(32)
-    if (pids.Length > 0) {
-        ; Find hwnds with these PIDs that aren't already in the batch
-        pidSet := Map()
-        for _, pid in pids
-            pidSet[pid] := true
-        ; Get hwnds from store by PID
-        pidHwnds := WL_GetHwndsByPids(pidSet)
-        ; Merge, deduplicating
-        hwndSet := Map()
-        for _, h in hwnds
-            hwndSet[h] := true
-        for _, h in pidHwnds {
-            if (!hwndSet.Has(h)) {
-                hwnds.Push(h)
+        ; Also drain PID queue — collect PIDs, then resolve to hwnds
+        ; The pump resolves processName by hwnd (via WinGetPID + OpenProcess),
+        ; so we need hwnds, not PIDs. Merge PID windows into the hwnd batch.
+        pids := WL_PopPidBatch(32)
+        if (pids.Length > 0) {
+            ; Find hwnds with these PIDs that aren't already in the batch
+            pidSet := Map()
+            for _, pid in pids
+                pidSet[pid] := true
+            ; Get hwnds from store by PID
+            pidHwnds := WL_GetHwndsByPids(pidSet)
+            ; Merge, deduplicating
+            hwndSet := Map()
+            for _, h in hwnds
                 hwndSet[h] := true
+            for _, h in pidHwnds {
+                if (!hwndSet.Has(h)) {
+                    hwnds.Push(h)
+                    hwndSet[h] := true
+                }
             }
         }
-    }
 
-    if (hwnds.Length = 0) {
-        ; Don't pause if waiting for a response — need timer running for hang detection
-        if (_gPump_LastRequestTick > _gPump_LastResponseTick)
+        if (hwnds.Length = 0) {
+            ; Don't pause if waiting for a response — need timer running for hang detection
+            if (_gPump_LastRequestTick > _gPump_LastResponseTick)
+                return
+            Pump_HandleIdle(&_gPump_IdleTicks, _gPump_IdleThreshold, &_gPump_TimerOn, _gPump_CollectTimerFn)
             return
-        Pump_HandleIdle(&_gPump_IdleTicks, _gPump_IdleThreshold, &_gPump_TimerOn, _gPump_CollectTimerFn)
-        return
+        }
+
+        ; Reset idle counter on work
+        _gPump_IdleTicks := 0
+
+        ; Build enrich request
+        if (gFR_Enabled)
+            FR_Record(FR_EV_ENRICH_REQ, hwnds.Length)
+        global IPC_MSG_ENRICH
+        request := Map("type", IPC_MSG_ENRICH, "hwnds", hwnds)
+
+        ; Include GUI hwnd on first request so pump can PostMessage wake us
+        if (!_gPump_HelloSent) {
+            request["guiHwnd"] := A_ScriptHwnd
+            _gPump_HelloSent := true
+        }
+
+        requestJson := JSON.Dump(request)
+
+        if (cfg.DiagPumpLog)
+            _GUIPump_Log("CollectTick sending " hwnds.Length " hwnds, jsonLen=" StrLen(requestJson))
+
+        ; Send to pump (with PostMessage wake if we know pump's hwnd)
+        ok := IPC_PipeClient_Send(_gPump_Client, requestJson, _gPump_PumpHwnd)
+        if (!ok) {
+            _GUIPump_HandleFailure("pipe_write")
+            return
+        }
+        _gPump_LastRequestTick := A_TickCount
+
+        ; Start IPC client timer as safety-net poll for response (8ms)
+        _GUIPump_StartClientTimer()
+        _errCount := 0
+    } catch as e {
+        global LOG_PATH_IPC
+        HandleTimerError(e, &_errCount, _gPump_CollectTimerFn, LOG_PATH_IPC, "GUIPump_CollectTick")
     }
-
-    ; Reset idle counter on work
-    _gPump_IdleTicks := 0
-
-    ; Build enrich request
-    if (gFR_Enabled)
-        FR_Record(FR_EV_ENRICH_REQ, hwnds.Length)
-    global IPC_MSG_ENRICH
-    request := Map("type", IPC_MSG_ENRICH, "hwnds", hwnds)
-
-    ; Include GUI hwnd on first request so pump can PostMessage wake us
-    if (!_gPump_HelloSent) {
-        request["guiHwnd"] := A_ScriptHwnd
-        _gPump_HelloSent := true
-    }
-
-    requestJson := JSON.Dump(request)
-
-    if (cfg.DiagPumpLog)
-        _GUIPump_Log("CollectTick sending " hwnds.Length " hwnds, jsonLen=" StrLen(requestJson))
-
-    ; Send to pump (with PostMessage wake if we know pump's hwnd)
-    ok := IPC_PipeClient_Send(_gPump_Client, requestJson, _gPump_PumpHwnd)
-    if (!ok) {
-        _GUIPump_HandleFailure("pipe_write")
-        return
-    }
-    _gPump_LastRequestTick := A_TickCount
-
-    ; Start IPC client timer as safety-net poll for response (8ms)
-    _GUIPump_StartClientTimer()
 }
 
 ; ========================= MESSAGE HANDLER =========================
@@ -319,7 +325,7 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
 
 ; ========================= PIPE WAKE =========================
 
-_GUIPump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_GUIPump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param ; lint-ignore: error-boundary
     Critical "On"
     global _gPump_Client
     if (IsObject(_gPump_Client))

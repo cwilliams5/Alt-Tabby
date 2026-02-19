@@ -39,19 +39,26 @@ KomorebiLite_Stop() {
 
 _KomorebiLite_Tick() {
     global _KLite_StateObj
-    if !_KomorebiLite_IsAvailable()
-        return
-    stateObj := _KomorebiLite_GetState()
-    if !(stateObj is Map)
-        return
-    ws := _KomorebiLite_FindCurrentWorkspaceName(stateObj)
-    if (ws != "")
-        WL_SetCurrentWorkspace("", ws)
-    hwnd := WinGetID("A")
-    if (hwnd) {
-        wsn := KSub_FindWorkspaceByHwnd(stateObj, hwnd)
-        if (wsn != "")
-            WL_UpdateFields(hwnd, { workspaceName: wsn, isOnCurrentWorkspace: (wsn = ws) })
+    static _errCount := 0
+    try {
+        if !_KomorebiLite_IsAvailable()
+            return
+        stateObj := _KomorebiLite_GetState()
+        if !(stateObj is Map)
+            return
+        ws := _KomorebiLite_FindCurrentWorkspaceName(stateObj)
+        if (ws != "")
+            WL_SetCurrentWorkspace("", ws)
+        hwnd := WinGetID("A")
+        if (hwnd) {
+            wsn := KSub_FindWorkspaceByHwnd(stateObj, hwnd)
+            if (wsn != "")
+                WL_UpdateFields(hwnd, { workspaceName: wsn, isOnCurrentWorkspace: (wsn = ws) })
+        }
+        _errCount := 0
+    } catch as e {
+        global LOG_PATH_STORE
+        HandleTimerError(e, &_errCount, _KomorebiLite_Tick, LOG_PATH_STORE, "KomorebiLite_Tick")
     }
 }
 

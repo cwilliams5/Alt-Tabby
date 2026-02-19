@@ -522,25 +522,32 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
 _GUI_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     Critical "On"
     global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_RELOAD_BLACKLIST, TABBY_CMD_PUMP_RESTARTED
-    dwData := NumGet(lParam, 0, "uptr")
-    if (dwData = TABBY_CMD_TOGGLE_VIEWER) {
-        Viewer_Toggle()
+    try {
+        dwData := NumGet(lParam, 0, "uptr")
+        if (dwData = TABBY_CMD_TOGGLE_VIEWER) {
+            Viewer_Toggle()
+            Critical "Off"
+            return true
+        }
+        if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
+            Blacklist_Init()
+            WL_PurgeBlacklisted()
+            Critical "Off"
+            return true
+        }
+        if (dwData = TABBY_CMD_PUMP_RESTARTED) {
+            GUIPump_Reconnect()
+            Critical "Off"
+            return true
+        }
         Critical "Off"
-        return true
-    }
-    if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
-        Blacklist_Init()
-        WL_PurgeBlacklisted()
+        return 0
+    } catch as e {
         Critical "Off"
-        return true
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "GUI_OnCopyData err=" e.Message " file=" e.File " line=" e.Line)
+        return 0
     }
-    if (dwData = TABBY_CMD_PUMP_RESTARTED) {
-        GUIPump_Reconnect()
-        Critical "Off"
-        return true
-    }
-    Critical "Off"
-    return 0
 }
 
 ; Stats request handler — receives PostMessage(IPC_WM_STATS_REQUEST) from launcher.
@@ -549,23 +556,30 @@ _GUI_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 _GUI_OnStatsRequest(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     Critical "On"
     global TABBY_CMD_STATS_RESPONSE, WM_COPYDATA
-    senderHwnd := wParam
-    if (!senderHwnd) {
+    try {
+        senderHwnd := wParam
+        if (!senderHwnd) {
+            Critical "Off"
+            return 0
+        }
+        snap := Stats_GetSnapshot()
+        jsonStr := JSON.Dump(snap)
+        cbData := StrPut(jsonStr, "UTF-8")
+        payload := Buffer(cbData, 0)
+        StrPut(jsonStr, payload, "UTF-8")
+        cds := Buffer(A_PtrSize * 3, 0)
+        NumPut("uptr", TABBY_CMD_STATS_RESPONSE, cds, 0)
+        NumPut("uptr", cbData, cds, A_PtrSize)
+        NumPut("uptr", payload.Ptr, cds, A_PtrSize * 2)
+        DetectHiddenWindows(true)
+        try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " senderHwnd)
+        DetectHiddenWindows(false)
         Critical "Off"
+        return 1
+    } catch as e {
+        Critical "Off"
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "GUI_OnStatsRequest err=" e.Message " file=" e.File " line=" e.Line)
         return 0
     }
-    snap := Stats_GetSnapshot()
-    jsonStr := JSON.Dump(snap)
-    cbData := StrPut(jsonStr, "UTF-8")
-    payload := Buffer(cbData, 0)
-    StrPut(jsonStr, payload, "UTF-8")
-    cds := Buffer(A_PtrSize * 3, 0)
-    NumPut("uptr", TABBY_CMD_STATS_RESPONSE, cds, 0)
-    NumPut("uptr", cbData, cds, A_PtrSize)
-    NumPut("uptr", payload.Ptr, cds, A_PtrSize * 2)
-    DetectHiddenWindows(true)
-    try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " senderHwnd)
-    DetectHiddenWindows(false)
-    Critical "Off"
-    return 1
 }
