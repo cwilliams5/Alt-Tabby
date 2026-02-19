@@ -4,6 +4,9 @@
 #   - Too many arguments (not variadic) → runtime crash
 # Neither is caught at parse time by AHK v2.
 #
+# Also resolves callback variable wiring (SetCallbacks patterns):
+#   gIP_PopBatch(N) → resolves to WL_PopIconBatch() → validates arity.
+#
 # Skips: dynamic calls (%func%()), .Bind() partial application,
 #        method calls (obj.Method()), src/lib/ third-party code.
 # Suppress: ; lint-ignore: arity
@@ -295,6 +298,166 @@ foreach ($file in $srcFiles) {
 $pass1Sw.Stop()
 
 # ============================================================
+# Pass 1b: Callback variable resolution
+# Maps callback globals (e.g., gIP_PopBatch) to their wired
+# functions (e.g., WL_PopIconBatch) via SetCallbacks() wiring.
+# This enables arity checking when callbacks are invoked through
+# global variables: gIP_PopBatch(N) → validates against WL_PopIconBatch.
+# ============================================================
+$pass1bSw = [System.Diagnostics.Stopwatch]::StartNew()
+$callbackResolution = @{}  # globalVarName -> resolved funcName from $funcDefs
+
+# Helper: split argument string at top-level commas (respects nesting)
+function Split-TopLevelArgs {
+    param([string]$inner)
+    $trimmed = $inner.Trim()
+    if ($trimmed.Length -eq 0) { return @() }
+    $result = [System.Collections.ArrayList]::new()
+    $current = [System.Text.StringBuilder]::new()
+    $nestDepth = 0; $inDQ = $false; $inSQ = $false
+    foreach ($c in $inner.ToCharArray()) {
+        if ($inDQ) { if ($c -eq '"') { $inDQ = $false }; [void]$current.Append($c); continue }
+        if ($inSQ) { if ($c -eq "'") { $inSQ = $false }; [void]$current.Append($c); continue }
+        if ($c -eq '"') { $inDQ = $true; [void]$current.Append($c); continue }
+        if ($c -eq "'") { $inSQ = $true; [void]$current.Append($c); continue }
+        if ($c -eq '(' -or $c -eq '[' -or $c -eq '{') { $nestDepth++; [void]$current.Append($c) }
+        elseif ($c -eq ')' -or $c -eq ']' -or $c -eq '}') {
+            if ($nestDepth -gt 0) { $nestDepth-- }
+            [void]$current.Append($c)
+        }
+        elseif ($c -eq ',' -and $nestDepth -eq 0) {
+            [void]$result.Add($current.ToString().Trim())
+            [void]$current.Clear()
+        }
+        else { [void]$current.Append($c) }
+    }
+    if ($current.Length -gt 0) { [void]$result.Add($current.ToString().Trim()) }
+    return @($result)
+}
+
+# Step 1: Find SetCallbacks-style function definitions.
+# Pattern: function body assigns parameters to declared globals.
+$setCallbacksFuncs = @{}  # funcName -> @{ ParamIdx -> GlobalName }
+
+foreach ($file in $srcFiles) {
+    $lines = $fileCache[$file.FullName]
+    $depth = 0; $inFunc = $false
+    $curFuncName = ''; $curFuncParams = @()
+    $curFuncDepth = -1
+    $curFuncBody = [System.Collections.ArrayList]::new()
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $cleaned = Clean-Line $lines[$i]
+        if ($cleaned -eq '') { continue }
+
+        if ($depth -eq 0 -and -not $inFunc -and $cleaned -match '^\s*(\w+)\s*\(([^)]*)\)\s*\{') {
+            $fname = $Matches[1]; $pStr = $Matches[2]
+            if (-not $AHK_KEYWORDS.ContainsKey($fname.ToLower())) {
+                $inFunc = $true; $curFuncDepth = $depth
+                $curFuncName = $fname
+                $curFuncBody.Clear()
+                $curFuncParams = @()
+                if ($pStr.Trim().Length -gt 0) {
+                    foreach ($p in ($pStr -split ',')) {
+                        $tp = $p.Trim() -replace '^\s*&?\s*', '' -replace '\s*:=.*$', '' -replace '\*$', ''
+                        if ($tp -match '^\w+$') { $curFuncParams += $tp }
+                    }
+                }
+            }
+        }
+
+        if ($inFunc) { [void]$curFuncBody.Add($cleaned) }
+
+        $braces = Count-Braces $cleaned
+        $depth += $braces[0] - $braces[1]
+        if ($depth -lt 0) { $depth = 0 }
+
+        if ($inFunc -and $depth -le $curFuncDepth) {
+            # Function ended — check if it wires params to globals
+            $bodyGlobals = [System.Collections.Generic.HashSet[string]]::new()
+            foreach ($bl in $curFuncBody) {
+                if ($bl -match '^\s*global\b\s+(.+)') {
+                    foreach ($gv in ($Matches[1] -split ',')) {
+                        $gvt = $gv.Trim()
+                        if ($gvt -match '^\w+$') { [void]$bodyGlobals.Add($gvt) }
+                    }
+                }
+            }
+
+            $paramIdxToGlobal = @{}
+            foreach ($bl in $curFuncBody) {
+                if ($bl -match '^\s*(\w+)\s*:=\s*(\w+)\s*$') {
+                    $lhs = $Matches[1]; $rhs = $Matches[2]
+                    if ($bodyGlobals.Contains($lhs)) {
+                        $pIdx = [array]::IndexOf($curFuncParams, $rhs)
+                        if ($pIdx -ge 0) { $paramIdxToGlobal[$pIdx] = $lhs }
+                    }
+                }
+            }
+
+            if ($paramIdxToGlobal.Count -ge 2) {
+                $setCallbacksFuncs[$curFuncName] = $paramIdxToGlobal
+            }
+
+            $inFunc = $false; $curFuncDepth = -1
+        }
+    }
+}
+
+# Step 2: Find call sites of SetCallbacks functions, resolve args to function names
+foreach ($file in $srcFiles) {
+    $lines = $fileCache[$file.FullName]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($raw.IndexOf('(', [System.StringComparison]::Ordinal) -lt 0) { continue }
+        $cleaned = Clean-Line $raw
+        if ($cleaned -eq '') { continue }
+
+        foreach ($scFunc in $setCallbacksFuncs.Keys) {
+            if ($cleaned.IndexOf($scFunc, [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+            $cm = [regex]::Match($cleaned, '(?<![.\w])' + [regex]::Escape($scFunc) + '\s*\(')
+            if (-not $cm.Success) { continue }
+
+            $parenPos = $cm.Index + $cm.Length - 1
+            # Handle multi-line calls
+            $fullText = $cleaned
+            $lineIdx = $i
+            $afterParen = $fullText.Substring($parenPos)
+            $openParens = ($afterParen -split '\(').Count - ($afterParen -split '\)').Count
+            while ($openParens -gt 0 -and ($lineIdx + 1) -lt $lines.Count) {
+                $lineIdx++
+                $nc = Clean-Line $lines[$lineIdx]
+                if ($nc -eq '') { continue }
+                $fullText += ' ' + $nc
+                $afterParen = $fullText.Substring($parenPos)
+                $openParens = ($afterParen -split '\(').Count - ($afterParen -split '\)').Count
+            }
+
+            $reM = [regex]::Match($fullText, '(?<![.\w])' + [regex]::Escape($scFunc) + '\s*\(')
+            if (-not $reM.Success) { continue }
+            $actualParenPos = $reM.Index + $reM.Length - 1
+            $argContent = Extract-ParenContent $fullText $actualParenPos
+            if ($null -eq $argContent) { continue }
+
+            $argList = Split-TopLevelArgs $argContent
+            $mapping = $setCallbacksFuncs[$scFunc]
+            foreach ($paramIdx in $mapping.Keys) {
+                $globalName = $mapping[$paramIdx]
+                if ($paramIdx -lt $argList.Count) {
+                    $argVal = $argList[$paramIdx]
+                    if ($funcDefs.ContainsKey($argVal)) {
+                        $callbackResolution[$globalName] = $argVal
+                    }
+                }
+            }
+        }
+    }
+}
+$pass1bSw.Stop()
+
+# ============================================================
 # Pass 2: Find call sites and check argument count
 # ============================================================
 $pass2Sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -327,10 +490,21 @@ foreach ($file in $srcFiles) {
         foreach ($cm in $callMatches) {
             $callName = $cm.Groups[1].Value
 
-            # Skip keywords, builtins, unknown functions
+            # Skip keywords, builtins
             if ($AHK_KEYWORDS.ContainsKey($callName.ToLower())) { continue }
             if ($AHK_BUILTINS.ContainsKey($callName)) { continue }
-            if (-not $funcNameSet.Contains($callName)) { continue }
+
+            # Resolve: direct function OR callback variable → wired function
+            $resolvedName = $callName
+            $isCallback = $false
+            if (-not $funcNameSet.Contains($callName)) {
+                if ($callbackResolution.ContainsKey($callName)) {
+                    $resolvedName = $callbackResolution[$callName]
+                    $isCallback = $true
+                } else {
+                    continue
+                }
+            }
 
             # Skip .Bind() partial application on the same line
             if ($cleaned -match ([regex]::Escape($callName) + '\s*\.\s*Bind\s*\(')) { continue }
@@ -361,7 +535,7 @@ foreach ($file in $srcFiles) {
             if ($null -eq $argContent) { continue }  # unbalanced parens
 
             $argCount = Count-Args $argContent
-            $def = $funcDefs[$callName]
+            $def = $funcDefs[$resolvedName]
 
             # Check arity
             $tooFew = $argCount -lt $def.Required
@@ -373,10 +547,13 @@ foreach ($file in $srcFiles) {
                 } else {
                     $detail = "too many args: got $argCount, max is $($def.Max)"
                 }
+                if ($isCallback) {
+                    $detail += " (callback: $callName -> $resolvedName)"
+                }
                 [void]$issues.Add([PSCustomObject]@{
                     File     = $relPath
                     Line     = ($i + 1)
-                    Function = $callName
+                    Function = if ($isCallback) { "$callName (-> $resolvedName)" } else { $callName }
                     Detail   = $detail
                     DefFile  = $def.File
                     DefLine  = $def.Line
@@ -391,8 +568,8 @@ $totalSw.Stop()
 # ============================================================
 # Report
 # ============================================================
-$timingLine = "  Timing: pass1=$($pass1Sw.ElapsedMilliseconds)ms  pass2=$($pass2Sw.ElapsedMilliseconds)ms  total=$($totalSw.ElapsedMilliseconds)ms"
-$statsLine  = "  Stats:  $($funcDefs.Count) function definitions, $($srcFiles.Count) files"
+$timingLine = "  Timing: pass1=$($pass1Sw.ElapsedMilliseconds)ms  pass1b=$($pass1bSw.ElapsedMilliseconds)ms  pass2=$($pass2Sw.ElapsedMilliseconds)ms  total=$($totalSw.ElapsedMilliseconds)ms"
+$statsLine  = "  Stats:  $($funcDefs.Count) function definitions, $($callbackResolution.Count) callback resolutions, $($srcFiles.Count) files"
 
 if ($issues.Count -gt 0) {
     Write-Host ""

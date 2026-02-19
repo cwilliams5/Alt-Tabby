@@ -991,6 +991,9 @@ $sw.Stop()
 # Detects .property access on variables assigned from Map-creating
 # expressions (Map(), cJSON.Parse(), JSON.Parse()). In AHK v2,
 # Maps use ["key"] indexing; .property access throws MethodError.
+# Also propagates Map type through bracket access:
+#   result := cJSON.Parse(json)  → result tracked
+#   data := result["nested"]     → data tracked (bracket-derived)
 # Origin-aware: only flags variables traced to Map constructors,
 # NOT plain Objects from gWS_Store or _WS_NewRecord().
 # CLAUDE.md: "Store expects Map records: use rec["key"] not rec.key"
@@ -1070,6 +1073,20 @@ foreach ($file in $mdaStoreFiles) {
         $assignMatch = $mdaMapAssignRegex.Match($cleaned)
         if ($assignMatch.Success) {
             [void]$mapVarsInScope.Add($assignMatch.Groups[1].Value)
+        }
+
+        # Propagate Map type through bracket access: child := trackedMap["key"]
+        # The indexed element of a parsed JSON Map is typically another Map.
+        if ($mapVarsInScope.Count -gt 0) {
+            foreach ($parentVar in @($mapVarsInScope)) {
+                $bracketPat = '^\s*(\w+)\s*:=\s*' + [regex]::Escape($parentVar) + '\s*\['
+                if ($cleaned -match $bracketPat) {
+                    $derived = $Matches[1]
+                    if ($derived -ne $parentVar) {
+                        [void]$mapVarsInScope.Add($derived)
+                    }
+                }
+            }
         }
 
         # Only check dot access if we have tracked Map variables
