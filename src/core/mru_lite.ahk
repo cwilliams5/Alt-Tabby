@@ -23,27 +23,40 @@ MRU_Lite_Init() {
 
 MRU_Lite_Tick() {
     global _MRU_LastHwnd
-    hwnd := 0
+    static _errCount := 0  ; Error boundary: consecutive error tracking (safe static — reset on success, conservative on timer restart)
     try {
-        hwnd := WinGetID("A")
-    } catch {
-        ; No active window (e.g., during workspace switch)
-        return
-    }
-    if (!hwnd || hwnd = _MRU_LastHwnd) {
-        return
-    }
-    ; Atomic focus update - prevent race conditions with other timers/hotkeys
-    Critical "On"
-    ; Clear focus on previous window
-    if (_MRU_LastHwnd) {
+        hwnd := 0
         try {
-            WL_UpdateFields(_MRU_LastHwnd, { isFocused: false })
+            hwnd := WinGetID("A")
+        } catch {
+            ; No active window (e.g., during workspace switch)
+            return
+        }
+        if (!hwnd || hwnd = _MRU_LastHwnd) {
+            return
+        }
+        ; Atomic focus update - prevent race conditions with other timers/hotkeys
+        Critical "On"
+        ; Clear focus on previous window
+        if (_MRU_LastHwnd) {
+            try {
+                WL_UpdateFields(_MRU_LastHwnd, { isFocused: false })
+            }
+        }
+        _MRU_LastHwnd := hwnd
+        try {
+            WL_UpdateFields(hwnd, { lastActivatedTick: A_TickCount, isFocused: true })
+        }
+        Critical "Off"
+        _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "MRU_Lite_Tick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "MRU_Lite_Tick DISABLED after " _errCount " consecutive errors")
+            SetTimer(MRU_Lite_Tick, 0)
         }
     }
-    _MRU_LastHwnd := hwnd
-    try {
-        WL_UpdateFields(hwnd, { lastActivatedTick: A_TickCount, isFocused: true })
-    }
-    Critical "Off"
 }

@@ -190,6 +190,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd, _WEH_PendingZNeeded
     global cfg, gWS_Store
 
+    try {  ; Error boundary: DllCall callback — unhandled throw = undefined Win32 behavior
     ; Only care about window-level events (idObject = OBJID_WINDOW = 0)
     if (idObject != 0)
         return
@@ -290,6 +291,11 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; Wake timer if it was paused due to idle
     _WinEventHook_EnsureTimerRunning()
+    } catch as e {
+        Critical "Off"
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "WEH_WinEventProc err=" e.Message " file=" e.File " line=" e.Line)
+    }
 }
 
 ; Process queued events in batches
@@ -299,6 +305,8 @@ _WEH_ProcessBatch() {
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
     global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store, gWS_OnStoreChanged
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS, gFR_Enabled
+    static _errCount := 0  ; Error boundary: consecutive error tracking
+    try {
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
@@ -575,6 +583,17 @@ _WEH_ProcessBatch() {
         isStructural := destroyed.Length > 0 || hiddenRemoved.Length > 0 || zSnapshot.Count > 0
         if (gWS_OnStoreChanged)
             gWS_OnStoreChanged(isStructural)
+    }
+    _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch DISABLED after " _errCount " consecutive errors")
+            SetTimer(_WEH_ProcessBatch, 0)
+        }
     }
 }
 

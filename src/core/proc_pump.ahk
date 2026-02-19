@@ -111,6 +111,8 @@ _PP_Tick() {
     global ProcBatchPerTick, _PP_IdleTicks, _PP_IdleThreshold, _PP_TimerOn, cfg
 
     global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
+    static _errCount := 0  ; Error boundary: consecutive error tracking
+    try {
     pids := gPP_PopBatch(ProcBatchPerTick)
     if (!IsObject(pids) || pids.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
@@ -165,6 +167,17 @@ _PP_Tick() {
             if (cfg.DiagProcPumpLog)
                 _PP_Log("RESOLVED pid=" pid " name=" name)
             gPP_UpdateProcessName(pid, name)
+        }
+    }
+    _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "PP_Tick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "PP_Tick DISABLED after " _errCount " consecutive errors")
+            SetTimer(_PP_Tick, 0)
         }
     }
 }

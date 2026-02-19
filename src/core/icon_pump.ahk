@@ -229,6 +229,8 @@ _IP_Tick() {
     global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
 
     logEnabled := _IP_DiagEnabled && _IP_LogPath != ""
+    static _errCount := 0  ; Error boundary: consecutive error tracking
+    try {
 
     ; PERF: Periodically prune _IP_Attempts to prevent unbounded growth
     ; Uses tick-based timing instead of static counter (per ahk-patterns.md)
@@ -447,6 +449,17 @@ _IP_Tick() {
         }
 
         Critical "Off"
+    }
+    _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "IP_Tick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "IP_Tick DISABLED after " _errCount " consecutive errors")
+            SetTimer(_IP_Tick, 0)
+        }
     }
 }
 

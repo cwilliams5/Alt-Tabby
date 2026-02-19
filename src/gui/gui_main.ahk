@@ -296,15 +296,26 @@ _GUI_FullScan() {
     _gGUI_ScanInProgress := true
     Critical "Off"
 
-    WL_BeginScan()
-    recs := ""
-    try recs := WinEnumLite_ScanAll()
-    foundCount := IsObject(recs) ? recs.Length : 0
-    if (IsObject(recs))
-        WL_UpsertWindow(recs, "winenum_lite")
-    WL_EndScan()
-    if (gFR_Enabled)
-        FR_Record(FR_EV_SCAN_COMPLETE, foundCount, gWS_Store.Count)
+    ; Error boundary: ensure WL_EndScan runs even on error (BeginScan/EndScan must be paired),
+    ; and ensure _gGUI_ScanInProgress is always reset (otherwise re-entrancy guard blocks all future scans)
+    try {
+        WL_BeginScan()
+        try {
+            recs := ""
+            try recs := WinEnumLite_ScanAll()
+            foundCount := IsObject(recs) ? recs.Length : 0
+            if (IsObject(recs))
+                WL_UpsertWindow(recs, "winenum_lite")
+        } finally {
+            WL_EndScan()
+        }
+        if (gFR_Enabled)
+            FR_Record(FR_EV_SCAN_COMPLETE, foundCount, gWS_Store.Count)
+    } catch as e {
+        Critical "Off"
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "GUI_FullScan err=" e.Message " file=" e.File " line=" e.Line)
+    }
     Critical "On"
     _gGUI_ScanInProgress := false
     Critical "Off"
@@ -319,10 +330,23 @@ _GUI_StartZPump() {
 }
 
 _GUI_ZPumpTick() {
-    if (!WL_HasPendingZ())
-        return
-    _GUI_FullScan()
-    WL_ClearZQueue()
+    static _errCount := 0  ; Error boundary: consecutive error tracking
+    try {
+        if (!WL_HasPendingZ())
+            return
+        _GUI_FullScan()
+        WL_ClearZQueue()
+        _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "GUI_ZPumpTick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "GUI_ZPumpTick DISABLED after " _errCount " consecutive errors")
+            SetTimer(_GUI_ZPumpTick, 0)
+        }
+    }
 }
 
 _GUI_StartValidateExistence() {
@@ -331,9 +355,22 @@ _GUI_StartValidateExistence() {
 }
 
 _GUI_ValidateExistenceTick() {
-    result := WL_ValidateExistence()
-    if (result.removed > 0)
-        _GUI_OnProducerRevChanged()
+    static _errCount := 0  ; Error boundary: consecutive error tracking
+    try {
+        result := WL_ValidateExistence()
+        if (result.removed > 0)
+            _GUI_OnProducerRevChanged()
+        _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "GUI_ValidateExistenceTick err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "GUI_ValidateExistenceTick DISABLED after " _errCount " consecutive errors")
+            SetTimer(_GUI_ValidateExistenceTick, 0)
+        }
+    }
 }
 
 _GUI_StartHousekeeping() {

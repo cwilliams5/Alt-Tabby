@@ -240,6 +240,7 @@ KSub_DiagLog(msg) {
 _KSub_InitialPoll() {
     global _KSub_LastWorkspaceName, cfg
 
+    try {  ; Error boundary: one-shot timer — log and continue
     if (cfg.DiagKomorebiLog)
         KSub_DiagLog("InitialPoll: Starting")
 
@@ -270,6 +271,11 @@ _KSub_InitialPoll() {
     _KSub_ProcessFullState(stateObj)
     if (cfg.DiagKomorebiLog)
         KSub_DiagLog("InitialPoll: Complete")
+    } catch as e {
+        Critical "Off"
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "KSub_InitialPoll err=" e.Message " file=" e.File " line=" e.Line)
+    }
 }
 
 ; Stop subscription
@@ -336,6 +342,8 @@ _KomorebiSub_Poll() {
     global IPC_ERROR_BROKEN_PIPE, KSUB_BUFFER_MAX_BYTES, KSUB_READ_CHUNK_SIZE, KSUB_READ_BUF
     global cfg
     static lastLogTick := 0
+    static _errCount := 0  ; Error boundary: consecutive error tracking
+    try {
 
     ; Log every 5 seconds to avoid spam (tick-based, no unbounded counter per ahk-patterns.md)
     if (cfg.DiagKomorebiLog && A_TickCount - lastLogTick > 5000) {
@@ -446,6 +454,17 @@ _KomorebiSub_Poll() {
     ; Recycle if idle too long
     if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs)
         _KomorebiSub_Start()
+    _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "KomorebiSub_Poll err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "KomorebiSub_Poll DISABLED after " _errCount " consecutive errors")
+            SetTimer(_KomorebiSub_Poll, 0)
+        }
+    }
 }
 
 ; Extract one complete JSON notification from buffer.
@@ -554,6 +573,7 @@ _KSub_OnNotification(jsonLine) {
     global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS, KSub_MruSuppressionMs
     global cfg, gWS_OnWorkspaceChanged, FR_EV_WS_SWITCH, gFR_Enabled
 
+    try {  ; Error boundary: notification handler — log and skip bad events
     ; ========== Layer 2: Quick event type extraction (no full JSON parse) ==========
     eventType := _KSub_QuickExtractEventType(jsonLine)
     if (cfg.DiagKomorebiLog) {
@@ -823,6 +843,11 @@ _KSub_OnNotification(jsonLine) {
     global gWS_OnStoreChanged
     if (gWS_OnStoreChanged)
         gWS_OnStoreChanged(false)
+    } catch as e {
+        Critical "Off"
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "KSub_OnNotification err=" e.Message " file=" e.File " line=" e.Line)
+    }
 }
 
 ; Extract all pending cloak changes and reset buffer.
@@ -1257,6 +1282,8 @@ _KSub_GetWindowPid(hwnd) {
 ; Also handles subscription promotion retry every ~30s
 _KomorebiSub_PollFallback() {
     global cfg, _KSub_LastPromotionTick, _KSub_PromotionIntervalMs, _KSub_FallbackMode
+    static _errCount := 0  ; Error boundary: consecutive error tracking
+    try {
 
     ; Periodically try to promote back to subscription
     if ((A_TickCount - _KSub_LastPromotionTick) >= _KSub_PromotionIntervalMs) {
@@ -1299,6 +1326,17 @@ _KomorebiSub_PollFallback() {
         return
     }
     _KSub_ProcessFullState(stateObj)
+    _errCount := 0
+    } catch as e {
+        Critical "Off"
+        _errCount++
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "KomorebiSub_PollFallback err=" e.Message " file=" e.File " line=" e.Line " consecutive=" _errCount)
+        if (_errCount >= 3) {
+            try LogAppend(LOG_PATH_STORE, "KomorebiSub_PollFallback DISABLED after " _errCount " consecutive errors")
+            SetTimer(_KomorebiSub_PollFallback, 0)
+        }
+    }
 }
 
 ; Get komorebi state directly via command
