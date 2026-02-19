@@ -1,7 +1,5 @@
 #Requires AutoHotkey v2.0
 
-; IPC helpers (v2 only). Stubbed for now; will be implemented with named pipes.
-
 ; Windows error codes
 global IPC_ERROR_IO_PENDING := 997
 global IPC_ERROR_BROKEN_PIPE := 109

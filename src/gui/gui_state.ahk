@@ -936,7 +936,7 @@ _GUI_AsyncActivationTick() {
         if (gGUI_PendingWSName != "") {
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_PendingWSName "'")
-            ; RACE FIX: Protect workspace name and items iteration from GUI_ApplyDelta (IPC timer)
+            ; RACE FIX: Protect workspace name and items iteration from producer timer callbacks
             Critical "On"
             gGUI_CurrentWSName := gGUI_PendingWSName
 

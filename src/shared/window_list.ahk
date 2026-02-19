@@ -4,8 +4,7 @@
 ; ============================================================
 ; WindowList - Core window data structure
 ; ============================================================
-; Pure data layer: Maps, upsert, remove, query, work queues, caches.
-; Core data layer for window tracking.
+; Core data layer: Maps, upsert, remove, query, work queues, caches.
 ; No delta building, no IPC plumbing.
 
 global WS_SCAN_ID_MAX := 0x7FFFFFFF

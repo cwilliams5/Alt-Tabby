@@ -137,7 +137,8 @@ _INT_Tab_Down(*) {
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
 
-    ; NOTE: Bypass check removed - now handled via focus-change detection in GUI_ApplyDelta
+    ; NOTE: Bypass check removed - now handled via _GUI_OnProducerRevChanged() which
+    ; calls INT_ShouldBypassWindow() -> INT_SetBypassMode() on focus changes.
     ; When a bypass window is focused, INT_SetBypassMode disables Tab hooks entirely,
     ; so Tab never reaches here and native Windows Alt-Tab works
 
@@ -296,7 +297,7 @@ _INT_Escape_Down(*) {
 
 ; ========================= BYPASS DETECTION =========================
 
-; Called from GUI_ApplyDelta when focus changes to check bypass criteria
+; Called from _GUI_OnProducerRevChanged() when focus changes to check bypass criteria
 ; RACE FIX: Wrap in Critical - flag set + hotkey toggle must be atomic
 ; to prevent Tab callback from seeing inconsistent state (flag true but hotkey still on)
 INT_SetBypassMode(shouldBypass) {

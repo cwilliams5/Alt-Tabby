@@ -359,6 +359,18 @@ GUI_EnsureResources(scale) {
     }
 }
 
+; Evict oldest entry from a FIFO cache (Map iteration order = insertion order).
+_Gdip_EvictOldest(cache, maxCount, deleteFunc) {
+    if (cache.Count >= maxCount) {
+        for k, v in cache {
+            if (v)
+                try DllCall("gdiplus\" deleteFunc, "ptr", v)
+            cache.Delete(k)
+            break
+        }
+    }
+}
+
 ; Get or create a cached solid brush for the given ARGB color
 ; FIFO cap at 100: working set is ~5-10 colors (UI palette), cap is 10-20x headroom.
 ; No liveness signal to prune by (a color is "in use" only during paint), so FIFO is appropriate here.
@@ -366,15 +378,7 @@ Gdip_GetCachedBrush(argb) {
     global gGdip_BrushCache, GDIP_BRUSH_CACHE_MAX
     if (gGdip_BrushCache.Has(argb))
         return gGdip_BrushCache[argb]
-    ; Evict oldest entry if at limit (FIFO via Map iteration order)
-    if (gGdip_BrushCache.Count >= GDIP_BRUSH_CACHE_MAX) {
-        for k, v in gGdip_BrushCache {
-            if (v)
-                try DllCall("gdiplus\GdipDeleteBrush", "ptr", v)
-            gGdip_BrushCache.Delete(k)
-            break
-        }
-    }
+    _Gdip_EvictOldest(gGdip_BrushCache, GDIP_BRUSH_CACHE_MAX, "GdipDeleteBrush")
     pBr := 0
     DllCall("gdiplus\GdipCreateSolidFill", "int", argb, "ptr*", &pBr)
     gGdip_BrushCache[argb] := pBr
@@ -389,15 +393,7 @@ Gdip_GetCachedPen(argb, width) {
     key := argb "_" width
     if (gGdip_PenCache.Has(key))
         return gGdip_PenCache[key]
-    ; Evict oldest entry if at limit (FIFO via Map iteration order)
-    if (gGdip_PenCache.Count >= GDIP_PEN_CACHE_MAX) {
-        for k, v in gGdip_PenCache {
-            if (v)
-                try DllCall("gdiplus\GdipDeletePen", "ptr", v)
-            gGdip_PenCache.Delete(k)
-            break
-        }
-    }
+    _Gdip_EvictOldest(gGdip_PenCache, GDIP_PEN_CACHE_MAX, "GdipDeletePen")
     pPen := 0
     DllCall("gdiplus\GdipCreatePen1", "int", argb, "float", width, "int", 2, "ptr*", &pPen)
     gGdip_PenCache[key] := pPen
@@ -414,15 +410,7 @@ _Gdip_GetCachedRoundRectPath(w, h, r) {
     key := w "|" h "|" r
     if (gGdip_PathCache.Has(key))
         return gGdip_PathCache[key]
-    ; Evict oldest entry if at limit (FIFO via Map iteration order)
-    if (gGdip_PathCache.Count >= GDIP_PATH_CACHE_MAX) {
-        for k, v in gGdip_PathCache {
-            if (v)
-                try DllCall("gdiplus\GdipDeletePath", "ptr", v)
-            gGdip_PathCache.Delete(k)
-            break
-        }
-    }
+    _Gdip_EvictOldest(gGdip_PathCache, GDIP_PATH_CACHE_MAX, "GdipDeletePath")
     ; Build path at origin (0, 0)
     pPath := 0
     r2 := r * 2.0

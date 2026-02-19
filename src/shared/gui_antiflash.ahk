@@ -38,8 +38,8 @@
 ;   gui      - Gui object (must not have been shown yet)
 ;   bgColor  - Background color to match dark theme (e.g., "1a1b26")
 GUI_AntiFlashPrepare(gui, bgColor) {
-    global DWMWA_CLOAK
-    gui.Opt("+E0x80000")  ; WS_EX_LAYERED
+    global DWMWA_CLOAK, WS_EX_LAYERED
+    gui.Opt("+E" WS_EX_LAYERED)
     gui.BackColor := bgColor
     ; .Hwnd access forces HWND creation before Show
     hwnd := gui.Hwnd
@@ -87,5 +87,6 @@ GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
         DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAK, "int*", 0, "uint", 4)
     ; Remove WS_EX_LAYERED — no longer needed after reveal. Leaving it on causes
     ; flashing with WM_SETREDRAW + RedrawWindow (dashboard refresh).
-    gui.Opt("-E0x80000")
+    global WS_EX_LAYERED
+    gui.Opt("-E" WS_EX_LAYERED)
 }

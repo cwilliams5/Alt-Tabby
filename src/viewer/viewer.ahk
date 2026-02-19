@@ -472,18 +472,26 @@ _Viewer_ShowBlacklistDialog(class, title) {
         return ""
 
     dlg := Gui("+AlwaysOnTop +Owner", "Blacklist Window")
+    GUI_AntiFlashPrepare(dlg, Theme_GetBgColor())
     dlg.MarginX := 24
     dlg.MarginY := 16
     dlg.SetFont("s10", "Segoe UI")
+    Theme_ApplyToGui(dlg)
 
-    dlg.AddText("w440", "Add to blacklist:")
+    contentW := 440
+    mutedColor := Theme_GetMutedColor()
+
+    hdr := dlg.AddText("w" contentW " c" Theme_GetAccentColor(), "Add to blacklist:")
+    Theme_MarkAccent(hdr)
     lblC := dlg.AddText("x24 w50 h20 y+12 +0x200", "Class:")
     lblC.SetFont("s10 bold", "Segoe UI")
-    dlg.AddText("x78 yp w386 h20 +0x200 c808080", class)
+    valC := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200 c" mutedColor, class)
+    Theme_MarkMuted(valC)
     displayTitle := SubStr(title, 1, 50) (StrLen(title) > 50 ? "..." : "")
     lblT := dlg.AddText("x24 w50 h20 y+4 +0x200", "Title:")
     lblT.SetFont("s10 bold", "Segoe UI")
-    dlg.AddText("x78 yp w386 h20 +0x200 c808080", displayTitle)
+    valT := dlg.AddText("x78 yp w" (contentW - 54) " h20 +0x200 c" mutedColor, displayTitle)
+    Theme_MarkMuted(valT)
 
     dlg.AddButton("x24 y+24 w100 h30", "Add Class").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "class"))
     dlg.AddButton("x132 yp w100 h30", "Add Title").OnEvent("Click", (*) => _Viewer_BlacklistChoice(dlg, "title"))
@@ -494,6 +502,7 @@ _Viewer_ShowBlacklistDialog(class, title) {
     dlg.OnEvent("Escape", (*) => _Viewer_BlacklistChoice(dlg, ""))
 
     dlg.Show("w488 Center")
+    GUI_AntiFlashReveal(dlg, true)
     WinWaitClose(dlg)
     return gBlacklistChoice
 }
@@ -501,6 +510,7 @@ _Viewer_ShowBlacklistDialog(class, title) {
 _Viewer_BlacklistChoice(dlg, choice) {
     global gBlacklistChoice
     gBlacklistChoice := choice
+    try Theme_UntrackGui(dlg)
     dlg.Destroy()
 }
 
