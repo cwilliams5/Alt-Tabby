@@ -263,16 +263,12 @@ _GUI_OnWorkspaceFlips() {
         if (IsObject(gWS_Meta)) {
             Critical "On"
             wsName := gWS_Meta.Has("currentWSName") ? gWS_Meta["currentWSName"] : ""
-            Critical "Off"
-        }
 
-        if (wsName != "" && wsName != gGUI_CurrentWSName) {
-            gGUI_CurrentWSName := wsName
-            GUI_UpdateFooterText()
-
-            ; Handle workspace switch during ACTIVE state
-            Critical "On"
-            GUI_HandleWorkspaceSwitch()
+            if (wsName != "" && wsName != gGUI_CurrentWSName) {
+                gGUI_CurrentWSName := wsName
+                GUI_UpdateFooterText()
+                GUI_HandleWorkspaceSwitch()
+            }
             Critical "Off"
         }
     } catch as e {
@@ -386,10 +382,10 @@ _GUI_Housekeeping() {
     try ProcPump_PruneFailedPidCache()
 
     ; Flush churn diagnostics (if enabled)
-    WL_FlushChurnLog()
+    try WL_FlushChurnLog()
 
     ; Log rotation
-    _GUI_RotateDiagLogs()
+    try _GUI_RotateDiagLogs()
 
     ; Flush stats to disk
     try Stats_FlushToDisk()
@@ -569,10 +565,7 @@ _GUI_OnStatsRequest(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
         return 0
     }
     snap := Stats_GetSnapshot()
-    snapMap := Map()
-    for prop in snap.OwnProps()
-        snapMap[prop] := snap.%prop%
-    jsonStr := JSON.Dump(snapMap)
+    jsonStr := JSON.Dump(snap)
     cbData := StrPut(jsonStr, "UTF-8")
     payload := Buffer(cbData, 0)
     StrPut(jsonStr, payload, "UTF-8")

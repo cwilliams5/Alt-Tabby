@@ -383,7 +383,7 @@ $script:BD_BT_ExemptPatterns = @(
     [regex]::new('(?i):= WinGetTitle\(')
     [regex]::new('(?i)DllCall\(\s*"(user32|shcore)\\(SetProcess|GetDpi|GetDpiFor|SetWindowLongPtrW|GetWindowLongPtrW)')
     [regex]::new('(?i)^(hr\s*:=\s*)?DllCall\(')
-    [regex]::new('(?i)^WL_(UpdateFields|UpsertWindow|SetCurrentWorkspace|EnqueueIconRefresh|BatchUpdateFields|ValidateExistence|CleanupAllIcons|CleanupExeIconCache|PruneProcNameCache|PruneExeIconCache)\(')
+    [regex]::new('(?i)^WL_(UpdateFields|UpsertWindow|SetCurrentWorkspace|EnqueueIconRefresh|BatchUpdateFields|ValidateExistence|CleanupAllIcons|CleanupExeIconCache|PruneProcNameCache|PruneExeIconCache|FlushChurnLog)\(')
     [regex]::new('(?i):= WL_(UpdateFields|GetByHwnd|SetCurrentWorkspace)\(')
     [regex]::new('(?i)^Store_(PushToClients|BroadcastWorkspaceFlips|LogError|LogInfo)\(')
     [regex]::new('(?i)^gWS_(PushToClients|PushIfRevChanged|BroadcastWorkspaceFlips)\(')
