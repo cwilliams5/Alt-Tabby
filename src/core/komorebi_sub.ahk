@@ -315,6 +315,18 @@ KomorebiSub_Stop() {
     _KSub_ReadBufferLen := 0
 }
 
+; Query whether the komorebi subscription pipe is connected
+KomorebiSub_IsConnected() {
+    global _KSub_Connected
+    return _KSub_Connected
+}
+
+; Query whether komorebi is in fallback polling mode
+KomorebiSub_IsFallback() {
+    global _KSub_FallbackMode
+    return _KSub_FallbackMode
+}
+
 ; Prune stale workspace cache entries (called from _GUI_Housekeeping)
 ; Removes entries older than _KSub_CacheMaxAgeMs to prevent unbounded growth
 ; RACE FIX: Wrap in Critical - _KSub_ProcessFullState writes to cache on komorebi notifications

@@ -169,6 +169,12 @@ WinEventHook_Stop() {
     }
 }
 
+; Query whether the WinEvent hook is currently installed and running
+WinEventHook_IsRunning() {
+    global _WEH_Hooks
+    return _WEH_Hooks.Length > 0
+}
+
 ; Hook callback - called for each window event
 ; Keep this FAST - just queue the hwnd for later processing
 ; PERF: Event constants inlined in hot-path callback — by design.

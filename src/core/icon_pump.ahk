@@ -147,6 +147,18 @@ IconPump_Stop() {
     SetTimer(_IP_Tick, 0)
 }
 
+; Query whether the icon pump timer is running
+IconPump_IsRunning() { ; lint-ignore: dead-function
+    global _IP_TimerOn
+    return _IP_TimerOn
+}
+
+; Query whether the icon pump has been configured (may be idle-paused but functional)
+IconPump_IsEnabled() {
+    global IconTimerIntervalMs
+    return IconTimerIntervalMs > 0
+}
+
 ; Permanently disable the icon pump (stop + prevent restart via EnsureRunning)
 IconPump_Disable() {
     global IconTimerIntervalMs

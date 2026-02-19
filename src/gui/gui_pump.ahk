@@ -125,6 +125,12 @@ GUIPump_Stop() {
     _gPump_Connected := false
 }
 
+; Query whether the enrichment pump IPC connection is active
+GUIPump_IsConnected() {
+    global _gPump_Connected
+    return _gPump_Connected
+}
+
 ; Wake collection timer from idle pause (called from _WS_EnqueueIfNeeded)
 GUIPump_EnsureRunning() {
     global _gPump_TimerOn, _gPump_IdleTicks, _gPump_CollectIntervalMs, _gPump_CollectTimerFn

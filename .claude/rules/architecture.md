@@ -111,7 +111,7 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 ## Theme System
 
 - `src/shared/theme.ahk` + `theme_msgbox.ahk` — centralized dark/light mode for all native AHK GUIs
-- Main overlay and debug viewer are excluded (overlay has its own ARGB colors)
+- Main overlay is excluded (has its own ARGB colors); debug viewer uses the theme system
 - `Theme_Init()` must be called **before any `Gui()` constructor** (sets SetPreferredAppMode)
 - `Theme_ApplyToGui(gui)` after constructor, `Theme_ApplyToControl(ctrl, type)` after each control
 - `ThemeMsgBox()` is a drop-in MsgBox replacement — use it for all new message boxes
