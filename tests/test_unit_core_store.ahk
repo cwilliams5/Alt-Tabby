@@ -5,7 +5,7 @@
 #Include test_utils.ahk
 
 RunUnitTests_CoreStore() {
-    global TestPassed, TestErrors, cfg, gWS_DirtyHwnds
+    global TestPassed, TestErrors, cfg, gWS_DirtyHwnds, DISPLAY_FIELDS
 
     ; ============================================================
     ; WindowList Unit Tests
@@ -347,10 +347,7 @@ RunUnitTests_CoreStore() {
     ; --- Coverage test: every _WS_ToItem field must be tracked ---
     ; Prevents future regressions where a new field is added to _WS_ToItem
     ; but not tracked, silently causing stale cache data
-    coveredFields := ["title", "class", "pid", "z", "lastActivatedTick", "isFocused",
-        "isCloaked", "isMinimized", "workspaceName", "workspaceId",
-        "isOnCurrentWorkspace", "processName", "iconHicon"]
-    for _, field in coveredFields {
+    for _, field in DISPLAY_FIELDS {
         covered := gWS_SortAffectingFields.Has(field) || gWS_ContentOnlyFields.Has(field)
         AssertEq(covered, true, "Field '" field "' must be tracked in SortAffecting or ContentOnly")
     }

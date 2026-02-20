@@ -316,6 +316,8 @@ RunUnitTests_CoreConfig() {
     Log("Testing config registry completeness...")
     registryErrors := []
     settingCount := 0
+    seenGlobals := Map()
+    seenSectionKeys := Map()
 
     for _, entry in gConfigRegistry {
         ; Skip section/subsection headers
@@ -353,6 +355,23 @@ RunUnitTests_CoreConfig() {
             registryErrors.Push("Entry " entry.k " has 'max' but no 'min'")
         if (entry.HasOwnProp("fmt") && entry.fmt != "hex")
             registryErrors.Push("Entry " entry.k " has unknown fmt '" entry.fmt "'")
+
+        ; Uniqueness: no duplicate global names
+        if (entry.HasOwnProp("g")) {
+            if (seenGlobals.Has(entry.g))
+                registryErrors.Push("Duplicate global name '" entry.g "' (first: " seenGlobals[entry.g] ", also: " entry.k ")")
+            else
+                seenGlobals[entry.g] := entry.k
+        }
+
+        ; Uniqueness: no duplicate section+key pairs
+        if (entry.HasOwnProp("s") && entry.HasOwnProp("k")) {
+            sk := entry.s "|" entry.k
+            if (seenSectionKeys.Has(sk))
+                registryErrors.Push("Duplicate section+key '" sk "' (first: " seenSectionKeys[sk] ", also: " entry.g ")")
+            else
+                seenSectionKeys[sk] := entry.HasOwnProp("g") ? entry.g : entry.k
+        }
 
         settingCount++
     }

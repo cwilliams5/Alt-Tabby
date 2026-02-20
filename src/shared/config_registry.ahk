@@ -966,7 +966,7 @@ global gConfigRegistry := [
      min: 10, max: 2000,
      d: "Batch processing interval - how often queued events are processed"},
 
-    {s: "Store", k: "IdleThreshold", g: "WinEventHookIdleThreshold", t: "int", default: 10,
+    {s: "Store", k: "WinEventHookIdleThreshold", g: "WinEventHookIdleThreshold", t: "int", default: 10,
      min: 1, max: 100,
      d: "Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
@@ -977,7 +977,7 @@ global gConfigRegistry := [
     {type: "subsection", section: "Store", name: "Z-Pump",
      desc: "When WinEventHook adds a window, Z-pump triggers a WinEnum scan for accurate Z-order"},
 
-    {s: "Store", k: "IntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
+    {s: "Store", k: "ZPumpIntervalMs", g: "ZPumpIntervalMs", t: "int", default: 200,
      min: 50, max: 5000,
      d: "How often to check for windows needing Z-order updates (ms)"},
 
@@ -1010,11 +1010,11 @@ global gConfigRegistry := [
     {type: "subsection", section: "Store", name: "Icon Pump",
      desc: "Resolves window icons asynchronously with retry/backoff"},
 
-    {s: "Store", k: "IntervalMs", g: "IconPumpIntervalMs", t: "int", default: 80,
+    {s: "Store", k: "IconPumpIntervalMs", g: "IconPumpIntervalMs", t: "int", default: 80,
      min: 20, max: 1000,
      d: "How often the pump processes its queue"},
 
-    {s: "Store", k: "BatchSize", g: "IconPumpBatchSize", t: "int", default: 16,
+    {s: "Store", k: "IconPumpBatchSize", g: "IconPumpBatchSize", t: "int", default: 16,
      min: 1, max: 100,
      d: "Max icons to process per tick (prevents lag spikes)"},
 
@@ -1041,7 +1041,7 @@ global gConfigRegistry := [
     {s: "Store", k: "IconRefreshOnTitleChange", g: "IconRefreshOnTitleChange", t: "bool", default: true,
      d: "Re-check window icons when title changes (e.g., browser tab switch). Per-window throttle (RefreshThrottleMs) prevents spam."},
 
-    {s: "Store", k: "IdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
+    {s: "Store", k: "IconPumpIdleThreshold", g: "IconPumpIdleThreshold", t: "int", default: 5,
      min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
@@ -1052,15 +1052,15 @@ global gConfigRegistry := [
     {type: "subsection", section: "Store", name: "Process Pump",
      desc: "Resolves PID -> process name asynchronously"},
 
-    {s: "Store", k: "IntervalMs", g: "ProcPumpIntervalMs", t: "int", default: 100,
+    {s: "Store", k: "ProcPumpIntervalMs", g: "ProcPumpIntervalMs", t: "int", default: 100,
      min: 20, max: 1000,
      d: "How often the pump processes its queue"},
 
-    {s: "Store", k: "BatchSize", g: "ProcPumpBatchSize", t: "int", default: 16,
+    {s: "Store", k: "ProcPumpBatchSize", g: "ProcPumpBatchSize", t: "int", default: 16,
      min: 1, max: 100,
      d: "Max PIDs to resolve per tick"},
 
-    {s: "Store", k: "IdleThreshold", g: "ProcPumpIdleThreshold", t: "int", default: 5,
+    {s: "Store", k: "ProcPumpIdleThreshold", g: "ProcPumpIdleThreshold", t: "int", default: 5,
      min: 1, max: 100,
      d: "Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 

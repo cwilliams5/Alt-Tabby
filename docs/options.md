@@ -494,7 +494,7 @@ Event-driven window change detection. Events are queued then processed in batche
 |--------|------|---------|-------|-------------|
 | `DebounceMs` | int | `50` | `10` - `1000` | Debounce rapid events (e.g., window moving fires many events) |
 | `BatchMs` | int | `100` | `10` - `2000` | Batch processing interval - how often queued events are processed |
-| `IdleThreshold` | int | `10` | `1` - `100` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
+| `WinEventHookIdleThreshold` | int | `10` | `1` - `100` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 | `ActiveRepaintDebounceMs` | int | `250` | `0` - `2000` | Minimum interval between cosmetic repaints while overlay is active (ms). Prevents animated titles from flooding repaints. 0 = no debounce. |
 
 ### Z-Pump
@@ -503,7 +503,7 @@ When WinEventHook adds a window, Z-pump triggers a WinEnum scan for accurate Z-o
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `IntervalMs` | int | `200` | `50` - `5000` | How often to check for windows needing Z-order updates (ms) |
+| `ZPumpIntervalMs` | int | `200` | `50` - `5000` | How often to check for windows needing Z-order updates (ms) |
 
 ### WinEnum
 
@@ -530,15 +530,15 @@ Resolves window icons asynchronously with retry/backoff
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `IntervalMs` | int | `80` | `20` - `1000` | How often the pump processes its queue |
-| `BatchSize` | int | `16` | `1` - `100` | Max icons to process per tick (prevents lag spikes) |
+| `IconPumpIntervalMs` | int | `80` | `20` - `1000` | How often the pump processes its queue |
+| `IconPumpBatchSize` | int | `16` | `1` - `100` | Max icons to process per tick (prevents lag spikes) |
 | `MaxAttempts` | int | `4` | `1` - `20` | Max attempts before giving up on a window's icon |
 | `AttemptBackoffMs` | int | `300` | `50` - `5000` | Base backoff after failed attempt (multiplied by attempt number) |
 | `BackoffMultiplier` | float | `1.80` | `1.00` - `5.00` | Backoff multiplier for exponential backoff (1.0 = linear) |
 | `GiveUpBackoffMs` | int | `5000` | `1000` - `30000` | Long cooldown (ms) after max icon resolution attempts are exhausted. Lower values retry sooner for problematic apps. |
 | `RefreshThrottleMs` | int | `5000` | `1000` - `300000` | Minimum time between icon refresh checks per window (ms). Icons are rechecked on focus and title change. The per-window throttle prevents spam from terminals with animated titles. |
 | `IconRefreshOnTitleChange` | bool | `true` | - | Re-check window icons when title changes (e.g., browser tab switch). Per-window throttle (RefreshThrottleMs) prevents spam. |
-| `IdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
+| `IconPumpIdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 | `ResolveTimeoutMs` | int | `500` | `100` - `2000` | WM_GETICON timeout in milliseconds. Increase for slow or hung applications that need more time to respond. |
 
 ### Process Pump
@@ -547,9 +547,9 @@ Resolves PID -> process name asynchronously
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `IntervalMs` | int | `100` | `20` - `1000` | How often the pump processes its queue |
-| `BatchSize` | int | `16` | `1` - `100` | Max PIDs to resolve per tick |
-| `IdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
+| `ProcPumpIntervalMs` | int | `100` | `20` - `1000` | How often the pump processes its queue |
+| `ProcPumpBatchSize` | int | `16` | `1` - `100` | Max PIDs to resolve per tick |
+| `ProcPumpIdleThreshold` | int | `5` | `1` - `100` | Empty queue ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 | `FailedPidRetryMs` | int | `60000` | `5000` - `300000` | How long (ms) before retrying process name lookup for a PID that previously failed. |
 
 ### Cache Limits
