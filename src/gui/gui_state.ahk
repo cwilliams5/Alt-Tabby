@@ -43,7 +43,6 @@ global gGUI_EventBuffer := []            ; Queued events during async activation
 ; State machine timing
 global gGUI_FirstTabTick := 0
 global gGUI_TabCount := 0
-; gGUI_LastLocalMRUTick removed — no competing MRU sources in MainProcess
 
 ; Session stats counters (accumulated into lifetime stats)
 global gStats_AltTabs := 0
@@ -390,7 +389,7 @@ GUI_HandleWorkspaceSwitch() {
                 item.workspaceName := storeWs
         }
         ws := item.HasOwnProp("workspaceName") ? item.workspaceName : ""
-        item.isOnCurrentWorkspace := (ws = wsName) || (ws = "")
+        item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(ws, wsName)
     }
 
     ; Re-filter display items and select foreground window
@@ -941,7 +940,7 @@ _GUI_AsyncActivationTick() {
             ; This ensures display lists have correct workspace data
             for item in gGUI_LiveItems {
                 if (item.HasOwnProp("workspaceName")) {
-                    item.isOnCurrentWorkspace := (item.workspaceName = gGUI_CurrentWSName)
+                    item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(item.workspaceName, gGUI_CurrentWSName)
                 }
             }
             Critical "Off"

@@ -479,7 +479,7 @@ GUI_OnMouseLeave() {
 GUI_StartHoverPolling() {
     global cfg
     _GUI_StopHoverPolling()  ; Stop any existing timer first (prevents duplication)
-    interval := cfg.HasOwnProp("GUI_HoverPollIntervalMs") ? cfg.GUI_HoverPollIntervalMs : 100
+    interval := cfg.GUI_HoverPollIntervalMs
     SetTimer(_GUI_HoverPollTick, interval)
 }
 

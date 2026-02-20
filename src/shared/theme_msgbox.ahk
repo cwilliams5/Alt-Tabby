@@ -54,8 +54,10 @@ ThemeMsgBox(text, title := "Message", options := "") {
     defaultBtn := _TMB_ParseDefault(options)
 
     ; Create GUI
+    hasAntiFlash := IsSet(GUI_AntiFlashPrepare)
     msgGui := Gui("+AlwaysOnTop -MinimizeBox -MaximizeBox", title)
-    GUI_AntiFlashPrepare(msgGui, Theme_GetBgColor())
+    if (hasAntiFlash)
+        GUI_AntiFlashPrepare(msgGui, Theme_GetBgColor())
     msgGui.MarginX := 24
     msgGui.MarginY := 16
     msgGui.SetFont("s10", "Segoe UI")
@@ -75,6 +77,7 @@ ThemeMsgBox(text, title := "Message", options := "") {
             case "Warning":  iconChar := Chr(0x26A0)   ; Warning triangle
             case "Info":     iconChar := Chr(0x2139)   ; Info circle
             case "Question": iconChar := Chr(0x2753)   ; Question mark
+            default:         iconChar := ""
         }
         msgGui.SetFont("s28", "Segoe UI Emoji")
         msgGui.AddText("x24 w" iconW " h" iconW " +Center", iconChar)
@@ -131,7 +134,8 @@ ThemeMsgBox(text, title := "Message", options := "") {
 
     ; Show - fixed width, auto height
     msgGui.Show("w" TMB_DIALOG_W " Center")
-    GUI_AntiFlashReveal(msgGui, true)
+    if (hasAntiFlash)
+        GUI_AntiFlashReveal(msgGui, true)
 
     WinWaitClose(msgGui.Hwnd)
 

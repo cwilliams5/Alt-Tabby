@@ -23,6 +23,11 @@
 #Include resource_utils.ahk
 #Include theme.ahk
 #Include theme_msgbox.ahk
+#Include gui_antiflash.ahk
+
+; Anti-flash constants (DWMWA_CLOAK, WS_EX_LAYERED, etc.)
+#Include %A_ScriptDir%\..\gui\
+#Include gui_constants.ahk
 
 global gCRE_Gui := 0
 global gCRE_Controller := 0

@@ -134,7 +134,7 @@ GUI_PatchCosmeticUpdates() {
                 _GUI_CosmeticLog("  WS hwnd=" hwnd " '" item.workspaceName "' -> '" rec.workspaceName "'")
             item.workspaceName := rec.workspaceName
             wsName := gGUI_CurrentWSName
-            item.isOnCurrentWorkspace := (rec.workspaceName = wsName) || (rec.workspaceName = "")
+            item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(rec.workspaceName, wsName)
             wsPatched := true
             patched++
         }

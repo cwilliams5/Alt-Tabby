@@ -566,7 +566,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `FlightRecorder` | bool | `true` | - | Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact. |
+| `FlightRecorder` | bool | `false` | - | Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact. |
 | `FlightRecorderBufferSize` | int | `2000` | `500` - `10000` | Number of events kept in the flight recorder ring buffer. 2000 ≈ 30s of typical activity. Higher values capture more history at ~48 bytes per slot. |
 | `FlightRecorderHotkey` | string | `*F12` | - | Hotkey to dump the flight recorder buffer. Use AHK v2 hotkey syntax (e.g. *F12, ^F12, +F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Pass-through: the key still reaches other apps. |
 | `ChurnLog` | bool | `false` | - | Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle. |

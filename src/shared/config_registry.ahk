@@ -155,119 +155,209 @@ global gConfigRegistry := [
      desc: "Override individual colors for dark mode. Leave at defaults for the standard dark theme."},
 
     {s: "Theme", k: "DarkBg", g: "Theme_DarkBg", t: "int", default: 0x202020,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Main background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Main background"},
+
     {s: "Theme", k: "DarkPanelBg", g: "Theme_DarkPanelBg", t: "int", default: 0x2B2B2B,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Panel / secondary background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Panel / secondary background"},
+
     {s: "Theme", k: "DarkTertiary", g: "Theme_DarkTertiary", t: "int", default: 0x333333,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Tertiary background (cards, hover zones)"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Tertiary background (cards, hover zones)"},
+
     {s: "Theme", k: "DarkEditBg", g: "Theme_DarkEditBg", t: "int", default: 0x383838,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Edit / input background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Edit / input background"},
+
     {s: "Theme", k: "DarkHover", g: "Theme_DarkHover", t: "int", default: 0x404040,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Hover highlight"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Hover highlight"},
+
     {s: "Theme", k: "DarkText", g: "Theme_DarkText", t: "int", default: 0xE0E0E0,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Primary text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Primary text"},
+
     {s: "Theme", k: "DarkEditText", g: "Theme_DarkEditText", t: "int", default: 0xE0E0E0,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Edit / input text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Edit / input text"},
+
     {s: "Theme", k: "DarkTextSecondary", g: "Theme_DarkTextSecondary", t: "int", default: 0xAAAAAA,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Secondary text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Secondary text"},
+
     {s: "Theme", k: "DarkTextMuted", g: "Theme_DarkTextMuted", t: "int", default: 0x888888,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Muted / disabled text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Muted / disabled text"},
+
     {s: "Theme", k: "DarkAccent", g: "Theme_DarkAccent", t: "int", default: 0x60CDFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Accent / link color"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Accent / link color"},
+
     {s: "Theme", k: "DarkAccentHover", g: "Theme_DarkAccentHover", t: "int", default: 0x78D6FF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Accent hover state"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Accent hover state"},
+
     {s: "Theme", k: "DarkAccentText", g: "Theme_DarkAccentText", t: "int", default: 0x202020,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Text on accent background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Text on accent background"},
+
     {s: "Theme", k: "DarkBorder", g: "Theme_DarkBorder", t: "int", default: 0x404040,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Standard border"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Standard border"},
+
     {s: "Theme", k: "DarkBorderInput", g: "Theme_DarkBorderInput", t: "int", default: 0x505050,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Input border"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Input border"},
+
     {s: "Theme", k: "DarkToggleBg", g: "Theme_DarkToggleBg", t: "int", default: 0x505050,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Toggle switch off state"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Toggle switch off state"},
+
     {s: "Theme", k: "DarkSuccess", g: "Theme_DarkSuccess", t: "int", default: 0x9ECE6A,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Success indicator"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Success indicator"},
+
     {s: "Theme", k: "DarkWarning", g: "Theme_DarkWarning", t: "int", default: 0xE0AF68,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Warning indicator"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Warning indicator"},
+
     {s: "Theme", k: "DarkDanger", g: "Theme_DarkDanger", t: "int", default: 0xF7768E,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Danger indicator"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Danger indicator"},
 
     {type: "subsection", section: "Theme", name: "Customize Light Mode Colors",
      desc: "Override individual colors for light mode. Leave at defaults for the standard light theme."},
 
     {s: "Theme", k: "LightBg", g: "Theme_LightBg", t: "int", default: 0xF0F0F0,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Main background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Main background"},
+
     {s: "Theme", k: "LightPanelBg", g: "Theme_LightPanelBg", t: "int", default: 0xFFFFFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Panel / secondary background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Panel / secondary background"},
+
     {s: "Theme", k: "LightTertiary", g: "Theme_LightTertiary", t: "int", default: 0xEBEBEB,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Tertiary background (cards, hover zones)"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Tertiary background (cards, hover zones)"},
+
     {s: "Theme", k: "LightEditBg", g: "Theme_LightEditBg", t: "int", default: 0xFFFFFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Edit / input background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Edit / input background"},
+
     {s: "Theme", k: "LightHover", g: "Theme_LightHover", t: "int", default: 0xE0E0E0,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Hover highlight"},
-    {s: "Theme", k: "LightText", g: "Theme_LightText", t: "int", default: 0x000000,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Primary text"},
-    {s: "Theme", k: "LightEditText", g: "Theme_LightEditText", t: "int", default: 0x000000,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Edit / input text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Hover highlight"},
+
+    {s: "Theme", k: "LightText", g: "Theme_LightText", t: "int", default: 0,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Primary text"},
+
+    {s: "Theme", k: "LightEditText", g: "Theme_LightEditText", t: "int", default: 0,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Edit / input text"},
+
     {s: "Theme", k: "LightTextSecondary", g: "Theme_LightTextSecondary", t: "int", default: 0x444444,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Secondary text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Secondary text"},
+
     {s: "Theme", k: "LightTextMuted", g: "Theme_LightTextMuted", t: "int", default: 0x666666,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Muted / disabled text"},
-    {s: "Theme", k: "LightAccent", g: "Theme_LightAccent", t: "int", default: 0x0066CC,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Accent / link color"},
-    {s: "Theme", k: "LightAccentHover", g: "Theme_LightAccentHover", t: "int", default: 0x0055AA,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Accent hover state"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Muted / disabled text"},
+
+    {s: "Theme", k: "LightAccent", g: "Theme_LightAccent", t: "int", default: 0x66CC,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Accent / link color"},
+
+    {s: "Theme", k: "LightAccentHover", g: "Theme_LightAccentHover", t: "int", default: 0x55AA,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Accent hover state"},
+
     {s: "Theme", k: "LightAccentText", g: "Theme_LightAccentText", t: "int", default: 0xFFFFFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Text on accent background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Text on accent background"},
+
     {s: "Theme", k: "LightBorder", g: "Theme_LightBorder", t: "int", default: 0xD0D0D0,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Standard border"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Standard border"},
+
     {s: "Theme", k: "LightBorderInput", g: "Theme_LightBorderInput", t: "int", default: 0xBBBBBB,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Input border"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Input border"},
+
     {s: "Theme", k: "LightToggleBg", g: "Theme_LightToggleBg", t: "int", default: 0xCCCCCC,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Toggle switch off state"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Toggle switch off state"},
+
     {s: "Theme", k: "LightSuccess", g: "Theme_LightSuccess", t: "int", default: 0x2E7D32,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Success indicator"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Success indicator"},
+
     {s: "Theme", k: "LightWarning", g: "Theme_LightWarning", t: "int", default: 0xE65100,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Warning indicator"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Warning indicator"},
+
     {s: "Theme", k: "LightDanger", g: "Theme_LightDanger", t: "int", default: 0xC62828,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Danger indicator"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Danger indicator"},
 
     {type: "subsection", section: "Theme", name: "Title Bar Colors (Win11)",
      desc: "Custom title bar background and text colors. Win11 22H2+ only; ignored on Win10. Disabling may require closing and reopening dialogs to fully revert."},
 
     {s: "Theme", k: "CustomTitleBarColors", g: "Theme_CustomTitleBarColors", t: "bool", default: false,
      d: "Enable custom title bar background and text colors on Win11. When off, Windows manages title bar colors."},
+
     {s: "Theme", k: "DarkTitleBarBg", g: "Theme_DarkTitleBarBg", t: "int", default: 0x202020,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Dark mode title bar background"},
+
     {s: "Theme", k: "DarkTitleBarText", g: "Theme_DarkTitleBarText", t: "int", default: 0xE0E0E0,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode title bar text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Dark mode title bar text"},
+
     {s: "Theme", k: "LightTitleBarBg", g: "Theme_LightTitleBarBg", t: "int", default: 0xF0F0F0,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar background"},
-    {s: "Theme", k: "LightTitleBarText", g: "Theme_LightTitleBarText", t: "int", default: 0x000000,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode title bar text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Light mode title bar background"},
+
+    {s: "Theme", k: "LightTitleBarText", g: "Theme_LightTitleBarText", t: "int", default: 0,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Light mode title bar text"},
 
     {type: "subsection", section: "Theme", name: "Title Bar Border Color (Win11)",
      desc: "Custom window border color. Win11 22H2+ only; ignored on Win10. Independent of title bar colors above. Disabling may require closing and reopening dialogs to fully revert."},
 
     {s: "Theme", k: "CustomTitleBarBorder", g: "Theme_CustomTitleBarBorder", t: "bool", default: false,
      d: "Enable custom window border color on Win11. When off, Windows manages the border color."},
+
     {s: "Theme", k: "DarkTitleBarBorder", g: "Theme_DarkTitleBarBorder", t: "int", default: 0x60CDFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode window border color"},
-    {s: "Theme", k: "LightTitleBarBorder", g: "Theme_LightTitleBarBorder", t: "int", default: 0x0066CC,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode window border color"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Dark mode window border color"},
+
+    {s: "Theme", k: "LightTitleBarBorder", g: "Theme_LightTitleBarBorder", t: "int", default: 0x66CC,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Light mode window border color"},
 
     {type: "subsection", section: "Theme", name: "Button Hover Colors",
      desc: "Custom accent-colored button hover. Uses owner-draw for full color control."},
 
     {s: "Theme", k: "CustomButtonColors", g: "Theme_CustomButtonColors", t: "bool", default: false,
      d: "Enable custom button hover/pressed colors. When off, buttons use standard Windows theme."},
+
     {s: "Theme", k: "DarkButtonHoverBg", g: "Theme_DarkButtonHoverBg", t: "int", default: 0x60CDFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode button hover background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Dark mode button hover background"},
+
     {s: "Theme", k: "DarkButtonHoverText", g: "Theme_DarkButtonHoverText", t: "int", default: 0x202020,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Dark mode button hover text"},
-    {s: "Theme", k: "LightButtonHoverBg", g: "Theme_LightButtonHoverBg", t: "int", default: 0x0066CC,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode button hover background"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Dark mode button hover text"},
+
+    {s: "Theme", k: "LightButtonHoverBg", g: "Theme_LightButtonHoverBg", t: "int", default: 0x66CC,
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Light mode button hover background"},
+
     {s: "Theme", k: "LightButtonHoverText", g: "Theme_LightButtonHoverText", t: "int", default: 0xFFFFFF,
-     min: 0, max: 0xFFFFFF, fmt: "hex", d: "Light mode button hover text"},
+     min: 0, max: 0xFFFFFF, fmt: "hex",
+     d: "Light mode button hover text"},
 
     ; ============================================================
     ; GUI Appearance
@@ -840,12 +930,12 @@ global gConfigRegistry := [
     {type: "subsection", section: "Store", name: "Producer Toggles",
      desc: "WinEventHook and MRU are always enabled (core). These control optional producers"},
 
-    {s: "Store", k: "KomorebiIntegration", g: "KomorebiIntegration", t: "enum",
-     default: "Always", options: ["Always", "Polling", "Never"],
+    {s: "Store", k: "KomorebiIntegration", g: "KomorebiIntegration", t: "enum", default: "Always",
+     options: ["Always", "Polling", "Never"],
      d: "Komorebi integration mode. Always = subscription with polling fallback and auto-retry (recommended). Polling = periodic state polling only. Never = disabled."},
 
-    {s: "Store", k: "AdditionalWindowInformation", g: "AdditionalWindowInformation", t: "enum",
-     default: "Always", options: ["Always", "NonBlocking", "ProcessOnly", "Never"],
+    {s: "Store", k: "AdditionalWindowInformation", g: "AdditionalWindowInformation", t: "enum", default: "Always",
+     options: ["Always", "NonBlocking", "ProcessOnly", "Never"],
      d: "How to resolve window icons and process names. Always = separate process with in-process fallback (recommended). NonBlocking = separate process only, no fallback. ProcessOnly = in-process only, saves memory. Never = disabled."},
 
     {s: "Store", k: "PumpIconPruneIntervalMs", g: "PumpIconPruneIntervalMs", t: "int", default: 300000,
@@ -880,7 +970,7 @@ global gConfigRegistry := [
      min: 1, max: 100,
      d: "Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts."},
 
-    {s: "GUI", k: "ActiveRepaintDebounceMs", g: "GUI_ActiveRepaintDebounceMs", t: "int", default: 250,
+    {s: "Store", k: "ActiveRepaintDebounceMs", g: "GUI_ActiveRepaintDebounceMs", t: "int", default: 250,
      min: 0, max: 2000,
      d: "Minimum interval between cosmetic repaints while overlay is active (ms). Prevents animated titles from flooding repaints. 0 = no debounce."},
 
@@ -992,10 +1082,11 @@ global gConfigRegistry := [
      desc: "Diagnostics",
      long: "Debug options, viewer settings, and test configuration. All logging disabled by default."},
 
-    {s: "Diagnostics", k: "FlightRecorder", g: "DiagFlightRecorder", t: "bool", default: true,
+    {s: "Diagnostics", k: "FlightRecorder", g: "DiagFlightRecorder", t: "bool", default: false,
      d: "Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact."},
 
-    {s: "Diagnostics", k: "FlightRecorderBufferSize", g: "DiagFlightRecorderBufferSize", t: "int", default: 2000, min: 500, max: 10000,
+    {s: "Diagnostics", k: "FlightRecorderBufferSize", g: "DiagFlightRecorderBufferSize", t: "int", default: 2000,
+     min: 500, max: 10000,
      d: "Number of events kept in the flight recorder ring buffer. 2000 ≈ 30s of typical activity. Higher values capture more history at ~48 bytes per slot."},
 
     {s: "Diagnostics", k: "FlightRecorderHotkey", g: "DiagFlightRecorderHotkey", t: "string", default: "*F12",
@@ -1059,5 +1150,4 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "LogKeepKB", g: "DiagLogKeepKB", t: "int", default: 50,
      min: 25, max: 500,
      d: "Size to keep after log trim in KB. Must be less than LogMaxKB."},
-
 ]

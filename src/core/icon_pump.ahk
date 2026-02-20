@@ -23,6 +23,11 @@ global IP_MODE_VISIBLE_RETRY := "VISIBLE_RETRY"  ; Window became visible - retry
 global IP_MODE_FOCUS_RECHECK := "FOCUS_RECHECK"  ; Window got focus - recheck for icon changes
 
 ; NOTE: GiveUp backoff now in config: cfg.IconPumpGiveUpBackoffMs (default 5000)
+global IP_METHOD_WM_GETICON := "wm_geticon"
+global IP_METHOD_UWP := "uwp"
+global IP_METHOD_EXE := "exe"
+global IP_METHOD_UNCHANGED := "unchanged"
+
 global IP_LOG_TITLE_MAX_LEN := 40       ; Max title length for logging
 
 ; Helper: truncate title for diagnostic logging
@@ -238,6 +243,7 @@ _IP_Tick() {
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier
     global IP_LOG_TITLE_MAX_LEN, _IP_DiagEnabled, _IP_LogPath
     global IP_MODE_INITIAL, IP_MODE_VISIBLE_RETRY, IP_MODE_FOCUS_RECHECK
+    global IP_METHOD_WM_GETICON, IP_METHOD_UWP, IP_METHOD_EXE, IP_METHOD_UNCHANGED
     global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
 
     logEnabled := _IP_DiagEnabled && _IP_LogPath != ""
@@ -301,9 +307,9 @@ _IP_Tick() {
         mode := ""
         if (!hasIcon) {
             mode := IP_MODE_INITIAL
-        } else if (currentMethod != "wm_geticon" && !isHidden) {
+        } else if (currentMethod != IP_METHOD_WM_GETICON && !isHidden) {
             mode := IP_MODE_VISIBLE_RETRY
-        } else if (currentMethod = "wm_geticon") {
+        } else if (currentMethod = IP_METHOD_WM_GETICON) {
             mode := IP_MODE_FOCUS_RECHECK
         } else {
             ; Has fallback icon but still hidden - nothing to do
@@ -343,7 +349,7 @@ _IP_Tick() {
             ; Only try WM_GETICON for upgrade/refresh (window must be visible)
             h := IP_TryResolveFromWindow(hwnd)
             if (h) {
-                method := "wm_geticon"
+                method := IP_METHOD_WM_GETICON
             }
         } else {
             ; IP_MODE_INITIAL mode - try all methods
@@ -352,7 +358,7 @@ _IP_Tick() {
             if (!isHidden) {
                 h := IP_TryResolveFromWindow(hwnd)
                 if (h) {
-                    method := "wm_geticon"
+                    method := IP_METHOD_WM_GETICON
                 }
             }
 
@@ -360,7 +366,7 @@ _IP_Tick() {
             if (!h) {
                 h := IP_TryResolveFromUWP(recPid)
                 if (h) {
-                    method := "uwp"
+                    method := IP_METHOD_UWP
                 }
             }
 
@@ -380,7 +386,7 @@ _IP_Tick() {
                     }
                     h := hCopy
                     if (h) {
-                        method := "exe"
+                        method := IP_METHOD_EXE
                     }
                 }
             }

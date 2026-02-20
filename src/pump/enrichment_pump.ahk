@@ -210,6 +210,7 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
 ; "unchanged" = icon source matches previous resolution, skip IPC/GDI+ reconversion
 _Pump_ResolveIcon(hwnd, pid, exePath) {
     global _Pump_OwnedIcons, _Pump_ExeIconCache, _Pump_PrevIconSource
+    global IP_METHOD_WM_GETICON, IP_METHOD_UWP, IP_METHOD_EXE, IP_METHOD_UNCHANGED
 
     h := 0
     method := ""
@@ -222,13 +223,13 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
             ; Nochange: same raw handle = window icon hasn't changed
             if (_Pump_PrevIconSource.Has(hwnd)) {
                 prev := _Pump_PrevIconSource[hwnd]
-                if (prev.method = "wm_geticon" && prev.rawH = rawH)
-                    return {h: 0, method: "unchanged"}
+                if (prev.method = IP_METHOD_WM_GETICON && prev.rawH = rawH)
+                    return {h: 0, method: IP_METHOD_UNCHANGED}
             }
             h := DllCall("user32\CopyIcon", "ptr", rawH, "ptr")
             if (h) {
-                method := "wm_geticon"
-                _Pump_PrevIconSource[hwnd] := {method: "wm_geticon", rawH: rawH, exePath: ""}
+                method := IP_METHOD_WM_GETICON
+                _Pump_PrevIconSource[hwnd] := {method: IP_METHOD_WM_GETICON, rawH: rawH, exePath: ""}
             }
         }
     }
@@ -237,8 +238,8 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
     if (!h && pid > 0) {
         h := IP_TryResolveFromUWP(pid)
         if (h) {
-            method := "uwp"
-            _Pump_PrevIconSource[hwnd] := {method: "uwp", rawH: 0, exePath: ""}
+            method := IP_METHOD_UWP
+            _Pump_PrevIconSource[hwnd] := {method: IP_METHOD_UWP, rawH: 0, exePath: ""}
         }
     }
 
@@ -247,8 +248,8 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
         ; Nochange: same exePath = same exe icon (master is cached)
         if (_Pump_PrevIconSource.Has(hwnd)) {
             prev := _Pump_PrevIconSource[hwnd]
-            if (prev.method = "exe" && prev.exePath = exePath)
-                return {h: 0, method: "unchanged"}
+            if (prev.method = IP_METHOD_EXE && prev.exePath = exePath)
+                return {h: 0, method: IP_METHOD_UNCHANGED}
         }
         if (_Pump_ExeIconCache.Has(exePath)) {
             h := DllCall("user32\CopyIcon", "ptr", _Pump_ExeIconCache[exePath], "ptr")
@@ -260,8 +261,8 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
             }
         }
         if (h) {
-            method := "exe"
-            _Pump_PrevIconSource[hwnd] := {method: "exe", rawH: 0, exePath: exePath}
+            method := IP_METHOD_EXE
+            _Pump_PrevIconSource[hwnd] := {method: IP_METHOD_EXE, rawH: 0, exePath: exePath}
         }
     }
 

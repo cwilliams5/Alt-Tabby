@@ -101,6 +101,7 @@ global cfg := {
     DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
+    GUI_HoverPollIntervalMs: 100,
     AdditionalWindowInformation: "Never",
     KomorebiIntegration: "Never",
     KomorebicExe: ""
@@ -203,6 +204,10 @@ Win_GetScaleForWindow(hwnd) {
 ; Mock store data: tests populate this, then call GUI_RefreshLiveItems()
 global gMock_StoreItems := []
 global gMock_StoreItemsMap := Map()
+
+WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
+    return (workspaceName = currentWSName) || (workspaceName = "")
+}
 
 WL_GetDisplayList(opts := "") {
     global gMock_StoreItems, gMock_StoreItemsMap

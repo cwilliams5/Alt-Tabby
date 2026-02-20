@@ -718,6 +718,10 @@ WL_GetByHwnd(hwnd) {
     return gWS_Store.Has(hwnd) ? gWS_Store[hwnd] : ""
 }
 
+WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
+    return (workspaceName = currentWSName) || (workspaceName = "")
+}
+
 WL_SetCurrentWorkspace(id, name := "") {
     global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
     global gWS_OnWorkspaceChanged
@@ -740,7 +744,7 @@ WL_SetCurrentWorkspace(id, name := "") {
     ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
     anyFlipped := false
     for _, rec in gWS_Store {
-        newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
+        newIsOnCurrent := WL_IsOnCurrentWorkspace(rec.workspaceName, name)
         if (rec.isOnCurrentWorkspace != newIsOnCurrent) {
             rec.isOnCurrentWorkspace := newIsOnCurrent
             anyFlipped := true
@@ -798,7 +802,7 @@ _WS_NewRecord(hwnd) {
         iconHicon: 0,
         iconCooldownUntilTick: 0,
         iconGaveUp: false,
-        iconMethod: "",           ; "wm_geticon", "uwp", "exe", or "" (none yet)
+        iconMethod: "",           ; IP_METHOD_WM_GETICON, IP_METHOD_UWP, IP_METHOD_EXE, or "" (none yet)
         iconLastRefreshTick: 0    ; When we last checked WM_GETICON (for refresh throttle)
     }
 }
@@ -897,6 +901,7 @@ _WS_CmpMRU(a, b) {
 _WS_EnqueueIfNeeded(row) {
     Critical "On"
     global gWS_IconQueue, gWS_IconQueueDedup, gWS_PidQueue, gWS_PidQueueDedup
+    global IP_METHOD_WM_GETICON
     now := A_TickCount
 
     ; Determine if window needs icon work
@@ -906,7 +911,7 @@ _WS_EnqueueIfNeeded(row) {
     if (!row.iconHicon && !row.iconGaveUp) {
         ; No icon yet - need one
         needsIconWork := true
-    } else if (row.iconHicon && row.iconMethod != "wm_geticon" && isVisible) {
+    } else if (row.iconHicon && row.iconMethod != IP_METHOD_WM_GETICON && isVisible) {
         ; Has fallback icon (UWP/EXE), window is now visible - try to upgrade
         ; Throttle UPGRADE attempts: check iconLastRefreshTick (30s matches IconPumpRefreshThrottleMs)
         ; Without this, same window re-queued every upsert cycle during workspace switches
