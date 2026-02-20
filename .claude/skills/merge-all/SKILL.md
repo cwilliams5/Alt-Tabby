@@ -13,8 +13,8 @@ Merge all open PRs into main, testing between each merge.
    c. Pull to local main: `git pull origin main`.
    d. Run full test suite: `.\tests\test.ps1 --live`
    e. If tests **fail**: stop immediately, report which PR broke tests and what failed. Do not proceed to the next PR.
-   f. If tests **pass**: continue to next PR.
+   f. If tests **pass**: clean up the local worktree if one exists for this branch (`git worktree remove .claude/worktrees/<name>` then `git branch -d <branch>`). Continue to next PR.
 3. After all PRs merged and all tests green, `git push origin main`.
-4. Report summary: how many PRs merged, any issues encountered.
+4. Report summary: how many PRs merged, worktrees cleaned, any issues encountered.
 
 If there are no open PRs, just say so.
