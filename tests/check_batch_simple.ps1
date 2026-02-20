@@ -985,7 +985,8 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
     'arity', 'error-boundary',
     'onevent-name', 'destroy-untrack',
     'unreachable-code', 'ipc-symmetry',
-    'callback-null-guard', 'setcallbacks-wiring', 'cosmetic-patch-safety'
+    'callback-null-guard', 'setcallbacks-wiring', 'cosmetic-patch-safety',
+    'registry-duplicate-key', 'registry-completeness', 'registry-section-casing'
 ) | ForEach-Object { [void]$validLintNames.Add($_) }
 
 # Scan all src/ and test .ahk files
@@ -2139,6 +2140,266 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_dead_params"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 15: registry_key_uniqueness
+# Detects duplicate (section, key) pairs in gConfigRegistry.
+# INI format silently allows duplicate keys — IniRead returns
+# only the first value, IniWrite appends a duplicate. This has
+# caused actual bugs (duplicate keys in [Diagnostics]).
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$rkuIssues = [System.Collections.ArrayList]::new()
+
+$rkuRegFile = @($allFiles | Where-Object { $_.Name -eq 'config_registry.ahk' })
+
+if ($rkuRegFile.Count -gt 0) {
+    $rkuLines = $fileCache[$rkuRegFile[0].FullName]
+    $rkuSeen = @{}  # "Section|Key" -> line number (first occurrence)
+
+    for ($i = 0; $i -lt $rkuLines.Count; $i++) {
+        $raw = $rkuLines[$i]
+        if ($raw -match '^\s*;') { continue }
+
+        # Match setting entries: {s: "Section", k: "Key", ...}
+        if ($raw -match '\bs:\s*"([^"]+)"' -and $raw -match '\bk:\s*"([^"]+)"') {
+            $sect = $Matches[0]  # k: match is in $Matches
+            # Re-extract both since $Matches only holds the last match
+            $null = $raw -match '\bs:\s*"([^"]+)"'
+            $sect = $Matches[1]
+            $null = $raw -match '\bk:\s*"([^"]+)"'
+            $key = $Matches[1]
+
+            $composite = "$sect|$key"
+            if ($rkuSeen.ContainsKey($composite)) {
+                [void]$rkuIssues.Add([PSCustomObject]@{
+                    Section = $sect; Key = $key
+                    Line1 = $rkuSeen[$composite]; Line2 = ($i + 1)
+                })
+            } else {
+                $rkuSeen[$composite] = ($i + 1)
+            }
+        }
+    }
+}
+
+if ($rkuIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($rkuIssues.Count) duplicate (section, key) pair(s) in config registry.")
+    [void]$failOutput.AppendLine("  INI format silently allows duplicate keys - IniRead returns only the first value.")
+    [void]$failOutput.AppendLine("  Fix: remove or rename the duplicate entry in config_registry.ahk.")
+    foreach ($issue in $rkuIssues) {
+        [void]$failOutput.AppendLine("    [$($issue.Section)] $($issue.Key): first at line $($issue.Line1), duplicate at line $($issue.Line2)")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_registry_key_uniqueness"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 16: registry_completeness
+# Validates each gConfigRegistry setting entry has all required
+# fields and valid constraints:
+#   - Required fields: s, k, g, t, default, d
+#   - Numeric types (int/float) must have min AND max
+#   - g field must be a valid AHK identifier
+#   - default must be within [min, max] when both present
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$rcIssues = [System.Collections.ArrayList]::new()
+
+if ($rkuRegFile.Count -gt 0) {
+    $rcLines = $fileCache[$rkuRegFile[0].FullName]
+
+    # Accumulate multi-line entries: join continuation lines until braces balance
+    $rcEntries = [System.Collections.ArrayList]::new()
+    $accumLine = ''; $accumStart = -1; $braceDepth = 0
+
+    for ($i = 0; $i -lt $rcLines.Count; $i++) {
+        $raw = $rcLines[$i]
+        if ($raw -match '^\s*;') { continue }
+
+        # Detect start of an entry: opening { with s: or type:
+        if ($accumStart -lt 0) {
+            if ($raw -match '\{.*\bs:') {
+                $accumLine = $raw; $accumStart = $i
+                $braceDepth = ($raw.Split('{')).Count - ($raw.Split('}')).Count
+                if ($braceDepth -le 0) {
+                    [void]$rcEntries.Add(@{ Text = $accumLine; Line = $accumStart + 1 })
+                    $accumLine = ''; $accumStart = -1; $braceDepth = 0
+                }
+            }
+        } else {
+            $accumLine += ' ' + $raw
+            $braceDepth += ($raw.Split('{')).Count - ($raw.Split('}')).Count
+            if ($braceDepth -le 0) {
+                [void]$rcEntries.Add(@{ Text = $accumLine; Line = $accumStart + 1 })
+                $accumLine = ''; $accumStart = -1; $braceDepth = 0
+            }
+        }
+    }
+
+    foreach ($entry in $rcEntries) {
+        $text = $entry.Text
+        $lineNum = $entry.Line
+
+        # Skip section/subsection entries (they have type: field, no s:+k: together meaningfully)
+        if ($text -match '\btype:\s*"(section|subsection)"') { continue }
+
+        # Extract fields
+        $hasS = $text -match '\bs:\s*"[^"]+"'
+        $hasK = $text -match '\bk:\s*"[^"]+"'
+        $hasG = $text -match '\bg:\s*"([^"]+)"'
+        $gValue = if ($hasG) { $Matches[1] } else { '' }
+        $hasT = $text -match '\bt:\s*"([^"]+)"'
+        $tValue = if ($hasT) { $Matches[1] } else { '' }
+        $hasDefault = $text -match '\bdefault:\s*'
+        $hasD = $text -match '\bd:\s*"'
+        $hasMin = $text -match '\bmin:\s*(-?[\d.]+)'
+        $minVal = if ($hasMin) { [double]$Matches[1] } else { 0 }
+        $hasMax = $text -match '\bmax:\s*(-?[\d.]+)'
+        $maxVal = if ($hasMax) { [double]$Matches[1] } else { 0 }
+
+        # Check required fields
+        $missing = @()
+        if (-not $hasS) { $missing += 's' }
+        if (-not $hasK) { $missing += 'k' }
+        if (-not $hasG) { $missing += 'g' }
+        if (-not $hasT) { $missing += 't' }
+        if (-not $hasDefault) { $missing += 'default' }
+        if (-not $hasD) { $missing += 'd' }
+
+        if ($missing.Count -gt 0) {
+            [void]$rcIssues.Add([PSCustomObject]@{
+                Line = $lineNum; Issue = "missing required field(s): $($missing -join ', ')"
+                G = $gValue
+            })
+        }
+
+        # Validate g field is valid AHK identifier
+        if ($hasG -and $gValue -notmatch '^[A-Za-z_]\w*$') {
+            [void]$rcIssues.Add([PSCustomObject]@{
+                Line = $lineNum; Issue = "g field '$gValue' is not a valid AHK identifier"
+                G = $gValue
+            })
+        }
+
+        # Numeric types must have min AND max
+        if ($tValue -eq 'int' -or $tValue -eq 'float') {
+            if ($hasMin -ne $hasMax) {
+                $which = if ($hasMin) { 'max' } else { 'min' }
+                [void]$rcIssues.Add([PSCustomObject]@{
+                    Line = $lineNum; Issue = "numeric type '$tValue' has min but missing $which (need both or neither)"
+                    G = $gValue
+                })
+            }
+            if (-not $hasMin -and -not $hasMax) {
+                [void]$rcIssues.Add([PSCustomObject]@{
+                    Line = $lineNum; Issue = "numeric type '$tValue' missing min/max constraints"
+                    G = $gValue
+                })
+            }
+        }
+
+        # Default within range
+        if ($hasMin -and $hasMax -and $hasDefault) {
+            $defaultMatch = $null
+            if ($text -match '\bdefault:\s*(-?[\d.]+)') {
+                $defaultVal = [double]$Matches[1]
+                if ($defaultVal -lt $minVal -or $defaultVal -gt $maxVal) {
+                    [void]$rcIssues.Add([PSCustomObject]@{
+                        Line = $lineNum; Issue = "default $defaultVal outside range [$minVal, $maxVal]"
+                        G = $gValue
+                    })
+                }
+            }
+        }
+    }
+}
+
+if ($rcIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($rcIssues.Count) config registry entry issue(s) found.")
+    [void]$failOutput.AppendLine("  Each setting entry needs: s, k, g, t, default, d. Numeric types need min/max.")
+    foreach ($issue in $rcIssues) {
+        $label = if ($issue.G) { "($($issue.G))" } else { "" }
+        [void]$failOutput.AppendLine("    Line $($issue.Line) $label`: $($issue.Issue)")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_registry_completeness"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 17: registry_section_casing
+# Detects section names used with inconsistent casing.
+# INI sections are case-insensitive in Windows APIs but may
+# behave differently in other parsers. Inconsistent casing
+# is always unintentional and confusing.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$rscIssues = [System.Collections.ArrayList]::new()
+
+if ($rkuRegFile.Count -gt 0) {
+    $rscLines = $fileCache[$rkuRegFile[0].FullName]
+    $rscSections = @{}  # lowercase -> list of @{ Name; Line }
+
+    for ($i = 0; $i -lt $rscLines.Count; $i++) {
+        $raw = $rscLines[$i]
+        if ($raw -match '^\s*;') { continue }
+
+        # Match s: "SectionName" in setting entries
+        if ($raw -match '\bs:\s*"([^"]+)"') {
+            $sectName = $Matches[1]
+            $lower = $sectName.ToLower()
+            if (-not $rscSections.ContainsKey($lower)) {
+                $rscSections[$lower] = [System.Collections.ArrayList]::new()
+            }
+            # Only add unique casings
+            $existing = @($rscSections[$lower] | ForEach-Object { $_.Name })
+            if ($sectName -cnotin $existing) {
+                [void]$rscSections[$lower].Add(@{ Name = $sectName; Line = ($i + 1) })
+            }
+        }
+
+        # Also check type: "section" entries for the name: field
+        if ($raw -match '\btype:\s*"section"' -and $raw -match '\bname:\s*"([^"]+)"') {
+            $sectName = $Matches[1]
+            $lower = $sectName.ToLower()
+            if (-not $rscSections.ContainsKey($lower)) {
+                $rscSections[$lower] = [System.Collections.ArrayList]::new()
+            }
+            $existing = @($rscSections[$lower] | ForEach-Object { $_.Name })
+            if ($sectName -cnotin $existing) {
+                [void]$rscSections[$lower].Add(@{ Name = $sectName; Line = ($i + 1) })
+            }
+        }
+    }
+
+    foreach ($lower in $rscSections.Keys) {
+        $casings = $rscSections[$lower]
+        if ($casings.Count -gt 1) {
+            $names = ($casings | ForEach-Object { "'$($_.Name)'" }) -join ', '
+            [void]$rscIssues.Add([PSCustomObject]@{
+                Section = $lower; Casings = $names
+                Lines = ($casings | ForEach-Object { $_.Line }) -join ', '
+            })
+        }
+    }
+}
+
+if ($rscIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($rscIssues.Count) section name(s) with inconsistent casing.")
+    [void]$failOutput.AppendLine("  INI sections are case-insensitive in Windows - inconsistent casing is confusing.")
+    [void]$failOutput.AppendLine("  Fix: use consistent casing for all references to the same section.")
+    foreach ($issue in $rscIssues) {
+        [void]$failOutput.AppendLine("    Section '$($issue.Section)': found casings $($issue.Casings) (lines $($issue.Lines))")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_registry_section_casing"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -2146,7 +2407,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params)" -ForegroundColor Green
+    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params, registry_key_uniqueness, registry_completeness, registry_section_casing)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
