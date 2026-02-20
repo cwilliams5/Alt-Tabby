@@ -29,6 +29,7 @@ tmpclaude-*
 # Claude Code local settings (but keep rules/ for project documentation)
 .claude/*
 !.claude/rules/
+!.claude/skills/
 
 # Plan files (created by Claude agents)
 PLAN.md
