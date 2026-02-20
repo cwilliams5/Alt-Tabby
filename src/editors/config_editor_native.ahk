@@ -1070,9 +1070,12 @@ _CEN_GetControlValue(ctrlInfo, type) {
         return ctrlInfo.ctrl.Text
     } else if (type = "int") {
         try {
-            txt := ctrlInfo.ctrl.Value
-            if (SubStr(txt, 1, 2) = "0x")
-                return Integer(txt)
+            txt := String(ctrlInfo.ctrl.Value)
+            ; Hex fields: ensure "0x" prefix so bare hex like "FF" parses correctly
+            if (ctrlInfo.HasOwnProp("fmt") && ctrlInfo.fmt = "hex") {
+                if (SubStr(txt, 1, 2) != "0x")
+                    txt := "0x" txt
+            }
             return Integer(txt)
         } catch {
             return 0

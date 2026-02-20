@@ -473,8 +473,8 @@ _IP_Tick() {
     _errCount := 0
     _backoffUntil := 0
     } catch as e {
-        global LOG_PATH_STORE
-        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "IP_Tick")
+        global LOG_PATH_ICONPUMP
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_ICONPUMP, "IP_Tick")
     }
 }
 

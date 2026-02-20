@@ -125,6 +125,13 @@ GUI_RecalcHover() {
     idx := 0
     _GUI_DetectActionAtPoint(x, y, &act, &idx)
 
+    return _GUI_ApplyHoverState(idx, act)  ; lint-ignore: critical-section
+}
+
+; Atomically update hover state and return true if changed.
+; Enters Critical but does NOT exit — callers may hold Critical (see GUI_RecalcHover note).
+_GUI_ApplyHoverState(idx, act) {
+    global gGUI_HoverRow, gGUI_HoverBtn
     Critical "On"
     changed := (idx != gGUI_HoverRow || act != gGUI_HoverBtn)
     gGUI_HoverRow := idx
@@ -443,15 +450,11 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     idx := 0
     _GUI_DetectActionAtPoint(x, y, &act, &idx)
 
-    Critical "On"
-    prevRow := gGUI_HoverRow
-    prevBtn := gGUI_HoverBtn
-    gGUI_HoverRow := idx
-    gGUI_HoverBtn := act
-    Critical "Off"
-
-    if (idx != prevRow || act != prevBtn) {
+    if (_GUI_ApplyHoverState(idx, act)) {
+        Critical "Off"
         GUI_Repaint()
+    } else {
+        Critical "Off"
     }
     return 0
 }

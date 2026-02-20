@@ -31,6 +31,17 @@ global GDIP_PEN_CACHE_MAX := 100
 global GDIP_PATH_CACHE_MAX := 50
 global gGdip_PathCache := Map()
 
+; Resource type registry: maps gGdip_Res key names to their GDI+ delete function.
+; Single source of truth — used by both GUI_EnsureResources (creation) and _Gdip_DisposeResources (cleanup).
+; When adding a new resource, add its key here and it will be cleaned up automatically.
+global GDIP_RES_TYPES := Map()
+GDIP_RES_TYPES.Set(
+    "brush",      ["brMain", "brMainHi", "brSub", "brSubHi", "brCol", "brColHi", "brHdr", "brHit", "brFooterText"],
+    "font",       ["fMain", "fMainHi", "fSub", "fSubHi", "fCol", "fColHi", "fHdr", "fAction", "fFooter"],
+    "fontFamily", ["ffMain", "ffMainHi", "ffSub", "ffSubHi", "ffCol", "ffColHi", "ffHdr", "ffAction", "ffFooter"],
+    "strFormat",  ["fmt", "fmtCenter", "fmtRight", "fmtLeft", "fmtLeftCol", "fmtFooterLeft", "fmtFooterCenter", "fmtFooterRight"]
+)
+
 ; Pre-built BLENDFUNCTION for UpdateLayeredWindow (AC_SRC_OVER, fully opaque, AC_SRC_ALPHA).
 ; Shared across gui_paint and gui_overlay to avoid duplication.
 Gdip_GetBlendFunction() {
@@ -183,7 +194,7 @@ _Gdip_FontStyleFromWeight(w) {
 
 ; Dispose all cached GDI+ resources
 _Gdip_DisposeResources() {
-    global gGdip_Res, gGdip_ResScale, gGdip_BrushCache, gGdip_PenCache, gGdip_PathCache, gGdip_G, gGdip_GraphicsHdc
+    global gGdip_Res, gGdip_ResScale, gGdip_BrushCache, gGdip_PenCache, gGdip_PathCache, gGdip_G, gGdip_GraphicsHdc, GDIP_RES_TYPES
 
     ; Delete and invalidate cached Graphics object (force recreation on next EnsureGraphics call)
     ; Must delete before clearing pointer to prevent leak
@@ -217,31 +228,19 @@ _Gdip_DisposeResources() {
         return
     }
 
-    brushKeys := ["brMain", "brMainHi", "brSub", "brSubHi", "brCol", "brColHi", "brHdr", "brHit", "brFooterText"]
-    for _, k in brushKeys {
-        if (gGdip_Res.Has(k) && gGdip_Res[k]) {
-            DllCall("gdiplus\GdipDeleteBrush", "ptr", gGdip_Res[k])
-        }
-    }
-
-    fontKeys := ["fMain", "fMainHi", "fSub", "fSubHi", "fCol", "fColHi", "fHdr", "fAction", "fFooter"]
-    for _, k in fontKeys {
-        if (gGdip_Res.Has(k) && gGdip_Res[k]) {
-            DllCall("gdiplus\GdipDeleteFont", "ptr", gGdip_Res[k])
-        }
-    }
-
-    famKeys := ["ffMain", "ffMainHi", "ffSub", "ffSubHi", "ffCol", "ffColHi", "ffHdr", "ffAction", "ffFooter"]
-    for _, k in famKeys {
-        if (gGdip_Res.Has(k) && gGdip_Res[k]) {
-            DllCall("gdiplus\GdipDeleteFontFamily", "ptr", gGdip_Res[k])
-        }
-    }
-
-    fmtKeys := ["fmt", "fmtCenter", "fmtRight", "fmtLeft", "fmtLeftCol", "fmtFooterLeft", "fmtFooterCenter", "fmtFooterRight"]
-    for _, k in fmtKeys {
-        if (gGdip_Res.Has(k) && gGdip_Res[k]) {
-            DllCall("gdiplus\GdipDeleteStringFormat", "ptr", gGdip_Res[k])
+    ; Delete resources by type using the shared GDIP_RES_TYPES registry.
+    ; Keeps cleanup in sync with creation — add new keys to the registry, not here.
+    static deleteFns := Map(
+        "brush",      "gdiplus\GdipDeleteBrush",
+        "font",       "gdiplus\GdipDeleteFont",
+        "fontFamily", "gdiplus\GdipDeleteFontFamily",
+        "strFormat",  "gdiplus\GdipDeleteStringFormat"
+    )
+    for resType, keys in GDIP_RES_TYPES {
+        fn := deleteFns[resType]
+        for _, k in keys {
+            if (gGdip_Res.Has(k) && gGdip_Res[k])
+                DllCall(fn, "ptr", gGdip_Res[k])
         }
     }
 
