@@ -184,16 +184,21 @@ if (-not $exeNeeded -and -not $testMode) {
     Write-Output ""
 }
 
-# --- Kill any running AltTabby processes ---
+# --- Kill AltTabby processes from THIS release directory only ---
+# Scoped by path to avoid killing user's personal instance or other worktrees' test processes.
 # Skipped when: test mode (test runner handles it) OR exe cached (nothing to write)
 if ($exeNeeded -and -not $testMode) {
     Reset-StepTimer
-    Write-Output "Checking for running AltTabby processes..."
-    $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
+    Write-Output "Checking for running AltTabby processes in $releaseDir..."
+    $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue |
+        Where-Object {
+            try { $_.Path -and $_.Path.StartsWith($releaseDir, [System.StringComparison]::OrdinalIgnoreCase) }
+            catch { $false }
+        }
     if ($running) {
-        Write-Output "Found running AltTabby.exe - attempting to terminate..."
+        Write-Output "Found running AltTabby.exe from this directory - attempting to terminate..."
         try {
-            Stop-Process -Name "AltTabby" -Force -ErrorAction Stop
+            $running | Stop-Process -Force -ErrorAction Stop
             Write-Output "  - Terminated AltTabby.exe"
             Start-Sleep -Seconds 2
         } catch {
@@ -204,7 +209,7 @@ if ($exeNeeded -and -not $testMode) {
             exit 1
         }
     } else {
-        Write-Output "  - No running AltTabby.exe found"
+        Write-Output "  - No running AltTabby.exe found in this directory"
     }
     Write-Output ""
     Record-Step "Process Check"

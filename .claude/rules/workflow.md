@@ -14,3 +14,4 @@ Omit investigation notes, rejected candidates, and false positives. PR reference
 ## Worktree Agents
 
 All file edits and new files must stay within your worktree. Never modify files in the main checkout or other worktrees.
+Live tests (`--live`) are worktree-safe: scoped process kills, isolated pipes/mutexes, worktree-prefixed logs.

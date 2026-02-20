@@ -501,7 +501,9 @@ public class SilentProcess {
 
 $ahk = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 $script = "$PSScriptRoot\run_tests.ahk"
-$logFile = "$env:TEMP\alt_tabby_tests.log"
+# Worktree ID for log file scoping (prevents cross-worktree log clobbering)
+$worktreeId = (Split-Path $PSScriptRoot -Parent | Split-Path -Leaf).Replace(' ', '_')
+$logFile = "$env:TEMP\alt_tabby_tests_${worktreeId}.log"
 $srcRoot = (Resolve-Path "$PSScriptRoot\..\src").Path
 
 # --- Compact Test Summary ---
@@ -584,7 +586,7 @@ $compilePs1 = (Resolve-Path "$PSScriptRoot\..").Path + "\compile.ps1"
 $compileDir = (Resolve-Path "$PSScriptRoot\..").Path
 $staticAnalysisScript = "$PSScriptRoot\static_analysis.ps1"
 $guiScript = "$PSScriptRoot\gui_tests.ahk"
-$guiLogFile = "$env:TEMP\gui_tests.log"
+$guiLogFile = "$env:TEMP\gui_tests_${worktreeId}.log"
 $guiHandle = [IntPtr]::Zero
 $guiTimingRecorded = $false
 $compileHandle = [IntPtr]::Zero
@@ -596,18 +598,26 @@ Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
 # Safe because: Ahk2Exe reads source files (no write conflicts), runs silently,
 # and is killed if pre-gates fail.
 if ($live) {
-    # Kill running AltTabby processes first (must happen before compile touches exe)
-    $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
-    if ($running) {
-        Write-Host "Stopping running AltTabby processes..." -ForegroundColor Yellow
-        Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
+    # Kill AltTabby processes from THIS worktree's release dir only (not user's instance or other worktrees)
+    $thisReleasePath = Resolve-Path "$PSScriptRoot\..\release" -ErrorAction SilentlyContinue
+    $thisReleaseDir = if ($thisReleasePath) { $thisReleasePath.Path } else { $null }
+    if ($thisReleaseDir) {
+        $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue |
+            Where-Object {
+                try { $_.Path -and $_.Path.StartsWith($thisReleaseDir, [System.StringComparison]::OrdinalIgnoreCase) }
+                catch { $false }
+            }
+        if ($running) {
+            Write-Host "Stopping AltTabby processes from $thisReleaseDir..." -ForegroundColor Yellow
+            $running | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        }
     }
 
     if (Test-Path $compilePs1) {
         Record-PhaseStart "Compilation"
         Write-Host "Starting compilation in background..." -ForegroundColor Cyan
-        $compileOutFile = "$env:TEMP\compile_captured.log"
+        $compileOutFile = "$env:TEMP\compile_captured_${worktreeId}.log"
         Remove-Item -Force -ErrorAction SilentlyContinue $compileOutFile
         $compileFlags = "--test-mode"
         if ($timing) { $compileFlags += " --timing" }
@@ -792,8 +802,8 @@ if (Test-Path $guiScript) {
 # Launch unit suites immediately (they don't need compilation)
 if ($live) {
     foreach ($us in $unitSuites) {
-        $us.StderrFile = "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
-        $us.LogFile = "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
+        $us.StderrFile = "$env:TEMP\ahk_${worktreeId}_$($us.LogSuffix)_stderr.log"
+        $us.LogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_$($us.LogSuffix).log"
         Remove-Item -Force -ErrorAction SilentlyContinue $us.StderrFile
         Remove-Item -Force -ErrorAction SilentlyContinue $us.LogFile
         Write-Host "  Starting $($us.Label) tests (background)..." -ForegroundColor Cyan
@@ -846,7 +856,7 @@ if ($live) {
         $compileFlags = "--test-mode"
         if ($timing) { $compileFlags += " --timing" }
         if ($forceCompile) { $compileFlags += " --force" }
-        $compileOutFile = "$env:TEMP\compile_captured.log"
+        $compileOutFile = "$env:TEMP\compile_captured_${worktreeId}.log"
         Remove-Item -Force -ErrorAction SilentlyContinue $compileOutFile
         $compileExit = [SilentProcess]::RunWaitCaptured(('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $compilePs1 + '" ' + $compileFlags), $compileOutFile, $compileDir)
         Record-PhaseEnd "Compilation"
@@ -904,11 +914,15 @@ if ($live) {
                 Write-Host "Recompiling source to ensure tests use current code..."
             }
 
-            # Kill any running AltTabby processes first
-            $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue
+            # Kill AltTabby processes from THIS worktree only (not user's instance or other worktrees)
+            $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue |
+                Where-Object {
+                    try { $_.Path -and $_.Path.StartsWith($releaseDir, [System.StringComparison]::OrdinalIgnoreCase) }
+                    catch { $false }
+                }
             if ($running) {
-                Write-Host "  Stopping running AltTabby processes..."
-                Stop-Process -Name "AltTabby" -Force -ErrorAction SilentlyContinue
+                Write-Host "  Stopping AltTabby processes from $releaseDir..."
+                $running | Stop-Process -Force -ErrorAction SilentlyContinue
                 Start-Sleep -Seconds 1
             }
 
@@ -953,16 +967,16 @@ if ($live) {
     # GUI + Unit tests already launched above (gated by pre-gate only).
     # Live tests launch here after compilation (they need the compiled exe).
 
-    $coreLogFile = "$env:TEMP\alt_tabby_tests_core.log"
-    $networkLogFile = "$env:TEMP\alt_tabby_tests_network.log"
-    $featuresLogFile = "$env:TEMP\alt_tabby_tests_features.log"
-    $executionLogFile = "$env:TEMP\alt_tabby_tests_execution.log"
-    $lifecycleLogFile = "$env:TEMP\alt_tabby_tests_lifecycle.log"
-    $coreStderrFile = "$env:TEMP\ahk_core_stderr.log"
-    $networkStderrFile = "$env:TEMP\ahk_network_stderr.log"
-    $featuresStderrFile = "$env:TEMP\ahk_features_stderr.log"
-    $executionStderrFile = "$env:TEMP\ahk_execution_stderr.log"
-    $lifecycleStderrFile = "$env:TEMP\ahk_lifecycle_stderr.log"
+    $coreLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_core.log"
+    $networkLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_network.log"
+    $featuresLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_features.log"
+    $executionLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_execution.log"
+    $lifecycleLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_lifecycle.log"
+    $coreStderrFile = "$env:TEMP\ahk_${worktreeId}_core_stderr.log"
+    $networkStderrFile = "$env:TEMP\ahk_${worktreeId}_network_stderr.log"
+    $featuresStderrFile = "$env:TEMP\ahk_${worktreeId}_features_stderr.log"
+    $executionStderrFile = "$env:TEMP\ahk_${worktreeId}_execution_stderr.log"
+    $lifecycleStderrFile = "$env:TEMP\ahk_${worktreeId}_lifecycle_stderr.log"
 
     # Clean live suite log files
     foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $lifecycleLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile, $lifecycleStderrFile)) {
@@ -1142,8 +1156,8 @@ if ($live) {
 
     # Clean log files
     foreach ($us in $unitSuites) {
-        $us.StderrFile = "$env:TEMP\ahk_$($us.LogSuffix)_stderr.log"
-        $us.LogFile = "$env:TEMP\alt_tabby_tests_$($us.LogSuffix).log"
+        $us.StderrFile = "$env:TEMP\ahk_${worktreeId}_$($us.LogSuffix)_stderr.log"
+        $us.LogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_$($us.LogSuffix).log"
         Remove-Item -Force -ErrorAction SilentlyContinue $us.StderrFile
         Remove-Item -Force -ErrorAction SilentlyContinue $us.LogFile
     }

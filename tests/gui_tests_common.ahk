@@ -5,6 +5,11 @@
 #Warn VarUnset, Off
 A_IconHidden := true  ; No tray icon during tests
 
+; Worktree-scoped log path (prevents cross-worktree log clobbering)
+SplitPath(A_ScriptDir, , &_guiWorktreeParent)
+SplitPath(_guiWorktreeParent, &_guiWorktreeId)
+global GUI_TestLogPath := A_Temp "\gui_tests_" _guiWorktreeId ".log"
+
 ; ============================================================
 ; 1. GLOBALS (must match gui_main.ahk)
 ; ============================================================
@@ -448,5 +453,6 @@ GUI_AssertTrue(condition, testName) {
 }
 
 GUI_Log(msg) {
-    FileAppend(msg "`n", A_Temp "\gui_tests.log", "UTF-8")
+    global GUI_TestLogPath
+    FileAppend(msg "`n", GUI_TestLogPath, "UTF-8")
 }
