@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -500,6 +500,14 @@ $CHECKS = @(
         Desc     = "ProcPump_SetCallbacks() called before ProcPump_Start() (callbacks wired before timer)"
         Regex    = $true
         Patterns = @("ProcPump_SetCallbacks\([\s\S]*?ProcPump_Start\(\)")
+    },
+    # --- Display list mutation safety: cosmetic patching must not touch structural fields ---
+    @{
+        Id          = "cosmetic_patch_safety"
+        File        = "gui\gui_data.ahk"
+        Function    = "GUI_PatchCosmeticUpdates"
+        Desc        = "GUI_PatchCosmeticUpdates only patches cosmetic fields, never structural"
+        NotPresent  = @(".z :=", ".isVisible :=", ".class :=", "item.hwnd :=", "WL_BeginScan", "WL_EndScan")
     }
 )
 
@@ -1470,6 +1478,79 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_scan_pairing"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 11: setcallbacks_wiring
+# Every *_SetCallbacks() function definition in a producer module
+# must have at least one call site in another file. An unwired
+# SetCallbacks means the producer runs but nobody receives results
+# (silent data loss, not a crash — hard to detect manually).
+# Suppress: ; lint-ignore: setcallbacks-wiring (on the function definition line)
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$scwIssues = [System.Collections.ArrayList]::new()
+$SCW_SUPPRESSION = 'lint-ignore: setcallbacks-wiring'
+
+# Phase 1: Find all *_SetCallbacks() function definitions across src/
+$scwDefs = @{}  # funcName -> @{ File; Line }
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName
+    if ($relPath.StartsWith($SourceDir)) {
+        $relPath = $relPath.Substring($SourceDir.Length).TrimStart('\', '/')
+    }
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        if ($raw.Contains($SCW_SUPPRESSION)) { continue }
+        # Match function definition: SomeName_SetCallbacks(params) {
+        if ($raw -match '^\s*(\w+_SetCallbacks)\s*\([^)]*\)\s*\{?') {
+            $funcName = $Matches[1]
+            if (-not $scwDefs.ContainsKey($funcName)) {
+                $scwDefs[$funcName] = @{ File = $relPath; FullPath = $file.FullName; Line = $i + 1 }
+            }
+        }
+    }
+}
+
+# Phase 2: For each definition, search for call sites in OTHER files
+foreach ($funcName in @($scwDefs.Keys)) {
+    $def = $scwDefs[$funcName]
+    $hasExternalCallSite = $false
+
+    foreach ($file in $allFiles) {
+        # Skip the file where the function is defined
+        if ($file.FullName -eq $def.FullPath) { continue }
+
+        $text = $fileCacheText[$file.FullName]
+        if ($text.Contains("$funcName(")) {
+            $hasExternalCallSite = $true
+            break
+        }
+    }
+
+    if (-not $hasExternalCallSite) {
+        [void]$scwIssues.Add([PSCustomObject]@{
+            File = $def.File; Line = $def.Line; Function = $funcName
+        })
+    }
+}
+
+if ($scwIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($scwIssues.Count) *_SetCallbacks() definition(s) with no external call site.")
+    [void]$failOutput.AppendLine("  An unwired SetCallbacks means the producer runs but results are silently discarded.")
+    [void]$failOutput.AppendLine("  Fix: add a call to the function in the wiring code (typically gui_main.ahk).")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: setcallbacks-wiring' on the function definition line.")
+    foreach ($issue in $scwIssues | Sort-Object File, Line) {
+        [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line): $($issue.Function)() defined but never called from another file")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_setcallbacks_wiring"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1477,7 +1558,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

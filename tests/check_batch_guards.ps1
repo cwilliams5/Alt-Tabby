@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -1552,6 +1552,126 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_producer_error_boundary"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 12: callback_null_guard
+# Notification callback globals (gWS_On*) are initialized to 0
+# and wired later via SetCallbacks. Invoking them without a null
+# check crashes if callbacks aren't wired yet (early init, tests).
+# Before the refactor these were IPC sends (fire-and-forget).
+# Now they're direct function calls that throw on null.
+# Suppress: ; lint-ignore: callback-null-guard
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$cngIssues = [System.Collections.ArrayList]::new()
+$CNG_SUPPRESSION = 'lint-ignore: callback-null-guard'
+
+# Phase 1: Collect notification callback globals (global g*_On* := 0)
+$callbackGlobals = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal)
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*global\s+(g\w+_On\w+)\s*:=\s*0\b') {
+            [void]$callbackGlobals.Add($Matches[1])
+        }
+    }
+}
+
+# Phase 2: Find all invocation sites and verify null-check guard
+if ($callbackGlobals.Count -gt 0) {
+    foreach ($file in $allFiles) {
+        $text = $fileCacheText[$file.FullName]
+
+        # Pre-filter: skip files that don't mention any callback global
+        $hasAny = $false
+        foreach ($cbName in $callbackGlobals) {
+            if ($text.Contains("$cbName(")) { $hasAny = $true; break }
+        }
+        if (-not $hasAny) { continue }
+
+        $lines = $fileCache[$file.FullName]
+        $relPath = $file.FullName
+        if ($relPath.StartsWith("$projectRoot\")) {
+            $relPath = $relPath.Substring("$projectRoot\".Length)
+        }
+
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $raw = $lines[$i]
+            $trimmed = $raw.TrimStart()
+            if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+            if ($raw.Contains($CNG_SUPPRESSION)) { continue }
+
+            foreach ($cbName in $callbackGlobals) {
+                # Check for invocation: cbName(
+                if ($raw.IndexOf("$cbName(", [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+                # Strip strings and comments
+                $cleaned = BC_CleanLine $raw
+                if ($cleaned.IndexOf("$cbName(", [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+                # Skip the SetCallbacks definition (assigns the callback, doesn't invoke it)
+                if ($cleaned -match 'SetCallbacks') { continue }
+
+                # Skip global declarations (the := 0 init line)
+                if ($cleaned -match '^\s*global\s') { continue }
+
+                # Verify guard: preceding non-blank, non-comment line must contain if (cbName)
+                $guarded = $false
+
+                # Same-line guard: if (cbName) cbName(...)
+                if ($cleaned -match "if\s*\(\s*$([regex]::Escape($cbName))\s*\)") {
+                    $guarded = $true
+                }
+
+                # Also check for compound condition: if (... && cbName)
+                if (-not $guarded -and $cleaned -match "\b$([regex]::Escape($cbName))\b.*$([regex]::Escape($cbName))\(") {
+                    # The variable appears before the call on the same line — might be a compound guard
+                    if ($cleaned -match "if\s*\(.*\b$([regex]::Escape($cbName))\b") {
+                        $guarded = $true
+                    }
+                }
+
+                # Previous-line guard
+                if (-not $guarded) {
+                    for ($pi = $i - 1; $pi -ge 0 -and $pi -ge ($i - 3); $pi--) {
+                        $prevLine = $lines[$pi].TrimStart()
+                        if ($prevLine.Length -eq 0 -or $prevLine[0] -eq ';') { continue }
+                        if ($prevLine -match "if\s*\(.*\b$([regex]::Escape($cbName))\b") {
+                            $guarded = $true
+                        }
+                        break  # Stop at first non-blank, non-comment line
+                    }
+                }
+
+                if (-not $guarded) {
+                    [void]$cngIssues.Add([PSCustomObject]@{
+                        File = $relPath; Line = $i + 1
+                        Callback = $cbName; Code = $raw.Trim()
+                    })
+                }
+            }
+        }
+    }
+}
+
+if ($cngIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($cngIssues.Count) unguarded notification callback invocation(s).")
+    [void]$failOutput.AppendLine("  Notification callbacks (gWS_On*) are initialized to 0 and wired later.")
+    [void]$failOutput.AppendLine("  Invoking without a null check crashes if callbacks aren't wired yet.")
+    [void]$failOutput.AppendLine("  Fix: add 'if (callbackVar)' guard before the invocation.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: callback-null-guard' on the invocation line.")
+    foreach ($issue in $cngIssues | Sort-Object File, Line) {
+        [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line): $($issue.Callback)() invoked without null guard")
+        [void]$failOutput.AppendLine("      $($issue.Code)")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_callback_null_guard"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1559,7 +1679,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
