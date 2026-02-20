@@ -12,6 +12,14 @@
 ; signal is sent via launcher to apply changes immediately.
 ; ============================================================
 
+; Layout constants (pixels)
+global BE_TAB_PAD := 20          ; Tab control horizontal padding
+global BE_TAB_BOTTOM := 110      ; Space below tab control for buttons
+global BE_EDIT_BOTTOM := 200     ; Space below edit controls
+global BE_EDIT_HPAD := 50        ; Edit control horizontal padding
+global BE_BTN_Y_OFFSET := 45    ; Button Y offset from bottom
+global BE_BTN_W := 100           ; Button width
+
 global gBE_Gui := 0
 global gBE_TitleEdit := 0
 global gBE_ClassEdit := 0
@@ -330,6 +338,7 @@ _BE_IsGuiValid() {
 }
 
 _BE_OnSize(guiObj, minMax, width, height) {
+    global BE_TAB_PAD, BE_TAB_BOTTOM, BE_EDIT_BOTTOM, BE_EDIT_HPAD, BE_BTN_Y_OFFSET, BE_BTN_W
     ; Guard against destroyed GUI
     if (!_BE_IsGuiValid())
         return
@@ -339,12 +348,12 @@ _BE_OnSize(guiObj, minMax, width, height) {
 
     ; Resize tab control
     try {
-        guiObj["Tabs"].Move(, , width - 20, height - 110)
+        guiObj["Tabs"].Move(, , width - BE_TAB_PAD, height - BE_TAB_BOTTOM)
     }
 
     ; Resize edit controls within tabs
-    editHeight := height - 200
-    editWidth := width - 50
+    editHeight := height - BE_EDIT_BOTTOM
+    editWidth := width - BE_EDIT_HPAD
     try {
         guiObj["TitleEdit"].Move(, , editWidth, editHeight)
         guiObj["ClassEdit"].Move(, , editWidth, editHeight)
@@ -353,9 +362,9 @@ _BE_OnSize(guiObj, minMax, width, height) {
 
     ; Move buttons
     try {
-        guiObj["BtnCancel"].Move(width - 100, height - 45)
-        guiObj["BtnSave"].Move(width - 200, height - 45)
-        guiObj["BtnTest"].Move(10, height - 45)
+        guiObj["BtnCancel"].Move(width - BE_BTN_W, height - BE_BTN_Y_OFFSET)
+        guiObj["BtnSave"].Move(width - BE_BTN_W * 2, height - BE_BTN_Y_OFFSET)
+        guiObj["BtnTest"].Move(10, height - BE_BTN_Y_OFFSET)
     }
 }
 

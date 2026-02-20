@@ -215,7 +215,8 @@ _GUI_PerformAction(action, idx1 := 0) {
     if (action = "close") {
         hwnd := cur.hwnd
         if (hwnd && WinExist("ahk_id " hwnd)) {
-            try PostMessage(0x0010, 0, 0, , "ahk_id " hwnd)
+            global WM_CLOSE
+            try PostMessage(WM_CLOSE, 0, 0, , "ahk_id " hwnd)
         }
         _GUI_RemoveItemAt(idx1)
         return

@@ -67,7 +67,7 @@ ProcPump_Start() {
         global _PP_IdleThreshold, _PP_FailedPidCacheTTL
         ProcBatchPerTick := cfg.ProcPumpBatchSize
         ProcTimerIntervalMs := cfg.ProcPumpIntervalMs
-        _PP_IdleThreshold := cfg.HasOwnProp("ProcPumpIdleThreshold") ? cfg.ProcPumpIdleThreshold : 5
+        _PP_IdleThreshold := cfg.ProcPumpIdleThreshold
         _PP_FailedPidCacheTTL := cfg.ProcPumpFailedPidRetryMs
     }
 

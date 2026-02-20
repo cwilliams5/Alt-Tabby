@@ -240,7 +240,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         if (gGUI_State = "ACTIVE") {
             gGUI_TabCount += 1
-            global gStats_TabSteps
             gStats_TabSteps += 1
             delta := shiftHeld ? -1 : 1
             _GUI_MoveSelectionFrozen(delta)

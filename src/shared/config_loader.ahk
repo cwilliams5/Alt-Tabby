@@ -169,7 +169,7 @@ _CL_CreateDefaultIni(path) {
             }
             ; Setting - description with ;;; and default value commented out with ;
             content .= ";;; " entry.d "`n"
-            content .= "; " entry.k "=" _CL_FormatValue(entry.default, entry.t) "`n"
+            content .= "; " entry.k "=" _CL_FormatValue(entry.default, entry.t, entry.HasOwnProp("fmt") ? entry.fmt : "") "`n"
         }
     }
 
@@ -230,7 +230,7 @@ _CL_SupplementIni(path) {
             if (currentSection != "" && missingBySection.Has(currentSection)) {
                 for _, entry in missingBySection[currentSection] {
                     newLines.Push(";;; " entry.d)
-                    newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t))
+                    newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t, entry.HasOwnProp("fmt") ? entry.fmt : ""))
                 }
                 missingBySection.Delete(currentSection)
             }
@@ -244,7 +244,7 @@ _CL_SupplementIni(path) {
     if (currentSection != "" && missingBySection.Has(currentSection)) {
         for _, entry in missingBySection[currentSection] {
             newLines.Push(";;; " entry.d)
-            newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t))
+            newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t, entry.HasOwnProp("fmt") ? entry.fmt : ""))
         }
     }
 
@@ -254,7 +254,7 @@ _CL_SupplementIni(path) {
         newLines.Push("[" sectionName "]")
         for _, entry in entries {
             newLines.Push(";;; " entry.d)
-            newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t))
+            newLines.Push("; " entry.k "=" _CL_FormatValue(entry.default, entry.t, entry.HasOwnProp("fmt") ? entry.fmt : ""))
         }
     }
 
@@ -413,11 +413,11 @@ _CL_CleanupOrphanedKeys(path) {
     }
 }
 
-_CL_FormatValue(val, type) {
+_CL_FormatValue(val, type, fmt := "") {
     if (type = "bool")
         return val ? "true" : "false"
-    if (type = "int" && IsInteger(val) && val >= 0x10)
-        return Format("0x{:X}", val)  ; Hex for large ints (colors, etc.)
+    if (type = "int" && IsInteger(val) && fmt = "hex")
+        return Format("0x{:X}", val)
     if (type = "float")
         return Format("{:.6g}", val)
     return String(val)
@@ -452,7 +452,8 @@ CL_SaveChanges(changes) {
         if (!changes.Has(entry.g))
             continue
 
-        if (CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t))
+        entryFmt := entry.HasOwnProp("fmt") ? entry.fmt : ""
+        if (CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t, entryFmt))
             changeCount++
         else
             failCount++
@@ -462,7 +463,7 @@ CL_SaveChanges(changes) {
 
 ; Write to INI preserving comments and structure (unlike IniWrite which reorganizes)
 ; If value equals default, comments out the line; otherwise uncomments it
-CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType := "string") {
+CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType := "string", valFmt := "") {
     if (!FileExist(path))
         return false
 
@@ -470,8 +471,8 @@ CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType :
     lines := StrSplit(content, "`n", "`r")
 
     ; Determine if value equals default (should be commented out)
-    formattedValue := _CL_FormatValue(value, valType)
-    formattedDefault := _CL_FormatValue(defaultVal, valType)
+    formattedValue := _CL_FormatValue(value, valType, valFmt)
+    formattedDefault := _CL_FormatValue(defaultVal, valType, valFmt)
     shouldComment := (formattedValue = formattedDefault)
 
     inSection := false

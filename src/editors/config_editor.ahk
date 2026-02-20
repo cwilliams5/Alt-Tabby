@@ -45,6 +45,10 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
         } catch as e {
             ; WebView2 detection succeeded but init failed - fall back to native
             ; This can happen if WebView2 is registered but DLL is missing/corrupt
+            if (cfg.DiagWebViewLog) {
+                global LOG_PATH_WEBVIEW
+                try LogAppend(LOG_PATH_WEBVIEW, "WebView2 init failed, falling back to native: " e.Message)
+            }
         }
     }
 

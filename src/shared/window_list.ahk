@@ -569,8 +569,9 @@ WL_ValidateExistence() {
             continue
 
         ; Check DWM cloaking
+        global DWMWA_CLOAKED
         static cloakedBuf := Buffer(4, 0)  ; static: reused per-iteration, repopulated by DllCall
-        hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", 14, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
+        hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
         isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
 
         ; If cloaked, it's likely on another workspace - keep it
@@ -1233,9 +1234,6 @@ WL_CleanupAllIcons() {
     }
     Critical "Off"
 }
-
-; Bound diagnostic maps to prevent unbounded memory growth
-; Unconditional: maps may retain entries from when logging was previously enabled
 
 ; ============================================================
 ; DisplayList — Transform store records into sorted item arrays
