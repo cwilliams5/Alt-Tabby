@@ -5,8 +5,8 @@
 - Use direct function refs, not `Func("Name")` (v1 pattern)
 - String comparisons: use `StrCompare()` not `<`/`>` operators
 - `#Include` is compile-time only - cannot be conditional at runtime
-- Store expects Map records from producers: use `rec["key"]` not `rec.key`
-- `_WS_GetOpt()` helper handles both Map and plain Object options
+- Producers submit Map records; store converts to Objects internally via `WL_UpsertWindow()`. Use `rec["key"]` in producer code, `rec.key` in store/GUI code
+- `_WS_GetOpt()` helper handles both Map and plain Object options (polymorphic)
 
 ## No Inline Globals in Switch Cases
 

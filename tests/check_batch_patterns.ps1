@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -1551,6 +1551,100 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_setcallbacks_wiring"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 12: cache_path_invariants
+# WL_GetDisplayList has 4 cache paths with dirty-flag guard
+# conditions. Each path must clear its dirty flags after rebuild.
+# Catches "forgot to clear dirty flag" bugs that cause either
+# performance regression (re-entering expensive path) or stale
+# display data (wrong path selected).
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$cpiIssues = [System.Collections.ArrayList]::new()
+
+$cpiRelPath = "shared\window_list.ahk"
+$cpiFullPath = if ($relToFull.ContainsKey($cpiRelPath)) { $relToFull[$cpiRelPath] } else { $null }
+
+if ($null -ne $cpiFullPath -and $fileCacheText.ContainsKey($cpiFullPath)) {
+    $cpiBody = BP_Extract-FunctionBody $fileCacheText[$cpiFullPath] "WL_GetDisplayList"
+
+    if ($null -ne $cpiBody) {
+        # Dirty flags that must be managed by the cache system
+        $dirtyFlags = @("gWS_SortOrderDirty", "gWS_ContentDirty", "gWS_MRUBumpOnly")
+
+        # Split into lines for line-number reporting
+        $cpiLines = $cpiBody -split "`r?`n"
+
+        # --- Invariant 1: Every dirty flag must be cleared (:= false or := 0) somewhere in the function ---
+        foreach ($flag in $dirtyFlags) {
+            $clearPattern = "${flag}\s*:=\s*(false|0)\b"
+            if (-not ($cpiBody -match $clearPattern)) {
+                [void]$cpiIssues.Add("${cpiRelPath}: WL_GetDisplayList() never clears ${flag} - cache will never hit for paths guarded by this flag")
+            }
+        }
+
+        # --- Invariant 2: gWS_DirtyHwnds must be reset (assigned new Map()) somewhere ---
+        if (-not ($cpiBody -match 'gWS_DirtyHwnds\s*:=\s*Map\(\)')) {
+            [void]$cpiIssues.Add("${cpiRelPath}: WL_GetDisplayList() never resets gWS_DirtyHwnds - stale dirty tracking accumulates")
+        }
+
+        # --- Invariant 3: Each cache path that rebuilds data must clear flags AFTER the rebuild ---
+        # Detect path markers via cachePath string literals
+        $pathMarkers = @(
+            @{ Name = "Path 1.5 (MRU)";    Marker = 'cachePath: "mru"';     RequiredClears = @("gWS_SortOrderDirty", "gWS_ContentDirty", "gWS_MRUBumpOnly") }
+            @{ Name = "Path 2 (content)";   Marker = 'cachePath: "content"'; RequiredClears = @("gWS_ContentDirty") }
+            @{ Name = "Path 3 (full)";      Marker = 'cachePath: "full"';    RequiredClears = @("gWS_SortOrderDirty", "gWS_ContentDirty", "gWS_MRUBumpOnly") }
+        )
+
+        foreach ($path in $pathMarkers) {
+            $markerIdx = $cpiBody.IndexOf($path.Marker)
+            if ($markerIdx -lt 0) {
+                [void]$cpiIssues.Add("${cpiRelPath}: WL_GetDisplayList() missing $($path.Name) - expected cachePath marker '$($path.Marker)'")
+                continue
+            }
+
+            # Extract the section BEFORE this path's result return (the rebuild zone)
+            # Look backwards from the marker to find the dirty flag clears
+            $sectionBefore = $cpiBody.Substring(0, $markerIdx)
+
+            foreach ($flag in $path.RequiredClears) {
+                $clearPattern = "${flag}\s*:=\s*(false|0)\b"
+                # The clear must appear in the section leading up to this path's result
+                if (-not ($sectionBefore -match $clearPattern)) {
+                    [void]$cpiIssues.Add("${cpiRelPath}: WL_GetDisplayList() $($path.Name) does not clear ${flag} before returning - causes re-entry into expensive path")
+                }
+            }
+        }
+
+        # --- Invariant 4: Path 1 (cache hit) must NOT clear any dirty flags ---
+        $cacheHitMarkerIdx = $cpiBody.IndexOf('cachePath: "cache"')
+        if ($cacheHitMarkerIdx -ge 0) {
+            # Section between function start and first cache hit return
+            $cacheHitSection = $cpiBody.Substring(0, $cacheHitMarkerIdx)
+            # Find where this path starts (look for the Path 1 comment or the first Critical "On")
+            # Only check the narrow section for this path (from start to the cache marker)
+            foreach ($flag in $dirtyFlags) {
+                $clearPattern = "${flag}\s*:=\s*(false|0)\b"
+                if ($cacheHitSection -match $clearPattern) {
+                    [void]$cpiIssues.Add("${cpiRelPath}: WL_GetDisplayList() Path 1 (cache hit) clears ${flag} - cache hit path should not modify dirty state")
+                }
+            }
+        }
+    }
+}
+
+if ($cpiIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($cpiIssues.Count) cache-path invariant violation(s) in WL_GetDisplayList().")
+    [void]$failOutput.AppendLine("  Each cache path must clear its dirty flags after rebuild to prevent re-entry or stale data.")
+    foreach ($issue in $cpiIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_cache_path_invariants"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1558,7 +1652,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
