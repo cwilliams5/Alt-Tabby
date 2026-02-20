@@ -142,7 +142,8 @@ CE_RunWebView2(launcherHwnd := 0) {
     ; Create WebView2 control
     ; Uncloak first — WebView2 needs DWM composition to initialize (lesson #5).
     ; Window is still alpha=0 and off-screen, so uncloaking is invisible to user.
-    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", gCEW_Gui.Hwnd, "uint", 13, "int*", 0, "uint", 4)
+    global DWMWA_CLOAK
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", gCEW_Gui.Hwnd, "uint", DWMWA_CLOAK, "int*", 0, "uint", 4)
     try {
         gCEW_Controller := WebView2.create(gCEW_Gui.Hwnd,,,,,, dllPath)
 
@@ -215,7 +216,7 @@ _CEW_OnWebMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param
 
 _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
     global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
-    global TABBY_CMD_RESTART_ALL, WM_COPYDATA
+    global TABBY_CMD_RESTART_ALL
     global cfg, LOG_PATH_WEBVIEW
 
     ; Parse JSON message from JavaScript
@@ -231,22 +232,7 @@ _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
             gCEW_SavedChanges := true
 
             ; Send restart signal to launcher
-            if (gCEW_LauncherHwnd && DllCall("user32\IsWindow", "ptr", gCEW_LauncherHwnd)) {
-                cds := Buffer(3 * A_PtrSize, 0)
-                NumPut("uptr", TABBY_CMD_RESTART_ALL, cds, 0)
-                NumPut("uint", 0, cds, A_PtrSize)
-                NumPut("ptr", 0, cds, 2 * A_PtrSize)
-
-                DllCall("user32\SendMessageTimeoutW"
-                    , "ptr", gCEW_LauncherHwnd
-                    , "uint", WM_COPYDATA
-                    , "ptr", A_ScriptHwnd
-                    , "ptr", cds.Ptr
-                    , "uint", 0x0002
-                    , "uint", 3000
-                    , "ptr*", &_ := 0
-                    , "ptr")
-            }
+            IPC_SendWmCopyData(gCEW_LauncherHwnd, TABBY_CMD_RESTART_ALL)
 
             try Theme_UntrackGui(gCEW_Gui)
             gCEW_Gui.Destroy()

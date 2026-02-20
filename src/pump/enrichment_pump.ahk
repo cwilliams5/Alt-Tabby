@@ -46,9 +46,8 @@ _Pump_Init() {
     ConfigLoader_Init()
 
     ; Load config values
-    if (cfg.HasOwnProp("PumpIconPruneIntervalMs"))
-        _Pump_IconPruneIntervalMs := cfg.PumpIconPruneIntervalMs
-    _Pump_DiagEnabled := cfg.HasOwnProp("DiagPumpLog") ? cfg.DiagPumpLog : false
+    _Pump_IconPruneIntervalMs := cfg.PumpIconPruneIntervalMs
+    _Pump_DiagEnabled := cfg.DiagPumpLog
 
     ; Initialize blacklist (for title-based re-check on enrichment)
     Blacklist_Init()
@@ -149,8 +148,7 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
         processName := ""
         exePath := ""
         if (pid > 0) {
-            processName := _Pump_ResolveProcessName(pid)
-            exePath := ProcessUtils_GetPath(pid)
+            processName := _Pump_ResolveProcessName(pid, &exePath)
             if (processName != "")
                 result["processName"] := processName
             if (exePath != "")
@@ -279,13 +277,14 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
 ; ========================= PROCESS NAME RESOLUTION =========================
 ; Uses proc_pump.ahk resolution pattern but with pump-local cache.
 
-_Pump_ResolveProcessName(pid) {
+_Pump_ResolveProcessName(pid, &outPath := "") {
     global _Pump_ProcNameCache, _Pump_FailedPidCache, _Pump_FailedPidCacheTTL
 
+    outPath := ""
     if (pid <= 0)
         return ""
 
-    ; Check positive cache
+    ; Check positive cache (path not cached — only name)
     if (_Pump_ProcNameCache.Has(pid))
         return _Pump_ProcNameCache[pid]
 
@@ -296,14 +295,14 @@ _Pump_ResolveProcessName(pid) {
         _Pump_FailedPidCache.Delete(pid)
     }
 
-    ; Resolve
-    path := ProcessUtils_GetPath(pid)
-    if (path = "") {
+    ; Resolve — single ProcessUtils_GetPath call, caller gets path via outPath
+    outPath := ProcessUtils_GetPath(pid)
+    if (outPath = "") {
         _Pump_FailedPidCache[pid] := A_TickCount
         return ""
     }
 
-    name := ProcessUtils_Basename(path)
+    name := ProcessUtils_Basename(outPath)
     if (name != "")
         _Pump_ProcNameCache[pid] := name
 

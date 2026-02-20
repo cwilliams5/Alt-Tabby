@@ -641,12 +641,13 @@ RunUnitTests_CoreConfig() {
     ; Test: _CL_FormatValue(false, "bool") → "false"
     AssertEq(_CL_FormatValue(false, "bool"), "false", "_CL_FormatValue(false, bool) = 'false'")
 
-    ; Test: _CL_FormatValue(42, "int") → "42" (small int, no hex)
-    AssertEq(_CL_FormatValue(5, "int"), "5", "_CL_FormatValue(5, int) = '5' (small int, decimal)")
+    ; Test: _CL_FormatValue(int) → decimal by default (no hex unless fmt="hex")
+    AssertEq(_CL_FormatValue(5, "int"), "5", "_CL_FormatValue(5, int) = '5' (decimal)")
+    AssertEq(_CL_FormatValue(255, "int"), "255", "_CL_FormatValue(255, int) = '255' (decimal, no auto-hex)")
 
-    ; Test: _CL_FormatValue(large int) → hex format
-    hexResult := _CL_FormatValue(255, "int")
-    AssertEq(hexResult, "0xFF", "_CL_FormatValue(255, int) = '0xFF' (large int, hex)")
+    ; Test: _CL_FormatValue(int, fmt="hex") → hex format
+    AssertEq(_CL_FormatValue(255, "int", "hex"), "0xFF", "_CL_FormatValue(255, int, hex) = '0xFF'")
+    AssertEq(_CL_FormatValue(16, "int", "hex"), "0x10", "_CL_FormatValue(16, int, hex) = '0x10'")
 
     ; Test: _CL_FormatValue(0.5, "float") → string "0.5" (uses {:.6g} format)
     floatResult := _CL_FormatValue(0.5, "float")

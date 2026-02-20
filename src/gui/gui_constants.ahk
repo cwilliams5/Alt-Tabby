@@ -12,8 +12,10 @@ global GWL_EXSTYLE := -20
 global WS_EX_LAYERED := 0x80000
 
 ; Window messages
+global WM_CLOSE := 0x0010
 global WM_MOUSEMOVE := 0x0200
 global WM_LBUTTONDOWN := 0x0201
+global WM_MOUSEWHEEL := 0x020A
 global WM_MOUSELEAVE := 0x02A3
 global WM_DPICHANGED := 0x02E0
 
@@ -28,6 +30,7 @@ global SWP_NOSIZE := 0x0001
 global SWP_NOMOVE := 0x0002
 global SWP_NOZORDER := 0x0004
 global SWP_NOACTIVATE := 0x0010
+global SWP_FRAMECHANGED := 0x0020
 global SWP_SHOWWINDOW := 0x0040
 global SWP_NOOWNERZORDER := 0x0200
 

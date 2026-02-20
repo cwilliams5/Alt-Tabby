@@ -71,7 +71,7 @@ WinEventHook_Start() {
         global _WEH_IdleThreshold
         WinEventHook_DebounceMs := cfg.WinEventHookDebounceMs
         WinEventHook_BatchMs := cfg.WinEventHookBatchMs
-        _WEH_IdleThreshold := cfg.HasOwnProp("WinEventHookIdleThreshold") ? cfg.WinEventHookIdleThreshold : 10
+        _WEH_IdleThreshold := cfg.WinEventHookIdleThreshold
     }
 
     ; Reset log for new session (before early-exit guard)

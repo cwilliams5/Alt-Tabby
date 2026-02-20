@@ -65,7 +65,7 @@ _CRE_Main() {
     gCRE_Gui := Gui("+Resize +MinSize900x600", "Config Registry Editor")
     gCRE_Gui.OnEvent("Close", _CRE_OnClose)
     gCRE_Gui.OnEvent("Size", _CRE_OnSize)
-    gCRE_Gui.BackColor := "202020"
+    Theme_ApplyToGui(gCRE_Gui)
     gCRE_Gui.Show("w1300 h850")
 
     ; Create WebView2
@@ -132,45 +132,25 @@ _CRE_InjectData() {
 _CRE_SerializeRegistry() {
     global gConfigRegistry
 
-    parts := []
+    entries := []
+    fields := ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"]
     for _, entry in gConfigRegistry {
-        obj := "{"
-
-        ; String-valued properties
-        for prop in ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"] {
-            if (entry.HasOwnProp(prop))
-                obj .= '"' prop '":' _CRE_JsonStr(entry.%prop%) ','
+        m := Map()
+        for _, f in fields {
+            if (entry.HasOwnProp(f))
+                m[f] := entry.%f%
         }
-
-        ; Default value (type-aware serialization)
-        if (entry.HasOwnProp("default")) {
-            if (entry.t = "bool")
-                obj .= '"default":' (entry.default ? "true" : "false") ','
-            else if (entry.t = "int" || entry.t = "float")
-                obj .= '"default":' entry.default ','
-            else
-                obj .= '"default":' _CRE_JsonStr(String(entry.default)) ','
+        if (entry.HasOwnProp("default"))
+            m["default"] := entry.default
+        if (entry.HasOwnProp("options"))
+            m["options"] := entry.options
+        if (entry.HasOwnProp("min")) {
+            m["min"] := entry.min
+            m["max"] := entry.max
         }
-
-        ; Min/Max constraints
-        if (entry.HasOwnProp("min"))
-            obj .= '"min":' entry.min ',"max":' entry.max ','
-
-        ; Enum options
-        if (entry.HasOwnProp("options")) {
-            opts := []
-            for _, o in entry.options
-                opts.Push(_CRE_JsonStr(o))
-            obj .= '"options":[' _CRE_JoinArr(opts, ",") '],'
-        }
-
-        ; Close object
-        if (SubStr(obj, -1) = ",")
-            obj := SubStr(obj, 1, -1)
-        obj .= "}"
-        parts.Push(obj)
+        entries.Push(m)
     }
-    return "[" _CRE_JoinArr(parts, ",") "]"
+    return JSON.Dump(entries)
 }
 
 _CRE_SaveRegistry(source) {
@@ -191,26 +171,3 @@ _CRE_SaveRegistry(source) {
     }
 }
 
-; ============================================================
-; JSON Helpers
-; ============================================================
-
-_CRE_JsonStr(v) {
-    s := String(v)
-    s := StrReplace(s, "\", "\\")
-    s := StrReplace(s, '"', '\"')
-    s := StrReplace(s, "`n", "\n")
-    s := StrReplace(s, "`r", "\r")
-    s := StrReplace(s, "`t", "\t")
-    return '"' s '"'
-}
-
-_CRE_JoinArr(arr, sep) {
-    r := ""
-    for i, v in arr {
-        if (i > 1)
-            r .= sep
-        r .= v
-    }
-    return r
-}

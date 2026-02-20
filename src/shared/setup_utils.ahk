@@ -645,7 +645,7 @@ Shortcut_GetEffectiveExePath() {
     global cfg
     if (IsSet(cfg) && cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "" && FileExist(cfg.SetupExePath))
         return cfg.SetupExePath
-    return A_IsCompiled ? A_ScriptFullPath : A_ScriptFullPath
+    return A_ScriptFullPath
 }
 
 ; ============================================================

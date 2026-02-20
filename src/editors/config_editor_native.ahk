@@ -1088,25 +1088,15 @@ _CEN_GetControlValue(ctrlInfo, type) {
 }
 
 _CEN_HasUnsavedChanges() {
-    global gCEN, gConfigRegistry
-
-    for _, entry in gConfigRegistry {
-        if (!entry.HasOwnProp("default"))
-            continue
-        if (!gCEN["Controls"].Has(entry.g))
-            continue
-
-        ctrlInfo := gCEN["Controls"][entry.g]
-        currentVal := _CEN_GetControlValue(ctrlInfo, entry.t)
-        originalVal := gCEN["OriginalValues"][entry.g]
-
-        if (currentVal != originalVal)
-            return true
-    }
-    return false
+    return _CEN_GetChangedValues().Count > 0
 }
 
 _CEN_SaveToIni() {
+    return CL_SaveChanges(_CEN_GetChangedValues())  ; Returns {saved: N, failed: N}
+}
+
+; Collect all control values that differ from their original (loaded) values
+_CEN_GetChangedValues() {
     global gCEN, gConfigRegistry
 
     changes := Map()
@@ -1123,8 +1113,7 @@ _CEN_SaveToIni() {
         if (currentVal != originalVal)
             changes[entry.g] := currentVal
     }
-
-    return CL_SaveChanges(changes)  ; Returns {saved: N, failed: N}
+    return changes
 }
 
 ; ============================================================
@@ -1399,22 +1388,8 @@ _CEN_OnSave(*) {
     gCEN["MainGui"].Destroy()
 
     ; Send restart signal to launcher
-    if (gCEN["LauncherHwnd"] && DllCall("user32\IsWindow", "ptr", gCEN["LauncherHwnd"])) {
-        cds := Buffer(3 * A_PtrSize, 0)
-        NumPut("uptr", TABBY_CMD_RESTART_ALL, cds, 0)
-        NumPut("uint", 0, cds, A_PtrSize)
-        NumPut("ptr", 0, cds, 2 * A_PtrSize)
-
-        global WM_COPYDATA
-        DllCall("user32\SendMessageTimeoutW"
-            , "ptr", gCEN["LauncherHwnd"]
-            , "uint", WM_COPYDATA
-            , "ptr", A_ScriptHwnd
-            , "ptr", cds.Ptr
-            , "uint", 0x0002
-            , "uint", 3000
-            , "ptr*", &_ := 0
-            , "ptr")
+    if (IPC_SendWmCopyData(gCEN["LauncherHwnd"], TABBY_CMD_RESTART_ALL)) {
+        ; Launcher will restart with new config
     } else {
         ThemeMsgBox("Settings saved (" result.saved " changes). Restart Alt-Tabby to apply changes.",
             "Alt-Tabby Configuration", "OK Iconi")

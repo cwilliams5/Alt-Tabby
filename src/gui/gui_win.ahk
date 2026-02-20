@@ -227,13 +227,13 @@ Win_SetCornerPreference(hWnd, pref := 2) {
 
 ; Remove WS_EX_LAYERED style
 Win_ForceNoLayered(hWnd) {
-    global GWL_EXSTYLE, WS_EX_LAYERED
+    global GWL_EXSTYLE, WS_EX_LAYERED, SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED
     try {
         ex := DllCall("user32\GetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr")
         if (ex & WS_EX_LAYERED) {
             ex := ex & ~WS_EX_LAYERED
             DllCall("user32\SetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
-            DllCall("user32\SetWindowPos", "ptr", hWnd, "ptr", 0, "int", 0, "int", 0, "int", 0, "int", 0, "uint", 0x0001 | 0x0002 | 0x0004 | 0x0020)
+            DllCall("user32\SetWindowPos", "ptr", hWnd, "ptr", 0, "int", 0, "int", 0, "int", 0, "int", 0, "uint", SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
         }
     }
 }

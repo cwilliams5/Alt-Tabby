@@ -9,12 +9,12 @@
 ;   2) Fallback to process EXE icon, cached per EXE
 ;   3) Bounded retries with exponential backoff
 ;
-; Cross-process HICON note:
+; HICON lifecycle note:
 ;   HICON handles are USER objects stored in win32k.sys shared
-;   kernel memory, not process-local. The numeric handle value
-;   can be passed to GUI via IPC and used directly - both processes
-;   index into the same kernel handle table. Store owns the icons
-;   (via CopyIcon); they remain valid while Store runs.
+;   kernel memory. CopyIcon is used to create owned copies that
+;   persist independently of the source window. GUI pre-caches
+;   GDI+ bitmaps via Gdip_PreCacheIcon on callback, so HICONs
+;   can be safely destroyed after the callback completes.
 ; ============================================================
 
 ; Icon pump processing modes (describes when/why each mode triggers)
@@ -74,7 +74,7 @@ global _IP_LastPruneTick := 0
 global _IP_PruneIntervalMs := 5000      ; Prune every ~5s
 
 ; Callback globals for WindowList decoupling (wired by host process)
-; In MainProcess: point to WindowList functions. In EnrichmentPump: pump-local implementations.
+; Callback indirection for host decoupling. MainProcess wires to WindowList; EnrichmentPump to pump-local fns.
 global gIP_PopBatch := 0        ; fn(n) → returns array of hwnds needing icon resolution
 global gIP_GetRecord := 0       ; fn(hwnd) → returns record object or ""
 global gIP_UpdateFields := 0    ; fn(hwnd, fields, source) → updates record fields
@@ -220,7 +220,7 @@ IconPump_CleanupWindow(hwnd) {
     global _IP_Attempts
 
     ; Destroy the HICON (before record is deleted from store).
-    ; Safe: GUI eagerly pre-caches GDI+ bitmaps on IPC receive (see Gdip_PreCacheIcon).
+    ; Safe: GUI eagerly pre-caches GDI+ bitmaps on callback (see Gdip_PreCacheIcon).
     global gIP_GetRecord
     rec := gIP_GetRecord(hwnd)
     if (rec && rec.HasOwnProp("iconHicon") && rec.iconHicon) {
@@ -261,7 +261,6 @@ _IP_Tick() {
         _IP_PruneAttempts()
     }
 
-    global gIP_PopBatch
     hwnds := gIP_PopBatch(IconBatchPerTick)
     if (!IsObject(hwnds) || hwnds.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
@@ -414,7 +413,7 @@ _IP_Tick() {
                 _IP_Log("RESOLVED hwnd=" hwnd " h=" h " method=" method)
             if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
                 ; Destroy old icon before replacing.
-                ; Safe: GUI eagerly pre-caches GDI+ bitmaps on IPC receive, so it never
+                ; Safe: GUI eagerly pre-caches GDI+ bitmaps on callback, so it never
                 ; needs to convert a stale HICON at paint time (see Gdip_PreCacheIcon).
                 if (rec.iconHicon)
                     try DllCall("user32\DestroyIcon", "ptr", rec.iconHicon)
