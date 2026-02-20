@@ -162,12 +162,32 @@ _RepeatStr(str, count) {
     return result
 }
 
-; Kill all running AltTabby.exe processes
+; Kill all running AltTabby.exe processes (blanket — use scoped variants for parallel safety)
 _Test_KillAllAltTabby() {
     for _, proc in _Test_EnumProcesses("AltTabby.exe") {
         try ProcessClose(proc.pid)
     }
     ; Give processes time to fully exit
+    Sleep(200)
+}
+
+; Kill AltTabby processes whose exe path starts with dirPath (worktree-safe)
+_Test_KillAltTabbyInDir(dirPath) {
+    for _, proc in _Test_EnumProcesses("AltTabby.exe") {
+        try {
+            procPath := ProcessGetPath(proc.pid)
+            if (InStr(procPath, dirPath) = 1)
+                ProcessClose(proc.pid)
+        }
+    }
+    Sleep(200)
+}
+
+; Kill all processes matching a custom exe name (e.g. "AltTabby_exectest.exe")
+_Test_KillProcessesByName(exeName) {
+    for _, proc in _Test_EnumProcesses(exeName) {
+        try ProcessClose(proc.pid)
+    }
     Sleep(200)
 }
 

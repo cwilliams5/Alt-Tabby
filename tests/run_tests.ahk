@@ -20,8 +20,15 @@ _TestOnError(err, mode) {
 ;   - test_unit.ahk:  Unit tests (WindowList, Config, Entry Points)
 ;   - test_live.ahk:  Live integration tests (require --live flag)
 
+; --- Worktree ID for log file scoping (prevents cross-worktree log clobbering) ---
+; A_ScriptDir is tests/, parent is worktree root. SplitPath on A_ScriptDir gives OutDir
+; (the parent path), then SplitPath on that gives OutFileName (worktree folder name).
+SplitPath(A_ScriptDir, , &_worktreeParent)
+SplitPath(_worktreeParent, &_worktreeId)
+global WorktreeId := _worktreeId
+
 ; --- Global test state ---
-global TestLogPath := A_Temp "\alt_tabby_tests.log"
+global TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId ".log"
 global TestErrors := 0
 global TestPassed := 0
 
@@ -124,31 +131,31 @@ for _, arg in A_Args {
 ; Single-suite modes use a dedicated log file to avoid file locking
 ; conflicts when multiple instances run in parallel
 if (DoLiveCore)
-    TestLogPath := A_Temp "\alt_tabby_tests_core.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_core.log"
 else if (DoLiveNetwork)
-    TestLogPath := A_Temp "\alt_tabby_tests_network.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_network.log"
 else if (DoLiveFeatures)
-    TestLogPath := A_Temp "\alt_tabby_tests_features.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_features.log"
 else if (DoLiveExecution)
-    TestLogPath := A_Temp "\alt_tabby_tests_execution.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_execution.log"
 else if (DoLiveLifecycle)
-    TestLogPath := A_Temp "\alt_tabby_tests_lifecycle.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_lifecycle.log"
 else if (DoUnitCoreStore)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_core_store.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_core_store.log"
 else if (DoUnitCoreParsing)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_core_parsing.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_core_parsing.log"
 else if (DoUnitCoreConfig)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_core_config.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_core_config.log"
 else if (DoUnitStorage)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_storage.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_storage.log"
 else if (DoUnitSetup)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_setup.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_setup.log"
 else if (DoUnitCleanup)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_cleanup.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_cleanup.log"
 else if (DoUnitAdvanced)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_advanced.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_advanced.log"
 else if (DoUnitStats)
-    TestLogPath := A_Temp "\alt_tabby_tests_unit_stats.log"
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_stats.log"
 
 ; --- Error handler BEFORE any I/O to catch early startup errors ---
 OnError(_Test_OnError)

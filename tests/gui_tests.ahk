@@ -15,7 +15,7 @@ A_IconHidden := true  ; No tray icon during tests
 ; RUN ALL TESTS
 ; ============================================================
 
-try FileDelete(A_Temp "\gui_tests.log")
+try FileDelete(GUI_TestLogPath)
 
 GUI_Log("=== Alt-Tabby GUI Tests ===")
 GUI_Log("Running split test modules...")
