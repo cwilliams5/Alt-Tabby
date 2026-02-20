@@ -1,7 +1,6 @@
 ---
 name: plan-issue
 description: Create a GitHub issue from an approved plan before implementation
-disable-model-invocation: true
 ---
 
 Create a GitHub issue from the approved plan. Distill — do not dump the full plan.

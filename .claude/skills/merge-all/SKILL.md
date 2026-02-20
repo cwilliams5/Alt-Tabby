@@ -1,7 +1,6 @@
 ---
 name: merge-all
 description: Merge all open PRs into main with testing between each
-disable-model-invocation: true
 ---
 
 Merge all open PRs into main, testing between each merge.

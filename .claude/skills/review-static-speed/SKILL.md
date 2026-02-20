@@ -1,7 +1,6 @@
 ---
 name: review-static-speed
 description: Review static analysis checks for runtime optimization opportunities
-disable-model-invocation: true
 ---
 
 Enter planning mode. Investigate static analysis runtime and find optimization opportunities.

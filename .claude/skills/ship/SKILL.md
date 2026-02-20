@@ -1,7 +1,6 @@
 ---
 name: ship
 description: Commit, push, and create a PR for the current branch
-disable-model-invocation: true
 ---
 
 Ship the current worktree branch as a PR.
