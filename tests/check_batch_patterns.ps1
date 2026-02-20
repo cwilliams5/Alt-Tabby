@@ -1353,7 +1353,7 @@ foreach ($path in $fileCacheText.Keys) {
     foreach ($m in $relayMatches) {
         [void]$cmdSent.Add($m.Groups[1].Value)
     }
-    $helperMatches = [regex]::Matches($text, 'IPC_SendWmCopyData\([^,]*,\s*(TABBY_CMD_\w+)')
+    $helperMatches = [regex]::Matches($text, 'IPC_SendWmCopyData\w*\([^,]*,\s*(TABBY_CMD_\w+)')
     foreach ($m in $helperMatches) {
         [void]$cmdSent.Add($m.Groups[1].Value)
     }

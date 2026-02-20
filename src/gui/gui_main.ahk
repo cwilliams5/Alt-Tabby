@@ -90,6 +90,11 @@ global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by works
 ; Producer state
 global _gGUI_ScanInProgress := false  ; Re-entrancy guard for full WinEnum scan
 global HOUSEKEEPING_INTERVAL_MS := 300000  ; 5 minutes — cache pruning, log rotation, stats flush
+
+; Staggered startup delays (primes to avoid timer alignment on first tick)
+global STAGGER_ZPUMP_MS := 17
+global STAGGER_VALIDATE_MS := 37
+global STAGGER_HOUSEKEEPING_MS := 53
 ; _gGUI_LastCosmeticRepaintTick declared in gui_data.ahk (sole writer)
 
 ; gGUI_LauncherHwnd declared+defaulted before arg parsing (line 14), assigned there if --launcher-hwnd= present
@@ -99,7 +104,7 @@ global HOUSEKEEPING_INTERVAL_MS := 300000  ; 5 minutes — cache pruning, log ro
 ; by alt_tabby.ahk before this file. They reference globals declared above.
 
 _GUI_Main_Init() {
-    global cfg, FR_EV_PRODUCER_INIT, gFR_Enabled
+    global cfg, FR_EV_PRODUCER_INIT, gFR_Enabled, STAGGER_ZPUMP_MS, STAGGER_VALIDATE_MS, STAGGER_HOUSEKEEPING_MS
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
@@ -196,7 +201,7 @@ _GUI_Main_Init() {
         SetTimer(_GUI_FullScan, cfg.WinEnumFallbackScanIntervalMs)
     } else {
         ; Hook working - start Z-pump for on-demand scans (staggered)
-        SetTimer(_GUI_StartZPump, -17)
+        SetTimer(_GUI_StartZPump, -STAGGER_ZPUMP_MS)
 
         ; Optional safety net polling (usually disabled)
         if (cfg.WinEnumSafetyPollMs > 0)
@@ -205,10 +210,10 @@ _GUI_Main_Init() {
 
     ; Start lightweight existence validation (staggered)
     if (cfg.WinEnumValidateExistenceMs > 0)
-        SetTimer(_GUI_StartValidateExistence, -37)
+        SetTimer(_GUI_StartValidateExistence, -STAGGER_VALIDATE_MS)
 
     ; Start housekeeping timer for cache pruning, log rotation, stats flush (staggered)
-    SetTimer(_GUI_StartHousekeeping, -53)
+    SetTimer(_GUI_StartHousekeeping, -STAGGER_HOUSEKEEPING_MS)
 
     ; Set up interceptor keyboard hooks — MUST be LAST (no hotkeys before data is populated)
     INT_SetupHotkeys()
@@ -224,10 +229,8 @@ _GUI_Main_Init() {
 _GUI_OnProducerRevChanged(isStructural := true) {
     global gGUI_State
 
-    ; Error boundary: producer callback errors must not crash the app.
-    ; In the old store-as-process architecture, a store crash was isolated.
-    ; Now that producers run in-process, an unhandled error here would propagate
-    ; to _GUI_OnError → ExitApp(1). Log and skip — next cycle self-corrects.
+    ; Error boundary: producers run in-process, so unhandled errors propagate
+    ; to _GUI_OnError → ExitApp(1). Catch, log, and continue — next cycle self-corrects.
     try {
         ; During IDLE: kick background icon→bitmap pre-cache.
         ; During ALT_PENDING: refresh live items to keep pre-warm data fresh.
@@ -570,7 +573,7 @@ _GUI_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 ; Separate from WM_COPYDATA to avoid nested SendMessage deadlock in AHK v2.
 _GUI_OnStatsRequest(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     Critical "On"
-    global TABBY_CMD_STATS_RESPONSE, WM_COPYDATA
+    global TABBY_CMD_STATS_RESPONSE
     try {
         senderHwnd := wParam
         if (!senderHwnd) {
@@ -582,12 +585,8 @@ _GUI_OnStatsRequest(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
         cbData := StrPut(jsonStr, "UTF-8")
         payload := Buffer(cbData, 0)
         StrPut(jsonStr, payload, "UTF-8")
-        cds := Buffer(A_PtrSize * 3, 0)
-        NumPut("uptr", TABBY_CMD_STATS_RESPONSE, cds, 0)
-        NumPut("uptr", cbData, cds, A_PtrSize)
-        NumPut("uptr", payload.Ptr, cds, A_PtrSize * 2)
         DetectHiddenWindows(true)
-        try SendMessage(WM_COPYDATA, A_ScriptHwnd, cds.Ptr, , "ahk_id " senderHwnd)
+        IPC_SendWmCopyDataWithPayload(senderHwnd, TABBY_CMD_STATS_RESPONSE, payload, cbData)
         DetectHiddenWindows(false)
         Critical "Off"
         return 1

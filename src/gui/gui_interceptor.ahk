@@ -28,6 +28,10 @@ global gINT_AltUpDuringPending := false  ; Track if Alt released before Tab_Deci
 ; Bypass mode state - when true, Tab hotkey is disabled for fullscreen games
 global gINT_BypassMode := false
 
+; Settle delay before Tab decision — allows Alt_Up hotkey to fire first.
+; 1ms was insufficient; 5ms is empirically safe across tested hardware.
+global INT_TAB_DECIDE_SETTLE_MS := 5
+
 ; ========================= HOTKEY SETUP =========================
 
 INT_SetupHotkeys() {
@@ -205,8 +209,8 @@ _INT_Tab_Decide() {
     if (cfg.DiagEventLog)
         GUI_LogEvent("INT: Tab_Decide (altIsDown=" gINT_AltIsDown " altUpFlag=" gINT_AltUpDuringPending ")")
     ; Delay to let Alt_Up hotkey run first if it's pending
-    ; 1ms wasn't enough - Alt_Up hotkey may not have fired yet
-    SetTimer(_INT_Tab_Decide_Inner, -5)
+    global INT_TAB_DECIDE_SETTLE_MS
+    SetTimer(_INT_Tab_Decide_Inner, -INT_TAB_DECIDE_SETTLE_MS)
 }
 
 _INT_Tab_Decide_Inner() {
