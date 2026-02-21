@@ -315,6 +315,21 @@ RunUnitTests_CoreStore() {
     }
     AssertEq(foundTitle, true, "Path 2 title: hwnd 5001 found in display list")
 
+    ; --- monitorHandle change triggers Path 2 content refresh ---
+    WL_GetDisplayList()
+    WL_UpdateFields(5001, Map("monitorHandle", 12345, "monitorLabel", "Mon 2"), "test")
+    proj := WL_GetDisplayList()
+    foundMon := false
+    for _, item in proj.items {
+        if (item.hwnd = 5001) {
+            AssertEq(item.monitorHandle, 12345, "Path 2 returns fresh monitorHandle")
+            AssertEq(item.monitorLabel, "Mon 2", "Path 2 returns fresh monitorLabel")
+            foundMon := true
+            break
+        }
+    }
+    AssertEq(foundMon, true, "Path 2 monitorHandle: hwnd 5001 found in display list")
+
     ; --- Coverage test: every _WS_ToItem field must be tracked ---
     ; Prevents future regressions where a new field is added to _WS_ToItem
     ; but not tracked, silently causing stale cache data

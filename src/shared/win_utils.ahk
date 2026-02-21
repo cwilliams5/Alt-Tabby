@@ -90,6 +90,41 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
     rec["isMinimized"] := isMin
     rec["isVisible"] := isVisible
 
+    ; Stamp monitor identity for store-level tracking
+    hMon := Win_GetMonitorHandle(hwnd)
+    rec["monitorHandle"] := hMon
+    rec["monitorLabel"] := Win_GetMonitorLabel(hMon)
+
     return rec
+}
+
+; Get monitor handle for a window (for monitor identity comparison)
+; MONITOR_DEFAULTTONEAREST = 2
+Win_GetMonitorHandle(hWnd) {
+    return DllCall("user32\MonitorFromWindow", "ptr", hWnd, "uint", 2, "ptr")
+}
+
+; Get monitor index (1-based) from monitor handle for display purposes
+; Returns "Mon N" where N is the monitor number, or "" on failure
+Win_GetMonitorLabel(hMon) {
+    if (!hMon)
+        return ""
+    ; Iterate AHK's built-in monitor list to find the matching index
+    count := MonitorGetCount()
+    loop count {
+        ; Get monitor bounds via AHK built-in and compare handle
+        mL := 0, mT := 0, mR := 0, mB := 0
+        MonitorGet(A_Index, &mL, &mT, &mR, &mB)
+        ; Build a rect and get the handle for comparison
+        rc := Buffer(16, 0)
+        NumPut("Int", mL, rc, 0)
+        NumPut("Int", mT, rc, 4)
+        NumPut("Int", mR, rc, 8)
+        NumPut("Int", mB, rc, 12)
+        testMon := DllCall("user32\MonitorFromRect", "ptr", rc.Ptr, "uint", 2, "ptr")
+        if (testMon = hMon)
+            return "Mon " A_Index
+    }
+    return ""
 }
 

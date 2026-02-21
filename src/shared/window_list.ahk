@@ -14,7 +14,8 @@ global WS_SCAN_ID_MAX := 0x7FFFFFFF
 ; hwnd is always included separately as the record key.
 global DISPLAY_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick",
     "isFocused", "isCloaked", "isMinimized", "workspaceName", "workspaceId",
-    "isOnCurrentWorkspace", "processName", "iconHicon"]
+    "isOnCurrentWorkspace", "processName", "iconHicon",
+    "monitorHandle", "monitorLabel"]
 
 global gWS_Store := Map()
 global gWS_Rev := 0
@@ -67,7 +68,7 @@ global gWS_MRUOnlyFields := Map("lastActivatedTick", true)
 global gWS_ContentOnlyFields := Map(
     "iconHicon", true, "title", true, "class", true,
     "pid", true, "workspaceName", true, "workspaceId", true,
-    "isFocused", true)
+    "isFocused", true, "monitorHandle", true, "monitorLabel", true)
 
 ; When true, "title" field changes trigger sort rebuild instead of content-only refresh.
 ; Set by WL_GetDisplayList when sort="Title" is used, cleared on next WL_GetDisplayList
@@ -818,11 +819,13 @@ _WS_NewRecord(hwnd) {
         iconCooldownUntilTick: 0,
         iconGaveUp: false,
         iconMethod: "",           ; IP_METHOD_WM_GETICON, IP_METHOD_UWP, IP_METHOD_EXE, or "" (none yet)
-        iconLastRefreshTick: 0    ; When we last checked WM_GETICON (for refresh throttle)
+        iconLastRefreshTick: 0,   ; When we last checked WM_GETICON (for refresh throttle)
+        monitorHandle: 0,
+        monitorLabel: ""
     }
 }
 
-; PERF: Hardcoded fields avoid 13x dynamic %field% string-to-property-slot resolution per call.
+; PERF: Hardcoded fields avoid dynamic %field% string-to-property-slot resolution per call.
 ; Must stay in sync with DISPLAY_FIELDS (top of file).
 _WS_ToItem(rec) {
     return {
@@ -839,7 +842,9 @@ _WS_ToItem(rec) {
         workspaceId: rec.workspaceId,
         isOnCurrentWorkspace: rec.isOnCurrentWorkspace,
         processName: rec.processName,
-        iconHicon: rec.iconHicon
+        iconHicon: rec.iconHicon,
+        monitorHandle: rec.monitorHandle,
+        monitorLabel: rec.monitorLabel
     }
 }
 

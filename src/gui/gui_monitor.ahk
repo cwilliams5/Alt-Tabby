@@ -45,11 +45,10 @@ GUI_FilterByMonitorMode(items) {
     if (!gGUI_OverlayMonitorHandle)
         return items
 
-    ; Only items on the overlay's monitor
+    ; Only items on the overlay's monitor (monitorHandle stamped by producers)
     result := []
     for _, item in items {
-        hMon := Win_GetMonitorHandle(item.hwnd)
-        if (hMon = gGUI_OverlayMonitorHandle)
+        if (item.monitorHandle = gGUI_OverlayMonitorHandle)
             result.Push(item)
     }
     return result
@@ -79,17 +78,4 @@ GUI_GetOverlayMonitorLabel() {
     return Win_GetMonitorLabel(gGUI_OverlayMonitorHandle)
 }
 
-; ========================= MONITOR LABELS =========================
-
-; Stamp monitorLabel property on each item for column display.
-; Call at freeze time (after gGUI_ToggleBase is cloned).
-; Only populates if Col5 is visible (width > 0) to avoid unnecessary DllCalls.
-GUI_StampMonitorLabels(items) {
-    global cfg
-    if (cfg.GUI_ColFixed5 <= 0)
-        return  ; Column hidden, skip DllCall overhead
-    for _, item in items {
-        hMon := Win_GetMonitorHandle(item.hwnd)
-        item.monitorLabel := Win_GetMonitorLabel(hMon)
-    }
-}
+; GUI_StampMonitorLabels removed — monitorLabel is now a store field stamped by producers

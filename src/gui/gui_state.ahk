@@ -207,7 +207,6 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; Shallow copy — same item refs, independent array container
             gGUI_ToggleBase := gGUI_LiveItems.Clone()
             GUI_CaptureOverlayMonitor()
-            GUI_StampMonitorLabels(gGUI_ToggleBase)
             gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
 
             ; DEBUG: Log workspace data of display items

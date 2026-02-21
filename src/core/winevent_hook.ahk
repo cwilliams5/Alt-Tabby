@@ -239,7 +239,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
     ; Filter cosmetic events for non-store windows.
     ; NAMECHANGE alone can't make a window eligible (CREATE/SHOW handles new windows).
-    ; LOCATIONCHANGE doesn't affect any stored field (no position tracking).
+    ; LOCATIONCHANGE updates monitorHandle/monitorLabel for cross-monitor moves.
     if (event = 0x800C || event = 0x800B) {
         if (!gWS_Store.Has(hwnd + 0)) {
             Critical "Off"
@@ -713,7 +713,11 @@ _WEH_UpdateExisting(hwnd) {
     if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked))
         return -1
 
+    ; Stamp monitor identity (detects cross-monitor moves via LOCATIONCHANGE)
+    hMon := Win_GetMonitorHandle(hwnd)
+
     ; Return patch Object — caller collects into batch
-    return { title: title, isCloaked: isCloaked, isMinimized: isMin, isVisible: isVisible }
+    return { title: title, isCloaked: isCloaked, isMinimized: isMin, isVisible: isVisible,
+             monitorHandle: hMon, monitorLabel: Win_GetMonitorLabel(hMon) }
 }
 

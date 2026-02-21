@@ -52,12 +52,12 @@ global gViewer_HdrBrushCache := Map()   ; color (uint) -> HBRUSH
 global gViewer_HdrPenCache := Map()     ; color (uint) -> HPEN
 
 ; Column names (0-indexed for header draw)
-global gViewer_Columns := ["Z", "MRU", "HWND", "PID", "Title", "Class", "WS", "Cur", "Process", "Foc", "Clk", "Min", "Icon"]
+global gViewer_Columns := ["Z", "MRU", "HWND", "PID", "Title", "Class", "WS", "Cur", "Process", "Mon", "Foc", "Clk", "Min", "Icon"]
 
 ; Column-to-field mapping for sort
-global gViewer_ColFields := ["z", "lastActivatedTick", "hwnd", "pid", "title", "class", "workspaceName", "isOnCurrentWorkspace", "processName", "isFocused", "isCloaked", "isMinimized", "iconHicon"]
+global gViewer_ColFields := ["z", "lastActivatedTick", "hwnd", "pid", "title", "class", "workspaceName", "isOnCurrentWorkspace", "processName", "monitorLabel", "isFocused", "isCloaked", "isMinimized", "iconHicon"]
 ; Columns that use string comparison (all others are numeric)
-global gViewer_ColIsString := Map(4, true, 5, true, 6, true, 8, true)
+global gViewer_ColIsString := Map(4, true, 5, true, 6, true, 8, true, 9, true)
 
 ; ========================= PUBLIC API =========================
 
@@ -434,6 +434,7 @@ _Viewer_BuildRowArgs(rec) {
         _Viewer_Get(rec, "workspaceName", ""),
         _Viewer_Get(rec, "isOnCurrentWorkspace", 0) ? "1" : "0",
         _Viewer_Get(rec, "processName", ""),
+        _Viewer_Get(rec, "monitorLabel", ""),
         _Viewer_Get(rec, "isFocused", 0) ? "Y" : "",
         _Viewer_Get(rec, "isCloaked", 0) ? "Y" : "",
         _Viewer_Get(rec, "isMinimized", 0) ? "Y" : "",
