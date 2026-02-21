@@ -9,12 +9,12 @@ global gGUI_Base := 0
 global gGUI_Overlay := 0
 global gGUI_BaseH := 0
 global gGUI_OverlayH := 0
-global gGUI_HideCount := 0  ; Track hides for periodic log trim
 global GUI_LOG_TRIM_EVERY_N_HIDES := 10
 
 GUI_HideOverlay() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Overlay, gGUI_Revealed
-    global gGUI_HideCount, cfg, GUI_LOG_TRIM_EVERY_N_HIDES
+    global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
+    static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
         return
@@ -40,8 +40,8 @@ GUI_HideOverlay() {
 
     ; Periodically trim paint timing log (every 10 hide cycles)
     ; Other diagnostic logs are rotated by _GUI_RotateDiagLogs() on housekeeping timer.
-    gGUI_HideCount += 1
-    if (Mod(gGUI_HideCount, GUI_LOG_TRIM_EVERY_N_HIDES) = 0) {
+    hideCount += 1
+    if (Mod(hideCount, GUI_LOG_TRIM_EVERY_N_HIDES) = 0) {
         Paint_LogTrim()
     }
 }
