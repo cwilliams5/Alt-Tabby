@@ -105,8 +105,14 @@ function Resolve-IncludeTree {
 
             if (Test-Path $resolvedTarget) {
                 $resolvedTarget = [System.IO.Path]::GetFullPath($resolvedTarget)
-                # Recurse into the included file (whether *i or not — if it exists, its contents matter)
-                Resolve-IncludeTree -FilePath $resolvedTarget -BaseDir $currentBase
+                # Skip recursion into lib/ files — third-party code may contain
+                # non-AHK #include directives (e.g., C comments with #include <windows.h>)
+                if ($resolvedTarget -like "*\lib\*") {
+                    [void]$includedFiles.Add($resolvedTarget)
+                } else {
+                    # Recurse into the included file (whether *i or not — if it exists, its contents matter)
+                    Resolve-IncludeTree -FilePath $resolvedTarget -BaseDir $currentBase
+                }
             }
             # If *i and file doesn't exist: that's OK (intentionally optional like version_info.ahk)
             # If non-*i and file doesn't exist: AHK would error at load time, not our problem here

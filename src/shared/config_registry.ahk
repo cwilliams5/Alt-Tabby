@@ -868,7 +868,11 @@ global gConfigRegistry := [
 
     {s: "Komorebi", k: "SubPollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
      min: 10, max: 1000,
-     d: "Pipe poll interval (checking for incoming data)"},
+     d: "Legacy pipe poll interval. Used when async I/O is unavailable."},
+
+    {s: "Komorebi", k: "SubMaintenanceMs", g: "KomorebiSubMaintenanceMs", t: "int", default: 2000,
+     min: 500, max: 10000,
+     d: "Maintenance timer interval when async I/O is active (idle recycle, connection check, read recovery). Ignored in legacy poll mode."},
 
     {s: "Komorebi", k: "SubIdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
      min: 10000, max: 600000,

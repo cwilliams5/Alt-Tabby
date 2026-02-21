@@ -111,6 +111,7 @@ for _, arg in A_Args {
 #Include %A_ScriptDir%\lib\
 #Include cjson.ahk
 #Include icon_alpha.ahk
+#Include OVERLAPPED.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk
