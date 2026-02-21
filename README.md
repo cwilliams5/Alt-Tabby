@@ -10,66 +10,66 @@ A fast, customizable Alt-Tab replacement for Windows, built with AutoHotkey v2. 
 
 <img src="resources/img/icon.png" alt="Alt-Tabby Icon" width="64" align="right">
 
-- **Low Latency** - Keyboard hooks run in the GUI process for sub-5ms response times
+- **Low Latency** - Keyboard hooks and window data live in the same process for sub-5ms Alt-Tab detection
 - **MRU Ordering** - Windows sorted by most-recently-used, matching native Windows behavior
 - **Komorebi Integration** - Workspace-aware filtering and cross-workspace window activation
 - **Workspace Toggle** - Press Ctrl during Alt-Tab to filter by current workspace
-- **Configurable** - GUI-based configuration editor with live preview
+- **Quick Switch** - Alt+Tab and release before the GUI shows for instant window switching
+- **Configurable** - GUI-based configuration editor (WebView2 with native AHK fallback)
 - **Fullscreen Bypass** - Automatically uses native Alt-Tab in fullscreen games
-- **Process Blacklist** - Exclude specific applications from Alt-Tabby
-- **Window Blacklist** - Filter out unwanted windows by title or class
+- **Window & Process Blacklist** - Filter out unwanted windows by title, class, or process name
+- **Flight Recorder** - In-memory event ring buffer for diagnosing missed keystrokes (near-zero overhead)
+- **Auto-Update** - Checks for new releases on startup with one-click update
+- **Admin Mode** - Optional Task Scheduler integration for UAC-free elevated operation
 
 ## Architecture
 
-Alt-Tabby uses a multi-process architecture for reliability and performance:
+Alt-Tabby uses a multi-process architecture optimized for latency:
 
 ```
-+------------------+     +------------------+     +------------------+
-|    Launcher      |     |   WindowStore    |     |    Alt-Tab GUI   |
-|  (Tray + Spawn)  |---->|    (Server)      |<--->|    (Client)      |
-+------------------+     +------------------+     +------------------+
-                               ^
-                               |
-                         +-----+-----+
-                         |  Viewer   |
-                         | (Debug)   |
-                         +-----------+
++------------------+     +------------------+
+|    Launcher      |---->|   MainProcess    |
+|  (Tray + Spawn)  |     | (Window Data +   |
++------------------+     |  Producers +     |
+                          |  Overlay + Hooks)|
+                          +--------+---------+
+                                   |
+                            Named Pipe IPC
+                                   |
+                          +--------+---------+
+                          | EnrichmentPump   |
+                          | (Icon + Process  |
+                          |  Resolution)     |
+                          +------------------+
 ```
 
-### WindowStore (Server)
+### Launcher
 
-The store maintains the authoritative window list with real-time updates from multiple producers:
+Manages the tray icon, spawns MainProcess and EnrichmentPump as subprocesses, and handles lifecycle events (restart, config/blacklist editor launch). Receives control signals via WM_COPYDATA.
+
+### MainProcess
+
+The core of Alt-Tabby. Window data, all producers, the overlay GUI, and keyboard hooks run in a single process to eliminate IPC latency on the critical path:
 
 | Producer | Purpose |
 |----------|---------|
-| WinEventHook | Window create/destroy/focus events (primary) |
-| WinEnum | Full window enumeration (on-demand, for Z-order) |
-| MRU_Lite | Focus tracking (fallback if WinEventHook fails) |
-| KomorebiSub | Workspace tracking via komorebi subscription |
-| KomorebiLite | Workspace polling (fallback if subscription fails) |
-| IconPump | Async icon extraction |
-| ProcPump | Process name resolution |
+| WinEventHook | Window create/destroy/focus events and MRU tracking (primary) |
+| WinEnum | Full window enumeration (startup, snapshot, Z-order pump) |
+| MRU_Lite | Focus tracking fallback (only if WinEventHook fails) |
+| KomorebiSub | Workspace tracking via komorebi named pipe subscription |
+| KomorebiLite | Workspace polling fallback (if subscription fails) |
+| IconPump | Async icon resolution with retry/backoff |
+| ProcPump | PID to process name resolution |
 
-Clients connect via named pipe (`\\.\pipe\tabby_store_v1`) and receive delta updates.
+The overlay intercepts Alt+Tab before Windows sees it, pre-warms the window list on Alt press, and freezes the display on first Tab press.
 
-### Alt-Tab GUI (Client)
+### EnrichmentPump
 
-The overlay window with keyboard hooks built-in for minimal latency:
-
-- Intercepts Alt+Tab before Windows sees it
-- Requests pre-warmed snapshots on Alt press
-- Freezes the window list on first Tab press
-- Supports quick-switch (Alt+Tab+release before GUI shows)
+A separate subprocess that handles blocking icon extraction (WM_GETICON, UWP logo parsing) and process name resolution. Communicates with MainProcess via named pipe IPC, keeping the main thread responsive.
 
 ### Debug Viewer
 
-A diagnostic tool showing the live window list with all fields:
-
-- Toggle between Z-order and MRU sorting
-- Filter by current workspace
-- Show/hide minimized and cloaked windows
-- Double-click to blacklist windows
-- Monitor producer health status
+An in-process diagnostic window within MainProcess that reads the live window list directly. Features Z-order and MRU sorting, workspace filtering, and producer health monitoring. Toggled via tray menu.
 
 ## Installation
 
@@ -127,8 +127,7 @@ Configuration is stored in `config.ini` next to the executable.
 
 ## Documentation
 
-- [IPC Protocol](docs/ipc.md) - Named pipe message schema
-- [WindowStore API](docs/windowstore.md) - Store internals and record fields
+- [Configuration Options](docs/options.md) - All config.ini settings with defaults and ranges
 
 ## Development
 
@@ -136,34 +135,33 @@ Configuration is stored in `config.ini` next to the executable.
 
 ```
 src/
-  alt_tabby.ahk       # Unified entry point
-  gui/                # Alt-Tab overlay + MainProcess
-    gui_main.ahk      # Entry, globals, init, producers
-    gui_interceptor.ahk # Keyboard hooks
-    gui_state.ahk     # State machine
-    gui_data.ahk      # Snapshot + pre-cache
-    gui_paint.ahk     # Rendering
-  core/               # Producer modules
-    winevent_hook.ahk # Window events + MRU
-    komorebi_sub.ahk  # Komorebi integration
-    icon_pump.ahk     # Icon resolution
-    proc_pump.ahk     # Process name resolution
-  pump/               # EnrichmentPump subprocess
-  viewer/             # Debug viewer
-  shared/             # Window data, IPC, config, stats
+  alt_tabby.ahk         # Unified entry point (launcher + all modes)
+  gui/                   # MainProcess (overlay + window data + producers)
+    gui_main.ahk         # Init, producers, heartbeat, cleanup
+    gui_interceptor.ahk  # Keyboard hooks (Alt/Tab/Ctrl/Escape)
+    gui_state.ahk        # State machine (IDLE/ALT_PENDING/ACTIVE)
+    gui_data.ahk         # Snapshot + pre-cache
+    gui_paint.ahk        # GDI+ overlay rendering
+    gui_flight_recorder.ahk # In-memory event ring buffer
+  core/                  # Producer modules
+    winevent_hook.ahk    # Window events + MRU tracking
+    komorebi_sub.ahk     # Komorebi subscription integration
+    icon_pump.ahk        # Async icon resolution
+    proc_pump.ahk        # PID -> process name resolution
+  pump/                  # EnrichmentPump subprocess
+  editors/               # Config and blacklist editors
+  shared/                # Window data, IPC, config, blacklist, stats, theme
 tests/
-  run_tests.ahk       # Test orchestrator
-  gui_tests.ahk       # State machine tests
+  run_tests.ahk          # Test orchestrator
+  gui_tests.ahk          # State machine tests
+  static_analysis.ps1    # Pre-gate static analysis
 ```
 
 ### Running Tests
 
-```bash
-# Unit and integration tests
-AutoHotkey64.exe tests/run_tests.ahk --live
-
-# GUI state machine tests
-AutoHotkey64.exe tests/gui_tests.ahk
+```powershell
+# Full test suite (static analysis + unit + integration)
+.\tests\test.ps1 --live
 ```
 
 ### Compiling
@@ -179,5 +177,8 @@ MIT
 
 ## Acknowledgments
 
-- [Komorebi](https://github.com/LGUG2Z/komorebi) - Tiling window manager for Windows
 - [AutoHotkey](https://www.autohotkey.com/) - Scripting language for Windows automation
+- [Komorebi](https://github.com/LGUG2Z/komorebi) - Tiling window manager for Windows
+- [WebView2.ahk](https://github.com/thqby/ahk2_lib) - WebView2 control wrapper for AHK v2
+- [cJson.ahk](https://github.com/G33kDude/cJson.ahk) - High-performance JSON parser
+- [ShinsOverlayClass](https://github.com/Spawnova/ShinsOverlayClass) - Direct2D overlay reference
