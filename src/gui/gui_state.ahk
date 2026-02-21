@@ -600,7 +600,8 @@ _GUI_MoveSelectionFrozen(delta) {
 }
 
 _GUI_ActivateFromFrozen() {
-    global gGUI_Sel, gGUI_DisplayItems, cfg, FR_EV_ACTIVATE_GONE, gFR_Enabled
+    global gGUI_Sel, gGUI_DisplayItems, cfg
+    global FR_EV_ACTIVATE_GONE, FR_EV_ACTIVATE_RETRY, gFR_Enabled
 
     if (cfg.DiagEventLog)
         GUI_LogEvent("ACTIVATE FROM FROZEN: sel=" gGUI_Sel " frozen=" gGUI_DisplayItems.Length)
@@ -611,24 +612,91 @@ _GUI_ActivateFromFrozen() {
         return
     }
 
-    item := gGUI_DisplayItems[gGUI_Sel]
-    hwnd := item.hwnd
-
-    ; Validate window still exists before activation (may have closed during overlay display)
-    if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
-        if (gFR_Enabled)
-            FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
-        if (cfg.DiagEventLog)
-            GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
+    ; --- No retry: original behavior ---
+    if (!cfg.AltTabActivationRetry) {
+        item := gGUI_DisplayItems[gGUI_Sel]
+        hwnd := item.hwnd
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+            if (gFR_Enabled)
+                FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
+            if (cfg.DiagEventLog)
+                GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
+            return
+        }
+        if (cfg.DiagEventLog) {
+            title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
+            GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item))
+        }
+        _GUI_ActivateItem(item)
         return
     }
 
-    if (cfg.DiagEventLog) {
-        title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
-        GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item))
+    ; --- Retry loop: walk display list for a live window ---
+    startSel := gGUI_Sel
+    listLen := gGUI_DisplayItems.Length
+    maxAttempts := (cfg.AltTabActivationRetryDepth > 0)
+        ? Min(cfg.AltTabActivationRetryDepth, listLen)
+        : listLen
+    originalHwnd := gGUI_DisplayItems[gGUI_Sel].hwnd
+
+    loop maxAttempts {
+        item := gGUI_DisplayItems[gGUI_Sel]
+        hwnd := item.hwnd
+
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+            ; Window gone — record and try next
+            if (gFR_Enabled)
+                FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
+            if (cfg.DiagEventLog)
+                GUI_LogEvent("ACTIVATE RETRY: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
+
+            nextSel := _GUI_NextValidSel(gGUI_Sel, listLen, startSel)
+            if (nextSel = 0) {
+                if (cfg.DiagEventLog)
+                    GUI_LogEvent("ACTIVATE RETRY: exhausted all windows")
+                return
+            }
+            gGUI_Sel := nextSel
+            continue
+        }
+
+        ; Live window found
+        if (cfg.DiagEventLog) {
+            title := item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"
+            isRetry := (gGUI_Sel != startSel) ? " (retry)" : ""
+            GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item) isRetry)
+        }
+
+        success := _GUI_ActivateItem(item)
+
+        ; Post-activation check: if activation failed AND window is now dead, retry next
+        if (!success && !DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+            if (cfg.DiagEventLog)
+                GUI_LogEvent("ACTIVATE RETRY: window died during activation hwnd=" hwnd)
+            nextSel := _GUI_NextValidSel(gGUI_Sel, listLen, startSel)
+            if (nextSel = 0)
+                return
+            gGUI_Sel := nextSel
+            continue
+        }
+
+        ; Record retry event if we moved past the original selection
+        if (gGUI_Sel != startSel) {
+            if (gFR_Enabled)
+                FR_Record(FR_EV_ACTIVATE_RETRY, originalHwnd, hwnd, success ? 1 : 0)
+        }
+        return
     }
 
-    _GUI_ActivateItem(item)
+    if (cfg.DiagEventLog)
+        GUI_LogEvent("ACTIVATE RETRY: reached max depth " maxAttempts)
+}
+
+; Advance sel to next index, wrapping around, skipping startSel.
+; Returns 0 if wrapped back to startSel (no candidates).
+_GUI_NextValidSel(currentSel, listLen, startSel) {
+    nextSel := (currentSel >= listLen) ? 1 : currentSel + 1
+    return (nextSel = startSel) ? 0 : nextSel
 }
 
 ; ========================= ACTIVATION =========================
@@ -646,7 +714,7 @@ _GUI_ActivateItem(item) {
 
     hwnd := item.hwnd
     if (!hwnd) {
-        return
+        return false
     }
 
     ; Check if window is on a different workspace
@@ -690,14 +758,14 @@ _GUI_ActivateItem(item) {
                 if (cfg.KomorebiMimicNativeSettleMs > 0)
                     Sleep(cfg.KomorebiMimicNativeSettleMs)
                 _GUI_UpdateLocalMRU(hwnd)
-                return
+                return true
             } else if (uncloakResult = 1) {
                 ; Uncloaked but SwitchTo failed - use manual activation
                 if (cfg.DiagEventLog)
                     GUI_LogEvent("CROSS-WS: MimicNative partial (manual activate)")
                 if (_GUI_RobustActivate(hwnd))
                     _GUI_UpdateLocalMRU(hwnd)
-                return
+                return true
             }
             ; uncloakResult = 0: COM failed entirely, fall through to SwitchActivate
             if (cfg.DiagEventLog)
@@ -732,7 +800,7 @@ _GUI_ActivateItem(item) {
                 } else if (cfg.DiagEventLog) {
                     GUI_LogEvent("CROSS-WS: RevealMove activation failed, skipping move")
                 }
-                return
+                return true
             }
             ; uncloakResult = 0: COM failed, fall through to SwitchActivate
             if (cfg.DiagEventLog)
@@ -742,13 +810,14 @@ _GUI_ActivateItem(item) {
         ; SwitchActivate: Command komorebi to switch, poll for completion, then activate
         ; This path is used when: config=SwitchActivate OR MimicNative/RevealMove failed
         _GUI_StartSwitchActivate(hwnd, wsName)
-        return
+        return true  ; Async path handles its own success/failure
     }
 
     ; === Same-workspace: SYNC activation (immediate, fast) ===
     ; CRITICAL: Only update MRU on successful activation — prevents phantom MRU
     ; corruption that causes "double failure" on next Alt+Tab
-    if (_GUI_RobustActivate(hwnd))
+    result := _GUI_RobustActivate(hwnd)
+    if (result)
         _GUI_UpdateLocalMRU(hwnd)
 
     ; NOTE: Do NOT request snapshot here - it would overwrite our local MRU update
@@ -757,6 +826,7 @@ _GUI_ActivateItem(item) {
     ; CRITICAL: After activation, keyboard events may have been queued but not processed
     ; Use SetTimer -1 to let message pump run, then resync keyboard state
     SetTimer(_GUI_ResyncKeyboardState, -1)
+    return result
 }
 
 GUI_ClickActivate(item) {

@@ -119,7 +119,9 @@ global cfg := {
     GUI_HoverPollIntervalMs: 100,
     AdditionalWindowInformation: "Never",
     KomorebiIntegration: "Never",
-    KomorebicExe: ""
+    KomorebicExe: "",
+    AltTabActivationRetry: true,
+    AltTabActivationRetryDepth: 0
 }
 
 ; Test tracking
@@ -273,7 +275,7 @@ global FR_EV_BUFFER_PUSH := 16, FR_EV_QUICK_SWITCH := 17
 global FR_EV_REFRESH := 20, FR_EV_ENRICH_REQ := 22, FR_EV_ENRICH_RESP := 23
 global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 26, FR_EV_BLACKLIST_PURGE := 27
 global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
-global FR_EV_SESSION_START := 30, FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32
+global FR_EV_SESSION_START := 30, FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32, FR_EV_ACTIVATE_RETRY := 33
 global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41, FR_EV_MON_TOGGLE := 42
 global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51
 global FR_ST_IDLE := 0, FR_ST_ALT_PENDING := 1, FR_ST_ACTIVE := 2

@@ -82,6 +82,16 @@ global gConfigRegistry := [
      min: 0, max: 500,
      d: "Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems."},
 
+    {type: "subsection", section: "AltTab", name: "Activation Retry",
+     desc: "When the selected window is gone, retry the next MRU window"},
+
+    {s: "AltTab", k: "ActivationRetry", g: "AltTabActivationRetry", t: "bool", default: true,
+     d: "When the selected window has been closed during overlay display, automatically activate the next window in the MRU list instead of doing nothing."},
+
+    {s: "AltTab", k: "ActivationRetryDepth", g: "AltTabActivationRetryDepth", t: "int", default: 0,
+     min: 0, max: 50,
+     d: "Maximum number of retry attempts when walking the MRU list for a live window. 0 = unlimited (walk entire list). Non-zero caps the search depth."},
+
     ; ============================================================
     ; Launcher Settings
     ; ============================================================

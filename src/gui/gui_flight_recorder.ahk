@@ -42,6 +42,7 @@ global FR_EV_SCAN_COMPLETE    := 29  ; d1=foundCount d2=storeCount — WinEnum f
 global FR_EV_SESSION_START    := 30
 global FR_EV_PRODUCER_INIT    := 31  ; d1=producerType(1=ksub,2=weh,3=pump) d2=success(0/1)
 global FR_EV_ACTIVATE_GONE    := 32  ; d1=hwnd — target window closed before activation
+global FR_EV_ACTIVATE_RETRY   := 33  ; d1=dead_hwnd d2=retry_hwnd d3=retry_success(0/1)
 
 ; Workspace events (40-49)
 global FR_EV_WS_SWITCH        := 40  ; d1=0 — komorebi workspace changed (name in dump state)
@@ -426,6 +427,7 @@ _FR_GetEventName(ev) {
     global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
     global FR_EV_GHOST_PURGE, FR_EV_BLACKLIST_PURGE
     global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
+    global FR_EV_ACTIVATE_RETRY
     global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE, FR_EV_MON_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
@@ -459,6 +461,7 @@ _FR_GetEventName(ev) {
         case FR_EV_SESSION_START:     return "SESSION_START"
         case FR_EV_PRODUCER_INIT:     return "PRODUCER_INIT"
         case FR_EV_ACTIVATE_GONE:     return "ACTIVATE_GONE"
+        case FR_EV_ACTIVATE_RETRY:    return "ACTIVATE_RETRY"
         case FR_EV_WS_SWITCH:         return "WS_SWITCH"
         case FR_EV_WS_TOGGLE:         return "WS_TOGGLE"
         case FR_EV_MON_TOGGLE:        return "MON_TOGGLE"
@@ -492,6 +495,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
     global FR_EV_GHOST_PURGE, FR_EV_BLACKLIST_PURGE
     global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
+    global FR_EV_ACTIVATE_RETRY
     global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE, FR_EV_MON_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
@@ -556,6 +560,8 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return prodName "  ok=" d2
         case FR_EV_ACTIVATE_GONE:
             return _FR_HwndStr(d1, hwndMap)
+        case FR_EV_ACTIVATE_RETRY:
+            return "dead=" _FR_HwndStr(d1, hwndMap) "  retry=" _FR_HwndStr(d2, hwndMap) "  ok=" d3
         case FR_EV_WS_SWITCH:
             return ""
         case FR_EV_WS_TOGGLE:
