@@ -1,6 +1,6 @@
 # check_batch_simple.ps1 - Batched simple pattern checks
-# Combines 14 lightweight checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params
+# Combines lightweight checks into one PowerShell process to reduce startup overhead.
+# Sub-checks: switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params, registry_key_uniqueness, registry_completeness, registry_section_casing, config_registry_integrity, fr_event_coverage
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_simple.ps1 [-SourceDir "path\to\src"]
@@ -2425,6 +2425,228 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_registry_section_casing"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 18: config_registry_integrity
+# Validates semantic correctness of config registry entries:
+#   - t: value is one of: "string", "int", "float", "bool", "enum"
+#   - Enum entries have options array with default in it
+#   - Hex defaults (fmt: "hex") are valid hex and within range
+#   - Bool defaults are true/false
+# Complements registry_completeness which validates structural fields.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$criIssues = [System.Collections.ArrayList]::new()
+
+$validTypes = @('string', 'int', 'float', 'bool', 'enum')
+
+if ($rkuRegFile.Count -gt 0) {
+    $criLines = $fileCache[$rkuRegFile[0].FullName]
+
+    # Reuse multi-line accumulation from registry_completeness
+    $criEntries = [System.Collections.ArrayList]::new()
+    $accumLine = ''; $accumStart = -1; $braceDepth = 0
+
+    for ($i = 0; $i -lt $criLines.Count; $i++) {
+        $raw = $criLines[$i]
+        if ($raw -match '^\s*;') { continue }
+
+        if ($accumStart -lt 0) {
+            if ($raw -match '\{.*\bs:') {
+                $accumLine = $raw; $accumStart = $i
+                $braceDepth = ($raw.Split('{')).Count - ($raw.Split('}')).Count
+                if ($braceDepth -le 0) {
+                    [void]$criEntries.Add(@{ Text = $accumLine; Line = $accumStart + 1 })
+                    $accumLine = ''; $accumStart = -1; $braceDepth = 0
+                }
+            }
+        } else {
+            $accumLine += ' ' + $raw
+            $braceDepth += ($raw.Split('{')).Count - ($raw.Split('}')).Count
+            if ($braceDepth -le 0) {
+                [void]$criEntries.Add(@{ Text = $accumLine; Line = $accumStart + 1 })
+                $accumLine = ''; $accumStart = -1; $braceDepth = 0
+            }
+        }
+    }
+
+    foreach ($entry in $criEntries) {
+        $text = $entry.Text
+        $lineNum = $entry.Line
+
+        # Skip section/subsection entries
+        if ($text -match '\btype:\s*"(section|subsection)"') { continue }
+
+        # Extract type
+        $hasT = $text -match '\bt:\s*"([^"]+)"'
+        $tValue = if ($hasT) { $Matches[1] } else { '' }
+
+        # Extract global name for reporting
+        $hasG = $text -match '\bg:\s*"([^"]+)"'
+        $gValue = if ($hasG) { $Matches[1] } else { '?' }
+
+        # --- Rule 1: Type string must be valid ---
+        if ($hasT -and $tValue -notin $validTypes) {
+            [void]$criIssues.Add("Line ${lineNum} ($gValue): invalid type '$tValue' (must be: $($validTypes -join ', '))")
+        }
+
+        # --- Rule 2: Enum entries must have options, and default must be in options ---
+        if ($tValue -eq 'enum') {
+            # Extract options array: options: ["val1", "val2", ...]
+            $hasOptions = $text -match 'options:\s*\[([^\]]+)\]'
+            if (-not $hasOptions) {
+                [void]$criIssues.Add("Line ${lineNum} ($gValue): enum type missing options array")
+            } else {
+                $optionsRaw = $Matches[1]
+                $options = @([regex]::Matches($optionsRaw, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+
+                # Extract default (string for enums)
+                if ($text -match '\bdefault:\s*"([^"]*)"') {
+                    $defaultStr = $Matches[1]
+                    if ($defaultStr -cnotin $options) {
+                        [void]$criIssues.Add("Line ${lineNum} ($gValue): enum default '$defaultStr' not in options [$($options -join ', ')]")
+                    }
+                }
+            }
+        }
+
+        # --- Rule 3: Bool defaults must be true or false ---
+        if ($tValue -eq 'bool') {
+            if ($text -match '\bdefault:\s*(\w+)') {
+                $boolDefault = $Matches[1]
+                if ($boolDefault -ne 'true' -and $boolDefault -ne 'false') {
+                    [void]$criIssues.Add("Line ${lineNum} ($gValue): bool default '$boolDefault' must be true or false")
+                }
+            }
+        }
+
+        # --- Rule 4: Hex defaults must be valid hex and within range ---
+        $hasFmt = $text -match '\bfmt:\s*"hex"'
+        if ($hasFmt) {
+            # Extract hex default: default: 0xNNNNNN
+            if ($text -match '\bdefault:\s*(0x[0-9A-Fa-f]+)') {
+                $hexDefault = $Matches[1]
+                $hexVal = [Convert]::ToInt64($hexDefault, 16)
+
+                # Extract hex min/max
+                if ($text -match '\bmin:\s*(0x[0-9A-Fa-f]+|\d+)') {
+                    $minRaw = $Matches[1]
+                    $minHex = if ($minRaw.StartsWith('0x')) { [Convert]::ToInt64($minRaw, 16) } else { [long]$minRaw }
+                }
+                if ($text -match '\bmax:\s*(0x[0-9A-Fa-f]+|\d+)') {
+                    $maxRaw = $Matches[1]
+                    $maxHex = if ($maxRaw.StartsWith('0x')) { [Convert]::ToInt64($maxRaw, 16) } else { [long]$maxRaw }
+
+                    if ($hexVal -lt $minHex -or $hexVal -gt $maxHex) {
+                        [void]$criIssues.Add("Line ${lineNum} ($gValue): hex default $hexDefault outside range [$minRaw, $maxRaw]")
+                    }
+                }
+            } elseif ($text -match '\bdefault:\s*(\d+)') {
+                # Decimal default with hex format is fine (e.g., default: 0)
+            } elseif ($text -match '\bdefault:\s*"') {
+                [void]$criIssues.Add("Line ${lineNum} ($gValue): fmt 'hex' entry has string default (expected numeric)")
+            }
+        }
+    }
+}
+
+if ($criIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($criIssues.Count) config registry integrity issue(s).")
+    [void]$failOutput.AppendLine("  Validates: type strings, enum options+defaults, bool defaults, hex default ranges.")
+    foreach ($issue in $criIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_config_registry_integrity"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 19: fr_event_coverage
+# Validates flight recorder event constants (FR_EV_*) have
+# matching cases in _FR_GetEventName(), and no duplicate values.
+# Prevents "?42" entries in flight recorder dumps when a new
+# event constant is added without updating the name function.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$freIssues = [System.Collections.ArrayList]::new()
+
+$frFile = @($allFiles | Where-Object { $_.Name -eq 'gui_flight_recorder.ahk' })
+
+if ($frFile.Count -gt 0) {
+    $frText = $fileCacheText[$frFile[0].FullName]
+    $frLines = $fileCache[$frFile[0].FullName]
+
+    # --- Phase 1: Extract all FR_EV_* constant declarations ---
+    $frConstants = @{}  # name -> numeric value
+    $frValues = @{}     # numeric value -> name (for duplicate detection)
+    for ($i = 0; $i -lt $frLines.Count; $i++) {
+        $raw = $frLines[$i]
+        if ($raw -match '^\s*global\s+(FR_EV_\w+)\s*:=\s*(\d+)') {
+            $constName = $Matches[1]
+            $constVal = [int]$Matches[2]
+            $frConstants[$constName] = $constVal
+
+            if ($frValues.ContainsKey($constVal)) {
+                [void]$freIssues.Add("Duplicate FR_EV value ${constVal}: $($frValues[$constVal]) and $constName (line $($i+1))")
+            } else {
+                $frValues[$constVal] = $constName
+            }
+        }
+    }
+
+    # --- Phase 2: Extract switch cases from _FR_GetEventName ---
+    $frCaseConstants = @{}  # name -> true
+    $fnBody = $null
+
+    # Find function boundaries
+    $inFunc = $false; $funcDepth = 0
+    for ($i = 0; $i -lt $frLines.Count; $i++) {
+        $raw = $frLines[$i]
+        if (-not $inFunc -and $raw -match '^\s*_FR_GetEventName\s*\(') {
+            $inFunc = $true; $funcDepth = 0
+        }
+        if ($inFunc) {
+            foreach ($ch in $raw.ToCharArray()) {
+                if ($ch -eq '{') { $funcDepth++ }
+                elseif ($ch -eq '}') { $funcDepth-- }
+            }
+            # Extract case references: case FR_EV_*:
+            if ($raw -match '^\s*case\s+(FR_EV_\w+)\s*:') {
+                $frCaseConstants[$Matches[1]] = $true
+            }
+            if ($inFunc -and $funcDepth -le 0 -and $raw -match '\}') {
+                break
+            }
+        }
+    }
+
+    # --- Phase 3: Set differences ---
+    foreach ($name in $frConstants.Keys) {
+        if (-not $frCaseConstants.ContainsKey($name)) {
+            [void]$freIssues.Add("FR constant $name (=$($frConstants[$name])) has no case in _FR_GetEventName() - dumps will show '?$($frConstants[$name])'")
+        }
+    }
+
+    foreach ($name in $frCaseConstants.Keys) {
+        if (-not $frConstants.ContainsKey($name)) {
+            [void]$freIssues.Add("_FR_GetEventName() has orphaned case for $name - constant not defined")
+        }
+    }
+}
+
+if ($freIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($freIssues.Count) flight recorder event coverage issue(s).")
+    [void]$failOutput.AppendLine("  Every FR_EV_* constant needs a case in _FR_GetEventName() and vice versa.")
+    foreach ($issue in $freIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_fr_event_coverage"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -2432,7 +2654,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params, registry_key_uniqueness, registry_completeness, registry_section_casing)" -ForegroundColor Green
+    Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params, registry_key_uniqueness, registry_completeness, registry_section_casing, config_registry_integrity, fr_event_coverage)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

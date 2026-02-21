@@ -435,7 +435,7 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     if (!gGUI_MouseTracking) {
         ; TRACKMOUSEEVENT structure: cbSize(4), dwFlags(4), hwndTrack(ptr), dwHoverTime(4)
         static TME_LEAVE := 0x02
-        tme := Buffer(8 + A_PtrSize + 4, 0)
+        static tme := Buffer(8 + A_PtrSize + 4, 0)
         NumPut("uint", 8 + A_PtrSize + 4, tme, 0)  ; cbSize
         NumPut("uint", TME_LEAVE, tme, 4)          ; dwFlags
         NumPut("ptr", hwnd, tme, 8)                ; hwndTrack
