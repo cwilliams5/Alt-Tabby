@@ -58,7 +58,7 @@ A_MenuMaskKey := "vkE8"
 global gGUI_Revealed := false
 ; gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking declared in gui_input.ahk (sole writer)
 ; gGUI_FooterText, gGUI_WorkspaceMode declared in gui_workspace.ahk (sole writer)
-global gGUI_CurrentWSName := ""  ; Cached from gWS_Meta
+; gGUI_CurrentWSName declared in gui_state.ahk (workspace state owner)
 
 global gGUI_OverlayVisible := false
 
@@ -82,7 +82,7 @@ global gGUI_ScrollTop := 0
 
 ; gGUI_State declared in gui_state.ahk (sole writer for state machine)
 ; gGUI_FirstTabTick, gGUI_TabCount declared in gui_state.ahk (sole writer)
-global gGUI_DisplayItems := []  ; Items being rendered (may be filtered by workspace mode)
+; gGUI_DisplayItems declared in gui_state.ahk (sole writer for display list management)
 ; gGUI_ToggleBase declared in gui_state.ahk (sole writer for toggle support)
 
 ; Session stats counters declared in gui_state.ahk / gui_workspace.ahk (sole writers)
@@ -147,7 +147,7 @@ _GUI_Main_Init() {
     WL_Init()
 
     ; Wire producer callbacks (rev-changed, workspace-flips) so producers notify GUI of state changes
-    WL_SetCallbacks(_GUI_OnProducerRevChanged, _GUI_OnWorkspaceFlips)
+    WL_SetCallbacks(_GUI_OnProducerRevChanged, GUI_OnWorkspaceFlips)
 
     ; Register stats logging callbacks and initialize stats tracking
     Stats_SetCallbacks(_GUI_StatsLogError, _GUI_StatsLogInfo)
@@ -257,31 +257,7 @@ _GUI_OnProducerRevChanged(isStructural := true) {
     }
 }
 
-; Called by KomorebiSub (via gWS_OnWorkspaceChanged) when workspace changes.
-_GUI_OnWorkspaceFlips() {
-    global gGUI_CurrentWSName, gWS_Meta, cfg
-
-    ; Error boundary: same rationale as _GUI_OnProducerRevChanged above.
-    try {
-        ; Read workspace name directly from gWS_Meta (in-process, no IPC)
-        wsName := ""
-        if (IsObject(gWS_Meta)) {
-            Critical "On"
-            wsName := gWS_Meta.Has("currentWSName") ? gWS_Meta["currentWSName"] : ""
-
-            if (wsName != "" && wsName != gGUI_CurrentWSName) {
-                gGUI_CurrentWSName := wsName
-                GUI_UpdateFooterText()
-                GUI_HandleWorkspaceSwitch()
-            }
-            Critical "Off"
-        }
-    } catch as e {
-        Critical "Off"  ; Ensure Critical is released on error (AHK v2 auto-releases on return, but be explicit)
-        global LOG_PATH_STORE
-        try LogAppend(LOG_PATH_STORE, "workspace_flip_callback err=" e.Message " file=" e.File " line=" e.Line)
-    }
-}
+; GUI_OnWorkspaceFlips() moved to gui_state.ahk (workspace state owner)
 
 ; ========================= FULL SCAN =========================
 

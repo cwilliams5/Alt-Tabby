@@ -9,8 +9,10 @@
 ; ACTIVE: List FROZEN on first Tab, ignores all updates, Tab cycles selection
 global gGUI_State := "IDLE"
 
+global gGUI_CurrentWSName := ""       ; Cached from gWS_Meta (updated by workspace flip callback)
 global gGUI_WSContextSwitch := false  ; True if workspace changed during this overlay session (sel=1 sticky)
 global gGUI_ToggleBase := []     ; Snapshot for workspace toggle (Ctrl key support)
+global gGUI_DisplayItems := []   ; Items being rendered (may be filtered by workspace mode)
 
 ; Timing constants (hardcoded - not user-configurable)
 ; These are internal implementation details that users shouldn't need to change.
@@ -355,6 +357,34 @@ _GUI_GraceTimerFired() {
         _GUI_ShowOverlayWithFrozen()
     }
     Critical "Off"
+}
+
+; ========================= WORKSPACE FLIP CALLBACK =========================
+
+; Called by KomorebiSub (via gWS_OnWorkspaceChanged) when workspace changes.
+GUI_OnWorkspaceFlips() {
+    global gGUI_CurrentWSName, gWS_Meta, cfg
+
+    ; Error boundary: same rationale as _GUI_OnProducerRevChanged in gui_main.
+    try {
+        ; Read workspace name directly from gWS_Meta (in-process, no IPC)
+        wsName := ""
+        if (IsObject(gWS_Meta)) {
+            Critical "On"
+            wsName := gWS_Meta.Has("currentWSName") ? gWS_Meta["currentWSName"] : ""
+
+            if (wsName != "" && wsName != gGUI_CurrentWSName) {
+                gGUI_CurrentWSName := wsName
+                GUI_UpdateFooterText()
+                GUI_HandleWorkspaceSwitch()
+            }
+            Critical "Off"
+        }
+    } catch as e {
+        Critical "Off"  ; Ensure Critical is released on error (AHK v2 auto-releases on return, but be explicit)
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "workspace_flip_callback err=" e.Message " file=" e.File " line=" e.Line)
+    }
 }
 
 ; ========================= FROZEN STATE HELPERS =========================
