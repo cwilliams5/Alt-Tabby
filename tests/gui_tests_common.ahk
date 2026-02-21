@@ -104,10 +104,29 @@ global cfg := {
     AltTabSwitchOnClick: true,
     AltTabGraceMs: 150,
     AltTabQuickSwitchMs: 100,
+    AltTabAsyncActivationPollMs: 15,
+    AltTabWSPollTimeoutMs: 200,
+    AltTabWorkspaceSwitchSettleMs: 75,
     AltTabBypassFullscreen: true,
     AltTabBypassProcesses: "",
+    AltTabActivationRetry: true,
+    AltTabActivationRetryDepth: 0,
     GUI_ActiveRepaintDebounceMs: 250,
     GUI_ScrollKeepHighlightOnTop: false,
+    GUI_RowHeight: 56,
+    GUI_MarginX: 18,
+    GUI_MarginY: 18,
+    GUI_IconSize: 36,
+    GUI_IconLeftMargin: 8,
+    GUI_IconTextGapPx: 12,
+    GUI_ColumnGapPx: 10,
+    GUI_HeaderHeightPx: 28,
+    GUI_RowRadius: 12,
+    GUI_ShowCloseButton: true,
+    GUI_ShowKillButton: false,
+    GUI_ShowBlacklistButton: true,
+    GUI_ShowFooter: true,
+    GUI_HoverPollIntervalMs: 100,
     DiagAltTabTooltips: false,
     DiagEventLog: false,  ; Disable event logging during tests
     DiagPaintTimingLog: false,  ; Disable paint timing log during tests
@@ -116,12 +135,13 @@ global cfg := {
     DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
-    GUI_HoverPollIntervalMs: 100,
     AdditionalWindowInformation: "Never",
     KomorebiIntegration: "Never",
     KomorebicExe: "",
-    AltTabActivationRetry: true,
-    AltTabActivationRetryDepth: 0
+    KomorebiCrossWorkspaceMethod: "MimicNative",
+    KomorebiMimicNativeSettleMs: 0,
+    KomorebiUseSocket: true,
+    KomorebiWorkspaceConfirmMethod: "PollCloak"
 }
 
 ; Test tracking

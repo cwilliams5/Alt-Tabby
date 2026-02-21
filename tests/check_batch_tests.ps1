@@ -1,6 +1,6 @@
 # check_batch_tests.ps1 - Batched test-file analysis checks
 # Combines test-related checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls
+# Sub-checks: test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls, test_cfg_completeness
 # Shared file cache: all src/ files (excluding lib/) + all test files read once.
 #
 # Usage: powershell -File tests\check_batch_tests.ps1 [-SourceDir "path\to\src"]
@@ -1035,6 +1035,133 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_test_undefined_calls"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 6: test_cfg_completeness
+# Verify test mock cfg objects include all properties that
+# production code in the test's include tree actually accesses.
+# Catches runtime "no property named X" errors when new config
+# entries are added but test mocks aren't updated.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$tccIssues = [System.Collections.ArrayList]::new()
+
+# Phase 1: Extract all g: field values from config_registry.ahk (valid property names)
+$registryFile = Join-Path $SourceDir "shared\config_registry.ahk"
+$registryProps = [System.Collections.Generic.HashSet[string]]::new()
+
+if (Test-Path $registryFile) {
+    $regText = Get-CachedFileText $registryFile
+    foreach ($m in [regex]::Matches($regText, '\bg:\s*"([^"]+)"')) {
+        [void]$registryProps.Add($m.Groups[1].Value)
+    }
+}
+
+# Phase 2: Build per-file cfg property access sets (src/ files only)
+# Matches cfg.PropertyName — same regex as cfg_properties in check_batch_simple
+$tccCfgAccessRx = [regex]::new('\bcfg\.([A-Za-z_]\w*)\b', 'Compiled')
+$tccMethodSkip = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($s in @('HasOwnProp','DefineProp','Clone','Ptr','Base','OwnProps',
+    'DeleteProp','GetOwnPropDesc','HasProp','__Init','__New')) {
+    [void]$tccMethodSkip.Add($s)
+}
+
+$tccFileAccess = @{}  # filePath -> HashSet<string> of cfg properties accessed
+foreach ($file in $srcFiles) {
+    $text = Get-CachedFileText $file.FullName
+    if ($text.IndexOf('cfg.', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+    $props = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($m in $tccCfgAccessRx.Matches($text)) {
+        $prop = $m.Groups[1].Value
+        if (-not $tccMethodSkip.Contains($prop) -and $registryProps.Contains($prop)) {
+            [void]$props.Add($prop)
+        }
+    }
+    if ($props.Count -gt 0) {
+        $tccFileAccess[$file.FullName] = $props
+    }
+}
+
+# Phase 3: For each test with a mock cfg, collect accessed properties from include tree
+if ($registryProps.Count -gt 0) {
+    foreach ($file in $testFiles) {
+        $text = Get-CachedFileText $file.FullName
+        if ($text.IndexOf('cfg := {', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+        $lines = Get-CachedFileLines $file.FullName
+        $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+        # Extract mock cfg property names
+        $inCfg = $false
+        $cfgStartLine = 0
+        $mockProps = [System.Collections.Generic.HashSet[string]]::new()
+
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $line = $lines[$i]
+            if (-not $inCfg) {
+                if ($line -match '^\s*(?:global\s+)?cfg\s*:=\s*\{') {
+                    $inCfg = $true
+                    $cfgStartLine = $i + 1
+                }
+            }
+            if ($inCfg) {
+                foreach ($pm in [regex]::Matches($line, '(\w+)\s*:')) {
+                    [void]$mockProps.Add($pm.Groups[1].Value)
+                }
+                if ($line -match '\}') { $inCfg = $false }
+            }
+        }
+
+        if ($mockProps.Count -eq 0) { continue }
+
+        # Build include tree and collect all cfg properties accessed by src/ files in the tree
+        $tree = BT_BuildIncludeTree $file.FullName $file.DirectoryName
+        $neededProps = [System.Collections.Generic.HashSet[string]]::new()
+
+        foreach ($incFile in $tree) {
+            if ($tccFileAccess.ContainsKey($incFile)) {
+                foreach ($prop in $tccFileAccess[$incFile]) {
+                    [void]$neededProps.Add($prop)
+                }
+            }
+        }
+
+        # Compare: report properties accessed by included production code but missing from mock
+        $missing = [System.Collections.ArrayList]::new()
+        foreach ($prop in $neededProps) {
+            if (-not $mockProps.Contains($prop)) {
+                [void]$missing.Add($prop)
+            }
+        }
+        if ($missing.Count -gt 0) {
+            [void]$tccIssues.Add([PSCustomObject]@{
+                File    = $relPath
+                Line    = $cfgStartLine
+                Missing = ($missing | Sort-Object) -join ', '
+                Count   = $missing.Count
+            })
+        }
+    }
+}
+
+if ($tccIssues.Count -gt 0) {
+    $anyFailed = $true
+    $totalMissing = ($tccIssues | Measure-Object -Property Count -Sum).Sum
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $totalMissing config property(ies) missing from test mock cfg objects.")
+    [void]$failOutput.AppendLine("  Production code in the test's include tree accesses cfg properties not defined in the mock.")
+    [void]$failOutput.AppendLine("  Without them, cfg.PropertyName throws 'no property named' at runtime.")
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  Fix: add the missing properties with default values to the test's cfg object.")
+    foreach ($issue in $tccIssues) {
+        [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line): missing $($issue.Count) prop(s): $($issue.Missing)")
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_test_cfg_completeness"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1042,7 +1169,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls)" -ForegroundColor Green
+    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls, test_cfg_completeness)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
