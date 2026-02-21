@@ -70,34 +70,7 @@ Win_GetMonitorBoundsFromHwnd(hWnd, &left, &top, &right, &bottom) {
     bottom := NumGet(mi, 16, "Int")
 }
 
-; Get monitor handle for a window (for monitor identity comparison)
-Win_GetMonitorHandle(hWnd) {
-    return DllCall("user32\MonitorFromWindow", "ptr", hWnd, "uint", 2, "ptr")
-}
-
-; Get monitor index (1-based) from monitor handle for display purposes
-; Returns "Mon N" where N is the monitor number, or "" on failure
-Win_GetMonitorLabel(hMon) {
-    if (!hMon)
-        return ""
-    ; Iterate AHK's built-in monitor list to find the matching index
-    count := MonitorGetCount()
-    loop count {
-        ; Get monitor bounds via AHK built-in and compare handle
-        mL := 0, mT := 0, mR := 0, mB := 0
-        MonitorGet(A_Index, &mL, &mT, &mR, &mB)
-        ; Build a rect and get the handle for comparison
-        rc := Buffer(16, 0)
-        NumPut("Int", mL, rc, 0)
-        NumPut("Int", mT, rc, 4)
-        NumPut("Int", mR, rc, 8)
-        NumPut("Int", mB, rc, 12)
-        testMon := DllCall("user32\MonitorFromRect", "ptr", rc.Ptr, "uint", 2, "ptr")
-        if (testMon = hMon)
-            return "Mon " A_Index
-    }
-    return ""
-}
+; Win_GetMonitorHandle and Win_GetMonitorLabel moved to win_utils.ahk
 
 ; Get monitor scale from rect
 Win_GetMonitorScale(left, top, right, bottom) {

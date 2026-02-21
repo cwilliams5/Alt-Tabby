@@ -295,9 +295,6 @@ INT_SetBypassMode(shouldBypass) {
 GUI_CaptureOverlayMonitor() {
     ; No-op in tests
 }
-GUI_StampMonitorLabels(items) {
-    ; No-op in tests
-}
 GUI_FilterByMonitorMode(items) {
     global gGUI_MonitorMode, MON_MODE_ALL
     if (gGUI_MonitorMode = MON_MODE_ALL)
@@ -423,7 +420,9 @@ CreateTestItems(count, currentWSCount := -1) {
             workspaceName: (A_Index <= currentWSCount) ? "Main" : "Other",
             lastActivatedTick: A_TickCount - (A_Index * 100),  ; MRU order: lower index = more recent
             iconHicon: 0,
-            processName: ""
+            processName: "",
+            monitorHandle: 0,
+            monitorLabel: ""
         })
     }
     return items
