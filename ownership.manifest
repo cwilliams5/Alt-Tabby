@@ -27,4 +27,7 @@ gGUI_LiveItems: gui_state, gui_data
 gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
+gGUI_AppViewCollection: gui_main, gui_state
+gGUI_ImmersiveShell: gui_main, gui_state
+gGUI_PendingShell: gui_main, gui_state
 gGUI_Sel: gui_input, gui_state

@@ -479,6 +479,12 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     try WL_CleanupExeIconCache()
     try IconPump_CleanupUwpCache()
 
+    ; Release COM objects (OS would clean up, but explicit is good hygiene)
+    global gGUI_PendingShell, gGUI_ImmersiveShell, gGUI_AppViewCollection
+    try gGUI_PendingShell := ""
+    try gGUI_ImmersiveShell := ""
+    try gGUI_AppViewCollection := ""
+
     ; Clean up GDI+
     Gdip_Shutdown()
 
