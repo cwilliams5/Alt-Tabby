@@ -66,6 +66,7 @@ global gStats_LastSent := Map()
 
 ; Store globals (mocked for GUI tests — production uses embedded store in gui_main.ahk)
 global gWS_Store := Map()
+global gWS_Meta := Map()
 global gWS_DirtyHwnds := Map()
 
 ; Cosmetic repaint debounce (from gui_main.ahk - not included in GUI test chain)
@@ -76,6 +77,7 @@ global DWMWA_CLOAKED := 14
 
 ; Constants from config_loader.ahk
 global LOG_PATH_EVENTS := A_Temp "\tabby_events.log"
+global LOG_PATH_STORE := A_Temp "\tabby_store_error.log"
 global LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch.log"
 
 ; Cached config values (from config_loader.ahk _CL_CacheHotPathValues)
