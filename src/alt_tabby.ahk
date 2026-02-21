@@ -131,6 +131,7 @@ for _, arg in A_Args {
 #Include pump_utils.ahk
 #Include resource_utils.ahk
 #Include stats.ahk
+#Include sort_utils.ahk
 #Include window_list.ahk
 
 ; Editor subprocesses (from src/editors/)

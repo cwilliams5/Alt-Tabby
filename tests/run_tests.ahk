@@ -94,6 +94,7 @@ DoUnitSetup := false
 DoUnitCleanup := false
 DoUnitAdvanced := false
 DoUnitStats := false
+DoUnitSort := false
 global DoInvasiveTests := false  ; Tests that disrupt desktop (workspace switching, etc.)
 for _, arg in A_Args {
     if (arg = "--live")
@@ -124,6 +125,8 @@ for _, arg in A_Args {
         DoUnitAdvanced := true
     else if (arg = "--unit-stats")
         DoUnitStats := true
+    else if (arg = "--unit-sort")
+        DoUnitSort := true
     else if (arg = "--invasive")
         DoInvasiveTests := true
 }
@@ -156,6 +159,8 @@ else if (DoUnitAdvanced)
     TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_advanced.log"
 else if (DoUnitStats)
     TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_stats.log"
+else if (DoUnitSort)
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_sort.log"
 
 ; --- Error handler BEFORE any I/O to catch early startup errors ---
 OnError(_Test_OnError)
@@ -187,6 +192,7 @@ Log("Log file: " TestLogPath)
 #Include %A_ScriptDir%\..\src\shared\win_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\stats.ahk
 #Include %A_ScriptDir%\..\src\shared\error_boundary.ahk
+#Include %A_ScriptDir%\..\src\shared\sort_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\window_list.ahk
 #Include %A_ScriptDir%\..\src\core\winenum_lite.ahk
 #Include %A_ScriptDir%\..\src\core\komorebi_sub.ahk
@@ -213,7 +219,7 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
-isUnitSingle := DoUnitCoreStore || DoUnitCoreParsing || DoUnitCoreConfig || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced || DoUnitStats
+isUnitSingle := DoUnitCoreStore || DoUnitCoreParsing || DoUnitCoreConfig || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced || DoUnitStats || DoUnitSort
 isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLiveLifecycle || isUnitSingle
 
 if (isUnitSingle) {
@@ -234,6 +240,8 @@ if (isUnitSingle) {
         RunUnitTests_Advanced()
     else if (DoUnitStats)
         RunUnitTests_Stats()
+    else if (DoUnitSort)
+        RunUnitTests_Sort()
 } else if (!isSingleSuite) {
     ; --- Full mode: run all unit tests ---
     RunUnitTests()

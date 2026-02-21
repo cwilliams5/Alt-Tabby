@@ -844,32 +844,7 @@ _WS_ToItem(rec) {
 }
 
 _WS_TrySort(arr, cmp) {
-    if (!IsObject(arr) || !(arr is Array) || arr.Length <= 1)
-        return
-    if (arr.HasMethod("Sort")) {
-        try {
-            arr.Sort(cmp)
-            return
-        } catch {
-        }
-    }
-    _WS_InsertionSort(arr, cmp)
-}
-
-_WS_InsertionSort(arr, cmp) {
-    len := arr.Length
-    Loop len {
-        i := A_Index
-        if (i = 1)
-            continue
-        key := arr[i]
-        j := i - 1
-        while (j >= 1 && cmp(arr[j], key) > 0) {
-            arr[j + 1] := arr[j]
-            j -= 1
-        }
-        arr[j + 1] := key
-    }
+    QuickSort(arr, cmp)
 }
 
 ; Comparison functions for sorting
