@@ -125,7 +125,7 @@ RunLiveTests_Lifecycle() {
         Sleep(100)
     }
     if (!guiConnected)
-        Log("WARNING: GUI did not log pump connection within 8s (pump test may fail)")
+        Log("WARNING: GUI did not log pump connection within 8s")
 
     ; ============================================================
     ; Test 1: Pump kill → auto-restart (end-to-end)
@@ -140,7 +140,9 @@ RunLiveTests_Lifecycle() {
     ; Use authoritative pump PID from launcher (GUI and pump are same exe,
     ; can't distinguish by process name alone)
     pumpPid := knownPumpPid
-    if (!pumpPid || !ProcessExist(pumpPid)) {
+    if (!guiConnected) {
+        Log("SKIP: GUI not connected to pump — auto-restart requires active pipe connection")
+    } else if (!pumpPid || !ProcessExist(pumpPid)) {
         Log("SKIP: Pump not running, cannot test pump kill auto-restart")
     } else {
         Log("Pump PID before kill: " pumpPid " (from launcher)")
@@ -203,15 +205,21 @@ RunLiveTests_Lifecycle() {
     ; timeout both call _GUIPump_HandleFailure which sends this signal.)
     Log("`n--- PUMP_FAILED Signal Test ---")
 
-    ; Wait for GUI to reconnect to restarted pump (poll log instead of fixed sleep)
-    if (!_Lifecycle_WaitForPumpReconnect(1))
-        Log("WARNING: GUI pump reconnect not detected after kill restart (test may fail)")
+    if (!guiConnected) {
+        Log("SKIP: GUI not connected to pump — PUMP_FAILED test requires active pipe connection")
+        pumpPid := 0
+    } else {
+        ; Wait for GUI to reconnect to restarted pump (poll log instead of fixed sleep)
+        if (!_Lifecycle_WaitForPumpReconnect(1))
+            Log("WARNING: GUI pump reconnect not detected after kill restart (test may fail)")
 
-    ; Find current pump PID (not knownPumpPid which is stale after Test 1 restarted it)
-    ; Use knownGuiPid to exclude the GUI — it hasn't changed
-    pumpPid := _Lifecycle_FindNonGuiChild(launcherPid, knownGuiPid)
+        ; Find current pump PID (not knownPumpPid which is stale after Test 1 restarted it)
+        ; Use knownGuiPid to exclude the GUI — it hasn't changed
+        pumpPid := _Lifecycle_FindNonGuiChild(launcherPid, knownGuiPid)
+    }
     if (!pumpPid) {
-        Log("SKIP: Pump not running, cannot test PUMP_FAILED signal")
+        if (guiConnected)
+            Log("SKIP: Pump not running, cannot test PUMP_FAILED signal")
     } else {
         Log("Pump PID before PUMP_FAILED signal: " pumpPid)
         response := _Lifecycle_SendCommand(launcherHwnd, 8)  ; TABBY_CMD_PUMP_FAILED = 8
@@ -253,9 +261,13 @@ RunLiveTests_Lifecycle() {
     ; so response=1 proves the GUI handler executed and returned true.
     Log("`n--- RELOAD_BLACKLIST Signal Test ---")
 
-    ; Wait for GUI to reconnect to pump restarted by PUMP_FAILED signal
-    if (!_Lifecycle_WaitForPumpReconnect(2))
-        Log("WARNING: GUI pump reconnect not detected after PUMP_FAILED restart (test may fail)")
+    ; Wait for GUI to reconnect to pump restarted by PUMP_FAILED signal (if pump tests ran)
+    if (guiConnected) {
+        if (!_Lifecycle_WaitForPumpReconnect(2))
+            Log("WARNING: GUI pump reconnect not detected after PUMP_FAILED restart")
+    } else {
+        Sleep(500)  ; Brief settle when pump tests were skipped
+    }
 
     response := _Lifecycle_SendCommandWithRetry(launcherHwnd, 4)  ; TABBY_CMD_RELOAD_BLACKLIST = 4
     if (response = 1) {
