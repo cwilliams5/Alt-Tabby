@@ -141,9 +141,25 @@ _GUI_ApplyHoverState(idx, act) {
 
 _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     global gGUI_ScrollTop, gGUI_OverlayH, cfg
+    global gGUI_LeftArrowRect, gGUI_RightArrowRect
 
     action := ""
     idx1 := 0
+
+    ; Check footer arrow hover (regardless of row position)
+    if (cfg.GUI_ShowFooter) {
+        if (xPhys >= gGUI_LeftArrowRect.x && xPhys < gGUI_LeftArrowRect.x + gGUI_LeftArrowRect.w
+            && yPhys >= gGUI_LeftArrowRect.y && yPhys < gGUI_LeftArrowRect.y + gGUI_LeftArrowRect.h) {
+            action := "arrowLeft"
+            return
+        }
+        if (xPhys >= gGUI_RightArrowRect.x && xPhys < gGUI_RightArrowRect.x + gGUI_RightArrowRect.w
+            && yPhys >= gGUI_RightArrowRect.y && yPhys < gGUI_RightArrowRect.y + gGUI_RightArrowRect.h) {
+            action := "arrowRight"
+            return
+        }
+    }
+
     items := _GUI_GetDisplayItems()
     count := items.Length
     if (count <= 0) {

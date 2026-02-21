@@ -278,7 +278,26 @@ Theme_CreateModalDialog(title, opts := "+AlwaysOnTop +Owner", width := 488) {
 ;   g     - Gui object (from Theme_CreateModalDialog().gui)
 ;   width - Dialog width (default: 488)
 Theme_ShowModalDialog(g, width := 488) {
+    global MONITOR_DEFAULTTONEAREST, SWP_NOSIZE, SWP_NOZORDER
     g.Show("w" width " Center")
+    ; Re-center on correct monitor using raw Win32 (anti-flash pattern).
+    ; AHK's "Center" uses the primary monitor; this centers on the nearest
+    ; monitor to the window, which is correct for multi-monitor setups.
+    hwnd := g.Hwnd
+    hMon := DllCall("user32\MonitorFromWindow", "ptr", hwnd, "uint", MONITOR_DEFAULTTONEAREST, "ptr")
+    mi := Buffer(40, 0)
+    NumPut("UInt", 40, mi, 0)
+    DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr)
+    wL := NumGet(mi, 20, "Int"), wT := NumGet(mi, 24, "Int")
+    wR := NumGet(mi, 28, "Int"), wB := NumGet(mi, 32, "Int")
+    rect := Buffer(16, 0)
+    DllCall("user32\GetWindowRect", "ptr", hwnd, "ptr", rect.Ptr)
+    winW := NumGet(rect, 8, "Int") - NumGet(rect, 0, "Int")
+    winH := NumGet(rect, 12, "Int") - NumGet(rect, 4, "Int")
+    cx := wL + (wR - wL - winW) // 2
+    cy := wT + (wB - wT - winH) // 2
+    DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", 0
+        , "int", cx, "int", cy, "int", 0, "int", 0, "uint", SWP_NOSIZE | SWP_NOZORDER)
     GUI_AntiFlashReveal(g, true)
     WinWaitClose(g)
 }
