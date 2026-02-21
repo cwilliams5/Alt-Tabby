@@ -109,6 +109,12 @@ FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
     global gFR_Enabled, gFR_Buffer, gFR_Idx, gFR_Size, gFR_Count
     if (!gFR_Enabled)
         return
+    ; RACE FIX: Protect index increment + slot write from hotkey/timer interruption.
+    ; FR_Record is called from both hotkey callbacks (interceptor) and timer callbacks
+    ; (producers, async tick). Without Critical, a hotkey can interrupt mid-write causing
+    ; two calls to write the same slot and double-increment gFR_Count.
+    ; Critical auto-released on function return (no explicit "Off" needed).
+    Critical "On"
     gFR_Idx := gFR_Idx >= gFR_Size ? 1 : gFR_Idx + 1
     b := gFR_Buffer[gFR_Idx]
     b[1] := A_TickCount

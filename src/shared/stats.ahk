@@ -201,6 +201,7 @@ Stats_FlushToDisk() {
 
 ; Update peak window count in session and lifetime stats.
 ; Called from WL_UpsertWindow/EndScan after adding windows.
+; NOTE: Callers hold Critical — do NOT add Critical "Off" here (leaks caller's state).
 Stats_UpdatePeakWindows(count) {
     global gStats_Session, gStats_Lifetime
     if (IsObject(gStats_Session) && count > gStats_Session.Get("peakWindows", 0)) {

@@ -456,13 +456,16 @@ GUI_RefilterForWorkspaceChange() {
 ; this preserves MRU-based selection since the user is browsing, not switching.
 GUI_ApplyWorkspaceFilter() {
     global gGUI_DisplayItems, gGUI_ToggleBase
+    ; RACE FIX: Keep Critical through repaint — a hotkey can interrupt between filter and
+    ; repaint, reassigning gGUI_DisplayItems via GUI_OnInterceptorEvent. Follows the
+    ; keyboard-hooks rule: "keep Critical during render" (corrupted GUI > keyboard lag).
     Critical "On"
     gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
-    Critical "Off"
     _GUI_ResetSelectionToMRU()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)
     GUI_Repaint()
+    Critical "Off"
 }
 
 ; Reset selection to MRU position (1 or 2) and clamp to list bounds.
@@ -871,8 +874,13 @@ _GUI_AsyncActivationTick() {
             ; Timeout - do activation anyway
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ASYNC TIMEOUT: workspace poll deadline exceeded for '" gGUI_PendingWSName "'")
-            ; RACE FIX: Phase transition must be atomic
+            ; RACE FIX: Phase transition must be atomic. Re-check phase hasn't been
+            ; cleared by _GUI_CancelPendingActivation (ESC during this tick).
             Critical "On"
+            if (gGUI_PendingPhase = "") {
+                Critical "Off"
+                return  ; Cancelled while running — don't resurrect
+            }
             gGUI_PendingPhase := "waiting"
             gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
             Critical "Off"
@@ -929,8 +937,13 @@ _GUI_AsyncActivationTick() {
 
         if (switchComplete) {
             ; Switch complete! Move to waiting phase
-            ; RACE FIX: Phase transition must be atomic
+            ; RACE FIX: Phase transition must be atomic. Re-check phase hasn't been
+            ; cleared by _GUI_CancelPendingActivation (ESC during this tick).
             Critical "On"
+            if (gGUI_PendingPhase = "") {
+                Critical "Off"
+                return  ; Cancelled while running — don't resurrect
+            }
             gGUI_PendingPhase := "waiting"
             gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
             Critical "Off"
@@ -985,8 +998,13 @@ _GUI_AsyncActivationTick() {
         ; will send events that bypass the buffer, arriving out of order.
         ; Keep the phase set to "flushing" so events continue to be buffered
         ; until _GUI_ProcessEventBuffer completes.
-        ; RACE FIX: Phase transition must be atomic
+        ; RACE FIX: Phase transition must be atomic. Re-check phase hasn't been
+        ; cleared by _GUI_CancelPendingActivation (ESC during this tick).
         Critical "On"
+        if (gGUI_PendingPhase = "") {
+            Critical "Off"
+            return  ; Cancelled while running — don't resurrect
+        }
         gGUI_PendingPhase := "flushing"
         Critical "Off"
 
