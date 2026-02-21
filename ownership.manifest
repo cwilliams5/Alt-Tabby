@@ -28,3 +28,4 @@ gGUI_OverlayVisible: gui_overlay, gui_state
 gGUI_Revealed: gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
 gGUI_Sel: gui_input, gui_state
+gViewer_RefreshIntervalMs: gui_main

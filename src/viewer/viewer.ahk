@@ -22,7 +22,7 @@ global gViewer_IncludeCloaked := true
 global gViewer_Status := 0
 global gViewer_CurrentWSLabel := 0
 global gViewer_RefreshTimerFn := 0
-global gViewer_RefreshIntervalMs := 500  ; Polling interval when visible
+global gViewer_RefreshIntervalMs  ; Set from cfg.DiagViewerRefreshMs at init
 global gViewer_LastRev := -1
 global gViewer_ShuttingDown := false
 global gBlacklistChoice := ""  ; Blacklist dialog result

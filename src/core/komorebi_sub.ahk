@@ -53,7 +53,7 @@ global _KSub_ReadBufferLen := 0    ; Tracked length to avoid O(n) StrLen calls
 global _KSub_LastWorkspaceName := ""
 global _KSub_FallbackMode := false
 global _KSub_LastPromotionTick := 0
-global _KSub_PromotionIntervalMs := 30000  ; 30s between subscription promotion attempts
+global _KSub_PromotionIntervalMs  ; Set from cfg.KomorebiSubPromotionRetryMs at init
 
 ; Cache of window workspace assignments (persists even when windows leave komorebi)
 ; Each entry is { wsName: "name", tick: timestamp } for staleness detection
@@ -74,7 +74,7 @@ global _KSub_FocusedHwndByWS := Map()
 global gKSub_MruSuppressUntilTick := 0
 
 ; Delay before initial komorebi poll (wait for winenum to populate store first)
-global KSUB_INITIAL_POLL_DELAY_MS := 1500
+global KSUB_INITIAL_POLL_DELAY_MS  ; Set from cfg.KomorebiSubInitialPollDelayMs at init
 
 ; Cloak event batching state
 global _KSub_CloakPushPending := false
@@ -88,12 +88,14 @@ KomorebiSub_Init() {
     global _KSub_FallbackMode
 
     ; Load config values (ConfigLoader_Init has already run)
-    global KSub_MruSuppressionMs
+    global KSub_MruSuppressionMs, _KSub_PromotionIntervalMs, KSUB_INITIAL_POLL_DELAY_MS
     KSub_PollMs := cfg.KomorebiSubPollMs
     KSub_IdleRecycleMs := cfg.KomorebiSubIdleRecycleMs
     KSub_FallbackPollMs := cfg.KomorebiSubFallbackPollMs
     _KSub_CacheMaxAgeMs := cfg.KomorebiSubCacheMaxAgeMs
     KSub_MruSuppressionMs := cfg.KomorebiMruSuppressionMs
+    _KSub_PromotionIntervalMs := cfg.KomorebiSubPromotionRetryMs
+    KSUB_INITIAL_POLL_DELAY_MS := cfg.KomorebiSubInitialPollDelayMs
 
     _KSub_PipeName := "tabby_" A_TickCount "_" Random(1000, 9999)
     _KSub_WorkspaceCache := Map()

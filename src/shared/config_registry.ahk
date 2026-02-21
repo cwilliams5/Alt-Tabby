@@ -140,6 +140,10 @@ global gConfigRegistry := [
     {s: "Launcher", k: "ShowTrayDebugItems", g: "LauncherShowTrayDebugItems", t: "bool", default: false,
      d: "Show the Dev menu and extra editor options in the tray menu. Useful for testing dialogs and debugging."},
 
+    {s: "Launcher", k: "EditorScrollStep", g: "LauncherEditorScrollStep", t: "int", default: 60,
+     min: 20, max: 200,
+     d: "Scroll speed for the native config editor (pixels per mouse wheel notch). Increase for faster scrolling through settings, decrease for precision."},
+
     ; ============================================================
     ; Theme & Dark Mode
     ; ============================================================
@@ -868,6 +872,14 @@ global gConfigRegistry := [
      min: 500, max: 5000,
      d: "Duration (ms) to suppress WinEventHook MRU updates after a workspace switch. Prevents focus events from corrupting window order during transitions."},
 
+    {s: "Komorebi", k: "SubPromotionRetryMs", g: "KomorebiSubPromotionRetryMs", t: "int", default: 30000,
+     min: 5000, max: 300000,
+     d: "Retry interval (ms) for promoting from polling to subscription mode after komorebi starts. Lower = faster promotion when komorebi restarts, but more frequent probing."},
+
+    {s: "Komorebi", k: "SubInitialPollDelayMs", g: "KomorebiSubInitialPollDelayMs", t: "int", default: 1500,
+     min: 500, max: 10000,
+     d: "Delay (ms) before first komorebi state poll at startup. Allows komorebi pipe to initialize. Increase on slow systems where komorebi takes longer to start."},
+
     ; ============================================================
     ; Setup & Installation
     ; ============================================================
@@ -1075,6 +1087,13 @@ global gConfigRegistry := [
      min: 5, max: 500,
      d: "Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps."},
 
+    {type: "subsection", section: "Store", name: "Housekeeping",
+     desc: "Periodic maintenance cycle for caches, logs, and stats"},
+
+    {s: "Store", k: "HousekeepingIntervalMs", g: "HousekeepingIntervalMs", t: "int", default: 300000,
+     min: 30000, max: 3600000,
+     d: "Interval (ms) between housekeeping cycles: cache pruning, log rotation, and stats flush. Lower = more responsive cleanup but slightly more CPU. Default 5 minutes."},
+
     ; ============================================================
     ; Diagnostics
     ; ============================================================
@@ -1091,6 +1110,10 @@ global gConfigRegistry := [
 
     {s: "Diagnostics", k: "FlightRecorderHotkey", g: "DiagFlightRecorderHotkey", t: "string", default: "*F12",
      d: "Hotkey to dump the flight recorder buffer. Use AHK v2 hotkey syntax (e.g. *F12, ^F12, +F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Pass-through: the key still reaches other apps."},
+
+    {s: "Diagnostics", k: "ViewerRefreshMs", g: "DiagViewerRefreshMs", t: "int", default: 500,
+     min: 100, max: 5000,
+     d: "Debug viewer refresh interval (ms). Lower = more responsive viewer but slightly more CPU. Only applies while the viewer window is visible."},
 
     {s: "Diagnostics", k: "ChurnLog", g: "DiagChurnLog", t: "bool", default: false,
      d: "Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle."},
