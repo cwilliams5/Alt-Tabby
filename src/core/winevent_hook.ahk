@@ -563,14 +563,17 @@ _WEH_ProcessBatch() {
         newRecords := []
         updatedHwnds := []
         ineligibleHwnds := []
+        batchPatches := Map()
         for _, hwnd in toProcess {
             if (gWS_Store.Has(hwnd + 0)) {
                 ; Lightweight path: window already in store — skip immutable fields
                 result := _WEH_UpdateExisting(hwnd)
                 if (result = -1)
                     ineligibleHwnds.Push(hwnd)
-                else if (result)
+                else if (IsObject(result)) {
+                    batchPatches[hwnd] := result
                     updatedHwnds.Push(hwnd)
+                }
             } else {
                 ; Full probe path: new window needs all fields
                 rec := _WEH_ProbeWindow(hwnd)
@@ -578,6 +581,9 @@ _WEH_ProcessBatch() {
                     newRecords.Push(rec)
             }
         }
+        ; Batch-apply all existing-window patches in one Critical section + one rev bump
+        if (batchPatches.Count > 0)
+            WL_BatchUpdateFields(batchPatches, "weh_update")
         ; Remove windows that became ineligible (ghost windows, title cleared, etc.)
         if (ineligibleHwnds.Length > 0)
             WL_RemoveWindow(ineligibleHwnds, true)
@@ -674,6 +680,8 @@ _WEH_ProbeWindow(hwnd) {
 ; Lightweight update for windows already in the store.
 ; Skips immutable fields (class, PID) - only fetches title + vis/min/cloak.
 ; Returns: true if updated, false if skipped (hung/dead), -1 if ineligible (should remove)
+; Returns: Object patch (success), -1 (ineligible/destroyed), false (skipped/error)
+; Caller batches patches and calls WL_BatchUpdateFields once for the whole batch.
 _WEH_UpdateExisting(hwnd) {
     global gWS_Store
     ; Check window still exists
@@ -705,13 +713,7 @@ _WEH_UpdateExisting(hwnd) {
     if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked))
         return -1
 
-    ; Patch only the mutable fields
-    patch := Map()
-    patch["title"] := title
-    patch["isCloaked"] := isCloaked
-    patch["isMinimized"] := isMin
-    patch["isVisible"] := isVisible
-    WL_UpdateFields(hwnd, patch, "weh_update")
-    return true
+    ; Return patch Object — caller collects into batch
+    return { title: title, isCloaked: isCloaked, isMinimized: isMin, isVisible: isVisible }
 }
 

@@ -442,7 +442,7 @@ _IP_Tick() {
         }
 
         ; IP_MODE_INITIAL mode failure: bounded retries
-        tries := _IP_Attempts.Has(hwnd) ? (_IP_Attempts[hwnd] + 1) : 1
+        tries := _IP_Attempts.Get(hwnd, 0) + 1
         _IP_Attempts[hwnd] := tries
         if (logEnabled) {
             title := _IP_TruncTitle(rec)
@@ -569,8 +569,8 @@ _IP_GetUWPLogoPathCached(packagePath) {
         return ""
 
     ; Check cache first
-    if (_IP_UwpLogoCache.Has(packagePath))
-        return _IP_UwpLogoCache[packagePath]
+    if (cached := _IP_UwpLogoCache.Get(packagePath, ""))
+        return cached
 
     ; Resolve the logo path
     logoPath := _IP_GetUWPLogoPathFromPackage(packagePath)
