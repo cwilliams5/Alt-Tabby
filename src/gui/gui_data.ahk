@@ -11,6 +11,7 @@ global _gGUI_LastCosmeticRepaintTick := 0  ; Debounce for cosmetic repaints duri
 
 ; Refresh gGUI_LiveItems from WindowList — synchronous, always returns fresh data.
 GUI_RefreshLiveItems() {
+    Profiler.Enter("GUI_RefreshLiveItems") ; @profile
     global gGUI_LiveItems, gGUI_LiveItemsMap
     global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_OverlayH
     global gGdip_IconCache, FR_EV_REFRESH, gFR_Enabled
@@ -45,6 +46,7 @@ GUI_RefreshLiveItems() {
     ; Prune orphaned icon cache entries
     if (gGdip_IconCache.Count)
         Gdip_PruneIconCache(gGUI_LiveItemsMap)
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= LIVE ITEM REMOVAL =========================
@@ -80,6 +82,7 @@ GUI_RemoveLiveItemAt(idx1) {
 ; data. Self-corrects on next cycle; individual AHK property reads are atomic.
 ; Map access uses .Get(key, 0) to avoid TOCTOU crash if key is deleted mid-iteration.
 GUI_PatchCosmeticUpdates() {
+    Profiler.Enter("GUI_PatchCosmeticUpdates") ; @profile
     global gGUI_ToggleBase, gWS_Store, gWS_DirtyHwnds, cfg
     global gGUI_CurrentWSName, gGUI_OverlayVisible
     global _gGUI_LastCosmeticRepaintTick, FR_EV_COSMETIC_PATCH, gFR_Enabled
@@ -89,6 +92,7 @@ GUI_PatchCosmeticUpdates() {
         && A_TickCount - _gGUI_LastCosmeticRepaintTick < cfg.GUI_ActiveRepaintDebounceMs) {
         if (cfg.DiagCosmeticPatchLog)
             _GUI_CosmeticLog("DEBOUNCE skip (dirty=" gWS_DirtyHwnds.Count " elapsed=" (A_TickCount - _gGUI_LastCosmeticRepaintTick) "ms)")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -155,6 +159,7 @@ GUI_PatchCosmeticUpdates() {
     } else if (cfg.DiagCosmeticPatchLog && gWS_DirtyHwnds.Count > 0) {
         _GUI_CosmeticLog("PATCH end patched=0 (dirty hwnds not in frozen set)")
     }
+    Profiler.Leave() ; @profile
 }
 
 _GUI_CosmeticLog(msg) {

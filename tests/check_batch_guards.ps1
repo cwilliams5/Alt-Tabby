@@ -1377,6 +1377,8 @@ function EB_HasTryCatch {
         if ($checkLine -eq '' -or $checkLine -match '^\s*;') { continue }
         # Skip global/static/local declarations (common preamble)
         if ($checkLine -match '^\s*(?:global|static|local)\s') { continue }
+        # Skip ; @profile lines (stripped in release builds, not real statements)
+        if ($checkLine -match ';\s*@profile\s*$') { continue }
         $statementsChecked++
         if ($checkLine -match '^\s*try[\s{]' -or $checkLine -match '^\s*try$') {
             return $true

@@ -5,9 +5,13 @@
 ; cmp(a, b) returns <0 if a before b, 0 if equal, >0 if a after b.
 
 QuickSort(arr, cmp) {
-    if (!IsObject(arr) || !(arr is Array) || arr.Length <= 1)
+    Profiler.Enter("QuickSort") ; @profile
+    if (!IsObject(arr) || !(arr is Array) || arr.Length <= 1) {
+        Profiler.Leave() ; @profile
         return
+    }
     _QS_Sort(arr, cmp, 1, arr.Length)
+    Profiler.Leave() ; @profile
 }
 
 _QS_Sort(arr, cmp, l, h) {

@@ -894,6 +894,7 @@ _KSub_OnNotification(jsonLine) {
     global KSUB_EV_MOVE_TO_WS_NUM, KSUB_EV_MOVE_TO_NAMED_WS, KSub_MruSuppressionMs
     global cfg, gWS_OnWorkspaceChanged, FR_EV_WS_SWITCH, gFR_Enabled
 
+    Profiler.Enter("_KSub_OnNotification") ; @profile
     try {  ; Error boundary: notification handler — log and skip bad events
     ; ========== Layer 2: Quick event type extraction (no full JSON parse) ==========
     eventType := _KSub_QuickExtractEventType(jsonLine)
@@ -916,6 +917,7 @@ _KSub_OnNotification(jsonLine) {
                 KSub_DiagLog("  Cloak buffered: hwnd=" hwnd " cloaked=" isCloaked)
         }
         _KSub_ScheduleCloakPush()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -923,6 +925,7 @@ _KSub_OnNotification(jsonLine) {
     if (eventType = KSUB_EV_TITLE_UPDATE) {
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("  TitleUpdate: skipped (WinEventHook handles)")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -932,6 +935,7 @@ _KSub_OnNotification(jsonLine) {
     if !(parsed is Map) {
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("  Failed to parse notification JSON")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -939,12 +943,14 @@ _KSub_OnNotification(jsonLine) {
     if (!parsed.Has("state")) {
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("  No state object found")
+        Profiler.Leave() ; @profile
         return
     }
     stateObj := parsed["state"]
     if !(stateObj is Map) {
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("  State is not a Map")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -1164,7 +1170,9 @@ _KSub_OnNotification(jsonLine) {
     global gWS_OnStoreChanged
     if (gWS_OnStoreChanged)
         gWS_OnStoreChanged(false)
+    Profiler.Leave() ; @profile
     } catch as e {
+        Profiler.Leave() ; @profile
         Critical "Off"
         global LOG_PATH_STORE
         try LogAppend(LOG_PATH_STORE, "KSub_OnNotification err=" e.Message " file=" e.File " line=" e.Line)
@@ -1214,6 +1222,7 @@ _KSub_ScheduleCloakPush() {
 
 ; Timer callback: push all accumulated cloak changes in one delta
 _KSub_FlushCloakBatch() {
+    Profiler.Enter("_KSub_FlushCloakBatch") ; @profile
     global _KSub_CloakPushPending, _KSub_CloakBatchTimerFn, _KSub_CloakBatchBuffer
     ; RACE FIX: Reset flags and extract buffer atomically so _KSub_ScheduleCloakPush()
     ; sees consistent state if it interrupts between assignments
@@ -1225,6 +1234,7 @@ _KSub_FlushCloakBatch() {
 
     if (patches.Count > 0)
         try WL_BatchUpdateFields(patches, "cloak_batch")
+    Profiler.Leave() ; @profile
 }
 
 ; Cancel any pending cloak batch timer (called when a structural event pushes immediately)
@@ -1249,17 +1259,22 @@ _KSub_CancelCloakTimer() {
 ; stateObj: parsed Map from cJson (NOT raw text)
 ; skipWorkspaceUpdate: set to true when called after a focus event (notification already handled workspace)
 _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := false) {
+    Profiler.Enter("_KSub_ProcessFullState") ; @profile
     global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache
     global _KSub_CacheMaxAgeMs, _KSub_FocusedHwndByWS, gKSub_MruSuppressUntilTick
     global cfg
 
-    if !(stateObj is Map)
+    if !(stateObj is Map) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     monitorsArr := KSub_GetMonitorsArray(stateObj)
 
-    if (monitorsArr.Length = 0)
+    if (monitorsArr.Length = 0) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; ALWAYS extract focused workspace from state (cheap: ~9 Map lookups).
     ; This provides self-healing when FocusWorkspaceNumber events lie — e.g.,
@@ -1325,6 +1340,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                 }
             }
         }
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -1431,6 +1447,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     if (!IsSet(gWS_Store)) {
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("ProcessFullState: gWS_Store not set, returning")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -1573,6 +1590,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
         if (cfg.DiagKomorebiLog)
             KSub_DiagLog("ProcessFullState: batch updated " result.changed " windows (patches=" batchPatches.Count ")")
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Get window title via Win API

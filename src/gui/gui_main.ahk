@@ -46,6 +46,7 @@ A_MenuMaskKey := "vkE8"
 #Include *i %A_ScriptDir%\..\shared\theme_msgbox.ahk
 #Include *i %A_ScriptDir%\..\shared\gui_antiflash.ahk
 #Include *i %A_ScriptDir%\..\shared\timing.ahk
+#Include *i %A_ScriptDir%\..\shared\profiler.ahk ; @profile
 
 ; GUI utilities
 #Include *i %A_ScriptDir%\gui_gdip.ahk
@@ -127,6 +128,9 @@ _GUI_Main_Init() {
 
     ; Initialize flight recorder (if enabled) — must be before hotkey setup
     FR_Init()
+
+    ; Initialize profiler hotkey (only present in --profile builds) ; @profile
+    Profiler_Init() ; @profile
 
     ; Start debug event log (if enabled)
     GUI_LogEventStartup()
@@ -286,6 +290,7 @@ _GUI_FullScan() {
     _gGUI_ScanInProgress := true
     Critical "Off"
 
+    Profiler.Enter("_GUI_FullScan") ; @profile
     ; Error boundary: ensure WL_EndScan runs even on error (BeginScan/EndScan must be paired),
     ; and ensure _gGUI_ScanInProgress is always reset (otherwise re-entrancy guard blocks all future scans)
     try {
@@ -305,11 +310,13 @@ _GUI_FullScan() {
         Critical "Off"
         global LOG_PATH_STORE
         try LogAppend(LOG_PATH_STORE, "GUI_FullScan err=" e.Message " file=" e.File " line=" e.Line)
+        Profiler.Leave() ; @profile
     }
     Critical "On"
     _gGUI_ScanInProgress := false
     Critical "Off"
     _GUI_OnProducerRevChanged()
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= PERIODIC TIMERS =========================
@@ -343,10 +350,13 @@ _GUI_StartValidateExistence() {
 }
 
 _GUI_ValidateExistenceTick() {
+    Profiler.Enter("_GUI_ValidateExistenceTick") ; @profile
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
-    if (A_TickCount < _backoffUntil)
+    if (A_TickCount < _backoffUntil) {
+        Profiler.Leave() ; @profile
         return
+    }
     try {
         result := WL_ValidateExistence()
         if (result.removed > 0)
@@ -357,6 +367,7 @@ _GUI_ValidateExistenceTick() {
         global LOG_PATH_STORE
         HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "GUI_ValidateExistenceTick")
     }
+    Profiler.Leave() ; @profile
 }
 
 _GUI_StartHousekeeping() {

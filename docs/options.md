@@ -54,6 +54,15 @@ Internal timing parameters (usually no need to change)
 | `TabDecisionMs` | int | `24` | `15` - `100` | Tab decision window (ms). When Tab is pressed, we wait this long before committing to show the overlay. Allows detecting rapid Tab releases. Lower = more responsive but may cause accidental triggers. |
 | `WorkspaceSwitchSettleMs` | int | `75` | `0` - `500` | Wait time after workspace switch (ms). When activating a window on a different komorebi workspace, we wait this long for the workspace to stabilize before activating the window. Increase if windows fail to activate on slow systems. |
 
+### Activation Retry
+
+When the selected window is gone, retry the next MRU window
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `ActivationRetry` | bool | `true` | - | When the selected window has been closed during overlay display, automatically activate the next window in the MRU list instead of doing nothing. |
+| `ActivationRetryDepth` | int | `0` | `0` - `50` | Maximum number of retry attempts when walking the MRU list for a live window. 0 = unlimited (walk entire list). Non-zero caps the search depth. |
+
 ## Launcher
 
 Settings for the main Alt-Tabby launcher process (splash screen, startup behavior).
@@ -198,6 +207,8 @@ Window background and frame styling
 |--------|------|---------|-------|-------------|
 | `AcrylicColor` | int | `0x33000033` | `0x0` - `0xFFFFFFFF` | Background tint color with alpha (0xAARRGGBB) |
 | `CornerRadiusPx` | int | `18` | `0` - `100` | Window corner radius in pixels |
+| `OverlayMonitor` | enum | `FocusedWindow` | - | Which monitor the overlay appears on. FocusedWindow = the monitor where you're working. Primary = always the primary monitor. |
+| `MonitorFilterDefault` | enum | `All` | - | Default monitor filter. All = windows from all monitors. Current = only windows on the overlay's monitor. Toggle with backtick key during use. |
 
 ### Size Config
 
@@ -312,12 +323,12 @@ Extra data columns (0 = hidden)
 | `ColFixed2` | int | `70` | `0` - `500` | Column 2 width (HWND) |
 | `ColFixed3` | int | `50` | `0` - `500` | Column 3 width (PID) |
 | `ColFixed4` | int | `60` | `0` - `500` | Column 4 width (Workspace) |
-| `ColFixed5` | int | `0` | `0` - `500` | Column 5 width (0=hidden) |
+| `ColFixed5` | int | `0` | `0` - `500` | Column 5 width — Monitor label (0=hidden). Set to 50 to show Mon 1/Mon 2 per row. |
 | `ColFixed6` | int | `0` | `0` - `500` | Column 6 width (0=hidden) |
 | `Col2Name` | string | `HWND` | - | Column 2 header name |
 | `Col3Name` | string | `PID` | - | Column 3 header name |
 | `Col4Name` | string | `WS` | - | Column 4 header name |
-| `Col5Name` | string | `(empty)` | - | Column 5 header name |
+| `Col5Name` | string | `Mon` | - | Column 5 header name (Monitor label) |
 | `Col6Name` | string | `(empty)` | - | Column 6 header name |
 
 ### Header Font
@@ -425,7 +436,8 @@ Event-driven komorebi integration via named pipe
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `SubPollMs` | int | `50` | `10` - `1000` | Pipe poll interval (checking for incoming data) |
+| `SubPollMs` | int | `50` | `10` - `1000` | Legacy pipe poll interval. Used when async I/O is unavailable. |
+| `SubMaintenanceMs` | int | `2000` | `500` - `10000` | Maintenance timer interval when async I/O is active (idle recycle, connection check, read recovery). Ignored in legacy poll mode. |
 | `SubIdleRecycleMs` | int | `120000` | `10000` - `600000` | Restart subscription if no events for this long (stale detection) |
 | `SubFallbackPollMs` | int | `2000` | `500` - `30000` | Fallback polling interval if subscription fails |
 | `SubCacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
@@ -609,4 +621,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-21 with 256 total settings.*
+*Generated on 2026-02-21 with 261 total settings.*

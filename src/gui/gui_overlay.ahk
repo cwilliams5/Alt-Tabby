@@ -12,11 +12,13 @@ global gGUI_OverlayH := 0
 global GUI_LOG_TRIM_EVERY_N_HIDES := 10
 
 GUI_HideOverlay() {
+    Profiler.Enter("GUI_HideOverlay") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Overlay, gGUI_Revealed
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -44,6 +46,7 @@ GUI_HideOverlay() {
     if (Mod(hideCount, GUI_LOG_TRIM_EVERY_N_HIDES) = 0) {
         Paint_LogTrim()
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Push a fully transparent buffer to the overlay's layered window.
@@ -143,6 +146,7 @@ GUI_GetVisibleRows() {
 ; ========================= RESIZE =========================
 
 GUI_ResizeToRows(rowsToShow, skipFlush := false) {
+    Profiler.Enter("GUI_ResizeToRows") ; @profile
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH, cfg
 
     xDip := 0
@@ -176,6 +180,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
     if (!skipFlush)
         Win_DwmFlush()
+    Profiler.Leave() ; @profile
 }
 
 GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {

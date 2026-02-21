@@ -159,6 +159,7 @@ WL_BeginScan() {
 }
 
 WL_EndScan(graceMs := "") {
+    Profiler.Enter("WL_EndScan") ; @profile
     global gWS_Store, gWS_ScanId, gWS_Config, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
     now := A_TickCount
     ttl := (graceMs != "" ? graceMs + 0 : gWS_Config["MissingTTLms"] + 0)
@@ -241,15 +242,19 @@ WL_EndScan(graceMs := "") {
         _WS_BumpRev("EndScan")
     }
     Critical "Off"
+    Profiler.Leave() ; @profile
     return { removed: removed, rev: gWS_Rev }
 }
 
 WL_UpsertWindow(records, source := "") {
+    Profiler.Enter("WL_UpsertWindow") ; @profile
     global cfg, gWS_Store, gWS_Rev, gWS_ScanId, gWS_DiagChurn, gWS_SortOrderDirty, gWS_ContentDirty
     global gWS_SortAffectingFields, gWS_ContentOnlyFields, gWS_InternalFields, gWS_MRUBumpOnly, FR_EV_WINDOW_ADD, gFR_Enabled
     global gWS_DirtyHwnds
-    if (!IsObject(records) || !(records is Array))
+    if (!IsObject(records) || !(records is Array)) {
+        Profiler.Leave() ; @profile
         return { added: 0, updated: 0, rev: gWS_Rev }
+    }
     added := 0
     updated := 0
     sortDirty := false
@@ -360,6 +365,7 @@ WL_UpsertWindow(records, source := "") {
     for _, row in rowsToEnqueue
         _WS_EnqueueIfNeeded(row)
 
+    Profiler.Leave() ; @profile
     return { added: added, updated: updated, rev: gWS_Rev }
 }
 
@@ -465,6 +471,7 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
 ; Returns: { changed: count, rev: gWS_Rev }
 ; Use this for bulk operations like workspace switches to minimize Critical section overhead
 WL_BatchUpdateFields(patches, source := "") {
+    Profiler.Enter("WL_BatchUpdateFields") ; @profile
     global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty
     global gWS_MRUBumpOnly
 
@@ -502,6 +509,7 @@ WL_BatchUpdateFields(patches, source := "") {
         _WS_BumpRev("BatchUpdateFields:" . source)
 
     Critical "Off"
+    Profiler.Leave() ; @profile
     return { changed: changedCount, rev: gWS_Rev }
 }
 
@@ -543,6 +551,7 @@ WL_RemoveWindow(hwnds, forceRemove := false) {
 ; for hidden windows (like Outlook message windows).
 
 WL_ValidateExistence() {
+    Profiler.Enter("WL_ValidateExistence") ; @profile
     global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, FR_EV_GHOST_PURGE, gFR_Enabled
 
     ; RACE FIX: Snapshot keys to prevent iteration-during-modification
@@ -603,8 +612,10 @@ WL_ValidateExistence() {
         toRemove.Push(hwnd)
     }
 
-    if (toRemove.Length = 0)
+    if (toRemove.Length = 0) {
+        Profiler.Leave() ; @profile
         return { removed: 0, rev: gWS_Rev }
+    }
 
     ; RACE FIX: Wrap deletes + rev bump in Critical to prevent IPC requests
     ; from seeing inconsistent state (deleted entries with stale rev)
@@ -623,6 +634,7 @@ WL_ValidateExistence() {
     }
     Critical "Off"
 
+    Profiler.Leave() ; @profile
     return { removed: removed, rev: gWS_Rev }
 }
 
@@ -1236,6 +1248,7 @@ WL_CleanupAllIcons() {
 ; content-only refresh (Path 2), full rebuild (Path 3).
 
 WL_GetDisplayList(opts := 0) {
+    Profiler.Enter("WL_GetDisplayList") ; @profile
     global gWS_Store, gWS_Meta, gWS_SortOrderDirty, gWS_ContentDirty
     global gWS_MRUBumpOnly, gWS_DirtyHwnds, gWS_TitleSortActive
     global gWS_DLCache_Items, gWS_DLCache_ItemsMap, gWS_DLCache_OptsKey, gWS_DLCache_SortedRecs
@@ -1260,9 +1273,11 @@ WL_GetDisplayList(opts := 0) {
             for _, row in gWS_DLCache_Items
                 hwnds.Push(row.hwnd)
             Critical "Off"
+            Profiler.Leave() ; @profile
             return { rev: result.rev, hwnds: hwnds, meta: result.meta, cachePath: "cache" }
         }
         Critical "Off"
+        Profiler.Leave() ; @profile
         return result
     }
     Critical "Off"
@@ -1331,9 +1346,11 @@ WL_GetDisplayList(opts := 0) {
                 for _, row in rows
                     hwnds.Push(row.hwnd)
                 Critical "Off"
+                Profiler.Leave() ; @profile
                 return { rev: result.rev, hwnds: hwnds, meta: result.meta, cachePath: "mru" }
             }
             Critical "Off"
+            Profiler.Leave() ; @profile
             return result
         }
         ; !valid: stale ref or sort invariant broken — fall through to Path 3
@@ -1372,9 +1389,11 @@ WL_GetDisplayList(opts := 0) {
                 for _, row in rows
                     hwnds.Push(row.hwnd)
                 Critical "Off"
+                Profiler.Leave() ; @profile
                 return { rev: result.rev, hwnds: hwnds, meta: result.meta, cachePath: "content" }
             }
             Critical "Off"
+            Profiler.Leave() ; @profile
             return result
         }
         ; Stale ref detected — fall through to full rebuild
@@ -1437,8 +1456,10 @@ WL_GetDisplayList(opts := 0) {
         hwnds := []
         for _, row in rows
             hwnds.Push(row.hwnd)
+        Profiler.Leave() ; @profile
         return { rev: _WL_GetRev(), hwnds: hwnds, meta: gWS_Meta, cachePath: "full" }
     }
 
+    Profiler.Leave() ; @profile
     return { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "full" }
 }

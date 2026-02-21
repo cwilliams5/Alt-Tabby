@@ -47,6 +47,7 @@ Paint_LogStartSession() {
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {
+    Profiler.Enter("GUI_Repaint") ; @profile
     Critical "On"  ; Protect GDI+ back buffer from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
@@ -183,13 +184,17 @@ GUI_Repaint() {
     if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)) {
         Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " backbuf=" Round(tBackbuf, 2) " paintOverlay=" Round(tPaintOverlay, 2) " buffers=" Round(tBuffers, 2) " updateLayer=" Round(tUpdateLayer, 2) " reveal=" Round(tReveal, 2))
     }
+    Profiler.Leave() ; @profile
 }
 
 _GUI_RevealBoth() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed, cfg
     global gGUI_State, gGUI_OverlayVisible  ; Need access to state for race fix
 
+    Profiler.Enter("_GUI_RevealBoth") ; @profile
+
     if (gGUI_Revealed) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -199,6 +204,7 @@ _GUI_RevealBoth() {
     ; false. The quick-switch path then skips GUI_HideOverlay() (thinks overlay
     ; was never shown), leaving a non-interactive ghost overlay on screen.
     if (!gGUI_OverlayVisible) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -206,6 +212,7 @@ _GUI_RevealBoth() {
     if (gGUI_State != "ACTIVE") {
         try gGUI_Overlay.Hide()
         try gGUI_Base.Hide()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -219,6 +226,7 @@ _GUI_RevealBoth() {
     if (gGUI_State != "ACTIVE") {
         try gGUI_Overlay.Hide()
         try gGUI_Base.Hide()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -230,16 +238,19 @@ _GUI_RevealBoth() {
     if (gGUI_State != "ACTIVE") {
         try gGUI_Overlay.Hide()
         try gGUI_Base.Hide()
+        Profiler.Leave() ; @profile
         return
     }
 
     Win_DwmFlush()
     gGUI_Revealed := true
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= OVERLAY PAINTING =========================
 
 _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
+    Profiler.Enter("_GUI_PaintOverlay") ; @profile
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
@@ -255,6 +266,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     t1 := QPC()
     g := Gdip_EnsureGraphics()
     if (!g) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -490,6 +502,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             }
         }
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= ACTION BUTTONS =========================

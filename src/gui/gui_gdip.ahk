@@ -251,6 +251,7 @@ _Gdip_DisposeResources() {
 ; ========================= RESOURCE MANAGEMENT =========================
 
 GUI_EnsureResources(scale) {
+    Profiler.Enter("GUI_EnsureResources") ; @profile
     global gGdip_Res, gGdip_ResScale, cfg
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global GDIP_UNIT_PIXEL, GDIP_STRING_ALIGN_NEAR, GDIP_STRING_ALIGN_CENTER, GDIP_STRING_ALIGN_FAR
@@ -258,6 +259,7 @@ GUI_EnsureResources(scale) {
 
     if (Abs(gGdip_ResScale - scale) < 0.001 && gGdip_Res.Count) {
         ; Resources exist and scale unchanged - skip recreation
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -356,6 +358,7 @@ GUI_EnsureResources(scale) {
         tRes_Total := QPC() - tRes_Start
         Paint_Log("    Resources: total=" Round(tRes_Total, 2) "ms | dispose=" Round(tRes_Dispose, 2) " startup=" Round(tRes_Startup, 2) " brushes=" Round(tRes_Brushes, 2) " fonts=" Round(tRes_Fonts, 2) " formats=" Round(tRes_Formats, 2))
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Evict oldest entry from a FIFO cache (Map iteration order = insertion order).
