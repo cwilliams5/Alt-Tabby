@@ -631,19 +631,17 @@ Tray_InstallToProgramFiles() {
     if (result = "Cancel")
         return
 
-    ; Write state file: source<|>target (same format as update-installed)
-    targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
-    WriteStateFile(TEMP_INSTALL_PF_STATE, A_ScriptFullPath, targetPath)
-
     ; Self-elevate and exit (elevated instance handles install + relaunch)
-    try {
-        if (!Launcher_RunAsAdmin("--install-to-pf"))
-            throw Error("RunAsAdmin failed")
+    targetPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
+    if (Setup_ElevateWithState({
+        stateFile: TEMP_INSTALL_PF_STATE,
+        flag: "--install-to-pf",
+        errorMessage: "Installation requires administrator privileges.`nThe UAC prompt may have been cancelled.",
+        errorIcon: "Icon!",
+        source: A_ScriptFullPath,
+        target: targetPath
+    }))
         _ExitAll()
-    } catch {
-        try FileDelete(TEMP_INSTALL_PF_STATE)
-        ThemeMsgBox("Installation requires administrator privileges.`nThe UAC prompt may have been cancelled.", APP_NAME, "Icon!")
-    }
 }
 
 ToggleAutoUpdate() {

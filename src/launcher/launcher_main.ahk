@@ -832,24 +832,27 @@ _Launcher_CheckConfigWritable() {
 ; Check if we should skip wizard due to existing installation
 ; Returns true if: there's an existing Program Files install with valid config
 _Launcher_ShouldSkipWizardForExistingInstall() {
-    global cfg
+    global cfg, ALTTABBY_INSTALL_DIR
 
     ; Only relevant when FirstRunCompleted is false (would show wizard)
     if (cfg.SetupFirstRunCompleted)
         return false
 
-    ; Check for Program Files installation (localized for non-English Windows)
-    global ALTTABBY_INSTALL_DIR
-    pfDir := ALTTABBY_INSTALL_DIR
-    pfPath := pfDir "\AltTabby.exe"
-    pfConfigPath := pfDir "\config.ini"
-
     ; If running from Program Files, don't skip (let wizard show for fresh PF installs)
-    if (InStr(A_ScriptDir, pfDir))
+    if (InStr(A_ScriptDir, ALTTABBY_INSTALL_DIR))
         return false
 
-    ; Check if Program Files install exists with completed setup
-    if (FileExist(pfPath) && FileExist(pfConfigPath)) {
+    ; Check if there's a known installation (config ExePath or PF well-known path)
+    installedPath := Setup_GetInstalledPath()
+    if (installedPath = "")
+        return false
+
+    ; Resolve the installed directory and check for a config with completed setup
+    installedDir := ""
+    SplitPath(installedPath, , &installedDir)
+    pfConfigPath := installedDir "\config.ini"
+
+    if (FileExist(installedPath) && FileExist(pfConfigPath)) {
         if (ReadIniBool(pfConfigPath, "Setup", "FirstRunCompleted")) {
             ; Existing install has completed setup - skip wizard
             ; The mismatch dialog will offer to launch installed version or run from here
