@@ -32,20 +32,8 @@ Launcher_CheckInstallMismatch() {
     if (!A_IsCompiled)
         return
 
-    ; First, check config for SetupExePath
-    installedPath := ""
-    if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "")
-        installedPath := cfg.SetupExePath
-
-    ; Also check well-known install location (handles fresh config case)
-    ; This ensures we detect existing PF installs even with empty/fresh config
-    global ALTTABBY_INSTALL_DIR
-    pfPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
-    if (installedPath = "" && FileExist(pfPath)) {
-        installedPath := pfPath
-    }
-
-    ; No known installation
+    ; Check config and well-known PF location for installed exe
+    installedPath := Setup_GetInstalledPath()
     if (installedPath = "")
         return
 
@@ -251,19 +239,17 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 
     ; Check if we need elevation
     if (Update_NeedsElevation(installedDir)) {
-        ; Save update info and self-elevate
         global TEMP_INSTALL_UPDATE_STATE
-        WriteStateFile(TEMP_INSTALL_UPDATE_STATE, A_ScriptFullPath, installedPath)
-
-        try {
-            if (!Launcher_RunAsAdmin("--update-installed"))
-                throw Error("RunAsAdmin failed")
+        elevated := Setup_ElevateWithState({
+            stateFile: TEMP_INSTALL_UPDATE_STATE,
+            flag: "--update-installed",
+            errorMessage: "Update requires administrator privileges.",
+            source: A_ScriptFullPath,
+            target: installedPath
+        })
+        if (elevated)
             ExitApp()
-        } catch {
-            ThemeMsgBox("Update requires administrator privileges.", APP_NAME, "Iconx")
-            try FileDelete(TEMP_INSTALL_UPDATE_STATE)
-            return
-        }
+        return  ; Elevation failed, continue running from current location
     }
 
     ; Apply update directly
@@ -429,8 +415,9 @@ _Launcher_CleanupStaleAdminTask(newPath) {
                     Setup_SetRunAsAdmin(false)
                 }
             } catch {
-                ; UAC refused - warn user
-                TrayTip("Admin Mode", "Could not disable Admin Mode.`nYou may see repair prompts later.", "Icon!")
+                ; UAC refused - suppress future repair prompts since user was already warned
+                Setup_SetSuppressAdminRepairPrompt(true)
+                TrayTip("Admin Mode", "Could not disable Admin Mode.`nRepair prompts have been suppressed.", "Icon!")
             }
         }
     }

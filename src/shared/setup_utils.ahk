@@ -49,6 +49,41 @@ IsAdminModeFullyActive() {
     return cfg.SetupRunAsAdmin && g_CachedAdminTaskActive
 }
 
+; Get the path to the installed exe (from config or well-known PF location)
+; Returns empty string if no installation found
+Setup_GetInstalledPath() {
+    global cfg, ALTTABBY_INSTALL_DIR
+    if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "")
+        return cfg.SetupExePath
+    pfPath := ALTTABBY_INSTALL_DIR "\AltTabby.exe"
+    if (FileExist(pfPath))
+        return pfPath
+    return ""
+}
+
+; Elevate with state file: write state → RunAsAdmin → cleanup on failure
+; Returns true if elevation succeeded (caller MUST exit after), false if failed
+; opts: {stateFile, flag, errorMessage, source (opt), target (opt), extraCleanup (opt Array), errorIcon (opt, default "Iconx")}
+Setup_ElevateWithState(opts) {
+    global APP_NAME
+    if (opts.HasOwnProp("source") && opts.HasOwnProp("target"))
+        WriteStateFile(opts.stateFile, opts.source, opts.target)
+    try {
+        if (!Launcher_RunAsAdmin(opts.flag))
+            throw Error("RunAsAdmin failed")
+        return true
+    } catch {
+        try FileDelete(opts.stateFile)
+        if (opts.HasOwnProp("extraCleanup")) {
+            for _, path in opts.extraCleanup
+                try FileDelete(path)
+        }
+        icon := opts.HasOwnProp("errorIcon") ? opts.errorIcon : "Iconx"
+        ThemeMsgBox(opts.errorMessage, APP_NAME, icon)
+        return false
+    }
+}
+
 ; Cached admin task data — avoids redundant schtasks subprocess calls (~200-300ms each).
 ; Populated on first access, invalidated after CreateAdminTask/DeleteAdminTask.
 ; Only caches the default task name (ALTTABBY_TASK_NAME); overridden names bypass cache.
@@ -836,21 +871,20 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
     if (Update_NeedsElevation(exeDir)) {
         if (cfg.DiagUpdateLog)
             _Update_Log("DownloadAndApply: elevation required for " exeDir)
-        ; Save update info and self-elevate
         global TEMP_UPDATE_STATE
-        WriteStateFile(TEMP_UPDATE_STATE, tempExe, currentExe)
-
-        try {
-            if (!Launcher_RunAsAdmin("--apply-update"))
-                throw Error("RunAsAdmin failed")
+        elevated := Setup_ElevateWithState({
+            stateFile: TEMP_UPDATE_STATE,
+            flag: "--apply-update",
+            errorMessage: "Update requires administrator privileges.`nPlease run as administrator to update.",
+            source: tempExe,
+            target: currentExe,
+            extraCleanup: [tempExe]
+        })
+        if (elevated)
             ExitApp()
-        } catch {
+        if (cfg.DiagUpdateLog)
             _Update_Log("DownloadAndApply: elevation failed")
-            ThemeMsgBox("Update requires administrator privileges.`nPlease run as administrator to update.", "Update Error", "Iconx")
-            try FileDelete(TEMP_UPDATE_STATE)
-            try FileDelete(tempExe)  ; Clean up downloaded exe
-            return
-        }
+        return
     }
 
     ; Apply the update directly
@@ -1143,7 +1177,9 @@ Update_CleanupStaleTempFiles() {
         TEMP_INSTALL_UPDATE_STATE,
         TEMP_ADMIN_TOGGLE_LOCK,
         TEMP_UPDATE_LOCK,
-        TEMP_INSTALL_PF_STATE
+        TEMP_INSTALL_PF_STATE,
+        A_Temp "\alttabby_task.xml",
+        A_Temp "\alttabby_task_query.xml"
     ]
 
     for filePath in staleFiles {
