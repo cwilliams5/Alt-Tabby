@@ -321,7 +321,8 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
             if (cfg.DiagLauncherLog)
                 Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
             if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
-                Launcher_Log("IPC: RESTART_ALL debounced")
+                if (cfg.DiagLauncherLog)
+                    Launcher_Log("IPC: RESTART_ALL debounced")
                 return 1
             }
             g_LastFullRestartTick := A_TickCount
@@ -406,7 +407,9 @@ Launcher_RelayToGui(cmd) {
 ; Apply config changes: reload config for the launcher, re-theme launcher
 ; surfaces in-place, then restart subprocesses (which read config fresh on launch).
 _Launcher_ApplyConfigChanges() {
-    Launcher_Log("ApplyConfigChanges: reloading config and theme for launcher")
+    global cfg
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("ApplyConfigChanges: reloading config and theme for launcher")
 
     ; 1. Reload config from INI so launcher picks up new values
     ConfigLoader_Init()
@@ -450,13 +453,15 @@ _ShouldRedirectToScheduledTask() {
 
     ; Skip in testing mode - never show dialogs during automated tests
     if (g_TestingMode) {
-        Launcher_Log("TASK_REDIRECT: skip (testing mode)")
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("TASK_REDIRECT: skip (testing mode)")
         return false
     }
 
     ; Already elevated - don't redirect (avoid infinite loop)
     if (A_IsAdmin) {
-        Launcher_Log("TASK_REDIRECT: skip (already admin)")
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("TASK_REDIRECT: skip (already admin)")
         return false
     }
 
@@ -474,14 +479,16 @@ _ShouldRedirectToScheduledTask() {
     ; Fast path: if admin mode was never configured, skip schtasks query entirely.
     ; Saves ~200-300ms for non-admin users (the common case).
     if (!cfg.SetupRunAsAdmin) {
-        Launcher_Log("TASK_REDIRECT: skip (admin not configured)")
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("TASK_REDIRECT: skip (admin not configured)")
         return false
     }
 
     ; Check if task exists (cfg.SetupRunAsAdmin is true here — fast path returned above)
     if (!AdminTaskExists()) {
         Setup_SetRunAsAdmin(false)
-        Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("TASK_REDIRECT: synced stale RunAsAdmin=false (task deleted)")
         return false
     }
 
@@ -491,7 +498,8 @@ _ShouldRedirectToScheduledTask() {
         ; If admin mode is disabled in config, don't attempt repair or prompt.
         ; This prevents UAC prompt loops after user previously declined.
         if (!cfg.SetupRunAsAdmin) {
-            Launcher_Log("TASK_REDIRECT: skip (admin mode disabled in config, stale task ignored)")
+            if (cfg.DiagLauncherLog)
+                Launcher_Log("TASK_REDIRECT: skip (admin mode disabled in config, stale task ignored)")
             return false
         }
 
@@ -530,7 +538,8 @@ _ShouldRedirectToScheduledTask() {
         ; This handles: different installs, legacy tasks without ID, etc.
         ; Check if user previously said "Don't ask again"
         if (cfg.SetupSuppressAdminRepairPrompt) {
-            Launcher_Log("TASK_REDIRECT: skip (repair prompt suppressed by user)")
+            if (cfg.DiagLauncherLog)
+                Launcher_Log("TASK_REDIRECT: skip (repair prompt suppressed by user)")
             return false
         }
 
@@ -562,7 +571,8 @@ _ShouldRedirectToScheduledTask() {
         Setup_SetRunAsAdmin(true)
     }
 
-    Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("TASK_REDIRECT: will redirect to scheduled task")
     return true
 }
 
@@ -674,7 +684,7 @@ Launcher_AcquireMutex() {
 ; This is separate from the launcher mutex (which uses InstallationId) to prevent
 ; multiple installations from running simultaneously regardless of their ID.
 _Launcher_AcquireActiveMutex() {
-    global g_ActiveMutex, ERROR_ALREADY_EXISTS
+    global g_ActiveMutex, ERROR_ALREADY_EXISTS, cfg
 
     ; System-wide mutex with no ID suffix
     mutexName := "AltTabby_Active"
@@ -683,7 +693,8 @@ _Launcher_AcquireActiveMutex() {
     lastError := DllCall("GetLastError")
 
     if (lastError = ERROR_ALREADY_EXISTS) {
-        Launcher_Log("ACTIVE_MUTEX: already exists, another installation running")
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("ACTIVE_MUTEX: already exists, another installation running")
         if (g_ActiveMutex) {
             DllCall("CloseHandle", "ptr", g_ActiveMutex)
             g_ActiveMutex := 0
@@ -691,7 +702,8 @@ _Launcher_AcquireActiveMutex() {
         return false
     }
 
-    Launcher_Log("ACTIVE_MUTEX: acquired successfully")
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("ACTIVE_MUTEX: acquired successfully")
     return (g_ActiveMutex != 0)
 }
 
