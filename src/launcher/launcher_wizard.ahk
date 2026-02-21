@@ -296,7 +296,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
                 } else {
                     ; Task creation failed - notify user
                     ThemeMsgBox("Admin mode could not be enabled.`nAlt-Tabby will run with standard permissions — most features still work.", APP_NAME, "Icon!")
-                    ; Don't set cfg.SetupRunAsAdmin since task creation failed
+                    admin := false  ; Prevent Step 3 (line 312) from writing RunAsAdmin=true
                 }
             }
         } else {
