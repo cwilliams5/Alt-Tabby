@@ -279,7 +279,7 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
     }
 
     ; Delegate to Ex variant (vis/min/clk refs discarded — no extra cost since
-    ; the same DllCalls happen either way via _BL_ProbeVisMinCloak)
+    ; the same DllCalls happen either way via BL_ProbeVisMinCloak)
     vis := false, min := false, clk := false
     return Blacklist_IsWindowEligibleEx(hwnd, title, class, &vis, &min, &clk)
 }
@@ -292,8 +292,8 @@ _BL_IsAltTabEligible(hwnd) {
 }
 
 ; Shared vis/min/cloak probe — single source for the DllCall trio
-; Used by both _BL_IsAltTabEligibleEx and Blacklist_IsWindowEligibleEx (DRY)
-_BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak) {
+; Used by _BL_IsAltTabEligibleEx, Blacklist_IsWindowEligibleEx, and WinUtils_ProbeWindow
+BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak) {
     global DWMWA_CLOAKED
     static cloakedBuf := Buffer(4, 0)
     outVis := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
@@ -309,7 +309,7 @@ _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
     global GWL_STYLE, GWL_EXSTYLE, GW_OWNER
 
     ; Get visibility state via shared helper
-    _BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak)
+    BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak)
 
     ; Get regular window style
     style := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", GWL_STYLE, "ptr")
@@ -363,7 +363,7 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
             return false
     } else {
         ; Fetch vis/min/cloak directly when eligibility check is skipped
-        _BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak)
+        BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak)
     }
 
     ; Check blacklist (use cached config value for hot path performance)

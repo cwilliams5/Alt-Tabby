@@ -85,6 +85,7 @@ ConfigLoader_Init(basePath := "", readOnly := false) {
 
     _CL_LoadAllSettings()  ; Load user overrides
     _CL_ValidateSettings() ; Clamp values to safe ranges
+    _CL_ComputeDerivedGlobals() ; Derive runtime constants from validated config
     _CL_ResolveAhkV2Path()     ; Auto-discover AHK v2 if not set
     _CL_ResolveKomorebicPath() ; Auto-discover komorebic if not set
     gConfigLoaded := true
@@ -670,8 +671,12 @@ _CL_ValidateSettings() {
     ; --- Safety poll: 0=disabled, otherwise floor at 30000ms ---
     if (cfg.WinEnumSafetyPollMs > 0 && cfg.WinEnumSafetyPollMs < 30000)
         cfg.WinEnumSafetyPollMs := 30000
+}
 
-    ; --- Derived globals (must come after clamping) ---
+; Compute runtime globals derived from validated config values.
+; Must be called AFTER _CL_ValidateSettings() — depends on clamped values.
+_CL_ComputeDerivedGlobals() {
+    global cfg
     global IPC_TICK_IDLE
     IPC_TICK_IDLE := cfg.IPCIdleTickMs
     global LOG_MAX_BYTES, LOG_KEEP_BYTES

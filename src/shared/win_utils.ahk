@@ -26,9 +26,6 @@ global DWMWA_CLOAKED := 14
 ;   checkEligible  - Check Alt-Tab eligibility via Blacklist_IsWindowEligible (default false)
 ; Returns: Map with window properties or empty string on failure/ineligible
 WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := false) {
-    ; Static buffer for DWM cloaking - avoid allocation per call
-    static cloakedBuf := Buffer(4, 0)
-
     ; Optional: Check window still exists
     if (checkExists) {
         try {
@@ -74,12 +71,8 @@ WinUtils_ProbeWindow(hwnd, zOrder := 0, checkExists := false, checkEligible := f
         if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked))
             return ""
     } else {
-        ; Fetch vis/min/cloak directly
-        isVisible := DllCall("user32\IsWindowVisible", "ptr", hwnd, "int") != 0
-        isMin := DllCall("user32\IsIconic", "ptr", hwnd, "int") != 0
-        global DWMWA_CLOAKED
-        hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", cloakedBuf.Ptr, "uint", 4, "int")
-        isCloaked := (hr = 0) && (NumGet(cloakedBuf, 0, "UInt") != 0)
+        ; Fetch vis/min/cloak via shared probe (DRY with blacklist.ahk)
+        BL_ProbeVisMinCloak(hwnd, &isVisible, &isMin, &isCloaked)
     }
 
     ; Build record as Map (required by WindowList)

@@ -12,23 +12,8 @@ RunUnitTests_Storage() {
     Log("`n--- WL_UpdateFields Tests ---")
 
     ; Ensure store is initialized
-    WL_Init()
-    WL_BeginScan()
-
-    ; Add a test window
     testHwnd := 99999
-    testRec := Map()
-    testRec["hwnd"] := testHwnd
-    testRec["title"] := "Test Bypass Window"
-    testRec["class"] := "TestClass"
-    testRec["pid"] := 999
-    testRec["isVisible"] := true
-    testRec["isCloaked"] := false
-    testRec["isMinimized"] := false
-    testRec["z"] := 1
-    testRec["isFocused"] := false
-    WL_UpsertWindow([testRec], "test")
-    WL_EndScan()
+    _TestSetupStore([_TestRec(Map("hwnd", testHwnd, "title", "Test Bypass Window", "class", "TestClass", "pid", 999, "isFocused", false))])
 
     ; Test: UpdateFields on existing window should return exists=true
     result := WL_UpdateFields(testHwnd, { isFocused: true }, "test")
@@ -74,10 +59,8 @@ RunUnitTests_Storage() {
     global gWS_Store
 
     WL_BeginScan()
-    fakeRec1 := Map("hwnd", 0x9999001, "title", "Fake Win 1", "class", "FakeClass", "pid", 1,
-                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-    fakeRec2 := Map("hwnd", 0x9999002, "title", "Fake Win 2", "class", "FakeClass", "pid", 2,
-                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+    fakeRec1 := _TestRec(Map("hwnd", 0x9999001, "title", "Fake Win 1", "class", "FakeClass", "pid", 1, "z", 1))
+    fakeRec2 := _TestRec(Map("hwnd", 0x9999002, "title", "Fake Win 2", "class", "FakeClass", "pid", 2, "z", 2))
     WL_UpsertWindow([fakeRec1, fakeRec2], "test")
     WL_EndScan()
 
@@ -113,8 +96,7 @@ RunUnitTests_Storage() {
     Log("Testing ValidateExistence bumps rev on removal...")
     WL_Init()
     WL_BeginScan()
-    fakeRec3 := Map("hwnd", 0x9999003, "title", "Fake Win 3", "class", "FakeClass", "pid", 3,
-                    "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    fakeRec3 := _TestRec(Map("hwnd", 0x9999003, "title", "Fake Win 3", "class", "FakeClass", "pid", 3, "z", 1))
     WL_UpsertWindow([fakeRec3], "test")
     WL_EndScan()
 
@@ -170,10 +152,8 @@ RunUnitTests_Storage() {
         Log("Testing PurgeBlacklisted removes title-matched windows...")
         WL_Init()
         WL_BeginScan()
-        badRec := Map("hwnd", 0xAA01, "title", "BadTitle Test Window", "class", "SafeClass", "pid", 10,
-                      "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-        goodRec := Map("hwnd", 0xAA02, "title", "GoodTitle Window", "class", "SafeClass", "pid", 11,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+        badRec := _TestRec(Map("hwnd", 0xAA01, "title", "BadTitle Test Window", "class", "SafeClass", "pid", 10, "z", 1))
+        goodRec := _TestRec(Map("hwnd", 0xAA02, "title", "GoodTitle Window", "class", "SafeClass", "pid", 11, "z", 2))
         WL_UpsertWindow([badRec, goodRec], "test")
         WL_EndScan()
 
@@ -208,8 +188,7 @@ RunUnitTests_Storage() {
         Log("Testing PurgeBlacklisted removes class-matched windows...")
         WL_Init()
         WL_BeginScan()
-        classRec := Map("hwnd", 0xAA03, "title", "Safe Title", "class", "BadClass", "pid", 12,
-                        "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+        classRec := _TestRec(Map("hwnd", 0xAA03, "title", "Safe Title", "class", "BadClass", "pid", 12, "z", 1))
         WL_UpsertWindow([classRec], "test")
         WL_EndScan()
 
@@ -226,8 +205,7 @@ RunUnitTests_Storage() {
         Log("Testing PurgeBlacklisted rev behavior...")
         WL_Init()
         WL_BeginScan()
-        safeRec := Map("hwnd", 0xAA04, "title", "Completely Safe", "class", "SafeClass", "pid", 13,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+        safeRec := _TestRec(Map("hwnd", 0xAA04, "title", "Completely Safe", "class", "SafeClass", "pid", 13, "z", 1))
         WL_UpsertWindow([safeRec], "test")
         WL_EndScan()
 
@@ -345,30 +323,16 @@ RunUnitTests_Storage() {
 
     ; Create a cloaked window record (simulating a window on another workspace)
     cloakedHwnd := 77777
-    cloakedRec := Map()
-    cloakedRec["hwnd"] := cloakedHwnd
-    cloakedRec["title"] := "Test Cloaked Window"
-    cloakedRec["class"] := "TestClass"
-    cloakedRec["pid"] := 999
-    cloakedRec["isVisible"] := true
-    cloakedRec["isCloaked"] := true  ; CLOAKED - simulates other workspace
-    cloakedRec["isMinimized"] := false
-    cloakedRec["z"] := 1
-    cloakedRec["exePath"] := A_WinDir "\notepad.exe"
+    cloakedRec := _TestRec(Map("hwnd", cloakedHwnd, "title", "Test Cloaked Window",
+                                "pid", 999, "isCloaked", true, "z", 1,
+                                "exePath", A_WinDir "\notepad.exe"))
     WL_UpsertWindow([cloakedRec], "test")
 
     ; Create a minimized window record
     minHwnd := 88888
-    minRec := Map()
-    minRec["hwnd"] := minHwnd
-    minRec["title"] := "Test Minimized Window"
-    minRec["class"] := "TestClass"
-    minRec["pid"] := 998
-    minRec["isVisible"] := false  ; Minimized windows often have isVisible=false
-    minRec["isCloaked"] := false
-    minRec["isMinimized"] := true  ; MINIMIZED
-    minRec["z"] := 2
-    minRec["exePath"] := A_WinDir "\explorer.exe"
+    minRec := _TestRec(Map("hwnd", minHwnd, "title", "Test Minimized Window",
+                            "pid", 998, "isVisible", false, "isMinimized", true, "z", 2,
+                            "exePath", A_WinDir "\explorer.exe"))
     WL_UpsertWindow([minRec], "test")
 
     WL_EndScan()
@@ -411,18 +375,10 @@ RunUnitTests_Storage() {
 
     ; Create a window with WM_GETICON icon (eligible for refresh)
     refreshHwnd := 66666
-    refreshRec := Map()
-    refreshRec["hwnd"] := refreshHwnd
-    refreshRec["title"] := "Test Refresh Window"
-    refreshRec["class"] := "TestClass"
-    refreshRec["pid"] := 997
-    refreshRec["isVisible"] := true
-    refreshRec["isCloaked"] := false
-    refreshRec["isMinimized"] := false
-    refreshRec["z"] := 1
-    refreshRec["iconHicon"] := 12345  ; Has icon
-    refreshRec["iconMethod"] := "wm_geticon"  ; Got it via WM_GETICON
-    refreshRec["iconLastRefreshTick"] := 0  ; Never refreshed
+    refreshRec := _TestRec(Map("hwnd", refreshHwnd, "title", "Test Refresh Window",
+                                "pid", 997, "z", 1,
+                                "iconHicon", 12345, "iconMethod", "wm_geticon",
+                                "iconLastRefreshTick", 0))
     WL_UpsertWindow([refreshRec], "test")
     WL_EndScan()
 
@@ -473,17 +429,9 @@ RunUnitTests_Storage() {
 
     ; Create a window that started cloaked (got EXE icon), now visible
     upgradeHwnd := 55555
-    upgradeRec := Map()
-    upgradeRec["hwnd"] := upgradeHwnd
-    upgradeRec["title"] := "Test Upgrade Window"
-    upgradeRec["class"] := "TestClass"
-    upgradeRec["pid"] := 996
-    upgradeRec["isVisible"] := true  ; NOW visible
-    upgradeRec["isCloaked"] := false  ; NOT cloaked anymore
-    upgradeRec["isMinimized"] := false
-    upgradeRec["z"] := 1
-    upgradeRec["iconHicon"] := 12345  ; Has icon
-    upgradeRec["iconMethod"] := "exe"  ; Got it via EXE fallback (not WM_GETICON)
+    upgradeRec := _TestRec(Map("hwnd", upgradeHwnd, "title", "Test Upgrade Window",
+                                "pid", 996, "z", 1,
+                                "iconHicon", 12345, "iconMethod", "exe"))
     WL_UpsertWindow([upgradeRec], "test")
     WL_EndScan()
 
@@ -665,12 +613,9 @@ RunUnitTests_Storage() {
     WL_Init()
     gWS_ProcNameCache := Map()
     WL_BeginScan()
-    fanRec1 := Map("hwnd", 0xBB01, "title", "Fan Win 1", "class", "Test", "pid", 500,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-    fanRec2 := Map("hwnd", 0xBB02, "title", "Fan Win 2", "class", "Test", "pid", 500,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
-    fanRec3 := Map("hwnd", 0xBB03, "title", "Other PID", "class", "Test", "pid", 600,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 3)
+    fanRec1 := _TestRec(Map("hwnd", 0xBB01, "title", "Fan Win 1", "class", "Test", "pid", 500, "z", 1))
+    fanRec2 := _TestRec(Map("hwnd", 0xBB02, "title", "Fan Win 2", "class", "Test", "pid", 500, "z", 2))
+    fanRec3 := _TestRec(Map("hwnd", 0xBB03, "title", "Other PID", "class", "Test", "pid", 600, "z", 3))
     WL_UpsertWindow([fanRec1, fanRec2, fanRec3], "test")
     WL_EndScan()
     ; Drain icon queue from upserts
@@ -702,8 +647,7 @@ RunUnitTests_Storage() {
     WL_Init()
     gWS_ProcNameCache := Map()
     WL_BeginScan()
-    revRec := Map("hwnd", 0xBB04, "title", "Rev Test", "class", "Test", "pid", 700,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    revRec := _TestRec(Map("hwnd", 0xBB04, "title", "Rev Test", "class", "Test", "pid", 700, "z", 1))
     WL_UpsertWindow([revRec], "test")
     WL_EndScan()
     WL_PopIconBatch(100)
@@ -1127,30 +1071,27 @@ RunUnitTests_Storage() {
     WL_BeginScan()
 
     ; Window 1: normal, visible, on current workspace, MRU=1000
-    projRec1 := Map("hwnd", 0xF001, "title", "Zulu Window", "class", "Test", "pid", 10,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 3,
-                     "lastActivatedTick", 1000, "isFocused", false,
-                     "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "zulu.exe")
+    projRec1 := _TestRec(Map("hwnd", 0xF001, "title", "Zulu Window", "class", "Test", "pid", 10,
+                              "z", 3, "lastActivatedTick", 1000, "isFocused", false,
+                              "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "zulu.exe"))
     ; Window 2: cloaked (other workspace), MRU=3000 (most recent)
-    projRec2 := Map("hwnd", 0xF002, "title", "Alpha Window", "class", "Test", "pid", 20,
-                     "isVisible", true, "isCloaked", true, "isMinimized", false, "z", 1,
-                     "lastActivatedTick", 3000, "isFocused", false,
-                     "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false, "processName", "alpha.exe")
+    projRec2 := _TestRec(Map("hwnd", 0xF002, "title", "Alpha Window", "class", "Test", "pid", 20,
+                              "isCloaked", true, "z", 1, "lastActivatedTick", 3000, "isFocused", false,
+                              "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false, "processName", "alpha.exe"))
     ; Window 3: minimized, on current workspace, MRU=2000
-    projRec3 := Map("hwnd", 0xF003, "title", "Middle Window", "class", "Test", "pid", 5,
-                     "isVisible", false, "isCloaked", false, "isMinimized", true, "z", 5,
-                     "lastActivatedTick", 2000, "isFocused", false,
-                     "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "middle.exe")
+    projRec3 := _TestRec(Map("hwnd", 0xF003, "title", "Middle Window", "class", "Test", "pid", 5,
+                              "isVisible", false, "isMinimized", true, "z", 5, "lastActivatedTick", 2000,
+                              "isFocused", false, "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true,
+                              "processName", "middle.exe"))
     ; Window 4: normal, visible, on current workspace, MRU=500
-    projRec4 := Map("hwnd", 0xF004, "title", "Beta Window", "class", "Test", "pid", 30,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
-                     "lastActivatedTick", 500, "isFocused", false,
-                     "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "beta.exe")
+    projRec4 := _TestRec(Map("hwnd", 0xF004, "title", "Beta Window", "class", "Test", "pid", 30,
+                              "z", 2, "lastActivatedTick", 500, "isFocused", false,
+                              "workspaceName", "Desktop 1", "isOnCurrentWorkspace", true, "processName", "beta.exe"))
     ; Window 5: cloaked + minimized, other workspace, MRU=100
-    projRec5 := Map("hwnd", 0xF005, "title", "Echo Window", "class", "Test", "pid", 15,
-                     "isVisible", false, "isCloaked", true, "isMinimized", true, "z", 4,
-                     "lastActivatedTick", 100, "isFocused", false,
-                     "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false, "processName", "echo.exe")
+    projRec5 := _TestRec(Map("hwnd", 0xF005, "title", "Echo Window", "class", "Test", "pid", 15,
+                              "isVisible", false, "isCloaked", true, "isMinimized", true, "z", 4,
+                              "lastActivatedTick", 100, "isFocused", false,
+                              "workspaceName", "Desktop 2", "isOnCurrentWorkspace", false, "processName", "echo.exe"))
 
     WL_UpsertWindow([projRec1, projRec2, projRec3, projRec4, projRec5], "test")
     WL_EndScan()
@@ -1281,12 +1222,10 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    pidRec1 := Map("hwnd", 0xDD01, "title", "PID Win 1", "class", "Test", "pid", 7001,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                   "processName", "")
-    pidRec2 := Map("hwnd", 0xDD02, "title", "PID Win 2", "class", "Test", "pid", 7002,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
-                   "processName", "")
+    pidRec1 := _TestRec(Map("hwnd", 0xDD01, "title", "PID Win 1", "class", "Test", "pid", 7001,
+                             "z", 1, "processName", ""))
+    pidRec2 := _TestRec(Map("hwnd", 0xDD02, "title", "PID Win 2", "class", "Test", "pid", 7002,
+                             "z", 2, "processName", ""))
     WL_UpsertWindow([pidRec1, pidRec2], "test")
     WL_EndScan()
     WL_PopIconBatch(100)  ; Drain icon queue (not testing icons here)
@@ -1325,12 +1264,10 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    dedupRec1 := Map("hwnd", 0xDD03, "title", "Dedup Win 1", "class", "Test", "pid", 8001,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                     "processName", "")
-    dedupRec2 := Map("hwnd", 0xDD04, "title", "Dedup Win 2", "class", "Test", "pid", 8001,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
-                     "processName", "")
+    dedupRec1 := _TestRec(Map("hwnd", 0xDD03, "title", "Dedup Win 1", "class", "Test", "pid", 8001,
+                               "z", 1, "processName", ""))
+    dedupRec2 := _TestRec(Map("hwnd", 0xDD04, "title", "Dedup Win 2", "class", "Test", "pid", 8001,
+                               "z", 2, "processName", ""))
     WL_UpsertWindow([dedupRec1, dedupRec2], "test")
     WL_EndScan()
     WL_PopIconBatch(100)
@@ -1371,12 +1308,9 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    ghRec1 := Map("hwnd", 0xEE01, "title", "GH Win 1", "class", "Test", "pid", 9001,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-    ghRec2 := Map("hwnd", 0xEE02, "title", "GH Win 2", "class", "Test", "pid", 9002,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
-    ghRec3 := Map("hwnd", 0xEE03, "title", "GH Win 3", "class", "Test", "pid", 9001,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 3)
+    ghRec1 := _TestRec(Map("hwnd", 0xEE01, "title", "GH Win 1", "class", "Test", "pid", 9001, "z", 1))
+    ghRec2 := _TestRec(Map("hwnd", 0xEE02, "title", "GH Win 2", "class", "Test", "pid", 9002, "z", 2))
+    ghRec3 := _TestRec(Map("hwnd", 0xEE03, "title", "GH Win 3", "class", "Test", "pid", 9001, "z", 3))
     WL_UpsertWindow([ghRec1, ghRec2, ghRec3], "test")
     WL_EndScan()
 
@@ -1440,9 +1374,8 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    enqRec1 := Map("hwnd", 0xFF01, "title", "Enq Win 1", "class", "Test", "pid", 5001,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                   "processName", "test.exe")  ; Has processName (no PID enqueue)
+    enqRec1 := _TestRec(Map("hwnd", 0xFF01, "title", "Enq Win 1", "class", "Test", "pid", 5001,
+                             "z", 1, "processName", "test.exe"))  ; Has processName (no PID enqueue)
     WL_UpsertWindow([enqRec1], "test")
     WL_EndScan()
 
@@ -1468,10 +1401,9 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    enqRec2 := Map("hwnd", 0xFF02, "title", "Enq Win 2", "class", "Test", "pid", 5002,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                   "iconHicon", 12345, "iconMethod", "exe",
-                   "processName", "test.exe")
+    enqRec2 := _TestRec(Map("hwnd", 0xFF02, "title", "Enq Win 2", "class", "Test", "pid", 5002,
+                             "z", 1, "iconHicon", 12345, "iconMethod", "exe",
+                             "processName", "test.exe"))
     WL_UpsertWindow([enqRec2], "test")
     WL_EndScan()
 
@@ -1497,10 +1429,9 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    enqRec3 := Map("hwnd", 0xFF03, "title", "Enq Win 3", "class", "Test", "pid", 5003,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                   "iconHicon", 12345, "iconMethod", "wm_geticon",
-                   "processName", "test.exe")
+    enqRec3 := _TestRec(Map("hwnd", 0xFF03, "title", "Enq Win 3", "class", "Test", "pid", 5003,
+                             "z", 1, "iconHicon", 12345, "iconMethod", "wm_geticon",
+                             "processName", "test.exe"))
     WL_UpsertWindow([enqRec3], "test")
     WL_EndScan()
 
@@ -1526,10 +1457,9 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    enqRec4 := Map("hwnd", 0xFF04, "title", "Enq Win 4", "class", "Test", "pid", 5004,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                   "iconHicon", 12345, "iconMethod", "wm_geticon",
-                   "processName", "")  ; Empty processName
+    enqRec4 := _TestRec(Map("hwnd", 0xFF04, "title", "Enq Win 4", "class", "Test", "pid", 5004,
+                             "z", 1, "iconHicon", 12345, "iconMethod", "wm_geticon",
+                             "processName", ""))  ; Empty processName
     WL_UpsertWindow([enqRec4], "test")
     WL_EndScan()
     WL_PopIconBatch(100)  ; Drain icon queue
@@ -1556,10 +1486,9 @@ RunUnitTests_Storage() {
     gWS_PidQueueDedup := Map()
 
     WL_BeginScan()
-    enqRec5 := Map("hwnd", 0xFF05, "title", "Enq Win 5", "class", "Test", "pid", 5005,
-                   "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                   "iconHicon", 12345, "iconMethod", "wm_geticon",
-                   "processName", "already.exe")  ; Has processName
+    enqRec5 := _TestRec(Map("hwnd", 0xFF05, "title", "Enq Win 5", "class", "Test", "pid", 5005,
+                             "z", 1, "iconHicon", 12345, "iconMethod", "wm_geticon",
+                             "processName", "already.exe"))  ; Has processName
     WL_UpsertWindow([enqRec5], "test")
     WL_EndScan()
     WL_PopIconBatch(100)

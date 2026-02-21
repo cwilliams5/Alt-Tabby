@@ -136,6 +136,39 @@ WaitForFlag(&flag, timeoutMs := 2000, pollMs := 20) {
     return flag
 }
 
+; --- WindowList Test Setup Helpers ---
+
+; Build a standard test window record as Map with sensible defaults.
+; Pass overrides as a Map to customize specific fields.
+; Example: _TestRec(Map("hwnd", 12345, "title", "My Window"))
+_TestRec(overrides := "") {
+    rec := Map(
+        "hwnd", 1,
+        "title", "Test Window",
+        "class", "TestClass",
+        "pid", 100,
+        "isVisible", true,
+        "isCloaked", false,
+        "isMinimized", false,
+        "z", 1
+    )
+    if (IsObject(overrides)) {
+        for k, v in overrides
+            rec[k] := v
+    }
+    return rec
+}
+
+; Init store, upsert records, end scan. Wraps the common 4-line test setup.
+; records: array of Map records (build with _TestRec or manually)
+; endScanTTL: optional TTL param for WL_EndScan (default 0 = no TTL)
+_TestSetupStore(records, endScanTTL := 0) {
+    WL_Init()
+    WL_BeginScan()
+    WL_UpsertWindow(records, "test")
+    WL_EndScan(endScanTTL)
+}
+
 ; Join array elements with a separator
 _JoinArray(arr, sep) {
     result := ""
