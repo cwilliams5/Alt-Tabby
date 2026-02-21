@@ -268,6 +268,7 @@ function BT_ResolveAhkInclude {
 }
 
 $script:includeLineCache = @{}
+$script:includeTreeCache = @{}
 
 function BT_BuildIncludeTree {
     param(
@@ -275,11 +276,16 @@ function BT_BuildIncludeTree {
         [string]$scriptDir
     )
 
+    $entryFull = [System.IO.Path]::GetFullPath($entryFile)
+    $cacheKey = "$entryFull|$scriptDir"
+    if ($script:includeTreeCache.ContainsKey($cacheKey)) {
+        return $script:includeTreeCache[$cacheKey]
+    }
+
     $visited = @{}
     $queue = [System.Collections.Queue]::new()
     $tree = [System.Collections.ArrayList]::new()
 
-    $entryFull = [System.IO.Path]::GetFullPath($entryFile)
     $queue.Enqueue($entryFull)
     $visited[$entryFull.ToLower()] = $true
     [void]$tree.Add($entryFull)
@@ -308,6 +314,7 @@ function BT_BuildIncludeTree {
         }
     }
 
+    $script:includeTreeCache[$cacheKey] = $tree
     return $tree
 }
 
@@ -320,7 +327,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 # Pass 1: Collect all file-scope global definitions from src/
 $knownGlobals = @{}
 $globalDefsCache = @{}
-$funcUsageCache = @{}
+$script:funcUsageCache = @{}
 
 foreach ($file in $srcFiles) {
     $defs = BT_GetFileScopeGlobalDefs $file.FullName
@@ -391,10 +398,10 @@ if ($entryPoints.Count -gt 0) {
                 if (-not $hasRelevantGlobal) { continue }
             }
 
-            if (-not $funcUsageCache.ContainsKey($file)) {
-                $funcUsageCache[$file] = BT_GetFunctionGlobalUsage $file
+            if (-not $script:funcUsageCache.ContainsKey($file)) {
+                $script:funcUsageCache[$file] = BT_GetFunctionGlobalUsage $file
             }
-            $usages = $funcUsageCache[$file]
+            $usages = $script:funcUsageCache[$file]
             $relFile = $file.Replace("$projectRoot\", '')
 
             foreach ($usage in $usages) {

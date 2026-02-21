@@ -28,7 +28,7 @@ if (-not (Test-Path $SourceDir)) {
     exit 1
 }
 
-# === Step 1: Collect function definitions from ALL project .ahk files ===
+# === Steps 1+1b+1c: Collect definitions, globals, and parameters in a single pass ===
 # Includes lib/ so third-party function definitions are known.
 # Excludes legacy/ (dead code).
 $allAhkFiles = @(Get-ChildItem -Path $projectRoot -Filter "*.ahk" -Recurse |
@@ -36,9 +36,20 @@ $allAhkFiles = @(Get-ChildItem -Path $projectRoot -Filter "*.ahk" -Recurse |
 
 $definedFunctions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
+$knownVariables = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+
+# File cache for reuse in Step 4
+$fileLineCache = @{}
+
+# Keywords shared across all three sub-steps
+$defKeywords = @('if', 'while', 'for', 'loop', 'switch', 'catch',
+                 'return', 'throw', 'class', 'try', 'else', 'until',
+                 'global', 'local', 'static', 'super', 'this')
 
 foreach ($file in $allAhkFiles) {
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $fileLineCache[$file.FullName] = $lines
     $lineCount = $lines.Length
     $inBlockComment = $false
 
@@ -55,46 +66,91 @@ foreach ($file in $allAhkFiles) {
         # Skip line comments and directives
         if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) { continue }
 
-        # Match class definitions: class Name → constructor callable as Name()
+        # --- Step 1b: Global variable declarations ---
+        if ($trimmed -match '^global\s+(.+)') {
+            $declPart = $Matches[1]
+            foreach ($chunk in $declPart.Split(',')) {
+                $chunk = $chunk.Trim()
+                if ($chunk -match '^(\w+)') {
+                    [void]$knownVariables.Add($Matches[1])
+                }
+            }
+        }
+
+        # --- Step 1b: Lambda/closure assignments ---
+        if ($trimmed -match '^(\w+)\s*:=\s*\(') {
+            [void]$knownVariables.Add($Matches[1])
+        }
+
+        # --- Step 1: Class definitions ---
         if ($trimmed -match '^class\s+(\w+)') {
             [void]$definedFunctions.Add($Matches[1])
             continue
         }
 
-        # Match function/method definitions: [static] FuncName(
-        if ($trimmed -match '^(?:static\s+)?(\w+)\s*\(') {
+        # --- Step 1 + 1c: Function definitions + parameter extraction ---
+        if ($trimmed -match '^(?:static\s+)?(\w+)\s*\((.*)') {
             $funcName = $Matches[1]
+            $afterParen = $Matches[2]
 
-            # Skip keywords that syntactically look like func(
-            if ($funcName -in @('if', 'while', 'for', 'loop', 'switch', 'catch',
-                               'return', 'throw', 'class', 'try', 'else', 'until',
-                               'global', 'local', 'static', 'super', 'this')) {
-                continue
+            if ($funcName -in $defKeywords) { continue }
+
+            # Step 1c: Extract parameters (always, even if not a verified definition)
+            $paramText = $afterParen
+            $parenDepth = 1
+            $searchEnd = [Math]::Min($i + 20, $lineCount - 1)
+
+            foreach ($ch in $paramText.ToCharArray()) {
+                if ($ch -eq '(') { $parenDepth++ }
+                elseif ($ch -eq ')') { $parenDepth--; if ($parenDepth -eq 0) { break } }
             }
 
-            # Verify it's a definition: look for { or => after closing )
+            if ($parenDepth -gt 0) {
+                $sb = [System.Text.StringBuilder]::new($paramText)
+                for ($j = $i + 1; $j -le $searchEnd; $j++) {
+                    $contLine = $lines[$j]
+                    [void]$sb.Append(' ').Append($contLine)
+                    foreach ($ch in $contLine.ToCharArray()) {
+                        if ($ch -eq '(') { $parenDepth++ }
+                        elseif ($ch -eq ')') { $parenDepth--; if ($parenDepth -eq 0) { break } }
+                    }
+                    if ($parenDepth -eq 0) { break }
+                }
+                $paramText = $sb.ToString()
+            }
+
+            $closeIdx = $paramText.IndexOf(')')
+            if ($closeIdx -ge 0) { $paramText = $paramText.Substring(0, $closeIdx) }
+
+            foreach ($param in $paramText.Split(',')) {
+                $param = $param.Trim()
+                $param = $param -replace '^\*', ''
+                $param = $param -replace '^&', ''
+                if ($param -match '^(\w+)') {
+                    [void]$knownVariables.Add($Matches[1])
+                }
+            }
+
+            # Step 1: Verify it's a definition (has { or => after closing paren)
             $isDefinition = $false
-            $searchEnd = [Math]::Min($i + 20, $lineCount - 1)
-            $parenDepth = 0
+            $parenDepth2 = 0
             $foundCloseParen = $false
 
             for ($j = $i; $j -le $searchEnd; $j++) {
                 $checkLine = $lines[$j]
 
                 foreach ($ch in $checkLine.ToCharArray()) {
-                    if ($ch -eq '(') { $parenDepth++ }
+                    if ($ch -eq '(') { $parenDepth2++ }
                     elseif ($ch -eq ')') {
-                        $parenDepth--
-                        if ($parenDepth -eq 0) { $foundCloseParen = $true; break }
+                        $parenDepth2--
+                        if ($parenDepth2 -eq 0) { $foundCloseParen = $true; break }
                     }
                 }
 
                 if ($foundCloseParen) {
-                    # Check for { or => after closing ) on this line
                     if ($checkLine -match '\)\s*(\{|=>)') {
                         $isDefinition = $true
                     } elseif ($j + 1 -le $searchEnd) {
-                        # Check next non-empty line for { or =>
                         for ($k = $j + 1; $k -le $searchEnd; $k++) {
                             $nextTrimmed = $lines[$k].Trim()
                             if ($nextTrimmed -eq '') { continue }
@@ -110,113 +166,6 @@ foreach ($file in $allAhkFiles) {
 
             if ($isDefinition) {
                 [void]$definedFunctions.Add($funcName)
-            }
-        }
-    }
-}
-
-# === Step 1b: Collect global variable names (callable as callback references) ===
-# Patterns: "global varName", "global varName := value", "global var1, var2"
-# These are variables that may hold function references (callback pattern).
-$knownVariables = [System.Collections.Generic.HashSet[string]]::new(
-    [System.StringComparer]::OrdinalIgnoreCase)
-
-foreach ($file in $allAhkFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
-    $inBlockComment = $false
-
-    foreach ($line in $lines) {
-        $trimmed = $line.TrimStart()
-        if ($trimmed.StartsWith('/*')) { $inBlockComment = $true }
-        if ($inBlockComment) {
-            if ($trimmed.Contains('*/')) { $inBlockComment = $false }
-            continue
-        }
-        if ($trimmed.StartsWith(';')) { continue }
-
-        # Match: global varName [, varName2, ...] [:= value]
-        if ($trimmed -match '^global\s+(.+)') {
-            $declPart = $Matches[1]
-            # Split by comma, extract variable names
-            foreach ($chunk in $declPart.Split(',')) {
-                $chunk = $chunk.Trim()
-                # Extract name before := or end
-                if ($chunk -match '^(\w+)') {
-                    [void]$knownVariables.Add($Matches[1])
-                }
-            }
-        }
-
-        # Match lambda/closure assignments: varName := (params) => expr
-        # or varName := (params) { body }
-        # These create callable local variables (e.g., clamp := (v, lo, hi) => ...)
-        if ($trimmed -match '^(\w+)\s*:=\s*\(') {
-            [void]$knownVariables.Add($Matches[1])
-        }
-    }
-}
-
-# === Step 1c: Collect function parameter names (callable as passed-in callbacks) ===
-# When a function is defined as FuncName(callback, cmp, logFn), those parameter
-# names may be called like callback() inside the body. Add them to known set.
-foreach ($file in $allAhkFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
-    $lineCount = $lines.Length
-    $inBlockComment = $false
-
-    for ($i = 0; $i -lt $lineCount; $i++) {
-        $trimmed = $lines[$i].TrimStart()
-        if ($trimmed.StartsWith('/*')) { $inBlockComment = $true }
-        if ($inBlockComment) {
-            if ($trimmed.Contains('*/')) { $inBlockComment = $false }
-            continue
-        }
-        if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) { continue }
-
-        # Match function definition start: FuncName( or static FuncName(
-        if ($trimmed -match '^(?:static\s+)?(\w+)\s*\((.*)') {
-            $funcName = $Matches[1]
-            if ($funcName -in @('if', 'while', 'for', 'loop', 'switch', 'catch',
-                               'return', 'throw', 'class', 'try', 'global', 'local', 'static')) {
-                continue
-            }
-
-            # Collect all text between parens (may span multiple lines)
-            $paramText = $Matches[2]
-            $parenDepth = 1  # Already past the opening (
-            $searchEnd = [Math]::Min($i + 20, $lineCount - 1)
-
-            # Check if closing ) is on this line
-            foreach ($ch in $paramText.ToCharArray()) {
-                if ($ch -eq '(') { $parenDepth++ }
-                elseif ($ch -eq ')') { $parenDepth--; if ($parenDepth -eq 0) { break } }
-            }
-
-            if ($parenDepth -gt 0) {
-                # Collect continuation lines
-                for ($j = $i + 1; $j -le $searchEnd; $j++) {
-                    $contLine = $lines[$j]
-                    $paramText += ' ' + $contLine
-                    foreach ($ch in $contLine.ToCharArray()) {
-                        if ($ch -eq '(') { $parenDepth++ }
-                        elseif ($ch -eq ')') { $parenDepth--; if ($parenDepth -eq 0) { break } }
-                    }
-                    if ($parenDepth -eq 0) { break }
-                }
-            }
-
-            # Extract parameter names from collected text (before closing paren)
-            $closeIdx = $paramText.IndexOf(')')
-            if ($closeIdx -ge 0) { $paramText = $paramText.Substring(0, $closeIdx) }
-
-            # Split by comma and extract names (ignore defaults, types, ByRef/&)
-            foreach ($param in $paramText.Split(',')) {
-                $param = $param.Trim()
-                $param = $param -replace '^\*', ''    # variadic *
-                $param = $param -replace '^&', ''     # ByRef &
-                if ($param -match '^(\w+)') {
-                    [void]$knownVariables.Add($Matches[1])
-                }
             }
         }
     }
@@ -352,7 +301,7 @@ $sourceFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
 $undefined = [System.Collections.Generic.List[PSCustomObject]]::new()
 
 foreach ($file in $sourceFiles) {
-    $lines = [System.IO.File]::ReadAllLines($file.FullName)
+    $lines = if ($fileLineCache.ContainsKey($file.FullName)) { $fileLineCache[$file.FullName] } else { [System.IO.File]::ReadAllLines($file.FullName) }
     $relPath = $file.FullName.Replace("$SourceDir\", "")
     $inBlockComment = $false
 

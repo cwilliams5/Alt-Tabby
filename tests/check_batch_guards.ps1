@@ -1105,6 +1105,8 @@ if ($criticalOffFunctions.Count -gt 0) {
     # Pre-filter: build regex to skip files that don't mention any leaked function
     $escapedLeaked = @($criticalOffFunctions | ForEach-Object { [regex]::Escape($_) })
     $leakedPattern = [regex]::new('(?:' + ($escapedLeaked -join '|') + ')', 'Compiled')
+    # Pre-compile hot-path regex for function call extraction (used on every line in Critical sections)
+    $rxFuncCall = [regex]::new('(?<![.\w])(\w+)\s*\(', 'Compiled')
 
     foreach ($file in $allFiles) {
         if (-not $lineDataCache.ContainsKey($file.FullName)) { continue }
@@ -1145,7 +1147,7 @@ if ($criticalOffFunctions.Count -gt 0) {
                 }
 
                 if ($criticalOn) {
-                    $callMatches = [regex]::Matches($cleaned, '(?<![.\w])(\w+)\s*\(')
+                    $callMatches = $rxFuncCall.Matches($cleaned)
                     foreach ($m in $callMatches) {
                         $callee = $m.Groups[1].Value
                         if ($BC_keywordSet.Contains($callee)) { continue }
