@@ -197,13 +197,10 @@ _ModeInit() {
 ; Run config editor and exit when launched with --config
 ; Supports --force-native flag to skip WebView2 and use AHK GUI
 if (g_AltTabbyMode = "config") {
-    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
-    launcherHwnd := 0
+    launcherHwnd := _ParseLauncherHwnd()
     forceNative := false
     for _, arg in A_Args {
-        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
-            launcherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
-        else if (arg = "--force-native")
+        if (arg = "--force-native")
             forceNative := true
     }
     ; Theme_Init is called inside ConfigEditor_Run after ConfigLoader_Init
@@ -214,17 +211,23 @@ if (g_AltTabbyMode = "config") {
 
 ; Run blacklist editor and exit when launched with --blacklist
 if (g_AltTabbyMode = "blacklist") {
-    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
-    launcherHwnd := 0
-    for _, arg in A_Args {
-        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
-            launcherHwnd := Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
-    }
+    launcherHwnd := _ParseLauncherHwnd()
     ; Initialize config + theme for blacklist editor process
     _ModeInit()
     BlacklistEditor_Run(launcherHwnd)
     _NotifyEditorClosed(launcherHwnd)
     ExitApp()
+}
+
+; Parse --launcher-hwnd=<N> from command-line args.
+; Shared by config and blacklist editor mode handlers.
+_ParseLauncherHwnd() {
+    global ARG_LAUNCHER_HWND, ARG_LAUNCHER_HWND_LEN
+    for _, arg in A_Args {
+        if (SubStr(arg, 1, ARG_LAUNCHER_HWND_LEN) = ARG_LAUNCHER_HWND)
+            return Integer(SubStr(arg, ARG_LAUNCHER_HWND_LEN + 1))
+    }
+    return 0
 }
 
 ; Notify launcher that an editor process is closing (for dashboard refresh).

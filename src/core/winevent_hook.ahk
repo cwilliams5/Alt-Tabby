@@ -621,9 +621,10 @@ _WEH_StartMruFallback() {
         _WEH_MruFallbackActive := true
         try {
             MRU_Lite_Init()
-        } catch {
+            try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch: MRU_Lite fallback ACTIVATED during backoff")
+        } catch as e {
+            try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch: MRU_Lite fallback FAILED: " e.Message)
         }
-        try LogAppend(LOG_PATH_STORE, "WEH_ProcessBatch: MRU_Lite fallback ACTIVATED during backoff")
     }
 }
 

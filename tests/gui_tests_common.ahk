@@ -64,7 +64,7 @@ global gStats_CrossWorkspace := 0
 global gStats_WorkspaceToggles := 0
 global gStats_LastSent := Map()
 
-; Store globals (from window_list.ahk - not included in GUI test chain)
+; Store globals (mocked for GUI tests — production uses embedded store in gui_main.ahk)
 global gWS_Store := Map()
 global gWS_DirtyHwnds := Map()
 

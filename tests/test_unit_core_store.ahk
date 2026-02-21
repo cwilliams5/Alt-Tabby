@@ -29,31 +29,9 @@ RunUnitTests_CoreStore() {
     ; Test 5: WindowList basic operations
     WL_Init()
     WL_BeginScan()
-
-    testRecs := []
-    rec1 := Map()
-    rec1["hwnd"] := 12345
-    rec1["title"] := "Test Window 1"
-    rec1["class"] := "TestClass"
-    rec1["pid"] := 100
-    rec1["isVisible"] := true
-    rec1["isCloaked"] := false
-    rec1["isMinimized"] := false
-    rec1["z"] := 1
-    testRecs.Push(rec1)
-
-    rec2 := Map()
-    rec2["hwnd"] := 67890
-    rec2["title"] := "Test Window 2"
-    rec2["class"] := "TestClass2"
-    rec2["pid"] := 200
-    rec2["isVisible"] := true
-    rec2["isCloaked"] := false
-    rec2["isMinimized"] := false
-    rec2["z"] := 2
-    testRecs.Push(rec2)
-
-    result := WL_UpsertWindow(testRecs, "test")
+    rec1 := _TestRec(Map("hwnd", 12345, "title", "Test Window 1", "z", 1))
+    rec2 := _TestRec(Map("hwnd", 67890, "title", "Test Window 2", "class", "TestClass2", "pid", 200, "z", 2))
+    result := WL_UpsertWindow([rec1, rec2], "test")
     AssertEq(result.added, 2, "WL_UpsertWindow adds records")
 
     ; Test 6: GetDisplayList with plain object opts (THE BUG FIX)
@@ -159,10 +137,8 @@ RunUnitTests_CoreStore() {
 
     ; Scan 1: Add two windows
     WL_BeginScan()
-    rec1 := Map("hwnd", 11111, "title", "Persistent", "class", "Test", "pid", 1,
-                "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
-    rec2 := Map("hwnd", 22222, "title", "Disappearing", "class", "Test", "pid", 2,
-                "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2)
+    rec1 := _TestRec(Map("hwnd", 11111, "title", "Persistent", "class", "Test", "pid", 1, "z", 1))
+    rec2 := _TestRec(Map("hwnd", 22222, "title", "Disappearing", "class", "Test", "pid", 2, "z", 2))
     WL_UpsertWindow([rec1, rec2], "test")
     WL_EndScan(100)  ; 100ms grace
 
@@ -198,12 +174,10 @@ RunUnitTests_CoreStore() {
 
     ; Scan 1: Add two windows - one with workspaceName, one without
     WL_BeginScan()
-    wsRec1 := Map("hwnd", 33333, "title", "Komorebi Managed", "class", "Test", "pid", 10,
-                  "isVisible", true, "isCloaked", true, "isMinimized", false, "z", 1,
-                  "workspaceName", "MyWorkspace")
-    wsRec2 := Map("hwnd", 44444, "title", "Unmanaged Window", "class", "Test", "pid", 11,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 2,
-                  "workspaceName", "")
+    wsRec1 := _TestRec(Map("hwnd", 33333, "title", "Komorebi Managed", "class", "Test", "pid", 10,
+                           "isCloaked", true, "z", 1, "workspaceName", "MyWorkspace"))
+    wsRec2 := _TestRec(Map("hwnd", 44444, "title", "Unmanaged Window", "class", "Test", "pid", 11,
+                           "z", 2, "workspaceName", ""))
     WL_UpsertWindow([wsRec1, wsRec2], "test")
     WL_EndScan(100)
 
@@ -232,9 +206,8 @@ RunUnitTests_CoreStore() {
     Log("Testing EndScan does not protect empty workspaceName...")
     WL_Init()
     WL_BeginScan()
-    emptyWsRec := Map("hwnd", 55555, "title", "Empty WS Window", "class", "Test", "pid", 12,
-                      "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1,
-                      "workspaceName", "")
+    emptyWsRec := _TestRec(Map("hwnd", 55555, "title", "Empty WS Window", "class", "Test", "pid", 12,
+                               "z", 1, "workspaceName", ""))
     WL_UpsertWindow([emptyWsRec], "test")
     WL_EndScan(100)
 
@@ -258,12 +231,10 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     sortTestRecs := []
-    sortTestRecs.Push(Map("hwnd", 5001, "title", "SortTest1", "class", "T", "pid", 1,
-                          "isVisible", true, "isCloaked", false, "isMinimized", false,
-                          "z", 1, "lastActivatedTick", 100))
-    sortTestRecs.Push(Map("hwnd", 5002, "title", "SortTest2", "class", "T", "pid", 2,
-                          "isVisible", true, "isCloaked", false, "isMinimized", false,
-                          "z", 2, "lastActivatedTick", 200))
+    sortTestRecs.Push(_TestRec(Map("hwnd", 5001, "title", "SortTest1", "class", "T", "pid", 1,
+                                   "z", 1, "lastActivatedTick", 100)))
+    sortTestRecs.Push(_TestRec(Map("hwnd", 5002, "title", "SortTest2", "class", "T", "pid", 2,
+                                   "z", 2, "lastActivatedTick", 200)))
     WL_UpsertWindow(sortTestRecs, "test")
     WL_EndScan()
 
@@ -366,15 +337,12 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     imRecs := []
-    imRecs.Push(Map("hwnd", 6001, "title", "IM_A", "class", "T", "pid", 1,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 1, "lastActivatedTick", 100))
-    imRecs.Push(Map("hwnd", 6002, "title", "IM_B", "class", "T", "pid", 2,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 2, "lastActivatedTick", 200))
-    imRecs.Push(Map("hwnd", 6003, "title", "IM_C", "class", "T", "pid", 3,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 3, "lastActivatedTick", 300))
+    imRecs.Push(_TestRec(Map("hwnd", 6001, "title", "IM_A", "class", "T", "pid", 1,
+                              "z", 1, "lastActivatedTick", 100)))
+    imRecs.Push(_TestRec(Map("hwnd", 6002, "title", "IM_B", "class", "T", "pid", 2,
+                              "z", 2, "lastActivatedTick", 200)))
+    imRecs.Push(_TestRec(Map("hwnd", 6003, "title", "IM_C", "class", "T", "pid", 3,
+                              "z", 3, "lastActivatedTick", 300)))
     WL_UpsertWindow(imRecs, "test")
     WL_EndScan()
 
@@ -429,12 +397,10 @@ RunUnitTests_CoreStore() {
     ; Add windows so SetCurrentWorkspace has work to do
     WL_BeginScan()
     cbRecs := []
-    cbRecs.Push(Map("hwnd", 6101, "title", "CB1", "class", "T", "pid", 1,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 1, "workspaceName", "Alpha"))
-    cbRecs.Push(Map("hwnd", 6102, "title", "CB2", "class", "T", "pid", 2,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 2, "workspaceName", "Beta"))
+    cbRecs.Push(_TestRec(Map("hwnd", 6101, "title", "CB1", "class", "T", "pid", 1,
+                              "z", 1, "workspaceName", "Alpha")))
+    cbRecs.Push(_TestRec(Map("hwnd", 6102, "title", "CB2", "class", "T", "pid", 2,
+                              "z", 2, "workspaceName", "Beta")))
     WL_UpsertWindow(cbRecs, "test")
     WL_EndScan()
 
@@ -464,15 +430,12 @@ RunUnitTests_CoreStore() {
 
     WL_BeginScan()
     recs := []
-    recs.Push(Map("hwnd", 1001, "title", "Win1", "class", "T", "pid", 1,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false,
-                  "z", 1, "workspaceName", "Main"))
-    recs.Push(Map("hwnd", 1002, "title", "Win2", "class", "T", "pid", 2,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false,
-                  "z", 2, "workspaceName", "Other"))
-    recs.Push(Map("hwnd", 1003, "title", "Win3", "class", "T", "pid", 3,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false,
-                  "z", 3, "workspaceName", ""))  ; Unmanaged
+    recs.Push(_TestRec(Map("hwnd", 1001, "title", "Win1", "class", "T", "pid", 1,
+                            "z", 1, "workspaceName", "Main")))
+    recs.Push(_TestRec(Map("hwnd", 1002, "title", "Win2", "class", "T", "pid", 2,
+                            "z", 2, "workspaceName", "Other")))
+    recs.Push(_TestRec(Map("hwnd", 1003, "title", "Win3", "class", "T", "pid", 3,
+                            "z", 3, "workspaceName", "")))  ; Unmanaged
     WL_UpsertWindow(recs, "test")
     WL_EndScan()
 
@@ -514,15 +477,12 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     batchRecs := []
-    batchRecs.Push(Map("hwnd", 7001, "title", "Batch1", "class", "T", "pid", 1,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false,
-                       "z", 1, "lastActivatedTick", 100))
-    batchRecs.Push(Map("hwnd", 7002, "title", "Batch2", "class", "T", "pid", 2,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false,
-                       "z", 2, "lastActivatedTick", 200))
-    batchRecs.Push(Map("hwnd", 7003, "title", "Batch3", "class", "T", "pid", 3,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false,
-                       "z", 3, "lastActivatedTick", 300))
+    batchRecs.Push(_TestRec(Map("hwnd", 7001, "title", "Batch1", "class", "T", "pid", 1,
+                                 "z", 1, "lastActivatedTick", 100)))
+    batchRecs.Push(_TestRec(Map("hwnd", 7002, "title", "Batch2", "class", "T", "pid", 2,
+                                 "z", 2, "lastActivatedTick", 200)))
+    batchRecs.Push(_TestRec(Map("hwnd", 7003, "title", "Batch3", "class", "T", "pid", 3,
+                                 "z", 3, "lastActivatedTick", 300)))
     WL_UpsertWindow(batchRecs, "test")
     WL_EndScan()
 
@@ -585,15 +545,12 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     mruBatchRecs := []
-    mruBatchRecs.Push(Map("hwnd", 8001, "title", "MRUBatch_A", "class", "T", "pid", 1,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 1, "lastActivatedTick", 100))
-    mruBatchRecs.Push(Map("hwnd", 8002, "title", "MRUBatch_B", "class", "T", "pid", 2,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 2, "lastActivatedTick", 200))
-    mruBatchRecs.Push(Map("hwnd", 8003, "title", "MRUBatch_C", "class", "T", "pid", 3,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 3, "lastActivatedTick", 300))
+    mruBatchRecs.Push(_TestRec(Map("hwnd", 8001, "title", "MRUBatch_A", "class", "T", "pid", 1,
+                                    "z", 1, "lastActivatedTick", 100)))
+    mruBatchRecs.Push(_TestRec(Map("hwnd", 8002, "title", "MRUBatch_B", "class", "T", "pid", 2,
+                                    "z", 2, "lastActivatedTick", 200)))
+    mruBatchRecs.Push(_TestRec(Map("hwnd", 8003, "title", "MRUBatch_C", "class", "T", "pid", 3,
+                                    "z", 3, "lastActivatedTick", 300)))
     WL_UpsertWindow(mruBatchRecs, "test")
     WL_EndScan()
 
@@ -666,9 +623,8 @@ RunUnitTests_CoreStore() {
 
     ; Add our hwnd to the store via upsert
     WL_BeginScan()
-    reappearRec := Map("hwnd", testHwnd, "title", "TestProcess", "class", "TestClass",
-                       "pid", ProcessExist(), "isVisible", true, "isCloaked", false,
-                       "isMinimized", false, "z", 1, "lastActivatedTick", A_TickCount)
+    reappearRec := _TestRec(Map("hwnd", testHwnd, "title", "TestProcess",
+                                "pid", ProcessExist(), "z", 1, "lastActivatedTick", A_TickCount))
     WL_UpsertWindow([reappearRec], "test")
     WL_EndScan()
 
@@ -709,12 +665,10 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     staleRecs := []
-    staleRecs.Push(Map("hwnd", 8001, "title", "StaleTest1", "class", "T", "pid", 1,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false,
-                       "z", 1, "lastActivatedTick", 100))
-    staleRecs.Push(Map("hwnd", 8002, "title", "StaleTest2", "class", "T", "pid", 2,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false,
-                       "z", 2, "lastActivatedTick", 200))
+    staleRecs.Push(_TestRec(Map("hwnd", 8001, "title", "StaleTest1", "class", "T", "pid", 1,
+                                 "z", 1, "lastActivatedTick", 100)))
+    staleRecs.Push(_TestRec(Map("hwnd", 8002, "title", "StaleTest2", "class", "T", "pid", 2,
+                                 "z", 2, "lastActivatedTick", 200)))
     WL_UpsertWindow(staleRecs, "test")
     WL_EndScan()
 
@@ -761,15 +715,12 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     mruRecs := []
-    mruRecs.Push(Map("hwnd", 9001, "title", "MRU_A", "class", "T", "pid", 1,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 1, "lastActivatedTick", 100))
-    mruRecs.Push(Map("hwnd", 9002, "title", "MRU_B", "class", "T", "pid", 2,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 2, "lastActivatedTick", 200))
-    mruRecs.Push(Map("hwnd", 9003, "title", "MRU_C", "class", "T", "pid", 3,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 3, "lastActivatedTick", 300))
+    mruRecs.Push(_TestRec(Map("hwnd", 9001, "title", "MRU_A", "class", "T", "pid", 1,
+                               "z", 1, "lastActivatedTick", 100)))
+    mruRecs.Push(_TestRec(Map("hwnd", 9002, "title", "MRU_B", "class", "T", "pid", 2,
+                               "z", 2, "lastActivatedTick", 200)))
+    mruRecs.Push(_TestRec(Map("hwnd", 9003, "title", "MRU_C", "class", "T", "pid", 3,
+                               "z", 3, "lastActivatedTick", 300)))
     WL_UpsertWindow(mruRecs, "test")
     WL_EndScan()
 
@@ -826,15 +777,12 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     hwndsRecs := []
-    hwndsRecs.Push(Map("hwnd", 9001, "title", "HO_A", "class", "T", "pid", 1,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 1, "lastActivatedTick", 100))
-    hwndsRecs.Push(Map("hwnd", 9002, "title", "HO_B", "class", "T", "pid", 2,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 2, "lastActivatedTick", 200))
-    hwndsRecs.Push(Map("hwnd", 9003, "title", "HO_C", "class", "T", "pid", 3,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 3, "lastActivatedTick", 300))
+    hwndsRecs.Push(_TestRec(Map("hwnd", 9001, "title", "HO_A", "class", "T", "pid", 1,
+                                 "z", 1, "lastActivatedTick", 100)))
+    hwndsRecs.Push(_TestRec(Map("hwnd", 9002, "title", "HO_B", "class", "T", "pid", 2,
+                                 "z", 2, "lastActivatedTick", 200)))
+    hwndsRecs.Push(_TestRec(Map("hwnd", 9003, "title", "HO_C", "class", "T", "pid", 3,
+                                 "z", 3, "lastActivatedTick", 300)))
     WL_UpsertWindow(hwndsRecs, "test")
     WL_EndScan()
 
@@ -872,18 +820,14 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     invRecs := []
-    invRecs.Push(Map("hwnd", 9001, "title", "INV_A", "class", "T", "pid", 1,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 1, "lastActivatedTick", 100))
-    invRecs.Push(Map("hwnd", 9002, "title", "INV_B", "class", "T", "pid", 2,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 2, "lastActivatedTick", 200))
-    invRecs.Push(Map("hwnd", 9003, "title", "INV_C", "class", "T", "pid", 3,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 3, "lastActivatedTick", 300))
-    invRecs.Push(Map("hwnd", 9004, "title", "INV_D", "class", "T", "pid", 4,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 4, "lastActivatedTick", 400))
+    invRecs.Push(_TestRec(Map("hwnd", 9001, "title", "INV_A", "class", "T", "pid", 1,
+                               "z", 1, "lastActivatedTick", 100)))
+    invRecs.Push(_TestRec(Map("hwnd", 9002, "title", "INV_B", "class", "T", "pid", 2,
+                               "z", 2, "lastActivatedTick", 200)))
+    invRecs.Push(_TestRec(Map("hwnd", 9003, "title", "INV_C", "class", "T", "pid", 3,
+                               "z", 3, "lastActivatedTick", 300)))
+    invRecs.Push(_TestRec(Map("hwnd", 9004, "title", "INV_D", "class", "T", "pid", 4,
+                               "z", 4, "lastActivatedTick", 400)))
     WL_UpsertWindow(invRecs, "test")
     WL_EndScan()
 
@@ -919,12 +863,10 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     titleRecs := []
-    titleRecs.Push(Map("hwnd", 9101, "title", "Alpha", "class", "T", "pid", 1,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false,
-                       "z", 1, "lastActivatedTick", 100))
-    titleRecs.Push(Map("hwnd", 9102, "title", "Beta", "class", "T", "pid", 2,
-                       "isVisible", true, "isCloaked", false, "isMinimized", false,
-                       "z", 2, "lastActivatedTick", 200))
+    titleRecs.Push(_TestRec(Map("hwnd", 9101, "title", "Alpha", "class", "T", "pid", 1,
+                                 "z", 1, "lastActivatedTick", 100)))
+    titleRecs.Push(_TestRec(Map("hwnd", 9102, "title", "Beta", "class", "T", "pid", 2,
+                                 "z", 2, "lastActivatedTick", 200)))
     WL_UpsertWindow(titleRecs, "test")
     WL_EndScan()
 
@@ -966,14 +908,12 @@ RunUnitTests_CoreStore() {
     ; Test: WL_UpsertWindow marks DirtyHwnds on field change
     WL_Init()
     WL_BeginScan()
-    dtRec := Map("hwnd", 99901, "title", "Original", "class", "C", "pid", 1,
-                 "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    dtRec := _TestRec(Map("hwnd", 99901, "title", "Original", "class", "C", "pid", 1, "z", 1))
     WL_UpsertWindow([dtRec], "test")
     WL_EndScan()
     gWS_DirtyHwnds := Map()  ; clear
 
-    dtRec2 := Map("hwnd", 99901, "title", "Changed", "class", "C", "pid", 1,
-                  "isVisible", true, "isCloaked", false, "isMinimized", false, "z", 1)
+    dtRec2 := _TestRec(Map("hwnd", 99901, "title", "Changed", "class", "C", "pid", 1, "z", 1))
     WL_UpsertWindow([dtRec2], "test")
     AssertEq(gWS_DirtyHwnds.Has(99901), true, "DirtyContract: UpsertWindow marks dirty on title change")
 
@@ -1010,15 +950,12 @@ RunUnitTests_CoreStore() {
     WL_Init()
     WL_BeginScan()
     okRecs := []
-    okRecs.Push(Map("hwnd", 9201, "title", "Charlie", "class", "T", "pid", 1,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 1, "lastActivatedTick", 300))
-    okRecs.Push(Map("hwnd", 9202, "title", "Alpha", "class", "T", "pid", 2,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 2, "lastActivatedTick", 100))
-    okRecs.Push(Map("hwnd", 9203, "title", "Bravo", "class", "T", "pid", 3,
-                     "isVisible", true, "isCloaked", false, "isMinimized", false,
-                     "z", 3, "lastActivatedTick", 200))
+    okRecs.Push(_TestRec(Map("hwnd", 9201, "title", "Charlie", "class", "T", "pid", 1,
+                              "z", 1, "lastActivatedTick", 300)))
+    okRecs.Push(_TestRec(Map("hwnd", 9202, "title", "Alpha", "class", "T", "pid", 2,
+                              "z", 2, "lastActivatedTick", 100)))
+    okRecs.Push(_TestRec(Map("hwnd", 9203, "title", "Bravo", "class", "T", "pid", 3,
+                              "z", 3, "lastActivatedTick", 200)))
     WL_UpsertWindow(okRecs, "test")
     WL_EndScan()
 

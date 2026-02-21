@@ -753,6 +753,7 @@ RunUnitTests_CoreConfig() {
     cfg.DiagLogKeepKB := 500
     cfg.DiagLogMaxKB := 500
     _CL_ValidateSettings()
+    _CL_ComputeDerivedGlobals()
     if (cfg.DiagLogKeepKB = 250) {
         Log("PASS: DiagLogKeepKB=500 with DiagLogMaxKB=500 forced to 250 (half)")
         TestPassed++

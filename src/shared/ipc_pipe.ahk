@@ -320,6 +320,8 @@ _IPC_CreatePipeInstance(pipeName) {
     ; Create security attributes with NULL DACL to allow non-elevated processes
     ; to connect when we're running as administrator
     pSA := IPC_CreateOpenSecurityAttrs()
+    if (!pSA && logEnabled)
+        _IPC_Log("WARN: IPC_CreateOpenSecurityAttrs failed — pipe will use default security (may block non-elevated connections)")
 
     hPipe := DllCall("CreateNamedPipeW"
         , "str", "\\.\pipe\" pipeName
