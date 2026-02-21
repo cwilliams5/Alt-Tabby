@@ -22,6 +22,7 @@ global IPC_PIPE_WAIT := 0x00000000
 
 ; IPC Message Types and Timing Constants (shared with tests)
 #Include %A_LineFile%\..\ipc_constants.ahk
+#Include %A_LineFile%\..\error_format.ahk
 
 ; IPC Buffer Constants
 global IPC_READ_CHUNK_SIZE := 65536       ; Max bytes to read per iteration
@@ -334,8 +335,10 @@ _IPC_CreatePipeInstance(pipeName) {
         , "ptr", pSA   ; security attrs (NULL DACL = allow all)
         , "ptr")
     if (!hPipe || hPipe = -1) {
-        if (logEnabled)
-            _IPC_Log("CreateNamedPipeW failed GLE=" DllCall("GetLastError", "uint") " pipe=" pipeName)
+        if (logEnabled) {
+            gle := DllCall("GetLastError", "uint")
+            _IPC_Log("CreateNamedPipeW failed GLE=" gle " (" Win32ErrorString(gle) ") pipe=" pipeName)
+        }
         return { hPipe: 0 }
     }
     hEvent := DllCall("CreateEventW", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
@@ -356,7 +359,7 @@ _IPC_CreatePipeInstance(pipeName) {
             connected := true
         } else {
             if (logEnabled)
-                _IPC_Log("ConnectNamedPipe unexpected GLE=" gle " hPipe=" hPipe)
+                _IPC_Log("ConnectNamedPipe unexpected GLE=" gle " (" Win32ErrorString(gle) ") hPipe=" hPipe)
             _IPC_CloseHandle(hEvent)
             _IPC_CloseHandle(hPipe)
             return { hPipe: 0 }
@@ -446,7 +449,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
         gle := DllCall("GetLastError", "uint")
         if (gle != IPC_ERROR_PIPE_BUSY && gle != IPC_ERROR_FILE_NOT_FOUND) {
             if (logEnabled)
-                _IPC_Log("ClientConnect unexpected GLE=" gle " pipe=" pipeName)
+                _IPC_Log("ClientConnect unexpected GLE=" gle " (" Win32ErrorString(gle) ") pipe=" pipeName)
             return 0
         }
         ; Non-blocking mode: single attempt, return immediately on failure

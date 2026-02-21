@@ -3,6 +3,7 @@
 
 ; Include extracted modules
 #Include komorebi_state.ahk  ; State navigation helpers (accepts parsed Map/Array objects)
+#Include %A_LineFile%\..\..\shared\error_format.ahk
 
 ; ============================================================
 ; Komorebi Subscription Producer
@@ -157,7 +158,7 @@ _KomorebiSub_Start() {
     if (_KSub_hPipe = 0 || _KSub_hPipe = -1) {
         gle := DllCall("GetLastError", "uint")
         if (cfg.DiagKomorebiLog)
-            KSub_DiagLog("KomorebiSub: CreateNamedPipeW FAILED err=" gle " path=" pipePath)
+            KSub_DiagLog("KomorebiSub: CreateNamedPipeW FAILED err=" gle " (" Win32ErrorString(gle) ") path=" pipePath)
         _KSub_hPipe := 0
         _KSub_FallbackMode := true
         SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
@@ -169,7 +170,7 @@ _KomorebiSub_Start() {
     if (!_KSub_hEvent) {
         gle := DllCall("GetLastError", "uint")
         if (cfg.DiagKomorebiLog)
-            KSub_DiagLog("KomorebiSub: CreateEventW FAILED err=" gle)
+            KSub_DiagLog("KomorebiSub: CreateEventW FAILED err=" gle " (" Win32ErrorString(gle) ")")
         KomorebiSub_Stop()
         _KSub_FallbackMode := true
         SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)
@@ -191,7 +192,7 @@ _KomorebiSub_Start() {
             _KSub_Connected := true
         else {
             if (cfg.DiagKomorebiLog)
-                KSub_DiagLog("KomorebiSub: ConnectNamedPipe FAILED err=" gle)
+                KSub_DiagLog("KomorebiSub: ConnectNamedPipe FAILED err=" gle " (" Win32ErrorString(gle) ")")
             KomorebiSub_Stop()
             _KSub_FallbackMode := true
             SetTimer(_KomorebiSub_PollFallback, KSub_FallbackPollMs)

@@ -2,6 +2,7 @@
 ; Alt-Tabby GUI - State Machine
 ; Handles state transitions: IDLE -> ALT_PENDING -> ACTIVE -> IDLE
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
+#Include %A_LineFile%\..\..\shared\error_format.ahk
 
 ; State machine: IDLE -> ALT_PENDING -> ACTIVE
 ; IDLE: Normal state, receiving/applying deltas, cache fresh
@@ -1458,8 +1459,10 @@ _GUI_SendKomorebiSocketCmd(cmdType, content) {
         , "ptr")
 
     if (!hPipe || hPipe = INVALID_HANDLE) {
-        if (cfg.DiagEventLog)
-            GUI_LogEvent("SOCKET: Failed to connect to " pipePath " GLE=" DllCall("GetLastError", "uint"))
+        if (cfg.DiagEventLog) {
+            gle := DllCall("GetLastError", "uint")
+            GUI_LogEvent("SOCKET: Failed to connect to " pipePath " GLE=" gle " (" Win32ErrorString(gle) ")")
+        }
         return false
     }
 
@@ -1482,8 +1485,10 @@ _GUI_SendKomorebiSocketCmd(cmdType, content) {
     DllCall("CloseHandle", "ptr", hPipe)
 
     if (!ok || wrote != len) {
-        if (cfg.DiagEventLog)
-            GUI_LogEvent("SOCKET: Write failed for " cmdType " GLE=" DllCall("GetLastError", "uint"))
+        if (cfg.DiagEventLog) {
+            gle := DllCall("GetLastError", "uint")
+            GUI_LogEvent("SOCKET: Write failed for " cmdType " GLE=" gle " (" Win32ErrorString(gle) ")")
+        }
         return false
     }
 
