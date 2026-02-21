@@ -20,6 +20,9 @@ global GUI_TestLogPath := A_Temp "\gui_tests_" _guiWorktreeId ".log"
 ; IPC message types (from shared constants - still needed for flight recorder constants)
 #Include %A_ScriptDir%\..\src\shared\ipc_constants.ahk
 
+; QPC timing (used by diagnostic instrumentation in gui_state, gui_paint, etc.)
+#Include %A_ScriptDir%\..\src\shared\timing.ahk
+
 ; GUI state globals
 global gGUI_State := "IDLE"
 global gGUI_LiveItems := []

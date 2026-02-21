@@ -509,7 +509,7 @@ _GUI_ShowOverlayWithFrozen() {
     }
 
     ; ===== TIMING: Show sequence start =====
-    tShow_Start := A_TickCount
+    tShow_Start := QPC()
     idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
     if (cfg.DiagPaintTimingLog)
         Paint_Log("ShowOverlay START (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") " frozen=" gGUI_DisplayItems.Length " items=" gGUI_LiveItems.Length ")")
@@ -534,14 +534,14 @@ _GUI_ShowOverlayWithFrozen() {
     ; Both windows stay hidden during resize+paint. GUI_RevealBoth() (called from
     ; inside GUI_Repaint) shows both at the same DwmFlush, preventing any frame
     ; where the acrylic base is visible without the overlay window list.
-    t1 := A_TickCount
+    t1 := QPC()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)
-    tShow_Resize := A_TickCount - t1
+    tShow_Resize := QPC() - t1
 
-    t1 := A_TickCount
+    t1 := QPC()
     GUI_Repaint()  ; Paint + RevealBoth (shows both windows atomically)
-    tShow_Repaint := A_TickCount - t1
+    tShow_Repaint := QPC() - t1
 
     ; RACE FIX: If Alt was released during paint/reveal, RevealBoth already hid
     ; both windows. Abort here to clean up flags and skip hover polling.
@@ -556,9 +556,9 @@ _GUI_ShowOverlayWithFrozen() {
     GUI_StartHoverPolling()
 
     ; ===== TIMING: Log show sequence =====
-    tShow_Total := A_TickCount - tShow_Start
+    tShow_Total := QPC() - tShow_Start
     if (cfg.DiagPaintTimingLog)
-        Paint_Log("ShowOverlay END: total=" tShow_Total "ms | resize=" tShow_Resize " repaint=" tShow_Repaint)
+        Paint_Log("ShowOverlay END: total=" Round(tShow_Total, 2) "ms | resize=" Round(tShow_Resize, 2) " repaint=" Round(tShow_Repaint, 2))
 }
 
 _GUI_MoveSelectionFrozen(delta) {

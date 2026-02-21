@@ -267,18 +267,18 @@ GUI_EnsureResources(scale) {
         Paint_Log("  ** RECREATING RESOURCES (oldScale=" gGdip_ResScale " newScale=" scale " resCount=" gGdip_Res.Count " idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ")")
     }
 
-    tRes_Start := A_TickCount
+    tRes_Start := QPC()
 
-    t1 := A_TickCount
+    t1 := QPC()
     _Gdip_DisposeResources()
-    tRes_Dispose := A_TickCount - t1
+    tRes_Dispose := QPC() - t1
 
-    t1 := A_TickCount
+    t1 := QPC()
     Gdip_Startup()
-    tRes_Startup := A_TickCount - t1
+    tRes_Startup := QPC() - t1
 
     ; Brushes
-    t1 := A_TickCount
+    t1 := QPC()
     brushes := [
         ["brMain", cfg.GUI_MainARGB],
         ["brMainHi", cfg.GUI_MainARGBHi],
@@ -297,10 +297,10 @@ GUI_EnsureResources(scale) {
         DllCall("gdiplus\GdipCreateSolidFill", "int", b[2], "ptr*", &br)
         gGdip_Res[b[1]] := br
     }
-    tRes_Brushes := A_TickCount - t1
+    tRes_Brushes := QPC() - t1
 
     ; Fonts
-    t1 := A_TickCount
+    t1 := QPC()
 
     fonts := [
         [cfg.GUI_MainFontName, cfg.GUI_MainFontSize, cfg.GUI_MainFontWeight, "ffMain", "fMain"],
@@ -322,10 +322,10 @@ GUI_EnsureResources(scale) {
         gGdip_Res[f[4]] := fam
         gGdip_Res[f[5]] := font
     }
-    tRes_Fonts := A_TickCount - t1
+    tRes_Fonts := QPC() - t1
 
     ; String formats
-    t1 := A_TickCount
+    t1 := QPC()
     fmtFlags := GDIP_STRING_FORMAT_NO_WRAP | GDIP_STRING_FORMAT_LINE_LIMIT
 
     formats := [
@@ -347,14 +347,14 @@ GUI_EnsureResources(scale) {
         DllCall("gdiplus\GdipSetStringFormatLineAlign", "ptr", fmt, "int", fm[3])
         gGdip_Res[fm[1]] := fmt
     }
-    tRes_Formats := A_TickCount - t1
+    tRes_Formats := QPC() - t1
 
     gGdip_ResScale := scale
 
     ; Log resource recreation timing
     if (cfg.DiagPaintTimingLog) {
-        tRes_Total := A_TickCount - tRes_Start
-        Paint_Log("    Resources: total=" tRes_Total "ms | dispose=" tRes_Dispose " startup=" tRes_Startup " brushes=" tRes_Brushes " fonts=" tRes_Fonts " formats=" tRes_Formats)
+        tRes_Total := QPC() - tRes_Start
+        Paint_Log("    Resources: total=" Round(tRes_Total, 2) "ms | dispose=" Round(tRes_Dispose, 2) " startup=" Round(tRes_Startup, 2) " brushes=" Round(tRes_Brushes, 2) " fonts=" Round(tRes_Fonts, 2) " formats=" Round(tRes_Formats, 2))
     }
 }
 
