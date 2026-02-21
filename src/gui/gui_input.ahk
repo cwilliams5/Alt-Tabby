@@ -204,19 +204,25 @@ _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     btnX := ow - marR - size
     btnY := topY + (rowVis - 1) * RowH + (RowH - size) // 2
 
-    if (cfg.GUI_ShowCloseButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
-        action := "close"
-        return
+    if (cfg.GUI_ShowCloseButton) {
+        if (xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+            action := "close"
+            return
+        }
+        btnX := btnX - (size + gap)
     }
-    btnX := btnX - (size + gap)
-    if (cfg.GUI_ShowKillButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
-        action := "kill"
-        return
+    if (cfg.GUI_ShowKillButton) {
+        if (xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+            action := "kill"
+            return
+        }
+        btnX := btnX - (size + gap)
     }
-    btnX := btnX - (size + gap)
-    if (cfg.GUI_ShowBlacklistButton && xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
-        action := "blacklist"
-        return
+    if (cfg.GUI_ShowBlacklistButton) {
+        if (xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+            action := "blacklist"
+            return
+        }
     }
 }
 
