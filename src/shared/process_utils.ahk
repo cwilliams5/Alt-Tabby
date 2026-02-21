@@ -1,5 +1,7 @@
 #Requires AutoHotkey v2.0
 
+#Include %A_LineFile%\..\error_format.ahk
+
 ; ============================================================
 ; Process Utilities - Shared process-related helpers
 ; ============================================================
@@ -25,7 +27,7 @@ ProcessUtils_GetPath(pid, logFunc := "") {
     if (!hProc) {
         if (logFunc != "") {
             gle := DllCall("kernel32\GetLastError", "uint")
-            logFunc("OpenProcess FAILED pid=" pid " err=" gle)
+            logFunc("OpenProcess FAILED pid=" pid " err=" gle " (" Win32ErrorString(gle) ")")
         }
         return ""
     }
@@ -38,7 +40,7 @@ ProcessUtils_GetPath(pid, logFunc := "") {
     if (!ok) {
         if (logFunc != "") {
             gle := DllCall("kernel32\GetLastError", "uint")
-            logFunc("QueryFullProcessImageNameW FAILED pid=" pid " err=" gle)
+            logFunc("QueryFullProcessImageNameW FAILED pid=" pid " err=" gle " (" Win32ErrorString(gle) ")")
         }
         return ""
     }
