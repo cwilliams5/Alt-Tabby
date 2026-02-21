@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -1749,6 +1749,112 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_cache_path_invariants"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 13: numeric_string_comparison
+# Detects comparisons between known-numeric variables and
+# non-numeric string literals. In AHK v2, if either operand
+# is a pure number, the comparison is numeric — so
+# `if (hwnd = "sometext")` is always false (0 != NaN).
+# This catches silent logic bugs from type mismatch.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$nscIssues = [System.Collections.ArrayList]::new()
+
+# Known numeric variable name patterns (hwnd, pid, handle-like)
+$nscNumericNamePattern = '^(?:h[A-Z]\w*|hwnd|pid|exitCode)$'
+
+# AHK v2 comparison pattern inside conditionals:
+#   if (var = "string")   if (var != "string")   if (var == "string")
+# Must NOT be preceded by a quote (which would indicate string concatenation)
+# The variable must be preceded by ( or && or || or space-after-keyword, NOT by "
+# We look for: non-quote-char + word + whitespace + comparison-op + whitespace + "string"
+$nscCompPattern = '(?<!["`])\b(\w+)\s+(=|==|!=)\s+"([^"]*)"'
+$nscRevPattern = '"([^"]*)"\s+(=|==|!=)\s+(\w+)\b(?!["`])'
+
+foreach ($f in $allFiles) {
+    $lines = $fileCache[$f.FullName]
+    $relPath = $f.FullName.Substring($SourceDir.Length).TrimStart('\', '/')
+    $text = $fileCacheText[$f.FullName]
+
+    # Skip files that don't have conditional comparisons with strings
+    if ($text.IndexOf('if ', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+        $text.IndexOf('while ', [System.StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+        $text.IndexOf('case ', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        $trimmed = $raw.TrimStart()
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+        if ($raw -match ';\s*lint-ignore:\s*numeric-string-comparison') { continue }
+
+        # Only check lines that contain conditional keywords
+        # This dramatically reduces false positives from string concatenation
+        $isConditional = $trimmed -match '^(?:if|else\s+if|while|until|case)\b' -or $trimmed -match '\?\s*\w'
+        if (-not $isConditional) { continue }
+
+        # Strip trailing comments (respecting string boundaries)
+        $codePart = $raw
+        $inStr = $false
+        for ($ci = 0; $ci -lt $codePart.Length; $ci++) {
+            $ch = $codePart[$ci]
+            if ($ch -eq '"') { $inStr = -not $inStr }
+            elseif ($ch -eq ';' -and -not $inStr -and $ci -gt 0 -and $codePart[$ci-1] -match '\s') {
+                $codePart = $codePart.Substring(0, $ci); break
+            }
+        }
+
+        # Pattern: knownNumericVar = "non-numeric-string"
+        $compMatches = [regex]::Matches($codePart, $nscCompPattern)
+        foreach ($m in $compMatches) {
+            $varName = $m.Groups[1].Value
+            $strVal = $m.Groups[3].Value
+
+            # Skip if the string is a valid number (including hex)
+            if ($strVal -match '^-?\d+(?:\.\d+)?$' -or $strVal -match '^0x[0-9A-Fa-f]+$') { continue }
+            # Skip empty string comparisons (common and intentional)
+            if ($strVal -eq '') { continue }
+            # Skip AHK keywords that look like variables
+            # Skip common non-variable keywords
+            if ($varName -eq 'not' -or $varName -eq 'and' -or $varName -eq 'or' -or $varName -eq 'is') { continue }
+
+            # Only flag if variable matches known-numeric name pattern
+            if ($varName -match $nscNumericNamePattern) {
+                [void]$nscIssues.Add("${relPath}:$($i+1): comparing numeric var '$varName' to non-numeric string `"$strVal`" (always false in AHK v2)")
+            }
+        }
+
+        # Reverse: "non-numeric-string" = knownNumericVar
+        $revMatches = [regex]::Matches($codePart, $nscRevPattern)
+        foreach ($m in $revMatches) {
+            $strVal = $m.Groups[1].Value
+            $varName = $m.Groups[3].Value
+
+            if ($strVal -match '^-?\d+(?:\.\d+)?$' -or $strVal -match '^0x[0-9A-Fa-f]+$') { continue }
+            if ($strVal -eq '') { continue }
+            # Skip common non-variable keywords
+            if ($varName -eq 'not' -or $varName -eq 'and' -or $varName -eq 'or' -or $varName -eq 'is') { continue }
+
+            if ($varName -match $nscNumericNamePattern) {
+                [void]$nscIssues.Add("${relPath}:$($i+1): comparing non-numeric string `"$strVal`" to numeric var '$varName' (always false in AHK v2)")
+            }
+        }
+    }
+}
+
+if ($nscIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($nscIssues.Count) numeric/string comparison mismatch(es).")
+    [void]$failOutput.AppendLine("  AHK v2 compares numerically when either operand is a pure number.")
+    [void]$failOutput.AppendLine("  Comparing a numeric variable to a non-numeric string always evaluates to false.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: numeric-string-comparison' on the same line.")
+    foreach ($issue in $nscIssues) {
+        [void]$failOutput.AppendLine("    $issue")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_numeric_string_comparison"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1756,7 +1862,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
