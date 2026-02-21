@@ -104,7 +104,7 @@ global STAGGER_HOUSEKEEPING_MS := 53
 ; by alt_tabby.ahk before this file. They reference globals declared above.
 
 _GUI_Main_Init() {
-    global cfg, FR_EV_PRODUCER_INIT, gFR_Enabled, STAGGER_ZPUMP_MS, STAGGER_VALIDATE_MS, STAGGER_HOUSEKEEPING_MS
+    global cfg, FR_EV_PRODUCER_INIT, gFR_Enabled, STAGGER_ZPUMP_MS, STAGGER_VALIDATE_MS, STAGGER_HOUSEKEEPING_MS, g_TestingMode
     global HOUSEKEEPING_INTERVAL_MS, gViewer_RefreshIntervalMs
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
@@ -221,10 +221,13 @@ _GUI_Main_Init() {
     SetTimer(_GUI_StartHousekeeping, -STAGGER_HOUSEKEEPING_MS)
 
     ; Set up interceptor keyboard hooks — MUST be LAST (no hotkeys before data is populated)
-    INT_SetupHotkeys()
+    ; Skip in testing mode to avoid intercepting developer's real keystrokes during test runs
+    if (!g_TestingMode) {
+        INT_SetupHotkeys()
 
-    ; Check initial bypass state based on current focused window
-    INT_SetBypassMode(INT_ShouldBypassWindow(0))
+        ; Check initial bypass state based on current focused window
+        INT_SetBypassMode(INT_ShouldBypassWindow(0))
+    }
 }
 
 ; ========================= PRODUCER CALLBACKS =========================
