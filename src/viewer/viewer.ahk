@@ -47,6 +47,10 @@ global gViewer_LastTipHwnd := 0         ; Tooltip hover tracking
 global gViewer_MenuActions := Map()     ; Context menu action data (keyed by item name)
 global gViewer_CtxMenu := 0             ; Context menu object (must survive past Show() for callback)
 
+; --- Header custom draw GDI cache ---
+global gViewer_HdrBrushCache := Map()   ; color (uint) -> HBRUSH
+global gViewer_HdrPenCache := Map()     ; color (uint) -> HPEN
+
 ; Column names (0-indexed for header draw)
 global gViewer_Columns := ["Z", "MRU", "HWND", "PID", "Title", "Class", "WS", "Cur", "Process", "Foc", "Clk", "Min", "Icon"]
 
@@ -100,6 +104,7 @@ Viewer_Shutdown() {
     gViewer_ShuttingDown := true
     _Viewer_StopRefreshTimer()
     _Viewer_StopHoverTimer()
+    _Viewer_ClearHeaderCache()
 
     ; Unregister WM_NOTIFY handler
     OnMessage(0x004E, _Viewer_OnWMNotify, 0)
@@ -616,9 +621,7 @@ _Viewer_DrawHeader(lParam) {
             if (lastRight < headerRight) {
                 fillRc := Buffer(16)
                 NumPut("Int", lastRight, "Int", 0, "Int", headerRight, "Int", headerBottom, fillRc)
-                fillBrush := DllCall("CreateSolidBrush", "UInt", Theme_ColorToInt(gTheme_Palette.tertiary), "Ptr")
-                DllCall("FillRect", "Ptr", hdc, "Ptr", fillRc, "Ptr", fillBrush)
-                DllCall("DeleteObject", "Ptr", fillBrush)
+                DllCall("FillRect", "Ptr", hdc, "Ptr", fillRc, "Ptr", _Viewer_GetCachedBrush(Theme_ColorToInt(gTheme_Palette.tertiary)))
             }
         }
         return 0
@@ -652,19 +655,16 @@ _Viewer_DrawHeader(lParam) {
     else
         bg := Theme_ColorToInt(gTheme_Palette.tertiary)
 
-    brush := DllCall("CreateSolidBrush", "UInt", bg, "Ptr")
     rc := Buffer(16)
     NumPut("Int", left, "Int", top, "Int", right, "Int", bottom, rc)
-    DllCall("FillRect", "Ptr", hdc, "Ptr", rc, "Ptr", brush)
-    DllCall("DeleteObject", "Ptr", brush)
+    DllCall("FillRect", "Ptr", hdc, "Ptr", rc, "Ptr", _Viewer_GetCachedBrush(bg))
 
     ; Bottom border
-    bdPen := DllCall("CreatePen", "Int", 0, "Int", 1, "UInt", Theme_ColorToInt(gTheme_Palette.border), "Ptr")
+    bdPen := _Viewer_GetCachedPen(Theme_ColorToInt(gTheme_Palette.border))
     old := DllCall("SelectObject", "Ptr", hdc, "Ptr", bdPen, "Ptr")
     DllCall("MoveToEx", "Ptr", hdc, "Int", left, "Int", bottom - 1, "Ptr", 0)
     DllCall("LineTo", "Ptr", hdc, "Int", right, "Int", bottom - 1)
     DllCall("SelectObject", "Ptr", hdc, "Ptr", old, "Ptr")
-    DllCall("DeleteObject", "Ptr", bdPen)
 
     ; Header text
     headerText := (itemIndex < gViewer_Columns.Length) ? gViewer_Columns[itemIndex + 1] : ""
@@ -683,10 +683,8 @@ _Viewer_DrawHeader(lParam) {
         arrowX := right - 18
         midY := (top + bottom) // 2
         arrowColor := Theme_ColorToInt(gTheme_Palette.accent)
-        arrowPen := DllCall("CreatePen", "Int", 0, "Int", 1, "UInt", arrowColor, "Ptr")
-        arrowBrush := DllCall("CreateSolidBrush", "UInt", arrowColor, "Ptr")
-        old1 := DllCall("SelectObject", "Ptr", hdc, "Ptr", arrowPen, "Ptr")
-        old2 := DllCall("SelectObject", "Ptr", hdc, "Ptr", arrowBrush, "Ptr")
+        old1 := DllCall("SelectObject", "Ptr", hdc, "Ptr", _Viewer_GetCachedPen(arrowColor), "Ptr")
+        old2 := DllCall("SelectObject", "Ptr", hdc, "Ptr", _Viewer_GetCachedBrush(arrowColor), "Ptr")
         ; 3 POINT structs = 24 bytes
         pts := Buffer(24, 0)
         if (arrowAsc) {
@@ -701,8 +699,6 @@ _Viewer_DrawHeader(lParam) {
         DllCall("Polygon", "Ptr", hdc, "Ptr", pts, "Int", 3)
         DllCall("SelectObject", "Ptr", hdc, "Ptr", old1, "Ptr")
         DllCall("SelectObject", "Ptr", hdc, "Ptr", old2, "Ptr")
-        DllCall("DeleteObject", "Ptr", arrowPen)
-        DllCall("DeleteObject", "Ptr", arrowBrush)
     }
 
     return 0x04  ; CDRF_SKIPDEFAULT — must skip ALL items, not just hot
@@ -844,6 +840,41 @@ _Viewer_SelectionBg() {
     g := Integer(bg * (1 - blend) + ag * blend)
     b := Integer(bb * (1 - blend) + ab * blend)
     return (b << 16) | (g << 8) | r
+}
+
+; ========================= HEADER GDI CACHE =========================
+
+; Get or create a cached GDI brush for the given color.
+; Working set is ~4 colors (tertiary, hover, sorted, accent); no eviction needed.
+; Invalidated on theme change via _Viewer_ClearHeaderCache().
+_Viewer_GetCachedBrush(color) {
+    global gViewer_HdrBrushCache
+    if (gViewer_HdrBrushCache.Has(color))
+        return gViewer_HdrBrushCache[color]
+    hBrush := DllCall("CreateSolidBrush", "UInt", color, "Ptr")
+    gViewer_HdrBrushCache[color] := hBrush
+    return hBrush
+}
+
+; Get or create a cached GDI pen for the given color.
+_Viewer_GetCachedPen(color) {
+    global gViewer_HdrPenCache
+    if (gViewer_HdrPenCache.Has(color))
+        return gViewer_HdrPenCache[color]
+    hPen := DllCall("CreatePen", "Int", 0, "Int", 1, "UInt", color, "Ptr")
+    gViewer_HdrPenCache[color] := hPen
+    return hPen
+}
+
+; Destroy all cached header GDI objects. Call on theme change and shutdown.
+_Viewer_ClearHeaderCache() {
+    global gViewer_HdrBrushCache, gViewer_HdrPenCache
+    for _, h in gViewer_HdrBrushCache
+        try DllCall("DeleteObject", "Ptr", h)
+    for _, h in gViewer_HdrPenCache
+        try DllCall("DeleteObject", "Ptr", h)
+    gViewer_HdrBrushCache := Map()
+    gViewer_HdrPenCache := Map()
 }
 
 ; ========================= HOVER TRACKING =========================
@@ -1167,6 +1198,9 @@ _Viewer_OnThemeChange() {
     global gViewer_Gui, gViewer_LV, gViewer_LVHeaderHwnd, gViewer_ShuttingDown
     if (gViewer_ShuttingDown || !gViewer_Gui)
         return
+
+    ; Flush cached GDI objects — palette colors have changed
+    _Viewer_ClearHeaderCache()
 
     ; Theme system already re-applies tracked controls.
     ; Force repaint for our custom draw areas.
