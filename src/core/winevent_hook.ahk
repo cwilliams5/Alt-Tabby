@@ -555,29 +555,56 @@ _WEH_ProcessBatch() {
     ; Probe and update changed windows
     ; NOTE: Do NOT call BeginScan/EndScan here - that's for full scans only.
     ; Partial producers should just upsert without affecting other windows' presence.
+    ;
+    ; PERF: Split into two paths to avoid redundant cross-process calls.
+    ; In-store windows: lightweight update (title + vis/min/cloak only — class/PID are immutable).
+    ; New windows: full probe (WinGetTitle + WinGetClass + WinGetPID + eligibility check).
     if (toProcess.Length > 0) {
-        records := []
+        newRecords := []
+        updatedHwnds := []
+        ineligibleHwnds := []
         for _, hwnd in toProcess {
-            rec := _WEH_ProbeWindow(hwnd)
-            if (rec)
-                records.Push(rec)
+            if (gWS_Store.Has(hwnd + 0)) {
+                ; Lightweight path: window already in store — skip immutable fields
+                result := _WEH_UpdateExisting(hwnd)
+                if (result = -1)
+                    ineligibleHwnds.Push(hwnd)
+                else if (result)
+                    updatedHwnds.Push(hwnd)
+            } else {
+                ; Full probe path: new window needs all fields
+                rec := _WEH_ProbeWindow(hwnd)
+                if (rec)
+                    newRecords.Push(rec)
+            }
         }
-        if (records.Length > 0) {
-            WL_UpsertWindow(records, "winevent_hook")
+        ; Remove windows that became ineligible (ghost windows, title cleared, etc.)
+        if (ineligibleHwnds.Length > 0)
+            WL_RemoveWindow(ineligibleHwnds, true)
+        ; Upsert new windows (full record)
+        if (newRecords.Length > 0)
+            WL_UpsertWindow(newRecords, "winevent_hook")
+        ; Enqueue Z-order and icon refresh for all processed hwnds
+        allProcessed := []
+        for _, rec in newRecords
+            allProcessed.Push(rec["hwnd"])
+        for _, hwnd in updatedHwnds
+            allProcessed.Push(hwnd)
+        if (allProcessed.Length > 0) {
             ; Only enqueue Z-order enrichment for events that change Z-order
             ; (CREATE, SHOW, FOREGROUND, FOCUS, MINIMIZE, RESTORE)
             ; Skips NAMECHANGE and LOCATIONCHANGE which fire frequently but don't affect Z
-            for _, rec in records {
-                if (zSnapshot.Has(rec["hwnd"]))
-                    WL_EnqueueForZ(rec["hwnd"])
+            for _, hwnd in allProcessed {
+                if (zSnapshot.Has(hwnd))
+                    WL_EnqueueForZ(hwnd)
             }
             ; Enqueue icon refresh for title-change events (NAMECHANGE, not Z-affecting).
             ; Icons often change when titles change (browser tab switch, app state change).
             ; Per-window throttle (IconPumpRefreshThrottleMs) prevents spam.
             if (cfg.IconRefreshOnTitleChange) {
-                for _, rec in records {
-                    if (!zSnapshot.Has(rec["hwnd"]))
-                        WL_EnqueueIconRefresh(rec["hwnd"])
+                for _, hwnd in allProcessed {
+                    if (!zSnapshot.Has(hwnd))
+                        WL_EnqueueIconRefresh(hwnd)
                 }
             }
         }
@@ -642,5 +669,49 @@ _WEH_StopMruFallback() {
 ; Uses shared WinUtils_ProbeWindow with exists and eligibility checks
 _WEH_ProbeWindow(hwnd) {
     return WinUtils_ProbeWindow(hwnd, 0, true, true)  ; checkExists=true, checkEligible=true
+}
+
+; Lightweight update for windows already in the store.
+; Skips immutable fields (class, PID) - only fetches title + vis/min/cloak.
+; Returns: true if updated, false if skipped (hung/dead), -1 if ineligible (should remove)
+_WEH_UpdateExisting(hwnd) {
+    global gWS_Store
+    ; Check window still exists
+    try {
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+            return -1
+    } catch
+        return false
+
+    ; Skip hung windows — WinGetTitle sends WM_GETTEXT which blocks on hung apps
+    try {
+        if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int"))
+            return false
+    }
+
+    ; Fetch title (the only mutable text field)
+    title := ""
+    try
+        title := WinGetTitle("ahk_id " hwnd)
+    catch
+        return false
+
+    ; Re-check eligibility using stored class (immutable) + fresh title
+    row := gWS_Store[hwnd + 0]
+    class := row.class
+    isVisible := false
+    isMin := false
+    isCloaked := false
+    if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked))
+        return -1
+
+    ; Patch only the mutable fields
+    patch := Map()
+    patch["title"] := title
+    patch["isCloaked"] := isCloaked
+    patch["isMinimized"] := isMin
+    patch["isVisible"] := isVisible
+    WL_UpdateFields(hwnd, patch, "weh_update")
+    return true
 }
 
