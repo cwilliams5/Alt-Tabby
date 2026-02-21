@@ -465,7 +465,7 @@ global gConfigRegistry := [
     {s: "GUI", k: "ShowCloseButton", g: "GUI_ShowCloseButton", t: "bool", default: true,
      d: "Show close button on hover"},
 
-    {s: "GUI", k: "ShowKillButton", g: "GUI_ShowKillButton", t: "bool", default: true,
+    {s: "GUI", k: "ShowKillButton", g: "GUI_ShowKillButton", t: "bool", default: false,
      d: "Show kill button on hover"},
 
     {s: "GUI", k: "ShowBlacklistButton", g: "GUI_ShowBlacklistButton", t: "bool", default: true,

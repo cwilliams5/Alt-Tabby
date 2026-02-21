@@ -242,7 +242,7 @@ _GUI_RevealBoth() {
 _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
-    global PAINT_TEXT_RIGHT_PAD_DIP
+    global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
 
     ; ===== TIMING: EnsureResources =====
     tPO_Start := A_TickCount
@@ -359,7 +359,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         if (rectY < contentTopY) {
             rectY := contentTopY
         }
-        Gdip_DrawCenteredText(g, cfg.GUI_EmptyListText, rectX, rectY, rectW, rectH, gGdip_Res["brMain"], gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
+        emptyText := cfg.GUI_EmptyListText
+        if (gGUI_WorkspaceMode = WS_MODE_CURRENT)
+            emptyText := "No windows on this workspace"
+        Gdip_DrawCenteredText(g, emptyText, rectX, rectY, rectW, rectH, gGdip_Res["brMain"], gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
     } else if (rowsToDraw > 0) {
         ; ===== TIMING: Row loop start =====
         tPO_RowsStart := A_TickCount
@@ -615,7 +618,7 @@ _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count,
 ; ========================= FOOTER =========================
 
 _GUI_DrawFooter(g, wPhys, hPhys, scale) {
-    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, cfg, gGdip_Res
+    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gGdip_Res
     global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
 
     if (!cfg.GUI_ShowFooter) {
@@ -652,6 +655,10 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     arrowW := Round(PAINT_ARROW_W_DIP * scale)
     arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
 
+    ; Arrow brush: highlight on hover, normal otherwise
+    brArrowL := (gGUI_HoverBtn = "arrowLeft") ? gGdip_Res["brMainHi"] : gGdip_Res["brFooterText"]
+    brArrowR := (gGUI_HoverBtn = "arrowRight") ? gGdip_Res["brMainHi"] : gGdip_Res["brFooterText"]
+
     ; Left arrow
     leftArrowX := fx + arrowPad
     leftArrowY := fy
@@ -665,7 +672,7 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.h := leftArrowH
 
     ; Draw left arrow
-    Gdip_DrawCenteredText(g, Chr(0x2190), leftArrowX, leftArrowY, leftArrowW, leftArrowH, gGdip_Res["brFooterText"], gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
+    Gdip_DrawCenteredText(g, Chr(0x2190), leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
 
     ; Right arrow
     rightArrowX := fx + fw - arrowPad - arrowW
@@ -680,7 +687,7 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    Gdip_DrawCenteredText(g, Chr(0x2192), rightArrowX, rightArrowY, rightArrowW, rightArrowH, gGdip_Res["brFooterText"], gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
+    Gdip_DrawCenteredText(g, Chr(0x2192), rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
 
     ; Center text (between arrows)
     textX := leftArrowX + leftArrowW + arrowPad

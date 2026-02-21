@@ -804,7 +804,7 @@ Update_DownloadAndApply(downloadUrl, newVersion) {
         if (whr.Status != 200) {
             if (cfg.DiagUpdateLog)
                 _Update_Log("DownloadAndApply: HTTP error status=" whr.Status)
-            ThemeMsgBox("Download failed: HTTP " whr.Status, "Update Error", "Iconx")
+            ThemeMsgBox("Download failed (HTTP " whr.Status ").`n`nPlease check your internet connection or visit the GitHub releases page to download manually.", "Update Error", "Iconx")
             whr := ""  ; Release COM before return
             return
         }
