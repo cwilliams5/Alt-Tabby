@@ -113,22 +113,70 @@ foreach ($file in $srcFiles) {
     }
 }
 
-# === Pass 2: Find references for each function across all files ===
+# === Pass 2: Build reference index then check functions ===
 $deadFunctions = [System.Collections.ArrayList]::new()
 
-# Build a combined regex for all function names (for fast pre-filtering)
 $allFuncNames = @($funcDefs.Keys)
 if ($allFuncNames.Count -eq 0) {
     Write-Host "  PASS: No functions found in src/ to check" -ForegroundColor Green
     exit 0
 }
 
-# Pre-build per-file text for all files (src + test)
-$allFileTexts = @{}
-foreach ($key in $fileCache.Keys) {
-    $allFileTexts[$key] = $fileCache[$key]
+# Build a set of all function names for fast lookup
+$funcNameSet = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]$allFuncNames, [System.StringComparer]::Ordinal)
+
+# Build reference index: scan each file ONCE, collect all identifiers that could be references.
+# For each identifier found as a non-comment reference, record it in the index.
+# Track definition-line references separately so we can exclude them.
+# Build reference index: scan each file once, checking full text first (fast pre-filter)
+# then verify non-definition-line references via line scan.
+# This inverts the original O(functions × files) to O(files × remaining_functions).
+$refIndex = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+$rxStripComment = [regex]::new('\s;.*$', 'Compiled')
+
+# Pre-filter: for each file's full text, find all function names that appear as substrings.
+# Then verify each match is a real non-definition reference.
+foreach ($filePath in $fileCache.Keys) {
+    $text = $fileCache[$filePath]
+    $lines = $fileCacheLines[$filePath]
+
+    # Check which not-yet-referenced functions appear in this file's full text
+    $candidates = [System.Collections.ArrayList]::new()
+    foreach ($funcName in $allFuncNames) {
+        if ($refIndex.Contains($funcName)) { continue }
+        if ($text.IndexOf($funcName, [System.StringComparison]::Ordinal) -ge 0) {
+            [void]$candidates.Add($funcName)
+        }
+    }
+
+    if ($candidates.Count -eq 0) { continue }
+
+    # Line-level verification for candidates
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        if ($line.Length -gt 0 -and $line.TrimStart().StartsWith(';')) { continue }
+
+        $cleaned = $line
+        if ($cleaned.IndexOf(';') -ge 0) {
+            $cleaned = $rxStripComment.Replace($cleaned, '')
+        }
+
+        for ($ci = $candidates.Count - 1; $ci -ge 0; $ci--) {
+            $funcName = $candidates[$ci]
+            if ($cleaned.IndexOf($funcName, [System.StringComparison]::Ordinal) -ge 0) {
+                $def = $funcDefs[$funcName]
+                if ($filePath -eq $def.File -and ($i + 1) -eq $def.Line) { continue }
+                [void]$refIndex.Add($funcName)
+                $candidates.RemoveAt($ci)
+            }
+        }
+
+        if ($candidates.Count -eq 0) { break }
+    }
 }
 
+# Check each function against the reference index
 foreach ($funcName in $allFuncNames) {
     $def = $funcDefs[$funcName]
 
@@ -138,47 +186,7 @@ foreach ($funcName in $allFuncNames) {
     # Skip entry-point functions
     if ($entryPointRegex.IsMatch($funcName)) { continue }
 
-    # Search all files for references to this function name
-    $refCount = 0
-    $defFile = $def.File
-    $defLine = $def.Line
-
-    foreach ($filePath in $allFileTexts.Keys) {
-        $text = $allFileTexts[$filePath]
-
-        # Quick pre-filter: does the file even mention this function name?
-        if ($text.IndexOf($funcName, [System.StringComparison]::Ordinal) -lt 0) { continue }
-
-        # Count meaningful references (not the definition itself)
-        $lines = $fileCacheLines[$filePath]
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            $line = $lines[$i]
-
-            # Skip if this IS the definition line
-            if ($filePath -eq $defFile -and ($i + 1) -eq $defLine) { continue }
-
-            # Skip comments
-            if ($line -match '^\s*;') { continue }
-
-            # Check for the function name (as word boundary)
-            if ($line.IndexOf($funcName, [System.StringComparison]::Ordinal) -ge 0) {
-                # Verify it's a real reference (not inside a comment or string that happens to match)
-                # Strip end-of-line comments
-                $cleaned = $line
-                if ($cleaned.IndexOf(';') -ge 0) {
-                    $cleaned = $cleaned -replace '\s;.*$', ''
-                }
-                if ($cleaned.IndexOf($funcName, [System.StringComparison]::Ordinal) -ge 0) {
-                    $refCount++
-                    break  # One reference is enough to prove it's not dead
-                }
-            }
-        }
-
-        if ($refCount -gt 0) { break }
-    }
-
-    if ($refCount -eq 0) {
+    if (-not $refIndex.Contains($funcName)) {
         [void]$deadFunctions.Add([PSCustomObject]@{
             Name    = $funcName
             File    = $def.RelPath

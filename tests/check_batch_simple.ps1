@@ -1219,6 +1219,20 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $TL_SUPPRESSION = 'lint-ignore: timer-lifecycle'
 $bindIdentityIssues = [System.Collections.ArrayList]::new()
 
+# Pre-compile regex patterns for timer_lifecycle (used across 3 phases on every line)
+$rxTL_Direct     = [regex]::new('SetTimer\(\s*([A-Za-z_]\w+)\s*,\s*(.+?)\s*\)', 'Compiled')
+$rxTL_Bind       = [regex]::new('SetTimer\(\s*([A-Za-z_]\w+)\.Bind\(.*?\)\s*,\s*(.+?)\s*\)', 'Compiled')
+$rxTL_ArrowPre   = [regex]::new('SetTimer\(\s*\(', 'Compiled')
+$rxTL_Arrow      = [regex]::new('SetTimer\(\s*\(.*?\)\s*=>.*?,\s*(.+?)\s*\)', 'Compiled')
+$rxTL_BoundVar   = [regex]::new('(\w+)\s*:=\s*([A-Za-z_]\w+)\.Bind\(', 'Compiled')
+$rxTL_Cancel     = [regex]::new('SetTimer\(\s*(\w+)\s*,\s*0\s*\)', 'Compiled')
+$rxTL_NegPeriod  = [regex]::new('^-', 'Compiled')
+$rxTL_PosDigits  = [regex]::new('^\d+$', 'Compiled')
+$rxTL_NegDigits  = [regex]::new('^-\d+$', 'Compiled')
+$rxTL_AnyReg     = [regex]::new('SetTimer\(\s*([A-Za-z_]\w+)\s*,', 'Compiled')
+$rxTL_VarAssign  = [regex]::new('(\w+)\s*:=\s*([A-Za-z_]\w+)\s*$', 'Compiled')
+$rxTL_FuncDef    = [regex]::new('^([A-Za-z_]\w+)\s*\(', 'Compiled')
+
 # Phase 1: Collect all SetTimer starts and cancellations per file
 $fileTimerData = @{}
 
@@ -1238,15 +1252,16 @@ foreach ($file in $allFiles) {
         if ($ld.Raw.Contains($TL_SUPPRESSION)) { continue }
 
         # Pattern 1: SetTimer(FuncName, period) - direct function reference
-        if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\s*,\s*(.+?)\s*\)') {
-            $cbName = $Matches[1]
-            $periodStr = $Matches[2].Trim()
+        $m1 = $rxTL_Direct.Match($cleaned)
+        if ($m1.Success) {
+            $cbName = $m1.Groups[1].Value
+            $periodStr = $m1.Groups[2].Value.Trim()
 
             if ($periodStr -eq '0') {
                 [void]$cancels.Add($cbName)
                 continue
             }
-            if ($periodStr -match '^-') { continue }
+            if ($rxTL_NegPeriod.IsMatch($periodStr)) { continue }
 
             if (-not $starts.ContainsKey($cbName)) {
                 $starts[$cbName] = [System.Collections.ArrayList]::new()
@@ -1255,20 +1270,21 @@ foreach ($file in $allFiles) {
         }
 
         # Pattern 2: SetTimer(FuncName.Bind(...), period)
-        if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\.Bind\(.*?\)\s*,\s*(.+?)\s*\)') {
-            $cbName = $Matches[1]
-            $periodStr = $Matches[2].Trim()
+        $m2 = $rxTL_Bind.Match($cleaned)
+        if ($m2.Success) {
+            $cbName = $m2.Groups[1].Value
+            $periodStr = $m2.Groups[2].Value.Trim()
 
             if ($periodStr -eq '0') {
                 [void]$cancels.Add($cbName)
                 continue
             }
-            if ($periodStr -match '^-') { continue }
+            if ($rxTL_NegPeriod.IsMatch($periodStr)) { continue }
 
             # Bind identity check: inline .Bind() with positive period creates
             # an uncancellable repeating timer (each .Bind() creates a new object).
             # Correct pattern: store bound ref in a variable first.
-            if ($periodStr -match '^\d+$' -and [int]$periodStr -gt 0) {
+            if ($rxTL_PosDigits.IsMatch($periodStr) -and [int]$periodStr -gt 0) {
                 [void]$bindIdentityIssues.Add([PSCustomObject]@{
                     File     = $relPath
                     Line     = ($i + 1)
@@ -1285,10 +1301,11 @@ foreach ($file in $allFiles) {
 
         # Pattern 2b: SetTimer(() => ..., period) - arrow function (uncancellable)
         # Arrow functions create a new object each call, same problem as inline .Bind().
-        if ($cleaned -match 'SetTimer\(\s*\(' -and $cleaned -match '=>') {
-            if ($cleaned -match 'SetTimer\(\s*\(.*?\)\s*=>.*?,\s*(.+?)\s*\)') {
-                $periodStr = $Matches[1].Trim()
-                if ($periodStr -ne '0' -and $periodStr -notmatch '^-' -and $periodStr -match '^\d+$' -and [int]$periodStr -gt 0) {
+        if ($rxTL_ArrowPre.IsMatch($cleaned) -and $cleaned.Contains('=>')) {
+            $mArr = $rxTL_Arrow.Match($cleaned)
+            if ($mArr.Success) {
+                $periodStr = $mArr.Groups[1].Value.Trim()
+                if ($periodStr -ne '0' -and -not $rxTL_NegPeriod.IsMatch($periodStr) -and $rxTL_PosDigits.IsMatch($periodStr) -and [int]$periodStr -gt 0) {
                     [void]$bindIdentityIssues.Add([PSCustomObject]@{
                         File     = $relPath
                         Line     = ($i + 1)
@@ -1300,23 +1317,25 @@ foreach ($file in $allFiles) {
         }
 
         # Pattern 3: varName := FuncName.Bind(...) - track bound variable
-        if ($cleaned -match '(\w+)\s*:=\s*([A-Za-z_]\w+)\.Bind\(') {
-            $varName = $Matches[1]
-            $baseName = $Matches[2]
+        $m3 = $rxTL_BoundVar.Match($cleaned)
+        if ($m3.Success) {
+            $varName = $m3.Groups[1].Value
+            $baseName = $m3.Groups[2].Value
             $boundVars[$varName] = $baseName
         }
 
         # Pattern 4: SetTimer(varName, period) - variable holding a bound ref
-        if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\s*,\s*(.+?)\s*\)') {
-            $varName = $Matches[1]
-            $periodStr = $Matches[2].Trim()
+        $m4 = $rxTL_Direct.Match($cleaned)
+        if ($m4.Success) {
+            $varName = $m4.Groups[1].Value
+            $periodStr = $m4.Groups[2].Value.Trim()
 
             if ($boundVars.ContainsKey($varName)) {
                 $baseName = $boundVars[$varName]
                 if ($periodStr -eq '0') {
                     [void]$cancels.Add($baseName)
                     [void]$cancels.Add($varName)
-                } elseif ($periodStr -notmatch '^-\d+$') {
+                } elseif (-not $rxTL_NegDigits.IsMatch($periodStr)) {
                     if (-not $starts.ContainsKey($baseName)) {
                         $starts[$baseName] = [System.Collections.ArrayList]::new()
                     }
@@ -1329,8 +1348,9 @@ foreach ($file in $allFiles) {
         }
 
         # Pattern 5: SetTimer(varName, 0) - cancellation via variable
-        if ($cleaned -match 'SetTimer\(\s*(\w+)\s*,\s*0\s*\)') {
-            $varName = $Matches[1]
+        $m5 = $rxTL_Cancel.Match($cleaned)
+        if ($m5.Success) {
+            $varName = $m5.Groups[1].Value
             [void]$cancels.Add($varName)
             if ($boundVars.ContainsKey($varName)) {
                 [void]$cancels.Add($boundVars[$varName])
@@ -1414,23 +1434,27 @@ foreach ($file in $allFiles) {
         if ($cleaned -eq '') { continue }
         # Any SetTimer registration (positive or negative period) — ignore lint-ignore
         # because Phase 3 checks existence, not same-file balance
-        if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\s*,') {
-            $regName = $Matches[1]
-            if ($cleaned -notmatch 'SetTimer\(\s*\w+\s*,\s*0\s*\)') {
+        $mReg = $rxTL_AnyReg.Match($cleaned)
+        if ($mReg.Success) {
+            $regName = $mReg.Groups[1].Value
+            if (-not $rxTL_Cancel.IsMatch($cleaned)) {
                 [void]$allRegistered.Add($regName)
             }
         }
         # Bound variable assignments: varName := FuncName.Bind(...)
-        if ($cleaned -match '(\w+)\s*:=\s*[A-Za-z_]\w+\.Bind\(') {
-            [void]$allBoundVars.Add($Matches[1])
+        $mBV = $rxTL_BoundVar.Match($cleaned)
+        if ($mBV.Success) {
+            [void]$allBoundVars.Add($mBV.Groups[1].Value)
         }
         # Direct function ref stored in variable: varName := FuncName (no parens)
-        if ($cleaned -match '(\w+)\s*:=\s*([A-Za-z_]\w+)\s*$') {
-            [void]$allBoundVars.Add($Matches[1])
+        $mVA = $rxTL_VarAssign.Match($cleaned)
+        if ($mVA.Success) {
+            [void]$allBoundVars.Add($mVA.Groups[1].Value)
         }
         # Function definitions: FuncName(params) {
-        if ($cleaned -match '^([A-Za-z_]\w+)\s*\(') {
-            [void]$allFuncDefs.Add($Matches[1])
+        $mFD = $rxTL_FuncDef.Match($cleaned)
+        if ($mFD.Success) {
+            [void]$allFuncDefs.Add($mFD.Groups[1].Value)
         }
     }
 }
@@ -1443,8 +1467,9 @@ foreach ($file in $allFiles) {
         $cleaned = $processed[$i].Cleaned
         if ($cleaned -eq '') { continue }
         if ($processed[$i].Raw.Contains($TL_SUPPRESSION)) { continue }
-        if ($cleaned -match 'SetTimer\(\s*([A-Za-z_]\w+)\s*,\s*0\s*\)') {
-            $cbName = $Matches[1]
+        $mCancel = $rxTL_Cancel.Match($cleaned)
+        if ($mCancel.Success) {
+            $cbName = $mCancel.Groups[1].Value
             [void]$allCancels.Add([PSCustomObject]@{
                 File = $relPath; Line = ($i + 1); Callback = $cbName
             })
