@@ -911,12 +911,20 @@ Theme_ColorToInt(hexStr) {
     return (bb << 16) | (gg << 8) | rr
 }
 
-; Convert config int (0xRRGGBB) to COLORREF int (0x00BBGGRR)
-_Theme_CfgToColorRef(cfgInt) {
-    rr := (cfgInt >> 16) & 0xFF
-    gg := (cfgInt >> 8) & 0xFF
-    bb := cfgInt & 0xFF
+; Convert RGB int (0xRRGGBB) to COLORREF int (0x00BBGGRR)
+Theme_RgbToColorRef(rgbInt) {
+    rr := (rgbInt >> 16) & 0xFF
+    gg := (rgbInt >> 8) & 0xFF
+    bb := rgbInt & 0xFF
     return (bb << 16) | (gg << 8) | rr
+}
+
+; Convert COLORREF int (0x00BBGGRR) to RGB int (0xRRGGBB)
+Theme_ColorRefToRgb(colorRef) {
+    rr := colorRef & 0xFF
+    gg := (colorRef >> 8) & 0xFF
+    bb := (colorRef >> 16) & 0xFF
+    return (rr << 16) | (gg << 8) | bb
 }
 
 ; ============================================================
@@ -935,18 +943,18 @@ _Theme_ApplyTitleBarColors(hWnd) {
     ; Caption background + text (gated by CustomTitleBarColors)
     if (cfg.Theme_CustomTitleBarColors) {
         ; Caption background (DWMWA_CAPTION_COLOR = 35)
-        NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Bg"%), buf)
+        NumPut("UInt", Theme_RgbToColorRef(cfg.%prefix "Bg"%), buf)
         try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 35, "Ptr", buf.Ptr, "Int", 4, "Int")
 
         ; Title text (DWMWA_TEXT_COLOR = 36)
-        NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Text"%), buf)
+        NumPut("UInt", Theme_RgbToColorRef(cfg.%prefix "Text"%), buf)
         try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 36, "Ptr", buf.Ptr, "Int", 4, "Int")
     }
 
     ; Border (gated independently by CustomTitleBarBorder)
     if (cfg.Theme_CustomTitleBarBorder) {
         ; Border (DWMWA_BORDER_COLOR = 34)
-        NumPut("UInt", _Theme_CfgToColorRef(cfg.%prefix "Border"%), buf)
+        NumPut("UInt", Theme_RgbToColorRef(cfg.%prefix "Border"%), buf)
         try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", hWnd, "Int", 34, "Ptr", buf.Ptr, "Int", 4, "Int")
     }
 }
@@ -1023,8 +1031,8 @@ _Theme_OnDrawItem(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 
     ; Get colors from config
     prefix := btnInfo.isDark ? "Theme_DarkButton" : "Theme_LightButton"
-    hoverBg   := _Theme_CfgToColorRef(cfg.%prefix "HoverBg"%)
-    hoverText := _Theme_CfgToColorRef(cfg.%prefix "HoverText"%)
+    hoverBg   := Theme_RgbToColorRef(cfg.%prefix "HoverBg"%)
+    hoverText := Theme_RgbToColorRef(cfg.%prefix "HoverText"%)
 
     ; Derive pressed color (darken hover by 20%)
     pressedBg := _Theme_DarkenColorRef(hoverBg)
