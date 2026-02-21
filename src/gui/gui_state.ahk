@@ -755,7 +755,7 @@ _GUI_ActivateItem(item) {
                     GUI_LogEvent("CROSS-WS: MimicNative success (SwitchTo)")
                 ; Optional settle delay for slower systems
                 if (cfg.KomorebiMimicNativeSettleMs > 0)
-                    Sleep(cfg.KomorebiMimicNativeSettleMs)
+                    HiSleep(cfg.KomorebiMimicNativeSettleMs)
                 _GUI_UpdateLocalMRU(hwnd)
                 return true
             } else if (uncloakResult = 1) {
