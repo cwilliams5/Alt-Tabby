@@ -92,6 +92,7 @@ Config editor and debug menu options
 |--------|------|---------|-------|-------------|
 | `ForceNativeEditor` | bool | `false` | - | Always use the native AHK config editor instead of the WebView2 version. |
 | `ShowTrayDebugItems` | bool | `false` | - | Show the Dev menu and extra editor options in the tray menu. Useful for testing dialogs and debugging. |
+| `EditorScrollStep` | int | `60` | `20` - `200` | Scroll speed for the native config editor (pixels per mouse wheel notch). Increase for faster scrolling through settings, decrease for precision. |
 
 ## Theme
 
@@ -250,7 +251,7 @@ Row action buttons shown on hover
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `ShowCloseButton` | bool | `true` | - | Show close button on hover |
-| `ShowKillButton` | bool | `true` | - | Show kill button on hover |
+| `ShowKillButton` | bool | `false` | - | Show kill button on hover |
 | `ShowBlacklistButton` | bool | `true` | - | Show blacklist button on hover |
 | `ActionBtnSizePx` | int | `24` | `12` - `64` | Action button size in pixels |
 | `ActionBtnGapPx` | int | `6` | `0` - `50` | Gap between action buttons in pixels |
@@ -430,6 +431,8 @@ Event-driven komorebi integration via named pipe
 | `SubCacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
 | `SubBatchCloakEventsMs` | int | `50` | `0` - `500` | Batch cloak/uncloak events during workspace switches (ms). 0 = disabled, push immediately. |
 | `MruSuppressionMs` | int | `2000` | `500` - `5000` | Duration (ms) to suppress WinEventHook MRU updates after a workspace switch. Prevents focus events from corrupting window order during transitions. |
+| `SubPromotionRetryMs` | int | `30000` | `5000` - `300000` | Retry interval (ms) for promoting from polling to subscription mode after komorebi starts. Lower = faster promotion when komorebi restarts, but more frequent probing. |
+| `SubInitialPollDelayMs` | int | `1500` | `500` - `10000` | Delay (ms) before first komorebi state poll at startup. Allows komorebi pipe to initialize. Increase on slow systems where komorebi takes longer to start. |
 
 ## Setup
 
@@ -560,6 +563,14 @@ Size limits for internal caches to prevent unbounded memory growth
 |--------|------|---------|-------|-------------|
 | `UwpLogoMax` | int | `50` | `5` - `500` | Maximum number of cached UWP logo paths. Prevents repeated manifest parsing for multi-window UWP apps. |
 
+### Housekeeping
+
+Periodic maintenance cycle for caches, logs, and stats
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `HousekeepingIntervalMs` | int | `300000` | `30000` - `3600000` | Interval (ms) between housekeeping cycles: cache pruning, log rotation, and stats flush. Lower = more responsive cleanup but slightly more CPU. Default 5 minutes. |
+
 ## Diagnostics
 
 Debug options, viewer settings, and test configuration. All logging disabled by default.
@@ -569,6 +580,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `FlightRecorder` | bool | `false` | - | Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact. |
 | `FlightRecorderBufferSize` | int | `2000` | `500` - `10000` | Number of events kept in the flight recorder ring buffer. 2000 ≈ 30s of typical activity. Higher values capture more history at ~48 bytes per slot. |
 | `FlightRecorderHotkey` | string | `*F12` | - | Hotkey to dump the flight recorder buffer. Use AHK v2 hotkey syntax (e.g. *F12, ^F12, +F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Pass-through: the key still reaches other apps. |
+| `ViewerRefreshMs` | int | `500` | `100` - `5000` | Debug viewer refresh interval (ms). Lower = more responsive viewer but slightly more CPU. Only applies while the viewer window is visible. |
 | `ChurnLog` | bool | `false` | - | Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle. |
 | `KomorebiLog` | bool | `false` | - | Log komorebi subscription events to %TEMP%\\tabby_ksub_diag.log. Use when workspace tracking has issues. |
 | `AltTabTooltips` | bool | `false` | - | Show tooltips for Alt-Tab state machine debugging. Use when overlay behavior is incorrect. |
@@ -597,4 +609,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-19 with 251 total settings.*
+*Generated on 2026-02-21 with 256 total settings.*
