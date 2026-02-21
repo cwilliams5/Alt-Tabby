@@ -521,6 +521,60 @@ RunUnitTests_CoreParsing() {
     AssertEq(KSub_FindWorkspaceByHwnd(miniObj, 999), "", "Parse+Navigate: hwnd 999 not found")
 
     ; ============================================================
+    ; _KSub_GetFocusedHwndFromWsObj + KSub_CacheFocusedHwnds Tests
+    ; ============================================================
+    ; Tests focused window extraction from komorebi workspace objects.
+    ; Covers all 3 code paths: containers ring, single-window container, monocle_container.
+    Log("`n--- Focused Hwnd Extraction Tests ---")
+
+    ; Test 1: Standard containers ring → focused container → focused window
+    Log("Testing _KSub_GetFocusedHwndFromWsObj with standard containers...")
+    stdWs := JSON.Load('{"name":"Main","containers":{"elements":[{"windows":{"elements":[{"hwnd":100},{"hwnd":200}],"focused":1}}],"focused":0},"monocle_container":null}')
+    AssertEq(_KSub_GetFocusedHwndFromWsObj(stdWs), 200, "FocusedHwnd: standard containers, focused=1 → hwnd 200")
+
+    ; Test 2: Single-window container fallback ("window" key instead of "windows" ring)
+    Log("Testing _KSub_GetFocusedHwndFromWsObj with single-window container...")
+    singleWs := JSON.Load('{"name":"Single","containers":{"elements":[{"window":{"hwnd":400}}],"focused":0},"monocle_container":null}')
+    AssertEq(_KSub_GetFocusedHwndFromWsObj(singleWs), 400, "FocusedHwnd: single-window container → hwnd 400")
+
+    ; Test 3: Monocle container with windows ring
+    Log("Testing _KSub_GetFocusedHwndFromWsObj with monocle windows ring...")
+    monocleWs := JSON.Load('{"name":"Mono","containers":{"elements":[],"focused":0},"monocle_container":{"windows":{"elements":[{"hwnd":500},{"hwnd":600}],"focused":0}}}')
+    AssertEq(_KSub_GetFocusedHwndFromWsObj(monocleWs), 500, "FocusedHwnd: monocle windows ring, focused=0 → hwnd 500")
+
+    ; Test 4: Monocle container with single window
+    Log("Testing _KSub_GetFocusedHwndFromWsObj with monocle single window...")
+    monoSingleWs := JSON.Load('{"name":"MonoSingle","containers":{"elements":[],"focused":0},"monocle_container":{"window":{"hwnd":700}}}')
+    AssertEq(_KSub_GetFocusedHwndFromWsObj(monoSingleWs), 700, "FocusedHwnd: monocle single window → hwnd 700")
+
+    ; Test 5: Non-Map workspace → returns 0
+    Log("Testing _KSub_GetFocusedHwndFromWsObj with non-Map...")
+    AssertEq(_KSub_GetFocusedHwndFromWsObj("not a map"), 0, "FocusedHwnd: non-Map → 0")
+
+    ; Test 6: Empty workspace (no containers, null monocle) → returns 0
+    Log("Testing _KSub_GetFocusedHwndFromWsObj with empty workspace...")
+    emptyWs := JSON.Load('{"name":"Empty","containers":{"elements":[],"focused":0},"monocle_container":null}')
+    AssertEq(_KSub_GetFocusedHwndFromWsObj(emptyWs), 0, "FocusedHwnd: empty workspace → 0")
+
+    ; Test 7: KSub_CacheFocusedHwnds with 2 workspaces → cache populated
+    Log("Testing KSub_CacheFocusedHwnds with multi-workspace state...")
+    cacheState := JSON.Load('{"monitors":{"elements":[{"workspaces":{"elements":['
+        . '{"name":"WS1","containers":{"elements":[{"windows":{"elements":[{"hwnd":111}],"focused":0}}],"focused":0},"monocle_container":null},'
+        . '{"name":"WS2","containers":{"elements":[{"windows":{"elements":[{"hwnd":222},{"hwnd":333}],"focused":1}}],"focused":0},"monocle_container":null}'
+        . '],"focused":0}}],"focused":0}}')
+    cache := Map()
+    KSub_CacheFocusedHwnds(cacheState, cache)
+    AssertEq(cache.Count, 2, "CacheFocusedHwnds: cache has 2 entries")
+    AssertEq(cache["WS1"], 111, "CacheFocusedHwnds: WS1 → hwnd 111")
+    AssertEq(cache["WS2"], 333, "CacheFocusedHwnds: WS2 → hwnd 333 (focused=1)")
+
+    ; Test 8: KSub_CacheFocusedHwnds with stale cache → overwrites
+    Log("Testing KSub_CacheFocusedHwnds overwrites stale entries...")
+    cache["WS1"] := 999  ; stale entry
+    KSub_CacheFocusedHwnds(cacheState, cache)
+    AssertEq(cache["WS1"], 111, "CacheFocusedHwnds: stale WS1 overwritten → hwnd 111")
+
+    ; ============================================================
     ; cJson Malformed Input Error Handling Tests
     ; ============================================================
     ; Verify that JSON.Load throws on malformed input (not crash/hang).
