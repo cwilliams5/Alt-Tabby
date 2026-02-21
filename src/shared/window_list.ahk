@@ -12,7 +12,7 @@ global WS_SCAN_ID_MAX := 0x7FFFFFFF
 ; Canonical list of fields copied from store records into display list items.
 ; Used by static analysis (check_batch_patterns) to verify _WS_ToItem stays in sync.
 ; hwnd is always included separately as the record key.
-global DISPLAY_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick", ; lint-ignore: dead-global
+global DISPLAY_FIELDS := ["title", "class", "pid", "z", "lastActivatedTick",
     "isFocused", "isCloaked", "isMinimized", "workspaceName", "workspaceId",
     "isOnCurrentWorkspace", "processName", "iconHicon"]
 

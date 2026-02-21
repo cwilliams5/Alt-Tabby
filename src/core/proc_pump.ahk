@@ -92,12 +92,6 @@ ProcPump_Stop() {
     SetTimer(_PP_Tick, 0)
 }
 
-; Query whether the process pump timer is running
-ProcPump_IsRunning() { ; lint-ignore: dead-function
-    global _PP_TimerOn
-    return _PP_TimerOn
-}
-
 ; Query whether the process pump has been configured (may be idle-paused but functional)
 ProcPump_IsEnabled() {
     global ProcTimerIntervalMs
