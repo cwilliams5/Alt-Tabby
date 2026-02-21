@@ -469,7 +469,7 @@ _WEH_ProcessBatch() {
     ; itself queued an entry in _WEH_PendingHwnds, the Count=0 early-exit below is bypassed.
     ; Without this push, the GUI sees the new window with lastActivatedTick=0 (wrong MRU).
     if (focusProcessed && gWS_OnStoreChanged)
-        gWS_OnStoreChanged()
+        gWS_OnStoreChanged(false)
 
     if (_WEH_PendingHwnds.Count = 0)
         return

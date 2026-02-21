@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -1674,6 +1674,273 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_callback_null_guard"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 13: callback_invocation_arity
+# Validates that callback globals wired via *_SetCallbacks() are
+# invoked with the correct argument count. check_arity.ps1 covers
+# direct function calls but NOT invocations through callback
+# globals (gWS_OnStoreChanged(args...)). This check resolves
+# SetCallbacks wiring to the target function, then validates
+# every invocation site against the target's parameter signature.
+# Reuses $csFuncParams from sub-check 6 and $callbackGlobals
+# from sub-check 12.
+# Suppress: ; lint-ignore: callback-invocation-arity
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$ciaIssues = [System.Collections.ArrayList]::new()
+$CIA_SUPPRESSION = 'lint-ignore: callback-invocation-arity'
+
+# Phase 1: Find *_SetCallbacks() definitions — map parameter positions to callback globals
+# Example: WL_SetCallbacks(onStoreChanged, onWorkspaceChanged) {
+#              gWS_OnStoreChanged := onStoreChanged    -> param position 0 -> gWS_OnStoreChanged
+#              gWS_OnWorkspaceChanged := onWorkspaceChanged -> param position 1 -> gWS_OnWorkspaceChanged
+#          }
+$ciaSetCallbacksDefs = @{}  # funcName -> @{ ParamNames = string[]; GlobalMap = @{ paramName -> globalName } }
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+    $scName = ""
+    $scParams = @()
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $cleaned = BC_CleanLine $lines[$i]
+        if ($cleaned -eq '') { continue }
+
+        # Detect *_SetCallbacks function definition
+        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+_SetCallbacks)\s*\(([^)]*)\)\s*\{?') {
+            $scName = $Matches[1]
+            $paramStr = $Matches[2].Trim()
+            $scParams = @()
+            if ($paramStr -ne '') {
+                foreach ($p in $paramStr -split ',') {
+                    $trimP = $p.Trim() -replace '\s*:=.*$', ''  # strip defaults
+                    $trimP = $trimP -replace '^\s*&?\s*', ''     # strip ByRef
+                    if ($trimP -ne '') { $scParams += $trimP }
+                }
+            }
+            if ($cleaned -match '\{') {
+                $inFunc = $true
+                $funcDepth = $depth
+                $ciaSetCallbacksDefs[$scName] = @{
+                    ParamNames = $scParams
+                    GlobalMap = @{}
+                }
+            }
+        }
+
+        $braces = BC_CountBraces $cleaned
+        $depth += $braces[0] - $braces[1]
+
+        if ($inFunc) {
+            # Look for assignments: gSomeCallback := paramName
+            if ($cleaned -match '^\s*(g\w+_On\w+)\s*:=\s*(\w+)\s*$') {
+                $globalName = $Matches[1]
+                $assignedParam = $Matches[2]
+                if ($ciaSetCallbacksDefs.ContainsKey($scName)) {
+                    $ciaSetCallbacksDefs[$scName].GlobalMap[$assignedParam] = $globalName
+                }
+            }
+            if ($depth -le $funcDepth) {
+                $inFunc = $false
+                $funcDepth = -1
+            }
+        }
+    }
+}
+
+# Phase 2: Find call sites of each SetCallbacks to resolve actual function refs
+# Example: WL_SetCallbacks(_GUI_OnProducerRevChanged, GUI_OnWorkspaceFlips)
+#          -> gWS_OnStoreChanged resolves to _GUI_OnProducerRevChanged
+#          -> gWS_OnWorkspaceChanged resolves to GUI_OnWorkspaceFlips
+$ciaGlobalToTarget = @{}  # callbackGlobal -> targetFuncName
+
+foreach ($scFuncName in $ciaSetCallbacksDefs.Keys) {
+    $def = $ciaSetCallbacksDefs[$scFuncName]
+
+    foreach ($file in $allFiles) {
+        $lines = $fileCache[$file.FullName]
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $raw = $lines[$i]
+            if ($raw -match '^\s*;') { continue }
+
+            # Match call site: ScFuncName(arg1, arg2, ...)
+            # But NOT the definition line (definition has { after closing paren)
+            if ($raw -match "$([regex]::Escape($scFuncName))\s*\(([^)]+)\)" -and
+                $raw -notmatch "^\s*(?:static\s+)?$([regex]::Escape($scFuncName))\s*\([^)]*\)\s*\{") {
+                $argStr = $Matches[1]
+                $args = @()
+                foreach ($a in $argStr -split ',') {
+                    $trimA = $a.Trim()
+                    if ($trimA -ne '') { $args += $trimA }
+                }
+
+                # Map positional arguments to parameter names, then to callback globals
+                for ($ai = 0; $ai -lt [Math]::Min($args.Count, $def.ParamNames.Count); $ai++) {
+                    $paramName = $def.ParamNames[$ai]
+                    if ($def.GlobalMap.ContainsKey($paramName)) {
+                        $globalName = $def.GlobalMap[$paramName]
+                        $funcRef = $args[$ai]
+                        # Only resolve direct function references (identifiers, not expressions)
+                        if ($funcRef -match '^[A-Za-z_]\w+$') {
+                            $ciaGlobalToTarget[$globalName] = $funcRef
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+# Phase 3: Collect invocation sites with argument counts
+# Uses $csFuncParams from sub-check 6 (callback_signatures) for function parameter info
+$ciaInvocations = @{}  # globalName -> list of @{ File; Line; ArgCount; Code; Suppressed }
+
+foreach ($file in $allFiles) {
+    $text = $fileCacheText[$file.FullName]
+
+    # Pre-filter: skip files that don't mention any resolved callback global
+    $hasAny = $false
+    foreach ($globalName in $ciaGlobalToTarget.Keys) {
+        if ($text.Contains("$globalName(")) { $hasAny = $true; break }
+    }
+    if (-not $hasAny) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        $trimmed = $raw.TrimStart()
+        if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
+
+        foreach ($globalName in $ciaGlobalToTarget.Keys) {
+            $callIdx = $raw.IndexOf("$globalName(", [System.StringComparison]::Ordinal)
+            if ($callIdx -lt 0) { continue }
+
+            # Skip global declarations and SetCallbacks bodies
+            $cleaned = BC_CleanLine $raw
+            if ($cleaned.IndexOf("$globalName(", [System.StringComparison]::Ordinal) -lt 0) { continue }
+            if ($cleaned -match '^\s*global\s') { continue }
+            if ($cleaned -match 'SetCallbacks') { continue }
+            if ($cleaned -match "^\s*(?:static\s+)?$([regex]::Escape($globalName))\s*:=") { continue }
+
+            # Count arguments in the invocation
+            $afterCall = $raw.Substring($callIdx + $globalName.Length + 1)
+            $parenD = 1; $argCount = 0; $hasContent = $false
+            for ($j = 0; $j -lt $afterCall.Length; $j++) {
+                $c = $afterCall[$j]
+                if ($c -eq '(') { $parenD++; $hasContent = $true }
+                elseif ($c -eq ')') {
+                    $parenD--
+                    if ($parenD -eq 0) { break }
+                    $hasContent = $true
+                }
+                elseif ($c -eq ',' -and $parenD -eq 1) { $argCount++ }
+                elseif ($c -ne ' ' -and $c -ne "`t") { $hasContent = $true }
+            }
+            if ($hasContent) { $argCount++ }  # content before first comma = 1 arg
+
+            if (-not $ciaInvocations.ContainsKey($globalName)) {
+                $ciaInvocations[$globalName] = [System.Collections.ArrayList]::new()
+            }
+            [void]$ciaInvocations[$globalName].Add(@{
+                File = $relPath; Line = $i + 1; ArgCount = $argCount
+                Code = $raw.Trim(); Suppressed = $raw.Contains($CIA_SUPPRESSION)
+            })
+        }
+    }
+}
+
+# Phase 4a: Hard arity violations (too few/too many args for the target signature)
+foreach ($globalName in $ciaInvocations.Keys) {
+    $targetFunc = $ciaGlobalToTarget[$globalName]
+    if (-not $csFuncParams.ContainsKey($targetFunc)) { continue }
+
+    $sig = $csFuncParams[$targetFunc]
+    $minArgs = $sig.RequiredCount
+    $maxArgs = $sig.TotalParams
+
+    foreach ($inv in $ciaInvocations[$globalName]) {
+        if ($inv.Suppressed) { continue }
+        $tooFew = $inv.ArgCount -lt $minArgs
+        $tooMany = (-not $sig.HasVariadic) -and ($inv.ArgCount -gt $maxArgs)
+
+        if ($tooFew -or $tooMany) {
+            $detail = if ($tooFew) {
+                "passed $($inv.ArgCount) arg(s), needs at least $minArgs"
+            } else {
+                "passed $($inv.ArgCount) arg(s), max $maxArgs"
+            }
+            [void]$ciaIssues.Add([PSCustomObject]@{
+                File = $inv.File; Line = $inv.Line; Global = $globalName
+                TargetFunc = $targetFunc; Detail = $detail; Code = $inv.Code
+            })
+        }
+    }
+}
+
+# Phase 4b: Inconsistent arity — when multiple invocation sites for the same callback
+# use different argument counts. The minority is flagged as the outlier.
+# This catches bugs where default parameters mask wrong behavior (e.g., passing 0 args
+# when all other sites pass 1 — the default is not the intended value).
+foreach ($globalName in $ciaInvocations.Keys) {
+    $invList = $ciaInvocations[$globalName]
+    $unsuppressed = @($invList | Where-Object { -not $_.Suppressed })
+    if ($unsuppressed.Count -lt 2) { continue }
+
+    # Count occurrences of each arg count
+    $argCounts = @{}
+    foreach ($inv in $unsuppressed) {
+        $key = $inv.ArgCount
+        if (-not $argCounts.ContainsKey($key)) { $argCounts[$key] = 0 }
+        $argCounts[$key]++
+    }
+    if ($argCounts.Count -le 1) { continue }  # all consistent
+
+    # Find the majority arg count
+    $majorityCount = -1; $majorityArgs = -1
+    foreach ($key in $argCounts.Keys) {
+        if ($argCounts[$key] -gt $majorityCount) {
+            $majorityCount = $argCounts[$key]
+            $majorityArgs = $key
+        }
+    }
+
+    # Flag outliers (sites that differ from majority)
+    $targetFunc = $ciaGlobalToTarget[$globalName]
+    foreach ($inv in $unsuppressed) {
+        if ($inv.ArgCount -ne $majorityArgs) {
+            [void]$ciaIssues.Add([PSCustomObject]@{
+                File       = $inv.File
+                Line       = $inv.Line
+                Global     = $globalName
+                TargetFunc = $targetFunc
+                Detail     = "passes $($inv.ArgCount) arg(s) but $majorityCount/$($unsuppressed.Count) sites pass $majorityArgs"
+                Code       = $inv.Code
+            })
+        }
+    }
+}
+
+if ($ciaIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($ciaIssues.Count) callback invocation arity issue(s) found.")
+    [void]$failOutput.AppendLine("  Callback globals wired via SetCallbacks() must be invoked with consistent")
+    [void]$failOutput.AppendLine("  argument counts matching the target function's signature.")
+    [void]$failOutput.AppendLine("  Fix: pass the correct number of arguments to the callback invocation.")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: callback-invocation-arity' on the invocation line.")
+    foreach ($issue in $ciaIssues | Sort-Object File, Line) {
+        [void]$failOutput.AppendLine("    $($issue.File):$($issue.Line): $($issue.Global)() -> $($issue.TargetFunc)(): $($issue.Detail)")
+        [void]$failOutput.AppendLine("      $($issue.Code)")
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_callback_invocation_arity"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1681,7 +1948,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
