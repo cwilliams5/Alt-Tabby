@@ -130,9 +130,12 @@ WS_SnapshotMapKeys(mapObj) {
 ; Helper to delete a window from the store with proper icon cleanup.
 ; Caller MUST hold Critical when calling this function.
 _WS_DeleteWindow(hwnd) {
-    global gWS_Store
+    global gWS_Store, gWS_DLCache_ItemsMap
     try IconPump_CleanupWindow(hwnd)
     gWS_Store.Delete(hwnd)
+    ; Prune stale entry from display list cache to prevent unbounded growth
+    ; between Path 3 rebuilds (Path 1.5 MRU move-to-front preserves the map)
+    try gWS_DLCache_ItemsMap.Delete(hwnd)
 }
 
 WL_Init(config := 0) {

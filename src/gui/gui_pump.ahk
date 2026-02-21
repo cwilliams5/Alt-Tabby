@@ -335,11 +335,13 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
 
 ; ========================= PIPE WAKE =========================
 
-_GUIPump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param ; lint-ignore: error-boundary
+_GUIPump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     Critical "On"
-    global _gPump_Client
-    if (IsObject(_gPump_Client))
-        IPC__ClientTick(_gPump_Client)
+    try {
+        global _gPump_Client
+        if (IsObject(_gPump_Client))
+            IPC__ClientTick(_gPump_Client)
+    }
     Critical "Off"
     return 0
 }
