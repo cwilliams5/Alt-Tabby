@@ -17,10 +17,6 @@ global g_ActiveMutex := 0
 global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
 global LAUNCHER_RESTART_DEBOUNCE_MS := 5000
 
-; Bug 1 fix: Track when wizard was skipped due to existing PF install (not user-configured)
-; Used to prevent overwriteUserData false positive in Launcher_DoUpdateInstalled
-global g_WizardSkippedForExistingInstall := false
-
 ; Win32 error code
 global ERROR_ALREADY_EXISTS := 183
 
@@ -63,7 +59,6 @@ Launcher_LogStartup() {
 Launcher_Init() {
     global g_GuiPID, g_MismatchDialogShown, g_TestingMode, cfg, gConfigIniPath
     global ALTTABBY_TASK_NAME, TIMING_MUTEX_RELEASE_WAIT, TIMING_SUBPROCESS_LAUNCH, TIMING_TASK_INIT_WAIT, g_SplashStartTick, APP_NAME
-    global g_WizardSkippedForExistingInstall
 
     ; Log startup (clears old log if DiagLauncherLog is enabled)
     Launcher_LogStartup()
@@ -162,8 +157,7 @@ Launcher_Init() {
         ; but there's a Program Files install with a valid config
         if (_Launcher_ShouldSkipWizardForExistingInstall()) {
             ; Mismatch check will run on next iteration (already ran above)
-            ; Mark wizard as complete on disk + flag that source wasn't user-configured
-            g_WizardSkippedForExistingInstall := true
+            ; Mark wizard as complete on disk so we don't show wizard again
             Setup_SetFirstRunCompleted(true)
         } else {
             ; Show first-run wizard
@@ -228,6 +222,10 @@ Launcher_StartSubprocesses() {
 
     ; Launch GUI (store runs in-process within GUI)
     LaunchGui()
+
+    ; Start GUI watchdog to detect unexpected crashes (skip in testing mode)
+    if (!g_TestingMode)
+        _Launcher_StartGuiWatchdog()
 
     ; In testing mode, write our HWND + child PIDs to temp file so lifecycle tests
     ; can send WM_COPYDATA and identify which child is GUI vs pump.
@@ -425,16 +423,20 @@ _Launcher_RestartSubprocesses() {
     Launcher_ShutdownSubprocesses()
     LaunchPump()
     LaunchGui()
+    _Launcher_StartGuiWatchdog()
 }
 
 Launcher_RestartGui() {
     global g_GuiPID, TIMING_SUBPROCESS_LAUNCH
+    _Launcher_StopGuiWatchdog()
     LauncherUtils_Restart("gui", &g_GuiPID, TIMING_SUBPROCESS_LAUNCH, Launcher_Log)
+    _Launcher_StartGuiWatchdog()
 }
 
 ; Kills subprocesses + resets PIDs. Optional editor PIDs passed by caller.
 Launcher_ShutdownSubprocesses(editors := 0) {
     global g_GuiPID, g_PumpPID
+    _Launcher_StopGuiWatchdog()
     opts := {pids: {gui: g_GuiPID, pump: g_PumpPID}}
     if (IsObject(editors))
         opts.editors := editors
@@ -955,6 +957,35 @@ LaunchGui() {
             APP_NAME, "Iconx")
     }
     Dash_Refresh()
+}
+
+; ============================================================
+; GUI PROCESS WATCHDOG
+; ============================================================
+; Detects unexpected GUI process exit and auto-restarts.
+; The pump has a recovery path (GUI sends TABBY_CMD_PUMP_FAILED to launcher),
+; but if the GUI itself dies, nobody sends that notification.
+; This low-frequency timer fills that gap.
+
+_Launcher_GuiWatchdog() {
+    global g_GuiPID, APP_NAME, cfg
+    if (g_GuiPID != 0 && !ProcessExist(g_GuiPID)) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("WATCHDOG: GUI process " g_GuiPID " no longer exists, restarting")
+        g_GuiPID := 0
+        TrayTip(APP_NAME, "The overlay process exited unexpectedly. Restarting...", "Icon!")
+        LaunchGui()
+        Dash_Refresh()
+    }
+}
+
+_Launcher_StartGuiWatchdog() {
+    global TIMING_GUI_WATCHDOG_INTERVAL
+    SetTimer(_Launcher_GuiWatchdog, TIMING_GUI_WATCHDOG_INTERVAL)
+}
+
+_Launcher_StopGuiWatchdog() {
+    SetTimer(_Launcher_GuiWatchdog, 0)
 }
 
 ; (LaunchViewer removed — viewer is now in-process within GUI, toggled via tray menu)
