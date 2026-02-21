@@ -318,39 +318,65 @@ _Pump_ResolveProcessName(pid, &outPath := "") {
     return name
 }
 
-; ========================= HICON SELF-PRUNING =========================
+; ========================= SELF-PRUNING =========================
 ; Periodically check IsWindow for owned HICONs, destroy orphans.
+; Also prunes dead PIDs from process name and failed-PID caches.
 ; Configurable interval (default 5 minutes) — icons are small, leak is slow.
 
 _Pump_PruneOwnedIcons() {
     global _Pump_OwnedIcons, _Pump_PrevIconSource, _Pump_DiagEnabled
-    if (_Pump_OwnedIcons.Count = 0 && _Pump_PrevIconSource.Count = 0)
-        return
+    global _Pump_ProcNameCache, _Pump_FailedPidCache
 
+    ; --- Icon pruning: destroy HICONs for windows that no longer exist ---
     toRemove := []
-    for hwnd, _ in _Pump_OwnedIcons {
-        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
-            toRemove.Push(hwnd)
+    if (_Pump_OwnedIcons.Count > 0 || _Pump_PrevIconSource.Count > 0) {
+        for hwnd, _ in _Pump_OwnedIcons {
+            if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+                toRemove.Push(hwnd)
+        }
+
+        for _, hwnd in toRemove {
+            try DllCall("user32\DestroyIcon", "ptr", _Pump_OwnedIcons[hwnd])
+            _Pump_OwnedIcons.Delete(hwnd)
+            _Pump_PrevIconSource.Delete(hwnd)
+        }
+
+        ; Also prune prev source entries for windows not in OwnedIcons
+        toRemovePrev := []
+        for hwnd, _ in _Pump_PrevIconSource {
+            if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+                toRemovePrev.Push(hwnd)
+        }
+        for _, hwnd in toRemovePrev
+            _Pump_PrevIconSource.Delete(hwnd)
     }
 
-    for _, hwnd in toRemove {
-        try DllCall("user32\DestroyIcon", "ptr", _Pump_OwnedIcons[hwnd])
-        _Pump_OwnedIcons.Delete(hwnd)
-        _Pump_PrevIconSource.Delete(hwnd)
+    ; --- PID cache pruning: remove entries for dead processes ---
+    prunedPids := 0
+    if (_Pump_ProcNameCache.Count > 0) {
+        deadPids := []
+        for pid, _ in _Pump_ProcNameCache {
+            if (!ProcessExist(pid))
+                deadPids.Push(pid)
+        }
+        for _, pid in deadPids
+            _Pump_ProcNameCache.Delete(pid)
+        prunedPids += deadPids.Length
+    }
+    if (_Pump_FailedPidCache.Count > 0) {
+        deadPids := []
+        for pid, _ in _Pump_FailedPidCache {
+            if (!ProcessExist(pid))
+                deadPids.Push(pid)
+        }
+        for _, pid in deadPids
+            _Pump_FailedPidCache.Delete(pid)
+        prunedPids += deadPids.Length
     }
 
-    ; Also prune prev source entries for windows not in OwnedIcons
-    toRemovePrev := []
-    for hwnd, _ in _Pump_PrevIconSource {
-        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
-            toRemovePrev.Push(hwnd)
-    }
-    for _, hwnd in toRemovePrev
-        _Pump_PrevIconSource.Delete(hwnd)
-
-    pruned := toRemove.Length + toRemovePrev.Length
+    pruned := toRemove.Length + prunedPids
     if (pruned > 0 && _Pump_DiagEnabled)
-        _Pump_Log("PRUNE: destroyed " toRemove.Length " orphaned HICONs, " _Pump_OwnedIcons.Count " remaining, " toRemovePrev.Length " stale source entries")
+        _Pump_Log("PRUNE: " toRemove.Length " orphaned HICONs (" _Pump_OwnedIcons.Count " remaining), " prunedPids " dead PIDs (" _Pump_ProcNameCache.Count " proc + " _Pump_FailedPidCache.Count " failed remaining)")
 }
 
 ; ========================= LOGGING =========================

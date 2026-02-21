@@ -14,7 +14,7 @@ global IPC_MSG_PUMP_SHUTDOWN := "shutdown"      ; Main → Pump: clean exit
 ;           cfg.*Ms settings (config_registry.ahk) for user-tunable timings.
 global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)
 global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
-global IPC_SERVER_IDLE_STREAK_THRESHOLD := 8  ; Ticks before server enters IDLE (at 100ms = 800ms inactivity)
+global IPC_SERVER_IDLE_STREAK_THRESHOLD := 8  ; Ticks before server enters IDLE (at 250ms tick = 2000ms inactivity)
 global IPC_WAIT_PIPE_TIMEOUT := 200 ; WaitNamedPipe timeout for client connect
 global IPC_WAIT_SINGLE_OBJ := 1     ; WaitForSingleObject timeout (busy poll)
 

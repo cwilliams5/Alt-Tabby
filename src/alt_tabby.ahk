@@ -212,8 +212,7 @@ if (g_AltTabbyMode = "config") {
 ; Run blacklist editor and exit when launched with --blacklist
 if (g_AltTabbyMode = "blacklist") {
     launcherHwnd := _ParseLauncherHwnd()
-    ; Initialize config + theme for blacklist editor process
-    _ModeInit()
+    ; Config + theme init is handled inside BlacklistEditor_Run (matches ConfigEditor_Run pattern)
     BlacklistEditor_Run(launcherHwnd)
     _NotifyEditorClosed(launcherHwnd)
     ExitApp()

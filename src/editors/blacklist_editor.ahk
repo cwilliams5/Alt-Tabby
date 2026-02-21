@@ -38,12 +38,18 @@ global gBE_LauncherHwnd := 0
 ; Returns: true if changes were saved, false otherwise
 BlacklistEditor_Run(launcherHwnd := 0) {
     global gBE_Gui, gBE_SavedChanges, gBE_LauncherHwnd, gBlacklist_FilePath, gBlacklist_Loaded
+    global gConfigLoaded
     gBE_LauncherHwnd := launcherHwnd
 
     ; Hide tray icon - only launcher should have one
     A_IconHidden := true
 
     gBE_SavedChanges := false
+
+    ; Initialize config + theme if not already done (matches ConfigEditor_Run pattern)
+    if (!gConfigLoaded)
+        ConfigLoader_Init()
+    Theme_Init()
 
     ; Initialize blacklist if not already done
     if (!gBlacklist_Loaded)
