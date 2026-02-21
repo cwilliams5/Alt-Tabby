@@ -27,7 +27,7 @@ global _Pump_ExeIconCache := Map()  ; exePath → master HICON (dedup across win
 global _Pump_PrevIconSource := Map() ; hwnd → {method, rawH, exePath} (nochange detection)
 global _Pump_ProcNameCache := Map() ; pid → processName (positive cache)
 global _Pump_FailedPidCache := Map() ; pid → tick (negative cache)
-global _Pump_FailedPidCacheTTL := 60000
+global _Pump_FailedPidCacheTTL  ; Set from cfg.ProcPumpFailedPidRetryMs at init
 global _Pump_IconPruneIntervalMs := 300000  ; Default 5min, overridden from config
 global _Pump_DiagEnabled := false
 global _Pump_GuiHwnd := 0             ; GUI process hwnd (for PostMessage wake on response)
@@ -36,7 +36,7 @@ global _Pump_HelloAcked := false       ; Whether we've sent our pumpHwnd back to
 ; ========================= INIT =========================
 
 _Pump_Init() {
-    global cfg, _Pump_Server, _Pump_IconPruneIntervalMs, _Pump_DiagEnabled
+    global cfg, _Pump_Server, _Pump_IconPruneIntervalMs, _Pump_DiagEnabled, _Pump_FailedPidCacheTTL
 
     ; Cloaked windows (other komorebi workspaces) are hidden from AHK by default.
     ; Without this, WinGetPID/WinGetTitle fail for cloaked windows → no processName/icon.
@@ -47,6 +47,7 @@ _Pump_Init() {
 
     ; Load config values
     _Pump_IconPruneIntervalMs := cfg.PumpIconPruneIntervalMs
+    _Pump_FailedPidCacheTTL := cfg.ProcPumpFailedPidRetryMs
     _Pump_DiagEnabled := cfg.DiagPumpLog
 
     ; Initialize blacklist (for title-based re-check on enrichment)

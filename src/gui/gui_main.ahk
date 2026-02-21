@@ -89,7 +89,7 @@ global gGUI_ScrollTop := 0
 
 ; Producer state
 global _gGUI_ScanInProgress := false  ; Re-entrancy guard for full WinEnum scan
-global HOUSEKEEPING_INTERVAL_MS := 300000  ; 5 minutes — cache pruning, log rotation, stats flush
+global HOUSEKEEPING_INTERVAL_MS  ; Set from cfg.HousekeepingIntervalMs at init
 
 ; Staggered startup delays (primes to avoid timer alignment on first tick)
 global STAGGER_ZPUMP_MS := 17
@@ -105,9 +105,14 @@ global STAGGER_HOUSEKEEPING_MS := 53
 
 _GUI_Main_Init() {
     global cfg, FR_EV_PRODUCER_INIT, gFR_Enabled, STAGGER_ZPUMP_MS, STAGGER_VALIDATE_MS, STAGGER_HOUSEKEEPING_MS
+    global HOUSEKEEPING_INTERVAL_MS, gViewer_RefreshIntervalMs
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
+
+    ; Load config-driven constants (declared at file scope, set from cfg here)
+    HOUSEKEEPING_INTERVAL_MS := cfg.HousekeepingIntervalMs
+    gViewer_RefreshIntervalMs := cfg.DiagViewerRefreshMs
 
     ; Initialize theme (for blacklist dialog and MsgBox calls in GUI process)
     Theme_Init()

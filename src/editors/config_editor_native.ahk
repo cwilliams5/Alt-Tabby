@@ -24,7 +24,7 @@ global CEN_SIF_ALL := 0x17
 global CEN_SIDEBAR_W := 210
 global CEN_CONTENT_X := CEN_SIDEBAR_W + 1  ; +1 for sidebar border pixel
 global CEN_FOOTER_H := 48
-global CEN_SCROLL_STEP := 60               ; pixels per wheel notch
+global CEN_SCROLL_STEP := 60               ; Default, overridden from cfg in ConfigEditorNative_Show
 global CEN_SETTING_PAD := 8
 global CEN_DESC_LINE_H := 15
 global CEN_LABEL_W := 180
@@ -90,6 +90,10 @@ CE_RunNative(launcherHwnd := 0) {
     ; Initialize config system if not already done
     if (!gConfigLoaded)
         ConfigLoader_Init()
+
+    ; Load config-driven editor constants
+    global CEN_SCROLL_STEP, cfg
+    CEN_SCROLL_STEP := cfg.LauncherEditorScrollStep
 
     ; Parse registry into sections structure
     _CEN_ParseRegistry()
