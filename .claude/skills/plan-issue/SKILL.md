@@ -15,3 +15,5 @@ Create a GitHub issue from the approved plan. Distill — do not dump the full p
 Omit investigation notes, rejected candidates, false positives, and exploration steps.
 
 After creating the issue, report the issue number and URL. The subsequent PR must reference `Closes #N`.
+
+Then proceed with executing the plan.
