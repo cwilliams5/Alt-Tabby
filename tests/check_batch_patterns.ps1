@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -1214,8 +1214,11 @@ if ($null -ne $dtFullPath -and $fileCacheText.ContainsKey($dtFullPath)) {
         if (-not $touchesDisplayField) { continue }
 
         # This function bumps rev AND writes display fields — must also touch gWS_DirtyHwnds
-        if (-not $body.Contains("gWS_DirtyHwnds")) {
-            $dtIssues += "${funcName}: bumps rev and modifies display fields but does not reference gWS_DirtyHwnds"
+        # Require actual usage: gWS_DirtyHwnds[ (assignment) or _WS_ApplyPatch (delegates dirty tracking)
+        # A mere string mention (e.g., in a comment) is not sufficient.
+        $hasDirtyTracking = ($body -match 'gWS_DirtyHwnds\[') -or ($body.Contains('_WS_ApplyPatch'))
+        if (-not $hasDirtyTracking) {
+            $dtIssues += "${funcName}: bumps rev and modifies display fields but does not mark gWS_DirtyHwnds"
         }
     }
 
@@ -1231,6 +1234,107 @@ if ($null -ne $dtFullPath -and $fileCacheText.ContainsKey($dtFullPath)) {
 }
 $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_dirty_tracking"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 7b: direct_record_mutation
+# Post-refactor guard: files outside window_list.ahk must NOT write
+# to properties of store record references obtained via gWS_Store[hwnd].
+# These references are live objects — writing bypasses dirty tracking,
+# Critical sections, and rev bumping. Use WL_UpdateFields/WL_BatchUpdateFields.
+# Suppress: ; lint-ignore: direct-record-mutation
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$drmIssues = [System.Collections.ArrayList]::new()
+$DRM_SUPPRESSION = 'lint-ignore: direct-record-mutation'
+
+# Regex: variable assigned from gWS_Store[...] or gWS_Store.Get(...)
+$drmStoreRefRegex = [regex]::new(
+    '^\s*(\w+)\s*:=\s*gWS_Store(?:\[|\.\s*Get\s*\()',
+    'Compiled'
+)
+# Regex: detected function start (resets tracked variable scope)
+$drmFuncStartRegex = [regex]::new(
+    '^\s*(?:static\s+)?[A-Za-z_]\w*\s*\([^)]*\)\s*\{?',
+    'Compiled'
+)
+
+# Only check files outside window_list.ahk that reference gWS_Store
+$drmFiles = @($allFiles | Where-Object {
+    $_.Name -ne 'window_list.ahk' -and $fileCacheText[$_.FullName].Contains('gWS_Store')
+})
+
+foreach ($file in $drmFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $inBlockComment = $false
+    # Track variables holding store record references per function scope
+    $storeRefsInScope = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal
+    )
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+
+        if ($inBlockComment) {
+            if ($raw -match '\*/') { $inBlockComment = $false }
+            continue
+        }
+        if ($raw -match '^\s*/\*') { $inBlockComment = $true; continue }
+        if ($raw -match '^\s*;') { continue }
+        if ($raw.Contains($DRM_SUPPRESSION)) { continue }
+
+        $cleaned = BP_Clean-Line $raw
+        if ($cleaned -eq '') { continue }
+
+        # Reset tracking on new function definition
+        if ($drmFuncStartRegex.IsMatch($cleaned)) {
+            $storeRefsInScope.Clear()
+        }
+
+        # Track store record reference assignments
+        $refMatch = $drmStoreRefRegex.Match($cleaned)
+        if ($refMatch.Success) {
+            [void]$storeRefsInScope.Add($refMatch.Groups[1].Value)
+        }
+
+        # Check for property writes on tracked store references
+        if ($storeRefsInScope.Count -eq 0) { continue }
+
+        foreach ($refVar in @($storeRefsInScope)) {
+            # Match refVar.anyProp := (property assignment, not comparison or read)
+            $escapedVar = [regex]::Escape($refVar)
+            if ($cleaned -match "\b$escapedVar\.(\w+)\s*:=") {
+                $fieldName = $Matches[1]
+                [void]$drmIssues.Add([PSCustomObject]@{
+                    File  = $relPath
+                    Line  = $i + 1
+                    Var   = $refVar
+                    Field = $fieldName
+                    Code  = $raw.Trim()
+                })
+            }
+        }
+    }
+}
+
+if ($drmIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($drmIssues.Count) direct store record mutation(s) found outside window_list.ahk.")
+    [void]$failOutput.AppendLine("  Store records from gWS_Store[hwnd] are live references -- writing to their properties")
+    [void]$failOutput.AppendLine("  bypasses dirty tracking, Critical sections, and rev bumping.")
+    [void]$failOutput.AppendLine('  Fix: use WL_UpdateFields() or WL_BatchUpdateFields() instead.')
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: direct-record-mutation' on the offending line.")
+    $grouped = $drmIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.Var).$($issue.Field) := ... -- use WL_UpdateFields()")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_direct_record_mutation"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
 # Sub-check 8: fr_guard
@@ -1652,7 +1756,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants)" -ForegroundColor Green
+    Write-Host "  PASS: All pattern checks passed (code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
