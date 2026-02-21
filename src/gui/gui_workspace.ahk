@@ -28,13 +28,24 @@ GUI_GetItemIsOnCurrent(item) {
 
 GUI_UpdateFooterText() {
     global gGUI_FooterText, gGUI_WorkspaceMode, gGUI_CurrentWSName, WS_MODE_ALL
+    global gGUI_MonitorMode, MON_MODE_ALL
 
+    ; Build workspace part
+    wsPart := ""
     if (gGUI_WorkspaceMode = WS_MODE_ALL) {
-        gGUI_FooterText := "All Workspaces"
+        wsPart := "All Workspaces"
     } else {
-        ; WS_MODE_CURRENT mode
         wsName := (gGUI_CurrentWSName != "") ? gGUI_CurrentWSName : "Unknown"
-        gGUI_FooterText := "Current (" wsName ")"
+        wsPart := "Current (" wsName ")"
+    }
+
+    ; Build monitor part
+    if (gGUI_MonitorMode != MON_MODE_ALL) {
+        monLabel := GUI_GetOverlayMonitorLabel()
+        monPart := monLabel ? monLabel : "Current Monitor"
+        gGUI_FooterText := wsPart " · " monPart
+    } else {
+        gGUI_FooterText := wsPart
     }
 }
 

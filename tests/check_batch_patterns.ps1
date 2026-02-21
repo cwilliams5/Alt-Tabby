@@ -388,8 +388,8 @@ $CHECKS = @(
     @{
         Id       = "bypass_fullscreen_detection"
         File     = "gui\gui_interceptor.ahk"
-        Desc     = "INT_IsFullscreenHwnd checks screen dimensions"
-        Patterns = @("INT_IsFullscreenHwnd", "A_ScreenWidth", "A_ScreenHeight")
+        Desc     = "INT_IsFullscreenHwnd checks per-monitor dimensions"
+        Patterns = @("INT_IsFullscreenHwnd", "Win_GetMonitorBoundsFromHwnd")
     },
     @{
         Id       = "bypass_hotkey_toggle"

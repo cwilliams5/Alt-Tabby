@@ -49,6 +49,9 @@ INT_SetupHotkeys() {
     ; Ctrl hook for workspace mode toggle (only when GUI active)
     Hotkey("~*Ctrl", _INT_Ctrl_Down)
 
+    ; Backtick hook for monitor mode toggle (only when GUI active)
+    Hotkey("~*``", _INT_Backtick_Down)
+
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
 }
@@ -62,6 +65,18 @@ _INT_Ctrl_Down(*) {
     ; Only toggle mode when GUI is active and visible
     if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
         GUI_ToggleWorkspaceMode()  ; lint-ignore: critical-leak
+    }
+}
+
+; ========================= BACKTICK HANDLER =========================
+
+_INT_Backtick_Down(*) {
+    Critical "On"  ; Prevent other hotkeys from interrupting
+    global gGUI_State, gGUI_OverlayVisible
+
+    ; Only toggle monitor mode when GUI is active and visible
+    if (gGUI_State = "ACTIVE" && gGUI_OverlayVisible) {
+        GUI_ToggleMonitorMode()  ; lint-ignore: critical-leak
     }
 }
 
@@ -384,5 +399,16 @@ _INT_IsFullscreenHwnd(hwnd) {
     }
     if (!IsSet(w) || !IsSet(h))
         return false
-    return (w >= A_ScreenWidth * cfg.AltTabBypassFullscreenThreshold && h >= A_ScreenHeight * cfg.AltTabBypassFullscreenThreshold && x <= cfg.AltTabBypassFullscreenTolerancePx && y <= cfg.AltTabBypassFullscreenTolerancePx)
+    ; Get the full monitor bounds for this window's monitor (not just primary)
+    mL := 0, mT := 0, mR := 0, mB := 0
+    Win_GetMonitorBoundsFromHwnd(hwnd, &mL, &mT, &mR, &mB)
+    monW := mR - mL
+    monH := mB - mT
+    if (monW <= 0 || monH <= 0)
+        return false
+    ; Compare against THIS monitor's dimensions with origin-relative tolerance
+    return (w >= monW * cfg.AltTabBypassFullscreenThreshold
+        && h >= monH * cfg.AltTabBypassFullscreenThreshold
+        && Abs(x - mL) <= cfg.AltTabBypassFullscreenTolerancePx
+        && Abs(y - mT) <= cfg.AltTabBypassFullscreenTolerancePx)
 }

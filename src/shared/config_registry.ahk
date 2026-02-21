@@ -381,6 +381,14 @@ global gConfigRegistry := [
      min: 0, max: 100,
      d: "Window corner radius in pixels"},
 
+    {s: "GUI", k: "OverlayMonitor", g: "GUI_OverlayMonitor", t: "enum", default: "FocusedWindow",
+     options: ["FocusedWindow", "Primary"],
+     d: "Which monitor the overlay appears on. FocusedWindow = the monitor where you're working. Primary = always the primary monitor."},
+
+    {s: "GUI", k: "MonitorFilterDefault", g: "GUI_MonitorFilterDefault", t: "enum", default: "All",
+     options: ["All", "Current"],
+     d: "Default monitor filter. All = windows from all monitors. Current = only windows on the overlay's monitor. Toggle with backtick key during use."},
+
     {type: "subsection", section: "GUI", name: "Size Config",
      desc: "Window and row sizing"},
 
@@ -604,7 +612,7 @@ global gConfigRegistry := [
 
     {s: "GUI", k: "ColFixed5", g: "GUI_ColFixed5", t: "int", default: 0,
      min: 0, max: 500,
-     d: "Column 5 width (0=hidden)"},
+     d: "Column 5 width — Monitor label (0=hidden). Set to 50 to show Mon 1/Mon 2 per row."},
 
     {s: "GUI", k: "ColFixed6", g: "GUI_ColFixed6", t: "int", default: 0,
      min: 0, max: 500,
@@ -619,8 +627,8 @@ global gConfigRegistry := [
     {s: "GUI", k: "Col4Name", g: "GUI_Col4Name", t: "string", default: "WS",
      d: "Column 4 header name"},
 
-    {s: "GUI", k: "Col5Name", g: "GUI_Col5Name", t: "string", default: "",
-     d: "Column 5 header name"},
+    {s: "GUI", k: "Col5Name", g: "GUI_Col5Name", t: "string", default: "Mon",
+     d: "Column 5 header name (Monitor label)"},
 
     {s: "GUI", k: "Col6Name", g: "GUI_Col6Name", t: "string", default: "",
      d: "Column 6 header name"},

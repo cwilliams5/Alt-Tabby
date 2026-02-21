@@ -178,6 +178,7 @@ for _, arg in A_Args {
 #Include gui_win.ahk
 #Include gui_overlay.ahk
 #Include gui_workspace.ahk
+#Include gui_monitor.ahk
 #Include gui_paint.ahk
 #Include gui_input.ahk
 #Include gui_flight_recorder.ahk
