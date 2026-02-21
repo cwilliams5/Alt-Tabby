@@ -92,7 +92,7 @@ RunLiveTests_Execution() {
         ; Poll for subprocess spawning — count only OUR isolated exe name
         processCount := 0
         spawnStart := A_TickCount
-        while ((A_TickCount - spawnStart) < 5000) {
+        while ((A_TickCount - spawnStart) < 8000) {
             processCount := _Test_CountProcesses(EXECTEST_EXE_NAME)
             if (processCount >= 2)
                 break

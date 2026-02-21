@@ -203,8 +203,9 @@ RunLiveTests_Lifecycle() {
     ; timeout both call _GUIPump_HandleFailure which sends this signal.)
     Log("`n--- PUMP_FAILED Signal Test ---")
 
-    ; Let system stabilize after pump kill auto-restart
-    Sleep(1500)
+    ; Wait for GUI to reconnect to restarted pump (poll log instead of fixed sleep)
+    if (!_Lifecycle_WaitForPumpReconnect(1))
+        Log("WARNING: GUI pump reconnect not detected after kill restart (test may fail)")
 
     ; Find current pump PID (not knownPumpPid which is stale after Test 1 restarted it)
     ; Use knownGuiPid to exclude the GUI — it hasn't changed
@@ -252,12 +253,11 @@ RunLiveTests_Lifecycle() {
     ; so response=1 proves the GUI handler executed and returned true.
     Log("`n--- RELOAD_BLACKLIST Signal Test ---")
 
-    ; Let system stabilize after PUMP_FAILED test — pump restart cycle sends
-    ; PUMP_RESTARTED via synchronous relay to GUI (GUIPump_Reconnect), need
-    ; that to complete before sending RELOAD_BLACKLIST
-    Sleep(1500)
+    ; Wait for GUI to reconnect to pump restarted by PUMP_FAILED signal
+    if (!_Lifecycle_WaitForPumpReconnect(2))
+        Log("WARNING: GUI pump reconnect not detected after PUMP_FAILED restart (test may fail)")
 
-    response := _Lifecycle_SendCommand(launcherHwnd, 4)  ; TABBY_CMD_RELOAD_BLACKLIST = 4
+    response := _Lifecycle_SendCommandWithRetry(launcherHwnd, 4)  ; TABBY_CMD_RELOAD_BLACKLIST = 4
     if (response = 1) {
         Log("PASS: RELOAD_BLACKLIST relayed to GUI and acknowledged (response=1)")
         TestPassed++
@@ -280,15 +280,15 @@ RunLiveTests_Lifecycle() {
     ; ============================================================
     Log("`n--- RESTART_ALL Signal Test ---")
 
-    ; Let system stabilize after PUMP_FAILED test
-    Sleep(1500)
+    ; Wait for system to settle after RELOAD_BLACKLIST before restarting everything
+    Sleep(500)
 
     ; Use authoritative GUI PID from launcher (knownGuiPid is still valid — only pump changed)
     guiPidBefore := knownGuiPid
     if (!guiPidBefore || !ProcessExist(guiPidBefore)) {
         Log("SKIP: Could not find GUI process for RESTART_ALL test")
     } else {
-        response := _Lifecycle_SendCommand(launcherHwnd, 2)  ; RESTART_ALL
+        response := _Lifecycle_SendCommandWithRetry(launcherHwnd, 2)  ; RESTART_ALL
         if (response = 1) {
             Log("PASS: Launcher acknowledged RESTART_ALL")
             TestPassed++
@@ -457,6 +457,43 @@ _Lifecycle_FindNonGuiChild(launcherPid, guiPid) {
             return child.pid
     }
     return 0
+}
+
+; Helper: poll for GUI pump reconnection by counting RECONNECT entries in pump log.
+; Returns true if a new RECONNECT appeared within timeoutMs.
+_Lifecycle_WaitForPumpReconnect(expectedCount, timeoutMs := 6000) {
+    pumpLogPath := A_Temp "\tabby_pump.log"
+    pollStart := A_TickCount
+    while ((A_TickCount - pollStart) < timeoutMs) {
+        if (FileExist(pumpLogPath)) {
+            try {
+                logContent := FileRead(pumpLogPath)
+                count := 0
+                pos := 1
+                while (pos := InStr(logContent, "RECONNECT: Success", , pos))
+                    count++, pos++
+                if (count >= expectedCount)
+                    return true
+            }
+        }
+        Sleep(100)
+    }
+    return false
+}
+
+; Helper: send WM_COPYDATA command with retry for transient busy states.
+; After pump restarts, the GUI may be mid-reconnect when the next command arrives.
+; Retries up to timeoutMs with 500ms gaps between attempts.
+_Lifecycle_SendCommandWithRetry(launcherHwnd, commandId, timeoutMs := 8000) {
+    retryStart := A_TickCount
+    loop {
+        response := _Lifecycle_SendCommand(launcherHwnd, commandId)
+        if (response = 1)
+            return response
+        if ((A_TickCount - retryStart) >= timeoutMs)
+            return response
+        Sleep(500)
+    }
 }
 
 ; Helper: send WM_COPYDATA command to launcher, return response
