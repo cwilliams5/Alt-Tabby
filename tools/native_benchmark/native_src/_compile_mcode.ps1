@@ -1,3 +1,4 @@
+# LEGACY — See tools/mcode/build_mcode.ps1 for the current pipeline.
 $ErrorActionPreference = "Continue"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 

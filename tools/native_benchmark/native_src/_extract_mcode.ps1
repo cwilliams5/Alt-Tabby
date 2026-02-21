@@ -1,3 +1,4 @@
+# LEGACY — See tools/mcode/build_mcode.ps1 for the current pipeline.
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $objPath = Join-Path $scriptDir "icon_alpha_mcode.obj"
