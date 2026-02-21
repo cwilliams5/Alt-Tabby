@@ -948,6 +948,70 @@ RunGUITests_Data() {
     GUI_ClickActivate(fakeItem)
     GUI_AssertEq(gGUI_State, "ALT_PENDING", "ClickActivate guard: state unchanged (not ACTIVE)")
 
+    ; ============================================================
+    ; GUI_RemoveLiveItemAt TESTS
+    ; ============================================================
+
+    ; ----- Test: Remove middle item -----
+    GUI_Log("Test: RemoveLiveItemAt removes middle item")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+
+    remaining := GUI_RemoveLiveItemAt(2)
+    GUI_AssertEq(remaining, 2, "RemoveMiddle: 2 items remain")
+    GUI_AssertEq(gGUI_LiveItems[1].hwnd, 1000, "RemoveMiddle: first item unchanged")
+    GUI_AssertEq(gGUI_LiveItems[2].hwnd, 3000, "RemoveMiddle: third item shifted to idx 2")
+    GUI_AssertTrue(!gGUI_LiveItemsMap.Has(2000), "RemoveMiddle: hwnd 2000 removed from map")
+    GUI_AssertTrue(gGUI_LiveItemsMap.Has(1000), "RemoveMiddle: hwnd 1000 still in map")
+    GUI_AssertTrue(gGUI_LiveItemsMap.Has(3000), "RemoveMiddle: hwnd 3000 still in map")
+
+    ; ----- Test: Remove first item -----
+    GUI_Log("Test: RemoveLiveItemAt removes first item")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+
+    remaining := GUI_RemoveLiveItemAt(1)
+    GUI_AssertEq(remaining, 2, "RemoveFirst: 2 items remain")
+    GUI_AssertEq(gGUI_LiveItems[1].hwnd, 2000, "RemoveFirst: second item shifted to idx 1")
+    GUI_AssertTrue(!gGUI_LiveItemsMap.Has(1000), "RemoveFirst: hwnd 1000 removed from map")
+
+    ; ----- Test: Remove last item -----
+    GUI_Log("Test: RemoveLiveItemAt removes last item")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+
+    remaining := GUI_RemoveLiveItemAt(3)
+    GUI_AssertEq(remaining, 2, "RemoveLast: 2 items remain")
+    GUI_AssertTrue(!gGUI_LiveItemsMap.Has(3000), "RemoveLast: hwnd 3000 removed from map")
+    GUI_AssertTrue(gGUI_LiveItemsMap.Has(1000), "RemoveLast: hwnd 1000 still in map")
+
+    ; ----- Test: Remove only item → both empty -----
+    GUI_Log("Test: RemoveLiveItemAt removes only item")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(1)
+
+    remaining := GUI_RemoveLiveItemAt(1)
+    GUI_AssertEq(remaining, 0, "RemoveOnly: 0 items remain")
+    GUI_AssertEq(gGUI_LiveItemsMap.Count, 0, "RemoveOnly: map is empty")
+
+    ; ----- Test: Out-of-bounds idx=0 → no-op -----
+    GUI_Log("Test: RemoveLiveItemAt out-of-bounds idx=0")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+
+    remaining := GUI_RemoveLiveItemAt(0)
+    GUI_AssertEq(remaining, 3, "OOB idx=0: 3 items unchanged")
+    GUI_AssertEq(gGUI_LiveItemsMap.Count, 3, "OOB idx=0: map unchanged")
+
+    ; ----- Test: Out-of-bounds idx > length → no-op -----
+    GUI_Log("Test: RemoveLiveItemAt out-of-bounds idx=99")
+    ResetGUIState()
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+
+    remaining := GUI_RemoveLiveItemAt(99)
+    GUI_AssertEq(remaining, 3, "OOB idx=99: 3 items unchanged")
+    GUI_AssertEq(gGUI_LiveItemsMap.Count, 3, "OOB idx=99: map unchanged")
+
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")
     GUI_Log("Passed: " GUI_TestPassed)
