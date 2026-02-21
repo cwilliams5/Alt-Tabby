@@ -1145,7 +1145,7 @@ _Splash_Fade(fromAlpha, toAlpha, durationMs) {
         _Splash_UpdateLayeredWindowAlpha(alpha)
         if (progress >= 1.0)
             break
-        Sleep(16)
+        HiSleep(16)
     }
     if (g_SplashHwnd && !g_SplashShuttingDown)
         _Splash_UpdateLayeredWindowAlpha(toAlpha)
