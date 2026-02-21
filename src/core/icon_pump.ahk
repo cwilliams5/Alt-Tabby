@@ -340,7 +340,7 @@ _IP_Tick() {
 
         if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
             ; Only try WM_GETICON for upgrade/refresh (window must be visible)
-            h := IP_TryResolveFromWindow(hwnd)
+            h := _IP_TryResolveFromWindow(hwnd)
             if (h) {
                 method := IP_METHOD_WM_GETICON
             }
@@ -349,7 +349,7 @@ _IP_Tick() {
 
             ; Try WM_GETICON first (only if visible)
             if (!isHidden) {
-                h := IP_TryResolveFromWindow(hwnd)
+                h := _IP_TryResolveFromWindow(hwnd)
                 if (h) {
                     method := IP_METHOD_WM_GETICON
                 }
@@ -508,7 +508,7 @@ IP_GetRawWindowIcon(hWnd) {
 ; Try to get icon from window via WM_GETICON or class icon (returns owned copy).
 ; Prefer larger icons (ICON_BIG=32x32) over small (16x16) since we display at 36px+
 ; Uses SendMessageTimeoutW with SMTO_ABORTIFHUNG to avoid blocking on hung windows.
-IP_TryResolveFromWindow(hWnd) {
+_IP_TryResolveFromWindow(hWnd) {
     h := IP_GetRawWindowIcon(hWnd)
     if (h)
         return DllCall("user32\CopyIcon", "ptr", h, "ptr")
