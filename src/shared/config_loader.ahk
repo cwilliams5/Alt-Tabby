@@ -843,6 +843,7 @@ global TIMING_PROCESS_TERMINATE_WAIT := 100  ; Wait for process to terminate
 global TIMING_FILE_WRITE_WAIT := 100     ; Wait for file to write
 global TIMING_PIPE_RETRY_WAIT := 50      ; Pipe connection retry delay
 global TIMING_SETUP_SETTLE := 200        ; Setup settle delay
+global TIMING_GUI_WATCHDOG_INTERVAL := 30000  ; GUI process health check interval (30s)
 
 ; Tooltip durations (milliseconds)
 ; Derived from cfg.GUI_TooltipDurationMs in _CL_ValidateSettings()

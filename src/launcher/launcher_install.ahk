@@ -274,7 +274,7 @@ _Launcher_UpdateInstalledVersion(installedPath) {
 ; Actually perform the update (called directly or after elevation)
 ; Wrapper for mismatch update flow - uses Update_ApplyCore with appropriate options
 Launcher_DoUpdateInstalled(sourcePath, targetPath) {
-    global cfg, g_GuiPID, g_PumpPID, g_WizardSkippedForExistingInstall
+    global cfg, g_GuiPID, g_PumpPID
     if (cfg.DiagLauncherLog)
         Launcher_Log("UPDATE_INSTALLED source=" sourcePath " target=" targetPath)
     Update_ApplyCore({
@@ -285,7 +285,7 @@ Launcher_DoUpdateInstalled(sourcePath, targetPath) {
         copyMode: true,                ; FileCopy (keep source - it's the running exe)
         successMessage: "Alt-Tabby has been updated at:`n" targetPath,
         cleanupSourceOnFailure: false, ; Don't delete source - it's the running exe
-        overwriteUserData: cfg.SetupFirstRunCompleted && !g_WizardSkippedForExistingInstall,  ; Only push config if source was user-configured (not auto-skipped wizard)
+        overwriteUserData: false,      ; Mismatch-update preserves target config (exe update only)
         killPids: {gui: g_GuiPID, pump: g_PumpPID}
     })
 }
