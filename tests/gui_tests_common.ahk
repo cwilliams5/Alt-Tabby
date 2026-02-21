@@ -22,6 +22,8 @@ global GUI_TestLogPath := A_Temp "\gui_tests_" _guiWorktreeId ".log"
 
 ; QPC timing (used by diagnostic instrumentation in gui_state, gui_paint, etc.)
 #Include %A_ScriptDir%\..\src\shared\timing.ahk
+; Profiler class (referenced by ; @profile lines in production code)
+#Include %A_ScriptDir%\..\src\shared\profiler.ahk
 
 ; GUI state globals
 global gGUI_State := "IDLE"
@@ -135,6 +137,8 @@ global cfg := {
     DiagPumpLog: false,
     DiagLauncherLog: false,
     DiagIPCLog: false,
+    DiagProfilerHotkey: "*F11",
+    DiagProfilerBufferSize: 50000,
     AdditionalWindowInformation: "Never",
     KomorebiIntegration: "Never",
     KomorebicExe: "",

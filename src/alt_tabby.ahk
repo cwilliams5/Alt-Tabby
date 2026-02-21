@@ -134,6 +134,7 @@ for _, arg in A_Args {
 #Include stats.ahk
 #Include sort_utils.ahk
 #Include timing.ahk
+#Include profiler.ahk ; @profile
 #Include window_list.ahk
 
 ; Editor subprocesses (from src/editors/)

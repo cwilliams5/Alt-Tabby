@@ -84,6 +84,7 @@ _INT_Backtick_Down(*) {
 
 _INT_Alt_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
+    Profiler.Enter("_INT_Alt_Down") ; @profile
     global gINT_LastAltDown, gINT_AltIsDown, TABBY_EV_ALT_DOWN, gINT_SessionActive, cfg
     global FR_EV_ALT_DN, gFR_Enabled
     if (gFR_Enabled)
@@ -98,10 +99,12 @@ _INT_Alt_Down(*) {
 
     ; Notify GUI handler directly (no IPC)
     GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    Profiler.Leave() ; @profile
 }
 
 _INT_Alt_Up(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
+    Profiler.Enter("_INT_Alt_Up") ; @profile
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld, gINT_TabPending
     global gINT_AltUpDuringPending, gINT_AltIsDown, TABBY_EV_ALT_UP, cfg
     global gGUI_PendingPhase  ; Check if GUI is buffering events
@@ -139,12 +142,14 @@ _INT_Alt_Up(*) {
     gINT_SessionActive := false
     gINT_PressCount := 0
     gINT_TabHeld := false
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= TAB HANDLERS =========================
 
 _INT_Tab_Down(*) {
     Critical "On"  ; Prevent other hotkeys from interrupting
+    Profiler.Enter("_INT_Tab_Down") ; @profile
     global gINT_TabPending, gINT_TabHeld, gINT_PendingShift
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, cfg
     global gINT_SessionActive, gINT_PressCount, gINT_AltIsDown
@@ -177,6 +182,7 @@ _INT_Tab_Down(*) {
             GUI_LogEvent("INT: Tab_Down -> active session, sending TAB_STEP (press #" gINT_PressCount ")")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
         ; NOTE: Don't set gINT_TabHeld here - we process ALL tabs during active session
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
     }
 
@@ -184,6 +190,7 @@ _INT_Tab_Down(*) {
     if (gINT_TabHeld) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("INT: Tab_Down -> blocked (TabHeld)")
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
     }
 
@@ -195,6 +202,7 @@ _INT_Tab_Down(*) {
     gINT_PendingDecideArmed := true
     gINT_AltUpDuringPending := false
     SetTimer(_INT_Tab_Decide, -cfg.AltTabTabDecisionMs)
+    Profiler.Leave() ; @profile
 }
 
 _INT_Tab_Up(*) {
@@ -230,6 +238,7 @@ _INT_Tab_Decide() {
 
 _INT_Tab_Decide_Inner() {
     Critical "On"  ; Prevent other hotkeys from interrupting
+    Profiler.Enter("_INT_Tab_Decide_Inner") ; @profile
     global gINT_TabPending, gINT_PendingShift, gINT_AltUpDuringPending
     global gINT_LastAltDown, gINT_AltIsDown, cfg
     global gINT_SessionActive, gINT_PressCount, gINT_TabHeld
@@ -283,6 +292,7 @@ _INT_Tab_Decide_Inner() {
         gINT_TabPending := false
         Send(gINT_PendingShift ? "+{Tab}" : "{Tab}")
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= ESCAPE HANDLER =========================

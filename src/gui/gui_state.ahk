@@ -119,12 +119,16 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, gFR_Enabled
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
 
+    Profiler.Enter("GUI_OnInterceptorEvent") ; @profile
+
     ; Flight recorder dump in progress — freeze state machine completely.
     ; The interceptor layer still tracks key state (gINT_AltIsDown etc.),
     ; but the state machine ignores all events until _FR_Dump cleanup runs.
     global gFR_DumpInProgress
-    if (gFR_DumpInProgress)
+    if (gFR_DumpInProgress) {
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
+    }
 
     ; File-based debug logging (no performance impact from tooltips)
     if (cfg.DiagEventLog) {
@@ -143,6 +147,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
+            Profiler.Leave() ; @profile
             return  ; lint-ignore: critical-section
         }
 
@@ -157,6 +162,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
+            Profiler.Leave() ; @profile
             return  ; lint-ignore: critical-section
         }
 
@@ -165,6 +171,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             FR_Record(FR_EV_BUFFER_PUSH, evCode, gGUI_EventBuffer.Length)
         if (cfg.DiagEventLog)
             GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_PendingPhase ")")
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
     }
 
@@ -180,6 +187,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         ; Pre-warm: refresh display list and icon cache before Tab arrives.
         GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
     }
 
@@ -188,6 +196,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         if (gGUI_State = "IDLE") {
             ; Tab without Alt (shouldn't happen normally, interceptor handles this)
+            Profiler.Leave() ; @profile
             return  ; lint-ignore: critical-section
         }
 
@@ -239,6 +248,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
             ; Start grace timer - show GUI after delay
             SetTimer(_GUI_GraceTimerFired, -cfg.AltTabGraceMs)
+            Profiler.Leave() ; @profile
             return  ; lint-ignore: critical-section
         }
 
@@ -273,6 +283,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 GUI_Repaint()
             }
         }
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
     }
 
@@ -288,6 +299,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
+            Profiler.Leave() ; @profile
             return  ; lint-ignore: critical-section
         }
 
@@ -321,6 +333,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; NOTE: Activation is now async (non-blocking) for cross-workspace switches.
             ; Keyboard events are processed normally between timer fires.
         }
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
     }
 
@@ -340,8 +353,10 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
         ; Resync — refresh live items after ACTIVE state
         GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
+        Profiler.Leave() ; @profile
         return  ; lint-ignore: critical-section
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= GRACE TIMER =========================
@@ -395,11 +410,14 @@ GUI_OnWorkspaceFlips() {
 ; Resets selection to top, marks sticky context switch, and requests fresh
 ; display list when frozen. Caller must hold Critical "On".
 GUI_HandleWorkspaceSwitch() {
+    Profiler.Enter("GUI_HandleWorkspaceSwitch") ; @profile
     global gGUI_State, gGUI_Sel, gGUI_ScrollTop, gGUI_WSContextSwitch
     global gGUI_CurrentWSName, gGUI_ToggleBase, gGUI_DisplayItems, gGUI_OverlayVisible
     global cfg, gGUI_WorkspaceMode, WS_MODE_CURRENT
-    if (gGUI_State != "ACTIVE")
+    if (gGUI_State != "ACTIVE") {
+        Profiler.Leave() ; @profile
         return
+    }
     gGUI_WSContextSwitch := true
 
     ; Patch workspace data on frozen items from gWS_Store before re-filtering.
@@ -431,6 +449,7 @@ GUI_HandleWorkspaceSwitch() {
     ; frame with the resized acrylic base but stale overlay content.
     if (gGUI_OverlayVisible)
         GUI_Repaint()
+    Profiler.Leave() ; @profile
 }
 
 ; Re-filter display items for a workspace change (window moved or workspace switched).
@@ -514,12 +533,14 @@ _GUI_AbortShowSequence() {
 }
 
 _GUI_ShowOverlayWithFrozen() {
+    Profiler.Enter("_GUI_ShowOverlayWithFrozen") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
     global gGUI_State
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
 
     if (gGUI_OverlayVisible) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -564,6 +585,7 @@ _GUI_ShowOverlayWithFrozen() {
         if (cfg.DiagPaintTimingLog)
             Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -574,6 +596,7 @@ _GUI_ShowOverlayWithFrozen() {
     tShow_Total := QPC() - tShow_Start
     if (cfg.DiagPaintTimingLog)
         Paint_Log("ShowOverlay END: total=" Round(tShow_Total, 2) "ms | resize=" Round(tShow_Resize, 2) " repaint=" Round(tShow_Repaint, 2))
+    Profiler.Leave() ; @profile
 }
 
 _GUI_MoveSelectionFrozen(delta) {
@@ -599,6 +622,7 @@ _GUI_MoveSelectionFrozen(delta) {
 }
 
 _GUI_ActivateFromFrozen() {
+    Profiler.Enter("_GUI_ActivateFromFrozen") ; @profile
     global gGUI_Sel, gGUI_DisplayItems, cfg
     global FR_EV_ACTIVATE_GONE, FR_EV_ACTIVATE_RETRY, gFR_Enabled
 
@@ -608,6 +632,7 @@ _GUI_ActivateFromFrozen() {
     if (gGUI_Sel < 1 || gGUI_Sel > gGUI_DisplayItems.Length) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("ACTIVATE FAILED: sel out of range!")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -620,6 +645,7 @@ _GUI_ActivateFromFrozen() {
                 FR_Record(FR_EV_ACTIVATE_GONE, hwnd)
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ACTIVATE SKIP: window gone hwnd=" hwnd " title=" (item.HasOwnProp("title") ? SubStr(item.title, 1, 30) : "?"))
+            Profiler.Leave() ; @profile
             return
         }
         if (cfg.DiagEventLog) {
@@ -627,6 +653,7 @@ _GUI_ActivateFromFrozen() {
             GUI_LogEvent("ACTIVATE: '" title "' ws=" GUI_GetItemWSName(item) " onCurrent=" GUI_GetItemIsOnCurrent(item))
         }
         _GUI_ActivateItem(item)
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -653,6 +680,7 @@ _GUI_ActivateFromFrozen() {
             if (nextSel = 0) {
                 if (cfg.DiagEventLog)
                     GUI_LogEvent("ACTIVATE RETRY: exhausted all windows")
+                Profiler.Leave() ; @profile
                 return
             }
             gGUI_Sel := nextSel
@@ -673,8 +701,10 @@ _GUI_ActivateFromFrozen() {
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ACTIVATE RETRY: window died during activation hwnd=" hwnd)
             nextSel := _GUI_NextValidSel(gGUI_Sel, listLen, startSel)
-            if (nextSel = 0)
+            if (nextSel = 0) {
+                Profiler.Leave() ; @profile
                 return
+            }
             gGUI_Sel := nextSel
             continue
         }
@@ -684,11 +714,13 @@ _GUI_ActivateFromFrozen() {
             if (gFR_Enabled)
                 FR_Record(FR_EV_ACTIVATE_RETRY, originalHwnd, hwnd, success ? 1 : 0)
         }
+        Profiler.Leave() ; @profile
         return
     }
 
     if (cfg.DiagEventLog)
         GUI_LogEvent("ACTIVATE RETRY: reached max depth " maxAttempts)
+    Profiler.Leave() ; @profile
 }
 
 ; Advance sel to next index, wrapping around, skipping startSel.
@@ -705,6 +737,7 @@ _GUI_NextValidSel(currentSel, listLen, startSel) {
 ; For same-workspace: SYNC (immediate) for speed
 ; Uses komorebi's activation pattern: SendInput → SetWindowPos → SetForegroundWindow
 _GUI_ActivateItem(item) {
+    Profiler.Enter("_GUI_ActivateItem") ; @profile
     global cfg
     global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
@@ -713,6 +746,7 @@ _GUI_ActivateItem(item) {
 
     hwnd := item.hwnd
     if (!hwnd) {
+        Profiler.Leave() ; @profile
         return false
     }
 
@@ -757,6 +791,7 @@ _GUI_ActivateItem(item) {
                 if (cfg.KomorebiMimicNativeSettleMs > 0)
                     HiSleep(cfg.KomorebiMimicNativeSettleMs)
                 _GUI_UpdateLocalMRU(hwnd)
+                Profiler.Leave() ; @profile
                 return true
             } else if (uncloakResult = 1) {
                 ; Uncloaked but SwitchTo failed - use manual activation
@@ -764,6 +799,7 @@ _GUI_ActivateItem(item) {
                     GUI_LogEvent("CROSS-WS: MimicNative partial (manual activate)")
                 if (_GUI_RobustActivate(hwnd))
                     _GUI_UpdateLocalMRU(hwnd)
+                Profiler.Leave() ; @profile
                 return true
             }
             ; uncloakResult = 0: COM failed entirely, fall through to SwitchActivate
@@ -799,6 +835,7 @@ _GUI_ActivateItem(item) {
                 } else if (cfg.DiagEventLog) {
                     GUI_LogEvent("CROSS-WS: RevealMove activation failed, skipping move")
                 }
+                Profiler.Leave() ; @profile
                 return true
             }
             ; uncloakResult = 0: COM failed, fall through to SwitchActivate
@@ -809,6 +846,7 @@ _GUI_ActivateItem(item) {
         ; SwitchActivate: Command komorebi to switch, poll for completion, then activate
         ; This path is used when: config=SwitchActivate OR MimicNative/RevealMove failed
         _GUI_StartSwitchActivate(hwnd, wsName)
+        Profiler.Leave() ; @profile
         return true  ; Async path handles its own success/failure
     }
 
@@ -825,6 +863,7 @@ _GUI_ActivateItem(item) {
     ; CRITICAL: After activation, keyboard events may have been queued but not processed
     ; Use SetTimer -1 to let message pump run, then resync keyboard state
     SetTimer(_GUI_ResyncKeyboardState, -1)
+    Profiler.Leave() ; @profile
     return result
 }
 
@@ -850,6 +889,7 @@ GUI_ClickActivate(item) {
 ; 2. Start async polling timer to detect completion
 ; 3. Timer will activate window once switch completes
 _GUI_StartSwitchActivate(hwnd, wsName) {
+    Profiler.Enter("_GUI_StartSwitchActivate") ; @profile
     global cfg
     global gGUI_PendingHwnd, gGUI_PendingWSName
     global gGUI_PendingDeadline, gGUI_PendingPhase, gGUI_PendingWaitUntil
@@ -883,6 +923,7 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
         ; Fall back to direct activation attempt
         if (_GUI_RobustActivate(hwnd))
             _GUI_UpdateLocalMRU(hwnd)
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -895,6 +936,7 @@ _GUI_StartSwitchActivate(hwnd, wsName) {
     SetTimer(_GUI_AsyncActivationTick, cfg.AltTabAsyncActivationPollMs)
     if (cfg.DiagEventLog)
         GUI_LogEvent("SWITCH-ACTIVATE: Polling started")
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= ASYNC ACTIVATION TIMER =========================
@@ -909,6 +951,8 @@ _GUI_AsyncActivationTick() {
     global gGUI_EventBuffer, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_FLAG_SHIFT
     global gGUI_LiveItems, gGUI_CurrentWSName
 
+    Profiler.Enter("_GUI_AsyncActivationTick") ; @profile
+
     ; RACE FIX: Ensure phase reads and transitions are atomic
     ; Phase can be read by interceptor to decide whether to buffer events
     Critical "On"
@@ -917,6 +961,7 @@ _GUI_AsyncActivationTick() {
     if (gGUI_PendingPhase = "") {
         SetTimer(_GUI_AsyncActivationTick, 0)
         Critical "Off"
+        Profiler.Leave() ; @profile
         return
     }
     ; Read phase into local variable for consistent use throughout function
@@ -964,11 +1009,13 @@ _GUI_AsyncActivationTick() {
             Critical "On"
             if (gGUI_PendingPhase = "") {
                 Critical "Off"
+                Profiler.Leave() ; @profile
                 return  ; Cancelled while running — don't resurrect
             }
             gGUI_PendingPhase := "waiting"
             gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
             Critical "Off"
+            Profiler.Leave() ; @profile
             return
         }
 
@@ -1027,19 +1074,23 @@ _GUI_AsyncActivationTick() {
             Critical "On"
             if (gGUI_PendingPhase = "") {
                 Critical "Off"
+                Profiler.Leave() ; @profile
                 return  ; Cancelled while running — don't resurrect
             }
             gGUI_PendingPhase := "waiting"
             gGUI_PendingWaitUntil := now + cfg.AltTabWorkspaceSwitchSettleMs
             Critical "Off"
+            Profiler.Leave() ; @profile
             return
         }
+        Profiler.Leave() ; @profile
         return  ; Keep polling
     }
 
     ; === PHASE 2: Wait for komorebi's post-switch focus logic ===
     if (phase = "waiting") {
         if (now < gGUI_PendingWaitUntil) {
+            Profiler.Leave() ; @profile
             return  ; Keep waiting
         }
 
@@ -1088,6 +1139,7 @@ _GUI_AsyncActivationTick() {
         Critical "On"
         if (gGUI_PendingPhase = "") {
             Critical "Off"
+            Profiler.Leave() ; @profile
             return  ; Cancelled while running — don't resurrect
         }
         gGUI_PendingPhase := "flushing"
@@ -1101,19 +1153,23 @@ _GUI_AsyncActivationTick() {
         if (cfg.DiagEventLog)
             GUI_LogEvent("ASYNC: scheduling buffer processing")
         SetTimer(_GUI_ProcessEventBuffer, -1)
+        Profiler.Leave() ; @profile
         return
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Process buffered events after async activation completes
 ; Called via SetTimer -1 after async complete, with gGUI_PendingPhase="flushing"
 _GUI_ProcessEventBuffer() {
+    Profiler.Enter("_GUI_ProcessEventBuffer") ; @profile
     global gGUI_EventBuffer, gGUI_LiveItems, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, cfg
 
     ; Validate we're in flushing phase - prevents stale timers from processing
     if (gGUI_PendingPhase != "flushing") {
         if (cfg.DiagEventLog)
             GUI_LogEvent("BUFFER SKIP: not in flushing phase (phase=" gGUI_PendingPhase ")")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -1135,6 +1191,7 @@ _GUI_ProcessEventBuffer() {
         if (cfg.DiagEventLog)
             GUI_LogEvent("BUFFER: empty, resyncing keyboard state")
         _GUI_ResyncKeyboardState()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -1170,6 +1227,7 @@ _GUI_ProcessEventBuffer() {
     }
     if (cfg.DiagEventLog)
         GUI_LogEvent("BUFFER: done processing")
+    Profiler.Leave() ; @profile
 }
 
 ; Cancel pending async activation (e.g., on ESC)
@@ -1412,6 +1470,7 @@ _GUI_IsCloaked(hwnd) {
 ; Uses IApplicationView::SetCloak to uncloak, then IApplicationView::SwitchTo to activate
 ; Returns: 0 = failed, 1 = uncloaked (need manual activate), 2 = uncloaked + activated via SwitchTo
 _GUI_UncloakWindow(hwnd) {
+    Profiler.Enter("_GUI_UncloakWindow") ; @profile
     global cfg
 
     ; Check initial cloak state
@@ -1422,6 +1481,7 @@ _GUI_UncloakWindow(hwnd) {
     if (cloakBefore = 0) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("UNCLOAK: Already uncloaked")
+        Profiler.Leave() ; @profile
         return 1  ; Already visible, but need manual activate
     }
 
@@ -1432,13 +1492,16 @@ _GUI_UncloakWindow(hwnd) {
         GUI_LogEvent("UNCLOAK: comResult=" comResult " cloakAfter=" cloakAfter)
 
     if (comResult = 2) {
+        Profiler.Leave() ; @profile
         return 2  ; Full success - uncloaked + activated
     } else if (comResult = 1 && cloakAfter = 0) {
+        Profiler.Leave() ; @profile
         return 1  ; Uncloaked but SwitchTo failed - need manual activate
     }
 
     if (cfg.DiagEventLog)
         GUI_LogEvent("UNCLOAK: COM failed")
+    Profiler.Leave() ; @profile
     return 0
 }
 
@@ -1609,6 +1672,7 @@ _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
 ; Robust window activation using komorebi's pattern from windows_api.rs
 ; SendInput trick → SetWindowPos → SetForegroundWindow
 _GUI_RobustActivate(hwnd) {
+    Profiler.Enter("_GUI_RobustActivate") ; @profile
     global SW_RESTORE, HWND_TOPMOST, HWND_NOTOPMOST, cfg
     global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
 
@@ -1652,6 +1716,7 @@ _GUI_RobustActivate(hwnd) {
             if (actualFg = hwnd) {
                 if (gFR_Enabled)
                     FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 1, actualFg)
+                Profiler.Leave() ; @profile
                 return true
             }
 
@@ -1661,6 +1726,7 @@ _GUI_RobustActivate(hwnd) {
             if (actualFg = 0) {
                 if (gFR_Enabled)
                     FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 2, 0)
+                Profiler.Leave() ; @profile
                 return true
             }
 
@@ -1668,6 +1734,7 @@ _GUI_RobustActivate(hwnd) {
                 FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, actualFg)
             if (cfg.DiagEventLog)
                 GUI_LogEvent("ACTIVATE VERIFY FAILED: wanted=" hwnd " got=" actualFg " sfwResult=" fgResult)
+            Profiler.Leave() ; @profile
             return false
         }
         global FR_EV_ACTIVATE_RESULT
@@ -1675,6 +1742,7 @@ _GUI_RobustActivate(hwnd) {
             FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, 0)
         if (cfg.DiagEventLog)
             GUI_LogEvent("ACTIVATE FAIL: window no longer exists, hwnd=" hwnd)
+        Profiler.Leave() ; @profile
         return false
     } catch as e {
         global FR_EV_ACTIVATE_RESULT
@@ -1682,6 +1750,7 @@ _GUI_RobustActivate(hwnd) {
             FR_Record(FR_EV_ACTIVATE_RESULT, hwnd, 0, 0)
         if (cfg.DiagEventLog)
             GUI_LogEvent("ACTIVATE ERROR: " e.Message " for hwnd=" hwnd)
+        Profiler.Leave() ; @profile
         return false
     }
 }

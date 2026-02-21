@@ -1133,6 +1133,12 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "FlightRecorderHotkey", g: "DiagFlightRecorderHotkey", t: "string", default: "*F12",
      d: "Hotkey to dump the flight recorder buffer. Use AHK v2 hotkey syntax (e.g. *F12, ^F12, +F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Pass-through: the key still reaches other apps."},
 
+    {s: "Diagnostics", k: "ProfilerHotkey", g: "DiagProfilerHotkey", t: "string", default: "*F11",
+     d: "Hotkey to toggle the build-time profiler (start/stop). Use AHK v2 hotkey syntax (e.g. *F11, ^F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Only functional in --profile builds."},
+    {s: "Diagnostics", k: "ProfilerBufferSize", g: "DiagProfilerBufferSize", t: "int", default: 50000,
+     min: 1000, max: 500000,
+     d: "Maximum profiler events in ring buffer. 50000 ≈ several minutes of heavy activity. Oldest events overwritten when full."},
+
     {s: "Diagnostics", k: "ViewerRefreshMs", g: "DiagViewerRefreshMs", t: "int", default: 500,
      min: 100, max: 5000,
      d: "Debug viewer refresh interval (ms). Lower = more responsive viewer but slightly more CPU. Only applies while the viewer window is visible."},

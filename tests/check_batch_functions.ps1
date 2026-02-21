@@ -273,6 +273,8 @@ foreach ($file in $allProjectFiles) {
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
+    $inClass = $false
+    $classDepth = -1
     $localGlobals = @{}  # per-file collection for test files
 
     $inBlockComment = $false
@@ -343,6 +345,8 @@ foreach ($file in $allProjectFiles) {
             # check_undefined_calls: Class definitions
             if ($cleaned -match '^\s*class\s+(\w+)') {
                 [void]$ucDefinedFunctions.Add($Matches[1])
+                $inClass = $true
+                $classDepth = $depth
             }
 
             # Function definition detection
@@ -489,12 +493,28 @@ foreach ($file in $allProjectFiles) {
             }
         }
 
+        # --- Class method definitions: register static methods inside class bodies ---
+        # Class methods appear at depth classDepth+1 (inside the class braces).
+        # Register them so check_undefined_calls doesn't flag method definitions as calls.
+        if ($inClass -and -not $inFunc -and $depth -eq ($classDepth + 1)) {
+            if ($cleaned -match '^\s*static\s+(\w+)\s*\(') {
+                $methodName = $Matches[1]
+                if (-not $BF_AHK_KEYWORDS.ContainsKey($methodName.ToLower())) {
+                    [void]$ucDefinedFunctions.Add($methodName)
+                }
+            }
+        }
+
         $depth += $braces[0] - $braces[1]
         if ($depth -lt 0) { $depth = 0 }
 
         if ($inFunc -and $depth -le $funcDepth) {
             $inFunc = $false
             $funcDepth = -1
+        }
+        if ($inClass -and $depth -le $classDepth) {
+            $inClass = $false
+            $classDepth = -1
         }
     }
 

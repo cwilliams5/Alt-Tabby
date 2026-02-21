@@ -2,17 +2,20 @@
 # Alt-Tabby Compile Script (PowerShell)
 # ============================================================
 # Compiles alt_tabby.ahk to release/AltTabby.exe
-# Usage: compile.ps1 [--test-mode] [--timing] [--force]
+# Usage: compile.ps1 [--test-mode] [--timing] [--force] [--profile]
 #   --test-mode   Skip process killing and docs generation, suppress banners
 #   --timing      Output machine-readable per-step timing (TIMING:step:ms)
 #   --force       Force recompilation even if exe is up to date
+#   --profile     Keep ; @profile markers (instrumented build). Without this
+#                 flag, all lines ending with ; @profile are stripped.
 # ============================================================
 
 param(
     [Alias("test-mode")]
     [switch]$testMode,
     [switch]$timing,
-    [switch]$force
+    [switch]$force,
+    [switch]$profile
 )
 
 # --- Timing Infrastructure ---
@@ -126,9 +129,51 @@ $versionInfoLines = @(
 [IO.File]::WriteAllLines($versionInfoPath, $versionInfoLines)
 Record-Step "Version Stamp"
 
+# --- Strip ; @profile markers (unless --profile) ---
+# Copies src/ to temp, strips lines ending with ; @profile, compiles from temp.
+# With --profile: compiles directly from src/ (instrumented build).
+Reset-StepTimer
+$stripLabel = "Profile Strip"
+$profileTempDir = ""
+
+if ($profile) {
+    $stripLabel = "Profile Strip (kept)"
+    if (-not $testMode) {
+        Write-Output "Profile mode: keeping ; @profile markers (instrumented build)"
+        Write-Output ""
+    }
+} else {
+    $profileTempDir = Join-Path ([IO.Path]::GetTempPath()) "alttabby_compile_$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
+    # Copy src/ tree to temp
+    Copy-Item -Path (Join-Path $PSScriptRoot "src") -Destination (Join-Path $profileTempDir "src") -Recurse -Force
+    # Junction for resources/ (Ahk2Exe @AddResource uses ../resources relative to src/)
+    $resSrc = Join-Path $PSScriptRoot "resources"
+    if (Test-Path $resSrc) {
+        cmd /c "mklink /J `"$(Join-Path $profileTempDir 'resources')`" `"$resSrc`"" >$null 2>&1
+    }
+
+    # Strip all lines ending with ; @profile
+    $strippedCount = 0
+    Get-ChildItem (Join-Path $profileTempDir "src") -Filter "*.ahk" -Recurse | ForEach-Object {
+        $content = [IO.File]::ReadAllText($_.FullName)
+        $stripped = $content -replace '(?m)^[^\r\n]*; @profile\s*$\r?\n?', ''
+        if ($stripped.Length -ne $content.Length) {
+            [IO.File]::WriteAllText($_.FullName, $stripped)
+            $strippedCount++
+        }
+    }
+    if (-not $testMode) {
+        Write-Output "Stripped ; @profile markers from $strippedCount file(s)"
+        Write-Output ""
+    }
+}
+Record-Step $stripLabel
+
 # --- Setup paths ---
 $releaseDir = Join-Path $PSScriptRoot "release"
-$scriptDir = Join-Path $PSScriptRoot "src"
+$realSrcDir = Join-Path $PSScriptRoot "src"
+# When stripping, compile from the temp copy; otherwise from real src/
+$scriptDir = if ($profileTempDir) { Join-Path $profileTempDir "src" } else { $realSrcDir }
 $inputFile = Join-Path $scriptDir "alt_tabby.ahk"
 $outputFile = Join-Path $releaseDir "AltTabby.exe"
 $iconFile = Join-Path $PSScriptRoot "resources\img\icon.ico"
@@ -160,7 +205,7 @@ $exeLabel = "Ahk2Exe"
 
 if (-not $force -and (Test-Path $outputFile)) {
     $exeTime = (Get-Item $outputFile).LastWriteTime
-    $srcFiles = @(Get-ChildItem -Path $scriptDir -Filter "*.ahk" -Recurse |
+    $srcFiles = @(Get-ChildItem -Path $realSrcDir -Filter "*.ahk" -Recurse |
                   Where-Object { $_.Name -ne "version_info.ahk" })
     $resDir = Join-Path $PSScriptRoot "resources"
     $resFiles = @()
@@ -232,6 +277,10 @@ if ($exeNeeded) {
 Record-Step $exeLabel
 
 if ($compileError -ne 0) {
+    # Cleanup temp dir on failure
+    if ($profileTempDir -and (Test-Path $profileTempDir)) {
+        Remove-Item $profileTempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     Write-Output ""
     Write-Output "ERROR: Compilation failed with error code $compileError"
     Write-Output ""
@@ -247,6 +296,10 @@ if ($compileError -ne 0) {
 # --- Verify output exists ---
 Reset-StepTimer
 if (-not (Test-Path $outputFile)) {
+    # Cleanup temp dir on failure
+    if ($profileTempDir -and (Test-Path $profileTempDir)) {
+        Remove-Item $profileTempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     Write-Output ""
     Write-Output "ERROR: Output file not created!"
     Write-Output "Expected: $outputFile"
@@ -261,6 +314,11 @@ if (-not (Test-Path $outputFile)) {
     exit 1
 }
 Record-Step "Verify"
+
+# --- Cleanup temp directory ---
+if ($profileTempDir -and (Test-Path $profileTempDir)) {
+    Remove-Item $profileTempDir -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # --- Success ---
 if (-not $testMode) {

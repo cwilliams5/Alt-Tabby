@@ -261,12 +261,15 @@ _BL_InsertInSection(content, sectionName, entry) {
 ; Returns true if window should be included, false if it should be filtered out
 ; Delegates to Blacklist_IsWindowEligibleEx (DRY — single source for eligibility + blacklist logic)
 Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
+    Profiler.Enter("Blacklist_IsWindowEligible") ; @profile
     ; Get window info if not provided
     if (title = "" || class = "") {
         ; Skip hung windows - WinGetTitle/WinGetClass send messages that block up to 5s
         try {
-            if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int"))
+            if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int")) {
+                Profiler.Leave() ; @profile
                 return false
+            }
         }
         try {
             if (title = "")
@@ -274,6 +277,7 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
             if (class = "")
                 class := WinGetClass("ahk_id " hwnd)
         } catch {
+            Profiler.Leave() ; @profile
             return false
         }
     }
@@ -281,6 +285,7 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
     ; Delegate to Ex variant (vis/min/clk refs discarded — no extra cost since
     ; the same DllCalls happen either way via BL_ProbeVisMinCloak)
     vis := false, min := false, clk := false
+    Profiler.Leave() ; @profile
     return Blacklist_IsWindowEligibleEx(hwnd, title, class, &vis, &min, &clk)
 }
 

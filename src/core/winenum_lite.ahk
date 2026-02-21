@@ -25,6 +25,8 @@ _WinEnumLite_Init() {
 WinEnumLite_ScanAll() {
     global _WN_ShellWindow
 
+    Profiler.Enter("WinEnumLite_ScanAll") ; @profile
+
     if (!_WN_ShellWindow)
         _WinEnumLite_Init()
 
@@ -52,6 +54,7 @@ WinEnumLite_ScanAll() {
         records.Push(rec)
     }
 
+    Profiler.Leave() ; @profile
     return records
 }
 

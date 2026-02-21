@@ -198,19 +198,26 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     global cfg, gWS_Store
 
     try {  ; Error boundary: DllCall callback — unhandled throw = undefined Win32 behavior
+    Profiler.Enter("_WEH_WinEventProc") ; @profile
     ; Only care about window-level events (idObject = OBJID_WINDOW = 0)
-    if (idObject != 0)
+    if (idObject != 0) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Skip shell window
-    if (hwnd = _WEH_ShellWindow)
+    if (hwnd = _WEH_ShellWindow) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Filter to relevant events (see constant map above)
     if (event != 0x8000 && event != 0x8001 && event != 0x8002 && event != 0x8003
         && event != 0x0003 && event != 0x800C && event != 0x0016 && event != 0x0017
-        && event != 0x8005 && event != 0x800B)
+        && event != 0x8005 && event != 0x800B) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; RACE FIX: Protect Map writes from batch processor interruption
     ; The batch processor iterates _WEH_PendingHwnds - we must not modify it concurrently
@@ -222,6 +229,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         Critical "Off"
         SetTimer(_WEH_FastPathBatch, -1)
         _WinEventHook_EnsureTimerRunning()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -234,6 +242,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         Critical "Off"
         SetTimer(_WEH_FastPathBatch, -1)
         _WinEventHook_EnsureTimerRunning()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -243,6 +252,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     if (event = 0x800C || event = 0x800B) {
         if (!gWS_Store.Has(hwnd + 0)) {
             Critical "Off"
+            Profiler.Leave() ; @profile
             return
         }
     }
@@ -285,6 +295,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         _WEH_PendingZNeeded[hwnd] := true
     }
 
+    Profiler.Leave() ; @profile
     Critical "Off"
 
     ; Fast-path: fire immediate batch for discrete events instead of waiting
@@ -299,6 +310,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
     ; Wake timer if it was paused due to idle
     _WinEventHook_EnsureTimerRunning()
     } catch as e {
+        Profiler.Leave() ; @profile
         Critical "Off"
         global LOG_PATH_STORE
         try LogAppend(LOG_PATH_STORE, "WEH_WinEventProc err=" e.Message " file=" e.File " line=" e.Line)
@@ -315,13 +327,17 @@ _WEH_ProcessBatch() {
     global LOG_PATH_STORE
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
-    if (A_TickCount < _backoffUntil)
+    Profiler.Enter("_WEH_ProcessBatch") ; @profile
+    if (A_TickCount < _backoffUntil) {
+        Profiler.Leave() ; @profile
         return
+    }
     try {
 
     ; Check for idle condition first (no pending focus and no pending hwnds)
     if (!_WEH_PendingFocusHwnd && _WEH_PendingHwnds.Count = 0) {
         Pump_HandleIdle(&_WEH_IdleTicks, _WEH_IdleThreshold, &_WEH_TimerOn, _WEH_ProcessBatch, _WEH_DiagLog)
+        Profiler.Leave() ; @profile
         return
     }
     _WEH_IdleTicks := 0  ; Reset idle counter when we have work
@@ -471,8 +487,10 @@ _WEH_ProcessBatch() {
     if (focusProcessed && gWS_OnStoreChanged)
         gWS_OnStoreChanged(false)
 
-    if (_WEH_PendingHwnds.Count = 0)
+    if (_WEH_PendingHwnds.Count = 0) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     now := A_TickCount
 
@@ -639,7 +657,9 @@ _WEH_ProcessBatch() {
     }
     _errCount := 0
     _backoffUntil := 0
+    Profiler.Leave() ; @profile
     } catch as e {
+        Profiler.Leave() ; @profile
         backoffMs := HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "WEH_ProcessBatch")
         ; WEH-specific: enable MRU_Lite as runtime fallback during backoff
         if (backoffMs > 0)
@@ -674,7 +694,10 @@ _WEH_StopMruFallback() {
 ; Probe a single window - returns Map or empty string
 ; Uses shared WinUtils_ProbeWindow with exists and eligibility checks
 _WEH_ProbeWindow(hwnd) {
-    return WinUtils_ProbeWindow(hwnd, 0, true, true)  ; checkExists=true, checkEligible=true
+    Profiler.Enter("_WEH_ProbeWindow") ; @profile
+    result := WinUtils_ProbeWindow(hwnd, 0, true, true)  ; checkExists=true, checkEligible=true
+    Profiler.Leave() ; @profile
+    return result
 }
 
 ; Lightweight update for windows already in the store.
@@ -683,26 +706,35 @@ _WEH_ProbeWindow(hwnd) {
 ; Returns: Object patch (success), -1 (ineligible/destroyed), false (skipped/error)
 ; Caller batches patches and calls WL_BatchUpdateFields once for the whole batch.
 _WEH_UpdateExisting(hwnd) {
+    Profiler.Enter("_WEH_UpdateExisting") ; @profile
     global gWS_Store
     ; Check window still exists
     try {
-        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int"))
+        if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
+            Profiler.Leave() ; @profile
             return -1
-    } catch
+        }
+    } catch {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; Skip hung windows — WinGetTitle sends WM_GETTEXT which blocks on hung apps
     try {
-        if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int"))
+        if (DllCall("user32\IsHungAppWindow", "ptr", hwnd, "int")) {
+            Profiler.Leave() ; @profile
             return false
+        }
     }
 
     ; Fetch title (the only mutable text field)
     title := ""
     try
         title := WinGetTitle("ahk_id " hwnd)
-    catch
+    catch {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; Re-check eligibility using stored class (immutable) + fresh title
     row := gWS_Store[hwnd + 0]
@@ -710,13 +742,16 @@ _WEH_UpdateExisting(hwnd) {
     isVisible := false
     isMin := false
     isCloaked := false
-    if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked))
+    if (!Blacklist_IsWindowEligibleEx(hwnd, title, class, &isVisible, &isMin, &isCloaked)) {
+        Profiler.Leave() ; @profile
         return -1
+    }
 
     ; Stamp monitor identity (detects cross-monitor moves via LOCATIONCHANGE)
     hMon := Win_GetMonitorHandle(hwnd)
 
     ; Return patch Object — caller collects into batch
+    Profiler.Leave() ; @profile
     return { title: title, isCloaked: isCloaked, isMinimized: isMin, isVisible: isVisible,
              monitorHandle: hMon, monitorLabel: Win_GetMonitorLabel(hMon) }
 }
