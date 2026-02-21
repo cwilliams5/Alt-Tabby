@@ -1357,7 +1357,16 @@ _KSub_GetStateDirect() {
     ; Use double-quote escaping for cmd.exe with paths containing spaces
     cmd := 'cmd.exe /c ""' cfg.KomorebicExe '" state > "' tmp '"" 2>&1'
     try ProcessUtils_RunWaitHidden(cmd)
-    Sleep(TIMING_FILE_WRITE_WAIT)  ; Give file time to write
+    ; Adaptive wait: poll for file existence instead of blind 100ms sleep
+    deadline := A_TickCount + TIMING_FILE_WRITE_WAIT
+    HiSleep(30)  ; Give cmd.exe minimum time to start writing
+    while (A_TickCount < deadline) {
+        if (FileExist(tmp)) {
+            HiSleep(5)  ; Brief settle for write completion
+            break
+        }
+        HiSleep(10)
+    }
     txt := ""
     try txt := FileRead(tmp, "UTF-8")
     try FileDelete(tmp)

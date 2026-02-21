@@ -257,7 +257,7 @@ _PU_GracefulShutdownByPid(pids) {
         try PostMessage(0x0010, , , , "ahk_pid " pids.gui " ahk_class AutoHotkey")  ; WM_CLOSE
         deadline := A_TickCount + 3000
         while (ProcessExist(pids.gui) && A_TickCount < deadline)
-            Sleep(10)
+            HiSleep(10)
         if (ProcessExist(pids.gui))
             ProcessClose(pids.gui)
     }
@@ -267,7 +267,7 @@ _PU_GracefulShutdownByPid(pids) {
         ; Give pump a moment to exit from IPC shutdown
         deadline := A_TickCount + 2000
         while (ProcessExist(pids.pump) && A_TickCount < deadline)
-            Sleep(10)
+            HiSleep(10)
         if (ProcessExist(pids.pump))
             ProcessClose(pids.pump)
     }

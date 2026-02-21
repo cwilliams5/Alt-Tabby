@@ -462,7 +462,7 @@ _IPC_ClientConnect(pipeName, timeoutMs := 2000) {
         ; keyboard/mouse input (low-level hooks can't be processed).
         ; Sleep pumps the AHK message queue, allowing hook callbacks to run.
         if (gle = IPC_ERROR_FILE_NOT_FOUND)
-            Sleep(TIMING_PIPE_RETRY_WAIT)
+            HiSleep(TIMING_PIPE_RETRY_WAIT)
         else
             DllCall("WaitNamedPipeW", "str", name, "uint", IPC_WAIT_PIPE_TIMEOUT)
     }

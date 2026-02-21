@@ -185,6 +185,7 @@ Log("Log file: " TestLogPath)
 ; ============================================================
 #Include %A_ScriptDir%\..\src\shared\config_loader.ahk
 #Include %A_ScriptDir%\..\src\lib\cjson.ahk
+#Include %A_ScriptDir%\..\src\shared\timing.ahk
 #Include %A_ScriptDir%\..\src\shared\ipc_pipe.ahk
 #Include %A_ScriptDir%\..\src\shared\blacklist.ahk
 #Include %A_ScriptDir%\..\src\shared\setup_utils.ahk
