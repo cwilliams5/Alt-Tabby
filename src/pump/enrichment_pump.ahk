@@ -52,7 +52,8 @@ _Pump_Init() {
     ; Initialize blacklist (for title-based re-check on enrichment)
     Blacklist_Init()
 
-    _Pump_Log("INIT: Starting EnrichmentPump, pipe=" cfg.PumpPipeName)
+    if (_Pump_DiagEnabled)
+        _Pump_Log("INIT: Starting EnrichmentPump, pipe=" cfg.PumpPipeName)
 
     ; Start pipe server (single client — MainProcess)
     _Pump_Server := IPC_PipeServer_Start(cfg.PumpPipeName, _Pump_OnMessage, _Pump_OnDisconnect)
@@ -74,10 +75,11 @@ _Pump_Init() {
 ; ========================= IPC HANDLERS =========================
 
 _Pump_OnMessage(msg, hPipe) {
-    global _Pump_ClientPipe, _Pump_Server
+    global _Pump_ClientPipe, _Pump_Server, _Pump_DiagEnabled
     _Pump_ClientPipe := hPipe
 
-    _Pump_Log("OnMessage received, len=" StrLen(msg))
+    if (_Pump_DiagEnabled)
+        _Pump_Log("OnMessage received, len=" StrLen(msg))
 
     try {
         parsed := JSON.Load(msg)
@@ -97,13 +99,15 @@ _Pump_OnMessage(msg, hPipe) {
             _Pump_Cleanup()
             ExitApp(0)
         default:
-            _Pump_Log("WARN: Unknown message type: " msgType)
+            if (_Pump_DiagEnabled)
+                _Pump_Log("WARN: Unknown message type: " msgType)
     }
 }
 
 _Pump_OnDisconnect(hPipe) {
-    global _Pump_ClientPipe
-    _Pump_Log("Client disconnected hPipe=" hPipe)
+    global _Pump_ClientPipe, _Pump_DiagEnabled
+    if (_Pump_DiagEnabled)
+        _Pump_Log("Client disconnected hPipe=" hPipe)
     if (_Pump_ClientPipe = hPipe)
         _Pump_ClientPipe := 0
 }
@@ -118,7 +122,7 @@ _Pump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 ; ========================= ENRICHMENT =========================
 
 _Pump_HandleEnrich(server, hPipe, parsed) {
-    global _Pump_GuiHwnd, _Pump_HelloAcked
+    global _Pump_GuiHwnd, _Pump_HelloAcked, _Pump_DiagEnabled
 
     if (!parsed.Has("hwnds"))
         return
@@ -126,7 +130,8 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
     ; Extract GUI hwnd from hello (first request includes guiHwnd for PostMessage wake)
     if (!_Pump_GuiHwnd && parsed.Has("guiHwnd")) {
         _Pump_GuiHwnd := parsed["guiHwnd"] + 0
-        _Pump_Log("HELLO: Received guiHwnd=" _Pump_GuiHwnd)
+        if (_Pump_DiagEnabled)
+            _Pump_Log("HELLO: Received guiHwnd=" _Pump_GuiHwnd)
     }
 
     hwnds := parsed["hwnds"]
@@ -181,7 +186,8 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
         if (r.Has("iconHicon") && r["iconHicon"])
             iconResultCount++
     }
-    _Pump_Log("HandleEnrich: " hwnds.Length " hwnds requested, " results.Count " results, " iconResultCount " with icons")
+    if (_Pump_DiagEnabled)
+        _Pump_Log("HandleEnrich: " hwnds.Length " hwnds requested, " results.Count " results, " iconResultCount " with icons")
 
     response := Map("type", IPC_MSG_ENRICHMENT, "results", results)
 
@@ -189,12 +195,14 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
     if (_Pump_GuiHwnd && !_Pump_HelloAcked) {
         response["pumpHwnd"] := A_ScriptHwnd
         _Pump_HelloAcked := true
-        _Pump_Log("HELLO: Sending pumpHwnd=" A_ScriptHwnd " to GUI")
+        if (_Pump_DiagEnabled)
+            _Pump_Log("HELLO: Sending pumpHwnd=" A_ScriptHwnd " to GUI")
     }
 
     responseJson := JSON.Dump(response)
 
-    _Pump_Log("Response JSON length: " StrLen(responseJson))
+    if (_Pump_DiagEnabled)
+        _Pump_Log("Response JSON length: " StrLen(responseJson))
 
     ; Send response with PostMessage wake to GUI (if hwnd known)
     IPC_PipeServer_Send(server, hPipe, responseJson, _Pump_GuiHwnd)
@@ -314,7 +322,7 @@ _Pump_ResolveProcessName(pid, &outPath := "") {
 ; Configurable interval (default 5 minutes) — icons are small, leak is slow.
 
 _Pump_PruneOwnedIcons() {
-    global _Pump_OwnedIcons, _Pump_PrevIconSource
+    global _Pump_OwnedIcons, _Pump_PrevIconSource, _Pump_DiagEnabled
     if (_Pump_OwnedIcons.Count = 0 && _Pump_PrevIconSource.Count = 0)
         return
 
@@ -340,7 +348,7 @@ _Pump_PruneOwnedIcons() {
         _Pump_PrevIconSource.Delete(hwnd)
 
     pruned := toRemove.Length + toRemovePrev.Length
-    if (pruned > 0)
+    if (pruned > 0 && _Pump_DiagEnabled)
         _Pump_Log("PRUNE: destroyed " toRemove.Length " orphaned HICONs, " _Pump_OwnedIcons.Count " remaining, " toRemovePrev.Length " stale source entries")
 }
 
