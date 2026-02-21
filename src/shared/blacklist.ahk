@@ -284,13 +284,6 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
     return Blacklist_IsWindowEligibleEx(hwnd, title, class, &vis, &min, &clk)
 }
 
-; Alt-Tab eligibility rules (matches Windows behavior)
-; Delegates to Ex variant for shared implementation
-_BL_IsAltTabEligible(hwnd) {
-    vis := false, min := false, clk := false
-    return _BL_IsAltTabEligibleEx(hwnd, &vis, &min, &clk)
-}
-
 ; Shared vis/min/cloak probe — single source for the DllCall trio
 ; Used by _BL_IsAltTabEligibleEx, Blacklist_IsWindowEligibleEx, and WinUtils_ProbeWindow
 BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak) {
