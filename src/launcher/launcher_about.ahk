@@ -784,7 +784,7 @@ Dash_QueryStats() {
 Stats_MapGet(m, key) {
     if (!IsObject(m))
         return 0
-    return m.Has(key) ? m[key] : 0
+    return m.Get(key, 0)
 }
 
 ; Format seconds into human-readable duration: "5s", "12m", "2h 15m", "3d 4h", "1y 42d"

@@ -1001,7 +1001,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                 KSub_DiagLog("ProcessFullState[light]: refreshed focused hwnd cache (" _KSub_FocusedHwndByWS.Count " workspaces)")
         }
         if (currentWsName != "") {
-            focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
+            focusedHwnd := _KSub_FocusedHwndByWS.Get(currentWsName, 0)
             if (focusedHwnd) {
                 ; Skip MRU update if WEH already confirmed focus for this exact hwnd.
                 ; Prevents redundant push cycle (rev bump + display list rebuild + repaint).
@@ -1213,7 +1213,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     }
     ; Add MRU update to batch (using tick captured at start for timing consistency)
     if (currentWsName != "") {
-        focusedHwnd := _KSub_FocusedHwndByWS.Has(currentWsName) ? _KSub_FocusedHwndByWS[currentWsName] : 0
+        focusedHwnd := _KSub_FocusedHwndByWS.Get(currentWsName, 0)
         if (focusedHwnd) {
             ; Merge MRU tick into existing patch or create new one
             if (batchPatches.Has(focusedHwnd))

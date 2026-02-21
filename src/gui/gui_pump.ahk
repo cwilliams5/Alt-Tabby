@@ -258,7 +258,7 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
     }
 
     global IPC_MSG_ENRICHMENT
-    msgType := parsed.Has("type") ? parsed["type"] : ""
+    msgType := parsed.Get("type", "")
 
     if (msgType != IPC_MSG_ENRICHMENT) {
         if (cfg.DiagPumpLog)
@@ -267,8 +267,8 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
     }
 
     ; Extract pump's hwnd from hello response (one-time)
-    if (!_gPump_PumpHwnd && parsed.Has("pumpHwnd")) {
-        _gPump_PumpHwnd := parsed["pumpHwnd"] + 0
+    if (!_gPump_PumpHwnd && (pumpHwnd := parsed.Get("pumpHwnd", 0))) {
+        _gPump_PumpHwnd := pumpHwnd + 0
         if (cfg.DiagPumpLog)
             _GUIPump_Log("HELLO: Received pumpHwnd=" _gPump_PumpHwnd)
     }
@@ -305,7 +305,7 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
         ; Apply icon (HICON numeric value — valid cross-process)
         if (data.Has("iconHicon")) {
             fields["iconHicon"] := data["iconHicon"]
-            fields["iconMethod"] := data.Has("iconMethod") ? data["iconMethod"] : "pump"
+            fields["iconMethod"] := data.Get("iconMethod", "pump")
             iconCount++
         }
 

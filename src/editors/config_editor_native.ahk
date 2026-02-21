@@ -827,8 +827,8 @@ _CEN_SwatchSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; 
         w := NumGet(rc, 8, "Int")
         h := NumGet(rc, 12, "Int")
 
-        colorRef := gCEN_SwatchColors.Has(hwnd) ? gCEN_SwatchColors[hwnd] : 0
-        alpha := gCEN_SwatchAlphas.Has(hwnd) ? gCEN_SwatchAlphas[hwnd] : 255
+        colorRef := gCEN_SwatchColors.Get(hwnd, 0)
+        alpha := gCEN_SwatchAlphas.Get(hwnd, 255)
 
         ; Step 1: Draw checkerboard (visible through semi-transparent color)
         static CLR_CHECK1 := 0xC0C0C0, CLR_CHECK2 := 0x808080

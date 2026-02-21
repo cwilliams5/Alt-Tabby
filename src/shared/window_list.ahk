@@ -264,7 +264,7 @@ WL_UpsertWindow(records, source := "") {
     for _, rec in records {
         if (!IsObject(rec))
             continue  ; lint-ignore: critical-section
-        hwnd := rec.Has("hwnd") ? (rec["hwnd"] + 0) : 0
+        hwnd := rec.Get("hwnd", 0) + 0
         if (!hwnd)
             continue  ; lint-ignore: critical-section
         isNew := !gWS_Store.Has(hwnd)
@@ -306,7 +306,7 @@ WL_UpsertWindow(records, source := "") {
                     if (!row.HasOwnProp(k) || row.%k% != v) {
                         ; Diagnostic: track which fields trigger changes (skip for new records)
                         if (!isNew && cfg.DiagChurnLog)
-                            gWS_DiagChurn[k] := (gWS_DiagChurn.Has(k) ? gWS_DiagChurn[k] : 0) + 1
+                            gWS_DiagChurn[k] := gWS_DiagChurn.Get(k, 0) + 1
                         row.%k% := v
                         rowChanged := true
                         ; Mark dirty for delta tracking (new records or non-internal field changes)
@@ -380,17 +380,29 @@ _WS_ApplyPatch(row, patch, hwnd) {
     contentDirty := false
     mruOnly := true  ; Assume MRU-only until a non-MRU sort field changes
 
-    ; Normalize: convert Map to Object at entry so we need only one iteration branch.
-    ; Map.OwnProps() iterates property metadata (Count, CaseSense), not entries,
-    ; so Map requires for k,v syntax. Converting once avoids maintaining two branches.
+    ; Iterate patch fields: Map uses for k,v; Object uses OwnProps().
+    ; Direct iteration avoids allocating a temporary Object copy for Map patches.
     if (patch is Map) {
-        obj := {}
-        for k, v in patch
-            obj.%k% := v
-        patch := obj
-    }
-
-    if (IsObject(patch)) {
+        for k, v in patch {
+            if (!row.HasOwnProp(k) || row.%k% != v) {
+                row.%k% := v
+                if (!gWS_InternalFields.Has(k)) {
+                    changed := true
+                    gWS_DirtyHwnds[hwnd] := true
+                }
+                if (gWS_SortAffectingFields.Has(k)) {
+                    sortDirty := true
+                    if (!gWS_MRUOnlyFields.Has(k))
+                        mruOnly := false
+                } else if (k = "title" && gWS_TitleSortActive) {
+                    sortDirty := true
+                    mruOnly := false
+                } else if (!contentDirty && gWS_ContentOnlyFields.Has(k)) {
+                    contentDirty := true
+                }
+            }
+        }
+    } else if (IsObject(patch)) {
         for k in patch.OwnProps() {
             v := patch.%k%
             if (!row.HasOwnProp(k) || row.%k% != v) {
@@ -404,7 +416,6 @@ _WS_ApplyPatch(row, patch, hwnd) {
                     if (!gWS_MRUOnlyFields.Has(k))
                         mruOnly := false
                 } else if (k = "title" && gWS_TitleSortActive) {
-                    ; Title is normally content-only, but in Title sort mode it affects order
                     sortDirty := true
                     mruOnly := false
                 } else if (!contentDirty && gWS_ContentOnlyFields.Has(k)) {
@@ -665,7 +676,7 @@ _WL_GetRev() {
 ; Diagnostic: record a rev bump from a source
 _WS_DiagBump(source) {
     global gWS_DiagSource
-    gWS_DiagSource[source] := (gWS_DiagSource.Has(source) ? gWS_DiagSource[source] : 0) + 1
+    gWS_DiagSource[source] := gWS_DiagSource.Get(source, 0) + 1
 }
 
 ; Flush churn diagnostic maps to the store error log and reset.
@@ -719,7 +730,7 @@ _WS_BumpRev(source) {
 WL_GetByHwnd(hwnd) {
     global gWS_Store
     hwnd := hwnd + 0
-    return gWS_Store.Has(hwnd) ? gWS_Store[hwnd] : ""
+    return gWS_Store.Get(hwnd, "")
 }
 
 WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
@@ -776,7 +787,7 @@ _WS_GetOpt(opts, key, default) {
     if (!IsObject(opts))
         return default
     if (opts is Map)
-        return opts.Has(key) ? opts[key] : default
+        return opts.Get(key, default)
     ; Plain object - use HasOwnProp
     return opts.HasOwnProp(key) ? opts.%key% : default
 }

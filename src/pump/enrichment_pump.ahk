@@ -90,7 +90,7 @@ _Pump_OnMessage(msg, hPipe) {
     }
 
     global IPC_MSG_ENRICH, IPC_MSG_PUMP_SHUTDOWN
-    msgType := parsed.Has("type") ? parsed["type"] : ""
+    msgType := parsed.Get("type", "")
 
     switch msgType {
         case IPC_MSG_ENRICH:
@@ -129,8 +129,8 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
         return
 
     ; Extract GUI hwnd from hello (first request includes guiHwnd for PostMessage wake)
-    if (!_Pump_GuiHwnd && parsed.Has("guiHwnd")) {
-        _Pump_GuiHwnd := parsed["guiHwnd"] + 0
+    if (!_Pump_GuiHwnd && (guiHwnd := parsed.Get("guiHwnd", 0))) {
+        _Pump_GuiHwnd := guiHwnd + 0
         if (_Pump_DiagEnabled)
             _Pump_Log("HELLO: Received guiHwnd=" _Pump_GuiHwnd)
     }
@@ -184,7 +184,7 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
     global IPC_MSG_ENRICHMENT
     iconResultCount := 0
     for _, r in results {
-        if (r.Has("iconHicon") && r["iconHicon"])
+        if (r.Get("iconHicon", 0))
             iconResultCount++
     }
     if (_Pump_DiagEnabled)
@@ -228,8 +228,7 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
         rawH := IP_GetRawWindowIcon(hwnd)
         if (rawH) {
             ; Nochange: same raw handle = window icon hasn't changed
-            if (_Pump_PrevIconSource.Has(hwnd)) {
-                prev := _Pump_PrevIconSource[hwnd]
+            if (prev := _Pump_PrevIconSource.Get(hwnd, 0)) {
                 if (prev.method = IP_METHOD_WM_GETICON && prev.rawH = rawH)
                     return {h: 0, method: IP_METHOD_UNCHANGED}
             }
@@ -253,13 +252,12 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
     ; Fallback: process EXE icon (cached per exe path)
     if (!h && exePath != "") {
         ; Nochange: same exePath = same exe icon (master is cached)
-        if (_Pump_PrevIconSource.Has(hwnd)) {
-            prev := _Pump_PrevIconSource[hwnd]
+        if (prev := _Pump_PrevIconSource.Get(hwnd, 0)) {
             if (prev.method = IP_METHOD_EXE && prev.exePath = exePath)
                 return {h: 0, method: IP_METHOD_UNCHANGED}
         }
-        if (_Pump_ExeIconCache.Has(exePath)) {
-            h := DllCall("user32\CopyIcon", "ptr", _Pump_ExeIconCache[exePath], "ptr")
+        if (cachedIcon := _Pump_ExeIconCache.Get(exePath, 0)) {
+            h := DllCall("user32\CopyIcon", "ptr", cachedIcon, "ptr")
         } else {
             master := IP_ExtractExeIcon(exePath)
             if (master) {
@@ -275,8 +273,8 @@ _Pump_ResolveIcon(hwnd, pid, exePath) {
 
     if (h) {
         ; Track ownership — destroy old HICON if re-enriching same hwnd
-        if (_Pump_OwnedIcons.Has(hwnd))
-            try DllCall("user32\DestroyIcon", "ptr", _Pump_OwnedIcons[hwnd])
+        if (oldIcon := _Pump_OwnedIcons.Get(hwnd, 0))
+            try DllCall("user32\DestroyIcon", "ptr", oldIcon)
         _Pump_OwnedIcons[hwnd] := h
     }
 
@@ -294,12 +292,12 @@ _Pump_ResolveProcessName(pid, &outPath := "") {
         return ""
 
     ; Check positive cache (path not cached — only name)
-    if (_Pump_ProcNameCache.Has(pid))
-        return _Pump_ProcNameCache[pid]
+    if (cachedName := _Pump_ProcNameCache.Get(pid, ""))
+        return cachedName
 
     ; Check negative cache
-    if (_Pump_FailedPidCache.Has(pid)) {
-        if ((A_TickCount - _Pump_FailedPidCache[pid]) < _Pump_FailedPidCacheTTL)
+    if (failedTick := _Pump_FailedPidCache.Get(pid, 0)) {
+        if ((A_TickCount - failedTick) < _Pump_FailedPidCacheTTL)
             return ""
         _Pump_FailedPidCache.Delete(pid)
     }

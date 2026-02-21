@@ -100,7 +100,7 @@ GUI_InitEventNames() {
 
 _GUI_GetEventName(evCode) {
     global gGUI_EventNames
-    return gGUI_EventNames.Has(evCode) ? gGUI_EventNames[evCode] : "?"
+    return gGUI_EventNames.Get(evCode, "?")
 }
 
 ; ========================= STATE MACHINE EVENT HANDLER =========================
@@ -371,7 +371,7 @@ GUI_OnWorkspaceFlips() {
         wsName := ""
         if (IsObject(gWS_Meta)) {
             Critical "On"
-            wsName := gWS_Meta.Has("currentWSName") ? gWS_Meta["currentWSName"] : ""
+            wsName := gWS_Meta.Get("currentWSName", "")
 
             if (wsName != "" && wsName != gGUI_CurrentWSName) {
                 gGUI_CurrentWSName := wsName

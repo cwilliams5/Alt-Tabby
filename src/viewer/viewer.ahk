@@ -345,7 +345,7 @@ _Viewer_UpdateCurrentWS(meta) {
         return
     wsName := ""
     if (meta is Map) {
-        wsName := meta.Has("currentWSName") ? meta["currentWSName"] : ""
+        wsName := meta.Get("currentWSName", "")
     } else if (IsObject(meta)) {
         try wsName := meta.currentWSName
     }
@@ -444,7 +444,7 @@ _Viewer_IconStr(hicon) {
 
 _Viewer_Get(rec, key, defaultVal := "") {
     if (rec is Map) {
-        return rec.Has(key) ? rec[key] : defaultVal
+        return rec.Get(key, defaultVal)
     }
     try {
         return rec.%key%
