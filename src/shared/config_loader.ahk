@@ -831,6 +831,8 @@ LogTrim(logPath) {
 ; ============================================================
 ; Centralized timing values to avoid magic numbers throughout codebase.
 ; These are operational delays, not user-configurable settings.
+; See also: cfg.*Ms settings (config_registry.ahk) for user-tunable timings,
+;           IPC_TICK_* (ipc_constants.ahk) for pipe polling intervals.
 
 ; Sleep delays (milliseconds)
 global TIMING_PROCESS_EXIT_WAIT := 500    ; Wait for processes to fully exit

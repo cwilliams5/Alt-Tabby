@@ -9,6 +9,9 @@ global IPC_MSG_ENRICHMENT := "enrichment"      ; Pump → Main: enrichment resul
 global IPC_MSG_PUMP_SHUTDOWN := "shutdown"      ; Main → Pump: clean exit
 
 ; IPC Timing Constants (milliseconds)
+; Pipe polling intervals, not user-configurable.
+; See also: TIMING_* (config_loader.ahk) for operational delays,
+;           cfg.*Ms settings (config_registry.ahk) for user-tunable timings.
 global IPC_TICK_ACTIVE := 8         ; Server/client tick when active (messages pending)
 global IPC_TICK_SERVER_IDLE := 250  ; Server tick when no clients connected
 global IPC_SERVER_IDLE_STREAK_THRESHOLD := 8  ; Ticks before server enters IDLE (at 100ms = 800ms inactivity)

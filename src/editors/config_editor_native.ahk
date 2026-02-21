@@ -47,7 +47,7 @@ _CEN_ResetState() {
     gCEN["Pages"] := Map()
     gCEN["CurrentPage"] := ""
     gCEN["Sections"] := []
-    gCEN["FooterBtns"] := []
+    gCEN["FooterBtns"] := Map()
     gCEN["ChangeLabel"] := 0
     gCEN["Controls"] := Map()
     gCEN["OriginalValues"] := Map()
@@ -269,7 +269,9 @@ _CEN_BuildMainGUI() {
     btnReset := gCEN["MainGui"].AddButton("x490 y460 w120 h30", "Reset to Defaults")
     btnSave := gCEN["MainGui"].AddButton("x620 y460 w80 h30", "Save")
     btnCancel := gCEN["MainGui"].AddButton("x710 y460 w80 h30", "Cancel")
-    gCEN["FooterBtns"].Push(btnSave, btnCancel, btnReset)
+    gCEN["FooterBtns"]["Save"] := btnSave
+    gCEN["FooterBtns"]["Cancel"] := btnCancel
+    gCEN["FooterBtns"]["Reset"] := btnReset
     btnReset.OnEvent("Click", _CEN_OnResetDefaults)
     btnSave.OnEvent("Click", _CEN_OnSave)
     btnCancel.OnEvent("Click", _CEN_OnCancel)
@@ -910,12 +912,8 @@ _CEN_SwatchSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; 
 ; Update swatch color + alpha and trigger repaint
 _CEN_UpdateSwatchColor(swCtrl, rgb, alpha := 255) {
     global gCEN_SwatchColors, gCEN_SwatchAlphas
-    ; Convert RGB (0xRRGGBB) to COLORREF (0x00BBGGRR)
-    r := (rgb >> 16) & 0xFF
-    g := (rgb >> 8) & 0xFF
-    b := rgb & 0xFF
     hwnd := swCtrl.Hwnd
-    gCEN_SwatchColors[hwnd] := (b << 16) | (g << 8) | r
+    gCEN_SwatchColors[hwnd] := Theme_RgbToColorRef(rgb)
     gCEN_SwatchAlphas[hwnd] := alpha
     DllCall("InvalidateRect", "Ptr", hwnd, "Ptr", 0, "Int", 0)
 }
@@ -932,11 +930,7 @@ _CEN_OnSwatchCtlColor(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 ; Open Win32 ChooseColor dialog. Returns RGB (0xRRGGBB) or -1 on cancel.
 _CEN_OpenColorPicker(currentRGB, ownerHwnd := 0) {
     global gCEN_CustomColors
-    ; Convert RGB (0xRRGGBB) to COLORREF (0x00BBGGRR)
-    r := (currentRGB >> 16) & 0xFF
-    g := (currentRGB >> 8) & 0xFF
-    b := currentRGB & 0xFF
-    colorRef := (b << 16) | (g << 8) | r
+    colorRef := Theme_RgbToColorRef(currentRGB)
 
     ; CHOOSECOLOR struct: fixed layout DWORD + HWND + HWND + COLORREF + LPCOLORREF + DWORD + LPARAM + ptr + ptr
     cc := Buffer(A_PtrSize = 8 ? 72 : 36, 0)
@@ -953,12 +947,8 @@ _CEN_OpenColorPicker(currentRGB, ownerHwnd := 0) {
     if (!result)
         return -1
 
-    ; Read result COLORREF (0x00BBGGRR) and convert back to RGB
     resultRef := NumGet(cc, off, "UInt")
-    rr := resultRef & 0xFF
-    gg := (resultRef >> 8) & 0xFF
-    bb := (resultRef >> 16) & 0xFF
-    return (rr << 16) | (gg << 8) | bb
+    return Theme_ColorRefToRgb(resultRef)
 }
 
 ; Create closure for swatch click -> color picker
@@ -1353,10 +1343,10 @@ _CEN_OnResize(gui, minMax, w, h) { ; lint-ignore: dead-param
     btnY := h - CEN_FOOTER_H + 8
     if (gCEN["ChangeLabel"])
         gCEN["ChangeLabel"].Move(16, btnY + 5, 300, 20)
-    if (gCEN["FooterBtns"].Length >= 3) {
-        gCEN["FooterBtns"][2].Move(w - 100, btnY, 80, 30)       ; Cancel
-        gCEN["FooterBtns"][1].Move(w - 190, btnY, 80, 30)       ; Save
-        gCEN["FooterBtns"][3].Move(w - 320, btnY, 120, 30)      ; Reset
+    if (gCEN["FooterBtns"].Count >= 3) {
+        gCEN["FooterBtns"]["Cancel"].Move(w - 100, btnY, 80, 30)
+        gCEN["FooterBtns"]["Save"].Move(w - 190, btnY, 80, 30)
+        gCEN["FooterBtns"]["Reset"].Move(w - 320, btnY, 120, 30)
     }
 
     if (gCEN["CurrentPage"] != "")
