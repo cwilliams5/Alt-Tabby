@@ -14,13 +14,17 @@
 ;   logFunc   - Optional log function(msg) for diagnostics
 ; Returns: true if launched, false on failure
 LauncherUtils_Launch(component, &pidVar, logFunc := "") {
+    global g_TestingMode
     ; Build command based on compiled status and component
     launcherArg := " --launcher-hwnd=" A_ScriptHwnd
 
     if (A_IsCompiled) {
         exe := '"' A_ScriptFullPath '" '
         switch component {
-            case "gui":    cmd := exe "--gui-only" launcherArg
+            case "gui":
+                cmd := exe "--gui-only" launcherArg
+                if (g_TestingMode)
+                    cmd .= " --testing-mode"
             case "pump":   cmd := exe "--pump"
             default:       return false
         }
@@ -34,7 +38,6 @@ LauncherUtils_Launch(component, &pidVar, logFunc := "") {
             default:       return false
         }
         ; In testing mode, pass --test to child processes so they hide tray icons
-        global g_TestingMode
         if (g_TestingMode)
             cmd .= " --test"
     }
