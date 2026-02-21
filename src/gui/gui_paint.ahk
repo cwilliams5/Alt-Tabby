@@ -54,7 +54,7 @@ GUI_Repaint() {
     global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_BackHdc
 
     ; ===== TIMING: Start =====
-    tTotal := A_TickCount
+    tTotal := QPC()
     idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
     gPaint_SessionPaintCount += 1
     paintNum := gPaint_SessionPaintCount
@@ -87,7 +87,7 @@ GUI_Repaint() {
     ; not be resized yet — SetWindowPos is DEFERRED to right before
     ; UpdateLayeredWindow so DWM can't present a frame with mismatched
     ; base/overlay sizes (the 1-frame flash on workspace switches).
-    t1 := A_TickCount
+    t1 := QPC()
     xDip := 0
     yDip := 0
     wDip := 0
@@ -103,20 +103,20 @@ GUI_Repaint() {
     phY := Round(yDip * scale)
     phW := Round(wDip * scale)
     phH := Round(hDip * scale)
-    tComputeRect := A_TickCount - t1
+    tComputeRect := QPC() - t1
 
     ; ===== TIMING: EnsureBackbuffer =====
-    t1 := A_TickCount
+    t1 := QPC()
     Gdip_EnsureBackbuffer(phW, phH)
-    tBackbuf := A_TickCount - t1
+    tBackbuf := QPC() - t1
 
     ; ===== TIMING: PaintOverlay (the big one) =====
-    t1 := A_TickCount
+    t1 := QPC()
     _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale)
-    tPaintOverlay := A_TickCount - t1
+    tPaintOverlay := QPC() - t1
 
     ; ===== TIMING: Buffer setup =====
-    t1 := A_TickCount
+    t1 := QPC()
 
     ; static: marshal buffers reused per frame
     bf := Gdip_GetBlendFunction()
@@ -128,10 +128,10 @@ GUI_Repaint() {
     NumPut("Int", phX, ptDst, 0)
     NumPut("Int", phY, ptDst, 4)
 
-    tBuffers := A_TickCount - t1
+    tBuffers := QPC() - t1
 
     ; ===== TIMING: UpdateLayeredWindow =====
-    t1 := A_TickCount
+    t1 := QPC()
 
     ; Ensure WS_EX_LAYERED
     global GWL_EXSTYLE, WS_EX_LAYERED
@@ -168,20 +168,20 @@ GUI_Repaint() {
         Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
     }
 
-    tUpdateLayer := A_TickCount - t1
+    tUpdateLayer := QPC() - t1
 
     ; ===== TIMING: RevealBoth =====
-    t1 := A_TickCount
+    t1 := QPC()
     _GUI_RevealBoth()
-    tReveal := A_TickCount - t1
+    tReveal := QPC() - t1
 
     ; ===== TIMING: Total =====
-    tTotalMs := A_TickCount - tTotal
+    tTotalMs := QPC() - tTotal
     gPaint_LastPaintTick := A_TickCount
 
     ; Log timing for first paint, paint after long idle, or slow paints (>100ms)
     if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)) {
-        Paint_Log("  Timing: total=" tTotalMs "ms | computeRect=" tComputeRect " backbuf=" tBackbuf " paintOverlay=" tPaintOverlay " buffers=" tBuffers " updateLayer=" tUpdateLayer " reveal=" tReveal)
+        Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " backbuf=" Round(tBackbuf, 2) " paintOverlay=" Round(tPaintOverlay, 2) " buffers=" Round(tBuffers, 2) " updateLayer=" Round(tUpdateLayer, 2) " reveal=" Round(tReveal, 2))
     }
 }
 
@@ -245,13 +245,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
 
     ; ===== TIMING: EnsureResources =====
-    tPO_Start := A_TickCount
-    t1 := A_TickCount
+    tPO_Start := QPC()
+    t1 := QPC()
     GUI_EnsureResources(scale)
-    tPO_Resources := A_TickCount - t1
+    tPO_Resources := QPC() - t1
 
     ; ===== TIMING: EnsureGraphics + Clear =====
-    t1 := A_TickCount
+    t1 := QPC()
     g := Gdip_EnsureGraphics()
     if (!g) {
         return
@@ -259,7 +259,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     Gdip_Clear(g, 0x00000000)
     Gdip_FillRect(g, gGdip_Res["brHit"], 0, 0, wPhys, hPhys)
-    tPO_GraphicsClear := A_TickCount - t1
+    tPO_GraphicsClear := QPC() - t1
 
     scrollTop := gGUI_ScrollTop
 
@@ -365,7 +365,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         Gdip_DrawCenteredText(g, emptyText, rectX, rectY, rectW, rectH, gGdip_Res["brMain"], gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
     } else if (rowsToDraw > 0) {
         ; ===== TIMING: Row loop start =====
-        tPO_RowsStart := A_TickCount
+        tPO_RowsStart := QPC()
         tPO_IconsTotal := 0
         iconCacheHits := 0
         iconCacheMisses := 0
@@ -405,7 +405,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             iy := yRow + (RowH - ISize) // 2
 
             ; ===== TIMING: Icon draw =====
-            tIcon := A_TickCount
+            tIcon := QPC()
             iconDrawn := false
             iconWasCacheHit := false
             ; Schema guarantee: _GUI_CreateItemFromRecord always sets iconHicon (0 if absent)
@@ -420,7 +420,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             if (!iconDrawn) {
                 Gdip_FillEllipse(g, Gdip_GetCachedBrush(0x60808080), ix, iy, ISize, ISize)
             }
-            tPO_IconsTotal += A_TickCount - tIcon
+            tPO_IconsTotal += QPC() - tIcon
 
             fMainUse := isSel ? fMainHi : fMain
             fSubUse := isSel ? fSubHi : fSub
@@ -457,31 +457,31 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             i := i + 1
         }
         ; ===== TIMING: Row loop end =====
-        tPO_RowsTotal := A_TickCount - tPO_RowsStart
+        tPO_RowsTotal := QPC() - tPO_RowsStart
     }
 
     ; Scrollbar
-    t1 := A_TickCount
+    t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
         _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
     }
-    tPO_Scrollbar := A_TickCount - t1
+    tPO_Scrollbar := QPC() - t1
 
     ; Footer
-    t1 := A_TickCount
+    t1 := QPC()
     if (cfg.GUI_ShowFooter) {
         _GUI_DrawFooter(g, wPhys, hPhys, scale)
     }
-    tPO_Footer := A_TickCount - t1
+    tPO_Footer := QPC() - t1
 
     ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
     if (cfg.DiagPaintTimingLog) {
-        tPO_Total := A_TickCount - tPO_Start
+        tPO_Total := QPC() - tPO_Start
         idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
         if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
-            Paint_Log("  PaintOverlay: total=" tPO_Total "ms | resources=" tPO_Resources " graphicsClear=" tPO_GraphicsClear " rows=" (IsSet(tPO_RowsTotal) ? tPO_RowsTotal : 0) " scrollbar=" tPO_Scrollbar " footer=" tPO_Footer)
+            Paint_Log("  PaintOverlay: total=" Round(tPO_Total, 2) "ms | resources=" Round(tPO_Resources, 2) " graphicsClear=" Round(tPO_GraphicsClear, 2) " rows=" (IsSet(tPO_RowsTotal) ? Round(tPO_RowsTotal, 2) : 0) " scrollbar=" Round(tPO_Scrollbar, 2) " footer=" Round(tPO_Footer, 2))
             if (IsSet(tPO_IconsTotal)) {
-                Paint_Log("    Icons: totalTime=" tPO_IconsTotal "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
+                Paint_Log("    Icons: totalTime=" Round(tPO_IconsTotal, 2) "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
             }
         }
     }

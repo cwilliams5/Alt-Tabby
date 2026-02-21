@@ -117,7 +117,7 @@ FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
     Critical "On"
     gFR_Idx := gFR_Idx >= gFR_Size ? 1 : gFR_Idx + 1
     b := gFR_Buffer[gFR_Idx]
-    b[1] := A_TickCount
+    b[1] := QPC()
     b[2] := ev
     b[3] := d1
     b[4] := d2
@@ -149,7 +149,7 @@ _FR_Dump() {
 
     ; --- 1. Capture state atomically (inside Critical) ---
     Critical "On"
-    dumpTick := A_TickCount
+    dumpTick := QPC()
     capturedIdx := gFR_Idx
     capturedCount := gFR_Count
 
@@ -328,7 +328,7 @@ _FR_DumpPhase2() {
         offsetMs := tick - dumpTick
         offsetSec := Abs(offsetMs) / 1000.0
         sign := offsetMs <= 0 ? "-" : "+"
-        timeCol := Format("T{}{:07.3f}", sign, offsetSec)
+        timeCol := Format("T{}{:010.3f}", sign, offsetSec)
 
         evName := _FR_GetEventName(ev)
         details := _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap)
