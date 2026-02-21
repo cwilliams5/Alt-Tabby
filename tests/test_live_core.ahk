@@ -274,4 +274,153 @@ RunLiveTests_Core() {
         Log("SKIP: komorebic.exe not found at " komorebicPath)
     }
 
+    ; ============================================================
+    ; OVERLAPPED Async I/O Tests
+    ; ============================================================
+    Log("`n--- OVERLAPPED Async I/O Tests ---")
+
+    ; Test 1: OVERLAPPED library loads and MCode initializes correctly
+    ; Create a test pipe and verify BindIoCompletionCallback works
+    _Test_OverlappedLibrary()
+
+    ; Test 2: Async subscription lifecycle (requires komorebi)
+    if (FileExist(cfg.KomorebicExe))
+        _Test_AsyncSubscriptionLifecycle()
+    else
+        Log("SKIP: Async subscription lifecycle (komorebic.exe not found)")
+
+}
+
+; Test that the OVERLAPPED library loads, creates MCode, and binds to a pipe handle.
+; Does NOT require komorebi — uses a standalone test pipe.
+_Test_OverlappedLibrary() {
+    global TestPassed, TestErrors
+
+    ; Create a test pipe with FILE_FLAG_OVERLAPPED
+    PIPE_ACCESS_DUPLEX := 0x00000003
+    FILE_FLAG_OVERLAPPED := 0x40000000
+    PIPE_TYPE_BYTE := 0x00000000
+    pipeName := "\\.\pipe\tabby_test_overlapped_" A_TickCount
+    hPipe := DllCall("CreateNamedPipeW"
+        , "str", pipeName
+        , "uint", PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED
+        , "uint", PIPE_TYPE_BYTE
+        , "uint", 1, "uint", 4096, "uint", 4096, "uint", 0, "ptr", 0
+        , "ptr")
+
+    if (hPipe = 0 || hPipe = -1) {
+        Log("FAIL: OVERLAPPED test pipe creation failed (err=" DllCall("GetLastError", "uint") ")")
+        TestErrors++
+        return
+    }
+    Log("PASS: Test pipe created for OVERLAPPED test")
+    TestPassed++
+
+    ; Test: OVERLAPPED class instantiation
+    overObj := 0
+    try {
+        overObj := OVERLAPPED((this, err, bytes) => 0)
+        Log("PASS: OVERLAPPED class instantiated")
+        TestPassed++
+    } catch as e {
+        Log("FAIL: OVERLAPPED class instantiation failed: " e.Message)
+        TestErrors++
+        DllCall("CloseHandle", "ptr", hPipe)
+        return
+    }
+
+    ; Test: EnableIoCompletionCallback (binds MCode trampoline)
+    try {
+        OVERLAPPED.EnableIoCompletionCallback(hPipe)
+        Log("PASS: EnableIoCompletionCallback succeeded (MCode loaded)")
+        TestPassed++
+    } catch as e {
+        Log("FAIL: EnableIoCompletionCallback failed: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: OVERLAPPED properties accessible
+    try {
+        ev := overObj.hEvent
+        pend := overObj.Pending
+        AssertTrue(ev != 0, "OVERLAPPED.hEvent is non-zero")
+        AssertTrue(pend = 0, "OVERLAPPED.Pending is 0 before I/O")
+    } catch as e {
+        Log("FAIL: OVERLAPPED property access: " e.Message)
+        TestErrors++
+    }
+
+    ; Cleanup
+    try overObj.SafeDelete(hPipe)
+    try DllCall("CloseHandle", "ptr", hPipe)
+}
+
+; Test async subscription lifecycle: init → connect → async mode → stop.
+; Requires komorebi running.
+_Test_AsyncSubscriptionLifecycle() {
+    global TestPassed, TestErrors, cfg
+    global _KSub_AsyncMode, _KSub_Connected, _KSub_ReadPending, _KSub_hPipe
+
+    Log("`n  --- Async Subscription Lifecycle ---")
+
+    ; Initialize subscription (creates pipe, launches subscriber, tries async)
+    try {
+        result := KomorebiSub_Init()
+        if (!result) {
+            Log("SKIP: KomorebiSub_Init returned false (komorebi may not be running)")
+            return
+        }
+        Log("PASS: KomorebiSub_Init succeeded")
+        TestPassed++
+    } catch as e {
+        Log("FAIL: KomorebiSub_Init threw: " e.Message)
+        TestErrors++
+        return
+    }
+
+    ; Wait for connection (komorebic subscribe-pipe takes a moment)
+    connected := false
+    deadline := A_TickCount + 3000
+    while (A_TickCount < deadline) {
+        if (_KSub_Connected) {
+            connected := true
+            break
+        }
+        Sleep(50)
+    }
+
+    if (connected) {
+        Log("PASS: Komorebi subscription connected")
+        TestPassed++
+
+        ; Verify async mode is active (OVERLAPPED bound)
+        if (_KSub_AsyncMode) {
+            Log("PASS: Async I/O mode active (_KSub_AsyncMode=true)")
+            TestPassed++
+        } else {
+            ; Not a failure — async may not be available, legacy poll is fine
+            Log("WARN: Async mode not active, legacy polling in use")
+        }
+
+        ; Verify a read is pending (async ReadFile issued)
+        if (_KSub_AsyncMode && _KSub_ReadPending) {
+            Log("PASS: Async read is pending (_KSub_ReadPending=true)")
+            TestPassed++
+        } else if (_KSub_AsyncMode) {
+            Log("WARN: Async mode active but no read pending")
+        }
+
+        ; Verify pipe handle is valid
+        AssertTrue(_KSub_hPipe != 0, "Pipe handle is non-zero while connected")
+    } else {
+        Log("SKIP: Connection timed out (komorebi may not be running or pipe busy)")
+    }
+
+    ; Stop subscription — verify clean shutdown
+    KomorebiSub_Stop()
+    AssertTrue(_KSub_AsyncMode = false, "AsyncMode is false after Stop")
+    AssertTrue(_KSub_ReadPending = false, "ReadPending is false after Stop")
+    AssertTrue(_KSub_hPipe = 0, "Pipe handle is 0 after Stop")
+    Log("PASS: KomorebiSub_Stop cleanup verified")
+    TestPassed++
 }

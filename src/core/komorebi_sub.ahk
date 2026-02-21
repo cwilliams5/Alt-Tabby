@@ -56,6 +56,12 @@ global _KSub_FallbackMode := false
 global _KSub_LastPromotionTick := 0
 global _KSub_PromotionIntervalMs  ; Set from cfg.KomorebiSubPromotionRetryMs at init
 
+; Async I/O state (OVERLAPPED completion callback mode)
+global _KSub_ReadOverlapped := 0       ; OVERLAPPED class instance for async reads
+global _KSub_AsyncMode := false         ; true = async I/O, false = legacy polling
+global _KSub_ReadPending := false       ; true = async ReadFile is outstanding
+global KSub_MaintenanceMs := 0          ; Maintenance timer interval (from cfg)
+
 ; Cache of window workspace assignments (persists even when windows leave komorebi)
 ; Each entry is { wsName: "name", tick: timestamp } for staleness detection
 global _KSub_WorkspaceCache := Map()
@@ -85,12 +91,13 @@ global _KSub_CloakBatchBuffer := Map()  ; hwnd -> isCloaked (bool)
 ; Initialize komorebi subscription
 KomorebiSub_Init() {
     global _KSub_PipeName, _KSub_WorkspaceCache, _KSub_CacheMaxAgeMs, cfg
-    global KSub_PollMs, KSub_IdleRecycleMs, KSub_FallbackPollMs
+    global KSub_PollMs, KSub_IdleRecycleMs, KSub_FallbackPollMs, KSub_MaintenanceMs
     global _KSub_FallbackMode
 
     ; Load config values (ConfigLoader_Init has already run)
     global KSub_MruSuppressionMs, _KSub_PromotionIntervalMs, KSUB_INITIAL_POLL_DELAY_MS
     KSub_PollMs := cfg.KomorebiSubPollMs
+    KSub_MaintenanceMs := cfg.KomorebiSubMaintenanceMs
     KSub_IdleRecycleMs := cfg.KomorebiSubIdleRecycleMs
     KSub_FallbackPollMs := cfg.KomorebiSubFallbackPollMs
     _KSub_CacheMaxAgeMs := cfg.KomorebiSubCacheMaxAgeMs
@@ -216,9 +223,38 @@ _KomorebiSub_Start() {
 
     _KSub_LastEventTick := A_TickCount
     _KSub_FallbackMode := false
-    if (cfg.DiagKomorebiLog)
-        KSub_DiagLog("KomorebiSub: Setting timer with interval=" KSub_PollMs)
-    SetTimer(_KomorebiSub_Poll, KSub_PollMs)
+
+    ; Try async I/O — if connected and EnableAsync succeeds, use completion callbacks.
+    ; Otherwise fall back to legacy polling timer.
+    global _KSub_AsyncMode, KSub_MaintenanceMs
+    _KSub_AsyncMode := false
+    if (_KSub_Connected) {
+        if (_KomorebiSub_EnableAsync()) {
+            _KSub_AsyncMode := true
+            _KomorebiSub_IssueRead()
+        }
+    }
+
+    if (_KSub_AsyncMode) {
+        ; Async mode: slow maintenance timer for connect check, idle recycle, recovery
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("KomorebiSub: Async mode, maintenance timer=" KSub_MaintenanceMs)
+        SetTimer(_KomorebiSub_Maintenance, KSub_MaintenanceMs)
+    } else {
+        ; Legacy polling mode (or not yet connected — maintenance timer handles deferred async)
+        if (_KSub_Connected) {
+            ; Connected but async failed — use legacy poll
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("KomorebiSub: Legacy poll mode, interval=" KSub_PollMs)
+            SetTimer(_KomorebiSub_Poll, KSub_PollMs)
+        } else {
+            ; Not yet connected — start maintenance timer to check connection,
+            ; then enable async once connected
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("KomorebiSub: Awaiting connection, maintenance timer=" KSub_MaintenanceMs)
+            SetTimer(_KomorebiSub_Maintenance, KSub_MaintenanceMs)
+        }
+    }
 
     ; Do initial poll to populate all windows with workspace data immediately
     ; Runs after delay to ensure first winenum scan has populated the store
@@ -226,7 +262,7 @@ _KomorebiSub_Start() {
     SetTimer(_KSub_InitialPoll, -KSUB_INITIAL_POLL_DELAY_MS)
 
     if (cfg.DiagKomorebiLog)
-        KSub_DiagLog("KomorebiSub: Start complete, pipe=" _KSub_PipeName)
+        KSub_DiagLog("KomorebiSub: Start complete, pipe=" _KSub_PipeName " async=" _KSub_AsyncMode)
     return true
 }
 
@@ -285,9 +321,11 @@ _KSub_InitialPoll() {
 KomorebiSub_Stop() {
     global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected, _KSub_ClientPid
     global _KSub_FallbackMode, _KSub_ReadBuffer, _KSub_ReadBufferLen
+    global _KSub_ReadOverlapped, _KSub_AsyncMode, _KSub_ReadPending
 
     ; Stop all timers
     SetTimer(_KomorebiSub_Poll, 0)
+    SetTimer(_KomorebiSub_Maintenance, 0)
     SetTimer(_KSub_InitialPoll, 0)  ; Cancel one-shot timer if pending
 
     ; Stop fallback timer if active
@@ -295,6 +333,16 @@ KomorebiSub_Stop() {
         SetTimer(_KomorebiSub_PollFallback, 0)
         _KSub_FallbackMode := false
     }
+
+    ; Cancel pending async I/O BEFORE closing handles.
+    ; SafeDelete calls CancelIoEx and holds a reference in a static Map
+    ; until the cancellation callback fires (prevents use-after-free).
+    if (_KSub_ReadOverlapped && _KSub_hPipe) {
+        try _KSub_ReadOverlapped.SafeDelete(_KSub_hPipe)
+        _KSub_ReadOverlapped := 0
+    }
+    _KSub_ReadPending := false
+    _KSub_AsyncMode := false
 
     if (_KSub_ClientPid) {
         try ProcessClose(_KSub_ClientPid)
@@ -477,6 +525,266 @@ _KomorebiSub_Poll() {
     } catch as e {
         global LOG_PATH_STORE
         HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "KomorebiSub_Poll")
+    }
+}
+
+; ──────────────────────────────────────────────────────────────────
+; Async I/O (OVERLAPPED completion callback) — Stage 2
+; Replaces timer-based polling with OS-driven event delivery.
+; Falls back to _KomorebiSub_Poll if BindIoCompletionCallback fails.
+; ──────────────────────────────────────────────────────────────────
+
+; Attempt to enable async I/O via OVERLAPPED completion callback.
+; Binds the pipe handle to an I/O completion port so ReadFile completions
+; fire _KomorebiSub_OnReadComplete via the AHK message loop.
+; Returns true on success, false on failure (caller falls back to polling).
+_KomorebiSub_EnableAsync() {
+    global _KSub_hPipe, _KSub_ReadOverlapped, _KSub_AsyncMode, cfg
+
+    if (_KSub_AsyncMode)
+        return true  ; Already enabled (guard against double-call)
+
+    try {
+        ; Create OVERLAPPED instance with read completion callback
+        _KSub_ReadOverlapped := OVERLAPPED(_KomorebiSub_OnReadComplete)
+
+        ; Bind the pipe handle to the I/O completion port.
+        ; This calls BindIoCompletionCallback — once per handle, irreversible.
+        ; The MCode trampoline (~48 bytes) marshals thread pool -> AHK via SendMessageW.
+        OVERLAPPED.EnableIoCompletionCallback(_KSub_hPipe)
+
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("EnableAsync: BindIoCompletionCallback succeeded for hPipe=" _KSub_hPipe)
+        return true
+    } catch as e {
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("EnableAsync: FAILED err=" e.Message)
+        _KSub_ReadOverlapped := 0
+        return false
+    }
+}
+
+; Issue an async ReadFile on the komorebi pipe.
+; Must only be called when connected and no read is already pending.
+; The completion callback (_KomorebiSub_OnReadComplete) fires when data arrives.
+_KomorebiSub_IssueRead() {
+    global _KSub_hPipe, _KSub_ReadOverlapped, _KSub_ReadPending
+    global KSUB_READ_BUF, KSUB_READ_CHUNK_SIZE
+    global IPC_ERROR_IO_PENDING, IPC_ERROR_BROKEN_PIPE, cfg
+
+    if (_KSub_ReadPending)
+        return  ; Already have an outstanding read
+
+    if (!_KSub_hPipe || !_KSub_ReadOverlapped)
+        return
+
+    ; Clear the OVERLAPPED struct fields for reuse (Internal, InternalHigh, Offset)
+    _KSub_ReadOverlapped.Clear()
+
+    ; Issue async ReadFile — the buffer must remain valid until completion
+    bytesRead := 0
+    ok := DllCall("ReadFile"
+        , "ptr", _KSub_hPipe
+        , "ptr", KSUB_READ_BUF.Ptr
+        , "uint", KSUB_READ_CHUNK_SIZE
+        , "uint*", &bytesRead
+        , "ptr", _KSub_ReadOverlapped.Ptr
+        , "int")
+
+    if (ok) {
+        ; Completed synchronously (data was already in buffer).
+        ; The IOCP completion callback will still fire — don't process here.
+        _KSub_ReadPending := true
+        return
+    }
+
+    gle := DllCall("GetLastError", "uint")
+    if (gle = IPC_ERROR_IO_PENDING) {
+        ; Normal async case — I/O is pending, callback fires when data arrives
+        _KSub_ReadPending := true
+        return
+    }
+
+    ; Error — pipe broken or other failure
+    if (cfg.DiagKomorebiLog)
+        KSub_DiagLog("IssueRead: ReadFile FAILED err=" gle " (" Win32ErrorString(gle) ")")
+
+    if (gle = IPC_ERROR_BROKEN_PIPE) {
+        _KSub_ReadPending := false
+        _KomorebiSub_Start()
+    }
+}
+
+; Async read completion callback — called by OVERLAPPED library when ReadFile completes.
+; Signature: (overlappedObj, err, bytesTransferred) per OVERLAPPED.ahk calling convention.
+; Runs on the AHK thread (marshaled via SendMessageW from thread pool).
+_KomorebiSub_OnReadComplete(overlappedObj, err, bytesTransferred) { ; lint-ignore: dead-param
+    global _KSub_hPipe, _KSub_ReadPending, _KSub_LastEventTick, _KSub_AsyncMode
+    global _KSub_ReadBuffer, _KSub_ReadBufferLen
+    global KSUB_READ_BUF, KSUB_BUFFER_MAX_BYTES, IPC_ERROR_BROKEN_PIPE
+    global cfg
+    static _errCount := 0
+    static _backoffUntil := 0
+    if (A_TickCount < _backoffUntil) {
+        _KSub_ReadPending := false
+        return  ; In backoff — maintenance timer will re-issue later
+    }
+    try {
+
+    _KSub_ReadPending := false
+
+    ; Check for errors
+    if (err) {
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("OnReadComplete: error=" err)
+
+        ; ERROR_BROKEN_PIPE (109) = pipe disconnected
+        ; ERROR_OPERATION_ABORTED (995) = CancelIoEx from Stop()
+        if (err = IPC_ERROR_BROKEN_PIPE) {
+            _KomorebiSub_Start()
+            return
+        }
+        if (err = 995) {
+            ; Cancellation — do NOT re-issue or restart
+            return
+        }
+
+        ; Other error: try to recover by re-issuing read
+        if (_KSub_AsyncMode && _KSub_hPipe)
+            _KomorebiSub_IssueRead()
+        return
+    }
+
+    ; Success — process the data
+    if (bytesTransferred > 0) {
+        _KSub_LastEventTick := A_TickCount
+        chunk := StrGet(KSUB_READ_BUF.Ptr, bytesTransferred, "UTF-8")
+        chunkLen := StrLen(chunk)
+
+        ; Protect against unbounded buffer growth
+        if (_KSub_ReadBufferLen + chunkLen > KSUB_BUFFER_MAX_BYTES) {
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("OnReadComplete: Buffer overflow protection: reset (was " _KSub_ReadBufferLen ")")
+            _KSub_ReadBuffer := ""
+            _KSub_ReadBufferLen := 0
+        }
+
+        _KSub_ReadBuffer .= chunk
+        _KSub_ReadBufferLen += chunkLen
+
+        ; Extract complete JSON objects from buffer (same logic as _KomorebiSub_Poll)
+        consumed := 0
+        while true {
+            json := _KSub_ExtractOneJson(&_KSub_ReadBuffer, &consumed)
+            if (consumed > 0)
+                _KSub_ReadBufferLen -= consumed
+            if (json = "")
+                break
+            if (cfg.DiagKomorebiLog)
+                KSub_DiagLog("OnReadComplete: Got JSON object, len=" StrLen(json))
+            _KSub_OnNotification(json)
+        }
+
+        ; Safety clamp: if arithmetic drifted, resync via O(n) StrLen
+        if (_KSub_ReadBufferLen < 0 || (_KSub_ReadBuffer = "" && _KSub_ReadBufferLen != 0))
+            _KSub_ReadBufferLen := StrLen(_KSub_ReadBuffer)
+    }
+
+    ; Re-issue read for next data
+    if (_KSub_AsyncMode && _KSub_hPipe)
+        _KomorebiSub_IssueRead()
+
+    _errCount := 0
+    _backoffUntil := 0
+    } catch as e {
+        global LOG_PATH_STORE
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "KomorebiSub_OnReadComplete")
+        ; Try to keep reading even after error
+        _KSub_ReadPending := false
+        if (_KSub_AsyncMode && _KSub_hPipe)
+            _KomorebiSub_IssueRead()
+    }
+}
+
+; Maintenance timer for async mode. Runs at a slow interval (default 2000ms).
+; Handles connection completion, idle recycle, and read recovery.
+; Replaces the fast poll timer when async I/O is active.
+_KomorebiSub_Maintenance() {
+    global _KSub_hPipe, _KSub_hEvent, _KSub_Overlapped, _KSub_Connected
+    global _KSub_LastEventTick, KSub_IdleRecycleMs, _KSub_AsyncMode
+    global _KSub_ReadPending, KSub_PollMs, KSub_MaintenanceMs, cfg
+    static _errCount := 0
+    static _backoffUntil := 0
+    if (A_TickCount < _backoffUntil)
+        return
+    try {
+
+    if (!_KSub_hPipe)
+        return
+
+    ; 1. Check if async connect has completed (same logic as _KomorebiSub_Poll)
+    if (!_KSub_Connected && _KSub_hEvent) {
+        WAIT_OBJECT_0 := 0
+        waitRes := DllCall("WaitForSingleObject", "ptr", _KSub_hEvent, "uint", 0, "uint")
+        if (waitRes = WAIT_OBJECT_0) {
+            bytes := 0
+            ok := DllCall("GetOverlappedResult"
+                , "ptr", _KSub_hPipe
+                , "ptr", _KSub_Overlapped.Ptr
+                , "uint*", &bytes
+                , "int", 0
+                , "int")
+            if (ok) {
+                _KSub_Connected := true
+                DllCall("ResetEvent", "ptr", _KSub_hEvent)
+                if (cfg.DiagKomorebiLog)
+                    KSub_DiagLog("Maintenance: Connection established")
+
+                ; Now enable async I/O and issue first read
+                if (!_KSub_AsyncMode) {
+                    if (_KomorebiSub_EnableAsync()) {
+                        _KSub_AsyncMode := true
+                        _KomorebiSub_IssueRead()
+                        if (cfg.DiagKomorebiLog)
+                            KSub_DiagLog("Maintenance: Async mode enabled after connect")
+                    } else {
+                        ; Async setup failed — fall back to legacy polling
+                        if (cfg.DiagKomorebiLog)
+                            KSub_DiagLog("Maintenance: Async failed, switching to legacy poll")
+                        SetTimer(_KomorebiSub_Maintenance, 0)
+                        SetTimer(_KomorebiSub_Poll, KSub_PollMs)
+                        return
+                    }
+                } else {
+                    ; Async was pre-enabled, just issue first read
+                    _KomorebiSub_IssueRead()
+                }
+            }
+        }
+    }
+
+    if (!_KSub_Connected)
+        return
+
+    ; 2. Recovery: if no read is pending in async mode, re-issue
+    if (_KSub_AsyncMode && !_KSub_ReadPending) {
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("Maintenance: No read pending, re-issuing")
+        _KomorebiSub_IssueRead()
+    }
+
+    ; 3. Idle recycle: restart subscription if no events for too long
+    if ((A_TickCount - _KSub_LastEventTick) > KSub_IdleRecycleMs) {
+        if (cfg.DiagKomorebiLog)
+            KSub_DiagLog("Maintenance: Idle recycle after " (A_TickCount - _KSub_LastEventTick) "ms")
+        _KomorebiSub_Start()
+    }
+
+    _errCount := 0
+    _backoffUntil := 0
+    } catch as e {
+        global LOG_PATH_STORE
+        HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_STORE, "KomorebiSub_Maintenance")
     }
 }
 

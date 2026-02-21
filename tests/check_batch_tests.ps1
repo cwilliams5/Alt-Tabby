@@ -253,14 +253,13 @@ function BT_ResolveAhkInclude {
     $path = $path.Trim('"', "'")
     $path = $path -replace '%A_ScriptDir%', $scriptDir
 
-    if (-not [System.IO.Path]::IsPathRooted($path)) {
-        $path = Join-Path $currentFileDir $path
-    }
-
     try {
+        if (-not [System.IO.Path]::IsPathRooted($path)) {
+            $path = Join-Path $currentFileDir $path
+        }
         $path = [System.IO.Path]::GetFullPath($path)
     } catch {
-        return $null
+        return $null  # Illegal characters (e.g., C-style #include <windows.h> in comments)
     }
 
     if (Test-Path $path) { return $path }
