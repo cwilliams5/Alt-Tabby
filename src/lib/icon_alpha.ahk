@@ -1,22 +1,17 @@
 ;
 ; icon_alpha.ahk — Native icon alpha scan + mask application (MCode)
 ;
-; Replaces AHK NumGet/NumPut pixel loops with embedded x64 machine code.
+; Replaces AHK NumGet/NumPut pixel loops with embedded machine code.
 ; Source: tools/native_benchmark/native_src/icon_alpha.c
-; Build:  tools/native_benchmark/native_src/_compile_mcode.ps1
-; Extract: tools/native_benchmark/native_src/_extract_mcode.ps1
+; Build:  tools/mcode/build_mcode.ps1
 ;
-; No imports, no CRT, pure buffer computation. Position-independent.
+; No imports, no CRT, pure buffer computation. 32+64 bit support.
 ;
 #Requires AutoHotkey v2.0
+#Include MCodeLoader.ahk
 
 class IconAlpha {
-    static code := IconAlpha._LoadCode()
-
-    ; Offsets into the code buffer for each exported function
-    static _offsetApplyMaskOnly := 0
-    static _offsetScanOnly := 71
-    static _offsetScanAndApplyMask := 177
+    static _mc := IconAlpha._Init()
 
     /**
      * Scan pixel buffer for any non-zero alpha byte.
@@ -25,7 +20,7 @@ class IconAlpha {
      * @returns {Integer} 1 if alpha found, 0 if all alpha bytes are zero
      */
     static ScanOnly(pixelsBuf, pixelCount) {
-        return DllCall(this.code.Ptr + this._offsetScanOnly
+        return DllCall(this._mc['icon_scan_alpha_only']
             , "ptr", pixelsBuf, "uint", pixelCount, "cdecl int")
     }
 
@@ -37,7 +32,7 @@ class IconAlpha {
      * @param pixelCount Number of pixels (width * height)
      */
     static ApplyMaskOnly(pixelsBuf, maskBuf, pixelCount) {
-        DllCall(this.code.Ptr + this._offsetApplyMaskOnly
+        DllCall(this._mc['icon_apply_mask_only']
             , "ptr", pixelsBuf, "ptr", maskBuf, "uint", pixelCount, "cdecl")
     }
 
@@ -52,41 +47,16 @@ class IconAlpha {
      * @returns {Integer} 1 if original had alpha, 0 if not (mask applied)
      */
     static ScanAndApplyMask(pixelsBuf, maskBuf, pixelCount) {
-        return DllCall(this.code.Ptr + this._offsetScanAndApplyMask
+        return DllCall(this._mc['icon_scan_and_apply_mask']
             , "ptr", pixelsBuf, "ptr", maskBuf, "uint", pixelCount, "cdecl int")
     }
 
-    /**
-     * Decode base64 machine code into an executable buffer.
-     * Pattern: base64 → CryptStringToBinary → VirtualProtect(PAGE_EXECUTE_READWRITE)
-     */
-    static _LoadCode() {
-        static b64 := ""
-            . "TIvKSIXJdD5IhdJ0OUGD+AFyM0yL0Uwr0kGL0EwryZBB9wQJ////AEmN"
-            . "BAl1CIEJAAAA/+sGQsZEEAMASIPBBEiD6gF12sNIhcl0XIXSdFhFM8BI"
-            . "jUEDg/oIcjZBuQgAAAAPH0QAAA+2SBwKSBgKSBQKSBAKSAwKSAgKSAQK"
-            . "CHUqSIPAIEGDwAhBg8EIRDvKdtVEO8JzEYA4AHUPSIPABEH/wEQ7wnLv"
-            . "M8DDuAEAAADDSIlcJAhIi9pMi9FIhckPhK0AAABFhcAPhKQAAABFM8lI"
-            . "jUEDQYP4CHIxQbsIAAAAD7ZIHApIGApIFApIEApIDApICApIBAoIdV1I"
-            . "g8AgQYPBCEGDwwhFO9h21UU7yHMRgDgAdUJIg8AEQf/BRTvIcu9Ihdt0"
-            . "S0WFwHRGSYvSQYvISCvTSSvaZg8fhAAAAAAAQvcEE////wBKjQQTdRRB"
-            . "gQoAAAD/6xC4AQAAAEiLXCQIw8ZEEAMASYPCBEiD6QF1z0iLXCQIM8DD"
-
-        ; 378 bytes of x64 machine code (3 functions)
-        static codeSize := 378
-
-        if (A_PtrSize != 8)
-            throw Error("IconAlpha MCode requires 64-bit AHK")
-
-        code := Buffer(codeSize)
-        if !DllCall("Crypt32\CryptStringToBinary", "Str", b64, "UInt", 0, "UInt", 1
-                , "Ptr", code, "UInt*", code.Size, "Ptr", 0, "Ptr", 0, "UInt")
-            throw Error("IconAlpha: Failed to decode base64 machine code")
-
-        if !DllCall("VirtualProtect", "Ptr", code, "Ptr", code.Size
-                , "UInt", 0x40, "UInt*", &old := 0, "UInt")
-            throw Error("IconAlpha: Failed to mark code as executable")
-
-        return code
+    static _Init() {
+        static configs := {
+            64: "TIvKSIXJdD5IhdJ0OUGD+AFyM0yL0Uwr0kGL0EwryZBB9wQJ////AEmNBAl1CIEJAAAA/+sGQsZEEAMASIPBBEiD6gF12sPMzMzMzMzMzMxIhcl0XIXSdFhFM8BIjUEDg/oIcjZBuQgAAAAPH0QAAA+2SBwKSBgKSBQKSBAKSAwKSAgKSAQKCHUqSIPAIEGDwAhBg8EIRDvKdtVEO8JzEYA4AHUPSIPABEH/wEQ7wnLvM8DDuAEAAADDzMzMzMzMSIlcJAhIi9pMi9FIhckPhK0AAABFhcAPhKQAAABFM8lIjUEDQYP4CHIxQbsIAAAAD7ZIHApIGApIFApIEApIDApICApIBAoIdV1Ig8AgQYPBCEGDwwhFO9h21UU7yHMRgDgAdUJIg8AEQf/BRTvIcu9Ihdt0S0WFwHRGSYvSQYvISCvTSSvaZg8fhAAAAAAAQvcEE////wBKjQQTdRRBgQoAAAD/6xC4AQAAAEiLXCQIw8ZEEAMASYPCBEiD6QF1z0iLXCQIM8DDAABQAMCAAw==",
+            32: "i0QkBIXAdDWLVCQIhdJ0LYtMJAyFyXQlK9BmDx9EAAD3BAL///8AdQiBCAAAAP/rBMZAAwCDwASD6QF148PMzItEJARWV4XAdFOLfCQQhf90S4PAAzPSg/8IciqNcgiQikgcCkgYCkgUCkgQCkgMCkgICkgECgh1KYPGCIPAIIPCCDv3dto713MTZg8fRAAAgDgAdQ1Cg8AEO9dy818zwF7DX7gBAAAAXsPMzMzMzMyLVCQEU1ZXhdIPhJcAAACLdCQYhfYPhIsAAAAz/41CA4P+CHIxjV8IDx+EAAAAAACKSBwKSBgKSBQKSBAKSAwKSAgKSAQKCHVIg8MIg8Agg8cIO9522jv+cxNmDx9EAACAOAB1LEeDwAQ7/nLzi0QkFIXAdDGF9nQtK8IPH0QAAPcEEP///wB1EYEKAAAA/+sNX164AQAAAFvDxkIDAIPCBIPuAXXaX14zwFvDAABAALCAAw==",
+            export: "icon_apply_mask_only,icon_scan_alpha_only,icon_scan_and_apply_mask"
+        }
+        return MCodeLoader(configs)
     }
 }
