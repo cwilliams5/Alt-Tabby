@@ -1,6 +1,6 @@
 # check_batch_patterns.ps1 - Batched forbidden/outdated code pattern checks
 # Combines 5 pattern checks into one PowerShell process with shared file cache.
-# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison
+# Sub-checks: code_patterns, logging_hygiene, v1_patterns, send_patterns, display_fields, viewer_columns, map_dot_access, dirty_tracking, direct_record_mutation, fr_guard, copydata_contract, scan_pairing, setcallbacks_wiring, cache_path_invariants, numeric_string_comparison
 #
 # Usage: powershell -File tests\check_batch_patterns.ps1 [-SourceDir "path\to\src"]
 # Exit codes: 0 = all pass, 1 = any check failed
@@ -993,6 +993,129 @@ if ($null -ne $storeFullPath -and $fileCache.ContainsKey($storeFullPath)) {
 }
 $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_display_fields"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 5b: viewer_columns
+# Verify viewer columns (gViewer_ColFields, gViewer_Columns, _Viewer_BuildRowArgs)
+# stay in sync with DISPLAY_FIELDS from window_list.ahk
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+$viewerRelPath = "viewer\viewer.ahk"
+$viewerFullPath = if ($relToFull.ContainsKey($viewerRelPath)) { $relToFull[$viewerRelPath] } else { $null }
+
+if ($null -ne $viewerFullPath -and $fileCache.ContainsKey($viewerFullPath) -and
+    $null -ne $storeFullPath -and $fileCacheText.ContainsKey($storeFullPath)) {
+
+    $viewerContent = $fileCacheText[$viewerFullPath]
+    $viewerLines = $fileCache[$viewerFullPath]
+    $wsContentVC = $fileCacheText[$storeFullPath]
+
+    # --- Parse gViewer_Columns ---
+    $viewerHeaders = [System.Collections.ArrayList]::new()
+    if ($viewerContent -match 'global\s+gViewer_Columns\s*:=\s*\[(.*?)\]') {
+        foreach ($m in [regex]::Matches($Matches[1], '"(\w+)"')) {
+            [void]$viewerHeaders.Add($m.Groups[1].Value)
+        }
+    }
+
+    # --- Parse gViewer_ColFields ---
+    $viewerColFields = [System.Collections.ArrayList]::new()
+    if ($viewerContent -match 'global\s+gViewer_ColFields\s*:=\s*\[(.*?)\]') {
+        foreach ($m in [regex]::Matches($Matches[1], '"(\w+)"')) {
+            [void]$viewerColFields.Add($m.Groups[1].Value)
+        }
+    }
+
+    # --- Parse DISPLAY_FIELDS from store ---
+    $displayFields = [System.Collections.ArrayList]::new()
+    if ($wsContentVC -match '(?s)global\s+DISPLAY_FIELDS\s*:=\s*\[(.*?)\]') {
+        foreach ($m in [regex]::Matches($Matches[1], '"(\w+)"')) {
+            [void]$displayFields.Add($m.Groups[1].Value)
+        }
+    }
+
+    # --- Parse _Viewer_BuildRowArgs field references ---
+    $buildRowFields = [System.Collections.Generic.HashSet[string]]::new()
+    $brFuncStart = -1
+    for ($vi = 0; $vi -lt $viewerLines.Count; $vi++) {
+        if ($viewerLines[$vi] -match '^\s*_Viewer_BuildRowArgs\s*\(') {
+            $brFuncStart = $vi; break
+        }
+    }
+    if ($brFuncStart -ge 0) {
+        $brBody = [System.Text.StringBuilder]::new()
+        $brDepth = 0; $brStarted = $false
+        for ($vi = $brFuncStart; $vi -lt $viewerLines.Count; $vi++) {
+            $brLine = $viewerLines[$vi]
+            [void]$brBody.AppendLine($brLine)
+            foreach ($c in $brLine.ToCharArray()) {
+                if ($c -eq '{') { $brDepth++; $brStarted = $true }
+                elseif ($c -eq '}') { $brDepth-- }
+            }
+            if ($brStarted -and $brDepth -le 0) { break }
+        }
+        $brText = $brBody.ToString()
+        foreach ($m in [regex]::Matches($brText, '_Viewer_Get\s*\(\s*\w+\s*,\s*"(\w+)"')) {
+            [void]$buildRowFields.Add($m.Groups[1].Value)
+        }
+    }
+
+    # --- Fields the viewer intentionally does not display ---
+    # workspaceId: internal komorebi ID (viewer shows workspaceName)
+    # monitorHandle: raw HMONITOR (viewer shows monitorLabel)
+    $viewerExcludedFields = [System.Collections.Generic.HashSet[string]]::new()
+    [void]$viewerExcludedFields.Add("workspaceId")
+    [void]$viewerExcludedFields.Add("monitorHandle")
+
+    # --- Validate ---
+    $vcFailed = $false
+
+    # 1. Header/field array length match
+    if ($viewerHeaders.Count -gt 0 -and $viewerColFields.Count -gt 0 -and $viewerHeaders.Count -ne $viewerColFields.Count) {
+        $vcFailed = $true
+        [void]$failOutput.AppendLine("")
+        [void]$failOutput.AppendLine("  FAIL: gViewer_Columns ($($viewerHeaders.Count) headers) and gViewer_ColFields ($($viewerColFields.Count) fields) have different lengths")
+    }
+
+    # 2. Every DISPLAY_FIELDS entry (minus excluded) must appear in gViewer_ColFields
+    if ($displayFields.Count -gt 0 -and $viewerColFields.Count -gt 0) {
+        $colFieldSet = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($f in $viewerColFields) { [void]$colFieldSet.Add($f) }
+
+        $missingInViewer = [System.Collections.ArrayList]::new()
+        foreach ($f in $displayFields) {
+            if (-not $viewerExcludedFields.Contains($f) -and -not $colFieldSet.Contains($f)) {
+                [void]$missingInViewer.Add($f)
+            }
+        }
+        if ($missingInViewer.Count -gt 0) {
+            $vcFailed = $true
+            [void]$failOutput.AppendLine("")
+            [void]$failOutput.AppendLine("  FAIL: DISPLAY_FIELDS has fields not shown in viewer gViewer_ColFields: $($missingInViewer -join ', ')")
+            [void]$failOutput.AppendLine("        Add column to viewer or add to `$viewerExcludedFields in check_batch_patterns.ps1")
+        }
+    }
+
+    # 3. Every gViewer_ColFields entry (minus hwnd) must be rendered in _Viewer_BuildRowArgs
+    if ($viewerColFields.Count -gt 0 -and $buildRowFields.Count -gt 0) {
+        $missingInBuildRow = [System.Collections.ArrayList]::new()
+        foreach ($f in $viewerColFields) {
+            if ($f -ne "hwnd" -and -not $buildRowFields.Contains($f)) {
+                [void]$missingInBuildRow.Add($f)
+            }
+        }
+        if ($missingInBuildRow.Count -gt 0) {
+            $vcFailed = $true
+            [void]$failOutput.AppendLine("")
+            [void]$failOutput.AppendLine("  FAIL: gViewer_ColFields has fields not rendered in _Viewer_BuildRowArgs: $($missingInBuildRow -join ', ')")
+        }
+    }
+
+    if ($vcFailed) { $anyFailed = $true }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_viewer_columns"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
 # Sub-check 6: map_dot_access
