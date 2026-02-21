@@ -83,12 +83,12 @@ RunUnitTests_CoreStore() {
         {lastActivatedTick: 300, z: 1, hwnd: 3},
         {lastActivatedTick: 200, z: 2, hwnd: 4}
     ]
-    _WS_InsertionSort(sortArr, _WS_CmpMRU)
+    QuickSort(sortArr, _WS_CmpMRU)
     ; Expected MRU order: tick 300 (hwnd 2), tick 300 (hwnd 3), tick 200 (hwnd 4), tick 100 (hwnd 1)
-    AssertEq(sortArr[1].hwnd, 2, "_WS_InsertionSort MRU: first = hwnd 2 (tick 300, lower hwnd)")
-    AssertEq(sortArr[2].hwnd, 3, "_WS_InsertionSort MRU: second = hwnd 3 (tick 300, higher hwnd)")
-    AssertEq(sortArr[3].hwnd, 4, "_WS_InsertionSort MRU: third = hwnd 4 (tick 200)")
-    AssertEq(sortArr[4].hwnd, 1, "_WS_InsertionSort MRU: fourth = hwnd 1 (tick 100)")
+    AssertEq(sortArr[1].hwnd, 2, "QuickSort MRU: first = hwnd 2 (tick 300, lower hwnd)")
+    AssertEq(sortArr[2].hwnd, 3, "QuickSort MRU: second = hwnd 3 (tick 300, higher hwnd)")
+    AssertEq(sortArr[3].hwnd, 4, "QuickSort MRU: third = hwnd 4 (tick 200)")
+    AssertEq(sortArr[4].hwnd, 1, "QuickSort MRU: fourth = hwnd 1 (tick 100)")
 
     ; ============================================================
     ; Race Condition Prevention Tests

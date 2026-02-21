@@ -464,9 +464,9 @@ _Viewer_SortItems(items, sortMode) {
     if (!IsObject(items) || items.Length <= 1)
         return
     if (sortMode = "Z")
-        _Viewer_InsertionSort(items, _Viewer_CmpZ)
+        QuickSort(items, _Viewer_CmpZ)
     else
-        _Viewer_InsertionSort(items, _Viewer_CmpMRU)
+        QuickSort(items, _Viewer_CmpMRU)
 }
 
 _Viewer_SortByColumn(items, colIdx, ascending) {
@@ -481,7 +481,7 @@ _Viewer_SortByColumn(items, colIdx, ascending) {
 
     ; Build comparator closure
     cmp := _Viewer_MakeColumnCmp(fieldName, isString, ascending)
-    _Viewer_InsertionSort(items, cmp)
+    QuickSort(items, cmp)
 }
 
 _Viewer_MakeColumnCmp(fieldName, isString, ascending) {
@@ -501,21 +501,6 @@ _Viewer_CmpCol(a, b, fieldName, isString, ascending) {
     return ascending ? result : -result
 }
 
-_Viewer_InsertionSort(arr, cmp) {
-    len := arr.Length
-    Loop len {
-        i := A_Index
-        if (i = 1)
-            continue
-        key := arr[i]
-        j := i - 1
-        while (j >= 1 && cmp(arr[j], key) > 0) {
-            arr[j + 1] := arr[j]
-            j -= 1
-        }
-        arr[j + 1] := key
-    }
-}
 
 _Viewer_CmpZ(a, b) {
     az := _Viewer_Get(a, "z", 0)
