@@ -58,6 +58,7 @@ A_MenuMaskKey := "vkE8"
 global gGUI_Revealed := false
 ; gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking declared in gui_input.ahk (sole writer)
 ; gGUI_FooterText, gGUI_WorkspaceMode declared in gui_workspace.ahk (sole writer)
+; gGUI_MonitorMode, gGUI_OverlayMonitorHandle declared in gui_monitor.ahk (sole writer)
 ; gGUI_CurrentWSName declared in gui_state.ahk (workspace state owner)
 
 global gGUI_OverlayVisible := false
@@ -135,7 +136,10 @@ _GUI_Main_Init() {
     Win_InitDpiAwareness()
     Gdip_Startup()
 
-    ; Initialize footer text based on workspace mode
+    ; Initialize monitor mode from config default
+    GUI_InitMonitorMode()
+
+    ; Initialize footer text based on workspace/monitor mode
     GUI_UpdateFooterText()
 
     ; ========================= PRODUCER INIT =========================

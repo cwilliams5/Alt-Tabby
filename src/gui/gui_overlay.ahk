@@ -71,6 +71,24 @@ _GUI_ClearLayeredContent() {
     DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
 }
 
+; ========================= MONITOR TARGETING =========================
+
+; Get the target hwnd for overlay monitor placement.
+; When OverlayMonitor=FocusedWindow, uses the foreground window's monitor.
+; When OverlayMonitor=Primary, uses the overlay's own monitor (current behavior).
+GUI_GetTargetMonitorHwnd() {
+    global gGUI_BaseH, cfg
+    if (cfg.GUI_OverlayMonitor = "Primary")
+        return gGUI_BaseH
+    ; Use the foreground window's monitor (where the user is looking)
+    try fgHwnd := WinExist("A")
+    catch
+        fgHwnd := 0
+    if (fgHwnd && fgHwnd != gGUI_BaseH)
+        return fgHwnd
+    return gGUI_BaseH  ; Fallback to overlay's current monitor
+}
+
 ; ========================= LAYOUT CALCULATIONS =========================
 
 GUI_ComputeRowsToShow(count) {
@@ -131,13 +149,14 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow, gGUI_BaseH)
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsToShow)
 
     waL := 0
     waT := 0
     waR := 0
     waB := 0
-    Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
+    targetHwnd := GUI_GetTargetMonitorHwnd()
+    Win_GetWorkAreaFromHwnd(targetHwnd, &waL, &waT, &waR, &waB)
     monScale := Win_GetMonitorScale(waL, waT, waR, waB)
 
     xPhys := Round(xDip * monScale)
@@ -159,13 +178,15 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
         Win_DwmFlush()
 }
 
-GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow, hWnd) {
+GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {
     global cfg
     waL := 0
     waT := 0
     waR := 0
     waB := 0
-    Win_GetWorkAreaFromHwnd(hWnd, &waL, &waT, &waR, &waB)
+    ; Use focused window's monitor for positioning, not overlay's own
+    targetHwnd := GUI_GetTargetMonitorHwnd()
+    Win_GetWorkAreaFromHwnd(targetHwnd, &waL, &waT, &waR, &waB)
 
     monScale := Win_GetMonitorScale(waL, waT, waR, waB)
 
@@ -208,13 +229,14 @@ GUI_CreateBase() {
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired)
 
     waL := 0
     waT := 0
     waR := 0
     waB := 0
-    Win_GetWorkAreaFromHwnd(gGUI_BaseH, &waL, &waT, &waR, &waB)
+    targetHwnd := GUI_GetTargetMonitorHwnd()
+    Win_GetWorkAreaFromHwnd(targetHwnd, &waL, &waT, &waR, &waB)
     monScale := Win_GetMonitorScale(waL, waT, waR, waB)
 
     xPhys := Round(xDip * monScale)

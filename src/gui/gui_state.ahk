@@ -202,10 +202,12 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gStats_TabSteps += 1
 
 
-            ; Freeze: save ALL items (for workspace toggle), then filter
+            ; Freeze: save ALL items (for workspace/monitor toggle), then filter
             ; Shallow copy — same item refs, independent array container
             gGUI_ToggleBase := gGUI_LiveItems.Clone()
-            gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+            GUI_CaptureOverlayMonitor()
+            GUI_StampMonitorLabels(gGUI_ToggleBase)
+            gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
 
             ; DEBUG: Log workspace data of display items
             if (cfg.DiagEventLog) {
@@ -436,7 +438,7 @@ GUI_HandleWorkspaceSwitch() {
 ; change is a context switch — the moved/focused window is what the user wants.
 GUI_RefilterForWorkspaceChange() {
     global gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_ToggleBase
-    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
     gGUI_ScrollTop := 0
     gGUI_Sel := 1
     fgHwnd := DllCall("GetForegroundWindow", "Ptr")
@@ -460,7 +462,20 @@ GUI_ApplyWorkspaceFilter() {
     ; repaint, reassigning gGUI_DisplayItems via GUI_OnInterceptorEvent. Follows the
     ; keyboard-hooks rule: "keep Critical during render" (corrupted GUI > keyboard lag).
     Critical "On"
-    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
+    _GUI_ResetSelectionToMRU()
+    rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
+    GUI_ResizeToRows(rowsDesired)
+    GUI_Repaint()
+    Critical "Off"
+}
+
+; Re-filter display items after monitor mode toggle.
+; Same pattern as ApplyWorkspaceFilter — preserves MRU selection.
+GUI_ApplyMonitorFilter() {
+    global gGUI_DisplayItems, gGUI_ToggleBase
+    Critical "On"
+    gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
     _GUI_ResetSelectionToMRU()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)
@@ -1604,6 +1619,7 @@ _GUI_RobustActivate(hwnd) {
 Stats_AccumulateSession() {
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps
     global gStats_Cancellations, gStats_CrossWorkspace, gStats_WorkspaceToggles
+    global gStats_MonitorToggles
     global gStats_LastSent
 
     ; Calculate deltas since last send
@@ -1613,9 +1629,10 @@ Stats_AccumulateSession() {
     dCancels := gStats_Cancellations - gStats_LastSent.Get("Cancellations", 0)
     dCrossWS := gStats_CrossWorkspace - gStats_LastSent.Get("CrossWorkspace", 0)
     dToggles := gStats_WorkspaceToggles - gStats_LastSent.Get("WorkspaceToggles", 0)
+    dMonToggles := gStats_MonitorToggles - gStats_LastSent.Get("MonitorToggles", 0)
 
     ; Skip if nothing to send
-    if (dAltTabs = 0 && dQuick = 0 && dTabs = 0 && dCancels = 0 && dCrossWS = 0 && dToggles = 0)
+    if (dAltTabs = 0 && dQuick = 0 && dTabs = 0 && dCancels = 0 && dCrossWS = 0 && dToggles = 0 && dMonToggles = 0)
         return
 
     ; Accumulate directly into lifetime stats (in-process, no IPC)
@@ -1632,6 +1649,8 @@ Stats_AccumulateSession() {
         msg["TotalCrossWorkspace"] := dCrossWS
     if (dToggles > 0)
         msg["TotalWorkspaceToggles"] := dToggles
+    if (dMonToggles > 0)
+        msg["TotalMonitorToggles"] := dMonToggles
 
     Stats_Accumulate(msg)
 
@@ -1642,4 +1661,5 @@ Stats_AccumulateSession() {
     gStats_LastSent["Cancellations"] := gStats_Cancellations
     gStats_LastSent["CrossWorkspace"] := gStats_CrossWorkspace
     gStats_LastSent["WorkspaceToggles"] := gStats_WorkspaceToggles
+    gStats_LastSent["MonitorToggles"] := gStats_MonitorToggles
 }

@@ -46,6 +46,7 @@ global FR_EV_ACTIVATE_GONE    := 32  ; d1=hwnd — target window closed before a
 ; Workspace events (40-49)
 global FR_EV_WS_SWITCH        := 40  ; d1=0 — komorebi workspace changed (name in dump state)
 global FR_EV_WS_TOGGLE        := 41  ; d1=newMode(1=all,2=current) d2=displayCount
+global FR_EV_MON_TOGGLE       := 42  ; d1=newMode(1=all,2=current) d2=displayCount
 
 ; WinEvent hook events (50-59)
 global FR_EV_FOCUS             := 50  ; d1=hwnd — focus changed to window in store
@@ -425,7 +426,7 @@ _FR_GetEventName(ev) {
     global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
     global FR_EV_GHOST_PURGE, FR_EV_BLACKLIST_PURGE
     global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
-    global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE
+    global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE, FR_EV_MON_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
 
@@ -460,6 +461,7 @@ _FR_GetEventName(ev) {
         case FR_EV_ACTIVATE_GONE:     return "ACTIVATE_GONE"
         case FR_EV_WS_SWITCH:         return "WS_SWITCH"
         case FR_EV_WS_TOGGLE:         return "WS_TOGGLE"
+        case FR_EV_MON_TOGGLE:        return "MON_TOGGLE"
         case FR_EV_FOCUS:             return "FOCUS"
         case FR_EV_FOCUS_SUPPRESS:    return "FOCUS_SUPPRESS"
         case FR_EV_PRODUCER_BACKOFF:  return "PRODUCER_BACKOFF"
@@ -490,7 +492,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
     global FR_EV_GHOST_PURGE, FR_EV_BLACKLIST_PURGE
     global FR_EV_SESSION_START, FR_EV_PRODUCER_INIT, FR_EV_ACTIVATE_GONE
-    global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE
+    global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE, FR_EV_MON_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
 
@@ -557,6 +559,9 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
         case FR_EV_WS_SWITCH:
             return ""
         case FR_EV_WS_TOGGLE:
+            modeStr := (d1 = 1) ? "all" : (d1 = 2) ? "current" : "?(" d1 ")"
+            return "mode=" modeStr "  displayCount=" d2
+        case FR_EV_MON_TOGGLE:
             modeStr := (d1 = 1) ? "all" : (d1 = 2) ? "current" : "?(" d1 ")"
             return "mode=" modeStr "  displayCount=" d2
         case FR_EV_FOCUS:

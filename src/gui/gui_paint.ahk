@@ -92,7 +92,7 @@ GUI_Repaint() {
     yDip := 0
     wDip := 0
     hDip := 0
-    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired, gGUI_BaseH)
+    GUI_GetWindowRect(&xDip, &yDip, &wDip, &hDip, rowsDesired)
     waL := 0
     waT := 0
     waR := 0
@@ -243,6 +243,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
+    global gGUI_MonitorMode, MON_MODE_CURRENT
 
     ; ===== TIMING: EnsureResources =====
     tPO_Start := A_TickCount
@@ -284,7 +285,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     ; dataKey matches store wire format property names directly
     static colDefs := [
         ["GUI_ColFixed6", "GUI_Col6Name", "Col6"],
-        ["GUI_ColFixed5", "GUI_Col5Name", "Col5"],
+        ["GUI_ColFixed5", "GUI_Col5Name", "monitorLabel"],
         ["GUI_ColFixed4", "GUI_Col4Name", "workspaceName"],
         ["GUI_ColFixed3", "GUI_Col3Name", "pid"],
         ["GUI_ColFixed2", "GUI_Col2Name", "hwndHex"]
@@ -360,8 +361,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             rectY := contentTopY
         }
         emptyText := cfg.GUI_EmptyListText
-        if (gGUI_WorkspaceMode = WS_MODE_CURRENT)
+        if (gGUI_MonitorMode = MON_MODE_CURRENT && gGUI_WorkspaceMode = WS_MODE_CURRENT)
+            emptyText := "No windows on this workspace and monitor"
+        else if (gGUI_WorkspaceMode = WS_MODE_CURRENT)
             emptyText := "No windows on this workspace"
+        else if (gGUI_MonitorMode = MON_MODE_CURRENT)
+            emptyText := "No windows on this monitor"
         Gdip_DrawCenteredText(g, emptyText, rectX, rectY, rectW, rectH, gGdip_Res["brMain"], gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
     } else if (rowsToDraw > 0) {
         ; ===== TIMING: Row loop start =====

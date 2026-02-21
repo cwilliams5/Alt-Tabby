@@ -35,6 +35,10 @@ global gGUI_OverlayH := 0  ; Window handle - production code checks this
 global gGUI_TabCount := 0
 global gGUI_FirstTabTick := 0
 global gGUI_WorkspaceMode := "all"
+global gGUI_MonitorMode := "all"
+global MON_MODE_ALL := "all"
+global MON_MODE_CURRENT := "current"
+global gGUI_OverlayMonitorHandle := 0
 global gGUI_CurrentWSName := ""
 global gGUI_FooterText := ""
 global gGUI_Revealed := false
@@ -62,6 +66,7 @@ global gStats_TabSteps := 0
 global gStats_Cancellations := 0
 global gStats_CrossWorkspace := 0
 global gStats_WorkspaceToggles := 0
+global gStats_MonitorToggles := 0
 global gStats_LastSent := Map()
 
 ; Store globals (mocked for GUI tests — production uses embedded store in gui_main.ahk)
@@ -266,7 +271,7 @@ global FR_EV_REFRESH := 20, FR_EV_ENRICH_REQ := 22, FR_EV_ENRICH_RESP := 23
 global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 26, FR_EV_BLACKLIST_PURGE := 27
 global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
 global FR_EV_SESSION_START := 30, FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32
-global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41
+global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41, FR_EV_MON_TOGGLE := 42
 global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51
 global FR_ST_IDLE := 0, FR_ST_ALT_PENDING := 1, FR_ST_ACTIVE := 2
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
@@ -281,6 +286,25 @@ INT_ShouldBypassWindow(hwnd := 0) {
 INT_SetBypassMode(shouldBypass) {
     global gINT_BypassMode
     gINT_BypassMode := shouldBypass
+}
+
+; Monitor mode mocks (gui_monitor.ahk not included in tests)
+GUI_CaptureOverlayMonitor() {
+    ; No-op in tests
+}
+GUI_StampMonitorLabels(items) {
+    ; No-op in tests
+}
+GUI_FilterByMonitorMode(items) {
+    global gGUI_MonitorMode, MON_MODE_ALL
+    if (gGUI_MonitorMode = MON_MODE_ALL)
+        return items
+    ; In test mode with monitor filter active, return items as-is
+    ; (tests would need to set up monitor handles for real filtering)
+    return items
+}
+GUI_GetOverlayMonitorLabel() {
+    return "Mon 1"
 }
 
 ; Mock GUI objects (production code calls gGUI_Base.Show(), gGUI_Base.Hide(), etc.)
@@ -326,6 +350,7 @@ ResetGUIState() {
     global gMock_PreCachedIcons, gGdip_IconCache
     global gMock_StoreItems, gMock_StoreItemsMap
     global gMock_RepaintCount
+    global gGUI_MonitorMode, gGUI_OverlayMonitorHandle, gStats_MonitorToggles
 
     gGUI_State := "IDLE"
     gGUI_LiveItems := []
@@ -370,6 +395,9 @@ ResetGUIState() {
     gStats_CrossWorkspace := 0
     gStats_WorkspaceToggles := 0
     gStats_LastSent := Map()
+    gGUI_MonitorMode := "all"
+    gGUI_OverlayMonitorHandle := 0
+    gStats_MonitorToggles := 0
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
     ; Cancel any pending pre-cache timer from previous test
