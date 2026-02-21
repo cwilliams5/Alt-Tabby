@@ -429,7 +429,7 @@ GUI_ApplyWorkspaceFilter() {
     Critical "On"
     gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
     Critical "Off"
-    GUI_ResetSelectionToMRU()
+    _GUI_ResetSelectionToMRU()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)
     GUI_Repaint()
@@ -441,7 +441,7 @@ GUI_ApplyWorkspaceFilter() {
 ; Parameters:
 ;   listRef - Optional reference to the list to use (default: gGUI_DisplayItems)
 ; Returns: The new selection index
-GUI_ResetSelectionToMRU(listRef := "") {
+_GUI_ResetSelectionToMRU(listRef := "") {
     global gGUI_Sel, gGUI_ScrollTop, gGUI_DisplayItems, gGUI_WSContextSwitch
     items := (listRef != "") ? listRef : gGUI_DisplayItems
 
