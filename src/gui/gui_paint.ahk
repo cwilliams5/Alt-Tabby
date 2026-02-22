@@ -10,6 +10,7 @@
 
 global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
 global gPaint_SessionPaintCount := 0  ; How many paints this session
+global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
 
 ; Layout state (written during paint, read by gui_main/gui_input)
 global gGUI_LastRowsDesired := -1
@@ -47,6 +48,16 @@ Paint_LogStartSession() {
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {
+    ; Reentrancy guard: Win32 calls (UpdateLayeredWindow, SetWindowPos) pump the
+    ; message queue, which dispatches queued WinEvent callbacks mid-paint. Those
+    ; callbacks update the store and trigger GUI_PatchCosmeticUpdates → GUI_Repaint,
+    ; creating nested repaints that paint intermediate state immediately overwritten.
+    ; Guard skips nested calls; the outer paint finishes with correct final state. (#90)
+    global gPaint_RepaintInProgress
+    if (gPaint_RepaintInProgress)
+        return
+    gPaint_RepaintInProgress := true
+
     Profiler.Enter("GUI_Repaint") ; @profile
     Critical "On"  ; Protect GDI+ back buffer from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
@@ -185,6 +196,7 @@ GUI_Repaint() {
         Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " backbuf=" Round(tBackbuf, 2) " paintOverlay=" Round(tPaintOverlay, 2) " buffers=" Round(tBuffers, 2) " updateLayer=" Round(tUpdateLayer, 2) " reveal=" Round(tReveal, 2))
     }
     Profiler.Leave() ; @profile
+    gPaint_RepaintInProgress := false
 }
 
 _GUI_RevealBoth() {
