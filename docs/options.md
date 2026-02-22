@@ -592,6 +592,8 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `FlightRecorder` | bool | `false` | - | Enable in-memory flight recorder. Press F12 after a missed Alt-Tab to dump the last ~30s of events to the recorder/ folder. Near-zero performance impact. |
 | `FlightRecorderBufferSize` | int | `2000` | `500` - `10000` | Number of events kept in the flight recorder ring buffer. 2000 ≈ 30s of typical activity. Higher values capture more history at ~48 bytes per slot. |
 | `FlightRecorderHotkey` | string | `*F12` | - | Hotkey to dump the flight recorder buffer. Use AHK v2 hotkey syntax (e.g. *F12, ^F12, +F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Pass-through: the key still reaches other apps. |
+| `ProfilerHotkey` | string | `*F11` | - | Hotkey to toggle the build-time profiler (start/stop). Use AHK v2 hotkey syntax (e.g. *F11, ^F11). * prefix = fire regardless of modifiers (works during Alt-Tab). Only functional in --profile builds. |
+| `ProfilerBufferSize` | int | `50000` | `1000` - `500000` | Maximum profiler events in ring buffer. 50000 ≈ several minutes of heavy activity. Oldest events overwritten when full. |
 | `ViewerRefreshMs` | int | `500` | `100` - `5000` | Debug viewer refresh interval (ms). Lower = more responsive viewer but slightly more CPU. Only applies while the viewer window is visible. |
 | `ChurnLog` | bool | `false` | - | Log revision bump sources to %TEMP%\\tabby_store_error.log. Use when store rev is churning rapidly when idle. |
 | `KomorebiLog` | bool | `false` | - | Log komorebi subscription events to %TEMP%\\tabby_ksub_diag.log. Use when workspace tracking has issues. |
@@ -621,4 +623,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-21 with 261 total settings.*
+*Generated on 2026-02-21 with 263 total settings.*
