@@ -28,7 +28,7 @@ global gBE_OriginalTitle := ""
 global gBE_OriginalClass := ""
 global gBE_OriginalPair := ""
 global gBE_SavedChanges := false
-global gBE_LauncherHwnd := 0
+global gBE_LauncherHwnd := 0  ; lint-ignore: dead-global  ; Set by init, consumed by alt_tabby.ahk exit handler
 
 ; ============================================================
 ; PUBLIC API
@@ -241,11 +241,6 @@ _BE_SaveToFile() {
     }
 }
 
-_BE_SendReloadNotify() {
-    global gBE_LauncherHwnd, TABBY_CMD_RELOAD_BLACKLIST
-    return IPC_SendWmCopyData(gBE_LauncherHwnd, TABBY_CMD_RELOAD_BLACKLIST)
-}
-
 _BE_HasChanges() {
     global gBE_TitleEdit, gBE_ClassEdit, gBE_PairEdit
     global gBE_OriginalTitle, gBE_OriginalClass, gBE_OriginalPair
@@ -285,9 +280,6 @@ _BE_OnSave(*) {
     global gBE_Gui, gBE_SavedChanges
 
     if (_BE_SaveToFile()) {
-        ; Notify launcher → GUI to reload blacklist
-        reloaded := _BE_SendReloadNotify()
-
         gBE_SavedChanges := true
         Theme_UntrackGui(gBE_Gui)
         gBE_Gui.Destroy()

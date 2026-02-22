@@ -13,8 +13,8 @@ global g_LauncherMutex := 0
 ; Global active mutex (system-wide - prevents multiple installations running)
 global g_ActiveMutex := 0
 
-; WM_COPYDATA debounce state (IsSet pattern - unset until first signal received)
-global g_LastFullRestartTick   ; Debounce RESTART_ALL signals
+; Config file watcher debounce state
+global g_LastFullRestartTick   ; Debounce config change restarts
 global LAUNCHER_RESTART_DEBOUNCE_MS := 5000
 
 ; Win32 error code
@@ -223,6 +223,16 @@ Launcher_StartSubprocesses() {
     ; Launch GUI (store runs in-process within GUI)
     LaunchGui()
 
+    ; Start config file watcher — detects manual edits (Notepad, git checkout, scripts)
+    ; and editor saves without WM_COPYDATA notification. Replaces TABBY_CMD_RESTART_ALL.
+    try {
+        FileWatch_Start(gConfigIniPath, _Launcher_OnConfigFileChanged)
+    } catch as e {
+        global LOG_PATH_LAUNCHER
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("FileWatch_Start(config) failed: " e.Message)
+    }
+
     ; Start GUI watchdog to detect unexpected crashes (skip in testing mode)
     if (!g_TestingMode)
         _Launcher_StartGuiWatchdog()
@@ -306,33 +316,12 @@ Launcher_ReacquireMutexes() {
 }
 
 ; Handle WM_COPYDATA control signals from child processes
-; Config editor sends RESTART_ALL, blacklist editor sends RELOAD_BLACKLIST
 _Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
-    global TABBY_CMD_RESTART_ALL, TABBY_CMD_RELOAD_BLACKLIST, cfg
+    global cfg
     global TABBY_CMD_STATS_RESPONSE, TABBY_CMD_EDITOR_CLOSED, TABBY_CMD_PUMP_FAILED
-    global g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
     global g_StatsCache
     try {
         dwData := NumGet(lParam, 0, "uptr")
-
-        if (dwData = TABBY_CMD_RESTART_ALL) {
-            if (cfg.DiagLauncherLog)
-                Launcher_Log("IPC: Received RESTART_ALL from hwnd=" wParam)
-            if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
-                if (cfg.DiagLauncherLog)
-                    Launcher_Log("IPC: RESTART_ALL debounced")
-                return 1
-            }
-            g_LastFullRestartTick := A_TickCount
-            SetTimer(_Launcher_ApplyConfigChanges, -1)
-            return 1
-        }
-
-        if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
-            if (cfg.DiagLauncherLog)
-                Launcher_Log("IPC: Received RELOAD_BLACKLIST from hwnd=" wParam)
-            return Launcher_RelayToGui(TABBY_CMD_RELOAD_BLACKLIST) ? 1 : 0
-        }
 
         if (dwData = TABBY_CMD_STATS_RESPONSE) {
             cbData := NumGet(lParam, A_PtrSize, "uptr")
@@ -417,6 +406,19 @@ _Launcher_ApplyConfigChanges() {
 
     ; 3. Restart pump + GUI (they read config fresh on startup)
     _Launcher_RestartSubprocesses()
+}
+
+_Launcher_OnConfigFileChanged(path) { ; lint-ignore: dead-param
+    global cfg, g_LastFullRestartTick, LAUNCHER_RESTART_DEBOUNCE_MS
+    if (IsSet(g_LastFullRestartTick) && (A_TickCount - g_LastFullRestartTick) < LAUNCHER_RESTART_DEBOUNCE_MS) {
+        if (cfg.DiagLauncherLog)
+            Launcher_Log("WATCH: config.ini change debounced")
+        return
+    }
+    g_LastFullRestartTick := A_TickCount
+    if (cfg.DiagLauncherLog)
+        Launcher_Log("WATCH: config.ini changed, applying")
+    SetTimer(_Launcher_ApplyConfigChanges, -1)
 }
 
 _Launcher_RestartSubprocesses() {

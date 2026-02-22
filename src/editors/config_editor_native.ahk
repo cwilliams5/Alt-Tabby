@@ -1355,7 +1355,6 @@ _CEN_OnResize(gui, minMax, w, h) { ; lint-ignore: dead-param
 
 _CEN_OnSave(*) {
     global gCEN
-    global TABBY_CMD_RESTART_ALL
 
     if (!_CEN_HasUnsavedChanges()) {
         _CEN_Cleanup()
@@ -1383,14 +1382,6 @@ _CEN_OnSave(*) {
 
     _CEN_Cleanup()
     gCEN["MainGui"].Destroy()
-
-    ; Send restart signal to launcher
-    if (IPC_SendWmCopyData(gCEN["LauncherHwnd"], TABBY_CMD_RESTART_ALL)) {
-        ; Launcher will restart with new config
-    } else {
-        ThemeMsgBox("Settings saved (" result.saved " changes). Restart Alt-Tabby to apply changes.",
-            "Alt-Tabby Configuration", "OK Iconi")
-    }
 }
 
 _CEN_OnCancel(*) {

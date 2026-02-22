@@ -857,9 +857,9 @@ global IPC_TICK_IDLE := 100              ; Default, overridden from cfg.IPCIdleT
 
 ; WM_COPYDATA command IDs (launcher <-> client control signals)
 ; ID 1: removed — was TABBY_CMD_RESTART_STORE (store now in-process)
-global TABBY_CMD_RESTART_ALL := 2     ; Config editor -> launcher: restart all subprocesses
+; ID 2: removed — was TABBY_CMD_RESTART_ALL (replaced by config file watcher)
 global TABBY_CMD_TOGGLE_VIEWER := 3   ; Launcher -> GUI: toggle debug viewer window
-global TABBY_CMD_RELOAD_BLACKLIST := 4  ; Blacklist editor -> launcher -> GUI: reload blacklist
+; ID 4: removed — was TABBY_CMD_RELOAD_BLACKLIST (replaced by blacklist file watcher)
 ; ID 5: removed — was TABBY_CMD_QUERY_STATS (replaced by dedicated WM message)
 global TABBY_CMD_STATS_RESPONSE := 6   ; GUI -> launcher: stats snapshot JSON payload
 global TABBY_CMD_EDITOR_CLOSED := 7   ; Editor -> launcher: editor process closing (dashboard refresh)
