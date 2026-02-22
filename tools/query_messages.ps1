@@ -4,10 +4,10 @@
 # Maps raw hex constants to human-readable WM_ names.
 #
 # Usage:
-#   powershell -File tests/query_messages.ps1                  (list all messages)
-#   powershell -File tests/query_messages.ps1 0x0138           (query by hex)
-#   powershell -File tests/query_messages.ps1 WM_CTLCOLORSTATIC  (query by WM_ name)
-#   powershell -File tests/query_messages.ps1 GUI_OnClick      (query by handler name)
+#   powershell -File tools/query_messages.ps1                  (list all messages)
+#   powershell -File tools/query_messages.ps1 0x0138           (query by hex)
+#   powershell -File tools/query_messages.ps1 WM_CTLCOLORSTATIC  (query by WM_ name)
+#   powershell -File tools/query_messages.ps1 GUI_OnClick      (query by handler name)
 
 param(
     [Parameter(Position=0)]

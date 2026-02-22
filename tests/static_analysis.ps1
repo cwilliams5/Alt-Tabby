@@ -1,5 +1,6 @@
 # static_analysis.ps1 - Parallel dispatcher for static analysis checks
-# Discovers and runs all check_*.ps1 scripts in the tests/ directory.
+# Discovers and runs all check_*.ps1 scripts in the tests/ directory,
+# plus hardcoded dual-duty query tools in tools/ (invoked with -Check).
 # All checks launch in parallel; wall-clock time = slowest check.
 # Exit codes: 0 = all pass, 1 = any check failed
 #
@@ -23,11 +24,19 @@ if (-not (Test-Path $SourceDir)) {
     exit 1
 }
 
-# Auto-discover all check scripts
+# Auto-discover check scripts in tests/
 $checks = @(Get-ChildItem "$PSScriptRoot\check_*.ps1" | Sort-Object Name)
 
+# Hardcoded dual-duty query tools in tools/ (invoked with -Check flag)
+$toolsDir = Join-Path (Split-Path $PSScriptRoot) "tools"
+$toolChecks = @(
+    "query_global_ownership.ps1"
+    "query_function_visibility.ps1"
+) | ForEach-Object { Get-Item (Join-Path $toolsDir $_) }
+$checks += $toolChecks
+
 if ($checks.Count -eq 0) {
-    Write-Host "  No static analysis checks found (check_*.ps1)" -ForegroundColor Yellow
+    Write-Host "  No static analysis checks found" -ForegroundColor Yellow
     exit 0
 }
 
@@ -49,7 +58,9 @@ foreach ($check in $checks) {
     # This preserves the full output from each check for sequential replay.
     $escapedPath = $check.FullName -replace "'", "''"
     $escapedSrc = $SourceDir -replace "'", "''"
-    $cmdArgs = "-NoProfile -Command ""& '$escapedPath' -SourceDir '$escapedSrc' *>&1; exit `$LASTEXITCODE"""
+    # Tools/ scripts need -Check flag to run in enforcement mode
+    $extraArgs = if ($check.DirectoryName -ne $PSScriptRoot) { " -Check" } else { "" }
+    $cmdArgs = "-NoProfile -Command ""& '$escapedPath' -SourceDir '$escapedSrc'$extraArgs *>&1; exit `$LASTEXITCODE"""
 
     $proc = Start-Process -FilePath "powershell.exe" `
         -ArgumentList $cmdArgs `

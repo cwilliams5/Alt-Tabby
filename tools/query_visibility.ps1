@@ -5,8 +5,8 @@
 # Functions with 1 caller may be candidates for inlining or making private.
 #
 # Usage:
-#   powershell -File tests/query_visibility.ps1
-#   powershell -File tests/query_visibility.ps1 -MinCallers 1
+#   powershell -File tools/query_visibility.ps1
+#   powershell -File tools/query_visibility.ps1 -MinCallers 1
 #
 # Parameters:
 #   -MinCallers  Show functions with at most this many external callers (0 or 1, default 0)

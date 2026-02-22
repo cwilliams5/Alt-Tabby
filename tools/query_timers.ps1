@@ -4,8 +4,8 @@
 # enclosing function, and file location.
 #
 # Usage:
-#   powershell -File tests/query_timers.ps1               (full inventory)
-#   powershell -File tests/query_timers.ps1 heartbeat      (fuzzy search)
+#   powershell -File tools/query_timers.ps1               (full inventory)
+#   powershell -File tools/query_timers.ps1 heartbeat      (fuzzy search)
 
 param(
     [Parameter(Position=0)]

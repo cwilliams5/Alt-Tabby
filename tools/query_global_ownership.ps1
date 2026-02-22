@@ -1,6 +1,6 @@
-# check_global_ownership.ps1 - Static analysis for global variable ownership
+# query_global_ownership.ps1 - Global variable ownership query & enforcement
 #
-# Enforces that global variables are only mutated by authorized files.
+# Query tool + static analysis check for global variable ownership.
 # Reduces cross-file coupling and creates trustable invariants about which
 # files can modify which state — enabling faster, safer development.
 #
@@ -18,17 +18,17 @@
 #   All files that write to a global are listed (basenames without extension).
 #   The declaring file is also always authorized even if not listed.
 #
+# Query mode (default): Returns ownership info for a specific global.
+#   powershell -File tools/query_global_ownership.ps1 <globalName>
+#
 # Discovery mode: Shows which globals are mutated in which files.
-#   powershell -File tests/check_global_ownership.ps1 -Discover [-Verbose]
+#   powershell -File tools/query_global_ownership.ps1 -Discover [-Detail]
 #
 # Generate mode: Preview manifest diff against current codebase.
-#   powershell -File tests/check_global_ownership.ps1 -Generate
+#   powershell -File tools/query_global_ownership.ps1 -Generate
 #
-# Query mode: Returns ownership info for a specific global (declares, writes, reads).
-#   powershell -File tests/check_global_ownership.ps1 -Query <globalName>
-#
-# Enforcement mode (default): Checks mutations against ownership rules.
-#   powershell -File tests/check_global_ownership.ps1 [-SourceDir "path"]
+# Enforcement mode (--check): Checks mutations against ownership rules.
+#   powershell -File tools/query_global_ownership.ps1 -Check [-SourceDir "path"]
 #
 # Mutation patterns detected:
 #   gFoo := value             Direct assignment
@@ -38,15 +38,17 @@
 #   gFoo.Push() / .Pop() ...   Mutating container methods
 #   gFoo.prop := value         Property write
 #
-# Exit codes: 0 = pass (or discovery/generate mode), 1 = violations found
+# Exit codes: 0 = pass (or query/discovery/generate mode), 1 = violations found
 
+[CmdletBinding()]
 param(
     [string]$SourceDir,
-    [string]$Query,
+    [Parameter(Position=0)][string]$Query,
+    [switch]$Check,
     [switch]$Discover,
     [switch]$Generate,
     [switch]$Force,
-    [switch]$Verbose
+    [switch]$Detail
 )
 
 $ErrorActionPreference = 'Stop'
@@ -74,8 +76,16 @@ if ($Query) {
     Write-Host "  Scanning $($srcFiles.Count) source files..." -ForegroundColor Cyan
 } elseif ($Generate) {
     Write-Host "  Generating ownership manifest from $($srcFiles.Count) source files..." -ForegroundColor Cyan
-} else {
+} elseif ($Check) {
     Write-Host "  Checking global ownership in $($srcFiles.Count) files..." -ForegroundColor Cyan
+} else {
+    # No mode specified — show usage
+    Write-Host "  Usage:" -ForegroundColor Cyan
+    Write-Host "    query_global_ownership.ps1 <globalName>   Query a specific global" -ForegroundColor White
+    Write-Host "    query_global_ownership.ps1 -Discover      Show all coupling hotspots" -ForegroundColor White
+    Write-Host "    query_global_ownership.ps1 -Generate      Preview manifest diff" -ForegroundColor White
+    Write-Host "    query_global_ownership.ps1 -Check         Enforcement mode (pre-gate)" -ForegroundColor White
+    exit 0
 }
 
 # === Helpers ===
@@ -508,7 +518,7 @@ if ($Discover) {
                 $ownerTag = if ($isOwner) { " (declares)" } else { "" }
                 Write-Host "    $fileRel$ownerTag - $($fileMuts.Count) mutation(s)" -ForegroundColor $(if ($isOwner) { "Green" } else { "Red" })
 
-                if ($Verbose) {
+                if ($Detail) {
                     foreach ($m in $fileMuts) {
                         Write-Host "      L$($m.Line) [$($m.Func)] $($m.Code)" -ForegroundColor DarkGray
                     }
@@ -537,7 +547,7 @@ if ($Discover) {
     if ($noMutations.Count -gt 0) {
         Write-Host "  --- CONSTANTS (no mutations in function bodies) ---" -ForegroundColor DarkCyan
         Write-Host "  $($noMutations.Count) globals with no function-body mutations (likely constants or set at file scope only)" -ForegroundColor DarkGray
-        if ($Verbose) {
+        if ($Detail) {
             foreach ($gName in $noMutations) {
                 $decl = $globalDecl[$gName]
                 Write-Host "    $gName - $($decl.RelPath):$($decl.Line)" -ForegroundColor DarkGray
@@ -770,7 +780,7 @@ if ($Generate) {
     [void]$lines.Add("#")
     [void]$lines.Add("# Contract: If a global is NOT listed here, only the declaring file may")
     [void]$lines.Add("# mutate it. If it IS listed, all writers are shown explicitly.")
-    [void]$lines.Add("# The declaring file is always authorized. Enforced by check_global_ownership.ps1.")
+    [void]$lines.Add("# The declaring file is always authorized. Enforced by query_global_ownership.ps1 -Check.")
     [void]$lines.Add("#")
     [void]$lines.Add("# Freshness: The pre-gate validates this manifest against actual code.")
     [void]$lines.Add("#   Stale entries (globals no longer cross-file) are auto-removed.")
@@ -784,9 +794,9 @@ if ($Generate) {
     [void]$lines.Add("#   Basenames without .ahk. All files that write are listed.")
     [void]$lines.Add("#")
     [void]$lines.Add("# Maintenance:")
-    [void]$lines.Add("#   Query a specific global: powershell -File tests/check_global_ownership.ps1 -Query <name>")
-    [void]$lines.Add("#   Preview manifest changes: powershell -File tests/check_global_ownership.ps1 -Generate")
-    [void]$lines.Add("#   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover")
+    [void]$lines.Add("#   Query a specific global: powershell -File tools/query_global_ownership.ps1 <name>")
+    [void]$lines.Add("#   Preview manifest changes: powershell -File tools/query_global_ownership.ps1 -Generate")
+    [void]$lines.Add("#   Discover full landscape: powershell -File tools/query_global_ownership.ps1 -Discover")
     [void]$lines.Add("")
 
     $crossFileSingle = $manifestEntries.Count - $multiFileMutations.Count
@@ -806,8 +816,12 @@ if ($Generate) {
 }
 
 # ============================================================
-# Enforcement Mode: Manifest + implicit ownership
+# Enforcement Mode (--check): Manifest + implicit ownership
 # ============================================================
+if (-not $Check) {
+    # Not in enforcement mode and no other mode matched — should not reach here
+    exit 0
+}
 
 # Validate manifest freshness before enforcement
 $freshEntries = _BuildFreshManifest $multiFileMutations $singleFileMutations $globalDecl $projectRoot
@@ -860,7 +874,7 @@ if (Test-Path $manifestPath) {
 if (-not (Test-Path $manifestPath)) {
     $totalSw.Stop()
     Write-Host "  No manifest found at: $manifestPath" -ForegroundColor DarkGray
-    Write-Host "  Generate one: powershell -File tests/check_global_ownership.ps1 -Generate" -ForegroundColor DarkGray
+    Write-Host "  Generate one: powershell -File tools/query_global_ownership.ps1 -Generate" -ForegroundColor DarkGray
     Write-Host "  Completed in $($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
     exit 0
 }
