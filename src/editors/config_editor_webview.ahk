@@ -77,7 +77,7 @@ global gCEW_Controller := 0
 global gCEW_WebView := 0
 global gCEW_SavedChanges := false
 global gCEW_HasChanges := false
-global gCEW_LauncherHwnd := 0
+global gCEW_LauncherHwnd := 0  ; lint-ignore: dead-global  ; Set by init, consumed by alt_tabby.ahk exit handler
 global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage collection
 
 ; ============================================================
@@ -216,7 +216,6 @@ _CEW_OnWebMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param
 
 _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
     global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
-    global TABBY_CMD_RESTART_ALL
     global cfg, LOG_PATH_WEBVIEW
 
     ; Parse JSON message from JavaScript
@@ -230,9 +229,6 @@ _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
             changes := msg["changes"]
             _CEW_ApplyChanges(changes)
             gCEW_SavedChanges := true
-
-            ; Send restart signal to launcher
-            IPC_SendWmCopyData(gCEW_LauncherHwnd, TABBY_CMD_RESTART_ALL)
 
             try Theme_UntrackGui(gCEW_Gui)
             gCEW_Gui.Destroy()

@@ -47,6 +47,9 @@ A_MenuMaskKey := "vkE8"
 #Include *i %A_ScriptDir%\..\shared\gui_antiflash.ahk
 #Include *i %A_ScriptDir%\..\shared\timing.ahk
 #Include *i %A_ScriptDir%\..\shared\profiler.ahk ; @profile
+#Include *i %A_ScriptDir%\..\lib\OVERLAPPED.ahk
+#Include *i %A_ScriptDir%\..\lib\DirectoryWatcher.ahk
+#Include *i %A_ScriptDir%\..\shared\file_watcher.ahk
 
 ; GUI utilities
 #Include *i %A_ScriptDir%\gui_gdip.ahk
@@ -125,6 +128,16 @@ _GUI_Main_Init() {
 
     ; Initialize blacklist (filtering rules must load before producers)
     Blacklist_Init()
+
+    ; Start blacklist file watcher — detects manual edits (Notepad, git checkout, scripts)
+    ; and editor saves without WM_COPYDATA notification. Replaces TABBY_CMD_RELOAD_BLACKLIST.
+    global gBlacklist_FilePath
+    try {
+        FileWatch_Start(gBlacklist_FilePath, _GUI_OnBlacklistFileChanged)
+    } catch as e {
+        global LOG_PATH_STORE
+        try LogAppend(LOG_PATH_STORE, "FileWatch_Start(blacklist) failed: " e.Message)
+    }
 
     ; Initialize flight recorder (if enabled) — must be before hotkey setup
     FR_Init()
@@ -543,19 +556,11 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
 
 _GUI_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     Critical "On"
-    global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_RELOAD_BLACKLIST, TABBY_CMD_PUMP_RESTARTED
+    global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_PUMP_RESTARTED
     try {
         dwData := NumGet(lParam, 0, "uptr")
         if (dwData = TABBY_CMD_TOGGLE_VIEWER) {
             Viewer_Toggle()
-            Critical "Off"
-            return true
-        }
-        if (dwData = TABBY_CMD_RELOAD_BLACKLIST) {
-            Blacklist_Init()
-            result := WL_PurgeBlacklisted()
-            global LOG_PATH_STORE
-            try LogAppend(LOG_PATH_STORE, "RELOAD_BLACKLIST: reloaded, purged=" result.removed)
             Critical "Off"
             return true
         }
@@ -572,6 +577,17 @@ _GUI_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
         try LogAppend(LOG_PATH_STORE, "GUI_OnCopyData err=" e.Message " file=" e.File " line=" e.Line)
         return 0
     }
+}
+
+; Blacklist file watcher callback — fires when blacklist.txt is modified on disk.
+; Replaces the WM_COPYDATA RELOAD_BLACKLIST notification chain.
+_GUI_OnBlacklistFileChanged(path) { ; lint-ignore: dead-param
+    Critical "On"
+    Blacklist_Init()
+    result := WL_PurgeBlacklisted()
+    global LOG_PATH_STORE
+    try LogAppend(LOG_PATH_STORE, "WATCH: blacklist reloaded, purged=" result.removed)
+    Critical "Off"
 }
 
 ; Stats request handler — receives PostMessage(IPC_WM_STATS_REQUEST) from launcher.

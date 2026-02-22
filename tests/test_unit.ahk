@@ -12,6 +12,7 @@
 #Include "test_unit_advanced.ahk"
 #Include "test_unit_stats.ahk"
 #Include "test_unit_sort.ahk"
+#Include "test_unit_file_watcher.ahk"
 
 RunUnitTests() {
     ; Core tests (formerly RunUnitTests_Core)
@@ -25,4 +26,5 @@ RunUnitTests() {
     RunUnitTests_Advanced()
     RunUnitTests_Stats()
     RunUnitTests_Sort()
+    RunUnitTests_FileWatcher()
 }

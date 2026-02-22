@@ -1,5 +1,5 @@
 ; Live Tests - Process Lifecycle
-; Launcher WM_COPYDATA control signal tests (2-process model: launcher + gui)
+; Pump restart, file watcher, and shutdown tests (2-process model: launcher + gui)
 ; Included by test_live.ahk
 ;
 ; ISOLATION: Copies AltTabby.exe to a temp dir as AltTabby_lifecycle.exe with
@@ -253,13 +253,11 @@ RunLiveTests_Lifecycle() {
     }
 
     ; ============================================================
-    ; Test 3: RELOAD_BLACKLIST signal (blacklist editor path)
+    ; Test 3: Blacklist file watcher (replaces RELOAD_BLACKLIST signal)
     ; ============================================================
-    ; Tests that the launcher relays RELOAD_BLACKLIST to the GUI
-    ; and the GUI processes it (Blacklist_Init + WL_PurgeBlacklisted).
-    ; Launcher_RelayToGui propagates the GUI's synchronous response,
-    ; so response=1 proves the GUI handler executed and returned true.
-    Log("`n--- RELOAD_BLACKLIST Signal Test ---")
+    ; Tests that modifying blacklist.txt on disk triggers the GUI's
+    ; file watcher to reload blacklist rules (Blacklist_Init + WL_PurgeBlacklisted).
+    Log("`n--- Blacklist File Watcher Test ---")
 
     ; Wait for GUI to reconnect to pump restarted by PUMP_FAILED signal (if pump tests ran)
     if (guiConnected) {
@@ -269,64 +267,93 @@ RunLiveTests_Lifecycle() {
         Sleep(500)  ; Brief settle when pump tests were skipped
     }
 
-    response := _Lifecycle_SendCommandWithRetry(launcherHwnd, 4)  ; TABBY_CMD_RELOAD_BLACKLIST = 4
-    if (response = 1) {
-        Log("PASS: RELOAD_BLACKLIST relayed to GUI and acknowledged (response=1)")
+    ; Modify blacklist.txt on disk — the GUI file watcher should detect this
+    blPath := testDir "\blacklist.txt"
+    try FileAppend("; file watcher test " A_TickCount "`n", blPath, "UTF-8")
+
+    ; Poll store log for watcher reload message
+    storeLogPath := A_Temp "\tabby_store_error.log"
+    watchReloaded := false
+    watchStart := A_TickCount
+    while ((A_TickCount - watchStart) < 5000) {
+        if (FileExist(storeLogPath)) {
+            try {
+                logContent := FileRead(storeLogPath)
+                if (InStr(logContent, "WATCH: blacklist reloaded")) {
+                    watchReloaded := true
+                    break
+                }
+            }
+        }
+        Sleep(100)
+    }
+
+    if (watchReloaded) {
+        Log("PASS: Blacklist file watcher detected change and reloaded (" (A_TickCount - watchStart) "ms)")
         TestPassed++
     } else {
-        Log("FAIL: RELOAD_BLACKLIST relay failed (response=" response ")")
+        Log("FAIL: Blacklist file watcher did not detect change within 5s")
         TestErrors++
-        ; Dump launcher log for diagnosis
-        launcherLogPath := A_Temp "\tabby_launcher.log"
-        if (FileExist(launcherLogPath)) {
+        if (FileExist(storeLogPath)) {
             try {
-                launcherLog := FileRead(launcherLogPath)
-                Log("--- Launcher Log (last 1000 chars) ---")
-                Log(SubStr(launcherLog, -1000))
+                storeLog := FileRead(storeLogPath)
+                Log("--- Store Log (last 1000 chars) ---")
+                Log(SubStr(storeLog, -1000))
             }
         }
     }
 
     ; ============================================================
-    ; Test 4: RESTART_ALL signal (config editor path)
+    ; Test 4: Config file watcher (replaces RESTART_ALL signal)
     ; ============================================================
-    Log("`n--- RESTART_ALL Signal Test ---")
+    ; Tests that modifying config.ini on disk triggers the launcher's
+    ; file watcher to restart subprocesses.
+    Log("`n--- Config File Watcher Test ---")
 
-    ; Wait for system to settle after RELOAD_BLACKLIST before restarting everything
+    ; Wait for system to settle after blacklist watcher test
     Sleep(500)
 
     ; Use authoritative GUI PID from launcher (knownGuiPid is still valid — only pump changed)
     guiPidBefore := knownGuiPid
     if (!guiPidBefore || !ProcessExist(guiPidBefore)) {
-        Log("SKIP: Could not find GUI process for RESTART_ALL test")
+        Log("SKIP: Could not find GUI process for config watcher test")
     } else {
-        response := _Lifecycle_SendCommandWithRetry(launcherHwnd, 2)  ; RESTART_ALL
-        if (response = 1) {
-            Log("PASS: Launcher acknowledged RESTART_ALL")
+        ; Modify config.ini on disk — the launcher file watcher should detect this
+        ; and restart subprocesses (including GUI with new PID)
+        configPath := testDir "\config.ini"
+        try {
+            content := FileRead(configPath, "UTF-8")
+            ; Append a comment to trigger file change without affecting settings
+            FileDelete(configPath)
+            FileAppend(content "`n; file watcher test " A_TickCount "`n", configPath, "UTF-8")
+        }
+
+        ; Wait for GUI process to restart (new PID)
+        restartStart := A_TickCount
+        newGuiPid := 0
+        while ((A_TickCount - restartStart) < 12000) {
+            candidate := _Lifecycle_FindGuiPid(launcherPid)
+            if (candidate && candidate != guiPidBefore) {
+                newGuiPid := candidate
+                break
+            }
+            Sleep(100)
+        }
+
+        if (newGuiPid) {
+            Log("PASS: Config file watcher triggered GUI restart (old=" guiPidBefore ", new=" newGuiPid ") in " (A_TickCount - restartStart) "ms")
             TestPassed++
-
-            ; Wait for GUI process to restart (new PID)
-            restartStart := A_TickCount
-            newGuiPid := 0
-            while ((A_TickCount - restartStart) < 8000) {
-                candidate := _Lifecycle_FindGuiPid(launcherPid)
-                if (candidate && candidate != guiPidBefore) {
-                    newGuiPid := candidate
-                    break
-                }
-                Sleep(100)
-            }
-
-            if (newGuiPid) {
-                Log("PASS: GUI process restarted with new PID (old=" guiPidBefore ", new=" newGuiPid ")")
-                TestPassed++
-            } else {
-                Log("FAIL: GUI process did not restart within timeout")
-                TestErrors++
-            }
         } else {
-            Log("FAIL: RESTART_ALL signal failed (response=" response ")")
+            Log("FAIL: Config file watcher did not trigger GUI restart within 12s")
             TestErrors++
+            launcherLogPath := A_Temp "\tabby_launcher.log"
+            if (FileExist(launcherLogPath)) {
+                try {
+                    launcherLog := FileRead(launcherLogPath)
+                    Log("--- Launcher Log (last 1000 chars) ---")
+                    Log(SubStr(launcherLog, -1000))
+                }
+            }
         }
     }
 

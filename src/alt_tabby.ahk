@@ -112,6 +112,7 @@ for _, arg in A_Args {
 #Include cjson.ahk
 #Include icon_alpha.ahk
 #Include OVERLAPPED.ahk
+#Include DirectoryWatcher.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk
@@ -135,6 +136,7 @@ for _, arg in A_Args {
 #Include sort_utils.ahk
 #Include timing.ahk
 #Include profiler.ahk ; @profile
+#Include file_watcher.ahk
 #Include window_list.ahk
 
 ; Editor subprocesses (from src/editors/)
