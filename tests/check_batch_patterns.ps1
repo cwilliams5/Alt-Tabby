@@ -398,6 +398,13 @@ $CHECKS = @(
         Patterns = @('Hotkey("$*Tab", "Off")', 'Hotkey("$*Tab", "On")')
     },
     @{
+        Id       = "bypass_eval_all_states"
+        File     = "gui\gui_main.ahk"
+        Function = "_GUI_OnProducerRevChanged"
+        Desc     = "Bypass evaluation runs in all GUI states, not just ACTIVE (issue #91)"
+        Patterns = @("INT_SetBypassMode(shouldBypass)", "INT_ShouldBypassWindow(fgHwnd)")
+    },
+    @{
         Id       = "config_validation_completeness_loader"
         File     = "shared\config_loader.ahk"
         Desc     = "_CL_ValidateSettings uses registry-driven clamping loop"

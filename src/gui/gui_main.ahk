@@ -274,12 +274,15 @@ _GUI_OnProducerRevChanged(isStructural := true) {
             ; Cosmetic changes: patch title/icon/processName in-place
             if (!isStructural)
                 GUI_PatchCosmeticUpdates()
-            ; Always check bypass mode on focus changes
-            fgHwnd := DllCall("GetForegroundWindow", "Ptr")
-            if (fgHwnd) {
-                shouldBypass := INT_ShouldBypassWindow(fgHwnd)
-                INT_SetBypassMode(shouldBypass)
-            }
+        }
+
+        ; Check bypass mode on every focus change regardless of state.
+        ; Previously gated to ACTIVE-only, which caused a deadlock: bypass
+        ; disabled Tab hooks, and only ACTIVE state (requires Tab) could clear it.
+        fgHwnd := DllCall("GetForegroundWindow", "Ptr")
+        if (fgHwnd) {
+            shouldBypass := INT_ShouldBypassWindow(fgHwnd)
+            INT_SetBypassMode(shouldBypass)
         }
     } catch as e {
         global LOG_PATH_STORE
