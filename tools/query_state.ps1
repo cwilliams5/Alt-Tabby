@@ -4,9 +4,9 @@
 # without loading the full 234-line function.
 #
 # Usage:
-#   powershell -File tests/query_state.ps1                       (list states and events)
-#   powershell -File tests/query_state.ps1 ACTIVE                (all handlers for state)
-#   powershell -File tests/query_state.ps1 ACTIVE TAB_STEP       (specific branch)
+#   powershell -File tools/query_state.ps1                       (list states and events)
+#   powershell -File tools/query_state.ps1 ACTIVE                (all handlers for state)
+#   powershell -File tools/query_state.ps1 ACTIVE TAB_STEP       (specific branch)
 
 param(
     [Parameter(Position=0)]

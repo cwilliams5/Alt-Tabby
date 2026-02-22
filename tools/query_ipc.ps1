@@ -3,9 +3,9 @@
 # Shows who sends and who handles each IPC message type.
 #
 # Usage:
-#   powershell -File tests/query_ipc.ps1                   (list all message types)
-#   powershell -File tests/query_ipc.ps1 snapshot           (query by string value)
-#   powershell -File tests/query_ipc.ps1 IPC_MSG_SNAPSHOT   (query by constant name)
+#   powershell -File tools/query_ipc.ps1                   (list all message types)
+#   powershell -File tools/query_ipc.ps1 snapshot           (query by string value)
+#   powershell -File tools/query_ipc.ps1 IPC_MSG_SNAPSHOT   (query by constant name)
 
 param(
     [Parameter(Position=0)]

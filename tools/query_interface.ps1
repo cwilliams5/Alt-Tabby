@@ -5,9 +5,9 @@
 # the implementation.
 #
 # Usage:
-#   powershell -File tests/query_interface.ps1 <filename>
-#   powershell -File tests/query_interface.ps1 gui_overlay
-#   powershell -File tests/query_interface.ps1 gui_overlay.ahk
+#   powershell -File tools/query_interface.ps1 <filename>
+#   powershell -File tools/query_interface.ps1 gui_overlay
+#   powershell -File tools/query_interface.ps1 gui_overlay.ahk
 
 param(
     [Parameter(Position=0)]

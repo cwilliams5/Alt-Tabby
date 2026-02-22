@@ -1,5 +1,6 @@
-# check_function_visibility.ps1 - Static analysis for function visibility
+# query_function_visibility.ps1 - Function visibility query & enforcement
 #
+# Query tool + static analysis check for function visibility conventions.
 # Enforces that functions prefixed with _ are only referenced within their
 # declaring file - both direct calls _Func() and references passed to
 # SetTimer, OnEvent, OnMessage, callbacks, etc. The _ prefix is the
@@ -8,22 +9,24 @@
 #
 # This turns an emerged naming convention into a machine-enforced boundary.
 #
+# Query mode (default): Returns definition, visibility, and all callers.
+#   powershell -File tools/query_function_visibility.ps1 <funcName>
+#
 # Discovery mode: Shows all cross-file calls to _ functions.
-#   powershell -File tests/check_function_visibility.ps1 -Discover [-Verbose]
+#   powershell -File tools/query_function_visibility.ps1 -Discover [-Detail]
 #
-# Query mode: Returns definition, visibility, and all callers for a function.
-#   powershell -File tests/check_function_visibility.ps1 -Query <funcName>
+# Enforcement mode (--check): Fails if any cross-file calls exist.
+#   powershell -File tools/query_function_visibility.ps1 -Check
 #
-# Enforcement mode (default): Fails if any cross-file calls exist.
-#   powershell -File tests/check_function_visibility.ps1
-#
-# Exit codes: 0 = pass (or discovery/query mode), 1 = violations found
+# Exit codes: 0 = pass (or query/discovery mode), 1 = violations found
 
+[CmdletBinding()]
 param(
     [string]$SourceDir,
-    [string]$Query,
+    [Parameter(Position=0)][string]$Query,
+    [switch]$Check,
     [switch]$Discover,
-    [switch]$Verbose
+    [switch]$Detail
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,8 +54,15 @@ if ($Query) {
 } elseif ($Discover) {
     Write-Host "  === Function Visibility Discovery ===" -ForegroundColor Cyan
     Write-Host "  Scanning $($srcFiles.Count) source files..." -ForegroundColor Cyan
-} else {
+} elseif ($Check) {
     Write-Host "  Checking function visibility in $($srcFiles.Count) files..." -ForegroundColor Cyan
+} else {
+    # No mode specified — show usage
+    Write-Host "  Usage:" -ForegroundColor Cyan
+    Write-Host "    query_function_visibility.ps1 <funcName>   Query a specific function" -ForegroundColor White
+    Write-Host "    query_function_visibility.ps1 -Discover    Show all cross-file _ calls" -ForegroundColor White
+    Write-Host "    query_function_visibility.ps1 -Check       Enforcement mode (pre-gate)" -ForegroundColor White
+    exit 0
 }
 
 # === Helpers ===
@@ -379,7 +389,7 @@ if ($Discover) {
             foreach ($c in ($calls | Sort-Object { $_.CallRel })) {
                 $ctx = if ($c.CallFunc) { " [$($c.CallFunc)]" } else { "" }
                 Write-Host "    called:  $($c.CallRel):$($c.CallLine)$ctx" -ForegroundColor Red
-                if ($Verbose) {
+                if ($Detail) {
                     Write-Host "             $($c.CallCode)" -ForegroundColor DarkGray
                 }
             }
@@ -407,7 +417,7 @@ if ($Discover) {
 }
 
 # ============================================================
-# Enforcement Mode
+# Enforcement Mode (--check)
 # ============================================================
 if ($violations.Count -eq 0) {
     Write-Host "  All calls respect visibility ($($funcDefs.Count) private functions)" -ForegroundColor Green

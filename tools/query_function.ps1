@@ -4,9 +4,9 @@
 # Reduces context bloat when investigating "what does this function do?" questions.
 #
 # Usage:
-#   powershell -File tests/query_function.ps1 <funcName>
-#   powershell -File tests/query_function.ps1 GUI_Show
-#   powershell -File tests/query_function.ps1 _GUI_BuildLayout
+#   powershell -File tools/query_function.ps1 <funcName>
+#   powershell -File tools/query_function.ps1 GUI_Show
+#   powershell -File tools/query_function.ps1 _GUI_BuildLayout
 
 param(
     [Parameter(Position=0)]

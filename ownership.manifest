@@ -2,7 +2,7 @@
 #
 # Contract: If a global is NOT listed here, only the declaring file may
 # mutate it. If it IS listed, all writers are shown explicitly.
-# The declaring file is always authorized. Enforced by check_global_ownership.ps1.
+# The declaring file is always authorized. Enforced by query_global_ownership.ps1 -Check.
 #
 # Freshness: The pre-gate validates this manifest against actual code.
 #   Stale entries (globals no longer cross-file) are auto-removed.
@@ -16,9 +16,9 @@
 #   Basenames without .ahk. All files that write are listed.
 #
 # Maintenance:
-#   Query a specific global: powershell -File tests/check_global_ownership.ps1 -Query <name>
-#   Preview manifest changes: powershell -File tests/check_global_ownership.ps1 -Generate
-#   Discover full landscape: powershell -File tests/check_global_ownership.ps1 -Discover
+#   Query a specific global: powershell -File tools/query_global_ownership.ps1 <name>
+#   Preview manifest changes: powershell -File tools/query_global_ownership.ps1 -Generate
+#   Discover full landscape: powershell -File tools/query_global_ownership.ps1 -Discover
 
 cfg: config_loader, launcher_tray, setup_utils
 gGUI_LiveItems: gui_state, gui_data

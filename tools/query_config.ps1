@@ -4,10 +4,10 @@
 # Returns semantic answers: section, key, type, default, description.
 #
 # Usage:
-#   powershell -File tests/query_config.ps1                       (show section/group index)
-#   powershell -File tests/query_config.ps1 theme                 (fuzzy search for "theme")
-#   powershell -File tests/query_config.ps1 -Section GUI          (list all settings in a section)
-#   powershell -File tests/query_config.ps1 -Usage GUI_RowHeight  (find all consumers of cfg.X)
+#   powershell -File tools/query_config.ps1                       (show section/group index)
+#   powershell -File tools/query_config.ps1 theme                 (fuzzy search for "theme")
+#   powershell -File tools/query_config.ps1 -Section GUI          (list all settings in a section)
+#   powershell -File tools/query_config.ps1 -Usage GUI_RowHeight  (find all consumers of cfg.X)
 
 param(
     [Parameter(Position=0)]

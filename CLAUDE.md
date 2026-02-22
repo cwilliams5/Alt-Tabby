@@ -78,9 +78,9 @@ Enforced by pre-gate. Don't create `_` functions intended for cross-file use.
 
 ## Query Tools (context-efficient search)
 
-When investigating the codebase, prefer query tools over reading full files or grepping:
-- `check_global_ownership.ps1 -Query <globalName>` — who declares, writes, and reads a global. `-Generate` previews manifest diff. `-Discover` shows all coupling hotspots
-- `check_function_visibility.ps1 -Query <funcName>` — where defined, public/private, all callers
+Query tools live in `tools/`. Prefer these over reading full files or grepping:
+- `query_global_ownership.ps1 <globalName>` — who declares, writes, and reads a global. `-Generate` previews manifest diff. `-Discover` shows all coupling hotspots
+- `query_function_visibility.ps1 <funcName>` — where defined, public/private, all callers
 - `query_function.ps1 <funcName>` — extract full function body without loading the entire file
 - `query_interface.ps1 <filename>` — public functions + globals for a file (like help(module))
 - `query_config.ps1` — no args: shows section/group index. With keyword: fuzzy search. `-Section <name>`: list section. `-Usage <key>`: which files consume a config value
