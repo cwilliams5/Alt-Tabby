@@ -123,6 +123,83 @@ RunUnitTests_FileWatcher() {
             TestErrors++
         }
 
+        ; ============================================================
+        ; Test 5: Atomic rename triggers callback (VS Code save pattern)
+        ; ============================================================
+        callbackFired5 := false
+        targetFile5 := testDir "\config.ini"
+        tmpFile5 := testDir "\config.ini.tmp"
+        FileAppend("original", targetFile5, "UTF-8")
+        Sleep(50)
+
+        w5 := FileWatch_Start(targetFile5, (*) => (callbackFired5 := true), 100)
+
+        ; Write to temp file, then rename to target (atomic save pattern)
+        FileAppend("new content " A_TickCount, tmpFile5, "UTF-8")
+        FileDelete(targetFile5)
+        FileMove(tmpFile5, targetFile5)
+
+        waitStart5 := A_TickCount
+        while (!callbackFired5 && (A_TickCount - waitStart5) < 3000)
+            Sleep(50)
+
+        if (callbackFired5) {
+            Log("PASS: FileWatch callback fired on atomic rename (" (A_TickCount - waitStart5) "ms)")
+            TestPassed++
+        } else {
+            Log("FAIL: FileWatch callback did not fire on atomic rename within 3s")
+            TestErrors++
+        }
+
+        w5.Stop()
+
+        ; ============================================================
+        ; Test 6: Stop() during active debounce cancels pending callback
+        ; ============================================================
+        callbackFired6 := false
+        targetFile6 := testDir "\debounce_stop.txt"
+        FileAppend("initial", targetFile6, "UTF-8")
+        Sleep(50)
+
+        w6 := FileWatch_Start(targetFile6, (*) => (callbackFired6 := true), 300)
+
+        ; Trigger a change (starts 300ms debounce timer)
+        FileDelete(targetFile6)
+        FileAppend("changed " A_TickCount, targetFile6, "UTF-8")
+        Sleep(50)  ; Let filesystem event arrive, debounce timer is now pending
+
+        ; Stop BEFORE debounce fires
+        w6.Stop()
+
+        ; Wait past the debounce window
+        Sleep(500)
+
+        if (!callbackFired6) {
+            Log("PASS: FileWatch Stop() during active debounce prevented callback")
+            TestPassed++
+        } else {
+            Log("FAIL: FileWatch callback fired after Stop() during debounce")
+            TestErrors++
+        }
+
+        ; ============================================================
+        ; Test 7: Missing parent directory — no crash, Stop() is safe
+        ; ============================================================
+        nocrash7 := true
+        try {
+            w7 := FileWatch_Start(testDir "\nonexistent_dir\phantom.txt", (*) => 0, 100)
+            ; Stop() may not exist if constructor failed — use try
+            try w7.Stop()
+        } catch as e {
+            Log("FAIL: FileWatch_Start crashed on missing dir: " e.Message)
+            nocrash7 := false
+            TestErrors++
+        }
+        if (nocrash7) {
+            Log("PASS: FileWatch_Start on missing parent dir is safe (no crash)")
+            TestPassed++
+        }
+
     } finally {
         ; Cleanup temp directory
         try DirDelete(testDir, true)

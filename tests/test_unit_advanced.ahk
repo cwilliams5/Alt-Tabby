@@ -122,4 +122,60 @@ RunUnitTests_Advanced() {
     ; Cleanup
     try FileDelete(mockLogPath)
 
+    ; ============================================================
+    ; QPC High-Precision Timer Tests
+    ; ============================================================
+    ; QPC() wraps QueryPerformanceCounter — returns milliseconds as float.
+    ; Used in 18+ production files for diagnostic timing.
+    Log("`n--- QPC Tests ---")
+
+    ; Test 1: QPC returns positive value
+    t1 := QPC()
+    AssertTrue(t1 > 0, "QPC: returns positive value")
+
+    ; Test 2: QPC is monotonically increasing
+    t2 := QPC()
+    AssertTrue(t2 >= t1, "QPC: monotonically increasing (t2 >= t1)")
+
+    ; Test 3: Consecutive calls are fast (< 50ms apart)
+    AssertTrue((t2 - t1) < 50, "QPC: consecutive calls < 50ms apart (got " Round(t2 - t1, 3) "ms)")
+
+    ; ============================================================
+    ; HiSleep High-Precision Sleep Tests
+    ; ============================================================
+    ; HiSleep(ms) uses QPC spin-loop for sub-ms precision.
+    ; Conservative tolerances to avoid flakiness on slow machines.
+    Log("`n--- HiSleep Tests ---")
+
+    ; Test 1: HiSleep(50) within tolerance
+    start := QPC()
+    HiSleep(50)
+    elapsed := QPC() - start
+    AssertTrue(elapsed >= 40 && elapsed <= 100, "HiSleep(50): elapsed within 40-100ms (got " Round(elapsed, 2) "ms)")
+
+    ; Test 2: HiSleep(0) returns immediately
+    start := QPC()
+    HiSleep(0)
+    elapsed := QPC() - start
+    AssertTrue(elapsed < 10, "HiSleep(0): returns within 10ms (got " Round(elapsed, 2) "ms)")
+
+    ; ============================================================
+    ; Win32ErrorString Tests
+    ; ============================================================
+    ; Converts Win32 error codes to human-readable strings via FormatMessage.
+    ; Used in 5 production files for diagnostic logging.
+    Log("`n--- Win32ErrorString Tests ---")
+
+    ; Test 1: Known error code (ERROR_ACCESS_DENIED = 5)
+    msg5 := Win32ErrorString(5)
+    AssertTrue(InStr(msg5, "denied") > 0 || InStr(msg5, "Denied") > 0, "Win32ErrorString(5): contains 'denied' (got '" msg5 "')")
+
+    ; Test 2: Error code 0 (ERROR_SUCCESS) returns non-empty
+    msg0 := Win32ErrorString(0)
+    AssertTrue(StrLen(msg0) > 0, "Win32ErrorString(0): returns non-empty string (got '" msg0 "')")
+
+    ; Test 3: Unknown error code returns fallback with error number
+    msg99 := Win32ErrorString(99999)
+    AssertTrue(InStr(msg99, "99999") > 0, "Win32ErrorString(99999): fallback contains '99999' (got '" msg99 "')")
+
 }

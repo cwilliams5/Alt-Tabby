@@ -24,6 +24,7 @@ RunGUITests_State() {
     global gMock_StoreItems, gMock_StoreItemsMap
     global gFR_DumpInProgress
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps, gStats_Cancellations
+    global gGUI_MonitorMode, gGUI_OverlayMonitorHandle, gStats_MonitorToggles
 
     GUI_Log("`n=== GUI State Machine Tests ===`n")
 
@@ -200,6 +201,94 @@ RunGUITests_State() {
     ; Toggle back to "all"
     GUI_ToggleWorkspaceMode()
     GUI_AssertEq(gGUI_DisplayItems.Length, 5, "After toggle back to all: shows all 5 items")
+
+    ; ============================================================
+    ; MONITOR MODE TESTS
+    ; ============================================================
+    ; Tests GUI_ToggleMonitorMode() and GUI_FilterByMonitorMode() from
+    ; gui_monitor.ahk (included as real production code, Win32 deps mocked).
+
+    ; ----- Test: Monitor toggle cycles modes -----
+    GUI_Log("Test: Monitor toggle cycles modes")
+    ResetGUIState()
+    GUI_AssertEq(gGUI_MonitorMode, "all", "MonToggle: initial mode is all")
+    GUI_ToggleMonitorMode()
+    GUI_AssertEq(gGUI_MonitorMode, "current", "MonToggle: after first toggle = current")
+    GUI_ToggleMonitorMode()
+    GUI_AssertEq(gGUI_MonitorMode, "all", "MonToggle: after second toggle = all")
+
+    ; ----- Test: Monitor toggle increments stat -----
+    GUI_Log("Test: Monitor toggle increments stat counter")
+    ResetGUIState()
+    GUI_AssertEq(gStats_MonitorToggles, 0, "MonStat: starts at 0")
+    GUI_ToggleMonitorMode()
+    GUI_AssertEq(gStats_MonitorToggles, 1, "MonStat: incremented to 1")
+    GUI_ToggleMonitorMode()
+    GUI_AssertEq(gStats_MonitorToggles, 2, "MonStat: incremented to 2")
+
+    ; ----- Test: Monitor filter reduces display list -----
+    GUI_Log("Test: Monitor filter reduces display list")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_OverlayMonitorHandle := 0xAAAA
+    items := CreateTestItems(4)
+    items[1].monitorHandle := 0xAAAA
+    items[2].monitorHandle := 0xBBBB
+    items[3].monitorHandle := 0xAAAA
+    items[4].monitorHandle := 0xBBBB
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+
+    GUI_ToggleMonitorMode()  ; all -> current
+    GUI_AssertEq(gGUI_MonitorMode, "current", "MonFilter: mode is current")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 2, "MonFilter: display filtered to 2 items on overlay monitor")
+
+    GUI_ToggleMonitorMode()  ; current -> all
+    GUI_AssertEq(gGUI_DisplayItems.Length, 4, "MonFilter: back to all shows 4 items")
+
+    ; ----- Test: Combined workspace + monitor filter -----
+    GUI_Log("Test: Combined workspace + monitor filter")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_OverlayMonitorHandle := 0xAAAA
+    gGUI_CurrentWSName := "Main"
+    gGUI_WorkspaceMode := "current"
+    ; 4 items: Main/MonA, Main/MonB, Other/MonA, Other/MonB
+    items := [
+        {hwnd: 1000, title: "Main-MonA", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", monitorHandle: 0xAAAA, monitorLabel: "Mon 1", lastActivatedTick: A_TickCount - 100, iconHicon: 0, processName: ""},
+        {hwnd: 2000, title: "Main-MonB", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", monitorHandle: 0xBBBB, monitorLabel: "Mon 2", lastActivatedTick: A_TickCount - 200, iconHicon: 0, processName: ""},
+        {hwnd: 3000, title: "Other-MonA", class: "X", isOnCurrentWorkspace: false, workspaceName: "Other", monitorHandle: 0xAAAA, monitorLabel: "Mon 1", lastActivatedTick: A_TickCount - 300, iconHicon: 0, processName: ""},
+        {hwnd: 4000, title: "Other-MonB", class: "X", isOnCurrentWorkspace: false, workspaceName: "Other", monitorHandle: 0xBBBB, monitorLabel: "Mon 2", lastActivatedTick: A_TickCount - 400, iconHicon: 0, processName: ""}
+    ]
+    MockStore_SetItems(items)
+    gGUI_LiveItems := items.Clone()
+    gGUI_LiveItemsMap := Map()
+    for _, item in gGUI_LiveItems
+        gGUI_LiveItemsMap[item.hwnd] := item
+    gGUI_ToggleBase := items.Clone()
+    ; WS=current filters to Main (2 items), then toggle monitor to current
+    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    GUI_AssertEq(gGUI_DisplayItems.Length, 2, "Combined setup: WS=current shows 2 Main items")
+
+    GUI_ToggleMonitorMode()  ; all -> current (MonA)
+    GUI_AssertEq(gGUI_DisplayItems.Length, 1, "Combined filter: 1 item (Main + MonA)")
+    GUI_AssertEq(gGUI_DisplayItems[1].hwnd, 1000, "Combined filter: correct item Main-MonA")
+
+    ; ----- Test: Monitor init from config -----
+    GUI_Log("Test: Monitor init from config default")
+    ResetGUIState()
+    cfg.GUI_MonitorFilterDefault := "Current"
+    GUI_InitMonitorMode()
+    GUI_AssertEq(gGUI_MonitorMode, "current", "MonInit: config=Current -> mode=current")
+    cfg.GUI_MonitorFilterDefault := "All"
+    GUI_InitMonitorMode()
+    GUI_AssertEq(gGUI_MonitorMode, "all", "MonInit: config=All -> mode=all")
 
     ; ============================================================
     ; BUG-SPECIFIC REGRESSION TESTS

@@ -200,6 +200,7 @@ Log("Log file: " TestLogPath)
 #Include %A_ScriptDir%\..\src\shared\process_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\win_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\stats.ahk
+#Include %A_ScriptDir%\..\src\shared\error_format.ahk
 #Include %A_ScriptDir%\..\src\shared\error_boundary.ahk
 #Include %A_ScriptDir%\..\src\shared\sort_utils.ahk
 #Include %A_ScriptDir%\..\src\shared\file_watcher.ahk

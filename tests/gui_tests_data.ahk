@@ -816,6 +816,97 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "ActivateFromFrozen dead hwnd: MRU unchanged (no activation)")
 
     ; ============================================================
+    ; _GUI_NextValidSel WRAP ARITHMETIC TESTS
+    ; ============================================================
+    ; Pure math function — wraps index around list, returns 0 on exhaustion.
+
+    GUI_Log("Test: _GUI_NextValidSel wrap arithmetic")
+    ; Normal advance: 1→2
+    GUI_AssertEq(_GUI_NextValidSel(1, 5, 1), 2, "NextValidSel(1,5,1)=2 (advance)")
+    ; Advance at end: 5→1 (wrap)
+    GUI_AssertEq(_GUI_NextValidSel(5, 5, 3), 1, "NextValidSel(5,5,3)=1 (wrap to start)")
+    ; Advance to 4 = startSel → exhausted (returns 0)
+    GUI_AssertEq(_GUI_NextValidSel(3, 5, 4), 0, "NextValidSel(3,5,4)=0 (advance hits startSel=exhausted)")
+    ; Advance to 5 ≠ startSel → valid
+    GUI_AssertEq(_GUI_NextValidSel(4, 5, 4), 5, "NextValidSel(4,5,4)=5 (advance past startSel)")
+    ; Single item: sel=1, list=1, start=1 → wrap to 1 = startSel → 0
+    GUI_AssertEq(_GUI_NextValidSel(1, 1, 1), 0, "NextValidSel(1,1,1)=0 (single item exhausted)")
+    ; Two items: start at 1 → 2 → wrap to 1 = start → 0
+    GUI_AssertEq(_GUI_NextValidSel(1, 2, 1), 2, "NextValidSel(1,2,1)=2 (advance)")
+    GUI_AssertEq(_GUI_NextValidSel(2, 2, 1), 0, "NextValidSel(2,2,1)=0 (wrapped back to start)")
+
+    ; ============================================================
+    ; _GUI_ActivateFromFrozen RETRY LOOP TESTS
+    ; ============================================================
+    ; All test hwnds are fake → DllCall("IsWindow") returns false for all.
+    ; This means the retry loop will walk the list and exhaust all candidates.
+
+    ; ----- Test: Multi-item exhaustion (3 dead hwnds) -----
+    GUI_Log("Test: ActivateFromFrozen retry exhausts 3 dead hwnds")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FirstTabTick := A_TickCount - 500
+    gGUI_OverlayVisible := true
+    gGUI_DisplayItems := [
+        {hwnd: 0xDEAD1, title: "Dead 1", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""},
+        {hwnd: 0xDEAD2, title: "Dead 2", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""},
+        {hwnd: 0xDEAD3, title: "Dead 3", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""}
+    ]
+    gGUI_Sel := 1
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+    origFirst := gGUI_LiveItems[1].hwnd
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+
+    GUI_AssertEq(gGUI_State, "IDLE", "Retry exhaust 3: state returns to IDLE")
+    GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "Retry exhaust 3: MRU unchanged (all dead)")
+
+    ; ----- Test: Depth limit caps search -----
+    GUI_Log("Test: ActivateFromFrozen depth limit caps search")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FirstTabTick := A_TickCount - 500
+    gGUI_OverlayVisible := true
+    cfg.AltTabActivationRetryDepth := 2  ; Only try 2 of 5
+    gGUI_DisplayItems := [
+        {hwnd: 0xDD01, title: "D1", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""},
+        {hwnd: 0xDD02, title: "D2", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""},
+        {hwnd: 0xDD03, title: "D3", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""},
+        {hwnd: 0xDD04, title: "D4", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""},
+        {hwnd: 0xDD05, title: "D5", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""}
+    ]
+    gGUI_Sel := 1
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+
+    ; Depth=2: should try positions 1 and 2, then stop (not check 3, 4, 5)
+    ; gGUI_Sel should have advanced to 3 (tried 1→dead, 2→dead, loop exits at maxAttempts)
+    GUI_AssertEq(gGUI_State, "IDLE", "Retry depth limit: state returns to IDLE")
+    cfg.AltTabActivationRetryDepth := 0  ; Restore default
+
+    ; ----- Test: Retry disabled (legacy path) -----
+    GUI_Log("Test: ActivateFromFrozen retry disabled")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_FirstTabTick := A_TickCount - 500
+    gGUI_OverlayVisible := true
+    cfg.AltTabActivationRetry := false  ; Disable retry
+    gGUI_DisplayItems := [
+        {hwnd: 0xDE01, title: "Dead", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""},
+        {hwnd: 0xDE02, title: "Dead2", class: "X", isOnCurrentWorkspace: true, workspaceName: "Main", lastActivatedTick: A_TickCount, iconHicon: 0, processName: ""}
+    ]
+    gGUI_Sel := 1
+    gGUI_LiveItems := CreateTestItemsWithMap(3)
+    origFirst := gGUI_LiveItems[1].hwnd
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
+
+    GUI_AssertEq(gGUI_State, "IDLE", "Retry disabled: state returns to IDLE")
+    GUI_AssertEq(gGUI_LiveItems[1].hwnd, origFirst, "Retry disabled: MRU unchanged (no retry attempted)")
+    cfg.AltTabActivationRetry := true  ; Restore default
+
+    ; ============================================================
     ; Stats_AccumulateSession DELTA TRACKING TESTS
     ; ============================================================
 

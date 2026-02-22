@@ -145,7 +145,8 @@ global cfg := {
     KomorebiCrossWorkspaceMethod: "MimicNative",
     KomorebiMimicNativeSettleMs: 0,
     KomorebiUseSocket: true,
-    KomorebiWorkspaceConfirmMethod: "PollCloak"
+    KomorebiWorkspaceConfirmMethod: "PollCloak",
+    GUI_MonitorFilterDefault: "All"
 }
 
 ; Test tracking
@@ -317,19 +318,15 @@ INT_SetBypassMode(shouldBypass) {
     gINT_BypassMode := shouldBypass
 }
 
-; Monitor mode mocks (gui_monitor.ahk not included in tests)
-GUI_CaptureOverlayMonitor() {
-    ; No-op in tests
+; Monitor Win32 dependency mocks (gui_monitor.ahk is included for real logic)
+; These replace the Win32 functions that gui_monitor.ahk calls internally.
+GUI_GetTargetMonitorHwnd() {
+    return 0  ; No real window in tests
 }
-GUI_FilterByMonitorMode(items) {
-    global gGUI_MonitorMode, MON_MODE_ALL
-    if (gGUI_MonitorMode = MON_MODE_ALL)
-        return items
-    ; In test mode with monitor filter active, return items as-is
-    ; (tests would need to set up monitor handles for real filtering)
-    return items
+Win_GetMonitorHandle(hwnd) {
+    return 0  ; Tests set gGUI_OverlayMonitorHandle directly
 }
-GUI_GetOverlayMonitorLabel() {
+Win_GetMonitorLabel(hMon) {
     return "Mon 1"
 }
 
@@ -354,6 +351,7 @@ global gGUI_Overlay := _MockGui()
 #Include %A_ScriptDir%\..\src\lib\cjson.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_input.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_workspace.ahk
+#Include %A_ScriptDir%\..\src\gui\gui_monitor.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_data.ahk
 #Include %A_ScriptDir%\..\src\gui\gui_state.ahk
 
