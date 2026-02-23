@@ -479,6 +479,29 @@ RunUnitTests_CoreConfig() {
     try DirDelete(testCfgDir)
 
     ; ============================================================
+    ; Performance Config Default Tests
+    ; ============================================================
+    Log("`n--- Performance Config Default Tests ---")
+
+    perfOptions := ["PerfKeepInMemory", "PerfForceTouchMemory"]
+    allPerfDefaultTrue := true
+    for _, opt in perfOptions {
+        if (!cfg.HasOwnProp(opt)) {
+            Log("FAIL: cfg missing performance option: " opt)
+            TestErrors++
+            allPerfDefaultTrue := false
+        } else if (cfg.%opt% != true) {
+            Log("FAIL: " opt " should default to true, got: " cfg.%opt%)
+            TestErrors++
+            allPerfDefaultTrue := false
+        }
+    }
+    if (allPerfDefaultTrue) {
+        Log("PASS: All " perfOptions.Length " performance options default to true")
+        TestPassed++
+    }
+
+    ; ============================================================
     ; Diagnostic Logging Guard Tests
     ; ============================================================
     ; These tests verify that logging functions respect their config flags
