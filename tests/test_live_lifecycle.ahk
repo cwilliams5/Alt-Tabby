@@ -63,7 +63,8 @@ RunLiveTests_Lifecycle() {
         Sleep(50)
     }
     if (processCount < 2) {
-        Log("SKIP: Only " processCount " process(es) of " LIFECYCLE_EXE_NAME ", need 2 (launcher + gui)")
+        Log("FAIL: Only " processCount " process(es) of " LIFECYCLE_EXE_NAME ", need 2 (launcher + gui)")
+        TestErrors++
         _Lifecycle_Cleanup()
         return
     }
@@ -128,7 +129,57 @@ RunLiveTests_Lifecycle() {
         Log("WARNING: GUI did not log pump connection within 8s")
 
     ; ============================================================
-    ; Test 1: Pump kill → auto-restart (end-to-end)
+    ; Test 1a: Pump enrichment round-trip
+    ; ============================================================
+    ; Verifies the pump actually processes enrichment requests (not just connects).
+    ; Catches crashes like Map.Delete on missing key that abort _Pump_HandleEnrich
+    ; before any response is built — resulting in zero icons.
+    Log("`n--- Pump Enrichment Round-Trip Test ---")
+
+    if (!guiConnected) {
+        Log("FAIL: Pump not connected — enrichment test requires active pump")
+        TestErrors++
+    } else if (!knownPumpPid || !ProcessExist(knownPumpPid)) {
+        Log("FAIL: Pump not running — enrichment test requires live pump process")
+        TestErrors++
+    } else {
+        ; Poll pump log for HandleEnrich entry (pump logs each enrichment response).
+        ; GUI's initial WinEnum scan enqueues all windows for enrichment, so the
+        ; pump should process at least one batch within a few seconds of connecting.
+        pumpLogPath := A_Temp "\tabby_pump.log"
+        enrichSeen := false
+        enrichStart := A_TickCount
+        while ((A_TickCount - enrichStart) < 8000) {
+            if (FileExist(pumpLogPath)) {
+                try {
+                    logContent := FileRead(pumpLogPath)
+                    if (InStr(logContent, "HandleEnrich:"))
+                        enrichSeen := true
+                }
+            }
+            if (enrichSeen)
+                break
+            Sleep(100)
+        }
+
+        if (enrichSeen) {
+            Log("PASS: Pump processed enrichment request (" (A_TickCount - enrichStart) "ms)")
+            TestPassed++
+        } else {
+            Log("FAIL: No pump enrichment response within 8s (pump may be crashing on request processing)")
+            TestErrors++
+            if (FileExist(pumpLogPath)) {
+                try {
+                    pumpLog := FileRead(pumpLogPath)
+                    Log("--- Pump Log (last 2000 chars) ---")
+                    Log(SubStr(pumpLog, -2000))
+                }
+            }
+        }
+    }
+
+    ; ============================================================
+    ; Test 1b: Pump kill → auto-restart (end-to-end)
     ; ============================================================
     ; Tests the full cycle: kill pump → GUI detects pipe write failure
     ; → GUI sends PUMP_FAILED → launcher restarts pump → new PID appears.
@@ -141,9 +192,11 @@ RunLiveTests_Lifecycle() {
     ; can't distinguish by process name alone)
     pumpPid := knownPumpPid
     if (!guiConnected) {
-        Log("SKIP: GUI not connected to pump — auto-restart requires active pipe connection")
+        Log("FAIL: GUI not connected to pump — auto-restart requires active pipe connection")
+        TestErrors++
     } else if (!pumpPid || !ProcessExist(pumpPid)) {
-        Log("SKIP: Pump not running, cannot test pump kill auto-restart")
+        Log("FAIL: Pump not running, cannot test pump kill auto-restart")
+        TestErrors++
     } else {
         Log("Pump PID before kill: " pumpPid " (from launcher)")
         ProcessClose(pumpPid)
@@ -206,7 +259,8 @@ RunLiveTests_Lifecycle() {
     Log("`n--- PUMP_FAILED Signal Test ---")
 
     if (!guiConnected) {
-        Log("SKIP: GUI not connected to pump — PUMP_FAILED test requires active pipe connection")
+        Log("FAIL: GUI not connected to pump — PUMP_FAILED test requires active pipe connection")
+        TestErrors++
         pumpPid := 0
     } else {
         ; Wait for GUI to reconnect to restarted pump (poll log instead of fixed sleep)
@@ -219,7 +273,8 @@ RunLiveTests_Lifecycle() {
     }
     if (!pumpPid) {
         if (guiConnected)
-            Log("SKIP: Pump not running, cannot test PUMP_FAILED signal")
+            Log("FAIL: Pump not running, cannot test PUMP_FAILED signal")
+            TestErrors++
     } else {
         Log("Pump PID before PUMP_FAILED signal: " pumpPid)
         response := _Lifecycle_SendCommand(launcherHwnd, 8)  ; TABBY_CMD_PUMP_FAILED = 8
@@ -316,7 +371,8 @@ RunLiveTests_Lifecycle() {
     ; Use authoritative GUI PID from launcher (knownGuiPid is still valid — only pump changed)
     guiPidBefore := knownGuiPid
     if (!guiPidBefore || !ProcessExist(guiPidBefore)) {
-        Log("SKIP: Could not find GUI process for config watcher test")
+        Log("FAIL: Could not find GUI process for config watcher test")
+        TestErrors++
     } else {
         ; Modify config.ini on disk — the launcher file watcher should detect this
         ; and restart subprocesses (including GUI with new PID)
@@ -367,7 +423,8 @@ RunLiveTests_Lifecycle() {
     guiPid := _Lifecycle_FindGuiPid(launcherPid)
 
     if (!guiPid) {
-        Log("SKIP: Could not find GUI pid for shutdown test")
+        Log("FAIL: Could not find GUI pid for shutdown test")
+        TestErrors++
     } else {
         Log("Shutdown test: launcher=" launcherPid " gui=" guiPid)
 

@@ -133,7 +133,7 @@ WS_SnapshotMapKeys(mapObj) {
 _WS_DeleteWindow(hwnd) {
     global gWS_Store, gWS_DLCache_ItemsMap
     try IconPump_CleanupWindow(hwnd)
-    gWS_Store.Delete(hwnd)
+    gWS_Store.Delete(hwnd)  ; lint-ignore: map-delete (caller contract: hwnd verified by caller under Critical)
     ; Prune stale entry from display list cache to prevent unbounded growth
     ; between Path 3 rebuilds (Path 1.5 MRU move-to-front preserves the map)
     try gWS_DLCache_ItemsMap.Delete(hwnd)
@@ -1000,7 +1000,7 @@ WL_PopIconBatch(count := 16) {
     batch := []
     while (gWS_IconQueue.Length > 0 && batch.Length < count) {
         hwnd := gWS_IconQueue.Pop()
-        gWS_IconQueueDedup.Delete(hwnd)
+        gWS_IconQueueDedup.Delete(hwnd)  ; lint-ignore: map-delete (queue+dedup invariant under Critical)
         batch.Push(hwnd)
     }
     Critical "Off"
@@ -1015,7 +1015,7 @@ WL_PopPidBatch(count := 16) {
     batch := []
     while (gWS_PidQueue.Length > 0 && batch.Length < count) {
         pid := gWS_PidQueue.Pop()
-        gWS_PidQueueDedup.Delete(pid)
+        gWS_PidQueueDedup.Delete(pid)  ; lint-ignore: map-delete (queue+dedup invariant under Critical)
         batch.Push(pid)
     }
     Critical "Off"
@@ -1168,7 +1168,7 @@ WL_PruneProcNameCache() {
     pruned := 0
     for _, pid in pids {
         if (!ProcessExist(pid)) {
-            gWS_ProcNameCache.Delete(pid)
+            gWS_ProcNameCache.Delete(pid)  ; lint-ignore: map-delete (pid from SnapshotMapKeys of same map)
             pruned++
         }
     }
@@ -1204,7 +1204,7 @@ WL_PruneExeIconCache() {
             hIcon := gWS_ExeIconCache[exePath]
             if (hIcon)
                 try DllCall("user32\DestroyIcon", "ptr", hIcon)
-            gWS_ExeIconCache.Delete(exePath)
+            gWS_ExeIconCache.Delete(exePath)  ; lint-ignore: map-delete (exePath from SnapshotMapKeys of same map)
             pruned++
         }
     }

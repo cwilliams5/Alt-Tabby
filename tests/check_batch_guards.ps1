@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -1943,6 +1943,138 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_callback_invocation_arity"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 14: map_delete
+# Flags Map.Delete() calls without a safety guard.
+# AHK v2 Map.Delete() throws ValueError if the key doesn't exist.
+# Guards recognized:
+#   1. try on the same line (try map.Delete(...))
+#   2. .Has(key) on same map variable within 10 lines above
+#   3. .Get(key on same map variable within 10 lines above (implies existence check)
+#   4. Same map variable iterated with "for" in the containing function (prune loop)
+# Suppress: ; lint-ignore: map-delete
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$MD_SUPPRESSION = 'lint-ignore: map-delete'
+
+# Regex to match .Delete( calls — captures map variable and key expression
+$mdDeleteRx = [regex]::new('(\w+(?:\.\w+)*)\.Delete\(([^)]+)\)')
+
+# Non-map types that have .Delete() methods (GUI controls, TrayMenu, etc.)
+$mdNonMapTypes = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+@('A_TrayMenu', 'gViewer_LV', 'Sidebar', 'tray', 'menu', 'LV') |
+    ForEach-Object { [void]$mdNonMapTypes.Add($_) }
+
+$mdIssues = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $joined = $fileCacheText[$file.FullName]
+    if ($joined.IndexOf('.Delete(') -lt 0) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        $trimmed = $raw.TrimStart()
+
+        # Skip comments
+        if ($trimmed.Length -gt 0 -and $trimmed[0] -eq ';') { continue }
+
+        # Must contain .Delete(
+        if ($raw.IndexOf('.Delete(') -lt 0) { continue }
+
+        # Skip suppressed
+        if ($raw.Contains($MD_SUPPRESSION)) { continue }
+
+        # Extract map variable and key
+        $m = $mdDeleteRx.Match($raw)
+        if (-not $m.Success) { continue }
+
+        $mapVar = $m.Groups[1].Value
+        $keyExpr = $m.Groups[2].Value.Trim()
+
+        # Skip non-Map .Delete() calls (GUI controls, etc.)
+        $baseVar = $mapVar
+        if ($mapVar.Contains('.')) {
+            $baseVar = $mapVar.Substring($mapVar.LastIndexOf('.') + 1)
+        }
+        if ($mdNonMapTypes.Contains($baseVar)) { continue }
+        # Skip if key is empty or a string literal (not a Map operation)
+        if ($keyExpr -eq '' -or $keyExpr[0] -eq '"' -or $keyExpr[0] -eq "'") { continue }
+
+        # Guard 1: try on same line
+        if ($trimmed -match '^\s*try\b') { continue }
+
+        # Guard 2 & 3: .Has(key) or .Get(key on same map variable within 10 lines above
+        $hasGuard = $false
+        $lookBack = [Math]::Max(0, $i - 10)
+        $escapedMap = [regex]::Escape($mapVar)
+        $escapedKey = [regex]::Escape($keyExpr)
+        for ($j = $lookBack; $j -lt $i; $j++) {
+            $prev = $lines[$j]
+            if ($prev -match "$escapedMap\.Has\(\s*$escapedKey\s*\)") { $hasGuard = $true; break }
+            if ($prev -match "$escapedMap\.Get\(\s*$escapedKey\b") { $hasGuard = $true; break }
+        }
+        if ($hasGuard) { continue }
+
+        # Guard 4: Prune loop — same map iterated with "for" in containing function.
+        # Find function start by scanning backward for function signature.
+        $inPruneLoop = $false
+        $funcStart = -1
+        for ($j = $i - 1; $j -ge 0; $j--) {
+            $fl = $lines[$j].TrimStart()
+            # Function signature: word( at start of line with { (distinguishes
+            # function definitions from function calls like DllCall(...))
+            if ($fl -match '^\w+\([^)]*\)\s*\{') {
+                $funcStart = $j
+                break
+            }
+        }
+        if ($funcStart -ge 0) {
+            # Search from function start to current line for "for ... in <mapVar>"
+            for ($j = $funcStart; $j -lt $i; $j++) {
+                if ($lines[$j] -match "\bfor\b.*\bin\b\s+$escapedMap\b") {
+                    $inPruneLoop = $true
+                    break
+                }
+            }
+        }
+        if ($inPruneLoop) { continue }
+
+        # Unguarded — flag it
+        [void]$mdIssues.Add([PSCustomObject]@{
+            File = $relPath
+            Line = $i + 1
+            MapVar = $mapVar
+            Key = $keyExpr
+            Code = $trimmed
+        })
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_map_delete"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+if ($mdIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($mdIssues.Count) unguarded Map.Delete() call(s) found.")
+    [void]$failOutput.AppendLine("  AHK v2 Map.Delete() throws ValueError if the key doesn't exist.")
+    [void]$failOutput.AppendLine("  Fix: add .Has(key) check before .Delete(), wrap in try, or verify")
+    [void]$failOutput.AppendLine("  the key is guaranteed to exist (e.g., from iterating the same map).")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: map-delete' on the .Delete() line.")
+    $grouped = $mdIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            $delStr = "$($issue.MapVar).Delete($($issue.Key))"
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $delStr - no .Has() guard, try, or prune-loop iteration")
+        }
+    }
+}
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1950,7 +2082,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

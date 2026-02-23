@@ -144,7 +144,7 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
     if (parsed.Has("needsIcon")) {
         for _, h in parsed["needsIcon"] {
             h := h + 0
-            if (h)
+            if (h && _Pump_PrevIconSource.Has(h))
                 _Pump_PrevIconSource.Delete(h)
         }
     }
@@ -346,7 +346,8 @@ _Pump_PruneOwnedIcons() {
         for _, hwnd in toRemove {
             try DllCall("user32\DestroyIcon", "ptr", _Pump_OwnedIcons[hwnd])
             _Pump_OwnedIcons.Delete(hwnd)
-            _Pump_PrevIconSource.Delete(hwnd)
+            if (_Pump_PrevIconSource.Has(hwnd))
+                _Pump_PrevIconSource.Delete(hwnd)
         }
 
         ; Also prune prev source entries for windows not in OwnedIcons

@@ -457,7 +457,7 @@ _IP_Tick() {
         } else {
             ; Max attempts reached - mark as gave up so we don't retry forever
             gIP_UpdateFields(hwnd, { iconGaveUp: true }, "icons")
-            _IP_Attempts.Delete(hwnd)  ; Clean up attempts tracking
+            _IP_Attempts.Delete(hwnd)  ; Clean up attempts tracking  ; lint-ignore: map-delete (key set by _IP_Attempts[hwnd]:= above)
             if (logEnabled)
                 _IP_Log("GAVE UP hwnd=" hwnd " '" title "' after " IconMaxAttempts " attempts")
         }

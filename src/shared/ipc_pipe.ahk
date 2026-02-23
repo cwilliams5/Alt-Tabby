@@ -108,7 +108,7 @@ IPC_PipeServer_Send(server, hPipe, msgText, wakeHwnd := 0) {
         Critical "On"
         if (server.onDisconnect)
             try server.onDisconnect.Call(hPipe)
-        server.clients.Delete(hPipe)
+        server.clients.Delete(hPipe)  ; lint-ignore: map-delete (hPipe from active client tracked by framework)
         _IPC_CloseHandle(hPipe)
         Critical "Off"
         return false
