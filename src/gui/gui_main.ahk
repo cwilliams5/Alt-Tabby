@@ -242,6 +242,10 @@ _GUI_Main_Init() {
     ; Start housekeeping timer for cache pruning, log rotation, stats flush (staggered)
     SetTimer(_GUI_StartHousekeeping, -STAGGER_HOUSEKEEPING_MS)
 
+    ; Lock working set after warm-up (5s delay lets caches populate)
+    if (cfg.PerfKeepInMemory)
+        SetTimer(_GUI_LockWorkingSet, -5000)
+
     ; Set up interceptor keyboard hooks — MUST be LAST (no hotkeys before data is populated)
     ; Skip in testing mode to avoid intercepting developer's real keystrokes during test runs
     if (!g_TestingMode) {
@@ -392,6 +396,7 @@ _GUI_StartHousekeeping() {
 }
 
 _GUI_Housekeeping() {
+    global cfg
     ; Cache pruning
     try KomorebiSub_PruneStaleCache()
     try WL_PruneProcNameCache()
@@ -406,6 +411,71 @@ _GUI_Housekeeping() {
 
     ; Flush stats to disk
     try Stats_FlushToDisk()
+
+    ; Touch key data structures to keep memory pages resident
+    if (cfg.PerfForceTouchMemory)
+        try _GUI_TouchMemoryPages()
+}
+
+; ========================= MEMORY MANAGEMENT =========================
+
+_GUI_LockWorkingSet() {
+    global cfg, LOG_PATH_STORE
+    try {
+        ; Query current working set via K32GetProcessMemoryInfo
+        ; PROCESS_MEMORY_COUNTERS: 72 bytes on x64, WorkingSetSize at offset 16 (UPtr = SIZE_T)
+        hProcess := DllCall("GetCurrentProcess", "Ptr")
+        pmc := Buffer(72, 0)
+        if (!DllCall("K32GetProcessMemoryInfo", "Ptr", hProcess, "Ptr", pmc, "UInt", 72, "Int"))
+            return
+
+        wsSize := NumGet(pmc, 16, "UPtr")
+
+        ; Sanity check: skip if < 4MB or > 512MB (measurement anomaly)
+        if (wsSize < 4 * 1024 * 1024 || wsSize > 512 * 1024 * 1024)
+            return
+
+        ; Set hard working set floor
+        ; Flags: QUOTA_LIMITS_HARDWS_MIN_ENABLE (0x1) | QUOTA_LIMITS_HARDWS_MAX_DISABLE (0x8) = 0x9
+        wsMax := wsSize * 3 // 2  ; 1.5x measured
+        result := DllCall("SetProcessWorkingSetSizeEx", "Ptr", hProcess,
+            "UPtr", wsSize, "UPtr", wsMax, "UInt", 0x9, "Int")
+
+        wsMB := Round(wsSize / (1024 * 1024), 1)
+        try LogAppend(LOG_PATH_STORE, "LockWorkingSet: set hard min=" wsMB "mb result=" result)
+    } catch as e {
+        try LogAppend(LOG_PATH_STORE, "LockWorkingSet err=" e.Message)
+    }
+}
+
+_GUI_TouchMemoryPages() {
+    global gGdip_IconCache, gGUI_LiveItems, gGdip_Res, gWS_Store, gGdip_BrushCache
+
+    ; Read one entry from each key data structure to keep pages resident.
+    ; Single iteration pages in the Map's internal hash table.
+    ; Read-only, discard results — no Critical section needed.
+
+    if (gGdip_IconCache.Count)
+        for _, v in gGdip_IconCache
+            break
+
+    if (gGdip_Res.Count)
+        for _, v in gGdip_Res
+            break
+
+    if (gGdip_BrushCache.Count)
+        for _, v in gGdip_BrushCache
+            break
+
+    if (gWS_Store.Count)
+        for _, v in gWS_Store
+            break
+
+    ; Touch first and last element (different memory pages)
+    if (gGUI_LiveItems.Length) {
+        _ := gGUI_LiveItems[1]
+        _ := gGUI_LiveItems[gGUI_LiveItems.Length]
+    }
 }
 
 ; ========================= DIAGNOSTIC LOG ROTATION =========================
@@ -470,6 +540,7 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     try SetTimer(_GUI_StartHousekeeping, 0)
     try SetTimer(_GUI_ValidateExistenceTick, 0)
     try SetTimer(_GUI_StartValidateExistence, 0)
+    try SetTimer(_GUI_LockWorkingSet, 0)
     try GUI_StopPreCache()
 
     ; Stop WinEventHook

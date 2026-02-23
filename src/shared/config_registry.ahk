@@ -1117,6 +1117,18 @@ global gConfigRegistry := [
      d: "Interval (ms) between housekeeping cycles: cache pruning, log rotation, and stats flush. Lower = more responsive cleanup but slightly more CPU. Default 5 minutes."},
 
     ; ============================================================
+    ; Performance
+    ; ============================================================
+    {type: "section", name: "Performance", desc: "Performance",
+     long: "Memory management to maintain responsiveness after long idle periods."},
+
+    {s: "Performance", k: "KeepInMemory", g: "PerfKeepInMemory", t: "bool", default: true,
+     d: "Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle."},
+
+    {s: "Performance", k: "ForceTouchMemory", g: "PerfForceTouchMemory", t: "bool", default: true,
+     d: "Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost."},
+
+    ; ============================================================
     ; Diagnostics
     ; ============================================================
     {type: "section", name: "Diagnostics",
