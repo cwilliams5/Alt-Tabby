@@ -1262,7 +1262,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     Profiler.Enter("_KSub_ProcessFullState") ; @profile
     global gWS_Store, _KSub_LastWorkspaceName, _KSub_WorkspaceCache
     global _KSub_CacheMaxAgeMs, _KSub_FocusedHwndByWS, gKSub_MruSuppressUntilTick
-    global cfg
+    global cfg, gFR_Enabled, FR_EV_KSUB_MRU_STALE
 
     if !(stateObj is Map) {
         Profiler.Leave() ; @profile
@@ -1327,16 +1327,26 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
         if (currentWsName != "") {
             focusedHwnd := _KSub_FocusedHwndByWS.Get(currentWsName, 0)
             if (focusedHwnd) {
-                ; Skip MRU update if WEH already confirmed focus for this exact hwnd.
-                ; Prevents redundant push cycle (rev bump + display list rebuild + repaint).
-                ; When WEH is disabled/failed, gWEH_LastFocusHwnd stays 0 → never matches → update proceeds.
-                global gWEH_LastFocusHwnd
-                if (focusedHwnd != gWEH_LastFocusHwnd) {
-                    try WL_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
+                ; Ground-truth: komorebi notification state is captured mid-operation
+                ; and may report stale focus (architecture rule). Validate against Win32.
+                actualFg := DllCall("GetForegroundWindow", "Ptr")
+                if (focusedHwnd != actualFg) {
+                    if (gFR_Enabled)
+                        FR_Record(FR_EV_KSUB_MRU_STALE, focusedHwnd, actualFg)
                     if (cfg.DiagKomorebiLog)
-                        KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
-                } else if (cfg.DiagKomorebiLog) {
-                    KSub_DiagLog("ProcessFullState[light]: MRU skip (WEH match) hwnd=" focusedHwnd)
+                        KSub_DiagLog("ProcessFullState[light]: MRU skip (stale) ksub=" focusedHwnd " fg=" actualFg)
+                } else {
+                    ; Skip MRU update if WEH already confirmed focus for this exact hwnd.
+                    ; Prevents redundant push cycle (rev bump + display list rebuild + repaint).
+                    ; When WEH is disabled/failed, gWEH_LastFocusHwnd stays 0 → never matches → update proceeds.
+                    global gWEH_LastFocusHwnd
+                    if (focusedHwnd != gWEH_LastFocusHwnd) {
+                        try WL_UpdateFields(focusedHwnd, { lastActivatedTick: A_TickCount }, "ksub_focus_light")
+                        if (cfg.DiagKomorebiLog)
+                            KSub_DiagLog("ProcessFullState[light]: MRU for focused hwnd=" focusedHwnd " on '" currentWsName "'")
+                    } else if (cfg.DiagKomorebiLog) {
+                        KSub_DiagLog("ProcessFullState[light]: MRU skip (WEH match) hwnd=" focusedHwnd)
+                    }
                 }
             }
         }

@@ -52,6 +52,7 @@ global FR_EV_MON_TOGGLE       := 42  ; d1=newMode(1=all,2=current) d2=displayCou
 ; WinEvent hook events (50-59)
 global FR_EV_FOCUS             := 50  ; d1=hwnd — focus changed to window in store
 global FR_EV_FOCUS_SUPPRESS    := 51  ; d1=hwnd d2=remainingMs — focus blocked by MRU suppression
+global FR_EV_KSUB_MRU_STALE   := 52  ; d1=ksubHwnd d2=actualFgHwnd — komorebi stale focus skipped
 
 ; Producer health events (60-69)
 global FR_EV_PRODUCER_BACKOFF  := 60  ; d1=errCount d2=backoffMs — producer entering backoff
@@ -357,6 +358,7 @@ _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
     global FR_EV_ACTIVATE_START, FR_EV_ACTIVATE_RESULT, FR_EV_MRU_UPDATE
     global FR_EV_WINDOW_ADD, FR_EV_WINDOW_REMOVE
     global FR_EV_ACTIVATE_GONE, FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
+    global FR_EV_KSUB_MRU_STALE
     ; Collect all unique hwnds from entries + items + foreground
     hwnds := Map()
     for _, entry in entries {
@@ -365,14 +367,21 @@ _FR_BuildHwndMap(entries, itemsCopy, fgHwnd) {
         if (ev = FR_EV_ACTIVATE_START || ev = FR_EV_ACTIVATE_RESULT
             || ev = FR_EV_MRU_UPDATE
             || ev = FR_EV_WINDOW_ADD || ev = FR_EV_WINDOW_REMOVE
-            || ev = FR_EV_ACTIVATE_GONE || ev = FR_EV_FOCUS || ev = FR_EV_FOCUS_SUPPRESS) {
+            || ev = FR_EV_ACTIVATE_GONE || ev = FR_EV_FOCUS || ev = FR_EV_FOCUS_SUPPRESS
+            || ev = FR_EV_KSUB_MRU_STALE) {
             h := entry[3]
             if (h)
                 hwnds[h] := true
         }
-        ; ACTIVATE_RESULT also has actualFg in d3
+        ; ACTIVATE_RESULT has actualFg in d3 (entry[5])
         if (ev = FR_EV_ACTIVATE_RESULT) {
             h := entry[5]
+            if (h)
+                hwnds[h] := true
+        }
+        ; KSUB_MRU_STALE has actualFg in d2 (entry[4])
+        if (ev = FR_EV_KSUB_MRU_STALE) {
+            h := entry[4]
             if (h)
                 hwnds[h] := true
         }
@@ -430,6 +439,7 @@ _FR_GetEventName(ev) {
     global FR_EV_ACTIVATE_RETRY
     global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE, FR_EV_MON_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
+    global FR_EV_KSUB_MRU_STALE
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
 
     switch ev {
@@ -467,6 +477,7 @@ _FR_GetEventName(ev) {
         case FR_EV_MON_TOGGLE:        return "MON_TOGGLE"
         case FR_EV_FOCUS:             return "FOCUS"
         case FR_EV_FOCUS_SUPPRESS:    return "FOCUS_SUPPRESS"
+        case FR_EV_KSUB_MRU_STALE:   return "KSUB_MRU_STALE"
         case FR_EV_PRODUCER_BACKOFF:  return "PRODUCER_BACKOFF"
         case FR_EV_PRODUCER_RECOVER:  return "PRODUCER_RECOVER"
         default:                      return "UNKNOWN(" ev ")"
@@ -498,6 +509,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_ACTIVATE_RETRY
     global FR_EV_WS_SWITCH, FR_EV_WS_TOGGLE, FR_EV_MON_TOGGLE
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
+    global FR_EV_KSUB_MRU_STALE
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
 
     switch ev {
@@ -574,6 +586,8 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return _FR_HwndStr(d1, hwndMap)
         case FR_EV_FOCUS_SUPPRESS:
             return _FR_HwndStr(d1, hwndMap) "  remainMs=" d2
+        case FR_EV_KSUB_MRU_STALE:
+            return "ksub=" _FR_HwndStr(d1, hwndMap) "  fg=" _FR_HwndStr(d2, hwndMap)
         case FR_EV_PRODUCER_BACKOFF:
             return "errCount=" d1 "  backoffMs=" d2
         case FR_EV_PRODUCER_RECOVER:
