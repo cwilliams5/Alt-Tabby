@@ -361,6 +361,20 @@ INT_SetBypassMode(shouldBypass) {
     Critical "Off"
 }
 
+; Re-assert Tab hotkey is enabled when bypass is off.
+; No-op when hooks are healthy (Hotkey("On") on an already-On hotkey just returns).
+; Recovers from silent desync where Tab was left Off after a bypass toggle.
+; Called from: focus-change callback (active use) and housekeeping timer (idle).
+INT_ReassertTabHotkey() {
+    global gINT_BypassMode
+    if (gINT_BypassMode)
+        return
+    try {
+        Hotkey("$*Tab", "On")
+        Hotkey("$*Tab Up", "On")
+    }
+}
+
 ; Check bypass criteria for a specific window (or active window if hwnd=0)
 ; Also logs the reason when bypass is triggered (under DiagEventLog)
 INT_ShouldBypassWindow(hwnd := 0) {

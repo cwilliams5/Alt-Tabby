@@ -288,6 +288,11 @@ _GUI_OnProducerRevChanged(isStructural := true) {
             shouldBypass := INT_ShouldBypassWindow(fgHwnd)
             INT_SetBypassMode(shouldBypass)
         }
+
+        ; Re-assert Tab hotkey is enabled when bypass is off.
+        ; Recovers from silent desync where Hotkey("On") failed after bypass toggle.
+        ; No-op when hooks are healthy (zero cost).
+        INT_ReassertTabHotkey()
     } catch as e {
         global LOG_PATH_STORE
         try LogAppend(LOG_PATH_STORE, "producer_rev_callback err=" e.Message " file=" e.File " line=" e.Line)
@@ -415,6 +420,9 @@ _GUI_Housekeeping() {
     ; Touch key data structures to keep memory pages resident
     if (cfg.PerfForceTouchMemory)
         try _GUI_TouchMemoryPages()
+
+    ; Re-assert Tab hotkey (covers idle scenarios where no focus change fires)
+    try INT_ReassertTabHotkey()
 }
 
 ; ========================= MEMORY MANAGEMENT =========================

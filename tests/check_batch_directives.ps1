@@ -389,6 +389,7 @@ $script:BD_BT_ExemptPatterns = @(
     [regex]::new('(?i)^gWS_(PushToClients|PushIfRevChanged|BroadcastWorkspaceFlips)\(')
     [regex]::new('(?i)^IPC_PipeClient_Send\(')
     [regex]::new('(?i)^(IconPump|ProcPump|KomorebiSub|KomorebiLite|WinEventHook|MRU_Lite)_(Stop|Disable|EnsureRunning|PruneStaleCache|CleanupWindow|CleanupUwpCache|PruneProcNameCache|PruneExeIconCache|PruneFailedPidCache|Poll)\(')
+    [regex]::new('(?i)^INT_ReassertTabHotkey\(')
     [regex]::new('(?i):= JSON\.Load\(')
     [regex]::new('(?i)^(parsed|stateObj|obj)\s*:= JSON\.Load\(')
     [regex]::new('(?i)^return Integer\(')
