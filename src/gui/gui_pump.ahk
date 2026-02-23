@@ -209,6 +209,17 @@ _GUIPump_CollectTick() {
         global IPC_MSG_ENRICH
         request := Map("type", IPC_MSG_ENRICH, "hwnds", hwnds)
 
+        ; Flag hwnds that have no icon — pump must skip nochange cache for these
+        ; (stale cache from removed-then-readded HWND would return "unchanged")
+        needsIcon := []
+        for _, h in hwnds {
+            row := WL_GetByHwnd(h)
+            if (row && !row.iconHicon)
+                needsIcon.Push(h)
+        }
+        if (needsIcon.Length > 0)
+            request["needsIcon"] := needsIcon
+
         ; Include GUI hwnd on first request so pump can PostMessage wake us
         if (!_gPump_HelloSent) {
             request["guiHwnd"] := A_ScriptHwnd
@@ -309,10 +320,19 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
             iconCount++
         }
 
-        ; Always update refresh tick when enrichment ran (even without icon result).
-        ; Prevents re-enqueue before throttle period expires when pump returns "unchanged".
+        ; Update refresh tick when enrichment ran — prevents re-enqueue before throttle
+        ; period expires when pump returns "unchanged".
+        ; BUT: skip if the window has no icon and none was returned — don't let the
+        ; throttle block retry for icon-less windows (HWND reuse scenario).
         ; iconLastRefreshTick is in gWS_InternalFields — no rev bump or dirty marking.
-        fields["iconLastRefreshTick"] := A_TickCount
+        if (data.Has("iconHicon")) {
+            fields["iconLastRefreshTick"] := A_TickCount
+        } else {
+            row := WL_GetByHwnd(hwnd)
+            if (row && row.iconHicon)
+                fields["iconLastRefreshTick"] := A_TickCount
+            ; else: window has no icon AND pump returned none — don't update throttle
+        }
 
         if (fields.Count > 0) {
             WL_UpdateFields(hwnd, fields, "pump_enrich")

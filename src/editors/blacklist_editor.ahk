@@ -284,13 +284,9 @@ _BE_OnSave(*) {
         Theme_UntrackGui(gBE_Gui)
         gBE_Gui.Destroy()
 
-        ; Show success message
-        msg := "Blacklist saved."
-        if (reloaded)
-            msg .= " Changes applied immediately."
-        else
-            msg .= " Alt-Tabby not running - changes will apply on next start."
-        ThemeMsgBox(msg, "Alt-Tabby Blacklist", "OK Iconi")
+        ; Show success message — file watcher in GUI auto-detects the save,
+        ; so changes are applied immediately when Alt-Tabby is running.
+        ThemeMsgBox("Blacklist saved.", "Alt-Tabby Blacklist", "OK Iconi")
     }
 }
 

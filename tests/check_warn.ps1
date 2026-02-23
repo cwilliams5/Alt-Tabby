@@ -7,8 +7,9 @@
 #
 # How it works:
 #   1. Copies all src/*.ahk to a temp directory, stripping #Warn VarUnset, Off
-#   2. Creates a wrapper.ahk that sets #Warn VarUnset, StdOut and includes
-#      all production files (same include chain as run_tests.ahk)
+#      (lib/ files copied as-is — needed for function resolution, not checked)
+#   2. Parses alt_tabby.ahk for #Include directives to auto-generate wrapper
+#      (include chain can never drift from production)
 #   3. Runs the wrapper with /ErrorStdOut to capture load-time warnings
 #   4. Parses stdout for VarUnset warning patterns
 #   5. Maps temp paths back to real source paths for readable output
@@ -47,25 +48,72 @@ $srcDest = Join-Path $tempRoot "src"
 $strippedCount = 0
 $fileCount = 0
 
-foreach ($file in Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse | Where-Object { $_.FullName -notlike "*\lib\*" }) {
+# Copy ALL src/ files including lib/ (needed for function resolution).
+# Strip #Warn VarUnset, Off from non-lib files only.
+foreach ($file in Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse) {
     $relPath = $file.FullName.Substring($SourceDir.Length)
     $destPath = Join-Path $srcDest $relPath
     $destDir = Split-Path $destPath -Parent
     if (-not (Test-Path $destDir)) { [void](New-Item -ItemType Directory -Path $destDir -Force) }
 
     $content = [System.IO.File]::ReadAllText($file.FullName)
-    # Strip #Warn VarUnset, Off (the last directive wins in AHK, so removing these
-    # lets our wrapper's #Warn VarUnset, StdOut take effect for all code)
-    $modified = $content -replace '(?m)^#Warn\s+VarUnset\s*,\s*Off[^\r\n]*', '; [check_warn: #Warn stripped for analysis]'
-    if ($modified -ne $content) { $strippedCount++ }
-    [System.IO.File]::WriteAllText($destPath, $modified, [System.Text.UTF8Encoding]::new($false))
-    $fileCount++
+
+    # Only strip #Warn from non-lib files (lib/ is third-party, don't check)
+    if ($file.FullName -notlike "*\lib\*") {
+        $modified = $content -replace '(?m)^#Warn\s+VarUnset\s*,\s*Off[^\r\n]*', '; [check_warn: #Warn stripped for analysis]'
+        if ($modified -ne $content) { $strippedCount++ }
+        [System.IO.File]::WriteAllText($destPath, $modified, [System.Text.UTF8Encoding]::new($false))
+        $fileCount++
+    } else {
+        [System.IO.File]::WriteAllText($destPath, $content, [System.Text.UTF8Encoding]::new($false))
+    }
+}
+
+# === Auto-generate include chain from alt_tabby.ahk ===
+# Parse production entry point for #Include directives so the wrapper
+# can never drift from the actual include chain.
+$entryPoint = Join-Path $SourceDir "alt_tabby.ahk"
+if (-not (Test-Path $entryPoint)) {
+    Write-Host "  ERROR: Entry point not found: $entryPoint" -ForegroundColor Red
+    exit 1
+}
+
+$includeLines = [System.Collections.ArrayList]::new()
+$inIncludes = $false
+foreach ($line in Get-Content $entryPoint) {
+    $trimmed = $line.Trim()
+    # Start capturing at the INCLUDES section
+    if ($trimmed -match '^\s*;\s*INCLUDES') { $inIncludes = $true; continue }
+    if (-not $inIncludes) { continue }
+    # Stop at first non-include, non-comment, non-blank line (function/code starts)
+    if ($trimmed -and $trimmed -notmatch '^#Include' -and $trimmed -notmatch '^\s*;') { break }
+    # Capture #Include lines, transforming paths for wrapper layout
+    if ($trimmed -match '^#Include') {
+        # Directory switches: %A_ScriptDir%\X\ → %A_ScriptDir%\src\X\
+        $transformed = $trimmed -replace '%A_ScriptDir%\\', '%A_ScriptDir%\src\'
+        # Strip @profile comments from profiler include
+        $transformed = $transformed -replace '\s*;\s*@profile\s*$', ''
+        # Make all file includes optional (*i) to prevent hard failures
+        # from runtime init issues (we only care about load-time #Warn output).
+        # Directory switches (ending with \) stay as-is.
+        if ($transformed -match '^#Include\s+[^*]' -and $transformed -notmatch '\\$') {
+            $transformed = $transformed -replace '^#Include\s+', '#Include *i '
+        }
+        [void]$includeLines.Add($transformed)
+    }
+}
+
+if ($includeLines.Count -eq 0) {
+    Write-Host "  ERROR: No #Include directives found in alt_tabby.ahk" -ForegroundColor Red
+    exit 1
 }
 
 # === Generate wrapper script ===
-# Mirrors run_tests.ahk's globals + include chain but exits immediately.
-# The load phase triggers AHK's "local variable appears to never be assigned" warnings.
-$wrapper = @'
+# Preamble sets test mode globals and #Warn VarUnset, StdOut.
+# Include chain is auto-generated from production entry point.
+$includeBlock = $includeLines -join "`r`n"
+
+$wrapper = @"
 #Requires AutoHotkey v2.0
 #SingleInstance Off
 #Warn VarUnset, StdOut
@@ -97,70 +145,13 @@ global g_BlacklistEditorPID := 0
 
 ; --- Entry-point globals (set by alt_tabby.ahk mode-switching, not included here) ---
 global g_SkipMismatchCheck := false
+global g_SkipActiveMutex := false
 
-; --- Include ALL production files (same order as alt_tabby.ahk) ---
-; Full include chain eliminates false positives from cross-file function refs.
-; Uses same directory layout: wrapper is at temp/, includes at temp/src/.
-
-; Shared utilities
-#Include %A_ScriptDir%\src\shared\
-#Include config_loader.ahk
-#Include cjson.ahk
-#Include ipc_pipe.ahk
-#Include blacklist.ahk
-#Include setup_utils.ahk
-#Include process_utils.ahk
-#Include win_utils.ahk
-#Include *i pump_utils.ahk
-#Include stats.ahk
-#Include window_list.ahk
-
-; Editors
-#Include %A_ScriptDir%\src\editors\
-#Include *i config_editor.ahk
-#Include *i blacklist_editor.ahk
-
-; Launcher (full)
-#Include %A_ScriptDir%\src\launcher\
-#Include *i launcher_utils.ahk
-#Include *i launcher_splash.ahk
-#Include *i launcher_shortcuts.ahk
-#Include *i launcher_install.ahk
-#Include *i launcher_wizard.ahk
-#Include *i launcher_about.ahk
-#Include *i launcher_stats.ahk
-#Include *i launcher_tray.ahk
-#Include *i launcher_main.ahk
-
-; Core producers (data layer)
-#Include %A_ScriptDir%\src\core\
-#Include winenum_lite.ahk
-#Include *i mru_lite.ahk
-#Include *i komorebi_lite.ahk
-#Include komorebi_sub.ahk
-#Include icon_pump.ahk
-#Include *i proc_pump.ahk
-#Include *i winevent_hook.ahk
-
-; Viewer
-#Include %A_ScriptDir%\src\viewer\
-#Include *i viewer.ahk
-
-; GUI
-#Include %A_ScriptDir%\src\gui\
-#Include *i gui_gdip.ahk
-#Include *i gui_win.ahk
-#Include *i gui_overlay.ahk
-#Include *i gui_workspace.ahk
-#Include *i gui_paint.ahk
-#Include *i gui_input.ahk
-#Include *i gui_data.ahk
-#Include *i gui_state.ahk
-#Include *i gui_interceptor.ahk
-#Include *i gui_main.ahk
+; --- Include chain (auto-generated from alt_tabby.ahk — do not edit) ---
+$includeBlock
 
 ExitApp 0
-'@
+"@
 
 $wrapperPath = Join-Path $tempRoot "wrapper.ahk"
 [System.IO.File]::WriteAllText($wrapperPath, $wrapper, [System.Text.UTF8Encoding]::new($false))
@@ -217,6 +208,9 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
                 $i++  # Skip the detail line
             }
         }
+
+        # Skip warnings from lib/ files (third-party code)
+        if ($mapped -match '\\lib\\') { continue }
 
         if ($varName) {
             [void]$warnings.Add("$mapped  [var: $varName]")

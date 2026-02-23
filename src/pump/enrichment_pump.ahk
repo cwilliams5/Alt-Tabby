@@ -123,7 +123,7 @@ _Pump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 ; ========================= ENRICHMENT =========================
 
 _Pump_HandleEnrich(server, hPipe, parsed) {
-    global _Pump_GuiHwnd, _Pump_HelloAcked, _Pump_DiagEnabled
+    global _Pump_GuiHwnd, _Pump_HelloAcked, _Pump_DiagEnabled, _Pump_PrevIconSource
 
     if (!parsed.Has("hwnds"))
         return
@@ -138,6 +138,16 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
     hwnds := parsed["hwnds"]
     if (!IsObject(hwnds) || hwnds.Length = 0)
         return
+
+    ; Invalidate nochange cache for hwnds that MainProcess says have no icon —
+    ; forces fresh resolution instead of stale "unchanged" (fixes HWND reuse)
+    if (parsed.Has("needsIcon")) {
+        for _, h in parsed["needsIcon"] {
+            h := h + 0
+            if (h)
+                _Pump_PrevIconSource.Delete(h)
+        }
+    }
 
     results := Map()
 
