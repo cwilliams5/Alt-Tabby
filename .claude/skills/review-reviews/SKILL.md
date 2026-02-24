@@ -89,7 +89,7 @@ These are style issues, not correctness — report them but don't prioritize ove
 
 All files in `.claude/skills/*/SKILL.md`. Also check `.claude/rules/*.md` as cross-reference targets (but don't audit the rules files themselves — they're the source of truth, not the skills).
 
-Do NOT audit non-review skills (like `ship`, `worktree`, `clean-all`, `merge-all`, `plan-issue`, `profile`) unless they reference codebase identifiers that could drift.
+Do NOT audit non-review skills (like `ship`, `worktree`, `clean-all`, `merge-all`, `issue-from-plan`, `profile`) unless they reference codebase identifiers that could drift.
 
 ## Explore Strategy
 

@@ -1,5 +1,5 @@
 ---
-name: plan-issue
+name: issue-from-plan
 description: Create a GitHub issue from an approved plan before implementation
 user-invocable: true
 disable-model-invocation: true
