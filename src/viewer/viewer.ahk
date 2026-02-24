@@ -167,9 +167,10 @@ _Viewer_RefreshTick() {
 }
 
 _Viewer_StartRefreshTimer() {
-    global gViewer_RefreshTimerFn, gViewer_RefreshIntervalMs
+    global gViewer_RefreshTimerFn, gViewer_RefreshIntervalMs, cfg
     if (gViewer_RefreshTimerFn)
         return  ; Already running
+    gViewer_RefreshIntervalMs := cfg.DiagViewerRefreshMs
     gViewer_RefreshTimerFn := _Viewer_RefreshTick.Bind()
     SetTimer(gViewer_RefreshTimerFn, gViewer_RefreshIntervalMs)  ; lint-ignore: timer-lifecycle (cancelled via _Viewer_StopRefreshTimer using bound ref)
 }

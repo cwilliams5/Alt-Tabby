@@ -111,14 +111,13 @@ global STAGGER_HOUSEKEEPING_MS := 53
 
 _GUI_Main_Init() {
     global cfg, FR_EV_PRODUCER_INIT, gFR_Enabled, STAGGER_ZPUMP_MS, STAGGER_VALIDATE_MS, STAGGER_HOUSEKEEPING_MS, g_TestingMode
-    global HOUSEKEEPING_INTERVAL_MS, gViewer_RefreshIntervalMs
+    global HOUSEKEEPING_INTERVAL_MS
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
 
     ; Load config-driven constants (declared at file scope, set from cfg here)
     HOUSEKEEPING_INTERVAL_MS := cfg.HousekeepingIntervalMs
-    gViewer_RefreshIntervalMs := cfg.DiagViewerRefreshMs
 
     ; Initialize theme (for blacklist dialog and MsgBox calls in GUI process)
     Theme_Init()
@@ -590,10 +589,7 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     try IconPump_CleanupUwpCache()
 
     ; Release COM objects (OS would clean up, but explicit is good hygiene)
-    global gGUI_PendingShell, gGUI_ImmersiveShell, gGUI_AppViewCollection
-    try gGUI_PendingShell := ""
-    try gGUI_ImmersiveShell := ""
-    try gGUI_AppViewCollection := ""
+    try GUI_ReleaseComObjects()
 
     ; Clean up GDI+
     Gdip_Shutdown()
