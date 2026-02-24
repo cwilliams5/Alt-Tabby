@@ -624,7 +624,7 @@ WL_ValidateExistence() {
     removed := 0
     for _, hwnd in toRemove {
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section (removed by another producer between phases)
+            continue  ; removed by another producer between phases
         _WS_DeleteWindow(hwnd)
         removed += 1
     }
@@ -669,7 +669,7 @@ WL_PurgeBlacklisted() {
     Critical "On"
     for _, hwnd in toRemove {
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section (removed by another producer between phases)
+            continue  ; removed by another producer between phases
         _WS_DeleteWindow(hwnd)
         removed += 1
     }
