@@ -120,7 +120,7 @@ States: `IDLE`, `ALT_PENDING`, `ACTIVE`
 
 ## Flight Recorder
 
-In-memory ring buffer (`gui_flight_recorder.ahk`) in MainProcess. `FR_Record(ev, d1..d4)` is the hot path (~1μs, zero allocation — writes into pre-allocated array slots). F12 (configurable) dumps state snapshot + WindowList state + live items + event trace to `recorder/` folder. Events cover keyboard hooks, state machine, activation, focus tracking, workspace switches, scans, and producer init. See `USING_RECORDER.md` for analysis guide.
+In-memory ring buffer (`gui_flight_recorder.ahk`) in MainProcess. `FR_Record(ev, d1..d4)` is the hot path (~1μs, zero allocation — writes into pre-allocated array slots). F12 (configurable) dumps state snapshot + WindowList state + live items + event trace to `recorder/` folder. Events cover keyboard hooks, state machine, activation, focus tracking, workspace switches, scans, and producer init. See `docs/USING_RECORDER.md` for analysis guide.
 
 ## Stats
 
