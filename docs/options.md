@@ -17,6 +17,7 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [Tools](#tools)
 - [IPC](#ipc)
 - [Store](#store)
+- [Performance](#performance)
 - [Diagnostics](#diagnostics)
 
 ---
@@ -583,6 +584,15 @@ Periodic maintenance cycle for caches, logs, and stats
 |--------|------|---------|-------|-------------|
 | `HousekeepingIntervalMs` | int | `300000` | `30000` - `3600000` | Interval (ms) between housekeeping cycles: cache pruning, log rotation, and stats flush. Lower = more responsive cleanup but slightly more CPU. Default 5 minutes. |
 
+## Performance
+
+Memory management to maintain responsiveness after long idle periods.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `KeepInMemory` | bool | `true` | - | Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle. |
+| `ForceTouchMemory` | bool | `true` | - | Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost. |
+
 ## Diagnostics
 
 Debug options, viewer settings, and test configuration. All logging disabled by default.
@@ -623,4 +633,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-23 with 263 total settings.*
+*Generated on 2026-02-23 with 265 total settings.*
