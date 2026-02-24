@@ -568,7 +568,7 @@ _WEH_ProcessBatch() {
         ; only check if it became invisible AND not cloaked. Cloaked = komorebi-managed
         ; on another workspace (keep it). Saves ~50-150μs per window vs full probe.
         global DWMWA_CLOAKED
-        static hiddenCloakBuf := Buffer(4, 0)  ; lint-ignore: static-in-timer
+        static hiddenCloakBuf := Buffer(4, 0)
         for _, hwnd in hidden {
             ; Still visible? Transient HIDE — keep it
             if (DllCall("user32\IsWindowVisible", "ptr", hwnd, "int"))

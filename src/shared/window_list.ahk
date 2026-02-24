@@ -200,7 +200,7 @@ WL_EndScan(graceMs := "") {
     ; Mark komorebi windows as present, preserve their Z value
     for _, hwnd in komorebiKeep {
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section
+            continue
         rec := gWS_Store[hwnd]
         rec.lastSeenScanId := gWS_ScanId
         rec.presentNow := true
@@ -210,7 +210,7 @@ WL_EndScan(graceMs := "") {
     ; Mark missing windows (first miss starts the TTL clock)
     for _, hwnd in toMarkMissing {
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section
+            continue
         rec := gWS_Store[hwnd]
         if (rec.presentNow) {
             rec.presentNow := false
@@ -223,7 +223,7 @@ WL_EndScan(graceMs := "") {
     ; Remove dead windows (re-check IsWindow in case window reappeared between phases)
     for _, hwnd in toRemove {
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section
+            continue
         if (!DllCall("user32\IsWindow", "ptr", hwnd, "int")) {
             _WS_DeleteWindow(hwnd)
             removed += 1
@@ -269,10 +269,10 @@ WL_UpsertWindow(records, source := "") {
     Critical "On"
     for _, rec in records {
         if (!IsObject(rec))
-            continue  ; lint-ignore: critical-section
+            continue
         hwnd := rec.Get("hwnd", 0) + 0
         if (!hwnd)
-            continue  ; lint-ignore: critical-section
+            continue
         isNew := !gWS_Store.Has(hwnd)
         if (isNew) {
             gWS_Store[hwnd] := _WS_NewRecord(hwnd)
@@ -297,7 +297,7 @@ WL_UpsertWindow(records, source := "") {
                     ; (workspaceName starts as "") but guards against future call ordering
                     ; changes where a record could be pre-populated before UpsertWindow.
                     if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
-                        continue  ; lint-ignore: critical-section
+                        continue
                     row.%k% := v
                 }
                 rowChanged := true
@@ -307,7 +307,7 @@ WL_UpsertWindow(records, source := "") {
                 for k, v in rec {
                     ; Preserve komorebi workspace state if winenum tries to overwrite
                     if (hasKomorebiWs && (k = "isCloaked" || k = "isOnCurrentWorkspace"))
-                        continue  ; lint-ignore: critical-section
+                        continue
                     ; Only update if value differs
                     if (!row.HasOwnProp(k) || row.%k% != v) {
                         ; Diagnostic: track which fields trigger changes (skip for new records)
@@ -327,7 +327,7 @@ WL_UpsertWindow(records, source := "") {
                 }
             }
         } else {
-            continue  ; lint-ignore: critical-section (skip non-Map records)
+            continue
         }
         ; Update presence flags - check for changes
         if (!row.present) {
@@ -445,7 +445,7 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     Critical "On"
     hwnd := hwnd + 0
     if (!gWS_Store.Has(hwnd))
-        return { changed: false, exists: false, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+        return { changed: false, exists: false, rev: gWS_Rev }
     row := gWS_Store[hwnd]
 
     ; Apply patch using shared helper
@@ -462,8 +462,8 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     }
     ; Return row when requested to avoid redundant GetByHwnd lookups
     if (returnRow)
-        return { changed: changed, exists: true, rev: gWS_Rev, row: row }  ; lint-ignore: critical-section
-    return { changed: changed, exists: true, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+        return { changed: changed, exists: true, rev: gWS_Rev, row: row }
+    return { changed: changed, exists: true, rev: gWS_Rev }
 }
 
 ; Batch update multiple windows with a single rev bump
@@ -484,7 +484,7 @@ WL_BatchUpdateFields(patches, source := "") {
     for hwnd, patch in patches {
         hwnd := hwnd + 0
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section
+            continue
         row := gWS_Store[hwnd]
 
         ; Apply patch using shared helper
@@ -522,10 +522,10 @@ WL_RemoveWindow(hwnds, forceRemove := false) {
     for _, h in hwnds {
         hwnd := h + 0
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section
+            continue
         ; Verify window is actually gone before removing (unless forced)
         if (!forceRemove && DllCall("user32\IsWindow", "ptr", hwnd, "int"))
-            continue  ; lint-ignore: critical-section
+            continue
         _WS_DeleteWindow(hwnd)
         removed += 1
         if (gFR_Enabled)
@@ -675,7 +675,7 @@ WL_PurgeBlacklisted() {
         if (gFR_Enabled)
             FR_Record(FR_EV_BLACKLIST_PURGE, removed)
     }
-    return { removed: removed, rev: gWS_Rev }  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+    return { removed: removed, rev: gWS_Rev }
 }
 
 _WL_GetRev() {
@@ -765,7 +765,7 @@ WL_SetCurrentWorkspace(id, name := "") {
     ; Only recalculate window state if workspace NAME changed
     ; ID is metadata only — GUI cares about name for filtering
     if (gWS_Meta["currentWSName"] = name)
-        return false  ; lint-ignore: critical-section
+        return false
 
     gWS_Meta["currentWSName"] := name
 
@@ -792,7 +792,7 @@ WL_SetCurrentWorkspace(id, name := "") {
     if (gWS_OnWorkspaceChanged)
         gWS_OnWorkspaceChanged()  ; lint-ignore: critical-leak
 
-    return anyFlipped  ; lint-ignore: critical-section
+    return anyFlipped
 }
 
 
@@ -1104,7 +1104,7 @@ WL_UpdateProcessName(pid, name) {
     changed := false
     for _, hwnd in hwnds {
         if (!gWS_Store.Has(hwnd))
-            continue  ; lint-ignore: critical-section
+            continue
         rec := gWS_Store[hwnd]
         if (rec.pid = pid && rec.processName != name) {
             rec.processName := name
@@ -1407,13 +1407,13 @@ WL_GetDisplayList(opts := 0) {
     items := []
     for _, rec in gWS_Store {
         if (!rec.present)
-            continue  ; lint-ignore: critical-section
+            continue
         if (currentOnly && !rec.isOnCurrentWorkspace)
-            continue  ; lint-ignore: critical-section
+            continue
         if (!includeMin && rec.isMinimized)
-            continue  ; lint-ignore: critical-section
+            continue
         if (!includeCloaked && rec.isCloaked)
-            continue  ; lint-ignore: critical-section
+            continue
         items.Push(rec)
     }
     Critical "Off"

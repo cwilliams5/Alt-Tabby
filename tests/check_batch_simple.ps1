@@ -978,7 +978,7 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
 @(
     'phantom-global',
     'singleinstance', 'winexist-cloaked', 'mixed-returns',
-    'critical-leak', 'critical-section',
+    'critical-leak',
     'ipc-constant', 'dllcall-types', 'isset-with-default',
     'cfg-property', 'duplicate-function',
     'fileappend-encoding',

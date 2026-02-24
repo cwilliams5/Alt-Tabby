@@ -127,7 +127,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gFR_DumpInProgress
     if (gFR_DumpInProgress) {
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
 
     ; File-based debug logging (no performance impact from tooltips)
@@ -148,7 +148,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
             Profiler.Leave() ; @profile
-            return  ; lint-ignore: critical-section
+            return
         }
 
         ; Overflow protection: check BEFORE push to prevent exceeding max
@@ -163,7 +163,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
             Profiler.Leave() ; @profile
-            return  ; lint-ignore: critical-section
+            return
         }
 
         gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
@@ -172,7 +172,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_PendingPhase ")")
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
 
     if (evCode = TABBY_EV_ALT_DOWN) {
@@ -188,7 +188,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Pre-warm: refresh display list and icon cache before Tab arrives.
         GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
 
     if (evCode = TABBY_EV_TAB_STEP) {
@@ -197,7 +197,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (gGUI_State = "IDLE") {
             ; Tab without Alt (shouldn't happen normally, interceptor handles this)
             Profiler.Leave() ; @profile
-            return  ; lint-ignore: critical-section
+            return
         }
 
         if (gGUI_State = "ALT_PENDING") {
@@ -249,7 +249,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; Start grace timer - show GUI after delay
             SetTimer(_GUI_GraceTimerFired, -cfg.AltTabGraceMs)
             Profiler.Leave() ; @profile
-            return  ; lint-ignore: critical-section
+            return
         }
 
         if (gGUI_State = "ACTIVE") {
@@ -284,7 +284,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             }
         }
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
 
     if (evCode = TABBY_EV_ALT_UP) {
@@ -300,7 +300,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
             Profiler.Leave() ; @profile
-            return  ; lint-ignore: critical-section
+            return
         }
 
         if (gGUI_State = "ACTIVE") {
@@ -334,7 +334,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; Keyboard events are processed normally between timer fires.
         }
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
 
     if (evCode = TABBY_EV_ESCAPE) {
@@ -354,7 +354,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; Resync — refresh live items after ACTIVE state
         GUI_RefreshLiveItems()  ; lint-ignore: critical-leak
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
     Profiler.Leave() ; @profile
 }
@@ -1325,7 +1325,7 @@ _GUI_UpdateLocalMRU(hwnd) {
             FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
         if (cfg.DiagEventLog)
             GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not in map, skip scan")
-        return false  ; lint-ignore: critical-section
+        return false
     }
 
     if (cfg.DiagEventLog)
@@ -1343,14 +1343,14 @@ _GUI_UpdateLocalMRU(hwnd) {
             WL_UpdateFields(hwnd, {lastActivatedTick: A_TickCount, isFocused: true}, "gui_activate")
             if (gFR_Enabled)
                 FR_Record(FR_EV_MRU_UPDATE, hwnd, 1)
-            return true  ; lint-ignore: critical-section
+            return true
         }
     }
     if (gFR_Enabled)
         FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
     if (cfg.DiagEventLog)
         GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
-    return false  ; lint-ignore: critical-section
+    return false
 }
 
 ; ========================= DIRECT WINDOW UNCLOAKING (COM) =========================

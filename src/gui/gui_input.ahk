@@ -116,16 +116,16 @@ GUI_RecalcHover() {
         if (gGUI_HoverRow != 0 || gGUI_HoverBtn != "") {
             gGUI_HoverRow := 0
             gGUI_HoverBtn := ""
-            return true  ; lint-ignore: critical-section
+            return true
         }
-        return false  ; lint-ignore: critical-section
+        return false
     }
 
     act := ""
     idx := 0
     _GUI_DetectActionAtPoint(x, y, &act, &idx)
 
-    return _GUI_ApplyHoverState(idx, act)  ; lint-ignore: critical-section
+    return _GUI_ApplyHoverState(idx, act)
 }
 
 ; Atomically update hover state and return true if changed.
@@ -136,7 +136,7 @@ _GUI_ApplyHoverState(idx, act) {
     changed := (idx != gGUI_HoverRow || act != gGUI_HoverBtn)
     gGUI_HoverRow := idx
     gGUI_HoverBtn := act
-    return changed  ; lint-ignore: critical-section
+    return changed
 }
 
 _GUI_PointInRect(px, py, rx, ry, rw, rh) {
