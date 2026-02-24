@@ -18,6 +18,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+. "$PSScriptRoot\_query_helpers.ps1"
+
 $projectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $registryPath = (Resolve-Path "$projectRoot\src\shared\config_registry.ahk").Path
 $rawLines = [System.IO.File]::ReadAllLines($registryPath)
@@ -150,25 +152,32 @@ if ($Usage) {
     Write-Host "  cfg.$propertyName" -ForegroundColor White
     Write-Host "    defined:  [$($found.S)] $($found.K)  $typeInfo  $defaultInfo" -ForegroundColor DarkGray
 
-    # Grep src/ (excluding src/lib/) for cfg.<propertyName>
+    # Search src/ (excluding src/lib/) for cfg.<propertyName>
     $srcPath = Join-Path $projectRoot "src"
-    $srcFiles = Get-ChildItem -Path $srcPath -Recurse -File -Filter "*.ahk" |
-        Where-Object { $_.FullName -notlike "*\lib\*" }
+    $srcFiles = Get-AhkSourceFiles $srcPath
 
-    $matches = $srcFiles | Select-String -Pattern "cfg\.$propertyName" -CaseSensitive:$false
+    $needle = "cfg.$propertyName"
+    $hitCount = 0
+    $usageLines = [System.Collections.ArrayList]::new()
+    foreach ($file in $srcFiles) {
+        $text = [System.IO.File]::ReadAllText($file.FullName)
+        if ($text.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        $relPath = $file.FullName.Replace("$projectRoot\", '')
+        $lines = Split-Lines $text
+        for ($li = 0; $li -lt $lines.Count; $li++) {
+            if ($lines[$li].IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                [void]$usageLines.Add("      ${relPath}:$($li + 1)")
+                $hitCount++
+            }
+        }
+    }
 
-    if ($matches.Count -eq 0) {
+    if ($hitCount -eq 0) {
         Write-Host "    used by: (none)" -ForegroundColor DarkGray
     } else {
         Write-Host "    used by:" -ForegroundColor DarkGray
-
-        # Group by file, show relative paths
-        $grouped = $matches | Group-Object { $_.Path }
-        foreach ($group in $grouped) {
-            $relPath = $group.Name.Substring($projectRoot.Length + 1)
-            foreach ($m in $group.Group) {
-                Write-Host "      ${relPath}:$($m.LineNumber)" -ForegroundColor Green
-            }
+        foreach ($line in $usageLines) {
+            Write-Host $line -ForegroundColor Green
         }
     }
 

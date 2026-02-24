@@ -43,7 +43,7 @@ $fileTexts = @{}
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
     $fileTexts[$file.FullName] = $text
-    $lines = $text -split '\r?\n'
+    $lines = Split-Lines $text
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     $depth = 0
@@ -94,7 +94,7 @@ $fileWordSets = @{}
 foreach ($file in $srcFiles) {
     $words = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($m in [regex]::Matches($fileTexts[$file.FullName], '\b[A-Za-z]\w+\b')) {
+    foreach ($m in $script:_rxWord.Matches($fileTexts[$file.FullName])) {
         [void]$words.Add($m.Value)
     }
     $fileWordSets[$file.FullName] = $words

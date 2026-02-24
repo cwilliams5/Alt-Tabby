@@ -56,8 +56,23 @@ function Strip-Nested {
 
 function Get-AhkSourceFiles {
     param([string]$SrcDir)
-    return @(Get-ChildItem -Path $SrcDir -Filter "*.ahk" -Recurse |
-        Where-Object { $_.FullName -notlike "*\lib\*" })
+    $allPaths = [System.IO.Directory]::GetFiles($SrcDir, "*.ahk",
+        [System.IO.SearchOption]::AllDirectories)
+    $result = [System.Collections.ArrayList]::new($allPaths.Count)
+    foreach ($p in $allPaths) {
+        if ($p.IndexOf('\lib\') -lt 0) {
+            [void]$result.Add([System.IO.FileInfo]::new($p))
+        }
+    }
+    return ,$result
+}
+
+# Fast line-split: .Split() avoids regex overhead vs -split '\r?\n'
+$script:_LINE_SEPS = [string[]]@("`r`n", "`n")
+
+function Split-Lines {
+    param([string]$Text)
+    return $Text.Split($script:_LINE_SEPS, [StringSplitOptions]::None)
 }
 
 # Build function boundary map for a file (used by query_ipc, query_messages, query_timers)

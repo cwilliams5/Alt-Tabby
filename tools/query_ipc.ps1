@@ -123,7 +123,7 @@ foreach ($file in $allFiles) {
     if ($fileText.IndexOf($constName, [StringComparison]::Ordinal) -lt 0 -and
         $fileText.IndexOf($constValue, [StringComparison]::Ordinal) -lt 0) { continue }
 
-    $lines = $fileText -split '\r?\n'
+    $lines = Split-Lines $fileText
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $isConstantsFile = ($file.Name -eq "ipc_constants.ahk")
 

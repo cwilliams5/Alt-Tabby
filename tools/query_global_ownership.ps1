@@ -117,7 +117,7 @@ foreach ($file in $srcFiles) {
     # Query mode: skip line parsing once the queried declaration is found (lazy split)
     if ($Query -and $globalDecl.ContainsKey($Query)) { continue }
 
-    $lines = $text -split "`r?`n"
+    $lines = Split-Lines $text
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
@@ -234,7 +234,7 @@ foreach ($file in $srcFiles) {
 
     # Lazy line splitting: only split files that pass pre-filter and weren't split in Pass 1
     if (-not $fileCache.ContainsKey($file.FullName)) {
-        $fileCache[$file.FullName] = $fileCacheText[$file.FullName] -split "`r?`n"
+        $fileCache[$file.FullName] = Split-Lines $fileCacheText[$file.FullName]
     }
     $lines = $fileCache[$file.FullName]
 
@@ -242,6 +242,8 @@ foreach ($file in $srcFiles) {
     $inFunc = $false
     $funcDepth = -1
     $funcName = ""
+    $seen = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $cleaned = Clean-Line $lines[$i]
@@ -285,8 +287,7 @@ foreach ($file in $srcFiles) {
 
         # Find word tokens that match known globals, then test for mutation
         $wordMatches = $script:_rxWord.Matches($cleaned)
-        $seen = [System.Collections.Generic.HashSet[string]]::new(
-            [System.StringComparer]::OrdinalIgnoreCase)
+        $seen.Clear()
 
         foreach ($wm in $wordMatches) {
             $wName = $wm.Value
