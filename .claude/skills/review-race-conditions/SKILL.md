@@ -55,10 +55,11 @@ Split by concurrency boundary, not just file location:
 
 - **Hotkey handlers** — `gui_input.ahk`, `gui_interceptor.ahk`: all `INT_*` functions
 - **Timer callbacks** — use `query_timers.ps1` to find all `SetTimer` targets, then read each callback
+- **Windows message handlers** — use `query_messages.ps1` to map WM_ handlers and senders (interrupt sources)
 - **WinEvent callbacks** — `winevent_hook.ahk`: `_WEH_*` callback functions
 - **Komorebi callbacks** — `komorebi_sub.ahk`, `komorebi_lite.ahk`: subscription event handlers
 - **IPC handlers** — `ipc_pipe.ahk`, pump files: pipe read/write paths
-- **State machine** — `gui_state.ahk`: `GUI_OnInterceptorEvent` and all state transition functions
+- **State machine** — use `query_state.ps1` to extract specific branches from `GUI_OnInterceptorEvent` without loading the full function
 
 ## Validation
 

@@ -31,6 +31,7 @@ Use the query tools to validate findings — do NOT rely on grep alone:
 - `query_function_visibility.ps1 <funcName>` — authoritative caller list (public/private, all call sites)
 - `query_global_ownership.ps1 <globalName>` — who declares, writes, and reads a global
 - `query_interface.ps1 <filename>` — public surface of a file (spot unused exports)
+- `query_visibility.ps1` — lists public functions with 0 or 1 external callers (direct dead code signal)
 
 For each candidate:
 
