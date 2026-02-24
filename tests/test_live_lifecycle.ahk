@@ -109,11 +109,12 @@ RunLiveTests_Lifecycle() {
         Log("Launcher reported: gui PID=" knownGuiPid ", pump PID=" knownPumpPid)
 
     ; Wait for GUI to connect to pump (GUI logs "INIT: Connected" when pipe connect succeeds).
-    ; Can't just Sleep — GUI init takes 2-5s depending on WinEnum scope.
+    ; GUIPump_Init has deferred retries (500+1000+2000ms delays, each with 2s connect timeout)
+    ; so worst-case connection takes ~11.5s. Allow 15s to cover full retry window.
     pumpLogPath := A_Temp "\tabby_pump.log"
     connectStart := A_TickCount
     guiConnected := false
-    while ((A_TickCount - connectStart) < 8000) {
+    while ((A_TickCount - connectStart) < 15000) {
         if (FileExist(pumpLogPath)) {
             try {
                 logContent := FileRead(pumpLogPath)
@@ -126,7 +127,7 @@ RunLiveTests_Lifecycle() {
         Sleep(100)
     }
     if (!guiConnected)
-        Log("WARNING: GUI did not log pump connection within 8s")
+        Log("WARNING: GUI did not log pump connection within 15s")
 
     ; ============================================================
     ; Test 1a: Pump enrichment round-trip
@@ -377,12 +378,7 @@ RunLiveTests_Lifecycle() {
         ; Modify config.ini on disk — the launcher file watcher should detect this
         ; and restart subprocesses (including GUI with new PID)
         configPath := testDir "\config.ini"
-        try {
-            content := FileRead(configPath, "UTF-8")
-            ; Append a comment to trigger file change without affecting settings
-            FileDelete(configPath)
-            FileAppend(content "`n; file watcher test " A_TickCount "`n", configPath, "UTF-8")
-        }
+        try FileAppend("`n; file watcher test " A_TickCount "`n", configPath, "UTF-8")
 
         ; Wait for GUI process to restart (new PID)
         restartStart := A_TickCount
