@@ -70,9 +70,10 @@ RunLiveTests_Execution() {
     DirCreate(testDir)
     FileCopy(compiledExePath, testExe, true)
 
-    ; Write config with wizard skip and unique pipe name
+    ; Write config with wizard skip, unique pipe name, and log prefix for isolation
     pipeName := "tabby_pump_exec_" A_TickCount
-    configContent := "[Setup]`nFirstRunCompleted=true`n[IPC]`nPumpPipeName=" pipeName "`n"
+    logPrefix := "exec_" A_TickCount
+    configContent := "[Setup]`nFirstRunCompleted=true`n[Diagnostics]`nLogFilePrefix=" logPrefix "`n[IPC]`nPumpPipeName=" pipeName "`n"
     FileAppend(configContent, testDir "\config.ini", "UTF-8")
 
     Log("  Isolated env: " testDir)
@@ -195,11 +196,11 @@ RunLiveTests_Execution() {
     }
 
     ; --- Cleanup ---
-    _ExecTest_Cleanup(testDir)
+    _ExecTest_Cleanup(testDir, logPrefix)
 }
 
 ; Kill all execution test processes and remove temp directory
-_ExecTest_Cleanup(testDir) {
+_ExecTest_Cleanup(testDir, logPrefix := "") {
     global EXECTEST_EXE_NAME
 
     ; Kill processes by name (only our isolated copies)
@@ -210,7 +211,9 @@ _ExecTest_Cleanup(testDir) {
         try DirDelete(testDir, true)
     }
 
-    ; Delete stale pump/launcher logs from previous runs
-    try FileDelete(A_Temp "\tabby_pump.log")
-    try FileDelete(A_Temp "\tabby_launcher.log")
+    ; Delete scoped pump/launcher logs from this run
+    if (logPrefix != "") {
+        try FileDelete(A_Temp "\tabby_pump_" logPrefix ".log")
+        try FileDelete(A_Temp "\tabby_launcher_" logPrefix ".log")
+    }
 }

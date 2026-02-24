@@ -2,18 +2,19 @@
 ; Pump restart, file watcher, and shutdown tests (2-process model: launcher + gui)
 ; Included by test_live.ahk
 ;
-; ISOLATION: Copies AltTabby.exe to a temp dir as AltTabby_lifecycle.exe with
-; its own config.ini (FirstRunCompleted=true). This gives it a unique mutex
-; (different InstallationId from different dir) so it runs without conflicting
-; with other parallel test suites that also launch AltTabby.exe.
+; ISOLATION: Copies AltTabby.exe to a worktree-scoped temp dir with a unique exe
+; name, pipe name, and log prefix. This gives each worktree its own mutex
+; (different InstallationId), process name, HWND file, and log files — safe for
+; parallel multi-agent execution.
 #Include test_utils.ahk
 
-global LIFECYCLE_EXE_NAME := "AltTabby_lifecycle.exe"
-global LIFECYCLE_HWND_FILE := A_Temp "\alttabby_lifecycle_hwnd.txt"
+global LIFECYCLE_EXE_NAME := "AltTabby_lc_" WorktreeId ".exe"
+global LIFECYCLE_HWND_FILE := A_Temp "\alttabby_lc_" WorktreeId "_hwnd.txt"
+global LIFECYCLE_LOG_PREFIX := "lc_" WorktreeId
 
 RunLiveTests_Lifecycle() {
     global TestPassed, TestErrors
-    global LIFECYCLE_EXE_NAME, LIFECYCLE_HWND_FILE
+    global LIFECYCLE_EXE_NAME, LIFECYCLE_HWND_FILE, LIFECYCLE_LOG_PREFIX
 
     compiledExePath := A_ScriptDir "\..\release\AltTabby.exe"
 
@@ -27,19 +28,24 @@ RunLiveTests_Lifecycle() {
     ; ============================================================
     Log("`n--- Lifecycle Test Setup ---")
 
-    ; Create isolated test environment
-    testDir := A_Temp "\alttabby_lifecycle_test"
+    ; Create isolated test environment (worktree-scoped for multi-agent safety)
+    testDir := A_Temp "\alttabby_lifecycle_" WorktreeId
     testExe := testDir "\" LIFECYCLE_EXE_NAME
+    logPrefix := LIFECYCLE_LOG_PREFIX
+    pipeName := "tabby_pump_lc_" WorktreeId
+
+    ; Scoped log paths for polling (must match LogFilePrefix in config)
+    pumpLogPath := A_Temp "\tabby_pump_" logPrefix ".log"
+    storeLogPath := A_Temp "\tabby_store_error_" logPrefix ".log"
+    launcherLogPath := A_Temp "\tabby_launcher_" logPrefix ".log"
 
     _Lifecycle_Cleanup()  ; Clean previous runs
 
     DirCreate(testDir)
     FileCopy(compiledExePath, testExe, true)
 
-    ; Write config.ini with wizard skip (no store pipe needed — store is in-process)
-    ; Enable pump diagnostics so we can see what GUIPump_Init does
-    ; Use unique pipe name to avoid collision with execution test's AltTabby.exe (both default to tabby_pump_v1)
-    configContent := "[Setup]`nFirstRunCompleted=true`n[Diagnostics]`nPumpLog=true`nLauncherLog=true`nStoreLog=true`n[IPC]`nPumpPipeName=tabby_pump_lifecycle`n"
+    ; Write config.ini with wizard skip, diagnostics, and worktree-scoped isolation
+    configContent := "[Setup]`nFirstRunCompleted=true`n[Diagnostics]`nPumpLog=true`nLauncherLog=true`nStoreLog=true`nLogFilePrefix=" logPrefix "`n[IPC]`nPumpPipeName=" pipeName "`n"
     FileAppend(configContent, testDir "\config.ini", "UTF-8")
 
     ; Launch
@@ -109,11 +115,11 @@ RunLiveTests_Lifecycle() {
         Log("Launcher reported: gui PID=" knownGuiPid ", pump PID=" knownPumpPid)
 
     ; Wait for GUI to connect to pump (GUI logs "INIT: Connected" when pipe connect succeeds).
-    ; Can't just Sleep — GUI init takes 2-5s depending on WinEnum scope.
-    pumpLogPath := A_Temp "\tabby_pump.log"
+    ; GUIPump_Init has deferred retries (500+1000+2000ms delays, each with 2s connect timeout)
+    ; so worst-case connection takes ~11.5s. Allow 15s to cover full retry window.
     connectStart := A_TickCount
     guiConnected := false
-    while ((A_TickCount - connectStart) < 8000) {
+    while ((A_TickCount - connectStart) < 15000) {
         if (FileExist(pumpLogPath)) {
             try {
                 logContent := FileRead(pumpLogPath)
@@ -126,7 +132,7 @@ RunLiveTests_Lifecycle() {
         Sleep(100)
     }
     if (!guiConnected)
-        Log("WARNING: GUI did not log pump connection within 8s")
+        Log("WARNING: GUI did not log pump connection within 15s")
 
     ; ============================================================
     ; Test 1a: Pump enrichment round-trip
@@ -146,7 +152,6 @@ RunLiveTests_Lifecycle() {
         ; Poll pump log for HandleEnrich entry (pump logs each enrichment response).
         ; GUI's initial WinEnum scan enqueues all windows for enrichment, so the
         ; pump should process at least one batch within a few seconds of connecting.
-        pumpLogPath := A_Temp "\tabby_pump.log"
         enrichSeen := false
         enrichStart := A_TickCount
         while ((A_TickCount - enrichStart) < 8000) {
@@ -226,8 +231,6 @@ RunLiveTests_Lifecycle() {
             Log("FAIL: Pump did not auto-restart within 10s after kill")
             TestErrors++
             ; Dump diagnostic logs for debugging
-            pumpLogPath := A_Temp "\tabby_pump.log"
-            launcherLogPath := A_Temp "\tabby_launcher.log"
             if (FileExist(pumpLogPath)) {
                 try {
                     pumpLog := FileRead(pumpLogPath)
@@ -327,7 +330,6 @@ RunLiveTests_Lifecycle() {
     try FileAppend("; file watcher test " A_TickCount "`n", blPath, "UTF-8")
 
     ; Poll store log for watcher reload message
-    storeLogPath := A_Temp "\tabby_store_error.log"
     watchReloaded := false
     watchStart := A_TickCount
     while ((A_TickCount - watchStart) < 5000) {
@@ -377,12 +379,7 @@ RunLiveTests_Lifecycle() {
         ; Modify config.ini on disk — the launcher file watcher should detect this
         ; and restart subprocesses (including GUI with new PID)
         configPath := testDir "\config.ini"
-        try {
-            content := FileRead(configPath, "UTF-8")
-            ; Append a comment to trigger file change without affecting settings
-            FileDelete(configPath)
-            FileAppend(content "`n; file watcher test " A_TickCount "`n", configPath, "UTF-8")
-        }
+        try FileAppend("`n; file watcher test " A_TickCount "`n", configPath, "UTF-8")
 
         ; Wait for GUI process to restart (new PID)
         restartStart := A_TickCount
@@ -402,7 +399,6 @@ RunLiveTests_Lifecycle() {
         } else {
             Log("FAIL: Config file watcher did not trigger GUI restart within 12s")
             TestErrors++
-            launcherLogPath := A_Temp "\tabby_launcher.log"
             if (FileExist(launcherLogPath)) {
                 try {
                     launcherLog := FileRead(launcherLogPath)
@@ -494,7 +490,7 @@ RunLiveTests_Lifecycle() {
 
 ; Kill all lifecycle test processes and remove temp directory
 _Lifecycle_Cleanup() {
-    global LIFECYCLE_EXE_NAME, LIFECYCLE_HWND_FILE
+    global LIFECYCLE_EXE_NAME, LIFECYCLE_HWND_FILE, LIFECYCLE_LOG_PREFIX
 
     ; Kill processes by name (only lifecycle copies, not other AltTabby.exe)
     for _, proc in _Test_EnumProcesses(LIFECYCLE_EXE_NAME) {
@@ -504,14 +500,14 @@ _Lifecycle_Cleanup() {
 
     try FileDelete(LIFECYCLE_HWND_FILE)
 
-    ; Delete stale pump/launcher logs from previous runs (shared %TEMP% files,
-    ; not inside testDir). Prevents false-positive detection of "Connected" messages.
-    try FileDelete(A_Temp "\tabby_pump.log")
-    try FileDelete(A_Temp "\tabby_launcher.log")
-    try FileDelete(A_Temp "\tabby_store_error.log")
+    ; Delete worktree-scoped logs from previous runs. Prevents false-positive
+    ; detection of "Connected" messages from stale log data.
+    try FileDelete(A_Temp "\tabby_pump_" LIFECYCLE_LOG_PREFIX ".log")
+    try FileDelete(A_Temp "\tabby_launcher_" LIFECYCLE_LOG_PREFIX ".log")
+    try FileDelete(A_Temp "\tabby_store_error_" LIFECYCLE_LOG_PREFIX ".log")
 
     ; Remove temp directory
-    testDir := A_Temp "\alttabby_lifecycle_test"
+    testDir := A_Temp "\alttabby_lifecycle_" WorktreeId
     try DirDelete(testDir, true)
 }
 
@@ -558,7 +554,8 @@ _Lifecycle_FindNonGuiChild(launcherPid, guiPid) {
 ; Helper: poll for GUI pump reconnection by counting RECONNECT entries in pump log.
 ; Returns true if a new RECONNECT appeared within timeoutMs.
 _Lifecycle_WaitForPumpReconnect(expectedCount, timeoutMs := 6000) {
-    pumpLogPath := A_Temp "\tabby_pump.log"
+    global LIFECYCLE_LOG_PREFIX
+    pumpLogPath := A_Temp "\tabby_pump_" LIFECYCLE_LOG_PREFIX ".log"
     pollStart := A_TickCount
     while ((A_TickCount - pollStart) < timeoutMs) {
         if (FileExist(pumpLogPath)) {

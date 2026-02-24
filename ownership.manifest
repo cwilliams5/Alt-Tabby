@@ -29,4 +29,5 @@ gGUI_AppViewCollection: gui_main, gui_state
 gGUI_ImmersiveShell: gui_main, gui_state
 gGUI_PendingShell: gui_main, gui_state
 gGUI_Sel: gui_input, gui_state
+LOG_PATH_PAINT_TIMING: config_loader
 gViewer_RefreshIntervalMs: gui_main
