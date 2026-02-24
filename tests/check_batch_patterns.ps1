@@ -451,11 +451,11 @@ $CHECKS = @(
         NotPresent = @('Critical "Off"')
     },
     @{
-        Id       = "path15_sort_invariant"
+        Id       = "path15_tracked_hwnd"
         File     = "shared\window_list.ahk"
-        Desc     = "Path 1.5 display list validates sort invariant after move-to-front"
+        Desc     = "Path 1.5 uses tracked MRU hwnd for direct search with invariant check"
         Regex    = $true
-        Patterns = @('lastActivatedTick\s*<\s*sortedRecs')
+        Patterns = @('gWS_MRUBumpedHwnd', 'lastActivatedTick\s*<\s*sortedRecs')
     },
     @{
         Id       = "ghost_window_detection"

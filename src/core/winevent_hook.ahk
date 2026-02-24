@@ -540,20 +540,11 @@ _WEH_ProcessBatch() {
         if (_WEH_PendingZNeeded.Has(hwnd))
             zSnapshot[hwnd] := true
     }
-    for _, hwnd in destroyed {
-        _WEH_PendingHwnds.Delete(hwnd)
-        if (_WEH_PendingZNeeded.Has(hwnd))
+    for _, arr in [destroyed, hidden, toProcess] {
+        for _, hwnd in arr {
+            _WEH_PendingHwnds.Delete(hwnd)
             _WEH_PendingZNeeded.Delete(hwnd)
-    }
-    for _, hwnd in hidden {
-        _WEH_PendingHwnds.Delete(hwnd)
-        if (_WEH_PendingZNeeded.Has(hwnd))
-            _WEH_PendingZNeeded.Delete(hwnd)
-    }
-    for _, hwnd in toProcess {
-        _WEH_PendingHwnds.Delete(hwnd)
-        if (_WEH_PendingZNeeded.Has(hwnd))
-            _WEH_PendingZNeeded.Delete(hwnd)
+        }
     }
     Critical "Off"
 

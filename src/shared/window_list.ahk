@@ -38,15 +38,22 @@ global gWS_DLCache_SortedRecs := ""    ; Cached sorted record refs for Path 2 (c
 global gWS_SortOrderDirty := true
 global gWS_ContentDirty := true
 global gWS_MRUBumpOnly := false
+global gWS_MRUBumpedHwnd := 0  ; hwnd that was moved to MRU front (valid when gWS_MRUBumpOnly=true)
 
 ; Mark store as needing re-sort and content update.
 ; mruOnly: true if ONLY MRU fields changed (enables incremental move-to-front in display list).
-_WS_MarkDirty(mruOnly := false) {
-    global gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
-    if (!gWS_SortOrderDirty)
+; bumpedHwnd: the hwnd whose lastActivatedTick was bumped (lets Path 1.5 skip O(N) scan).
+_WS_MarkDirty(mruOnly := false, bumpedHwnd := 0) {
+    global gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly, gWS_MRUBumpedHwnd
+    if (!gWS_SortOrderDirty) {
         gWS_MRUBumpOnly := mruOnly
-    else if (!mruOnly)
+        gWS_MRUBumpedHwnd := bumpedHwnd
+    } else if (!mruOnly) {
         gWS_MRUBumpOnly := false
+        gWS_MRUBumpedHwnd := 0
+    } else if (bumpedHwnd) {
+        gWS_MRUBumpedHwnd := bumpedHwnd
+    }
     gWS_SortOrderDirty := true
     gWS_ContentDirty := true
 }
@@ -454,7 +461,7 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
     changed := result.changed
 
     if (result.sortDirty) {
-        _WS_MarkDirty(result.mruOnly)
+        _WS_MarkDirty(result.mruOnly, result.mruOnly ? hwnd : 0)
     } else if (result.contentDirty) {
         gWS_ContentDirty := true
     }
@@ -481,6 +488,8 @@ WL_BatchUpdateFields(patches, source := "") {
     sortDirty := false
     contentDirty := false
     batchMruOnly := true  ; Tracks MRU-only across all patches in this batch
+    batchBumpedHwnd := 0  ; Track which hwnd had highest lastActivatedTick bump
+    batchBumpedTick := 0
 
     for hwnd, patch in patches {
         hwnd := hwnd + 0
@@ -496,13 +505,17 @@ WL_BatchUpdateFields(patches, source := "") {
             sortDirty := true
             if (!result.mruOnly)
                 batchMruOnly := false
+            else if (row.lastActivatedTick > batchBumpedTick) {
+                batchBumpedHwnd := hwnd
+                batchBumpedTick := row.lastActivatedTick
+            }
         } else if (result.contentDirty) {
             contentDirty := true
         }
     }
 
     if (sortDirty) {
-        _WS_MarkDirty(batchMruOnly)
+        _WS_MarkDirty(batchMruOnly, batchMruOnly ? batchBumpedHwnd : 0)
     } else if (contentDirty) {
         gWS_ContentDirty := true
     }
@@ -845,9 +858,11 @@ _WS_NewRecord(hwnd) {
 
 ; PERF: Hardcoded fields avoid dynamic %field% string-to-property-slot resolution per call.
 ; Must stay in sync with DISPLAY_FIELDS (top of file).
+; hwndHex is a derived field (not in DISPLAY_FIELDS) — pre-computed to avoid per-frame Format().
 _WS_ToItem(rec) {
     return {
         hwnd: rec.hwnd,
+        hwndHex: Format("0x{:X}", rec.hwnd),
         title: rec.title,
         class: rec.class,
         pid: rec.pid,
@@ -864,6 +879,27 @@ _WS_ToItem(rec) {
         monitorHandle: rec.monitorHandle,
         monitorLabel: rec.monitorLabel
     }
+}
+
+; PERF: In-place mutation of an existing cached display item from a store record.
+; Avoids creating a new 17-field Object for each dirty hwnd in Path 1.5 and Path 2.
+; Callers holding refs to the item see updated values (safe — display items are read-only by consumers).
+_WS_PatchItem(item, rec) {
+    item.title := rec.title
+    item.class := rec.class
+    item.pid := rec.pid
+    item.z := rec.z
+    item.lastActivatedTick := rec.lastActivatedTick
+    item.isFocused := rec.isFocused
+    item.isCloaked := rec.isCloaked
+    item.isMinimized := rec.isMinimized
+    item.workspaceName := rec.workspaceName
+    item.workspaceId := rec.workspaceId
+    item.isOnCurrentWorkspace := rec.isOnCurrentWorkspace
+    item.processName := rec.processName
+    item.iconHicon := rec.iconHicon
+    item.monitorHandle := rec.monitorHandle
+    item.monitorLabel := rec.monitorLabel
 }
 
 _WS_TrySort(arr, cmp) {
@@ -1254,7 +1290,7 @@ WL_CleanupAllIcons() {
 WL_GetDisplayList(opts := 0) {
     Profiler.Enter("WL_GetDisplayList") ; @profile
     global gWS_Store, gWS_Meta, gWS_SortOrderDirty, gWS_ContentDirty
-    global gWS_MRUBumpOnly, gWS_DirtyHwnds, gWS_TitleSortActive
+    global gWS_MRUBumpOnly, gWS_MRUBumpedHwnd, gWS_DirtyHwnds, gWS_TitleSortActive
     global gWS_DLCache_Items, gWS_DLCache_ItemsMap, gWS_DLCache_OptsKey, gWS_DLCache_SortedRecs
     sort := _WS_GetOpt(opts, "sort", "MRU")
     gWS_TitleSortActive := (sort = "Title")
@@ -1293,27 +1329,44 @@ WL_GetDisplayList(opts := 0) {
         && IsObject(gWS_DLCache_SortedRecs) && gWS_DLCache_OptsKey = optsKey) {
         sortedRecs := gWS_DLCache_SortedRecs
         valid := true
-        ; Find the item with highest lastActivatedTick (the new MRU leader)
+        ; Find the bumped hwnd's position in the sorted array.
+        ; gWS_MRUBumpOnly guarantees no structural changes (removals, upserts, scans)
+        ; since last clean — all records are still present, sort invariant holds.
         bestIdx := 0
-        bestTick := 0
-        Loop sortedRecs.Length {
-            rec := sortedRecs[A_Index]
-            if (!rec.present) {
-                valid := false
-                break
+        if (gWS_MRUBumpedHwnd) {
+            ; Direct search for tracked hwnd (short-circuits on match)
+            Loop sortedRecs.Length {
+                if (sortedRecs[A_Index].hwnd = gWS_MRUBumpedHwnd) {
+                    bestIdx := A_Index
+                    break
+                }
             }
-            if (rec.lastActivatedTick > bestTick) {
-                bestIdx := A_Index
-                bestTick := rec.lastActivatedTick
+            if (!bestIdx)
+                valid := false  ; Tracked hwnd not in cache — fall through to Path 3
+        } else {
+            ; Fallback: scan for highest lastActivatedTick (legacy path)
+            bestTick := 0
+            Loop sortedRecs.Length {
+                rec := sortedRecs[A_Index]
+                if (!rec.present) {
+                    valid := false
+                    break
+                }
+                if (rec.lastActivatedTick > bestTick) {
+                    bestIdx := A_Index
+                    bestTick := rec.lastActivatedTick
+                }
             }
         }
-        if (valid) {
+        if (valid && bestIdx > 0) {
             ; Move the new leader to front if it's not already there
             if (bestIdx > 1) {
                 movedRec := sortedRecs.RemoveAt(bestIdx)
                 sortedRecs.InsertAt(1, movedRec)
             }
             ; Sort invariant check: verify first few items are in descending tick order.
+            ; Multi-item MRU batches can leave remaining items out of order — detect and
+            ; fall through to Path 3 for a full rebuild when this happens.
             if (sortedRecs.Length >= 2) {
                 Loop Min(sortedRecs.Length - 1, 3) {
                     if (sortedRecs[A_Index].lastActivatedTick < sortedRecs[A_Index + 1].lastActivatedTick) {
@@ -1324,13 +1377,19 @@ WL_GetDisplayList(opts := 0) {
             }
         }
         if (valid) {
-            ; Selective refresh: only recreate _WS_ToItem for dirty items.
+            ; Selective refresh: patch dirty items in-place, create only when no cache entry.
             rows := []
             for _, rec in sortedRecs {
                 if (gWS_DirtyHwnds.Has(rec.hwnd)) {
-                    newItem := _WS_ToItem(rec)
-                    rows.Push(newItem)
-                    gWS_DLCache_ItemsMap[rec.hwnd] := newItem
+                    if (gWS_DLCache_ItemsMap.Has(rec.hwnd)) {
+                        existing := gWS_DLCache_ItemsMap[rec.hwnd]
+                        _WS_PatchItem(existing, rec)
+                        rows.Push(existing)
+                    } else {
+                        newItem := _WS_ToItem(rec)
+                        rows.Push(newItem)
+                        gWS_DLCache_ItemsMap[rec.hwnd] := newItem
+                    }
                 } else if (gWS_DLCache_ItemsMap.Has(rec.hwnd))
                     rows.Push(gWS_DLCache_ItemsMap[rec.hwnd])
                 else {
@@ -1342,6 +1401,7 @@ WL_GetDisplayList(opts := 0) {
             gWS_SortOrderDirty := false
             gWS_ContentDirty := false
             gWS_MRUBumpOnly := false
+            gWS_MRUBumpedHwnd := 0
             gWS_DirtyHwnds := Map()
             gWS_DLCache_Items := rows
             result := { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "mru" }
@@ -1377,9 +1437,15 @@ WL_GetDisplayList(opts := 0) {
                 break
             }
             if (gWS_DirtyHwnds.Has(rec.hwnd)) {
-                newItem := _WS_ToItem(rec)
-                rows.Push(newItem)
-                gWS_DLCache_ItemsMap[rec.hwnd] := newItem
+                if (gWS_DLCache_ItemsMap.Has(rec.hwnd)) {
+                    existing := gWS_DLCache_ItemsMap[rec.hwnd]
+                    _WS_PatchItem(existing, rec)
+                    rows.Push(existing)
+                } else {
+                    newItem := _WS_ToItem(rec)
+                    rows.Push(newItem)
+                    gWS_DLCache_ItemsMap[rec.hwnd] := newItem
+                }
             } else
                 rows.Push(gWS_DLCache_Items[i])
         }
@@ -1451,6 +1517,7 @@ WL_GetDisplayList(opts := 0) {
     gWS_SortOrderDirty := false
     gWS_ContentDirty := false
     gWS_MRUBumpOnly := false
+    gWS_MRUBumpedHwnd := 0
     gWS_DirtyHwnds := Map()
     gWS_DLCache_Items := rows
     gWS_DLCache_OptsKey := optsKey

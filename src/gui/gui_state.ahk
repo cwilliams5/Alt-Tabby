@@ -69,11 +69,33 @@ GUI_ForceReset() {
 ; Controlled by cfg.DiagEventLog (config.ini [Diagnostics] EventLog=true)
 ; Log file: %TEMP%\tabby_events.log
 
+; Buffer log messages and flush via deferred timer so FileAppend I/O
+; never runs inside Critical sections (state machine handler, etc.)
+global _GST_LogBuf := []
+global _GST_LogFlushScheduled := false
+
 GUI_LogEvent(msg) {
-    global cfg, LOG_PATH_EVENTS
+    global cfg, _GST_LogBuf, _GST_LogFlushScheduled
     if (!cfg.DiagEventLog)
         return
-    try LogAppend(LOG_PATH_EVENTS, msg)
+    _GST_LogBuf.Push(GetLogTimestamp() " " msg)
+    if (!_GST_LogFlushScheduled) {
+        _GST_LogFlushScheduled := true
+        SetTimer(_GST_FlushLogBuffer, -1)
+    }
+}
+
+_GST_FlushLogBuffer() {
+    global _GST_LogBuf, _GST_LogFlushScheduled, LOG_PATH_EVENTS
+    _GST_LogFlushScheduled := false
+    if (_GST_LogBuf.Length = 0)
+        return
+    buf := _GST_LogBuf
+    _GST_LogBuf := []
+    combined := ""
+    for _, line in buf
+        combined .= line "`n"
+    try FileAppend(combined, LOG_PATH_EVENTS, "UTF-8")
 }
 
 ; Call at startup to mark new session
@@ -1335,30 +1357,31 @@ _GUI_UpdateLocalMRU(hwnd) {
         return false
     }
 
-    if (diagLog)
-        GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_LiveItems.Length " items")
-    for i, item in gGUI_LiveItems {
-        if (item.hwnd = hwnd) {
-            tick := A_TickCount  ; PERF: cache A_TickCount (read twice)
-            item.lastActivatedTick := tick
-            if (diagLog)
-                GUI_LogEvent("MRU UPDATE: found at position " i ", moving to position 1")
-            if (i > 1) {
-                gGUI_LiveItems.RemoveAt(i)
-                gGUI_LiveItems.InsertAt(1, item)
-            }
-            ; Keep gWS_Store in sync with local MRU update
-            WL_UpdateFields(hwnd, {lastActivatedTick: tick, isFocused: true}, "gui_activate")
-            if (gFR_Enabled)
-                FR_Record(FR_EV_MRU_UPDATE, hwnd, 1)
-            return true
+    ; Get item directly from Map (O(1)) and update tick
+    item := gGUI_LiveItemsMap[hwnd]
+    tick := A_TickCount
+    item.lastActivatedTick := tick
+
+    ; Find index for move-to-front (still O(n) but with direct object identity check)
+    idx := 0
+    Loop gGUI_LiveItems.Length {
+        if (gGUI_LiveItems[A_Index] == item) {
+            idx := A_Index
+            break
         }
     }
-    if (gFR_Enabled)
-        FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
+    if (idx > 1) {
+        gGUI_LiveItems.RemoveAt(idx)
+        gGUI_LiveItems.InsertAt(1, item)
+    }
     if (diagLog)
-        GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
-    return false
+        GUI_LogEvent("MRU UPDATE: hwnd " hwnd " at pos " idx ", moved to 1")
+
+    ; Keep gWS_Store in sync with local MRU update
+    WL_UpdateFields(hwnd, {lastActivatedTick: tick, isFocused: true}, "gui_activate")
+    if (gFR_Enabled)
+        FR_Record(FR_EV_MRU_UPDATE, hwnd, 1)
+    return true
 }
 
 ; ========================= DIRECT WINDOW UNCLOAKING (COM) =========================
