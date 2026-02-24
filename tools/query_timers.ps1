@@ -13,23 +13,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_query_helpers.ps1"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $srcDir = Join-Path $projectRoot "src"
 
-$ahkKeywords = @('if','else','while','for','loop','switch','case','catch','finally',
-    'try','return','throw','not','and','or','is','in','contains','isset',
-    'class','static','global','local','until','new','super','this','true','false','unset')
-
 # === Collect source files (exclude lib/) ===
-$allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
+$allFiles = Get-AhkSourceFiles $srcDir
 
 # Pre-compile hot-loop regex
 $setTimerCheckRx = [regex]::new('\bSetTimer\s*[\(,]')
 $setTimerExtractRx = [regex]::new('SetTimer\s*\(\s*([^,\)]+?)(?:\s*,\s*([^)]+))?\s*\)')
-$funcBoundaryRx = [regex]::new('^(\w+)\s*\(')
 
 # === Scan for SetTimer calls ===
 $timers = [System.Collections.ArrayList]::new()
@@ -43,24 +38,7 @@ foreach ($file in $allFiles) {
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     # Pre-build function boundary map for this file
-    $funcBounds = [System.Collections.ArrayList]::new()
-    for ($j = 0; $j -lt $lines.Count; $j++) {
-        $m = $funcBoundaryRx.Match($lines[$j])
-        if ($m.Success) {
-            $candidate = $m.Groups[1].Value
-            if ($candidate.ToLower() -in $ahkKeywords) { continue }
-            $hasBody = $lines[$j].Contains('{')
-            if (-not $hasBody) {
-                for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $lines.Count); $k++) {
-                    $next = $lines[$k].Trim()
-                    if ($next -eq '') { continue }
-                    if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
-                    break
-                }
-            }
-            if ($hasBody) { [void]$funcBounds.Add(@{ Name = $candidate; Line = $j }) }
-        }
-    }
+    $funcBounds = Build-FuncBoundaryMap $lines
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $trimmed = $lines[$i].Trim()
@@ -97,10 +75,7 @@ foreach ($file in $allFiles) {
         }
 
         # Find enclosing function via pre-built boundary map
-        $funcName = "(file scope)"
-        for ($b = $funcBounds.Count - 1; $b -ge 0; $b--) {
-            if ($funcBounds[$b].Line -le $i) { $funcName = $funcBounds[$b].Name; break }
-        }
+        $funcName = Find-EnclosingFunction $funcBounds $i
 
         $lineNum = $i + 1
         [void]$timers.Add(@{

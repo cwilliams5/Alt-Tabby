@@ -19,44 +19,17 @@ param(
 $ErrorActionPreference = 'Stop'
 $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 
+. "$PSScriptRoot\_query_helpers.ps1"
+
 # === Resolve paths ===
 $srcDir = (Resolve-Path "$PSScriptRoot\..\src").Path
 $projectRoot = (Resolve-Path "$srcDir\..").Path
 
 # === Collect source files (exclude lib/) ===
-$srcFiles = @(Get-ChildItem -Path $srcDir -Filter "*.ahk" -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
+$srcFiles = Get-AhkSourceFiles $srcDir
 
 Write-Host ""
 Write-Host "  Scanning $($srcFiles.Count) source files..." -ForegroundColor Cyan
-
-# === Helpers ===
-function Clean-Line {
-    param([string]$line)
-    $trimmed = $line.TrimStart()
-    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
-    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
-        return $trimmed
-    }
-    $cleaned = $trimmed -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace "'[^']*'", "''"
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    return $cleaned
-}
-
-function Count-Braces {
-    param([string]$line)
-    $opens = $line.Length - $line.Replace('{', '').Length
-    $closes = $line.Length - $line.Replace('}', '').Length
-    return @($opens, $closes)
-}
-
-$AHK_KEYWORDS = @(
-    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
-    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
-    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
-    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
-)
 
 # ============================================================
 # Pass 1: Collect public function definitions
@@ -79,13 +52,10 @@ foreach ($file in $srcFiles) {
         $cleaned = Clean-Line $lines[$i]
         if ($cleaned -eq '') { continue }
 
-        $braces = Count-Braces $cleaned
-
         # Function definition at file scope (depth 0), public only (no _ prefix)
         if ($depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
-            $fkey = $fname.ToLower()
-            if ($fkey -notin $AHK_KEYWORDS -and -not $fname.StartsWith('_') -and $cleaned -match '\{') {
+            if (-not $AHK_KEYWORDS_SET.Contains($fname) -and -not $fname.StartsWith('_') -and $cleaned.Contains('{')) {
                 [void]$funcDefs.Add(@{
                     Name    = $fname
                     File    = $file.FullName
@@ -95,7 +65,7 @@ foreach ($file in $srcFiles) {
             }
         }
 
-        $depth += $braces[0] - $braces[1]
+        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
         if ($depth -lt 0) { $depth = 0 }
     }
 }
@@ -119,6 +89,17 @@ foreach ($def in $funcDefs) {
     $def.CompiledRegex = [regex]::new($pattern, 'Compiled, IgnoreCase')
 }
 
+# Pre-build per-file word sets for O(1) name lookup (replaces IndexOf pre-filter)
+$fileWordSets = @{}
+foreach ($file in $srcFiles) {
+    $words = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($m in [regex]::Matches($fileTexts[$file.FullName], '\b[A-Za-z]\w+\b')) {
+        [void]$words.Add($m.Value)
+    }
+    $fileWordSets[$file.FullName] = $words
+}
+
 foreach ($def in $funcDefs) {
     $externalFiles = 0
 
@@ -126,12 +107,10 @@ foreach ($def in $funcDefs) {
         # Skip the declaring file
         if ($file.FullName -eq $def.File) { continue }
 
-        $text = $fileTexts[$file.FullName]
+        # Quick O(1) HashSet check before expensive regex
+        if (-not $fileWordSets[$file.FullName].Contains($def.Name)) { continue }
 
-        # Quick string check before regex
-        if ($text.IndexOf($def.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-
-        if ($def.CompiledRegex.IsMatch($text)) {
+        if ($def.CompiledRegex.IsMatch($fileTexts[$file.FullName])) {
             $externalFiles++
             # Once we exceed MinCallers threshold, no need to count further
             if ($externalFiles -gt $MinCallers) { break }

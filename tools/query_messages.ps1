@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_query_helpers.ps1"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -64,40 +65,6 @@ foreach ($kv in $WM_NAMES.GetEnumerator()) {
     $NAME_TO_HEX[$kv.Value.ToLower()] = $kv.Key
 }
 
-# === Helpers ===
-$ahkKeywords = @('if','else','while','for','loop','switch','case','catch','finally',
-    'try','return','throw','not','and','or','is','in','contains','isset')
-
-function Build-FunctionBoundaries {
-    param([string[]]$Lines, [string[]]$Keywords)
-    $boundaries = [System.Collections.ArrayList]::new()
-    for ($j = 0; $j -lt $Lines.Count; $j++) {
-        if ($Lines[$j] -match '^(\w+)\s*\(') {
-            $candidate = $Matches[1]
-            if ($candidate.ToLower() -in $Keywords) { continue }
-            $hasBody = $Lines[$j].Contains('{')
-            if (-not $hasBody) {
-                for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $Lines.Count); $k++) {
-                    $next = $Lines[$k].Trim()
-                    if ($next -eq '') { continue }
-                    if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
-                    break
-                }
-            }
-            if ($hasBody) { [void]$boundaries.Add(@{ Name = $candidate; Line = $j }) }
-        }
-    }
-    return $boundaries
-}
-
-function Find-EnclosingFunctionCached {
-    param($Boundaries, [int]$FromIndex)
-    for ($b = $Boundaries.Count - 1; $b -ge 0; $b--) {
-        if ($Boundaries[$b].Line -le $FromIndex) { return $Boundaries[$b].Name }
-    }
-    return "(file scope)"
-}
-
 function Format-MsgHex { param([int]$val) return "0x{0:X04}" -f $val }
 
 # === Pre-cache ipc_constants.ahk hex constants for O(1) resolution ===
@@ -124,8 +91,7 @@ function Resolve-HexConstant {
 }
 
 # === Scan source files ===
-$allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
+$allFiles = Get-AhkSourceFiles $srcDir
 
 # Collect all message references
 $entries = [System.Collections.ArrayList]::new()
@@ -157,7 +123,7 @@ foreach ($file in $allFiles) {
 
         # Lazy init function boundaries on first keyword-matching line
         if (-not $funcBounds) {
-            $funcBounds = Build-FunctionBoundaries $lines $ahkKeywords
+            $funcBounds = Build-FuncBoundaryMap $lines
         }
 
         # OnMessage(0xNNNN, handler) or OnMessage(0xNNNN, handler, addRemove)
@@ -172,7 +138,7 @@ foreach ($file in $allFiles) {
                 Handler = $handler
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunctionCached $funcBounds $i
+                Func    = Find-EnclosingFunction $funcBounds $i
             })
             continue
         }
@@ -184,7 +150,7 @@ foreach ($file in $allFiles) {
             $handler = "(lambda)"
             if ($trimmed -match '=>.*?(\w+)\s*\(') {
                 $called = $Matches[1]
-                if ($called.ToLower() -notin $ahkKeywords) { $handler = "(lambda -> $called)" }
+                if (-not $AHK_KEYWORDS_SET.Contains($called)) { $handler = "(lambda -> $called)" }
             }
             [void]$entries.Add(@{
                 Hex     = $hexVal
@@ -192,7 +158,7 @@ foreach ($file in $allFiles) {
                 Handler = $handler
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunctionCached $funcBounds $i
+                Func    = Find-EnclosingFunction $funcBounds $i
             })
             continue
         }
@@ -211,7 +177,7 @@ foreach ($file in $allFiles) {
                     Handler = $handler
                     File    = $relPath
                     Line    = $i + 1
-                    Func    = Find-EnclosingFunctionCached $funcBounds $i
+                    Func    = Find-EnclosingFunction $funcBounds $i
                 })
             }
             continue
@@ -227,7 +193,7 @@ foreach ($file in $allFiles) {
                 Handler = ""
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunctionCached $funcBounds $i
+                Func    = Find-EnclosingFunction $funcBounds $i
             })
             continue
         }
@@ -242,7 +208,7 @@ foreach ($file in $allFiles) {
                 Handler = ""
                 File    = $relPath
                 Line    = $i + 1
-                Func    = Find-EnclosingFunctionCached $funcBounds $i
+                Func    = Find-EnclosingFunction $funcBounds $i
             })
             continue
         }
@@ -266,7 +232,7 @@ foreach ($file in $allFiles) {
                     Handler = ""
                     File    = $relPath
                     Line    = $i + 1
-                    Func    = Find-EnclosingFunctionCached $funcBounds $i
+                    Func    = Find-EnclosingFunction $funcBounds $i
                 })
             }
             continue
@@ -283,7 +249,7 @@ foreach ($file in $allFiles) {
                     Handler = ""
                     File    = $relPath
                     Line    = $i + 1
-                    Func    = Find-EnclosingFunctionCached $funcBounds $i
+                    Func    = Find-EnclosingFunction $funcBounds $i
                 })
             }
             continue

@@ -32,6 +32,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 
+. "$PSScriptRoot\_query_helpers.ps1"
+
 # === Resolve paths ===
 if (-not $SourceDir) {
     $SourceDir = (Resolve-Path "$PSScriptRoot\..\src").Path
@@ -43,8 +45,7 @@ if (-not (Test-Path $SourceDir)) {
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
 
 # === Collect source files (exclude lib/) ===
-$srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
+$srcFiles = Get-AhkSourceFiles $SourceDir
 
 if ($Query) {
     # Query mode: silent startup, output only the answer
@@ -65,32 +66,9 @@ if ($Query) {
     exit 0
 }
 
-# === Helpers ===
-function Clean-Line {
-    param([string]$line)
-    $trimmed = $line.TrimStart()
-    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
-    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
-        return $trimmed
-    }
-    $cleaned = $trimmed -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    return $cleaned
-}
-
-function Count-Braces {
-    param([string]$line)
-    $opens = $line.Length - $line.Replace('{', '').Length
-    $closes = $line.Length - $line.Replace('}', '').Length
-    return @($opens, $closes)
-}
-
-$AHK_KEYWORDS = @(
-    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
-    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
-    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
-    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
-)
+# === Pre-compiled regex constants (JIT-compiled to IL) ===
+$script:RX_PRIVATE_FUNC_DEF = [regex]::new('^\s*(?:static\s+)?(_\w+)\s*\(', 'Compiled')
+$script:RX_FUNC_DEF         = [regex]::new('^\s*(?:static\s+)?(\w+)\s*\(', 'Compiled')
 
 # ============================================================
 # Pass 1: Collect _ prefixed function definitions
@@ -105,12 +83,13 @@ $fileCacheText = @{}
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
     $fileCacheText[$file.FullName] = $text
+
+    # Query mode: skip line parsing once the queried definition is found (lazy split)
+    if ($Query -and $queryDef) { continue }
+
     $lines = $text -split "`r?`n"
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
-
-    # Query mode: skip line parsing once the queried definition is found
-    if ($Query -and $queryDef) { continue }
 
     $depth = 0
 
@@ -118,16 +97,15 @@ foreach ($file in $srcFiles) {
         $cleaned = Clean-Line $lines[$i]
         if ($cleaned -eq '') { continue }
 
-        $braces = Count-Braces $cleaned
-
         # Function definition at file scope (depth 0)
         # In Query mode, skip _ function collection once queryDef is found
         # (Pass 2 is skipped in Query mode, so funcDefs/privateFuncKeys are unused)
         if (-not ($Query -and $queryDef)) {
-            if ($depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(_\w+)\s*\(') {
-                $fname = $Matches[1]
+            $mPriv = $script:RX_PRIVATE_FUNC_DEF.Match($cleaned)
+            if ($depth -eq 0 -and $mPriv.Success) {
+                $fname = $mPriv.Groups[1].Value
                 $fkey = $fname.ToLower()
-                if ($fkey -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+                if (-not $AHK_KEYWORDS_SET.Contains($fkey) -and $cleaned.Contains('{')) {
                     if (-not $funcDefs.ContainsKey($fkey)) {
                         $funcDefs[$fkey] = @{
                             Name    = $fname
@@ -141,9 +119,10 @@ foreach ($file in $srcFiles) {
         }
 
         # Query mode: capture queried function definition during Pass 1
-        if ($Query -and -not $queryDef -and $depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-            $fn = $Matches[1]
-            if ($fn.ToLower() -eq $queryKey -and $fn.ToLower() -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+        $mFD = $script:RX_FUNC_DEF.Match($cleaned)
+        if ($Query -and -not $queryDef -and $depth -eq 0 -and $mFD.Success) {
+            $fn = $mFD.Groups[1].Value
+            if ($fn.ToLower() -eq $queryKey -and -not $AHK_KEYWORDS_SET.Contains($fn) -and $cleaned.Contains('{')) {
                 $queryDef = @{
                     Name    = $fn
                     File    = $file.FullName
@@ -156,7 +135,7 @@ foreach ($file in $srcFiles) {
             }
         }
 
-        $depth += $braces[0] - $braces[1]
+        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
         if ($depth -lt 0) { $depth = 0 }
     }
 }
@@ -189,11 +168,10 @@ if (-not $Query) {
     $violations = [System.Collections.ArrayList]::new()
 
     foreach ($file in $srcFiles) {
-        $lines = $fileCache[$file.FullName]
-
         # Pre-filter: skip files without any private function name reference
         if ($privateFuncRegex -and -not $privateFuncRegex.IsMatch($fileCacheText[$file.FullName])) { continue }
 
+        $lines = $fileCache[$file.FullName]
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 
         $depth = 0
@@ -205,19 +183,18 @@ if (-not $Query) {
             $cleaned = Clean-Line $lines[$i]
             if ($cleaned -eq '') { continue }
 
-            $braces = Count-Braces $cleaned
-
             # Track function context for reporting
-            if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-                $fn = $Matches[1].ToLower()
-                if ($fn -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+            $mFD2 = $script:RX_FUNC_DEF.Match($cleaned)
+            if (-not $inFunc -and $mFD2.Success) {
+                $fn = $mFD2.Groups[1].Value
+                if (-not $AHK_KEYWORDS_SET.Contains($fn) -and $cleaned.Contains('{')) {
                     $inFunc = $true
                     $funcDepth = $depth
-                    $funcName = $Matches[1]
+                    $funcName = $fn
                 }
             }
 
-            $depth += $braces[0] - $braces[1]
+            $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
             if ($depth -lt 0) { $depth = 0 }
 
             if ($inFunc -and $depth -le $funcDepth) {
@@ -291,10 +268,14 @@ if ($Query) {
     $escaped = [regex]::Escape($funcDef.Name)
 
     foreach ($file in $srcFiles) {
-        $qLines = $fileCache[$file.FullName]
-
         # Pre-filter: skip files that don't contain the function name at all
         if ($fileCacheText[$file.FullName].IndexOf($funcDef.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
+        # Lazy line splitting: only split files that pass pre-filter and weren't split in Pass 1
+        if (-not $fileCache.ContainsKey($file.FullName)) {
+            $fileCache[$file.FullName] = $fileCacheText[$file.FullName] -split "`r?`n"
+        }
+        $qLines = $fileCache[$file.FullName]
 
         $relPath = $file.FullName.Replace("$projectRoot\", '')
 
@@ -307,18 +288,17 @@ if ($Query) {
             $cleaned = Clean-Line $qLines[$qi]
             if ($cleaned -eq '') { continue }
 
-            $braces = Count-Braces $cleaned
-
-            if (-not $qInFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-                $fn = $Matches[1]
-                if ($fn.ToLower() -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+            $mFD3 = $script:RX_FUNC_DEF.Match($cleaned)
+            if (-not $qInFunc -and $mFD3.Success) {
+                $fn = $mFD3.Groups[1].Value
+                if (-not $AHK_KEYWORDS_SET.Contains($fn) -and $cleaned.Contains('{')) {
                     $qInFunc = $true
                     $qFuncDepth = $qDepth
                     $qCurFunc = $fn
                 }
             }
 
-            $qDepth += $braces[0] - $braces[1]
+            $qDepth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
             if ($qDepth -lt 0) { $qDepth = 0 }
 
             if ($qInFunc -and $qDepth -le $qFuncDepth) {

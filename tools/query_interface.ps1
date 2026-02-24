@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_query_helpers.ps1"
 
 if (-not $FileName) {
     Write-Host "  Usage: query_interface.ps1 <filename>" -ForegroundColor Yellow
@@ -27,8 +28,7 @@ $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
 
 # Find the file
 $srcDir = (Resolve-Path "$PSScriptRoot\..\src").Path
-$fileMatches = @(Get-ChildItem -Path $srcDir -Filter "$baseName.ahk" -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
+$fileMatches = @(Get-AhkSourceFiles $srcDir | Where-Object { $_.Name -eq "$baseName.ahk" })
 
 if ($fileMatches.Count -eq 0) {
     Write-Host "  No file found matching: $baseName.ahk" -ForegroundColor Red
@@ -39,46 +39,6 @@ $file = $fileMatches[0]
 $lines = [System.IO.File]::ReadAllLines($file.FullName)
 $projectRoot = (Resolve-Path "$srcDir\..").Path
 $relPath = $file.FullName.Replace("$projectRoot\", '')
-
-# === Helpers ===
-function Clean-Line {
-    param([string]$line)
-    $trimmed = $line.TrimStart()
-    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
-    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
-        return $trimmed
-    }
-    $cleaned = $trimmed -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    return $cleaned
-}
-
-function Count-Braces {
-    param([string]$line)
-    $opens = $line.Length - $line.Replace('{', '').Length
-    $closes = $line.Length - $line.Replace('}', '').Length
-    return @($opens, $closes)
-}
-
-function Strip-Nested {
-    param([string]$s)
-    $result = [System.Text.StringBuilder]::new($s.Length)
-    $depth = 0
-    foreach ($c in $s.ToCharArray()) {
-        if ($c -eq '(' -or $c -eq '[') { $depth++ }
-        elseif ($c -eq ')' -or $c -eq ']') { if ($depth -gt 0) { $depth-- } }
-        elseif ($depth -eq 0) { [void]$result.Append($c) }
-    }
-    return $result.ToString()
-}
-
-$AHK_KEYWORDS = @(
-    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
-    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
-    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
-    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
-)
-$AHK_BUILTINS = @('true', 'false', 'unset', 'this', 'super')
 
 # === Parse ===
 $publicFuncs = [System.Collections.ArrayList]::new()
@@ -93,13 +53,13 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     $cleaned = Clean-Line $lines[$i]
     if ($cleaned -eq '') { continue }
 
-    $braces = Count-Braces $cleaned
+    $braceOpen = $cleaned.Length - $cleaned.Replace('{', '').Length
+    $braceClose = $cleaned.Length - $cleaned.Replace('}', '').Length
 
     # Function definition at file scope
     if (-not $inFunc -and $depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
         $fname = $Matches[1]
-        $fkey = $fname.ToLower()
-        if ($fkey -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+        if ((-not $AHK_KEYWORDS_SET.Contains($fname)) -and $cleaned.Contains('{')) {
             # Extract params
             $params = ""
             if ($lines[$i] -match '\(([^)]*)\)') {
@@ -126,14 +86,14 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
             $trimmed = $part.Trim()
             if ($trimmed -match '^(\w+)') {
                 $gName = $Matches[1]
-                if ($gName.Length -ge 2 -and $gName -notin $AHK_BUILTINS) {
+                if ($gName.Length -ge 2 -and (-not $AHK_BUILTINS_SET.Contains($gName))) {
                     [void]$globals.Add($gName)
                 }
             }
         }
     }
 
-    $depth += $braces[0] - $braces[1]
+    $depth += $braceOpen - $braceClose
     if ($depth -lt 0) { $depth = 0 }
 
     if ($inFunc -and $depth -le $funcDepth) {

@@ -54,6 +54,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 
+. "$PSScriptRoot\_query_helpers.ps1"
+
 # === Resolve paths ===
 if (-not $SourceDir) {
     $SourceDir = (Resolve-Path "$PSScriptRoot\..\src").Path
@@ -66,8 +68,7 @@ $projectRoot = (Resolve-Path "$SourceDir\..").Path
 $manifestPath = Join-Path $projectRoot "ownership.manifest"
 
 # === Collect source files (exclude lib/) ===
-$srcFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
+$srcFiles = Get-AhkSourceFiles $SourceDir
 
 if ($Query) {
     # Query mode: silent startup, output only the answer
@@ -88,52 +89,11 @@ if ($Query) {
     exit 0
 }
 
-# === Helpers ===
-function Clean-Line {
-    param([string]$line)
-    $trimmed = $line.TrimStart()
-    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
-    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
-        return $trimmed
-    }
-    $cleaned = $trimmed -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    return $cleaned
-}
-
-function Count-Braces {
-    param([string]$line)
-    $opens = $line.Length - $line.Replace('{', '').Length
-    $closes = $line.Length - $line.Replace('}', '').Length
-    return @($opens, $closes)
-}
-
-function Strip-Nested {
-    param([string]$s)
-    $result = [System.Text.StringBuilder]::new($s.Length)
-    $depth = 0
-    foreach ($c in $s.ToCharArray()) {
-        if ($c -eq '(' -or $c -eq '[') { $depth++ }
-        elseif ($c -eq ')' -or $c -eq ']') { if ($depth -gt 0) { $depth-- } }
-        elseif ($depth -eq 0) { [void]$result.Append($c) }
-    }
-    return $result.ToString()
-}
-
 # Extract basename (without extension) from a relative path
 function Get-Basename {
     param([string]$relPath)
     return [System.IO.Path]::GetFileNameWithoutExtension($relPath)
 }
-
-# AHK keywords (not function names)
-$AHK_KEYWORDS = @(
-    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
-    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
-    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
-    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
-)
-$AHK_BUILTINS = @('true', 'false', 'unset', 'this', 'super')
 
 # Mutating method names (Maps, Arrays, Objects)
 $MUTATING_METHODS = 'Push|Pop|Delete|InsertAt|RemoveAt|Set|Clear'
@@ -153,12 +113,13 @@ $fileCacheText = @{}
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
     $fileCacheText[$file.FullName] = $text
+
+    # Query mode: skip line parsing once the queried declaration is found (lazy split)
+    if ($Query -and $globalDecl.ContainsKey($Query)) { continue }
+
     $lines = $text -split "`r?`n"
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
-
-    # Query mode: skip line parsing once the queried declaration is found
-    if ($Query -and $globalDecl.ContainsKey($Query)) { continue }
 
     $depth = 0
     $inFunc = $false
@@ -168,17 +129,15 @@ foreach ($file in $srcFiles) {
         $cleaned = Clean-Line $lines[$i]
         if ($cleaned -eq '') { continue }
 
-        $braces = Count-Braces $cleaned
-
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-            $fname = $Matches[1].ToLower()
-            if ($fname -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+            $fname = $Matches[1]
+            if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
                 $inFunc = $true
                 $funcDepth = $depth
             }
         }
 
-        $depth += $braces[0] - $braces[1]
+        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
 
         if ($inFunc -and $depth -le $funcDepth) {
             $inFunc = $false
@@ -193,7 +152,7 @@ foreach ($file in $srcFiles) {
                 $trimmed = $part.Trim()
                 if ($trimmed -match '^(\w+)') {
                     $gName = $Matches[1]
-                    if ($gName.Length -ge 2 -and $gName -notin $AHK_BUILTINS) {
+                    if ($gName.Length -ge 2 -and -not $AHK_BUILTINS_SET.Contains($gName)) {
                         if (-not $globalDecl.ContainsKey($gName)) {
                             $globalDecl[$gName] = @{
                                 File    = $file.FullName
@@ -261,7 +220,6 @@ $mutations = [System.Collections.ArrayList]::new()
 $reads = @{}
 
 foreach ($file in $srcFiles) {
-    $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     # When querying a single global, skip files that don't contain it at all
@@ -274,6 +232,12 @@ foreach ($file in $srcFiles) {
         if (-not $globalPreFilter.IsMatch($fileCacheText[$file.FullName])) { continue }
     }
 
+    # Lazy line splitting: only split files that pass pre-filter and weren't split in Pass 1
+    if (-not $fileCache.ContainsKey($file.FullName)) {
+        $fileCache[$file.FullName] = $fileCacheText[$file.FullName] -split "`r?`n"
+    }
+    $lines = $fileCache[$file.FullName]
+
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
@@ -283,18 +247,16 @@ foreach ($file in $srcFiles) {
         $cleaned = Clean-Line $lines[$i]
         if ($cleaned -eq '') { continue }
 
-        $braces = Count-Braces $cleaned
-
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-            $fname = $Matches[1].ToLower()
-            if ($fname -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+            $fname = $Matches[1]
+            if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
                 $inFunc = $true
                 $funcDepth = $depth
-                $funcName = $Matches[1]
+                $funcName = $fname
             }
         }
 
-        $depth += $braces[0] - $braces[1]
+        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
 
         if ($inFunc -and $depth -le $funcDepth) {
             $inFunc = $false
@@ -322,7 +284,7 @@ foreach ($file in $srcFiles) {
         $isGlobalDeclLine = $cleaned -match '^\s*global\s+'
 
         # Find word tokens that match known globals, then test for mutation
-        $wordMatches = [regex]::Matches($cleaned, '\b[a-zA-Z_]\w+\b')
+        $wordMatches = $script:_rxWord.Matches($cleaned)
         $seen = [System.Collections.Generic.HashSet[string]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
 

@@ -18,6 +18,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_query_helpers.ps1"
 
 # --- Locate project root ---
 $scriptDir = $PSScriptRoot
@@ -26,34 +27,6 @@ $srcDir = Join-Path $projectRoot "src"
 
 # MainProcess scope: gui/, core/, shared/ (exclude lib/)
 $scopeDirs = @("gui", "core", "shared")
-
-# --- AHK keyword list (not functions) ---
-$AHK_KEYWORDS = @(
-    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
-    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
-    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
-    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
-)
-
-# --- Helpers ---
-function Clean-Line {
-    param([string]$line)
-    $trimmed = $line.TrimStart()
-    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
-    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
-        return $trimmed
-    }
-    $cleaned = $trimmed -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    return $cleaned
-}
-
-function Count-Braces {
-    param([string]$line)
-    $opens = $line.Length - $line.Replace('{', '').Length
-    $closes = $line.Length - $line.Replace('}', '').Length
-    return @($opens, $closes)
-}
 
 # --- Scan all files ---
 $allFunctions = [System.Collections.ArrayList]::new()
@@ -80,13 +53,12 @@ foreach ($dir in $scopeDirs) {
                 continue
             }
 
-            $braces = Count-Braces $cleaned
+            $depthBefore = $depth
 
             # Function definition at file scope
-            if (-not $inFunc -and $depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+            if (-not $inFunc -and $depthBefore -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
                 $fname = $Matches[1]
-                $fkey = $fname.ToLower()
-                if ($fkey -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+                if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
                     $isPrivate = $fname.StartsWith('_')
                     $currentFunc = [PSCustomObject]@{
                         Name = $fname
@@ -97,7 +69,7 @@ foreach ($dir in $scopeDirs) {
                         Instrumented = $false
                     }
                     $inFunc = $true
-                    $funcDepth = $depth
+                    $funcDepth = $depthBefore
                 }
             }
 
@@ -108,7 +80,7 @@ foreach ($dir in $scopeDirs) {
                 }
             }
 
-            $depth += $braces[0] - $braces[1]
+            $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
             if ($depth -lt 0) { $depth = 0 }
 
             if ($inFunc -and $depth -le $funcDepth) {

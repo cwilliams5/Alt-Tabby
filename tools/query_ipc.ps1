@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_query_helpers.ps1"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -91,8 +92,9 @@ if (-not $target) {
 $constName = $target.Name
 $constValue = $target.Value
 $constLine = $target.Line
-$ahkKeywords = @('if','else','while','for','loop','switch','case','catch','finally',
-    'try','return','throw','not','and','or','is','in','contains','isset')
+
+# Raw JSON pattern: '{"type":"<msgType>",...}' bypassing IPC_MSG_* constants
+$rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
 
 # Pre-compile hot-loop regex (avoids per-iteration string interpolation and regex cache lookups)
 $constNameRx = [regex]::new("\b$constName\b")
@@ -108,47 +110,12 @@ $sendQuoteRx = [regex]::new("'.*type.*\b$constName\b")
 $sendTernaryRx = [regex]::new("\?\s*$constName\b")
 $sendTailRx = [regex]::new(":\s*$constName\s*$")
 
-# === Helper: build function boundary map for a file ===
-function Build-FuncBounds {
-    param([string[]]$Lines, [string[]]$Keywords)
-    $bounds = [System.Collections.ArrayList]::new()
-    for ($j = 0; $j -lt $Lines.Count; $j++) {
-        if ($Lines[$j] -match '^(\w+)\s*\(') {
-            $candidate = $Matches[1]
-            if ($candidate.ToLower() -in $Keywords) { continue }
-            $hasBody = $Lines[$j].Contains('{')
-            if (-not $hasBody) {
-                for ($k = $j + 1; $k -lt [Math]::Min($j + 3, $Lines.Count); $k++) {
-                    $next = $Lines[$k].Trim()
-                    if ($next -eq '') { continue }
-                    if ($next -eq '{' -or $next.StartsWith('{')) { $hasBody = $true }
-                    break
-                }
-            }
-            if ($hasBody) { [void]$bounds.Add(@{ Name = $candidate; Line = $j }) }
-        }
-    }
-    return $bounds
-}
-
-function Find-FuncCached {
-    param($Bounds, [int]$FromIndex)
-    for ($b = $Bounds.Count - 1; $b -ge 0; $b--) {
-        if ($Bounds[$b].Line -le $FromIndex) { return $Bounds[$b].Name }
-    }
-    return "(file scope)"
-}
-
 # === Scan source files for references ===
-$allFiles = @(Get-ChildItem -Path $srcDir -Filter *.ahk -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
+$allFiles = Get-AhkSourceFiles $srcDir
 
 $sends = [System.Collections.ArrayList]::new()
 $handles = [System.Collections.ArrayList]::new()
 $sendLocations = [System.Collections.Generic.HashSet[string]]::new()
-
-# Raw JSON pattern: '{"type":"<msgType>",...}' bypassing IPC_MSG_* constants
-$rawPattern = [regex]::Escape('"type":"' + $constValue + '"')
 
 foreach ($file in $allFiles) {
     # File-level pre-filter: ReadAllText for single IndexOf check, split only on match
@@ -161,7 +128,7 @@ foreach ($file in $allFiles) {
     $isConstantsFile = ($file.Name -eq "ipc_constants.ahk")
 
     # Pre-build function boundary map for this file
-    $funcBounds = Build-FuncBounds $lines $ahkKeywords
+    $funcBounds = Build-FuncBoundaryMap $lines
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
@@ -183,7 +150,7 @@ foreach ($file in $allFiles) {
         }
 
         if ($hasConstRef) {
-            $funcName = Find-FuncCached $funcBounds $i
+            $funcName = Find-EnclosingFunction $funcBounds $i
             $hit = @{ File = $relPath; Line = $lineNum; Func = $funcName }
 
             # Classify: send vs handle
@@ -213,7 +180,7 @@ foreach ($file in $allFiles) {
         if ($hasRawJson) {
             # Skip if already found by constant-reference scan (same file+line)
             if (-not $sendLocations.Contains("${relPath}:${lineNum}")) {
-                $funcName = Find-FuncCached $funcBounds $i
+                $funcName = Find-EnclosingFunction $funcBounds $i
                 [void]$sends.Add(@{ File = $relPath; Line = $lineNum; Func = $funcName })
             }
         }

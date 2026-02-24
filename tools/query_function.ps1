@@ -14,6 +14,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_query_helpers.ps1"
 
 if (-not $FuncName) {
     Write-Host "  Usage: query_function.ps1 <funcName>" -ForegroundColor Yellow
@@ -26,36 +27,7 @@ $srcDir = (Resolve-Path "$PSScriptRoot\..\src").Path
 $projectRoot = (Resolve-Path "$srcDir\..").Path
 
 # === Collect source files (exclude lib/) ===
-$srcFiles = @(Get-ChildItem -Path $srcDir -Filter "*.ahk" -Recurse |
-    Where-Object { $_.FullName -notlike "*\lib\*" })
-
-# === Helpers ===
-function Clean-Line {
-    param([string]$line)
-    $trimmed = $line.TrimStart()
-    if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { return '' }
-    if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
-        return $trimmed
-    }
-    $cleaned = $trimmed -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace "'[^']*'", "''"
-    $cleaned = $cleaned -replace '\s;.*$', ''
-    return $cleaned
-}
-
-function Count-Braces {
-    param([string]$line)
-    $opens = $line.Length - $line.Replace('{', '').Length
-    $closes = $line.Length - $line.Replace('}', '').Length
-    return @($opens, $closes)
-}
-
-$AHK_KEYWORDS = @(
-    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
-    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
-    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
-    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
-)
+$srcFiles = Get-AhkSourceFiles $srcDir
 
 # === Search all files for the function ===
 $found = $null
@@ -83,13 +55,14 @@ foreach ($file in $srcFiles) {
             continue
         }
 
-        $braces = Count-Braces $cleaned
+        $braceOpen = $cleaned.Length - $cleaned.Replace('{','').Length
+        $braceClose = $cleaned.Length - $cleaned.Replace('}','').Length
 
         # Function definition at file scope
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
             $fkey = $fname.ToLower()
-            if ($fkey -notin $AHK_KEYWORDS -and $cleaned -match '\{') {
+            if (-not $AHK_KEYWORDS_SET.Contains($fkey) -and $cleaned.Contains('{')) {
                 $inFunc = $true
                 $funcDepth = $depth
 
@@ -132,14 +105,13 @@ foreach ($file in $srcFiles) {
 
                     # Now find the end of this function
                     $funcBody = @($commentLines) + @($lines[$i])
-                    $currentDepth = $depth + $braces[0] - $braces[1]
+                    $currentDepth = $depth + $braceOpen - $braceClose
 
                     for ($j = $i + 1; $j -lt $lines.Count; $j++) {
                         $funcBody += $lines[$j]
                         $jCleaned = Clean-Line $lines[$j]
                         if ($jCleaned -ne '') {
-                            $jBraces = Count-Braces $jCleaned
-                            $currentDepth += $jBraces[0] - $jBraces[1]
+                            $currentDepth += ($jCleaned.Length - $jCleaned.Replace('{','').Length) - ($jCleaned.Length - $jCleaned.Replace('}','').Length)
                         }
                         if ($currentDepth -le $startDepth) {
                             # Function closed
@@ -171,7 +143,7 @@ foreach ($file in $srcFiles) {
             }
         }
 
-        $depth += $braces[0] - $braces[1]
+        $depth += $braceOpen - $braceClose
         if ($depth -lt 0) { $depth = 0 }
 
         if ($inFunc -and $depth -le $funcDepth) {
