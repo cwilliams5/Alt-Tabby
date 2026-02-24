@@ -37,6 +37,14 @@ GUI_ToggleMonitorMode() {
 
 ; ========================= MONITOR FILTERING =========================
 
+; Predicate: does this item pass the current monitor filter?
+; Used by GUI_FilterDisplayItems() for single-pass filtering.
+; Caller must check mode/handle guards before calling this.
+GUI_MonitorItemPasses(item) {
+    global gGUI_OverlayMonitorHandle
+    return (item.monitorHandle = gGUI_OverlayMonitorHandle)
+}
+
 GUI_FilterByMonitorMode(items) {
     global gGUI_MonitorMode, gGUI_OverlayMonitorHandle, MON_MODE_ALL
 
@@ -46,10 +54,9 @@ GUI_FilterByMonitorMode(items) {
         return items
 
     ; Only items on the overlay's monitor (monitorHandle stamped by producers)
-    monHandle := gGUI_OverlayMonitorHandle
     result := []
     for _, item in items {
-        if (item.monitorHandle = monHandle)
+        if (GUI_MonitorItemPasses(item))
             result.Push(item)
     }
     return result

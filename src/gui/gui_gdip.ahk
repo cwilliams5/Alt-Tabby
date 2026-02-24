@@ -15,7 +15,13 @@ global gGdip_ResScale := 0.0
 global gGdip_Res := Map()
 
 ; Icon bitmap cache: hwnd -> {hicon: number, pBmp: GDI+ bitmap ptr}
-; Avoids re-converting HICON to GDI+ bitmap on every repaint
+; Avoids re-converting HICON to GDI+ bitmap on every repaint.
+;
+; DESIGN DECISION: No hard-cap eviction (unlike brush/pen/path caches above).
+; Icons are naturally bounded by live window count — Gdip_PruneIconCache() removes
+; entries for closed windows on each snapshot. A FIFO cap would risk evicting an icon
+; for a window about to be painted, causing visible grey circles or evict-then-recache
+; cycles. This has been reviewed and explicitly rejected.
 global gGdip_IconCache := Map()
 
 ; Dynamic brush/pen caches: auto-populated on first use, cleared on shutdown/scale change

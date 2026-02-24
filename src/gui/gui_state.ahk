@@ -216,7 +216,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             ; Shallow copy — same item refs, independent array container
             gGUI_ToggleBase := gGUI_LiveItems.Clone()
             GUI_CaptureOverlayMonitor()
-            gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
+            gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
 
             ; DEBUG: Log workspace data of display items
             if (cfg.DiagEventLog) {
@@ -452,12 +452,35 @@ GUI_HandleWorkspaceSwitch() {
     Profiler.Leave() ; @profile
 }
 
+; Combined workspace + monitor filter in a single pass.
+; Returns items unchanged when both filters are ALL (fast path, no allocation).
+; When filtering is active, avoids the intermediate throwaway array that two
+; sequential filter calls would create.
+GUI_FilterDisplayItems(items) {
+    global gGUI_WorkspaceMode, WS_MODE_ALL
+    global gGUI_MonitorMode, MON_MODE_ALL, gGUI_OverlayMonitorHandle
+
+    wsAll := (gGUI_WorkspaceMode = WS_MODE_ALL)
+    monAll := (gGUI_MonitorMode = MON_MODE_ALL) || !gGUI_OverlayMonitorHandle
+    if (wsAll && monAll)
+        return items
+    result := []
+    for _, item in items {
+        if (!wsAll && !GUI_WorkspaceItemPasses(item))
+            continue
+        if (!monAll && !GUI_MonitorItemPasses(item))
+            continue
+        result.Push(item)
+    }
+    return result
+}
+
 ; Re-filter display items for a workspace change (window moved or workspace switched).
 ; Resets scroll/selection and tries to select the foreground window, since a workspace
 ; change is a context switch — the moved/focused window is what the user wants.
 GUI_RefilterForWorkspaceChange() {
     global gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_ToggleBase
-    gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
+    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
     gGUI_ScrollTop := 0
     gGUI_Sel := 1
     fgHwnd := DllCall("GetForegroundWindow", "Ptr")
@@ -481,7 +504,7 @@ GUI_ApplyWorkspaceFilter() {
     ; repaint, reassigning gGUI_DisplayItems via GUI_OnInterceptorEvent. Follows the
     ; keyboard-hooks rule: "keep Critical during render" (corrupted GUI > keyboard lag).
     Critical "On"
-    gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
+    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
     _GUI_ResetSelectionToMRU()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)
@@ -494,7 +517,7 @@ GUI_ApplyWorkspaceFilter() {
 GUI_ApplyMonitorFilter() {
     global gGUI_DisplayItems, gGUI_ToggleBase
     Critical "On"
-    gGUI_DisplayItems := GUI_FilterByMonitorMode(GUI_FilterByWorkspaceMode(gGUI_ToggleBase))
+    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
     _GUI_ResetSelectionToMRU()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired)

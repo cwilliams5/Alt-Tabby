@@ -73,6 +73,12 @@ GUI_ToggleWorkspaceMode() {
 
 ; ========================= WORKSPACE FILTERING =========================
 
+; Predicate: does this item pass the current workspace filter?
+; Used by GUI_FilterDisplayItems() for single-pass filtering.
+GUI_WorkspaceItemPasses(item) {
+    return GUI_GetItemIsOnCurrent(item)
+}
+
 GUI_FilterByWorkspaceMode(items) {
     global gGUI_WorkspaceMode, WS_MODE_ALL
 
@@ -83,7 +89,7 @@ GUI_FilterByWorkspaceMode(items) {
     ; WS_MODE_CURRENT mode - only items on current workspace
     result := []
     for _, item in items {
-        if (GUI_GetItemIsOnCurrent(item)) {
+        if (GUI_WorkspaceItemPasses(item)) {
             result.Push(item)
         }
     }
