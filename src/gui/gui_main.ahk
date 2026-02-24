@@ -462,8 +462,10 @@ _GUI_LockWorkingSet() {
         result := DllCall("SetProcessWorkingSetSizeEx", "Ptr", hProcess,
             "UPtr", wsSize, "UPtr", wsMax, "UInt", 0x9, "Int")
 
-        wsMB := Round(wsSize / (1024 * 1024), 1)
-        try LogAppend(LOG_PATH_STORE, "LockWorkingSet: set hard min=" wsMB "mb result=" result)
+        if (cfg.DiagStoreLog) {
+            wsMB := Round(wsSize / (1024 * 1024), 1)
+            try LogAppend(LOG_PATH_STORE, "LockWorkingSet: set hard min=" wsMB "mb result=" result)
+        }
     } catch as e {
         try LogAppend(LOG_PATH_STORE, "LockWorkingSet err=" e.Message)
     }
@@ -680,8 +682,9 @@ _GUI_OnBlacklistFileChanged(path) { ; lint-ignore: dead-param
     Critical "On"
     Blacklist_Init()
     result := WL_PurgeBlacklisted()
-    global LOG_PATH_STORE
-    try LogAppend(LOG_PATH_STORE, "WATCH: blacklist reloaded, purged=" result.removed)
+    global LOG_PATH_STORE, cfg
+    if (cfg.DiagStoreLog)
+        try LogAppend(LOG_PATH_STORE, "WATCH: blacklist reloaded, purged=" result.removed)
     Critical "Off"
 }
 

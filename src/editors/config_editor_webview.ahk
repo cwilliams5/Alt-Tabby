@@ -216,7 +216,7 @@ _CEW_OnWebMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param
 
 _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
     global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
-    global cfg, LOG_PATH_WEBVIEW
+    global cfg, LOG_PATH_WEBVIEW, LOG_PATH_STORE
 
     ; Parse JSON message from JavaScript
     try {
@@ -255,6 +255,7 @@ _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
             detail := IsSet(msgJson) ? " json=" SubStr(msgJson, 1, 200) : ""
             try LogAppend(LOG_PATH_WEBVIEW, "WebMessage error: " e.Message detail)
         }
+        try LogAppend(LOG_PATH_STORE, "WebMessage error: " e.Message)
     }
 }
 
