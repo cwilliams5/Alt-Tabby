@@ -590,10 +590,11 @@ _WEH_ProcessBatch() {
     ; PERF: Split into two paths to avoid redundant cross-process calls.
     ; In-store windows: lightweight update (title + vis/min/cloak only — class/PID are immutable).
     ; New windows: full probe (WinGetTitle + WinGetClass + WinGetPID + eligibility check).
+    batchChanged := false
+    ineligibleHwnds := []
     if (toProcess.Length > 0) {
         newRecords := []
         updatedHwnds := []
-        ineligibleHwnds := []
         batchPatches := Map()
         for _, hwnd in toProcess {
             if (gWS_Store.Has(hwnd + 0)) {
@@ -621,6 +622,7 @@ _WEH_ProcessBatch() {
         ; Upsert new windows (full record)
         if (newRecords.Length > 0)
             WL_UpsertWindow(newRecords, "winevent_hook")
+        batchChanged := (batchPatches.Count > 0 || newRecords.Length > 0 || ineligibleHwnds.Length > 0)
         ; Enqueue Z-order and icon refresh for all processed hwnds
         allProcessed := []
         for _, rec in newRecords
@@ -649,9 +651,8 @@ _WEH_ProcessBatch() {
     ; Structural changes (destroy, Z-affecting events) push immediately.
     ; Cosmetic-only changes (title/location) are throttled to avoid push floods
     ; from apps with animated titles (e.g., terminal spinners).
-    hasRecords := (toProcess.Length > 0 && IsSet(records) && records.Length > 0)
-    if (destroyed.Length > 0 || hiddenRemoved.Length > 0 || hasRecords) {
-        isStructural := destroyed.Length > 0 || hiddenRemoved.Length > 0 || zSnapshot.Count > 0
+    if (destroyed.Length > 0 || hiddenRemoved.Length > 0 || batchChanged) {
+        isStructural := destroyed.Length > 0 || hiddenRemoved.Length > 0 || ineligibleHwnds.Length > 0 || zSnapshot.Count > 0
         if (gWS_OnStoreChanged)
             gWS_OnStoreChanged(isStructural)
     }
