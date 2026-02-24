@@ -20,8 +20,6 @@ Run these first. Any findings here are release-blockers:
 
 4. **`/review-dead-code`** — Dead code accumulates between releases
 5. **`/review-debug`** — Ungated log writes or accidentally-enabled diagnostics ship to users
-6. **`/review-comments`** — Stale comments mislead the next development session
-7. **`/review-reviews`** — Skills that drifted since last release give bad guidance going forward
 
 **After Tier 2:** Report findings. Ask the user: address now or proceed to release?
 
@@ -44,8 +42,6 @@ After all skills have run, present a release readiness summary:
 | review-option-interaction | 0 | — |
 | review-dead-code | 3 | all low |
 | review-debug | 1 | medium (ungated log) |
-| review-comments | 5 | all low |
-| review-reviews | 1 | low (stale file ref) |
 
 **Release recommendation:** Proceed / Address N issues first
 
