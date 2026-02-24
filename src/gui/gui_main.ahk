@@ -152,6 +152,7 @@ _GUI_Main_Init() {
     Paint_LogStartSession()
 
     Win_InitDpiAwareness()
+    Win_InitMonitorCache()
     Gdip_Startup()
 
     ; Initialize monitor mode from config default
