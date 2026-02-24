@@ -1203,6 +1203,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "StatsTracking", g: "StatsTrackingEnabled", t: "bool", default: true,
      d: "Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard."},
 
+    {s: "Diagnostics", k: "LogFilePrefix", g: "DiagLogFilePrefix", t: "string", default: "",
+     d: "Prefix inserted into diagnostic log filenames for instance isolation. When set, tabby_pump.log becomes tabby_pump_<prefix>.log. Used by automated tests to prevent log collision across parallel worktrees."},
+
     {type: "subsection", section: "Diagnostics", name: "Log Size Limits",
      desc: "Control diagnostic log file sizes"},
 
