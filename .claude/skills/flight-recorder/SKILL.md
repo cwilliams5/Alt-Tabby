@@ -47,6 +47,8 @@ Read the USER NOTE and any user-provided description. Form a hypothesis about wh
 
 ### Step 3 — Trace the event chain
 
+Use `query_state.ps1` to extract the expected state machine branches for comparison with the event trace. Use `query_messages.ps1` to identify WM_ message handlers/senders when Windows messages appear in the trace.
+
 Read the event trace bottom-to-top (chronological order). Look for:
 
 **Complete sequences** — A normal Alt-Tab is:

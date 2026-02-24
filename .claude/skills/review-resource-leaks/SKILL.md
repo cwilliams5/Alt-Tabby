@@ -72,7 +72,7 @@ Data structures that grow over time without pruning:
 Split by resource type for independent parallel exploration:
 
 - **GDI+** — `src/gui/gui_paint.ahk`, `src/gui/gui_overlay.ahk`, any file using `Gdip_*`
-- **Win32 handles** — `src/core/` producers, `src/shared/ipc_pipe.ahk`, DllCall-heavy files
+- **Win32 handles** — `src/core/` producers, `src/shared/ipc_pipe.ahk`, DllCall-heavy files. Use `query_function_visibility.ps1` to trace cleanup call chains — verify every Create/Open has a corresponding Close/Delete reachable from all callers.
 - **Timers** — use `query_timers.ps1` to inventory all timers, then check each for proper cleanup
 - **Pipe IPC** — `src/shared/ipc_pipe.ahk`, `src/pump/` files
 - **Data growth** — `src/shared/window_list.ahk` (window store), icon/process caches
