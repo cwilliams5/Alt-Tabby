@@ -13,3 +13,5 @@ The query tools (`query_*.ps1` in project root) are critical for keeping context
 3. Consider: caching, pipeline vs loop, regex precompilation, redundant file reads, shared parsing, startup overhead, etc.
 
 Research the query tools deeply. Write a plan for all optimizations found. Ignore any existing plans — create a fresh one.
+
+Include in the plan a verification step - Run timing comparison (before vs after) each change. Theoretical changes have provably been hidden regressions. Validate. 

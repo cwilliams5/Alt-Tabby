@@ -17,3 +17,5 @@ Enter planning mode. Investigate static analysis runtime and find optimization o
 4. For each recommendation, include an analysis statement explaining why it's internal-only and doesn't change the checker's job or contract.
 
 Research the production code and static analysis deeply. Write a plan for all optimizations found. Ignore any existing plans — create a fresh one.
+
+Include in the plan a verification step - Run timing comparison (before vs after) each change. Theoretical changes have provably been hidden regressions. Validate. 
