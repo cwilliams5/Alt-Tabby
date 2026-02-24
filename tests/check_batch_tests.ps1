@@ -1,6 +1,7 @@
 # check_batch_tests.ps1 - Batched test-file analysis checks
 # Combines test-related checks into one PowerShell process to reduce startup overhead.
-# Sub-checks: test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls, test_cfg_completeness
+# Sub-checks: test_globals, test_functions, test_assertions, no_wmi_in_tests,
+#             test_undefined_calls, test_cfg_completeness, test_production_calls
 # Shared file cache: all src/ files (excluding lib/) + all test files read once.
 #
 # Usage: powershell -File tests\check_batch_tests.ps1 [-SourceDir "path\to\src"]
@@ -251,6 +252,8 @@ function BT_ResolveAhkInclude {
     $path = $path -replace '^\s*#Include\s+', ''
     $path = $path -replace '^\*i\s+', ''
     $path = $path.Trim('"', "'")
+    # Strip inline comments (e.g., "#Include foo.ahk  ; description")
+    $path = $path -replace '\s+;.*$', ''
     $path = $path -replace '%A_ScriptDir%', $scriptDir
 
     try {
@@ -1161,6 +1164,157 @@ $sw.Stop()
 [void]$subTimings.Add(@{ Name = "check_test_cfg_completeness"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
+# Sub-check 7: test_production_calls
+# Detect production code (included by tests) calling functions
+# that are not defined or mocked in the test's include tree.
+# AHK v2 treats unresolved function names as variable lookups
+# at runtime → "local variable has not been assigned" popup.
+#
+# test_undefined_calls (sub-check 5) only scans test files.
+# This check closes the gap: production code pulled in via
+# #Include can call functions the test doesn't provide.
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+# Reuse $tucBuiltins, $tucKeywords, $tucCallRx, $tucGlobalVars from sub-check 5
+# Reuse $entryPoints and BT_BuildIncludeTree from sub-check 1
+
+$tpcLibDirNorm = [System.IO.Path]::GetFullPath((Join-Path $SourceDir "lib")).ToLower()
+$tpcFuncDefCache = @{}
+
+$tpcIssues = [System.Collections.ArrayList]::new()
+
+if ($entryPoints.Count -gt 0) {
+    foreach ($entry in $entryPoints) {
+        $scriptDir = $entry.DirectoryName
+        $tree = BT_BuildIncludeTree $entry.FullName $scriptDir
+
+        # Build function set available in this tree (defined + mocked)
+        $availFuncs = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+
+        foreach ($file in $tree) {
+            if (-not $tpcFuncDefCache.ContainsKey($file)) {
+                $tpcFuncDefCache[$file] = BT_GetFunctionDefinitions $file
+            }
+            foreach ($name in $tpcFuncDefCache[$file].Keys) {
+                [void]$availFuncs.Add($name)
+            }
+        }
+
+        # Also add class names (constructors)
+        foreach ($file in $tree) {
+            foreach ($line in (Get-CachedFileLines $file)) {
+                if ($line -match '^\s*class\s+(\w+)') {
+                    [void]$availFuncs.Add($Matches[1])
+                }
+            }
+        }
+
+        # Also add lib/ function definitions (third-party code always available at runtime)
+        $tpcLibDir = Join-Path $SourceDir "lib"
+        if (Test-Path $tpcLibDir) {
+            foreach ($f in @(Get-ChildItem -Path $tpcLibDir -Filter "*.ahk" -Recurse)) {
+                if (-not $tpcFuncDefCache.ContainsKey($f.FullName)) {
+                    $libLines = [System.IO.File]::ReadAllLines($f.FullName)
+                    $libDefs = @{}
+                    for ($li = 0; $li -lt $libLines.Count; $li++) {
+                        $lt = $libLines[$li].TrimStart()
+                        if ($lt -match '^(?:static\s+)?([A-Za-z_]\w*)\s*\(') {
+                            $fn = $Matches[1]
+                            if ($fn -notin @('if','while','for','loop','switch','catch','return',
+                                'throw','class','try','else','static','global','local')) {
+                                $libDefs[$fn] = $li + 1
+                            }
+                        }
+                        if ($lt -match '^class\s+(\w+)') { $libDefs[$Matches[1]] = $li + 1 }
+                    }
+                    $tpcFuncDefCache[$f.FullName] = $libDefs
+                }
+                foreach ($name in $tpcFuncDefCache[$f.FullName].Keys) {
+                    [void]$availFuncs.Add($name)
+                }
+            }
+        }
+
+        $relEntry = $entry.FullName.Replace("$projectRoot\", '')
+
+        # Scan only production files in the tree:
+        # - Skip test files (sub-check 5 covers those)
+        # - Skip lib/ files (third-party code, not loaded in test context)
+        foreach ($file in $tree) {
+            $fileLower = $file.ToLower()
+            if (-not $fileLower.StartsWith($srcDirNorm)) { continue }
+            if ($fileLower.StartsWith($tpcLibDirNorm)) { continue }
+
+            $lines = Get-CachedFileLines $file
+            $inBlockComment = $false
+
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                $line = $lines[$i]
+                $trimmed = $line.TrimStart()
+
+                if ($trimmed.StartsWith('/*')) { $inBlockComment = $true }
+                if ($inBlockComment) {
+                    if ($trimmed.Contains('*/')) { $inBlockComment = $false }
+                    continue
+                }
+                if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) { continue }
+
+                # Strip strings and inline comments
+                $cleaned = $line
+                if ($line.IndexOf('"') -ge 0) { $cleaned = $cleaned -replace '"[^"]*"', '""' }
+                if ($line.IndexOf("'") -ge 0) { $cleaned = $cleaned -replace "'[^']*'", "''" }
+                $semiIdx = $cleaned.IndexOf(' ;')
+                if ($semiIdx -ge 0) { $cleaned = $cleaned.Substring(0, $semiIdx) }
+
+                foreach ($m in $tucCallRx.Matches($cleaned)) {
+                    $funcName = $m.Groups[1].Value
+                    if ($tucKeywords.Contains($funcName)) { continue }
+                    if ($availFuncs.Contains($funcName)) { continue }
+                    if ($tucBuiltins.Contains($funcName)) { continue }
+                    if ($tucGlobalVars.Contains($funcName)) { continue }
+
+                    $relFile = $file.Replace("$projectRoot\", '')
+                    [void]$tpcIssues.Add([PSCustomObject]@{
+                        TestEntry = $relEntry
+                        SrcFile   = $relFile
+                        Line      = $i + 1
+                        Function  = $funcName
+                        Context   = $trimmed.Substring(0, [Math]::Min($trimmed.Length, 100)).Trim()
+                    })
+                }
+            }
+        }
+    }
+}
+
+# Deduplicate: same function + src file + test entry only reported once
+$tpcDeduped = @($tpcIssues | Sort-Object TestEntry, SrcFile, Function -Unique)
+
+if ($tpcDeduped.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($tpcDeduped.Count) undefined function(s) in production code included by tests.")
+    [void]$failOutput.AppendLine("  Production code calls functions not available in the test's #Include tree.")
+    [void]$failOutput.AppendLine("  Tests will show 'local variable has not been assigned a value' popup at runtime.")
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  Fix: add a mock/stub in the test file, or #Include the file that defines the function.")
+
+    $grouped = $tpcDeduped | Group-Object TestEntry
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("")
+        [void]$failOutput.AppendLine("    Test: $($group.Name)")
+        foreach ($issue in $group.Group | Sort-Object SrcFile, Line) {
+            [void]$failOutput.AppendLine("      $($issue.SrcFile):$($issue.Line) - $($issue.Function)() undefined")
+        }
+    }
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_test_production_calls"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1168,7 +1322,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls, test_cfg_completeness)" -ForegroundColor Green
+    Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls, test_cfg_completeness, test_production_calls)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

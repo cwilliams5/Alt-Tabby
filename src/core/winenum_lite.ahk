@@ -39,6 +39,11 @@ WinEnumLite_ScanAll() {
     list := WinGetList()
     DetectHiddenWindows(prevDetect)
 
+    ; Capture foreground window once — stamp MRU if scan discovers it as new.
+    ; Safety net: if the REFRESH guard missed this window, at least the scan
+    ; gives it MRU #1 instead of lastActivatedTick: 0 (bottom of list).
+    fgHwnd := DllCall("GetForegroundWindow", "Ptr")
+
     for _, hwnd in list {
         ; Skip shell window
         if (hwnd = _WN_ShellWindow)
@@ -49,6 +54,9 @@ WinEnumLite_ScanAll() {
         rec := WinUtils_ProbeWindow(hwnd, z, false, true)
         if (!rec)
             continue
+
+        if (hwnd = fgHwnd)
+            rec["lastActivatedTick"] := A_TickCount
 
         z += 1
         records.Push(rec)

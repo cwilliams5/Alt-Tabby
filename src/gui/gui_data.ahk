@@ -14,9 +14,29 @@ GUI_RefreshLiveItems() {
     Profiler.Enter("GUI_RefreshLiveItems") ; @profile
     global gGUI_LiveItems, gGUI_LiveItemsMap
     global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_OverlayH
-    global gGdip_IconCache, FR_EV_REFRESH, gFR_Enabled
+    global gGdip_IconCache, FR_EV_REFRESH, FR_EV_FG_GUARD, gFR_Enabled
 
     proj := WL_GetDisplayList({ sort: "MRU", columns: "items", includeCloaked: true })
+
+    ; Foreground guard: if the actual foreground window isn't in our display list,
+    ; probe and add it at MRU #1 before freeze. Matches what Windows native Alt-Tab
+    ; does — check GetForegroundWindow() at Alt-press time, not via event tracking.
+    ; Common path: one DllCall + one Map.Has() (~1μs). Probe only on miss.
+    fgHwnd := DllCall("GetForegroundWindow", "Ptr")
+    if (fgHwnd && !proj.itemsMap.Has(fgHwnd)) {
+        probe := WinUtils_ProbeWindow(fgHwnd, 0, false, true)
+        if (probe) {
+            probe["lastActivatedTick"] := A_TickCount
+            probe["isFocused"] := true
+            probe["present"] := true
+            probe["presentNow"] := true
+            WL_UpsertWindow([probe], "fg_guard_refresh")
+            proj := WL_GetDisplayList({ sort: "MRU", columns: "items", includeCloaked: true })
+            if (gFR_Enabled)
+                FR_Record(FR_EV_FG_GUARD, fgHwnd)
+        }
+    }
+
     if (gFR_Enabled)
         FR_Record(FR_EV_REFRESH, proj.items.Length)
     Critical "On"

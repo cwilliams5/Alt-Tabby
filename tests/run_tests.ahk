@@ -57,7 +57,7 @@ global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 2
 global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
 global FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32, FR_EV_PRODUCER_BACKOFF := 60
 global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41
-global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51, FR_EV_KSUB_MRU_STALE := 52
+global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51, FR_EV_KSUB_MRU_STALE := 52, FR_EV_FG_GUARD := 53
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 }
 
@@ -184,6 +184,100 @@ _Test_OnError(err, *) {
 try FileDelete(TestLogPath)
 Log("=== Alt-Tabby Test Run " FormatTime(, "yyyy-MM-dd HH:mm:ss") " ===")
 Log("Log file: " TestLogPath)
+
+; ============================================================
+; Production function mocks (defined BEFORE includes)
+; Functions called in production code paths not exercised during
+; tests. Mocks prevent AHK v2 "undefined variable" popups.
+; ============================================================
+
+; Icon pump mocks (icon_pump.ahk)
+Pump_EnsureRunning(params*) {
+}
+Pump_HandleIdle(params*) {
+}
+
+; Launcher / UI mocks (launcher_about.ahk)
+GUI_AntiFlashPrepare(params*) {
+}
+GUI_AntiFlashReveal(params*) {
+}
+IsInProgramFiles(params*) {
+    return false
+}
+LaunchBlacklistEditor(params*) {
+}
+LaunchConfigEditor(params*) {
+}
+LauncherUtils_IsRunning(params*) {
+    return false
+}
+LauncherUtils_LoadGdipThumb(params*) {
+    return 0
+}
+LaunchGui(params*) {
+}
+LaunchPump(params*) {
+}
+RestartBlacklistEditor(params*) {
+}
+RestartConfigEditor(params*) {
+}
+RestartGui(params*) {
+}
+RestartPump(params*) {
+}
+ShowStatsDialog(params*) {
+}
+ToggleAdminMode(params*) {
+}
+ToggleAutoUpdate(params*) {
+}
+ToggleStartMenuShortcut(params*) {
+}
+ToggleStartupShortcut(params*) {
+}
+Tray_InstallToProgramFiles(params*) {
+}
+Tray_ToggleViewer(params*) {
+}
+
+; Theme mocks (launcher_about.ahk)
+Theme_ApplyToControl(params*) {
+}
+Theme_ApplyToGui(params*) {
+}
+Theme_GetMutedColor(params*) {
+    return "888888"
+}
+Theme_MarkAccent(params*) {
+}
+Theme_MarkMuted(params*) {
+}
+Theme_MarkSemantic(params*) {
+}
+Theme_UntrackGui(params*) {
+}
+
+; Config utility mock (config_loader.ahk)
+clamp(params*) {
+    return 0
+}
+
+; Theme dialog mock (process_utils.ahk, setup_utils.ahk)
+ThemeMsgBox(params*) {
+    return "OK"
+}
+
+; Setup utility mock (setup_utils.ahk)
+RecreateShortcuts(params*) {
+}
+
+; Process pump mocks (window_list.ahk)
+GUIPump_EnsureRunning(params*) {
+}
+ProcPump_EnsureRunning(params*) {
+}
 
 ; ============================================================
 ; Include PRODUCTION files (tests call real functions)
