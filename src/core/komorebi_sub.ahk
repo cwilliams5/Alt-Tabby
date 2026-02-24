@@ -1506,7 +1506,10 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             addedCount++
         } else {
             ; Window exists - only patch if workspace data actually changed
-            row := gWS_Store[hwnd]
+            ; RACE FIX: Use .Get() — WEH timer can remove hwnd between .Has() check and here
+            row := gWS_Store.Get(hwnd, 0)
+            if (!row)
+                continue
             if (!row.HasOwnProp("workspaceName") || row.workspaceName != info.wsName
                 || !row.HasOwnProp("isOnCurrentWorkspace") || row.isOnCurrentWorkspace != info.isCurrent
                 || !row.HasOwnProp("isCloaked") || row.isCloaked != !info.isCurrent) {
