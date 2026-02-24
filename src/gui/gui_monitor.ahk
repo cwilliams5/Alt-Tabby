@@ -46,9 +46,10 @@ GUI_FilterByMonitorMode(items) {
         return items
 
     ; Only items on the overlay's monitor (monitorHandle stamped by producers)
+    monHandle := gGUI_OverlayMonitorHandle
     result := []
     for _, item in items {
-        if (item.monitorHandle = gGUI_OverlayMonitorHandle)
+        if (item.monitorHandle = monHandle)
             result.Push(item)
     }
     return result

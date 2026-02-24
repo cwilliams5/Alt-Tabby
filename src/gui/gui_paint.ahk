@@ -66,13 +66,15 @@ GUI_Repaint() {
     global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_BackHdc
 
     ; ===== TIMING: Start =====
-    tTotal := QPC()
+    diagTiming := cfg.DiagPaintTimingLog
+    if (diagTiming)
+        tTotal := QPC()
     idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
     gPaint_SessionPaintCount += 1
     paintNum := gPaint_SessionPaintCount
 
     ; Log context for first paint or paint after long idle (>60s)
-    if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000)) {
+    if (diagTiming && (paintNum = 1 || idleDuration > 60000)) {
         iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
         resCount := gGdip_Res.Count
         Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
@@ -99,7 +101,8 @@ GUI_Repaint() {
     ; not be resized yet — SetWindowPos is DEFERRED to right before
     ; UpdateLayeredWindow so DWM can't present a frame with mismatched
     ; base/overlay sizes (the 1-frame flash on workspace switches).
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     xDip := 0
     yDip := 0
     wDip := 0
@@ -115,23 +118,29 @@ GUI_Repaint() {
     phY := Round(yDip * scale)
     phW := Round(wDip * scale)
     phH := Round(hDip * scale)
-    tComputeRect := QPC() - t1
+    if (diagTiming)
+        tComputeRect := QPC() - t1
 
     ; ===== TIMING: EnsureBackbuffer =====
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     Gdip_EnsureBackbuffer(phW, phH)
-    tBackbuf := QPC() - t1
+    if (diagTiming)
+        tBackbuf := QPC() - t1
 
     ; ===== TIMING: PaintOverlay (the big one) =====
-    t1 := QPC()
-    _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale)
-    tPaintOverlay := QPC() - t1
+    if (diagTiming)
+        t1 := QPC()
+    _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
+    if (diagTiming)
+        tPaintOverlay := QPC() - t1
 
     ; ===== TIMING: Buffer setup =====
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
 
     ; static: marshal buffers reused per frame
-    bf := Gdip_GetBlendFunction()
+    static bf := Gdip_GetBlendFunction()
     static sz := Buffer(8, 0)
     static ptDst := Buffer(8, 0)
     static ptSrc := Buffer(8, 0)
@@ -140,10 +149,12 @@ GUI_Repaint() {
     NumPut("Int", phX, ptDst, 0)
     NumPut("Int", phY, ptDst, 4)
 
-    tBuffers := QPC() - t1
+    if (diagTiming)
+        tBuffers := QPC() - t1
 
     ; ===== TIMING: UpdateLayeredWindow =====
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
 
     ; Ensure WS_EX_LAYERED
     global GWL_EXSTYLE, WS_EX_LAYERED
@@ -180,20 +191,22 @@ GUI_Repaint() {
         Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
     }
 
-    tUpdateLayer := QPC() - t1
+    if (diagTiming)
+        tUpdateLayer := QPC() - t1
 
     ; ===== TIMING: RevealBoth =====
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     _GUI_RevealBoth()
-    tReveal := QPC() - t1
+    if (diagTiming)
+        tReveal := QPC() - t1
 
     ; ===== TIMING: Total =====
-    tTotalMs := QPC() - tTotal
     gPaint_LastPaintTick := A_TickCount
-
-    ; Log timing for first paint, paint after long idle, or slow paints (>100ms)
-    if (cfg.DiagPaintTimingLog && (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)) {
-        Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " backbuf=" Round(tBackbuf, 2) " paintOverlay=" Round(tPaintOverlay, 2) " buffers=" Round(tBuffers, 2) " updateLayer=" Round(tUpdateLayer, 2) " reveal=" Round(tReveal, 2))
+    if (diagTiming) {
+        tTotalMs := QPC() - tTotal
+        if (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)
+            Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " backbuf=" Round(tBackbuf, 2) " paintOverlay=" Round(tPaintOverlay, 2) " buffers=" Round(tBuffers, 2) " updateLayer=" Round(tUpdateLayer, 2) " reveal=" Round(tReveal, 2))
     }
     Profiler.Leave() ; @profile
     gPaint_RepaintInProgress := false
@@ -261,7 +274,7 @@ _GUI_RevealBoth() {
 
 ; ========================= OVERLAY PAINTING =========================
 
-_GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
+_GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     Profiler.Enter("_GUI_PaintOverlay") ; @profile
     global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
@@ -269,13 +282,17 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     global gGUI_MonitorMode, MON_MODE_CURRENT
 
     ; ===== TIMING: EnsureResources =====
-    tPO_Start := QPC()
-    t1 := QPC()
+    if (diagTiming) {
+        tPO_Start := QPC()
+        t1 := QPC()
+    }
     GUI_EnsureResources(scale)
-    tPO_Resources := QPC() - t1
+    if (diagTiming)
+        tPO_Resources := QPC() - t1
 
     ; ===== TIMING: EnsureGraphics + Clear =====
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     g := Gdip_EnsureGraphics()
     if (!g) {
         Profiler.Leave() ; @profile
@@ -284,7 +301,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
 
     Gdip_Clear(g, 0x00000000)
     Gdip_FillRect(g, gGdip_Res["brHit"], 0, 0, wPhys, hPhys)
-    tPO_GraphicsClear := QPC() - t1
+    if (diagTiming)
+        tPO_GraphicsClear := QPC() - t1
 
     scrollTop := gGUI_ScrollTop
 
@@ -345,9 +363,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
     ; Header
     if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
-        Gdip_DrawText(g, "Title", textX, hdrY, textW, Round(20 * scale), gGdip_Res["brHdr"], gGdip_Res["fHdr"], fmtLeft)
+        hdrTextH := Round(20 * scale)
+        Gdip_DrawText(g, "Title", textX, hdrY, textW, hdrTextH, gGdip_Res["brHdr"], gGdip_Res["fHdr"], fmtLeft)
         for _, col in cols {
-            Gdip_DrawText(g, col.name, col.x, hdrY, col.w, Round(20 * scale), gGdip_Res["brHdr"], gGdip_Res["fHdr"], gGdip_Res["fmt"])
+            Gdip_DrawText(g, col.name, col.x, hdrY, col.w, hdrTextH, gGdip_Res["brHdr"], gGdip_Res["fHdr"], gGdip_Res["fmt"])
         }
         y := y + hdrH28
     }
@@ -394,8 +413,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         Gdip_DrawCenteredText(g, emptyText, rectX, rectY, rectW, rectH, gGdip_Res["brMain"], gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
     } else if (rowsToDraw > 0) {
         ; ===== TIMING: Row loop start =====
-        tPO_RowsStart := QPC()
-        tPO_IconsTotal := 0
+        if (diagTiming) {
+            tPO_RowsStart := QPC()
+            tPO_IconsTotal := 0
+        }
         iconCacheHits := 0
         iconCacheMisses := 0
 
@@ -410,6 +431,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
         subH := cachedLayout.subH
         colY := cachedLayout.colY
         colH := cachedLayout.colH
+        hoverRow := gGUI_HoverRow
 
         ; Hoist loop-invariant gGdip_Res lookups (14 keys × N rows → 14 lookups total)
         fMain := gGdip_Res["fMain"], fMainHi := gGdip_Res["fMainHi"]
@@ -434,7 +456,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             iy := yRow + (RowH - ISize) // 2
 
             ; ===== TIMING: Icon draw =====
-            tIcon := QPC()
+            if (diagTiming)
+                tIcon := QPC()
             iconDrawn := false
             iconWasCacheHit := false
             ; Schema guarantee: _GUI_CreateItemFromRecord always sets iconHicon (0 if absent)
@@ -449,7 +472,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             if (!iconDrawn) {
                 Gdip_FillEllipse(g, Gdip_GetCachedBrush(0x60808080), ix, iy, ISize, ISize)
             }
-            tPO_IconsTotal += QPC() - tIcon
+            if (diagTiming)
+                tPO_IconsTotal += QPC() - tIcon
 
             fMainUse := isSel ? fMainHi : fMain
             fSubUse := isSel ? fSubHi : fSub
@@ -478,7 +502,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
                 Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, fmtCol)
             }
 
-            if (idx1 = gGUI_HoverRow) {
+            if (idx1 = hoverRow) {
                 _GUI_DrawActionButtons(g, wPhys, yRow, RowH, scale)
             }
 
@@ -486,25 +510,30 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale) {
             i := i + 1
         }
         ; ===== TIMING: Row loop end =====
-        tPO_RowsTotal := QPC() - tPO_RowsStart
+        if (diagTiming)
+            tPO_RowsTotal := QPC() - tPO_RowsStart
     }
 
     ; Scrollbar
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
         _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
     }
-    tPO_Scrollbar := QPC() - t1
+    if (diagTiming)
+        tPO_Scrollbar := QPC() - t1
 
     ; Footer
-    t1 := QPC()
+    if (diagTiming)
+        t1 := QPC()
     if (cfg.GUI_ShowFooter) {
         _GUI_DrawFooter(g, wPhys, hPhys, scale)
     }
-    tPO_Footer := QPC() - t1
+    if (diagTiming)
+        tPO_Footer := QPC() - t1
 
     ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
-    if (cfg.DiagPaintTimingLog) {
+    if (diagTiming) {
         tPO_Total := QPC() - tPO_Start
         idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
         if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
@@ -685,9 +714,16 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     arrowW := Round(PAINT_ARROW_W_DIP * scale)
     arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
 
+    ; Hoist repeated gGdip_Res lookups
+    fFooter := gGdip_Res["fFooter"]
+    fmtFooterCenter := gGdip_Res["fmtFooterCenter"]
+    brFooterText := gGdip_Res["brFooterText"]
+    static leftArrowGlyph := Chr(0x2190)
+    static rightArrowGlyph := Chr(0x2192)
+
     ; Arrow brush: highlight on hover, normal otherwise
-    brArrowL := (gGUI_HoverBtn = "arrowLeft") ? gGdip_Res["brMainHi"] : gGdip_Res["brFooterText"]
-    brArrowR := (gGUI_HoverBtn = "arrowRight") ? gGdip_Res["brMainHi"] : gGdip_Res["brFooterText"]
+    brArrowL := (gGUI_HoverBtn = "arrowLeft") ? gGdip_Res["brMainHi"] : brFooterText
+    brArrowR := (gGUI_HoverBtn = "arrowRight") ? gGdip_Res["brMainHi"] : brFooterText
 
     ; Left arrow
     leftArrowX := fx + arrowPad
@@ -702,7 +738,7 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.h := leftArrowH
 
     ; Draw left arrow
-    Gdip_DrawCenteredText(g, Chr(0x2190), leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
+    Gdip_DrawCenteredText(g, leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, fFooter, fmtFooterCenter)
 
     ; Right arrow
     rightArrowX := fx + fw - arrowPad - arrowW
@@ -717,7 +753,7 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    Gdip_DrawCenteredText(g, Chr(0x2192), rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
+    Gdip_DrawCenteredText(g, rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, fFooter, fmtFooterCenter)
 
     ; Center text (between arrows)
     textX := leftArrowX + leftArrowW + arrowPad
@@ -726,5 +762,5 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
         textW := 0
     }
 
-    Gdip_DrawCenteredText(g, gGUI_FooterText, textX, fy, textW, fh, gGdip_Res["brFooterText"], gGdip_Res["fFooter"], gGdip_Res["fmtFooterCenter"])
+    Gdip_DrawCenteredText(g, gGUI_FooterText, textX, fy, textW, fh, brFooterText, fFooter, fmtFooterCenter)
 }

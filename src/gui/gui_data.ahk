@@ -215,27 +215,23 @@ _GUI_PreCacheTick() {
     if (gGUI_State = "ACTIVE")
         return
 
-    ; Snapshot store entries under Critical (safe Map iteration)
+    ; Scan store and collect uncached icons under Critical (safe Map iteration)
+    ; gGdip_IconCache is GUI-thread-only, safe to read here
     Critical "On"
-    entries := []
-    for hwnd, rec in gWS_Store {
-        if (rec.present && rec.iconHicon)
-            entries.Push({hwnd: hwnd, hicon: rec.iconHicon})
-    }
-    Critical "Off"
-
-    ; Filter to uncached icons (cache checks are safe outside Critical)
     work := []
-    for _, e in entries {
-        if (gGdip_IconCache.Has(e.hwnd)) {
-            cached := gGdip_IconCache[e.hwnd]
-            if (cached.hicon = e.hicon && cached.pBmp)
-                continue
+    for hwnd, rec in gWS_Store {
+        if (!rec.present || !rec.iconHicon)
+            continue  ; lint-ignore: critical-section
+        if (gGdip_IconCache.Has(hwnd)) {
+            cached := gGdip_IconCache[hwnd]
+            if (cached.hicon = rec.iconHicon && cached.pBmp)
+                continue  ; lint-ignore: critical-section
         }
-        work.Push(e)
+        work.Push({hwnd: hwnd, hicon: rec.iconHicon})
         if (work.Length >= 4)
             break
     }
+    Critical "Off"
     hasMore := (work.Length >= 4)
 
     ; Convert outside Critical (~1-2ms per icon, non-blocking between calls)

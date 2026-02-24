@@ -320,27 +320,30 @@ Stats_GetSnapshot() {
     snap.SessionPeakWindows := gStats_Session.Get("peakWindows", 0)
 
     ; Session activity deltas (current lifetime - baseline at launch)
-    snap.SessionAltTabs := gStats_Lifetime.Get("TotalAltTabs", 0) - gStats_Session.Get("baselineAltTabs", 0)
-    snap.SessionQuickSwitches := gStats_Lifetime.Get("TotalQuickSwitches", 0) - gStats_Session.Get("baselineQuickSwitches", 0)
-    snap.SessionTabSteps := gStats_Lifetime.Get("TotalTabSteps", 0) - gStats_Session.Get("baselineTabSteps", 0)
-    snap.SessionCancellations := gStats_Lifetime.Get("TotalCancellations", 0) - gStats_Session.Get("baselineCancellations", 0)
-    snap.SessionCrossWorkspace := gStats_Lifetime.Get("TotalCrossWorkspace", 0) - gStats_Session.Get("baselineCrossWorkspace", 0)
-    snap.SessionWorkspaceToggles := gStats_Lifetime.Get("TotalWorkspaceToggles", 0) - gStats_Session.Get("baselineWorkspaceToggles", 0)
-    snap.SessionWindowUpdates := gStats_Lifetime.Get("TotalWindowUpdates", 0) - gStats_Session.Get("baselineWindowUpdates", 0)
-    snap.SessionBlacklistSkips := gStats_Lifetime.Get("TotalBlacklistSkips", 0) - gStats_Session.Get("baselineBlacklistSkips", 0)
+    ltAltTabs := gStats_Lifetime.Get("TotalAltTabs", 0)
+    ltQuick := gStats_Lifetime.Get("TotalQuickSwitches", 0)
+    ltTabs := gStats_Lifetime.Get("TotalTabSteps", 0)
+    ltCancels := gStats_Lifetime.Get("TotalCancellations", 0)
+    ltCrossWS := gStats_Lifetime.Get("TotalCrossWorkspace", 0)
+    ltWSToggles := gStats_Lifetime.Get("TotalWorkspaceToggles", 0)
+    ltWinUpdates := gStats_Lifetime.Get("TotalWindowUpdates", 0)
+    ltBLSkips := gStats_Lifetime.Get("TotalBlacklistSkips", 0)
+    snap.SessionAltTabs := ltAltTabs - gStats_Session.Get("baselineAltTabs", 0)
+    snap.SessionQuickSwitches := ltQuick - gStats_Session.Get("baselineQuickSwitches", 0)
+    snap.SessionTabSteps := ltTabs - gStats_Session.Get("baselineTabSteps", 0)
+    snap.SessionCancellations := ltCancels - gStats_Session.Get("baselineCancellations", 0)
+    snap.SessionCrossWorkspace := ltCrossWS - gStats_Session.Get("baselineCrossWorkspace", 0)
+    snap.SessionWorkspaceToggles := ltWSToggles - gStats_Session.Get("baselineWorkspaceToggles", 0)
+    snap.SessionWindowUpdates := ltWinUpdates - gStats_Session.Get("baselineWindowUpdates", 0)
+    snap.SessionBlacklistSkips := ltBLSkips - gStats_Session.Get("baselineBlacklistSkips", 0)
 
     ; Derived stats (compute here so dashboard just displays)
     totalRunSec := gStats_Lifetime.Get("TotalRunTimeSec", 0) + sessionSec
-    totalAltTabs := gStats_Lifetime.Get("TotalAltTabs", 0)
-    totalQuick := gStats_Lifetime.Get("TotalQuickSwitches", 0)
-    totalCancels := gStats_Lifetime.Get("TotalCancellations", 0)
-    totalTabs := gStats_Lifetime.Get("TotalTabSteps", 0)
-    totalActivations := totalAltTabs + totalQuick
-
-    snap.DerivedAvgAltTabsPerHour := (totalRunSec > 0) ? Round(totalAltTabs / (totalRunSec / 3600), 1) : 0
-    snap.DerivedQuickSwitchPct := (totalActivations > 0) ? Round(totalQuick / totalActivations * 100, 1) : 0
-    snap.DerivedCancelRate := (totalAltTabs + totalCancels > 0) ? Round(totalCancels / (totalAltTabs + totalCancels) * 100, 1) : 0
-    snap.DerivedAvgTabsPerSwitch := (totalAltTabs > 0) ? Round(totalTabs / totalAltTabs, 1) : 0
+    totalActivations := ltAltTabs + ltQuick
+    snap.DerivedAvgAltTabsPerHour := (totalRunSec > 0) ? Round(ltAltTabs / (totalRunSec / 3600), 1) : 0
+    snap.DerivedQuickSwitchPct := (totalActivations > 0) ? Round(ltQuick / totalActivations * 100, 1) : 0
+    snap.DerivedCancelRate := (ltAltTabs + ltCancels > 0) ? Round(ltCancels / (ltAltTabs + ltCancels) * 100, 1) : 0
+    snap.DerivedAvgTabsPerSwitch := (ltAltTabs > 0) ? Round(ltTabs / ltAltTabs, 1) : 0
     Critical "Off"
 
     return snap

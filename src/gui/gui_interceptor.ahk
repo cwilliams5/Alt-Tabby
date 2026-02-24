@@ -375,6 +375,19 @@ INT_ReassertTabHotkey() {
     }
 }
 
+_INT_BuildBypassList() {
+    global cfg
+    list := []
+    if (cfg.AltTabBypassProcesses = "")
+        return list
+    for _, nm in StrSplit(cfg.AltTabBypassProcesses, ",") {
+        nm := Trim(nm)
+        if (nm != "")
+            list.Push(StrLower(nm))
+    }
+    return list
+}
+
 ; Check bypass criteria for a specific window (or active window if hwnd=0)
 ; Also logs the reason when bypass is triggered (under DiagEventLog)
 INT_ShouldBypassWindow(hwnd := 0) {
@@ -385,16 +398,15 @@ INT_ShouldBypassWindow(hwnd := 0) {
     if (!hwnd)
         return false
 
-    ; Check process blacklist
-    if (cfg.AltTabBypassProcesses != "") {
+    ; Check process blacklist (list pre-computed once per process lifetime)
+    static bypassList := _INT_BuildBypassList()
+    if (bypassList.Length > 0) {
         exename := ""
         try exename := WinGetProcessName(hwnd)
         if (exename) {
             lex := StrLower(exename)
-            bypassList := StrSplit(cfg.AltTabBypassProcesses, ",")
             for _, nm in bypassList {
-                nm := Trim(nm)
-                if (nm != "" && StrLower(nm) = lex) {
+                if (nm = lex) {
                     if (cfg.DiagEventLog)
                         GUI_LogEvent("BYPASS REASON: process='" exename "' hwnd=" hwnd)
                     return true

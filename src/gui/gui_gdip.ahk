@@ -541,9 +541,9 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
     ; Get device context and extract pixel data
     hdc := DllCall("user32\GetDC", "ptr", 0, "ptr")
     result := DllCall("gdi32\GetDIBits", "ptr", hdc, "ptr", hbmColor, "uint", 0, "uint", h, "ptr", pixels.Ptr, "ptr", bih.Ptr, "uint", 0, "int")
-    DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
 
     if (!result) {
+        DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
         DllCall("gdi32\DeleteObject", "ptr", hbmColor)
         if (hbmMask)
             DllCall("gdi32\DeleteObject", "ptr", hbmMask)
@@ -555,15 +555,13 @@ _Gdip_CreateBitmapFromHICON_Alpha(hIcon) {
     pixelCount := w * h
     hasAlpha := IconAlpha.ScanOnly(pixels, pixelCount)
     if (!hasAlpha && hbmMask) {
-        ; Get mask bitmap data (request 32-bit for easier processing)
-        maskBih := _Gdip_CreateBitmapInfoHeader(w, h)
-        maskPixels := Buffer(pixelDataSize, 0)
-        hdc := DllCall("user32\GetDC", "ptr", 0, "ptr")
-        DllCall("gdi32\GetDIBits", "ptr", hdc, "ptr", hbmMask, "uint", 0, "uint", h, "ptr", maskPixels.Ptr, "ptr", maskBih.Ptr, "uint", 0, "int")
-        DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
+        ; Get mask bitmap data (reuse bih — GetDIBits doesn't modify the header)
+        maskPixels := Buffer(pixelDataSize)
+        DllCall("gdi32\GetDIBits", "ptr", hdc, "ptr", hbmMask, "uint", 0, "uint", h, "ptr", maskPixels.Ptr, "ptr", bih.Ptr, "uint", 0, "int")
         ; Apply mask natively (no redundant re-scan)
         IconAlpha.ApplyMaskOnly(pixels, maskPixels, pixelCount)
     }
+    DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
 
     ; Create GDI+ bitmap with GDI+ owning the memory (scan0 = 0)
     global GDIP_PIXEL_FORMAT_32BPP_ARGB, GDIP_IMAGE_LOCK_WRITE
@@ -635,8 +633,8 @@ Gdip_PreCacheIcon(hwnd, hIcon) {
         return
 
     ; Already cached with same hIcon - nothing to do
-    if (gGdip_IconCache.Has(hwnd)) {
-        cached := gGdip_IconCache[hwnd]
+    cached := gGdip_IconCache.Get(hwnd, 0)
+    if (cached) {
         if (cached.hicon = hIcon && cached.pBmp)
             return
         ; hIcon changed - dispose old bitmap

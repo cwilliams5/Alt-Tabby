@@ -118,10 +118,11 @@ FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
     ; (producers, async tick). Without Critical, a hotkey can interrupt mid-write causing
     ; two calls to write the same slot and double-increment gFR_Count.
     ; Critical auto-released on function return (no explicit "Off" needed).
+    ts := QPC()
     Critical "On"
     gFR_Idx := gFR_Idx >= gFR_Size ? 1 : gFR_Idx + 1
     b := gFR_Buffer[gFR_Idx]
-    b[1] := QPC()
+    b[1] := ts
     b[2] := ev
     b[3] := d1
     b[4] := d2

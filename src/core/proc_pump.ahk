@@ -121,6 +121,7 @@ _PP_Tick() {
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
     if (A_TickCount < _backoffUntil)
         return
+    logEnabled := cfg.DiagProcPumpLog
     try {
     pids := gPP_PopBatch(ProcBatchPerTick)
     if (!IsObject(pids) || pids.Length = 0) {
@@ -130,7 +131,7 @@ _PP_Tick() {
     }
     _PP_IdleTicks := 0  ; Reset idle counter when we have work
 
-    if (cfg.DiagProcPumpLog)
+    if (logEnabled)
         _PP_Log("BATCH popped=" pids.Length)
 
     for _, pid in pids {
@@ -144,7 +145,7 @@ _PP_Tick() {
         Critical "On"
         if (_PP_FailedPidCache.Has(pid) && (A_TickCount - _PP_FailedPidCache[pid]) < _PP_FailedPidCacheTTL) {
             Critical "Off"
-            if (cfg.DiagProcPumpLog)
+            if (logEnabled)
                 _PP_Log("SKIP pid=" pid " (failed cache)")
             continue
         }
@@ -153,7 +154,7 @@ _PP_Tick() {
         ; Check positive cache
         cached := gPP_GetProcNameCached(pid)
         if (cached != "") {
-            if (cfg.DiagProcPumpLog)
+            if (logEnabled)
                 _PP_Log("CACHED pid=" pid " name=" cached)
             gPP_UpdateProcessName(pid, cached)
             continue
@@ -162,7 +163,7 @@ _PP_Tick() {
         ; Resolve process path
         path := _PP_GetProcessPath(pid)
         if (path = "") {
-            if (cfg.DiagProcPumpLog)
+            if (logEnabled)
                 _PP_Log("FAIL pid=" pid " (no path)")
             ; No FIFO cap — ProcPump_PruneFailedPidCache() on heartbeat drains expired/dead PIDs.
             Critical "On"
@@ -173,7 +174,7 @@ _PP_Tick() {
 
         name := _PP_Basename(path)
         if (name != "") {
-            if (cfg.DiagProcPumpLog)
+            if (logEnabled)
                 _PP_Log("RESOLVED pid=" pid " name=" name)
             gPP_UpdateProcessName(pid, name)
         }

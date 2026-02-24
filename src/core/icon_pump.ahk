@@ -492,7 +492,8 @@ IP_GetRawWindowIcon(hWnd) {
         h := 0
         result := 0
 
-        for _, iconType in [IP_ICON_BIG, IP_ICON_SMALL2, IP_ICON_SMALL] {
+        static iconTypes := [IP_ICON_BIG, IP_ICON_SMALL2, IP_ICON_SMALL]
+        for _, iconType in iconTypes {
             h := 0
             result := DllCall("user32\SendMessageTimeoutW", "ptr", hWnd, "uint", IP_WM_GETICON, "uptr", iconType, "ptr", 0, "uint", IP_SMTO_ABORTIFHUNG, "uint", IP_RESOLVE_TIMEOUT_MS, "uptr*", &h, "int")
             if (result && h)
@@ -761,7 +762,7 @@ _IP_BitmapToIcon(hBitmap) {
         return 0
 
     ; Get bitmap info
-    bm := Buffer(32, 0)  ; BITMAP structure
+    static bm := Buffer(32, 0)  ; BITMAP structure (static: repopulated by GetObjectW before use)
     if (!DllCall("gdi32\GetObjectW", "ptr", hBitmap, "int", 32, "ptr", bm.Ptr, "int"))
         return 0
 
@@ -769,7 +770,7 @@ _IP_BitmapToIcon(hBitmap) {
     height := NumGet(bm, 8, "int")
 
     ; Create icon info
-    ii := Buffer(A_PtrSize * 4 + 8, 0)  ; ICONINFO structure
+    static ii := Buffer(A_PtrSize * 4 + 8, 0)  ; ICONINFO structure (static: repopulated by NumPut before use)
     NumPut("int", 1, ii, 0)              ; fIcon = TRUE
     NumPut("int", 0, ii, 4)              ; xHotspot
     NumPut("int", 0, ii, 8)              ; yHotspot

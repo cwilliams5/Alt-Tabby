@@ -510,7 +510,6 @@ _WEH_ProcessBatch() {
 
     ; Collect hwnds ready to process (past debounce period)
     toProcess := []
-    toRemove := []
     destroyed := []
     hidden := []
 
@@ -520,15 +519,12 @@ _WEH_ProcessBatch() {
         if (t = -1) {
             ; Destroyed window
             destroyed.Push(h)
-            toRemove.Push(h)
         } else if (t = -2) {
             ; Hidden window — check eligibility, remove if ghost
             hidden.Push(h)
-            toRemove.Push(h)
         } else if ((now - t) >= WinEventHook_DebounceMs) {
             ; Ready to process
             toProcess.Push(h)
-            toRemove.Push(h)
         }
         idx++
     }
@@ -541,7 +537,17 @@ _WEH_ProcessBatch() {
         if (_WEH_PendingZNeeded.Has(hwnd))
             zSnapshot[hwnd] := true
     }
-    for _, hwnd in toRemove {
+    for _, hwnd in destroyed {
+        _WEH_PendingHwnds.Delete(hwnd)
+        if (_WEH_PendingZNeeded.Has(hwnd))
+            _WEH_PendingZNeeded.Delete(hwnd)
+    }
+    for _, hwnd in hidden {
+        _WEH_PendingHwnds.Delete(hwnd)
+        if (_WEH_PendingZNeeded.Has(hwnd))
+            _WEH_PendingZNeeded.Delete(hwnd)
+    }
+    for _, hwnd in toProcess {
         _WEH_PendingHwnds.Delete(hwnd)
         if (_WEH_PendingZNeeded.Has(hwnd))
             _WEH_PendingZNeeded.Delete(hwnd)
@@ -622,26 +628,22 @@ _WEH_ProcessBatch() {
         for _, hwnd in updatedHwnds
             allProcessed.Push(hwnd)
         if (allProcessed.Length > 0) {
-            ; Only enqueue Z-order enrichment for events that change Z-order
-            ; (CREATE, SHOW, FOREGROUND, FOCUS, MINIMIZE, RESTORE)
-            ; Skips NAMECHANGE and LOCATIONCHANGE which fire frequently but don't affect Z
+            ; Enqueue Z-order enrichment for events that change Z-order
+            ; (CREATE, SHOW, FOREGROUND, FOCUS, MINIMIZE, RESTORE).
+            ; Non-Z events (NAMECHANGE, LOCATIONCHANGE) get icon refresh instead —
+            ; icons often change when titles change (browser tab switch, app state).
+            ; Per-window throttle (IconPumpRefreshThrottleMs) prevents spam.
+            iconRefresh := cfg.IconRefreshOnTitleChange
             for _, hwnd in allProcessed {
                 if (zSnapshot.Has(hwnd))
                     WL_EnqueueForZ(hwnd)
-            }
-            ; Enqueue icon refresh for title-change events (NAMECHANGE, not Z-affecting).
-            ; Icons often change when titles change (browser tab switch, app state change).
-            ; Per-window throttle (IconPumpRefreshThrottleMs) prevents spam.
-            if (cfg.IconRefreshOnTitleChange) {
-                for _, hwnd in allProcessed {
-                    if (!zSnapshot.Has(hwnd))
-                        WL_EnqueueIconRefresh(hwnd)
-                }
+                else if (iconRefresh)
+                    WL_EnqueueIconRefresh(hwnd)
             }
         }
     }
 
-    ; Proactive push: broadcast to clients when WEH changes bumped the rev.
+    ; Proactive push: notify the GUI when WEH changes bumped the rev.
     ; Without this, focus/title/destroy changes only reach the GUI via the Z-pump
     ; (~220ms) or the next Alt-press prewarm — adding significant latency.
     ; Structural changes (destroy, Z-affecting events) push immediately.
