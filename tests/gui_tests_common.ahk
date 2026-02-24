@@ -274,6 +274,15 @@ WL_UpdateFields(hwnd, fields, source := "") {
     ; No-op in tests
 }
 
+WL_UpsertWindow(records, source := "") {
+    ; No-op in tests (foreground guard calls this)
+}
+
+WinUtils_ProbeWindow(hwnd, z := 0, includeCloaked := false, checkEligible := false) {
+    ; Return 0 (ineligible) in tests — foreground guard skips when probe fails
+    return 0
+}
+
 WL_PurgeBlacklisted() {
     ; No-op in tests
 }
@@ -302,7 +311,7 @@ global FR_EV_WINDOW_ADD := 24, FR_EV_WINDOW_REMOVE := 25, FR_EV_GHOST_PURGE := 2
 global FR_EV_COSMETIC_PATCH := 28, FR_EV_SCAN_COMPLETE := 29
 global FR_EV_SESSION_START := 30, FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32, FR_EV_ACTIVATE_RETRY := 33
 global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41, FR_EV_MON_TOGGLE := 42
-global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51
+global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51, FR_EV_FG_GUARD := 53
 global FR_ST_IDLE := 0, FR_ST_ALT_PENDING := 1, FR_ST_ACTIVE := 2
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 }
@@ -342,6 +351,63 @@ class _MockGui {
 }
 global gGUI_Base := _MockGui()
 global gGUI_Overlay := _MockGui()
+
+; Logging mocks (gui_data.ahk, gui_state.ahk call these)
+LogAppend(params*) {
+}
+LogInitSession(params*) {
+}
+
+; Process utility mock (gui_state.ahk calls this)
+ProcessUtils_RunHidden(params*) {
+}
+
+; Blacklist editor mocks (gui_input.ahk calls these)
+Blacklist_AddClass(params*) {
+}
+Blacklist_AddPair(params*) {
+}
+Blacklist_AddTitle(params*) {
+}
+
+; Anti-flash mocks (gui_input.ahk calls these)
+GUI_AntiFlashPrepare(params*) {
+}
+GUI_AntiFlashReveal(params*) {
+}
+
+; Layout mocks (gui_input.ahk, gui_math.ahk call these)
+GUI_GetActionBtnMetrics(params*) {
+    return {x: 0, y: 0, w: 0, h: 0, gap: 0}
+}
+GUI_HeaderBlockDip(params*) {
+    return 0
+}
+
+; Theme mocks (gui_input.ahk calls these)
+Theme_ApplyToControl(params*) {
+}
+Theme_ApplyToGui(params*) {
+}
+Theme_GetAccentColor(params*) {
+    return "FFFFFF"
+}
+Theme_GetMutedColor(params*) {
+    return "888888"
+}
+Theme_MarkAccent(params*) {
+}
+Theme_MarkMuted(params*) {
+}
+Theme_UntrackGui(params*) {
+}
+
+; Window utility mocks (gui_input.ahk calls these)
+Win_ConfirmTopmost(params*) {
+}
+Win_GetRectPhys(params*) {
+    return {x: 0, y: 0, w: 0, h: 0}
+}
 
 ; ============================================================
 ; 3. INCLUDE ACTUAL PRODUCTION FILES
