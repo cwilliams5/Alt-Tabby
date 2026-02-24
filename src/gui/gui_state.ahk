@@ -1487,6 +1487,15 @@ _GUI_InitAppViewCollection() {
     }
 }
 
+; Release COM objects allocated by _GUI_InitAppViewCollection / _GUI_StartSwitchActivate.
+; Called from _GUI_OnExit to keep COM lifecycle in the declaring module.
+GUI_ReleaseComObjects() {
+    global gGUI_PendingShell, gGUI_ImmersiveShell, gGUI_AppViewCollection
+    gGUI_PendingShell := ""
+    gGUI_ImmersiveShell := ""
+    gGUI_AppViewCollection := ""
+}
+
 ; Check if a window is cloaked via DWM
 _GUI_IsCloaked(hwnd) {
     global DWMWA_CLOAKED
