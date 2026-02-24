@@ -107,16 +107,24 @@ GUI_PatchCosmeticUpdates() {
     global gGUI_CurrentWSName, gGUI_OverlayVisible
     global _gGUI_LastCosmeticRepaintTick, FR_EV_COSMETIC_PATCH, gFR_Enabled
 
+    ; Early exit: nothing to patch
+    if (gWS_DirtyHwnds.Count = 0) {
+        Profiler.Leave() ; @profile
+        return
+    }
+
+    diagLog := cfg.DiagCosmeticPatchLog
+
     ; Debounce: skip if last cosmetic repaint was too recent
     if (cfg.GUI_ActiveRepaintDebounceMs > 0
         && A_TickCount - _gGUI_LastCosmeticRepaintTick < cfg.GUI_ActiveRepaintDebounceMs) {
-        if (cfg.DiagCosmeticPatchLog)
+        if (diagLog)
             _GUI_CosmeticLog("DEBOUNCE skip (dirty=" gWS_DirtyHwnds.Count " elapsed=" (A_TickCount - _gGUI_LastCosmeticRepaintTick) "ms)")
         Profiler.Leave() ; @profile
         return
     }
 
-    if (cfg.DiagCosmeticPatchLog)
+    if (diagLog)
         _GUI_CosmeticLog("PATCH start dirty=" gWS_DirtyHwnds.Count " base=" gGUI_ToggleBase.Length)
 
     ; Walk ToggleBase (frozen snapshot). DisplayItems is a subset of the same objects,
@@ -135,26 +143,26 @@ GUI_PatchCosmeticUpdates() {
         iconChanged := (rec.iconHicon != item.iconHicon)
         procChanged := (rec.processName != item.processName)
         if (titleChanged) {
-            if (cfg.DiagCosmeticPatchLog)
+            if (diagLog)
                 _GUI_CosmeticLog("  TITLE hwnd=" hwnd " '" SubStr(item.title, 1, 25) "' -> '" SubStr(rec.title, 1, 25) "'")
             item.title := rec.title
             patched++
         }
         if (iconChanged) {
-            if (cfg.DiagCosmeticPatchLog)
+            if (diagLog)
                 _GUI_CosmeticLog("  ICON hwnd=" hwnd " h=" item.iconHicon " -> h=" rec.iconHicon (rec.iconHicon = 0 ? " *** ZEROED ***" : ""))
             item.iconHicon := rec.iconHicon
             patched++
         }
         if (procChanged) {
-            if (cfg.DiagCosmeticPatchLog)
+            if (diagLog)
                 _GUI_CosmeticLog("  PROC hwnd=" hwnd " '" item.processName "' -> '" rec.processName "'")
             item.processName := rec.processName
             patched++
         }
         ; Patch workspace data (handles window moves during ACTIVE state)
         if (rec.workspaceName != item.workspaceName) {
-            if (cfg.DiagCosmeticPatchLog)
+            if (diagLog)
                 _GUI_CosmeticLog("  WS hwnd=" hwnd " '" item.workspaceName "' -> '" rec.workspaceName "'")
             item.workspaceName := rec.workspaceName
             wsName := gGUI_CurrentWSName
@@ -176,7 +184,7 @@ GUI_PatchCosmeticUpdates() {
             FR_Record(FR_EV_COSMETIC_PATCH, patched, gGUI_ToggleBase.Length)
         _gGUI_LastCosmeticRepaintTick := A_TickCount
         GUI_Repaint()
-    } else if (cfg.DiagCosmeticPatchLog && gWS_DirtyHwnds.Count > 0) {
+    } else if (diagLog && gWS_DirtyHwnds.Count > 0) {
         _GUI_CosmeticLog("PATCH end patched=0 (dirty hwnds not in frozen set)")
     }
     Profiler.Leave() ; @profile

@@ -22,14 +22,17 @@ _QS_Sort(arr, cmp, l, h) {
     }
     ; Median-of-3 pivot
     mid := l + (n >> 1)
-    if (cmp(arr[l], arr[mid]) > 0)
-        _QS_Swap(arr, l, mid)
-    if (cmp(arr[l], arr[h]) > 0)
-        _QS_Swap(arr, l, h)
-    if (cmp(arr[mid], arr[h]) > 0)
-        _QS_Swap(arr, mid, h)
+    if (cmp(arr[l], arr[mid]) > 0) {
+        tmp := arr[l], arr[l] := arr[mid], arr[mid] := tmp
+    }
+    if (cmp(arr[l], arr[h]) > 0) {
+        tmp := arr[l], arr[l] := arr[h], arr[h] := tmp
+    }
+    if (cmp(arr[mid], arr[h]) > 0) {
+        tmp := arr[mid], arr[mid] := arr[h], arr[h] := tmp
+    }
     ; Pivot = median, move to arr[l]
-    _QS_Swap(arr, mid, l)
+    tmp := arr[mid], arr[mid] := arr[l], arr[l] := tmp
     v := arr[l]
     ; 3-way partition (Bentley-McIlroy)
     p := l
@@ -43,41 +46,35 @@ _QS_Sort(arr, cmp, l, h) {
             continue
         if (i = j && cmp(arr[i], v) = 0) {
             p++
-            _QS_Swap(arr, p, i)
+            tmp := arr[p], arr[p] := arr[i], arr[i] := tmp
         }
         if (i >= j)
             break
-        _QS_Swap(arr, i, j)
+        tmp := arr[i], arr[i] := arr[j], arr[j] := tmp
         if (cmp(arr[i], v) = 0) {
             p++
-            _QS_Swap(arr, p, i)
+            tmp := arr[p], arr[p] := arr[i], arr[i] := tmp
         }
         if (cmp(arr[j], v) = 0) {
             q--
-            _QS_Swap(arr, q, j)
+            tmp := arr[q], arr[q] := arr[j], arr[j] := tmp
         }
     }
     ii := j + 1
     k := l
     while (k <= p) {
-        _QS_Swap(arr, k, j)
+        tmp := arr[k], arr[k] := arr[j], arr[j] := tmp
         j--
         k++
     }
     k := h
     while (k >= q) {
-        _QS_Swap(arr, k, ii)
+        tmp := arr[k], arr[k] := arr[ii], arr[ii] := tmp
         ii++
         k--
     }
     _QS_Sort(arr, cmp, l, j)
     _QS_Sort(arr, cmp, ii, h)
-}
-
-_QS_Swap(arr, a, b) {
-    tmp := arr[a]
-    arr[a] := arr[b]
-    arr[b] := tmp
 }
 
 _QS_InsertionSort(arr, cmp, l, h) {

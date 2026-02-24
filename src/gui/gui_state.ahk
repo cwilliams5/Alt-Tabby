@@ -131,7 +131,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     ; File-based debug logging (no performance impact from tooltips)
-    if (cfg.DiagEventLog) {
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+    if (diagLog) {
         evName := _GUI_GetEventName(evCode)
         GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
     }
@@ -141,7 +142,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     ; Exception: ESC cancels immediately
     if (gGUI_PendingPhase != "") {
         if (evCode = TABBY_EV_ESCAPE) {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ESC during async - canceling")
             _GUI_CancelPendingActivation()
             if (gFR_Enabled)
@@ -156,7 +157,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; 50 events = ~12 complete Alt+Tab sequences queued = clearly pathological
         ; Drop event and cancel pending activation to recover gracefully
         if (gGUI_EventBuffer.Length >= GUI_EVENT_BUFFER_MAX) {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("BUFFER OVERFLOW: " gGUI_EventBuffer.Length " events, dropping event and clearing")
             _GUI_CancelPendingActivation()
             if (gFR_Enabled)
@@ -169,7 +170,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         gGUI_EventBuffer.Push({ev: evCode, flags: flags, lParam: lParam})
         if (gFR_Enabled)
             FR_Record(FR_EV_BUFFER_PUSH, evCode, gGUI_EventBuffer.Length)
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_PendingPhase ")")
         Profiler.Leave() ; @profile
         return
@@ -219,7 +220,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
 
             ; DEBUG: Log workspace data of display items
-            if (cfg.DiagEventLog) {
+            if (diagLog) {
                 GUI_LogEvent("FREEZE: " gGUI_DisplayItems.Length " items frozen")
                 for i, item in gGUI_DisplayItems {
                     if (i > 5) {
@@ -291,7 +292,8 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         ; DEBUG: Show ALT_UP arrival (controlled by DiagAltTabTooltips config)
         if (cfg.DiagAltTabTooltips) {
             ToolTip("ALT_UP: state=" gGUI_State " visible=" gGUI_OverlayVisible, 100, 200, 3)
-            SetTimer(() => ToolTip(,,,3), -2000)
+            static _ttClear3 := () => ToolTip(,,,3)  ; PERF: avoid closure alloc per ALT_UP
+            SetTimer(_ttClear3, -2000)
         }
 
         if (gGUI_State = "ALT_PENDING") {
@@ -975,6 +977,7 @@ _GUI_AsyncActivationTick() {
     global gGUI_LiveItems, gGUI_CurrentWSName
 
     Profiler.Enter("_GUI_AsyncActivationTick") ; @profile
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
 
     ; RACE FIX: Ensure phase reads and transitions are atomic
     ; Phase can be read by interceptor to decide whether to buffer events
@@ -1011,7 +1014,7 @@ _GUI_AsyncActivationTick() {
         }
         if (hasAltDn && !hasTab) {
             shiftFlag := GetKeyState("Shift", "P") ? TABBY_FLAG_SHIFT : 0
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ASYNC: detected missed Tab press, synthesizing TAB_STEP")
             gGUI_EventBuffer.Push({ev: TABBY_EV_TAB_STEP, flags: shiftFlag, lParam: 0})
         }
@@ -1025,7 +1028,7 @@ _GUI_AsyncActivationTick() {
         ; Check if deadline exceeded
         if (now > gGUI_PendingDeadline) {
             ; Timeout - do activation anyway
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ASYNC TIMEOUT: workspace poll deadline exceeded for '" gGUI_PendingWSName "'")
             ; RACE FIX: Phase transition must be atomic. Re-check phase hasn't been
             ; cleared by _GUI_CancelPendingActivation (ESC during this tick).
@@ -1055,7 +1058,7 @@ _GUI_AsyncActivationTick() {
             isCloaked := (cloakVal > 0)
             if (!isCloaked) {
                 switchComplete := true
-                if (cfg.DiagEventLog)
+                if (diagLog)
                     GUI_LogEvent("ASYNC POLLCLOAK: window uncloaked, switch complete")
             }
         } else if (confirmMethod = "AwaitDelta") {
@@ -1063,7 +1066,7 @@ _GUI_AsyncActivationTick() {
             ; Zero spawning, zero DllCalls - but depends on heartbeat latency
             if (gGUI_CurrentWSName = gGUI_PendingWSName) {
                 switchComplete := true
-                if (cfg.DiagEventLog)
+                if (diagLog)
                     GUI_LogEvent("ASYNC AWAITDELTA: workspace name matches, switch complete")
             }
         } else {
@@ -1083,7 +1086,7 @@ _GUI_AsyncActivationTick() {
                     result := Trim(FileRead(gGUI_PendingTempFile))
                     if (result = gGUI_PendingWSName) {
                         switchComplete := true
-                        if (cfg.DiagEventLog)
+                        if (diagLog)
                             GUI_LogEvent("ASYNC POLLKOMOREBIC: workspace name matches, switch complete")
                     }
                 }
@@ -1119,7 +1122,7 @@ _GUI_AsyncActivationTick() {
 
         ; Wait complete - do robust activation
         hwnd := gGUI_PendingHwnd
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("ASYNC COMPLETE: activating hwnd " hwnd " (buf=" gGUI_EventBuffer.Length ")")
         try _GUI_RobustActivate(hwnd)
 
@@ -1131,7 +1134,7 @@ _GUI_AsyncActivationTick() {
         ; This ensures buffered Alt+Tab events use correct workspace data
         ; Also fixes stale workspace data when buffered events replay
         if (gGUI_PendingWSName != "") {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("ASYNC: updating curWS from '" gGUI_CurrentWSName "' to '" gGUI_PendingWSName "'")
             ; RACE FIX: Protect workspace name and items iteration from producer timer callbacks
             Critical "On"
@@ -1173,7 +1176,7 @@ _GUI_AsyncActivationTick() {
 
         ; Process any buffered events (user did Alt+Tab during our async activation)
         ; This will clear gGUI_PendingPhase when done
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("ASYNC: scheduling buffer processing")
         SetTimer(_GUI_ProcessEventBuffer, -1)
         Profiler.Leave() ; @profile
@@ -1188,15 +1191,17 @@ _GUI_ProcessEventBuffer() {
     Profiler.Enter("_GUI_ProcessEventBuffer") ; @profile
     global gGUI_EventBuffer, gGUI_LiveItems, gGUI_PendingPhase, TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, cfg
 
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+
     ; Validate we're in flushing phase - prevents stale timers from processing
     if (gGUI_PendingPhase != "flushing") {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("BUFFER SKIP: not in flushing phase (phase=" gGUI_PendingPhase ")")
         Profiler.Leave() ; @profile
         return
     }
 
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("BUFFER PROCESS: " gGUI_EventBuffer.Length " events, items=" gGUI_LiveItems.Length)
 
     ; Process all buffered events in order
@@ -1211,7 +1216,7 @@ _GUI_ProcessEventBuffer() {
 
     if (events.Length = 0) {
         ; No buffered events - just resync keyboard state
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("BUFFER: empty, resyncing keyboard state")
         _GUI_ResyncKeyboardState()
         Profiler.Leave() ; @profile
@@ -1238,17 +1243,17 @@ _GUI_ProcessEventBuffer() {
     }
     if (hasAltDn && hasAltUp && !hasTab) {
         ; Lost Tab detected! Insert synthetic TAB after ALT_DN
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("BUFFER: detected lost Tab (ALT_DN+ALT_UP without TAB), synthesizing TAB_STEP")
         events.InsertAt(altDnIdx + 1, {ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0})
     }
 
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("BUFFER: processing " events.Length " events now")
     for ev in events {
         GUI_OnInterceptorEvent(ev.ev, ev.flags, ev.lParam)
     }
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("BUFFER: done processing")
     Profiler.Leave() ; @profile
 }
@@ -1319,28 +1324,31 @@ _GUI_UpdateLocalMRU(hwnd) {
     global gGUI_LiveItems, gGUI_LiveItemsMap, cfg
     global FR_EV_MRU_UPDATE, gFR_Enabled
 
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+
     ; O(1) miss detection: if hwnd not in Map, skip the O(n) linear scan
     if (!gGUI_LiveItemsMap.Has(hwnd)) {
         if (gFR_Enabled)
             FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not in map, skip scan")
         return false
     }
 
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("MRU UPDATE: searching for hwnd " hwnd " in " gGUI_LiveItems.Length " items")
     for i, item in gGUI_LiveItems {
         if (item.hwnd = hwnd) {
-            item.lastActivatedTick := A_TickCount
-            if (cfg.DiagEventLog)
+            tick := A_TickCount  ; PERF: cache A_TickCount (read twice)
+            item.lastActivatedTick := tick
+            if (diagLog)
                 GUI_LogEvent("MRU UPDATE: found at position " i ", moving to position 1")
             if (i > 1) {
                 gGUI_LiveItems.RemoveAt(i)
                 gGUI_LiveItems.InsertAt(1, item)
             }
             ; Keep gWS_Store in sync with local MRU update
-            WL_UpdateFields(hwnd, {lastActivatedTick: A_TickCount, isFocused: true}, "gui_activate")
+            WL_UpdateFields(hwnd, {lastActivatedTick: tick, isFocused: true}, "gui_activate")
             if (gFR_Enabled)
                 FR_Record(FR_EV_MRU_UPDATE, hwnd, 1)
             return true
@@ -1348,7 +1356,7 @@ _GUI_UpdateLocalMRU(hwnd) {
     }
     if (gFR_Enabled)
         FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not found in items")
     return false
 }

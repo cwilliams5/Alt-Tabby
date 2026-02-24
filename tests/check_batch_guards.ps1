@@ -464,7 +464,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 # Log function -> acceptable guard patterns
 $lgGuards = @{
-    'GUI_LogEvent'  = @('cfg.DiagEventLog', 'DiagEventLog')
+    'GUI_LogEvent'  = @('cfg.DiagEventLog', 'DiagEventLog', 'diagLog')
     'Paint_Log'     = @('cfg.DiagPaintTimingLog', 'DiagPaintTimingLog', 'diagTiming')
     '_Store_LogInfo' = @('cfg.DiagStoreLog', 'DiagStoreLog', 'cfg.DiagChurnLog', 'DiagChurnLog')
     'Launcher_Log'   = @('cfg.DiagLauncherLog', 'DiagLauncherLog')
@@ -472,8 +472,8 @@ $lgGuards = @{
     '_Update_Log'   = @('cfg.DiagUpdateLog', 'DiagUpdateLog')
     '_IP_Log'       = @('_IP_DiagEnabled', 'logEnabled')
     '_PP_Log'       = @('cfg.DiagProcPumpLog', 'DiagProcPumpLog', 'logEnabled')
-    '_WEH_DiagLog'  = @('cfg.DiagWinEventLog', 'DiagWinEventLog')
-    'KSub_DiagLog'  = @('cfg.DiagKomorebiLog', 'DiagKomorebiLog')
+    '_WEH_DiagLog'  = @('cfg.DiagWinEventLog', 'DiagWinEventLog', 'logEnabled')
+    'KSub_DiagLog'  = @('cfg.DiagKomorebiLog', 'DiagKomorebiLog', 'logEnabled')
     '_Viewer_Log'   = @('gViewer_LogPath')
 }
 

@@ -63,7 +63,7 @@ _GUI_ClearLayeredContent() {
     Gdip_Clear(g, 0x00000000)
 
     ; Push cleared buffer to overlay via UpdateLayeredWindow (pptDst=0 keeps position)
-    bf := Gdip_GetBlendFunction()
+    static bf := Gdip_GetBlendFunction()
     static sz := Buffer(8, 0)
     static ptSrc := Buffer(8, 0)
     NumPut("Int", gGdip_BackW, sz, 0)

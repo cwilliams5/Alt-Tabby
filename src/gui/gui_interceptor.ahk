@@ -112,30 +112,31 @@ _INT_Alt_Up(*) {
     if (gFR_Enabled)
         FR_Record(FR_EV_ALT_UP, gINT_SessionActive, gINT_PressCount, gINT_TabPending, gGUI_PendingPhase != "")
 
-    if (cfg.DiagEventLog)
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+    if (diagLog)
         GUI_LogEvent("INT: Alt_Up (session=" gINT_SessionActive " tabPending=" gINT_TabPending " presses=" gINT_PressCount ")")
     gINT_AltIsDown := false
 
     ; If Tab decision is pending, mark that Alt was released
     if (gINT_TabPending) {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Alt_Up -> marking AltUpDuringPending")
         gINT_AltUpDuringPending := true
         ; Don't send ALT_UP here - Tab_Decide will handle it
     } else if (gINT_SessionActive && gINT_PressCount >= 1) {
         ; Session was active, send ALT_UP directly
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Alt_Up -> sending ALT_UP event")
         GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
     } else if (gGUI_PendingPhase != "") {
         ; GUI is buffering events during async - pass Alt_Up anyway
         ; This handles the case where Tab was lost during workspace switch
         ; (komorebic's SendInput briefly uninstalls keyboard hooks)
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Alt_Up -> forwarding to buffer (async pending)")
         GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
     } else {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Alt_Up -> ignored (no active session)")
     }
 
@@ -158,12 +159,13 @@ _INT_Tab_Down(*) {
     if (gFR_Enabled)
         FR_Record(FR_EV_TAB_DN, gINT_SessionActive, gINT_AltIsDown, gINT_TabPending, gINT_TabHeld)
 
-    if (cfg.DiagEventLog)
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+    if (diagLog)
         GUI_LogEvent("INT: Tab_Down (session=" gINT_SessionActive " altIsDown=" gINT_AltIsDown " tabPending=" gINT_TabPending " tabHeld=" gINT_TabHeld ")")
 
     ; If a decision is pending, commit it immediately before processing this Tab
     if (gINT_TabPending) {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Tab_Down -> committing pending decision first")
         SetTimer(_INT_Tab_Decide, 0)  ; Cancel pending timer
         gINT_PendingDecideArmed := false
@@ -178,7 +180,7 @@ _INT_Tab_Down(*) {
         gINT_PressCount += 1
         shiftHeld := GetKeyState("Shift", "P")
         shiftFlag := shiftHeld ? TABBY_FLAG_SHIFT : 0
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Tab_Down -> active session, sending TAB_STEP (press #" gINT_PressCount ")")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
         ; NOTE: Don't set gINT_TabHeld here - we process ALL tabs during active session
@@ -188,14 +190,14 @@ _INT_Tab_Down(*) {
 
     ; FIRST TAB: Check TabHeld to block key repeat (user holding Tab before Alt)
     if (gINT_TabHeld) {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Tab_Down -> blocked (TabHeld)")
         Profiler.Leave() ; @profile
         return
     }
 
     ; Session not active yet - this is the FIRST Tab, needs decision delay
-    if (cfg.DiagEventLog)
+    if (diagLog)
         GUI_LogEvent("INT: Tab_Down -> FIRST TAB, starting " cfg.AltTabTabDecisionMs "ms decision timer")
     gINT_TabPending := true
     gINT_PendingShift := GetKeyState("Shift", "P")
@@ -250,7 +252,8 @@ _INT_Tab_Decide_Inner() {
     altRecent := (A_TickCount - gINT_LastAltDown) <= cfg.AltTabAltLeewayMs
     isAltTab := altDownNow || altRecent || altUpFlag
 
-    if (cfg.DiagEventLog)
+    diagLog := cfg.DiagEventLog  ; PERF: cache config read
+    if (diagLog)
         GUI_LogEvent("INT: Tab_Decide_Inner (altDown=" altDownNow " altUpFlag=" altUpFlag " altRecent=" altRecent " -> isAltTab=" isAltTab ")")
 
     global FR_EV_TAB_DECIDE_INNER, gFR_Enabled
@@ -269,7 +272,7 @@ _INT_Tab_Decide_Inner() {
 
         ; Send TAB_STEP directly to GUI handler
         shiftFlag := gINT_PendingShift ? TABBY_FLAG_SHIFT : 0
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Tab_Decide -> sending TAB_STEP")
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
 
@@ -278,7 +281,7 @@ _INT_Tab_Decide_Inner() {
 
         ; CRITICAL: If Alt was released during decision window, send ALT_UP now
         if (!altDownNow || altUpFlag) {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("INT: Tab_Decide -> Alt was released, sending ALT_UP")
             GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
             gINT_SessionActive := false
@@ -287,7 +290,7 @@ _INT_Tab_Decide_Inner() {
         }
     } else {
         ; Not Alt+Tab - replay normal Tab
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Tab_Decide -> NOT Alt+Tab, replaying Tab")
         gINT_TabPending := false
         Send(gINT_PendingShift ? "+{Tab}" : "{Tab}")
