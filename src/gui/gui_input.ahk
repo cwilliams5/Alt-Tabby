@@ -139,6 +139,10 @@ _GUI_ApplyHoverState(idx, act) {
     return changed  ; lint-ignore: critical-section
 }
 
+_GUI_PointInRect(px, py, rx, ry, rw, rh) {
+    return (px >= rx && px < rx + rw && py >= ry && py < ry + rh)
+}
+
 _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     global gGUI_ScrollTop, gGUI_OverlayH, cfg
     global gGUI_LeftArrowRect, gGUI_RightArrowRect
@@ -148,13 +152,13 @@ _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
 
     ; Check footer arrow hover (regardless of row position)
     if (cfg.GUI_ShowFooter) {
-        if (xPhys >= gGUI_LeftArrowRect.x && xPhys < gGUI_LeftArrowRect.x + gGUI_LeftArrowRect.w
-            && yPhys >= gGUI_LeftArrowRect.y && yPhys < gGUI_LeftArrowRect.y + gGUI_LeftArrowRect.h) {
+        r := gGUI_LeftArrowRect
+        if (_GUI_PointInRect(xPhys, yPhys, r.x, r.y, r.w, r.h)) {
             action := "arrowLeft"
             return
         }
-        if (xPhys >= gGUI_RightArrowRect.x && xPhys < gGUI_RightArrowRect.x + gGUI_RightArrowRect.w
-            && yPhys >= gGUI_RightArrowRect.y && yPhys < gGUI_RightArrowRect.y + gGUI_RightArrowRect.h) {
+        r := gGUI_RightArrowRect
+        if (_GUI_PointInRect(xPhys, yPhys, r.x, r.y, r.w, r.h)) {
             action := "arrowRight"
             return
         }
@@ -205,21 +209,21 @@ _GUI_DetectActionAtPoint(xPhys, yPhys, &action, &idx1) {
     btnY := topY + (rowVis - 1) * RowH + (RowH - size) // 2
 
     if (cfg.GUI_ShowCloseButton) {
-        if (xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+        if (_GUI_PointInRect(xPhys, yPhys, btnX, btnY, size, size)) {
             action := "close"
             return
         }
         btnX := btnX - (size + gap)
     }
     if (cfg.GUI_ShowKillButton) {
-        if (xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+        if (_GUI_PointInRect(xPhys, yPhys, btnX, btnY, size, size)) {
             action := "kill"
             return
         }
         btnX := btnX - (size + gap)
     }
     if (cfg.GUI_ShowBlacklistButton) {
-        if (xPhys >= btnX && xPhys < btnX + size && yPhys >= btnY && yPhys < btnY + size) {
+        if (_GUI_PointInRect(xPhys, yPhys, btnX, btnY, size, size)) {
             action := "blacklist"
             return
         }

@@ -266,18 +266,7 @@ _CL_SupplementIni(path) {
         content .= (i > 1 ? "`n" : "") . line
     }
 
-    tempPath := path ".tmp"
-    try {
-        if (FileExist(tempPath))
-            FileDelete(tempPath)
-        FileAppend(content, tempPath, "UTF-8")
-        ; Atomic overwrite: MoveFileEx with MOVEFILE_REPLACE_EXISTING on NTFS
-        FileMove(tempPath, path, true)
-    } catch as e {
-        ; Clean up temp file on failure
-        try FileDelete(tempPath)
-        throw e  ; Re-throw so caller knows it failed
-    }
+    _CL_WriteFileAtomic(path, content)
 }
 
 ; Migrate renamed/combined config keys from older versions.
@@ -402,11 +391,17 @@ _CL_CleanupOrphanedKeys(path) {
         newContent .= (i > 1 ? "`n" : "") . line
     }
 
+    _CL_WriteFileAtomic(path, newContent)
+}
+
+; Write content atomically: write to temp file first, then replace original.
+; On failure, cleans up temp and re-throws.
+_CL_WriteFileAtomic(path, content) {
     tempPath := path ".tmp"
     try {
         if (FileExist(tempPath))
             FileDelete(tempPath)
-        FileAppend(newContent, tempPath, "UTF-8")
+        FileAppend(content, tempPath, "UTF-8")
         FileMove(tempPath, path, true)
     } catch as e {
         try FileDelete(tempPath)

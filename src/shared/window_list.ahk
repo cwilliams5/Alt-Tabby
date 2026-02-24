@@ -656,6 +656,7 @@ WL_PurgeBlacklisted() {
         title := rec.HasOwnProp("title") ? rec.title : ""
         class := rec.HasOwnProp("class") ? rec.class : ""
         if (Blacklist_IsMatch(title, class)) {
+            Stats_BumpLifetimeStat("TotalBlacklistSkips")
             toRemove.Push(hwnd)
         }
     }

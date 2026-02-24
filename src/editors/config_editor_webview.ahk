@@ -265,8 +265,8 @@ _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
 _CEW_InjectConfigData() {
     global gCEW_WebView, gConfigRegistry, gConfigIniPath
 
-    ; Serialize registry to JSON
-    registryJson := _CEW_SerializeRegistry()
+    ; Serialize registry to JSON (shared helper in config_registry.ahk)
+    registryJson := ConfigRegistry_SerializeToJSON()
 
     ; Serialize current values from INI
     valuesJson := _CEW_SerializeCurrentValues()
@@ -274,31 +274,6 @@ _CEW_InjectConfigData() {
     ; Inject into page
     script := "initSettings(" registryJson "," valuesJson ")"
     try gCEW_WebView.ExecuteScript(script)
-}
-
-_CEW_SerializeRegistry() {
-    global gConfigRegistry
-
-    ; Build array of Maps for JSON.Dump serialization
-    entries := []
-    fields := ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"]
-    for _, entry in gConfigRegistry {
-        m := Map()
-        for _, f in fields {
-            if (entry.HasOwnProp(f))
-                m[f] := entry.%f%
-        }
-        if (entry.HasOwnProp("default"))
-            m["default"] := entry.default
-        if (entry.HasOwnProp("options"))
-            m["options"] := entry.options
-        if (entry.HasOwnProp("min")) {
-            m["min"] := entry.min
-            m["max"] := entry.max
-        }
-        entries.Push(m)
-    }
-    return JSON.Dump(entries)
 }
 
 _CEW_SerializeCurrentValues() {

@@ -62,9 +62,11 @@ GUI_AntiFlashReveal(gui, wasCloaked, wasOffscreen := false) {
         ; then center while cloaked so the frame move is completely invisible.
         DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAK, "int*", 1, "uint", 4)
         ; Center on current monitor using raw Win32 — bypasses AHK DPI scaling.
-        ; GetMonitorInfoW work area (offsets 20-32) and GetWindowRect are both
-        ; in physical pixels, and SetWindowPos takes physical pixels.
+        ; GetMonitorInfoW work area and GetWindowRect are both in physical pixels,
+        ; and SetWindowPos takes physical pixels.
         hMon := DllCall("user32\MonitorFromWindow", "ptr", hwnd, "uint", MONITOR_DEFAULTTONEAREST, "ptr")
+        ; MONITORINFO (40 bytes): cbSize(4) + rcMonitor(16) + rcWork(16) + dwFlags(4)
+        ; rcWork starts at offset 20: left(20) top(24) right(28) bottom(32)
         mi := Buffer(40, 0)
         NumPut("UInt", 40, mi, 0)
         DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr)
