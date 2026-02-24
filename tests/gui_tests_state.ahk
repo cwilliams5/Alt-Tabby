@@ -273,7 +273,7 @@ RunGUITests_State() {
         gGUI_LiveItemsMap[item.hwnd] := item
     gGUI_ToggleBase := items.Clone()
     ; WS=current filters to Main (2 items), then toggle monitor to current
-    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
     GUI_AssertEq(gGUI_DisplayItems.Length, 2, "Combined setup: WS=current shows 2 Main items")
 
     GUI_ToggleMonitorMode()  ; all -> current (MonA)
