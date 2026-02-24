@@ -52,6 +52,19 @@ $subTimings = [System.Collections.ArrayList]::new()
 $anyFailed = $false
 $failOutput = [System.Text.StringBuilder]::new()
 
+# === Pre-compiled regex patterns (hot-path, called 100K+ times) ===
+$script:RX_DBL_STR   = [regex]::new('"[^"]*"', 'Compiled')
+$script:RX_SGL_STR   = [regex]::new("'[^']*'", 'Compiled')
+$script:RX_CMT_TAIL  = [regex]::new('\s;.*$', 'Compiled')
+$script:RX_GLOBAL_DECL = [regex]::new('^\s*global\s+(.+)', 'Compiled')
+$script:RX_LAMBDA    = [regex]::new('^\s*(\w+)\s*:=\s*\(', 'Compiled')
+$script:RX_CLASS_DEF = [regex]::new('^\s*class\s+(\w+)', 'Compiled')
+$script:RX_FUNC_DEF  = [regex]::new('^\s*(?:static\s+)?(\w+)\s*\(([^)]*)\)\s*\{', 'Compiled')
+$script:RX_FUNC_DEF2 = [regex]::new('^\s*(?:static\s+)?(\w+)\s*\((.*)', 'Compiled')
+$script:RX_STATIC_METHOD = [regex]::new('^\s*static\s+(\w+)\s*\(', 'Compiled')
+$script:RX_CALL_SITE = [regex]::new('(?<![.\w%])(\w+)\s*\(', 'Compiled')
+$script:RX_WORD      = [regex]::new('\b[a-zA-Z_]\w+\b', 'Compiled')
+
 # === Shared helpers ===
 
 function BF_CleanLine {
@@ -62,13 +75,13 @@ function BF_CleanLine {
     if ($trimmed[0] -eq ';') { return '' }
     $cleaned = $line
     if ($line.IndexOf('"') -ge 0) {
-        $cleaned = $cleaned -replace '"[^"]*"', '""'
+        $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""')
     }
     if ($line.IndexOf("'") -ge 0) {
-        $cleaned = $cleaned -replace "'[^']*'", "''"
+        $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
     }
     if ($cleaned.IndexOf(';') -ge 0) {
-        $cleaned = $cleaned -replace '\s;.*$', ''
+        $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
     }
     return $cleaned
 }
@@ -262,6 +275,10 @@ function BF_ExtractGlobalNames {
 # === Shared Pass: Build function definition table + collect file-scope globals ===
 $sharedPassSw = [System.Diagnostics.Stopwatch]::StartNew()
 
+# Processed-line cache: stores { Cleaned; Braces } per line per file.
+# Built during shared pass, reused by check_arity + check_globals to avoid redundant BF_CleanLine calls.
+$processedLines = @{}
+
 # Process ALL project files for function definitions (check_undefined_calls needs lib/)
 foreach ($file in $allProjectFiles) {
     $lines = $fileCache[$file.FullName]
@@ -276,6 +293,7 @@ foreach ($file in $allProjectFiles) {
     $inClass = $false
     $classDepth = -1
     $localGlobals = @{}  # per-file collection for test files
+    $perFileProcessed = [object[]]::new($lines.Count)
 
     $inBlockComment = $false
 
@@ -287,11 +305,13 @@ foreach ($file in $allProjectFiles) {
         if ($trimmed.StartsWith('/*')) { $inBlockComment = $true }
         if ($inBlockComment) {
             if ($trimmed.Contains('*/')) { $inBlockComment = $false }
+            $perFileProcessed[$i] = @{ Cleaned = ''; Braces = @(0, 0) }
             continue
         }
 
         $cleaned = BF_CleanLine $raw
         if ($cleaned -eq '') {
+            $perFileProcessed[$i] = @{ Cleaned = ''; Braces = @(0, 0) }
             # Still need to check for global/class/lambda patterns on non-empty comment lines
             # for check_undefined_calls. Skip if truly empty.
             if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#') -or $trimmed.Length -eq 0) {
@@ -305,10 +325,12 @@ foreach ($file in $allProjectFiles) {
         }
 
         $braces = BF_CountBraces $cleaned
+        $perFileProcessed[$i] = @{ Cleaned = $cleaned; Braces = $braces }
 
         # --- check_undefined_calls: global/lambda extraction at ALL depths ---
-        if ($cleaned -match '^\s*global\s+(.+)') {
-            $declPart = $Matches[1]
+        $mGlobal = $script:RX_GLOBAL_DECL.Match($cleaned)
+        if ($mGlobal.Success) {
+            $declPart = $mGlobal.Groups[1].Value
             foreach ($chunk in $declPart.Split(',')) {
                 $chunk = $chunk.Trim()
                 if ($chunk -match '^(\w+)') {
@@ -335,24 +357,27 @@ foreach ($file in $allProjectFiles) {
         }
 
         # check_undefined_calls: Lambda/closure assignments at ALL depths
-        if ($cleaned -match '^\s*(\w+)\s*:=\s*\(') {
-            [void]$ucKnownVariables.Add($Matches[1])
+        $mLambda = $script:RX_LAMBDA.Match($cleaned)
+        if ($mLambda.Success) {
+            [void]$ucKnownVariables.Add($mLambda.Groups[1].Value)
         }
 
         # --- Check for function definition at file scope (depth == 0, not inside function) ---
         if ($depth -eq 0 -and -not $inFunc) {
 
             # check_undefined_calls: Class definitions
-            if ($cleaned -match '^\s*class\s+(\w+)') {
-                [void]$ucDefinedFunctions.Add($Matches[1])
+            $mClass = $script:RX_CLASS_DEF.Match($cleaned)
+            if ($mClass.Success) {
+                [void]$ucDefinedFunctions.Add($mClass.Groups[1].Value)
                 $inClass = $true
                 $classDepth = $depth
             }
 
             # Function definition detection
-            if ($cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(([^)]*)\)\s*\{') {
-                $funcName = $Matches[1]
-                $paramStr = $Matches[2]
+            $mFuncDef = $script:RX_FUNC_DEF.Match($cleaned)
+            if ($mFuncDef.Success) {
+                $funcName = $mFuncDef.Groups[1].Value
+                $paramStr = $mFuncDef.Groups[2].Value
 
                 if (-not $BF_AHK_KEYWORDS.ContainsKey($funcName.ToLower())) {
                     # Add to check_undefined_calls definition set (all files)
@@ -411,10 +436,12 @@ foreach ($file in $allProjectFiles) {
                     $inFunc = $true
                     $funcDepth = $depth
                 }
-            } elseif ($cleaned -match '^\s*(?:static\s+)?(\w+)\s*\((.*)') {
+            } else {
+              $mFuncDef2 = $script:RX_FUNC_DEF2.Match($cleaned)
+              if ($mFuncDef2.Success) {
                 # check_undefined_calls: broader function definition detection (including => and next-line {)
-                $funcName2 = $Matches[1]
-                $afterParen = $Matches[2]
+                $funcName2 = $mFuncDef2.Groups[1].Value
+                $afterParen = $mFuncDef2.Groups[2].Value
 
                 if ($funcName2 -notin @('if', 'while', 'for', 'loop', 'switch', 'catch',
                         'return', 'throw', 'class', 'try', 'else', 'until',
@@ -490,6 +517,7 @@ foreach ($file in $allProjectFiles) {
                         [void]$ucDefinedFunctions.Add($funcName2)
                     }
                 }
+              }
             }
         }
 
@@ -497,8 +525,9 @@ foreach ($file in $allProjectFiles) {
         # Class methods appear at depth classDepth+1 (inside the class braces).
         # Register them so check_undefined_calls doesn't flag method definitions as calls.
         if ($inClass -and -not $inFunc -and $depth -eq ($classDepth + 1)) {
-            if ($cleaned -match '^\s*static\s+(\w+)\s*\(') {
-                $methodName = $Matches[1]
+            $mStaticMethod = $script:RX_STATIC_METHOD.Match($cleaned)
+            if ($mStaticMethod.Success) {
+                $methodName = $mStaticMethod.Groups[1].Value
                 if (-not $BF_AHK_KEYWORDS.ContainsKey($methodName.ToLower())) {
                     [void]$ucDefinedFunctions.Add($methodName)
                 }
@@ -522,6 +551,7 @@ foreach ($file in $allProjectFiles) {
         $sharedTestPerFileGlobals[$file.FullName] = $localGlobals
         $sharedTestGlobalCount += $localGlobals.Count
     }
+    $processedLines[$file.FullName] = $perFileProcessed
 }
 
 $sharedPassSw.Stop()
@@ -608,17 +638,19 @@ $setCallbacksFuncs = @{}
 
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
+    $plCache = $processedLines[$file.FullName]
     $depth = 0; $inFunc = $false
     $curFuncName = ''; $curFuncParams = @()
     $curFuncDepth = -1
     $curFuncBody = [System.Collections.ArrayList]::new()
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BF_CleanLine $lines[$i]
+        $cleaned = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Cleaned } else { BF_CleanLine $lines[$i] }
         if ($cleaned -eq '') { continue }
 
-        if ($depth -eq 0 -and -not $inFunc -and $cleaned -match '^\s*(\w+)\s*\(([^)]*)\)\s*\{') {
-            $fname = $Matches[1]; $pStr = $Matches[2]
+        $mFD = $script:RX_FUNC_DEF.Match($cleaned)
+        if ($depth -eq 0 -and -not $inFunc -and $mFD.Success) {
+            $fname = $mFD.Groups[1].Value; $pStr = $mFD.Groups[2].Value
             if (-not $BF_AHK_KEYWORDS.ContainsKey($fname.ToLower())) {
                 $inFunc = $true; $curFuncDepth = $depth
                 $curFuncName = $fname
@@ -635,15 +667,16 @@ foreach ($file in $srcFiles) {
 
         if ($inFunc) { [void]$curFuncBody.Add($cleaned) }
 
-        $braces = BF_CountBraces $cleaned
+        $braces = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Braces } else { BF_CountBraces $cleaned }
         $depth += $braces[0] - $braces[1]
         if ($depth -lt 0) { $depth = 0 }
 
         if ($inFunc -and $depth -le $curFuncDepth) {
             $bodyGlobals = [System.Collections.Generic.HashSet[string]]::new()
             foreach ($bl in $curFuncBody) {
-                if ($bl -match '^\s*global\b\s+(.+)') {
-                    foreach ($gv in ($Matches[1] -split ',')) {
+                $mBG = $script:RX_GLOBAL_DECL.Match($bl)
+                if ($mBG.Success) {
+                    foreach ($gv in ($mBG.Groups[1].Value -split ',')) {
                         $gvt = $gv.Trim()
                         if ($gvt -match '^\w+$') { [void]$bodyGlobals.Add($gvt) }
                     }
@@ -673,11 +706,12 @@ foreach ($file in $srcFiles) {
 # Step 2: Resolve callback wiring
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
+    $plCache = $processedLines[$file.FullName]
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $raw = $lines[$i]
         if ($raw -match '^\s*;') { continue }
         if ($raw.IndexOf('(', [System.StringComparison]::Ordinal) -lt 0) { continue }
-        $cleaned = BF_CleanLine $raw
+        $cleaned = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Cleaned } else { BF_CleanLine $raw }
         if ($cleaned -eq '') { continue }
 
         foreach ($scFunc in $setCallbacksFuncs.Keys) {
@@ -692,7 +726,7 @@ foreach ($file in $srcFiles) {
             $openParens = ($afterParen -split '\(').Count - ($afterParen -split '\)').Count
             while ($openParens -gt 0 -and ($lineIdx + 1) -lt $lines.Count) {
                 $lineIdx++
-                $nc = BF_CleanLine $lines[$lineIdx]
+                $nc = if ($null -ne $plCache -and $null -ne $plCache[$lineIdx]) { $plCache[$lineIdx].Cleaned } else { BF_CleanLine $lines[$lineIdx] }
                 if ($nc -eq '') { continue }
                 $fullText += ' ' + $nc
                 $afterParen = $fullText.Substring($parenPos)
@@ -729,6 +763,7 @@ foreach ($fn in $sharedFuncDefs.Keys) { [void]$funcNameSet.Add($fn) }
 
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
+    $plCache = $processedLines[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -737,10 +772,10 @@ foreach ($file in $srcFiles) {
         if ($raw -match ';\s*lint-ignore:\s*arity') { continue }
         if ($raw.IndexOf('(', [System.StringComparison]::Ordinal) -lt 0) { continue }
 
-        $cleaned = BF_CleanLine $raw
+        $cleaned = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Cleaned } else { BF_CleanLine $raw }
         if ($cleaned -eq '') { continue }
 
-        $callMatches = [regex]::Matches($cleaned, '(?<![.\w%])(\w+)\s*\(')
+        $callMatches = $script:RX_CALL_SITE.Matches($cleaned)
 
         foreach ($cm in $callMatches) {
             $callName = $cm.Groups[1].Value
@@ -766,7 +801,7 @@ foreach ($file in $srcFiles) {
             $openParens = ($fullText.Substring($parenPos) -split '\(').Count - ($fullText.Substring($parenPos) -split '\)').Count
             while ($openParens -gt 0 -and ($lineIdx + 1) -lt $lines.Count) {
                 $lineIdx++
-                $nextCleaned = BF_CleanLine $lines[$lineIdx]
+                $nextCleaned = if ($null -ne $plCache -and $null -ne $plCache[$lineIdx]) { $plCache[$lineIdx].Cleaned } else { BF_CleanLine $lines[$lineIdx] }
                 if ($nextCleaned -eq '') { continue }
                 $fullText += ' ' + $nextCleaned
                 $afterParen = $fullText.Substring($parenPos)
@@ -982,6 +1017,7 @@ $undefined = [System.Collections.Generic.List[PSCustomObject]]::new()
 
 foreach ($file in $srcFiles) {
     $lines = $fileCache[$file.FullName]
+    $plCache = $processedLines[$file.FullName]
     $relPath = $file.FullName.Replace("$SourceDir\", "")
     $inBlockComment3 = $false
 
@@ -997,15 +1033,10 @@ foreach ($file in $srcFiles) {
 
         if ($trimmed.StartsWith(';') -or $trimmed.StartsWith('#')) { continue }
 
-        $cleanLine = [regex]::Replace($line, '"[^"]*"', '""')
-        $cleanLine = [regex]::Replace($cleanLine, "'[^']*'", "''")
+        $cleanLine = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Cleaned } else { BF_CleanLine $line }
+        if ($cleanLine -eq '') { continue }
 
-        $semiIdx = $cleanLine.IndexOf(' ;')
-        if ($semiIdx -ge 0) {
-            $cleanLine = $cleanLine.Substring(0, $semiIdx)
-        }
-
-        $callMatches = [regex]::Matches($cleanLine, '(?<![.\w])(\w+)\s*\(')
+        $callMatches = $script:RX_CALL_SITE.Matches($cleanLine)
 
         foreach ($m in $callMatches) {
             $funcName = $m.Groups[1].Value
@@ -1104,6 +1135,7 @@ foreach ($file in $allFilesForGlobals) {
         if (-not $hasAnyGlobal) { continue }
     }
 
+    $plCache = $processedLines[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
     $inFunc = $false
@@ -1117,12 +1149,15 @@ foreach ($file in $allFilesForGlobals) {
     $funcBodyLines = [System.Collections.ArrayList]::new()
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BF_CleanLine $lines[$i]
+        $cleaned = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Cleaned } else { BF_CleanLine $lines[$i] }
 
-        if (-not $inFunc -and $cleaned -ne '' -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(([^)]*)\)') {
-            $fname = $Matches[1]
-            $paramStr = $Matches[2]
-            if (-not $BF_AHK_KEYWORDS.ContainsKey($fname.ToLower()) -and $cleaned -match '\{') {
+        if (-not $inFunc -and $cleaned -ne '') {
+          $mFD = $script:RX_FUNC_DEF.Match($cleaned)
+          # RX_FUNC_DEF requires { on same line, so no separate \{ check needed
+          if ($mFD.Success) {
+            $fname = $mFD.Groups[1].Value
+            $paramStr = $mFD.Groups[2].Value
+            if (-not $BF_AHK_KEYWORDS.ContainsKey($fname.ToLower())) {
                 $inFunc = $true
                 $funcName = $fname
                 $funcStartLine = $i + 1
@@ -1140,15 +1175,17 @@ foreach ($file in $allFilesForGlobals) {
                     }
                 }
             }
+          }
         }
 
-        $braces = BF_CountBraces $cleaned
+        $braces = if ($null -ne $plCache -and $null -ne $plCache[$i]) { $plCache[$i].Braces } else { BF_CountBraces $cleaned }
         $depth += $braces[0] - $braces[1]
 
         if ($inFunc) {
             if ($cleaned -ne '') {
-                if ($cleaned -match '^\s*global\s+(.+)') {
-                    foreach ($gn in (BF_ExtractGlobalNames $Matches[1])) {
+                $mGD = $script:RX_GLOBAL_DECL.Match($cleaned)
+                if ($mGD.Success) {
+                    foreach ($gn in (BF_ExtractGlobalNames $mGD.Groups[1].Value)) {
                         $funcDeclaredGlobals[$gn] = $true
                         if (-not $funcGlobalDeclLines.ContainsKey($gn)) {
                             $funcGlobalDeclLines[$gn] = @{ Line = ($i + 1); Raw = $lines[$i] }
@@ -1176,7 +1213,7 @@ foreach ($file in $allFilesForGlobals) {
                 }
                 $allText = [string]::Join(" ", $texts)
 
-                $wordMatches = [regex]::Matches($allText, '\b[a-zA-Z_]\w+\b')
+                $wordMatches = $script:RX_WORD.Matches($allText)
                 $seenGlobals = [System.Collections.Generic.HashSet[string]]::new(
                     [System.StringComparer]::Ordinal)
 

@@ -83,6 +83,11 @@ $AHK_KEYWORDS = @(
     'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
 )
 
+# === Pre-compiled regex patterns ===
+$script:RX_DBL_STR  = [regex]::new('"[^"]*"', 'Compiled')
+$script:RX_SGL_STR  = [regex]::new("'[^']*'", 'Compiled')
+$script:RX_CMT_TAIL = [regex]::new('\s;.*$', 'Compiled')
+
 # === Shared helpers ===
 
 function BT_CleanLine {
@@ -93,13 +98,13 @@ function BT_CleanLine {
     if ($trimmed[0] -eq ';') { return '' }
     $cleaned = $line
     if ($line.IndexOf('"') -ge 0) {
-        $cleaned = $cleaned -replace '"[^"]*"', '""'
+        $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""')
     }
     if ($line.IndexOf("'") -ge 0) {
-        $cleaned = $cleaned -replace "'[^']*'", "''"
+        $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
     }
     if ($cleaned.IndexOf(';') -ge 0) {
-        $cleaned = $cleaned -replace '\s;.*$', ''
+        $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
     }
     return $cleaned
 }

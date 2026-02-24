@@ -43,6 +43,11 @@ $failOutput = [System.Text.StringBuilder]::new()
 
 # === Shared helpers ===
 
+# Pre-compiled regex patterns (hot-path, called 30K+ times in processedCache build)
+$script:RX_DBL_STR  = [regex]::new('"[^"]*"', 'Compiled')
+$script:RX_SGL_STR  = [regex]::new("'[^']*'", 'Compiled')
+$script:RX_CMT_TAIL = [regex]::new('\s;.*$', 'Compiled')
+
 function BS_CleanLine {
     param([string]$line)
     if ($line.Length -eq 0) { return '' }
@@ -51,13 +56,13 @@ function BS_CleanLine {
     if ($trimmed[0] -eq ';') { return '' }
     $cleaned = $line
     if ($line.IndexOf('"') -ge 0) {
-        $cleaned = $cleaned -replace '"[^"]*"', '""'
+        $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""')
     }
     if ($line.IndexOf("'") -ge 0) {
-        $cleaned = $cleaned -replace "'[^']*'", "''"
+        $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
     }
     if ($cleaned.IndexOf(';') -ge 0) {
-        $cleaned = $cleaned -replace '\s;.*$', ''
+        $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
     }
     return $cleaned
 }

@@ -46,6 +46,11 @@ $subTimings = [System.Collections.ArrayList]::new()
 $anyFailed = $false
 $failOutput = [System.Text.StringBuilder]::new()
 
+# === Pre-compiled regex constants (JIT-compiled to IL, used by BP_Clean-Line) ===
+$script:RX_DBL_STR  = [regex]::new('"[^"]*"', 'Compiled')
+$script:RX_SGL_STR  = [regex]::new("'[^']*'", 'Compiled')
+$script:RX_CMT_TAIL = [regex]::new('\s;.*$', 'Compiled')
+
 # === Shared helpers ===
 
 function BP_Clean-Line {
@@ -56,13 +61,13 @@ function BP_Clean-Line {
     if ($trimmed[0] -eq ';') { return '' }
     $cleaned = $line
     if ($line.IndexOf('"') -ge 0) {
-        $cleaned = $cleaned -replace '"[^"]*"', '""'
+        $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""')
     }
     if ($line.IndexOf("'") -ge 0) {
-        $cleaned = $cleaned -replace "'[^']*'", "''"
+        $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
     }
     if ($cleaned.IndexOf(';') -ge 0) {
-        $cleaned = $cleaned -replace '\s;.*$', ''
+        $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
     }
     return $cleaned
 }

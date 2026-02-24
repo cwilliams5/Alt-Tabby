@@ -40,6 +40,26 @@ $subTimings = [System.Collections.ArrayList]::new()
 $anyFailed = $false
 $failOutput = [System.Text.StringBuilder]::new()
 
+# === Pre-compiled regex patterns (hot-path, called 30K+ times) ===
+$script:RX_DBL_STR   = [regex]::new('"[^"]*"', 'Compiled')
+$script:RX_SGL_STR   = [regex]::new("'[^']*'", 'Compiled')
+$script:RX_CMT_TAIL  = [regex]::new('\s;.*$', 'Compiled')
+$script:RX_CRIT_ON_STR   = [regex]::new('(?i)^\s*Critical[\s(]+["\x27]?On["\x27]?\s*\)?', 'Compiled')
+$script:RX_CRIT_ON_TRUE  = [regex]::new('(?i)^\s*Critical[\s(]+true\s*\)?', 'Compiled')
+$script:RX_CRIT_ON_NUM   = [regex]::new('(?i)^\s*Critical[\s(]+(\d+)\s*\)?', 'Compiled')
+$script:RX_CRIT_BARE     = [regex]::new('(?i)^\s*Critical\s*$', 'Compiled')
+$script:RX_CRIT_OFF_STR  = [regex]::new('(?i)^\s*Critical[\s(]+["\x27]?Off["\x27]?\s*\)?', 'Compiled')
+$script:RX_CRIT_OFF_FALSE= [regex]::new('(?i)^\s*Critical[\s(]+false\s*\)?', 'Compiled')
+$script:RX_CRIT_OFF_ZERO = [regex]::new('(?i)^\s*Critical[\s(]+0\s*\)?', 'Compiled')
+
+# Pre-compute set of files containing "Critical" (reused across sub-checks)
+$criticalFiles = [System.Collections.Generic.HashSet[string]]::new()
+foreach ($f in $allFiles) {
+    if ($fileCacheText[$f.FullName].IndexOf('Critical') -ge 0) {
+        [void]$criticalFiles.Add($f.FullName)
+    }
+}
+
 # === Critical section helpers (used by critical_leaks, critical_sections sub-checks) ===
 
 function BC_CleanLine {
@@ -50,13 +70,13 @@ function BC_CleanLine {
     if ($trimmed[0] -eq ';') { return '' }
     $cleaned = $line
     if ($line.IndexOf('"') -ge 0) {
-        $cleaned = $cleaned -replace '"[^"]*"', '""'
+        $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""')
     }
     if ($line.IndexOf("'") -ge 0) {
-        $cleaned = $cleaned -replace "'[^']*'", "''"
+        $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
     }
     if ($cleaned.IndexOf(';') -ge 0) {
-        $cleaned = $cleaned -replace '\s;.*$', ''
+        $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
     }
     return $cleaned
 }
@@ -68,7 +88,7 @@ function BC_StripComments {
     if ($trimmed.Length -eq 0) { return '' }
     if ($trimmed[0] -eq ';') { return '' }
     if ($line.IndexOf(';') -ge 0) {
-        return $line -replace '\s;.*$', ''
+        return $script:RX_CMT_TAIL.Replace($line, '')
     }
     return $line
 }
@@ -86,23 +106,24 @@ function BC_CountBraces {
 function BC_TestCriticalOn {
     param([string]$line)
     $trimmed = $line.Trim()
-    if ($trimmed -match '(?i)^\s*Critical[\s(]+["\x27]?On["\x27]?\s*\)?') { return $true }
-    if ($trimmed -match '(?i)^\s*Critical[\s(]+true\s*\)?') { return $true }
-    if ($trimmed -match '(?i)^\s*Critical[\s(]+(\d+)\s*\)?') {
-        $val = [int]$Matches[1]
+    if ($script:RX_CRIT_ON_STR.IsMatch($trimmed)) { return $true }
+    if ($script:RX_CRIT_ON_TRUE.IsMatch($trimmed)) { return $true }
+    $m = $script:RX_CRIT_ON_NUM.Match($trimmed)
+    if ($m.Success) {
+        $val = [int]$m.Groups[1].Value
         if ($val -gt 0) { return $true }
         return $false
     }
-    if ($trimmed -match '(?i)^\s*Critical\s*$') { return $true }
+    if ($script:RX_CRIT_BARE.IsMatch($trimmed)) { return $true }
     return $false
 }
 
 function BC_TestCriticalOff {
     param([string]$line)
     $trimmed = $line.Trim()
-    if ($trimmed -match '(?i)^\s*Critical[\s(]+["\x27]?Off["\x27]?\s*\)?') { return $true }
-    if ($trimmed -match '(?i)^\s*Critical[\s(]+false\s*\)?') { return $true }
-    if ($trimmed -match '(?i)^\s*Critical[\s(]+0\s*\)?') { return $true }
+    if ($script:RX_CRIT_OFF_STR.IsMatch($trimmed)) { return $true }
+    if ($script:RX_CRIT_OFF_FALSE.IsMatch($trimmed)) { return $true }
+    if ($script:RX_CRIT_OFF_ZERO.IsMatch($trimmed)) { return $true }
     return $false
 }
 
@@ -333,14 +354,14 @@ $lgAllFuncNames = [string[]]@($lgGuards.Keys)
 function BG_LG_CleanLine {
     param([string]$line)
     if ($line -match '^\s*;') { return '' }
-    $cleaned = $line -replace '\s;.*$', ''
+    $cleaned = $script:RX_CMT_TAIL.Replace($line, '')
     return $cleaned
 }
 
 function BG_LG_StripStrings {
     param([string]$line)
-    $stripped = $line -replace '"[^"]*"', '""'
-    $stripped = $stripped -replace "'[^']*'", "''"
+    $stripped = $script:RX_DBL_STR.Replace($line, '""')
+    $stripped = $script:RX_SGL_STR.Replace($stripped, "''")
     return $stripped
 }
 
@@ -364,7 +385,7 @@ function BG_LG_HasConcat {
     $argTrimmed = $argPart.Trim()
     if ($argTrimmed -match '^"[^"]*"$') { return $false }
     if ($argTrimmed -notmatch '"') { return $true }
-    $withoutStrings = $argTrimmed -replace '"[^"]*"', ''
+    $withoutStrings = $script:RX_DBL_STR.Replace($argTrimmed, '')
     $withoutStrings = $withoutStrings.Trim()
     if ($withoutStrings -match '[A-Za-z_]\w*') { return $true }
     return $false
@@ -674,13 +695,13 @@ foreach ($file in $allFiles) {
         # Strip strings and comments for brace counting
         $cleaned = $raw
         if ($cleaned.IndexOf('"') -ge 0) {
-            $cleaned = $cleaned -replace '"[^"]*"', '""'
+            $cleaned = $script:RX_DBL_STR.Replace($cleaned, '""')
         }
         if ($cleaned.IndexOf("'") -ge 0) {
-            $cleaned = $cleaned -replace "'[^']*'", "''"
+            $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
         }
         if ($cleaned.IndexOf(';') -ge 0) {
-            $cleaned = $cleaned -replace '\s;.*$', ''
+            $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
         }
 
         # Count braces and track try blocks
@@ -1050,7 +1071,7 @@ $clFuncCount = 0
 $lineDataCache = @{}  # file -> array of @{ Raw; Cleaned; Stripped; Braces }
 
 foreach ($file in $allFiles) {
-    if ($fileCacheText[$file.FullName].IndexOf('Critical') -lt 0) { continue }
+    if (-not $criticalFiles.Contains($file.FullName)) { continue }
     $lines = $fileCache[$file.FullName]
 
     # Pre-process all lines and cache results
@@ -1206,7 +1227,7 @@ $csIssues = [System.Collections.ArrayList]::new()
 $csFuncCount = 0
 
 foreach ($file in $allFiles) {
-    if ($fileCacheText[$file.FullName].IndexOf('Critical') -lt 0) { continue }
+    if (-not $criticalFiles.Contains($file.FullName)) { continue }
 
     # Reuse pre-processed line data from critical_leaks (avoids re-cleaning/re-counting)
     $hasLineData = $lineDataCache.ContainsKey($file.FullName)

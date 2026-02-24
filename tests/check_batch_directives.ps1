@@ -34,6 +34,11 @@ foreach ($f in $allFiles) {
     $fileCache[$f.FullName] = $text -split "`r?`n"
 }
 
+# === Pre-compiled regex patterns ===
+$script:RX_DBL_STR  = [regex]::new('"[^"]*"', 'Compiled')
+$script:RX_SGL_STR  = [regex]::new("'[^']*'", 'Compiled')
+$script:RX_CMT_TAIL = [regex]::new('\s;.*$', 'Compiled')
+
 # === Sub-check tracking ===
 $subTimings = [System.Collections.ArrayList]::new()
 $anyFailed = $false
@@ -332,16 +337,16 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 function BD_BT_CleanLine {
     param([string]$line)
-    $cleaned = $line -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace "'[^']*'", "''"
-    $cleaned = $cleaned -replace '\s;.*$', ''
+    $cleaned = $script:RX_DBL_STR.Replace($line, '""')
+    $cleaned = $script:RX_SGL_STR.Replace($cleaned, "''")
+    $cleaned = $script:RX_CMT_TAIL.Replace($cleaned, '')
     if ($cleaned -match '^\s*;') { return '' }
     return $cleaned
 }
 
 function BD_BT_StripComments {
     param([string]$line)
-    $stripped = $line -replace '\s;.*$', ''
+    $stripped = $script:RX_CMT_TAIL.Replace($line, '')
     if ($stripped -match '^\s*;') { return '' }
     return $stripped
 }
