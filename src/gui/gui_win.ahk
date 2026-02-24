@@ -28,6 +28,9 @@ Win_GetWorkAreaFromHwnd(hWnd, &left, &top, &right, &bottom) {
         bottom := 0
         return
     }
+    ; MONITORINFO (40 bytes): cbSize(4) + rcMonitor(16) + rcWork(16) + dwFlags(4)
+    ; rcMonitor: left(4) top(8) right(12) bottom(16)
+    ; rcWork:    left(20) top(24) right(28) bottom(32)
     mi := Buffer(40, 0)
     NumPut("UInt", 40, mi, 0)
     if (!DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr, "int")) {
@@ -37,6 +40,7 @@ Win_GetWorkAreaFromHwnd(hWnd, &left, &top, &right, &bottom) {
         bottom := 0
         return
     }
+    ; rcWork (work area excluding taskbar)
     left := NumGet(mi, 20, "Int")
     top := NumGet(mi, 24, "Int")
     right := NumGet(mi, 28, "Int")
@@ -44,7 +48,6 @@ Win_GetWorkAreaFromHwnd(hWnd, &left, &top, &right, &bottom) {
 }
 
 ; Get full monitor bounds (including taskbar) for window's monitor
-; Uses offsets 4-16 (full bounds), NOT 20-32 (work area)
 Win_GetMonitorBoundsFromHwnd(hWnd, &left, &top, &right, &bottom) {
     hMon := DllCall("user32\MonitorFromWindow", "ptr", hWnd, "uint", 2, "ptr")
     if (!hMon) {
@@ -54,6 +57,7 @@ Win_GetMonitorBoundsFromHwnd(hWnd, &left, &top, &right, &bottom) {
         bottom := 0
         return
     }
+    ; MONITORINFO layout: see Win_GetWorkAreaFromHwnd above
     mi := Buffer(40, 0)
     NumPut("UInt", 40, mi, 0)
     if (!DllCall("user32\GetMonitorInfoW", "ptr", hMon, "ptr", mi.Ptr, "int")) {
@@ -63,7 +67,7 @@ Win_GetMonitorBoundsFromHwnd(hWnd, &left, &top, &right, &bottom) {
         bottom := 0
         return
     }
-    ; Full monitor bounds (offsets 4-16), NOT work area (offsets 20-32)
+    ; rcMonitor (full bounds including taskbar)
     left := NumGet(mi, 4, "Int")
     top := NumGet(mi, 8, "Int")
     right := NumGet(mi, 12, "Int")

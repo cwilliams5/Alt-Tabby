@@ -401,28 +401,40 @@ _GUI_StartHousekeeping() {
 }
 
 _GUI_Housekeeping() {
-    global cfg
+    global cfg, LOG_PATH_STORE
+    try {
     ; Cache pruning
-    try KomorebiSub_PruneStaleCache()
-    try WL_PruneProcNameCache()
-    try WL_PruneExeIconCache()
-    try ProcPump_PruneFailedPidCache()
+    _GUI_TryHousekeep(KomorebiSub_PruneStaleCache, "KomorebiSub_PruneStaleCache", LOG_PATH_STORE)
+    _GUI_TryHousekeep(WL_PruneProcNameCache, "WL_PruneProcNameCache", LOG_PATH_STORE)
+    _GUI_TryHousekeep(WL_PruneExeIconCache, "WL_PruneExeIconCache", LOG_PATH_STORE)
+    _GUI_TryHousekeep(ProcPump_PruneFailedPidCache, "ProcPump_PruneFailedPidCache", LOG_PATH_STORE)
 
     ; Flush churn diagnostics (if enabled)
-    try WL_FlushChurnLog()
+    _GUI_TryHousekeep(WL_FlushChurnLog, "WL_FlushChurnLog", LOG_PATH_STORE)
 
     ; Log rotation
-    try _GUI_RotateDiagLogs()
+    _GUI_TryHousekeep(_GUI_RotateDiagLogs, "_GUI_RotateDiagLogs", LOG_PATH_STORE)
 
     ; Flush stats to disk
-    try Stats_FlushToDisk()
+    _GUI_TryHousekeep(Stats_FlushToDisk, "Stats_FlushToDisk", LOG_PATH_STORE)
 
     ; Touch key data structures to keep memory pages resident
     if (cfg.PerfForceTouchMemory)
-        try _GUI_TouchMemoryPages()
+        _GUI_TryHousekeep(_GUI_TouchMemoryPages, "_GUI_TouchMemoryPages", LOG_PATH_STORE)
 
     ; Re-assert Tab hotkey (covers idle scenarios where no focus change fires)
-    try INT_ReassertTabHotkey()
+    _GUI_TryHousekeep(INT_ReassertTabHotkey, "INT_ReassertTabHotkey", LOG_PATH_STORE)
+    } catch as e {
+        try LogAppend(LOG_PATH_STORE, "Housekeeping err=" e.Message " file=" e.File " line=" e.Line)
+    }
+}
+
+_GUI_TryHousekeep(fn, name, logPath) {
+    try {
+        fn()
+    } catch as e {
+        try LogAppend(logPath, "Housekeeping " name " failed: " e.Message)
+    }
 }
 
 ; ========================= MEMORY MANAGEMENT =========================

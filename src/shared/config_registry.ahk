@@ -1214,3 +1214,29 @@ global gConfigRegistry := [
      min: 25, max: 500,
      d: "Size to keep after log trim in KB. Must be less than LogMaxKB."},
 ]
+
+; Serialize gConfigRegistry to JSON for editor UIs.
+; Returns a JSON string of the registry array suitable for JavaScript consumption.
+ConfigRegistry_SerializeToJSON() {
+    global gConfigRegistry
+
+    entries := []
+    fields := ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"]
+    for _, entry in gConfigRegistry {
+        m := Map()
+        for _, f in fields {
+            if (entry.HasOwnProp(f))
+                m[f] := entry.%f%
+        }
+        if (entry.HasOwnProp("default"))
+            m["default"] := entry.default
+        if (entry.HasOwnProp("options"))
+            m["options"] := entry.options
+        if (entry.HasOwnProp("min")) {
+            m["min"] := entry.min
+            m["max"] := entry.max
+        }
+        entries.Push(m)
+    }
+    return JSON.Dump(entries)
+}

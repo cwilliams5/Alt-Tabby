@@ -123,34 +123,10 @@ _CRE_OnWebMessage(sender, args) { ; lint-ignore: dead-param
 ; ============================================================
 
 _CRE_InjectData() {
-    global gCRE_WebView, gConfigRegistry
-    json := _CRE_SerializeRegistry()
+    global gCRE_WebView
+    json := ConfigRegistry_SerializeToJSON()
     script := "loadRegistry(" json ")"
     try gCRE_WebView.ExecuteScript(script)
-}
-
-_CRE_SerializeRegistry() {
-    global gConfigRegistry
-
-    entries := []
-    fields := ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"]
-    for _, entry in gConfigRegistry {
-        m := Map()
-        for _, f in fields {
-            if (entry.HasOwnProp(f))
-                m[f] := entry.%f%
-        }
-        if (entry.HasOwnProp("default"))
-            m["default"] := entry.default
-        if (entry.HasOwnProp("options"))
-            m["options"] := entry.options
-        if (entry.HasOwnProp("min")) {
-            m["min"] := entry.min
-            m["max"] := entry.max
-        }
-        entries.Push(m)
-    }
-    return JSON.Dump(entries)
 }
 
 _CRE_SaveRegistry(source) {

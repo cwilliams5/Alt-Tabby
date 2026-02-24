@@ -146,7 +146,7 @@ _Blacklist_Reload() {
     return true
 }
 
-; Check if a window matches any blacklist pattern
+; Check if a window matches any blacklist pattern (pure query — no side effects)
 ; Uses pre-compiled regex arrays for hot-path performance (no per-match string building)
 Blacklist_IsMatch(title, class) {
     global gBlacklist_TitleRegex, gBlacklist_ClassRegex
@@ -163,26 +163,20 @@ Blacklist_IsMatch(title, class) {
 
     ; Check title blacklist (pre-compiled regex)
     for _, regex in titleRegex {
-        if (RegExMatch(title, regex)) {
-            Stats_BumpLifetimeStat("TotalBlacklistSkips")
+        if (RegExMatch(title, regex))
             return true
-        }
     }
 
     ; Check class blacklist (pre-compiled regex)
     for _, regex in classRegex {
-        if (RegExMatch(class, regex)) {
-            Stats_BumpLifetimeStat("TotalBlacklistSkips")
+        if (RegExMatch(class, regex))
             return true
-        }
     }
 
     ; Check pair blacklist (both must match, pre-compiled regex)
     for _, pr in pairRegex {
-        if (RegExMatch(class, pr.class) && RegExMatch(title, pr.title)) {
-            Stats_BumpLifetimeStat("TotalBlacklistSkips")
+        if (RegExMatch(class, pr.class) && RegExMatch(title, pr.title))
             return true
-        }
     }
 
     return false
@@ -370,8 +364,10 @@ Blacklist_IsWindowEligibleEx(hwnd, title, class, &outVis, &outMin, &outCloak) {
 
     ; Check blacklist (use cached config value for hot path performance)
     global gCached_UseBlacklist
-    if (gCached_UseBlacklist && Blacklist_IsMatch(title, class))
+    if (gCached_UseBlacklist && Blacklist_IsMatch(title, class)) {
+        Stats_BumpLifetimeStat("TotalBlacklistSkips")
         return false
+    }
 
     return true
 }

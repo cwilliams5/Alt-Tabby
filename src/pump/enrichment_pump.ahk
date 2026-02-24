@@ -68,7 +68,7 @@ _Pump_Init() {
     OnMessage(IPC_WM_PIPE_WAKE, _Pump_OnPipeWake)  ; lint-ignore: onmessage-collision
 
     ; Start HICON prune timer
-    SetTimer(_Pump_PruneOwnedIcons, _Pump_IconPruneIntervalMs)
+    SetTimer(_Pump_PruneAllCaches, _Pump_IconPruneIntervalMs)
 
     _Pump_Log("INIT: EnrichmentPump ready")
 }
@@ -333,27 +333,40 @@ _Pump_ResolveProcessName(pid, &outPath := "") {
     if (pid <= 0)
         return ""
 
+    ; RACE FIX: Protect cache read/write — _Pump_PruneAllCaches runs on a separate timer
+    Critical "On"
+
     ; Check positive cache (path not cached — only name)
-    if (cachedName := _Pump_ProcNameCache.Get(pid, ""))
+    if (cachedName := _Pump_ProcNameCache.Get(pid, "")) {
+        Critical "Off"
         return cachedName
+    }
 
     ; Check negative cache
     if (failedTick := _Pump_FailedPidCache.Get(pid, 0)) {
-        if ((A_TickCount - failedTick) < _Pump_FailedPidCacheTTL)
+        if ((A_TickCount - failedTick) < _Pump_FailedPidCacheTTL) {
+            Critical "Off"
             return ""
+        }
         _Pump_FailedPidCache.Delete(pid)
     }
+    Critical "Off"
 
     ; Resolve — single ProcessUtils_GetPath call, caller gets path via outPath
     outPath := ProcessUtils_GetPath(pid)
     if (outPath = "") {
+        Critical "On"
         _Pump_FailedPidCache[pid] := A_TickCount
+        Critical "Off"
         return ""
     }
 
     name := ProcessUtils_Basename(outPath)
-    if (name != "")
+    if (name != "") {
+        Critical "On"
         _Pump_ProcNameCache[pid] := name
+        Critical "Off"
+    }
 
     return name
 }
@@ -363,11 +376,13 @@ _Pump_ResolveProcessName(pid, &outPath := "") {
 ; Also prunes dead PIDs from process name and failed-PID caches.
 ; Configurable interval (default 5 minutes) — icons are small, leak is slow.
 
-_Pump_PruneOwnedIcons() {
+_Pump_PruneAllCaches() {
     global _Pump_OwnedIcons, _Pump_PrevIconSource, _Pump_DiagEnabled
     global _Pump_ProcNameCache, _Pump_FailedPidCache
 
     ; --- Icon pruning: destroy HICONs for windows that no longer exist ---
+    ; RACE FIX: Protect map iteration — _Pump_ResolveIcon writes to these maps from enrich tick
+    Critical "On"
     toRemove := []
     if (_Pump_OwnedIcons.Count > 0 || _Pump_PrevIconSource.Count > 0) {
         for hwnd, _ in _Pump_OwnedIcons {
@@ -391,8 +406,10 @@ _Pump_PruneOwnedIcons() {
         for _, hwnd in toRemovePrev
             _Pump_PrevIconSource.Delete(hwnd)
     }
+    Critical "Off"
 
     ; --- PID cache pruning: remove entries for dead processes ---
+    Critical "On"
     prunedPids := 0
     if (_Pump_ProcNameCache.Count > 0) {
         deadPids := []
@@ -414,6 +431,7 @@ _Pump_PruneOwnedIcons() {
             _Pump_FailedPidCache.Delete(pid)
         prunedPids += deadPids.Length
     }
+    Critical "Off"
 
     pruned := toRemove.Length + prunedPids
     if (pruned > 0 && _Pump_DiagEnabled)
@@ -423,10 +441,10 @@ _Pump_PruneOwnedIcons() {
 ; ========================= LOGGING =========================
 
 _Pump_Log(msg) {
-    global _Pump_DiagEnabled
+    global _Pump_DiagEnabled, LOG_PATH_PUMP
     if (!_Pump_DiagEnabled)
         return
-    try LogAppend(A_Temp "\tabby_pump.log", msg)
+    try LogAppend(LOG_PATH_PUMP, msg)
 }
 
 ; ========================= CLEANUP =========================
@@ -435,7 +453,7 @@ _Pump_Cleanup() {
     global _Pump_Server, _Pump_OwnedIcons, _Pump_ExeIconCache, _Pump_PrevIconSource
 
     ; Stop prune timer
-    try SetTimer(_Pump_PruneOwnedIcons, 0)
+    try SetTimer(_Pump_PruneAllCaches, 0)
 
     ; Destroy all owned HICONs
     for _, hIcon in _Pump_OwnedIcons
