@@ -67,7 +67,7 @@ This is not "is this a good idea" — it's "name the exact interleaving." What i
 These Critical sections have been deliberately designed, tested, and documented. Do not propose removing, narrowing, or questioning them:
 
 - **`Critical "On"` through the entire `GUI_OnInterceptorEvent` handler including GDI+ rendering** (~16ms). This was previously narrowed and reverted — releasing before render causes partial glass background, window mapping corruption, and stale projection data. See `keyboard-hooks.md` "Do NOT Release Critical Before Rendering." This is the most important Critical section in the codebase.
-- **`Critical "On"` in `INT_Alt_Down`, `INT_Alt_Up`, `INT_Tab_Down`, `INT_Tab_Up`, `INT_Tab_Decide`, `INT_Ctrl_Down`, `INT_Escape_Down`** — all hotkey callbacks require Critical to prevent callback-interrupting-callback corruption.
+- **`Critical "On"` in `_INT_Alt_Down`, `_INT_Alt_Up`, `_INT_Tab_Down`, `_INT_Tab_Up`, `_INT_Tab_Decide`, `_INT_Ctrl_Down`, `_INT_Escape_Down`** — all hotkey callbacks require Critical to prevent callback-interrupting-callback corruption.
 - **Async activation event buffer** (`gGUI_EventBuffer`) — Critical around buffer push/pop is necessary by design.
 - **Flight recorder `FR_Record()`** — if it uses Critical, it's protecting the ring buffer write pointer. Pre-allocated, intentional.
 

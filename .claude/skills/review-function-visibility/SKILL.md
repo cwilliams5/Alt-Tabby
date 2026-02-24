@@ -46,7 +46,7 @@ Flag these but apply judgment. Only propose making private when:
 
 ## CRITICAL — Safe Renaming
 
-**Never use `replace_all` when the function name is a substring of another function name.** For example, renaming `Store_Init` would corrupt `WindowStore_Init`.
+**Never use `replace_all` when the function name is a substring of another function name.** For example, renaming `_Init` would corrupt `WL_Init`.
 
 Before every rename:
 1. Use `query_function_visibility.ps1 <funcName>` to get all call sites
