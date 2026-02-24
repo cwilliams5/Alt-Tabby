@@ -79,20 +79,4 @@ GUI_WorkspaceItemPasses(item) {
     return GUI_GetItemIsOnCurrent(item)
 }
 
-GUI_FilterByWorkspaceMode(items) {
-    global gGUI_WorkspaceMode, WS_MODE_ALL
-
-    if (gGUI_WorkspaceMode = WS_MODE_ALL) {
-        return items
-    }
-
-    ; WS_MODE_CURRENT mode - only items on current workspace
-    result := []
-    for _, item in items {
-        if (GUI_WorkspaceItemPasses(item)) {
-            result.Push(item)
-        }
-    }
-    return result
-}
 

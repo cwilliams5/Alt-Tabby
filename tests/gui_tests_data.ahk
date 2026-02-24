@@ -759,7 +759,7 @@ RunGUITests_Data() {
     items := CreateTestItems(3, 2)
     gGUI_ToggleBase := items
     ; In "current" mode, display should show only 2 items (on Main)
-    gGUI_DisplayItems := GUI_FilterByWorkspaceMode(gGUI_ToggleBase)
+    gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
     GUI_AssertEq(gGUI_DisplayItems.Length, 2, "CosmeticPatch WS refilter setup: 2 items in current mode")
 
     ; Simulate store says item 1 moved to "Other" workspace

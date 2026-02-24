@@ -67,7 +67,7 @@ Setup_GetInstalledPath() {
 Setup_ElevateWithState(opts) {
     global APP_NAME
     if (opts.HasOwnProp("source") && opts.HasOwnProp("target"))
-        WriteStateFile(opts.stateFile, opts.source, opts.target)
+        _WriteStateFile(opts.stateFile, opts.source, opts.target)
     try {
         if (!Launcher_RunAsAdmin(opts.flag))
             throw Error("RunAsAdmin failed")
@@ -1437,7 +1437,7 @@ ReadStateFile(filePath) {
 }
 
 ; Write a state file in source<|>target format (companion to ReadStateFile).
-WriteStateFile(filePath, sourcePath, targetPath) {
+_WriteStateFile(filePath, sourcePath, targetPath) {
     global UPDATE_INFO_DELIMITER
     try FileDelete(filePath)
     FileAppend(sourcePath UPDATE_INFO_DELIMITER targetPath, filePath, "UTF-8")
