@@ -683,6 +683,11 @@ $sw.Stop()
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
+# Pre-compiled regex for BD_RP_CleanLine (avoids per-call regex compilation)
+$script:RP_RX_DBL = [regex]::new('"[^"]*"', 'Compiled')
+$script:RP_RX_SGL = [regex]::new("'[^']*'", 'Compiled')
+$script:RP_RX_CMT = [regex]::new('\s;.*$', 'Compiled')
+
 function BD_RP_CleanLine {
     param([string]$line)
     $trimmed = $line.TrimStart()
@@ -690,9 +695,10 @@ function BD_RP_CleanLine {
     if ($trimmed.IndexOf('"') -lt 0 -and $trimmed.IndexOf("'") -lt 0 -and $trimmed.IndexOf(';') -lt 0) {
         return $trimmed
     }
-    $cleaned = $trimmed -replace '"[^"]*"', '""'
-    $cleaned = $cleaned -replace "'[^']*'", "''"
-    $cleaned = $cleaned -replace '\s;.*$', ''
+    $cleaned = $trimmed
+    if ($trimmed.IndexOf('"') -ge 0) { $cleaned = $script:RP_RX_DBL.Replace($cleaned, '""') }
+    if ($trimmed.IndexOf("'") -ge 0) { $cleaned = $script:RP_RX_SGL.Replace($cleaned, "''") }
+    if ($cleaned.IndexOf(';') -ge 0) { $cleaned = $script:RP_RX_CMT.Replace($cleaned, '') }
     return $cleaned
 }
 
@@ -703,6 +709,8 @@ foreach ($file in $allFiles) {
     $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
+    # Single-pass: detect functions, track body boundaries, and collect return statements
+    # simultaneously — eliminates the redundant second brace-depth pass.
     $i = 0
     while ($i -lt $lines.Count) {
         $cleaned = BD_RP_CleanLine $lines[$i]
@@ -741,71 +749,58 @@ foreach ($file in $allFiles) {
                 if ($funcStart -eq -1) { $i++; continue }
             }
 
-            # Extract function body by tracking brace depth
+            # Single pass: track brace depth, find body end, and collect return statements
             $depth = 0
-            $bodyStart = $funcStart
             $bodyEnd = -1
             $foundOpenBrace = $false
-
-            for ($j = $bodyStart; $j -lt $lines.Count; $j++) {
-                $bodyCleaned = BD_RP_CleanLine $lines[$j]
-                if ($bodyCleaned -eq '') { continue }
-
-                foreach ($c in $bodyCleaned.ToCharArray()) {
-                    if ($c -eq '{') {
-                        $depth++
-                        $foundOpenBrace = $true
-                    }
-                    elseif ($c -eq '}') {
-                        $depth--
-                        if ($foundOpenBrace -and $depth -eq 0) {
-                            $bodyEnd = $j
-                            break
-                        }
-                    }
-                }
-                if ($bodyEnd -ge 0) { break }
-            }
-
-            if ($bodyEnd -lt 0) { $i++; continue }
-
-            # Analyze return statements within the function body
             $valueReturns = [System.Collections.ArrayList]::new()
             $voidReturns = [System.Collections.ArrayList]::new()
-            $innerDepth = 0
 
-            for ($j = $bodyStart; $j -le $bodyEnd; $j++) {
+            for ($j = $funcStart; $j -lt $lines.Count; $j++) {
                 $bodyCleaned = BD_RP_CleanLine $lines[$j]
                 if ($bodyCleaned -eq '') { continue }
 
-                $prevInnerDepth = $innerDepth
+                $prevDepth = $depth
                 foreach ($c in $bodyCleaned.ToCharArray()) {
-                    if ($c -eq '{') { $innerDepth++ }
-                    elseif ($c -eq '}') { $innerDepth-- }
+                    if ($c -eq '{') { $depth++; $foundOpenBrace = $true }
+                    elseif ($c -eq '}') { $depth-- }
                 }
 
-                if ($j -eq $bodyStart) { continue }
-                if ($j -eq $bodyEnd) { continue }
+                # Check if we've closed the function body
+                if ($foundOpenBrace -and $depth -eq 0) {
+                    $bodyEnd = $j
+                    break
+                }
 
-                # Skip nested function bodies
-                if ($bodyCleaned -match '^\w+\s*\([^)]*\)\s*\{' -and $prevInnerDepth -ge 1) {
-                    $skipToDepth = $prevInnerDepth
+                # Skip the opening line and collect returns from body lines
+                if ($j -eq $funcStart) { continue }
+
+                # Skip nested function bodies (depth > 1 means inside nested function)
+                if ($bodyCleaned -match '^\w+\s*\([^)]*\)\s*\{' -and $prevDepth -ge 1) {
+                    # Skip ahead through nested function by tracking depth
                     $j++
-                    while ($j -le $bodyEnd) {
+                    while ($j -lt $lines.Count) {
                         $skipCleaned = BD_RP_CleanLine $lines[$j]
                         if ($skipCleaned -ne '') {
                             foreach ($c in $skipCleaned.ToCharArray()) {
-                                if ($c -eq '{') { $innerDepth++ }
-                                elseif ($c -eq '}') { $innerDepth-- }
+                                if ($c -eq '{') { $depth++ }
+                                elseif ($c -eq '}') { $depth-- }
                             }
-                            if ($innerDepth -le $skipToDepth) { break }
+                            if ($depth -le $prevDepth) {
+                                # Check if this also closed the outer function
+                                if ($foundOpenBrace -and $depth -eq 0) {
+                                    $bodyEnd = $j
+                                }
+                                break
+                            }
                         }
                         $j++
                     }
+                    if ($bodyEnd -ge 0) { break }
                     continue
                 }
 
-                # Check for return statements
+                # Check for return statements (only at function body depth = 1)
                 if ($bodyCleaned -match '(?<![.\w])return(?!\w)') {
                     $afterReturn = ''
                     if ($bodyCleaned -match '(?<![.\w])return\s+(.+)') {
@@ -828,6 +823,8 @@ foreach ($file in $allFiles) {
                     }
                 }
             }
+
+            if ($bodyEnd -lt 0) { $i++; continue }
 
             if ($valueReturns.Count -gt 0 -and $voidReturns.Count -gt 0 -and -not $isSuppressed) {
                 [void]$rpIssues.Add([PSCustomObject]@{

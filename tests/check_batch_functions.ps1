@@ -287,6 +287,27 @@ foreach ($file in $allProjectFiles) {
     $isTestFile = $testsDirNorm -and $file.FullName.ToLower().StartsWith($testsDirNorm)
     $isLibFile = $file.FullName -like "*\lib\*"
 
+    # --- Fast path for lib/ files: only register function names + class names ---
+    # lib/ files only contribute to $ucDefinedFunctions (check_undefined_calls).
+    # Skip all other processing: no BF_CleanLine, no BF_CountBraces, no depth tracking,
+    # no global collection, no processedLines cache, no multi-line detection.
+    if ($isLibFile) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $raw = $lines[$i]
+            if ($raw -match '^\s*;') { continue }
+            $m = $script:RX_FUNC_DEF.Match($raw)
+            if ($m.Success) {
+                $funcName = $m.Groups[1].Value
+                if (-not $BF_AHK_KEYWORDS.ContainsKey($funcName.ToLower())) {
+                    [void]$ucDefinedFunctions.Add($funcName)
+                }
+            } elseif ($raw -match '^\s*class\s+(\w+)') {
+                [void]$ucDefinedFunctions.Add($Matches[1])
+            }
+        }
+        continue  # Skip full processing for this file
+    }
+
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
@@ -324,7 +345,12 @@ foreach ($file in $allProjectFiles) {
             continue
         }
 
-        $braces = BF_CountBraces $cleaned
+        # Inline brace counting (eliminates ~30K function call overhead in shared pass)
+        $o = 0; $c = 0
+        foreach ($ch in $cleaned.ToCharArray()) {
+            if ($ch -eq '{') { $o++ } elseif ($ch -eq '}') { $c++ }
+        }
+        $braces = @($o, $c)
         $perFileProcessed[$i] = @{ Cleaned = $cleaned; Braces = $braces }
 
         # --- check_undefined_calls: global/lambda extraction at ALL depths ---
