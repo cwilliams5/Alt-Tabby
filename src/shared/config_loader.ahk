@@ -419,19 +419,35 @@ _CL_FormatValue(val, type, fmt := "") {
     return String(val)
 }
 
-; Parse a raw INI string value into the correct AHK type
-CL_ParseValue(iniVal, type) {
+; Core type coercion for INI string values.
+; Throws on invalid bool/int/float so callers can decide error policy.
+_CL_CoerceValue(val, type) {
     switch type {
         case "bool":
-            return (iniVal = "true" || iniVal = "1" || iniVal = "yes")
+            if (val = "true" || val = "1" || val = "yes")
+                return true
+            if (val = "false" || val = "0" || val = "no")
+                return false
+            throw ValueError("invalid bool: " val)
         case "int":
-            if (SubStr(iniVal, 1, 2) = "0x")
-                return Integer(iniVal)
-            return Integer(iniVal)
+            return Integer(val)
         case "float":
-            return Float(iniVal)
+            return Float(val)
         default:
-            return iniVal
+            return val
+    }
+}
+
+; Parse a raw INI string value into the correct AHK type.
+; Bool: returns false for unrecognized values (lenient for editor UIs).
+; Int/Float: throws on invalid input (caller must handle).
+CL_ParseValue(iniVal, type) {
+    try
+        return _CL_CoerceValue(iniVal, type)
+    catch {
+        if (type = "bool")
+            return false
+        throw
     }
 }
 
@@ -577,46 +593,32 @@ _CL_LoadAllSettings() {
             continue
 
         ; Parse value based on type
-        switch entry.t {
-            case "bool":
-                if (val = "true" || val = "1" || val = "yes")
-                    parsedVal := true
-                else if (val = "false" || val = "0" || val = "no")
-                    parsedVal := false
-                else {
+        if (entry.t = "enum") {
+            found := false
+            for _, opt in entry.options {
+                if (opt = val) {
+                    found := true
+                    break
+                }
+            }
+            if (found)
+                parsedVal := val
+            else {
+                LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (not a valid option), using default")
+                continue
+            }
+        } else {
+            try {
+                parsedVal := _CL_CoerceValue(val, entry.t)
+            } catch {
+                if (entry.t = "bool") {
                     LogAppend(LOG_PATH_STORE, "config parse warning: " entry.k "=" val " (expected true/false), treating as false")
                     parsedVal := false
-                }
-            case "int":
-                try {
-                    parsedVal := Integer(val)
-                } catch {
-                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected int), using default")
+                } else {
+                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected " entry.t "), using default")
                     continue
                 }
-            case "float":
-                try {
-                    parsedVal := Float(val)
-                } catch {
-                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected float), using default")
-                    continue
-                }
-            case "enum":
-                found := false
-                for _, opt in entry.options {
-                    if (opt = val) {
-                        found := true
-                        break
-                    }
-                }
-                if (found)
-                    parsedVal := val
-                else {
-                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (not a valid option), using default")
-                    continue
-                }
-            default:
-                parsedVal := val
+            }
         }
 
         cfg.%entry.g% := parsedVal
