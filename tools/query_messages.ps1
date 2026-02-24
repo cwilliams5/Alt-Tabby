@@ -78,14 +78,25 @@ if (Test-Path $ipcConstFile) {
     }
 }
 
-# Helper: resolve a named constant to hex value (file-local then ipc_constants cache)
+# === Pre-built regex for per-line matching (avoids re-parsing pattern strings in hot loop) ===
+# NOTE: Using 'IgnoreCase' only (not 'Compiled') — JIT compilation overhead is not
+# amortized in short-lived tool processes. .NET regex cache handles the rest.
+$rxOnMsgHex       = [regex]::new('OnMessage\(\s*(0x[0-9A-Fa-f]+)\s*,\s*(\w+)')
+$rxOnMsgHexAdd    = [regex]::new('OnMessage\([^,]+,[^,]+,\s*(-?\d+)')
+$rxOnMsgLambda    = [regex]::new('OnMessage\(\s*(0x[0-9A-Fa-f]+)\s*,\s*\(')
+$rxLambdaTarget   = [regex]::new('=>.*?(\w+)\s*\(')
+$rxOnMsgConst     = [regex]::new('OnMessage\(\s*(\w+)\s*,\s*(\w+)')
+$rxSendPostHex    = [regex]::new('(SendMessage|PostMessage)\s*\(\s*(0x[0-9A-Fa-f]+)')
+$rxDllCallHex     = [regex]::new('DllCall\(\s*"[^"]*(?:SendMessage|PostMessage)\w*"[^)]*?(0x[0-9A-Fa-f]+)')
+$rxDllCallConst   = [regex]::new('DllCall\(\s*"[^"]*(?:SendMessage|PostMessage)\w*"[^)]*?\b(\w+_WM_\w+|WM_\w+)')
+$rxPostMsgConst   = [regex]::new('PostMessage\s*\(\s*(\w+_WM_\w+|WM_\w+)')
+# Regex for building per-file constant cache
+$rxLocalConst     = [regex]::new('^\s*(?:global\s+)?(\w+)\s*:=\s*(0x[0-9A-Fa-f]+)')
+
+# Helper: resolve a named constant from per-file cache then ipc_constants cache
 function Resolve-HexConstant {
-    param([string]$Name, [string[]]$FileLines)
-    for ($j = 0; $j -lt $FileLines.Count; $j++) {
-        if ($FileLines[$j] -match "^\s*(?:global\s+)?$Name\s*:=\s*(0x[0-9A-Fa-f]+)") {
-            return [int]$Matches[1]
-        }
-    }
+    param([string]$Name, [hashtable]$LocalCache)
+    if ($LocalCache.ContainsKey($Name)) { return $LocalCache[$Name] }
     if ($ipcConstCache.ContainsKey($Name)) { return $ipcConstCache[$Name] }
     return $null
 }
@@ -106,6 +117,13 @@ foreach ($file in $allFiles) {
     $lines = $fileText -split '\r?\n'
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
+    # Build per-file constant cache: constName -> hex int (replaces O(L) Resolve-HexConstant scans)
+    $localConsts = @{}
+    foreach ($cl in $lines) {
+        $cm = $rxLocalConst.Match($cl)
+        if ($cm.Success) { $localConsts[$cm.Groups[1].Value] = [int]$cm.Groups[2].Value }
+    }
+
     $funcBounds = $null  # lazy init: defer boundary building to first match
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -113,7 +131,7 @@ foreach ($file in $allFiles) {
         $trimmed = $line.Trim()
         if ($trimmed.Length -eq 0 -or $trimmed[0] -eq ';') { continue }
 
-        # Quick keyword gate: skip lines that can't match any pattern (Opt 2)
+        # Quick keyword gate: skip lines that can't match any pattern
         if ($line.IndexOf('OnMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
             $line.IndexOf('SendMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
             $line.IndexOf('PostMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
@@ -127,11 +145,13 @@ foreach ($file in $allFiles) {
         }
 
         # OnMessage(0xNNNN, handler) or OnMessage(0xNNNN, handler, addRemove)
-        if ($trimmed -match 'OnMessage\(\s*(0x[0-9A-Fa-f]+)\s*,\s*(\w+)') {
-            $hexVal = [int]$Matches[1]
-            $handler = $Matches[2]
+        $rm = $rxOnMsgHex.Match($trimmed)
+        if ($rm.Success) {
+            $hexVal = [int]$rm.Groups[1].Value
+            $handler = $rm.Groups[2].Value
             $addRemove = ""
-            if ($trimmed -match 'OnMessage\([^,]+,[^,]+,\s*(-?\d+)') { $addRemove = $Matches[1] }
+            $ra = $rxOnMsgHexAdd.Match($trimmed)
+            if ($ra.Success) { $addRemove = $ra.Groups[1].Value }
             [void]$entries.Add(@{
                 Hex     = $hexVal
                 Type    = if ($addRemove -eq "0") { "unregister" } else { "register" }
@@ -144,12 +164,14 @@ foreach ($file in $allFiles) {
         }
 
         # OnMessage(0xNNNN, (...) => ...) — lambda handlers
-        if ($trimmed -match 'OnMessage\(\s*(0x[0-9A-Fa-f]+)\s*,\s*\(') {
-            $hexVal = [int]$Matches[1]
+        $rm = $rxOnMsgLambda.Match($trimmed)
+        if ($rm.Success) {
+            $hexVal = [int]$rm.Groups[1].Value
             # Extract the primary function called inside the lambda
             $handler = "(lambda)"
-            if ($trimmed -match '=>.*?(\w+)\s*\(') {
-                $called = $Matches[1]
+            $rl = $rxLambdaTarget.Match($trimmed)
+            if ($rl.Success) {
+                $called = $rl.Groups[1].Value
                 if (-not $AHK_KEYWORDS_SET.Contains($called)) { $handler = "(lambda -> $called)" }
             }
             [void]$entries.Add(@{
@@ -164,13 +186,15 @@ foreach ($file in $allFiles) {
         }
 
         # OnMessage with named constant variable: OnMessage(WM_COPYDATA, handler)
-        if ($trimmed -match 'OnMessage\(\s*(\w+)\s*,\s*(\w+)') {
-            $constName = $Matches[1]
-            $handler = $Matches[2]
-            $resolved = Resolve-HexConstant $constName $lines
+        $rm = $rxOnMsgConst.Match($trimmed)
+        if ($rm.Success) {
+            $constName = $rm.Groups[1].Value
+            $handler = $rm.Groups[2].Value
+            $resolved = Resolve-HexConstant $constName $localConsts
             if ($resolved) {
                 $addRemove = ""
-                if ($trimmed -match 'OnMessage\([^,]+,[^,]+,\s*(-?\d+)') { $addRemove = $Matches[1] }
+                $ra = $rxOnMsgHexAdd.Match($trimmed)
+                if ($ra.Success) { $addRemove = $ra.Groups[1].Value }
                 [void]$entries.Add(@{
                     Hex     = $resolved
                     Type    = if ($addRemove -eq "0") { "unregister" } else { "register" }
@@ -184,9 +208,10 @@ foreach ($file in $allFiles) {
         }
 
         # SendMessage / PostMessage with hex literal
-        if ($trimmed -match '(SendMessage|PostMessage)\s*\(\s*(0x[0-9A-Fa-f]+)') {
-            $verb = $Matches[1]
-            $hexVal = [int]$Matches[2]
+        $rm = $rxSendPostHex.Match($trimmed)
+        if ($rm.Success) {
+            $verb = $rm.Groups[1].Value
+            $hexVal = [int]$rm.Groups[2].Value
             [void]$entries.Add(@{
                 Hex     = $hexVal
                 Type    = $verb.ToLower()
@@ -199,9 +224,10 @@ foreach ($file in $allFiles) {
         }
 
         # DllCall SendMessage/PostMessage variants with hex literal
-        if ($trimmed -match 'DllCall\(\s*"[^"]*(?:SendMessage|PostMessage)\w*"[^)]*?(0x[0-9A-Fa-f]+)') {
-            $hexVal = [int]$Matches[1]
-            $verb = if ($trimmed -match 'PostMessage') { "postmessage" } else { "sendmessage" }
+        $rm = $rxDllCallHex.Match($trimmed)
+        if ($rm.Success) {
+            $hexVal = [int]$rm.Groups[1].Value
+            $verb = if ($trimmed.IndexOf('PostMessage', [StringComparison]::OrdinalIgnoreCase) -ge 0) { "postmessage" } else { "sendmessage" }
             [void]$entries.Add(@{
                 Hex     = $hexVal
                 Type    = $verb
@@ -213,19 +239,14 @@ foreach ($file in $allFiles) {
             continue
         }
 
-        # SendMessage with named constant in DllCall (e.g., IP_WM_GETICON)
-        # Note: only resolves from current file (not ipc_constants) to match original behavior
-        if ($trimmed -match 'DllCall\(\s*"[^"]*(?:SendMessage|PostMessage)\w*"[^)]*?\b(\w+_WM_\w+|WM_\w+)') {
-            $constName = $Matches[1]
-            $resolved = $null
-            for ($j = 0; $j -lt $lines.Count; $j++) {
-                if ($lines[$j] -match "^\s*(?:global\s+)?$constName\s*:=\s*(0x[0-9A-Fa-f]+)") {
-                    $resolved = [int]$Matches[1]
-                    break
-                }
-            }
+        # DllCall SendMessage/PostMessage with named constant (e.g., IP_WM_GETICON)
+        $rm = $rxDllCallConst.Match($trimmed)
+        if ($rm.Success) {
+            $constName = $rm.Groups[1].Value
+            # Resolve from file-local cache only (matches original behavior)
+            $resolved = if ($localConsts.ContainsKey($constName)) { $localConsts[$constName] } else { $null }
             if ($resolved) {
-                $verb = if ($trimmed -match 'PostMessage') { "postmessage" } else { "sendmessage" }
+                $verb = if ($trimmed.IndexOf('PostMessage', [StringComparison]::OrdinalIgnoreCase) -ge 0) { "postmessage" } else { "sendmessage" }
                 [void]$entries.Add(@{
                     Hex     = $resolved
                     Type    = $verb
@@ -239,9 +260,10 @@ foreach ($file in $allFiles) {
         }
 
         # PostMessage with named constant (non-DllCall)
-        if ($trimmed -match 'PostMessage\s*\(\s*(\w+_WM_\w+|WM_\w+)') {
-            $constName = $Matches[1]
-            $resolved = Resolve-HexConstant $constName $lines
+        $rm = $rxPostMsgConst.Match($trimmed)
+        if ($rm.Success) {
+            $constName = $rm.Groups[1].Value
+            $resolved = Resolve-HexConstant $constName $localConsts
             if ($resolved) {
                 [void]$entries.Add(@{
                     Hex     = $resolved

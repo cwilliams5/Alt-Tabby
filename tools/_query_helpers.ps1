@@ -25,6 +25,9 @@ $script:_rxSglQuote = [regex]::new("'[^']*'", 'Compiled')
 $script:_rxComment  = [regex]::new('\s;.*$', 'Compiled')
 # Word-extraction regex (used by query_global_ownership Pass 2)
 $script:_rxWord     = [regex]::new('\b[a-zA-Z_]\w+\b', 'Compiled')
+# Function definition regex (used by Build-FuncBoundaryMap, shared by query_ipc/messages/timers)
+# NOTE: No 'Compiled' flag — JIT overhead is not amortized in short-lived tool processes
+$script:_rxFuncDef  = [regex]::new('^(\w+)\s*\(')
 
 function Clean-Line {
     param([string]$line)
@@ -62,8 +65,9 @@ function Build-FuncBoundaryMap {
     param([string[]]$Lines)
     $bounds = [System.Collections.ArrayList]::new()
     for ($j = 0; $j -lt $Lines.Count; $j++) {
-        if ($Lines[$j] -match '^(\w+)\s*\(') {
-            $candidate = $Matches[1]
+        $m = $script:_rxFuncDef.Match($Lines[$j])
+        if ($m.Success) {
+            $candidate = $m.Groups[1].Value
             if ($script:AHK_KEYWORDS_SET.Contains($candidate)) { continue }
             $hasBody = $Lines[$j].Contains('{')
             if (-not $hasBody) {
