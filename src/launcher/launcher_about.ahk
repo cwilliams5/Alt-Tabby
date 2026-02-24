@@ -705,7 +705,7 @@ _Dash_AddSubprocessRow(dg, themeEntry, dot, &subY, prefix, displayName, pid, isC
 ; ============================================================
 
 _Dash_GetInstallInfo() {
-    global cfg, ALTTABBY_INSTALL_DIR
+    global cfg
 
     if (cfg.HasOwnProp("SetupExePath") && cfg.SetupExePath != "") {
         installDir := ""
@@ -713,7 +713,7 @@ _Dash_GetInstallInfo() {
         return installDir
     }
 
-    if (InStr(StrLower(A_ScriptDir), StrLower(ALTTABBY_INSTALL_DIR)))
+    if (IsInProgramFiles())
         return A_ScriptDir
 
     return A_ScriptDir " (portable)"

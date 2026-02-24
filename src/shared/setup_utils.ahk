@@ -405,7 +405,7 @@ CreateAdminTask(exePath, installId := "", taskNameOverride := "") {
     result := _RunWithTimeout('schtasks /create /tn "' taskName '" /xml "' xmlPath '" /f')
 
     try FileDelete(xmlPath)
-    _AdminTask_InvalidateCache()
+    AdminTask_InvalidateCache()
 
     return (result = 0)
 }
@@ -415,7 +415,7 @@ DeleteAdminTask(taskNameOverride := "") {
     global ALTTABBY_TASK_NAME
     taskName := (taskNameOverride != "") ? taskNameOverride : ALTTABBY_TASK_NAME
     result := _RunWithTimeout('schtasks /delete /tn "' taskName '" /f')
-    _AdminTask_InvalidateCache()
+    AdminTask_InvalidateCache()
     return (result = 0)
 }
 
@@ -446,7 +446,7 @@ _AdminTask_GetCachedData() {
 }
 
 ; Invalidate the admin task cache. Must be called after CreateAdminTask/DeleteAdminTask.
-_AdminTask_InvalidateCache() {
+AdminTask_InvalidateCache() {
     global g_AdminTaskCacheValid
     g_AdminTaskCacheValid := false
 }
