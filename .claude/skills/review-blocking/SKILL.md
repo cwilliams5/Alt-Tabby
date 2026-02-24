@@ -49,6 +49,8 @@ Produce a categorized function list:
 
 Only functions in `src/core/` and `src/gui/` (plus `src/shared/` files they call into). Exclude `src/lib/` (third-party), `src/editors/` (not on main thread during Alt-Tab), `src/pump/` (separate process).
 
+Use `query_state.ps1` to determine if a blocking function is only reachable from specific state machine branches — a function that blocks only during `IDLE` is less critical than one that blocks during `ACTIVE`.
+
 ## Phase 2 — Micro-Audit
 
 **Use an agent team.** Split the discovery list into batches and assign each batch to a parallel agent. Each agent reads the function body (use `query_function.ps1 <funcName>`) and audits it in isolation.

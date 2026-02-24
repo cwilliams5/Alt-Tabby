@@ -25,7 +25,7 @@ Run these via `python tools/query_profile.py <file>`:
 
 1. **Summary** (no flags) — always run first. Show the table to the user.
 2. **Reentrancy check** (`--reentrant`) — always run. Flag any reentrant calls as potential bugs.
-3. **Deep dive** — based on the summary, pick the top 2-3 functions by total time and run `--function <name>` on each. Focus on:
+3. **Deep dive** — based on the summary, pick the top 2-3 functions by total time and run `--function <name>` on each. Use `query_timers.ps1` to check if hot functions are timer callbacks — this helps interpret high call counts (timer-driven vs event-driven). Focus on:
    - Unexpected caller chains (who is triggering this function and should they be?)
    - High call counts relative to session activity
    - Large max vs avg gaps (outliers worth investigating)

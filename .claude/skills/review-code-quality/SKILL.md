@@ -79,6 +79,8 @@ Split by area for parallel scanning:
 
 Exclude `src/lib/` (third-party code).
 
+Use `query_interface.ps1` to compare module public surfaces — similar API shapes across files can reveal DRY violations or misplaced responsibilities.
+
 ## Validation
 
 After explore agents report back, **validate every finding yourself**. Code quality is subjective — what looks like a concern violation may be an intentional design choice for performance or simplicity.
