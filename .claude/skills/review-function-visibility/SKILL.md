@@ -1,8 +1,9 @@
 ---
 name: review-function-visibility
 description: Audit function visibility boundaries and rename misclassified public/private functions
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Audit function visibility boundaries for cleanup opportunities. Use parallelism where possible.
 
 ## Tools

@@ -1,8 +1,9 @@
 ---
 name: review-tool-coverage
 description: Audit query tools for accuracy, gaps, and retirement candidates
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Audit the query tools in `tools/` for fitness. Use parallelism where possible.
 
 ## Context

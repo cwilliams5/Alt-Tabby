@@ -1,9 +1,10 @@
 ---
 name: explain
 description: Explain a file, function, or system — architectural walkthrough using query tools
-user_invocable: true
+user-invocable: true
+disable-model-invocation: false
+argument-hint: "[file, function, or system]"
 ---
-
 The user wants to understand how something works. Not a review, not an audit — just teach. Build a concise architectural explanation using the query tools. Minimize context cost — don't load entire files when a query tool can answer.
 
 ## How to Research

@@ -1,9 +1,9 @@
 ---
 name: pre-release
 description: Pre-flight checklist — run high-signal review skills before a release
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Run the curated pre-release review checklist. Each review enters planning mode and produces findings. Stop and report after each tier — the user decides whether to proceed to the next tier or address findings first.
 
 ## Tier 1 — Correctness (bugs that ship to users)

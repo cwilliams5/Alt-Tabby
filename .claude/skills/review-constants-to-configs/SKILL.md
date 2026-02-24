@@ -1,8 +1,9 @@
 ---
 name: review-constants-to-configs
 description: Find hardcoded constants that should be user-configurable via config registry
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Inventory all hardcoded constants and evaluate which should be promoted to the config registry. Use parallelism where possible.
 
 ## Tools

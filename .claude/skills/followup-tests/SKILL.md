@@ -1,9 +1,9 @@
 ---
 name: followup-tests
 description: Evaluate whether changes suggest new tests, modified tests, or new static analysis checks
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Review the current plan or recent changes and evaluate whether they suggest new tests, test modifications, or new static analysis checks. This covers both directions:
 
 - **Forward-looking**: Do the planned changes need test coverage?

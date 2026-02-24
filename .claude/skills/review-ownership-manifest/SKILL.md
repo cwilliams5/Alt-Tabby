@@ -1,8 +1,9 @@
 ---
 name: review-ownership-manifest
 description: Review ownership.manifest for coupling that can be reduced
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Review `ownership.manifest` for coupling that can be reduced. Use maximum parallelism where possible.
 
 The manifest lists all files that write to each global (alphabetical, no file is special by position). The pre-gate validates freshness against actual code, so all entries reflect real mutations. Focus on whether coupling is **necessary**, not whether entries are accurate.

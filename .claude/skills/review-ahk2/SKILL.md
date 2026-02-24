@@ -1,8 +1,9 @@
 ---
 name: review-ahk2
 description: Scan for AHK v1 patterns that slipped into the v2 codebase
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Deep-scan all source files for AHK v1 patterns that don't belong in a v2 codebase. Use maximum parallelism — spawn explore agents for independent areas.
 
 ## Context

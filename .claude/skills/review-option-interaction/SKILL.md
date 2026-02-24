@@ -1,8 +1,9 @@
 ---
 name: review-option-interaction
 description: Test combinatorial interactions between install options, launch modes, and user journeys
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Deep-research all interactions between installation options, launch modes, admin state, and user journeys. Think carefully about every path a user could take. Use maximum parallelism — spawn an agent team if desired.
 
 ## The Problem

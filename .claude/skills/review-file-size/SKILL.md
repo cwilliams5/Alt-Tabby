@@ -1,8 +1,9 @@
 ---
 name: review-file-size
 description: Find files approaching context limits and evaluate whether coupling-aware splits are worthwhile
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Identify source files approaching the context load limit and evaluate whether they can be meaningfully split. Use parallelism where possible.
 
 ## Why This Matters

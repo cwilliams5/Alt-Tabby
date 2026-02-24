@@ -1,9 +1,9 @@
 ---
 name: followup-cleanup
 description: Clean a review plan for handoff to a coding agent — prune false positives, add stale-data warnings
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Prepare the current plan for handoff to a coding agent. Two steps:
 
 ## Step 1 — Prune false positives

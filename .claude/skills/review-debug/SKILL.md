@@ -1,8 +1,9 @@
 ---
 name: review-debug
 description: Audit debug logging and diagnostics for ungated disk writes, missing coverage, and overhead
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Systematically audit all debug logging, tooltips, and diagnostic output across the codebase. Use maximum parallelism — spawn explore agents for independent areas.
 
 ## Two Questions to Answer

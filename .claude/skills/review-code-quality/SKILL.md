@@ -1,8 +1,9 @@
 ---
 name: review-code-quality
 description: Review code quality — separation of concerns, magic numbers, DRY, maintenance issues
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Deep-review the codebase for code quality and maintainability issues. Use maximum parallelism — spawn explore agents for independent areas.
 
 ## What to Look For

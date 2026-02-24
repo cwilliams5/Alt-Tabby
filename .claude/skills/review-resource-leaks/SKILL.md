@@ -1,8 +1,9 @@
 ---
 name: review-resource-leaks
 description: Audit for memory leaks, handle leaks, GDI leaks, and CPU churn
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Systematically audit the codebase for resource leaks and unnecessary CPU churn. Use maximum parallelism — spawn explore agents for independent areas.
 
 ## Resource Categories

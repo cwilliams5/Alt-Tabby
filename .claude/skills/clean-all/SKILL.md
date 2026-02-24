@@ -1,8 +1,9 @@
 ---
 name: clean-all
 description: Delete all non-main branches (local + remote) and prune stale refs
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Clean up all branches except main, locally and remotely.
 
 1. Run `git remote prune origin` to remove stale remote tracking refs.

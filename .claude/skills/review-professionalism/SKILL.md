@@ -1,8 +1,9 @@
 ---
 name: review-professionalism
 description: Review app polish — native feel, user-facing text, UX quality, and professional presentation
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Deep-review all user-facing aspects of the app for professionalism and polish. Use maximum parallelism — spawn explore agents for independent areas.
 
 ## Context

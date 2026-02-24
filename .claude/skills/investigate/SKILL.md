@@ -1,9 +1,10 @@
 ---
 name: investigate
 description: Guide diagnosis of a user-reported symptom — map to diagnostics, collect data, analyze
-user_invocable: true
+user-invocable: true
+disable-model-invocation: false
+argument-hint: "[symptom]"
 ---
-
 The user is reporting a symptom or bug. Your job is to figure out what data is needed to diagnose it, guide the user to collect that data, then analyze the results.
 
 ## Step 1 — Understand the symptom

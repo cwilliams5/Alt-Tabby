@@ -1,8 +1,9 @@
 ---
 name: merge-all
 description: Merge all open PRs into main with testing between each
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Merge all open PRs into main, testing between each merge.
 
 1. List open PRs with `gh pr list`. Include PRs from Claude agents and the repo owner.

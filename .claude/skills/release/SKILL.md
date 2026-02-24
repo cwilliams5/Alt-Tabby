@@ -1,9 +1,9 @@
 ---
 name: release
 description: Build and publish a GitHub release
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Create a GitHub release for Alt-Tabby. The user may provide additional context (version bump amount, release note focus area, etc.) — incorporate it into the steps below.
 
 ## Steps

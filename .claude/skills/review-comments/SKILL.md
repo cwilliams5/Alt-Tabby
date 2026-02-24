@@ -1,8 +1,9 @@
 ---
 name: review-comments
 description: Audit comments for staleness — stale identifier references, outdated behavioral claims, and unverifiable flags
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Three-phase comment audit with decreasing confidence at each tier. Use maximum parallelism — spawn explore agents for independent file groups.
 
 ## The Asymmetry

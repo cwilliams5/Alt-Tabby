@@ -1,8 +1,9 @@
 ---
 name: review-test-skips
 description: Audit all SKIP statements in the test suite for correctness
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Audit every `Log("SKIP:` statement across all `.ahk` test files in `tests/`. For each one, determine whether it is a **legitimate skip** or a **silent failure** that should be `FAIL` + `TestErrors++`.
 
 ## Classification Rules

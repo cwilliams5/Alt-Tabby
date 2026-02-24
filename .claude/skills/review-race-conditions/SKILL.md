@@ -1,8 +1,9 @@
 ---
 name: review-race-conditions
 description: Audit for race conditions in timers, hotkeys, callbacks, and shared state
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Systematically audit the codebase for race conditions. Use maximum parallelism — spawn explore agents for independent areas.
 
 ## AHK v2 Concurrency Model

@@ -1,8 +1,9 @@
 ---
 name: review-latency
 description: Audit the two latency-critical paths for blocking work, redundant computation, and micro-optimization opportunities
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Deep-audit both latency-critical paths for anything that adds delay — from micro-optimizations to architectural blockers. Use maximum parallelism — spawn explore agents for independent paths.
 
 ## Context

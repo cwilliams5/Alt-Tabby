@@ -1,9 +1,10 @@
 ---
 name: profile
 description: Analyze speedscope profiles from Alt-Tabby's built-in profiler
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
+argument-hint: "[speedscope file or profile targeting]"
 ---
-
 Analyze a profiling session captured by Alt-Tabby's `--profile` build. The user may provide additional context (specific file, focus area, comparison instructions, or multiple files to analyze together).
 
 ## File Resolution

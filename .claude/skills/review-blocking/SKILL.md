@@ -1,8 +1,9 @@
 ---
 name: review-blocking
 description: Discover functions that block the main thread, then micro-audit each for internal optimization opportunities
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Two-phase audit: first discover which functions block the main thread using mechanical criteria, then micro-audit each function's internals for optimization opportunities. Use an agent team for the audit phase — the per-function work is embarrassingly parallel.
 
 ## How This Differs from review-latency

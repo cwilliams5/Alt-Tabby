@@ -1,8 +1,9 @@
 ---
 name: review-test-speed
 description: Optimize AHK test suite speed without sacrificing reliability
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Analyze AHK test suite performance and find speed optimizations. Use parallelism where possible.
 
 **Scope**: AHK tests only — unit tests, GUI tests, live tests, lifecycle tests. NOT static analysis checks (`review-static-speed` covers those) and NOT query tools (`review-tool-speed` covers those).

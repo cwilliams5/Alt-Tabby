@@ -1,8 +1,9 @@
 ---
 name: review-static-coverage
 description: Find gaps in static analysis where new checks could prevent classes of bugs
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Deep-review production code patterns to find gaps where static analysis checks (`tests/check_*.ps1`) could prevent whole classes of bugs. Use maximum parallelism — spawn explore agents for independent areas.
 
 **Scope**: Static analysis pre-gate checks only. NOT AHK test coverage (see `review-test-coverage`), NOT query tools, NOT check speed (see `review-static-speed`).

@@ -1,8 +1,9 @@
 ---
 name: review-dead-code
 description: Find and plan removal of dead code (unused functions, variables, unreachable paths)
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Systematically audit the codebase for dead code and write a removal plan.
 
 This project has changed significantly over time. Find code that is no longer serving a purpose: unused functions, unread variables, unreachable branches, orphaned helpers. Use maximum parallelism — spawn explore agents for independent areas of the codebase.

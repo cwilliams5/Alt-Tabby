@@ -1,8 +1,9 @@
 ---
 name: review-test-quality
 description: Audit AHK test suite for drifted copies, dead tests, and design issues
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Audit the AHK test suite for quality issues. Use maximum parallelism — spawn explore agents for independent test files.
 
 **Scope**: AHK tests only — unit tests, GUI tests, live tests, lifecycle tests in `tests/`. NOT static analysis checks, NOT query tools, NOT test coverage (this is about quality of existing tests, not finding gaps).

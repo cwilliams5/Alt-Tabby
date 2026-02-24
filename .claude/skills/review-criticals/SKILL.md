@@ -1,8 +1,9 @@
 ---
 name: review-criticals
 description: Audit every Critical section for necessity, scope, and duration — find stale or overly broad holds that block the main thread
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Two-phase audit: first inventory every Critical hold in the codebase, then evaluate each for necessity and scope. Use maximum parallelism — spawn explore agents for independent file groups.
 
 ## Why This Matters

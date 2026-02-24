@@ -1,8 +1,9 @@
 ---
 name: ship
 description: Commit, push, and create a PR for the current branch
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Ship the current worktree branch as a PR.
 
 1. **Stage & commit** all changes with a descriptive commit message following repo conventions. Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`.

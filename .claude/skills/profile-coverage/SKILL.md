@@ -1,9 +1,9 @@
 ---
 name: profile-coverage
 description: Review profiler instrumentation coverage and recommend new instrumentation points
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Review which functions are instrumented for profiling and identify gaps. This is a review/discussion step — do not implement instrumentation changes without approval.
 
 ## Background

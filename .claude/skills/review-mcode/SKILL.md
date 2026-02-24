@@ -1,8 +1,9 @@
 ---
 name: review-mcode
 description: Scan for hot loops over raw buffers that would benefit from MCode (native C) optimization
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Scan the codebase for MCode optimization opportunities. Use parallelism where possible.
 
 MCode replaces AHK-interpreted tight loops with native C machine code embedded as base64. The project already has an MCode pipeline (`tools/native_benchmark/native_src/`) and a working example (`src/lib/icon_alpha.ahk`). Adding a new function to an existing MCode module is low cost — the infrastructure exists.

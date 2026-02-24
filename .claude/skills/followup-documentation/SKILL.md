@@ -1,9 +1,9 @@
 ---
 name: followup-documentation
 description: Evaluate whether changes need CLAUDE.md, rules, or skill updates
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Review the current plan or recent changes and evaluate whether they require documentation updates to `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`.
 
 ## The Brevity Constraint

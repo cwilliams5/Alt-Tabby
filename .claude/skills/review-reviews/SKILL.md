@@ -1,8 +1,9 @@
 ---
 name: review-reviews
 description: Meta-audit all review skills for stale references, drifted architecture claims, and cross-skill inconsistencies
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Audit every skill in `.claude/skills/` for mechanical inaccuracies that would mislead an agent running the skill. Use maximum parallelism — the skills are independent.
 
 ## Why This Matters

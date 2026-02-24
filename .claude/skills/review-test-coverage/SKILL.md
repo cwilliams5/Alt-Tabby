@@ -1,8 +1,9 @@
 ---
 name: review-test-coverage
 description: Find significant gaps in AHK test coverage and propose targeted new tests
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Deep-review production code against existing tests to find significant coverage gaps. Use maximum parallelism — spawn explore agents for independent areas.
 
 **Scope**: AHK tests only — unit, GUI, live, lifecycle tests in `tests/`. NOT static analysis pre-gate checks, NOT query tools. This is about missing test coverage, not test quality (see `review-test-quality`) or test speed (see `review-test-speed`).

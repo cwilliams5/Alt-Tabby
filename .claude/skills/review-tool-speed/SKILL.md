@@ -1,8 +1,9 @@
 ---
 name: review-tool-speed
 description: Review query tools for runtime optimization opportunities
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Investigate query tool runtime and find optimization opportunities.
 
 The query tools (`query_*.ps1` in project root) are critical for keeping context bloat down and getting programmatic answers.

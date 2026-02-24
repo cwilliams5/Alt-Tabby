@@ -1,8 +1,9 @@
 ---
 name: review-outside-box
 description: Zoom out and find whole classes of performance, bug, or anti-pattern issues hiding in plain sight
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Think outside the box. Use maximum parallelism and processing — don't worry about tokens.
 
 ## What This Is

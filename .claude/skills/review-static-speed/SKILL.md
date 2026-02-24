@@ -1,8 +1,9 @@
 ---
 name: review-static-speed
 description: Review static analysis checks for runtime optimization opportunities
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Investigate static analysis runtime and find optimization opportunities.
 
 1. Run `.\tests\test.ps1 --timing` to get the timing report. Identify the most time-consuming checks.

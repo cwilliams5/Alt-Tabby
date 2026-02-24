@@ -1,8 +1,9 @@
 ---
 name: review-static-lintignore
 description: Audit all lint-ignore suppressions for appropriateness and overuse
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Audit every `lint-ignore` suppression in the codebase — both the check definitions and the usage sites. Use parallelism where possible.
 
 ## What lint-ignore Is

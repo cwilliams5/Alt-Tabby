@@ -1,9 +1,10 @@
 ---
 name: flight-recorder
 description: Analyze flight recorder dumps to diagnose bugs from event traces
-user_invocable: true
+user-invocable: true
+disable-model-invocation: true
+argument-hint: "[dump file or bug description]"
 ---
-
 Analyze flight recorder dump(s) to diagnose a bug or anomaly. The user may describe the bug, specify files, or both. If invoked with no arguments, load the newest dump and use the USER NOTE in the dump as the bug description.
 
 ## File Resolution

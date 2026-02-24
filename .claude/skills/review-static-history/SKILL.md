@@ -1,8 +1,9 @@
 ---
 name: review-static-history
 description: Mine git history for bug patterns that static analysis could have caught
+user-invocable: true
+disable-model-invocation: true
 ---
-
 Enter planning mode. Mine git history for bugs that shipped and were later fixed, to find patterns a static analysis check could have prevented. This is evidence-driven — only propose checks backed by real bug occurrences.
 
 ## Methodology
