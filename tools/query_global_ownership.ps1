@@ -604,12 +604,15 @@ function _RewriteManifestWithout {
 function _ValidateManifestFreshness {
     param(
         [hashtable]$FreshEntries,
-        [string]$ManifestPath
+        [string]$ManifestPath,
+        [string[]]$ManifestLines = $null
     )
+
+    if (-not $ManifestLines) { $ManifestLines = [System.IO.File]::ReadAllLines($ManifestPath) }
 
     # Parse committed manifest into hashtable: globalName -> sorted writer string
     $committedEntries = @{}
-    foreach ($line in [System.IO.File]::ReadAllLines($ManifestPath)) {
+    foreach ($line in $ManifestLines) {
         $trimmed = $line.Trim()
         if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
         $colonIdx = $trimmed.IndexOf(':')
@@ -787,8 +790,10 @@ if (-not $Check) {
 
 # Validate manifest freshness before enforcement
 $freshEntries = _BuildFreshManifest $multiFileMutations $singleFileMutations $globalDecl $projectRoot
-if (Test-Path $manifestPath) {
-    $freshResult = _ValidateManifestFreshness $freshEntries $manifestPath
+# Read manifest once — reuse for both freshness validation and enforcement
+$manifestLines = if (Test-Path $manifestPath) { [System.IO.File]::ReadAllLines($manifestPath) } else { @() }
+if ($manifestLines.Count -gt 0) {
+    $freshResult = _ValidateManifestFreshness $freshEntries $manifestPath $manifestLines
     if (-not $freshResult) {
         $totalSw.Stop()
         Write-Host "  Completed in $($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
@@ -808,8 +813,8 @@ foreach ($gName in $globalDecl.Keys) {
 
 # Load manifest (explicit multi-writer authorizations)
 $manifestEntries = 0
-if (Test-Path $manifestPath) {
-    foreach ($line in [System.IO.File]::ReadAllLines($manifestPath)) {
+if ($manifestLines.Count -gt 0) {
+    foreach ($line in $manifestLines) {
         $trimmed = $line.Trim()
         if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
 
