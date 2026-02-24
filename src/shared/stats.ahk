@@ -7,7 +7,8 @@
 ;
 ; Public API:
 ;   Stats_Init()              - Load stats from disk, set up session
-;   Stats_FlushToDisk()       - Crash-safe persist to stats.ini
+;   Stats_FlushToDisk()       - Crash-safe persist to stats.ini (dirty-gated, pump offload)
+;   Stats_ForceFlushToDisk()  - Direct write, bypass dirty/state/pump (shutdown path)
 ;   Stats_UpdatePeakWindows(count) - Update peak window counters
 ;   Stats_BumpLifetimeStat(key)    - Increment a lifetime counter
 ;   Stats_Accumulate(obj)     - Accumulate GUI delta counters
@@ -16,6 +17,7 @@
 
 global gStats_Lifetime := Map()   ; key -> integer, loaded from/flushed to stats.ini
 global gStats_Session := Map()    ; key -> integer, this session only
+global gStats_Dirty := false      ; Set by mutations, checked by flush to skip no-op writes
 
 ; Cumulative stat keys - GUI sends deltas for these via stats_update
 global STATS_CUMULATIVE_KEYS := [
@@ -66,6 +68,7 @@ _Stats_LogInfo(msg) {
 
 Stats_Init() {
     global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
+    global gStats_Dirty
 
     if (!cfg.StatsTrackingEnabled)
         return
@@ -133,6 +136,7 @@ Stats_Init() {
 
     ; Increment session count
     gStats_Lifetime["TotalSessions"] := gStats_Lifetime.Get("TotalSessions", 0) + 1
+    gStats_Dirty := true  ; Ensure first housekeeping flush saves TotalSessions
 
     ; Session tracking
     gStats_Session["startTick"] := A_TickCount
@@ -152,9 +156,14 @@ Stats_Init() {
 
 Stats_FlushToDisk() {
     global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
+    global gStats_Dirty, gGUI_State
 
     if (!cfg.StatsTrackingEnabled)
         return
+    if (!gStats_Dirty)
+        return
+    if (gGUI_State = "ALT_PENDING" || gGUI_State = "ACTIVE")
+        return  ; Defer to next housekeeping cycle
 
     statsPath := STATS_INI_PATH
 
@@ -172,27 +181,79 @@ Stats_FlushToDisk() {
     totalSessionSec := (A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000
     if (totalSessionSec > gStats_Lifetime.Get("LongestSessionSec", 0))
         gStats_Lifetime["LongestSessionSec"] := Round(totalSessionSec)
+
+    ; Build complete INI content as a single string (under Critical for consistent snapshot)
+    content := "[Lifetime]`n"
+    for _, key in STATS_LIFETIME_KEYS
+        content .= key "=" gStats_Lifetime.Get(key, 0) "`n"
+    content .= "_FlushStatus=complete`n"
     Critical "Off"
 
-    ; File I/O below runs outside Critical (safe: TotalRunTimeSec/LongestSessionSec only written here)
+    ; Try pump offload first (pipe write ~10-15μs vs 10-75ms of IniWrite loop)
+    if (_Stats_TrySendToPump(statsPath, content)) {
+        gStats_Dirty := false
+        return
+    }
 
-    ; Crash protection: backup existing file
-    if (FileExist(statsPath))
-        try FileCopy(statsPath, statsPath ".bak", true)
+    ; Fallback: direct write (pump not connected or send failed)
+    _Stats_DirectWrite(statsPath, content)
+    gStats_Dirty := false
+}
 
-    ; Remove sentinel from previous flush (will be re-written as last key)
-    try IniDelete(statsPath, "Lifetime", "_FlushStatus")
+; Force-flush stats directly to disk (bypass dirty flag, state gate, and pump offload).
+; Used during shutdown when the pump may be unavailable.
+Stats_ForceFlushToDisk() {
+    global gStats_Lifetime, gStats_Session, STATS_LIFETIME_KEYS, STATS_INI_PATH, cfg
+    global gStats_Dirty
 
-    ; Write all stats
+    if (!cfg.StatsTrackingEnabled)
+        return
+
+    ; Compute time stats (same as regular flush)
+    Critical "On"
+    sessionSec := (A_TickCount - gStats_Session.Get("startTick", A_TickCount)) / 1000
+    gStats_Lifetime["TotalRunTimeSec"] := gStats_Lifetime.Get("TotalRunTimeSec", 0) + Round(sessionSec)
+    gStats_Session["startTick"] := A_TickCount
+
+    totalSessionSec := (A_TickCount - gStats_Session.Get("sessionStartTick", A_TickCount)) / 1000
+    if (totalSessionSec > gStats_Lifetime.Get("LongestSessionSec", 0))
+        gStats_Lifetime["LongestSessionSec"] := Round(totalSessionSec)
+
+    content := "[Lifetime]`n"
+    for _, key in STATS_LIFETIME_KEYS
+        content .= key "=" gStats_Lifetime.Get(key, 0) "`n"
+    content .= "_FlushStatus=complete`n"
+    Critical "Off"
+
+    _Stats_DirectWrite(STATS_INI_PATH, content)
+    gStats_Dirty := false
+}
+
+; Try to offload stats write to enrichment pump via IPC.
+; Returns true if message was sent successfully, false if pump unavailable.
+_Stats_TrySendToPump(statsPath, content) {
+    global IPC_MSG_STATS_FLUSH
+    if (!GUIPump_IsConnected())
+        return false
+    request := Map("type", IPC_MSG_STATS_FLUSH, "path", statsPath, "content", content)
+    requestJson := JSON.Dump(request)
+    return GUIPump_SendRaw(requestJson)
+}
+
+; Direct file write fallback — single FileAppend instead of 13 IniWrite calls.
+; Uses atomic temp+rename pattern for crash safety.
+_Stats_DirectWrite(statsPath, content) {
     try {
-        for _, key in STATS_LIFETIME_KEYS {
-            IniWrite(gStats_Lifetime.Get(key, 0), statsPath, "Lifetime", key)
-        }
-
-        ; Sentinel: MUST be last write
-        IniWrite("complete", statsPath, "Lifetime", "_FlushStatus")
-
-        ; Success -- remove backup
+        ; Backup existing file (crash safety)
+        if (FileExist(statsPath))
+            try FileCopy(statsPath, statsPath ".bak", true)
+        ; Atomic write: write to temp, then rename
+        ; UTF-8-RAW = no BOM (BOM breaks IniRead/GetPrivateProfileString)
+        tmpPath := statsPath ".tmp"
+        try FileDelete(tmpPath)
+        FileAppend(content, tmpPath, "UTF-8-RAW")
+        FileMove(tmpPath, statsPath, true)
+        ; Success — remove backup
         try FileDelete(statsPath ".bak")
     } catch as e {
         _Stats_LogError("stats flush failed: " e.Message)
@@ -203,30 +264,34 @@ Stats_FlushToDisk() {
 ; Called from WL_UpsertWindow/EndScan after adding windows.
 ; NOTE: Callers hold Critical — do NOT add Critical "Off" here (leaks caller's state).
 Stats_UpdatePeakWindows(count) {
-    global gStats_Session, gStats_Lifetime
+    global gStats_Session, gStats_Lifetime, gStats_Dirty
     if (IsObject(gStats_Session) && count > gStats_Session.Get("peakWindows", 0)) {
         gStats_Session["peakWindows"] := count
-        if (IsObject(gStats_Lifetime) && count > gStats_Lifetime.Get("PeakWindowsInSession", 0))
+        if (IsObject(gStats_Lifetime) && count > gStats_Lifetime.Get("PeakWindowsInSession", 0)) {
             gStats_Lifetime["PeakWindowsInSession"] := count
+            gStats_Dirty := true
+        }
     }
 }
 
 ; Increment a lifetime stat counter by 1.
 ; Called from hot paths (e.g., blacklist skip counting) to centralize stats mutation.
 Stats_BumpLifetimeStat(key) {
-    global gStats_Lifetime
+    global gStats_Lifetime, gStats_Dirty
     ; NOTE: += 1 is non-atomic but Critical is not used here because _WS_BumpRev
     ; calls this inside its own Critical section — adding Critical "Off" here would
     ; leak the caller's Critical state. Blacklist callers are unprotected but losing
     ; a rare cosmetic stat increment is acceptable (VERY LOW impact).
-    if (IsObject(gStats_Lifetime) && gStats_Lifetime.Has(key))
+    if (IsObject(gStats_Lifetime) && gStats_Lifetime.Has(key)) {
         gStats_Lifetime[key] += 1
+        gStats_Dirty := true
+    }
 }
 
 ; Accumulate GUI session stats into lifetime (GUI sends deltas since last send).
 ; Returns nothing. Called from IPC stats_update handler.
 Stats_Accumulate(obj) {
-    global gStats_Lifetime, STATS_CUMULATIVE_KEYS
+    global gStats_Lifetime, STATS_CUMULATIVE_KEYS, gStats_Dirty
     ; RACE FIX: Protect gStats_Lifetime from concurrent Stats_FlushToDisk (heartbeat timer)
     Critical "On"
     for _, key in STATS_CUMULATIVE_KEYS {
@@ -234,6 +299,7 @@ Stats_Accumulate(obj) {
             gStats_Lifetime[key] := gStats_Lifetime.Get(key, 0) + obj[key]
     }
     Critical "Off"
+    gStats_Dirty := true
 }
 
 ; Build response combining lifetime + session stats + derived values.

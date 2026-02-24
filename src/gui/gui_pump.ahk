@@ -131,6 +131,15 @@ GUIPump_IsConnected() {
     return _gPump_Connected
 }
 
+; Send a raw JSON message to the pump (for non-enrichment messages like stats flush).
+; Returns true on success, false if not connected or send failed.
+GUIPump_SendRaw(jsonStr) {
+    global _gPump_Client, _gPump_Connected, _gPump_PumpHwnd
+    if (!_gPump_Connected)
+        return false
+    return IPC_PipeClient_Send(_gPump_Client, jsonStr, _gPump_PumpHwnd)
+}
+
 ; Wake collection timer from idle pause (called from _WS_EnqueueIfNeeded)
 GUIPump_EnsureRunning() {
     global _gPump_TimerOn, _gPump_IdleTicks, _gPump_CollectIntervalMs, _gPump_CollectTimerFn

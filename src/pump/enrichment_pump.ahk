@@ -89,12 +89,14 @@ _Pump_OnMessage(msg, hPipe) {
         return
     }
 
-    global IPC_MSG_ENRICH, IPC_MSG_PUMP_SHUTDOWN
+    global IPC_MSG_ENRICH, IPC_MSG_PUMP_SHUTDOWN, IPC_MSG_STATS_FLUSH
     msgType := parsed.Get("type", "")
 
     switch msgType {
         case IPC_MSG_ENRICH:
             _Pump_HandleEnrich(_Pump_Server, hPipe, parsed)
+        case IPC_MSG_STATS_FLUSH:
+            _Pump_HandleStatsFlush(parsed)
         case IPC_MSG_PUMP_SHUTDOWN:
             _Pump_Log("SHUTDOWN: Received shutdown request")
             _Pump_Cleanup()
@@ -217,6 +219,36 @@ _Pump_HandleEnrich(server, hPipe, parsed) {
 
     ; Send response with PostMessage wake to GUI (if hwnd known)
     IPC_PipeServer_Send(server, hPipe, responseJson, _Pump_GuiHwnd)
+}
+
+; ========================= STATS FLUSH =========================
+; Handle stats flush request — write pre-built INI content to disk.
+; Runs in pump process so file I/O doesn't block MainProcess keyboard hooks.
+
+_Pump_HandleStatsFlush(parsed) {
+    global _Pump_DiagEnabled
+    statsPath := parsed.Get("path", "")
+    content := parsed.Get("content", "")
+    if (statsPath = "" || content = "") {
+        if (_Pump_DiagEnabled)
+            _Pump_Log("WARN: stats_flush missing path or content")
+        return
+    }
+    try {
+        ; Backup existing file (crash safety)
+        if (FileExist(statsPath))
+            try FileCopy(statsPath, statsPath ".bak", true)
+        ; Atomic write: temp + rename
+        ; UTF-8-RAW = no BOM (BOM breaks IniRead/GetPrivateProfileString)
+        tmpPath := statsPath ".tmp"
+        try FileDelete(tmpPath)
+        FileAppend(content, tmpPath, "UTF-8-RAW")
+        FileMove(tmpPath, statsPath, true)
+        ; Success — remove backup
+        try FileDelete(statsPath ".bak")
+    } catch as e {
+        _Pump_Log("ERROR: stats_flush failed: " e.Message)
+    }
 }
 
 ; ========================= ICON RESOLUTION =========================

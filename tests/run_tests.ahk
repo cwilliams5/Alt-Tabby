@@ -47,6 +47,9 @@ global g_LastUpdateCheckTime := ""
 global g_DashUpdateState
 g_DashUpdateState := {status: "unchecked", version: "", downloadUrl: ""}
 
+; --- GUI state globals (gui_state.ahk not included in test chain) ---
+global gGUI_State := "IDLE"
+
 ; --- WinEventHook globals (winevent_hook.ahk not included in test chain) ---
 global gWEH_LastFocusHwnd := 0
 
@@ -59,6 +62,14 @@ global FR_EV_PRODUCER_INIT := 31, FR_EV_ACTIVATE_GONE := 32, FR_EV_PRODUCER_BACK
 global FR_EV_WS_SWITCH := 40, FR_EV_WS_TOGGLE := 41
 global FR_EV_FOCUS := 50, FR_EV_FOCUS_SUPPRESS := 51, FR_EV_KSUB_MRU_STALE := 52, FR_EV_FG_GUARD := 53
 FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
+}
+
+; --- GUIPump stubs (gui_pump.ahk not included in test chain) ---
+GUIPump_IsConnected() {
+    return false
+}
+GUIPump_SendRaw(jsonStr) {
+    return false
 }
 
 ; --- Win32 constants (from gui_constants.ahk, needed by blacklist.ahk) ---

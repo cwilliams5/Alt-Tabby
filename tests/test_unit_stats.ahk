@@ -105,6 +105,10 @@ RunUnitTests_Stats() {
         gStats_Session["startTick"] := A_TickCount
         gStats_Session["peakWindows"] := 0
 
+        ; Mark dirty so flush proceeds (dirty flag gates no-op writes)
+        global gStats_Dirty
+        gStats_Dirty := true
+
         ; Flush to disk
         Stats_FlushToDisk()
 
@@ -290,6 +294,132 @@ RunUnitTests_Stats() {
     ; Clean up
     try FileDelete(testStatsPath)
     try FileDelete(testStatsBak)
+
+    ; ============================================================
+    ; Dirty Flag & State Gate Tests
+    ; ============================================================
+    Log("`n--- Stats Dirty Flag & State Gate Tests ---")
+
+    ; Test: FlushToDisk skips when dirty flag is false
+    Log("Testing FlushToDisk: skips when not dirty...")
+    try {
+        cfg.StatsTrackingEnabled := true
+        testStatsPath2 := A_Temp "\test_stats_dirty.ini"
+        STATS_INI_PATH := testStatsPath2
+        try FileDelete(testStatsPath2)
+
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["TotalAltTabs"] := 99
+        gStats_Session := Map()
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["sessionStartTick"] := A_TickCount
+
+        gStats_Dirty := false
+        Stats_FlushToDisk()
+
+        if (!FileExist(testStatsPath2)) {
+            Log("PASS: FlushToDisk skipped when dirty=false (no file created)")
+            TestPassed++
+        } else {
+            Log("FAIL: FlushToDisk should not write when dirty=false")
+            TestErrors++
+        }
+        try FileDelete(testStatsPath2)
+    } catch as e {
+        Log("FAIL: Dirty flag skip test error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: FlushToDisk defers during ACTIVE state
+    Log("Testing FlushToDisk: defers during ACTIVE state...")
+    try {
+        global gGUI_State
+        cfg.StatsTrackingEnabled := true
+        STATS_INI_PATH := testStatsPath2
+        try FileDelete(testStatsPath2)
+
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["TotalAltTabs"] := 99
+        gStats_Session := Map()
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["sessionStartTick"] := A_TickCount
+
+        gStats_Dirty := true
+        gGUI_State := "ACTIVE"
+        Stats_FlushToDisk()
+
+        if (!FileExist(testStatsPath2)) {
+            Log("PASS: FlushToDisk deferred during ACTIVE state")
+            TestPassed++
+        } else {
+            Log("FAIL: FlushToDisk should not write during ACTIVE state")
+            TestErrors++
+        }
+        ; Dirty flag should remain true (deferred, not skipped)
+        if (gStats_Dirty) {
+            Log("PASS: Dirty flag preserved after deferral")
+            TestPassed++
+        } else {
+            Log("FAIL: Dirty flag was cleared despite deferral")
+            TestErrors++
+        }
+        gGUI_State := "IDLE"
+        try FileDelete(testStatsPath2)
+    } catch as e {
+        gGUI_State := "IDLE"
+        Log("FAIL: State gate test error: " e.Message)
+        TestErrors++
+    }
+
+    ; Test: ForceFlushToDisk bypasses dirty flag and state gate
+    Log("Testing ForceFlushToDisk: bypasses dirty flag and state gate...")
+    try {
+        cfg.StatsTrackingEnabled := true
+        STATS_INI_PATH := testStatsPath2
+        try FileDelete(testStatsPath2)
+
+        gStats_Lifetime := Map()
+        for _, key in STATS_LIFETIME_KEYS
+            gStats_Lifetime[key] := 0
+        gStats_Lifetime["TotalAltTabs"] := 77
+        gStats_Lifetime["TotalSessions"] := 3
+        gStats_Session := Map()
+        gStats_Session["startTick"] := A_TickCount
+        gStats_Session["sessionStartTick"] := A_TickCount
+
+        gStats_Dirty := false  ; Dirty flag off
+        gGUI_State := "ACTIVE" ; Active state
+        Stats_ForceFlushToDisk()
+        gGUI_State := "IDLE"
+
+        if (FileExist(testStatsPath2)) {
+            ; Verify content readable by IniRead
+            val := IniRead(testStatsPath2, "Lifetime", "TotalAltTabs", "0")
+            sentinel := IniRead(testStatsPath2, "Lifetime", "_FlushStatus", "")
+            if (Integer(val) = 77 && sentinel = "complete") {
+                Log("PASS: ForceFlushToDisk wrote correctly (AltTabs=77, sentinel=complete)")
+                TestPassed++
+            } else {
+                Log("FAIL: ForceFlushToDisk content wrong: AltTabs=" val " sentinel=" sentinel)
+                TestErrors++
+            }
+        } else {
+            Log("FAIL: ForceFlushToDisk did not create file")
+            TestErrors++
+        }
+        try FileDelete(testStatsPath2)
+    } catch as e {
+        gGUI_State := "IDLE"
+        Log("FAIL: ForceFlushToDisk bypass test error: " e.Message)
+        TestErrors++
+    }
+
+    ; Reset STATS_INI_PATH for remaining tests
+    STATS_INI_PATH := testStatsPath
 
     ; ============================================================
     ; Duration Format Tests

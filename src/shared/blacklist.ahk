@@ -274,6 +274,10 @@ Blacklist_IsWindowEligible(hwnd, title := "", class := "") {
         try {
             if (title = "")
                 title := WinGetTitle("ahk_id " hwnd)
+            if (title = "") {
+                Profiler.Leave() ; @profile
+                return false
+            }
             if (class = "")
                 class := WinGetClass("ahk_id " hwnd)
         } catch {

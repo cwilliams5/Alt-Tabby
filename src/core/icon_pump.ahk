@@ -239,11 +239,16 @@ _IP_Tick() {
     global IP_MODE_INITIAL, IP_MODE_VISIBLE_RETRY, IP_MODE_FOCUS_RECHECK
     global IP_METHOD_WM_GETICON, IP_METHOD_UWP, IP_METHOD_EXE, IP_METHOD_UNCHANGED
     global gIP_PopBatch, gIP_GetRecord, gIP_UpdateFields, gIP_GetExeIcon, gIP_PutExeIcon
+    global gGUI_State
 
     logEnabled := _IP_DiagEnabled && _IP_LogPath != ""
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
     if (A_TickCount < _backoffUntil)
+        return
+    ; Skip icon resolution during active Alt-Tab — keyboard hooks must not be blocked
+    ; by SendMessageTimeoutW. Queue persists; deferred icons process when overlay dismisses.
+    if (gGUI_State = "ALT_PENDING" || gGUI_State = "ACTIVE")
         return
     try {
 

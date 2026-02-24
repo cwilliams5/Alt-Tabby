@@ -381,16 +381,16 @@ _WEH_ProcessBatch() {
             _WEH_DiagLog("BATCH PROCESS: " diagOldHwnd " '" SubStr(diagOldTitle, 1, 15) "' -> " newFocus " '" SubStr(diagNewTitle, 1, 15) "'")
         }
 
-        ; Check if the new focus window is in our store
-        inStore := gWS_Store.Has(newFocus + 0)
+        ; Check if the new focus window is in our store (single lookup)
+        focusedRec := gWS_Store.Get(newFocus + 0, 0)
+        inStore := (focusedRec != 0)
         if (cfg.DiagWinEventLog)
             _WEH_DiagLog("  inStore=" (inStore ? 1 : 0))
 
         ; CRITICAL: Only update gWEH_LastFocusHwnd if the window is actually in our store
         ; This prevents system UI windows (like Alt+Tab switcher) from poisoning our focus tracking
         if (inStore) {
-            ; Read workspace before batch (workspaceName not modified by focus batch)
-            focusedRec := gWS_Store[newFocus + 0]
+            ; focusedRec already fetched above (workspaceName not modified by focus batch)
 
             ; Batch old+new focus into a single rev bump + MarkDirty call
             patches := Map()
@@ -558,13 +558,20 @@ _WEH_ProcessBatch() {
     ; sub-windows (emails, etc.). Without this, ghosts linger until ValidateExistence.
     hiddenRemoved := []
     if (hidden.Length > 0) {
+        ; Lightweight check: window was eligible when added to store. For HIDE events,
+        ; only check if it became invisible AND not cloaked. Cloaked = komorebi-managed
+        ; on another workspace (keep it). Saves ~50-150μs per window vs full probe.
+        global DWMWA_CLOAKED
+        static hiddenCloakBuf := Buffer(4, 0)  ; lint-ignore: static-in-timer
         for _, hwnd in hidden {
-            rec := _WEH_ProbeWindow(hwnd)
-            if (!rec) {
-                ; Not eligible (hidden, no title, etc.) — remove from store
+            ; Still visible? Transient HIDE — keep it
+            if (DllCall("user32\IsWindowVisible", "ptr", hwnd, "int"))
+                continue
+            ; Not visible — check if cloaked (komorebi window on other workspace)
+            hr := DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "uint", DWMWA_CLOAKED, "ptr", hiddenCloakBuf.Ptr, "uint", 4, "int")
+            isCloaked := (hr = 0) && (NumGet(hiddenCloakBuf, 0, "UInt") != 0)
+            if (!isCloaked)
                 hiddenRemoved.Push(hwnd)
-            }
-            ; If still eligible, window got a transient HIDE — leave it alone
         }
         if (hiddenRemoved.Length > 0)
             WL_RemoveWindow(hiddenRemoved, true)

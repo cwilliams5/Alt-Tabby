@@ -538,7 +538,7 @@ _GUI_OnError(err, *) {
 _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     ; Send any unsent stats, then flush to disk
     try Stats_AccumulateSession()
-    try Stats_FlushToDisk()
+    try Stats_ForceFlushToDisk()
 
     ; Stop all timers
     try SetTimer(_GUI_FullScan, 0)

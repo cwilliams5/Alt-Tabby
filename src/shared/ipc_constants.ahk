@@ -7,6 +7,7 @@
 global IPC_MSG_ENRICH := "enrich"              ; Main → Pump: request icon/title/proc for hwnds
 global IPC_MSG_ENRICHMENT := "enrichment"      ; Pump → Main: enrichment results
 global IPC_MSG_PUMP_SHUTDOWN := "shutdown"      ; Main → Pump: clean exit
+global IPC_MSG_STATS_FLUSH := "stats_flush"    ; Main → Pump: write stats file to disk
 
 ; IPC Timing Constants (milliseconds)
 ; Pipe polling intervals, not user-configurable.
