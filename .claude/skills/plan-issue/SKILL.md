@@ -16,4 +16,4 @@ Omit rejected candidates, false positives, and exploration steps. Include invest
 
 After creating the issue, report the issue number and URL. The subsequent PR must reference `Closes #N`.
 
-Then proceed with executing the plan.
+Then create a new worktree using the EnterWorktree tool and proceed with executing the plan inside it.
