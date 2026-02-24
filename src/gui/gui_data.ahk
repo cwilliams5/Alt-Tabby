@@ -221,11 +221,11 @@ _GUI_PreCacheTick() {
     work := []
     for hwnd, rec in gWS_Store {
         if (!rec.present || !rec.iconHicon)
-            continue  ; lint-ignore: critical-section
+            continue
         if (gGdip_IconCache.Has(hwnd)) {
             cached := gGdip_IconCache[hwnd]
             if (cached.hicon = rec.iconHicon && cached.pBmp)
-                continue  ; lint-ignore: critical-section
+                continue
         }
         work.Push({hwnd: hwnd, hicon: rec.iconHicon})
         if (work.Length >= 4)

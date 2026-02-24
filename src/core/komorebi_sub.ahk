@@ -1213,7 +1213,7 @@ _KSub_ScheduleCloakPush() {
 
     ; Already scheduled — nothing to do, new cloaks batch into same push
     if (_KSub_CloakPushPending)
-        return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+        return
 
     _KSub_CloakPushPending := true
     _KSub_CloakBatchTimerFn := _KSub_FlushCloakBatch.Bind()

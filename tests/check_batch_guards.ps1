@@ -1218,9 +1218,11 @@ $sw.Stop()
 
 # ============================================================
 # Sub-check 10: critical_sections
-# Detects return/continue/throw inside Critical "On" sections
-# without preceding Critical "Off".
-# Suppress: ; lint-ignore: critical-section (throw cannot be suppressed)
+# Detects throw inside Critical "On" sections.
+# return and continue are exempt: AHK v2 auto-releases Critical on
+# function return, and continue stays within the enclosing loop.
+# throw cannot be suppressed -- exception propagation can leave
+# Critical active in a catch handler.
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $csIssues = [System.Collections.ArrayList]::new()
@@ -1278,23 +1280,16 @@ foreach ($file in $allFiles) {
             }
 
             if ($criticalOn) {
-                $isReturn = $cleaned -match '(?i)^\s*return\b'
-                $isContinue = $cleaned -match '(?i)^\s*continue\b'
-                $isThrow = $cleaned -match '(?i)^\s*throw\b'
-
-                if ($isReturn -or $isContinue -or $isThrow) {
-                    $canSuppress = -not $isThrow
-                    if (-not $canSuppress -or $rawLine -notmatch 'lint-ignore:\s*critical-section') {
-                        if ($isReturn) { $stmtType = 'return' }
-                        elseif ($isContinue) { $stmtType = 'continue' }
-                        else { $stmtType = 'throw' }
-                        [void]$csIssues.Add([PSCustomObject]@{
-                            File      = $relPath
-                            Line      = $i + 1
-                            Function  = $funcName
-                            Statement = $stmtType
-                        })
-                    }
+                # return: AHK v2 auto-releases Critical on function return (safe)
+                # continue: stays in enclosing loop, Critical remains active (safe)
+                # throw: exception propagation can leave Critical active in catch (dangerous)
+                if ($cleaned -match '(?i)^\s*throw\b') {
+                    [void]$csIssues.Add([PSCustomObject]@{
+                        File      = $relPath
+                        Line      = $i + 1
+                        Function  = $funcName
+                        Statement = 'throw'
+                    })
                 }
             }
 
@@ -1311,10 +1306,9 @@ if ($csIssues.Count -gt 0) {
     $anyFailed = $true
     [void]$failOutput.AppendLine("")
     [void]$failOutput.AppendLine("  FAIL: $($csIssues.Count) Critical section issue(s) found.")
-    [void]$failOutput.AppendLine("  These return/continue/throw while Critical is On, which may skip Critical `"Off`".")
-    [void]$failOutput.AppendLine("  Fix: add Critical `"Off`" before the statement, or suppress with:")
-    [void]$failOutput.AppendLine("    return  ; lint-ignore: critical-section")
-    [void]$failOutput.AppendLine("  Note: throw inside Critical cannot be suppressed (always a bug).")
+    [void]$failOutput.AppendLine("  throw inside Critical `"On`" is always a bug -- exception propagation")
+    [void]$failOutput.AppendLine("  can leave Critical active in a catch handler.")
+    [void]$failOutput.AppendLine("  Fix: add Critical `"Off`" before the throw, or restructure to avoid throwing.")
     $grouped = $csIssues | Group-Object File
     foreach ($group in $grouped | Sort-Object Name) {
         [void]$failOutput.AppendLine("    $($group.Name):")

@@ -183,7 +183,7 @@ _INT_Tab_Down(*) {
         GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, shiftFlag, 0)
         ; NOTE: Don't set gINT_TabHeld here - we process ALL tabs during active session
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
 
     ; FIRST TAB: Check TabHeld to block key repeat (user holding Tab before Alt)
@@ -191,7 +191,7 @@ _INT_Tab_Down(*) {
         if (cfg.DiagEventLog)
             GUI_LogEvent("INT: Tab_Down -> blocked (TabHeld)")
         Profiler.Leave() ; @profile
-        return  ; lint-ignore: critical-section
+        return
     }
 
     ; Session not active yet - this is the FIRST Tab, needs decision delay
@@ -215,7 +215,7 @@ _INT_Tab_Up(*) {
     if (gINT_TabHeld) {
         ; Released from Alt+Tab step
         gINT_TabHeld := false
-        return  ; lint-ignore: critical-section
+        return
     }
 }
 
@@ -224,7 +224,7 @@ _INT_Tab_Decide() {
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_AltIsDown, cfg
     global FR_EV_TAB_DECIDE, gFR_Enabled
     if (!gINT_PendingDecideArmed)
-        return  ; lint-ignore: critical-section
+        return
     gINT_PendingDecideArmed := false
     if (gFR_Enabled)
         FR_Record(FR_EV_TAB_DECIDE, gINT_AltIsDown, gINT_AltUpDuringPending)
@@ -307,7 +307,7 @@ _INT_Escape_Down(*) {
     ; Only consume Escape if in active Alt+Tab session
     if (!gINT_SessionActive || gINT_PressCount < 1) {
         Send("{Escape}")
-        return  ; lint-ignore: critical-section
+        return
     }
 
     ; Notify GUI to cancel

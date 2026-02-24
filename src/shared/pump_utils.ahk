@@ -61,7 +61,7 @@ Pump_EnsureRunning(&timerOn, &idleTicks, intervalMs, timerFn) {
     ; from pausing timer between our timerOn check and SetTimer start
     Critical "On"
     if (timerOn)
-        return  ; lint-ignore: critical-section (AHK v2 auto-releases Critical on return)
+        return
     timerOn := true
     idleTicks := 0
     SetTimer(timerFn, intervalMs)
