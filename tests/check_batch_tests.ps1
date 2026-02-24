@@ -68,6 +68,25 @@ function Get-CachedFileText($path) {
     return $script:fileTextCache[$path]
 }
 
+# Per-file word index: HashSet of identifier tokens (O(1) lookup vs O(n) IndexOf)
+$script:fileWordCache = @{}
+$script:rxWordToken = [regex]::new('\b[a-zA-Z_]\w+\b', 'Compiled')
+
+function BT_GetFileWords {
+    param([string]$filePath)
+    if ($script:fileWordCache.ContainsKey($filePath)) {
+        return $script:fileWordCache[$filePath]
+    }
+    $text = Get-CachedFileText $filePath
+    $words = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($m in $script:rxWordToken.Matches($text)) {
+        [void]$words.Add($m.Value)
+    }
+    $script:fileWordCache[$filePath] = $words
+    return $words
+}
+
 # === Sub-check tracking ===
 $subTimings = [System.Collections.ArrayList]::new()
 $anyFailed = $false
@@ -389,15 +408,14 @@ if ($entryPoints.Count -gt 0) {
             $fileLower = $file.ToLower()
             if (-not $fileLower.StartsWith($srcDirNorm)) { continue }
 
-            # Pre-filter: skip src files that don't mention any of the test's available globals
-            # (can't have undeclared usage of globals it doesn't reference at all)
+            # Pre-filter: skip src files that don't mention any unavailable globals
+            # Uses word index (HashSet O(1) lookups) instead of IndexOf (linear scan per global)
             if ($availableGlobals.Count -gt 0 -and $knownGlobals.Count -gt 0) {
-                $fileLines = Get-CachedFileLines $file
-                $fileText = Get-CachedFileText $file
+                $fileWords = BT_GetFileWords $file
                 $hasRelevantGlobal = $false
                 foreach ($gName in $knownGlobals.Keys) {
                     if (-not $availableGlobals.ContainsKey($gName)) {
-                        if ($fileText.IndexOf($gName, [System.StringComparison]::Ordinal) -ge 0) {
+                        if ($fileWords.Contains($gName)) {
                             $hasRelevantGlobal = $true; break
                         }
                     }

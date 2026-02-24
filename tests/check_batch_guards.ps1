@@ -60,7 +60,7 @@ foreach ($f in $allFiles) {
     }
 }
 
-# === Critical section helpers (used by critical_leaks, critical_sections sub-checks) ===
+# === Critical section helpers (used by shared pass, critical_leaks, critical_sections sub-checks) ===
 
 function BC_CleanLine {
     param([string]$line)
@@ -135,6 +135,135 @@ $BC_keywordSet = [System.Collections.Generic.HashSet[string]]::new(
     'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
     'new', 'super', 'this', 'true', 'false', 'unset', 'isset', 'Critical'
 ) | ForEach-Object { [void]$BC_keywordSet.Add($_) }
+
+# === Shared pre-processing pass ===
+# Builds function definition index and processed line data ONCE,
+# reused by callback_signatures, producer_error_boundary, callback_invocation_arity, critical_leaks.
+# This eliminates 3 redundant full-file scans (~1.0s savings).
+
+$sharedFuncDefs = @{}           # funcName -> @{ File, DefLine, FileName, Lines, Raw, ParamStr, RequiredCount, HasVariadic, TotalParams }
+$sharedSetCallbacksDefs = @{}   # funcName -> @{ ParamNames, GlobalMap } (only *_SetCallbacks)
+$sharedLineData = @{}           # file.FullName -> ArrayList of @{ Raw, Cleaned, Stripped, Braces } (critical files only)
+
+foreach ($file in $allFiles) {
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $isCritical = $criticalFiles.Contains($file.FullName)
+
+    # For critical files, pre-process all lines (reused by critical_leaks)
+    if ($isCritical) {
+        $lineData = [System.Collections.ArrayList]::new($lines.Count)
+        for ($li = 0; $li -lt $lines.Count; $li++) {
+            $rawLine = $lines[$li]
+            $cleaned = BC_CleanLine $rawLine
+            $stripped = if ($cleaned -ne '') { BC_StripComments $rawLine } else { '' }
+            $braces = if ($cleaned -ne '') { BC_CountBraces $cleaned } else { @(0, 0) }
+            [void]$lineData.Add(@{ Raw = $rawLine; Cleaned = $cleaned; Stripped = $stripped; Braces = $braces })
+        }
+        $sharedLineData[$file.FullName] = $lineData
+    }
+
+    # Build function definition index with brace-depth tracking
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+    $scName = ""
+    $scParams = @()
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+
+        # Use pre-processed cleaned line if available, otherwise compute
+        if ($isCritical) {
+            $cleaned = $lineData[$i].Cleaned
+        } else {
+            $cleaned = BC_CleanLine $raw
+        }
+        if ($cleaned -eq '') { continue }
+
+        # Detect function definitions (not inside another function)
+        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{?') {
+            $funcName = $Matches[1]
+            $paramStr = $Matches[2].Trim()
+            if (-not $BC_keywordSet.Contains($funcName)) {
+                # Parse parameter counts (for callback_signatures)
+                $hasVariadic = $paramStr -match '\*'
+                $requiredCount = 0
+                if ($paramStr -ne '' -and -not $hasVariadic) {
+                    foreach ($param in $paramStr -split ',') {
+                        $p = $param.Trim()
+                        if ($p -eq '') { continue }
+                        if ($p -match ':=|=') { continue }
+                        $requiredCount++
+                    }
+                }
+
+                if (-not $sharedFuncDefs.ContainsKey($funcName)) {
+                    $sharedFuncDefs[$funcName] = @{
+                        File          = $relPath
+                        DefLine       = $i
+                        FileName      = $file.Name
+                        Lines         = $lines
+                        Raw           = $raw
+                        ParamStr      = $paramStr
+                        RequiredCount = $requiredCount
+                        HasVariadic   = $hasVariadic
+                        TotalParams   = if ($paramStr -eq '') { 0 } else { ($paramStr -split ',').Count }
+                    }
+                }
+
+                # Track *_SetCallbacks functions (for callback_invocation_arity)
+                if ($funcName -match '_SetCallbacks$') {
+                    $scParams = @()
+                    if ($paramStr -ne '') {
+                        foreach ($p in $paramStr -split ',') {
+                            $trimP = $p.Trim() -replace '\s*:=.*$', ''
+                            $trimP = $trimP -replace '^\s*&?\s*', ''
+                            if ($trimP -ne '') { $scParams += $trimP }
+                        }
+                    }
+                }
+
+                if ($cleaned -match '\{') {
+                    $inFunc = $true
+                    $funcDepth = $depth
+                    # Register SetCallbacks definition
+                    if ($funcName -match '_SetCallbacks$') {
+                        $scName = $funcName
+                        $sharedSetCallbacksDefs[$scName] = @{
+                            ParamNames = $scParams
+                            GlobalMap = @{}
+                        }
+                    }
+                }
+            }
+        }
+
+        # Brace tracking
+        if ($isCritical) {
+            $braces = $lineData[$i].Braces
+        } else {
+            $braces = BC_CountBraces $cleaned
+        }
+        $depth += $braces[0] - $braces[1]
+
+        # Inside a SetCallbacks function: track callback global assignments
+        if ($inFunc -and $scName -ne '' -and $sharedSetCallbacksDefs.ContainsKey($scName)) {
+            if ($cleaned -match '^\s*(g\w+_On\w+)\s*:=\s*(\w+)\s*$') {
+                $globalName = $Matches[1]
+                $assignedParam = $Matches[2]
+                $sharedSetCallbacksDefs[$scName].GlobalMap[$assignedParam] = $globalName
+            }
+        }
+
+        if ($inFunc -and $depth -le $funcDepth) {
+            $inFunc = $false
+            $funcDepth = -1
+            $scName = ""
+        }
+    }
+}
 
 # ============================================================
 # Sub-check 1: thememsgbox
@@ -766,55 +895,16 @@ $sw.Stop()
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $CS_SUPPRESSION = 'lint-ignore: callback-signature'
 
-# Phase 1: Build function definition index (name -> param info)
-$csFuncParams = @{}  # funcName -> @{ RequiredCount; HasVariadic; File; Line }
-
-$CS_KEYWORDS = @(
-    'if', 'else', 'while', 'for', 'loop', 'switch', 'case', 'catch',
-    'finally', 'try', 'class', 'return', 'throw', 'static', 'global',
-    'local', 'until', 'not', 'and', 'or', 'is', 'in', 'contains',
-    'new', 'super', 'this', 'true', 'false', 'unset', 'isset'
-)
-
-foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
-    $relPath = $file.FullName.Replace("$projectRoot\", '')
-
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $raw = $lines[$i]
-        if ($raw -match '^\s*;') { continue }
-
-        # Match function definition with param list
-        if ($raw -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\(([^)]*)\)\s*\{?') {
-            $funcName = $Matches[1]
-            $paramStr = $Matches[2].Trim()
-            if ($funcName.ToLower() -in $CS_KEYWORDS) { continue }
-
-            # Parse parameter string
-            $hasVariadic = $paramStr -match '\*'
-            $requiredCount = 0
-            if ($paramStr -ne '' -and -not $hasVariadic) {
-                # Count parameters that have no default value
-                foreach ($param in $paramStr -split ',') {
-                    $p = $param.Trim()
-                    if ($p -eq '') { continue }
-                    # Has default? param := value or param = value
-                    if ($p -match ':=|=') { continue }
-                    # ByRef? &param — still counts as required
-                    $requiredCount++
-                }
-            }
-
-            if (-not $csFuncParams.ContainsKey($funcName)) {
-                $csFuncParams[$funcName] = @{
-                    RequiredCount = $requiredCount
-                    HasVariadic   = $hasVariadic
-                    TotalParams   = if ($paramStr -eq '') { 0 } else { ($paramStr -split ',').Count }
-                    File          = $relPath
-                    Line          = $i + 1
-                }
-            }
-        }
+# Phase 1: Use shared function definition index (built in shared pre-processing pass)
+$csFuncParams = @{}  # funcName -> @{ RequiredCount; HasVariadic; TotalParams; File; Line }
+foreach ($fname in $sharedFuncDefs.Keys) {
+    $def = $sharedFuncDefs[$fname]
+    $csFuncParams[$fname] = @{
+        RequiredCount = $def.RequiredCount
+        HasVariadic   = $def.HasVariadic
+        TotalParams   = $def.TotalParams
+        File          = $def.File
+        Line          = $def.DefLine + 1
     }
 }
 
@@ -1064,26 +1154,14 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $clIssues = [System.Collections.ArrayList]::new()
 
 # Pass 1: Identify functions that contain Critical "Off"
-# Also cache processed line data (cleaned, stripped, braces) for reuse in Pass 2
+# Uses shared processed line data from shared pre-processing pass
 $criticalOffFunctions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 $clFuncCount = 0
-$lineDataCache = @{}  # file -> array of @{ Raw; Cleaned; Stripped; Braces }
 
 foreach ($file in $allFiles) {
     if (-not $criticalFiles.Contains($file.FullName)) { continue }
-    $lines = $fileCache[$file.FullName]
-
-    # Pre-process all lines and cache results
-    $lineData = [System.Collections.ArrayList]::new($lines.Count)
-    for ($li = 0; $li -lt $lines.Count; $li++) {
-        $rawLine = $lines[$li]
-        $cleaned = BC_CleanLine $rawLine
-        $stripped = if ($cleaned -ne '') { BC_StripComments $rawLine } else { '' }
-        $braces = if ($cleaned -ne '') { BC_CountBraces $cleaned } else { @(0, 0) }
-        [void]$lineData.Add(@{ Raw = $rawLine; Cleaned = $cleaned; Stripped = $stripped; Braces = $braces })
-    }
-    $lineDataCache[$file.FullName] = $lineData
+    $lineData = $sharedLineData[$file.FullName]
 
     $depth = 0
     $inFunc = $false
@@ -1093,7 +1171,11 @@ foreach ($file in $allFiles) {
     for ($i = 0; $i -lt $lineData.Count; $i++) {
         $ld = $lineData[$i]
         $cleaned = $ld.Cleaned
-        if ($cleaned -eq '') { continue }
+        if ($cleaned -eq '') {
+            $depth += $ld.Braces[0] - $ld.Braces[1]
+            if ($depth -lt 0) { $depth = 0 }
+            continue
+        }
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -1121,7 +1203,7 @@ foreach ($file in $allFiles) {
 }
 
 # Pass 2: Find calls to those functions inside Critical sections
-# Uses cached line data from Pass 1 (no re-cleaning, re-stripping, or re-counting braces)
+# Uses shared line data (no re-cleaning, re-stripping, or re-counting braces)
 if ($criticalOffFunctions.Count -gt 0) {
     # Pre-filter: build regex to skip files that don't mention any leaked function
     $escapedLeaked = @($criticalOffFunctions | ForEach-Object { [regex]::Escape($_) })
@@ -1130,11 +1212,11 @@ if ($criticalOffFunctions.Count -gt 0) {
     $rxFuncCall = [regex]::new('(?<![.\w])(\w+)\s*\(', 'Compiled')
 
     foreach ($file in $allFiles) {
-        if (-not $lineDataCache.ContainsKey($file.FullName)) { continue }
+        if (-not $sharedLineData.ContainsKey($file.FullName)) { continue }
         # Skip files that don't call any leaked function
         if (-not $leakedPattern.IsMatch($fileCacheText[$file.FullName])) { continue }
 
-        $lineData = $lineDataCache[$file.FullName]
+        $lineData = $sharedLineData[$file.FullName]
         $relPath = $file.FullName.Replace("$projectRoot\", '')
         $depth = 0
         $inFunc = $false
@@ -1231,9 +1313,9 @@ $csFuncCount = 0
 foreach ($file in $allFiles) {
     if (-not $criticalFiles.Contains($file.FullName)) { continue }
 
-    # Reuse pre-processed line data from critical_leaks (avoids re-cleaning/re-counting)
-    $hasLineData = $lineDataCache.ContainsKey($file.FullName)
-    $lineData = if ($hasLineData) { $lineDataCache[$file.FullName] } else { $null }
+    # Reuse pre-processed line data from shared pass (avoids re-cleaning/re-counting)
+    $hasLineData = $sharedLineData.ContainsKey($file.FullName)
+    $lineData = if ($hasLineData) { $sharedLineData[$file.FullName] } else { $null }
     $lines = $fileCache[$file.FullName]
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
@@ -1344,43 +1426,8 @@ $ebIssues = [System.Collections.ArrayList]::new()
 # Using auto-discovery prevents new producer files from being silently missed.
 $EB_PRODUCER_PATTERNS = @('src\core\*.ahk', 'src\gui\gui_pump.ahk', 'src\gui\gui_main.ahk')
 
-# Build function definition index: funcName -> @{ File; Line; Lines (body start) }
-# Reuse $allFiles and $fileCache from shared cache
-$ebFuncDefs = @{}
-foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
-    $relPath = $file.FullName.Replace("$projectRoot\", '')
-    $depth = 0
-    $inFunc = $false
-    $funcDepth = -1
-
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BC_CleanLine $lines[$i]
-        if ($cleaned -eq '') { continue }
-
-        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
-            $fname = $Matches[1]
-            if (-not $BC_keywordSet.Contains($fname) -and $cleaned -match '\{') {
-                $inFunc = $true
-                $funcDepth = $depth
-                if (-not $ebFuncDefs.ContainsKey($fname)) {
-                    $ebFuncDefs[$fname] = @{
-                        File = $relPath; DefLine = $i; FileName = $file.Name
-                        Lines = $lines; Raw = $lines[$i]
-                    }
-                }
-            }
-        }
-
-        $braces = BC_CountBraces $cleaned
-        $depth += $braces[0] - $braces[1]
-
-        if ($inFunc -and $depth -le $funcDepth) {
-            $inFunc = $false
-            $funcDepth = -1
-        }
-    }
-}
+# Use shared function definition index (built in shared pre-processing pass)
+$ebFuncDefs = $sharedFuncDefs
 
 # Helper: check if a function body has try { within first N non-blank statements
 function EB_HasTryCatch {
@@ -1706,66 +1753,8 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $ciaIssues = [System.Collections.ArrayList]::new()
 $CIA_SUPPRESSION = 'lint-ignore: callback-invocation-arity'
 
-# Phase 1: Find *_SetCallbacks() definitions — map parameter positions to callback globals
-# Example: WL_SetCallbacks(onStoreChanged, onWorkspaceChanged) {
-#              gWS_OnStoreChanged := onStoreChanged    -> param position 0 -> gWS_OnStoreChanged
-#              gWS_OnWorkspaceChanged := onWorkspaceChanged -> param position 1 -> gWS_OnWorkspaceChanged
-#          }
-$ciaSetCallbacksDefs = @{}  # funcName -> @{ ParamNames = string[]; GlobalMap = @{ paramName -> globalName } }
-
-foreach ($file in $allFiles) {
-    $lines = $fileCache[$file.FullName]
-    $depth = 0
-    $inFunc = $false
-    $funcDepth = -1
-    $scName = ""
-    $scParams = @()
-
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BC_CleanLine $lines[$i]
-        if ($cleaned -eq '') { continue }
-
-        # Detect *_SetCallbacks function definition
-        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+_SetCallbacks)\s*\(([^)]*)\)\s*\{?') {
-            $scName = $Matches[1]
-            $paramStr = $Matches[2].Trim()
-            $scParams = @()
-            if ($paramStr -ne '') {
-                foreach ($p in $paramStr -split ',') {
-                    $trimP = $p.Trim() -replace '\s*:=.*$', ''  # strip defaults
-                    $trimP = $trimP -replace '^\s*&?\s*', ''     # strip ByRef
-                    if ($trimP -ne '') { $scParams += $trimP }
-                }
-            }
-            if ($cleaned -match '\{') {
-                $inFunc = $true
-                $funcDepth = $depth
-                $ciaSetCallbacksDefs[$scName] = @{
-                    ParamNames = $scParams
-                    GlobalMap = @{}
-                }
-            }
-        }
-
-        $braces = BC_CountBraces $cleaned
-        $depth += $braces[0] - $braces[1]
-
-        if ($inFunc) {
-            # Look for assignments: gSomeCallback := paramName
-            if ($cleaned -match '^\s*(g\w+_On\w+)\s*:=\s*(\w+)\s*$') {
-                $globalName = $Matches[1]
-                $assignedParam = $Matches[2]
-                if ($ciaSetCallbacksDefs.ContainsKey($scName)) {
-                    $ciaSetCallbacksDefs[$scName].GlobalMap[$assignedParam] = $globalName
-                }
-            }
-            if ($depth -le $funcDepth) {
-                $inFunc = $false
-                $funcDepth = -1
-            }
-        }
-    }
-}
+# Phase 1: Use shared SetCallbacks definitions (built in shared pre-processing pass)
+$ciaSetCallbacksDefs = $sharedSetCallbacksDefs
 
 # Phase 2: Find call sites of each SetCallbacks to resolve actual function refs
 # Example: WL_SetCallbacks(_GUI_OnProducerRevChanged, GUI_OnWorkspaceFlips)
@@ -1776,7 +1765,15 @@ $ciaGlobalToTarget = @{}  # callbackGlobal -> targetFuncName
 foreach ($scFuncName in $ciaSetCallbacksDefs.Keys) {
     $def = $ciaSetCallbacksDefs[$scFuncName]
 
+    # Pre-compile regex per SetCallbacks name (avoids ~50K recompilations)
+    $escaped = [regex]::Escape($scFuncName)
+    $rxCall = [regex]::new("$escaped\s*\(([^)]+)\)", 'Compiled')
+    $rxDef  = [regex]::new("^\s*(?:static\s+)?$escaped\s*\([^)]*\)\s*\{", 'Compiled')
+
     foreach ($file in $allFiles) {
+        # File-level pre-filter: skip files that don't mention this function name
+        if ($fileCacheText[$file.FullName].IndexOf($scFuncName) -lt 0) { continue }
+
         $lines = $fileCache[$file.FullName]
         for ($i = 0; $i -lt $lines.Count; $i++) {
             $raw = $lines[$i]
@@ -1784,9 +1781,9 @@ foreach ($scFuncName in $ciaSetCallbacksDefs.Keys) {
 
             # Match call site: ScFuncName(arg1, arg2, ...)
             # But NOT the definition line (definition has { after closing paren)
-            if ($raw -match "$([regex]::Escape($scFuncName))\s*\(([^)]+)\)" -and
-                $raw -notmatch "^\s*(?:static\s+)?$([regex]::Escape($scFuncName))\s*\([^)]*\)\s*\{") {
-                $argStr = $Matches[1]
+            $m = $rxCall.Match($raw)
+            if ($m.Success -and -not $rxDef.IsMatch($raw)) {
+                $argStr = $m.Groups[1].Value
                 $args = @()
                 foreach ($a in $argStr -split ',') {
                     $trimA = $a.Trim()

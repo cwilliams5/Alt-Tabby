@@ -91,7 +91,16 @@ foreach ($f in $allFiles) {
     $processed = [object[]]::new($lines.Count)
     for ($li = 0; $li -lt $lines.Count; $li++) {
         $cleaned = BS_CleanLine $lines[$li]
-        $braces = if ($cleaned -ne '') { BS_CountBraces $cleaned } else { @(0, 0) }
+        # Inline brace counting (eliminates ~25K function call overhead)
+        if ($cleaned -ne '') {
+            $o = 0; $c = 0
+            foreach ($ch in $cleaned.ToCharArray()) {
+                if ($ch -eq '{') { $o++ } elseif ($ch -eq '}') { $c++ }
+            }
+            $braces = @($o, $c)
+        } else {
+            $braces = @(0, 0)
+        }
         $processed[$li] = @{ Raw = $lines[$li]; Cleaned = $cleaned; Braces = $braces }
     }
     $processedCache[$f.FullName] = $processed
