@@ -712,7 +712,6 @@ _WEH_ProbeWindow(hwnd) {
 
 ; Lightweight update for windows already in the store.
 ; Skips immutable fields (class, PID) - only fetches title + vis/min/cloak.
-; Returns: true if updated, false if skipped (hung/dead), -1 if ineligible (should remove)
 ; Returns: Object patch (success), -1 (ineligible/destroyed), false (skipped/error)
 ; Caller batches patches and calls WL_BatchUpdateFields once for the whole batch.
 _WEH_UpdateExisting(hwnd) {
