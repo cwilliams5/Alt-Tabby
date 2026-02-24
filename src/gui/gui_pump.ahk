@@ -31,7 +31,8 @@ global _gPump_FailureNotified := false ; Prevent duplicate PUMP_FAILED notificat
 ; Event-driven collection timer state
 global _gPump_TimerOn := false       ; Whether collection timer is running
 global _gPump_IdleTicks := 0         ; Consecutive empty ticks
-global _gPump_IdleThreshold := 5     ; Empty ticks before pausing (matches local pumps)
+global _gPump_IdleThreshold := 5     ; Empty ticks before switching to heartbeat
+global _GPUMP_HEARTBEAT_MS := 2000   ; Slow-poll interval for pump health check when idle
 
 ; IPC client timer management
 global _gPump_ClientTimerOn := false  ; Whether IPC client poll timer is running
@@ -184,7 +185,7 @@ _GUIPump_CollectTick() {
     global _gPump_Client, _gPump_Connected, cfg, FR_EV_ENRICH_REQ, gFR_Enabled
     global _gPump_LastRequestTick, _gPump_LastResponseTick
     global _gPump_IdleTicks, _gPump_IdleThreshold, _gPump_TimerOn, _gPump_CollectTimerFn
-    global _gPump_HelloSent, _gPump_PumpHwnd
+    global _gPump_HelloSent, _gPump_PumpHwnd, _GPUMP_HEARTBEAT_MS
     static _errCount := 0
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
     if (A_TickCount < _backoffUntil)
@@ -233,7 +234,20 @@ _GUIPump_CollectTick() {
             ; Don't pause if waiting for a response — need timer running for hang detection
             if (_gPump_LastRequestTick > _gPump_LastResponseTick)
                 return
-            Pump_HandleIdle(&_gPump_IdleTicks, _gPump_IdleThreshold, &_gPump_TimerOn, _gPump_CollectTimerFn)
+            ; Switch to heartbeat mode after idle threshold — slow timer checks pump health.
+            ; Unlike local pumps (which fully stop), the enrichment pump needs to detect
+            ; process death even when idle, since it's the only path to PUMP_FAILED signal.
+            _gPump_IdleTicks += 1
+            if (_gPump_IdleTicks >= _gPump_IdleThreshold && _gPump_TimerOn) {
+                SetTimer(_gPump_CollectTimerFn, _GPUMP_HEARTBEAT_MS)  ; lint-ignore: timer-lifecycle (cancelled in GUIPump_Stop/HandleFailure via bound ref)
+                _gPump_TimerOn := false  ; marks "not in fast mode" for EnsureRunning
+            }
+            ; Heartbeat: verify pump process is still alive via its window handle
+            if (_gPump_PumpHwnd && !DllCall("IsWindow", "ptr", _gPump_PumpHwnd)) {
+                if (cfg.DiagPumpLog)
+                    _GUIPump_Log("HEARTBEAT: Pump window gone, declaring pump dead")
+                _GUIPump_HandleFailure("process_exit")
+            }
             return
         }
 
