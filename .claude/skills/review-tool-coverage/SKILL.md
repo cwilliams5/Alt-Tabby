@@ -1,5 +1,5 @@
 ---
-name: review-query-tools
+name: review-tool-coverage
 description: Audit query tools for accuracy, gaps, and retirement candidates
 ---
 
