@@ -495,9 +495,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
             for _, col in cols {
                 val := ""
-                if (col.key = "hwndHex")
-                    val := Format("0x{:X}", cur.hwnd)
-                else if (cur.HasOwnProp(col.key))
+                if (cur.HasOwnProp(col.key))
                     val := cur.%col.key%
                 Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, fmtCol)
             }

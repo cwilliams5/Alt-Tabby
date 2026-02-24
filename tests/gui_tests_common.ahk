@@ -357,6 +357,9 @@ LogAppend(params*) {
 }
 LogInitSession(params*) {
 }
+GetLogTimestamp() {
+    return "00:00:00.000"
+}
 
 ; Process utility mock (gui_state.ahk calls this)
 ProcessUtils_RunHidden(params*) {
