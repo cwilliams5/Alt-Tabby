@@ -40,12 +40,24 @@ global _gPump_ClientTimerOn := false  ; Whether IPC client poll timer is running
 global _gPump_PumpHwnd := 0          ; Pump process hwnd (for GUI→pump wake)
 global _gPump_HelloSent := false     ; Whether first request included guiHwnd
 
+; Deferred retry state (handles pump not ready at GUI startup)
+global _gPump_RetryTimerFn := 0      ; Bound ref for deferred retry one-shot timer
+global _gPump_RetryCount := 0        ; Current retry attempt (0 = none pending)
+global _GPUMP_MAX_RETRIES := 3       ; Cap: stop retrying after this many attempts
+
 ; ========================= PUBLIC API =========================
 
 GUIPump_Init() {
     global cfg, _gPump_Client, _gPump_Connected, _gPump_CollectTimerFn, _gPump_CollectIntervalMs
     global _gPump_TimerOn, _gPump_IdleTicks, _gPump_ClientTimerOn
     global _gPump_PumpHwnd, _gPump_HelloSent
+    global _gPump_RetryTimerFn, _gPump_RetryCount, _GPUMP_MAX_RETRIES
+
+    ; Cancel any pending retry timer (handles re-entrant calls from Reconnect or retry)
+    if (_gPump_RetryTimerFn) {
+        SetTimer(_gPump_RetryTimerFn, 0)
+        _gPump_RetryTimerFn := 0
+    }
 
     mode := cfg.AdditionalWindowInformation
     if (mode != "Always" && mode != "NonBlocking")
@@ -56,12 +68,21 @@ GUIPump_Init() {
 
     if (!IsObject(_gPump_Client) || _gPump_Client.hPipe = 0) {
         _gPump_Connected := false
-        if (cfg.DiagPumpLog)
-            _GUIPump_Log("INIT: Failed to connect to EnrichmentPump (pipe=" cfg.PumpPipeName "). Using inline fallback.")
+        if (_gPump_RetryCount < _GPUMP_MAX_RETRIES) {
+            _gPump_RetryCount += 1
+            retryMs := 250 * (2 ** _gPump_RetryCount)  ; 500, 1000, 2000ms
+            _gPump_RetryTimerFn := _GUIPump_DeferredRetry.Bind()
+            SetTimer(_gPump_RetryTimerFn, -retryMs)
+            if (cfg.DiagPumpLog)
+                _GUIPump_Log("INIT: Pump not ready, retry " _gPump_RetryCount "/" _GPUMP_MAX_RETRIES " in " retryMs "ms")
+        } else if (cfg.DiagPumpLog) {
+            _GUIPump_Log("INIT: Failed to connect after " _GPUMP_MAX_RETRIES " retries. Using inline fallback.")
+        }
         return false
     }
 
     _gPump_Connected := true
+    _gPump_RetryCount := 0
 
     ; Register PostMessage wake handler for immediate pipe reads
     global IPC_WM_PIPE_WAKE
@@ -99,6 +120,13 @@ GUIPump_Init() {
 
 GUIPump_Stop() {
     global _gPump_Client, _gPump_Connected, _gPump_CollectTimerFn, _gPump_TimerOn
+    global _gPump_RetryTimerFn, _gPump_RetryCount
+
+    ; Cancel any pending retry timer
+    if (_gPump_RetryTimerFn)
+        try SetTimer(_gPump_RetryTimerFn, 0)
+    _gPump_RetryTimerFn := 0
+    _gPump_RetryCount := 0
 
     ; Stop collection timer
     if (_gPump_CollectTimerFn)
@@ -443,15 +471,32 @@ _GUIPump_HandleFailure(reason) {
     }
 }
 
+; One-shot callback: retry pump connection after startup delay.
+; GUIPump_Init() schedules the next retry if this attempt also fails.
+_GUIPump_DeferredRetry() {
+    global _gPump_RetryTimerFn, cfg
+    _gPump_RetryTimerFn := 0  ; One-shot already fired, clear ref
+    try {
+        result := GUIPump_Init()
+        if (result && cfg.DiagPumpLog)
+            _GUIPump_Log("RETRY: Deferred connect succeeded")
+    } catch as e {
+        global LOG_PATH_PUMP
+        try LogAppend(LOG_PATH_PUMP, "RETRY error: " e.Message)
+    }
+}
+
 ; Called by gui_main.ahk when launcher sends TABBY_CMD_PUMP_RESTARTED.
 ; Attempts to reconnect to the freshly-restarted pump subprocess.
 GUIPump_Reconnect() {
     global _gPump_LastRequestTick, _gPump_LastResponseTick, _gPump_FailureNotified, cfg
+    global _gPump_RetryCount
 
     ; Reset failure tracking state
     _gPump_LastRequestTick := 0
     _gPump_LastResponseTick := 0
     _gPump_FailureNotified := false
+    _gPump_RetryCount := 0  ; Fresh retry budget for launcher-initiated reconnect
 
     ; GUIPump_Init handles pipe connect, stops local pumps if successful
     result := GUIPump_Init()
