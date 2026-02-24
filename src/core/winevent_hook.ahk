@@ -348,7 +348,8 @@ _WEH_ProcessBatch() {
     diagNewTitle := ""
     diagOldHwnd := gWEH_LastFocusHwnd
     diagNewHwnd := _WEH_PendingFocusHwnd
-    if (cfg.DiagWinEventLog && diagNewHwnd && diagNewHwnd != diagOldHwnd) {
+    logEnabled := cfg.DiagWinEventLog
+    if (logEnabled && diagNewHwnd && diagNewHwnd != diagOldHwnd) {
         try diagOldTitle := diagOldHwnd ? WinGetTitle("ahk_id " diagOldHwnd) : "(none)"
         try diagNewTitle := WinGetTitle("ahk_id " diagNewHwnd)
     }
@@ -366,7 +367,7 @@ _WEH_ProcessBatch() {
     ; 1) gives the wrong window a newer MRU tick, causing visible item "jiggle"
     ; 2) triggers WS MISMATCH correction (line ~307) that flips workspace back and forth
     if (_WEH_PendingFocusHwnd && gKSub_MruSuppressUntilTick > 0 && A_TickCount < gKSub_MruSuppressUntilTick) {
-        if (cfg.DiagWinEventLog)
+        if (logEnabled)
             _WEH_DiagLog("FOCUS SUPPRESSED (ws switch): hwnd=" _WEH_PendingFocusHwnd)
         if (gFR_Enabled)
             FR_Record(FR_EV_FOCUS_SUPPRESS, _WEH_PendingFocusHwnd, gKSub_MruSuppressUntilTick - A_TickCount)
@@ -377,14 +378,14 @@ _WEH_ProcessBatch() {
         _WEH_PendingFocusHwnd := 0  ; Clear pending
 
         ; Debug: log the focus transition (using titles captured before Critical)
-        if (cfg.DiagWinEventLog && diagNewHwnd = newFocus) {
+        if (logEnabled && diagNewHwnd = newFocus) {
             _WEH_DiagLog("BATCH PROCESS: " diagOldHwnd " '" SubStr(diagOldTitle, 1, 15) "' -> " newFocus " '" SubStr(diagNewTitle, 1, 15) "'")
         }
 
         ; Check if the new focus window is in our store (single lookup)
         focusedRec := gWS_Store.Get(newFocus + 0, 0)
         inStore := (focusedRec != 0)
-        if (cfg.DiagWinEventLog)
+        if (logEnabled)
             _WEH_DiagLog("  inStore=" (inStore ? 1 : 0))
 
         ; CRITICAL: Only update gWEH_LastFocusHwnd if the window is actually in our store
@@ -411,7 +412,7 @@ _WEH_ProcessBatch() {
             ; focusedRec read before batch — workspaceName is unaffected by focus updates
             if (focusedRec.HasOwnProp("workspaceName") && focusedRec.workspaceName != ""
                 && focusedRec.workspaceName != gWS_Meta["currentWSName"] && gWS_Meta["currentWSName"] != "") {
-                if (cfg.DiagWinEventLog)
+                if (logEnabled)
                     _WEH_DiagLog("  WS MISMATCH: focused window on '" focusedRec.workspaceName "' but CurWS='" gWS_Meta["currentWSName"] "' — correcting")
                 WL_SetCurrentWorkspace("", focusedRec.workspaceName)
             }
@@ -424,14 +425,14 @@ _WEH_ProcessBatch() {
             ; WinUtils_ProbeWindow sends window messages (WinGetTitle, WinGetClass, WinGetPID)
             ; that can block 10-50ms on slow windows (Electron, Chrome). Holding Critical
             ; during that time freezes the entire store message pump.
-            if (cfg.DiagWinEventLog)
+            if (logEnabled)
                 _WEH_DiagLog("  NOT IN STORE: deferring probe outside Critical...")
             pendingProbeHwnd := newFocus
             pendingPrevFocus := gWEH_LastFocusHwnd
         }
     } else if (_WEH_PendingFocusHwnd && _WEH_PendingFocusHwnd = gWEH_LastFocusHwnd) {
         ; Same hwnd - log why we're skipping
-        if (cfg.DiagWinEventLog)
+        if (logEnabled)
             _WEH_DiagLog("FOCUS SKIP: same hwnd " _WEH_PendingFocusHwnd)
         _WEH_PendingFocusHwnd := 0
     }
@@ -457,7 +458,7 @@ _WEH_ProcessBatch() {
             Critical "Off"
             if (!superseded) {
                 WL_UpsertWindow([probe], "winevent_focus_add")
-                if (cfg.DiagWinEventLog)
+                if (logEnabled)
                     _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
 
                 ; Clear focus on previous window
@@ -469,11 +470,11 @@ _WEH_ProcessBatch() {
                 Critical "Off"
                 focusProcessed := true
             } else {
-                if (cfg.DiagWinEventLog)
+                if (logEnabled)
                     _WEH_DiagLog("  PROBE SUPERSEDED: newer focus " _WEH_PendingFocusHwnd " arrived during probe")
             }
         } else {
-            if (cfg.DiagWinEventLog)
+            if (logEnabled)
                 _WEH_DiagLog("  NOT ELIGIBLE or probe failed (system UI or blacklisted)")
         }
     }
@@ -509,9 +510,11 @@ _WEH_ProcessBatch() {
     Critical "Off"
 
     ; Collect hwnds ready to process (past debounce period)
-    toProcess := []
-    destroyed := []
-    hidden := []
+    ; PERF: Static arrays reuse capacity across ticks (matching snapHwnds/snapTicks pattern)
+    static toProcess := [], destroyed := [], hidden := []  ; lint-ignore: static-in-timer
+    toProcess.Length := 0
+    destroyed.Length := 0
+    hidden.Length := 0
 
     idx := 1
     while (idx <= snapHwnds.Length) {
@@ -624,19 +627,22 @@ _WEH_ProcessBatch() {
             WL_UpsertWindow(newRecords, "winevent_hook")
         batchChanged := (batchPatches.Count > 0 || newRecords.Length > 0 || ineligibleHwnds.Length > 0)
         ; Enqueue Z-order and icon refresh for all processed hwnds
-        allProcessed := []
-        for _, rec in newRecords
-            allProcessed.Push(rec["hwnd"])
-        for _, hwnd in updatedHwnds
-            allProcessed.Push(hwnd)
-        if (allProcessed.Length > 0) {
+        ; PERF: Iterate newRecords + updatedHwnds directly (avoids merge array allocation)
+        if (newRecords.Length > 0 || updatedHwnds.Length > 0) {
             ; Enqueue Z-order enrichment for events that change Z-order
             ; (CREATE, SHOW, FOREGROUND, FOCUS, MINIMIZE, RESTORE).
             ; Non-Z events (NAMECHANGE, LOCATIONCHANGE) get icon refresh instead —
             ; icons often change when titles change (browser tab switch, app state).
             ; Per-window throttle (IconPumpRefreshThrottleMs) prevents spam.
             iconRefresh := cfg.IconRefreshOnTitleChange
-            for _, hwnd in allProcessed {
+            for _, rec in newRecords {
+                h := rec["hwnd"]
+                if (zSnapshot.Has(h))
+                    WL_EnqueueForZ(h)
+                else if (iconRefresh)
+                    WL_EnqueueIconRefresh(h)
+            }
+            for _, hwnd in updatedHwnds {
                 if (zSnapshot.Has(hwnd))
                     WL_EnqueueForZ(hwnd)
                 else if (iconRefresh)

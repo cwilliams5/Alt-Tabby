@@ -895,10 +895,11 @@ _KSub_OnNotification(jsonLine) {
     global cfg, gWS_OnWorkspaceChanged, FR_EV_WS_SWITCH, gFR_Enabled
 
     Profiler.Enter("_KSub_OnNotification") ; @profile
+    logEnabled := cfg.DiagKomorebiLog  ; PERF: cache config read
     try {  ; Error boundary: notification handler — log and skip bad events
     ; ========== Layer 2: Quick event type extraction (no full JSON parse) ==========
     eventType := _KSub_QuickExtractEventType(jsonLine)
-    if (cfg.DiagKomorebiLog) {
+    if (logEnabled) {
         KSub_DiagLog("OnNotification called, len=" StrLen(jsonLine))
         KSub_DiagLog("  Quick event type: '" eventType "'")
     }
@@ -913,7 +914,7 @@ _KSub_OnNotification(jsonLine) {
             Critical "On"
             _KSub_CloakBatchBuffer[hwnd] := isCloaked
             Critical "Off"
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("  Cloak buffered: hwnd=" hwnd " cloaked=" isCloaked)
         }
         _KSub_ScheduleCloakPush()
@@ -923,7 +924,7 @@ _KSub_OnNotification(jsonLine) {
 
     ; Fast path for TitleUpdate: skip entirely (WinEventHook handles NAMECHANGE faster)
     if (eventType = KSUB_EV_TITLE_UPDATE) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("  TitleUpdate: skipped (WinEventHook handles)")
         Profiler.Leave() ; @profile
         return
@@ -933,7 +934,7 @@ _KSub_OnNotification(jsonLine) {
     parsed := ""
     try parsed := JSON.Load(jsonLine)
     if !(parsed is Map) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("  Failed to parse notification JSON")
         Profiler.Leave() ; @profile
         return
@@ -941,14 +942,14 @@ _KSub_OnNotification(jsonLine) {
 
     ; Each notification has: { "event": {...}, "state": {...} }
     if (!parsed.Has("state")) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("  No state object found")
         Profiler.Leave() ; @profile
         return
     }
     stateObj := parsed["state"]
     if !(stateObj is Map) {
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("  State is not a Map")
         Profiler.Leave() ; @profile
         return
@@ -961,7 +962,7 @@ _KSub_OnNotification(jsonLine) {
         ; eventType already extracted above via quick method
     }
 
-    if (cfg.DiagKomorebiLog)
+    if (logEnabled)
         KSub_DiagLog("Event: " eventType)
 
     ; Track if we explicitly handled workspace change
@@ -997,7 +998,7 @@ _KSub_OnNotification(jsonLine) {
         if (eventObj is Map && eventObj.Has("content"))
             content := eventObj["content"]
 
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("  FocusWorkspace content type: " Type(content))
 
         wsName := ""
@@ -1018,7 +1019,7 @@ _KSub_OnNotification(jsonLine) {
             } else if (content != "") {
                 try wsIdx := Integer(content)
             }
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("  MoveContainer wsIdx=" wsIdx)
 
             if (wsIdx >= 0) {
@@ -1028,7 +1029,7 @@ _KSub_OnNotification(jsonLine) {
                 if (focusedMonIdx >= 0 && monitorsArr.Length > focusedMonIdx) {
                     monObj := monitorsArr[focusedMonIdx + 1]
                     wsName := KSub_GetWorkspaceNameByIndex(monObj, wsIdx)
-                    if (cfg.DiagKomorebiLog)
+                    if (logEnabled)
                         KSub_DiagLog("  lookup wsName from focusMon[" focusedMonIdx "] ws[" wsIdx "] = '" wsName "'")
                 }
             }
@@ -1039,7 +1040,7 @@ _KSub_OnNotification(jsonLine) {
             wsIdx := -1
             monIdx := 0
             if (content is Array) {
-                if (cfg.DiagKomorebiLog)
+                if (logEnabled)
                     KSub_DiagLog("  content array length: " content.Length)
                 if (content.Length >= 2) {
                     monIdx := Integer(content[1])
@@ -1051,24 +1052,24 @@ _KSub_OnNotification(jsonLine) {
                 wsIdx := content
             }
 
-            if (cfg.DiagKomorebiLog)
+            if (logEnabled)
                 KSub_DiagLog("  monIdx=" monIdx " wsIdx=" wsIdx)
 
             if (wsIdx >= 0) {
                 monitorsArr := KSub_GetMonitorsArray(stateObj)
-                if (cfg.DiagKomorebiLog)
+                if (logEnabled)
                     KSub_DiagLog("  monitors count: " monitorsArr.Length)
                 if (monitorsArr.Length > monIdx) {
                     ; Use the correct monitor from the event
                     monObj := monitorsArr[monIdx + 1]  ; AHK is 1-based
                     wsName := KSub_GetWorkspaceNameByIndex(monObj, wsIdx)
-                    if (cfg.DiagKomorebiLog)
+                    if (logEnabled)
                         KSub_DiagLog("  lookup wsName from mon[" monIdx "] ws[" wsIdx "] = '" wsName "'")
                 }
             }
         }
 
-        if (cfg.DiagKomorebiLog) {
+        if (logEnabled) {
             KSub_DiagLog("  Focus event resolved wsName='" wsName "'")
             KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
         }
@@ -1077,7 +1078,7 @@ _KSub_OnNotification(jsonLine) {
             ; Capture old workspace BEFORE updating (needed for move events)
             previousWsName := _KSub_LastWorkspaceName
             if (wsName != _KSub_LastWorkspaceName) {
-                if (cfg.DiagKomorebiLog) {
+                if (logEnabled) {
                     KSub_DiagLog("  Updating current workspace to '" wsName "' from focus event")
                     KSub_DiagLog("  CurWS: '" _KSub_LastWorkspaceName "' -> '" wsName "'")
                 }
@@ -1117,7 +1118,7 @@ _KSub_OnNotification(jsonLine) {
                 ; Update cache: moved window is now focused on TARGET workspace
                 if (moveTargetHwnd)
                     _KSub_FocusedHwndByWS[wsName] := moveTargetHwnd
-                if (cfg.DiagKomorebiLog)
+                if (logEnabled)
                     KSub_DiagLog("  Move: src='" previousWsName "' dst='" wsName "' movedHwnd=" moveTargetHwnd)
             }
 
@@ -1153,7 +1154,7 @@ _KSub_OnNotification(jsonLine) {
         ; Also fix the workspace cache so subsequent ProcessFullState calls
         ; don't revert the correction using a stale cache entry.
         _KSub_WorkspaceCache[moveTargetHwnd] := { wsName: moveTargetWsName, tick: A_TickCount }
-        if (cfg.DiagKomorebiLog)
+        if (logEnabled)
             KSub_DiagLog("  Move post-fix: hwnd=" moveTargetHwnd " -> ws='" moveTargetWsName "'")
     }
 

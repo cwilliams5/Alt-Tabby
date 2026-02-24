@@ -122,6 +122,7 @@ global gWS_InternalFields := Map("iconCooldownUntilTick", true, "lastSeenScanId"
 WS_SnapshotMapKeys(mapObj) {
     Critical "On"
     keys := []
+    keys.Capacity := mapObj.Count
     for k, _ in mapObj
         keys.Push(k)
     Critical "Off"
@@ -1125,9 +1126,7 @@ WL_UpdateProcessName(pid, name) {
 ; Get a COPY of cached icon for exe (caller owns the copy)
 WL_GetExeIconCopy(exePath) {
     global gWS_ExeIconCache
-    if (!gWS_ExeIconCache.Has(exePath))
-        return 0
-    master := gWS_ExeIconCache[exePath]
+    master := gWS_ExeIconCache.Get(exePath, 0)
     if (!master)
         return 0
     return DllCall("user32\CopyIcon", "ptr", master, "ptr")
