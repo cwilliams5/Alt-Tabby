@@ -354,8 +354,9 @@ _Launcher_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 
         return 0
     } catch as e {
-        global LOG_PATH_LAUNCHER
-        try LogAppend(LOG_PATH_LAUNCHER, "Launcher_OnCopyData err=" e.Message " file=" e.File " line=" e.Line)
+        global LOG_PATH_LAUNCHER, cfg
+        if (cfg.DiagLauncherLog)
+            try LogAppend(LOG_PATH_LAUNCHER, "Launcher_OnCopyData err=" e.Message " file=" e.File " line=" e.Line)
         return 0
     }
 }
