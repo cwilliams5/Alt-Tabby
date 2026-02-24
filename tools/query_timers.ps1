@@ -33,7 +33,7 @@ foreach ($file in $allFiles) {
     # File-level pre-filter: skip files without SetTimer
     $fileText = [System.IO.File]::ReadAllText($file.FullName)
     if ($fileText.IndexOf('SetTimer', [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-    $lines = $fileText -split '\r?\n'
+    $lines = Split-Lines $fileText
 
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 

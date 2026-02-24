@@ -114,7 +114,7 @@ foreach ($file in $allFiles) {
         $fileText.IndexOf('SendMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
         $fileText.IndexOf('PostMessage', [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
         $fileText.IndexOf('DllCall', [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
-    $lines = $fileText -split '\r?\n'
+    $lines = Split-Lines $fileText
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     # Build per-file constant cache: constName -> hex int (replaces O(L) Resolve-HexConstant scans)

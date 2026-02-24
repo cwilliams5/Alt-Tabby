@@ -87,7 +87,7 @@ foreach ($file in $srcFiles) {
     # Query mode: skip line parsing once the queried definition is found (lazy split)
     if ($Query -and $queryDef) { continue }
 
-    $lines = $text -split "`r?`n"
+    $lines = Split-Lines $text
     $fileCache[$file.FullName] = $lines
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
@@ -178,6 +178,8 @@ if (-not $Query) {
         $inFunc = $false
         $funcDepth = -1
         $funcName = ""
+        $seen = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
 
         for ($i = 0; $i -lt $lines.Count; $i++) {
             $cleaned = Clean-Line $lines[$i]
@@ -205,8 +207,7 @@ if (-not $Query) {
             # Find references to _ prefixed functions: both calls _Func() and
             # references _Func (passed to SetTimer, OnEvent, OnMessage, etc.)
             $callMatches = $privateCallPattern.Matches($cleaned)
-            $seen = [System.Collections.Generic.HashSet[string]]::new(
-                [System.StringComparer]::OrdinalIgnoreCase)
+            $seen.Clear()
 
             foreach ($cm in $callMatches) {
                 $calledName = $cm.Groups[1].Value
@@ -273,7 +274,7 @@ if ($Query) {
 
         # Lazy line splitting: only split files that pass pre-filter and weren't split in Pass 1
         if (-not $fileCache.ContainsKey($file.FullName)) {
-            $fileCache[$file.FullName] = $fileCacheText[$file.FullName] -split "`r?`n"
+            $fileCache[$file.FullName] = Split-Lines $fileCacheText[$file.FullName]
         }
         $qLines = $fileCache[$file.FullName]
 
