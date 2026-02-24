@@ -205,7 +205,7 @@ RunGUITests_State() {
     ; ============================================================
     ; MONITOR MODE TESTS
     ; ============================================================
-    ; Tests GUI_ToggleMonitorMode() and GUI_FilterByMonitorMode() from
+    ; Tests GUI_ToggleMonitorMode() and GUI_MonitorItemPasses() from
     ; gui_monitor.ahk (included as real production code, Win32 deps mocked).
 
     ; ----- Test: Monitor toggle cycles modes -----

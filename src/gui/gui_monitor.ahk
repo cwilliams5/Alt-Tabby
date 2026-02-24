@@ -45,23 +45,6 @@ GUI_MonitorItemPasses(item) {
     return (item.monitorHandle = gGUI_OverlayMonitorHandle)
 }
 
-GUI_FilterByMonitorMode(items) {
-    global gGUI_MonitorMode, gGUI_OverlayMonitorHandle, MON_MODE_ALL
-
-    if (gGUI_MonitorMode = MON_MODE_ALL)
-        return items
-    if (!gGUI_OverlayMonitorHandle)
-        return items
-
-    ; Only items on the overlay's monitor (monitorHandle stamped by producers)
-    result := []
-    for _, item in items {
-        if (GUI_MonitorItemPasses(item))
-            result.Push(item)
-    }
-    return result
-}
-
 ; ========================= MONITOR MODE INIT =========================
 
 ; Initialize monitor mode from config default
