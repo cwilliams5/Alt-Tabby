@@ -447,7 +447,17 @@ ToggleAdminMode() {
             } catch {
                 TrayTip("Admin Mode", "Could not remove scheduled task. Re-try from the tray menu when running as administrator.", "Icon!")
             }
+            ; Re-check if elevated instance actually deleted the task
+            AdminTask_InvalidateCache()
+            deleted := !AdminTaskExists()
         }
+
+        if (!deleted) {
+            ; Both direct deletion and elevation failed — don't lie about state.
+            ; Task still exists, keep config/cache/shortcuts consistent.
+            return
+        }
+
         g_CachedAdminTaskActive := false
         Setup_SetRunAsAdmin(false, true)
         RecreateShortcuts()  ; Update shortcuts (still point to exe, but description changes)

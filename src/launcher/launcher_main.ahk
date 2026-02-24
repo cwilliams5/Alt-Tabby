@@ -834,14 +834,14 @@ _Launcher_CheckConfigWritable() {
 ; Check if we should skip wizard due to existing installation
 ; Returns true if: there's an existing Program Files install with valid config
 _Launcher_ShouldSkipWizardForExistingInstall() {
-    global cfg, ALTTABBY_INSTALL_DIR
+    global cfg
 
     ; Only relevant when FirstRunCompleted is false (would show wizard)
     if (cfg.SetupFirstRunCompleted)
         return false
 
     ; If running from Program Files, don't skip (let wizard show for fresh PF installs)
-    if (InStr(A_ScriptDir, ALTTABBY_INSTALL_DIR))
+    if (IsInProgramFiles())
         return false
 
     ; Check if there's a known installation (config ExePath or PF well-known path)
