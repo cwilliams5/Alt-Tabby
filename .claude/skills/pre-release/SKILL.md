@@ -18,8 +18,7 @@ Run these first. Any findings here are release-blockers:
 
 ## Tier 2 — Hygiene (things that rot if not caught)
 
-4. **`/review-dead-code`** — Dead code accumulates between releases
-5. **`/review-debug`** — Ungated log writes or accidentally-enabled diagnostics ship to users
+4. **`/review-debug`** — Ungated log writes or accidentally-enabled diagnostics ship to users
 
 **After Tier 2:** Report findings. Ask the user: address now or proceed to release?
 
@@ -40,7 +39,6 @@ After all skills have run, present a release readiness summary:
 | review-race-conditions | 0 | — |
 | review-resource-leaks | 2 | 1 high, 1 low |
 | review-option-interaction | 0 | — |
-| review-dead-code | 3 | all low |
 | review-debug | 1 | medium (ungated log) |
 
 **Release recommendation:** Proceed / Address N issues first
