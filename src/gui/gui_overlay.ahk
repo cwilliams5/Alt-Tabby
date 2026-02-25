@@ -22,7 +22,7 @@ global gD2D_RT := 0            ; ID2D1HwndRenderTarget
 GUI_HideOverlay() {
     Profiler.Enter("GUI_HideOverlay") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Revealed
-    global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
+    global cfg, GUI_LOG_TRIM_EVERY_N_HIDES, gD2D_RT
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
@@ -33,8 +33,18 @@ GUI_HideOverlay() {
     ; Stop hover polling and clear hover state
     GUI_ClearHoverState()
 
-    ; Single window — no stale ULW content to clear.
-    ; D2D HwndRenderTarget doesn't cache content for hidden windows.
+    ; Clear D2D surface BEFORE hiding — HwndRenderTarget::Present() is silently
+    ; discarded for hidden windows (MSDN), so the last visible-frame content
+    ; persists on the surface.  Without this clear, the stale frame flashes
+    ; briefly on the next Show() before the new paint arrives.
+    if (gD2D_RT) {
+        try {
+            gD2D_RT.BeginDraw()
+            gD2D_RT.Clear(D2D_ColorF(0x00000000))
+            gD2D_RT.EndDraw()
+        }
+    }
+
     try {
         gGUI_Base.Hide()
     }

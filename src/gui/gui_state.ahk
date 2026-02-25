@@ -613,28 +613,60 @@ _GUI_ShowOverlayWithFrozen() {
 
     gGUI_Revealed := false
 
-    ; ===== TIMING: Resize + Repaint =====
-    ; Both windows stay hidden during resize+paint. GUI_RevealBoth() (called from
-    ; inside GUI_Repaint) shows both at the same DwmFlush, preventing any frame
-    ; where the acrylic base is visible without the overlay window list.
+    ; ===== TIMING: Resize =====
     t1 := QPC()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
-    GUI_ResizeToRows(rowsDesired)
+    GUI_ResizeToRows(rowsDesired, true)  ; skipFlush — we flush after paint
     tShow_Resize := QPC() - t1
 
+    ; ===== Show window BEFORE painting =====
+    ; D2D HwndRenderTarget::Present() is silently discarded for hidden windows
+    ; (MSDN), so we must make the window visible first.  The D2D surface was
+    ; cleared to transparent on the previous hide, so the first visible frame
+    ; is just the acrylic backdrop — no stale content flash.
+    ; (Old GDI+/ULW flow painted hidden then showed; D2D requires show-then-paint.)
+
+    ; RACE FIX: abort if state changed during resize (pumps messages)
+    if (gGUI_State != "ACTIVE") {
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT before Show (state=" gGUI_State ")")
+        _GUI_AbortShowSequence()
+        Profiler.Leave() ; @profile
+        return
+    }
+
+    try {
+        gGUI_Base.Show("NA")
+    }
+
+    ; RACE FIX: Show pumps messages — check if Alt was released
+    if (gGUI_State != "ACTIVE") {
+        try gGUI_Base.Hide()
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT after Show (state=" gGUI_State ")")
+        _GUI_AbortShowSequence()
+        Profiler.Leave() ; @profile
+        return
+    }
+
+    gGUI_Revealed := true
+
+    ; ===== TIMING: Paint on visible window (Present works) =====
     t1 := QPC()
-    GUI_Repaint()  ; Paint + RevealBoth (shows both windows atomically)
+    GUI_Repaint()  ; _GUI_RevealBoth() is a no-op (gGUI_Revealed already true)
     tShow_Repaint := QPC() - t1
 
-    ; RACE FIX: If Alt was released during paint/reveal, RevealBoth already hid
-    ; both windows. Abort here to clean up flags and skip hover polling.
+    ; RACE FIX: If Alt was released during paint, hide and abort.
     if (gGUI_State != "ACTIVE") {
+        try gGUI_Base.Hide()
         if (cfg.DiagPaintTimingLog)
             Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
         Profiler.Leave() ; @profile
         return
     }
+
+    Win_DwmFlush()
 
     ; Start hover polling (fallback for WM_MOUSELEAVE)
     GUI_StartHoverPolling()
