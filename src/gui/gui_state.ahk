@@ -620,11 +620,10 @@ _GUI_ShowOverlayWithFrozen() {
     tShow_Resize := QPC() - t1
 
     ; ===== Show window BEFORE painting =====
-    ; D2D HwndRenderTarget::Present() is silently discarded for hidden windows
-    ; (MSDN), so we must make the window visible first.  The D2D surface was
-    ; cleared to transparent on the previous hide, so the first visible frame
-    ; is just the acrylic backdrop — no stale content flash.
-    ; (Old GDI+/ULW flow painted hidden then showed; D2D requires show-then-paint.)
+    ; D2D HwndRenderTarget::Present() is silently discarded for hidden windows,
+    ; so we must Show first.  The D2D surface was cleared to transparent on hide,
+    ; so the first visible frame is just the acrylic backdrop (no stale content).
+    ; Window is NOT WS_EX_LAYERED, so DWM recomputes acrylic blur fresh on Show.
 
     ; RACE FIX: abort if state changed during resize (pumps messages)
     if (gGUI_State != "ACTIVE") {
@@ -638,11 +637,6 @@ _GUI_ShowOverlayWithFrozen() {
     try {
         gGUI_Base.Show("NA")
     }
-
-    ; Force DWM to recompute acrylic blur against current desktop state.
-    ; SWCA caches the blur composition; without re-applying, DWM shows
-    ; the blur from whatever was behind the window LAST time it was visible.
-    Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicColor)
 
     ; RACE FIX: Show pumps messages — check if Alt was released
     if (gGUI_State != "ACTIVE") {
@@ -658,7 +652,7 @@ _GUI_ShowOverlayWithFrozen() {
 
     ; ===== TIMING: Paint on visible window (Present works) =====
     t1 := QPC()
-    GUI_Repaint()  ; _GUI_RevealBoth() is a no-op (gGUI_Revealed already true)
+    GUI_Repaint()
     tShow_Repaint := QPC() - t1
 
     ; RACE FIX: If Alt was released during paint, hide and abort.

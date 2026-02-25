@@ -195,7 +195,6 @@ GUI_CreateWindow() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, cfg
     global gD2D_Factory, gDW_Factory, gD2D_RT
-    global GWL_EXSTYLE, WS_EX_LAYERED
 
     ; Create single window
     ; -DPIScale: all coordinates are raw physical pixels (D2D render target uses 96 DPI).
@@ -241,15 +240,11 @@ GUI_CreateWindow() {
     Win_SetCornerPreference(gGUI_BaseH, 2)
     Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wPhys, hPhys)
 
-    ; Set WS_EX_LAYERED for D2D transparency through DWM glass
-    ex := DllCall("user32\GetWindowLongPtrW", "ptr", gGUI_BaseH, "int", GWL_EXSTYLE, "ptr")
-    if (!(ex & WS_EX_LAYERED)) {
-        ex := ex | WS_EX_LAYERED
-        DllCall("user32\SetWindowLongPtrW", "ptr", gGUI_BaseH, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
-    }
-    ; LWA_ALPHA=0x02: constant alpha=255 (opaque window).
-    ; D2D transparent areas (alpha=0) show through DWM glass to acrylic backdrop.
-    DllCall("user32\SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 255, "uint", 0x02)
+    ; NOT WS_EX_LAYERED: D2D alpha compositing works through DwmExtendFrame +
+    ; premultiplied alpha mode.  WS_EX_LAYERED causes DWM to cache the SWCA
+    ; acrylic blur composition, showing stale blur from the previous desktop
+    ; state on each Show().  Non-layered windows get fresh blur every frame.
+    ; (Old GDI+ base window used Win_ForceNoLayered for the same reason.)
 
     ; Extend DWM frame into client area (required for D2D transparent rendering)
     Win_DwmExtendFrame(gGUI_BaseH)
