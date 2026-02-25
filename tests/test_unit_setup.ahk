@@ -206,12 +206,22 @@ RunUnitTests_Setup() {
                 Log("PASS: DeleteAdminTask() succeeded")
                 TestPassed++
 
-                ; Verify task no longer exists
-                if (!AdminTaskExists(testTaskName)) {
-                    Log("PASS: Task verified to not exist after deletion")
+                ; Verify task no longer exists (poll — schtasks /delete returns
+                ; before the Task Scheduler database is fully updated)
+                deleteVerified := false
+                deleteStart := A_TickCount
+                while ((A_TickCount - deleteStart) < 3000) {
+                    if (!AdminTaskExists(testTaskName)) {
+                        deleteVerified := true
+                        break
+                    }
+                    Sleep(100)
+                }
+                if (deleteVerified) {
+                    Log("PASS: Task verified to not exist after deletion (" (A_TickCount - deleteStart) "ms)")
                     TestPassed++
                 } else {
-                    Log("FAIL: AdminTaskExists() returned true after DeleteAdminTask()")
+                    Log("FAIL: AdminTaskExists() returned true after DeleteAdminTask() (waited 3s)")
                     TestErrors++
                 }
             } else {
