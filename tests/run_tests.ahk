@@ -96,7 +96,8 @@ DoLiveCore := false
 DoLiveNetwork := false
 DoLiveFeatures := false
 DoLiveExecution := false
-DoLiveLifecycle := false
+DoLivePump := false
+DoLiveWatcher := false
 DoUnitCoreStore := false
 DoUnitCoreParsing := false
 DoUnitCoreConfig := false
@@ -119,8 +120,10 @@ for _, arg in A_Args {
         DoLiveFeatures := true
     else if (arg = "--live-execution")
         DoLiveExecution := true
-    else if (arg = "--live-lifecycle")
-        DoLiveLifecycle := true
+    else if (arg = "--live-pump")
+        DoLivePump := true
+    else if (arg = "--live-watcher")
+        DoLiveWatcher := true
     else if (arg = "--unit-core-store")
         DoUnitCoreStore := true
     else if (arg = "--unit-core-parsing")
@@ -155,8 +158,10 @@ else if (DoLiveFeatures)
     TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_features.log"
 else if (DoLiveExecution)
     TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_execution.log"
-else if (DoLiveLifecycle)
-    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_lifecycle.log"
+else if (DoLivePump)
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_pump.log"
+else if (DoLiveWatcher)
+    TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_watcher.log"
 else if (DoUnitCoreStore)
     TestLogPath := A_Temp "\alt_tabby_tests_" WorktreeId "_unit_core_store.log"
 else if (DoUnitCoreParsing)
@@ -336,7 +341,7 @@ Blacklist_Init(A_ScriptDir "\..\src\shared\blacklist.txt")
 ; --- Determine what to run ---
 ; Single-suite modes skip unit tests (they run in the main process)
 isUnitSingle := DoUnitCoreStore || DoUnitCoreParsing || DoUnitCoreConfig || DoUnitStorage || DoUnitSetup || DoUnitCleanup || DoUnitAdvanced || DoUnitStats || DoUnitSort || DoUnitFileWatcher
-isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLiveLifecycle || isUnitSingle
+isSingleSuite := DoLiveCore || DoLiveNetwork || DoLiveFeatures || DoLiveExecution || DoLivePump || DoLiveWatcher || isUnitSingle
 
 if (isUnitSingle) {
     ; --- Run a single unit subset ---
@@ -377,8 +382,10 @@ if (DoLiveTests) {
     RunLiveTests_Features()
 } else if (DoLiveExecution) {
     RunLiveTests_Execution()
-} else if (DoLiveLifecycle) {
-    RunLiveTests_Lifecycle()
+} else if (DoLivePump) {
+    RunLiveTests_Pump()
+} else if (DoLiveWatcher) {
+    RunLiveTests_Watcher()
 }
 
 ; --- Summary ---

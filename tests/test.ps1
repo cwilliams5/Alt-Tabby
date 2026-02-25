@@ -973,22 +973,24 @@ if ($live) {
     $networkLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_network.log"
     $featuresLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_features.log"
     $executionLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_execution.log"
-    $lifecycleLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_lifecycle.log"
+    $pumpLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_pump.log"
+    $watcherLogFile = "$env:TEMP\alt_tabby_tests_${worktreeId}_watcher.log"
     $coreStderrFile = "$env:TEMP\ahk_${worktreeId}_core_stderr.log"
     $networkStderrFile = "$env:TEMP\ahk_${worktreeId}_network_stderr.log"
     $featuresStderrFile = "$env:TEMP\ahk_${worktreeId}_features_stderr.log"
     $executionStderrFile = "$env:TEMP\ahk_${worktreeId}_execution_stderr.log"
-    $lifecycleStderrFile = "$env:TEMP\ahk_${worktreeId}_lifecycle_stderr.log"
+    $pumpStderrFile = "$env:TEMP\ahk_${worktreeId}_pump_stderr.log"
+    $watcherStderrFile = "$env:TEMP\ahk_${worktreeId}_watcher_stderr.log"
 
     # Clean live suite log files
-    foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $lifecycleLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile, $lifecycleStderrFile)) {
+    foreach ($f in @($coreLogFile, $networkLogFile, $featuresLogFile, $executionLogFile, $pumpLogFile, $watcherLogFile, $coreStderrFile, $networkStderrFile, $featuresStderrFile, $executionStderrFile, $pumpStderrFile, $watcherStderrFile)) {
         Remove-Item -Force -ErrorAction SilentlyContinue $f
     }
 
     $liveStart = Get-Date
 
     # --- Live suites (parallel, gated by compilation) ---
-    Write-Host "`n--- Live Test Execution (5 suites, parallel) ---" -ForegroundColor Yellow
+    Write-Host "`n--- Live Test Execution (6 suites, parallel) ---" -ForegroundColor Yellow
 
     # The "Tests" phase starts at the earliest test launch (GUI + Unit, already running).
     if ($timing) {
@@ -1016,8 +1018,11 @@ if ($live) {
     Write-Host "  Starting Live/Execution tests (background)..." -ForegroundColor Cyan
     $executionHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-execution', $executionStderrFile)
 
-    Write-Host "  Starting Live/Lifecycle tests (background)..." -ForegroundColor Cyan
-    $lifecycleHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-lifecycle', $lifecycleStderrFile)
+    Write-Host "  Starting Live/Pump tests (background)..." -ForegroundColor Cyan
+    $pumpHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-pump', $pumpStderrFile)
+
+    Write-Host "  Starting Live/Watcher tests (background)..." -ForegroundColor Cyan
+    $watcherHandle = [SilentProcess]::StartCaptured('"' + $ahk + '" /ErrorStdOut "' + $script + '" --live-watcher', $watcherStderrFile)
 
     # --- Timing: poll all handles + GUI to record actual completion times ---
     if ($timing) {
@@ -1026,7 +1031,8 @@ if ($live) {
             "Live/Core"      = $coreHandle
             "Live/Network"   = $networkHandle
             "Live/Execution" = $executionHandle
-            "Live/Lifecycle" = $lifecycleHandle
+            "Live/Pump"      = $pumpHandle
+            "Live/Watcher"   = $watcherHandle
         }
         foreach ($us in $unitSuites) {
             $suiteHandles[$us.Label] = $us.Handle
@@ -1137,17 +1143,29 @@ if ($live) {
 
     if ($featuresExitCode -ne 0) { $mainExitCode = $featuresExitCode }
 
-    Write-Host "`n--- Lifecycle Test Results ---" -ForegroundColor Yellow
-    $lifecycleExitCode = [SilentProcess]::WaitAndGetExitCode($lifecycleHandle)
+    Write-Host "`n--- Pump Test Results ---" -ForegroundColor Yellow
+    $pumpExitCode = [SilentProcess]::WaitAndGetExitCode($pumpHandle)
 
-    $lifecycleStderr = Get-Content $lifecycleStderrFile -ErrorAction SilentlyContinue
-    if ($lifecycleStderr) {
-        Write-Host "=== LIFECYCLE TEST ERRORS ===" -ForegroundColor Red
-        Write-Host $lifecycleStderr
+    $pumpStderr = Get-Content $pumpStderrFile -ErrorAction SilentlyContinue
+    if ($pumpStderr) {
+        Write-Host "=== PUMP TEST ERRORS ===" -ForegroundColor Red
+        Write-Host $pumpStderr
     }
-    Show-TestSummary -LogPath $lifecycleLogFile -Label "Lifecycle"
+    Show-TestSummary -LogPath $pumpLogFile -Label "Pump"
 
-    if ($lifecycleExitCode -ne 0) { $mainExitCode = $lifecycleExitCode }
+    if ($pumpExitCode -ne 0) { $mainExitCode = $pumpExitCode }
+
+    Write-Host "`n--- Watcher Test Results ---" -ForegroundColor Yellow
+    $watcherExitCode = [SilentProcess]::WaitAndGetExitCode($watcherHandle)
+
+    $watcherStderr = Get-Content $watcherStderrFile -ErrorAction SilentlyContinue
+    if ($watcherStderr) {
+        Write-Host "=== WATCHER TEST ERRORS ===" -ForegroundColor Red
+        Write-Host $watcherStderr
+    }
+    Show-TestSummary -LogPath $watcherLogFile -Label "Watcher"
+
+    if ($watcherExitCode -ne 0) { $mainExitCode = $watcherExitCode }
 
     $liveElapsed = ((Get-Date) - $liveStart).TotalSeconds
     Write-Host "`n  Live pipeline completed in $([math]::Round($liveElapsed, 1))s" -ForegroundColor Cyan
