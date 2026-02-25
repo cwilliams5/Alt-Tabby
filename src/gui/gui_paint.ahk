@@ -126,7 +126,7 @@ GUI_Repaint() {
     needsResize := (rowsChanged && gGUI_Revealed)
     if (needsResize) {
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
+        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, phW, phH)
         if (gD2D_RT && phW > 0 && phH > 0)
             D2D_ResizeRenderTarget(phW, phH)
     }

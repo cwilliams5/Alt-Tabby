@@ -137,7 +137,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
     ; Single window — no anti-jiggle split resize needed.
     ; D2D renders directly to the window surface; no overlay/base sync.
-    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
+    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wPhys, hPhys)
 
     ; Resize D2D render target to match new window size
     if (gD2D_RT && wPhys > 0 && hPhys > 0)
@@ -188,7 +188,10 @@ GUI_CreateWindow() {
     global GWL_EXSTYLE, WS_EX_LAYERED
 
     ; Create single window
-    opts := "+AlwaysOnTop -Caption +ToolWindow"
+    ; -DPIScale: all coordinates are raw physical pixels (D2D render target uses 96 DPI).
+    ; Without this, AHK's DPI scaling creates mismatches between SetWindowPos (physical)
+    ; and WinGetClientPos/SetWindowRgn (DPI-scaled), clipping D2D content at high DPI.
+    opts := "+AlwaysOnTop -Caption +ToolWindow -DPIScale"
 
     rowsDesired := GUI_ComputeRowsToShow(gGUI_LiveItems.Length)
 
@@ -226,7 +229,7 @@ GUI_CreateWindow() {
     ; DWM and composition setup
     Win_EnableDarkTitleBar(gGUI_BaseH)
     Win_SetCornerPreference(gGUI_BaseH, 2)
-    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
+    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wPhys, hPhys)
 
     ; Set WS_EX_LAYERED for D2D transparency through DWM glass
     ex := DllCall("user32\GetWindowLongPtrW", "ptr", gGUI_BaseH, "int", GWL_EXSTYLE, "ptr")
