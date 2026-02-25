@@ -639,6 +639,11 @@ _GUI_ShowOverlayWithFrozen() {
         gGUI_Base.Show("NA")
     }
 
+    ; Force DWM to recompute acrylic blur against current desktop state.
+    ; SWCA caches the blur composition; without re-applying, DWM shows
+    ; the blur from whatever was behind the window LAST time it was visible.
+    Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicColor)
+
     ; RACE FIX: Show pumps messages — check if Alt was released
     if (gGUI_State != "ACTIVE") {
         try gGUI_Base.Hide()

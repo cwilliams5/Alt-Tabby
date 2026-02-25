@@ -146,7 +146,8 @@ global cfg := {
     KomorebiMimicNativeSettleMs: 0,
     KomorebiUseSocket: true,
     KomorebiWorkspaceConfirmMethod: "PollCloak",
-    GUI_MonitorFilterDefault: "All"
+    GUI_MonitorFilterDefault: "All",
+    GUI_AcrylicColor: 0xCC000000
 }
 
 ; Test tracking
@@ -175,6 +176,10 @@ GUI_ComputeRowsToShow(n) {
 GUI_HideOverlay() {
     global gGUI_OverlayVisible
     gGUI_OverlayVisible := false
+}
+
+; DWM acrylic mock (called by gui_state.ahk after Show)
+Win_ApplyAcrylic(hWnd, argbColor) {
 }
 
 ; GDI+ icon cache invalidation mock
