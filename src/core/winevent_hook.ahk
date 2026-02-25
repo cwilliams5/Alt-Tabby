@@ -541,9 +541,11 @@ _WEH_ProcessBatch() {
             zSnapshot[hwnd] := true
     }
     for _, arr in [destroyed, hidden, toProcess] {
-        for _, hwnd in arr {
-            _WEH_PendingHwnds.Delete(hwnd)
-            _WEH_PendingZNeeded.Delete(hwnd)
+        for _, h in arr {
+            if (_WEH_PendingHwnds.Has(h))
+                _WEH_PendingHwnds.Delete(h)
+            if (_WEH_PendingZNeeded.Has(h))
+                _WEH_PendingZNeeded.Delete(h)
         }
     }
     Critical "Off"

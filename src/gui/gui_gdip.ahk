@@ -71,7 +71,7 @@ D2D_DrawTextLeft(text, x, y, w, h, brush, tf) {
     static rect := Buffer(16)
     NumPut("float", Float(x), "float", Float(y),
            "float", Float(x + w), "float", Float(y + h), rect)
-    gD2D_RT.DrawText(text, StrLen(text), tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
+    gD2D_RT.DrawText(text, tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 }
 
 ; Draw text centered both horizontally and vertically.
@@ -85,7 +85,7 @@ D2D_DrawTextCentered(text, x, y, w, h, brush, tf) {
     static rect := Buffer(16)
     NumPut("float", Float(x), "float", Float(y),
            "float", Float(x + w), "float", Float(y + h), rect)
-    gD2D_RT.DrawText(text, StrLen(text), tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
+    gD2D_RT.DrawText(text, tf, rect, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP, 0)
 }
 
 ; Fill ellipse. D2D ellipse uses center point + radii (not bounding box).

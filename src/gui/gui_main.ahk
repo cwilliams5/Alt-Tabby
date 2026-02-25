@@ -547,8 +547,9 @@ _GUI_StatsLogInfo(msg) {
 ; Log unhandled errors and exit
 _GUI_OnError(err, *) {
     global LOG_PATH_STORE
-    msg := "gui_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
+    msg := "gui_error msg=" err.Message " what=" err.What " file=" err.File " line=" err.Line
     try LogAppend(LOG_PATH_STORE, msg)
+    try LogAppend(LOG_PATH_STORE, "gui_error STACK: " err.Stack)
     ExitApp(1)
 }
 

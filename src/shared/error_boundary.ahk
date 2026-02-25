@@ -13,7 +13,8 @@
 HandleTimerError(e, &errCount, &backoffUntil, logPath, label, maxErrors := 3) {
     Critical "Off"
     errCount++
-    try LogAppend(logPath, label " err=" e.Message " file=" e.File " line=" e.Line " consecutive=" errCount)
+    try LogAppend(logPath, label " err=" e.Message " what=" e.What " file=" e.File " line=" e.Line " consecutive=" errCount)
+    try LogAppend(logPath, label " STACK: " e.Stack)
     if (errCount >= maxErrors) {
         ; Calculate exponential backoff: 5s, 10s, 20s, 40s, 80s, 160s, 300s cap
         static EB_INITIAL_BACKOFF_MS := 5000
