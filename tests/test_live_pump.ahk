@@ -212,12 +212,20 @@ RunLiveTests_Pump() {
         Log("Pump PID before kill: " pumpPid " (from launcher)")
         ProcessClose(pumpPid)
 
-        ; Verify kill actually worked
-        Sleep(100)
-        if (ProcessExist(pumpPid))
-            Log("WARNING: Pump process " pumpPid " still alive after ProcessClose!")
+        ; Poll for process death (don't assume Sleep is enough)
+        pumpDead := false
+        deadStart := A_TickCount
+        while ((A_TickCount - deadStart) < 2000) {
+            if (!ProcessExist(pumpPid)) {
+                pumpDead := true
+                break
+            }
+            Sleep(50)
+        }
+        if (pumpDead)
+            Log("Pump process " pumpPid " confirmed dead (" (A_TickCount - deadStart) "ms)")
         else
-            Log("Pump process " pumpPid " confirmed dead")
+            Log("WARNING: Pump process " pumpPid " still alive after 2s!")
 
         newPumpPid := 0
         killRestartStart := A_TickCount

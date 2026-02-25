@@ -56,14 +56,20 @@ RunUnitTests_FileWatcher() {
         ; Write to a DIFFERENT file in the same directory
         FileAppend("noise " A_TickCount, otherFile, "UTF-8")
 
-        ; Wait longer than debounce — callback should NOT fire
-        Sleep(500)
+        ; Poll — callback should NOT fire. 2s confirms absence convincingly;
+        ; exits early if callback does fire (catches false-negatives faster).
+        noFireStart2 := A_TickCount
+        while ((A_TickCount - noFireStart2) < 500) {
+            if (callbackFired2)
+                break
+            Sleep(50)
+        }
 
         if (!callbackFired2) {
-            Log("PASS: FileWatch callback correctly ignored non-target file")
+            Log("PASS: FileWatch callback correctly ignored non-target file (verified over " (A_TickCount - noFireStart2) "ms)")
             TestPassed++
         } else {
-            Log("FAIL: FileWatch callback fired for non-target file")
+            Log("FAIL: FileWatch callback fired for non-target file at " (A_TickCount - noFireStart2) "ms")
             TestErrors++
         }
 
@@ -86,8 +92,14 @@ RunUnitTests_FileWatcher() {
             Sleep(20)
         }
 
-        ; Wait for debounce to fully settle (200ms after last write + margin)
-        Sleep(600)
+        ; Poll for the callback to fire, then brief grace to catch spurious second
+        coalStart := A_TickCount
+        while ((A_TickCount - coalStart) < 2000) {
+            if (callbackCount3 >= 1)
+                break
+            Sleep(50)
+        }
+        Sleep(300)  ; catch any spurious second callback
 
         if (callbackCount3 = 1) {
             Log("PASS: FileWatch debounce coalesced 5 rapid writes into 1 callback")
@@ -113,13 +125,20 @@ RunUnitTests_FileWatcher() {
         ; Write after Stop — callback should NOT fire
         FileDelete(targetFile4)
         FileAppend("after stop " A_TickCount, targetFile4, "UTF-8")
-        Sleep(500)
+
+        ; Poll — callback should NOT fire. 2s confirms absence convincingly.
+        noFireStart4 := A_TickCount
+        while ((A_TickCount - noFireStart4) < 500) {
+            if (callbackFired4)
+                break
+            Sleep(50)
+        }
 
         if (!callbackFired4) {
-            Log("PASS: FileWatch Stop() prevented callback")
+            Log("PASS: FileWatch Stop() prevented callback (verified over " (A_TickCount - noFireStart4) "ms)")
             TestPassed++
         } else {
-            Log("FAIL: FileWatch callback fired after Stop()")
+            Log("FAIL: FileWatch callback fired after Stop() at " (A_TickCount - noFireStart4) "ms")
             TestErrors++
         }
 

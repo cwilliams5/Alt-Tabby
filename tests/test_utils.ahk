@@ -197,31 +197,52 @@ _RepeatStr(str, count) {
 
 ; Kill all running AltTabby.exe processes (blanket — use scoped variants for parallel safety)
 _Test_KillAllAltTabby() {
+    pids := []
     for _, proc in _Test_EnumProcesses("AltTabby.exe") {
         try ProcessClose(proc.pid)
+        pids.Push(proc.pid)
     }
-    ; Give processes time to fully exit
-    Sleep(200)
+    deadline := A_TickCount + 2000
+    for _, pid in pids {
+        while (ProcessExist(pid) && (A_TickCount < deadline))
+            Sleep(20)
+    }
+    Sleep(50)  ; handle release grace
 }
 
 ; Kill AltTabby processes whose exe path starts with dirPath (worktree-safe)
 _Test_KillAltTabbyInDir(dirPath) {
+    pids := []
     for _, proc in _Test_EnumProcesses("AltTabby.exe") {
         try {
             procPath := ProcessGetPath(proc.pid)
-            if (InStr(procPath, dirPath) = 1)
+            if (InStr(procPath, dirPath) = 1) {
                 ProcessClose(proc.pid)
+                pids.Push(proc.pid)
+            }
         }
     }
-    Sleep(200)
+    deadline := A_TickCount + 2000
+    for _, pid in pids {
+        while (ProcessExist(pid) && (A_TickCount < deadline))
+            Sleep(20)
+    }
+    Sleep(50)  ; handle release grace
 }
 
 ; Kill all processes matching a custom exe name (e.g. "AltTabby_exectest.exe")
 _Test_KillProcessesByName(exeName) {
+    pids := []
     for _, proc in _Test_EnumProcesses(exeName) {
         try ProcessClose(proc.pid)
+        pids.Push(proc.pid)
     }
-    Sleep(200)
+    deadline := A_TickCount + 2000
+    for _, pid in pids {
+        while (ProcessExist(pid) && (A_TickCount < deadline))
+            Sleep(20)
+    }
+    Sleep(50)  ; handle release grace
 }
 
 ; --- Process Enumeration via CreateToolhelp32Snapshot ---
