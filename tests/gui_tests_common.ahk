@@ -208,8 +208,8 @@ Gdip_PreCacheIcon(hwnd, hIcon) {
     global gMock_PreCachedIcons, gGdip_IconCache
     gMock_PreCachedIcons[hwnd] := hIcon
     ; Mirror production behavior: keep gGdip_IconCache in sync for prune condition
-    ; pBmp: 1 simulates a valid GDI+ bitmap pointer (0 = failed conversion, would trigger retry)
-    gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: 1}
+    ; bitmap: 1 simulates a valid D2D bitmap (0 = failed conversion, would trigger retry)
+    gGdip_IconCache[hwnd] := {hicon: hIcon, bitmap: 1}
 }
 
 ; Visible rows mock (called by _GUI_AnyVisibleItemChanged and GUI_RefreshLiveItems)

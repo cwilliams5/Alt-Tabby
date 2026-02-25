@@ -113,6 +113,7 @@ for _, arg in A_Args {
 #Include icon_alpha.ahk
 #Include OVERLAPPED.ahk
 #Include DirectoryWatcher.ahk
+#Include Direct2D.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk

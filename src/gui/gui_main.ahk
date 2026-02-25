@@ -475,7 +475,7 @@ _GUI_LockWorkingSet() {
 }
 
 _GUI_TouchMemoryPages() {
-    global gGdip_IconCache, gGUI_LiveItems, gGdip_Res, gWS_Store, gGdip_BrushCache
+    global gGdip_IconCache, gGUI_LiveItems, gD2D_Res, gWS_Store, gD2D_BrushCache
 
     ; Read one entry from each key data structure to keep pages resident.
     ; Single iteration pages in the Map's internal hash table.
@@ -485,12 +485,12 @@ _GUI_TouchMemoryPages() {
         for _, v in gGdip_IconCache
             break
 
-    if (gGdip_Res.Count)
-        for _, v in gGdip_Res
+    if (gD2D_Res.Count)
+        for _, v in gD2D_Res
             break
 
-    if (gGdip_BrushCache.Count)
-        for _, v in gGdip_BrushCache
+    if (gD2D_BrushCache.Count)
+        for _, v in gD2D_BrushCache
             break
 
     if (gWS_Store.Count)
@@ -595,8 +595,9 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     ; Release COM objects (OS would clean up, but explicit is good hygiene)
     try GUI_ReleaseComObjects()
 
-    ; Clean up GDI+
+    ; Clean up D2D resources + render target + factories
     Gdip_Shutdown()
+    D2D_ShutdownAll()
 
     return 0
 }
@@ -607,19 +608,18 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
 if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     _GUI_Main_Init()
 
-    ; DPI change handler
+    ; DPI change handler — invalidate D2D resource scale to force recreation
     global WM_DPICHANGED
-    OnMessage(WM_DPICHANGED, (wParam, lParam, msg, hwnd) => (gGdip_ResScale := 0.0, 0))
+    OnMessage(WM_DPICHANGED, (wParam, lParam, msg, hwnd) => (gD2D_ResScale := 0.0, gGdip_ResScale := 0.0, 0))
 
-    ; Create windows
-    GUI_CreateBase()
+    ; Create single window with SWCA acrylic + D2D render target
+    GUI_CreateWindow()
     gGUI_Sel := 1
     gGUI_ScrollTop := 0
-    GUI_CreateOverlay()
 
-    ; Pre-create GDI+ resources (fonts, brushes, string formats)
-    ; GdipCreateFontFamilyFromName takes ~1.5s on first call (GDI+ font enumeration).
-    ; Do it now at startup rather than deferring to first paint.
+    ; Pre-create D2D resources (brushes, DirectWrite text formats)
+    ; DirectWrite CreateTextFormat is relatively fast, but doing it at startup
+    ; avoids any first-paint latency.
     scale := Win_GetScaleForWindow(gGUI_BaseH)
     GUI_EnsureResources(scale)
 

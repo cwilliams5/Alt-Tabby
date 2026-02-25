@@ -37,24 +37,24 @@ global SWP_NOOWNERZORDER := 0x0200
 ; Monitor
 global MONITOR_DEFAULTTONEAREST := 2
 
-; GDI+ enums
-global GDIP_UNIT_PIXEL := 2
-global GDIP_STRING_ALIGN_NEAR := 0
-global GDIP_STRING_ALIGN_CENTER := 1
-global GDIP_STRING_ALIGN_FAR := 2
-global GDIP_STRING_FORMAT_NO_WRAP := 0x00001000
-global GDIP_STRING_FORMAT_LINE_LIMIT := 0x00004000
+; GDI+ enums (legacy — kept for launcher_splash.ahk and other non-D2D windows)
+global GDIP_UNIT_PIXEL := 2 ; lint-ignore: dead-global
+global GDIP_STRING_ALIGN_NEAR := 0 ; lint-ignore: dead-global
+global GDIP_STRING_ALIGN_CENTER := 1 ; lint-ignore: dead-global
+global GDIP_STRING_ALIGN_FAR := 2 ; lint-ignore: dead-global
+global GDIP_STRING_FORMAT_NO_WRAP := 0x00001000 ; lint-ignore: dead-global
+global GDIP_STRING_FORMAT_LINE_LIMIT := 0x00004000 ; lint-ignore: dead-global
 global GDIP_STRING_TRIMMING_ELLIPSIS := 3
 
-; GDI+ rendering modes
-global GDIP_SMOOTHING_ANTIALIAS := 4
-global GDIP_TEXT_RENDER_ANTIALIAS_GRIDFIT := 5
-global GDIP_PIXEL_FORMAT_32BPP_ARGB := 0x26200A
-global GDIP_IMAGE_LOCK_WRITE := 2
+; GDI+ rendering modes (legacy)
+global GDIP_SMOOTHING_ANTIALIAS := 4 ; lint-ignore: dead-global
+global GDIP_TEXT_RENDER_ANTIALIAS_GRIDFIT := 5 ; lint-ignore: dead-global
+global GDIP_PIXEL_FORMAT_32BPP_ARGB := 0x26200A ; lint-ignore: dead-global
+global GDIP_IMAGE_LOCK_WRITE := 2 ; lint-ignore: dead-global
 
-; BITMAPINFOHEADER
-global BITMAPINFOHEADER_SIZE := 40
-global BPP_32 := 32
+; BITMAPINFOHEADER (legacy)
+global BITMAPINFOHEADER_SIZE := 40 ; lint-ignore: dead-global
+global BPP_32 := 32 ; lint-ignore: dead-global
 
 ; ============================================================
 ; Paint Layout Constants (DIP = Device-Independent Pixels)

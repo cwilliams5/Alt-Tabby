@@ -592,6 +592,7 @@ Memory management to maintain responsiveness after long idle periods.
 |--------|------|---------|-------|-------------|
 | `KeepInMemory` | bool | `true` | - | Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle. |
 | `ForceTouchMemory` | bool | `true` | - | Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost. |
+| `ProcessPriority` | enum | `AboveNormal` | - | Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended. |
 
 ## Diagnostics
 
@@ -621,6 +622,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `UpdateLog` | bool | `false` | - | Log auto-update check and apply steps to %TEMP%\\tabby_update.log. Use when debugging update failures. |
 | `CosmeticPatchLog` | bool | `false` | - | Log cosmetic patch operations during ACTIVE state to %TEMP%\\tabby_cosmetic_patch.log. Use when debugging title/icon/processName updates in the overlay. |
 | `StatsTracking` | bool | `true` | - | Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard. |
+| `LogFilePrefix` | string | `(empty)` | - | Prefix inserted into diagnostic log filenames for instance isolation. When set, tabby_pump.log becomes tabby_pump_<prefix>.log. Used by automated tests to prevent log collision across parallel worktrees. |
 
 ### Log Size Limits
 
@@ -633,4 +635,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-23 with 265 total settings.*
+*Generated on 2026-02-24 with 267 total settings.*

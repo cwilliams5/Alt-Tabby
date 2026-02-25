@@ -259,7 +259,7 @@ Win_SetCornerPreference(hWnd, pref := 2) {
 }
 
 ; Remove WS_EX_LAYERED style
-Win_ForceNoLayered(hWnd) {
+Win_ForceNoLayered(hWnd) { ; lint-ignore: dead-function
     global GWL_EXSTYLE, WS_EX_LAYERED, SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED
     try {
         ex := DllCall("user32\GetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr")
@@ -272,6 +272,21 @@ Win_ForceNoLayered(hWnd) {
 }
 
 ; Win_Wrap0, Win_Wrap1 moved to gui_math.ahk
+
+; Extend DWM frame into entire client area (for D2D transparent rendering)
+Win_DwmExtendFrame(hWnd) {
+    margins := Buffer(16, 0)
+    NumPut("int", -1, "int", -1, "int", -1, "int", -1, margins)
+    try {
+        DllCall("dwmapi\DwmExtendFrameIntoClientArea", "ptr", hWnd, "ptr", margins.Ptr, "int")
+    }
+}
+
+; Set window class background brush to hollow (DWM material shows through)
+Win_SetHollowBrush(hWnd) {
+    hollowBrush := DllCall("GetStockObject", "int", 5, "ptr")  ; HOLLOW_BRUSH
+    DllCall("SetClassLongPtrW", "ptr", hWnd, "int", -10, "ptr", hollowBrush, "ptr")  ; GCL_HBRBACKGROUND
+}
 
 ; DWM flush
 Win_DwmFlush() {

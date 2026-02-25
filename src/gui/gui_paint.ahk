@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
-; Alt-Tabby GUI - Painting
-; Handles all rendering: overlay painting, resources, scrollbar, footer, action buttons
+; Alt-Tabby GUI - Painting (D2D)
+; All rendering via Direct2D HwndRenderTarget.
+; Single-window architecture: D2D renders directly to the window surface.
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= PAINT TIMING DEBUG LOG =========================
@@ -48,7 +49,7 @@ Paint_LogStartSession() {
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {
-    ; Reentrancy guard: Win32 calls (UpdateLayeredWindow, SetWindowPos) pump the
+    ; Reentrancy guard: Win32 calls (SetWindowPos, DwmFlush) pump the
     ; message queue, which dispatches queued WinEvent callbacks mid-paint. Those
     ; callbacks update the store and trigger GUI_PatchCosmeticUpdates → GUI_Repaint,
     ; creating nested repaints that paint intermediate state immediately overwritten.
@@ -59,11 +60,11 @@ GUI_Repaint() {
     gPaint_RepaintInProgress := true
 
     Profiler.Enter("GUI_Repaint") ; @profile
-    Critical "On"  ; Protect GDI+ back buffer from concurrent hotkey interruption
+    Critical "On"  ; Protect D2D render target from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
-    global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_BackHdc
+    global gGdip_IconCache, gD2D_Res, gD2D_ResScale, gD2D_RT
 
     ; ===== TIMING: Start =====
     diagTiming := cfg.DiagPaintTimingLog
@@ -76,9 +77,9 @@ GUI_Repaint() {
     ; Log context for first paint or paint after long idle (>60s)
     if (diagTiming && (paintNum = 1 || idleDuration > 60000)) {
         iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
-        resCount := gGdip_Res.Count
+        resCount := gD2D_Res.Count
         Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
-        Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
+        Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gD2D_ResScale " [D2D]")
     }
 
     ; Use display items when in ACTIVE state, live items otherwise
@@ -97,10 +98,6 @@ GUI_Repaint() {
         gGUI_LastRowsDesired := rowsDesired
 
     ; ===== TIMING: ComputeRect =====
-    ; Compute target rect from layout, not from the window.  The base window may
-    ; not be resized yet — SetWindowPos is DEFERRED to right before
-    ; UpdateLayeredWindow so DWM can't present a frame with mismatched
-    ; base/overlay sizes (the 1-frame flash on workspace switches).
     if (diagTiming)
         t1 := QPC()
     xDip := 0
@@ -121,80 +118,63 @@ GUI_Repaint() {
     if (diagTiming)
         tComputeRect := QPC() - t1
 
-    ; ===== TIMING: EnsureBackbuffer =====
+    ; ===== TIMING: Resize =====
+    ; Single window — resize window + D2D render target together.
+    ; No split-resize needed (no overlay/base sync).
     if (diagTiming)
         t1 := QPC()
-    Gdip_EnsureBackbuffer(phW, phH)
-    if (diagTiming)
-        tBackbuf := QPC() - t1
-
-    ; ===== TIMING: PaintOverlay (the big one) =====
-    if (diagTiming)
-        t1 := QPC()
-    _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
-    if (diagTiming)
-        tPaintOverlay := QPC() - t1
-
-    ; ===== TIMING: Buffer setup =====
-    if (diagTiming)
-        t1 := QPC()
-
-    ; static: marshal buffers reused per frame
-    static bf := Gdip_GetBlendFunction()
-    static sz := Buffer(8, 0)
-    static ptDst := Buffer(8, 0)
-    static ptSrc := Buffer(8, 0)
-    NumPut("Int", phW, sz, 0)
-    NumPut("Int", phH, sz, 4)
-    NumPut("Int", phX, ptDst, 0)
-    NumPut("Int", phY, ptDst, 4)
-
-    if (diagTiming)
-        tBuffers := QPC() - t1
-
-    ; ===== TIMING: UpdateLayeredWindow =====
-    if (diagTiming)
-        t1 := QPC()
-
-    ; Ensure WS_EX_LAYERED
-    global GWL_EXSTYLE, WS_EX_LAYERED
-    ex := DllCall("user32\GetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", GWL_EXSTYLE, "ptr")
-    if (!(ex & WS_EX_LAYERED)) {
-        ex := ex | WS_EX_LAYERED
-        DllCall("user32\SetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
-    }
-
-    ; SPLIT RESIZE: Ensure the base window is always >= the overlay during
-    ; transition frames.  DWM can present between any two Win32 calls, so
-    ; we order SetWindowPos (base) vs UpdateLayeredWindow (overlay) to
-    ; guarantee the "bad" interim frame is base-too-big (extra acrylic at
-    ; bottom — barely visible) rather than overlay-too-big (old content
-    ; floating outside the acrylic window — very visible).
-    ;
-    ; GROWING  → expand base BEFORE ULW  (interim: small overlay on big base)
-    ; SHRINKING → shrink base AFTER ULW  (interim: small overlay on big base)
-    ;
-    ; Only when overlay is already revealed — initial show is handled by
-    ; _GUI_ShowOverlayWithFrozen → GUI_ResizeToRows → _GUI_RevealBoth.
     needsResize := (rowsChanged && gGUI_Revealed)
-    if (needsResize && rowsDesired > oldRows) {
+    if (needsResize) {
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
         Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
+        if (gD2D_RT && phW > 0 && phH > 0)
+            D2D_ResizeRenderTarget(phW, phH)
     }
-
-    hdcScreen := DllCall("user32\GetDC", "ptr", 0, "ptr")
-    DllCall("user32\UpdateLayeredWindow", "ptr", gGUI_OverlayH, "ptr", hdcScreen, "ptr", ptDst.Ptr, "ptr", sz.Ptr, "ptr", gGdip_BackHdc, "ptr", ptSrc.Ptr, "int", 0, "ptr", bf.Ptr, "uint", 0x2, "int")
-    DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
-
-    if (needsResize && rowsDesired <= oldRows) {
-        Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
-    }
-
     if (diagTiming)
-        tUpdateLayer := QPC() - t1
+        tResize := QPC() - t1
 
-    ; ===== TIMING: RevealBoth =====
+    ; ===== TIMING: D2D BeginDraw + PaintOverlay + EndDraw =====
+    if (diagTiming)
+        t1 := QPC()
+
+    if (gD2D_RT) {
+        gD2D_RT.BeginDraw()
+        ; Clear to transparent — acrylic material shows through
+        gD2D_RT.Clear(D2D_ColorF(0x00000000))
+
+        if (diagTiming)
+            tBeginDraw := QPC() - t1
+
+        ; ===== TIMING: PaintOverlay (the big one) =====
+        if (diagTiming)
+            t1 := QPC()
+        _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
+        if (diagTiming)
+            tPaintOverlay := QPC() - t1
+
+        ; ===== TIMING: EndDraw =====
+        if (diagTiming)
+            t1 := QPC()
+        try {
+            gD2D_RT.EndDraw()
+        } catch as e {
+            ; D2DERR_RECREATE_TARGET = 0x8899000C
+            ; Handle device loss: recreate render target and all dependent resources
+            D2D_HandleDeviceLoss()
+            if (diagTiming)
+                Paint_Log("  ** D2D DEVICE LOSS — render target recreated")
+        }
+        if (diagTiming)
+            tEndDraw := QPC() - t1
+    } else {
+        if (diagTiming) {
+            tBeginDraw := 0
+            tPaintOverlay := 0
+            tEndDraw := 0
+        }
+    }
+
+    ; ===== TIMING: Reveal =====
     if (diagTiming)
         t1 := QPC()
     _GUI_RevealBoth()
@@ -206,14 +186,14 @@ GUI_Repaint() {
     if (diagTiming) {
         tTotalMs := QPC() - tTotal
         if (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)
-            Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " backbuf=" Round(tBackbuf, 2) " paintOverlay=" Round(tPaintOverlay, 2) " buffers=" Round(tBuffers, 2) " updateLayer=" Round(tUpdateLayer, 2) " reveal=" Round(tReveal, 2))
+            Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " resize=" Round(tResize, 2) " beginDraw=" Round(tBeginDraw, 2) " paintOverlay=" Round(tPaintOverlay, 2) " endDraw=" Round(tEndDraw, 2) " reveal=" Round(tReveal, 2))
     }
     Profiler.Leave() ; @profile
     gPaint_RepaintInProgress := false
 }
 
 _GUI_RevealBoth() {
-    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed, cfg
+    global gGUI_Base, gGUI_BaseH, gGUI_Revealed, cfg
     global gGUI_State, gGUI_OverlayVisible  ; Need access to state for race fix
 
     Profiler.Enter("_GUI_RevealBoth") ; @profile
@@ -235,7 +215,6 @@ _GUI_RevealBoth() {
 
     ; RACE FIX: Abort early if state already changed
     if (gGUI_State != "ACTIVE") {
-        try gGUI_Overlay.Hide()
         try gGUI_Base.Hide()
         Profiler.Leave() ; @profile
         return
@@ -249,23 +228,12 @@ _GUI_RevealBoth() {
 
     ; RACE FIX: Check if Alt was released during Show (which pumps messages)
     if (gGUI_State != "ACTIVE") {
-        try gGUI_Overlay.Hide()
         try gGUI_Base.Hide()
         Profiler.Leave() ; @profile
         return
     }
 
-    try {
-        gGUI_Overlay.Show("NA")
-    }
-
-    ; RACE FIX: Check again after Overlay.Show
-    if (gGUI_State != "ACTIVE") {
-        try gGUI_Overlay.Hide()
-        try gGUI_Base.Hide()
-        Profiler.Leave() ; @profile
-        return
-    }
+    ; Single window — no separate overlay Show needed.
 
     Win_DwmFlush()
     gGUI_Revealed := true
@@ -276,7 +244,7 @@ _GUI_RevealBoth() {
 
 _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     Profiler.Enter("_GUI_PaintOverlay") ; @profile
-    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
+    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gD2D_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
@@ -290,17 +258,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         tPO_Resources := QPC() - t1
 
-    ; ===== TIMING: EnsureGraphics + Clear =====
+    ; ===== TIMING: Clear =====
     if (diagTiming)
         t1 := QPC()
-    g := Gdip_EnsureGraphics()
-    if (!g) {
-        Profiler.Leave() ; @profile
-        return
-    }
-
-    Gdip_Clear(g, 0x00000000)
-    Gdip_FillRect(g, gGdip_Res["brHit"], 0, 0, wPhys, hPhys)
+    ; Clear already done in GUI_Repaint (BeginDraw + Clear)
     if (diagTiming)
         tPO_GraphicsClear := QPC() - t1
 
@@ -358,15 +319,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         textW := 0
     }
 
-    fmtLeft := gGdip_Res["fmtLeft"]
-
     ; Header
     if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
         hdrTextH := Round(20 * scale)
-        Gdip_DrawText(g, "Title", textX, hdrY, textW, hdrTextH, gGdip_Res["brHdr"], gGdip_Res["fHdr"], fmtLeft)
+        D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
         for _, col in cols {
-            Gdip_DrawText(g, col.name, col.x, hdrY, col.w, hdrTextH, gGdip_Res["brHdr"], gGdip_Res["fHdr"], gGdip_Res["fmt"])
+            D2D_DrawTextLeft(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
         }
         y := y + hdrH28
     }
@@ -410,7 +369,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             emptyText := "No windows on this workspace"
         else if (gGUI_MonitorMode = MON_MODE_CURRENT)
             emptyText := "No windows on this monitor"
-        Gdip_DrawCenteredText(g, emptyText, rectX, rectY, rectW, rectH, gGdip_Res["brMain"], gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
+        D2D_DrawTextCentered(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"])
     } else if (rowsToDraw > 0) {
         ; ===== TIMING: Row loop start =====
         if (diagTiming) {
@@ -433,14 +392,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         colH := cachedLayout.colH
         hoverRow := gGUI_HoverRow
 
-        ; Hoist loop-invariant gGdip_Res lookups (14 keys × N rows → 14 lookups total)
-        fMain := gGdip_Res["fMain"], fMainHi := gGdip_Res["fMainHi"]
-        fSub := gGdip_Res["fSub"], fSubHi := gGdip_Res["fSubHi"]
-        fCol := gGdip_Res["fCol"], fColHi := gGdip_Res["fColHi"]
-        brMain := gGdip_Res["brMain"], brMainHi := gGdip_Res["brMainHi"]
-        brSub := gGdip_Res["brSub"], brSubHi := gGdip_Res["brSubHi"]
-        brCol := gGdip_Res["brCol"], brColHi := gGdip_Res["brColHi"]
-        fmtCol := gGdip_Res["fmt"]
+        ; Hoist loop-invariant gD2D_Res lookups (12 keys × N rows → 12 lookups total)
+        tfMain := gD2D_Res["tfMain"], tfMainHi := gD2D_Res["tfMainHi"]
+        tfSub := gD2D_Res["tfSub"], tfSubHi := gD2D_Res["tfSubHi"]
+        tfCol := gD2D_Res["tfCol"], tfColHi := gD2D_Res["tfColHi"]
+        brMain := gD2D_Res["brMain"], brMainHi := gD2D_Res["brMainHi"]
+        brSub := gD2D_Res["brSub"], brSubHi := gD2D_Res["brSubHi"]
+        brCol := gD2D_Res["brCol"], brColHi := gD2D_Res["brColHi"]
 
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
@@ -449,7 +407,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             isSel := (idx1 = selIndex)
 
             if (isSel) {
-                Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_SelARGB), Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad)
+                D2D_FillRoundRect(Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
             }
 
             ix := leftX
@@ -463,27 +421,27 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             ; Schema guarantee: _GUI_CreateItemFromRecord always sets iconHicon (0 if absent)
             if (cur.iconHicon) {
                 ; wasCacheHit is returned via ByRef parameter (avoids double cache lookup)
-                iconDrawn := Gdip_DrawCachedIcon(g, cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
+                iconDrawn := D2D_DrawCachedIcon(cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
                 if (iconWasCacheHit)
                     iconCacheHits += 1
                 else
                     iconCacheMisses += 1
             }
             if (!iconDrawn) {
-                Gdip_FillEllipse(g, Gdip_GetCachedBrush(0x60808080), ix, iy, ISize, ISize)
+                D2D_FillEllipse(ix, iy, ISize, ISize, D2D_GetCachedBrush(0x60808080))
             }
             if (diagTiming)
                 tPO_IconsTotal += QPC() - tIcon
 
-            fMainUse := isSel ? fMainHi : fMain
-            fSubUse := isSel ? fSubHi : fSub
-            fColUse := isSel ? fColHi : fCol
+            tfMainUse := isSel ? tfMainHi : tfMain
+            tfSubUse := isSel ? tfSubHi : tfSub
+            tfColUse := isSel ? tfColHi : tfCol
             brMainUse := isSel ? brMainHi : brMain
             brSubUse := isSel ? brSubHi : brSub
             brColUse := isSel ? brColHi : brCol
 
             title := cur.title
-            Gdip_DrawText(g, title, textX, yRow + titleY, textW, titleH, brMainUse, fMainUse, fmtLeft)
+            D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
 
             sub := ""
             if (cur.processName != "") {
@@ -491,17 +449,17 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             } else {
                 sub := "Class: " cur.class
             }
-            Gdip_DrawText(g, sub, textX, yRow + subY, textW, subH, brSubUse, fSubUse, fmtLeft)
+            D2D_DrawTextLeft(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse)
 
             for _, col in cols {
                 val := ""
                 if (cur.HasOwnProp(col.key))
                     val := cur.%col.key%
-                Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, fmtCol)
+                D2D_DrawTextLeft(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
             }
 
             if (idx1 = hoverRow) {
-                _GUI_DrawActionButtons(g, wPhys, yRow, RowH, scale)
+                _GUI_DrawActionButtons(wPhys, yRow, RowH, scale)
             }
 
             yRow := yRow + RowH
@@ -516,7 +474,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
-        _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
+        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
     }
     if (diagTiming)
         tPO_Scrollbar := QPC() - t1
@@ -525,7 +483,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (cfg.GUI_ShowFooter) {
-        _GUI_DrawFooter(g, wPhys, hPhys, scale)
+        _GUI_DrawFooter(wPhys, hPhys, scale)
     }
     if (diagTiming)
         tPO_Footer := QPC() - t1
@@ -535,7 +493,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         tPO_Total := QPC() - tPO_Start
         idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
         if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
-            Paint_Log("  PaintOverlay: total=" Round(tPO_Total, 2) "ms | resources=" Round(tPO_Resources, 2) " graphicsClear=" Round(tPO_GraphicsClear, 2) " rows=" (IsSet(tPO_RowsTotal) ? Round(tPO_RowsTotal, 2) : 0) " scrollbar=" Round(tPO_Scrollbar, 2) " footer=" Round(tPO_Footer, 2))
+            Paint_Log("  PaintOverlay: total=" Round(tPO_Total, 2) "ms | resources=" Round(tPO_Resources, 2) " clear=" Round(tPO_GraphicsClear, 2) " rows=" (IsSet(tPO_RowsTotal) ? Round(tPO_RowsTotal, 2) : 0) " scrollbar=" Round(tPO_Scrollbar, 2) " footer=" Round(tPO_Footer, 2))
             if (IsSet(tPO_IconsTotal)) {
                 Paint_Log("    Icons: totalTime=" Round(tPO_IconsTotal, 2) "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
             }
@@ -564,7 +522,6 @@ GUI_GetActionBtnMetrics(scale) {
 
 ; Draw a single action button and update btnX position
 ; Parameters:
-;   g         - GDI+ graphics object
 ;   &btnX     - ByRef x position (decremented after drawing)
 ;   btnY      - y position
 ;   size      - button size in pixels
@@ -576,8 +533,8 @@ GUI_GetActionBtnMetrics(scale) {
 ;   glyph     - text/glyph to draw
 ;   borderPx  - border thickness (from config)
 ;   gap       - gap between buttons in pixels
-_GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bgProp, glyph, borderPx, gap) {
-    global gGUI_HoverBtn, cfg, gGdip_Res
+_GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, btnName, showProp, bgProp, glyph, borderPx, gap) {
+    global gGUI_HoverBtn, cfg, gD2D_Res
 
     if (!cfg.%showProp%)
         return
@@ -586,15 +543,15 @@ _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bg
     bgCol := hovered ? cfg.%bgProp "BGHoverARGB"% : cfg.%bgProp "BGARGB"%
     txCol := hovered ? cfg.%bgProp "TextHoverARGB"% : cfg.%bgProp "TextARGB"%
 
-    Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(bgCol), btnX, btnY, size, size, rad)
+    D2D_FillRoundRect(btnX, btnY, size, size, rad, D2D_GetCachedBrush(bgCol))
     if (borderPx > 0) {
-        Gdip_StrokeRoundRectCached(g, Gdip_GetCachedPen(cfg.%bgProp "BorderARGB"%, Round(borderPx * scale)), btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad)
+        D2D_StrokeRoundRect(btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, D2D_GetCachedBrush(cfg.%bgProp "BorderARGB"%), Round(borderPx * scale))
     }
-    Gdip_DrawCenteredText(g, glyph, btnX, btnY, size, size, Gdip_GetCachedBrush(txCol), gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
+    D2D_DrawTextCentered(glyph, btnX, btnY, size, size, D2D_GetCachedBrush(txCol), gD2D_Res["tfAction"])
     btnX := btnX - (size + gap)
 }
 
-_GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
+_GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale) {
     global gGUI_HoverBtn, cfg
 
     metrics := GUI_GetActionBtnMetrics(scale)
@@ -606,19 +563,19 @@ _GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
     btnX := wPhys - marR - size
     btnY := yRow + (rowHPhys - size) // 2
 
-    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "close",
+    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "close",
         "GUI_ShowCloseButton", "GUI_CloseButton", cfg.GUI_CloseButtonGlyph, cfg.GUI_CloseButtonBorderPx, gap)
 
-    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "kill",
+    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "kill",
         "GUI_ShowKillButton", "GUI_KillButton", cfg.GUI_KillButtonGlyph, cfg.GUI_KillButtonBorderPx, gap)
 
-    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "blacklist",
+    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "blacklist",
         "GUI_ShowBlacklistButton", "GUI_BlacklistButton", cfg.GUI_BlacklistButtonGlyph, cfg.GUI_BlacklistButtonBorderPx, gap)
 }
 
 ; ========================= SCROLLBAR =========================
 
-_GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
+_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
     global cfg
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
         return
@@ -654,28 +611,28 @@ _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count,
     yEnd := y + trackH
 
     if (cfg.GUI_ScrollBarGutterEnabled) {
-        Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_ScrollBarGutterARGB), x, y, trackW, trackH, r)
+        D2D_FillRoundRect(x, y, trackW, trackH, r, D2D_GetCachedBrush(cfg.GUI_ScrollBarGutterARGB))
     }
 
-    thumbBr := Gdip_GetCachedBrush(cfg.GUI_ScrollBarThumbARGB)
+    thumbBr := D2D_GetCachedBrush(cfg.GUI_ScrollBarThumbARGB)
     if (y2 <= yEnd) {
-        Gdip_FillRoundRectCached(g, thumbBr, x, y1, trackW, thumbH, r)
+        D2D_FillRoundRect(x, y1, trackW, thumbH, r, thumbBr)
     } else {
         h1 := yEnd - y1
         if (h1 > 0) {
-            Gdip_FillRoundRectCached(g, thumbBr, x, y1, trackW, h1, r)
+            D2D_FillRoundRect(x, y1, trackW, h1, r, thumbBr)
         }
         h2 := y2 - yEnd
         if (h2 > 0) {
-            Gdip_FillRoundRectCached(g, thumbBr, x, y, trackW, h2, r)
+            D2D_FillRoundRect(x, y, trackW, h2, r, thumbBr)
         }
     }
 }
 
 ; ========================= FOOTER =========================
 
-_GUI_DrawFooter(g, wPhys, hPhys, scale) {
-    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gGdip_Res
+_GUI_DrawFooter(wPhys, hPhys, scale) {
+    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
     global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
 
     if (!cfg.GUI_ShowFooter) {
@@ -698,9 +655,9 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     }
 
     ; Draw footer background
-    Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_FooterBGARGB), fx, fy, fw, fh, fr)
+    D2D_FillRoundRect(fx, fy, fw, fh, fr, D2D_GetCachedBrush(cfg.GUI_FooterBGARGB))
     if (cfg.GUI_FooterBorderPx > 0) {
-        Gdip_StrokeRoundRectCached(g, Gdip_GetCachedPen(cfg.GUI_FooterBorderARGB, Round(cfg.GUI_FooterBorderPx * scale)), fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr)
+        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, D2D_GetCachedBrush(cfg.GUI_FooterBorderARGB), Round(cfg.GUI_FooterBorderPx * scale))
     }
 
     pad := Round(cfg.GUI_FooterPaddingX * scale)
@@ -712,16 +669,15 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     arrowW := Round(PAINT_ARROW_W_DIP * scale)
     arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
 
-    ; Hoist repeated gGdip_Res lookups
-    fFooter := gGdip_Res["fFooter"]
-    fmtFooterCenter := gGdip_Res["fmtFooterCenter"]
-    brFooterText := gGdip_Res["brFooterText"]
+    ; Hoist repeated gD2D_Res lookups
+    tfFooter := gD2D_Res["tfFooter"]
+    brFooterText := gD2D_Res["brFooterText"]
     static leftArrowGlyph := Chr(0x2190)
     static rightArrowGlyph := Chr(0x2192)
 
     ; Arrow brush: highlight on hover, normal otherwise
-    brArrowL := (gGUI_HoverBtn = "arrowLeft") ? gGdip_Res["brMainHi"] : brFooterText
-    brArrowR := (gGUI_HoverBtn = "arrowRight") ? gGdip_Res["brMainHi"] : brFooterText
+    brArrowL := (gGUI_HoverBtn = "arrowLeft") ? gD2D_Res["brMainHi"] : brFooterText
+    brArrowR := (gGUI_HoverBtn = "arrowRight") ? gD2D_Res["brMainHi"] : brFooterText
 
     ; Left arrow
     leftArrowX := fx + arrowPad
@@ -736,7 +692,7 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.h := leftArrowH
 
     ; Draw left arrow
-    Gdip_DrawCenteredText(g, leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, fFooter, fmtFooterCenter)
+    D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
 
     ; Right arrow
     rightArrowX := fx + fw - arrowPad - arrowW
@@ -751,7 +707,7 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    Gdip_DrawCenteredText(g, rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, fFooter, fmtFooterCenter)
+    D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
 
     ; Center text (between arrows)
     textX := leftArrowX + leftArrowW + arrowPad
@@ -760,5 +716,5 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
         textW := 0
     }
 
-    Gdip_DrawCenteredText(g, gGUI_FooterText, textX, fy, textW, fh, brFooterText, fFooter, fmtFooterCenter)
+    D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
 }
