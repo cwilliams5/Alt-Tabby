@@ -116,6 +116,9 @@ _GUI_Main_Init() {
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
 
+    ; Apply process priority (AboveNormal by default — ensures responsive scheduling)
+    _GUI_ApplyProcessPriority(cfg.PerfProcessPriority)
+
     ; Load config-driven constants (declared at file scope, set from cfg here)
     HOUSEKEEPING_INTERVAL_MS := cfg.HousekeepingIntervalMs
 
@@ -712,4 +715,13 @@ _GUI_OnStatsRequest(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
         try LogAppend(LOG_PATH_STORE, "GUI_OnStatsRequest err=" e.Message " file=" e.File " line=" e.Line)
         return 0
     }
+}
+
+; ========================= PROCESS PRIORITY =========================
+
+_GUI_ApplyProcessPriority(configValue) {
+    ; NORMAL_PRIORITY_CLASS = 0x00000020, ABOVE_NORMAL = 0x00008000, HIGH = 0x00000080
+    static priorityMap := Map("Normal", 0x20, "AboveNormal", 0x8000, "High", 0x80)
+    if (priorityMap.Has(configValue))
+        DllCall("SetPriorityClass", "ptr", DllCall("GetCurrentProcess", "ptr"), "uint", priorityMap[configValue])
 }

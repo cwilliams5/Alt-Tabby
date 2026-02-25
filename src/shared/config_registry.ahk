@@ -1128,6 +1128,10 @@ global gConfigRegistry := [
     {s: "Performance", k: "ForceTouchMemory", g: "PerfForceTouchMemory", t: "bool", default: true,
      d: "Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost."},
 
+    {s: "Performance", k: "ProcessPriority", g: "PerfProcessPriority", t: "enum", default: "AboveNormal",
+     options: ["Normal", "AboveNormal", "High"],
+     d: "Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended."},
+
     ; ============================================================
     ; Diagnostics
     ; ============================================================
