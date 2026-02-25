@@ -109,22 +109,20 @@ RunLiveTests_Watcher() {
     if (knownGuiPid)
         Log("Launcher reported: gui PID=" knownGuiPid)
 
-    ; Settle before watcher tests — GUI needs time to finish init (blacklist, file
-    ; watchers, producers) after process detection. The old lifecycle test had ~8s of
-    ; pump tests providing this window. Poll store log for WEH activity as a signal
-    ; that producers are running, with a minimum 2s floor.
+    ; Wait for GUI to finish init — file watchers must be active before we touch
+    ; blacklist.txt. Poll store log as readiness signal: producers start AFTER file
+    ; watcher init (gui_main.ahk line ~135 vs ~150+), so store log activity means
+    ; file watchers are already set up.
     settleStart := A_TickCount
     settleReady := false
-    while ((A_TickCount - settleStart) < 5000) {
-        if ((A_TickCount - settleStart) >= 2000 && FileExist(storeLogPath)) {
+    while ((A_TickCount - settleStart) < 8000) {
+        if (FileExist(storeLogPath)) {
             settleReady := true
             break
         }
         Sleep(100)
     }
-    if (!settleReady && (A_TickCount - settleStart) < 3000)
-        Sleep(3000 - (A_TickCount - settleStart))
-    Log("GUI settle: " (A_TickCount - settleStart) "ms (storeLog=" (FileExist(storeLogPath) ? "yes" : "no") ")")
+    Log("GUI ready: " (settleReady ? "yes" : "no") " (" (A_TickCount - settleStart) "ms)")
 
     ; ============================================================
     ; Test 3: Blacklist file watcher (replaces RELOAD_BLACKLIST signal)
