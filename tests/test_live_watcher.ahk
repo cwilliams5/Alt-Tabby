@@ -117,8 +117,13 @@ RunLiveTests_Watcher() {
     settleReady := false
     while ((A_TickCount - settleStart) < 8000) {
         if (FileExist(storeLogPath)) {
-            settleReady := true
-            break
+            try {
+                content := FileRead(storeLogPath)
+                if (StrLen(content) > 0) {
+                    settleReady := true
+                    break
+                }
+            }
         }
         Sleep(100)
     }
