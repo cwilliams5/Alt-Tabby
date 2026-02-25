@@ -46,6 +46,10 @@ global _gPump_RetryTimerFn := 0      ; Bound ref for deferred retry one-shot tim
 global _gPump_RetryCount := 0        ; Current retry attempt (0 = none pending)
 global _GPUMP_MAX_RETRIES := 3       ; Cap: stop retrying after this many attempts
 
+; Testing mode readiness signals (marker files for lifecycle test, zero-cost in production)
+global _gPump_ConnectCount := 0      ; Monotonic pump connection counter
+global _gPump_EnrichCount := 0       ; Monotonic enrichment response counter
+
 ; ========================= PUBLIC API =========================
 
 GUIPump_Init() {
@@ -53,6 +57,7 @@ GUIPump_Init() {
     global _gPump_TimerOn, _gPump_IdleTicks, _gPump_ClientTimerOn
     global _gPump_PumpHwnd, _gPump_HelloSent
     global _gPump_RetryTimerFn, _gPump_RetryCount, _GPUMP_MAX_RETRIES
+    global _gPump_ConnectCount, g_TestingMode
 
     ; Cancel any pending retry timer (handles re-entrant calls from Reconnect or retry)
     if (_gPump_RetryTimerFn) {
@@ -84,6 +89,12 @@ GUIPump_Init() {
 
     _gPump_Connected := true
     _gPump_RetryCount := 0
+
+    ; Write readiness signal for lifecycle tests (zero-cost in production)
+    if (g_TestingMode) {
+        _gPump_ConnectCount += 1
+        _GUIPump_WriteReadySignal(_gPump_ConnectCount)
+    }
 
     ; Register PostMessage wake handler for immediate pipe reads
     global IPC_WM_PIPE_WAKE
@@ -304,7 +315,7 @@ _GUIPump_CollectTick() {
 
 _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
     global cfg, FR_EV_ENRICH_RESP, _gPump_LastResponseTick, _gPump_LastRequestTick, gFR_Enabled
-    global _gPump_PumpHwnd
+    global _gPump_PumpHwnd, _gPump_EnrichCount, g_TestingMode
     _gPump_LastResponseTick := A_TickCount
 
     ; If no request outstanding, stop client poll timer
@@ -401,6 +412,12 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
         global gWS_OnStoreChanged
         if (gWS_OnStoreChanged)
             gWS_OnStoreChanged(false)  ; cosmetic only (icons/titles, not structural)
+
+        ; Write enrichment signal for lifecycle tests (zero-cost in production)
+        if (g_TestingMode) {
+            _gPump_EnrichCount += 1
+            _GUIPump_WriteEnrichSignal(_gPump_EnrichCount)
+        }
     }
 }
 
@@ -518,6 +535,39 @@ GUIPump_Reconnect() {
         _GUIPump_Log("RECONNECT: " (result ? "Success — pump connection restored" : "Failed — staying on local pumps"))
     return result
 }
+
+; ========================= TESTING SIGNALS =========================
+
+; Write pump connection counter to marker file (lifecycle tests poll this
+; instead of log files — decouples tests from diagnostic logging).
+_GUIPump_WriteReadySignal(count) {
+    global cfg
+    prefix := cfg.DiagLogFilePrefix
+    if (prefix = "")
+        return
+    path := A_Temp "\tabby_pump_ready_" prefix ".txt"
+    try {
+        f := FileOpen(path, "w")
+        f.Write(String(count))
+        f.Close()
+    }
+}
+
+; Write enrichment response counter to marker file.
+_GUIPump_WriteEnrichSignal(count) {
+    global cfg
+    prefix := cfg.DiagLogFilePrefix
+    if (prefix = "")
+        return
+    path := A_Temp "\tabby_pump_enrich_" prefix ".txt"
+    try {
+        f := FileOpen(path, "w")
+        f.Write(String(count))
+        f.Close()
+    }
+}
+
+; ========================= LOCAL PUMP FALLBACK =========================
 
 _GUIPump_RestartLocalPumps() {
     global cfg

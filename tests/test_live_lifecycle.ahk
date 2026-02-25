@@ -114,25 +114,30 @@ RunLiveTests_Lifecycle() {
     if (knownGuiPid)
         Log("Launcher reported: gui PID=" knownGuiPid ", pump PID=" knownPumpPid)
 
-    ; Wait for GUI to connect to pump (GUI logs "INIT: Connected" when pipe connect succeeds).
+    ; Wait for GUI to connect to pump (marker file written by GUIPump_Init in testing mode).
+    ; Decoupled from diagnostic logging — polls a dedicated readiness signal file.
     ; GUIPump_Init has deferred retries (500+1000+2000ms delays, each with 2s connect timeout)
     ; so worst-case connection takes ~11.5s. Allow 15s to cover full retry window.
     connectStart := A_TickCount
     guiConnected := false
+    pumpReadyPath := A_Temp "\tabby_pump_ready_" logPrefix ".txt"
     while ((A_TickCount - connectStart) < 15000) {
-        if (FileExist(pumpLogPath)) {
+        if (FileExist(pumpReadyPath)) {
             try {
-                logContent := FileRead(pumpLogPath)
-                if (InStr(logContent, "Connected to EnrichmentPump"))
+                content := Trim(FileRead(pumpReadyPath), " `t`r`n")
+                if (content != "" && Integer(content) >= 1)
                     guiConnected := true
             }
         }
         if (guiConnected)
             break
-        Sleep(100)
+        Sleep(50)
     }
-    if (!guiConnected)
-        Log("WARNING: GUI did not log pump connection within 15s")
+    connectElapsed := A_TickCount - connectStart
+    if (guiConnected)
+        Log("Pump connection detected (" connectElapsed "ms)")
+    else
+        Log("WARNING: GUI did not signal pump connection within 15s")
 
     ; ============================================================
     ; Test 1a: Pump enrichment round-trip
@@ -149,22 +154,23 @@ RunLiveTests_Lifecycle() {
         Log("FAIL: Pump not running — enrichment test requires live pump process")
         TestErrors++
     } else {
-        ; Poll pump log for HandleEnrich entry (pump logs each enrichment response).
+        ; Poll enrichment marker file (written by _GUIPump_OnMessage in testing mode).
         ; GUI's initial WinEnum scan enqueues all windows for enrichment, so the
         ; pump should process at least one batch within a few seconds of connecting.
         enrichSeen := false
         enrichStart := A_TickCount
+        enrichPath := A_Temp "\tabby_pump_enrich_" logPrefix ".txt"
         while ((A_TickCount - enrichStart) < 8000) {
-            if (FileExist(pumpLogPath)) {
+            if (FileExist(enrichPath)) {
                 try {
-                    logContent := FileRead(pumpLogPath)
-                    if (InStr(logContent, "HandleEnrich:"))
+                    content := Trim(FileRead(enrichPath), " `t`r`n")
+                    if (content != "" && Integer(content) >= 1)
                         enrichSeen := true
                 }
             }
             if (enrichSeen)
                 break
-            Sleep(100)
+            Sleep(50)
         }
 
         if (enrichSeen) {
@@ -266,9 +272,26 @@ RunLiveTests_Lifecycle() {
         TestErrors++
         pumpPid := 0
     } else {
-        ; Wait for GUI to reconnect to restarted pump (poll log instead of fixed sleep)
-        if (!_Lifecycle_WaitForPumpReconnect(1))
-            Log("WARNING: GUI pump reconnect not detected after kill restart (test may fail)")
+        ; Wait for GUI to reconnect to restarted pump (poll marker file for count >= 2)
+        reconnect1Start := A_TickCount
+        reconnect1Ok := false
+        while ((A_TickCount - reconnect1Start) < 6000) {
+            if (FileExist(pumpReadyPath)) {
+                try {
+                    content := Trim(FileRead(pumpReadyPath), " `t`r`n")
+                    if (content != "" && Integer(content) >= 2)
+                        reconnect1Ok := true
+                }
+            }
+            if (reconnect1Ok)
+                break
+            Sleep(50)
+        }
+        reconnect1Elapsed := A_TickCount - reconnect1Start
+        if (reconnect1Ok)
+            Log("Pump reconnect 1 detected (" reconnect1Elapsed "ms)")
+        else
+            Log("WARNING: GUI pump reconnect not detected after kill restart (" reconnect1Elapsed "ms, test may fail)")
 
         ; Find current pump PID (not knownPumpPid which is stale after Test 1 restarted it)
         ; Use knownGuiPid to exclude the GUI — it hasn't changed
@@ -319,8 +342,25 @@ RunLiveTests_Lifecycle() {
 
     ; Wait for GUI to reconnect to pump restarted by PUMP_FAILED signal (if pump tests ran)
     if (guiConnected) {
-        if (!_Lifecycle_WaitForPumpReconnect(2))
-            Log("WARNING: GUI pump reconnect not detected after PUMP_FAILED restart")
+        reconnect2Start := A_TickCount
+        reconnect2Ok := false
+        while ((A_TickCount - reconnect2Start) < 6000) {
+            if (FileExist(pumpReadyPath)) {
+                try {
+                    content := Trim(FileRead(pumpReadyPath), " `t`r`n")
+                    if (content != "" && Integer(content) >= 3)
+                        reconnect2Ok := true
+                }
+            }
+            if (reconnect2Ok)
+                break
+            Sleep(50)
+        }
+        reconnect2Elapsed := A_TickCount - reconnect2Start
+        if (reconnect2Ok)
+            Log("Pump reconnect 2 detected (" reconnect2Elapsed "ms)")
+        else
+            Log("WARNING: GUI pump reconnect not detected after PUMP_FAILED restart (" reconnect2Elapsed "ms)")
     } else {
         Sleep(500)  ; Brief settle when pump tests were skipped
     }
@@ -367,8 +407,8 @@ RunLiveTests_Lifecycle() {
     ; file watcher to restart subprocesses.
     Log("`n--- Config File Watcher Test ---")
 
-    ; Wait for system to settle after blacklist watcher test
-    Sleep(500)
+    ; Brief settle after blacklist watcher test
+    Sleep(200)
 
     ; Use authoritative GUI PID from launcher (knownGuiPid is still valid — only pump changed)
     guiPidBefore := knownGuiPid
@@ -415,7 +455,7 @@ RunLiveTests_Lifecycle() {
     Log("`n--- Ordered Shutdown Test ---")
 
     ; Re-find GUI PID after potential restart
-    Sleep(500)
+    Sleep(200)
     guiPid := _Lifecycle_FindGuiPid(launcherPid)
 
     if (!guiPid) {
@@ -500,11 +540,13 @@ _Lifecycle_Cleanup() {
 
     try FileDelete(LIFECYCLE_HWND_FILE)
 
-    ; Delete worktree-scoped logs from previous runs. Prevents false-positive
-    ; detection of "Connected" messages from stale log data.
+    ; Delete worktree-scoped logs and marker files from previous runs.
+    ; Prevents false-positive detection from stale data.
     try FileDelete(A_Temp "\tabby_pump_" LIFECYCLE_LOG_PREFIX ".log")
     try FileDelete(A_Temp "\tabby_launcher_" LIFECYCLE_LOG_PREFIX ".log")
     try FileDelete(A_Temp "\tabby_store_error_" LIFECYCLE_LOG_PREFIX ".log")
+    try FileDelete(A_Temp "\tabby_pump_ready_" LIFECYCLE_LOG_PREFIX ".txt")
+    try FileDelete(A_Temp "\tabby_pump_enrich_" LIFECYCLE_LOG_PREFIX ".txt")
 
     ; Remove temp directory
     testDir := A_Temp "\alttabby_lifecycle_" WorktreeId
@@ -549,29 +591,6 @@ _Lifecycle_FindNonGuiChild(launcherPid, guiPid) {
             return child.pid
     }
     return 0
-}
-
-; Helper: poll for GUI pump reconnection by counting RECONNECT entries in pump log.
-; Returns true if a new RECONNECT appeared within timeoutMs.
-_Lifecycle_WaitForPumpReconnect(expectedCount, timeoutMs := 6000) {
-    global LIFECYCLE_LOG_PREFIX
-    pumpLogPath := A_Temp "\tabby_pump_" LIFECYCLE_LOG_PREFIX ".log"
-    pollStart := A_TickCount
-    while ((A_TickCount - pollStart) < timeoutMs) {
-        if (FileExist(pumpLogPath)) {
-            try {
-                logContent := FileRead(pumpLogPath)
-                count := 0
-                pos := 1
-                while (pos := InStr(logContent, "RECONNECT: Success", , pos))
-                    count++, pos++
-                if (count >= expectedCount)
-                    return true
-            }
-        }
-        Sleep(100)
-    }
-    return false
 }
 
 ; Helper: send WM_COPYDATA command with retry for transient busy states.
