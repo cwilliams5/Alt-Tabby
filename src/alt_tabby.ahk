@@ -180,6 +180,7 @@ for _, arg in A_Args {
 #Include %A_ScriptDir%\gui\
 #Include gui_gdip.ahk
 #Include gui_win.ahk
+#Include d2d_types.ahk
 #Include gui_overlay.ahk
 #Include gui_workspace.ahk
 #Include gui_monitor.ahk
