@@ -686,7 +686,7 @@ global gConfigRegistry := [
      min: 8, max: 72,
      d: "Main font size when highlighted"},
 
-    {s: "GUI", k: "MainFontWeightHi", g: "GUI_MainFontWeightHi", t: "int", default: 800,
+    {s: "GUI", k: "MainFontWeightHi", g: "GUI_MainFontWeightHi", t: "int", default: 700,
      min: 100, max: 900,
      d: "Main font weight when highlighted"},
 
