@@ -206,8 +206,9 @@ Window background and frame styling
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `AcrylicColor` | int | `0x33000033` | `0x0` - `0xFFFFFFFF` | Background tint color with alpha (0xAARRGGBB) |
-| `CornerRadiusPx` | int | `18` | `0` - `100` | Window corner radius in pixels |
+| `BackdropStyle` | enum | `Acrylic` | - | Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Solid = flat tinted overlay, no blur. |
+| `AcrylicColor` | int | `0x33000033` | `0x0` - `0xFFFFFFFF` | Background tint color with alpha (0xAARRGGBB). Used by Acrylic and Solid backdrop styles. |
+| `CornerStyle` | enum | `Round` | - | Window corner shape. Round = 8px DWM rounding. RoundSmall = 4px. Square = sharp corners. |
 | `OverlayMonitor` | enum | `FocusedWindow` | - | Which monitor the overlay appears on. FocusedWindow = the monitor where you're working. Primary = always the primary monitor. |
 | `MonitorFilterDefault` | enum | `All` | - | Default monitor filter. All = windows from all monitors. Current = only windows on the overlay's monitor. Toggle with backtick key during use. |
 

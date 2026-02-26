@@ -17,6 +17,39 @@ global gD2D_Factory := 0       ; ID2D1Factory
 global gDW_Factory := 0        ; IDWriteFactory
 global gD2D_RT := 0            ; ID2D1HwndRenderTarget
 
+; ========================= CONFIG-DRIVEN BACKDROP =========================
+
+; Apply backdrop style from cfg.GUI_BackdropStyle.
+; Acrylic and AeroGlass use SWCA (compositor-level blur).
+; Solid skips SWCA — D2D paints the tint color directly each frame.
+; DwmExtendFrame provides the glass-through for alpha blending.
+_GUI_ApplyConfigBackdrop() {
+    global gGUI_BaseH, cfg
+
+    switch cfg.GUI_BackdropStyle {
+        case "Acrylic":
+            Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicColor)
+        case "AeroGlass":
+            Win_ApplySWCAccent(gGUI_BaseH, 3, 0)
+        case "Solid":
+            ; No SWCA needed — D2D Clear uses cfg.GUI_AcrylicColor directly.
+            ; SWCA gradient (accent 2) conflicts with DwmExtendFrame.
+    }
+}
+
+; ========================= CORNER STYLE =========================
+
+; Apply DWM corner preference from config.
+_GUI_ApplyCornerStyle(hWnd) {
+    global cfg
+    switch cfg.GUI_CornerStyle {
+        case "Round":      Win_SetCornerPreference(hWnd, 2)  ; DWMWCP_ROUND
+        case "RoundSmall": Win_SetCornerPreference(hWnd, 3)  ; DWMWCP_ROUNDSMALL
+        case "Square":     Win_SetCornerPreference(hWnd, 1)  ; DWMWCP_DONOTROUND
+        default:           Win_SetCornerPreference(hWnd, 2)  ; DWMWCP_ROUND
+    }
+}
+
 ; ========================= SHOW/HIDE =========================
 
 GUI_HideOverlay() {
@@ -147,7 +180,7 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
     ; Single window — no anti-jiggle split resize needed.
     ; D2D renders directly to the window surface; no overlay/base sync.
-    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wPhys, hPhys)
+    ; DWM corner preference is set once in GUI_CreateWindow; no per-resize update needed.
 
     ; Resize D2D render target to match new window size
     if (gD2D_RT && wPhys > 0 && hPhys > 0)
@@ -237,8 +270,7 @@ GUI_CreateWindow() {
 
     ; DWM and composition setup
     Win_EnableDarkTitleBar(gGUI_BaseH)
-    Win_SetCornerPreference(gGUI_BaseH, 2)
-    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wPhys, hPhys)
+    _GUI_ApplyCornerStyle(gGUI_BaseH)
 
     ; NOT WS_EX_LAYERED: D2D alpha compositing works through DwmExtendFrame +
     ; premultiplied alpha mode.  WS_EX_LAYERED causes DWM to cache the SWCA
@@ -255,8 +287,8 @@ GUI_CreateWindow() {
     ; Suppress WM_ERASEBKGND to prevent DWM flashing default background
     OnMessage(0x0014, _GUI_OnEraseBkgnd)
 
-    ; Apply acrylic blur backdrop
-    Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicColor)
+    ; Apply backdrop style from config
+    _GUI_ApplyConfigBackdrop()
 
     ; Initialize D2D factories (process-global)
     _D2D_InitFactories()

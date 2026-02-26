@@ -383,13 +383,17 @@ global gConfigRegistry := [
     {type: "subsection", section: "GUI", name: "Background Window",
      desc: "Window background and frame styling"},
 
+    {s: "GUI", k: "BackdropStyle", g: "GUI_BackdropStyle", t: "enum", default: "Acrylic",
+     options: ["Acrylic", "AeroGlass", "Solid"],
+     d: "Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Solid = flat tinted overlay, no blur."},
+
     {s: "GUI", k: "AcrylicColor", g: "GUI_AcrylicColor", t: "int", default: 0x33000033,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
-     d: "Background tint color with alpha (0xAARRGGBB)"},
+     d: "Background tint color with alpha (0xAARRGGBB). Used by Acrylic and Solid backdrop styles."},
 
-    {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", default: 18,
-     min: 0, max: 100,
-     d: "Window corner radius in pixels"},
+    {s: "GUI", k: "CornerStyle", g: "GUI_CornerStyle", t: "enum", default: "Round",
+     options: ["Round", "RoundSmall", "Square"],
+     d: "Window corner shape. Round = 8px DWM rounding. RoundSmall = 4px. Square = sharp corners."},
 
     {s: "GUI", k: "OverlayMonitor", g: "GUI_OverlayMonitor", t: "enum", default: "FocusedWindow",
      options: ["FocusedWindow", "Primary"],

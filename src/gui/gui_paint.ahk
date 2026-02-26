@@ -126,7 +126,6 @@ GUI_Repaint() {
     needsResize := (rowsChanged && gGUI_Revealed)
     if (needsResize) {
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, phW, phH)
         if (gD2D_RT && phW > 0 && phH > 0)
             D2D_ResizeRenderTarget(phW, phH)
     }
@@ -139,8 +138,12 @@ GUI_Repaint() {
 
     if (gD2D_RT) {
         gD2D_RT.BeginDraw()
-        ; Clear to transparent — acrylic material shows through
-        gD2D_RT.Clear(D2D_ColorF(0x00000000))
+
+        ; Clear the render target. Acrylic/AeroGlass: transparent so compositor
+        ; backdrop shows through. Solid: paint the tint color directly via D2D
+        ; (SWCA gradient conflicts with DwmExtendFrame).
+        clearColor := (cfg.GUI_BackdropStyle = "Solid") ? cfg.GUI_AcrylicColor : 0x00000000
+        gD2D_RT.Clear(D2D_ColorF(clearColor))
 
         if (diagTiming)
             tBeginDraw := QPC() - t1
@@ -219,8 +222,6 @@ _GUI_RevealBoth() {
         Profiler.Leave() ; @profile
         return
     }
-
-    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx)
 
     try {
         gGUI_Base.Show("NA")
@@ -718,3 +719,4 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
 
     D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
 }
+

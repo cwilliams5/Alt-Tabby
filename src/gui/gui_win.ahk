@@ -148,7 +148,7 @@ Win_SetPosPhys(hWnd, xPhys, yPhys, wPhys, hPhys) {
 }
 
 ; Apply rounded region to window
-Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) {
+Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) { ; lint-ignore: dead-function
     if (!hWnd || radiusPx <= 0) {
         return
     }
@@ -223,6 +223,28 @@ Win_ApplyAcrylic(hWnd, argbColor) {
 
     accent := Buffer(16, 0)
     NumPut("Int", 4, accent, 0)  ; ACCENT_ENABLE_ACRYLICBLURBEHIND
+    NumPut("Int", 0, accent, 4)
+    NumPut("Int", grad, accent, 8)
+    NumPut("Int", 0, accent, 12)
+
+    data := Buffer(A_PtrSize * 3, 0)
+    NumPut("Int", 19, data, 0)  ; WCA_ACCENT_POLICY
+    NumPut("Ptr", accent.Ptr, data, A_PtrSize)
+    NumPut("Int", accent.Size, data, A_PtrSize * 2)
+
+    return DllCall("user32\SetWindowCompositionAttribute", "ptr", hWnd, "ptr", data.Ptr, "int")
+}
+
+; Shared SWC accent helper (any accent type + optional ARGB tint)
+Win_ApplySWCAccent(hWnd, accentType, argbColor := 0) {
+    alpha := (argbColor >> 24) & 0xFF
+    rr := (argbColor >> 16) & 0xFF
+    gg := (argbColor >> 8) & 0xFF
+    bb := (argbColor) & 0xFF
+    grad := (alpha << 24) | (bb << 16) | (gg << 8) | rr
+
+    accent := Buffer(16, 0)
+    NumPut("Int", accentType, accent, 0)
     NumPut("Int", 0, accent, 4)
     NumPut("Int", grad, accent, 8)
     NumPut("Int", 0, accent, 12)
