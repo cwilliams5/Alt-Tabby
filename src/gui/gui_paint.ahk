@@ -878,36 +878,75 @@ _FX_LinearGradient(x1, y1, x2, y2, stops) {
 
 ; Draw the selection highlight with effects (drop shadow, gradient, border).
 ; Called when effects are on (fx = 1). Gradient goes base → darker for depth.
+;
+; Layer compositing: shadow + gradient are drawn at full internal opacity inside
+; a D2D Layer, then composited at the user's alpha. This eliminates shadow
+; bleed-through under the semi-transparent gradient — the opaque gradient fully
+; covers the shadow within the layer, so the shadow only appears in the 3px
+; reveal strip. Fixes HDR color darkening (issue #147).
 _FX_DrawSelection(x, y, w, h, r) {
     if (w <= 0 || h <= 0)
         return
-    global cfg
+    global cfg, gD2D_RT
 
     baseARGB := cfg.GUI_SelARGB
-    a := (baseARGB >> 24) & 0xFF
+    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
+    baseRGB := baseARGB & 0x00FFFFFF
 
-    ; Drop shadow: 3-layer offset for soft edge
+    ; Full-opacity colors for layer-internal rendering
+    opaqueBase := 0xFF000000 | baseRGB
+    opaqueDark := 0xFF000000 | _FX_BlendToBlack(baseARGB, 0.20)
+
+    ; Push layer — everything inside renders at full opacity, composited at userAlpha.
+    ; Bounds cover shadow extent (selection + 8px for 3-layer offset + spread).
+    layerParams := _FX_LayerParams(x, y, x + w + 8, y + h + 8, userAlpha)
+    gD2D_RT.PushLayer(layerParams, 0)
+
+    ; Drop shadow at full opacity (within layer)
     if (cfg.GUI_SelDropShadow)
         _FX_DrawSelDropShadow(x, y, w, h, r)
 
-    ; Diagonal gradient: base color → 20% darker (depth without washing out)
-    darkARGB := ((a) << 24) | _FX_BlendToBlack(baseARGB, 0.20)
+    ; Diagonal gradient at full opacity — fully covers shadow in selection area
     gradBr := _FX_LinearGradient(x, y, x + w, y + h, [
-        [0.0, baseARGB],
-        [1.0, darkARGB]
+        [0.0, opaqueBase],
+        [1.0, opaqueDark]
     ])
     if (gradBr) {
         D2D_FillRoundRect(x, y, w, h, r, gradBr)
     } else {
-        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(baseARGB))
+        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
     }
 
-    ; Accent border (skip if width is 0)
+    gD2D_RT.PopLayer()
+
+    ; Border drawn OUTSIDE layer — preserves its own configured alpha
     bw := cfg.GUI_SelBorderWidthPx
     if (bw > 0) {
         half := bw / 2
         D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
     }
+}
+
+; Build D2D1_LAYER_PARAMETERS struct (72 bytes on x64).
+; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
+; uniformly when the layer is composited onto the render target.
+_FX_LayerParams(left, top, right, bottom, opacity) {
+    buf := Buffer(72, 0)
+    ; contentBounds: D2D1_RECT_F {left, top, right, bottom}
+    NumPut("float", Float(left), buf, 0)
+    NumPut("float", Float(top), buf, 4)
+    NumPut("float", Float(right), buf, 8)
+    NumPut("float", Float(bottom), buf, 12)
+    ; geometricMask: NULL (offset 16) — no geometric clip
+    ; maskAntialiasMode: 0 = PER_PRIMITIVE (offset 24)
+    ; maskTransform: identity matrix (offset 28)
+    NumPut("float", 1.0, buf, 28)   ; _11
+    NumPut("float", 1.0, buf, 40)   ; _22
+    ; opacity (offset 52)
+    NumPut("float", Float(opacity), buf, 52)
+    ; opacityBrush: NULL (offset 56) — uniform opacity
+    ; layerOptions: 0 = NONE (offset 64)
+    return buf
 }
 
 ; Drop shadow behind the selection row.
