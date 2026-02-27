@@ -28,13 +28,11 @@ if (-not (Test-Path $srcDir)) {
 # Returns: array of { Source, Target, Optional, LineNum }
 # Source/Target are relative paths from project root (e.g., src\gui\gui_main.ahk)
 
-$allFiles = Get-AhkSourceFiles $srcDir
-# Also include files in src\lib\ as potential include sources (entry points include them)
-$libFiles = @(Get-ChildItem -Path (Join-Path $srcDir "lib") -Filter "*.ahk" -Recurse -ErrorAction SilentlyContinue)
+$allFiles = Get-AhkSourceFiles $srcDir -IncludeLib
 
 # Build a filename-to-relpath lookup for all .ahk files
 $fileIndex = @{}
-foreach ($f in @($allFiles) + @($libFiles)) {
+foreach ($f in $allFiles) {
     $relPath = $f.FullName.Replace("$projectRoot\", '')
     $fileIndex[$f.Name.ToLower()] = $relPath
 }
@@ -42,7 +40,7 @@ foreach ($f in @($allFiles) + @($libFiles)) {
 # Parse includes
 $includes = [System.Collections.ArrayList]::new()  # { Source, Target, Optional, LineNum }
 
-foreach ($file in @($allFiles) + @($libFiles)) {
+foreach ($file in $allFiles) {
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $lines = [System.IO.File]::ReadAllLines($file.FullName)
     $currentDir = $file.DirectoryName
@@ -132,7 +130,7 @@ if (-not $Target) {
     $entryPoints.Sort()
 
     Write-Host ""
-    Write-Host "  Include Tree ($($includes.Count) directives across $($allFiles.Count + $libFiles.Count) files)" -ForegroundColor White
+    Write-Host "  Include Tree ($($includes.Count) directives across $($allFiles.Count) files)" -ForegroundColor White
     Write-Host ""
 
     function Show-Tree {
