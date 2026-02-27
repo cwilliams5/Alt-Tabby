@@ -15,12 +15,33 @@ global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
 
 ; ========================= EFFECT STYLE SYSTEM =========================
 ; Toggled at runtime via B key (gui_interceptor.ahk).
-; 0 = Clean (baseline), 1 = visual effects on.
+;
+; Style architecture:
+;   0 = "Effects" (gradient + shadow + inner shadow — the baseline look)
+;   1 = "Clean" (flat fill, no effects)
+;   2+ = GPU styles (require cfg.PerfGPUEffects = true)
+;
+; When GPUEffects=false: B cycles between 0 (Effects) and 1 (Clean).
+; When GPUEffects=true:  B cycles through 0, 1, then all GPU styles (2+).
+; GPU styles use ID2D1Effect graph for real blur shadows, glows, noise, etc.
+
 global gGUI_EffectStyle := 0
 global FX_STYLE_NAMES := [
-    "Clean",
-    "Effects"
+    "Effects",
+    "Clean"
+    ; GPU styles appended dynamically by FX_BuildStyleNames()
 ]
+
+; Build the full style name list based on GPU availability.
+; Called at init and when GPU effects state changes.
+FX_BuildStyleNames() {
+    global FX_STYLE_NAMES, FX_GPU_STYLE_NAMES, gFX_GPUReady
+    FX_STYLE_NAMES := ["Effects", "Clean"]
+    if (gFX_GPUReady) {
+        for _, name in FX_GPU_STYLE_NAMES
+            FX_STYLE_NAMES.Push(name)
+    }
+}
 
 ; Layout state (written during paint, read by gui_main/gui_input)
 global gGUI_LastRowsDesired := -1
@@ -266,7 +287,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
-    global gGUI_EffectStyle
+    global gGUI_EffectStyle, gFX_GPUReady
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
@@ -340,9 +361,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
     ; Effect style shorthand
     fx := gGUI_EffectStyle
+    isGPU := (fx >= 2 && gFX_GPUReady)
+    isFX := (fx = 0)  ; "Effects" = style 0 (gradient + shadow + inner shadow)
 
     ; Shadow params (computed once, used for all text draws)
-    shadowP := _FX_GetShadowParams(fx, scale)
+    ; Text shadows active for Effects (0) and all GPU styles (2+), not Clean (1)
+    shadowP := _FX_GetShadowParams((fx != 1) ? 1 : 0, scale)
     shadowBr := shadowP.enabled ? D2D_GetCachedBrush(shadowP.argb) : 0
 
     ; Header
@@ -448,8 +472,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             isSel := (idx1 = selIndex)
 
             ; Hover highlight (effects on, non-selected rows)
-            if (fx && !isSel && idx1 = hoverRow) {
-                _FX_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
+            if ((isFX || isGPU) && !isSel && idx1 = hoverRow) {
+                if (isGPU)
+                    FX_GPU_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
+                else
+                    _FX_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
             }
 
             ; Selection highlight
@@ -458,7 +485,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 selY := yRow - selExpandY
                 selW := wPhys - 2 * Mx + selExpandX * 2
                 selH := RowH
-                if (fx) {
+                if (isGPU) {
+                    FX_GPU_DrawSelection(fx - 2, selX, selY, selW, selH, Rad)
+                } else if (isFX) {
                     _FX_DrawSelection(selX, selY, selW, selH, Rad)
                 } else {
                     D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
@@ -555,9 +584,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         tPO_Footer := QPC() - t1
 
     ; Inner shadow — config-driven depth and opacity
-    if (fx && cfg.GUI_InnerShadowAlpha > 0) {
+    if ((isFX || isGPU) && cfg.GUI_InnerShadowAlpha > 0) {
         shadowDepth := Round(cfg.GUI_InnerShadowDepthPx * scale)
-        _FX_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+        if (isGPU)
+            FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+        else
+            _FX_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
     }
 
     ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
@@ -859,7 +891,7 @@ _FX_BrushProps() {
 }
 
 ; Create a linear gradient brush. Caller keeps reference; COM __Delete releases.
-_FX_LinearGradient(x1, y1, x2, y2, stops) {
+FX_LinearGradient(x1, y1, x2, y2, stops) {
     global gD2D_RT
     gsc := _FX_BuildStops(stops)
     if (!gsc)
@@ -895,11 +927,11 @@ _FX_DrawSelection(x, y, w, h, r) {
 
     ; Full-opacity colors for layer-internal rendering
     opaqueBase := 0xFF000000 | baseRGB
-    opaqueDark := 0xFF000000 | _FX_BlendToBlack(baseARGB, 0.20)
+    opaqueDark := 0xFF000000 | FX_BlendToBlack(baseARGB, 0.20)
 
     ; Push layer — everything inside renders at full opacity, composited at userAlpha.
     ; Bounds cover shadow extent (selection + 8px for 3-layer offset + spread).
-    layerParams := _FX_LayerParams(x, y, x + w + 8, y + h + 8, userAlpha)
+    layerParams := FX_LayerParams(x, y, x + w + 8, y + h + 8, userAlpha)
     gD2D_RT.PushLayer(layerParams, 0)
 
     ; Drop shadow at full opacity (within layer)
@@ -907,7 +939,7 @@ _FX_DrawSelection(x, y, w, h, r) {
         _FX_DrawSelDropShadow(x, y, w, h, r)
 
     ; Diagonal gradient at full opacity — fully covers shadow in selection area
-    gradBr := _FX_LinearGradient(x, y, x + w, y + h, [
+    gradBr := FX_LinearGradient(x, y, x + w, y + h, [
         [0.0, opaqueBase],
         [1.0, opaqueDark]
     ])
@@ -930,7 +962,7 @@ _FX_DrawSelection(x, y, w, h, r) {
 ; Build D2D1_LAYER_PARAMETERS struct (72 bytes on x64).
 ; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
 ; uniformly when the layer is composited onto the render target.
-_FX_LayerParams(left, top, right, bottom, opacity) {
+FX_LayerParams(left, top, right, bottom, opacity) {
     buf := Buffer(72, 0)
     ; contentBounds: D2D1_RECT_F {left, top, right, bottom}
     NumPut("float", Float(left), buf, 0)
@@ -1005,7 +1037,7 @@ _FX_DrawHover(x, y, w, h, r) {
     midARGB := (midA << 24) | baseRGB
     botA := Round(baseA * 0.3)
     botARGB := (botA << 24) | baseRGB
-    hoverBr := _FX_LinearGradient(x, y, x, y + h, [
+    hoverBr := FX_LinearGradient(x, y, x, y + h, [
         [0.0, topARGB],
         [0.6, midARGB],
         [1.0, botARGB]
@@ -1029,7 +1061,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
     sideARGB := (sideAlpha << 24) | 0x000000
 
     ; Top edge
-    topBr := _FX_LinearGradient(0, 0, 0, depth, [
+    topBr := FX_LinearGradient(0, 0, 0, depth, [
         [0.0, edgeARGB],
         [1.0, 0x00000000]
     ])
@@ -1037,7 +1069,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
         D2D_FillRect(0, 0, wPhys, depth, topBr)
 
     ; Bottom edge
-    botBr := _FX_LinearGradient(0, hPhys - depth, 0, hPhys, [
+    botBr := FX_LinearGradient(0, hPhys - depth, 0, hPhys, [
         [0.0, 0x00000000],
         [1.0, botARGB]
     ])
@@ -1045,7 +1077,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
         D2D_FillRect(0, hPhys - depth, wPhys, depth, botBr)
 
     ; Left edge
-    leftBr := _FX_LinearGradient(0, 0, depth, 0, [
+    leftBr := FX_LinearGradient(0, 0, depth, 0, [
         [0.0, sideARGB],
         [1.0, 0x00000000]
     ])
@@ -1053,7 +1085,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
         D2D_FillRect(0, 0, depth, hPhys, leftBr)
 
     ; Right edge
-    rightBr := _FX_LinearGradient(wPhys - depth, 0, wPhys, 0, [
+    rightBr := FX_LinearGradient(wPhys - depth, 0, wPhys, 0, [
         [0.0, 0x00000000],
         [1.0, sideARGB]
     ])
@@ -1065,7 +1097,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 
 ; Blend an ARGB color toward black by factor (0.0 = no change, 1.0 = pure black).
 ; Returns RGB only (caller handles alpha).
-_FX_BlendToBlack(argb, factor) {
+FX_BlendToBlack(argb, factor) {
     r := (argb >> 16) & 0xFF
     g := (argb >> 8) & 0xFF
     b := argb & 0xFF

@@ -246,3 +246,164 @@ global DWRITE_TEXT_ALIGNMENT_CENTER := 2 ; lint-ignore: dead-global
 global DWRITE_PARAGRAPH_ALIGNMENT_NEAR := 0 ; lint-ignore: dead-global
 global DWRITE_PARAGRAPH_ALIGNMENT_FAR := 1 ; lint-ignore: dead-global
 global DWRITE_PARAGRAPH_ALIGNMENT_CENTER := 2 ; lint-ignore: dead-global
+
+; ========================= D2D1 EFFECT CLSIDs =========================
+; Pre-computed 16-byte GUID buffers for ID2D1DeviceContext::CreateEffect.
+; Initialized by FX_InitCLSIDs() at startup; declared here for global access.
+
+global CLSID_D2D1GaussianBlur ; lint-ignore: dead-global
+global CLSID_D2D1Shadow       ; lint-ignore: dead-global
+global CLSID_D2D1Flood        ; lint-ignore: dead-global
+global CLSID_D2D1Crop         ; lint-ignore: dead-global
+global CLSID_D2D1ColorMatrix  ; lint-ignore: dead-global
+global CLSID_D2D1Saturation   ; lint-ignore: dead-global
+global CLSID_D2D1Blend        ; lint-ignore: dead-global
+global CLSID_D2D1Composite    ; lint-ignore: dead-global
+global CLSID_D2D1Turbulence   ; lint-ignore: dead-global
+global CLSID_D2D1Morphology   ; lint-ignore: dead-global
+global CLSID_D2D1GammaTransfer ; lint-ignore: dead-global
+global CLSID_D2D1DirectionalBlur ; lint-ignore: dead-global
+
+; Convert a GUID string to a 16-byte CLSID buffer.
+_D2D_CLSID(str) { ; lint-ignore: dead-function
+    buf := Buffer(16, 0)
+    DllCall("ole32\CLSIDFromString", "str", str, "ptr", buf, "hresult")
+    return buf
+}
+
+; Initialize all effect CLSIDs. Call once at startup.
+FX_InitCLSIDs() { ; lint-ignore: dead-function
+    global CLSID_D2D1GaussianBlur, CLSID_D2D1Shadow, CLSID_D2D1Flood
+    global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
+    global CLSID_D2D1Blend, CLSID_D2D1Composite, CLSID_D2D1Turbulence
+    global CLSID_D2D1Morphology, CLSID_D2D1GammaTransfer, CLSID_D2D1DirectionalBlur
+
+    CLSID_D2D1GaussianBlur  := _D2D_CLSID("{1FEB6D69-2FE6-4AC9-8C58-1D7F93E7A6A5}")
+    CLSID_D2D1Shadow        := _D2D_CLSID("{C67EA361-1863-4E69-89DB-695D3E9A5B6B}")
+    CLSID_D2D1Flood         := _D2D_CLSID("{61C23C20-AE69-4D8E-94CF-50078DF638F2}")
+    CLSID_D2D1Crop          := _D2D_CLSID("{E23F7110-0E9A-4324-AF47-6A2C0C46F35B}")
+    CLSID_D2D1ColorMatrix   := _D2D_CLSID("{921F03D6-641C-47DF-852D-B4BB6153AE11}")
+    CLSID_D2D1Saturation    := _D2D_CLSID("{5CB2D9CF-327D-459F-A0CE-40C0B2086BF7}")
+    CLSID_D2D1Blend         := _D2D_CLSID("{81C5B77B-13F8-4CDD-AD20-C890547AC65D}")
+    CLSID_D2D1Composite     := _D2D_CLSID("{48FC9F51-F6AC-48F1-8B58-3B28AC46F76D}")
+    CLSID_D2D1Turbulence    := _D2D_CLSID("{CF2BB6AE-889A-4AD7-BA29-A2FD732C9FC9}")
+    CLSID_D2D1Morphology    := _D2D_CLSID("{EAE6C40D-626A-4C2D-BFCB-391001ABE202}")
+    CLSID_D2D1GammaTransfer := _D2D_CLSID("{409444C4-C419-41A0-B0C1-8CD0C0A18E42}")
+    CLSID_D2D1DirectionalBlur := _D2D_CLSID("{174319A6-58E9-49B2-BB63-CAF2C811A3DB}")
+}
+
+; ========================= D2D1 EFFECT PROPERTY INDICES =========================
+; Property indices for SetFloat/SetUInt/SetEnum/SetColorF on each effect type.
+
+; D2D1_GAUSSIANBLUR_PROP
+global FX_BLUR_STDEV      := 0  ; FLOAT — standard deviation (px) ; lint-ignore: dead-global
+global FX_BLUR_OPTIMIZATION := 1  ; ENUM  — speed vs quality ; lint-ignore: dead-global
+global FX_BLUR_BORDER_MODE := 2  ; ENUM  — soft/hard edge ; lint-ignore: dead-global
+
+; D2D1_SHADOW_PROP
+global FX_SHADOW_BLUR      := 0  ; FLOAT — shadow blur radius ; lint-ignore: dead-global
+global FX_SHADOW_COLOR     := 1  ; VECTOR4 — shadow color (r,g,b,a) ; lint-ignore: dead-global
+
+; D2D1_FLOOD_PROP
+global FX_FLOOD_COLOR      := 0  ; VECTOR4 — flood fill color ; lint-ignore: dead-global
+
+; D2D1_CROP_PROP
+global FX_CROP_RECT        := 0  ; VECTOR4 — crop rectangle (l,t,r,b) ; lint-ignore: dead-global
+global FX_CROP_BORDER_MODE := 1  ; ENUM ; lint-ignore: dead-global
+
+; D2D1_COLORMATRIX_PROP
+global FX_CMATRIX_MATRIX   := 0  ; MATRIX_5X4 — 5×4 color transform ; lint-ignore: dead-global
+global FX_CMATRIX_ALPHA_MODE := 1  ; ENUM ; lint-ignore: dead-global
+global FX_CMATRIX_CLAMP    := 2  ; BOOL ; lint-ignore: dead-global
+
+; D2D1_SATURATION_PROP
+global FX_SAT_SATURATION   := 0  ; FLOAT — 0.0 (grayscale) to 1.0 (original) ; lint-ignore: dead-global
+
+; D2D1_BLEND_PROP
+global FX_BLEND_MODE       := 0  ; ENUM — blend mode ; lint-ignore: dead-global
+
+; D2D1_COMPOSITE_PROP
+global FX_COMPOSITE_MODE   := 0  ; ENUM — composite mode ; lint-ignore: dead-global
+
+; D2D1_TURBULENCE_PROP
+global FX_TURB_OFFSET      := 0  ; VECTOR2 — noise offset ; lint-ignore: dead-global
+global FX_TURB_SIZE        := 1  ; VECTOR2 — bounding size of noise output (default {0,0} = infinite) ; lint-ignore: dead-global
+global FX_TURB_FREQ        := 2  ; VECTOR2 — base frequency ; lint-ignore: dead-global
+global FX_TURB_OCTAVES     := 3  ; UINT32 — octave count ; lint-ignore: dead-global
+global FX_TURB_SEED        := 4  ; UINT32 — random seed ; lint-ignore: dead-global
+global FX_TURB_NOISE       := 5  ; ENUM — fractalSum(0) or turbulence(1) ; lint-ignore: dead-global
+global FX_TURB_STITCHABLE  := 6  ; BOOL ; lint-ignore: dead-global
+
+; D2D1_MORPHOLOGY_PROP
+global FX_MORPH_MODE       := 0  ; ENUM — erode(0) or dilate(1) ; lint-ignore: dead-global
+global FX_MORPH_WIDTH      := 1  ; UINT32 — kernel width ; lint-ignore: dead-global
+global FX_MORPH_HEIGHT     := 2  ; UINT32 — kernel height ; lint-ignore: dead-global
+
+; D2D1_GAMMATRANSFER_PROP (per-channel: Red, Green, Blue, Alpha)
+global FX_GAMMA_RED_AMP    := 0  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_RED_EXP    := 1  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_RED_OFF    := 2  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_RED_DISABLE := 3 ; BOOL ; lint-ignore: dead-global
+global FX_GAMMA_GREEN_AMP  := 4  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_GREEN_EXP  := 5  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_GREEN_OFF  := 6  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_GREEN_DISABLE := 7 ; BOOL ; lint-ignore: dead-global
+global FX_GAMMA_BLUE_AMP   := 8  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_BLUE_EXP   := 9  ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_BLUE_OFF   := 10 ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_BLUE_DISABLE := 11 ; BOOL ; lint-ignore: dead-global
+global FX_GAMMA_ALPHA_AMP  := 12 ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_ALPHA_EXP  := 13 ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_ALPHA_OFF  := 14 ; FLOAT ; lint-ignore: dead-global
+global FX_GAMMA_ALPHA_DISABLE := 15 ; BOOL ; lint-ignore: dead-global
+
+; D2D1_DIRECTIONALBLUR_PROP
+global FX_DIRBLUR_STDEV    := 0  ; FLOAT — standard deviation (px) ; lint-ignore: dead-global
+global FX_DIRBLUR_ANGLE    := 1  ; FLOAT — angle in degrees (0=right, 90=down) ; lint-ignore: dead-global
+global FX_DIRBLUR_OPT      := 2  ; ENUM — optimization (speed/balanced/quality) ; lint-ignore: dead-global
+global FX_DIRBLUR_BORDER   := 3  ; ENUM — border mode (soft/hard) ; lint-ignore: dead-global
+
+; D2D1_BLEND_MODE enum values (for FX_BLEND_MODE)
+global D2D1_BLEND_MULTIPLY  := 0  ; lint-ignore: dead-global
+global D2D1_BLEND_SCREEN    := 1  ; lint-ignore: dead-global
+global D2D1_BLEND_DARKEN    := 2  ; lint-ignore: dead-global
+global D2D1_BLEND_LIGHTEN   := 3  ; lint-ignore: dead-global
+global D2D1_BLEND_OVERLAY   := 11 ; lint-ignore: dead-global
+global D2D1_BLEND_SOFTLIGHT := 13 ; lint-ignore: dead-global
+
+; D2D1_COMPOSITE_MODE enum values (for FX_COMPOSITE_MODE / DrawImage)
+global D2D1_COMPOSITE_SOURCE_OVER := 0 ; lint-ignore: dead-global
+global D2D1_COMPOSITE_SOURCE_IN   := 5 ; lint-ignore: dead-global
+global D2D1_COMPOSITE_SOURCE_ATOP := 7 ; lint-ignore: dead-global
+
+; D2D1_GAUSSIANBLUR_OPTIMIZATION
+global D2D1_BLUR_OPT_SPEED   := 0 ; lint-ignore: dead-global
+global D2D1_BLUR_OPT_BALANCED := 1 ; lint-ignore: dead-global
+global D2D1_BLUR_OPT_QUALITY  := 2 ; lint-ignore: dead-global
+
+; D2D1_BORDER_MODE
+global D2D1_BORDER_SOFT := 0 ; lint-ignore: dead-global
+global D2D1_BORDER_HARD := 1 ; lint-ignore: dead-global
+
+; ========================= Color Matrix Helpers =========================
+
+; Build a 5×4 identity color matrix (80 bytes, 20 floats).
+D2D_ColorMatrix_Identity() { ; lint-ignore: dead-function
+    m := Buffer(80, 0)
+    NumPut("float", 1.0, m, 0)   ; [0][0] = R→R
+    NumPut("float", 1.0, m, 20)  ; [1][1] = G→G
+    NumPut("float", 1.0, m, 40)  ; [2][2] = B→B
+    NumPut("float", 1.0, m, 60)  ; [3][3] = A→A
+    return m
+}
+
+; Build a tint matrix: multiplies RGB by tint color, preserves alpha.
+; tintR/G/B in 0.0-1.0 range.
+D2D_ColorMatrix_Tint(tintR, tintG, tintB) { ; lint-ignore: dead-function
+    m := Buffer(80, 0)
+    NumPut("float", Float(tintR), m, 0)   ; R scale
+    NumPut("float", Float(tintG), m, 20)  ; G scale
+    NumPut("float", Float(tintB), m, 40)  ; B scale
+    NumPut("float", 1.0, m, 60)           ; A = passthrough
+    return m
+}

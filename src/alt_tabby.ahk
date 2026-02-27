@@ -184,6 +184,7 @@ for _, arg in A_Args {
 #Include gui_win.ahk
 #Include d2d_types.ahk
 #Include gui_overlay.ahk
+#Include gui_effects.ahk
 #Include gui_workspace.ahk
 #Include gui_monitor.ahk
 #Include gui_paint.ahk

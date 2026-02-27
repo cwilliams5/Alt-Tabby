@@ -1166,6 +1166,14 @@ global gConfigRegistry := [
     {s: "Performance", k: "GPUEffects", g: "PerfGPUEffects", t: "bool", default: true, ; lint-ignore: dead-config
      d: "Enable GPU-accelerated visual effects (blur, real shadows, blend modes). Requires ID2D1DeviceContext. When disabled, software effects from the Visual Effects section are used instead."},
 
+    {s: "Performance", k: "HDRCompensation", g: "PerfHDRCompensation", t: "enum", default: "auto",
+     options: ["auto", "on", "off"],
+     d: "Compensate for HDR display gamma darkening. DWM composites in linear scRGB which darkens semi-transparent GPU blurs/glows. 'auto' detects HDR and applies correction, 'on' forces correction (useful for testing on SDR), 'off' disables."},
+
+    {s: "Performance", k: "HDRGammaExponent", g: "PerfHDRGammaExponent", t: "float", default: 0.80,
+     min: 0.5, max: 1.0,
+     d: "Gamma exponent for HDR compensation. Lower = brighter correction (more compensation). 0.80 restores SDR-equivalent brightness. Only effective when HDR compensation is active."},
+
     {s: "Performance", k: "KeepInMemory", g: "PerfKeepInMemory", t: "bool", default: true,
      d: "Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle."},
 

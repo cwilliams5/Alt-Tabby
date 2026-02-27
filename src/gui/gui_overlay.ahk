@@ -334,6 +334,11 @@ GUI_CreateWindow() {
     ; Create D2D render target + device context for this window
     _D2D_CreateRenderTarget(gGUI_BaseH, wPhys, hPhys)
 
+    ; Initialize GPU effects pipeline (CLSIDs + effect graph)
+    FX_InitCLSIDs()
+    FX_GPU_Init()
+    FX_BuildStyleNames()
+
     Win_DwmFlush()
 }
 
@@ -460,6 +465,9 @@ D2D_HandleDeviceLoss() {
     hPhys := 0
     Win_GetRectPhys(gGUI_BaseH, &ox, &oy, &wPhys, &hPhys)
 
+    ; Release GPU effects (depend on render target / device context)
+    FX_GPU_Dispose()
+
     ; Release all dependent resources (brushes, text formats, icon cache)
     D2D_DisposeResources()
 
@@ -472,6 +480,10 @@ D2D_HandleDeviceLoss() {
 
     ; Recreate render target (factories survive device loss)
     _D2D_CreateRenderTarget(gGUI_BaseH, wPhys, hPhys)
+
+    ; Recreate GPU effects
+    FX_GPU_Init()
+    FX_BuildStyleNames()
 }
 
 ; ========================= D2D CLEANUP =========================
@@ -481,7 +493,10 @@ D2D_ShutdownAll() {
     global gD2D_D2DDevice, gD2D_D3DDevice
     global gD2D_Factory, gDW_Factory
 
-    ; Dispose resources first (brushes, text formats, icon cache)
+    ; Dispose GPU effects first
+    FX_GPU_Dispose()
+
+    ; Dispose resources (brushes, text formats, icon cache)
     D2D_DisposeResources()
 
     ; Release render target
@@ -503,6 +518,61 @@ D2D_ShutdownAll() {
         gDW_Factory := 0
     if (gD2D_Factory)
         gD2D_Factory := 0
+}
+
+; ========================= HDR DETECTION =========================
+
+; Detect whether any active display has HDR enabled.
+; Uses DisplayConfigGetDeviceInfo with DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO.
+; Returns true if at least one monitor has HDR active.
+D2D_IsHDRActive() {
+    try {
+        ; GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS=2)
+        pathCount := 0
+        modeCount := 0
+        hr := DllCall("user32\GetDisplayConfigBufferSizes",
+            "uint", 2, "uint*", &pathCount, "uint*", &modeCount, "uint")
+        if (hr != 0 || pathCount = 0)
+            return false
+
+        ; QueryDisplayConfig — fill path + mode buffers
+        ; DISPLAYCONFIG_PATH_INFO = 72 bytes, DISPLAYCONFIG_MODE_INFO = 64 bytes
+        pathBuf := Buffer(pathCount * 72, 0)
+        modeBuf := Buffer(modeCount * 64, 0)
+        hr := DllCall("user32\QueryDisplayConfig",
+            "uint", 2, "uint*", &pathCount, "ptr", pathBuf,
+            "uint*", &modeCount, "ptr", modeBuf, "ptr", 0, "uint")
+        if (hr != 0)
+            return false
+
+        ; Iterate paths, check advanced color info for each target
+        loop pathCount {
+            pathOffset := (A_Index - 1) * 72
+
+            ; DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO struct (32 bytes)
+            ; type=9 (DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO), size=32
+            info := Buffer(32, 0)
+            NumPut("uint", 9, info, 0)   ; type
+            NumPut("uint", 32, info, 4)  ; size
+
+            ; Copy adapterId (LUID, 8 bytes) from targetInfo at path offset 20
+            NumPut("int64", NumGet(pathBuf, pathOffset + 20, "int64"), info, 8)
+            ; Copy target id (4 bytes) from targetInfo at path offset 28
+            NumPut("uint", NumGet(pathBuf, pathOffset + 28, "uint"), info, 16)
+
+            hr := DllCall("user32\DisplayConfigGetDeviceInfo", "ptr", info, "uint")
+            if (hr != 0)
+                continue
+
+            ; Bitfield at offset 20: bit 0 = advancedColorSupported, bit 1 = advancedColorEnabled
+            bits := NumGet(info, 20, "uint")
+            if ((bits & 0x1) && (bits & 0x2))
+                return true
+        }
+    } catch {
+        ; Detection failed — assume SDR (safe default)
+    }
+    return false
 }
 
 ; ========================= D2D PRESENT =========================

@@ -608,6 +608,8 @@ Memory management to maintain responsiveness after long idle periods.
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `GPUEffects` | bool | `true` | - | Enable GPU-accelerated visual effects (blur, real shadows, blend modes). Requires ID2D1DeviceContext. When disabled, software effects from the Visual Effects section are used instead. |
+| `HDRCompensation` | enum | `auto` | - | Compensate for HDR display gamma darkening. DWM composites in linear scRGB which darkens semi-transparent GPU blurs/glows. 'auto' detects HDR and applies correction, 'on' forces correction (useful for testing on SDR), 'off' disables. |
+| `HDRGammaExponent` | float | `0.80` | `0.50` - `1.00` | Gamma exponent for HDR compensation. Lower = brighter correction (more compensation). 0.80 restores SDR-equivalent brightness. Only effective when HDR compensation is active. |
 | `KeepInMemory` | bool | `true` | - | Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle. |
 | `ForceTouchMemory` | bool | `true` | - | Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost. |
 | `ProcessPriority` | enum | `AboveNormal` | - | Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended. |
@@ -653,4 +655,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-26 with 278 total settings.*
+*Generated on 2026-02-27 with 280 total settings.*

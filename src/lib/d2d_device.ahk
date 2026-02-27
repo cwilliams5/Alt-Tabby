@@ -113,19 +113,60 @@ class ID2D1DeviceContext extends ID2DBase {
     SetDpi(dpiX, dpiY) => ComCall(51, this, 'float', dpiX, 'float', dpiY, 'int')
 
     ; --- ID2D1DeviceContext new methods (index 57+) ---
+    ;
+    ; Full vtable map for ID2D1DeviceContext (index 57-90):
+    ; 57:CreateBitmap1, 58:CreateBitmapFromWicBitmap1, 59:CreateColorContext,
+    ; 60:CreateColorContextFromFilename, 61:CreateColorContextFromWicColorContext,
+    ; 62:CreateBitmapFromDxgiSurface, 63:CreateEffect, 64:CreateGradientStopCollection1,
+    ; 65:CreateImageBrush, 66:CreateBitmapBrush1, 67:CreateCommandList,
+    ; 68:IsDxgiFormatSupported, 69:IsBufferPrecisionSupported,
+    ; 70:GetImageLocalBounds, 71:GetImageWorldBounds, 72:GetGlyphRunWorldBounds,
+    ; 73:GetDevice, 74:SetTarget, 75:GetTarget, 76:SetRenderingControls,
+    ; 77:GetRenderingControls, 78:SetPrimitiveBlend, 79:GetPrimitiveBlend,
+    ; 80:SetUnitMode, 81:GetUnitMode, 82:DrawGlyphRun1, 83:DrawImage,
+    ; 84:DrawGdiMetafile, 85:DrawBitmap1, 86:PushLayer1
 
-    ; ID2D1DeviceContext::CreateBitmapFromDxgiSurface(surface, bitmapProperties) → ID2D1Bitmap1
-    ; vtable index 62 (57:CreateBitmap, 58:CreateBitmapFromWicBitmap, 59:CreateColorContext,
-    ;   60:CreateColorContextFromFilename, 61:CreateColorContextFromWicColorContext, 62:this)
     CreateBitmapFromDxgiSurface(surface, bitmapProperties) {
         ComCall(62, this, 'ptr', surface.ptr, 'ptr', bitmapProperties, 'ptr*', &pBitmap := 0, 'hresult')
         return ID2D1Bitmap1(pBitmap)
     }
 
+    ; ID2D1DeviceContext::CreateEffect(effectId) → ID2D1Effect
+    ; vtable index 63
+    CreateEffect(clsid) {
+        ComCall(63, this, 'ptr', clsid, 'ptr*', &pEffect := 0, 'hresult')
+        return ID2D1Effect(pEffect)
+    }
+
+    ; ID2D1DeviceContext::CreateCommandList() → ID2D1CommandList
+    ; vtable index 67
+    CreateCommandList() {
+        ComCall(67, this, 'ptr*', &pCL := 0, 'hresult')
+        return ID2D1CommandList(pCL)
+    }
+
     ; ID2D1DeviceContext::SetTarget(image)
-    ; vtable index 74 (see d2d1_1.h method order — 17 methods after index 57)
-    ; image: ID2D1Image ptr (ID2D1Bitmap1 inherits ID2D1Image). Pass 0 to clear.
+    ; vtable index 74
     SetTarget(image) => ComCall(74, this, 'ptr', image is Integer ? image : image.ptr, 'int')
+
+    ; ID2D1DeviceContext::GetTarget() → ID2D1Image
+    ; vtable index 75
+    GetTarget() {
+        ComCall(75, this, 'ptr*', &pImage := 0, 'int')
+        return pImage ? ID2D1Image(pImage) : 0
+    }
+
+    ; ID2D1DeviceContext::DrawImage(image, targetOffset, imageRect, interpolation, composite)
+    ; vtable index 83
+    ; targetOffset: D2D1_POINT_2F* (or 0 for origin)
+    ; imageRect: D2D1_RECT_F* (or 0 for entire image)
+    ; interpolation: D2D1_INTERPOLATION_MODE (1=LINEAR default)
+    ; composite: D2D1_COMPOSITE_MODE (0=SOURCE_OVER default)
+    DrawImage(image, targetOffset := 0, imageRect := 0, interpolation := 1, composite := 0) {
+        ComCall(83, this, 'ptr', image is Integer ? image : image.ptr,
+            'ptr', targetOffset, 'ptr', imageRect,
+            'uint', interpolation, 'uint', composite, 'int')
+    }
 }
 
 ; ========================= ID2D1Bitmap1 =========================
@@ -195,4 +236,127 @@ class IDXGISwapChain1 extends ID2DBase {
 
 class IDXGISurface extends ID2DBase {
     static IID := '{cafcb56c-6ac3-4889-bf47-9e23bbd260ec}'
+}
+
+; NOTE: ID2D1Image is already defined in Direct2D.ahk (extends ID2D1Resource).
+; We reuse that class for effect outputs. No redeclaration needed.
+
+; ========================= ID2D1Effect =========================
+; Wraps ID2D1Effect (extends ID2D1Properties : IUnknown).
+; Effect graph node — configure properties, connect inputs, get output.
+;
+; Vtable layout:
+;   IUnknown:       0=QI, 1=AddRef, 2=Release
+;   ID2D1Properties: 3=GetPropertyCount, 4=GetPropertyName, 5=GetPropertyNameLength,
+;     6=GetType, 7=GetPropertyIndex, 8=SetValueByName, 9=SetValue, 10=GetValueByName,
+;     11=GetValue, 12=GetValueSize, 13=GetSubProperties
+;   ID2D1Effect:    14=SetInput, 15=SetInputCount, 16=GetInput, 17=GetInputCount,
+;     18=GetOutput
+
+class ID2D1Effect extends ID2DBase {
+    static IID := '{28211a43-7d89-476f-8181-2d6159b220ad}'
+
+    ; SetValue(index, type, data, dataSize) — set a property by index.
+    ; For simple types, use the typed helpers below instead.
+    SetValue(index, type, data, dataSize) {
+        ComCall(9, this, 'uint', index, 'uint', type, 'ptr', data, 'uint', dataSize, 'hresult')
+    }
+
+    ; GetValue(index, type, &data, dataSize) — get a property by index.
+    GetValue(index, type, data, dataSize) {
+        ComCall(11, this, 'uint', index, 'uint', type, 'ptr', data, 'uint', dataSize, 'hresult')
+    }
+
+    ; --- Typed property setters (convenience wrappers) ---
+
+    ; Set a FLOAT property (D2D1_PROPERTY_TYPE_FLOAT = 5)
+    SetFloat(index, value) {
+        static buf := Buffer(4)
+        NumPut("float", Float(value), buf)
+        this.SetValue(index, 5, buf, 4)
+    }
+
+    ; Set a UINT32 property (D2D1_PROPERTY_TYPE_UINT32 = 3)
+    SetUInt(index, value) {
+        static buf := Buffer(4)
+        NumPut("uint", value, buf)
+        this.SetValue(index, 3, buf, 4)
+    }
+
+    ; Set an ENUM property (D2D1_PROPERTY_TYPE_ENUM = 11)
+    SetEnum(index, value) {
+        static buf := Buffer(4)
+        NumPut("uint", value, buf)
+        this.SetValue(index, 11, buf, 4)
+    }
+
+    ; Set a BOOL property (D2D1_PROPERTY_TYPE_BOOL = 2)
+    SetBool(index, value) {
+        static buf := Buffer(4)
+        NumPut("uint", value ? 1 : 0, buf)
+        this.SetValue(index, 2, buf, 4)
+    }
+
+    ; Set a VECTOR2 property (D2D1_PROPERTY_TYPE_VECTOR2 = 6) — e.g., shadow offset
+    SetVector2(index, x, y) {
+        static buf := Buffer(8)
+        NumPut("float", Float(x), "float", Float(y), buf)
+        this.SetValue(index, 6, buf, 8)
+    }
+
+    ; Set a VECTOR4 property (D2D1_PROPERTY_TYPE_VECTOR4 = 8) — e.g., color
+    SetVector4(index, x, y, z, w) {
+        static buf := Buffer(16)
+        NumPut("float", Float(x), "float", Float(y), "float", Float(z), "float", Float(w), buf)
+        this.SetValue(index, 8, buf, 16)
+    }
+
+    ; Set a D2D1_COLOR_F from ARGB integer
+    SetColorF(index, argb) {
+        static buf := Buffer(16)
+        NumPut("float", ((argb >> 16) & 0xFF) / 255.0,
+               "float", ((argb >> 8) & 0xFF) / 255.0,
+               "float", (argb & 0xFF) / 255.0,
+               "float", ((argb >> 24) & 0xFF) / 255.0, buf)
+        this.SetValue(index, 8, buf, 16)
+    }
+
+    ; Set a D2D1_RECT_F property (stored as VECTOR4)
+    SetRectF(index, left, top, right, bottom) {
+        static buf := Buffer(16)
+        NumPut("float", Float(left), "float", Float(top),
+               "float", Float(right), "float", Float(bottom), buf)
+        this.SetValue(index, 8, buf, 16)
+    }
+
+    ; Set a MATRIX_5X4 property (D2D1_PROPERTY_TYPE_MATRIX_5X4 = 17) — e.g., ColorMatrix
+    SetMatrix5x4(index, m) {
+        ; m is a Buffer(80) containing 20 floats (5 rows × 4 cols)
+        this.SetValue(index, 17, m, 80)
+    }
+
+    ; SetInput(inputIndex, image, invalidate)
+    ; Connects an effect output or bitmap as input to this effect.
+    SetInput(inputIndex, image, invalidate := true) {
+        ComCall(14, this, 'uint', inputIndex, 'ptr', image is Integer ? image : image.ptr, 'int', invalidate ? 1 : 0, 'int')
+    }
+
+    ; GetOutput() → ID2D1Image
+    ; Returns this effect's output as an image for chaining or DrawImage.
+    GetOutput() {
+        ComCall(18, this, 'ptr*', &pImage := 0, 'int')
+        return ID2D1Image(pImage)
+    }
+}
+
+; ========================= ID2D1CommandList =========================
+; Records drawing commands for replay. Used as effect input.
+; Inherits ID2D1Image (vtable 0-3). Close at index 4.
+
+class ID2D1CommandList extends ID2DBase {
+    static IID := '{b4f34a19-2383-4d76-94f6-ec343657c3dc}'
+
+    ; ID2D1CommandList::Close() — finalize the command list.
+    ; Must be called before using as effect input.
+    Close() => ComCall(4, this, 'hresult')
 }

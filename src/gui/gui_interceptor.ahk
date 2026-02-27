@@ -335,11 +335,13 @@ _INT_B_Down(*) {
         return
 
     ; Cycle through effect styles
+    ; FX_STYLE_NAMES includes GPU styles when available (built by FX_BuildStyleNames)
     gGUI_EffectStyle := Mod(gGUI_EffectStyle + 1, FX_STYLE_NAMES.Length)
 
-    ; Show tooltip with current style name
+    ; Show tooltip with current style name and GPU indicator
     styleName := FX_STYLE_NAMES[gGUI_EffectStyle + 1]
-    ToolTip("Effect: " styleName " [" gGUI_EffectStyle "]")
+    gpuTag := (gGUI_EffectStyle >= 2) ? " [GPU]" : ""
+    ToolTip("Style: " styleName gpuTag)
     SetTimer(() => ToolTip(), -2000)
 
     ; Repaint immediately with new style
