@@ -13,6 +13,15 @@ global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration 
 global gPaint_SessionPaintCount := 0  ; How many paints this session
 global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
 
+; ========================= EFFECT STYLE SYSTEM =========================
+; Toggled at runtime via B key (gui_interceptor.ahk).
+; 0 = Clean (baseline), 1 = visual effects on.
+global gGUI_EffectStyle := 0
+global FX_STYLE_NAMES := [
+    "Clean",
+    "Effects"
+]
+
 ; Layout state (written during paint, read by gui_main/gui_input)
 global gGUI_LastRowsDesired := -1
 global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
@@ -249,6 +258,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
+    global gGUI_EffectStyle
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
@@ -320,13 +330,27 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         textW := 0
     }
 
+    ; Effect style shorthand
+    fx := gGUI_EffectStyle
+
+    ; Shadow params (computed once, used for all text draws)
+    shadowP := _FX_GetShadowParams(fx, scale)
+    shadowBr := shadowP.enabled ? D2D_GetCachedBrush(shadowP.argb) : 0
+
     ; Header
     if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
         hdrTextH := Round(20 * scale)
-        D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
-        for _, col in cols {
-            D2D_DrawTextLeft(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
+        if (shadowP.enabled) {
+            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
+            for _, col in cols {
+                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
+            }
+        } else {
+            D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
+            for _, col in cols {
+                D2D_DrawTextLeft(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
+            }
         }
         y := y + hdrH28
     }
@@ -370,7 +394,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             emptyText := "No windows on this workspace"
         else if (gGUI_MonitorMode = MON_MODE_CURRENT)
             emptyText := "No windows on this monitor"
-        D2D_DrawTextCentered(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"])
+        if (shadowP.enabled) {
+            _FX_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, shadowP.offX, shadowP.offY)
+        } else {
+            D2D_DrawTextCentered(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"])
+        }
     } else if (rowsToDraw > 0) {
         ; ===== TIMING: Row loop start =====
         if (diagTiming) {
@@ -401,14 +429,32 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         brSub := gD2D_Res["brSub"], brSubHi := gD2D_Res["brSubHi"]
         brCol := gD2D_Res["brCol"], brColHi := gD2D_Res["brColHi"]
 
+        ; Selection rect expansion (in physical px)
+        selExpandX := Round(4 * scale)
+        selExpandY := Round(2 * scale)
+
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
             idx1 := idx0 + 1
             cur := items[idx1]
             isSel := (idx1 = selIndex)
 
+            ; Hover highlight (effects on, non-selected rows)
+            if (fx && !isSel && idx1 = hoverRow) {
+                _FX_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
+            }
+
+            ; Selection highlight
             if (isSel) {
-                D2D_FillRoundRect(Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
+                selX := Mx - selExpandX
+                selY := yRow - selExpandY
+                selW := wPhys - 2 * Mx + selExpandX * 2
+                selH := RowH
+                if (fx) {
+                    _FX_DrawSelection(selX, selY, selW, selH, Rad)
+                } else {
+                    D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
+                }
             }
 
             ix := leftX
@@ -441,22 +487,33 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             brSubUse := isSel ? brSubHi : brSub
             brColUse := isSel ? brColHi : brCol
 
+            ; Text drawing (with optional shadow)
             title := cur.title
-            D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
-
             sub := ""
             if (cur.processName != "") {
                 sub := cur.processName
             } else {
                 sub := "Class: " cur.class
             }
-            D2D_DrawTextLeft(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse)
 
-            for _, col in cols {
-                val := ""
-                if (cur.HasOwnProp(col.key))
-                    val := cur.%col.key%
-                D2D_DrawTextLeft(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
+            if (shadowP.enabled) {
+                _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, shadowP.offX, shadowP.offY)
+                _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, shadowP.offX, shadowP.offY)
+                for _, col in cols {
+                    val := ""
+                    if (cur.HasOwnProp(col.key))
+                        val := cur.%col.key%
+                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, shadowP.offX, shadowP.offY)
+                }
+            } else {
+                D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
+                D2D_DrawTextLeft(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse)
+                for _, col in cols {
+                    val := ""
+                    if (cur.HasOwnProp(col.key))
+                        val := cur.%col.key%
+                    D2D_DrawTextLeft(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
+                }
             }
 
             if (idx1 = hoverRow) {
@@ -488,6 +545,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     }
     if (diagTiming)
         tPO_Footer := QPC() - t1
+
+    ; Inner shadow — config-driven depth and opacity
+    if (fx && cfg.GUI_InnerShadowAlpha > 0) {
+        shadowDepth := Round(cfg.GUI_InnerShadowDepthPx * scale)
+        _FX_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+    }
 
     ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
     if (diagTiming) {
@@ -635,6 +698,7 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
 _GUI_DrawFooter(wPhys, hPhys, scale) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
     global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
+    global gGUI_EffectStyle
 
     if (!cfg.GUI_ShowFooter) {
         return
@@ -692,8 +756,16 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.w := leftArrowW
     gGUI_LeftArrowRect.h := leftArrowH
 
+    ; Footer shadow support
+    fxShadow := _FX_GetShadowParams(gGUI_EffectStyle, scale)
+    fxShadowBr := fxShadow.enabled ? D2D_GetCachedBrush(fxShadow.argb) : 0
+
     ; Draw left arrow
-    D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
+    if (fxShadow.enabled) {
+        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    } else {
+        D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
+    }
 
     ; Right arrow
     rightArrowX := fx + fw - arrowPad - arrowW
@@ -708,7 +780,11 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
+    if (fxShadow.enabled) {
+        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    } else {
+        D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
+    }
 
     ; Center text (between arrows)
     textX := leftArrowX + leftArrowW + arrowPad
@@ -717,6 +793,238 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
         textW := 0
     }
 
-    D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
+    if (fxShadow.enabled) {
+        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    } else {
+        D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
+    }
+}
+
+; ========================= VISUAL EFFECTS SYSTEM =========================
+; _FX_* functions implement layered visual effects controlled by gGUI_EffectStyle.
+; All gradient brushes are transient (created per-frame, released on scope exit).
+; This is acceptable: gradient brush creation is ~2μs on modern GPUs, and the
+; working set is small (1-3 gradients per frame). Caching would add complexity
+; for negligible savings compared to the ~2ms D2D paint budget.
+
+; Build a D2D gradient stop collection from an array of [position, argb] pairs.
+; Returns the stop collection COM object (caller must keep a reference).
+_FX_BuildStops(stops) {
+    global gD2D_RT
+    count := stops.Length
+    ; D2D1_GRADIENT_STOP = 20 bytes: { float position, D2D1_COLOR_F {r, g, b, a} }
+    buf := Buffer(count * 20, 0)
+    for i, s in stops {
+        off := (i - 1) * 20
+        NumPut("float", Float(s[1]), buf, off)
+        ; Decompose ARGB to D2D1_COLOR_F {r, g, b, a} as floats
+        argb := s[2]
+        a := ((argb >> 24) & 0xFF) / 255.0
+        r := ((argb >> 16) & 0xFF) / 255.0
+        g := ((argb >> 8) & 0xFF) / 255.0
+        b := (argb & 0xFF) / 255.0
+        NumPut("float", Float(r), buf, off + 4)
+        NumPut("float", Float(g), buf, off + 8)
+        NumPut("float", Float(b), buf, off + 12)
+        NumPut("float", Float(a), buf, off + 16)
+    }
+    ; CreateGradientStopCollection(stops, count, gamma, extendMode)
+    ; GAMMA_2_2=0, CLAMP=0
+    return gD2D_RT.CreateGradientStopCollection(buf, count, 0, 0)
+}
+
+; Identity brush properties (opacity=1.0, identity transform).
+_FX_BrushProps() {
+    static bp := 0
+    if (!bp) {
+        bp := Buffer(28, 0)
+        NumPut("float", 1.0, bp, 0)  ; opacity
+        ; Identity matrix: [1, 0, 0, 1, 0, 0]
+        NumPut("float", 1.0, bp, 4)
+        NumPut("float", 0.0, bp, 8)
+        NumPut("float", 0.0, bp, 12)
+        NumPut("float", 1.0, bp, 16)
+        NumPut("float", 0.0, bp, 20)
+        NumPut("float", 0.0, bp, 24)
+    }
+    return bp
+}
+
+; Create a linear gradient brush. Caller keeps reference; COM __Delete releases.
+_FX_LinearGradient(x1, y1, x2, y2, stops) {
+    global gD2D_RT
+    gsc := _FX_BuildStops(stops)
+    if (!gsc)
+        return 0
+    ; D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES = 16 bytes: { startPoint, endPoint }
+    lgbp := Buffer(16, 0)
+    NumPut("float", Float(x1), lgbp, 0)
+    NumPut("float", Float(y1), lgbp, 4)
+    NumPut("float", Float(x2), lgbp, 8)
+    NumPut("float", Float(y2), lgbp, 12)
+    return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+}
+
+
+; ---- Selection Effects ----
+
+; Draw the selection highlight with effects (drop shadow, gradient, border).
+; Called when effects are on (fx = 1). Gradient goes base → darker for depth.
+_FX_DrawSelection(x, y, w, h, r) {
+    if (w <= 0 || h <= 0)
+        return
+    global cfg
+
+    baseARGB := cfg.GUI_SelARGB
+    a := (baseARGB >> 24) & 0xFF
+
+    ; Drop shadow: 3-layer offset for soft edge
+    if (cfg.GUI_SelDropShadow)
+        _FX_DrawSelDropShadow(x, y, w, h, r)
+
+    ; Diagonal gradient: base color → 20% darker (depth without washing out)
+    darkARGB := ((a) << 24) | _FX_BlendToBlack(baseARGB, 0.20)
+    gradBr := _FX_LinearGradient(x, y, x + w, y + h, [
+        [0.0, baseARGB],
+        [1.0, darkARGB]
+    ])
+    if (gradBr) {
+        D2D_FillRoundRect(x, y, w, h, r, gradBr)
+    } else {
+        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(baseARGB))
+    }
+
+    ; Accent border (skip if width is 0)
+    bw := cfg.GUI_SelBorderWidthPx
+    if (bw > 0) {
+        half := bw / 2
+        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
+    }
+}
+
+; Drop shadow behind the selection row.
+; Offset down+right, progressively more transparent layers for softness.
+_FX_DrawSelDropShadow(x, y, w, h, r) {
+    offX := 3
+    offY := 3
+    ; 3 layers: inner dark → outer soft
+    D2D_FillRoundRect(x + offX, y + offY, w, h, r + 1, D2D_GetCachedBrush(0x28000000))
+    D2D_FillRoundRect(x + offX + 1, y + offY + 1, w + 2, h + 2, r + 2, D2D_GetCachedBrush(0x18000000))
+    D2D_FillRoundRect(x + offX + 2, y + offY + 2, w + 4, h + 4, r + 3, D2D_GetCachedBrush(0x0C000000))
+}
+
+; ---- Text Shadow ----
+
+; Draw text with a drop shadow behind it. Shadow is drawn first (offset, darker),
+; then crisp text on top. Two DrawText calls per shadowed text element.
+_FX_DrawTextLeftShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
+    D2D_DrawTextLeft(text, x + offX, y + offY, w, h, shadowBrush, tf)
+    D2D_DrawTextLeft(text, x, y, w, h, brush, tf)
+}
+
+_FX_DrawTextCenteredShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
+    D2D_DrawTextCentered(text, x + offX, y + offY, w, h, shadowBrush, tf)
+    D2D_DrawTextCentered(text, x, y, w, h, brush, tf)
+}
+
+; Get shadow parameters for current effect style.
+; Returns {enabled, offX, offY, argb} or {enabled: false}.
+; Uses config values (GUI_TextShadowAlpha, GUI_TextShadowDistancePx).
+_FX_GetShadowParams(fx, scale) {
+    global cfg
+    if (!fx)
+        return {enabled: false}
+    alpha := cfg.GUI_TextShadowAlpha
+    if (alpha <= 0)
+        return {enabled: false}
+    dist := cfg.GUI_TextShadowDistancePx
+    off := Max(1, Round(dist * scale))
+    argb := (alpha << 24) | 0x000000
+    return {enabled: true, offX: off, offY: off, argb: argb}
+}
+
+; ---- Hover Highlight ----
+
+; Draw a subtle background highlight behind the hovered row.
+; Uses config color with a vertical gradient computed from it.
+_FX_DrawHover(x, y, w, h, r) {
+    global cfg
+    baseARGB := cfg.GUI_HoverARGB
+    baseA := (baseARGB >> 24) & 0xFF
+    baseRGB := baseARGB & 0x00FFFFFF
+    ; Vertical gradient: full alpha at top, fading to ~30% at bottom
+    topARGB := baseARGB
+    midA := Round(baseA * 0.6)
+    midARGB := (midA << 24) | baseRGB
+    botA := Round(baseA * 0.3)
+    botARGB := (botA << 24) | baseRGB
+    hoverBr := _FX_LinearGradient(x, y, x, y + h, [
+        [0.0, topARGB],
+        [0.6, midARGB],
+        [1.0, botARGB]
+    ])
+    if (hoverBr)
+        D2D_FillRoundRect(x, y, w, h, r, hoverBr)
+    else
+        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(baseARGB))
+}
+
+; ---- Inner Shadow ----
+
+; Draw gradient strips along window edges to create depth.
+; Each edge is a linear gradient from dark at the edge to transparent inward.
+; `alpha` controls edge darkness (0x15 = subtle, 0x38 = strong).
+_FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
+    edgeARGB := (alpha << 24) | 0x000000
+    botAlpha := Round(alpha * 0.85)
+    botARGB := (botAlpha << 24) | 0x000000
+    sideAlpha := Round(alpha * 0.7)
+    sideARGB := (sideAlpha << 24) | 0x000000
+
+    ; Top edge
+    topBr := _FX_LinearGradient(0, 0, 0, depth, [
+        [0.0, edgeARGB],
+        [1.0, 0x00000000]
+    ])
+    if (topBr)
+        D2D_FillRect(0, 0, wPhys, depth, topBr)
+
+    ; Bottom edge
+    botBr := _FX_LinearGradient(0, hPhys - depth, 0, hPhys, [
+        [0.0, 0x00000000],
+        [1.0, botARGB]
+    ])
+    if (botBr)
+        D2D_FillRect(0, hPhys - depth, wPhys, depth, botBr)
+
+    ; Left edge
+    leftBr := _FX_LinearGradient(0, 0, depth, 0, [
+        [0.0, sideARGB],
+        [1.0, 0x00000000]
+    ])
+    if (leftBr)
+        D2D_FillRect(0, 0, depth, hPhys, leftBr)
+
+    ; Right edge
+    rightBr := _FX_LinearGradient(wPhys - depth, 0, wPhys, 0, [
+        [0.0, 0x00000000],
+        [1.0, sideARGB]
+    ])
+    if (rightBr)
+        D2D_FillRect(wPhys - depth, 0, depth, hPhys, rightBr)
+}
+
+; ---- Color Utilities ----
+
+; Blend an ARGB color toward black by factor (0.0 = no change, 1.0 = pure black).
+; Returns RGB only (caller handles alpha).
+_FX_BlendToBlack(argb, factor) {
+    r := (argb >> 16) & 0xFF
+    g := (argb >> 8) & 0xFF
+    b := argb & 0xFF
+    r := Round(r * (1.0 - factor))
+    g := Round(g * (1.0 - factor))
+    b := Round(b * (1.0 - factor))
+    return (r << 16) | (g << 8) | b
 }
 

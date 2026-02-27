@@ -52,6 +52,9 @@ INT_SetupHotkeys() {
     ; Backtick hook for monitor mode toggle (only when GUI active)
     Hotkey("~*``", _INT_Backtick_Down)
 
+    ; B key — cycle effect styles when GUI is active
+    Hotkey("~*b", _INT_B_Down)
+
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
 }
@@ -320,6 +323,27 @@ _INT_Escape_Down(*) {
     gINT_SessionActive := false
     gINT_PressCount := 0
     gINT_TabHeld := false
+}
+
+; ========================= EFFECT STYLE TOGGLE =========================
+
+_INT_B_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gGUI_EffectStyle, FX_STYLE_NAMES
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+
+    ; Cycle through effect styles
+    gGUI_EffectStyle := Mod(gGUI_EffectStyle + 1, FX_STYLE_NAMES.Length)
+
+    ; Show tooltip with current style name
+    styleName := FX_STYLE_NAMES[gGUI_EffectStyle + 1]
+    ToolTip("Effect: " styleName " [" gGUI_EffectStyle "]")
+    SetTimer(() => ToolTip(), -2000)
+
+    ; Repaint immediately with new style
+    GUI_Repaint()
 }
 
 ; ========================= BYPASS DETECTION =========================

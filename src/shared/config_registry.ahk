@@ -461,6 +461,37 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Selection highlight color (ARGB)"},
 
+    {s: "GUI", k: "SelBorderARGB", g: "GUI_SelBorderARGB", t: "int", default: 0x40FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
+     d: "Selection border color (ARGB). Only drawn when visual effects are on and SelBorderWidthPx > 0."},
+
+    {s: "GUI", k: "SelBorderWidthPx", g: "GUI_SelBorderWidthPx", t: "float", default: 1.0,
+     min: 0.0, max: 4.0,
+     d: "Selection border stroke width in pixels. Set to 0 to disable the border."},
+
+    {s: "GUI", k: "SelDropShadow", g: "GUI_SelDropShadow", t: "bool", default: true,
+     d: "Draw a drop shadow behind the selected row. Disable on HDR displays if colors appear shifted."},
+
+    {s: "GUI", k: "TextShadowAlpha", g: "GUI_TextShadowAlpha", t: "int", default: 0x58,
+     min: 0, max: 0xFF, fmt: "hex",
+     d: "Text drop shadow opacity (0x00 = disabled, 0x58 = default). Applied when visual effects are on."},
+
+    {s: "GUI", k: "TextShadowDistancePx", g: "GUI_TextShadowDistancePx", t: "float", default: 1.5,
+     min: 0.5, max: 5.0,
+     d: "Text drop shadow offset in DIP pixels. Applied when visual effects are on."},
+
+    {s: "GUI", k: "HoverARGB", g: "GUI_HoverARGB", t: "int", default: 0x15FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
+     d: "Hover row highlight color (ARGB). When visual effects are on, a subtle vertical gradient is computed from this color."},
+
+    {s: "GUI", k: "InnerShadowDepthPx", g: "GUI_InnerShadowDepthPx", t: "float", default: 10.0,
+     min: 2.0, max: 30.0,
+     d: "Inner shadow depth along window edges in DIP pixels. Creates a recessed glass effect."},
+
+    {s: "GUI", k: "InnerShadowAlpha", g: "GUI_InnerShadowAlpha", t: "int", default: 0x2A,
+     min: 0, max: 0xFF, fmt: "hex",
+     d: "Inner shadow opacity at the window edge (0x00 = invisible, 0x2A = default). Bottom and side edges are proportionally softer."},
+
     {type: "subsection", section: "GUI", name: "Selection & Scrolling",
      desc: "Selection and scroll behavior"},
 
