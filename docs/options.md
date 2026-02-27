@@ -206,8 +206,9 @@ Window background and frame styling
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `BackdropStyle` | enum | `Acrylic` | - | Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Solid = flat tinted overlay, no blur. |
+| `BackdropStyle` | enum | `Acrylic` | - | Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Mica/MicaAlt = system material (Win11 22H2+). Solid = flat tinted overlay, no blur. |
 | `AcrylicColor` | int | `0x33000033` | `0x0` - `0xFFFFFFFF` | Background tint color with alpha (0xAARRGGBB). Used by Acrylic and Solid backdrop styles. |
+| `StealFocus` | bool | `false` | - | Take focus when overlay appears. Required for Mica backdrop tint. Auto-enabled when BackdropStyle is Mica or MicaAlt. |
 | `CornerStyle` | enum | `Round` | - | Window corner shape. Round = 8px DWM rounding. RoundSmall = 4px. Square = sharp corners. |
 | `OverlayMonitor` | enum | `FocusedWindow` | - | Which monitor the overlay appears on. FocusedWindow = the monitor where you're working. Primary = always the primary monitor. |
 | `MonitorFilterDefault` | enum | `All` | - | Default monitor filter. All = windows from all monitors. Current = only windows on the overlay's monitor. Toggle with backtick key during use. |
@@ -238,6 +239,21 @@ Row and icon appearance
 | `HeaderHeightPx` | int | `28` | `16` - `60` | Header row height in pixels |
 | `RowRadius` | int | `12` | `0` - `50` | Row corner radius in pixels |
 | `SelARGB` | int | `0x662B5CAD` | `0x0` - `0xFFFFFFFF` | Selection highlight color (ARGB) |
+
+### Visual Effects
+
+Software visual effects (selection styling, shadows, hover). When GPU Effects are enabled, some of these are overridden by hardware-accelerated equivalents.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `SelBorderARGB` | int | `0x40FFFFFF` | `0x0` - `0xFFFFFFFF` | Selection border color (ARGB). Only drawn when visual effects are on and SelBorderWidthPx > 0. |
+| `SelBorderWidthPx` | float | `1.00` | `0.00` - `4.00` | Selection border stroke width in pixels. Set to 0 to disable the border. |
+| `SelDropShadow` | bool | `true` | - | Draw a drop shadow behind the selected row. Disable on HDR displays if colors appear shifted. |
+| `TextShadowAlpha` | int | `0x58` | `0x0` - `0xFF` | Text drop shadow opacity (0x00 = disabled, 0x58 = default). Applied when visual effects are on. |
+| `TextShadowDistancePx` | float | `1.50` | `0.50` - `5.00` | Text drop shadow offset in DIP pixels. Applied when visual effects are on. |
+| `HoverARGB` | int | `0x15FFFFFF` | `0x0` - `0xFFFFFFFF` | Hover row highlight color (ARGB). When visual effects are on, a subtle vertical gradient is computed from this color. |
+| `InnerShadowDepthPx` | float | `10.00` | `2.00` - `30.00` | Inner shadow depth along window edges in DIP pixels. Creates a recessed glass effect. |
+| `InnerShadowAlpha` | int | `0x2A` | `0x0` - `0xFF` | Inner shadow opacity at the window edge (0x00 = invisible, 0x2A = default). Bottom and side edges are proportionally softer. |
 
 ### Selection & Scrolling
 
@@ -355,7 +371,7 @@ Window title text styling
 | `MainFontWeight` | int | `400` | `100` - `900` | Main font weight |
 | `MainFontNameHi` | string | `Segoe UI` | - | Main font name when highlighted |
 | `MainFontSizeHi` | int | `20` | `8` - `72` | Main font size when highlighted |
-| `MainFontWeightHi` | int | `800` | `100` - `900` | Main font weight when highlighted |
+| `MainFontWeightHi` | int | `700` | `100` - `900` | Main font weight when highlighted |
 | `MainARGB` | int | `0xFFF0F0F0` | `0x0` - `0xFFFFFFFF` | Main text color (ARGB) |
 | `MainARGBHi` | int | `0xFFF0F0F0` | `0x0` - `0xFFFFFFFF` | Main text color when highlighted (ARGB) |
 
@@ -591,6 +607,7 @@ Memory management to maintain responsiveness after long idle periods.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
+| `GPUEffects` | bool | `true` | - | Enable GPU-accelerated visual effects (blur, real shadows, blend modes). Requires ID2D1DeviceContext. When disabled, software effects from the Visual Effects section are used instead. |
 | `KeepInMemory` | bool | `true` | - | Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle. |
 | `ForceTouchMemory` | bool | `true` | - | Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost. |
 | `ProcessPriority` | enum | `AboveNormal` | - | Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended. |
@@ -636,4 +653,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-25 with 267 total settings.*
+*Generated on 2026-02-26 with 278 total settings.*

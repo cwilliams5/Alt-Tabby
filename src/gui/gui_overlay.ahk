@@ -11,6 +11,8 @@ global gGUI_Overlay := 0       ; Alias → same as gGUI_Base (single-window comp
 global gGUI_BaseH := 0         ; Window handle
 global gGUI_OverlayH := 0      ; Alias → same as gGUI_BaseH (single-window compat)
 global GUI_LOG_TRIM_EVERY_N_HIDES := 10
+global gGUI_StealFocus := false      ; Effective steal-focus (cfg OR Mica)
+global gGUI_FocusBeforeShow := 0     ; Hwnd of foreground window before overlay took focus
 
 ; D2D factories and device pipeline (process-global, survive render target recreation)
 global gD2D_Factory := 0       ; ID2D1Factory1
@@ -34,6 +36,10 @@ _GUI_ApplyConfigBackdrop() {
             Win_ApplyAcrylic(gGUI_BaseH, cfg.GUI_AcrylicColor)
         case "AeroGlass":
             Win_ApplySWCAccent(gGUI_BaseH, 3, 0)
+        case "Mica":
+            Win_SetSystemBackdrop(gGUI_BaseH, 2)   ; DWMSBT_MAINWINDOW
+        case "MicaAlt":
+            Win_SetSystemBackdrop(gGUI_BaseH, 4)   ; DWMSBT_TABBEDWINDOW
         case "Solid":
             ; No SWCA needed — D2D Clear uses cfg.GUI_AcrylicColor directly.
             ; SWCA gradient (accent 2) conflicts with DwmExtendFrame.
@@ -293,8 +299,34 @@ GUI_CreateWindow() {
     ; Suppress WM_ERASEBKGND to prevent DWM flashing default background
     OnMessage(0x0014, _GUI_OnEraseBkgnd)
 
+    ; Mica/MicaAlt: DWM requires a non-ToolWindow with WS_CAPTION for backdrop material.
+    ; We add WS_CAPTION (for DWM) but hide the title bar via WM_NCCALCSIZE (zero non-client area).
+    ; We replace WS_EX_TOOLWINDOW with a hidden owner window (owned windows skip taskbar).
+    if (cfg.GUI_BackdropStyle = "Mica" || cfg.GUI_BackdropStyle = "MicaAlt") {
+        ; Hidden owner window suppresses taskbar entry (replaces WS_EX_TOOLWINDOW)
+        static micaOwner := 0
+        micaOwner := Gui("+ToolWindow", "")
+        micaOwner.Show("Hide w0 h0")
+        gGUI_Base.Opt("+Owner" micaOwner.Hwnd)
+
+        ; Remove WS_EX_TOOLWINDOW (0x80) from extended style
+        exStyle := DllCall("user32\GetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", -20, "ptr")
+        DllCall("user32\SetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", -20, "ptr", exStyle & ~0x80)
+        ; Add WS_CAPTION (0xC00000), remove WS_SYSMENU|MINIMIZEBOX|MAXIMIZEBOX (0xB0000)
+        ; WS_CAPTION triggers DWM Mica; removing button styles prevents caption buttons.
+        ; WM_NCCALCSIZE handler zeroes the non-client area so caption is invisible.
+        style := DllCall("user32\GetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", -16, "ptr")
+        DllCall("user32\SetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", -16, "ptr", (style | 0xC00000) & ~0xB0000)
+        ; Zero non-client area — hides title bar while keeping WS_CAPTION for DWM
+        OnMessage(0x0083, _GUI_OnNcCalcSize)
+    }
+
     ; Apply backdrop style from config
     _GUI_ApplyConfigBackdrop()
+
+    ; Compute effective steal-focus: explicit config OR Mica/MicaAlt (need focus for wallpaper tint)
+    global gGUI_StealFocus
+    gGUI_StealFocus := cfg.GUI_StealFocus || (cfg.GUI_BackdropStyle = "Mica") || (cfg.GUI_BackdropStyle = "MicaAlt")
 
     ; Initialize D2D factories (process-global)
     _D2D_InitFactories()
@@ -303,6 +335,17 @@ GUI_CreateWindow() {
     _D2D_CreateRenderTarget(gGUI_BaseH, wPhys, hPhys)
 
     Win_DwmFlush()
+}
+
+; WM_NCCALCSIZE: zero out non-client area to hide WS_CAPTION title bar.
+; DWM still applies Mica to the caption style, but we consume the space as client area.
+_GUI_OnNcCalcSize(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+    try {
+        global gGUI_BaseH
+        if (hwnd = gGUI_BaseH && wParam)
+            return 0
+    }
+    return ""
 }
 
 ; Suppress WM_ERASEBKGND — return 1 to tell Windows we handled it.

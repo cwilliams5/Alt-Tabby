@@ -208,6 +208,7 @@ GUI_Repaint() {
 _GUI_RevealBoth() {
     global gGUI_Base, gGUI_BaseH, gGUI_Revealed, cfg
     global gGUI_State, gGUI_OverlayVisible  ; Need access to state for race fix
+    global gGUI_StealFocus, gGUI_FocusBeforeShow
 
     Profiler.Enter("_GUI_RevealBoth") ; @profile
 
@@ -234,7 +235,13 @@ _GUI_RevealBoth() {
     }
 
     try {
-        gGUI_Base.Show("NA")
+        if (gGUI_StealFocus) {
+            gGUI_FocusBeforeShow := DllCall("user32\GetForegroundWindow", "ptr")
+            DllCall("user32\ShowWindow", "ptr", gGUI_BaseH, "int", 5)  ; SW_SHOW
+            DllCall("user32\SetForegroundWindow", "ptr", gGUI_BaseH)
+        } else {
+            gGUI_Base.Show("NA")
+        }
     }
 
     ; RACE FIX: Check if Alt was released during Show (which pumps messages)

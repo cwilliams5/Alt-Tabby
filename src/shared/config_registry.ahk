@@ -384,12 +384,15 @@ global gConfigRegistry := [
      desc: "Window background and frame styling"},
 
     {s: "GUI", k: "BackdropStyle", g: "GUI_BackdropStyle", t: "enum", default: "Acrylic",
-     options: ["Acrylic", "AeroGlass", "Solid"],
-     d: "Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Solid = flat tinted overlay, no blur."},
+     options: ["Acrylic", "AeroGlass", "Mica", "MicaAlt", "Solid"],
+     d: "Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Mica/MicaAlt = system material (Win11 22H2+). Solid = flat tinted overlay, no blur."},
 
     {s: "GUI", k: "AcrylicColor", g: "GUI_AcrylicColor", t: "int", default: 0x33000033,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Background tint color with alpha (0xAARRGGBB). Used by Acrylic and Solid backdrop styles."},
+
+    {s: "GUI", k: "StealFocus", g: "GUI_StealFocus", t: "bool", default: false,
+     d: "Take focus when overlay appears. Required for Mica backdrop tint. Auto-enabled when BackdropStyle is Mica or MicaAlt."},
 
     {s: "GUI", k: "CornerStyle", g: "GUI_CornerStyle", t: "enum", default: "Round",
      options: ["Round", "RoundSmall", "Square"],

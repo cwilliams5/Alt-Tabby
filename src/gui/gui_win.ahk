@@ -213,6 +213,16 @@ Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) { ; lint-ignore: dead
     }
 }
 
+; Apply DWM system backdrop (Win11 22H2+). Returns true on success.
+; type: 0=Auto, 1=None, 2=Mica, 3=Acrylic, 4=MicaAlt(Tabbed)
+Win_SetSystemBackdrop(hWnd, type) {
+    ; DWMWA_USE_IMMERSIVE_DARK_MODE = 20 — required for DWM to render Mica material
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "uint", 20, "int*", true, "uint", 4, "int")
+    ; DWMWA_SYSTEMBACKDROP_TYPE = 38
+    hr := DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "uint", 38, "uint*", type, "uint", 4, "int")
+    return (hr >= 0)
+}
+
 ; Apply acrylic blur effect (argbColor = 0xAARRGGBB)
 Win_ApplyAcrylic(hWnd, argbColor) {
     alpha := (argbColor >> 24) & 0xFF

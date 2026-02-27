@@ -363,11 +363,16 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ESCAPE) {
         ; Cancel - hide without activating
-        global gStats_Cancellations
+        global gStats_Cancellations, gGUI_StealFocus, gGUI_FocusBeforeShow
         gStats_Cancellations += 1
         SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
         if (gGUI_OverlayVisible) {
             GUI_HideOverlay()
+            ; Restore focus to the window that was active before overlay stole it
+            if (gGUI_StealFocus && gGUI_FocusBeforeShow) {
+                _GUI_RobustActivate(gGUI_FocusBeforeShow)
+                gGUI_FocusBeforeShow := 0
+            }
         }
         if (gFR_Enabled)
             FR_Record(FR_EV_STATE, FR_ST_IDLE)
@@ -583,7 +588,7 @@ _GUI_ShowOverlayWithFrozen() {
     Profiler.Enter("_GUI_ShowOverlayWithFrozen") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
-    global gGUI_State
+    global gGUI_State, gGUI_StealFocus, gGUI_FocusBeforeShow
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
 
     if (gGUI_OverlayVisible) {
@@ -635,7 +640,14 @@ _GUI_ShowOverlayWithFrozen() {
     }
 
     try {
-        gGUI_Base.Show("NA")
+        if (gGUI_StealFocus) {
+            gGUI_FocusBeforeShow := DllCall("user32\GetForegroundWindow", "ptr")
+            ; Raw ShowWindow bypasses AHK's caption-aware size adjustment (WS_CAPTION grows the window)
+            DllCall("user32\ShowWindow", "ptr", gGUI_BaseH, "int", 5)  ; SW_SHOW
+            DllCall("user32\SetForegroundWindow", "ptr", gGUI_BaseH)
+        } else {
+            gGUI_Base.Show("NA")
+        }
     }
 
     ; RACE FIX: Show pumps messages — check if Alt was released
