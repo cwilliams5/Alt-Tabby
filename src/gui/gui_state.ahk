@@ -303,7 +303,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
                 _GUI_ShowOverlayWithFrozen()
             } else if (gGUI_OverlayVisible) {
-                GUI_Repaint()
+                ; When animation frame loop is running, it will paint the next frame
+                ; with the updated selection (tween already started by MoveSelectionFrozen).
+                ; Skip redundant synchronous repaint to avoid double-painting.
+                if (cfg.PerfAnimationType = "None")
+                    GUI_Repaint()
             }
         }
         Profiler.Leave() ; @profile
@@ -618,6 +622,15 @@ _GUI_ShowOverlayWithFrozen() {
 
     gGUI_Revealed := false
 
+    ; Start show-fade animation (opacity 0→1)
+    global gAnim_OverlayOpacity
+    if (cfg.PerfAnimationType != "None") {
+        gAnim_OverlayOpacity := 0.0
+        Anim_StartTween("showFade", 0.0, 1.0, 90, Anim_EaseOutQuad)
+    } else {
+        gAnim_OverlayOpacity := 1.0
+    }
+
     ; ===== TIMING: Resize =====
     t1 := QPC()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
@@ -690,13 +703,16 @@ _GUI_ShowOverlayWithFrozen() {
 }
 
 _GUI_MoveSelectionFrozen(delta) {
-    global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop
+    global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop, cfg
+    global gGUI_EffectStyle, gFX_GPUReady
 
     if (gGUI_DisplayItems.Length = 0) {
         return
     }
 
     count := gGUI_DisplayItems.Length
+    prevSel := gGUI_Sel  ; Capture BEFORE changing selection (for animation)
+
     newSel := gGUI_Sel + delta
 
     ; Wrap around
@@ -709,6 +725,14 @@ _GUI_MoveSelectionFrozen(delta) {
     gGUI_Sel := newSel
     ; Pin selection at top row (virtual scroll - list moves, selection stays at top)
     gGUI_ScrollTop := gGUI_Sel - 1
+
+    ; Start selection slide animation (if enabled)
+    if (cfg.PerfAnimationType != "None") {
+        Anim_StartSelectionSlide(prevSel, gGUI_Sel, count)
+        ; Trigger per-style entrance flourish for GPU styles
+        if (gGUI_EffectStyle >= 2 && gFX_GPUReady)
+            FX_OnSelectionChange(gGUI_EffectStyle - 2)
+    }
 }
 
 _GUI_ActivateFromFrozen() {

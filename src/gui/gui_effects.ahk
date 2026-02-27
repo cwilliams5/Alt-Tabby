@@ -187,20 +187,30 @@ FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 ; Real GPU shadow + gradient fill + crisp border.
 ; The gold standard: clean, modern, depth without heaviness.
 FX_GPU_DrawSelection_Glass(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_GPUReady
+    global cfg, gD2D_RT, gFX_GPUReady, gFX_AmbientTime
 
     baseARGB := cfg.GUI_SelARGB
     userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
     baseRGB := baseARGB & 0x00FFFFFF
 
-    ; GPU soft shadow — 6px blur, offset 3,3, dark
+    ; Entrance flourish: shadow lifts from (0,0) to (3,3) offset
+    liftT := Anim_GetValue("fx_glass_lift", 1.0)
+    shadowOffX := 3.0 * liftT
+    shadowOffY := 3.0 * liftT
+
+    ; GPU soft shadow — 6px blur, animated offset
     shadowAlpha := Round(0.45 * 255) << 24
-    FX_DrawSoftRect(x, y, w, h, shadowAlpha, 6.0, 3, 3)
+    FX_DrawSoftRect(x, y, w, h, shadowAlpha, 6.0, shadowOffX, shadowOffY)
+
+    ; Ambient glow breathe (Full mode: blur oscillates 8↔12px, ~2s cycle)
+    glowBlur := 10.0
+    if (gFX_AmbientTime > 0)
+        glowBlur := 10.0 + 2.0 * Sin(gFX_AmbientTime * 0.00314)  ; ~2s cycle
 
     ; Subtle outer glow — selection color, wide blur, very transparent
     glowAlpha := Round(userAlpha * 0.25 * 255) << 24
     glowARGB := glowAlpha | baseRGB
-    FX_DrawSoftRect2(x - 4, y - 4, w + 8, h + 8, glowARGB, 10.0)
+    FX_DrawSoftRect2(x - 4, y - 4, w + 8, h + 8, glowARGB, glowBlur)
 
     ; Selection fill with layer compositing (same HDR-correct pattern as Effects style)
     opaqueBase := 0xFF000000 | baseRGB
@@ -231,7 +241,7 @@ FX_GPU_DrawSelection_Glass(x, y, w, h, r) {
 ; Bright glow bloom + thin bright border. Cyberpunk aesthetic.
 ; Double glow: inner tight + outer wide, both using selection color.
 FX_GPU_DrawSelection_Neon(x, y, w, h, r) {
-    global cfg, gD2D_RT
+    global cfg, gD2D_RT, gFX_AmbientTime
 
     baseARGB := cfg.GUI_SelARGB
     userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
@@ -243,8 +253,18 @@ FX_GPU_DrawSelection_Neon(x, y, w, h, r) {
     glowB := Min(255, (baseRGB & 0xFF) + 80)
     brightRGB := (glowR << 16) | (glowG << 8) | glowB
 
-    ; Wide outer glow — bright, large blur
-    outerAlpha := Round(userAlpha * 0.5 * 255)
+    ; Entrance flourish: bloom flash — glow intensity spikes then settles
+    bloomMult := Anim_GetValue("fx_neon_bloom", 1.0)
+
+    ; Ambient pulse (Full mode: alpha oscillates, ~1.5s cycle)
+    ambientMult := 1.0
+    if (gFX_AmbientTime > 0)
+        ambientMult := 1.0 + 0.15 * Sin(gFX_AmbientTime * 0.00419)  ; ~1.5s cycle
+
+    ; Wide outer glow — bright, large blur (modulated by bloom + ambient)
+    outerAlpha := Round(userAlpha * 0.5 * bloomMult * ambientMult * 255)
+    if (outerAlpha > 255)
+        outerAlpha := 255
     outerARGB := (outerAlpha << 24) | brightRGB
     FX_DrawSoftRect(x - 8, y - 8, w + 16, h + 16, outerARGB, 16.0)
 
@@ -316,7 +336,7 @@ FX_GPU_DrawSelection_Frosted(x, y, w, h, r) {
 ; --- Style: "Ember" ---
 ; Warm amber glow + deep shadow. Rich, warm aesthetic.
 FX_GPU_DrawSelection_Ember(x, y, w, h, r) {
-    global cfg, gD2D_RT
+    global cfg, gD2D_RT, gFX_AmbientTime
 
     baseARGB := cfg.GUI_SelARGB
     userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
@@ -326,12 +346,22 @@ FX_GPU_DrawSelection_Ember(x, y, w, h, r) {
     shadowAlpha := Round(0.55 * 255) << 24
     FX_DrawSoftRect(x, y, w, h, shadowAlpha, 8.0, 4, 5)
 
+    ; Entrance flourish: glow flares bright then dims
+    flareMult := Anim_GetValue("fx_ember_flare", 1.0)
+
+    ; Ambient firelight flicker (Full mode: R channel ±15, ~2s cycle)
+    flickerR := 0
+    if (gFX_AmbientTime > 0)
+        flickerR := Round(15 * Sin(gFX_AmbientTime * 0.00314))  ; ~2s cycle
+
     ; Warm amber glow — orange tinted, wide spread
-    emberR := Min(255, ((baseRGB >> 16) & 0xFF) + 60)
+    emberR := Min(255, ((baseRGB >> 16) & 0xFF) + 60 + flickerR)
     emberG := Max(0, ((baseRGB >> 8) & 0xFF))
     emberB := Max(0, (baseRGB & 0xFF) - 30)
     warmRGB := (emberR << 16) | (emberG << 8) | emberB
-    warmAlpha := Round(userAlpha * 0.4 * 255)
+    warmAlpha := Round(userAlpha * 0.4 * flareMult * 255)
+    if (warmAlpha > 255)
+        warmAlpha := 255
     warmARGB := (warmAlpha << 24) | warmRGB
     FX_DrawSoftRect2(x - 6, y - 6, w + 12, h + 12, warmARGB, 12.0)
 
@@ -364,13 +394,19 @@ FX_GPU_DrawSelection_Ember(x, y, w, h, r) {
 ; --- Style: "Minimal" ---
 ; Perfect soft shadow only. No gradient, no border effects. Ultra-clean.
 FX_GPU_DrawSelection_Minimal(x, y, w, h, r) {
-    global cfg, gD2D_RT
+    global cfg, gD2D_RT, gFX_AmbientTime
 
     baseARGB := cfg.GUI_SelARGB
 
+    ; Ambient shadow breathe (Full mode: blur STDEV oscillates 16↔20px, ~3s cycle)
+    blurStdev := 18.0
+    if (gFX_AmbientTime > 0) {
+        blurStdev := 18.0 + 2.0 * Sin(gFX_AmbientTime * 0.00209)  ; ~3s full cycle
+    }
+
     ; Large, very soft shadow — the star of this style
     shadowAlpha := Round(0.35 * 255) << 24
-    FX_DrawSoftRect(x, y, w, h, shadowAlpha, 18.0, 2, 3)
+    FX_DrawSoftRect(x, y, w, h, shadowAlpha, blurStdev, 2, 3)
 
     ; Flat fill, no gradient
     D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(baseARGB))
@@ -379,7 +415,7 @@ FX_GPU_DrawSelection_Minimal(x, y, w, h, r) {
 ; --- Style: "Holograph" ---
 ; Multi-color prismatic glow. Dual glow with color-shifted halos.
 FX_GPU_DrawSelection_Holograph(x, y, w, h, r) {
-    global cfg, gD2D_RT
+    global cfg, gD2D_RT, gFX_AmbientTime
 
     baseARGB := cfg.GUI_SelARGB
     userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
@@ -390,23 +426,43 @@ FX_GPU_DrawSelection_Holograph(x, y, w, h, r) {
     bG := (baseRGB >> 8) & 0xFF
     bB := baseRGB & 0xFF
 
-    ; Color-shifted glow 1: shift toward cyan/blue (top-left bias)
+    ; Entrance flourish: prismatic flash — glow intensity spikes
+    flashMult := Anim_GetValue("fx_holo_flash", 1.0)
+
+    ; Ambient glow orbit (Full mode: offsets rotate, ~4s cycle)
+    orbitX1 := -2.0
+    orbitY1 := -2.0
+    orbitX2 := 3.0
+    orbitY2 := 3.0
+    if (gFX_AmbientTime > 0) {
+        angle := gFX_AmbientTime * 0.00157  ; ~4s full rotation
+        orbitX1 := -2.0 + 3.0 * Cos(angle)
+        orbitY1 := -2.0 + 3.0 * Sin(angle)
+        orbitX2 := 3.0 - 3.0 * Cos(angle)
+        orbitY2 := 3.0 - 3.0 * Sin(angle)
+    }
+
+    ; Color-shifted glow 1: shift toward cyan/blue (animated position)
     c1R := Max(0, bR - 60)
     c1G := Min(255, bG + 40)
     c1B := Min(255, bB + 80)
     c1RGB := (c1R << 16) | (c1G << 8) | c1B
-    c1Alpha := Round(userAlpha * 0.4 * 255)
+    c1Alpha := Round(userAlpha * 0.4 * flashMult * 255)
+    if (c1Alpha > 255)
+        c1Alpha := 255
     c1ARGB := (c1Alpha << 24) | c1RGB
-    FX_DrawSoftRect(x - 6, y - 8, w + 12, h + 16, c1ARGB, 14.0, -2, -2)
+    FX_DrawSoftRect(x - 6, y - 8, w + 12, h + 16, c1ARGB, 14.0, orbitX1, orbitY1)
 
-    ; Color-shifted glow 2: shift toward magenta/pink (bottom-right bias)
+    ; Color-shifted glow 2: shift toward magenta/pink (animated position)
     c2R := Min(255, bR + 60)
     c2G := Max(0, bG - 40)
     c2B := Min(255, bB + 40)
     c2RGB := (c2R << 16) | (c2G << 8) | c2B
-    c2Alpha := Round(userAlpha * 0.35 * 255)
+    c2Alpha := Round(userAlpha * 0.35 * flashMult * 255)
+    if (c2Alpha > 255)
+        c2Alpha := 255
     c2ARGB := (c2Alpha << 24) | c2RGB
-    FX_DrawSoftRect2(x - 4, y - 4, w + 8, h + 8, c2ARGB, 12.0, 3, 3)
+    FX_DrawSoftRect2(x - 4, y - 4, w + 8, h + 8, c2ARGB, 12.0, orbitX2, orbitY2)
 
     ; Fill with subtle gradient
     opaqueBase := 0xFF000000 | baseRGB
@@ -435,8 +491,8 @@ FX_GPU_DrawSelection_Holograph(x, y, w, h, r) {
 ; Turbulence noise overlay + gradient fill. Organic, living texture.
 ; Uses the noise chain (turbulence → noiseCrop → noiseSat) for texture.
 FX_GPU_DrawSelection_Plasma(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_GPU, gFX_GPUOutput, LOG_PATH_STORE
-    global FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
+    global cfg, gD2D_RT, gFX_GPU, gFX_GPUOutput, LOG_PATH_STORE, gFX_AmbientTime
+    global FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE, FX_TURB_OFFSET
     global FX_CROP_RECT, FX_SAT_SATURATION, D2D1_BORDER_SOFT
 
     try {
@@ -448,7 +504,16 @@ FX_GPU_DrawSelection_Plasma(x, y, w, h, r) {
         shadowAlpha := Round(0.45 * 255) << 24
         FX_DrawSoftRect(x, y, w, h, shadowAlpha, 8.0, 3, 3)
 
+        ; Ambient noise drift (Full mode: offset scrolls linearly)
+        driftX := 0.0
+        driftY := 0.0
+        if (gFX_AmbientTime > 0) {
+            driftX := gFX_AmbientTime * 0.008  ; slow horizontal drift
+            driftY := gFX_AmbientTime * 0.003  ; slower vertical drift
+        }
+
         ; Configure turbulence: low frequency for large plasma swirls
+        gFX_GPU["turbulence"].SetVector2(FX_TURB_OFFSET, Float(driftX), Float(driftY))
         gFX_GPU["turbulence"].SetVector2(FX_TURB_SIZE, Float(w + 20), Float(h + 20))
         gFX_GPU["turbulence"].SetVector2(FX_TURB_FREQ, 0.015, 0.015)
         gFX_GPU["turbulence"].SetUInt(FX_TURB_OCTAVES, 3)
@@ -656,4 +721,28 @@ _FX_LightenRGB(rgb, factor) {
     g := Round(g + (255 - g) * factor)
     b := Round(b + (255 - b) * factor)
     return (r << 16) | (g << 8) | b
+}
+
+; ========================= ANIMATION HOOKS =========================
+
+; Per-style entrance flourish — called on each selection change.
+; gpuStyleIndex is 0-based (Glass=0, Neon=1, Frosted=2, Ember=3, Minimal=4, Holograph=5, Plasma=6).
+FX_OnSelectionChange(gpuStyleIndex) {
+    switch gpuStyleIndex {
+        case 0:  ; Glass — shadow lifts into place
+            Anim_StartTween("fx_glass_lift", 0.0, 1.0, 200, Anim_EaseOutCubic)
+        case 1:  ; Neon — bloom flash: glow spikes then settles
+            Anim_StartTween("fx_neon_bloom", 1.5, 1.0, 250, Anim_EaseOutQuad)
+        case 3:  ; Ember — warm glow flares bright then dims
+            Anim_StartTween("fx_ember_flare", 1.8, 1.0, 300, Anim_EaseOutCubic)
+        case 5:  ; Holograph — prismatic flash
+            Anim_StartTween("fx_holo_flash", 1.5, 1.0, 200, Anim_EaseOutQuad)
+    }
+}
+
+; Ambient animation update — called every frame in Full mode only.
+; Advances gFX_AmbientTime by the frame delta.
+FX_UpdateAmbient(dt) {
+    global gFX_AmbientTime
+    gFX_AmbientTime += dt
 }

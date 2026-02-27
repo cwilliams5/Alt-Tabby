@@ -613,6 +613,9 @@ Memory management to maintain responsiveness after long idle periods.
 | `KeepInMemory` | bool | `true` | - | Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle. |
 | `ForceTouchMemory` | bool | `true` | - | Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost. |
 | `ProcessPriority` | enum | `AboveNormal` | - | Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended. |
+| `AnimationType` | enum | `Minimal` | - | Animation behavior. None = single paint per event (zero idle CPU). Minimal = animate transitions (selection slide, fade), auto-stop when done. Full = continuous ambient effects (glow pulse, noise drift) while overlay is visible. |
+| `AnimationSpeed` | float | `1.00` | `0.10` - `5.00` | Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations. |
+| `AnimationFPS` | string | `Auto` | - | Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate. |
 
 ## Diagnostics
 
@@ -655,4 +658,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-27 with 280 total settings.*
+*Generated on 2026-02-27 with 283 total settings.*

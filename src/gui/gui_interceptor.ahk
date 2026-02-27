@@ -55,6 +55,9 @@ INT_SetupHotkeys() {
     ; B key — cycle effect styles when GUI is active
     Hotkey("~*b", _INT_B_Down)
 
+    ; F key — toggle FPS debug overlay when GUI is active
+    Hotkey("~*f", _INT_F_Down)
+
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
 }
@@ -345,6 +348,19 @@ _INT_B_Down(*) {
     SetTimer(() => ToolTip(), -2000)
 
     ; Repaint immediately with new style
+    GUI_Repaint()
+}
+
+; ========================= FPS DEBUG OVERLAY TOGGLE =========================
+
+_INT_F_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gAnim_FPSEnabled
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+
+    gAnim_FPSEnabled := !gAnim_FPSEnabled
     GUI_Repaint()
 }
 

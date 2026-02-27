@@ -21,12 +21,16 @@
 #   Discover full landscape: powershell -File tools/query_global_ownership.ps1 -Discover
 
 cfg: config_loader, launcher_tray, setup_utils
-gD2D_RT: gui_overlay, gui_paint
+gD2D_RT: gui_animation, gui_overlay, gui_paint
 gGUI_LiveItems: gui_state, gui_data
-gGUI_OverlayVisible: gui_overlay, gui_state
-gGUI_Revealed: gui_overlay, gui_paint, gui_state
+gGUI_OverlayVisible: gui_animation, gui_overlay, gui_state
+gGUI_Revealed: gui_animation, gui_overlay, gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
 gGUI_Sel: gui_input, gui_state
 gGUI_EffectStyle: gui_interceptor
 gGUI_FocusBeforeShow: gui_state, gui_paint
+gAnim_FPSEnabled: gui_interceptor
+gAnim_OverlayOpacity: gui_animation, gui_state
+gAnim_HidePending: gui_animation, gui_overlay
+gFX_AmbientTime: gui_animation, gui_effects
 LOG_PATH_PAINT_TIMING: config_loader

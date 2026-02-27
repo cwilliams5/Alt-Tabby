@@ -84,6 +84,14 @@ global gWS_DirtyHwnds := Map()
 ; Cosmetic repaint debounce (from gui_main.ahk - not included in GUI test chain)
 global _gGUI_LastCosmeticRepaintTick := 0
 
+; Animation globals (from gui_animation.ahk - not included in GUI test chain)
+global gAnim_OverlayOpacity := 1.0
+global gFX_AmbientTime := 0.0
+
+; GPU effects globals (from gui_effects.ahk / gui_paint.ahk - not included in GUI test chain)
+global gGUI_EffectStyle := 0
+global gFX_GPUReady := false
+
 ; Win32 constants (from win_utils.ahk - not included in GUI test chain)
 global DWMWA_CLOAKED := 14
 
@@ -149,7 +157,9 @@ global cfg := {
     KomorebiUseSocket: true,
     KomorebiWorkspaceConfirmMethod: "PollCloak",
     GUI_MonitorFilterDefault: "All",
-    GUI_AcrylicColor: 0xCC000000
+    GUI_AcrylicColor: 0xCC000000,
+    PerfAnimationType: "None",
+    PerfAnimationSpeed: 1.0
 }
 
 ; Test tracking
@@ -234,6 +244,19 @@ Paint_Log(msg) {
 Paint_LogTrim() {
 }
 Paint_LogStartSession() {
+}
+
+; Animation mocks (gui_animation.ahk not included in tests)
+Anim_StartTween(name, from, to, durationMs, easingFunc) {
+}
+Anim_StartSelectionSlide(prevSel, newSel, count) {
+}
+Anim_EaseOutQuad(t) {
+    return t
+}
+
+; GPU effects mocks (gui_effects.ahk not included in tests)
+FX_OnSelectionChange(gpuStyleIndex) {
 }
 
 Win_DwmFlush() {

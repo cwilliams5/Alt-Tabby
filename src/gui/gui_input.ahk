@@ -81,7 +81,11 @@ _GUI_MoveSelection(delta) {
     Critical "Off"
 
     GUI_RecalcHover()
-    GUI_Repaint()
+    ; When animation frame loop is running, skip synchronous repaint —
+    ; the loop will paint next frame. Prevents message queue flooding
+    ; during rapid mouse wheel scroll (Logitech infinite scroll).
+    if (cfg.PerfAnimationType = "None")
+        GUI_Repaint()
 }
 
 ; ========================= HOVER DETECTION =========================
@@ -594,7 +598,7 @@ GUI_OnWheel(wParam, lParam) { ; lint-ignore: dead-param
 }
 
 _GUI_ScrollBy(step) {
-    global gGUI_ScrollTop, gGUI_OverlayH, gGUI_Sel
+    global gGUI_ScrollTop, gGUI_OverlayH, gGUI_Sel, cfg
 
     vis := GUI_GetVisibleRows()
     if (vis <= 0) {
@@ -618,7 +622,8 @@ _GUI_ScrollBy(step) {
     gGUI_ScrollTop := Win_Wrap0(gGUI_ScrollTop + step, count)
     Critical "Off"
     GUI_RecalcHover()
-    GUI_Repaint()
+    if (cfg.PerfAnimationType = "None")
+        GUI_Repaint()
 }
 
 ; ========================= BLACKLIST DIALOG =========================

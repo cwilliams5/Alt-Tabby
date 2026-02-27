@@ -120,6 +120,9 @@ _GUI_Main_Init() {
     ; Apply process priority (AboveNormal by default — ensures responsive scheduling)
     _GUI_ApplyProcessPriority(cfg.PerfProcessPriority)
 
+    ; Initialize animation engine (resolves FPS from config/monitor)
+    Anim_Init()
+
     ; Load config-driven constants (declared at file scope, set from cfg here)
     HOUSEKEEPING_INTERVAL_MS := cfg.HousekeepingIntervalMs
 

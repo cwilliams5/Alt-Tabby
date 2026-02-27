@@ -65,6 +65,7 @@ GUI_HideOverlay() {
     Profiler.Enter("GUI_HideOverlay") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Revealed
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES, gD2D_RT
+    global gAnim_HidePending
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
@@ -72,6 +73,16 @@ GUI_HideOverlay() {
         return
     }
 
+    ; Animated hide-fade: start opacity tween, defer actual hide
+    ; _Anim_OnHideFadeComplete() will call _Anim_DoActualHide() when done
+    if (cfg.PerfAnimationType != "None" && gGUI_Revealed && !gAnim_HidePending) {
+        gAnim_HidePending := true
+        Anim_StartTween("hideFade", 1.0, 0.0, 60, Anim_EaseOutQuad)
+        Profiler.Leave() ; @profile
+        return
+    }
+
+    ; Immediate hide path (AnimationType=None, or already pending, or not revealed)
     ; Stop hover polling and clear hover state
     GUI_ClearHoverState()
 
@@ -95,6 +106,9 @@ GUI_HideOverlay() {
     }
     gGUI_OverlayVisible := false
     gGUI_Revealed := false
+
+    ; Cancel any animation state
+    Anim_CancelAll()
 
     ; Periodically trim paint timing log (every 10 hide cycles)
     hideCount += 1

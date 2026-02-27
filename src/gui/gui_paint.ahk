@@ -181,7 +181,20 @@ GUI_Repaint() {
         ; ===== TIMING: PaintOverlay (the big one) =====
         if (diagTiming)
             t1 := QPC()
+
+        ; Opacity layer for show/hide fade animation
+        global gAnim_OverlayOpacity
+        fadeActive := (gAnim_OverlayOpacity < 1.0)
+        if (fadeActive) {
+            fadeParams := FX_LayerParams(0, 0, phW, phH, gAnim_OverlayOpacity)
+            gD2D_RT.PushLayer(fadeParams, 0)
+        }
+
         _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
+
+        if (fadeActive)
+            gD2D_RT.PopLayer()
+
         if (diagTiming)
             tPaintOverlay := QPC() - t1
 
@@ -465,6 +478,35 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         selExpandX := Round(4 * scale)
         selExpandY := Round(2 * scale)
 
+        ; ===== Selection highlight (drawn BEFORE row loop for correct Z-order) =====
+        ; The highlight is a background element — text/icons draw on top.
+        ; When animation is active, the highlight Y is interpolated between prev and new positions.
+        global gAnim_SelPrevIndex, gAnim_SelNewIndex
+        selW := wPhys - 2 * Mx + selExpandX * 2
+        selH := RowH
+        selX := Mx - selExpandX
+        if (selIndex > 0 && selIndex <= count) {
+            ; Compute the "snap" Y (where the selection IS in the current layout)
+            baseSelY := Anim_CalcSelY(selIndex, scrollTop, contentTopY, RowH, count, selExpandY)
+
+            ; Animated slide: lerp from prevSel's Y to current sel's Y
+            animT := Anim_GetValue("selSlide", 1.0)
+            if (animT < 1.0 && gAnim_SelPrevIndex > 0) {
+                prevSelY := Anim_CalcSelY(gAnim_SelPrevIndex, scrollTop, contentTopY, RowH, count, selExpandY)
+                selY := prevSelY + (baseSelY - prevSelY) * animT
+            } else {
+                selY := baseSelY
+            }
+
+            if (isGPU) {
+                FX_GPU_DrawSelection(fx - 2, selX, selY, selW, selH, Rad)
+            } else if (isFX) {
+                _FX_DrawSelection(selX, selY, selW, selH, Rad)
+            } else {
+                D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
+            }
+        }
+
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
             idx1 := idx0 + 1
@@ -479,20 +521,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                     _FX_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
             }
 
-            ; Selection highlight
-            if (isSel) {
-                selX := Mx - selExpandX
-                selY := yRow - selExpandY
-                selW := wPhys - 2 * Mx + selExpandX * 2
-                selH := RowH
-                if (isGPU) {
-                    FX_GPU_DrawSelection(fx - 2, selX, selY, selW, selH, Rad)
-                } else if (isFX) {
-                    _FX_DrawSelection(selX, selY, selW, selH, Rad)
-                } else {
-                    D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
-                }
-            }
+            ; Selection highlight is now drawn before the row loop (animated Y)
+            ; Text formatting still uses isSel for highlighted fonts/colors
 
             ix := leftX
             iy := yRow + (RowH - ISize) // 2
@@ -591,6 +621,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         else
             _FX_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
     }
+
+    ; FPS debug overlay (toggled by F key)
+    global gAnim_FPSEnabled
+    if (gAnim_FPSEnabled)
+        Anim_DrawFPSOverlay(wPhys, hPhys, scale)
 
     ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
     if (diagTiming) {

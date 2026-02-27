@@ -1184,6 +1184,15 @@ global gConfigRegistry := [
      options: ["Normal", "AboveNormal", "High"],
      d: "Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended."},
 
+    {s: "Performance", k: "AnimationType", g: "PerfAnimationType", t: "enum", default: "Minimal",
+     options: ["None", "Minimal", "Full"],
+     d: "Animation behavior. None = single paint per event (zero idle CPU). Minimal = animate transitions (selection slide, fade), auto-stop when done. Full = continuous ambient effects (glow pulse, noise drift) while overlay is visible."},
+    {s: "Performance", k: "AnimationSpeed", g: "PerfAnimationSpeed", t: "float", default: 1.0,
+     min: 0.1, max: 5.0,
+     d: "Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations."},
+    {s: "Performance", k: "AnimationFPS", g: "PerfAnimationFPS", t: "string", default: "Auto",
+     d: "Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate."},
+
     ; ============================================================
     ; Diagnostics
     ; ============================================================
