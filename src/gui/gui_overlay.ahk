@@ -12,10 +12,13 @@ global gGUI_BaseH := 0         ; Window handle
 global gGUI_OverlayH := 0      ; Alias → same as gGUI_BaseH (single-window compat)
 global GUI_LOG_TRIM_EVERY_N_HIDES := 10
 
-; D2D factories (process-global, survive render target recreation)
-global gD2D_Factory := 0       ; ID2D1Factory
+; D2D factories and device pipeline (process-global, survive render target recreation)
+global gD2D_Factory := 0       ; ID2D1Factory1
 global gDW_Factory := 0        ; IDWriteFactory
-global gD2D_RT := 0            ; ID2D1HwndRenderTarget
+global gD2D_RT := 0            ; ID2D1DeviceContext (QI'd from HwndRenderTarget)
+global gD2D_HwndRT := 0        ; ID2D1HwndRenderTarget (raw ptr — for Resize + presentation)
+global gD2D_D3DDevice := 0     ; ID3D11Device (raw ptr, released via ObjRelease)
+global gD2D_D2DDevice := 0     ; ID2D1Device
 
 ; ========================= CONFIG-DRIVEN BACKDROP =========================
 
@@ -75,6 +78,9 @@ GUI_HideOverlay() {
             gD2D_RT.BeginDraw()
             gD2D_RT.Clear(D2D_ColorF(0x00000000))
             gD2D_RT.EndDraw()
+            D2D_Present()
+        } catch {
+            ; Best-effort clear before hide — failure handled by next paint cycle
         }
     }
 
@@ -227,7 +233,7 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {
 GUI_CreateWindow() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, cfg
-    global gD2D_Factory, gDW_Factory, gD2D_RT
+    global gD2D_Factory, gDW_Factory, gD2D_RT, gD2D_HwndRT, gD2D_D3DDevice, gD2D_D2DDevice
 
     ; Create single window
     ; -DPIScale: all coordinates are raw physical pixels (D2D render target uses 96 DPI).
@@ -293,7 +299,7 @@ GUI_CreateWindow() {
     ; Initialize D2D factories (process-global)
     _D2D_InitFactories()
 
-    ; Create D2D render target for this window
+    ; Create D2D render target + device context for this window
     _D2D_CreateRenderTarget(gGUI_BaseH, wPhys, hPhys)
 
     Win_DwmFlush()
@@ -313,15 +319,48 @@ _GUI_OnEraseBkgnd(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 ; ========================= D2D INITIALIZATION =========================
 
 _D2D_InitFactories() {
-    global gD2D_Factory, gDW_Factory
+    global gD2D_Factory, gDW_Factory, gD2D_D3DDevice, gD2D_D2DDevice
+    global D3D11_CREATE_DEVICE_BGRA_SUPPORT
+
     if (!gD2D_Factory)
-        gD2D_Factory := ID2D1Factory()
+        gD2D_Factory := ID2D1Factory1()
     if (!gDW_Factory)
         gDW_Factory := IDWriteFactory()
+
+    ; Create D3D11 device (needed for ID2D1Device — future GPU effects pipeline)
+    if (!gD2D_D3DDevice) {
+        #DllLoad 'd3d11.dll'
+        DllCall('d3d11\D3D11CreateDevice',
+            'ptr', 0,                           ; pAdapter (NULL = default)
+            'uint', 1,                          ; DriverType = D3D_DRIVER_TYPE_HARDWARE
+            'ptr', 0,                           ; Software
+            'uint', D3D11_CREATE_DEVICE_BGRA_SUPPORT, ; Flags
+            'ptr', 0,                           ; pFeatureLevels (NULL = default)
+            'uint', 0,                          ; FeatureLevels count
+            'uint', 7,                          ; SDK version (D3D11_SDK_VERSION)
+            'ptr*', &pD3DDevice := 0,           ; ppDevice
+            'uint*', &featureLevel := 0,        ; pFeatureLevel
+            'ptr*', &pContext := 0,             ; ppImmediateContext
+            'hresult')
+        gD2D_D3DDevice := pD3DDevice
+        ; Release the immediate context — we don't use it (D2D has its own)
+        if (pContext)
+            ObjRelease(pContext)
+    }
+
+    ; Create ID2D1Device from DXGI device
+    if (!gD2D_D2DDevice && gD2D_D3DDevice) {
+        ; QI D3D11 device for IDXGIDevice
+        dxgiDevice := ComObjQuery(gD2D_D3DDevice, IDXGIDevice.IID)
+        pDxgi := ComObjValue(dxgiDevice)
+        ObjAddRef(pDxgi)
+        dxgiDev := IDXGIDevice(pDxgi)
+        gD2D_D2DDevice := gD2D_Factory.CreateDevice(dxgiDev)
+    }
 }
 
 _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
-    global gD2D_Factory, gD2D_RT
+    global gD2D_Factory, gD2D_RT, gD2D_HwndRT
     global D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PRESENT_OPTIONS_NONE
     global D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE
 
@@ -330,23 +369,29 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     if (hPhys < 1)
         hPhys := 1
 
-    ; Render target properties: 96 DPI = 1 D2D unit = 1 physical pixel
-    ; (keeps existing coordinate math unchanged from GDI+ pipeline)
+    ; Create HwndRenderTarget — supports per-pixel alpha with DwmExtendFrame.
+    ; 96 DPI = 1 D2D unit = 1 physical pixel (keeps existing coordinate math).
     rtProps := D2D_RenderTargetProps(96.0, 96.0, D2D1_ALPHA_MODE_PREMULTIPLIED)
-    hwndProps := D2D_HwndRenderTargetProps(hwnd, wPhys, hPhys, D2D1_PRESENT_OPTIONS_NONE)
+    hwndRtProps := D2D_HwndRenderTargetProps(hwnd, wPhys, hPhys, D2D1_PRESENT_OPTIONS_NONE)
 
-    gD2D_RT := gD2D_Factory.CreateHwndRenderTarget(rtProps, hwndProps)
+    ; ID2D1Factory::CreateHwndRenderTarget (vtable index 14)
+    ComCall(14, gD2D_Factory, 'ptr', rtProps, 'ptr', hwndRtProps, 'ptr*', &pRT := 0, 'hresult')
+    gD2D_HwndRT := pRT  ; Raw ptr — needed for Resize(), released via ObjRelease
 
-    ; Set antialiasing modes
-    if (gD2D_RT) {
-        gD2D_RT.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE)
-        gD2D_RT.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE)
-    }
+    ; QI for ID2D1DeviceContext — available on Win8+ when created from ID2D1Factory1.
+    ; Gives us GPU effects API while HwndRenderTarget handles alpha-correct presentation.
+    dcObj := ComObjQuery(pRT, ID2D1DeviceContext.IID)
+    pDC := ComObjValue(dcObj)
+    ObjAddRef(pDC)
+    gD2D_RT := ID2D1DeviceContext(pDC)
+
+    gD2D_RT.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE)
+    gD2D_RT.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE)
 }
 
 D2D_ResizeRenderTarget(wPhys, hPhys) {
-    global gD2D_RT
-    if (!gD2D_RT)
+    global gD2D_HwndRT
+    if (!gD2D_HwndRT)
         return
     if (wPhys < 1)
         wPhys := 1
@@ -354,13 +399,16 @@ D2D_ResizeRenderTarget(wPhys, hPhys) {
         hPhys := 1
     sizeU := D2D_SizeU(wPhys, hPhys)
     try {
-        gD2D_RT.Resize(sizeU)
+        ; ID2D1HwndRenderTarget::Resize (vtable index 58: RT 0-56, CheckWindowState 57, Resize 58)
+        ComCall(58, gD2D_HwndRT, 'ptr', sizeU, 'hresult')
+    } catch {
+        ; Resize failure — next paint will trigger device loss recovery
     }
 }
 
-; Recreate render target and all dependent resources after D2DERR_RECREATE_TARGET.
+; Recreate the D2D render target after D2DERR_RECREATE_TARGET.
 D2D_HandleDeviceLoss() {
-    global gD2D_RT, gGUI_BaseH
+    global gD2D_RT, gD2D_HwndRT, gGUI_BaseH
 
     ; Get current window size
     ox := 0
@@ -372,29 +420,51 @@ D2D_HandleDeviceLoss() {
     ; Release all dependent resources (brushes, text formats, icon cache)
     D2D_DisposeResources()
 
-    ; Release old render target
-    if (gD2D_RT)
-        gD2D_RT := 0  ; COM wrapper __Delete releases the render target
+    ; Release render target (DeviceContext + HwndRT)
+    gD2D_RT := 0  ; COM __Delete releases DeviceContext
+    if (gD2D_HwndRT) {
+        ObjRelease(gD2D_HwndRT)
+        gD2D_HwndRT := 0
+    }
 
-    ; Recreate render target
+    ; Recreate render target (factories survive device loss)
     _D2D_CreateRenderTarget(gGUI_BaseH, wPhys, hPhys)
 }
 
 ; ========================= D2D CLEANUP =========================
 
 D2D_ShutdownAll() {
-    global gD2D_RT, gD2D_Factory, gDW_Factory
+    global gD2D_RT, gD2D_HwndRT
+    global gD2D_D2DDevice, gD2D_D3DDevice
+    global gD2D_Factory, gDW_Factory
 
     ; Dispose resources first (brushes, text formats, icon cache)
     D2D_DisposeResources()
 
     ; Release render target
-    if (gD2D_RT)
-        gD2D_RT := 0
+    gD2D_RT := 0  ; COM __Delete releases DeviceContext
+    if (gD2D_HwndRT) {
+        ObjRelease(gD2D_HwndRT)
+        gD2D_HwndRT := 0
+    }
+
+    ; Release D2D device pipeline
+    gD2D_D2DDevice := 0
+    if (gD2D_D3DDevice) {
+        ObjRelease(gD2D_D3DDevice)
+        gD2D_D3DDevice := 0
+    }
 
     ; Release factories
     if (gDW_Factory)
         gDW_Factory := 0
     if (gD2D_Factory)
         gD2D_Factory := 0
+}
+
+; ========================= D2D PRESENT =========================
+; No-op: HwndRenderTarget auto-presents after EndDraw().
+; Kept for forward-compatibility with future swap chain pipeline.
+
+D2D_Present() {
 }

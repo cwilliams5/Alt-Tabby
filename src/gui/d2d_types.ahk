@@ -172,6 +172,48 @@ D2D_ArcSegment(endX, endY, rx, ry, rotation := 0.0, sweepDir := 1, arcSize := 0)
     return buf
 }
 
+; ========================= DXGI_SWAP_CHAIN_DESC1 =========================
+; Layout: { UINT Width, Height, DXGI_FORMAT Format, BOOL Stereo,
+;            DXGI_SAMPLE_DESC {Count, Quality}, DXGI_USAGE BufferUsage,
+;            UINT BufferCount, DXGI_SCALING Scaling, DXGI_SWAP_EFFECT SwapEffect,
+;            DXGI_ALPHA_MODE AlphaMode, UINT Flags }
+; Size: 48 bytes
+
+D2D_SwapChainDesc1(w, h, format, bufferCount, swapEffect, alphaMode) { ; lint-ignore: dead-function
+    buf := Buffer(48, 0)
+    NumPut("uint", w, buf, 0)           ; Width
+    NumPut("uint", h, buf, 4)           ; Height
+    NumPut("uint", format, buf, 8)      ; Format (DXGI_FORMAT)
+    ; Stereo = FALSE (offset 12, already 0)
+    NumPut("uint", 1, buf, 16)          ; SampleDesc.Count = 1
+    ; SampleDesc.Quality = 0 (offset 20, already 0)
+    NumPut("uint", 0x20, buf, 24)       ; BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT
+    NumPut("uint", bufferCount, buf, 28) ; BufferCount
+    NumPut("uint", 0, buf, 32)          ; Scaling = DXGI_SCALING_STRETCH
+    NumPut("uint", swapEffect, buf, 36) ; SwapEffect
+    NumPut("uint", alphaMode, buf, 40)  ; AlphaMode
+    ; Flags = 0 (offset 44, already 0)
+    return buf
+}
+
+; ========================= D2D1_BITMAP_PROPERTIES1 =========================
+; Layout: { D2D1_PIXEL_FORMAT {format, alphaMode}, float dpiX, float dpiY,
+;            D2D1_BITMAP_OPTIONS options, ID2D1ColorContext* colorContext }
+; Size: 24 bytes (on x64: 20 + 4 pad = 24 with ptr alignment)
+
+D2D_BitmapProps1(options, dpiX := 96.0, dpiY := 96.0, format := 87, alphaMode := 1) { ; lint-ignore: dead-function
+    ; format 87 = DXGI_FORMAT_B8G8R8A8_UNORM
+    ; alphaMode 1 = D2D1_ALPHA_MODE_PREMULTIPLIED
+    buf := Buffer(A_PtrSize = 8 ? 32 : 24, 0)
+    NumPut("uint", format, buf, 0)      ; pixelFormat.format
+    NumPut("uint", alphaMode, buf, 4)   ; pixelFormat.alphaMode
+    NumPut("float", Float(dpiX), buf, 8)
+    NumPut("float", Float(dpiY), buf, 12)
+    NumPut("uint", options, buf, 16)    ; bitmapOptions
+    ; colorContext = NULL (offset 20/24, already 0)
+    return buf
+}
+
 ; ========================= D2D ENUMS ========================= ; lint-ignore: dead-global (consumed by gui_render.ahk / gui_paint.ahk in Phase 0)
 
 global D2DERR_RECREATE_TARGET     := 0x8899000C ; lint-ignore: dead-global
@@ -182,6 +224,13 @@ global D2D1_DRAW_TEXT_OPTIONS_CLIP := 2 ; lint-ignore: dead-global
 global D2D1_PRESENT_OPTIONS_NONE := 0 ; lint-ignore: dead-global
 global D2D1_PRESENT_OPTIONS_IMMEDIATELY := 2 ; lint-ignore: dead-global
 global DXGI_FORMAT_B8G8R8A8_UNORM := 87 ; lint-ignore: dead-global
+
+; DXGI / D3D11 / D2D1.1 enums
+global DXGI_SWAP_EFFECT_FLIP_DISCARD := 4 ; lint-ignore: dead-global
+global DXGI_ALPHA_MODE_PREMULTIPLIED := 1 ; lint-ignore: dead-global
+global D2D1_BITMAP_OPTIONS_TARGET := 0x00000001 ; lint-ignore: dead-global
+global D2D1_BITMAP_OPTIONS_CANNOT_DRAW := 0x00000002 ; lint-ignore: dead-global
+global D3D11_CREATE_DEVICE_BGRA_SUPPORT := 0x00000020 ; lint-ignore: dead-global
 
 ; DirectWrite enums
 global DWRITE_FONT_WEIGHT_REGULAR  := 400 ; lint-ignore: dead-global

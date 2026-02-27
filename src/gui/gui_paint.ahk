@@ -169,12 +169,13 @@ GUI_Repaint() {
             t1 := QPC()
         try {
             gD2D_RT.EndDraw()
+            D2D_Present()
         } catch as e {
-            ; D2DERR_RECREATE_TARGET = 0x8899000C
-            ; Handle device loss: recreate render target and all dependent resources
+            ; D2DERR_RECREATE_TARGET = 0x8899000C or DXGI device loss
+            ; Handle device loss: recreate full pipeline from D3D11 up
             D2D_HandleDeviceLoss()
             if (diagTiming)
-                Paint_Log("  ** D2D DEVICE LOSS — render target recreated")
+                Paint_Log("  ** D2D DEVICE LOSS — full pipeline recreated")
         }
         if (diagTiming)
             tEndDraw := QPC() - t1

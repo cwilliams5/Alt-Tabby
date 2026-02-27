@@ -461,6 +461,9 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Selection highlight color (ARGB)"},
 
+    {type: "subsection", section: "GUI", name: "Visual Effects",
+     desc: "Software visual effects (selection styling, shadows, hover). When GPU Effects are enabled, some of these are overridden by hardware-accelerated equivalents."},
+
     {s: "GUI", k: "SelBorderARGB", g: "GUI_SelBorderARGB", t: "int", default: 0x40FFFFFF,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Selection border color (ARGB). Only drawn when visual effects are on and SelBorderWidthPx > 0."},
@@ -1156,6 +1159,9 @@ global gConfigRegistry := [
     ; ============================================================
     {type: "section", name: "Performance", desc: "Performance",
      long: "Memory management to maintain responsiveness after long idle periods."},
+
+    {s: "Performance", k: "GPUEffects", g: "PerfGPUEffects", t: "bool", default: true, ; lint-ignore: dead-config
+     d: "Enable GPU-accelerated visual effects (blur, real shadows, blend modes). Requires ID2D1DeviceContext. When disabled, software effects from the Visual Effects section are used instead."},
 
     {s: "Performance", k: "KeepInMemory", g: "PerfKeepInMemory", t: "bool", default: true,
      d: "Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle."},

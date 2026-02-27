@@ -114,6 +114,7 @@ for _, arg in A_Args {
 #Include OVERLAPPED.ahk
 #Include DirectoryWatcher.ahk
 #Include Direct2D.ahk
+#Include d2d_device.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk
