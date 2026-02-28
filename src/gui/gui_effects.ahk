@@ -22,6 +22,7 @@ global gFX_BackdropStyle := 0        ; 0=None, 1-6=styles (cycled by C key)
 global gFX_BackdropSeedX := 0.0      ; Random offset for turbulence — refreshed on each open/style switch
 global gFX_BackdropSeedY := 0.0      ; Gives different pattern without using D2D's seed property
 global gFX_BackdropSeedPhase := 0.0  ; Random phase offset (radians) for orbit starting position
+global gFX_BackdropDirSign := 1      ; Random orbit direction: 1=CCW, -1=CW
 global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
@@ -813,7 +814,7 @@ _FX_BG_Dither(wPhys, hPhys) {
 ; --- Style 1: Gradient Drift ---
 ; Slow-rotating warm/cool color wash. Two large soft blobs orbiting ~45s.
 _FX_BG_GradientDrift(wPhys, hPhys) {
-    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase, cfg
+    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase, gFX_BackdropDirSign, cfg
 
     baseARGB := cfg.GUI_AcrylicColor
     baseRGB := baseARGB & 0x00FFFFFF
@@ -833,8 +834,8 @@ _FX_BG_GradientDrift(wPhys, hPhys) {
     coolB := Min(255, bB + 120)
     coolARGB := 0xFF000000 | (coolR << 16) | (coolG << 8) | coolB
 
-    ; Orbit positions (~45s full rotation, random starting phase)
-    angle := gFX_AmbientTime * 0.000140 + gFX_BackdropSeedPhase
+    ; Orbit positions (~45s full rotation, random phase + direction)
+    angle := gFX_BackdropDirSign * gFX_AmbientTime * 0.000140 + gFX_BackdropSeedPhase
     cx := wPhys * 0.5
     cy := hPhys * 0.5
     rx := wPhys * 0.35
@@ -863,7 +864,7 @@ _FX_BG_GradientDrift(wPhys, hPhys) {
 ; --- Style 2: Caustic Ripple ---
 ; Turbulence noise simulating light refracting through textured glass.
 _FX_BG_Caustic(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase
     global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
     global FX_CROP_RECT, FX_SAT_SATURATION
 
@@ -873,9 +874,10 @@ _FX_BG_Caustic(wPhys, hPhys) {
     ; D2D Turbulence noise is perlin(x*freq, y*freq) at absolute coordinates.
     ; OFFSET controls where generation starts AND output position, but doesn't shift
     ; the noise function — so to animate, the CROP must drift through the noise field.
+    ; seedPhase randomizes starting point in oscillation → random initial direction.
     margin := 100
-    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.0008)
-    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.0005)
+    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.0008 + gFX_BackdropSeedPhase)
+    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.0005 + gFX_BackdropSeedPhase)
 
     ; Fixed generation area around seed position (margin accommodates crop drift)
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
@@ -904,22 +906,23 @@ _FX_BG_Caustic(wPhys, hPhys) {
 ; --- Style 3: Aurora ---
 ; Three soft colored blobs drifting in slow elliptical orbits.
 _FX_BG_Aurora(wPhys, hPhys) {
-    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase
+    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase, gFX_BackdropDirSign
 
     cx := wPhys * 0.5
     cy := hPhys * 0.5
+    dir := gFX_BackdropDirSign
 
-    ; Three blobs with different orbit speeds and phases (random base phase)
+    ; Three blobs with different orbit speeds and phases (random phase + direction)
     ; Blob 1: warm rose
-    a1 := gFX_AmbientTime * 0.000200 + gFX_BackdropSeedPhase  ; ~31s cycle
+    a1 := dir * gFX_AmbientTime * 0.000200 + gFX_BackdropSeedPhase  ; ~31s cycle
     x1 := cx + wPhys * 0.3 * Cos(a1)
     y1 := cy + hPhys * 0.25 * Sin(a1 * 1.3)
     ; Blob 2: cool cyan
-    a2 := gFX_AmbientTime * 0.000160 + 2.09 + gFX_BackdropSeedPhase  ; ~39s cycle
+    a2 := dir * gFX_AmbientTime * 0.000160 + 2.09 + gFX_BackdropSeedPhase  ; ~39s cycle
     x2 := cx + wPhys * 0.25 * Cos(a2)
     y2 := cy + hPhys * 0.3 * Sin(a2 * 0.9)
     ; Blob 3: neutral violet
-    a3 := gFX_AmbientTime * 0.000120 + 4.19 + gFX_BackdropSeedPhase  ; ~52s cycle
+    a3 := dir * gFX_AmbientTime * 0.000120 + 4.19 + gFX_BackdropSeedPhase  ; ~52s cycle
     x3 := cx + wPhys * 0.2 * Cos(a3 * 1.1)
     y3 := cy + hPhys * 0.2 * Sin(a3)
 
@@ -941,17 +944,17 @@ _FX_BG_Aurora(wPhys, hPhys) {
 ; --- Style 4: Grain (Film Grain) ---
 ; Fine static turbulence texture — frosted glass materiality.
 _FX_BG_Grain(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase
     global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
     global FX_CROP_RECT, FX_SAT_SATURATION
 
     if (!gFX_GPU.Has("bgTurb"))
         return
 
-    ; Fixed generation area; drifting crop for shimmer animation (see Caustic for details)
+    ; Fixed generation area; drifting crop for shimmer (see Caustic for details)
     margin := 60
-    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.003)
-    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.002)
+    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.003 + gFX_BackdropSeedPhase)
+    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.002 + gFX_BackdropSeedPhase)
 
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
