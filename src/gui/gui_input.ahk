@@ -450,15 +450,15 @@ GUI_OnClick(x, y) {
 
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
-    global gGUI_MouseTracking
+    global gGUI_MouseTracking, gAnim_HidePending
     global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow
 
     if (hwnd != gGUI_OverlayH) {
         return 0
     }
 
-    ; Don't process mouse moves if overlay isn't visible
-    if (!gGUI_OverlayVisible) {
+    ; Don't process mouse moves if overlay isn't visible or is fading out
+    if (!gGUI_OverlayVisible || gAnim_HidePending) {
         return 0
     }
 
