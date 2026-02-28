@@ -4,7 +4,7 @@
 ;
 ; Architecture:
 ;   Shader_Init()     — get immediate context, compile fullscreen VS, create cbuffer
-;   Shader_Register() — compile HLSL pixel shader, store in registry
+;   Shader_Register() — compile HLSL pixel shader, store in registry (with metadata)
 ;   Shader_PreRender()— lazy create/resize RT, bind pipeline, Draw(3,0)
 ;   Shader_GetBitmap()— return ID2D1Bitmap1 for D2D DrawImage
 ;   Shader_Cleanup()  — release all D3D11 resources
@@ -14,25 +14,11 @@
 
 global gShader_D3DCtx := 0       ; ID3D11DeviceContext (immediate)
 global gShader_VS := 0           ; ID3D11VertexShader (fullscreen triangle, shared)
-global gShader_CBuffer := 0      ; ID3D11Buffer (16-byte constant buffer, shared)
-global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h}
+global gShader_CBuffer := 0      ; ID3D11Buffer (32-byte constant buffer, shared)
+global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h, meta, srv}
 global gShader_Ready := false    ; true after Shader_Init succeeds
-global gShader_DebugLog := true  ; TEMP: enable file-based debug logging
-
-; ========================= DEBUG LOGGING =========================
-
-_Shader_Log(msg) {
-    global gShader_DebugLog
-    if (!gShader_DebugLog)
-        return
-    static logPath := A_Temp "\tabby_shader_debug.log"
-    static initialized := false
-    if (!initialized) {
-        try FileDelete(logPath)
-        initialized := true
-    }
-    try FileAppend(FormatTime(, "HH:mm:ss") " " msg "`n", logPath)
-}
+global gShader_FrameCount := 0   ; frame counter for cbuffer
+global gShader_LastTime := 0.0   ; previous frame time for timeDelta
 
 ; ========================= INIT =========================
 
@@ -41,18 +27,13 @@ _Shader_Log(msg) {
 Shader_Init() {
     global gD2D_D3DDevice, gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Ready
 
-    _Shader_Log("Shader_Init: START, gD2D_D3DDevice=" gD2D_D3DDevice)
-
-    if (!gD2D_D3DDevice) {
-        _Shader_Log("Shader_Init: ABORT - no D3D device")
+    if (!gD2D_D3DDevice)
         return false
-    }
 
     try {
         ; Get immediate context (ID3D11Device::GetImmediateContext, vtable 40)
         pCtx := 0
         ComCall(40, gD2D_D3DDevice, "ptr*", &pCtx)
-        _Shader_Log("Shader_Init: GetImmediateContext -> pCtx=" pCtx)
         if (!pCtx)
             return false
         gShader_D3DCtx := pCtx
@@ -70,22 +51,20 @@ VSOut VSMain(uint id : SV_VertexID) {
         )"
 
         vsBytecode := _Shader_Compile(vsHLSL, "VSMain", "vs_4_0")
-        _Shader_Log("Shader_Init: VS compile -> " (vsBytecode ? "OK (" vsBytecode.Size " bytes)" : "FAILED"))
         if (!vsBytecode)
             return false
 
         ; CreateVertexShader (ID3D11Device vtable 12)
         pVS := 0
         hr := ComCall(12, gD2D_D3DDevice, "ptr", vsBytecode, "uptr", vsBytecode.Size, "ptr", 0, "ptr*", &pVS, "int")
-        _Shader_Log("Shader_Init: CreateVertexShader hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pVS=" pVS)
         if (!pVS)
             return false
         gShader_VS := pVS
 
-        ; Create constant buffer (16 bytes: time, resolution.xy, pad)
+        ; Create constant buffer (32 bytes: time, resolution.xy, timeDelta, frame, darken, desaturate, _pad)
         ; D3D11_BUFFER_DESC (24 bytes): ByteWidth, Usage, BindFlags, CPUAccessFlags, MiscFlags, StructureByteStride
         bufDesc := Buffer(24, 0)
-        NumPut("uint", 16, bufDesc, 0)       ; ByteWidth = 16
+        NumPut("uint", 32, bufDesc, 0)       ; ByteWidth = 32
         NumPut("uint", 2, bufDesc, 4)        ; Usage = D3D11_USAGE_DYNAMIC
         NumPut("uint", 4, bufDesc, 8)        ; BindFlags = D3D11_BIND_CONSTANT_BUFFER
         NumPut("uint", 0x10000, bufDesc, 12) ; CPUAccessFlags = D3D11_CPU_ACCESS_WRITE
@@ -93,16 +72,13 @@ VSOut VSMain(uint id : SV_VertexID) {
         ; CreateBuffer (ID3D11Device vtable 3)
         pCB := 0
         hr := ComCall(3, gD2D_D3DDevice, "ptr", bufDesc, "ptr", 0, "ptr*", &pCB, "int")
-        _Shader_Log("Shader_Init: CreateBuffer hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pCB=" pCB)
         if (!pCB)
             return false
         gShader_CBuffer := pCB
 
         gShader_Ready := true
-        _Shader_Log("Shader_Init: SUCCESS - ready=true")
         return true
     } catch as e {
-        _Shader_Log("Shader_Init: EXCEPTION - " e.Message " @ " e.What)
         Shader_Cleanup()
         return false
     }
@@ -115,21 +91,16 @@ VSOut VSMain(uint id : SV_VertexID) {
 ; lifetime issues where the blob's vtable (inside d3dcompiler_47.dll) could become
 ; invalid if the DLL is unloaded between calls.
 _Shader_Compile(hlsl, entryPoint, target) {
-    _Shader_Log("_Shader_Compile: entry='" entryPoint "' target='" target "' hlslLen=" StrLen(hlsl))
-
     ; Ensure d3dcompiler_47 stays loaded (DllCall may unload between calls)
     static hModule := DllCall("LoadLibrary", "str", "d3dcompiler_47", "ptr")
-    if (!hModule) {
-        _Shader_Log("_Shader_Compile: FAILED - LoadLibrary d3dcompiler_47 returned 0")
+    if (!hModule)
         return 0
-    }
 
     ; D3DCompile expects ANSI/UTF-8 source, not UTF-16.
     cbNeeded := StrPut(hlsl, "UTF-8")
     srcBuf := Buffer(cbNeeded)
     StrPut(hlsl, srcBuf, "UTF-8")
     srcLen := cbNeeded - 1  ; exclude null terminator
-    _Shader_Log("_Shader_Compile: UTF-8 srcLen=" srcLen " bufSize=" cbNeeded)
 
     pBlob := 0
     pErrors := 0
@@ -140,78 +111,159 @@ _Shader_Compile(hlsl, entryPoint, target) {
         "uint", 0, "uint", 0,
         "ptr*", &pBlob, "ptr*", &pErrors, "int")
 
-    _Shader_Log("_Shader_Compile: D3DCompile hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pBlob=" pBlob " pErrors=" pErrors)
-
-    ; Extract error message before releasing
+    ; Release error blob
     if (pErrors) {
-        try {
-            pErrStr := ComCall(3, pErrors, "ptr")  ; GetBufferPointer
-            if (pErrStr) {
-                errMsg := StrGet(pErrStr, "UTF-8")
-                _Shader_Log("_Shader_Compile: ERROR MSG: " errMsg)
-            }
-            ComCall(2, pErrors)
-        }
+        try ComCall(2, pErrors)
     }
 
-    if (hr < 0 || !pBlob) {
-        _Shader_Log("_Shader_Compile: FAILED - hr < 0 or no blob")
+    if (hr < 0 || !pBlob)
         return 0
-    }
 
     ; Extract bytecode into a persistent Buffer, then release the blob.
-    ; This avoids holding a reference to a COM object whose vtable lives
-    ; inside d3dcompiler_47.dll.
     pCode := ComCall(3, pBlob, "ptr")    ; GetBufferPointer
     codeSize := ComCall(4, pBlob, "uptr") ; GetBufferSize
-    _Shader_Log("_Shader_Compile: bytecode pCode=" pCode " size=" codeSize)
     if (!pCode || !codeSize) {
         ComCall(2, pBlob)
-        _Shader_Log("_Shader_Compile: FAILED - no bytecode")
         return 0
     }
 
     bytecode := Buffer(codeSize)
     DllCall("ntdll\RtlMoveMemory", "ptr", bytecode, "ptr", pCode, "uptr", codeSize)
     ComCall(2, pBlob)  ; Release blob — we have our own copy now
-    _Shader_Log("_Shader_Compile: SUCCESS - " codeSize " bytes extracted")
     return bytecode
 }
 
 ; ========================= REGISTER =========================
 
-; Register a shader by name with HLSL pixel shader source.
+; Register a shader by name with HLSL pixel shader source and optional metadata.
+; meta: {opacity: 0.50, iChannels: [{index: 0, file: "name_i0.png"}]}
 ; Compiles the PS and stores in registry. Returns true on success.
-Shader_Register(name, hlsl) {
+Shader_Register(name, hlsl, meta := "") {
     global gD2D_D3DDevice, gShader_Registry, gShader_Ready
 
-    _Shader_Log("Shader_Register: name='" name "' ready=" gShader_Ready " device=" gD2D_D3DDevice)
-
-    if (!gShader_Ready || !gD2D_D3DDevice) {
-        _Shader_Log("Shader_Register: ABORT - not ready or no device")
+    if (!gShader_Ready || !gD2D_D3DDevice)
         return false
-    }
+
+    ; Default metadata
+    if (!IsObject(meta))
+        meta := {opacity: 1.0, iChannels: []}
 
     try {
         psBytecode := _Shader_Compile(hlsl, "PSMain", "ps_4_0")
-        if (!psBytecode) {
-            _Shader_Log("Shader_Register: FAILED - PS compile failed")
+        if (!psBytecode)
             return false
-        }
 
         ; CreatePixelShader (ID3D11Device vtable 15)
         pPS := 0
         hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
-        _Shader_Log("Shader_Register: CreatePixelShader hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pPS=" pPS)
         if (!pPS)
             return false
 
-        gShader_Registry[name] := {ps: pPS, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0}
-        _Shader_Log("Shader_Register: SUCCESS - '" name "' registered")
+        gShader_Registry[name] := {ps: pPS, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srv: 0}
+
+        ; Load iChannel textures (lazy — loaded here at register time for simplicity)
+        if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0) {
+            _Shader_LoadTextures(name)
+        }
+
         return true
     } catch as e {
-        _Shader_Log("Shader_Register: EXCEPTION - " e.Message " @ " e.What)
         return false
+    }
+}
+
+; ========================= iCHANNEL TEXTURES =========================
+
+; Load iChannel textures for a shader. GDI+ → CreateTexture2D → CreateShaderResourceView.
+_Shader_LoadTextures(name) {
+    global gD2D_D3DDevice, gShader_Registry
+
+    if (!gShader_Registry.Has(name))
+        return
+
+    entry := gShader_Registry[name]
+    if (!entry.meta.HasOwnProp("iChannels") || entry.meta.iChannels.Length = 0)
+        return
+
+    ; Only handle iChannel0 for now (most shaders use just one texture)
+    ch := entry.meta.iChannels[1]  ; AHK arrays are 1-based
+    texPath := Shader_GetTexturePath(ch.file)
+
+    if (!FileExist(texPath))
+        return
+
+    try {
+        ; Load PNG via GDI+
+        pBitmapGdip := 0
+        DllCall("gdiplus\GdipCreateBitmapFromFile", "str", texPath, "ptr*", &pBitmapGdip, "int")
+        if (!pBitmapGdip)
+            return
+
+        ; Get dimensions
+        imgW := 0
+        imgH := 0
+        DllCall("gdiplus\GdipGetImageWidth", "ptr", pBitmapGdip, "uint*", &imgW)
+        DllCall("gdiplus\GdipGetImageHeight", "ptr", pBitmapGdip, "uint*", &imgH)
+
+        ; Lock bits in BGRA format (PixelFormat32bppARGB = 0x26200A)
+        ; GDI+ BitmapData struct: 32 bytes on x64
+        bmpData := Buffer(32, 0)
+        ; Rect struct: {x, y, w, h} as int32s
+        lockRect := Buffer(16, 0)
+        NumPut("int", 0, lockRect, 0)
+        NumPut("int", 0, lockRect, 4)
+        NumPut("int", imgW, lockRect, 8)
+        NumPut("int", imgH, lockRect, 12)
+
+        hr := DllCall("gdiplus\GdipBitmapLockBits", "ptr", pBitmapGdip, "ptr", lockRect,
+            "uint", 1, "int", 0x26200A, "ptr", bmpData, "int")  ; ImageLockModeRead=1
+        if (hr != 0) {
+            DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
+            return
+        }
+
+        stride := NumGet(bmpData, 8, "int")
+        pPixels := NumGet(bmpData, 16, "ptr")
+
+        ; Create D3D11 Texture2D with initial data
+        texDesc := Buffer(44, 0)
+        NumPut("uint", imgW, texDesc, 0)        ; Width
+        NumPut("uint", imgH, texDesc, 4)        ; Height
+        NumPut("uint", 1, texDesc, 8)           ; MipLevels
+        NumPut("uint", 1, texDesc, 12)          ; ArraySize
+        NumPut("uint", 87, texDesc, 16)         ; Format = DXGI_FORMAT_B8G8R8A8_UNORM
+        NumPut("uint", 1, texDesc, 20)          ; SampleDesc.Count
+        NumPut("uint", 0, texDesc, 24)          ; SampleDesc.Quality
+        NumPut("uint", 0, texDesc, 28)          ; Usage = DEFAULT
+        NumPut("uint", 0x8, texDesc, 32)        ; BindFlags = SHADER_RESOURCE
+
+        ; D3D11_SUBRESOURCE_DATA (16 bytes on x64): pSysMem, SysMemPitch, SysMemSlicePitch
+        initData := Buffer(A_PtrSize * 2 + 4, 0)
+        NumPut("ptr", pPixels, initData, 0)
+        NumPut("uint", stride, initData, A_PtrSize)
+
+        pTexture := 0
+        hr := ComCall(5, gD2D_D3DDevice, "ptr", texDesc, "ptr", initData, "ptr*", &pTexture, "int")
+
+        ; Unlock bits and dispose GDI+ bitmap
+        DllCall("gdiplus\GdipBitmapUnlockBits", "ptr", pBitmapGdip, "ptr", bmpData)
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
+
+        if (hr < 0 || !pTexture)
+            return
+
+        ; CreateShaderResourceView (ID3D11Device vtable 7)
+        pSRV := 0
+        hr := ComCall(7, gD2D_D3DDevice, "ptr", pTexture, "ptr", 0, "ptr*", &pSRV, "int")
+        ; Release the texture (SRV holds a ref)
+        ComCall(2, pTexture)
+
+        if (hr < 0 || !pSRV)
+            return
+
+        entry.srv := pSRV
+    } catch {
+        ; Texture loading failed — shader will run without textures
     }
 }
 
@@ -222,8 +274,6 @@ Shader_Register(name, hlsl) {
 ; (for GPU→CPU readback), and a D2D bitmap (on gD2D_RT's device, for DrawImage).
 _Shader_CreateRT(entry, w, h) {
     global gD2D_D3DDevice, gD2D_RT
-
-    _Shader_Log("_Shader_CreateRT: w=" w " h=" h " device=" gD2D_D3DDevice " RT=" gD2D_RT.ptr)
 
     ; Release old resources (raw COM ptrs from ComCall "ptr*")
     if (entry.bitmap) {
@@ -258,7 +308,6 @@ _Shader_CreateRT(entry, w, h) {
 
     pTex := 0
     hr := ComCall(5, gD2D_D3DDevice, "ptr", texDesc, "ptr", 0, "ptr*", &pTex, "int")
-    _Shader_Log("_Shader_CreateRT: CreateTexture2D hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pTex=" pTex)
     if (hr < 0 || !pTex)
         return false
     entry.tex := pTex
@@ -266,7 +315,6 @@ _Shader_CreateRT(entry, w, h) {
     ; CreateRenderTargetView (ID3D11Device vtable 9)
     pRTV := 0
     hr := ComCall(9, gD2D_D3DDevice, "ptr", pTex, "ptr", 0, "ptr*", &pRTV, "int")
-    _Shader_Log("_Shader_CreateRT: CreateRTV hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pRTV=" pRTV)
     if (hr < 0 || !pRTV)
         return false
     entry.rtv := pRTV
@@ -286,7 +334,6 @@ _Shader_CreateRT(entry, w, h) {
 
     pStaging := 0
     hr := ComCall(5, gD2D_D3DDevice, "ptr", stagingDesc, "ptr", 0, "ptr*", &pStaging, "int")
-    _Shader_Log("_Shader_CreateRT: CreateStaging hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pStaging=" pStaging)
     if (hr < 0 || !pStaging)
         return false
     entry.staging := pStaging
@@ -304,14 +351,12 @@ _Shader_CreateRT(entry, w, h) {
 
     pBitmap := 0
     hr := ComCall(4, gD2D_RT, "int64", sizeVal, "ptr", 0, "uint", 0, "ptr", bmpProps, "ptr*", &pBitmap, "int")
-    _Shader_Log("_Shader_CreateRT: CreateBitmap hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr) " pBitmap=" pBitmap)
     if (hr < 0 || !pBitmap)
         return false
     entry.bitmap := pBitmap
 
     entry.w := w
     entry.h := h
-    _Shader_Log("_Shader_CreateRT: SUCCESS - tex=" pTex " staging=" pStaging " bitmap=" pBitmap)
     return true
 }
 
@@ -325,62 +370,53 @@ _Shader_MakeGUID(str) {
 ; ========================= PRE-RENDER =========================
 
 ; Run the D3D11 shader pipeline. Call BEFORE D2D BeginDraw.
-Shader_PreRender(name, w, h, timeSec) {
+; timeSec: elapsed time in seconds. darken/desaturate: 0.0-1.0 post-processing.
+Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Registry, gShader_Ready
+    global gShader_FrameCount, gShader_LastTime
 
-    ; Log only first call + on resize (avoid spamming per-frame)
-    static lastLogW := 0, lastLogH := 0, callCount := 0
-    callCount++
-    doLog := (callCount <= 3 || w != lastLogW || h != lastLogH)
-    if (doLog)
-        _Shader_Log("Shader_PreRender: name='" name "' w=" w " h=" h " t=" Round(timeSec, 2) " ready=" gShader_Ready " has=" gShader_Registry.Has(name))
-
-    if (!gShader_Ready || !gShader_Registry.Has(name)) {
-        if (doLog)
-            _Shader_Log("Shader_PreRender: ABORT - not ready or name not registered")
+    if (!gShader_Ready || !gShader_Registry.Has(name))
         return false
-    }
 
     entry := gShader_Registry[name]
-    if (!entry.ps) {
-        if (doLog)
-            _Shader_Log("Shader_PreRender: ABORT - no pixel shader")
+    if (!entry.ps)
         return false
-    }
 
     ; Lazy create/resize render target
     if (entry.w != w || entry.h != h || !entry.tex) {
-        _Shader_Log("Shader_PreRender: creating RT (old " entry.w "x" entry.h " -> new " w "x" h ")")
-        if (!_Shader_CreateRT(entry, w, h)) {
-            _Shader_Log("Shader_PreRender: _Shader_CreateRT FAILED")
+        if (!_Shader_CreateRT(entry, w, h))
             return false
-        }
     }
 
-    if (!entry.rtv || !entry.bitmap) {
-        if (doLog)
-            _Shader_Log("Shader_PreRender: ABORT - rtv=" entry.rtv " bitmap=" entry.bitmap)
+    if (!entry.rtv || !entry.bitmap)
         return false
-    }
 
     ctx := gShader_D3DCtx
 
-    ; Map cbuffer → write time, resolution → Unmap
+    ; Compute timeDelta
+    timeDelta := 0.0
+    if (gShader_LastTime > 0)
+        timeDelta := timeSec - gShader_LastTime
+    gShader_LastTime := timeSec
+    gShader_FrameCount += 1
+
+    ; Map cbuffer → write all 32 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
     mapped := Buffer(16, 0)
     ; Map (vtable 14): resource, subresource, mapType=WRITE_DISCARD(4), mapFlags, mappedResource
     hr := ComCall(14, ctx, "ptr", gShader_CBuffer, "uint", 0, "uint", 4, "uint", 0, "ptr", mapped, "int")
-    if (hr < 0) {
-        if (doLog)
-            _Shader_Log("Shader_PreRender: Map FAILED hr=0x" Format("{:08X}", hr + 0x100000000))
+    if (hr < 0)
         return false
-    }
     pData := NumGet(mapped, 0, "ptr")
     if (pData) {
-        NumPut("float", Float(timeSec), pData, 0)        ; time
-        NumPut("float", Float(w), pData, 4)               ; resolution.x
-        NumPut("float", Float(h), pData, 8)               ; resolution.y
-        NumPut("float", 0.0, pData, 12)                   ; _pad
+        NumPut("float", Float(timeSec), pData, 0)          ; time        (offset 0)
+        NumPut("float", Float(w), pData, 4)                 ; resolution.x (offset 4)
+        NumPut("float", Float(h), pData, 8)                 ; resolution.y (offset 8)
+        NumPut("float", Float(timeDelta), pData, 12)        ; timeDelta   (offset 12)
+        NumPut("uint", gShader_FrameCount, pData, 16)       ; frame       (offset 16)
+        NumPut("float", Float(darken), pData, 20)           ; darken      (offset 20)
+        NumPut("float", Float(desaturate), pData, 24)       ; desaturate  (offset 24)
+        NumPut("float", 0.0, pData, 28)                     ; _pad        (offset 28)
     }
     ; Unmap (vtable 15)
     ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)
@@ -419,12 +455,25 @@ Shader_PreRender(name, w, h, timeSec) {
     NumPut("ptr", gShader_CBuffer, cbBuf)
     ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf)
 
+    ; Bind iChannel texture SRV if available (PSSetShaderResources vtable 8)
+    if (entry.srv) {
+        srvBuf := Buffer(A_PtrSize, 0)
+        NumPut("ptr", entry.srv, srvBuf)
+        ComCall(8, ctx, "uint", 0, "uint", 1, "ptr", srvBuf)
+    }
+
     ; Draw (vtable 13): vertexCount=3, startVertexLocation=0
     ComCall(13, ctx, "uint", 3, "uint", 0)
 
     ; Unbind render target — clean state for D2D BeginDraw
     ; OMSetRenderTargets(0, null, null)
     ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0)
+
+    ; Unbind SRV if it was bound
+    if (entry.srv) {
+        nullSrv := Buffer(A_PtrSize, 0)
+        ComCall(8, ctx, "uint", 0, "uint", 1, "ptr", nullSrv)
+    }
 
     ; --- GPU→CPU readback: copy rendered texture to D2D bitmap ---
     ; CopyResource (vtable 47): staging ← render texture
@@ -433,26 +482,16 @@ Shader_PreRender(name, w, h, timeSec) {
     ; Map staging texture (vtable 14): D3D11_MAP_READ=1
     mapped := Buffer(16, 0)
     hr := ComCall(14, ctx, "ptr", entry.staging, "uint", 0, "uint", 1, "uint", 0, "ptr", mapped, "int")
-    if (hr < 0) {
-        if (doLog)
-            _Shader_Log("Shader_PreRender: Map staging FAILED hr=0x" Format("{:08X}", hr + 0x100000000))
+    if (hr < 0)
         return false
-    }
     pPixels := NumGet(mapped, 0, "ptr")
     rowPitch := NumGet(mapped, A_PtrSize, "uint")
 
     ; CopyFromMemory on D2D bitmap (ID2D1Bitmap vtable 10): dstRect, srcData, pitch
-    hr := ComCall(10, entry.bitmap, "ptr", 0, "ptr", pPixels, "uint", rowPitch, "int")
+    ComCall(10, entry.bitmap, "ptr", 0, "ptr", pPixels, "uint", rowPitch, "int")
 
     ; Unmap staging (vtable 15)
     ComCall(15, ctx, "ptr", entry.staging, "uint", 0)
-
-    if (doLog) {
-        _Shader_Log("Shader_PreRender: readback rowPitch=" rowPitch " CopyFromMemory hr=0x" Format("{:08X}", hr < 0 ? hr + 0x100000000 : hr))
-        _Shader_Log("Shader_PreRender: Draw(3,0) completed OK - VS=" gShader_VS " PS=" entry.ps " bitmap=" entry.bitmap)
-        lastLogW := w
-        lastLogH := h
-    }
 
     return true
 }
@@ -468,117 +507,17 @@ _Shader_MakeClearColor() {
 ; Return the ID2D1Bitmap1 ptr for DrawImage. Returns 0 if not available.
 Shader_GetBitmap(name) {
     global gShader_Registry
-    if (!gShader_Registry.Has(name)) {
-        static logMiss := true
-        if (logMiss) {
-            _Shader_Log("Shader_GetBitmap: name='" name "' NOT in registry")
-            logMiss := false
-        }
+    if (!gShader_Registry.Has(name))
         return 0
-    }
-    bmp := gShader_Registry[name].bitmap
-    static logFirst := true
-    if (logFirst) {
-        _Shader_Log("Shader_GetBitmap: name='" name "' bitmap=" bmp)
-        logFirst := false
-    }
-    return bmp
+    return gShader_Registry[name].bitmap
 }
 
-; ========================= HLSL SOURCES =========================
-
-; Matrix Rain — Shadertoy-style digital rain converted to HLSL.
-Shader_HLSL_MatrixRain() {
-    return "
-    (
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float _pad;
-};
-
-// Hash function for pseudo-random
-float hash(float2 p) {
-    float h = dot(p, float2(127.1, 311.7));
-    return frac(sin(h) * 43758.5453);
-}
-
-// Character-like pattern (simplified glyph)
-float charPattern(float2 uv, float id) {
-    // Grid of dots/bars simulating matrix glyphs
-    float2 g = frac(uv * float2(3.0, 4.0) + hash(float2(id, id * 0.7)) * 10.0);
-    float d = step(0.3, g.x) * step(0.3, g.y);
-    // Mix patterns based on ID
-    float pattern2 = step(0.5, frac(sin(id * 91.7) * 437.5));
-    float bar = step(0.4, g.x) * step(g.y, 0.8);
-    return lerp(d, bar, pattern2);
-}
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
-float4 PSMain(PSInput input) : SV_Target {
-    float2 fragCoord = input.pos.xy;
-    float2 uv = fragCoord / resolution;
-
-    // Grid parameters
-    float colWidth = 14.0;  // pixels per column
-    float rowHeight = 16.0; // pixels per row
-
-    float col = floor(fragCoord.x / colWidth);
-    float row = floor(fragCoord.y / rowHeight);
-
-    // Per-column properties
-    float colHash = hash(float2(col, 0.0));
-    float speed = 2.0 + colHash * 4.0;        // Fall speed varies per column
-    float offset = colHash * 100.0;             // Start offset
-    float trailLen = 8.0 + colHash * 16.0;      // Trail length varies
-
-    // Current position in the rain stream
-    float rainPos = time * speed + offset;
-    float headRow = frac(rainPos / 40.0) * (resolution.y / rowHeight + trailLen);
-
-    // Distance from head of trail
-    float dist = headRow - row;
-
-    // Only draw if within trail
-    if (dist < 0.0 || dist > trailLen) {
-        return float4(0, 0, 0, 0);
-    }
-
-    // Brightness: bright at head, fading tail
-    float brightness = 1.0 - (dist / trailLen);
-    brightness = brightness * brightness; // Quadratic falloff
-
-    // Head glow (first 2 chars are brighter/whiter)
-    float headGlow = saturate(1.0 - dist * 0.5);
-
-    // Character cell UV
-    float2 cellUV = float2(frac(fragCoord.x / colWidth), frac(fragCoord.y / rowHeight));
-
-    // Character ID changes over time (scrolling effect)
-    float charId = hash(float2(col, floor(row + time * speed * 0.3)));
-
-    // Character shape
-    float ch = charPattern(cellUV, charId + floor(time * 2.0));
-
-    // Color: green with white head
-    float3 green = float3(0.1, 0.9, 0.3);
-    float3 white = float3(0.8, 1.0, 0.85);
-    float3 color = lerp(green, white, headGlow * 0.7);
-
-    // Final alpha from character shape and trail brightness
-    float alpha = ch * brightness * 0.9;
-
-    // Slight column brightness variation
-    alpha *= 0.6 + 0.4 * hash(float2(col * 7.3, 1.0));
-
-    // Premultiplied alpha output for D2D compositing
-    return float4(color * alpha, alpha);
-}
-    )"
+; Return the metadata for a registered shader, or 0 if not found.
+Shader_GetMeta(name) {
+    global gShader_Registry
+    if (!gShader_Registry.Has(name))
+        return 0
+    return gShader_Registry[name].meta
 }
 
 ; ========================= CLEANUP =========================
@@ -586,9 +525,12 @@ float4 PSMain(PSInput input) : SV_Target {
 ; Release all D3D11 shader resources. Safe to call multiple times.
 Shader_Cleanup() {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Registry, gShader_Ready
+    global gShader_FrameCount, gShader_LastTime
 
     ; Release per-shader resources (all raw COM ptrs)
     for _, entry in gShader_Registry {
+        if (entry.srv)
+            ComCall(2, entry.srv)
         if (entry.bitmap)
             ComCall(2, entry.bitmap)
         if (entry.staging)
@@ -616,4 +558,6 @@ Shader_Cleanup() {
     }
 
     gShader_Ready := false
+    gShader_FrameCount := 0
+    gShader_LastTime := 0.0
 }

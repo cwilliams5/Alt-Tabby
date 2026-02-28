@@ -97,10 +97,10 @@ global gFX_BackdropSeedX := 0.0
 global gFX_BackdropSeedY := 0.0
 global gFX_BackdropSeedPhase := 0.0
 global gFX_BackdropDirSign := 1
-global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered",
-                              "Matrix Rain"]
-global gShader_StyleMap := Map()
+global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
+global gFX_ShaderIndex := 0
 global gShader_Ready := false
+global SHADER_NAMES := ["None"]
 global gFX_MouseX := 0.0
 global gFX_MouseY := 0.0
 global gFX_MouseInWindow := false
@@ -277,7 +277,9 @@ FX_OnSelectionChange(gpuStyleIndex) {
 }
 FX_DrawBackdrop(wPhys, hPhys, scale) {
 }
-FX_PreRenderShaderBackdrop(w, h) {
+FX_PreRenderShaderLayer(w, h) {
+}
+FX_DrawShaderLayer(wPhys, hPhys) {
 }
 
 Win_DwmFlush() {

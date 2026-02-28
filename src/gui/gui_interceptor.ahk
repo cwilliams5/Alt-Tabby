@@ -61,6 +61,9 @@ INT_SetupHotkeys() {
     ; C key — cycle backdrop effects when GUI is active
     Hotkey("~*c", _INT_C_Down)
 
+    ; V key — cycle shader layer when GUI is active
+    Hotkey("~*v", _INT_V_Down)
+
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
 }
@@ -387,6 +390,27 @@ _INT_C_Down(*) {
 
     styleName := FX_BG_STYLE_NAMES[gFX_BackdropStyle + 1]
     ToolTip("Backdrop: " styleName)
+    SetTimer(() => ToolTip(), -2000)
+
+    GUI_Repaint()
+}
+
+; ========================= SHADER LAYER CYCLING =========================
+
+_INT_V_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gFX_ShaderIndex, gFX_GPUReady
+    global SHADER_NAMES, gShader_Ready ; lint-ignore: phantom-global
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+    if (!gFX_GPUReady || !gShader_Ready)
+        return
+
+    gFX_ShaderIndex := Mod(gFX_ShaderIndex + 1, SHADER_NAMES.Length)
+
+    shaderName := SHADER_NAMES[gFX_ShaderIndex + 1]
+    ToolTip("Shader: " shaderName)
     SetTimer(() => ToolTip(), -2000)
 
     GUI_Repaint()

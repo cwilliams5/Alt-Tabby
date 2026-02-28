@@ -168,8 +168,8 @@ GUI_Repaint() {
     if (diagTiming)
         t1 := QPC()
 
-    ; Pre-render shader backdrop (D3D11) before D2D BeginDraw — no state conflict
-    FX_PreRenderShaderBackdrop(phW, phH)
+    ; Pre-render shader layer (D3D11) before D2D BeginDraw — no state conflict
+    FX_PreRenderShaderLayer(phW, phH)
 
     if (gD2D_RT) {
         gD2D_RT.BeginDraw()
@@ -379,6 +379,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global gFX_BackdropStyle
     if (isGPU && cfg.PerfAnimationType = "Full" && gFX_BackdropStyle > 0)
         FX_DrawBackdrop(wPhys, hPhys, scale)
+
+    ; Shader layer (independent of backdrop, controlled by V key)
+    FX_DrawShaderLayer(wPhys, hPhys)
 
     ; Shadow params (computed once, used for all text draws)
     ; Text shadows active for Effects (0) and all GPU styles (2+), not Clean (1)

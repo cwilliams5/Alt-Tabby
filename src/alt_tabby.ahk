@@ -116,6 +116,8 @@ for _, arg in A_Args {
 #Include Direct2D.ahk
 #Include d2d_device.ahk
 #Include d2d_shader.ahk
+#Include shader_bundle.ahk
+#Include shader_resources.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk
