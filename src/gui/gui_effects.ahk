@@ -869,25 +869,23 @@ _FX_BG_Caustic(wPhys, hPhys) {
     if (!gFX_GPU.Has("bgTurb"))
         return
 
-    ; Random base offset (set per-open) + sinusoidal drift for visible animation
+    ; D2D Turbulence noise is perlin(x*freq, y*freq) at absolute coordinates.
+    ; OFFSET controls where generation starts AND output position, but doesn't shift
+    ; the noise function — so to animate, the CROP must drift through the noise field.
     margin := 100
     driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.0008)
     driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.0005)
-    baseX := gFX_BackdropSeedX - margin + driftX
-    baseY := gFX_BackdropSeedY - margin + driftY
 
-    ; Configure background turbulence: low freq, smooth fractalSum
-    ; D2D Turbulence OFFSET = noise sample position AND output image coordinates.
-    ; Generate around seed position with margin for drift; crop at seed; shift to origin.
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(baseX), Float(baseY))
+    ; Fixed generation area around seed position (margin accommodates crop drift)
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.008, 0.008)
     gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 3)
     gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 0)  ; fractalSum (smoother)
 
-    ; Crop within generated area at seed position (drift animates pattern beneath)
-    cropX := Float(gFX_BackdropSeedX)
-    cropY := Float(gFX_BackdropSeedY)
+    ; Drifting crop slides through the noise field → visible animation
+    cropX := Float(gFX_BackdropSeedX + driftX)
+    cropY := Float(gFX_BackdropSeedY + driftY)
     gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
     gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.6)  ; CRANKED from 0.2
 
@@ -949,24 +947,20 @@ _FX_BG_Grain(wPhys, hPhys) {
     if (!gFX_GPU.Has("bgTurb"))
         return
 
-    ; Random base offset (set per-open) + sinusoidal shimmer drift
+    ; Fixed generation area; drifting crop for shimmer animation (see Caustic for details)
     margin := 60
     driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.003)
     driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.002)
-    baseX := gFX_BackdropSeedX - margin + driftX
-    baseY := gFX_BackdropSeedY - margin + driftY
 
-    ; Configure: higher freq, turbulence mode (sharper), fully desaturated
-    ; D2D Turbulence OFFSET = noise position AND output coordinates — see Caustic for details.
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(baseX), Float(baseY))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.05, 0.05)
     gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 4)
     gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 1)  ; turbulence (sharper detail)
 
-    ; Crop within generated area at seed position, shift to origin for rendering
-    cropX := Float(gFX_BackdropSeedX)
-    cropY := Float(gFX_BackdropSeedY)
+    ; Drifting crop slides through noise field → shimmer animation
+    cropX := Float(gFX_BackdropSeedX + driftX)
+    cropY := Float(gFX_BackdropSeedY + driftY)
     gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
     gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.0)  ; fully desaturated
 
