@@ -63,7 +63,7 @@ _GUI_ApplyCornerStyle(hWnd) {
 
 GUI_HideOverlay() {
     Profiler.Enter("GUI_HideOverlay") ; @profile
-    global gGUI_OverlayVisible, gGUI_Base, gGUI_Revealed
+    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES, gD2D_RT
     global gAnim_HidePending
     static hideCount := 0
@@ -77,6 +77,10 @@ GUI_HideOverlay() {
     ; _Anim_OnHideFadeComplete() will call _Anim_DoActualHide() when done
     if (cfg.PerfAnimationType != "None" && gGUI_Revealed && !gAnim_HidePending) {
         gAnim_HidePending := true
+        ; Add WS_EX_LAYERED so SetLayeredWindowAttributes can fade the entire
+        ; DWM composition (content + acrylic + shadow) as one unit.
+        Anim_AddLayered()
+        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 255, "uint", 2)
         Anim_StartTween("hideFade", 1.0, 0.0, 60, Anim_EaseOutQuad)
         Profiler.Leave() ; @profile
         return

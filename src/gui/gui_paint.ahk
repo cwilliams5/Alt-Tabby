@@ -184,18 +184,11 @@ GUI_Repaint() {
         if (diagTiming)
             t1 := QPC()
 
-        ; Opacity layer for show/hide fade animation
-        global gAnim_OverlayOpacity
-        fadeActive := (gAnim_OverlayOpacity < 1.0)
-        if (fadeActive) {
-            fadeParams := FX_LayerParams(0, 0, phW, phH, gAnim_OverlayOpacity)
-            gD2D_RT.PushLayer(fadeParams, 0)
-        }
+        ; Fade animation uses window-level alpha (WS_EX_LAYERED + SetLayeredWindowAttributes)
+        ; so DWM fades the entire composition (content + acrylic + shadow) as one unit.
+        ; No PushLayer needed here — D2D paints at full opacity.
 
         _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
-
-        if (fadeActive)
-            gD2D_RT.PopLayer()
 
         if (diagTiming)
             tPaintOverlay := QPC() - t1

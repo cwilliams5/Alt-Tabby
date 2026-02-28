@@ -172,8 +172,9 @@ _Anim_FrameLoop() {
         ; Update all active tweens
         activeCount := _Anim_UpdateTweens()
 
-        ; Sync overlay opacity from tween
+        ; Sync overlay opacity from tween → apply to window alpha
         _Anim_SyncOverlayOpacity()
+        _Anim_ApplyWindowAlpha()
 
         ; Check if hide-fade completed
         if (gAnim_HidePending && gAnim_Tweens.Has("hideFade") && gAnim_Tweens["hideFade"].done) {
@@ -235,8 +236,43 @@ _Anim_SyncOverlayOpacity() {
             gAnim_OverlayOpacity := 0.0
     } else if (gAnim_Tweens.Has("showFade")) {
         gAnim_OverlayOpacity := gAnim_Tweens["showFade"].current
-        if (gAnim_Tweens["showFade"].done)
+        if (gAnim_Tweens["showFade"].done) {
             gAnim_OverlayOpacity := 1.0
+            ; Show-fade complete: remove WS_EX_LAYERED so DWM resumes
+            ; live acrylic blur (layered windows get stale cached blur).
+            _Anim_RemoveLayered()
+        }
+    }
+}
+
+; Apply gAnim_OverlayOpacity to the window via SetLayeredWindowAttributes.
+; DWM fades the entire composition (content + acrylic + shadow) as one unit.
+_Anim_ApplyWindowAlpha() {
+    global gAnim_OverlayOpacity, gGUI_BaseH
+    if (gAnim_OverlayOpacity >= 1.0)
+        return
+    alpha := Round(gAnim_OverlayOpacity * 255)
+    if (alpha < 0)
+        alpha := 0
+    if (alpha > 255)
+        alpha := 255
+    DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", alpha, "uint", 2)  ; LWA_ALPHA=2
+}
+
+; Add WS_EX_LAYERED for fade animation. Called at fade start.
+Anim_AddLayered() {
+    global gGUI_BaseH, GWL_EXSTYLE, WS_EX_LAYERED
+    exStyle := DllCall("user32\GetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", GWL_EXSTYLE, "ptr")
+    if (!(exStyle & WS_EX_LAYERED))
+        DllCall("user32\SetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", GWL_EXSTYLE, "ptr", exStyle | WS_EX_LAYERED)
+}
+
+; Remove WS_EX_LAYERED after fade completes. Restores live acrylic blur.
+_Anim_RemoveLayered() {
+    global gGUI_BaseH, GWL_EXSTYLE, WS_EX_LAYERED
+    exStyle := DllCall("user32\GetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", GWL_EXSTYLE, "ptr")
+    if (exStyle & WS_EX_LAYERED) {
+        DllCall("user32\SetWindowLong" (A_PtrSize = 8 ? "Ptr" : ""), "ptr", gGUI_BaseH, "int", GWL_EXSTYLE, "ptr", exStyle & ~WS_EX_LAYERED)
     }
 }
 
@@ -260,7 +296,7 @@ Anim_ForceCompleteHide() {
 }
 
 _Anim_DoActualHide() {
-    global gGUI_OverlayVisible, gGUI_Base, gGUI_Revealed, gD2D_RT
+    global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed, gD2D_RT
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
     global gGUI_DisplayItems
     static hideCount := 0
@@ -290,6 +326,10 @@ _Anim_DoActualHide() {
     }
     gGUI_OverlayVisible := false
     gGUI_Revealed := false
+
+    ; Remove WS_EX_LAYERED and reset alpha so next Show gets fresh DWM blur
+    _Anim_RemoveLayered()
+    DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 255, "uint", 2)
 
     hideCount += 1
     if (Mod(hideCount, GUI_LOG_TRIM_EVERY_N_HIDES) = 0) {

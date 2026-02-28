@@ -259,6 +259,8 @@ Anim_StartSelectionSlide(prevSel, newSel, count) {
 }
 Anim_ForceCompleteHide() {
 }
+Anim_AddLayered() {
+}
 Anim_EaseOutQuad(t) {
     return t
 }

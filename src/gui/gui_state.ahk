@@ -635,6 +635,10 @@ _GUI_ShowOverlayWithFrozen() {
     ; Start show-fade animation (opacity 0→1)
     global gAnim_OverlayOpacity
     if (cfg.PerfAnimationType != "None") {
+        ; Add WS_EX_LAYERED + alpha=0 BEFORE showing window — DWM fades the
+        ; entire composition (content + acrylic + shadow) via window-level alpha.
+        Anim_AddLayered()
+        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 0, "uint", 2)
         gAnim_OverlayOpacity := 0.0
         Anim_StartTween("showFade", 0.0, 1.0, 90, Anim_EaseOutQuad)
     } else {
