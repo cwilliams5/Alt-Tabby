@@ -1,0 +1,9 @@
+{
+  "name": "Bokeh Parallax",
+  "shadertoyId": "4s2yW1",
+  "author": "knarkowicz",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeAccumulate": true
+}

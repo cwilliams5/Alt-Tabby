@@ -54,7 +54,7 @@ VSOut VSMain(uint id : SV_VertexID) {
 }
         )"
 
-        vsBytecode := _Shader_Compile(vsHLSL, "VSMain", "vs_4_0")
+        vsBytecode := _Shader_Compile(vsHLSL, "VSMain", "vs_4_0", "vs_VSMain")
         if (!vsBytecode)
             return false
 
@@ -119,7 +119,21 @@ VSOut VSMain(uint id : SV_VertexID) {
 ; Extracts bytecode immediately from the ID3DBlob and releases it — avoids vtable
 ; lifetime issues where the blob's vtable (inside d3dcompiler_47.dll) could become
 ; invalid if the DLL is unloaded between calls.
-_Shader_Compile(hlsl, entryPoint, target) {
+; Uses disk cache to skip D3DCompile when HLSL source hasn't changed.
+; cacheName: unique name for cache file (e.g., "vs_VSMain", "ps_digital_rain").
+_Shader_Compile(hlsl, entryPoint, target, cacheName := "") {
+    ; Check bytecode cache first
+    cacheKey := cacheName ? cacheName : entryPoint
+    hash := _Shader_HashSource(hlsl, entryPoint, target)
+    if (hash) {
+        cached := _Shader_CacheRead(cacheKey, hash)
+        if (cached) {
+            if (cfg.DiagShaderLog)
+                _Shader_Log("Compile " cacheKey ": cache HIT (" cached.Size " bytes)")
+            return cached
+        }
+    }
+
     ; Ensure d3dcompiler_47 stays loaded (DllCall may unload between calls)
     static hModule := DllCall("LoadLibrary", "str", "d3dcompiler_47", "ptr")
     if (!hModule)
@@ -168,7 +182,141 @@ _Shader_Compile(hlsl, entryPoint, target) {
     bytecode := Buffer(codeSize)
     DllCall("ntdll\RtlMoveMemory", "ptr", bytecode, "ptr", pCode, "uptr", codeSize)
     ComCall(2, pBlob)  ; Release blob — we have our own copy now
+
+    ; Write to cache (fire-and-forget)
+    if (hash) {
+        _Shader_CacheWrite(cacheKey, hash, bytecode)
+        if (cfg.DiagShaderLog)
+            _Shader_Log("Compile " cacheKey ": cache MISS, compiled + wrote " bytecode.Size " bytes")
+    }
+
     return bytecode
+}
+
+; ========================= BYTECODE CACHE =========================
+
+; Compute MD5 hash of (hlsl + entryPoint + target) via Windows CNG (bcrypt.dll).
+; Returns a 16-byte Buffer, or 0 on failure.
+_Shader_HashSource(hlsl, entryPoint, target) {
+    ; Concatenate with null separators to avoid collisions
+    combined := hlsl "`n" entryPoint "`n" target
+    cbNeeded := StrPut(combined, "UTF-8")
+    srcBuf := Buffer(cbNeeded)
+    StrPut(combined, srcBuf, "UTF-8")
+    srcLen := cbNeeded - 1
+
+    hAlg := 0
+    hr := DllCall("bcrypt\BCryptOpenAlgorithmProvider",
+        "ptr*", &hAlg, "str", "MD5", "ptr", 0, "uint", 0, "int")
+    if (hr < 0 || !hAlg)
+        return 0
+
+    hHash := 0
+    hr := DllCall("bcrypt\BCryptCreateHash",
+        "ptr", hAlg, "ptr*", &hHash, "ptr", 0, "uint", 0, "ptr", 0, "uint", 0, "uint", 0, "int")
+    if (hr < 0 || !hHash) {
+        DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlg, "uint", 0)
+        return 0
+    }
+
+    hr := DllCall("bcrypt\BCryptHashData",
+        "ptr", hHash, "ptr", srcBuf, "uint", srcLen, "uint", 0, "int")
+    if (hr < 0) {
+        DllCall("bcrypt\BCryptDestroyHash", "ptr", hHash)
+        DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlg, "uint", 0)
+        return 0
+    }
+
+    digest := Buffer(16, 0)  ; MD5 = 16 bytes
+    hr := DllCall("bcrypt\BCryptFinishHash",
+        "ptr", hHash, "ptr", digest, "uint", 16, "uint", 0, "int")
+    DllCall("bcrypt\BCryptDestroyHash", "ptr", hHash)
+    DllCall("bcrypt\BCryptCloseAlgorithmProvider", "ptr", hAlg, "uint", 0)
+
+    return (hr >= 0) ? digest : 0
+}
+
+; Resolve cache directory path (shader_cache/ next to config.ini). Creates dir if needed.
+; Returns path string, or "" on failure.
+_Shader_CachePath() {
+    global gConfigIniPath
+    static cachedPath := ""
+    if (cachedPath != "")
+        return cachedPath
+
+    if (!gConfigIniPath)
+        return ""
+
+    SplitPath(gConfigIniPath, , &dir)
+    cacheDir := dir "\shader_cache"
+    if (!DirExist(cacheDir)) {
+        try DirCreate(cacheDir)
+        catch
+            return ""
+    }
+    cachedPath := cacheDir
+    return cachedPath
+}
+
+; Read cached bytecode for a shader. Returns Buffer on cache hit, 0 on miss/corruption.
+; File format: [16 bytes MD5 hash][N bytes DXBC bytecode]
+_Shader_CacheRead(name, hash) {
+    cacheDir := _Shader_CachePath()
+    if (!cacheDir)
+        return 0
+
+    filePath := cacheDir "\" name ".bin"
+    if (!FileExist(filePath))
+        return 0
+
+    try {
+        f := FileOpen(filePath, "r")
+        if (!f)
+            return 0
+
+        fileSize := f.Length
+        if (fileSize <= 16) {
+            f.Close()
+            return 0
+        }
+
+        ; Read stored hash (first 16 bytes)
+        storedHash := Buffer(16, 0)
+        f.RawRead(storedHash, 16)
+
+        ; Compare hashes
+        if (DllCall("ntdll\RtlCompareMemory", "ptr", storedHash, "ptr", hash, "uptr", 16, "uptr") != 16) {
+            f.Close()
+            return 0
+        }
+
+        ; Hash matches — read bytecode
+        bytecodeSize := fileSize - 16
+        bytecode := Buffer(bytecodeSize)
+        f.RawRead(bytecode, bytecodeSize)
+        f.Close()
+        return bytecode
+    } catch {
+        return 0
+    }
+}
+
+; Write compiled bytecode to cache. Fire-and-forget — failures are silent.
+; File format: [16 bytes MD5 hash][N bytes DXBC bytecode]
+_Shader_CacheWrite(name, hash, bytecode) {
+    cacheDir := _Shader_CachePath()
+    if (!cacheDir)
+        return
+
+    filePath := cacheDir "\" name ".bin"
+    try {
+        f := FileOpen(filePath, "w")
+        if (!f)
+            return
+        f.RawWrite(hash, 16)
+        f.RawWrite(bytecode, bytecode.Size)
+        f.Close()
+    }
 }
 
 ; ========================= REGISTER =========================
@@ -189,7 +337,7 @@ Shader_Register(name, hlsl, meta := "") {
     try {
         if (cfg.DiagShaderLog)
             _Shader_Log("Register: " name " compiling PS...")
-        psBytecode := _Shader_Compile(hlsl, "PSMain", "ps_4_0")
+        psBytecode := _Shader_Compile(hlsl, "PSMain", "ps_4_0", "ps_" name)
         if (!psBytecode) {
             if (cfg.DiagShaderLog)
                 _Shader_Log("Register: " name " PS compile FAILED")

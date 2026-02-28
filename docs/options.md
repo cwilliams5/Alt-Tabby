@@ -647,6 +647,7 @@ Debug options, viewer settings, and test configuration. All logging disabled by 
 | `WebViewLog` | bool | `false` | - | Log WebView2 config editor errors to %TEMP%\\tabby_webview_debug.log. Use when debugging config editor issues. |
 | `UpdateLog` | bool | `false` | - | Log auto-update check and apply steps to %TEMP%\\tabby_update.log. Use when debugging update failures. |
 | `CosmeticPatchLog` | bool | `false` | - | Log cosmetic patch operations during ACTIVE state to %TEMP%\\tabby_cosmetic_patch.log. Use when debugging title/icon/processName updates in the overlay. |
+| `ShaderLog` | bool | `false` | - | Log D3D11 shader pipeline operations to %TEMP%\\tabby_shader.log. Use when debugging shader compilation, texture loading, or rendering issues. |
 | `StatsTracking` | bool | `true` | - | Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard. |
 | `LogFilePrefix` | string | `(empty)` | - | Prefix inserted into diagnostic log filenames for instance isolation. When set, tabby_pump.log becomes tabby_pump_<prefix>.log. Used by automated tests to prevent log collision across parallel worktrees. |
 
@@ -661,4 +662,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-28 with 286 total settings.*
+*Generated on 2026-02-28 with 287 total settings.*
