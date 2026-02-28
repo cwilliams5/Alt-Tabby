@@ -4,13 +4,1051 @@
 #Requires AutoHotkey v2.0
 #Warn VarUnset, Off
 
-global SHADER_NAMES := ["None", "Jasz Universe", "Matrix Rain", "Protean Clouds", "Raindrops on Glass"]
+global SHADER_NAMES := ["None", "Cloud 3D", "Digital Rain", "Dune (Sand Worm)", "Fate Beckons", "Fire", "Glittery", "Interstellar", "Jasz Universe", "Kaleidoscope Tunnel", "LineSynapse", "Neon Cubes", "Noise Accident", "Optical Spaghetti", "Power Chain Saw Man", "Protean Clouds", "Raindrops on Glass"]
+global SHADER_KEYS := ["", "cloud3d", "digitalRain", "duneSandworm", "fateBeckons", "fire", "glittery", "interstellar", "jaszUniverse", "kaleidoscopeTunnel", "lineSynapse", "neonCubes", "noiseAccident", "opticalSpaghetti", "powerChainSawMan", "proteanClouds", "raindropsGlass"]
 
 Shader_RegisterAll() {
+    Shader_Register("cloud3d", _Shader_HLSL_Cloud3d(), _Shader_Meta_Cloud3d())
+    Shader_Register("digitalRain", _Shader_HLSL_DigitalRain(), _Shader_Meta_DigitalRain())
+    Shader_Register("duneSandworm", _Shader_HLSL_DuneSandworm(), _Shader_Meta_DuneSandworm())
+    Shader_Register("fateBeckons", _Shader_HLSL_FateBeckons(), _Shader_Meta_FateBeckons())
+    Shader_Register("fire", _Shader_HLSL_Fire(), _Shader_Meta_Fire())
+    Shader_Register("glittery", _Shader_HLSL_Glittery(), _Shader_Meta_Glittery())
+    Shader_Register("interstellar", _Shader_HLSL_Interstellar(), _Shader_Meta_Interstellar())
     Shader_Register("jaszUniverse", _Shader_HLSL_JaszUniverse(), _Shader_Meta_JaszUniverse())
-    Shader_Register("matrixRain", _Shader_HLSL_MatrixRain(), _Shader_Meta_MatrixRain())
+    Shader_Register("kaleidoscopeTunnel", _Shader_HLSL_KaleidoscopeTunnel(), _Shader_Meta_KaleidoscopeTunnel())
+    Shader_Register("lineSynapse", _Shader_HLSL_LineSynapse(), _Shader_Meta_LineSynapse())
+    Shader_Register("neonCubes", _Shader_HLSL_NeonCubes(), _Shader_Meta_NeonCubes())
+    Shader_Register("noiseAccident", _Shader_HLSL_NoiseAccident(), _Shader_Meta_NoiseAccident())
+    Shader_Register("opticalSpaghetti", _Shader_HLSL_OpticalSpaghetti(), _Shader_Meta_OpticalSpaghetti())
+    Shader_Register("powerChainSawMan", _Shader_HLSL_PowerChainSawMan(), _Shader_Meta_PowerChainSawMan())
     Shader_Register("proteanClouds", _Shader_HLSL_ProteanClouds(), _Shader_Meta_ProteanClouds())
     Shader_Register("raindropsGlass", _Shader_HLSL_RaindropsGlass(), _Shader_Meta_RaindropsGlass())
+}
+
+_Shader_HLSL_Cloud3d() {
+    return "
+    (
+// Cloud 3D — based on https://www.shadertoy.com/view/4sXGRM
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+static const float3 skytop = float3(0.05, 0.2, 0.5);
+static const float3 light = normalize(float3(0.1, 0.25, 0.9));
+static const float2 cloudrange = float2(0.0, 10000.0);
+
+// GLSL mat3 is column-major; HLSL float3x3 is row-major — constructor args transposed
+static const float3x3 m = float3x3(
+     0.00, -1.60, -1.20,
+     1.60,  0.72, -0.96,
+     1.20, -0.96,  1.28);
+
+float hash(float n) {
+    return frac(cos(n) * 114514.1919);
+}
+
+float noise(float3 x) {
+    float3 p = floor(x);
+    float3 f = smoothstep(0.0, 1.0, frac(x));
+    float n = p.x + p.y * 10.0 + p.z * 100.0;
+    return lerp(
+        lerp(lerp(hash(n + 0.0), hash(n + 1.0), f.x),
+             lerp(hash(n + 10.0), hash(n + 11.0), f.x), f.y),
+        lerp(lerp(hash(n + 100.0), hash(n + 101.0), f.x),
+             lerp(hash(n + 110.0), hash(n + 111.0), f.x), f.y), f.z);
+}
+
+float fbm(float3 p) {
+    float f = 0.5000 * noise(p);
+    p = mul(m, p);
+    f += 0.2500 * noise(p);
+    p = mul(m, p);
+    f += 0.1666 * noise(p);
+    p = mul(m, p);
+    f += 0.0834 * noise(p);
+    return f;
+}
+
+float3 get_camera(float t) {
+    return float3(5000.0 * sin(1.0 * t), 5000.0 + 1500.0 * sin(0.5 * t), 6000.0 * t);
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    // Y-flip: clouds have gravity/up direction
+    float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
+    float2 uv = 2.0 * fragCoord.xy / resolution.xy - 1.0;
+    uv.x *= resolution.x / resolution.y;
+
+    float camTime = time + 57.5;
+    float3 campos = get_camera(camTime);
+    float3 camtar = get_camera(camTime + 0.4);
+
+    float3 front = normalize(camtar - campos);
+    float3 right = normalize(cross(front, float3(0.0, 1.0, 0.0)));
+    float3 up = normalize(cross(right, front));
+    float3 fragAt = normalize(uv.x * right + uv.y * up + front);
+
+    // clouds
+    float4 sum = (float4)0;
+    for (float depth = 0.0; depth < 100000.0; depth += 200.0) {
+        float3 ray = campos + fragAt * depth;
+        if (cloudrange.x < ray.y && ray.y < cloudrange.y) {
+            float a = smoothstep(0.5, 1.0, fbm(ray * 0.00025));
+            float3 localcolor = lerp(float3(1.1, 1.05, 1.0), float3(0.3, 0.3, 0.2), a);
+            a = (1.0 - sum.a) * a;
+            sum += float4(localcolor * a, a);
+        }
+    }
+
+    float alpha = smoothstep(0.7, 1.0, sum.a);
+    sum.rgb /= sum.a + 0.0001;
+
+    float sundot = clamp(dot(fragAt, light), 0.0, 1.0);
+    float3 col = 0.8 * skytop;
+    col += 0.47 * float3(1.6, 1.4, 1.0) * pow(sundot, 350.0);
+    col += 0.4 * float3(0.8, 0.9, 1.0) * pow(sundot, 2.0);
+
+    sum.rgb -= 0.6 * float3(0.8, 0.75, 0.7) * pow(sundot, 13.0) * alpha;
+    sum.rgb += 0.2 * float3(1.3, 1.2, 1.0) * pow(sundot, 5.0) * (1.0 - alpha);
+
+    col = lerp(col, sum.rgb, sum.a);
+
+    float3 color = col;
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float outA = max(color.r, max(color.g, color.b));
+    return float4(color * outA, outA);
+}
+
+    )"
+}
+
+_Shader_Meta_Cloud3d() {
+    return {opacity: 0.50, iChannels: [], timeAccumulate: true}
+}
+
+_Shader_HLSL_DigitalRain() {
+    return "
+    (
+// Digital Rain by WillKirkby
+// https://www.shadertoy.com/view/ldccW4
+// Converted from Shadertoy GLSL to HLSL for Alt-Tabby
+// License: CC BY-NC-SA 3.0
+// Y-axis: flipped (rain falls downward)
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+Texture2D iChannel0 : register(t0);
+Texture2D iChannel1 : register(t1);
+SamplerState samp0 : register(s0);
+SamplerState samp1 : register(s1);
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+// iChannel1 is 256x256
+static const float2 iChannel1Res = float2(256.0, 256.0);
+
+float text(float2 fragCoord)
+{
+    float2 uv = fmod(fragCoord.xy, 16.0) * 0.0625;
+    float2 block = fragCoord * 0.0625 - uv;
+    uv = uv * 0.8 + 0.1;
+    uv += floor(iChannel1.Sample(samp1, block / iChannel1Res + time * 0.002).xy * 16.0);
+    uv *= 0.0625;
+    uv.x = -uv.x;
+    return iChannel0.Sample(samp0, uv).r;
+}
+
+float3 rain(float2 fragCoord)
+{
+    fragCoord.x -= fmod(fragCoord.x, 16.0);
+
+    float offset = sin(fragCoord.x * 15.0);
+    float speed = cos(fragCoord.x * 3.0) * 0.3 + 0.7;
+
+    float y = frac(fragCoord.y / resolution.y + time * speed + offset);
+    return float3(0.1, 1.0, 0.35) / (y * 20.0);
+}
+
+float4 PSMain(PSInput input) : SV_Target
+{
+    float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
+
+    float3 color = text(fragCoord) * rain(fragCoord);
+
+    // Desaturate / darken
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiply
+    float a = max(color.r, max(color.g, color.b));
+    return float4(color * a, a);
+}
+
+    )"
+}
+
+_Shader_Meta_DigitalRain() {
+    return {opacity: 0.45, iChannels: [{index: 0, file: "digital_rain_i0.png"}, {index: 1, file: "digital_rain_i1.png"}]}
+}
+
+_Shader_HLSL_DuneSandworm() {
+    return "
+    (
+// Dune (Sand Worm) — dean_the_coder
+// https://www.shadertoy.com/view/7stGRj
+// License: CC BY-NC-SA 3.0
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+#define R float3(resolution, 1.0)
+#define NM normalize
+#define Z0 min(time, 0.0)
+#define sat(x) saturate(x)
+#define S01(a) smoothstep(0.0, 1.0, a)
+#define S(a, b, c) smoothstep(a, b, c)
+
+float glsl_mod(float x, float y) { return x - y * floor(x / y); }
+
+static float t;
+
+struct Hit {
+    float d;
+    int id;
+    float3 uv;
+};
+
+Hit makeHit(float d, int id, float3 uv) {
+    Hit result; result.d = d; result.id = id; result.uv = uv;
+    return result;
+}
+
+#define minH(a, b, c) { float h_ = a; if (h_ < h.d) h = makeHit(h_, b, c); }
+
+float n31(float3 p) {
+    const float3 s = float3(7, 157, 113);
+    float3 ip = floor(p);
+    p = frac(p);
+    p = p * p * (3.0 - 2.0 * p);
+    float4 h = float4(0, s.yz, s.y + s.z) + dot(ip, s);
+    h = lerp(frac(sin(h) * 43758.545), frac(sin(h + s.x) * 43758.545), p.x);
+    h.xy = lerp(h.xz, h.yw, p.y);
+    return lerp(h.x, h.y, p.z);
+}
+
+float n21(float2 p) { return n31(float3(p, 1)); }
+
+float smin(float a, float b, float k) {
+    float h = sat(0.5 + 0.5 * (b - a) / k);
+    return lerp(b, a, h) - k * h * (1.0 - h);
+}
+
+float box(float3 p, float3 b) { return length(max(abs(p) - b, (float3)0)); }
+
+float cap(float3 p, float2 h) {
+    p.y -= clamp(p.y, 0.0, h.x);
+    return length(p) - h.y;
+}
+
+Hit map(float3 p) {
+    float d, e, g, lp, r, rz,
+          f = S(0.0, 5.0, t),
+          n = n31(p * 4.0);
+    d = n21(p.xz * 0.1) * 3.0 + p.y + 2.5;
+    g = smin(d, length(p - float3(0.2, -8.6, 12.6)) - 6.0 + 0.01 * (0.5 + 0.5 * sin(p.y * 22.0)), 1.0);
+    p += float3(0.5 + sin(t * 0.6) * 0.2 + 0.6 * sin(p.z * 0.4 - 0.66),
+                1.0 - cos(p.z * 0.3 - 0.3 - f * lerp(0.8, 1.0, S01(sin(t * 1.4) * 0.5 + 0.5))) * 1.8,
+                S(28.0, 30.0, t) * 2.5 - lerp(6.0, 2.8, f));
+    r = 0.8 + smin(p.z * 0.18, 2.0, 0.5) + abs(sin(p.z * 2.0) * S01(p.z) * 0.05);
+    r *= S(-5.3 + 2.75 * cos(t * 0.8) * f, 1.4, p.z);
+    lp = length(p.xy);
+    f = abs(lp - r - 0.05) - 0.03;
+    r *= S(2.5, 0.35 + sin(t) * 0.1, p.z);
+    d = max(abs(lp - r) - 0.02, 0.4 - p.z);
+    p.xy = float2(frac(atan2(p.y, p.x) * 0.477) - 0.5, lp);
+    p.y -= r;
+    Hit h = makeHit(min(d, box(p, float3(0.2 + p.z * 0.77, 0.02, 0.4))), 2, p);
+    p.y += 0.13;
+    float2 v2 = float2(0.1, sat(0.07 * p.y));
+    p.z -= 0.4;
+    rz = glsl_mod(p.z, 0.3) - 0.15;
+    e = max(min(cap(float3(glsl_mod(p.x, 0.08333) - 0.04167, p.y, rz), v2),
+                cap(float3(glsl_mod(p.x + 0.04167, 0.08333) - 0.04167, p.y, rz - 0.15), v2)),
+            -0.05 - p.z * 0.2);
+    d = abs(p.x) - p.z * 0.5 - 0.5;
+    minH(max(e, d), 4, p);
+    f = max(f, d - 0.05);
+    minH(f, 3, p);
+    g = smin(g, h.d, 0.4 + 0.4 * n * S(1.0, 0.0, abs(g - f)));
+    minH(g, 1, p);
+    return h;
+}
+
+float3 N(float3 p, float nt) {
+    float h = nt * 0.4;
+    float3 n = (float3)0;
+    for (int i = 0; i < 4; i++) {
+        float3 e = 0.005773 * (2.0 * float3(((i + 3) >> 1) & 1, (i >> 1) & 1, i & 1) - 1.0);
+        n += e * map(p + e * h).d;
+    }
+    return NM(n);
+}
+
+float shadow(float3 p, float3 lp) {
+    float d, s = 1.0, st = 0.1, mxt = length(p - lp);
+    float3 ld = NM(lp - p);
+    for (float i = Z0; i < 40.0; i++) {
+        d = map(st * ld + p).d;
+        s = min(s, 15.0 * d / st);
+        st += max(0.1, d);
+        if (mxt - st < 0.5 || s < 0.001) break;
+    }
+    return S01(s);
+}
+
+float ao(float3 p, float3 n, float h) { return map(h * n + p).d / h; }
+
+float fog(float3 v) { return exp(dot(v, v) * -0.001); }
+
+float3 lights(float3 p, float3 rd, float d, Hit h) {
+    float3 ld = NM(float3(6, 3, -10) - p);
+    float3 n = N(p, d);
+    float3 c;
+    float spe = 1.0;
+    if (h.id == 3) {
+        c = float3(0.4, 0.35, 0.3);
+        n.y += n31(h.uv * 10.0);
+        n = NM(n);
+    }
+    else if (h.id == 2) c = lerp(float3(0.16, 0.08, 0.07), (float3)0.6, pow(n31(h.uv * 10.0), 3.0));
+    else if (h.id == 4) c = float3(0.6, 1, 4);
+    else {
+        spe = 0.1;
+        c = (float3)0.6;
+        n.x += sin((p.x + p.z * n.z) * 8.0) * 0.1;
+        n = NM(n);
+    }
+    float ao_val = lerp(ao(p, n, 0.2), ao(p, n, 2.0), 0.7);
+    float diff = sat(0.1 + 0.9 * dot(ld, n));
+    float shad = 0.1 + 0.9 * shadow(p, float3(6, 3, -10));
+    float ao_fac = 0.3 + 0.7 * ao_val;
+    float rim = sat(0.1 + 0.9 * dot(ld * float3(-1, 0, -1), n)) * 0.3;
+    float spec = pow(sat(dot(rd, reflect(ld, n))), 10.0) * spe;
+    float3 lightCol = float3(1.85, 0.5, 0.08);
+    float3 lit = (diff * shad * ao_fac + (rim + spec) * ao_val) * c * lightCol;
+    return lerp(lit, lightCol, S(0.7, 1.0, 1.0 + dot(rd, n)) * 0.1);
+}
+
+float4 march(inout float3 p, float3 rd, float s, float mx) {
+    float i, d = 0.01;
+    Hit h;
+    for (i = Z0; i < s; i++) {
+        h = map(p);
+        if (abs(h.d) < 0.0015) break;
+        d += h.d;
+        if (d > mx) return (float4)0;
+        p += h.d * rd;
+    }
+    return float4(lights(p, rd, d, h), h.id);
+}
+
+float3 scene(float3 rd) {
+    t = glsl_mod(time, 30.0);
+    float3 c;
+    float3 p = (float3)0;
+    float4 col = march(p, rd, 180.0, 64.0);
+    float f = 1.0, x = n31(rd + float3(-t * 2.0, -t * 0.4, t));
+    if (col.w == 0.0) c = lerp(float3(0.5145, 0.147, 0.0315), float3(0.22, 0.06, 0.01), sat(rd.y * 3.0));
+    else {
+        c = col.rgb;
+        f = fog(p * (0.7 + 0.3 * x));
+    }
+    f *= 1.0 - x * x * x * 0.4;
+    return lerp(float3(0.49, 0.14, 0.03), c, sat(f));
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    // Y-flip: scene has sky above, desert below
+    float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
+    float2 fc = fragCoord;
+    float2 uv = (fc - 0.5 * R.xy) / R.y;
+    float2 q = fc.xy / R.xy;
+    float3 r = NM(cross(float3(0, 1, 0), float3(0, 0, 1)));
+    float3 col = scene(NM(float3(0, 0, 1) + r * uv.x + cross(float3(0, 0, 1), r) * uv.y));
+    col *= 0.5 + 0.5 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.4);
+
+    // Gamma + fade-in/out (from rgba macro)
+    float3 color = pow(max((float3)0, col), (float3)0.45) * sat(t) * sat(30.0 - t);
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_DuneSandworm() {
+    return {opacity: 0.50, iChannels: [], timeOffsetMin: 0, timeOffsetMax: 25, timeAccumulate: false}
+}
+
+_Shader_HLSL_FateBeckons() {
+    return "
+    (
+// Fate Beckons — Fork by vivavolt
+// Shadertoy: https://shadertoy.com/view/Dlj3Dm
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+#define TIME (time * 3.0)
+
+static const float hf = 0.01;
+
+#define hsv(h,s,v) (v) * (1.0 + (s) * clamp(abs(frac((h) + float3(3,2,1) / 3.0) * 6.0 - 3.0) - 2.0, -1.0, 0.0))
+
+float3 aces_approx(float3 v) {
+    v = max(v, (float3)0) * 0.6;
+    return min((v * (2.51 * v + 0.03)) / (v * (2.43 * v + 0.59) + 0.14), (float3)1);
+}
+
+float pmin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return lerp(b, a, h) - k * h * (1.0 - h);
+}
+
+#define pabs(a,k) (-pmin(a, -(a), k))
+
+float height(float2 p) {
+    p *= 0.4;
+    float tm = TIME,
+          xm = 0.5 * 0.005123,
+          ym = lerp(0.125, 0.25, 0.5 - 0.5 * sin(cos(6.28 * TIME / 6e2))),
+           d = length(p),
+           c = 1E6,
+           x = pow(d, 0.1) * ym,
+           y = (atan2(p.x, p.y) + 0.05 * tm - 3.0 * d) / 6.28;
+
+    float v;
+    for (float i = 0.0; i < 4.0; i += 1.0) {
+        v = length(frac(float2(x - tm * i * xm,
+                               frac(y + i * ym) / 8.0)
+                        * 16.0 * (1.0 + abs(sin(0.01 * TIME + 10.0))))
+                   * 2.0 - 1.0);
+        c = pmin(c, v, 0.0125);
+    }
+
+    return hf * (pabs(tanh(5.5 * d - 40.0 * c * c * d * d * (0.55 - d)) - 0.25 * d, 0.25) - 1.0);
+}
+
+float3 get_normal(float2 p) {
+    float2 e = float2(4.0 / resolution.y, 0.0);
+    return normalize(float3(
+        height(p + e.xy) - height(p - e.xy),
+        -2.0 * e.x,
+        height(p + e.yx) - height(p - e.yx)));
+}
+
+float3 get_color(float2 p) {
+    float ss = 1.0, hh = 1.95, spe = 3.0;
+
+    float3 lp1 = -float3(1, hh, -1) * float3(ss, 1, ss),
+           lp2 = -float3(-1, hh, -1) * float3(ss, 1, ss),
+         lcol1 = hsv(0.1, 0.75, abs(sin(TIME * 0.1)) * 2.0),
+         lcol2 = hsv(0.57, sin(TIME * 0.1) * 0.7, 1.0),
+          matc = hsv(0.55, 0.83, 0.55),
+             n = get_normal(p),
+            ro = float3(0, 8, 0),
+            pp = float3(p.x, 0, p.y),
+            po = pp,
+            rd = normalize(ro - po),
+           ld1 = normalize(lp1 - po),
+           ld2 = normalize(lp2 - po),
+           ref = reflect(rd, n);
+
+    float diff1 = max(dot(n, ld1), 0.0),
+          diff2 = max(dot(n, ld2), 0.0),
+           ref1 = max(dot(ref, ld1), 0.0),
+           ref2 = max(dot(ref, ld2), 0.0),
+             rm = tanh(abs(height(p)) * 120.0);
+
+    float3 lpow1 = rm * rm * matc * lcol1,
+           lpow2 = rm * rm * matc * lcol2;
+
+    return diff1 * diff1 * lpow1
+         + diff2 * diff2 * lpow2
+         + rm * pow(ref1, spe) * lcol1
+         + rm * pow(ref2, spe) * lcol2;
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    float2 fragCoord = input.pos.xy;
+    float2 R = resolution;
+    float2 p = (2.0 * fragCoord - R) / R.y;
+
+    float3 col = get_color(p);
+    col = aces_approx(col);
+    float3 color = sqrt(max(col, (float3)0));
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_FateBeckons() {
+    return {opacity: 0.50, iChannels: [], timeAccumulate: true}
+}
+
+_Shader_HLSL_Fire() {
+    return "
+    (
+// Fire Shader — after @febucci
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+float rand(float2 co) {
+    return frac(sin(dot(co.xy, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+float hermite(float t) {
+    return t * t * (3.0 - 2.0 * t);
+}
+
+float noise(float2 co, float frequency) {
+    float2 v = float2(co.x * frequency, co.y * frequency);
+    float ix1 = floor(v.x);
+    float iy1 = floor(v.y);
+    float ix2 = floor(v.x + 1.0);
+    float iy2 = floor(v.y + 1.0);
+    float fx = hermite(frac(v.x));
+    float fy = hermite(frac(v.y));
+    float fade1 = lerp(rand(float2(ix1, iy1)), rand(float2(ix2, iy1)), fx);
+    float fade2 = lerp(rand(float2(ix1, iy2)), rand(float2(ix2, iy2)), fx);
+    return lerp(fade1, fade2, fy);
+}
+
+float pnoise(float2 co, float freq, int steps, float persistence) {
+    float value = 0.0;
+    float ampl = 1.0;
+    float sum = 0.0;
+    for (int i = 0; i < steps; i++) {
+        sum += ampl;
+        value += noise(co, freq) * ampl;
+        freq *= 2.0;
+        ampl *= persistence;
+    }
+    return value / sum;
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    // Y-flip: fire rises upward
+    float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
+    float2 uv = fragCoord.xy / resolution.xy;
+    float gradient = 1.0 - uv.y;
+    float gradientStep = 0.2;
+
+    float2 pos = fragCoord.xy / resolution.x;
+    pos.y -= time * 0.3125;
+
+    float4 brighterColor = float4(1.0, 0.65, 0.1, 0.25);
+    float4 darkerColor = float4(1.0, 0.0, 0.15, 0.0625);
+    float4 middleColor = lerp(brighterColor, darkerColor, 0.5);
+
+    float noiseTexel = pnoise(pos, 10.0, 5, 0.5);
+
+    float firstStep = smoothstep(0.0, noiseTexel, gradient);
+    float darkerColorStep = smoothstep(0.0, noiseTexel, gradient - gradientStep);
+    float darkerColorPath = firstStep - darkerColorStep;
+    float4 col = lerp(brighterColor, darkerColor, darkerColorPath);
+
+    float middleColorStep = smoothstep(0.0, noiseTexel, gradient - 0.4);
+
+    col = lerp(col, middleColor, darkerColorStep - middleColorStep);
+    col = lerp((float4)0, col, firstStep);
+
+    float3 color = col.rgb;
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_Fire() {
+    return {opacity: 0.50, iChannels: [], timeAccumulate: true}
+}
+
+_Shader_HLSL_Glittery() {
+    return "
+    (
+// Glittery
+// Based on https://www.shadertoy.com/view/lslyRn
+//          https://www.shadertoy.com/view/lscczl
+// License: CC BY-NC-SA 3.0
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+#define iterations 17
+#define formuparam 0.53
+
+#define volsteps 20
+#define stepsize 0.1
+
+#define zoom   0.800
+#define tile   0.850
+
+#define brightness 0.0015
+#define darkmatter 0.300
+#define distfading 0.730
+#define saturation 0.850
+#define S(a, b, val) smoothstep(a, b, val)
+
+static const float pi = 3.14159265359;
+static const float triangleScale = 0.816497161855865;
+static const float3 orange = float3(0.937, 0.435, 0.0);
+
+float3 glsl_mod(float3 x, float3 y) { return x - y * floor(x / y); }
+
+float rand(float2 co) {
+    return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+// --- Triangle grid functions ---
+
+float4 getTriangleCoords(float2 uv) {
+    uv.y /= triangleScale;
+    uv.x -= uv.y / 2.0;
+    float2 center = floor(uv);
+    float2 local = frac(uv);
+
+    center.x += center.y / 2.0;
+    center.y *= triangleScale;
+
+    if (local.x + local.y > 1.0) {
+        local.x -= 1.0 - local.y;
+        local.y = 1.0 - local.y;
+        center.y += 0.586;
+        center.x += 1.0;
+    } else {
+        center.y += 0.287;
+        center.x += 0.5;
+    }
+
+    return float4(center, local);
+}
+
+float4 getLoader(float4 tri) {
+    if (length(tri.xy) > 1.6) {
+        return (float4)0;
+    }
+
+    float angle = atan2(tri.x, tri.y);
+    float seed = rand(tri.xy);
+    float dst = min(tri.z, min(tri.w, 1.0 - tri.z - tri.w)) * 15.0;
+    float glow = dst < pi ? pow(sin(dst), 1.5) : 0.0;
+
+    return float4(lerp(orange, (float3)1.0, glow * 0.07), pow(0.5 + 0.5 * sin(angle - time * 6.0 + seed), 2.0));
+}
+
+float getBackground(float4 tri) {
+    float dst = min(tri.z, min(tri.w, 1.0 - tri.z - tri.w)) - 0.05;
+
+    if (tri.y > 1.9 || tri.y < -2.4 || dst < 0.0) {
+        return 0.0;
+    }
+
+    float value = pow(0.5 + 0.5 * cos(-abs(tri.x) * 0.4 + rand(tri.xy) * 2.0 + time * 4.0), 2.0) * 0.08;
+    return value * (dst > 0.05 ? 0.65 : 1.0);
+}
+
+float3 getColor(float2 uv) {
+    uv *= 2.0 / resolution.y;
+
+    float3 background = (float3)getBackground(getTriangleCoords(uv * 6.0 - float2(0.5, 0.3)));
+    float4 loader = getLoader(getTriangleCoords(uv * 11.0));
+
+    float3 color = lerp(background, loader.rgb, loader.a);
+    return color;
+}
+
+// --- Line/triangle synapse network ---
+// Note: GLSL 'line' and 'triangle' renamed to avoid HLSL reserved keywords
+
+float N21(float2 p) {
+    p = frac(p * float2(233.34, 851.73));
+    p += dot(p, p + 23.45);
+    return frac(p.x * p.y);
+}
+
+float2 N22(float2 p) {
+    float n = N21(p);
+    return float2(n, N21(p + n));
+}
+
+float2 getPos(float2 id, float2 offset) {
+    float2 n = N22(id + offset) * time;
+    return offset + sin(n) * 0.4;
+}
+
+float distLine(float2 p, float2 a, float2 b) {
+    float2 pa = p - a;
+    float2 ba = b - a;
+    float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * t);
+}
+
+float lineSeg(float2 p, float2 a, float2 b) {
+    float d = distLine(p, a, b);
+    float m = S(0.03, 0.01, d);
+    float d2 = length(a - b);
+    m *= S(1.2, 0.8, d2) * 0.5 + S(0.05, 0.03, abs(d2 - 0.75));
+    return m;
+}
+
+float distTriangle(float2 p, float2 p0, float2 p1, float2 p2) {
+    float2 e0 = p1 - p0;
+    float2 e1 = p2 - p1;
+    float2 e2 = p0 - p2;
+
+    float2 v0 = p - p0;
+    float2 v1 = p - p1;
+    float2 v2 = p - p2;
+
+    float2 pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+    float2 pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+    float2 pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+
+    float s = sign(e0.x * e2.y - e0.y * e2.x);
+    float2 d = min(min(float2(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),
+                       float2(dot(pq1, pq1), s * (v1.x * e1.y - v1.y * e1.x))),
+                   float2(dot(pq2, pq2), s * (v2.x * e2.y - v2.y * e2.x)));
+
+    return -sqrt(d.x) * sign(d.y);
+}
+
+float triSeg(float2 p, float2 a, float2 b, float2 c) {
+    float d = distTriangle(p, a, b, c);
+    float m = S(0.03, 0.01, d);
+    float d2 = length(a - b);
+    m *= S(1.2, 0.8, d2) * 0.5 + S(0.05, 0.03, abs(d2 - 0.75));
+    return m;
+}
+
+float layer(float2 uv) {
+    float2 gv = frac(uv) - 0.5;
+    float2 id = floor(uv);
+
+    float2 p[9];
+    int idx = 0;
+    for (float y = -1.0; y <= 1.0; y++) {
+        for (float x = -1.0; x <= 1.0; x++) {
+            p[idx++] = getPos(id, float2(x, y));
+        }
+    }
+
+    float t = time * 10.0;
+    float m = 0.0;
+    for (int i = 0; i < 9; i++) {
+        m += lineSeg(gv, p[4], p[i]);
+
+        float2 j = (p[i] - gv) * 20.0;
+        float sparkle = 1.0 / dot(j, j);
+        m += sparkle * (sin(t + frac(p[i].x) * 10.0) * 0.5 + 0.5);
+
+        for (int yi = i + 1; yi < 9; yi++) {
+            for (int zi = yi + 1; zi < 9; zi++) {
+                float len1 = abs(length(p[i] - p[yi]));
+                float len2 = abs(length(p[yi] - p[zi]));
+                float len3 = abs(length(p[i] - p[zi]));
+                if ((len1 + len2 + len3) < 2.8) {
+                    m += triSeg(gv, p[i], p[yi], p[zi]) * 0.8;
+                }
+            }
+        }
+    }
+
+    m += lineSeg(gv, p[1], p[3]);
+    m += lineSeg(gv, p[1], p[5]);
+    m += lineSeg(gv, p[7], p[3]);
+    m += lineSeg(gv, p[7], p[5]);
+
+    return m;
+}
+
+// --- Volumetric star field ---
+
+float4 volumetric(float3 ro, float3 rd) {
+    float s = 0.1, fade = 1.0;
+    float3 v = (float3)0;
+    for (int r = 0; r < volsteps; r++) {
+        float3 p = ro + s * rd * 0.5;
+        p = abs((float3)tile - glsl_mod(p, (float3)(tile * 2.0)));
+        float pa = 0.0, a = 0.0;
+        for (int i = 0; i < iterations; i++) {
+            p = abs(p) / dot(p, p) - formuparam;
+            a += abs(length(p) - pa);
+            pa = length(p);
+        }
+        float dm = max(0.0, darkmatter - a * a * 0.001);
+        a *= a * a;
+        if (r > 6) fade *= 1.1;
+        v += fade;
+        v += float3(s, s * s, s * s * s * s) * a * brightness * fade;
+        fade *= distfading;
+        s += stepsize;
+    }
+    v = lerp((float3)length(v), v, saturation);
+    return float4(v * 0.03, 1.0);
+}
+
+// --- Entry point ---
+
+float4 PSMain(PSInput input) : SV_Target {
+    float2 fragCoord = input.pos.xy;
+    float2 uv = fragCoord / resolution.xy - 0.5;
+    uv.y *= resolution.y / resolution.x;
+    float3 dir = float3(uv * zoom, time * 0.002);
+
+    // Line/triangle synapse network
+    float m = 0.0;
+    float t = time * 0.1;
+    float gradient = uv.y;
+
+    float sn = sin(t);
+    float cs = cos(t);
+    // GLSL column-major mat2(c,-s,s,c) -> HLSL row-major (transposed)
+    float2x2 rot = float2x2(cs, sn, -sn, cs);
+    uv = mul(uv, rot);
+
+    for (float i = 0.0; i < 1.0; i += 1.0 / 4.0) {
+        float z = frac(i + t);
+        float sz = lerp(10.0, 0.5, z);
+        float fade = S(0.0, 0.5, z) * S(1.0, 0.8, z);
+        m += layer(uv * sz + i * 20.0) * fade;
+    }
+
+    float3 base = sin(t * 5.0 * float3(0.345, 0.456, 0.567)) * 0.4 + 0.6;
+    float3 col = m * base;
+    col -= gradient * base;
+
+    // Triangle grid (supersampled, modulates star field camera)
+    float2 fc = fragCoord - 0.5 * resolution;
+    float3 triColor = 0.25 * (getColor(fc)
+                              + getColor(fc + float2(0.5, 0.0))
+                              + getColor(fc + float2(0.5, 0.5))
+                              + getColor(fc + float2(0.0, 0.5)));
+
+    // Volumetric star field (camera origin influenced by triangle grid)
+    // speed=0.0 in original -> localTime=0.25 (constant)
+    float3 from = float3(1.0, 0.5, 0.5) + triColor + float3(0.5, 0.25, -2.0);
+    float4 vr = volumetric(from, dir);
+    float3 color = vr.rgb * col;
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_Glittery() {
+    return {opacity: 0.50, iChannels: []}
+}
+
+_Shader_HLSL_Interstellar() {
+    return "
+    (
+// Interstellar
+// Hazel Quantock (TekF)
+// https://www.shadertoy.com/view/Xdl3D2
+// Converted from Shadertoy GLSL to HLSL for Alt-Tabby
+// License: CC0 1.0 (public domain)
+// Y-axis: no flip (symmetric radial starfield)
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+Texture2D iChannel0 : register(t0);
+SamplerState samp0 : register(s0);
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+#define GAMMA (2.2)
+
+float3 ToGamma(in float3 col)
+{
+    return pow(col, (float3)(1.0 / GAMMA));
+}
+
+float4 Noise(in int2 x)
+{
+    return iChannel0.SampleLevel(samp0, ((float2)x + 0.5) / 256.0, 0);
+}
+
+float4 PSMain(PSInput input) : SV_Target
+{
+    float2 fragCoord = input.pos.xy;
+
+    float3 ray;
+    ray.xy = 2.0 * (fragCoord.xy - resolution.xy * 0.5) / resolution.x;
+    ray.z = 1.0;
+
+    float offset = time * 0.5;
+    float speed2 = (cos(offset) + 1.0) * 2.0;
+    float speed = speed2 + 0.1;
+    offset += sin(offset) * 0.96;
+    offset *= 2.0;
+
+    float3 col = (float3)0;
+
+    float3 stp = ray / max(abs(ray.x), abs(ray.y));
+
+    float3 pos = 2.0 * stp + 0.5;
+    for (int i = 0; i < 20; i++)
+    {
+        float z = Noise((int2)pos.xy).x;
+        z = frac(z - offset);
+        float d = 50.0 * z - pos.z;
+        float w = pow(max(0.0, 1.0 - 8.0 * length(frac(pos.xy) - 0.5)), 2.0);
+        float3 c = max((float3)0, float3(1.0 - abs(d + speed2 * 0.5) / speed, 1.0 - abs(d) / speed, 1.0 - abs(d - speed2 * 0.5) / speed));
+        col += 1.5 * (1.0 - z) * c * w;
+        pos += stp;
+    }
+
+    float3 color = ToGamma(col);
+
+    // Desaturate / darken
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiply
+    float a = max(color.r, max(color.g, color.b));
+    return float4(color * a, a);
+}
+
+    )"
+}
+
+_Shader_Meta_Interstellar() {
+    return {opacity: 0.50, iChannels: [{index: 0, file: "interstellar_i0.png"}]}
 }
 
 _Shader_HLSL_JaszUniverse() {
@@ -198,12 +1236,145 @@ _Shader_Meta_JaszUniverse() {
     return {opacity: 0.50, iChannels: [], timeOffsetMin: 40, timeOffsetMax: 120}
 }
 
-_Shader_HLSL_MatrixRain() {
+_Shader_HLSL_KaleidoscopeTunnel() {
     return "
     (
-// Matrix Rain — Shadertoy-style digital rain converted to HLSL.
-// Original: https://www.shadertoy.com/view/ldccW4
-// Author: Reinder
+// Kaleidoscope Tunnel
+// Combines TheGrid by dila and The Drive Home by BigWings
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+#define PI 3.141592654
+
+// GLSL mod: always returns positive remainder (unlike HLSL fmod)
+float glsl_mod(float x, float y) { return x - y * floor(x / y); }
+float2 glsl_mod(float2 x, float y) { return x - y * floor(x / y); }
+
+float2x2 rot(float x) {
+    float c = cos(x), s = sin(x);
+    return float2x2(c, s, -s, c);
+}
+
+float2 foldRotate(float2 p, float s) {
+    float a = PI / s - atan2(p.x, p.y);
+    float n = PI * 2.0 / s;
+    a = floor(a / n) * n;
+    p = mul(rot(a), p);
+    return p;
+}
+
+float sdRect(float2 p, float2 b) {
+    float2 d = abs(p) - b;
+    return min(max(d.x, d.y), 0.0) + length(max(d, (float2)0));
+}
+
+float tex(float2 p, float z) {
+    p = foldRotate(p, 8.0);
+    float2 q = (frac(p / 10.0) - 0.5) * 10.0;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 2; j++) {
+            q = abs(q) - 0.25;
+            q = mul(rot(PI * 0.25), q);
+        }
+        q = abs(q) - float2(1.0, 1.5);
+        q = mul(rot(PI * 0.25 * z), q);
+        q = foldRotate(q, 3.0);
+    }
+    float d = sdRect(q, float2(1.0, 1.0));
+    float f = 1.0 / (1.0 + abs(d));
+    return smoothstep(0.9, 1.0, f);
+}
+
+float Bokeh(float2 p, float2 sp, float size, float mi, float blur) {
+    float d = length(p - sp);
+    float c = smoothstep(size, size * (1.0 - blur), d);
+    c *= lerp(mi, 1.0, smoothstep(size * 0.8, size, d));
+    return c;
+}
+
+float2 hash(float2 p) {
+    p = float2(dot(p, float2(127.1, 311.7)), dot(p, float2(269.5, 183.3)));
+    return frac(sin(p) * 43758.5453) * 2.0 - 1.0;
+}
+
+float dirt(float2 uv, float n) {
+    float2 p = frac(uv * n);
+    float2 st = (floor(uv * n) + 0.5) / n;
+    float2 rnd = hash(st);
+    return Bokeh(p, float2(0.5, 0.5) + (float2)0.2 * rnd, 0.05, abs(rnd.y * 0.4) + 0.3, 0.25 + rnd.x * rnd.y * 0.2);
+}
+
+float sm(float start, float end, float t, float smo) {
+    return smoothstep(start, start + smo, t) - smoothstep(end - smo, end, t);
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    float2 fragCoord = input.pos.xy;
+    float2 uv = fragCoord.xy / resolution.xy;
+    uv = uv * 2.0 - 1.0;
+    uv.x *= resolution.x / resolution.y;
+    uv *= 2.0;
+
+    float3 col = (float3)0;
+    #define N 6
+    #define NN float(N)
+    #define INTERVAL 3.0
+    #define INTENSITY (float3)((NN * INTERVAL - t) / (NN * INTERVAL))
+
+    for (int i = 0; i < N; i++) {
+        float t;
+        float ii = float(N - i);
+        t = ii * INTERVAL - glsl_mod(time - INTERVAL * 0.75, INTERVAL);
+        col = lerp(col, INTENSITY, dirt(glsl_mod(uv * max(0.0, t) * 0.1 + float2(0.2, -0.2) * time, 1.2), 3.5));
+
+        t = ii * INTERVAL - glsl_mod(time + INTERVAL * 0.5, INTERVAL);
+        col = lerp(col, INTENSITY * float3(0.7, 0.8, 1.0) * 1.3, tex(uv * max(0.0, t), 4.45));
+
+        t = ii * INTERVAL - glsl_mod(time - INTERVAL * 0.25, INTERVAL);
+        col = lerp(col, INTENSITY, dirt(glsl_mod(uv * max(0.0, t) * 0.1 + float2(-0.2, -0.2) * time, 1.2), 3.5));
+
+        t = ii * INTERVAL - glsl_mod(time, INTERVAL);
+        float r = length(uv * 2.0 * max(0.0, t));
+        float rr = sm(-24.0, 0.0, r - glsl_mod(time * 30.0, 90.0), 10.0);
+        col = lerp(col, lerp(INTENSITY, INTENSITY * float3(0.7, 0.5, 1.0) * 3.0, rr), tex(uv * 2.0 * max(0.0, t), 0.27 + 2.0 * rr));
+    }
+
+    float3 color = col;
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_KaleidoscopeTunnel() {
+    return {opacity: 0.50, iChannels: [], timeAccumulate: true}
+}
+
+_Shader_HLSL_LineSynapse() {
+    return "
+    (
+// LineSynapse
 // License: CC BY-NC-SA 3.0
 
 cbuffer Constants : register(b0) {
@@ -216,22 +1387,370 @@ cbuffer Constants : register(b0) {
     float _pad;
 };
 
-// Hash function for pseudo-random
-float hash(float2 p) {
-    float h = dot(p, float2(127.1, 311.7));
-    return frac(sin(h) * 43758.5453);
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+#define iterations 13
+#define formuparam 0.53
+
+#define volsteps 20
+#define stepsize 0.1
+
+#define zoom   0.800
+#define tile   0.850
+
+#define brightness 0.0015
+#define darkmatter 0.300
+#define distfading 0.730
+#define saturation 0.850
+#define S(a,b,val) smoothstep(a,b,val)
+
+float3 glsl_mod(float3 x, float3 y) { return x - y * floor(x / y); }
+
+float DistLine(float2 p, float2 a, float2 b) {
+    float2 pa = p - a;
+    float2 ba = b - a;
+    float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * t);
 }
 
-// Character-like pattern (simplified glyph)
-float charPattern(float2 uv, float id) {
-    // Grid of dots/bars simulating matrix glyphs
-    float2 g = frac(uv * float2(3.0, 4.0) + hash(float2(id, id * 0.7)) * 10.0);
-    float d = step(0.3, g.x) * step(0.3, g.y);
-    // Mix patterns based on ID
-    float pattern2 = step(0.5, frac(sin(id * 91.7) * 437.5));
-    float bar = step(0.4, g.x) * step(g.y, 0.8);
-    return lerp(d, bar, pattern2);
+float N21(float2 p) {
+    p = frac(p * float2(233.34, 851.73));
+    p += dot(p, p + 23.45);
+    return frac(p.x * p.y);
 }
+
+float2 N22(float2 p) {
+    float n = N21(p);
+    return float2(n, N21(p + n));
+}
+
+float2 GetPos(float2 id, float2 offs) {
+    float2 n = N22(id + offs) * time;
+    return offs + cos(n) * sin(n) * 0.5;
+}
+
+float Line(float2 p, float2 a, float2 b) {
+    float d = DistLine(p, a, b);
+    float m = S(0.06, 0.01, d);
+    float d2 = length(a - b);
+    m *= S(2.2, 0.8, d2) + S(0.05, 0.03, abs(d2 - 0.75));
+    return m;
+}
+
+float Layer(float2 uv) {
+    float m = 0.0;
+    float2 gv = frac(uv) - 0.5;
+    float2 id = floor(uv);
+
+    float2 p[9];
+    int idx = 0;
+    for (float y = -1.0; y <= 1.0; y++) {
+        for (float x = -1.0; x <= 1.0; x++) {
+            p[idx++] = GetPos(id, float2(x, y));
+        }
+    }
+
+    float t = time * 10.0;
+    for (int i = 0; i < 9; i++) {
+        m += Line(gv, p[4], p[i]);
+        float2 j = (p[i] - gv) * 15.0;
+        float sparkle = 1.0 / dot(j, j);
+        m += sparkle * (sin(t + frac(p[i].x) * 10.0) * 0.5 + 0.5);
+    }
+
+    m += Line(gv, p[1], p[3]);
+    m += Line(gv, p[1], p[5]);
+    m += Line(gv, p[7], p[3]);
+    m += Line(gv, p[7], p[5]);
+    return m;
+}
+
+// Volumetric star field (originally mainVR)
+float4 volumetric(float3 ro, float3 rd) {
+    float s = 0.1, fade = 1.0;
+    float3 v = (float3)0;
+    for (int r = 0; r < volsteps; r++) {
+        float3 p = ro + s * rd * 0.5;
+        p = abs((float3)tile - glsl_mod(p, (float3)(tile * 2.0)));
+        float pa = 0.0, a = 0.0;
+        for (int i = 0; i < iterations; i++) {
+            p = abs(p) / dot(p, p) - formuparam;
+            // GLSL mat2 column-major → HLSL row-major (transposed)
+            float cs = cos(time * 0.05);
+            float sn = sin(time * 0.05);
+            p.xy = mul(p.xy, float2x2(cs, -sn, sn, cs));
+            a += abs(length(p) - pa);
+            pa = length(p);
+        }
+        float dm = max(0.0, darkmatter - a * a * 0.001);
+        a *= a * a;
+        if (r > 6) fade *= 1.3 - dm;
+        v += fade;
+        v += float3(s, s * s, s * s * s * s) * a * brightness * fade;
+        fade *= distfading;
+        s += stepsize;
+    }
+    v = lerp((float3)length(v), v, saturation);
+    return float4(v * 0.03, 1.0);
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    float2 fragCoord = input.pos.xy;
+    float2 uv = fragCoord.xy / resolution.xy - 0.5;
+    uv.y *= resolution.y / resolution.x;
+    float3 dir = float3(uv * zoom, 1.0);
+
+    // Line synapse network (layered at multiple scales)
+    float m = 0.0;
+    float t = time * 0.1;
+
+    for (float i = 0.0; i <= 1.0; i += 1.0 / 7.0) {
+        float z = frac(i * i + t);
+        float sz = lerp(59.0, 0.5, z);
+        float fade = S(0.0, 0.2, z) * S(1.0, 0.0, z);
+        m += Layer(uv * sz + i * 200.0) * fade;
+    }
+
+    float3 base = sin(t * 5.0 * float3(0.345, 0.456, 0.657)) * 0.5 + 0.6;
+    float3 col = m * base;
+    col -= uv.y * base;
+
+    // Volumetric star field
+    float3 from = float3(1.0, 0.5, 0.5);
+    float4 vr = volumetric(from, dir);
+    float3 color = vr.rgb * col;
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_LineSynapse() {
+    return {opacity: 0.50, iChannels: []}
+}
+
+_Shader_HLSL_NeonCubes() {
+    return "
+    (
+// Neon Cubes — converted from Shadertoy GLSL
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+float3 H(float a) {
+    return cos(radians(float3(90, 30, -30)) - a * 6.2832) * 0.5 + 0.5;
+}
+
+float2x2 makeRot(float a) {
+    float4 cs = cos(a * 1.571 + float4(0, -1.571, 1.571, 0));
+    return float2x2(cs.x, cs.y, cs.z, cs.w);
+}
+
+float cubes(float3 p) {
+    p = abs(p - round(p));
+    return max(p.x, max(p.y, p.z));
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    float2 fragCoord = input.pos.xy;
+
+    float aa = 2.0;
+    float d, s;
+    float2 R = resolution;
+    float2 m = (float2)(cos(time / 8.0) * 0.5 + 0.5);
+    float2 o;
+    float3 c = (float3)0;
+    float3 cam = float3(0.5, 0.5, time / 4.0);
+    float3 u, v;
+
+    float2x2 pitch = makeRot(m.y);
+    float2x2 yaw = makeRot(m.x);
+
+    for (int k = 0; k < (int)(aa * aa); k++) {
+        o = float2(k % 2, k / 2) / aa;
+        u = normalize(float3((fragCoord - 0.5 * R + o) / R.y, 0.7));
+        u.yz = mul(pitch, u.yz);
+        u.xz = mul(yaw, u.xz);
+        d = 0.0;
+        for (int i = 0; i < 50; i++) {
+            s = smoothstep(0.2, 0.25, cubes(cam + u * d) - 0.05);
+            if (s < 0.01) break;
+            d += s;
+        }
+        v = d * 0.01 * H(length(u.xy));
+        c += v + max(v, 0.5 - H(d));
+    }
+    c /= aa * aa;
+    float3 color = pow(max(c, (float3)0), (float3)(1.0 / 2.2));
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_NeonCubes() {
+    return {opacity: 0.50, iChannels: [], timeOffsetMin: 0, timeOffsetMax: 30, timeAccumulate: true}
+}
+
+_Shader_HLSL_NoiseAccident() {
+    return "
+    (
+// Noise Accident
+// Noise accident study after @Xor
+// License: CC BY-NC-SA 3.0
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+float3 mod289(float3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+float4 mod289(float4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+float4 permute(float4 x) { return mod289(((x * 34.0) + 1.0) * x); }
+float taylorInvSqrt(float r) { return 1.79284291400159 - 0.85373472095314 * r; }
+float4 taylorInvSqrt(float4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+float snoise3D(float3 v) {
+    const float2 C = float2(1.0 / 6.0, 1.0 / 3.0);
+    const float4 D = float4(0.0, 0.5, 1.0, 2.0);
+    float3 i = floor(v + dot(v, C.yyy));
+    float3 x0 = v - i + dot(i, C.xxx);
+    float3 g = step(x0.yzx, x0.xyz);
+    float3 l = 1.0 - g;
+    float3 i1 = min(g.xyz, l.zxy);
+    float3 i2 = max(g.xyz, l.zxy);
+    float3 x1 = x0 - i1 + C.xxx;
+    float3 x2 = x0 - i2 + C.yyy;
+    float3 x3 = x0 - D.yyy;
+
+    i = mod289(i);
+    float4 p = permute(permute(permute(
+                 i.z + float4(0.0, i1.z, i2.z, 1.0))
+               + i.y + float4(0.0, i1.y, i2.y, 1.0))
+               + i.x + float4(0.0, i1.x, i2.x, 1.0));
+
+    float n_ = 0.142857142857;
+    float3 ns = n_ * D.wyz - D.xzx;
+
+    float4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+    float4 x_ = floor(j * ns.z);
+    float4 y_ = floor(j - 7.0 * x_);
+
+    float4 x = x_ * ns.x + ns.yyyy;
+    float4 y = y_ * ns.x + ns.yyyy;
+    float4 h = 1.0 - abs(x) - abs(y);
+
+    float4 b0 = float4(x.xy, y.xy);
+    float4 b1 = float4(x.zw, y.zw);
+
+    float4 s0 = floor(b0) * 2.0 + 1.0;
+    float4 s1 = floor(b1) * 2.0 + 1.0;
+    float4 sh = -step(h, (float4)0);
+
+    float4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    float4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+
+    float3 p0 = float3(a0.xy, h.x);
+    float3 p1 = float3(a0.zw, h.y);
+    float3 p2 = float3(a1.xy, h.z);
+    float3 p3 = float3(a1.zw, h.w);
+
+    float4 norm = taylorInvSqrt(float4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+    p0 *= norm.x;
+    p1 *= norm.y;
+    p2 *= norm.z;
+    p3 *= norm.w;
+
+    float4 m = max(0.6 - float4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m * m, float4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+float4 PSMain(PSInput input) : SV_Target {
+    float2 fragCoord = input.pos.xy;
+    float4 diffuse = (float4)0;
+    float3 R = float3(resolution, resolution.y);
+
+    for (float i = 1.0; i <= 100.0; i += 1.0) {
+        float3 pos = (float3(fragCoord, 1.0) * 2.0 - R) / resolution.y * i * 0.1 + time;
+        diffuse += cos(snoise3D(pos) + i + float4(1.0, 2.0, 2.0, 0.0)) / 1e1;
+    }
+
+    float3 color = max((float3)0, diffuse.rgb);
+
+    // Post-processing
+    float lum = dot(color, float3(0.299, 0.587, 0.114));
+    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = color * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
+    return float4(color * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_NoiseAccident() {
+    return {opacity: 0.50, iChannels: []}
+}
+
+_Shader_HLSL_OpticalSpaghetti() {
+    return "
+    (
+// Optical Spaghetti — converted from Shadertoy GLSL
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
 
 struct PSInput {
     float4 pos : SV_Position;
@@ -240,74 +1759,1023 @@ struct PSInput {
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
-    float2 uv = fragCoord / resolution;
+    float2 u = fragCoord.xy;
 
-    // Grid parameters
-    float colWidth = 14.0;  // pixels per column
-    float rowHeight = 16.0; // pixels per row
+    float i = 0.0;
+    float a = 0.0;
+    float d = 0.0;
+    float s = 0.0;
+    float t = time + 10.0;
+    float r = 0.0;
 
-    float col = floor(fragCoord.x / colWidth);
-    float row = floor(fragCoord.y / rowHeight);
+    float3 p = float3(resolution, 1.0);
+    u = (u + u - p.xy) / p.y;
 
-    // Per-column properties
-    float colHash = hash(float2(col, 0.0));
-    float speed = 2.0 + colHash * 4.0;        // Fall speed varies per column
-    float offset = colHash * 100.0;             // Start offset
-    float trailLen = 8.0 + colHash * 16.0;      // Trail length varies
+    float4 o = (float4)0;
 
-    // Current position in the rain stream
-    float rainPos = time * speed + offset;
-    float headRow = frac(rainPos / 40.0) * (resolution.y / rowHeight + trailLen);
+    for (i = 0.0; i++ < 175.0; ) {
+        s = 0.004 + abs(s) * 0.1;
+        d += s;
 
-    // Distance from head of trail
-    float dist = headRow - row;
+        o += s * d;
+        o.r += (d * 1.5 - 5.0 / s) * 0.25;
+        o.b += sin(d * 0.09 + p.z * 0.3) * 2.0 / s;
+        o.g += sin(d * 0.2) * 1.0 / s;
 
-    // Only draw if within trail
-    if (dist < 0.0 || dist > trailLen) {
-        return float4(0, 0, 0, 0);
+        p = float3(u * d, d + t * 5.0);
+        s = min(p.z, 1.9 + sin(p.z) * 0.15);
+
+        for (a = 1.0; a < 2.0; a += a) {
+            p += cos(t * 0.1 - p.yzx * 0.5) * 0.5;
+
+            r = p.z * 0.1 + sin(t * 0.2);
+
+            float2x2 rot = float2x2(cos(r), -sin(r), sin(r), cos(r));
+            p.xy = mul(p.xy, rot);
+            s += abs(sin(p.x * a)) * (2.2 + sin(t * 0.1) * 0.25) * -abs(sin(abs(p.y) * a) / a);
+        }
     }
 
-    // Brightness: bright at head, fading tail
-    float brightness = 1.0 - (dist / trailLen);
-    brightness = brightness * brightness; // Quadratic falloff
+    o = pow(tanh(o * o / 1.5e8 * length(u)), (float4)(1.0 / 2.2));
+    o *= o;
 
-    // Head glow (first 2 chars are brighter/whiter)
-    float headGlow = saturate(1.0 - dist * 0.5);
+    float3 color = o.rgb;
 
-    // Character cell UV
-    float2 cellUV = float2(frac(fragCoord.x / colWidth), frac(fragCoord.y / rowHeight));
-
-    // Character ID changes over time (scrolling effect)
-    float charId = hash(float2(col, floor(row + time * speed * 0.3)));
-
-    // Character shape
-    float ch = charPattern(cellUV, charId + floor(time * 2.0));
-
-    // Color: green with white head
-    float3 green = float3(0.1, 0.9, 0.3);
-    float3 white = float3(0.8, 1.0, 0.85);
-    float3 color = lerp(green, white, headGlow * 0.7);
-
-    // Apply darken/desaturate post-processing
+    // Post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
     color = lerp(color, float3(lum, lum, lum), desaturate);
     color = color * (1.0 - darken);
 
-    // Final alpha from character shape and trail brightness
-    float alpha = ch * brightness * 0.9;
-
-    // Slight column brightness variation
-    alpha *= 0.6 + 0.4 * hash(float2(col * 7.3, 1.0));
-
-    // Premultiplied alpha output for D2D compositing
+    // Alpha from brightness, premultiplied
+    float alpha = max(color.r, max(color.g, color.b));
     return float4(color * alpha, alpha);
 }
 
     )"
 }
 
-_Shader_Meta_MatrixRain() {
+_Shader_Meta_OpticalSpaghetti() {
     return {opacity: 0.50, iChannels: []}
+}
+
+_Shader_HLSL_PowerChainSawMan() {
+    return "
+    (
+// Power Chain Saw Man — after Pudi (CC BY-NC-SA 3.0)
+// Converted from Shadertoy GLSL to HLSL
+
+cbuffer Constants : register(b0) {
+    float time;
+    float2 resolution;
+    float timeDelta;
+    uint frame;
+    float darken;
+    float desaturate;
+    float _pad;
+};
+
+struct PSInput {
+    float4 pos : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+// ============= Constants =============
+
+static const float3 BLOOD_COLOR = float3(179, 236, 15) / 255.0;
+static const float3 BACKGROUND_COLOR = float3(179, 236, 15) / 255.0;
+static const float3 BRIGHT_RED = float3(254, 81, 51) / 255.0;
+static const float3 TEETH_COLOR = float3(224, 195, 226) / 255.0 * 1.2;
+static const float3 BORDER_COLOR = (float3)0.01;
+static const float3 SKIN_COLOR = float3(158, 0, 24) / 255.0;
+static const float3 HIGHLIGHT_COLOR = float3(240, 48, 18) / 255.0 * 1.2;
+static const float3 HAIR_COLOR = float3(68, 0, 50) / 255.0;
+static const float3 HAIR_SHADOW_COLOR = float3(28, 0, 62) / 255.0;
+
+static const float PI = acos(-1.0);
+
+#define sat(x) saturate(x)
+
+// ============= Utility Functions =============
+
+// GLSL mat2(c,-s,s,c) is column-major; HLSL float2x2 is row-major.
+// For equivalent mul(M,v): transpose the constructor args.
+float2x2 rot(float a) {
+    float c = cos(a), s = sin(a);
+    return float2x2(c, s, -s, c);
+}
+
+// GLSL mat2(0.707,-0.707,0.707,0.707) → transposed for HLSL row-major
+static const float2x2 rot45_val = float2x2(0.707, 0.707, -0.707, 0.707);
+
+float pow2(float x) {
+    return x * x;
+}
+
+float dot2(float2 v) {
+    return dot(v, v);
+}
+
+float cross2(float2 a, float2 b) {
+    return a.x * b.y - a.y * b.x;
+}
+
+float smooth_hill(float x, float off, float width, float gap) {
+    x -= off;
+    float start = width, end_val = width + max(0.0, gap);
+    return smoothstep(-end_val, -start, x) - smoothstep(start, end_val, x);
+}
+
+float remap(float val, float start1, float stop1, float start2, float stop2) {
+    return start2 + (val - start1) / (stop1 - start1) * (stop2 - start2);
+}
+
+float remap01(float val, float start, float stop) {
+    return start + val * (stop - start);
+}
+
+float3 erot(float3 p, float3 ax, float ro) {
+    return lerp(dot(ax, p) * ax, p, cos(ro)) + sin(ro) * cross(ax, p);
+}
+
+float hash11(float p) {
+    p = frac(p * 0.1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return frac(p);
+}
+
+float hash21(float2 p) {
+    float3 p3 = frac(p.xyx * 0.1031);
+    p3 += dot(p3, p3.yzx + 3.33);
+    return frac((p3.x + p3.y) * p3.z);
+}
+
+float noise(float2 x) {
+    float2 p = floor(x);
+    float2 f = frac(x);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float a = hash21(p + float2(0, 0));
+    float b = hash21(p + float2(1, 0));
+    float c = hash21(p + float2(0, 1));
+    float d = hash21(p + float2(1, 1));
+    return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+}
+
+float voronoi(float2 uv) {
+    float d = 1e9;
+    float2 id = floor(uv);
+    uv = frac(uv);
+
+    for (float i = -1.0; i <= 1.0; i++) {
+        for (float j = -1.0; j <= 1.0; j++) {
+            float2 nbor = float2(i, j);
+            d = min(d, length(uv - noise(id + nbor) - nbor));
+        }
+    }
+    return d;
+}
+
+float2 clog(float2 z) {
+    float r = length(z);
+    return float2(log(r), atan2(z.y, z.x));
+}
+
+float smin(float a, float b, float k) {
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * (1.0 / 4.0);
+}
+
+float smax(float a, float b, float k) {
+    float h = max(k - abs(a - b), 0.0);
+    return max(a, b) + h * h * k * (1.0 / 4.0);
+}
+
+// ============= SDF Primitives =============
+
+float sd_circle(float2 p, float r) {
+    return length(p) - r;
+}
+
+float sd_box(float2 p, float2 h) {
+    p = abs(p) - h;
+    return length(max(p, 0.0)) + min(0.0, max(p.x, p.y));
+}
+
+float sd_hook(float2 p, float r, float a, float s) {
+    float base_d = max(sd_circle(p, r), -p.x * sign(s));
+    p.x -= r;
+    p = mul(rot(a), p);
+    p.x += r;
+    float crop = sd_circle(p, r);
+    return max(base_d, -crop);
+}
+
+float sd_line(float2 p, float2 a, float2 b) {
+    float2 pa = p - a, ba = b - a;
+    float k = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return distance(p, lerp(a, b, k));
+}
+
+float sd_line_y(float2 p, float h, float r) {
+    p.y -= clamp(p.y, 0.0, h);
+    return length(p) - r;
+}
+
+float op_rem_lim(float p, float s, float l) {
+    return p - s * clamp(round(p / s), -l, l);
+}
+
+float sd_trig_isosceles(float2 p, float2 q) {
+    p.x = abs(p.x);
+    float2 a = p - q * clamp(dot(p, q) / dot(q, q), 0.0, 1.0);
+    float2 b = p - q * float2(clamp(p.x / q.x, 0.0, 1.0), 1.0);
+    float s = -sign(q.y);
+    float2 d = min(float2(dot(a, a), s * (p.x * q.y - p.y * q.x)),
+                   float2(dot(b, b), s * (p.y - q.y)));
+    return -sqrt(d.x) * sign(d.y);
+}
+
+float sd_uneven_capsule(float2 p, float2 pa, float2 pb, float ra, float rb) {
+    p -= pa;
+    pb -= pa;
+    float h = dot(pb, pb);
+    float2 q = float2(dot(p, float2(pb.y, -pb.x)), dot(p, pb)) / h;
+
+    q.x = abs(q.x);
+    float b = ra - rb;
+    float2 c = float2(sqrt(h - b * b), b);
+
+    float k = cross2(c, q);
+    float m = dot(c, q), n = dot(q, q);
+
+    if (k < 0.0) {
+        return sqrt(h * n) - ra;
+    } else if (k > c.x) {
+        return sqrt(h * (n + 1.0 - 2.0 * q.y)) - rb;
+    }
+    return m - ra;
+}
+
+float sd_egg(float2 p, float ra, float rb) {
+    const float k = sqrt(3.0);
+    p.x = abs(p.x);
+    float r = ra - rb;
+    return ((p.y < 0.0)             ? length(float2(p.x, p.y)) - r
+            : (k * (p.x + r) < p.y) ? length(float2(p.x, p.y - k * r))
+                                     : length(float2(p.x + r, p.y)) - 2.0 * r) -
+           rb;
+}
+
+// ============= Bezier Functions =============
+
+float3 sd_bezier_base(float2 pos, float2 A, float2 B, float2 C) {
+    float2 a = B - A;
+    float2 b = A - 2.0 * B + C;
+    float2 c = a * 2.0;
+    float2 d = A - pos;
+
+    float kk = 1.0 / dot(b, b);
+    float kx = kk * dot(a, b);
+    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    float kz = kk * dot(d, a);
+    float t = 0.0;
+
+    float res = 0.0;
+    float sgn = 1.0;
+
+    float p = ky - kx * kx;
+    float p3 = p * p * p;
+    float q = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+    float h = q * q + 4.0 * p3;
+
+    if (h >= 0.0) {
+        h = sqrt(h);
+        float2 x = (float2(h, -h) - q) / 2.0;
+        float2 uv_bz = sign(x) * pow(abs(x), (float2)(1.0 / 3.0));
+        t = clamp(uv_bz.x + uv_bz.y - kx, 0.0, 1.0);
+        float2 qq = d + (c + b * t) * t;
+        res = dot2(qq);
+        sgn = cross2(c + 2.0 * b * t, qq);
+    } else {
+        float z = sqrt(-p);
+        float v = acos(q / (p * z * 2.0)) / 3.0;
+        float m = cos(v);
+        float n = sin(v) * 1.732050808;
+        float2 tt = clamp(float2(m + m, -n - m) * z - kx, 0.0, 1.0);
+        float2 qx = d + (c + b * tt.x) * tt.x;
+        float dx = dot2(qx), sx = cross2(c + 2.0 * b * tt.x, qx);
+        float2 qy = d + (c + b * tt.y) * tt.y;
+        float dy = dot2(qy), sy = cross2(c + 2.0 * b * tt.y, qy);
+        if (dx < dy) {
+            res = dx;
+            sgn = sx;
+        } else {
+            res = dy;
+            sgn = sy;
+        }
+        t = res;
+    }
+
+    return float3(res, sgn, t);
+}
+
+float2 sd_bezier(float2 pos, float2 A, float2 B, float2 C) {
+    float3 bz = sd_bezier_base(pos, A, B, C);
+    return float2(sqrt(bz.x) * sign(bz.y), bz.z);
+}
+
+float sd_bezier_convex(float2 pos, float2 A, float2 B, float2 C) {
+    if (cross2(C - A, B - A) < 0.0) {
+        float2 tmp = A;
+        A = C;
+        C = tmp;
+    }
+    float sa = cross2(A, pos);
+    float sc = cross2(C - A, pos - A);
+    float s0 = cross2(-C, pos - C);
+    float o = cross2(C - A, -A);
+
+    float ts = (sa < 0.0 && sc < 0.0 && s0 < 0.0) ? -1.0 : 1.0;
+    float ts2 = (sa > 0.0 && sc > 0.0 && s0 > 0.0) ? -1.0 : 1.0;
+    ts = o > 0.0 ? ts2 : ts;
+
+    float3 bz = sd_bezier_base(pos, A, B, C);
+    return sqrt(bz.x) * sign(sc < 0.0 ? 1.0 : -bz.y) * ts;
+}
+
+// GLSL mat2(normal, tangent) + pos*mm = (dot(pos,normal), dot(pos,tangent))
+float4 sd_bezier_rep(float2 pos, float2 A, float2 B, float2 C) {
+    float2 bz = sd_bezier(pos, A, B, C);
+    float t = bz.y;
+    float2 tangent = normalize((2.0 - 2.0 * t) * (B - A) + 2.0 * t * (C - B));
+    float2 normal = float2(tangent.y, -tangent.x);
+    pos = lerp(lerp(A, B, t), lerp(B, C, t), t) - pos;
+    return float4(bz.x, dot(pos, normal), dot(pos, tangent), t);
+}
+
+// ============= Alpha Blending & Rendering =============
+
+float4 alpha_blending(float4 d, float4 s) {
+    float4 res = (float4)0;
+    res.a = lerp(1.0, d.a, s.a);
+    if (res.a == 0.0) {
+        res.rgb = (float3)0;
+    } else {
+        res.rgb = lerp(d.rgb * d.a, s.rgb, s.a) / res.a;
+    }
+    return res;
+}
+
+void alpha_blend_inplace(inout float4 d, float4 s) {
+    d = alpha_blending(d, s);
+}
+
+float AAstep2(float thre, float val) {
+    return smoothstep(-0.5, 0.5, (val - thre) / min(0.03, fwidth(val - thre)));
+}
+
+float AAstep(float val) {
+    return AAstep2(val, 0.0);
+}
+
+float4 render_f4(float d, float4 color) {
+    return float4(color.rgb, color.a * AAstep(d));
+}
+
+float4 render_f3(float d, float3 color) {
+    return render_f4(d, float4(color, 1.0));
+}
+
+float4 render_stroked_masked(float d,
+                             float4 color,
+                             float stroke,
+                             float stroke_mask) {
+    float4 stroke_layer = float4((float3)0.01, AAstep(d));
+    float4 color_layer = float4(color.rgb, AAstep(d + stroke));
+    return float4(lerp(lerp(stroke_layer.rgb, color_layer.rgb, AAstep(stroke_mask)),
+                       color_layer.rgb, color_layer.a),
+                  stroke_layer.a * color.a);
+}
+
+float4 render_stroked_f4(float d, float4 color, float stroke) {
+    return render_stroked_masked(d, color, stroke, 1.0);
+}
+
+float4 render_stroked_f3(float d, float3 color, float stroke) {
+    return render_stroked_f4(d, float4(color, 1.0), stroke);
+}
+
+// Macros — rely on 'final_color' being in scope as inout parameter.
+// HLSL doesn't support function overloading in macros, so we dispatch
+// to typed helpers via _Generic-style suffixed names. We use a trick:
+// float4 has .a, float3 does not — but preprocessor can't check types.
+// Instead we provide explicit typed macros.
+#define LayerFlat4(d, color) alpha_blend_inplace(final_color, render_f4(d, color))
+#define LayerFlat3(d, color) alpha_blend_inplace(final_color, render_f3(d, color))
+#define LayerStroked4(d, color, stroke) \
+    alpha_blend_inplace(final_color, render_stroked_f4(d, color, stroke))
+#define LayerStroked3(d, color, stroke) \
+    alpha_blend_inplace(final_color, render_stroked_f3(d, color, stroke))
+#define LayerStrokedMask(d, color, stroke, mask) \
+    alpha_blend_inplace(final_color, render_stroked_masked(d, color, stroke, mask))
+
+void draw_highlight(inout float4 final_color, float highlight) {
+    LayerFlat3(highlight, HIGHLIGHT_COLOR);
+    float s = 0.15;
+    alpha_blend_inplace(final_color, float4(HIGHLIGHT_COLOR,
+                                            0.07 * smoothstep(s, 0.0, highlight)));
+}
+
+// ============= Params Struct =============
+
+struct ShaderParams {
+    float stroke;
+    float displacement;
+    float stime;
+    float shift;
+};
+
+// ============= Character Functions =============
+
+float fbm(float2 st, float n) {
+    st *= 3.0;
+
+    float s = 0.5;
+    float ret = 0.0;
+    for (float i = min(0.0, (float)frame); i < n; i++) {
+        ret += noise(st) * s;
+        st *= 2.5;
+        s /= 2.0;
+        st = mul(rot45_val, st);
+        st.y += time * 0.05;
+    }
+    return ret;
+}
+
+float3 background(float2 uv) {
+    uv = mul(rot(-PI / 2.0), uv);
+    uv = clog(uv);
+    uv.x -= time * 0.1;
+    uv /= PI;
+    float fa1 = fbm(mul(rot(sin(uv.x) * 0.001), uv), 5.0);
+    float fb1 = fbm(uv, 5.0);
+
+    float fa2 = fbm(uv + sin(uv.x * 15.0) + fa1 * 5.0, 4.0);
+    float fb2 = fbm(uv + fb1, 5.0);
+
+    float3 col = (float3)0;
+    col = lerp(col, BACKGROUND_COLOR, pow(sat(fb2 * 2.4), 1.5));
+    col = lerp(col, float3(0.4, 0.3, 0.7), pow(sat(fb2 * 0.7), 1.9));
+    col = lerp(col, float3(0.3, 0.6, 0.6), pow(sat(fa2 * 1.5), 20.0) * 0.7);
+    col = lerp(col, (float3)0, voronoi(uv * 10.0 + fa1 * 4.0) * 0.8);
+
+    col.yz = mul(rot(-0.16), col.yz);
+
+    return col;
+}
+
+float sd_teeth(float2 coords,
+               float t,
+               float width,
+               float spacing,
+               float2 sz,
+               float2 fang_range,
+               float fang_length,
+               float x) {
+    coords.y -= (t - 0.5) * width;
+    coords.y = op_rem_lim(coords.y, spacing, width + spacing / 1.3);
+    coords = mul(rot(-1.57), coords);
+    fang_range *= spacing / width * 2.0;
+    float off =
+        fang_length * smoothstep(fang_range.x, fang_range.y, abs(t * 2.0 - 1.0));
+    sz += float2(x * off, off);
+    coords.y += sz.y;
+    float tooth = sd_trig_isosceles(coords, sz);
+    return tooth;
+}
+
+float make_mouth(inout float4 final_color, float2 uv, ShaderParams p) {
+    uv *= 1.15;
+    uv.y -= -0.02;
+    uv = mul(rot(0.03), uv);
+    float poff = remap01(p.shift, -0.05, 0.05);
+    float lip_off = remap01(p.shift, 0.0, 0.2);
+
+    float2 a = float2(-0.5, 0.0 + poff);
+    float2 b = float2(0.0, -0.70);
+    float2 c = float2(0.5, 0.0 + poff);
+
+    float width = 3.8;
+    float spacing = 0.26;
+    float2 sz = float2(0.25, 0.07);
+    float4 curve_lower = sd_bezier_rep(uv, a, b, c);
+    float teeth_lower = sd_teeth(curve_lower.yz, curve_lower.w, width, spacing,
+                                 sz, float2(2.4, 5.3), 0.031, -8.0);
+
+    float2 la = c - float2(0.04, 0.02);
+    float2 lb = float2(0.0, 0.1 + lip_off);
+    float2 lc = a - float2(-0.04, 0.02);
+
+    width = 3.7;
+    spacing = 0.31;
+    sz = float2(0.24, 0.09);
+    float4 curve_upper = sd_bezier_rep(uv, la, lb, lc);
+    float teeth_upper = sd_teeth(curve_upper.yz, curve_upper.w, width, spacing,
+                                 sz, float2(3.0, 4.0), 0.06, -1.0);
+
+    float mouth = max(curve_lower.x, curve_upper.x);
+    LayerFlat3(mouth, SKIN_COLOR * 0.35);
+    float2 tuv = uv - float2(0.0, -0.48 + poff);
+    tuv.x = abs(tuv.x);
+    float tongue = sd_line(tuv, float2(0.1, 0.20), float2(-0.3, 0.0)) - 0.19 +
+                   p.displacement * 0.002;
+    tongue = max(tongue, mouth);
+    LayerFlat3(tongue, BRIGHT_RED);
+    LayerStroked3(teeth_upper, TEETH_COLOR, p.stroke * 1.3);
+    LayerStroked3(teeth_lower, TEETH_COLOR, p.stroke * 1.3);
+    float border = smin(abs(curve_lower.x), abs(curve_upper.x), 0.1);
+    LayerFlat3(border - 0.004, BORDER_COLOR);
+
+    float2 huv = uv - float2(0.06, -0.38 + poff * 0.4);
+    huv = mul(rot(-0.15), huv);
+    huv *= float2(0.3, 1.0);
+    huv.y -= sqrt(pow2(huv.x) + 0.0001) * 0.5;
+    float highlight =
+        sd_circle(huv, max(0.015, smoothstep(-0.8, 1.0, p.shift) * 0.02));
+    draw_highlight(final_color, highlight);
+
+    return curve_lower.x - p.stroke * 0.5;
+}
+
+float2 head_tranform(float2 uv, ShaderParams p, float amp) {
+    float2 head_uv = uv;
+    head_uv.y -= 0.85;
+    head_uv -= float2(0.04, 0.1) * p.shift * amp;
+    head_uv = mul(rot(remap01(p.shift, 0.0, 0.05)), head_uv);
+    return head_uv;
+}
+
+float2 head_tranform_point(float2 pt, ShaderParams par, float amp) {
+    float2 head_p = pt;
+    head_p += float2(0.04, 0.1) * par.shift * amp;
+    head_p = mul(rot(-remap01(par.shift, 0.0, 0.05)), head_p);
+    return head_p;
+}
+
+float make_head(inout float4 final_color, float2 uv, ShaderParams p) {
+    uv -= float2(0.00, 0.8);
+    float egg = sd_egg(float2(uv.x, -uv.y), 0.95, 0.3);
+
+    float2 euv = uv - float2(0.84, -0.71);
+    float b = dot(euv - 0.35, float2(-4.88, 0.2));
+    float ear =
+        sd_uneven_capsule(euv, float2(0.04, -0.04), float2(0.17, 0.33), 0.07, 0.20);
+    ear = smax(ear, -b, 0.4);
+    float head = smin(egg, ear, 0.13);
+    LayerStroked3(head, SKIN_COLOR, p.stroke);
+
+    float snail =
+        sd_uneven_capsule(euv, float2(0.04, 0.05), float2(0.17, 0.35), 0.10, 0.13);
+    snail = smax(snail, -b, 0.87);
+    snail = smax(snail, -egg, 0.4);
+    snail = smax(snail, -sd_circle(euv - float2(0.01, 0.15), 0.05), 0.54);
+    LayerStroked3(snail, float3(0.5, 0.1, 0.1) * 0.4, p.stroke * 0.7);
+    float snail_inner = sd_uneven_capsule(
+        euv - pow2(uv.x) * 0.00, float2(0.08, 0.15), float2(0.09, 0.3), 0.03, 0.07);
+    snail_inner = max(snail_inner, snail);
+    LayerStroked3(snail_inner, float3(0.5, 0.1, 0.1) * 0.25, p.stroke * 0.9);
+
+    float highlight = 1e9;
+    float base_d = abs(egg - 0.015) - 0.01;
+    float right = base_d + smooth_hill(uv.x, -0.62, -0.26, 0.505);
+    highlight = min(highlight, right);
+    float left = base_d + smooth_hill(uv.x, 0.56, -0.39, 0.58) * 0.1;
+    left = max(left, dot(uv, float2(2.14, -0.13)) - 1.82);
+    highlight = min(highlight, left);
+    highlight = max(highlight, egg);
+    float on_ear = abs(ear - 0.015) - 0.01;
+    on_ear += smooth_hill(uv.x, 1.0, -0.61, 0.98) * 0.1;
+    on_ear = max(on_ear, dot(uv, float2(-0.54, 0.54)) + 0.88);
+    on_ear = max(on_ear, ear);
+    highlight = min(highlight, on_ear);
+
+    draw_highlight(final_color, highlight);
+
+    return head;
+}
+
+void make_nose(inout float4 final_color, float2 uv, ShaderParams p) {
+    uv.y -= -0.02;
+    float2 nuv = float2(abs(uv.x), uv.y);
+    uv -= float2(0.08, 0.14 + remap01(p.shift, 0.0, 0.15));
+    nuv -= float2(0.08, 0.14 + remap01(p.shift, 0.0, 0.15));
+    float2 def = float2(-1.06, 0.21);
+    nuv.x -= max(0.0, dot(nuv, def));
+    float shadow = sd_line(uv, float2(-0.02, 0.03), float2(0.05, 0.04)) - 0.02;
+    float ds =
+        sd_line(uv, float2(0.05, 0.06), float2(0.06, 0.08 + p.shift * 0.06)) - 0.01;
+    shadow = smin(shadow, ds, 0.10);
+    float nostrils = sd_circle(nuv, 0.04);
+    shadow = max(shadow, -nostrils + 0.008);
+    nostrils = abs(nostrils) - 0.004;
+    nostrils = max(nostrils, dot(nuv - float2(0.0, 0.025), float2(-0.06, -0.21)));
+    LayerFlat3(nostrils, BORDER_COLOR);
+    draw_highlight(final_color, shadow);
+}
+
+float2 translate_rotate(float2 p, float2 off, float a) {
+    p = p - off;
+    p = mul(rot(a), p);
+    return p;
+}
+
+float intersection_sd(float d1, float d2) {
+    float dmin = min(abs(d1), abs(d2));
+    return dmin * sign(d1) * sign(d2);
+}
+
+float make_body(inout float4 final_color, float2 uv, ShaderParams p) {
+    float2 left_shoulder = float2(0.98, -0.33), left_top = float2(0.51, 1.06);
+    float2 a = left_shoulder, b = float2(-0.001, -0.29), c = left_top;
+    float base_d = sd_bezier_convex(uv, a, b, c);
+    float body = base_d;
+
+    float2 right_shoulder = float2(-1.16, -0.22), right_top = float2(-0.37, 1.06);
+
+    right_top += head_tranform_point((float2)1.0, p, 50.0) * 0.05;
+
+    a = right_top; b = float2(-0.16, -0.30); c = right_shoulder;
+    base_d = sd_bezier_convex(uv, a, b, c);
+    body = intersection_sd(body, base_d);
+
+    a = left_top; c = right_top; b = (a + c) / 2.0 - float2(0.0, 0.1);
+    base_d = sd_bezier_convex(uv, a, b, c);
+    body = intersection_sd(body, base_d);
+
+    float2 right_side = float2(-2.14, -1.71);
+    float2 left_side = float2(2.07, -2.17);
+
+    a = right_side; c = left_side; b = (a + c) / 2.0 + float2(0.0, -0.1);
+    base_d = sd_bezier_convex(uv, a, b, c);
+    body = intersection_sd(body, base_d);
+
+    a = right_shoulder; b = float2(-2.3, -0.02); c = right_side;
+    float rbase = sd_bezier_convex(uv, a, b, c);
+    body = intersection_sd(body, rbase);
+
+    a = left_side; b = float2(2.79, -0.24); c = left_shoulder;
+    float lbase = sd_bezier_convex(uv, a, b, c);
+    body = intersection_sd(body, lbase);
+
+    float arm = sd_line(uv, float2(1.6, -1.03), float2(2.76, -1.73)) - 0.5;
+    body = smin(body, arm, 0.1);
+
+    float2 huv = head_tranform(uv, p, 0.5) - float2(0.0, -0.15);
+    float head_shadow = sd_egg(float2(huv.x, -huv.y), 0.5, 0.07);
+    head_shadow = max(head_shadow, body);
+
+    // collar bones
+    float areas = 1e9, strokes = 1e9;
+    a = float2(-0.28, 0.09); b = float2(-0.07, -0.53); c = float2(-0.64, -0.56);
+    base_d = sd_bezier_convex(uv, a, b, c);
+    areas = intersection_sd(areas, base_d);
+    b = float2(-0.09, -0.63);
+    base_d = sd_bezier_convex(uv, a, b, c);
+    areas = intersection_sd(areas, base_d);
+
+    a = float2(-1.27, -0.28); c = float2(-0.26, -0.60); b = float2(-1.06, -0.52);
+    float bone_base = sd_bezier(uv, a, b, c).x;
+    strokes = min(strokes, abs(bone_base) - 0.005);
+    areas = max(areas, bone_base);
+    float2 tuv = uv + float2(1.11, 0.345);
+    tuv = mul(rot(-2.72), tuv);
+    float edge = sd_trig_isosceles(tuv, float2(0.3, 0.2)) - 0.1;
+    edge = max(edge, bone_base);
+    areas = min(areas, edge);
+    c = float2(1.23, -0.43); a = float2(0.22, -0.60); b = float2(1.18, -0.60);
+    bone_base = sd_bezier(uv, a, b, c).x;
+    strokes = min(strokes, abs(bone_base) - 0.005);
+    tuv = uv + float2(-1.09, 0.47);
+    tuv = mul(rot(-3.3), tuv);
+    edge = sd_trig_isosceles(tuv, float2(0.3, 0.2)) - 0.1;
+    edge = max(edge, bone_base);
+    areas = min(areas, edge);
+    a = float2(-0.24, -0.61); c = float2(0.20, -0.6); b = float2(-0.01, -0.84);
+    strokes = smin(strokes, abs(sd_bezier(uv, a, b, c).x) - 0.005, 0.02);
+
+    a = float2(0.28, 0.08); b = float2(0.14, -0.51); c = float2(0.51, -0.60);
+    base_d = sd_bezier_convex(uv, a, b, c);
+    areas = intersection_sd(areas, base_d);
+    b = float2(0.069, -0.62);
+    base_d = sd_bezier_convex(uv, a, b, c);
+    areas = intersection_sd(areas, base_d);
+
+    // arms
+    a = float2(1.70, -1.17); b = float2(1.52, -1.81); c = float2(5.63, -4.82);
+    float2 bz = sd_bezier(uv, a, b, c);
+    areas = min(areas, abs(bz.x) - 0.6 * smoothstep(-0.04, 0.91, bz.y));
+    a = float2(-1.31, -1.09); b = float2(-1.20, -1.48); c = float2(-1.63, -2.13);
+    bz = sd_bezier(uv, a, b, c);
+    areas = min(areas, abs(bz.x) - 0.05 * smoothstep(-0.11, 0.39, bz.y));
+
+    // chest
+    a = float2(-0.26, -0.98); b = float2(0.07, -1.12); c = float2(0.23, -2.24);
+    bz = sd_bezier(uv, a, b, c);
+    float cleavage = abs(bz.x) - 0.1 * smoothstep(-0.07, 0.9, bz.y) -
+                     0.025 * pow2(sin(bz.y * 6.32 + 12.76));
+    areas = min(areas, cleavage);
+
+    float w = 0.003;
+    float on_neck = sd_line_y(uv - float2(0.17, -0.08), 0.3, w * 2.0);
+    on_neck =
+        smin(on_neck, sd_line_y(uv - float2(0.16, 0.02), 0.2, w * 2.0), 0.02);
+    float2 luv = translate_rotate(uv, float2(0.21, 0.0), 0.1);
+    on_neck = min(on_neck, sd_line_y(luv, 0.2, w * 1.5));
+
+    float weirmo = sin(uv.x * 10.0 + p.displacement * 24.0 + 3.1) * 0.003;
+    LayerStroked3(body, SKIN_COLOR, p.stroke);
+    LayerFlat3(on_neck, BLOOD_COLOR);
+    LayerFlat4(head_shadow, float4(SKIN_COLOR * 0.01, 0.5));
+    LayerStrokedMask(areas, float4(float3(0.3, 0.1, 0.1) * 0.25, 0.9), p.stroke,
+                     weirmo);
+    LayerFlat3(strokes + weirmo, BORDER_COLOR);
+
+    float hbase = abs(body - 0.015) - 0.01;
+    float highlight = hbase + smooth_hill(uv.x, 1.94, -1.05, 0.55) * 0.05;
+    highlight =
+        min(highlight, hbase + smooth_hill(uv.x, -1.63, -0.49, 0.28) * 0.05);
+    highlight = max(highlight, body);
+    draw_highlight(final_color, highlight);
+
+    return body;
+}
+
+float make_hair_back(inout float4 final_color, float2 uv, ShaderParams p) {
+    // right side
+    float2 c = float2(1.16, 1.69), b = float2(1.49, 0.69), a = float2(3.36, -0.04);
+    c = head_tranform_point(c, p, 0.75);
+    float2 base_bz = sd_bezier(uv, a, b, c);
+    float hair = max(base_bz.x, -uv.x);
+    float2 cuv = translate_rotate(uv - float2(1.0, 1.0) * p.shift * 0.01,
+                                  float2(-0.19, -3.03), -1.11);
+    float cuts = sd_hook(cuv, 4.22, 0.25, 1.0);
+    cuv = translate_rotate(uv - float2(1.0, 1.0) * p.shift * 0.02,
+                           float2(-1.48, -2.51), 5.8);
+    cuts = min(cuts, sd_hook(cuv, 4.22, 0.1, 1.0));
+    cuv = translate_rotate(uv, float2(-2.65, -1.53), 5.8);
+    cuts = min(cuts, sd_hook(cuv, 4.22, 0.25, 1.0));
+    cuv = translate_rotate(uv, float2(-3.71, -0.12), 6.24);
+    cuts = min(cuts, sd_hook(cuv, 4.22, 0.25, 1.0));
+
+    float highlight = abs(base_bz.x + 0.020) - 0.008;
+    highlight = max(highlight, base_bz.x);
+
+    // left side
+    a = float2(-1.53, 2.5); c = float2(-1.66, 0.64); b = float2(-0.76, 0.90);
+    a = head_tranform_point(a, p, 1.0);
+    float left_base = sd_bezier_convex(uv, a, b, c);
+    a = float2(-1.56, 0.66); b = float2(-2.98, 0.47); c = float2(-3.15, -0.42);
+    c = head_tranform_point(c, p, 1.0);
+    left_base = min(left_base, sd_bezier_convex(uv, a, b, c));
+    left_base = min(left_base, uv.y);
+    hair = min(hair, max(left_base, uv.x));
+    cuv = translate_rotate(uv, float2(-1.01, -1.51), 0.73);
+    cuts = min(cuts,
+               sd_hook(cuv - float2(-1.0, 1.0) * p.shift * 0.02, 2.22, 0.25, -1.0));
+    cuv = translate_rotate(uv, float2(1.55, -2.34), 0.3);
+    cuts = min(cuts,
+               sd_hook(cuv - float2(-1.0, 0.0) * p.shift * 0.02, 4.22, 0.05, -1.0));
+    cuv = translate_rotate(uv, float2(2.0, -2.33), 0.33);
+    cuts = min(cuts, sd_hook(cuv, 4.22, 0.3, -1.0));
+    hair = max(hair, -cuts);
+
+    float left_highlight = abs(left_base + 0.025) - 0.011;
+    left_highlight = max(left_highlight, left_base);
+    left_highlight = max(left_highlight, uv.x + 0.8);
+    left_highlight = max(left_highlight, -uv.y + 0.3);
+    highlight = min(highlight, left_highlight);
+    float2 luv = translate_rotate(uv - float2(-1.0, 1.0) * p.shift * 0.02,
+                                  float2(-0.95, -1.49), 0.72);
+    float clight = sd_hook(luv, 2.22, 0.25, -1.0);
+    luv = translate_rotate(uv - float2(1.0, 1.0) * p.shift * 0.01,
+                           float2(-0.33, -3.00), -1.06);
+    clight = min(clight, sd_hook(luv, 4.22, 0.25, 1.0));
+    clight = max(hair + p.stroke * 0.9, clight);
+    highlight = min(highlight, clight);
+
+    float2 huv = (uv + float2(0.02, 1.02)) * float2(2.0, 1.0);
+    huv = head_tranform(huv, p, 1.0);
+    float3 hair_color =
+        lerp(HAIR_COLOR, HAIR_SHADOW_COLOR, AAstep2(sd_circle(huv, 1.6), 0.0));
+    LayerStroked3(hair, hair_color, p.stroke * 1.2);
+
+    draw_highlight(final_color, highlight);
+
+    return hair;
+}
+
+void make_hair_front(inout float4 final_color,
+                     float2 uv,
+                     ShaderParams p,
+                     float dhead,
+                     float dbody,
+                     float dbhair) {
+    float2 head_uv = head_tranform(uv, p, 1.0);
+    float2 cuv = head_uv - float2(5.14, -0.81);
+    float right_hair = sd_circle(cuv, 5.99);
+    right_hair = abs(right_hair) - 0.2;
+    right_hair = max(right_hair, cuv.x);
+    right_hair = max(right_hair, -dbody);
+
+    float hbase = abs(right_hair - 0.015) - 0.01;
+    float highlight = hbase + smooth_hill(uv.y, 0.42, -0.67, 1.09) * 0.1;
+    highlight = max(highlight, right_hair);
+    highlight = max(highlight, uv.x + 0.7);
+
+    float2 suv = uv - float2(2.26, 0.13);
+    suv = mul(rot(0.13), suv);
+    float right_hair_shadow = sd_hook(suv, 3.1, 0.19, -1.0);
+    right_hair_shadow = max(right_hair_shadow, -dbody);
+
+    float skin_shadow = -sd_circle(head_uv - float2(0.91, -0.32), 1.51);
+    skin_shadow = max(skin_shadow, dhead);
+    skin_shadow = max(skin_shadow, -right_hair);
+    skin_shadow = max(skin_shadow, head_uv.x);
+
+    float2 a = float2(-0.22, 1.53), c = float2(-2.9, -1.52), b = float2(-1.11, -1.04);
+    a = head_tranform_point(a, p, 0.3);
+    float2 vuv = uv;
+    float2 base_bz = sd_bezier(vuv, a, b, c);
+    float right_curl = base_bz.x;
+    right_curl = abs(right_curl) -
+                 remap(sin(base_bz.y * 4.93 + 1.93), -1.0, 1.0, 0.01, 0.14) +
+                 smoothstep(0.43, 1.94, base_bz.y) * 0.1;
+    float2 huv = uv - float2(-3.21, 2.74);
+    huv -= 0.1 * p.shift;
+    huv = mul(rot(0.64), huv);
+    skin_shadow = min(skin_shadow, sd_hook(huv, 3.43, -0.1, 1.0));
+
+    hbase = abs(right_curl - 0.015) - 0.01;
+    float clight = hbase + smooth_hill(base_bz.y, 0.31, -0.15, 0.24) * 0.1;
+    clight = max(clight, right_curl);
+    clight = max(clight, dot(uv, float2(0.28, -0.19)) + 0.26);
+    highlight = min(highlight, clight);
+
+    a = float2(1.26, 1.02); c = float2(1.00, -0.24); b = float2(1.55, 0.43);
+    a = head_tranform_point(a, p, 0.3);
+    base_bz = sd_bezier(uv, a, b, c);
+    float left_curl = base_bz.x, t = base_bz.y, tt = base_bz.y;
+    a = c; c = float2(1.28, -1.75); b = float2(0.32, -1.07);
+    left_curl =
+        abs(left_curl) - remap(sin(t * -2.05 + 3.6), -1.0, 1.0, 0.01, 0.20);
+    base_bz = sd_bezier(uv, a, b, c);
+    float sec = base_bz.x;
+    t = 1.0 - base_bz.y;
+    sec = abs(sec) - remap(sin(t * -2.05 + 3.6), -1.0, 1.0, 0.01, 0.20);
+    left_curl = min(left_curl, sec);
+    huv = translate_rotate(uv, float2(1.99, -1.3), 0.47);
+    float lcurl_shadow = sd_hook(huv, 1.5, 0.2, -1.0);
+    lcurl_shadow = max(lcurl_shadow, left_curl + p.stroke);
+    huv = translate_rotate(uv, float2(-0.19, 0.95), 0.05);
+    float sh = sd_hook(huv, 1.5, 0.2, 1.0);
+    sh = max(sh, -left_curl);
+    sh = max(sh, -dbody);
+    sh = max(sh, dbhair + p.stroke * 1.2);
+    lcurl_shadow = min(lcurl_shadow, sh);
+
+    hbase = abs(left_curl - 0.015) - 0.01;
+    clight = hbase + smooth_hill(tt, 0.54, -0.46, 0.7) * 0.1;
+    clight = max(clight, left_curl);
+    clight = max(clight, dot(uv, float2(-0.47, 0.07)) + 0.62);
+    highlight = min(highlight, clight);
+
+    LayerFlat4(skin_shadow, float4(final_color.rgb * 0.2, 0.5));
+    float mask = dot(head_uv, float2(5.13, 1.31)) + 3.81;
+    LayerStrokedMask(right_hair, float4(HAIR_COLOR, 1.0), p.stroke, mask);
+    mask = dot(suv, float2(-3.86, -0.54)) + -12.0;
+    LayerStrokedMask(right_hair_shadow, float4(HAIR_SHADOW_COLOR, 1.0),
+                     p.stroke * 1.4, mask);
+
+    LayerStroked3(right_curl, HAIR_COLOR, p.stroke * 1.1);
+    mask = dot(uv, float2(0.6, -0.48)) + -0.33;
+    LayerStrokedMask(left_curl, float4(HAIR_COLOR, 1.0), p.stroke * 1.4, mask);
+    LayerFlat4(lcurl_shadow, float4(HAIR_SHADOW_COLOR, 1.0));
+
+    draw_highlight(final_color, highlight);
+}
+
+void make_blood(inout float4 final_color,
+                float2 uv,
+                ShaderParams p,
+                float dmouth,
+                float dhead) {
+    float2 head_uv = head_tranform(uv, p, 1.0);
+    float blood = 1e9;
+
+    float w = 0.003;
+    float2 luv = translate_rotate(head_uv, float2(0.64, 0.04), -0.53);
+    float lines = sd_line_y(luv, 0.15, w);
+    luv = translate_rotate(head_uv, float2(0.66, 0.07), -0.53);
+    lines = min(lines, sd_line_y(luv, 0.11, w));
+    luv = translate_rotate(head_uv, float2(0.68, 0.09), -0.63);
+    lines = min(lines, sd_line_y(luv, 0.09, w * 1.5));
+    blood = min(blood, lines);
+
+    luv = translate_rotate(head_uv, float2(0.55, -0.18), -0.1);
+    float on_chin = sd_line_y(luv, 0.15, 0.015);
+    on_chin =
+        smin(on_chin, sd_circle(head_uv - float2(0.57, -0.24), 0.015), 0.09);
+    float cut_plane = dot(head_uv, float2(0.71, 0.52)) - 0.36;
+    on_chin = max(on_chin, cut_plane);
+    blood = min(blood, on_chin);
+
+    float on_mouth = sd_circle(head_uv - float2(0.24, -0.53), 0.016);
+    on_mouth = smin(
+        on_mouth, sd_line_y(head_uv - float2(0.235, -0.53), 0.34, w * 2.5), 0.05);
+    on_mouth =
+        max(on_mouth, -sd_line_y(head_uv - float2(0.22, -0.535), 0.19, w * 3.5));
+    float poff = remap01(p.shift, -0.05, 0.05);
+    luv =
+        translate_rotate(uv, float2(0.19 + poff * 0.3, 0.64 + poff * 1.40), 0.9);
+    float s = 0.12;
+    on_mouth = smin(
+        on_mouth,
+        sd_line_y(luv / s, 1.4, 0.0025) * s - fbm(head_uv * 2.73 + 0.1, 4.0) * s,
+        0.06);
+    on_mouth = smin(on_mouth, dmouth + 0.004, 0.07);
+    on_mouth = max(on_mouth, -dmouth + 0.002);
+    blood = min(blood, on_mouth);
+
+    LayerFlat3(blood, BLOOD_COLOR);
+}
+
+// ============= Entry Point =============
+
+float4 PSMain(PSInput input) : SV_Target {
+    // Y-flip: character faces upward in Shadertoy convention
+    float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
+    float2 uv = (2.0 * fragCoord - resolution.xy) / resolution.y;
+
+    uv *= 1.5;
+    uv.y -= 0.1;
+
+    float t = time + 0.1;
+    uv += (float2(fbm(float2(t, 0.0), 3.0), fbm(float2(t, 1.0), 3.0)) * 2.0 - 1.0) * 0.025 *
+          (1.0 - length(uv * 0.05));
+    ShaderParams p;
+    p.stime = time;
+    p.shift = cos(p.stime) * 0.5 + 0.5;
+    p.displacement = fbm(uv * 2.91, 2.0) * 0.42;
+    p.stroke = fwidth(uv.y) * 0.5 + p.displacement * 0.05;
+
+    uv = mul(rot(0.05), uv);
+
+    float4 final_color = float4((float3)0.051, 1.0);
+    final_color.rgb = background(uv);
+
+    float dbhair = make_hair_back(final_color, uv, p);
+    float dbody = make_body(final_color, uv, p);
+    float2 head_uv = head_tranform(uv, p, 1.0);
+    float dhead = 1e9, dmouth = 1e9;
+    if (uv.y > -0.1) {
+        dhead = make_head(final_color, head_uv, p);
+        dmouth = make_mouth(final_color, head_uv, p);
+        make_nose(final_color, head_uv, p);
+        make_blood(final_color, uv, p, dmouth, dhead);
+    }
+    make_hair_front(final_color, uv, p, dhead, dbody, dbhair);
+
+    final_color.rgb =
+        lerp(final_color.rgb, (float3)0, smoothstep(1.50, -2.84, uv.y));
+
+    float3 col = final_color.rgb;
+
+    col = sat(col);
+    col = pow(col, (float3)(1.0 / 1.9));
+    col = smoothstep(0.0, 1.0, col);
+    col = pow(col, float3(1.74, 1.71, 1.48));
+
+    float2 in_uv = fragCoord / resolution.xy;
+    col *= sat(pow(500.0 * in_uv.x * in_uv.y * (1.0 - in_uv.x) * (1.0 - in_uv.y), 0.256));
+
+    col += noise(uv * 500.0) * 0.015 * smoothstep(-1.47, 0.58, uv.y);
+
+    // Post-processing
+    float lum = dot(col, float3(0.299, 0.587, 0.114));
+    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = col * (1.0 - darken);
+
+    // Alpha from brightness, premultiplied
+    float alpha = max(col.r, max(col.g, col.b));
+    return float4(col * alpha, alpha);
+}
+
+    )"
+}
+
+_Shader_Meta_PowerChainSawMan() {
+    return {opacity: 0.55, iChannels: [], timeAccumulate: true}
 }
 
 _Shader_HLSL_ProteanClouds() {

@@ -1274,6 +1274,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "CosmeticPatchLog", g: "DiagCosmeticPatchLog", t: "bool", default: false,
      d: "Log cosmetic patch operations during ACTIVE state to %TEMP%\\tabby_cosmetic_patch.log. Use when debugging title/icon/processName updates in the overlay."},
 
+    {s: "Diagnostics", k: "ShaderLog", g: "DiagShaderLog", t: "bool", default: false, ; lint-ignore: dead-config
+     d: "Log D3D11 shader pipeline operations to %TEMP%\\tabby_shader.log. Use when debugging shader compilation, texture loading, or rendering issues."},
+
     {s: "Diagnostics", k: "StatsTracking", g: "StatsTrackingEnabled", t: "bool", default: true,
      d: "Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard."},
 

@@ -3,8 +3,22 @@
 #Requires AutoHotkey v2.0
 #Warn VarUnset, Off
 
+;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i0.png, 100
+;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i1.png, 101
+;@Ahk2Exe-AddResource ..\resources\img\shaders\interstellar_i0.png, 102
+
+global RES_ID_SHADER_DIGITALRAIN_I0 := 100
+global RES_ID_SHADER_DIGITALRAIN_I1 := 101
+global RES_ID_SHADER_INTERSTELLAR_I0 := 102
+
 Shader_ExtractTextures() {
-    ; No textures to extract for current shaders
+    global RES_ID_SHADER_DIGITALRAIN_I0, RES_ID_SHADER_DIGITALRAIN_I1, RES_ID_SHADER_INTERSTELLAR_I0
+    if (!A_IsCompiled)
+        return  ; dev mode loads from src/shaders/ directly
+    DirCreate(A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_DIGITALRAIN_I0, "digital_rain_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_DIGITALRAIN_I1, "digital_rain_i1.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_INTERSTELLAR_I0, "interstellar_i0.png", A_Temp "\shaders")
 }
 
 ; Get runtime path to a shader texture file.

@@ -15,7 +15,8 @@
 global gShader_D3DCtx := 0       ; ID3D11DeviceContext (immediate)
 global gShader_VS := 0           ; ID3D11VertexShader (fullscreen triangle, shared)
 global gShader_CBuffer := 0      ; ID3D11Buffer (32-byte constant buffer, shared)
-global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h, meta, srv}
+global gShader_Sampler := 0      ; ID3D11SamplerState (wrap + linear, shared)
+global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h, meta, srvs}
 global gShader_Ready := false    ; true after Shader_Init succeeds
 global gShader_FrameCount := 0   ; frame counter for cbuffer
 global gShader_LastTime := 0.0   ; previous frame time for timeDelta
@@ -25,10 +26,13 @@ global gShader_LastTime := 0.0   ; previous frame time for timeDelta
 ; Initialize shader pipeline. Call after gD2D_D3DDevice is valid.
 ; Returns true on success, false if unavailable.
 Shader_Init() {
-    global gD2D_D3DDevice, gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Ready
+    global gD2D_D3DDevice, gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Ready
 
     if (!gD2D_D3DDevice)
         return false
+
+    if (cfg.DiagShaderLog)
+        _Shader_LogInit()
 
     try {
         ; Get immediate context (ID3D11Device::GetImmediateContext, vtable 40)
@@ -76,9 +80,34 @@ VSOut VSMain(uint id : SV_VertexID) {
             return false
         gShader_CBuffer := pCB
 
+        ; Create sampler state: linear filter + wrap addressing (needed by texture-based shaders)
+        ; D3D11_SAMPLER_DESC (52 bytes)
+        sampDesc := Buffer(52, 0)
+        NumPut("uint", 0x15, sampDesc, 0)    ; Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR (0x15)
+        NumPut("uint", 1, sampDesc, 4)       ; AddressU = D3D11_TEXTURE_ADDRESS_WRAP
+        NumPut("uint", 1, sampDesc, 8)       ; AddressV = D3D11_TEXTURE_ADDRESS_WRAP
+        NumPut("uint", 1, sampDesc, 12)      ; AddressW = D3D11_TEXTURE_ADDRESS_WRAP
+        NumPut("float", 0.0, sampDesc, 16)   ; MipLODBias
+        NumPut("uint", 1, sampDesc, 20)      ; MaxAnisotropy
+        NumPut("uint", 0, sampDesc, 24)      ; ComparisonFunc = NEVER
+        ; BorderColor[4] at offset 28 — already zeroed
+        NumPut("float", 0.0, sampDesc, 44)   ; MinLOD
+        NumPut("float", 3.402823466e+38, sampDesc, 48) ; MaxLOD = FLT_MAX
+
+        ; CreateSamplerState (ID3D11Device vtable 23)
+        pSampler := 0
+        hr := ComCall(23, gD2D_D3DDevice, "ptr", sampDesc, "ptr*", &pSampler, "int")
+        if (!pSampler)
+            return false
+        gShader_Sampler := pSampler
+
+        if (cfg.DiagShaderLog)
+            _Shader_Log("Init: sampler=" gShader_Sampler " VS=" gShader_VS " CB=" gShader_CBuffer)
         gShader_Ready := true
         return true
     } catch as e {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("Init EXCEPTION: " e.Message)
         Shader_Cleanup()
         return false
     }
@@ -111,13 +140,22 @@ _Shader_Compile(hlsl, entryPoint, target) {
         "uint", 0, "uint", 0,
         "ptr*", &pBlob, "ptr*", &pErrors, "int")
 
-    ; Release error blob
+    ; Log and release error blob
     if (pErrors) {
-        try ComCall(2, pErrors)
+        try {
+            pErrStr := ComCall(3, pErrors, "ptr")  ; GetBufferPointer
+            errLen := ComCall(4, pErrors, "uptr")   ; GetBufferSize
+            if (pErrStr && errLen && cfg.DiagShaderLog)
+                _Shader_Log("Compile errors: " StrGet(pErrStr, errLen, "UTF-8"))
+            ComCall(2, pErrors)
+        }
     }
 
-    if (hr < 0 || !pBlob)
+    if (hr < 0 || !pBlob) {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("Compile FAILED hr=" Format("{:#x}", hr))
         return 0
+    }
 
     ; Extract bytecode into a persistent Buffer, then release the blob.
     pCode := ComCall(3, pBlob, "ptr")    ; GetBufferPointer
@@ -149,9 +187,14 @@ Shader_Register(name, hlsl, meta := "") {
         meta := {opacity: 1.0, iChannels: []}
 
     try {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("Register: " name " compiling PS...")
         psBytecode := _Shader_Compile(hlsl, "PSMain", "ps_4_0")
-        if (!psBytecode)
+        if (!psBytecode) {
+            if (cfg.DiagShaderLog)
+                _Shader_Log("Register: " name " PS compile FAILED")
             return false
+        }
 
         ; CreatePixelShader (ID3D11Device vtable 15)
         pPS := 0
@@ -159,7 +202,7 @@ Shader_Register(name, hlsl, meta := "") {
         if (!pPS)
             return false
 
-        gShader_Registry[name] := {ps: pPS, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srv: 0}
+        gShader_Registry[name] := {ps: pPS, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: []}
 
         ; Load iChannel textures (lazy — loaded here at register time for simplicity)
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0) {
@@ -175,6 +218,7 @@ Shader_Register(name, hlsl, meta := "") {
 ; ========================= iCHANNEL TEXTURES =========================
 
 ; Load iChannel textures for a shader. GDI+ → CreateTexture2D → CreateShaderResourceView.
+; Loads ALL iChannels specified in metadata and stores SRVs in entry.srvs[] (ordered by channel index).
 _Shader_LoadTextures(name) {
     global gD2D_D3DDevice, gShader_Registry
 
@@ -185,25 +229,54 @@ _Shader_LoadTextures(name) {
     if (!entry.meta.HasOwnProp("iChannels") || entry.meta.iChannels.Length = 0)
         return
 
-    ; Only handle iChannel0 for now (most shaders use just one texture)
-    ch := entry.meta.iChannels[1]  ; AHK arrays are 1-based
-    texPath := Shader_GetTexturePath(ch.file)
+    diagLog := cfg.DiagShaderLog
+    if (diagLog)
+        _Shader_Log("LoadTextures: " name " has " entry.meta.iChannels.Length " channels")
+    for _, ch in entry.meta.iChannels {
+        if (diagLog)
+            _Shader_Log("  loading ch file=" ch.file)
+        pSRV := _Shader_LoadOneTexture(ch.file)
+        if (diagLog)
+            _Shader_Log("  result SRV=" pSRV)
+        entry.srvs.Push(pSRV)  ; 0 if failed — preserves slot ordering
+    }
+    if (diagLog)
+        _Shader_Log("LoadTextures done: " name " srvs.Length=" entry.srvs.Length)
+}
 
-    if (!FileExist(texPath))
-        return
+; Load a single texture file → D3D11 SRV. Returns SRV ptr or 0 on failure.
+_Shader_LoadOneTexture(fileName) {
+    global gD2D_D3DDevice
+    ; Ensure GDI+ is initialized (Gdip_Startup is a no-op in the D2D pipeline)
+    static _gdipInit := _Shader_InitGdiplus()
+    texPath := Shader_GetTexturePath(fileName)
+
+    diagLog := cfg.DiagShaderLog
+    if (!FileExist(texPath)) {
+        if (diagLog)
+            _Shader_Log("  FILE NOT FOUND: " texPath)
+        return 0
+    }
+    if (diagLog)
+        _Shader_Log("  file exists: " texPath)
 
     try {
         ; Load PNG via GDI+
         pBitmapGdip := 0
         DllCall("gdiplus\GdipCreateBitmapFromFile", "str", texPath, "ptr*", &pBitmapGdip, "int")
-        if (!pBitmapGdip)
-            return
+        if (!pBitmapGdip) {
+            if (diagLog)
+                _Shader_Log("  GDI+ load FAILED")
+            return 0
+        }
 
         ; Get dimensions
         imgW := 0
         imgH := 0
         DllCall("gdiplus\GdipGetImageWidth", "ptr", pBitmapGdip, "uint*", &imgW)
         DllCall("gdiplus\GdipGetImageHeight", "ptr", pBitmapGdip, "uint*", &imgH)
+        if (diagLog)
+            _Shader_Log("  GDI+ loaded " imgW "x" imgH)
 
         ; Lock bits in BGRA format (PixelFormat32bppARGB = 0x26200A)
         ; GDI+ BitmapData struct: 32 bytes on x64
@@ -218,12 +291,16 @@ _Shader_LoadTextures(name) {
         hr := DllCall("gdiplus\GdipBitmapLockBits", "ptr", pBitmapGdip, "ptr", lockRect,
             "uint", 1, "int", 0x26200A, "ptr", bmpData, "int")  ; ImageLockModeRead=1
         if (hr != 0) {
+            if (diagLog)
+                _Shader_Log("  LockBits FAILED hr=" hr)
             DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
-            return
+            return 0
         }
 
         stride := NumGet(bmpData, 8, "int")
         pPixels := NumGet(bmpData, 16, "ptr")
+        if (diagLog)
+            _Shader_Log("  stride=" stride " pPixels=" pPixels)
 
         ; Create D3D11 Texture2D with initial data
         texDesc := Buffer(44, 0)
@@ -249,8 +326,13 @@ _Shader_LoadTextures(name) {
         DllCall("gdiplus\GdipBitmapUnlockBits", "ptr", pBitmapGdip, "ptr", bmpData)
         DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
 
-        if (hr < 0 || !pTexture)
-            return
+        if (hr < 0 || !pTexture) {
+            if (diagLog)
+                _Shader_Log("  CreateTexture2D FAILED hr=" Format("{:#x}", hr) " pTex=" pTexture)
+            return 0
+        }
+        if (diagLog)
+            _Shader_Log("  Texture2D OK ptr=" pTexture)
 
         ; CreateShaderResourceView (ID3D11Device vtable 7)
         pSRV := 0
@@ -258,12 +340,19 @@ _Shader_LoadTextures(name) {
         ; Release the texture (SRV holds a ref)
         ComCall(2, pTexture)
 
-        if (hr < 0 || !pSRV)
-            return
+        if (hr < 0 || !pSRV) {
+            if (diagLog)
+                _Shader_Log("  CreateSRV FAILED hr=" Format("{:#x}", hr))
+            return 0
+        }
 
-        entry.srv := pSRV
-    } catch {
-        ; Texture loading failed — shader will run without textures
+        if (diagLog)
+            _Shader_Log("  SRV OK ptr=" pSRV)
+        return pSRV
+    } catch as e {
+        if (diagLog)
+            _Shader_Log("  EXCEPTION: " e.Message)
+        return 0
     }
 }
 
@@ -372,11 +461,19 @@ _Shader_MakeGUID(str) {
 ; Run the D3D11 shader pipeline. Call BEFORE D2D BeginDraw.
 ; timeSec: elapsed time in seconds. darken/desaturate: 0.0-1.0 post-processing.
 Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
-    global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Registry, gShader_Ready
+    global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
     global gShader_FrameCount, gShader_LastTime
+    static dbgRendered := Map()
 
     if (!gShader_Ready || !gShader_Registry.Has(name))
         return false
+
+    ; One-time log per shader name
+    if (cfg.DiagShaderLog && !dbgRendered.Has(name)) {
+        dbgRendered[name] := true
+        entry_ := gShader_Registry[name]
+        _Shader_Log("PreRender FIRST: " name " srvs=" entry_.srvs.Length " sampler=" gShader_Sampler " ps=" entry_.ps)
+    }
 
     entry := gShader_Registry[name]
     if (!entry.ps)
@@ -455,11 +552,22 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
     NumPut("ptr", gShader_CBuffer, cbBuf)
     ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf)
 
-    ; Bind iChannel texture SRV if available (PSSetShaderResources vtable 8)
-    if (entry.srv) {
-        srvBuf := Buffer(A_PtrSize, 0)
-        NumPut("ptr", entry.srv, srvBuf)
-        ComCall(8, ctx, "uint", 0, "uint", 1, "ptr", srvBuf)
+    ; Bind iChannel texture SRVs if available (PSSetShaderResources vtable 8)
+    nSrvs := entry.srvs.Length
+    if (nSrvs > 0) {
+        srvBuf := Buffer(A_PtrSize * nSrvs, 0)
+        Loop nSrvs
+            NumPut("ptr", entry.srvs[A_Index], srvBuf, (A_Index - 1) * A_PtrSize)
+        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf)
+    }
+
+    ; Bind sampler state to all slots used by SRVs (PSSetSamplers vtable 10)
+    if (gShader_Sampler) {
+        nSamplers := Max(nSrvs, 1)
+        sampBuf := Buffer(A_PtrSize * nSamplers, 0)
+        Loop nSamplers
+            NumPut("ptr", gShader_Sampler, sampBuf, (A_Index - 1) * A_PtrSize)
+        ComCall(10, ctx, "uint", 0, "uint", nSamplers, "ptr", sampBuf)
     }
 
     ; Draw (vtable 13): vertexCount=3, startVertexLocation=0
@@ -469,10 +577,10 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
     ; OMSetRenderTargets(0, null, null)
     ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0)
 
-    ; Unbind SRV if it was bound
-    if (entry.srv) {
-        nullSrv := Buffer(A_PtrSize, 0)
-        ComCall(8, ctx, "uint", 0, "uint", 1, "ptr", nullSrv)
+    ; Unbind SRVs if they were bound
+    if (nSrvs > 0) {
+        nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
+        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf)
     }
 
     ; --- GPU→CPU readback: copy rendered texture to D2D bitmap ---
@@ -524,13 +632,15 @@ Shader_GetMeta(name) {
 
 ; Release all D3D11 shader resources. Safe to call multiple times.
 Shader_Cleanup() {
-    global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Registry, gShader_Ready
+    global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
     global gShader_FrameCount, gShader_LastTime
 
     ; Release per-shader resources (all raw COM ptrs)
     for _, entry in gShader_Registry {
-        if (entry.srv)
-            ComCall(2, entry.srv)
+        for _, srv in entry.srvs {
+            if (srv)
+                ComCall(2, srv)
+        }
         if (entry.bitmap)
             ComCall(2, entry.bitmap)
         if (entry.staging)
@@ -544,6 +654,10 @@ Shader_Cleanup() {
     }
     gShader_Registry := Map()
 
+    if (gShader_Sampler) {
+        ComCall(2, gShader_Sampler)
+        gShader_Sampler := 0
+    }
     if (gShader_CBuffer) {
         ComCall(2, gShader_CBuffer)
         gShader_CBuffer := 0
@@ -560,4 +674,28 @@ Shader_Cleanup() {
     gShader_Ready := false
     gShader_FrameCount := 0
     gShader_LastTime := 0.0
+}
+
+; ========================= GDI+ INIT =========================
+
+; One-shot GDI+ startup for texture loading. The main D2D pipeline doesn't use GDI+,
+; but we need it here to decode PNG files into pixel data for D3D11 textures.
+_Shader_InitGdiplus() {
+    si := Buffer(24, 0)  ; GdiplusStartupInput (x64)
+    NumPut("uint", 1, si, 0)  ; GdiplusVersion = 1
+    token := 0
+    DllCall("gdiplus\GdiplusStartup", "ptr*", &token, "ptr", si, "ptr", 0)
+    return token
+}
+
+; ========================= DIAGNOSTICS =========================
+
+_Shader_LogInit() {
+    global LOG_PATH_SHADER ; lint-ignore: phantom-global
+    LogInitSession(LOG_PATH_SHADER, "Alt-Tabby Shader Pipeline Log")
+}
+
+_Shader_Log(msg) {
+    global LOG_PATH_SHADER ; lint-ignore: phantom-global
+    LogAppend(LOG_PATH_SHADER, msg)
 }

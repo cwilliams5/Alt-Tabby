@@ -160,6 +160,13 @@ foreach ($shader in $shaders) {
     $nameList += ', "' + $shader.DisplayName + '"'
 }
 [void]$sb.AppendLine("global SHADER_NAMES := [$nameList]")
+
+# SHADER_KEYS — parallel array of registry keys (index-aligned with SHADER_NAMES)
+$keyList = '""'
+foreach ($shader in $shaders) {
+    $keyList += ', "' + $shader.RegKey + '"'
+}
+[void]$sb.AppendLine("global SHADER_KEYS := [$keyList]")
 [void]$sb.AppendLine('')
 
 # Shader_RegisterAll()

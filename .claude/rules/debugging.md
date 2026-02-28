@@ -15,6 +15,7 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 - **IPCLog** → `tabby_ipc.log` — Pump IPC communication issues
 - **PaintTimingLog** → `tabby_paint_timing.log` — Slow overlay rendering. Logs first paint, paint after 60s+ idle, any >100ms. Auto-trimmed to 100KB.
 - **WebViewLog** → `tabby_webview_debug.log` — WebView2 config editor issues
+- **ShaderLog** → `tabby_shader.log` — D3D11 shader compilation, iChannel texture loading, SRV/sampler binding
 
 - **FlightRecorder** → `recorder/fr_YYYYMMDD_HHMMSS.txt` — In-memory ring buffer (default 2000 events ≈ 30s). Press F12 (configurable) to dump. Shows state snapshot, WindowList state, live items, and full event trace with hwnd resolution. Near-zero cost when enabled. Config: `FlightRecorderBufferSize` (int, 500-10000), `FlightRecorderHotkey` (string, default F12). See `docs/USING_RECORDER.md` for analysis guide.
 

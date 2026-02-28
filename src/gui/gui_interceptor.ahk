@@ -400,14 +400,22 @@ _INT_C_Down(*) {
 _INT_V_Down(*) {
     Critical "On"
     global gGUI_State, gGUI_OverlayVisible, gFX_ShaderIndex, gFX_GPUReady
-    global SHADER_NAMES, gShader_Ready ; lint-ignore: phantom-global
+    global SHADER_NAMES, SHADER_KEYS, gShader_Registry, gShader_Ready ; lint-ignore: phantom-global
 
     if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
         return
     if (!gFX_GPUReady || !gShader_Ready)
         return
 
-    gFX_ShaderIndex := Mod(gFX_ShaderIndex + 1, SHADER_NAMES.Length)
+    ; Cycle forward, skipping shaders not yet registered (compilation still in progress).
+    ; Wrap around at most once to avoid infinite loop if nothing is registered.
+    total := SHADER_NAMES.Length
+    Loop total {
+        gFX_ShaderIndex := Mod(gFX_ShaderIndex + 1, total)
+        ; Index 0 = None (always valid), otherwise check registry
+        if (gFX_ShaderIndex = 0 || gShader_Registry.Has(SHADER_KEYS[gFX_ShaderIndex + 1]))
+            break
+    }
 
     shaderName := SHADER_NAMES[gFX_ShaderIndex + 1]
     ToolTip("Shader: " shaderName)
