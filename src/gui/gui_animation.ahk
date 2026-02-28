@@ -92,11 +92,13 @@ Anim_CancelTween(name) {
 }
 
 Anim_CancelAll() {
-    global gAnim_Tweens, gFX_AmbientTime, gAnim_HidePending, gFX_BackdropSeedX, gFX_BackdropSeedY
+    global gAnim_Tweens, gFX_AmbientTime, gAnim_HidePending
+    global gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase
     gAnim_Tweens := Map()
     gFX_AmbientTime := 0.0
-    gFX_BackdropSeedX := Random(100, 10000) * 1.0  ; Fresh turbulence pattern each open
+    gFX_BackdropSeedX := Random(100, 10000) * 1.0      ; Fresh turbulence pattern each open
     gFX_BackdropSeedY := Random(100, 10000) * 1.0
+    gFX_BackdropSeedPhase := Random() * 6.2832  ; Random orbit starting position (0 to 2π)
     gAnim_HidePending := false
     Anim_StopTimer()
 }

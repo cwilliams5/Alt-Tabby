@@ -95,6 +95,7 @@ global gFX_GPUReady := false
 global gFX_BackdropStyle := 0
 global gFX_BackdropSeedX := 0.0
 global gFX_BackdropSeedY := 0.0
+global gFX_BackdropSeedPhase := 0.0
 global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
 global gFX_MouseX := 0.0
 global gFX_MouseY := 0.0

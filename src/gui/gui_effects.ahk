@@ -21,6 +21,7 @@ global gFX_HDRActive := false  ; True when HDR gamma compensation is active
 global gFX_BackdropStyle := 0        ; 0=None, 1-6=styles (cycled by C key)
 global gFX_BackdropSeedX := 0.0      ; Random offset for turbulence — refreshed on each open/style switch
 global gFX_BackdropSeedY := 0.0      ; Gives different pattern without using D2D's seed property
+global gFX_BackdropSeedPhase := 0.0  ; Random phase offset (radians) for orbit starting position
 global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
@@ -812,7 +813,7 @@ _FX_BG_Dither(wPhys, hPhys) {
 ; --- Style 1: Gradient Drift ---
 ; Slow-rotating warm/cool color wash. Two large soft blobs orbiting ~45s.
 _FX_BG_GradientDrift(wPhys, hPhys) {
-    global gD2D_RT, gFX_AmbientTime, cfg
+    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase, cfg
 
     baseARGB := cfg.GUI_AcrylicColor
     baseRGB := baseARGB & 0x00FFFFFF
@@ -832,8 +833,8 @@ _FX_BG_GradientDrift(wPhys, hPhys) {
     coolB := Min(255, bB + 120)
     coolARGB := 0xFF000000 | (coolR << 16) | (coolG << 8) | coolB
 
-    ; Orbit positions (~45s full rotation)
-    angle := gFX_AmbientTime * 0.000140  ; ~45s cycle
+    ; Orbit positions (~45s full rotation, random starting phase)
+    angle := gFX_AmbientTime * 0.000140 + gFX_BackdropSeedPhase
     cx := wPhys * 0.5
     cy := hPhys * 0.5
     rx := wPhys * 0.35
@@ -903,22 +904,22 @@ _FX_BG_Caustic(wPhys, hPhys) {
 ; --- Style 3: Aurora ---
 ; Three soft colored blobs drifting in slow elliptical orbits.
 _FX_BG_Aurora(wPhys, hPhys) {
-    global gD2D_RT, gFX_AmbientTime
+    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase
 
     cx := wPhys * 0.5
     cy := hPhys * 0.5
 
-    ; Three blobs with different orbit speeds and phases
+    ; Three blobs with different orbit speeds and phases (random base phase)
     ; Blob 1: warm rose
-    a1 := gFX_AmbientTime * 0.000200  ; ~31s cycle
+    a1 := gFX_AmbientTime * 0.000200 + gFX_BackdropSeedPhase  ; ~31s cycle
     x1 := cx + wPhys * 0.3 * Cos(a1)
     y1 := cy + hPhys * 0.25 * Sin(a1 * 1.3)
     ; Blob 2: cool cyan
-    a2 := gFX_AmbientTime * 0.000160 + 2.09  ; ~39s cycle, phase offset
+    a2 := gFX_AmbientTime * 0.000160 + 2.09 + gFX_BackdropSeedPhase  ; ~39s cycle
     x2 := cx + wPhys * 0.25 * Cos(a2)
     y2 := cy + hPhys * 0.3 * Sin(a2 * 0.9)
     ; Blob 3: neutral violet
-    a3 := gFX_AmbientTime * 0.000120 + 4.19  ; ~52s cycle, phase offset
+    a3 := gFX_AmbientTime * 0.000120 + 4.19 + gFX_BackdropSeedPhase  ; ~52s cycle
     x3 := cx + wPhys * 0.2 * Cos(a3 * 1.1)
     y3 := cy + hPhys * 0.2 * Sin(a3)
 

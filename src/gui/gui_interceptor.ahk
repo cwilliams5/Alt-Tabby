@@ -371,8 +371,8 @@ _INT_F_Down(*) {
 
 _INT_C_Down(*) {
     Critical "On"
-    global gGUI_State, gGUI_OverlayVisible, gFX_BackdropStyle, gFX_BackdropSeedX, gFX_BackdropSeedY, FX_BG_STYLE_NAMES
-    global gFX_GPUReady
+    global gGUI_State, gGUI_OverlayVisible, gFX_BackdropStyle, FX_BG_STYLE_NAMES
+    global gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase, gFX_GPUReady
 
     if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
         return
@@ -380,8 +380,9 @@ _INT_C_Down(*) {
         return
 
     gFX_BackdropStyle := Mod(gFX_BackdropStyle + 1, FX_BG_STYLE_NAMES.Length)
-    gFX_BackdropSeedX := Random(100, 10000) * 1.0  ; Fresh pattern each activation
+    gFX_BackdropSeedX := Random(100, 10000) * 1.0      ; Fresh pattern each activation
     gFX_BackdropSeedY := Random(100, 10000) * 1.0
+    gFX_BackdropSeedPhase := Random() * 6.2832  ; Random orbit phase (0 to 2π)
 
     styleName := FX_BG_STYLE_NAMES[gFX_BackdropStyle + 1]
     ToolTip("Backdrop: " styleName)

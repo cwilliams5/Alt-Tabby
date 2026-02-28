@@ -36,6 +36,7 @@ gAnim_HidePending: gui_animation, gui_overlay
 gFX_AmbientTime: gui_animation, gui_effects
 gFX_BackdropSeedX: gui_animation, gui_interceptor
 gFX_BackdropSeedY: gui_animation, gui_interceptor
+gFX_BackdropSeedPhase: gui_animation, gui_interceptor
 gFX_BackdropStyle: gui_interceptor
 gFX_MouseX: gui_input
 gFX_MouseY: gui_input
