@@ -14,6 +14,8 @@ Convert Shadertoy GLSL shaders to the Alt-Tabby HLSL pixel shader format.
 - `/convert-shaders` — Scan `src/shaders/` for any `.glsl` without matching `.hlsl`, convert all
 - `/convert-shaders <pasted GLSL or Shadertoy URL>` — Convert a specific shader
 
+**Not supported:** Multi-buffer shaders (Buffer A/B/C/D tabs). Our pipeline is single-pass only. Skip shaders that require inter-frame feedback or multi-pass rendering.
+
 ## Two Modes
 
 ### Mode A — Scan Directory (no args)
