@@ -80,6 +80,14 @@ float4 PSMain(PSInput input) : SV_Target {
 }
 ```
 
+**Y-axis flip:** Shadertoy's `fragCoord.y = 0` is at the **bottom** of the screen; `SV_Position.y = 0` is at the **top**. For shaders with gravity, falling particles, directional motion, or any up/down asymmetry, flip Y at the start:
+
+```hlsl
+float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
+```
+
+Symmetric shaders (noise fields, clouds, fractals) usually don't need the flip.
+
 ### 5. Constant Buffer Header
 
 Always include at the top of the `.hlsl`:
