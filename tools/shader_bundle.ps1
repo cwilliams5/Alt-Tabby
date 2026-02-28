@@ -129,6 +129,21 @@ foreach ($shader in $shaders) {
     }
 }
 
+# ==================== Clean stale textures from resources/img/shaders ====================
+$expectedFiles = @{}
+foreach ($entry in $resourceEntries) {
+    $expectedFiles[$entry.File] = $true
+}
+$existingFiles = Get-ChildItem -Path $resImgDir -File -ErrorAction SilentlyContinue
+foreach ($f in $existingFiles) {
+    if (-not $expectedFiles.ContainsKey($f.Name)) {
+        Remove-Item $f.FullName -Force
+        if ($Verbose) {
+            Write-Host "  Removed stale texture: $($f.Name)"
+        }
+    }
+}
+
 # ==================== Generate shader_bundle.ahk ====================
 $sb = New-Object System.Text.StringBuilder
 

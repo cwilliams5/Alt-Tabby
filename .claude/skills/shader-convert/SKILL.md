@@ -1,36 +1,167 @@
 ---
-name: convert-shaders
+name: shader-convert
 description: Convert Shadertoy GLSL shaders to HLSL for Alt-Tabby's D3D11 pipeline
 user-invocable: true
 disable-model-invocation: true
 ---
 
-# /convert-shaders — GLSL to HLSL Shader Conversion
+# /shader-convert — GLSL to HLSL Shader Conversion
 
 Convert Shadertoy GLSL shaders to the Alt-Tabby HLSL pixel shader format.
 
 ## Invocation
 
-- `/convert-shaders` — Scan `src/shaders/` for any `.glsl` without matching `.hlsl`, convert all
-- `/convert-shaders <pasted GLSL or Shadertoy URL>` — Convert a specific shader
+- `/shader-convert` — Scan `src/shaders/` for any `.glsl` without matching `.hlsl`, convert all
+- `/shader-convert <Shadertoy URL>` — Fetch shader from Shadertoy via Playwright, then convert
+- `/shader-convert <pasted GLSL + metadata>` — Convert manually pasted shader source
 
 **Not supported:** Multi-buffer shaders (Buffer A/B/C/D tabs). Our pipeline is single-pass only. Skip shaders that require inter-frame feedback or multi-pass rendering.
 
-## Two Modes
+## Three Modes
 
 ### Mode A — Scan Directory (no args)
 
 1. Scan `src/shaders/` for any `name.glsl` that has no matching `name.hlsl`
 2. For each unconverted shader: convert, create `.hlsl` (and `.json` if missing)
 
-### Mode B — Paste GLSL (with args)
+### Mode B — Shadertoy URL (arg matches `shadertoy.com/view/`)
+
+Requires the Playwright MCP server. Extracts shader source, metadata, and iChannel textures automatically.
+
+#### Step 1: Navigate and Wait
+
+```
+browser_navigate → https://www.shadertoy.com/view/{id}
+```
+
+If Cloudflare challenge appears, wait ~10s for auto-pass. Verify the page title changes from "Shader - Shadertoy BETA" to the shader name.
+
+#### Step 2: Extract All Data (single evaluate call)
+
+```javascript
+() => {
+  const st = window.gShaderToy;
+  if (!st) return { error: 'gShaderToy not found' };
+
+  // Metadata
+  const info = st.mInfo;
+
+  // Code from each pass via CodeMirror Doc
+  const passes = st.mPass.map((p, i) => {
+    const code = p.mDocs && typeof p.mDocs.getValue === 'function'
+      ? p.mDocs.getValue() : null;
+    return { index: i, code, charCount: code ? code.length : 0 };
+  });
+
+  // Tab names → map pass index to role
+  const tabNames = {};
+  for (let i = 0; i < 10; i++) {
+    const tab = document.getElementById('tab' + i);
+    if (tab) tabNames['tab' + i] = tab.textContent.trim();
+  }
+
+  // Pass types from effect renderer (image, common, buffer, sound, cubemap)
+  const passTypes = st.mEffect ? st.mEffect.mPasses.map((p, i) => ({
+    index: i, type: p.mType
+  })) : [];
+
+  // iChannel inputs for the Image pass
+  let iChannels = [];
+  if (st.mEffect && st.mEffect.mPasses) {
+    const imgPass = st.mEffect.mPasses.find(p => p.mType === 'image') || st.mEffect.mPasses[0];
+    if (imgPass && imgPass.mInputs) {
+      iChannels = imgPass.mInputs.map((inp, ch) => {
+        if (!inp) return null;
+        return JSON.parse(JSON.stringify(inp.mInfo));
+      });
+    }
+  }
+
+  return {
+    info: { name: info.name, username: info.username, description: info.description, tags: info.tags },
+    passes, tabNames, passTypes, iChannels
+  };
+}
+```
+
+#### Step 3: Validate Compatibility
+
+Check `passTypes` — if any pass has `type` of `"buffer"`, `"sound"`, or `"cubemap"`:
+- `"buffer"` → **STOP**: Multi-buffer shader, not supported. Tell user.
+- `"sound"` → **STOP**: Audio-output shader, not supported.
+- `"cubemap"` → **STOP**: Cubemap pass, not supported.
+- Only `"image"` and `"common"` are valid.
+
+Check `iChannels` for audio inputs:
+- If any channel has `mType` !== `"texture"` (e.g., `"music"`, `"musicstream"`, `"webcam"`, `"video"`, `"keyboard"`), note it. Audio channels will need synthetic beat replacement (see §7). Webcam/video/keyboard → skip the shader.
+
+#### Step 4: Save GLSL Source
+
+Combine passes into a single `.glsl` file:
+- If a `"common"` tab exists: put Common code first, then `// --- Image ---` separator, then Image code
+- If only Image: save directly
+- Derive `name` from `info.name` → snake_case (e.g., "Power (Chainsaw Man)" → `power_chain_saw_man`)
+
+#### Step 5: Download iChannel Textures
+
+For each non-null iChannel with `mType === "texture"`:
+
+```javascript
+// In browser_run_code (needs Playwright page object for download API)
+// NOTE: page.evaluate only accepts one arg — wrap multiple values in an object
+async (page) => {
+  const textures = [
+    { url: 'https://www.shadertoy.com' + mSrc0, file: 'name_i0.png' },
+    { url: 'https://www.shadertoy.com' + mSrc1, file: 'name_i1.png' }
+  ];
+  const results = [];
+  for (const tex of textures) {
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
+    await page.evaluate(({url, filename}) => {
+      return fetch(url).then(r => r.blob()).then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      });
+    }, {url: tex.url, filename: tex.file});
+    const download = await downloadPromise;
+    await download.saveAs('src/shaders/' + tex.file);
+    results.push(tex.file);
+  }
+  return results;
+}
+```
+
+- Full URL: `https://www.shadertoy.com` + `mInfo.mSrc` (e.g., `/media/a/...png`)
+- Save as: `src/shaders/{name}_i{channel}.png`
+- **curl won't work** — Shadertoy returns 403 for direct requests (requires cookies/origin)
+
+#### Step 6: Create .json Metadata
+
+Populate from extracted `info`:
+- `name` → `info.name`
+- `shadertoyId` → the ID from the URL
+- `author` → `info.username`
+- `license` → `"CC BY-NC-SA 3.0"` (Shadertoy default)
+- `iChannels` → from downloaded textures, include `filter`/`wrap` from `mSampler`
+
+#### Step 7: Close Browser & Convert
+
+Close the browser tab, then proceed to HLSL conversion (same as Mode C).
+
+### Mode C — Paste GLSL (with non-URL args)
 
 1. Ask for a shader name if not obvious from the source
 2. Write `src/shaders/name.glsl` with the pasted source
 3. Create `src/shaders/name.json` with metadata (prompt for Shadertoy URL/author if not provided)
 4. Convert to `src/shaders/name.hlsl`
 
-## Conversion Steps (both modes)
+## Conversion Steps (all modes)
 
 ### 1. Mechanical Type Conversions
 
