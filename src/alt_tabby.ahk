@@ -115,6 +115,7 @@ for _, arg in A_Args {
 #Include DirectoryWatcher.ahk
 #Include Direct2D.ahk
 #Include d2d_device.ahk
+#Include d2d_shader.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk

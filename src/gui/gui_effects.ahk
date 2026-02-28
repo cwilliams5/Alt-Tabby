@@ -18,12 +18,15 @@ global gFX_HDRActive := false  ; True when HDR gamma compensation is active
 
 ; ========================= BACKDROP EFFECT STATE =========================
 
-global gFX_BackdropStyle := 0        ; 0=None, 1-6=styles (cycled by C key)
+global gFX_BackdropStyle := 0        ; 0=None, 1-11=styles (cycled by C key)
 global gFX_BackdropSeedX := 0.0      ; Random offset for turbulence — refreshed on each open/style switch
 global gFX_BackdropSeedY := 0.0      ; Gives different pattern without using D2D's seed property
 global gFX_BackdropSeedPhase := 0.0  ; Random phase offset (radians) for orbit starting position
 global gFX_BackdropDirSign := 1      ; Random orbit direction: 1=CCW, -1=CW
-global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
+global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered",
+                              "Matrix Rain"]
+; Shader style → shader name/opacity mapping (populated in FX_GPU_Init)
+global gShader_StyleMap := Map()     ; styleIndex → {shader: "name", opacity: 0.50}
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
 global gFX_MouseInWindow := false    ; Mouse is inside overlay window
@@ -105,7 +108,7 @@ FX_GPU_Init() {
                 gFX_GPU["specCrop"].SetInput(0, gFX_GPU["specular"].GetOutput())
                 gFX_GPUOutput["specCrop"] := gFX_GPU["specCrop"].GetOutput()
             } catch {
-                ; PointSpecular may not be available on all systems
+                ; Specular chain failed — Pool Caustic, Rippled Glass, Thick Oil unavailable
             }
         } catch {
             ; Background chains failed — backdrop effects unavailable, selection styles still work
@@ -129,6 +132,16 @@ FX_GPU_Init() {
             LogAppend(LOG_PATH_PAINT_TIMING, "FX_GPU_Init: HDR=" (hdrActive ? "active" : "inactive") " mode=" cfg.PerfHDRCompensation)
 
         gFX_GPUReady := true
+
+        ; Initialize D3D11 shader pipeline + register shader styles
+        ; Wrapped in try/catch: shader failure must not kill selection/backdrop effects
+        try {
+            _FX_InitShaders()
+        } catch {
+            ; Shader pipeline unavailable — shader backdrop styles won't render,
+            ; but all D2D-based effects (selection + backdrop styles 1-7) still work.
+        }
+
         return true
     } catch as e {
         FX_GPU_Dispose()
@@ -138,13 +151,16 @@ FX_GPU_Init() {
 
 ; Release all cached effects. Safe to call multiple times.
 FX_GPU_Dispose() {
-    global gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive
+    global gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, gShader_StyleMap
     ; Release cached output images first (prevent dangling refs)
     gFX_GPUOutput := Map()
     ; Release effects (ID2DBase.__Delete handles ObjRelease)
     gFX_GPU := Map()
     gFX_GPUReady := false
     gFX_HDRActive := false
+    ; Release shader resources
+    Shader_Cleanup()
+    gShader_StyleMap := Map()
 }
 
 ; ========================= SOFT RECT PRIMITIVE =========================
@@ -746,7 +762,7 @@ FX_UpdateAmbient(dt) {
 ; ========================= LIVING BACKDROP EFFECTS =========================
 ; Subtle animated textures on the acrylic glass background.
 ; Active only when GPUEffects=true AND AnimationType=Full.
-; C key cycles through styles (0=None, 1-6=styles).
+; C key cycles through styles (0=None, 1-11=styles).
 
 ; Public dispatcher — called from _GUI_PaintOverlay between clear and content.
 FX_DrawBackdrop(wPhys, hPhys, scale) { ; lint-ignore: dead-param
@@ -760,15 +776,12 @@ FX_DrawBackdrop(wPhys, hPhys, scale) { ; lint-ignore: dead-param
             case 4: _FX_BG_Grain(wPhys, hPhys)
             case 5: _FX_BG_Vignette(wPhys, hPhys)
             case 6: _FX_BG_Layered(wPhys, hPhys)
+            default: _FX_BG_ShaderDraw(wPhys, hPhys)  ; all shader styles (7+)
         }
-
-        ; Point specular overlay (mouse spotlight on backdrop texture)
-        if (gFX_MouseInWindow && gFX_GPU.Has("specular"))
-            _FX_BG_PointSpecular(wPhys, hPhys)
     } catch as e {
-        ; Backdrop effect failed — show error for diagnosis
-        ToolTip("BG ERR: " e.Message " @ " e.What)
-        SetTimer(() => ToolTip(), -3000)
+        ; Backdrop effect failed — show error for diagnosis, include stack + style index
+        ToolTip("BG ERR[" gFX_BackdropStyle "]: " e.Message " @ " e.What "`n" e.Stack)
+        SetTimer(() => ToolTip(), -5000)
     }
 }
 
@@ -1016,7 +1029,7 @@ _FX_BG_Layered(wPhys, hPhys) {
 ; --- Point Specular (Mouse Spotlight) ---
 ; D2D PointSpecular effect using bgTurb as surface height map.
 ; The light catches the backdrop texture as the mouse moves.
-_FX_BG_PointSpecular(wPhys, hPhys) {
+_FX_BG_PointSpecular(wPhys, hPhys) { ; lint-ignore: dead-function (kept for future mouse spotlight effect)
     global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_MouseX, gFX_MouseY, gFX_BackdropSeedX, gFX_BackdropSeedY
     global FX_SPEC_LIGHT_POS, FX_SPEC_EXPONENT, FX_SPEC_SURFACE_SCALE
     global FX_SPEC_CONSTANT, FX_SPEC_COLOR, FX_CROP_RECT
@@ -1054,3 +1067,121 @@ _FX_BG_PointSpecular(wPhys, hPhys) {
     gD2D_RT.DrawImage(gFX_GPUOutput["specCrop"], drawPt)
     gD2D_RT.PopLayer()
 }
+
+; ========================= SHADER BACKDROP INTEGRATION =========================
+
+; Initialize shader pipeline and register all shader effects.
+; Called from FX_GPU_Init after gFX_GPUReady is set.
+_FX_InitShaders() {
+    global gShader_StyleMap
+
+    _Shader_Log("_FX_InitShaders: START")
+
+    ; Initialize D3D11 shader infrastructure
+    if (!Shader_Init()) {
+        _Shader_Log("_FX_InitShaders: Shader_Init FAILED - aborting")
+        return
+    }
+
+    ; Register Matrix Rain shader
+    hlsl := Shader_HLSL_MatrixRain()
+    _Shader_Log("_FX_InitShaders: HLSL retrieved, length=" StrLen(hlsl))
+    if (Shader_Register("matrixRain", hlsl)) {
+        ; Map backdrop style indices to shader names
+        ; Style 7 = "Matrix Rain" (index 7 in FX_BG_STYLE_NAMES)
+        gShader_StyleMap[7] := {shader: "matrixRain", opacity: 0.50}
+        _Shader_Log("_FX_InitShaders: matrixRain registered, styleMap[7] set")
+    } else {
+        _Shader_Log("_FX_InitShaders: matrixRain registration FAILED")
+    }
+
+    _Shader_Log("_FX_InitShaders: DONE - styleMap keys: " _FX_MapKeys(gShader_StyleMap))
+}
+
+_FX_MapKeys(m) {
+    s := ""
+    for k, _ in m
+        s .= (s ? "," : "") k
+    return s ? s : "(empty)"
+}
+
+; Pre-render shader backdrop (D3D11 pipeline). Called BEFORE D2D BeginDraw.
+FX_PreRenderShaderBackdrop(w, h) {
+    global gFX_BackdropStyle, gShader_StyleMap, gShader_Ready, gFX_AmbientTime ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
+    global gFX_GPUReady, cfg
+
+    ; Log guards on first few calls to see which one exits
+    static preRenderCalls := 0
+    preRenderCalls++
+    doLog := (preRenderCalls <= 5)
+
+    if (!gShader_Ready || !gFX_GPUReady) {
+        if (doLog)
+            _Shader_Log("FX_PreRender: SKIP - ready=" gShader_Ready " gpuReady=" gFX_GPUReady)
+        return
+    }
+    if (cfg.PerfAnimationType != "Full") {
+        if (doLog)
+            _Shader_Log("FX_PreRender: SKIP - AnimationType=" cfg.PerfAnimationType)
+        return
+    }
+    if (gFX_BackdropStyle < 7) {
+        if (doLog)
+            _Shader_Log("FX_PreRender: SKIP - style=" gFX_BackdropStyle " (< 7)")
+        return
+    }
+    if (!gShader_StyleMap.Has(gFX_BackdropStyle)) {
+        if (doLog)
+            _Shader_Log("FX_PreRender: SKIP - style=" gFX_BackdropStyle " not in styleMap")
+        return
+    }
+
+    entry := gShader_StyleMap[gFX_BackdropStyle]
+    if (doLog)
+        _Shader_Log("FX_PreRender: CALLING Shader_PreRender('" entry.shader "', " w ", " h ", " Round(gFX_AmbientTime / 1000.0, 2) ")")
+    try {
+        result := Shader_PreRender(entry.shader, w, h, gFX_AmbientTime / 1000.0)
+        if (doLog)
+            _Shader_Log("FX_PreRender: Shader_PreRender returned " result)
+    } catch as e {
+        _Shader_Log("FX_PreRender: EXCEPTION - " e.Message " @ " e.What "`n" e.Stack)
+        ToolTip("Shader ERR: " e.Message " @ " e.What)
+        SetTimer(() => ToolTip(), -5000)
+    }
+}
+
+; Draw shader backdrop inside D2D BeginDraw (PushLayer → DrawImage → PopLayer).
+_FX_BG_ShaderDraw(wPhys, hPhys) {
+    global gD2D_RT, gFX_BackdropStyle, gShader_StyleMap, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
+
+    static drawCalls := 0
+    drawCalls++
+    doLog := (drawCalls <= 5)
+
+    if (!gShader_Ready || !gShader_StyleMap.Has(gFX_BackdropStyle)) {
+        if (doLog)
+            _Shader_Log("_FX_BG_ShaderDraw: SKIP - ready=" gShader_Ready " hasStyle=" gShader_StyleMap.Has(gFX_BackdropStyle))
+        return
+    }
+
+    entry := gShader_StyleMap[gFX_BackdropStyle]
+    pBitmap := Shader_GetBitmap(entry.shader)
+    if (!pBitmap) {
+        if (doLog)
+            _Shader_Log("_FX_BG_ShaderDraw: SKIP - GetBitmap returned 0 for '" entry.shader "'")
+        return
+    }
+
+    if (doLog)
+        _Shader_Log("_FX_BG_ShaderDraw: DrawImage pBitmap=" pBitmap " opacity=" entry.opacity " size=" wPhys "x" hPhys)
+
+    ; Draw with opacity layer
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, entry.opacity)
+    gD2D_RT.PushLayer(layerParams, 0)
+    gD2D_RT.DrawImage(pBitmap)
+    gD2D_RT.PopLayer()
+
+    if (doLog)
+        _Shader_Log("_FX_BG_ShaderDraw: DrawImage completed OK")
+}
+

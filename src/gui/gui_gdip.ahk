@@ -103,6 +103,17 @@ D2D_FillEllipse(x, y, w, h, brush) {
     gD2D_RT.FillEllipse(eBuf, brush)
 }
 
+; Draw ellipse stroke. D2D ellipse uses center point + radii (not bounding box).
+D2D_DrawEllipse(cx, cy, rx, ry, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function (general D2D utility)
+    global gD2D_RT
+    if (!gD2D_RT)
+        return
+    static eBuf := Buffer(16)
+    NumPut("float", Float(cx), "float", Float(cy),
+           "float", Float(rx), "float", Float(ry), eBuf)
+    gD2D_RT.DrawEllipse(eBuf, brush, strokeWidth)
+}
+
 ; Fill rectangle.
 D2D_FillRect(x, y, w, h, brush) {
     global gD2D_RT

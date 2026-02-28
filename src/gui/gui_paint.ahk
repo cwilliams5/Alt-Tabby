@@ -168,6 +168,9 @@ GUI_Repaint() {
     if (diagTiming)
         t1 := QPC()
 
+    ; Pre-render shader backdrop (D3D11) before D2D BeginDraw — no state conflict
+    FX_PreRenderShaderBackdrop(phW, phH)
+
     if (gD2D_RT) {
         gD2D_RT.BeginDraw()
 
