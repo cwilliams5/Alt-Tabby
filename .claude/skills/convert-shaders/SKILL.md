@@ -159,9 +159,17 @@ If the shader uses `iChannel0..3`:
   "author": "Author Name",
   "license": "CC BY-NC-SA 3.0",
   "opacity": 0.50,
-  "iChannels": []
+  "iChannels": [],
+  "timeOffsetMin": 40,
+  "timeOffsetMax": 120,
+  "timeAccumulate": true
 }
 ```
 
 - `opacity`: Default layer opacity when compositing (0.0-1.0)
 - `iChannels`: Array of texture references (empty if no textures needed)
+- `timeOffsetMin`: (optional) Minimum random time offset in seconds. Skips the shader's warmup period so it looks interesting immediately. Falls back to config `ShaderTimeOffsetMin` (default 30) if omitted.
+- `timeOffsetMax`: (optional) Maximum random time offset in seconds. Falls back to config `ShaderTimeOffsetMax` (default 90) if omitted. Set higher for shaders with long warmup (e.g., volumetric fog needs 40-120s).
+- `timeAccumulate`: (optional) When true, shader time persists across overlay show/hide so it picks up where it left off. Falls back to config `ShaderTimeAccumulate` (default true) if omitted. Set false for shaders with a deliberate intro animation you want to see each time.
+
+Add time fields when the shader has a notable warmup period or deliberate intro. Omit them for shaders that look good immediately at any time value.

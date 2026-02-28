@@ -616,6 +616,9 @@ Memory management to maintain responsiveness after long idle periods.
 | `AnimationType` | enum | `Minimal` | - | Animation behavior. None = single paint per event (zero idle CPU). Minimal = animate transitions (selection slide, fade), auto-stop when done. Full = continuous ambient effects (glow pulse, noise drift) while overlay is visible. |
 | `AnimationSpeed` | float | `1.00` | `0.10` - `5.00` | Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations. |
 | `AnimationFPS` | string | `Auto` | - | Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate. |
+| `ShaderTimeOffsetMin` | int | `30` | `0` - `300` | Minimum random time offset (seconds) applied when a shader is first loaded. Skips past the initial warmup period so shaders look interesting immediately. Per-shader JSON can override. |
+| `ShaderTimeOffsetMax` | int | `90` | `0` - `600` | Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override. |
+| `ShaderTimeAccumulate` | bool | `true` | - | When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show. |
 
 ## Diagnostics
 
@@ -658,4 +661,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-27 with 283 total settings.*
+*Generated on 2026-02-27 with 286 total settings.*

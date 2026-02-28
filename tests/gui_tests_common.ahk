@@ -99,6 +99,7 @@ global gFX_BackdropSeedPhase := 0.0
 global gFX_BackdropDirSign := 1
 global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
 global gFX_ShaderIndex := 0
+global gFX_ShaderTime := Map()
 global gShader_Ready := false
 global SHADER_NAMES := ["None"]
 global gFX_MouseX := 0.0
@@ -280,6 +281,8 @@ FX_DrawBackdrop(wPhys, hPhys, scale) {
 FX_PreRenderShaderLayer(w, h) {
 }
 FX_DrawShaderLayer(wPhys, hPhys) {
+}
+FX_SaveShaderTime() {
 }
 
 Win_DwmFlush() {

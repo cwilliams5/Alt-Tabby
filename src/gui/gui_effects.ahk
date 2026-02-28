@@ -25,6 +25,7 @@ global gFX_BackdropSeedPhase := 0.0  ; Random phase offset (radians) for orbit s
 global gFX_BackdropDirSign := 1      ; Random orbit direction: 1=CCW, -1=CW
 global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
 global gFX_ShaderIndex := 0          ; 0=None, 1+=registered shaders (cycled by V key, independent of backdrop)
+global gFX_ShaderTime := Map()       ; shaderName → {offset, carry, accumulate} — per-shader time state
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
 global gFX_MouseInWindow := false    ; Mouse is inside overlay window
@@ -137,6 +138,7 @@ FX_GPU_Init() {
             if (Shader_Init()) {
                 Shader_ExtractTextures()
                 Shader_RegisterAll()
+                _FX_InitShaderTime()
             }
         } catch {
             ; Shader pipeline unavailable — shader layer won't render,
@@ -152,7 +154,7 @@ FX_GPU_Init() {
 
 ; Release all cached effects. Safe to call multiple times.
 FX_GPU_Dispose() {
-    global gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive
+    global gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, gFX_ShaderTime
     ; Release cached output images first (prevent dangling refs)
     gFX_GPUOutput := Map()
     ; Release effects (ID2DBase.__Delete handles ObjRelease)
@@ -160,6 +162,7 @@ FX_GPU_Dispose() {
     gFX_GPUReady := false
     gFX_HDRActive := false
     ; Release shader resources
+    gFX_ShaderTime := Map()
     Shader_Cleanup()
 }
 
@@ -1073,7 +1076,7 @@ _FX_BG_PointSpecular(wPhys, hPhys) { ; lint-ignore: dead-function (kept for futu
 ; Pre-render the active shader (D3D11 pipeline). Called BEFORE D2D BeginDraw.
 ; Independent of backdrop style — controlled by gFX_ShaderIndex (V key).
 FX_PreRenderShaderLayer(w, h) {
-    global gFX_ShaderIndex, gShader_Ready, gFX_AmbientTime ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
+    global gFX_ShaderIndex, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
     global gFX_GPUReady, cfg, SHADER_NAMES ; lint-ignore: phantom-global (SHADER_NAMES in src/lib/shader_bundle.ahk)
 
     if (gFX_ShaderIndex < 1 || !gShader_Ready || !gFX_GPUReady)
@@ -1086,8 +1089,15 @@ FX_PreRenderShaderLayer(w, h) {
     if (shaderName = "")
         return
 
+    ; Compute effective time: randomOffset + carry (previous sessions) + current session time
+    effectiveTime := gFX_AmbientTime / 1000.0
+    if (gFX_ShaderTime.Has(shaderName)) {
+        t := gFX_ShaderTime[shaderName]
+        effectiveTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+    }
+
     try {
-        Shader_PreRender(shaderName, w, h, gFX_AmbientTime / 1000.0)
+        Shader_PreRender(shaderName, w, h, effectiveTime)
     } catch as e {
         ToolTip("Shader ERR: " e.Message " @ " e.What)
         SetTimer(() => ToolTip(), -5000)
@@ -1139,5 +1149,44 @@ _FX_GetShaderRegKey(index) {
             return name
     }
     return ""
+}
+
+; Initialize per-shader time state (random offset + accumulate flag).
+; Called once after Shader_RegisterAll() during FX_GPU_Init.
+_FX_InitShaderTime() {
+    global gFX_ShaderTime, gShader_Registry, cfg ; lint-ignore: phantom-global
+
+    gFX_ShaderTime := Map()
+    for name, entry in gShader_Registry {
+        meta := entry.meta
+
+        ; Per-shader JSON overrides, falling back to global config
+        minOff := cfg.PerfShaderTimeOffsetMin
+        if (IsObject(meta) && meta.HasOwnProp("timeOffsetMin"))
+            minOff := meta.timeOffsetMin
+        maxOff := cfg.PerfShaderTimeOffsetMax
+        if (IsObject(meta) && meta.HasOwnProp("timeOffsetMax"))
+            maxOff := meta.timeOffsetMax
+        accum := cfg.PerfShaderTimeAccumulate
+        if (IsObject(meta) && meta.HasOwnProp("timeAccumulate"))
+            accum := meta.timeAccumulate
+
+        ; Ensure min <= max
+        if (minOff > maxOff)
+            maxOff := minOff
+
+        gFX_ShaderTime[name] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
+    }
+}
+
+; Save shader carry time before gFX_AmbientTime resets.
+; Called from Anim_CancelAll (gui_animation.ahk) on overlay hide.
+FX_SaveShaderTime() {
+    global gFX_ShaderTime, gFX_AmbientTime
+    sessionSec := gFX_AmbientTime / 1000.0
+    for _, t in gFX_ShaderTime {
+        if (t.accumulate)
+            t.carry += sessionSec
+    }
 }
 

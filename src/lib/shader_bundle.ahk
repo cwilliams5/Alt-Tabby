@@ -193,7 +193,7 @@ float4 PSMain(PSInput input) : SV_Target {
 }
 
 _Shader_Meta_JaszUniverse() {
-    return {opacity: 0.50, iChannels: []}
+    return {opacity: 0.50, iChannels: [], timeOffsetMin: 40, timeOffsetMax: 120}
 }
 
 _Shader_HLSL_MatrixRain() {

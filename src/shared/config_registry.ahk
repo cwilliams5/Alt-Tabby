@@ -1193,6 +1193,15 @@ global gConfigRegistry := [
     {s: "Performance", k: "AnimationFPS", g: "PerfAnimationFPS", t: "string", default: "Auto",
      d: "Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate."},
 
+    {s: "Performance", k: "ShaderTimeOffsetMin", g: "PerfShaderTimeOffsetMin", t: "int", default: 30,
+     min: 0, max: 300,
+     d: "Minimum random time offset (seconds) applied when a shader is first loaded. Skips past the initial warmup period so shaders look interesting immediately. Per-shader JSON can override."},
+    {s: "Performance", k: "ShaderTimeOffsetMax", g: "PerfShaderTimeOffsetMax", t: "int", default: 90,
+     min: 0, max: 600,
+     d: "Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override."},
+    {s: "Performance", k: "ShaderTimeAccumulate", g: "PerfShaderTimeAccumulate", t: "bool", default: true,
+     d: "When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show."},
+
     ; ============================================================
     ; Diagnostics
     ; ============================================================

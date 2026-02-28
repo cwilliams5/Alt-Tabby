@@ -95,6 +95,7 @@ Anim_CancelAll() {
     global gAnim_Tweens, gFX_AmbientTime, gAnim_HidePending
     global gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase, gFX_BackdropDirSign
     gAnim_Tweens := Map()
+    FX_SaveShaderTime()           ; Capture shader carry time before ambient resets
     gFX_AmbientTime := 0.0
     gFX_BackdropSeedX := Random(100, 10000) * 1.0      ; Fresh turbulence pattern each open
     gFX_BackdropSeedY := Random(100, 10000) * 1.0

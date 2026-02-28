@@ -60,14 +60,31 @@ foreach ($hlsl in $hlslFiles) {
         $iChannels = @($meta.iChannels)
     }
 
+    # Time offset fields (optional per-shader overrides)
+    $timeOffsetMin = $null
+    if ($meta.PSObject.Properties.Match('timeOffsetMin').Count -gt 0) {
+        $timeOffsetMin = $meta.timeOffsetMin
+    }
+    $timeOffsetMax = $null
+    if ($meta.PSObject.Properties.Match('timeOffsetMax').Count -gt 0) {
+        $timeOffsetMax = $meta.timeOffsetMax
+    }
+    $timeAccumulate = $null
+    if ($meta.PSObject.Properties.Match('timeAccumulate').Count -gt 0) {
+        $timeAccumulate = $meta.timeAccumulate
+    }
+
     $shader = @{
-        BaseName    = $baseName
-        FuncName    = $funcName
-        RegKey      = $regKey
-        DisplayName = $meta.name
-        Opacity     = $opacity
-        iChannels   = $iChannels
-        HLSLSource  = $hlslSource
+        BaseName       = $baseName
+        FuncName       = $funcName
+        RegKey         = $regKey
+        DisplayName    = $meta.name
+        Opacity        = $opacity
+        iChannels      = $iChannels
+        HLSLSource     = $hlslSource
+        TimeOffsetMin  = $timeOffsetMin
+        TimeOffsetMax  = $timeOffsetMax
+        TimeAccumulate = $timeAccumulate
     }
     $shaders += $shader
 
@@ -172,7 +189,21 @@ foreach ($shader in $shaders) {
         $chArray = '[' + ($chEntries -join ', ') + ']'
     }
 
-    [void]$sb.AppendLine("    return {opacity: $($shader.Opacity), iChannels: $chArray}")
+    # Build optional time fields
+    $timeFields = ''
+    if ($null -ne $shader.TimeOffsetMin) {
+        $timeFields += ", timeOffsetMin: $($shader.TimeOffsetMin)"
+    }
+    if ($null -ne $shader.TimeOffsetMax) {
+        $timeFields += ", timeOffsetMax: $($shader.TimeOffsetMax)"
+    }
+    if ($null -ne $shader.TimeAccumulate) {
+        $boolStr = 'false'
+        if ($shader.TimeAccumulate) { $boolStr = 'true' }
+        $timeFields += ", timeAccumulate: $boolStr"
+    }
+
+    [void]$sb.AppendLine("    return {opacity: $($shader.Opacity), iChannels: $chArray$timeFields}")
     [void]$sb.AppendLine('}')
     [void]$sb.AppendLine('')
 }

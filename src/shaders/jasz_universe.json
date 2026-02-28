@@ -4,5 +4,7 @@
   "author": "Jan Mroz (jaszunio15)",
   "license": "CC BY 3.0",
   "opacity": 0.50,
-  "iChannels": []
+  "iChannels": [],
+  "timeOffsetMin": 40,
+  "timeOffsetMax": 120
 }
