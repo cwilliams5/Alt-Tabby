@@ -263,6 +263,7 @@ global CLSID_D2D1Turbulence   ; lint-ignore: dead-global
 global CLSID_D2D1Morphology   ; lint-ignore: dead-global
 global CLSID_D2D1GammaTransfer ; lint-ignore: dead-global
 global CLSID_D2D1DirectionalBlur ; lint-ignore: dead-global
+global CLSID_D2D1PointSpecular  ; lint-ignore: dead-global
 
 ; Convert a GUID string to a 16-byte CLSID buffer.
 _D2D_CLSID(str) { ; lint-ignore: dead-function
@@ -277,6 +278,7 @@ FX_InitCLSIDs() { ; lint-ignore: dead-function
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
     global CLSID_D2D1Blend, CLSID_D2D1Composite, CLSID_D2D1Turbulence
     global CLSID_D2D1Morphology, CLSID_D2D1GammaTransfer, CLSID_D2D1DirectionalBlur
+    global CLSID_D2D1PointSpecular
 
     CLSID_D2D1GaussianBlur  := _D2D_CLSID("{1FEB6D69-2FE6-4AC9-8C58-1D7F93E7A6A5}")
     CLSID_D2D1Shadow        := _D2D_CLSID("{C67EA361-1863-4E69-89DB-695D3E9A5B6B}")
@@ -290,6 +292,7 @@ FX_InitCLSIDs() { ; lint-ignore: dead-function
     CLSID_D2D1Morphology    := _D2D_CLSID("{EAE6C40D-626A-4C2D-BFCB-391001ABE202}")
     CLSID_D2D1GammaTransfer := _D2D_CLSID("{409444C4-C419-41A0-B0C1-8CD0C0A18E42}")
     CLSID_D2D1DirectionalBlur := _D2D_CLSID("{174319A6-58E9-49B2-BB63-CAF2C811A3DB}")
+    CLSID_D2D1PointSpecular := _D2D_CLSID("{B08C0B2E-B27E-404C-9B91-37A72F49CF89}")
 }
 
 ; ========================= D2D1 EFFECT PROPERTY INDICES =========================
@@ -356,6 +359,15 @@ global FX_GAMMA_ALPHA_AMP  := 12 ; FLOAT ; lint-ignore: dead-global
 global FX_GAMMA_ALPHA_EXP  := 13 ; FLOAT ; lint-ignore: dead-global
 global FX_GAMMA_ALPHA_OFF  := 14 ; FLOAT ; lint-ignore: dead-global
 global FX_GAMMA_ALPHA_DISABLE := 15 ; BOOL ; lint-ignore: dead-global
+
+; D2D1_POINTSPECULAR_PROP
+global FX_SPEC_LIGHT_POS     := 0  ; VECTOR3 — light position (x, y, z in px) ; lint-ignore: dead-global
+global FX_SPEC_EXPONENT      := 1  ; FLOAT — specular exponent (1-128, higher=tighter) ; lint-ignore: dead-global
+global FX_SPEC_SURFACE_SCALE := 2  ; FLOAT — height map multiplier ; lint-ignore: dead-global
+global FX_SPEC_CONSTANT      := 3  ; FLOAT — specular intensity (0-10000) ; lint-ignore: dead-global
+global FX_SPEC_COLOR         := 4  ; VECTOR3 — light color (r, g, b as 0.0-1.0) ; lint-ignore: dead-global
+global FX_SPEC_KERNEL_UNIT   := 5  ; VECTOR2 — kernel unit length ; lint-ignore: dead-global
+global FX_SPEC_SCALE_MODE    := 6  ; ENUM — scale mode ; lint-ignore: dead-global
 
 ; D2D1_DIRECTIONALBLUR_PROP
 global FX_DIRBLUR_STDEV    := 0  ; FLOAT — standard deviation (px) ; lint-ignore: dead-global

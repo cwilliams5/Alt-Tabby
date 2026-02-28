@@ -451,6 +451,7 @@ GUI_OnClick(x, y) {
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
     global gGUI_MouseTracking
+    global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow
 
     if (hwnd != gGUI_OverlayH) {
         return 0
@@ -476,6 +477,11 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     x := lParam & 0xFFFF
     y := (lParam >> 16) & 0xFFFF
 
+    ; Store mouse position for backdrop specular effect
+    gFX_MouseX := x
+    gFX_MouseY := y
+    gFX_MouseInWindow := true
+
     act := ""
     idx := 0
     _GUI_DetectActionAtPoint(x, y, &act, &idx)
@@ -491,9 +497,11 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 
 GUI_OnMouseLeave() {
     global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking, gGUI_OverlayVisible
+    global gFX_MouseInWindow
 
     ; Mouse has left the window - clear hover state
     gGUI_MouseTracking := false
+    gFX_MouseInWindow := false
 
     Critical "On"
     needRepaint := (gGUI_HoverRow != 0 || gGUI_HoverBtn != "")

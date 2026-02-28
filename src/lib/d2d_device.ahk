@@ -304,6 +304,13 @@ class ID2D1Effect extends ID2DBase {
         this.SetValue(index, 6, buf, 8)
     }
 
+    ; Set a VECTOR3 property (D2D1_PROPERTY_TYPE_VECTOR3 = 7) — e.g., light position
+    SetVector3(index, x, y, z) {
+        static buf := Buffer(12)
+        NumPut("float", Float(x), "float", Float(y), "float", Float(z), buf)
+        this.SetValue(index, 7, buf, 12)
+    }
+
     ; Set a VECTOR4 property (D2D1_PROPERTY_TYPE_VECTOR4 = 8) — e.g., color
     SetVector4(index, x, y, z, w) {
         static buf := Buffer(16)

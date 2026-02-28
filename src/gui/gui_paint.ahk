@@ -112,8 +112,10 @@ GUI_Repaint() {
         Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gD2D_ResScale " [D2D]")
     }
 
-    ; Use display items when in ACTIVE state, live items otherwise
-    items := (gGUI_State = "ACTIVE") ? gGUI_DisplayItems : gGUI_LiveItems
+    ; Use frozen display items when ACTIVE or during hide-fade animation
+    ; (hide fade still paints fading frames with the frozen list, not live MRU)
+    global gAnim_HidePending
+    items := (gGUI_State = "ACTIVE" || gAnim_HidePending) ? gGUI_DisplayItems : gGUI_LiveItems
 
     ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
     if (gGUI_State = "ACTIVE" && cfg.GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
@@ -376,6 +378,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     fx := gGUI_EffectStyle
     isGPU := (fx >= 2 && gFX_GPUReady)
     isFX := (fx = 0)  ; "Effects" = style 0 (gradient + shadow + inner shadow)
+
+    ; Living backdrop effects (GPU + Full animation mode only)
+    global gFX_BackdropStyle
+    if (isGPU && cfg.PerfAnimationType = "Full" && gFX_BackdropStyle > 0)
+        FX_DrawBackdrop(wPhys, hPhys, scale)
 
     ; Shadow params (computed once, used for all text draws)
     ; Text shadows active for Effects (0) and all GPU styles (2+), not Clean (1)

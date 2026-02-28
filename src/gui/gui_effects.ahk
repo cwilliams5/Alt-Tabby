@@ -16,6 +16,14 @@ global gFX_GPUReady := false  ; Set after successful init
 global gFX_GPUOutput := Map() ; name → ID2D1Image (cached GetOutput results)
 global gFX_HDRActive := false  ; True when HDR gamma compensation is active
 
+; ========================= BACKDROP EFFECT STATE =========================
+
+global gFX_BackdropStyle := 0        ; 0=None, 1-6=styles (cycled by C key)
+global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
+global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
+global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
+global gFX_MouseInWindow := false    ; Mouse is inside overlay window
+
 ; Initialize GPU effects. Call after gD2D_RT is valid.
 ; Returns true on success, false if effects unavailable.
 FX_GPU_Init() {
@@ -24,6 +32,7 @@ FX_GPU_Init() {
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
     global CLSID_D2D1Blend, CLSID_D2D1Composite, CLSID_D2D1Turbulence
     global CLSID_D2D1Morphology, CLSID_D2D1GammaTransfer, CLSID_D2D1DirectionalBlur
+    global CLSID_D2D1PointSpecular
     global LOG_PATH_PAINT_TIMING
 
     if (!gD2D_RT || !cfg.PerfGPUEffects)
@@ -76,6 +85,30 @@ FX_GPU_Init() {
         gFX_GPUOutput["blur"]  := gFX_GPU["blur"].GetOutput()
         gFX_GPUOutput["blur2"] := gFX_GPU["blur2"].GetOutput()
         gFX_GPUOutput["noiseSat"] := gFX_GPU["noiseSat"].GetOutput()
+
+        ; --- Background turbulence chain (separate from Plasma selection chain) ---
+        ; Wrapped in own try/catch: backdrop failure must not kill selection effects.
+        try {
+            gFX_GPU["bgTurb"]    := gD2D_RT.CreateEffect(CLSID_D2D1Turbulence)
+            gFX_GPU["bgCrop"]    := gD2D_RT.CreateEffect(CLSID_D2D1Crop)
+            gFX_GPU["bgSat"]     := gD2D_RT.CreateEffect(CLSID_D2D1Saturation)
+            gFX_GPU["bgCrop"].SetInput(0, gFX_GPU["bgTurb"].GetOutput())
+            gFX_GPU["bgSat"].SetInput(0, gFX_GPU["bgCrop"].GetOutput())
+            gFX_GPUOutput["bgSat"] := gFX_GPU["bgSat"].GetOutput()
+
+            ; --- Point Specular chain (uses bgTurb as surface/height map) ---
+            try {
+                gFX_GPU["specular"]  := gD2D_RT.CreateEffect(CLSID_D2D1PointSpecular)
+                gFX_GPU["specCrop"]  := gD2D_RT.CreateEffect(CLSID_D2D1Crop)
+                gFX_GPU["specular"].SetInput(0, gFX_GPU["bgTurb"].GetOutput())
+                gFX_GPU["specCrop"].SetInput(0, gFX_GPU["specular"].GetOutput())
+                gFX_GPUOutput["specCrop"] := gFX_GPU["specCrop"].GetOutput()
+            } catch {
+                ; PointSpecular may not be available on all systems
+            }
+        } catch {
+            ; Background chains failed — backdrop effects unavailable, selection styles still work
+        }
 
         ; --- HDR compensation: insert GammaTransfer after blur outputs ---
         ; When HDR active, gFX_GPUOutput["blur"/"blur2"] point to gamma outputs instead,
@@ -745,4 +778,243 @@ FX_OnSelectionChange(gpuStyleIndex) {
 FX_UpdateAmbient(dt) {
     global gFX_AmbientTime
     gFX_AmbientTime += dt
+}
+
+; ========================= LIVING BACKDROP EFFECTS =========================
+; Subtle animated textures on the acrylic glass background.
+; Active only when GPUEffects=true AND AnimationType=Full.
+; C key cycles through styles (0=None, 1-6=styles).
+
+; Public dispatcher — called from _GUI_PaintOverlay between clear and content.
+FX_DrawBackdrop(wPhys, hPhys, scale) { ; lint-ignore: dead-param
+    global gFX_BackdropStyle, gFX_MouseInWindow, gFX_GPU
+
+    try {
+        switch gFX_BackdropStyle {
+            case 1: _FX_BG_GradientDrift(wPhys, hPhys)
+            case 2: _FX_BG_Caustic(wPhys, hPhys)
+            case 3: _FX_BG_Aurora(wPhys, hPhys)
+            case 4: _FX_BG_Grain(wPhys, hPhys)
+            case 5: _FX_BG_Vignette(wPhys, hPhys)
+            case 6: _FX_BG_Layered(wPhys, hPhys)
+        }
+
+        ; Point specular overlay (mouse spotlight on backdrop texture)
+        if (gFX_MouseInWindow && gFX_GPU.Has("specular"))
+            _FX_BG_PointSpecular(wPhys, hPhys)
+    } catch {
+        ; Backdrop effect failed — silently skip
+    }
+}
+
+; --- Style 1: Gradient Drift ---
+; Slow-rotating warm/cool color wash. Two large soft blobs orbiting ~45s.
+_FX_BG_GradientDrift(wPhys, hPhys) {
+    global gD2D_RT, gFX_AmbientTime, cfg
+
+    baseARGB := cfg.GUI_AcrylicColor
+    baseRGB := baseARGB & 0x00FFFFFF
+    bR := (baseRGB >> 16) & 0xFF
+    bG := (baseRGB >> 8) & 0xFF
+    bB := baseRGB & 0xFF
+
+    ; Warm blob (shift toward amber)
+    warmR := Min(255, bR + 40)
+    warmG := Min(255, bG + 15)
+    warmB := Max(0, bB - 10)
+    warmARGB := 0xFF000000 | (warmR << 16) | (warmG << 8) | warmB
+
+    ; Cool blob (shift toward blue)
+    coolR := Max(0, bR - 15)
+    coolG := Min(255, bG + 10)
+    coolB := Min(255, bB + 40)
+    coolARGB := 0xFF000000 | (coolR << 16) | (coolG << 8) | coolB
+
+    ; Orbit positions (~45s full rotation)
+    angle := gFX_AmbientTime * 0.000140  ; ~45s cycle
+    cx := wPhys * 0.5
+    cy := hPhys * 0.5
+    rx := wPhys * 0.35
+    ry := hPhys * 0.35
+
+    ; Opacity layer for subtle compositing
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.06)
+    gD2D_RT.PushLayer(layerParams, 0)
+
+    ; Warm blob (primary SoftRect chain)
+    wx := cx + rx * Cos(angle)
+    wy := cy + ry * Sin(angle)
+    FX_DrawSoftRect(wx - 80, wy - 80, 160, 160, warmARGB, 100.0)
+
+    ; Cool blob (secondary SoftRect chain) — opposite side
+    cx2 := cx - rx * Cos(angle)
+    cy2 := cy - ry * Sin(angle)
+    FX_DrawSoftRect2(cx2 - 80, cy2 - 80, 160, 160, coolARGB, 100.0)
+
+    gD2D_RT.PopLayer()
+}
+
+; --- Style 2: Caustic Ripple ---
+; Turbulence noise simulating light refracting through textured glass.
+_FX_BG_Caustic(wPhys, hPhys) {
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime
+    global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
+    global FX_CROP_RECT, FX_SAT_SATURATION
+
+    if (!gFX_GPU.Has("bgTurb"))
+        return
+
+    ; Slow drift
+    driftX := gFX_AmbientTime * 0.005
+    driftY := gFX_AmbientTime * 0.002
+
+    ; Configure background turbulence: low freq, smooth fractalSum
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(driftX), Float(driftY))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 40), Float(hPhys + 40))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.008, 0.008)
+    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 3)
+    gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 0)  ; fractalSum (smoother)
+
+    gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(wPhys), Float(hPhys))
+    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.2)
+
+    ; Render at ~5% opacity
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.05)
+    gD2D_RT.PushLayer(layerParams, 0)
+    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"])
+    gD2D_RT.PopLayer()
+}
+
+; --- Style 3: Aurora ---
+; Three soft colored blobs drifting in slow elliptical orbits.
+_FX_BG_Aurora(wPhys, hPhys) {
+    global gD2D_RT, gFX_AmbientTime
+
+    cx := wPhys * 0.5
+    cy := hPhys * 0.5
+
+    ; Three blobs with different orbit speeds and phases
+    ; Blob 1: warm rose
+    a1 := gFX_AmbientTime * 0.000200  ; ~31s cycle
+    x1 := cx + wPhys * 0.3 * Cos(a1)
+    y1 := cy + hPhys * 0.25 * Sin(a1 * 1.3)
+    ; Blob 2: cool cyan
+    a2 := gFX_AmbientTime * 0.000160 + 2.09  ; ~39s cycle, phase offset
+    x2 := cx + wPhys * 0.25 * Cos(a2)
+    y2 := cy + hPhys * 0.3 * Sin(a2 * 0.9)
+    ; Blob 3: neutral violet
+    a3 := gFX_AmbientTime * 0.000120 + 4.19  ; ~52s cycle, phase offset
+    x3 := cx + wPhys * 0.2 * Cos(a3 * 1.1)
+    y3 := cy + hPhys * 0.2 * Sin(a3)
+
+    ; Opacity layer
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.05)
+    gD2D_RT.PushLayer(layerParams, 0)
+
+    ; Draw all three using primary SoftRect chain (stateless between DrawImage calls)
+    FX_DrawSoftRect(x1 - 60, y1 - 60, 120, 120, 0xFFCC6688, 90.0)  ; rose
+    FX_DrawSoftRect(x2 - 60, y2 - 60, 120, 120, 0xFF6688CC, 90.0)  ; cyan
+    FX_DrawSoftRect(x3 - 60, y3 - 60, 120, 120, 0xFF8866CC, 90.0)  ; violet
+
+    gD2D_RT.PopLayer()
+}
+
+; --- Style 4: Grain (Film Grain) ---
+; Fine static turbulence texture — frosted glass materiality.
+_FX_BG_Grain(wPhys, hPhys) {
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime
+    global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
+    global FX_CROP_RECT, FX_SAT_SATURATION
+
+    if (!gFX_GPU.Has("bgTurb"))
+        return
+
+    ; Very slow shimmer drift
+    driftX := gFX_AmbientTime * 0.001
+    driftY := gFX_AmbientTime * 0.0005
+
+    ; Configure: higher freq, turbulence mode (sharper), fully desaturated
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(driftX), Float(driftY))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 20), Float(hPhys + 20))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.05, 0.05)
+    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 4)
+    gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 1)  ; turbulence (sharper detail)
+
+    gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(wPhys), Float(hPhys))
+    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.0)  ; fully desaturated
+
+    ; Render at ~3% opacity
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.03)
+    gD2D_RT.PushLayer(layerParams, 0)
+    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"])
+    gD2D_RT.PopLayer()
+}
+
+; --- Style 5: Vignette Breathe ---
+; Pulsing inner shadow — edges darken/lighten in slow breathing cycle.
+_FX_BG_Vignette(wPhys, hPhys) {
+    global gD2D_RT, gFX_AmbientTime
+
+    ; Breathing alpha: base 0.15, ±20% swing, ~4s cycle
+    breath := 0.15 + 0.03 * Sin(gFX_AmbientTime * 0.00157)  ; ~4s cycle
+    alpha := Round(breath * 255)
+    edgeARGB := (alpha << 24) | 0x000000
+
+    ; Depth of edge bands
+    depthX := Round(wPhys * 0.15)
+    depthY := Round(hPhys * 0.12)
+
+    ; Top edge
+    FX_DrawSoftRect(0, -depthY, wPhys, depthY, edgeARGB, Float(depthY * 0.7))
+    ; Bottom edge (secondary chain)
+    FX_DrawSoftRect2(0, hPhys, wPhys, depthY, edgeARGB, Float(depthY * 0.7))
+    ; Left edge
+    FX_DrawSoftRect(-depthX, 0, depthX, hPhys, edgeARGB, Float(depthX * 0.7))
+    ; Right edge (secondary chain)
+    FX_DrawSoftRect2(wPhys, 0, depthX, hPhys, edgeARGB, Float(depthX * 0.7))
+}
+
+; --- Style 6: Layered (Combined) ---
+; Premium stack: Grain base + Caustic overlay + Vignette breathe.
+_FX_BG_Layered(wPhys, hPhys) {
+    ; Grain at reduced opacity (drawn inside Grain's own layer at 3%, so effective ~2%)
+    _FX_BG_Grain(wPhys, hPhys)
+    ; Caustic on top (its own layer at 5%, effective ~3%)
+    _FX_BG_Caustic(wPhys, hPhys)
+    ; Vignette breathe (draws directly, no extra layer needed)
+    _FX_BG_Vignette(wPhys, hPhys)
+}
+
+; --- Point Specular (Mouse Spotlight) ---
+; D2D PointSpecular effect using bgTurb as surface height map.
+; The light catches the backdrop texture as the mouse moves.
+_FX_BG_PointSpecular(wPhys, hPhys) {
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_MouseX, gFX_MouseY
+    global FX_SPEC_LIGHT_POS, FX_SPEC_EXPONENT, FX_SPEC_SURFACE_SCALE
+    global FX_SPEC_CONSTANT, FX_SPEC_COLOR, FX_CROP_RECT
+    global FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE, FX_TURB_OFFSET
+
+    ; Ensure bgTurb has a surface for the specular to interact with
+    ; (low-cost minimal noise if not already configured by Caustic/Grain)
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 40), Float(hPhys + 40))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.02, 0.02)
+    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 2)
+    gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 0)
+
+    ; Update specular light position from mouse coordinates
+    ; Z = height above surface (larger = wider/softer cone)
+    gFX_GPU["specular"].SetVector3(FX_SPEC_LIGHT_POS, Float(gFX_MouseX), Float(gFX_MouseY), 300.0)
+    gFX_GPU["specular"].SetFloat(FX_SPEC_EXPONENT, 20.0)
+    gFX_GPU["specular"].SetFloat(FX_SPEC_SURFACE_SCALE, 1.5)
+    gFX_GPU["specular"].SetFloat(FX_SPEC_CONSTANT, 0.8)
+    gFX_GPU["specular"].SetVector3(FX_SPEC_COLOR, 1.0, 1.0, 1.0)  ; white light
+
+    ; Crop specular output to overlay bounds
+    gFX_GPU["specCrop"].SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(wPhys), Float(hPhys))
+
+    ; Render at 8% opacity
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.08)
+    gD2D_RT.PushLayer(layerParams, 0)
+    gD2D_RT.DrawImage(gFX_GPUOutput["specCrop"])
+    gD2D_RT.PopLayer()
 }

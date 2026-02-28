@@ -199,6 +199,12 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     if (evCode = TABBY_EV_ALT_DOWN) {
+        ; If a hide-fade is still running, complete it immediately so the
+        ; next show sequence starts with clean overlay state (gGUI_OverlayVisible=false).
+        global gAnim_HidePending
+        if (gAnim_HidePending)
+            Anim_ForceCompleteHide()
+
         ; Alt pressed - enter ALT_PENDING state
         if (gFR_Enabled)
             FR_Record(FR_EV_STATE, FR_ST_ALT_PENDING)
@@ -352,7 +358,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 _GUI_ActivateFromFrozen()
             }
 
-            gGUI_DisplayItems := []
+            ; Defer clearing display items during animated hide-fade: the frame
+            ; loop still paints the fading overlay using the frozen list.
+            ; _Anim_DoActualHide() clears them when the fade completes.
+            if (!gAnim_HidePending)
+                gGUI_DisplayItems := []
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"

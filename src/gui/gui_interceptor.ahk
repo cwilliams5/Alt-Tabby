@@ -58,6 +58,9 @@ INT_SetupHotkeys() {
     ; F key — toggle FPS debug overlay when GUI is active
     Hotkey("~*f", _INT_F_Down)
 
+    ; C key — cycle backdrop effects when GUI is active
+    Hotkey("~*c", _INT_C_Down)
+
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
 }
@@ -361,6 +364,27 @@ _INT_F_Down(*) {
         return
 
     gAnim_FPSEnabled := !gAnim_FPSEnabled
+    GUI_Repaint()
+}
+
+; ========================= BACKDROP STYLE CYCLING =========================
+
+_INT_C_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gFX_BackdropStyle, FX_BG_STYLE_NAMES
+    global gFX_GPUReady
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+    if (!gFX_GPUReady)
+        return
+
+    gFX_BackdropStyle := Mod(gFX_BackdropStyle + 1, FX_BG_STYLE_NAMES.Length)
+
+    styleName := FX_BG_STYLE_NAMES[gFX_BackdropStyle + 1]
+    ToolTip("Backdrop: " styleName)
+    SetTimer(() => ToolTip(), -2000)
+
     GUI_Repaint()
 }
 

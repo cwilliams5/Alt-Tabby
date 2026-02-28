@@ -86,11 +86,17 @@ global _gGUI_LastCosmeticRepaintTick := 0
 
 ; Animation globals (from gui_animation.ahk - not included in GUI test chain)
 global gAnim_OverlayOpacity := 1.0
+global gAnim_HidePending := false
 global gFX_AmbientTime := 0.0
 
 ; GPU effects globals (from gui_effects.ahk / gui_paint.ahk - not included in GUI test chain)
 global gGUI_EffectStyle := 0
 global gFX_GPUReady := false
+global gFX_BackdropStyle := 0
+global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
+global gFX_MouseX := 0.0
+global gFX_MouseY := 0.0
+global gFX_MouseInWindow := false
 
 ; Win32 constants (from win_utils.ahk - not included in GUI test chain)
 global DWMWA_CLOAKED := 14
@@ -251,12 +257,16 @@ Anim_StartTween(name, from, to, durationMs, easingFunc) {
 }
 Anim_StartSelectionSlide(prevSel, newSel, count) {
 }
+Anim_ForceCompleteHide() {
+}
 Anim_EaseOutQuad(t) {
     return t
 }
 
 ; GPU effects mocks (gui_effects.ahk not included in tests)
 FX_OnSelectionChange(gpuStyleIndex) {
+}
+FX_DrawBackdrop(wPhys, hPhys, scale) {
 }
 
 Win_DwmFlush() {

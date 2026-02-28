@@ -227,14 +227,16 @@ _Anim_FramePace() {
 
 _Anim_SyncOverlayOpacity() {
     global gAnim_OverlayOpacity, gAnim_Tweens
-    if (gAnim_Tweens.Has("showFade")) {
-        gAnim_OverlayOpacity := gAnim_Tweens["showFade"].current
-        if (gAnim_Tweens["showFade"].done)
-            gAnim_OverlayOpacity := 1.0
-    } else if (gAnim_Tweens.Has("hideFade")) {
+    ; hideFade takes priority — when present it's the latest intent and the
+    ; completed showFade tween is still in the map (never removed until CancelAll).
+    if (gAnim_Tweens.Has("hideFade")) {
         gAnim_OverlayOpacity := gAnim_Tweens["hideFade"].current
         if (gAnim_OverlayOpacity < 0.0)
             gAnim_OverlayOpacity := 0.0
+    } else if (gAnim_Tweens.Has("showFade")) {
+        gAnim_OverlayOpacity := gAnim_Tweens["showFade"].current
+        if (gAnim_Tweens["showFade"].done)
+            gAnim_OverlayOpacity := 1.0
     }
 }
 
@@ -247,13 +249,28 @@ _Anim_OnHideFadeComplete() {
     Anim_CancelAll()
 }
 
+; Force-complete a pending hide-fade immediately.
+; Called when a new Alt+Tab sequence starts during the fade — the overlay must
+; finish hiding before the next show sequence can set gGUI_OverlayVisible.
+Anim_ForceCompleteHide() {
+    global gAnim_HidePending
+    if (!gAnim_HidePending)
+        return
+    _Anim_OnHideFadeComplete()
+}
+
 _Anim_DoActualHide() {
     global gGUI_OverlayVisible, gGUI_Base, gGUI_Revealed, gD2D_RT
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
+    global gGUI_DisplayItems
     static hideCount := 0
 
     if (!gGUI_OverlayVisible)
         return
+
+    ; Release deferred display items — kept alive during hide-fade so the
+    ; frame loop paints the frozen list while fading out (not the live MRU).
+    gGUI_DisplayItems := []
 
     GUI_ClearHoverState()
 

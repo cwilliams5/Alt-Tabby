@@ -22,6 +22,7 @@
 
 cfg: config_loader, launcher_tray, setup_utils
 gD2D_RT: gui_animation, gui_overlay, gui_paint
+gGUI_DisplayItems: gui_animation, gui_state
 gGUI_LiveItems: gui_state, gui_data
 gGUI_OverlayVisible: gui_animation, gui_overlay, gui_state
 gGUI_Revealed: gui_animation, gui_overlay, gui_paint, gui_state
@@ -33,4 +34,8 @@ gAnim_FPSEnabled: gui_interceptor
 gAnim_OverlayOpacity: gui_animation, gui_state
 gAnim_HidePending: gui_animation, gui_overlay
 gFX_AmbientTime: gui_animation, gui_effects
+gFX_BackdropStyle: gui_interceptor
+gFX_MouseX: gui_input
+gFX_MouseY: gui_input
+gFX_MouseInWindow: gui_input
 LOG_PATH_PAINT_TIMING: config_loader
