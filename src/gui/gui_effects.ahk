@@ -19,6 +19,8 @@ global gFX_HDRActive := false  ; True when HDR gamma compensation is active
 ; ========================= BACKDROP EFFECT STATE =========================
 
 global gFX_BackdropStyle := 0        ; 0=None, 1-6=styles (cycled by C key)
+global gFX_BackdropSeedX := 0.0      ; Random offset for turbulence — refreshed on each open/style switch
+global gFX_BackdropSeedY := 0.0      ; Gives different pattern without using D2D's seed property
 global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
@@ -31,7 +33,7 @@ FX_GPU_Init() {
     global CLSID_D2D1GaussianBlur, CLSID_D2D1Shadow, CLSID_D2D1Flood
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
     global CLSID_D2D1Blend, CLSID_D2D1Composite, CLSID_D2D1Turbulence
-    global CLSID_D2D1Morphology, CLSID_D2D1GammaTransfer, CLSID_D2D1DirectionalBlur
+    global CLSID_D2D1Morphology, CLSID_D2D1DirectionalBlur
     global CLSID_D2D1PointSpecular
     global LOG_PATH_PAINT_TIMING
 
@@ -78,9 +80,6 @@ FX_GPU_Init() {
         ; --- Morphology (glow outlines) ---
         gFX_GPU["morphology"]  := gD2D_RT.CreateEffect(CLSID_D2D1Morphology)
 
-        ; --- Gamma transfer (bloom/exposure + HDR compensation) ---
-        gFX_GPU["gamma"]       := gD2D_RT.CreateEffect(CLSID_D2D1GammaTransfer)
-
         ; Cache frequently-used GetOutput() results (avoids COM call per frame)
         gFX_GPUOutput["blur"]  := gFX_GPU["blur"].GetOutput()
         gFX_GPUOutput["blur2"] := gFX_GPU["blur2"].GetOutput()
@@ -110,28 +109,16 @@ FX_GPU_Init() {
             ; Background chains failed — backdrop effects unavailable, selection styles still work
         }
 
-        ; --- HDR compensation: insert GammaTransfer after blur outputs ---
-        ; When HDR active, gFX_GPUOutput["blur"/"blur2"] point to gamma outputs instead,
-        ; so all SoftRect callers get HDR correction automatically.
+        ; --- HDR compensation: CPU-side gamma on flood colors ---
+        ; Previous approach inserted GammaTransfer AFTER blur, but gamma on blurred
+        ; premultiplied alpha produces bright pixel artifacts at edges (RGB amplified
+        ; above alpha at near-transparent fringes). Since SoftRect floods a single color,
+        ; applying gamma to the ARGB before it enters the chain is equivalent and safe.
         hdrActive := false
         if (cfg.PerfHDRCompensation = "on")
             hdrActive := true
         else if (cfg.PerfHDRCompensation = "auto")
             hdrActive := D2D_IsHDRActive()
-
-        if (hdrActive) {
-            gammaExp := cfg.PerfHDRGammaExponent
-            ; Primary chain: blur → gamma → cached output
-            _FX_ConfigureHDRGamma(gFX_GPU["gamma"], gammaExp)
-            gFX_GPU["gamma"].SetInput(0, gFX_GPUOutput["blur"])
-            gFX_GPUOutput["blur"] := gFX_GPU["gamma"].GetOutput()
-
-            ; Secondary chain: blur2 → gamma2 → cached output
-            gFX_GPU["gamma2"] := gD2D_RT.CreateEffect(CLSID_D2D1GammaTransfer)
-            _FX_ConfigureHDRGamma(gFX_GPU["gamma2"], gammaExp)
-            gFX_GPU["gamma2"].SetInput(0, gFX_GPUOutput["blur2"])
-            gFX_GPUOutput["blur2"] := gFX_GPU["gamma2"].GetOutput()
-        }
 
         gFX_HDRActive := hdrActive
 
@@ -170,8 +157,8 @@ FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput
     global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV, FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT
 
-    ; Configure flood color (premultiplied)
-    gFX_GPU["flood"].SetColorF(FX_FLOOD_COLOR, argb)
+    ; HDR: gamma-correct the flood color CPU-side (avoids premultiplied alpha edge artifacts)
+    gFX_GPU["flood"].SetColorF(FX_FLOOD_COLOR, FX_HDRCorrectARGB(argb))
 
     ; Configure crop to the rectangle bounds
     gFX_GPU["crop"].SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
@@ -197,7 +184,8 @@ FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput
     global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV, FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT
 
-    gFX_GPU["flood2"].SetColorF(FX_FLOOD_COLOR, argb)
+    ; HDR: gamma-correct the flood color CPU-side (avoids premultiplied alpha edge artifacts)
+    gFX_GPU["flood2"].SetColorF(FX_FLOOD_COLOR, FX_HDRCorrectARGB(argb))
     gFX_GPU["crop2"].SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
     gFX_GPU["crop2"].SetEnum(1, D2D1_BORDER_SOFT)
     gFX_GPU["blur2"].SetFloat(FX_BLUR_STDEV, blurStdDev)
@@ -695,39 +683,12 @@ FX_GPU_DrawSelection(gpuStyleIndex, x, y, w, h, r) {
 
 ; ========================= HDR COMPENSATION =========================
 
-; Configure a GammaTransfer effect for HDR brightness compensation.
-; Sets C' = 1.0 * C^exp + 0.0 on RGB channels, disables alpha (must stay linear).
-_FX_ConfigureHDRGamma(effect, exp) {
-    global FX_GAMMA_RED_AMP, FX_GAMMA_RED_EXP, FX_GAMMA_RED_OFF, FX_GAMMA_RED_DISABLE
-    global FX_GAMMA_GREEN_AMP, FX_GAMMA_GREEN_EXP, FX_GAMMA_GREEN_OFF, FX_GAMMA_GREEN_DISABLE
-    global FX_GAMMA_BLUE_AMP, FX_GAMMA_BLUE_EXP, FX_GAMMA_BLUE_OFF, FX_GAMMA_BLUE_DISABLE
-    global FX_GAMMA_ALPHA_DISABLE
-
-    ; Red channel: C' = 1.0 * C^exp + 0.0
-    effect.SetFloat(FX_GAMMA_RED_AMP, 1.0)
-    effect.SetFloat(FX_GAMMA_RED_EXP, exp)
-    effect.SetFloat(FX_GAMMA_RED_OFF, 0.0)
-    effect.SetBool(FX_GAMMA_RED_DISABLE, false)
-
-    ; Green channel
-    effect.SetFloat(FX_GAMMA_GREEN_AMP, 1.0)
-    effect.SetFloat(FX_GAMMA_GREEN_EXP, exp)
-    effect.SetFloat(FX_GAMMA_GREEN_OFF, 0.0)
-    effect.SetBool(FX_GAMMA_GREEN_DISABLE, false)
-
-    ; Blue channel
-    effect.SetFloat(FX_GAMMA_BLUE_AMP, 1.0)
-    effect.SetFloat(FX_GAMMA_BLUE_EXP, exp)
-    effect.SetFloat(FX_GAMMA_BLUE_OFF, 0.0)
-    effect.SetBool(FX_GAMMA_BLUE_DISABLE, false)
-
-    ; Alpha: MUST stay linear — disable gamma on alpha channel
-    effect.SetBool(FX_GAMMA_ALPHA_DISABLE, true)
-}
-
-; Apply HDR gamma correction to an ARGB integer (for non-GPU brush colors).
+; Apply HDR gamma correction to an ARGB integer (CPU-side).
+; Called from FX_DrawSoftRect/FX_DrawSoftRect2 to gamma-correct the flood color
+; before it enters the effect chain. This avoids the premultiplied alpha edge
+; artifacts that occur when GammaTransfer is applied after GaussianBlur.
 ; Returns corrected ARGB. No-op when HDR inactive.
-FX_HDRCorrectARGB(argb) { ; lint-ignore: dead-function
+FX_HDRCorrectARGB(argb) {
     global gFX_HDRActive, cfg
     if (!gFX_HDRActive)
         return argb
@@ -802,9 +763,50 @@ FX_DrawBackdrop(wPhys, hPhys, scale) { ; lint-ignore: dead-param
         ; Point specular overlay (mouse spotlight on backdrop texture)
         if (gFX_MouseInWindow && gFX_GPU.Has("specular"))
             _FX_BG_PointSpecular(wPhys, hPhys)
-    } catch {
-        ; Backdrop effect failed — silently skip
+    } catch as e {
+        ; Backdrop effect failed — show error for diagnosis
+        ToolTip("BG ERR: " e.Message " @ " e.What)
+        SetTimer(() => ToolTip(), -3000)
     }
+}
+
+; --- Dither: fine noise overlay to break up gradient banding ---
+; Call INSIDE a PushLayer — the dither blends with surrounding content.
+; Uses bgTurb chain with high frequency for fine-grained noise.
+_FX_BG_Dither(wPhys, hPhys) {
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_BackdropSeedX, gFX_BackdropSeedY
+    global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
+    global FX_CROP_RECT, FX_SAT_SATURATION
+
+    if (!gFX_GPU.Has("bgTurb"))
+        return
+
+    ; High-frequency noise at full desaturation = subtle luminance jitter
+    ; D2D Turbulence OFFSET controls both noise position AND output coordinates.
+    ; Seed offsets give unique patterns; crop+targetOffset align to render target origin.
+    margin := 20
+    ofsX := Float(gFX_BackdropSeedX - margin)
+    ofsY := Float(gFX_BackdropSeedY - margin)
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, ofsX, ofsY)
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.15, 0.15)  ; fine grain
+    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 1)
+    gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 1)  ; turbulence mode (sharper)
+
+    ; Crop within generated area at seed position, shift to origin for rendering
+    cropX := Float(gFX_BackdropSeedX)
+    cropY := Float(gFX_BackdropSeedY)
+    gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
+    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.0)  ; grayscale
+
+    static drawPt := Buffer(8)
+    NumPut("float", -cropX, "float", -cropY, drawPt)
+
+    ; Very subtle — just enough to break 8-bit banding (CRANKED: 0.08 for visibility)
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.08)
+    gD2D_RT.PushLayer(layerParams, 0)
+    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
+    gD2D_RT.PopLayer()
 }
 
 ; --- Style 1: Gradient Drift ---
@@ -818,16 +820,16 @@ _FX_BG_GradientDrift(wPhys, hPhys) {
     bG := (baseRGB >> 8) & 0xFF
     bB := baseRGB & 0xFF
 
-    ; Warm blob (shift toward amber)
-    warmR := Min(255, bR + 40)
-    warmG := Min(255, bG + 15)
-    warmB := Max(0, bB - 10)
+    ; Warm blob (shift toward amber) — CRANKED
+    warmR := Min(255, bR + 120)
+    warmG := Min(255, bG + 50)
+    warmB := Max(0, bB - 40)
     warmARGB := 0xFF000000 | (warmR << 16) | (warmG << 8) | warmB
 
-    ; Cool blob (shift toward blue)
-    coolR := Max(0, bR - 15)
-    coolG := Min(255, bG + 10)
-    coolB := Min(255, bB + 40)
+    ; Cool blob (shift toward blue) — CRANKED
+    coolR := Max(0, bR - 50)
+    coolG := Min(255, bG + 40)
+    coolB := Min(255, bB + 120)
     coolARGB := 0xFF000000 | (coolR << 16) | (coolG << 8) | coolB
 
     ; Orbit positions (~45s full rotation)
@@ -837,19 +839,22 @@ _FX_BG_GradientDrift(wPhys, hPhys) {
     rx := wPhys * 0.35
     ry := hPhys * 0.35
 
-    ; Opacity layer for subtle compositing
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.06)
+    ; Opacity layer — CRANKED from 0.06 to 0.40
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.40)
     gD2D_RT.PushLayer(layerParams, 0)
 
-    ; Warm blob (primary SoftRect chain)
+    ; Warm blob (primary SoftRect chain) — CRANKED size from 160 to 400, blur from 100 to 200
     wx := cx + rx * Cos(angle)
     wy := cy + ry * Sin(angle)
-    FX_DrawSoftRect(wx - 80, wy - 80, 160, 160, warmARGB, 100.0)
+    FX_DrawSoftRect(wx - 200, wy - 200, 400, 400, warmARGB, 200.0)
 
-    ; Cool blob (secondary SoftRect chain) — opposite side
+    ; Cool blob (secondary SoftRect chain) — opposite side — CRANKED
     cx2 := cx - rx * Cos(angle)
     cy2 := cy - ry * Sin(angle)
-    FX_DrawSoftRect2(cx2 - 80, cy2 - 80, 160, 160, coolARGB, 100.0)
+    FX_DrawSoftRect2(cx2 - 200, cy2 - 200, 400, 400, coolARGB, 200.0)
+
+    ; Noise dither to break up 8-bit gradient banding
+    _FX_BG_Dither(wPhys, hPhys)
 
     gD2D_RT.PopLayer()
 }
@@ -857,31 +862,43 @@ _FX_BG_GradientDrift(wPhys, hPhys) {
 ; --- Style 2: Caustic Ripple ---
 ; Turbulence noise simulating light refracting through textured glass.
 _FX_BG_Caustic(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY
     global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
     global FX_CROP_RECT, FX_SAT_SATURATION
 
     if (!gFX_GPU.Has("bgTurb"))
         return
 
-    ; Slow drift
-    driftX := gFX_AmbientTime * 0.005
-    driftY := gFX_AmbientTime * 0.002
+    ; Random base offset (set per-open) + sinusoidal drift for visible animation
+    margin := 100
+    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.0008)
+    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.0005)
+    baseX := gFX_BackdropSeedX - margin + driftX
+    baseY := gFX_BackdropSeedY - margin + driftY
 
     ; Configure background turbulence: low freq, smooth fractalSum
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(driftX), Float(driftY))
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 40), Float(hPhys + 40))
+    ; D2D Turbulence OFFSET = noise sample position AND output image coordinates.
+    ; Generate around seed position with margin for drift; crop at seed; shift to origin.
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(baseX), Float(baseY))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.008, 0.008)
     gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 3)
     gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 0)  ; fractalSum (smoother)
 
-    gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(wPhys), Float(hPhys))
-    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.2)
+    ; Crop within generated area at seed position (drift animates pattern beneath)
+    cropX := Float(gFX_BackdropSeedX)
+    cropY := Float(gFX_BackdropSeedY)
+    gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
+    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.6)  ; CRANKED from 0.2
 
-    ; Render at ~5% opacity
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.05)
+    ; Shift cropped output to render target origin
+    static drawPt := Buffer(8)
+    NumPut("float", -cropX, "float", -cropY, drawPt)
+
+    ; Render — CRANKED from 0.05 to 0.40
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.40)
     gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"])
+    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
     gD2D_RT.PopLayer()
 }
 
@@ -907,14 +924,17 @@ _FX_BG_Aurora(wPhys, hPhys) {
     x3 := cx + wPhys * 0.2 * Cos(a3 * 1.1)
     y3 := cy + hPhys * 0.2 * Sin(a3)
 
-    ; Opacity layer
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.05)
+    ; Opacity layer — CRANKED from 0.05 to 0.40
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.40)
     gD2D_RT.PushLayer(layerParams, 0)
 
-    ; Draw all three using primary SoftRect chain (stateless between DrawImage calls)
-    FX_DrawSoftRect(x1 - 60, y1 - 60, 120, 120, 0xFFCC6688, 90.0)  ; rose
-    FX_DrawSoftRect(x2 - 60, y2 - 60, 120, 120, 0xFF6688CC, 90.0)  ; cyan
-    FX_DrawSoftRect(x3 - 60, y3 - 60, 120, 120, 0xFF8866CC, 90.0)  ; violet
+    ; Draw all three — CRANKED size from 120 to 350, blur from 90 to 180, brighter colors
+    FX_DrawSoftRect(x1 - 175, y1 - 175, 350, 350, 0xFFFF4488, 180.0)  ; rose
+    FX_DrawSoftRect(x2 - 175, y2 - 175, 350, 350, 0xFF4488FF, 180.0)  ; cyan
+    FX_DrawSoftRect(x3 - 175, y3 - 175, 350, 350, 0xFFAA44FF, 180.0)  ; violet
+
+    ; Noise dither to break up 8-bit gradient banding
+    _FX_BG_Dither(wPhys, hPhys)
 
     gD2D_RT.PopLayer()
 }
@@ -922,31 +942,41 @@ _FX_BG_Aurora(wPhys, hPhys) {
 ; --- Style 4: Grain (Film Grain) ---
 ; Fine static turbulence texture — frosted glass materiality.
 _FX_BG_Grain(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY
     global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
     global FX_CROP_RECT, FX_SAT_SATURATION
 
     if (!gFX_GPU.Has("bgTurb"))
         return
 
-    ; Very slow shimmer drift
-    driftX := gFX_AmbientTime * 0.001
-    driftY := gFX_AmbientTime * 0.0005
+    ; Random base offset (set per-open) + sinusoidal shimmer drift
+    margin := 60
+    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.003)
+    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.002)
+    baseX := gFX_BackdropSeedX - margin + driftX
+    baseY := gFX_BackdropSeedY - margin + driftY
 
     ; Configure: higher freq, turbulence mode (sharper), fully desaturated
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(driftX), Float(driftY))
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 20), Float(hPhys + 20))
+    ; D2D Turbulence OFFSET = noise position AND output coordinates — see Caustic for details.
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(baseX), Float(baseY))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.05, 0.05)
     gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 4)
     gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 1)  ; turbulence (sharper detail)
 
-    gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(wPhys), Float(hPhys))
+    ; Crop within generated area at seed position, shift to origin for rendering
+    cropX := Float(gFX_BackdropSeedX)
+    cropY := Float(gFX_BackdropSeedY)
+    gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
     gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.0)  ; fully desaturated
 
-    ; Render at ~3% opacity
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.03)
+    static drawPt := Buffer(8)
+    NumPut("float", -cropX, "float", -cropY, drawPt)
+
+    ; Render — CRANKED from 0.03 to 0.30
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.30)
     gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"])
+    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
     gD2D_RT.PopLayer()
 }
 
@@ -955,14 +985,14 @@ _FX_BG_Grain(wPhys, hPhys) {
 _FX_BG_Vignette(wPhys, hPhys) {
     global gD2D_RT, gFX_AmbientTime
 
-    ; Breathing alpha: base 0.15, ±20% swing, ~4s cycle
-    breath := 0.15 + 0.03 * Sin(gFX_AmbientTime * 0.00157)  ; ~4s cycle
+    ; Breathing alpha — CRANKED: base 0.50, ±0.15 swing, ~4s cycle
+    breath := 0.50 + 0.15 * Sin(gFX_AmbientTime * 0.00157)  ; ~4s cycle
     alpha := Round(breath * 255)
     edgeARGB := (alpha << 24) | 0x000000
 
-    ; Depth of edge bands
-    depthX := Round(wPhys * 0.15)
-    depthY := Round(hPhys * 0.12)
+    ; Depth of edge bands — CRANKED from 15%/12% to 30%/25%
+    depthX := Round(wPhys * 0.30)
+    depthY := Round(hPhys * 0.25)
 
     ; Top edge
     FX_DrawSoftRect(0, -depthY, wPhys, depthY, edgeARGB, Float(depthY * 0.7))
@@ -989,32 +1019,40 @@ _FX_BG_Layered(wPhys, hPhys) {
 ; D2D PointSpecular effect using bgTurb as surface height map.
 ; The light catches the backdrop texture as the mouse moves.
 _FX_BG_PointSpecular(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_MouseX, gFX_MouseY
+    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_MouseX, gFX_MouseY, gFX_BackdropSeedX, gFX_BackdropSeedY
     global FX_SPEC_LIGHT_POS, FX_SPEC_EXPONENT, FX_SPEC_SURFACE_SCALE
     global FX_SPEC_CONSTANT, FX_SPEC_COLOR, FX_CROP_RECT
     global FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE, FX_TURB_OFFSET
 
     ; Ensure bgTurb has a surface for the specular to interact with
     ; (low-cost minimal noise if not already configured by Caustic/Grain)
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 40), Float(hPhys + 40))
+    ; Explicit offset at seed position — specular inherits bgTurb's coordinate space.
+    margin := 20
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.02, 0.02)
     gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 2)
     gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 0)
 
-    ; Update specular light position from mouse coordinates
-    ; Z = height above surface (larger = wider/softer cone)
-    gFX_GPU["specular"].SetVector3(FX_SPEC_LIGHT_POS, Float(gFX_MouseX), Float(gFX_MouseY), 300.0)
-    gFX_GPU["specular"].SetFloat(FX_SPEC_EXPONENT, 20.0)
-    gFX_GPU["specular"].SetFloat(FX_SPEC_SURFACE_SCALE, 1.5)
-    gFX_GPU["specular"].SetFloat(FX_SPEC_CONSTANT, 0.8)
+    ; Update specular light position from mouse coordinates (in seed-offset coordinate space)
+    ; Z = height above surface (larger = wider/softer cone) — CRANKED Z from 300 to 150 (tighter)
+    cropX := Float(gFX_BackdropSeedX)
+    cropY := Float(gFX_BackdropSeedY)
+    gFX_GPU["specular"].SetVector3(FX_SPEC_LIGHT_POS, Float(gFX_MouseX) + cropX, Float(gFX_MouseY) + cropY, 150.0)
+    gFX_GPU["specular"].SetFloat(FX_SPEC_EXPONENT, 10.0)      ; CRANKED from 20 (wider highlight)
+    gFX_GPU["specular"].SetFloat(FX_SPEC_SURFACE_SCALE, 4.0)  ; CRANKED from 1.5
+    gFX_GPU["specular"].SetFloat(FX_SPEC_CONSTANT, 3.0)       ; CRANKED from 0.8
     gFX_GPU["specular"].SetVector3(FX_SPEC_COLOR, 1.0, 1.0, 1.0)  ; white light
 
-    ; Crop specular output to overlay bounds
-    gFX_GPU["specCrop"].SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(wPhys), Float(hPhys))
+    ; Crop specular output within generated area, shift to origin
+    gFX_GPU["specCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
 
-    ; Render at 8% opacity
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.08)
+    static drawPt := Buffer(8)
+    NumPut("float", -cropX, "float", -cropY, drawPt)
+
+    ; Render — CRANKED from 0.08 to 0.50
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.50)
     gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["specCrop"])
+    gD2D_RT.DrawImage(gFX_GPUOutput["specCrop"], drawPt)
     gD2D_RT.PopLayer()
 }

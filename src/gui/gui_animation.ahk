@@ -92,9 +92,11 @@ Anim_CancelTween(name) {
 }
 
 Anim_CancelAll() {
-    global gAnim_Tweens, gFX_AmbientTime, gAnim_HidePending
+    global gAnim_Tweens, gFX_AmbientTime, gAnim_HidePending, gFX_BackdropSeedX, gFX_BackdropSeedY
     gAnim_Tweens := Map()
     gFX_AmbientTime := 0.0
+    gFX_BackdropSeedX := Random(100, 10000) * 1.0  ; Fresh turbulence pattern each open
+    gFX_BackdropSeedY := Random(100, 10000) * 1.0
     gAnim_HidePending := false
     Anim_StopTimer()
 }
