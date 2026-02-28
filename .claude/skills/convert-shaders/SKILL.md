@@ -124,7 +124,22 @@ Shadertoy shaders may use `iChannel0..3` for audio input (spectrum/waveform) or 
 
 - **Audio output** ("Sound" tab shaders): Remove entirely. Alt-Tabby is visual only.
 
-### 8. iChannel Textures
+### 8. Mouse Input (iMouse)
+
+Shadertoy provides `iMouse` (pixel coordinates, click state). Alt-Tabby has no mouse interaction with the shader layer.
+
+- **Shader has an automated path without mouse** (camera moves via time, mouse just offsets/rotates): Zero out `iMouse`. Set any derived mouse variables to `(float2)0` and simplify away dead code (e.g., `P.x -= bsMo.x * 2.0` becomes a no-op, remove it).
+
+- **Mouse is the sole camera or parameter control** (orbiting a fractal, controlling zoom/distortion — zeroing it produces a static or broken view): Replace with a gentle time-based sweep so the shader explores its parameter space:
+  ```hlsl
+  float2 fakeMouse = float2(
+      sin(time * 0.1) * 0.3,
+      cos(time * 0.07) * 0.2
+  );
+  ```
+  Tune the frequency, amplitude, and coordinate space to match how the shader consumes mouse input (normalized `0..1`, centered `-0.5..0.5`, or raw pixels). Preview the result at several time values to ensure the sweep stays in a visually interesting range.
+
+### 9. iChannel Textures
 
 If the shader uses `iChannel0..3`:
 
@@ -142,15 +157,15 @@ If the shader uses `iChannel0..3`:
 
 ## Final Steps (always, after all conversions)
 
-9. Run the bundle script:
-   ```
-   powershell -File tools/shader_bundle.ps1
-   ```
+10. Run the bundle script:
+    ```
+    powershell -File tools/shader_bundle.ps1
+    ```
 
-10. Run tests:
-   ```
-   .\tests\test.ps1
-   ```
+11. Run tests:
+    ```
+    .\tests\test.ps1
+    ```
 
 ## .json Metadata Format
 
