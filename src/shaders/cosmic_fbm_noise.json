@@ -1,0 +1,11 @@
+{
+  "name": "cosmic fbm noise",
+  "shadertoyId": "4csyRl",
+  "author": "nayk",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 40,
+  "timeOffsetMax": 120,
+  "timeAccumulate": true
+}

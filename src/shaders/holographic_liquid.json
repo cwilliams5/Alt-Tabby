@@ -1,11 +1,11 @@
 {
-  "name": "Holographic Liquid",
+  "name": "Holographic liquid",
   "shadertoyId": "4fs3Rl",
   "author": "dennizor",
   "license": "CC BY-NC-SA 3.0",
   "opacity": 0.50,
-  "iChannels": [
-    { "index": 0, "file": "holographic_liquid_i0.png", "filter": "mipmap", "wrap": "repeat" }
-  ],
+  "iChannels": [{"index": 0, "file": "holographic_liquid_i0.png", "filter": "mipmap", "wrap": "repeat"}],
+  "timeOffsetMin": 30,
+  "timeOffsetMax": 90,
   "timeAccumulate": true
 }

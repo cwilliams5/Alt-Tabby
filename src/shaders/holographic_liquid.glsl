@@ -48,7 +48,6 @@ float pattern(in vec2 p, in float t, in vec2 uv, out vec2 q, out vec2 r, out vec
 
 // Gradient Function
 vec3 getGradientColor(float t) {
-    // Convert provided RGB colors to vec3 with range 0-1
     vec3 color1 = vec3(255.0, 199.0, 51.0) / 255.0; // Yellow
     vec3 color2 = vec3(245.0, 42.0, 116.0) / 255.0; // Red
     vec3 color3 = vec3(7.0, 49.0, 143.0) / 255.0; // Blue
@@ -56,11 +55,10 @@ vec3 getGradientColor(float t) {
     vec3 color5 = vec3(185.0, 73.0, 255.0) / 255.0; // Purple
     vec3 color6 = vec3(255.0, 180.0, 204.0) / 255.0; // Pink
 
-    // Fixed ratios for color transitions
-    float ratio1 = 0.1; // Transition point for color1 and color2
-    float ratio2 = 0.3; // Transition point for color2 and color3
-    float ratio3 = 0.6; // Transition point for color3 and color4
-    float ratio4 = 0.8; // Transition point for color4 and color5
+    float ratio1 = 0.1;
+    float ratio2 = 0.3;
+    float ratio3 = 0.6;
+    float ratio4 = 0.8;
 
     if (t < ratio1)
         return mix(color1, color2, t / ratio1);
@@ -74,36 +72,16 @@ vec3 getGradientColor(float t) {
         return mix(color5, color6, (t - ratio4) / (1.0 - ratio4));
 }
 
-
-
-// Main Image Function
 void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
-    // Define zoom and speed factors
-    float zoom = 0.05; // Example zoom value; smaller values zoom in
-    float speed = 0.2; // Example speed value; larger values speed up the animation
-
-    // Apply zoom by scaling the fragment coordinates
+    float zoom = 0.05;
+    float speed = 0.2;
     vec2 zoomedCoord = fragCoord * zoom;
-
-    // Apply speed by scaling the time
     float adjustedTime = iTime * speed;
-
-    // Normalized pixel coordinates (from 0 to 1)
     vec2 uv = zoomedCoord / iResolution.xy;
-
-    // Noise generation with zoomed and time-adjusted coordinates
     vec2 q, r, g;
     float noise = pattern(zoomedCoord * vec2(.004), adjustedTime * 0.007, uv, q, r, g);
-
-    // Convert noise to a value between 0 and 1
     float t = fract(noise * 2.6 - 1.0);
-
-    // Get color from gradient
     vec3 col = getGradientColor(t);
-
-    // Apply a vignette effect
     col *= 0.5 + 0.5 * pow(16.0 * uv.x * uv.y * (1.0 - uv.x) * (1.0 - uv.y), 0.1);
-
-    // Output to screen
     fragColor = vec4(col, 1.0);
 }

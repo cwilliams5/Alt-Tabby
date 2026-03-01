@@ -1,0 +1,13 @@
+{
+  "name": "Hell",
+  "shadertoyId": "MdfGRX",
+  "author": "iq",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "hell_i0.png", "filter": "linear", "wrap": "repeat"}
+  ],
+  "timeOffsetMin": 5,
+  "timeOffsetMax": 30,
+  "timeAccumulate": true
+}

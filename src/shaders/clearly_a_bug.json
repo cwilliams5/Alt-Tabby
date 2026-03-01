@@ -1,0 +1,11 @@
+{
+  "name": "Clearly a bug",
+  "shadertoyId": "33cGDj",
+  "author": "mrange",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 10,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

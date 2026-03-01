@@ -5,50 +5,98 @@
 
 ;@Ahk2Exe-AddResource ..\resources\img\shaders\abstract_glassy_field_i0.png, 100
 ;@Ahk2Exe-AddResource ..\resources\img\shaders\abstract_glassy_field_i1.jpg, 101
-;@Ahk2Exe-AddResource ..\resources\img\shaders\bmtest2_i0.png, 102
-;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i0.png, 103
-;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i1.png, 104
-;@Ahk2Exe-AddResource ..\resources\img\shaders\domain_warped_fbm_noise_i0.png, 105
-;@Ahk2Exe-AddResource ..\resources\img\shaders\holographic_liquid_i0.png, 106
-;@Ahk2Exe-AddResource ..\resources\img\shaders\interstellar_i0.png, 107
-;@Ahk2Exe-AddResource ..\resources\img\shaders\liquid_warp_i0.png, 108
-;@Ahk2Exe-AddResource ..\resources\img\shaders\nebula_for_natalee_i0.png, 109
-;@Ahk2Exe-AddResource ..\resources\img\shaders\oily_thing_i0.png, 110
-;@Ahk2Exe-AddResource ..\resources\img\shaders\overstimulated_neurons_i0.png, 111
-;@Ahk2Exe-AddResource ..\resources\img\shaders\toxic_lake_i0.png, 112
+;@Ahk2Exe-AddResource ..\resources\img\shaders\alien_spawning_pool_i0.png, 102
+;@Ahk2Exe-AddResource ..\resources\img\shaders\black_hole_accretion_disk_i0.jpg, 103
+;@Ahk2Exe-AddResource ..\resources\img\shaders\bmtest2_i0.png, 104
+;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_brain_i0.png, 105
+;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i0.png, 106
+;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i1.png, 107
+;@Ahk2Exe-AddResource ..\resources\img\shaders\domain_warped_fbm_noise_i0.png, 108
+;@Ahk2Exe-AddResource ..\resources\img\shaders\enter_the_matrix_i0.png, 109
+;@Ahk2Exe-AddResource ..\resources\img\shaders\gargantua_render_i0.png, 110
+;@Ahk2Exe-AddResource ..\resources\img\shaders\gargantua_render_i1.jpg, 111
+;@Ahk2Exe-AddResource ..\resources\img\shaders\hell_i0.png, 112
+;@Ahk2Exe-AddResource ..\resources\img\shaders\holographic_liquid_i0.png, 113
+;@Ahk2Exe-AddResource ..\resources\img\shaders\interstellar_i0.png, 114
+;@Ahk2Exe-AddResource ..\resources\img\shaders\liquid_warp_i0.png, 115
+;@Ahk2Exe-AddResource ..\resources\img\shaders\nebula_flight_i0.png, 116
+;@Ahk2Exe-AddResource ..\resources\img\shaders\nebula_flight_i1.png, 117
+;@Ahk2Exe-AddResource ..\resources\img\shaders\nebula_for_natalee_i0.png, 118
+;@Ahk2Exe-AddResource ..\resources\img\shaders\neon_plasma_storm_i0.png, 119
+;@Ahk2Exe-AddResource ..\resources\img\shaders\neon_plasma_storm_i1.png, 120
+;@Ahk2Exe-AddResource ..\resources\img\shaders\noise_animation_electric_i0.png, 121
+;@Ahk2Exe-AddResource ..\resources\img\shaders\noise_animation_flow_i0.png, 122
+;@Ahk2Exe-AddResource ..\resources\img\shaders\oily_thing_i0.png, 123
+;@Ahk2Exe-AddResource ..\resources\img\shaders\overstimulated_neurons_i0.png, 124
+;@Ahk2Exe-AddResource ..\resources\img\shaders\starship_i0.png, 125
+;@Ahk2Exe-AddResource ..\resources\img\shaders\sun_surface_i0.png, 126
+;@Ahk2Exe-AddResource ..\resources\img\shaders\toxic_lake_i0.png, 127
+;@Ahk2Exe-AddResource ..\resources\img\shaders\voronoi_burning_i0.png, 128
 
 global RES_ID_SHADER_ABSTRACTGLASSYFIELD_I0 := 100
 global RES_ID_SHADER_ABSTRACTGLASSYFIELD_I1 := 101
-global RES_ID_SHADER_BMTEST2_I0 := 102
-global RES_ID_SHADER_DIGITALRAIN_I0 := 103
-global RES_ID_SHADER_DIGITALRAIN_I1 := 104
-global RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0 := 105
-global RES_ID_SHADER_HOLOGRAPHICLIQUID_I0 := 106
-global RES_ID_SHADER_INTERSTELLAR_I0 := 107
-global RES_ID_SHADER_LIQUIDWARP_I0 := 108
-global RES_ID_SHADER_NEBULAFORNATALEE_I0 := 109
-global RES_ID_SHADER_OILYTHING_I0 := 110
-global RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0 := 111
-global RES_ID_SHADER_TOXICLAKE_I0 := 112
+global RES_ID_SHADER_ALIENSPAWNINGPOOL_I0 := 102
+global RES_ID_SHADER_BLACKHOLEACCRETIONDISK_I0 := 103
+global RES_ID_SHADER_BMTEST2_I0 := 104
+global RES_ID_SHADER_DIGITALBRAIN_I0 := 105
+global RES_ID_SHADER_DIGITALRAIN_I0 := 106
+global RES_ID_SHADER_DIGITALRAIN_I1 := 107
+global RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0 := 108
+global RES_ID_SHADER_ENTERTHEMATRIX_I0 := 109
+global RES_ID_SHADER_GARGANTUARENDER_I0 := 110
+global RES_ID_SHADER_GARGANTUARENDER_I1 := 111
+global RES_ID_SHADER_HELL_I0 := 112
+global RES_ID_SHADER_HOLOGRAPHICLIQUID_I0 := 113
+global RES_ID_SHADER_INTERSTELLAR_I0 := 114
+global RES_ID_SHADER_LIQUIDWARP_I0 := 115
+global RES_ID_SHADER_NEBULAFLIGHT_I0 := 116
+global RES_ID_SHADER_NEBULAFLIGHT_I1 := 117
+global RES_ID_SHADER_NEBULAFORNATALEE_I0 := 118
+global RES_ID_SHADER_NEONPLASMASTORM_I0 := 119
+global RES_ID_SHADER_NEONPLASMASTORM_I1 := 120
+global RES_ID_SHADER_NOISEANIMATIONELECTRIC_I0 := 121
+global RES_ID_SHADER_NOISEANIMATIONFLOW_I0 := 122
+global RES_ID_SHADER_OILYTHING_I0 := 123
+global RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0 := 124
+global RES_ID_SHADER_STARSHIP_I0 := 125
+global RES_ID_SHADER_SUNSURFACE_I0 := 126
+global RES_ID_SHADER_TOXICLAKE_I0 := 127
+global RES_ID_SHADER_VORONOIBURNING_I0 := 128
 
 Shader_ExtractTextures() {
-    global RES_ID_SHADER_ABSTRACTGLASSYFIELD_I0, RES_ID_SHADER_ABSTRACTGLASSYFIELD_I1, RES_ID_SHADER_BMTEST2_I0, RES_ID_SHADER_DIGITALRAIN_I0, RES_ID_SHADER_DIGITALRAIN_I1, RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0, RES_ID_SHADER_HOLOGRAPHICLIQUID_I0, RES_ID_SHADER_INTERSTELLAR_I0, RES_ID_SHADER_LIQUIDWARP_I0, RES_ID_SHADER_NEBULAFORNATALEE_I0, RES_ID_SHADER_OILYTHING_I0, RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0, RES_ID_SHADER_TOXICLAKE_I0
+    global RES_ID_SHADER_ABSTRACTGLASSYFIELD_I0, RES_ID_SHADER_ABSTRACTGLASSYFIELD_I1, RES_ID_SHADER_ALIENSPAWNINGPOOL_I0, RES_ID_SHADER_BLACKHOLEACCRETIONDISK_I0, RES_ID_SHADER_BMTEST2_I0, RES_ID_SHADER_DIGITALBRAIN_I0, RES_ID_SHADER_DIGITALRAIN_I0, RES_ID_SHADER_DIGITALRAIN_I1, RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0, RES_ID_SHADER_ENTERTHEMATRIX_I0, RES_ID_SHADER_GARGANTUARENDER_I0, RES_ID_SHADER_GARGANTUARENDER_I1, RES_ID_SHADER_HELL_I0, RES_ID_SHADER_HOLOGRAPHICLIQUID_I0, RES_ID_SHADER_INTERSTELLAR_I0, RES_ID_SHADER_LIQUIDWARP_I0, RES_ID_SHADER_NEBULAFLIGHT_I0, RES_ID_SHADER_NEBULAFLIGHT_I1, RES_ID_SHADER_NEBULAFORNATALEE_I0, RES_ID_SHADER_NEONPLASMASTORM_I0, RES_ID_SHADER_NEONPLASMASTORM_I1, RES_ID_SHADER_NOISEANIMATIONELECTRIC_I0, RES_ID_SHADER_NOISEANIMATIONFLOW_I0, RES_ID_SHADER_OILYTHING_I0, RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0, RES_ID_SHADER_STARSHIP_I0, RES_ID_SHADER_SUNSURFACE_I0, RES_ID_SHADER_TOXICLAKE_I0, RES_ID_SHADER_VORONOIBURNING_I0
     if (!A_IsCompiled)
         return  ; dev mode loads from src/shaders/ directly
     DirCreate(A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_ABSTRACTGLASSYFIELD_I0, "abstract_glassy_field_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_ABSTRACTGLASSYFIELD_I1, "abstract_glassy_field_i1.jpg", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_ALIENSPAWNINGPOOL_I0, "alien_spawning_pool_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_BLACKHOLEACCRETIONDISK_I0, "black_hole_accretion_disk_i0.jpg", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_BMTEST2_I0, "bmtest2_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_DIGITALBRAIN_I0, "digital_brain_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_DIGITALRAIN_I0, "digital_rain_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_DIGITALRAIN_I1, "digital_rain_i1.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0, "domain_warped_fbm_noise_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_ENTERTHEMATRIX_I0, "enter_the_matrix_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_GARGANTUARENDER_I0, "gargantua_render_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_GARGANTUARENDER_I1, "gargantua_render_i1.jpg", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_HELL_I0, "hell_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_HOLOGRAPHICLIQUID_I0, "holographic_liquid_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_INTERSTELLAR_I0, "interstellar_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_LIQUIDWARP_I0, "liquid_warp_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_NEBULAFLIGHT_I0, "nebula_flight_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_NEBULAFLIGHT_I1, "nebula_flight_i1.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_NEBULAFORNATALEE_I0, "nebula_for_natalee_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_NEONPLASMASTORM_I0, "neon_plasma_storm_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_NEONPLASMASTORM_I1, "neon_plasma_storm_i1.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_NOISEANIMATIONELECTRIC_I0, "noise_animation_electric_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_NOISEANIMATIONFLOW_I0, "noise_animation_flow_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_OILYTHING_I0, "oily_thing_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0, "overstimulated_neurons_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_STARSHIP_I0, "starship_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_SUNSURFACE_I0, "sun_surface_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_TOXICLAKE_I0, "toxic_lake_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_VORONOIBURNING_I0, "voronoi_burning_i0.png", A_Temp "\shaders")
 }
 
 ; Get runtime path to a shader texture file.
