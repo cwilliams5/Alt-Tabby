@@ -20,6 +20,7 @@ global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h, meta, s
 global gShader_Ready := false    ; true after Shader_Init succeeds
 global gShader_FrameCount := 0   ; frame counter for cbuffer
 global gShader_LastTime := 0.0   ; previous frame time for timeDelta
+global gShader_ActiveName := ""  ; currently rendered shader — used to release old RT on switch
 
 ; ========================= INIT =========================
 
@@ -598,13 +599,9 @@ _Shader_LoadOneTexture(fileName) {
 
 ; ========================= RENDER TARGET =========================
 
-; Lazy-create or resize the render target texture for a shader entry.
-; Creates: D3D11 render target texture + RTV (for shader Draw), staging texture
-; (for GPU→CPU readback), and a D2D bitmap (on gD2D_RT's device, for DrawImage).
-_Shader_CreateRT(entry, w, h) {
-    global gD2D_D3DDevice, gD2D_RT
-
-    ; Release old resources (raw COM ptrs from ComCall "ptr*")
+; Release render target resources (tex, rtv, staging, bitmap) from a shader entry.
+; Keeps entry.ps and entry.srvs intact — only frees the per-resolution surfaces.
+_Shader_ReleaseRT(entry) {
     if (entry.bitmap) {
         ComCall(2, entry.bitmap)  ; IUnknown::Release
         entry.bitmap := 0
@@ -621,6 +618,18 @@ _Shader_CreateRT(entry, w, h) {
         ComCall(2, entry.tex)
         entry.tex := 0
     }
+    entry.w := 0
+    entry.h := 0
+}
+
+; Lazy-create or resize the render target texture for a shader entry.
+; Creates: D3D11 render target texture + RTV (for shader Draw), staging texture
+; (for GPU→CPU readback), and a D2D bitmap (on gD2D_RT's device, for DrawImage).
+_Shader_CreateRT(entry, w, h) {
+    global gD2D_D3DDevice, gD2D_RT
+
+    ; Release old resources before (re)creating at new size
+    _Shader_ReleaseRT(entry)
 
     ; --- D3D11 render target texture (for shader Draw) ---
     ; D3D11_TEXTURE2D_DESC (44 bytes)
@@ -702,11 +711,19 @@ _Shader_MakeGUID(str) {
 ; timeSec: elapsed time in seconds. darken/desaturate: 0.0-1.0 post-processing.
 Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
-    global gShader_FrameCount, gShader_LastTime
+    global gShader_FrameCount, gShader_LastTime, gShader_ActiveName
     static dbgRendered := Map()
 
     if (!gShader_Ready || !gShader_Registry.Has(name))
         return false
+
+    ; Release previous shader's render targets when switching to a different shader.
+    ; Only one shader renders at a time, so only the active one needs RT resources.
+    if (gShader_ActiveName != "" && gShader_ActiveName != name && gShader_Registry.Has(gShader_ActiveName)) {
+        prev := gShader_Registry[gShader_ActiveName]
+        _Shader_ReleaseRT(prev)
+    }
+    gShader_ActiveName := name
 
     ; One-time log per shader name
     if (cfg.DiagShaderLog && !dbgRendered.Has(name)) {
@@ -873,7 +890,7 @@ Shader_GetMeta(name) {
 ; Release all D3D11 shader resources. Safe to call multiple times.
 Shader_Cleanup() {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
-    global gShader_FrameCount, gShader_LastTime
+    global gShader_FrameCount, gShader_LastTime, gShader_ActiveName
 
     ; Release per-shader resources (all raw COM ptrs)
     for _, entry in gShader_Registry {
@@ -881,14 +898,7 @@ Shader_Cleanup() {
             if (srv)
                 ComCall(2, srv)
         }
-        if (entry.bitmap)
-            ComCall(2, entry.bitmap)
-        if (entry.staging)
-            ComCall(2, entry.staging)
-        if (entry.rtv)
-            ComCall(2, entry.rtv)
-        if (entry.tex)
-            ComCall(2, entry.tex)
+        _Shader_ReleaseRT(entry)
         if (entry.ps)
             ComCall(2, entry.ps)
     }
@@ -911,6 +921,7 @@ Shader_Cleanup() {
         gShader_D3DCtx := 0
     }
 
+    gShader_ActiveName := ""
     gShader_Ready := false
     gShader_FrameCount := 0
     gShader_LastTime := 0.0
