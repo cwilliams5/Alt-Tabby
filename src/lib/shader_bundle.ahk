@@ -9655,7 +9655,7 @@ float4 PSMain(PSInput input) : SV_Target {
     r.x = fbm(st + q + float2(0.57, 0.52) + 0.5 * time);
     r.y = fbm(st + q + float2(0.34, -0.57) + 0.4 * time);
 
-    for (float j = 0.0; j < 3.0; j++) {
+    for (float j = 1.0; j < 3.0; j++) {
         r += 1.0 / abs(glsl_mod(st.y, 1.2 * j) * 500.0) * 1.0;       // Vertical line
         r += 1.0 / abs(glsl_mod(st.x, 0.3 * j) * 500.0) * 1.0;       // Horizontal line
         r += 1.0 / abs(glsl_mod(st.y + st.x, 0.6 * j) * 500.0) * 1.0; // Diagonal line
