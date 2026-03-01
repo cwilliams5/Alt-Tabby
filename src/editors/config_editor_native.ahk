@@ -165,6 +165,8 @@ _CEN_ParseRegistry() {
             }
             if (entry.HasOwnProp("fmt"))
                 setting.fmt := entry.fmt
+            if (entry.HasOwnProp("dynamicOptions"))
+                setting.dynamicOptions := entry.dynamicOptions
             if (curSubsection != "" && curSubsection.HasOwnProp("name"))
                 curSubsection.settings.Push(setting)
             else if (curSection != "")
@@ -494,8 +496,45 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             isHex := setting.HasOwnProp("fmt") && setting.fmt = "hex"
             hasRange := setting.HasOwnProp("min")
             useUpDown := hasRange && setting.t = "int" && !isHex
+            useFloatSlider := hasRange && setting.t = "float" && !isHex
 
-            if (useUpDown) {
+            if (useFloatSlider) {
+                ; Float with range -> Slider (scaled to 0-100) + Edit + range label
+                ; Scale factor: slider integer range maps to float range
+                floatRange := setting.max - setting.min
+                sliderMax := (floatRange <= 1.0) ? 100 : Round(floatRange * 10)
+                sliderX := CEN_INPUT_X
+                slider := pageGui.AddSlider("x" sliderX " y" y " w120 h24 +0x10 Range0-" sliderMax)
+                controls.Push({ctrl: slider, origY: y, origX: sliderX})
+                settingCtrls.Push({ctrl: slider, origY: y, origX: sliderX})
+                Theme_ApplyToControl(slider, "Slider", gCEN["ThemeEntry"])
+                gCEN_SliderHwnds[slider.Hwnd] := true
+                DllCall("uxtheme\SetWindowTheme", "Ptr", slider.Hwnd, "Str", "", "Ptr", 0)
+                DllCall("comctl32\SetWindowSubclass", "Ptr", slider.Hwnd, "Ptr", gCEN_SliderSubclassPtr, "UPtr", slider.Hwnd, "UPtr", 0)
+                editX := sliderX + 126
+                ed := pageGui.AddEdit("x" editX " y" y " w80")
+                controls.Push({ctrl: ed, origY: y, origX: editX})
+                settingCtrls.Push({ctrl: ed, origY: y, origX: editX})
+                Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
+                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
+                rangeX := editX + 86
+                rc := pageGui.AddText("x" rangeX " y" (y + 3) " w120 h16 c" mutedColor, Format("{:.2f} - {:.2f}", setting.min, setting.max))
+                rc.SetFont("s7 italic", "Segoe UI")
+                Theme_MarkMuted(rc)
+                controls.Push({ctrl: rc, origY: y, origX: rangeX})
+                settingCtrls.Push({ctrl: rc, origY: y, origX: rangeX})
+                ; Sync slider <-> edit: slider value is scaled integer, edit shows float
+                floatSyncGuard := {v: false}
+                fMin := setting.min
+                fMax := setting.max
+                sMax := sliderMax
+                boundFloatSliderSync := _CEN_MakeFloatSliderSyncHandler(ed, floatSyncGuard, fMin, fMax, sMax)
+                boundFloatEditSync := _CEN_MakeFloatEditSyncHandler(slider, floatSyncGuard, fMin, fMax, sMax)
+                slider.OnEvent("Change", boundFloatSliderSync)
+                ed.OnEvent("Change", boundFloatEditSync)
+                ctrlInfo := {ctrl: ed, type: setting.t, slider: slider, floatSliderMax: sliderMax, floatMin: fMin, floatMax: fMax}
+                gCEN["Controls"][setting.g] := ctrlInfo
+            } else if (useUpDown) {
                 ; Integer with range, not hex -> Slider + Edit + UpDown + range label
                 sliderX := CEN_INPUT_X
                 slider := pageGui.AddSlider("x" sliderX " y" y " w120 h24 +0x10 Range" setting.min "-" setting.max)
@@ -597,7 +636,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             ; Range hint for float/hex (UpDown shows its own range natively)
             ; Skip for hex fields with color swatch — the swatch+picker replaces the label
             hasSwatch := isHex && setting.HasOwnProp("max") && setting.max > 0xFF
-            if (hasRange && !useUpDown && !hasSwatch) {
+            if (hasRange && !useUpDown && !useFloatSlider && !hasSwatch) {
                 if (isHex)
                     rangeText := Format("Range: 0x{:X} - 0x{:X}", setting.min, setting.max)
                 else if (setting.t = "float")
@@ -688,8 +727,15 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
     } else {
         ctrlInfo.ctrl.Value := String(val)
     }
-    if (ctrlInfo.HasOwnProp("slider"))
-        try ctrlInfo.slider.Value := Integer(val)
+    if (ctrlInfo.HasOwnProp("slider")) {
+        if (ctrlInfo.HasOwnProp("floatSliderMax")) {
+            ; Float slider: scale float value to integer slider range
+            fVal := Float(val)
+            try ctrlInfo.slider.Value := Round((fVal - ctrlInfo.floatMin) / (ctrlInfo.floatMax - ctrlInfo.floatMin) * ctrlInfo.floatSliderMax)
+        } else {
+            try ctrlInfo.slider.Value := Integer(val)
+        }
+    }
     if (ctrlInfo.HasOwnProp("swatch")) {
         rgb := val & 0xFFFFFF
         swAlpha := (ctrlInfo.HasOwnProp("isARGB") && ctrlInfo.isARGB) ? ((val >> 24) & 0xFF) : 255
@@ -737,6 +783,41 @@ _CEN_SyncEditToSlider(editCtrl, sliderCtrl, guard) {
         return
     guard.v := true
     try sliderCtrl.Value := Integer(editCtrl.Value)
+    guard.v := false
+}
+
+; Create a handler that syncs float slider value -> edit control (scaled integer -> float string)
+_CEN_MakeFloatSliderSyncHandler(editCtrl, guard, fMin, fMax, sMax) {
+    return (ctrl, *) => _CEN_SyncFloatSliderToEdit(ctrl, editCtrl, guard, fMin, fMax, sMax)
+}
+
+_CEN_SyncFloatSliderToEdit(sliderCtrl, editCtrl, guard, fMin, fMax, sMax) {
+    if (guard.v)
+        return
+    guard.v := true
+    floatVal := fMin + (sliderCtrl.Value / sMax) * (fMax - fMin)
+    try editCtrl.Value := Format("{:.2f}", floatVal)
+    guard.v := false
+    DllCall("InvalidateRect", "Ptr", sliderCtrl.Hwnd, "Ptr", 0, "Int", 0)
+}
+
+; Create a handler that syncs edit float value -> slider control (float string -> scaled integer)
+_CEN_MakeFloatEditSyncHandler(sliderCtrl, guard, fMin, fMax, sMax) {
+    return (ctrl, *) => _CEN_SyncFloatEditToSlider(ctrl, sliderCtrl, guard, fMin, fMax, sMax)
+}
+
+_CEN_SyncFloatEditToSlider(editCtrl, sliderCtrl, guard, fMin, fMax, sMax) {
+    if (guard.v)
+        return
+    guard.v := true
+    try {
+        fVal := Float(editCtrl.Value)
+        if (fVal < fMin)
+            fVal := fMin
+        if (fVal > fMax)
+            fVal := fMax
+        sliderCtrl.Value := Round((fVal - fMin) / (fMax - fMin) * sMax)
+    }
     guard.v := false
 }
 
