@@ -9,7 +9,8 @@
 #        powershell -File tools/shader_bundle.ps1 -Verbose
 
 param(
-    [switch]$Verbose
+    [switch]$Verbose,
+    [switch]$force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,6 +32,20 @@ $hlslFiles = Get-ChildItem -Path $shaderDir -Filter '*.hlsl' | Sort-Object Name
 if ($hlslFiles.Count -eq 0) {
     Write-Host "No .hlsl files found in $shaderDir"
     exit 0
+}
+
+# === Staleness check: skip if outputs are newer than all inputs ===
+if (-not $force -and (Test-Path $bundlePath) -and (Test-Path $resourcesPath)) {
+    $outTime = @((Get-Item $bundlePath).LastWriteTime, (Get-Item $resourcesPath).LastWriteTime) |
+        Sort-Object | Select-Object -First 1  # oldest output
+    $jsonFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.json' -ErrorAction SilentlyContinue)
+    $scriptTime = (Get-Item $PSCommandPath).LastWriteTime
+    $allInputs = @($hlslFiles) + @($jsonFiles) + @(Get-Item $PSCommandPath)
+    $newestInput = $allInputs | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($outTime -gt $newestInput.LastWriteTime) {
+        Write-Host "Shader bundle up to date ($($hlslFiles.Count) shaders)."
+        exit 0
+    }
 }
 
 $shaders = @()

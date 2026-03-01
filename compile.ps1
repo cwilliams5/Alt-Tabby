@@ -130,29 +130,18 @@ $versionInfoLines = @(
 Record-Step "Version Stamp"
 
 # --- Shader pipeline: bundle + compile ---
-# Always run both scripts — they handle per-shader staleness internally (fast when nothing changed).
+# Both scripts have internal staleness checks — fast (~50ms) when nothing changed.
+# Invoked inline (& operator) to avoid subprocess startup overhead.
 Reset-StepTimer
 $shaderBundleScript = Join-Path $PSScriptRoot "tools\shader_bundle.ps1"
 $shaderCompileScript = Join-Path $PSScriptRoot "tools\shader_compile.ps1"
 
-if (-not $testMode) {
-    Write-Output "Running shader pipeline..."
-}
-
 # Step 1: shader_bundle.ps1 — generates metadata bundle + resource directives
 if (Test-Path $shaderBundleScript) {
-    $bundleProc = Start-Process -FilePath "powershell" -ArgumentList "-File `"$shaderBundleScript`"" `
-        -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput "$env:TEMP\shader_bundle_out.txt" -RedirectStandardError "$env:TEMP\shader_bundle_err.txt"
-
-    if (-not $testMode) {
-        $bundleOut = Get-Content "$env:TEMP\shader_bundle_out.txt" -Raw -ErrorAction SilentlyContinue
-        if ($bundleOut) { Write-Output $bundleOut.TrimEnd() }
-    }
-    $bundleErr = Get-Content "$env:TEMP\shader_bundle_err.txt" -Raw -ErrorAction SilentlyContinue
-    Remove-Item "$env:TEMP\shader_bundle_out.txt", "$env:TEMP\shader_bundle_err.txt" -Force -ErrorAction SilentlyContinue
-
-    if ($bundleProc.ExitCode -ne 0) {
-        if ($bundleErr) { Write-Output $bundleErr }
+    $bundleArgs = @()
+    if ($force) { $bundleArgs += '-force' }
+    & $shaderBundleScript @bundleArgs
+    if ($LASTEXITCODE -ne 0) {
         Write-Output ""
         Write-Output "============================================================"
         Write-Output "ERROR: Shader bundling failed!"
@@ -165,21 +154,10 @@ Record-Step "Shader Bundle"
 # Step 2: shader_compile.ps1 — compiles HLSL to DXBC bytecode
 Reset-StepTimer
 if (Test-Path $shaderCompileScript) {
-    $compileShaderArgs = "-File `"$shaderCompileScript`""
-    if ($force) { $compileShaderArgs += " --force" }
-
-    $shaderProc = Start-Process -FilePath "powershell" -ArgumentList $compileShaderArgs `
-        -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput "$env:TEMP\shader_compile_out.txt" -RedirectStandardError "$env:TEMP\shader_compile_err.txt"
-
-    if (-not $testMode) {
-        $shaderOut = Get-Content "$env:TEMP\shader_compile_out.txt" -Raw -ErrorAction SilentlyContinue
-        if ($shaderOut) { Write-Output $shaderOut.TrimEnd() }
-    }
-    $shaderErr = Get-Content "$env:TEMP\shader_compile_err.txt" -Raw -ErrorAction SilentlyContinue
-    Remove-Item "$env:TEMP\shader_compile_out.txt", "$env:TEMP\shader_compile_err.txt" -Force -ErrorAction SilentlyContinue
-
-    if ($shaderProc.ExitCode -ne 0) {
-        if ($shaderErr) { Write-Output $shaderErr }
+    $compileArgs = @()
+    if ($force) { $compileArgs += '-force' }
+    & $shaderCompileScript @compileArgs
+    if ($LASTEXITCODE -ne 0) {
         Write-Output ""
         Write-Output "============================================================"
         Write-Output "ERROR: Shader compilation failed!"
