@@ -37,7 +37,7 @@ Shader_Init() {
     try {
         ; Get immediate context (ID3D11Device::GetImmediateContext, vtable 40)
         pCtx := 0
-        ComCall(40, gD2D_D3DDevice, "ptr*", &pCtx)
+        ComCall(40, gD2D_D3DDevice, "ptr*", &pCtx, "uint")  ; void return
         if (!pCtx)
             return false
         gShader_D3DCtx := pCtx
@@ -663,19 +663,19 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
         NumPut("float", Float(desaturate), pData, 24)       ; desaturate  (offset 24)
         NumPut("float", 0.0, pData, 28)                     ; _pad        (offset 28)
     }
-    ; Unmap (vtable 15)
-    ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)
+    ; Unmap (vtable 15) — returns void; "uint" suppresses false HRESULT throw from RAX garbage
+    ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0, "uint")
 
-    ; ClearRenderTargetView (vtable 50) — transparent black
+    ; ClearRenderTargetView (vtable 50) — void
     static clearColor := _Shader_MakeClearColor()
-    ComCall(50, ctx, "ptr", entry.rtv, "ptr", clearColor)
+    ComCall(50, ctx, "ptr", entry.rtv, "ptr", clearColor, "uint")
 
-    ; OMSetRenderTargets (vtable 33): count, ppRTVs, depthStencil
+    ; OMSetRenderTargets (vtable 33): count, ppRTVs, depthStencil — void
     rtvBuf := Buffer(A_PtrSize, 0)
     NumPut("ptr", entry.rtv, rtvBuf)
-    ComCall(33, ctx, "uint", 1, "ptr", rtvBuf, "ptr", 0)
+    ComCall(33, ctx, "uint", 1, "ptr", rtvBuf, "ptr", 0, "uint")
 
-    ; RSSetViewports (vtable 44)
+    ; RSSetViewports (vtable 44) — void
     ; D3D11_VIEWPORT (24 bytes): TopLeftX, TopLeftY, Width, Height, MinDepth, MaxDepth
     vp := Buffer(24, 0)
     NumPut("float", 0.0, vp, 0)         ; TopLeftX
@@ -684,56 +684,56 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
     NumPut("float", Float(h), vp, 12)   ; Height
     NumPut("float", 0.0, vp, 16)        ; MinDepth
     NumPut("float", 1.0, vp, 20)        ; MaxDepth
-    ComCall(44, ctx, "uint", 1, "ptr", vp)
+    ComCall(44, ctx, "uint", 1, "ptr", vp, "uint")
 
-    ; IASetPrimitiveTopology (vtable 24) — TRIANGLELIST = 4
-    ComCall(24, ctx, "uint", 4)
+    ; IASetPrimitiveTopology (vtable 24) — void
+    ComCall(24, ctx, "uint", 4, "uint")
 
-    ; VSSetShader (vtable 11): shader, classInstances, numClassInstances
-    ComCall(11, ctx, "ptr", gShader_VS, "ptr", 0, "uint", 0)
+    ; VSSetShader (vtable 11): shader, classInstances, numClassInstances — void
+    ComCall(11, ctx, "ptr", gShader_VS, "ptr", 0, "uint", 0, "uint")
 
-    ; PSSetShader (vtable 9)
-    ComCall(9, ctx, "ptr", entry.ps, "ptr", 0, "uint", 0)
+    ; PSSetShader (vtable 9) — void
+    ComCall(9, ctx, "ptr", entry.ps, "ptr", 0, "uint", 0, "uint")
 
-    ; PSSetConstantBuffers (vtable 16): startSlot, numBuffers, ppBuffers
+    ; PSSetConstantBuffers (vtable 16): startSlot, numBuffers, ppBuffers — void
     cbBuf := Buffer(A_PtrSize, 0)
     NumPut("ptr", gShader_CBuffer, cbBuf)
-    ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf)
+    ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf, "uint")
 
-    ; Bind iChannel texture SRVs if available (PSSetShaderResources vtable 8)
+    ; Bind iChannel texture SRVs if available (PSSetShaderResources vtable 8) — void
     nSrvs := entry.srvs.Length
     if (nSrvs > 0) {
         srvBuf := Buffer(A_PtrSize * nSrvs, 0)
         Loop nSrvs
             NumPut("ptr", entry.srvs[A_Index], srvBuf, (A_Index - 1) * A_PtrSize)
-        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf)
+        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf, "uint")
     }
 
-    ; Bind sampler state to all slots used by SRVs (PSSetSamplers vtable 10)
+    ; Bind sampler state to all slots used by SRVs (PSSetSamplers vtable 10) — void
     if (gShader_Sampler) {
         nSamplers := Max(nSrvs, 1)
         sampBuf := Buffer(A_PtrSize * nSamplers, 0)
         Loop nSamplers
             NumPut("ptr", gShader_Sampler, sampBuf, (A_Index - 1) * A_PtrSize)
-        ComCall(10, ctx, "uint", 0, "uint", nSamplers, "ptr", sampBuf)
+        ComCall(10, ctx, "uint", 0, "uint", nSamplers, "ptr", sampBuf, "uint")
     }
 
-    ; Draw (vtable 13): vertexCount=3, startVertexLocation=0
-    ComCall(13, ctx, "uint", 3, "uint", 0)
+    ; Draw (vtable 13): vertexCount=3, startVertexLocation=0 — void
+    ComCall(13, ctx, "uint", 3, "uint", 0, "uint")
 
     ; Unbind render target — clean state for D2D BeginDraw
-    ; OMSetRenderTargets(0, null, null)
-    ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0)
+    ; OMSetRenderTargets(0, null, null) — void
+    ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0, "uint")
 
-    ; Unbind SRVs if they were bound
+    ; Unbind SRVs if they were bound — void
     if (nSrvs > 0) {
         nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
-        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf)
+        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf, "uint")
     }
 
     ; --- GPU→CPU readback: copy rendered texture to D2D bitmap ---
-    ; CopyResource (vtable 47): staging ← render texture
-    ComCall(47, ctx, "ptr", entry.staging, "ptr", entry.tex)
+    ; CopyResource (vtable 47): staging ← render texture — void
+    ComCall(47, ctx, "ptr", entry.staging, "ptr", entry.tex, "uint")
 
     ; Map staging texture (vtable 14): D3D11_MAP_READ=1
     mapped := Buffer(16, 0)
@@ -743,11 +743,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
     pPixels := NumGet(mapped, 0, "ptr")
     rowPitch := NumGet(mapped, A_PtrSize, "uint")
 
-    ; CopyFromMemory on D2D bitmap (ID2D1Bitmap vtable 10): dstRect, srcData, pitch
+    ; CopyFromMemory on D2D bitmap (ID2D1Bitmap vtable 10): dstRect, srcData, pitch — HRESULT
     ComCall(10, entry.bitmap, "ptr", 0, "ptr", pPixels, "uint", rowPitch, "int")
 
-    ; Unmap staging (vtable 15)
-    ComCall(15, ctx, "ptr", entry.staging, "uint", 0)
+    ; Unmap staging (vtable 15) — void
+    ComCall(15, ctx, "ptr", entry.staging, "uint", 0, "uint")
 
     return true
 }
