@@ -1,0 +1,11 @@
+{
+  "name": "Sea Adventure",
+  "shadertoyId": "7llGz2",
+  "author": "IamWiki",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 20,
+  "timeOffsetMax": 90,
+  "timeAccumulate": true
+}

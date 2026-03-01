@@ -1,0 +1,11 @@
+{
+  "name": "Warped Liquid Metal",
+  "shadertoyId": "3t2czh",
+  "author": "mrange",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 20,
+  "timeOffsetMax": 80,
+  "timeAccumulate": true
+}

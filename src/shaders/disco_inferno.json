@@ -1,0 +1,11 @@
+{
+  "name": "Disco Inferno",
+  "shadertoyId": "MXdSzl",
+  "author": "orblivius",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 30,
+  "timeOffsetMax": 90,
+  "timeAccumulate": true
+}

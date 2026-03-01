@@ -1,0 +1,10 @@
+{
+  "name": "Liquid Warp",
+  "shadertoyId": "wtXXD2",
+  "author": "whoadrian",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "liquid_warp_i0.png", "filter": "mipmap", "wrap": "repeat"}
+  ]
+}

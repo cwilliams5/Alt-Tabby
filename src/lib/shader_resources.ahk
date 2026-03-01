@@ -3,22 +3,52 @@
 #Requires AutoHotkey v2.0
 #Warn VarUnset, Off
 
-;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i0.png, 100
-;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i1.png, 101
-;@Ahk2Exe-AddResource ..\resources\img\shaders\interstellar_i0.png, 102
+;@Ahk2Exe-AddResource ..\resources\img\shaders\abstract_glassy_field_i0.png, 100
+;@Ahk2Exe-AddResource ..\resources\img\shaders\abstract_glassy_field_i1.jpg, 101
+;@Ahk2Exe-AddResource ..\resources\img\shaders\bmtest2_i0.png, 102
+;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i0.png, 103
+;@Ahk2Exe-AddResource ..\resources\img\shaders\digital_rain_i1.png, 104
+;@Ahk2Exe-AddResource ..\resources\img\shaders\domain_warped_fbm_noise_i0.png, 105
+;@Ahk2Exe-AddResource ..\resources\img\shaders\holographic_liquid_i0.png, 106
+;@Ahk2Exe-AddResource ..\resources\img\shaders\interstellar_i0.png, 107
+;@Ahk2Exe-AddResource ..\resources\img\shaders\liquid_warp_i0.png, 108
+;@Ahk2Exe-AddResource ..\resources\img\shaders\nebula_for_natalee_i0.png, 109
+;@Ahk2Exe-AddResource ..\resources\img\shaders\oily_thing_i0.png, 110
+;@Ahk2Exe-AddResource ..\resources\img\shaders\overstimulated_neurons_i0.png, 111
+;@Ahk2Exe-AddResource ..\resources\img\shaders\toxic_lake_i0.png, 112
 
-global RES_ID_SHADER_DIGITALRAIN_I0 := 100
-global RES_ID_SHADER_DIGITALRAIN_I1 := 101
-global RES_ID_SHADER_INTERSTELLAR_I0 := 102
+global RES_ID_SHADER_ABSTRACTGLASSYFIELD_I0 := 100
+global RES_ID_SHADER_ABSTRACTGLASSYFIELD_I1 := 101
+global RES_ID_SHADER_BMTEST2_I0 := 102
+global RES_ID_SHADER_DIGITALRAIN_I0 := 103
+global RES_ID_SHADER_DIGITALRAIN_I1 := 104
+global RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0 := 105
+global RES_ID_SHADER_HOLOGRAPHICLIQUID_I0 := 106
+global RES_ID_SHADER_INTERSTELLAR_I0 := 107
+global RES_ID_SHADER_LIQUIDWARP_I0 := 108
+global RES_ID_SHADER_NEBULAFORNATALEE_I0 := 109
+global RES_ID_SHADER_OILYTHING_I0 := 110
+global RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0 := 111
+global RES_ID_SHADER_TOXICLAKE_I0 := 112
 
 Shader_ExtractTextures() {
-    global RES_ID_SHADER_DIGITALRAIN_I0, RES_ID_SHADER_DIGITALRAIN_I1, RES_ID_SHADER_INTERSTELLAR_I0
+    global RES_ID_SHADER_ABSTRACTGLASSYFIELD_I0, RES_ID_SHADER_ABSTRACTGLASSYFIELD_I1, RES_ID_SHADER_BMTEST2_I0, RES_ID_SHADER_DIGITALRAIN_I0, RES_ID_SHADER_DIGITALRAIN_I1, RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0, RES_ID_SHADER_HOLOGRAPHICLIQUID_I0, RES_ID_SHADER_INTERSTELLAR_I0, RES_ID_SHADER_LIQUIDWARP_I0, RES_ID_SHADER_NEBULAFORNATALEE_I0, RES_ID_SHADER_OILYTHING_I0, RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0, RES_ID_SHADER_TOXICLAKE_I0
     if (!A_IsCompiled)
         return  ; dev mode loads from src/shaders/ directly
     DirCreate(A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_ABSTRACTGLASSYFIELD_I0, "abstract_glassy_field_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_ABSTRACTGLASSYFIELD_I1, "abstract_glassy_field_i1.jpg", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_BMTEST2_I0, "bmtest2_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_DIGITALRAIN_I0, "digital_rain_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_DIGITALRAIN_I1, "digital_rain_i1.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_DOMAINWARPEDFBMNOISE_I0, "domain_warped_fbm_noise_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_HOLOGRAPHICLIQUID_I0, "holographic_liquid_i0.png", A_Temp "\shaders")
     ResourceExtractToTemp(RES_ID_SHADER_INTERSTELLAR_I0, "interstellar_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_LIQUIDWARP_I0, "liquid_warp_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_NEBULAFORNATALEE_I0, "nebula_for_natalee_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_OILYTHING_I0, "oily_thing_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_OVERSTIMULATEDNEURONS_I0, "overstimulated_neurons_i0.png", A_Temp "\shaders")
+    ResourceExtractToTemp(RES_ID_SHADER_TOXICLAKE_I0, "toxic_lake_i0.png", A_Temp "\shaders")
 }
 
 ; Get runtime path to a shader texture file.

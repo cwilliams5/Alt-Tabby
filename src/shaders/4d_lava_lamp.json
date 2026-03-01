@@ -1,0 +1,10 @@
+{
+  "name": "4D Lava Lamp",
+  "shadertoyId": "3lKBD3",
+  "author": "alalalat",
+  "license": "MIT",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 10,
+  "timeOffsetMax": 60
+}

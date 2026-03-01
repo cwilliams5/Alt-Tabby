@@ -152,7 +152,9 @@ Populate from extracted `info`:
 
 #### Step 7: Close Browser & Convert
 
-Close the browser tab, then proceed to HLSL conversion (same as Mode C).
+**Close the browser (`browser_close`) immediately** — before writing any files or starting HLSL conversion. The Playwright MCP server is a shared resource; holding it open blocks other agents. Extract all data into local variables in Steps 2-5, then close the browser as the very first action in this step.
+
+Proceed to HLSL conversion (same as Mode C).
 
 ### Mode C — Paste GLSL (with non-URL args)
 

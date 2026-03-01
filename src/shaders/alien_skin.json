@@ -1,0 +1,11 @@
+{
+  "name": "Alien Skin",
+  "shadertoyId": "wtBcRW",
+  "author": "mrange",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 30,
+  "timeOffsetMax": 90,
+  "timeAccumulate": true
+}
