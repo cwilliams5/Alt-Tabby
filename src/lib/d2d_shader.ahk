@@ -27,6 +27,7 @@ global gShader_LastTime := 0.0   ; previous frame time for timeDelta
 ; Returns true on success, false if unavailable.
 Shader_Init() {
     global gD2D_D3DDevice, gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Ready
+    global RES_ID_SHADER_VS
 
     if (!gD2D_D3DDevice)
         return false
@@ -42,9 +43,14 @@ Shader_Init() {
             return false
         gShader_D3DCtx := pCtx
 
-        ; Compile fullscreen triangle vertex shader
-        vsHLSL := "
-        (
+        ; Load or compile fullscreen triangle vertex shader
+        if (A_IsCompiled) {
+            ; Compiled mode: load pre-compiled DXBC from embedded resource
+            vsBytecode := ResourceLoadToBuffer(RES_ID_SHADER_VS)
+        } else {
+            ; Dev mode: compile inline HLSL
+            vsHLSL := "
+            (
 struct VSOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
 VSOut VSMain(uint id : SV_VertexID) {
     VSOut o;
@@ -52,9 +58,9 @@ VSOut VSMain(uint id : SV_VertexID) {
     o.pos = float4(o.uv * float2(2, -2) + float2(-1, 1), 0, 1);
     return o;
 }
-        )"
-
-        vsBytecode := _Shader_Compile(vsHLSL, "VSMain", "vs_4_0", "vs_VSMain")
+            )"
+            vsBytecode := _Shader_Compile(vsHLSL, "VSMain", "vs_4_0", "vs_VSMain")
+        }
         if (!vsBytecode)
             return false
 
@@ -359,6 +365,92 @@ Shader_Register(name, hlsl, meta := "") {
 
         return true
     } catch as e {
+        return false
+    }
+}
+
+; Register a shader from pre-compiled DXBC bytecode embedded as a resource.
+; Used in compiled mode — skips D3DCompile entirely.
+; resId: Resource ID for the pre-compiled PS DXBC bytecode
+; meta: {opacity: 0.50, iChannels: [{index: 0, file: "name_i0.png"}]}
+Shader_RegisterFromResource(name, resId, meta := "") {
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+
+    if (!gShader_Ready || !gD2D_D3DDevice)
+        return false
+
+    if (!IsObject(meta))
+        meta := {opacity: 1.0, iChannels: []}
+
+    try {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterFromResource: " name " resId=" resId)
+
+        psBytecode := ResourceLoadToBuffer(resId)
+        if (!psBytecode || !psBytecode.Size) {
+            if (cfg.DiagShaderLog)
+                _Shader_Log("RegisterFromResource: " name " resource load FAILED")
+            return false
+        }
+
+        ; CreatePixelShader (ID3D11Device vtable 15)
+        pPS := 0
+        hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
+        if (!pPS)
+            return false
+
+        gShader_Registry[name] := {ps: pPS, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: []}
+
+        if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
+            _Shader_LoadTextures(name)
+
+        return true
+    } catch as e {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterFromResource: " name " EXCEPTION: " e.Message)
+        return false
+    }
+}
+
+; Register a shader by reading HLSL from a file in src/shaders/ and compiling at runtime.
+; Used in dev mode (running from source) — keeps D3DCompile + disk cache for fast iteration.
+; hlslFile: filename relative to src/shaders/ (e.g., "fire.hlsl")
+; meta: {opacity: 0.50, iChannels: [{index: 0, file: "name_i0.png"}]}
+Shader_RegisterFromFile(name, hlslFile, meta := "") {
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+
+    if (!gShader_Ready || !gD2D_D3DDevice)
+        return false
+
+    if (!IsObject(meta))
+        meta := {opacity: 1.0, iChannels: []}
+
+    try {
+        ; Resolve HLSL path: A_ScriptDir is src/gui/ or src/, shaders are in src/shaders/
+        hlslPath := A_ScriptDir "\shaders\" hlslFile
+        if (!FileExist(hlslPath)) {
+            ; Try walking up one level (A_ScriptDir might be src/gui/)
+            SplitPath(A_ScriptDir, , &parentDir)
+            hlslPath := parentDir "\shaders\" hlslFile
+        }
+        if (!FileExist(hlslPath)) {
+            if (cfg.DiagShaderLog)
+                _Shader_Log("RegisterFromFile: " name " HLSL not found: " hlslFile)
+            return false
+        }
+
+        hlsl := FileRead(hlslPath, "UTF-8")
+        if (hlsl = "") {
+            if (cfg.DiagShaderLog)
+                _Shader_Log("RegisterFromFile: " name " empty HLSL: " hlslFile)
+            return false
+        }
+
+        ; Delegate to existing Shader_Register which handles D3DCompile + cache
+        return Shader_Register(name, hlsl, meta)
+    } catch as e {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterFromFile: " name " EXCEPTION: " e.Message)
         return false
     }
 }

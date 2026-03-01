@@ -303,7 +303,12 @@ If the shader uses `iChannel0..3`:
     powershell -File tools/shader_bundle.ps1
     ```
 
-11. Run tests:
+11. Compile shaders to DXBC:
+    ```
+    powershell -File tools/shader_compile.ps1
+    ```
+
+12. Run tests:
     ```
     .\tests\test.ps1
     ```
