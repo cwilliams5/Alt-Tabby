@@ -228,7 +228,7 @@ float4 Radiance(Ray ray) {
 }
 
 float4 PSMain(PSInput input) : SV_Target {
-    float2 fragCoord = input.pos.xy;
+    float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
 
     seed = resolution.y * fragCoord.x / resolution.x + fragCoord.y / resolution.y;
 

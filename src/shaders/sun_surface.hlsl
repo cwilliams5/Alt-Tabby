@@ -121,7 +121,7 @@ float3 firePalette(float i) {
 }
 
 float4 PSMain(PSInput input) : SV_Target {
-    float2 fragCoord = input.pos.xy;
+    float2 fragCoord = float2(input.pos.x, resolution.y - input.pos.y);
 
     float3 rd = normalize(float3((fragCoord - 0.5 * resolution) / resolution.y, 1.0));
     float3 ro = float3(0.0, 0.0, -22.0);
