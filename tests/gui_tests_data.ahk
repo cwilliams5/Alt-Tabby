@@ -478,7 +478,7 @@ RunGUITests_Data() {
     ResetGUIState()
     ; Pre-populate icon cache with 5 items (simulates previous state)
     Loop 5
-        gGdip_IconCache[A_Index * 1000] := {hicon: 90000 + A_Index * 1000, pBmp: 0}
+        gGdip_IconCache[A_Index * 1000] := {hicon: 90000 + A_Index * 1000, bitmap: 0}
 
     ; Refresh with only 2 items (windows closed) — cache has orphans
     gMock_PruneCalledWith := ""
@@ -559,8 +559,8 @@ RunGUITests_Data() {
     gWS_Store[1000] := {present: true, iconHicon: 50001}
     gWS_Store[2000] := {present: true, iconHicon: 50002}
     ; Pre-populate icon cache with matching entries
-    gGdip_IconCache[1000] := {hicon: 50001, pBmp: 1}
-    gGdip_IconCache[2000] := {hicon: 50002, pBmp: 1}
+    gGdip_IconCache[1000] := {hicon: 50001, bitmap: 1}
+    gGdip_IconCache[2000] := {hicon: 50002, bitmap: 1}
     _GUI_PreCacheTick()
     GUI_AssertEq(gMock_PreCachedIcons.Count, 0, "PreCacheTick cached: nothing re-cached")
 
@@ -568,7 +568,7 @@ RunGUITests_Data() {
     GUI_Log("Test: _GUI_PreCacheTick replaces stale cache entry")
     ResetGUIState()
     gWS_Store[1000] := {present: true, iconHicon: 60001}  ; New icon
-    gGdip_IconCache[1000] := {hicon: 50001, pBmp: 1}      ; Old cached icon
+    gGdip_IconCache[1000] := {hicon: 50001, bitmap: 1}     ; Old cached icon
     _GUI_PreCacheTick()
     GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCacheTick stale: 1 icon re-cached")
     GUI_AssertEq(gMock_PreCachedIcons[1000], 60001, "PreCacheTick stale: new hicon cached")
@@ -589,13 +589,13 @@ RunGUITests_Data() {
     _GUI_PreCacheTick()
     GUI_AssertEq(gMock_PreCachedIcons.Count, 2, "PreCacheTick drain: remaining 2 icons cached on next tick")
 
-    ; ----- Test: _GUI_PreCacheTick cache entry with pBmp=0 is stale -----
-    GUI_Log("Test: _GUI_PreCacheTick treats pBmp=0 as needing re-cache")
+    ; ----- Test: _GUI_PreCacheTick cache entry with bitmap=0 is stale -----
+    GUI_Log("Test: _GUI_PreCacheTick treats bitmap=0 as needing re-cache")
     ResetGUIState()
     gWS_Store[1000] := {present: true, iconHicon: 50001}
-    gGdip_IconCache[1000] := {hicon: 50001, pBmp: 0}  ; Same hicon but failed conversion
+    gGdip_IconCache[1000] := {hicon: 50001, bitmap: 0}  ; Same hicon but failed conversion
     _GUI_PreCacheTick()
-    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCacheTick pBmp=0: icon re-cached")
+    GUI_AssertEq(gMock_PreCachedIcons.Count, 1, "PreCacheTick bitmap=0: icon re-cached")
 
     ; ----- Test: GUI_KickPreCache skips during ACTIVE state -----
     GUI_Log("Test: GUI_KickPreCache skips during ACTIVE state")

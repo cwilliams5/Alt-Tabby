@@ -1,0 +1,9 @@
+{
+  "name": "BMtest2",
+  "shadertoyId": "NtdyRj",
+  "author": "thebtype",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [{"index": 0, "file": "bmtest2_i0.png", "filter": "mipmap", "wrap": "repeat"}],
+  "timeAccumulate": true
+}

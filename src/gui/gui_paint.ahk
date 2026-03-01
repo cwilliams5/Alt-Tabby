@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
-; Alt-Tabby GUI - Painting
-; Handles all rendering: overlay painting, resources, scrollbar, footer, action buttons
+; Alt-Tabby GUI - Painting (D2D)
+; All rendering via Direct2D HwndRenderTarget.
+; Single-window architecture: D2D renders directly to the window surface.
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= PAINT TIMING DEBUG LOG =========================
@@ -11,6 +12,36 @@
 global gPaint_LastPaintTick := 0      ; When we last painted (for idle duration calc)
 global gPaint_SessionPaintCount := 0  ; How many paints this session
 global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
+
+; ========================= EFFECT STYLE SYSTEM =========================
+; Toggled at runtime via B key (gui_interceptor.ahk).
+;
+; Style architecture:
+;   0 = "Effects" (gradient + shadow + inner shadow — the baseline look)
+;   1 = "Clean" (flat fill, no effects)
+;   2+ = GPU styles (require cfg.PerfGPUEffects = true)
+;
+; When GPUEffects=false: B cycles between 0 (Effects) and 1 (Clean).
+; When GPUEffects=true:  B cycles through 0, 1, then all GPU styles (2+).
+; GPU styles use ID2D1Effect graph for real blur shadows, glows, noise, etc.
+
+global gGUI_EffectStyle := 0
+global FX_STYLE_NAMES := [
+    "Effects",
+    "Clean"
+    ; GPU styles appended dynamically by FX_BuildStyleNames()
+]
+
+; Build the full style name list based on GPU availability.
+; Called at init and when GPU effects state changes.
+FX_BuildStyleNames() {
+    global FX_STYLE_NAMES, FX_GPU_STYLE_NAMES, gFX_GPUReady
+    FX_STYLE_NAMES := ["Effects", "Clean"]
+    if (gFX_GPUReady) {
+        for _, name in FX_GPU_STYLE_NAMES
+            FX_STYLE_NAMES.Push(name)
+    }
+}
 
 ; Layout state (written during paint, read by gui_main/gui_input)
 global gGUI_LastRowsDesired := -1
@@ -48,7 +79,7 @@ Paint_LogStartSession() {
 ; ========================= MAIN REPAINT =========================
 
 GUI_Repaint() {
-    ; Reentrancy guard: Win32 calls (UpdateLayeredWindow, SetWindowPos) pump the
+    ; Reentrancy guard: Win32 calls (SetWindowPos, DwmFlush) pump the
     ; message queue, which dispatches queued WinEvent callbacks mid-paint. Those
     ; callbacks update the store and trigger GUI_PatchCosmeticUpdates → GUI_Repaint,
     ; creating nested repaints that paint intermediate state immediately overwritten.
@@ -59,11 +90,11 @@ GUI_Repaint() {
     gPaint_RepaintInProgress := true
 
     Profiler.Enter("GUI_Repaint") ; @profile
-    Critical "On"  ; Protect GDI+ back buffer from concurrent hotkey interruption
+    Critical "On"  ; Protect D2D render target from concurrent hotkey interruption
     global gGUI_BaseH, gGUI_OverlayH, gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_LastRowsDesired, gGUI_Revealed
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
-    global gGdip_IconCache, gGdip_Res, gGdip_ResScale, gGdip_BackW, gGdip_BackH, gGdip_BackHdc
+    global gGdip_IconCache, gD2D_Res, gD2D_ResScale, gD2D_RT
 
     ; ===== TIMING: Start =====
     diagTiming := cfg.DiagPaintTimingLog
@@ -76,13 +107,15 @@ GUI_Repaint() {
     ; Log context for first paint or paint after long idle (>60s)
     if (diagTiming && (paintNum = 1 || idleDuration > 60000)) {
         iconCacheSize := gGdip_IconCache.Count  ; O(1) via Map.Count property
-        resCount := gGdip_Res.Count
+        resCount := gD2D_Res.Count
         Paint_Log("===== PAINT #" paintNum " (idle=" (idleDuration > 0 ? Round(idleDuration/1000, 1) "s" : "first") ") =====")
-        Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gGdip_ResScale " backbuf=" gGdip_BackW "x" gGdip_BackH)
+        Paint_Log("  Context: items=" gGUI_LiveItems.Length " frozen=" gGUI_DisplayItems.Length " iconCache=" iconCacheSize " resCount=" resCount " resScale=" gD2D_ResScale " [D2D]")
     }
 
-    ; Use display items when in ACTIVE state, live items otherwise
-    items := (gGUI_State = "ACTIVE") ? gGUI_DisplayItems : gGUI_LiveItems
+    ; Use frozen display items when ACTIVE or during hide-fade animation
+    ; (hide fade still paints fading frames with the frozen list, not live MRU)
+    global gAnim_HidePending
+    items := (gGUI_State = "ACTIVE" || gAnim_HidePending) ? gGUI_DisplayItems : gGUI_LiveItems
 
     ; ENFORCE: When in ACTIVE state with ScrollKeepHighlightOnTop, ensure selection is at top
     if (gGUI_State = "ACTIVE" && cfg.GUI_ScrollKeepHighlightOnTop && items.Length > 0) {
@@ -97,10 +130,6 @@ GUI_Repaint() {
         gGUI_LastRowsDesired := rowsDesired
 
     ; ===== TIMING: ComputeRect =====
-    ; Compute target rect from layout, not from the window.  The base window may
-    ; not be resized yet — SetWindowPos is DEFERRED to right before
-    ; UpdateLayeredWindow so DWM can't present a frame with mismatched
-    ; base/overlay sizes (the 1-frame flash on workspace switches).
     if (diagTiming)
         t1 := QPC()
     xDip := 0
@@ -121,80 +150,76 @@ GUI_Repaint() {
     if (diagTiming)
         tComputeRect := QPC() - t1
 
-    ; ===== TIMING: EnsureBackbuffer =====
+    ; ===== TIMING: Resize =====
+    ; Single window — resize window + D2D render target together.
+    ; No split-resize needed (no overlay/base sync).
     if (diagTiming)
         t1 := QPC()
-    Gdip_EnsureBackbuffer(phW, phH)
-    if (diagTiming)
-        tBackbuf := QPC() - t1
-
-    ; ===== TIMING: PaintOverlay (the big one) =====
-    if (diagTiming)
-        t1 := QPC()
-    _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
-    if (diagTiming)
-        tPaintOverlay := QPC() - t1
-
-    ; ===== TIMING: Buffer setup =====
-    if (diagTiming)
-        t1 := QPC()
-
-    ; static: marshal buffers reused per frame
-    static bf := Gdip_GetBlendFunction()
-    static sz := Buffer(8, 0)
-    static ptDst := Buffer(8, 0)
-    static ptSrc := Buffer(8, 0)
-    NumPut("Int", phW, sz, 0)
-    NumPut("Int", phH, sz, 4)
-    NumPut("Int", phX, ptDst, 0)
-    NumPut("Int", phY, ptDst, 4)
-
-    if (diagTiming)
-        tBuffers := QPC() - t1
-
-    ; ===== TIMING: UpdateLayeredWindow =====
-    if (diagTiming)
-        t1 := QPC()
-
-    ; Ensure WS_EX_LAYERED
-    global GWL_EXSTYLE, WS_EX_LAYERED
-    ex := DllCall("user32\GetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", GWL_EXSTYLE, "ptr")
-    if (!(ex & WS_EX_LAYERED)) {
-        ex := ex | WS_EX_LAYERED
-        DllCall("user32\SetWindowLongPtrW", "ptr", gGUI_OverlayH, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
-    }
-
-    ; SPLIT RESIZE: Ensure the base window is always >= the overlay during
-    ; transition frames.  DWM can present between any two Win32 calls, so
-    ; we order SetWindowPos (base) vs UpdateLayeredWindow (overlay) to
-    ; guarantee the "bad" interim frame is base-too-big (extra acrylic at
-    ; bottom — barely visible) rather than overlay-too-big (old content
-    ; floating outside the acrylic window — very visible).
-    ;
-    ; GROWING  → expand base BEFORE ULW  (interim: small overlay on big base)
-    ; SHRINKING → shrink base AFTER ULW  (interim: small overlay on big base)
-    ;
-    ; Only when overlay is already revealed — initial show is handled by
-    ; _GUI_ShowOverlayWithFrozen → GUI_ResizeToRows → _GUI_RevealBoth.
     needsResize := (rowsChanged && gGUI_Revealed)
-    if (needsResize && rowsDesired > oldRows) {
+    if (needsResize) {
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
+        if (gD2D_RT && phW > 0 && phH > 0)
+            D2D_ResizeRenderTarget(phW, phH)
     }
-
-    hdcScreen := DllCall("user32\GetDC", "ptr", 0, "ptr")
-    DllCall("user32\UpdateLayeredWindow", "ptr", gGUI_OverlayH, "ptr", hdcScreen, "ptr", ptDst.Ptr, "ptr", sz.Ptr, "ptr", gGdip_BackHdc, "ptr", ptSrc.Ptr, "int", 0, "ptr", bf.Ptr, "uint", 0x2, "int")
-    DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdcScreen)
-
-    if (needsResize && rowsDesired <= oldRows) {
-        Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-        Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx, wDip, hDip)
-    }
-
     if (diagTiming)
-        tUpdateLayer := QPC() - t1
+        tResize := QPC() - t1
 
-    ; ===== TIMING: RevealBoth =====
+    ; ===== TIMING: D2D BeginDraw + PaintOverlay + EndDraw =====
+    if (diagTiming)
+        t1 := QPC()
+
+    ; Pre-render shader layer (D3D11) before D2D BeginDraw — no state conflict
+    FX_PreRenderShaderLayer(phW, phH)
+
+    if (gD2D_RT) {
+        gD2D_RT.BeginDraw()
+
+        ; Clear the render target. Acrylic/AeroGlass: transparent so compositor
+        ; backdrop shows through. Solid: paint the tint color directly via D2D
+        ; (SWCA gradient conflicts with DwmExtendFrame).
+        clearColor := (cfg.GUI_BackdropStyle = "Solid") ? cfg.GUI_AcrylicColor : 0x00000000
+        gD2D_RT.Clear(D2D_ColorF(clearColor))
+
+        if (diagTiming)
+            tBeginDraw := QPC() - t1
+
+        ; ===== TIMING: PaintOverlay (the big one) =====
+        if (diagTiming)
+            t1 := QPC()
+
+        ; Fade animation uses window-level alpha (WS_EX_LAYERED + SetLayeredWindowAttributes)
+        ; so DWM fades the entire composition (content + acrylic + shadow) as one unit.
+        ; No PushLayer needed here — D2D paints at full opacity.
+
+        _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
+
+        if (diagTiming)
+            tPaintOverlay := QPC() - t1
+
+        ; ===== TIMING: EndDraw =====
+        if (diagTiming)
+            t1 := QPC()
+        try {
+            gD2D_RT.EndDraw()
+            D2D_Present()
+        } catch as e {
+            ; D2DERR_RECREATE_TARGET = 0x8899000C or DXGI device loss
+            ; Handle device loss: recreate full pipeline from D3D11 up
+            D2D_HandleDeviceLoss()
+            if (diagTiming)
+                Paint_Log("  ** D2D DEVICE LOSS — full pipeline recreated")
+        }
+        if (diagTiming)
+            tEndDraw := QPC() - t1
+    } else {
+        if (diagTiming) {
+            tBeginDraw := 0
+            tPaintOverlay := 0
+            tEndDraw := 0
+        }
+    }
+
+    ; ===== TIMING: Reveal =====
     if (diagTiming)
         t1 := QPC()
     _GUI_RevealBoth()
@@ -206,15 +231,16 @@ GUI_Repaint() {
     if (diagTiming) {
         tTotalMs := QPC() - tTotal
         if (paintNum = 1 || idleDuration > 60000 || tTotalMs > 100)
-            Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " backbuf=" Round(tBackbuf, 2) " paintOverlay=" Round(tPaintOverlay, 2) " buffers=" Round(tBuffers, 2) " updateLayer=" Round(tUpdateLayer, 2) " reveal=" Round(tReveal, 2))
+            Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " resize=" Round(tResize, 2) " beginDraw=" Round(tBeginDraw, 2) " paintOverlay=" Round(tPaintOverlay, 2) " endDraw=" Round(tEndDraw, 2) " reveal=" Round(tReveal, 2))
     }
     Profiler.Leave() ; @profile
     gPaint_RepaintInProgress := false
 }
 
 _GUI_RevealBoth() {
-    global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_Revealed, cfg
+    global gGUI_Base, gGUI_BaseH, gGUI_Revealed, cfg
     global gGUI_State, gGUI_OverlayVisible  ; Need access to state for race fix
+    global gGUI_StealFocus, gGUI_FocusBeforeShow
 
     Profiler.Enter("_GUI_RevealBoth") ; @profile
 
@@ -235,37 +261,29 @@ _GUI_RevealBoth() {
 
     ; RACE FIX: Abort early if state already changed
     if (gGUI_State != "ACTIVE") {
-        try gGUI_Overlay.Hide()
         try gGUI_Base.Hide()
         Profiler.Leave() ; @profile
         return
     }
 
-    Win_ApplyRoundRegion(gGUI_BaseH, cfg.GUI_CornerRadiusPx)
-
     try {
-        gGUI_Base.Show("NA")
+        if (gGUI_StealFocus) {
+            gGUI_FocusBeforeShow := DllCall("user32\GetForegroundWindow", "ptr")
+            DllCall("user32\ShowWindow", "ptr", gGUI_BaseH, "int", 5)  ; SW_SHOW
+            DllCall("user32\SetForegroundWindow", "ptr", gGUI_BaseH)
+        } else {
+            gGUI_Base.Show("NA")
+        }
     }
 
     ; RACE FIX: Check if Alt was released during Show (which pumps messages)
     if (gGUI_State != "ACTIVE") {
-        try gGUI_Overlay.Hide()
         try gGUI_Base.Hide()
         Profiler.Leave() ; @profile
         return
     }
 
-    try {
-        gGUI_Overlay.Show("NA")
-    }
-
-    ; RACE FIX: Check again after Overlay.Show
-    if (gGUI_State != "ACTIVE") {
-        try gGUI_Overlay.Hide()
-        try gGUI_Base.Hide()
-        Profiler.Leave() ; @profile
-        return
-    }
+    ; Single window — no separate overlay Show needed.
 
     Win_DwmFlush()
     gGUI_Revealed := true
@@ -276,10 +294,11 @@ _GUI_RevealBoth() {
 
 _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     Profiler.Enter("_GUI_PaintOverlay") ; @profile
-    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gGdip_Res, gGdip_IconCache
+    global gGUI_ScrollTop, gGUI_HoverRow, gGUI_FooterText, cfg, gD2D_Res, gGdip_IconCache
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
+    global gGUI_EffectStyle, gFX_GPUReady
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
@@ -290,17 +309,10 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         tPO_Resources := QPC() - t1
 
-    ; ===== TIMING: EnsureGraphics + Clear =====
+    ; ===== TIMING: Clear =====
     if (diagTiming)
         t1 := QPC()
-    g := Gdip_EnsureGraphics()
-    if (!g) {
-        Profiler.Leave() ; @profile
-        return
-    }
-
-    Gdip_Clear(g, 0x00000000)
-    Gdip_FillRect(g, gGdip_Res["brHit"], 0, 0, wPhys, hPhys)
+    ; Clear already done in GUI_Repaint (BeginDraw + Clear)
     if (diagTiming)
         tPO_GraphicsClear := QPC() - t1
 
@@ -358,15 +370,38 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         textW := 0
     }
 
-    fmtLeft := gGdip_Res["fmtLeft"]
+    ; Effect style shorthand
+    fx := gGUI_EffectStyle
+    isGPU := (fx >= 2 && gFX_GPUReady)
+    isFX := (fx = 0)  ; "Effects" = style 0 (gradient + shadow + inner shadow)
+
+    ; Living backdrop effects (GPU + Full animation mode only)
+    global gFX_BackdropStyle
+    if (isGPU && cfg.PerfAnimationType = "Full" && gFX_BackdropStyle > 0)
+        FX_DrawBackdrop(wPhys, hPhys, scale)
+
+    ; Shader layer (independent of backdrop, controlled by V key)
+    FX_DrawShaderLayer(wPhys, hPhys)
+
+    ; Shadow params (computed once, used for all text draws)
+    ; Text shadows active for Effects (0) and all GPU styles (2+), not Clean (1)
+    shadowP := _FX_GetShadowParams((fx != 1) ? 1 : 0, scale)
+    shadowBr := shadowP.enabled ? D2D_GetCachedBrush(shadowP.argb) : 0
 
     ; Header
     if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
         hdrTextH := Round(20 * scale)
-        Gdip_DrawText(g, "Title", textX, hdrY, textW, hdrTextH, gGdip_Res["brHdr"], gGdip_Res["fHdr"], fmtLeft)
-        for _, col in cols {
-            Gdip_DrawText(g, col.name, col.x, hdrY, col.w, hdrTextH, gGdip_Res["brHdr"], gGdip_Res["fHdr"], gGdip_Res["fmt"])
+        if (shadowP.enabled) {
+            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
+            for _, col in cols {
+                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
+            }
+        } else {
+            D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
+            for _, col in cols {
+                D2D_DrawTextLeft(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
+            }
         }
         y := y + hdrH28
     }
@@ -410,7 +445,11 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             emptyText := "No windows on this workspace"
         else if (gGUI_MonitorMode = MON_MODE_CURRENT)
             emptyText := "No windows on this monitor"
-        Gdip_DrawCenteredText(g, emptyText, rectX, rectY, rectW, rectH, gGdip_Res["brMain"], gGdip_Res["fMain"], gGdip_Res["fmtCenter"])
+        if (shadowP.enabled) {
+            _FX_DrawTextCenteredShadow(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"], shadowBr, shadowP.offX, shadowP.offY)
+        } else {
+            D2D_DrawTextCentered(emptyText, rectX, rectY, rectW, rectH, gD2D_Res["brMain"], gD2D_Res["tfMain"])
+        }
     } else if (rowsToDraw > 0) {
         ; ===== TIMING: Row loop start =====
         if (diagTiming) {
@@ -433,14 +472,46 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         colH := cachedLayout.colH
         hoverRow := gGUI_HoverRow
 
-        ; Hoist loop-invariant gGdip_Res lookups (14 keys × N rows → 14 lookups total)
-        fMain := gGdip_Res["fMain"], fMainHi := gGdip_Res["fMainHi"]
-        fSub := gGdip_Res["fSub"], fSubHi := gGdip_Res["fSubHi"]
-        fCol := gGdip_Res["fCol"], fColHi := gGdip_Res["fColHi"]
-        brMain := gGdip_Res["brMain"], brMainHi := gGdip_Res["brMainHi"]
-        brSub := gGdip_Res["brSub"], brSubHi := gGdip_Res["brSubHi"]
-        brCol := gGdip_Res["brCol"], brColHi := gGdip_Res["brColHi"]
-        fmtCol := gGdip_Res["fmt"]
+        ; Hoist loop-invariant gD2D_Res lookups (12 keys × N rows → 12 lookups total)
+        tfMain := gD2D_Res["tfMain"], tfMainHi := gD2D_Res["tfMainHi"]
+        tfSub := gD2D_Res["tfSub"], tfSubHi := gD2D_Res["tfSubHi"]
+        tfCol := gD2D_Res["tfCol"], tfColHi := gD2D_Res["tfColHi"]
+        brMain := gD2D_Res["brMain"], brMainHi := gD2D_Res["brMainHi"]
+        brSub := gD2D_Res["brSub"], brSubHi := gD2D_Res["brSubHi"]
+        brCol := gD2D_Res["brCol"], brColHi := gD2D_Res["brColHi"]
+
+        ; Selection rect expansion (in physical px)
+        selExpandX := Round(4 * scale)
+        selExpandY := Round(2 * scale)
+
+        ; ===== Selection highlight (drawn BEFORE row loop for correct Z-order) =====
+        ; The highlight is a background element — text/icons draw on top.
+        ; When animation is active, the highlight Y is interpolated between prev and new positions.
+        global gAnim_SelPrevIndex, gAnim_SelNewIndex
+        selW := wPhys - 2 * Mx + selExpandX * 2
+        selH := RowH
+        selX := Mx - selExpandX
+        if (selIndex > 0 && selIndex <= count) {
+            ; Compute the "snap" Y (where the selection IS in the current layout)
+            baseSelY := Anim_CalcSelY(selIndex, scrollTop, contentTopY, RowH, count, selExpandY)
+
+            ; Animated slide: lerp from prevSel's Y to current sel's Y
+            animT := Anim_GetValue("selSlide", 1.0)
+            if (animT < 1.0 && gAnim_SelPrevIndex > 0) {
+                prevSelY := Anim_CalcSelY(gAnim_SelPrevIndex, scrollTop, contentTopY, RowH, count, selExpandY)
+                selY := prevSelY + (baseSelY - prevSelY) * animT
+            } else {
+                selY := baseSelY
+            }
+
+            if (isGPU) {
+                FX_GPU_DrawSelection(fx - 2, selX, selY, selW, selH, Rad)
+            } else if (isFX) {
+                _FX_DrawSelection(selX, selY, selW, selH, Rad)
+            } else {
+                D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
+            }
+        }
 
         while (i < rowsToDraw && (yRow + RowH <= contentTopY + availH)) {
             idx0 := Win_Wrap0(start0 + i, count)
@@ -448,9 +519,16 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             cur := items[idx1]
             isSel := (idx1 = selIndex)
 
-            if (isSel) {
-                Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_SelARGB), Mx - Round(4 * scale), yRow - Round(2 * scale), wPhys - 2 * Mx + Round(8 * scale), RowH, Rad)
+            ; Hover highlight (effects on, non-selected rows)
+            if ((isFX || isGPU) && !isSel && idx1 = hoverRow) {
+                if (isGPU)
+                    FX_GPU_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
+                else
+                    _FX_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
             }
+
+            ; Selection highlight is now drawn before the row loop (animated Y)
+            ; Text formatting still uses isSel for highlighted fonts/colors
 
             ix := leftX
             iy := yRow + (RowH - ISize) // 2
@@ -463,45 +541,56 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             ; Schema guarantee: _GUI_CreateItemFromRecord always sets iconHicon (0 if absent)
             if (cur.iconHicon) {
                 ; wasCacheHit is returned via ByRef parameter (avoids double cache lookup)
-                iconDrawn := Gdip_DrawCachedIcon(g, cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
+                iconDrawn := D2D_DrawCachedIcon(cur.hwnd, cur.iconHicon, ix, iy, ISize, &iconWasCacheHit)
                 if (iconWasCacheHit)
                     iconCacheHits += 1
                 else
                     iconCacheMisses += 1
             }
             if (!iconDrawn) {
-                Gdip_FillEllipse(g, Gdip_GetCachedBrush(0x60808080), ix, iy, ISize, ISize)
+                D2D_FillEllipse(ix, iy, ISize, ISize, D2D_GetCachedBrush(0x60808080))
             }
             if (diagTiming)
                 tPO_IconsTotal += QPC() - tIcon
 
-            fMainUse := isSel ? fMainHi : fMain
-            fSubUse := isSel ? fSubHi : fSub
-            fColUse := isSel ? fColHi : fCol
+            tfMainUse := isSel ? tfMainHi : tfMain
+            tfSubUse := isSel ? tfSubHi : tfSub
+            tfColUse := isSel ? tfColHi : tfCol
             brMainUse := isSel ? brMainHi : brMain
             brSubUse := isSel ? brSubHi : brSub
             brColUse := isSel ? brColHi : brCol
 
+            ; Text drawing (with optional shadow)
             title := cur.title
-            Gdip_DrawText(g, title, textX, yRow + titleY, textW, titleH, brMainUse, fMainUse, fmtLeft)
-
             sub := ""
             if (cur.processName != "") {
                 sub := cur.processName
             } else {
                 sub := "Class: " cur.class
             }
-            Gdip_DrawText(g, sub, textX, yRow + subY, textW, subH, brSubUse, fSubUse, fmtLeft)
 
-            for _, col in cols {
-                val := ""
-                if (cur.HasOwnProp(col.key))
-                    val := cur.%col.key%
-                Gdip_DrawText(g, val, col.x, yRow + colY, col.w, colH, brColUse, fColUse, fmtCol)
+            if (shadowP.enabled) {
+                _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, shadowP.offX, shadowP.offY)
+                _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, shadowP.offX, shadowP.offY)
+                for _, col in cols {
+                    val := ""
+                    if (cur.HasOwnProp(col.key))
+                        val := cur.%col.key%
+                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, shadowP.offX, shadowP.offY)
+                }
+            } else {
+                D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
+                D2D_DrawTextLeft(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse)
+                for _, col in cols {
+                    val := ""
+                    if (cur.HasOwnProp(col.key))
+                        val := cur.%col.key%
+                    D2D_DrawTextLeft(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
+                }
             }
 
             if (idx1 = hoverRow) {
-                _GUI_DrawActionButtons(g, wPhys, yRow, RowH, scale)
+                _GUI_DrawActionButtons(wPhys, yRow, RowH, scale)
             }
 
             yRow := yRow + RowH
@@ -516,7 +605,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (count > rowsToDraw && rowsToDraw > 0) {
-        _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
+        _GUI_DrawScrollbar(wPhys, contentTopY, rowsToDraw, RowH, scrollTop, count, scale)
     }
     if (diagTiming)
         tPO_Scrollbar := QPC() - t1
@@ -525,17 +614,31 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (cfg.GUI_ShowFooter) {
-        _GUI_DrawFooter(g, wPhys, hPhys, scale)
+        _GUI_DrawFooter(wPhys, hPhys, scale)
     }
     if (diagTiming)
         tPO_Footer := QPC() - t1
+
+    ; Inner shadow — config-driven depth and opacity
+    if ((isFX || isGPU) && cfg.GUI_InnerShadowAlpha > 0) {
+        shadowDepth := Round(cfg.GUI_InnerShadowDepthPx * scale)
+        if (isGPU)
+            FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+        else
+            _FX_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+    }
+
+    ; FPS debug overlay (toggled by F key)
+    global gAnim_FPSEnabled
+    if (gAnim_FPSEnabled)
+        Anim_DrawFPSOverlay(wPhys, hPhys, scale)
 
     ; ===== TIMING: Log PaintOverlay details for first paint or paint after long idle =====
     if (diagTiming) {
         tPO_Total := QPC() - tPO_Start
         idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
         if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
-            Paint_Log("  PaintOverlay: total=" Round(tPO_Total, 2) "ms | resources=" Round(tPO_Resources, 2) " graphicsClear=" Round(tPO_GraphicsClear, 2) " rows=" (IsSet(tPO_RowsTotal) ? Round(tPO_RowsTotal, 2) : 0) " scrollbar=" Round(tPO_Scrollbar, 2) " footer=" Round(tPO_Footer, 2))
+            Paint_Log("  PaintOverlay: total=" Round(tPO_Total, 2) "ms | resources=" Round(tPO_Resources, 2) " clear=" Round(tPO_GraphicsClear, 2) " rows=" (IsSet(tPO_RowsTotal) ? Round(tPO_RowsTotal, 2) : 0) " scrollbar=" Round(tPO_Scrollbar, 2) " footer=" Round(tPO_Footer, 2))
             if (IsSet(tPO_IconsTotal)) {
                 Paint_Log("    Icons: totalTime=" Round(tPO_IconsTotal, 2) "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
             }
@@ -564,7 +667,6 @@ GUI_GetActionBtnMetrics(scale) {
 
 ; Draw a single action button and update btnX position
 ; Parameters:
-;   g         - GDI+ graphics object
 ;   &btnX     - ByRef x position (decremented after drawing)
 ;   btnY      - y position
 ;   size      - button size in pixels
@@ -576,8 +678,8 @@ GUI_GetActionBtnMetrics(scale) {
 ;   glyph     - text/glyph to draw
 ;   borderPx  - border thickness (from config)
 ;   gap       - gap between buttons in pixels
-_GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bgProp, glyph, borderPx, gap) {
-    global gGUI_HoverBtn, cfg, gGdip_Res
+_GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, btnName, showProp, bgProp, glyph, borderPx, gap) {
+    global gGUI_HoverBtn, cfg, gD2D_Res
 
     if (!cfg.%showProp%)
         return
@@ -586,15 +688,15 @@ _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, btnName, showProp, bg
     bgCol := hovered ? cfg.%bgProp "BGHoverARGB"% : cfg.%bgProp "BGARGB"%
     txCol := hovered ? cfg.%bgProp "TextHoverARGB"% : cfg.%bgProp "TextARGB"%
 
-    Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(bgCol), btnX, btnY, size, size, rad)
+    D2D_FillRoundRect(btnX, btnY, size, size, rad, D2D_GetCachedBrush(bgCol))
     if (borderPx > 0) {
-        Gdip_StrokeRoundRectCached(g, Gdip_GetCachedPen(cfg.%bgProp "BorderARGB"%, Round(borderPx * scale)), btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad)
+        D2D_StrokeRoundRect(btnX + 0.5, btnY + 0.5, size - 1, size - 1, rad, D2D_GetCachedBrush(cfg.%bgProp "BorderARGB"%), Round(borderPx * scale))
     }
-    Gdip_DrawCenteredText(g, glyph, btnX, btnY, size, size, Gdip_GetCachedBrush(txCol), gGdip_Res["fAction"], gGdip_Res["fmtCenter"])
+    D2D_DrawTextCentered(glyph, btnX, btnY, size, size, D2D_GetCachedBrush(txCol), gD2D_Res["tfAction"])
     btnX := btnX - (size + gap)
 }
 
-_GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
+_GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale) {
     global gGUI_HoverBtn, cfg
 
     metrics := GUI_GetActionBtnMetrics(scale)
@@ -606,19 +708,19 @@ _GUI_DrawActionButtons(g, wPhys, yRow, rowHPhys, scale) {
     btnX := wPhys - marR - size
     btnY := yRow + (rowHPhys - size) // 2
 
-    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "close",
+    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "close",
         "GUI_ShowCloseButton", "GUI_CloseButton", cfg.GUI_CloseButtonGlyph, cfg.GUI_CloseButtonBorderPx, gap)
 
-    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "kill",
+    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "kill",
         "GUI_ShowKillButton", "GUI_KillButton", cfg.GUI_KillButtonGlyph, cfg.GUI_KillButtonBorderPx, gap)
 
-    _GUI_DrawOneActionButton(g, &btnX, btnY, size, rad, scale, "blacklist",
+    _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, "blacklist",
         "GUI_ShowBlacklistButton", "GUI_BlacklistButton", cfg.GUI_BlacklistButtonGlyph, cfg.GUI_BlacklistButtonBorderPx, gap)
 }
 
 ; ========================= SCROLLBAR =========================
 
-_GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
+_GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, scale) {
     global cfg
     if (!cfg.GUI_ScrollBarEnabled || count <= 0 || rowsDrawn <= 0 || rowHPhys <= 0) {
         return
@@ -654,29 +756,30 @@ _GUI_DrawScrollbar(g, wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count,
     yEnd := y + trackH
 
     if (cfg.GUI_ScrollBarGutterEnabled) {
-        Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_ScrollBarGutterARGB), x, y, trackW, trackH, r)
+        D2D_FillRoundRect(x, y, trackW, trackH, r, D2D_GetCachedBrush(cfg.GUI_ScrollBarGutterARGB))
     }
 
-    thumbBr := Gdip_GetCachedBrush(cfg.GUI_ScrollBarThumbARGB)
+    thumbBr := D2D_GetCachedBrush(cfg.GUI_ScrollBarThumbARGB)
     if (y2 <= yEnd) {
-        Gdip_FillRoundRectCached(g, thumbBr, x, y1, trackW, thumbH, r)
+        D2D_FillRoundRect(x, y1, trackW, thumbH, r, thumbBr)
     } else {
         h1 := yEnd - y1
         if (h1 > 0) {
-            Gdip_FillRoundRectCached(g, thumbBr, x, y1, trackW, h1, r)
+            D2D_FillRoundRect(x, y1, trackW, h1, r, thumbBr)
         }
         h2 := y2 - yEnd
         if (h2 > 0) {
-            Gdip_FillRoundRectCached(g, thumbBr, x, y, trackW, h2, r)
+            D2D_FillRoundRect(x, y, trackW, h2, r, thumbBr)
         }
     }
 }
 
 ; ========================= FOOTER =========================
 
-_GUI_DrawFooter(g, wPhys, hPhys, scale) {
-    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gGdip_Res
+_GUI_DrawFooter(wPhys, hPhys, scale) {
+    global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
     global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
+    global gGUI_EffectStyle
 
     if (!cfg.GUI_ShowFooter) {
         return
@@ -698,9 +801,9 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     }
 
     ; Draw footer background
-    Gdip_FillRoundRectCached(g, Gdip_GetCachedBrush(cfg.GUI_FooterBGARGB), fx, fy, fw, fh, fr)
+    D2D_FillRoundRect(fx, fy, fw, fh, fr, D2D_GetCachedBrush(cfg.GUI_FooterBGARGB))
     if (cfg.GUI_FooterBorderPx > 0) {
-        Gdip_StrokeRoundRectCached(g, Gdip_GetCachedPen(cfg.GUI_FooterBorderARGB, Round(cfg.GUI_FooterBorderPx * scale)), fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr)
+        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, D2D_GetCachedBrush(cfg.GUI_FooterBorderARGB), Round(cfg.GUI_FooterBorderPx * scale))
     }
 
     pad := Round(cfg.GUI_FooterPaddingX * scale)
@@ -712,16 +815,15 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     arrowW := Round(PAINT_ARROW_W_DIP * scale)
     arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
 
-    ; Hoist repeated gGdip_Res lookups
-    fFooter := gGdip_Res["fFooter"]
-    fmtFooterCenter := gGdip_Res["fmtFooterCenter"]
-    brFooterText := gGdip_Res["brFooterText"]
+    ; Hoist repeated gD2D_Res lookups
+    tfFooter := gD2D_Res["tfFooter"]
+    brFooterText := gD2D_Res["brFooterText"]
     static leftArrowGlyph := Chr(0x2190)
     static rightArrowGlyph := Chr(0x2192)
 
     ; Arrow brush: highlight on hover, normal otherwise
-    brArrowL := (gGUI_HoverBtn = "arrowLeft") ? gGdip_Res["brMainHi"] : brFooterText
-    brArrowR := (gGUI_HoverBtn = "arrowRight") ? gGdip_Res["brMainHi"] : brFooterText
+    brArrowL := (gGUI_HoverBtn = "arrowLeft") ? gD2D_Res["brMainHi"] : brFooterText
+    brArrowR := (gGUI_HoverBtn = "arrowRight") ? gD2D_Res["brMainHi"] : brFooterText
 
     ; Left arrow
     leftArrowX := fx + arrowPad
@@ -735,8 +837,16 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.w := leftArrowW
     gGUI_LeftArrowRect.h := leftArrowH
 
+    ; Footer shadow support
+    fxShadow := _FX_GetShadowParams(gGUI_EffectStyle, scale)
+    fxShadowBr := fxShadow.enabled ? D2D_GetCachedBrush(fxShadow.argb) : 0
+
     ; Draw left arrow
-    Gdip_DrawCenteredText(g, leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, fFooter, fmtFooterCenter)
+    if (fxShadow.enabled) {
+        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    } else {
+        D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
+    }
 
     ; Right arrow
     rightArrowX := fx + fw - arrowPad - arrowW
@@ -751,7 +861,11 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    Gdip_DrawCenteredText(g, rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, fFooter, fmtFooterCenter)
+    if (fxShadow.enabled) {
+        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    } else {
+        D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
+    }
 
     ; Center text (between arrows)
     textX := leftArrowX + leftArrowW + arrowPad
@@ -760,5 +874,277 @@ _GUI_DrawFooter(g, wPhys, hPhys, scale) {
         textW := 0
     }
 
-    Gdip_DrawCenteredText(g, gGUI_FooterText, textX, fy, textW, fh, brFooterText, fFooter, fmtFooterCenter)
+    if (fxShadow.enabled) {
+        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    } else {
+        D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
+    }
 }
+
+; ========================= VISUAL EFFECTS SYSTEM =========================
+; _FX_* functions implement layered visual effects controlled by gGUI_EffectStyle.
+; All gradient brushes are transient (created per-frame, released on scope exit).
+; This is acceptable: gradient brush creation is ~2μs on modern GPUs, and the
+; working set is small (1-3 gradients per frame). Caching would add complexity
+; for negligible savings compared to the ~2ms D2D paint budget.
+
+; Build a D2D gradient stop collection from an array of [position, argb] pairs.
+; Returns the stop collection COM object (caller must keep a reference).
+_FX_BuildStops(stops) {
+    global gD2D_RT
+    count := stops.Length
+    ; D2D1_GRADIENT_STOP = 20 bytes: { float position, D2D1_COLOR_F {r, g, b, a} }
+    buf := Buffer(count * 20, 0)
+    for i, s in stops {
+        off := (i - 1) * 20
+        NumPut("float", Float(s[1]), buf, off)
+        ; Decompose ARGB to D2D1_COLOR_F {r, g, b, a} as floats
+        argb := s[2]
+        a := ((argb >> 24) & 0xFF) / 255.0
+        r := ((argb >> 16) & 0xFF) / 255.0
+        g := ((argb >> 8) & 0xFF) / 255.0
+        b := (argb & 0xFF) / 255.0
+        NumPut("float", Float(r), buf, off + 4)
+        NumPut("float", Float(g), buf, off + 8)
+        NumPut("float", Float(b), buf, off + 12)
+        NumPut("float", Float(a), buf, off + 16)
+    }
+    ; CreateGradientStopCollection(stops, count, gamma, extendMode)
+    ; GAMMA_2_2=0, CLAMP=0
+    return gD2D_RT.CreateGradientStopCollection(buf, count, 0, 0)
+}
+
+; Identity brush properties (opacity=1.0, identity transform).
+_FX_BrushProps() {
+    static bp := 0
+    if (!bp) {
+        bp := Buffer(28, 0)
+        NumPut("float", 1.0, bp, 0)  ; opacity
+        ; Identity matrix: [1, 0, 0, 1, 0, 0]
+        NumPut("float", 1.0, bp, 4)
+        NumPut("float", 0.0, bp, 8)
+        NumPut("float", 0.0, bp, 12)
+        NumPut("float", 1.0, bp, 16)
+        NumPut("float", 0.0, bp, 20)
+        NumPut("float", 0.0, bp, 24)
+    }
+    return bp
+}
+
+; Create a linear gradient brush. Caller keeps reference; COM __Delete releases.
+FX_LinearGradient(x1, y1, x2, y2, stops) {
+    global gD2D_RT
+    gsc := _FX_BuildStops(stops)
+    if (!gsc)
+        return 0
+    ; D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES = 16 bytes: { startPoint, endPoint }
+    lgbp := Buffer(16, 0)
+    NumPut("float", Float(x1), lgbp, 0)
+    NumPut("float", Float(y1), lgbp, 4)
+    NumPut("float", Float(x2), lgbp, 8)
+    NumPut("float", Float(y2), lgbp, 12)
+    return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+}
+
+
+; ---- Selection Effects ----
+
+; Draw the selection highlight with effects (drop shadow, gradient, border).
+; Called when effects are on (fx = 1). Gradient goes base → darker for depth.
+;
+; Layer compositing: shadow + gradient are drawn at full internal opacity inside
+; a D2D Layer, then composited at the user's alpha. This eliminates shadow
+; bleed-through under the semi-transparent gradient — the opaque gradient fully
+; covers the shadow within the layer, so the shadow only appears in the 3px
+; reveal strip. Fixes HDR color darkening (issue #147).
+_FX_DrawSelection(x, y, w, h, r) {
+    if (w <= 0 || h <= 0)
+        return
+    global cfg, gD2D_RT
+
+    baseARGB := cfg.GUI_SelARGB
+    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
+    baseRGB := baseARGB & 0x00FFFFFF
+
+    ; Full-opacity colors for layer-internal rendering
+    opaqueBase := 0xFF000000 | baseRGB
+    opaqueDark := 0xFF000000 | FX_BlendToBlack(baseARGB, 0.20)
+
+    ; Push layer — everything inside renders at full opacity, composited at userAlpha.
+    ; Bounds cover shadow extent (selection + 8px for 3-layer offset + spread).
+    layerParams := FX_LayerParams(x, y, x + w + 8, y + h + 8, userAlpha)
+    gD2D_RT.PushLayer(layerParams, 0)
+
+    ; Drop shadow at full opacity (within layer)
+    if (cfg.GUI_SelDropShadow)
+        _FX_DrawSelDropShadow(x, y, w, h, r)
+
+    ; Diagonal gradient at full opacity — fully covers shadow in selection area
+    gradBr := FX_LinearGradient(x, y, x + w, y + h, [
+        [0.0, opaqueBase],
+        [1.0, opaqueDark]
+    ])
+    if (gradBr) {
+        D2D_FillRoundRect(x, y, w, h, r, gradBr)
+    } else {
+        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
+    }
+
+    gD2D_RT.PopLayer()
+
+    ; Border drawn OUTSIDE layer — preserves its own configured alpha
+    bw := cfg.GUI_SelBorderWidthPx
+    if (bw > 0) {
+        half := bw / 2
+        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
+    }
+}
+
+; Build D2D1_LAYER_PARAMETERS struct (72 bytes on x64).
+; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
+; uniformly when the layer is composited onto the render target.
+FX_LayerParams(left, top, right, bottom, opacity) {
+    buf := Buffer(72, 0)
+    ; contentBounds: D2D1_RECT_F {left, top, right, bottom}
+    NumPut("float", Float(left), buf, 0)
+    NumPut("float", Float(top), buf, 4)
+    NumPut("float", Float(right), buf, 8)
+    NumPut("float", Float(bottom), buf, 12)
+    ; geometricMask: NULL (offset 16) — no geometric clip
+    ; maskAntialiasMode: 0 = PER_PRIMITIVE (offset 24)
+    ; maskTransform: identity matrix (offset 28)
+    NumPut("float", 1.0, buf, 28)   ; _11
+    NumPut("float", 1.0, buf, 40)   ; _22
+    ; opacity (offset 52)
+    NumPut("float", Float(opacity), buf, 52)
+    ; opacityBrush: NULL (offset 56) — uniform opacity
+    ; layerOptions: 0 = NONE (offset 64)
+    return buf
+}
+
+; Drop shadow behind the selection row.
+; Offset down+right, progressively more transparent layers for softness.
+_FX_DrawSelDropShadow(x, y, w, h, r) {
+    offX := 3
+    offY := 3
+    ; 3 layers: inner dark → outer soft
+    D2D_FillRoundRect(x + offX, y + offY, w, h, r + 1, D2D_GetCachedBrush(0x28000000))
+    D2D_FillRoundRect(x + offX + 1, y + offY + 1, w + 2, h + 2, r + 2, D2D_GetCachedBrush(0x18000000))
+    D2D_FillRoundRect(x + offX + 2, y + offY + 2, w + 4, h + 4, r + 3, D2D_GetCachedBrush(0x0C000000))
+}
+
+; ---- Text Shadow ----
+
+; Draw text with a drop shadow behind it. Shadow is drawn first (offset, darker),
+; then crisp text on top. Two DrawText calls per shadowed text element.
+_FX_DrawTextLeftShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
+    D2D_DrawTextLeft(text, x + offX, y + offY, w, h, shadowBrush, tf)
+    D2D_DrawTextLeft(text, x, y, w, h, brush, tf)
+}
+
+_FX_DrawTextCenteredShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY) {
+    D2D_DrawTextCentered(text, x + offX, y + offY, w, h, shadowBrush, tf)
+    D2D_DrawTextCentered(text, x, y, w, h, brush, tf)
+}
+
+; Get shadow parameters for current effect style.
+; Returns {enabled, offX, offY, argb} or {enabled: false}.
+; Uses config values (GUI_TextShadowAlpha, GUI_TextShadowDistancePx).
+_FX_GetShadowParams(fx, scale) {
+    global cfg
+    if (!fx)
+        return {enabled: false}
+    alpha := cfg.GUI_TextShadowAlpha
+    if (alpha <= 0)
+        return {enabled: false}
+    dist := cfg.GUI_TextShadowDistancePx
+    off := Max(1, Round(dist * scale))
+    argb := (alpha << 24) | 0x000000
+    return {enabled: true, offX: off, offY: off, argb: argb}
+}
+
+; ---- Hover Highlight ----
+
+; Draw a subtle background highlight behind the hovered row.
+; Uses config color with a vertical gradient computed from it.
+_FX_DrawHover(x, y, w, h, r) {
+    global cfg
+    baseARGB := cfg.GUI_HoverARGB
+    baseA := (baseARGB >> 24) & 0xFF
+    baseRGB := baseARGB & 0x00FFFFFF
+    ; Vertical gradient: full alpha at top, fading to ~30% at bottom
+    topARGB := baseARGB
+    midA := Round(baseA * 0.6)
+    midARGB := (midA << 24) | baseRGB
+    botA := Round(baseA * 0.3)
+    botARGB := (botA << 24) | baseRGB
+    hoverBr := FX_LinearGradient(x, y, x, y + h, [
+        [0.0, topARGB],
+        [0.6, midARGB],
+        [1.0, botARGB]
+    ])
+    if (hoverBr)
+        D2D_FillRoundRect(x, y, w, h, r, hoverBr)
+    else
+        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(baseARGB))
+}
+
+; ---- Inner Shadow ----
+
+; Draw gradient strips along window edges to create depth.
+; Each edge is a linear gradient from dark at the edge to transparent inward.
+; `alpha` controls edge darkness (0x15 = subtle, 0x38 = strong).
+_FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
+    edgeARGB := (alpha << 24) | 0x000000
+    botAlpha := Round(alpha * 0.85)
+    botARGB := (botAlpha << 24) | 0x000000
+    sideAlpha := Round(alpha * 0.7)
+    sideARGB := (sideAlpha << 24) | 0x000000
+
+    ; Top edge
+    topBr := FX_LinearGradient(0, 0, 0, depth, [
+        [0.0, edgeARGB],
+        [1.0, 0x00000000]
+    ])
+    if (topBr)
+        D2D_FillRect(0, 0, wPhys, depth, topBr)
+
+    ; Bottom edge
+    botBr := FX_LinearGradient(0, hPhys - depth, 0, hPhys, [
+        [0.0, 0x00000000],
+        [1.0, botARGB]
+    ])
+    if (botBr)
+        D2D_FillRect(0, hPhys - depth, wPhys, depth, botBr)
+
+    ; Left edge
+    leftBr := FX_LinearGradient(0, 0, depth, 0, [
+        [0.0, sideARGB],
+        [1.0, 0x00000000]
+    ])
+    if (leftBr)
+        D2D_FillRect(0, 0, depth, hPhys, leftBr)
+
+    ; Right edge
+    rightBr := FX_LinearGradient(wPhys - depth, 0, wPhys, 0, [
+        [0.0, 0x00000000],
+        [1.0, sideARGB]
+    ])
+    if (rightBr)
+        D2D_FillRect(wPhys - depth, 0, depth, hPhys, rightBr)
+}
+
+; ---- Color Utilities ----
+
+; Blend an ARGB color toward black by factor (0.0 = no change, 1.0 = pure black).
+; Returns RGB only (caller handles alpha).
+FX_BlendToBlack(argb, factor) {
+    r := (argb >> 16) & 0xFF
+    g := (argb >> 8) & 0xFF
+    b := argb & 0xFF
+    r := Round(r * (1.0 - factor))
+    g := Round(g * (1.0 - factor))
+    b := Round(b * (1.0 - factor))
+    return (r << 16) | (g << 8) | b
+}
+

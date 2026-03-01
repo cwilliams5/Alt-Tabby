@@ -1,0 +1,11 @@
+{
+  "name": "Dune (Sand Worm)",
+  "shadertoyId": "7stGRj",
+  "author": "dean_the_coder",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 0,
+  "timeOffsetMax": 25,
+  "timeAccumulate": false
+}

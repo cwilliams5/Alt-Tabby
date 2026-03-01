@@ -1,0 +1,11 @@
+{
+  "name": "In Space",
+  "shadertoyId": "sldGDf",
+  "author": "morimea",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 0,
+  "timeOffsetMax": 10,
+  "timeAccumulate": true
+}

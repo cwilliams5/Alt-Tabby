@@ -1,0 +1,11 @@
+{
+  "name": "002-Blue",
+  "shadertoyId": "WldSRn",
+  "author": "haquxx",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 5,
+  "timeOffsetMax": 30,
+  "timeAccumulate": true
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Fork The Drive",
+  "shadertoyId": "McX3W7",
+  "author": "devesh1312",
+  "originalAuthor": "BigWings (Martijn Steinrucken)",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 5,
+  "timeOffsetMax": 30,
+  "timeAccumulate": true
+}

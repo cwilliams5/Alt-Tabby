@@ -1,0 +1,11 @@
+{
+  "name": "Happy Little Windows Terminal",
+  "shadertoyId": "7tGfW3",
+  "author": "mrange",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 0,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

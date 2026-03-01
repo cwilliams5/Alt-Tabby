@@ -26,8 +26,8 @@ if (-not $FuncName) {
 $srcDir = (Resolve-Path "$PSScriptRoot\..\src").Path
 $projectRoot = (Resolve-Path "$srcDir\..").Path
 
-# === Collect source files (exclude lib/) ===
-$srcFiles = Get-AhkSourceFiles $srcDir
+# === Collect source files (including lib/) ===
+$srcFiles = Get-AhkSourceFiles $srcDir -IncludeLib
 
 # === Search all files for the function ===
 $found = $null

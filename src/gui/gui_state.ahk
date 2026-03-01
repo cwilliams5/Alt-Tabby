@@ -199,6 +199,12 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     if (evCode = TABBY_EV_ALT_DOWN) {
+        ; If a hide-fade is still running, complete it immediately so the
+        ; next show sequence starts with clean overlay state (gGUI_OverlayVisible=false).
+        global gAnim_HidePending
+        if (gAnim_HidePending)
+            Anim_ForceCompleteHide()
+
         ; Alt pressed - enter ALT_PENDING state
         if (gFR_Enabled)
             FR_Record(FR_EV_STATE, FR_ST_ALT_PENDING)
@@ -303,7 +309,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
                 _GUI_ShowOverlayWithFrozen()
             } else if (gGUI_OverlayVisible) {
-                GUI_Repaint()
+                ; When animation frame loop is running, it will paint the next frame
+                ; with the updated selection (tween already started by MoveSelectionFrozen).
+                ; Skip redundant synchronous repaint to avoid double-painting.
+                if (cfg.PerfAnimationType = "None")
+                    GUI_Repaint()
             }
         }
         Profiler.Leave() ; @profile
@@ -348,7 +358,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
                 _GUI_ActivateFromFrozen()
             }
 
-            gGUI_DisplayItems := []
+            ; Defer clearing display items during animated hide-fade: the frame
+            ; loop still paints the fading overlay using the frozen list.
+            ; _Anim_DoActualHide() clears them when the fade completes.
+            if (!gAnim_HidePending)
+                gGUI_DisplayItems := []
             if (gFR_Enabled)
                 FR_Record(FR_EV_STATE, FR_ST_IDLE)
             gGUI_State := "IDLE"
@@ -363,11 +377,16 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     if (evCode = TABBY_EV_ESCAPE) {
         ; Cancel - hide without activating
-        global gStats_Cancellations
+        global gStats_Cancellations, gGUI_StealFocus, gGUI_FocusBeforeShow
         gStats_Cancellations += 1
         SetTimer(_GUI_GraceTimerFired, 0)  ; Cancel grace timer
         if (gGUI_OverlayVisible) {
             GUI_HideOverlay()
+            ; Restore focus to the window that was active before overlay stole it
+            if (gGUI_StealFocus && gGUI_FocusBeforeShow) {
+                _GUI_RobustActivate(gGUI_FocusBeforeShow)
+                gGUI_FocusBeforeShow := 0
+            }
         }
         if (gFR_Enabled)
             FR_Record(FR_EV_STATE, FR_ST_IDLE)
@@ -583,7 +602,7 @@ _GUI_ShowOverlayWithFrozen() {
     Profiler.Enter("_GUI_ShowOverlayWithFrozen") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, gGUI_DisplayItems, gGUI_Sel, gGUI_ScrollTop, gGUI_Revealed, cfg
-    global gGUI_State
+    global gGUI_State, gGUI_StealFocus, gGUI_FocusBeforeShow
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
 
     if (gGUI_OverlayVisible) {
@@ -613,28 +632,79 @@ _GUI_ShowOverlayWithFrozen() {
 
     gGUI_Revealed := false
 
-    ; ===== TIMING: Resize + Repaint =====
-    ; Both windows stay hidden during resize+paint. GUI_RevealBoth() (called from
-    ; inside GUI_Repaint) shows both at the same DwmFlush, preventing any frame
-    ; where the acrylic base is visible without the overlay window list.
+    ; Start show-fade animation (opacity 0→1)
+    global gAnim_OverlayOpacity
+    if (cfg.PerfAnimationType != "None") {
+        ; Add WS_EX_LAYERED + alpha=0 BEFORE showing window — DWM fades the
+        ; entire composition (content + acrylic + shadow) via window-level alpha.
+        Anim_AddLayered()
+        DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 0, "uint", 2)
+        gAnim_OverlayOpacity := 0.0
+        Anim_StartTween("showFade", 0.0, 1.0, 90, Anim_EaseOutQuad)
+    } else {
+        gAnim_OverlayOpacity := 1.0
+    }
+
+    ; ===== TIMING: Resize =====
     t1 := QPC()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
-    GUI_ResizeToRows(rowsDesired)
+    GUI_ResizeToRows(rowsDesired, true)  ; skipFlush — we flush after paint
     tShow_Resize := QPC() - t1
 
+    ; ===== Show window BEFORE painting =====
+    ; D2D HwndRenderTarget::Present() is silently discarded for hidden windows,
+    ; so we must Show first.  The D2D surface was cleared to transparent on hide,
+    ; so the first visible frame is just the acrylic backdrop (no stale content).
+    ; Window is NOT WS_EX_LAYERED, so DWM recomputes acrylic blur fresh on Show.
+
+    ; RACE FIX: abort if state changed during resize (pumps messages)
+    if (gGUI_State != "ACTIVE") {
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT before Show (state=" gGUI_State ")")
+        _GUI_AbortShowSequence()
+        Profiler.Leave() ; @profile
+        return
+    }
+
+    try {
+        if (gGUI_StealFocus) {
+            gGUI_FocusBeforeShow := DllCall("user32\GetForegroundWindow", "ptr")
+            ; Raw ShowWindow bypasses AHK's caption-aware size adjustment (WS_CAPTION grows the window)
+            DllCall("user32\ShowWindow", "ptr", gGUI_BaseH, "int", 5)  ; SW_SHOW
+            DllCall("user32\SetForegroundWindow", "ptr", gGUI_BaseH)
+        } else {
+            gGUI_Base.Show("NA")
+        }
+    }
+
+    ; RACE FIX: Show pumps messages — check if Alt was released
+    if (gGUI_State != "ACTIVE") {
+        try gGUI_Base.Hide()
+        if (cfg.DiagPaintTimingLog)
+            Paint_Log("ShowOverlay ABORT after Show (state=" gGUI_State ")")
+        _GUI_AbortShowSequence()
+        Profiler.Leave() ; @profile
+        return
+    }
+
+    gGUI_Revealed := true
+
+    ; ===== TIMING: Paint on visible window (Present works) =====
     t1 := QPC()
-    GUI_Repaint()  ; Paint + RevealBoth (shows both windows atomically)
+    GUI_Repaint()
     tShow_Repaint := QPC() - t1
 
-    ; RACE FIX: If Alt was released during paint/reveal, RevealBoth already hid
-    ; both windows. Abort here to clean up flags and skip hover polling.
+    ; RACE FIX: If Alt was released during paint, hide and abort.
     if (gGUI_State != "ACTIVE") {
+        try gGUI_Base.Hide()
         if (cfg.DiagPaintTimingLog)
             Paint_Log("ShowOverlay ABORT after Repaint (state=" gGUI_State ")")
         _GUI_AbortShowSequence()
         Profiler.Leave() ; @profile
         return
     }
+
+    Win_DwmFlush()
 
     ; Start hover polling (fallback for WM_MOUSELEAVE)
     GUI_StartHoverPolling()
@@ -647,13 +717,16 @@ _GUI_ShowOverlayWithFrozen() {
 }
 
 _GUI_MoveSelectionFrozen(delta) {
-    global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop
+    global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop, cfg
+    global gGUI_EffectStyle, gFX_GPUReady
 
     if (gGUI_DisplayItems.Length = 0) {
         return
     }
 
     count := gGUI_DisplayItems.Length
+    prevSel := gGUI_Sel  ; Capture BEFORE changing selection (for animation)
+
     newSel := gGUI_Sel + delta
 
     ; Wrap around
@@ -666,6 +739,14 @@ _GUI_MoveSelectionFrozen(delta) {
     gGUI_Sel := newSel
     ; Pin selection at top row (virtual scroll - list moves, selection stays at top)
     gGUI_ScrollTop := gGUI_Sel - 1
+
+    ; Start selection slide animation (if enabled)
+    if (cfg.PerfAnimationType != "None") {
+        Anim_StartSelectionSlide(prevSel, gGUI_Sel, count)
+        ; Trigger per-style entrance flourish for GPU styles
+        if (gGUI_EffectStyle >= 2 && gFX_GPUReady)
+            FX_OnSelectionChange(gGUI_EffectStyle - 2)
+    }
 }
 
 _GUI_ActivateFromFrozen() {

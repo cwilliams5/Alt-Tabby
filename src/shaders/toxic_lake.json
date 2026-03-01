@@ -1,0 +1,11 @@
+{
+  "name": "Toxic Lake",
+  "shadertoyId": "Xls3WM",
+  "author": "Reinder Nijhoff",
+  "license": "CC BY-NC-SA 4.0",
+  "opacity": 0.50,
+  "iChannels": [{"index": 0, "file": "toxic_lake_i0.png", "filter": "mipmap", "wrap": "repeat"}],
+  "timeOffsetMin": 10,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

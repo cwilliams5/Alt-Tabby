@@ -1,0 +1,11 @@
+{
+  "name": "Enter The Matrix",
+  "shadertoyId": "cl3XRX",
+  "author": "kishimisu",
+  "license": "CC BY-NC-SA 4.0",
+  "opacity": 0.50,
+  "iChannels": [{"index": 0, "file": "enter_the_matrix_i0.png", "filter": "linear", "wrap": "repeat"}],
+  "timeOffsetMin": 10,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Bokeh Lights",
+  "shadertoyId": "4lXXD2",
+  "author": "inferno",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeAccumulate": true
+}

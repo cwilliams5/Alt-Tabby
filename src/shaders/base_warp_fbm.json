@@ -1,0 +1,11 @@
+{
+  "name": "Base Warp fBM",
+  "shadertoyId": "tdG3Rd",
+  "author": "trinketMage",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 20,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

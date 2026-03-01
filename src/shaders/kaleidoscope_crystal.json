@@ -1,0 +1,11 @@
+{
+  "name": "Kaleidoscope Crystal",
+  "shadertoyId": "ftlyRS",
+  "author": "Hyeve",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 0,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

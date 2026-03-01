@@ -1,0 +1,11 @@
+{
+  "name": "Perhaps a screensaver",
+  "shadertoyId": "Wfy3zh",
+  "author": "pirandello",
+  "license": "CC0/Public Domain",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 10,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

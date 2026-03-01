@@ -36,6 +36,8 @@ global gGUI_WSContextSwitch := false
 global gGUI_Sel := 1
 global gGUI_ScrollTop := 0
 global gGUI_OverlayVisible := false
+global gGUI_StealFocus := false
+global gGUI_FocusBeforeShow := 0
 global gGUI_OverlayH := 0  ; Window handle - production code checks this
 global gGUI_TabCount := 0
 global gGUI_FirstTabTick := 0
@@ -81,6 +83,28 @@ global gWS_DirtyHwnds := Map()
 
 ; Cosmetic repaint debounce (from gui_main.ahk - not included in GUI test chain)
 global _gGUI_LastCosmeticRepaintTick := 0
+
+; Animation globals (from gui_animation.ahk - not included in GUI test chain)
+global gAnim_OverlayOpacity := 1.0
+global gAnim_HidePending := false
+global gFX_AmbientTime := 0.0
+
+; GPU effects globals (from gui_effects.ahk / gui_paint.ahk - not included in GUI test chain)
+global gGUI_EffectStyle := 0
+global gFX_GPUReady := false
+global gFX_BackdropStyle := 0
+global gFX_BackdropSeedX := 0.0
+global gFX_BackdropSeedY := 0.0
+global gFX_BackdropSeedPhase := 0.0
+global gFX_BackdropDirSign := 1
+global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
+global gFX_ShaderIndex := 0
+global gFX_ShaderTime := Map()
+global gShader_Ready := false
+global SHADER_NAMES := ["None"]
+global gFX_MouseX := 0.0
+global gFX_MouseY := 0.0
+global gFX_MouseInWindow := false
 
 ; Win32 constants (from win_utils.ahk - not included in GUI test chain)
 global DWMWA_CLOAKED := 14
@@ -146,7 +170,10 @@ global cfg := {
     KomorebiMimicNativeSettleMs: 0,
     KomorebiUseSocket: true,
     KomorebiWorkspaceConfirmMethod: "PollCloak",
-    GUI_MonitorFilterDefault: "All"
+    GUI_MonitorFilterDefault: "All",
+    GUI_AcrylicColor: 0xCC000000,
+    PerfAnimationType: "None",
+    PerfAnimationSpeed: 1.0
 }
 
 ; Test tracking
@@ -175,6 +202,10 @@ GUI_ComputeRowsToShow(n) {
 GUI_HideOverlay() {
     global gGUI_OverlayVisible
     gGUI_OverlayVisible := false
+}
+
+; DWM acrylic mock (called by gui_state.ahk after Show)
+Win_ApplyAcrylic(hWnd, argbColor) {
 }
 
 ; GDI+ icon cache invalidation mock
@@ -208,8 +239,8 @@ Gdip_PreCacheIcon(hwnd, hIcon) {
     global gMock_PreCachedIcons, gGdip_IconCache
     gMock_PreCachedIcons[hwnd] := hIcon
     ; Mirror production behavior: keep gGdip_IconCache in sync for prune condition
-    ; pBmp: 1 simulates a valid GDI+ bitmap pointer (0 = failed conversion, would trigger retry)
-    gGdip_IconCache[hwnd] := {hicon: hIcon, pBmp: 1}
+    ; bitmap: 1 simulates a valid D2D bitmap (0 = failed conversion, would trigger retry)
+    gGdip_IconCache[hwnd] := {hicon: hIcon, bitmap: 1}
 }
 
 ; Visible rows mock (called by _GUI_AnyVisibleItemChanged and GUI_RefreshLiveItems)
@@ -227,6 +258,31 @@ Paint_Log(msg) {
 Paint_LogTrim() {
 }
 Paint_LogStartSession() {
+}
+
+; Animation mocks (gui_animation.ahk not included in tests)
+Anim_StartTween(name, from, to, durationMs, easingFunc) {
+}
+Anim_StartSelectionSlide(prevSel, newSel, count) {
+}
+Anim_ForceCompleteHide() {
+}
+Anim_AddLayered() {
+}
+Anim_EaseOutQuad(t) {
+    return t
+}
+
+; GPU effects mocks (gui_effects.ahk not included in tests)
+FX_OnSelectionChange(gpuStyleIndex) {
+}
+FX_DrawBackdrop(wPhys, hPhys, scale) {
+}
+FX_PreRenderShaderLayer(w, h) {
+}
+FX_DrawShaderLayer(wPhys, hPhys) {
+}
+FX_SaveShaderTime() {
 }
 
 Win_DwmFlush() {

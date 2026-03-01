@@ -1,0 +1,11 @@
+{
+  "name": "Bokeh Expe 03",
+  "shadertoyId": "tl3BWs",
+  "author": "YitingLiu",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 5,
+  "timeOffsetMax": 30,
+  "timeAccumulate": true
+}

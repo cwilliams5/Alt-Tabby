@@ -148,7 +148,7 @@ Win_SetPosPhys(hWnd, xPhys, yPhys, wPhys, hPhys) {
 }
 
 ; Apply rounded region to window
-Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) {
+Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) { ; lint-ignore: dead-function
     if (!hWnd || radiusPx <= 0) {
         return
     }
@@ -213,6 +213,16 @@ Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) {
     }
 }
 
+; Apply DWM system backdrop (Win11 22H2+). Returns true on success.
+; type: 0=Auto, 1=None, 2=Mica, 3=Acrylic, 4=MicaAlt(Tabbed)
+Win_SetSystemBackdrop(hWnd, type) {
+    ; DWMWA_USE_IMMERSIVE_DARK_MODE = 20 — required for DWM to render Mica material
+    DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "uint", 20, "int*", true, "uint", 4, "int")
+    ; DWMWA_SYSTEMBACKDROP_TYPE = 38
+    hr := DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "uint", 38, "uint*", type, "uint", 4, "int")
+    return (hr >= 0)
+}
+
 ; Apply acrylic blur effect (argbColor = 0xAARRGGBB)
 Win_ApplyAcrylic(hWnd, argbColor) {
     alpha := (argbColor >> 24) & 0xFF
@@ -223,6 +233,28 @@ Win_ApplyAcrylic(hWnd, argbColor) {
 
     accent := Buffer(16, 0)
     NumPut("Int", 4, accent, 0)  ; ACCENT_ENABLE_ACRYLICBLURBEHIND
+    NumPut("Int", 0, accent, 4)
+    NumPut("Int", grad, accent, 8)
+    NumPut("Int", 0, accent, 12)
+
+    data := Buffer(A_PtrSize * 3, 0)
+    NumPut("Int", 19, data, 0)  ; WCA_ACCENT_POLICY
+    NumPut("Ptr", accent.Ptr, data, A_PtrSize)
+    NumPut("Int", accent.Size, data, A_PtrSize * 2)
+
+    return DllCall("user32\SetWindowCompositionAttribute", "ptr", hWnd, "ptr", data.Ptr, "int")
+}
+
+; Shared SWC accent helper (any accent type + optional ARGB tint)
+Win_ApplySWCAccent(hWnd, accentType, argbColor := 0) {
+    alpha := (argbColor >> 24) & 0xFF
+    rr := (argbColor >> 16) & 0xFF
+    gg := (argbColor >> 8) & 0xFF
+    bb := (argbColor) & 0xFF
+    grad := (alpha << 24) | (bb << 16) | (gg << 8) | rr
+
+    accent := Buffer(16, 0)
+    NumPut("Int", accentType, accent, 0)
     NumPut("Int", 0, accent, 4)
     NumPut("Int", grad, accent, 8)
     NumPut("Int", 0, accent, 12)
@@ -259,7 +291,7 @@ Win_SetCornerPreference(hWnd, pref := 2) {
 }
 
 ; Remove WS_EX_LAYERED style
-Win_ForceNoLayered(hWnd) {
+Win_ForceNoLayered(hWnd) { ; lint-ignore: dead-function
     global GWL_EXSTYLE, WS_EX_LAYERED, SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED
     try {
         ex := DllCall("user32\GetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr")
@@ -272,6 +304,21 @@ Win_ForceNoLayered(hWnd) {
 }
 
 ; Win_Wrap0, Win_Wrap1 moved to gui_math.ahk
+
+; Extend DWM frame into entire client area (for D2D transparent rendering)
+Win_DwmExtendFrame(hWnd) {
+    margins := Buffer(16, 0)
+    NumPut("int", -1, "int", -1, "int", -1, "int", -1, margins)
+    try {
+        DllCall("dwmapi\DwmExtendFrameIntoClientArea", "ptr", hWnd, "ptr", margins.Ptr, "int")
+    }
+}
+
+; Set window class background brush to hollow (DWM material shows through)
+Win_SetHollowBrush(hWnd) {
+    hollowBrush := DllCall("GetStockObject", "int", 5, "ptr")  ; HOLLOW_BRUSH
+    DllCall("SetClassLongPtrW", "ptr", hWnd, "int", -10, "ptr", hollowBrush, "ptr")  ; GCL_HBRBACKGROUND
+}
 
 ; DWM flush
 Win_DwmFlush() {

@@ -55,6 +55,7 @@ A_MenuMaskKey := "vkE8"
 #Include *i %A_ScriptDir%\gui_gdip.ahk
 #Include *i %A_ScriptDir%\gui_win.ahk
 #Include *i %A_ScriptDir%\gui_constants.ahk
+#Include *i %A_ScriptDir%\d2d_types.ahk
 
 ; ========================= GLOBAL STATE =========================
 ; CRITICAL: These must be declared BEFORE sub-module includes
@@ -115,6 +116,12 @@ _GUI_Main_Init() {
 
     ; CRITICAL: Initialize config FIRST - sets all global defaults
     ConfigLoader_Init()
+
+    ; Apply process priority (AboveNormal by default — ensures responsive scheduling)
+    _GUI_ApplyProcessPriority(cfg.PerfProcessPriority)
+
+    ; Initialize animation engine (resolves FPS from config/monitor)
+    Anim_Init()
 
     ; Load config-driven constants (declared at file scope, set from cfg here)
     HOUSEKEEPING_INTERVAL_MS := cfg.HousekeepingIntervalMs
@@ -471,7 +478,7 @@ _GUI_LockWorkingSet() {
 }
 
 _GUI_TouchMemoryPages() {
-    global gGdip_IconCache, gGUI_LiveItems, gGdip_Res, gWS_Store, gGdip_BrushCache
+    global gGdip_IconCache, gGUI_LiveItems, gD2D_Res, gWS_Store, gD2D_BrushCache
 
     ; Read one entry from each key data structure to keep pages resident.
     ; Single iteration pages in the Map's internal hash table.
@@ -481,12 +488,12 @@ _GUI_TouchMemoryPages() {
         for _, v in gGdip_IconCache
             break
 
-    if (gGdip_Res.Count)
-        for _, v in gGdip_Res
+    if (gD2D_Res.Count)
+        for _, v in gD2D_Res
             break
 
-    if (gGdip_BrushCache.Count)
-        for _, v in gGdip_BrushCache
+    if (gD2D_BrushCache.Count)
+        for _, v in gD2D_BrushCache
             break
 
     if (gWS_Store.Count)
@@ -543,8 +550,9 @@ _GUI_StatsLogInfo(msg) {
 ; Log unhandled errors and exit
 _GUI_OnError(err, *) {
     global LOG_PATH_STORE
-    msg := "gui_error msg=" err.Message " file=" err.File " line=" err.Line " what=" err.What
+    msg := "gui_error msg=" err.Message " what=" err.What " file=" err.File " line=" err.Line
     try LogAppend(LOG_PATH_STORE, msg)
+    try LogAppend(LOG_PATH_STORE, "gui_error STACK: " err.Stack)
     ExitApp(1)
 }
 
@@ -591,8 +599,9 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     ; Release COM objects (OS would clean up, but explicit is good hygiene)
     try GUI_ReleaseComObjects()
 
-    ; Clean up GDI+
+    ; Clean up D2D resources + render target + factories
     Gdip_Shutdown()
+    D2D_ShutdownAll()
 
     return 0
 }
@@ -603,19 +612,18 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
 if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     _GUI_Main_Init()
 
-    ; DPI change handler
+    ; DPI change handler — invalidate D2D resource scale to force recreation
     global WM_DPICHANGED
-    OnMessage(WM_DPICHANGED, (wParam, lParam, msg, hwnd) => (gGdip_ResScale := 0.0, 0))
+    OnMessage(WM_DPICHANGED, (wParam, lParam, msg, hwnd) => (gD2D_ResScale := 0.0, gGdip_ResScale := 0.0, 0))
 
-    ; Create windows
-    GUI_CreateBase()
+    ; Create single window with SWCA acrylic + D2D render target
+    GUI_CreateWindow()
     gGUI_Sel := 1
     gGUI_ScrollTop := 0
-    GUI_CreateOverlay()
 
-    ; Pre-create GDI+ resources (fonts, brushes, string formats)
-    ; GdipCreateFontFamilyFromName takes ~1.5s on first call (GDI+ font enumeration).
-    ; Do it now at startup rather than deferring to first paint.
+    ; Pre-create D2D resources (brushes, DirectWrite text formats)
+    ; DirectWrite CreateTextFormat is relatively fast, but doing it at startup
+    ; avoids any first-paint latency.
     scale := Win_GetScaleForWindow(gGUI_BaseH)
     GUI_EnsureResources(scale)
 
@@ -712,4 +720,13 @@ _GUI_OnStatsRequest(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
         try LogAppend(LOG_PATH_STORE, "GUI_OnStatsRequest err=" e.Message " file=" e.File " line=" e.Line)
         return 0
     }
+}
+
+; ========================= PROCESS PRIORITY =========================
+
+_GUI_ApplyProcessPriority(configValue) {
+    ; NORMAL_PRIORITY_CLASS = 0x00000020, ABOVE_NORMAL = 0x00008000, HIGH = 0x00000080
+    static priorityMap := Map("Normal", 0x20, "AboveNormal", 0x8000, "High", 0x80)
+    if (priorityMap.Has(configValue))
+        DllCall("SetPriorityClass", "ptr", DllCall("GetCurrentProcess", "ptr"), "uint", priorityMap[configValue])
 }

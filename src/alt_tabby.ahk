@@ -113,6 +113,11 @@ for _, arg in A_Args {
 #Include icon_alpha.ahk
 #Include OVERLAPPED.ahk
 #Include DirectoryWatcher.ahk
+#Include Direct2D.ahk
+#Include d2d_device.ahk
+#Include d2d_shader.ahk
+#Include shader_bundle.ahk
+#Include shader_resources.ahk
 #Include *i WebView2.ahk
 #Include *i ComVar.ahk
 #Include *i Promise.ahk
@@ -180,7 +185,10 @@ for _, arg in A_Args {
 #Include %A_ScriptDir%\gui\
 #Include gui_gdip.ahk
 #Include gui_win.ahk
+#Include d2d_types.ahk
 #Include gui_overlay.ahk
+#Include gui_effects.ahk
+#Include gui_animation.ahk
 #Include gui_workspace.ahk
 #Include gui_monitor.ahk
 #Include gui_paint.ahk

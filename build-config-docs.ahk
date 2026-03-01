@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+#Warn VarUnset, Off  ; config_registry.ahk references JSON class (from cjson) which isn't included here
 
 ; ============================================================
 ; Build Config Docs - Generate docs/options.md from Registry

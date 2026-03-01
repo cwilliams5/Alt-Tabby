@@ -1,0 +1,10 @@
+{
+  "name": "Interstellar",
+  "shadertoyId": "Xdl3D2",
+  "author": "TekF",
+  "license": "CC0 1.0",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "interstellar_i0.png", "filter": "mipmap", "wrap": "repeat"}
+  ]
+}

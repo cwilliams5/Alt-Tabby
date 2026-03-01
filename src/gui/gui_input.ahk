@@ -81,7 +81,11 @@ _GUI_MoveSelection(delta) {
     Critical "Off"
 
     GUI_RecalcHover()
-    GUI_Repaint()
+    ; When animation frame loop is running, skip synchronous repaint —
+    ; the loop will paint next frame. Prevents message queue flooding
+    ; during rapid mouse wheel scroll (Logitech infinite scroll).
+    if (cfg.PerfAnimationType = "None")
+        GUI_Repaint()
 }
 
 ; ========================= HOVER DETECTION =========================
@@ -446,14 +450,15 @@ GUI_OnClick(x, y) {
 
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     global gGUI_OverlayH, gGUI_OverlayVisible, gGUI_HoverRow, gGUI_HoverBtn, gGUI_LiveItems, gGUI_Sel
-    global gGUI_MouseTracking
+    global gGUI_MouseTracking, gAnim_HidePending
+    global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow
 
     if (hwnd != gGUI_OverlayH) {
         return 0
     }
 
-    ; Don't process mouse moves if overlay isn't visible
-    if (!gGUI_OverlayVisible) {
+    ; Don't process mouse moves if overlay isn't visible or is fading out
+    if (!gGUI_OverlayVisible || gAnim_HidePending) {
         return 0
     }
 
@@ -472,6 +477,11 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
     x := lParam & 0xFFFF
     y := (lParam >> 16) & 0xFFFF
 
+    ; Store mouse position for backdrop specular effect
+    gFX_MouseX := x
+    gFX_MouseY := y
+    gFX_MouseInWindow := true
+
     act := ""
     idx := 0
     _GUI_DetectActionAtPoint(x, y, &act, &idx)
@@ -487,9 +497,11 @@ GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 
 GUI_OnMouseLeave() {
     global gGUI_HoverRow, gGUI_HoverBtn, gGUI_MouseTracking, gGUI_OverlayVisible
+    global gFX_MouseInWindow
 
     ; Mouse has left the window - clear hover state
     gGUI_MouseTracking := false
+    gFX_MouseInWindow := false
 
     Critical "On"
     needRepaint := (gGUI_HoverRow != 0 || gGUI_HoverBtn != "")
@@ -594,7 +606,7 @@ GUI_OnWheel(wParam, lParam) { ; lint-ignore: dead-param
 }
 
 _GUI_ScrollBy(step) {
-    global gGUI_ScrollTop, gGUI_OverlayH, gGUI_Sel
+    global gGUI_ScrollTop, gGUI_OverlayH, gGUI_Sel, cfg
 
     vis := GUI_GetVisibleRows()
     if (vis <= 0) {
@@ -618,7 +630,8 @@ _GUI_ScrollBy(step) {
     gGUI_ScrollTop := Win_Wrap0(gGUI_ScrollTop + step, count)
     Critical "Off"
     GUI_RecalcHover()
-    GUI_Repaint()
+    if (cfg.PerfAnimationType = "None")
+        GUI_Repaint()
 }
 
 ; ========================= BLACKLIST DIALOG =========================

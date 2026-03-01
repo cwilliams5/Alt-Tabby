@@ -383,13 +383,20 @@ global gConfigRegistry := [
     {type: "subsection", section: "GUI", name: "Background Window",
      desc: "Window background and frame styling"},
 
+    {s: "GUI", k: "BackdropStyle", g: "GUI_BackdropStyle", t: "enum", default: "Acrylic",
+     options: ["Acrylic", "AeroGlass", "Mica", "MicaAlt", "Solid"],
+     d: "Window backdrop effect. Acrylic = blurred background with tint and noise. AeroGlass = gaussian blur only (classic Aero look). Mica/MicaAlt = system material (Win11 22H2+). Solid = flat tinted overlay, no blur."},
+
     {s: "GUI", k: "AcrylicColor", g: "GUI_AcrylicColor", t: "int", default: 0x33000033,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
-     d: "Background tint color with alpha (0xAARRGGBB)"},
+     d: "Background tint color with alpha (0xAARRGGBB). Used by Acrylic and Solid backdrop styles."},
 
-    {s: "GUI", k: "CornerRadiusPx", g: "GUI_CornerRadiusPx", t: "int", default: 18,
-     min: 0, max: 100,
-     d: "Window corner radius in pixels"},
+    {s: "GUI", k: "StealFocus", g: "GUI_StealFocus", t: "bool", default: false,
+     d: "Take focus when overlay appears. Required for Mica backdrop tint. Auto-enabled when BackdropStyle is Mica or MicaAlt."},
+
+    {s: "GUI", k: "CornerStyle", g: "GUI_CornerStyle", t: "enum", default: "Round",
+     options: ["Round", "RoundSmall", "Square"],
+     d: "Window corner shape. Round = 8px DWM rounding. RoundSmall = 4px. Square = sharp corners."},
 
     {s: "GUI", k: "OverlayMonitor", g: "GUI_OverlayMonitor", t: "enum", default: "FocusedWindow",
      options: ["FocusedWindow", "Primary"],
@@ -456,6 +463,40 @@ global gConfigRegistry := [
     {s: "GUI", k: "SelARGB", g: "GUI_SelARGB", t: "int", default: 0x662B5CAD,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Selection highlight color (ARGB)"},
+
+    {type: "subsection", section: "GUI", name: "Visual Effects",
+     desc: "Software visual effects (selection styling, shadows, hover). When GPU Effects are enabled, some of these are overridden by hardware-accelerated equivalents."},
+
+    {s: "GUI", k: "SelBorderARGB", g: "GUI_SelBorderARGB", t: "int", default: 0x40FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
+     d: "Selection border color (ARGB). Only drawn when visual effects are on and SelBorderWidthPx > 0."},
+
+    {s: "GUI", k: "SelBorderWidthPx", g: "GUI_SelBorderWidthPx", t: "float", default: 1.0,
+     min: 0.0, max: 4.0,
+     d: "Selection border stroke width in pixels. Set to 0 to disable the border."},
+
+    {s: "GUI", k: "SelDropShadow", g: "GUI_SelDropShadow", t: "bool", default: true,
+     d: "Draw a drop shadow behind the selected row. Disable on HDR displays if colors appear shifted."},
+
+    {s: "GUI", k: "TextShadowAlpha", g: "GUI_TextShadowAlpha", t: "int", default: 0x58,
+     min: 0, max: 0xFF, fmt: "hex",
+     d: "Text drop shadow opacity (0x00 = disabled, 0x58 = default). Applied when visual effects are on."},
+
+    {s: "GUI", k: "TextShadowDistancePx", g: "GUI_TextShadowDistancePx", t: "float", default: 1.5,
+     min: 0.5, max: 5.0,
+     d: "Text drop shadow offset in DIP pixels. Applied when visual effects are on."},
+
+    {s: "GUI", k: "HoverARGB", g: "GUI_HoverARGB", t: "int", default: 0x15FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
+     d: "Hover row highlight color (ARGB). When visual effects are on, a subtle vertical gradient is computed from this color."},
+
+    {s: "GUI", k: "InnerShadowDepthPx", g: "GUI_InnerShadowDepthPx", t: "float", default: 10.0,
+     min: 2.0, max: 30.0,
+     d: "Inner shadow depth along window edges in DIP pixels. Creates a recessed glass effect."},
+
+    {s: "GUI", k: "InnerShadowAlpha", g: "GUI_InnerShadowAlpha", t: "int", default: 0x2A,
+     min: 0, max: 0xFF, fmt: "hex",
+     d: "Inner shadow opacity at the window edge (0x00 = invisible, 0x2A = default). Bottom and side edges are proportionally softer."},
 
     {type: "subsection", section: "GUI", name: "Selection & Scrolling",
      desc: "Selection and scroll behavior"},
@@ -682,7 +723,7 @@ global gConfigRegistry := [
      min: 8, max: 72,
      d: "Main font size when highlighted"},
 
-    {s: "GUI", k: "MainFontWeightHi", g: "GUI_MainFontWeightHi", t: "int", default: 800,
+    {s: "GUI", k: "MainFontWeightHi", g: "GUI_MainFontWeightHi", t: "int", default: 700,
      min: 100, max: 900,
      d: "Main font weight when highlighted"},
 
@@ -1122,11 +1163,67 @@ global gConfigRegistry := [
     {type: "section", name: "Performance", desc: "Performance",
      long: "Memory management to maintain responsiveness after long idle periods."},
 
+    {s: "Performance", k: "GPUEffects", g: "PerfGPUEffects", t: "bool", default: true, ; lint-ignore: dead-config
+     d: "Enable GPU-accelerated visual effects (blur, real shadows, blend modes). Requires ID2D1DeviceContext. When disabled, software effects from the Visual Effects section are used instead."},
+
+    {s: "Performance", k: "HDRCompensation", g: "PerfHDRCompensation", t: "enum", default: "auto",
+     options: ["auto", "on", "off"],
+     d: "Compensate for HDR display gamma darkening. DWM composites in linear scRGB which darkens semi-transparent GPU blurs/glows. 'auto' detects HDR and applies correction, 'on' forces correction (useful for testing on SDR), 'off' disables."},
+
+    {s: "Performance", k: "HDRGammaExponent", g: "PerfHDRGammaExponent", t: "float", default: 0.80,
+     min: 0.5, max: 1.0,
+     d: "Gamma exponent for HDR compensation. Lower = brighter correction (more compensation). 0.80 restores SDR-equivalent brightness. Only effective when HDR compensation is active."},
+
     {s: "Performance", k: "KeepInMemory", g: "PerfKeepInMemory", t: "bool", default: true,
      d: "Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle."},
 
     {s: "Performance", k: "ForceTouchMemory", g: "PerfForceTouchMemory", t: "bool", default: true,
      d: "Periodically read key data structures (icon cache, window store, GDI+ resources) to keep their memory pages resident. Runs on the housekeeping cycle with negligible CPU cost."},
+
+    {s: "Performance", k: "ProcessPriority", g: "PerfProcessPriority", t: "enum", default: "AboveNormal",
+     options: ["Normal", "AboveNormal", "High"],
+     d: "Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended."},
+
+    {s: "Performance", k: "AnimationType", g: "PerfAnimationType", t: "enum", default: "Minimal",
+     options: ["None", "Minimal", "Full"],
+     d: "Animation behavior. None = single paint per event (zero idle CPU). Minimal = animate transitions (selection slide, fade), auto-stop when done. Full = continuous ambient effects (glow pulse, noise drift) while overlay is visible."},
+    {s: "Performance", k: "AnimationSpeed", g: "PerfAnimationSpeed", t: "float", default: 1.0,
+     min: 0.1, max: 5.0,
+     d: "Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations."},
+    {s: "Performance", k: "AnimationFPS", g: "PerfAnimationFPS", t: "string", default: "Auto",
+     d: "Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate."},
+
+    ; ============================================================
+    ; Shader
+    ; ============================================================
+    {type: "section", name: "Shader", desc: "Shader Effects",
+     long: "Configure the D3D11 shader backdrop rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full."},
+
+    {s: "Shader", k: "UseShaders", g: "ShaderUseShaders", t: "bool", default: true,
+     d: "Enable the GPU shader backdrop effect. When false, the entire shader pipeline is skipped for lower resource usage."},
+    {s: "Shader", k: "ShaderName", g: "ShaderShaderName", t: "string", default: "raindropsGlass",
+     dynamicOptions: "SHADER_KEYS",
+     d: "Shader to display on startup. Validated at boot against available shaders; invalid names fall back to Raindrops on Glass."},
+    {s: "Shader", k: "ShaderOpacity", g: "ShaderShaderOpacity", t: "float", default: 0.50,
+     min: 0.0, max: 1.0,
+     d: "Opacity of the shader backdrop layer. 0.0 = invisible, 1.0 = fully opaque. Overrides per-shader metadata."},
+    {s: "Shader", k: "ShaderDarkness", g: "ShaderShaderDarkness", t: "float", default: 0.0,
+     min: 0.0, max: 1.0,
+     d: "Darken post-processing applied to the shader output. 0.0 = no darkening, 1.0 = fully dark."},
+    {s: "Shader", k: "ShaderDesaturation", g: "ShaderShaderDesaturation", t: "float", default: 0.0,
+     min: 0.0, max: 1.0,
+     d: "Desaturation post-processing applied to the shader output. 0.0 = full color, 1.0 = grayscale."},
+    {s: "Shader", k: "CycleShaderHotkey", g: "ShaderCycleShaderHotkey", t: "string", default: "",
+     d: "Optional hotkey to cycle through shaders while the overlay is visible. Leave blank to disable. Choice is not saved — select your launch shader above."},
+
+    {s: "Shader", k: "ShaderTimeOffsetMin", g: "PerfShaderTimeOffsetMin", t: "int", default: 30,
+     min: 0, max: 300,
+     d: "Minimum random time offset (seconds) applied when a shader is first loaded. Skips past the initial warmup period so shaders look interesting immediately. Per-shader JSON can override."},
+    {s: "Shader", k: "ShaderTimeOffsetMax", g: "PerfShaderTimeOffsetMax", t: "int", default: 90,
+     min: 0, max: 600,
+     d: "Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override."},
+    {s: "Shader", k: "ShaderTimeAccumulate", g: "PerfShaderTimeAccumulate", t: "bool", default: true,
+     d: "When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show."},
 
     ; ============================================================
     ; Diagnostics
@@ -1200,6 +1297,9 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "CosmeticPatchLog", g: "DiagCosmeticPatchLog", t: "bool", default: false,
      d: "Log cosmetic patch operations during ACTIVE state to %TEMP%\\tabby_cosmetic_patch.log. Use when debugging title/icon/processName updates in the overlay."},
 
+    {s: "Diagnostics", k: "ShaderLog", g: "DiagShaderLog", t: "bool", default: false, ; lint-ignore: dead-config
+     d: "Log D3D11 shader pipeline operations to %TEMP%\\tabby_shader.log. Use when debugging shader compilation, texture loading, or rendering issues."},
+
     {s: "Diagnostics", k: "StatsTracking", g: "StatsTrackingEnabled", t: "bool", default: true,
      d: "Track usage statistics (Alt-Tabs, quick switches, etc.) and persist to stats.ini. Shown in the dashboard."},
 
@@ -1238,6 +1338,20 @@ ConfigRegistry_SerializeToJSON() {
         if (entry.HasOwnProp("min")) {
             m["min"] := entry.min
             m["max"] := entry.max
+        }
+        ; Resolve dynamic option lists for editor dropdowns (e.g., shader selector)
+        if (entry.HasOwnProp("dynamicOptions") && entry.dynamicOptions = "SHADER_KEYS") {
+            global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
+            keys := []
+            labels := []
+            Loop SHADER_KEYS.Length {
+                if (SHADER_KEYS[A_Index] != "") {
+                    keys.Push(SHADER_KEYS[A_Index])
+                    labels.Push(SHADER_NAMES[A_Index])
+                }
+            }
+            m["dynamicOptionKeys"] := keys
+            m["dynamicOptionLabels"] := labels
         }
         entries.Push(m)
     }
