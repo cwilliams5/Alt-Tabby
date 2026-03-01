@@ -35,6 +35,7 @@ global INT_TAB_DECIDE_SETTLE_MS := 5
 ; ========================= HOTKEY SETUP =========================
 
 INT_SetupHotkeys() {
+    global cfg
     ; Alt hooks (pass-through, just observe)
     Hotkey("~*Alt", _INT_Alt_Down)
     Hotkey("~*Alt Up", _INT_Alt_Up)
@@ -61,8 +62,9 @@ INT_SetupHotkeys() {
     ; C key — cycle backdrop effects when GUI is active
     Hotkey("~*c", _INT_C_Down)
 
-    ; V key — cycle shader layer when GUI is active
-    Hotkey("~*v", _INT_V_Down)
+    ; Shader cycle hotkey (optional, configurable — blank disables)
+    if (cfg.ShaderCycleShaderHotkey != "")
+        try Hotkey("~*" cfg.ShaderCycleShaderHotkey, _INT_V_Down)
 
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
@@ -406,6 +408,9 @@ _INT_V_Down(*) {
         return
     if (!gFX_GPUReady || !gShader_Ready)
         return
+
+    ; Lazy-load all remaining shaders on first cycle press
+    FX_EnsureAllShadersLoaded()
 
     ; Cycle forward, skipping shaders not yet registered (compilation still in progress).
     ; Wrap around at most once to avoid infinite loop if nothing is registered.

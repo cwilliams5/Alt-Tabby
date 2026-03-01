@@ -238,6 +238,58 @@ foreach ($shader in $shaders) {
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
+# Shader_RegisterByKey(key) — registers a single shader by its registry key
+[void]$sb.AppendLine('; Register a single shader by registry key. Used for selective loading at boot.')
+[void]$sb.AppendLine('Shader_RegisterByKey(key) {')
+[void]$sb.AppendLine("    global $dxbcGlobals")
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('    if (A_IsCompiled) {')
+[void]$sb.AppendLine('        switch key {')
+foreach ($shader in $shaders) {
+    $fn = $shader.FuncName
+    $rk = $shader.RegKey
+    $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
+    [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+}
+[void]$sb.AppendLine('        }')
+[void]$sb.AppendLine('    } else {')
+[void]$sb.AppendLine('        switch key {')
+foreach ($shader in $shaders) {
+    $fn = $shader.FuncName
+    $rk = $shader.RegKey
+    $hlslFile = $shader.BaseName + '.hlsl'
+    [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+}
+[void]$sb.AppendLine('        }')
+[void]$sb.AppendLine('    }')
+[void]$sb.AppendLine('}')
+[void]$sb.AppendLine('')
+
+# Shader_RegisterAllRemaining() — registers all shaders not yet in gShader_Registry
+[void]$sb.AppendLine('; Register all shaders that are not yet registered. Used for lazy-loading on first cycle.')
+[void]$sb.AppendLine('Shader_RegisterAllRemaining() {')
+[void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('    if (A_IsCompiled) {')
+foreach ($shader in $shaders) {
+    $fn = $shader.FuncName
+    $rk = $shader.RegKey
+    $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
+    [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
+    [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+}
+[void]$sb.AppendLine('    } else {')
+foreach ($shader in $shaders) {
+    $fn = $shader.FuncName
+    $rk = $shader.RegKey
+    $hlslFile = $shader.BaseName + '.hlsl'
+    [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
+    [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+}
+[void]$sb.AppendLine('    }')
+[void]$sb.AppendLine('}')
+[void]$sb.AppendLine('')
+
 # Per-shader Meta functions (no HLSL functions — those are gone!)
 foreach ($shader in $shaders) {
     $fn = $shader.FuncName

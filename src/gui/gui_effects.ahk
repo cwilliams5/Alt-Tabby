@@ -33,7 +33,8 @@ global gFX_MouseInWindow := false    ; Mouse is inside overlay window
 ; Initialize GPU effects. Call after gD2D_RT is valid.
 ; Returns true on success, false if effects unavailable.
 FX_GPU_Init() {
-    global gD2D_RT, gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, cfg
+    global gD2D_RT, gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, gFX_ShaderIndex, cfg
+    global SHADER_KEYS ; lint-ignore: phantom-global
     global CLSID_D2D1GaussianBlur, CLSID_D2D1Shadow, CLSID_D2D1Flood
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
     global CLSID_D2D1Blend, CLSID_D2D1Composite, CLSID_D2D1Turbulence
@@ -132,12 +133,18 @@ FX_GPU_Init() {
 
         gFX_GPUReady := true
 
-        ; Initialize D3D11 shader pipeline + register all bundled shaders
+        ; Initialize D3D11 shader pipeline + register configured shader
         ; Wrapped in try/catch: shader failure must not kill selection/backdrop effects
         try {
-            if (Shader_Init()) {
+            if (cfg.ShaderUseShaders && Shader_Init()) {
                 Shader_ExtractTextures()
-                Shader_RegisterAll()
+                _FX_ResolveConfiguredShader()
+                if (gFX_ShaderIndex >= 1) {
+                    ; Eager-load only the configured shader (not all 150+)
+                    shaderKey := SHADER_KEYS[gFX_ShaderIndex + 1]
+                    if (shaderKey != "")
+                        Shader_RegisterByKey(shaderKey)
+                }
                 _FX_InitShaderTime()
             }
         } catch {
@@ -1097,7 +1104,7 @@ FX_PreRenderShaderLayer(w, h) {
     }
 
     try {
-        Shader_PreRender(shaderName, w, h, effectiveTime)
+        Shader_PreRender(shaderName, w, h, effectiveTime, cfg.ShaderShaderDarkness, cfg.ShaderShaderDesaturation)
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Shader ERR [" shaderName "]: " e.Message " @ " e.What
@@ -1128,11 +1135,9 @@ FX_DrawShaderLayer(wPhys, hPhys) {
     if (!pBitmap)
         return
 
-    ; Get opacity from shader metadata
-    meta := Shader_GetMeta(shaderName)
-    opacity := 1.0
-    if (IsObject(meta) && meta.HasOwnProp("opacity"))
-        opacity := meta.opacity
+    ; User-configured opacity (overrides per-shader metadata)
+    global cfg
+    opacity := cfg.ShaderShaderOpacity
 
     ; Draw with opacity layer
     layerParams := FX_LayerParams(0, 0, wPhys, hPhys, opacity)
@@ -1155,12 +1160,16 @@ _FX_GetShaderRegKey(index) {
 }
 
 ; Initialize per-shader time state (random offset + accumulate flag).
-; Called once after Shader_RegisterAll() during FX_GPU_Init.
+; Called after shader registration during FX_GPU_Init and after lazy-load.
+; Skips shaders already initialized (preserves time state for eager-loaded shader).
 _FX_InitShaderTime() {
     global gFX_ShaderTime, gShader_Registry, cfg ; lint-ignore: phantom-global
 
-    gFX_ShaderTime := Map()
+    if (!IsObject(gFX_ShaderTime))
+        gFX_ShaderTime := Map()
     for name, entry in gShader_Registry {
+        if (gFX_ShaderTime.Has(name))
+            continue  ; Already initialized (eager-loaded shader)
         meta := entry.meta
 
         ; Per-shader JSON overrides, falling back to global config
@@ -1180,6 +1189,48 @@ _FX_InitShaderTime() {
 
         gFX_ShaderTime[name] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
     }
+}
+
+; Resolve cfg.ShaderShaderName to gFX_ShaderIndex with fallback chain.
+; Fallback: exact match → "raindropsGlass" → 0 (None).
+_FX_ResolveConfiguredShader() {
+    global gFX_ShaderIndex, cfg, SHADER_KEYS ; lint-ignore: phantom-global
+
+    shaderName := cfg.ShaderShaderName
+    if (shaderName = "") {
+        gFX_ShaderIndex := 0
+        return
+    }
+
+    ; Search SHADER_KEYS for exact match
+    Loop SHADER_KEYS.Length {
+        if (SHADER_KEYS[A_Index] = shaderName) {
+            gFX_ShaderIndex := A_Index - 1
+            return
+        }
+    }
+
+    ; Fallback: "raindropsGlass"
+    Loop SHADER_KEYS.Length {
+        if (SHADER_KEYS[A_Index] = "raindropsGlass") {
+            gFX_ShaderIndex := A_Index - 1
+            return
+        }
+    }
+
+    ; Final fallback: None
+    gFX_ShaderIndex := 0
+}
+
+; Lazy-load all remaining shaders. Called on first cycle-hotkey press.
+FX_EnsureAllShadersLoaded() {
+    global gShader_Ready ; lint-ignore: phantom-global
+    static done := false
+    if (done || !gShader_Ready)
+        return
+    done := true
+    Shader_RegisterAllRemaining()
+    _FX_InitShaderTime()
 }
 
 ; Save shader carry time before gFX_AmbientTime resets.

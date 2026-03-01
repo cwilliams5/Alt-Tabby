@@ -18,6 +18,7 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [IPC](#ipc)
 - [Store](#store)
 - [Performance](#performance)
+- [Shader](#shader)
 - [Diagnostics](#diagnostics)
 
 ---
@@ -616,6 +617,19 @@ Memory management to maintain responsiveness after long idle periods.
 | `AnimationType` | enum | `Minimal` | - | Animation behavior. None = single paint per event (zero idle CPU). Minimal = animate transitions (selection slide, fade), auto-stop when done. Full = continuous ambient effects (glow pulse, noise drift) while overlay is visible. |
 | `AnimationSpeed` | float | `1.00` | `0.10` - `5.00` | Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations. |
 | `AnimationFPS` | string | `Auto` | - | Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate. |
+
+## Shader
+
+Configure the D3D11 shader backdrop rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `UseShaders` | bool | `true` | - | Enable the GPU shader backdrop effect. When false, the entire shader pipeline is skipped for lower resource usage. |
+| `ShaderName` | string | `raindropsGlass` | - | Shader to display on startup. Validated at boot against available shaders; invalid names fall back to Raindrops on Glass. |
+| `ShaderOpacity` | float | `0.50` | `0.00` - `1.00` | Opacity of the shader backdrop layer. 0.0 = invisible, 1.0 = fully opaque. Overrides per-shader metadata. |
+| `ShaderDarkness` | float | `0.00` | `0.00` - `1.00` | Darken post-processing applied to the shader output. 0.0 = no darkening, 1.0 = fully dark. |
+| `ShaderDesaturation` | float | `0.00` | `0.00` - `1.00` | Desaturation post-processing applied to the shader output. 0.0 = full color, 1.0 = grayscale. |
+| `CycleShaderHotkey` | string | `(empty)` | - | Optional hotkey to cycle through shaders while the overlay is visible. Leave blank to disable. Choice is not saved — select your launch shader above. |
 | `ShaderTimeOffsetMin` | int | `30` | `0` - `300` | Minimum random time offset (seconds) applied when a shader is first loaded. Skips past the initial warmup period so shaders look interesting immediately. Per-shader JSON can override. |
 | `ShaderTimeOffsetMax` | int | `90` | `0` - `600` | Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override. |
 | `ShaderTimeAccumulate` | bool | `true` | - | When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show. |
@@ -662,4 +676,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-02-28 with 287 total settings.*
+*Generated on 2026-03-01 with 293 total settings.*

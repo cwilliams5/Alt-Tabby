@@ -644,6 +644,16 @@ function controlHTML(setting) {
     ).join('');
     return `<select id="${id}" onchange="updateValue('${setting.g}', this.value, '${setting.t}')">${opts}</select>`;
   }
+  if (setting.dynamicOptionKeys) {
+    const keys = setting.dynamicOptionKeys;
+    const labels = setting.dynamicOptionLabels || keys;
+    const opts = keys.map((k, i) => {
+      if (k === '') return '';
+      const label = labels[i] || k;
+      return `<option value="${k}" ${value === k ? 'selected' : ''}>${label}</option>`;
+    }).filter(Boolean).join('');
+    return `<select id="${id}" onchange="updateValue('${setting.g}', this.value, '${setting.t}')">${opts}</select>`;
+  }
   if (setting.t === 'int' && hasRange && !isHex) {
     // Slider + number input dual control
     return `<div class="range-control">

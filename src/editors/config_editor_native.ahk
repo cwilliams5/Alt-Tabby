@@ -457,6 +457,34 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
             y += descH + 4
 
+        } else if (setting.HasOwnProp("dynamicOptions") && setting.dynamicOptions = "SHADER_KEYS") {
+            global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
+            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
+            lbl.SetFont("s9 bold", "Segoe UI")
+            controls.Push({ctrl: lbl, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
+            ; Build display-name list from SHADER_NAMES (skip index 1 = "None")
+            optList := []
+            optKeys := []
+            Loop SHADER_KEYS.Length {
+                if (SHADER_KEYS[A_Index] != "") {
+                    optList.Push(SHADER_NAMES[A_Index])
+                    optKeys.Push(SHADER_KEYS[A_Index])
+                }
+            }
+            dd := pageGui.AddDropDownList("x" CEN_INPUT_X " y" y " w200", optList)
+            controls.Push({ctrl: dd, origY: y, origX: CEN_INPUT_X})
+            settingCtrls.Push({ctrl: dd, origY: y, origX: CEN_INPUT_X})
+            gCEN["Controls"][setting.g] := {ctrl: dd, type: "dynamicEnum", keys: optKeys, labels: optList}
+            Theme_ApplyToControl(dd, "DDL", gCEN["ThemeEntry"])
+            y += 26
+            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c" mutedColor " +Wrap", setting.d)
+            dc.SetFont("s8", "Segoe UI")
+            Theme_MarkMuted(dc)
+            controls.Push({ctrl: dc, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
+            y += descH + 4
+
         } else {
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
             lbl.SetFont("s9 bold", "Segoe UI")
@@ -635,6 +663,20 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
 
     if (type = "bool") {
         ctrlInfo.ctrl.Value := val ? 1 : 0
+    } else if (ctrlInfo.type = "dynamicEnum") {
+        ; Map key string to display label for dropdown selection
+        chosen := false
+        if (ctrlInfo.HasOwnProp("keys")) {
+            Loop ctrlInfo.keys.Length {
+                if (ctrlInfo.keys[A_Index] = val) {
+                    try ctrlInfo.ctrl.Choose(A_Index)
+                    chosen := true
+                    break
+                }
+            }
+        }
+        if (!chosen)
+            try ctrlInfo.ctrl.Choose(1)
     } else if (type = "enum") {
         try ctrlInfo.ctrl.Choose(String(val))
         catch
@@ -1058,7 +1100,13 @@ _CEN_ClampOnBlur(globalName, minVal, maxVal) {
 }
 
 _CEN_GetControlValue(ctrlInfo, type) {
-    if (type = "bool") {
+    if (ctrlInfo.type = "dynamicEnum") {
+        ; Map selected dropdown index back to registry key string
+        idx := ctrlInfo.ctrl.Value
+        if (idx >= 1 && idx <= ctrlInfo.keys.Length)
+            return ctrlInfo.keys[idx]
+        return ""
+    } else if (type = "bool") {
         return ctrlInfo.ctrl.Value ? true : false
     } else if (type = "enum") {
         return ctrlInfo.ctrl.Text

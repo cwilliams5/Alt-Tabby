@@ -1193,13 +1193,36 @@ global gConfigRegistry := [
     {s: "Performance", k: "AnimationFPS", g: "PerfAnimationFPS", t: "string", default: "Auto",
      d: "Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate."},
 
-    {s: "Performance", k: "ShaderTimeOffsetMin", g: "PerfShaderTimeOffsetMin", t: "int", default: 30,
+    ; ============================================================
+    ; Shader
+    ; ============================================================
+    {type: "section", name: "Shader", desc: "Shader Effects",
+     long: "Configure the D3D11 shader backdrop rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full."},
+
+    {s: "Shader", k: "UseShaders", g: "ShaderUseShaders", t: "bool", default: true,
+     d: "Enable the GPU shader backdrop effect. When false, the entire shader pipeline is skipped for lower resource usage."},
+    {s: "Shader", k: "ShaderName", g: "ShaderShaderName", t: "string", default: "raindropsGlass",
+     dynamicOptions: "SHADER_KEYS",
+     d: "Shader to display on startup. Validated at boot against available shaders; invalid names fall back to Raindrops on Glass."},
+    {s: "Shader", k: "ShaderOpacity", g: "ShaderShaderOpacity", t: "float", default: 0.50,
+     min: 0.0, max: 1.0,
+     d: "Opacity of the shader backdrop layer. 0.0 = invisible, 1.0 = fully opaque. Overrides per-shader metadata."},
+    {s: "Shader", k: "ShaderDarkness", g: "ShaderShaderDarkness", t: "float", default: 0.0,
+     min: 0.0, max: 1.0,
+     d: "Darken post-processing applied to the shader output. 0.0 = no darkening, 1.0 = fully dark."},
+    {s: "Shader", k: "ShaderDesaturation", g: "ShaderShaderDesaturation", t: "float", default: 0.0,
+     min: 0.0, max: 1.0,
+     d: "Desaturation post-processing applied to the shader output. 0.0 = full color, 1.0 = grayscale."},
+    {s: "Shader", k: "CycleShaderHotkey", g: "ShaderCycleShaderHotkey", t: "string", default: "",
+     d: "Optional hotkey to cycle through shaders while the overlay is visible. Leave blank to disable. Choice is not saved — select your launch shader above."},
+
+    {s: "Shader", k: "ShaderTimeOffsetMin", g: "PerfShaderTimeOffsetMin", t: "int", default: 30,
      min: 0, max: 300,
      d: "Minimum random time offset (seconds) applied when a shader is first loaded. Skips past the initial warmup period so shaders look interesting immediately. Per-shader JSON can override."},
-    {s: "Performance", k: "ShaderTimeOffsetMax", g: "PerfShaderTimeOffsetMax", t: "int", default: 90,
+    {s: "Shader", k: "ShaderTimeOffsetMax", g: "PerfShaderTimeOffsetMax", t: "int", default: 90,
      min: 0, max: 600,
      d: "Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override."},
-    {s: "Performance", k: "ShaderTimeAccumulate", g: "PerfShaderTimeAccumulate", t: "bool", default: true,
+    {s: "Shader", k: "ShaderTimeAccumulate", g: "PerfShaderTimeAccumulate", t: "bool", default: true,
      d: "When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show."},
 
     ; ============================================================
@@ -1315,6 +1338,20 @@ ConfigRegistry_SerializeToJSON() {
         if (entry.HasOwnProp("min")) {
             m["min"] := entry.min
             m["max"] := entry.max
+        }
+        ; Resolve dynamic option lists for editor dropdowns (e.g., shader selector)
+        if (entry.HasOwnProp("dynamicOptions") && entry.dynamicOptions = "SHADER_KEYS") {
+            global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
+            keys := []
+            labels := []
+            Loop SHADER_KEYS.Length {
+                if (SHADER_KEYS[A_Index] != "") {
+                    keys.Push(SHADER_KEYS[A_Index])
+                    labels.Push(SHADER_NAMES[A_Index])
+                }
+            }
+            m["dynamicOptionKeys"] := keys
+            m["dynamicOptionLabels"] := labels
         }
         entries.Push(m)
     }
