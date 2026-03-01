@@ -86,7 +86,7 @@ float fworley(float2 p) {
     return sqrt(sqrt(sqrt(
         worley(p * 32.0 + 4.3 + time * 0.250) *
         sqrt(worley(p * 64.0 + 5.3 + time * -0.125)) *
-        sqrt(sqrt(worley(p * -128.0 + 7.3)))));
+        sqrt(sqrt(worley(p * -128.0 + 7.3))))));
 }
 
 // Kalibox (Kali / Fractalforums.com)

@@ -57,8 +57,8 @@ float map(float3 position) {
     return -sdTorus(position, ringRadius, pipeRadius);
 }
 
-float sdSegment(float2 point, float2 a, float2 b) {
-    float2 pa = point - a;
+float sdSegment(float2 pt, float2 a, float2 b) {
+    float2 pa = pt - a;
     float2 ba = b - a;
 
     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);

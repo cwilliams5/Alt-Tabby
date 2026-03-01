@@ -19,7 +19,7 @@ float distanceToLine(float2 s, float2 p, float2 q)
         + q.x * p.y - q.y * p.x) / distance(p, q);
 }
 
-float triangle(float2 pos, float t, float val, float stp)
+float triangleFn(float2 pos, float t, float val, float stp)
 {
     float t1 = t * 0.523;
     float t2 = t * 0.645;
@@ -86,7 +86,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     for (float i = 0.0; i < 10.0; i++)
     {
-        val += triangle(pos, time + i * 0.05, val, 0.01 * i / 10.0);
+        val += triangleFn(pos, time + i * 0.05, val, 0.01 * i / 10.0);
     }
 
     val = min(1.0, val);

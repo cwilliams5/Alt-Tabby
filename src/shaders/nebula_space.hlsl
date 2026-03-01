@@ -31,7 +31,7 @@ struct PSInput {
 #define transverseSpeed 1.1
 #define cloud 0.2
 
-float triangle(float x, float a) {
+float triangleFn(float x, float a) {
     float output2 = 2.0 * abs(3.0 * ((x / a) - floor((x / a) + 0.5))) - 1.0;
     return output2;
 }

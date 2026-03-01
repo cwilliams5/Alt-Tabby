@@ -191,10 +191,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 blueGodColor = (float3)0.0;
     for (float i = 1.0; i < loop_count; i++) {
         float t = time * timeSCale - step2 * i * i;
-        float2 point = float2(0.75 * sin(t), 0.5 * sin(t));
-        point += float2(0.75 * cos(t * 4.0), 0.5 * sin(t * 3.0));
-        point /= 11.0 * sin(i);
-        float componentColor = multiplier / ((uPos.x - point.x) * (uPos.x - point.x) + (uPos.y - point.y) * (uPos.y - point.y)) / i;
+        float2 pt = float2(0.75 * sin(t), 0.5 * sin(t));
+        pt += float2(0.75 * cos(t * 4.0), 0.5 * sin(t * 3.0));
+        pt /= 11.0 * sin(i);
+        float componentColor = multiplier / ((uPos.x - pt.x) * (uPos.x - pt.x) + (uPos.y - pt.y) * (uPos.y - pt.y)) / i;
         blueGodColor += float3(componentColor / 3.0, componentColor / 3.0, componentColor);
     }
 

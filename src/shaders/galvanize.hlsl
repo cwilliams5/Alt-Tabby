@@ -354,8 +354,7 @@ float4 PSMain(PSInput input) : SV_Target
     if (time > 175.0 && time <= 210.0) { efx = 4; refleco = 0; snowo = 0; }
     if (time > 210.0 && time <= 245.0) { efx = 5; refleco = 0; snowo = 0; }
 
-    blend_g = min(2.0 * abs(sin((time + 0.0) * 3.1415 / scene)), 1.0);
-    if (time > 245.0) blend_g = 0.0;
+    blend_g = max(min(2.0 * abs(sin((time + 0.0) * 3.1415 / scene)), 1.0), 0.3);
     float2 uv = fragCoord.xy / resolution.xy;
     float2 p = uv * 2.0 - 1.0;
     p.x *= resolution.x / resolution.y;

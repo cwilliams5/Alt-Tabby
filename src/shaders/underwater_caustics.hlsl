@@ -60,11 +60,11 @@ float voronoi(float2 uv, float t, float seed, float size) {
             // Random 0-1 for each cell
             float2 rand01Cell = rand01(cellOffset + cellCoord + seed);
 
-            // Get position of point
-            float2 point = cellOffset + sin(rand01Cell * (t + 10.0)) * 0.5;
+            // Get position of cell point
+            float2 pt = cellOffset + sin(rand01Cell * (t + 10.0)) * 0.5;
 
             // Get distance between pixel and point
-            float dist = distFn(cellUv, point);
+            float dist = distFn(cellUv, pt);
             minDist = min(minDist, dist);
         }
     }

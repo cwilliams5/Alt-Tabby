@@ -4921,10 +4921,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 blueGodColor = (float3)0.0;
     for (float i = 1.0; i < loop_count; i++) {
         float t = time * timeSCale - step2 * i * i;
-        float2 point = float2(0.75 * sin(t), 0.5 * sin(t));
-        point += float2(0.75 * cos(t * 4.0), 0.5 * sin(t * 3.0));
-        point /= 11.0 * sin(i);
-        float componentColor = multiplier / ((uPos.x - point.x) * (uPos.x - point.x) + (uPos.y - point.y) * (uPos.y - point.y)) / i;
+        float2 pt = float2(0.75 * sin(t), 0.5 * sin(t));
+        pt += float2(0.75 * cos(t * 4.0), 0.5 * sin(t * 3.0));
+        pt /= 11.0 * sin(i);
+        float componentColor = multiplier / ((uPos.x - pt.x) * (uPos.x - pt.x) + (uPos.y - pt.y) * (uPos.y - pt.y)) / i;
         blueGodColor += float3(componentColor / 3.0, componentColor / 3.0, componentColor);
     }
 
@@ -8889,8 +8889,7 @@ float4 PSMain(PSInput input) : SV_Target
     if (time > 175.0 && time <= 210.0) { efx = 4; refleco = 0; snowo = 0; }
     if (time > 210.0 && time <= 245.0) { efx = 5; refleco = 0; snowo = 0; }
 
-    blend_g = min(2.0 * abs(sin((time + 0.0) * 3.1415 / scene)), 1.0);
-    if (time > 245.0) blend_g = 0.0;
+    blend_g = max(min(2.0 * abs(sin((time + 0.0) * 3.1415 / scene)), 1.0), 0.3);
     float2 uv = fragCoord.xy / resolution.xy;
     float2 p = uv * 2.0 - 1.0;
     p.x *= resolution.x / resolution.y;
@@ -9111,7 +9110,7 @@ float fworley(float2 p) {
     return sqrt(sqrt(sqrt(
         worley(p * 32.0 + 4.3 + time * 0.250) *
         sqrt(worley(p * 64.0 + 5.3 + time * -0.125)) *
-        sqrt(sqrt(worley(p * -128.0 + 7.3)))));
+        sqrt(sqrt(worley(p * -128.0 + 7.3))))));
 }
 
 // Kalibox (Kali / Fractalforums.com)
@@ -12953,7 +12952,7 @@ float distanceToLine(float2 s, float2 p, float2 q)
         + q.x * p.y - q.y * p.x) / distance(p, q);
 }
 
-float triangle(float2 pos, float t, float val, float stp)
+float triangleFn(float2 pos, float t, float val, float stp)
 {
     float t1 = t * 0.523;
     float t2 = t * 0.645;
@@ -13020,7 +13019,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     for (float i = 0.0; i < 10.0; i++)
     {
-        val += triangle(pos, time + i * 0.05, val, 0.01 * i / 10.0);
+        val += triangleFn(pos, time + i * 0.05, val, 0.01 * i / 10.0);
     }
 
     val = min(1.0, val);
@@ -14376,7 +14375,7 @@ struct PSInput {
 #define transverseSpeed 1.1
 #define cloud 0.2
 
-float triangle(float x, float a) {
+float triangleFn(float x, float a) {
     float output2 = 2.0 * abs(3.0 * ((x / a) - floor((x / a) + 0.5))) - 1.0;
     return output2;
 }
@@ -19194,8 +19193,8 @@ float map(float3 position) {
     return -sdTorus(position, ringRadius, pipeRadius);
 }
 
-float sdSegment(float2 point, float2 a, float2 b) {
-    float2 pa = point - a;
+float sdSegment(float2 pt, float2 a, float2 b) {
+    float2 pa = pt - a;
     float2 ba = b - a;
 
     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
@@ -23605,11 +23604,11 @@ float voronoi(float2 uv, float t, float seed, float size) {
             // Random 0-1 for each cell
             float2 rand01Cell = rand01(cellOffset + cellCoord + seed);
 
-            // Get position of point
-            float2 point = cellOffset + sin(rand01Cell * (t + 10.0)) * 0.5;
+            // Get position of cell point
+            float2 pt = cellOffset + sin(rand01Cell * (t + 10.0)) * 0.5;
 
             // Get distance between pixel and point
-            float dist = distFn(cellUv, point);
+            float dist = distFn(cellUv, pt);
             minDist = min(minDist, dist);
         }
     }
