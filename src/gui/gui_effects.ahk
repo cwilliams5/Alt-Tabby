@@ -1099,8 +1099,16 @@ FX_PreRenderShaderLayer(w, h) {
     try {
         Shader_PreRender(shaderName, w, h, effectiveTime)
     } catch as e {
-        ToolTip("Shader ERR: " e.Message " @ " e.What)
+        global LOG_PATH_SHADER
+        errDetail := "Shader ERR [" shaderName "]: " e.Message " @ " e.What
+        if (e.HasProp("Extra") && e.Extra != "")
+            errDetail .= " extra=" e.Extra
+        if (e.HasProp("Number") && e.Number != 0)
+            errDetail .= " hr=" Format("0x{:08x}", e.Number & 0xFFFFFFFF)
+        ToolTip(errDetail)
         SetTimer(() => ToolTip(), -5000)
+        if (cfg.DiagShaderLog)
+            LogAppend(LOG_PATH_SHADER, errDetail)
     }
 }
 
