@@ -171,9 +171,10 @@ float3 Oilnoise(float2 pos, float3 RGB) {
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
 
-    float2 uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
-    float2 uv2 = (fragCoord - 0.5 * resolution.xy) / resolution.y;
-    float2 uv3 = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+    float2 base_uv = (fragCoord - 0.5 * resolution.xy) / resolution.y;
+    float2 uv = base_uv;
+    float2 uv2 = base_uv;
+    float2 uv3 = base_uv;
     uv3.x += 0.5;
     uv3.y += 0.2;
     float3 col = (float3)0.0;
@@ -193,7 +194,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 blueGodColor = (float3)0.0;
     for (float i = 1.0; i < loop_count; i++) {
         float t = time * timeSCale - step2 * i * i;
-        float2 pt = float2(0.75 * sin(t), 0.5 * sin(t));
+        float st = sin(t);
+        float2 pt = float2(0.75 * st, 0.5 * st);
         pt += float2(0.75 * cos(t * 4.0), 0.5 * sin(t * 3.0));
         pt /= 11.0 * sin(i);
         float componentColor = multiplier / ((uPos.x - pt.x) * (uPos.x - pt.x) + (uPos.y - pt.y) * (uPos.y - pt.y)) / i;

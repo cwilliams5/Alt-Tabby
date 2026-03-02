@@ -17,7 +17,9 @@ static const float TK = 1.0;
 static const float PI = 3.1415926535;
 
 float2 rot(float2 p, float r) {
-    float2x2 m = float2x2(cos(r), sin(r), -sin(r), cos(r));
+    float s, c;
+    sincos(r, s, c);
+    float2x2 m = float2x2(c, s, -s, c);
     return mul(p, m);
 }
 
@@ -25,7 +27,9 @@ float2 pmod(float2 p, float n) {
     float np = 2.0 * PI / n;
     float r = atan2(p.x, p.y) - 0.5 * np;
     r = fmod(r, np) - 0.5 * np;
-    return length(p) * float2(cos(r), sin(r));
+    float _ps, _pc;
+    sincos(r, _ps, _pc);
+    return length(p) * float2(_pc, _ps);
 }
 
 float cube(float3 p, float3 s) {

@@ -17,9 +17,9 @@ struct PSInput {
 };
 
 float2x2 rot(float a) {
-    return float2x2(
-        cos(a), -sin(a),
-        sin(a), cos(a));
+    float s, c;
+    sincos(a, s, c);
+    return float2x2(c, -s, s, c);
 }
 
 float rand(float2 uv) {

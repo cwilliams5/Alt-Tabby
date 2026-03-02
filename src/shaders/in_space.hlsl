@@ -19,7 +19,11 @@ struct PSInput {
 };
 
 #define SS(x, y, z) smoothstep(x, y, z)
-#define MD(a) float2x2(cos(a), sin(a), -sin(a), cos(a))
+float2x2 MD(float a) {
+    float s, c;
+    sincos(a, s, c);
+    return float2x2(c, s, -s, c);
+}
 
 static const float divx = 35.0;
 #define polar_line_scale (2.0/divx)
@@ -27,17 +31,20 @@ static const float zoom_nise = 9.0;
 
 // Rotation matrices
 float3x3 rotx(float a) {
-    float s = sin(a); float c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     return float3x3(1, 0, 0,  0, c, -s,  0, s, c);
 }
 
 float3x3 roty(float a) {
-    float s = sin(a); float c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     return float3x3(c, 0, -s,  0, 1, 0,  s, 0, c);
 }
 
 float3x3 rotz(float a) {
-    float s = sin(a); float c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     return float3x3(c, -s, 0,  s, c, 0,  0, 0, 1);
 }
 

@@ -39,7 +39,7 @@ float4 Density(float3 pos)
 {
     pos /= 30.0;
     float2 s = (float2)0;
-    s += Noise(pos.xyz / 1.0) / 1.0;
+    s += Noise(pos.xyz);
     s += Noise(pos.zxy * 2.0) / 2.0;
     s += Noise(pos.yzx * 4.0) / 4.0;
     s += Noise(pos.xzy * 8.0) / 8.0;

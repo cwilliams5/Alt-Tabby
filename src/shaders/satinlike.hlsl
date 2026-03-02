@@ -71,9 +71,9 @@ float pattern(float2 p) {
     float2 ac = p + 4.0 * r;
     ac.x += sin(time);
     ac.y += cos(time);
-    return sqrt(pow(fbm(ac + time
+    return 1.0 / fbm(ac + time
                + fbm(ac - time
-                    + fbm(ac + sin(time)))), -2.0));
+                    + fbm(ac + sin(time))));
 }
 
 float4 PSMain(PSInput input) : SV_Target {

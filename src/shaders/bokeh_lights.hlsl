@@ -61,12 +61,14 @@ float cubicPulse(float c, float w, float x) {
 
 // Direct rotation math (avoids GLSL/HLSL matrix convention issues)
 float3 rotate_y(float3 v, float angle) {
-    float ca = cos(angle); float sa = sin(angle);
+    float sa, ca;
+    sincos(angle, sa, ca);
     return float3(ca * v.x - sa * v.z, v.y, sa * v.x + ca * v.z);
 }
 
 float3 rotate_x(float3 v, float angle) {
-    float ca = cos(angle); float sa = sin(angle);
+    float sa, ca;
+    sincos(angle, sa, ca);
     return float3(v.x, ca * v.y - sa * v.z, sa * v.y + ca * v.z);
 }
 

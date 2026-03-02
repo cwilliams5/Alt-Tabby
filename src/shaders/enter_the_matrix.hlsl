@@ -30,11 +30,12 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float4 I = (float4)0;
 
+    float _sinT01 = sin(T * 0.1) * 0.3; // Hoist loop-invariant sin(T*0.1)
     for (; R < 66.0; R += 1.0) {
         float4 X = float4(resolution.x, resolution.y, resolution.y, resolution.y);
 
         // Build rotation matrix from cos(A*sin(T*.1)*.3 + vec4(0,33,11,0))
-        float4 angles = A * sin(T * 0.1) * 0.3 + float4(0.0, 33.0, 11.0, 0.0);
+        float4 angles = A * _sinT01 + float4(0.0, 33.0, 11.0, 0.0);
         float4 c = cos(angles);
         float2x2 rot = float2x2(c.x, c.y, c.z, c.w);
 
@@ -57,7 +58,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
         A += p.y * 0.6 - (M + A + A + 3.0) / 67.0;
 
-        I += (X.a + 0.5) * (X + A) * (1.4 - p.y) / 2e2 / M / M / exp(A * 0.1);
+        I += (X.a + 0.5) * (X + A) * (1.4 - p.y) / (2e2 * M * M) / exp(A * 0.1);
     }
 
     float3 col = I.rgb;

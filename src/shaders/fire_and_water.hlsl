@@ -39,11 +39,11 @@ float4 PSMain(PSInput input) : SV_Target {
         float2 orbit = float2(sin(t), cos(t)) * 0.35;
 
         float2 fuv = 1.25 * uv + orbit;
-        float3 fire = float3(0.7, 0.2, 0.1) / (float3)length(fuv) * (i * i);
+        float3 fire = float3(0.7, 0.2, 0.1) / length(fuv) * (i * i);
         color += fire;
 
         float2 wuv = 1.25 * uv - orbit;
-        float3 water = float3(0.1, 0.2, 0.7) / (float3)length(wuv) * (i * i);
+        float3 water = float3(0.1, 0.2, 0.7) / length(wuv) * (i * i);
         color += water;
     }
 

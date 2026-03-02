@@ -46,8 +46,9 @@ float4 PSMain(PSInput input) : SV_Target {
     float waveIntensity = 0.5;
 
     float2 noiseCoord = uv;
-    noiseCoord.x += cos(time / 10.0);
-    noiseCoord.y += sin(time / 10.0);
+    float _oS, _oC;
+    sincos(time / 10.0, _oS, _oC);
+    noiseCoord += float2(_oC, _oS);
 
     uv.x += noise(noiseCoord / calmness) * waveIntensity;
     uv.y += noise((noiseCoord + 100.0) / calmness) * waveIntensity;

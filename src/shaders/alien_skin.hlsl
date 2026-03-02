@@ -88,7 +88,8 @@ float fbm(float2 p, int mx) {
         rot(p, rr);
     }
 
-    return lerp((h/d), -0.5*(h/d), pow(vnoise(0.9*op), 0.25));
+    float hd = h / d;
+    return lerp(hd, -0.5 * hd, pow(vnoise(0.9*op), 0.25));
 }
 
 float warp(float2 p) {

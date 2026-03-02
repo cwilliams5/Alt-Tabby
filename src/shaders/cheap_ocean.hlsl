@@ -41,8 +41,9 @@ float4 PSMain(PSInput input) : SV_Target {
         for (; s < 50.0;) {
             s /= 0.66;
             p.xz = mul(rotate2D(s), p.xz);
-            e += abs(dot(sin(p * s) / s, (float3)0.6));
-            f += abs(dot(sin(p.xz * s * 0.33 + time * 0.5) / s, (float2)1.0));
+            float inv_s = 1.0 / s;
+            e += abs(dot(sin(p * s) * inv_s, (float3)0.6));
+            f += abs(dot(sin(p.xz * s * 0.33 + time * 0.5) * inv_s, (float2)1.0));
         }
 
         if (f > k * k)

@@ -39,10 +39,12 @@ float smin_f(float a, float b, float k) {
 }
 
 float3 lattice(float3 p, int iter, float an) {
+    float2x2 rotPos = rot(an * DTR);
+    float2x2 rotNeg = rot(-an * DTR);
     for (int i = 0; i < iter; i++) {
-        p.xy = mul(rot(an * DTR), p.xy);
+        p.xy = mul(rotPos, p.xy);
         p.yz = abs(p.yz) - 1.0;
-        p.xz = mul(rot(-an * DTR), p.xz);
+        p.xz = mul(rotNeg, p.xz);
     }
     return p;
 }

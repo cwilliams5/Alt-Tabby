@@ -55,8 +55,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float4 O = (float4)0;
     float2 uv = (fragCoord - 0.5 * resolution) / resolution.y;
     float t2 = time * 0.1 + ((0.25 + 0.05 * sin(time * 0.1)) / (length(uv) + 0.51)) * 2.2;
-    float si = sin(t2);
-    float co = cos(t2);
+    float si, co;
+    sincos(t2, si, co);
     // GLSL mat2(co, si, -si, co) is column-major; transpose for HLSL row-major
     float2x2 ma = float2x2(co, -si, si, co);
     float3 r = float3(resolution, 1.0);
@@ -64,8 +64,9 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 d = normalize(float3((fragCoord * 2.0 - r.xy) / r.y, 1));
 
     float a, s, e, g = 0.;
+    static const float _sin08 = 0.71735609; // sin(0.8), hoisted from 110-iter loop
     for (float i = 0.; ++i < 110.;
-         O.xyz += lerp((float3)1, H(g * 0.1), sin(0.8)) * 1.0 / e / 8e3)
+         O.xyz += lerp((float3)1, H(g * 0.1), _sin08) * 1.0 / e / 8e3)
     {
         float c2 = noise(n1);
         n1 = g * d + c2;

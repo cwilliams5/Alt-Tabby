@@ -22,11 +22,6 @@ static const float hf = 0.01;
 
 static const float4 hsv2rgb_K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
 
-float3 hsv2rgb(float3 c) {
-    float3 p = abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www);
-    return c.z * lerp(hsv2rgb_K.xxx, saturate(p - hsv2rgb_K.xxx), c.y);
-}
-
 float3 HSV2RGB(float3 c) {
     return c.z * lerp(hsv2rgb_K.xxx, saturate(abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www) - hsv2rgb_K.xxx), c.y);
 }
@@ -142,8 +137,10 @@ float3 calc_color(float2 p) {
     col += diff1 * diff1 * lpow1;
     col += diff2 * diff2 * lpow2;
 
-    col += rm * pow(ref1, spe) * lcol1;
-    col += rm * pow(ref2, spe) * lcol2;
+    float _r1_2 = ref1*ref1; float _r1_4 = _r1_2*_r1_2;
+    col += rm * (ref1 * _r1_2 * _r1_4) * lcol1;
+    float _r2_2 = ref2*ref2; float _r2_4 = _r2_2*_r2_2;
+    col += rm * (ref2 * _r2_2 * _r2_4) * lcol2;
 
     return col;
 }

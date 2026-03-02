@@ -48,7 +48,9 @@ float4 PSMain(PSInput input) : SV_Target {
 
             r = p.z * 0.1 + sin(t * 0.2);
 
-            float2x2 rot = float2x2(cos(r), -sin(r), sin(r), cos(r));
+            float _rs, _rc;
+            sincos(r, _rs, _rc);
+            float2x2 rot = float2x2(_rc, -_rs, _rs, _rc);
             p.xy = mul(p.xy, rot);
             s += abs(sin(p.x * a)) * (2.2 + sin(t * 0.1) * 0.25) * -abs(sin(abs(p.y) * a) / a);
         }

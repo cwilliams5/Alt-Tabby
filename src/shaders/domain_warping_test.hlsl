@@ -66,7 +66,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float f = fbm(st + r);
 
-    float coef = (f * f * f + (0.6 * f * f) + (0.5 * f));
+    float coef = f * (f * (f + 0.6) + 0.5);
 
     float3 col = coef * baseColor;
 

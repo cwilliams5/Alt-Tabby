@@ -97,8 +97,8 @@ float4 volumetric(float3 ro, float3 rd) {
     float s = 0.1, fade = 1.0;
     float3 v = (float3)0;
     // GLSL mat2 column-major → HLSL row-major (transposed)
-    float _cs = cos(time * 0.05);
-    float _sn = sin(time * 0.05);
+    float _cs, _sn;
+    sincos(time * 0.05, _sn, _cs);
     float2x2 _rotT = float2x2(_cs, -_sn, _sn, _cs);
     for (int r = 0; r < volsteps; r++) {
         float3 p = ro + s * rd * 0.5;

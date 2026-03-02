@@ -26,15 +26,15 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float4 o = (float4)0;
 
+    // Hoist loop-invariant sincos: t is constant across all iterations
+    float rs, rc;
+    sincos(t * 0.1, rs, rc);
+    float2x2 rm = float2x2(rc, -rs, rs, rc);
+
     for (int iter = 0; iter < 100; iter++) {
         float3 p = float3(u * d, d + t * 4.0);
         p += cos(p.z + t + p.yzx * 0.5) * 0.5;
         s = 5.0 - length(p.xy);
-
-        // Inner noise loop
-        float rs, rc;
-        sincos(t * 0.1, rs, rc);
-        float2x2 rm = float2x2(rc, -rs, rs, rc);
         for (n = 0.06; n < 2.0; n += n) {
             p.xy = mul(p.xy, rm);
             s -= abs(dot(sin(p.z + t + p * n * 20.0), (float3)0.05)) / n;

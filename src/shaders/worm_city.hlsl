@@ -32,6 +32,12 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float4 o = (float4)0.0;
 
+    // Hoist loop-invariant rotation: r = sin(t*0.2) is constant, sincos(r) too
+    r = sin(t * 0.2);
+    float _rs, _rc;
+    sincos(r, _rs, _rc);
+    float2x2 rot = float2x2(_rc, -_rs, _rs, _rc);
+
     for (i = 0.0; i++ < 175.0; ) {
         s = 0.004 + abs(s) * 0.1;
         d += s;
@@ -45,9 +51,7 @@ float4 PSMain(PSInput input) : SV_Target {
         for (a = 1.0; a < 2.0; a += a) {
             p += cos(t * 1.5 - p.yzx * 1.0 + t) * 0.5;
             p.xy += t * 0.011;
-            r = sin(t * 0.2);
 
-            float2x2 rot = float2x2(cos(r), -sin(r), sin(r), cos(r));
             p.xy = mul(rot, p.xy);
             s += abs(sin(p.x * a)) * 3.7 * -abs(sin(abs(p.y) * a) * sin(p.z * 0.1 + t) / a);
         }

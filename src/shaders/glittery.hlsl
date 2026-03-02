@@ -247,8 +247,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float t = time * 0.1;
     float gradient = uv.y;
 
-    float sn = sin(t);
-    float cs = cos(t);
+    float sn, cs;
+    sincos(t, sn, cs);
     // GLSL column-major mat2(c,-s,s,c) -> HLSL row-major (transposed)
     float2x2 rot = float2x2(cs, sn, -sn, cs);
     uv = mul(uv, rot);

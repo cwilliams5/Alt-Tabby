@@ -63,7 +63,9 @@ float Perlin3D(float3 P)
 }
 
 float2 Rotate(float2 xy, float angle) {
-    return float2(xy.x * cos(angle) - xy.y * sin(angle), xy.x * sin(angle) + xy.y * cos(angle));
+    float s, c;
+    sincos(angle, s, c);
+    return float2(xy.x * c - xy.y * s, xy.x * s + xy.y * c);
 }
 
 float2 Triangle(float2 uv, float c) {

@@ -176,7 +176,7 @@ float4 PSMain(PSInput input) : SV_Target {
     fragColor.rgb = frac(fragColor.rgb + s);
 
     float scale = float(nbIterations);
-    scale = pow(2.0, scale) / viewportMagnify / scale * 5.5;
+    scale = exp2(scale) / viewportMagnify / scale * 5.5;
 
     float3 EquerreColor = (float3)0.0;
 

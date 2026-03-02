@@ -92,8 +92,8 @@ float3 get_color(float2 p) {
 
     return diff1 * diff1 * lpow1
          + diff2 * diff2 * lpow2
-         + rm * pow(ref1, spe) * lcol1
-         + rm * pow(ref2, spe) * lcol2;
+         + rm * (ref1 * ref1 * ref1) * lcol1
+         + rm * (ref2 * ref2 * ref2) * lcol2;
 }
 
 float4 PSMain(PSInput input) : SV_Target {

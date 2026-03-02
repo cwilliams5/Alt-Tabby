@@ -48,13 +48,16 @@ float4 PSMain(PSInput input) : SV_Target {
     U = fmod(U, M);
     float4 O = (float4)0;
 
+    float _timeMod = fmod(2.0 * time, 10.0);
     for (int k = 0; k < 4; k++) {
         X = float2(k % 2, k / 2) * M;
         J = I + X;
         if ((int)(J.x / M.x) % 2 > 0) X.y += 1.15;
-        gt = tanh(-0.2 * (J.x + J.y) + fmod(2.0 * time, 10.0) - 1.6) * 0.785;
+        gt = tanh(-0.2 * (J.x + J.y) + _timeMod - 1.6) * 0.785;
         for (float a = 0.0; a < 6.0; a += 1.57) {
-            float3 A = float3(cos(a), sin(a), 0.7);
+            float _sa, _ca;
+            sincos(a, _sa, _ca);
+            float3 A = float3(_ca, _sa, 0.7);
             float3 B = float3(-A.y, A.x, 0.7);
             O += smoothstep(15.0 / R.y, 0.0, segment(U - X, T(A), T(B)));
             O += smoothstep(15.0 / R.y, 0.0, segment(U - X, T(A), T(A * float3(1, 1, -1))));
