@@ -215,9 +215,15 @@ _BGImg_RebuildCache(wPhys, hPhys) {
 
     } catch as e {
         ; End draw session and restore target on failure
-        try gD2D_RT.EndDraw()
+        try {
+            gD2D_RT.EndDraw()
+        } catch {
+        }
         if (IsSet(pOldTarget) && pOldTarget) {
-            try ComCall(74, gD2D_RT, "ptr", pOldTarget)
+            try {
+                ComCall(74, gD2D_RT, "ptr", pOldTarget)
+            } catch {
+            }
             ObjRelease(pOldTarget)
         }
         global LOG_PATH_STORE

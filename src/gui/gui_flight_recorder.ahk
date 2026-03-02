@@ -59,6 +59,10 @@ global FR_EV_FG_GUARD         := 53  ; d1=hwnd — foreground guard caught missi
 global FR_EV_PRODUCER_BACKOFF  := 60  ; d1=errCount d2=backoffMs — producer entering backoff
 global FR_EV_PRODUCER_RECOVER  := 61  ; d1=errCount d2=backoffMs — producer recovered from backoff
 
+; Paint/resize events (70-79)
+global FR_EV_PAINT_RESIZE      := 70  ; d1=oldRows d2=newRows d3=newW d4=newH — window resize during paint
+global FR_EV_PAINT_RESIZE_DONE := 71  ; d1=preRenderMs*100 d2=flushMs*100 d3=exposureMs*100 d4=totalMs*100
+
 ; State code constants (for FR_EV_STATE d1)
 global FR_ST_IDLE := 0
 global FR_ST_ALT_PENDING := 1
@@ -443,6 +447,7 @@ _FR_GetEventName(ev) {
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_KSUB_MRU_STALE, FR_EV_FG_GUARD
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
+    global FR_EV_PAINT_RESIZE, FR_EV_PAINT_RESIZE_DONE
 
     switch ev {
         case FR_EV_ALT_DN:            return "ALT_DN"
@@ -483,6 +488,8 @@ _FR_GetEventName(ev) {
         case FR_EV_FG_GUARD:         return "FG_GUARD"
         case FR_EV_PRODUCER_BACKOFF:  return "PRODUCER_BACKOFF"
         case FR_EV_PRODUCER_RECOVER:  return "PRODUCER_RECOVER"
+        case FR_EV_PAINT_RESIZE:      return "PAINT_RESIZE"
+        case FR_EV_PAINT_RESIZE_DONE: return "PAINT_RESIZE_DONE"
         default:                      return "UNKNOWN(" ev ")"
     }
 }
@@ -514,6 +521,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_KSUB_MRU_STALE, FR_EV_FG_GUARD
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
+    global FR_EV_PAINT_RESIZE, FR_EV_PAINT_RESIZE_DONE
 
     switch ev {
         case FR_EV_ALT_DN:
@@ -597,6 +605,10 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return "errCount=" d1 "  backoffMs=" d2
         case FR_EV_PRODUCER_RECOVER:
             return "errCount=" d1 "  wasBackoffMs=" d2
+        case FR_EV_PAINT_RESIZE:
+            return "rows=" d1 "→" d2 "  size=" d3 "x" d4
+        case FR_EV_PAINT_RESIZE_DONE:
+            return "preRender=" Round(d1 / 100, 2) "ms  flush=" Round(d2 / 100, 2) "ms  exposure=" Round(d3 / 100, 2) "ms  total=" Round(d4 / 100, 2) "ms"
         default:
             return "d1=" d1 " d2=" d2 " d3=" d3 " d4=" d4
     }
