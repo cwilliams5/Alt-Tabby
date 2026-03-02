@@ -79,8 +79,8 @@ float noise0(float x) {
 }
 
 float2x2 rot2(float a) {
-    float c = cos(a);
-    float s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, -s, s, c);
 }
 

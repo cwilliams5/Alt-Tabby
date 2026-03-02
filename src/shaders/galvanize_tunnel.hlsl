@@ -35,22 +35,28 @@ static float4 orbitTrap = (float4)0.0;
 
 // Rotate
 float3 rotXaxis(float3 p, float rad) {
-    float z2 = cos(rad) * p.z - sin(rad) * p.y;
-    float y2 = sin(rad) * p.z + cos(rad) * p.y;
+    float s, c;
+    sincos(rad, s, c);
+    float z2 = c * p.z - s * p.y;
+    float y2 = s * p.z + c * p.y;
     p.z = z2; p.y = y2;
     return p;
 }
 
 float3 rotYaxis(float3 p, float rad) {
-    float x2 = cos(rad) * p.x - sin(rad) * p.z;
-    float z2 = sin(rad) * p.x + cos(rad) * p.z;
+    float s, c;
+    sincos(rad, s, c);
+    float x2 = c * p.x - s * p.z;
+    float z2 = s * p.x + c * p.z;
     p.x = x2; p.z = z2;
     return p;
 }
 
 float3 rotZaxis(float3 p, float rad) {
-    float x2 = cos(rad) * p.x - sin(rad) * p.y;
-    float y2 = sin(rad) * p.x + cos(rad) * p.y;
+    float s, c;
+    sincos(rad, s, c);
+    float x2 = c * p.x - s * p.y;
+    float y2 = s * p.x + c * p.y;
     p.x = x2; p.y = y2;
     return p;
 }

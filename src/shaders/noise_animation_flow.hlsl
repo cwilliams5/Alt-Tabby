@@ -27,8 +27,8 @@ struct PSInput {
 static const float2x2 m2 = float2x2(0.80, 0.60, -0.60, 0.80);
 
 float2x2 makem2(in float theta) {
-    float c = cos(theta);
-    float s = sin(theta);
+    float s, c;
+    sincos(theta, s, c);
     return float2x2(c, -s, s, c);
 }
 

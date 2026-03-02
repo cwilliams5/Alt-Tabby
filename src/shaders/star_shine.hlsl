@@ -161,8 +161,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float4 result = float4(0.0, 0.0, 0.0, 1.0);
 
     float t2 = abs(sin(time * 0.1));
-    float c = cos(t2);
-    float s = sin(t2);
+    float s, c;
+    sincos(t2, s, c);
     // mat2 rm = (c, s, -s, c)
     float2 position = float2(0.0, 0.0);
     for (float i = 0.0; i < 256.0; i++) {

@@ -41,7 +41,8 @@ float3 PBRNeutralToneMapping(float3 color) {
 
 // Rotation matrix — same constructor args as GLSL for mul(v, m) pattern
 float2x2 rot(float x) {
-    float c = cos(x), s = sin(x);
+    float s, c;
+    sincos(x, s, c);
     return float2x2(c, -s, s, c);
 }
 
@@ -81,7 +82,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float sum = 0.0;
 
     float th = PI * 0.7071 / L;
-    float cs = cos(th), si = sin(th);
+    float si, cs;
+    sincos(th, si, cs);
     // Transposed constructor args for mul(M, v) pattern
     float2x2 M = float2x2(cs, si, -si, cs);
 

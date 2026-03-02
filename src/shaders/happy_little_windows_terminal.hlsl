@@ -21,7 +21,7 @@ struct PSInput {
 #define RESOLUTION  float3(resolution, 1.0)
 #define PI          3.141592654
 #define TAU         (2.0*PI)
-#define ROT(a)      float2x2(cos(a), -sin(a), sin(a), cos(a))
+float2x2 ROT(float a) { float s, c; sincos(a, s, c); return float2x2(c, -s, s, c); }
 
 #define TOLERANCE       0.0005
 #define MAX_RAY_LENGTH  10.0

@@ -19,7 +19,8 @@ struct PSInput {
 // 2D rotation matrix
 // GLSL mat2(c,-s,s,c)*v → HLSL mul(v, float2x2(c,-s,s,c))
 float2 rot2d(float2 v, float t) {
-    float s = sin(t), c = cos(t);
+    float s, c;
+    sincos(t, s, c);
     return mul(v, float2x2(c, -s, s, c));
 }
 

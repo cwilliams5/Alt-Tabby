@@ -22,7 +22,9 @@ float2 glsl_mod(float2 x, float y) { return x - y * floor(x / y); }
 
 void Rotate(inout float2 p, float a)
 {
-    p = cos(a) * p + sin(a) * float2(p.y, -p.x);
+    float s_a, c_a;
+    sincos(a, s_a, c_a);
+    p = c_a * p + s_a * float2(p.y, -p.x);
 }
 
 float Circle(float2 p, float r)

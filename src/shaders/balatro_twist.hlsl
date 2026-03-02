@@ -60,8 +60,8 @@ float fbm(float2 p) {
 }
 
 float2x2 rotate(float ang) {
-    float s = sin(ang);
-    float c = cos(ang);
+    float s, c;
+    sincos(ang, s, c);
     return float2x2(c, -s, s, c);
 }
 

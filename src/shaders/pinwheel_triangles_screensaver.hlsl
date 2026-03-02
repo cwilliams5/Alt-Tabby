@@ -93,9 +93,9 @@ float4 PSMain(PSInput input) : SV_Target {
     viewportMagnify = 1.0 / 3.2;
     uv *= viewportMagnify;
 
-    // Rotation matrix from cos(t + offsets)
-    float4 cv = cos(time / 48.0 + float4(0.0, 1.6, -1.6, 0.0));
-    float2x2 rotMat = float2x2(cv.x, cv.y, cv.z, cv.w);
+    float rs, rc;
+    sincos(time / 48.0, rs, rc);
+    float2x2 rotMat = float2x2(rc, -rs, rs, rc);
     uv = mul(uv, rotMat);
 
     uv += base / 3.2;

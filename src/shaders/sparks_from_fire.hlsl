@@ -121,8 +121,8 @@ float layeredNoise1_2(in float2 uv, in float sizeMod, in float alphaMod, in int 
 // Rotates point around 0,0
 float2 rotate(in float2 pt, in float deg)
 {
-    float s = sin(deg);
-    float c = cos(deg);
+    float s, c;
+    sincos(deg, s, c);
     return mul(float2x2(s, -c, c, s), pt);
 }
 
@@ -130,8 +130,8 @@ float2 rotate(in float2 pt, in float deg)
 float2 voronoiPointFromRoot(in float2 root, in float deg)
 {
     float2 pt = hash2_2(root) - 0.5;
-    float s = sin(deg);
-    float c = cos(deg);
+    float s, c;
+    sincos(deg, s, c);
     pt = mul(float2x2(s, -c, c, s), pt) * 0.66;
     pt += root + 0.5;
     return pt;

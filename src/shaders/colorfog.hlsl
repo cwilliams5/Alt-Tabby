@@ -24,7 +24,8 @@ float random(float2 p) {
 }
 
 float2x2 rot2(float an) {
-    float cc = cos(an), ss = sin(an);
+    float ss, cc;
+    sincos(an, ss, cc);
     return float2x2(cc, ss, -ss, cc);
 }
 

@@ -27,7 +27,8 @@ float hash(float2 p) {
 }
 
 float2x2 rot(float a) {
-    float s = sin(a), c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, s, -s, c);
 }
 

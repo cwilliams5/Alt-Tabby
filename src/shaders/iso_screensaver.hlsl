@@ -44,7 +44,8 @@ float fbm(float2 x) {
     float2 shift = (float2)100;
 
     // GLSL mat2 is column-major; HLSL float2x2 is row-major — transposed
-    float2x2 rot = float2x2(cos(0.5), -sin(0.5), sin(0.5), cos(0.5));
+    // cos(0.5) = 0.8776, sin(0.5) = 0.4794
+    static const float2x2 rot = float2x2(0.8776, -0.4794, 0.4794, 0.8776);
     for (int i = 0; i < 7; ++i) {
         v += a * noise(x);
         x = mul(rot, x) * 2.0 + shift;

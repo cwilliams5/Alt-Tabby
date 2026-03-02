@@ -56,9 +56,10 @@ float4 PSMain(PSInput input) : SV_Target {
         float4 q = p;
 
         // Apply rotation matrices for glitchy fractal distortion
-        // GLSL: p.xy *= mat2(cos(vec4)) → HLSL: p.xy = mul(float2x2(cos(float4)), p.xy)
-        float4 cosVal1 = cos(2.0 + q.z + float4(0, 11, 33, 0));
-        p.xy = mul(float2x2(cosVal1.x, cosVal1.y, cosVal1.z, cosVal1.w), p.xy);
+        float s1, c1;
+        sincos(2.0 + q.z, s1, c1);
+        p.xy = mul(float2x2(c1, s1, -s1, c1), p.xy);
+        // q is float4: each component uses a different angle, not a true rotation
         float4 cosVal2 = cos(q + float4(0, 11, 33, 0));
         p.xy = mul(float2x2(cosVal2.x, cosVal2.y, cosVal2.z, cosVal2.w), p.xy);
 

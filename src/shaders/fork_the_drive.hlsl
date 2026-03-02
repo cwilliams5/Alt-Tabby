@@ -138,8 +138,8 @@ void CameraSetup(float2 uv, float3 pos, float3 lookat, float zoom, float m) {
     #ifdef HIGH_QUALITY
     float x = (sin(t * .1) * .5 + .5) * .5;
     x = -x * x;
-    float s = sin(x);
-    float c = cos(x);
+    float s, c;
+    sincos(x, s, c);
 
     // GLSL mat2(c,-s,s,c) is column-major; HLSL float2x2 is row-major
     float2x2 rot = float2x2(c, s, -s, c);

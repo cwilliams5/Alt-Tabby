@@ -24,11 +24,10 @@ static float2 bsMo;
 
 // --- Helpers ---
 
-// Rotation macro: GLSL mat2(cos(a+vec4(0,11,33,0))) with v*M convention.
-// GLSL column-major → HLSL row-major transposed for mul(v, M).
 float2x2 rot(float a) {
-    float4 c = cos(a + float4(0, 11, 33, 0));
-    return float2x2(c.x, c.z, c.y, c.w);
+    float s, c;
+    sincos(a, s, c);
+    return float2x2(c, -s, s, c);
 }
 
 float linstep(float m, float M, float x) {

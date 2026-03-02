@@ -122,8 +122,8 @@ float happy_star(float2 uv, float anim) {
 }
 
 float2x2 rotMat(float r) {
-    float c = cos(r);
-    float s = sin(r);
+    float s, c;
+    sincos(r, s, c);
     return float2x2(c, -s, s, c);
 }
 
@@ -138,8 +138,8 @@ float3 Oilnoise(float2 pos, float3 RGB) {
     float2 q = (float2)1.0;
     float result = 0.0;
     float t = time * 0.1 + ((0.25 + 0.05 * sin(time * 0.1)) / (length(pos.xy) + 0.07)) * 2.2;
-    float si = sin(t);
-    float co = cos(t);
+    float si, co;
+    sincos(t, si, co);
     float2x2 ma = float2x2(co, si, -si, co);
     float s = 14.2;
 
@@ -147,8 +147,10 @@ float3 Oilnoise(float2 pos, float3 RGB) {
     float2 aPos = abs2d(pos) * 0.0;
     float tm = (sin(time) * 0.5 + 0.5) * 0.2 + time * 0.8;
 
+    float2x2 rot30 = rotMat(D2R * 30.0);
+    float2x2 rot1 = rotMat(D2R * 1.0);
     for (float i = 0.0; i < OC; i++) {
-        pos = mul(pos, rotMat(D2R * 30.0));
+        pos = mul(pos, rot30);
 
         q = pos * s + tm;
         q = pos * s + aPos + tm;
@@ -158,7 +160,7 @@ float3 Oilnoise(float2 pos, float3 RGB) {
 
         s *= 1.07;
         aPos += cos(smoothstep(0.0, 0.15, q));
-        aPos = mul(aPos, rotMat(D2R * 1.0));
+        aPos = mul(aPos, rot1);
         aPos *= 1.232;
     }
 
@@ -208,8 +210,8 @@ float4 PSMain(PSInput input) : SV_Target {
     st.x = ((st.x - 0.5) * (resolution.x / resolution.y)) + 0.5;
 
     float t2 = time * 0.1 + ((0.25 + 0.05 * sin(time * 0.1)) / (length(uv3.xy) + 0.57)) * 25.2;
-    float si = sin(t2);
-    float co = cos(t2);
+    float si, co;
+    sincos(t2, si, co);
     float2x2 ma = float2x2(co, si, -si, co);
 
     st *= 3.0;
@@ -234,8 +236,8 @@ float4 PSMain(PSInput input) : SV_Target {
     col *= float3(0.9, 0.9, 1.0);
     float s = 0.1, fade = 1.0;
     float3 v = (float3)0.0;
-    float _cosT = cos(time * 0.05);
-    float _sinT = sin(time * 0.05);
+    float _sinT, _cosT;
+    sincos(time * 0.05, _sinT, _cosT);
     float2x2 _rotT = float2x2(_cosT, _sinT, -_sinT, _cosT);
     for (int r = 0; r < VOLSTEPS; r++) {
         float3 p = from + s * dir + 0.5;
@@ -261,9 +263,11 @@ float4 PSMain(PSInput input) : SV_Target {
     v = lerp((float3)length(v), v, SATURATION);
 
     float3 finalColor = v * 0.03 + col + col2 + color * 2.0;
-    finalColor += happy_star(mul(uv3, ma), anim) * float3(0.15 + 0.1 * cos(time), 0.2, 0.15 + 0.1 * sin(time)) * 0.3;
-    finalColor += happy_star(uv2, anim) * float3(0.25 + 0.1 * cos(time), 0.2 + 0.1 * sin(time), 0.15) * 0.5;
-    finalColor *= happy_star(uv2, anim) * float3(0.25 + 0.1 * cos(time), 0.2 + 0.1 * sin(time), 0.15) * 2.0;
+    float st_time, ct_time;
+    sincos(time, st_time, ct_time);
+    finalColor += happy_star(mul(uv3, ma), anim) * float3(0.15 + 0.1 * ct_time, 0.2, 0.15 + 0.1 * st_time) * 0.3;
+    finalColor += happy_star(uv2, anim) * float3(0.25 + 0.1 * ct_time, 0.2 + 0.1 * st_time, 0.15) * 0.5;
+    finalColor *= happy_star(uv2, anim) * float3(0.25 + 0.1 * ct_time, 0.2 + 0.1 * st_time, 0.15) * 2.0;
 
     // Darken/desaturate post-processing
     float lum = dot(finalColor, float3(0.299, 0.587, 0.114));

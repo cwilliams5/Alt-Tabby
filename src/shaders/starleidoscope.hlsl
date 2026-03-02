@@ -16,7 +16,8 @@ struct PSInput {
 #define NUM_LAYERS 10.
 
 float2x2 Rot(float a) {
-    float c = cos(a), s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, -s, s, c);
 }
 

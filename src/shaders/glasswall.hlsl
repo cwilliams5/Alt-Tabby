@@ -43,8 +43,9 @@ float fbm(in float2 _st) {
     float2 shift = (float2)100.0;
     // Rotate to reduce axial bias
     // GLSL mat2 is column-major; HLSL float2x2 is row-major — transpose constructor args
-    float2x2 rot = float2x2(cos(0.5), -sin(0.5),
-                             sin(1.0),  acos(0.5));
+    // cos(0.5)=0.8776, sin(0.5)=0.4794, sin(1.0)=0.8415, acos(0.5)=1.0472
+    static const float2x2 rot = float2x2(0.8776, -0.4794,
+                                          0.8415,  1.0472);
     for (int i = 0; i < 5; ++i) {
         v += a * noise(_st);
         _st = mul(rot, _st) * 2.0 + shift;

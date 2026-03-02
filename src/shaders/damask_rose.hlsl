@@ -19,9 +19,6 @@ struct PSInput {
 #define PI          3.141592654
 #define PI_2        (0.5*PI)
 #define TAU         (2.0*PI)
-// GLSL mat2 is column-major; HLSL float2x2 is row-major — transposed
-#define ROT(a)      float2x2(cos(a), -sin(a), sin(a), cos(a))
-
 // Using standard atan2; uncomment FASTATAN line and switch to use atan_approx
 //#define FASTATAN
 #if defined(FASTATAN)

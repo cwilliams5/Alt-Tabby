@@ -27,8 +27,8 @@ float LinStep(float mn, float mx, float x) {
 }
 
 float2x2 rotate(float a) {
-    float c = cos(a);
-    float s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, s, -s, c);
 }
 

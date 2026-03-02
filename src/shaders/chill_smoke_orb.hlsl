@@ -17,8 +17,9 @@ struct PSInput {
 };
 
 float2x2 rot(float angle) {
-    float4 c = cos(angle + float4(0, 33, 11, 0));
-    return float2x2(c.x, c.z, c.y, c.w);
+    float s, c;
+    sincos(angle, s, c);
+    return float2x2(c, s, -s, c);
 }
 
 float orb(float3 p, float gtime) {

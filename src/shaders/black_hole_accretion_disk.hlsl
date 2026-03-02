@@ -110,10 +110,12 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
 
         float u = lp + time * _Size * 0.3 + intensity * _Size * 0.2;
 
-        float2 xy;
         float rot = fmod(time * _Speed, 8192.0);
-        xy.x = -position.z * sin(rot) + position.x * cos(rot);
-        xy.y = position.x * sin(rot) + position.z * cos(rot);
+        float s_rot, c_rot;
+        sincos(rot, s_rot, c_rot);
+        float2 xy;
+        xy.x = -position.z * s_rot + position.x * c_rot;
+        xy.y = position.x * s_rot + position.z * c_rot;
 
         float x = abs(xy.x / xy.y);
         float angle = 0.02 * atan(x);
@@ -127,7 +129,7 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
         float alpha = saturate(noise * (intensity + extraWidth) * ((1.0 / _Size) * 10.0 + 0.01) * dist * distMult);
 
         float3 col = 2.0 * lerp(float3(0.3, 0.2, 0.15) * insideCol, insideCol, min(1.0, intensity * 2.0));
-        o = clamp(float4(col * alpha + o.rgb * (1.0 - alpha), o.a * (1.0 - alpha) + alpha), (float4)0, (float4)1);
+        o = saturate(float4(col * alpha + o.rgb * (1.0 - alpha), o.a * (1.0 - alpha) + alpha));
 
         lp *= (1.0 / _Size);
 

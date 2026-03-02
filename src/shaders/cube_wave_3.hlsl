@@ -23,12 +23,10 @@ float segment(float2 p, float2 a, float2 b) {
     return length(p - b * saturate(dot(p, b) / dot(b, b)));
 }
 
-// rot(a) macro: cos(a+vec4(0,pi/2,-pi/2,0)) = (cos(a),-sin(a),sin(a),cos(a))
-// GLSL mat2(vec4) fills column-major; HLSL float2x2 fills row-major.
-// With mul(M,v), row-major (cos,-sin,sin,cos) gives same result as GLSL v*M column-major.
 float2x2 rot(float a) {
-    float4 v = cos(a + float4(0, 1.57, -1.57, 0));
-    return float2x2(v.x, v.y, v.z, v.w);
+    float s, c;
+    sincos(a, s, c);
+    return float2x2(c, -s, s, c);
 }
 
 static float gt;

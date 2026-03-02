@@ -66,12 +66,11 @@ float3 normalize2(float3 grosscolor)
 
 float2 rotate(float2 oldpoint, float angle)
 {
-    float left, right;
+    float s, c;
+    sincos(angle, s, c);
 
-    left = cos(angle) * oldpoint.x;
-    left -= sin(angle) * oldpoint.y;
-    right = sin(angle) * oldpoint.x;
-    right += cos(angle) * oldpoint.y;
+    float left = c * oldpoint.x - s * oldpoint.y;
+    float right = s * oldpoint.x + c * oldpoint.y;
 
     return float2(left, right);
 }

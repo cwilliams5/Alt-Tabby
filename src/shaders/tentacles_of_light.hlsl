@@ -59,7 +59,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 color = (float3)0.0;
 
     float t = time * 0.25;
-    float c = cos(t), s = sin(t);
+    float s, c;
+    sincos(t, s, c);
     uv -= float2(cos(t), sin(t)) * 0.15;
 
     for (float tentacleID = 0.0; tentacleID < 8.0; tentacleID++) {

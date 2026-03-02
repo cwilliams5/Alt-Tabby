@@ -83,7 +83,8 @@ float ellipse_shape(float2 uv_in, float2 p, float2 q) {
 float4 starfield(float3 from, float3 dir) {
     float s = 0.1, fade = 1.;
     float3 v = (float3)0;
-    float c_rot = cos(time*0.02), s_rot = sin(time*0.02);
+    float s_rot, c_rot;
+    sincos(time*0.02, s_rot, c_rot);
     [loop]
     for (int r = 0; r < volsteps; r++) {
         float3 p = from + s*dir*.5;

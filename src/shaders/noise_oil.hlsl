@@ -18,8 +18,8 @@ struct PSInput {
 #define D2R (PI / 180.0)
 
 float2x2 rotMat(float r) {
-    float c = cos(r);
-    float s = sin(r);
+    float s, c;
+    sincos(r, s, c);
     return float2x2(c, -s, s, c);
 }
 

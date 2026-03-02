@@ -23,8 +23,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 uv = fragCoord.xy / resolution.x;
     uv -= float2(0.5, 0.5 * aspect);
     float rot = PI / 4.0; // radians(45.0)
-    float c = cos(rot);
-    float s = sin(rot);
+    float s, c;
+    sincos(rot, s, c);
     // mat2 m = (c, -s, s, c); uv = m * uv
     float2 rotated_uv = float2(
         uv.x * c + uv.y * (-s),

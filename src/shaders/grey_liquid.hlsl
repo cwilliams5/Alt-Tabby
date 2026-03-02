@@ -22,8 +22,8 @@ struct PSInput {
 #define TAU (2.0*PI)
 
 void rot(inout float2 p, float a) {
-    float c = cos(a);
-    float s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     p = float2(c*p.x + s*p.y, -s*p.x + c*p.y);
 }
 

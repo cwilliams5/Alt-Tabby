@@ -17,7 +17,8 @@ struct PSInput {
 
 // GLSL mat2 is column-major, HLSL float2x2 is row-major — transpose elements
 float2x2 rot(float a) {
-    float c = cos(a), s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, -s, s, c);
 }
 

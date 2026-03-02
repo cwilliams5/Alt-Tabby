@@ -401,3 +401,4 @@ if ($textureEntries.Count -gt 0) {
 Write-Host "  Generated: $resourcesPath"
 
 Write-Host "Done. $($shaders.Count) shader(s) bundled, $($textureEntries.Count) texture(s) + $($dxbcEntries.Count) DXBC bytecode registered."
+exit 0

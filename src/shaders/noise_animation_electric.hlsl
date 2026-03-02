@@ -25,8 +25,8 @@ struct PSInput {
 #define tau 6.2831853
 
 float2x2 makem2(in float theta) {
-    float c = cos(theta);
-    float s = sin(theta);
+    float s, c;
+    sincos(theta, s, c);
     return float2x2(c, -s, s, c);
 }
 

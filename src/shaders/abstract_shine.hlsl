@@ -18,8 +18,9 @@ struct PSInput {
 };
 
 float2x2 rot(float a) {
-    float4 c = cos(a + float4(0, 33, 11, 0));
-    return float2x2(c.x, c.z, c.y, c.w);
+    float s, c;
+    sincos(a, s, c);
+    return float2x2(c, s, -s, c);
 }
 
 float4 PSMain(PSInput input) : SV_Target {

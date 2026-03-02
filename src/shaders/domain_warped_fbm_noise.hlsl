@@ -40,9 +40,9 @@ float fbm1(in float2 _st) {
     float v = 0.0;
     float a = 0.5;
     float2 shift = (float2)100.0;
-    // Rotate to reduce axial bias
-    float2x2 rot = float2x2(cos(0.5), sin(0.5),
-                             -sin(0.5), cos(0.5));
+    // Rotate to reduce axial bias (cos(0.5) = 0.8776, sin(0.5) = 0.4794)
+    static const float2x2 rot = float2x2(0.8776, 0.4794,
+                                          -0.4794, 0.8776);
     for (int i = 0; i < octaves; ++i) {
         v += a * noise(_st);
         _st = mul(rot, _st) * 2.0 + shift;
@@ -70,8 +70,9 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = time / 10.0;
 
-    float2x2 rot = float2x2(cos(t / 10.0), sin(t / 10.0),
-                             -sin(t / 10.0), cos(t / 10.0));
+    float s, c;
+    sincos(t / 10.0, s, c);
+    float2x2 rot = float2x2(c, s, -s, c);
 
     uv = mul(rot, uv);
     uv *= 0.9 * sin(t) + 3.0;

@@ -17,8 +17,8 @@ struct PSInput {
 };
 
 float2 rot2(float2 st, float theta) {
-    float c = cos(theta);
-    float s = sin(theta);
+    float s, c;
+    sincos(theta, s, c);
     float2x2 M = float2x2(c, -s, s, c);
     return mul(M, st);
 }

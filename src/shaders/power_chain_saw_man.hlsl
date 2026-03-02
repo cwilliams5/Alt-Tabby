@@ -37,7 +37,8 @@ static const float PI = acos(-1.0);
 // GLSL mat2(c,-s,s,c) is column-major; HLSL float2x2 is row-major.
 // For equivalent mul(M,v): transpose the constructor args.
 float2x2 rot(float a) {
-    float c = cos(a), s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, s, -s, c);
 }
 

@@ -223,8 +223,8 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
 //        ----  main, camera  ----
 
 float2 rotate2d(float2 v, float a) {
-    float s = sin(a);
-    float c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     // GLSL mat2(c,-s,s,c) is column-major: col0=(c,s), col1=(-s,c)
     // v * M in GLSL -> mul(v, transpose(M))
     // transpose: row0=(c,s), row1=(-s,c) -> float2x2(c,-s,s,c) in HLSL row-major
@@ -235,8 +235,8 @@ float2 rotate2d(float2 v, float a) {
 }
 
 float3 rotateX(float3 v, float a) {
-    float s = sin(a);
-    float c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     // GLSL: mat3(1,0,0, 0,c,-s, 0,s,c) column-major
     // col0=(1,0,0), col1=(0,c,s), col2=(0,-s,c)
     // v * M -> mul(v, transpose(M))
@@ -248,8 +248,8 @@ float3 rotateX(float3 v, float a) {
 }
 
 float3 rotateY(float3 v, float a) {
-    float s = sin(a);
-    float c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     // GLSL: mat3(c,0,-s, 0,1,0, s,0,c) column-major
     // col0=(c,0,s), col1=(0,1,0), col2=(-s,0,c)
     // transpose: row0=(c,0,s), row1=(0,1,0), row2=(-s,0,c)
@@ -260,8 +260,8 @@ float3 rotateY(float3 v, float a) {
 }
 
 float3 rotateZ(float3 v, float a) {
-    float s = sin(a);
-    float c = cos(a);
+    float s, c;
+    sincos(a, s, c);
     // GLSL: mat3(c,-s,0, s,c,0, 0,0,1) column-major
     // col0=(c,s,0), col1=(-s,c,0), col2=(0,0,1)
     // transpose: row0=(c,s,0), row1=(-s,c,0), row2=(0,0,1)

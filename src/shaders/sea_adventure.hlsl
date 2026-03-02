@@ -32,7 +32,8 @@ float smin(float a, float b, float h)
 
 float2x2 rot(float a)
 {
-    float c = cos(a), s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, -s, s, c);
 }
 

@@ -50,7 +50,8 @@ static const float2 sunrot_val = float2(-0.3, 0.10);
 
 // Rotation matrix — same constructor args as GLSL for mul(v, m) pattern
 float2x2 rot(float a) {
-    float c = cos(a), s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, -s, s, c);
 }
 

@@ -43,8 +43,9 @@ struct PSInput {
 #define BORDER 0.21
 
 float2x2 rot2(float a) {
-    float4 c = cos(a + float4(0, 11, 33, 0));
-    return float2x2(c.x, c.y, c.z, c.w);
+    float s, c;
+    sincos(a, s, c);
+    return float2x2(c, s, -s, c);
 }
 
 float3 glsl_mod(float3 x, float3 y) {

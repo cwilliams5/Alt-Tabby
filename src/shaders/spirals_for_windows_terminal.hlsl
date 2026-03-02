@@ -22,8 +22,8 @@ float glsl_mod(float x, float y) { return x - y * floor(x / y); }
 
 // Rotation helper: returns float2(cos(a)*v.x - sin(a)*v.y, sin(a)*v.x + cos(a)*v.y)
 float2 rot2(float2 v, float a) {
-    float c = cos(a);
-    float s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 

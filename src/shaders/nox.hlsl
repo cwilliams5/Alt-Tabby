@@ -31,12 +31,12 @@ float4 PSMain(PSInput input) : SV_Target {
         p += cos(p.z + t + p.yzx * 0.5) * 0.5;
         s = 5.0 - length(p.xy);
 
-        // Inner noise loop — GLSL used mat2(cos(vec4)) golf trick
+        // Inner noise loop
+        float rs, rc;
+        sincos(t * 0.1, rs, rc);
+        float2x2 rm = float2x2(rc, -rs, rs, rc);
         for (n = 0.06; n < 2.0; n += n) {
-            float4 rv = cos(t * 0.1 + float4(0, 33, 11, 0));
-            // GLSL mat2(v4) fills column-major; for mul(v, m) pattern
-            // HLSL float2x2 with same component order works
-            p.xy = mul(p.xy, float2x2(rv.x, rv.y, rv.z, rv.w));
+            p.xy = mul(p.xy, rm);
             s -= abs(dot(sin(p.z + t + p * n * 20.0), (float3)0.05)) / n;
         }
 

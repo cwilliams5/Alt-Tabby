@@ -33,10 +33,12 @@ float4 PSMain(PSInput input) : SV_Target {
         O = p;
 
         // Rotation matrix 1 — fractal pattern transform
-        float4 cv1 = cos(2.0 + O.z + float4(0, 11, 33, 0));
-        p.xy = mul(float2x2(cv1.x, cv1.z, cv1.y, cv1.w), p.xy);
+        float s1, c1;
+        sincos(2.0 + O.z, s1, c1);
+        p.xy = mul(float2x2(c1, -s1, s1, c1), p.xy);
 
         // Rotation matrix 2 — the happy accident bug
+        // O is float4: each component uses a different angle, not a true rotation
         float4 cv2 = cos(O + float4(0, 11, 33, 0));
         p.xy = mul(float2x2(cv2.x, cv2.z, cv2.y, cv2.w), p.xy);
 

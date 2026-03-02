@@ -19,7 +19,8 @@ struct PSInput {
 };
 
 float2x2 ROT(float a) {
-    float c = cos(a), s = sin(a);
+    float s, c;
+    sincos(a, s, c);
     return float2x2(c, s, -s, c);
 }
 

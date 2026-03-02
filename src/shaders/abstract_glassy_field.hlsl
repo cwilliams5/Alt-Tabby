@@ -198,7 +198,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
         float di = max(dot(l, n), 0.);
         float sp = pow(max(dot(reflect(r, n), l), 0.), 64.);
-        float fr = clamp(1.0 + dot(r, n), .0, 1.);
+        float fr = saturate(1.0 + dot(r, n));
 
         float3 tx = (float3).05;
 

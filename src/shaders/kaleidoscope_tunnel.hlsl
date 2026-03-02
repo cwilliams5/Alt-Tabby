@@ -23,7 +23,8 @@ float glsl_mod(float x, float y) { return x - y * floor(x / y); }
 float2 glsl_mod(float2 x, float y) { return x - y * floor(x / y); }
 
 float2x2 rot(float x) {
-    float c = cos(x), s = sin(x);
+    float s, c;
+    sincos(x, s, c);
     return float2x2(c, s, -s, c);
 }
 

@@ -18,8 +18,9 @@ struct PSInput {
 
 // Rotation matrix from Z-depth (replaces GLSL #define M)
 float2x2 getM(float pz) {
-    float4 cv = cos(pz * 1.1 + float4(0, 11, 33, 0));
-    return float2x2(cv.x, cv.z, cv.y, cv.w);
+    float s, c;
+    sincos(pz * 1.1, s, c);
+    return float2x2(c, -s, s, c);
 }
 
 float n(float2 p) {

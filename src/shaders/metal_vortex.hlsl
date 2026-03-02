@@ -22,8 +22,8 @@ static int mat_id;
 static float3 ref_vec = float3(0.0, 0.0, 0.0);
 
 float2 rotate2d(float2 a, float d) {
-    float s = sin(d);
-    float c = cos(d);
+    float s, c;
+    sincos(d, s, c);
     return float2(
         a.x * c - a.y * s,
         a.x * s + a.y * c);
@@ -63,8 +63,8 @@ float sdOctahedron(float3 p, float s) {
 }
 
 float3 opTwist(float3 p, float k) {
-    float c = cos(k * p.y);
-    float s = sin(k * p.y);
+    float s, c;
+    sincos(k * p.y, s, c);
     float2x2 m = float2x2(c, -s, s, c);
     float2 twisted = mul(m, p.xz);
     return float3(twisted, p.y);
