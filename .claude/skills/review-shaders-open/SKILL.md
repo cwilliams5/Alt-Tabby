@@ -17,7 +17,7 @@ Shader compilation or bundling tooling
 Cardinal rule: Every optimization must produce visually identical output. These are aesthetic shaders — if you can't prove the math is equivalent, don't suggest the change. "Close enough" is not acceptable.
 
 What to Look For
-Any other detected optimizations. In the past I've directed you - this time, lets see what you do on your own. In the past, you've used sub agents to search all shaders for each pre-prescribed problem type - check for math issue X + Y. Maybe this time its sub agents for X # of shaders, let them creatively search for issues? your call
+Any other detected optimizations. In the past I've directed you - this time, lets see what you do on your own.
 
 Files to Audit
 All .hlsl files in src/shaders/. There are 150+ shaders. Organize the audit by pattern, not by individual file — many shaders share the same noise functions, FBM loops, and rotation patterns.
