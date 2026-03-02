@@ -121,7 +121,7 @@ float3 n2(float2 fragCoord)
     float3 col = float3(.55, 0.85, .25);
     float3 col2 = float3(1.4, 1.4, 1.4) * 5.0;
     float pulse2 = voronoi(float3(rd.xy * 1.5, time * .255));
-    float pulse = pow(oc * 1.35, 4.0);
+    float _ocS = oc * 1.35; float _ocS2 = _ocS * _ocS; float pulse = _ocS2 * _ocS2;
     col = lerp(col, col2, pulse * pulse2) * c;
     return col;
 }

@@ -113,7 +113,7 @@ float4 trace(Ray ray) {
         if (distance < 0.002) {
             float2 uv = textureCoordinates(position, 1.5);
             uv.x += time * 0.1;
-            uv.x = fmod(uv.x * 10.0, 1.0);
+            uv.x = frac(uv.x * 10.0);
             return tex(uv) * saturate(1.2 - t * 0.25);
         }
 

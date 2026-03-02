@@ -48,7 +48,7 @@ float4 Density(float3 pos)
 
     s.y = pow(s.y, 5.0) * 1.0;
 
-    return float4(pow(sin(float3(1, 2, 5) + tau * s.x) * 0.5 + 0.5, (float3)1.0) * 16.0, s.y);
+    return float4((sin(float3(1, 2, 5) + tau * s.x) * 0.5 + 0.5) * 16.0, s.y);
 }
 
 float3 Path(float t)

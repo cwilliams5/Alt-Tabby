@@ -47,6 +47,9 @@ float3 StarLayer(float2 uv) {
     float2 gv = frac(uv) - 0.5;
     float2 id = floor(uv);
 
+    // Hoist loop-invariant time-based trig
+    float2 audioReplace = float2(sin(time * 0.3) * 0.5 + 0.5, cos(time * 0.2) * 0.5 + 0.5);
+
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             float2 offs = float2(x, y);
@@ -57,9 +60,6 @@ float3 StarLayer(float2 uv) {
             float2 p = float2(n, frac(n * 34.0));
 
             float star = Star(gv - offs - p + 0.5, smoothstep(0.8, 1.0, size) * 0.6);
-
-            // Replace audio-reactive hue shift with time-based variation
-            float2 audioReplace = float2(sin(time * 0.3) * 0.5 + 0.5, cos(time * 0.2) * 0.5 + 0.5);
             float3 hueShift = frac(n * 2345.2 + dot(uv / 420.0, audioReplace)) * float3(0.2, 0.3, 0.9) * 123.2;
 
             float3 color = sin(hueShift) * 0.5 + 0.5;

@@ -85,6 +85,9 @@ float4 PSMain(PSInput input) : SV_Target {
         n1 = glsl_mod(n1 - a, a * 2.) - a;
         s = 3. + c2;
 
+        float _eBase = 1.4 + sin(time * 0.234) * 0.1;
+        float _n1x_off = cos(time * 0.3 + 0.5 * cos(time * 0.3)) * 3.;
+        float _n1z_off = 8. + cos(time * 0.5) * 5.;
         for (int ii = 0; ii++ < 8;) {
             n1 = 0.3 - abs(n1);
 
@@ -96,11 +99,11 @@ float4 PSMain(PSInput input) : SV_Target {
             q = q.x < q.y ? q.zwxy : q.zwyx;
             q = q.z < q.y ? q.xyzw : q.ywxz;
 
-            s *= e = 1.4 + sin(time * 0.234) * 0.1;
+            s *= e = _eBase;
             n1 = abs(n1) * e - float3(
-                q.w + cos(time * 0.3 + 0.5 * cos(time * 0.3)) * 3.,
+                q.w + _n1x_off,
                 120.,
-                8. + cos(time * 0.5) * 5.);
+                _n1z_off);
         }
 
         g += e = length(n1.xy) / s;

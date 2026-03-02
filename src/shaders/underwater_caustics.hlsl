@@ -43,7 +43,8 @@ float manDist(float2 f, float2 t) {
 
 float distFn(float2 f, float2 t) {
     float x = length(f - t);
-    return pow(x, 4.0);
+    float x2 = x * x;
+    return x2 * x2;
 }
 
 float voronoi(float2 uv, float t, float seed, float size) {

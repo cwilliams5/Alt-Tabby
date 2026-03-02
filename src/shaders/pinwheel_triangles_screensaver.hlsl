@@ -173,7 +173,7 @@ float4 PSMain(PSInput input) : SV_Target {
         cos(time * 0.113) * 0.5 + 0.5);
 
     fragColor.rgb = fmod((float3)PinwheelID, v) / (v - 1.0);
-    fragColor.rgb = fmod(fragColor.rgb + s, (float3)1.0);
+    fragColor.rgb = frac(fragColor.rgb + s);
 
     float scale = float(nbIterations);
     scale = pow(2.0, scale) / viewportMagnify / scale * 5.5;

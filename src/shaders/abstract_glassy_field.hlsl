@@ -203,7 +203,8 @@ float4 PSMain(PSInput input) : SV_Target {
         float3 tx = (float3).05;
 
         // Simple coloring
-        col = tx*(di*.1 + ao*.25) + float3(.5, .7, 1)*sp*2. + float3(1, .7, .4)*pow(fr, 8.)*.25;
+        float _fr2 = fr*fr; float _fr4 = _fr2*_fr2;
+        col = tx*(di*.1 + ao*.25) + float3(.5, .7, 1)*sp*2. + float3(1, .7, .4)*(_fr4*_fr4)*.25;
 
         // Fake reflection and refraction
         float3 halfN = svn*.5 + n*.5;

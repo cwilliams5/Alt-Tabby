@@ -85,7 +85,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // spec
     float3 H = normalize(ld + v);
     float S = max(0.0, dot(grad, H));
-    S = pow(S, 4.0) * 0.2;
+    float S2 = S * S; S = S2 * S2 * 0.2;
     fragColor.rgb += S * float3(0.4, 0.7, 0.7);
 
     // rim

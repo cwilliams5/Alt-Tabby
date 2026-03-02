@@ -39,7 +39,7 @@ float4 PSMain(PSInput input) : SV_Target {
     }
     c /= float(MAX_ITER);
     c = 1.17 - pow(c, 1.4);
-    float v = pow(abs(c), 8.0);
+    float _ac = abs(c); float _ac2 = _ac*_ac; float _ac4 = _ac2*_ac2; float v = _ac4*_ac4;
     float3 colour = saturate(float3(v, v, v) + float3(0.0, 0.35, 0.5));
 
     float3 color = colour;

@@ -96,16 +96,17 @@ float Layer(float2 uv) {
 float4 volumetric(float3 ro, float3 rd) {
     float s = 0.1, fade = 1.0;
     float3 v = (float3)0;
+    // GLSL mat2 column-major → HLSL row-major (transposed)
+    float _cs = cos(time * 0.05);
+    float _sn = sin(time * 0.05);
+    float2x2 _rotT = float2x2(_cs, -_sn, _sn, _cs);
     for (int r = 0; r < volsteps; r++) {
         float3 p = ro + s * rd * 0.5;
         p = abs((float3)tile - glsl_mod(p, (float3)(tile * 2.0)));
         float pa = 0.0, a = 0.0;
         for (int i = 0; i < iterations; i++) {
             p = abs(p) / dot(p, p) - formuparam;
-            // GLSL mat2 column-major → HLSL row-major (transposed)
-            float cs = cos(time * 0.05);
-            float sn = sin(time * 0.05);
-            p.xy = mul(p.xy, float2x2(cs, -sn, sn, cs));
+            p.xy = mul(p.xy, _rotT);
             a += abs(length(p) - pa);
             pa = length(p);
         }

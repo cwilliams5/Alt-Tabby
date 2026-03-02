@@ -66,7 +66,7 @@ float3 aces_approx(float3 v) {
   float c = 2.43f;
   float d = 0.59f;
   float e = 0.14f;
-  return clamp((v*(a*v+b))/(v*(c*v+d)+e), 0.0f, 1.0f);
+  return saturate((v*(a*v+b))/(v*(c*v+d)+e));
 }
 
 float tanh_approx(float x) {
@@ -88,7 +88,8 @@ float box(float2 p, float2 b) {
 float3 render0(float3 ro, float3 rd) {
   float3 col = (float3)0;
   float sf = 1.0001-max(dot(sunDir1, rd), 0.0);
-  col += skyCol*pow((1.0-abs(rd.y)), 8.0);
+  float _sky = 1.0-abs(rd.y); float _sky2 = _sky*_sky; float _sky4 = _sky2*_sky2;
+  col += skyCol*(_sky4*_sky4);
   col += (lerp(0.0025, 0.125, tanh_approx(.005/sf))/abs(rd.y))*skylineCol;
   sf *= sf;
   col += sunCol*0.00005/sf;

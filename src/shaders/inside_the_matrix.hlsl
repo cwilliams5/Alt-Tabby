@@ -196,7 +196,7 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
                         if (char_hash.x >= 0.1 || c == 0.0) {
                             float time_factor = floor(c == 0.0 ? t_time * 5.0 :
                                     t_time * (1.0 * cell_hash2.z +
-                                            cell_hash2.w * cell_hash2.w * 4.0 * pow(char_hash.y, 4.0)));
+                                            cell_hash2.w * cell_hash2.w * 4.0 * (char_hash.y * char_hash.y * char_hash.y * char_hash.y)));
                             float a = random_char(float2(char_hash.x, time_factor), float2(u, q), max(1.0, 3.0 - c / 2.0) * 0.2);
                             a *= saturate((chars_count - 0.5 - c) / 2.0);
                             if (a > 0.0) {

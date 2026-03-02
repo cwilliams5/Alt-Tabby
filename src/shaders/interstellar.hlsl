@@ -59,7 +59,8 @@ float4 PSMain(PSInput input) : SV_Target
         float z = Noise((int2)pos.xy).x;
         z = frac(z - offset);
         float d = 50.0 * z - pos.z;
-        float w = pow(max(0.0, 1.0 - 8.0 * length(frac(pos.xy) - 0.5)), 2.0);
+        float _wt = max(0.0, 1.0 - 8.0 * length(frac(pos.xy) - 0.5));
+        float w = _wt * _wt;
         float3 c = max((float3)0, float3(1.0 - abs(d + speed2 * 0.5) / speed, 1.0 - abs(d) / speed, 1.0 - abs(d - speed2 * 0.5) / speed));
         col += 1.5 * (1.0 - z) * c * w;
         pos += stp;

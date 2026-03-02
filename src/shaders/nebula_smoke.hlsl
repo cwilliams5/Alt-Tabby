@@ -41,6 +41,7 @@ float4 PSMain(PSInput input) : SV_Target {
     uv.x *= resolution.x / resolution.y;
 
     float accum = 0.0;
+    float _rotBase = 0.1 + time * 0.2 + sin(time * 0.1) * 0.9;
     for (int i = 0; i < 83; i++) {
         float fi = float(i);
         float thisYOffset = fmod(hash11(fi * 0.017) * (time + 19.0) * 0.2, 4.0) - 2.0;
@@ -48,7 +49,7 @@ float4 PSMain(PSInput input) : SV_Target {
         float radius = 0.5;
         float2 offset = uv - center;
         float twistFactor = (hash11(fi * 0.0347) * 2.0 - 1.0) * 1.9;
-        float rotation = 0.1 + time * 0.2 + sin(time * 0.1) * 0.9 + (length(offset) / radius) * twistFactor;
+        float rotation = _rotBase + (length(offset) / radius) * twistFactor;
         float polyFade = smoothstep(radius, 0.0, polygonDistance(uv - center, 0.1 + hash11(fi * 2.3) * 0.2, rotation, 5) + 0.1);
         accum += polyFade * polyFade * polyFade;
     }

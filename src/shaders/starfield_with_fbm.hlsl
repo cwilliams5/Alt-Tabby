@@ -128,15 +128,16 @@ float4 PSMain(PSInput input) : SV_Target {
     // volumetric rendering
     float s2 = 0.1, fade = 1.;
     float3 v = (float3)0.;
+    float _ct = cos(time * 0.05);
+    float _sn = sin(time * 0.05);
+    float2x2 _rotT = float2x2(_ct, -_sn, _sn, _ct);
     for (int r = 0; r < volsteps; r++) {
         float3 p = from + s * dir * .5 + o.xyz;
         p = abs((float3)tile - glsl_mod(p, (float3)(tile * 2.))) + o.xyz;
         float pa = 0., a = 0.;
         for (int k = 0; k < iterations; k++) {
             p = abs(p) / dot(p, p) - formuparam;
-            float ct = cos(time * 0.05);
-            float sn = sin(time * 0.05);
-            p.xy = mul(float2x2(ct, -sn, sn, ct), p.xy);
+            p.xy = mul(_rotT, p.xy);
             a += abs(length(p) - pa);
             pa = length(p);
         }

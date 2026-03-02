@@ -208,10 +208,10 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // specular and diffuse
     float3 color = float3(0.0, 0.0, 0.0);
-    color += 0.55*baseCol1.zyx*pow(diff1, 1.0);
-    color += 0.55*baseCol1.zyx*pow(diff1, 1.0);
-    color += 0.55*baseCol2.zyx*pow(diff2, 1.0);
-    color += 0.55*baseCol2.zyx*pow(diff2, 1.0);
+    color += 0.55*baseCol1.zyx*diff1;
+    color += 0.55*baseCol1.zyx*diff1;
+    color += 0.55*baseCol2.zyx*diff2;
+    color += 0.55*baseCol2.zyx*diff2;
     color += scol1*0.5;
     color += scol2*0.5;
 

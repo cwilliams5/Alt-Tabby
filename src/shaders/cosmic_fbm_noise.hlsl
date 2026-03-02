@@ -145,11 +145,11 @@ float3 Oilnoise(float2 pos, float3 RGB) {
 
     float gain = 0.44;
     float2 aPos = abs2d(pos) * 0.0;
+    float tm = (sin(time) * 0.5 + 0.5) * 0.2 + time * 0.8;
 
     for (float i = 0.0; i < OC; i++) {
         pos = mul(pos, rotMat(D2R * 30.0));
 
-        float tm = (sin(time) * 0.5 + 0.5) * 0.2 + time * 0.8;
         q = pos * s + tm;
         q = pos * s + aPos + tm;
         q = cos(q);
@@ -163,7 +163,7 @@ float3 Oilnoise(float2 pos, float3 RGB) {
     }
 
     result = pow(result, 4.504);
-    return clamp(RGB / abs1d(dot(q, float2(-0.240, 0.000))) * 0.5 / result, (float3)0.0, (float3)1.0);
+    return saturate(RGB / abs1d(dot(q, float2(-0.240, 0.000))) * 0.5 / result);
 }
 
 float4 PSMain(PSInput input) : SV_Target {
@@ -234,6 +234,9 @@ float4 PSMain(PSInput input) : SV_Target {
     col *= float3(0.9, 0.9, 1.0);
     float s = 0.1, fade = 1.0;
     float3 v = (float3)0.0;
+    float _cosT = cos(time * 0.05);
+    float _sinT = sin(time * 0.05);
+    float2x2 _rotT = float2x2(_cosT, _sinT, -_sinT, _cosT);
     for (int r = 0; r < VOLSTEPS; r++) {
         float3 p = from + s * dir + 0.5;
 
@@ -243,9 +246,7 @@ float4 PSMain(PSInput input) : SV_Target {
         a = 0.0;
         for (int i = 0; i < ITERATIONS; i++) {
             p = abs(p) / dot(p, p) - FORMUPARAM;
-            float cosT = cos(time * 0.05);
-            float sinT = sin(time * 0.05);
-            p.xy = mul(p.xy, float2x2(cosT, sinT, -sinT, cosT));
+            p.xy = mul(p.xy, _rotT);
             a += abs(length(p) - pa);
             pa = length(p);
         }

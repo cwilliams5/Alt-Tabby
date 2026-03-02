@@ -225,11 +225,13 @@ float4 PSMain(PSInput input) : SV_Target
     uv *= 1.8;
 
     float smokeIntensity = layeredNoise1_2(uv * 10.0 + time * 4.0 * MOVEMENT_DIRECTION * MOVEMENT_SPEED, 1.7, 0.7, 6, 0.2);
-    smokeIntensity *= pow(1.0 - smoothstep(-1.0, 1.6, uv.y), 2.0);
+    float _ssFade = 1.0 - smoothstep(-1.0, 1.6, uv.y);
+    smokeIntensity *= _ssFade * _ssFade;
     float3 smoke = smokeIntensity * SMOKE_COLOR * 0.8 * vignette;
 
     // Cutting holes in smoke
-    smoke *= pow(layeredNoise1_2(uv * 4.0 + time * 0.5 * MOVEMENT_DIRECTION * MOVEMENT_SPEED, 1.8, 0.5, 3, 0.2), 2.0) * 1.5;
+    float _holeNoise = layeredNoise1_2(uv * 4.0 + time * 0.5 * MOVEMENT_DIRECTION * MOVEMENT_SPEED, 1.8, 0.5, 3, 0.2);
+    smoke *= (_holeNoise * _holeNoise) * 1.5;
 
     float3 particles = layeredParticles(uv, SIZE_MOD, ALPHA_MOD, LAYERS_COUNT, smokeIntensity);
 

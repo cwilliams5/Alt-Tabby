@@ -205,7 +205,7 @@ float3 StaticRaindrops(float2 UV, float Time, float UVScale) {
     float DistanceScale = 0.2 / (1.0 - 0.8 * cos(Theta - 3.141593 / 2.0 - 1.6));
     float YDistance = length(float2(0.0, TempUV.y) - float2(0.0, RandomPoint.y));
 
-    float NewDistance = MapToRange(0.0, DistanceMaxRange * pow(DistanceScale, 1.0), Distance);
+    float NewDistance = MapToRange(0.0, DistanceMaxRange * DistanceScale, Distance);
 
     float Scale = 1.65 * (0.2 + DistanceScale * 1.0) * DistanceMaxRange * lerp(1.5, 0.5, RandVal.x);
     float2 TempXY = float2(XY.x * 1.0, XY.y) * 4.0;

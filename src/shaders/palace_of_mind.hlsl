@@ -18,7 +18,9 @@ float3 glsl_mod3(float3 x, float y) {
 
 float2 rot(float2 p, float r) {
     // GLSL mat2(cos,sin,-sin,cos) is column-major; transpose for HLSL row-major
-    float2x2 m = float2x2(cos(r), -sin(r), sin(r), cos(r));
+    float s, c;
+    sincos(r, s, c);
+    float2x2 m = float2x2(c, -s, s, c);
     return mul(m, p);
 }
 
@@ -117,7 +119,9 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 p = (fragCoord.xy * 2.0 - resolution) / resolution.yy;
     float3 tn = time * float3(0.0, 0.0, 1.0) * 0.3;
     float tk = time * 0.3;
-    float3 ro = float3(1.0 * cos(tk), 0.2 * sin(tk), 1.0 * sin(tk)) + tn;
+    float stk, ctk;
+    sincos(tk, stk, ctk);
+    float3 ro = float3(ctk, 0.2 * stk, stk) + tn;
     float3 ta = float3(0.0, 0.0, 0.0) + tn;
     float3 cdir = normalize(ta - ro);
     float3 up = float3(0., 1., 0.);
@@ -141,9 +145,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float fogFade = saturate((far - t) / (far - near));
     col = lerp(bcol, col, fogFade * fogFade);
 
-    col.x = pow(col.x, 2.2);
-    col.y = pow(col.y, 2.2);
-    col.z = pow(col.z, 2.2);
+    col = pow(col, (float3)2.2);
     col *= 2.0;
 
     // Darken/desaturate post-processing

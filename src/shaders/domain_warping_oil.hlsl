@@ -197,11 +197,12 @@ float4 PSMain(PSInput input) : SV_Target {
     float f = pattern(p, q, r);
 
     float3 color = (float3)0.0;
-    color = lerp(spectrum1, spectrum3, pow(length(q), 4.0));
+    float _lq = length(q); float _lq2 = _lq * _lq;
+    color = lerp(spectrum1, spectrum3, _lq2 * _lq2);
     color = lerp(color, spectrum0, pow(length(r), 1.4));
     color = lerp(color, spectrum2, f);
 
-    color = pow(color, (float3)2.0);
+    color = color * color;
 
     // Darken / desaturate post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));

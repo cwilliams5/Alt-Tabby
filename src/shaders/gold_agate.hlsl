@@ -57,10 +57,13 @@ float4 PSMain(PSInput input) : SV_Target {
     float f = pattern(uv, q, r, 0.1 * time);
 
     // mix colours
-    c = lerp(col1, (float3)0, pow(smoothstep(.0, .9, f), 2.));
-    c += col2 * pow(smoothstep(0., .8, dot(q, r) * .6), 3.) * 1.5;
+    float _ss1 = smoothstep(.0, .9, f);
+    c = lerp(col1, (float3)0, _ss1 * _ss1);
+    float _ss2 = smoothstep(0., .8, dot(q, r) * .6);
+    c += col2 * (_ss2 * _ss2 * _ss2) * 1.5;
     // add contrast
-    c *= pow(dot(q, r) + .3, 3.);
+    float _dqr = dot(q, r) + .3;
+    c *= _dqr * _dqr * _dqr;
     // soften the bright parts
     c *= f * 1.5;
 

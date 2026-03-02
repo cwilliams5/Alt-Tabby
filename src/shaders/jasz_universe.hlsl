@@ -109,7 +109,8 @@ float3 fogMarch(float3 rayStart, float3 rayDirection, float t, float disMod) {
 
 // Audio stripped - gentle time-based pulse as substitute
 float getBeat() {
-    return smoothstep(0.6, 0.9, pow(sin(time * 1.5) * 0.5 + 0.5, 4.0)) * 0.3;
+    float _bt = sin(time * 1.5) * 0.5 + 0.5; float _bt2 = _bt * _bt;
+    return smoothstep(0.6, 0.9, _bt2 * _bt2) * 0.3;
 }
 
 // --- Entry point ---

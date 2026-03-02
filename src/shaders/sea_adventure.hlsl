@@ -348,7 +348,7 @@ float3 getPixel(float2 coord)
     float3 col = (float3)0;
     col = (float3)((dot(l, -n) * .5 + .5) * (1. / (0.01 + dd * falloff)));
     col += sqrt(g_at * .2) * float3(1, 0, 0);
-    col += pow(g_at1 * .2, 1.) * float3(0, 153. / 255., 153. / 255.);
+    col += (g_at1 * .2) * float3(0, 153. / 255., 153. / 255.);
     float moonTerm = g_moonlight * 2.;
     col += moonTerm * moonTerm;
     float fireTerm = g_fire * 0.01;

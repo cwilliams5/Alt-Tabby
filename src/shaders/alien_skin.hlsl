@@ -158,8 +158,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 col = (float3)0.0;
     col += baseCol1*pow(diff1, 16.0);
-    col += 0.1*baseCol1*pow(diff1, 4.0);
-    col += 0.15*baseCol2*pow(diff2, 8.0);
+    float _d1_2 = diff1 * diff1; col += 0.1*baseCol1*(_d1_2 * _d1_2);
+    float _d2_2 = diff2 * diff2; float _d2_4 = _d2_2 * _d2_2; col += 0.15*baseCol2*(_d2_4 * _d2_4);
     col += 0.015*baseCol2*(diff2 * diff2);
 
     col = saturate(col);

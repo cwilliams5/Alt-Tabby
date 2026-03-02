@@ -219,7 +219,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 col = (float3)0.0;
     col += baseCol * pow(diff1, 6.0);
     col += 0.1 * baseCol * pow(diff1, 1.5);
-    col += 0.15 * baseCol.zyx * pow(diff2, 8.0);
+    float _wd2 = diff2*diff2; float _wd4 = _wd2*_wd2; col += 0.15 * baseCol.zyx * (_wd4*_wd4);
     col += 0.015 * baseCol.zyx * (diff2 * diff2);
     col += scol * 0.5;
 
