@@ -217,7 +217,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 scol = baseCol * (smoothstep(level0, level1, h) - smoothstep(level0, level1, oh));
 
     float3 col = (float3)0.0;
-    col += baseCol * pow(diff1, 6.0);
+    float _wd1_2 = diff1*diff1; float _wd1_4 = _wd1_2*_wd1_2;
+    col += baseCol * (_wd1_2*_wd1_4);
     col += 0.1 * baseCol * pow(diff1, 1.5);
     float _wd2 = diff2*diff2; float _wd4 = _wd2*_wd2; col += 0.15 * baseCol.zyx * (_wd4*_wd4);
     col += 0.015 * baseCol.zyx * (diff2 * diff2);
@@ -227,7 +228,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

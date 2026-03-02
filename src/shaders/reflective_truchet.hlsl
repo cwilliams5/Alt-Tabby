@@ -134,8 +134,10 @@ float4 PSMain(PSInput input) : SV_Target {
         r = reflect(I, n);
         f = 1.0 + dot(n, I);
         f *= f;
-        if (z < MaxDistance)
-            c += pow(max(0.0, dot(n, LD)), 9.0);
+        if (z < MaxDistance) {
+            float _nl = max(0.0, dot(n, LD)); float _nl2 = _nl*_nl; float _nl4 = _nl2*_nl2; float _nl8 = _nl4*_nl4;
+            c += _nl*_nl8;
+        }
         o += A * c * (1.1 + sin(2.5 * f + ColorBase));
         A *= lerp(0.3, 0.7, f);
         P = p + 0.05 * n;
@@ -150,7 +152,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken / desaturate post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

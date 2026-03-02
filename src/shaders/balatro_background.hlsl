@@ -37,7 +37,9 @@ float4 PSMain(PSInput input) : SV_Target {
     float clamped_speed = min(6.0, speed);
     float new_pixel_angle = atan2(uv.y, uv.x) + (2.2 + 0.4 * clamped_speed) * uv_len - 1.0 - speed * 0.05 - clamped_speed * speed * 0.02 + VORT_OFFSET;
     float2 mid = normalize(resolution.xy) * 0.5;
-    float2 sv = float2(uv_len * cos(new_pixel_angle) + mid.x, uv_len * sin(new_pixel_angle) + mid.y) - mid;
+    float sNPA, cNPA;
+    sincos(new_pixel_angle, sNPA, cNPA);
+    float2 sv = float2(uv_len * cNPA + mid.x, uv_len * sNPA + mid.y) - mid;
 
     // Now add the smoke effect to the swirled UV
     sv *= 30.0;
@@ -67,7 +69,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Desaturate and darken
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiply

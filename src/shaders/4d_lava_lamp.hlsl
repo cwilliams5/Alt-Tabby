@@ -80,8 +80,10 @@ float noise4(float2 uv)
     float f = 0.5;
     float frequency = 1.75;
     float amplitude = 0.5;
+    float logTime3 = log(time + 3.0);
+    float2 rotOffset = rotate(float2(logTime3, logTime3 / 999.0), time / 9999.0);
     for (int i = 0; i < 7; i++) {
-        f += amplitude * noise(frequency * uv - rotate(float2(log(time + 3.0), log(time + 3.0) / 999.0), time / 9999.0));
+        f += amplitude * noise(frequency * uv - rotOffset);
         frequency *= 2.0;
         amplitude *= 0.5;
     }
@@ -117,7 +119,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiply

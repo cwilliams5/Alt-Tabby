@@ -171,7 +171,8 @@ float4 PSMain(PSInput input) : SV_Target {
         float sh = sha(p, l, 0.04, d, 16.);
 
         float di = max(dot(l, n), 0.);
-        float sp = pow(max(dot(reflect(r, n), l), 0.), 64.);
+        float _sp0 = max(dot(reflect(r, n), l), 0.); float _sp2 = _sp0*_sp0; float _sp4 = _sp2*_sp2;
+        float _sp8 = _sp4*_sp4; float _sp16 = _sp8*_sp8; float _sp32 = _sp16*_sp16; float sp = _sp32*_sp32;
         float fr = saturate(1.0 + dot(r, n));
 
         float3 tx = (float3).05;
@@ -187,7 +188,7 @@ float4 PSMain(PSInput input) : SV_Target {
         refl *= refl*.3;
         refr_col *= refr_col*.4;
 
-        float3 refCol = lerp(refr_col, refl, pow(fr, 5.));
+        float3 refCol = lerp(refr_col, refl, fr*_fr4);
         col += refCol*((di*di*.25 + .75) + ao*.25)*1.5;
 
         // Hue variation for depth

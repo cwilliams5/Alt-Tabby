@@ -103,10 +103,12 @@ float snoise(float3 v) {
 }
 
 float fbm4(float3 p, float theta, float f, float lac, float r) {
+    float sT, cT;
+    sincos(theta, sT, cT);
     float3x3 mtx = float3x3(
-        cos(theta), -sin(theta), 0.0,
-        sin(theta),  cos(theta), 0.0,
-        0.0,         0.0,        1.0);
+        cT, -sT, 0.0,
+        sT,  cT, 0.0,
+        0.0, 0.0, 1.0);
 
     float lacunarity = lac;
     float roughness = r;
@@ -128,10 +130,12 @@ float fbm4(float3 p, float theta, float f, float lac, float r) {
 }
 
 float fbm8(float3 p, float theta, float f, float lac, float r) {
+    float sT, cT;
+    sincos(theta, sT, cT);
     float3x3 mtx = float3x3(
-        cos(theta), -sin(theta), 0.0,
-        sin(theta),  cos(theta), 0.0,
-        0.0,         0.0,        1.0);
+        cT, -sT, 0.0,
+        sT,  cT, 0.0,
+        0.0, 0.0, 1.0);
 
     float lacunarity = lac;
     float roughness = r;
@@ -206,7 +210,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken / desaturate post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiply

@@ -35,7 +35,8 @@ float4 PSMain(PSInput input) : SV_Target {
     {
         float t = stime * (1.0 - (3.5 / float(n + 1)));
         i = p + float2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
-        c += 1.0 / length(float2(p.x / (sin(i.x + t) / inten), p.y / (cos(i.y + t) / inten)));
+        float2 cv = float2(p.x / (sin(i.x + t) / inten), p.y / (cos(i.y + t) / inten));
+        c += rsqrt(dot(cv, cv));
     }
     c /= float(MAX_ITER);
     c = 1.17 - pow(c, 1.4);
@@ -46,7 +47,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

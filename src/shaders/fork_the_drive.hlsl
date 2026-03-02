@@ -182,7 +182,8 @@ float3 HeadLights(float i, float t) {
     m += BokehMask(ro, rd, p - float3(.1, 0., 0.), size, blur);
     #endif
 
-    float distFade = max(.01, pow(1. - z, 9.));
+    float _omz = 1. - z; float _omz2 = _omz*_omz; float _omz4 = _omz2*_omz2; float _omz8 = _omz4*_omz4;
+    float distFade = max(.01, _omz*_omz8);
 
     blur = .8;
     size *= 2.5;
@@ -250,8 +251,9 @@ float3 StreetLights(float i, float t) {
     float d = length(p - ro);
     float blur = .1;
     float3 rp = ClosestPoint(ro, rd, p);
-    float distFade = Remap(1., .7, .1, 1.5, 1. - pow(1. - z, 6.));
-    distFade *= (1. - z);
+    float _sz = 1. - z; float _sz2 = _sz*_sz; float _sz4 = _sz2*_sz2;
+    float distFade = Remap(1., .7, .1, 1.5, 1. - _sz2*_sz4);
+    distFade *= _sz;
     float m = BokehMask(ro, rd, p, .05 * d, blur) * distFade;
 
     return m * streetLightCol;
@@ -268,11 +270,14 @@ float3 EnvironmentLights(float i, float t) {
     float d = length(p - ro);
     float blur = .1;
     float3 rp = ClosestPoint(ro, rd, p);
-    float distFade = Remap(1., .7, .1, 1.5, 1. - pow(1. - z, 6.));
+    float _ez = 1. - z; float _ez2 = _ez*_ez; float _ez4 = _ez2*_ez2;
+    float distFade = Remap(1., .7, .1, 1.5, 1. - _ez2*_ez4);
     float m = BokehMask(ro, rd, p, .05 * d, blur);
     m *= distFade * distFade * .5;
 
-    m *= 1. - pow(sin(z * 6.28 * 20. * n) * .5 + .5, 20.);
+    float _sn = sin(z * 6.28 * 20. * n) * .5 + .5; float _sn2 = _sn*_sn; float _sn4 = _sn2*_sn2;
+    float _sn8 = _sn4*_sn4; float _sn16 = _sn8*_sn8;
+    m *= 1. - _sn4*_sn16;
     float3 randomCol = float3(frac(n * -34.5), frac(n * 4572.), frac(n * 1264.));
     float3 col = lerp(tailLightCol, streetLightCol, frac(n * -65.42));
     col = lerp(col, randomCol, n);
@@ -335,7 +340,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

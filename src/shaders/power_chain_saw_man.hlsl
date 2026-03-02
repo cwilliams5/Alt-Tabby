@@ -406,7 +406,8 @@ float3 background(float2 uv) {
     float satBg = sat(fb2 * 2.4);
     col = lerp(col, BACKGROUND_COLOR, satBg * sqrt(satBg));
     col = lerp(col, float3(0.4, 0.3, 0.7), pow(sat(fb2 * 0.7), 1.9));
-    col = lerp(col, float3(0.3, 0.6, 0.6), pow(sat(fa2 * 1.5), 20.0) * 0.7);
+    float pcs = sat(fa2 * 1.5); float pcs2 = pcs*pcs; float pcs4 = pcs2*pcs2; float pcs8 = pcs4*pcs4; float pcs16 = pcs8*pcs8;
+    col = lerp(col, float3(0.3, 0.6, 0.6), pcs4*pcs16 * 0.7);
     col = lerp(col, (float3)0, voronoi(uv * 10.0 + fa1 * 4.0) * 0.8);
 
     col.yz = mul(rot(-0.16), col.yz);
@@ -942,7 +943,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

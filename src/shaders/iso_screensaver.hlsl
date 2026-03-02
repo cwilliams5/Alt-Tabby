@@ -68,7 +68,8 @@ float3 getColor(float2 p) {
     float3 c1 = pal(9.19232 * n, a, b, c, d);
     float3 c2 = pal(9.19232 * (n - 1.0 / 10.0), a, b, c, d);
 
-    return lerp(c1, c2, pow(t, 15.0));
+    float _t2 = t*t; float _t4 = _t2*_t2; float _t8 = _t4*_t4;
+    return lerp(c1, c2, t*_t2*_t4*_t8);
 }
 
 float4 PSMain(PSInput input) : SV_Target {
@@ -82,7 +83,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

@@ -127,7 +127,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(result, float3(0.299, 0.587, 0.114));
-    result = lerp(result, float3(lum, lum, lum), desaturate);
+    result = lerp(result, (float3)lum, desaturate);
     result = result * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

@@ -399,7 +399,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken / desaturate post-processing
     float lum = dot(FinalColor, float3(0.299, 0.587, 0.114));
-    FinalColor = lerp(FinalColor, float3(lum, lum, lum), desaturate);
+    FinalColor = lerp(FinalColor, (float3)lum, desaturate);
     FinalColor = FinalColor * (1.0 - darken);
 
     // Transparency: raindrop areas visible, non-drop areas transparent

@@ -16,7 +16,7 @@ struct PSInput {
     float2 uv : TEXCOORD0;
 };
 
-float2x2 rot(float a) { return float2x2(sin(a), cos(a), -cos(a), sin(a)); }
+float2x2 rot(float a) { float sa, ca; sincos(a, sa, ca); return float2x2(sa, ca, -ca, sa); }
 
 float noise(in float2 x) { return smoothstep(0., 1., sin(1.5 * x.x) * sin(1.5 * x.y)); }
 
@@ -69,7 +69,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(c, float3(0.299, 0.587, 0.114));
-    c = lerp(c, float3(lum, lum, lum), desaturate);
+    c = lerp(c, (float3)lum, desaturate);
     c = c * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

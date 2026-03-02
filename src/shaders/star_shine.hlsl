@@ -199,7 +199,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // Alpha from brightness + premultiply
     float3 color = fragColor.rgb;
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
     float a_val = max(color.r, max(color.g, color.b));
     return float4(color * a_val, a_val);

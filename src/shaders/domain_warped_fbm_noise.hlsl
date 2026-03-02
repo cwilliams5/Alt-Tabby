@@ -90,11 +90,11 @@ float4 PSMain(PSInput input) : SV_Target {
     colour = lerp(colour, float3(0.2, 0.2, 0.2), clamp(q.x, -1.0, 0.0) * 3.0);
 
     float3 col = -colour + abs(colour) * 2.0;
-    float alphaOrig = 1.0 / length(q);
+    float alphaOrig = rsqrt(dot(q, q));
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

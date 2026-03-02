@@ -117,7 +117,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 col = march(from, dir);
 
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
     float a = max(col.r, max(col.g, col.b));
     return float4(col * a, a);

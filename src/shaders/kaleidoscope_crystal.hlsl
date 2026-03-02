@@ -112,7 +112,9 @@ float4 PSMain(PSInput input) : SV_Target {
     g_uv -= 0.5;
     g_uv /= float2(resolution.y / resolution.x, 1.0);
     float an = (sin(tt * 0.3) * 0.5 + 0.5);
-    an = 1.0 - pow(1.0 - pow(an, 5.0), 10.0);
+    float _an2 = an*an; float _an4 = _an2*_an2; float _an5 = an*_an4;
+    float _b = 1.0 - _an5; float _b2 = _b*_b; float _b4 = _b2*_b2; float _b8 = _b4*_b4;
+    an = 1.0 - _b2*_b8;
     ro = float3(0.0, 0.0, -5.0 - an * 15.0);
     rd = normalize(float3(g_uv, 1.0));
 
@@ -141,7 +143,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiply

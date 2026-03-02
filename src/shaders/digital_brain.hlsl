@@ -137,7 +137,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // alpha from brightness, darken/desaturate, premultiply
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
     float al = max(col.r, max(col.g, col.b));
     return float4(col * al, al);

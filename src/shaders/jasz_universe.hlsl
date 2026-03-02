@@ -133,20 +133,25 @@ float4 PSMain(PSInput input) : SV_Target {
     float angleX = cos(time * 0.712 * CAMERA_ROTATION_SPEED);
     float angleZ = sin(time * 1.779 * CAMERA_ROTATION_SPEED);
 
+    float sX, cX, sZ, cZ, sY, cY;
+    sincos(angleX, sX, cX);
+    sincos(angleZ, sZ, cZ);
+    sincos(angleY, sY, cY);
+
     float3x3 rotX = float3x3(
-        1, 0,            0,
-        0, sin(angleX), -cos(angleX),
-        0, cos(angleX),  sin(angleX));
+        1,  0,   0,
+        0,  sX, -cX,
+        0,  cX,  sX);
 
     float3x3 rotZ = float3x3(
-        sin(angleZ), -cos(angleZ), 0,
-        cos(angleZ),  sin(angleZ), 0,
-        0,            0,           1);
+        sZ, -cZ, 0,
+        cZ,  sZ, 0,
+        0,   0,  1);
 
     float3x3 rotY = float3x3(
-        sin(angleY),  0, -cos(angleY),
-        0,            1,  0,
-        cos(angleY),  0,  sin(angleY));
+        sY,  0, -cY,
+        0,   1,  0,
+        cY,  0,  sY);
 
     float3x3 rotation = mul(rotX, mul(rotZ, rotY));
 
@@ -167,7 +172,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken / desaturate post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

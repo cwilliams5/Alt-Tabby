@@ -47,7 +47,10 @@ float GetInterpolant(float Min, float Max, float CurrentValue) {
 float2x2 ZRotate_Skewed(float Angle) {
     float Skew = 1.0 - OscilateSinScalar(0.0, ROTATION_MATRIX_MAX_SKEW, ROTATION_MATRIX_SKEW_PERIOD);
     Angle = cos(Angle * 0.1) * cos(Angle * 0.7) * cos(Angle * 0.73) * 2.0;
-    return float2x2(sin(Angle * Skew), cos(Angle), -cos(Angle * Skew), sin(Angle));
+    float sA, cA, sAS, cAS;
+    sincos(Angle, sA, cA);
+    sincos(Angle * Skew, sAS, cAS);
+    return float2x2(sAS, cA, -cAS, sA);
 }
 
 float4 SampleMaterial(float2 uv) {
@@ -97,7 +100,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Post-processing: darken/desaturate
     float lum = dot(Colour, float3(0.299, 0.587, 0.114));
-    Colour = lerp(Colour, float3(lum, lum, lum), desaturate);
+    Colour = lerp(Colour, (float3)lum, desaturate);
     Colour = Colour * (1.0 - darken);
 
     // Alpha from brightness, premultiply

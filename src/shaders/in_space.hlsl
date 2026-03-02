@@ -101,8 +101,11 @@ float3 pal(float t, float3 a, float3 b, float3 c, float3 d) {
 
 float3 get_noise(float2 p, float timer) {
     float2 res = resolution / resolution.y;
-    float2 shiftx = res * 0.5 * 1.25 + 0.5 * (0.5 + 0.5 * float2(sin(timer * 0.0851), cos(timer * 0.0851)));
-    float2 shiftx2 = res * 0.5 * 2.0 + 0.5 * (0.5 + 0.5 * float2(sin(timer * 0.0851), cos(timer * 0.0851)));
+    float sT, cT;
+    sincos(timer * 0.0851, sT, cT);
+    float2 sc = 0.5 * (0.5 + 0.5 * float2(sT, cT));
+    float2 shiftx = res * 0.5 * 1.25 + sc;
+    float2 shiftx2 = res * 0.5 * 2.0 + sc;
     float2 tp = p + shiftx;
     float atx = (atan2(tp.x + 0.0001 * (1.0 - abs(sign(tp.x))), tp.y) / 3.141592653) * 0.5 + frac(timer * 0.025);
     float2 puv = ToPolar(tp);
@@ -126,7 +129,9 @@ float4 get_lines_color(float2 p, float3 n, float timer) {
     float3 col = (float3)0;
     float a = 1.0;
 
-    float2 shiftx = res * 0.5 * 1.25 + 0.5 * (0.5 + 0.5 * float2(sin(timer * 0.0851), cos(timer * 0.0851)));
+    float sT2, cT2;
+    sincos(timer * 0.0851, sT2, cT2);
+    float2 shiftx = res * 0.5 * 1.25 + 0.5 * (0.5 + 0.5 * float2(sT2, cT2));
     float2 tp = p + shiftx;
     float atx = (atan2(tp.x + 0.0001 * (1.0 - abs(sign(tp.x))), tp.y) / 3.141592653) * 0.5 + frac(timer * 0.025);
     float2 puv = ToPolar(tp);
@@ -197,9 +202,11 @@ float4 planet(float3 ro, float3 rd, float timer) {
     hori = abs(hori);
 
     float3 col = (float3)0;
-    col += pow(hori, 200.0) * float3(0.3, 0.7, 1.0) * 3.0;
-    col += pow(hori, 25.0) * float3(0.5, 0.5, 1.0) * 0.5;
-    col += pow(hori, 7.0) * pal(timer * 0.48 * 0.1, float3(0.8, 0.5, 0.04), float3(0.3, 0.04, 0.82), float3(2.0, 1.0, 1.0), float3(0.0, 0.25, 0.25)) * 1.0;
+    float h2 = hori*hori; float h4 = h2*h2; float h8 = h4*h4; float h16 = h8*h8;
+    float h32 = h16*h16; float h64 = h32*h32; float h128 = h64*h64;
+    col += (h128*h64*h8) * float3(0.3, 0.7, 1.0) * 3.0;
+    col += (hori*h8*h16) * float3(0.5, 0.5, 1.0) * 0.5;
+    col += (hori*h2*h4) * pal(timer * 0.48 * 0.1, float3(0.8, 0.5, 0.04), float3(0.3, 0.04, 0.82), float3(2.0, 1.0, 1.0), float3(0.0, 0.25, 0.25)) * 1.0;
     col = saturate(col);
 
     float t = fmod(timer, 15.0);
@@ -286,7 +293,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate for Alt-Tabby compositing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Brightness-based alpha with premultiply

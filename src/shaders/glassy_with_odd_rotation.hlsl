@@ -77,7 +77,8 @@ float4 PSMain(PSInput input) : SV_Target {
         float3 envColor = lerp(float3(0.8, 0.4, 0.8), (float3)1.0, 0.5 + 0.5 * reflectDir.y);
 
         // Specular highlight
-        float spec = pow(max(dot(reflectDir, lightDir), 0.0), 32.0);
+        float _sp0 = max(dot(reflectDir, lightDir), 0.0); float _sp2 = _sp0*_sp0; float _sp4 = _sp2*_sp2;
+        float _sp8 = _sp4*_sp4; float _sp16 = _sp8*_sp8; float spec = _sp16*_sp16;
 
         // Funky palette color
         float4 baseColor = (1.0 + sin(0.5 * q.z + length(p.xyz - q.xyz) + float4(0, 4, 3, 6)))
@@ -97,7 +98,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Apply darken/desaturate
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

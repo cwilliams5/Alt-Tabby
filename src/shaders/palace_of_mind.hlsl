@@ -98,7 +98,9 @@ float3 lighting(float3 p, float3 view) {
     float3 ld = normalize(float3(-1, 0.9 * sin(time * 0.5) - 0.1, 0));
     float NdotL = max(dot(ld, normal), 0.0);
     float3 R = normalize(-ld + NdotL * normal * 2.0);
-    float spec = pow(max(dot(-view, R), 0.0), 20.0) * saturate(sign(NdotL));
+    float _sp0 = max(dot(-view, R), 0.0); float _sp2 = _sp0*_sp0; float _sp4 = _sp2*_sp2;
+    float _sp8 = _sp4*_sp4; float _sp16 = _sp8*_sp8;
+    float spec = (_sp4*_sp16) * saturate(sign(NdotL));
     float3 col = float3(1, 1, 1) * (vn * vn * 0.9 + spec * 0.3);
     float k = 0.5;
     float ks = 0.9;
@@ -150,7 +152,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiply

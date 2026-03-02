@@ -95,7 +95,8 @@ float func(float2 q, out float2 o, out float2 n)
     f = lerp(f, f * f * f * -3.5, -f * abs(n.x));
 
     float g = 0.5 + 0.5 * sin(1.0 * p.x) * sin(1.0 * p.y);
-    f *= 1.0 - 0.5 * pow(g, 7.0);
+    float _g2 = g*g; float _g4 = _g2*_g2;
+    f *= 1.0 - 0.5 * (g*_g2*_g4);
 
     return f;
 }
@@ -138,13 +139,13 @@ float4 PSMain(PSInput input) : SV_Target
     col = (float3)0.8 - col;
     col = col * col;
     col *= float3(0.8, 1.15, 1.2);
-    col *= 0.45 + 0.5 * sqrt(16.0 * p.x * p.y * p.y * (2.0 - p.x) * (1.0 - p.y)) * float3(1.0, 0.3, 0.0);
+    col *= 0.45 + 2.0 * sqrt(p.x * p.y * p.y * (2.0 - p.x) * (1.0 - p.y)) * float3(1.0, 0.3, 0.0);
 
     col = saturate(col);
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

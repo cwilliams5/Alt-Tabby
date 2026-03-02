@@ -197,7 +197,8 @@ float4 PSMain(PSInput input) : SV_Target {
         float sh = sha(p, l, 0.04, d, 16.);
 
         float di = max(dot(l, n), 0.);
-        float sp = pow(max(dot(reflect(r, n), l), 0.), 64.);
+        float _sp0 = max(dot(reflect(r, n), l), 0.); float _sp2 = _sp0*_sp0; float _sp4 = _sp2*_sp2;
+        float _sp8 = _sp4*_sp4; float _sp16 = _sp8*_sp8; float _sp32 = _sp16*_sp16; float sp = _sp32*_sp32;
         float fr = saturate(1.0 + dot(r, n));
 
         float3 tx = (float3).05;
@@ -211,7 +212,7 @@ float4 PSMain(PSInput input) : SV_Target {
         float3 refl = envMap(normalize(reflect(r, halfN)), halfN);
         float3 refr = envMap(normalize(refract(r, halfN, 1./1.35)), halfN);
 
-        float3 refCol = lerp(refr, refl, pow(fr, 5.));
+        float3 refCol = lerp(refr, refl, fr*_fr4);
 
         col += refCol*((di*di*.25 + .75) + ao*.25)*1.5;
 
@@ -245,7 +246,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiply

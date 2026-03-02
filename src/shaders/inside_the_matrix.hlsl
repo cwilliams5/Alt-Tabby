@@ -166,7 +166,8 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
 
         float pos_z = ro3.z + rd3.z * t3s;
         float xycell_hash = hash_v2(float2(cell));
-        float z_shift = xycell_hash * 11.0 - t_time * (0.5 + xycell_hash * 1.0 + xycell_hash * xycell_hash * 1.0 + pow(xycell_hash, 16.0) * 3.0);
+        float _xh2 = xycell_hash*xycell_hash; float _xh4 = _xh2*_xh2; float _xh8 = _xh4*_xh4; float _xh16 = _xh8*_xh8;
+        float z_shift = xycell_hash * 11.0 - t_time * (0.5 + xycell_hash * 1.0 + _xh2 * 1.0 + _xh16 * 3.0);
         float char_z_shift = floor(z_shift / STRIP_CHAR_HEIGHT);
         z_shift = char_z_shift * STRIP_CHAR_HEIGHT;
         int zcell = int(floor((pos_z - z_shift) / ZCELL_SIZE));
@@ -420,7 +421,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, float3(lum, lum, lum), desaturate);
+    col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
     // Alpha from brightness, premultiplied

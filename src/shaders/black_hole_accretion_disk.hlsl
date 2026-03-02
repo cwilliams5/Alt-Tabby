@@ -45,7 +45,9 @@ float4 background(float3 ray)
 
     float brightness = value(uv * 3.0, 100.0);
     float color = value(uv * 2.0, 20.0);
-    brightness = pow(brightness, 256.0);
+    float b2 = brightness*brightness; float b4 = b2*b2; float b8 = b4*b4; float b16 = b8*b8;
+    float b32 = b16*b16; float b64 = b32*b32; float b128 = b64*b64; float b256 = b128*b128;
+    brightness = b256;
 
     brightness = brightness * 100.0;
     brightness = saturate(brightness);
@@ -237,7 +239,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Darken/desaturate post-processing
     float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, float3(lum, lum, lum), desaturate);
+    color = lerp(color, (float3)lum, desaturate);
     color = color * (1.0 - darken);
 
     // Alpha from brightness, premultiply
