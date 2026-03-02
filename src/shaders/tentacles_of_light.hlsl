@@ -61,7 +61,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float t = time * 0.25;
     float s, c;
     sincos(t, s, c);
-    uv -= float2(cos(t), sin(t)) * 0.15;
+    uv -= float2(c, s) * 0.15;
 
     for (float tentacleID = 0.0; tentacleID < 8.0; tentacleID++) {
         float distFromOrigin = length(uv);
@@ -74,7 +74,9 @@ float4 PSMain(PSInput input) : SV_Target {
         float2 offsetVector = uv.yx * float2(-1.0, 1.0);
         float2 offset = offsetVector * sin(tentacleHash * (distFromOrigin + tentacleHash * time)) * (1.0 - distFromOrigin);
 
-        color += smoothstep(0.03, 0.0, lineDist(uv + offset, float2(0.0, 0.0), float2(cos(angle), sin(angle)) * 1000.0)) * fadeOut * tentacleColor;
+        float _sa, _ca;
+        sincos(angle, _sa, _ca);
+        color += smoothstep(0.03, 0.0, lineDist(uv + offset, float2(0.0, 0.0), float2(_ca, _sa) * 1000.0)) * fadeOut * tentacleColor;
     }
 
     // Darken/desaturate post-processing

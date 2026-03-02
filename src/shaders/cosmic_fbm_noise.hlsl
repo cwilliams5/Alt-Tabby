@@ -147,8 +147,8 @@ float3 Oilnoise(float2 pos, float3 RGB) {
     float2 aPos = abs2d(pos) * 0.0;
     float tm = (sin(time) * 0.5 + 0.5) * 0.2 + time * 0.8;
 
-    float2x2 rot30 = rotMat(D2R * 30.0);
-    float2x2 rot1 = rotMat(D2R * 1.0);
+    static const float2x2 rot30 = float2x2(0.8660254, -0.5, 0.5, 0.8660254);
+    static const float2x2 rot1 = float2x2(0.9998477, -0.0174524, 0.0174524, 0.9998477);
     for (float i = 0.0; i < OC; i++) {
         pos = mul(pos, rot30);
 
@@ -199,7 +199,8 @@ float4 PSMain(PSInput input) : SV_Target {
         pt += float2(0.75 * cos(t * 4.0), 0.5 * sin(t * 3.0));
         pt /= 11.0 * sin(i);
         float componentColor = multiplier / ((uPos.x - pt.x) * (uPos.x - pt.x) + (uPos.y - pt.y) * (uPos.y - pt.y)) / i;
-        blueGodColor += float3(componentColor / 3.0, componentColor / 3.0, componentColor);
+        float cc3 = componentColor * 0.3333333;
+        blueGodColor += float3(cc3, cc3, componentColor);
     }
 
     float3 color = (float3)0.0;
@@ -251,8 +252,9 @@ float4 PSMain(PSInput input) : SV_Target {
         for (int i = 0; i < ITERATIONS; i++) {
             p = abs(p) / dot(p, p) - FORMUPARAM;
             p.xy = mul(p.xy, _rotT);
-            a += abs(length(p) - pa);
-            pa = length(p);
+            float lp = length(p);
+            a += abs(lp - pa);
+            pa = lp;
         }
         float dm = max(0.0, DARKMATTER - a * a * 0.001);
         a *= a * a;

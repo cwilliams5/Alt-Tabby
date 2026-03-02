@@ -214,9 +214,13 @@ float3 lighting(float3 sp, float3 camPos, int reflectionPass) {
     float3 n = calcNormal(sp);
     float3 objCol = float3(0.5, 0.5, 0.5);
 
-    float3 lp = float3(sin(time) * 50.0, cos(time) * 50.0, time * 10.0);
+    float _st, _ct;
+    sincos(time, _st, _ct);
+    float3 lp = float3(_st * 50.0, _ct * 50.0, time * 10.0);
     float3 ld = lp - sp;
-    float3 lcolor = float3(sin(time * 0.2), cos(time * 0.2), 1.0) / 3.0 + float3(1.0, 1.0, 1.0);
+    float _st2, _ct2;
+    sincos(time * 0.2, _st2, _ct2);
+    float3 lcolor = float3(_st2, _ct2, 1.0) / 3.0 + float3(1.0, 1.0, 1.0);
 
     float len = length(ld);
     ld /= len;

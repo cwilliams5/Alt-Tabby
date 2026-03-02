@@ -170,8 +170,9 @@ float4 PSMain(PSInput input) : SV_Target {
         for (int i = 0; i < iterations; i++) {
             p = abs(p) / dot(p, p) - formuparam;
             p.xy = mul(rotMat, p.xy);
-            a += abs(length(p) - pa);
-            pa = length(p);
+            float lp = length(p);
+            a += abs(lp - pa);
+            pa = lp;
         }
         float dm = max(0.0, darkmatter_val - a * a * 0.001);
         a *= a * a;

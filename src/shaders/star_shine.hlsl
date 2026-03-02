@@ -127,14 +127,14 @@ float4 PSMain(PSInput input) : SV_Target {
     // Volumetric rendering
     float s2 = 0.1, fade = 1.0;
     float3 v = (float3)0.0;
+    float sin_t, cos_t;
+    sincos(time * 0.05, sin_t, cos_t);
     for (int r = 0; r < volsteps; r++) {
         float3 p = from_val + s2 * dir * 0.5;
         p = abs((float3)tile_val - glsl_mod3(p, (float3)(tile_val * 2.0)));
         float pa, a;
         pa = 0.0;
         a = 0.0;
-        float cos_t = cos(time * 0.05);
-        float sin_t = sin(time * 0.05);
         for (int i = 0; i < iterations; i++) {
             p = abs(p) / dot(p, p) - formuparam;
             // mat2 rotation expanded
@@ -143,8 +143,9 @@ float4 PSMain(PSInput input) : SV_Target {
                 p.x * (-sin_t) + p.y * cos_t);
             p.x = rotated.x;
             p.y = rotated.y;
-            a += abs(length(p) - pa);
-            pa = length(p);
+            float lp = length(p);
+            a += abs(lp - pa);
+            pa = lp;
         }
         float dm = max(0.0, darkmatter - a * a * 0.001);
         a *= a * a;

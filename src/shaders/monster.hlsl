@@ -45,11 +45,16 @@ float dist(float3 p) {
     float k = 0.7;
     float zid = floor(p.z * k);
     p = fmod(p, k) - 0.5 * k;
+    float sXY, cXY, sXZ, cXZ;
+    sincos(1.0 + zid + 0.1 * TK * time, sXY, cXY);
+    sincos(1.0 + 4.7 * zid + 0.3 * TK * time, sXZ, cXZ);
+    float2x2 mXY = float2x2(cXY, sXY, -sXY, cXY);
+    float2x2 mXZ = float2x2(cXZ, sXZ, -sXZ, cXZ);
     for (int i = 0; i < 4; i++) {
         p = abs(p) - 0.3;
 
-        p.xy = rot(p.xy, 1.0 + zid + 0.1 * TK * time);
-        p.xz = rot(p.xz, 1.0 + 4.7 * zid + 0.3 * TK * time);
+        p.xy = mul(p.xy, mXY);
+        p.xz = mul(p.xz, mXZ);
     }
     return min(cube(p, float3(0.3, 0.3, 0.3)), length(p) - 0.4);
 }

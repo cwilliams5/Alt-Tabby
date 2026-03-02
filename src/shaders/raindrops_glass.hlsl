@@ -281,7 +281,7 @@ float4 RollingRaindrops(float2 UV, float Time, float UVScale) {
     float3 HeightAndNormal = RaindropSurface(TempXY, Scale, 1.0);
 
     // Trail
-    float TrailY = pow(smoothstep(1.0, SwingY, GridUV.y), 0.5);
+    float TrailY = sqrt(smoothstep(1.0, SwingY, GridUV.y));
     float TrailX = abs(GridUV.x - SwingX) * lerp(0.8, 4.0, smoothstep(0.0, 1.0, RandVec3.x));
     float Trail = smoothstep(0.25 * TrailY, 0.15 * TrailY * TrailY, TrailX);
     float TrailClamp = smoothstep(-0.02, 0.02, GridUV.y - SwingY);

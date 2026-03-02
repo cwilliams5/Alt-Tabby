@@ -98,7 +98,7 @@ float fbm1(float2 p) {
     }
 
     float hd = h / d;
-    return lerp(hd, -0.5 * hd, pow(vnoise(0.9 * op), 0.25));
+    return lerp(hd, -0.5 * hd, sqrt(sqrt(vnoise(0.9 * op))));
 }
 
 float fbm2(float2 p) {
@@ -122,7 +122,7 @@ float fbm2(float2 p) {
     }
 
     float hd = h / d;
-    return lerp(hd, -0.5 * hd, pow(vnoise(0.9 * op), 0.25));
+    return lerp(hd, -0.5 * hd, sqrt(sqrt(vnoise(0.9 * op))));
 }
 
 float fbm3(float2 p) {
@@ -146,7 +146,7 @@ float fbm3(float2 p) {
     }
 
     float hd = h / d;
-    return lerp(hd, -0.5 * hd, pow(vnoise(0.9 * op), 0.25));
+    return lerp(hd, -0.5 * hd, sqrt(sqrt(vnoise(0.9 * op))));
 }
 
 float warp(float2 p) {
@@ -163,7 +163,9 @@ float warp(float2 p) {
 
 float height(float2 p) {
     float a = 0.005 * time;
-    p += 5.0 * float2(cos(a), sin(a));
+    float _sa, _ca;
+    sincos(a, _sa, _ca);
+    p += 5.0 * float2(_ca, _sa);
     p *= 2.0;
     p += 13.0;
     float h = warp(p);

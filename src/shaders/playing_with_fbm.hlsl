@@ -73,7 +73,7 @@ float4 PSMain(PSInput input) : SV_Target
     float _rs, _rc;
     sincos(ang, _rs, _rc);
     float2x2 rot = float2x2(_rc, -_rs, _rs, _rc);
-    uv = mul(rot, uv) * 16.0 * (sin(time * 0.1) + 1.5);
+    uv = mul(rot, uv) * 16.0 * (_rs + 1.5);
 
     float f = fbm(float3(uv, time) + fbm(float3(uv, time) + fbm(float3(uv, time)))) * 0.5 + 0.5;
 

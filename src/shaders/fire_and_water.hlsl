@@ -36,7 +36,9 @@ float4 PSMain(PSInput input) : SV_Target {
     [loop]
     for (float i = 0.0; i < particlenums; i++) {
         float t = unit * i + time * speedfactor;
-        float2 orbit = float2(sin(t), cos(t)) * 0.35;
+        float _st, _ct;
+        sincos(t, _st, _ct);
+        float2 orbit = float2(_st, _ct) * 0.35;
 
         float2 fuv = 1.25 * uv + orbit;
         float3 fire = float3(0.7, 0.2, 0.1) / length(fuv) * (i * i);

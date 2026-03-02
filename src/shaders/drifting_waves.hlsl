@@ -94,7 +94,9 @@ float2 sd_wave_diff(float2 wave_pos, int iter_num, float t) {
     for (int i = 0; i < iter_num; ++i) {
         wave_dir = mul(wave_dir, WAVE_ROT);
         float x = dot(wave_dir, wave_pos) * wave_freq + wave_time;
-        float dx = exp(sin(x) - 1.0) * cos(x) * wave_weight;
+        float _sx, _cx;
+        sincos(x, _sx, _cx);
+        float dx = exp(_sx - 1.0) * _cx * wave_weight;
         res += dx * wave_dir / pow(wave_weight, DX_DET);
 
         wave_freq *= FREQ_SCALE;
@@ -123,12 +125,14 @@ float sd_wave(float2 wave_pos, int iter_num, float t) {
     for (int i = 0; i < iter_num; ++i) {
         wave_dir = mul(wave_dir, WAVE_ROT);
         float x = dot(wave_dir, wave_pos) * wave_freq + wave_time;
-        float wave = exp(sin(x) - 1.0) * wave_weight;
+        float _sx, _cx;
+        sincos(x, _sx, _cx);
+        float wave = exp(_sx - 1.0) * wave_weight;
         res += wave;
 
         wave_freq *= FREQ_SCALE;
         wave_time *= TIME_SCALE;
-        wave_pos -= wave_dir * wave * DRAG * cos(x);
+        wave_pos -= wave_dir * wave * DRAG * _cx;
         wave_weight *= WEIGHT_SCALE;
     }
 

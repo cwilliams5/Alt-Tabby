@@ -107,8 +107,9 @@ float4 volumetric(float3 ro, float3 rd) {
         for (int i = 0; i < iterations; i++) {
             p = abs(p) / dot(p, p) - formuparam;
             p.xy = mul(p.xy, _rotT);
-            a += abs(length(p) - pa);
-            pa = length(p);
+            float lp = length(p);
+            a += abs(lp - pa);
+            pa = lp;
         }
         float dm = max(0.0, darkmatter - a * a * 0.001);
         a *= a * a;

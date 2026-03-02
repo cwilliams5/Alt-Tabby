@@ -60,20 +60,23 @@ float fbm(float2 n) {
 }
 
 float pattern(float2 p) {
+    float _st, _ct;
+    sincos(time, _st, _ct);
+
     float2 q = float2(
         fbm(p),
-        fbm(p + float2(5.2 + sin(time) / 10.0, 1.3 - cos(time) / 10.0)));
+        fbm(p + float2(5.2 + _st / 10.0, 1.3 - _ct / 10.0)));
 
     float2 r = float2(
-        fbm(p + 4.0 * q + float2(1.7 + sin(time) / 10.0, 9.2)),
-        fbm(p + 4.0 * q + float2(8.3, 2.8 - cos(time) / 10.0)));
+        fbm(p + 4.0 * q + float2(1.7 + _st / 10.0, 9.2)),
+        fbm(p + 4.0 * q + float2(8.3, 2.8 - _ct / 10.0)));
 
     float2 ac = p + 4.0 * r;
-    ac.x += sin(time);
-    ac.y += cos(time);
+    ac.x += _st;
+    ac.y += _ct;
     return 1.0 / fbm(ac + time
                + fbm(ac - time
-                    + fbm(ac + sin(time))));
+                    + fbm(ac + _st)));
 }
 
 float4 PSMain(PSInput input) : SV_Target {

@@ -14,7 +14,9 @@ SamplerState samp0 : register(s0);
 // rotate position around axis
 float2 rotate(float2 p, float a)
 {
-    return float2(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a));
+    float s, c;
+    sincos(a, s, c);
+    return float2(p.x * c - p.y * s, p.x * s + p.y * c);
 }
 
 // 1D random numbers

@@ -81,7 +81,7 @@ float fbm(float2 p) {
 }
 
 float2 ToPolar(float2 v) {
-    return float2(atan2(v.y, v.x) / 3.1415926, length(v));
+    return float2(atan2(v.y, v.x) * 0.3183099, length(v));
 }
 
 float3 fcos(float3 x) {
@@ -114,7 +114,7 @@ float3 get_noise(float2 p, float timer) {
     float2 shiftx = res * 0.5 * 1.25 + sc;
     float2 shiftx2 = res * 0.5 * 2.0 + sc;
     float2 tp = p + shiftx;
-    float atx = (atan2(tp.x + 0.0001 * (1.0 - abs(sign(tp.x))), tp.y) / 3.141592653) * 0.5 + frac(timer * 0.025);
+    float atx = (atan2(tp.x + 0.0001 * (1.0 - abs(sign(tp.x))), tp.y) * 0.3183099) * 0.5 + frac(timer * 0.025);
     float2 puv = ToPolar(tp);
     puv.y += atx;
     puv.x *= 0.5;
@@ -140,7 +140,7 @@ float4 get_lines_color(float2 p, float3 n, float timer) {
     sincos(timer * 0.0851, sT2, cT2);
     float2 shiftx = res * 0.5 * 1.25 + 0.5 * (0.5 + 0.5 * float2(sT2, cT2));
     float2 tp = p + shiftx;
-    float atx = (atan2(tp.x + 0.0001 * (1.0 - abs(sign(tp.x))), tp.y) / 3.141592653) * 0.5 + frac(timer * 0.025);
+    float atx = (atan2(tp.x + 0.0001 * (1.0 - abs(sign(tp.x))), tp.y) * 0.3183099) * 0.5 + frac(timer * 0.025);
     float2 puv = ToPolar(tp);
     puv.y += atx;
     puv.x *= 0.5;
@@ -246,7 +246,7 @@ float3 cam(float2 uv, float timer) {
 
     float fov = 90.0;
     float aspect = 1.0;
-    float screenSize = (1.0 / (tan(((180.0 - fov) * (3.14159263 / 180.0)) / 2.0)));
+    float screenSize = 1.0; // tan(45deg)=1, so 1/tan(((180-90)*PI/180)/2) = 1.0
     float3 rd = normalize(float3(uv * screenSize, 1.0 / aspect));
     rd = mul(mul(mul(roty(-im.x), rotx(im.y)), rotz(0.32 * sin(timer * 0.07))), rd);
     return rd;

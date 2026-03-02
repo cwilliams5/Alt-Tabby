@@ -94,8 +94,9 @@ float4 starfield(float3 from, float3 dir) {
         for (int i = 0; i < iterations; i++) {
             p = abs(p)/dot(p, p) - (float3)formuparam;
             p.xy = mul(float2x2(c_rot, s_rot, -s_rot, c_rot), p.xy);
-            a += abs(length(p) - pa);
-            pa = length(p);
+            float lp = length(p);
+            a += abs(lp - pa);
+            pa = lp;
         }
         float dm = max(0., darkmatter - a*a*.001);
         a *= a*a;

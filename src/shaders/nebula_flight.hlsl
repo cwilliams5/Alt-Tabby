@@ -58,8 +58,12 @@ float3 Path(float t)
     float2 a = float2(1, 0.3) * t;
     float r = sin(t * 1.2) * 0.2 + 0.8;
 
-    float2 cs = float2(cos(a.y), sin(a.y));
-    return 100.0 * r * float3(cos(a.x), 1, sin(a.x)) * cs.xyx;
+    float _say, _cay;
+    sincos(a.y, _say, _cay);
+    float _sax, _cax;
+    sincos(a.x, _sax, _cax);
+    float2 cs = float2(_cay, _say);
+    return 100.0 * r * float3(_cax, 1, _sax) * cs.xyx;
 }
 
 float4 PSMain(PSInput input) : SV_Target

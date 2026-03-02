@@ -265,8 +265,9 @@ float3 starsField(float2 uv)
         float pa = 0., a = 0.;
         for (float i = 0.; i < iterations; i++) {
             p = abs(p) / dot(p, p) - formuparam;
-            a += abs(length(p) - pa);
-            pa = length(p);
+            float lp = length(p);
+            a += abs(lp - pa);
+            pa = lp;
         }
         float dm = max(0., darkmatter_val - a * a * .001);
         a *= a * a;

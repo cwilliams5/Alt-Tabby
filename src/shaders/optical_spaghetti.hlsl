@@ -31,6 +31,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float4 o = (float4)0;
 
+    float _sin_t02 = sin(t * 0.2);
+    float _sin_t01_scale = sin(t * 0.1) * 0.25;
     for (i = 0.0; i++ < 175.0; ) {
         s = 0.004 + abs(s) * 0.1;
         d += s;
@@ -46,13 +48,13 @@ float4 PSMain(PSInput input) : SV_Target {
         for (a = 1.0; a < 2.0; a += a) {
             p += cos(t * 0.1 - p.yzx * 0.5) * 0.5;
 
-            r = p.z * 0.1 + sin(t * 0.2);
+            r = p.z * 0.1 + _sin_t02;
 
             float _rs, _rc;
             sincos(r, _rs, _rc);
             float2x2 rot = float2x2(_rc, -_rs, _rs, _rc);
             p.xy = mul(p.xy, rot);
-            s += abs(sin(p.x * a)) * (2.2 + sin(t * 0.1) * 0.25) * -abs(sin(abs(p.y) * a) / a);
+            s += abs(sin(p.x * a)) * (2.2 + _sin_t01_scale) * -abs(sin(abs(p.y) * a) / a);
         }
     }
 

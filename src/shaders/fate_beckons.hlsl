@@ -44,11 +44,12 @@ float height(float2 p) {
            x = pow(d, 0.1) * ym,
            y = (atan2(p.x, p.y) + 0.05 * tm - 3.0 * d) / 6.28;
 
+    float _sinScale = 1.0 + abs(sin(0.01 * TIME + 10.0));
     float v;
     for (float i = 0.0; i < 4.0; i += 1.0) {
         v = length(frac(float2(x - tm * i * xm,
                                frac(y + i * ym) / 8.0)
-                        * 16.0 * (1.0 + abs(sin(0.01 * TIME + 10.0))))
+                        * 16.0 * _sinScale)
                    * 2.0 - 1.0);
         c = pmin(c, v, 0.0125);
     }
