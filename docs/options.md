@@ -19,6 +19,7 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [Store](#store)
 - [Performance](#performance)
 - [Shader](#shader)
+- [BackgroundImage](#backgroundimage)
 - [Diagnostics](#diagnostics)
 
 ---
@@ -634,6 +635,21 @@ Configure the D3D11 shader backdrop rendered behind the Alt-Tab overlay. Require
 | `ShaderTimeOffsetMax` | int | `90` | `0` - `600` | Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override. |
 | `ShaderTimeAccumulate` | bool | `true` | - | When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show. |
 
+## BackgroundImage
+
+Display a user-selected background image behind the overlay content. The image sits above the shader layer and below backdrop effects. Supports fit modes, alignment, opacity, blur, desaturation, and brightness adjustments.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `Enabled` | bool | `false` | - | Enable the background image layer. When false, no image is loaded or rendered. |
+| `ImagePath` | file | `` | - | Path to the background image file. Use the Browse button to select an image — it will be copied to the resources folder for portability. |
+| `FitMode` | enum | `Fill` | - | How the image fits the overlay. Fill = cover (may crop). Fit = contain (may letterbox). Stretch = distort to fill. Tile = repeat at natural size. Center = natural size, no scaling. |
+| `Alignment` | enum | `Center` | - | Anchor point for Fill (crop origin), Fit (position within letterbox), and Center (position within overlay). Ignored for Stretch and Tile. |
+| `Opacity` | float | `1.00` | `0.00` - `1.00` | Opacity of the background image layer. 0.0 = invisible, 1.0 = fully opaque. |
+| `BlurRadius` | float | `0.00` | `0.00` - `50.00` | Gaussian blur radius applied to the background image. 0.0 = sharp, higher values increase blur. |
+| `Desaturation` | float | `0.00` | `0.00` - `1.00` | Desaturation applied to the background image. 0.0 = full color, 1.0 = grayscale. |
+| `Brightness` | float | `0.00` | `-1.00` - `1.00` | Brightness adjustment for the background image. -1.0 = fully dark, 0.0 = no change, 1.0 = fully bright. |
+
 ## Diagnostics
 
 Debug options, viewer settings, and test configuration. All logging disabled by default.
@@ -676,4 +692,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-03-01 with 293 total settings.*
+*Generated on 2026-03-01 with 301 total settings.*

@@ -150,13 +150,23 @@ GUI_Repaint() {
     if (diagTiming)
         tComputeRect := QPC() - t1
 
-    ; ===== TIMING: Resize =====
-    ; Single window — resize window + D2D render target together.
-    ; No split-resize needed (no overlay/base sync).
+    ; ===== TIMING: Pre-render + Resize =====
     if (diagTiming)
         t1 := QPC()
+
+    ; Pre-render independent layers BEFORE the resize sync window.
+    ; These use their own D3D11/D2D resources at the new dimensions — they
+    ; don't depend on gD2D_RT being resized yet.
+    FX_PreRenderShaderLayer(phW, phH)
+    BGImg_EnsureCache(phW, phH)
+
+    ; Atomic resize: DwmFlush synchronizes with the DWM composition cycle,
+    ; giving us a full VSync period (~8ms at 120Hz) to resize + paint before
+    ; DWM composites again. Without this sync, SetWindowPos makes DWM show
+    ; the window at the new size with the old framebuffer for one frame. (#152)
     needsResize := (rowsChanged && gGUI_Revealed)
     if (needsResize) {
+        Win_DwmFlush()
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
         if (gD2D_RT && phW > 0 && phH > 0)
             D2D_ResizeRenderTarget(phW, phH)
@@ -167,9 +177,6 @@ GUI_Repaint() {
     ; ===== TIMING: D2D BeginDraw + PaintOverlay + EndDraw =====
     if (diagTiming)
         t1 := QPC()
-
-    ; Pre-render shader layer (D3D11) before D2D BeginDraw — no state conflict
-    FX_PreRenderShaderLayer(phW, phH)
 
     if (gD2D_RT) {
         gD2D_RT.BeginDraw()
@@ -379,6 +386,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global gFX_BackdropStyle
     if (isGPU && cfg.PerfAnimationType = "Full" && gFX_BackdropStyle > 0)
         FX_DrawBackdrop(wPhys, hPhys, scale)
+
+    ; Background image layer (above DWM surface, below shader)
+    BGImg_Draw()
 
     ; Shader layer (independent of backdrop, controlled by V key)
     FX_DrawShaderLayer(wPhys, hPhys)

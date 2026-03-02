@@ -487,6 +487,40 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
             y += descH + 4
 
+        } else if (setting.t = "file") {
+            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
+            lbl.SetFont("s9 bold", "Segoe UI")
+            controls.Push({ctrl: lbl, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
+            ; Read-only edit showing current path
+            ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w280 +ReadOnly")
+            controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
+            settingCtrls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
+            gCEN["Controls"][setting.g] := {ctrl: ed, type: "file"}
+            Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
+            DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
+            ; Browse button
+            browseX := CEN_INPUT_X + 286
+            btnBrowse := pageGui.AddButton("x" browseX " y" y " w70 h22", "Browse...")
+            controls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
+            settingCtrls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
+            Theme_ApplyToControl(btnBrowse, "Button", gCEN["ThemeEntry"])
+            btnBrowse.OnEvent("Click", _CEN_MakeFileBrowseHandler(setting.g))
+            ; Clear button
+            clearX := browseX + 76
+            btnClear := pageGui.AddButton("x" clearX " y" y " w50 h22", "Clear")
+            controls.Push({ctrl: btnClear, origY: y, origX: clearX})
+            settingCtrls.Push({ctrl: btnClear, origY: y, origX: clearX})
+            Theme_ApplyToControl(btnClear, "Button", gCEN["ThemeEntry"])
+            btnClear.OnEvent("Click", _CEN_MakeFileClearHandler(setting.g))
+            y += 26
+            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c" mutedColor " +Wrap", setting.d)
+            dc.SetFont("s8", "Segoe UI")
+            Theme_MarkMuted(dc)
+            controls.Push({ctrl: dc, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
+            y += descH + 4
+
         } else {
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
             lbl.SetFont("s9 bold", "Segoe UI")
@@ -756,6 +790,97 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
 ; Create a clamp-on-blur handler bound to a specific setting's range
 _CEN_MakeClampHandler(globalName, minVal, maxVal) {
     return (ctrl, *) => _CEN_ClampOnBlur(globalName, minVal, maxVal)
+}
+
+; Create file browse handler: opens FileSelect, copies to resources/, updates edit
+_CEN_MakeFileBrowseHandler(globalName) {
+    return (ctrl, *) => _CEN_OnFileBrowse(globalName)
+}
+
+; Create file clear handler: empties the path edit control
+_CEN_MakeFileClearHandler(globalName) {
+    return (ctrl, *) => _CEN_OnFileClear(globalName)
+}
+
+_CEN_OnFileBrowse(globalName) {
+    global gCEN, gConfigIniPath
+    ctrlInfo := gCEN["Controls"][globalName]
+
+    filter := "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tiff;*.webp)"
+    selected := FileSelect(1, , "Select Background Image", filter)
+    if (selected = "")
+        return
+
+    ; Determine resources directory (next to config.ini)
+    configDir := ""
+    if (gConfigIniPath != "")
+        SplitPath(gConfigIniPath, , &configDir)
+    else if (A_IsCompiled)
+        configDir := A_ScriptDir
+    else
+        configDir := A_ScriptDir "\.."
+
+    resDir := configDir "\resources"
+    if (!DirExist(resDir))
+        DirCreate(resDir)
+
+    ; Determine destination filename
+    SplitPath(selected, , , &ext)
+    ext := StrLower(ext)
+    destExt := ext
+
+    ; WebP → PNG conversion
+    if (ext = "webp") {
+        converted := _CEN_ConvertWebPToPNG(selected, resDir)
+        if (converted = "") {
+            ThemeMsgBox("Failed to convert WebP image. Please select a PNG or JPG instead.", "Conversion Error", "OK Icon!")
+            return
+        }
+        destExt := "png"
+        destPath := resDir "\alttabby-background." destExt
+        if (FileExist(destPath))
+            FileDelete(destPath)
+        FileMove(converted, destPath)
+    } else {
+        destPath := resDir "\alttabby-background." destExt
+        if (FileExist(destPath))
+            FileDelete(destPath)
+        FileCopy(selected, destPath, true)
+    }
+
+    ctrlInfo.ctrl.Value := destPath
+}
+
+_CEN_OnFileClear(globalName) {
+    global gCEN
+    ctrlInfo := gCEN["Controls"][globalName]
+    ctrlInfo.ctrl.Value := ""
+}
+
+_CEN_ConvertWebPToPNG(webpPath, outputDir) {
+    ; Load WebP via GDI+ (Windows 10 1809+ supports WebP natively in GDI+)
+    try {
+        pBitmapGdip := 0
+        DllCall("gdiplus\GdipCreateBitmapFromFile", "str", webpPath, "ptr*", &pBitmapGdip, "int")
+        if (!pBitmapGdip)
+            return ""
+
+        ; Save as PNG using GDI+ encoder
+        pngPath := outputDir "\alttabby-background.png"
+
+        ; PNG encoder CLSID: {557CF406-1A04-11D3-9A73-0000F81EF32E}
+        encoderClsid := Buffer(16, 0)
+        DllCall("ole32\CLSIDFromString", "str", "{557CF406-1A04-11D3-9A73-0000F81EF32E}", "ptr", encoderClsid, "hresult")
+
+        hr := DllCall("gdiplus\GdipSaveImageToFile", "ptr", pBitmapGdip, "str", pngPath, "ptr", encoderClsid, "ptr", 0, "int")
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
+
+        if (hr != 0)
+            return ""
+        return pngPath
+    } catch {
+        return ""
+    }
 }
 
 ; Create a handler that syncs slider value -> edit control

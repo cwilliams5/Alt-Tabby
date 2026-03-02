@@ -133,6 +133,25 @@ FX_GPU_Init() {
 
         gFX_GPUReady := true
 
+        ; --- Background image effect chain: Blur → Saturation → ColorMatrix ---
+        ; Wrapped in try/catch: failure falls back to direct DrawBitmap (no effects)
+        try {
+            global gBGImg_EffectsReady
+            gFX_GPU["bgImgBlur"]  := gD2D_RT.CreateEffect(CLSID_D2D1GaussianBlur)
+            gFX_GPU["bgImgSat"]   := gD2D_RT.CreateEffect(CLSID_D2D1Saturation)
+            gFX_GPU["bgImgColor"] := gD2D_RT.CreateEffect(CLSID_D2D1ColorMatrix)
+            ; Wire chain: blur → sat → color
+            gFX_GPU["bgImgSat"].SetInput(0, gFX_GPU["bgImgBlur"].GetOutput())
+            gFX_GPU["bgImgColor"].SetInput(0, gFX_GPU["bgImgSat"].GetOutput())
+            gFX_GPUOutput["bgImgColor"] := gFX_GPU["bgImgColor"].GetOutput()
+            gBGImg_EffectsReady := true
+        } catch {
+            ; Background image effects unavailable — BGImg_Draw falls back to direct DrawBitmap
+        }
+
+        ; Initialize background image bitmap
+        BGImg_Init()
+
         ; Initialize D3D11 shader pipeline + register configured shader
         ; Wrapped in try/catch: shader failure must not kill selection/backdrop effects
         try {
@@ -162,6 +181,8 @@ FX_GPU_Init() {
 ; Release all cached effects. Safe to call multiple times.
 FX_GPU_Dispose() {
     global gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, gFX_ShaderTime
+    ; Release background image resources (bitmap depends on render target)
+    BGImg_Dispose()
     ; Release cached output images first (prevent dangling refs)
     gFX_GPUOutput := Map()
     ; Release effects (ID2DBase.__Delete handles ObjRelease)

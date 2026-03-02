@@ -356,7 +356,7 @@ _D2D_ExtractIconPixels(hIcon) {
     DllCall("user32\ReleaseDC", "ptr", 0, "ptr", hdc)
 
     ; Premultiply alpha for D2D (BGRA format, D2D expects premultiplied)
-    _D2D_PremultiplyAlpha(pixels, pixelCount)
+    D2D_PremultiplyAlpha(pixels, pixelCount)
 
     DllCall("gdi32\DeleteObject", "ptr", hbmColor)
     if (hbmMask)
@@ -367,7 +367,7 @@ _D2D_ExtractIconPixels(hIcon) {
 
 ; Premultiply BGRA pixel data for D2D (which expects premultiplied alpha).
 ; For cached icons this runs once per icon — acceptable even at 256x256.
-_D2D_PremultiplyAlpha(pixels, pixelCount) {
+D2D_PremultiplyAlpha(pixels, pixelCount) {
     loop pixelCount {
         offset := (A_Index - 1) * 4
         a := NumGet(pixels, offset + 3, "uchar")

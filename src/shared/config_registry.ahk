@@ -1226,6 +1226,35 @@ global gConfigRegistry := [
      d: "When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show."},
 
     ; ============================================================
+    ; BackgroundImage
+    ; ============================================================
+    {type: "section", name: "BackgroundImage", desc: "Background Image",
+     long: "Display a user-selected background image behind the overlay content. The image sits above the shader layer and below backdrop effects. Supports fit modes, alignment, opacity, blur, desaturation, and brightness adjustments."},
+
+    {s: "BackgroundImage", k: "Enabled", g: "BGImgEnabled", t: "bool", default: false,
+     d: "Enable the background image layer. When false, no image is loaded or rendered."},
+    {s: "BackgroundImage", k: "ImagePath", g: "BGImgImagePath", t: "file", default: "",
+     d: "Path to the background image file. Use the Browse button to select an image — it will be copied to the resources folder for portability."},
+    {s: "BackgroundImage", k: "FitMode", g: "BGImgFitMode", t: "enum", default: "Fill",
+     options: ["Fill", "Fit", "Stretch", "Tile", "Center"],
+     d: "How the image fits the overlay. Fill = cover (may crop). Fit = contain (may letterbox). Stretch = distort to fill. Tile = repeat at natural size. Center = natural size, no scaling."},
+    {s: "BackgroundImage", k: "Alignment", g: "BGImgAlignment", t: "enum", default: "Center",
+     options: ["TopLeft", "Top", "TopRight", "Left", "Center", "Right", "BottomLeft", "Bottom", "BottomRight"],
+     d: "Anchor point for Fill (crop origin), Fit (position within letterbox), and Center (position within overlay). Ignored for Stretch and Tile."},
+    {s: "BackgroundImage", k: "Opacity", g: "BGImgOpacity", t: "float", default: 1.0,
+     min: 0.0, max: 1.0,
+     d: "Opacity of the background image layer. 0.0 = invisible, 1.0 = fully opaque."},
+    {s: "BackgroundImage", k: "BlurRadius", g: "BGImgBlurRadius", t: "float", default: 0.0,
+     min: 0.0, max: 50.0,
+     d: "Gaussian blur radius applied to the background image. 0.0 = sharp, higher values increase blur."},
+    {s: "BackgroundImage", k: "Desaturation", g: "BGImgDesaturation", t: "float", default: 0.0,
+     min: 0.0, max: 1.0,
+     d: "Desaturation applied to the background image. 0.0 = full color, 1.0 = grayscale."},
+    {s: "BackgroundImage", k: "Brightness", g: "BGImgBrightness", t: "float", default: 0.0,
+     min: -1.0, max: 1.0,
+     d: "Brightness adjustment for the background image. -1.0 = fully dark, 0.0 = no change, 1.0 = fully bright."},
+
+    ; ============================================================
     ; Diagnostics
     ; ============================================================
     {type: "section", name: "Diagnostics",

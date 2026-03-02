@@ -21,7 +21,7 @@
 #   Discover full landscape: powershell -File tools/query_global_ownership.ps1 -Discover
 
 cfg: config_loader, launcher_tray, setup_utils
-gD2D_RT: gui_animation, gui_overlay, gui_paint
+gD2D_RT: gui_animation, gui_bgimage, gui_overlay, gui_paint
 gGUI_DisplayItems: gui_animation, gui_state
 gGUI_LiveItems: gui_state, gui_data
 gGUI_OverlayVisible: gui_animation, gui_overlay, gui_state
@@ -39,6 +39,7 @@ gFX_BackdropSeedY: gui_animation, gui_interceptor
 gFX_BackdropSeedPhase: gui_animation, gui_interceptor
 gFX_BackdropDirSign: gui_animation, gui_interceptor
 gFX_BackdropStyle: gui_interceptor
+gBGImg_EffectsReady: gui_bgimage, gui_effects
 gFX_ShaderIndex: gui_effects, gui_interceptor
 gFX_MouseX: gui_input
 gFX_MouseY: gui_input
