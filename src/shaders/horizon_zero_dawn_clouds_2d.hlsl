@@ -17,7 +17,7 @@ struct PSInput {
     float2 uv : TEXCOORD0;
 };
 
-#define SAT(x) clamp(x, 0., 1.)
+#define SAT(x) saturate(x)
 
 #define CLOUD_COVERAGE 0.64
 #define CLOUD_DETAIL_COVERAGE .16
@@ -177,7 +177,7 @@ float4 PSMain(PSInput input) : SV_Target
     {
         marchUv += sunDir * i;
         float c = clouds(marchUv, t);
-        cloudColor *= clamp(1. - c, 0., 1.);
+        cloudColor *= saturate(1. - c);
     }
 
     cloudColor += CLOUD_AMBIENT;

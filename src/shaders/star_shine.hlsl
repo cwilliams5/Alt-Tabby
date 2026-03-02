@@ -64,7 +64,7 @@ float noise_val(in float2 _st) {
 
 float light_val(in float2 pos, in float size, in float radius, in float inner_fade, in float outer_fade) {
     float len = length(pos / size);
-    return pow(clamp((1.0 - pow(clamp(len - radius, 0.0, 1.0), 1.0 / inner_fade)), 0.0, 1.0), 1.0 / outer_fade);
+    return pow(saturate((1.0 - pow(saturate(len - radius), 1.0 / inner_fade))), 1.0 / outer_fade);
 }
 
 float flare(in float angle, in float alpha, in float t_val) {
@@ -85,7 +85,7 @@ float flare(in float angle, in float alpha, in float t_val) {
 float2 project_val(float2 position, float2 a, float2 b) {
     float2 q = b - a;
     float u = dot(position - a, q) / dot(q, q);
-    u = clamp(u, 0.0, 1.0);
+    u = saturate(u);
     return lerp(a, b, u);
 }
 
@@ -94,7 +94,7 @@ float segment_val(float2 position, float2 a, float2 b) {
 }
 
 float contour(float x) {
-    return 1.0 - clamp(x * 2048.0, 0.0, 1.0);
+    return 1.0 - saturate(x * 2048.0);
 }
 
 float line_val(float2 p, float2 a, float2 b) {
@@ -183,7 +183,7 @@ float4 PSMain(PSInput input) : SV_Target {
     if (l < BORDER) {
         t *= 0.8;
         alpha = (1.0 - pow(((BORDER - l) / BORDER), 0.22) * 0.7);
-        alpha = clamp(alpha - light_val(uv, 0.02, 0.0, 0.3, 0.7) * 0.55, 0.0, 1.0);
+        alpha = saturate(alpha - light_val(uv, 0.02, 0.0, 0.3, 0.7) * 0.55);
         f = flare(angle * 1.0, alpha, -t * 0.5 + alpha);
         f2 = flare(angle * 1.0, alpha * 1.2, ((-t + alpha * 0.5 + 0.38134)));
     }

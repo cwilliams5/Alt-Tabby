@@ -160,7 +160,7 @@ float4 PSMain(PSInput input) : SV_Target {
     col += baseCol1*pow(diff1, 16.0);
     col += 0.1*baseCol1*pow(diff1, 4.0);
     col += 0.15*baseCol2*pow(diff2, 8.0);
-    col += 0.015*baseCol2*pow(diff2, 2.0);
+    col += 0.015*baseCol2*(diff2 * diff2);
 
     col = saturate(col);
     col = lerp(0.05*baseCol1, col, 1.0 - (1.0 - 0.5*diff1)*exp(-2.0*smoothstep(-0.1, 0.05, h)));

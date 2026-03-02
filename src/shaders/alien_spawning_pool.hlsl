@@ -129,7 +129,7 @@ float4 PSMain(PSInput input) : SV_Target
     float2 ey = -1.0 * float2(0.0, 2.0 / resolution.y);
     float3 nor = normalize(float3(funcs(q + ex) - f, ex.x, funcs(q + ey) - f));
     float3 lig = normalize(float3(0.19, -0.2, -0.4));
-    float dif = clamp(0.03 + 0.7 * dot(nor, lig), 0.0, 1.0);
+    float dif = saturate(0.03 + 0.7 * dot(nor, lig));
 
     float3 bdrf;
     bdrf  = float3(0.85, 0.90, 0.95) * (nor.y * 0.5 + 0.5);
@@ -140,7 +140,7 @@ float4 PSMain(PSInput input) : SV_Target
     col *= float3(0.8, 1.15, 1.2);
     col *= 0.45 + 0.5 * sqrt(16.0 * p.x * p.y * p.y * (2.0 - p.x) * (1.0 - p.y)) * float3(1.0, 0.3, 0.0);
 
-    col = clamp(col, 0.0, 1.0);
+    col = saturate(col);
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));

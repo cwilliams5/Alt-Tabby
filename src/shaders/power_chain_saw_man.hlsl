@@ -150,7 +150,7 @@ float sd_hook(float2 p, float r, float a, float s) {
 
 float sd_line(float2 p, float2 a, float2 b) {
     float2 pa = p - a, ba = b - a;
-    float k = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    float k = saturate(dot(pa, ba) / dot(ba, ba));
     return distance(p, lerp(a, b, k));
 }
 
@@ -165,8 +165,8 @@ float op_rem_lim(float p, float s, float l) {
 
 float sd_trig_isosceles(float2 p, float2 q) {
     p.x = abs(p.x);
-    float2 a = p - q * clamp(dot(p, q) / dot(q, q), 0.0, 1.0);
-    float2 b = p - q * float2(clamp(p.x / q.x, 0.0, 1.0), 1.0);
+    float2 a = p - q * saturate(dot(p, q) / dot(q, q));
+    float2 b = p - q * float2(saturate(p.x / q.x), 1.0);
     float s = -sign(q.y);
     float2 d = min(float2(dot(a, a), s * (p.x * q.y - p.y * q.x)),
                    float2(dot(b, b), s * (p.y - q.y)));
@@ -230,7 +230,7 @@ float3 sd_bezier_base(float2 pos, float2 A, float2 B, float2 C) {
         h = sqrt(h);
         float2 x = (float2(h, -h) - q) / 2.0;
         float2 uv_bz = sign(x) * pow(abs(x), (float2)(1.0 / 3.0));
-        t = clamp(uv_bz.x + uv_bz.y - kx, 0.0, 1.0);
+        t = saturate(uv_bz.x + uv_bz.y - kx);
         float2 qq = d + (c + b * t) * t;
         res = dot2(qq);
         sgn = cross2(c + 2.0 * b * t, qq);
@@ -239,7 +239,7 @@ float3 sd_bezier_base(float2 pos, float2 A, float2 B, float2 C) {
         float v = acos(q / (p * z * 2.0)) / 3.0;
         float m = cos(v);
         float n = sin(v) * 1.732050808;
-        float2 tt = clamp(float2(m + m, -n - m) * z - kx, 0.0, 1.0);
+        float2 tt = saturate(float2(m + m, -n - m) * z - kx);
         float2 qx = d + (c + b * tt.x) * tt.x;
         float dx = dot2(qx), sx = cross2(c + 2.0 * b * tt.x, qx);
         float2 qy = d + (c + b * tt.y) * tt.y;
@@ -402,7 +402,8 @@ float3 background(float2 uv) {
     float fb2 = fbm(uv + fb1, 5.0);
 
     float3 col = (float3)0;
-    col = lerp(col, BACKGROUND_COLOR, pow(sat(fb2 * 2.4), 1.5));
+    float satBg = sat(fb2 * 2.4);
+    col = lerp(col, BACKGROUND_COLOR, satBg * sqrt(satBg));
     col = lerp(col, float3(0.4, 0.3, 0.7), pow(sat(fb2 * 0.7), 1.9));
     col = lerp(col, float3(0.3, 0.6, 0.6), pow(sat(fa2 * 1.5), 20.0) * 0.7);
     col = lerp(col, (float3)0, voronoi(uv * 10.0 + fa1 * 4.0) * 0.8);

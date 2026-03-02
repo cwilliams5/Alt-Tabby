@@ -113,7 +113,7 @@ float map5(float3 p) {
     f += 0.12500 * noise(q); q = q * 2.01;
     f += 0.06250 * noise(q); q = q * 2.02;
     f += 0.03125 * noise(q);
-    return clamp(1.5 - p.y - 2.0 + 1.75 * f, 0.0, 1.0);
+    return saturate(1.5 - p.y - 2.0 + 1.75 * f);
 }
 
 // Stars from nimitz - https://www.shadertoy.com/view/ltfGDs
@@ -224,7 +224,7 @@ float4 Radiance(Ray ray) {
     float3 bgColor = getBgColor(currentRay.dir);
     sum = float4(bgColor * transmittance + sum.xyz, 1.0);
 
-    return clamp(sum, 0.0, 1.0);
+    return saturate(sum);
 }
 
 float4 PSMain(PSInput input) : SV_Target {

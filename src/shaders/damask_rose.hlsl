@@ -36,10 +36,10 @@ static const float hf = 0.015;
 static const float4 hsv2rgb_K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
 float3 hsv2rgb(float3 c) {
     float3 p = abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www);
-    return c.z * lerp(hsv2rgb_K.xxx, clamp(p - hsv2rgb_K.xxx, 0.0, 1.0), c.y);
+    return c.z * lerp(hsv2rgb_K.xxx, saturate(p - hsv2rgb_K.xxx), c.y);
 }
 // Macro version of above to enable compile-time constants
-#define HSV2RGB(c)  (c.z * lerp(hsv2rgb_K.xxx, clamp(abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www) - hsv2rgb_K.xxx, 0.0, 1.0), c.y))
+#define HSV2RGB(c)  (c.z * lerp(hsv2rgb_K.xxx, saturate(abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www) - hsv2rgb_K.xxx), c.y))
 
 // License: Unknown, author: nmz (twitter: @stormoid), found: https://www.shadertoy.com/view/NdfyRM
 float3 sRGB(float3 t) {
@@ -73,7 +73,7 @@ float atan_approx(float y, float x) {
 
 // License: MIT, author: Inigo Quilez, found: https://www.iquilezles.org/www/articles/smin/smin.htm
 float pmin(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 

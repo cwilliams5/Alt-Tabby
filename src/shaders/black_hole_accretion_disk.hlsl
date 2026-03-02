@@ -48,7 +48,7 @@ float4 background(float3 ray)
     brightness = pow(brightness, 256.0);
 
     brightness = brightness * 100.0;
-    brightness = clamp(brightness, 0.0, 1.0);
+    brightness = saturate(brightness);
 
     float3 stars = brightness * lerp(float3(1.0, 0.6, 0.2), float3(0.2, 0.6, 1.0), color);
 
@@ -84,9 +84,9 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
     float redShift = parallel + 0.3;
     redShift *= redShift;
 
-    redShift = clamp(redShift, 0.0, 1.0);
+    redShift = saturate(redShift);
 
-    float disMix = clamp((lengthPos - _Size * 2.0) * (1.0 / _Size) * 0.24, 0.0, 1.0);
+    float disMix = saturate((lengthPos - _Size * 2.0) * (1.0 / _Size) * 0.24);
     float3 insideCol = lerp(float3(1.0, 0.8, 0.0), float3(0.5, 0.13, 0.02) * 0.2, disMix);
 
     insideCol *= lerp(float3(0.4, 0.2, 0.1), float3(1.6, 2.4, 4.0), redShift);
@@ -100,12 +100,12 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
     {
         position -= dist * ray;
 
-        float intensity = clamp(1.0 - abs((i - 0.8) * (1.0 / _Steps) * 2.0), 0.0, 1.0);
+        float intensity = saturate(1.0 - abs((i - 0.8) * (1.0 / _Steps) * 2.0));
         float lp = length(position.xz);
         float distMult = 1.0;
 
-        distMult *= clamp((lp - _Size * 0.75) * (1.0 / _Size) * 1.5, 0.0, 1.0);
-        distMult *= clamp((_Size * 10.0 - lp) * (1.0 / _Size) * 0.20, 0.0, 1.0);
+        distMult *= saturate((lp - _Size * 0.75) * (1.0 / _Size) * 1.5);
+        distMult *= saturate((_Size * 10.0 - lp) * (1.0 / _Size) * 0.20);
         distMult *= distMult;
 
         float u = lp + time * _Size * 0.3 + intensity * _Size * 0.2;
@@ -122,9 +122,9 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
         float noise = value(float2(angle, u * (1.0 / _Size) * 0.05), f);
         noise = noise * 0.66 + 0.33 * value(float2(angle, u * (1.0 / _Size) * 0.05), f * 2.0);
 
-        float extraWidth = noise * 1.0 * (1.0 - clamp(i * (1.0 / _Steps) * 2.0 - 1.0, 0.0, 1.0));
+        float extraWidth = noise * 1.0 * (1.0 - saturate(i * (1.0 / _Steps) * 2.0 - 1.0));
 
-        float alpha = clamp(noise * (intensity + extraWidth) * ((1.0 / _Size) * 10.0 + 0.01) * dist * distMult, 0.0, 1.0);
+        float alpha = saturate(noise * (intensity + extraWidth) * ((1.0 / _Size) * 10.0 + 0.01) * dist * distMult);
 
         float3 col = 2.0 * lerp(float3(0.3, 0.2, 0.15) * insideCol, insideCol, min(1.0, intensity * 2.0));
         o = clamp(float4(col * alpha + o.rgb * (1.0 - alpha), o.a * (1.0 - alpha) + alpha), (float4)0, (float4)1);
@@ -134,7 +134,7 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
         o.rgb += redShift * (intensity * 1.0 + 0.5) * (1.0 / _Steps) * 100.0 * distMult / (lp * lp);
     }
 
-    o.rgb = clamp(o.rgb - 0.005, 0.0, 1.0);
+    o.rgb = saturate(o.rgb - 0.005);
     return o;
 }
 
@@ -197,7 +197,7 @@ float4 PSMain(PSInput input) : SV_Target {
                 ray = normalize(ray - (bendForce * invDist) * pos);
                 pos += stepDist * ray;
 
-                glow += float4(1.2, 1.1, 1.0, 1.0) * (0.01 * stepDist * invDistSqr * invDistSqr * clamp(centDist * 2.0 - 1.2, 0.0, 1.0));
+                glow += float4(1.2, 1.1, 1.0, 1.0) * (0.01 * stepDist * invDistSqr * invDistSqr * saturate(centDist * 2.0 - 1.2));
             }
 
             float dist2 = length(pos);

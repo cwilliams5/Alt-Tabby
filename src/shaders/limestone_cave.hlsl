@@ -73,7 +73,7 @@ float4 PSMain(PSInput input) : SV_Target {
         float3 q = p;
         q.xy = mul(getM(p.z), q.xy);
         c = lerp(float3(.1, .3, .7), float3(.8, .4, .2),
-            clamp(f(q + time / 10.) + .5, 0., 1.));
+            saturate(f(q + time / 10.) + .5));
         l = normalize(o + float3(0, 0, 4) - p);
         h = normalize(l + normalize(o - p));
         w = length(o + float3(0, 0, 4) - p);

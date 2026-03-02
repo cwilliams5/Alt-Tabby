@@ -27,7 +27,7 @@ float3 hsv2rgb(float h, float s, float v)
 {
     float4 t = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
     float3 p = abs(frac(float3(h, h, h) + t.xyz) * 6.0 - float3(t.w, t.w, t.w));
-    return v * lerp(float3(t.x, t.x, t.x), clamp(p - float3(t.x, t.x, t.x), 0.0, 1.0), s);
+    return v * lerp(float3(t.x, t.x, t.x), saturate(p - float3(t.x, t.x, t.x)), s);
 }
 
 float4 PSMain(PSInput input) : SV_Target {

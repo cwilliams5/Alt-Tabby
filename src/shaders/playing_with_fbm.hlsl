@@ -89,7 +89,7 @@ float4 PSMain(PSInput input) : SV_Target
 
     col *= lerp(0.5, sin(time * 0.5) * 0.25 + 1.0, length(col));
 
-    col = clamp(col, 0.0, 1.0);
+    col = saturate(col);
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));

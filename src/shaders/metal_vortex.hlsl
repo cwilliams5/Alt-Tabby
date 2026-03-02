@@ -39,7 +39,7 @@ float sdVerticalCapsule(float3 p, float h, float r) {
 }
 
 float smin(float d1, float d2, float k) {
-    float h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (d2 - d1) / k);
     return lerp(d2, d1, h) - k * h * (1.0 - h);
 }
 
@@ -192,7 +192,7 @@ float calculateAO(float3 p, float3 n) {
         r += w * (d0 - map(p + n * d0));
         w *= 0.5;
     }
-    return 1.0 - clamp(r, 0.0, 1.0);
+    return 1.0 - saturate(r);
 }
 
 float softShadow(float3 ro, float3 rd, float start_d, float end_d, float k) {
@@ -220,7 +220,7 @@ float3 lighting(float3 sp, float3 camPos, int reflectionPass) {
 
     float len = length(ld);
     ld /= len;
-    float lightAtten = clamp(0.5 * len * len, 0.0, 1.0);
+    float lightAtten = saturate(0.5 * len * len);
 
     ref_vec = reflect(-ld, n);
 

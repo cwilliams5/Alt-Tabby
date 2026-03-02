@@ -68,7 +68,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
     float2 p = fragCoord.xy / resolution.xy;
     p.x *= resolution.x / resolution.y;
-    float value = pow(pattern(p), 2.0);
+    float patVal = pattern(p);
+    float value = patVal * patVal;
     float3 color = palette(value);
 
     // Darken/desaturate post-processing

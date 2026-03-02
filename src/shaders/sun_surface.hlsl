@@ -61,7 +61,7 @@ float sdTorus(float3 p, float2 t)
 
 float smin(float a, float b, float k)
 {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 
@@ -97,17 +97,15 @@ float SunSurface(float3 pos)
     return smin(d1, d2, 1.0);
 }
 
-float map(float3 p) {
+float map(float3 p, float timeRotC, float timeRotS) {
     p.z += 1.0;
-    // R(p.yz, -25.5)
+    // R(p.yz, -25.5) — constant angle, fxc folds sin/cos at compile time
     float a1 = -25.5;
     float c1 = cos(a1); float s1 = sin(a1);
     float2 pyz = c1 * p.yz + s1 * float2(p.z, -p.y);
     p.y = pyz.x; p.z = pyz.y;
-    // R(p.xz, time*0.1) — iMouse zeroed, just time rotation
-    float a2 = time * 0.1;
-    float c2 = cos(a2); float s2 = sin(a2);
-    float2 pxz = c2 * p.xz + s2 * float2(p.z, -p.x);
+    // R(p.xz, time*0.1) — pre-computed by caller
+    float2 pxz = timeRotC * p.xz + timeRotS * float2(p.z, -p.x);
     p.x = pxz.x; p.z = pxz.y;
     return SunSurface(p) + fpn(p * 50.0 + time * 25.0) * 0.45;
 }
@@ -132,6 +130,10 @@ float4 PSMain(PSInput input) : SV_Target {
     const float h = 0.1;
     float3 tc = (float3)0.0;
 
+    // Pre-compute time rotation (was inside map(), called 56 times)
+    float timeRotC, timeRotS;
+    sincos(time * 0.1, timeRotS, timeRotC);
+
 #ifdef DITHERING
     float2 pos2 = fragCoord / resolution;
     float2 seed = pos2 + frac(time);
@@ -141,7 +143,7 @@ float4 PSMain(PSInput input) : SV_Target {
     for (int i = 0; i < 56; i++) {
         if (td > (1.0 - 1.0 / 80.0) || d < 0.001 * t || t > 40.0) break;
 
-        d = map(ro + t * rd);
+        d = map(ro + t * rd, timeRotC, timeRotS);
 
         ld = (h - d) * step(d, h);
         w = (1.0 - td) * ld;

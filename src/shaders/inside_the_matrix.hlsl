@@ -93,7 +93,7 @@ float4 hash4_v3(float3 v)
 
 float rune_line(float2 p, float2 a, float2 b) {
     p -= a; b -= a;
-    float h = clamp(dot(p, b) / dot(b, b), 0.0, 1.0);
+    float h = saturate(dot(p, b) / dot(b, b));
     return length(p - b * h);
 }
 
@@ -198,9 +198,10 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
                                     t_time * (1.0 * cell_hash2.z +
                                             cell_hash2.w * cell_hash2.w * 4.0 * pow(char_hash.y, 4.0)));
                             float a = random_char(float2(char_hash.x, time_factor), float2(u, q), max(1.0, 3.0 - c / 2.0) * 0.2);
-                            a *= clamp((chars_count - 0.5 - c) / 2.0, 0.0, 1.0);
+                            a *= saturate((chars_count - 0.5 - c) / 2.0);
                             if (a > 0.0) {
-                                float attenuation = 1.0 + pow(0.06 * tmin / t3_to_t2, 2.0);
+                                float attenFactor = 0.06 * tmin / t3_to_t2;
+                                float attenuation = 1.0 + attenFactor * attenFactor;
                                 float3 col = (c == 0.0 ? float3(0.67, 1.0, 0.82) : float3(0.25, 0.80, 0.40)) / attenuation;
                                 float a1 = result.a;
                                 result.a = a1 + (1.0 - a1) * a;

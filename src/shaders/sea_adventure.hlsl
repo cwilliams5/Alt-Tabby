@@ -26,7 +26,7 @@ static const float3 g_lpos = float3(0, 200, 200);
 
 float smin(float a, float b, float h)
 {
-    float k = clamp((a - b) / h * .5 + .5, 0., 1.);
+    float k = saturate((a - b) / h * .5 + .5);
     return lerp(a, b, k) - k * (1. - k) * h;
 }
 
@@ -347,10 +347,12 @@ float3 getPixel(float2 coord)
 
     float3 col = (float3)0;
     col = (float3)((dot(l, -n) * .5 + .5) * (1. / (0.01 + dd * falloff)));
-    col += pow(g_at * .2, 0.5) * float3(1, 0, 0);
+    col += sqrt(g_at * .2) * float3(1, 0, 0);
     col += pow(g_at1 * .2, 1.) * float3(0, 153. / 255., 153. / 255.);
-    col += pow(g_moonlight * 2., 2.);
-    col += pow(g_fire * 0.01, 2.) * float3(1, 0, 0);
+    float moonTerm = g_moonlight * 2.;
+    col += moonTerm * moonTerm;
+    float fireTerm = g_fire * 0.01;
+    col += (fireTerm * fireTerm) * float3(1, 0, 0);
     col += sky;
 
     return col;

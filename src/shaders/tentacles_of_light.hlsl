@@ -50,7 +50,7 @@ float3 hue2rgb(float hue) {
 
 float lineDist(float2 p, float2 a, float2 b) {
     float2 pa = p - a, ba = b - a;
-    return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+    return length(pa - ba * saturate(dot(pa, ba) / dot(ba, ba)));
 }
 
 float4 PSMain(PSInput input) : SV_Target {

@@ -20,7 +20,7 @@ struct PSInput {
 float segment(float2 p, float2 a, float2 b) {
     p -= a;
     b -= a;
-    return length(p - b * clamp(dot(p, b) / dot(b, b), 0.0, 1.0));
+    return length(p - b * saturate(dot(p, b) / dot(b, b)));
 }
 
 // rot(a) macro: cos(a+vec4(0,pi/2,-pi/2,0)) = (cos(a),-sin(a),sin(a),cos(a))

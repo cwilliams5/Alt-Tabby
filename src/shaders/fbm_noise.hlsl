@@ -64,7 +64,7 @@ float outline(float2 p, float eps) {
     float fb = noise_fbm(p + float2(0.0, eps));
     float fr = noise_fbm(p + float2(eps, 0.0));
 
-    float gg = clamp(abs(4. * f - ft - fr - fl - fb), 0., 1.);
+    float gg = saturate(abs(4. * f - ft - fr - fl - fb));
 
     return gg;
 }

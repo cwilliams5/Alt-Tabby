@@ -64,7 +64,7 @@ float noise(float3 x) {
 
 // smooth minimum (iq)
 float smin(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 
@@ -91,7 +91,7 @@ float getLight(float h, float k, float3 ce, float3 p) {
     float3 lig = ce - p;
     float llig = length(lig);
     lig = normalize(lig);
-    float sha = clamp((h - map(p + lig * k)) / 128.0, 0.0, 1.0);
+    float sha = saturate((h - map(p + lig * k)) / 128.0);
     float att = 1.0 / (llig * llig);
     return sha * att;
 }

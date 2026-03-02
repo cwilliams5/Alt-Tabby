@@ -182,7 +182,7 @@ float3 calcNormal(float2 p) {
 }
 
 float3 postProcess(float3 col, float2 q) {
-    col = pow(clamp(col, 0.0, 1.0), (float3)0.75);
+    col = pow(saturate(col), (float3)0.75);
     col = col * 0.6 + 0.4 * col * col * (3.0 - 2.0 * col);  // contrast
     col = lerp(col, (float3)dot(col, float3(0.33, 0.33, 0.33)), -0.4);  // saturation
     col *= 0.5 + 0.5 * pow(19.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.7);  // vignetting
@@ -220,7 +220,7 @@ float4 PSMain(PSInput input) : SV_Target {
     col += baseCol * pow(diff1, 6.0);
     col += 0.1 * baseCol * pow(diff1, 1.5);
     col += 0.15 * baseCol.zyx * pow(diff2, 8.0);
-    col += 0.015 * baseCol.zyx * pow(diff2, 2.0);
+    col += 0.015 * baseCol.zyx * (diff2 * diff2);
     col += scol * 0.5;
 
     col = postProcess(col, q);

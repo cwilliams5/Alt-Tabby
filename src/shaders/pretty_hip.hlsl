@@ -43,7 +43,8 @@ float4 PSMain(PSInput input) : SV_Target {
     edge = 2.0 * frac(edge * 0.5);
     value = frac(dist * 2.0);
     value = lerp(value, 1.0 - value, step(1.0, edge));
-    edge = pow(abs(1.0 - edge), 2.0);
+    float absEdge = abs(1.0 - edge);
+    edge = absEdge * absEdge;
 
     value = smoothstep(edge - 0.05, edge, 0.95 * value);
 

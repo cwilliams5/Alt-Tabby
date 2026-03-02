@@ -33,7 +33,7 @@ float bx(float3 p, float3 s) {
 }
 
 float smin_f(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 
@@ -95,8 +95,9 @@ void px() {
     cc = float3(0.35, 0.25, 0.45) + length(pow(abs(rd + float3(0.0, 0.5, 0.0)), (float3)3)) * 0.3 + gl;
     float3 l = float3(0.9, 0.7, 0.5);
     if (cd > 128.0) { oa = 1.0; return; }
-    float df = clamp(length(cn * l), 0.0, 1.0);
-    float3 fr = pow(1.0 - df, 3.0) * lerp(cc, (float3)0.4, 0.5);
+    float df = saturate(length(cn * l));
+    float oneMinusDf = 1.0 - df;
+    float3 fr = (oneMinusDf * oneMinusDf * oneMinusDf) * lerp(cc, (float3)0.4, 0.5);
     float sp = (1.0 - length(cross(cr, cn * l))) * 0.2;
     float ao = min(mp(cp + cn * 0.3) - 0.3, 0.3) * 0.4;
     cc = lerp((oc * (df + fr + ss) + fr + sp + ao + gl), oc, vb.x);
@@ -129,7 +130,7 @@ float4 PSMain(PSInput input) : SV_Target {
         if (length(cr) == 0.0 && es <= 0) { cr = reflect(rd, cn); es = ec; }
         if (max(es, 0) % 3 == 0 && cd < 128.0) rd = cr;
         es--;
-        if (vb.x > 0.0 && i % 2 == 1) oa = pow(clamp(cd / vb.y, 0.0, 1.0), vb.z);
+        if (vb.x > 0.0 && i % 2 == 1) oa = pow(saturate(cd / vb.y), vb.z);
         px();
         fc = fc + float4(cc * oa, oa) * (1.0 - fc.a);
         if (fc.a >= 1.0 || cd > 128.0) break;

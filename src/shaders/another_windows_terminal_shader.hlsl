@@ -25,10 +25,10 @@ struct PSInput {
 static const float4 hsv2rgb_K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
 float3 hsv2rgb(float3 c) {
     float3 p = abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www);
-    return c.z * lerp(hsv2rgb_K.xxx, clamp(p - hsv2rgb_K.xxx, 0.0, 1.0), c.y);
+    return c.z * lerp(hsv2rgb_K.xxx, saturate(p - hsv2rgb_K.xxx), c.y);
 }
 // Macro version of above to enable compile-time constants
-#define HSV2RGB(c)  (c.z * lerp(hsv2rgb_K.xxx, clamp(abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www) - hsv2rgb_K.xxx, 0.0, 1.0), c.y))
+#define HSV2RGB(c)  (c.z * lerp(hsv2rgb_K.xxx, saturate(abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www) - hsv2rgb_K.xxx), c.y))
 
 static const float2x2 rot0 = ROT(0.0);
 static float2x2 g_rot0;

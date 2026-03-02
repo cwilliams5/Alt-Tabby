@@ -20,7 +20,7 @@ struct PSInput {
 static const float BEAT = 4.0;
 
 float smin(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 
@@ -89,7 +89,7 @@ float4 PSMain(PSInput input) : SV_Target {
     fragColor.rgb += S * float3(0.4, 0.7, 0.7);
 
     // rim
-    float R = 1.0 - clamp(dot(grad, v), 0.0, 1.0);
+    float R = 1.0 - saturate(dot(grad, v));
     fragColor.rgb = lerp(fragColor.rgb, float3(0.8, 0.8, 1.0), smoothstep(-0.2, 2.9, R));
 
     // edges

@@ -24,11 +24,11 @@ static const float4 hsv2rgb_K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
 
 float3 hsv2rgb(float3 c) {
     float3 p = abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www);
-    return c.z * lerp(hsv2rgb_K.xxx, clamp(p - hsv2rgb_K.xxx, 0.0, 1.0), c.y);
+    return c.z * lerp(hsv2rgb_K.xxx, saturate(p - hsv2rgb_K.xxx), c.y);
 }
 
 float3 HSV2RGB(float3 c) {
-    return c.z * lerp(hsv2rgb_K.xxx, clamp(abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www) - hsv2rgb_K.xxx, 0.0, 1.0), c.y);
+    return c.z * lerp(hsv2rgb_K.xxx, saturate(abs(frac(c.xxx + hsv2rgb_K.xyz) * 6.0 - hsv2rgb_K.www) - hsv2rgb_K.xxx), c.y);
 }
 
 float3 sRGB(float3 t) {
@@ -45,7 +45,7 @@ float3 aces_approx(float3 v) {
     float c = 2.43;
     float d = 0.59;
     float e = 0.14;
-    return clamp((v * (a * v + b)) / (v * (c * v + d) + e), 0.0, 1.0);
+    return saturate((v * (a * v + b)) / (v * (c * v + d) + e));
 }
 
 float tanh_approx(float x) {
@@ -54,7 +54,7 @@ float tanh_approx(float x) {
 }
 
 float pmin(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 

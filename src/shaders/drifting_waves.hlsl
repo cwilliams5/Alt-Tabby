@@ -241,7 +241,7 @@ float3 render(float2 fragCoord) {
 
         float3 rfl = reflect(rd, normal);
         rfl.y = abs(rfl.y);
-        float fres = clamp(pow(1.0 - max(0.0, dot(-normal, rd)), 5.0), 0.0, 1.0);
+        float fres = saturate(pow(1.0 - max(0.0, dot(-normal, rd)), 5.0));
         col += sky(rfl) * fres * 0.9;
 
         float3 water_col = saturate(saturate(spc(0.46, 0.4)) * 0.05 * pow(min(pos.y + 0.5, 1.8), 4.0) *

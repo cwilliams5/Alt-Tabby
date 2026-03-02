@@ -142,7 +142,8 @@ float3 RaindropSurface(float2 XY, float DistanceScale, float ZScale) {
     float M = 0.5;
     float S = ZScale;
 
-    float TempZ = 1.0 - pow(x / A, 2.0) - pow(y / A, 2.0);
+    float xA = x / A, yA = y / A;
+    float TempZ = 1.0 - xA * xA - yA * yA;
     float Z = pow(max(TempZ, 0.0), A / 2.0);
     float ZInMAndN = (Z - M) / (N - M);
     float t = min(max(ZInMAndN, 0.0), 1.0);
@@ -165,7 +166,7 @@ float3 RaindropSurface(float2 XY, float DistanceScale, float ZScale) {
 }
 
 float MapToRange(float edge0, float edge1, float x) {
-    return clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return saturate((x - edge0) / (edge1 - edge0));
 }
 
 float ProportionalMapToRange(float edge0, float edge1, float x) {
@@ -296,7 +297,8 @@ float4 RollingRaindrops(float2 UV, float Time, float UVScale) {
 
     float3 TrailHeightAndNormal = RaindropSurface(TrailXY, 1.0, 1.0);
 
-    TrailHeightAndNormal = TrailHeightAndNormal * pow(Trail * RandVec3.y, 2.0);
+    float trailFactor = Trail * RandVec3.y;
+    TrailHeightAndNormal = TrailHeightAndNormal * (trailFactor * trailFactor);
     TrailHeightAndNormal.x = smoothstep(0.0, 1.0, TrailHeightAndNormal.x);
 
     // Remain trail droplets
@@ -386,7 +388,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 UVWithNormal = GlobalUV + RaindropNormal;
     float EdgeColorScale = smoothstep(0.2, 0.0, length(RaindropNormal));
-    EdgeColorScale = RaindropHeight > 0.0 ? pow(EdgeColorScale, 0.5) * 0.2 + 0.8 : 1.0;
+    EdgeColorScale = RaindropHeight > 0.0 ? sqrt(EdgeColorScale) * 0.2 + 0.8 : 1.0;
 
     float Blur = lerp(MinBlur, MaxBlur, smoothstep(0.0, 1.6, length(RaindropNormal)));
     Blur = RaindropHeight > 0.0 ? Blur : MaxBlur;

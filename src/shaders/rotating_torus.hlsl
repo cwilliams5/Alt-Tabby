@@ -61,7 +61,7 @@ float sdSegment(float2 pt, float2 a, float2 b) {
     float2 pa = pt - a;
     float2 ba = b - a;
 
-    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    float h = saturate(dot(pa, ba) / dot(ba, ba));
 
     return length(pa - ba * h);
 }
@@ -69,7 +69,7 @@ float sdSegment(float2 pt, float2 a, float2 b) {
 void drawSegment(float2 fragmentCoordinates, float2 p0, float2 p1,
                  float thickness, float4 color, inout float4 outputColor) {
     float d = sdSegment(fragmentCoordinates, p0, p1);
-    float a = 1.0 - clamp(d - thickness / 2.0 + 0.5, 0.0, 1.0);
+    float a = 1.0 - saturate(d - thickness / 2.0 + 0.5);
 
     outputColor = lerp(outputColor, color, a * color.a);
 }
@@ -114,7 +114,7 @@ float4 trace(Ray ray) {
             float2 uv = textureCoordinates(position, 1.5);
             uv.x += time * 0.1;
             uv.x = fmod(uv.x * 10.0, 1.0);
-            return tex(uv) * clamp(1.2 - t * 0.25, 0.0, 1.0);
+            return tex(uv) * saturate(1.2 - t * 0.25);
         }
 
         t += distance * 0.999;

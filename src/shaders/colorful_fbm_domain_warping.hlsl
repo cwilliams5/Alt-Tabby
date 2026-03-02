@@ -65,10 +65,8 @@ float fbmWarp2(in float2 st, out float2 q, out float2 r) {
 }
 
 float3 hsb2rgb(in float3 c) {
-    float3 rgb = clamp(abs(glsl_mod3(c.x * 6.0 + float3(0.0, 4.0, 2.0),
-                                     6.0) - 3.0) - 1.0,
-                       0.0,
-                       1.0);
+    float3 rgb = saturate(abs(glsl_mod3(c.x * 6.0 + float3(0.0, 4.0, 2.0),
+                                     6.0) - 3.0) - 1.0);
     rgb = rgb * rgb * (3.0 - 2.0 * rgb);
     return c.z * lerp((float3)1.0, rgb, c.y);
 }

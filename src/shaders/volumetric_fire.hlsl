@@ -23,7 +23,7 @@ static const float3x3 m3 = float3x3(0.3338, 0.56034, -0.71817,
                                      0.15162, 0.69596, 0.61339) * 1.93;
 
 float LinStep(float mn, float mx, float x) {
-    return clamp((x - mn) / (mx - mn), 0.0, 1.0);
+    return saturate((x - mn) / (mx - mn));
 }
 
 float2x2 rotate(float a) {
@@ -59,7 +59,7 @@ float3 transRender(float3 ro, float3 rd) {
         if (rez.w > 0.99) break;
         float3 pos = ro + t * rd;
         float mpv = gyroidFBM3D(pos, -pos.z);
-        float den = clamp(mpv - 0.2, 0.0, 1.0) * 0.71;
+        float den = saturate(mpv - 0.2) * 0.71;
         float dn = clamp(mpv * 2.0, 0.0, 3.0);
         float4 col = float4(0.0, 0.0, 0.0, 0.0);
         if (mpv > 0.6) {
@@ -72,7 +72,7 @@ float3 transRender(float3 ro, float3 rd) {
         rez += col * (1.0 - rez.w);
         t += clamp(0.25 - dn * dn * 0.05, 0.15, 1.4);
     }
-    return clamp(rez.xyz, 0.0, 1.0);
+    return saturate(rez.xyz);
 }
 
 float4 PSMain(PSInput input) : SV_Target

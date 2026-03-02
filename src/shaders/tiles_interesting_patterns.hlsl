@@ -45,7 +45,7 @@ float4 PSMain(PSInput input) : SV_Target {
     value += square_dist * 0.1;
     value *= 0.6;
 
-    float3 col = float3(pow(value, 2.0), pow(value, 1.5), pow(value, 1.2));
+    float3 col = float3(value * value, value * sqrt(value), pow(value, 1.2));
 
     // Darken/desaturate
     float lum = dot(col, float3(0.299, 0.587, 0.114));

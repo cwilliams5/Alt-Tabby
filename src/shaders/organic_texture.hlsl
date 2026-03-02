@@ -78,7 +78,7 @@ float4 PSMain(PSInput input) : SV_Target {
     nor = normalize(nor);
 
     float3 mtl = getColor(h);
-    mtl = clamp(mtl, 0.0, 1.0);
+    mtl = saturate(mtl);
     float3 ld = normalize(float3(1.0, -1.0, 1.0));
     float3 ha = normalize(ld - float3(0.0, 0.0, -1.0));
 

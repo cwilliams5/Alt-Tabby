@@ -32,7 +32,7 @@ float2x2 rot(float a) {
 }
 
 float linstep(float m, float M, float x) {
-    return clamp((x - m) / (M - m), 0.0, 1.0);
+    return saturate((x - m) / (M - m));
 }
 
 float2 disp(float t) {
@@ -77,7 +77,7 @@ float4 render(float3 ro, float3 rd, float animTime) {
     for (int i = 0; rez.a < 0.99 && i < 130; i++) {
         float3 pos = ro + t * rd;
         float2 mpv = map(pos);
-        float den = clamp(mpv.x - 0.3, 0.0, 1.0) * 1.12,
+        float den = saturate(mpv.x - 0.3) * 1.12,
               dn  = clamp(mpv.x + 2.0, 0.0, 3.0);
 
         float4 C = (float4)0;
@@ -91,7 +91,7 @@ float4 render(float3 ro, float3 rd, float animTime) {
         }
 
         float fogC = exp(t * 0.2 - 2.2);
-        C += float4(0.06, 0.11, 0.11, 0.1) * clamp(fogC - fogT, 0.0, 1.0);
+        C += float4(0.06, 0.11, 0.11, 0.1) * saturate(fogC - fogT);
         fogT = fogC;
 
         rez += C * (1.0 - rez.a);

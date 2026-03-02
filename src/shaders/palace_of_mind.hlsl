@@ -92,19 +92,19 @@ float3 gn(float3 p) {
 
 float3 lighting(float3 p, float3 view) {
     float3 normal = gn(p);
-    float vn = clamp(dot(-view, normal), 0.0, 1.0);
+    float vn = saturate(dot(-view, normal));
     float3 ld = normalize(float3(-1, 0.9 * sin(time * 0.5) - 0.1, 0));
     float NdotL = max(dot(ld, normal), 0.0);
     float3 R = normalize(-ld + NdotL * normal * 2.0);
-    float spec = pow(max(dot(-view, R), 0.0), 20.0) * clamp(sign(NdotL), 0.0, 1.0);
-    float3 col = float3(1, 1, 1) * (pow(vn, 2.0) * 0.9 + spec * 0.3);
+    float spec = pow(max(dot(-view, R), 0.0), 20.0) * saturate(sign(NdotL));
+    float3 col = float3(1, 1, 1) * (vn * vn * 0.9 + spec * 0.3);
     float k = 0.5;
     float ks = 0.9;
     float2 sxz = floor((p.xz - 0.5 * ks) / ks) * ks;
     float sx = rand(sxz);
     float sy = rand(sxz + 100.1);
-    float emissive = clamp(0.001 / abs(glsl_mod(abs(p.y * sx + p.x * sy) + time * sign(sx - 0.5) * 0.4, k) - 0.5 * k), 0.0, 1.0);
-    return clamp(col * float3(0.3, 0.5, 0.9) * 0.7 + emissive * float3(0.2, 0.2, 1.0), 0.0, 1.0);
+    float emissive = saturate(0.001 / abs(glsl_mod(abs(p.y * sx + p.x * sy) + time * sign(sx - 0.5) * 0.4, k) - 0.5 * k));
+    return saturate(col * float3(0.3, 0.5, 0.9) * 0.7 + emissive * float3(0.2, 0.2, 1.0));
 }
 
 struct PSInput {
@@ -138,7 +138,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 bcol = float3(0.1, 0.1, 0.8);
     float3 col = lighting(ro + rd * t, rd);
 
-    col = lerp(bcol, col, pow(clamp((far - t) / (far - near), 0.0, 1.0), 2.0));
+    float fogFade = saturate((far - t) / (far - near));
+    col = lerp(bcol, col, fogFade * fogFade);
 
     col.x = pow(col.x, 2.2);
     col.y = pow(col.y, 2.2);

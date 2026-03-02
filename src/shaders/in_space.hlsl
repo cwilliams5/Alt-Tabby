@@ -42,7 +42,7 @@ float3x3 rotz(float a) {
 }
 
 float linearstep(float begin, float end, float t) {
-    return clamp((t - begin) / (end - begin), 0.0, 1.0);
+    return saturate((t - begin) / (end - begin));
 }
 
 float hash(float2 p) {
@@ -166,7 +166,7 @@ float4 get_lines_color(float2 p, float3 n, float timer) {
     float d3 = (d * n.x * n.y + d * n.y * n.y + (d2 * ld2 + d2 * ld * n.z * n.z));
     d = (d * n.x * n.y + d * n.y * n.y + (d2 * ld + d2 * ld * n.z * n.z));
 
-    a = clamp(d, 0.0, 1.0);
+    a = saturate(d);
 
     puv.y = lerp(frac(puv.y), frac(puv.y + 0.5), SS(0.0, 0.1, abs(frac(puv.y) - 0.5)));
     col = getColor(0.54 * length(puv.y));
@@ -182,14 +182,14 @@ float4 get_lines_color(float2 p, float3 n, float timer) {
 
     col = col2 * 0.5 * (0.5 - 0.5 * cos((timer * 0.48 * 2.0))) + lerp(col, col2, 0.45 + 0.45 * cos((timer * 0.48 * 2.0)));
 
-    col = clamp(col, 0.0, 1.0);
+    col = saturate(col);
 
     return float4(col, a);
 }
 
 float4 planet(float3 ro, float3 rd, float timer) {
     float3 lgt = float3(-0.523, 0.41, -0.747);
-    float sd = clamp(dot(lgt, rd) * 0.5 + 0.5, 0.0, 1.0);
+    float sd = saturate(dot(lgt, rd) * 0.5 + 0.5);
     float far_dist = 400.0;
     float dtp = 13.0 - (ro + rd * far_dist).y * 3.5;
     float hori = (linearstep(-1900.0, 0.0, dtp) - linearstep(11.0, 700.0, dtp)) * 1.0;
@@ -200,7 +200,7 @@ float4 planet(float3 ro, float3 rd, float timer) {
     col += pow(hori, 200.0) * float3(0.3, 0.7, 1.0) * 3.0;
     col += pow(hori, 25.0) * float3(0.5, 0.5, 1.0) * 0.5;
     col += pow(hori, 7.0) * pal(timer * 0.48 * 0.1, float3(0.8, 0.5, 0.04), float3(0.3, 0.04, 0.82), float3(2.0, 1.0, 1.0), float3(0.0, 0.25, 0.25)) * 1.0;
-    col = clamp(col, 0.0, 1.0);
+    col = saturate(col);
 
     float t = fmod(timer, 15.0);
     float t2 = fmod(timer + 7.5, 15.0);
@@ -215,11 +215,11 @@ float4 planet(float3 ro, float3 rd, float timer) {
     c2 = clamp(c2, 0.0001, 1.0);
 
     col += sd * hori * clamp((c1 / (2.0 * c2)), 0.0, 3.0) * SS(0.0, 50.0, dtp);
-    col = clamp(col, 0.0, 1.0);
+    col = saturate(col);
 
     float a = 1.0;
     a = (0.15 + 0.95 * (1.0 - sd)) * hori * (1.0 - SS(0.0, 25.0, dtp));
-    a = clamp(a, 0.0, 1.0);
+    a = saturate(a);
 
     return float4(col, a);
 }
@@ -258,7 +258,7 @@ float3 ACESFitted(float3 color) {
     color = mul(color, ACESInputMat);
     color = RRTAndODTFit(color);
     color = mul(color, ACESOutputMat);
-    color = clamp(color, 0.0, 1.0);
+    color = saturate(color);
     return color;
 }
 
@@ -277,7 +277,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float4 planetc = planet(ro, rd, timer);
 
     float3 col = lcol.rgb * planetc.a * 0.75 + 0.5 * lcol.rgb * min(12.0 * planetc.a, 1.0) + planetc.rgb;
-    col = clamp(col, 0.0, 1.0);
+    col = saturate(col);
 
     col = col * 0.85 + 0.15 * col * col;
 

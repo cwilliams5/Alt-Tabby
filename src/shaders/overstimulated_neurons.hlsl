@@ -215,7 +215,7 @@ float4 PSMain(PSInput input) : SV_Target {
     col = lerp((float3)0, col, pow(16.0*u.x*u.y*(1.0 - u.x)*(1.0 - u.y), .125)*.5 + .5);
 
     // Gamma correction
-    col = sqrt(clamp(col, 0., 1.));
+    col = sqrt(saturate(col));
 
     // Post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));

@@ -75,9 +75,11 @@ float4 getLoader(float4 tri) {
     float angle = atan2(tri.x, tri.y);
     float seed = rand(tri.xy);
     float dst = min(tri.z, min(tri.w, 1.0 - tri.z - tri.w)) * 15.0;
-    float glow = dst < pi ? pow(sin(dst), 1.5) : 0.0;
+    float sinDst = sin(dst);
+    float glow = dst < pi ? sinDst * sqrt(sinDst) : 0.0;
 
-    return float4(lerp(orange, (float3)1.0, glow * 0.07), pow(0.5 + 0.5 * sin(angle - time * 6.0 + seed), 2.0));
+    float glowAlpha = 0.5 + 0.5 * sin(angle - time * 6.0 + seed);
+    return float4(lerp(orange, (float3)1.0, glow * 0.07), glowAlpha * glowAlpha);
 }
 
 float getBackground(float4 tri) {
@@ -87,7 +89,8 @@ float getBackground(float4 tri) {
         return 0.0;
     }
 
-    float value = pow(0.5 + 0.5 * cos(-abs(tri.x) * 0.4 + rand(tri.xy) * 2.0 + time * 4.0), 2.0) * 0.08;
+    float bgVal = 0.5 + 0.5 * cos(-abs(tri.x) * 0.4 + rand(tri.xy) * 2.0 + time * 4.0);
+    float value = bgVal * bgVal * 0.08;
     return value * (dst > 0.05 ? 0.65 : 1.0);
 }
 
@@ -123,7 +126,7 @@ float2 getPos(float2 id, float2 offset) {
 float distLine(float2 p, float2 a, float2 b) {
     float2 pa = p - a;
     float2 ba = b - a;
-    float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    float t = saturate(dot(pa, ba) / dot(ba, ba));
     return length(pa - ba * t);
 }
 
@@ -144,9 +147,9 @@ float distTriangle(float2 p, float2 p0, float2 p1, float2 p2) {
     float2 v1 = p - p1;
     float2 v2 = p - p2;
 
-    float2 pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
-    float2 pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
-    float2 pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+    float2 pq0 = v0 - e0 * saturate(dot(v0, e0) / dot(e0, e0));
+    float2 pq1 = v1 - e1 * saturate(dot(v1, e1) / dot(e1, e1));
+    float2 pq2 = v2 - e2 * saturate(dot(v2, e2) / dot(e2, e2));
 
     float s = sign(e0.x * e2.y - e0.y * e2.x);
     float2 d = min(min(float2(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),

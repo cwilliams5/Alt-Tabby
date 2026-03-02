@@ -154,7 +154,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
         float s2 = 0.;
         if (i > 0.) s2 = ellipse_shape(uv, pp, qp);
-        s_acc = clamp(s_acc + s2, 0., 1.);
+        s_acc = saturate(s_acc + s2);
         float3 col2 = pal(i/n, e, e, e, (i/n) * float3(0, 1, 2)/3.);
         col = lerp(col, col2, s2);
     }

@@ -161,17 +161,17 @@ float3 fireParticles(in float2 uv, in float2 originalUV)
     float2 tempUV = uv + (noise2_2(uv * 2.0) - 0.5) * 0.1;
     tempUV += -(noise2_2(uv * 3.0 + time) - 0.5) * 0.07;
 
-    // Sparks sdf
-    dist = length(rotate(tempUV - pointUV, 0.7) * randomAround2_2(PARTICLE_SCALE, PARTICLE_SCALE_VAR, rootUV));
-
-    // Bloom sdf
-    distBloom = length(rotate(tempUV - pointUV, 0.7) * randomAround2_2(PARTICLE_BLOOM_SCALE, PARTICLE_BLOOM_SCALE_VAR, rootUV));
+    // Sparks + bloom sdf (shared rotation)
+    float2 rotatedDelta = rotate(tempUV - pointUV, 0.7);
+    dist = length(rotatedDelta * randomAround2_2(PARTICLE_SCALE, PARTICLE_SCALE_VAR, rootUV));
+    distBloom = length(rotatedDelta * randomAround2_2(PARTICLE_BLOOM_SCALE, PARTICLE_BLOOM_SCALE_VAR, rootUV));
 
     // Add sparks
     particles += (1.0 - smoothstep(PARTICLE_SIZE * 0.6, PARTICLE_SIZE * 3.0, dist)) * SPARK_COLOR;
 
     // Add bloom
-    particles += pow((1.0 - smoothstep(0.0, PARTICLE_SIZE * 6.0, distBloom)) * 1.0, 3.0) * BLOOM_COLOR;
+    float bloomFade = 1.0 - smoothstep(0.0, PARTICLE_SIZE * 6.0, distBloom);
+    particles += (bloomFade * bloomFade * bloomFade) * BLOOM_COLOR;
 
     // Upper disappear curve randomization
     float border = (hash1_2(rootUV) - 0.5) * 2.0;

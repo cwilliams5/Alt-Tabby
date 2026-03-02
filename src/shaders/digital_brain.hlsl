@@ -106,7 +106,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
             float va = 1.0 - smoothstep(0.0, 0.1, v1);
             float vb = 1.0 - smoothstep(0.0, 0.08, v2);
-            v += a * pow(va * (0.5 + vb), 2.0);
+            float vab = va * (0.5 + vb);
+            v += a * vab * vab;
         }
 
         // make sharp edges

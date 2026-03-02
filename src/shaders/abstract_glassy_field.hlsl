@@ -78,7 +78,7 @@ float cao(in float3 p, in float3 n) {
         occ += (hr - dd)*sca;
         sca *= .7;
     }
-    return clamp(1. - occ, 0., 1.);
+    return saturate(1. - occ);
 }
 
 // Normal via central differences
@@ -240,7 +240,7 @@ float4 PSMain(PSInput input) : SV_Target {
     col = lerp((float3)0, col, pow(16.0*u.x*u.y*(1.0 - u.x)*(1.0 - u.y), .125)*.5 + .5);
 
     // Gamma correction
-    col = sqrt(clamp(col, 0., 1.));
+    col = sqrt(saturate(col));
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));

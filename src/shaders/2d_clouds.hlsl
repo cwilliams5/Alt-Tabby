@@ -119,11 +119,11 @@ float4 PSMain(PSInput input) : SV_Target {
     c += c1;
 
     float3 skycolour = lerp(skycolour2, skycolour1, p.y);
-    float3 cloudcolour = float3(1.1, 1.1, 0.9) * clamp((clouddark + cloudlight * c), 0.0, 1.0);
+    float3 cloudcolour = float3(1.1, 1.1, 0.9) * saturate((clouddark + cloudlight * c));
 
     f = cloudcover + cloudalpha * f * r;
 
-    float3 result = lerp(skycolour, clamp(skytint * skycolour + cloudcolour, 0.0, 1.0), clamp(f + c, 0.0, 1.0));
+    float3 result = lerp(skycolour, saturate(skytint * skycolour + cloudcolour), saturate(f + c));
 
     // Darken/desaturate post-processing
     float lum = dot(result, float3(0.299, 0.587, 0.114));

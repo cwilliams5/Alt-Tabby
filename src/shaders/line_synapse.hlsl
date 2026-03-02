@@ -36,7 +36,7 @@ float3 glsl_mod(float3 x, float3 y) { return x - y * floor(x / y); }
 float DistLine(float2 p, float2 a, float2 b) {
     float2 pa = p - a;
     float2 ba = b - a;
-    float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    float t = saturate(dot(pa, ba) / dot(ba, ba));
     return length(pa - ba * t);
 }
 

@@ -62,7 +62,7 @@ float rand1(float2 co) {
 
 // Polynomial smooth min (IQ)
 float sminPoly(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float h = saturate(0.5 + 0.5 * (b - a) / k);
     return lerp(b, a, h) - k * h * (1.0 - h);
 }
 
@@ -103,7 +103,7 @@ float Kalibox(float3 pos) {
     for (int i = 0; i < 14; i++) {
         p.xyz = abs(p.xyz) + Trans;
         float r2 = dot(p.xyz, p.xyz);
-        p *= clamp(max(MinRad2 / r2, MinRad2), 0.0, 1.0);
+        p *= saturate(max(MinRad2 / r2, MinRad2));
         p = p * scale + p0;
         if (i < ColorIterations) orbitTrap = min(orbitTrap, abs(float4(p.xyz, r2)));
     }
@@ -218,12 +218,12 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 lig;
     lig = normalize(float3(-0.4 * sin(time * 0.15), 1.0, 0.5));
 
-    float dif = clamp(dot(lig, nor), 0.0, 1.0);
-    float spec = pow(clamp(dot(reflect(rd, nor), lig), 0.0, 1.0), 16.0);
+    float dif = saturate(dot(lig, nor));
+    float spec = pow(saturate(dot(reflect(rd, nor), lig)), 16.0);
     float sh = softshadow(pos, lig, 0.02, 20.0, 7.0);
     float3 color = getColor();
     col = ((0.8 * dif + spec) + 0.35 * color);
-    col = col * clamp(sh, 0.0, 1.0);
+    col = col * saturate(sh);
 
     // Postprocessing
     float klang1 = 0.4;

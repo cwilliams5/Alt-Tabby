@@ -136,7 +136,7 @@ float3 lights(float3 p, float3 rd, float d, Hit h) {
         n.y += n31(h.uv * 10.0);
         n = NM(n);
     }
-    else if (h.id == 2) c = lerp(float3(0.16, 0.08, 0.07), (float3)0.6, pow(n31(h.uv * 10.0), 3.0));
+    else if (h.id == 2) { float nv = n31(h.uv * 10.0); c = lerp(float3(0.16, 0.08, 0.07), (float3)0.6, nv * nv * nv); }
     else if (h.id == 4) c = float3(0.6, 1, 4);
     else {
         spe = 0.1;

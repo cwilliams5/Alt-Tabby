@@ -76,7 +76,7 @@ float4 PSMain(PSInput input) : SV_Target {
     pn.z = fmod(pn.z, kn) - 0.5 * kn;
     float em = clamp(0.01 / pn.z, 0.0, 100.0);
     col += 3.0 * em * float3(0.1, 1.0, 0.1);
-    col = clamp(col, 0.0, 1.0);
+    col = saturate(col);
 
     // Apply darken/desaturate
     float lum = dot(col, float3(0.299, 0.587, 0.114));

@@ -49,7 +49,8 @@ float4 PSMain(PSInput input) : SV_Target {
         float2 offset = uv - center;
         float twistFactor = (hash11(fi * 0.0347) * 2.0 - 1.0) * 1.9;
         float rotation = 0.1 + time * 0.2 + sin(time * 0.1) * 0.9 + (length(offset) / radius) * twistFactor;
-        accum += pow(smoothstep(radius, 0.0, polygonDistance(uv - center, 0.1 + hash11(fi * 2.3) * 0.2, rotation, 5) + 0.1), 3.0);
+        float polyFade = smoothstep(radius, 0.0, polygonDistance(uv - center, 0.1 + hash11(fi * 2.3) * 0.2, rotation, 5) + 0.1);
+        accum += polyFade * polyFade * polyFade;
     }
 
     float3 subColor = float3(0.4, 0.8, 0.2);

@@ -99,8 +99,9 @@ float3 fogMarch(float3 rayStart, float3 rayDirection, float t, float disMod) {
         stepLen *= STEP_MODIFIER;
     }
 
+    float endNoise = getNoiseFromVec3(rayStart + rayDirection * RENDER_DISTANCE);
     fog = (fog / (float)RAYS_COUNT)
-        * (pow(getNoiseFromVec3(rayStart + rayDirection * RENDER_DISTANCE), 2.0) * 3.0
+        * (endNoise * endNoise * 3.0
            + disMod * 0.5);
 
     return fog;

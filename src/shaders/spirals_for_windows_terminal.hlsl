@@ -39,7 +39,7 @@ float3 aces_approx(float3 v) {
     float c = 2.43;
     float d = 0.59;
     float e = 0.14;
-    return clamp((v * (a * v + b)) / (v * (c * v + d) + e), 0.0, 1.0);
+    return saturate((v * (a * v + b)) / (v * (c * v + d) + e));
 }
 
 float hash_val(float co) {

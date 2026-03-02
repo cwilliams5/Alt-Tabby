@@ -101,7 +101,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // Create triangular noise pattern
     float n1 = Perlin3D(float3(TriangleUV(uv, 11.0, Rotation, Time * Scroll) * 10.0, Time * NoiseSpeed));
     float n2 = Perlin3D(float3(TriangleUV(uv * 2.0 + float2(10.0, 10.0), 11.0, Rotation, Time * Scroll) * 10.0, Time * NoiseSpeed));
-    n1 = clamp((n1 + n2) * 0.5 + 0.5, 0.0, 1.0);
+    n1 = saturate((n1 + n2) * 0.5 + 0.5);
 
     // Final output
     float3 col = lerp(Color1.rgb, Color2.rgb, n1);
