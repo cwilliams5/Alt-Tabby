@@ -312,6 +312,17 @@ _Paint_PreRenderForResize(items, sel, phX, phY, phW, phH, scale) {
     if (pOldTarget)
         ObjRelease(pOldTarget)
 
+    ; --- Step 2b: Clear HWND surface so DWM has no stale pixels to show ---
+    ; Without this, SetWindowPos resizes the window and DWM immediately
+    ; composites the OLD frame cropped to the new size — showing stale row
+    ; content (e.g. workspace labels from the previous workspace) for 1 frame.
+    try {
+        gD2D_RT.BeginDraw()
+        gD2D_RT.Clear(D2D_ColorF(0x00000000))
+        gD2D_RT.EndDraw()
+    } catch {
+    }
+
     tAfterPreRender := QPC()
 
     ; --- Step 3: Fast resize + blit (the <2ms critical window) ---
