@@ -1,5 +1,5 @@
 ---
-name: review-shaders-pen
+name: review-shaders-open
 description: Audit HLSL pixel shaders for GPU performance — math optimizations, ALU reduction, texture efficiency at 120-240fps
 user-invocable: true
 disable-model-invocation: true
