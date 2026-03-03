@@ -26,7 +26,8 @@ if ($Dir) {
 } else {
     $capturesDir = Join-Path $PSScriptRoot '..\captures'
 }
-$capturesDir = (Resolve-Path $capturesDir -ErrorAction SilentlyContinue)?.Path
+$resolved = Resolve-Path $capturesDir -ErrorAction SilentlyContinue
+$capturesDir = if ($resolved) { $resolved.Path } else { $null }
 if (-not $capturesDir -or -not (Test-Path $capturesDir)) {
     Write-Host "No captures directory found at: $(Join-Path $PSScriptRoot '..\captures')" -ForegroundColor Yellow
     exit 0
