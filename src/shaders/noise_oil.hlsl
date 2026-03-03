@@ -37,10 +37,13 @@ float3 Oilnoise(float2 pos, float3 RGB)
     float gain = 0.44;
     float2 aPos = abs2d(pos) * 0.5;
 
+    float2x2 rot30 = rotMat(D2R * 30.0);
+    float2x2 rot5 = rotMat(D2R * 5.0);
+    float sinTime = sin(time);
+    float t = (sinTime * 0.5 + 0.5) * 0.2 + time * 0.8;
     for (float i = 0.0; i < OC; i++)
     {
-        pos = mul(pos, rotMat(D2R * 30.0));
-        float t = (sin(time) * 0.5 + 0.5) * 0.2 + time * 0.8;
+        pos = mul(pos, rot30);
         q = pos * s + aPos + t;
         q = float2(cos(q.x), cos(q.y));
 
@@ -48,7 +51,7 @@ float3 Oilnoise(float2 pos, float3 RGB)
 
         s *= 1.07;
         aPos += cos(q);
-        aPos = mul(aPos, rotMat(D2R * 5.0));
+        aPos = mul(aPos, rot5);
         aPos *= 1.2;
     }
 

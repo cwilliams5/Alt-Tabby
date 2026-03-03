@@ -203,8 +203,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 p = uv * 2.0 - 1.0;
     p.x *= resolution.x / resolution.y;
     float theta = sin(time * 0.03) * 3.14 * 2.0;
-    float x = 3.0 * cos(theta);
-    float z = 3.0 * sin(theta);
+    float _sx, _cx;
+    sincos(theta, _sx, _cx);
+    float x = 3.0 * _cx;
+    float z = 3.0 * _sx;
     float3 ro;
 
     ro = float3(0.0, 8.0, 0.0001);
@@ -240,13 +242,15 @@ float4 PSMain(PSInput input) : SV_Target {
     float Scr = 1.0 - dot(uv2, uv2) * 0.15;
     float2 uv3 = fragCoord.xy / resolution.xy;
     float worl = fworley(uv3 * resolution.xy / 2100.0);
-    worl *= exp(-length2(abs(2.0 * uv3 - 1.0)));
-    worl *= abs(1.0 - 0.6 * dot(2.0 * uv3 - 1.0, 2.0 * uv3 - 1.0));
+    float2 uv3_centered = 2.0 * uv3 - 1.0;
+    worl *= exp(-length2(abs(uv3_centered)));
+    worl *= abs(1.0 - 0.6 * dot(uv3_centered, uv3_centered));
     col += float3(0.40 * worl, 0.35 * worl, 0.25 * worl);
 
     // Border
-    float g2 = (blend_g / 2.0) + 0.39;
-    float g1 = ((1.0 - blend_g) / 2.0);
+    float half_blend = blend_g * 0.5;
+    float g2 = half_blend + 0.39;
+    float g1 = 0.5 - half_blend;
     if (uv3.y >= g2 + 0.11) col *= 0.0;
     if (uv3.y >= g2 + 0.09) col *= 0.4;
     if (uv3.y >= g2 + 0.07) { if (glsl_mod(uv3.x - 0.06 * time, 0.18) <= 0.16) col *= 0.5; }

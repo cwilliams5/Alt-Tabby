@@ -40,8 +40,8 @@ float fbm(float2 p) {
     float gat = 0.0;
 
     for (float octave = 0.; octave < 5.; ++octave) {
-        float la = pow(2.0, octave);
-        float ga = pow(0.5, octave + 1.);
+        float la = exp2(octave);
+        float ga = exp2(-(octave + 1.));
         f += ga * noise(la * p);
         gat += ga;
     }

@@ -164,7 +164,8 @@ float4 PSMain(PSInput input) : SV_Target
     float t = fmod(time + 600., 7200.) * .03;
 
     // 2D ray march variables
-    float2 marchDist = float2(.35 * max(resolution.x, resolution.y), .35 * max(resolution.x, resolution.y)) / resolution;
+    float maxRes = max(resolution.x, resolution.y);
+    float2 marchDist = float2(.35 * maxRes, .35 * maxRes) / resolution;
     float steps = 10.;
     float stepsInv = 1. / steps;
     float2 sunDir = normalize(m - uv) * marchDist * stepsInv;
@@ -173,7 +174,8 @@ float4 PSMain(PSInput input) : SV_Target
     float cloudShape = clouds(uv, t);
 
     // 2D ray march lighting loop
-    for (float i = 0.; i < marchDist.x; i += marchDist.x * stepsInv)
+    float stepX = marchDist.x * stepsInv;
+    for (float i = 0.; i < marchDist.x; i += stepX)
     {
         marchUv += sunDir * i;
         float c = clouds(marchUv, t);

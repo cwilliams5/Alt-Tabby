@@ -58,10 +58,14 @@ PatternResult pattern(float2 p, float t, float2 uv) {
     PatternResult res;
     res.q = float2(fbm(p), fbm(p + float2(10, 1.3)));
 
-    res.r = float2(fbm(p + 4.0 * res.q + (float2)t + float2(1.7, 9.2)),
-                   fbm(p + 4.0 * res.q + (float2)t + float2(8.3, 2.8)));
-    res.g = float2(fbm(p + 2.0 * res.r + float2(t * 20.0, t * 20.0) + float2(2, 6)),
-                   fbm(p + 2.0 * res.r + float2(t * 10.0, t * 10.0) + float2(5, 3)));
+    float2 p4q = p + 4.0 * res.q + (float2)t;
+    res.r = float2(fbm(p4q + float2(1.7, 9.2)),
+                   fbm(p4q + float2(8.3, 2.8)));
+    float2 p2r = p + 2.0 * res.r;
+    float t20 = t * 20.0;
+    float t10 = t * 10.0;
+    res.g = float2(fbm(p2r + float2(t20, t20) + float2(2, 6)),
+                   fbm(p2r + float2(t10, t10) + float2(5, 3)));
     res.value = fbm(p + 5.5 * res.g + float2(-t * 7.0, -t * 7.0));
     return res;
 }

@@ -100,7 +100,8 @@ float4 cloud(float3 v, int oct)
     for (int i = 1; i < 64; i++)
     {
         if(i >= oct+1) { break; }
-        outp += snoise(float3(-143*i,842*i,0)+v*float3(1.,1.,pow((float)i,sepanim))*pow((float)i,sepsize))*(1.0/pow((float)i,seplight));
+        float fi = (float)i;
+        outp += snoise(float3(-143*i,842*i,0)+v*float3(1.,1.,pow(fi,sepanim))*pow(fi,sepsize))*pow(fi,-seplight);
     }
     return outp;
 }

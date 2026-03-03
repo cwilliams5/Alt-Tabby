@@ -36,8 +36,11 @@ float pattern(in float2 p, out float2 q, out float2 r, float t) {
     q.x = fbm(2.0 * p + float2(0.0, 0.0) + 2. * t);
     q.y = fbm(1.5 * p + float2(5.2, 1.3) + 1. * t);
 
-    r.x = fbm(p + 4. * q + float2(1.7, 9.2) + sin(t) + .9 * sin(30. * length(q)));
-    r.y = fbm(p + 8. * q + float2(8.3, 2.8) + cos(t) + .9 * sin(20. * length(q)));
+    float _sinT, _cosT;
+    sincos(t, _sinT, _cosT);
+    float lq = length(q);
+    r.x = fbm(p + 4. * q + float2(1.7, 9.2) + _sinT + .9 * sin(30. * lq));
+    r.y = fbm(p + 8. * q + float2(8.3, 2.8) + _cosT + .9 * sin(20. * lq));
 
     return fbm(p + mul(rot(t), 7. * r));
 }

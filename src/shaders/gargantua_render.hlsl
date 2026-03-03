@@ -159,7 +159,8 @@ void getCloudColorAndDensity(float3 p, float t, out float4 color, out float dens
     float d2 = dot(p, p);
     color = (float4)0;
 
-    if (sqrt(d2) < gargantua.radius_) {
+    float radius2 = gargantua.radius_ * gargantua.radius_;
+    if (d2 < radius2) {
         density = 0.0;
     } else {
         float rho, phi, theta;
@@ -253,7 +254,7 @@ float4 PSMain(PSInput input) : SV_Target {
         color += Radiance(ray);
     }
 
-    float3 col = ((1.0 / (float)SPP) * color).rgb;
+    float3 col = (color.rgb * 0.5);
 
     // Darken/desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));

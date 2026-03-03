@@ -89,10 +89,10 @@ float map(float3 p) {
 // light intensity
 float getLight(float h, float k, float3 ce, float3 p) {
     float3 lig = ce - p;
-    float llig = length(lig);
-    lig = normalize(lig);
+    float llig2 = dot(lig, lig);
+    float att = 1.0 / llig2;
+    lig *= rsqrt(llig2);
     float sha = saturate((h - map(p + lig * k)) / 128.0);
-    float att = 1.0 / (llig * llig);
     return sha * att;
 }
 

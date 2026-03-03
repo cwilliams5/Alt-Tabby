@@ -79,13 +79,13 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 mtl = getColor(h);
     mtl = saturate(mtl);
-    float3 ld = normalize(float3(1.0, -1.0, 1.0));
-    float3 ha = normalize(ld - float3(0.0, 0.0, -1.0));
+    static const float3 ld = float3(0.57735027, -0.57735027, 0.57735027);  // normalize(1,-1,1)
+    static const float3 ha = float3(0.32505758, -0.32505758, 0.88807383);  // normalize(ld - float3(0,0,-1))
 
     float3 col = (float3)0.0;
     col += mtl * 0.8;
-    col += 0.2 * mtl * safepow(max(dot(normalize(nor), -ld), 0.0), 3.0);
-    col += 0.3 * h * safepow(dot(normalize(nor), ha), 20.0);
+    col += 0.2 * mtl * safepow(max(dot(nor, -ld), 0.0), 3.0);
+    col += 0.3 * h * safepow(dot(nor, ha), 20.0);
 
     // Darken / desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));

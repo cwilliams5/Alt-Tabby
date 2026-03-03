@@ -34,7 +34,7 @@ float4 PSMain(PSInput input) : SV_Target {
         float2 pos = float2( pox + sin(time / 15. + pha + siz), -1.0 - rad + (2.0 + 2.0 * rad) * frac(pha + 0.3 * (time / 7.) * (0.2 + 0.8 * siz)));
         float dis = length( uv - pos );
         float3 col = lerp( float3(0.194 * sin(time / 6.0) + 0.3, 0.2, 0.3 * pha), float3(1.1 * sin(time / 9.0) + 0.3, 0.2 * pha, 0.4), 0.5 + 0.5 * sin(float(i)));
-        float f = length(uv - pos) / rad;
+        float f = dis / rad;
         f = sqrt(saturate(1.0 + (sin(time * siz) * 0.5) * f));
         color += col.zyx * (1.0 - smoothstep( rad * 0.15, rad, dis ));
     }

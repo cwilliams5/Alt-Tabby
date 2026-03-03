@@ -32,7 +32,7 @@ float4 PSMain(PSInput input) : SV_Target {
     sincos(time / 2.0, _sh, _ch);
     float r = abs(_sh);
     float g = abs(cos(time / 3.0));
-    float b = abs(-sin(time / 4.0));
+    float b = abs(sin(time / 4.0));
 
     float3 changing = float3(r, g, b);
     float3 color = (float3)(abs(_ch) - 0.8);

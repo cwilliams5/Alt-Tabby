@@ -102,15 +102,7 @@ float snoise(float3 v) {
     return 42.0 * dot(m * m, float4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
 }
 
-float fbm4(float3 p, float theta, float f, float lac, float r) {
-    float sT, cT;
-    sincos(theta, sT, cT);
-    float3x3 mtx = float3x3(
-        cT, -sT, 0.0,
-        sT,  cT, 0.0,
-        0.0, 0.0, 1.0);
-
-    float lacunarity = lac;
+float fbm4(float3 p, float f, float lac, float r) {
     float roughness = r;
     float amp = 1.0;
     float total_amp = 0.0;
@@ -119,8 +111,7 @@ float fbm4(float3 p, float theta, float f, float lac, float r) {
     float3 X = p * f;
     for (int i = 0; i < 4; i++) {
         accum += amp * snoise(X);
-        X *= (lacunarity + (snoise(X) + 0.1) * 0.006);
-        X = mul(X, mtx);
+        X *= (lac + (snoise(X) + 0.1) * 0.006);
 
         total_amp += amp;
         amp *= roughness;
@@ -129,15 +120,7 @@ float fbm4(float3 p, float theta, float f, float lac, float r) {
     return accum / total_amp;
 }
 
-float fbm8(float3 p, float theta, float f, float lac, float r) {
-    float sT, cT;
-    sincos(theta, sT, cT);
-    float3x3 mtx = float3x3(
-        cT, -sT, 0.0,
-        sT,  cT, 0.0,
-        0.0, 0.0, 1.0);
-
-    float lacunarity = lac;
+float fbm8(float3 p, float f, float lac, float r) {
     float roughness = r;
     float amp = 1.0;
     float total_amp = 0.0;
@@ -146,8 +129,7 @@ float fbm8(float3 p, float theta, float f, float lac, float r) {
     float3 X = p * f;
     for (int i = 0; i < 8; i++) {
         accum += amp * snoise(X);
-        X *= (lacunarity + (snoise(X) + 0.1) * 0.006);
-        X = mul(X, mtx);
+        X *= (lac + (snoise(X) + 0.1) * 0.006);
 
         total_amp += amp;
         amp *= roughness;
@@ -162,16 +144,16 @@ float turbulence(float val) {
 }
 
 float pattern(in float3 p, inout float3 q, inout float3 r) {
-    q.x = fbm4(p + 0.0, 0.0, 1.0, 2.0, 0.33);
-    q.y = fbm4(p + 6.0, 0.0, 1.0, 2.0, 0.33);
+    q.x = fbm4(p + 0.0, 1.0, 2.0, 0.33);
+    q.y = fbm4(p + 6.0, 1.0, 2.0, 0.33);
 
-    r.x = fbm8(p + q - 2.4, 0.0, 1.0, 3.0, 0.5);
-    r.y = fbm8(p + q + 8.2, 0.0, 1.0, 3.0, 0.5);
+    r.x = fbm8(p + q - 2.4, 1.0, 3.0, 0.5);
+    r.y = fbm8(p + q + 8.2, 1.0, 3.0, 0.5);
 
     q.x = turbulence(q.x);
     q.y = turbulence(q.y);
 
-    float f = fbm4(p + (1.0 * r), 0.0, 1.0, 2.0, 0.5);
+    float f = fbm4(p + (1.0 * r), 1.0, 2.0, 0.5);
 
     return f;
 }

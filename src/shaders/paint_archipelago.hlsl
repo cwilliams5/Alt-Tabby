@@ -42,15 +42,16 @@ float fbm(in float2 p) {
 }
 
 float pattern(in float2 p) {
-    float2 aPos = float2(sin(time * 0.005), sin(time * 0.01)) * 6.0;
+    float sinT01 = sin(time * 0.01);
+    float2 aPos = float2(sin(time * 0.005), sinT01) * 6.0;
     float2 aScale = (float2)3.0;
     float a = fbm(p * aScale + aPos);
 
-    float2 bPos = float2(sin(time * 0.01), sin(time * 0.01)) * 1.0;
+    float2 bPos = float2(sinT01, sinT01) * 1.0;
     float2 bScale = (float2)0.6;
     float b = fbm((p + a) * bScale + bPos);
 
-    float2 cPos = float2(-0.6, -0.5) + float2(sin(-time * 0.001), sin(time * 0.01)) * 2.0;
+    float2 cPos = float2(-0.6, -0.5) + float2(sin(-time * 0.001), sinT01) * 2.0;
     float2 cScale = (float2)2.6;
     float c = fbm((p + b) * cScale + cPos);
     return c;

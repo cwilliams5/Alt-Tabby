@@ -56,7 +56,9 @@ float3 band(float shade, float low, float high, float3 col1, float3 col2) {
 }
 
 float3 gradient(float shade) {
-    float3 colour = float3((sin(time / 2.0) * 0.25) + 0.25, 0.0, (cos(time / 2.0) * 0.25) + 0.25);
+    float _ss, _sc;
+    sincos(time * 0.5, _ss, _sc);
+    float3 colour = float3(_ss * 0.25 + 0.25, 0.0, _sc * 0.25 + 0.25);
 
     float2 mouseScaled = fakeMouse;
     float3 col1 = float3(mouseScaled.x, 0.0, 1.0 - mouseScaled.x);

@@ -134,7 +134,7 @@ float sin1d(float p) { return sin(p * TWOPI) * 0.25 + 0.25; }
 static const float D2R = PI_VAL / 180.0;
 static const float OC = 15.0;
 
-float3 Oilnoise(float2 pos, float3 RGB) {
+float3 Oilnoise(float2 pos, float3 RGB, float sinTime) {
     float2 q = (float2)1.0;
     float result = 0.0;
     float t = time * 0.1 + ((0.25 + 0.05 * sin(time * 0.1)) / (length(pos.xy) + 0.07)) * 2.2;
@@ -144,8 +144,8 @@ float3 Oilnoise(float2 pos, float3 RGB) {
     float s = 14.2;
 
     float gain = 0.44;
-    float2 aPos = abs2d(pos) * 0.0;
-    float tm = (sin(time) * 0.5 + 0.5) * 0.2 + time * 0.8;
+    float2 aPos = (float2)0.0;
+    float tm = (sinTime * 0.5 + 0.5) * 0.2 + time * 0.8;
 
     static const float2x2 rot30 = float2x2(0.8660254, -0.5, 0.5, 0.8660254);
     static const float2x2 rot1 = float2x2(0.9998477, -0.0174524, 0.0174524, 0.9998477);
@@ -179,8 +179,10 @@ float4 PSMain(PSInput input) : SV_Target {
     uv3.y += 0.2;
     float3 col = (float3)0.0;
 
-    uv2.x += 0.1 * cos(time);
-    uv2.y += 0.1 * sin(time);
+    float st_time, ct_time;
+    sincos(time, st_time, ct_time);
+    uv2.x += 0.1 * ct_time;
+    uv2.y += 0.1 * st_time;
     uv.y *= resolution.y / resolution.x;
     float3 dir = float3(uv * ZOOM, 1.0);
     float2 uPos = (fragCoord.xy / resolution.y);
@@ -223,7 +225,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 pix = 1.0 / resolution.xy;
     float2 aaST = st + pix * float2(1.5, 0.5);
-    col2 += Oilnoise(aaST, rgb);
+    col2 += Oilnoise(aaST, rgb, st_time);
 
     float scale = 5.0;
     uv *= scale;
@@ -267,8 +269,6 @@ float4 PSMain(PSInput input) : SV_Target {
     v = lerp((float3)length(v), v, SATURATION);
 
     float3 finalColor = v * 0.03 + col + col2 + color * 2.0;
-    float st_time, ct_time;
-    sincos(time, st_time, ct_time);
     finalColor += happy_star(mul(uv3, ma), anim) * float3(0.15 + 0.1 * ct_time, 0.2, 0.15 + 0.1 * st_time) * 0.3;
     finalColor += happy_star(uv2, anim) * float3(0.25 + 0.1 * ct_time, 0.2 + 0.1 * st_time, 0.15) * 0.5;
     finalColor *= happy_star(uv2, anim) * float3(0.25 + 0.1 * ct_time, 0.2 + 0.1 * st_time, 0.15) * 2.0;

@@ -46,7 +46,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col /= NUM_LAYERS;
     col *= float3(2, 1., 2.);
-    col = pow(col, (float3).5);
+    col = sqrt(col);
 
     // Post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));
