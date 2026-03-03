@@ -116,6 +116,24 @@ if ($testMode) {
 }
 Record-Step $docsLabel
 
+# --- Generate AGENTS.MD (smart skip) ---
+# Consolidates CLAUDE.md + .claude/rules/ for non-Claude AI agents
+Reset-StepTimer
+$agentsLabel = "Agents"
+
+if ($testMode) {
+    $agentsLabel = "Agents (skipped)"
+} else {
+    $agentsBuildScript = Join-Path $PSScriptRoot "build-agents-md.ps1"
+    $agentsArgs = if ($force) { "-File `"$agentsBuildScript`" --force" } else { "-File `"$agentsBuildScript`"" }
+    $agentsProc = Start-Process -FilePath "powershell" -ArgumentList $agentsArgs -Wait -PassThru -WindowStyle Hidden
+    if ($agentsProc.ExitCode -ne 0) {
+        Write-Output "ERROR: Failed to generate AGENTS.MD"
+        exit 1
+    }
+}
+Record-Step $agentsLabel
+
 # --- Generate version_info.ahk with Ahk2Exe directives ---
 # Always regenerated (content depends on VERSION file, essentially free)
 Reset-StepTimer
