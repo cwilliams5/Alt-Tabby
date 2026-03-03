@@ -133,6 +133,9 @@ FX_GPU_Init() {
 
         gFX_GPUReady := true
 
+        ; Set startup backdrop style from config
+        FX_InitBackdropFromConfig()
+
         ; --- Background image effect chain: Blur → Saturation → ColorMatrix ---
         ; Wrapped in try/catch: failure falls back to direct DrawBitmap (no effects)
         try {
@@ -790,10 +793,32 @@ FX_UpdateAmbient(dt) {
     gFX_AmbientTime += dt
 }
 
+; ========================= BACKDROP CONFIG INIT =========================
+
+; Map cfg.FX2D_BackgroundEffect enum to gFX_BackdropStyle index.
+; Call after gFX_GPUReady := true.
+FX_InitBackdropFromConfig() {
+    global gFX_BackdropStyle, FX_BG_STYLE_NAMES, cfg
+
+    if (!cfg.FX2D_UseBackgroundEffects) {
+        gFX_BackdropStyle := 0
+        return
+    }
+
+    effectName := cfg.FX2D_BackgroundEffect
+    for i, name in FX_BG_STYLE_NAMES {
+        if (name = effectName) {
+            gFX_BackdropStyle := i - 1  ; array is 1-based, style 0=None
+            return
+        }
+    }
+    ; Invalid name — default to None
+    gFX_BackdropStyle := 0
+}
+
 ; ========================= LIVING BACKDROP EFFECTS =========================
 ; Subtle animated textures on the acrylic glass background.
 ; Active only when GPUEffects=true AND AnimationType=Full.
-; C key cycles through styles (0=None, 1-11=styles).
 
 ; Public dispatcher — called from _GUI_PaintOverlay between clear and content.
 FX_DrawBackdrop(wPhys, hPhys, scale) { ; lint-ignore: dead-param
@@ -866,38 +891,47 @@ _FX_BG_GradientDrift(wPhys, hPhys) {
     bG := (baseRGB >> 8) & 0xFF
     bB := baseRGB & 0xFF
 
-    ; Warm blob (shift toward amber) — CRANKED
-    warmR := Min(255, bR + 120)
-    warmG := Min(255, bG + 50)
-    warmB := Max(0, bB - 40)
+    ; Color shift scaling
+    cs := cfg.FX2D_GradientColorShift
+
+    ; Warm blob (shift toward amber)
+    warmR := Min(255, bR + Round(120 * cs))
+    warmG := Min(255, bG + Round(50 * cs))
+    warmB := Max(0, bB - Round(40 * cs))
     warmARGB := 0xFF000000 | (warmR << 16) | (warmG << 8) | warmB
 
-    ; Cool blob (shift toward blue) — CRANKED
-    coolR := Max(0, bR - 50)
-    coolG := Min(255, bG + 40)
-    coolB := Min(255, bB + 120)
+    ; Cool blob (shift toward blue)
+    coolR := Max(0, bR - Round(50 * cs))
+    coolG := Min(255, bG + Round(40 * cs))
+    coolB := Min(255, bB + Round(120 * cs))
     coolARGB := 0xFF000000 | (coolR << 16) | (coolG << 8) | coolB
 
-    ; Orbit positions (~45s full rotation, random phase + direction)
-    angle := gFX_BackdropDirSign * gFX_AmbientTime * 0.000140 + gFX_BackdropSeedPhase
+    ; Orbit positions (random phase + direction)
+    angle := gFX_BackdropDirSign * gFX_AmbientTime * 0.000140 * cfg.FX2D_GradientSpeed + gFX_BackdropSeedPhase
     cx := wPhys * 0.5
     cy := hPhys * 0.5
-    rx := wPhys * 0.35
-    ry := hPhys * 0.35
+    orbitR := cfg.FX2D_GradientOrbitRadius
+    rx := wPhys * orbitR
+    ry := hPhys * orbitR
 
-    ; Opacity layer — CRANKED from 0.06 to 0.40
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.40)
+    ; Opacity layer
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, cfg.FX2D_GradientOpacity)
     gD2D_RT.PushLayer(layerParams, 0)
 
-    ; Warm blob (primary SoftRect chain) — CRANKED size from 160 to 400, blur from 100 to 200
+    ; Blob size and blur (proportional)
+    blobSz := cfg.FX2D_GradientBlobSize
+    halfSz := blobSz // 2
+    blurR := Float(halfSz)
+
+    ; Warm blob (primary SoftRect chain)
     wx := cx + rx * Cos(angle)
     wy := cy + ry * Sin(angle)
-    FX_DrawSoftRect(wx - 200, wy - 200, 400, 400, warmARGB, 200.0)
+    FX_DrawSoftRect(wx - halfSz, wy - halfSz, blobSz, blobSz, warmARGB, blurR)
 
-    ; Cool blob (secondary SoftRect chain) — opposite side — CRANKED
+    ; Cool blob (secondary SoftRect chain) — opposite side
     cx2 := cx - rx * Cos(angle)
     cy2 := cy - ry * Sin(angle)
-    FX_DrawSoftRect2(cx2 - 200, cy2 - 200, 400, 400, coolARGB, 200.0)
+    FX_DrawSoftRect2(cx2 - halfSz, cy2 - halfSz, blobSz, blobSz, coolARGB, blurR)
 
     ; Noise dither to break up 8-bit gradient banding
     _FX_BG_Dither(wPhys, hPhys)
@@ -911,6 +945,7 @@ _FX_BG_Caustic(wPhys, hPhys) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase
     global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
     global FX_CROP_RECT, FX_SAT_SATURATION
+    global cfg
 
     if (!gFX_GPU.Has("bgTurb"))
         return
@@ -919,29 +954,31 @@ _FX_BG_Caustic(wPhys, hPhys) {
     ; OFFSET controls where generation starts AND output position, but doesn't shift
     ; the noise function — so to animate, the CROP must drift through the noise field.
     ; seedPhase randomizes starting point in oscillation → random initial direction.
+    spd := cfg.FX2D_CausticSpeed
     margin := 100
-    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.0008 + gFX_BackdropSeedPhase)
-    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.0005 + gFX_BackdropSeedPhase)
+    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.0008 * spd + gFX_BackdropSeedPhase)
+    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.0005 * spd + gFX_BackdropSeedPhase)
 
     ; Fixed generation area around seed position (margin accommodates crop drift)
+    freq := cfg.FX2D_CausticFrequency
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.008, 0.008)
-    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 3)
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, freq, freq)
+    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, cfg.FX2D_CausticOctaves)
     gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 0)  ; fractalSum (smoother)
 
     ; Drifting crop slides through the noise field → visible animation
     cropX := Float(gFX_BackdropSeedX + driftX)
     cropY := Float(gFX_BackdropSeedY + driftY)
     gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
-    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.6)  ; CRANKED from 0.2
+    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, cfg.FX2D_CausticSaturation)
 
     ; Shift cropped output to render target origin
     static drawPt := Buffer(8)
     NumPut("float", -cropX, "float", -cropY, drawPt)
 
-    ; Render — CRANKED from 0.05 to 0.40
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.40)
+    ; Render
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, cfg.FX2D_CausticOpacity)
     gD2D_RT.PushLayer(layerParams, 0)
     gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
     gD2D_RT.PopLayer()
@@ -951,33 +988,45 @@ _FX_BG_Caustic(wPhys, hPhys) {
 ; Three soft colored blobs drifting in slow elliptical orbits.
 _FX_BG_Aurora(wPhys, hPhys) {
     global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase, gFX_BackdropDirSign
+    global cfg
 
     cx := wPhys * 0.5
     cy := hPhys * 0.5
     dir := gFX_BackdropDirSign
 
+    ; Speed: base avg 0.000160, deviation 0.000040 scaled by SpeedSpread, all scaled by Speed
+    spd := cfg.FX2D_AuroraSpeed
+    spread := cfg.FX2D_AuroraSpeedSpread
+    baseSpd := 0.000160
+    dev := 0.000040 * spread
+    s1 := (baseSpd + dev) * spd       ; fastest
+    s2 := baseSpd * spd               ; middle
+    s3 := (baseSpd - dev) * spd       ; slowest
+
     ; Three blobs with different orbit speeds and phases (random phase + direction)
-    ; Blob 1: warm rose
-    a1 := dir * gFX_AmbientTime * 0.000200 + gFX_BackdropSeedPhase  ; ~31s cycle
+    a1 := dir * gFX_AmbientTime * s1 + gFX_BackdropSeedPhase
     x1 := cx + wPhys * 0.3 * Cos(a1)
     y1 := cy + hPhys * 0.25 * Sin(a1 * 1.3)
-    ; Blob 2: cool cyan
-    a2 := dir * gFX_AmbientTime * 0.000160 + 2.09 + gFX_BackdropSeedPhase  ; ~39s cycle
+    a2 := dir * gFX_AmbientTime * s2 + 2.09 + gFX_BackdropSeedPhase
     x2 := cx + wPhys * 0.25 * Cos(a2)
     y2 := cy + hPhys * 0.3 * Sin(a2 * 0.9)
-    ; Blob 3: neutral violet
-    a3 := dir * gFX_AmbientTime * 0.000120 + 4.19 + gFX_BackdropSeedPhase  ; ~52s cycle
+    a3 := dir * gFX_AmbientTime * s3 + 4.19 + gFX_BackdropSeedPhase
     x3 := cx + wPhys * 0.2 * Cos(a3 * 1.1)
     y3 := cy + hPhys * 0.2 * Sin(a3)
 
-    ; Opacity layer — CRANKED from 0.05 to 0.40
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.40)
+    ; Opacity layer
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, cfg.FX2D_AuroraOpacity)
     gD2D_RT.PushLayer(layerParams, 0)
 
-    ; Draw all three — CRANKED size from 120 to 350, blur from 90 to 180, brighter colors
-    FX_DrawSoftRect(x1 - 175, y1 - 175, 350, 350, 0xFFFF4488, 180.0)  ; rose
-    FX_DrawSoftRect(x2 - 175, y2 - 175, 350, 350, 0xFF4488FF, 180.0)  ; cyan
-    FX_DrawSoftRect(x3 - 175, y3 - 175, 350, 350, 0xFFAA44FF, 180.0)  ; violet
+    ; Blob size and blur (proportional)
+    blobSz := cfg.FX2D_AuroraBlobSize
+    halfSz := blobSz // 2
+    blurR := Float(halfSz)
+
+    ; Draw all three with configurable colors
+    FX_DrawSoftRect(x1 - halfSz, y1 - halfSz, blobSz, blobSz, cfg.FX2D_AuroraColor1, blurR)
+    FX_DrawSoftRect(x2 - halfSz, y2 - halfSz, blobSz, blobSz, cfg.FX2D_AuroraColor2, blurR)
+    FX_DrawSoftRect(x3 - halfSz, y3 - halfSz, blobSz, blobSz, cfg.FX2D_AuroraColor3, blurR)
 
     ; Noise dither to break up 8-bit gradient banding
     _FX_BG_Dither(wPhys, hPhys)
@@ -991,32 +1040,35 @@ _FX_BG_Grain(wPhys, hPhys) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase
     global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
     global FX_CROP_RECT, FX_SAT_SATURATION
+    global cfg
 
     if (!gFX_GPU.Has("bgTurb"))
         return
 
     ; Fixed generation area; drifting crop for shimmer (see Caustic for details)
+    spd := cfg.FX2D_GrainSpeed
     margin := 60
-    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.003 + gFX_BackdropSeedPhase)
-    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.002 + gFX_BackdropSeedPhase)
+    driftX := margin * 0.8 * Sin(gFX_AmbientTime * 0.003 * spd + gFX_BackdropSeedPhase)
+    driftY := margin * 0.8 * Cos(gFX_AmbientTime * 0.002 * spd + gFX_BackdropSeedPhase)
 
+    freq := cfg.FX2D_GrainFrequency
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
     gFX_GPU["bgTurb"].SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
-    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, 0.05, 0.05)
-    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, 4)
+    gFX_GPU["bgTurb"].SetVector2(FX_TURB_FREQ, freq, freq)
+    gFX_GPU["bgTurb"].SetUInt(FX_TURB_OCTAVES, cfg.FX2D_GrainOctaves)
     gFX_GPU["bgTurb"].SetEnum(FX_TURB_NOISE, 1)  ; turbulence (sharper detail)
 
     ; Drifting crop slides through noise field → shimmer animation
     cropX := Float(gFX_BackdropSeedX + driftX)
     cropY := Float(gFX_BackdropSeedY + driftY)
     gFX_GPU["bgCrop"].SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
-    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, 0.0)  ; fully desaturated
+    gFX_GPU["bgSat"].SetFloat(FX_SAT_SATURATION, cfg.FX2D_GrainSaturation)
 
     static drawPt := Buffer(8)
     NumPut("float", -cropX, "float", -cropY, drawPt)
 
-    ; Render — CRANKED from 0.03 to 0.30
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.30)
+    ; Render
+    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, cfg.FX2D_GrainOpacity)
     gD2D_RT.PushLayer(layerParams, 0)
     gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
     gD2D_RT.PopLayer()
@@ -1026,15 +1078,19 @@ _FX_BG_Grain(wPhys, hPhys) {
 ; Pulsing inner shadow — edges darken/lighten in slow breathing cycle.
 _FX_BG_Vignette(wPhys, hPhys) {
     global gD2D_RT, gFX_AmbientTime
+    global cfg
 
-    ; Breathing alpha — CRANKED: base 0.50, ±0.15 swing, ~4s cycle
-    breath := 0.50 + 0.15 * Sin(gFX_AmbientTime * 0.00157)  ; ~4s cycle
+    ; Breathing alpha
+    baseOpacity := cfg.FX2D_VignetteOpacity
+    amplitude := cfg.FX2D_VignetteBreathAmplitude
+    breath := baseOpacity + amplitude * Sin(gFX_AmbientTime * 0.00157 * cfg.FX2D_VignetteSpeed)
     alpha := Round(breath * 255)
-    edgeARGB := (alpha << 24) | 0x000000
+    edgeARGB := (alpha << 24) | cfg.FX2D_VignetteEdgeColor
 
-    ; Depth of edge bands — CRANKED from 15%/12% to 30%/25%
-    depthX := Round(wPhys * 0.30)
-    depthY := Round(hPhys * 0.25)
+    ; Depth of edge bands (Y = X * 0.833 ratio preserved)
+    edgeDepth := cfg.FX2D_VignetteEdgeDepth
+    depthX := Round(wPhys * edgeDepth)
+    depthY := Round(hPhys * edgeDepth * 0.833)
 
     ; Top edge
     FX_DrawSoftRect(0, -depthY, wPhys, depthY, edgeARGB, Float(depthY * 0.7))
@@ -1049,12 +1105,18 @@ _FX_BG_Vignette(wPhys, hPhys) {
 ; --- Style 6: Layered (Combined) ---
 ; Premium stack: Grain base + Caustic overlay + Vignette breathe.
 _FX_BG_Layered(wPhys, hPhys) {
-    ; Grain at reduced opacity (drawn inside Grain's own layer at 3%, so effective ~2%)
-    _FX_BG_Grain(wPhys, hPhys)
-    ; Caustic on top (its own layer at 5%, effective ~3%)
-    _FX_BG_Caustic(wPhys, hPhys)
-    ; Vignette breathe (draws directly, no extra layer needed)
-    _FX_BG_Vignette(wPhys, hPhys)
+    global cfg
+    ; Order: Grain before Caustic (Caustic wins shared bgTurb chain), blob effects, Vignette last
+    if (cfg.FX2D_GrainIncludeInLayered)
+        _FX_BG_Grain(wPhys, hPhys)
+    if (cfg.FX2D_CausticIncludeInLayered)
+        _FX_BG_Caustic(wPhys, hPhys)
+    if (cfg.FX2D_GradientIncludeInLayered)
+        _FX_BG_GradientDrift(wPhys, hPhys)
+    if (cfg.FX2D_AuroraIncludeInLayered)
+        _FX_BG_Aurora(wPhys, hPhys)
+    if (cfg.FX2D_VignetteIncludeInLayered)
+        _FX_BG_Vignette(wPhys, hPhys)
 }
 
 ; --- Point Specular (Mouse Spotlight) ---
