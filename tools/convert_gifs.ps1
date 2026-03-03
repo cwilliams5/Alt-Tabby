@@ -59,7 +59,12 @@ foreach ($mp4 in $mp4s) {
     # stats_mode=diff = optimize palette for changing pixels (ideal for UI recordings)
     $filter = "fps=$Fps,scale='min($MaxWidth,iw)':-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=diff[p];[b][p]paletteuse=dither=floyd_steinberg"
 
+    # ffmpeg writes progress to stderr; PS 5.1 treats stderr as errors when
+    # ErrorActionPreference=Stop, even with 2>$null. Suppress temporarily.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
     & ffmpeg -i $mp4.FullName -filter_complex $filter -y $gifPath 2>$null
+    $ErrorActionPreference = $prevEAP
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED" -ForegroundColor Red
