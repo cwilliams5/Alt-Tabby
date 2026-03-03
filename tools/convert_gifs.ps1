@@ -24,12 +24,13 @@ $ErrorActionPreference = 'Stop'
 if ($Dir) {
     $capturesDir = $Dir
 } else {
-    $capturesDir = Join-Path $PSScriptRoot '..\captures'
+    $capturesDir = Join-Path $PSScriptRoot '..\release\captures'
 }
 $resolved = Resolve-Path $capturesDir -ErrorAction SilentlyContinue
 $capturesDir = if ($resolved) { $resolved.Path } else { $null }
 if (-not $capturesDir -or -not (Test-Path $capturesDir)) {
-    Write-Host "No captures directory found at: $(Join-Path $PSScriptRoot '..\captures')" -ForegroundColor Yellow
+    Write-Host "No captures directory found at: $(Join-Path $PSScriptRoot '..\release\captures')" -ForegroundColor Yellow
+    Write-Host "  Pass -Dir <path> to specify a different directory."
     exit 0
 }
 
