@@ -148,6 +148,9 @@ _GUI_Main_Init() {
     ; Initialize flight recorder (if enabled) — must be before hotkey setup
     FR_Init()
 
+    ; Initialize capture hotkeys (if enabled)
+    Capture_Init()
+
     ; Initialize profiler hotkey (only present in --profile builds) ; @profile
     Profiler_Init() ; @profile
 

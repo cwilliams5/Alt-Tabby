@@ -1345,6 +1345,25 @@ global gConfigRegistry := [
     {s: "Diagnostics", k: "LogKeepKB", g: "DiagLogKeepKB", t: "int", default: 50,
      min: 25, max: 500,
      d: "Size to keep after log trim in KB. Must be less than LogMaxKB."},
+
+    ; ============================================================
+    ; Capture — Dev Tooling
+    ; ============================================================
+    {type: "section", name: "Capture",
+     desc: "Screenshot & Video Capture",
+     long: "Dev tooling for capturing overlay screenshots and video recordings. Zero overhead when disabled."},
+
+    {s: "Capture", k: "Enable", g: "CaptureEnable", t: "bool", default: false,
+     d: "Master switch. When false, no hotkeys registered, zero overhead."},
+
+    {s: "Capture", k: "ScreenshotHotkey", g: "CaptureScreenshotHotkey", t: "string", default: "",
+     d: "Hotkey for screenshot capture. Blank = disabled. Example: F10. Wildcard (*) auto-prefixed so it fires while Alt is held."},
+
+    {s: "Capture", k: "RecordStartHotkey", g: "CaptureRecordStartHotkey", t: "string", default: "",
+     d: "Hotkey to start video recording via ffmpeg. Blank = disabled. Requires ffmpeg on PATH."},
+
+    {s: "Capture", k: "RecordStopHotkey", g: "CaptureRecordStopHotkey", t: "string", default: "",
+     d: "Hotkey to stop video recording. Blank = disabled."},
 ]
 
 ; Serialize gConfigRegistry to JSON for editor UIs.
