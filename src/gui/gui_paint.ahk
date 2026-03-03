@@ -1013,10 +1013,9 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
 
 ; ========================= VISUAL EFFECTS SYSTEM =========================
 ; _FX_* functions implement layered visual effects controlled by gGUI_EffectStyle.
-; All gradient brushes are transient (created per-frame, released on scope exit).
-; This is acceptable: gradient brush creation is ~2μs on modern GPUs, and the
-; working set is small (1-3 gradients per frame). Caching would add complexity
-; for negligible savings compared to the ~2ms D2D paint budget.
+; Gradient COM brushes are transient (created per-frame, released on scope exit) —
+; brush creation is ~2μs, acceptable vs ~2ms paint budget. Parameter structs (stop
+; buffers, brush properties) use static buffers to eliminate per-frame allocations.
 
 ; Build a D2D gradient stop collection from an array of [position, argb] pairs.
 ; Returns the stop collection COM object (caller must keep a reference).
@@ -1062,13 +1061,13 @@ _FX_BrushProps() {
 }
 
 ; Create a linear gradient brush. Caller keeps reference; COM __Delete releases.
+; For variable stop counts. Prefer FX_LinearGradient2/3 for fixed 2/3-stop cases.
 FX_LinearGradient(x1, y1, x2, y2, stops) {
     global gD2D_RT
     gsc := _FX_BuildStops(stops)
     if (!gsc)
         return 0
-    ; D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES = 16 bytes: { startPoint, endPoint }
-    lgbp := Buffer(16, 0)
+    static lgbp := Buffer(16)
     NumPut("float", Float(x1), lgbp, 0)
     NumPut("float", Float(y1), lgbp, 4)
     NumPut("float", Float(x2), lgbp, 8)
@@ -1076,6 +1075,54 @@ FX_LinearGradient(x1, y1, x2, y2, stops) {
     return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
 }
 
+; 2-stop linear gradient — zero-allocation hot path.
+; Flat args eliminate array literal allocation. Static buffers for stop + brush structs.
+FX_LinearGradient2(x1, y1, x2, y2, pos1, argb1, pos2, argb2) {
+    global gD2D_RT
+    static stopBuf := Buffer(40)  ; 2 stops × 20 bytes
+    static lgbp := Buffer(16)
+
+    _FX_WriteStop(stopBuf, 0, pos1, argb1)
+    _FX_WriteStop(stopBuf, 20, pos2, argb2)
+
+    gsc := gD2D_RT.CreateGradientStopCollection(stopBuf, 2, 0, 0)
+    if (!gsc)
+        return 0
+    NumPut("float", Float(x1), lgbp, 0)
+    NumPut("float", Float(y1), lgbp, 4)
+    NumPut("float", Float(x2), lgbp, 8)
+    NumPut("float", Float(y2), lgbp, 12)
+    return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+}
+
+; 3-stop linear gradient — zero-allocation hot path.
+FX_LinearGradient3(x1, y1, x2, y2, pos1, argb1, pos2, argb2, pos3, argb3) {
+    global gD2D_RT
+    static stopBuf := Buffer(60)  ; 3 stops × 20 bytes
+    static lgbp := Buffer(16)
+
+    _FX_WriteStop(stopBuf, 0, pos1, argb1)
+    _FX_WriteStop(stopBuf, 20, pos2, argb2)
+    _FX_WriteStop(stopBuf, 40, pos3, argb3)
+
+    gsc := gD2D_RT.CreateGradientStopCollection(stopBuf, 3, 0, 0)
+    if (!gsc)
+        return 0
+    NumPut("float", Float(x1), lgbp, 0)
+    NumPut("float", Float(y1), lgbp, 4)
+    NumPut("float", Float(x2), lgbp, 8)
+    NumPut("float", Float(y2), lgbp, 12)
+    return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+}
+
+; Write one D2D1_GRADIENT_STOP (20 bytes) into a buffer at the given offset.
+_FX_WriteStop(buf, off, pos, argb) {
+    NumPut("float", Float(pos), buf, off)
+    NumPut("float", Float(((argb >> 16) & 0xFF) / 255.0), buf, off + 4)
+    NumPut("float", Float(((argb >> 8) & 0xFF) / 255.0), buf, off + 8)
+    NumPut("float", Float((argb & 0xFF) / 255.0), buf, off + 12)
+    NumPut("float", Float(((argb >> 24) & 0xFF) / 255.0), buf, off + 16)
+}
 
 ; ---- Selection Effects ----
 
@@ -1110,10 +1157,7 @@ _FX_DrawSelection(x, y, w, h, r) {
         _FX_DrawSelDropShadow(x, y, w, h, r)
 
     ; Diagonal gradient at full opacity — fully covers shadow in selection area
-    gradBr := FX_LinearGradient(x, y, x + w, y + h, [
-        [0.0, opaqueBase],
-        [1.0, opaqueDark]
-    ])
+    gradBr := FX_LinearGradient2(x, y, x + w, y + h, 0.0, opaqueBase, 1.0, opaqueDark)
     if (gradBr) {
         D2D_FillRoundRect(x, y, w, h, r, gradBr)
     } else {
@@ -1133,22 +1177,23 @@ _FX_DrawSelection(x, y, w, h, r) {
 ; Build D2D1_LAYER_PARAMETERS struct (72 bytes on x64).
 ; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
 ; uniformly when the layer is composited onto the render target.
+; Static buffer — PushLayer consumes immediately, safe to reuse across calls.
 FX_LayerParams(left, top, right, bottom, opacity) {
-    buf := Buffer(72, 0)
-    ; contentBounds: D2D1_RECT_F {left, top, right, bottom}
+    static buf := 0
+    if (!buf) {
+        buf := Buffer(72, 0)
+        ; maskTransform: identity matrix (set once, never changes)
+        NumPut("float", 1.0, buf, 28)   ; _11
+        NumPut("float", 1.0, buf, 40)   ; _22
+        ; All other fields default to zero: geometricMask (16), maskAntialiasMode (24),
+        ; opacityBrush (56), layerOptions (64)
+    }
+    ; Per-call fields: contentBounds + opacity
     NumPut("float", Float(left), buf, 0)
     NumPut("float", Float(top), buf, 4)
     NumPut("float", Float(right), buf, 8)
     NumPut("float", Float(bottom), buf, 12)
-    ; geometricMask: NULL (offset 16) — no geometric clip
-    ; maskAntialiasMode: 0 = PER_PRIMITIVE (offset 24)
-    ; maskTransform: identity matrix (offset 28)
-    NumPut("float", 1.0, buf, 28)   ; _11
-    NumPut("float", 1.0, buf, 40)   ; _22
-    ; opacity (offset 52)
     NumPut("float", Float(opacity), buf, 52)
-    ; opacityBrush: NULL (offset 56) — uniform opacity
-    ; layerOptions: 0 = NONE (offset 64)
     return buf
 }
 
@@ -1180,17 +1225,31 @@ _FX_DrawTextCenteredShadow(text, x, y, w, h, brush, tf, shadowBrush, offX, offY)
 ; Get shadow parameters for current effect style.
 ; Returns {enabled, offX, offY, argb} or {enabled: false}.
 ; Uses config values (GUI_TextShadowAlpha, GUI_TextShadowDistancePx).
+; Static cached objects — callers only read properties, never mutate.
 _FX_GetShadowParams(fx, scale) {
+    static sDisabled := {enabled: false, offX: 0, offY: 0, argb: 0}
+    static sEnabled := {enabled: true, offX: 0, offY: 0, argb: 0}
+    static sFx := -1, sScale := -1, sAlpha := -1, sDist := -1
+
     global cfg
     if (!fx)
-        return {enabled: false}
+        return sDisabled
     alpha := cfg.GUI_TextShadowAlpha
     if (alpha <= 0)
-        return {enabled: false}
+        return sDisabled
+
     dist := cfg.GUI_TextShadowDistancePx
-    off := Max(1, Round(dist * scale))
-    argb := (alpha << 24) | 0x000000
-    return {enabled: true, offX: off, offY: off, argb: argb}
+    if (fx != sFx || scale != sScale || alpha != sAlpha || dist != sDist) {
+        sFx := fx
+        sScale := scale
+        sAlpha := alpha
+        sDist := dist
+        off := Max(1, Round(dist * scale))
+        sEnabled.offX := off
+        sEnabled.offY := off
+        sEnabled.argb := (alpha << 24) | 0x000000
+    }
+    return sEnabled
 }
 
 ; ---- Hover Highlight ----
@@ -1208,11 +1267,7 @@ _FX_DrawHover(x, y, w, h, r) {
     midARGB := (midA << 24) | baseRGB
     botA := Round(baseA * 0.3)
     botARGB := (botA << 24) | baseRGB
-    hoverBr := FX_LinearGradient(x, y, x, y + h, [
-        [0.0, topARGB],
-        [0.6, midARGB],
-        [1.0, botARGB]
-    ])
+    hoverBr := FX_LinearGradient3(x, y, x, y + h, 0.0, topARGB, 0.6, midARGB, 1.0, botARGB)
     if (hoverBr)
         D2D_FillRoundRect(x, y, w, h, r, hoverBr)
     else
@@ -1232,34 +1287,22 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
     sideARGB := (sideAlpha << 24) | 0x000000
 
     ; Top edge
-    topBr := FX_LinearGradient(0, 0, 0, depth, [
-        [0.0, edgeARGB],
-        [1.0, 0x00000000]
-    ])
+    topBr := FX_LinearGradient2(0, 0, 0, depth, 0.0, edgeARGB, 1.0, 0x00000000)
     if (topBr)
         D2D_FillRect(0, 0, wPhys, depth, topBr)
 
     ; Bottom edge
-    botBr := FX_LinearGradient(0, hPhys - depth, 0, hPhys, [
-        [0.0, 0x00000000],
-        [1.0, botARGB]
-    ])
+    botBr := FX_LinearGradient2(0, hPhys - depth, 0, hPhys, 0.0, 0x00000000, 1.0, botARGB)
     if (botBr)
         D2D_FillRect(0, hPhys - depth, wPhys, depth, botBr)
 
     ; Left edge
-    leftBr := FX_LinearGradient(0, 0, depth, 0, [
-        [0.0, sideARGB],
-        [1.0, 0x00000000]
-    ])
+    leftBr := FX_LinearGradient2(0, 0, depth, 0, 0.0, sideARGB, 1.0, 0x00000000)
     if (leftBr)
         D2D_FillRect(0, 0, depth, hPhys, leftBr)
 
     ; Right edge
-    rightBr := FX_LinearGradient(wPhys - depth, 0, wPhys, 0, [
-        [0.0, 0x00000000],
-        [1.0, sideARGB]
-    ])
+    rightBr := FX_LinearGradient2(wPhys - depth, 0, wPhys, 0, 0.0, 0x00000000, 1.0, sideARGB)
     if (rightBr)
         D2D_FillRect(wPhys - depth, 0, depth, hPhys, rightBr)
 }
