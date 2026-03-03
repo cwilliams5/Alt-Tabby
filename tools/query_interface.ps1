@@ -28,15 +28,15 @@ $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
 
 # Find the file
 $srcDir = (Resolve-Path "$PSScriptRoot\..\src").Path
-$srcFiles = Get-AhkSourceFiles $srcDir -IncludeLib
-$fileMatches = @($srcFiles | Where-Object { $_.Name -eq "$baseName.ahk" })
+$fileMatches = [System.IO.Directory]::GetFiles($srcDir, "$baseName.ahk",
+    [System.IO.SearchOption]::AllDirectories)
 
 if ($fileMatches.Count -eq 0) {
     Write-Host "  No file found matching: $baseName.ahk" -ForegroundColor Red
     exit 1
 }
 
-$file = $fileMatches[0]
+$file = [System.IO.FileInfo]::new($fileMatches[0])
 $lines = [System.IO.File]::ReadAllLines($file.FullName)
 $projectRoot = (Resolve-Path "$srcDir\..").Path
 $relPath = $file.FullName.Replace("$projectRoot\", '')

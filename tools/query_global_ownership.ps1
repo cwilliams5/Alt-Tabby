@@ -99,6 +99,189 @@ function Get-Basename {
 $MUTATING_METHODS = 'Push|Pop|Delete|InsertAt|RemoveAt|Set|Clear'
 
 # ============================================================
+# Query Mode Fast Path: Single-pass scan for a specific global
+# ============================================================
+if ($Query) {
+    # Build 5 mutation regex for the single queried global
+    $e = [regex]::Escape($Query)
+    $qMutPatterns = @(
+        [regex]::new("(?<![.\w])$e\s*[:+\-\*\/\.]+\="),
+        [regex]::new("(?<![.\w])$e\s*(\+\+|--)"),
+        [regex]::new("(?<![.\w])$e\[.+?\]\s*[:+\-\*\/\.]+\="),
+        [regex]::new("\b$e\.($MUTATING_METHODS)\s*\("),
+        [regex]::new("\b$e\.\w+\s*[:+\-\*\/\.]+\=")
+    )
+    $qWordBoundaryRx = [regex]::new("\b$e\b", 'IgnoreCase')
+
+    $qDecl = $null          # @{ File; RelPath; Line }
+    $qWriters = @{}         # filePath -> ArrayList of mutation entries
+    $qReaders = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($file in $srcFiles) {
+        $text = [System.IO.File]::ReadAllText($file.FullName)
+
+        # IndexOf pre-filter: skip files that don't contain the query string
+        if ($text.IndexOf($Query, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
+        $lines = Split-Lines $text
+        $relPath = $file.FullName.Replace("$projectRoot\", '')
+
+        $depth = 0
+        $inFunc = $false
+        $funcDepth = -1
+        $funcName = ""
+
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $cleaned = Clean-Line $lines[$i]
+            if ($cleaned -eq '') { continue }
+
+            # Track function boundaries
+            if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
+                $fname = $Matches[1]
+                if (-not $AHK_KEYWORDS_SET.Contains($fname) -and $cleaned.Contains('{')) {
+                    $inFunc = $true
+                    $funcDepth = $depth
+                    $funcName = $fname
+                }
+            }
+
+            $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
+
+            if ($inFunc -and $depth -le $funcDepth) {
+                $inFunc = $false
+                $funcDepth = -1
+            }
+
+            # File-scope: detect declaration (keep first found)
+            if (-not $inFunc -and -not $qDecl -and $cleaned -match '^\s*global\s+(.+)') {
+                $declPart = $Matches[1]
+                $stripped = Strip-Nested $declPart
+                foreach ($part in $stripped -split ',') {
+                    $trimmed = $part.Trim()
+                    if ($trimmed -match '^(\w+)') {
+                        $gName = $Matches[1]
+                        if ($gName.Length -ge 2 -and -not $AHK_BUILTINS_SET.Contains($gName) -and $gName -eq $Query) {
+                            $qDecl = @{
+                                File    = $file.FullName
+                                RelPath = $relPath
+                                Line    = ($i + 1)
+                            }
+                            break
+                        }
+                    }
+                }
+            }
+
+            # Function body: detect mutations and reads
+            if (-not $inFunc) { continue }
+
+            # Line-level pre-filter: must contain the query string
+            if ($cleaned.IndexOf($Query, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+
+            $isGlobalDeclLine = $cleaned -match '^\s*global\s+'
+
+            # Check mutation operators
+            $hasMutOp = $cleaned.Contains(':=') -or $cleaned.Contains('+=') -or
+                        $cleaned.Contains('-=') -or $cleaned.Contains('.=') -or
+                        $cleaned.Contains('*=') -or $cleaned.Contains('/=') -or
+                        $cleaned.Contains('++') -or $cleaned.Contains('--') -or
+                        $cleaned.Contains('.Push(') -or $cleaned.Contains('.Pop(') -or
+                        $cleaned.Contains('.Delete(') -or $cleaned.Contains('.Clear(') -or
+                        $cleaned.Contains('.InsertAt(') -or $cleaned.Contains('.RemoveAt(') -or
+                        $cleaned.Contains('.Set(')
+
+            $isMutation = $hasMutOp -and (
+                $qMutPatterns[0].IsMatch($cleaned) -or
+                $qMutPatterns[1].IsMatch($cleaned) -or
+                $qMutPatterns[2].IsMatch($cleaned) -or
+                $qMutPatterns[3].IsMatch($cleaned) -or
+                $qMutPatterns[4].IsMatch($cleaned))
+
+            if ($isMutation) {
+                if (-not $qWriters.ContainsKey($file.FullName)) {
+                    $qWriters[$file.FullName] = [System.Collections.ArrayList]::new()
+                }
+                [void]$qWriters[$file.FullName].Add(@{
+                    Global  = $Query
+                    File    = $file.FullName
+                    RelPath = $relPath
+                    Line    = ($i + 1)
+                    Code    = $lines[$i].Trim()
+                    Func    = $funcName
+                })
+            } elseif (-not $isGlobalDeclLine -and $qWordBoundaryRx.IsMatch($cleaned)) {
+                # Non-mutation, non-declaration, word-boundary-verified reference = read
+                [void]$qReaders.Add($file.FullName)
+            }
+        }
+    }
+
+    $totalSw.Stop()
+
+    # Output (same format as original Query mode)
+    if (-not $qDecl) {
+        Write-Host "  Unknown global: $Query" -ForegroundColor Red
+        Write-Host "  Completed in $($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
+        exit 1
+    }
+
+    $declBasename = Get-Basename $qDecl.RelPath
+
+    Write-Host ""
+    Write-Host "  $Query" -ForegroundColor White
+    Write-Host "    declared: $($qDecl.RelPath):$($qDecl.Line)" -ForegroundColor Cyan
+
+    if ($qWriters.Count -gt 0) {
+        $writerNames = @()
+        foreach ($filePath in ($qWriters.Keys | Sort-Object)) {
+            $basename = Get-Basename ($filePath.Replace("$projectRoot\", ''))
+            $fnWrites = $qWriters[$filePath].Count
+            $parts = @("$fnWrites fn write$(if ($fnWrites -ne 1) {'s'})")
+            if ($basename -eq $declBasename) { $parts += "declares" }
+            $writerNames += "$basename ($($parts -join ', '))"
+        }
+        Write-Host "    writers:  $($writerNames -join ', ')" -ForegroundColor DarkGray
+    } else {
+        Write-Host "    writers:  (none - constant or file-scope only)" -ForegroundColor DarkGray
+    }
+
+    if ($qReaders.Count -gt 0) {
+        $readerNames = @()
+        foreach ($filePath in ($qReaders | Sort-Object)) {
+            $basename = Get-Basename ($filePath.Replace("$projectRoot\", ''))
+            $readerNames += $basename
+        }
+        Write-Host "    readers:  $($readerNames -join ', ')" -ForegroundColor DarkGray
+    } else {
+        Write-Host "    readers:  (none detected)" -ForegroundColor DarkGray
+    }
+
+    # Check manifest
+    $manifestLine = $null
+    if (Test-Path $manifestPath) {
+        $mLines = [System.IO.File]::ReadAllLines($manifestPath)
+        for ($mi = 0; $mi -lt $mLines.Count; $mi++) {
+            $mTrimmed = $mLines[$mi].Trim()
+            if ($mTrimmed -match "^$([regex]::Escape($Query)):") {
+                $manifestLine = $mi + 1
+                break
+            }
+        }
+    }
+
+    if ($manifestLine) {
+        Write-Host "    manifest: line $manifestLine" -ForegroundColor DarkGray
+    } else {
+        Write-Host "    manifest: (not listed - implicit ownership by declaring file)" -ForegroundColor DarkGray
+    }
+
+    Write-Host ""
+    Write-Host "  Completed in $($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
+    exit 0
+}
+
+# ============================================================
 # Pass 1: Collect file-scope globals
 # ============================================================
 $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
