@@ -20,7 +20,6 @@ global gBGImg_TileBrush := 0      ; ID2D1BitmapBrush for Tile mode (0 if not Til
 global gBGImg_Width := 0           ; Natural pixel width of source
 global gBGImg_Height := 0          ; Natural pixel height of source
 global gBGImg_Ready := false       ; True when source bitmap loaded and valid
-global gBGImg_LoadedPath := ""     ; Path of currently loaded image (change detection)
 global gBGImg_EffectsReady := false ; Set by gui_effects.ahk after effect creation
 
 ; --- Cache state ---
@@ -79,7 +78,7 @@ BGImg_Draw() {
 ; Release all resources. Called from FX_GPU_Dispose().
 BGImg_Dispose() {
     global gBGImg_Bitmap, gBGImg_TileBrush, gBGImg_TileBrushInterp, gBGImg_Ready
-    global gBGImg_Width, gBGImg_Height, gBGImg_LoadedPath, gBGImg_EffectsReady
+    global gBGImg_Width, gBGImg_Height, gBGImg_EffectsReady
     global gBGImg_Cache, gBGImg_CacheW, gBGImg_CacheH, gBGImg_CacheDirty
     gBGImg_Cache := 0        ; COM __Delete releases
     gBGImg_CacheW := 0
@@ -92,20 +91,17 @@ BGImg_Dispose() {
     gBGImg_Height := 0
     gBGImg_Ready := false
     gBGImg_EffectsReady := false
-    gBGImg_LoadedPath := ""
     ; GDI+ token intentionally kept alive — no need to shut down/restart for reload
 }
 
-; Re-check config path, reload if changed. Called on config apply.
+; Reload image from disk and rebuild cache. Called on config apply.
+; Always reloads — file content may have changed even if path is the same
+; (e.g., user replaced image via config editor). Config apply is a cold path
+; so the ~50ms image load is acceptable.
 BGImg_Reload() { ; lint-ignore: dead-function
-    global cfg, gBGImg_LoadedPath, gBGImg_Ready, gBGImg_CacheDirty
-    newPath := cfg.BGImgEnabled ? cfg.BGImgImagePath : ""
-    if (newPath = gBGImg_LoadedPath && (newPath = "" || gBGImg_Ready)) {
-        ; Path unchanged — still invalidate cache (effects params may have changed)
-        gBGImg_CacheDirty := true
-        return
-    }
+    global cfg, gBGImg_CacheDirty
     BGImg_Dispose()
+    newPath := cfg.BGImgEnabled ? cfg.BGImgImagePath : ""
     if (newPath != "")
         _BGImg_LoadImage(newPath)
     gBGImg_CacheDirty := true
@@ -244,7 +240,7 @@ _BGImg_RebuildCache(wPhys, hPhys) {
 
 _BGImg_LoadImage(filePath) {
     global gD2D_RT, gBGImg_Bitmap, gBGImg_TileBrush
-    global gBGImg_Width, gBGImg_Height, gBGImg_Ready, gBGImg_LoadedPath
+    global gBGImg_Width, gBGImg_Height, gBGImg_Ready
     global DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED, cfg
 
     global LOG_PATH_STORE
@@ -316,7 +312,6 @@ _BGImg_LoadImage(filePath) {
         gBGImg_Bitmap := bitmap
         gBGImg_Width := imgW
         gBGImg_Height := imgH
-        gBGImg_LoadedPath := filePath
         gBGImg_Ready := true
 
         ; Create tile brush if Tile mode is active

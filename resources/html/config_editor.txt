@@ -807,6 +807,9 @@ function bindFileControls() {
 // Called by AHK after file browse dialog completes
 window.setFilePath = function(globalName, path) {
   configValues[globalName] = path;
+  // Force change detection — file content may have changed even if path is the same
+  // (e.g., user replaces a PNG with a different image that gets the same filename)
+  delete originalValues[globalName];
   // Find the input by globalName
   const settingEl = document.querySelector(`.setting[data-global="${globalName}"]`);
   if (settingEl) {
