@@ -56,6 +56,9 @@ tools/animation/Veo Inputs/
 tools/animation/Veo Outputs/
 tools/animation/webp_debug.log
 
+# Playwright MCP artifacts
+.playwright-mcp/
+
 # Native benchmark build artifacts
 tools/native_benchmark/native_src/*.obj
 tools/native_benchmark/native_src/*.lib

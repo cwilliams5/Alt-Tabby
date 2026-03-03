@@ -165,6 +165,8 @@ _CEN_ParseRegistry() {
             }
             if (entry.HasOwnProp("fmt"))
                 setting.fmt := entry.fmt
+            if (entry.HasOwnProp("dynamicOptions"))
+                setting.dynamicOptions := entry.dynamicOptions
             if (curSubsection != "" && curSubsection.HasOwnProp("name"))
                 curSubsection.settings.Push(setting)
             else if (curSection != "")
@@ -457,6 +459,68 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
             y += descH + 4
 
+        } else if (setting.HasOwnProp("dynamicOptions") && setting.dynamicOptions = "SHADER_KEYS") {
+            global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
+            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
+            lbl.SetFont("s9 bold", "Segoe UI")
+            controls.Push({ctrl: lbl, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
+            ; Build display-name list from SHADER_NAMES (skip index 1 = "None")
+            optList := []
+            optKeys := []
+            Loop SHADER_KEYS.Length {
+                if (SHADER_KEYS[A_Index] != "") {
+                    optList.Push(SHADER_NAMES[A_Index])
+                    optKeys.Push(SHADER_KEYS[A_Index])
+                }
+            }
+            dd := pageGui.AddDropDownList("x" CEN_INPUT_X " y" y " w200", optList)
+            controls.Push({ctrl: dd, origY: y, origX: CEN_INPUT_X})
+            settingCtrls.Push({ctrl: dd, origY: y, origX: CEN_INPUT_X})
+            gCEN["Controls"][setting.g] := {ctrl: dd, type: "dynamicEnum", keys: optKeys, labels: optList}
+            Theme_ApplyToControl(dd, "DDL", gCEN["ThemeEntry"])
+            y += 26
+            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c" mutedColor " +Wrap", setting.d)
+            dc.SetFont("s8", "Segoe UI")
+            Theme_MarkMuted(dc)
+            controls.Push({ctrl: dc, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
+            y += descH + 4
+
+        } else if (setting.t = "file") {
+            lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
+            lbl.SetFont("s9 bold", "Segoe UI")
+            controls.Push({ctrl: lbl, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
+            ; Read-only edit showing current path
+            ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w280 +ReadOnly")
+            controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
+            settingCtrls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
+            gCEN["Controls"][setting.g] := {ctrl: ed, type: "file"}
+            Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
+            DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
+            ; Browse button
+            browseX := CEN_INPUT_X + 286
+            btnBrowse := pageGui.AddButton("x" browseX " y" y " w70 h22", "Browse...")
+            controls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
+            settingCtrls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
+            Theme_ApplyToControl(btnBrowse, "Button", gCEN["ThemeEntry"])
+            btnBrowse.OnEvent("Click", _CEN_MakeFileBrowseHandler(setting.g))
+            ; Clear button
+            clearX := browseX + 76
+            btnClear := pageGui.AddButton("x" clearX " y" y " w50 h22", "Clear")
+            controls.Push({ctrl: btnClear, origY: y, origX: clearX})
+            settingCtrls.Push({ctrl: btnClear, origY: y, origX: clearX})
+            Theme_ApplyToControl(btnClear, "Button", gCEN["ThemeEntry"])
+            btnClear.OnEvent("Click", _CEN_MakeFileClearHandler(setting.g))
+            y += 26
+            dc := pageGui.AddText("x24 y" y " w" contentW " h" descH " c" mutedColor " +Wrap", setting.d)
+            dc.SetFont("s8", "Segoe UI")
+            Theme_MarkMuted(dc)
+            controls.Push({ctrl: dc, origY: y, origX: 24})
+            settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
+            y += descH + 4
+
         } else {
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
             lbl.SetFont("s9 bold", "Segoe UI")
@@ -466,8 +530,45 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             isHex := setting.HasOwnProp("fmt") && setting.fmt = "hex"
             hasRange := setting.HasOwnProp("min")
             useUpDown := hasRange && setting.t = "int" && !isHex
+            useFloatSlider := hasRange && setting.t = "float" && !isHex
 
-            if (useUpDown) {
+            if (useFloatSlider) {
+                ; Float with range -> Slider (scaled to 0-100) + Edit + range label
+                ; Scale factor: slider integer range maps to float range
+                floatRange := setting.max - setting.min
+                sliderMax := (floatRange <= 1.0) ? 100 : Round(floatRange * 10)
+                sliderX := CEN_INPUT_X
+                slider := pageGui.AddSlider("x" sliderX " y" y " w120 h24 +0x10 Range0-" sliderMax)
+                controls.Push({ctrl: slider, origY: y, origX: sliderX})
+                settingCtrls.Push({ctrl: slider, origY: y, origX: sliderX})
+                Theme_ApplyToControl(slider, "Slider", gCEN["ThemeEntry"])
+                gCEN_SliderHwnds[slider.Hwnd] := true
+                DllCall("uxtheme\SetWindowTheme", "Ptr", slider.Hwnd, "Str", "", "Ptr", 0)
+                DllCall("comctl32\SetWindowSubclass", "Ptr", slider.Hwnd, "Ptr", gCEN_SliderSubclassPtr, "UPtr", slider.Hwnd, "UPtr", 0)
+                editX := sliderX + 126
+                ed := pageGui.AddEdit("x" editX " y" y " w80")
+                controls.Push({ctrl: ed, origY: y, origX: editX})
+                settingCtrls.Push({ctrl: ed, origY: y, origX: editX})
+                Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
+                DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
+                rangeX := editX + 86
+                rc := pageGui.AddText("x" rangeX " y" (y + 3) " w120 h16 c" mutedColor, Format("{:.2f} - {:.2f}", setting.min, setting.max))
+                rc.SetFont("s7 italic", "Segoe UI")
+                Theme_MarkMuted(rc)
+                controls.Push({ctrl: rc, origY: y, origX: rangeX})
+                settingCtrls.Push({ctrl: rc, origY: y, origX: rangeX})
+                ; Sync slider <-> edit: slider value is scaled integer, edit shows float
+                floatSyncGuard := {v: false}
+                fMin := setting.min
+                fMax := setting.max
+                sMax := sliderMax
+                boundFloatSliderSync := _CEN_MakeFloatSliderSyncHandler(ed, floatSyncGuard, fMin, fMax, sMax)
+                boundFloatEditSync := _CEN_MakeFloatEditSyncHandler(slider, floatSyncGuard, fMin, fMax, sMax)
+                slider.OnEvent("Change", boundFloatSliderSync)
+                ed.OnEvent("Change", boundFloatEditSync)
+                ctrlInfo := {ctrl: ed, type: setting.t, slider: slider, floatSliderMax: sliderMax, floatMin: fMin, floatMax: fMax}
+                gCEN["Controls"][setting.g] := ctrlInfo
+            } else if (useUpDown) {
                 ; Integer with range, not hex -> Slider + Edit + UpDown + range label
                 sliderX := CEN_INPUT_X
                 slider := pageGui.AddSlider("x" sliderX " y" y " w120 h24 +0x10 Range" setting.min "-" setting.max)
@@ -569,7 +670,7 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             ; Range hint for float/hex (UpDown shows its own range natively)
             ; Skip for hex fields with color swatch — the swatch+picker replaces the label
             hasSwatch := isHex && setting.HasOwnProp("max") && setting.max > 0xFF
-            if (hasRange && !useUpDown && !hasSwatch) {
+            if (hasRange && !useUpDown && !useFloatSlider && !hasSwatch) {
                 if (isHex)
                     rangeText := Format("Range: 0x{:X} - 0x{:X}", setting.min, setting.max)
                 else if (setting.t = "float")
@@ -635,6 +736,20 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
 
     if (type = "bool") {
         ctrlInfo.ctrl.Value := val ? 1 : 0
+    } else if (ctrlInfo.type = "dynamicEnum") {
+        ; Map key string to display label for dropdown selection
+        chosen := false
+        if (ctrlInfo.HasOwnProp("keys")) {
+            Loop ctrlInfo.keys.Length {
+                if (ctrlInfo.keys[A_Index] = val) {
+                    try ctrlInfo.ctrl.Choose(A_Index)
+                    chosen := true
+                    break
+                }
+            }
+        }
+        if (!chosen)
+            try ctrlInfo.ctrl.Choose(1)
     } else if (type = "enum") {
         try ctrlInfo.ctrl.Choose(String(val))
         catch
@@ -646,8 +761,15 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
     } else {
         ctrlInfo.ctrl.Value := String(val)
     }
-    if (ctrlInfo.HasOwnProp("slider"))
-        try ctrlInfo.slider.Value := Integer(val)
+    if (ctrlInfo.HasOwnProp("slider")) {
+        if (ctrlInfo.HasOwnProp("floatSliderMax")) {
+            ; Float slider: scale float value to integer slider range
+            fVal := Float(val)
+            try ctrlInfo.slider.Value := Round((fVal - ctrlInfo.floatMin) / (ctrlInfo.floatMax - ctrlInfo.floatMin) * ctrlInfo.floatSliderMax)
+        } else {
+            try ctrlInfo.slider.Value := Integer(val)
+        }
+    }
     if (ctrlInfo.HasOwnProp("swatch")) {
         rgb := val & 0xFFFFFF
         swAlpha := (ctrlInfo.HasOwnProp("isARGB") && ctrlInfo.isARGB) ? ((val >> 24) & 0xFF) : 255
@@ -668,6 +790,97 @@ _CEN_SetControlValue(ctrlInfo, val, type) {
 ; Create a clamp-on-blur handler bound to a specific setting's range
 _CEN_MakeClampHandler(globalName, minVal, maxVal) {
     return (ctrl, *) => _CEN_ClampOnBlur(globalName, minVal, maxVal)
+}
+
+; Create file browse handler: opens FileSelect, copies to resources/, updates edit
+_CEN_MakeFileBrowseHandler(globalName) {
+    return (ctrl, *) => _CEN_OnFileBrowse(globalName)
+}
+
+; Create file clear handler: empties the path edit control
+_CEN_MakeFileClearHandler(globalName) {
+    return (ctrl, *) => _CEN_OnFileClear(globalName)
+}
+
+_CEN_OnFileBrowse(globalName) {
+    global gCEN, gConfigIniPath
+    ctrlInfo := gCEN["Controls"][globalName]
+
+    filter := "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tiff;*.webp)"
+    selected := FileSelect(1, , "Select Background Image", filter)
+    if (selected = "")
+        return
+
+    ; Determine resources directory (next to config.ini)
+    configDir := ""
+    if (gConfigIniPath != "")
+        SplitPath(gConfigIniPath, , &configDir)
+    else if (A_IsCompiled)
+        configDir := A_ScriptDir
+    else
+        configDir := A_ScriptDir "\.."
+
+    resDir := configDir "\resources"
+    if (!DirExist(resDir))
+        DirCreate(resDir)
+
+    ; Determine destination filename
+    SplitPath(selected, , , &ext)
+    ext := StrLower(ext)
+    destExt := ext
+
+    ; WebP → PNG conversion
+    if (ext = "webp") {
+        converted := _CEN_ConvertWebPToPNG(selected, resDir)
+        if (converted = "") {
+            ThemeMsgBox("Failed to convert WebP image. Please select a PNG or JPG instead.", "Conversion Error", "OK Icon!")
+            return
+        }
+        destExt := "png"
+        destPath := resDir "\alttabby-background." destExt
+        if (FileExist(destPath))
+            FileDelete(destPath)
+        FileMove(converted, destPath)
+    } else {
+        destPath := resDir "\alttabby-background." destExt
+        if (FileExist(destPath))
+            FileDelete(destPath)
+        FileCopy(selected, destPath, true)
+    }
+
+    ctrlInfo.ctrl.Value := destPath
+}
+
+_CEN_OnFileClear(globalName) {
+    global gCEN
+    ctrlInfo := gCEN["Controls"][globalName]
+    ctrlInfo.ctrl.Value := ""
+}
+
+_CEN_ConvertWebPToPNG(webpPath, outputDir) {
+    ; Load WebP via GDI+ (Windows 10 1809+ supports WebP natively in GDI+)
+    try {
+        pBitmapGdip := 0
+        DllCall("gdiplus\GdipCreateBitmapFromFile", "str", webpPath, "ptr*", &pBitmapGdip, "int")
+        if (!pBitmapGdip)
+            return ""
+
+        ; Save as PNG using GDI+ encoder
+        pngPath := outputDir "\alttabby-background.png"
+
+        ; PNG encoder CLSID: {557CF406-1A04-11D3-9A73-0000F81EF32E}
+        encoderClsid := Buffer(16, 0)
+        DllCall("ole32\CLSIDFromString", "str", "{557CF406-1A04-11D3-9A73-0000F81EF32E}", "ptr", encoderClsid, "hresult")
+
+        hr := DllCall("gdiplus\GdipSaveImageToFile", "ptr", pBitmapGdip, "str", pngPath, "ptr", encoderClsid, "ptr", 0, "int")
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
+
+        if (hr != 0)
+            return ""
+        return pngPath
+    } catch {
+        return ""
+    }
 }
 
 ; Create a handler that syncs slider value -> edit control
@@ -695,6 +908,41 @@ _CEN_SyncEditToSlider(editCtrl, sliderCtrl, guard) {
         return
     guard.v := true
     try sliderCtrl.Value := Integer(editCtrl.Value)
+    guard.v := false
+}
+
+; Create a handler that syncs float slider value -> edit control (scaled integer -> float string)
+_CEN_MakeFloatSliderSyncHandler(editCtrl, guard, fMin, fMax, sMax) {
+    return (ctrl, *) => _CEN_SyncFloatSliderToEdit(ctrl, editCtrl, guard, fMin, fMax, sMax)
+}
+
+_CEN_SyncFloatSliderToEdit(sliderCtrl, editCtrl, guard, fMin, fMax, sMax) {
+    if (guard.v)
+        return
+    guard.v := true
+    floatVal := fMin + (sliderCtrl.Value / sMax) * (fMax - fMin)
+    try editCtrl.Value := Format("{:.2f}", floatVal)
+    guard.v := false
+    DllCall("InvalidateRect", "Ptr", sliderCtrl.Hwnd, "Ptr", 0, "Int", 0)
+}
+
+; Create a handler that syncs edit float value -> slider control (float string -> scaled integer)
+_CEN_MakeFloatEditSyncHandler(sliderCtrl, guard, fMin, fMax, sMax) {
+    return (ctrl, *) => _CEN_SyncFloatEditToSlider(ctrl, sliderCtrl, guard, fMin, fMax, sMax)
+}
+
+_CEN_SyncFloatEditToSlider(editCtrl, sliderCtrl, guard, fMin, fMax, sMax) {
+    if (guard.v)
+        return
+    guard.v := true
+    try {
+        fVal := Float(editCtrl.Value)
+        if (fVal < fMin)
+            fVal := fMin
+        if (fVal > fMax)
+            fVal := fMax
+        sliderCtrl.Value := Round((fVal - fMin) / (fMax - fMin) * sMax)
+    }
     guard.v := false
 }
 
@@ -1058,7 +1306,13 @@ _CEN_ClampOnBlur(globalName, minVal, maxVal) {
 }
 
 _CEN_GetControlValue(ctrlInfo, type) {
-    if (type = "bool") {
+    if (ctrlInfo.type = "dynamicEnum") {
+        ; Map selected dropdown index back to registry key string
+        idx := ctrlInfo.ctrl.Value
+        if (idx >= 1 && idx <= ctrlInfo.keys.Length)
+            return ctrlInfo.keys[idx]
+        return ""
+    } else if (type = "bool") {
         return ctrlInfo.ctrl.Value ? true : false
     } else if (type = "enum") {
         return ctrlInfo.ctrl.Text

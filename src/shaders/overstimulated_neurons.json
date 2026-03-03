@@ -1,0 +1,11 @@
+{
+  "name": "Overstimulated Neurons",
+  "shadertoyId": "NdlSD8",
+  "author": "Chaotnix",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [{"index": 0, "file": "overstimulated_neurons_i0.png", "filter": "linear", "wrap": "repeat"}],
+  "timeAccumulate": true,
+  "timeOffsetMin": 40,
+  "timeOffsetMax": 120
+}

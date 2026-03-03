@@ -1,0 +1,10 @@
+{
+  "name": "Voronoi Burning",
+  "shadertoyId": "NdtcRr",
+  "author": "clauswilke",
+  "license": "MIT",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "voronoi_burning_i0.png", "filter": "mipmap", "wrap": "repeat"}
+  ]
+}

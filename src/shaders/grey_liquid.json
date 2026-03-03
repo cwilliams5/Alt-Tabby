@@ -1,0 +1,11 @@
+{
+  "name": "Grey Liquid",
+  "shadertoyId": "fsdyzf",
+  "author": "fractalfantasy",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 20,
+  "timeOffsetMax": 80,
+  "timeAccumulate": true
+}

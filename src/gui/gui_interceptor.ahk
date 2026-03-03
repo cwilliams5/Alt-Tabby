@@ -35,6 +35,7 @@ global INT_TAB_DECIDE_SETTLE_MS := 5
 ; ========================= HOTKEY SETUP =========================
 
 INT_SetupHotkeys() {
+    global cfg
     ; Alt hooks (pass-through, just observe)
     Hotkey("~*Alt", _INT_Alt_Down)
     Hotkey("~*Alt Up", _INT_Alt_Up)
@@ -51,6 +52,19 @@ INT_SetupHotkeys() {
 
     ; Backtick hook for monitor mode toggle (only when GUI active)
     Hotkey("~*``", _INT_Backtick_Down)
+
+    ; B key — cycle effect styles when GUI is active
+    Hotkey("~*b", _INT_B_Down)
+
+    ; F key — toggle FPS debug overlay when GUI is active
+    Hotkey("~*f", _INT_F_Down)
+
+    ; C key — cycle backdrop effects when GUI is active
+    Hotkey("~*c", _INT_C_Down)
+
+    ; Shader cycle hotkey (optional, configurable — blank disables)
+    if (cfg.ShaderCycleShaderHotkey != "")
+        try Hotkey("~*" cfg.ShaderCycleShaderHotkey, _INT_V_Down)
 
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
@@ -320,6 +334,99 @@ _INT_Escape_Down(*) {
     gINT_SessionActive := false
     gINT_PressCount := 0
     gINT_TabHeld := false
+}
+
+; ========================= EFFECT STYLE TOGGLE =========================
+
+_INT_B_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gGUI_EffectStyle, FX_STYLE_NAMES
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+
+    ; Cycle through effect styles
+    ; FX_STYLE_NAMES includes GPU styles when available (built by FX_BuildStyleNames)
+    gGUI_EffectStyle := Mod(gGUI_EffectStyle + 1, FX_STYLE_NAMES.Length)
+
+    ; Show tooltip with current style name and GPU indicator
+    styleName := FX_STYLE_NAMES[gGUI_EffectStyle + 1]
+    gpuTag := (gGUI_EffectStyle >= 2) ? " [GPU]" : ""
+    ToolTip("Style: " styleName gpuTag)
+    SetTimer(() => ToolTip(), -2000)
+
+    ; Repaint immediately with new style
+    GUI_Repaint()
+}
+
+; ========================= FPS DEBUG OVERLAY TOGGLE =========================
+
+_INT_F_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gAnim_FPSEnabled
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+
+    gAnim_FPSEnabled := !gAnim_FPSEnabled
+    GUI_Repaint()
+}
+
+; ========================= BACKDROP STYLE CYCLING =========================
+
+_INT_C_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gFX_BackdropStyle, FX_BG_STYLE_NAMES
+    global gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase, gFX_BackdropDirSign, gFX_GPUReady
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+    if (!gFX_GPUReady)
+        return
+
+    gFX_BackdropStyle := Mod(gFX_BackdropStyle + 1, FX_BG_STYLE_NAMES.Length)
+    gFX_BackdropSeedX := Random(100, 10000) * 1.0      ; Fresh pattern each activation
+    gFX_BackdropSeedY := Random(100, 10000) * 1.0
+    gFX_BackdropSeedPhase := Random() * 6.2832          ; Random orbit phase (0 to 2π)
+    gFX_BackdropDirSign := Random(0, 1) ? 1 : -1        ; Random orbit direction
+
+    styleName := FX_BG_STYLE_NAMES[gFX_BackdropStyle + 1]
+    ToolTip("Backdrop: " styleName)
+    SetTimer(() => ToolTip(), -2000)
+
+    GUI_Repaint()
+}
+
+; ========================= SHADER LAYER CYCLING =========================
+
+_INT_V_Down(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible, gFX_ShaderIndex, gFX_GPUReady
+    global SHADER_NAMES, SHADER_KEYS, gShader_Registry, gShader_Ready ; lint-ignore: phantom-global
+
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+    if (!gFX_GPUReady || !gShader_Ready)
+        return
+
+    ; Lazy-load all remaining shaders on first cycle press
+    FX_EnsureAllShadersLoaded()
+
+    ; Cycle forward, skipping shaders not yet registered (compilation still in progress).
+    ; Wrap around at most once to avoid infinite loop if nothing is registered.
+    total := SHADER_NAMES.Length
+    Loop total {
+        gFX_ShaderIndex := Mod(gFX_ShaderIndex + 1, total)
+        ; Index 0 = None (always valid), otherwise check registry
+        if (gFX_ShaderIndex = 0 || gShader_Registry.Has(SHADER_KEYS[gFX_ShaderIndex + 1]))
+            break
+    }
+
+    shaderName := SHADER_NAMES[gFX_ShaderIndex + 1]
+    ToolTip("Shader: " shaderName)
+    SetTimer(() => ToolTip(), -2000)
+
+    GUI_Repaint()
 }
 
 ; ========================= BYPASS DETECTION =========================

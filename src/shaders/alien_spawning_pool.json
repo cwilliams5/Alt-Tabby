@@ -1,0 +1,13 @@
+{
+  "name": "Alien Spawning Pool",
+  "shadertoyId": "MtffW8",
+  "author": "ChristinaCoffin",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "alien_spawning_pool_i0.png", "filter": "mipmap", "wrap": "repeat"}
+  ],
+  "timeOffsetMin": 40,
+  "timeOffsetMax": 120,
+  "timeAccumulate": true
+}

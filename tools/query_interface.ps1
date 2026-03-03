@@ -28,7 +28,8 @@ $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
 
 # Find the file
 $srcDir = (Resolve-Path "$PSScriptRoot\..\src").Path
-$fileMatches = @(Get-AhkSourceFiles $srcDir | Where-Object { $_.Name -eq "$baseName.ahk" })
+$srcFiles = Get-AhkSourceFiles $srcDir -IncludeLib
+$fileMatches = @($srcFiles | Where-Object { $_.Name -eq "$baseName.ahk" })
 
 if ($fileMatches.Count -eq 0) {
     Write-Host "  No file found matching: $baseName.ahk" -ForegroundColor Red

@@ -12,6 +12,16 @@ This is the highest-priority performance surface. The project's overriding goal 
 
 The architecture is single-process: producers, window store, and GUI all run in MainProcess. There is no IPC on the critical path — the enrichment pump (icon/process resolution) is async and off the hot path.
 
+### Scope Boundaries
+
+This skill covers the **control flow** around rendering — everything from keypress to "start painting" and from "painting done" to "window visible." It does NOT cover per-frame rendering internals, which have dedicated skills:
+
+- **`/review-paint`** — D2D paint pipeline: BeginDraw→EndDraw, effect helpers, compositing layers, per-frame allocations in `gui_paint.ahk`, `gui_effects.ahk`, `gui_bgimage.ahk`, `gui_gdip.ahk`, `gui_math.ahk`, `gui_animation.ahk`
+- **`/review-d3d`** — D3D11 shader host: `d2d_shader.ahk` buffer allocations, state calls, GPU readback
+- **`/review-shaders`** — HLSL pixel shader source: ALU, transcendentals, loop optimization in `src/shaders/*.hlsl`
+
+If you find a latency issue that lives inside the rendering pipeline (e.g., "paint takes too long because of X"), note it briefly and defer to the appropriate skill.
+
 ## The Two Hot Paths
 
 ### Path 1: Window Change → Store
@@ -43,10 +53,12 @@ Questions to ask:
 
 The user presses Alt → Tab and must see the overlay with correct data as fast as possible. Then each subsequent Tab press must update the selection and repaint instantly.
 
+This skill focuses on the **control flow and data preparation** — from keypress through state machine to the point where rendering begins, and from rendering completion to overlay visibility. The rendering pipeline itself (D2D draw calls, effects, compositing) is covered by `/review-paint`.
+
 ```
 Alt down ──► Pre-warm (refresh data early)
-Tab down ──► Freeze list ──► Build display items ──► Paint (GDI+) ──► Show overlay
-Tab again ──► Move selection ──► Repaint
+Tab down ──► Freeze list ──► Build display items ──► [Paint — see /review-paint] ──► Show overlay
+Tab again ──► Move selection ──► [Repaint]
 Alt up   ──► Activate window ──► Hide overlay
 Escape   ──► Cancel ──► Hide overlay
 ```
@@ -56,22 +68,29 @@ Key files:
 - `src/gui/gui_state.ahk` — state machine transitions
 - `src/gui/gui_input.ahk` — input handling, selection movement
 - `src/gui/gui_data.ahk` — snapshot, display list building, pre-cache
-- `src/gui/gui_paint.ahk` — GDI+ rendering (the most expensive single operation)
-- `src/gui/gui_overlay.ahk` — show/hide mechanics
-- `src/gui/gui_gdip.ahk` — GDI+ resource management, caching
+- `src/gui/gui_overlay.ahk` — show/hide mechanics (DWM cloaking, anti-flash)
 - `src/shared/gui_antiflash.ahk` — DWM cloaking / alpha sequencing
-- `src/gui/gui_math.ahk` — layout calculations
 - `src/gui/gui_monitor.ahk` — monitor detection, DPI
 - `src/gui/gui_workspace.ahk` — workspace label building
 - `src/gui/gui_pump.ahk` — enrichment pump integration
 
+**Out of scope** (covered by dedicated skills):
+- `src/gui/gui_paint.ahk` — per-frame rendering (`/review-paint`)
+- `src/gui/gui_effects.ahk` — D2D effect helpers (`/review-paint`)
+- `src/gui/gui_gdip.ahk` — D2D resource management (`/review-paint`)
+- `src/gui/gui_math.ahk` — layout calculations (`/review-paint`)
+- `src/gui/gui_animation.ahk` — animation tick (`/review-paint`)
+- `src/gui/gui_bgimage.ahk` — background image layer (`/review-paint`)
+- `src/lib/d2d_shader.ahk` — D3D11 interop (`/review-d3d`)
+- `src/shaders/*.hlsl` — pixel shaders (`/review-shaders`)
+
 Questions to ask:
-- What work happens between Tab press and first pixel? Is any of it unnecessary or reorderable?
+- What work happens between Tab press and the call to `GUI_Repaint()`? Is any of it unnecessary or reorderable?
 - Is display list construction doing work that could be pre-computed during pre-warm?
-- Are GDI+ resources truly cached, or being recreated per-paint?
-- Does the paint loop iterate more than it needs to (invisible items, off-screen regions)?
-- Is layout calculation (positioning, sizing) repeated when it could be cached?
-- What happens on subsequent Tab presses — full repaint or incremental?
+- How long does overlay show take after paint completes? Is DWM cloaking/uncloaking adding delay?
+- Does the state machine transition path have unnecessary intermediate states or checks?
+- What happens on subsequent Tab presses — does data preparation repeat unnecessarily?
+- Is window activation (Alt-up) blocking on komorebic or Win32 calls?
 
 ### Cross-Cutting: Main Thread Blocking
 
@@ -80,7 +99,7 @@ The keyboard hooks run on the main thread. **Anything that blocks the main threa
 - Timer callbacks that do heavy work (check with `query_timers.ps1`)
 - Producer callbacks that take too long inside `Critical "On"` sections
 - Synchronous file I/O (config reads, stats writes, log writes)
-- GDI+ operations outside the paint path
+- D2D operations outside the paint path (e.g., resource creation triggered by config change)
 - Any `DllCall` that might block (synchronous Win32 calls)
 
 This is separate from the two paths above — even if Path 1 and Path 2 are individually fast, a long-running timer callback between Alt-down and Tab-down steals time from hook processing.
@@ -90,7 +109,7 @@ This is separate from the two paths above — even if Path 1 and Path 2 are indi
 Split by hot path (run in parallel):
 
 - **Path 1 agent**: All producers in `src/core/`, eligibility in `blacklist.ahk`, store internals in `window_list.ahk`. Focus on per-event callback cost.
-- **Path 2 agent**: All GUI files in `src/gui/` involved in the Alt-Tab flow. Focus on the Tab-press-to-pixels sequence.
+- **Path 2 agent**: `gui_interceptor.ahk`, `gui_state.ahk`, `gui_input.ahk`, `gui_data.ahk`, `gui_overlay.ahk`, `gui_antiflash.ahk`, `gui_workspace.ahk`. Focus on keypress-to-paint-call and paint-done-to-visible sequences. Do NOT audit the rendering pipeline itself.
 - **Cross-cutting agent**: `query_timers.ps1` output, Critical section durations, any synchronous I/O on the main thread. Scan all `src/gui/` and `src/core/` files for blocking operations.
 
 ### Tools

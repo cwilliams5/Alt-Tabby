@@ -1,0 +1,11 @@
+{
+  "name": "Mandelbox Sweeper",
+  "shadertoyId": "3lyXDm",
+  "author": "evvvvil",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 5,
+  "timeOffsetMax": 50,
+  "timeAccumulate": true
+}

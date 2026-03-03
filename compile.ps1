@@ -129,6 +129,49 @@ $versionInfoLines = @(
 [IO.File]::WriteAllLines($versionInfoPath, $versionInfoLines)
 Record-Step "Version Stamp"
 
+# --- Shader pipeline: bundle + compile ---
+# Both scripts have internal staleness checks — fast (~50ms) when nothing changed.
+# Invoked inline (& operator) to avoid subprocess startup overhead.
+Reset-StepTimer
+$shaderBundleScript = Join-Path $PSScriptRoot "tools\shader_bundle.ps1"
+$shaderCompileScript = Join-Path $PSScriptRoot "tools\shader_compile.ps1"
+
+# Step 1: shader_bundle.ps1 — generates metadata bundle + resource directives
+if (Test-Path $shaderBundleScript) {
+    $bundleArgs = @()
+    if ($force) { $bundleArgs += '-force' }
+    & $shaderBundleScript @bundleArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output ""
+        Write-Output "============================================================"
+        Write-Output "ERROR: Shader bundling failed!"
+        Write-Output "============================================================"
+        exit 1
+    }
+}
+Record-Step "Shader Bundle"
+
+# Step 2: shader_compile.ps1 — compiles HLSL to DXBC bytecode
+Reset-StepTimer
+if (Test-Path $shaderCompileScript) {
+    $compileArgs = @()
+    if ($force) { $compileArgs += '-force' }
+    & $shaderCompileScript @compileArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output ""
+        Write-Output "============================================================"
+        Write-Output "ERROR: Shader compilation failed!"
+        Write-Output "See output above for details."
+        Write-Output "============================================================"
+        exit 1
+    }
+}
+Record-Step "Shader Compile"
+
+if (-not $testMode) {
+    Write-Output ""
+}
+
 # --- Strip ; @profile markers (unless --profile) ---
 # Copies src/ to temp, strips lines ending with ; @profile, compiles from temp.
 # With --profile: compiles directly from src/ (instrumented build).

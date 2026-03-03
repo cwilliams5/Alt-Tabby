@@ -2451,7 +2451,7 @@ $sw.Stop()
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $criIssues = [System.Collections.ArrayList]::new()
 
-$validTypes = @('string', 'int', 'float', 'bool', 'enum')
+$validTypes = @('string', 'int', 'float', 'bool', 'enum', 'file')
 
 if ($rkuRegFile.Count -gt 0) {
     $criLines = $fileCache[$rkuRegFile[0].FullName]

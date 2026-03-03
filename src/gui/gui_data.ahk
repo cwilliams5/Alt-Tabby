@@ -232,7 +232,7 @@ _GUI_PreCacheTick() {
             continue
         if (gGdip_IconCache.Has(hwnd)) {
             cached := gGdip_IconCache[hwnd]
-            if (cached.hicon = rec.iconHicon && cached.pBmp)
+            if (cached.hicon = rec.iconHicon && cached.bitmap)
                 continue
         }
         work.Push({hwnd: hwnd, hicon: rec.iconHicon})

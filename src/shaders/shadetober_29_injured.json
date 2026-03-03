@@ -1,0 +1,11 @@
+{
+  "name": "shadetober #29 (injured)",
+  "shadertoyId": "tscSWf",
+  "author": "percentcer",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 30,
+  "timeOffsetMax": 90,
+  "timeAccumulate": true
+}

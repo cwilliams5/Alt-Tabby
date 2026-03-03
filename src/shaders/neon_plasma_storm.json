@@ -1,0 +1,11 @@
+{
+  "name": "Neon Plasma Storm",
+  "shadertoyId": "4scGDH",
+  "author": "Nickenstein79",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "neon_plasma_storm_i0.png", "filter": "linear", "wrap": "repeat"},
+    {"index": 1, "file": "neon_plasma_storm_i1.png", "filter": "linear", "wrap": "repeat"}
+  ]
+}

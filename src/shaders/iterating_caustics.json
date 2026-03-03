@@ -1,0 +1,11 @@
+{
+  "name": "Iterating caustics",
+  "shadertoyId": "flSyDt",
+  "author": "LoganOracio",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 10,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

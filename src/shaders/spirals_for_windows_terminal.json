@@ -1,0 +1,11 @@
+{
+  "name": "Spirals for Windows Terminal",
+  "shadertoyId": "DsG3Dm",
+  "author": "mrange",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 5,
+  "timeOffsetMax": 40,
+  "timeAccumulate": true
+}

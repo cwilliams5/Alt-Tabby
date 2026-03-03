@@ -69,6 +69,31 @@ ResourceExtractToTemp(resourceId, fileName, destDir := "") {
     }
 }
 
+; Load an embedded resource directly into a Buffer (no temp file needed).
+; Ideal for DXBC bytecode, binary data, etc. that can be consumed from memory.
+; resourceId: Resource ID from @Ahk2Exe-AddResource directive
+; Returns: Buffer with resource data, or throws on failure.
+ResourceLoadToBuffer(resourceId) {
+    global RT_RCDATA
+
+    hRes := DllCall("FindResource", "ptr", 0, "int", resourceId, "int", RT_RCDATA, "ptr")
+    if (!hRes)
+        throw Error("Resource " resourceId " not found")
+
+    resSize := DllCall("SizeofResource", "ptr", 0, "ptr", hRes, "uint")
+    hMem := DllCall("LoadResource", "ptr", 0, "ptr", hRes, "ptr")
+    if (!hMem || !resSize)
+        throw Error("Failed to load resource " resourceId)
+
+    pData := DllCall("LockResource", "ptr", hMem, "ptr")
+    if (!pData)
+        throw Error("Failed to lock resource " resourceId)
+
+    buf := Buffer(resSize)
+    DllCall("RtlMoveMemory", "ptr", buf, "ptr", pData, "uptr", resSize)
+    return buf
+}
+
 ; Check if WebView2 Evergreen runtime is installed
 ; Returns: true if WebView2 runtime is available
 IsWebView2Available() {

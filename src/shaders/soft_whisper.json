@@ -1,0 +1,9 @@
+{
+  "name": "Soft Whisper",
+  "shadertoyId": "dlXGWB",
+  "author": "vivavolt",
+  "license": "CC0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeAccumulate": true
+}

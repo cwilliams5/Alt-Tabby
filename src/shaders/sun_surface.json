@@ -1,0 +1,13 @@
+{
+  "name": "Sun Surface",
+  "shadertoyId": "XlSSzK",
+  "author": "Duke",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "sun_surface_i0.png", "filter": "mipmap", "wrap": "repeat"}
+  ],
+  "timeOffsetMin": 5,
+  "timeOffsetMax": 30,
+  "timeAccumulate": true
+}

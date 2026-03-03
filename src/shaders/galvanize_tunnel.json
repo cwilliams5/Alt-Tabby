@@ -1,0 +1,11 @@
+{
+  "name": "Galvanize Tunnel",
+  "shadertoyId": "MlX3Wr",
+  "author": "Virgill",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [],
+  "timeOffsetMin": 20,
+  "timeOffsetMax": 80,
+  "timeAccumulate": true
+}

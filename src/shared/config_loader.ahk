@@ -689,7 +689,7 @@ _CL_ComputeDerivedGlobals() {
         global LOG_PATH_EVENTS, LOG_PATH_LAUNCHER, LOG_PATH_STORE, LOG_PATH_ICONPUMP
         global LOG_PATH_KSUB, LOG_PATH_WINEVENT, LOG_PATH_PROCPUMP, LOG_PATH_IPC
         global LOG_PATH_PAINT_TIMING, LOG_PATH_WEBVIEW, LOG_PATH_UPDATE
-        global LOG_PATH_COSMETIC_PATCH, LOG_PATH_PUMP
+        global LOG_PATH_COSMETIC_PATCH, LOG_PATH_PUMP, LOG_PATH_SHADER
         LOG_PATH_EVENTS         := A_Temp "\tabby_events_" _pfx ".log"
         LOG_PATH_LAUNCHER       := A_Temp "\tabby_launcher_" _pfx ".log"
         LOG_PATH_STORE          := A_Temp "\tabby_store_error_" _pfx ".log"
@@ -703,6 +703,7 @@ _CL_ComputeDerivedGlobals() {
         LOG_PATH_UPDATE         := A_Temp "\tabby_update_" _pfx ".log"
         LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch_" _pfx ".log"
         LOG_PATH_PUMP           := A_Temp "\tabby_pump_" _pfx ".log"
+        LOG_PATH_SHADER         := A_Temp "\tabby_shader_" _pfx ".log"
     }
 }
 
@@ -791,6 +792,7 @@ global LOG_PATH_WEBVIEW    := A_Temp "\tabby_webview_debug.log"
 global LOG_PATH_UPDATE     := A_Temp "\tabby_update.log"
 global LOG_PATH_COSMETIC_PATCH := A_Temp "\tabby_cosmetic_patch.log"
 global LOG_PATH_PUMP       := A_Temp "\tabby_pump.log"
+global LOG_PATH_SHADER     := A_Temp "\tabby_shader.log" ; lint-ignore: dead-global
 
 ; Stats file path -- set properly in ConfigLoader_Init() alongside gConfigIniPath
 global STATS_INI_PATH

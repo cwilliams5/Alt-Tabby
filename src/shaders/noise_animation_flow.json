@@ -1,0 +1,11 @@
+{
+  "name": "Noise animation - Flow",
+  "shadertoyId": "MdlXRS",
+  "author": "nimitz",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [{"index": 0, "file": "noise_animation_flow_i0.png", "filter": "mipmap", "wrap": "repeat"}],
+  "timeOffsetMin": 10,
+  "timeOffsetMax": 60,
+  "timeAccumulate": true
+}

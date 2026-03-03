@@ -102,20 +102,20 @@ $CHECKS = @(
     @{
         Id       = "gdip_shutdown_exists"
         File     = "gui\gui_gdip.ahk"
-        Desc     = "Gdip_Shutdown() exists with cleanup calls"
-        Patterns = @("Gdip_Shutdown()", "GdiplusShutdown", "GdipDeleteGraphics")
+        Desc     = "Gdip_Shutdown() exists as D2D cleanup shim"
+        Patterns = @("Gdip_Shutdown()", "D2D_DisposeResources()")
     },
     @{
-        Id       = "gdip_shutdown_clears_globals"
+        Id       = "d2d_dispose_resources"
         File     = "gui\gui_gdip.ahk"
-        Desc     = "Gdip_Shutdown() clears all GDI+ globals"
-        Patterns = @("gGdip_Token := 0", "gGdip_G := 0", "gGdip_BackHdc := 0", "gGdip_BackHBM := 0")
+        Desc     = "D2D_DisposeResources() clears all D2D resource maps"
+        Patterns = @("gD2D_Res := Map()", "gD2D_BrushCache := Map()")
     },
     @{
-        Id       = "gdip_shutdown_dispose"
-        File     = "gui\gui_gdip.ahk"
-        Desc     = "Gdip_Shutdown() calls _Gdip_DisposeResources()"
-        Patterns = @("_Gdip_DisposeResources()")
+        Id       = "d2d_shutdown_all"
+        File     = "gui\gui_overlay.ahk"
+        Desc     = "D2D_ShutdownAll() releases RT and factories"
+        Patterns = @("D2D_DisposeResources()", "gD2D_RT := 0", "gDW_Factory := 0", "gD2D_Factory := 0")
     },
     @{
         Id       = "gui_onexit"
@@ -132,9 +132,9 @@ $CHECKS = @(
     @{
         Id       = "gui_onexit_gdip"
         File     = "gui\gui_main.ahk"
-        Desc     = "GUI _GUI_OnExit calls Gdip_Shutdown()"
+        Desc     = "GUI _GUI_OnExit calls Gdip_Shutdown() and D2D_ShutdownAll()"
         Function = "_GUI_OnExit"
-        Patterns = @("Gdip_Shutdown()")
+        Patterns = @("Gdip_Shutdown()", "D2D_ShutdownAll()")
     },
     @{
         Id       = "ksub_no_undefined_log"
@@ -186,24 +186,24 @@ $CHECKS = @(
         Patterns = @("IconPump_EnsureRunning()", "ProcPump_EnsureRunning()")
     },
     @{
-        Id       = "gdip_drawtext_static_buf"
+        Id       = "d2d_drawtext_static_buf"
         File     = "gui\gui_gdip.ahk"
-        Desc     = "Gdip_DrawText uses static rf buffer"
+        Desc     = "D2D_DrawTextLeft uses static rect buffer"
         Regex    = $true
-        Patterns = @("Gdip_DrawText\([\s\S]*?static rf\s*:=\s*Buffer")
+        Patterns = @("D2D_DrawTextLeft\([\s\S]*?static rect\s*:=\s*Buffer")
     },
     @{
-        Id       = "gdip_drawcentered_static_buf"
+        Id       = "d2d_drawcentered_static_buf"
         File     = "gui\gui_gdip.ahk"
-        Desc     = "Gdip_DrawCenteredText uses static rf buffer"
+        Desc     = "D2D_DrawTextCentered uses static rect buffer"
         Regex    = $true
-        Patterns = @("Gdip_DrawCenteredText\([\s\S]*?static rf\s*:=\s*Buffer")
+        Patterns = @("D2D_DrawTextCentered\([\s\S]*?static rect\s*:=\s*Buffer")
     },
     @{
-        Id       = "gui_repaint_static_buf"
+        Id       = "d2d_fillroundrect_static_buf"
         File     = "gui\gui_gdip.ahk"
-        Desc     = "Gdip_GetBlendFunction uses static bf buffer"
-        Patterns = @("static bf := Buffer")
+        Desc     = "D2D_FillRoundRect uses static rrBuf buffer"
+        Patterns = @("static rrBuf := Buffer")
     },
     @{
         Id       = "gui_recalchover_static_buf"

@@ -55,12 +55,12 @@ function Strip-Nested {
 }
 
 function Get-AhkSourceFiles {
-    param([string]$SrcDir)
+    param([string]$SrcDir, [switch]$IncludeLib)
     $allPaths = [System.IO.Directory]::GetFiles($SrcDir, "*.ahk",
         [System.IO.SearchOption]::AllDirectories)
     $result = [System.Collections.ArrayList]::new($allPaths.Count)
     foreach ($p in $allPaths) {
-        if ($p.IndexOf('\lib\') -lt 0) {
+        if ($IncludeLib -or $p.IndexOf('\lib\') -lt 0) {
             [void]$result.Add([System.IO.FileInfo]::new($p))
         }
     }

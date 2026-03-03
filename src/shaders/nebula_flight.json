@@ -1,0 +1,14 @@
+{
+  "name": "Nebula Flight",
+  "shadertoyId": "Xs2SzR",
+  "author": "TekF",
+  "license": "CC BY-NC-SA 3.0",
+  "opacity": 0.50,
+  "iChannels": [
+    {"index": 0, "file": "nebula_flight_i0.png", "filter": "mipmap", "wrap": "repeat"},
+    {"index": 1, "file": "nebula_flight_i1.png", "filter": "nearest", "wrap": "repeat"}
+  ],
+  "timeOffsetMin": 40,
+  "timeOffsetMax": 120,
+  "timeAccumulate": true
+}
