@@ -1240,7 +1240,10 @@ global gConfigRegistry := [
      d: "Optional hotkey to cycle through backdrop effects while the overlay is visible. Leave blank to disable."},
 
     ; --- Gradient Drift ---
-    {type: "subsection", name: "Gradient Drift"},
+    {type: "subsection", section: "2D Effects", name: "Gradient Drift",
+     desc: "Two large color blobs orbiting slowly. Colors are derived from the overlay background color (Appearance > Background Color) with warm and cool shifts applied."},
+    {s: "2D Effects", k: "GradientIncludeInLayered", g: "FX2D_GradientIncludeInLayered", t: "bool", default: false,
+     d: "Include Gradient Drift in the Layered composite effect."},
     {s: "2D Effects", k: "GradientOpacity", g: "FX2D_GradientOpacity", t: "float", default: 0.40,
      min: 0.0, max: 1.0,
      d: "Opacity of the Gradient Drift effect layer. 0.0 = invisible, 1.0 = fully opaque."},
@@ -1256,12 +1259,12 @@ global gConfigRegistry := [
     {s: "2D Effects", k: "GradientColorShift", g: "FX2D_GradientColorShift", t: "float", default: 1.0,
      min: 0.0, max: 2.0,
      d: "Color variation multiplier. 0.0 = uniform colors, 1.0 = default variation, 2.0 = exaggerated color shifts."},
-    {s: "2D Effects", k: "GradientIncludeInLayered", g: "FX2D_GradientIncludeInLayered", t: "bool", default: false,
-     d: "Include Gradient Drift in the Layered composite effect."},
 
     ; --- Caustic ---
-    {type: "subsection", name: "Caustic",
+    {type: "subsection", section: "2D Effects", name: "Caustic",
      desc: "Shares the bgTurb GPU effect chain with Grain. If both are included in Layered, Caustic renders last and its turbulence settings win."},
+    {s: "2D Effects", k: "CausticIncludeInLayered", g: "FX2D_CausticIncludeInLayered", t: "bool", default: false,
+     d: "Include Caustic in the Layered composite effect."},
     {s: "2D Effects", k: "CausticOpacity", g: "FX2D_CausticOpacity", t: "float", default: 0.40,
      min: 0.0, max: 1.0,
      d: "Opacity of the Caustic effect layer. 0.0 = invisible, 1.0 = fully opaque."},
@@ -1277,11 +1280,11 @@ global gConfigRegistry := [
     {s: "2D Effects", k: "CausticSaturation", g: "FX2D_CausticSaturation", t: "float", default: 0.6,
      min: 0.0, max: 1.0,
      d: "Color saturation of the Caustic effect. 0.0 = grayscale, 1.0 = full color."},
-    {s: "2D Effects", k: "CausticIncludeInLayered", g: "FX2D_CausticIncludeInLayered", t: "bool", default: false,
-     d: "Include Caustic in the Layered composite effect."},
 
     ; --- Aurora ---
-    {type: "subsection", name: "Aurora"},
+    {type: "subsection", section: "2D Effects", name: "Aurora"},
+    {s: "2D Effects", k: "AuroraIncludeInLayered", g: "FX2D_AuroraIncludeInLayered", t: "bool", default: true,
+     d: "Include Aurora in the Layered composite effect."},
     {s: "2D Effects", k: "AuroraOpacity", g: "FX2D_AuroraOpacity", t: "float", default: 0.40,
      min: 0.0, max: 1.0,
      d: "Opacity of the Aurora effect layer. 0.0 = invisible, 1.0 = fully opaque."},
@@ -1303,12 +1306,12 @@ global gConfigRegistry := [
     {s: "2D Effects", k: "AuroraColor3", g: "FX2D_AuroraColor3", t: "int", default: 0xFFAA44FF,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "ARGB color of the third Aurora blob."},
-    {s: "2D Effects", k: "AuroraIncludeInLayered", g: "FX2D_AuroraIncludeInLayered", t: "bool", default: true,
-     d: "Include Aurora in the Layered composite effect."},
 
     ; --- Grain ---
-    {type: "subsection", name: "Grain",
+    {type: "subsection", section: "2D Effects", name: "Grain",
      desc: "Shares the bgTurb GPU effect chain with Caustic. If both are included in Layered, Grain renders first and Caustic overwrites the turbulence settings."},
+    {s: "2D Effects", k: "GrainIncludeInLayered", g: "FX2D_GrainIncludeInLayered", t: "bool", default: false,
+     d: "Include Grain in the Layered composite effect."},
     {s: "2D Effects", k: "GrainOpacity", g: "FX2D_GrainOpacity", t: "float", default: 0.30,
      min: 0.0, max: 1.0,
      d: "Opacity of the Grain effect layer. 0.0 = invisible, 1.0 = fully opaque."},
@@ -1324,11 +1327,11 @@ global gConfigRegistry := [
     {s: "2D Effects", k: "GrainSaturation", g: "FX2D_GrainSaturation", t: "float", default: 0.0,
      min: 0.0, max: 1.0,
      d: "Color saturation of the Grain effect. 0.0 = grayscale noise, 1.0 = colorful noise."},
-    {s: "2D Effects", k: "GrainIncludeInLayered", g: "FX2D_GrainIncludeInLayered", t: "bool", default: false,
-     d: "Include Grain in the Layered composite effect."},
 
     ; --- Vignette ---
-    {type: "subsection", name: "Vignette"},
+    {type: "subsection", section: "2D Effects", name: "Vignette"},
+    {s: "2D Effects", k: "VignetteIncludeInLayered", g: "FX2D_VignetteIncludeInLayered", t: "bool", default: true,
+     d: "Include Vignette in the Layered composite effect."},
     {s: "2D Effects", k: "VignetteOpacity", g: "FX2D_VignetteOpacity", t: "float", default: 0.50,
      min: 0.0, max: 1.0,
      d: "Base opacity of the Vignette edge darkening. 0.0 = invisible, 1.0 = fully opaque."},
@@ -1344,8 +1347,6 @@ global gConfigRegistry := [
     {s: "2D Effects", k: "VignetteEdgeColor", g: "FX2D_VignetteEdgeColor", t: "int", default: 0x000000,
      min: 0, max: 0xFFFFFF, fmt: "hex",
      d: "RGB color of the vignette edge. Default is black (0x000000)."},
-    {s: "2D Effects", k: "VignetteIncludeInLayered", g: "FX2D_VignetteIncludeInLayered", t: "bool", default: true,
-     d: "Include Vignette in the Layered composite effect."},
 
     ; ============================================================
     ; BackgroundImage
