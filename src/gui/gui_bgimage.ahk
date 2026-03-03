@@ -78,7 +78,7 @@ BGImg_Draw() {
 
 ; Release all resources. Called from FX_GPU_Dispose().
 BGImg_Dispose() {
-    global gBGImg_Bitmap, gBGImg_TileBrush, gBGImg_Ready
+    global gBGImg_Bitmap, gBGImg_TileBrush, gBGImg_TileBrushInterp, gBGImg_Ready
     global gBGImg_Width, gBGImg_Height, gBGImg_LoadedPath, gBGImg_EffectsReady
     global gBGImg_Cache, gBGImg_CacheW, gBGImg_CacheH, gBGImg_CacheDirty
     gBGImg_Cache := 0        ; COM __Delete releases
@@ -86,6 +86,7 @@ BGImg_Dispose() {
     gBGImg_CacheH := 0
     gBGImg_CacheDirty := true
     gBGImg_TileBrush := 0    ; COM __Delete releases
+    gBGImg_TileBrushInterp := -1
     gBGImg_Bitmap := 0       ; COM __Delete releases
     gBGImg_Width := 0
     gBGImg_Height := 0
@@ -191,14 +192,20 @@ _BGImg_RebuildCache(wPhys, hPhys) {
 
         ; Render image into cache (all the expensive work happens once here)
         fitMode := cfg.BGImgFitMode
-        needsEffects := (cfg.BGImgBlurRadius > 0 || cfg.BGImgDesaturation > 0 || cfg.BGImgBrightness != 0)
+        interpMode := _BGImg_GetInterpolationMode()
+        ; HighQuality (5) needs the effects path — DrawBitmap only supports 0/1
+        needsEffects := (cfg.BGImgBlurRadius > 0 || cfg.BGImgDesaturation > 0 || cfg.BGImgBrightness != 0 || interpMode > 1)
+
+        ; Shadow renders BEFORE the image (behind it)
+        if (cfg.BGImgShadowEnabled && gBGImg_EffectsReady && (fitMode = "Fixed" || fitMode = "Fit"))
+            _BGImg_DrawShadow(wPhys, hPhys, fitMode, interpMode)
 
         if (fitMode = "Tile") {
-            _BGImg_DrawTiled(wPhys, hPhys)
+            _BGImg_DrawTiled(wPhys, hPhys, interpMode)
         } else if (needsEffects && gBGImg_EffectsReady) {
-            _BGImg_DrawWithEffects(wPhys, hPhys, fitMode)
+            _BGImg_DrawWithEffects(wPhys, hPhys, fitMode, interpMode)
         } else {
-            _BGImg_DrawDirect(wPhys, hPhys, fitMode)
+            _BGImg_DrawDirect(wPhys, hPhys, fitMode, interpMode)
         }
 
         gD2D_RT.EndDraw()
@@ -323,25 +330,47 @@ _BGImg_LoadImage(filePath) {
     }
 }
 
-_BGImg_CreateTileBrush() {
-    global gD2D_RT, gBGImg_Bitmap, gBGImg_TileBrush
+global gBGImg_TileBrushInterp := -1  ; Cached interpolation mode for tile brush (-1 = not created)
+
+_BGImg_CreateTileBrush(interpMode := 1) {
+    global gD2D_RT, gBGImg_Bitmap, gBGImg_TileBrush, gBGImg_TileBrushInterp
     if (!gBGImg_Bitmap)
         return
+
+    ; BitmapBrush only supports 0 (nearest) and 1 (linear) — clamp HighQuality to linear
+    brushInterp := (interpMode >= 1) ? 1 : 0
 
     ; D2D1_BITMAP_BRUSH_PROPERTIES: { extendModeX, extendModeY, interpolationMode }
     brushProps := Buffer(12, 0)
     NumPut("uint", 1, brushProps, 0)  ; D2D1_EXTEND_MODE_WRAP
     NumPut("uint", 1, brushProps, 4)  ; D2D1_EXTEND_MODE_WRAP
-    NumPut("uint", 1, brushProps, 8)  ; D2D1_BITMAP_INTERPOLATION_MODE_LINEAR
+    NumPut("uint", brushInterp, brushProps, 8)
 
     try {
         pBrush := 0
         ; ID2D1RenderTarget::CreateBitmapBrush (vtable 7)
         ComCall(7, gD2D_RT, "ptr", gBGImg_Bitmap.ptr, "ptr", brushProps, "ptr", 0, "ptr*", &pBrush)
-        if (pBrush)
+        if (pBrush) {
             gBGImg_TileBrush := ID2DBase(pBrush)
+            gBGImg_TileBrushInterp := brushInterp
+        }
     } catch {
         ; BitmapBrush creation failed — Tile mode won't render
+    }
+}
+
+; ============================================================
+; PRIVATE — Interpolation Mode
+; ============================================================
+
+; Map user-facing ScaleFilter to D2D interpolation mode constant.
+; Sharp=0 (NEAREST_NEIGHBOR), Smooth=1 (LINEAR), HighQuality=5 (HIGH_QUALITY_CUBIC)
+_BGImg_GetInterpolationMode() {
+    global cfg
+    switch cfg.BGImgScaleFilter {
+        case "Smooth":      return 1
+        case "HighQuality": return 5
+        default:            return 0   ; Sharp / nearest-neighbor
     }
 }
 
@@ -364,7 +393,7 @@ _BGImg_ParseAlignment(alignment) {
     }
 }
 
-_BGImg_ComputeRects(wPhys, hPhys, fitMode, alignment) {
+_BGImg_ComputeRects(wPhys, hPhys, fitMode, alignment, userScale := 1.0) {
     global gBGImg_Width, gBGImg_Height
     imgW := gBGImg_Width
     imgH := gBGImg_Height
@@ -372,7 +401,7 @@ _BGImg_ComputeRects(wPhys, hPhys, fitMode, alignment) {
 
     switch fitMode {
         case "Fill":
-            ; Cover: scale so image fills entire area, crop excess
+            ; Cover: scale so image fills entire area, crop excess (ignores userScale)
             scale := Max(wPhys / imgW, hPhys / imgH)
             ; Source rect: which part of the image is visible
             srcW := wPhys / scale
@@ -385,8 +414,8 @@ _BGImg_ComputeRects(wPhys, hPhys, fitMode, alignment) {
             }
 
         case "Fit":
-            ; Contain: scale to fit within overlay, letterbox remainder
-            scale := Min(wPhys / imgW, hPhys / imgH)
+            ; Contain: scale to fit within overlay, then apply user scale
+            scale := Min(wPhys / imgW, hPhys / imgH) * userScale
             destW := imgW * scale
             destH := imgH * scale
             destX := (wPhys - destW) * align.x
@@ -397,16 +426,20 @@ _BGImg_ComputeRects(wPhys, hPhys, fitMode, alignment) {
             }
 
         case "Stretch":
+            ; Distort to fill (ignores userScale)
             return {
                 dest: D2D_RectF(0, 0, wPhys, hPhys),
                 src: D2D_RectF(0, 0, imgW, imgH)
             }
 
-        case "Center":
-            destX := (wPhys - imgW) * align.x
-            destY := (hPhys - imgH) * align.y
+        case "Fixed":
+            ; Natural size * user scale, positioned by alignment
+            destW := imgW * userScale
+            destH := imgH * userScale
+            destX := (wPhys - destW) * align.x
+            destY := (hPhys - destH) * align.y
             return {
-                dest: D2D_RectF(destX, destY, destX + imgW, destY + imgH),
+                dest: D2D_RectF(destX, destY, destX + destW, destY + destH),
                 src: D2D_RectF(0, 0, imgW, imgH)
             }
 
@@ -422,16 +455,19 @@ _BGImg_ComputeRects(wPhys, hPhys, fitMode, alignment) {
 ; PRIVATE — Drawing (called during cache build only)
 ; ============================================================
 
-_BGImg_DrawDirect(wPhys, hPhys, fitMode) {
+_BGImg_DrawDirect(wPhys, hPhys, fitMode, interpMode := 1) {
     global gD2D_RT, gBGImg_Bitmap, cfg
-    rects := _BGImg_ComputeRects(wPhys, hPhys, fitMode, cfg.BGImgAlignment)
-    gD2D_RT.DrawBitmap(gBGImg_Bitmap, rects.dest, 1.0, 1, rects.src)
+    rects := _BGImg_ComputeRects(wPhys, hPhys, fitMode, cfg.BGImgAlignment, cfg.BGImgScale)
+    gD2D_RT.DrawBitmap(gBGImg_Bitmap, rects.dest, 1.0, interpMode, rects.src)
 }
 
-_BGImg_DrawTiled(wPhys, hPhys) {
-    global gD2D_RT, gBGImg_TileBrush
-    if (!gBGImg_TileBrush) {
-        _BGImg_CreateTileBrush()
+_BGImg_DrawTiled(wPhys, hPhys, interpMode := 1) {
+    global gD2D_RT, gBGImg_TileBrush, gBGImg_TileBrushInterp
+    ; Recreate brush if interpolation mode changed or brush doesn't exist
+    brushInterp := (interpMode >= 1) ? 1 : 0
+    if (!gBGImg_TileBrush || gBGImg_TileBrushInterp != brushInterp) {
+        gBGImg_TileBrush := 0  ; Release old brush
+        _BGImg_CreateTileBrush(interpMode)
         if (!gBGImg_TileBrush)
             return
     }
@@ -439,7 +475,7 @@ _BGImg_DrawTiled(wPhys, hPhys) {
     gD2D_RT.FillRectangle(fillRect, gBGImg_TileBrush)
 }
 
-_BGImg_DrawWithEffects(wPhys, hPhys, fitMode) {
+_BGImg_DrawWithEffects(wPhys, hPhys, fitMode, interpMode := 1) {
     global gD2D_RT, gBGImg_Bitmap, gFX_GPU, gFX_GPUOutput, cfg
     global FX_BLUR_STDEV, FX_SAT_SATURATION, FX_CMATRIX_MATRIX
 
@@ -455,8 +491,8 @@ _BGImg_DrawWithEffects(wPhys, hPhys, fitMode) {
     ; Configure brightness via color matrix
     _BGImg_UpdateBrightness(cfg.BGImgBrightness)
 
-    ; Compute positioning
-    rects := _BGImg_ComputeRects(wPhys, hPhys, fitMode, cfg.BGImgAlignment)
+    ; Compute positioning (with user scale for Fixed/Fit)
+    rects := _BGImg_ComputeRects(wPhys, hPhys, fitMode, cfg.BGImgAlignment, cfg.BGImgScale)
 
     ; Extract rect values for scale/translate matrix
     dLeft := NumGet(rects.dest, 0, "float")
@@ -484,7 +520,56 @@ _BGImg_DrawWithEffects(wPhys, hPhys, fitMode) {
     NumPut("float", Float(dTop - sTop * scaleY), mtx, 20)   ; _32 (translateY)
 
     gD2D_RT.SetTransform(mtx)
-    gD2D_RT.DrawImage(gFX_GPUOutput["bgImgColor"])
+    gD2D_RT.DrawImage(gFX_GPUOutput["bgImgColor"], 0, 0, interpMode)
+    gD2D_RT.SetTransform(D2D_Matrix3x2_Identity())
+}
+
+_BGImg_DrawShadow(wPhys, hPhys, fitMode, interpMode := 1) {
+    global gD2D_RT, gBGImg_Bitmap, gFX_GPU, cfg
+    global FX_SHADOW_BLUR, FX_SHADOW_COLOR
+
+    shadowEffect := gFX_GPU["bgImgShadow"]
+
+    ; Set source bitmap as shadow input
+    shadowEffect.SetInput(0, gBGImg_Bitmap)
+
+    ; Configure shadow blur radius and color (black at user opacity)
+    shadowEffect.SetFloat(FX_SHADOW_BLUR, cfg.BGImgShadowRadius)
+    shadowEffect.SetVector4(FX_SHADOW_COLOR, 0.0, 0.0, 0.0, cfg.BGImgShadowOpacity)
+
+    ; Compute image destination rect (same as image draw — reuses scale)
+    rects := _BGImg_ComputeRects(wPhys, hPhys, fitMode, cfg.BGImgAlignment, cfg.BGImgScale)
+
+    ; Extract rect values
+    dLeft := NumGet(rects.dest, 0, "float")
+    dTop := NumGet(rects.dest, 4, "float")
+    dRight := NumGet(rects.dest, 8, "float")
+    dBottom := NumGet(rects.dest, 12, "float")
+    destW := dRight - dLeft
+    destH := dBottom - dTop
+
+    sLeft := NumGet(rects.src, 0, "float")
+    sTop := NumGet(rects.src, 4, "float")
+    sRight := NumGet(rects.src, 8, "float")
+    sBottom := NumGet(rects.src, 12, "float")
+    srcW := sRight - sLeft
+    srcH := sBottom - sTop
+
+    scaleX := (srcW > 0) ? destW / srcW : 1.0
+    scaleY := (srcH > 0) ? destH / srcH : 1.0
+
+    ; Shadow transform = image transform + shadow offset
+    offsetX := cfg.BGImgShadowOffsetX
+    offsetY := cfg.BGImgShadowOffsetY
+    mtx := Buffer(24, 0)
+    NumPut("float", Float(scaleX), mtx, 0)   ; _11
+    NumPut("float", Float(scaleY), mtx, 12)  ; _22
+    NumPut("float", Float(dLeft - sLeft * scaleX + offsetX), mtx, 16)  ; _31
+    NumPut("float", Float(dTop - sTop * scaleY + offsetY), mtx, 20)   ; _32
+
+    shadowOutput := shadowEffect.GetOutput()
+    gD2D_RT.SetTransform(mtx)
+    gD2D_RT.DrawImage(shadowOutput, 0, 0, interpMode)
     gD2D_RT.SetTransform(D2D_Matrix3x2_Identity())
 }
 

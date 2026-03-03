@@ -643,8 +643,22 @@ Display a user-selected background image behind the overlay content. The image s
 |--------|------|---------|-------|-------------|
 | `Enabled` | bool | `false` | - | Enable the background image layer. When false, no image is loaded or rendered. |
 | `ImagePath` | file | `` | - | Path to the background image file. Use the Browse button to select an image — it will be copied to the resources folder for portability. |
-| `FitMode` | enum | `Fill` | - | How the image fits the overlay. Fill = cover (may crop). Fit = contain (may letterbox). Stretch = distort to fill. Tile = repeat at natural size. Center = natural size, no scaling. |
-| `Alignment` | enum | `Center` | - | Anchor point for Fill (crop origin), Fit (position within letterbox), and Center (position within overlay). Ignored for Stretch and Tile. |
+| `FitMode` | enum | `Fill` | - | How the image fits the overlay. Fill = cover (may crop). Fit = contain (may letterbox). Stretch = distort to fill. Tile = repeat at natural size. Fixed = natural size, no scaling. |
+| `Alignment` | enum | `Center` | - | Anchor point for Fill (crop origin), Fit (position within letterbox), and Fixed (position within overlay). Ignored for Stretch and Tile. |
+| `Scale` | float | `1.00` | `0.10` - `4.00` | Image scale multiplier. Applies to Fixed and Fit modes only — other modes determine their own sizing. |
+| `ScaleFilter` | enum | `Sharp` | - | Rendering filter for scaled images. Sharp = pixel-perfect (nearest neighbor), best for upscaling pixel art. Smooth = bilinear, good all-around. HighQuality = bicubic, best for downscaling photos. Applies to all modes that resize the image. |
+
+### Shadow
+
+Drop shadow behind the image (best with transparent PNGs in Fixed/Fit mode).
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `ShadowEnabled` | bool | `false` | - | Render a drop shadow behind the image. Best with transparent PNGs. Visible in Fixed and Fit modes. |
+| `ShadowRadius` | float | `10.00` | `0.00` - `50.00` | Shadow blur radius in pixels. |
+| `ShadowOpacity` | float | `0.50` | `0.00` - `1.00` | Shadow opacity. 0.0 = invisible, 1.0 = fully opaque. |
+| `ShadowOffsetX` | int | `4` | `-50` - `50` | Horizontal shadow offset in pixels. |
+| `ShadowOffsetY` | int | `4` | `-50` - `50` | Vertical shadow offset in pixels. |
 | `Opacity` | float | `1.00` | `0.00` - `1.00` | Opacity of the background image layer. 0.0 = invisible, 1.0 = fully opaque. |
 | `BlurRadius` | float | `0.00` | `0.00` - `50.00` | Gaussian blur radius applied to the background image. 0.0 = sharp, higher values increase blur. |
 | `Desaturation` | float | `0.00` | `0.00` - `1.00` | Desaturation applied to the background image. 0.0 = full color, 1.0 = grayscale. |
@@ -692,4 +706,4 @@ Control diagnostic log file sizes
 
 ---
 
-*Generated on 2026-03-01 with 301 total settings.*
+*Generated on 2026-03-03 with 308 total settings.*

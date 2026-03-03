@@ -493,14 +493,14 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             controls.Push({ctrl: lbl, origY: y, origX: 24})
             settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
             ; Read-only edit showing current path
-            ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w280 +ReadOnly")
+            ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w240 +ReadOnly")
             controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
             settingCtrls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
             gCEN["Controls"][setting.g] := {ctrl: ed, type: "file"}
             Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
             DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
             ; Browse button
-            browseX := CEN_INPUT_X + 286
+            browseX := CEN_INPUT_X + 246
             btnBrowse := pageGui.AddButton("x" browseX " y" y " w70 h22", "Browse...")
             controls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
             settingCtrls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
@@ -829,6 +829,10 @@ _CEN_OnFileBrowse(globalName) {
     ext := StrLower(ext)
     destExt := ext
 
+    ; Remove any existing background files (prevents stale files when extension changes)
+    loop files resDir "\alttabby-background.*"
+        FileDelete(A_LoopFileFullPath)
+
     ; WebP → PNG conversion
     if (ext = "webp") {
         converted := _CEN_ConvertWebPToPNG(selected, resDir)
@@ -838,13 +842,9 @@ _CEN_OnFileBrowse(globalName) {
         }
         destExt := "png"
         destPath := resDir "\alttabby-background." destExt
-        if (FileExist(destPath))
-            FileDelete(destPath)
         FileMove(converted, destPath)
     } else {
         destPath := resDir "\alttabby-background." destExt
-        if (FileExist(destPath))
-            FileDelete(destPath)
         FileCopy(selected, destPath, true)
     }
 
@@ -860,6 +860,14 @@ _CEN_OnFileClear(globalName) {
 _CEN_ConvertWebPToPNG(webpPath, outputDir) {
     ; Load WebP via GDI+ (Windows 10 1809+ supports WebP natively in GDI+)
     try {
+        ; GDI+ must be initialized — config editor runs as its own subprocess
+        static gdipToken := 0
+        if (!gdipToken) {
+            si := Buffer(24, 0)
+            NumPut("uint", 1, si, 0)  ; GdiplusVersion = 1
+            DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", si, "ptr", 0)
+        }
+
         pBitmapGdip := 0
         DllCall("gdiplus\GdipCreateBitmapFromFile", "str", webpPath, "ptr*", &pBitmapGdip, "int")
         if (!pBitmapGdip)

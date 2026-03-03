@@ -241,6 +241,11 @@ _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
             ; Track dirty state for X-button close handler
             gCEW_HasChanges := msg["hasChanges"]
 
+        } else if (action = "browse") {
+            ; File browse — defer out of callback (Lesson #3)
+            globalName := msg["globalName"]
+            SetTimer(() => _CEW_OnFileBrowse(globalName), -1)
+
         } else if (action = "ready") {
             ; Page loaded - dark CSS painted, safe to reveal and inject data.
             ; IMPORTANT: Defer EVERYTHING out of this callback via SetTimer.
@@ -342,6 +347,87 @@ _CEW_RevealWindow() {
 
 _CEW_ForceReveal() {
     _CEW_RevealWindow()
+}
+
+; ============================================================
+; FILE BROWSE
+; ============================================================
+
+_CEW_OnFileBrowse(globalName) {
+    global gCEW_WebView, gConfigIniPath
+
+    filter := "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tiff;*.webp)"
+    selected := FileSelect(1, , "Select Background Image", filter)
+    if (selected = "")
+        return
+
+    ; Determine resources directory (next to config.ini)
+    configDir := ""
+    if (gConfigIniPath != "")
+        SplitPath(gConfigIniPath, , &configDir)
+    else if (A_IsCompiled)
+        configDir := A_ScriptDir
+    else
+        configDir := A_ScriptDir "\.."
+
+    resDir := configDir "\resources"
+    if (!DirExist(resDir))
+        DirCreate(resDir)
+
+    SplitPath(selected, , , &ext)
+    ext := StrLower(ext)
+    destExt := ext
+
+    ; Remove any existing background files (prevents stale files when extension changes)
+    loop files resDir "\alttabby-background.*"
+        FileDelete(A_LoopFileFullPath)
+
+    ; WebP → PNG conversion (reuse native editor's GDI+ logic)
+    if (ext = "webp") {
+        converted := _CEW_ConvertWebPToPNG(selected, resDir)
+        if (converted = "") {
+            ThemeMsgBox("Failed to convert WebP image. Please select a PNG or JPG instead.", "Conversion Error", "OK Icon!")
+            return
+        }
+        destExt := "png"
+        destPath := resDir "\alttabby-background." destExt
+        FileMove(converted, destPath)
+    } else {
+        destPath := resDir "\alttabby-background." destExt
+        FileCopy(selected, destPath, true)
+    }
+
+    ; Send path back to JS
+    escaped := StrReplace(StrReplace(destPath, "\", "\\"), "'", "\'")
+    try gCEW_WebView.ExecuteScript("setFilePath('" globalName "','" escaped "')")
+}
+
+_CEW_ConvertWebPToPNG(webpPath, outputDir) {
+    try {
+        static gdipToken := 0
+        if (!gdipToken) {
+            si := Buffer(24, 0)
+            NumPut("uint", 1, si, 0)
+            DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", si, "ptr", 0)
+        }
+
+        pBitmapGdip := 0
+        DllCall("gdiplus\GdipCreateBitmapFromFile", "str", webpPath, "ptr*", &pBitmapGdip, "int")
+        if (!pBitmapGdip)
+            return ""
+
+        pngPath := outputDir "\alttabby-background.png"
+        encoderClsid := Buffer(16, 0)
+        DllCall("ole32\CLSIDFromString", "str", "{557CF406-1A04-11D3-9A73-0000F81EF32E}", "ptr", encoderClsid, "hresult")
+        hr := DllCall("gdiplus\GdipSaveImageToFile", "ptr", pBitmapGdip, "str", pngPath, "ptr", encoderClsid, "ptr", 0, "int")
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
+
+        if (hr != 0)
+            return ""
+        return pngPath
+    } catch {
+        return ""
+    }
 }
 
 ; Trigger JS save (which posts "save" message back, applying changes and destroying GUI)

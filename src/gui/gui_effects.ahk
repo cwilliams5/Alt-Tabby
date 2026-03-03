@@ -144,6 +144,8 @@ FX_GPU_Init() {
             gFX_GPU["bgImgSat"].SetInput(0, gFX_GPU["bgImgBlur"].GetOutput())
             gFX_GPU["bgImgColor"].SetInput(0, gFX_GPU["bgImgSat"].GetOutput())
             gFX_GPUOutput["bgImgColor"] := gFX_GPU["bgImgColor"].GetOutput()
+            ; Shadow effect (independent — not part of blur/sat/color chain)
+            gFX_GPU["bgImgShadow"] := gD2D_RT.CreateEffect(CLSID_D2D1Shadow)
             gBGImg_EffectsReady := true
         } catch {
             ; Background image effects unavailable — BGImg_Draw falls back to direct DrawBitmap
