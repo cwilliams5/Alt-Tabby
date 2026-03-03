@@ -1013,9 +1013,9 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
 
 ; ========================= VISUAL EFFECTS SYSTEM =========================
 ; _FX_* functions implement layered visual effects controlled by gGUI_EffectStyle.
-; Gradient COM brushes are transient (created per-frame, released on scope exit) —
-; brush creation is ~2μs, acceptable vs ~2ms paint budget. Parameter structs (stop
-; buffers, brush properties) use static buffers to eliminate per-frame allocations.
+; Gradient brushes are cached by stop identity (colors + positions) and repositioned
+; per-frame via SetStartPoint/SetEndPoint. Cache self-invalidates on device loss
+; (RT pointer change). Parameter structs use static buffers.
 
 ; Build a D2D gradient stop collection from an array of [position, argb] pairs.
 ; Returns the stop collection COM object (caller must keep a reference).
@@ -1075,44 +1075,91 @@ FX_LinearGradient(x1, y1, x2, y2, stops) {
     return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
 }
 
-; 2-stop linear gradient — zero-allocation hot path.
-; Flat args eliminate array literal allocation. Static buffers for stop + brush structs.
+; 2-stop linear gradient — cached. Brushes keyed by stop identity (positions + colors).
+; Cache self-invalidates when RT pointer changes (device loss). Repositioned per-frame
+; via SetStartPoint/SetEndPoint (~0 cost vs ~4μs COM creation).
 FX_LinearGradient2(x1, y1, x2, y2, pos1, argb1, pos2, argb2) {
     global gD2D_RT
+    static cache := Map()
+    static cachedRTPtr := 0
     static stopBuf := Buffer(40)  ; 2 stops × 20 bytes
     static lgbp := Buffer(16)
+    static pt := Buffer(8)       ; D2D1_POINT_2F for repositioning
 
-    _FX_WriteStop(stopBuf, 0, pos1, argb1)
-    _FX_WriteStop(stopBuf, 20, pos2, argb2)
+    ; RT changed → device loss invalidated all brushes
+    rtPtr := gD2D_RT.Ptr
+    if (rtPtr != cachedRTPtr) {
+        cache := Map()
+        cachedRTPtr := rtPtr
+    }
 
-    gsc := gD2D_RT.CreateGradientStopCollection(stopBuf, 2, 0, 0)
-    if (!gsc)
-        return 0
-    NumPut("float", Float(x1), lgbp, 0)
-    NumPut("float", Float(y1), lgbp, 4)
-    NumPut("float", Float(x2), lgbp, 8)
-    NumPut("float", Float(y2), lgbp, 12)
-    return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+    key := pos1 "," argb1 "," pos2 "," argb2
+
+    if (!cache.Has(key)) {
+        _FX_WriteStop(stopBuf, 0, pos1, argb1)
+        _FX_WriteStop(stopBuf, 20, pos2, argb2)
+        gsc := gD2D_RT.CreateGradientStopCollection(stopBuf, 2, 0, 0)
+        if (!gsc)
+            return 0
+        NumPut("float", Float(x1), lgbp, 0)
+        NumPut("float", Float(y1), lgbp, 4)
+        NumPut("float", Float(x2), lgbp, 8)
+        NumPut("float", Float(y2), lgbp, 12)
+        br := gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+        if (!br)
+            return 0
+        cache[key] := br
+    }
+
+    ; Reposition cached brush for this call's geometry
+    br := cache[key]
+    NumPut("float", Float(x1), "float", Float(y1), pt, 0)
+    br.SetStartPoint(pt)
+    NumPut("float", Float(x2), "float", Float(y2), pt, 0)
+    br.SetEndPoint(pt)
+    return br
 }
 
-; 3-stop linear gradient — zero-allocation hot path.
+; 3-stop linear gradient — cached. Same self-invalidating pattern as FX_LinearGradient2.
 FX_LinearGradient3(x1, y1, x2, y2, pos1, argb1, pos2, argb2, pos3, argb3) {
     global gD2D_RT
+    static cache := Map()
+    static cachedRTPtr := 0
     static stopBuf := Buffer(60)  ; 3 stops × 20 bytes
     static lgbp := Buffer(16)
+    static pt := Buffer(8)
 
-    _FX_WriteStop(stopBuf, 0, pos1, argb1)
-    _FX_WriteStop(stopBuf, 20, pos2, argb2)
-    _FX_WriteStop(stopBuf, 40, pos3, argb3)
+    rtPtr := gD2D_RT.Ptr
+    if (rtPtr != cachedRTPtr) {
+        cache := Map()
+        cachedRTPtr := rtPtr
+    }
 
-    gsc := gD2D_RT.CreateGradientStopCollection(stopBuf, 3, 0, 0)
-    if (!gsc)
-        return 0
-    NumPut("float", Float(x1), lgbp, 0)
-    NumPut("float", Float(y1), lgbp, 4)
-    NumPut("float", Float(x2), lgbp, 8)
-    NumPut("float", Float(y2), lgbp, 12)
-    return gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+    key := pos1 "," argb1 "," pos2 "," argb2 "," pos3 "," argb3
+
+    if (!cache.Has(key)) {
+        _FX_WriteStop(stopBuf, 0, pos1, argb1)
+        _FX_WriteStop(stopBuf, 20, pos2, argb2)
+        _FX_WriteStop(stopBuf, 40, pos3, argb3)
+        gsc := gD2D_RT.CreateGradientStopCollection(stopBuf, 3, 0, 0)
+        if (!gsc)
+            return 0
+        NumPut("float", Float(x1), lgbp, 0)
+        NumPut("float", Float(y1), lgbp, 4)
+        NumPut("float", Float(x2), lgbp, 8)
+        NumPut("float", Float(y2), lgbp, 12)
+        br := gD2D_RT.CreateLinearGradientBrush(lgbp, _FX_BrushProps(), gsc)
+        if (!br)
+            return 0
+        cache[key] := br
+    }
+
+    br := cache[key]
+    NumPut("float", Float(x1), "float", Float(y1), pt, 0)
+    br.SetStartPoint(pt)
+    NumPut("float", Float(x2), "float", Float(y2), pt, 0)
+    br.SetEndPoint(pt)
+    return br
 }
 
 ; Write one D2D1_GRADIENT_STOP (20 bytes) into a buffer at the given offset.
