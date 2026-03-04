@@ -1817,7 +1817,7 @@ _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
 ; SendInput trick → SetWindowPos → SetForegroundWindow
 _GUI_RobustActivate(hwnd) {
     Profiler.Enter("_GUI_RobustActivate") ; @profile
-    global SW_RESTORE, HWND_TOPMOST, HWND_NOTOPMOST, cfg
+    global SW_RESTORE, HWND_TOP, cfg
     global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
 
     ; NOTE: Do NOT manually uncloak windows - this interferes with komorebi's
@@ -1837,18 +1837,17 @@ _GUI_RobustActivate(hwnd) {
             NumPut("uint", 0, input, 0)  ; type = INPUT_MOUSE
             DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
 
-            ; Bring window to top with SWP_SHOWWINDOW (SYNC — no SWP_ASYNCWINDOWPOS)
-            ; Sync positioning ensures the TOPMOST/NOTOPMOST foreground-lock bypass
-            ; completes before SetForegroundWindow runs (~1ms, imperceptible)
+            ; Bring window to top of non-topmost band.  Previous code used
+            ; HWND_TOPMOST then HWND_NOTOPMOST (komorebi pattern) but that
+            ; briefly placed the target ABOVE our topmost overlay, causing a
+            ; visible z-order flash during hide-fade animation.  HWND_TOP
+            ; achieves the same visual result — target above all regular
+            ; windows — without entering the topmost band.  The SendInput
+            ; trick above is what actually bypasses the foreground lock.
             swpFlags := SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
-            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_TOPMOST
+            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_TOP
                 , "int", 0, "int", 0, "int", 0, "int", 0
                 , "uint", swpFlags)
-
-            ; Reset to non-topmost (we just want it on top temporarily, not always-on-top)
-            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_NOTOPMOST
-                , "int", 0, "int", 0, "int", 0, "int", 0
-                , "uint", SWP_NOSIZE | SWP_NOMOVE)
 
             ; Now SetForegroundWindow should work
             fgResult := DllCall("user32\SetForegroundWindow", "ptr", hwnd)
