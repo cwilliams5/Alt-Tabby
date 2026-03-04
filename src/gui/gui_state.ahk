@@ -1833,8 +1833,9 @@ _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
 ; SendInput trick → SetWindowPos → SetForegroundWindow
 _GUI_RobustActivate(hwnd) {
     Profiler.Enter("_GUI_RobustActivate") ; @profile
-    global SW_RESTORE, HWND_TOP, cfg
+    global SW_RESTORE, HWND_TOP, HWND_TOPMOST, HWND_NOTOPMOST, cfg
     global SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW
+    global gAnim_HidePending
 
     ; NOTE: Do NOT manually uncloak windows - this interferes with komorebi's
     ; workspace management and can pull windows to the wrong workspace.
@@ -1853,17 +1854,29 @@ _GUI_RobustActivate(hwnd) {
             NumPut("uint", 0, input, 0)  ; type = INPUT_MOUSE
             DllCall("user32\SendInput", "uint", 1, "ptr", input, "int", inputSize)
 
-            ; Bring window to top of non-topmost band.  Previous code used
-            ; HWND_TOPMOST then HWND_NOTOPMOST (komorebi pattern) but that
-            ; briefly placed the target ABOVE our topmost overlay, causing a
-            ; visible z-order flash during hide-fade animation.  HWND_TOP
-            ; achieves the same visual result — target above all regular
-            ; windows — without entering the topmost band.  The SendInput
-            ; trick above is what actually bypasses the foreground lock.
-            swpFlags := SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
-            DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_TOP
-                , "int", 0, "int", 0, "int", 0, "int", 0
-                , "uint", swpFlags)
+            if (gAnim_HidePending) {
+                ; During overlay fade-out: use HWND_TOP instead of the TOPMOST/NOTOPMOST
+                ; dance.  The dance briefly pushes the target above our TOPMOST overlay,
+                ; and if the cross-process SetWindowPos blocks long enough for DWM to
+                ; compose a frame (Firefox, heavy apps) or Critical is off (mouse click),
+                ; the overlay visibly disappears then reappears.  HWND_TOP brings the
+                ; target to the front of the non-topmost band (below our overlay) without
+                ; Z-order flicker.  SendInput already bypasses the foreground lock.
+                DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_TOP
+                    , "int", 0, "int", 0, "int", 0, "int", 0
+                    , "uint", SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW)
+            } else {
+                ; Normal path (no overlay fade): full komorebi pattern for maximum
+                ; activation reliability.  TOPMOST/NOTOPMOST is belt-and-suspenders
+                ; with SendInput for edge cases across Windows versions.
+                swpFlags := SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+                DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_TOPMOST
+                    , "int", 0, "int", 0, "int", 0, "int", 0
+                    , "uint", swpFlags)
+                DllCall("user32\SetWindowPos", "ptr", hwnd, "ptr", HWND_NOTOPMOST
+                    , "int", 0, "int", 0, "int", 0, "int", 0
+                    , "uint", SWP_NOSIZE | SWP_NOMOVE)
+            }
 
             ; Now SetForegroundWindow should work
             fgResult := DllCall("user32\SetForegroundWindow", "ptr", hwnd)
