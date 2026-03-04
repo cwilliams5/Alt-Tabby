@@ -29,6 +29,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $AutoDiscoverWhitelist = @(
     "explain"
     "investigate"
+    "trace"
 )
 
 # === Resolve skills directory ===
