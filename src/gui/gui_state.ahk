@@ -137,7 +137,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     global gGUI_State, gGUI_FirstTabTick, gGUI_TabCount
     global gGUI_OverlayVisible, gGUI_LiveItems, gGUI_Sel, gGUI_DisplayItems, gGUI_ToggleBase, cfg
     global TABBY_EV_ALT_DOWN, TABBY_EV_TAB_STEP, TABBY_EV_ALT_UP, TABBY_EV_ESCAPE, TABBY_FLAG_SHIFT, GUI_EVENT_BUFFER_MAX, gGUI_ScrollTop
-    global gGUI_PendingPhase, gGUI_EventBuffer
+    global gGUI_PendingPhase, gGUI_EventBuffer, gAnim_HidePending
     global FR_EV_STATE, FR_EV_FREEZE, FR_EV_BUFFER_PUSH, FR_EV_QUICK_SWITCH, gFR_Enabled
     global FR_ST_IDLE, FR_ST_ALT_PENDING, FR_ST_ACTIVE
 
@@ -199,11 +199,11 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
     }
 
     if (evCode = TABBY_EV_ALT_DOWN) {
-        ; If a hide-fade is still running, complete it immediately so the
-        ; next show sequence starts with clean overlay state (gGUI_OverlayVisible=false).
-        global gAnim_HidePending
-        if (gAnim_HidePending)
-            Anim_ForceCompleteHide()
+        ; NOTE: Do NOT force-complete a pending hide-fade here.  Alt key
+        ; repeats fire ALT_DOWN while the user holds Alt after a click-
+        ; activate, which would kill the fade before the frame loop can
+        ; render a single frame.  Instead, _GUI_ShowOverlayWithFrozen()
+        ; force-completes the hide just before re-showing the overlay.
 
         ; Alt pressed - enter ALT_PENDING state
         if (gFR_Enabled)
@@ -605,6 +605,13 @@ _GUI_ShowOverlayWithFrozen() {
     global gGUI_State, gGUI_StealFocus, gGUI_FocusBeforeShow
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
 
+    ; If a hide-fade is still running from a previous click-activate,
+    ; complete it now so gGUI_OverlayVisible becomes false and we can
+    ; proceed with the new show sequence.
+    global gAnim_HidePending
+    if (gAnim_HidePending)
+        Anim_ForceCompleteHide()
+
     if (gGUI_OverlayVisible) {
         Profiler.Leave() ; @profile
         return
@@ -997,17 +1004,26 @@ _GUI_ActivateItem(item) {
 
 GUI_ClickActivate(item) {
     global gGUI_State, gGUI_DisplayItems, cfg
+    global gAnim_HidePending
     Critical "On"
     if (gGUI_State != "ACTIVE") {
         Critical "Off"
         return
     }
-    gGUI_State := "IDLE"
-    gGUI_DisplayItems := []
-    Critical "Off"
+    ; Match keyboard path: hide first, activate, set IDLE last.
+    ; Critical must be held throughout so the frame loop timer doesn't
+    ; fire during _GUI_RobustActivate's SetWindowPos STA pump and
+    ; complete the entire fade within the activation call.
     GUI_HideOverlay()
     _GUI_ActivateItem(item)
+    ; Defer clearing display items during animated hide-fade: the frame
+    ; loop still paints the fading overlay using the frozen list.
+    ; _Anim_DoActualHide() clears them when the fade completes.
+    if (!gAnim_HidePending)
+        gGUI_DisplayItems := []
+    gGUI_State := "IDLE"
     Stats_AccumulateSession()
+    Critical "Off"
 }
 
 ; ========================= SWITCH-ACTIVATE METHOD =========================

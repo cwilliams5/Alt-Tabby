@@ -73,9 +73,20 @@ GUI_HideOverlay() {
         return
     }
 
+    ; Hide-fade already running — don't re-enter.  A second ALT_UP can arrive
+    ; here when the STA message pump inside _GUI_RobustActivate (SetWindowPos /
+    ; SetForegroundWindow) dispatches a keyboard hook for the physical Alt
+    ; release while the synthetic click-triggered ALT_UP is still processing.
+    ; Without this guard the second call falls through to the immediate-hide
+    ; path, killing the running fade animation.
+    if (gAnim_HidePending) {
+        Profiler.Leave() ; @profile
+        return
+    }
+
     ; Animated hide-fade: start opacity tween, defer actual hide
     ; _Anim_OnHideFadeComplete() will call _Anim_DoActualHide() when done
-    if (cfg.PerfAnimationType != "None" && gGUI_Revealed && !gAnim_HidePending) {
+    if (cfg.PerfAnimationType != "None" && gGUI_Revealed) {
         gAnim_HidePending := true
         ; Add WS_EX_LAYERED so SetLayeredWindowAttributes can fade the entire
         ; DWM composition (content + acrylic + shadow) as one unit.

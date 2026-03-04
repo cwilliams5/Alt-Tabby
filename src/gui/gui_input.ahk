@@ -431,9 +431,13 @@ GUI_OnClick(x, y) {
 
     ; Check if we should activate immediately on click (like Windows native)
     if (cfg.AltTabSwitchOnClick && gGUI_State = "ACTIVE") {
-        item := items[clickedIdx]
+        gGUI_Sel := clickedIdx
+        ; Defer activation out of the WM_LBUTTONDOWN handler via one-shot
+        ; timer.  The fade-out animation fails to render when initiated
+        ; inside a mouse message handler — deferring lets the ALT_UP path
+        ; run in a normal timer context where the frame loop can present.
         Critical "Off"
-        GUI_ClickActivate(item)
+        SetTimer(_GUI_DeferredClickActivate, -1)
         return
     }
 
@@ -446,6 +450,11 @@ GUI_OnClick(x, y) {
     Critical "Off"
 
     GUI_Repaint()
+}
+
+_GUI_DeferredClickActivate() {
+    global TABBY_EV_ALT_UP
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_UP, 0, 0)
 }
 
 GUI_OnMouseMove(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
