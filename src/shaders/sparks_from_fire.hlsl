@@ -104,12 +104,13 @@ float layeredNoise1_2(in float2 uv, in float sizeMod, in float alphaMod, in int 
     float alpha = 1.0;
     float size = 1.0;
     float2 offset = (float2)0;
+    float2 timeVel = time * animation * 8.0 * MOVEMENT_DIRECTION * MOVEMENT_SPEED;
     for (int i = 0; i < layers; i++)
     {
         offset += hash2_2(float2(alpha, size)) * 10.0;
 
         // Adding noise with movement
-        noise += noise1_2(uv * size + time * animation * 8.0 * MOVEMENT_DIRECTION * MOVEMENT_SPEED + offset) * alpha;
+        noise += noise1_2(uv * size + timeVel + offset) * alpha;
         alpha *= alphaMod;
         size *= sizeMod;
     }

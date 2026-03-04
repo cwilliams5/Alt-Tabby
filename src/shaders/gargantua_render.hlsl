@@ -77,12 +77,14 @@ void initCamera(float3 pos, float3 target, float3 upDir, float fovV) {
 }
 
 float3 sphericalToCartesian(float rho, float phi, float theta) {
-    float sinTheta = sin(theta);
-    return float3(sinTheta*cos(phi), sinTheta*sin(phi), cos(theta)) * rho;
+    float sinTheta, cosTheta, sinPhi, cosPhi;
+    sincos(theta, sinTheta, cosTheta);
+    sincos(phi, sinPhi, cosPhi);
+    return float3(sinTheta*cosPhi, sinTheta*sinPhi, cosTheta) * rho;
 }
 
 void cartesianToSpherical(float3 xyz, out float rho, out float phi, out float theta) {
-    rho = sqrt(xyz.x * xyz.x + xyz.y * xyz.y + xyz.z * xyz.z);
+    rho = length(xyz);
     phi = asin(xyz.y / rho);
     theta = atan2(xyz.z, xyz.x);
 }

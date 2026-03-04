@@ -189,7 +189,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 fc = fragCoord;
     float2 uv = (fc - 0.5 * R.xy) / R.y;
     float2 q = fc.xy / R.xy;
-    float3 r = NM(cross(float3(0, 1, 0), float3(0, 0, 1)));
+    float3 r = float3(1, 0, 0);  // normalize(cross(Y, Z))
     float3 col = scene(NM(float3(0, 0, 1) + r * uv.x + cross(float3(0, 0, 1), r) * uv.y));
     col *= 0.5 + 0.5 * pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.4);
 

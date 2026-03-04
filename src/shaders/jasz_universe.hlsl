@@ -43,7 +43,7 @@ float hash(float3 v) {
 
 float getNoiseFromVec3(float3 v) {
     float3 rootV = floor(v);
-    float3 f = smoothstep(0.0, 1.0, frac(v));
+    float3 f = frac(v); f = f*f*(3.0 - 2.0*f);
 
     float n000 = hash(rootV);
     float n001 = hash(rootV + float3(0, 0, 1));

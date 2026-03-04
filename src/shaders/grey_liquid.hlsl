@@ -21,6 +21,10 @@ struct PSInput {
 #define PI  3.141592654
 #define TAU (2.0*PI)
 
+// Precomputed sin/cos for rot(1.2) used in fbm loops
+static const float _s12 = 0.93204; // sin(1.2)
+static const float _c12 = 0.36236; // cos(1.2)
+
 void rot(inout float2 p, float a) {
     float s, c;
     sincos(a, s, c);
@@ -73,7 +77,6 @@ float fbm1(float2 p) {
     const float aa = 0.45;
     const float pp = 2.03;
     const float2 oo = -float2(1.23, 1.5);
-    const float rr = 1.2;
 
     float h = 0.0;
     float d = 0.0;
@@ -86,7 +89,7 @@ float fbm1(float2 p) {
         a *= aa;
         p += oo;
         p *= pp;
-        rot(p, rr);
+        p = float2(_c12*p.x + _s12*p.y, -_s12*p.x + _c12*p.y);
     }
 
     float hd = h / d;
@@ -98,7 +101,6 @@ float fbm2(float2 p) {
     const float aa = 0.45;
     const float pp = 2.03;
     const float2 oo = -float2(1.23, 1.5);
-    const float rr = 1.2;
 
     float h = 0.0;
     float d = 0.0;
@@ -111,7 +113,7 @@ float fbm2(float2 p) {
         a *= aa;
         p += oo;
         p *= pp;
-        rot(p, rr);
+        p = float2(_c12*p.x + _s12*p.y, -_s12*p.x + _c12*p.y);
     }
 
     float hd = h / d;
@@ -123,7 +125,6 @@ float fbm3(float2 p) {
     const float aa = 0.45;
     const float pp = 2.03;
     const float2 oo = -float2(1.23, 1.5);
-    const float rr = 1.2;
 
     float h = 0.0;
     float d = 0.0;
@@ -136,7 +137,7 @@ float fbm3(float2 p) {
         a *= aa;
         p += oo;
         p *= pp;
-        rot(p, rr);
+        p = float2(_c12*p.x + _s12*p.y, -_s12*p.x + _c12*p.y);
     }
 
     float hd = h / d;

@@ -20,9 +20,12 @@ float2x2 rot(float a) { float sa, ca; sincos(a, sa, ca); return float2x2(sa, ca,
 
 float noise(in float2 x) { return smoothstep(0., 1., sin(1.5 * x.x) * sin(1.5 * x.y)); }
 
+// rot(.4): sin(.4)=0.38942, cos(.4)=0.92106 → float2x2(sin, cos, -cos, sin)
+static const float2x2 _rot04 = float2x2(0.38942, 0.92106, -0.92106, 0.38942);
+
 float fbm(float2 p) {
 
-    float2x2 m = rot(.4);
+    float2x2 m = _rot04;
     float f = 0.0;
     f += 0.500000 * (0.5 + 0.5 * noise(p)); p = mul(p, m) * 2.02;
     f += 0.250000 * (0.5 + 0.5 * noise(p)); p = mul(p, m) * 2.03;
@@ -31,18 +34,16 @@ float fbm(float2 p) {
     return f / 0.96875;
 }
 
-float pattern(in float2 p, out float2 q, out float2 r, float t) {
+float pattern(in float2 p, out float2 q, out float2 r, float t, float sinT, float cosT, float2x2 rotT) {
 
     q.x = fbm(2.0 * p + float2(0.0, 0.0) + 2. * t);
     q.y = fbm(1.5 * p + float2(5.2, 1.3) + 1. * t);
 
-    float _sinT, _cosT;
-    sincos(t, _sinT, _cosT);
     float lq = length(q);
-    r.x = fbm(p + 4. * q + float2(1.7, 9.2) + _sinT + .9 * sin(30. * lq));
-    r.y = fbm(p + 8. * q + float2(8.3, 2.8) + _cosT + .9 * sin(20. * lq));
+    r.x = fbm(p + 4. * q + float2(1.7, 9.2) + sinT + .9 * sin(30. * lq));
+    r.y = fbm(p + 8. * q + float2(8.3, 2.8) + cosT + .9 * sin(20. * lq));
 
-    return fbm(p + mul(rot(t), 7. * r));
+    return fbm(p + mul(rotT, 7. * r));
 }
 
 float4 PSMain(PSInput input) : SV_Target {
@@ -57,7 +58,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 col2 = float3(.3, .5, .4);
     float3 c;
 
-    float f = pattern(uv, q, r, 0.1 * time);
+    float _t01 = 0.1 * time;
+    float _sinT01, _cosT01;
+    sincos(_t01, _sinT01, _cosT01);
+    float2x2 _rotT01 = rot(_t01);
+    float f = pattern(uv, q, r, _t01, _sinT01, _cosT01, _rotT01);
 
     // mix colours
     float _ss1 = smoothstep(.0, .9, f);

@@ -84,8 +84,10 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 col = (float3)0.0;
     col += mtl * 0.8;
-    col += 0.2 * mtl * safepow(max(dot(nor, -ld), 0.0), 3.0);
-    col += 0.3 * h * safepow(dot(nor, ha), 20.0);
+    float _diff = max(dot(nor, -ld), 0.0); float _diff3 = _diff * _diff * _diff;
+    col += 0.2 * mtl * _diff3;
+    float _sp = dot(nor, ha); float _sp2 = _sp * _sp; float _sp4 = _sp2 * _sp2; float _sp8 = _sp4 * _sp4; float _sp16 = _sp8 * _sp8; float _sp20 = _sp16 * _sp4;
+    col += 0.3 * h * _sp20;
 
     // Darken / desaturate post-processing
     float lum = dot(col, float3(0.299, 0.587, 0.114));

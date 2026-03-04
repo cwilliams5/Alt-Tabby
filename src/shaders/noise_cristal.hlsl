@@ -36,8 +36,9 @@ float3 Oilnoise(float2 pos, float3 RGB)
     float gain = 0.44;
     float2 aPos = abs2d(pos) * 0.5;
 
-    float2x2 rot30 = rotMat(D2R 30.);
-    float2x2 rot5 = rotMat(D2R 5.0);
+    // rotMat(30deg) and rotMat(5deg) precomputed: float2x2(cos, -sin, sin, cos)
+    static const float2x2 rot30 = float2x2(0.86603, -0.5, 0.5, 0.86603);
+    static const float2x2 rot5 = float2x2(0.99619, -0.08716, 0.08716, 0.99619);
     float sinTime = sin(time);
     float t = (sinTime * 0.5 + 0.5) * 0.2 + time * 0.8;
     for (float i = 0.0; i < OC; i++)

@@ -28,7 +28,7 @@ static const float3 HIGHLIGHT_COLOR = float3(240, 48, 18) / 255.0 * 1.2;
 static const float3 HAIR_COLOR = float3(68, 0, 50) / 255.0;
 static const float3 HAIR_SHADOW_COLOR = float3(28, 0, 62) / 255.0;
 
-static const float PI = acos(-1.0);
+static const float PI = 3.14159265358979;
 
 #define sat(x) saturate(x)
 

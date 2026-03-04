@@ -54,7 +54,7 @@ float noise_turbulence(float3 p)
     for (int i = 0; i < 5; i++) {
         f += a * abs(noise_perlin(p));
         p = 2.0 * p;
-        a /= 2.0;
+        a *= 0.5;
     }
     return f;
 }

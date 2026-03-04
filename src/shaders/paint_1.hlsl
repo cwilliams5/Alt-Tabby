@@ -24,8 +24,11 @@ float2x2 rot(float a) {
 
 float noise(in float2 x) { return smoothstep(0., 1., sin(1.5 * x.x) * sin(1.5 * x.y)); }
 
+// rot(.4): sin(.4)=0.38942, cos(.4)=0.92106 → float2x2(sin, cos, -cos, sin)
+static const float2x2 _rot04 = float2x2(0.38942, 0.92106, -0.92106, 0.38942);
+
 float fbm(float2 p) {
-    float2x2 m = rot(.4);
+    float2x2 m = _rot04;
     float f = 0.0;
     f += 0.500000 * (0.5 + 0.5 * noise(p)); p = mul(p, m) * 2.02;
     f += 0.250000 * (0.5 + 0.5 * noise(p)); p = mul(p, m) * 2.03;

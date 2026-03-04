@@ -142,9 +142,10 @@ float3 RaindropSurface(float2 XY, float DistanceScale, float ZScale) {
     float M = 0.5;
     float S = ZScale;
 
+    float halfA = A * 0.5;
     float xA = x / A, yA = y / A;
     float TempZ = 1.0 - xA * xA - yA * yA;
-    float Z = pow(max(TempZ, 0.0), A / 2.0);
+    float Z = pow(max(TempZ, 0.0), halfA);
     float ZInMAndN = (Z - M) / (N - M);
     float t = min(max(ZInMAndN, 0.0), 1.0);
 
@@ -152,7 +153,7 @@ float3 RaindropSurface(float2 XY, float DistanceScale, float ZScale) {
 
     float Part01 = S * (6.0 * t - 8.0 * t * t);
     float Part02 = 1.0 / (N - M);
-    float Part03 = -1.0 / A * pow(max(TempZ, 0.0), A / 2.0 - 1.0);
+    float Part03 = -1.0 / A * pow(max(TempZ, 0.0), halfA - 1.0);
 
     float Part03OfX = x * Part03;
     float Part03OfY = y * Part03;

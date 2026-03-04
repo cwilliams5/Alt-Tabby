@@ -230,10 +230,9 @@ float3 lighting(float3 sp, float3 camPos, int reflectionPass, float _st, float _
 
     float ao = 0.5 + 0.5 * calculateAO(sp, n);
     float ambient = 0.05;
-    float specPow = 8.0;
     float diff = max(0.0, dot(n, ld));
     float spec = max(0.0, dot(ref_vec, normalize(camPos - sp)));
-    spec = pow(spec, specPow);
+    float s2 = spec * spec; float s4 = s2 * s2; spec = s4 * s4;
 
     col += (objCol * (diff + ambient) + spec * 0.5) * lcolor * lightAtten * shadowcol * ao;
 

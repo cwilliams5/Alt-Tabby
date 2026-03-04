@@ -65,8 +65,9 @@ float2x2 rotate(float ang) {
     return float2x2(c, -s, s, c);
 }
 
-float3 glow(float v, float r, float ins, float3 col) {
-    float dist = pow(r / v, ins);
+float3 glow(float v, float r, float3 col) {
+    float ratio = r / v;
+    float dist = ratio * ratio;
     return 1.0 - exp(-dist * col);
 }
 
@@ -88,10 +89,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 c2 = float3(0.153, 0.541, 0.769);
 
     n = fbm(p * 0.4);
-    float3 col = glow(n, 0.2, 2.0, c1);
+    float3 col = glow(n, 0.2, c1);
 
     n = fbm(mul(rotate(0.1), p * 0.2));
-    c2 = glow(n, 0.3, 2.0, c2);
+    c2 = glow(n, 0.3, c2);
 
     col = col * c2;
 
