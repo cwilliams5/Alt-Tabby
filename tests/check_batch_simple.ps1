@@ -32,7 +32,7 @@ $fileCacheText = @{}
 foreach ($f in $allFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $fileCacheText[$f.FullName] = $text
-    $lines = $text -split "`r?`n"
+    $lines = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
     $fileCache[$f.FullName] = $lines
 }
 
@@ -85,6 +85,7 @@ $BS_AHK_KEYWORDS = @(
 )
 
 # === Pre-compute cleaned lines and brace counts (reused by multiple sub-checks) ===
+$sharedPassSw = [System.Diagnostics.Stopwatch]::StartNew()
 $processedCache = @{}
 foreach ($f in $allFiles) {
     $lines = $fileCache[$f.FullName]
@@ -105,6 +106,8 @@ foreach ($f in $allFiles) {
     }
     $processedCache[$f.FullName] = $processed
 }
+$sharedPassSw.Stop()
+[void]$subTimings.Add(@{ Name = "shared_pass"; DurationMs = [math]::Round($sharedPassSw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
 # Sub-check 1: switch_global
@@ -1252,6 +1255,10 @@ $rxTL_FuncDef    = [regex]::new('^([A-Za-z_]\w+)\s*\(', 'Compiled')
 $fileTimerData = @{}
 
 foreach ($file in $allFiles) {
+    # Pre-filter: skip files without SetTimer (only ~8/68 files contain SetTimer calls)
+    $hasSetTimer = $fileCacheText[$file.FullName].IndexOf('SetTimer', [System.StringComparison]::Ordinal) -ge 0
+    if (-not $hasSetTimer) { continue }
+
     $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
@@ -2672,7 +2679,7 @@ if ($anyFailed) {
     Write-Host "  PASS: All simple checks passed (switch_global, ipc_constants, dllcall_types, isset_with_default, cfg_properties, duplicate_functions, fileappend_encoding, lint_ignore_orphans, static_in_timers, timer_lifecycle, dead_config, dead_globals, dead_locals, dead_params, registry_key_uniqueness, registry_completeness, registry_section_casing, config_registry_integrity, fr_event_coverage)" -ForegroundColor Green
 }
 
-Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
+Write-Host "  Timing: shared=$($sharedPassSw.ElapsedMilliseconds)ms total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
 
 # Write sub-timing for nested display (consumed by static_analysis.ps1)
 $subTimings | ConvertTo-Json -Compress | Set-Content "$env:TEMP\sa_batch_simple_timing.json" -Encoding UTF8

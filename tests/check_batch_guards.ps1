@@ -32,7 +32,7 @@ $fileCacheText = @{}
 foreach ($f in $allFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $fileCacheText[$f.FullName] = $text
-    $fileCache[$f.FullName] = $text -split "`r?`n"
+    $fileCache[$f.FullName] = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
 }
 
 # === Sub-check tracking ===
@@ -140,6 +140,7 @@ $BC_keywordSet = [System.Collections.Generic.HashSet[string]]::new(
 # Builds function definition index and processed line data ONCE,
 # reused by callback_signatures, producer_error_boundary, callback_invocation_arity, critical_leaks.
 # This eliminates 3 redundant full-file scans (~1.0s savings).
+$sharedPassSw = [System.Diagnostics.Stopwatch]::StartNew()
 
 $sharedFuncDefs = @{}           # funcName -> @{ File, DefLine, FileName, Lines, Raw, ParamStr, RequiredCount, HasVariadic, TotalParams }
 $sharedSetCallbacksDefs = @{}   # funcName -> @{ ParamNames, GlobalMap } (only *_SetCallbacks)
@@ -264,6 +265,9 @@ foreach ($file in $allFiles) {
         }
     }
 }
+
+$sharedPassSw.Stop()
+[void]$subTimings.Add(@{ Name = "shared_pass"; DurationMs = [math]::Round($sharedPassSw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
 # Sub-check 1: thememsgbox
@@ -2097,7 +2101,7 @@ if ($anyFailed) {
     Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete)" -ForegroundColor Green
 }
 
-Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
+Write-Host "  Timing: shared=$($sharedPassSw.ElapsedMilliseconds)ms total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
 
 # Write sub-timing for nested display (consumed by static_analysis.ps1)
 $subTimings | ConvertTo-Json -Compress | Set-Content "$env:TEMP\sa_batch_guards_timing.json" -Encoding UTF8

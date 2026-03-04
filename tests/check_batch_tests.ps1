@@ -44,19 +44,19 @@ $script:fileTextCache = @{}
 foreach ($f in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $script:fileTextCache[$f.FullName] = $text
-    $script:fileContentCache[$f.FullName] = $text -split "`r?`n"
+    $script:fileContentCache[$f.FullName] = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
 }
 foreach ($f in $testFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $script:fileTextCache[$f.FullName] = $text
-    $script:fileContentCache[$f.FullName] = $text -split "`r?`n"
+    $script:fileContentCache[$f.FullName] = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
 }
 
 function Get-CachedFileLines($path) {
     if (-not $script:fileContentCache.ContainsKey($path)) {
         $text = [System.IO.File]::ReadAllText($path)
         $script:fileTextCache[$path] = $text
-        $script:fileContentCache[$path] = $text -split "`r?`n"
+        $script:fileContentCache[$path] = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
     }
     return $script:fileContentCache[$path]
 }
@@ -166,22 +166,73 @@ function BT_ExtractGlobalNames {
     return $names
 }
 
+# === Pre-compute cleaned lines and brace counts (reused by BT_Get* helpers) ===
+$sharedPassSw = [System.Diagnostics.Stopwatch]::StartNew()
+$script:processedCache = @{}
+foreach ($path in $script:fileContentCache.Keys) {
+    $lines = $script:fileContentCache[$path]
+    $processed = [object[]]::new($lines.Count)
+    for ($li = 0; $li -lt $lines.Count; $li++) {
+        $cleaned = BT_CleanLine $lines[$li]
+        if ($cleaned -ne '') {
+            $o = 0; $c = 0
+            foreach ($ch in $cleaned.ToCharArray()) {
+                if ($ch -eq '{') { $o++ } elseif ($ch -eq '}') { $c++ }
+            }
+            $braces = @($o, $c)
+        } else {
+            $braces = @(0, 0)
+        }
+        $processed[$li] = @{ Raw = $lines[$li]; Cleaned = $cleaned; Braces = $braces }
+    }
+    $script:processedCache[$path] = $processed
+}
+
+$sharedPassSw.Stop()
+[void]$subTimings.Add(@{ Name = "shared_pass"; DurationMs = [math]::Round($sharedPassSw.Elapsed.TotalMilliseconds, 1) })
+
+function BT_GetProcessed {
+    param([string]$filePath)
+    if ($script:processedCache.ContainsKey($filePath)) {
+        return $script:processedCache[$filePath]
+    }
+    # Lazy build for files not in initial cache
+    $lines = Get-CachedFileLines $filePath
+    $processed = [object[]]::new($lines.Count)
+    for ($li = 0; $li -lt $lines.Count; $li++) {
+        $cleaned = BT_CleanLine $lines[$li]
+        if ($cleaned -ne '') {
+            $o = 0; $c = 0
+            foreach ($ch in $cleaned.ToCharArray()) {
+                if ($ch -eq '{') { $o++ } elseif ($ch -eq '}') { $c++ }
+            }
+            $braces = @($o, $c)
+        } else {
+            $braces = @(0, 0)
+        }
+        $processed[$li] = @{ Raw = $lines[$li]; Cleaned = $cleaned; Braces = $braces }
+    }
+    $script:processedCache[$filePath] = $processed
+    return $processed
+}
+
 function BT_GetFileScopeGlobalDefs {
     param([string]$filePath)
 
     $defs = @{}
     if (-not (Test-Path $filePath)) { return $defs }
 
-    $lines = Get-CachedFileLines $filePath
+    $processed = BT_GetProcessed $filePath
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BT_CleanLine $lines[$i]
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $pd = $processed[$i]
+        $cleaned = $pd.Cleaned
         if ($cleaned -eq '') { continue }
 
-        $braces = BT_CountBraces $cleaned
+        $braces = $pd.Braces
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1].ToLower()
@@ -217,18 +268,19 @@ function BT_GetFunctionGlobalUsage {
     $usages = [System.Collections.ArrayList]::new()
     if (-not (Test-Path $filePath)) { return $usages }
 
-    $lines = Get-CachedFileLines $filePath
+    $processed = BT_GetProcessed $filePath
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
     $funcName = ""
     $funcGlobals = @{}
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BT_CleanLine $lines[$i]
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $pd = $processed[$i]
+        $cleaned = $pd.Cleaned
         if ($cleaned -eq '') { continue }
 
-        $braces = BT_CountBraces $cleaned
+        $braces = $pd.Braces
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -492,9 +544,9 @@ function BT_GetFunctionCalls {
     $calls = @{}
     if (-not (Test-Path $filePath)) { return $calls }
 
-    $lines = Get-CachedFileLines $filePath
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BT_CleanLine $lines[$i]
+    $processed = BT_GetProcessed $filePath
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $cleaned = $processed[$i].Cleaned
         if ($cleaned -eq '') { continue }
 
         foreach ($m in [regex]::Matches($cleaned, '\b([A-Za-z_]\w*)\s*\(')) {
@@ -514,9 +566,9 @@ function BT_GetFunctionDefinitions {
     $defs = @{}
     if (-not (Test-Path $filePath)) { return $defs }
 
-    $lines = Get-CachedFileLines $filePath
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = BT_CleanLine $lines[$i]
+    $processed = BT_GetProcessed $filePath
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $cleaned = $processed[$i].Cleaned
         if ($cleaned -eq '') { continue }
 
         if ($cleaned -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\([^()]*\)\s*\{') {
@@ -655,11 +707,11 @@ $taConstantAssertRegex = [regex]::new(
 $taIssues = [System.Collections.ArrayList]::new()
 
 foreach ($file in $testFiles) {
-    $lines = Get-CachedFileLines $file.FullName
+    $processed = BT_GetProcessed $file.FullName
     $relPath = $file.FullName.Replace("$projectRoot\", '')
 
     # Pre-filter: skip files without any function definitions
-    $joined = [string]::Join("`n", $lines)
+    $joined = Get-CachedFileText $file.FullName
     if ($joined.IndexOf('(', [System.StringComparison]::Ordinal) -lt 0) { continue }
 
     # Extract test functions and their bodies
@@ -671,15 +723,16 @@ foreach ($file in $testFiles) {
     $funcBody = [System.Text.StringBuilder]::new()
     $funcHasSuppression = $false
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $raw = $lines[$i]
-        $cleaned = BT_CleanLine $raw
+    for ($i = 0; $i -lt $processed.Count; $i++) {
+        $pd = $processed[$i]
+        $raw = $pd.Raw
+        $cleaned = $pd.Cleaned
         if ($cleaned -eq '') {
             if ($inFunc) { [void]$funcBody.AppendLine($raw) }
             continue
         }
 
-        $braces = BT_CountBraces $cleaned
+        $braces = $pd.Braces
 
         # Detect function start
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\([^)]*\)\s*\{?') {
@@ -687,8 +740,8 @@ foreach ($file in $testFiles) {
             if ($fname.ToLower() -notin $AHK_KEYWORDS) {
                 # Check if the opening brace is on this line or next
                 $hasBrace = $cleaned -match '\{'
-                if (-not $hasBrace -and ($i + 1) -lt $lines.Count) {
-                    $nextCleaned = BT_CleanLine $lines[$i + 1]
+                if (-not $hasBrace -and ($i + 1) -lt $processed.Count) {
+                    $nextCleaned = $processed[$i + 1].Cleaned
                     if ($nextCleaned -match '^\s*\{') { $hasBrace = $true }
                 }
                 if ($hasBrace) {
@@ -1348,7 +1401,7 @@ if ($anyFailed) {
     Write-Host "  PASS: All test checks passed (test_globals, test_functions, test_assertions, no_wmi_in_tests, test_undefined_calls, test_cfg_completeness, test_production_calls)" -ForegroundColor Green
 }
 
-Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
+Write-Host "  Timing: shared=$($sharedPassSw.ElapsedMilliseconds)ms total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan
 
 # Write sub-timing for nested display (consumed by static_analysis.ps1)
 $subTimings | ConvertTo-Json -Compress | Set-Content "$env:TEMP\sa_batch_tests_timing.json" -Encoding UTF8
