@@ -28,6 +28,17 @@ Convert Shadertoy GLSL shaders to the Alt-Tabby HLSL pixel shader format.
 
 Requires the Playwright MCP server. Extracts shader source, metadata, and iChannel textures automatically.
 
+#### Step 0: Check for Playwright MCP
+
+The Playwright MCP is **not loaded by default** — it's toggled on-demand to avoid context bloat.
+
+Check if you have access to `mcp__playwright__browser_navigate`. If NOT available:
+1. Tell the user: "Playwright MCP is not enabled. Run this to enable it, then restart Claude Code:"
+   ```
+   powershell -File tools/toggle-playwright-mcp.ps1 on
+   ```
+2. **STOP** — do not proceed until the user restarts with Playwright available.
+
 #### Step 1: Navigate and Wait
 
 ```
@@ -155,6 +166,15 @@ Populate from extracted `info`:
 **Close the browser (`browser_close`) immediately** — before writing any files or starting HLSL conversion. The Playwright MCP server is a shared resource; holding it open blocks other agents. Extract all data into local variables in Steps 2-5, then close the browser as the very first action in this step.
 
 Proceed to HLSL conversion (same as Mode C).
+
+#### Step 8: Remind User to Disable Playwright MCP
+
+After Mode B is fully complete (conversion, bundle, compile, tests), remind the user:
+
+"Playwright MCP is still enabled and consuming context. To disable it for future sessions, run:"
+```
+powershell -File tools/toggle-playwright-mcp.ps1 off
+```
 
 ### Mode C — Paste GLSL (with non-URL args)
 
