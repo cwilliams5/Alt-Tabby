@@ -129,3 +129,4 @@ See `.claude/rules/` for domain-specific knowledge:
 | `installation.md` | Wizard, auto-update, elevation, admin mode |
 | `debugging.md` | Debug diagnostic options with file paths and use cases |
 | `workflow.md` | GitHub issue creation, PR linkage |
+

@@ -493,14 +493,14 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             controls.Push({ctrl: lbl, origY: y, origX: 24})
             settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
             ; Read-only edit showing current path
-            ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w280 +ReadOnly")
+            ed := pageGui.AddEdit("x" CEN_INPUT_X " y" y " w240 +ReadOnly")
             controls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
             settingCtrls.Push({ctrl: ed, origY: y, origX: CEN_INPUT_X})
             gCEN["Controls"][setting.g] := {ctrl: ed, type: "file"}
             Theme_ApplyToControl(ed, "Edit", gCEN["ThemeEntry"])
             DllCall("user32\SendMessageW", "Ptr", ed.Hwnd, "UInt", CEN_EM_SETMARGINS, "Ptr", CEN_EC_LEFTMARGIN | CEN_EC_RIGHTMARGIN, "Ptr", (6 << 16) | 6)
             ; Browse button
-            browseX := CEN_INPUT_X + 286
+            browseX := CEN_INPUT_X + 246
             btnBrowse := pageGui.AddButton("x" browseX " y" y " w70 h22", "Browse...")
             controls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
             settingCtrls.Push({ctrl: btnBrowse, origY: y, origX: browseX})
@@ -829,7 +829,7 @@ _CEN_OnFileBrowse(globalName) {
     ext := StrLower(ext)
     destExt := ext
 
-    ; WebP → PNG conversion
+    ; WebP → PNG conversion (via libwebp — GDI+ WebP support varies by Windows version)
     if (ext = "webp") {
         converted := _CEN_ConvertWebPToPNG(selected, resDir)
         if (converted = "") {
@@ -838,14 +838,19 @@ _CEN_OnFileBrowse(globalName) {
         }
         destExt := "png"
         destPath := resDir "\alttabby-background." destExt
-        if (FileExist(destPath))
-            FileDelete(destPath)
-        FileMove(converted, destPath)
+        ; Remove old background files only AFTER successful conversion
+        loop files resDir "\alttabby-background.*"
+            if (A_LoopFileFullPath != converted)
+                FileDelete(A_LoopFileFullPath)
+        if (converted != destPath)
+            FileMove(converted, destPath, true)
     } else {
         destPath := resDir "\alttabby-background." destExt
-        if (FileExist(destPath))
-            FileDelete(destPath)
         FileCopy(selected, destPath, true)
+        ; Remove stale background files with different extensions
+        loop files resDir "\alttabby-background.*"
+            if (A_LoopFileFullPath != destPath)
+                FileDelete(A_LoopFileFullPath)
     }
 
     ctrlInfo.ctrl.Value := destPath
@@ -858,22 +863,85 @@ _CEN_OnFileClear(globalName) {
 }
 
 _CEN_ConvertWebPToPNG(webpPath, outputDir) {
-    ; Load WebP via GDI+ (Windows 10 1809+ supports WebP natively in GDI+)
+    ; Decode WebP via libwebp (shipped with the app), then save as PNG via GDI+
     try {
-        pBitmapGdip := 0
-        DllCall("gdiplus\GdipCreateBitmapFromFile", "str", webpPath, "ptr*", &pBitmapGdip, "int")
-        if (!pBitmapGdip)
+        ; Load libwebp DLLs
+        static hSharpYuv := 0, hWebP := 0, webpDllName := ""
+        if (!hWebP) {
+            global RES_ID_SHARPYUV_DLL, RES_ID_WEBP_DLL
+            if (A_IsCompiled) {
+                dllDir := A_Temp "\AltTabby_WebP"
+                if (!DirExist(dllDir))
+                    DirCreate(dllDir)
+                sharpyuvPath := ResourceExtractToTemp(RES_ID_SHARPYUV_DLL, "libsharpyuv-0.dll", dllDir)
+                webpPath2 := ResourceExtractToTemp(RES_ID_WEBP_DLL, "libwebp-7.dll", dllDir)
+            } else {
+                dllDir := A_ScriptDir "\..\resources"
+                for name in ["libsharpyuv-0.dll", "libsharpyuv.dll"] {
+                    if (FileExist(dllDir "\" name)) {
+                        sharpyuvPath := dllDir "\" name
+                        break
+                    }
+                }
+                for name in ["libwebp-7.dll", "libwebp-2.dll", "libwebp.dll"] {
+                    if (FileExist(dllDir "\" name)) {
+                        webpPath2 := dllDir "\" name
+                        break
+                    }
+                }
+            }
+            if (IsSet(sharpyuvPath) && sharpyuvPath)
+                hSharpYuv := DllCall("LoadLibrary", "str", sharpyuvPath, "ptr")
+            if (!IsSet(webpPath2) || !webpPath2)
+                return ""
+            hWebP := DllCall("LoadLibrary", "str", webpPath2, "ptr")
+            if (!hWebP)
+                return ""
+            SplitPath(webpPath2, &dllFile)
+            webpDllName := RegExReplace(dllFile, "\.dll$", "")
+        }
+
+        ; Read WebP file into memory
+        file := FileOpen(webpPath, "r")
+        if (!file)
+            return ""
+        fileSize := file.Length
+        data := Buffer(fileSize)
+        file.RawRead(data, fileSize)
+        file.Close()
+
+        ; Decode to BGRA pixels
+        w := 0, h := 0
+        pPixels := DllCall(webpDllName "\WebPDecodeBGRA", "ptr", data, "uint", fileSize, "int*", &w, "int*", &h, "ptr")
+        if (!pPixels || w = 0 || h = 0)
             return ""
 
-        ; Save as PNG using GDI+ encoder
-        pngPath := outputDir "\alttabby-background.png"
+        ; Initialize GDI+
+        static gdipToken := 0
+        if (!gdipToken) {
+            si := Buffer(24, 0)
+            NumPut("uint", 1, si, 0)
+            DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", si, "ptr", 0)
+        }
 
-        ; PNG encoder CLSID: {557CF406-1A04-11D3-9A73-0000F81EF32E}
+        ; Create GDI+ bitmap from raw BGRA pixels
+        pBitmapGdip := 0
+        stride := w * 4
+        ; PixelFormat32bppARGB = 0x26200A
+        DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", w, "int", h, "int", stride, "int", 0x26200A, "ptr", pPixels, "ptr*", &pBitmapGdip)
+        if (!pBitmapGdip) {
+            DllCall(webpDllName "\WebPFree", "ptr", pPixels)
+            return ""
+        }
+
+        ; Save as PNG
+        pngPath := outputDir "\alttabby-background.png"
         encoderClsid := Buffer(16, 0)
         DllCall("ole32\CLSIDFromString", "str", "{557CF406-1A04-11D3-9A73-0000F81EF32E}", "ptr", encoderClsid, "hresult")
-
         hr := DllCall("gdiplus\GdipSaveImageToFile", "ptr", pBitmapGdip, "str", pngPath, "ptr", encoderClsid, "ptr", 0, "int")
+
         DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmapGdip)
+        DllCall(webpDllName "\WebPFree", "ptr", pPixels)
 
         if (hr != 0)
             return ""

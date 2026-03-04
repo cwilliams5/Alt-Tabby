@@ -504,7 +504,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
     ; Living backdrop effects (GPU + Full animation mode only)
     global gFX_BackdropStyle
-    if (isGPU && cfg.PerfAnimationType = "Full" && gFX_BackdropStyle > 0)
+    if (isGPU && cfg.PerfAnimationType = "Full" && cfg.FX2D_UseBackgroundEffects && gFX_BackdropStyle > 0)
         FX_DrawBackdrop(wPhys, hPhys, scale)
 
     ; Background image layer (above DWM surface, below shader)

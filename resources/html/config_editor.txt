@@ -428,6 +428,22 @@
     color: var(--text-muted);
     white-space: nowrap;
   }
+  .file-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+  .file-control input[type="text"] {
+    flex: 1;
+    min-width: 0;
+  }
+  .file-control button {
+    padding: 5px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
   .hex-control {
     display: flex;
     align-items: center;
@@ -589,6 +605,7 @@ window.initSettings = function(registry, values) {
   activeSection = sections[0]?.name || '';
   renderSidebar();
   renderContent();
+  bindFileControls();
   updateChangeCount();
 };
 
@@ -631,6 +648,15 @@ function controlHTML(setting) {
   const hasRange = setting.min !== undefined && setting.max !== undefined;
   const isHex = setting.fmt === 'hex';
 
+  if (setting.t === 'file') {
+    const displayVal = value || '';
+    return `<div class="file-control">
+      <input type="text" id="${id}" value="${displayVal}" readonly
+             title="${displayVal}">
+      <button type="button" id="${id}-browse">Browse</button>
+      <button type="button" id="${id}-clear">Clear</button>
+    </div>`;
+  }
   if (setting.t === 'bool') {
     return `<label class="toggle">
       <input type="checkbox" id="${id}" ${value ? 'checked' : ''}
@@ -754,6 +780,44 @@ function renderContent() {
     return html;
   }).join('');
 }
+
+// Bind file browse/clear buttons after rendering
+function bindFileControls() {
+  document.querySelectorAll('.file-control').forEach(container => {
+    const browseBtn = container.querySelector('[id$="-browse"]');
+    const clearBtn = container.querySelector('[id$="-clear"]');
+    if (!browseBtn || !clearBtn) return;
+    const input = container.querySelector('input[type="text"]');
+    const baseId = browseBtn.id.replace(/-browse$/, '');
+    // Extract globalName from the setting's data-global attribute
+    const settingEl = container.closest('.setting');
+    const globalName = settingEl ? settingEl.dataset.global : '';
+    browseBtn.addEventListener('click', () => {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(JSON.stringify({action: 'browse', globalName: globalName, id: baseId}));
+      }
+    });
+    clearBtn.addEventListener('click', () => {
+      if (input) { input.value = ''; input.title = ''; }
+      updateValue(globalName, '', 'file');
+    });
+  });
+}
+
+// Called by AHK after file browse dialog completes
+window.setFilePath = function(globalName, path) {
+  configValues[globalName] = path;
+  // Force change detection — file content may have changed even if path is the same
+  // (e.g., user replaces a PNG with a different image that gets the same filename)
+  delete originalValues[globalName];
+  // Find the input by globalName
+  const settingEl = document.querySelector(`.setting[data-global="${globalName}"]`);
+  if (settingEl) {
+    const input = settingEl.querySelector('.file-control input[type="text"]');
+    if (input) { input.value = path; input.title = path; }
+  }
+  updateChangeCount();
+};
 
 // Switch section
 function switchSection(name) {

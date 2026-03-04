@@ -49,6 +49,10 @@ ConfigEditor_Run(launcherHwnd := 0, forceNative := false) {
                 global LOG_PATH_WEBVIEW
                 try LogAppend(LOG_PATH_WEBVIEW, "WebView2 init failed, falling back to native: " e.Message)
             }
+            if (cfg.DiagWebViewLog) {
+                global LOG_PATH_WEBVIEW
+                try LogAppend(LOG_PATH_WEBVIEW, "WebView2 init failed, falling back to native: " e.Message)
+            }
             TrayTip("Using classic settings editor (WebView2 unavailable)", "Alt-Tabby", "Iconi")
         }
     }

@@ -59,8 +59,9 @@ INT_SetupHotkeys() {
     ; F key — toggle FPS debug overlay when GUI is active
     Hotkey("~*f", _INT_F_Down)
 
-    ; C key — cycle backdrop effects when GUI is active
-    Hotkey("~*c", _INT_C_Down)
+    ; Backdrop cycle hotkey (optional, configurable — blank disables)
+    if (cfg.FX2D_CycleKey != "")
+        try Hotkey("~*" cfg.FX2D_CycleKey, _INT_C_Down)
 
     ; Shader cycle hotkey (optional, configurable — blank disables)
     if (cfg.ShaderCycleShaderHotkey != "")
