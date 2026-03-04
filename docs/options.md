@@ -19,8 +19,10 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [Store](#store)
 - [Performance](#performance)
 - [Shader](#shader)
+- [2D Effects](#2d-effects)
 - [BackgroundImage](#backgroundimage)
 - [Diagnostics](#diagnostics)
+- [Capture](#capture)
 
 ---
 
@@ -635,6 +637,79 @@ Configure the D3D11 shader backdrop rendered behind the Alt-Tab overlay. Require
 | `ShaderTimeOffsetMax` | int | `90` | `0` - `600` | Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override. |
 | `ShaderTimeAccumulate` | bool | `true` | - | When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show. |
 
+## 2D Effects
+
+Animated background effects rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `UseBackgroundEffects` | bool | `true` | - | Master toggle for all 2D backdrop effects. When false, no backdrop effects are rendered regardless of other settings. |
+| `BackgroundEffect` | enum | `Aurora` | - | Which backdrop effect to display on startup. Layered composites multiple effects based on each effect's IncludeInLayered setting. |
+| `CycleKey` | string | `(empty)` | - | Optional hotkey to cycle through backdrop effects while the overlay is visible. Leave blank to disable. |
+
+### Gradient Drift
+
+Two large color blobs orbiting slowly. Colors are derived from the overlay background color (Appearance > Background Color) with warm and cool shifts applied.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `GradientIncludeInLayered` | bool | `false` | - | Include Gradient Drift in the Layered composite effect. |
+| `GradientOpacity` | float | `0.40` | `0.00` - `1.00` | Opacity of the Gradient Drift effect layer. 0.0 = invisible, 1.0 = fully opaque. |
+| `GradientSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for the Gradient Drift orbit animation. Higher values make blobs orbit faster. |
+| `GradientBlobSize` | int | `400` | `50` - `1000` | Diameter in pixels of each gradient blob. Larger values produce softer, more diffuse color blending. |
+| `GradientOrbitRadius` | float | `0.35` | `0.10` - `0.60` | Orbit radius as a fraction of the overlay size. Larger values spread blobs further from center. |
+| `GradientColorShift` | float | `1.00` | `0.00` - `2.00` | Color variation multiplier. 0.0 = uniform colors, 1.0 = default variation, 2.0 = exaggerated color shifts. |
+
+### Caustic
+
+Shares the bgTurb GPU effect chain with Grain. If both are included in Layered, Caustic renders last and its turbulence settings win.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `CausticIncludeInLayered` | bool | `false` | - | Include Caustic in the Layered composite effect. |
+| `CausticOpacity` | float | `0.40` | `0.00` - `1.00` | Opacity of the Caustic effect layer. 0.0 = invisible, 1.0 = fully opaque. |
+| `CausticSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for Caustic drift animation. |
+| `CausticFrequency` | float | `0.01` | `0.00` - `0.10` | Base frequency of the Caustic turbulence pattern. Lower values produce larger, smoother patterns. |
+| `CausticOctaves` | int | `3` | `1` - `5` | Number of turbulence octaves for the Caustic effect. More octaves add finer detail but cost more GPU. |
+| `CausticSaturation` | float | `0.60` | `0.00` - `1.00` | Color saturation of the Caustic effect. 0.0 = grayscale, 1.0 = full color. |
+
+### Aurora
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `AuroraIncludeInLayered` | bool | `true` | - | Include Aurora in the Layered composite effect. |
+| `AuroraOpacity` | float | `0.40` | `0.00` - `1.00` | Opacity of the Aurora effect layer. 0.0 = invisible, 1.0 = fully opaque. |
+| `AuroraSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for Aurora blob orbit animation. |
+| `AuroraBlobSize` | int | `350` | `50` - `1000` | Diameter in pixels of each Aurora blob. Larger values produce softer, more diffuse lighting. |
+| `AuroraSpeedSpread` | float | `1.00` | `0.00` - `3.00` | Scales deviation from average orbit speed. 0 = all blobs same speed, 1 = default spread, 2+ = wider variation. |
+| `AuroraColor1` | int | `0xFFFF4488` | `0x0` - `0xFFFFFFFF` | ARGB color of the first Aurora blob. |
+| `AuroraColor2` | int | `0xFF4488FF` | `0x0` - `0xFFFFFFFF` | ARGB color of the second Aurora blob. |
+| `AuroraColor3` | int | `0xFFAA44FF` | `0x0` - `0xFFFFFFFF` | ARGB color of the third Aurora blob. |
+
+### Grain
+
+Shares the bgTurb GPU effect chain with Caustic. If both are included in Layered, Grain renders first and Caustic overwrites the turbulence settings.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `GrainIncludeInLayered` | bool | `false` | - | Include Grain in the Layered composite effect. |
+| `GrainOpacity` | float | `0.30` | `0.00` - `1.00` | Opacity of the Grain effect layer. 0.0 = invisible, 1.0 = fully opaque. |
+| `GrainSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for Grain drift animation. |
+| `GrainFrequency` | float | `0.05` | `0.01` - `0.50` | Base frequency of the Grain turbulence pattern. Lower values produce coarser grain. |
+| `GrainOctaves` | int | `4` | `1` - `5` | Number of turbulence octaves for the Grain effect. More octaves add finer detail. |
+| `GrainSaturation` | float | `0.00` | `0.00` - `1.00` | Color saturation of the Grain effect. 0.0 = grayscale noise, 1.0 = colorful noise. |
+
+### Vignette
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `VignetteIncludeInLayered` | bool | `true` | - | Include Vignette in the Layered composite effect. |
+| `VignetteOpacity` | float | `0.50` | `0.00` - `1.00` | Base opacity of the Vignette edge darkening. 0.0 = invisible, 1.0 = fully opaque. |
+| `VignetteSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for the Vignette breathing animation. |
+| `VignetteEdgeDepth` | float | `0.30` | `0.05` - `0.50` | Depth of the vignette edge as a fraction of overlay width. Larger values create a wider dark border. |
+| `VignetteBreathAmplitude` | float | `0.15` | `0.00` - `0.30` | Amplitude of the vignette breathing animation. 0.0 = static vignette, higher values pulse more. |
+| `VignetteEdgeColor` | int | `0x0` | `0x0` - `0xFFFFFF` | RGB color of the vignette edge. Default is black (0x000000). |
+
 ## BackgroundImage
 
 Display a user-selected background image behind the overlay content. The image sits above the shader layer and below backdrop effects. Supports fit modes, alignment, opacity, blur, desaturation, and brightness adjustments.
@@ -718,6 +793,17 @@ Control diagnostic log file sizes
 | `LogMaxKB` | int | `100` | `50` - `1000` | Maximum diagnostic log file size in KB before trimming. |
 | `LogKeepKB` | int | `50` | `25` - `500` | Size to keep after log trim in KB. Must be less than LogMaxKB. |
 
+## Capture
+
+Dev tooling for capturing overlay screenshots and video recordings. Zero overhead when disabled.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `Enable` | bool | `false` | - | Master switch. When false, no hotkeys registered, zero overhead. |
+| `ScreenshotHotkey` | string | `(empty)` | - | Hotkey for screenshot capture. Blank = disabled. Example: F10. Wildcard (*) auto-prefixed so it fires while Alt is held. |
+| `RecordStartHotkey` | string | `(empty)` | - | Hotkey to start video recording via ffmpeg. Blank = disabled. Requires ffmpeg on PATH. |
+| `RecordStopHotkey` | string | `(empty)` | - | Hotkey to stop video recording. Blank = disabled. |
+
 ---
 
-*Generated on 2026-03-03 with 308 total settings.*
+*Generated on 2026-03-03 with 347 total settings.*

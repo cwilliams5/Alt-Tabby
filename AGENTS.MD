@@ -86,8 +86,11 @@ Query tools live in `tools/`. Prefer these over reading full files or grepping:
 - `query_function.ps1 <funcName>` â€” extract full function body without loading the entire file
 - `query_interface.ps1 <filename>` â€” public functions + globals for a file (like help(module))
 - `query_config.ps1` â€” no args: shows section/group index. With keyword: fuzzy search. `-Section <name>`: list section. `-Usage <key>`: which files consume a config value
-- `query_ipc.ps1 <msgType>` â€” who sends/handles an IPC message (or no args: list all types)
-- `query_timers.ps1` â€” SetTimer inventory grouped by file (or with keyword: fuzzy search by callback/file)
+- `query_callchain.ps1 <funcName>` â€” call graph from a function: what it calls (or `-Reverse` for callers), to `-Depth N` levels. Primary tool for tracing code paths
+
+Additional domain-specific query tools (ipc, timers, impact, mutations, includes, messages, state) exist in `tools/` â€” run `ls tools/query_*.ps1` to discover when needed.
+
+For deep multi-module flow tracing, use `/trace <question>` â€” spawns an agent in separate context that uses all query tools and returns only the semantic answer.
 
 These return semantic answers, not raw text. The work runs in PowerShell â€” only the answer enters context.
 
