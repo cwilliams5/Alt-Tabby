@@ -190,9 +190,9 @@ float layer(float2 uv) {
 
         for (int yi = i + 1; yi < 9; yi++) {
             for (int zi = yi + 1; zi < 9; zi++) {
-                float len1 = abs(length(p[i] - p[yi]));
-                float len2 = abs(length(p[yi] - p[zi]));
-                float len3 = abs(length(p[i] - p[zi]));
+                float len1 = length(p[i] - p[yi]);
+                float len2 = length(p[yi] - p[zi]);
+                float len3 = length(p[i] - p[zi]);
                 if ((len1 + len2 + len3) < 2.8) {
                     m += triSeg(gv, p[i], p[yi], p[zi]) * 0.8;
                 }
@@ -227,7 +227,8 @@ float4 volumetric(float3 ro, float3 rd) {
         a *= a * a;
         if (r > 6) fade *= 1.1;
         v += fade;
-        v += float3(s, s * s, s * s * s * s) * a * brightness * fade;
+        float s2 = s * s;
+        v += float3(s, s2, s2 * s2) * a * brightness * fade;
         fade *= distfading;
         s += stepsize;
     }

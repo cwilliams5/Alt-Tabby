@@ -67,7 +67,7 @@ float fbm(float2 uv) {
 float2 polar(float2 uv, float2 center, float zoom, float repeat) {
     float2 dir = uv - center;
     float radius = length(dir) * 2.0;
-    float angle = atan2(dir.y, dir.x) * 1.0 / (3.1416 * 2.0);
+    float angle = atan2(dir.y, dir.x) * 0.15915494;
     return float2(radius * zoom, angle * repeat);
 }
 

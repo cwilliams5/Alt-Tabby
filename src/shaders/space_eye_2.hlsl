@@ -47,8 +47,9 @@ float cloud(float3 p)
 }
 
 float2x2 rot(float th) {
-    float2 a = sin(float2(1.5707963, 0) + th);
-    return float2x2(a.x, -a.y, a.y, a.x);
+    float s, c;
+    sincos(th, s, c);
+    return float2x2(c, -s, s, c);
 }
 
 float3 hash33(float3 p)

@@ -209,17 +209,13 @@ float softShadow(float3 ro, float3 rd, float start_d, float end_d, float k) {
     return min(max(shade, 0.0) + 0.3, 1.0);
 }
 
-float3 lighting(float3 sp, float3 camPos, int reflectionPass) {
+float3 lighting(float3 sp, float3 camPos, int reflectionPass, float _st, float _ct, float _st2, float _ct2) {
     float3 col = float3(0.0, 0.0, 0.0);
     float3 n = calcNormal(sp);
     float3 objCol = float3(0.5, 0.5, 0.5);
 
-    float _st, _ct;
-    sincos(time, _st, _ct);
     float3 lp = float3(_st * 50.0, _ct * 50.0, time * 10.0);
     float3 ld = lp - sp;
-    float _st2, _ct2;
-    sincos(time * 0.2, _st2, _ct2);
     float3 lcolor = float3(_st2, _ct2, 1.0) / 3.0 + float3(1.0, 1.0, 1.0);
 
     float len = length(ld);
@@ -262,12 +258,16 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 n = calcNormal(p);
 
     float4 r = traceRef(p, reflect(dir, n), 0.05, 32.0);
-    float3 l = lighting(p, cam, 0);
+    float _st, _ct;
+    sincos(time, _st, _ct);
+    float _st2, _ct2;
+    sincos(time * 0.2, _st2, _ct2);
+    float3 l = lighting(p, cam, 0, _st, _ct, _st2, _ct2);
 
     depth = r.x;
     float3 rsp = p + ref_vec * r.x;
 
-    float3 col = (lighting(rsp, p, 1) * 0.05 + l) / clamp(d.x * 0.015, 1.0, 10.0);
+    float3 col = (lighting(rsp, p, 1, _st, _ct, _st2, _ct2) * 0.05 + l) / clamp(d.x * 0.015, 1.0, 10.0);
     // vignette
     col *= 1.0 - dot(uv, uv) * 0.75;
 

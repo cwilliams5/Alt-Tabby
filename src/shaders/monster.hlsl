@@ -13,7 +13,6 @@ struct PSInput {
     float2 uv : TEXCOORD0;
 };
 
-static const float TK = 1.0;
 static const float PI = 3.1415926535;
 
 float2 rot(float2 p, float r) {
@@ -39,15 +38,15 @@ float cube(float3 p, float3 s) {
 }
 
 float dist(float3 p) {
-    p.z -= 1.0 * TK * time;
-    p.xy = rot(p.xy, 1.0 * p.z);
+    p.z -= time;
+    p.xy = rot(p.xy, p.z);
     p.xy = pmod(p.xy, 6.0);
     float k = 0.7;
     float zid = floor(p.z * k);
     p = fmod(p, k) - 0.5 * k;
     float sXY, cXY, sXZ, cXZ;
-    sincos(1.0 + zid + 0.1 * TK * time, sXY, cXY);
-    sincos(1.0 + 4.7 * zid + 0.3 * TK * time, sXZ, cXZ);
+    sincos(1.0 + zid + 0.1 * time, sXY, cXY);
+    sincos(1.0 + 4.7 * zid + 0.3 * time, sXZ, cXZ);
     float2x2 mXY = float2x2(cXY, sXY, -sXY, cXY);
     float2x2 mXZ = float2x2(cXZ, sXZ, -sXZ, cXZ);
     for (int i = 0; i < 4; i++) {
@@ -65,7 +64,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 uv = fragCoord / resolution.xy;
     uv = 2.0 * (uv - 0.5);
     uv.y *= resolution.y / resolution.x;
-    uv = rot(uv, TK * time);
+    uv = rot(uv, time);
     float3 ro = float3(0.0, 0.0, 0.1);
     float3 rd = normalize(float3(uv, 0.0) - ro);
     float t = 2.0;
@@ -81,7 +80,7 @@ float4 PSMain(PSInput input) : SV_Target {
     col = float3(0.1, 0.7, 0.7) * 0.2 * float3(ac, ac, ac);
     float3 pn = ro + rd * t;
     float kn = 0.5;
-    pn.z += -1.5 * time * TK;
+    pn.z += -1.5 * time;
     pn.z = fmod(pn.z, kn) - 0.5 * kn;
     float em = clamp(0.01 / pn.z, 0.0, 100.0);
     col += 3.0 * em * float3(0.1, 1.0, 0.1);

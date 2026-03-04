@@ -69,7 +69,9 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float bass = 1.5 + 0.5 * max(0.0, 2.0 * sin(time * 3.0));
 
-    float2 nudge = float2(aspectRatio * cos(time * 1.5), sin(time * 1.5));
+    float _ss, _sc;
+    sincos(time * 1.5, _ss, _sc);
+    float2 nudge = float2(aspectRatio * _sc, _ss);
 
     focus = length(uv + nudge);
     focus = 2.0 / (1.0 + focus) * bass;

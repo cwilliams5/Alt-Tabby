@@ -144,8 +144,12 @@ float4 raymarchDisk(float3 ray, float3 zeroPos)
 
 void DoRotate(inout float3 v, float2 a)
 {
-    v.yz = cos(a.y) * v.yz + sin(a.y) * float2(-1, 1) * v.zy;
-    v.xz = cos(a.x) * v.xz + sin(a.x) * float2(-1, 1) * v.zx;
+    float sy, cy;
+    sincos(a.y, sy, cy);
+    v.yz = cy * v.yz + sy * float2(-1, 1) * v.zy;
+    float sx, cx;
+    sincos(a.x, sx, cx);
+    v.xz = cx * v.xz + sx * float2(-1, 1) * v.zx;
 }
 
 struct PSInput {

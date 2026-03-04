@@ -81,10 +81,11 @@ float4 PSMain(PSInput input) : SV_Target
     col = (float3)fbm(float3(uv * f * 0.3, time * 0.75));
     col2 = col;
 
-    col *= float3((sin(time * 0.2) * 0.5 + 1.5), 1.0, 0.6);
+    float sinScale = sin(time * 0.2) * 0.5 + 1.5;
+    col *= float3(sinScale, 1.0, 0.6);
     col += float3(0.1, 0.7, 0.8) * f;
 
-    col2 *= float3(0.9, 1.0, (sin(time * 0.2) * 0.5 + 1.5));
+    col2 *= float3(0.9, 1.0, sinScale);
     col2 += float3(0.8, 0.5, 0.1) * f;
 
     col = lerp(col, col2, smoothstep(-50.0, 50.0, uv.x));

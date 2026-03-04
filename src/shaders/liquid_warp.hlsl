@@ -56,8 +56,14 @@ float pattern(in float2 p, in float t, in float2 uv, out float2 q, out float2 r,
 {
     q = float2(fbm(p), fbm(p + float2(10, 1.3)));
 
-    r = float2(fbm(p + 4.0 * q + float2(t, t) + float2(1.7, 9.2)), fbm(p + 4.0 * q + float2(t, t) + float2(8.3, 2.8)));
-    g = float2(fbm(p + 2.0 * r + float2(t * 20.0, t * 20.0) + float2(2, 6)), fbm(p + 2.0 * r + float2(t * 10.0, t * 10.0) + float2(5, 3)));
+    float2 q4 = 4.0 * q;
+    float2 p4qt = p + q4 + (float2)t;
+    r = float2(fbm(p4qt + float2(1.7, 9.2)), fbm(p4qt + float2(8.3, 2.8)));
+    float2 r2 = 2.0 * r;
+    float2 pr2 = p + r2;
+    float t20 = t * 20.0;
+    float t10 = t * 10.0;
+    g = float2(fbm(pr2 + float2(t20, t20) + float2(2, 6)), fbm(pr2 + float2(t10, t10) + float2(5, 3)));
     return fbm(p + 5.5 * g + float2(-t * 7.0, -t * 7.0));
 }
 

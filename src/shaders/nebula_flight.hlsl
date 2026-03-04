@@ -47,7 +47,7 @@ float4 Density(float3 pos)
     s /= 2.0 - 1.0 / 8.0;
 
     float sy2 = s.y*s.y; float sy4 = sy2*sy2;
-    s.y = s.y*sy4 * 1.0;
+    s.y = s.y*sy4;
 
     return float4((sin(float3(1, 2, 5) + tau * s.x) * 0.5 + 0.5) * 16.0, s.y);
 }

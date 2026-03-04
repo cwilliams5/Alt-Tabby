@@ -106,11 +106,9 @@ float3 pal(float t, float3 a, float3 b, float3 c, float3 d) {
     return a + b * cos(6.28318 * (c * t + d));
 }
 
-float3 get_noise(float2 p, float timer) {
+float3 get_noise(float2 p, float timer, float2 timerSC) {
     float2 res = resolution / resolution.y;
-    float sT, cT;
-    sincos(timer * 0.0851, sT, cT);
-    float2 sc = 0.5 * (0.5 + 0.5 * float2(sT, cT));
+    float2 sc = 0.5 * (0.5 + 0.5 * timerSC);
     float2 shiftx = res * 0.5 * 1.25 + sc;
     float2 shiftx2 = res * 0.5 * 2.0 + sc;
     float2 tp = p + shiftx;
@@ -130,15 +128,13 @@ float3 get_noise(float2 p, float timer) {
         fbm(idxVec * puv * zoom_nise / 100.0));
 }
 
-float4 get_lines_color(float2 p, float3 n, float timer) {
+float4 get_lines_color(float2 p, float3 n, float timer, float2 timerSC) {
     float2 res = resolution / resolution.y;
 
     float3 col = (float3)0;
     float a = 1.0;
 
-    float sT2, cT2;
-    sincos(timer * 0.0851, sT2, cT2);
-    float2 shiftx = res * 0.5 * 1.25 + 0.5 * (0.5 + 0.5 * float2(sT2, cT2));
+    float2 shiftx = res * 0.5 * 1.25 + 0.5 * (0.5 + 0.5 * timerSC);
     float2 tp = p + shiftx;
     float atx = (atan2(tp.x + 0.0001 * (1.0 - abs(sign(tp.x))), tp.y) * 0.3183099) * 0.5 + frac(timer * 0.025);
     float2 puv = ToPolar(tp);
@@ -283,8 +279,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 res = resolution / resolution.y;
     float2 uv = fragCoord.xy / resolution.y - 0.5 * res;
 
-    float3 noisev = get_noise(uv, timer);
-    float4 lcol = get_lines_color(uv, noisev, timer);
+    float _sT, _cT;
+    sincos(timer * 0.0851, _sT, _cT);
+    float2 timerSC = float2(_sT, _cT);
+    float3 noisev = get_noise(uv, timer, timerSC);
+    float4 lcol = get_lines_color(uv, noisev, timer, timerSC);
 
     float3 ro = float3(1.0, 40.0, 1.0);
     float3 rd = cam(uv, timer);

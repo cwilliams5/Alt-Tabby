@@ -190,8 +190,10 @@ float noise3(float3 p) {
 
 float sea_octave(float2 uv, float choppy) {
     uv += noise2(uv);
-    float2 wv = 1.0 - abs(sin(uv));
-    float2 swv = abs(cos(uv));
+    float2 sv, cv;
+    sincos(uv, sv, cv);
+    float2 wv = 1.0 - abs(sv);
+    float2 swv = abs(cv);
     wv = lerp(wv, swv, wv);
     return pow(1.0 - pow(wv.x * wv.y, 0.65), choppy);
 }

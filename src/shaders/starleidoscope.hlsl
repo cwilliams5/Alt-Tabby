@@ -75,7 +75,9 @@ float3 StarLayer(float2 uv) {
 }
 
 float2 N(float angle) {
-    return float2(sin(angle), cos(angle));
+    float s, c;
+    sincos(angle, s, c);
+    return float2(s, c);
 }
 
 float4 PSMain(PSInput input) : SV_Target {

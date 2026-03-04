@@ -25,8 +25,8 @@ float4 PSMain(PSInput input) : SV_Target {
     uv -= float2(0.5, 0.5 * aspect_ratio);
 
     float rot = radians(-30.0 - time);
-    float cr = cos(rot);
-    float sr = sin(rot);
+    float sr, cr;
+    sincos(rot, sr, cr);
     uv = float2(cr * uv.x + sr * uv.y, -sr * uv.x + cr * uv.y);
 
     float2 scaled_uv = 20.0 * uv;

@@ -141,8 +141,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float t = time;
     float speed = 0.004;
-    float st = sin(t * speed);
-    float ct = cos(t * speed);
+    float st, ct;
+    sincos(t * speed, st, ct);
 
     cam.p = float3(st, st, ct) * float3(4., 3.5, 4.);
     cam.p = normalize(cam.p);

@@ -44,7 +44,7 @@ float4 PSMain(PSInput input) : SV_Target {
     // Vignette border
     float vigAmt = 5.0;
     float vignette = (1.0 - vigAmt * (uv.y - 0.5) * (uv.y - 0.5)) * (1.0 - vigAmt * (uv.x - 0.5) * (uv.x - 0.5));
-    float extrusion = (col.x + col.y + col.z) / 4.0;
+    float extrusion = (col.x + col.y + col.z) * 0.25;
     extrusion *= 1.5;
     extrusion *= vignette;
 

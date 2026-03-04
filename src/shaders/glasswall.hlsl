@@ -61,10 +61,12 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 co = st;
     float len;
+    float _t620 = time * 0.620;
+    float _t164 = time * 0.164;
     for (int i = 0; i < 3; i++) {
         len = length(co);
-        co.x += sin(co.y + time * 0.620) * 0.1;
-        co.y += cos(co.x + time * 0.164) * 0.1;
+        co.x += sin(co.y + _t620) * 0.1;
+        co.y += cos(co.x + _t164) * 0.1;
     }
     len -= 3.0;
 
@@ -79,10 +81,10 @@ float4 PSMain(PSInput input) : SV_Target {
     r.y = fbm(st + q + float2(0.34, -0.57) + 0.4 * time);
 
     for (float j = 1.0; j < 3.0; j++) {
-        r += 1.0 / abs(glsl_mod(st.y, 1.2 * j) * 500.0) * 1.0;       // Vertical line
-        r += 1.0 / abs(glsl_mod(st.x, 0.3 * j) * 500.0) * 1.0;       // Horizontal line
-        r += 1.0 / abs(glsl_mod(st.y + st.x, 0.6 * j) * 500.0) * 1.0; // Diagonal line
-        r += 1.0 / abs(glsl_mod(st.y - st.x, 0.6 * j) * 500.0) * 1.0; // Diagonal line
+        r += 0.002 / abs(glsl_mod(st.y, 1.2 * j));       // Vertical line
+        r += 0.002 / abs(glsl_mod(st.x, 0.3 * j));       // Horizontal line
+        r += 0.002 / abs(glsl_mod(st.y + st.x, 0.6 * j)); // Diagonal line
+        r += 0.002 / abs(glsl_mod(st.y - st.x, 0.6 * j)); // Diagonal line
     }
     float f = fbm(st + r);
 

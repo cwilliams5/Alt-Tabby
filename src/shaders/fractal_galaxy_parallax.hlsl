@@ -23,15 +23,16 @@ float getFreq(float band) {
                + 0.1 * sin(time * (1.3 + band * 0.7));
 }
 
-float field(float3 p, float s) {
-    float strength = 7.0 + 0.03 * log(1.e-6 + frac(sin(time) * 4373.11));
+static const float inv7 = 1.0 / 7.0;
+
+float field(float3 p, float s, float strength) {
     float accum = s / 4.0;
     float prev = 0.0;
     float tw = 0.0;
     for (int i = 0; i < 26; ++i) {
         float mag = dot(p, p);
         p = abs(p) / mag + float3(-0.5, -0.4, -1.5);
-        float w = exp(-(float)i / 7.0);
+        float w = exp(-(float)i * inv7);
         accum += w * exp(-strength * pow(abs(mag - prev), 2.2));
         tw += w;
         prev = mag;
@@ -40,15 +41,14 @@ float field(float3 p, float s) {
 }
 
 // Less iterations for second layer
-float field2(float3 p, float s) {
-    float strength = 7.0 + 0.03 * log(1.e-6 + frac(sin(time) * 4373.11));
+float field2(float3 p, float s, float strength) {
     float accum = s / 4.0;
     float prev = 0.0;
     float tw = 0.0;
     for (int i = 0; i < 18; ++i) {
         float mag = dot(p, p);
         p = abs(p) / mag + float3(-0.5, -0.4, -1.5);
-        float w = exp(-(float)i / 7.0);
+        float w = exp(-(float)i * inv7);
         accum += w * exp(-strength * pow(abs(mag - prev), 2.2));
         tw += w;
         prev = mag;
@@ -76,13 +76,14 @@ float4 PSMain(PSInput input) : SV_Target {
     float freqs2 = getFreq(2.0);
     float freqs3 = getFreq(3.0);
 
-    float t = field(p, freqs2);
+    float strength = 7.0 + 0.03 * log(1.e-6 + frac(sin(time) * 4373.11));
+    float t = field(p, freqs2, strength);
     float v = (1.0 - exp((abs(uv.x) - 1.0) * 6.0)) * (1.0 - exp((abs(uv.y) - 1.0) * 6.0));
 
     // Second Layer
     float3 p2 = float3(uvs / (4.0 + sin(time * 0.11) * 0.2 + 0.2 + sin(time * 0.15) * 0.3 + 0.4), 1.5) + float3(2.0, -1.3, -1.0);
     p2 += 0.25 * float3(sin(time / 16.0), sin(time / 12.0), sin(time / 128.0));
-    float t2 = field2(p2, freqs3);
+    float t2 = field2(p2, freqs3, strength);
     float4 c2 = lerp(0.4, 1.0, v) * float4(1.3 * t2 * t2 * t2, 1.8 * t2 * t2, t2 * freqs0, t2);
 
     // Stars

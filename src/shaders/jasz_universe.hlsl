@@ -59,7 +59,7 @@ float getNoiseFromVec3(float3 v) {
     return lerp(n.x, n.y, f.x);
 }
 
-float volumetricFog(float3 v, float noiseMod) {
+float volumetricFog(float3 v, float noiseMod, float3 timeOffset) {
     float noise = 0.0;
     float alpha = 1.0;
     float3 pt = v;
@@ -72,7 +72,7 @@ float volumetricFog(float3 v, float noiseMod) {
     noise *= 0.575;
 
     // MUTATE_SHAPE enabled: animate fog edge over time
-    float edge = 0.1 + getNoiseFromVec3(v * 0.5 + float3(time * 0.03, time * 0.03, time * 0.03)) * 0.8;
+    float edge = 0.1 + getNoiseFromVec3(v * 0.5 + timeOffset) * 0.8;
 
     noise = (0.5 - abs(edge * (1.0 + noiseMod * 0.05) - noise)) * 2.0;
     return (smoothstep(1.0 - SHARPNESS * 2.0, 1.0 - SHARPNESS, noise * noise)
@@ -87,10 +87,11 @@ float3 fogMarch(float3 rayStart, float3 rayDirection, float t, float disMod) {
     float stepLen = RENDER_DISTANCE / (float)RAYS_COUNT;
     float3 fog = float3(0.0, 0.0, 0.0);
     float3 pt = rayStart;
+    float3 timeOffset = (float3)(t * 0.03);
 
     for (int i = 0; i < RAYS_COUNT; i++) {
         pt += rayDirection * stepLen;
-        fog += volumetricFog(pt, disMod)
+        fog += volumetricFog(pt, disMod, timeOffset)
              * lerp(COLOR1, COLOR2 * (1.0 + disMod * 0.5),
                     getNoiseFromVec3((pt + float3(12.51, 52.167, 1.146)) * 0.5))
              * lerp(1.0, getNoiseFromVec3(pt * 40.0) * 2.0, DITHER)

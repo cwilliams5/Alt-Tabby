@@ -51,8 +51,9 @@ float sdEllipse(in float2 p, in float2 ab) {
     float co;
     if (d < 0.0) {
         float h = acos(q/c3)/3.0;
-        float s = cos(h);
-        float tv = sin(h)*sqrt(3.0);
+        float sh, s;
+        sincos(h, sh, s);
+        float tv = sh*sqrt(3.0);
         float rx = sqrt(-c*(s + tv + 2.0) + m2);
         float ry = sqrt(-c*(s - tv + 2.0) + m2);
         co = (ry + sign(l)*rx + abs(g)/(rx*ry) - m)/2.0;

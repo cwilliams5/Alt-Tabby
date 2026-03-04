@@ -44,10 +44,11 @@ float sdRect(float2 p, float2 b) {
 float tex(float2 p, float z) {
     p = foldRotate(p, 8.0);
     float2 q = (frac(p / 10.0) - 0.5) * 10.0;
+    static const float2x2 rotPIover4 = float2x2(0.7071068, 0.7071068, -0.7071068, 0.7071068);
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 2; j++) {
             q = abs(q) - 0.25;
-            q = mul(rot(PI * 0.25), q);
+            q = mul(rotPIover4, q);
         }
         q = abs(q) - float2(1.0, 1.5);
         q = mul(rot(PI * 0.25 * z), q);

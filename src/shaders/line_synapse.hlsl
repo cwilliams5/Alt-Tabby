@@ -53,7 +53,9 @@ float2 N22(float2 p) {
 
 float2 GetPos(float2 id, float2 offs) {
     float2 n = N22(id + offs) * time;
-    return offs + cos(n) * sin(n) * 0.5;
+    float2 sn, cn;
+    sincos(n, sn, cn);
+    return offs + cn * sn * 0.5;
 }
 
 float Line(float2 p, float2 a, float2 b) {

@@ -44,8 +44,7 @@ float GetInterpolant(float Min, float Max, float CurrentValue) {
     return (CurrentValue - Min) / (Max - Min);
 }
 
-float2x2 ZRotate_Skewed(float Angle) {
-    float Skew = 1.0 - OscilateSinScalar(0.0, ROTATION_MATRIX_MAX_SKEW, ROTATION_MATRIX_SKEW_PERIOD);
+float2x2 ZRotate_Skewed(float Angle, float Skew) {
     Angle = cos(Angle * 0.1) * cos(Angle * 0.7) * cos(Angle * 0.73) * 2.0;
     float sA, cA, sAS, cAS;
     sincos(Angle, sA, cA);
@@ -88,9 +87,10 @@ float4 PSMain(PSInput input) : SV_Target {
     float ScrollInterpolant = GetInterpolant(ZOOM_FACTOR_MIN, ZOOM_FACTOR_MAX, ScaleValue);
     float ScrollValue = lerp(SCROLL_SPEED_AT_MIN_ZOOM, SCROLL_SPEED_AT_MAX_ZOOM, ScrollInterpolant);
 
+    float Skew = 1.0 - OscilateSinScalar(0.0, ROTATION_MATRIX_MAX_SKEW, ROTATION_MATRIX_SKEW_PERIOD);
     for (float i = 0.0; i < 1.0; i += LAYER_STEP_SIZE) {
         float2 uv2 = uv;
-        uv2 = mul(uv2, ZRotate_Skewed(time * i * i * 12.0 * LAYER_SEPERATION_FACTOR));
+        uv2 = mul(uv2, ZRotate_Skewed(time * i * i * 12.0 * LAYER_SEPERATION_FACTOR, Skew));
         uv2 *= ScaleValue * (i * i + 1.0);
         uv2.xy += ScrollValue + time * 0.125;
         Colour += SampleMaterial(uv2).xyz * LAYER_STEP_SIZE * 3.5;

@@ -95,8 +95,9 @@ float pattern(float2 p, out float c) {
     float2 q = float2(fbm(p + float2(0.0, 0.0)),
                        fbm(p + float2(s_c2 * 0.1, t * 0.02)));
 
-    c = fbm(p + 2.0 * q + float2(s_c1 + s_c2, -t * 0.01));
-    return fbm(p + 2.0 * q);
+    float2 p2q = p + 2.0 * q;
+    c = fbm(p2q + float2(s_c1 + s_c2, -t * 0.01));
+    return fbm(p2q);
 }
 
 float4 PSMain(PSInput input) : SV_Target {
