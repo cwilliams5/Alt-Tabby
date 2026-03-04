@@ -254,8 +254,8 @@ $CHECKS = @(
     @{
         Id       = "exe_name_dedup"
         File     = "shared\process_utils.ahk"
-        Desc     = "_ProcessUtils_BuildExeNameList uses StrLower + seenNames dedup"
-        Patterns = @("_ProcessUtils_BuildExeNameList(", "StrLower(")
+        Desc     = "ProcessUtils_BuildExeNameList uses StrLower + seenNames dedup"
+        Patterns = @("ProcessUtils_BuildExeNameList(", "StrLower(")
         AnyOf    = @("seenNames.Has(", "seenNames[")
     },
     @{

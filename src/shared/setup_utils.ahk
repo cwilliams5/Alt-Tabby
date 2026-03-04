@@ -806,7 +806,14 @@ _Update_FindExeDownloadUrl(jsonResponse) {
 
 ; Download update and apply it
 Update_DownloadAndApply(downloadUrl, newVersion) {
-    global cfg
+    global cfg, g_AdminToggleInProgress, APP_NAME
+
+    ; Guard: block if admin mode toggle is in progress (prevents race with UAC elevation)
+    if (IsSet(g_AdminToggleInProgress) && g_AdminToggleInProgress) {
+        ThemeMsgBox("An admin mode change is in progress. Please wait for it to complete before updating.", APP_NAME, "Icon!")
+        return
+    }
+
     ; Determine paths
     currentExe := A_ScriptFullPath
     exeDir := ""
@@ -929,6 +936,7 @@ Update_NeedsElevation(targetDir) {
 ;   cleanupSourceOnFailure - Delete source file if update fails
 ;   relaunchAfter - After success: show TrayTip, cleanup .old, relaunch+exit (default: true)
 ;   overwriteUserData - Copy config/blacklist even if target already has them (default: false)
+;   ensureShortcuts - Create Start Menu + Startup shortcuts if they don't exist (default: false)
 ;   killPids - Optional {gui:, pump:} PIDs for graceful shutdown before force-kill
 
 Update_ApplyCore(opts) {
@@ -943,6 +951,7 @@ Update_ApplyCore(opts) {
     cleanupSourceOnFailure := opts.HasOwnProp("cleanupSourceOnFailure") ? opts.cleanupSourceOnFailure : false
     relaunchAfter := opts.HasOwnProp("relaunchAfter") ? opts.relaunchAfter : true
     overwriteUserData := opts.HasOwnProp("overwriteUserData") ? opts.overwriteUserData : false
+    ensureShortcuts := opts.HasOwnProp("ensureShortcuts") ? opts.ensureShortcuts : false
     killPids := opts.HasOwnProp("killPids") ? opts.killPids : ""
 
     lockFile := ""
@@ -1078,6 +1087,15 @@ Update_ApplyCore(opts) {
         ; Recreate shortcuts to point to updated exe (Bug 5 fix)
         ; This ensures shortcuts work after exe rename + auto-update
         RecreateShortcuts()
+
+        ; When installing to PF and no shortcuts exist (e.g., wizard was skipped),
+        ; create them now. RecreateShortcuts only updates existing shortcuts.
+        if (ensureShortcuts) {
+            if (!FileExist(Shortcut_GetStartMenuPath()))
+                CreateShortcutForCurrentMode(Shortcut_GetStartMenuPath())
+            if (!FileExist(Shortcut_GetStartupPath()))
+                CreateShortcutForCurrentMode(Shortcut_GetStartupPath())
+        }
 
         ; Success — relaunch unless caller handles it (e.g., wizard)
         if (relaunchAfter) {

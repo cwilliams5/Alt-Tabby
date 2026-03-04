@@ -87,6 +87,9 @@ global g_BlacklistEditorPID := 0
 ; --- Admin mode cache (from launcher_tray.ahk, used by IsAdminModeFullyActive in setup_utils.ahk) ---
 global g_CachedAdminTaskActive := false
 
+; --- Admin toggle state (from launcher_tray.ahk, guarded by Update_DownloadAndApply in setup_utils.ahk) ---
+global g_AdminToggleInProgress := false
+
 ; --- Theme palette (from theme.ahk, used by launcher_about.ahk) ---
 global gTheme_Palette := {}
 
@@ -287,6 +290,11 @@ ThemeMsgBox(params*) {
 
 ; Setup utility mock (setup_utils.ahk)
 RecreateShortcuts(params*) {
+}
+
+; Shortcut creation mock (launcher_shortcuts.ahk, called by setup_utils.ahk ensureShortcuts)
+CreateShortcutForCurrentMode(params*) {
+    return true
 }
 
 ; Process pump mocks (window_list.ahk)
