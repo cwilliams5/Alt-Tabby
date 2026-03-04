@@ -38,7 +38,7 @@ gFX_BackdropSeedX: gui_animation, gui_interceptor
 gFX_BackdropSeedY: gui_animation, gui_interceptor
 gFX_BackdropSeedPhase: gui_animation, gui_interceptor
 gFX_BackdropDirSign: gui_animation, gui_interceptor
-gFX_BackdropStyle: gui_interceptor
+gFX_BackdropStyle: gui_effects, gui_interceptor
 gBGImg_EffectsReady: gui_bgimage, gui_effects
 gFX_ShaderIndex: gui_effects, gui_interceptor
 gFX_MouseX: gui_input
