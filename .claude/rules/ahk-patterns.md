@@ -25,6 +25,15 @@ MyFunc(name) {
 }
 ```
 
+## COM STA Message Pump Reentrancy
+
+D2D/DXGI/DWM COM calls pump the STA message loop, dispatching timer callbacks
+and keyboard hooks through AHK `Critical "On"`. Affected: BeginDraw, EndDraw,
+DrawBitmap, CreateEffect, SetWindowPos, ShowWindow, DwmFlush. Assume arbitrary
+callbacks fire during any COM call. Guard patterns need try/finally; animation
+timers must start AFTER rendering, not before. Never do I/O (FileAppend) in
+paths that fire per-STA-pump — 1000 pumps/paint × 30ms = 30s paint.
+
 ## Race Conditions & Critical Sections
 
 AHK v2 timers and hotkeys CAN interrupt each other. Use `Critical "On"` for:
