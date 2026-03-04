@@ -80,6 +80,7 @@ function Build-FuncBoundaryMap {
     param([string[]]$Lines)
     $bounds = [System.Collections.ArrayList]::new()
     for ($j = 0; $j -lt $Lines.Count; $j++) {
+        if ($Lines[$j].IndexOf('(') -lt 0) { continue }
         $m = $script:_rxFuncDef.Match($Lines[$j])
         if ($m.Success) {
             $candidate = $m.Groups[1].Value
