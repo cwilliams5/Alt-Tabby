@@ -256,14 +256,6 @@ _GUI_Main_Init() {
     if (cfg.PerfKeepInMemory)
         SetTimer(_GUI_LockWorkingSet, -5000)
 
-    ; Set up interceptor keyboard hooks — MUST be LAST (no hotkeys before data is populated)
-    ; Skip in testing mode to avoid intercepting developer's real keystrokes during test runs
-    if (!g_TestingMode) {
-        INT_SetupHotkeys()
-
-        ; Check initial bypass state based on current focused window
-        INT_SetBypassMode(INT_ShouldBypassWindow(0))
-    }
 }
 
 ; ========================= PRODUCER CALLBACKS =========================
@@ -654,6 +646,16 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     ; Register error and exit handlers
     OnError(_GUI_OnError)
     OnExit(_GUI_OnExit)
+
+    ; Set up interceptor keyboard hooks AFTER full GUI init (window, D2D RT, resources).
+    ; Previously in _GUI_Main_Init() — message pumps during GUI_CreateWindow() could
+    ; dispatch queued keyboard hooks before gGUI_Base/gD2D_RT existed.
+    if (!g_TestingMode) {
+        INT_SetupHotkeys()
+
+        ; Check initial bypass state based on current focused window
+        INT_SetBypassMode(INT_ShouldBypassWindow(0))
+    }
 
     Persistent()
 }

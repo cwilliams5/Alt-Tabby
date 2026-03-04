@@ -241,6 +241,13 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
             gStats_TabSteps += 1
 
 
+            ; Force-complete any pending hide-fade BEFORE populating display items.
+            ; Without this, the frame loop can complete the hide-fade between FREEZE
+            ; and the grace timer, calling _Anim_DoActualHide() which wipes
+            ; gGUI_DisplayItems — destroying this session's frozen list.
+            if (gAnim_HidePending)
+                Anim_ForceCompleteHide()
+
             ; Freeze: save ALL items (for workspace/monitor toggle), then filter
             ; Shallow copy — same item refs, independent array container
             gGUI_ToggleBase := gGUI_LiveItems.Clone()
@@ -639,15 +646,18 @@ _GUI_ShowOverlayWithFrozen() {
 
     gGUI_Revealed := false
 
-    ; Start show-fade animation (opacity 0→1)
+    ; Prepare show-fade animation: set alpha=0 so window is invisible until
+    ; the tween drives it up.  DO NOT start the tween timer yet — SetWindowPos
+    ; and ShowWindow below pump the STA message loop, which would dispatch the
+    ; animation timer and trigger a GUI_Repaint before the D2D render target is
+    ; resized.  That nested paint either renders at the old RT size (stretched)
+    ; or blocks on shader compilation and holds the reentrancy guard (blank).
+    ; The tween starts after resize + show + reveal, right before the first paint.
     global gAnim_OverlayOpacity
     if (cfg.PerfAnimationType != "None") {
-        ; Add WS_EX_LAYERED + alpha=0 BEFORE showing window — DWM fades the
-        ; entire composition (content + acrylic + shadow) via window-level alpha.
         Anim_AddLayered()
         DllCall("SetLayeredWindowAttributes", "ptr", gGUI_BaseH, "uint", 0, "uchar", 0, "uint", 2)
         gAnim_OverlayOpacity := 0.0
-        Anim_StartTween("showFade", 0.0, 1.0, 90, Anim_EaseOutQuad)
     } else {
         gAnim_OverlayOpacity := 1.0
     }
@@ -656,6 +666,8 @@ _GUI_ShowOverlayWithFrozen() {
     t1 := QPC()
     rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
     GUI_ResizeToRows(rowsDesired, true)  ; skipFlush — we flush after paint
+    global gGUI_LastRowsDesired
+    gGUI_LastRowsDesired := rowsDesired  ; Sync so first paint skips unnecessary pre-render
     tShow_Resize := QPC() - t1
 
     ; ===== Show window BEFORE painting =====
@@ -696,10 +708,22 @@ _GUI_ShowOverlayWithFrozen() {
 
     gGUI_Revealed := true
 
+    ; Paint FIRST while window is invisible (alpha=0).
+    ; The first paint can take 1-2s on fresh launch (lazy D2D resource creation,
+    ; GPU effect compilation).  If the animation tween started before this paint,
+    ; the frame loop would drive alpha > 0 during STA pumps inside PaintOverlay,
+    ; showing the acrylic backdrop with no D2D content (blank overlay).
+    ; By painting before starting the tween, the window stays invisible until
+    ; content is rendered.
     ; ===== TIMING: Paint on visible window (Present works) =====
     t1 := QPC()
     GUI_Repaint()
     tShow_Repaint := QPC() - t1
+
+    ; NOW start the show-fade tween — first paint is done, content is rendered.
+    ; Animation timer can safely call GUI_Repaint from here on.
+    if (cfg.PerfAnimationType != "None")
+        Anim_StartTween("showFade", 0.0, 1.0, 90, Anim_EaseOutQuad)
 
     ; RACE FIX: If Alt was released during paint, hide and abort.
     if (gGUI_State != "ACTIVE") {

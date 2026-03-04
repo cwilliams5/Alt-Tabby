@@ -85,9 +85,18 @@ GUI_Repaint() {
     ; creating nested repaints that paint intermediate state immediately overwritten.
     ; Guard skips nested calls; the outer paint finishes with correct final state. (#90)
     global gPaint_RepaintInProgress
-    if (gPaint_RepaintInProgress)
+    global gFR_Enabled, FR_EV_PAINT_RESIZE, FR_EV_PAINT_RESIZE_DONE, FR_EV_PAINT, FR_EV_PAINT_BLOCKED
+    if (gPaint_RepaintInProgress) {
+        if (gFR_Enabled)
+            FR_Record(FR_EV_PAINT_BLOCKED, 1)
         return
+    }
     gPaint_RepaintInProgress := true
+
+    ; try/finally ensures reentrancy guard is ALWAYS reset, even on exception.
+    ; Without this, any throw between here and function exit permanently blocks
+    ; all future paints (overlay stays blank).
+    try {
 
     Profiler.Enter("GUI_Repaint") ; @profile
     Critical "On"  ; Protect D2D render target from concurrent hotkey interruption
@@ -95,7 +104,6 @@ GUI_Repaint() {
     global gGUI_State, cfg
     global gPaint_LastPaintTick, gPaint_SessionPaintCount
     global gGdip_IconCache, gD2D_Res, gD2D_ResScale, gD2D_RT
-    global gFR_Enabled, FR_EV_PAINT_RESIZE, FR_EV_PAINT_RESIZE_DONE
 
     ; ===== TIMING: Start =====
     diagTiming := cfg.DiagPaintTimingLog
@@ -188,6 +196,10 @@ GUI_Repaint() {
         t1 := QPC()
 
     if (!preRendered && gD2D_RT) {
+        ; FR: record paint path taken
+        if (gFR_Enabled)
+            FR_Record(FR_EV_PAINT, paintNum, count, 0, needsResize)
+
         gD2D_RT.BeginDraw()
 
         ; Clear the render target. Acrylic/AeroGlass: transparent so compositor
@@ -221,7 +233,19 @@ GUI_Repaint() {
         }
         if (diagTiming)
             tEndDraw := QPC() - t1
+    } else if (!gD2D_RT) {
+        ; FR: render target is null — paint completely skipped
+        if (gFR_Enabled)
+            FR_Record(FR_EV_PAINT_BLOCKED, 2)
+        if (diagTiming) {
+            tBeginDraw := 0
+            tPaintOverlay := 0
+            tEndDraw := 0
+        }
     } else {
+        ; preRendered=true path — content already painted by _Paint_PreRenderForResize
+        if (gFR_Enabled)
+            FR_Record(FR_EV_PAINT, paintNum, count, 1, needsResize)
         if (diagTiming) {
             tBeginDraw := 0
             tPaintOverlay := 0
@@ -244,7 +268,10 @@ GUI_Repaint() {
             Paint_Log("  Timing: total=" Round(tTotalMs, 2) "ms | computeRect=" Round(tComputeRect, 2) " resize=" Round(tResize, 2) " beginDraw=" Round(tBeginDraw, 2) " paintOverlay=" Round(tPaintOverlay, 2) " endDraw=" Round(tEndDraw, 2) " reveal=" Round(tReveal, 2))
     }
     Profiler.Leave() ; @profile
-    gPaint_RepaintInProgress := false
+
+    } finally {
+        gPaint_RepaintInProgress := false
+    }
 }
 
 ; ========================= ATOMIC RESIZE PRE-RENDER =========================
@@ -287,6 +314,8 @@ _Paint_PreRenderForResize(items, sel, phX, phY, phW, phH, scale) {
     ; --- Step 2: Pre-render full overlay to offscreen bitmap ---
     pOldTarget := 0
     ComCall(75, gD2D_RT, "ptr*", &pOldTarget)  ; GetTarget
+    if (!pOldTarget)
+        return false
     ComCall(74, gD2D_RT, "ptr", tmpBmp.ptr)     ; SetTarget → offscreen
 
     try {

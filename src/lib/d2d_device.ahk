@@ -100,8 +100,8 @@ class ID2D1DeviceContext extends ID2DBase {
     SetTextAntialiasMode(textAntialiasMode) => ComCall(34, this, 'uint', textAntialiasMode, 'int')
 
     Clear(clearColor) => ComCall(47, this, 'ptr', clearColor, 'int')
-    BeginDraw() => ComCall(48, this, 'int')
-    EndDraw(&tag1 := 0, &tag2 := 0) => ComCall(49, this, 'int64*', &tag1 := 0, 'int64*', &tag2 := 0, 'int')
+    BeginDraw() => ComCall(48, this, 'int')  ; void in COM — 'int' ignores undefined RAX
+    EndDraw(&tag1 := 0, &tag2 := 0) => ComCall(49, this, 'int64*', &tag1 := 0, 'int64*', &tag2 := 0, 'hresult')
 
     ; ID2D1RenderTarget::PushLayer (vtable 40) — redirect drawing into a layer.
     ; Win8+: pass layer=0 for an auto-managed temporary layer.
