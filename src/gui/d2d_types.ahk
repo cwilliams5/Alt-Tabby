@@ -80,32 +80,6 @@ D2D_SizeF(w, h) { ; lint-ignore: dead-function
 ; ========================= D2D1_RENDER_TARGET_PROPERTIES (28 bytes) =========================
 ; Used with CreateHwndRenderTarget
 
-D2D_RenderTargetProps(dpiX := 0.0, dpiY := 0.0, alphaMode := 1) { ; lint-ignore: dead-function
-    ; alphaMode: 0=Unknown, 1=Premultiplied, 2=Straight, 3=Ignore
-    buf := Buffer(28, 0)
-    ; type (D2D1_RENDER_TARGET_TYPE): 0 = DEFAULT (auto hw/sw)
-    ; pixelFormat: DXGI_FORMAT (0=UNKNOWN) at offset 4, alphaMode at offset 8
-    NumPut("uint", alphaMode, buf, 8)
-    NumPut("float", Float(dpiX), buf, 12)
-    NumPut("float", Float(dpiY), buf, 16)
-    ; usage (D2D1_RENDER_TARGET_USAGE): 0 = NONE at offset 20
-    ; minLevel: 0 = DEFAULT at offset 24
-    return buf
-}
-
-; ========================= D2D1_HWND_RENDER_TARGET_PROPERTIES =========================
-; Layout: { HWND hwnd, D2D1_SIZE_U pixelSize (8), D2D1_PRESENT_OPTIONS }
-; Size: A_PtrSize + 12
-
-D2D_HwndRenderTargetProps(hwnd, w, h, presentOptions := 0) { ; lint-ignore: dead-function
-    buf := Buffer(A_PtrSize + 12, 0)
-    NumPut("uptr", hwnd, buf, 0)
-    NumPut("uint", w, buf, A_PtrSize)
-    NumPut("uint", h, buf, A_PtrSize + 4)
-    NumPut("uint", presentOptions, buf, A_PtrSize + 8)
-    return buf
-}
-
 ; ========================= D2D1_BITMAP_PROPERTIES (20 bytes) =========================
 ; Layout: { D2D1_PIXEL_FORMAT pixelFormat (8), float dpiX, float dpiY }
 
@@ -221,9 +195,8 @@ global D2D1_ALPHA_MODE_PREMULTIPLIED := 1 ; lint-ignore: dead-global
 global D2D1_ANTIALIAS_MODE_PER_PRIMITIVE := 0 ; lint-ignore: dead-global
 global D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE := 2 ; lint-ignore: dead-global
 global D2D1_DRAW_TEXT_OPTIONS_CLIP := 2 ; lint-ignore: dead-global
-global D2D1_PRESENT_OPTIONS_NONE := 0 ; lint-ignore: dead-global
-global D2D1_PRESENT_OPTIONS_IMMEDIATELY := 2 ; lint-ignore: dead-global
 global DXGI_FORMAT_B8G8R8A8_UNORM := 87 ; lint-ignore: dead-global
+global DXGI_FORMAT_UNKNOWN := 0 ; lint-ignore: dead-global
 
 ; DXGI / D3D11 / D2D1.1 enums
 global DXGI_SWAP_EFFECT_FLIP_DISCARD := 4 ; lint-ignore: dead-global

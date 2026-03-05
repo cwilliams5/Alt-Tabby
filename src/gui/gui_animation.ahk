@@ -325,14 +325,18 @@ _Anim_DoActualHide() {
 
     GUI_ClearHoverState()
 
-    ; Clear D2D surface
+    ; Clear D2D surface — ensures clean swap chain buffer for next Show
     if (gD2D_RT) {
         try {
-            gD2D_RT.BeginDraw()
-            gD2D_RT.Clear(D2D_ColorF(0x00000000))
-            gD2D_RT.EndDraw()
-            D2D_Present()
+            if (D2D_AcquireBackBuffer()) {
+                gD2D_RT.BeginDraw()
+                gD2D_RT.Clear(D2D_ColorF(0x00000000))
+                gD2D_RT.EndDraw()
+                D2D_ReleaseBackBuffer()
+                D2D_Present(0)  ; Immediate — about to hide
+            }
         } catch {
+            D2D_ReleaseBackBuffer()
         }
     }
 

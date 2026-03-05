@@ -180,6 +180,13 @@ class ID2D1Bitmap1 extends ID2DBase {
 
 class IDXGIDevice extends ID2DBase {
     static IID := '{54ec77fa-1377-44e6-8c32-88fd5f44c84c}'
+
+    ; IDXGIDevice::GetAdapter() → IDXGIAdapter
+    ; IUnknown(0-2), IDXGIObject(3-6), GetAdapter(7)
+    GetAdapter() {
+        ComCall(7, this, 'ptr*', &pAdapter := 0, 'hresult')
+        return IDXGIAdapter(pAdapter)
+    }
 }
 
 class IDXGIAdapter extends ID2DBase {
@@ -206,6 +213,15 @@ class IDXGIFactory2 extends ID2DBase {
     CreateSwapChainForHwnd(device, hwnd, desc, fullscreenDesc := 0, restrictToOutput := 0) {
         ComCall(15, this, 'ptr', device.ptr, 'ptr', hwnd, 'ptr', desc,
             'ptr', fullscreenDesc, 'ptr', restrictToOutput, 'ptr*', &pSwapChain := 0, 'hresult')
+        return IDXGISwapChain1(pSwapChain)
+    }
+
+    ; IDXGIFactory2::CreateSwapChainForComposition — vtable 24
+    ; (16=CreateSwapChainForCoreWindow, 17=GetSharedResourceAdapterLuid,
+    ;  18-20=StereoStatus, 21-23=OcclusionStatus, 24=CreateSwapChainForComposition)
+    CreateSwapChainForComposition(device, desc, restrictToOutput := 0) {
+        ComCall(24, this, 'ptr', device.ptr, 'ptr', desc,
+            'ptr', restrictToOutput, 'ptr*', &pSwapChain := 0, 'hresult')
         return IDXGISwapChain1(pSwapChain)
     }
 }
@@ -236,6 +252,49 @@ class IDXGISwapChain1 extends ID2DBase {
 
 class IDXGISurface extends ID2DBase {
     static IID := '{cafcb56c-6ac3-4889-bf47-9e23bbd260ec}'
+}
+
+; ========================= DirectComposition =========================
+
+class IDCompositionDevice extends ID2DBase {
+    static IID := '{C37EA93A-E7AA-450D-B16F-9746CB0407F3}'
+
+    ; IDCompositionDevice::Commit() — present visual tree changes
+    ; IUnknown(0-2), Commit(3)
+    Commit() => ComCall(3, this, 'hresult')
+
+    ; IDCompositionDevice::CreateTargetForHwnd(hwnd, topmost) → IDCompositionTarget
+    ; IUnknown(0-2), Commit(3), WaitForCommitCompletion(4),
+    ; GetFrameStatistics(5), CreateTargetForHwnd(6)
+    CreateTargetForHwnd(hwnd, topmost := true) {
+        ComCall(6, this, 'ptr', hwnd, 'int', topmost ? 1 : 0, 'ptr*', &pTarget := 0, 'hresult')
+        return IDCompositionTarget(pTarget)
+    }
+
+    ; IDCompositionDevice::CreateVisual() → IDCompositionVisual
+    ; vtable 7
+    CreateVisual() {
+        ComCall(7, this, 'ptr*', &pVisual := 0, 'hresult')
+        return IDCompositionVisual(pVisual)
+    }
+}
+
+class IDCompositionTarget extends ID2DBase {
+    static IID := '{EACDD04C-117E-4E17-88F4-D1B12B0E3D89}'
+
+    ; IDCompositionTarget::SetRoot(visual) — set root visual of the composition
+    ; IUnknown(0-2), SetRoot(3)
+    SetRoot(visual) => ComCall(3, this, 'ptr', visual is Integer ? visual : visual.ptr, 'hresult')
+}
+
+class IDCompositionVisual extends ID2DBase {
+    static IID := '{4D93059D-097B-4651-9A60-F0F25116E2F2}'
+
+    ; IDCompositionVisual::SetContent(content) — bind swap chain to visual
+    ; IUnknown(0-2), SetOffsetX(3-4), SetOffsetY(5-6), SetTransform(7-8),
+    ; SetTransformParent(9), SetEffect(10), SetBitmapInterpolationMode(11),
+    ; SetBorderMode(12), SetClip(13-14), SetContent(15)
+    SetContent(content) => ComCall(15, this, 'ptr', content is Integer ? content : content.ptr, 'hresult')
 }
 
 ; NOTE: ID2D1Image is already defined in Direct2D.ahk (extends ID2D1Resource).

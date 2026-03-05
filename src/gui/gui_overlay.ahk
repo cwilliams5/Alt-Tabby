@@ -17,10 +17,16 @@ global gGUI_FocusBeforeShow := 0     ; Hwnd of foreground window before overlay 
 ; D2D factories and device pipeline (process-global, survive render target recreation)
 global gD2D_Factory := 0       ; ID2D1Factory1
 global gDW_Factory := 0        ; IDWriteFactory
-global gD2D_RT := 0            ; ID2D1DeviceContext (QI'd from HwndRenderTarget)
-global gD2D_HwndRT := 0        ; ID2D1HwndRenderTarget (raw ptr — for Resize + presentation)
+global gD2D_RT := 0            ; ID2D1DeviceContext (created from ID2D1Device)
 global gD2D_D3DDevice := 0     ; ID3D11Device (raw ptr, released via ObjRelease)
 global gD2D_D2DDevice := 0     ; ID2D1Device
+
+; DXGI SwapChain + DirectComposition pipeline (replaces HwndRenderTarget)
+global gD2D_SwapChain := 0     ; IDXGISwapChain1 (composition swap chain)
+global gD2D_BackBuffer := 0    ; ID2D1Bitmap1 (current frame, per-frame acquire/release)
+global gDComp_Device := 0      ; IDCompositionDevice
+global gDComp_Target := 0      ; IDCompositionTarget
+global gDComp_Visual := 0      ; IDCompositionVisual
 
 ; ========================= CONFIG-DRIVEN BACKDROP =========================
 
@@ -101,18 +107,20 @@ GUI_HideOverlay() {
     ; Stop hover polling and clear hover state
     GUI_ClearHoverState()
 
-    ; Clear D2D surface BEFORE hiding — HwndRenderTarget::Present() is silently
-    ; discarded for hidden windows (MSDN), so the last visible-frame content
-    ; persists on the surface.  Without this clear, the stale frame flashes
-    ; briefly on the next Show() before the new paint arrives.
+    ; Clear D2D surface BEFORE hiding — ensures a clean swap chain buffer
+    ; for the next Show().  SwapChain.Present() works for hidden windows
+    ; (unlike HwndRenderTarget), so the clear actually commits.
     if (gD2D_RT) {
         try {
-            gD2D_RT.BeginDraw()
-            gD2D_RT.Clear(D2D_ColorF(0x00000000))
-            gD2D_RT.EndDraw()
-            D2D_Present()
+            if (D2D_AcquireBackBuffer()) {
+                gD2D_RT.BeginDraw()
+                gD2D_RT.Clear(D2D_ColorF(0x00000000))
+                gD2D_RT.EndDraw()
+                D2D_ReleaseBackBuffer()
+                D2D_Present(0)  ; Immediate — about to hide
+            }
         } catch {
-            ; Best-effort clear before hide — failure handled by next paint cycle
+            D2D_ReleaseBackBuffer()
         }
     }
 
@@ -268,7 +276,8 @@ GUI_GetWindowRect(&x, &y, &w, &h, rowsToShow) {
 GUI_CreateWindow() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, cfg
-    global gD2D_Factory, gDW_Factory, gD2D_RT, gD2D_HwndRT, gD2D_D3DDevice, gD2D_D2DDevice
+    global gD2D_Factory, gDW_Factory, gD2D_RT, gD2D_D3DDevice, gD2D_D2DDevice
+    global gD2D_SwapChain, gDComp_Device, gDComp_Target, gDComp_Visual
 
     ; Create single window
     ; -DPIScale: all coordinates are raw physical pixels (D2D render target uses 96 DPI).
@@ -437,55 +446,91 @@ _D2D_InitFactories() {
 }
 
 _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
-    global gD2D_Factory, gD2D_RT, gD2D_HwndRT
-    global D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PRESENT_OPTIONS_NONE
+    global gD2D_Factory, gD2D_RT, gD2D_D3DDevice, gD2D_D2DDevice
+    global gD2D_SwapChain, gD2D_BackBuffer
+    global gDComp_Device, gDComp_Target, gDComp_Visual
     global D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE
+    global DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SWAP_EFFECT_FLIP_DISCARD
+    global DXGI_ALPHA_MODE_PREMULTIPLIED
 
     if (wPhys < 1)
         wPhys := 1
     if (hPhys < 1)
         hPhys := 1
 
-    ; Create HwndRenderTarget — supports per-pixel alpha with DwmExtendFrame.
-    ; 96 DPI = 1 D2D unit = 1 physical pixel (keeps existing coordinate math).
-    rtProps := D2D_RenderTargetProps(96.0, 96.0, D2D1_ALPHA_MODE_PREMULTIPLIED)
-    hwndRtProps := D2D_HwndRenderTargetProps(hwnd, wPhys, hPhys, D2D1_PRESENT_OPTIONS_NONE)
+    ; --- Step 1: Create SwapChain via DXGI factory chain ---
+    ; QI D3D11Device → IDXGIDevice → GetAdapter → GetParent → IDXGIFactory2
+    dxgiObj := ComObjQuery(gD2D_D3DDevice, IDXGIDevice.IID)
+    pDxgi := ComObjValue(dxgiObj)
+    ObjAddRef(pDxgi)
+    dxgiDev := IDXGIDevice(pDxgi)
 
-    ; ID2D1Factory::CreateHwndRenderTarget (vtable index 14)
-    ComCall(14, gD2D_Factory, 'ptr', rtProps, 'ptr', hwndRtProps, 'ptr*', &pRT := 0, 'hresult')
-    gD2D_HwndRT := pRT  ; Raw ptr — needed for Resize(), released via ObjRelease
+    adapter := dxgiDev.GetAdapter()
+    factory := adapter.GetParent()
 
-    ; QI for ID2D1DeviceContext — available on Win8+ when created from ID2D1Factory1.
-    ; Gives us GPU effects API while HwndRenderTarget handles alpha-correct presentation.
-    dcObj := ComObjQuery(pRT, ID2D1DeviceContext.IID)
-    pDC := ComObjValue(dcObj)
-    ObjAddRef(pDC)
-    gD2D_RT := ID2D1DeviceContext(pDC)
+    ; 2 buffers, FLIP_DISCARD, premultiplied alpha for transparent overlay
+    desc := D2D_SwapChainDesc1(wPhys, hPhys,
+        DXGI_FORMAT_B8G8R8A8_UNORM, 2,
+        DXGI_SWAP_EFFECT_FLIP_DISCARD,
+        DXGI_ALPHA_MODE_PREMULTIPLIED)
 
+    ; CreateSwapChainForComposition (not ForHwnd) — DComp manages the visual,
+    ; decoupling presentation from HWND geometry for zero-exposure resize.
+    gD2D_SwapChain := factory.CreateSwapChainForComposition(dxgiDev, desc)
+
+    ; --- Step 2: Create ID2D1DeviceContext directly from ID2D1Device ---
+    ; (No HwndRenderTarget intermediary — cleaner device-context-only pipeline)
+    gD2D_RT := gD2D_D2DDevice.CreateDeviceContext(0)
     gD2D_RT.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE)
     gD2D_RT.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE)
+
+    ; --- Step 3: Create DirectComposition visual tree ---
+    ; DComp visual shows last committed frame during resize — zero stale-pixel exposure.
+    #DllLoad 'dcomp.dll'
+    if DllCall('ole32\CLSIDFromString', 'str', IDCompositionDevice.IID, 'ptr', iid := Buffer(16, 0))
+        throw OSError()
+    DllCall('dcomp\DCompositionCreateDevice',
+        'ptr', dxgiDev.ptr,
+        'ptr', iid,
+        'ptr*', &pDComp := 0, 'hresult')
+    gDComp_Device := IDCompositionDevice(pDComp)
+
+    gDComp_Target := gDComp_Device.CreateTargetForHwnd(hwnd, true)
+    gDComp_Visual := gDComp_Device.CreateVisual()
+    gDComp_Visual.SetContent(gD2D_SwapChain)
+    gDComp_Target.SetRoot(gDComp_Visual)
+    gDComp_Device.Commit()
 }
 
 D2D_ResizeRenderTarget(wPhys, hPhys) {
-    global gD2D_HwndRT
-    if (!gD2D_HwndRT)
+    global gD2D_SwapChain, gD2D_RT, gD2D_BackBuffer
+    global DXGI_FORMAT_UNKNOWN
+    if (!gD2D_SwapChain)
         return
     if (wPhys < 1)
         wPhys := 1
     if (hPhys < 1)
         hPhys := 1
-    sizeU := D2D_SizeU(wPhys, hPhys)
+
+    ; Release current back buffer reference before resize — ResizeBuffers
+    ; requires all outstanding buffer references to be released.
+    if (gD2D_BackBuffer) {
+        gD2D_RT.SetTarget(0)
+        gD2D_BackBuffer := 0
+    }
+
     try {
-        ; ID2D1HwndRenderTarget::Resize (vtable index 58: RT 0-56, CheckWindowState 57, Resize 58)
-        ComCall(58, gD2D_HwndRT, 'ptr', sizeU, 'hresult')
+        ; bufferCount=0 keeps existing count, DXGI_FORMAT_UNKNOWN keeps existing format
+        gD2D_SwapChain.ResizeBuffers(0, wPhys, hPhys, DXGI_FORMAT_UNKNOWN, 0)
     } catch {
         ; Resize failure — next paint will trigger device loss recovery
     }
 }
 
-; Recreate the D2D render target after D2DERR_RECREATE_TARGET.
+; Recreate the D2D pipeline after device loss (DXGI_ERROR_DEVICE_REMOVED etc.).
 D2D_HandleDeviceLoss() {
-    global gD2D_RT, gD2D_HwndRT, gGUI_BaseH
+    global gD2D_RT, gD2D_SwapChain, gD2D_BackBuffer, gGUI_BaseH
+    global gDComp_Device, gDComp_Target, gDComp_Visual
 
     ; Get current window size
     ox := 0
@@ -500,14 +545,19 @@ D2D_HandleDeviceLoss() {
     ; Release all dependent resources (brushes, text formats, icon cache)
     D2D_DisposeResources()
 
-    ; Release render target (DeviceContext + HwndRT)
-    gD2D_RT := 0  ; COM __Delete releases DeviceContext
-    if (gD2D_HwndRT) {
-        ObjRelease(gD2D_HwndRT)
-        gD2D_HwndRT := 0
-    }
+    ; Release back buffer + render target
+    gD2D_BackBuffer := 0
+    gD2D_RT := 0
 
-    ; Recreate render target (factories survive device loss)
+    ; Release DComp tree (visual → target → device)
+    gDComp_Visual := 0
+    gDComp_Target := 0
+    gDComp_Device := 0
+
+    ; Release swap chain
+    gD2D_SwapChain := 0
+
+    ; Recreate pipeline (factories survive device loss)
     _D2D_CreateRenderTarget(gGUI_BaseH, wPhys, hPhys)
 
     ; Recreate GPU effects
@@ -518,7 +568,8 @@ D2D_HandleDeviceLoss() {
 ; ========================= D2D CLEANUP =========================
 
 D2D_ShutdownAll() {
-    global gD2D_RT, gD2D_HwndRT
+    global gD2D_RT, gD2D_SwapChain, gD2D_BackBuffer
+    global gDComp_Device, gDComp_Target, gDComp_Visual
     global gD2D_D2DDevice, gD2D_D3DDevice
     global gD2D_Factory, gDW_Factory
 
@@ -528,12 +579,17 @@ D2D_ShutdownAll() {
     ; Dispose resources (brushes, text formats, icon cache)
     D2D_DisposeResources()
 
-    ; Release render target
-    gD2D_RT := 0  ; COM __Delete releases DeviceContext
-    if (gD2D_HwndRT) {
-        ObjRelease(gD2D_HwndRT)
-        gD2D_HwndRT := 0
-    }
+    ; Release back buffer + render target
+    gD2D_BackBuffer := 0
+    gD2D_RT := 0
+
+    ; Release DComp tree (visual → target → device)
+    gDComp_Visual := 0
+    gDComp_Target := 0
+    gDComp_Device := 0
+
+    ; Release swap chain
+    gD2D_SwapChain := 0
 
     ; Release D2D device pipeline
     gD2D_D2DDevice := 0
@@ -604,9 +660,52 @@ D2D_IsHDRActive() {
     return false
 }
 
-; ========================= D2D PRESENT =========================
-; No-op: HwndRenderTarget auto-presents after EndDraw().
-; Kept for forward-compatibility with future swap chain pipeline.
+; ========================= D2D BACK BUFFER =========================
 
-D2D_Present() {
+; Acquire the current back buffer and bind it as the D2D render target.
+; Must be called BEFORE BeginDraw() each frame.
+; With FLIP_DISCARD, back buffer content is undefined after Present(),
+; so each frame gets a fresh buffer (~6μs per acquire).
+D2D_AcquireBackBuffer() {
+    global gD2D_SwapChain, gD2D_RT, gD2D_BackBuffer
+
+    if (!gD2D_SwapChain || !gD2D_RT)
+        return false
+
+    ; Static buffer: hot path (~120fps), avoid per-frame allocation
+    static bp1 := 0
+    if (!bp1) {
+        bp1 := Buffer(32, 0)
+        NumPut("uint", 87, bp1, 0)     ; DXGI_FORMAT_B8G8R8A8_UNORM
+        NumPut("uint", 1, bp1, 4)      ; D2D1_ALPHA_MODE_PREMULTIPLIED
+        NumPut("float", 96.0, bp1, 8)  ; dpiX
+        NumPut("float", 96.0, bp1, 12) ; dpiY
+        NumPut("uint", 0x3, bp1, 16)   ; TARGET | CANNOT_DRAW
+    }
+
+    surface := gD2D_SwapChain.GetBuffer(0)
+    gD2D_BackBuffer := gD2D_RT.CreateBitmapFromDxgiSurface(surface, bp1)
+    gD2D_RT.SetTarget(gD2D_BackBuffer)
+    return true
+}
+
+; Release the back buffer after EndDraw(). Must be called BEFORE Present().
+; Unbinding the target allows the swap chain to flip the buffer.
+D2D_ReleaseBackBuffer() {
+    global gD2D_RT, gD2D_BackBuffer
+    if (gD2D_BackBuffer) {
+        gD2D_RT.SetTarget(0)
+        gD2D_BackBuffer := 0  ; COM Release via __Delete
+    }
+}
+
+; ========================= D2D PRESENT =========================
+
+; Present the swap chain buffer to the compositor.
+; syncInterval=1 for VSync (normal frames), 0 for immediate (hide-clear).
+D2D_Present(syncInterval := 1) {
+    global gD2D_SwapChain
+    if (!gD2D_SwapChain)
+        return
+    gD2D_SwapChain.Present(syncInterval, 0)
 }

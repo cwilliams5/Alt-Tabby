@@ -169,71 +169,82 @@ GUI_Repaint() {
     FX_PreRenderShaderLayer(phW, phH)
     BGImg_EnsureCache(phW, phH)
 
-    ; Atomic resize: pre-render overlay to offscreen bitmap, then resize + blit.
-    ; SetWindowPos changes window geometry instantly in DWM, exposing old pixels
-    ; from the last EndDraw. By painting to an offscreen bitmap FIRST, the blit
-    ; after resize takes <2ms — within one VSync even at 240Hz. (#152)
+    ; DComp decouples visual from HWND geometry (#153).  The order depends on
+    ; whether the window is growing or shrinking:
+    ;   Growing  (2→7): resize swap chain + paint + present FIRST, then
+    ;            SetWindowPos — DComp visual has correct content when HWND expands.
+    ;   Shrinking (7→2): SetWindowPos FIRST, then resize + paint — HWND clips the
+    ;            old DComp visual cleanly, then new frame replaces it.
+    ; This eliminates stale-pixel exposure in both directions.
     needsResize := (rowsChanged && gGUI_Revealed)
-    preRendered := false
+    isGrowing := (rowsDesired > oldRows)
     if (needsResize) {
         if (gFR_Enabled)
             FR_Record(FR_EV_PAINT_RESIZE, oldRows, rowsDesired, phW, phH)
-        if (gD2D_RT && phW > 0 && phH > 0)
-            preRendered := _Paint_PreRenderForResize(items, gGUI_Sel, phX, phY, phW, phH, scale)
-        if (!preRendered) {
-            ; Fallback: resize then normal paint below
-            Win_DwmFlush()
+        if (!isGrowing)
             Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-            if (gD2D_RT && phW > 0 && phH > 0)
-                D2D_ResizeRenderTarget(phW, phH)
-        }
+        if (gD2D_RT && phW > 0 && phH > 0)
+            D2D_ResizeRenderTarget(phW, phH)
     }
     if (diagTiming)
         tResize := QPC() - t1
 
-    ; ===== TIMING: D2D BeginDraw + PaintOverlay + EndDraw =====
+    ; ===== TIMING: D2D AcquireBackBuffer + BeginDraw + PaintOverlay + EndDraw =====
     if (diagTiming)
         t1 := QPC()
 
-    if (!preRendered && gD2D_RT) {
-        ; FR: record paint path taken
-        if (gFR_Enabled)
-            FR_Record(FR_EV_PAINT, paintNum, count, 0, needsResize)
+    if (gD2D_RT) {
+        if (!D2D_AcquireBackBuffer()) {
+            ; FR: back buffer acquire failed
+            if (gFR_Enabled)
+                FR_Record(FR_EV_PAINT_BLOCKED, 3)
+            if (diagTiming) {
+                tBeginDraw := 0
+                tPaintOverlay := 0
+                tEndDraw := 0
+            }
+        } else {
+            ; FR: record paint path taken
+            if (gFR_Enabled)
+                FR_Record(FR_EV_PAINT, paintNum, count, 0, needsResize)
 
-        gD2D_RT.BeginDraw()
+            gD2D_RT.BeginDraw()
 
-        ; Clear the render target. Acrylic/AeroGlass: transparent so compositor
-        ; backdrop shows through. Solid: paint the tint color directly via D2D
-        ; (SWCA gradient conflicts with DwmExtendFrame).
-        clearColor := (cfg.GUI_BackdropStyle = "Solid") ? cfg.GUI_AcrylicColor : 0x00000000
-        gD2D_RT.Clear(D2D_ColorF(clearColor))
+            ; Clear the render target. Acrylic/AeroGlass: transparent so compositor
+            ; backdrop shows through. Solid: paint the tint color directly via D2D
+            ; (SWCA gradient conflicts with DwmExtendFrame).
+            clearColor := (cfg.GUI_BackdropStyle = "Solid") ? cfg.GUI_AcrylicColor : 0x00000000
+            gD2D_RT.Clear(D2D_ColorF(clearColor))
 
-        if (diagTiming)
-            tBeginDraw := QPC() - t1
-
-        ; ===== TIMING: PaintOverlay (the big one) =====
-        if (diagTiming)
-            t1 := QPC()
-
-        _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
-
-        if (diagTiming)
-            tPaintOverlay := QPC() - t1
-
-        ; ===== TIMING: EndDraw =====
-        if (diagTiming)
-            t1 := QPC()
-        try {
-            gD2D_RT.EndDraw()
-            D2D_Present()
-        } catch as e {
-            D2D_HandleDeviceLoss()
             if (diagTiming)
-                Paint_Log("  ** D2D DEVICE LOSS — full pipeline recreated")
+                tBeginDraw := QPC() - t1
+
+            ; ===== TIMING: PaintOverlay (the big one) =====
+            if (diagTiming)
+                t1 := QPC()
+
+            _GUI_PaintOverlay(items, gGUI_Sel, phW, phH, scale, diagTiming)
+
+            if (diagTiming)
+                tPaintOverlay := QPC() - t1
+
+            ; ===== TIMING: EndDraw + Present =====
+            if (diagTiming)
+                t1 := QPC()
+            try {
+                gD2D_RT.EndDraw()
+                D2D_ReleaseBackBuffer()
+                D2D_Present()
+            } catch as e {
+                D2D_ReleaseBackBuffer()
+                D2D_HandleDeviceLoss()
+                if (diagTiming)
+                    Paint_Log("  ** D2D DEVICE LOSS — full pipeline recreated")
+            }
+            if (diagTiming)
+                tEndDraw := QPC() - t1
         }
-        if (diagTiming)
-            tEndDraw := QPC() - t1
-    } else if (!gD2D_RT) {
+    } else {
         ; FR: render target is null — paint completely skipped
         if (gFR_Enabled)
             FR_Record(FR_EV_PAINT_BLOCKED, 2)
@@ -242,16 +253,13 @@ GUI_Repaint() {
             tPaintOverlay := 0
             tEndDraw := 0
         }
-    } else {
-        ; preRendered=true path — content already painted by _Paint_PreRenderForResize
-        if (gFR_Enabled)
-            FR_Record(FR_EV_PAINT, paintNum, count, 1, needsResize)
-        if (diagTiming) {
-            tBeginDraw := 0
-            tPaintOverlay := 0
-            tEndDraw := 0
-        }
     }
+
+    ; Deferred HWND resize (growing only): swap chain already has the new-size
+    ; frame committed via Present() above.  SetWindowPos now just grows the
+    ; HWND to match — DComp visual shows correct content instantly.  (#153)
+    if (needsResize && isGrowing)
+        Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
 
     ; ===== TIMING: Reveal =====
     if (diagTiming)
@@ -281,125 +289,6 @@ GUI_Repaint() {
             Anim_EnsureTimer()
         }
     }
-}
-
-; ========================= ATOMIC RESIZE PRE-RENDER =========================
-; Paint the full overlay to an offscreen bitmap at the NEW dimensions, then
-; resize the window and blit the pre-rendered content in <2ms. This keeps the
-; stale-frame exposure (SetWindowPos → EndDraw) under one VSync period.
-; Returns true on success, false to fall back to normal resize+paint path.
-
-_Paint_PreRenderForResize(items, sel, phX, phY, phW, phH, scale) {
-    global gGUI_BaseH, gD2D_RT, cfg
-    global gFR_Enabled, FR_EV_PAINT_RESIZE_DONE
-
-    tStart := QPC()
-
-    ; --- Step 1: Create offscreen bitmap at new dimensions ---
-    ; D2D1_BITMAP_PROPERTIES1: BGRA premul, 96 dpi, TARGET-capable
-    static bp1 := 0
-    if (!bp1) {
-        bp1 := Buffer(32, 0)
-        NumPut("uint", 87, bp1, 0)     ; DXGI_FORMAT_B8G8R8A8_UNORM
-        NumPut("uint", 1, bp1, 4)      ; D2D1_ALPHA_MODE_PREMULTIPLIED
-        NumPut("float", 96.0, bp1, 8)  ; dpiX
-        NumPut("float", 96.0, bp1, 12) ; dpiY
-        NumPut("uint", 0x1, bp1, 16)   ; D2D1_BITMAP_OPTIONS_TARGET
-    }
-
-    sizeU := D2D_SizeU(phW, phH)
-    sizeVal := NumGet(sizeU, "int64")
-    pBmp := 0
-    try {
-        ; ID2D1DeviceContext::CreateBitmap1 (vtable 57)
-        ComCall(57, gD2D_RT, "int64", sizeVal, "ptr", 0, "uint", 0, "ptr", bp1, "ptr*", &pBmp, "hresult")
-    } catch {
-        return false
-    }
-    if (!pBmp)
-        return false
-    tmpBmp := ID2D1Bitmap1(pBmp)
-
-    ; --- Step 2: Pre-render full overlay to offscreen bitmap ---
-    pOldTarget := 0
-    ComCall(75, gD2D_RT, "ptr*", &pOldTarget)  ; GetTarget
-    if (!pOldTarget)
-        return false
-    ComCall(74, gD2D_RT, "ptr", tmpBmp.ptr)     ; SetTarget → offscreen
-
-    try {
-        gD2D_RT.BeginDraw()
-        clearColor := (cfg.GUI_BackdropStyle = "Solid") ? cfg.GUI_AcrylicColor : 0x00000000
-        gD2D_RT.Clear(D2D_ColorF(clearColor))
-        _GUI_PaintOverlay(items, sel, phW, phH, scale)
-        gD2D_RT.EndDraw()
-    } catch {
-        ; Offscreen paint failed — restore target and bail
-        try {
-            gD2D_RT.EndDraw()
-        } catch {
-        }
-        ComCall(74, gD2D_RT, "ptr", pOldTarget)
-        if (pOldTarget)
-            ObjRelease(pOldTarget)
-        return false
-    }
-
-    ; Restore HWND target
-    ComCall(74, gD2D_RT, "ptr", pOldTarget)
-    if (pOldTarget)
-        ObjRelease(pOldTarget)
-
-    ; --- Step 2b: Clear HWND surface so DWM has no stale pixels to show ---
-    ; Without this, SetWindowPos resizes the window and DWM immediately
-    ; composites the OLD frame cropped to the new size — showing stale row
-    ; content (e.g. workspace labels from the previous workspace) for 1 frame.
-    try {
-        gD2D_RT.BeginDraw()
-        gD2D_RT.Clear(D2D_ColorF(0x00000000))
-        gD2D_RT.EndDraw()
-    } catch {
-    }
-
-    tAfterPreRender := QPC()
-
-    ; --- Step 3: Fast resize + blit (the <2ms critical window) ---
-    Win_DwmFlush()
-    tAfterFlush := QPC()
-
-    Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-    D2D_ResizeRenderTarget(phW, phH)
-
-    try {
-        gD2D_RT.BeginDraw()
-        ; Blit pre-rendered content: full source → full target, linear interp
-        gD2D_RT.DrawBitmap(tmpBmp, 0, 1.0, 1, 0)
-        gD2D_RT.EndDraw()
-        D2D_Present()
-    } catch {
-        ; Device loss during blit — recover and let caller repaint normally
-        try {
-            gD2D_RT.EndDraw()
-        } catch {
-        }
-        D2D_HandleDeviceLoss()
-        return false
-    }
-
-    tAfterBlit := QPC()
-
-    ; FR timing (×100 to preserve 2 decimal places as integers)
-    if (gFR_Enabled) {
-        preRenderMs := Round((tAfterPreRender - tStart) * 100)
-        flushMs     := Round((tAfterFlush - tAfterPreRender) * 100)
-        exposureMs  := Round((tAfterBlit - tAfterFlush) * 100)
-        totalMs     := Round((tAfterBlit - tStart) * 100)
-        if (gFR_Enabled)
-            FR_Record(FR_EV_PAINT_RESIZE_DONE, preRenderMs, flushMs, exposureMs, totalMs)
-    }
-
-    ; tmpBmp released when it goes out of scope (COM destructor)
-    return true
 }
 
 _GUI_RevealBoth() {

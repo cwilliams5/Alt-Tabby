@@ -671,8 +671,9 @@ _GUI_ShowOverlayWithFrozen() {
     tShow_Resize := QPC() - t1
 
     ; ===== Show window BEFORE painting =====
-    ; D2D HwndRenderTarget::Present() is silently discarded for hidden windows,
-    ; so we must Show first.  The D2D surface was cleared to transparent on hide,
+    ; With SwapChain + DComp, Present() works for hidden windows (commits to the
+    ; swap chain buffer). We still Show first so the DComp visual tree is active
+    ; when the first frame is presented.  The D2D surface was cleared on hide,
     ; so the first visible frame is just the acrylic backdrop (no stale content).
     ; Window is NOT WS_EX_LAYERED, so DWM recomputes acrylic blur fresh on Show.
 
