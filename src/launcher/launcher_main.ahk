@@ -729,22 +729,19 @@ _Launcher_KillAllAltTabbyProcesses() {
             }
         }
     } catch {
-        ; Fallback: use taskkill with wildcard patterns
-        ; Note: taskkill doesn't support wildcards in /IM, so we try common patterns
-        currentExeName := ""
-        SplitPath(A_ScriptFullPath, &currentExeName)
-        fallbackPatterns := ["AltTabby.exe", "alttabby.exe", "Alt-Tabby.exe"]
-        if (currentExeName != "") {
-            alreadyCovered := false
-            for p in fallbackPatterns {
-                if (PathsEqual(p, currentExeName)) {
-                    alreadyCovered := true
-                    break
-                }
+        ; Fallback: use taskkill with known exe name patterns
+        ; ProcessUtils_BuildExeNameList covers current exe, config exe, and target exe.
+        ; Add "Alt-Tabby.exe" as extra fallback for common user renames.
+        fallbackPatterns := ProcessUtils_BuildExeNameList()
+        hasAltHyphen := false
+        for p in fallbackPatterns {
+            if (StrCompare(p, "Alt-Tabby.exe") = 0) {
+                hasAltHyphen := true
+                break
             }
-            if (!alreadyCovered)
-                fallbackPatterns.Push(currentExeName)
         }
+        if (!hasAltHyphen)
+            fallbackPatterns.Push("Alt-Tabby.exe")
         for pattern in fallbackPatterns {
             try RunWait('taskkill /F /IM "' pattern '" /FI "PID ne ' myPID '"',, "Hide")
         }

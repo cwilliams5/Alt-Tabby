@@ -448,9 +448,24 @@ if (g_AltTabbyMode = "install-to-pf") {
     try {
         state := ReadStateFile(TEMP_INSTALL_PF_STATE)
 
-        ; Call Update_ApplyCore directly instead of Launcher_DoUpdateInstalled —
-        ; "Install to PF" should never overwrite existing PF config with defaults.
-        ; The user's intent is "put my exe there", not "push my config there".
+        ; Check if PF target already has config — ask user whether to keep or replace.
+        ; When source is the running exe (copyMode), user's active settings may differ
+        ; from stale PF config. Let the user decide.
+        overwriteUserData := false
+        targetDir := ""
+        SplitPath(state.target, , &targetDir)
+        if (FileExist(targetDir "\config.ini")) {
+            configResult := ThemeMsgBox(
+                "The target folder already has settings (config.ini).`n`n"
+                "Replace with your current settings?`n`n"
+                "Yes = Copy your current settings to Program Files`n"
+                "No = Keep the existing Program Files settings",
+                APP_NAME " - Configuration",
+                "YesNo Icon?"
+            )
+            overwriteUserData := (configResult = "Yes")
+        }
+
         Update_ApplyCore({
             sourcePath: state.source,
             targetPath: state.target,
@@ -458,7 +473,8 @@ if (g_AltTabbyMode = "install-to-pf") {
             validatePE: false,
             copyMode: true,
             cleanupSourceOnFailure: false,
-            overwriteUserData: false,
+            overwriteUserData: overwriteUserData,
+            ensureShortcuts: true,
             successMessage: "Alt-Tabby has been installed to:`n" state.target
         })
     } catch as e {

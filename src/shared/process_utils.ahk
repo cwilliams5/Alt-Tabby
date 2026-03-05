@@ -68,7 +68,7 @@ ProcessUtils_Basename(path) {
 ;   3. cfg.SetupExePath (installed location, may differ if user renamed)
 ; Used by ProcessUtils_KillAltTabby for force-kill phase.
 
-_ProcessUtils_BuildExeNameList(targetExeName := "") {
+ProcessUtils_BuildExeNameList(targetExeName := "") {
     global cfg
 
     exeNames := []
@@ -183,11 +183,11 @@ _ProcessUtils_IsElevated(pid) {
 }
 
 ; Kill all Alt-Tabby processes except ourselves
-; Iterates over exe names from _ProcessUtils_BuildExeNameList().
+; Iterates over exe names from ProcessUtils_BuildExeNameList().
 ; Parameters:
 ;   targetExeName - Optional extra exe name to include (for updates targeting different name)
 _ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName := "") {
-    for exeName in _ProcessUtils_BuildExeNameList(targetExeName) {
+    for exeName in ProcessUtils_BuildExeNameList(targetExeName) {
         ProcessUtils_KillByNameExceptSelf(exeName)
     }
 }
@@ -238,7 +238,7 @@ ProcessUtils_KillAltTabby(opts := "") {
     if (force) {
         _ProcessUtils_KillAllAltTabbyExceptSelf(targetExeName)
         if (offerElevation) {
-            for exeName in _ProcessUtils_BuildExeNameList(targetExeName) {
+            for exeName in ProcessUtils_BuildExeNameList(targetExeName) {
                 _PU_OfferElevatedKill(exeName)
             }
         }
