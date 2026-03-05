@@ -83,7 +83,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 milkWhite = float3(0.6745098039215687, 0.19607843137254902, 0.19607843137254902);
 
     float n = fbm(puv * float2(1.0, 1.0) + float2(time * 0.2, 5.0 / (puv.x) * -0.1) * 0.5);
-    n = n * n / sqrt(puv.x) * 0.8;
+    n = n * n * rsqrt(puv.x) * 0.8;
 
     c = milkBlack;
     if (n > 0.2) {

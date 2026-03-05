@@ -45,7 +45,7 @@ float4 PSMain(PSInput input) : SV_Target {
         o += 1.0 / s;
     }
 
-    o = tanh(o / d / 9e2 / length(u));
+    o = tanh(o / (d * 9e2 * length(u)));
 
     float3 color = o.rgb;
 

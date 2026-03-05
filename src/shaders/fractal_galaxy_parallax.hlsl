@@ -90,13 +90,17 @@ float4 PSMain(PSInput input) : SV_Target {
     float2 seed = p.xy * 2.0;
     seed = floor(seed * resolution.x);
     float3 rnd = nrand3(seed);
-    float4 starcolor = (float4)pow(rnd.y, 40.0);
+    float _y2 = rnd.y*rnd.y; float _y4 = _y2*_y2; float _y8 = _y4*_y4;
+    float _y16 = _y8*_y8; float _y32 = _y16*_y16; float _y40 = _y32*_y8;
+    float4 starcolor = (float4)_y40;
 
     // Second layer stars
     float2 seed2 = p2.xy * 2.0;
     seed2 = floor(seed2 * resolution.x);
     float3 rnd2 = nrand3(seed2);
-    starcolor += (float4)pow(rnd2.y, 40.0);
+    float _r2 = rnd2.y*rnd2.y; float _r4 = _r2*_r2; float _r8 = _r4*_r4;
+    float _r16 = _r8*_r8; float _r32 = _r16*_r16; float _r40 = _r32*_r8;
+    starcolor += (float4)_r40;
 
     float4 col = lerp(freqs3 - 0.3, 1.0, v) * float4(1.5 * freqs2 * t * t * t, 1.2 * freqs1 * t * t, freqs3 * t, 1.0) + c2 + starcolor;
 

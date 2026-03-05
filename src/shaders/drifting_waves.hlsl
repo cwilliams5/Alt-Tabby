@@ -43,6 +43,7 @@ static const float2x2 WAVE_ROT = float2x2(
 static const float WAVE_FREQ = 0.6;
 static const float OCC_SPEED = 1.4;
 static const float DX_DET = 0.65;
+static const float WW_STEP = 0.86503782; // pow(WEIGHT_SCALE, DX_DET)
 
 static const float2 sunrot_val = float2(-0.3, 0.10);
 
@@ -87,6 +88,7 @@ float2 sd_wave_diff(float2 wave_pos, int iter_num, float t) {
     float2 res = (float2)0;
     float2 wave_dir = float2(1.0, 0.0);
     float wave_weight = 1.0;
+    float pow_acc = 1.0; // pow(wave_weight, DX_DET), tracked incrementally
     wave_pos += t * SCRL_SPEED * SCRL_DIR;
     wave_pos *= HOR_SCALE;
     float wave_freq = WAVE_FREQ;
@@ -97,12 +99,13 @@ float2 sd_wave_diff(float2 wave_pos, int iter_num, float t) {
         float _sx, _cx;
         sincos(x, _sx, _cx);
         float dx = exp(_sx - 1.0) * _cx * wave_weight;
-        res += dx * wave_dir / pow(wave_weight, DX_DET);
+        res += dx * wave_dir / pow_acc;
 
         wave_freq *= FREQ_SCALE;
         wave_time *= TIME_SCALE;
         wave_pos -= wave_dir * dx * DRAG;
         wave_weight *= WEIGHT_SCALE;
+        pow_acc *= WW_STEP;
     }
 
     float wave_sum = -(pow(WEIGHT_SCALE, (float)iter_num) - 1.0) * HEIGHT_DIV;

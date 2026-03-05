@@ -62,9 +62,9 @@ float noise_val(in float2 _st) {
             (d - b) * u.x * u.y;
 }
 
-float light_val(in float2 pos, in float size, in float radius, in float inner_fade, in float outer_fade) {
+float light_val(in float2 pos, in float size, in float radius, in float rcp_inner_fade, in float rcp_outer_fade) {
     float len = length(pos / size);
-    return pow(saturate((1.0 - pow(saturate(len - radius), 1.0 / inner_fade))), 1.0 / outer_fade);
+    return pow(saturate((1.0 - pow(saturate(len - radius), rcp_inner_fade))), rcp_outer_fade);
 }
 
 float flare(in float angle, in float alpha, in float t_val) {
@@ -176,7 +176,7 @@ float4 PSMain(PSInput input) : SV_Target {
     }
 
     float t = time * SPEED;
-    float alpha = light_val(uv, SIZE, RADIUS, INNER_FADE, OUTER_FADE);
+    float alpha = light_val(uv, SIZE, RADIUS, 1.0 / INNER_FADE, 1.0 / OUTER_FADE);
     float angle = atan2(uv.x, uv.y);
     float n = noise_val(float2(uv.x * 10.0 + time, uv.y * 20.0 + time));
 
@@ -184,7 +184,7 @@ float4 PSMain(PSInput input) : SV_Target {
     if (l < BORDER) {
         t *= 0.8;
         alpha = (1.0 - pow(((BORDER - l) / BORDER), 0.22) * 0.7);
-        alpha = saturate(alpha - light_val(uv, 0.02, 0.0, 0.3, 0.7) * 0.55);
+        alpha = saturate(alpha - light_val(uv, 0.02, 0.0, 1.0 / 0.3, 1.0 / 0.7) * 0.55);
         f = flare(angle * 1.0, alpha, -t * 0.5 + alpha);
         f2 = flare(angle * 1.0, alpha * 1.2, ((-t + alpha * 0.5 + 0.38134)));
     }

@@ -30,7 +30,7 @@ float noise(float3 p) {
 }
 
 float fbm(float2 x, float hurst) {
-    float gain = exp2(-hurst);
+    float gain = 0.5;  // hurst is always 1.0, exp2(-1.0) = 0.5
     float f = 1.0;
     float a = 1.0;
     float t = 0.0;

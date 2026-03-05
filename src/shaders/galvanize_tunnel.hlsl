@@ -104,7 +104,7 @@ float Kalibox(float3 pos) {
     float3 Julia = float3(-0.66, -1.2 + (kalitime / 80.0), -0.66);
     float4 scale = float4(Scale, Scale, Scale, abs(Scale)) / MinRad2;
     float absScalem1 = abs(Scale - 1.0);
-    float AbsScaleRaisedTo1mIters = pow(abs(Scale), (float)(1 - 14));
+    static const float AbsScaleRaisedTo1mIters = pow(abs(1.84), -13.0);
     float4 p = float4(pos, 1.0), p0 = float4(Julia, 1.0);
     for (int i = 0; i < 14; i++) {
         p.xyz = abs(p.xyz) + Trans;
@@ -227,7 +227,8 @@ float4 PSMain(PSInput input) : SV_Target {
     lig = normalize(float3(-0.4 * sin(time * 0.15), 1.0, 0.5));
 
     float dif = saturate(dot(lig, nor));
-    float spec = pow(saturate(dot(reflect(rd, nor), lig)), 16.0);
+    float _spec2 = saturate(dot(reflect(rd, nor), lig)); _spec2 *= _spec2;
+    float _spec4 = _spec2*_spec2; float _spec8 = _spec4*_spec4; float spec = _spec8*_spec8;
     float sh = softshadow(pos, lig, 0.02, 20.0, 7.0);
     float3 color = getColor();
     col = ((0.8 * dif + spec) + 0.35 * color);

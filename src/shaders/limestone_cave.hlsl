@@ -79,9 +79,11 @@ float4 PSMain(PSInput input) : SV_Target {
         h = normalize(l + normalize(o - p));
         w = length(o + float3(0, 0, 4) - p);
 
+        float _nh = max(dot(nor, h), 0.); _nh *= _nh;
+        float _nh4 = _nh*_nh; float _nh8 = _nh4*_nh4; float _nh16 = _nh8*_nh8;
         c = c * .02 +
             (c * max(dot(nor, l), 0.) +
-            float3(.8, .8, .8) * pow(abs(max(dot(nor, h), 0.)), 16.) *
+            float3(.8, .8, .8) * _nh16 *
             smoothstep(15., 5., t))
             / (1. + w * w / 5.);
 
