@@ -32,6 +32,7 @@ gGUI_Sel: gui_input, gui_state
 gGUI_EffectStyle: gui_interceptor
 gGUI_FocusBeforeShow: gui_state, gui_paint
 gAnim_DeferredTimerStart: gui_animation, gui_paint
+gAnim_FrameTimeDisplay: gui_paint
 gAnim_FPSEnabled: gui_interceptor
 gAnim_OverlayOpacity: gui_animation, gui_state
 gAnim_HidePending: gui_animation, gui_overlay

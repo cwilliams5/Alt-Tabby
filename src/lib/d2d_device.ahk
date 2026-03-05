@@ -250,6 +250,20 @@ class IDXGISwapChain1 extends ID2DBase {
     }
 }
 
+class IDXGISwapChain2 extends ID2DBase {
+    static IID := '{a8be2ac4-199f-4946-b331-79599fb98de7}'
+
+    ; Vtable chain: IUnknown(0-2), IDXGIObject(3-6), IDXGIDeviceSubObject(7),
+    ; IDXGISwapChain(8-17), IDXGISwapChain1(18-28), IDXGISwapChain2(29+)
+    ; SetSourceSize=29, GetSourceSize=30, SetMaximumFrameLatency=31,
+    ; GetMaximumFrameLatency=32, GetFrameLatencyWaitableObject=33
+
+    SetMaximumFrameLatency(maxLatency) => ComCall(31, this, 'uint', maxLatency, 'hresult')
+
+    ; Returns raw HANDLE (not HRESULT) — unusual COM convention
+    GetFrameLatencyWaitableObject() => ComCall(33, this, 'ptr')
+}
+
 class IDXGISurface extends ID2DBase {
     static IID := '{cafcb56c-6ac3-4889-bf47-9e23bbd260ec}'
 }

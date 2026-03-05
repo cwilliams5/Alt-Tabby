@@ -170,14 +170,30 @@ Anim_StopTimer() {
 }
 
 ; Frame loop: runs as a persistent thread via one-shot SetTimer.
-; Each iteration: Critical On (paint) → Critical Off → Sleep+spin (frame pacing).
-; Hotkeys fire during the Sleep phase between frames.
+; Waitable path: WaitForSingleObjectEx (outside Critical) → Sleep(0) message pump →
+;   Critical On (paint) → Critical Off. Hotkeys fire during Sleep(0).
+; Fallback path: Critical On (paint) → Critical Off → Sleep+spin (frame pacing).
 _Anim_FrameLoop() {
     global gAnim_TimerRunning, gAnim_Tweens, gAnim_LastFrameTime, gAnim_FrameCapMs, gAnim_FrameDt
     global gAnim_OverlayOpacity, gAnim_HidePending, gAnim_FrameTimeDisplay
     global gGUI_OverlayVisible, cfg
+    global gD2D_WaitableHandle
+
+    useWaitable := (gD2D_WaitableHandle != 0)
+    autoFPS := (cfg.PerfAnimationFPS = "Auto" || cfg.PerfAnimationFPS = "auto")
 
     while (gAnim_TimerRunning) {
+
+        ; --- Frame pacing (OUTSIDE Critical) ---
+        if (useWaitable) {
+            ; Block until next frame slot available — fresh input arrives during this wait.
+            ; 1000ms timeout prevents hang on device loss (WAIT_FAILED).
+            DllCall("WaitForSingleObjectEx", "ptr", gD2D_WaitableHandle, "uint", 1000, "int", 1, "uint")
+        }
+
+        ; Pump messages once — hotkeys fire here, at optimal time after VBlank wait.
+        Sleep(0)
+
         Critical "On"
 
         now := QPC()
@@ -202,12 +218,10 @@ _Anim_FrameLoop() {
         if (cfg.PerfAnimationType = "Full" && gGUI_OverlayVisible)
             FX_UpdateAmbient(gAnim_FrameDt)
 
-        ; Paint frame
-        if (gGUI_OverlayVisible) {
-            tPaint := QPC()
+        ; Paint frame (gAnim_FrameTimeDisplay set inside GUI_Repaint,
+        ; measuring AcquireBackBuffer through EndDraw, excludes Present)
+        if (gGUI_OverlayVisible)
             GUI_Repaint()
-            gAnim_FrameTimeDisplay := QPC() - tPaint
-        }
 
         ; Update FPS counter
         _Anim_UpdateFPSCounter(now)
@@ -218,13 +232,18 @@ _Anim_FrameLoop() {
 
         Critical "Off"
 
-        ; Pump messages once (hotkeys fire here), then spin-wait for frame cap.
-        ; Sleep(0) yields to message loop without the ~15ms overhead of Sleep(N>0).
-        ; AHK's MsgSleep processes pending messages then returns immediately for N=0.
-        Sleep(0)
-
-        ; Spin-wait for precise frame timing (NtYieldExecution yields CPU timeslice)
-        _Anim_FramePace()
+        ; Frame pacing after render
+        if (!useWaitable) {
+            ; Fallback: spin-wait for frame boundary
+            Sleep(0)
+            _Anim_FramePace()
+        } else if (!autoFPS) {
+            ; Explicit FPS on waitable path: spin-wait for frame cap.
+            ; Present() already fired — the waitable signal will be pending
+            ; by the time this wait completes, so next WaitForSingleObjectEx
+            ; returns immediately.
+            _Anim_FramePace()
+        }
     }
 
     Anim_StopTimer()

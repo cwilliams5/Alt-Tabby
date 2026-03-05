@@ -153,7 +153,7 @@ D2D_ArcSegment(endX, endY, rx, ry, rotation := 0.0, sweepDir := 1, arcSize := 0)
 ;            DXGI_ALPHA_MODE AlphaMode, UINT Flags }
 ; Size: 48 bytes
 
-D2D_SwapChainDesc1(w, h, format, bufferCount, swapEffect, alphaMode) { ; lint-ignore: dead-function
+D2D_SwapChainDesc1(w, h, format, bufferCount, swapEffect, alphaMode, flags := 0) { ; lint-ignore: dead-function
     buf := Buffer(48, 0)
     NumPut("uint", w, buf, 0)           ; Width
     NumPut("uint", h, buf, 4)           ; Height
@@ -166,7 +166,7 @@ D2D_SwapChainDesc1(w, h, format, bufferCount, swapEffect, alphaMode) { ; lint-ig
     NumPut("uint", 0, buf, 32)          ; Scaling = DXGI_SCALING_STRETCH
     NumPut("uint", swapEffect, buf, 36) ; SwapEffect
     NumPut("uint", alphaMode, buf, 40)  ; AlphaMode
-    ; Flags = 0 (offset 44, already 0)
+    NumPut("uint", flags, buf, 44)      ; Flags
     return buf
 }
 
@@ -204,6 +204,7 @@ global DXGI_ALPHA_MODE_PREMULTIPLIED := 1 ; lint-ignore: dead-global
 global D2D1_BITMAP_OPTIONS_TARGET := 0x00000001 ; lint-ignore: dead-global
 global D2D1_BITMAP_OPTIONS_CANNOT_DRAW := 0x00000002 ; lint-ignore: dead-global
 global D3D11_CREATE_DEVICE_BGRA_SUPPORT := 0x00000020 ; lint-ignore: dead-global
+global DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT := 0x40 ; lint-ignore: dead-global
 
 ; DirectWrite enums
 global DWRITE_FONT_WEIGHT_REGULAR  := 400 ; lint-ignore: dead-global

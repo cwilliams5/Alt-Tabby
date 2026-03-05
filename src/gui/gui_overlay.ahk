@@ -28,6 +28,11 @@ global gDComp_Device := 0      ; IDCompositionDevice
 global gDComp_Target := 0      ; IDCompositionTarget
 global gDComp_Visual := 0      ; IDCompositionVisual
 
+; Waitable swap chain state (latency optimization — Present(0,0) pattern)
+global gD2D_SwapChain2 := 0     ; IDXGISwapChain2 (0 = fallback/non-waitable mode)
+global gD2D_WaitableHandle := 0  ; HANDLE from GetFrameLatencyWaitableObject
+global gD2D_SwapChainFlags := 0  ; Flags used at creation (passed to ResizeBuffers)
+
 ; ========================= CONFIG-DRIVEN BACKDROP =========================
 
 ; Apply backdrop style from cfg.GUI_BackdropStyle.
@@ -448,10 +453,13 @@ _D2D_InitFactories() {
 _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     global gD2D_Factory, gD2D_RT, gD2D_D3DDevice, gD2D_D2DDevice
     global gD2D_SwapChain, gD2D_BackBuffer
+    global gD2D_SwapChain2, gD2D_WaitableHandle, gD2D_SwapChainFlags
     global gDComp_Device, gDComp_Target, gDComp_Visual
     global D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE
     global DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SWAP_EFFECT_FLIP_DISCARD
     global DXGI_ALPHA_MODE_PREMULTIPLIED
+    global DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT
+    global LOG_PATH_STORE
 
     if (wPhys < 1)
         wPhys := 1
@@ -468,15 +476,47 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     adapter := dxgiDev.GetAdapter()
     factory := adapter.GetParent()
 
-    ; 2 buffers, FLIP_DISCARD, premultiplied alpha for transparent overlay
-    desc := D2D_SwapChainDesc1(wPhys, hPhys,
-        DXGI_FORMAT_B8G8R8A8_UNORM, 2,
-        DXGI_SWAP_EFFECT_FLIP_DISCARD,
-        DXGI_ALPHA_MODE_PREMULTIPLIED)
+    ; Try waitable swap chain first (lower input-to-photon latency)
+    waitableOk := false
+    try {
+        desc := D2D_SwapChainDesc1(wPhys, hPhys,
+            DXGI_FORMAT_B8G8R8A8_UNORM, 2,
+            DXGI_SWAP_EFFECT_FLIP_DISCARD,
+            DXGI_ALPHA_MODE_PREMULTIPLIED,
+            DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)
 
-    ; CreateSwapChainForComposition (not ForHwnd) — DComp manages the visual,
-    ; decoupling presentation from HWND geometry for zero-exposure resize.
-    gD2D_SwapChain := factory.CreateSwapChainForComposition(dxgiDev, desc)
+        gD2D_SwapChain := factory.CreateSwapChainForComposition(dxgiDev, desc)
+
+        ; QI for IDXGISwapChain2
+        sc2Obj := ComObjQuery(gD2D_SwapChain.ptr, IDXGISwapChain2.IID)
+        pSC2 := ComObjValue(sc2Obj)
+        ObjAddRef(pSC2)
+        gD2D_SwapChain2 := IDXGISwapChain2(pSC2)
+
+        gD2D_SwapChain2.SetMaximumFrameLatency(1)
+        gD2D_WaitableHandle := gD2D_SwapChain2.GetFrameLatencyWaitableObject()
+
+        if (!gD2D_WaitableHandle)
+            throw Error("GetFrameLatencyWaitableObject returned NULL")
+
+        gD2D_SwapChainFlags := DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT
+        waitableOk := true
+    } catch as e {
+        try LogAppend(LOG_PATH_STORE, "WaitableSwapChain FALLBACK: " e.Message)
+        _D2D_CleanupWaitableState()
+        ; Release partial swap chain if created
+        gD2D_SwapChain := 0
+        gD2D_SwapChainFlags := 0
+    }
+
+    ; Fallback: standard swap chain without waitable flag
+    if (!waitableOk) {
+        desc := D2D_SwapChainDesc1(wPhys, hPhys,
+            DXGI_FORMAT_B8G8R8A8_UNORM, 2,
+            DXGI_SWAP_EFFECT_FLIP_DISCARD,
+            DXGI_ALPHA_MODE_PREMULTIPLIED)
+        gD2D_SwapChain := factory.CreateSwapChainForComposition(dxgiDev, desc)
+    }
 
     ; --- Step 2: Create ID2D1DeviceContext directly from ID2D1Device ---
     ; (No HwndRenderTarget intermediary — cleaner device-context-only pipeline)
@@ -502,9 +542,18 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     gDComp_Device.Commit()
 }
 
+_D2D_CleanupWaitableState() {
+    global gD2D_WaitableHandle, gD2D_SwapChain2
+    if (gD2D_WaitableHandle) {
+        DllCall("CloseHandle", "ptr", gD2D_WaitableHandle)
+        gD2D_WaitableHandle := 0
+    }
+    gD2D_SwapChain2 := 0
+}
+
 D2D_ResizeRenderTarget(wPhys, hPhys) {
     global gD2D_SwapChain, gD2D_RT, gD2D_BackBuffer
-    global DXGI_FORMAT_UNKNOWN
+    global gD2D_SwapChainFlags, DXGI_FORMAT_UNKNOWN
     if (!gD2D_SwapChain)
         return
     if (wPhys < 1)
@@ -521,7 +570,7 @@ D2D_ResizeRenderTarget(wPhys, hPhys) {
 
     try {
         ; bufferCount=0 keeps existing count, DXGI_FORMAT_UNKNOWN keeps existing format
-        gD2D_SwapChain.ResizeBuffers(0, wPhys, hPhys, DXGI_FORMAT_UNKNOWN, 0)
+        gD2D_SwapChain.ResizeBuffers(0, wPhys, hPhys, DXGI_FORMAT_UNKNOWN, gD2D_SwapChainFlags)
     } catch {
         ; Resize failure — next paint will trigger device loss recovery
     }
@@ -553,6 +602,9 @@ D2D_HandleDeviceLoss() {
     gDComp_Visual := 0
     gDComp_Target := 0
     gDComp_Device := 0
+
+    ; Release waitable state before swap chain
+    _D2D_CleanupWaitableState()
 
     ; Release swap chain
     gD2D_SwapChain := 0
@@ -587,6 +639,9 @@ D2D_ShutdownAll() {
     gDComp_Visual := 0
     gDComp_Target := 0
     gDComp_Device := 0
+
+    ; Release waitable state before swap chain
+    _D2D_CleanupWaitableState()
 
     ; Release swap chain
     gD2D_SwapChain := 0
@@ -702,8 +757,9 @@ D2D_ReleaseBackBuffer() {
 ; ========================= D2D PRESENT =========================
 
 ; Present the swap chain buffer to the compositor.
-; syncInterval=1 for VSync (normal frames), 0 for immediate (hide-clear).
-D2D_Present(syncInterval := 1) {
+; syncInterval=0 for immediate (waitable swap chain handles pacing).
+; Fallback path: frame loop spin-waits for frame boundary instead of VSync.
+D2D_Present(syncInterval := 0) {
     global gD2D_SwapChain
     if (!gD2D_SwapChain)
         return

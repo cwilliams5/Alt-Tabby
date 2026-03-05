@@ -194,6 +194,7 @@ GUI_Repaint() {
         t1 := QPC()
 
     if (gD2D_RT) {
+        tPaintWork := QPC()  ; Work time: AcquireBackBuffer through EndDraw (excludes Present)
         if (!D2D_AcquireBackBuffer()) {
             ; FR: back buffer acquire failed
             if (gFR_Enabled)
@@ -233,6 +234,10 @@ GUI_Repaint() {
                 t1 := QPC()
             try {
                 gD2D_RT.EndDraw()
+                ; Capture render work time before Present — Present may block on
+                ; VBlank with waitable swap chain, inflating the measurement.
+                global gAnim_FrameTimeDisplay
+                gAnim_FrameTimeDisplay := QPC() - tPaintWork
                 D2D_ReleaseBackBuffer()
                 D2D_Present()
             } catch as e {
