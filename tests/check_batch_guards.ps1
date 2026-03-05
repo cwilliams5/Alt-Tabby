@@ -1,6 +1,6 @@
 # check_batch_guards.ps1 - Batched guard/enforcement checks
 # Combines checks that enforce usage patterns to prevent regressions.
-# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete
+# Sub-checks: thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete, guard_try_finally
 # Shared file cache: all src/ files (excluding lib/) read once.
 #
 # Usage: powershell -File tests\check_batch_guards.ps1 [-SourceDir "path\to\src"]
@@ -51,6 +51,12 @@ $script:RX_CRIT_BARE     = [regex]::new('(?i)^\s*Critical\s*$', 'Compiled')
 $script:RX_CRIT_OFF_STR  = [regex]::new('(?i)^\s*Critical[\s(]+["\x27]?Off["\x27]?\s*\)?', 'Compiled')
 $script:RX_CRIT_OFF_FALSE= [regex]::new('(?i)^\s*Critical[\s(]+false\s*\)?', 'Compiled')
 $script:RX_CRIT_OFF_ZERO = [regex]::new('(?i)^\s*Critical[\s(]+0\s*\)?', 'Compiled')
+
+# guard_try_finally patterns
+$script:RX_GUARD_SET_TRUE  = [regex]::new('^\s*(\w+)\s*:=\s*(?:true|1)\s*$', 'Compiled, IgnoreCase')
+$script:RX_GUARD_SET_FALSE = [regex]::new('^\s*(\w+)\s*:=\s*(?:false|0)\s*$', 'Compiled, IgnoreCase')
+$script:RX_TRY_OPEN        = [regex]::new('(?i)^\s*try\s*\{', 'Compiled')
+$script:RX_FINALLY_OPEN    = [regex]::new('(?i)}\s*finally\s*\{', 'Compiled')
 
 # Pre-compute set of files containing "Critical" (reused across sub-checks)
 $criticalFiles = [System.Collections.Generic.HashSet[string]]::new()
@@ -2087,6 +2093,254 @@ if ($mdIssues.Count -gt 0) {
 }
 
 # ============================================================
+# Sub-check 15: guard_try_finally
+# Detects same-function boolean guard pairs (var := true / var := false)
+# where the false/0 reset is NOT inside a finally block.
+# Without try/finally, an exception between set and reset permanently
+# blocks the guard, preventing all future calls.
+# Suppress: ; lint-ignore: guard-try-finally (on the := true line)
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$gtfIssues = [System.Collections.ArrayList]::new()
+$GTF_SUPPRESSION = 'lint-ignore:\s*guard-try-finally'
+
+# Phase 1: Collect candidate guard pairs (same-function set true + set false)
+$gtfCandidates = [System.Collections.ArrayList]::new()
+
+foreach ($file in $allFiles) {
+    $text = $fileCacheText[$file.FullName]
+    # Pre-filter: skip files without both true/1 and false/0 assignments
+    $hasTrue = ($text.IndexOf(':= true') -ge 0) -or ($text.IndexOf(':= 1') -ge 0)
+    $hasFalse = ($text.IndexOf(':= false') -ge 0) -or ($text.IndexOf(':= 0') -ge 0)
+    if (-not $hasTrue -or -not $hasFalse) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$projectRoot\", '')
+    $depth = 0
+    $inFunc = $false
+    $funcDepth = -1
+    $funcName = ""
+    $funcStartLine = 0
+    # Per-function tracking: varName -> @{ TrueLines = @(); FalseLines = @() }
+    $funcGuards = @{}
+    # Track global declarations in current function
+    $funcGlobals = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        $cleaned = BC_CleanLine $raw
+        if ($cleaned -eq '') { continue }
+
+        # Detect function definitions (not inside another function)
+        if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?([A-Za-z_]\w*)\s*\(') {
+            $fname = $Matches[1]
+            if (-not $BC_keywordSet.Contains($fname) -and $cleaned -match '\{') {
+                $inFunc = $true
+                $funcName = $fname
+                $funcDepth = $depth
+                $funcStartLine = $i
+                $funcGuards = @{}
+                $funcGlobals.Clear()
+            }
+        }
+
+        $braces = BC_CountBraces $cleaned
+        $depth += $braces[0] - $braces[1]
+
+        if ($inFunc) {
+            # Track global declarations
+            if ($cleaned -match '(?i)^\s*global\b(.*)') {
+                $globalList = $Matches[1]
+                foreach ($gName in $globalList -split ',') {
+                    $g = $gName.Trim() -replace '\s*:=.*', ''
+                    if ($g -ne '' -and $g -match '^\w+$') {
+                        [void]$funcGlobals.Add($g)
+                    }
+                }
+            }
+
+            # Match guard set true
+            $m = $script:RX_GUARD_SET_TRUE.Match($cleaned)
+            if ($m.Success) {
+                $varName = $m.Groups[1].Value
+                if (-not $BC_keywordSet.Contains($varName)) {
+                    if (-not $funcGuards.ContainsKey($varName)) {
+                        $funcGuards[$varName] = @{ TrueLines = @(); FalseLines = @(); TrueRawLines = @() }
+                    }
+                    $funcGuards[$varName].TrueLines += $i
+                    $funcGuards[$varName].TrueRawLines += $raw
+                }
+            }
+
+            # Match guard set false
+            $m = $script:RX_GUARD_SET_FALSE.Match($cleaned)
+            if ($m.Success) {
+                $varName = $m.Groups[1].Value
+                if (-not $BC_keywordSet.Contains($varName)) {
+                    if (-not $funcGuards.ContainsKey($varName)) {
+                        $funcGuards[$varName] = @{ TrueLines = @(); FalseLines = @(); TrueRawLines = @() }
+                    }
+                    $funcGuards[$varName].FalseLines += $i
+                }
+            }
+
+            # Function ended
+            if ($depth -le $funcDepth) {
+                # Find same-function guard pairs that are reentrancy guards
+                foreach ($varName in $funcGuards.Keys) {
+                    $g = $funcGuards[$varName]
+                    if ($g.TrueLines.Count -gt 0 -and $g.FalseLines.Count -gt 0) {
+                        # Filter: must be a global (name starts with g/_ or declared global)
+                        $isGlobal = $varName -match '^_?g' -or $funcGlobals.Contains($varName)
+                        if (-not $isGlobal) { continue }
+
+                        # Filter: must be a reentrancy guard (check-then-return before set-true).
+                        # Pattern: if (varName) { ... return } appears before := true.
+                        # Without this, plain state flags (gGUI_Revealed, gINT_TabPending, etc.)
+                        # that toggle within a function would be false positives.
+                        $firstTrue = ($g.TrueLines | Measure-Object -Minimum).Minimum
+                        $hasGuardCheck = $false
+                        $escapedVar = [regex]::Escape($varName)
+                        for ($j = $funcStartLine; $j -lt $firstTrue; $j++) {
+                            $cl = BC_CleanLine $lines[$j]
+                            # Require varName as the sole if-condition (not part of &&/||)
+                            if ($cl -match "(?i)^\s*if\s*[\s(]*\!?\s*$escapedVar\s*\)?\s*\{?\s*$") {
+                                # Verify a return/throw follows within 10 lines
+                                $scanEnd = [Math]::Min($j + 10, $firstTrue)
+                                for ($k = $j; $k -lt $scanEnd; $k++) {
+                                    $cl2 = BC_CleanLine $lines[$k]
+                                    if ($cl2 -match '(?i)^\s*return\b' -or $cl2 -match '(?i)^\s*throw\b') {
+                                        $hasGuardCheck = $true
+                                        break
+                                    }
+                                }
+                                if ($hasGuardCheck) { break }
+                            }
+                        }
+                        if (-not $hasGuardCheck) { continue }
+
+                        [void]$gtfCandidates.Add([PSCustomObject]@{
+                            File = $file.FullName
+                            RelPath = $relPath
+                            Function = $funcName
+                            VarName = $varName
+                            TrueLines = $g.TrueLines
+                            FalseLines = $g.FalseLines
+                            TrueRawLines = $g.TrueRawLines
+                            FuncStart = $funcStartLine
+                            FuncEnd = $i
+                        })
+                    }
+                }
+                $inFunc = $false
+                $funcDepth = -1
+                $funcGuards = @{}
+                $funcGlobals.Clear()
+            }
+        }
+    }
+}
+
+# Phase 2: Verify each candidate has its reset inside a finally block
+foreach ($cand in $gtfCandidates) {
+    # Check lint-ignore suppression on any := true line
+    $suppressed = $false
+    foreach ($rawLine in $cand.TrueRawLines) {
+        if ($rawLine -match $GTF_SUPPRESSION) {
+            $suppressed = $true
+            break
+        }
+    }
+    if ($suppressed) { continue }
+
+    $lines = $fileCache[$cand.File]
+    $firstTrueLine = ($cand.TrueLines | Measure-Object -Minimum).Minimum
+    $anyResetInFinally = $false
+
+    # Scan forward from first := true to function end, tracking try/finally nesting
+    $tryStack = [System.Collections.Generic.Stack[int]]::new()
+    $finallyStack = [System.Collections.Generic.Stack[int]]::new()
+    $localDepth = 0
+    $falseLineSet = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($fl in $cand.FalseLines) { [void]$falseLineSet.Add($fl) }
+
+    for ($i = $firstTrueLine + 1; $i -le $cand.FuncEnd; $i++) {
+        $raw = $lines[$i]
+        if ($raw -match '^\s*;') { continue }
+        $cleaned = BC_CleanLine $raw
+        if ($cleaned -eq '') { continue }
+
+        # Detect try { opening (before depth adjustment)
+        if ($script:RX_TRY_OPEN.IsMatch($cleaned)) {
+            $tryStack.Push($localDepth)
+        }
+
+        # Detect } finally { (before depth adjustment)
+        # Push localDepth-1: the } closes the try body (depth-1), { opens finally body.
+        # Using localDepth directly would cause immediate pop since } finally { has net-zero braces.
+        if ($script:RX_FINALLY_OPEN.IsMatch($cleaned)) {
+            if ($tryStack.Count -gt 0) {
+                [void]$tryStack.Pop()
+            }
+            $finallyStack.Push($localDepth - 1)
+        }
+
+        # Adjust depth
+        $braces = BC_CountBraces $cleaned
+        $localDepth += $braces[0] - $braces[1]
+
+        # Pop finished finally blocks
+        while ($finallyStack.Count -gt 0 -and $localDepth -le $finallyStack.Peek()) {
+            [void]$finallyStack.Pop()
+        }
+        # Pop finished try blocks
+        while ($tryStack.Count -gt 0 -and $localDepth -le $tryStack.Peek()) {
+            [void]$tryStack.Pop()
+        }
+
+        # Check if this is a reset line
+        if ($falseLineSet.Contains($i)) {
+            if ($finallyStack.Count -gt 0) {
+                $anyResetInFinally = $true
+                break
+            }
+        }
+    }
+
+    if (-not $anyResetInFinally) {
+        $firstResetLine = ($cand.FalseLines | Measure-Object -Minimum).Minimum
+        [void]$gtfIssues.Add([PSCustomObject]@{
+            File = $cand.RelPath
+            Line = $firstTrueLine + 1  # 1-indexed
+            Function = $cand.Function
+            VarName = $cand.VarName
+            ResetLine = $firstResetLine + 1  # 1-indexed
+        })
+    }
+}
+
+if ($gtfIssues.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($gtfIssues.Count) boolean guard(s) not protected by try/finally.")
+    [void]$failOutput.AppendLine("  A guard set true then false in the same function MUST have the reset")
+    [void]$failOutput.AppendLine("  inside a finally block. Without it, an exception permanently blocks the guard.")
+    [void]$failOutput.AppendLine("  Fix: wrap the function body in try { ... } finally { guard := false }")
+    [void]$failOutput.AppendLine("  Suppress: add '; lint-ignore: guard-try-finally' on the := true line.")
+    $grouped = $gtfIssues | Group-Object File
+    foreach ($group in $grouped | Sort-Object Name) {
+        [void]$failOutput.AppendLine("    $($group.Name):")
+        foreach ($issue in $group.Group | Sort-Object Line) {
+            [void]$failOutput.AppendLine("      Line $($issue.Line): $($issue.VarName) in $($issue.Function)() $([char]0x2014) reset on line $($issue.ResetLine) is not inside a finally block")
+        }
+    }
+}
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_guard_try_finally"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -2094,7 +2348,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete)" -ForegroundColor Green
+    Write-Host "  PASS: All guard checks passed (thememsgbox, callback_critical, log_guards, onmessage_collision, postmessage_safety, callback_signatures, onevent_names, destroy_untrack, critical_leaks, critical_sections, producer_error_boundary, callback_null_guard, callback_invocation_arity, map_delete, guard_try_finally)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

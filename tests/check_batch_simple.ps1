@@ -1001,7 +1001,8 @@ $validLintNames = [System.Collections.Generic.HashSet[string]]::new()
     'unreachable-code', 'ipc-symmetry',
     'callback-null-guard', 'setcallbacks-wiring', 'cosmetic-patch-safety',
     'registry-duplicate-key', 'registry-completeness', 'registry-section-casing',
-    'map-delete'
+    'map-delete',
+    'guard-try-finally'
 ) | ForEach-Object { [void]$validLintNames.Add($_) }
 
 # Scan all src/ and test .ahk files

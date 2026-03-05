@@ -594,14 +594,14 @@ _KomorebiSub_IssueRead() {
     if (ok) {
         ; Completed synchronously (data was already in buffer).
         ; The IOCP completion callback will still fire — don't process here.
-        _KSub_ReadPending := true
+        _KSub_ReadPending := true  ; lint-ignore: guard-try-finally — set on success branch, not wrapping a block
         return
     }
 
     gle := DllCall("GetLastError", "uint")
     if (gle = IPC_ERROR_IO_PENDING) {
         ; Normal async case — I/O is pending, callback fires when data arrives
-        _KSub_ReadPending := true
+        _KSub_ReadPending := true  ; lint-ignore: guard-try-finally
         return
     }
 

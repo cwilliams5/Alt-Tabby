@@ -716,84 +716,86 @@ CheckForUpdates(showIfCurrent := false, showModal := true) {
     whr := ""  ; Declare outside try for cleanup
 
     try {
-        whr := ComObject("WinHttp.WinHttpRequest.5.1")
-        whr.Open("GET", apiUrl, false)
-        whr.SetRequestHeader("User-Agent", "Alt-Tabby/" currentVersion)
-        whr.Send()
+        try {
+            whr := ComObject("WinHttp.WinHttpRequest.5.1")
+            whr.Open("GET", apiUrl, false)
+            whr.SetRequestHeader("User-Agent", "Alt-Tabby/" currentVersion)
+            whr.Send()
 
-        if (whr.Status = 200) {
-            response := whr.ResponseText
-            whr := ""  ; Release COM BEFORE processing (we have the text)
+            if (whr.Status = 200) {
+                response := whr.ResponseText
+                whr := ""  ; Release COM BEFORE processing (we have the text)
 
-            ; Parse JSON for tag_name and download URL
-            if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
-                _Update_Log("CheckForUpdates: failed to parse tag_name from response")
+                ; Parse JSON for tag_name and download URL
+                if (!RegExMatch(response, '"tag_name"\s*:\s*"v?([^"]+)"', &tagMatch)) {
+                    _Update_Log("CheckForUpdates: failed to parse tag_name from response")
+                    Dash_SetUpdateState("error")
+                    g_LastUpdateCheckTick := A_TickCount
+                    g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
+                    return
+                }
+
+                latestVersion := tagMatch[1]
+                g_LastUpdateCheckTick := A_TickCount
+                g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
+                if (cfg.DiagUpdateLog)
+                    _Update_Log("CheckForUpdates: latest=" latestVersion " current=" currentVersion)
+
+                if (CompareVersions(latestVersion, currentVersion) > 0) {
+                    ; Sync dashboard state — update available
+                    downloadUrl := _Update_FindExeDownloadUrl(response)
+                    Dash_SetUpdateState("available", latestVersion, downloadUrl ? downloadUrl : "")
+
+                    ; Newer version available - offer to update
+                    if (showModal) {
+                        result := ThemeMsgBox(
+                            "Alt-Tabby " latestVersion " is available!`n"
+                            "You have: " currentVersion "`n`n"
+                            "Would you like to download and install the update now?",
+                            "Update Available",
+                            "YesNo Icon?"
+                        )
+
+                        if (result = "Yes") {
+                            if (downloadUrl)
+                                Update_DownloadAndApply(downloadUrl, latestVersion)
+                            else
+                                ThemeMsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Iconx")
+                        }
+                    }
+                } else {
+                    ; Sync dashboard state — up to date
+                    Dash_SetUpdateState("uptodate")
+                    if (showIfCurrent && showModal)
+                        TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
+                }
+            } else {
+                ; Sync dashboard state — HTTP error
+                if (cfg.DiagUpdateLog)
+                    _Update_Log("CheckForUpdates: HTTP error status=" whr.Status)
                 Dash_SetUpdateState("error")
                 g_LastUpdateCheckTick := A_TickCount
                 g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-                g_UpdateCheckInProgress := false
-                return
-            }
-
-            latestVersion := tagMatch[1]
-            g_LastUpdateCheckTick := A_TickCount
-            g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-            if (cfg.DiagUpdateLog)
-                _Update_Log("CheckForUpdates: latest=" latestVersion " current=" currentVersion)
-
-            if (CompareVersions(latestVersion, currentVersion) > 0) {
-                ; Sync dashboard state — update available
-                downloadUrl := _Update_FindExeDownloadUrl(response)
-                Dash_SetUpdateState("available", latestVersion, downloadUrl ? downloadUrl : "")
-
-                ; Newer version available - offer to update
-                if (showModal) {
-                    result := ThemeMsgBox(
-                        "Alt-Tabby " latestVersion " is available!`n"
-                        "You have: " currentVersion "`n`n"
-                        "Would you like to download and install the update now?",
-                        "Update Available",
-                        "YesNo Icon?"
-                    )
-
-                    if (result = "Yes") {
-                        if (downloadUrl)
-                            Update_DownloadAndApply(downloadUrl, latestVersion)
-                        else
-                            ThemeMsgBox("Could not find download URL for AltTabby.exe in the release.", "Update Error", "Iconx")
-                    }
+                if (showIfCurrent && showModal) {
+                    TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
                 }
-            } else {
-                ; Sync dashboard state — up to date
-                Dash_SetUpdateState("uptodate")
-                if (showIfCurrent && showModal)
-                    TrayTip("Up to Date", "You're running the latest version (" currentVersion ")", "Iconi")
+                whr := ""  ; Release COM on error path
             }
-        } else {
-            ; Sync dashboard state — HTTP error
+        } catch as e {
+            whr := ""  ; Ensure release on exception
             if (cfg.DiagUpdateLog)
-                _Update_Log("CheckForUpdates: HTTP error status=" whr.Status)
+                _Update_Log("CheckForUpdates: exception: " e.Message)
+            ; Sync dashboard state — exception
             Dash_SetUpdateState("error")
             g_LastUpdateCheckTick := A_TickCount
             g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-            if (showIfCurrent && showModal) {
-                TrayTip("Update Check Failed", "HTTP Status: " whr.Status, "Icon!")
-            }
-            whr := ""  ; Release COM on error path
+            if (showIfCurrent && showModal)
+                TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
         }
-    } catch as e {
-        whr := ""  ; Ensure release on exception
-        if (cfg.DiagUpdateLog)
-            _Update_Log("CheckForUpdates: exception: " e.Message)
-        ; Sync dashboard state — exception
-        Dash_SetUpdateState("error")
-        g_LastUpdateCheckTick := A_TickCount
-        g_LastUpdateCheckTime := FormatTime(, "MMM d, h:mm tt")
-        if (showIfCurrent && showModal)
-            TrayTip("Update Check Failed", "Could not check for updates:`n" e.Message, "Icon!")
+        whr := ""  ; Final safety - ensure release on all exit paths
+    } finally {
+        g_UpdateCheckInProgress := false
     }
-    whr := ""  ; Final safety - ensure release on all exit paths
-    g_UpdateCheckInProgress := false
 }
 
 ; Parse GitHub API response to find AltTabby.exe download URL

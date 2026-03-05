@@ -321,29 +321,31 @@ _GUI_FullScan() {
     ; Error boundary: ensure WL_EndScan runs even on error (BeginScan/EndScan must be paired),
     ; and ensure _gGUI_ScanInProgress is always reset (otherwise re-entrancy guard blocks all future scans)
     try {
-        WL_BeginScan()
         try {
-            recs := ""
-            try recs := WinEnumLite_ScanAll()
-            foundCount := IsObject(recs) ? recs.Length : 0
-            if (IsObject(recs))
-                WL_UpsertWindow(recs, "winenum_lite")
-        } finally {
-            WL_EndScan()
+            WL_BeginScan()
+            try {
+                recs := ""
+                try recs := WinEnumLite_ScanAll()
+                foundCount := IsObject(recs) ? recs.Length : 0
+                if (IsObject(recs))
+                    WL_UpsertWindow(recs, "winenum_lite")
+            } finally {
+                WL_EndScan()
+            }
+            if (gFR_Enabled)
+                FR_Record(FR_EV_SCAN_COMPLETE, foundCount, gWS_Store.Count)
+        } catch as e {
+            Critical "Off"
+            global LOG_PATH_STORE
+            try LogAppend(LOG_PATH_STORE, "GUI_FullScan err=" e.Message " file=" e.File " line=" e.Line)
         }
-        if (gFR_Enabled)
-            FR_Record(FR_EV_SCAN_COMPLETE, foundCount, gWS_Store.Count)
-    } catch as e {
+        _GUI_OnProducerRevChanged()
+    } finally {
+        Critical "On"
+        _gGUI_ScanInProgress := false
         Critical "Off"
-        global LOG_PATH_STORE
-        try LogAppend(LOG_PATH_STORE, "GUI_FullScan err=" e.Message " file=" e.File " line=" e.Line)
         Profiler.Leave() ; @profile
     }
-    Critical "On"
-    _gGUI_ScanInProgress := false
-    Critical "Off"
-    _GUI_OnProducerRevChanged()
-    Profiler.Leave() ; @profile
 }
 
 ; ========================= PERIODIC TIMERS =========================
