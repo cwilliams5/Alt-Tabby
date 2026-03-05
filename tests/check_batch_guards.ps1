@@ -2222,6 +2222,11 @@ foreach ($file in $allFiles) {
                                 }
                                 if ($hasGuardCheck) { break }
                             }
+                            # Also match single-line form: if (var) return / if (var) throw
+                            elseif ($cl -match "(?i)^\s*if\s*[\s(]*\!?\s*$escapedVar\s*\)?\s+(?:return|throw)\b") {
+                                $hasGuardCheck = $true
+                                break
+                            }
                         }
                         if (-not $hasGuardCheck) { continue }
 

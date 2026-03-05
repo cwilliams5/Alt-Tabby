@@ -271,6 +271,15 @@ GUI_Repaint() {
 
     } finally {
         gPaint_RepaintInProgress := false
+        ; If a tween was started during this paint's STA pump (e.g., GRACE_FIRE
+        ; dispatched ShowOverlayWithFrozen which called Anim_StartTween), the
+        ; frame loop launch was deferred to avoid blocking this paint. Start it
+        ; now that the guard is clear. (#175)
+        global gAnim_DeferredTimerStart
+        if (gAnim_DeferredTimerStart) {
+            gAnim_DeferredTimerStart := false
+            Anim_EnsureTimer()
+        }
     }
 }
 

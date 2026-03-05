@@ -24,6 +24,7 @@ global gAnim_TimerPeriodOn := false   ; timeBeginPeriod(1) active?
 global gAnim_FPSEnabled := false      ; FPS debug overlay toggle (F key)
 global gAnim_OverlayOpacity := 1.0    ; Current overlay fade opacity (0.0-1.0)
 global gAnim_HidePending := false     ; Hide-fade in progress
+global gAnim_DeferredTimerStart := false  ; Deferred frame loop start (STA pump safety, #175)
 global gAnim_SelPrevIndex := 0        ; Previous selection index (for slide Y calc)
 global gAnim_SelNewIndex := 0         ; New selection index (for slide Y calc)
 global gFX_AmbientTime := 0.0         ; Cumulative ms for ambient loops (Full mode)
@@ -132,10 +133,18 @@ _Anim_UpdateTweens() {
 Anim_EnsureTimer() {
     global gAnim_TimerRunning, gAnim_TimerPeriodOn, gAnim_LastFrameTime, cfg
     global gAnim_FPSFrameCount, gAnim_FPSLastSample
+    global gPaint_RepaintInProgress, gAnim_DeferredTimerStart
     if (cfg.PerfAnimationType = "None")
         return
     if (gAnim_TimerRunning)
         return
+    ; If a paint is in progress, the STA pump would dispatch the frame loop
+    ; (a blocking while-loop) inside the paint, suspending the paint quasi-thread
+    ; forever in Full animation mode. Defer until paint completes. (#175)
+    if (gPaint_RepaintInProgress) {
+        gAnim_DeferredTimerStart := true
+        return
+    }
     if (!gAnim_TimerPeriodOn) {
         DllCall("winmm\timeBeginPeriod", "uint", 1)
         gAnim_TimerPeriodOn := true

@@ -30,9 +30,12 @@ MyFunc(name) {
 D2D/DXGI/DWM COM calls pump the STA message loop, dispatching timer callbacks
 and keyboard hooks through AHK `Critical "On"`. Affected: BeginDraw, EndDraw,
 DrawBitmap, CreateEffect, SetWindowPos, ShowWindow, DwmFlush. Assume arbitrary
-callbacks fire during any COM call. Guard patterns need try/finally; animation
-timers must start AFTER rendering, not before. Never do I/O (FileAppend) in
-paths that fire per-STA-pump — 1000 pumps/paint × 30ms = 30s paint.
+callbacks fire during any COM call. Guard patterns need try/finally. Never start
+blocking while-loops (e.g. frame loops) from code that may run during a paint's
+STA pump — the loop suspends the paint quasi-thread forever (#175).
+`Anim_EnsureTimer` has a deferred-start guard for this. Never do I/O
+(FileAppend) in paths that fire per-STA-pump — 1000 pumps/paint × 30ms = 30s
+paint.
 
 ## Race Conditions & Critical Sections
 
