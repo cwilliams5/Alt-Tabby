@@ -26,7 +26,12 @@ global gD2D_SwapChain := 0     ; IDXGISwapChain1 (composition swap chain)
 global gD2D_BackBuffer := 0    ; ID2D1Bitmap1 (current frame, per-frame acquire/release)
 global gDComp_Device := 0      ; IDCompositionDevice
 global gDComp_Target := 0      ; IDCompositionTarget
-global gDComp_Visual := 0      ; IDCompositionVisual
+global gDComp_Visual := 0      ; IDCompositionVisual (content: swap chain)
+global gDComp_ClipVisual := 0  ; IDCompositionVisual (parent: clip rect)
+
+; Fixed-size swap chain dimensions (Phase 2: max monitor resolution)
+global gD2D_SwapChainMaxW := 0 ; Physical width of the oversized swap chain ; lint-ignore: dead-global
+global gD2D_SwapChainMaxH := 0 ; Physical height of the oversized swap chain ; lint-ignore: dead-global
 
 ; Waitable swap chain state (latency optimization — Present(0,0) pattern)
 global gD2D_SwapChain2 := 0     ; IDXGISwapChain2 (0 = fallback/non-waitable mode)
@@ -232,13 +237,12 @@ GUI_ResizeToRows(rowsToShow, skipFlush := false) {
     hPhys := Round(hDip * monScale)
 
     Win_SetPosPhys(gGUI_BaseH, xPhys, yPhys, wPhys, hPhys)
-    ; Single window — no anti-jiggle split resize needed.
-    ; D2D renders directly to the window surface; no overlay/base sync.
-    ; DWM corner preference is set once in GUI_CreateWindow; no per-resize update needed.
 
-    ; Resize D2D render target to match new window size
-    if (gD2D_RT && wPhys > 0 && hPhys > 0)
-        D2D_ResizeRenderTarget(wPhys, hPhys)
+    ; Phase 2: Update DComp clip to new visible region (swap chain is already oversized)
+    if (wPhys > 0 && hPhys > 0) {
+        D2D_SetClipRect(wPhys, hPhys)
+        D2D_Commit()
+    }
 
     if (!skipFlush)
         Win_DwmFlush()
@@ -282,7 +286,7 @@ GUI_CreateWindow() {
     global gGUI_Base, gGUI_BaseH, gGUI_Overlay, gGUI_OverlayH
     global gGUI_LiveItems, cfg
     global gD2D_Factory, gDW_Factory, gD2D_RT, gD2D_D3DDevice, gD2D_D2DDevice
-    global gD2D_SwapChain, gDComp_Device, gDComp_Target, gDComp_Visual
+    global gD2D_SwapChain, gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
 
     ; Create single window
     ; -DPIScale: all coordinates are raw physical pixels (D2D render target uses 96 DPI).
@@ -454,7 +458,8 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     global gD2D_Factory, gD2D_RT, gD2D_D3DDevice, gD2D_D2DDevice
     global gD2D_SwapChain, gD2D_BackBuffer
     global gD2D_SwapChain2, gD2D_WaitableHandle, gD2D_SwapChainFlags
-    global gDComp_Device, gDComp_Target, gDComp_Visual
+    global gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
+    global gD2D_SwapChainMaxW, gD2D_SwapChainMaxH
     global D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE
     global DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SWAP_EFFECT_FLIP_DISCARD
     global DXGI_ALPHA_MODE_PREMULTIPLIED
@@ -476,10 +481,17 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     adapter := dxgiDev.GetAdapter()
     factory := adapter.GetParent()
 
+    ; Phase 2: Create swap chain at max monitor resolution (fixed-size, no ResizeBuffers)
+    scW := 0
+    scH := 0
+    _D2D_GetMaxMonitorSize(&scW, &scH)
+    gD2D_SwapChainMaxW := scW
+    gD2D_SwapChainMaxH := scH
+
     ; Try waitable swap chain first (lower input-to-photon latency)
     waitableOk := false
     try {
-        desc := D2D_SwapChainDesc1(wPhys, hPhys,
+        desc := D2D_SwapChainDesc1(scW, scH,
             DXGI_FORMAT_B8G8R8A8_UNORM, 2,
             DXGI_SWAP_EFFECT_FLIP_DISCARD,
             DXGI_ALPHA_MODE_PREMULTIPLIED,
@@ -509,9 +521,9 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
         gD2D_SwapChainFlags := 0
     }
 
-    ; Fallback: standard swap chain without waitable flag
+    ; Fallback: standard swap chain without waitable flag — still oversized
     if (!waitableOk) {
-        desc := D2D_SwapChainDesc1(wPhys, hPhys,
+        desc := D2D_SwapChainDesc1(scW, scH,
             DXGI_FORMAT_B8G8R8A8_UNORM, 2,
             DXGI_SWAP_EFFECT_FLIP_DISCARD,
             DXGI_ALPHA_MODE_PREMULTIPLIED)
@@ -525,7 +537,9 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     gD2D_RT.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE)
 
     ; --- Step 3: Create DirectComposition visual tree ---
-    ; DComp visual shows last committed frame during resize — zero stale-pixel exposure.
+    ; Phase 2: Two-visual tree — clip on parent, content on child.
+    ; DComp clips in pre-transform space; separating clip from content allows
+    ; independent transform changes later (Chromium-validated pattern).
     #DllLoad 'dcomp.dll'
     if DllCall('ole32\CLSIDFromString', 'str', IDCompositionDevice.IID, 'ptr', iid := Buffer(16, 0))
         throw OSError()
@@ -536,9 +550,22 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     gDComp_Device := IDCompositionDevice(pDComp)
 
     gDComp_Target := gDComp_Device.CreateTargetForHwnd(hwnd, true)
+
+    ; Parent visual: clip rect controls visible region of the oversized swap chain
+    gDComp_ClipVisual := gDComp_Device.CreateVisual()
+
+    ; Child visual: swap chain content
     gDComp_Visual := gDComp_Device.CreateVisual()
     gDComp_Visual.SetContent(gD2D_SwapChain)
-    gDComp_Target.SetRoot(gDComp_Visual)
+
+    ; Build tree: Target → ClipVisual → Visual
+    gDComp_ClipVisual.AddVisual(gDComp_Visual, true, 0)
+    gDComp_Target.SetRoot(gDComp_ClipVisual)
+
+    ; Set initial clip to the visible region (not full swap chain size)
+    clipRect := D2D_RectF(0, 0, wPhys, hPhys)
+    gDComp_ClipVisual.SetClip(clipRect)
+
     gDComp_Device.Commit()
 }
 
@@ -551,6 +578,9 @@ _D2D_CleanupWaitableState() {
     gD2D_SwapChain2 := 0
 }
 
+; Resize the swap chain buffers. NOT called during normal operation (Phase 2:
+; swap chain created at max monitor size, visible region controlled by DComp clip).
+; Retained for device loss recovery on a monitor larger than initial max.
 D2D_ResizeRenderTarget(wPhys, hPhys) {
     global gD2D_SwapChain, gD2D_RT, gD2D_BackBuffer
     global gD2D_SwapChainFlags, DXGI_FORMAT_UNKNOWN
@@ -579,9 +609,9 @@ D2D_ResizeRenderTarget(wPhys, hPhys) {
 ; Recreate the D2D pipeline after device loss (DXGI_ERROR_DEVICE_REMOVED etc.).
 D2D_HandleDeviceLoss() {
     global gD2D_RT, gD2D_SwapChain, gD2D_BackBuffer, gGUI_BaseH
-    global gDComp_Device, gDComp_Target, gDComp_Visual
+    global gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
 
-    ; Get current window size
+    ; Get current window size (used as initial clip rect for recreation)
     ox := 0
     oy := 0
     wPhys := 0
@@ -598,8 +628,9 @@ D2D_HandleDeviceLoss() {
     gD2D_BackBuffer := 0
     gD2D_RT := 0
 
-    ; Release DComp tree (visual → target → device)
+    ; Release DComp tree (visual → clip visual → target → device)
     gDComp_Visual := 0
+    gDComp_ClipVisual := 0
     gDComp_Target := 0
     gDComp_Device := 0
 
@@ -621,7 +652,8 @@ D2D_HandleDeviceLoss() {
 
 D2D_ShutdownAll() {
     global gD2D_RT, gD2D_SwapChain, gD2D_BackBuffer
-    global gDComp_Device, gDComp_Target, gDComp_Visual
+    global gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
+    global gD2D_SwapChainMaxW, gD2D_SwapChainMaxH
     global gD2D_D2DDevice, gD2D_D3DDevice
     global gD2D_Factory, gDW_Factory
 
@@ -635,10 +667,15 @@ D2D_ShutdownAll() {
     gD2D_BackBuffer := 0
     gD2D_RT := 0
 
-    ; Release DComp tree (visual → target → device)
+    ; Release DComp tree (visual → clip visual → target → device)
     gDComp_Visual := 0
+    gDComp_ClipVisual := 0
     gDComp_Target := 0
     gDComp_Device := 0
+
+    ; Clear swap chain max size tracking
+    gD2D_SwapChainMaxW := 0
+    gD2D_SwapChainMaxH := 0
 
     ; Release waitable state before swap chain
     _D2D_CleanupWaitableState()
@@ -764,4 +801,50 @@ D2D_Present(syncInterval := 0) {
     if (!gD2D_SwapChain)
         return
     gD2D_SwapChain.Present(syncInterval, 0)
+}
+
+; ========================= DCOMP CLIP (Phase 2) =========================
+
+; Update the DComp clip visual to show only the specified region.
+; Does NOT commit — caller batches with other DComp changes then calls D2D_Commit().
+D2D_SetClipRect(wPhys, hPhys) {
+    global gDComp_ClipVisual
+    if (!gDComp_ClipVisual)
+        return
+    clipRect := D2D_RectF(0, 0, wPhys, hPhys)
+    gDComp_ClipVisual.SetClip(clipRect)
+}
+
+; Commit all pending DComp changes atomically.
+D2D_Commit() {
+    global gDComp_Device
+    if (!gDComp_Device)
+        return
+    gDComp_Device.Commit()
+}
+
+; Query all monitors and return the largest physical pixel dimensions.
+; Used to size the swap chain once at init — avoids ResizeBuffers during normal operation.
+_D2D_GetMaxMonitorSize(&maxW, &maxH) {
+    maxW := 0
+    maxH := 0
+    count := MonitorGetCount()
+    loop count {
+        mL := 0
+        mT := 0
+        mR := 0
+        mB := 0
+        MonitorGet(A_Index, &mL, &mT, &mR, &mB)
+        w := mR - mL
+        h := mB - mT
+        if (w > maxW)
+            maxW := w
+        if (h > maxH)
+            maxH := h
+    }
+    ; Fallback: if no monitors detected (unlikely), use primary screen
+    if (maxW < 1)
+        maxW := A_ScreenWidth
+    if (maxH < 1)
+        maxH := A_ScreenHeight
 }

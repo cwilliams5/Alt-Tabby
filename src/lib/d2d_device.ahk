@@ -304,11 +304,31 @@ class IDCompositionTarget extends ID2DBase {
 class IDCompositionVisual extends ID2DBase {
     static IID := '{4D93059D-097B-4651-9A60-F0F25116E2F2}'
 
-    ; IDCompositionVisual::SetContent(content) — bind swap chain to visual
     ; IUnknown(0-2), SetOffsetX(3-4), SetOffsetY(5-6), SetTransform(7-8),
     ; SetTransformParent(9), SetEffect(10), SetBitmapInterpolationMode(11),
-    ; SetBorderMode(12), SetClip(13-14), SetContent(15)
+    ; SetBorderMode(12), SetClip(13=IDCompositionClip, 14=D2D_RECT_F), SetContent(15),
+    ; AddVisual(16), RemoveVisual(17), RemoveAllVisuals(18), SetCompositeMode(19)
+    ; NOTE: SetClip overloads are swapped vs SDK header order (win32metadata#600).
+
+    ; IDCompositionVisual::SetClip(const D2D_RECT_F&) — vtable 14
+    ; The SDK header (dcomp.h) declares this at index 13, but the binary vtable
+    ; on Windows 11 swaps the two SetClip overloads (cf. win32metadata#600:
+    ; SetOffsetX overloads are also flipped). Index 14 = D2D_RECT_F version.
+    ; Pass 0 (NULL) to clear the clip.
+    SetClip(rectF := 0) => ComCall(14, this, 'ptr', rectF, 'hresult')
+
+    ; IDCompositionVisual::SetContent(content) — vtable 15
     SetContent(content) => ComCall(15, this, 'ptr', content is Integer ? content : content.ptr, 'hresult')
+
+    ; IDCompositionVisual::AddVisual(visual, insertAbove, referenceVisual) — vtable 16
+    AddVisual(visual, insertAbove := true, referenceVisual := 0) {
+        ComCall(16, this, 'ptr', visual is Integer ? visual : visual.ptr,
+            'int', insertAbove ? 1 : 0,
+            'ptr', referenceVisual is Integer ? referenceVisual : referenceVisual.ptr, 'hresult')
+    }
+
+    ; IDCompositionVisual::RemoveAllVisuals() — vtable 18
+    RemoveAllVisuals() => ComCall(18, this, 'hresult')
 }
 
 ; NOTE: ID2D1Image is already defined in Direct2D.ahk (extends ID2D1Resource).

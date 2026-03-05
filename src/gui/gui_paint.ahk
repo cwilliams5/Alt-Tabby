@@ -169,22 +169,13 @@ GUI_Repaint() {
     FX_PreRenderShaderLayer(phW, phH)
     BGImg_EnsureCache(phW, phH)
 
-    ; DComp decouples visual from HWND geometry (#153).  The order depends on
-    ; whether the window is growing or shrinking:
-    ;   Growing  (2→7): resize swap chain + paint + present FIRST, then
-    ;            SetWindowPos — DComp visual has correct content when HWND expands.
-    ;   Shrinking (7→2): SetWindowPos FIRST, then resize + paint — HWND clips the
-    ;            old DComp visual cleanly, then new frame replaces it.
-    ; This eliminates stale-pixel exposure in both directions.
+    ; Phase 2: Track whether resize is needed. Actual resize is atomic after
+    ; Present — SetClip + SetWindowPos + Commit all take effect on the same
+    ; compositor frame. No bidirectional ordering needed.
     needsResize := (rowsChanged && gGUI_Revealed)
-    isGrowing := (rowsDesired > oldRows)
     if (needsResize) {
         if (gFR_Enabled)
             FR_Record(FR_EV_PAINT_RESIZE, oldRows, rowsDesired, phW, phH)
-        if (!isGrowing)
-            Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
-        if (gD2D_RT && phW > 0 && phH > 0)
-            D2D_ResizeRenderTarget(phW, phH)
     }
     if (diagTiming)
         tResize := QPC() - t1
@@ -260,11 +251,14 @@ GUI_Repaint() {
         }
     }
 
-    ; Deferred HWND resize (growing only): swap chain already has the new-size
-    ; frame committed via Present() above.  SetWindowPos now just grows the
-    ; HWND to match — DComp visual shows correct content instantly.  (#153)
-    if (needsResize && isGrowing)
+    ; Phase 2: Atomic resize after Present — paint already rendered at new
+    ; dimensions within the oversized swap chain buffer.  SetClip + SetWindowPos
+    ; + Commit are batched by DComp, all take effect on the same compositor frame.
+    if (needsResize && phW > 0 && phH > 0) {
+        D2D_SetClipRect(phW, phH)
         Win_SetPosPhys(gGUI_BaseH, phX, phY, phW, phH)
+        D2D_Commit()
+    }
 
     ; ===== TIMING: Reveal =====
     if (diagTiming)
