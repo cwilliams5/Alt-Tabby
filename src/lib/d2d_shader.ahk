@@ -447,6 +447,26 @@ Shader_RegisterFromFile(name, hlslFile, meta := "") {
             return false
         }
 
+        ; Prepend shared header (cached on first load)
+        static sCommonHlsl := ""
+        if (sCommonHlsl = "") {
+            commonPath := ""
+            ; Same directory resolution as shader HLSL
+            testPath := A_ScriptDir "\shaders\alt_tabby_common.hlsl"
+            if (FileExist(testPath))
+                commonPath := testPath
+            else {
+                SplitPath(A_ScriptDir, , &parentDir2)
+                testPath := parentDir2 "\shaders\alt_tabby_common.hlsl"
+                if (FileExist(testPath))
+                    commonPath := testPath
+            }
+            if (commonPath != "")
+                sCommonHlsl := FileRead(commonPath, "UTF-8") "`n"
+        }
+        if (sCommonHlsl != "")
+            hlsl := sCommonHlsl "#line 1 `"" hlslFile "`"`n" hlsl
+
         ; Delegate to existing Shader_Register which handles D3DCompile + cache
         return Shader_Register(name, hlsl, meta)
     } catch as e {
@@ -709,7 +729,7 @@ _Shader_MakeGUID(str) {
 
 ; Run the D3D11 shader pipeline. Call BEFORE D2D BeginDraw.
 ; timeSec: elapsed time in seconds. darken/desaturate: 0.0-1.0 post-processing.
-Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
+Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity := 1.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
     global gShader_FrameCount, gShader_LastTime, gShader_ActiveName
     static dbgRendered := Map()
@@ -770,7 +790,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0) {
         NumPut("uint", gShader_FrameCount, pData, 16)       ; frame       (offset 16)
         NumPut("float", Float(darken), pData, 20)           ; darken      (offset 20)
         NumPut("float", Float(desaturate), pData, 24)       ; desaturate  (offset 24)
-        NumPut("float", 0.0, pData, 28)                     ; _pad        (offset 28)
+        NumPut("float", Float(opacity), pData, 28)             ; opacity     (offset 28)
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)

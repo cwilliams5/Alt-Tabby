@@ -2,21 +2,6 @@
 // CC BY-NC-SA 3.0
 // Converted from GLSL to HLSL for Alt-Tabby
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 static const float F3 = 0.3333333;
 static const float G3 = 0.1666667;
 
@@ -273,12 +258,5 @@ float4 PSMain(PSInput input) : SV_Target {
     finalColor += happy_star(uv2, anim) * float3(0.25 + 0.1 * ct_time, 0.2 + 0.1 * st_time, 0.15) * 0.5;
     finalColor *= happy_star(uv2, anim) * float3(0.25 + 0.1 * ct_time, 0.2 + 0.1 * st_time, 0.15) * 2.0;
 
-    // Darken/desaturate post-processing
-    float lum = dot(finalColor, float3(0.299, 0.587, 0.114));
-    finalColor = lerp(finalColor, (float3)lum, desaturate);
-    finalColor = finalColor * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a_out = max(finalColor.r, max(finalColor.g, finalColor.b));
-    return float4(finalColor * a_out, a_out);
+    return AT_PostProcess(finalColor);
 }

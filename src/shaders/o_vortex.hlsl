@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 static const int cell_amount = 2;
 
 float2 modulo(float2 divident, float2 divisor) {
@@ -96,12 +81,5 @@ float4 PSMain(PSInput input) : SV_Target {
         c = milkBlack;
     }
 
-    // Post-processing: darken/desaturate
-    float lum = dot(c, float3(0.299, 0.587, 0.114));
-    c = lerp(c, (float3)lum, desaturate);
-    c = c * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(c.r, max(c.g, c.b));
-    return float4(c * a, a);
+    return AT_PostProcess(c);
 }

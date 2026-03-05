@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define PI 3.14159265359
 #define TWO_PI 6.28318530718
 #define FBM_ITER 5
@@ -140,12 +125,5 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 col2 = lerp(float3(0.9, 0.9, 0.56), float3(0.95, 0.65, 0.38), sin(noise0(t * 5.0 + uv.x * 0.3)) * 0.5 + 0.5) * d * glow;
     float3 col = lerp(col1, col2, a);
 
-    // Darken / desaturate
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float alpha = max(col.r, max(col.g, col.b));
-    return float4(col * alpha, alpha);
+    return AT_PostProcess(col);
 }

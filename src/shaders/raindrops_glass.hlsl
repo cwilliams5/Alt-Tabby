@@ -3,21 +3,6 @@
 // License: All Rights Reserved (NonCommercial)
 // iChannel0 replaced with procedural gradient; non-drop areas are transparent.
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // --- Constants ---
 
 #define RandomSeed 4.3315
@@ -398,16 +383,8 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 FinalColor = ProceduralBackdrop(UVWithNormal, Blur) * EdgeColorScale;
 
-    // Darken / desaturate post-processing
-    float lum = dot(FinalColor, float3(0.299, 0.587, 0.114));
-    FinalColor = lerp(FinalColor, (float3)lum, desaturate);
-    FinalColor = FinalColor * (1.0 - darken);
-
     // Transparency: raindrop areas visible, non-drop areas transparent
-    // so the underlying acrylic/mica backdrop shows through
     float dropMask = saturate(RaindropHeight + RaindropTrail * 0.3);
-    float alpha = dropMask;
 
-    // Premultiplied alpha
-    return float4(FinalColor * alpha, alpha);
+    return AT_PostProcess(FinalColor, dropMask);
 }

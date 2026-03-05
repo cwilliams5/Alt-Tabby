@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // GLSL mod: always returns positive remainder for positive divisor
 float glsl_mod(float x, float y) { return x - y * floor(x / y); }
 
@@ -93,12 +78,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 color = 2.0 * (f * f * f + 0.6 * f * f + 0.5 * f) * col;
 
-    // Post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness — premultiplied
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

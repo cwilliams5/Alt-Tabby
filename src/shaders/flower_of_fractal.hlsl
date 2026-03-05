@@ -1,13 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 // originals from gaz fractal 62
 #define R(p,a,r) lerp(a*dot(p,a),p,cos(r))+sin(r)*cross(p,a)
 #define H(h) (cos((h)*6.3+float3(25,20,21))*2.5+.5)
@@ -44,11 +34,6 @@ float noise(float3 x) {
                      lerp(hash(i + int3(0, 1, 1)),
                           hash(i + int3(1, 1, 1)), f.x), f.y), f.z);
 }
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
@@ -116,10 +101,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Alpha from brightness, darken/desaturate, premultiply
     float3 color = O.xyz;
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-    float al = saturate(max(color.r, max(color.g, color.b)));
-    color = saturate(color);
-    return float4(color * al, al);
+    return AT_PostProcess(color);
 }

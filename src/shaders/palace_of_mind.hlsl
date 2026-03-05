@@ -1,13 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 float glsl_mod(float x, float y) {
     return x - y * floor(x / y);
 }
@@ -111,11 +101,6 @@ float3 lighting(float3 p, float3 view) {
     return saturate(col * float3(0.3, 0.5, 0.9) * 0.7 + emissive * float3(0.2, 0.2, 1.0));
 }
 
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
     float2 p = (fragCoord.xy * 2.0 - resolution) / resolution.yy;
@@ -150,13 +135,5 @@ float4 PSMain(PSInput input) : SV_Target {
     col = pow(col, (float3)2.2);
     col *= 2.0;
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float al = saturate(max(col.r, max(col.g, col.b)));
-    col = saturate(col);
-    return float4(col * al, al);
+    return AT_PostProcess(col);
 }

@@ -1,13 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 #define PI 3.141592
 #define TWOPI 6.283184
 
@@ -60,11 +50,6 @@ float3 Oilnoise(float2 pos, float3 RGB)
     return clamp(RGB / abs1d(dot(q, float2(-0.240, 0.000))) * .5 / result, (float3)0.0, (float3)1.0);
 }
 
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
 
@@ -91,12 +76,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col /= AA * AA;
 
-    // darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // alpha from brightness, premultiply
-    float alpha = max(col.r, max(col.g, col.b));
-    return float4(col * alpha, alpha);
+    return AT_PostProcess(col);
 }

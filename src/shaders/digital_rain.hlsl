@@ -4,25 +4,10 @@
 // License: CC BY-NC-SA 3.0
 // Y-axis: flipped (rain falls downward)
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 Texture2D iChannel0 : register(t0);
 Texture2D iChannel1 : register(t1);
 SamplerState samp0 : register(s0);
 SamplerState samp1 : register(s1);
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 // iChannel1 is 256x256
 static const float2 iChannel1Res = float2(256.0, 256.0);
@@ -55,12 +40,5 @@ float4 PSMain(PSInput input) : SV_Target
 
     float3 color = text(fragCoord) * rain(fragCoord);
 
-    // Desaturate / darken
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

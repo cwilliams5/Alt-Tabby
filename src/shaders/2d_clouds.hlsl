@@ -1,21 +1,6 @@
 // 2D Clouds - drift (Shadertoy 4tdSWr)
 // Converted from GLSL to HLSL for Alt-Tabby
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 static const float cloudscale = 1.1;
 static const float speed = 0.03;
 static const float clouddark = 0.5;
@@ -125,12 +110,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 result = lerp(skycolour, saturate(skytint * skycolour + cloudcolour), saturate(f + c));
 
-    // Darken/desaturate post-processing
-    float lum = dot(result, float3(0.299, 0.587, 0.114));
-    result = lerp(result, (float3)lum, desaturate);
-    result = result * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(result.r, max(result.g, result.b));
-    return float4(result * a, a);
+    return AT_PostProcess(result);
 }

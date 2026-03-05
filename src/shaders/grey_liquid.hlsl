@@ -3,21 +3,6 @@
 // Some experimenting with warped FBM and very very fake lighting
 // Author: fractalfantasy — Forked from Warped Liquid two (7tyXDw)
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define PI  3.141592654
 #define TAU (2.0*PI)
 
@@ -219,12 +204,5 @@ float4 PSMain(PSInput input) : SV_Target {
     color += scol1*0.5;
     color += scol2*0.5;
 
-    // Darken/desaturate post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float alpha = max(color.r, max(color.g, color.b));
-    return float4(color * alpha, alpha);
+    return AT_PostProcess(color);
 }

@@ -3,23 +3,8 @@
 // Converted from GLSL to HLSL for Alt-Tabby
 // Domain warping based on https://iquilezles.org/articles/warp/warp.htm
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 float noise(float2 x) {
     float2 p = floor(x);
@@ -111,12 +96,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col *= 0.5 + 0.5 * pow(16.0 * uv.x * uv.y * (1.0 - uv.x) * (1.0 - uv.y), 0.1);
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

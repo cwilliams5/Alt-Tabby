@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float hash21(float2 v) {
     return frac(sin(dot(v, float2(12.9898, 78.233))) * 43758.5453123);
 }
@@ -73,12 +58,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col = lerp(baseCol, smokeCol, pow(q.y, 1.3));
 
-    // Apply darken/desaturate
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

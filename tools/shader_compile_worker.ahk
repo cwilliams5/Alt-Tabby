@@ -28,6 +28,9 @@ if (!hD3DCompiler) {
     ExitApp(1)
 }
 
+; --- Load common HLSL header (prepended to every pixel shader) ---
+commonHlsl := ""
+
 ; --- Process manifest ---
 failures := 0
 compiled := 0
@@ -61,6 +64,18 @@ Loop Read manifestPath {
         FileAppend("FAIL " outputPath ": empty HLSL: " hlslPath "`n", "*")
         failures++
         continue
+    }
+
+    ; Prepend common header for pixel shaders (not VS)
+    if (commonHlsl = "" && target = "ps_4_0") {
+        SplitPath(hlslPath, , &shaderDir)
+        commonPath := shaderDir "\alt_tabby_common.hlsl"
+        if (FileExist(commonPath))
+            commonHlsl := FileRead(commonPath, "UTF-8") "`n"
+    }
+    if (commonHlsl != "" && target = "ps_4_0") {
+        SplitPath(hlslPath, &fileName)
+        hlsl := commonHlsl "#line 1 `"" fileName "`"`n" hlsl
     }
 
     ; Compile

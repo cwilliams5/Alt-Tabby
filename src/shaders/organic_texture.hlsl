@@ -2,21 +2,6 @@
 // Author: Eseris - License: CC BY-NC-SA 3.0
 // Gradient noise by iq: https://www.shadertoy.com/view/XdXGW8
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define safepow(x,n) pow(abs(x),n)
 
 float2 hash(in float2 x) {
@@ -89,12 +74,5 @@ float4 PSMain(PSInput input) : SV_Target {
     float _sp = dot(nor, ha); float _sp2 = _sp * _sp; float _sp4 = _sp2 * _sp2; float _sp8 = _sp4 * _sp4; float _sp16 = _sp8 * _sp8; float _sp20 = _sp16 * _sp4;
     col += 0.3 * h * _sp20;
 
-    // Darken / desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

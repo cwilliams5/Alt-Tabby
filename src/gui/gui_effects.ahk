@@ -1220,7 +1220,7 @@ FX_PreRenderShaderLayer(w, h) {
     }
 
     try {
-        Shader_PreRender(shaderName, w, h, effectiveTime, cfg.ShaderShaderDarkness, cfg.ShaderShaderDesaturation)
+        Shader_PreRender(shaderName, w, h, effectiveTime, cfg.ShaderShaderDarkness, cfg.ShaderShaderDesaturation, cfg.ShaderShaderOpacity)
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Shader ERR [" shaderName "]: " e.Message " @ " e.What
@@ -1235,9 +1235,10 @@ FX_PreRenderShaderLayer(w, h) {
     }
 }
 
-; Draw the active shader layer inside D2D BeginDraw (PushLayer → DrawImage → PopLayer).
+; Draw the active shader layer inside D2D BeginDraw.
 ; Called from _GUI_PaintOverlay after FX_DrawBackdrop, before content.
-FX_DrawShaderLayer(wPhys, hPhys) {
+; Opacity is baked into shader output via AT_PostProcess — no PushLayer needed.
+FX_DrawShaderLayer(wPhys, hPhys) { ; lint-ignore: dead-param
     global gD2D_RT, gFX_ShaderIndex, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
 
     if (gFX_ShaderIndex < 1 || !gShader_Ready)
@@ -1251,15 +1252,7 @@ FX_DrawShaderLayer(wPhys, hPhys) {
     if (!pBitmap)
         return
 
-    ; User-configured opacity (overrides per-shader metadata)
-    global cfg
-    opacity := cfg.ShaderShaderOpacity
-
-    ; Draw with opacity layer
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, opacity)
-    gD2D_RT.PushLayer(layerParams, 0)
     gD2D_RT.DrawImage(pBitmap)
-    gD2D_RT.PopLayer()
 }
 
 ; Map a 1-based shader index to the registry key name.

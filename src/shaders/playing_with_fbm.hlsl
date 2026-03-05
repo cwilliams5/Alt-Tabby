@@ -2,21 +2,6 @@
 // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
 // Converted from https://www.shadertoy.com/view/XlXXz8
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float noise3D(float3 p)
 {
     return frac(sin(dot(p, float3(12.9898, 78.233, 126.7378))) * 43758.5453) * 2.0 - 1.0;
@@ -94,12 +79,5 @@ float4 PSMain(PSInput input) : SV_Target
 
     col = saturate(col);
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

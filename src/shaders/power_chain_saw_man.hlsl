@@ -1,21 +1,6 @@
 // Power Chain Saw Man — after Pudi (CC BY-NC-SA 3.0)
 // Converted from Shadertoy GLSL to HLSL
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // ============= Constants =============
 
 static const float3 BLOOD_COLOR = float3(179, 236, 15) / 255.0;
@@ -941,12 +926,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col += noise(uv * 500.0) * 0.015 * smoothstep(-1.47, 0.58, uv.y);
 
-    // Post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float alpha = max(col.r, max(col.g, col.b));
-    return float4(col * alpha, alpha);
+    return AT_PostProcess(col);
 }

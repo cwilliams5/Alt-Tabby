@@ -221,15 +221,12 @@ GLSL allows `vec3(x)` as shorthand for `vec3(x, x, x)`. HLSL does too with `floa
 Replace `void mainImage(out vec4 fragColor, in vec2 fragCoord)` with:
 
 ```hlsl
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
+// PSInput and cbuffer are provided by alt_tabby_common.hlsl (prepended automatically)
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
     // ... converted body ...
-    return fragColor;  // instead of out parameter
+    return AT_PostProcess(color);  // instead of manual post-processing
 }
 ```
 
@@ -243,33 +240,20 @@ Symmetric shaders (noise fields, clouds, fractals) usually don't need the flip.
 
 ### 5. Constant Buffer Header
 
-Always include at the top of the `.hlsl`:
+The cbuffer and PSInput struct are provided by `alt_tabby_common.hlsl`, which is prepended automatically before compilation. **Do NOT include them in the `.hlsl` file.** The common header provides:
+- `cbuffer Constants : register(b0)` with `time`, `resolution`, `timeDelta`, `frame`, `darken`, `desaturate`, `opacity`
+- `struct PSInput` with `SV_Position` and `TEXCOORD0`
+- `AT_PostProcess(float3 col)` and `AT_PostProcess(float3 col, float customAlpha)` functions
 
-```hlsl
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-```
+iChannel `Texture2D`/`SamplerState` declarations still go in the individual `.hlsl` file (they vary per shader and are NOT in the common header).
 
 ### 6. Alpha Handling
 
-Shadertoy shaders typically output opaque (alpha=1.0). For Alt-Tabby compositing:
+**Standard shaders** (alpha from brightness): End PSMain with `return AT_PostProcess(color);`
 
-- If the original outputs opaque, derive alpha from brightness: `float a = max(color.r, max(color.g, color.b));`
-- Premultiply: `return float4(color * a, a);`
-- If the shader already handles transparency, keep its alpha logic
-- Apply darken/desaturate post-processing before premultiply:
-  ```hlsl
-  float lum = dot(color, float3(0.299, 0.587, 0.114));
-  color = lerp(color, float3(lum, lum, lum), desaturate);
-  color = color * (1.0 - darken);
-  ```
+**Shaders with custom alpha** (transparency masks, particle alpha, etc.): End PSMain with `return AT_PostProcess(color, customAlpha);`
+
+`AT_PostProcess` handles darken, desaturate, opacity multiplication, and premultiplied alpha output. Do NOT write these manually.
 
 ### 7. Audio Channels
 

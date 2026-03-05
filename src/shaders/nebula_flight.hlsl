@@ -2,26 +2,11 @@
 // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
 // Converted from Shadertoy: https://www.shadertoy.com/view/Xs2SzR
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
 
 Texture2D iChannel1 : register(t1);
 SamplerState samp1 : register(s1);
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 static const float tau = 6.28318530717958647692;
 
@@ -113,12 +98,5 @@ float4 PSMain(PSInput input) : SV_Target
     // dithering
     c += (iChannel1.SampleLevel(samp1, (fragCoord.xy + 0.5) / 8.0, 0.0).x - 0.5) / 256.0;
 
-    // darken / desaturate
-    float lum = dot(c, float3(0.299, 0.587, 0.114));
-    c = lerp(c, (float3)lum, desaturate);
-    c = c * (1.0 - darken);
-
-    // alpha from brightness, premultiply
-    float a = max(c.r, max(c.g, c.b));
-    return float4(c * a, a);
+    return AT_PostProcess(c);
 }

@@ -2,21 +2,6 @@
 // https://www.shadertoy.com/view/3c3SWH
 // Converted from GLSL to HLSL for Alt-Tabby
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define PI 3.141596
 #define PI2 (PI * 2.0)
 
@@ -42,7 +27,6 @@ float noise(float2 p) {
         dot(a, hash(i + 0.0)),
         dot(b, hash(i + o)),
         dot(c, hash(i + 1.0)));
-
 
     return dot(n, (float3)70.0);
 }
@@ -96,12 +80,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col = col * c2;
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

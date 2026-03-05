@@ -1,19 +1,4 @@
 // CC0: Spirals for windows terminal
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 static const float PI = 3.141592654;
 static const float TAU = 2.0 * PI;
 
@@ -160,12 +145,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 col = effect(p, pp);
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness + premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

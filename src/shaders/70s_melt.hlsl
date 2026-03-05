@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float cosRange(float amt, float range, float minimum) {
     return (((1.0 + cos(radians(amt))) * 0.5) * range) + minimum;
 }
@@ -48,12 +33,5 @@ float4 PSMain(PSInput input) : SV_Target {
     extrusion *= 1.5;
     extrusion *= vignette;
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from original extrusion, premultiply
-    float a = saturate(extrusion);
-    return float4(col * a, a);
+    return AT_PostProcess(col, saturate(extrusion));
 }

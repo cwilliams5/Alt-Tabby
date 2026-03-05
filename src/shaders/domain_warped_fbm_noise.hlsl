@@ -1,20 +1,5 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 static const int octaves = 6;
 
@@ -92,12 +77,11 @@ float4 PSMain(PSInput input) : SV_Target {
     float3 col = -colour + abs(colour) * 2.0;
     float alphaOrig = rsqrt(dot(q, q));
 
-    // Darken/desaturate post-processing
+    // Darken/desaturate + hybrid alpha (brightness * alphaOrig)
     float lum = dot(col, float3(0.299, 0.587, 0.114));
     col = lerp(col, (float3)lum, desaturate);
     col = col * (1.0 - darken);
 
-    // Alpha from brightness, premultiplied
-    float a = saturate(alphaOrig) * max(col.r, max(col.g, col.b));
-    return float4(col * saturate(alphaOrig), a);
+    float a = saturate(alphaOrig) * max(col.r, max(col.g, col.b)) * opacity;
+    return float4(col * saturate(alphaOrig) * opacity, a);
 }

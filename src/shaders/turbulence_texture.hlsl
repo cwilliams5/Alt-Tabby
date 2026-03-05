@@ -2,21 +2,6 @@
 // https://www.shadertoy.com/view/ssj3Wc
 // Author: penghuailiang | License: CC BY-NC-SA 3.0
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float3 random_perlin(float3 p) {
     p = float3(
             dot(p, float3(127.1, 311.7, 69.5)),
@@ -67,12 +52,5 @@ float4 PSMain(PSInput input) : SV_Target
     float c1 = noise_turbulence(float3(1.0 * uv, time / 10.0));
     float3 col = float3(1.5 * c1, 1.5 * c1 * c1 * c1, c1 * c1 * c1 * c1 * c1 * c1);
 
-    // darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

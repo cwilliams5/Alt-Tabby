@@ -1,21 +1,6 @@
 // Glassy with odd rotation by etrujillo — https://www.shadertoy.com/view/3XdXWX
 // A shiny reflective variation of a raymarched fractal accident (CC0)
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // tanh not available in SM 5.0
 float3 tanhSafe(float3 x) {
     float3 e2x = exp(2.0 * clamp(x, -10.0, 10.0));
@@ -96,12 +81,5 @@ float4 PSMain(PSInput input) : SV_Target {
     // Compress brightness range
     float3 color = tanhSafe(col / 2e4);
 
-    // Apply darken/desaturate
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float alpha = max(color.r, max(color.g, color.b));
-    return float4(color * alpha, alpha);
+    return AT_PostProcess(color);
 }

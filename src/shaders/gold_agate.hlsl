@@ -1,21 +1,6 @@
 // Gold Agate - JuliaPoo (Shadertoy XtcfRn)
 // Converted from GLSL to HLSL for Alt-Tabby
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float2x2 rot(float a) { float sa, ca; sincos(a, sa, ca); return float2x2(sa, ca, -ca, sa); }
 
 float noise(in float2 x) { return smoothstep(0., 1., sin(1.5 * x.x) * sin(1.5 * x.y)); }
@@ -75,12 +60,5 @@ float4 PSMain(PSInput input) : SV_Target {
     // soften the bright parts
     c *= f * 1.5;
 
-    // Darken/desaturate post-processing
-    float lum = dot(c, float3(0.299, 0.587, 0.114));
-    c = lerp(c, (float3)lum, desaturate);
-    c = c * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(c.r, max(c.g, c.b));
-    return float4(c * a, a);
+    return AT_PostProcess(c);
 }

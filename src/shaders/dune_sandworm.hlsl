@@ -2,21 +2,6 @@
 // https://www.shadertoy.com/view/7stGRj
 // License: CC BY-NC-SA 3.0
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define R float3(resolution, 1.0)
 #define NM normalize
 #define Z0 min(time, 0.0)
@@ -196,12 +181,5 @@ float4 PSMain(PSInput input) : SV_Target {
     // Gamma + fade-in/out (from rgba macro)
     float3 color = pow(max((float3)0, col), (float3)0.45) * sat(t) * sat(30.0 - t);
 
-    // Post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float alpha = max(color.r, max(color.g, color.b));
-    return float4(color * alpha, alpha);
+    return AT_PostProcess(color);
 }

@@ -2,21 +2,6 @@
 // License: CC BY-NC-SA 3.0
 // Uses runes code by FabriceNeyret2 / otaviogood
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 static const int ITERATIONS = 40;
 static const float SPEED = 1.0;
 
@@ -34,7 +19,6 @@ static const float WALK_SPEED = 1.0 * XYCELL_SIZE;
 static const float BLOCKS_BEFORE_TURN = 3.0;
 
 static const float PI = 3.14159265359;
-
 
 //        ----  random  ----
 
@@ -88,7 +72,6 @@ float4 hash4_v3(float3 v)
     return frac(sin(p) * 43758.5453123);
 }
 
-
 //        ----  symbols  ----
 
 float rune_line(float2 p, float2 a, float2 b) {
@@ -123,7 +106,6 @@ float random_char(float2 outer, float2 inner, float highlight) {
     float2 seed = float2(dot(outer, float2(269.5, 183.3)), dot(outer, float2(113.5, 271.9)));
     return rune(inner, seed, highlight);
 }
-
 
 //        ----  digital rain  ----
 
@@ -219,7 +201,6 @@ float3 rain(float3 ro3, float3 rd3, float t_time) {
 
     return result.xyz * result.a;
 }
-
 
 //        ----  main, camera  ----
 
@@ -419,12 +400,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 col = rain(ro, rd, t_time);
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

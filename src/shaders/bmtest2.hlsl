@@ -2,21 +2,6 @@
 // Ported from https://www.shadertoy.com/view/NtdyRj
 // Domain warping based on IQ's warp tutorial
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
 
@@ -79,12 +64,5 @@ float4 PSMain(PSInput input) : SV_Target {
     // Vignette
     col *= 0.70 + 0.65 * sqrt(70.0 * uv.x * uv.y * (1.0 - uv.x) * (1.0 - uv.y));
 
-    // Post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col *= 1.0 - darken;
-
-    // Alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

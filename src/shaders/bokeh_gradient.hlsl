@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 static const float animationProgress = 1.0;
 static const float bloomIntensity = 2.1;
 static const float baseCircleSize = 0.3;
@@ -127,11 +112,5 @@ float4 PSMain(PSInput input) : SV_Target {
     vignette = clamp(vignette, 0.6, 1.0);
     totalAlpha *= vignette;
 
-    // Darken/desaturate post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Premultiply with shader's own alpha
-    return float4(color * totalAlpha, totalAlpha);
+    return AT_PostProcess(color, totalAlpha);
 }

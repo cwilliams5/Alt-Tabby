@@ -3,21 +3,6 @@
 // https://www.shadertoy.com/view/33KBDm
 // De-golfed and converted from GLSL
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float3 tanh_approx(float3 x) {
     float3 x2 = x * x;
     return x * (27.0 + x2) / (27.0 + 9.0 * x2);
@@ -90,12 +75,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 col = tanh_approx(o);
 
-    // darken/desaturate
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // alpha from brightness, premultiply
-    float alpha = max(col.r, max(col.g, col.b));
-    return float4(col * alpha, alpha);
+    return AT_PostProcess(col);
 }

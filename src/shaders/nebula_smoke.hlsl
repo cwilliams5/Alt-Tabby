@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float polygonDistance(float2 p, float radius, float angleOffset, int sideCount) {
     float a = atan2(p.x, p.y) + angleOffset;
     float b = 6.28319 / float(sideCount);
@@ -59,12 +44,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 color = (float3)1.0 - accum * subColor + addColor;
 
-    // Darken/desaturate post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

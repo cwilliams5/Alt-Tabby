@@ -1,21 +1,6 @@
 // Abstract Vortex by Frostbyte_ — https://www.shadertoy.com/view/wcyBD3
 // Low raymarch count volumetric vortex (CC BY-NC-SA 4.0)
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // 2D rotation matrix
 // GLSL mat2(c,-s,s,c)*v → HLSL mul(v, float2x2(c,-s,s,c))
 float2 rot2d(float2 v, float t) {
@@ -73,12 +58,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 color = acesTonemap(l * l / 6e2);
 
-    // Apply darken/desaturate
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float alpha = max(color.r, max(color.g, color.b));
-    return float4(color * alpha, alpha);
+    return AT_PostProcess(color);
 }

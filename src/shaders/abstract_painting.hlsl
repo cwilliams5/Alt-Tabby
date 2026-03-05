@@ -3,21 +3,6 @@
 //  Author: FlorianDuf
 //  Inspired by: https://iquilezles.org/articles/warp & https://thebookofshaders.com/
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define OCTAVES 5
 
 float rand(float2 st)
@@ -82,12 +67,5 @@ float4 PSMain(PSInput input) : SV_Target {
     // TYPE 0: art effect
     col = lerp(float3(q * 0.1, 0.0), float3(r, 0.5 * sin(time) + 0.5), val);
 
-    // Darken/desaturate
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

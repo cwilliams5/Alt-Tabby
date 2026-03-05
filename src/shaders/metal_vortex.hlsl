@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define SURF_DIST 0.001
 #define MAX_STEPS 256
 #define MAX_STEPS_REF 32
@@ -272,12 +257,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     tot = col;
 
-    // Post-processing
-    float lum = dot(tot, float3(0.299, 0.587, 0.114));
-    tot = lerp(tot, (float3)lum, desaturate);
-    tot = tot * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(tot.r, max(tot.g, tot.b));
-    return float4(tot * a, a);
+    return AT_PostProcess(tot);
 }

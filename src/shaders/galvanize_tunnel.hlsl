@@ -3,21 +3,6 @@
 // Jochen 'Virgill' Feldkoetter
 // https://www.shadertoy.com/view/MlX3Wr
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // GLSL-compatible mod (handles negatives correctly)
 float glsl_mod(float x, float y) { return x - y * floor(x / y); }
 float2 glsl_mod(float2 x, float2 y) { return x - y * floor(x / y); }
@@ -267,12 +252,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col = col * Scr * blend_g;
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

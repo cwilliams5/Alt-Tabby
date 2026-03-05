@@ -2,21 +2,6 @@
 // Inspired by https://iquilezles.org/articles/warp
 // Converted from GLSL to HLSL for Alt-Tabby
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float random(float2 p) {
     float x = dot(p, float2(4371.321, -9137.327));
     return 2.0 * frac(sin(x) * 17381.94472) - 1.0;
@@ -88,12 +73,5 @@ float4 PSMain(PSInput input) : SV_Target {
     cc += 0.5 * float3(0.1, 0.0, 0.2) * noise_fbm(p);
     cc += 0.25 * float3(0.3, 0.4, 0.6) * noise_fbm(2.0 * p);
 
-    // Darken/desaturate post-processing
-    float lum = dot(cc, float3(0.299, 0.587, 0.114));
-    cc = lerp(cc, (float3)lum, desaturate);
-    cc = cc * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float alpha = max(cc.r, max(cc.g, cc.b));
-    return float4(cc * alpha, alpha);
+    return AT_PostProcess(cc);
 }

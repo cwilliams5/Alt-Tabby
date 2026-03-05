@@ -28,7 +28,8 @@ $resourcesPath = Join-Path $libDir 'shader_resources.ahk'
 if (!(Test-Path $resImgDir)) { New-Item -ItemType Directory -Path $resImgDir -Force | Out-Null }
 
 # Discover shaders: each .hlsl must have a matching .json
-$hlslFiles = Get-ChildItem -Path $shaderDir -Filter '*.hlsl' | Sort-Object Name
+$hlslFiles = Get-ChildItem -Path $shaderDir -Filter '*.hlsl' |
+    Where-Object { $_.Name -ne 'alt_tabby_common.hlsl' } | Sort-Object Name
 if ($hlslFiles.Count -eq 0) {
     Write-Host "No .hlsl files found in $shaderDir"
     exit 0
@@ -40,7 +41,9 @@ if (-not $force -and (Test-Path $bundlePath) -and (Test-Path $resourcesPath)) {
         Sort-Object | Select-Object -First 1  # oldest output
     $jsonFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.json' -ErrorAction SilentlyContinue)
     $scriptTime = (Get-Item $PSCommandPath).LastWriteTime
+    $commonHlsl = Get-Item (Join-Path $shaderDir 'alt_tabby_common.hlsl') -ErrorAction SilentlyContinue
     $allInputs = @($hlslFiles) + @($jsonFiles) + @(Get-Item $PSCommandPath)
+    if ($commonHlsl) { $allInputs += @($commonHlsl) }
     $newestInput = $allInputs | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($outTime -gt $newestInput.LastWriteTime) {
         Write-Host "Shader bundle up to date ($($hlslFiles.Count) shaders)."

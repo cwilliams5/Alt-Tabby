@@ -2,21 +2,6 @@
 // Ported from https://www.shadertoy.com/view/ll3GD7
 // FBM domain warping inspired by IQ's warp tutorial
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // Color space helpers
 
 float3 rgb2hsv(float3 c) {
@@ -89,12 +74,5 @@ float4 PSMain(PSInput input) : SV_Target {
     color = hsv2rgb(hsv);
     color *= intensity;
 
-    // Post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color *= 1.0 - darken;
-
-    // Alpha from brightness, premultiply
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

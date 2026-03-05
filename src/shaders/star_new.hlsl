@@ -2,21 +2,6 @@
 // Ported from https://www.shadertoy.com/view/lcjyDR
 // Volumetric starfield with animated ellipse trails and star overlay
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define iterations 17
 #define formuparam 0.53
 #define volsteps 20
@@ -175,12 +160,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 color = fragColor.rgb;
 
-    // Post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color *= 1.0 - darken;
-
-    // Alpha from brightness, premultiply
-    float alpha = max(color.r, max(color.g, color.b));
-    return float4(color * alpha, alpha);
+    return AT_PostProcess(color);
 }

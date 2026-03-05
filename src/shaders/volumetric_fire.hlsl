@@ -3,21 +3,6 @@
 // Author: myth0genesis | License: CC BY-NC-SA 3.0
 // Based on nimitz's Protean clouds
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 static const float3x3 m3 = float3x3(0.3338, 0.56034, -0.71817,
                                      -0.87887, 0.32651, -0.15323,
                                      0.15162, 0.69596, 0.61339) * 1.93;
@@ -88,12 +73,5 @@ float4 PSMain(PSInput input) : SV_Target
 
     float3 col = transRender(ro, rd);
 
-    // darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

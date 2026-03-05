@@ -1,21 +1,6 @@
 // Tentacles of Light - iMac screensaver inspired
 // Original: https://www.shadertoy.com/view/WsyfRh by oneshade
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float Hash11(float x) {
     return frac(sin(x * 1254.5763) * 57465.57);
 }
@@ -79,12 +64,5 @@ float4 PSMain(PSInput input) : SV_Target {
         color += smoothstep(0.03, 0.0, lineDist(uv + offset, float2(0.0, 0.0), float2(_ca, _sa) * 1000.0)) * fadeOut * tentacleColor;
     }
 
-    // Darken/desaturate post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

@@ -2,21 +2,6 @@
 // Original by Birdmachine (CC BY-NC-SA 3.0)
 // Parallax scrolling fractal galaxy with stars
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // Synthetic beat replacement for audio channels
 float getFreq(float band) {
     return 0.4 + 0.15 * sin(time * (0.8 + band * 0.3))
@@ -106,12 +91,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 color = col.rgb;
 
-    // Post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

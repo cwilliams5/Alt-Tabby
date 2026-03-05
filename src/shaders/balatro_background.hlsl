@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define MID_FLASH 0.0
 #define VORT_SPEED 0.8
 #define VORT_OFFSET 0.0
@@ -67,12 +52,5 @@ float4 PSMain(PSInput input) : SV_Target {
     float4 final_col = ret_col * (1.0 - mod_flash) + mod_flash;
     float3 color = pow(final_col.rgb, (float3)(1.0 / 2.2));
 
-    // Desaturate and darken
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

@@ -1,13 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
 
@@ -69,11 +59,6 @@ float voronoi(float2 x)
     }
     return res.y - res.x;
 }
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 float4 PSMain(PSInput input) : SV_Target {
     float2 fragCoord = input.pos.xy;
@@ -137,10 +122,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 col = float3(pow(v, cexp.x), pow(v, cexp.y), pow(v, cexp.z)) * 2.0;
 
-    // alpha from brightness, darken/desaturate, premultiply
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-    float al = max(col.r, max(col.g, col.b));
-    return float4(col * al, al);
+    return AT_PostProcess(col);
 }

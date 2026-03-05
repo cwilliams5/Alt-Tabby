@@ -3,23 +3,8 @@
 // Noise functions adapted from Inigo Quilez (MIT License)
 // Converted from https://www.shadertoy.com/view/NdtcRr
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 // ACES tone mapping (from Common tab)
 float3 s_curve(float3 x)
@@ -127,12 +112,5 @@ float4 PSMain(PSInput input) : SV_Target
 
     col = s_curve(col);
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(col.r, max(col.g, col.b));
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

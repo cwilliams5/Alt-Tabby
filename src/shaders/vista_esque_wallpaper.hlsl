@@ -1,21 +1,6 @@
 // Vista-Esque wallpaper thing
 // Converted from: https://www.shadertoy.com/view/mlGXRc
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float3 palette(float t) {
     float3 a = float3(0.667, 0.500, 0.500);
     float3 b = float3(0.500, 0.667, 0.500);
@@ -52,12 +37,5 @@ float4 PSMain(PSInput input) : SV_Target {
         finalCol += col;
     }
 
-    // Darken/desaturate post-processing
-    float lum = dot(finalCol, float3(0.299, 0.587, 0.114));
-    finalCol = lerp(finalCol, (float3)lum, desaturate);
-    finalCol = finalCol * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(finalCol.r, max(finalCol.g, finalCol.b));
-    return float4(finalCol * a, a);
+    return AT_PostProcess(finalCol);
 }

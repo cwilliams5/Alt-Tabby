@@ -25,7 +25,8 @@ $ahk2base = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 if (!(Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
 
 # === Discover HLSL files ===
-$hlslFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.hlsl' -ErrorAction SilentlyContinue | Sort-Object Name)
+$hlslFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.hlsl' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne 'alt_tabby_common.hlsl' } | Sort-Object Name)
 if ($hlslFiles.Count -eq 0) {
     Write-Host "No .hlsl files found in $shaderDir"
     exit 0
@@ -48,6 +49,13 @@ $totalShaders = $totalPS + $totalVS
 
 Write-Host "Scanning $totalShaders shaders ($totalPS PS + $totalVS VS)..."
 
+# Common header timestamp — forces recompile when header changes
+$commonHlslPath = Join-Path $shaderDir 'alt_tabby_common.hlsl'
+$commonHlslTime = $null
+if (Test-Path $commonHlslPath) {
+    $commonHlslTime = (Get-Item $commonHlslPath).LastWriteTime
+}
+
 foreach ($hlsl in $hlslFiles) {
     $key = Get-ShaderKey $hlsl.BaseName
     $binPath = Join-Path $outputDir "ps_$key.bin"
@@ -55,7 +63,10 @@ foreach ($hlsl in $hlslFiles) {
     if (!$force -and (Test-Path $binPath)) {
         $binTime = (Get-Item $binPath).LastWriteTime
         $hlslTime = $hlsl.LastWriteTime
-        if ($binTime -gt $hlslTime) {
+        # Common header change forces recompile
+        if ($commonHlslTime -and $commonHlslTime -gt $binTime) {
+            # Fall through to add as stale
+        } elseif ($binTime -gt $hlslTime) {
             $cachedCount++
             continue
         }

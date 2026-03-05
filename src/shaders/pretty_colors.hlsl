@@ -2,21 +2,6 @@
 // https://www.shadertoy.com/view/MtcXDr
 // Author: anprogrammer | License: CC BY-NC-SA 3.0
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define N_DELTA 0.015625
 
 float rand(float3 n) {
@@ -101,13 +86,5 @@ float4 PSMain(PSInput input) : SV_Target
 
     float3 col = nebula(float3(uv * 5.1, time * 0.1) * 0.1) - 1.0;
 
-    // darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // alpha from brightness, premultiply
-    float a = max(col.r, max(col.g, col.b));
-    a = saturate(a);
-    return float4(col * a, a);
+    return AT_PostProcess(col);
 }

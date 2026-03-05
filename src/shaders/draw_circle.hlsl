@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float3 drawCircle(float2 pos, float radius, float width, float power, float4 color)
 {
     float dist1 = length(pos);
@@ -43,12 +28,5 @@ float4 PSMain(PSInput input) : SV_Target {
     float power = 0.1;
     float3 finalColor = drawCircle(pos, radius, width, power, color);
 
-    // Apply darken/desaturate
-    float lum = dot(finalColor, float3(0.299, 0.587, 0.114));
-    finalColor = lerp(finalColor, (float3)lum, desaturate);
-    finalColor = finalColor * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(finalColor.r, max(finalColor.g, finalColor.b));
-    return float4(finalColor * a, a);
+    return AT_PostProcess(finalColor);
 }

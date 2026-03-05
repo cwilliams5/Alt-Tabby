@@ -2,21 +2,6 @@
 // Licence CC0
 // Converted from GLSL to HLSL for Alt-Tabby
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define PI  3.141592654
 #define TAU (2.0*PI)
 
@@ -231,12 +216,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     col = postProcess(col, q);
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float alpha = max(col.r, max(col.g, col.b));
-    return float4(col * alpha, alpha);
+    return AT_PostProcess(col);
 }

@@ -1,18 +1,3 @@
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 #define SIZE 3.8
 #define RADIUS 0.15
 #define INNER_FADE 0.08
@@ -199,9 +184,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Alpha from brightness + premultiply
     float3 color = fragColor.rgb;
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-    float a_val = max(color.r, max(color.g, color.b));
-    return float4(color * a_val, a_val);
+    return AT_PostProcess(color);
 }

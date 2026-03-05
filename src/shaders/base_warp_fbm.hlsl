@@ -3,21 +3,6 @@
 // Domain warping fBM from iq: https://iquilezles.org/articles/warp/warp.htm
 // With transform_rose colormap from colormap-shaders
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float colormap_red(float x) {
     if (x < 0.0) {
         return 54.0 / 255.0;
@@ -99,12 +84,5 @@ float4 PSMain(PSInput input) : SV_Target {
     float shade = pattern(uv);
     float3 color = colormap(shade).rgb;
 
-    // Darken / desaturate post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from shade, premultiply
-    float a = saturate(shade);
-    return float4(color * a, a);
+    return AT_PostProcess(color, saturate(shade));
 }

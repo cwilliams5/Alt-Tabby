@@ -3,21 +3,6 @@
 // Converted from GLSL to HLSL for Alt-Tabby
 // Domain warping FBM based on https://iquilezles.org/articles/warp
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float noise(float3 p) {
     float3 ip = floor(p);
     p -= ip;
@@ -60,12 +45,5 @@ float4 PSMain(PSInput input) : SV_Target {
     uv += 10.0;
     float3 c = fbms(uv);
 
-    // Darken/desaturate post-processing
-    float lum = dot(c, float3(0.299, 0.587, 0.114));
-    c = lerp(c, (float3)lum, desaturate);
-    c = c * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(c.r, max(c.g, c.b));
-    return float4(c * a, a);
+    return AT_PostProcess(c);
 }

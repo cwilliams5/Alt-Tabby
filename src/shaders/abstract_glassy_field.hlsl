@@ -2,25 +2,10 @@
 // Author: Shane - License: CC BY-NC-SA 3.0
 // Raymarched blobby field with fake glass refraction and glow
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
 Texture2D iChannel0 : register(t0);
 SamplerState samp0 : register(s0);
 Texture2D iChannel1 : register(t1);
 SamplerState samp1 : register(s1);
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
 
 #define FAR 50.
 
@@ -244,12 +229,5 @@ float4 PSMain(PSInput input) : SV_Target {
     // Gamma correction
     col = sqrt(saturate(col));
 
-    // Darken/desaturate post-processing
-    float lum = dot(col, float3(0.299, 0.587, 0.114));
-    col = lerp(col, (float3)lum, desaturate);
-    col = col * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float alpha = max(col.r, max(col.g, col.b));
-    return float4(col * alpha, alpha);
+    return AT_PostProcess(col);
 }

@@ -1,21 +1,6 @@
 // Blurry Circles - converted from Shadertoy (wlBGDG)
 // Author: LJ (@LJ_1102) - License: CC BY-NC-SA 3.0
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 // GLSL mod: always returns positive (a - b*floor(a/b))
 float2 glsl_mod(float2 a, float b) {
     return a - b * floor(a / b);
@@ -50,12 +35,5 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float3 color = sqrt(d) * 1.4;
 
-    // Darken / desaturate post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiply
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }

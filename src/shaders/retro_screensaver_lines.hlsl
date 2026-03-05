@@ -2,21 +2,6 @@
 // Original: https://www.shadertoy.com/view/dsKfRz by bschu
 // Line function by gPlati: https://www.shadertoy.com/view/MlcGDB
 
-cbuffer Constants : register(b0) {
-    float time;
-    float2 resolution;
-    float timeDelta;
-    uint frame;
-    float darken;
-    float desaturate;
-    float _pad;
-};
-
-struct PSInput {
-    float4 pos : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
 float lineSDF(float2 P, float2 A, float2 B, float r) {
     float2 g = B - A;
     float d = abs(dot(normalize(float2(g.y, -g.x)), P - A));
@@ -54,12 +39,5 @@ float4 PSMain(PSInput input) : SV_Target {
         color = (1.0 - l) * color + (l * changing);
     }
 
-    // Darken/desaturate post-processing
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = lerp(color, (float3)lum, desaturate);
-    color = color * (1.0 - darken);
-
-    // Alpha from brightness, premultiplied
-    float a = max(color.r, max(color.g, color.b));
-    return float4(color * a, a);
+    return AT_PostProcess(color);
 }
