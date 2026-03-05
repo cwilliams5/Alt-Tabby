@@ -186,7 +186,7 @@ $stderr = if (Test-Path $errFile) { Get-Content $errFile -Raw -ErrorAction Silen
 $allOutput = "$stdout`n$stderr"
 
 $warnings = [System.Collections.ArrayList]::new()
-$lines = $allOutput -split "`r?`n"
+$lines = $allOutput.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
 for ($i = 0; $i -lt $lines.Count; $i++) {
     $trimmed = $lines[$i].Trim()
     if (-not $trimmed) { continue }

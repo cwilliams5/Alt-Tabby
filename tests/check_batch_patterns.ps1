@@ -32,7 +32,7 @@ $relToFull = @{}        # relPath (from src/) -> fullPath
 foreach ($f in $allFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $fileCacheText[$f.FullName] = $text
-    $lines = $text -split "`r?`n"
+    $lines = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
     $fileCache[$f.FullName] = $lines
     $relPath = $f.FullName
     if ($relPath.StartsWith($SourceDir)) {
@@ -1811,7 +1811,7 @@ if ($null -ne $cpiFullPath -and $fileCacheText.ContainsKey($cpiFullPath)) {
         $dirtyFlags = @("gWS_SortOrderDirty", "gWS_ContentDirty", "gWS_MRUBumpOnly")
 
         # Split into lines for line-number reporting
-        $cpiLines = $cpiBody -split "`r?`n"
+        $cpiLines = $cpiBody.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
 
         # --- Invariant 1: Every dirty flag must be cleared (:= false or := 0) somewhere in the function ---
         foreach ($flag in $dirtyFlags) {

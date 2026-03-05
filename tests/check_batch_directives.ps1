@@ -31,7 +31,7 @@ $fileCacheText = @{}
 foreach ($f in $allFiles) {
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $fileCacheText[$f.FullName] = $text
-    $fileCache[$f.FullName] = $text -split "`r?`n"
+    $fileCache[$f.FullName] = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
 }
 
 # === Pre-compiled regex patterns ===
@@ -1048,6 +1048,369 @@ if ($ucIssues.Count -gt 0) {
 }
 
 # ============================================================
+# Sub-check 9: orphan_libs
+# Detect unreferenced files in src/lib/
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+$libDir = Join-Path $SourceDir "lib"
+$olOrphans = @()
+
+if (Test-Path $libDir) {
+    $libFiles = @(Get-ChildItem -Path $libDir -Filter "*.ahk" -Recurse)
+    # Also need lib files in fileCacheText (batch only has non-lib files)
+    $allSrcFilesOL = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse)
+    $olAllText = @{}
+    foreach ($f in $allSrcFilesOL) {
+        if ($fileCacheText.ContainsKey($f.FullName)) {
+            $olAllText[$f.FullName] = $fileCacheText[$f.FullName]
+        } else {
+            $olAllText[$f.FullName] = [System.IO.File]::ReadAllText($f.FullName)
+        }
+    }
+
+    foreach ($lib in $libFiles) {
+        $libName = $lib.Name
+        $found = $false
+
+        foreach ($src in $allSrcFilesOL) {
+            if ($src.FullName -eq $lib.FullName) { continue }
+            $srcText = $olAllText[$src.FullName]
+            if ($srcText.IndexOf($libName, [System.StringComparison]::Ordinal) -ge 0) {
+                # Verify it's in a #Include directive
+                foreach ($line in $srcText.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)) {
+                    $trimmed = $line.TrimStart()
+                    if ($trimmed.StartsWith('#Include') -and $trimmed.Contains($libName)) {
+                        $found = $true
+                        break
+                    }
+                }
+            }
+            if ($found) { break }
+        }
+
+        if (-not $found) {
+            $olOrphans += $lib.FullName.Replace("$SourceDir\", '')
+        }
+    }
+}
+
+if ($olOrphans.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($olOrphans.Count) lib file(s) not referenced by any #Include directive:")
+    foreach ($f in $olOrphans | Sort-Object) {
+        [void]$failOutput.AppendLine("    ORPHAN: $f")
+    }
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  Fix: Move unused libs to reference/ or add a #Include directive.")
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_orphan_libs"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 10: include_chain
+# Verify all source files are reachable via #Include chain
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+$entryPoint = Join-Path $SourceDir "alt_tabby.ahk"
+$icOrphaned = @()
+
+if (Test-Path $entryPoint) {
+    $icIncludedFiles = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $icVisited = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $script:icScriptDir = [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($entryPoint))
+
+    function BD_ResolveIncludeTree {
+        param(
+            [string]$FilePath,
+            [string]$BaseDir
+        )
+
+        $resolvedPath = [System.IO.Path]::GetFullPath($FilePath)
+        if (-not (Test-Path $resolvedPath)) { return }
+        if ($icVisited.Contains($resolvedPath)) { return }
+        [void]$icVisited.Add($resolvedPath)
+        [void]$icIncludedFiles.Add($resolvedPath)
+
+        $currentBase = $BaseDir
+        # Use cached lines if available, otherwise read
+        if ($fileCache.ContainsKey($resolvedPath)) {
+            $icLines = $fileCache[$resolvedPath]
+        } else {
+            $icLines = [System.IO.File]::ReadAllLines($resolvedPath)
+        }
+
+        foreach ($line in $icLines) {
+            $trimmed = $line.Trim()
+            if ($trimmed.StartsWith(";")) { continue }
+
+            if ($trimmed -match '^#Include\s+(\*i\s+)?(.+)$') {
+                $target = $Matches[2].Trim()
+                $semiIdx = $target.IndexOf(";")
+                if ($semiIdx -ge 0) { $target = $target.Substring(0, $semiIdx).Trim() }
+
+                if ($target -match '\\$' -or $target -match '/$') {
+                    $dirTarget = $target -replace '%A_ScriptDir%', $script:icScriptDir
+                    $dirTarget = $dirTarget.TrimEnd('\', '/')
+                    $resolvedDir = if ([System.IO.Path]::IsPathRooted($dirTarget)) {
+                        $dirTarget
+                    } else {
+                        Join-Path $currentBase $dirTarget
+                    }
+                    if (Test-Path $resolvedDir) {
+                        $currentBase = [System.IO.Path]::GetFullPath($resolvedDir)
+                    }
+                    continue
+                }
+
+                $target = $target -replace '%A_ScriptDir%', $script:icScriptDir
+                $target = $target.Trim('"', "'")
+
+                $resolvedTarget = if ([System.IO.Path]::IsPathRooted($target)) {
+                    $target
+                } else {
+                    Join-Path $currentBase $target
+                }
+
+                if (Test-Path $resolvedTarget) {
+                    $resolvedTarget = [System.IO.Path]::GetFullPath($resolvedTarget)
+                    if ($resolvedTarget -like "*\lib\*") {
+                        [void]$icIncludedFiles.Add($resolvedTarget)
+                    } else {
+                        BD_ResolveIncludeTree -FilePath $resolvedTarget -BaseDir $currentBase
+                    }
+                }
+            }
+        }
+    }
+
+    BD_ResolveIncludeTree -FilePath $entryPoint -BaseDir $script:icScriptDir
+
+    # Standalone scripts (intentionally not #Included)
+    $icStandaloneScripts = @(
+        "editors\config_registry_editor.ahk"
+    )
+
+    $icSourceFiles = @(Get-ChildItem -Path $SourceDir -Filter "*.ahk" -Recurse |
+        Where-Object {
+            $_.FullName -notlike "*\lib\*" -and
+            $_.DirectoryName -ne $SourceDir
+        })
+
+    $icSourceFiles = @($icSourceFiles | Where-Object {
+        $relPath = $_.FullName.Replace("$SourceDir\", "")
+        $relPath -notin $icStandaloneScripts
+    })
+
+    foreach ($f in $icSourceFiles) {
+        $fullPath = [System.IO.Path]::GetFullPath($f.FullName)
+        if (-not $icIncludedFiles.Contains($fullPath)) {
+            $icOrphaned += $f.FullName.Replace("$SourceDir\", "")
+        }
+    }
+}
+
+if ($icOrphaned.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($icOrphaned.Count) source file(s) not reachable from alt_tabby.ahk include chain:")
+    foreach ($f in $icOrphaned | Sort-Object) {
+        [void]$failOutput.AppendLine("    ORPHANED: $f")
+    }
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  Fix: Add a #Include directive in alt_tabby.ahk (or a file it includes).")
+    [void]$failOutput.AppendLine("  Note: #Include *i with %A_ScriptDir% resolves to the MAIN script's dir,")
+    [void]$failOutput.AppendLine("        not the including file's dir. Files only reachable via *i are fragile.")
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_include_chain"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
+# Sub-check 11: profile_markers
+# Validate balanced Profiler.Enter/Leave per function
+# ============================================================
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+$pmErrors = @()
+$pmCheckedFunctions = 0
+
+foreach ($file in $allFiles) {
+    # Pre-filter: skip files without Profiler.Enter
+    if ($fileCacheText[$file.FullName].IndexOf('Profiler.Enter', [System.StringComparison]::Ordinal) -lt 0) { continue }
+
+    $lines = $fileCache[$file.FullName]
+    $relPath = $file.FullName.Replace("$SourceDir\", "")
+
+    $pmInFunction = $false
+    $pmFuncName = ""
+    $pmFuncStartLine = 0
+    $pmBraceDepth = 0
+    $pmFuncLines = @()
+    $pmFuncLineNums = @()
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        $trimmed = $line.Trim()
+        $lineNum = $i + 1
+
+        if ($trimmed.StartsWith(";")) { continue }
+
+        if (-not $pmInFunction) {
+            if ($trimmed -match '^(?:static\s+)?(\w[\w.]*)\s*\([^)]*\)\s*\{') {
+                $pmInFunction = $true
+                $pmFuncName = $Matches[1]
+                $pmFuncStartLine = $lineNum
+                $pmBraceDepth = 1
+                $pmFuncLines = @()
+                $pmFuncLineNums = @()
+
+                $restOfLine = $trimmed.Substring($trimmed.IndexOf('{') + 1)
+                $pmBraceDepth += ([regex]::Matches($restOfLine, '\{')).Count
+                $pmBraceDepth -= ([regex]::Matches($restOfLine, '\}')).Count
+                continue
+            }
+        } else {
+            $codePart = $trimmed -replace '"[^"]*"', '' -replace "'[^']*'", '' -replace ';.*$', ''
+
+            $pmBraceDepth += ([regex]::Matches($codePart, '\{')).Count
+            $pmBraceDepth -= ([regex]::Matches($codePart, '\}')).Count
+
+            if ($pmBraceDepth -gt 0) {
+                $pmFuncLines += $trimmed
+                $pmFuncLineNums += $lineNum
+            }
+
+            if ($pmBraceDepth -le 0) {
+                # Function ended — analyze it
+                $hasEnter = $false
+                $enterLine = -1
+                $enterIdx = -1
+                $enterName = ""
+                $enterHasTag = $false
+
+                for ($j = 0; $j -lt $pmFuncLines.Count; $j++) {
+                    $fl = $pmFuncLines[$j]
+                    if ($fl -match 'Profiler\.Enter\(\s*"([^"]+)"\s*\)') {
+                        $hasEnter = $true
+                        $enterLine = $pmFuncLineNums[$j]
+                        $enterIdx = $j
+                        $enterName = $Matches[1]
+                        $enterHasTag = $fl -match ';\s*@profile\s*$'
+                    }
+                }
+
+                if ($hasEnter) {
+                    $pmCheckedFunctions++
+
+                    if (-not $enterHasTag) {
+                        $pmErrors += "${relPath}:${enterLine}: Profiler.Enter() missing ; @profile tag in $pmFuncName()"
+                    }
+
+                    if ($enterName -ne $pmFuncName) {
+                        $pmErrors += "${relPath}:${enterLine}: Profiler.Enter(`"$enterName`") does not match function name $pmFuncName()"
+                    }
+
+                    $lastLeaveIdx = -1
+                    $leaveCount = 0
+
+                    for ($j = 0; $j -lt $pmFuncLines.Count; $j++) {
+                        $fl = $pmFuncLines[$j]
+
+                        if ($fl -match 'Profiler\.Leave\(\)') {
+                            $lastLeaveIdx = $j
+                            $leaveCount++
+
+                            if ($fl -notmatch ';\s*@profile\s*$') {
+                                $pmErrors += "${relPath}:$($pmFuncLineNums[$j]): Profiler.Leave() missing ; @profile tag in $pmFuncName()"
+                            }
+                        }
+
+                        if ($fl -match '^\s*return\b' -and $j -gt $enterIdx) {
+                            $hasLeaveBeforeReturn = $false
+
+                            if ($fl -match 'Profiler\.Leave\(\)') {
+                                $hasLeaveBeforeReturn = $true
+                            } else {
+                                for ($k = $j - 1; $k -ge 0; $k--) {
+                                    $prev = $pmFuncLines[$k]
+                                    if ($prev -match '^\s*$') { continue }
+                                    if ($prev -match 'Profiler\.Leave\(\)') {
+                                        $hasLeaveBeforeReturn = $true
+                                    }
+                                    break
+                                }
+                            }
+
+                            if (-not $hasLeaveBeforeReturn) {
+                                $pmErrors += "${relPath}:$($pmFuncLineNums[$j]): return without preceding Profiler.Leave() in $pmFuncName()"
+                            }
+                        }
+                    }
+
+                    $lastSubstantive = -1
+                    for ($j = $pmFuncLines.Count - 1; $j -ge 0; $j--) {
+                        if ($pmFuncLines[$j] -match '\S') {
+                            $lastSubstantive = $j
+                            break
+                        }
+                    }
+
+                    if ($lastSubstantive -ge 0) {
+                        $lastLine = $pmFuncLines[$lastSubstantive]
+                        $endsWithLeave = $lastLine -match 'Profiler\.Leave\(\)'
+                        $endsWithReturn = $lastLine -match '^\s*return\b'
+
+                        if (-not $endsWithLeave -and -not $endsWithReturn) {
+                            $foundLeaveNearEnd = $false
+                            $scanLimit = [Math]::Max(0, $lastSubstantive - 15)
+                            for ($j = $lastSubstantive - 1; $j -ge $scanLimit; $j--) {
+                                $scanLine = $pmFuncLines[$j]
+                                if ($scanLine -match '^\s*$') { continue }
+                                if ($scanLine -match 'Profiler\.Leave\(\)') {
+                                    $foundLeaveNearEnd = $true
+                                    break
+                                }
+                            }
+                            if (-not $foundLeaveNearEnd) {
+                                $pmErrors += "${relPath}:$($pmFuncLineNums[$lastSubstantive]): function $pmFuncName() with Profiler.Enter() does not end with Profiler.Leave()"
+                            }
+                        }
+                    }
+
+                    if ($leaveCount -eq 0) {
+                        $pmErrors += "${relPath}:${enterLine}: Profiler.Enter() in $pmFuncName() has no matching Profiler.Leave()"
+                    }
+                }
+
+                $pmInFunction = $false
+                $pmFuncName = ""
+            }
+        }
+    }
+}
+
+if ($pmErrors.Count -gt 0) {
+    $anyFailed = $true
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  FAIL: $($pmErrors.Count) profile marker issue(s) found:")
+    foreach ($err in $pmErrors) {
+        [void]$failOutput.AppendLine("    $err")
+    }
+    [void]$failOutput.AppendLine("")
+    [void]$failOutput.AppendLine("  Fix: Ensure every Profiler.Enter() has balanced Profiler.Leave() calls")
+    [void]$failOutput.AppendLine("  at all return paths and at function end. Both must have ; @profile tag.")
+}
+
+$sw.Stop()
+[void]$subTimings.Add(@{ Name = "check_profile_markers"; DurationMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 1) })
+
+# ============================================================
 # Report
 # ============================================================
 $totalSw.Stop()
@@ -1055,7 +1418,7 @@ $totalSw.Stop()
 if ($anyFailed) {
     Write-Host $failOutput.ToString().TrimEnd()
 } else {
-    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, phase_strings, winexist_cloaked, bare_try, return_paths, unreachable_code)" -ForegroundColor Green
+    Write-Host "  PASS: All directive checks passed (requires, singleinstance, state_strings, phase_strings, winexist_cloaked, bare_try, return_paths, unreachable_code, orphan_libs, include_chain, profile_markers)" -ForegroundColor Green
 }
 
 Write-Host "  Timing: total=$($totalSw.ElapsedMilliseconds)ms" -ForegroundColor Cyan

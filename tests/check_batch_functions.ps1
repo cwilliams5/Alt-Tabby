@@ -44,7 +44,7 @@ foreach ($f in $allProjectFiles) {
     if ($fileCache.ContainsKey($f.FullName)) { continue }
     $text = [System.IO.File]::ReadAllText($f.FullName)
     $fileCacheText[$f.FullName] = $text
-    $fileCache[$f.FullName] = $text -split "`r?`n"
+    $fileCache[$f.FullName] = $text.Split([string[]]@("`r`n", "`n"), [StringSplitOptions]::None)
 }
 
 # === Sub-check tracking ===
@@ -581,6 +581,7 @@ foreach ($file in $allProjectFiles) {
 }
 
 $sharedPassSw.Stop()
+[void]$subTimings.Add(@{ Name = "shared_pass"; DurationMs = [math]::Round($sharedPassSw.Elapsed.TotalMilliseconds, 1) })
 
 # ============================================================
 # Sub-check 1: check_arity
