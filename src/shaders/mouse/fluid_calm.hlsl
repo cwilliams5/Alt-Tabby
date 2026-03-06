@@ -2,9 +2,9 @@
 // Same as Fluid Aquarium but without ambient turbulence. The fog sits perfectly
 // still until the mouse moves through it. More meditative, minimal.
 
-#define GRID_W 256
-#define GRID_H 128
-#define TOTAL_CELLS 32768
+#define GRID_W 1024
+#define GRID_H 512
+#define TOTAL_CELLS 524288
 #define MAX_PARTICLES TOTAL_CELLS
 
 struct Cell {

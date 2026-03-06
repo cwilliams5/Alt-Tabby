@@ -1,31 +1,28 @@
-// Campfire Embers — Soft glowing embers that float upward with gentle turbulence (compute + pixel)
-// Inspired by "sparks from fire" shader. Embers drift and tumble with organic movement,
-// not straight-line trajectories. Softer, rounder glow than the spark-like ember_trail.
+// Campfire Embers — Soft glowing embers with turbulence and grid splatting (compute + pixel)
+// Grid splatting: CS accumulates particle glow onto a 1024x512 grid for O(1) PS.
 
 #define MAX_PARTICLES 128
+#define GRID_W 1024
+#define GRID_H 512
+#define GRID_CELLS (GRID_W * GRID_H)
+#define TOTAL_SLOTS (MAX_PARTICLES + GRID_CELLS)
 
 struct Particle {
-    float2 pos;       // position in pixels
-    float2 vel;       // velocity in px/sec
-    float life;       // 0→1 normalized lifetime (>=1 = dead)
-    float size;       // radius in pixels
-    float heat;       // 1.0 = hot, 0.0 = cold
-    uint flags;       // bit 0: active
+    float2 pos;
+    float2 vel;
+    float life;
+    float size;
+    float heat;
+    uint flags;
 };
 
 // ========================= COMPUTE SHADER =========================
 
 RWStructuredBuffer<Particle> particles : register(u0);
 
-float hash1(float n) {
-    return frac(sin(n * 127.1) * 43758.5453);
-}
+float hash1(float n) { return frac(sin(n * 127.1) * 43758.5453); }
+float hash2(float2 p) { return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
 
-float hash2(float2 p) {
-    return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
-}
-
-// Simplex-style noise for organic turbulence
 float noise1(float2 p) {
     float2 i = floor(p);
     float2 f = frac(p);
@@ -40,129 +37,114 @@ float noise1(float2 p) {
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
-    if (idx >= MAX_PARTICLES) return;
+    if (idx >= TOTAL_SLOTS) return;
 
-    Particle p = particles[idx];
-    float fi = (float)idx;
+    if (idx < MAX_PARTICLES) {
+        Particle p = particles[idx];
+        float fi = (float)idx;
 
-    if (p.life >= 1.0) {
-        // --- SPAWN CHECK ---
-        if (iMouseSpeed < 30.0) return;
+        if (p.life >= 1.0) {
+            if (iMouseSpeed < 30.0) return;
+            float spawnRoll = hash2(float2(fi, time * 60.0));
+            float spawnRate = smoothstep(30.0, 500.0, iMouseSpeed) * 0.025;
+            if (spawnRoll > spawnRate) return;
 
-        // Low spawn rate — embers are big and visible, don't need many
-        float spawnRoll = hash2(float2(fi, time * 60.0));
-        float spawnRate = smoothstep(30.0, 500.0, iMouseSpeed) * 0.025;
-        if (spawnRoll > spawnRate) return;
+            float seed = hash1(fi * 17.3);
+            float seed2 = hash2(float2(fi, floor(time * 5.0)));
+            float seed3 = hash1(fi * 43.7 + 7.0);
 
-        float seed = hash1(fi * 17.3);
-        float seed2 = hash2(float2(fi, floor(time * 5.0)));
-        float seed3 = hash1(fi * 43.7 + 7.0);
+            p.pos = iMouse + float2((seed - 0.5) * 20.0, (seed2 - 0.5) * 20.0);
+            float upSpeed = 40.0 + seed * 60.0;
+            float lateralDrift = (seed2 - 0.5) * 60.0;
+            p.vel = float2(lateralDrift, -upSpeed);
+            p.size = 8.0 + seed3 * 10.0;
+            p.life = 0.0;
+            p.heat = 0.8 + seed * 0.2;
+            p.flags = 1;
+            particles[idx] = p;
+            return;
+        }
 
-        // Spawn at cursor with slight offset
-        p.pos = iMouse + float2((seed - 0.5) * 20.0, (seed2 - 0.5) * 20.0);
+        float lifetime = 1.2 + hash1(fi * 17.3) * 1.0;
+        p.vel.y -= 15.0 * timeDelta;
+        float2 noisePos = p.pos * 0.008 + float2(time * 0.3, time * 0.2);
+        float nx = noise1(noisePos) - 0.5;
+        float ny = noise1(noisePos + float2(31.7, 47.3)) - 0.5;
+        p.vel += float2(nx, ny) * 120.0 * timeDelta;
+        p.vel *= (1.0 - 1.5 * timeDelta);
+        p.pos += p.vel * timeDelta;
+        p.life += timeDelta / lifetime;
+        p.heat = saturate(0.8 * (1.0 - p.life * p.life));
 
-        // Embers drift UPWARD with gentle scatter — not hard ejection
-        float upSpeed = 40.0 + seed * 60.0;  // 40-100 px/s upward
-        float lateralDrift = (seed2 - 0.5) * 60.0;  // gentle side drift
-        p.vel = float2(lateralDrift, -upSpeed);  // negative Y = up
-
-        // Larger, softer particles
-        p.size = 8.0 + seed3 * 10.0;  // 8-18px radius
-        p.life = 0.0;
-        p.heat = 0.8 + seed * 0.2;  // start warm, not white-hot
-        p.flags = 1;
-
+        if (p.life >= 1.0 || p.pos.x < -200 || p.pos.x > resolution.x + 200
+            || p.pos.y < -200 || p.pos.y > resolution.y + 200) {
+            p.life = 1.0;
+            p.flags = 0;
+        }
         particles[idx] = p;
-        return;
+
+    } else {
+        uint gridIdx = idx - MAX_PARTICLES;
+        int2 gc = int2(gridIdx % GRID_W, gridIdx / GRID_W);
+        float2 cellPos = (float2(gc) + 0.5) / float2(GRID_W, GRID_H) * resolution;
+
+        float3 accCol = float3(0, 0, 0);
+        float accA = 0;
+
+        for (uint i = 0; i < MAX_PARTICLES; i++) {
+            Particle p = particles[i];
+            if (p.life >= 1.0) continue;
+
+            float dist = length(cellPos - p.pos);
+            float pulse = 1.0 + 0.15 * sin(p.life * 12.0 + (float)i * 2.0);
+            float radius = p.size * pulse * (1.0 - p.life * 0.3);
+            if (dist > radius * 2.5) continue;
+
+            float glow = exp(-dist * dist / (radius * radius * 0.5));
+            float fadeIn = smoothstep(0.0, 0.1, p.life);
+            float fadeOut = smoothstep(1.0, 0.3, p.life);
+            glow *= fadeIn * fadeOut;
+
+            float h = p.heat;
+            float3 emberCol = lerp(
+                float3(0.3, 0.02, 0.0),
+                lerp(float3(0.9, 0.2, 0.02), float3(1.0, 0.5, 0.1), h),
+                h
+            );
+            float flicker = 0.85 + 0.15 * sin(time * 8.0 + (float)i * 5.3);
+            emberCol *= flicker;
+
+            accCol += emberCol * glow;
+            accA += glow * 0.7;
+        }
+
+        Particle cell;
+        cell.pos = float2(accCol.r, accCol.g);
+        cell.vel = float2(accCol.b, saturate(accA));
+        cell.life = 0; cell.size = 0; cell.heat = 0; cell.flags = 0;
+        particles[idx] = cell;
     }
-
-    // --- PHYSICS UPDATE ---
-    // Moderate lifetime — recycle slots so trail doesn't starve
-    float lifetime = 1.2 + hash1(fi * 17.3) * 1.0;  // 1.2-2.2s
-
-    // Very gentle upward buoyancy (negative = up on screen)
-    p.vel.y -= 15.0 * timeDelta;
-
-    // Organic turbulence: curl-noise-like perturbation
-    float2 noisePos = p.pos * 0.008 + float2(time * 0.3, time * 0.2);
-    float nx = noise1(noisePos) - 0.5;
-    float ny = noise1(noisePos + float2(31.7, 47.3)) - 0.5;
-    p.vel += float2(nx, ny) * 120.0 * timeDelta;
-
-    // Gentle drag — embers float, don't fly
-    p.vel *= (1.0 - 1.5 * timeDelta);
-
-    // Integrate position
-    p.pos += p.vel * timeDelta;
-
-    // Age
-    p.life += timeDelta / lifetime;
-
-    // Heat decays with life — slower than ember_trail
-    p.heat = saturate(0.8 * (1.0 - p.life * p.life));
-
-    // Kill if expired or far off-screen
-    if (p.life >= 1.0 || p.pos.x < -200 || p.pos.x > resolution.x + 200
-        || p.pos.y < -200 || p.pos.y > resolution.y + 200) {
-        p.life = 1.0;
-        p.flags = 0;
-    }
-
-    particles[idx] = p;
 }
 
 // ========================= PIXEL SHADER =========================
 
 StructuredBuffer<Particle> particlesRead : register(t4);
 
+float4 sampleGrid(float2 uv) {
+    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    int2 g = int2(floor(gp));
+    float2 f = frac(gp);
+    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
+    uint i00 = MAX_PARTICLES + (uint)g.y * GRID_W + (uint)g.x;
+    float4 c00 = float4(particlesRead[i00].pos, particlesRead[i00].vel);
+    float4 c10 = float4(particlesRead[i00+1].pos, particlesRead[i00+1].vel);
+    float4 c01 = float4(particlesRead[i00+GRID_W].pos, particlesRead[i00+GRID_W].vel);
+    float4 c11 = float4(particlesRead[i00+GRID_W+1].pos, particlesRead[i00+GRID_W+1].vel);
+    return lerp(lerp(c00, c10, f.x), lerp(c01, c11, f.x), f.y);
+}
+
 float4 PSMain(PSInput input) : SV_Target {
-    float2 pixelPos = input.uv * resolution;
-
-    float3 col = float3(0.0, 0.0, 0.0);
-    float totalA = 0.0;
-
-    for (uint i = 0; i < MAX_PARTICLES; i++) {
-        Particle p = particlesRead[i];
-        if (p.life >= 1.0) continue;
-
-        float dist = length(pixelPos - p.pos);
-
-        // Size grows slightly then shrinks — like an ember pulsing
-        float pulse = 1.0 + 0.15 * sin(p.life * 12.0 + (float)i * 2.0);
-        float radius = p.size * pulse * (1.0 - p.life * 0.3);
-        if (dist > radius * 2.5) continue;
-
-        // Soft, wide glow — not a hard circle
-        float glow = exp(-dist * dist / (radius * radius * 0.5));
-
-        // Fade in gently, fade out slowly
-        float fadeIn = smoothstep(0.0, 0.1, p.life);
-        float fadeOut = smoothstep(1.0, 0.3, p.life);
-        glow *= fadeIn * fadeOut;
-
-        // Campfire ember color: deep orange → red → dark cherry
-        // Not white-hot like sparks — warm and soft
-        float h = p.heat;
-        float3 emberCol = lerp(
-            float3(0.3, 0.02, 0.0),   // dark cherry (cold/dying)
-            lerp(
-                float3(0.9, 0.2, 0.02),  // deep orange-red (mid)
-                float3(1.0, 0.5, 0.1),   // warm orange (hot)
-                h
-            ),
-            h
-        );
-
-        // Add subtle flicker
-        float flicker = 0.85 + 0.15 * sin(time * 8.0 + (float)i * 5.3);
-        emberCol *= flicker;
-
-        col += emberCol * glow;
-        totalA += glow * 0.7;
-    }
-
-    totalA = saturate(totalA);
-    if (totalA < 0.001) return float4(0.0, 0.0, 0.0, 0.0);
-
-    return AT_PostProcess(col, totalA * 0.6);
+    float4 val = sampleGrid(input.uv);
+    if (val.a < 0.001) return float4(0, 0, 0, 0);
+    return AT_PostProcess(val.rgb, val.a * 0.6);
 }

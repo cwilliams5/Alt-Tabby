@@ -3,9 +3,9 @@
 // the fog aside, creating swirling voids that slowly fill back in.
 // Ambient turbulence keeps the fog alive even when the cursor is still.
 
-#define GRID_W 256
-#define GRID_H 128
-#define TOTAL_CELLS 32768
+#define GRID_W 1024
+#define GRID_H 512
+#define TOTAL_CELLS 524288
 #define MAX_PARTICLES TOTAL_CELLS
 
 struct Cell {

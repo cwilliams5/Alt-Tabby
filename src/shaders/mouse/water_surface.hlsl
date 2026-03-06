@@ -3,9 +3,9 @@
 // creating ripples that propagate, interfere, and reflect off boundaries.
 // Nearly invisible when calm — waves visible through specular highlights and Fresnel.
 
-#define GRID_W 512
-#define GRID_H 256
-#define TOTAL_CELLS 131072
+#define GRID_W 1024
+#define GRID_H 512
+#define TOTAL_CELLS 524288
 #define MAX_PARTICLES TOTAL_CELLS
 
 struct Cell {

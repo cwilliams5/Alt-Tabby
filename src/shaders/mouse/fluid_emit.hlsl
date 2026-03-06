@@ -2,9 +2,9 @@
 // Cursor leaves trails of smoke that flow, swirl, and rise with natural buoyancy.
 // 128x64 velocity+density grid with semi-Lagrangian advection.
 
-#define GRID_W 256
-#define GRID_H 128
-#define TOTAL_CELLS 32768
+#define GRID_W 1024
+#define GRID_H 512
+#define TOTAL_CELLS 524288
 #define MAX_PARTICLES TOTAL_CELLS
 
 struct Cell {

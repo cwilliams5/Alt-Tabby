@@ -1,139 +1,131 @@
 // Ember Trail — Velocity-directed particles with gravity (compute + pixel)
-// Compute shader manages 128 particles with independent physics.
-// Pixel shader reads particle buffer and renders soft glowing circles.
+// Grid splatting: CS accumulates particle glow onto a 1024x512 grid for O(1) PS.
 
 #define MAX_PARTICLES 128
+#define GRID_W 1024
+#define GRID_H 512
+#define GRID_CELLS (GRID_W * GRID_H)
+#define TOTAL_SLOTS (MAX_PARTICLES + GRID_CELLS)
 
 struct Particle {
-    float2 pos;       // position in pixels
-    float2 vel;       // velocity in px/sec
-    float life;       // 0→1 normalized lifetime (>=1 = dead)
-    float size;       // radius in pixels
-    float heat;       // 1.0 = hot white, 0.0 = cold dark
-    uint flags;       // bit 0: active
+    float2 pos;       // grid: accumulated RG
+    float2 vel;       // grid: accumulated BA
+    float life;
+    float size;
+    float heat;
+    uint flags;
 };
 
 // ========================= COMPUTE SHADER =========================
 
 RWStructuredBuffer<Particle> particles : register(u0);
 
-float hash1(float n) {
-    return frac(sin(n * 127.1) * 43758.5453);
-}
-
-float hash2(float2 p) {
-    return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
-}
+float hash1(float n) { return frac(sin(n * 127.1) * 43758.5453); }
+float hash2(float2 p) { return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
 
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
-    if (idx >= MAX_PARTICLES) return;
+    if (idx >= TOTAL_SLOTS) return;
 
-    Particle p = particles[idx];
-    float fi = (float)idx;
+    if (idx < MAX_PARTICLES) {
+        Particle p = particles[idx];
+        float fi = (float)idx;
 
-    if (p.life >= 1.0) {
-        // --- SPAWN CHECK ---
-        if (iMouseSpeed < 40.0) return;
+        if (p.life >= 1.0) {
+            if (iMouseSpeed < 40.0) return;
+            float spawnRoll = hash2(float2(fi, time * 60.0));
+            float spawnRate = smoothstep(40.0, 600.0, iMouseSpeed) * 0.10;
+            if (spawnRoll > spawnRate) return;
 
-        // Low spawn rate — ~10% at full speed, keeps particles sparse
-        float spawnRoll = hash2(float2(fi, time * 60.0));
-        float spawnRate = smoothstep(40.0, 600.0, iMouseSpeed) * 0.10;
-        if (spawnRoll > spawnRate) return;
+            float2 velDir = float2(0.0, -1.0);
+            if (iMouseSpeed > 1.0) velDir = iMouseVel / iMouseSpeed;
+            float seed = hash1(fi * 17.3);
+            float seed2 = hash2(float2(fi, floor(time * 5.0)));
 
-        // Velocity direction
-        float2 velDir = float2(0.0, -1.0);
-        if (iMouseSpeed > 1.0)
-            velDir = iMouseVel / iMouseSpeed;
+            p.pos = iMouse;
+            float scatter = (seed2 - 0.5) * 2.0;
+            float2 perpDir = float2(-velDir.y, velDir.x);
+            float ejectSpeed = 150.0 + seed * 300.0;
+            p.vel = -velDir * ejectSpeed + perpDir * scatter * 150.0;
+            p.size = 6.0 + seed * 6.0;
+            p.life = 0.0;
+            p.heat = 1.0;
+            p.flags = 1;
+            particles[idx] = p;
+            return;
+        }
 
-        float seed = hash1(fi * 17.3);
-        float seed2 = hash2(float2(fi, floor(time * 5.0)));
+        float lifetime = 1.0 + hash1(fi * 17.3) * 0.8;
+        p.vel.y += 200.0 * timeDelta;
+        p.vel *= (1.0 - 0.5 * timeDelta);
+        p.pos += p.vel * timeDelta;
+        p.life += timeDelta / lifetime;
+        p.heat = saturate(1.0 - p.life);
 
-        // Spawn at cursor
-        p.pos = iMouse;
-
-        // Eject HARD opposite to velocity with wide scatter
-        float scatter = (seed2 - 0.5) * 2.0;
-        float2 perpDir = float2(-velDir.y, velDir.x);
-        float ejectSpeed = 150.0 + seed * 300.0;
-        p.vel = -velDir * ejectSpeed + perpDir * scatter * 150.0;
-
-        p.size = 6.0 + seed * 6.0;
-        p.life = 0.0;
-        p.heat = 1.0;
-        p.flags = 1;
-
+        if (p.life >= 1.0 || p.pos.x < -100 || p.pos.x > resolution.x + 100
+            || p.pos.y < -100 || p.pos.y > resolution.y + 100) {
+            p.life = 1.0;
+            p.flags = 0;
+        }
         particles[idx] = p;
-        return;
+
+    } else {
+        uint gridIdx = idx - MAX_PARTICLES;
+        int2 gc = int2(gridIdx % GRID_W, gridIdx / GRID_W);
+        float2 cellPos = (float2(gc) + 0.5) / float2(GRID_W, GRID_H) * resolution;
+
+        float3 accCol = float3(0, 0, 0);
+        float accA = 0;
+
+        for (uint i = 0; i < MAX_PARTICLES; i++) {
+            Particle p = particles[i];
+            if (p.life >= 1.0) continue;
+
+            float dist = length(cellPos - p.pos);
+            float radius = p.size * (1.0 - p.life * 0.5);
+            if (dist > radius * 1.5) continue;
+
+            float glow = smoothstep(radius, 0.0, dist);
+            glow *= smoothstep(1.0, 0.2, p.life);
+
+            float3 emberCol = lerp(
+                float3(1.0, 0.9, 0.5),
+                lerp(float3(1.0, 0.4, 0.1), float3(0.6, 0.1, 0.0), p.life),
+                p.life
+            );
+
+            accCol += emberCol * glow;
+            accA += glow;
+        }
+
+        Particle cell;
+        cell.pos = float2(accCol.r, accCol.g);
+        cell.vel = float2(accCol.b, saturate(accA));
+        cell.life = 0; cell.size = 0; cell.heat = 0; cell.flags = 0;
+        particles[idx] = cell;
     }
-
-    // --- PHYSICS UPDATE ---
-    float lifetime = 1.0 + hash1(fi * 17.3) * 0.8;  // 1.0-1.8s
-
-    // Strong gravity
-    p.vel.y += 200.0 * timeDelta;
-
-    // Light drag — let particles fly
-    p.vel *= (1.0 - 0.5 * timeDelta);
-
-    // Integrate position
-    p.pos += p.vel * timeDelta;
-
-    // Age
-    p.life += timeDelta / lifetime;
-
-    // Heat tracks inverse life
-    p.heat = saturate(1.0 - p.life);
-
-    // Kill if expired or far off-screen
-    if (p.life >= 1.0 || p.pos.x < -100 || p.pos.x > resolution.x + 100
-        || p.pos.y < -100 || p.pos.y > resolution.y + 100) {
-        p.life = 1.0;
-        p.flags = 0;
-    }
-
-    particles[idx] = p;
 }
 
 // ========================= PIXEL SHADER =========================
 
 StructuredBuffer<Particle> particlesRead : register(t4);
 
+float4 sampleGrid(float2 uv) {
+    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    int2 g = int2(floor(gp));
+    float2 f = frac(gp);
+    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
+    uint i00 = MAX_PARTICLES + (uint)g.y * GRID_W + (uint)g.x;
+    float4 c00 = float4(particlesRead[i00].pos, particlesRead[i00].vel);
+    float4 c10 = float4(particlesRead[i00+1].pos, particlesRead[i00+1].vel);
+    float4 c01 = float4(particlesRead[i00+GRID_W].pos, particlesRead[i00+GRID_W].vel);
+    float4 c11 = float4(particlesRead[i00+GRID_W+1].pos, particlesRead[i00+GRID_W+1].vel);
+    return lerp(lerp(c00, c10, f.x), lerp(c01, c11, f.x), f.y);
+}
+
 float4 PSMain(PSInput input) : SV_Target {
-    float2 pixelPos = input.uv * resolution;
-
-    float3 col = float3(0.0, 0.0, 0.0);
-    float totalA = 0.0;
-
-    for (uint i = 0; i < MAX_PARTICLES; i++) {
-        Particle p = particlesRead[i];
-        if (p.life >= 1.0) continue;
-
-        float dist = length(pixelPos - p.pos);
-
-        // Radius shrinks over lifetime
-        float radius = p.size * (1.0 - p.life * 0.5);
-        if (dist > radius * 1.5) continue;
-
-        float glow = smoothstep(radius, 0.0, dist);
-
-        // Fade over lifetime
-        glow *= smoothstep(1.0, 0.2, p.life);
-
-        // Ember color: hot white-yellow → orange → dark red
-        float3 emberCol = lerp(
-            float3(1.0, 0.9, 0.5),
-            lerp(float3(1.0, 0.4, 0.1), float3(0.6, 0.1, 0.0), p.life),
-            p.life
-        );
-
-        col += emberCol * glow;
-        totalA += glow;
-    }
-
-    totalA = saturate(totalA);
-    if (totalA < 0.001) return float4(0.0, 0.0, 0.0, 0.0);
-
-    return AT_PostProcess(col, totalA * 0.8);
+    float4 val = sampleGrid(input.uv);
+    if (val.a < 0.001) return float4(0, 0, 0, 0);
+    return AT_PostProcess(val.rgb, val.a * 0.8);
 }

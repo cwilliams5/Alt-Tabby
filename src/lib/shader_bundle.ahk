@@ -1893,7 +1893,7 @@ _Shader_Meta_Monster() {
 }
 
 _Shader_Meta_MouseCampfireEmbers() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 128, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524416, particleStride: 32}}
 }
 
 _Shader_Meta_MouseCaustics() {
@@ -1901,35 +1901,35 @@ _Shader_Meta_MouseCaustics() {
 }
 
 _Shader_Meta_MouseEmberTrail() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 128, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524416, particleStride: 32}}
 }
 
 _Shader_Meta_MouseEmberTrailLong() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 128, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524416, particleStride: 32}}
 }
 
 _Shader_Meta_MouseFireflies() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 128, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524416, particleStride: 32}}
 }
 
 _Shader_Meta_MouseFluidAquarium() {
-    return {opacity: 0.40, iChannels: [], compute: {maxParticles: 32768, particleStride: 32}}
+    return {opacity: 0.40, iChannels: [], compute: {maxParticles: 524288, particleStride: 32}}
 }
 
 _Shader_Meta_MouseFluidCalm() {
-    return {opacity: 0.40, iChannels: [], compute: {maxParticles: 32768, particleStride: 32}}
+    return {opacity: 0.40, iChannels: [], compute: {maxParticles: 524288, particleStride: 32}}
 }
 
 _Shader_Meta_MouseFluidEmit() {
-    return {opacity: 0.40, iChannels: [], compute: {maxParticles: 32768, particleStride: 32}}
+    return {opacity: 0.40, iChannels: [], compute: {maxParticles: 524288, particleStride: 32}}
 }
 
 _Shader_Meta_MouseGravityWell() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 128, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524416, particleStride: 32}}
 }
 
 _Shader_Meta_MouseNeonTrail() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 128, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524416, particleStride: 32}}
 }
 
 _Shader_Meta_MouseRipple() {
@@ -1937,11 +1937,11 @@ _Shader_Meta_MouseRipple() {
 }
 
 _Shader_Meta_MouseScatter() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 384, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524672, particleStride: 32}}
 }
 
 _Shader_Meta_MouseSmokeTrail() {
-    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 128, particleStride: 32}}
+    return {opacity: 0.30, iChannels: [], compute: {maxParticles: 524416, particleStride: 32}}
 }
 
 _Shader_Meta_MouseSpotlight() {
@@ -1949,7 +1949,7 @@ _Shader_Meta_MouseSpotlight() {
 }
 
 _Shader_Meta_MouseWaterSurface() {
-    return {opacity: 0.50, iChannels: [], compute: {maxParticles: 131072, particleStride: 32}}
+    return {opacity: 0.50, iChannels: [], compute: {maxParticles: 524288, particleStride: 32}}
 }
 
 _Shader_Meta_NanosecondsAfterBigbang() {
