@@ -1,6 +1,21 @@
-// Ember Trail — Velocity-directed particles with gravity
-// Embers eject opposite to mouse movement, fall with gravity, fade over lifetime.
-// Speed-gated: no embers when mouse is stationary.
+// Ember Trail — Velocity-directed particles with gravity (compute + pixel)
+// Compute shader manages 128 particles with independent physics.
+// Pixel shader reads particle buffer and renders soft glowing circles.
+
+#define MAX_PARTICLES 128
+
+struct Particle {
+    float2 pos;       // position in pixels
+    float2 vel;       // velocity in px/sec
+    float life;       // 0→1 normalized lifetime (>=1 = dead)
+    float size;       // radius in pixels
+    float heat;       // 1.0 = hot white, 0.0 = cold dark
+    uint flags;       // bit 0: active
+};
+
+// ========================= COMPUTE SHADER =========================
+
+RWStructuredBuffer<Particle> particles : register(u0);
 
 float hash1(float n) {
     return frac(sin(n * 127.1) * 43758.5453);
@@ -10,76 +25,115 @@ float hash2(float2 p) {
     return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
 }
 
+[numthreads(64, 1, 1)]
+void CSMain(uint3 dtid : SV_DispatchThreadID) {
+    uint idx = dtid.x;
+    if (idx >= MAX_PARTICLES) return;
+
+    Particle p = particles[idx];
+    float fi = (float)idx;
+
+    if (p.life >= 1.0) {
+        // --- SPAWN CHECK ---
+        if (iMouseSpeed < 40.0) return;
+
+        // Low spawn rate — ~10% at full speed, keeps particles sparse
+        float spawnRoll = hash2(float2(fi, time * 60.0));
+        float spawnRate = smoothstep(40.0, 600.0, iMouseSpeed) * 0.10;
+        if (spawnRoll > spawnRate) return;
+
+        // Velocity direction
+        float2 velDir = float2(0.0, -1.0);
+        if (iMouseSpeed > 1.0)
+            velDir = iMouseVel / iMouseSpeed;
+
+        float seed = hash1(fi * 17.3);
+        float seed2 = hash2(float2(fi, floor(time * 5.0)));
+
+        // Spawn at cursor
+        p.pos = iMouse;
+
+        // Eject HARD opposite to velocity with wide scatter
+        float scatter = (seed2 - 0.5) * 2.0;
+        float2 perpDir = float2(-velDir.y, velDir.x);
+        float ejectSpeed = 150.0 + seed * 300.0;
+        p.vel = -velDir * ejectSpeed + perpDir * scatter * 150.0;
+
+        p.size = 6.0 + seed * 6.0;
+        p.life = 0.0;
+        p.heat = 1.0;
+        p.flags = 1;
+
+        particles[idx] = p;
+        return;
+    }
+
+    // --- PHYSICS UPDATE ---
+    float lifetime = 1.0 + hash1(fi * 17.3) * 0.8;  // 1.0-1.8s
+
+    // Strong gravity
+    p.vel.y += 200.0 * timeDelta;
+
+    // Light drag — let particles fly
+    p.vel *= (1.0 - 0.5 * timeDelta);
+
+    // Integrate position
+    p.pos += p.vel * timeDelta;
+
+    // Age
+    p.life += timeDelta / lifetime;
+
+    // Heat tracks inverse life
+    p.heat = saturate(1.0 - p.life);
+
+    // Kill if expired or far off-screen
+    if (p.life >= 1.0 || p.pos.x < -100 || p.pos.x > resolution.x + 100
+        || p.pos.y < -100 || p.pos.y > resolution.y + 100) {
+        p.life = 1.0;
+        p.flags = 0;
+    }
+
+    particles[idx] = p;
+}
+
+// ========================= PIXEL SHADER =========================
+
+StructuredBuffer<Particle> particlesRead : register(t4);
+
 float4 PSMain(PSInput input) : SV_Target {
-    float2 uv = input.uv;
-    float2 p = uv * resolution;
-
-    if (iMouse.x <= 0.0 && iMouse.y <= 0.0)
-        return float4(0.0, 0.0, 0.0, 0.0);
-
-    float speed = iMouseSpeed;
-    float speedNorm = smoothstep(30.0, 800.0, speed);
-
-    // No embers when stationary
-    if (speedNorm < 0.001)
-        return float4(0.0, 0.0, 0.0, 0.0);
-
-    // Velocity direction (normalized), fallback to upward
-    float2 velDir = float2(0.0, -1.0);
-    if (speed > 1.0)
-        velDir = iMouseVel / speed;
+    float2 pixelPos = input.uv * resolution;
 
     float3 col = float3(0.0, 0.0, 0.0);
     float totalA = 0.0;
 
-    // 8 particles in the trail
-    for (int i = 0; i < 8; i++) {
-        float fi = float(i);
-        float seed = hash1(fi * 17.3);
+    for (uint i = 0; i < MAX_PARTICLES; i++) {
+        Particle p = particlesRead[i];
+        if (p.life >= 1.0) continue;
 
-        // Independent lifecycle per particle
-        float cycleLen = 0.8 + seed * 0.6;  // 0.8-1.4s lifetime
-        float phase = frac(time / cycleLen + seed);
-        float age = phase;  // 0→1 over lifetime
+        float dist = length(pixelPos - p.pos);
 
-        // Spawn position: trail behind cursor along velocity direction
-        float trailDist = (fi * 0.12 + seed * 0.08) * speed * 0.06;
-        float2 spawnPos = iMouse - velDir * trailDist;
+        // Radius shrinks over lifetime
+        float radius = p.size * (1.0 - p.life * 0.5);
+        if (dist > radius * 1.5) continue;
 
-        // Ejection: opposite to velocity with perpendicular scatter
-        float scatter = (hash2(float2(fi, floor(time / cycleLen))) - 0.5) * 2.0;
-        float2 perpDir = float2(-velDir.y, velDir.x);
-        float2 ejectVel = -velDir * (20.0 + seed * 40.0) + perpDir * scatter * 30.0;
+        float glow = smoothstep(radius, 0.0, dist);
 
-        // Gravity pulls particles downward (screen Y increases downward)
-        float2 gravity = float2(0.0, 80.0);
+        // Fade over lifetime
+        glow *= smoothstep(1.0, 0.2, p.life);
 
-        // Position at current age
-        float t = age * cycleLen;
-        float2 particlePos = spawnPos + ejectVel * t + 0.5 * gravity * t * t;
-
-        // Size shrinks with age, bigger at higher speed
-        float baseSize = 5.0 + speedNorm * 6.0;
-        float size = baseSize * (1.0 - age * 0.7);
-
-        float dist = length(p - particlePos);
-        float particle = smoothstep(size, size * 0.2, dist);
-
-        // Fade: ramp in quickly, fade out over lifetime
-        float lifeFade = smoothstep(0.0, 0.05, age) * smoothstep(1.0, 0.4, age);
-        particle *= lifeFade * speedNorm;
-
-        // Ember color: hot white-yellow → orange → dark red over lifetime
+        // Ember color: hot white-yellow → orange → dark red
         float3 emberCol = lerp(
             float3(1.0, 0.9, 0.5),
-            lerp(float3(1.0, 0.4, 0.1), float3(0.6, 0.1, 0.0), age),
-            age
+            lerp(float3(1.0, 0.4, 0.1), float3(0.6, 0.1, 0.0), p.life),
+            p.life
         );
 
-        col += emberCol * particle;
-        totalA += particle;
+        col += emberCol * glow;
+        totalA += glow;
     }
 
     totalA = saturate(totalA);
-    return AT_PostProcess(col, totalA * 0.7);
+    if (totalA < 0.001) return float4(0.0, 0.0, 0.0, 0.0);
+
+    return AT_PostProcess(col, totalA * 0.8);
 }

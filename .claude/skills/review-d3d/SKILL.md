@@ -8,7 +8,7 @@ Enter planning mode. Deep-audit the D3D11 shader host code for per-frame waste �
 
 ## Context
 
-Alt-Tabby renders pixel shaders via a D3D11 immediate context, then copies the result to a D2D1 bitmap for compositing. The main per-frame entry point is `Shader_PreRender()` which executes the full D3D11 pipeline: constant buffer update → state setup → Draw → GPU→CPU readback → D2D bitmap write.
+Alt-Tabby renders pixel shaders via a D3D11 immediate context, then copies the result to a D2D1 bitmap for compositing. The main per-frame entry point is `Shader_PreRender()` which executes the full D3D11 pipeline: constant buffer update → compute dispatch (for compute-enabled shaders) → state setup → Draw → GPU→CPU readback → D2D bitmap write. Compute shaders write to `RWStructuredBuffer` via UAV; the same buffer is then bound as SRV at slot 4 for the pixel shader to read.
 
 At 120-240fps, this pipeline runs every frame. Each `Buffer()` allocation, each redundant `ComCall`, and each avoidable state transition costs real time.
 

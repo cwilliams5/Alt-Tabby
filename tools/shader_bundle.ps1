@@ -132,6 +132,15 @@ foreach ($hlsl in $hlslFiles) {
         $timeAccumulate = $meta.timeAccumulate
     }
 
+    # Compute shader metadata (optional)
+    $compute = $null
+    if ($meta.PSObject.Properties.Match('compute').Count -gt 0 -and $null -ne $meta.compute) {
+        $compute = @{
+            MaxParticles  = $meta.compute.maxParticles
+            ParticleStride = $meta.compute.particleStride
+        }
+    }
+
     $shader = @{
         BaseName       = $baseName
         FuncName       = $naming.FuncName
@@ -145,6 +154,7 @@ foreach ($hlsl in $hlslFiles) {
         TimeOffsetMin  = $timeOffsetMin
         TimeOffsetMax  = $timeOffsetMax
         TimeAccumulate = $timeAccumulate
+        Compute        = $compute
     }
     $allShaders += $shader
 
@@ -244,6 +254,21 @@ foreach ($shader in $allShaders) {
     $nextDxbcResId++
 }
 
+# Compute shaders (IDs 2000+)
+$nextCsDxbcResId = 2000
+foreach ($shader in $allShaders) {
+    if ($null -eq $shader.Compute) { continue }
+    $constName = "RES_ID_SHADER_CS_$($shader.FuncName.ToUpper())"
+    $binFile = "cs_$($shader.RegKey).bin"
+    $dxbcEntries += @{
+        ConstName = $constName
+        ResId     = $nextCsDxbcResId
+        BinFile   = $binFile
+        RelPath   = "..\resources\shaders\$binFile"
+    }
+    $nextCsDxbcResId++
+}
+
 # ==================== Generate shader_bundle.ahk ====================
 $sb = New-Object System.Text.StringBuilder
 
@@ -292,14 +317,23 @@ function Write-RegisterBody($sb, $shaders, $dxbcGlobals, $indent) {
         $fn = $s.FuncName
         $rk = $s.RegKey
         $psConst = "RES_ID_SHADER_PS_$($s.FuncName.ToUpper())"
-        [void]$sb.AppendLine("$indent    Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+        if ($null -ne $s.Compute) {
+            $csConst = "RES_ID_SHADER_CS_$($s.FuncName.ToUpper())"
+            [void]$sb.AppendLine("$indent    Shader_RegisterComputeFromResource(`"$rk`", $csConst, $psConst, _Shader_Meta_$fn())")
+        } else {
+            [void]$sb.AppendLine("$indent    Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+        }
     }
     [void]$sb.AppendLine("${indent}} else {")
     foreach ($s in $shaders) {
         $fn = $s.FuncName
         $rk = $s.RegKey
         $hlslFile = $s.RelHlsl
-        [void]$sb.AppendLine("$indent    Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+        if ($null -ne $s.Compute) {
+            [void]$sb.AppendLine("$indent    Shader_RegisterComputeFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+        } else {
+            [void]$sb.AppendLine("$indent    Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+        }
     }
     [void]$sb.AppendLine("${indent}}")
 }
@@ -347,7 +381,12 @@ foreach ($shader in $allShaders) {
     $fn = $shader.FuncName
     $rk = $shader.RegKey
     $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
-    [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+    if ($null -ne $shader.Compute) {
+        $csConst = "RES_ID_SHADER_CS_$($shader.FuncName.ToUpper())"
+        [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterComputeFromResource(`"$rk`", $csConst, $psConst, _Shader_Meta_$fn())")
+    } else {
+        [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+    }
 }
 [void]$sb.AppendLine('        }')
 [void]$sb.AppendLine('    } else {')
@@ -356,7 +395,11 @@ foreach ($shader in $allShaders) {
     $fn = $shader.FuncName
     $rk = $shader.RegKey
     $hlslFile = $shader.RelHlsl
-    [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+    if ($null -ne $shader.Compute) {
+        [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterComputeFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+    } else {
+        [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+    }
 }
 [void]$sb.AppendLine('        }')
 [void]$sb.AppendLine('    }')
@@ -399,16 +442,27 @@ if ($mouseShaders.Count -gt 0) {
         $fn = $shader.FuncName
         $rk = $shader.RegKey
         $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
-        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
-        [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`")) {")
+        if ($null -ne $shader.Compute) {
+            $csConst = "RES_ID_SHADER_CS_$($shader.FuncName.ToUpper())"
+            [void]$sb.AppendLine("            Shader_RegisterComputeFromResource(`"$rk`", $csConst, $psConst, _Shader_Meta_$fn())")
+        } else {
+            [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+        }
+        [void]$sb.AppendLine("        }")
     }
     [void]$sb.AppendLine('    } else {')
     foreach ($shader in $mouseShaders) {
         $fn = $shader.FuncName
         $rk = $shader.RegKey
         $hlslFile = $shader.RelHlsl
-        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
-        [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`")) {")
+        if ($null -ne $shader.Compute) {
+            [void]$sb.AppendLine("            Shader_RegisterComputeFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+        } else {
+            [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+        }
+        [void]$sb.AppendLine("        }")
     }
     [void]$sb.AppendLine('    }')
 }
@@ -472,7 +526,13 @@ foreach ($shader in $allShaders) {
         $timeFields += ", timeAccumulate: $boolStr"
     }
 
-    [void]$sb.AppendLine("    return {opacity: $($shader.Opacity), iChannels: $chArray$timeFields}")
+    # Build optional compute field
+    $computeField = ''
+    if ($null -ne $shader.Compute) {
+        $computeField = ", compute: {maxParticles: $($shader.Compute.MaxParticles), particleStride: $($shader.Compute.ParticleStride)}"
+    }
+
+    [void]$sb.AppendLine("    return {opacity: $($shader.Opacity), iChannels: $chArray$timeFields$computeField}")
     [void]$sb.AppendLine('}')
     [void]$sb.AppendLine('')
 }

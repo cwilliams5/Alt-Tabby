@@ -251,6 +251,8 @@ The cbuffer and PSInput struct are provided by `alt_tabby_common.hlsl`, which is
 
 All fields are populated every frame for all shader categories. Background shaders typically use only core fields. Mouse shaders use core + mouse fields. Selection shaders use core + selection fields.
 
+Compute-enabled mouse shaders access the same cbuffer via `register(b0)` in both `CSMain` and `PSMain`. The common header is prepended for both entry points during compilation.
+
 iChannel `Texture2D`/`SamplerState` declarations still go in the individual `.hlsl` file (they vary per shader and are NOT in the common header).
 
 ### 6. Alpha Handling
@@ -347,8 +349,11 @@ If the shader uses `iChannel0..3`:
 - `timeOffsetMax`: (optional) Maximum random time offset in seconds. Falls back to config `ShaderTimeOffsetMax` (default 90) if omitted. Set higher for shaders with long warmup (e.g., volumetric fog needs 40-120s).
 - `timeAccumulate`: (optional) When true, shader time persists across overlay show/hide so it picks up where it left off. Falls back to config `ShaderTimeAccumulate` (default true) if omitted. Set false for shaders with a deliberate intro animation you want to see each time.
 - `category`: (optional) `"mouse"` or `"selection"` for shaders in subdirectories. Background shaders (root dir) omit this field.
+- `compute`: (optional) `{ "maxParticles": N, "particleStride": N }`. When present, the shader is compiled as a compute+pixel pair. CS entry point is `CSMain` (compiled with `cs_5_0`), PS entry point is `PSMain` (compiled with `ps_5_0`), both in the same `.hlsl` file. The compute shader writes to `RWStructuredBuffer` via UAV; the pixel shader reads the same buffer as `StructuredBuffer` at `register(t4)`. Only used for mouse-category shaders that need persistent GPU-side state (particles, waves).
 
 Add time fields when the shader has a notable warmup period or deliberate intro. Omit them for shaders that look good immediately at any time value.
+
+**Note on shader models:** Compute shaders require `cs_5_0` profile (DX11 feature level 11_0). Compute-paired pixel shaders use `ps_5_0`. Background and selection shaders remain `ps_4_0` for maximum compatibility.
 
 ### Shader Categories
 

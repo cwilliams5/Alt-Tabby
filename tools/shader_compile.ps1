@@ -55,9 +55,27 @@ $staleShaders = @()
 $cachedCount = 0
 $totalPS = $hlslFiles.Count
 $totalVS = 1  # VSMain
-$totalShaders = $totalPS + $totalVS
+$totalCS = 0  # Compute shaders (detected from .json metadata)
 
-Write-Host "Scanning $totalShaders shaders ($totalPS PS + $totalVS VS)..."
+# Detect compute shaders from .json metadata
+$computeShaders = @{}
+foreach ($hlsl in $hlslFiles) {
+    $jsonPath = [IO.Path]::ChangeExtension($hlsl.FullName, '.json')
+    if (Test-Path $jsonPath) {
+        try {
+            $meta = Get-Content $jsonPath -Raw | ConvertFrom-Json
+            if ($meta.PSObject.Properties['compute']) {
+                $key = Get-ShaderKey $hlsl
+                $computeShaders[$key] = $true
+                $totalCS++
+            }
+        } catch { }  # Ignore malformed JSON
+    }
+}
+
+$totalShaders = $totalPS + $totalVS + $totalCS
+
+Write-Host "Scanning $totalShaders shaders ($totalPS PS + $totalCS CS + $totalVS VS)..."
 
 # Common header timestamp — forces recompile when header changes
 $commonHlslPath = Join-Path $shaderDir 'alt_tabby_common.hlsl'
@@ -82,12 +100,46 @@ foreach ($hlsl in $hlslFiles) {
         }
     }
 
+    # Compute shaders use ps_5_0 (paired with cs_5_0); standard shaders use ps_4_0
+    $isCompute = $computeShaders.ContainsKey($key)
+    $psTarget = if ($isCompute) { "ps_5_0" } else { "ps_4_0" }
+
     $staleShaders += @{
         Key      = $key
         HlslPath = $hlsl.FullName
         BinPath  = $binPath
         Entry    = "PSMain"
-        Target   = "ps_4_0"
+        Target   = $psTarget
+    }
+
+    # Compute shaders also need CSMain compiled
+    if ($isCompute) {
+        $csBinPath = Join-Path $outputDir "cs_$key.bin"
+        if (!$force -and (Test-Path $csBinPath)) {
+            $csBinTime = (Get-Item $csBinPath).LastWriteTime
+            if ($commonHlslTime -and $commonHlslTime -gt $csBinTime) {
+                # Fall through — common header changed
+            } elseif ($csBinTime -gt $hlsl.LastWriteTime) {
+                $cachedCount++  # CS is cached (PS staleness already handled above)
+            } else {
+                # CS is stale — fall through
+            }
+        }
+        # Only add CS entry if it wasn't cached
+        $csIsCached = !$force -and (Test-Path $csBinPath) -and
+            ((Get-Item $csBinPath).LastWriteTime -gt $hlsl.LastWriteTime) -and
+            (!$commonHlslTime -or (Get-Item $csBinPath).LastWriteTime -gt $commonHlslTime)
+        if ($csIsCached) {
+            $cachedCount++
+        } else {
+            $staleShaders += @{
+                Key      = $key
+                HlslPath = $hlsl.FullName
+                BinPath  = $csBinPath
+                Entry    = "CSMain"
+                Target   = "cs_5_0"
+            }
+        }
     }
 }
 
@@ -203,6 +255,9 @@ $expectedBins["vs_VSMain.bin"] = $true
 foreach ($hlsl in $hlslFiles) {
     $key = Get-ShaderKey $hlsl
     $expectedBins["ps_$key.bin"] = $true
+    if ($computeShaders.ContainsKey($key)) {
+        $expectedBins["cs_$key.bin"] = $true
+    }
 }
 
 $staleRemoved = 0
@@ -226,6 +281,12 @@ if ($finalBins.Count -ne $totalShaders) {
         $binPath = Join-Path $outputDir "ps_$key.bin"
         if (!(Test-Path $binPath)) {
             Write-Host "  MISSING: ps_$key.bin" -ForegroundColor Red
+        }
+        if ($computeShaders.ContainsKey($key)) {
+            $csBinPath = Join-Path $outputDir "cs_$key.bin"
+            if (!(Test-Path $csBinPath)) {
+                Write-Host "  MISSING: cs_$key.bin" -ForegroundColor Red
+            }
         }
     }
     if (!(Test-Path $vsBinPath)) {

@@ -2,5 +2,6 @@
     "name": "Ripple",
     "category": "mouse",
     "opacity": 0.30,
-    "iChannels": []
+    "iChannels": [],
+    "compute": { "maxParticles": 128, "particleStride": 32 }
 }

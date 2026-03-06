@@ -358,7 +358,8 @@ Shader_Register(name, hlsl, meta := "") {
         if (!pPS)
             return false
 
-        gShader_Registry[name] := {ps: pPS, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: []}
+        gShader_Registry[name] := {ps: pPS, cs: 0, csBuffer: 0, csUAV: 0, csSRV: 0, csNumElements: 0,
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
 
         ; Load iChannel textures (lazy — loaded here at register time for simplicity)
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0) {
@@ -401,7 +402,8 @@ Shader_RegisterFromResource(name, resId, meta := "") {
         if (!pPS)
             return false
 
-        gShader_Registry[name] := {ps: pPS, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: []}
+        gShader_Registry[name] := {ps: pPS, cs: 0, csBuffer: 0, csUAV: 0, csSRV: 0, csNumElements: 0,
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
 
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
             _Shader_LoadTextures(name)
@@ -490,9 +492,255 @@ Shader_RegisterAlias(aliasName, srcName) {
     if (!src.ps)
         return false
 
-    ; Share ps + srvs, own render target (tex/rtv/bitmap start at 0 — lazy created in PreRender)
-    gShader_Registry[aliasName] := {ps: src.ps, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs}
+    ; Share ps + cs + srvs + compute buffer, own render target (tex/rtv/bitmap start at 0 — lazy created in PreRender)
+    gShader_Registry[aliasName] := {ps: src.ps, cs: src.cs, csBuffer: src.csBuffer, csUAV: src.csUAV, csSRV: src.csSRV, csNumElements: src.csNumElements,
+        tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs, lastTime: 0.0}
     return true
+}
+
+; ========================= COMPUTE SHADER REGISTRATION =========================
+
+; Register a compute+pixel shader pair. HLSL source must contain both CSMain and PSMain entry points.
+; meta must include compute: {maxParticles: N, particleStride: N}
+Shader_RegisterCompute(name, hlsl, meta) {
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+
+    if (!gShader_Ready || !gD2D_D3DDevice)
+        return false
+
+    if (!IsObject(meta))
+        return false
+
+    try {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterCompute: " name " compiling CS+PS...")
+
+        ; Compile compute shader (cs_5_0)
+        csBytecode := _Shader_Compile(hlsl, "CSMain", "cs_5_0", "cs_" name)
+        if (!csBytecode) {
+            if (cfg.DiagShaderLog)
+                _Shader_Log("RegisterCompute: " name " CS compile FAILED")
+            return false
+        }
+
+        ; Compile pixel shader (ps_5_0 for compute-paired shaders)
+        psBytecode := _Shader_Compile(hlsl, "PSMain", "ps_5_0", "ps_" name)
+        if (!psBytecode) {
+            if (cfg.DiagShaderLog)
+                _Shader_Log("RegisterCompute: " name " PS compile FAILED")
+            return false
+        }
+
+        ; CreateComputeShader (ID3D11Device vtable 18)
+        pCS := 0
+        hr := ComCall(18, gD2D_D3DDevice, "ptr", csBytecode, "uptr", csBytecode.Size, "ptr", 0, "ptr*", &pCS, "int")
+        if (!pCS)
+            return false
+
+        ; CreatePixelShader (ID3D11Device vtable 15)
+        pPS := 0
+        hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
+        if (!pPS) {
+            ComCall(2, pCS)
+            return false
+        }
+
+        ; Create structured buffer + UAV + SRV for particle data
+        computeMeta := meta.compute
+        csRes := _Shader_CreateComputeBuffer(computeMeta.maxParticles, computeMeta.particleStride)
+        if (!csRes) {
+            ComCall(2, pCS)
+            ComCall(2, pPS)
+            return false
+        }
+
+        gShader_Registry[name] := {ps: pPS, cs: pCS,
+            csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: computeMeta.maxParticles,
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
+
+        if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
+            _Shader_LoadTextures(name)
+
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterCompute: " name " OK cs=" pCS " ps=" pPS " buf=" csRes.buffer)
+        return true
+    } catch as e {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterCompute: " name " EXCEPTION: " e.Message)
+        return false
+    }
+}
+
+; Register a compute+pixel shader from pre-compiled DXBC resources.
+Shader_RegisterComputeFromResource(name, csResId, psResId, meta) {
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+
+    if (!gShader_Ready || !gD2D_D3DDevice || !IsObject(meta))
+        return false
+
+    try {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterComputeFromResource: " name " csResId=" csResId " psResId=" psResId)
+
+        csBytecode := ResourceLoadToBuffer(csResId)
+        if (!csBytecode || !csBytecode.Size)
+            return false
+
+        psBytecode := ResourceLoadToBuffer(psResId)
+        if (!psBytecode || !psBytecode.Size)
+            return false
+
+        ; CreateComputeShader (ID3D11Device vtable 18)
+        pCS := 0
+        hr := ComCall(18, gD2D_D3DDevice, "ptr", csBytecode, "uptr", csBytecode.Size, "ptr", 0, "ptr*", &pCS, "int")
+        if (!pCS)
+            return false
+
+        ; CreatePixelShader (ID3D11Device vtable 15)
+        pPS := 0
+        hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
+        if (!pPS) {
+            ComCall(2, pCS)
+            return false
+        }
+
+        computeMeta := meta.compute
+        csRes := _Shader_CreateComputeBuffer(computeMeta.maxParticles, computeMeta.particleStride)
+        if (!csRes) {
+            ComCall(2, pCS)
+            ComCall(2, pPS)
+            return false
+        }
+
+        gShader_Registry[name] := {ps: pPS, cs: pCS,
+            csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: computeMeta.maxParticles,
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
+
+        if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
+            _Shader_LoadTextures(name)
+
+        return true
+    } catch as e {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterComputeFromResource: " name " EXCEPTION: " e.Message)
+        return false
+    }
+}
+
+; Register a compute+pixel shader from HLSL file (dev mode).
+Shader_RegisterComputeFromFile(name, hlslFile, meta) {
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+
+    if (!gShader_Ready || !gD2D_D3DDevice || !IsObject(meta))
+        return false
+
+    try {
+        hlslPath := A_ScriptDir "\shaders\" hlslFile
+        if (!FileExist(hlslPath)) {
+            SplitPath(A_ScriptDir, , &parentDir)
+            hlslPath := parentDir "\shaders\" hlslFile
+        }
+        if (!FileExist(hlslPath))
+            return false
+
+        hlsl := FileRead(hlslPath, "UTF-8")
+        if (hlsl = "")
+            return false
+
+        ; Prepend shared header
+        static sCommonHlsl := ""
+        if (sCommonHlsl = "") {
+            testPath := A_ScriptDir "\shaders\alt_tabby_common.hlsl"
+            if (FileExist(testPath))
+                sCommonHlsl := FileRead(testPath, "UTF-8") "`n"
+            else {
+                SplitPath(A_ScriptDir, , &parentDir2)
+                testPath := parentDir2 "\shaders\alt_tabby_common.hlsl"
+                if (FileExist(testPath))
+                    sCommonHlsl := FileRead(testPath, "UTF-8") "`n"
+            }
+        }
+        if (sCommonHlsl != "")
+            hlsl := sCommonHlsl "#line 1 `"" hlslFile "`"`n" hlsl
+
+        return Shader_RegisterCompute(name, hlsl, meta)
+    } catch as e {
+        if (cfg.DiagShaderLog)
+            _Shader_Log("RegisterComputeFromFile: " name " EXCEPTION: " e.Message)
+        return false
+    }
+}
+
+; Create a D3D11 structured buffer with UAV + SRV for compute shader read/write.
+; Returns {buffer, uav, srv} or 0 on failure.
+_Shader_CreateComputeBuffer(numElements, strideBytes) {
+    global gD2D_D3DDevice
+
+    totalSize := numElements * strideBytes
+
+    ; Initialize buffer data: all zeros except life=1.0 (dead) for each particle.
+    ; life field is at offset 16 (after float2 pos + float2 vel) in the 32-byte particle struct.
+    initData := Buffer(totalSize, 0)
+    Loop numElements {
+        offset := (A_Index - 1) * strideBytes
+        NumPut("float", 1.0, initData, offset + 16)  ; life = 1.0 (dead)
+    }
+
+    ; D3D11_BUFFER_DESC (24 bytes)
+    bufDesc := Buffer(24, 0)
+    NumPut("uint", totalSize, bufDesc, 0)      ; ByteWidth
+    NumPut("uint", 0, bufDesc, 4)              ; Usage = D3D11_USAGE_DEFAULT
+    NumPut("uint", 0x88, bufDesc, 8)           ; BindFlags = SHADER_RESOURCE(0x8) | UNORDERED_ACCESS(0x80)
+    NumPut("uint", 0, bufDesc, 12)             ; CPUAccessFlags = 0
+    NumPut("uint", 0x40, bufDesc, 16)          ; MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED
+    NumPut("uint", strideBytes, bufDesc, 20)   ; StructureByteStride
+
+    ; D3D11_SUBRESOURCE_DATA (16 bytes on x64): pSysMem, SysMemPitch, SysMemSlicePitch
+    subData := Buffer(A_PtrSize * 2 + 4, 0)
+    NumPut("ptr", initData.Ptr, subData, 0)
+
+    ; CreateBuffer (ID3D11Device vtable 3)
+    pBuf := 0
+    hr := ComCall(3, gD2D_D3DDevice, "ptr", bufDesc, "ptr", subData, "ptr*", &pBuf, "int")
+    if (hr < 0 || !pBuf)
+        return 0
+
+    ; Create UAV (ID3D11Device vtable 8 = CreateUnorderedAccessView)
+    ; D3D11_UNORDERED_ACCESS_VIEW_DESC (20 bytes for buffer): Format, ViewDimension, Buffer{FirstElement, NumElements, Flags}
+    uavDesc := Buffer(20, 0)
+    NumPut("uint", 0, uavDesc, 0)              ; Format = DXGI_FORMAT_UNKNOWN (structured buffer)
+    NumPut("uint", 1, uavDesc, 4)              ; ViewDimension = D3D11_UAV_DIMENSION_BUFFER
+    NumPut("uint", 0, uavDesc, 8)              ; Buffer.FirstElement
+    NumPut("uint", numElements, uavDesc, 12)   ; Buffer.NumElements
+    NumPut("uint", 0, uavDesc, 16)             ; Buffer.Flags
+
+    pUAV := 0
+    hr := ComCall(8, gD2D_D3DDevice, "ptr", pBuf, "ptr", uavDesc, "ptr*", &pUAV, "int")
+    if (hr < 0 || !pUAV) {
+        ComCall(2, pBuf)
+        return 0
+    }
+
+    ; Create SRV (ID3D11Device vtable 7 = CreateShaderResourceView)
+    ; D3D11_SHADER_RESOURCE_VIEW_DESC (16 bytes for buffer): Format, ViewDimension, Buffer{FirstElement, NumElements}
+    srvDesc := Buffer(16, 0)
+    NumPut("uint", 0, srvDesc, 0)              ; Format = DXGI_FORMAT_UNKNOWN (structured buffer)
+    NumPut("uint", 1, srvDesc, 4)              ; ViewDimension = D3D11_SRV_DIMENSION_BUFFER
+    NumPut("uint", 0, srvDesc, 8)              ; Buffer.FirstElement
+    NumPut("uint", numElements, srvDesc, 12)   ; Buffer.NumElements
+
+    pSRV := 0
+    hr := ComCall(7, gD2D_D3DDevice, "ptr", pBuf, "ptr", srvDesc, "ptr*", &pSRV, "int")
+    if (hr < 0 || !pSRV) {
+        ComCall(2, pUAV)
+        ComCall(2, pBuf)
+        return 0
+    }
+
+    if (cfg.DiagShaderLog)
+        _Shader_Log("CreateComputeBuffer: " numElements "x" strideBytes "=" totalSize "B buf=" pBuf " uav=" pUAV " srv=" pSRV)
+
+    return {buffer: pBuf, uav: pUAV, srv: pSRV}
 }
 
 ; ========================= iCHANNEL TEXTURES =========================
@@ -787,11 +1035,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
 
     ctx := gShader_D3DCtx
 
-    ; Compute timeDelta
+    ; Compute timeDelta per-shader (each shader tracks its own lastTime to avoid
+    ; cross-shader pollution when multiple shaders render per frame with different time values)
     timeDelta := 0.0
-    if (gShader_LastTime > 0)
-        timeDelta := timeSec - gShader_LastTime
-    gShader_LastTime := timeSec
+    if (entry.lastTime > 0)
+        timeDelta := timeSec - entry.lastTime
+    entry.lastTime := timeSec
     gShader_FrameCount += 1
 
     ; Map cbuffer → write all 112 bytes → Unmap
@@ -841,6 +1090,33 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)
 
+    ; --- Compute shader dispatch (if this shader has a CS component) ---
+    if (entry.cs) {
+        ; CSSetShader (ID3D11DeviceContext vtable 69)
+        try ComCall(69, ctx, "ptr", entry.cs, "ptr", 0, "uint", 0)
+
+        ; CSSetConstantBuffers (vtable 71): same cbuffer at slot 0
+        static csCbBuf := Buffer(A_PtrSize, 0)
+        NumPut("ptr", gShader_CBuffer, csCbBuf)
+        try ComCall(71, ctx, "uint", 0, "uint", 1, "ptr", csCbBuf)
+
+        ; CSSetUnorderedAccessViews (vtable 68): UAV at slot 0
+        static csUavBuf := Buffer(A_PtrSize, 0)
+        NumPut("ptr", entry.csUAV, csUavBuf)
+        static csInitialCount := Buffer(4, 0)
+        NumPut("uint", 0xFFFFFFFF, csInitialCount)  ; -1 = don't reset append counter
+        try ComCall(68, ctx, "uint", 0, "uint", 1, "ptr", csUavBuf, "ptr", csInitialCount)
+
+        ; Dispatch (vtable 41): ceil(numElements / 64) thread groups
+        numGroups := (entry.csNumElements + 63) // 64
+        try ComCall(41, ctx, "uint", numGroups, "uint", 1, "uint", 1)
+
+        ; Unbind CS and UAV (clean state for PS phase)
+        try ComCall(69, ctx, "ptr", 0, "ptr", 0, "uint", 0)
+        static csNullUav := Buffer(A_PtrSize, 0)
+        try ComCall(68, ctx, "uint", 0, "uint", 1, "ptr", csNullUav, "ptr", csInitialCount)
+    }
+
     ; ClearRenderTargetView (vtable 50)
     static clearColor := _Shader_MakeClearColor()
     try ComCall(50, ctx, "ptr", entry.rtv, "ptr", clearColor)
@@ -884,6 +1160,13 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         try ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf)
     }
 
+    ; Bind compute particle buffer as SRV at slot 4 (PSSetShaderResources, startSlot=4)
+    if (entry.csSRV) {
+        static csParticleSrvBuf := Buffer(A_PtrSize, 0)
+        NumPut("ptr", entry.csSRV, csParticleSrvBuf)
+        try ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csParticleSrvBuf)
+    }
+
     ; Bind sampler state to all slots used by SRVs (PSSetSamplers vtable 10)
     if (gShader_Sampler) {
         nSamplers := Max(nSrvs, 1)
@@ -904,6 +1187,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     if (nSrvs > 0) {
         nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
         try ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf)
+    }
+
+    ; Unbind compute particle SRV at slot 4
+    if (entry.csSRV) {
+        static csNullParticleSrv := Buffer(A_PtrSize, 0)
+        try ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csNullParticleSrv)
     }
 
     ; --- GPU→CPU readback: copy rendered texture to D2D bitmap ---
@@ -980,6 +1269,15 @@ Shader_Cleanup() {
                 ComCall(2, srv)
         }
         _Shader_ReleaseRT(entry)
+        ; Release compute resources
+        if (entry.HasOwnProp("csSRV") && entry.csSRV)
+            ComCall(2, entry.csSRV)
+        if (entry.HasOwnProp("csUAV") && entry.csUAV)
+            ComCall(2, entry.csUAV)
+        if (entry.HasOwnProp("csBuffer") && entry.csBuffer)
+            ComCall(2, entry.csBuffer)
+        if (entry.HasOwnProp("cs") && entry.cs)
+            ComCall(2, entry.cs)
         if (entry.ps)
             ComCall(2, entry.ps)
     }

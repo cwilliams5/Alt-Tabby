@@ -66,14 +66,20 @@ Loop Read manifestPath {
         continue
     }
 
-    ; Prepend common header for pixel shaders (not VS)
-    if (commonHlsl = "" && target = "ps_4_0") {
+    ; Prepend common header for pixel and compute shaders (not VS)
+    needsCommon := (SubStr(target, 1, 2) = "ps" || SubStr(target, 1, 2) = "cs")
+    if (commonHlsl = "" && needsCommon) {
         SplitPath(hlslPath, , &shaderDir)
         commonPath := shaderDir "\alt_tabby_common.hlsl"
+        ; For subdirectory shaders (mouse/, selection/), look in parent dir
+        if (!FileExist(commonPath)) {
+            SplitPath(shaderDir, , &parentDir)
+            commonPath := parentDir "\alt_tabby_common.hlsl"
+        }
         if (FileExist(commonPath))
             commonHlsl := FileRead(commonPath, "UTF-8") "`n"
     }
-    if (commonHlsl != "" && target = "ps_4_0") {
+    if (commonHlsl != "" && needsCommon) {
         SplitPath(hlslPath, &fileName)
         hlsl := commonHlsl "#line 1 `"" fileName "`"`n" hlsl
     }
