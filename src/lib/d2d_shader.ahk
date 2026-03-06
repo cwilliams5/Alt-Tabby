@@ -749,7 +749,7 @@ _Shader_MakeGUID(str) {
 ; Run the D3D11 shader pipeline. Call BEFORE D2D BeginDraw.
 ; timeSec: elapsed time in seconds. darken/desaturate: 0.0-1.0 post-processing.
 Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity := 1.0,
-    mouseX := 0, mouseY := 0,
+    mouseX := 0, mouseY := 0, mouseVelX := 0.0, mouseVelY := 0.0, mouseSpeed := 0.0,
     selX := 0, selY := 0, selW := 0, selH := 0,
     selColorR := 0.0, selColorG := 0.0, selColorB := 0.0, selColorA := 0.0,
     borderR := 0.0, borderG := 0.0, borderB := 0.0, borderA := 0.0,
@@ -815,8 +815,8 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         ; --- Mouse (offset 32) ---
         NumPut("float", Float(mouseX), pData, 32)           ; iMouse.x
         NumPut("float", Float(mouseY), pData, 36)           ; iMouse.y
-        NumPut("float", 0.0, pData, 40)                     ; _pad1.x
-        NumPut("float", 0.0, pData, 44)                     ; _pad1.y
+        NumPut("float", Float(mouseVelX), pData, 40)        ; iMouseVel.x
+        NumPut("float", Float(mouseVelY), pData, 44)        ; iMouseVel.y
         ; --- Selection rect (offset 48) ---
         NumPut("float", Float(selX), pData, 48)             ; selRect.x
         NumPut("float", Float(selY), pData, 52)             ; selRect.y
@@ -836,7 +836,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         NumPut("float", Float(borderWidth), pData, 96)      ; borderWidth
         NumPut("float", Float(isHovered), pData, 100)       ; isHovered
         NumPut("float", Float(entranceT), pData, 104)       ; entranceT
-        NumPut("float", 0.0, pData, 108)                    ; _pad2
+        NumPut("float", Float(mouseSpeed), pData, 108)       ; iMouseSpeed
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)

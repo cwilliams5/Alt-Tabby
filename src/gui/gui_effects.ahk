@@ -25,6 +25,12 @@ gFX_SelectionEffect := {key: "", name: ""}
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
 global gFX_MouseInWindow := false    ; Mouse is inside overlay window
+global gFX_MousePrevX := 0.0        ; Previous frame mouse X
+global gFX_MousePrevY := 0.0        ; Previous frame mouse Y
+global gFX_MouseVelX := 0.0         ; Smoothed velocity X (px/sec)
+global gFX_MouseVelY := 0.0         ; Smoothed velocity Y (px/sec)
+global gFX_MouseSpeed := 0.0        ; Magnitude of velocity (px/sec)
+global gFX_MousePrevValid := false   ; False until first valid sample
 
 ; Initialize GPU effects. Call after gD2D_RT is valid.
 ; Returns true on success, false if effects unavailable.
@@ -278,6 +284,15 @@ FX_HDRCorrectARGB(argb) {
     return (a << 24) | (r << 16) | (g << 8) | b
 }
 
+; Reset mouse velocity state (call when overlay hides/shows).
+FX_ResetMouseVelocity() {
+    global gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed, gFX_MousePrevValid
+    gFX_MouseVelX := 0.0
+    gFX_MouseVelY := 0.0
+    gFX_MouseSpeed := 0.0
+    gFX_MousePrevValid := false
+}
+
 ; Ambient animation update — called every frame.
 ; Advances gFX_AmbientTime by the frame delta.
 FX_UpdateAmbient(dt) {
@@ -347,20 +362,51 @@ FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
 ; Pre-render the mouse effect (D3D11 pipeline). Called BEFORE D2D BeginDraw.
 FX_PreRenderMouseEffect(w, h) {
     global gFX_MouseEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
-    global gFX_MouseX, gFX_MouseY, cfg
+    global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow, cfg
+    global gFX_MousePrevX, gFX_MousePrevY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed, gFX_MousePrevValid
 
     if (gFX_MouseEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
         return
 
+    ; --- Compute mouse velocity (CPU-side, per frame) ---
     baseTime := gFX_AmbientTime / 1000.0
     if (gFX_ShaderTime.Has(gFX_MouseEffect.key)) {
         t := gFX_ShaderTime[gFX_MouseEffect.key]
         baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
     }
 
+    static prevTime := 0.0
+    dtSec := (prevTime > 0) ? baseTime - prevTime : 0.0
+    prevTime := baseTime
+
+    if (!gFX_MouseInWindow) {
+        ; Mouse left window — reset velocity state
+        gFX_MouseVelX := 0.0
+        gFX_MouseVelY := 0.0
+        gFX_MouseSpeed := 0.0
+        gFX_MousePrevValid := false
+    } else if (dtSec < 0.0001) {
+        ; dt too small (first frame or timing catch-up) — keep last values
+    } else if (!gFX_MousePrevValid) {
+        ; First valid sample — seed previous position, zero velocity
+        gFX_MousePrevX := gFX_MouseX
+        gFX_MousePrevY := gFX_MouseY
+        gFX_MousePrevValid := true
+    } else {
+        ; Compute raw velocity (px/sec) and smooth with exponential filter
+        rawVelX := (gFX_MouseX - gFX_MousePrevX) / dtSec
+        rawVelY := (gFX_MouseY - gFX_MousePrevY) / dtSec
+        alpha := 0.3
+        gFX_MouseVelX := gFX_MouseVelX * (1.0 - alpha) + rawVelX * alpha
+        gFX_MouseVelY := gFX_MouseVelY * (1.0 - alpha) + rawVelY * alpha
+        gFX_MouseSpeed := Sqrt(gFX_MouseVelX * gFX_MouseVelX + gFX_MouseVelY * gFX_MouseVelY)
+        gFX_MousePrevX := gFX_MouseX
+        gFX_MousePrevY := gFX_MouseY
+    }
+
     try {
         Shader_PreRender(gFX_MouseEffect.key, w, h, baseTime, 0.0, 0.0, gFX_MouseEffect.opacity,
-            gFX_MouseX, gFX_MouseY)
+            gFX_MouseX, gFX_MouseY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed)
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
@@ -413,7 +459,7 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 
     try {
         Shader_PreRender(gFX_SelectionEffect.key, w, h, baseTime, 0.0, 0.0, 1.0,
-            0, 0,
+            0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,

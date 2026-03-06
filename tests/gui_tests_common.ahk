@@ -102,6 +102,12 @@ global SHADER_NAMES := ["None"]
 global gFX_MouseX := 0.0
 global gFX_MouseY := 0.0
 global gFX_MouseInWindow := false
+global gFX_MousePrevX := 0.0
+global gFX_MousePrevY := 0.0
+global gFX_MouseVelX := 0.0
+global gFX_MouseVelY := 0.0
+global gFX_MouseSpeed := 0.0
+global gFX_MousePrevValid := false
 
 ; Win32 constants (from win_utils.ahk - not included in GUI test chain)
 global DWMWA_CLOAKED := 14
@@ -288,6 +294,8 @@ FX_PreRenderSelectionEffect(w, h, selX:=0, selY:=0, selW:=0, selH:=0, selARGB:=0
 FX_DrawSelectionEffect(wPhys, hPhys) {
 }
 FX_SaveShaderTime() {
+}
+FX_ResetMouseVelocity() {
 }
 
 Win_DwmFlush() {

@@ -31,6 +31,54 @@ function Record-Step {
     }
 }
 
+# --- Helpers ---
+# Resolve a path through junctions/symlinks by walking up looking for reparse points.
+# The junction may be on EITHER side (process reports C:\Users\...\Documents which is
+# a junction to E:\Documents, or vice versa). Resolves the path from junction source
+# to junction target so both sides can be compared.
+function Resolve-ThroughJunctions {
+    param([string]$Path)
+    try {
+        $item = Get-Item $Path -ErrorAction Stop
+        $parts = @()
+        $current = $item
+        while ($current) {
+            if ($current.LinkType -and $current.Target) {
+                $target = if ($current.Target -is [array]) { $current.Target[0] } else { $current.Target }
+                if ($parts.Count -gt 0) {
+                    return Join-Path $target ($parts -join [IO.Path]::DirectorySeparatorChar)
+                }
+                return $target
+            }
+            $parts = @($current.Name) + $parts
+            $current = $current.Parent
+        }
+    } catch {}
+    return $Path
+}
+
+# Find AltTabby processes from THIS release directory.
+# Handles junctions/symlinks by resolving process paths AND our directory path,
+# then comparing all combinations.
+function Find-BlockingProcesses {
+    param([string]$Dir)
+    $resolvedDir = Resolve-ThroughJunctions $Dir
+    return Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue |
+        Where-Object {
+            try {
+                if (-not $_.Path) { return $false }
+                $procDir = [IO.Path]::GetDirectoryName($_.Path)
+                $resolvedProcDir = Resolve-ThroughJunctions $procDir
+                # Compare all combinations: raw vs raw, raw vs resolved, resolved vs raw, resolved vs resolved
+                $procDir.StartsWith($Dir, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $resolvedProcDir.StartsWith($Dir, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $procDir.StartsWith($resolvedDir, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $resolvedProcDir.StartsWith($resolvedDir, [System.StringComparison]::OrdinalIgnoreCase)
+            }
+            catch { $false }
+        }
+}
+
 # --- Locate tools ---
 $ahk2exe = "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe"
 $ahk2base = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
@@ -296,11 +344,7 @@ if (-not $exeNeeded -and -not $testMode) {
 if ($exeNeeded -and -not $testMode) {
     Reset-StepTimer
     Write-Output "Checking for running AltTabby processes in $releaseDir..."
-    $running = Get-Process -Name "AltTabby" -ErrorAction SilentlyContinue |
-        Where-Object {
-            try { $_.Path -and $_.Path.StartsWith($releaseDir, [System.StringComparison]::OrdinalIgnoreCase) }
-            catch { $false }
-        }
+    $running = Find-BlockingProcesses $releaseDir
     if ($running) {
         Write-Output "Found running AltTabby.exe from this directory - attempting to terminate..."
         try {
@@ -342,6 +386,21 @@ if ($compileError -ne 0) {
     if ($profileTempDir -and (Test-Path $profileTempDir)) {
         Remove-Item $profileTempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
+
+    # Check if the target exe is locked by a running process from THIS directory
+    $blocking = Find-BlockingProcesses $releaseDir
+    if ($blocking) {
+        $pids = ($blocking | ForEach-Object { $_.Id }) -join ", "
+        Write-Output ""
+        Write-Output "ERROR: Target exe is locked - AltTabby.exe is running from this directory."
+        Write-Output "       PID(s): $pids"
+        Write-Output "       Path:   $outputFile"
+        Write-Output ""
+        Write-Output "Close the running instance and retry. Ahk2Exe cannot overwrite a locked file."
+        Write-Output ""
+        exit 1
+    }
+
     Write-Output ""
     Write-Output "ERROR: Compilation failed with error code $compileError"
     Write-Output ""

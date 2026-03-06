@@ -242,9 +242,14 @@ Symmetric shaders (noise fields, clouds, fractals) usually don't need the flip.
 ### 5. Constant Buffer Header
 
 The cbuffer and PSInput struct are provided by `alt_tabby_common.hlsl`, which is prepended automatically before compilation. **Do NOT include them in the `.hlsl` file.** The common header provides:
-- `cbuffer Constants : register(b0)` with `time`, `resolution`, `timeDelta`, `frame`, `darken`, `desaturate`, `opacity`
+- `cbuffer Constants : register(b0)` with all uniforms (112 bytes):
+  - **Core**: `time` (float), `resolution` (float2), `timeDelta` (float), `frame` (uint), `darken` (float), `desaturate` (float), `opacity` (float)
+  - **Mouse**: `iMouse` (float2, cursor px), `iMouseVel` (float2, velocity px/sec), `iMouseSpeed` (float, magnitude of velocity)
+  - **Selection**: `selRect` (float4, x/y/w/h), `selColor` (float4, premul RGBA), `borderColor` (float4, premul RGBA), `borderWidth` (float), `isHovered` (float), `entranceT` (float)
 - `struct PSInput` with `SV_Position` and `TEXCOORD0`
 - `AT_PostProcess(float3 col)` and `AT_PostProcess(float3 col, float customAlpha)` functions
+
+All fields are populated every frame for all shader categories. Background shaders typically use only core fields. Mouse shaders use core + mouse fields. Selection shaders use core + selection fields.
 
 iChannel `Texture2D`/`SamplerState` declarations still go in the individual `.hlsl` file (they vary per shader and are NOT in the common header).
 
@@ -272,18 +277,20 @@ Shadertoy shaders may use `iChannel0..3` for audio input (spectrum/waveform) or 
 
 ### 8. Mouse Input (iMouse)
 
-Shadertoy provides `iMouse` (pixel coordinates, click state). Alt-Tabby has no mouse interaction with the shader layer.
+Shadertoy provides `iMouse` (pixel coordinates, click state). Alt-Tabby provides mouse data via cbuffer:
+- `iMouse` (float2): cursor position in physical pixels
+- `iMouseVel` (float2): cursor velocity in pixels/second (smoothed, CPU-computed)
+- `iMouseSpeed` (float): magnitude of `iMouseVel` (convenience scalar)
 
-- **Shader has an automated path without mouse** (camera moves via time, mouse just offsets/rotates): Zero out `iMouse`. Set any derived mouse variables to `(float2)0` and simplify away dead code (e.g., `P.x -= bsMo.x * 2.0` becomes a no-op, remove it).
-
-- **Mouse is the sole camera or parameter control** (orbiting a fractal, controlling zoom/distortion — zeroing it produces a static or broken view): Replace with a gentle time-based sweep so the shader explores its parameter space:
+**For background shaders** (no mouse interaction): Zero out or ignore `iMouse`. Set any derived mouse variables to `(float2)0` and simplify away dead code. If mouse is the sole camera control, replace with a time-based sweep:
   ```hlsl
   float2 fakeMouse = float2(
       sin(time * 0.1) * 0.3,
       cos(time * 0.07) * 0.2
   );
   ```
-  Tune the frequency, amplitude, and coordinate space to match how the shader consumes mouse input (normalized `0..1`, centered `-0.5..0.5`, or raw pixels). Preview the result at several time values to ensure the sweep stays in a visually interesting range.
+
+**For mouse-category shaders**: Use `iMouse` for cursor position, `iMouseVel` for direction-dependent effects (particles trailing behind cursor), and `iMouseSpeed` for motion gating (e.g., `if (iMouseSpeed < threshold) return zero`). Speed-gated effects should use `smoothstep()` for gradual activation rather than hard cutoffs.
 
 ### 9. iChannel Textures
 
@@ -347,5 +354,5 @@ Add time fields when the shader has a notable warmup period or deliberate intro.
 
 Shaders are organized into three categories by directory:
 - **Background shaders** (`src/shaders/`): Composited as stackable layers behind the window list. Up to 4 layers.
-- **Mouse shaders** (`src/shaders/mouse/`): Single-slot effect that receives `iMouse` (cursor position). Add `"category": "mouse"` to JSON.
+- **Mouse shaders** (`src/shaders/mouse/`): Single-slot effect receiving cursor data: `iMouse` (position), `iMouseVel` (velocity px/sec), `iMouseSpeed` (speed magnitude). Add `"category": "mouse"` to JSON.
 - **Selection shaders** (`src/shaders/selection/`): Single-slot effect for row selection highlight. Receives `selRect`, `selColor`, `borderColor`, `borderWidth`, `isHovered`, `entranceT` via cbuffer. Add `"category": "selection"` to JSON.

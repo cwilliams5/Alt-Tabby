@@ -119,6 +119,7 @@ Anim_CancelAll() {
     gAnim_Tweens := Map()
     FX_SaveShaderTime()           ; Capture shader carry time before ambient resets
     gFX_AmbientTime := 0.0
+    FX_ResetMouseVelocity()
     gAnim_HidePending := false
     Anim_StopTimer()
 }

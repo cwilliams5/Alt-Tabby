@@ -747,4 +747,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-05 with 319 total settings.*
+*Generated on 2026-03-06 with 319 total settings.*

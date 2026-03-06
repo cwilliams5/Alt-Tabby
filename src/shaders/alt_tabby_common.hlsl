@@ -13,7 +13,7 @@ cbuffer Constants : register(b0) {
 
     // --- Mouse (offsets 32-44, 16-byte aligned) ---
     float2 iMouse;          // cursor position in pixels
-    float2 _pad1;
+    float2 iMouseVel;       // cursor velocity in pixels/sec
 
     // --- Selection rect (offsets 48-60) ---
     float4 selRect;         // x, y, w, h of selected row
@@ -28,7 +28,7 @@ cbuffer Constants : register(b0) {
     float borderWidth;      // border thickness in pixels
     float isHovered;        // 0.0 = selected, 1.0 = hovered
     float entranceT;        // 0→1 entrance tween
-    float _pad2;
+    float iMouseSpeed;      // magnitude of iMouseVel (pixels/sec)
 };
 
 struct PSInput {
