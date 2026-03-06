@@ -35,10 +35,17 @@ global gAnim_FPSLastSample := 0.0
 global gAnim_FPSDisplay := 0          ; Displayed FPS (updated every 500ms)
 global gAnim_FrameTimeDisplay := 0.0  ; Displayed frame time ms
 
+; Compositor Clock state (Win11+ display-adaptive pacing)
+global gAnim_pWaitForClock := 0    ; Function ptr: DCompositionWaitForCompositorClock (0 = unavailable)
+global gAnim_pBoostClock := 0      ; Function ptr: DCompositionBoostCompositorClock (0 = unavailable)
+global gAnim_QuitEvent := 0        ; Manual-reset event handle for clean frame loop shutdown
+global gAnim_BoostActive := false  ; Whether compositor clock boost is currently active
+
 ; ========================= INIT =========================
 
 Anim_Init() {
     global gAnim_TargetFPS, gAnim_FrameCapMs, cfg
+    global gAnim_pWaitForClock, gAnim_pBoostClock, gAnim_QuitEvent
 
     ; Resolve AnimationFPS: "Auto" → monitor rate, else parse int (no cap)
     fpsStr := cfg.PerfAnimationFPS
@@ -53,6 +60,21 @@ Anim_Init() {
     }
 
     gAnim_FrameCapMs := 1000.0 / gAnim_TargetFPS
+
+    ; Detect Compositor Clock API (Win11+ only, Build 22000+).
+    ; MUST use GetProcAddress — hard-linking crashes on Win10 (missing entry point).
+    ; dcomp.dll is already loaded via #DllLoad in gui_overlay.ahk.
+    hDComp := DllCall("GetModuleHandle", "str", "dcomp.dll", "ptr")
+    if (hDComp) {
+        gAnim_pWaitForClock := DllCall("GetProcAddress", "ptr", hDComp,
+            "astr", "DCompositionWaitForCompositorClock", "ptr")
+        gAnim_pBoostClock := DllCall("GetProcAddress", "ptr", hDComp,
+            "astr", "DCompositionBoostCompositorClock", "ptr")
+    }
+
+    ; Create quit event for clean frame loop shutdown (manual-reset, initially unsignaled)
+    if (gAnim_pWaitForClock)
+        gAnim_QuitEvent := DllCall("CreateEvent", "ptr", 0, "int", 1, "int", 0, "ptr", 0, "ptr")
 }
 
 _Anim_GetMonitorRefreshRate() {
@@ -134,6 +156,7 @@ Anim_EnsureTimer() {
     global gAnim_TimerRunning, gAnim_TimerPeriodOn, gAnim_LastFrameTime, cfg
     global gAnim_FPSFrameCount, gAnim_FPSLastSample
     global gPaint_RepaintInProgress, gAnim_DeferredTimerStart
+    global gAnim_QuitEvent, gAnim_pBoostClock, gAnim_BoostActive
     if (cfg.PerfAnimationType = "None")
         return
     if (gAnim_TimerRunning)
@@ -149,10 +172,18 @@ Anim_EnsureTimer() {
         DllCall("winmm\timeBeginPeriod", "uint", 1)
         gAnim_TimerPeriodOn := true
     }
+    ; Reset quit event for new animation session (unsignal it)
+    if (gAnim_QuitEvent)
+        DllCall("ResetEvent", "ptr", gAnim_QuitEvent)
     gAnim_LastFrameTime := QPC()
     gAnim_FPSLastSample := gAnim_LastFrameTime
     gAnim_FPSFrameCount := 0
     gAnim_TimerRunning := true
+    ; Boost compositor clock refresh rate during animation (Dynamic Refresh Rate displays)
+    if (gAnim_pBoostClock && !gAnim_BoostActive) {
+        DllCall(gAnim_pBoostClock, "int", 1)
+        gAnim_BoostActive := true
+    }
     ; One-shot timer launches the frame loop in its own thread.
     ; The loop runs until gAnim_TimerRunning is set false.
     SetTimer(_Anim_FrameLoop, -1)
@@ -160,6 +191,10 @@ Anim_EnsureTimer() {
 
 Anim_StopTimer() {
     global gAnim_TimerRunning, gAnim_TimerPeriodOn
+    global gAnim_QuitEvent, gAnim_pBoostClock, gAnim_BoostActive
+    ; Signal quit event to unblock compositor clock wait immediately
+    if (gAnim_QuitEvent)
+        DllCall("SetEvent", "ptr", gAnim_QuitEvent)
     gAnim_TimerRunning := false
     ; Cancel pending one-shot if loop hasn't started yet
     SetTimer(_Anim_FrameLoop, 0)
@@ -167,32 +202,80 @@ Anim_StopTimer() {
         DllCall("winmm\timeEndPeriod", "uint", 1)
         gAnim_TimerPeriodOn := false
     }
+    ; Release compositor clock boost
+    if (gAnim_pBoostClock && gAnim_BoostActive) {
+        DllCall(gAnim_pBoostClock, "int", 0)
+        gAnim_BoostActive := false
+    }
+}
+
+; Final cleanup — close compositor clock handles. Called from _GUI_OnExit().
+Anim_Shutdown() {
+    global gAnim_QuitEvent, gAnim_pBoostClock, gAnim_BoostActive
+    ; Release any active boost
+    if (gAnim_pBoostClock && gAnim_BoostActive) {
+        DllCall(gAnim_pBoostClock, "int", 0)
+        gAnim_BoostActive := false
+    }
+    ; Close quit event handle
+    if (gAnim_QuitEvent) {
+        DllCall("CloseHandle", "ptr", gAnim_QuitEvent)
+        gAnim_QuitEvent := 0
+    }
 }
 
 ; Frame loop: runs as a persistent thread via one-shot SetTimer.
-; Waitable path: WaitForSingleObjectEx (outside Critical) → Sleep(0) message pump →
-;   Critical On (paint) → Critical Off. Hotkeys fire during Sleep(0).
-; Fallback path: Critical On (paint) → Critical Off → Sleep+spin (frame pacing).
+; Three-tier frame pacing (all OUTSIDE Critical):
+;   Tier 1: Compositor Clock (Win11+) — display-adaptive, true frame skip for explicit FPS
+;   Tier 2: Waitable swap chain — VSync-paced, spin-wait for explicit FPS
+;   Tier 3: QPC spin-wait only — pure software cap
+; After pacing: Sleep(0) message pump → Critical On (paint) → Critical Off.
 _Anim_FrameLoop() {
     global gAnim_TimerRunning, gAnim_Tweens, gAnim_LastFrameTime, gAnim_FrameCapMs, gAnim_FrameDt
     global gAnim_OverlayOpacity, gAnim_HidePending, gAnim_FrameTimeDisplay
     global gGUI_OverlayVisible, cfg
     global gD2D_WaitableHandle
+    global gAnim_pWaitForClock, gAnim_QuitEvent
 
+    useCompositorClock := (gAnim_pWaitForClock != 0 && gAnim_QuitEvent != 0)
     useWaitable := (gD2D_WaitableHandle != 0)
     autoFPS := (cfg.PerfAnimationFPS = "Auto" || cfg.PerfAnimationFPS = "auto")
+
+    ; Pre-allocate compositor clock handles buffer (1 app handle: quit event)
+    if (useCompositorClock) {
+        ccHandles := Buffer(A_PtrSize, 0)
+        NumPut("ptr", gAnim_QuitEvent, ccHandles, 0)
+    }
 
     while (gAnim_TimerRunning) {
 
         ; --- Frame pacing (OUTSIDE Critical) ---
-        if (useWaitable) {
-            ; Block until next frame slot available — fresh input arrives during this wait.
+        if (useCompositorClock) {
+            ; Tier 1: Compositor Clock (Win11+) — display-adaptive pacing.
+            ; Returns: 0 = quit event signaled, 1 = compositor ticked, 258 = timeout
+            result := DllCall(gAnim_pWaitForClock, "uint", 1, "ptr", ccHandles, "uint", 1000, "uint")
+            if (result != 1)  ; Not compositor tick (quit or timeout)
+                break
+        } else if (useWaitable) {
+            ; Tier 2: Waitable swap chain — VSync-paced.
             ; 1000ms timeout prevents hang on device loss (WAIT_FAILED).
             DllCall("WaitForSingleObjectEx", "ptr", gD2D_WaitableHandle, "uint", 1000, "int", 1, "uint")
         }
 
-        ; Pump messages once — hotkeys fire here, at optimal time after VBlank wait.
+        ; Always pump messages — hotkeys fire here, at optimal time after VBlank/compositor wait.
         Sleep(0)
+
+        ; Frame skip for explicit FPS — compositor clock ONLY.
+        ; Compositor clock ticks independently of Present (no auto-reset event),
+        ; so skipping a render is safe. The waitable handle path CANNOT skip
+        ; (auto-reset requires Present per consumed signal — Phase 1 lesson).
+        ; 1ms tolerance: elapsed time lands right at the cap boundary (render time
+        ; + compositor wait ≈ cap). Sub-ms jitter causes false skips without this.
+        ; Rendering 1ms early is far better than waiting an extra full tick (~8ms).
+        if (useCompositorClock && !autoFPS) {
+            if (QPC() - gAnim_LastFrameTime < gAnim_FrameCapMs - 1.0)
+                continue
+        }
 
         Critical "On"
 
@@ -232,17 +315,20 @@ _Anim_FrameLoop() {
 
         Critical "Off"
 
-        ; Frame pacing after render
-        if (!useWaitable) {
-            ; Fallback: spin-wait for frame boundary
-            Sleep(0)
-            _Anim_FramePace()
-        } else if (!autoFPS) {
-            ; Explicit FPS on waitable path: spin-wait for frame cap.
-            ; Present() already fired — the waitable signal will be pending
-            ; by the time this wait completes, so next WaitForSingleObjectEx
-            ; returns immediately.
-            _Anim_FramePace()
+        ; Post-render pacing — waitable and fallback paths only.
+        ; Compositor clock handles ALL pacing at the top of the loop.
+        if (!useCompositorClock) {
+            if (!useWaitable) {
+                ; Tier 3: Fallback — spin-wait for frame boundary
+                Sleep(0)
+                _Anim_FramePace()
+            } else if (!autoFPS) {
+                ; Tier 2 explicit FPS: spin-wait for frame cap.
+                ; Present() already fired — the waitable signal will be pending
+                ; by the time this wait completes, so next WaitForSingleObjectEx
+                ; returns immediately.
+                _Anim_FramePace()
+            }
         }
     }
 

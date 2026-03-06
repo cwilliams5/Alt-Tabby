@@ -1191,7 +1191,7 @@ global gConfigRegistry := [
      min: 0.1, max: 5.0,
      d: "Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations."},
     {s: "Performance", k: "AnimationFPS", g: "PerfAnimationFPS", t: "string", default: "Auto",
-     d: "Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate."},
+     d: "Target frame rate for animation timer. 'Auto' = monitor refresh rate. Explicit values cap to nearest display divisor at or below target (e.g. on 120Hz: 120, 60, 40, 30)."},
 
     ; ============================================================
     ; Shader

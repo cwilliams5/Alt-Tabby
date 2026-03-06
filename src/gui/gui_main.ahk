@@ -596,6 +596,9 @@ _GUI_OnExit(reason, code) { ; lint-ignore: dead-param
     ; Release COM objects (OS would clean up, but explicit is good hygiene)
     try GUI_ReleaseComObjects()
 
+    ; Clean up animation state (compositor clock handles)
+    Anim_Shutdown()
+
     ; Clean up D2D resources + render target + factories
     Gdip_Shutdown()
     D2D_ShutdownAll()
