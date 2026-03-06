@@ -1,0 +1,7 @@
+{
+    "name": "Water Surface",
+    "category": "mouse",
+    "opacity": 0.50,
+    "iChannels": [],
+    "compute": { "maxParticles": 131072, "particleStride": 32 }
+}

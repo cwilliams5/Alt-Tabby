@@ -1,0 +1,7 @@
+{
+    "name": "Fluid Calm",
+    "category": "mouse",
+    "opacity": 0.40,
+    "iChannels": [],
+    "compute": { "maxParticles": 32768, "particleStride": 32 }
+}
