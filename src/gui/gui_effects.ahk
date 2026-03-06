@@ -404,6 +404,17 @@ FX_PreRenderMouseEffect(w, h) {
         gFX_MousePrevY := gFX_MouseY
     }
 
+    ; --- Adaptive frame skip: skip mouse shader when it exceeded budget last frame ---
+    global gAnim_FrameCapMs
+    static mouseSkipNext := false
+    static mouseLastRenderMs := 0.0
+
+    if (cfg.PerfAdaptiveMouseFPS && mouseSkipNext) {
+        mouseSkipNext := false  ; always render the frame after a skip
+        return
+    }
+
+    tBefore := QPC()
     try {
         Shader_PreRender(gFX_MouseEffect.key, w, h, baseTime, 0.0, 0.0, gFX_MouseEffect.opacity,
             gFX_MouseX, gFX_MouseY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed)
@@ -415,6 +426,11 @@ FX_PreRenderMouseEffect(w, h) {
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }
+    mouseLastRenderMs := QPC() - tBefore
+
+    ; If the mouse shader alone took more than half the frame budget, skip next frame
+    if (cfg.PerfAdaptiveMouseFPS && mouseLastRenderMs > gAnim_FrameCapMs * 0.5)
+        mouseSkipNext := true
 }
 
 ; Draw the mouse effect inside D2D BeginDraw.

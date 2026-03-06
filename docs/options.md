@@ -622,6 +622,7 @@ Memory management to maintain responsiveness after long idle periods.
 | `AnimationType` | enum | `Minimal` | - | Animation behavior. None = single paint per event (zero idle CPU). Minimal = animate transitions (selection slide, fade), auto-stop when done. Full = continuous ambient effects (glow pulse, noise drift) while overlay is visible. |
 | `AnimationSpeed` | float | `1.00` | `0.10` - `5.00` | Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations. |
 | `AnimationFPS` | string | `Auto` | - | Target frame rate for animation timer. 'Auto' = monitor refresh rate. Explicit values cap to nearest display divisor at or below target (e.g. on 120Hz: 120, 60, 40, 30). |
+| `AdaptiveMouseFPS` | bool | `true` | - | Decouple mouse shader framerate from the compositor. When a mouse shader exceeds the frame budget, it skips rendering on the next frame (reusing the cached result) while the rest of the overlay stays at full FPS. |
 
 ## Shader
 
@@ -747,4 +748,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-06 with 319 total settings.*
+*Generated on 2026-03-06 with 320 total settings.*

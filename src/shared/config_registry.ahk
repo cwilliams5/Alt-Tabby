@@ -1198,6 +1198,8 @@ global gConfigRegistry := [
      d: "Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations."},
     {s: "Performance", k: "AnimationFPS", g: "PerfAnimationFPS", t: "string", default: "Auto",
      d: "Target frame rate for animation timer. 'Auto' = monitor refresh rate. Explicit values cap to nearest display divisor at or below target (e.g. on 120Hz: 120, 60, 40, 30)."},
+    {s: "Performance", k: "AdaptiveMouseFPS", g: "PerfAdaptiveMouseFPS", t: "bool", default: true,
+     d: "Decouple mouse shader framerate from the compositor. When a mouse shader exceeds the frame budget, it skips rendering on the next frame (reusing the cached result) while the rest of the overlay stays at full FPS."},
 
     ; ============================================================
     ; Shader Layers (array_section: up to 4 stackable layers)
