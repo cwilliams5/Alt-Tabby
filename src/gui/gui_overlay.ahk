@@ -384,7 +384,6 @@ GUI_CreateWindow() {
     ; Initialize GPU effects pipeline (CLSIDs + effect graph)
     FX_InitCLSIDs()
     FX_GPU_Init()
-    FX_BuildStyleNames()
 
     Win_DwmFlush()
 }
@@ -645,7 +644,6 @@ D2D_HandleDeviceLoss() {
 
     ; Recreate GPU effects
     FX_GPU_Init()
-    FX_BuildStyleNames()
 }
 
 ; ========================= D2D CLEANUP =========================

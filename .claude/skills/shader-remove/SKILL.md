@@ -20,19 +20,19 @@ Remove a shader by display name, disk name, or filename.
 ### 1. Resolve the Shader
 
 The argument can be:
-- **Display name** (e.g., `Matrix Rain`) — scan `src/shaders/*.json`, match on the `"name"` field (case-insensitive)
-- **Disk name** (e.g., `matrix_rain`) — look for `src/shaders/matrix_rain.json`
+- **Display name** (e.g., `Matrix Rain`) — scan `src/shaders/**/*.json` (including `mouse/` and `selection/` subdirs), match on the `"name"` field (case-insensitive)
+- **Disk name** (e.g., `matrix_rain`) — look for `src/shaders/matrix_rain.json`, `src/shaders/mouse/matrix_rain.json`, or `src/shaders/selection/matrix_rain.json`
 - **Filename** (e.g., `matrix_rain.json` or `matrix_rain.hlsl`) — strip extension, use as disk name
 
 If no match found, list available shaders and stop.
 
 ### 2. Read Metadata
 
-Read `src/shaders/{name}.json` to discover iChannel texture files referenced in `"iChannels"`.
+Read the matched `.json` file to discover iChannel texture files referenced in `"iChannels"` and the shader's directory.
 
 ### 3. Delete Source Files
 
-Remove all files belonging to the shader from `src/shaders/`:
+Remove all files belonging to the shader from its directory (`src/shaders/`, `src/shaders/mouse/`, or `src/shaders/selection/`):
 - `{name}.glsl`
 - `{name}.hlsl`
 - `{name}.json`

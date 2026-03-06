@@ -1,9 +1,9 @@
-# shader_bundle.ps1 — Scans src/shaders/*.hlsl + *.json, generates:
-#   src/lib/shader_bundle.ahk    — Metadata + Shader_RegisterAll() + SHADER_NAMES (no HLSL source)
+# shader_bundle.ps1 — Scans src/shaders/**/*.hlsl + *.json, generates:
+#   src/lib/shader_bundle.ahk    — Metadata + Register functions + SHADER/MOUSE/SELECTION arrays
 #   src/lib/shader_resources.ahk — @Ahk2Exe-AddResource directives for textures + DXBC bytecode
 #
-# HLSL source is NO LONGER embedded in shader_bundle.ahk. Pre-compiled DXBC bytecode
-# is shipped as embedded resources (compiled by tools/shader_compile.ps1).
+# HLSL source is NOT embedded. Pre-compiled DXBC bytecode is shipped as resources.
+# Shaders in subdirectories (mouse/, selection/) get category-specific arrays.
 #
 # Usage: powershell -File tools/shader_bundle.ps1
 #        powershell -File tools/shader_bundle.ps1 -Verbose
@@ -27,9 +27,9 @@ $resourcesPath = Join-Path $libDir 'shader_resources.ahk'
 # Ensure output dirs exist
 if (!(Test-Path $resImgDir)) { New-Item -ItemType Directory -Path $resImgDir -Force | Out-Null }
 
-# Discover shaders: each .hlsl must have a matching .json
-$hlslFiles = Get-ChildItem -Path $shaderDir -Filter '*.hlsl' |
-    Where-Object { $_.Name -ne 'alt_tabby_common.hlsl' } | Sort-Object Name
+# Discover shaders recursively: each .hlsl must have a matching .json
+$hlslFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.hlsl' -Recurse |
+    Where-Object { $_.Name -ne 'alt_tabby_common.hlsl' } | Sort-Object FullName)
 if ($hlslFiles.Count -eq 0) {
     Write-Host "No .hlsl files found in $shaderDir"
     exit 0
@@ -39,7 +39,7 @@ if ($hlslFiles.Count -eq 0) {
 if (-not $force -and (Test-Path $bundlePath) -and (Test-Path $resourcesPath)) {
     $outTime = @((Get-Item $bundlePath).LastWriteTime, (Get-Item $resourcesPath).LastWriteTime) |
         Sort-Object | Select-Object -First 1  # oldest output
-    $jsonFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.json' -ErrorAction SilentlyContinue)
+    $jsonFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.json' -Recurse -ErrorAction SilentlyContinue)
     $scriptTime = (Get-Item $PSCommandPath).LastWriteTime
     $commonHlsl = Get-Item (Join-Path $shaderDir 'alt_tabby_common.hlsl') -ErrorAction SilentlyContinue
     $allInputs = @($hlslFiles) + @($jsonFiles) + @(Get-Item $PSCommandPath)
@@ -51,25 +51,64 @@ if (-not $force -and (Test-Path $bundlePath) -and (Test-Path $resourcesPath)) {
     }
 }
 
-$shaders = @()
-foreach ($hlsl in $hlslFiles) {
-    $baseName = $hlsl.BaseName
-    $jsonPath = Join-Path $shaderDir "$baseName.json"
-    if (!(Test-Path $jsonPath)) {
-        Write-Warning "Skipping $baseName.hlsl - no matching .json metadata"
-        continue
+# === Categorize shaders by subdirectory ===
+# Root = background, mouse/ = mouse, selection/ = selection
+function Get-ShaderCategory($hlslFile) {
+    $rel = $hlslFile.DirectoryName
+    if ($rel -eq $shaderDir) { return 'background' }
+    $subdir = Split-Path -Leaf $rel
+    switch ($subdir) {
+        'mouse'     { return 'mouse' }
+        'selection' { return 'selection' }
+        default     { return 'background' }  # Unknown subdirs treated as background
     }
-    $meta = Get-Content $jsonPath -Raw | ConvertFrom-Json
+}
 
-    # Sanitize name for AHK function: snake_case -> PascalCase
+# Build shader key from filename + optional subdir prefix
+# Background: fire.hlsl → regKey "fire", funcName "Fire"
+# Mouse: mouse/radial_glow.hlsl → regKey "mouse_radialGlow", funcName "MouseRadialGlow"
+function Get-ShaderNaming($baseName, $category) {
     $funcName = ($baseName -split '[_\-]' | ForEach-Object {
         $_.Substring(0,1).ToUpper() + $_.Substring(1).ToLower()
     }) -join ''
-
-    # Registry key: camelCase version
     $regKey = $funcName.Substring(0,1).ToLower() + $funcName.Substring(1)
 
-    # Extract metadata fields (PS 5.1 compatible — no inline if)
+    if ($category -ne 'background') {
+        $prefix = $category.Substring(0,1).ToUpper() + $category.Substring(1)
+        $funcName = $prefix + $funcName
+        $regKey = $category + '_' + $regKey
+    }
+
+    return @{ FuncName = $funcName; RegKey = $regKey }
+}
+
+# Build display name with category prefix
+function Get-DisplayName($metaName, $category) {
+    switch ($category) {
+        'mouse'     { return "[Mouse] $metaName" }
+        'selection' { return "[Selection] $metaName" }
+        default     { return $metaName }
+    }
+}
+
+$allShaders = @()
+foreach ($hlsl in $hlslFiles) {
+    $baseName = $hlsl.BaseName
+    $jsonPath = Join-Path $hlsl.DirectoryName "$baseName.json"
+    if (!(Test-Path $jsonPath)) {
+        Write-Warning "Skipping $($hlsl.FullName) - no matching .json metadata"
+        continue
+    }
+    $meta = Get-Content $jsonPath -Raw | ConvertFrom-Json
+    $category = Get-ShaderCategory $hlsl
+    $naming = Get-ShaderNaming $baseName $category
+
+    # Relative HLSL path from src/shaders/ (for dev mode RegisterFromFile)
+    $relHlslPath = $hlsl.FullName.Substring($shaderDir.Length + 1).Replace('\', '/')
+    # For Windows path in AHK, use backslashes
+    $relHlslAhk = $relHlslPath.Replace('/', '\')
+
+    # Extract metadata fields (PS 5.1 compatible)
     $opacity = 1.0
     if ($meta.PSObject.Properties.Match('opacity').Count -gt 0) {
         $opacity = $meta.opacity
@@ -95,36 +134,53 @@ foreach ($hlsl in $hlslFiles) {
 
     $shader = @{
         BaseName       = $baseName
-        FuncName       = $funcName
-        RegKey         = $regKey
-        DisplayName    = $meta.name
+        FuncName       = $naming.FuncName
+        RegKey         = $naming.RegKey
+        DisplayName    = Get-DisplayName $meta.name $category
+        ShortName      = $meta.name  # Without category prefix
+        Category       = $category
+        RelHlsl        = $relHlslAhk
         Opacity        = $opacity
         iChannels      = $iChannels
         TimeOffsetMin  = $timeOffsetMin
         TimeOffsetMax  = $timeOffsetMax
         TimeAccumulate = $timeAccumulate
     }
-    $shaders += $shader
+    $allShaders += $shader
 
     if ($Verbose) {
-        Write-Host "  Found: $baseName -> $funcName (display: $($meta.name))"
+        Write-Host "  Found: [$category] $baseName -> $($naming.RegKey) (display: $($shader.DisplayName))"
     }
 }
 
-if ($shaders.Count -eq 0) {
+if ($allShaders.Count -eq 0) {
     Write-Host "No valid shader pairs found."
     exit 0
 }
 
-Write-Host "Bundling $($shaders.Count) shader(s)..."
+# Split by category
+$bgShaders = @($allShaders | Where-Object { $_.Category -eq 'background' })
+$mouseShaders = @($allShaders | Where-Object { $_.Category -eq 'mouse' })
+$selShaders = @($allShaders | Where-Object { $_.Category -eq 'selection' })
+
+Write-Host "Bundling $($allShaders.Count) shader(s): $($bgShaders.Count) bg, $($mouseShaders.Count) mouse, $($selShaders.Count) selection..."
 
 # ==================== Copy texture PNGs ====================
 $nextTexResId = 100  # Texture resources start at 100
 $textureEntries = @()
 
-foreach ($shader in $shaders) {
+foreach ($shader in $allShaders) {
     foreach ($ch in $shader.iChannels) {
-        $srcPng = Join-Path $shaderDir $ch.file
+        # Textures live alongside their HLSL file
+        $srcDir = $shaderDir
+        if ($shader.Category -ne 'background') {
+            $srcDir = Join-Path $shaderDir $shader.Category
+        }
+        $srcPng = Join-Path $srcDir $ch.file
+        if (!(Test-Path $srcPng)) {
+            # Also check root shader dir
+            $srcPng = Join-Path $shaderDir $ch.file
+        }
         if (!(Test-Path $srcPng)) {
             Write-Warning "iChannel texture not found: $($ch.file) for shader $($shader.BaseName)"
             continue
@@ -163,7 +219,6 @@ foreach ($f in $existingFiles) {
 }
 
 # ==================== Build DXBC resource entries ====================
-# DXBC bytecode resources start at 1000 (clear separation from textures at 100+)
 $nextDxbcResId = 1000
 $dxbcEntries = @()
 
@@ -176,8 +231,8 @@ $dxbcEntries += @{
 }
 $nextDxbcResId++
 
-# Pixel shaders (same order as $shaders)
-foreach ($shader in $shaders) {
+# Pixel shaders (all categories, sorted by key for stable ordering)
+foreach ($shader in $allShaders) {
     $constName = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
     $binFile = "ps_$($shader.RegKey).bin"
     $dxbcEntries += @{
@@ -193,62 +248,102 @@ foreach ($shader in $shaders) {
 $sb = New-Object System.Text.StringBuilder
 
 [void]$sb.AppendLine('; AUTO-GENERATED by tools/shader_bundle.ps1 -- DO NOT EDIT')
-[void]$sb.AppendLine('; Source: src/shaders/')
+[void]$sb.AppendLine('; Source: src/shaders/ (including mouse/, selection/ subdirs)')
 [void]$sb.AppendLine('; Regenerate: powershell -File tools/shader_bundle.ps1')
 [void]$sb.AppendLine('; NOTE: HLSL source is NOT embedded. Pre-compiled DXBC bytecode is shipped as resources.')
 [void]$sb.AppendLine('#Requires AutoHotkey v2.0')
 [void]$sb.AppendLine('#Warn VarUnset, Off')
 [void]$sb.AppendLine('')
 
-# SHADER_NAMES global (0=None, 1+=alphabetical order)
-$nameList = '"None"'
-foreach ($shader in $shaders) {
-    $nameList += ', "' + $shader.DisplayName + '"'
+# === Helper: build name/key arrays for a shader list ===
+function Write-ArrayPair($sb, $prefix, $shaders) {
+    # NAMES array (0=None, 1+=order)
+    $nameList = '"None"'
+    foreach ($s in $shaders) {
+        $nameList += ', "' + $s.ShortName + '"'
+    }
+    [void]$sb.AppendLine("global ${prefix}_NAMES := [$nameList]")
+
+    # KEYS array (parallel, index-aligned)
+    $keyList = '""'
+    foreach ($s in $shaders) {
+        $keyList += ', "' + $s.RegKey + '"'
+    }
+    [void]$sb.AppendLine("global ${prefix}_KEYS := [$keyList]")
+    [void]$sb.AppendLine('')
 }
-[void]$sb.AppendLine("global SHADER_NAMES := [$nameList]")
 
-# SHADER_KEYS — parallel array of registry keys (index-aligned with SHADER_NAMES)
-$keyList = '""'
-foreach ($shader in $shaders) {
-    $keyList += ', "' + $shader.RegKey + '"'
-}
-[void]$sb.AppendLine("global SHADER_KEYS := [$keyList]")
-[void]$sb.AppendLine('')
+# Background shader arrays
+Write-ArrayPair $sb 'SHADER' $bgShaders
 
-# Shader_RegisterAll() — branches on A_IsCompiled
-[void]$sb.AppendLine('Shader_RegisterAll() {')
+# Mouse shader arrays
+Write-ArrayPair $sb 'MOUSE_SHADER' $mouseShaders
 
-# Build the global declaration for all DXBC resource IDs
+# Selection shader arrays
+Write-ArrayPair $sb 'SELECTION_SHADER' $selShaders
+
+# Build global declaration for all DXBC resource IDs
 $dxbcGlobals = ($dxbcEntries | ForEach-Object { $_.ConstName }) -join ', '
+
+# === Helper: emit register function body for a shader list ===
+function Write-RegisterBody($sb, $shaders, $dxbcGlobals, $indent) {
+    [void]$sb.AppendLine("${indent}if (A_IsCompiled) {")
+    foreach ($s in $shaders) {
+        $fn = $s.FuncName
+        $rk = $s.RegKey
+        $psConst = "RES_ID_SHADER_PS_$($s.FuncName.ToUpper())"
+        [void]$sb.AppendLine("$indent    Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+    }
+    [void]$sb.AppendLine("${indent}} else {")
+    foreach ($s in $shaders) {
+        $fn = $s.FuncName
+        $rk = $s.RegKey
+        $hlslFile = $s.RelHlsl
+        [void]$sb.AppendLine("$indent    Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+    }
+    [void]$sb.AppendLine("${indent}}")
+}
+
+# Shader_RegisterAll() — background shaders only (backward compat)
+[void]$sb.AppendLine('Shader_RegisterAll() {')
 [void]$sb.AppendLine("    global $dxbcGlobals")
 [void]$sb.AppendLine('')
-
-[void]$sb.AppendLine('    if (A_IsCompiled) {')
-foreach ($shader in $shaders) {
-    $fn = $shader.FuncName
-    $rk = $shader.RegKey
-    $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
-    [void]$sb.AppendLine("        Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
-}
-[void]$sb.AppendLine('    } else {')
-foreach ($shader in $shaders) {
-    $fn = $shader.FuncName
-    $rk = $shader.RegKey
-    $hlslFile = $shader.BaseName + '.hlsl'
-    [void]$sb.AppendLine("        Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
-}
-[void]$sb.AppendLine('    }')
+Write-RegisterBody $sb $bgShaders $dxbcGlobals '    '
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Shader_RegisterByKey(key) — registers a single shader by its registry key
+# Shader_RegisterAllMouse()
+[void]$sb.AppendLine('Shader_RegisterAllMouse() {')
+[void]$sb.AppendLine("    global $dxbcGlobals")
+[void]$sb.AppendLine('')
+if ($mouseShaders.Count -gt 0) {
+    Write-RegisterBody $sb $mouseShaders $dxbcGlobals '    '
+} else {
+    [void]$sb.AppendLine('    ; No mouse shaders defined')
+}
+[void]$sb.AppendLine('}')
+[void]$sb.AppendLine('')
+
+# Shader_RegisterAllSelection()
+[void]$sb.AppendLine('Shader_RegisterAllSelection() {')
+[void]$sb.AppendLine("    global $dxbcGlobals")
+[void]$sb.AppendLine('')
+if ($selShaders.Count -gt 0) {
+    Write-RegisterBody $sb $selShaders $dxbcGlobals '    '
+} else {
+    [void]$sb.AppendLine('    ; No selection shaders defined')
+}
+[void]$sb.AppendLine('}')
+[void]$sb.AppendLine('')
+
+# Shader_RegisterByKey(key) — unified across all categories
 [void]$sb.AppendLine('; Register a single shader by registry key. Used for selective loading at boot.')
 [void]$sb.AppendLine('Shader_RegisterByKey(key) {')
 [void]$sb.AppendLine("    global $dxbcGlobals")
 [void]$sb.AppendLine('')
 [void]$sb.AppendLine('    if (A_IsCompiled) {')
 [void]$sb.AppendLine('        switch key {')
-foreach ($shader in $shaders) {
+foreach ($shader in $allShaders) {
     $fn = $shader.FuncName
     $rk = $shader.RegKey
     $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
@@ -257,10 +352,10 @@ foreach ($shader in $shaders) {
 [void]$sb.AppendLine('        }')
 [void]$sb.AppendLine('    } else {')
 [void]$sb.AppendLine('        switch key {')
-foreach ($shader in $shaders) {
+foreach ($shader in $allShaders) {
     $fn = $shader.FuncName
     $rk = $shader.RegKey
-    $hlslFile = $shader.BaseName + '.hlsl'
+    $hlslFile = $shader.RelHlsl
     [void]$sb.AppendLine("            case `"$rk`": Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
 }
 [void]$sb.AppendLine('        }')
@@ -268,13 +363,13 @@ foreach ($shader in $shaders) {
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Shader_RegisterAllRemaining() — registers all shaders not yet in gShader_Registry
-[void]$sb.AppendLine('; Register all shaders that are not yet registered. Used for lazy-loading on first cycle.')
+# Shader_RegisterAllRemaining() — background shaders only (backward compat)
+[void]$sb.AppendLine('; Register all background shaders that are not yet registered. Used for lazy-loading on first cycle.')
 [void]$sb.AppendLine('Shader_RegisterAllRemaining() {')
 [void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
 [void]$sb.AppendLine('')
 [void]$sb.AppendLine('    if (A_IsCompiled) {')
-foreach ($shader in $shaders) {
+foreach ($shader in $bgShaders) {
     $fn = $shader.FuncName
     $rk = $shader.RegKey
     $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
@@ -282,10 +377,10 @@ foreach ($shader in $shaders) {
     [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
 }
 [void]$sb.AppendLine('    } else {')
-foreach ($shader in $shaders) {
+foreach ($shader in $bgShaders) {
     $fn = $shader.FuncName
     $rk = $shader.RegKey
-    $hlslFile = $shader.BaseName + '.hlsl'
+    $hlslFile = $shader.RelHlsl
     [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
     [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
 }
@@ -293,8 +388,62 @@ foreach ($shader in $shaders) {
 [void]$sb.AppendLine('}')
 [void]$sb.AppendLine('')
 
-# Per-shader Meta functions (no HLSL functions — those are gone!)
-foreach ($shader in $shaders) {
+# Shader_RegisterAllRemainingMouse()
+[void]$sb.AppendLine('; Register all mouse shaders that are not yet registered.')
+[void]$sb.AppendLine('Shader_RegisterAllRemainingMouse() {')
+[void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
+[void]$sb.AppendLine('')
+if ($mouseShaders.Count -gt 0) {
+    [void]$sb.AppendLine('    if (A_IsCompiled) {')
+    foreach ($shader in $mouseShaders) {
+        $fn = $shader.FuncName
+        $rk = $shader.RegKey
+        $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
+        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
+        [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+    }
+    [void]$sb.AppendLine('    } else {')
+    foreach ($shader in $mouseShaders) {
+        $fn = $shader.FuncName
+        $rk = $shader.RegKey
+        $hlslFile = $shader.RelHlsl
+        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
+        [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+    }
+    [void]$sb.AppendLine('    }')
+}
+[void]$sb.AppendLine('}')
+[void]$sb.AppendLine('')
+
+# Shader_RegisterAllRemainingSelection()
+[void]$sb.AppendLine('; Register all selection shaders that are not yet registered.')
+[void]$sb.AppendLine('Shader_RegisterAllRemainingSelection() {')
+[void]$sb.AppendLine("    global gShader_Registry, $dxbcGlobals")
+[void]$sb.AppendLine('')
+if ($selShaders.Count -gt 0) {
+    [void]$sb.AppendLine('    if (A_IsCompiled) {')
+    foreach ($shader in $selShaders) {
+        $fn = $shader.FuncName
+        $rk = $shader.RegKey
+        $psConst = "RES_ID_SHADER_PS_$($shader.FuncName.ToUpper())"
+        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
+        [void]$sb.AppendLine("            Shader_RegisterFromResource(`"$rk`", $psConst, _Shader_Meta_$fn())")
+    }
+    [void]$sb.AppendLine('    } else {')
+    foreach ($shader in $selShaders) {
+        $fn = $shader.FuncName
+        $rk = $shader.RegKey
+        $hlslFile = $shader.RelHlsl
+        [void]$sb.AppendLine("        if (!gShader_Registry.Has(`"$rk`"))")
+        [void]$sb.AppendLine("            Shader_RegisterFromFile(`"$rk`", `"$hlslFile`", _Shader_Meta_$fn())")
+    }
+    [void]$sb.AppendLine('    }')
+}
+[void]$sb.AppendLine('}')
+[void]$sb.AppendLine('')
+
+# Per-shader Meta functions (all categories)
+foreach ($shader in $allShaders) {
     $fn = $shader.FuncName
 
     [void]$sb.AppendLine("_Shader_Meta_$fn() {")
@@ -371,7 +520,7 @@ foreach ($entry in $dxbcEntries) {
 }
 [void]$sr.AppendLine('')
 
-# Shader_ExtractTextures() function (unchanged — textures still need extraction)
+# Shader_ExtractTextures() function
 [void]$sr.AppendLine('Shader_ExtractTextures() {')
 if ($textureEntries.Count -gt 0) {
     $globals = ($textureEntries | ForEach-Object { $_.ConstName }) -join ', '
@@ -403,5 +552,5 @@ if ($textureEntries.Count -gt 0) {
 [System.IO.File]::WriteAllText($resourcesPath, $sr.ToString(), [System.Text.UTF8Encoding]::new($false))
 Write-Host "  Generated: $resourcesPath"
 
-Write-Host "Done. $($shaders.Count) shader(s) bundled, $($textureEntries.Count) texture(s) + $($dxbcEntries.Count) DXBC bytecode registered."
+Write-Host "Done. $($allShaders.Count) shader(s) bundled ($($bgShaders.Count) bg, $($mouseShaders.Count) mouse, $($selShaders.Count) sel), $($textureEntries.Count) texture(s) + $($dxbcEntries.Count) DXBC registered."
 exit 0

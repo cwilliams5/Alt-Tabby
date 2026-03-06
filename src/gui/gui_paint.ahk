@@ -16,33 +16,6 @@ global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
 ; ========================= EFFECT STYLE SYSTEM =========================
 ; Toggled at runtime via B key (gui_interceptor.ahk).
 ;
-; Style architecture:
-;   0 = "Effects" (gradient + shadow + inner shadow — the baseline look)
-;   1 = "Clean" (flat fill, no effects)
-;   2+ = GPU styles (require cfg.PerfGPUEffects = true)
-;
-; When GPUEffects=false: B cycles between 0 (Effects) and 1 (Clean).
-; When GPUEffects=true:  B cycles through 0, 1, then all GPU styles (2+).
-; GPU styles use ID2D1Effect graph for real blur shadows, glows, noise, etc.
-
-global gGUI_EffectStyle := 0
-global FX_STYLE_NAMES := [
-    "Effects",
-    "Clean"
-    ; GPU styles appended dynamically by FX_BuildStyleNames()
-]
-
-; Build the full style name list based on GPU availability.
-; Called at init and when GPU effects state changes.
-FX_BuildStyleNames() {
-    global FX_STYLE_NAMES, FX_GPU_STYLE_NAMES, gFX_GPUReady
-    FX_STYLE_NAMES := ["Effects", "Clean"]
-    if (gFX_GPUReady) {
-        for _, name in FX_GPU_STYLE_NAMES
-            FX_STYLE_NAMES.Push(name)
-    }
-}
-
 ; Layout state (written during paint, read by gui_main/gui_input)
 global gGUI_LastRowsDesired := -1
 global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
@@ -166,8 +139,13 @@ GUI_Repaint() {
     ; Pre-render independent layers BEFORE the resize sync window.
     ; These use their own D3D11/D2D resources at the new dimensions — they
     ; don't depend on gD2D_RT being resized yet.
-    FX_PreRenderShaderLayer(phW, phH)
+    FX_PreRenderShaderLayers(phW, phH)
+    FX_PreRenderMouseEffect(phW, phH)
     BGImg_EnsureCache(phW, phH)
+
+    ; Ensure frame loop runs for continuous shader animation
+    if (FX_HasActiveShaders())
+        Anim_EnsureTimer()
 
     ; Phase 2: Track whether resize is needed. Actual resize is atomic after
     ; Present — SetClip + SetWindowPos + Commit all take effect on the same
@@ -351,7 +329,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     global gPaint_SessionPaintCount, gPaint_LastPaintTick
     global PAINT_TEXT_RIGHT_PAD_DIP, gGUI_WorkspaceMode, WS_MODE_CURRENT
     global gGUI_MonitorMode, MON_MODE_CURRENT
-    global gGUI_EffectStyle, gFX_GPUReady
+    global gFX_GPUReady
 
     ; ===== TIMING: EnsureResources =====
     if (diagTiming) {
@@ -423,25 +401,17 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         textW := 0
     }
 
-    ; Effect style shorthand
-    fx := gGUI_EffectStyle
-    isGPU := (fx >= 2 && gFX_GPUReady)
-    isFX := (fx = 0)  ; "Effects" = style 0 (gradient + shadow + inner shadow)
-
-    ; Living backdrop effects (GPU + Full animation mode only)
-    global gFX_BackdropStyle
-    if (isGPU && cfg.PerfAnimationType = "Full" && cfg.FX2D_UseBackgroundEffects && gFX_BackdropStyle > 0)
-        FX_DrawBackdrop(wPhys, hPhys, scale)
-
-    ; Background image layer (above DWM surface, below shader)
+    ; Background image layer (above DWM surface, below shaders)
     BGImg_Draw()
 
-    ; Shader layer (independent of backdrop, controlled by V key)
-    FX_DrawShaderLayer(wPhys, hPhys)
+    ; Shader layers (N stackable layers from config)
+    FX_DrawShaderLayers(wPhys, hPhys)
 
-    ; Shadow params (computed once, used for all text draws)
-    ; Text shadows active for Effects (0) and all GPU styles (2+), not Clean (1)
-    shadowP := _FX_GetShadowParams((fx != 1) ? 1 : 0, scale)
+    ; Mouse effect layer (above shader layers, below selection)
+    FX_DrawMouseEffect(wPhys, hPhys)
+
+    ; Text shadow params (always enabled when GPU ready)
+    shadowP := _FX_GetShadowParams(gFX_GPUReady ? 1 : 0, scale)
     shadowBr := shadowP.enabled ? D2D_GetCachedBrush(shadowP.argb) : 0
 
     ; Header
@@ -560,12 +530,21 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 selY := baseSelY
             }
 
-            if (isGPU) {
-                FX_GPU_DrawSelection(fx - 2, selX, selY, selW, selH, Rad)
-            } else if (isFX) {
-                _FX_DrawSelection(selX, selY, selW, selH, Rad)
+            global gFX_SelectionEffect
+            if (gFX_SelectionEffect.key != "" && gFX_GPUReady) {
+                ; Shader-based selection effect
+                entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
+                FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
+                    cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 0.0, entranceT)
+                FX_DrawSelectionEffect(wPhys, hPhys)
             } else {
+                ; Simple D2D fill + border (the "None" path)
                 D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
+                bw := cfg.GUI_SelBorderWidthPx
+                if (bw > 0) {
+                    half := bw / 2
+                    D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, Rad, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
+                }
             }
         }
 
@@ -575,12 +554,22 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             cur := items[idx1]
             isSel := (idx1 = selIndex)
 
-            ; Hover highlight (effects on, non-selected rows)
-            if ((isFX || isGPU) && !isSel && idx1 = hoverRow) {
-                if (isGPU)
-                    FX_GPU_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
-                else
-                    _FX_DrawHover(Mx - selExpandX, yRow - selExpandY, wPhys - 2 * Mx + selExpandX * 2, RowH, Rad)
+            ; Hover highlight (non-selected rows)
+            if (!isSel && idx1 = hoverRow) {
+                hoverX := Mx - selExpandX
+                hoverY := yRow - selExpandY
+                hoverW := wPhys - 2 * Mx + selExpandX * 2
+                if (gFX_SelectionEffect.key != "" && gFX_GPUReady) {
+                    ; Selection shader hover pass (muted via isHovered=1.0)
+                    hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
+                    FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
+                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, hoverEntranceT)
+                    FX_DrawSelectionEffect(wPhys, hPhys)
+                } else if (gFX_GPUReady) {
+                    FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
+                } else {
+                    D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfg.GUI_HoverARGB))
+                }
             }
 
             ; Selection highlight is now drawn before the row loop (animated Y)
@@ -676,12 +665,9 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         tPO_Footer := QPC() - t1
 
     ; Inner shadow — config-driven depth and opacity
-    if ((isFX || isGPU) && cfg.GUI_InnerShadowAlpha > 0) {
+    if (gFX_GPUReady && cfg.GUI_InnerShadowAlpha > 0) {
         shadowDepth := Round(cfg.GUI_InnerShadowDepthPx * scale)
-        if (isGPU)
-            FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
-        else
-            _FX_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+        FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
     }
 
     ; FPS debug overlay (toggled by F key)
@@ -835,7 +821,6 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
 _GUI_DrawFooter(wPhys, hPhys, scale) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
     global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
-    global gGUI_EffectStyle
 
     if (!cfg.GUI_ShowFooter) {
         return
@@ -893,8 +878,9 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.w := leftArrowW
     gGUI_LeftArrowRect.h := leftArrowH
 
-    ; Footer shadow support
-    fxShadow := _FX_GetShadowParams(gGUI_EffectStyle, scale)
+    ; Footer shadow support (always enabled when GPU is ready)
+    global gFX_GPUReady
+    fxShadow := _FX_GetShadowParams(gFX_GPUReady ? 1 : 0, scale)
     fxShadowBr := fxShadow.enabled ? D2D_GetCachedBrush(fxShadow.argb) : 0
 
     ; Draw left arrow
@@ -938,7 +924,7 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
 }
 
 ; ========================= VISUAL EFFECTS SYSTEM =========================
-; _FX_* functions implement layered visual effects controlled by gGUI_EffectStyle.
+; _FX_* functions implement layered visual effects.
 ; Gradient brushes are cached by stop identity (colors + positions) and repositioned
 ; per-frame via SetStartPoint/SetEndPoint. Cache self-invalidates on device loss
 ; (RT pointer change). Parameter structs use static buffers.
@@ -1100,53 +1086,6 @@ _FX_WriteStop(buf, off, pos, argb) {
 ; ---- Selection Effects ----
 
 ; Draw the selection highlight with effects (drop shadow, gradient, border).
-; Called when effects are on (fx = 1). Gradient goes base → darker for depth.
-;
-; Layer compositing: shadow + gradient are drawn at full internal opacity inside
-; a D2D Layer, then composited at the user's alpha. This eliminates shadow
-; bleed-through under the semi-transparent gradient — the opaque gradient fully
-; covers the shadow within the layer, so the shadow only appears in the 3px
-; reveal strip. Fixes HDR color darkening (issue #147).
-_FX_DrawSelection(x, y, w, h, r) {
-    if (w <= 0 || h <= 0)
-        return
-    global cfg, gD2D_RT
-
-    baseARGB := cfg.GUI_SelARGB
-    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
-    baseRGB := baseARGB & 0x00FFFFFF
-
-    ; Full-opacity colors for layer-internal rendering
-    opaqueBase := 0xFF000000 | baseRGB
-    opaqueDark := 0xFF000000 | FX_BlendToBlack(baseARGB, 0.20)
-
-    ; Push layer — everything inside renders at full opacity, composited at userAlpha.
-    ; Bounds cover shadow extent (selection + 8px for 3-layer offset + spread).
-    layerParams := FX_LayerParams(x, y, x + w + 8, y + h + 8, userAlpha)
-    gD2D_RT.PushLayer(layerParams, 0)
-
-    ; Drop shadow at full opacity (within layer)
-    if (cfg.GUI_SelDropShadow)
-        _FX_DrawSelDropShadow(x, y, w, h, r)
-
-    ; Diagonal gradient at full opacity — fully covers shadow in selection area
-    gradBr := FX_LinearGradient2(x, y, x + w, y + h, 0.0, opaqueBase, 1.0, opaqueDark)
-    if (gradBr) {
-        D2D_FillRoundRect(x, y, w, h, r, gradBr)
-    } else {
-        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
-    }
-
-    gD2D_RT.PopLayer()
-
-    ; Border drawn OUTSIDE layer — preserves its own configured alpha
-    bw := cfg.GUI_SelBorderWidthPx
-    if (bw > 0) {
-        half := bw / 2
-        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
-    }
-}
-
 ; Build D2D1_LAYER_PARAMETERS struct (72 bytes on x64).
 ; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
 ; uniformly when the layer is composited onto the render target.
@@ -1168,17 +1107,6 @@ FX_LayerParams(left, top, right, bottom, opacity) {
     NumPut("float", Float(bottom), buf, 12)
     NumPut("float", Float(opacity), buf, 52)
     return buf
-}
-
-; Drop shadow behind the selection row.
-; Offset down+right, progressively more transparent layers for softness.
-_FX_DrawSelDropShadow(x, y, w, h, r) {
-    offX := 3
-    offY := 3
-    ; 3 layers: inner dark → outer soft
-    D2D_FillRoundRect(x + offX, y + offY, w, h, r + 1, D2D_GetCachedBrush(0x28000000))
-    D2D_FillRoundRect(x + offX + 1, y + offY + 1, w + 2, h + 2, r + 2, D2D_GetCachedBrush(0x18000000))
-    D2D_FillRoundRect(x + offX + 2, y + offY + 2, w + 4, h + 4, r + 3, D2D_GetCachedBrush(0x0C000000))
 }
 
 ; ---- Text Shadow ----
@@ -1223,28 +1151,6 @@ _FX_GetShadowParams(fx, scale) {
         sEnabled.argb := (alpha << 24) | 0x000000
     }
     return sEnabled
-}
-
-; ---- Hover Highlight ----
-
-; Draw a subtle background highlight behind the hovered row.
-; Uses config color with a vertical gradient computed from it.
-_FX_DrawHover(x, y, w, h, r) {
-    global cfg
-    baseARGB := cfg.GUI_HoverARGB
-    baseA := (baseARGB >> 24) & 0xFF
-    baseRGB := baseARGB & 0x00FFFFFF
-    ; Vertical gradient: full alpha at top, fading to ~30% at bottom
-    topARGB := baseARGB
-    midA := Round(baseA * 0.6)
-    midARGB := (midA << 24) | baseRGB
-    botA := Round(baseA * 0.3)
-    botARGB := (botA << 24) | baseRGB
-    hoverBr := FX_LinearGradient3(x, y, x, y + h, 0.0, topARGB, 0.6, midARGB, 1.0, botARGB)
-    if (hoverBr)
-        D2D_FillRoundRect(x, y, w, h, r, hoverBr)
-    else
-        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(baseARGB))
 }
 
 ; ---- Inner Shadow ----

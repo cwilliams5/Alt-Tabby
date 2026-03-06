@@ -1,4 +1,5 @@
 #Requires AutoHotkey v2.0
+#Warn VarUnset, Off  ; Suppress warnings for cross-file globals (SHADER_KEYS etc.)
 
 ; ============================================================
 ; Config Registry - Single Source of Truth for All Settings
@@ -475,7 +476,15 @@ global gConfigRegistry := [
      min: 0.0, max: 4.0,
      d: "Selection border stroke width in pixels. Set to 0 to disable the border."},
 
-    {s: "GUI", k: "SelDropShadow", g: "GUI_SelDropShadow", t: "bool", default: true,
+    {s: "GUI", k: "UseSelectionEffect", g: "GUI_UseSelectionEffect", t: "bool", default: true,
+     d: "Enable the shader-based selection effect. When disabled, uses simple D2D fill with SelARGB/SelBorderARGB colors."},
+    {s: "GUI", k: "SelectionEffect", g: "GUI_SelectionEffect", t: "string", default: "selection_auroraSel",
+     dynamicOptions: "SELECTION_SHADER_KEYS",
+     d: "Shader-based selection effect."},
+    {s: "GUI", k: "SelectionCycleHotkey", g: "GUI_SelectionCycleHotkey", t: "string", default: "",
+     d: "Optional hotkey to cycle through selection effects while overlay is visible."},
+
+    {s: "GUI", k: "SelDropShadow", g: "GUI_SelDropShadow", t: "bool", default: true, ; lint-ignore: dead-config
      d: "Draw a drop shadow behind the selected row. Disable on HDR displays if colors appear shifted."},
 
     {s: "GUI", k: "TextShadowAlpha", g: "GUI_TextShadowAlpha", t: "int", default: 0x58,
@@ -1163,9 +1172,6 @@ global gConfigRegistry := [
     {type: "section", name: "Performance", desc: "Performance",
      long: "Memory management to maintain responsiveness after long idle periods."},
 
-    {s: "Performance", k: "GPUEffects", g: "PerfGPUEffects", t: "bool", default: true, ; lint-ignore: dead-config
-     d: "Enable GPU-accelerated visual effects (blur, real shadows, blend modes). Requires ID2D1DeviceContext. When disabled, software effects from the Visual Effects section are used instead."},
-
     {s: "Performance", k: "HDRCompensation", g: "PerfHDRCompensation", t: "enum", default: "auto",
      options: ["auto", "on", "off"],
      d: "Compensate for HDR display gamma darkening. DWM composites in linear scRGB which darkens semi-transparent GPU blurs/glows. 'auto' detects HDR and applies correction, 'on' forces correction (useful for testing on SDR), 'off' disables."},
@@ -1194,159 +1200,56 @@ global gConfigRegistry := [
      d: "Target frame rate for animation timer. 'Auto' = monitor refresh rate. Explicit values cap to nearest display divisor at or below target (e.g. on 120Hz: 120, 60, 40, 30)."},
 
     ; ============================================================
-    ; Shader
+    ; Shader Layers (array_section: up to 4 stackable layers)
     ; ============================================================
-    {type: "section", name: "Shader", desc: "Shader Effects",
-     long: "Configure the D3D11 shader backdrop rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full."},
+    {type: "section", name: "Shader", desc: "Shader Layers", array_section: 4,
+     long: "Stackable D3D11 shader backdrop layers rendered behind the Alt-Tab overlay. Up to 4 layers composited bottom-to-top. Each layer uses ~8 MB VRAM at 1080p (~32 MB at 4K). INI sections: [Shader.1] through [Shader.4]."},
 
-    {s: "Shader", k: "UseShaders", g: "ShaderUseShaders", t: "bool", default: true,
-     d: "Enable the GPU shader backdrop effect. When false, the entire shader pipeline is skipped for lower resource usage."},
-    {s: "Shader", k: "ShaderName", g: "ShaderShaderName", t: "string", default: "raindropsGlass",
+    {s: "Shader", k: "UseShaderLayers", g: "ShaderUseShaderLayers", t: "bool", default: true,
+     d: "Enable shader backdrop layers. When disabled, no shader layers render regardless of per-layer config."},
+
+    {s: "Shader", k: "ShaderName", g: "Shader{N}_ShaderName", t: "string", default: "", default1: "raindropsGlass",
      dynamicOptions: "SHADER_KEYS",
-     d: "Shader to display on startup. Validated at boot against available shaders; invalid names fall back to Raindrops on Glass."},
-    {s: "Shader", k: "ShaderOpacity", g: "ShaderShaderOpacity", t: "float", default: 0.50,
+     d: "Shader for this layer. Empty = layer disabled."},
+    {s: "Shader", k: "ShaderOpacity", g: "Shader{N}_ShaderOpacity", t: "float", default: 0.50,
      min: 0.0, max: 1.0,
-     d: "Opacity of the shader backdrop layer. 0.0 = invisible, 1.0 = fully opaque. Overrides per-shader metadata."},
-    {s: "Shader", k: "ShaderDarkness", g: "ShaderShaderDarkness", t: "float", default: 0.0,
+     d: "Opacity of this shader layer. 0.0 = invisible, 1.0 = fully opaque."},
+    {s: "Shader", k: "ShaderDarkness", g: "Shader{N}_ShaderDarkness", t: "float", default: 0.0,
      min: 0.0, max: 1.0,
-     d: "Darken post-processing applied to the shader output. 0.0 = no darkening, 1.0 = fully dark."},
-    {s: "Shader", k: "ShaderDesaturation", g: "ShaderShaderDesaturation", t: "float", default: 0.0,
+     d: "Darken post-processing. 0.0 = no darkening, 1.0 = fully dark."},
+    {s: "Shader", k: "ShaderDesaturation", g: "Shader{N}_ShaderDesaturation", t: "float", default: 0.0,
      min: 0.0, max: 1.0,
-     d: "Desaturation post-processing applied to the shader output. 0.0 = full color, 1.0 = grayscale."},
-    {s: "Shader", k: "CycleShaderHotkey", g: "ShaderCycleShaderHotkey", t: "string", default: "",
-     d: "Optional hotkey to cycle through shaders while the overlay is visible. Leave blank to disable. Choice is not saved — select your launch shader above."},
-
-    {s: "Shader", k: "ShaderTimeOffsetMin", g: "PerfShaderTimeOffsetMin", t: "int", default: 30,
+     d: "Desaturation post-processing. 0.0 = full color, 1.0 = grayscale."},
+    {s: "Shader", k: "ShaderSpeed", g: "Shader{N}_ShaderSpeed", t: "float", default: 1.0,
+     min: 0.1, max: 10.0,
+     d: "Time speed multiplier for shader animation. 2.0 = twice as fast."},
+    {s: "Shader", k: "CycleShaderHotkey", g: "Shader{N}_CycleShaderHotkey", t: "string", default: "",
+     d: "Optional hotkey to cycle through shaders for this layer while overlay is visible."},
+    {s: "Shader", k: "ShaderTimeOffsetMin", g: "Shader{N}_TimeOffsetMin", t: "int", default: 30,
      min: 0, max: 300,
-     d: "Minimum random time offset (seconds) applied when a shader is first loaded. Skips past the initial warmup period so shaders look interesting immediately. Per-shader JSON can override."},
-    {s: "Shader", k: "ShaderTimeOffsetMax", g: "PerfShaderTimeOffsetMax", t: "int", default: 90,
+     d: "Minimum random time offset (seconds) applied when shader is first loaded."},
+    {s: "Shader", k: "ShaderTimeOffsetMax", g: "Shader{N}_TimeOffsetMax", t: "int", default: 90,
      min: 0, max: 600,
-     d: "Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override."},
-    {s: "Shader", k: "ShaderTimeAccumulate", g: "PerfShaderTimeAccumulate", t: "bool", default: true,
-     d: "When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show."},
+     d: "Maximum random time offset (seconds) applied when shader is first loaded."},
+    {s: "Shader", k: "ShaderTimeAccumulate", g: "Shader{N}_TimeAccumulate", t: "bool", default: true,
+     d: "When true, shader time persists across overlay show/hide cycles."},
 
     ; ============================================================
-    ; 2D Effects
+    ; Mouse Effect
     ; ============================================================
-    {type: "section", name: "2D Effects", desc: "2D Backdrop Effects",
-     long: "Animated background effects rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full."},
+    {type: "section", name: "MouseEffect", desc: "Mouse Effect",
+     long: "Optional cursor-reactive shader effect rendered above shader layers and below selection. Receives mouse position as a uniform."},
 
-    {s: "2D Effects", k: "UseBackgroundEffects", g: "FX2D_UseBackgroundEffects", t: "bool", default: true,
-     d: "Master toggle for all 2D backdrop effects. When false, no backdrop effects are rendered regardless of other settings."},
-    {s: "2D Effects", k: "BackgroundEffect", g: "FX2D_BackgroundEffect", t: "enum", default: "Aurora",
-     options: ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"],
-     d: "Which backdrop effect to display on startup. Layered composites multiple effects based on each effect's IncludeInLayered setting."},
-    {s: "2D Effects", k: "CycleKey", g: "FX2D_CycleKey", t: "string", default: "",
-     d: "Optional hotkey to cycle through backdrop effects while the overlay is visible. Leave blank to disable."},
-
-    ; --- Gradient Drift ---
-    {type: "subsection", section: "2D Effects", name: "Gradient Drift",
-     desc: "Two large color blobs orbiting slowly. Colors are derived from the overlay background color (Appearance > Background Color) with warm and cool shifts applied."},
-    {s: "2D Effects", k: "GradientIncludeInLayered", g: "FX2D_GradientIncludeInLayered", t: "bool", default: false,
-     d: "Include Gradient Drift in the Layered composite effect."},
-    {s: "2D Effects", k: "GradientOpacity", g: "FX2D_GradientOpacity", t: "float", default: 0.40,
+    {s: "MouseEffect", k: "UseMouseEffect", g: "MouseEffect_UseMouseEffect", t: "bool", default: true,
+     d: "Enable the mouse-reactive shader effect. When disabled, no mouse effect renders."},
+    {s: "MouseEffect", k: "Name", g: "MouseEffect_Name", t: "string", default: "mouse_emberTrail",
+     dynamicOptions: "MOUSE_SHADER_KEYS",
+     d: "Mouse effect shader."},
+    {s: "MouseEffect", k: "Opacity", g: "MouseEffect_Opacity", t: "float", default: 0.30,
      min: 0.0, max: 1.0,
-     d: "Opacity of the Gradient Drift effect layer. 0.0 = invisible, 1.0 = fully opaque."},
-    {s: "2D Effects", k: "GradientSpeed", g: "FX2D_GradientSpeed", t: "float", default: 1.0,
-     min: 0.1, max: 5.0,
-     d: "Speed multiplier for the Gradient Drift orbit animation. Higher values make blobs orbit faster."},
-    {s: "2D Effects", k: "GradientBlobSize", g: "FX2D_GradientBlobSize", t: "int", default: 400,
-     min: 50, max: 1000,
-     d: "Diameter in pixels of each gradient blob. Larger values produce softer, more diffuse color blending."},
-    {s: "2D Effects", k: "GradientOrbitRadius", g: "FX2D_GradientOrbitRadius", t: "float", default: 0.35,
-     min: 0.1, max: 0.6,
-     d: "Orbit radius as a fraction of the overlay size. Larger values spread blobs further from center."},
-    {s: "2D Effects", k: "GradientColorShift", g: "FX2D_GradientColorShift", t: "float", default: 1.0,
-     min: 0.0, max: 2.0,
-     d: "Color variation multiplier. 0.0 = uniform colors, 1.0 = default variation, 2.0 = exaggerated color shifts."},
-
-    ; --- Caustic ---
-    {type: "subsection", section: "2D Effects", name: "Caustic",
-     desc: "Shares the bgTurb GPU effect chain with Grain. If both are included in Layered, Caustic renders last and its turbulence settings win."},
-    {s: "2D Effects", k: "CausticIncludeInLayered", g: "FX2D_CausticIncludeInLayered", t: "bool", default: false,
-     d: "Include Caustic in the Layered composite effect."},
-    {s: "2D Effects", k: "CausticOpacity", g: "FX2D_CausticOpacity", t: "float", default: 0.40,
-     min: 0.0, max: 1.0,
-     d: "Opacity of the Caustic effect layer. 0.0 = invisible, 1.0 = fully opaque."},
-    {s: "2D Effects", k: "CausticSpeed", g: "FX2D_CausticSpeed", t: "float", default: 1.0,
-     min: 0.1, max: 5.0,
-     d: "Speed multiplier for Caustic drift animation."},
-    {s: "2D Effects", k: "CausticFrequency", g: "FX2D_CausticFrequency", t: "float", default: 0.008,
-     min: 0.001, max: 0.1,
-     d: "Base frequency of the Caustic turbulence pattern. Lower values produce larger, smoother patterns."},
-    {s: "2D Effects", k: "CausticOctaves", g: "FX2D_CausticOctaves", t: "int", default: 3,
-     min: 1, max: 5,
-     d: "Number of turbulence octaves for the Caustic effect. More octaves add finer detail but cost more GPU."},
-    {s: "2D Effects", k: "CausticSaturation", g: "FX2D_CausticSaturation", t: "float", default: 0.6,
-     min: 0.0, max: 1.0,
-     d: "Color saturation of the Caustic effect. 0.0 = grayscale, 1.0 = full color."},
-
-    ; --- Aurora ---
-    {type: "subsection", section: "2D Effects", name: "Aurora"},
-    {s: "2D Effects", k: "AuroraIncludeInLayered", g: "FX2D_AuroraIncludeInLayered", t: "bool", default: true,
-     d: "Include Aurora in the Layered composite effect."},
-    {s: "2D Effects", k: "AuroraOpacity", g: "FX2D_AuroraOpacity", t: "float", default: 0.40,
-     min: 0.0, max: 1.0,
-     d: "Opacity of the Aurora effect layer. 0.0 = invisible, 1.0 = fully opaque."},
-    {s: "2D Effects", k: "AuroraSpeed", g: "FX2D_AuroraSpeed", t: "float", default: 1.0,
-     min: 0.1, max: 5.0,
-     d: "Speed multiplier for Aurora blob orbit animation."},
-    {s: "2D Effects", k: "AuroraBlobSize", g: "FX2D_AuroraBlobSize", t: "int", default: 350,
-     min: 50, max: 1000,
-     d: "Diameter in pixels of each Aurora blob. Larger values produce softer, more diffuse lighting."},
-    {s: "2D Effects", k: "AuroraSpeedSpread", g: "FX2D_AuroraSpeedSpread", t: "float", default: 1.0,
-     min: 0.0, max: 3.0,
-     d: "Scales deviation from average orbit speed. 0 = all blobs same speed, 1 = default spread, 2+ = wider variation."},
-    {s: "2D Effects", k: "AuroraColor1", g: "FX2D_AuroraColor1", t: "int", default: 0xFFFF4488,
-     min: 0, max: 0xFFFFFFFF, fmt: "hex",
-     d: "ARGB color of the first Aurora blob."},
-    {s: "2D Effects", k: "AuroraColor2", g: "FX2D_AuroraColor2", t: "int", default: 0xFF4488FF,
-     min: 0, max: 0xFFFFFFFF, fmt: "hex",
-     d: "ARGB color of the second Aurora blob."},
-    {s: "2D Effects", k: "AuroraColor3", g: "FX2D_AuroraColor3", t: "int", default: 0xFFAA44FF,
-     min: 0, max: 0xFFFFFFFF, fmt: "hex",
-     d: "ARGB color of the third Aurora blob."},
-
-    ; --- Grain ---
-    {type: "subsection", section: "2D Effects", name: "Grain",
-     desc: "Shares the bgTurb GPU effect chain with Caustic. If both are included in Layered, Grain renders first and Caustic overwrites the turbulence settings."},
-    {s: "2D Effects", k: "GrainIncludeInLayered", g: "FX2D_GrainIncludeInLayered", t: "bool", default: false,
-     d: "Include Grain in the Layered composite effect."},
-    {s: "2D Effects", k: "GrainOpacity", g: "FX2D_GrainOpacity", t: "float", default: 0.30,
-     min: 0.0, max: 1.0,
-     d: "Opacity of the Grain effect layer. 0.0 = invisible, 1.0 = fully opaque."},
-    {s: "2D Effects", k: "GrainSpeed", g: "FX2D_GrainSpeed", t: "float", default: 1.0,
-     min: 0.1, max: 5.0,
-     d: "Speed multiplier for Grain drift animation."},
-    {s: "2D Effects", k: "GrainFrequency", g: "FX2D_GrainFrequency", t: "float", default: 0.05,
-     min: 0.005, max: 0.5,
-     d: "Base frequency of the Grain turbulence pattern. Lower values produce coarser grain."},
-    {s: "2D Effects", k: "GrainOctaves", g: "FX2D_GrainOctaves", t: "int", default: 4,
-     min: 1, max: 5,
-     d: "Number of turbulence octaves for the Grain effect. More octaves add finer detail."},
-    {s: "2D Effects", k: "GrainSaturation", g: "FX2D_GrainSaturation", t: "float", default: 0.0,
-     min: 0.0, max: 1.0,
-     d: "Color saturation of the Grain effect. 0.0 = grayscale noise, 1.0 = colorful noise."},
-
-    ; --- Vignette ---
-    {type: "subsection", section: "2D Effects", name: "Vignette"},
-    {s: "2D Effects", k: "VignetteIncludeInLayered", g: "FX2D_VignetteIncludeInLayered", t: "bool", default: true,
-     d: "Include Vignette in the Layered composite effect."},
-    {s: "2D Effects", k: "VignetteOpacity", g: "FX2D_VignetteOpacity", t: "float", default: 0.50,
-     min: 0.0, max: 1.0,
-     d: "Base opacity of the Vignette edge darkening. 0.0 = invisible, 1.0 = fully opaque."},
-    {s: "2D Effects", k: "VignetteSpeed", g: "FX2D_VignetteSpeed", t: "float", default: 1.0,
-     min: 0.1, max: 5.0,
-     d: "Speed multiplier for the Vignette breathing animation."},
-    {s: "2D Effects", k: "VignetteEdgeDepth", g: "FX2D_VignetteEdgeDepth", t: "float", default: 0.30,
-     min: 0.05, max: 0.50,
-     d: "Depth of the vignette edge as a fraction of overlay width. Larger values create a wider dark border."},
-    {s: "2D Effects", k: "VignetteBreathAmplitude", g: "FX2D_VignetteBreathAmplitude", t: "float", default: 0.15,
-     min: 0.0, max: 0.30,
-     d: "Amplitude of the vignette breathing animation. 0.0 = static vignette, higher values pulse more."},
-    {s: "2D Effects", k: "VignetteEdgeColor", g: "FX2D_VignetteEdgeColor", t: "int", default: 0x000000,
-     min: 0, max: 0xFFFFFF, fmt: "hex",
-     d: "RGB color of the vignette edge. Default is black (0x000000)."},
+     d: "Opacity of the mouse effect layer."},
+    {s: "MouseEffect", k: "CycleHotkey", g: "MouseEffect_CycleHotkey", t: "string", default: "",
+     d: "Optional hotkey to cycle through mouse effects while overlay is visible."},
 
     ; ============================================================
     ; BackgroundImage
@@ -1521,6 +1424,9 @@ global gConfigRegistry := [
 ; Returns a JSON string of the registry array suitable for JavaScript consumption.
 ConfigRegistry_SerializeToJSON() {
     global gConfigRegistry
+    global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
+    global MOUSE_SHADER_KEYS, MOUSE_SHADER_NAMES ; lint-ignore: phantom-global
+    global SELECTION_SHADER_KEYS, SELECTION_SHADER_NAMES ; lint-ignore: phantom-global
 
     entries := []
     fields := ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"]
@@ -1538,20 +1444,37 @@ ConfigRegistry_SerializeToJSON() {
             m["min"] := entry.min
             m["max"] := entry.max
         }
-        ; Resolve dynamic option lists for editor dropdowns (e.g., shader selector)
-        if (entry.HasOwnProp("dynamicOptions") && entry.dynamicOptions = "SHADER_KEYS") {
-            global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
-            keys := []
-            labels := []
-            Loop SHADER_KEYS.Length {
-                if (SHADER_KEYS[A_Index] != "") {
-                    keys.Push(SHADER_KEYS[A_Index])
-                    labels.Push(SHADER_NAMES[A_Index])
-                }
+        ; Resolve dynamic option lists for editor dropdowns
+        if (entry.HasOwnProp("dynamicOptions")) {
+            dynKeys := 0
+            dynNames := 0
+            switch entry.dynamicOptions {
+                case "SHADER_KEYS":
+                    dynKeys := SHADER_KEYS
+                    dynNames := SHADER_NAMES
+                case "MOUSE_SHADER_KEYS":
+                    dynKeys := MOUSE_SHADER_KEYS
+                    dynNames := MOUSE_SHADER_NAMES
+                case "SELECTION_SHADER_KEYS":
+                    dynKeys := SELECTION_SHADER_KEYS
+                    dynNames := SELECTION_SHADER_NAMES
             }
-            m["dynamicOptionKeys"] := keys
-            m["dynamicOptionLabels"] := labels
+            if (IsObject(dynKeys)) {
+                keys := []
+                labels := []
+                Loop dynKeys.Length {
+                    if (dynKeys[A_Index] != "") {
+                        keys.Push(dynKeys[A_Index])
+                        labels.Push(dynNames[A_Index])
+                    }
+                }
+                m["dynamicOptionKeys"] := keys
+                m["dynamicOptionLabels"] := labels
+            }
         }
+        ; Serialize array_section metadata for editors
+        if (entry.HasOwnProp("array_section"))
+            m["array_section"] := entry.array_section
         entries.Push(m)
     }
     return JSON.Dump(entries)

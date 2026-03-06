@@ -128,11 +128,36 @@ _CL_CacheHotPathValues() {
 
 _CL_InitializeDefaults() {
     global cfg, gConfigRegistry
+
+    ; Pre-scan for array_section counts
+    arraySections := Map()
     for _, entry in gConfigRegistry {
-        if (entry.HasOwnProp("default")) {
+        if (entry.HasOwnProp("type") && entry.type = "section" && entry.HasOwnProp("array_section"))
+            arraySections[entry.name] := entry.array_section
+    }
+
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("default"))
+            continue
+
+        if (InStr(entry.g, "{N}")) {
+            ; Array section — expand for each instance
+            count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+            Loop count {
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                ; Layer 1 uses default1 if present (e.g., first shader = "raindropsGlass")
+                if (A_Index = 1 && entry.HasOwnProp("default1"))
+                    cfg.%expandedG% := entry.default1
+                else
+                    cfg.%expandedG% := entry.default
+            }
+        } else {
             cfg.%entry.g% := entry.default
         }
     }
+
+    ; Track active shader layer count
+    cfg._ShaderLayerCount := arraySections.Has("Shader") ? arraySections["Shader"] : 0  ; lint-ignore: cfg-property
 }
 
 ; ============================================================
@@ -148,10 +173,18 @@ _CL_CreateDefaultIni(path) {
     content .= "`n"
 
     currentSection := ""
+    inArraySection := ""  ; tracks base name of current array_section
 
     for _, entry in gConfigRegistry {
         if (entry.HasOwnProp("type") && entry.type = "section") {
-            content .= "[" entry.name "]`n"
+            if (entry.HasOwnProp("array_section")) {
+                ; Array section — emit only [Name.1] with defaults
+                inArraySection := entry.name
+                content .= "[" entry.name ".1]`n"
+            } else {
+                inArraySection := ""
+                content .= "[" entry.name "]`n"
+            }
             if (entry.HasOwnProp("long"))
                 content .= ";;; " entry.long "`n"
             content .= "`n"
@@ -163,14 +196,20 @@ _CL_CreateDefaultIni(path) {
                 content .= ";;; " entry.desc "`n"
         }
         else if (entry.HasOwnProp("default")) {
-            ; Emit INI section header if this setting's s: differs from current
-            if (entry.s != currentSection) {
-                content .= "`n[" entry.s "]`n"
-                currentSection := entry.s
+            ; For array section entries, use the .1 section and default1 if present
+            if (inArraySection != "" && entry.s = inArraySection) {
+                defVal := (entry.HasOwnProp("default1")) ? entry.default1 : entry.default
+                content .= ";;; " entry.d "`n"
+                content .= "; " entry.k "=" _CL_FormatValue(defVal, entry.t, entry.HasOwnProp("fmt") ? entry.fmt : "") "`n"
+            } else {
+                ; Emit INI section header if this setting's s: differs from current
+                if (entry.s != currentSection) {
+                    content .= "`n[" entry.s "]`n"
+                    currentSection := entry.s
+                }
+                content .= ";;; " entry.d "`n"
+                content .= "; " entry.k "=" _CL_FormatValue(entry.default, entry.t, entry.HasOwnProp("fmt") ? entry.fmt : "") "`n"
             }
-            ; Setting - description with ;;; and default value commented out with ;
-            content .= ";;; " entry.d "`n"
-            content .= "; " entry.k "=" _CL_FormatValue(entry.default, entry.t, entry.HasOwnProp("fmt") ? entry.fmt : "") "`n"
         }
     }
 
@@ -191,6 +230,11 @@ _CL_SupplementIni(path) {
         if (!entry.HasOwnProp("default"))
             continue
 
+        ; For array_section entries, check [Section.1] only
+        checkSection := entry.s
+        if (InStr(entry.g, "{N}"))
+            checkSection := entry.s ".1"
+
         ; Check if key exists (commented or uncommented)
         keyPattern := "^\s*;?\s*" entry.k "\s*="
         keyFound := false
@@ -200,7 +244,7 @@ _CL_SupplementIni(path) {
             trimmed := Trim(line)
             if (SubStr(trimmed, 1, 1) = "[" && SubStr(trimmed, -1) = "]") {
                 sectionName := SubStr(trimmed, 2, -1)
-                inSection := (sectionName = entry.s)
+                inSection := (sectionName = checkSection)
             } else if (inSection && RegExMatch(trimmed, keyPattern)) {
                 keyFound := true
                 break
@@ -208,9 +252,9 @@ _CL_SupplementIni(path) {
         }
 
         if (!keyFound) {
-            if (!missingBySection.Has(entry.s))
-                missingBySection[entry.s] := []
-            missingBySection[entry.s].Push(entry)
+            if (!missingBySection.Has(checkSection))
+                missingBySection[checkSection] := []
+            missingBySection[checkSection].Push(entry)
             modified := true
         }
     }
@@ -456,21 +500,114 @@ CL_ParseValue(iniVal, type) {
 CL_SaveChanges(changes) {
     global gConfigRegistry, gConfigIniPath
 
+    ; Pre-create any new array section instances with full template (descriptions + commented defaults)
+    ; so that CL_WriteIniPreserveFormat finds existing keys to uncomment rather than appending bare keys.
+    _CL_EnsureArraySections(gConfigIniPath, changes)
+
     changeCount := 0
     failCount := 0
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!changes.Has(entry.g))
-            continue
 
-        entryFmt := entry.HasOwnProp("fmt") ? entry.fmt : ""
-        if (CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t, entryFmt))
-            changeCount++
-        else
-            failCount++
+        if (InStr(entry.g, "{N}")) {
+            ; Array section — check each expanded instance
+            Loop 4 {
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                if (!changes.Has(expandedG))
+                    continue
+                sectionName := entry.s "." A_Index
+                entryFmt := entry.HasOwnProp("fmt") ? entry.fmt : ""
+                if (CL_WriteIniPreserveFormat(gConfigIniPath, sectionName, entry.k, changes[expandedG], entry.default, entry.t, entryFmt))
+                    changeCount++
+                else
+                    failCount++
+            }
+        } else {
+            if (!changes.Has(entry.g))
+                continue
+            entryFmt := entry.HasOwnProp("fmt") ? entry.fmt : ""
+            if (CL_WriteIniPreserveFormat(gConfigIniPath, entry.s, entry.k, changes[entry.g], entry.default, entry.t, entryFmt))
+                changeCount++
+            else
+                failCount++
+        }
     }
     return {saved: changeCount, failed: failCount}
+}
+
+; Pre-create new array section instances with full commented template.
+; Scans changes for array section keys (e.g., Shader2_*), checks if [Shader.2] exists in INI,
+; and writes the full section template (header + ;;; descriptions + ; Key=default) if missing.
+_CL_EnsureArraySections(path, changes) {
+    global gConfigRegistry
+
+    if (!FileExist(path))
+        return
+
+    content := FileRead(path, "UTF-8")
+
+    ; Find which array section instances need creation
+    needed := Map()  ; "Shader.2" => true
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("default") || !InStr(entry.g, "{N}"))
+            continue
+        Loop 4 {
+            expandedG := StrReplace(entry.g, "{N}", A_Index)
+            if (!changes.Has(expandedG))
+                continue
+            sectionName := entry.s "." A_Index
+            if (!needed.Has(sectionName))
+                needed[sectionName] := true
+        }
+    }
+
+    ; Check which needed sections already exist (collect first, then delete — can't delete during iteration)
+    alreadyExist := []
+    for sectionName, _ in needed {
+        if (InStr(content, "[" sectionName "]"))
+            alreadyExist.Push(sectionName)
+    }
+    for _, sectionName in alreadyExist
+        needed.Delete(sectionName)
+
+    if (needed.Count = 0)
+        return
+
+    ; Generate template for each missing section and append
+    for sectionName, _ in needed {
+        ; Parse "Shader.2" => baseName="Shader", index=2
+        dotPos := InStr(sectionName, ".", , -1)
+        if (!dotPos)
+            continue
+        baseName := SubStr(sectionName, 1, dotPos - 1)
+        idx := SubStr(sectionName, dotPos + 1)
+
+        template := "`n[" sectionName "]`n"
+        for _, entry in gConfigRegistry {
+            if (!entry.HasOwnProp("default") || entry.s != baseName)
+                continue
+            if (!InStr(entry.g, "{N}"))
+                continue
+            defVal := (idx = "1" && entry.HasOwnProp("default1")) ? entry.default1 : entry.default
+            fmtStr := entry.HasOwnProp("fmt") ? entry.fmt : ""
+            template .= ";;; " entry.d "`n"
+            template .= "; " entry.k "=" _CL_FormatValue(defVal, entry.t, fmtStr) "`n"
+        }
+
+        content .= template
+    }
+
+    ; Write back
+    tempPath := path ".tmp"
+    try {
+        if (FileExist(tempPath))
+            FileDelete(tempPath)
+        FileAppend(content, tempPath, "UTF-8")
+        FileMove(tempPath, path, true)
+    } catch as e {
+        try FileDelete(tempPath)
+    }
 }
 
 ; Write to INI preserving comments and structure (unlike IniWrite which reorganizes)
@@ -521,6 +658,7 @@ CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType :
         ; Find end of section and insert there
         newLines2 := []
         inSection := false
+        sectionExists := false
         added := false
 
         for i, line in newLines {
@@ -536,13 +674,20 @@ CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType :
                     added := true
                 }
                 inSection := (m[1] = section)
+                if (inSection)
+                    sectionExists := true
             }
 
             newLines2.Push(line)
         }
 
-        ; If still not added (section was last), add at end
+        ; If still not added (section was last or doesn't exist)
         if (!added) {
+            ; Create section header if it doesn't exist in the file
+            if (!sectionExists) {
+                newLines2.Push("")
+                newLines2.Push("[" section "]")
+            }
             if (shouldComment)
                 newLines2.Push("; " key "=" formattedValue)
             else
@@ -584,44 +729,257 @@ CL_WriteIniPreserveFormat(path, section, key, value, defaultVal := "", valType :
 _CL_LoadAllSettings() {
     global gConfigIniPath, gConfigRegistry, cfg, LOG_PATH_STORE
 
+    ; Pre-scan for array_section counts
+    arraySections := Map()
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section" && entry.HasOwnProp("array_section"))
+            arraySections[entry.name] := entry.array_section
+    }
+
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue  ; Skip section/subsection headers
+
+        if (InStr(entry.g, "{N}")) {
+            ; Array section — read from [Section.1] through [Section.N]
+            count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+            Loop count {
+                sectionName := entry.s "." A_Index
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                val := IniRead(gConfigIniPath, sectionName, entry.k, "")
+                if (val = "")
+                    continue
+                parsedVal := _CL_ParseEntryValue(entry, val)
+                if (parsedVal != "")
+                    cfg.%expandedG% := parsedVal
+            }
+            continue
+        }
 
         val := IniRead(gConfigIniPath, entry.s, entry.k, "")
         if (val = "")
             continue
 
-        ; Parse value based on type
-        if (entry.t = "enum") {
-            found := false
-            for _, opt in entry.options {
-                if (opt = val) {
-                    found := true
-                    break
-                }
-            }
-            if (found)
-                parsedVal := val
-            else {
-                LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (not a valid option), using default")
+        parsedVal := _CL_ParseEntryValue(entry, val)
+        if (parsedVal != "")
+            cfg.%entry.g% := parsedVal
+    }
+
+    ; Remove array section instances beyond the max (e.g., [Shader.5] when max is 4)
+    ; Uses text-based removal to also strip ;;; comment lines belonging to the section
+    _CL_PruneExcessArraySections(arraySections)
+
+    ; Normalize non-contiguous array sections (e.g., [Shader.1] + [Shader.4] → [Shader.1] + [Shader.2])
+    _CL_NormalizeArraySections(arraySections)
+}
+
+; Remove array section instances beyond the max from the INI file.
+_CL_PruneExcessArraySections(arraySections) {
+    global gConfigIniPath
+
+    if (!FileExist(gConfigIniPath))
+        return
+
+    content := FileRead(gConfigIniPath, "UTF-8")
+
+    ; Scan the file for any [BaseName.N] headers where N > max
+    toRemove := []
+    for baseName, maxCount in arraySections {
+        pos := 1
+        while (pos := RegExMatch(content, "\[" baseName "\.(\d+)\]", &m, pos)) {
+            if (Integer(m[1]) > maxCount)
+                toRemove.Push(baseName "." m[1])
+            pos += m.Len
+        }
+    }
+
+    if (toRemove.Length = 0)
+        return
+    CL_DeleteSections(toRemove)
+}
+
+; Compact gaps in array sections. If [Shader.1] and [Shader.4] exist but .2/.3 don't,
+; shift .4's values to .2 in cfg, then rewrite the INI to match.
+_CL_NormalizeArraySections(arraySections) {
+    global gConfigIniPath, gConfigRegistry, cfg
+
+    for baseName, maxCount in arraySections {
+        ; Collect template keys for this array section
+        templates := []
+        for _, entry in gConfigRegistry {
+            if (entry.HasOwnProp("default") && entry.s = baseName && InStr(entry.g, "{N}"))
+                templates.Push(entry)
+        }
+
+        ; Find which indices have content (INI section exists with at least one non-default value)
+        occupied := []
+        Loop maxCount {
+            sectionName := baseName "." A_Index
+            try sectionKeys := IniRead(gConfigIniPath, sectionName)
+            catch
                 continue
+            if (sectionKeys != "")
+                occupied.Push(A_Index)
+        }
+
+        ; Check for gaps: occupied indices should be 1..occupied.Length
+        needsNormalize := false
+        for i, idx in occupied {
+            if (idx != i) {
+                needsNormalize := true
+                break
             }
-        } else {
-            try {
-                parsedVal := _CL_CoerceValue(val, entry.t)
-            } catch {
-                if (entry.t = "bool") {
-                    LogAppend(LOG_PATH_STORE, "config parse warning: " entry.k "=" val " (expected true/false), treating as false")
-                    parsedVal := false
-                } else {
-                    LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected " entry.t "), using default")
-                    continue
-                }
+        }
+        if (!needsNormalize)
+            continue
+
+        ; Shift cfg values: occupied[i] -> i
+        for newIdx, oldIdx in occupied {
+            if (newIdx = oldIdx)
+                continue
+            for _, tmpl in templates {
+                srcG := StrReplace(tmpl.g, "{N}", oldIdx)
+                dstG := StrReplace(tmpl.g, "{N}", newIdx)
+                if (cfg.HasOwnProp(srcG))
+                    cfg.%dstG% := cfg.%srcG%
+                else
+                    cfg.%dstG% := tmpl.default
             }
         }
 
-        cfg.%entry.g% := parsedVal
+        ; Clear cfg values for slots beyond the compacted count
+        Loop (maxCount - occupied.Length) {
+            clearIdx := occupied.Length + A_Index
+            for _, tmpl in templates {
+                clearG := StrReplace(tmpl.g, "{N}", clearIdx)
+                cfg.%clearG% := tmpl.default
+            }
+        }
+
+        ; Rewrite INI: collect all sections that moved or are now vacant
+        toDelete := Map()
+        for newIdx, oldIdx in occupied {
+            if (newIdx != oldIdx) {
+                toDelete[baseName "." oldIdx] := true
+                toDelete[baseName "." newIdx] := true  ; Also delete gap sections at destination
+            }
+        }
+        ; Add vacated tail sections
+        Loop (maxCount - occupied.Length) {
+            toDelete[baseName "." (occupied.Length + A_Index)] := true
+        }
+        deleteList := []
+        for name, _ in toDelete
+            deleteList.Push(name)
+        if (deleteList.Length > 0)
+            CL_DeleteSections(deleteList)
+
+        ; Write shifted sections with full commented template (matching _CL_EnsureArraySections format)
+        content := FileRead(gConfigIniPath, "UTF-8")
+        for newIdx, oldIdx in occupied {
+            if (newIdx = oldIdx)
+                continue
+            sectionName := baseName "." newIdx
+            sectionText := "`n[" sectionName "]`n"
+            for _, tmpl in templates {
+                cfgKey := StrReplace(tmpl.g, "{N}", newIdx)
+                defVal := tmpl.default
+                fmtStr := tmpl.HasOwnProp("fmt") ? tmpl.fmt : ""
+                sectionText .= ";;; " tmpl.d "`n"
+                curVal := cfg.HasOwnProp(cfgKey) ? cfg.%cfgKey% : defVal
+                if (_CL_FormatValue(curVal, tmpl.t, fmtStr) != _CL_FormatValue(defVal, tmpl.t, fmtStr))
+                    sectionText .= tmpl.k "=" _CL_FormatValue(curVal, tmpl.t, fmtStr) "`n"
+                else
+                    sectionText .= "; " tmpl.k "=" _CL_FormatValue(defVal, tmpl.t, fmtStr) "`n"
+            }
+            content .= sectionText
+        }
+        _CL_WriteFileAtomic(gConfigIniPath, content)
+    }
+}
+
+; Delete named INI sections from config.ini using text-based removal.
+; Strips the [Section] header and ALL lines until the next section header,
+; including ;;; description comments that belong to the section's keys.
+; Handles duplicate section headers — removes ALL occurrences.
+CL_DeleteSections(sectionNames) {
+    global gConfigIniPath
+
+    if (!FileExist(gConfigIniPath) || sectionNames.Length = 0)
+        return
+
+    ; Build lookup map for O(1) matching
+    toRemove := Map()
+    for _, name in sectionNames
+        toRemove[name] := true
+
+    content := FileRead(gConfigIniPath, "UTF-8")
+    lines := StrSplit(content, "`n", "`r")
+    newLines := []
+    skipping := false
+
+    for _, line in lines {
+        trimmed := Trim(line)
+
+        ; Check for section headers
+        if (RegExMatch(trimmed, "^\[(.+)\]$", &m)) {
+            skipping := toRemove.Has(m[1])
+            if (skipping)
+                continue
+        }
+
+        if (!skipping)
+            newLines.Push(line)
+    }
+
+    ; Strip trailing blank lines left by removed sections
+    while (newLines.Length > 0 && Trim(newLines[newLines.Length]) = "")
+        newLines.Pop()
+    newLines.Push("")  ; Ensure single trailing newline
+
+    newContent := ""
+    for i, line in newLines {
+        newContent .= line
+        if (i < newLines.Length)
+            newContent .= "`n"
+    }
+
+    tempPath := gConfigIniPath ".tmp"
+    try {
+        if (FileExist(tempPath))
+            FileDelete(tempPath)
+        FileAppend(newContent, tempPath, "UTF-8")
+        FileMove(tempPath, gConfigIniPath, true)
+    } catch {
+        try FileDelete(tempPath)
+    }
+}
+
+; Parse a single config value against its entry type. Returns parsed value or "" on error.
+_CL_ParseEntryValue(entry, val) {
+    global LOG_PATH_STORE
+    if (entry.t = "enum") {
+        found := false
+        for _, opt in entry.options {
+            if (opt = val) {
+                found := true
+                break
+            }
+        }
+        if (found)
+            return val
+        LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (not a valid option), using default")
+        return ""
+    }
+    try {
+        return _CL_CoerceValue(val, entry.t)
+    } catch {
+        if (entry.t = "bool") {
+            LogAppend(LOG_PATH_STORE, "config parse warning: " entry.k "=" val " (expected true/false), treating as false")
+            return false
+        }
+        LogAppend(LOG_PATH_STORE, "config parse error: " entry.k "=" val " (expected " entry.t "), using default")
+        return ""
     }
 }
 
@@ -636,26 +994,58 @@ _CL_ValidateSettings() {
     ; Helper to clamp a value to a range
     clamp := (val, minVal, maxVal) => Max(minVal, Min(maxVal, val))
 
-    ; --- Registry-driven clamping (replaces ~100 hardcoded clamp lines) ---
+    ; Pre-scan for array_section counts
+    arraySections := Map()
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section" && entry.HasOwnProp("array_section"))
+            arraySections[entry.name] := entry.array_section
+    }
+
+    ; --- Registry-driven clamping ---
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("min"))
             continue
-        cfg.%entry.g% := clamp(cfg.%entry.g%, entry.min, entry.max)
+        if (InStr(entry.g, "{N}")) {
+            count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+            Loop count {
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                cfg.%expandedG% := clamp(cfg.%expandedG%, entry.min, entry.max)
+            }
+        } else {
+            cfg.%entry.g% := clamp(cfg.%entry.g%, entry.min, entry.max)
+        }
     }
 
     ; --- Enum validation (invalid values fall back to default) ---
     for _, entry in gConfigRegistry {
         if (entry.HasOwnProp("t") && entry.t = "enum" && entry.HasOwnProp("options")) {
-            val := cfg.%entry.g%
-            found := false
-            for _, opt in entry.options {
-                if (val = opt) {
-                    found := true
-                    break
+            if (InStr(entry.g, "{N}")) {
+                count := arraySections.Has(entry.s) ? arraySections[entry.s] : 1
+                Loop count {
+                    expandedG := StrReplace(entry.g, "{N}", A_Index)
+                    val := cfg.%expandedG%
+                    found := false
+                    for _, opt in entry.options {
+                        if (val = opt) {
+                            found := true
+                            break
+                        }
+                    }
+                    if (!found)
+                        cfg.%expandedG% := entry.default
                 }
+            } else {
+                val := cfg.%entry.g%
+                found := false
+                for _, opt in entry.options {
+                    if (val = opt) {
+                        found := true
+                        break
+                    }
+                }
+                if (!found)
+                    cfg.%entry.g% := entry.default
             }
-            if (!found)
-                cfg.%entry.g% := entry.default
         }
     }
 

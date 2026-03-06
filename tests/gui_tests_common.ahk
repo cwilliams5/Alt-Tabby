@@ -90,16 +90,13 @@ global gAnim_HidePending := false
 global gFX_AmbientTime := 0.0
 
 ; GPU effects globals (from gui_effects.ahk / gui_paint.ahk - not included in GUI test chain)
-global gGUI_EffectStyle := 0
 global gFX_GPUReady := false
-global gFX_BackdropStyle := 0
-global gFX_BackdropSeedX := 0.0
-global gFX_BackdropSeedY := 0.0
-global gFX_BackdropSeedPhase := 0.0
-global gFX_BackdropDirSign := 1
-global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
-global gFX_ShaderIndex := 0
+global gFX_ShaderLayers := []
 global gFX_ShaderTime := Map()
+global gFX_MouseEffect
+global gFX_SelectionEffect
+gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+gFX_SelectionEffect := {key: "", name: ""}
 global gShader_Ready := false
 global SHADER_NAMES := ["None"]
 global gFX_MouseX := 0.0
@@ -275,13 +272,20 @@ Anim_EaseOutQuad(t) {
 }
 
 ; GPU effects mocks (gui_effects.ahk not included in tests)
-FX_OnSelectionChange(gpuStyleIndex) {
+FX_HasActiveShaders() {
+    return false
 }
-FX_DrawBackdrop(wPhys, hPhys, scale) {
+FX_PreRenderShaderLayers(w, h) {
 }
-FX_PreRenderShaderLayer(w, h) {
+FX_DrawShaderLayers(wPhys, hPhys) {
 }
-FX_DrawShaderLayer(wPhys, hPhys) {
+FX_PreRenderMouseEffect(w, h) {
+}
+FX_DrawMouseEffect(wPhys, hPhys) {
+}
+FX_PreRenderSelectionEffect(w, h, selX:=0, selY:=0, selW:=0, selH:=0, selARGB:=0, borderARGB:=0, borderWidth:=0, isHovered:=0, entranceT:=0) {
+}
+FX_DrawSelectionEffect(wPhys, hPhys) {
 }
 FX_SaveShaderTime() {
 }

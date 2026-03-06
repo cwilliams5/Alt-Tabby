@@ -16,17 +16,12 @@ global gFX_GPUReady := false  ; Set after successful init
 global gFX_GPUOutput := Map() ; name → ID2D1Image (cached GetOutput results)
 global gFX_HDRActive := false  ; True when HDR gamma compensation is active
 
-; ========================= BACKDROP EFFECT STATE =========================
-
-global gFX_BackdropStyle := 0        ; 0=None, 1-11=styles (cycled by C key)
-global gFX_BG := Map()               ; Precomputed backdrop params (populated once at init, read per-frame)
-global gFX_BackdropSeedX := 0.0      ; Random offset for turbulence — refreshed on each open/style switch
-global gFX_BackdropSeedY := 0.0      ; Gives different pattern without using D2D's seed property
-global gFX_BackdropSeedPhase := 0.0  ; Random phase offset (radians) for orbit starting position
-global gFX_BackdropDirSign := 1      ; Random orbit direction: 1=CCW, -1=CW
-global FX_BG_STYLE_NAMES := ["None", "Gradient", "Caustic", "Aurora", "Grain", "Vignette", "Layered"]
-global gFX_ShaderIndex := 0          ; 0=None, 1+=registered shaders (cycled by V key, independent of backdrop)
-global gFX_ShaderTime := Map()       ; shaderName → {offset, carry, accumulate} — per-shader time state
+global gFX_ShaderLayers := []        ; Array of {key, name, opacity, darkness, desat, speed} per configured layer
+global gFX_ShaderTime := Map()       ; layerIndex → {offset, carry, accumulate} — per-layer time state
+global gFX_MouseEffect      ; Mouse effect state: {key, name, opacity}
+global gFX_SelectionEffect  ; Selection effect state: {key, name}
+gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+gFX_SelectionEffect := {key: "", name: ""}
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
 global gFX_MouseInWindow := false    ; Mouse is inside overlay window
@@ -34,16 +29,15 @@ global gFX_MouseInWindow := false    ; Mouse is inside overlay window
 ; Initialize GPU effects. Call after gD2D_RT is valid.
 ; Returns true on success, false if effects unavailable.
 FX_GPU_Init() {
-    global gD2D_RT, gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, gFX_ShaderIndex, cfg
+    global gD2D_RT, gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, cfg
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
     global SHADER_KEYS ; lint-ignore: phantom-global
     global CLSID_D2D1GaussianBlur, CLSID_D2D1Shadow, CLSID_D2D1Flood
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
-    global CLSID_D2D1Blend, CLSID_D2D1Composite, CLSID_D2D1Turbulence
-    global CLSID_D2D1Morphology, CLSID_D2D1DirectionalBlur
-    global CLSID_D2D1PointSpecular
+    global CLSID_D2D1Blend, CLSID_D2D1Composite
     global LOG_PATH_PAINT_TIMING
 
-    if (!gD2D_RT || !cfg.PerfGPUEffects)
+    if (!gD2D_RT)
         return false
 
     try {
@@ -72,48 +66,9 @@ FX_GPU_Init() {
         gFX_GPU["blend"]       := gD2D_RT.CreateEffect(CLSID_D2D1Blend)
         gFX_GPU["composite"]   := gD2D_RT.CreateEffect(CLSID_D2D1Composite)
 
-        ; --- Noise chain: Turbulence → Crop → Saturation ---
-        ; Crop is required: turbulence has infinite output extent, DrawImage would crash.
-        gFX_GPU["turbulence"]  := gD2D_RT.CreateEffect(CLSID_D2D1Turbulence)
-        gFX_GPU["noiseCrop"]   := gD2D_RT.CreateEffect(CLSID_D2D1Crop)
-        gFX_GPU["noiseSat"]    := gD2D_RT.CreateEffect(CLSID_D2D1Saturation)
-        gFX_GPU["noiseCrop"].SetInput(0, gFX_GPU["turbulence"].GetOutput())
-        gFX_GPU["noiseSat"].SetInput(0, gFX_GPU["noiseCrop"].GetOutput())
-
-        ; --- DirectionalBlur ---
-        gFX_GPU["dirBlur"]     := gD2D_RT.CreateEffect(CLSID_D2D1DirectionalBlur)
-
-        ; --- Morphology (glow outlines) ---
-        gFX_GPU["morphology"]  := gD2D_RT.CreateEffect(CLSID_D2D1Morphology)
-
         ; Cache frequently-used GetOutput() results (avoids COM call per frame)
         gFX_GPUOutput["blur"]  := gFX_GPU["blur"].GetOutput()
         gFX_GPUOutput["blur2"] := gFX_GPU["blur2"].GetOutput()
-        gFX_GPUOutput["noiseSat"] := gFX_GPU["noiseSat"].GetOutput()
-
-        ; --- Background turbulence chain (separate from Plasma selection chain) ---
-        ; Wrapped in own try/catch: backdrop failure must not kill selection effects.
-        try {
-            gFX_GPU["bgTurb"]    := gD2D_RT.CreateEffect(CLSID_D2D1Turbulence)
-            gFX_GPU["bgCrop"]    := gD2D_RT.CreateEffect(CLSID_D2D1Crop)
-            gFX_GPU["bgSat"]     := gD2D_RT.CreateEffect(CLSID_D2D1Saturation)
-            gFX_GPU["bgCrop"].SetInput(0, gFX_GPU["bgTurb"].GetOutput())
-            gFX_GPU["bgSat"].SetInput(0, gFX_GPU["bgCrop"].GetOutput())
-            gFX_GPUOutput["bgSat"] := gFX_GPU["bgSat"].GetOutput()
-
-            ; --- Point Specular chain (uses bgTurb as surface/height map) ---
-            try {
-                gFX_GPU["specular"]  := gD2D_RT.CreateEffect(CLSID_D2D1PointSpecular)
-                gFX_GPU["specCrop"]  := gD2D_RT.CreateEffect(CLSID_D2D1Crop)
-                gFX_GPU["specular"].SetInput(0, gFX_GPU["bgTurb"].GetOutput())
-                gFX_GPU["specCrop"].SetInput(0, gFX_GPU["specular"].GetOutput())
-                gFX_GPUOutput["specCrop"] := gFX_GPU["specCrop"].GetOutput()
-            } catch {
-                ; Specular chain failed — Pool Caustic, Rippled Glass, Thick Oil unavailable
-            }
-        } catch {
-            ; Background chains failed — backdrop effects unavailable, selection styles still work
-        }
 
         ; --- HDR compensation: CPU-side gamma on flood colors ---
         ; Previous approach inserted GammaTransfer AFTER blur, but gamma on blurred
@@ -133,9 +88,6 @@ FX_GPU_Init() {
             LogAppend(LOG_PATH_PAINT_TIMING, "FX_GPU_Init: HDR=" (hdrActive ? "active" : "inactive") " mode=" cfg.PerfHDRCompensation)
 
         gFX_GPUReady := true
-
-        ; Set startup backdrop style from config
-        FX_InitBackdropFromConfig()
 
         ; --- Background image effect chain: Blur → Saturation → ColorMatrix ---
         ; Wrapped in try/catch: failure falls back to direct DrawBitmap (no effects)
@@ -158,23 +110,38 @@ FX_GPU_Init() {
         ; Initialize background image bitmap
         BGImg_Init()
 
-        ; Initialize D3D11 shader pipeline + register configured shader
+        ; Initialize D3D11 shader pipeline + register configured shaders
         ; Wrapped in try/catch: shader failure must not kill selection/backdrop effects
         try {
-            if (cfg.ShaderUseShaders && Shader_Init()) {
+            if (Shader_Init()) {
                 Shader_ExtractTextures()
-                _FX_ResolveConfiguredShader()
-                if (gFX_ShaderIndex >= 1) {
-                    ; Eager-load only the configured shader (not all 150+)
-                    shaderKey := SHADER_KEYS[gFX_ShaderIndex + 1]
-                    if (shaderKey != "")
-                        Shader_RegisterByKey(shaderKey)
+                _FX_ResolveConfiguredShaders()
+                ; Eager-load only configured shaders (not all 150+)
+                ; Register source shaders first, then create per-layer aliases
+                registered := Map()
+                for _, layer in gFX_ShaderLayers {
+                    if (layer.key != "" && !registered.Has(layer.key)) {
+                        Shader_RegisterByKey(layer.key)
+                        registered[layer.key] := true
+                    }
                 }
+                for _, layer in gFX_ShaderLayers {
+                    if (layer.key != "")
+                        Shader_RegisterAlias(layer.renderKey, layer.key)
+                }
+                if (gFX_MouseEffect.key != "")
+                    Shader_RegisterByKey(gFX_MouseEffect.key)
+                if (gFX_SelectionEffect.key != "")
+                    Shader_RegisterByKey(gFX_SelectionEffect.key)
                 _FX_InitShaderTime()
             }
-        } catch {
+        } catch as shaderErr {
             ; Shader pipeline unavailable — shader layer won't render,
             ; but all D2D-based effects (selection + backdrop styles 1-6) still work.
+            if (cfg.DiagShaderLog) {
+                global LOG_PATH_SHADER
+                LogAppend(LOG_PATH_SHADER, "FX_GPU_Init shader EXCEPTION: " shaderErr.Message " @ " shaderErr.What)
+            }
         }
 
         return true
@@ -187,6 +154,7 @@ FX_GPU_Init() {
 ; Release all cached effects. Safe to call multiple times.
 FX_GPU_Dispose() {
     global gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, gFX_ShaderTime
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
     ; Release background image resources (bitmap depends on render target)
     BGImg_Dispose()
     ; Release cached output images first (prevent dangling refs)
@@ -197,6 +165,9 @@ FX_GPU_Dispose() {
     gFX_HDRActive := false
     ; Release shader resources
     gFX_ShaderTime := Map()
+    gFX_ShaderLayers := []
+    gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+    gFX_SelectionEffect := {key: "", name: ""}
     Shader_Cleanup()
 }
 
@@ -259,381 +230,6 @@ FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     }
 }
 
-; ========================= GPU STYLE RENDERERS =========================
-; Each style function draws the selection highlight using GPU effects.
-; They replace _FX_DrawSelection / _FX_DrawSelDropShadow for GPU styles.
-
-; --- Style: "Glass" ---
-; Real GPU shadow + gradient fill + crisp border.
-; The gold standard: clean, modern, depth without heaviness.
-FX_GPU_DrawSelection_Glass(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_GPUReady, gFX_AmbientTime
-
-    baseARGB := cfg.GUI_SelARGB
-    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
-    baseRGB := baseARGB & 0x00FFFFFF
-
-    ; Entrance flourish: shadow lifts from (0,0) to (3,3) offset
-    liftT := Anim_GetValue("fx_glass_lift", 1.0)
-    shadowOffX := 3.0 * liftT
-    shadowOffY := 3.0 * liftT
-
-    ; GPU soft shadow — 6px blur, animated offset
-    shadowAlpha := Round(0.45 * 255) << 24
-    FX_DrawSoftRect(x, y, w, h, shadowAlpha, 6.0, shadowOffX, shadowOffY)
-
-    ; Ambient glow breathe (Full mode: blur oscillates 8↔12px, ~2s cycle)
-    glowBlur := 10.0
-    if (gFX_AmbientTime > 0)
-        glowBlur := 10.0 + 2.0 * Sin(gFX_AmbientTime * 0.00314)  ; ~2s cycle
-
-    ; Subtle outer glow — selection color, wide blur, very transparent
-    glowAlpha := Round(userAlpha * 0.25 * 255) << 24
-    glowARGB := glowAlpha | baseRGB
-    FX_DrawSoftRect2(x - 4, y - 4, w + 8, h + 8, glowARGB, glowBlur)
-
-    ; Selection fill with layer compositing (same HDR-correct pattern as Effects style)
-    opaqueBase := 0xFF000000 | baseRGB
-    opaqueDark := 0xFF000000 | FX_BlendToBlack(baseARGB, 0.18)
-    layerParams := FX_LayerParams(x, y, x + w, y + h, userAlpha)
-    gD2D_RT.PushLayer(layerParams, 0)
-
-    gradBr := FX_LinearGradient2(x, y, x + w, y + h, 0.0, opaqueBase, 1.0, opaqueDark)
-    if (gradBr)
-        D2D_FillRoundRect(x, y, w, h, r, gradBr)
-    else
-        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
-
-    gD2D_RT.PopLayer()
-
-    ; Crisp border
-    bw := cfg.GUI_SelBorderWidthPx
-    if (bw > 0) {
-        half := bw / 2
-        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
-    }
-}
-
-; --- Style: "Neon" ---
-; Bright glow bloom + thin bright border. Cyberpunk aesthetic.
-; Double glow: inner tight + outer wide, both using selection color.
-FX_GPU_DrawSelection_Neon(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_AmbientTime
-
-    baseARGB := cfg.GUI_SelARGB
-    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
-    baseRGB := baseARGB & 0x00FFFFFF
-
-    ; Brighten the glow color (push toward white for bloom)
-    glowR := Min(255, ((baseRGB >> 16) & 0xFF) + 80)
-    glowG := Min(255, ((baseRGB >> 8) & 0xFF) + 80)
-    glowB := Min(255, (baseRGB & 0xFF) + 80)
-    brightRGB := (glowR << 16) | (glowG << 8) | glowB
-
-    ; Entrance flourish: bloom flash — glow intensity spikes then settles
-    bloomMult := Anim_GetValue("fx_neon_bloom", 1.0)
-
-    ; Ambient pulse (Full mode: alpha oscillates, ~1.5s cycle)
-    ambientMult := 1.0
-    if (gFX_AmbientTime > 0)
-        ambientMult := 1.0 + 0.15 * Sin(gFX_AmbientTime * 0.00419)  ; ~1.5s cycle
-
-    ; Wide outer glow — bright, large blur (modulated by bloom + ambient)
-    outerAlpha := Round(userAlpha * 0.5 * bloomMult * ambientMult * 255)
-    if (outerAlpha > 255)
-        outerAlpha := 255
-    outerARGB := (outerAlpha << 24) | brightRGB
-    FX_DrawSoftRect(x - 8, y - 8, w + 16, h + 16, outerARGB, 16.0)
-
-    ; Tight inner glow — saturated, small blur
-    innerAlpha := Round(userAlpha * 0.7 * 255)
-    innerARGB := (innerAlpha << 24) | baseRGB
-    FX_DrawSoftRect2(x - 2, y - 2, w + 4, h + 4, innerARGB, 4.0)
-
-    ; Semi-transparent fill — darker than normal for contrast with glow
-    fillAlpha := Round(userAlpha * 0.6 * 255)
-    darkRGB := FX_BlendToBlack(baseARGB, 0.4)
-    fillARGB := (fillAlpha << 24) | darkRGB
-    D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(fillARGB))
-
-    ; Bright 2px border — the neon wire
-    borderAlpha := Round(Min(1.0, userAlpha * 1.3) * 255)
-    borderARGB := (borderAlpha << 24) | brightRGB
-    D2D_StrokeRoundRect(x + 1, y + 1, w - 2, h - 2, r, D2D_GetCachedBrush(borderARGB), 2)
-}
-
-; --- Style: "Frosted" ---
-; Extra-soft diffuse shadow + layered semi-transparent fills for depth.
-; Multiple overlapping soft rects at different opacities = frosted glass look.
-FX_GPU_DrawSelection_Frosted(x, y, w, h, r) {
-    global cfg, gD2D_RT
-
-    baseARGB := cfg.GUI_SelARGB
-    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
-    baseRGB := baseARGB & 0x00FFFFFF
-
-    ; Very soft, wide shadow — diffuse light feel
-    shadowAlpha := Round(0.25 * 255) << 24
-    FX_DrawSoftRect(x, y, w, h, shadowAlpha, 16.0, 3, 4)
-
-    ; Soft ambient glow — wider, lighter version of the selection color
-    ambientAlpha := Round(userAlpha * 0.15 * 255)
-    ambientARGB := (ambientAlpha << 24) | baseRGB
-    FX_DrawSoftRect2(x - 6, y - 4, w + 12, h + 8, ambientARGB, 12.0)
-
-    ; Fill with layer compositing
-    opaqueBase := 0xFF000000 | baseRGB
-    opaqueLight := 0xFF000000 | _FX_LightenRGB(baseRGB, 0.15)
-    layerParams := FX_LayerParams(x, y, x + w, y + h, userAlpha)
-    gD2D_RT.PushLayer(layerParams, 0)
-
-    ; Base fill — flat, uniform (frosted = no strong gradient)
-    D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
-
-    ; Subtle top highlight — lighter band across the top third
-    highlightBr := FX_LinearGradient2(x, y, x, y + h * 0.4, 0.0, opaqueLight, 1.0, 0x00000000)
-    if (highlightBr)
-        D2D_FillRoundRect(x, y, w, h, r, highlightBr)
-
-    gD2D_RT.PopLayer()
-
-    ; Soft border
-    bw := cfg.GUI_SelBorderWidthPx
-    if (bw > 0) {
-        half := bw / 2
-        borderAlpha := Round(userAlpha * 0.6 * 255)
-        borderARGB := (borderAlpha << 24) | baseRGB
-        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(borderARGB), bw)
-    }
-}
-
-; --- Style: "Ember" ---
-; Warm amber glow + deep shadow. Rich, warm aesthetic.
-FX_GPU_DrawSelection_Ember(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_AmbientTime
-
-    baseARGB := cfg.GUI_SelARGB
-    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
-    baseRGB := baseARGB & 0x00FFFFFF
-
-    ; Deep shadow
-    shadowAlpha := Round(0.55 * 255) << 24
-    FX_DrawSoftRect(x, y, w, h, shadowAlpha, 8.0, 4, 5)
-
-    ; Entrance flourish: glow flares bright then dims
-    flareMult := Anim_GetValue("fx_ember_flare", 1.0)
-
-    ; Ambient firelight flicker (Full mode: R channel ±15, ~2s cycle)
-    flickerR := 0
-    if (gFX_AmbientTime > 0)
-        flickerR := Round(15 * Sin(gFX_AmbientTime * 0.00314))  ; ~2s cycle
-
-    ; Warm amber glow — orange tinted, wide spread
-    emberR := Min(255, ((baseRGB >> 16) & 0xFF) + 60 + flickerR)
-    emberG := Max(0, ((baseRGB >> 8) & 0xFF))
-    emberB := Max(0, (baseRGB & 0xFF) - 30)
-    warmRGB := (emberR << 16) | (emberG << 8) | emberB
-    warmAlpha := Round(userAlpha * 0.4 * flareMult * 255)
-    if (warmAlpha > 255)
-        warmAlpha := 255
-    warmARGB := (warmAlpha << 24) | warmRGB
-    FX_DrawSoftRect2(x - 6, y - 6, w + 12, h + 12, warmARGB, 12.0)
-
-    ; Fill with warm gradient
-    opaqueBase := 0xFF000000 | baseRGB
-    warmDark := 0xFF000000 | FX_BlendToBlack(baseARGB, 0.30)
-    layerParams := FX_LayerParams(x, y, x + w + 8, y + h + 8, userAlpha)
-    gD2D_RT.PushLayer(layerParams, 0)
-
-    gradBr := FX_LinearGradient3(x, y, x + w * 0.5, y + h, 0.0, opaqueBase, 0.7, warmDark, 1.0, 0xFF000000 | FX_BlendToBlack(baseARGB, 0.45))
-    if (gradBr)
-        D2D_FillRoundRect(x, y, w, h, r, gradBr)
-    else
-        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
-
-    gD2D_RT.PopLayer()
-
-    ; Warm border
-    bw := Max(1, cfg.GUI_SelBorderWidthPx)
-    half := bw / 2
-    borderAlpha := Round(Min(1.0, userAlpha * 1.1) * 255)
-    borderARGB := (borderAlpha << 24) | warmRGB
-    D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(borderARGB), bw)
-}
-
-; --- Style: "Minimal" ---
-; Perfect soft shadow only. No gradient, no border effects. Ultra-clean.
-FX_GPU_DrawSelection_Minimal(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_AmbientTime
-
-    baseARGB := cfg.GUI_SelARGB
-
-    ; Ambient shadow breathe (Full mode: blur STDEV oscillates 16↔20px, ~3s cycle)
-    blurStdev := 18.0
-    if (gFX_AmbientTime > 0) {
-        blurStdev := 18.0 + 2.0 * Sin(gFX_AmbientTime * 0.00209)  ; ~3s full cycle
-    }
-
-    ; Large, very soft shadow — the star of this style
-    shadowAlpha := Round(0.35 * 255) << 24
-    FX_DrawSoftRect(x, y, w, h, shadowAlpha, blurStdev, 2, 3)
-
-    ; Flat fill, no gradient
-    D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(baseARGB))
-}
-
-; --- Style: "Holograph" ---
-; Multi-color prismatic glow. Dual glow with color-shifted halos.
-FX_GPU_DrawSelection_Holograph(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_AmbientTime
-
-    baseARGB := cfg.GUI_SelARGB
-    userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
-    baseRGB := baseARGB & 0x00FFFFFF
-
-    ; Extract base color channels
-    bR := (baseRGB >> 16) & 0xFF
-    bG := (baseRGB >> 8) & 0xFF
-    bB := baseRGB & 0xFF
-
-    ; Entrance flourish: prismatic flash — glow intensity spikes
-    flashMult := Anim_GetValue("fx_holo_flash", 1.0)
-
-    ; Ambient glow orbit (Full mode: offsets rotate, ~4s cycle)
-    orbitX1 := -2.0
-    orbitY1 := -2.0
-    orbitX2 := 3.0
-    orbitY2 := 3.0
-    if (gFX_AmbientTime > 0) {
-        angle := gFX_AmbientTime * 0.00157  ; ~4s full rotation
-        orbitX1 := -2.0 + 3.0 * Cos(angle)
-        orbitY1 := -2.0 + 3.0 * Sin(angle)
-        orbitX2 := 3.0 - 3.0 * Cos(angle)
-        orbitY2 := 3.0 - 3.0 * Sin(angle)
-    }
-
-    ; Color-shifted glow 1: shift toward cyan/blue (animated position)
-    c1R := Max(0, bR - 60)
-    c1G := Min(255, bG + 40)
-    c1B := Min(255, bB + 80)
-    c1RGB := (c1R << 16) | (c1G << 8) | c1B
-    c1Alpha := Round(userAlpha * 0.4 * flashMult * 255)
-    if (c1Alpha > 255)
-        c1Alpha := 255
-    c1ARGB := (c1Alpha << 24) | c1RGB
-    FX_DrawSoftRect(x - 6, y - 8, w + 12, h + 16, c1ARGB, 14.0, orbitX1, orbitY1)
-
-    ; Color-shifted glow 2: shift toward magenta/pink (animated position)
-    c2R := Min(255, bR + 60)
-    c2G := Max(0, bG - 40)
-    c2B := Min(255, bB + 40)
-    c2RGB := (c2R << 16) | (c2G << 8) | c2B
-    c2Alpha := Round(userAlpha * 0.35 * flashMult * 255)
-    if (c2Alpha > 255)
-        c2Alpha := 255
-    c2ARGB := (c2Alpha << 24) | c2RGB
-    FX_DrawSoftRect2(x - 4, y - 4, w + 8, h + 8, c2ARGB, 12.0, orbitX2, orbitY2)
-
-    ; Fill with subtle gradient
-    opaqueBase := 0xFF000000 | baseRGB
-    opaqueDark := 0xFF000000 | FX_BlendToBlack(baseARGB, 0.15)
-    layerParams := FX_LayerParams(x, y, x + w, y + h, userAlpha)
-    gD2D_RT.PushLayer(layerParams, 0)
-
-    gradBr := FX_LinearGradient2(x, y, x + w, y + h, 0.0, opaqueBase, 1.0, opaqueDark)
-    if (gradBr)
-        D2D_FillRoundRect(x, y, w, h, r, gradBr)
-    else
-        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
-
-    gD2D_RT.PopLayer()
-
-    ; Bright prismatic border
-    bw := Max(1, cfg.GUI_SelBorderWidthPx)
-    half := bw / 2
-    D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
-}
-
-; --- Style: "Plasma" ---
-; Turbulence noise overlay + gradient fill. Organic, living texture.
-; Uses the noise chain (turbulence → noiseCrop → noiseSat) for texture.
-FX_GPU_DrawSelection_Plasma(x, y, w, h, r) {
-    global cfg, gD2D_RT, gFX_GPU, gFX_GPUOutput, LOG_PATH_STORE, gFX_AmbientTime
-    global FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE, FX_TURB_OFFSET
-    global FX_CROP_RECT, FX_SAT_SATURATION, D2D1_BORDER_SOFT
-
-    try {
-        baseARGB := cfg.GUI_SelARGB
-        userAlpha := ((baseARGB >> 24) & 0xFF) / 255.0
-        baseRGB := baseARGB & 0x00FFFFFF
-
-        ; GPU soft shadow — 8px blur, offset 3,3
-        shadowAlpha := Round(0.45 * 255) << 24
-        FX_DrawSoftRect(x, y, w, h, shadowAlpha, 8.0, 3, 3)
-
-        ; Ambient noise drift (Full mode: offset scrolls linearly)
-        driftX := 0.0
-        driftY := 0.0
-        if (gFX_AmbientTime > 0) {
-            driftX := gFX_AmbientTime * 0.008  ; slow horizontal drift
-            driftY := gFX_AmbientTime * 0.003  ; slower vertical drift
-        }
-
-        ; Cache effect objects for this function
-        turb := gFX_GPU["turbulence"], nCrop := gFX_GPU["noiseCrop"], nSat := gFX_GPU["noiseSat"]
-
-        ; Configure turbulence: low frequency for large plasma swirls
-        turb.SetVector2(FX_TURB_OFFSET, Float(driftX), Float(driftY))
-        turb.SetVector2(FX_TURB_SIZE, Float(w + 20), Float(h + 20))
-        turb.SetVector2(FX_TURB_FREQ, 0.015, 0.015)
-        turb.SetUInt(FX_TURB_OCTAVES, 3)
-        turb.SetEnum(FX_TURB_NOISE, 1)  ; turbulence mode
-
-        ; Crop in turbulence's local space (0,0 origin); DrawImage offset handles positioning
-        nCrop.SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(w), Float(h))
-        nCrop.SetEnum(1, D2D1_BORDER_SOFT)
-
-        ; Desaturate noise slightly for subtler texture
-        nSat.SetFloat(FX_SAT_SATURATION, 0.3)
-
-        ; PushLayer for overall compositing at user alpha
-        layerParams := FX_LayerParams(x, y, x + w, y + h, userAlpha)
-        gD2D_RT.PushLayer(layerParams, 0)
-
-        ; Gradient fill (base → darker)
-        opaqueBase := 0xFF000000 | baseRGB
-        opaqueDark := 0xFF000000 | FX_BlendToBlack(baseARGB, 0.25)
-        gradBr := FX_LinearGradient2(x, y, x + w, y + h, 0.0, opaqueBase, 1.0, opaqueDark)
-        if (gradBr)
-            D2D_FillRoundRect(x, y, w, h, r, gradBr)
-        else
-            D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(opaqueBase))
-
-        ; Nested PushLayer for noise overlay at low opacity
-        noiseLayerParams := FX_LayerParams(x, y, x + w, y + h, 0.12)
-        gD2D_RT.PushLayer(noiseLayerParams, 0)
-
-        ; DrawImage noise at selection origin
-        static noisePt := Buffer(8)
-        NumPut("float", Float(x), "float", Float(y), noisePt)
-        gD2D_RT.DrawImage(gFX_GPUOutput["noiseSat"], noisePt)
-
-        gD2D_RT.PopLayer()  ; noise layer
-        gD2D_RT.PopLayer()  ; selection layer
-
-        ; Border
-        bw := cfg.GUI_SelBorderWidthPx
-        if (bw > 0) {
-            half := bw / 2
-            D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, r, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
-        }
-    } catch as e {
-        ; GPU effect failure — fall back to Glass style
-        try LogAppend(LOG_PATH_STORE, "FX_Plasma err=" e.Message " file=" e.File " line=" e.Line)
-        FX_GPU_DrawSelection_Glass(x, y, w, h, r)
-    }
-}
-
 ; ========================= GPU INNER SHADOW =========================
 ; GPU-accelerated window-edge shadows (replaces gradient-strip approach).
 
@@ -660,75 +256,6 @@ FX_GPU_DrawHover(x, y, w, h, _r) { ; lint-ignore: dead-param
     FX_DrawSoftRect(x, y, w, h, baseARGB, 4.0)
 }
 
-; ========================= NOISE OVERLAY =========================
-; Full-window turbulence noise texture overlay.
-; Uses the noise chain (turbulence → noiseCrop → noiseSat).
-
-FX_GPU_DrawNoiseOverlay(wPhys, hPhys, opacity) { ; lint-ignore: dead-function
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput
-    global FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
-    global FX_CROP_RECT, FX_SAT_SATURATION, D2D1_BORDER_SOFT
-
-    turb := gFX_GPU["turbulence"], nCrop := gFX_GPU["noiseCrop"], nSat := gFX_GPU["noiseSat"]
-
-    ; Configure turbulence for full-window noise
-    turb.SetVector2(FX_TURB_SIZE, Float(wPhys), Float(hPhys))
-    turb.SetVector2(FX_TURB_FREQ, 0.03, 0.03)
-    turb.SetUInt(FX_TURB_OCTAVES, 2)
-    turb.SetEnum(FX_TURB_NOISE, 1)
-
-    ; Crop to window bounds
-    nCrop.SetRectF(FX_CROP_RECT, 0.0, 0.0, Float(wPhys), Float(hPhys))
-    nCrop.SetEnum(1, D2D1_BORDER_SOFT)
-
-    ; Desaturate to grayscale
-    nSat.SetFloat(FX_SAT_SATURATION, 0.0)
-
-    ; Draw with opacity layer
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, opacity)
-    gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["noiseSat"])
-    gD2D_RT.PopLayer()
-}
-
-; ========================= STYLE DISPATCH =========================
-; Central dispatch for GPU selection rendering. Called from gui_paint.ahk.
-
-; GPU style names (indices 0+). Style 0 = first GPU style.
-global FX_GPU_STYLE_NAMES := [ ; lint-ignore: dead-global
-    "Glass",
-    "Neon",
-    "Frosted",
-    "Ember",
-    "Minimal",
-    "Holograph",
-    "Plasma"
-]
-
-; Draw selection using the active GPU style.
-; gpuStyleIndex: 0-based index into FX_GPU_STYLE_NAMES.
-; Wrapped in try/catch — GPU effect failures fall back to flat fill.
-FX_GPU_DrawSelection(gpuStyleIndex, x, y, w, h, r) {
-    global cfg
-    if (w <= 0 || h <= 0)
-        return
-    try {
-        switch gpuStyleIndex {
-            case 0: FX_GPU_DrawSelection_Glass(x, y, w, h, r)
-            case 1: FX_GPU_DrawSelection_Neon(x, y, w, h, r)
-            case 2: FX_GPU_DrawSelection_Frosted(x, y, w, h, r)
-            case 3: FX_GPU_DrawSelection_Ember(x, y, w, h, r)
-            case 4: FX_GPU_DrawSelection_Minimal(x, y, w, h, r)
-            case 5: FX_GPU_DrawSelection_Holograph(x, y, w, h, r)
-            case 6: FX_GPU_DrawSelection_Plasma(x, y, w, h, r)
-            default: FX_GPU_DrawSelection_Glass(x, y, w, h, r)
-        }
-    } catch {
-        ; GPU effect failed — fall back to simple fill
-        D2D_FillRoundRect(x, y, w, h, r, D2D_GetCachedBrush(cfg.GUI_SelARGB))
-    }
-}
-
 ; ========================= HDR COMPENSATION =========================
 
 ; Apply HDR gamma correction to an ARGB integer (CPU-side).
@@ -751,483 +278,92 @@ FX_HDRCorrectARGB(argb) {
     return (a << 24) | (r << 16) | (g << 8) | b
 }
 
-; ========================= COLOR UTILITIES =========================
-
-; Lighten an RGB value toward white by factor (0.0=no change, 1.0=pure white).
-; Input/output: 0x00RRGGBB (no alpha).
-_FX_LightenRGB(rgb, factor) {
-    r := (rgb >> 16) & 0xFF
-    g := (rgb >> 8) & 0xFF
-    b := rgb & 0xFF
-    r := Round(r + (255 - r) * factor)
-    g := Round(g + (255 - g) * factor)
-    b := Round(b + (255 - b) * factor)
-    return (r << 16) | (g << 8) | b
-}
-
-; ========================= ANIMATION HOOKS =========================
-
-; Per-style entrance flourish — called on each selection change.
-; gpuStyleIndex is 0-based (Glass=0, Neon=1, Frosted=2, Ember=3, Minimal=4, Holograph=5, Plasma=6).
-FX_OnSelectionChange(gpuStyleIndex) {
-    switch gpuStyleIndex {
-        case 0:  ; Glass — shadow lifts into place
-            Anim_StartTween("fx_glass_lift", 0.0, 1.0, 200, Anim_EaseOutCubic)
-        case 1:  ; Neon — bloom flash: glow spikes then settles
-            Anim_StartTween("fx_neon_bloom", 1.5, 1.0, 250, Anim_EaseOutQuad)
-        case 3:  ; Ember — warm glow flares bright then dims
-            Anim_StartTween("fx_ember_flare", 1.8, 1.0, 300, Anim_EaseOutCubic)
-        case 5:  ; Holograph — prismatic flash
-            Anim_StartTween("fx_holo_flash", 1.5, 1.0, 200, Anim_EaseOutQuad)
-    }
-}
-
-; Ambient animation update — called every frame in Full mode only.
+; Ambient animation update — called every frame.
 ; Advances gFX_AmbientTime by the frame delta.
 FX_UpdateAmbient(dt) {
     global gFX_AmbientTime
     gFX_AmbientTime += dt
 }
 
-; ========================= BACKDROP CONFIG INIT =========================
+; ========================= MULTI-LAYER SHADER SYSTEM =========================
 
-; Map cfg.FX2D_BackgroundEffect enum to gFX_BackdropStyle index and
-; precompute all per-frame constants into gFX_BG. Call after gFX_GPUReady := true.
-FX_InitBackdropFromConfig() {
-    global gFX_BackdropStyle, FX_BG_STYLE_NAMES, gFX_BG, cfg
+; Pre-render all active shader layers (D3D11 pipeline). Called BEFORE D2D BeginDraw.
+FX_PreRenderShaderLayers(w, h) {
+    global gFX_ShaderLayers, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
+    global gFX_GPUReady, cfg
 
-    if (!cfg.FX2D_UseBackgroundEffects) {
-        gFX_BackdropStyle := 0
+    if (!gShader_Ready || !gFX_GPUReady || gFX_ShaderLayers.Length = 0)
         return
-    }
 
-    effectName := cfg.FX2D_BackgroundEffect
-    gFX_BackdropStyle := 0
-    for i, name in FX_BG_STYLE_NAMES {
-        if (name = effectName) {
-            gFX_BackdropStyle := i - 1  ; array is 1-based, style 0=None
-            break
+    for _, layer in gFX_ShaderLayers {
+        if (layer.key = "")
+            continue
+
+        ; Compute effective time: (ambient / 1000) * speed + offset + carry
+        ; Time state is per-layer (keyed by layerIndex), not per-shader
+        baseTime := gFX_AmbientTime / 1000.0
+        if (gFX_ShaderTime.Has(layer.layerIndex)) {
+            t := gFX_ShaderTime[layer.layerIndex]
+            baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+        }
+        effectiveTime := baseTime * layer.speed
+
+        try {
+            Shader_PreRender(layer.renderKey, w, h, effectiveTime, layer.darkness, layer.desat, layer.opacity)
+        } catch as e {
+            global LOG_PATH_SHADER
+            errDetail := "Shader ERR [" layer.renderKey "]: " e.Message " @ " e.What
+            if (e.HasProp("Extra") && e.Extra != "")
+                errDetail .= " extra=" e.Extra
+            if (e.HasProp("Number") && e.Number != 0)
+                errDetail .= " hr=" Format("0x{:08x}", e.Number & 0xFFFFFFFF)
+            ToolTip(errDetail)
+            SetTimer(() => ToolTip(), -5000)
+            if (cfg.DiagShaderLog)
+                LogAppend(LOG_PATH_SHADER, errDetail)
         }
     }
-
-    ; --- Gradient Drift precompute ---
-    cs := cfg.FX2D_GradientColorShift
-    gFX_BG["gradWarmR"]  := Round(120 * cs)
-    gFX_BG["gradWarmG"]  := Round(50 * cs)
-    gFX_BG["gradWarmB"]  := Round(40 * cs)
-    gFX_BG["gradCoolR"]  := Round(50 * cs)
-    gFX_BG["gradCoolG"]  := Round(40 * cs)
-    gFX_BG["gradCoolB"]  := Round(120 * cs)
-    gFX_BG["gradSpeed"]  := 0.000140 * cfg.FX2D_GradientSpeed
-    gFX_BG["gradOrbitR"] := cfg.FX2D_GradientOrbitRadius
-    gFX_BG["gradOpacity"] := cfg.FX2D_GradientOpacity
-    gradHalf := cfg.FX2D_GradientBlobSize // 2
-    gFX_BG["gradBlobSz"] := cfg.FX2D_GradientBlobSize
-    gFX_BG["gradHalf"]   := gradHalf
-    gFX_BG["gradBlurR"]  := Float(gradHalf)
-
-    ; --- Caustic precompute ---
-    causticSpd := cfg.FX2D_CausticSpeed
-    gFX_BG["causticDriftSpX"] := 0.0008 * causticSpd
-    gFX_BG["causticDriftSpY"] := 0.0005 * causticSpd
-    gFX_BG["causticFreq"]     := cfg.FX2D_CausticFrequency
-    gFX_BG["causticOctaves"]  := cfg.FX2D_CausticOctaves
-    gFX_BG["causticSat"]      := cfg.FX2D_CausticSaturation
-    gFX_BG["causticOpacity"]  := cfg.FX2D_CausticOpacity
-
-    ; --- Aurora precompute ---
-    aSpd := cfg.FX2D_AuroraSpeed
-    dev := 0.000040 * cfg.FX2D_AuroraSpeedSpread
-    gFX_BG["auroraS1"] := (0.000160 + dev) * aSpd
-    gFX_BG["auroraS2"] := 0.000160 * aSpd
-    gFX_BG["auroraS3"] := (0.000160 - dev) * aSpd
-    gFX_BG["auroraOpacity"] := cfg.FX2D_AuroraOpacity
-    auroraHalf := cfg.FX2D_AuroraBlobSize // 2
-    gFX_BG["auroraBlobSz"] := cfg.FX2D_AuroraBlobSize
-    gFX_BG["auroraHalf"]   := auroraHalf
-    gFX_BG["auroraBlurR"]  := Float(auroraHalf)
-    gFX_BG["auroraColor1"] := cfg.FX2D_AuroraColor1
-    gFX_BG["auroraColor2"] := cfg.FX2D_AuroraColor2
-    gFX_BG["auroraColor3"] := cfg.FX2D_AuroraColor3
-
-    ; --- Grain precompute ---
-    grainSpd := cfg.FX2D_GrainSpeed
-    gFX_BG["grainDriftSpX"] := 0.003 * grainSpd
-    gFX_BG["grainDriftSpY"] := 0.002 * grainSpd
-    gFX_BG["grainFreq"]     := cfg.FX2D_GrainFrequency
-    gFX_BG["grainOctaves"]  := cfg.FX2D_GrainOctaves
-    gFX_BG["grainSat"]      := cfg.FX2D_GrainSaturation
-    gFX_BG["grainOpacity"]  := cfg.FX2D_GrainOpacity
-
-    ; --- Vignette precompute ---
-    gFX_BG["vigOpacity"]   := cfg.FX2D_VignetteOpacity
-    gFX_BG["vigAmplitude"] := cfg.FX2D_VignetteBreathAmplitude
-    gFX_BG["vigSpeed"]     := 0.00157 * cfg.FX2D_VignetteSpeed
-    gFX_BG["vigEdgeColor"] := cfg.FX2D_VignetteEdgeColor
-    gFX_BG["vigDepth"]     := cfg.FX2D_VignetteEdgeDepth
-    gFX_BG["vigDepthY"]    := cfg.FX2D_VignetteEdgeDepth * 0.833
-
-    ; --- Layered composition flags ---
-    gFX_BG["layGrain"]    := cfg.FX2D_GrainIncludeInLayered
-    gFX_BG["layCaustic"]  := cfg.FX2D_CausticIncludeInLayered
-    gFX_BG["layGradient"] := cfg.FX2D_GradientIncludeInLayered
-    gFX_BG["layAurora"]   := cfg.FX2D_AuroraIncludeInLayered
-    gFX_BG["layVignette"] := cfg.FX2D_VignetteIncludeInLayered
 }
 
-; ========================= LIVING BACKDROP EFFECTS =========================
-; Subtle animated textures on the acrylic glass background.
-; Active only when GPUEffects=true AND AnimationType=Full.
+; Draw all active shader layers inside D2D BeginDraw.
+; Opacity is baked into shader output via AT_PostProcess — no PushLayer needed.
+FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
+    global gD2D_RT, gFX_ShaderLayers, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
 
-; Public dispatcher — called from _GUI_PaintOverlay between clear and content.
-FX_DrawBackdrop(wPhys, hPhys, scale) { ; lint-ignore: dead-param
-    global gFX_BackdropStyle, gFX_MouseInWindow, gFX_GPU
+    if (!gShader_Ready || gFX_ShaderLayers.Length = 0)
+        return
 
-    try {
-        switch gFX_BackdropStyle {
-            case 1: _FX_BG_GradientDrift(wPhys, hPhys)
-            case 2: _FX_BG_Caustic(wPhys, hPhys)
-            case 3: _FX_BG_Aurora(wPhys, hPhys)
-            case 4: _FX_BG_Grain(wPhys, hPhys)
-            case 5: _FX_BG_Vignette(wPhys, hPhys)
-            case 6: _FX_BG_Layered(wPhys, hPhys)
-            ; Styles 0 and 7+ are no-ops (0=None, shaders are now separate layer)
-        }
-    } catch as e {
-        ; Backdrop effect failed — show error for diagnosis, include stack + style index
-        ToolTip("BG ERR[" gFX_BackdropStyle "]: " e.Message " @ " e.What "`n" e.Stack)
-        SetTimer(() => ToolTip(), -5000)
+    for _, layer in gFX_ShaderLayers {
+        if (layer.key = "")
+            continue
+        pBitmap := Shader_GetBitmap(layer.renderKey)
+        if (pBitmap)
+            gD2D_RT.DrawImage(pBitmap)
     }
 }
 
-; --- Dither: fine noise overlay to break up gradient banding ---
-; Call INSIDE a PushLayer — the dither blends with surrounding content.
-; Uses bgTurb chain with high frequency for fine-grained noise.
-_FX_BG_Dither(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_BackdropSeedX, gFX_BackdropSeedY
-    global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
-    global FX_CROP_RECT, FX_SAT_SATURATION
+; ========================= MOUSE EFFECT =========================
 
-    if (!gFX_GPU.Has("bgTurb"))
+; Pre-render the mouse effect (D3D11 pipeline). Called BEFORE D2D BeginDraw.
+FX_PreRenderMouseEffect(w, h) {
+    global gFX_MouseEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
+    global gFX_MouseX, gFX_MouseY, cfg
+
+    if (gFX_MouseEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
         return
 
-    bgTurb := gFX_GPU["bgTurb"], bgCrop := gFX_GPU["bgCrop"], bgSat := gFX_GPU["bgSat"]
-
-    ; High-frequency noise at full desaturation = subtle luminance jitter
-    ; D2D Turbulence OFFSET controls both noise position AND output coordinates.
-    ; Seed offsets give unique patterns; crop+targetOffset align to render target origin.
-    margin := 20
-    ofsX := Float(gFX_BackdropSeedX - margin)
-    ofsY := Float(gFX_BackdropSeedY - margin)
-    bgTurb.SetVector2(FX_TURB_OFFSET, ofsX, ofsY)
-    bgTurb.SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
-    bgTurb.SetVector2(FX_TURB_FREQ, 0.15, 0.15)  ; fine grain
-    bgTurb.SetUInt(FX_TURB_OCTAVES, 1)
-    bgTurb.SetEnum(FX_TURB_NOISE, 1)  ; turbulence mode (sharper)
-
-    ; Crop within generated area at seed position, shift to origin for rendering
-    cropX := Float(gFX_BackdropSeedX)
-    cropY := Float(gFX_BackdropSeedY)
-    bgCrop.SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
-    bgSat.SetFloat(FX_SAT_SATURATION, 0.0)  ; grayscale
-
-    static drawPt := Buffer(8)
-    NumPut("float", -cropX, "float", -cropY, drawPt)
-
-    ; Very subtle — just enough to break 8-bit banding (CRANKED: 0.08 for visibility)
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.08)
-    gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
-    gD2D_RT.PopLayer()
-}
-
-; --- Style 1: Gradient Drift ---
-; Slow-rotating warm/cool color wash. Two large soft blobs orbiting ~45s.
-_FX_BG_GradientDrift(wPhys, hPhys) {
-    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase, gFX_BackdropDirSign, gFX_BG, cfg
-
-    baseARGB := cfg.GUI_AcrylicColor
-    baseRGB := baseARGB & 0x00FFFFFF
-    bR := (baseRGB >> 16) & 0xFF
-    bG := (baseRGB >> 8) & 0xFF
-    bB := baseRGB & 0xFF
-
-    ; Warm blob (shift toward amber) — offsets precomputed at init
-    warmR := Min(255, bR + gFX_BG["gradWarmR"])
-    warmG := Min(255, bG + gFX_BG["gradWarmG"])
-    warmB := Max(0, bB - gFX_BG["gradWarmB"])
-    warmARGB := 0xFF000000 | (warmR << 16) | (warmG << 8) | warmB
-
-    ; Cool blob (shift toward blue)
-    coolR := Max(0, bR - gFX_BG["gradCoolR"])
-    coolG := Min(255, bG + gFX_BG["gradCoolG"])
-    coolB := Min(255, bB + gFX_BG["gradCoolB"])
-    coolARGB := 0xFF000000 | (coolR << 16) | (coolG << 8) | coolB
-
-    ; Orbit positions (random phase + direction)
-    angle := gFX_BackdropDirSign * gFX_AmbientTime * gFX_BG["gradSpeed"] + gFX_BackdropSeedPhase
-    cx := wPhys * 0.5
-    cy := hPhys * 0.5
-    orbitR := gFX_BG["gradOrbitR"]
-    rx := wPhys * orbitR
-    ry := hPhys * orbitR
-
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, gFX_BG["gradOpacity"])
-    gD2D_RT.PushLayer(layerParams, 0)
-
-    blobSz := gFX_BG["gradBlobSz"]
-    halfSz := gFX_BG["gradHalf"]
-    blurR := gFX_BG["gradBlurR"]
-
-    ; Warm blob (primary SoftRect chain)
-    wx := cx + rx * Cos(angle)
-    wy := cy + ry * Sin(angle)
-    FX_DrawSoftRect(wx - halfSz, wy - halfSz, blobSz, blobSz, warmARGB, blurR)
-
-    ; Cool blob (secondary SoftRect chain) — opposite side
-    cx2 := cx - rx * Cos(angle)
-    cy2 := cy - ry * Sin(angle)
-    FX_DrawSoftRect2(cx2 - halfSz, cy2 - halfSz, blobSz, blobSz, coolARGB, blurR)
-
-    _FX_BG_Dither(wPhys, hPhys)
-
-    gD2D_RT.PopLayer()
-}
-
-; --- Style 2: Caustic Ripple ---
-; Turbulence noise simulating light refracting through textured glass.
-_FX_BG_Caustic(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase
-    global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
-    global FX_CROP_RECT, FX_SAT_SATURATION
-    global gFX_BG
-
-    if (!gFX_GPU.Has("bgTurb"))
-        return
-
-    ; Drift through noise field — speeds precomputed at init
-    margin := 100
-    driftX := margin * 0.8 * Sin(gFX_AmbientTime * gFX_BG["causticDriftSpX"] + gFX_BackdropSeedPhase)
-    driftY := margin * 0.8 * Cos(gFX_AmbientTime * gFX_BG["causticDriftSpY"] + gFX_BackdropSeedPhase)
-
-    bgTurb := gFX_GPU["bgTurb"], bgCrop := gFX_GPU["bgCrop"], bgSat := gFX_GPU["bgSat"]
-
-    ; Fixed generation area around seed position (margin accommodates crop drift)
-    freq := gFX_BG["causticFreq"]
-    bgTurb.SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
-    bgTurb.SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
-    bgTurb.SetVector2(FX_TURB_FREQ, freq, freq)
-    bgTurb.SetUInt(FX_TURB_OCTAVES, gFX_BG["causticOctaves"])
-    bgTurb.SetEnum(FX_TURB_NOISE, 0)  ; fractalSum (smoother)
-
-    cropX := Float(gFX_BackdropSeedX + driftX)
-    cropY := Float(gFX_BackdropSeedY + driftY)
-    bgCrop.SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
-    bgSat.SetFloat(FX_SAT_SATURATION, gFX_BG["causticSat"])
-
-    static drawPt := Buffer(8)
-    NumPut("float", -cropX, "float", -cropY, drawPt)
-
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, gFX_BG["causticOpacity"])
-    gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
-    gD2D_RT.PopLayer()
-}
-
-; --- Style 3: Aurora ---
-; Three soft colored blobs drifting in slow elliptical orbits.
-_FX_BG_Aurora(wPhys, hPhys) {
-    global gD2D_RT, gFX_AmbientTime, gFX_BackdropSeedPhase, gFX_BackdropDirSign, gFX_BG
-
-    cx := wPhys * 0.5
-    cy := hPhys * 0.5
-    dir := gFX_BackdropDirSign
-
-    ; Three blobs — speeds precomputed at init
-    a1 := dir * gFX_AmbientTime * gFX_BG["auroraS1"] + gFX_BackdropSeedPhase
-    x1 := cx + wPhys * 0.3 * Cos(a1)
-    y1 := cy + hPhys * 0.25 * Sin(a1 * 1.3)
-    a2 := dir * gFX_AmbientTime * gFX_BG["auroraS2"] + 2.09 + gFX_BackdropSeedPhase
-    x2 := cx + wPhys * 0.25 * Cos(a2)
-    y2 := cy + hPhys * 0.3 * Sin(a2 * 0.9)
-    a3 := dir * gFX_AmbientTime * gFX_BG["auroraS3"] + 4.19 + gFX_BackdropSeedPhase
-    x3 := cx + wPhys * 0.2 * Cos(a3 * 1.1)
-    y3 := cy + hPhys * 0.2 * Sin(a3)
-
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, gFX_BG["auroraOpacity"])
-    gD2D_RT.PushLayer(layerParams, 0)
-
-    blobSz := gFX_BG["auroraBlobSz"]
-    halfSz := gFX_BG["auroraHalf"]
-    blurR := gFX_BG["auroraBlurR"]
-
-    FX_DrawSoftRect(x1 - halfSz, y1 - halfSz, blobSz, blobSz, gFX_BG["auroraColor1"], blurR)
-    FX_DrawSoftRect(x2 - halfSz, y2 - halfSz, blobSz, blobSz, gFX_BG["auroraColor2"], blurR)
-    FX_DrawSoftRect(x3 - halfSz, y3 - halfSz, blobSz, blobSz, gFX_BG["auroraColor3"], blurR)
-
-    _FX_BG_Dither(wPhys, hPhys)
-
-    gD2D_RT.PopLayer()
-}
-
-; --- Style 4: Grain (Film Grain) ---
-; Fine static turbulence texture — frosted glass materiality.
-_FX_BG_Grain(wPhys, hPhys) {
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_AmbientTime, gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase
-    global FX_TURB_OFFSET, FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE
-    global FX_CROP_RECT, FX_SAT_SATURATION
-    global gFX_BG
-
-    if (!gFX_GPU.Has("bgTurb"))
-        return
-
-    bgTurb := gFX_GPU["bgTurb"], bgCrop := gFX_GPU["bgCrop"], bgSat := gFX_GPU["bgSat"]
-
-    ; Drifting crop for shimmer — speeds precomputed at init
-    margin := 60
-    driftX := margin * 0.8 * Sin(gFX_AmbientTime * gFX_BG["grainDriftSpX"] + gFX_BackdropSeedPhase)
-    driftY := margin * 0.8 * Cos(gFX_AmbientTime * gFX_BG["grainDriftSpY"] + gFX_BackdropSeedPhase)
-
-    freq := gFX_BG["grainFreq"]
-    bgTurb.SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
-    bgTurb.SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
-    bgTurb.SetVector2(FX_TURB_FREQ, freq, freq)
-    bgTurb.SetUInt(FX_TURB_OCTAVES, gFX_BG["grainOctaves"])
-    bgTurb.SetEnum(FX_TURB_NOISE, 1)  ; turbulence (sharper detail)
-
-    cropX := Float(gFX_BackdropSeedX + driftX)
-    cropY := Float(gFX_BackdropSeedY + driftY)
-    bgCrop.SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
-    bgSat.SetFloat(FX_SAT_SATURATION, gFX_BG["grainSat"])
-
-    static drawPt := Buffer(8)
-    NumPut("float", -cropX, "float", -cropY, drawPt)
-
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, gFX_BG["grainOpacity"])
-    gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["bgSat"], drawPt)
-    gD2D_RT.PopLayer()
-}
-
-; --- Style 5: Vignette Breathe ---
-; Pulsing inner shadow — edges darken/lighten in slow breathing cycle.
-_FX_BG_Vignette(wPhys, hPhys) {
-    global gD2D_RT, gFX_AmbientTime, gFX_BG
-
-    ; Breathing alpha — speed precomputed at init
-    breath := gFX_BG["vigOpacity"] + gFX_BG["vigAmplitude"] * Sin(gFX_AmbientTime * gFX_BG["vigSpeed"])
-    alpha := Round(breath * 255)
-    edgeARGB := (alpha << 24) | gFX_BG["vigEdgeColor"]
-
-    ; Depth of edge bands (Y ratio precomputed at init)
-    depthX := Round(wPhys * gFX_BG["vigDepth"])
-    depthY := Round(hPhys * gFX_BG["vigDepthY"])
-
-    ; Top edge
-    FX_DrawSoftRect(0, -depthY, wPhys, depthY, edgeARGB, Float(depthY * 0.7))
-    ; Bottom edge (secondary chain)
-    FX_DrawSoftRect2(0, hPhys, wPhys, depthY, edgeARGB, Float(depthY * 0.7))
-    ; Left edge
-    FX_DrawSoftRect(-depthX, 0, depthX, hPhys, edgeARGB, Float(depthX * 0.7))
-    ; Right edge (secondary chain)
-    FX_DrawSoftRect2(wPhys, 0, depthX, hPhys, edgeARGB, Float(depthX * 0.7))
-}
-
-; --- Style 6: Layered (Combined) ---
-; Premium stack: Grain base + Caustic overlay + Vignette breathe.
-_FX_BG_Layered(wPhys, hPhys) {
-    global gFX_BG
-    ; Order: Grain before Caustic (Caustic wins shared bgTurb chain), blob effects, Vignette last
-    if (gFX_BG["layGrain"])
-        _FX_BG_Grain(wPhys, hPhys)
-    if (gFX_BG["layCaustic"])
-        _FX_BG_Caustic(wPhys, hPhys)
-    if (gFX_BG["layGradient"])
-        _FX_BG_GradientDrift(wPhys, hPhys)
-    if (gFX_BG["layAurora"])
-        _FX_BG_Aurora(wPhys, hPhys)
-    if (gFX_BG["layVignette"])
-        _FX_BG_Vignette(wPhys, hPhys)
-}
-
-; --- Point Specular (Mouse Spotlight) ---
-; D2D PointSpecular effect using bgTurb as surface height map.
-; The light catches the backdrop texture as the mouse moves.
-_FX_BG_PointSpecular(wPhys, hPhys) { ; lint-ignore: dead-function (kept for future mouse spotlight effect)
-    global gD2D_RT, gFX_GPU, gFX_GPUOutput, gFX_MouseX, gFX_MouseY, gFX_BackdropSeedX, gFX_BackdropSeedY
-    global FX_SPEC_LIGHT_POS, FX_SPEC_EXPONENT, FX_SPEC_SURFACE_SCALE
-    global FX_SPEC_CONSTANT, FX_SPEC_COLOR, FX_CROP_RECT
-    global FX_TURB_SIZE, FX_TURB_FREQ, FX_TURB_OCTAVES, FX_TURB_NOISE, FX_TURB_OFFSET
-
-    bgTurb := gFX_GPU["bgTurb"], spec := gFX_GPU["specular"], specCrop := gFX_GPU["specCrop"]
-
-    ; Ensure bgTurb has a surface for the specular to interact with
-    ; (low-cost minimal noise if not already configured by Caustic/Grain)
-    ; Explicit offset at seed position — specular inherits bgTurb's coordinate space.
-    margin := 20
-    bgTurb.SetVector2(FX_TURB_OFFSET, Float(gFX_BackdropSeedX - margin), Float(gFX_BackdropSeedY - margin))
-    bgTurb.SetVector2(FX_TURB_SIZE, Float(wPhys + 2 * margin), Float(hPhys + 2 * margin))
-    bgTurb.SetVector2(FX_TURB_FREQ, 0.02, 0.02)
-    bgTurb.SetUInt(FX_TURB_OCTAVES, 2)
-    bgTurb.SetEnum(FX_TURB_NOISE, 0)
-
-    ; Update specular light position from mouse coordinates (in seed-offset coordinate space)
-    ; Z = height above surface (larger = wider/softer cone) — CRANKED Z from 300 to 150 (tighter)
-    cropX := Float(gFX_BackdropSeedX)
-    cropY := Float(gFX_BackdropSeedY)
-    spec.SetVector3(FX_SPEC_LIGHT_POS, Float(gFX_MouseX) + cropX, Float(gFX_MouseY) + cropY, 150.0)
-    spec.SetFloat(FX_SPEC_EXPONENT, 10.0)      ; CRANKED from 20 (wider highlight)
-    spec.SetFloat(FX_SPEC_SURFACE_SCALE, 4.0)  ; CRANKED from 1.5
-    spec.SetFloat(FX_SPEC_CONSTANT, 3.0)       ; CRANKED from 0.8
-    spec.SetVector3(FX_SPEC_COLOR, 1.0, 1.0, 1.0)  ; white light
-
-    ; Crop specular output within generated area, shift to origin
-    specCrop.SetRectF(FX_CROP_RECT, cropX, cropY, cropX + wPhys, cropY + hPhys)
-
-    static drawPt := Buffer(8)
-    NumPut("float", -cropX, "float", -cropY, drawPt)
-
-    ; Render — CRANKED from 0.08 to 0.50
-    layerParams := FX_LayerParams(0, 0, wPhys, hPhys, 0.50)
-    gD2D_RT.PushLayer(layerParams, 0)
-    gD2D_RT.DrawImage(gFX_GPUOutput["specCrop"], drawPt)
-    gD2D_RT.PopLayer()
-}
-
-; ========================= SHADER LAYER (INDEPENDENT) =========================
-
-; Pre-render the active shader (D3D11 pipeline). Called BEFORE D2D BeginDraw.
-; Independent of backdrop style — controlled by gFX_ShaderIndex (V key).
-FX_PreRenderShaderLayer(w, h) {
-    global gFX_ShaderIndex, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
-    global gFX_GPUReady, cfg, SHADER_NAMES ; lint-ignore: phantom-global (SHADER_NAMES in src/lib/shader_bundle.ahk)
-
-    if (gFX_ShaderIndex < 1 || !gShader_Ready || !gFX_GPUReady)
-        return
-    if (cfg.PerfAnimationType != "Full")
-        return
-
-    ; Map index to registered shader name (SHADER_NAMES[1]="None", [2]=first shader, etc.)
-    shaderName := _FX_GetShaderRegKey(gFX_ShaderIndex)
-    if (shaderName = "")
-        return
-
-    ; Compute effective time: randomOffset + carry (previous sessions) + current session time
-    effectiveTime := gFX_AmbientTime / 1000.0
-    if (gFX_ShaderTime.Has(shaderName)) {
-        t := gFX_ShaderTime[shaderName]
-        effectiveTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+    baseTime := gFX_AmbientTime / 1000.0
+    if (gFX_ShaderTime.Has(gFX_MouseEffect.key)) {
+        t := gFX_ShaderTime[gFX_MouseEffect.key]
+        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
     }
 
     try {
-        Shader_PreRender(shaderName, w, h, effectiveTime, cfg.ShaderShaderDarkness, cfg.ShaderShaderDesaturation, cfg.ShaderShaderOpacity)
+        Shader_PreRender(gFX_MouseEffect.key, w, h, baseTime, 0.0, 0.0, gFX_MouseEffect.opacity,
+            gFX_MouseX, gFX_MouseY)
     } catch as e {
         global LOG_PATH_SHADER
-        errDetail := "Shader ERR [" shaderName "]: " e.Message " @ " e.What
-        if (e.HasProp("Extra") && e.Extra != "")
-            errDetail .= " extra=" e.Extra
-        if (e.HasProp("Number") && e.Number != 0)
-            errDetail .= " hr=" Format("0x{:08x}", e.Number & 0xFFFFFFFF)
+        errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
         ToolTip(errDetail)
         SetTimer(() => ToolTip(), -5000)
         if (cfg.DiagShaderLog)
@@ -1235,111 +371,230 @@ FX_PreRenderShaderLayer(w, h) {
     }
 }
 
-; Draw the active shader layer inside D2D BeginDraw.
-; Called from _GUI_PaintOverlay after FX_DrawBackdrop, before content.
-; Opacity is baked into shader output via AT_PostProcess — no PushLayer needed.
-FX_DrawShaderLayer(wPhys, hPhys) { ; lint-ignore: dead-param
-    global gD2D_RT, gFX_ShaderIndex, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
+; Draw the mouse effect inside D2D BeginDraw.
+FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
+    global gD2D_RT, gFX_MouseEffect, gShader_Ready ; lint-ignore: phantom-global
 
-    if (gFX_ShaderIndex < 1 || !gShader_Ready)
+    if (gFX_MouseEffect.key = "" || !gShader_Ready)
         return
 
-    shaderName := _FX_GetShaderRegKey(gFX_ShaderIndex)
-    if (shaderName = "")
-        return
-
-    pBitmap := Shader_GetBitmap(shaderName)
-    if (!pBitmap)
-        return
-
-    gD2D_RT.DrawImage(pBitmap)
+    pBitmap := Shader_GetBitmap(gFX_MouseEffect.key)
+    if (pBitmap)
+        gD2D_RT.DrawImage(pBitmap)
 }
 
-; Map a 1-based shader index to the registry key name.
-; Uses SHADER_KEYS (parallel array to SHADER_NAMES, generated by shader_bundle.ps1).
-; Returns "" if index is out of range or shader not yet registered.
-_FX_GetShaderRegKey(index) {
-    global SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
-    if (index < 1 || index >= SHADER_KEYS.Length)
-        return ""
-    key := SHADER_KEYS[index + 1]  ; SHADER_KEYS is 1-based, index 1 = "" (None), index 2 = first shader
-    if (key = "" || !gShader_Registry.Has(key))
-        return ""
-    return key
+; ========================= SELECTION EFFECT =========================
+
+; Pre-render the selection shader. Called DURING paint (needs selection geometry).
+; Decomposes ARGB ints to premultiplied float4 RGBA for the shader cbuffer.
+FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, isHovered, entranceT) {
+    global gFX_SelectionEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
+    global cfg
+
+    if (gFX_SelectionEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
+        return
+
+    baseTime := gFX_AmbientTime / 1000.0
+    if (gFX_ShaderTime.Has(gFX_SelectionEffect.key)) {
+        t := gFX_ShaderTime[gFX_SelectionEffect.key]
+        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+    }
+
+    ; Decompose ARGB → premultiplied float4 RGBA
+    selA := ((selARGB >> 24) & 0xFF) / 255.0
+    selR := (((selARGB >> 16) & 0xFF) / 255.0) * selA
+    selG := (((selARGB >> 8) & 0xFF) / 255.0) * selA
+    selB := ((selARGB & 0xFF) / 255.0) * selA
+
+    bdrA := ((borderARGB >> 24) & 0xFF) / 255.0
+    bdrR := (((borderARGB >> 16) & 0xFF) / 255.0) * bdrA
+    bdrG := (((borderARGB >> 8) & 0xFF) / 255.0) * bdrA
+    bdrB := ((borderARGB & 0xFF) / 255.0) * bdrA
+
+    try {
+        Shader_PreRender(gFX_SelectionEffect.key, w, h, baseTime, 0.0, 0.0, 1.0,
+            0, 0,
+            selX, selY, selW, selH,
+            selR, selG, selB, selA,
+            bdrR, bdrG, bdrB, bdrA,
+            borderWidth * 1.0, isHovered * 1.0, entranceT * 1.0)
+    } catch as e {
+        global LOG_PATH_SHADER
+        errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
+        ToolTip(errDetail)
+        SetTimer(() => ToolTip(), -5000)
+        if (cfg.DiagShaderLog)
+            LogAppend(LOG_PATH_SHADER, errDetail)
+    }
 }
 
-; Initialize per-shader time state (random offset + accumulate flag).
+; Draw the selection effect inside D2D BeginDraw.
+FX_DrawSelectionEffect(wPhys, hPhys) { ; lint-ignore: dead-param
+    global gD2D_RT, gFX_SelectionEffect, gShader_Ready ; lint-ignore: phantom-global
+
+    if (gFX_SelectionEffect.key = "" || !gShader_Ready)
+        return
+
+    pBitmap := Shader_GetBitmap(gFX_SelectionEffect.key)
+    if (pBitmap)
+        gD2D_RT.DrawImage(pBitmap)
+}
+
+; ========================= SHADER CONFIG RESOLUTION =========================
+
+; Initialize per-layer time state (random offset + accumulate flag).
 ; Called after shader registration during FX_GPU_Init and after lazy-load.
-; Skips shaders already initialized (preserves time state for eager-loaded shader).
+; Each layer gets its own random offset — even if multiple layers use the same shader.
+; Mouse/selection effects are keyed by shader name (single instances, no collision).
+; Skips entries already initialized (preserves time state across lazy-load).
 _FX_InitShaderTime() {
-    global gFX_ShaderTime, gShader_Registry, cfg ; lint-ignore: phantom-global
+    global gFX_ShaderTime, gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
+    global gShader_Registry ; lint-ignore: phantom-global
 
     if (!IsObject(gFX_ShaderTime))
         gFX_ShaderTime := Map()
-    for name, entry in gShader_Registry {
-        if (gFX_ShaderTime.Has(name))
-            continue  ; Already initialized (eager-loaded shader)
-        meta := entry.meta
 
-        ; Per-shader JSON overrides, falling back to global config
-        minOff := cfg.PerfShaderTimeOffsetMin
-        if (IsObject(meta) && meta.HasOwnProp("timeOffsetMin"))
-            minOff := meta.timeOffsetMin
-        maxOff := cfg.PerfShaderTimeOffsetMax
-        if (IsObject(meta) && meta.HasOwnProp("timeOffsetMax"))
-            maxOff := meta.timeOffsetMax
-        accum := cfg.PerfShaderTimeAccumulate
-        if (IsObject(meta) && meta.HasOwnProp("timeAccumulate"))
-            accum := meta.timeAccumulate
+    ; Per-layer time state (keyed by layerIndex, not shader name)
+    for _, layer in gFX_ShaderLayers {
+        idx := layer.layerIndex
+        if (gFX_ShaderTime.Has(idx))
+            continue  ; Already initialized
+
+        minOff := layer.timeOffsetMin
+        maxOff := layer.timeOffsetMax
+        accum := layer.timeAccumulate
 
         ; Ensure min <= max
         if (minOff > maxOff)
             maxOff := minOff
 
-        gFX_ShaderTime[name] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
+        gFX_ShaderTime[idx] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
+    }
+
+    ; Mouse/selection effects: keyed by shader name, use shader JSON metadata defaults
+    for _, shaderKey in [gFX_MouseEffect.key, gFX_SelectionEffect.key] {
+        if (shaderKey = "" || gFX_ShaderTime.Has(shaderKey))
+            continue
+        minOff := 30, maxOff := 90, accum := true
+        if (gShader_Registry.Has(shaderKey)) {
+            meta := gShader_Registry[shaderKey].meta
+            if (IsObject(meta) && meta.HasOwnProp("timeOffsetMin"))
+                minOff := meta.timeOffsetMin
+            if (IsObject(meta) && meta.HasOwnProp("timeOffsetMax"))
+                maxOff := meta.timeOffsetMax
+            if (IsObject(meta) && meta.HasOwnProp("timeAccumulate"))
+                accum := meta.timeAccumulate
+        }
+        if (minOff > maxOff)
+            maxOff := minOff
+        gFX_ShaderTime[shaderKey] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
     }
 }
 
-; Resolve cfg.ShaderShaderName to gFX_ShaderIndex with fallback chain.
-; Fallback: exact match → "raindropsGlass" → 0 (None).
-_FX_ResolveConfiguredShader() {
-    global gFX_ShaderIndex, cfg, SHADER_KEYS ; lint-ignore: phantom-global
-
-    shaderName := cfg.ShaderShaderName
-    if (shaderName = "") {
-        gFX_ShaderIndex := 0
+; Initialize shader time for a single shader key (mouse/selection effects).
+; Uses shader JSON metadata for offset defaults.
+_FX_InitShaderTimeForKey(shaderKey) {
+    global gFX_ShaderTime, gShader_Registry ; lint-ignore: phantom-global
+    if (shaderKey = "" || gFX_ShaderTime.Has(shaderKey))
         return
+    minOff := 30, maxOff := 90, accum := true
+    if (gShader_Registry.Has(shaderKey)) {
+        meta := gShader_Registry[shaderKey].meta
+        if (IsObject(meta) && meta.HasOwnProp("timeOffsetMin"))
+            minOff := meta.timeOffsetMin
+        if (IsObject(meta) && meta.HasOwnProp("timeOffsetMax"))
+            maxOff := meta.timeOffsetMax
+        if (IsObject(meta) && meta.HasOwnProp("timeAccumulate"))
+            accum := meta.timeAccumulate
     }
-
-    ; Search SHADER_KEYS for exact match
-    Loop SHADER_KEYS.Length {
-        if (SHADER_KEYS[A_Index] = shaderName) {
-            gFX_ShaderIndex := A_Index - 1
-            return
-        }
-    }
-
-    ; Fallback: "raindropsGlass"
-    Loop SHADER_KEYS.Length {
-        if (SHADER_KEYS[A_Index] = "raindropsGlass") {
-            gFX_ShaderIndex := A_Index - 1
-            return
-        }
-    }
-
-    ; Final fallback: None
-    gFX_ShaderIndex := 0
+    if (minOff > maxOff)
+        maxOff := minOff
+    gFX_ShaderTime[shaderKey] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
 }
 
-; Lazy-load all remaining shaders. Called on first cycle-hotkey press.
-FX_EnsureAllShadersLoaded() {
-    global gShader_Ready ; lint-ignore: phantom-global
-    static done := false
-    if (done || !gShader_Ready)
+; Resolve all shader layer configs from cfg.Shader1_* through Shader4_*,
+; MouseEffect_*, and GUI_SelectionEffect into runtime state.
+_FX_ResolveConfiguredShaders() {
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, cfg
+    global SHADER_KEYS, MOUSE_SHADER_KEYS, SELECTION_SHADER_KEYS ; lint-ignore: phantom-global
+
+    gFX_ShaderLayers := []
+
+    ; Global shader toggle — skip all layer resolution when disabled
+    if (!cfg.ShaderUseShaderLayers)
         return
-    done := true
-    Shader_RegisterAllRemaining()
-    _FX_InitShaderTime()
+
+    ; Resolve up to 4 shader layers
+    Loop 4 {
+        layerKey := cfg.%"Shader" A_Index "_ShaderName"%
+        if (layerKey = "")
+            continue
+
+        ; Validate key exists in SHADER_KEYS
+        found := false
+        for _, k in SHADER_KEYS {
+            if (k = layerKey) {
+                found := true
+                break
+            }
+        }
+        if (!found)
+            continue
+
+        ; renderKey: per-layer alias so each layer gets its own render target
+        ; even when multiple layers use the same shader
+        renderKey := layerKey "#" A_Index
+
+        gFX_ShaderLayers.Push({
+            key: layerKey,
+            renderKey: renderKey,
+            name: layerKey,
+            layerIndex: A_Index,
+            opacity: cfg.%"Shader" A_Index "_ShaderOpacity"%,
+            darkness: cfg.%"Shader" A_Index "_ShaderDarkness"%,
+            desat: cfg.%"Shader" A_Index "_ShaderDesaturation"%,
+            speed: cfg.%"Shader" A_Index "_ShaderSpeed"%,
+            timeOffsetMin: cfg.%"Shader" A_Index "_TimeOffsetMin"%,
+            timeOffsetMax: cfg.%"Shader" A_Index "_TimeOffsetMax"%,
+            timeAccumulate: cfg.%"Shader" A_Index "_TimeAccumulate"%
+        })
+    }
+
+    ; Resolve mouse effect
+    mouseKey := cfg.MouseEffect_UseMouseEffect ? cfg.MouseEffect_Name : ""
+    if (mouseKey != "") {
+        found := false
+        for _, k in MOUSE_SHADER_KEYS {
+            if (k = mouseKey) {
+                found := true
+                break
+            }
+        }
+        if (found)
+            gFX_MouseEffect := {key: mouseKey, name: mouseKey, opacity: cfg.MouseEffect_Opacity}
+        else
+            gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+    } else {
+        gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+    }
+
+    ; Resolve selection effect
+    selKey := cfg.GUI_UseSelectionEffect ? cfg.GUI_SelectionEffect : ""
+    if (selKey != "" && selKey != "None") {
+        found := false
+        for _, k in SELECTION_SHADER_KEYS {
+            if (k = selKey) {
+                found := true
+                break
+            }
+        }
+        if (found)
+            gFX_SelectionEffect := {key: selKey, name: selKey}
+        else
+            gFX_SelectionEffect := {key: "", name: ""}
+    } else {
+        gFX_SelectionEffect := {key: "", name: ""}
+    }
 }
 
 ; Save shader carry time before gFX_AmbientTime resets.
@@ -1351,5 +606,209 @@ FX_SaveShaderTime() {
         if (t.accumulate)
             t.carry += sessionSec
     }
+}
+
+; Check if any shaders are configured (background, mouse, or selection).
+; Used by gui_animation.ahk to keep frame loop running for shader animation.
+FX_HasActiveShaders() {
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
+    return (gFX_ShaderLayers.Length > 0 || gFX_MouseEffect.key != "" || gFX_SelectionEffect.key != "")
+}
+
+; Release render targets for shaders no longer in any active slot.
+_FX_ReleaseInactiveShaders() {
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
+    activeNames := []
+    for _, layer in gFX_ShaderLayers {
+        if (layer.key != "")
+            activeNames.Push(layer.renderKey)
+    }
+    if (gFX_MouseEffect.key != "")
+        activeNames.Push(gFX_MouseEffect.key)
+    if (gFX_SelectionEffect.key != "")
+        activeNames.Push(gFX_SelectionEffect.key)
+    Shader_ReleaseInactive(activeNames)
+}
+
+; ========================= SHADER CYCLING =========================
+
+; Cycle the shader for a specific layer (1-based index).
+FX_CycleShaderLayer(layerIndex) {
+    global gFX_ShaderLayers, gFX_GPUReady, gShader_Ready, cfg ; lint-ignore: phantom-global
+    global SHADER_NAMES, SHADER_KEYS ; lint-ignore: phantom-global
+    global gShader_Registry ; lint-ignore: phantom-global
+
+    static cycling := false
+    if (cycling)
+        return
+    cycling := true
+
+    if (!gFX_GPUReady || !gShader_Ready) {
+        cycling := false
+        return
+    }
+
+    ; Find current key for this layer (by layerIndex field, not array position)
+    currentKey := ""
+    layerArrayIdx := 0
+    for i, layer in gFX_ShaderLayers {
+        if (layer.layerIndex = layerIndex) {
+            currentKey := layer.key
+            layerArrayIdx := i
+            break
+        }
+    }
+
+    ; Find current index in SHADER_KEYS
+    currentIdx := 0  ; 0 = None
+    Loop SHADER_KEYS.Length {
+        if (SHADER_KEYS[A_Index] = currentKey) {
+            currentIdx := A_Index - 1
+            break
+        }
+    }
+
+    ; Cycle forward — just pick the next name, register on-demand
+    total := SHADER_NAMES.Length
+    currentIdx := Mod(currentIdx + 1, total)
+
+    newKey := (currentIdx = 0) ? "" : SHADER_KEYS[currentIdx + 1]
+    newName := SHADER_NAMES[currentIdx + 1]
+
+    ; Register only the shader we need (if not already registered)
+    if (newKey != "" && !gShader_Registry.Has(newKey))
+        Shader_RegisterByKey(newKey)
+
+    ; Update layer config
+    newRenderKey := (newKey != "") ? newKey "#" layerIndex : ""
+    if (layerArrayIdx > 0) {
+        gFX_ShaderLayers[layerArrayIdx].key := newKey
+        gFX_ShaderLayers[layerArrayIdx].renderKey := newRenderKey
+        gFX_ShaderLayers[layerArrayIdx].name := newName
+    } else if (newKey != "") {
+        ; Create new layer from config values
+        gFX_ShaderLayers.Push({
+            key: newKey, renderKey: newRenderKey, name: newName, layerIndex: layerIndex,
+            opacity: cfg.%"Shader" layerIndex "_ShaderOpacity"%,
+            darkness: cfg.%"Shader" layerIndex "_ShaderDarkness"%,
+            desat: cfg.%"Shader" layerIndex "_ShaderDesaturation"%,
+            speed: cfg.%"Shader" layerIndex "_ShaderSpeed"%,
+            timeOffsetMin: cfg.%"Shader" layerIndex "_TimeOffsetMin"%,
+            timeOffsetMax: cfg.%"Shader" layerIndex "_TimeOffsetMax"%,
+            timeAccumulate: cfg.%"Shader" layerIndex "_TimeAccumulate"%
+        })
+    }
+
+    ; Register per-layer alias so this layer gets its own render target
+    if (newKey != "")
+        Shader_RegisterAlias(newRenderKey, newKey)
+
+    ; Generate fresh per-layer time offset for this layer
+    global gFX_ShaderTime
+    if (newKey != "") {
+        minOff := 30, maxOff := 90, accum := true
+        if (layerArrayIdx > 0) {
+            layer := gFX_ShaderLayers[layerArrayIdx]
+            if (layer.HasOwnProp("timeOffsetMin"))
+                minOff := layer.timeOffsetMin
+            if (layer.HasOwnProp("timeOffsetMax"))
+                maxOff := layer.timeOffsetMax
+            if (layer.HasOwnProp("timeAccumulate"))
+                accum := layer.timeAccumulate
+        }
+        if (minOff > maxOff)
+            maxOff := minOff
+        gFX_ShaderTime[layerIndex] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
+    } else if (gFX_ShaderTime.Has(layerIndex)) {
+        gFX_ShaderTime.Delete(layerIndex)
+    }
+
+    ; Remove empty trailing layers
+    while (gFX_ShaderLayers.Length > 0 && gFX_ShaderLayers[gFX_ShaderLayers.Length].key = "")
+        gFX_ShaderLayers.Pop()
+
+    _FX_ReleaseInactiveShaders()
+
+    cycling := false
+
+    ToolTip("Layer " layerIndex ": " newName)
+    SetTimer(() => ToolTip(), -2000)
+    GUI_Repaint()
+}
+
+; Cycle the mouse effect.
+FX_CycleMouseEffect() {
+    global gFX_MouseEffect, gFX_GPUReady, gShader_Ready ; lint-ignore: phantom-global
+    global MOUSE_SHADER_NAMES, MOUSE_SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
+
+    if (!gFX_GPUReady || !gShader_Ready)
+        return
+
+    currentIdx := 0
+    Loop MOUSE_SHADER_KEYS.Length {
+        if (MOUSE_SHADER_KEYS[A_Index] = gFX_MouseEffect.key) {
+            currentIdx := A_Index - 1
+            break
+        }
+    }
+
+    ; Cycle forward — register on-demand
+    total := MOUSE_SHADER_NAMES.Length
+    currentIdx := Mod(currentIdx + 1, total)
+
+    if (currentIdx = 0) {
+        gFX_MouseEffect := {key: "", name: "", opacity: 0.30}
+    } else {
+        newKey := MOUSE_SHADER_KEYS[currentIdx + 1]
+        if (!gShader_Registry.Has(newKey))
+            Shader_RegisterByKey(newKey)
+        gFX_MouseEffect := {key: newKey, name: MOUSE_SHADER_NAMES[currentIdx + 1], opacity: gFX_MouseEffect.opacity}
+        ; Init time state for the new shader (keyed by name for mouse/selection)
+        _FX_InitShaderTimeForKey(newKey)
+    }
+
+    _FX_ReleaseInactiveShaders()
+
+    ToolTip("Mouse: " (currentIdx = 0 ? "None" : MOUSE_SHADER_NAMES[currentIdx + 1]))
+    SetTimer(() => ToolTip(), -2000)
+    GUI_Repaint()
+}
+
+; Cycle the selection effect.
+FX_CycleSelectionEffect() {
+    global gFX_SelectionEffect, gFX_GPUReady, gShader_Ready ; lint-ignore: phantom-global
+    global SELECTION_SHADER_NAMES, SELECTION_SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
+
+    if (!gFX_GPUReady || !gShader_Ready)
+        return
+
+    currentIdx := 0
+    Loop SELECTION_SHADER_KEYS.Length {
+        if (SELECTION_SHADER_KEYS[A_Index] = gFX_SelectionEffect.key) {
+            currentIdx := A_Index - 1
+            break
+        }
+    }
+
+    ; Cycle forward — register on-demand
+    total := SELECTION_SHADER_NAMES.Length
+    currentIdx := Mod(currentIdx + 1, total)
+
+    if (currentIdx = 0) {
+        gFX_SelectionEffect := {key: "", name: ""}
+    } else {
+        newKey := SELECTION_SHADER_KEYS[currentIdx + 1]
+        if (!gShader_Registry.Has(newKey))
+            Shader_RegisterByKey(newKey)
+        gFX_SelectionEffect := {key: newKey, name: SELECTION_SHADER_NAMES[currentIdx + 1]}
+        ; Init time state for the new shader (keyed by name for mouse/selection)
+        _FX_InitShaderTimeForKey(newKey)
+    }
+
+    _FX_ReleaseInactiveShaders()
+
+    ToolTip("Selection: " (currentIdx = 0 ? "None" : SELECTION_SHADER_NAMES[currentIdx + 1]))
+    SetTimer(() => ToolTip(), -2000)
+    GUI_Repaint()
 }
 

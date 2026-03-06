@@ -116,14 +116,9 @@ Anim_CancelTween(name) {
 
 Anim_CancelAll() {
     global gAnim_Tweens, gFX_AmbientTime, gAnim_HidePending
-    global gFX_BackdropSeedX, gFX_BackdropSeedY, gFX_BackdropSeedPhase, gFX_BackdropDirSign
     gAnim_Tweens := Map()
     FX_SaveShaderTime()           ; Capture shader carry time before ambient resets
     gFX_AmbientTime := 0.0
-    gFX_BackdropSeedX := Random(100, 10000) * 1.0      ; Fresh turbulence pattern each open
-    gFX_BackdropSeedY := Random(100, 10000) * 1.0
-    gFX_BackdropSeedPhase := Random() * 6.2832          ; Random orbit starting position (0 to 2π)
-    gFX_BackdropDirSign := Random(0, 1) ? 1 : -1        ; Random orbit direction
     gAnim_HidePending := false
     Anim_StopTimer()
 }
@@ -157,7 +152,7 @@ Anim_EnsureTimer() {
     global gAnim_FPSFrameCount, gAnim_FPSLastSample
     global gPaint_RepaintInProgress, gAnim_DeferredTimerStart
     global gAnim_QuitEvent, gAnim_pBoostClock, gAnim_BoostActive
-    if (cfg.PerfAnimationType = "None")
+    if (cfg.PerfAnimationType = "None" && !FX_HasActiveShaders())
         return
     if (gAnim_TimerRunning)
         return
@@ -297,8 +292,8 @@ _Anim_FrameLoop() {
             continue  ; CancelAll sets gAnim_TimerRunning=false → loop exits
         }
 
-        ; Update ambient animations (Full mode only)
-        if (cfg.PerfAnimationType = "Full" && gGUI_OverlayVisible)
+        ; Update ambient animations (Full mode, or any mode with active shaders)
+        if (gGUI_OverlayVisible && (cfg.PerfAnimationType = "Full" || FX_HasActiveShaders()))
             FX_UpdateAmbient(gAnim_FrameDt)
 
         ; Paint frame (gAnim_FrameTimeDisplay set inside GUI_Repaint,
@@ -309,8 +304,8 @@ _Anim_FrameLoop() {
         ; Update FPS counter
         _Anim_UpdateFPSCounter(now)
 
-        ; Auto-stop (Minimal mode: exit when no active tweens)
-        if (cfg.PerfAnimationType = "Minimal" && activeCount = 0 && !gAnim_HidePending)
+        ; Auto-stop (Minimal mode: exit when no active tweens AND no active shaders)
+        if (cfg.PerfAnimationType != "Full" && activeCount = 0 && !gAnim_HidePending && !FX_HasActiveShaders())
             break
 
         Critical "Off"

@@ -72,10 +72,11 @@ VSOut VSMain(uint id : SV_VertexID) {
             return false
         gShader_VS := pVS
 
-        ; Create constant buffer (32 bytes: time, resolution.xy, timeDelta, frame, darken, desaturate, _pad)
+        ; Create constant buffer (112 bytes: time, resolution, timeDelta, frame, darken, desaturate, opacity,
+        ;   iMouse, selRect, selColor, borderColor, borderWidth, isHovered, entranceT)
         ; D3D11_BUFFER_DESC (24 bytes): ByteWidth, Usage, BindFlags, CPUAccessFlags, MiscFlags, StructureByteStride
         bufDesc := Buffer(24, 0)
-        NumPut("uint", 32, bufDesc, 0)       ; ByteWidth = 32
+        NumPut("uint", 112, bufDesc, 0)      ; ByteWidth = 112 (7 × 16, properly aligned)
         NumPut("uint", 2, bufDesc, 4)        ; Usage = D3D11_USAGE_DYNAMIC
         NumPut("uint", 4, bufDesc, 8)        ; BindFlags = D3D11_BIND_CONSTANT_BUFFER
         NumPut("uint", 0x10000, bufDesc, 12) ; CPUAccessFlags = D3D11_CPU_ACCESS_WRITE
@@ -428,6 +429,7 @@ Shader_RegisterFromFile(name, hlslFile, meta := "") {
 
     try {
         ; Resolve HLSL path: A_ScriptDir is src/gui/ or src/, shaders are in src/shaders/
+        ; hlslFile may include subdirectory (e.g., "mouse\radial_glow.hlsl")
         hlslPath := A_ScriptDir "\shaders\" hlslFile
         if (!FileExist(hlslPath)) {
             ; Try walking up one level (A_ScriptDir might be src/gui/)
@@ -474,6 +476,23 @@ Shader_RegisterFromFile(name, hlslFile, meta := "") {
             _Shader_Log("RegisterFromFile: " name " EXCEPTION: " e.Message)
         return false
     }
+}
+
+; Register an alias that shares the compiled pixel shader + textures from srcName
+; but gets its own render target. Used for multi-layer: same shader, different time/params.
+Shader_RegisterAlias(aliasName, srcName) {
+    global gShader_Registry, gShader_Ready
+
+    if (!gShader_Ready || !gShader_Registry.Has(srcName))
+        return false
+
+    src := gShader_Registry[srcName]
+    if (!src.ps)
+        return false
+
+    ; Share ps + srvs, own render target (tex/rtv/bitmap start at 0 — lazy created in PreRender)
+    gShader_Registry[aliasName] := {ps: src.ps, tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs}
+    return true
 }
 
 ; ========================= iCHANNEL TEXTURES =========================
@@ -729,7 +748,12 @@ _Shader_MakeGUID(str) {
 
 ; Run the D3D11 shader pipeline. Call BEFORE D2D BeginDraw.
 ; timeSec: elapsed time in seconds. darken/desaturate: 0.0-1.0 post-processing.
-Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity := 1.0) {
+Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity := 1.0,
+    mouseX := 0, mouseY := 0,
+    selX := 0, selY := 0, selW := 0, selH := 0,
+    selColorR := 0.0, selColorG := 0.0, selColorB := 0.0, selColorA := 0.0,
+    borderR := 0.0, borderG := 0.0, borderB := 0.0, borderA := 0.0,
+    borderWidth := 0.0, isHovered := 0.0, entranceT := 0.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
     global gShader_FrameCount, gShader_LastTime, gShader_ActiveName
     static dbgRendered := Map()
@@ -737,12 +761,8 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     if (!gShader_Ready || !gShader_Registry.Has(name))
         return false
 
-    ; Release previous shader's render targets when switching to a different shader.
-    ; Only one shader renders at a time, so only the active one needs RT resources.
-    if (gShader_ActiveName != "" && gShader_ActiveName != name && gShader_Registry.Has(gShader_ActiveName)) {
-        prev := gShader_Registry[gShader_ActiveName]
-        _Shader_ReleaseRT(prev)
-    }
+    ; Track active shaders for RT lifecycle. Multi-layer rendering keeps RTs for all active shaders.
+    ; Callers manage RT release via Shader_ReleaseInactive() when the active set changes.
     gShader_ActiveName := name
 
     ; One-time log per shader name
@@ -774,7 +794,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     gShader_LastTime := timeSec
     gShader_FrameCount += 1
 
-    ; Map cbuffer → write all 32 bytes → Unmap
+    ; Map cbuffer → write all 112 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
     mapped := Buffer(16, 0)
     ; Map (vtable 14): resource, subresource, mapType=WRITE_DISCARD(4), mapFlags, mappedResource
@@ -783,6 +803,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         return false
     pData := NumGet(mapped, 0, "ptr")
     if (pData) {
+        ; --- Existing fields (32 bytes) ---
         NumPut("float", Float(timeSec), pData, 0)          ; time        (offset 0)
         NumPut("float", Float(w), pData, 4)                 ; resolution.x (offset 4)
         NumPut("float", Float(h), pData, 8)                 ; resolution.y (offset 8)
@@ -790,7 +811,32 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         NumPut("uint", gShader_FrameCount, pData, 16)       ; frame       (offset 16)
         NumPut("float", Float(darken), pData, 20)           ; darken      (offset 20)
         NumPut("float", Float(desaturate), pData, 24)       ; desaturate  (offset 24)
-        NumPut("float", Float(opacity), pData, 28)             ; opacity     (offset 28)
+        NumPut("float", Float(opacity), pData, 28)          ; opacity     (offset 28)
+        ; --- Mouse (offset 32) ---
+        NumPut("float", Float(mouseX), pData, 32)           ; iMouse.x
+        NumPut("float", Float(mouseY), pData, 36)           ; iMouse.y
+        NumPut("float", 0.0, pData, 40)                     ; _pad1.x
+        NumPut("float", 0.0, pData, 44)                     ; _pad1.y
+        ; --- Selection rect (offset 48) ---
+        NumPut("float", Float(selX), pData, 48)             ; selRect.x
+        NumPut("float", Float(selY), pData, 52)             ; selRect.y
+        NumPut("float", Float(selW), pData, 56)             ; selRect.w
+        NumPut("float", Float(selH), pData, 60)             ; selRect.h
+        ; --- Selection color (offset 64) ---
+        NumPut("float", Float(selColorR), pData, 64)        ; selColor.r
+        NumPut("float", Float(selColorG), pData, 68)        ; selColor.g
+        NumPut("float", Float(selColorB), pData, 72)        ; selColor.b
+        NumPut("float", Float(selColorA), pData, 76)        ; selColor.a
+        ; --- Border color (offset 80) ---
+        NumPut("float", Float(borderR), pData, 80)          ; borderColor.r
+        NumPut("float", Float(borderG), pData, 84)          ; borderColor.g
+        NumPut("float", Float(borderB), pData, 88)          ; borderColor.b
+        NumPut("float", Float(borderA), pData, 92)          ; borderColor.a
+        ; --- Selection params (offset 96) ---
+        NumPut("float", Float(borderWidth), pData, 96)      ; borderWidth
+        NumPut("float", Float(isHovered), pData, 100)       ; isHovered
+        NumPut("float", Float(entranceT), pData, 104)       ; entranceT
+        NumPut("float", 0.0, pData, 108)                    ; _pad2
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)
@@ -888,6 +934,21 @@ _Shader_MakeClearColor() {
 }
 
 ; ========================= BITMAP ACCESS =========================
+
+; Release render targets for shaders NOT in the given active set.
+; activeNames: array of shader key strings currently in use.
+Shader_ReleaseInactive(activeNames) {
+    global gShader_Registry
+    activeSet := Map()
+    for _, n in activeNames {
+        if (n != "")
+            activeSet[n] := true
+    }
+    for name, entry in gShader_Registry {
+        if (!activeSet.Has(name) && (entry.tex || entry.bitmap))
+            _Shader_ReleaseRT(entry)
+    }
+}
 
 ; Return the ID2D1Bitmap1 ptr for DrawImage. Returns 0 if not available.
 Shader_GetBitmap(name) {

@@ -750,7 +750,7 @@ _GUI_ShowOverlayWithFrozen() {
 
 _GUI_MoveSelectionFrozen(delta) {
     global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop, cfg
-    global gGUI_EffectStyle, gFX_GPUReady
+    global gFX_GPUReady
 
     if (gGUI_DisplayItems.Length = 0) {
         return
@@ -773,11 +773,12 @@ _GUI_MoveSelectionFrozen(delta) {
     gGUI_ScrollTop := gGUI_Sel - 1
 
     ; Start selection slide animation (if enabled)
-    if (cfg.PerfAnimationType != "None") {
+    if (cfg.PerfAnimationType != "None" || FX_HasActiveShaders()) {
         Anim_StartSelectionSlide(prevSel, gGUI_Sel, count)
-        ; Trigger per-style entrance flourish for GPU styles
-        if (gGUI_EffectStyle >= 2 && gFX_GPUReady)
-            FX_OnSelectionChange(gGUI_EffectStyle - 2)
+        ; Start selection entrance tween for shader-based selection effects
+        global gFX_SelectionEffect
+        if (gFX_SelectionEffect.key != "")
+            Anim_StartTween("fx_sel_entrance", 0.0, 1.0, 200, Anim_EaseOutCubic)
     }
 }
 

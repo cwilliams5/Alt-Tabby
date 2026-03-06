@@ -2322,8 +2322,8 @@ if ($rkuRegFile.Count -gt 0) {
             })
         }
 
-        # Validate g field is valid AHK identifier
-        if ($hasG -and $gValue -notmatch '^[A-Za-z_]\w*$') {
+        # Validate g field is valid AHK identifier (allow {N} template for array_section entries)
+        if ($hasG -and $gValue -notmatch '^[A-Za-z_][\w{}]*$') {
             [void]$rcIssues.Add([PSCustomObject]@{
                 Line = $lineNum; Issue = "g field '$gValue' is not a valid AHK identifier"
                 G = $gValue

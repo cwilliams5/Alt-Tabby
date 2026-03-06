@@ -70,6 +70,7 @@ _CEN_ResetState() {
     gCEN["SepHeader"] := 0
     gCEN["SepSidebar"] := 0
     gCEN["SepFooter"] := 0
+    gCEN["RemovedSections"] := []
 }
 
 ; ============================================================
@@ -124,19 +125,29 @@ CE_RunNative(launcherHwnd := 0) {
 ; ============================================================
 
 _CEN_ParseRegistry() {
-    global gConfigRegistry, gCEN
+    global gConfigRegistry, gCEN, gConfigIniPath
 
     curSection := ""
     curSubsection := ""
+    curArrayCount := 0      ; >0 when current section is an array_section
 
     for entry in gConfigRegistry {
         if (entry.HasOwnProp("type") && entry.type = "section") {
+            ; If previous section was array_section, expand its template settings
+            if (curSection != "" && curArrayCount > 0)
+                _CEN_ExpandArraySection(curSection, _CEN_DetectLayerCount(curSection.name, curArrayCount))
+
+            curArrayCount := entry.HasOwnProp("array_section") ? entry.array_section : 0
             curSection := {
                 name: entry.name,
                 desc: entry.desc,
                 long: entry.HasOwnProp("long") ? entry.long : "",
                 settings: [],
-                subsections: []
+                subsections: [],
+                arraySection: curArrayCount,
+                maxLayers: curArrayCount,
+                activeLayers: 0,
+                originalLayers: 0
             }
             curSubsection := ""
             gCEN["Sections"].Push(curSection)
@@ -167,11 +178,88 @@ _CEN_ParseRegistry() {
                 setting.fmt := entry.fmt
             if (entry.HasOwnProp("dynamicOptions"))
                 setting.dynamicOptions := entry.dynamicOptions
+            if (entry.HasOwnProp("default1"))
+                setting.default1 := entry.default1
             if (curSubsection != "" && curSubsection.HasOwnProp("name"))
                 curSubsection.settings.Push(setting)
             else if (curSection != "")
                 curSection.settings.Push(setting)
         }
+    }
+
+    ; Handle last section if it was array_section
+    if (curSection != "" && curArrayCount > 0)
+        _CEN_ExpandArraySection(curSection, _CEN_DetectLayerCount(curSection.name, curArrayCount))
+}
+
+; Detect how many array section instances exist in INI (e.g., [Shader.1], [Shader.2], ...)
+; Returns actual count (minimum 1, maximum maxCount)
+_CEN_DetectLayerCount(sectionBaseName, maxCount) {
+    global gConfigIniPath
+    actualCount := 0
+    Loop maxCount {
+        try {
+            sectionKeys := IniRead(gConfigIniPath, sectionBaseName "." A_Index)
+            if (sectionKeys != "")
+                actualCount := A_Index
+        }
+    }
+    return Max(1, actualCount)
+}
+
+; Expand an array_section's template settings into numbered subsections (Layer 1, Layer 2, ...)
+; Template settings with {N} in their g-field are cloned for each instance.
+; count = number of layers to expand (actual active layers, not max)
+_CEN_ExpandArraySection(section, count) {
+    ; Store templates for rebuild (keep non-{N} settings as section-level)
+    if (!section.HasOwnProp("_templates")) {
+        section._templates := []
+        remaining := []
+        for tmpl in section.settings {
+            if (InStr(tmpl.g, "{N}"))
+                section._templates.Push(tmpl)
+            else
+                remaining.Push(tmpl)
+        }
+        section.settings := remaining
+    } else {
+        section.subsections := []  ; Clear for rebuild
+    }
+
+    section.activeLayers := count
+    section.originalLayers := (section.originalLayers > 0) ? section.originalLayers : count
+
+    Loop count {
+        n := A_Index
+        sub := {
+            name: "Layer " n,
+            desc: "",
+            settings: []
+        }
+        for tmpl in section._templates {
+            setting := {
+                s: tmpl.s "." n,
+                k: tmpl.k,
+                g: StrReplace(tmpl.g, "{N}", n),
+                t: tmpl.t,
+                default: tmpl.default,
+                d: tmpl.d
+            }
+            if (tmpl.HasOwnProp("options"))
+                setting.options := tmpl.options
+            if (tmpl.HasOwnProp("min")) {
+                setting.min := tmpl.min
+                setting.max := tmpl.max
+            }
+            if (tmpl.HasOwnProp("fmt"))
+                setting.fmt := tmpl.fmt
+            if (tmpl.HasOwnProp("dynamicOptions"))
+                setting.dynamicOptions := tmpl.dynamicOptions
+            if (tmpl.HasOwnProp("default1"))
+                setting.default1 := tmpl.default1
+            sub.settings.Push(setting)
+        }
+        section.subsections.Push(sub)
     }
 }
 
@@ -351,6 +439,7 @@ _CEN_BuildPage(section) {
     y := _CEN_AddSettings(pageGui, section.settings, controls, blocks, y, contentW, section.name, 0)
 
     ; Subsections
+    isArraySection := (section.maxLayers > 0)
     subIdx := 0
     for sub in section.subsections {
         subIdx++
@@ -368,6 +457,16 @@ _CEN_BuildPage(section) {
         c.SetFont("s10 bold", "Segoe UI")
         controls.Push({ctrl: c, origY: y, origX: 16})
         subCtrls.Push({ctrl: c, origY: y, origX: 16})
+
+        ; "Remove" link on any layer when more than 1 exists
+        if (isArraySection && section.activeLayers > 1) {
+            removeBtn := pageGui.AddText("x" (contentW - 60) " y" y " w70 h20 +0x80 c" Theme_GetAccentColor(), "Remove")
+            removeBtn.SetFont("s8 underline", "Segoe UI")
+            Theme_MarkAccent(removeBtn)
+            removeBtn.OnEvent("Click", _CEN_OnRemoveLayer.Bind(section.name, subIdx))
+            controls.Push({ctrl: removeBtn, origY: y, origX: contentW - 60})
+            subCtrls.Push({ctrl: removeBtn, origY: y, origX: contentW - 60})
+        }
         y += 22
 
         ; Subsection description
@@ -388,6 +487,21 @@ _CEN_BuildPage(section) {
         y := _CEN_AddSettings(pageGui, sub.settings, controls, blocks, y, contentW, section.name, subIdx)
     }
 
+    ; "Add Layer" button for array sections (if below max)
+    if (isArraySection && section.activeLayers < section.maxLayers) {
+        y += 12
+        sectionName := section.name
+        addBtn := pageGui.AddButton("x16 y" y " w140 h28", "+ Add Shader Layer")
+        addBtn.SetFont("s9", "Segoe UI")
+        themeEntry := gCEN.Has("ThemeEntry") ? gCEN["ThemeEntry"] : ""
+        if (themeEntry != "")
+            Theme_ApplyToControl(addBtn, "Button", themeEntry)
+        addBtn.OnEvent("Click", (*) => _CEN_OnAddLayer(sectionName))
+        controls.Push({ctrl: addBtn, origY: y, origX: 16})
+        blocks.Push({kind: "addlayer", startY: y, ctrls: [{ctrl: addBtn, origY: y, origX: 16}]})
+        y += 36
+    }
+
     y += 24
 
     ; Compute endY for each block from the next block's startY
@@ -404,6 +518,118 @@ _CEN_BuildPage(section) {
 
     ; Size to FULL content height. Viewport clips the visible portion.
     pageGui.Show("x0 y0 w580 h" y " NoActivate Hide")
+}
+
+; ============================================================
+; ARRAY SECTION LAYER MANAGEMENT
+; ============================================================
+
+; Add a new layer to an array section (e.g., Shader)
+_CEN_OnAddLayer(sectionName) {
+    global gCEN
+
+    section := _CEN_FindSection(sectionName)
+    if (!section || section.activeLayers >= section.maxLayers)
+        return
+
+    section.activeLayers++
+    _CEN_RebuildArrayPage(sectionName)
+}
+
+; Remove a layer from an array section by index, shifting higher layers down.
+_CEN_OnRemoveLayer(sectionName, removedIdx, *) {
+    global gCEN, cfg, gConfigRegistry
+
+    section := _CEN_FindSection(sectionName)
+    if (!section || section.activeLayers <= 1)
+        return
+
+    oldCount := section.activeLayers
+
+    ; Shift cfg values down: copy removedIdx+1 -> removedIdx, etc.
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("default") || entry.s != sectionName || !InStr(entry.g, "{N}"))
+            continue
+        Loop (oldCount - removedIdx) {
+            srcN := removedIdx + A_Index
+            dstN := srcN - 1
+            cfg.%StrReplace(entry.g, "{N}", dstN)% := cfg.%StrReplace(entry.g, "{N}", srcN)%
+        }
+    }
+
+    ; Track the vacated last slot for save-time deletion
+    gCEN["RemovedSections"].Push(sectionName "." oldCount)
+    section.activeLayers--
+    _CEN_RebuildArrayPage(sectionName)
+}
+
+; Find a section object by name
+_CEN_FindSection(sectionName) {
+    global gCEN
+    for section in gCEN["Sections"] {
+        if (section.name = sectionName)
+            return section
+    }
+    return ""
+}
+
+; Rebuild the page for an array section after add/remove
+_CEN_RebuildArrayPage(sectionName) {
+    global gCEN
+
+    section := _CEN_FindSection(sectionName)
+    if (!section)
+        return
+
+    ; Save current scroll position before destroying
+    oldScrollPos := 0
+    isCurrent := (gCEN["CurrentPage"] = sectionName)
+    page := gCEN["Pages"].Has(sectionName) ? gCEN["Pages"][sectionName] : ""
+    if (page != "") {
+        oldScrollPos := page.scrollPos
+        ; Remove all controls registered under this section
+        keysToRemove := []
+        for gName, _ in gCEN["Controls"] {
+            group := gCEN["SettingGroups"].Has(gName) ? gCEN["SettingGroups"][gName] : ""
+            if (group != "" && group.pageKey = sectionName)
+                keysToRemove.Push(gName)
+        }
+        for _, gName in keysToRemove {
+            gCEN["Controls"].Delete(gName)
+            gCEN["SettingGroups"].Delete(gName)
+        }
+        ; Destroy the page GUI
+        try page.gui.Destroy()
+        gCEN["Pages"].Delete(sectionName)
+    }
+
+    ; Re-expand subsections with new layer count
+    _CEN_ExpandArraySection(section, section.activeLayers)
+
+    ; Rebuild the page
+    _CEN_BuildPage(section)
+
+    ; Reload values for this section only
+    _CEN_LoadValuesForSection(sectionName)
+
+    ; Re-show the rebuilt page
+    if (gCEN["FlatMode"]) {
+        ; Flat mode: all pages stacked — show the new page and reposition everything
+        newPage := gCEN["Pages"][sectionName]
+        newPage.gui.Show("NoActivate")
+        _CEN_PositionFlatPages()
+        _CEN_UpdateScrollBar("")
+    } else if (isCurrent) {
+        ; Normal mode: show rebuilt page at clamped scroll position
+        gCEN["CurrentPage"] := sectionName
+        newPage := gCEN["Pages"][sectionName]
+        viewH := _CEN_GetViewportHeight()
+        maxScroll := Max(0, newPage.contentH - viewH)
+        newPage.scrollPos := Min(oldScrollPos, maxScroll)
+        newPage.gui.Move(0, -newPage.scrollPos)
+        _CEN_UpdateScrollBar(sectionName)
+        newPage.gui.Show("NoActivate")
+    }
 }
 
 _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, subIdx) {
@@ -459,19 +685,36 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             settingCtrls.Push({ctrl: dc, origY: y, origX: 24})
             y += descH + 4
 
-        } else if (setting.HasOwnProp("dynamicOptions") && setting.dynamicOptions = "SHADER_KEYS") {
+        } else if (setting.HasOwnProp("dynamicOptions")) {
             global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
+            global MOUSE_SHADER_KEYS, MOUSE_SHADER_NAMES ; lint-ignore: phantom-global
+            global SELECTION_SHADER_KEYS, SELECTION_SHADER_NAMES ; lint-ignore: phantom-global
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
             lbl.SetFont("s9 bold", "Segoe UI")
             controls.Push({ctrl: lbl, origY: y, origX: 24})
             settingCtrls.Push({ctrl: lbl, origY: y, origX: 24})
-            ; Build display-name list from SHADER_NAMES (skip index 1 = "None")
+            ; Resolve dynamic option list by name
+            dynKeys := 0
+            dynNames := 0
+            switch setting.dynamicOptions {
+                case "SHADER_KEYS":
+                    dynKeys := SHADER_KEYS
+                    dynNames := SHADER_NAMES
+                case "MOUSE_SHADER_KEYS":
+                    dynKeys := MOUSE_SHADER_KEYS
+                    dynNames := MOUSE_SHADER_NAMES
+                case "SELECTION_SHADER_KEYS":
+                    dynKeys := SELECTION_SHADER_KEYS
+                    dynNames := SELECTION_SHADER_NAMES
+            }
             optList := []
             optKeys := []
-            Loop SHADER_KEYS.Length {
-                if (SHADER_KEYS[A_Index] != "") {
-                    optList.Push(SHADER_NAMES[A_Index])
-                    optKeys.Push(SHADER_KEYS[A_Index])
+            if (IsObject(dynKeys)) {
+                Loop dynKeys.Length {
+                    if (dynKeys[A_Index] != "") {
+                        optList.Push(dynNames[A_Index])
+                        optKeys.Push(dynKeys[A_Index])
+                    }
                 }
             }
             dd := pageGui.AddDropDownList("x" CEN_INPUT_X " y" y " w200", optList)
@@ -705,28 +948,98 @@ _CEN_LoadValues() {
 
     gCEN["OriginalValues"] := Map()
 
+    ; Build active layer counts from parsed sections
+    activeLayerCounts := _CEN_GetActiveLayerCounts()
+
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!gCEN["Controls"].Has(entry.g))
+
+        if (InStr(entry.g, "{N}")) {
+            ; Array section — load only active layers
+            count := activeLayerCounts.Has(entry.s) ? activeLayerCounts[entry.s] : 1
+            Loop count {
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                if (!gCEN["Controls"].Has(expandedG))
+                    continue
+                ctrlInfo := gCEN["Controls"][expandedG]
+                sectionName := entry.s "." A_Index
+                iniVal := IniRead(gConfigIniPath, sectionName, entry.k, "")
+                if (iniVal = "")
+                    val := (A_Index = 1 && entry.HasOwnProp("default1")) ? entry.default1 : entry.default
+                else
+                    val := CL_ParseValue(iniVal, entry.t)
+                _CEN_SetControlValue(ctrlInfo, val, entry.t)
+                gCEN["OriginalValues"][expandedG] := val
+            }
+        } else {
+            if (!gCEN["Controls"].Has(entry.g))
+                continue
+            ctrlInfo := gCEN["Controls"][entry.g]
+            iniVal := IniRead(gConfigIniPath, entry.s, entry.k, "")
+            if (iniVal = "")
+                val := entry.default
+            else
+                val := CL_ParseValue(iniVal, entry.t)
+            _CEN_SetControlValue(ctrlInfo, val, entry.t)
+            gCEN["OriginalValues"][entry.g] := val
+        }
+    }
+}
+
+; Load values for a single section (used after page rebuild)
+_CEN_LoadValuesForSection(sectionName) {
+    global gCEN, gConfigRegistry, gConfigIniPath
+
+    section := _CEN_FindSection(sectionName)
+    if (!section)
+        return
+
+    for _, entry in gConfigRegistry {
+        if (!entry.HasOwnProp("default"))
             continue
 
-        ctrlInfo := gCEN["Controls"][entry.g]
-
-        ; Read from INI, fall back to default
-        iniVal := IniRead(gConfigIniPath, entry.s, entry.k, "")
-        if (iniVal = "") {
-            val := entry.default
-        } else {
-            val := CL_ParseValue(iniVal, entry.t)
+        if (InStr(entry.g, "{N}") && entry.s = sectionName) {
+            Loop section.activeLayers {
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                if (!gCEN["Controls"].Has(expandedG))
+                    continue
+                ctrlInfo := gCEN["Controls"][expandedG]
+                iniSectionName := entry.s "." A_Index
+                iniVal := IniRead(gConfigIniPath, iniSectionName, entry.k, "")
+                if (iniVal = "")
+                    val := (A_Index = 1 && entry.HasOwnProp("default1")) ? entry.default1 : entry.default
+                else
+                    val := CL_ParseValue(iniVal, entry.t)
+                _CEN_SetControlValue(ctrlInfo, val, entry.t)
+                ; Only set OriginalValues for layers that existed at open time
+                if (A_Index <= section.originalLayers)
+                    gCEN["OriginalValues"][expandedG] := val
+            }
+        } else if (!InStr(entry.g, "{N}") && entry.s = sectionName) {
+            if (!gCEN["Controls"].Has(entry.g))
+                continue
+            ctrlInfo := gCEN["Controls"][entry.g]
+            iniVal := IniRead(gConfigIniPath, entry.s, entry.k, "")
+            if (iniVal = "")
+                val := entry.default
+            else
+                val := CL_ParseValue(iniVal, entry.t)
+            _CEN_SetControlValue(ctrlInfo, val, entry.t)
+            gCEN["OriginalValues"][entry.g] := val
         }
-
-        ; Set control value
-        _CEN_SetControlValue(ctrlInfo, val, entry.t)
-
-        ; Store original for change detection
-        gCEN["OriginalValues"][entry.g] := val
     }
+}
+
+; Get active layer counts from parsed sections
+_CEN_GetActiveLayerCounts() {
+    global gCEN
+    counts := Map()
+    for section in gCEN["Sections"] {
+        if (section.maxLayers > 0)
+            counts[section.name] := section.activeLayers
+    }
+    return counts
 }
 
 _CEN_SetControlValue(ctrlInfo, val, type) {
@@ -1407,30 +1720,60 @@ _CEN_GetControlValue(ctrlInfo, type) {
 }
 
 _CEN_HasUnsavedChanges() {
-    return _CEN_GetChangedValues().Count > 0
+    global gCEN
+    return _CEN_GetChangedValues().Count > 0 || gCEN["RemovedSections"].Length > 0
 }
 
 _CEN_SaveToIni() {
-    return CL_SaveChanges(_CEN_GetChangedValues())  ; Returns {saved: N, failed: N}
+    global gCEN, gConfigIniPath
+    result := CL_SaveChanges(_CEN_GetChangedValues())
+
+    ; Delete removed array sections (text-based: removes headers + comments + all occurrences)
+    if (gCEN["RemovedSections"].Length > 0)
+        CL_DeleteSections(gCEN["RemovedSections"])
+
+    return result
 }
 
 ; Collect all control values that differ from their original (loaded) values
 _CEN_GetChangedValues() {
     global gCEN, gConfigRegistry
 
+    ; Use active layer counts from parsed sections
+    activeLayerCounts := _CEN_GetActiveLayerCounts()
+
     changes := Map()
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!gCEN["Controls"].Has(entry.g))
-            continue
 
-        ctrlInfo := gCEN["Controls"][entry.g]
-        currentVal := _CEN_GetControlValue(ctrlInfo, entry.t)
-        originalVal := gCEN["OriginalValues"][entry.g]
-
-        if (currentVal != originalVal)
-            changes[entry.g] := currentVal
+        if (InStr(entry.g, "{N}")) {
+            ; Array section — check only active layers
+            count := activeLayerCounts.Has(entry.s) ? activeLayerCounts[entry.s] : 1
+            Loop count {
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                if (!gCEN["Controls"].Has(expandedG))
+                    continue
+                ctrlInfo := gCEN["Controls"][expandedG]
+                currentVal := _CEN_GetControlValue(ctrlInfo, entry.t)
+                if (!gCEN["OriginalValues"].Has(expandedG)) {
+                    ; New layer — always include current value
+                    changes[expandedG] := currentVal
+                } else {
+                    originalVal := gCEN["OriginalValues"][expandedG]
+                    if (currentVal != originalVal)
+                        changes[expandedG] := currentVal
+                }
+            }
+        } else {
+            if (!gCEN["Controls"].Has(entry.g))
+                continue
+            ctrlInfo := gCEN["Controls"][entry.g]
+            currentVal := _CEN_GetControlValue(ctrlInfo, entry.t)
+            originalVal := gCEN["OriginalValues"][entry.g]
+            if (currentVal != originalVal)
+                changes[entry.g] := currentVal
+        }
     }
     return changes
 }
@@ -2052,13 +2395,44 @@ _CEN_OnResetDefaults(*) {
     if (result = "No")
         return
 
+    ; Phase 1: Collapse array sections to 1 layer
+    arraySectionsToRebuild := []
+    for _, section in gCEN["Sections"] {
+        if (!section.HasOwnProp("maxLayers") || section.maxLayers <= 0)
+            continue
+        if (section.activeLayers > 1) {
+            Loop (section.activeLayers - 1) {
+                removedIdx := section.activeLayers - A_Index + 1
+                gCEN["RemovedSections"].Push(section.name "." removedIdx)
+            }
+            section.activeLayers := 1
+        }
+        arraySectionsToRebuild.Push(section.name)
+    }
+
+    ; Phase 2: Rebuild array pages first (creates controls for layer 1 only)
+    for _, sectionName in arraySectionsToRebuild
+        _CEN_RebuildArrayPage(sectionName)
+
+    ; Phase 3: Reset all values to defaults
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
-        if (!gCEN["Controls"].Has(entry.g))
-            continue
-        ctrlInfo := gCEN["Controls"][entry.g]
-        _CEN_SetControlValue(ctrlInfo, entry.default, entry.t)
+
+        if (InStr(entry.g, "{N}")) {
+            ; Only layer 1 remains after collapse
+            expandedG := StrReplace(entry.g, "{N}", 1)
+            if (!gCEN["Controls"].Has(expandedG))
+                continue
+            ctrlInfo := gCEN["Controls"][expandedG]
+            val := entry.HasOwnProp("default1") ? entry.default1 : entry.default
+            _CEN_SetControlValue(ctrlInfo, val, entry.t)
+        } else {
+            if (!gCEN["Controls"].Has(entry.g))
+                continue
+            ctrlInfo := gCEN["Controls"][entry.g]
+            _CEN_SetControlValue(ctrlInfo, entry.default, entry.t)
+        }
     }
 }
 

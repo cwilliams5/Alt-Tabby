@@ -19,7 +19,7 @@ Edit `config.ini` (next to AltTabby.exe) to customize behavior.
 - [Store](#store)
 - [Performance](#performance)
 - [Shader](#shader)
-- [2D Effects](#2d-effects)
+- [MouseEffect](#mouseeffect)
 - [BackgroundImage](#backgroundimage)
 - [Diagnostics](#diagnostics)
 - [Capture](#capture)
@@ -252,6 +252,9 @@ Software visual effects (selection styling, shadows, hover). When GPU Effects ar
 |--------|------|---------|-------|-------------|
 | `SelBorderARGB` | int | `0x40FFFFFF` | `0x0` - `0xFFFFFFFF` | Selection border color (ARGB). Only drawn when visual effects are on and SelBorderWidthPx > 0. |
 | `SelBorderWidthPx` | float | `1.00` | `0.00` - `4.00` | Selection border stroke width in pixels. Set to 0 to disable the border. |
+| `UseSelectionEffect` | bool | `true` | - | Enable the shader-based selection effect. When disabled, uses simple D2D fill with SelARGB/SelBorderARGB colors. |
+| `SelectionEffect` | string | `selection_auroraSel` | - | Shader-based selection effect. |
+| `SelectionCycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through selection effects while overlay is visible. |
 | `SelDropShadow` | bool | `true` | - | Draw a drop shadow behind the selected row. Disable on HDR displays if colors appear shifted. |
 | `TextShadowAlpha` | int | `0x58` | `0x0` - `0xFF` | Text drop shadow opacity (0x00 = disabled, 0x58 = default). Applied when visual effects are on. |
 | `TextShadowDistancePx` | float | `1.50` | `0.50` - `5.00` | Text drop shadow offset in DIP pixels. Applied when visual effects are on. |
@@ -611,7 +614,6 @@ Memory management to maintain responsiveness after long idle periods.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `GPUEffects` | bool | `true` | - | Enable GPU-accelerated visual effects (blur, real shadows, blend modes). Requires ID2D1DeviceContext. When disabled, software effects from the Visual Effects section are used instead. |
 | `HDRCompensation` | enum | `auto` | - | Compensate for HDR display gamma darkening. DWM composites in linear scRGB which darkens semi-transparent GPU blurs/glows. 'auto' detects HDR and applies correction, 'on' forces correction (useful for testing on SDR), 'off' disables. |
 | `HDRGammaExponent` | float | `0.80` | `0.50` - `1.00` | Gamma exponent for HDR compensation. Lower = brighter correction (more compensation). 0.80 restores SDR-equivalent brightness. Only effective when HDR compensation is active. |
 | `KeepInMemory` | bool | `true` | - | Set a hard working set floor after warm-up. Tells Windows not to trim resident memory below the measured baseline. Trades slightly higher steady-state memory for instant responsiveness after long idle. |
@@ -619,96 +621,35 @@ Memory management to maintain responsiveness after long idle periods.
 | `ProcessPriority` | enum | `AboveNormal` | - | Process priority class. Higher priority ensures responsive Alt+Tab on busy systems. Idle elevated threads cost zero CPU — only matters when the process needs scheduling (hook callbacks, paint, pipe I/O). AboveNormal recommended. |
 | `AnimationType` | enum | `Minimal` | - | Animation behavior. None = single paint per event (zero idle CPU). Minimal = animate transitions (selection slide, fade), auto-stop when done. Full = continuous ambient effects (glow pulse, noise drift) while overlay is visible. |
 | `AnimationSpeed` | float | `1.00` | `0.10` - `5.00` | Animation duration multiplier. 1.0 = normal speed, 0.5 = twice as fast, 2.0 = half speed. Affects all animation durations. |
-| `AnimationFPS` | string | `Auto` | - | Target frame rate for animation timer. 'Auto' detects monitor refresh rate. Explicit integer (e.g. '60', '144') overrides detection. Never exceeds monitor rate. |
+| `AnimationFPS` | string | `Auto` | - | Target frame rate for animation timer. 'Auto' = monitor refresh rate. Explicit values cap to nearest display divisor at or below target (e.g. on 120Hz: 120, 60, 40, 30). |
 
 ## Shader
 
-Configure the D3D11 shader backdrop rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full.
+Stackable D3D11 shader backdrop layers rendered behind the Alt-Tab overlay. Up to 4 layers composited bottom-to-top. Each layer uses ~8 MB VRAM at 1080p (~32 MB at 4K). INI sections: [Shader.1] through [Shader.4].
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `UseShaders` | bool | `true` | - | Enable the GPU shader backdrop effect. When false, the entire shader pipeline is skipped for lower resource usage. |
-| `ShaderName` | string | `raindropsGlass` | - | Shader to display on startup. Validated at boot against available shaders; invalid names fall back to Raindrops on Glass. |
-| `ShaderOpacity` | float | `0.50` | `0.00` - `1.00` | Opacity of the shader backdrop layer. 0.0 = invisible, 1.0 = fully opaque. Overrides per-shader metadata. |
-| `ShaderDarkness` | float | `0.00` | `0.00` - `1.00` | Darken post-processing applied to the shader output. 0.0 = no darkening, 1.0 = fully dark. |
-| `ShaderDesaturation` | float | `0.00` | `0.00` - `1.00` | Desaturation post-processing applied to the shader output. 0.0 = full color, 1.0 = grayscale. |
-| `CycleShaderHotkey` | string | `(empty)` | - | Optional hotkey to cycle through shaders while the overlay is visible. Leave blank to disable. Choice is not saved — select your launch shader above. |
-| `ShaderTimeOffsetMin` | int | `30` | `0` - `300` | Minimum random time offset (seconds) applied when a shader is first loaded. Skips past the initial warmup period so shaders look interesting immediately. Per-shader JSON can override. |
-| `ShaderTimeOffsetMax` | int | `90` | `0` - `600` | Maximum random time offset (seconds) applied when a shader is first loaded. Per-shader JSON can override. |
-| `ShaderTimeAccumulate` | bool | `true` | - | When true, shader time persists across overlay show/hide cycles so each Alt-Tab continues from where it left off. When false, shader restarts from its random offset each show. |
+| `UseShaderLayers` | bool | `true` | - | Enable shader backdrop layers. When disabled, no shader layers render regardless of per-layer config. |
+| `ShaderName` | string | `(empty)` | - | Shader for this layer. Empty = layer disabled. |
+| `ShaderOpacity` | float | `0.50` | `0.00` - `1.00` | Opacity of this shader layer. 0.0 = invisible, 1.0 = fully opaque. |
+| `ShaderDarkness` | float | `0.00` | `0.00` - `1.00` | Darken post-processing. 0.0 = no darkening, 1.0 = fully dark. |
+| `ShaderDesaturation` | float | `0.00` | `0.00` - `1.00` | Desaturation post-processing. 0.0 = full color, 1.0 = grayscale. |
+| `ShaderSpeed` | float | `1.00` | `0.10` - `10.00` | Time speed multiplier for shader animation. 2.0 = twice as fast. |
+| `CycleShaderHotkey` | string | `(empty)` | - | Optional hotkey to cycle through shaders for this layer while overlay is visible. |
+| `ShaderTimeOffsetMin` | int | `30` | `0` - `300` | Minimum random time offset (seconds) applied when shader is first loaded. |
+| `ShaderTimeOffsetMax` | int | `90` | `0` - `600` | Maximum random time offset (seconds) applied when shader is first loaded. |
+| `ShaderTimeAccumulate` | bool | `true` | - | When true, shader time persists across overlay show/hide cycles. |
 
-## 2D Effects
+## MouseEffect
 
-Animated background effects rendered behind the Alt-Tab overlay. Requires GPU Effects enabled and Animation Type set to Full.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `UseBackgroundEffects` | bool | `true` | - | Master toggle for all 2D backdrop effects. When false, no backdrop effects are rendered regardless of other settings. |
-| `BackgroundEffect` | enum | `Aurora` | - | Which backdrop effect to display on startup. Layered composites multiple effects based on each effect's IncludeInLayered setting. |
-| `CycleKey` | string | `(empty)` | - | Optional hotkey to cycle through backdrop effects while the overlay is visible. Leave blank to disable. |
-
-### Gradient Drift
-
-Two large color blobs orbiting slowly. Colors are derived from the overlay background color (Appearance > Background Color) with warm and cool shifts applied.
+Optional cursor-reactive shader effect rendered above shader layers and below selection. Receives mouse position as a uniform.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `GradientIncludeInLayered` | bool | `false` | - | Include Gradient Drift in the Layered composite effect. |
-| `GradientOpacity` | float | `0.40` | `0.00` - `1.00` | Opacity of the Gradient Drift effect layer. 0.0 = invisible, 1.0 = fully opaque. |
-| `GradientSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for the Gradient Drift orbit animation. Higher values make blobs orbit faster. |
-| `GradientBlobSize` | int | `400` | `50` - `1000` | Diameter in pixels of each gradient blob. Larger values produce softer, more diffuse color blending. |
-| `GradientOrbitRadius` | float | `0.35` | `0.10` - `0.60` | Orbit radius as a fraction of the overlay size. Larger values spread blobs further from center. |
-| `GradientColorShift` | float | `1.00` | `0.00` - `2.00` | Color variation multiplier. 0.0 = uniform colors, 1.0 = default variation, 2.0 = exaggerated color shifts. |
-
-### Caustic
-
-Shares the bgTurb GPU effect chain with Grain. If both are included in Layered, Caustic renders last and its turbulence settings win.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `CausticIncludeInLayered` | bool | `false` | - | Include Caustic in the Layered composite effect. |
-| `CausticOpacity` | float | `0.40` | `0.00` - `1.00` | Opacity of the Caustic effect layer. 0.0 = invisible, 1.0 = fully opaque. |
-| `CausticSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for Caustic drift animation. |
-| `CausticFrequency` | float | `0.01` | `0.00` - `0.10` | Base frequency of the Caustic turbulence pattern. Lower values produce larger, smoother patterns. |
-| `CausticOctaves` | int | `3` | `1` - `5` | Number of turbulence octaves for the Caustic effect. More octaves add finer detail but cost more GPU. |
-| `CausticSaturation` | float | `0.60` | `0.00` - `1.00` | Color saturation of the Caustic effect. 0.0 = grayscale, 1.0 = full color. |
-
-### Aurora
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `AuroraIncludeInLayered` | bool | `true` | - | Include Aurora in the Layered composite effect. |
-| `AuroraOpacity` | float | `0.40` | `0.00` - `1.00` | Opacity of the Aurora effect layer. 0.0 = invisible, 1.0 = fully opaque. |
-| `AuroraSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for Aurora blob orbit animation. |
-| `AuroraBlobSize` | int | `350` | `50` - `1000` | Diameter in pixels of each Aurora blob. Larger values produce softer, more diffuse lighting. |
-| `AuroraSpeedSpread` | float | `1.00` | `0.00` - `3.00` | Scales deviation from average orbit speed. 0 = all blobs same speed, 1 = default spread, 2+ = wider variation. |
-| `AuroraColor1` | int | `0xFFFF4488` | `0x0` - `0xFFFFFFFF` | ARGB color of the first Aurora blob. |
-| `AuroraColor2` | int | `0xFF4488FF` | `0x0` - `0xFFFFFFFF` | ARGB color of the second Aurora blob. |
-| `AuroraColor3` | int | `0xFFAA44FF` | `0x0` - `0xFFFFFFFF` | ARGB color of the third Aurora blob. |
-
-### Grain
-
-Shares the bgTurb GPU effect chain with Caustic. If both are included in Layered, Grain renders first and Caustic overwrites the turbulence settings.
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `GrainIncludeInLayered` | bool | `false` | - | Include Grain in the Layered composite effect. |
-| `GrainOpacity` | float | `0.30` | `0.00` - `1.00` | Opacity of the Grain effect layer. 0.0 = invisible, 1.0 = fully opaque. |
-| `GrainSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for Grain drift animation. |
-| `GrainFrequency` | float | `0.05` | `0.01` - `0.50` | Base frequency of the Grain turbulence pattern. Lower values produce coarser grain. |
-| `GrainOctaves` | int | `4` | `1` - `5` | Number of turbulence octaves for the Grain effect. More octaves add finer detail. |
-| `GrainSaturation` | float | `0.00` | `0.00` - `1.00` | Color saturation of the Grain effect. 0.0 = grayscale noise, 1.0 = colorful noise. |
-
-### Vignette
-
-| Option | Type | Default | Range | Description |
-|--------|------|---------|-------|-------------|
-| `VignetteIncludeInLayered` | bool | `true` | - | Include Vignette in the Layered composite effect. |
-| `VignetteOpacity` | float | `0.50` | `0.00` - `1.00` | Base opacity of the Vignette edge darkening. 0.0 = invisible, 1.0 = fully opaque. |
-| `VignetteSpeed` | float | `1.00` | `0.10` - `5.00` | Speed multiplier for the Vignette breathing animation. |
-| `VignetteEdgeDepth` | float | `0.30` | `0.05` - `0.50` | Depth of the vignette edge as a fraction of overlay width. Larger values create a wider dark border. |
-| `VignetteBreathAmplitude` | float | `0.15` | `0.00` - `0.30` | Amplitude of the vignette breathing animation. 0.0 = static vignette, higher values pulse more. |
-| `VignetteEdgeColor` | int | `0x0` | `0x0` - `0xFFFFFF` | RGB color of the vignette edge. Default is black (0x000000). |
+| `UseMouseEffect` | bool | `true` | - | Enable the mouse-reactive shader effect. When disabled, no mouse effect renders. |
+| `Name` | string | `mouse_emberTrail` | - | Mouse effect shader. |
+| `Opacity` | float | `0.30` | `0.00` - `1.00` | Opacity of the mouse effect layer. |
+| `CycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through mouse effects while overlay is visible. |
 
 ## BackgroundImage
 
@@ -806,4 +747,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-05 with 347 total settings.*
+*Generated on 2026-03-05 with 319 total settings.*

@@ -24,20 +24,30 @@ $ahk2base = "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
 # Ensure output directory exists
 if (!(Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
 
-# === Discover HLSL files ===
-$hlslFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.hlsl' -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne 'alt_tabby_common.hlsl' } | Sort-Object Name)
+# === Discover HLSL files (recursive — includes mouse/, selection/ subdirs) ===
+$hlslFiles = @(Get-ChildItem -Path $shaderDir -Filter '*.hlsl' -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne 'alt_tabby_common.hlsl' } | Sort-Object FullName)
 if ($hlslFiles.Count -eq 0) {
     Write-Host "No .hlsl files found in $shaderDir"
     exit 0
 }
 
-# Build shader key from filename (same normalization as shader_bundle.ps1)
-function Get-ShaderKey($baseName) {
+# Build shader key from filename + optional subdir prefix (same normalization as shader_bundle.ps1)
+# Background: fire.hlsl → "fire"
+# Mouse: mouse/radial_glow.hlsl → "mouse_radialGlow"
+function Get-ShaderKey($hlslFile) {
+    $baseName = $hlslFile.BaseName
     $funcName = ($baseName -split '[_\-]' | ForEach-Object {
         $_.Substring(0,1).ToUpper() + $_.Substring(1).ToLower()
     }) -join ''
-    return $funcName.Substring(0,1).ToLower() + $funcName.Substring(1)
+    $regKey = $funcName.Substring(0,1).ToLower() + $funcName.Substring(1)
+
+    # Check if shader is in a subdirectory
+    if ($hlslFile.DirectoryName -ne $shaderDir) {
+        $subdir = Split-Path -Leaf $hlslFile.DirectoryName
+        $regKey = $subdir + '_' + $regKey
+    }
+    return $regKey
 }
 
 # === Check staleness for each shader ===
@@ -57,7 +67,7 @@ if (Test-Path $commonHlslPath) {
 }
 
 foreach ($hlsl in $hlslFiles) {
-    $key = Get-ShaderKey $hlsl.BaseName
+    $key = Get-ShaderKey $hlsl
     $binPath = Join-Path $outputDir "ps_$key.bin"
 
     if (!$force -and (Test-Path $binPath)) {
@@ -191,7 +201,7 @@ if ($staleShaders.Count -eq 0) {
 $expectedBins = @{}
 $expectedBins["vs_VSMain.bin"] = $true
 foreach ($hlsl in $hlslFiles) {
-    $key = Get-ShaderKey $hlsl.BaseName
+    $key = Get-ShaderKey $hlsl
     $expectedBins["ps_$key.bin"] = $true
 }
 
@@ -212,7 +222,7 @@ if ($finalBins.Count -ne $totalShaders) {
     Write-Host "ERROR: Expected $totalShaders .bin files, found $($finalBins.Count)" -ForegroundColor Red
     # List what's missing
     foreach ($hlsl in $hlslFiles) {
-        $key = Get-ShaderKey $hlsl.BaseName
+        $key = Get-ShaderKey $hlsl
         $binPath = Join-Path $outputDir "ps_$key.bin"
         if (!(Test-Path $binPath)) {
             Write-Host "  MISSING: ps_$key.bin" -ForegroundColor Red

@@ -207,6 +207,35 @@
     white-space: pre-line;
   }
 
+  /* Array section layer management */
+  .array-remove-link {
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-left: 12px;
+  }
+  .array-remove-link:hover { color: #e74c3c; }
+  .array-add-layer {
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+  .add-layer-btn {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .add-layer-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   /* Setting row */
   .setting {
     display: flex;
@@ -572,6 +601,99 @@ let originalValues = {};
 let sections = [];
 let activeSection = '';
 let changeCount = 0;
+let removedSections = [];  // Track deleted array sections for save
+
+// Expand an array_section's template settings into numbered subsections (Layer 1, 2, ...)
+function expandArraySection(section) {
+  // Extract and store templates on first call
+  if (!section._templates) {
+    section._templates = section.settings.filter(s => s.g && s.g.includes('{N}'));
+    section.settings = section.settings.filter(s => !s.g || !s.g.includes('{N}'));
+  }
+
+  // Use actual count from values metadata, not registry max
+  const actualCount = configValues['_activeLayerCount_' + section.name] || 1;
+  section._activeLayerCount = actualCount;
+  section._maxLayers = section.array_section || 1;
+
+  section.subsections = [];
+  for (let n = 1; n <= actualCount; n++) {
+    const sub = { type: 'subsection', name: 'Layer ' + n, desc: '', section: section.name, settings: [] };
+    for (const tmpl of section._templates) {
+      const setting = { ...tmpl, s: tmpl.s + '.' + n, g: tmpl.g.replace(/\{N\}/g, n) };
+      if (tmpl.dynamicOptionKeys) setting.dynamicOptionKeys = tmpl.dynamicOptionKeys;
+      if (tmpl.dynamicOptionLabels) setting.dynamicOptionLabels = tmpl.dynamicOptionLabels;
+      sub.settings.push(setting);
+    }
+    section.subsections.push(sub);
+  }
+}
+
+function addArrayLayer(sectionName) {
+  const section = sections.find(s => s.name === sectionName);
+  if (!section || section._activeLayerCount >= section._maxLayers) return;
+
+  section._activeLayerCount++;
+  configValues['_activeLayerCount_' + sectionName] = section._activeLayerCount;
+
+  // Create new subsection from templates
+  const n = section._activeLayerCount;
+  const sub = { type: 'subsection', name: 'Layer ' + n, desc: '', section: sectionName, settings: [] };
+  for (const tmpl of section._templates) {
+    const setting = { ...tmpl, s: tmpl.s + '.' + n, g: tmpl.g.replace(/\{N\}/g, n) };
+    if (tmpl.dynamicOptionKeys) setting.dynamicOptionKeys = tmpl.dynamicOptionKeys;
+    if (tmpl.dynamicOptionLabels) setting.dynamicOptionLabels = tmpl.dynamicOptionLabels;
+    sub.settings.push(setting);
+    // Set default values for new layer — for dropdowns, use first option (what the UI shows)
+    if (setting.dynamicOptionKeys && setting['default'] === '') {
+      const firstKey = setting.dynamicOptionKeys.find(k => k !== '');
+      configValues[setting.g] = firstKey || '';
+    } else {
+      configValues[setting.g] = setting['default'];
+    }
+  }
+  section.subsections.push(sub);
+
+  // Remove from removedSections if re-adding
+  const removedName = sectionName + '.' + n;
+  removedSections = removedSections.filter(s => s !== removedName);
+
+  renderContent();
+  bindFileControls();
+  updateChangeCount();
+}
+
+function removeArrayLayer(sectionName, layerIdx) {
+  const section = sections.find(s => s.name === sectionName);
+  if (!section || section._activeLayerCount <= 1) return;
+  const oldCount = section._activeLayerCount;
+
+  // Shift configValues down: copy (layerIdx+1) -> layerIdx, (layerIdx+2) -> (layerIdx+1), etc.
+  for (const tmpl of section._templates) {
+    for (let n = layerIdx; n < oldCount; n++) {
+      const srcG = tmpl.g.replace(/\{N\}/g, n + 1);
+      const dstG = tmpl.g.replace(/\{N\}/g, n);
+      configValues[dstG] = configValues[srcG];
+    }
+    // Delete the now-empty last slot
+    delete configValues[tmpl.g.replace(/\{N\}/g, oldCount)];
+  }
+
+  // Track the vacated last section for save-time deletion
+  const removedName = sectionName + '.' + oldCount;
+  if (!removedSections.includes(removedName))
+    removedSections.push(removedName);
+
+  section._activeLayerCount--;
+  configValues['_activeLayerCount_' + sectionName] = section._activeLayerCount;
+
+  // Rebuild subsections from shifted values
+  expandArraySection(section);
+
+  renderContent();
+  bindFileControls();
+  updateChangeCount();
+}
 
 // Initialize settings - called by AHK after page loads
 window.initSettings = function(registry, values) {
@@ -586,6 +708,10 @@ window.initSettings = function(registry, values) {
 
   for (const entry of configRegistry) {
     if (entry.type === 'section') {
+      // If previous section was array_section, expand its template settings
+      if (currentSection && currentSection.array_section > 0) {
+        expandArraySection(currentSection);
+      }
       currentSection = { ...entry, subsections: [], settings: [] };
       currentSubsection = null;
       sections.push(currentSection);
@@ -600,6 +726,10 @@ window.initSettings = function(registry, values) {
         currentSection.settings.push(setting);
       }
     }
+  }
+  // Handle last section if array_section
+  if (currentSection && currentSection.array_section > 0) {
+    expandArraySection(currentSection);
   }
 
   activeSection = sections[0]?.name || '';
@@ -767,13 +897,26 @@ function renderContent() {
       html += renderSettings(s.settings);
     }
 
+    const isArray = s._maxLayers > 0;
+
     // Subsections
-    for (const sub of s.subsections) {
+    for (let i = 0; i < s.subsections.length; i++) {
+      const sub = s.subsections[i];
       html += `<div class="subsection" data-search="${(sub.name + ' ' + (sub.desc||'')).toLowerCase()}">`;
-      html += `<div class="subsection-title">${sub.name}</div>`;
+      html += `<div class="subsection-title">${sub.name}`;
+      // Remove link on any layer when more than 1 exists
+      if (isArray && s._activeLayerCount > 1) {
+        html += ` <span class="array-remove-link" onclick="removeArrayLayer('${s.name}', ${i + 1})">Remove</span>`;
+      }
+      html += `</div>`;
       if (sub.desc) html += `<div class="subsection-desc">${sub.desc}</div>`;
       html += renderSettings(sub.settings);
       html += `</div>`;
+    }
+
+    // Add Layer button for array sections
+    if (isArray && s._activeLayerCount < s._maxLayers) {
+      html += `<div class="array-add-layer"><button class="add-layer-btn" onclick="addArrayLayer('${s.name}')">+ Add Shader Layer</button></div>`;
     }
 
     html += `</div>`;
@@ -906,23 +1049,28 @@ function updateSwatch(baseId, isARGB) {
 function updateChangeCount() {
   changeCount = 0;
   for (const key in configValues) {
+    if (key.startsWith('_activeLayerCount_')) continue;  // Skip metadata keys
     if (configValues[key] !== originalValues[key]) changeCount++;
   }
+  // Count removed sections as changes too
+  changeCount += removedSections.length;
+  const hasChanges = changeCount > 0;
   const info = document.getElementById('changeInfo');
   const saveBtn = document.getElementById('saveBtn');
-  if (changeCount > 0) {
+  if (hasChanges) {
     info.innerHTML = `<span class="change-count">${changeCount}</span> unsaved change${changeCount > 1 ? 's' : ''}`;
     saveBtn.disabled = false;
   } else {
     info.textContent = '';
     saveBtn.disabled = true;
   }
-  window.chrome.webview.postMessage(JSON.stringify({action: 'dirty', hasChanges: changeCount > 0}));
+  window.chrome.webview.postMessage(JSON.stringify({action: 'dirty', hasChanges: hasChanges}));
 }
 
 function getModifiedValues() {
   const changes = {};
   for (const key in configValues) {
+    if (key.startsWith('_activeLayerCount_')) continue;  // Skip metadata keys
     if (configValues[key] !== originalValues[key]) {
       changes[key] = configValues[key];
     }
@@ -932,7 +1080,10 @@ function getModifiedValues() {
 
 function saveChanges() {
   const changes = getModifiedValues();
-  window.chrome.webview.postMessage(JSON.stringify({action: 'save', changes: changes}));
+  const msg = {action: 'save', changes: changes};
+  if (removedSections.length > 0)
+    msg.deleteSections = removedSections;
+  window.chrome.webview.postMessage(JSON.stringify(msg));
 }
 
 function cancelEditor() {
@@ -945,24 +1096,43 @@ function cancelEditor() {
 function resetAll() {
   if (!confirm('Reset all settings to defaults?')) return;
 
-  // Reset to defaults from registry
-  for (const entry of configRegistry) {
-    if (entry.g && entry.hasOwnProperty('default')) {
-      configValues[entry.g] = entry.default;
-      const id = `setting-${entry.s}-${entry.k}`;
-      const el = document.getElementById(id);
-      if (!el) continue;
-      if (entry.t === 'bool') el.checked = entry.default;
-      else el.value = formatValue(entry.default, entry.t, entry.fmt);
-      // Sync slider if present
-      const slider = document.getElementById(id + '-slider');
-      if (slider) slider.value = entry.default;
-      // Sync color swatch if present
-      if (entry.t === 'int' && entry.fmt === 'hex' && entry.max > 0xFF) {
-        updateSwatch(id, entry.max > 0xFFFFFF);
+  // Phase 1: Collapse array sections to 1 layer
+  for (const section of sections) {
+    if (!section._maxLayers || section._maxLayers <= 0) continue;
+    const oldCount = section._activeLayerCount;
+    // Clean up configValues and mark layers 2..N for deletion
+    if (section._templates) {
+      for (let n = 2; n <= oldCount; n++) {
+        for (const tmpl of section._templates) {
+          delete configValues[tmpl.g.replace(/\{N\}/g, n)];
+        }
+        const removedName = section.name + '.' + n;
+        if (!removedSections.includes(removedName))
+          removedSections.push(removedName);
       }
     }
+    section._activeLayerCount = 1;
+    configValues['_activeLayerCount_' + section.name] = 1;
+    expandArraySection(section);
   }
+
+  // Phase 2: Reset all values to defaults
+  for (const entry of configRegistry) {
+    if (!entry.g || !entry.hasOwnProperty('default')) continue;
+
+    if (entry.g.includes('{N}')) {
+      // Only layer 1 remains after collapse
+      const expandedG = entry.g.replace(/\{N\}/g, 1);
+      const val = entry.hasOwnProperty('default1') ? entry.default1 : entry['default'];
+      configValues[expandedG] = val;
+    } else {
+      configValues[entry.g] = entry['default'];
+    }
+  }
+
+  // Phase 3: Re-render with updated values and layer counts
+  renderContent();
+  bindFileControls();
   updateChangeCount();
 }
 

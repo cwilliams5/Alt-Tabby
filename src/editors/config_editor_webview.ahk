@@ -228,6 +228,16 @@ _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
             ; Apply changes to config.ini
             changes := msg["changes"]
             _CEW_ApplyChanges(changes)
+
+            ; Delete removed array sections (text-based: removes headers + comments + all occurrences)
+            if (msg.Has("deleteSections")) {
+                delNames := []
+                for _, sectionName in msg["deleteSections"]
+                    delNames.Push(sectionName)
+                if (delNames.Length > 0)
+                    CL_DeleteSections(delNames)
+            }
+
             gCEW_SavedChanges := true
 
             try Theme_UntrackGui(gCEW_Gui)
@@ -285,18 +295,58 @@ _CEW_InjectConfigData() {
 _CEW_SerializeCurrentValues() {
     global gConfigRegistry, gConfigIniPath
 
+    ; Pre-scan for array_section counts + detect actual layers from INI
+    arraySections := Map()
+    for _, entry in gConfigRegistry {
+        if (entry.HasOwnProp("type") && entry.type = "section" && entry.HasOwnProp("array_section"))
+            arraySections[entry.name] := entry.array_section
+    }
+
+    ; Detect actual layer count from INI for each array section
+    actualLayerCounts := Map()
+    for sectionName, maxCount in arraySections {
+        actualCount := 0
+        Loop maxCount {
+            try {
+                sectionKeys := IniRead(gConfigIniPath, sectionName "." A_Index)
+                if (sectionKeys != "")
+                    actualCount := A_Index
+            }
+        }
+        actualLayerCounts[sectionName] := Max(1, actualCount)
+    }
+
     values := Map()
+
+    ; Pass active layer counts to JS as metadata
+    for sectionName, count in actualLayerCounts
+        values["_activeLayerCount_" sectionName] := count
+
     for _, entry in gConfigRegistry {
         if (!entry.HasOwnProp("default"))
             continue
 
-        iniVal := IniRead(gConfigIniPath, entry.s, entry.k, "")
-        if (iniVal = "")
-            val := entry.default
-        else
-            val := CL_ParseValue(iniVal, entry.t)
-
-        values[entry.g] := val
+        if (InStr(entry.g, "{N}")) {
+            ; Array section — serialize only active layers
+            count := actualLayerCounts.Has(entry.s) ? actualLayerCounts[entry.s] : 1
+            Loop count {
+                expandedG := StrReplace(entry.g, "{N}", A_Index)
+                sectionName := entry.s "." A_Index
+                iniVal := IniRead(gConfigIniPath, sectionName, entry.k, "")
+                if (iniVal = "")
+                    val := (A_Index = 1 && entry.HasOwnProp("default1")) ? entry.default1 : entry.default
+                else
+                    val := CL_ParseValue(iniVal, entry.t)
+                values[expandedG] := val
+            }
+        } else {
+            iniVal := IniRead(gConfigIniPath, entry.s, entry.k, "")
+            if (iniVal = "")
+                val := entry.default
+            else
+                val := CL_ParseValue(iniVal, entry.t)
+            values[entry.g] := val
+        }
     }
     return JSON.Dump(values)
 }

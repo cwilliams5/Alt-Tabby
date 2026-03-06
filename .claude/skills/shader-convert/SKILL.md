@@ -11,7 +11,7 @@ Convert Shadertoy GLSL shaders to the Alt-Tabby HLSL pixel shader format.
 
 ## Invocation
 
-- `/shader-convert` — Scan `src/shaders/` for any `.glsl` without matching `.hlsl`, convert all
+- `/shader-convert` — Scan `src/shaders/` (and subdirs `mouse/`, `selection/`) for any `.glsl` without matching `.hlsl`, convert all
 - `/shader-convert <Shadertoy URL>` — Fetch shader from Shadertoy via Playwright, then convert
 - `/shader-convert <pasted GLSL + metadata>` — Convert manually pasted shader source
 
@@ -21,8 +21,9 @@ Convert Shadertoy GLSL shaders to the Alt-Tabby HLSL pixel shader format.
 
 ### Mode A — Scan Directory (no args)
 
-1. Scan `src/shaders/` for any `name.glsl` that has no matching `name.hlsl`
+1. Scan `src/shaders/` and subdirs `src/shaders/mouse/`, `src/shaders/selection/` for any `name.glsl` that has no matching `name.hlsl`
 2. For each unconverted shader: convert, create `.hlsl` (and `.json` if missing)
+3. Mouse shaders go in `src/shaders/mouse/`, selection shaders in `src/shaders/selection/`, background shaders in `src/shaders/`
 
 ### Mode B — Shadertoy URL (arg matches `shadertoy.com/view/`)
 
@@ -338,5 +339,13 @@ If the shader uses `iChannel0..3`:
 - `timeOffsetMin`: (optional) Minimum random time offset in seconds. Skips the shader's warmup period so it looks interesting immediately. Falls back to config `ShaderTimeOffsetMin` (default 30) if omitted.
 - `timeOffsetMax`: (optional) Maximum random time offset in seconds. Falls back to config `ShaderTimeOffsetMax` (default 90) if omitted. Set higher for shaders with long warmup (e.g., volumetric fog needs 40-120s).
 - `timeAccumulate`: (optional) When true, shader time persists across overlay show/hide so it picks up where it left off. Falls back to config `ShaderTimeAccumulate` (default true) if omitted. Set false for shaders with a deliberate intro animation you want to see each time.
+- `category`: (optional) `"mouse"` or `"selection"` for shaders in subdirectories. Background shaders (root dir) omit this field.
 
 Add time fields when the shader has a notable warmup period or deliberate intro. Omit them for shaders that look good immediately at any time value.
+
+### Shader Categories
+
+Shaders are organized into three categories by directory:
+- **Background shaders** (`src/shaders/`): Composited as stackable layers behind the window list. Up to 4 layers.
+- **Mouse shaders** (`src/shaders/mouse/`): Single-slot effect that receives `iMouse` (cursor position). Add `"category": "mouse"` to JSON.
+- **Selection shaders** (`src/shaders/selection/`): Single-slot effect for row selection highlight. Receives `selRect`, `selColor`, `borderColor`, `borderWidth`, `isHovered`, `entranceT` via cbuffer. Add `"category": "selection"` to JSON.

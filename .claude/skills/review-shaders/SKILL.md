@@ -10,7 +10,7 @@ Enter planning mode. Deep-audit HLSL pixel shaders in `src/shaders/` for GPU per
 
 Alt-Tabby renders background shaders at 120-240fps via D3D11 pixel shaders compiled from HLSL to DXBC. These shaders are converted from Shadertoy GLSL — many carry unoptimized patterns from their original authors or from mechanical GLSL→HLSL conversion. At 240fps on a 1440p display, every pixel shader instruction runs ~885M times/second (3840×1600×240÷2 assuming half the overlay is visible). Even saving one ALU instruction matters.
 
-**Scope**: Only `src/shaders/*.hlsl` files. Does NOT cover:
+**Scope**: All `src/shaders/**/*.hlsl` files (including `mouse/` and `selection/` subdirs). Does NOT cover:
 - The D3D11 host-side code in `d2d_shader.ahk` (use `review-paint` for the D2D pipeline)
 - The AHK-side effect chain or compositing (use `review-paint`)
 - Shader compilation or bundling tooling
@@ -124,7 +124,7 @@ HLSL compilers are good but not perfect. Help them:
 
 ## Files to Audit
 
-All `.hlsl` files in `src/shaders/`. There are 150+ shaders. Organize the audit by pattern, not by individual file — many shaders share the same noise functions, FBM loops, and rotation patterns.
+All `.hlsl` files in `src/shaders/` and subdirectories (`mouse/`, `selection/`). There are 150+ shaders. Organize the audit by pattern, not by individual file — many shaders share the same noise functions, FBM loops, and rotation patterns.
 
 **Use the `.glsl` source as reference** when verifying visual equivalence — it shows the original author intent.
 

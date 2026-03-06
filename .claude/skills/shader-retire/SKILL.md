@@ -20,19 +20,19 @@ Move a shader out of the active set into `legacy/shaders_retired/` by display na
 ### 1. Resolve the Shader
 
 The argument can be:
-- **Display name** (e.g., `Matrix Rain`) — scan `src/shaders/*.json`, match on the `"name"` field (case-insensitive)
-- **Disk name** (e.g., `matrix_rain`) — look for `src/shaders/matrix_rain.json`
+- **Display name** (e.g., `Matrix Rain`) — scan `src/shaders/**/*.json` (including `mouse/` and `selection/` subdirs), match on the `"name"` field (case-insensitive)
+- **Disk name** (e.g., `matrix_rain`) — look for `src/shaders/matrix_rain.json`, `src/shaders/mouse/matrix_rain.json`, or `src/shaders/selection/matrix_rain.json`
 - **Filename** (e.g., `matrix_rain.json` or `matrix_rain.hlsl`) — strip extension, use as disk name
 
 If no match found, list available shaders and stop.
 
 ### 2. Read Metadata
 
-Read `src/shaders/{name}.json` to discover iChannel texture files referenced in `"iChannels"`.
+Read the matched `.json` file to discover iChannel texture files referenced in `"iChannels"` and the shader's directory.
 
 ### 3. Move Source Files
 
-Create `legacy/shaders_retired/` if it doesn't exist, then move all files belonging to the shader from `src/shaders/` into it:
+Create `legacy/shaders_retired/` if it doesn't exist, then move all files belonging to the shader from its directory (`src/shaders/`, `src/shaders/mouse/`, or `src/shaders/selection/`) into it:
 - `{name}.glsl`
 - `{name}.hlsl`
 - `{name}.json`
