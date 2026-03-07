@@ -168,18 +168,6 @@ D2D_DrawEllipse(cx, cy, rx, ry, brush, strokeWidth := 1.0) { ; lint-ignore: dead
     gD2D_RT.DrawEllipse(eBuf, brush, strokeWidth)
 }
 
-; Fill rectangle.
-D2D_FillRect(x, y, w, h, brush) {
-    global gD2D_RT
-    if (!gD2D_RT)
-        return
-    static rect := Buffer(16)
-    NumPut("float", Float(x), "float", Float(y),
-           "float", Float(x + w), "float", Float(y + h), rect)
-    gD2D_RT.FillRectangle(rect, brush)
-}
-
-
 ; Stroke a rectangle outline.
 D2D_StrokeRect(x, y, w, h, brush, strokeWidth := 1.0) { ; lint-ignore: dead-function
     global gD2D_RT

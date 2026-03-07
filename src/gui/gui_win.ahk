@@ -147,72 +147,6 @@ Win_SetPosPhys(hWnd, xPhys, yPhys, wPhys, hPhys) {
     return DllCall("user32\SetWindowPos", "ptr", hWnd, "ptr", 0, "int", xPhys, "int", yPhys, "int", wPhys, "int", hPhys, "uint", flags, "int")
 }
 
-; Apply rounded region to window
-Win_ApplyRoundRegion(hWnd, radiusPx, optW := 0, optH := 0) { ; lint-ignore: dead-function
-    if (!hWnd || radiusPx <= 0) {
-        return
-    }
-
-    ww := 0
-    wh := 0
-
-    if (optW > 0 && optH > 0) {
-        ww := optW
-        wh := optH
-    } else {
-        ; Try client size first
-        ; Use try-catch to handle exceptions and ensure variables are always set
-        cw := 0
-        ch := 0
-        try {
-            cx := 0
-            cy := 0
-            WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " hWnd)
-        } catch {
-            cw := 0
-            ch := 0
-        }
-        if (cw > 0 && ch > 0) {
-            ww := cw
-            wh := ch
-        }
-
-        ; Fall back to window size
-        if (ww <= 0 || wh <= 0) {
-            winW := 0
-            winH := 0
-            try {
-                wx := 0
-                wy := 0
-                WinGetPos(&wx, &wy, &winW, &winH, "ahk_id " hWnd)
-            } catch {
-                winW := 0
-                winH := 0
-            }
-            if (winW > 0) {
-                ww := winW
-            }
-            if (winH > 0) {
-                wh := winH
-            }
-        }
-    }
-
-    if (ww <= 0 || wh <= 0) {
-        return
-    }
-
-    hrgn := 0
-    try {
-        hrgn := DllCall("gdi32\CreateRoundRectRgn", "int", 0, "int", 0, "int", ww + 1, "int", wh + 1, "int", radiusPx * 2, "int", radiusPx * 2, "ptr")
-    } catch {
-        hrgn := 0
-    }
-    if (hrgn) {
-        DllCall("user32\SetWindowRgn", "ptr", hWnd, "ptr", hrgn, "int", 1)
-    }
-}
-
 ; Apply DWM system backdrop (Win11 22H2+). Returns true on success.
 ; type: 0=Auto, 1=None, 2=Mica, 3=Acrylic, 4=MicaAlt(Tabbed)
 Win_SetSystemBackdrop(hWnd, type) {
@@ -287,19 +221,6 @@ Win_SetCornerPreference(hWnd, pref := 2) {
     NumPut("Int", pref, buf, 0)
     try {
         DllCall("dwmapi\DwmSetWindowAttribute", "ptr", hWnd, "int", DWMWA_WINDOW_CORNER_PREFERENCE, "ptr", buf.Ptr, "int", 4, "int")
-    }
-}
-
-; Remove WS_EX_LAYERED style
-Win_ForceNoLayered(hWnd) { ; lint-ignore: dead-function
-    global GWL_EXSTYLE, WS_EX_LAYERED, SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED
-    try {
-        ex := DllCall("user32\GetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr")
-        if (ex & WS_EX_LAYERED) {
-            ex := ex & ~WS_EX_LAYERED
-            DllCall("user32\SetWindowLongPtrW", "ptr", hWnd, "int", GWL_EXSTYLE, "ptr", ex, "ptr")
-            DllCall("user32\SetWindowPos", "ptr", hWnd, "ptr", 0, "int", 0, "int", 0, "int", 0, "int", 0, "uint", SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
-        }
     }
 }
 

@@ -1033,30 +1033,6 @@ _GUI_ActivateItem(item) {
     return result
 }
 
-GUI_ClickActivate(item) {
-    global gGUI_State, gGUI_DisplayItems, cfg
-    global gAnim_HidePending
-    Critical "On"
-    if (gGUI_State != "ACTIVE") {
-        Critical "Off"
-        return
-    }
-    ; Match keyboard path: hide first, activate, set IDLE last.
-    ; Critical must be held throughout so the frame loop timer doesn't
-    ; fire during _GUI_RobustActivate's SetWindowPos STA pump and
-    ; complete the entire fade within the activation call.
-    GUI_HideOverlay()
-    _GUI_ActivateItem(item)
-    ; Defer clearing display items during animated hide-fade: the frame
-    ; loop still paints the fading overlay using the frozen list.
-    ; _Anim_DoActualHide() clears them when the fade completes.
-    if (!gAnim_HidePending)
-        gGUI_DisplayItems := []
-    gGUI_State := "IDLE"
-    Stats_AccumulateSession()
-    Critical "Off"
-}
-
 ; ========================= SWITCH-ACTIVATE METHOD =========================
 
 ; Start the SwitchActivate cross-workspace method:

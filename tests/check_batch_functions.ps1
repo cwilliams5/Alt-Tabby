@@ -301,6 +301,12 @@ foreach ($file in $allProjectFiles) {
                 if (-not $BF_AHK_KEYWORDS.ContainsKey($funcName.ToLower())) {
                     [void]$ucDefinedFunctions.Add($funcName)
                 }
+            } elseif ($raw -match '^(\w+)\s*\(') {
+                # Multi-line function def (params span lines, { on later line)
+                $funcName = $Matches[1]
+                if (-not $BF_AHK_KEYWORDS.ContainsKey($funcName.ToLower())) {
+                    [void]$ucDefinedFunctions.Add($funcName)
+                }
             } elseif ($raw -match '^\s*class\s+(\w+)') {
                 [void]$ucDefinedFunctions.Add($Matches[1])
             }

@@ -488,10 +488,6 @@ Anim_EaseOutQuad(t) {
     return 1.0 - inv * inv
 }
 
-Anim_Linear(t) { ; lint-ignore: dead-function
-    return t
-}
-
 ; ========================= FPS DEBUG OVERLAY =========================
 
 _Anim_UpdateFPSCounter(now) {

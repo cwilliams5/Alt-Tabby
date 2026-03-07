@@ -36,8 +36,6 @@ global gD2D_SwapChainMaxH := 0 ; Physical height of the oversized swap chain ; l
 ; Waitable swap chain state (latency optimization — Present(0,0) pattern)
 global gD2D_SwapChain2 := 0     ; IDXGISwapChain2 (0 = fallback/non-waitable mode)
 global gD2D_WaitableHandle := 0  ; HANDLE from GetFrameLatencyWaitableObject
-global gD2D_SwapChainFlags := 0  ; Flags used at creation (passed to ResizeBuffers)
-
 ; ========================= CONFIG-DRIVEN BACKDROP =========================
 
 ; Apply backdrop style from cfg.GUI_BackdropStyle.
@@ -456,7 +454,7 @@ _D2D_InitFactories() {
 _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
     global gD2D_Factory, gD2D_RT, gD2D_D3DDevice, gD2D_D2DDevice
     global gD2D_SwapChain, gD2D_BackBuffer
-    global gD2D_SwapChain2, gD2D_WaitableHandle, gD2D_SwapChainFlags
+    global gD2D_SwapChain2, gD2D_WaitableHandle
     global gDComp_Device, gDComp_Target, gDComp_Visual, gDComp_ClipVisual
     global gD2D_SwapChainMaxW, gD2D_SwapChainMaxH
     global D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE
@@ -510,14 +508,12 @@ _D2D_CreateRenderTarget(hwnd, wPhys, hPhys) {
         if (!gD2D_WaitableHandle)
             throw Error("GetFrameLatencyWaitableObject returned NULL")
 
-        gD2D_SwapChainFlags := DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT
         waitableOk := true
     } catch as e {
         try LogAppend(LOG_PATH_STORE, "WaitableSwapChain FALLBACK: " e.Message)
         _D2D_CleanupWaitableState()
         ; Release partial swap chain if created
         gD2D_SwapChain := 0
-        gD2D_SwapChainFlags := 0
     }
 
     ; Fallback: standard swap chain without waitable flag — still oversized
@@ -575,34 +571,6 @@ _D2D_CleanupWaitableState() {
         gD2D_WaitableHandle := 0
     }
     gD2D_SwapChain2 := 0
-}
-
-; Resize the swap chain buffers. NOT called during normal operation (Phase 2:
-; swap chain created at max monitor size, visible region controlled by DComp clip).
-; Retained for device loss recovery on a monitor larger than initial max.
-D2D_ResizeRenderTarget(wPhys, hPhys) {
-    global gD2D_SwapChain, gD2D_RT, gD2D_BackBuffer
-    global gD2D_SwapChainFlags, DXGI_FORMAT_UNKNOWN
-    if (!gD2D_SwapChain)
-        return
-    if (wPhys < 1)
-        wPhys := 1
-    if (hPhys < 1)
-        hPhys := 1
-
-    ; Release current back buffer reference before resize — ResizeBuffers
-    ; requires all outstanding buffer references to be released.
-    if (gD2D_BackBuffer) {
-        gD2D_RT.SetTarget(0)
-        gD2D_BackBuffer := 0
-    }
-
-    try {
-        ; bufferCount=0 keeps existing count, DXGI_FORMAT_UNKNOWN keeps existing format
-        gD2D_SwapChain.ResizeBuffers(0, wPhys, hPhys, DXGI_FORMAT_UNKNOWN, gD2D_SwapChainFlags)
-    } catch {
-        ; Resize failure — next paint will trigger device loss recovery
-    }
 }
 
 ; Recreate the D2D pipeline after device loss (DXGI_ERROR_DEVICE_REMOVED etc.).

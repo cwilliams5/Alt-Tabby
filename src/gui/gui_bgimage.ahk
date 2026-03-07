@@ -94,19 +94,6 @@ BGImg_Dispose() {
     ; GDI+ token intentionally kept alive — no need to shut down/restart for reload
 }
 
-; Reload image from disk and rebuild cache. Called on config apply.
-; Always reloads — file content may have changed even if path is the same
-; (e.g., user replaced image via config editor). Config apply is a cold path
-; so the ~50ms image load is acceptable.
-BGImg_Reload() { ; lint-ignore: dead-function
-    global cfg, gBGImg_CacheDirty
-    BGImg_Dispose()
-    newPath := cfg.BGImgEnabled ? cfg.BGImgImagePath : ""
-    if (newPath != "")
-        _BGImg_LoadImage(newPath)
-    gBGImg_CacheDirty := true
-}
-
 ; ============================================================
 ; PRIVATE — Cache Management
 ; ============================================================
