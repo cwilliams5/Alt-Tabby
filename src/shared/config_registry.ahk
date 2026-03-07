@@ -1359,10 +1359,12 @@ global gConfigRegistry := [
     ; BackgroundImage
     ; ============================================================
     {type: "section", name: "BackgroundImage", desc: "Background Image",
-     long: "Display a user-selected background image behind the overlay content. The image sits above the shader layer and below backdrop effects. Supports fit modes, alignment, opacity, blur, desaturation, and brightness adjustments."},
+     long: "Display a user-selected background image behind the overlay content. Renders above or below shader layers depending on RenderAboveShaders. Supports fit modes, alignment, opacity, blur, desaturation, and brightness adjustments."},
 
     {s: "BackgroundImage", k: "Enabled", g: "BGImgEnabled", t: "bool", default: false,
      d: "Enable the background image layer. When false, no image is loaded or rendered."},
+    {s: "BackgroundImage", k: "RenderAboveShaders", g: "BGImgRenderAboveShaders", t: "bool", default: true,
+     d: "When true, the background image renders above shader layers (image is the visual focus). When false, renders below shader layers (image is a backdrop for shaders)."},
     {s: "BackgroundImage", k: "ImagePath", g: "BGImgImagePath", t: "file", default: "",
      d: "Path to the background image file. Use the Browse button to select an image — it will be copied to the resources folder for portability."},
     {type: "subsection", section: "BackgroundImage", name: "Layout",

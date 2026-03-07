@@ -401,11 +401,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         textW := 0
     }
 
-    ; Background image layer (above DWM surface, below shaders)
-    BGImg_Draw()
+    ; Background image layer (configurable: above or below shader layers)
+    if (!cfg.BGImgRenderAboveShaders)
+        BGImg_Draw()
 
     ; Shader layers (N stackable layers from config)
     FX_DrawShaderLayers(wPhys, hPhys)
+
+    if (cfg.BGImgRenderAboveShaders)
+        BGImg_Draw()
 
     ; Mouse effect layer (above shader layers, below selection)
     FX_DrawMouseEffect(wPhys, hPhys)
