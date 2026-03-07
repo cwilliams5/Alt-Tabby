@@ -423,7 +423,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     ; Header
     if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
-        hdrTextH := Round(20 * scale)
+        hdrTextH := cachedLayout.hdrTextH
         if (shadowP.enabled) {
             _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
             for _, col in cols {
@@ -444,8 +444,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     footerH := 0
     footerGap := 0
     if (cfg.GUI_ShowFooter) {
-        footerH := Round(cfg.GUI_FooterHeightPx * scale)
-        footerGap := Round(cfg.GUI_FooterGapTopPx * scale)
+        footerH := cachedLayout.footerH
+        footerGap := cachedLayout.footerGap
     }
     availH := hPhys - My - contentTopY - footerH - footerGap
     if (availH < 0) {
@@ -513,8 +513,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         brCol := gD2D_Res["brCol"], brColHi := gD2D_Res["brColHi"]
 
         ; Selection rect expansion (in physical px)
-        selExpandX := Round(4 * scale)
-        selExpandY := Round(2 * scale)
+        selExpandX := cachedLayout.selExpandX
+        selExpandY := cachedLayout.selExpandY
 
         ; ===== Selection highlight (drawn BEFORE row loop for correct Z-order) =====
         ; The highlight is a background element — text/icons draw on top.
@@ -713,9 +713,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 ; ========================= ACTION BUTTONS =========================
 
 ; Get scaled action button metrics with minimums enforced
-; Returns: {size, gap, rad}
+; Returns: {size, gap, rad} — cached per scale
 GUI_GetActionBtnMetrics(scale) {
     global cfg
+    static cached := {size: 0, gap: 0, rad: 0}, cachedScale := 0.0
+    if (Abs(cachedScale - scale) < 0.001)
+        return cached
     size := Round(cfg.GUI_ActionBtnSizePx * scale)
     if (size < 12)
         size := 12
@@ -725,7 +728,9 @@ GUI_GetActionBtnMetrics(scale) {
     rad := Round(cfg.GUI_ActionBtnRadiusPx * scale)
     if (rad < 2)
         rad := 2
-    return {size: size, gap: gap, rad: rad}
+    cached := {size: size, gap: gap, rad: rad}
+    cachedScale := scale
+    return cached
 }
 
 ; Draw a single action button and update btnX position
@@ -794,14 +799,16 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
         return
     }
 
-    trackW := Round(cfg.GUI_ScrollBarWidthPx * scale)
-    if (trackW < 2) {
-        trackW := 2
+    static _sbTrackW := 0, _sbMarR := 0, _sbScale := 0.0
+    if (Abs(_sbScale - scale) >= 0.001) {
+        _sbTrackW := Round(cfg.GUI_ScrollBarWidthPx * scale)
+        if (_sbTrackW < 2) _sbTrackW := 2
+        _sbMarR := Round(cfg.GUI_ScrollBarMarginRightPx * scale)
+        if (_sbMarR < 0) _sbMarR := 0
+        _sbScale := scale
     }
-    marR := Round(cfg.GUI_ScrollBarMarginRightPx * scale)
-    if (marR < 0) {
-        marR := 0
-    }
+    trackW := _sbTrackW
+    marR := _sbMarR
 
     x := wPhys - marR - trackW
     y := contentTopY
@@ -847,35 +854,34 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
         return
     }
 
-    fh := Round(cfg.GUI_FooterHeightPx * scale)
-    if (fh < 1) {
-        fh := 1
+    ; Cache all footer metrics per scale (7 Round() calls → cached)
+    static _ftC := {fh:0, mx:0, my:0, fr:0, pad:0, arrowW:0, arrowPad:0, borderW:0}, _ftScale := 0.0
+    if (Abs(_ftScale - scale) >= 0.001) {
+        _ftC.fh := Round(cfg.GUI_FooterHeightPx * scale)
+        if (_ftC.fh < 1) _ftC.fh := 1
+        _ftC.mx := Round(cfg.GUI_MarginX * scale)
+        _ftC.my := Round(cfg.GUI_MarginY * scale)
+        _ftC.fr := Round(cfg.GUI_FooterBGRadius * scale)
+        if (_ftC.fr < 0) _ftC.fr := 0
+        _ftC.pad := Round(cfg.GUI_FooterPaddingX * scale)
+        if (_ftC.pad < 0) _ftC.pad := 0
+        _ftC.arrowW := Round(PAINT_ARROW_W_DIP * scale)
+        _ftC.arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
+        _ftC.borderW := Round(cfg.GUI_FooterBorderPx * scale)
+        _ftScale := scale
     }
-    mx := Round(cfg.GUI_MarginX * scale)
-    my := Round(cfg.GUI_MarginY * scale)
+    fh := _ftC.fh, mx := _ftC.mx, my := _ftC.my, fr := _ftC.fr
+    pad := _ftC.pad, arrowW := _ftC.arrowW, arrowPad := _ftC.arrowPad
 
     fx := mx
     fy := hPhys - my - fh
     fw := wPhys - 2 * mx
-    fr := Round(cfg.GUI_FooterBGRadius * scale)
-    if (fr < 0) {
-        fr := 0
-    }
 
     ; Draw footer background
     D2D_FillRoundRect(fx, fy, fw, fh, fr, D2D_GetCachedBrush(cfg.GUI_FooterBGARGB))
     if (cfg.GUI_FooterBorderPx > 0) {
-        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, D2D_GetCachedBrush(cfg.GUI_FooterBorderARGB), Round(cfg.GUI_FooterBorderPx * scale))
+        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, D2D_GetCachedBrush(cfg.GUI_FooterBorderARGB), _ftC.borderW)
     }
-
-    pad := Round(cfg.GUI_FooterPaddingX * scale)
-    if (pad < 0) {
-        pad := 0
-    }
-
-    ; Arrow dimensions
-    arrowW := Round(PAINT_ARROW_W_DIP * scale)
-    arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
 
     ; Hoist repeated gD2D_Res lookups
     tfFooter := gD2D_Res["tfFooter"]

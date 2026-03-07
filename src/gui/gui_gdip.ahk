@@ -71,20 +71,27 @@ D2D_PushRoundRectClipLayer(x, y, w, h, r) {
     NumPut("float", Float(x), "float", Float(y),
            "float", Float(x + w), "float", Float(y + h),
            "float", Float(r), "float", Float(r), rrBuf)
-    ; Release previous geometry, create new one
+    ; Cache geometry — only recreate when rounded rect parameters change.
+    ; Selection rect moves on Tab; hover rect moves on mouse move; both rare vs frame count.
     ; ID2D1Factory::CreateRoundedRectangleGeometry (vtable 6)
-    static _geomPtr := 0
-    if (_geomPtr) {
-        ObjRelease(_geomPtr)
-        _geomPtr := 0
+    static _geomPtr := 0, _gx := 0.0, _gy := 0.0, _gw := 0.0, _gh := 0.0, _gr := 0.0
+    fx := Float(x), fy := Float(y), fw := Float(x + w), fh := Float(y + h), fr := Float(r)
+    if (_geomPtr && fx = _gx && fy = _gy && fw = _gw && fh = _gh && fr = _gr) {
+        ; Reuse cached geometry — skip COM Create+Release
+    } else {
+        if (_geomPtr) {
+            ObjRelease(_geomPtr)
+            _geomPtr := 0
+        }
+        pGeom := 0
+        try {
+            ComCall(6, gD2D_Factory, "ptr", rrBuf, "ptr*", &pGeom, "hresult")
+        } catch {
+            return false
+        }
+        _geomPtr := pGeom
+        _gx := fx, _gy := fy, _gw := fw, _gh := fh, _gr := fr
     }
-    pGeom := 0
-    try {
-        ComCall(6, gD2D_Factory, "ptr", rrBuf, "ptr*", &pGeom, "hresult")
-    } catch {
-        return false
-    }
-    _geomPtr := pGeom
     ; D2D1_LAYER_PARAMETERS (72 bytes on x64): initialize constants once
     static lp := 0
     if (!lp) {
@@ -120,8 +127,12 @@ D2D_DrawTextLeft(text, x, y, w, h, brush, tf) {
     global D2D1_DRAW_TEXT_OPTIONS_CLIP
     if (!gD2D_RT || !tf)
         return
-    tf.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)
-    tf.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
+    ; Alignment guard: skip 2 COM calls when alignment already set (hot path ~300+ calls/frame)
+    if (!tf.HasOwnProp("_a") || tf._a != 0) {
+        tf.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)
+        tf.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
+        tf._a := 0
+    }
     static rect := Buffer(16)
     NumPut("float", Float(x), "float", Float(y),
            "float", Float(x + w), "float", Float(y + h), rect)
@@ -134,8 +145,12 @@ D2D_DrawTextCentered(text, x, y, w, h, brush, tf) {
     global D2D1_DRAW_TEXT_OPTIONS_CLIP
     if (!gD2D_RT || !tf)
         return
-    tf.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)
-    tf.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
+    ; Alignment guard: skip 2 COM calls when alignment already set
+    if (!tf.HasOwnProp("_a") || tf._a != 1) {
+        tf.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)
+        tf.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
+        tf._a := 1
+    }
     static rect := Buffer(16)
     NumPut("float", Float(x), "float", Float(y),
            "float", Float(x + w), "float", Float(y + h), rect)

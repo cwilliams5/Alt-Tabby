@@ -57,6 +57,11 @@ GUI_GetCachedLayout(scale) {
     cached.colY := Round(PAINT_COL_Y_DIP * scale)
     cached.colH := Round(PAINT_COL_H_DIP * scale)
     cached.hdrBlock := Round(GUI_HeaderBlockDip() * scale)
+    cached.hdrTextH := Round(20 * scale)
+    cached.footerH := Round(cfg.GUI_FooterHeightPx * scale)
+    cached.footerGap := Round(cfg.GUI_FooterGapTopPx * scale)
+    cached.selExpandX := Round(4 * scale)
+    cached.selExpandY := Round(2 * scale)
     cachedScale := scale
     return cached
 }

@@ -8,7 +8,7 @@
 ; Layout: { float r, g, b, a }
 
 D2D_ColorF(argb) { ; lint-ignore: dead-function
-    buf := Buffer(16)
+    static buf := Buffer(16)
     NumPut("float", ((argb >> 16) & 0xFF) / 255.0,
            "float", ((argb >> 8) & 0xFF) / 255.0,
            "float", (argb & 0xFF) / 255.0,

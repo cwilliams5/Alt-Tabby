@@ -1311,9 +1311,8 @@ Shader_ReleaseInactive(activeNames) {
 ; Return the ID2D1Bitmap1 ptr for DrawImage. Returns 0 if not available.
 Shader_GetBitmap(name) {
     global gShader_Registry
-    if (!gShader_Registry.Has(name))
-        return 0
-    return gShader_Registry[name].bitmap
+    try return gShader_Registry[name].bitmap
+    return 0
 }
 
 ; Return the metadata for a registered shader, or 0 if not found.

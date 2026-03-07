@@ -155,6 +155,8 @@ global cfg := {
     GUI_ShowKillButton: false,
     GUI_ShowBlacklistButton: true,
     GUI_ShowFooter: true,
+    GUI_FooterHeightPx: 32,
+    GUI_FooterGapTopPx: 8,
     GUI_HoverPollIntervalMs: 100,
     DiagAltTabTooltips: false,
     DiagEventLog: false,  ; Disable event logging during tests
