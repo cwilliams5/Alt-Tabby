@@ -993,4 +993,179 @@ RunUnitTests_CoreConfig() {
     ; Restore
     cfg.PumpPipeName := savedPipe
     cfg.AltTabGraceMs := savedGrace
+
+    ; ============================================================
+    ; Config Array Section Load / Normalize / Prune Tests
+    ; ============================================================
+    ; Tests {N} template expansion, excess pruning, gap normalization,
+    ; and CL_DeleteSections edge cases for array sections ([Shader.1]...[Shader.4]).
+    Log("`n--- Config Array Section Tests ---")
+
+    global gConfigIniPath, gConfigLoaded
+    savedIniPath2 := gConfigIniPath
+    savedLoaded2 := gConfigLoaded
+
+    ; Test 1: Array section basic load — {N} template expansion
+    Log("Testing array section basic load...")
+    _Test_WithTempDir("tabby_array_test", _Test_ArraySectionLoad)
+    _Test_ArraySectionLoad(dir) {
+        global TestPassed, TestErrors, gConfigIniPath, cfg
+
+        testCfgPath := dir "\config.ini"
+        gConfigIniPath := testCfgPath
+
+        ; Write [Shader.1] and [Shader.2] with known ShaderName values (IniWrite avoids UTF-8 BOM issues)
+        IniWrite("testShader1", testCfgPath, "Shader.1", "ShaderName")
+        IniWrite("testShader2", testCfgPath, "Shader.2", "ShaderName")
+
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+
+        ; Verify {N} expansion: cfg.Shader1_ShaderName and cfg.Shader2_ShaderName
+        if (cfg.Shader1_ShaderName = "testShader1" && cfg.Shader2_ShaderName = "testShader2") {
+            Log("PASS: Array section load — {N} template expansion works")
+            TestPassed++
+        } else {
+            Log("FAIL: Array section load — expected Shader1=testShader1, Shader2=testShader2")
+            Log("  Got: Shader1=" cfg.Shader1_ShaderName ", Shader2=" cfg.Shader2_ShaderName)
+            TestErrors++
+        }
+    }
+
+    ; Test 2: Excess pruning — [Shader.5] removed when max is 4
+    Log("Testing excess array section pruning...")
+    _Test_WithTempDir("tabby_prune_test", _Test_ArraySectionPrune)
+    _Test_ArraySectionPrune(dir) {
+        global TestPassed, TestErrors, gConfigIniPath
+
+        testCfgPath := dir "\config.ini"
+        gConfigIniPath := testCfgPath
+
+        ; Write [Shader.1] (valid) and [Shader.5] (excess — max is 4)
+        IniWrite("valid", testCfgPath, "Shader.1", "ShaderName")
+        IniWrite("excess", testCfgPath, "Shader.5", "ShaderName")
+
+        arraySections := Map("Shader", 4)
+        _CL_PruneExcessArraySections(arraySections)
+
+        ; Read back and verify [Shader.5] was removed
+        result := FileRead(testCfgPath, "UTF-8")
+        hasValid := InStr(result, "[Shader.1]")
+        hasExcess := InStr(result, "[Shader.5]")
+
+        if (hasValid && !hasExcess) {
+            Log("PASS: Excess pruning — [Shader.5] removed, [Shader.1] preserved")
+            TestPassed++
+        } else {
+            Log("FAIL: Excess pruning — valid=" hasValid ", excess=" hasExcess)
+            Log("  Content: " SubStr(result, 1, 200))
+            TestErrors++
+        }
+    }
+
+    ; Test 3: Gap normalization — [Shader.1] + [Shader.4] compacted to [Shader.1] + [Shader.2]
+    Log("Testing gap normalization...")
+    _Test_WithTempDir("tabby_normalize_test", _Test_ArraySectionNormalize)
+    _Test_ArraySectionNormalize(dir) {
+        global TestPassed, TestErrors, gConfigIniPath, cfg
+
+        testCfgPath := dir "\config.ini"
+        gConfigIniPath := testCfgPath
+
+        ; Write [Shader.1] and [Shader.4] (skip .2/.3 — creates a gap)
+        IniWrite("first", testCfgPath, "Shader.1", "ShaderName")
+        IniWrite("fourth", testCfgPath, "Shader.4", "ShaderName")
+
+        ; Full load cycle: init defaults, load settings (which prunes + normalizes)
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+
+        ; After normalization: .4 should be shifted to .2 in cfg
+        normalizeOk := true
+        if (cfg.Shader1_ShaderName != "first") {
+            Log("FAIL: Normalization — Shader1 expected 'first', got '" cfg.Shader1_ShaderName "'")
+            normalizeOk := false
+        }
+        if (cfg.Shader2_ShaderName != "fourth") {
+            Log("FAIL: Normalization — Shader2 expected 'fourth' (shifted from .4), got '" cfg.Shader2_ShaderName "'")
+            normalizeOk := false
+        }
+
+        ; Verify INI was rewritten with [Shader.2], not [Shader.4]
+        result := FileRead(testCfgPath, "UTF-8")
+        if (InStr(result, "[Shader.4]")) {
+            Log("FAIL: Normalization — [Shader.4] still in INI after normalization")
+            normalizeOk := false
+        }
+
+        if (normalizeOk) {
+            Log("PASS: Gap normalization — .4 shifted to .2 in cfg and INI")
+            TestPassed++
+        } else {
+            TestErrors++
+        }
+    }
+
+    ; Test 4: No-op when contiguous — [Shader.1] + [Shader.2] unchanged
+    Log("Testing normalization no-op for contiguous sections...")
+    _Test_WithTempDir("tabby_noop_test", _Test_ArraySectionNoOp)
+    _Test_ArraySectionNoOp(dir) {
+        global TestPassed, TestErrors, gConfigIniPath, cfg
+
+        testCfgPath := dir "\config.ini"
+        gConfigIniPath := testCfgPath
+
+        IniWrite("alpha", testCfgPath, "Shader.1", "ShaderName")
+        IniWrite("beta", testCfgPath, "Shader.2", "ShaderName")
+
+        _CL_InitializeDefaults()
+        _CL_LoadAllSettings()
+
+        ; Values should be unchanged (no shift needed)
+        if (cfg.Shader1_ShaderName = "alpha" && cfg.Shader2_ShaderName = "beta") {
+            Log("PASS: No-op normalization — contiguous sections preserved")
+            TestPassed++
+        } else {
+            Log("FAIL: No-op normalization — Shader1=" cfg.Shader1_ShaderName ", Shader2=" cfg.Shader2_ShaderName)
+            TestErrors++
+        }
+    }
+
+    ; Test 5: CL_DeleteSections handles duplicate section headers
+    Log("Testing CL_DeleteSections with duplicates...")
+    _Test_WithTempDir("tabby_delsec_test", _Test_DeleteSectionsDuplicates)
+    _Test_DeleteSectionsDuplicates(dir) {
+        global TestPassed, TestErrors, gConfigIniPath
+
+        testCfgPath := dir "\config.ini"
+        gConfigIniPath := testCfgPath
+
+        ; Write INI with duplicate [Shader.3] headers and a keeper section
+        ; Use UTF-8-RAW to avoid BOM issues with section header parsing
+        content := "[Shader.1]`nShaderName=keep`n[Shader.3]`nShaderName=dup1`n[Other]`nFoo=bar`n[Shader.3]`nShaderName=dup2`n"
+        FileAppend(content, testCfgPath, "UTF-8-RAW")
+
+        CL_DeleteSections(["Shader.3"])
+
+        result := FileRead(testCfgPath, "UTF-8")
+        hasDup := InStr(result, "[Shader.3]")
+        hasKeeper := InStr(result, "[Shader.1]")
+        hasOther := InStr(result, "[Other]")
+
+        if (!hasDup && hasKeeper && hasOther) {
+            Log("PASS: CL_DeleteSections — all [Shader.3] duplicates removed, [Shader.1] and [Other] preserved")
+            TestPassed++
+        } else {
+            Log("FAIL: CL_DeleteSections — dup=" hasDup ", keeper=" hasKeeper ", other=" hasOther)
+            Log("  Content: " SubStr(result, 1, 300))
+            TestErrors++
+        }
+    }
+
+    ; Restore original config state
+    gConfigIniPath := savedIniPath2
+    gConfigLoaded := savedLoaded2
+    _CL_InitializeDefaults()
+    _CL_LoadAllSettings()
+    _CL_ValidateSettings()
 }
