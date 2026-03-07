@@ -28,6 +28,8 @@ gGUI_OverlayVisible: gui_animation, gui_overlay, gui_state
 gGUI_Revealed: gui_animation, gui_overlay, gui_paint, gui_state
 gGUI_LastRowsDesired: gui_paint, gui_state
 gGUI_ScrollTop: gui_input, gui_paint, gui_state
+gGUI_HoverBtn: gui_input, gui_paint
+gGUI_HoverRow: gui_input, gui_paint
 gGUI_Sel: gui_input, gui_state
 gGUI_FocusBeforeShow: gui_state, gui_paint
 gAnim_DeferredTimerStart: gui_animation, gui_paint

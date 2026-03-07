@@ -154,6 +154,12 @@ GUI_Repaint() {
     if (needsResize) {
         if (gFR_Enabled)
             FR_Record(FR_EV_PAINT_RESIZE, oldRows, rowsDesired, phW, phH)
+        ; Suppress stale hover during resize — hover row was computed against
+        ; OLD overlay geometry so action buttons would render at wrong position.
+        ; WM_MOUSEMOVE will recalculate correctly after resize completes.
+        global gGUI_HoverRow, gGUI_HoverBtn
+        gGUI_HoverRow := 0
+        gGUI_HoverBtn := ""
     }
     if (diagTiming)
         tResize := QPC() - t1
@@ -174,9 +180,9 @@ GUI_Repaint() {
                 tEndDraw := 0
             }
         } else {
-            ; FR: record paint path taken
+            ; FR: record paint path taken (d3=hoverRow for stale-hover diagnostics)
             if (gFR_Enabled)
-                FR_Record(FR_EV_PAINT, paintNum, count, 0, needsResize)
+                FR_Record(FR_EV_PAINT, paintNum, count, gGUI_HoverRow, needsResize)
 
             gD2D_RT.BeginDraw()
 

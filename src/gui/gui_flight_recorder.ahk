@@ -62,7 +62,7 @@ global FR_EV_PRODUCER_RECOVER  := 61  ; d1=errCount d2=backoffMs — producer re
 ; Paint/resize events (70-79)
 global FR_EV_PAINT_RESIZE      := 70  ; d1=oldRows d2=newRows d3=newW d4=newH — window resize during paint
 global FR_EV_PAINT_RESIZE_DONE := 71  ; d1=preRenderMs*100 d2=flushMs*100 d3=exposureMs*100 d4=totalMs*100
-global FR_EV_PAINT              := 72  ; d1=paintNum d2=items d3=path(0=normal,1=prerender,2=skipped) d4=needsResize
+global FR_EV_PAINT              := 72  ; d1=paintNum d2=items d3=hoverRow d4=needsResize
 global FR_EV_PAINT_BLOCKED      := 73  ; d1=reason(1=reentrant,2=noRT) — paint skipped entirely
 
 ; State code constants (for FR_EV_STATE d1)
@@ -614,8 +614,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
         case FR_EV_PAINT_RESIZE_DONE:
             return "preRender=" Round(d1 / 100, 2) "ms  flush=" Round(d2 / 100, 2) "ms  exposure=" Round(d3 / 100, 2) "ms  total=" Round(d4 / 100, 2) "ms"
         case FR_EV_PAINT:
-            pathStr := (d3 = 0) ? "normal" : (d3 = 1) ? "prerender" : "skipped"
-            return "num=" d1 "  items=" d2 "  path=" pathStr "  resize=" d4
+            return "num=" d1 "  items=" d2 "  hover=" d3 "  resize=" d4
         case FR_EV_PAINT_BLOCKED:
             reasonStr := (d1 = 1) ? "reentrant" : (d1 = 2) ? "noRT" : "?(" d1 ")"
             return "reason=" reasonStr

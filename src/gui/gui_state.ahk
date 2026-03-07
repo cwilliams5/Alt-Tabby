@@ -469,6 +469,9 @@ GUI_HandleWorkspaceSwitch() {
         return
     }
     gGUI_WSContextSwitch := true
+    ; Clear stale hover — row indices from the old layout are meaningless after
+    ; refilter changes the item list (hover icons would flash at wrong row).
+    GUI_ClearHoverState()
 
     ; Patch workspace data on frozen items from gWS_Store before re-filtering.
     ; For SWITCH events: workspaceNames haven't changed, this is a no-op.
@@ -556,8 +559,10 @@ GUI_ApplyWorkspaceFilter() {
     Critical "On"
     gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
     _GUI_ResetSelectionToMRU()
-    rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
-    GUI_ResizeToRows(rowsDesired)
+    GUI_ClearHoverState()  ; Row indices are stale after refilter
+    ; Let GUI_Repaint handle resize atomically — it paints at the new dimensions
+    ; first, then SetClip + SetWindowPos + Commit in one DComp batch. Calling
+    ; GUI_ResizeToRows separately causes a stale frame (old content at new size).
     GUI_Repaint()
     Critical "Off"
 }
@@ -569,8 +574,8 @@ GUI_ApplyMonitorFilter() {
     Critical "On"
     gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
     _GUI_ResetSelectionToMRU()
-    rowsDesired := GUI_ComputeRowsToShow(gGUI_DisplayItems.Length)
-    GUI_ResizeToRows(rowsDesired)
+    GUI_ClearHoverState()  ; Row indices are stale after refilter
+    ; Let GUI_Repaint handle resize atomically (same as ApplyWorkspaceFilter).
     GUI_Repaint()
     Critical "Off"
 }
