@@ -20,8 +20,10 @@ global gFX_ShaderLayers := []        ; Array of {key, name, opacity, darkness, d
 global gFX_ShaderTime := Map()       ; layerIndex → {offset, carry, accumulate} — per-layer time state
 global gFX_MouseEffect      ; Mouse effect state: {key, name, opacity}
 global gFX_SelectionEffect  ; Selection effect state: {key, name, opacity, darkness, desat, speed, isBGShader}
+global gFX_HoverEffect      ; Hover effect state: {key, name, opacity, darkness, desat, speed, isBGShader}
 gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
 gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
 global gFX_MouseInWindow := false    ; Mouse is inside overlay window
@@ -36,7 +38,7 @@ global gFX_MousePrevValid := false   ; False until first valid sample
 ; Returns true on success, false if effects unavailable.
 FX_GPU_Init() {
     global gD2D_RT, gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, cfg
-    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
     global SHADER_KEYS ; lint-ignore: phantom-global
     global CLSID_D2D1GaussianBlur, CLSID_D2D1Shadow, CLSID_D2D1Flood
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
@@ -139,6 +141,8 @@ FX_GPU_Init() {
                     Shader_RegisterByKey(gFX_MouseEffect.key)
                 if (gFX_SelectionEffect.key != "")
                     Shader_RegisterByKey(gFX_SelectionEffect.key)
+                if (gFX_HoverEffect.key != "")
+                    Shader_RegisterByKey(gFX_HoverEffect.key)
                 _FX_InitShaderTime()
             }
         } catch as shaderErr {
@@ -160,7 +164,7 @@ FX_GPU_Init() {
 ; Release all cached effects. Safe to call multiple times.
 FX_GPU_Dispose() {
     global gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, gFX_ShaderTime
-    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
     ; Release background image resources (bitmap depends on render target)
     BGImg_Dispose()
     ; Release cached output images first (prevent dangling refs)
@@ -174,6 +178,7 @@ FX_GPU_Dispose() {
     gFX_ShaderLayers := []
     gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
     gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
     Shader_Cleanup()
 }
 
@@ -258,9 +263,15 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 FX_GPU_DrawHover(x, y, w, h, rad) {
     global cfg
     baseARGB := cfg.GUI_HoverARGB
-    if ((baseARGB >> 24) = 0)
-        return  ; fully transparent — nothing to draw
-    D2D_FillRoundRect(x, y, w, h, rad, D2D_GetCachedBrush(baseARGB))
+    if ((baseARGB >> 24) = 0 && cfg.GUI_HovBorderWidthPx <= 0)
+        return  ; fully transparent fill + no border — nothing to draw
+    if ((baseARGB >> 24) > 0)
+        D2D_FillRoundRect(x, y, w, h, rad, D2D_GetCachedBrush(baseARGB))
+    bw := cfg.GUI_HovBorderWidthPx
+    if (bw > 0) {
+        half := bw / 2
+        D2D_StrokeRoundRect(x + half, y + half, w - bw, h - bw, rad, D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
+    }
 }
 
 ; ========================= HDR COMPENSATION =========================
@@ -453,10 +464,16 @@ FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
 ; Decomposes ARGB ints to premultiplied float4 RGBA for the shader cbuffer.
 FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, isHovered, entranceT) {
     global gFX_SelectionEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
-    global cfg
+    global gShader_Registry, cfg ; lint-ignore: phantom-global
 
     if (gFX_SelectionEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
         return
+
+    ; Set selGlow/selIntensity right before render (shared-entry fix with hover)
+    if (!gFX_SelectionEffect.isBGShader && gShader_Registry.Has(gFX_SelectionEffect.key)) {
+        gShader_Registry[gFX_SelectionEffect.key].selGlow := cfg.GUI_SelectionGlow
+        gShader_Registry[gFX_SelectionEffect.key].selIntensity := cfg.GUI_SelectionIntensity
+    }
 
     baseTime := gFX_AmbientTime / 1000.0
     if (gFX_ShaderTime.Has(gFX_SelectionEffect.key)) {
@@ -483,9 +500,15 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
         renderH := Max(Round(selH), 1)
     }
 
+    ; BG shaders don't read isHovered from the cbuffer, so apply it as opacity multiplier.
+    ; Selection: isHovered=1.0 → opacity unchanged. Hover: isHovered=0.5 → half opacity.
+    effectOpacity := gFX_SelectionEffect.opacity
+    if (gFX_SelectionEffect.isBGShader)
+        effectOpacity *= isHovered
+
     try {
         Shader_PreRender(gFX_SelectionEffect.key, renderW, renderH, baseTime,
-            gFX_SelectionEffect.darkness, gFX_SelectionEffect.desat, gFX_SelectionEffect.opacity,
+            gFX_SelectionEffect.darkness, gFX_SelectionEffect.desat, effectOpacity,
             0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
             selR, selG, selB, selA,
@@ -550,7 +573,7 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
 ; Mouse/selection effects are keyed by shader name (single instances, no collision).
 ; Skips entries already initialized (preserves time state across lazy-load).
 _FX_InitShaderTime() {
-    global gFX_ShaderTime, gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
+    global gFX_ShaderTime, gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
     global gShader_Registry ; lint-ignore: phantom-global
 
     if (!IsObject(gFX_ShaderTime))
@@ -573,8 +596,8 @@ _FX_InitShaderTime() {
         gFX_ShaderTime[idx] := {offset: Random(minOff, maxOff) * 1.0, carry: 0.0, accumulate: accum}
     }
 
-    ; Mouse/selection effects: keyed by shader name, use shader JSON metadata defaults
-    for _, shaderKey in [gFX_MouseEffect.key, gFX_SelectionEffect.key] {
+    ; Mouse/selection/hover effects: keyed by shader name, use shader JSON metadata defaults
+    for _, shaderKey in [gFX_MouseEffect.key, gFX_SelectionEffect.key, gFX_HoverEffect.key] {
         if (shaderKey = "" || gFX_ShaderTime.Has(shaderKey))
             continue
         minOff := 30, maxOff := 90, accum := true
@@ -617,7 +640,7 @@ _FX_InitShaderTimeForKey(shaderKey) {
 ; Resolve all shader layer configs from cfg.Shader1_* through Shader4_*,
 ; MouseEffect_*, and GUI_SelectionEffect into runtime state.
 _FX_ResolveConfiguredShaders() {
-    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, cfg
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect, cfg
     global SHADER_KEYS, MOUSE_SHADER_KEYS, SELECTION_SHADER_KEYS ; lint-ignore: phantom-global
     global gShader_Registry ; lint-ignore: phantom-global
 
@@ -741,6 +764,58 @@ _FX_ResolveConfiguredShaders() {
             gFX_SelectionEffect := _emptySelEffect
         }
     }
+
+    ; Resolve hover effect — mirrors selection resolve with hover-specific config
+    _emptyHovEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    if (!cfg.GUI_UseHoverSelectionEffect) {
+        gFX_HoverEffect := _emptyHovEffect
+    } else if (cfg.GUI_UseBGShaderAsHoverSelection) {
+        bgKey := cfg.GUI_HoverBGShaderAsSelection
+        found := false
+        for _, k in SHADER_KEYS {
+            if (k = bgKey) {
+                found := true
+                break
+            }
+        }
+        if (found) {
+            gFX_HoverEffect := {key: bgKey, name: bgKey,
+                opacity: cfg.GUI_HoverSelectionOpacity,
+                darkness: cfg.GUI_HoverSelectionDarkness,
+                desat: cfg.GUI_HoverSelectionDesaturation,
+                speed: cfg.GUI_HoverSelectionSpeed,
+                isBGShader: true}
+        } else {
+            gFX_HoverEffect := _emptyHovEffect
+        }
+    } else {
+        hovSelKey := cfg.GUI_HoverSelectionEffect
+        if (hovSelKey != "" && hovSelKey != "None") {
+            found := false
+            for _, k in SELECTION_SHADER_KEYS {
+                if (k = hovSelKey) {
+                    found := true
+                    break
+                }
+            }
+            if (found) {
+                gFX_HoverEffect := {key: hovSelKey, name: hovSelKey,
+                    opacity: cfg.GUI_HoverSelectionOpacity,
+                    darkness: cfg.GUI_HoverSelectionDarkness,
+                    desat: cfg.GUI_HoverSelectionDesaturation,
+                    speed: cfg.GUI_HoverSelectionSpeed,
+                    isBGShader: false}
+                if (gShader_Registry.Has(hovSelKey)) {
+                    gShader_Registry[hovSelKey].selGlow := cfg.GUI_HoverSelectionGlow
+                    gShader_Registry[hovSelKey].selIntensity := 1.0
+                }
+            } else {
+                gFX_HoverEffect := _emptyHovEffect
+            }
+        } else {
+            gFX_HoverEffect := _emptyHovEffect
+        }
+    }
 }
 
 ; Save shader carry time before gFX_AmbientTime resets.
@@ -757,13 +832,13 @@ FX_SaveShaderTime() {
 ; Check if any shaders are configured (background, mouse, or selection).
 ; Used by gui_animation.ahk to keep frame loop running for shader animation.
 FX_HasActiveShaders() {
-    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
-    return (gFX_ShaderLayers.Length > 0 || gFX_MouseEffect.key != "" || gFX_SelectionEffect.key != "")
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
+    return (gFX_ShaderLayers.Length > 0 || gFX_MouseEffect.key != "" || gFX_SelectionEffect.key != "" || gFX_HoverEffect.key != "")
 }
 
 ; Release render targets for shaders no longer in any active slot.
 _FX_ReleaseInactiveShaders() {
-    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect
+    global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
     activeNames := []
     for _, layer in gFX_ShaderLayers {
         if (layer.key != "")
@@ -773,6 +848,8 @@ _FX_ReleaseInactiveShaders() {
         activeNames.Push(gFX_MouseEffect.key)
     if (gFX_SelectionEffect.key != "")
         activeNames.Push(gFX_SelectionEffect.key)
+    if (gFX_HoverEffect.key != "")
+        activeNames.Push(gFX_HoverEffect.key)
     Shader_ReleaseInactive(activeNames)
 }
 
@@ -975,6 +1052,163 @@ FX_CycleSelectionEffect() {
     _FX_ReleaseInactiveShaders()
 
     ToolTip("Selection: " (currentIdx = 0 ? "None" : names[currentIdx + 1]))
+    SetTimer(() => ToolTip(), -2000)
+    GUI_Repaint()
+}
+
+; ========================= HOVER EFFECT =========================
+
+; Pre-render the hover shader. Mirrors FX_PreRenderSelectionEffect but uses hover config.
+; Sets selGlow/selIntensity on the registry entry right before render to avoid shared-entry conflict.
+FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, entranceT) {
+    global gFX_HoverEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
+    global gShader_Registry, cfg ; lint-ignore: phantom-global
+
+    if (gFX_HoverEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
+        return
+
+    ; Set selGlow/selIntensity right before render (shared-entry fix)
+    hovIntensity := cfg.GUI_HoverSelectionIntensity
+    if (gShader_Registry.Has(gFX_HoverEffect.key)) {
+        gShader_Registry[gFX_HoverEffect.key].selGlow := cfg.GUI_HoverSelectionGlow
+        gShader_Registry[gFX_HoverEffect.key].selIntensity := hovIntensity
+    }
+
+    baseTime := gFX_AmbientTime / 1000.0
+    if (gFX_ShaderTime.Has(gFX_HoverEffect.key)) {
+        t := gFX_ShaderTime[gFX_HoverEffect.key]
+        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+    }
+    baseTime *= gFX_HoverEffect.speed
+
+    ; Decompose ARGB → premultiplied float4 RGBA
+    selA := ((selARGB >> 24) & 0xFF) / 255.0
+    selR := (((selARGB >> 16) & 0xFF) / 255.0) * selA
+    selG := (((selARGB >> 8) & 0xFF) / 255.0) * selA
+    selB := ((selARGB & 0xFF) / 255.0) * selA
+
+    bdrA := ((borderARGB >> 24) & 0xFF) / 255.0
+    bdrR := (((borderARGB >> 16) & 0xFF) / 255.0) * bdrA
+    bdrG := (((borderARGB >> 8) & 0xFF) / 255.0) * bdrA
+    bdrB := ((borderARGB & 0xFF) / 255.0) * bdrA
+
+    ; BG-as-hover Resize mode: render at hover rect size
+    renderW := w, renderH := h
+    if (gFX_HoverEffect.isBGShader && cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
+        renderW := Max(Round(selW), 1)
+        renderH := Max(Round(selH), 1)
+    }
+
+    ; BG shaders don't read isHovered/selIntensity, so apply intensity as opacity multiplier
+    effectOpacity := gFX_HoverEffect.opacity
+    if (gFX_HoverEffect.isBGShader)
+        effectOpacity *= hovIntensity
+
+    try {
+        Shader_PreRender(gFX_HoverEffect.key, renderW, renderH, baseTime,
+            gFX_HoverEffect.darkness, gFX_HoverEffect.desat, effectOpacity,
+            0, 0, 0.0, 0.0, 0.0,
+            selX, selY, selW, selH,
+            selR, selG, selB, selA,
+            bdrR, bdrG, bdrB, bdrA,
+            borderWidth * 1.0, hovIntensity * 1.0, entranceT * 1.0)
+    } catch as e {
+        global LOG_PATH_SHADER
+        errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
+        ToolTip(errDetail)
+        SetTimer(() => ToolTip(), -5000)
+        if (cfg.DiagShaderLog)
+            LogAppend(LOG_PATH_SHADER, errDetail)
+    }
+}
+
+; Draw the hover effect inside D2D BeginDraw.
+FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: dead-param
+    global gD2D_RT, gFX_HoverEffect, gShader_Ready, cfg ; lint-ignore: phantom-global
+
+    if (gFX_HoverEffect.key = "" || !gShader_Ready)
+        return
+
+    pBitmap := Shader_GetBitmap(gFX_HoverEffect.key)
+    if (!pBitmap)
+        return
+
+    if (gFX_HoverEffect.isBGShader) {
+        static hov_srcRect := Buffer(16), hov_tgtPt := Buffer(8), hov_dstRect := Buffer(16)
+        if (cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), hov_dstRect)
+            NumPut("float", 0.0, "float", 0.0,
+                   "float", Float(selW), "float", Float(selH), hov_srcRect)
+            gD2D_RT.DrawBitmap({ptr: pBitmap}, hov_dstRect, 1.0, 1, hov_srcRect)
+        } else {
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), hov_srcRect)
+            NumPut("float", Float(selX), "float", Float(selY), hov_tgtPt)
+            gD2D_RT.DrawImage(pBitmap, hov_tgtPt, hov_srcRect)
+        }
+        ; Draw border on top
+        bw := cfg.GUI_HovBorderWidthPx
+        if (bw > 0) {
+            half := bw / 2
+            D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, rad,
+                D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
+        }
+    } else {
+        gD2D_RT.DrawImage(pBitmap)
+    }
+}
+
+; Cycle the hover effect.
+; When UseBGShaderAsHoverSelection is active, cycles through BG shaders instead.
+FX_CycleHoverEffect() {
+    global gFX_HoverEffect, gFX_GPUReady, gShader_Ready ; lint-ignore: phantom-global
+    global SELECTION_SHADER_NAMES, SELECTION_SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
+    global SHADER_NAMES, SHADER_KEYS, cfg ; lint-ignore: phantom-global
+
+    if (!gFX_GPUReady || !gShader_Ready)
+        return
+
+    useBG := cfg.GUI_UseBGShaderAsHoverSelection
+    names := useBG ? SHADER_NAMES : SELECTION_SHADER_NAMES
+    keys := useBG ? SHADER_KEYS : SELECTION_SHADER_KEYS
+
+    currentIdx := 0
+    Loop keys.Length {
+        if (keys[A_Index] = gFX_HoverEffect.key) {
+            currentIdx := A_Index - 1
+            break
+        }
+    }
+
+    ; Cycle forward — register on-demand
+    total := names.Length
+    currentIdx := Mod(currentIdx + 1, total)
+
+    if (currentIdx = 0) {
+        gFX_HoverEffect := {key: "", name: "",
+            opacity: cfg.GUI_HoverSelectionOpacity, darkness: cfg.GUI_HoverSelectionDarkness,
+            desat: cfg.GUI_HoverSelectionDesaturation, speed: cfg.GUI_HoverSelectionSpeed,
+            isBGShader: false}
+    } else {
+        newKey := keys[currentIdx + 1]
+        if (!gShader_Registry.Has(newKey))
+            Shader_RegisterByKey(newKey)
+        gFX_HoverEffect := {key: newKey, name: names[currentIdx + 1],
+            opacity: cfg.GUI_HoverSelectionOpacity, darkness: cfg.GUI_HoverSelectionDarkness,
+            desat: cfg.GUI_HoverSelectionDesaturation, speed: cfg.GUI_HoverSelectionSpeed,
+            isBGShader: useBG}
+        if (!useBG && gShader_Registry.Has(newKey)) {
+            gShader_Registry[newKey].selGlow := cfg.GUI_HoverSelectionGlow
+            gShader_Registry[newKey].selIntensity := 1.0
+        }
+        ; Init time state for the new shader
+        _FX_InitShaderTimeForKey(newKey)
+    }
+
+    _FX_ReleaseInactiveShaders()
+
+    ToolTip("Hover: " (currentIdx = 0 ? "None" : names[currentIdx + 1]))
     SetTimer(() => ToolTip(), -2000)
     GUI_Repaint()
 }

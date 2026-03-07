@@ -26,7 +26,7 @@ cbuffer Constants : register(b0) {
 
     // --- Selection params (offsets 96-108, 16-byte aligned) ---
     float borderWidth;      // border thickness in pixels
-    float isHovered;        // 0.0 = selected, 1.0 = hovered
+    float isHovered;        // intensity: 1.0 = full (selected), <1.0 = dimmed (hovered)
     float entranceT;        // 0→1 entrance tween
     float iMouseSpeed;      // magnitude of iMouseVel (pixels/sec)
 

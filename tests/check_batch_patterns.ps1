@@ -1895,7 +1895,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $nscIssues = [System.Collections.ArrayList]::new()
 
 # Known numeric variable name patterns (hwnd, pid, handle-like)
-$nscNumericNamePattern = '^(?:h[A-Z]\w*|hwnd|pid|exitCode)$'
+$nscNumericNamePattern = '(?-i)^(?:h[A-Z]\w*|hwnd|pid|exitCode)$'
 
 # AHK v2 comparison pattern inside conditionals:
 #   if (var = "string")   if (var != "string")   if (var == "string")

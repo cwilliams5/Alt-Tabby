@@ -480,6 +480,14 @@ global gConfigRegistry := [
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Hover row highlight color (ARGB)."},
 
+    {s: "GUI", k: "HovBorderARGB", g: "GUI_HovBorderARGB", t: "int", default: 0x00000000,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
+     d: "Hover row border color (ARGB). Drawn when HovBorderWidthPx > 0."},
+
+    {s: "GUI", k: "HovBorderWidthPx", g: "GUI_HovBorderWidthPx", t: "float", default: 0.0,
+     min: 0.0, max: 4.0,
+     d: "Hover row border stroke width in pixels. Set to 0 to disable the border."},
+
     {type: "subsection", section: "GUI", name: "Selection Shader",
      desc: "Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect fed SelARGB, SelBorderARGB, SelBorderWidthPx, and HoverARGB from Selection Colors above. When disabled, selection uses the flat colors directly."},
 
@@ -496,7 +504,7 @@ global gConfigRegistry := [
     {s: "GUI", k: "BGShaderAsSelection", g: "GUI_BGShaderAsSelection", t: "string", default: "domainWarpingTest",
      dynamicOptions: "SHADER_KEYS",
      d: "Background shader to use as the selection effect."},
-    {s: "GUI", k: "BGShaderAsSelectionSize", g: "GUI_BGShaderAsSelectionSize", t: "string", default: "Clip",
+    {s: "GUI", k: "BGShaderAsSelectionSize", g: "GUI_BGShaderAsSelectionSize", t: "enum", default: "Clip",
      options: ["Clip", "Resize"],
      d: "Clip shows a window into the full-size shader. Resize fits the entire shader into the selection rect."},
 
@@ -518,6 +526,49 @@ global gConfigRegistry := [
     {s: "GUI", k: "SelectionIntensity", g: "GUI_SelectionIntensity", t: "float", default: 1.0,
      min: 0.0, max: 2.0,
      d: "Effect blend strength. Scales how much the shader effect overrides the base fill color."},
+
+    {s: "GUI", k: "SelectionIntensityForHover", g: "GUI_SelectionIntensityForHover", t: "float", default: 0.50,
+     min: 0.0, max: 1.0,
+     d: "Intensity when the selection shader is reused for hover. For selection shaders, dims the effect. For BG-as-selection shaders, acts as opacity. Only applies when no independent hover shader is configured."},
+
+    {type: "subsection", section: "GUI", name: "Hover Selection Shader",
+     desc: "Independent shader for hover rows. When disabled, hover reuses the selection shader at SelectionIntensityForHover. When enabled, hover gets its own shader fed HoverARGB and HovBorderARGB from Selection Colors."},
+
+    {s: "GUI", k: "UseHoverSelectionEffect", g: "GUI_UseHoverSelectionEffect", t: "bool", default: false,
+     d: "Enable an independent shader effect for hover rows. When disabled, hover reuses the selection shader (dimmed by SelectionIntensityForHover)."},
+    {s: "GUI", k: "HoverSelectionEffect", g: "GUI_HoverSelectionEffect", t: "string", default: "selection_glass",
+     dynamicOptions: "SELECTION_SHADER_KEYS",
+     d: "Shader effect for hover rows."},
+    {s: "GUI", k: "HoverSelectionCycleHotkey", g: "GUI_HoverSelectionCycleHotkey", t: "string", default: "",
+     d: "Optional hotkey to cycle through hover shader effects while overlay is visible."},
+
+    {s: "GUI", k: "UseBGShaderAsHoverSelection", g: "GUI_UseBGShaderAsHoverSelection", t: "bool", default: false,
+     d: "Use a background shader as the hover effect instead of a selection shader."},
+    {s: "GUI", k: "HoverBGShaderAsSelection", g: "GUI_HoverBGShaderAsSelection", t: "string", default: "domainWarpingTest",
+     dynamicOptions: "SHADER_KEYS",
+     d: "Background shader to use as the hover effect."},
+    {s: "GUI", k: "HoverBGShaderAsSelectionSize", g: "GUI_HoverBGShaderAsSelectionSize", t: "enum", default: "Clip",
+     options: ["Clip", "Resize"],
+     d: "Clip shows a window into the full-size shader. Resize fits the entire shader into the hover rect."},
+
+    {s: "GUI", k: "HoverSelectionOpacity", g: "GUI_HoverSelectionOpacity", t: "float", default: 0.8,
+     min: 0.0, max: 1.0,
+     d: "Hover shader opacity (0.0 = invisible, 1.0 = full)."},
+    {s: "GUI", k: "HoverSelectionDarkness", g: "GUI_HoverSelectionDarkness", t: "float", default: 0.0,
+     min: 0.0, max: 1.0,
+     d: "Crush hover effect toward black without affecting transparency."},
+    {s: "GUI", k: "HoverSelectionDesaturation", g: "GUI_HoverSelectionDesaturation", t: "float", default: 0.0,
+     min: 0.0, max: 1.0,
+     d: "Desaturate the hover effect toward grayscale."},
+    {s: "GUI", k: "HoverSelectionSpeed", g: "GUI_HoverSelectionSpeed", t: "float", default: 1.0,
+     min: 0.1, max: 10.0,
+     d: "Animation speed multiplier for hover shader."},
+    {s: "GUI", k: "HoverSelectionGlow", g: "GUI_HoverSelectionGlow", t: "float", default: 0.5,
+     min: 0.0, max: 3.0,
+     d: "Outer glow radius multiplier for hover effect. Scales how far the effect bleeds beyond the hover border."},
+    {s: "GUI", k: "HoverSelectionIntensity", g: "GUI_HoverSelectionIntensity", t: "float", default: 1.0,
+     min: 0.0, max: 2.0,
+     d: "Effect blend strength for hover shader. Scales how much the shader effect overrides the base fill color."},
 
     {type: "subsection", section: "GUI", name: "Shadows",
      desc: "Text and edge shadow effects for depth and readability."},

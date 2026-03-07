@@ -37,7 +37,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float t = smoothstep(0.0, 1.0, entranceT);
 
     // Hover muting
-    float intensity = lerp(1.0, 0.5, isHovered);
+    float intensity = isHovered;
 
     // Compose
     float3 col = float3(0.0, 0.0, 0.0);

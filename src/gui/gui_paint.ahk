@@ -535,7 +535,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 ; Shader-based selection effect
                 entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
-                    cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 0.0, entranceT)
+                    cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, entranceT)
                 FX_DrawSelectionEffect(wPhys, hPhys, selX, selY, selW, selH, Rad)
             } else {
                 ; Simple D2D fill + border (the "None" path)
@@ -554,21 +554,36 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             cur := items[idx1]
             isSel := (idx1 = selIndex)
 
-            ; Hover highlight (non-selected rows)
+            ; Hover highlight (non-selected rows) — 4-way path
             if (!isSel && idx1 = hoverRow) {
+                global gFX_HoverEffect
                 hoverX := Mx - selExpandX
                 hoverY := yRow - selExpandY
                 hoverW := wPhys - 2 * Mx + selExpandX * 2
-                if (gFX_SelectionEffect.key != "" && gFX_GPUReady) {
-                    ; Selection shader hover pass (muted via isHovered=1.0)
+                if (gFX_HoverEffect.key != "" && gFX_GPUReady) {
+                    ; Path 1: Independent hover shader
+                    hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
+                    FX_PreRenderHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
+                        cfg.GUI_HoverARGB, cfg.GUI_HovBorderARGB, cfg.GUI_HovBorderWidthPx, hoverEntranceT)
+                    FX_DrawHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
+                } else if (!cfg.GUI_UseHoverSelectionEffect && gFX_SelectionEffect.key != "" && gFX_GPUReady) {
+                    ; Path 2: Reuse selection shader at SelectionIntensityForHover (only when hover independence is off)
                     hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, hoverEntranceT)
+                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, cfg.GUI_SelectionIntensityForHover, hoverEntranceT)
                     FX_DrawSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (gFX_GPUReady) {
+                    ; Path 3: GPU flat fill + border
                     FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
-                } else if ((cfg.GUI_HoverARGB >> 24) > 0) {
-                    D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfg.GUI_HoverARGB))
+                } else if ((cfg.GUI_HoverARGB >> 24) > 0 || cfg.GUI_HovBorderWidthPx > 0) {
+                    ; Path 4: CPU fallback fill + border
+                    if ((cfg.GUI_HoverARGB >> 24) > 0)
+                        D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfg.GUI_HoverARGB))
+                    bw := cfg.GUI_HovBorderWidthPx
+                    if (bw > 0) {
+                        half := bw / 2
+                        D2D_StrokeRoundRect(hoverX + half, hoverY + half, hoverW - bw, RowH - bw, Rad, D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
+                    }
                 }
             }
 

@@ -39,7 +39,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float innerRef = smoothstep(0.0, -8.0, dist) * fill * 0.1;
 
     float t = smoothstep(0.0, 1.0, entranceT);
-    float intensity = lerp(1.0, 0.45, isHovered);
+    float intensity = isHovered;
 
     float3 col = float3(0.0, 0.0, 0.0);
     float a = 0.0;

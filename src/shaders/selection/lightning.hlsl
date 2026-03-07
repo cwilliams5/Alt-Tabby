@@ -29,7 +29,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float borderMask = smoothstep(borderWidth + 1.5, borderWidth - 0.5, abs(dist));
 
     float t = smoothstep(0.0, 1.0, entranceT);
-    float intensity = lerp(1.0, 0.45, isHovered);
+    float intensity = isHovered;
 
     // Perimeter coordinate for arcs
     float perim = (px.x - selRect.x + px.y - selRect.y) / (selRect.z + selRect.w);

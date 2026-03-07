@@ -253,6 +253,8 @@ Colors for selection and hover rows. Used directly when selection shader is off.
 | `SelBorderARGB` | int | `0x40FFFFFF` | `0x0` - `0xFFFFFFFF` | Selection border color (ARGB). Drawn when SelBorderWidthPx > 0. |
 | `SelBorderWidthPx` | float | `1.00` | `0.00` - `4.00` | Selection border stroke width in pixels. Set to 0 to disable the border. |
 | `HoverARGB` | int | `0x15FFFFFF` | `0x0` - `0xFFFFFFFF` | Hover row highlight color (ARGB). |
+| `HovBorderARGB` | int | `0x0` | `0x0` - `0xFFFFFFFF` | Hover row border color (ARGB). Drawn when HovBorderWidthPx > 0. |
+| `HovBorderWidthPx` | float | `0.00` | `0.00` - `4.00` | Hover row border stroke width in pixels. Set to 0 to disable the border. |
 
 ### Selection Shader
 
@@ -265,13 +267,33 @@ Animated shader-based selection highlight. When enabled, replaces the flat color
 | `SelectionCycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through selection effects while overlay is visible. |
 | `UseBGShaderAsSelection` | bool | `false` | - | Use any background shader as the selection effect instead. Applies Opacity, Darkness, Desaturation, and Speed settings below. Selection-specific Glow and Intensity are ignored. |
 | `BGShaderAsSelection` | string | `domainWarpingTest` | - | Background shader to use as the selection effect. |
-| `BGShaderAsSelectionSize` | string | `Clip` | - | Clip shows a window into the full-size shader. Resize fits the entire shader into the selection rect. |
+| `BGShaderAsSelectionSize` | enum | `Clip` | - | Clip shows a window into the full-size shader. Resize fits the entire shader into the selection rect. |
 | `SelectionOpacity` | float | `1.00` | `0.00` - `1.00` | Selection shader opacity (0.0 = invisible, 1.0 = full). |
 | `SelectionDarkness` | float | `0.00` | `0.00` - `1.00` | Crush selection effect toward black without affecting transparency. |
 | `SelectionDesaturation` | float | `0.00` | `0.00` - `1.00` | Desaturate the selection effect toward grayscale. |
 | `SelectionSpeed` | float | `1.00` | `0.10` - `10.00` | Animation speed multiplier for selection shaders. |
 | `SelectionGlow` | float | `1.00` | `0.00` - `3.00` | Outer glow radius multiplier. Scales how far the effect bleeds beyond the selection border. |
 | `SelectionIntensity` | float | `1.00` | `0.00` - `2.00` | Effect blend strength. Scales how much the shader effect overrides the base fill color. |
+| `SelectionIntensityForHover` | float | `0.50` | `0.00` - `1.00` | Intensity when the selection shader is reused for hover. For selection shaders, dims the effect. For BG-as-selection shaders, acts as opacity. Only applies when no independent hover shader is configured. |
+
+### Hover Selection Shader
+
+Independent shader for hover rows. When disabled, hover reuses the selection shader at SelectionIntensityForHover. When enabled, hover gets its own shader fed HoverARGB and HovBorderARGB from Selection Colors.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `UseHoverSelectionEffect` | bool | `false` | - | Enable an independent shader effect for hover rows. When disabled, hover reuses the selection shader (dimmed by SelectionIntensityForHover). |
+| `HoverSelectionEffect` | string | `selection_glass` | - | Shader effect for hover rows. |
+| `HoverSelectionCycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through hover shader effects while overlay is visible. |
+| `UseBGShaderAsHoverSelection` | bool | `false` | - | Use a background shader as the hover effect instead of a selection shader. |
+| `HoverBGShaderAsSelection` | string | `domainWarpingTest` | - | Background shader to use as the hover effect. |
+| `HoverBGShaderAsSelectionSize` | enum | `Clip` | - | Clip shows a window into the full-size shader. Resize fits the entire shader into the hover rect. |
+| `HoverSelectionOpacity` | float | `0.80` | `0.00` - `1.00` | Hover shader opacity (0.0 = invisible, 1.0 = full). |
+| `HoverSelectionDarkness` | float | `0.00` | `0.00` - `1.00` | Crush hover effect toward black without affecting transparency. |
+| `HoverSelectionDesaturation` | float | `0.00` | `0.00` - `1.00` | Desaturate the hover effect toward grayscale. |
+| `HoverSelectionSpeed` | float | `1.00` | `0.10` - `10.00` | Animation speed multiplier for hover shader. |
+| `HoverSelectionGlow` | float | `0.50` | `0.00` - `3.00` | Outer glow radius multiplier for hover effect. Scales how far the effect bleeds beyond the hover border. |
+| `HoverSelectionIntensity` | float | `1.00` | `0.00` - `2.00` | Effect blend strength for hover shader. Scales how much the shader effect overrides the base fill color. |
 
 ### Shadows
 
@@ -778,4 +800,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-06 with 336 total settings.*
+*Generated on 2026-03-06 with 351 total settings.*

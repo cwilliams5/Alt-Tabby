@@ -73,6 +73,10 @@ INT_SetupHotkeys() {
     if (cfg.GUI_UseSelectionEffect && cfg.GUI_SelectionCycleHotkey != "")
         try Hotkey("~*" cfg.GUI_SelectionCycleHotkey, _INT_CycleSelectionEffect)
 
+    ; Hover effect cycle hotkey
+    if (cfg.GUI_UseHoverSelectionEffect && cfg.GUI_HoverSelectionCycleHotkey != "")
+        try Hotkey("~*" cfg.GUI_HoverSelectionCycleHotkey, _INT_CycleHoverEffect)
+
     ; Exit hotkey (Ctrl+Alt+F12 — avoid conflict with flight recorder's *F12)
     Hotkey("$*^!F12", (*) => ExitApp())
 }
@@ -380,6 +384,14 @@ _INT_CycleSelectionEffect(*) {
     if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
         return
     FX_CycleSelectionEffect() ; lint-ignore: critical-leak
+}
+
+_INT_CycleHoverEffect(*) {
+    Critical "On"
+    global gGUI_State, gGUI_OverlayVisible
+    if (gGUI_State != "ACTIVE" || !gGUI_OverlayVisible)
+        return
+    FX_CycleHoverEffect() ; lint-ignore: critical-leak
 }
 
 ; ========================= BYPASS DETECTION =========================
