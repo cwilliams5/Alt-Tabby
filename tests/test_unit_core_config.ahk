@@ -109,8 +109,8 @@ RunUnitTests_CoreConfig() {
     ; Test 2.5: CL_WriteIniPreserveFormat direct tests
     Log("Testing WriteIniPreserveFormat...")
 
-    ; Note: _CL_FormatValue formats ints >= 0x10 as hex (e.g., 150 -> "0x96", 200 -> "0xC8")
-    ; Use "string" type to test pure write logic without hex formatting, or expect hex output
+    ; Note: _CL_FormatValue only formats as hex when fmt="hex" is set in the registry entry
+    ; Numeric values without fmt="hex" are written as plain integers
 
     _Test_WithTempDir("tabby_wip_test", _Test_WriteIniPreserveFormat)
     _Test_WriteIniPreserveFormat(dir) {

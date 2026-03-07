@@ -163,14 +163,15 @@ RunLiveTests_Features() {
     } else {
         Log("  Testing blacklist with class '" testClass "' (" testClassCount " windows)")
 
-        ; Save and modify blacklist
+        ; Copy blacklist to temp file to avoid modifying tracked source
         blFilePath := A_ScriptDir "\..\src\shared\blacklist.txt"
-        originalBlacklist := ""
-        try originalBlacklist := FileRead(blFilePath, "UTF-8")
+        tempBlPath := A_Temp "\blacklist_test_" A_TickCount ".txt"
+        try FileCopy(blFilePath, tempBlPath, 1)
+        Blacklist_Init(tempBlPath)
 
         ; === Test 1: Class blacklist removes windows ===
         Blacklist_AddClass(testClass)
-        Blacklist_Init(blFilePath)
+        Blacklist_Init(tempBlPath)
         WL_PurgeBlacklisted()
 
         afterProj := WL_GetDisplayList({ sort: "Z" })
@@ -189,11 +190,8 @@ RunLiveTests_Features() {
         }
 
         ; === Test 2: Restore blacklist and re-scan brings windows back ===
-        try {
-            FileDelete(blFilePath)
-            FileAppend(originalBlacklist, blFilePath, "UTF-8")
-        }
-        Blacklist_Init(blFilePath)
+        try FileCopy(blFilePath, tempBlPath, 1)
+        Blacklist_Init(tempBlPath)
 
         ; Re-scan to add windows back
         WL_BeginScan()
@@ -218,7 +216,7 @@ RunLiveTests_Features() {
         Blacklist_AddTitle(testTitlePattern)
 
         testContent := ""
-        try testContent := FileRead(blFilePath, "UTF-8")
+        try testContent := FileRead(tempBlPath, "UTF-8")
 
         if (InStr(testContent, testTitlePattern)) {
             Log("PASS: Title pattern added to blacklist file")
@@ -235,7 +233,7 @@ RunLiveTests_Features() {
         Blacklist_AddPair(testPairClass, testPairTitle)
 
         testContent := ""
-        try testContent := FileRead(blFilePath, "UTF-8")
+        try testContent := FileRead(tempBlPath, "UTF-8")
 
         expectedPair := testPairClass "|" testPairTitle
         if (InStr(testContent, expectedPair)) {
@@ -246,13 +244,10 @@ RunLiveTests_Features() {
             TestErrors++
         }
 
-        ; Final restore
-        try {
-            FileDelete(blFilePath)
-            FileAppend(originalBlacklist, blFilePath, "UTF-8")
-        }
+        ; Cleanup temp file, restore blacklist to production path
+        try FileDelete(tempBlPath)
         Blacklist_Init(blFilePath)
-        Log("  [BL Test] Blacklist file restored to original state")
+        Log("  [BL Test] Blacklist test cleanup complete")
     }
 
     ; ============================================================
@@ -266,96 +261,97 @@ RunLiveTests_Features() {
     STATS_INI_PATH := A_Temp "\stats_test_" A_TickCount ".ini"
     origStatsEnabled := cfg.StatsTrackingEnabled
     cfg.StatsTrackingEnabled := true
-    Stats_Init()
+    try {
+        Stats_Init()
 
-    ; Accumulate known deltas
-    statsMsg := Map()
-    statsMsg["TotalAltTabs"] := 7
-    statsMsg["TotalQuickSwitches"] := 3
-    statsMsg["TotalTabSteps"] := 15
-    statsMsg["TotalCancellations"] := 2
-    Stats_Accumulate(statsMsg)
+        ; Accumulate known deltas
+        statsMsg := Map()
+        statsMsg["TotalAltTabs"] := 7
+        statsMsg["TotalQuickSwitches"] := 3
+        statsMsg["TotalTabSteps"] := 15
+        statsMsg["TotalCancellations"] := 2
+        Stats_Accumulate(statsMsg)
 
-    ; Get snapshot and verify
-    snapshot := Stats_GetSnapshot()
+        ; Get snapshot and verify
+        snapshot := Stats_GetSnapshot()
 
-    if (IsObject(snapshot) && snapshot.HasOwnProp("TotalAltTabs")) {
-        altTabs := snapshot.TotalAltTabs
-        quickSwitches := snapshot.HasOwnProp("TotalQuickSwitches") ? snapshot.TotalQuickSwitches : -1
-        tabSteps := snapshot.HasOwnProp("TotalTabSteps") ? snapshot.TotalTabSteps : -1
-        cancellations := snapshot.HasOwnProp("TotalCancellations") ? snapshot.TotalCancellations : -1
+        if (IsObject(snapshot) && snapshot.HasOwnProp("TotalAltTabs")) {
+            altTabs := snapshot.TotalAltTabs
+            quickSwitches := snapshot.HasOwnProp("TotalQuickSwitches") ? snapshot.TotalQuickSwitches : -1
+            tabSteps := snapshot.HasOwnProp("TotalTabSteps") ? snapshot.TotalTabSteps : -1
+            cancellations := snapshot.HasOwnProp("TotalCancellations") ? snapshot.TotalCancellations : -1
 
-        if (altTabs >= 7 && quickSwitches >= 3 && tabSteps >= 15 && cancellations >= 2) {
-            Log("PASS: Stats accumulated correctly (AT=" altTabs " QS=" quickSwitches " TS=" tabSteps " C=" cancellations ")")
-            TestPassed++
-        } else {
-            Log("FAIL: Stats values too low (AT=" altTabs " QS=" quickSwitches " TS=" tabSteps " C=" cancellations ")")
-            TestErrors++
-        }
-
-        ; Verify session fields exist
-        hasSession := snapshot.HasOwnProp("SessionRunTimeSec") && snapshot.HasOwnProp("SessionPeakWindows")
-            && snapshot.HasOwnProp("SessionAltTabs")
-        if (hasSession) {
-            Log("PASS: Stats snapshot includes session fields")
-            TestPassed++
-        } else {
-            Log("FAIL: Missing session fields in stats snapshot")
-            TestErrors++
-        }
-
-        ; Verify derived fields exist
-        hasDerived := snapshot.HasOwnProp("DerivedQuickSwitchPct") && snapshot.HasOwnProp("DerivedCancelRate")
-            && snapshot.HasOwnProp("DerivedAvgTabsPerSwitch")
-        if (hasDerived) {
-            Log("PASS: Stats snapshot includes derived fields")
-            TestPassed++
-
-            ; Verify formula: QuickSwitchPct
-            totalActivations := altTabs + quickSwitches
-            expectedQuickPct := (totalActivations > 0) ? Round(quickSwitches / totalActivations * 100, 1) : 0
-            quickPct := snapshot.DerivedQuickSwitchPct
-            if (quickPct = expectedQuickPct) {
-                Log("PASS: DerivedQuickSwitchPct = " quickPct " (matches formula)")
+            if (altTabs = 7 && quickSwitches = 3 && tabSteps = 15 && cancellations = 2) {
+                Log("PASS: Stats accumulated correctly (AT=" altTabs " QS=" quickSwitches " TS=" tabSteps " C=" cancellations ")")
                 TestPassed++
             } else {
-                Log("FAIL: DerivedQuickSwitchPct = " quickPct " (expected " expectedQuickPct ")")
+                Log("FAIL: Stats values wrong (AT=" altTabs " QS=" quickSwitches " TS=" tabSteps " C=" cancellations ", expected 7/3/15/2)")
                 TestErrors++
             }
 
-            ; Verify formula: CancelRate
-            expectedCancelRate := (altTabs + cancellations > 0) ? Round(cancellations / (altTabs + cancellations) * 100, 1) : 0
-            cancelRate := snapshot.DerivedCancelRate
-            if (cancelRate = expectedCancelRate) {
-                Log("PASS: DerivedCancelRate = " cancelRate " (matches formula)")
+            ; Verify session fields exist
+            hasSession := snapshot.HasOwnProp("SessionRunTimeSec") && snapshot.HasOwnProp("SessionPeakWindows")
+                && snapshot.HasOwnProp("SessionAltTabs")
+            if (hasSession) {
+                Log("PASS: Stats snapshot includes session fields")
                 TestPassed++
             } else {
-                Log("FAIL: DerivedCancelRate = " cancelRate " (expected " expectedCancelRate ")")
+                Log("FAIL: Missing session fields in stats snapshot")
                 TestErrors++
             }
 
-            ; Verify formula: AvgTabsPerSwitch
-            expectedAvgTabs := (altTabs > 0) ? Round(tabSteps / altTabs, 1) : 0
-            avgTabsVal := snapshot.DerivedAvgTabsPerSwitch
-            if (avgTabsVal = expectedAvgTabs) {
-                Log("PASS: DerivedAvgTabsPerSwitch = " avgTabsVal " (matches formula)")
+            ; Verify derived fields exist
+            hasDerived := snapshot.HasOwnProp("DerivedQuickSwitchPct") && snapshot.HasOwnProp("DerivedCancelRate")
+                && snapshot.HasOwnProp("DerivedAvgTabsPerSwitch")
+            if (hasDerived) {
+                Log("PASS: Stats snapshot includes derived fields")
                 TestPassed++
+
+                ; Verify formula: QuickSwitchPct — expected from known inputs (3 / (7+3) * 100)
+                expectedQuickPct := Round(3 / (7 + 3) * 100, 1)
+                quickPct := snapshot.DerivedQuickSwitchPct
+                if (quickPct = expectedQuickPct) {
+                    Log("PASS: DerivedQuickSwitchPct = " quickPct " (matches formula)")
+                    TestPassed++
+                } else {
+                    Log("FAIL: DerivedQuickSwitchPct = " quickPct " (expected " expectedQuickPct ")")
+                    TestErrors++
+                }
+
+                ; Verify formula: CancelRate — expected from known inputs (2 / (7+2) * 100)
+                expectedCancelRate := Round(2 / (7 + 2) * 100, 1)
+                cancelRate := snapshot.DerivedCancelRate
+                if (cancelRate = expectedCancelRate) {
+                    Log("PASS: DerivedCancelRate = " cancelRate " (matches formula)")
+                    TestPassed++
+                } else {
+                    Log("FAIL: DerivedCancelRate = " cancelRate " (expected " expectedCancelRate ")")
+                    TestErrors++
+                }
+
+                ; Verify formula: AvgTabsPerSwitch — expected from known inputs (15 / 7)
+                expectedAvgTabs := Round(15 / 7, 1)
+                avgTabsVal := snapshot.DerivedAvgTabsPerSwitch
+                if (avgTabsVal = expectedAvgTabs) {
+                    Log("PASS: DerivedAvgTabsPerSwitch = " avgTabsVal " (matches formula)")
+                    TestPassed++
+                } else {
+                    Log("FAIL: DerivedAvgTabsPerSwitch = " avgTabsVal " (expected " expectedAvgTabs ")")
+                    TestErrors++
+                }
             } else {
-                Log("FAIL: DerivedAvgTabsPerSwitch = " avgTabsVal " (expected " expectedAvgTabs ")")
+                Log("FAIL: Missing derived fields in stats snapshot")
                 TestErrors++
             }
         } else {
-            Log("FAIL: Missing derived fields in stats snapshot")
+            Log("FAIL: Stats_GetSnapshot did not return a valid snapshot object")
             TestErrors++
         }
-    } else {
-        Log("FAIL: Stats_GetSnapshot did not return a valid snapshot object")
-        TestErrors++
+    } finally {
+        ; Cleanup test stats file and restore original path + setting
+        try FileDelete(STATS_INI_PATH)
+        try FileDelete(STATS_INI_PATH ".bak")
+        STATS_INI_PATH := origStatsPath
+        cfg.StatsTrackingEnabled := origStatsEnabled
     }
-
-    ; Cleanup test stats file and restore original path + setting
-    try FileDelete(STATS_INI_PATH)
-    try FileDelete(STATS_INI_PATH ".bak")
-    STATS_INI_PATH := origStatsPath
-    cfg.StatsTrackingEnabled := origStatsEnabled
 }
