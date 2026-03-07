@@ -84,7 +84,7 @@ Match timestamps across sources to build the full picture.
 
 If the cause is clear:
 - Explain the root cause with evidence from the data
-- Point to the relevant code (use query tools to find the handler)
+- Point to the relevant code (use query tools — `query_state.ps1` for state machine issues, `query_messages.ps1` for message handlers)
 - Suggest whether this is a bug to fix or a known limitation
 
 If the cause is unclear:

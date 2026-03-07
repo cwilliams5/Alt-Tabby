@@ -142,7 +142,7 @@ Process launches, IPC, file watchers, subprocess management. These interact with
 Debounce timing, negative assertions (callback should NOT fire), filesystem event propagation.
 
 ### GUI tests (`gui_tests*.ahk`)
-Timer callbacks, state machine transitions, rendering pipeline interactions.
+Timer callbacks, state machine transitions, rendering pipeline interactions. Use `query_timers.ps1` to inventory which timer callbacks tests should exercise.
 
 ### Setup/admin tests (`test_unit_setup.ahk`)
 Task Scheduler operations, shortcut creation, anything involving Windows system services.

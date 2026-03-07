@@ -33,7 +33,7 @@ These functions have cost that scales:
 
 ### Tier 3 — Direct callees of Tier 1/2
 
-For each Tier 1/2 function, identify its direct callees (depth 1 only) using `query_function_visibility.ps1`. Add those to the audit list. Do NOT recurse further — if a helper's helper is slow, the parent function's audit will surface the call cost.
+For each Tier 1/2 function, identify its direct callees (depth 1 only) using `query_callchain.ps1 -Depth 1` (or `query_function_visibility.ps1`). Add those to the audit list. Do NOT recurse further — if a helper's helper is slow, the parent function's audit will surface the call cost.
 
 ### Discovery output
 
