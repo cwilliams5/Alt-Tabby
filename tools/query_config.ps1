@@ -152,9 +152,9 @@ if ($Usage) {
     Write-Host "  cfg.$propertyName" -ForegroundColor White
     Write-Host "    defined:  [$($found.S)] $($found.K)  $typeInfo  $defaultInfo" -ForegroundColor DarkGray
 
-    # Search src/ (excluding src/lib/) for cfg.<propertyName>
+    # Search src/ (including src/lib/) for cfg.<propertyName>
     $srcPath = Join-Path $projectRoot "src"
-    $srcFiles = Get-AhkSourceFiles $srcPath
+    $srcFiles = Get-AhkSourceFiles $srcPath -IncludeLib
 
     $needle = "cfg.$propertyName"
     $hitCount = 0

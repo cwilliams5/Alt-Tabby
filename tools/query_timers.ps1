@@ -19,8 +19,8 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $srcDir = Join-Path $projectRoot "src"
 
-# === Collect source files (exclude lib/) ===
-$allFiles = Get-AhkSourceFiles $srcDir
+# === Collect source files (include lib/ — query tool reports all timers) ===
+$allFiles = Get-AhkSourceFiles $srcDir -IncludeLib
 
 # Pre-compile hot-loop regex
 $setTimerCheckRx = [regex]::new('\bSetTimer\s*[\(,]')

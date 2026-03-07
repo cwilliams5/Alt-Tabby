@@ -39,8 +39,8 @@ if (-not (Test-Path $SourceDir)) {
 }
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
 
-# === Collect source files (exclude lib/) ===
-$srcFiles = Get-AhkSourceFiles $SourceDir
+# === Collect source files (include lib/ — query tool reports all mutations) ===
+$srcFiles = Get-AhkSourceFiles $SourceDir -IncludeLib
 
 $MUTATING_METHODS = 'Push|Pop|Delete|InsertAt|RemoveAt|Set|Clear'
 

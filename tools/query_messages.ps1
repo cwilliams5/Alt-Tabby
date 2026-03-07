@@ -102,7 +102,8 @@ function Resolve-HexConstant {
 }
 
 # === Scan source files ===
-$allFiles = Get-AhkSourceFiles $srcDir
+# Include lib/ — query tool reports all message handlers/senders
+$allFiles = Get-AhkSourceFiles $srcDir -IncludeLib
 
 # Collect all message references
 $entries = [System.Collections.ArrayList]::new()

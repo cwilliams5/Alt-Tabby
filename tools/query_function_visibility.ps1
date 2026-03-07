@@ -44,8 +44,11 @@ if (-not (Test-Path $SourceDir)) {
 }
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
 
-# === Collect source files (exclude lib/) ===
+# === Collect source files ===
+# Enforcement modes exclude src/lib/ (coding standards don't apply to third-party code)
+# Query mode includes src/lib/ to report all actual callers
 $srcFiles = Get-AhkSourceFiles $SourceDir
+$queryFiles = if ($Query) { Get-AhkSourceFiles $SourceDir -IncludeLib } else { $srcFiles }
 
 if ($Query) {
     # Query mode: silent startup, output only the answer
@@ -80,7 +83,7 @@ $funcDefs = @{}
 $fileCache = @{}
 $fileCacheText = @{}
 
-foreach ($file in $srcFiles) {
+foreach ($file in $queryFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
     $fileCacheText[$file.FullName] = $text
 
@@ -268,7 +271,7 @@ if ($Query) {
     $callers = [System.Collections.ArrayList]::new()
     $escaped = [regex]::Escape($funcDef.Name)
 
-    foreach ($file in $srcFiles) {
+    foreach ($file in $queryFiles) {
         # Pre-filter: skip files that don't contain the function name at all
         if ($fileCacheText[$file.FullName].IndexOf($funcDef.Name, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 

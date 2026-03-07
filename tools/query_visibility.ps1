@@ -25,8 +25,8 @@ $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 $srcDir = (Resolve-Path "$PSScriptRoot\..\src").Path
 $projectRoot = (Resolve-Path "$srcDir\..").Path
 
-# === Collect source files (exclude lib/) ===
-$srcFiles = Get-AhkSourceFiles $srcDir
+# === Collect source files (include lib/ — query tool reports all callers) ===
+$srcFiles = Get-AhkSourceFiles $srcDir -IncludeLib
 
 Write-Host ""
 Write-Host "  Scanning $($srcFiles.Count) source files..." -ForegroundColor Cyan

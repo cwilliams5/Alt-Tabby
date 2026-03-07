@@ -38,8 +38,8 @@ if (-not (Test-Path $SourceDir)) {
 }
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
 
-# === Collect source files (exclude lib/) ===
-$srcFiles = Get-AhkSourceFiles $SourceDir
+# === Collect source files (include lib/ — query tool reports all callers) ===
+$srcFiles = Get-AhkSourceFiles $SourceDir -IncludeLib
 
 # ============================================================
 # Step 1: Locate function definition + extract body

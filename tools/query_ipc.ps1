@@ -111,7 +111,8 @@ $sendTernaryRx = [regex]::new("\?\s*$constName\b")
 $sendTailRx = [regex]::new(":\s*$constName\s*$")
 
 # === Scan source files for references ===
-$allFiles = Get-AhkSourceFiles $srcDir
+# Include lib/ — query tool reports all senders/handlers
+$allFiles = Get-AhkSourceFiles $srcDir -IncludeLib
 
 $sends = [System.Collections.ArrayList]::new()
 $handles = [System.Collections.ArrayList]::new()

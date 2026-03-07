@@ -67,8 +67,11 @@ if (-not (Test-Path $SourceDir)) {
 $projectRoot = (Resolve-Path "$SourceDir\..").Path
 $manifestPath = Join-Path $projectRoot "ownership.manifest"
 
-# === Collect source files (exclude lib/) ===
+# === Collect source files ===
+# Enforcement modes exclude src/lib/ (coding standards don't apply to third-party code)
+# Query mode includes src/lib/ to report all actual readers/writers
 $srcFiles = Get-AhkSourceFiles $SourceDir
+$queryFiles = if ($Query) { Get-AhkSourceFiles $SourceDir -IncludeLib } else { $srcFiles }
 
 if ($Query) {
     # Query mode: silent startup, output only the answer
@@ -118,7 +121,7 @@ if ($Query) {
     $qReaders = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
-    foreach ($file in $srcFiles) {
+    foreach ($file in $queryFiles) {
         $text = [System.IO.File]::ReadAllText($file.FullName)
 
         # IndexOf pre-filter: skip files that don't contain the query string
