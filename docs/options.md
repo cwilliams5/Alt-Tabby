@@ -258,7 +258,7 @@ Colors for selection and hover rows. Used directly when selection shader is off.
 
 ### Selection Shader
 
-Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect fed SelARGB, SelBorderARGB, SelBorderWidthPx, and HoverARGB from Selection Colors above. When disabled, selection uses the flat colors directly.
+Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect fed SelARGB, SelBorderARGB, SelBorderWidthPx, and RowRadius from Selection Colors above. When disabled, selection uses the flat colors directly.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -278,7 +278,7 @@ Animated shader-based selection highlight. When enabled, replaces the flat color
 
 ### Hover Selection Shader
 
-Independent shader for hover rows. When disabled, hover reuses the selection shader at SelectionIntensityForHover. When enabled, hover gets its own shader fed HoverARGB and HovBorderARGB from Selection Colors.
+Independent shader for hover rows. When disabled, hover reuses the selection shader at SelectionIntensityForHover. When enabled, hover gets its own shader fed HoverARGB, HovBorderARGB, HovBorderWidthPx, and RowRadius from Selection Colors.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
@@ -706,11 +706,12 @@ Optional cursor-reactive shader effect rendered above shader layers and below se
 
 ## BackgroundImage
 
-Display a user-selected background image behind the overlay content. The image sits above the shader layer and below backdrop effects. Supports fit modes, alignment, opacity, blur, desaturation, and brightness adjustments.
+Display a user-selected background image behind the overlay content. Renders above or below shader layers depending on RenderAboveShaders. Supports fit modes, alignment, opacity, blur, desaturation, and brightness adjustments.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `Enabled` | bool | `false` | - | Enable the background image layer. When false, no image is loaded or rendered. |
+| `RenderAboveShaders` | bool | `true` | - | When true, the background image renders above shader layers (image is the visual focus). When false, renders below shader layers (image is a backdrop for shaders). |
 | `ImagePath` | file | `` | - | Path to the background image file. Use the Browse button to select an image — it will be copied to the resources folder for portability. |
 
 ### Layout
@@ -800,4 +801,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-06 with 351 total settings.*
+*Generated on 2026-03-06 with 352 total settings.*
