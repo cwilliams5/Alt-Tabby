@@ -586,7 +586,7 @@ RunGUITests_State() {
 ; ============================================================
 
 if (A_ScriptFullPath = A_LineFile) {
-    try FileDelete(A_Temp "\gui_tests.log")
+    try FileDelete(GUI_TestLogPath)
     result := RunGUITests_State()
     ExitApp(result ? 0 : 1)
 }

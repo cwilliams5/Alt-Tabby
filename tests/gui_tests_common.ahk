@@ -218,9 +218,6 @@ Gdip_InvalidateIconCache(hwnd) {
         gGdip_IconCache.Delete(hwnd)
 }
 
-; Stats accumulate capture mock (called by gui_state.ahk Stats_AccumulateSession)
-global gMock_LastStatsMsg := ""
-
 ; GDI+ icon cache prune mock (called by GUI_RefreshLiveItems)
 global gMock_PruneCalledWith := ""
 Gdip_PruneIconCache(liveHwnds) {
