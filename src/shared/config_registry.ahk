@@ -461,20 +461,27 @@ global gConfigRegistry := [
      min: 0, max: 50,
      d: "Row corner radius in pixels"},
 
+    {type: "subsection", section: "GUI", name: "Selection Colors",
+     desc: "Colors for selection and hover rows. Used directly when selection shader is off. When selection shader is on, these colors are passed to the shader as input."},
+
     {s: "GUI", k: "SelARGB", g: "GUI_SelARGB", t: "int", default: 0x662B5CAD,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
      d: "Selection highlight color (ARGB)"},
 
-    {type: "subsection", section: "GUI", name: "Visual Effects",
-     desc: "Software visual effects (selection styling, shadows, hover). When GPU Effects are enabled, some of these are overridden by hardware-accelerated equivalents."},
-
     {s: "GUI", k: "SelBorderARGB", g: "GUI_SelBorderARGB", t: "int", default: 0x40FFFFFF,
      min: 0, max: 0xFFFFFFFF, fmt: "hex",
-     d: "Selection border color (ARGB). Only drawn when visual effects are on and SelBorderWidthPx > 0."},
+     d: "Selection border color (ARGB). Drawn when SelBorderWidthPx > 0."},
 
     {s: "GUI", k: "SelBorderWidthPx", g: "GUI_SelBorderWidthPx", t: "float", default: 1.0,
      min: 0.0, max: 4.0,
      d: "Selection border stroke width in pixels. Set to 0 to disable the border."},
+
+    {s: "GUI", k: "HoverARGB", g: "GUI_HoverARGB", t: "int", default: 0x15FFFFFF,
+     min: 0, max: 0xFFFFFFFF, fmt: "hex",
+     d: "Hover row highlight color (ARGB)."},
+
+    {type: "subsection", section: "GUI", name: "Selection Shader",
+     desc: "Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect. When disabled, selection uses the flat colors above."},
 
     {s: "GUI", k: "UseSelectionEffect", g: "GUI_UseSelectionEffect", t: "bool", default: true,
      d: "Enable the shader-based selection effect. When disabled, uses simple D2D fill with SelARGB/SelBorderARGB colors."},
@@ -484,28 +491,26 @@ global gConfigRegistry := [
     {s: "GUI", k: "SelectionCycleHotkey", g: "GUI_SelectionCycleHotkey", t: "string", default: "",
      d: "Optional hotkey to cycle through selection effects while overlay is visible."},
 
-    {s: "GUI", k: "SelDropShadow", g: "GUI_SelDropShadow", t: "bool", default: true, ; lint-ignore: dead-config
-     d: "Draw a drop shadow behind the selected row. Disable on HDR displays if colors appear shifted."},
+    {type: "subsection", section: "GUI", name: "Shadows",
+     desc: "Text and edge shadow effects for depth and readability."},
 
+    {s: "GUI", k: "UseTextShadow", g: "GUI_UseTextShadow", t: "bool", default: true,
+     d: "Enable text drop shadows behind window titles for readability."},
     {s: "GUI", k: "TextShadowAlpha", g: "GUI_TextShadowAlpha", t: "int", default: 0x58,
      min: 0, max: 0xFF, fmt: "hex",
-     d: "Text drop shadow opacity (0x00 = disabled, 0x58 = default). Applied when visual effects are on."},
-
+     d: "Text shadow opacity (0x58 = default)."},
     {s: "GUI", k: "TextShadowDistancePx", g: "GUI_TextShadowDistancePx", t: "float", default: 1.5,
      min: 0.5, max: 5.0,
-     d: "Text drop shadow offset in DIP pixels. Applied when visual effects are on."},
+     d: "Text shadow offset in DIP pixels."},
 
-    {s: "GUI", k: "HoverARGB", g: "GUI_HoverARGB", t: "int", default: 0x15FFFFFF,
-     min: 0, max: 0xFFFFFFFF, fmt: "hex",
-     d: "Hover row highlight color (ARGB). When visual effects are on, a subtle vertical gradient is computed from this color."},
-
-    {s: "GUI", k: "InnerShadowDepthPx", g: "GUI_InnerShadowDepthPx", t: "float", default: 10.0,
-     min: 2.0, max: 30.0,
-     d: "Inner shadow depth along window edges in DIP pixels. Creates a recessed glass effect."},
-
+    {s: "GUI", k: "UseInnerShadow", g: "GUI_UseInnerShadow", t: "bool", default: true,
+     d: "Enable inner shadow along overlay edges. Creates a recessed glass effect."},
     {s: "GUI", k: "InnerShadowAlpha", g: "GUI_InnerShadowAlpha", t: "int", default: 0x2A,
      min: 0, max: 0xFF, fmt: "hex",
-     d: "Inner shadow opacity at the window edge (0x00 = invisible, 0x2A = default). Bottom and side edges are proportionally softer."},
+     d: "Inner shadow opacity at the window edge (0x2A = default). Bottom and side edges are proportionally softer."},
+    {s: "GUI", k: "InnerShadowDepthPx", g: "GUI_InnerShadowDepthPx", t: "float", default: 10.0,
+     min: 2.0, max: 30.0,
+     d: "Inner shadow depth along window edges in DIP pixels."},
 
     {type: "subsection", section: "GUI", name: "Selection & Scrolling",
      desc: "Selection and scroll behavior"},

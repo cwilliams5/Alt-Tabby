@@ -567,7 +567,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                     FX_DrawSelectionEffect(wPhys, hPhys)
                 } else if (gFX_GPUReady) {
                     FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
-                } else {
+                } else if ((cfg.GUI_HoverARGB >> 24) > 0) {
                     D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfg.GUI_HoverARGB))
                 }
             }
@@ -665,7 +665,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         tPO_Footer := QPC() - t1
 
     ; Inner shadow — config-driven depth and opacity
-    if (gFX_GPUReady && cfg.GUI_InnerShadowAlpha > 0) {
+    if (gFX_GPUReady && cfg.GUI_UseInnerShadow && cfg.GUI_InnerShadowAlpha > 0) {
         shadowDepth := Round(cfg.GUI_InnerShadowDepthPx * scale)
         FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
     }
@@ -1133,7 +1133,7 @@ _FX_GetShadowParams(fx, scale) {
     static sFx := -1, sScale := -1, sAlpha := -1, sDist := -1
 
     global cfg
-    if (!fx)
+    if (!fx || !cfg.GUI_UseTextShadow)
         return sDisabled
     alpha := cfg.GUI_TextShadowAlpha
     if (alpha <= 0)

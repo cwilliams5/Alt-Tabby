@@ -255,11 +255,12 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 ; ========================= GPU HOVER =========================
 
 ; GPU-enhanced hover with soft glow behind the row.
-FX_GPU_DrawHover(x, y, w, h, _r) { ; lint-ignore: dead-param
+FX_GPU_DrawHover(x, y, w, h, rad) {
     global cfg
     baseARGB := cfg.GUI_HoverARGB
-    ; Soft glow behind hover row
-    FX_DrawSoftRect(x, y, w, h, baseARGB, 4.0)
+    if ((baseARGB >> 24) = 0)
+        return  ; fully transparent — nothing to draw
+    D2D_FillRoundRect(x, y, w, h, rad, D2D_GetCachedBrush(baseARGB))
 }
 
 ; ========================= HDR COMPENSATION =========================

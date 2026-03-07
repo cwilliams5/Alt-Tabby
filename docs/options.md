@@ -242,25 +242,40 @@ Row and icon appearance
 | `ColumnGapPx` | int | `10` | `0` - `50` | Gap between right-side data columns in pixels |
 | `HeaderHeightPx` | int | `28` | `16` - `60` | Header row height in pixels |
 | `RowRadius` | int | `12` | `0` - `50` | Row corner radius in pixels |
-| `SelARGB` | int | `0x662B5CAD` | `0x0` - `0xFFFFFFFF` | Selection highlight color (ARGB) |
 
-### Visual Effects
+### Selection Colors
 
-Software visual effects (selection styling, shadows, hover). When GPU Effects are enabled, some of these are overridden by hardware-accelerated equivalents.
+Colors for selection and hover rows. Used directly when selection shader is off. When selection shader is on, these colors are passed to the shader as input.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `SelBorderARGB` | int | `0x40FFFFFF` | `0x0` - `0xFFFFFFFF` | Selection border color (ARGB). Only drawn when visual effects are on and SelBorderWidthPx > 0. |
+| `SelARGB` | int | `0x662B5CAD` | `0x0` - `0xFFFFFFFF` | Selection highlight color (ARGB) |
+| `SelBorderARGB` | int | `0x40FFFFFF` | `0x0` - `0xFFFFFFFF` | Selection border color (ARGB). Drawn when SelBorderWidthPx > 0. |
 | `SelBorderWidthPx` | float | `1.00` | `0.00` - `4.00` | Selection border stroke width in pixels. Set to 0 to disable the border. |
+| `HoverARGB` | int | `0x15FFFFFF` | `0x0` - `0xFFFFFFFF` | Hover row highlight color (ARGB). |
+
+### Selection Shader
+
+Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect. When disabled, selection uses the flat colors above.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
 | `UseSelectionEffect` | bool | `true` | - | Enable the shader-based selection effect. When disabled, uses simple D2D fill with SelARGB/SelBorderARGB colors. |
 | `SelectionEffect` | string | `selection_auroraSel` | - | Shader-based selection effect. |
 | `SelectionCycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through selection effects while overlay is visible. |
-| `SelDropShadow` | bool | `true` | - | Draw a drop shadow behind the selected row. Disable on HDR displays if colors appear shifted. |
-| `TextShadowAlpha` | int | `0x58` | `0x0` - `0xFF` | Text drop shadow opacity (0x00 = disabled, 0x58 = default). Applied when visual effects are on. |
-| `TextShadowDistancePx` | float | `1.50` | `0.50` - `5.00` | Text drop shadow offset in DIP pixels. Applied when visual effects are on. |
-| `HoverARGB` | int | `0x15FFFFFF` | `0x0` - `0xFFFFFFFF` | Hover row highlight color (ARGB). When visual effects are on, a subtle vertical gradient is computed from this color. |
-| `InnerShadowDepthPx` | float | `10.00` | `2.00` - `30.00` | Inner shadow depth along window edges in DIP pixels. Creates a recessed glass effect. |
-| `InnerShadowAlpha` | int | `0x2A` | `0x0` - `0xFF` | Inner shadow opacity at the window edge (0x00 = invisible, 0x2A = default). Bottom and side edges are proportionally softer. |
+
+### Shadows
+
+Text and edge shadow effects for depth and readability.
+
+| Option | Type | Default | Range | Description |
+|--------|------|---------|-------|-------------|
+| `UseTextShadow` | bool | `true` | - | Enable text drop shadows behind window titles for readability. |
+| `TextShadowAlpha` | int | `0x58` | `0x0` - `0xFF` | Text shadow opacity (0x58 = default). |
+| `TextShadowDistancePx` | float | `1.50` | `0.50` - `5.00` | Text shadow offset in DIP pixels. |
+| `UseInnerShadow` | bool | `true` | - | Enable inner shadow along overlay edges. Creates a recessed glass effect. |
+| `InnerShadowAlpha` | int | `0x2A` | `0x0` - `0xFF` | Inner shadow opacity at the window edge (0x2A = default). Bottom and side edges are proportionally softer. |
+| `InnerShadowDepthPx` | float | `10.00` | `2.00` - `30.00` | Inner shadow depth along window edges in DIP pixels. |
 
 ### Selection & Scrolling
 
@@ -754,4 +769,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-06 with 326 total settings.*
+*Generated on 2026-03-06 with 327 total settings.*
