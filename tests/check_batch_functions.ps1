@@ -296,6 +296,7 @@ foreach ($file in $allProjectFiles) {
             $raw = $lines[$i]
             if ($raw -match '^\s*;') { continue }
             $m = $script:RX_FUNC_DEF.Match($raw)
+            if (-not $m.Success) { $m = $script:RX_FUNC_DEF2.Match($raw) }
             if ($m.Success) {
                 $funcName = $m.Groups[1].Value
                 if (-not $BF_AHK_KEYWORDS.ContainsKey($funcName.ToLower())) {

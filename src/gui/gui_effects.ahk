@@ -44,6 +44,7 @@ FX_GPU_Init() {
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
     global CLSID_D2D1Blend, CLSID_D2D1Composite
     global LOG_PATH_PAINT_TIMING
+    global D2D1_BORDER_SOFT, FX_BLUR_BORDER_MODE
 
     if (!gD2D_RT)
         return false
@@ -58,12 +59,20 @@ FX_GPU_Init() {
         gFX_GPU["crop"].SetInput(0, gFX_GPU["flood"].GetOutput())
         gFX_GPU["blur"].SetInput(0, gFX_GPU["crop"].GetOutput())
 
+        ; Set invariant border modes once (soft border for smooth blur edges)
+        gFX_GPU["crop"].SetEnum(1, D2D1_BORDER_SOFT)
+        gFX_GPU["blur"].SetEnum(FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT)
+
         ; --- Second SoftRect for glow (can run with different params) ---
         gFX_GPU["flood2"] := gD2D_RT.CreateEffect(CLSID_D2D1Flood)
         gFX_GPU["crop2"]  := gD2D_RT.CreateEffect(CLSID_D2D1Crop)
         gFX_GPU["blur2"]  := gD2D_RT.CreateEffect(CLSID_D2D1GaussianBlur)
         gFX_GPU["crop2"].SetInput(0, gFX_GPU["flood2"].GetOutput())
         gFX_GPU["blur2"].SetInput(0, gFX_GPU["crop2"].GetOutput())
+
+        ; Set invariant border modes once (soft border for smooth blur edges)
+        gFX_GPU["crop2"].SetEnum(1, D2D1_BORDER_SOFT)
+        gFX_GPU["blur2"].SetEnum(FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT)
 
         ; --- Shadow effect (direct D2D1Shadow — for CommandList-based shadow) ---
         gFX_GPU["shadow"] := gD2D_RT.CreateEffect(CLSID_D2D1Shadow)
@@ -192,7 +201,7 @@ FX_GPU_Dispose() {
 ; offsetX/Y: additional translation (e.g., shadow offset).
 FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput
-    global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV, FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT
+    global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV
 
     flood := gFX_GPU["flood"], crop := gFX_GPU["crop"], blur := gFX_GPU["blur"]
 
@@ -201,11 +210,9 @@ FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 
     ; Configure crop to the rectangle bounds
     crop.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
-    crop.SetEnum(1, D2D1_BORDER_SOFT)  ; soft border for smooth blur
 
     ; Configure blur
     blur.SetFloat(FX_BLUR_STDEV, blurStdDev)
-    blur.SetEnum(FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT)
 
     ; Draw at offset position
     if (offsetX != 0 || offsetY != 0) {
@@ -221,16 +228,14 @@ FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 ; Allows drawing two different soft rects without reconfiguring the primary chain.
 FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput
-    global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV, FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT
+    global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV
 
     flood2 := gFX_GPU["flood2"], crop2 := gFX_GPU["crop2"], blur2 := gFX_GPU["blur2"]
 
     ; HDR: gamma-correct the flood color CPU-side (avoids premultiplied alpha edge artifacts)
     flood2.SetColorF(FX_FLOOD_COLOR, FX_HDRCorrectARGB(argb))
     crop2.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
-    crop2.SetEnum(1, D2D1_BORDER_SOFT)
     blur2.SetFloat(FX_BLUR_STDEV, blurStdDev)
-    blur2.SetEnum(FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT)
 
     if (offsetX != 0 || offsetY != 0) {
         static drawPt := Buffer(8)
@@ -245,16 +250,22 @@ FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 ; GPU-accelerated window-edge shadows (replaces gradient-strip approach).
 
 FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
+    static cachedAlpha := -1, cachedDepth := -1, cachedEdgeAlpha := 0, cachedBotAlpha := 0
+    if (alpha != cachedAlpha || depth != cachedDepth) {
+        cachedAlpha := alpha, cachedDepth := depth
+        cachedEdgeAlpha := Round(alpha * 1.2)
+        if (cachedEdgeAlpha > 255) cachedEdgeAlpha := 255
+        cachedBotAlpha := Round(alpha * 0.9)
+    }
+    blurDev := Float(depth * 0.8)
+
     ; Top: dark band blurred downward
-    edgeAlpha := Round(alpha * 1.2)
-    if (edgeAlpha > 255) edgeAlpha := 255
-    topARGB := (edgeAlpha << 24) | 0x000000
-    FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, Float(depth * 0.8))
+    topARGB := (cachedEdgeAlpha << 24) | 0x000000
+    FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, blurDev)
 
     ; Bottom
-    botAlpha := Round(alpha * 0.9)
-    botARGB := (botAlpha << 24) | 0x000000
-    FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, Float(depth * 0.8))
+    botARGB := (cachedBotAlpha << 24) | 0x000000
+    FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, blurDev)
 }
 
 ; ========================= GPU HOVER =========================
@@ -286,6 +297,12 @@ FX_HDRCorrectARGB(argb) {
     if (!gFX_HDRActive)
         return argb
     exp := cfg.PerfHDRGammaExponent
+    static cachedArgb1 := -1, cachedResult1 := 0, cachedExp1 := 0
+    static cachedArgb2 := -1, cachedResult2 := 0, cachedExp2 := 0
+    if (argb = cachedArgb1 && exp = cachedExp1)
+        return cachedResult1
+    if (argb = cachedArgb2 && exp = cachedExp2)
+        return cachedResult2
     a := (argb >> 24) & 0xFF
     r := ((argb >> 16) & 0xFF) / 255.0
     g := ((argb >> 8) & 0xFF) / 255.0
@@ -293,7 +310,10 @@ FX_HDRCorrectARGB(argb) {
     r := Round((r ** exp) * 255)
     g := Round((g ** exp) * 255)
     b := Round((b ** exp) * 255)
-    return (a << 24) | (r << 16) | (g << 8) | b
+    result := (a << 24) | (r << 16) | (g << 8) | b
+    cachedArgb2 := cachedArgb1, cachedResult2 := cachedResult1, cachedExp2 := cachedExp1
+    cachedArgb1 := argb, cachedResult1 := result, cachedExp1 := exp
+    return result
 }
 
 ; Reset mouse velocity state (call when overlay hides/shows).
@@ -322,16 +342,17 @@ FX_PreRenderShaderLayers(w, h) {
     if (!gShader_Ready || !gFX_GPUReady || gFX_ShaderLayers.Length = 0)
         return
 
+    ambientSec := gFX_AmbientTime / 1000.0
     for _, layer in gFX_ShaderLayers {
         if (layer.key = "")
             continue
 
         ; Compute effective time: (ambient / 1000) * speed + offset + carry
         ; Time state is per-layer (keyed by layerIndex), not per-shader
-        baseTime := gFX_AmbientTime / 1000.0
+        baseTime := ambientSec
         if (gFX_ShaderTime.Has(layer.layerIndex)) {
             t := gFX_ShaderTime[layer.layerIndex]
-            baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+            baseTime := t.offset + t.carry + ambientSec
         }
         effectiveTime := baseTime * layer.speed
 
@@ -345,7 +366,8 @@ FX_PreRenderShaderLayers(w, h) {
             if (e.HasProp("Number") && e.Number != 0)
                 errDetail .= " hr=" Format("0x{:08x}", e.Number & 0xFFFFFFFF)
             ToolTip(errDetail)
-            SetTimer(() => ToolTip(), -5000)
+            static clearTT := () => ToolTip()
+            SetTimer(clearTT, -5000)
             if (cfg.DiagShaderLog)
                 LogAppend(LOG_PATH_SHADER, errDetail)
         }
@@ -381,10 +403,11 @@ FX_PreRenderMouseEffect(w, h) {
         return
 
     ; --- Compute mouse velocity (CPU-side, per frame) ---
-    baseTime := gFX_AmbientTime / 1000.0 * gFX_MouseEffect.speed
+    ambientSec := gFX_AmbientTime / 1000.0
+    baseTime := ambientSec * gFX_MouseEffect.speed
     if (gFX_ShaderTime.Has(gFX_MouseEffect.key)) {
         t := gFX_ShaderTime[gFX_MouseEffect.key]
-        baseTime := (t.offset + t.carry + (gFX_AmbientTime / 1000.0)) * gFX_MouseEffect.speed
+        baseTime := (t.offset + t.carry + ambientSec) * gFX_MouseEffect.speed
     }
 
     static prevTime := 0.0
@@ -435,7 +458,8 @@ FX_PreRenderMouseEffect(w, h) {
         global LOG_PATH_SHADER
         errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
         ToolTip(errDetail)
-        SetTimer(() => ToolTip(), -5000)
+        static clearTT := () => ToolTip()
+        SetTimer(clearTT, -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }
@@ -471,14 +495,16 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 
     ; Set selGlow/selIntensity right before render (shared-entry fix with hover)
     if (!gFX_SelectionEffect.isBGShader && gShader_Registry.Has(gFX_SelectionEffect.key)) {
-        gShader_Registry[gFX_SelectionEffect.key].selGlow := cfg.GUI_SelectionGlow
-        gShader_Registry[gFX_SelectionEffect.key].selIntensity := cfg.GUI_SelectionIntensity
+        reg := gShader_Registry[gFX_SelectionEffect.key]
+        reg.selGlow := cfg.GUI_SelectionGlow
+        reg.selIntensity := cfg.GUI_SelectionIntensity
     }
 
-    baseTime := gFX_AmbientTime / 1000.0
+    ambientSec := gFX_AmbientTime / 1000.0
+    baseTime := ambientSec
     if (gFX_ShaderTime.Has(gFX_SelectionEffect.key)) {
         t := gFX_ShaderTime[gFX_SelectionEffect.key]
-        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+        baseTime := t.offset + t.carry + ambientSec
     }
     baseTime *= gFX_SelectionEffect.speed
 
@@ -518,7 +544,8 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
         global LOG_PATH_SHADER
         errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
         ToolTip(errDetail)
-        SetTimer(() => ToolTip(), -5000)
+        static clearTT := () => ToolTip()
+        SetTimer(clearTT, -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }
@@ -1073,14 +1100,16 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
     ; Set selGlow/selIntensity right before render (shared-entry fix)
     hovIntensity := cfg.GUI_HoverSelectionIntensity
     if (gShader_Registry.Has(gFX_HoverEffect.key)) {
-        gShader_Registry[gFX_HoverEffect.key].selGlow := cfg.GUI_HoverSelectionGlow
-        gShader_Registry[gFX_HoverEffect.key].selIntensity := hovIntensity
+        reg := gShader_Registry[gFX_HoverEffect.key]
+        reg.selGlow := cfg.GUI_HoverSelectionGlow
+        reg.selIntensity := hovIntensity
     }
 
-    baseTime := gFX_AmbientTime / 1000.0
+    ambientSec := gFX_AmbientTime / 1000.0
+    baseTime := ambientSec
     if (gFX_ShaderTime.Has(gFX_HoverEffect.key)) {
         t := gFX_ShaderTime[gFX_HoverEffect.key]
-        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+        baseTime := t.offset + t.carry + ambientSec
     }
     baseTime *= gFX_HoverEffect.speed
 
@@ -1119,7 +1148,8 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
         global LOG_PATH_SHADER
         errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
         ToolTip(errDetail)
-        SetTimer(() => ToolTip(), -5000)
+        static clearTT := () => ToolTip()
+        SetTimer(clearTT, -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }

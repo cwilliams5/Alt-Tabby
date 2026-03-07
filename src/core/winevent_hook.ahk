@@ -535,7 +535,8 @@ _WEH_ProcessBatch() {
     ; RACE FIX: Snapshot Z flags before cleanup (needed for conditional enqueue below)
     ; Then remove processed items atomically
     Critical "On"
-    zSnapshot := Map()
+    static zSnapshot := Map()  ; lint-ignore: static-in-timer
+    zSnapshot.Clear()
     for _, hwnd in toProcess {
         if (_WEH_PendingZNeeded.Has(hwnd))
             zSnapshot[hwnd] := true

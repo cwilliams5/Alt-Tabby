@@ -360,7 +360,8 @@ Shader_Register(name, hlsl, meta := "") {
             return false
 
         gShader_Registry[name] := {ps: pPS, cs: 0, csBuffer: 0, csUAV: 0, csSRV: 0, csNumElements: 0,
-            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
+            gridW: 0, gridH: 0, effectiveParticles: 0, reactivity: 1.0, selGlow: 1.0, selIntensity: 1.0}
 
         ; Load iChannel textures (lazy — loaded here at register time for simplicity)
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0) {
@@ -404,7 +405,8 @@ Shader_RegisterFromResource(name, resId, meta := "") {
             return false
 
         gShader_Registry[name] := {ps: pPS, cs: 0, csBuffer: 0, csUAV: 0, csSRV: 0, csNumElements: 0,
-            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
+            gridW: 0, gridH: 0, effectiveParticles: 0, reactivity: 1.0, selGlow: 1.0, selIntensity: 1.0}
 
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
             _Shader_LoadTextures(name)
@@ -495,14 +497,9 @@ Shader_RegisterAlias(aliasName, srcName) {
 
     ; Share ps + cs + srvs + compute buffer, own render target (tex/rtv/bitmap start at 0 — lazy created in PreRender)
     alias := {ps: src.ps, cs: src.cs, csBuffer: src.csBuffer, csUAV: src.csUAV, csSRV: src.csSRV, csNumElements: src.csNumElements,
-        tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs, lastTime: 0.0}
-    ; Copy compute grid/particle fields if present (needed for cbuffer write in PreRender)
-    if (src.HasOwnProp("gridW"))
-        alias.gridW := src.gridW
-    if (src.HasOwnProp("gridH"))
-        alias.gridH := src.gridH
-    if (src.HasOwnProp("effectiveParticles"))
-        alias.effectiveParticles := src.effectiveParticles
+        tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs, lastTime: 0.0,
+        gridW: src.gridW, gridH: src.gridH, effectiveParticles: src.effectiveParticles,
+        reactivity: src.reactivity, selGlow: src.selGlow, selIntensity: src.selIntensity}
     gShader_Registry[aliasName] := alias
     return true
 }
@@ -607,7 +604,8 @@ Shader_RegisterCompute(name, hlsl, meta) {
         gShader_Registry[name] := {ps: pPS, cs: pCS,
             csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: layout.totalElements,
             gridW: layout.gridW, gridH: layout.gridH, effectiveParticles: layout.effectiveParticles,
-            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
+            reactivity: 1.0, selGlow: 1.0, selIntensity: 1.0}
 
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
             _Shader_LoadTextures(name)
@@ -670,7 +668,8 @@ Shader_RegisterComputeFromResource(name, csResId, psResId, meta) {
         gShader_Registry[name] := {ps: pPS, cs: pCS,
             csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: layout.totalElements,
             gridW: layout.gridW, gridH: layout.gridH, effectiveParticles: layout.effectiveParticles,
-            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
+            tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0,
+            reactivity: 1.0, selGlow: 1.0, selIntensity: 1.0}
 
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
             _Shader_LoadTextures(name)
@@ -1075,9 +1074,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         entry_ := gShader_Registry[name]
         _Shader_Log("PreRender FIRST: " name " srvs=" entry_.srvs.Length " sampler=" gShader_Sampler " ps=" entry_.ps
             . " darken=" darken " desat=" desaturate " opacity=" opacity
-            . " gridW=" (entry_.HasOwnProp("gridW") ? entry_.gridW : "n/a")
-            . " gridH=" (entry_.HasOwnProp("gridH") ? entry_.gridH : "n/a")
-            . " maxP=" (entry_.HasOwnProp("effectiveParticles") ? entry_.effectiveParticles : "n/a"))
+            . " gridW=" entry_.gridW " gridH=" entry_.gridH " maxP=" entry_.effectiveParticles)
     }
 
     entry := gShader_Registry[name]
@@ -1105,56 +1102,56 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
 
     ; Map cbuffer → write all 144 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
-    mapped := Buffer(16, 0)
+    static mapped1 := Buffer(16, 0)
     ; Map (vtable 14): resource, subresource, mapType=WRITE_DISCARD(4), mapFlags, mappedResource
-    hr := ComCall(14, ctx, "ptr", gShader_CBuffer, "uint", 0, "uint", 4, "uint", 0, "ptr", mapped, "int")
+    hr := ComCall(14, ctx, "ptr", gShader_CBuffer, "uint", 0, "uint", 4, "uint", 0, "ptr", mapped1, "int")
     if (hr < 0)
         return false
-    pData := NumGet(mapped, 0, "ptr")
+    pData := NumGet(mapped1, 0, "ptr")
     if (pData) {
         ; --- Existing fields (32 bytes) ---
-        NumPut("float", Float(timeSec), pData, 0)          ; time        (offset 0)
+        NumPut("float", timeSec, pData, 0)                  ; time        (offset 0)
         NumPut("float", Float(w), pData, 4)                 ; resolution.x (offset 4)
         NumPut("float", Float(h), pData, 8)                 ; resolution.y (offset 8)
-        NumPut("float", Float(timeDelta), pData, 12)        ; timeDelta   (offset 12)
+        NumPut("float", timeDelta, pData, 12)               ; timeDelta   (offset 12)
         NumPut("uint", gShader_FrameCount, pData, 16)       ; frame       (offset 16)
-        NumPut("float", Float(darken), pData, 20)           ; darken      (offset 20)
-        NumPut("float", Float(desaturate), pData, 24)       ; desaturate  (offset 24)
-        NumPut("float", Float(opacity), pData, 28)          ; opacity     (offset 28)
+        NumPut("float", darken, pData, 20)                  ; darken      (offset 20)
+        NumPut("float", desaturate, pData, 24)              ; desaturate  (offset 24)
+        NumPut("float", opacity, pData, 28)                 ; opacity     (offset 28)
         ; --- Mouse (offset 32) ---
         NumPut("float", Float(mouseX), pData, 32)           ; iMouse.x
         NumPut("float", Float(mouseY), pData, 36)           ; iMouse.y
-        NumPut("float", Float(mouseVelX), pData, 40)        ; iMouseVel.x
-        NumPut("float", Float(mouseVelY), pData, 44)        ; iMouseVel.y
+        NumPut("float", mouseVelX, pData, 40)               ; iMouseVel.x
+        NumPut("float", mouseVelY, pData, 44)               ; iMouseVel.y
         ; --- Selection rect (offset 48) ---
         NumPut("float", Float(selX), pData, 48)             ; selRect.x
         NumPut("float", Float(selY), pData, 52)             ; selRect.y
         NumPut("float", Float(selW), pData, 56)             ; selRect.w
         NumPut("float", Float(selH), pData, 60)             ; selRect.h
         ; --- Selection color (offset 64) ---
-        NumPut("float", Float(selColorR), pData, 64)        ; selColor.r
-        NumPut("float", Float(selColorG), pData, 68)        ; selColor.g
-        NumPut("float", Float(selColorB), pData, 72)        ; selColor.b
-        NumPut("float", Float(selColorA), pData, 76)        ; selColor.a
+        NumPut("float", selColorR, pData, 64)               ; selColor.r
+        NumPut("float", selColorG, pData, 68)               ; selColor.g
+        NumPut("float", selColorB, pData, 72)               ; selColor.b
+        NumPut("float", selColorA, pData, 76)               ; selColor.a
         ; --- Border color (offset 80) ---
-        NumPut("float", Float(borderR), pData, 80)          ; borderColor.r
-        NumPut("float", Float(borderG), pData, 84)          ; borderColor.g
-        NumPut("float", Float(borderB), pData, 88)          ; borderColor.b
-        NumPut("float", Float(borderA), pData, 92)          ; borderColor.a
+        NumPut("float", borderR, pData, 80)                 ; borderColor.r
+        NumPut("float", borderG, pData, 84)                 ; borderColor.g
+        NumPut("float", borderB, pData, 88)                 ; borderColor.b
+        NumPut("float", borderA, pData, 92)                 ; borderColor.a
         ; --- Selection params (offset 96) ---
-        NumPut("float", Float(borderWidth), pData, 96)      ; borderWidth
-        NumPut("float", Float(isHovered), pData, 100)       ; isHovered
-        NumPut("float", Float(entranceT), pData, 104)       ; entranceT
-        NumPut("float", Float(mouseSpeed), pData, 108)       ; iMouseSpeed
+        NumPut("float", borderWidth, pData, 96)             ; borderWidth
+        NumPut("float", isHovered, pData, 100)              ; isHovered
+        NumPut("float", entranceT, pData, 104)              ; entranceT
+        NumPut("float", mouseSpeed, pData, 108)             ; iMouseSpeed
         ; --- Compute grid/particle config (offset 112) ---
-        NumPut("uint",  entry.HasOwnProp("gridW") ? entry.gridW : 0,   pData, 112) ; gridW
-        NumPut("uint",  entry.HasOwnProp("gridH") ? entry.gridH : 0,   pData, 116) ; gridH
-        NumPut("uint",  entry.HasOwnProp("effectiveParticles") ? entry.effectiveParticles : 0, pData, 120) ; maxParticles
-        NumPut("float", Float(entry.HasOwnProp("reactivity") ? entry.reactivity : 1.0), pData, 124) ; reactivity
+        NumPut("uint",  entry.gridW, pData, 112)            ; gridW
+        NumPut("uint",  entry.gridH, pData, 116)            ; gridH
+        NumPut("uint",  entry.effectiveParticles, pData, 120) ; maxParticles
+        NumPut("float", entry.reactivity, pData, 124)       ; reactivity
         ; --- Selection effect tuning (offset 128) ---
-        NumPut("float", Float(entry.HasOwnProp("selGlow") ? entry.selGlow : 1.0), pData, 128) ; selGlow
-        NumPut("float", Float(entry.HasOwnProp("selIntensity") ? entry.selIntensity : 1.0), pData, 132) ; selIntensity
-        NumPut("float", Float(rowRadius), pData, 136) ; rowRadius
+        NumPut("float", entry.selGlow, pData, 128)          ; selGlow
+        NumPut("float", entry.selIntensity, pData, 132)     ; selIntensity
+        NumPut("float", rowRadius, pData, 136)              ; rowRadius
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)
@@ -1191,19 +1188,21 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     try ComCall(50, ctx, "ptr", entry.rtv, "ptr", clearColor)
 
     ; OMSetRenderTargets (vtable 33): count, ppRTVs, depthStencil
-    rtvBuf := Buffer(A_PtrSize, 0)
+    static rtvBuf := Buffer(A_PtrSize, 0)
     NumPut("ptr", entry.rtv, rtvBuf)
     try ComCall(33, ctx, "uint", 1, "ptr", rtvBuf, "ptr", 0)
 
     ; RSSetViewports (vtable 44)
     ; D3D11_VIEWPORT (24 bytes): TopLeftX, TopLeftY, Width, Height, MinDepth, MaxDepth
-    vp := Buffer(24, 0)
-    NumPut("float", 0.0, vp, 0)         ; TopLeftX
-    NumPut("float", 0.0, vp, 4)         ; TopLeftY
-    NumPut("float", Float(w), vp, 8)    ; Width
-    NumPut("float", Float(h), vp, 12)   ; Height
-    NumPut("float", 0.0, vp, 16)        ; MinDepth
-    NumPut("float", 1.0, vp, 20)        ; MaxDepth
+    static vp := Buffer(24, 0), vpW := 0, vpH := 0
+    ; First-time init of non-zero constant (offsets 0,4,16 = 0.0 from Buffer(24,0))
+    if (vpW = 0 && vpH = 0)
+        NumPut("float", 1.0, vp, 20)  ; MaxDepth
+    if (vpW != w || vpH != h) {
+        vpW := w, vpH := h
+        NumPut("float", Float(w), vp, 8)
+        NumPut("float", Float(h), vp, 12)
+    }
     try ComCall(44, ctx, "uint", 1, "ptr", vp)
 
     ; IASetPrimitiveTopology (vtable 24) — TRIANGLELIST = 4
@@ -1216,14 +1215,18 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     try ComCall(9, ctx, "ptr", entry.ps, "ptr", 0, "uint", 0)
 
     ; PSSetConstantBuffers (vtable 16): startSlot, numBuffers, ppBuffers
-    cbBuf := Buffer(A_PtrSize, 0)
+    static cbBuf := Buffer(A_PtrSize, 0)
     NumPut("ptr", gShader_CBuffer, cbBuf)
     try ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf)
 
     ; Bind iChannel texture SRVs if available (PSSetShaderResources vtable 8)
     nSrvs := entry.srvs.Length
     if (nSrvs > 0) {
-        srvBuf := Buffer(A_PtrSize * nSrvs, 0)
+        static srvBuf := 0, srvBufN := 0
+        if (srvBufN != nSrvs) {
+            srvBufN := nSrvs
+            srvBuf := Buffer(A_PtrSize * nSrvs, 0)
+        }
         Loop nSrvs
             NumPut("ptr", entry.srvs[A_Index], srvBuf, (A_Index - 1) * A_PtrSize)
         try ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf)
@@ -1239,7 +1242,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ; Bind sampler state to all slots used by SRVs (PSSetSamplers vtable 10)
     if (gShader_Sampler) {
         nSamplers := Max(nSrvs, 1)
-        sampBuf := Buffer(A_PtrSize * nSamplers, 0)
+        static sampBuf := 0, sampBufN := 0
+        if (sampBufN != nSamplers) {
+            sampBufN := nSamplers
+            sampBuf := Buffer(A_PtrSize * nSamplers, 0)
+        }
         Loop nSamplers
             NumPut("ptr", gShader_Sampler, sampBuf, (A_Index - 1) * A_PtrSize)
         try ComCall(10, ctx, "uint", 0, "uint", nSamplers, "ptr", sampBuf)
@@ -1254,7 +1261,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
 
     ; Unbind SRVs if they were bound
     if (nSrvs > 0) {
-        nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
+        static nullSrvBuf := 0, nullSrvBufN := 0
+        if (nullSrvBufN != nSrvs) {
+            nullSrvBufN := nSrvs
+            nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
+        }
         try ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf)
     }
 
@@ -1269,12 +1280,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     try ComCall(47, ctx, "ptr", entry.staging, "ptr", entry.tex)
 
     ; Map staging texture (vtable 14): D3D11_MAP_READ=1
-    mapped := Buffer(16, 0)
-    hr := ComCall(14, ctx, "ptr", entry.staging, "uint", 0, "uint", 1, "uint", 0, "ptr", mapped, "int")
+    static mapped2 := Buffer(16, 0)
+    hr := ComCall(14, ctx, "ptr", entry.staging, "uint", 0, "uint", 1, "uint", 0, "ptr", mapped2, "int")
     if (hr < 0)
         return false
-    pPixels := NumGet(mapped, 0, "ptr")
-    rowPitch := NumGet(mapped, A_PtrSize, "uint")
+    pPixels := NumGet(mapped2, 0, "ptr")
+    rowPitch := NumGet(mapped2, A_PtrSize, "uint")
 
     ; CopyFromMemory on D2D bitmap (ID2D1Bitmap vtable 10): dstRect, srcData, pitch
     ComCall(10, entry.bitmap, "ptr", 0, "ptr", pPixels, "uint", rowPitch, "int")

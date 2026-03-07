@@ -186,7 +186,12 @@ GUI_Repaint() {
             ; backdrop shows through. Solid: paint the tint color directly via D2D
             ; (SWCA gradient conflicts with DwmExtendFrame).
             clearColor := (cfg.GUI_BackdropStyle = "Solid") ? cfg.GUI_AcrylicColor : 0x00000000
-            gD2D_RT.Clear(D2D_ColorF(clearColor))
+            static cachedClearColor := -1, cachedColorF := 0
+            if (clearColor != cachedClearColor) {
+                cachedClearColor := clearColor
+                cachedColorF := D2D_ColorF(clearColor)
+            }
+            gD2D_RT.Clear(cachedColorF)
 
             if (diagTiming)
                 tBeginDraw := QPC() - t1
@@ -656,7 +661,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
             }
 
             if (idx1 = hoverRow) {
-                _GUI_DrawActionButtons(wPhys, yRow, RowH, scale)
+                _GUI_DrawActionButtons(wPhys, yRow, RowH, scale, Mx)
             }
 
             yRow := yRow + RowH
@@ -680,7 +685,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         t1 := QPC()
     if (cfg.GUI_ShowFooter) {
-        _GUI_DrawFooter(wPhys, hPhys, scale)
+        _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr)
     }
     if (diagTiming)
         tPO_Footer := QPC() - t1
@@ -715,17 +720,22 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 ; Get scaled action button metrics with minimums enforced
 ; Returns: {size, gap, rad}
 GUI_GetActionBtnMetrics(scale) {
-    global cfg
-    size := Round(cfg.GUI_ActionBtnSizePx * scale)
-    if (size < 12)
-        size := 12
-    gap := Round(cfg.GUI_ActionBtnGapPx * scale)
-    if (gap < 2)
-        gap := 2
-    rad := Round(cfg.GUI_ActionBtnRadiusPx * scale)
-    if (rad < 2)
-        rad := 2
-    return {size: size, gap: gap, rad: rad}
+    static cached := 0, cachedScale := -1
+    if (scale != cachedScale) {
+        global cfg
+        cachedScale := scale
+        size := Round(cfg.GUI_ActionBtnSizePx * scale)
+        if (size < 12)
+            size := 12
+        gap := Round(cfg.GUI_ActionBtnGapPx * scale)
+        if (gap < 2)
+            gap := 2
+        rad := Round(cfg.GUI_ActionBtnRadiusPx * scale)
+        if (rad < 2)
+            rad := 2
+        cached := {size: size, gap: gap, rad: rad}
+    }
+    return cached
 }
 
 ; Draw a single action button and update btnX position
@@ -759,14 +769,14 @@ _GUI_DrawOneActionButton(&btnX, btnY, size, rad, scale, btnName, showProp, bgPro
     btnX := btnX - (size + gap)
 }
 
-_GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale) {
+_GUI_DrawActionButtons(wPhys, yRow, rowHPhys, scale, Mx) {
     global gGUI_HoverBtn, cfg
 
     metrics := GUI_GetActionBtnMetrics(scale)
     size := metrics.size
     gap := metrics.gap
     rad := metrics.rad
-    marR := Round(cfg.GUI_MarginX * scale)
+    marR := Mx
 
     btnX := wPhys - marR - size
     btnY := yRow + (rowHPhys - size) // 2
@@ -839,13 +849,9 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
 
 ; ========================= FOOTER =========================
 
-_GUI_DrawFooter(wPhys, hPhys, scale) {
+_GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
     global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
-
-    if (!cfg.GUI_ShowFooter) {
-        return
-    }
 
     fh := Round(cfg.GUI_FooterHeightPx * scale)
     if (fh < 1) {
@@ -899,14 +905,9 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
     gGUI_LeftArrowRect.w := leftArrowW
     gGUI_LeftArrowRect.h := leftArrowH
 
-    ; Footer shadow support (always enabled when GPU is ready)
-    global gFX_GPUReady
-    fxShadow := _FX_GetShadowParams(gFX_GPUReady ? 1 : 0, scale)
-    fxShadowBr := fxShadow.enabled ? D2D_GetCachedBrush(fxShadow.argb) : 0
-
     ; Draw left arrow
-    if (fxShadow.enabled) {
-        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    if (shadowP.enabled) {
+        _FX_DrawTextCenteredShadow(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter, shadowBr, shadowP.offX, shadowP.offY)
     } else {
         D2D_DrawTextCentered(leftArrowGlyph, leftArrowX, leftArrowY, leftArrowW, leftArrowH, brArrowL, tfFooter)
     }
@@ -924,8 +925,8 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
     gGUI_RightArrowRect.h := rightArrowH
 
     ; Draw right arrow
-    if (fxShadow.enabled) {
-        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    if (shadowP.enabled) {
+        _FX_DrawTextCenteredShadow(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter, shadowBr, shadowP.offX, shadowP.offY)
     } else {
         D2D_DrawTextCentered(rightArrowGlyph, rightArrowX, rightArrowY, rightArrowW, rightArrowH, brArrowR, tfFooter)
     }
@@ -937,8 +938,8 @@ _GUI_DrawFooter(wPhys, hPhys, scale) {
         textW := 0
     }
 
-    if (fxShadow.enabled) {
-        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, fxShadowBr, fxShadow.offX, fxShadow.offY)
+    if (shadowP.enabled) {
+        _FX_DrawTextCenteredShadow(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter, shadowBr, shadowP.offX, shadowP.offY)
     } else {
         D2D_DrawTextCentered(gGUI_FooterText, textX, fy, textW, fh, brFooterText, tfFooter)
     }
@@ -1054,7 +1055,7 @@ FX_LinearGradient2(x1, y1, x2, y2, pos1, argb1, pos2, argb2) {
 }
 
 ; 3-stop linear gradient — cached. Same self-invalidating pattern as FX_LinearGradient2.
-FX_LinearGradient3(x1, y1, x2, y2, pos1, argb1, pos2, argb2, pos3, argb3) {
+FX_LinearGradient3(x1, y1, x2, y2, pos1, argb1, pos2, argb2, pos3, argb3) { ; lint-ignore: dead-function
     global gD2D_RT
     static cache := Map()
     static cachedRTPtr := 0
@@ -1111,7 +1112,7 @@ _FX_WriteStop(buf, off, pos, argb) {
 ; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
 ; uniformly when the layer is composited onto the render target.
 ; Static buffer — PushLayer consumes immediately, safe to reuse across calls.
-FX_LayerParams(left, top, right, bottom, opacity) {
+FX_LayerParams(left, top, right, bottom, opacity) { ; lint-ignore: dead-function
     static buf := 0
     if (!buf) {
         buf := Buffer(72, 0)
@@ -1179,7 +1180,7 @@ _FX_GetShadowParams(fx, scale) {
 ; Draw gradient strips along window edges to create depth.
 ; Each edge is a linear gradient from dark at the edge to transparent inward.
 ; `alpha` controls edge darkness (0x15 = subtle, 0x38 = strong).
-_FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
+_FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) { ; lint-ignore: dead-function
     edgeARGB := (alpha << 24) | 0x000000
     botAlpha := Round(alpha * 0.85)
     botARGB := (botAlpha << 24) | 0x000000
@@ -1211,7 +1212,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 
 ; Blend an ARGB color toward black by factor (0.0 = no change, 1.0 = pure black).
 ; Returns RGB only (caller handles alpha).
-FX_BlendToBlack(argb, factor) {
+FX_BlendToBlack(argb, factor) { ; lint-ignore: dead-function
     r := (argb >> 16) & 0xFF
     g := (argb >> 8) & 0xFF
     b := argb & 0xFF

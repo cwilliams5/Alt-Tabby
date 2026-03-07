@@ -16,7 +16,8 @@ GUI_RefreshLiveItems() {
     global gGUI_Sel, gGUI_OverlayVisible, gGUI_ScrollTop, gGUI_Revealed, gGUI_OverlayH
     global gGdip_IconCache, FR_EV_REFRESH, FR_EV_FG_GUARD, gFR_Enabled
 
-    proj := WL_GetDisplayList({ sort: "MRU", columns: "items", includeCloaked: true })
+    dlOpts := { sort: "MRU", columns: "items", includeCloaked: true }
+    proj := WL_GetDisplayList(dlOpts)
 
     ; Foreground guard: if the actual foreground window isn't in our display list,
     ; probe and add it at MRU #1 before freeze. Matches what Windows native Alt-Tab
@@ -31,7 +32,7 @@ GUI_RefreshLiveItems() {
             probe["present"] := true
             probe["presentNow"] := true
             WL_UpsertWindow([probe], "fg_guard_refresh")
-            proj := WL_GetDisplayList({ sort: "MRU", columns: "items", includeCloaked: true })
+            proj := WL_GetDisplayList(dlOpts)
             if (gFR_Enabled)
                 FR_Record(FR_EV_FG_GUARD, fgHwnd)
         }
@@ -131,6 +132,7 @@ GUI_PatchCosmeticUpdates() {
     ; so patching here updates both arrays.
     patched := 0
     wsPatched := false
+    currentWS := gGUI_CurrentWSName
     for _, item in gGUI_ToggleBase {
         hwnd := item.hwnd
         if (!gWS_DirtyHwnds.Has(hwnd))
@@ -165,8 +167,7 @@ GUI_PatchCosmeticUpdates() {
             if (diagLog)
                 _GUI_CosmeticLog("  WS hwnd=" hwnd " '" item.workspaceName "' -> '" rec.workspaceName "'")
             item.workspaceName := rec.workspaceName
-            wsName := gGUI_CurrentWSName
-            item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(rec.workspaceName, wsName)
+            item.isOnCurrentWorkspace := WL_IsOnCurrentWorkspace(rec.workspaceName, currentWS)
             wsPatched := true
             patched++
         }
@@ -230,11 +231,9 @@ _GUI_PreCacheTick() {
     for hwnd, rec in gWS_Store {
         if (!rec.present || !rec.iconHicon)
             continue
-        if (gGdip_IconCache.Has(hwnd)) {
-            cached := gGdip_IconCache[hwnd]
-            if (cached.hicon = rec.iconHicon && cached.bitmap)
-                continue
-        }
+        cached := gGdip_IconCache.Get(hwnd, 0)
+        if (cached && cached.hicon = rec.iconHicon && cached.bitmap)
+            continue
         work.Push({hwnd: hwnd, hicon: rec.iconHicon})
         if (work.Length >= 4)
             break

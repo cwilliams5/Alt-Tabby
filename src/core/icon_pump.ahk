@@ -405,10 +405,13 @@ _IP_Tick() {
             continue
         }
 
+        ; Compute title once for all Phase 3 logging
+        title := logEnabled ? _IP_TruncTitle(rec) : ""
+
         ; Handle result based on mode
         if (h) {
             ; Success - got a new icon
-            if (_IP_DiagEnabled)
+            if (logEnabled)
                 _IP_Log("RESOLVED hwnd=" hwnd " h=" h " method=" method)
             if (mode = IP_MODE_VISIBLE_RETRY || mode = IP_MODE_FOCUS_RECHECK) {
                 ; Destroy old icon before replacing.
@@ -425,10 +428,8 @@ _IP_Tick() {
                 iconGaveUp: false
             }, "icons")
             _IP_Attempts[hwnd] := 0
-            if (logEnabled) {
-                title := _IP_TruncTitle(rec)
+            if (logEnabled)
                 _IP_Log("SUCCESS hwnd=" hwnd " '" title "' mode=" mode " method=" method)
-            }
             Critical "Off"
             continue
         }
@@ -438,10 +439,8 @@ _IP_Tick() {
             ; For upgrade/refresh, failure is OK - we keep existing icon
             ; Just update the refresh timestamp so we don't spam retries
             gIP_UpdateFields(hwnd, { iconLastRefreshTick: now }, "icons")
-            if (logEnabled) {
-                title := _IP_TruncTitle(rec)
+            if (logEnabled)
                 _IP_Log("KEPT hwnd=" hwnd " '" title "' mode=" mode " (WM_GETICON failed, keeping existing)")
-            }
             Critical "Off"
             continue
         }
@@ -449,10 +448,8 @@ _IP_Tick() {
         ; IP_MODE_INITIAL mode failure: bounded retries
         tries := _IP_Attempts.Get(hwnd, 0) + 1
         _IP_Attempts[hwnd] := tries
-        if (logEnabled) {
-            title := _IP_TruncTitle(rec)
+        if (logEnabled)
             _IP_Log("FAIL hwnd=" hwnd " '" title "' attempt=" tries "/" IconMaxAttempts)
-        }
 
         if (tries < IconMaxAttempts) {
             step := IconAttemptBackoffMs

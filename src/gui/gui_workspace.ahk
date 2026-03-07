@@ -75,7 +75,7 @@ GUI_ToggleWorkspaceMode() {
 
 ; Predicate: does this item pass the current workspace filter?
 ; Used by GUI_FilterDisplayItems() for single-pass filtering.
-GUI_WorkspaceItemPasses(item) {
+GUI_WorkspaceItemPasses(item) { ; lint-ignore: dead-function
     return GUI_GetItemIsOnCurrent(item)
 }
 

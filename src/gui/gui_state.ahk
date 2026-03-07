@@ -154,10 +154,9 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 
     ; File-based debug logging (no performance impact from tooltips)
     diagLog := cfg.DiagEventLog  ; PERF: cache config read
-    if (diagLog) {
-        evName := _GUI_GetEventName(evCode)
+    evName := diagLog ? _GUI_GetEventName(evCode) : ""
+    if (diagLog)
         GUI_LogEvent("EVENT " evName " state=" gGUI_State " pending=" gGUI_PendingPhase " items=" gGUI_LiveItems.Length " buf=" gGUI_EventBuffer.Length)
-    }
 
     ; If async activation is in progress, BUFFER events instead of processing
     ; This matches Windows native behavior: let first switch complete, then process next
@@ -193,7 +192,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
         if (gFR_Enabled)
             FR_Record(FR_EV_BUFFER_PUSH, evCode, gGUI_EventBuffer.Length)
         if (diagLog)
-            GUI_LogEvent("BUFFERING " _GUI_GetEventName(evCode) " (async pending, phase=" gGUI_PendingPhase ")")
+            GUI_LogEvent("BUFFERING " evName " (async pending, phase=" gGUI_PendingPhase ")")
         Profiler.Leave() ; @profile
         return
     }
@@ -518,10 +517,11 @@ GUI_FilterDisplayItems(items) {
     if (wsAll && monAll)
         return items
     result := []
+    result.Capacity := items.Length
     for _, item in items {
-        if (!wsAll && !GUI_WorkspaceItemPasses(item))
+        if (!wsAll && !(item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true))
             continue
-        if (!monAll && !GUI_MonitorItemPasses(item))
+        if (!monAll && item.monitorHandle != gGUI_OverlayMonitorHandle)
             continue
         result.Push(item)
     }
@@ -1161,6 +1161,8 @@ _GUI_AsyncActivationTick() {
                 hasAltDn := true
             if (ev.ev = TABBY_EV_TAB_STEP)
                 hasTab := true
+            if (hasAltDn && hasTab)
+                break
         }
         if (hasAltDn && !hasTab) {
             shiftFlag := GetKeyState("Shift", "P") ? TABBY_FLAG_SHIFT : 0
