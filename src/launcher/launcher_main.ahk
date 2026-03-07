@@ -666,7 +666,7 @@ Launcher_AcquireMutex() {
 
     ; Try to create named mutex
     g_LauncherMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
-    lastError := DllCall("GetLastError")
+    lastError := DllCall("GetLastError", "uint")
 
     if (lastError = ERROR_ALREADY_EXISTS) {
         ; Mutex already exists - another launcher is running
@@ -695,7 +695,7 @@ _Launcher_AcquireActiveMutex() {
     mutexName := "AltTabby_Active"
 
     g_ActiveMutex := DllCall("CreateMutex", "ptr", 0, "int", 1, "str", mutexName, "ptr")
-    lastError := DllCall("GetLastError")
+    lastError := DllCall("GetLastError", "uint")
 
     if (lastError = ERROR_ALREADY_EXISTS) {
         if (cfg.DiagLauncherLog)

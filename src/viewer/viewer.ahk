@@ -231,8 +231,8 @@ _Viewer_CreateGui() {
     SendMessage(0x1036, 0x00010020, 0x00010020, gViewer_LV.Hwnd)  ; LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFERED
 
     ; Show selection even when unfocused
-    style := DllCall("GetWindowLong", "Ptr", gViewer_LV.Hwnd, "Int", -16, "Int")
-    DllCall("SetWindowLong", "Ptr", gViewer_LV.Hwnd, "Int", -16, "Int", style | 0x0008)  ; LVS_SHOWSELALWAYS
+    style := DllCall("user32\GetWindowLongPtrW", "Ptr", gViewer_LV.Hwnd, "Int", -16, "Ptr")
+    DllCall("user32\SetWindowLongPtrW", "Ptr", gViewer_LV.Hwnd, "Int", -16, "Ptr", style | 0x0008, "Ptr")  ; LVS_SHOWSELALWAYS
 
     ; === Bottom status bar ===
     gViewer_Status := gViewer_Gui.AddText("x10 y620 w1100 h20", "Ready")

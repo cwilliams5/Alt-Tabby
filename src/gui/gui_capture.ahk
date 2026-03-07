@@ -119,7 +119,7 @@ _Capture_Screenshot() {
 
     ; Convert HBITMAP to GDI+ bitmap
     pBitmap := 0
-    gdipResult := DllCall("gdiplus\GdipCreateBitmapFromHBITMAP", "Ptr", hBitmap, "Ptr", 0, "Ptr*", &pBitmap)
+    gdipResult := DllCall("gdiplus\GdipCreateBitmapFromHBITMAP", "Ptr", hBitmap, "Ptr", 0, "Ptr*", &pBitmap, "int")
 
     if (gdipResult != 0 || !pBitmap) {
         DllCall("SelectObject", "Ptr", hMemDC, "Ptr", hOldBmp)
