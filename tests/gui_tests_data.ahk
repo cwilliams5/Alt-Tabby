@@ -1008,7 +1008,7 @@ RunGUITests_Data() {
     GUI_AssertEq(items[1].isOnCurrentWorkspace, true, "WSPatch noop: isOnCurrentWorkspace still true")
 
     ; ============================================================
-    ; GUI_ClickActivate TESTS
+    ; _GUI_ClickActivate TESTS
     ; ============================================================
 
     ; ----- Test: ClickActivate with valid item transitions to IDLE -----
@@ -1022,7 +1022,7 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_State, "ACTIVE", "ClickActivate setup: state is ACTIVE")
 
     clickItem := gGUI_DisplayItems[2]
-    GUI_ClickActivate(clickItem)
+    _GUI_ClickActivate(clickItem)
     GUI_AssertEq(gGUI_State, "IDLE", "ClickActivate: state returns to IDLE")
     GUI_AssertEq(gGUI_OverlayVisible, false, "ClickActivate: overlay hidden")
     GUI_AssertEq(gGUI_DisplayItems.Length, 0, "ClickActivate: DisplayItems cleared")
@@ -1036,7 +1036,7 @@ RunGUITests_Data() {
     GUI_AssertEq(gGUI_State, "ALT_PENDING", "ClickActivate guard: state is ALT_PENDING")
 
     fakeItem := { hwnd: 1000, title: "test", isOnCurrentWorkspace: true, workspaceName: "" }
-    GUI_ClickActivate(fakeItem)
+    _GUI_ClickActivate(fakeItem)
     GUI_AssertEq(gGUI_State, "ALT_PENDING", "ClickActivate guard: state unchanged (not ACTIVE)")
 
     ; ============================================================
