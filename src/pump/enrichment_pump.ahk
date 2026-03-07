@@ -115,7 +115,7 @@ _Pump_OnDisconnect(hPipe) {
         _Pump_ClientPipe := 0
 }
 
-_Pump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_Pump_OnPipeWake(wParam, lParam, msg, hwnd) {
     global _Pump_Server
     if (IsObject(_Pump_Server))
         IPC__ServerTick(_Pump_Server)

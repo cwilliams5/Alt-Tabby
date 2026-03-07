@@ -229,7 +229,8 @@ $MIN_GLOBAL_NAME_LENGTH = 2
 $sharedFuncDefs = @{}
 
 # --- Shared file-scope globals (for check_globals) ---
-$sharedFileGlobals = @{}  # globalName -> "relpath:lineNum" (src/ only)
+$sharedFileGlobals = @{}  # globalName -> "relpath:lineNum" (src/ only, excludes lib/)
+$libFileGlobals = @{}     # globalName -> "relpath:lineNum" (lib/ only, for phantom-global check)
 $testsDirNorm = ""
 if (Test-Path $testsDir) {
     $testsDirNorm = [System.IO.Path]::GetFullPath($testsDir).ToLower().TrimEnd('\') + '\'
@@ -287,11 +288,14 @@ foreach ($file in $allProjectFiles) {
     $isTestFile = $testsDirNorm -and $file.FullName.ToLower().StartsWith($testsDirNorm)
     $isLibFile = $file.FullName -like "*\lib\*"
 
-    # --- Fast path for lib/ files: only register function names + class names ---
-    # lib/ files only contribute to $ucDefinedFunctions (check_undefined_calls).
-    # Skip all other processing: no BF_CleanLine, no BF_CountBraces, no depth tracking,
-    # no global collection, no processedLines cache, no multi-line detection.
+    # --- Fast path for lib/ files: register function names, class names, AND file-scope globals ---
+    # lib/ files contribute to $ucDefinedFunctions (check_undefined_calls) and
+    # $libFileGlobals (phantom-global check only). Kept separate from $sharedFileGlobals
+    # to avoid false positives in the undeclared-globals check (lib/ globals like 'bitmap'
+    # and 'meta' are too generic — they'd flag every local variable with the same name).
+    # Lightweight depth tracking: only count braces to distinguish file-scope from function-scope.
     if ($isLibFile) {
+        $libDepth = 0
         for ($i = 0; $i -lt $lines.Count; $i++) {
             $raw = $lines[$i]
             if ($raw -match '^\s*;') { continue }
@@ -303,6 +307,24 @@ foreach ($file in $allProjectFiles) {
                 }
             } elseif ($raw -match '^\s*class\s+(\w+)') {
                 [void]$ucDefinedFunctions.Add($Matches[1])
+            }
+
+            # Collect file-scope globals (depth 0) into lib-only set for phantom-global check
+            if ($libDepth -eq 0) {
+                $mG = $script:RX_GLOBAL_DECL.Match($raw)
+                if ($mG.Success) {
+                    foreach ($gName in (BF_ExtractGlobalNames $mG.Groups[1].Value)) {
+                        if (-not $libFileGlobals.ContainsKey($gName)) {
+                            $libFileGlobals[$gName] = "${relPath}:$($i + 1)"
+                        }
+                    }
+                }
+            }
+
+            # Lightweight brace tracking for depth
+            foreach ($ch in $raw.ToCharArray()) {
+                if ($ch -eq '{') { $libDepth++ }
+                elseif ($ch -eq '}') { if ($libDepth -gt 0) { $libDepth-- } }
             }
         }
         continue  # Skip full processing for this file
@@ -907,8 +929,10 @@ $ENTRY_POINT_PATTERNS = @(
 $entryPointRegex = [regex]::new(($ENTRY_POINT_PATTERNS -join '|'), 'Compiled, IgnoreCase')
 
 # Build function definition list from sharedFuncDefs (src/ only)
+# Exempt d2d_types.ahk — D2D type constructors are a utility library, callers come and go.
 $deadFuncDefs = @{}
 foreach ($file in $srcFiles) {
+    if ($file.Name -eq 'd2d_types.ahk') { continue }
     $lines = $fileCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $inBlockComment2 = $false
@@ -1284,6 +1308,9 @@ foreach ($file in $allFilesForGlobals) {
                 if (-not $isTestFile) {
                     foreach ($gn in $funcDeclaredGlobals.Keys) {
                         if ($checkGlobals.ContainsKey($gn)) { continue }
+                        # Also accept globals declared in lib/ files (not in $checkGlobals
+                        # to avoid false positives in undeclared-globals, but valid for phantom check)
+                        if ($libFileGlobals.ContainsKey($gn)) { continue }
                         $declInfo = $funcGlobalDeclLines[$gn]
                         if ($declInfo -and $declInfo.Raw -match 'lint-ignore:\s*phantom-global') { continue }
                         [void]$phantomIssues.Add([PSCustomObject]@{

@@ -150,7 +150,7 @@ _Win_RebuildMonitorCache() {
 }
 
 ; WM_DISPLAYCHANGE handler — clear cache so next lookup triggers rebuild
-_Win_OnDisplayChange(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_Win_OnDisplayChange(wParam, lParam, msg, hwnd) {
     global gWin_MonitorLabelCache
     gWin_MonitorLabelCache := Map()
 }

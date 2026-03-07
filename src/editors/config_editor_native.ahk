@@ -686,9 +686,9 @@ _CEN_AddSettings(pageGui, settings, controls, blocks, y, contentW, sectionName, 
             y += descH + 4
 
         } else if (setting.HasOwnProp("dynamicOptions")) {
-            global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
-            global MOUSE_SHADER_KEYS, MOUSE_SHADER_NAMES ; lint-ignore: phantom-global
-            global SELECTION_SHADER_KEYS, SELECTION_SHADER_NAMES ; lint-ignore: phantom-global
+            global SHADER_KEYS, SHADER_NAMES
+            global MOUSE_SHADER_KEYS, MOUSE_SHADER_NAMES
+            global SELECTION_SHADER_KEYS, SELECTION_SHADER_NAMES
             lbl := pageGui.AddText("x24 y" y " w" CEN_LABEL_W " h20 +0x200 c" gTheme_Palette.text, setting.k)
             lbl.SetFont("s9 bold", "Segoe UI")
             controls.Push({ctrl: lbl, origY: y, origX: 24})
@@ -1332,7 +1332,7 @@ _CEN_SyncFloatEditToSlider(editCtrl, sliderCtrl, guard, fMin, fMax, sMax) {
 ; Use NM_CUSTOMDRAW to paint the thumb in accent colors on hover/press.
 
 ; WM_NOTIFY handler for slider NM_CUSTOMDRAW (same technique as mock_dark_controls.ahk)
-_CEN_OnWmNotify(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling) ; lint-ignore: dead-param
+_CEN_OnWmNotify(wParam, lParam, msg, hwnd) {  ; lint-ignore: mixed-returns (OnMessage: bare return = default handling)
     global gCEN_SliderHwnds
     code := NumGet(lParam, 16, "Int")   ; NMHDR.code (offset 16 on x64: hwndFrom=8 + idFrom=8)
     if (code != -12)  ; NM_CUSTOMDRAW
@@ -1428,7 +1428,7 @@ global gCEN_SliderHwnds := Map()  ; hwnd -> true
 global gCEN_SliderSubclassPtr := CallbackCreate(_CEN_SliderSubclassProc, , 6)
 global gCEN_SwatchSubclassPtr := CallbackCreate(_CEN_SwatchSubclassProc, , 6)
 
-_CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; lint-ignore: dead-param
+_CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
     global gCEN_SliderSubclassPtr, gTheme_Palette
     if (uMsg = 0x0014) {  ; WM_ERASEBKGND — fill with page bg instead of white
         rc := Buffer(16)
@@ -1445,7 +1445,7 @@ _CEN_SliderSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; 
 }
 
 ; Swatch subclass: WM_PAINT draws checkerboard + AlphaBlend overlay
-_CEN_SwatchSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; lint-ignore: dead-param
+_CEN_SwatchSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
     global gCEN_SwatchSubclassPtr, gCEN_SwatchColors, gCEN_SwatchAlphas, gTheme_Palette
 
     if (uMsg = 0x000F) {  ; WM_PAINT
@@ -1548,7 +1548,7 @@ _CEN_UpdateSwatchColor(swCtrl, rgb, alpha := 255) {
 }
 
 ; WM_CTLCOLORSTATIC handler: swatches return nothing (subclass handles paint)
-_CEN_OnSwatchCtlColor(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_CEN_OnSwatchCtlColor(wParam, lParam, msg, hwnd) {
     global gCEN_SwatchHwnds
     if (!gCEN_SwatchHwnds.Has(lParam))
         return  ; Fall through to theme handler
@@ -1979,7 +1979,7 @@ _CEN_GetViewportHeight() {
 ; EVENT HANDLERS
 ; ============================================================
 
-_CEN_OnResize(gui, minMax, w, h) { ; lint-ignore: dead-param
+_CEN_OnResize(gui, minMax, w, h) {
     global gCEN
     global CEN_SIDEBAR_W, CEN_CONTENT_X, CEN_FOOTER_H, CEN_SEARCH_H
 
@@ -2062,7 +2062,7 @@ _CEN_OnCancel(*) {
     gCEN["MainGui"].Destroy()
 }
 
-_CEN_OnClose(guiObj) { ; lint-ignore: dead-param
+_CEN_OnClose(guiObj) {
     if (_CEN_HasUnsavedChanges()) {
         result := ThemeMsgBox("You have unsaved changes. Save before closing?", "Alt-Tabby Configuration", "YesNoCancel Icon?")
         if (result = "Cancel")
@@ -2162,7 +2162,7 @@ _CEN_Cleanup() {
 ; SEARCH
 ; ============================================================
 
-_CEN_OnSearchInput(ctrl, *) { ; lint-ignore: dead-param
+_CEN_OnSearchInput(ctrl, *) {
     global gCEN
     if (gCEN["SearchTimer"])
         SetTimer(_CEN_DoSearch, 0)

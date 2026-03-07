@@ -178,7 +178,7 @@ CE_RunWebView2(launcherHwnd := 0) {
 ; EVENT HANDLERS
 ; ============================================================
 
-_CEW_OnClose(guiObj) { ; lint-ignore: dead-param
+_CEW_OnClose(guiObj) {
     global gCEW_Controller, gCEW_HasChanges
     ; Warn about unsaved changes (matches native editor behavior)
     if (gCEW_HasChanges) {
@@ -198,7 +198,7 @@ _CEW_OnClose(guiObj) { ; lint-ignore: dead-param
     return false  ; Allow close
 }
 
-_CEW_OnSize(guiObj, minMax, width, height) { ; lint-ignore: dead-param
+_CEW_OnSize(guiObj, minMax, width, height) {
     global gCEW_Controller
     if (minMax = -1)  ; Minimized
         return

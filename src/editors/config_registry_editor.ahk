@@ -92,7 +92,7 @@ _CRE_OnClose(*) {
     ExitApp()
 }
 
-_CRE_OnSize(guiObj, minMax, width, height) { ; lint-ignore: dead-param
+_CRE_OnSize(guiObj, minMax, width, height) {
     global gCRE_Controller
     if (minMax != -1 && gCRE_Controller)
         try gCRE_Controller.Fill()

@@ -313,7 +313,7 @@ _GUIPump_CollectTick() {
 
 ; ========================= MESSAGE HANDLER =========================
 
-_GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
+_GUIPump_OnMessage(msg, hPipe) {
     global cfg, FR_EV_ENRICH_RESP, _gPump_LastResponseTick, _gPump_LastRequestTick, gFR_Enabled
     global _gPump_PumpHwnd, _gPump_EnrichCount, g_TestingMode
     _gPump_LastResponseTick := A_TickCount
@@ -423,7 +423,7 @@ _GUIPump_OnMessage(msg, hPipe) { ; lint-ignore: dead-param
 
 ; ========================= PIPE WAKE =========================
 
-_GUIPump_OnPipeWake(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_GUIPump_OnPipeWake(wParam, lParam, msg, hwnd) {
     Critical "On"
     try {
         global _gPump_Client

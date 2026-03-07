@@ -1530,9 +1530,9 @@ global gConfigRegistry := [
 ; Returns a JSON string of the registry array suitable for JavaScript consumption.
 ConfigRegistry_SerializeToJSON() {
     global gConfigRegistry
-    global SHADER_KEYS, SHADER_NAMES ; lint-ignore: phantom-global
-    global MOUSE_SHADER_KEYS, MOUSE_SHADER_NAMES ; lint-ignore: phantom-global
-    global SELECTION_SHADER_KEYS, SELECTION_SHADER_NAMES ; lint-ignore: phantom-global
+    global SHADER_KEYS, SHADER_NAMES
+    global MOUSE_SHADER_KEYS, MOUSE_SHADER_NAMES
+    global SELECTION_SHADER_KEYS, SELECTION_SHADER_NAMES
 
     entries := []
     fields := ["type", "name", "desc", "long", "section", "s", "k", "g", "t", "d", "fmt"]

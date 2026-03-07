@@ -554,7 +554,7 @@ _GUI_OnError(err, *) {
 }
 
 ; Clean up resources on exit
-_GUI_OnExit(reason, code) { ; lint-ignore: dead-param
+_GUI_OnExit(reason, code) {
     ; Send any unsent stats, then flush to disk
     try Stats_AccumulateSession()
     try Stats_ForceFlushToDisk()
@@ -665,7 +665,7 @@ if (!IsSet(g_AltTabbyMode) || g_AltTabbyMode = "gui") {
     Persistent()
 }
 
-_GUI_OnCopyData(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_GUI_OnCopyData(wParam, lParam, msg, hwnd) {
     Critical "On"
     global TABBY_CMD_TOGGLE_VIEWER, TABBY_CMD_PUMP_RESTARTED
     try {
@@ -705,7 +705,7 @@ _GUI_OnBlacklistFileChanged(path) { ; lint-ignore: dead-param
 ; Stats request handler — receives PostMessage(IPC_WM_STATS_REQUEST) from launcher.
 ; Responds with WM_COPYDATA containing JSON stats snapshot.
 ; Separate from WM_COPYDATA to avoid nested SendMessage deadlock in AHK v2.
-_GUI_OnStatsRequest(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_GUI_OnStatsRequest(wParam, lParam, msg, hwnd) {
     Critical "On"
     global TABBY_CMD_STATS_RESPONSE
     try {

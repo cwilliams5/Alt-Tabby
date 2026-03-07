@@ -390,7 +390,7 @@ GUI_CreateWindow() {
 
 ; WM_NCCALCSIZE: zero out non-client area to hide WS_CAPTION title bar.
 ; DWM still applies Mica to the caption style, but we consume the space as client area.
-_GUI_OnNcCalcSize(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_GUI_OnNcCalcSize(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param callback-critical — stateless WM handler, no shared state to protect
     try {
         global gGUI_BaseH
         if (hwnd = gGUI_BaseH && wParam)
@@ -401,7 +401,7 @@ _GUI_OnNcCalcSize(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
 
 ; Suppress WM_ERASEBKGND — return 1 to tell Windows we handled it.
 ; Prevents DWM from painting the default white background before D2D content.
-_GUI_OnEraseBkgnd(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param
+_GUI_OnEraseBkgnd(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param callback-critical — stateless WM handler, no shared state to protect
     try {
         global gGUI_BaseH
         if (hwnd = gGUI_BaseH)
