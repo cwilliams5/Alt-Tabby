@@ -10,10 +10,12 @@ Enter planning mode. Deep-audit the D2D paint pipeline for anything that wastes 
 
 The overlay renders at 120-240fps via Direct2D 1.1. At these frame rates, per-frame waste compounds fast: a 5μs allocation ×30/frame ×240fps = 36ms/s of pure garbage. The AHK runtime allocates objects on the heap — every `Buffer()`, `Array()`, `Object()`, and `Map()` lookup is a real cost.
 
-This review covers the **D2D rendering pipeline only** — from `BeginDraw` to `EndDraw`, including effect chains, compositing layers, and resource management. It does NOT cover:
-- Shader compilation or D3D11 interop (use `review-shader` for that)
+This review covers the **D2D rendering pipeline** — from pre-render through `BeginDraw` to `EndDraw`, including the 8-layer compositor stack, effect chains, and resource management. It does NOT cover:
+- Shader compilation or D3D11 interop (use `review-d3d` for that)
 - Window data / store operations (use `review-latency` Path 1)
 - Keyboard hook latency (use `review-latency` Path 2 preamble)
+
+**Post-#177 architecture note:** The compositor is an 8-layer stack: DWM backdrop → background image → shader layers 1-N → background image (configurable order) → mouse effect → selection effect → hover effect → window list + text. Shader layers render to independent D3D11 intermediate textures, composited via `DrawImage` with premultiplied alpha srcOver blending. PushLayer/PopLayer is eliminated for shader opacity (baked into HLSL via `AT_PostProcess`). However, `PushAxisAlignedClip`/`PopLayer` is still used for BG-shader-as-selection clipping (rounded rect clip to selection row). The pre-render phase (`FX_PreRenderShaderLayers`, `FX_PreRenderMouseEffect`, `FX_PreRenderSelectionEffect`) runs D3D11 dispatches BEFORE `BeginDraw` — this is part of the paint-path cost even though it's outside the D2D draw calls.
 
 ## What to Look For
 
@@ -68,12 +70,12 @@ Values computed every frame that only change on config change, resize, or state 
 - Drawing effects whose inputs haven't changed (could cache output bitmap like `gui_bgimage.ahk` does)
 - Drawing off-screen content that will be fully occluded by later layers
 
-### 6. PushLayer / PopLayer Overhead
+### 6. PushLayer / PopLayer / PushAxisAlignedClip Overhead
 
-Each `PushLayer` / `PopLayer` pair forces D2D to create and composite an intermediate surface. Check whether any layers could be eliminated by:
-- Using opacity on `DrawBitmap` directly instead of a layer
-- Merging adjacent layers with compatible parameters
-- Skipping layers entirely when their effect is identity (opacity=1.0, no clip)
+Phase 5b eliminated PushLayer/PopLayer for shader opacity (now baked into HLSL premultiplied alpha). However, `PushAxisAlignedClip` + `PopLayer` is still used for BG-shader-as-selection and BG-shader-as-hover (clipping background shaders to the selection/hover row rounded rect). Check:
+- Can the clip be avoided when the shader already respects `selRect` bounds via cbuffer?
+- Are clips applied when the selection shader isn't using BG-as-selection mode (wasted clip/pop)?
+- Is clip setup per-frame even when selection hasn't moved?
 
 ### 7. Any other detected optimizations. 
 
@@ -81,25 +83,25 @@ Each `PushLayer` / `PopLayer` pair forces D2D to create and composite an interme
 
 Primary (called every frame):
 - `src/gui/gui_paint.ahk` — main paint orchestrator (`_GUI_PaintOverlay`)
-- `src/gui/gui_effects.ahk` — D2D effect helpers (`FX_LayerParams`, `FX_LinearGradient`, `FX_DrawSoftRect`, etc.)
+- `src/gui/gui_effects.ahk` — 8-layer compositor: `FX_PreRenderShaderLayers`, `FX_DrawShaderLayers`, `FX_PreRenderMouseEffect`, `FX_DrawMouseEffect`, `FX_PreRenderSelectionEffect`, `FX_DrawSelectionEffect`, `FX_PreRenderHoverEffect`, `FX_DrawHoverEffect`, `FX_DrawSoftRect`, inner shadow chains
 - `src/gui/gui_bgimage.ahk` — background image layer
-- `src/gui/gui_animation.ahk` — animation tick + opacity
+- `src/gui/gui_animation.ahk` — animation tick + frame pacing
 
 Supporting (called from paint path):
 - `src/gui/gui_gdip.ahk` — D2D resource management, bitmap creation, cached brushes
 - `src/gui/gui_math.ahk` — layout calculations
-- `src/gui/d2d_shader.ahk` — shader layer draw (D3D11 side is out of scope, but the D2D `DrawBitmap` call is in scope)
+- `src/lib/d2d_shader.ahk` — `Shader_GetBitmap` returns intermediate textures for DrawImage (D3D11 dispatch internals are out of scope — use `review-d3d`)
 
 Init/config (not per-frame, but relevant for cache invalidation):
-- `src/gui/gui_effects.ahk` — `FX_GPU_Init()`, `FX_GPU_Dispose()`
+- `src/gui/gui_effects.ahk` — `FX_Init()`, shader layer registration, effect disposal
 - `src/shared/config_registry.ahk` — which values feed into paint-path computations
 
 ## Explore Strategy
 
 Split by subsystem (run in parallel):
 
-- **Paint orchestrator agent**: `gui_paint.ahk` — trace `_GUI_PaintOverlay` from `BeginDraw` to `EndDraw`. Map every function call, every Buffer allocation, every D2D API call. Count per-frame frequency.
-- **Effects agent**: `gui_effects.ahk` — every public function. For each: is it called per-frame? Does it allocate? Does it recompute invariants? Check `FX_LayerParams`, `FX_LinearGradient`, `FX_DrawSoftRect`, `_FX_BuildStops`, `_FX_GetShadowParams`.
+- **Paint orchestrator agent**: `gui_paint.ahk` — trace `_GUI_PaintOverlay` from pre-render through `BeginDraw` to `EndDraw`. Map every function call, every Buffer allocation, every D2D API call. Include the pre-render phase (shader/mouse/selection pre-render calls happen before BeginDraw but are per-frame cost). Count per-frame frequency.
+- **Effects agent**: `gui_effects.ahk` — the 8-layer compositor. For each layer: pre-render cost, draw cost, allocations, recomputed invariants. Key functions: `FX_PreRenderShaderLayers` (loops N shader layers, calls Shader_PreRender each), `FX_DrawShaderLayers` (loops N layers, DrawImage each), `FX_PreRenderMouseEffect` (compute dispatch + adaptive FPS skip), `FX_PreRenderSelectionEffect`/`FX_PreRenderHoverEffect` (selection/hover shader dispatch), `FX_DrawSelectionEffect`/`FX_DrawHoverEffect` (clip + DrawImage), `FX_DrawSoftRect` (inner shadow chains). Note: mouse effect has QPC-based adaptive framerate skip — check if similar skip logic would benefit background shader layers.
 - **Resource agent**: `gui_gdip.ahk`, `gui_math.ahk`, `gui_animation.ahk` — resource caching effectiveness, layout recomputation, animation state updates.
 
 ### Tools

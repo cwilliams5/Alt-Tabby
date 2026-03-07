@@ -16,9 +16,13 @@ The architecture is single-process: producers, window store, and GUI all run in 
 
 This skill covers the **control flow** around rendering — everything from keypress to "start painting" and from "painting done" to "window visible." It does NOT cover per-frame rendering internals, which have dedicated skills:
 
-- **`/review-paint`** — D2D paint pipeline: BeginDraw→EndDraw, effect helpers, compositing layers, per-frame allocations in `gui_paint.ahk`, `gui_effects.ahk`, `gui_bgimage.ahk`, `gui_gdip.ahk`, `gui_math.ahk`, `gui_animation.ahk`
-- **`/review-d3d`** — D3D11 shader host: `d2d_shader.ahk` buffer allocations, state calls, GPU readback
+- **`/review-paint`** — D2D paint pipeline: pre-render + BeginDraw→EndDraw, 8-layer compositor, effect helpers, per-frame allocations in `gui_paint.ahk`, `gui_effects.ahk`, `gui_bgimage.ahk`, `gui_gdip.ahk`, `gui_math.ahk`
+- **`/review-d3d`** — D3D11 shader host: `d2d_shader.ahk` buffer allocations, state calls, GPU readback, compute dispatch
 - **`/review-shaders`** — HLSL pixel shader source: ALU, transcendentals, loop optimization in `src/shaders/*.hlsl`
+
+**However**, the frame pacing mechanism IS in scope for this skill — the three-tier pacing in `gui_animation.ahk` (compositor clock → waitable swap chain → QPC spin-wait) directly affects input-to-photon latency. The decision of *when* to render (frame pacing) is latency-critical; *what* to render (paint internals) is not.
+
+Similarly, DComp operations that affect overlay visibility timing are in scope: `D2D_SetClipRect`, `D2D_Commit`, DWM cloaking/uncloaking sequences. Present(0,0) is non-blocking post-Phase 1 — verify this hasn't regressed.
 
 If you find a latency issue that lives inside the rendering pipeline (e.g., "paint takes too long because of X"), note it briefly and defer to the appropriate skill.
 
@@ -75,14 +79,19 @@ Key files:
 - `src/gui/gui_pump.ahk` — enrichment pump integration
 
 **Out of scope** (covered by dedicated skills):
-- `src/gui/gui_paint.ahk` — per-frame rendering (`/review-paint`)
-- `src/gui/gui_effects.ahk` — D2D effect helpers (`/review-paint`)
+- `src/gui/gui_paint.ahk` — per-frame rendering internals (`/review-paint`)
+- `src/gui/gui_effects.ahk` — 8-layer compositor internals (`/review-paint`)
 - `src/gui/gui_gdip.ahk` — D2D resource management (`/review-paint`)
 - `src/gui/gui_math.ahk` — layout calculations (`/review-paint`)
-- `src/gui/gui_animation.ahk` — animation tick (`/review-paint`)
 - `src/gui/gui_bgimage.ahk` — background image layer (`/review-paint`)
 - `src/lib/d2d_shader.ahk` — D3D11 interop (`/review-d3d`)
 - `src/shaders/*.hlsl` — pixel shaders (`/review-shaders`)
+
+**In scope from gui_animation.ahk** (the frame pacing / latency boundary):
+- `_Anim_FrameLoop` — three-tier pacing: compositor clock wait vs waitable swap chain vs QPC spin-wait
+- Frame skip logic for explicit FPS caps (different behavior per pacing tier)
+- `DCompositionBoostCompositorClock` — DRR boost on show/hide
+- `Anim_EnsureTimer` deferred start guard (STA pump safety — indirectly affects first-frame latency)
 
 Questions to ask:
 - What work happens between Tab press and the call to `GUI_Repaint()`? Is any of it unnecessary or reorderable?

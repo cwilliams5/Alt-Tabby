@@ -28,7 +28,7 @@ These functions block the main thread by definition:
 These functions have cost that scales:
 
 - **Functions with loops over arrays/maps** — `for` loops, `Loop` blocks iterating collections. Cost scales with collection size.
-- **Functions with 3+ DllCalls** — each DllCall has marshaling overhead (~1-2μs). Three or more in one function means the overhead is non-trivial.
+- **Functions with 3+ DllCalls or ComCalls** — each DllCall/ComCall has marshaling overhead (~1-2μs). Three or more in one function means the overhead is non-trivial. Post-#177, `Shader_PreRender` has 40+ ComCalls per invocation (D3D11 state setup, compute dispatch, Draw, GPU readback) and runs N times per frame (once per active shader layer). `FX_PreRenderShaderLayers` loops over all active layers calling `Shader_PreRender` each.
 - **Functions that build or copy collections** — `Array()`, `Map()`, `.Push()`, `.Clone()` inside a function body. Allocation cost.
 
 ### Tier 3 — Direct callees of Tier 1/2

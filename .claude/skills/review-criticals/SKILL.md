@@ -68,6 +68,7 @@ These Critical sections have been deliberately designed, tested, and documented.
 
 - **`Critical "On"` through the entire `GUI_OnInterceptorEvent` handler including GDI+ rendering** (~16ms). This was previously narrowed and reverted — releasing before render causes partial glass background, window mapping corruption, and stale projection data. See `keyboard-hooks.md` "Do NOT Release Critical Before Rendering." This is the most important Critical section in the codebase.
 - **`Critical "On"` in `_INT_Alt_Down`, `_INT_Alt_Up`, `_INT_Tab_Down`, `_INT_Tab_Up`, `_INT_Tab_Decide`, `_INT_Ctrl_Down`, `_INT_Escape_Down`** — all hotkey callbacks require Critical to prevent callback-interrupting-callback corruption.
+- **`Critical "On"` in `_Anim_FrameLoop`** — covers `_Anim_UpdateTweens()` → `GUI_Repaint()` → DComp sync. Phase 1 (#177) deliberately moved the long blocking wait (compositor clock / waitable swap chain) OUTSIDE Critical so the AHK message pump runs during the wait. The Critical section is only held during the render + present + commit sequence. This is the intended design.
 - **Async activation event buffer** (`gGUI_EventBuffer`) — Critical around buffer push/pop is necessary by design.
 - **Flight recorder `FR_Record()`** — if it uses Critical, it's protecting the ring buffer write pointer. Pre-allocated, intentional.
 

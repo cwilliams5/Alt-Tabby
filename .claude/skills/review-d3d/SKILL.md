@@ -12,6 +12,8 @@ Alt-Tabby renders pixel shaders via a D3D11 immediate context, then copies the r
 
 At 120-240fps, this pipeline runs every frame. Each `Buffer()` allocation, each redundant `ComCall`, and each avoidable state transition costs real time.
 
+**Multi-shader-per-frame reality (post-#177):** `Shader_PreRender` is no longer called once per frame — it runs once per active shader layer (up to 4 background + 1 mouse + 1 selection + 1 hover = 7 invocations). Each invocation is the full D3D11 pipeline. Per-call waste multiplied by 7 is the actual per-frame cost. Additionally, compute-enabled shaders (mouse effects) run both a CS dispatch AND a PS draw per invocation.
+
 **Scope**: Only `src/lib/d2d_shader.ahk` — the D3D11 host-side interop code. Does NOT cover:
 - HLSL shader source optimization (use `review-shaders` for that)
 - The D2D paint pipeline that consumes the shader output (use `review-paint` for that)
@@ -92,14 +94,22 @@ Note: Shared DXGI surfaces (DXGI_RESOURCE_MISC_SHARED_KEYED_MUTEX) would elimina
 - Check: Is the cbuffer size optimal? (144 bytes currently, 9 × 16-byte rows)
 - Check: Could we skip the cbuffer update if no values changed? (Unlikely — `time` changes every frame, but `darken`/`desaturate` don't.)
 
-### 7. ComCall Exception Guarding
+### 7. Compute Dispatch Path Efficiency
+
+Compute-enabled shaders (mouse effects) run a CS5.0 dispatch before the pixel shader draw. The dispatch sequence includes: unbind PS SRV at slot 4 → bind UAV at u0 → CSSetShader → Dispatch → unbind UAV → rebind as SRV for PS. Check:
+
+- **Is the UAV bind/unbind necessary every frame?** If the same compute shader runs consecutive frames, the UAV binding persists. Only need to rebind on shader switch.
+- **Dispatch group count**: Computed from `entry.csNumElements` via `Ceil(N / 256)`. Verify the thread group size (256) matches the HLSL `[numthreads]` declaration.
+- **CS→PS resource hazard**: The unbind-rebind cycle (UAV → SRV) ensures the GPU finishes compute before pixel shader reads. Verify this is done correctly — missing the unbind causes undefined behavior. But also check: is the null-bind necessary, or does the PS bind implicitly resolve the hazard?
+
+### 8. ComCall Exception Guarding
 
 The code wraps ComCall in `try` blocks. Check:
 - Are try/catch blocks used per-call or per-block? Per-call try/catch has higher overhead.
 - Could error checking use HRESULT return values instead of exceptions?
 - Is the exception guarding actually needed for all calls, or only for specific failure-prone ones?
 
-### 8. Any other detected optimizations.
+### 9. Any other detected optimizations.
 
 ## Files to Audit
 
@@ -107,8 +117,8 @@ Primary:
 - `src/lib/d2d_shader.ahk` — the entire D3D11 interop layer
 
 Supporting (for understanding the call pattern):
-- `src/gui/gui_paint.ahk` — where `FX_DrawShaderLayer` calls `Shader_PreRender` + `Shader_GetBitmap`
-- `src/gui/gui_effects.ahk` — where shader init/dispose is managed
+- `src/gui/gui_effects.ahk` — where `FX_PreRenderShaderLayers` loops active layers calling `Shader_PreRender`, plus mouse/selection/hover pre-render. Also manages shader init/dispose and layer registration
+- `src/gui/gui_paint.ahk` — where `FX_DrawShaderLayers` calls `Shader_GetBitmap` + `DrawImage` per layer
 - `src/gui/gui_interceptor.ahk` — where shader switching happens (V key toggle)
 
 ## Explore Strategy

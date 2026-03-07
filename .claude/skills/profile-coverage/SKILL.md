@@ -61,6 +61,17 @@ Before classifying any MAYBE, check: **is its parent already instrumented? Are i
 **When instrumenting a proposed-YES parent:**
 - Contains a variable-cost sub-call (COM, subprocess, DllCall that can block) → instrument BOTH. Parent gives total, child gives breakdown.
 
+### Known instrumentation gap: D3D11 / compositor pipeline
+
+Post-#177, the rendering pipeline has extensive uninstrumented hot paths. The profiler currently covers `GUI_Repaint` (total paint time) but not the breakdown within:
+
+- **Shader pre-render** (`Shader_PreRender` in `d2d_shader.ahk`): 40+ COM calls per shader per frame (cbuffer map, compute dispatch, D3D11 state setup, Draw, GPU→CPU readback). Runs N times per frame (once per active shader layer + mouse + selection + hover). Zero instrumentation currently.
+- **Effect compositing** (`FX_DrawShaderLayers`, `FX_DrawMouseEffect`, `FX_DrawSelectionEffect`, `FX_DrawHoverEffect` in `gui_effects.ahk`): DrawImage calls for intermediate texture compositing. Only mouse effect has QPC measurement (for adaptive FPS skip).
+- **DComp operations** (`D2D_SetClipRect`, `D2D_Commit` in `gui_overlay.ahk`): Clip update + commit on resize. No timing.
+- **Frame pacing** (`_Anim_FrameLoop` in `gui_animation.ahk`): Compositor clock wait / waitable signal / spin-wait. Frame delta computed (`gAnim_FrameDt`) but not profiler-instrumented.
+
+When classifying functions, pay special attention to these areas — they represent the majority of per-frame GPU-side cost but are invisible to the profiler.
+
 ### What does NOT need instrumentation
 
 - Property accessors, flag checks, arithmetic (<1μs)
