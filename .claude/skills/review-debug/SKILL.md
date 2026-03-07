@@ -38,6 +38,8 @@ See `.claude/rules/debugging.md` for the full list of diagnostic config flags an
 
 ## Explore Strategy
 
+Use `query_timers.ps1` to identify timer callbacks — these often contain diagnostic writes for heartbeat, stats, or producer health checks.
+
 Split into independent zones and explore in parallel:
 
 - `src/gui/` — Overlay rendering, state machine, flight recorder

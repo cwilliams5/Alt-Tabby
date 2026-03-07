@@ -41,7 +41,7 @@ Before testing combinations, build a current inventory by reading the code. Thes
 
 ## Step 2 — Test Combinatorial Paths
 
-For each pair/group of options, trace the user journey through the code:
+For each pair/group of options, trace the user journey through the code. Use `query_callchain.ps1` to follow how config option reads flow through functions across files:
 
 - How does feature X behave when run as admin vs not admin?
 - What happens if UAC is refused at each elevation prompt?

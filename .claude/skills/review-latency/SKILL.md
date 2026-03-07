@@ -127,6 +127,7 @@ Split by hot path (run in parallel):
 - `query_state.ps1` — trace state machine transitions for the Alt-Tab flow
 - `query_interface.ps1 <file>` — public API surface of hot path files
 - `query_function.ps1 <func>` — extract function bodies without loading full files
+- `query_callchain.ps1 <func>` — trace call depth from hot path entry points
 
 ## Assessment Format
 
