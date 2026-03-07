@@ -301,6 +301,7 @@ BL_ProbeVisMinCloak(hwnd, &outVis, &outMin, &outCloak) {
 ; Extended Alt-Tab eligibility - returns vis/min/cloak via ByRef
 ; Used by Blacklist_IsWindowEligibleEx to avoid redundant DllCalls in WinUtils_ProbeWindow
 _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
+    Profiler.Enter("_BL_IsAltTabEligibleEx") ; @profile
     global BL_WS_CHILD, BL_WS_EX_TOOLWINDOW, BL_WS_EX_APPWINDOW, BL_WS_EX_NOACTIVATE
     global GWL_STYLE, GWL_EXSTYLE, GW_OWNER
 
@@ -311,8 +312,10 @@ _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
     style := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", GWL_STYLE, "ptr")
 
     ; Child windows are never Alt-Tab eligible
-    if (style & BL_WS_CHILD)
+    if (style & BL_WS_CHILD) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; Get extended window style
     ex := DllCall("user32\GetWindowLongPtrW", "ptr", hwnd, "int", GWL_EXSTYLE, "ptr")
@@ -322,24 +325,33 @@ _BL_IsAltTabEligibleEx(hwnd, &outVis, &outMin, &outCloak) {
     isNoActivate := (ex & BL_WS_EX_NOACTIVATE) != 0
 
     ; Tool windows are never Alt-Tab eligible
-    if (isTool)
+    if (isTool) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; NoActivate windows are not Alt-Tab eligible
-    if (isNoActivate)
+    if (isNoActivate) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; Get owner window
     owner := DllCall("user32\GetWindow", "ptr", hwnd, "uint", GW_OWNER, "ptr")
 
     ; Owned windows need WS_EX_APPWINDOW to be eligible
-    if (owner != 0 && !isApp)
+    if (owner != 0 && !isApp) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; Must be visible, minimized, or cloaked
-    if !(outVis || outMin || outCloak)
+    if !(outVis || outMin || outCloak) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
+    Profiler.Leave() ; @profile
     return true
 }
 

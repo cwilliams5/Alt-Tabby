@@ -335,14 +335,19 @@ D2D_DisposeResources() {
 ; Extract BGRA pixel data from HICON (preserving alpha channel).
 ; Returns {pixels: Buffer, w: int, h: int, stride: int} or 0 on failure.
 _D2D_ExtractIconPixels(hIcon) {
-    if (!hIcon)
+    Profiler.Enter("_D2D_ExtractIconPixels") ; @profile
+    if (!hIcon) {
+        Profiler.Leave() ; @profile
         return 0
+    }
 
     ; Get icon info — gives us color bitmap and mask
     iiSize := 8 + A_PtrSize * 3
     ii := Buffer(iiSize, 0)
-    if (!DllCall("user32\GetIconInfo", "ptr", hIcon, "ptr", ii.Ptr, "int"))
+    if (!DllCall("user32\GetIconInfo", "ptr", hIcon, "ptr", ii.Ptr, "int")) {
+        Profiler.Leave() ; @profile
         return 0
+    }
 
     hbmMask := NumGet(ii, 8 + A_PtrSize, "ptr")
     hbmColor := NumGet(ii, 8 + A_PtrSize * 2, "ptr")
@@ -350,6 +355,7 @@ _D2D_ExtractIconPixels(hIcon) {
     if (!hbmColor) {
         if (hbmMask)
             DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        Profiler.Leave() ; @profile
         return 0
     }
 
@@ -360,6 +366,7 @@ _D2D_ExtractIconPixels(hIcon) {
         DllCall("gdi32\DeleteObject", "ptr", hbmColor)
         if (hbmMask)
             DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        Profiler.Leave() ; @profile
         return 0
     }
 
@@ -371,6 +378,7 @@ _D2D_ExtractIconPixels(hIcon) {
         DllCall("gdi32\DeleteObject", "ptr", hbmColor)
         if (hbmMask)
             DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        Profiler.Leave() ; @profile
         return 0
     }
 
@@ -395,6 +403,7 @@ _D2D_ExtractIconPixels(hIcon) {
         DllCall("gdi32\DeleteObject", "ptr", hbmColor)
         if (hbmMask)
             DllCall("gdi32\DeleteObject", "ptr", hbmMask)
+        Profiler.Leave() ; @profile
         return 0
     }
 
@@ -416,6 +425,7 @@ _D2D_ExtractIconPixels(hIcon) {
     if (hbmMask)
         DllCall("gdi32\DeleteObject", "ptr", hbmMask)
 
+    Profiler.Leave() ; @profile
     return {pixels: pixels, w: w, h: h, stride: stride}
 }
 
@@ -459,21 +469,29 @@ _D2D_CreateBitmapFromPixels(iconData) {
 ; Called when icons are resolved so the bitmap is ready before paint.
 ; Backward-compatible name for gui_data.ahk callers.
 Gdip_PreCacheIcon(hwnd, hIcon) {
+    Profiler.Enter("Gdip_PreCacheIcon") ; @profile
     global gGdip_IconCache, gD2D_RT
-    if (!hIcon || !gD2D_RT)
+    if (!hIcon || !gD2D_RT) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Already cached with same hIcon — nothing to do
     cached := gGdip_IconCache.Get(hwnd, 0)
-    if (cached && cached.hicon = hIcon && cached.bitmap)
+    if (cached && cached.hicon = hIcon && cached.bitmap) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Extract pixel data and create D2D bitmap
     iconData := _D2D_ExtractIconPixels(hIcon)
-    if (!iconData)
+    if (!iconData) {
+        Profiler.Leave() ; @profile
         return
+    }
     bitmap := _D2D_CreateBitmapFromPixels(iconData)
     gGdip_IconCache[hwnd] := {hicon: hIcon, bitmap: bitmap}
+    Profiler.Leave() ; @profile
 }
 
 ; Draw icon with caching — avoids HICON→D2D bitmap conversion on every frame.

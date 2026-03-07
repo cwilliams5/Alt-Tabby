@@ -263,6 +263,7 @@ _GUI_Main_Init() {
 ; Called by producers (via gWS_OnStoreChanged) after modifying the store.
 ; Triggers GUI refresh when overlay is visible or pre-warming.
 _GUI_OnProducerRevChanged(isStructural := true) {
+    Profiler.Enter("_GUI_OnProducerRevChanged") ; @profile
     global gGUI_State
 
     ; Error boundary: producers run in-process, so unhandled errors propagate
@@ -299,6 +300,7 @@ _GUI_OnProducerRevChanged(isStructural := true) {
         global LOG_PATH_STORE
         try LogAppend(LOG_PATH_STORE, "producer_rev_callback err=" e.Message " file=" e.File " line=" e.Line)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; GUI_OnWorkspaceFlips() moved to gui_state.ahk (workspace state owner)

@@ -412,6 +412,7 @@ GUI_OnInterceptorEvent(evCode, flags, lParam) {
 ; ========================= GRACE TIMER =========================
 
 _GUI_GraceTimerFired() {
+    Profiler.Enter("_GUI_GraceTimerFired") ; @profile
     ; RACE FIX: Prevent race with Alt_Up hotkey - timer can fire while
     ; GUI_OnInterceptorEvent is processing ALT_UP, causing inconsistent state
     Critical "On"
@@ -424,12 +425,14 @@ _GUI_GraceTimerFired() {
         _GUI_ShowOverlayWithFrozen()
     }
     Critical "Off"
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= WORKSPACE FLIP CALLBACK =========================
 
 ; Called by KomorebiSub (via gWS_OnWorkspaceChanged) when workspace changes.
 GUI_OnWorkspaceFlips() {
+    Profiler.Enter("GUI_OnWorkspaceFlips") ; @profile
     global gGUI_CurrentWSName, gWS_Meta, cfg
 
     ; Error boundary: same rationale as _GUI_OnProducerRevChanged in gui_main.
@@ -452,6 +455,7 @@ GUI_OnWorkspaceFlips() {
         global LOG_PATH_STORE
         try LogAppend(LOG_PATH_STORE, "workspace_flip_callback err=" e.Message " file=" e.File " line=" e.Line)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= FROZEN STATE HELPERS =========================
@@ -510,13 +514,16 @@ GUI_HandleWorkspaceSwitch() {
 ; When filtering is active, avoids the intermediate throwaway array that two
 ; sequential filter calls would create.
 GUI_FilterDisplayItems(items) {
+    Profiler.Enter("GUI_FilterDisplayItems") ; @profile
     global gGUI_WorkspaceMode, WS_MODE_ALL
     global gGUI_MonitorMode, MON_MODE_ALL, gGUI_OverlayMonitorHandle
 
     wsAll := (gGUI_WorkspaceMode = WS_MODE_ALL)
     monAll := (gGUI_MonitorMode = MON_MODE_ALL) || !gGUI_OverlayMonitorHandle
-    if (wsAll && monAll)
+    if (wsAll && monAll) {
+        Profiler.Leave() ; @profile
         return items
+    }
     result := []
     for _, item in items {
         if (!wsAll && !GUI_WorkspaceItemPasses(item))
@@ -525,6 +532,7 @@ GUI_FilterDisplayItems(items) {
             continue
         result.Push(item)
     }
+    Profiler.Leave() ; @profile
     return result
 }
 
@@ -552,6 +560,7 @@ GUI_RefilterForWorkspaceChange() {
 ; Unlike RefilterForWorkspaceChange (which selects foreground window),
 ; this preserves MRU-based selection since the user is browsing, not switching.
 GUI_ApplyWorkspaceFilter() {
+    Profiler.Enter("GUI_ApplyWorkspaceFilter") ; @profile
     global gGUI_DisplayItems, gGUI_ToggleBase
     ; RACE FIX: Keep Critical through repaint — a hotkey can interrupt between filter and
     ; repaint, reassigning gGUI_DisplayItems via GUI_OnInterceptorEvent. Follows the
@@ -565,11 +574,13 @@ GUI_ApplyWorkspaceFilter() {
     ; GUI_ResizeToRows separately causes a stale frame (old content at new size).
     GUI_Repaint()
     Critical "Off"
+    Profiler.Leave() ; @profile
 }
 
 ; Re-filter display items after monitor mode toggle.
 ; Same pattern as ApplyWorkspaceFilter — preserves MRU selection.
 GUI_ApplyMonitorFilter() {
+    Profiler.Enter("GUI_ApplyMonitorFilter") ; @profile
     global gGUI_DisplayItems, gGUI_ToggleBase
     Critical "On"
     gGUI_DisplayItems := GUI_FilterDisplayItems(gGUI_ToggleBase)
@@ -578,6 +589,7 @@ GUI_ApplyMonitorFilter() {
     ; Let GUI_Repaint handle resize atomically (same as ApplyWorkspaceFilter).
     GUI_Repaint()
     Critical "Off"
+    Profiler.Leave() ; @profile
 }
 
 ; Reset selection to MRU position (1 or 2) and clamp to list bounds.
@@ -754,10 +766,12 @@ _GUI_ShowOverlayWithFrozen() {
 }
 
 _GUI_MoveSelectionFrozen(delta) {
+    Profiler.Enter("_GUI_MoveSelectionFrozen") ; @profile
     global gGUI_Sel, gGUI_DisplayItems, gGUI_ScrollTop, cfg
     global gFX_GPUReady
 
     if (gGUI_DisplayItems.Length = 0) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -785,6 +799,7 @@ _GUI_MoveSelectionFrozen(delta) {
         if (gFX_SelectionEffect.key != "")
             Anim_StartTween("fx_sel_entrance", 0.0, 1.0, 200, Anim_EaseOutCubic)
     }
+    Profiler.Leave() ; @profile
 }
 
 _GUI_ActivateFromFrozen() {
@@ -1034,11 +1049,13 @@ _GUI_ActivateItem(item) {
 }
 
 GUI_ClickActivate(item) {
+    Profiler.Enter("GUI_ClickActivate") ; @profile
     global gGUI_State, gGUI_DisplayItems, cfg
     global gAnim_HidePending
     Critical "On"
     if (gGUI_State != "ACTIVE") {
         Critical "Off"
+        Profiler.Leave() ; @profile
         return
     }
     ; Match keyboard path: hide first, activate, set IDLE last.
@@ -1055,6 +1072,7 @@ GUI_ClickActivate(item) {
     gGUI_State := "IDLE"
     Stats_AccumulateSession()
     Critical "Off"
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= SWITCH-ACTIVATE METHOD =========================
@@ -1470,6 +1488,7 @@ _GUI_ResyncKeyboardState() {
 ; Updates: gGUI_LiveItems array order
 ; NOTE: Callers hold Critical — do NOT call Critical "Off" here (leaks caller's Critical state)
 _GUI_UpdateLocalMRU(hwnd) {
+    Profiler.Enter("_GUI_UpdateLocalMRU") ; @profile
     Critical "On"  ; Harmless assertion — documents that Critical is required
     global gGUI_LiveItems, gGUI_LiveItemsMap, cfg
     global FR_EV_MRU_UPDATE, gFR_Enabled
@@ -1482,6 +1501,7 @@ _GUI_UpdateLocalMRU(hwnd) {
             FR_Record(FR_EV_MRU_UPDATE, hwnd, 0)
         if (diagLog)
             GUI_LogEvent("MRU UPDATE: hwnd " hwnd " not in map, skip scan")
+        Profiler.Leave() ; @profile
         return false
     }
 
@@ -1509,6 +1529,7 @@ _GUI_UpdateLocalMRU(hwnd) {
     WL_UpdateFields(hwnd, {lastActivatedTick: tick, isFocused: true}, "gui_activate")
     if (gFR_Enabled)
         FR_Record(FR_EV_MRU_UPDATE, hwnd, 1)
+    Profiler.Leave() ; @profile
     return true
 }
 
@@ -1699,11 +1720,14 @@ _GUI_UncloakWindow(hwnd) {
 ; Try COM-based uncloaking and activation
 ; Returns: 0 = failed, 1 = uncloak only, 2 = uncloak + SwitchTo succeeded
 _GUI_TryComUncloak(hwnd) {
+    Profiler.Enter("_GUI_TryComUncloak") ; @profile
     global gGUI_AppViewCollection, cfg
 
     ; Try to initialize if not already done
-    if (!gGUI_AppViewCollection && !_GUI_InitAppViewCollection())
+    if (!gGUI_AppViewCollection && !_GUI_InitAppViewCollection()) {
+        Profiler.Leave() ; @profile
         return 0
+    }
 
     viewVtable := 0
     try {
@@ -1721,6 +1745,7 @@ _GUI_TryComUncloak(hwnd) {
         if (hr != 0 || !pView) {
             if (cfg.DiagEventLog)
                 GUI_LogEvent("COM: GetViewForHwnd failed")
+            Profiler.Leave() ; @profile
             return 0
         }
 
@@ -1751,12 +1776,18 @@ _GUI_TryComUncloak(hwnd) {
         releaseView := NumGet(viewVtable, 2 * A_PtrSize, "UPtr")
         DllCall(releaseView, "Ptr", pView)
 
-        if (uncloakOk && switchOk)
+        if (uncloakOk && switchOk) {
+            Profiler.Leave() ; @profile
             return 2  ; Full success
-        else if (uncloakOk)
+        }
+        else if (uncloakOk) {
+            Profiler.Leave() ; @profile
             return 1  ; Uncloak worked, SwitchTo failed
-        else
+        }
+        else {
+            Profiler.Leave() ; @profile
             return 0  ; Failed
+        }
     } catch as e {
         ; Release pView if it was acquired before the exception
         if (pView && viewVtable) {
@@ -1765,8 +1796,10 @@ _GUI_TryComUncloak(hwnd) {
         }
         if (cfg.DiagEventLog)
             GUI_LogEvent("COM: Exception - " e.Message)
+        Profiler.Leave() ; @profile
         return 0
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= KOMOREBI SOCKET COMMANDS =========================
@@ -1841,11 +1874,14 @@ _GUI_SendKomorebiSocketCmd(cmdType, content) {
 ; cliCmd: CLI subcommand (e.g., "focus-named-workspace")
 ; wsName: Target workspace name
 _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
+    Profiler.Enter("_GUI_KomorebiWorkspaceCmd") ; @profile
     global cfg
 
     if (cfg.KomorebiUseSocket) {
-        if (_GUI_SendKomorebiSocketCmd(socketCmd, wsName))
+        if (_GUI_SendKomorebiSocketCmd(socketCmd, wsName)) {
+            Profiler.Leave() ; @profile
             return true
+        }
         if (cfg.DiagEventLog)
             GUI_LogEvent("SOCKET: " socketCmd " failed, falling back to komorebic.exe")
     }
@@ -1855,6 +1891,7 @@ _GUI_KomorebiWorkspaceCmd(socketCmd, cliCmd, wsName) {
     if (cfg.DiagEventLog)
         GUI_LogEvent("KOMOREBIC: Running " cmd)
     ProcessUtils_RunHidden(cmd)
+    Profiler.Leave() ; @profile
     return true
 }
 

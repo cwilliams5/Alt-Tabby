@@ -233,6 +233,7 @@ IconPump_CleanupWindow(hwnd) {
 ;   Phase 2 (Critical OFF): Icon resolution (SendMessageTimeoutW may block up to 500ms)
 ;   Phase 3 (Critical ON):  Re-validate record, apply results (discard if removed during Phase 2)
 _IP_Tick() {
+    Profiler.Enter("_IP_Tick") ; @profile
     global IconBatchPerTick, _IP_Attempts, _IP_IdleTicks, _IP_IdleThreshold, _IP_TimerOn
     global IconMaxAttempts, IconAttemptBackoffMs, IconAttemptBackoffMultiplier
     global IP_LOG_TITLE_MAX_LEN, _IP_DiagEnabled, _IP_LogPath
@@ -244,12 +245,16 @@ _IP_Tick() {
     logEnabled := _IP_DiagEnabled && _IP_LogPath != ""
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
-    if (A_TickCount < _backoffUntil)
+    if (A_TickCount < _backoffUntil) {
+        Profiler.Leave() ; @profile
         return
+    }
     ; Skip icon resolution during active Alt-Tab — keyboard hooks must not be blocked
     ; by SendMessageTimeoutW. Queue persists; deferred icons process when overlay dismisses.
-    if (gGUI_State = "ALT_PENDING" || gGUI_State = "ACTIVE")
+    if (gGUI_State = "ALT_PENDING" || gGUI_State = "ACTIVE") {
+        Profiler.Leave() ; @profile
         return
+    }
     try {
 
     ; PERF: Periodically prune _IP_Attempts to prevent unbounded growth
@@ -264,6 +269,7 @@ _IP_Tick() {
     if (!IsObject(hwnds) || hwnds.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
         Pump_HandleIdle(&_IP_IdleTicks, _IP_IdleThreshold, &_IP_TimerOn, _IP_Tick, _IP_Log)
+        Profiler.Leave() ; @profile
         return
     }
     _IP_IdleTicks := 0  ; Reset idle counter when we have work
@@ -475,19 +481,23 @@ _IP_Tick() {
         global LOG_PATH_ICONPUMP
         HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_ICONPUMP, "IP_Tick")
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Get raw HICON from window via WM_GETICON or class icon (no CopyIcon).
 ; Returns the window's own icon handle — caller does NOT own it, do NOT DestroyIcon.
 ; Used by EnrichmentPump for nochange detection (raw handle is stable for unchanged icons).
 IP_GetRawWindowIcon(hWnd) {
+    Profiler.Enter("IP_GetRawWindowIcon") ; @profile
     global IP_WM_GETICON, IP_ICON_BIG, IP_ICON_SMALL, IP_ICON_SMALL2
     global IP_GCLP_HICONSM, IP_GCLP_HICON, IP_SMTO_ABORTIFHUNG, IP_RESOLVE_TIMEOUT_MS
     global _IP_DiagEnabled, _IP_LogPath
 
     try {
-        if (DllCall("user32\IsHungAppWindow", "ptr", hWnd, "int"))
+        if (DllCall("user32\IsHungAppWindow", "ptr", hWnd, "int")) {
+            Profiler.Leave() ; @profile
             return 0
+        }
 
         h := 0
         result := 0
@@ -503,11 +513,13 @@ IP_GetRawWindowIcon(hWnd) {
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", IP_GCLP_HICON, "ptr")
         if (!h)
             h := DllCall("user32\GetClassLongPtrW", "ptr", hWnd, "int", IP_GCLP_HICONSM, "ptr")
+        Profiler.Leave() ; @profile
         return h
     } catch as e {
         if (_IP_DiagEnabled && _IP_LogPath != "")
             _IP_Log("WARN: IP_GetRawWindowIcon failed for hwnd=" hWnd " err=" e.Message)
     }
+    Profiler.Leave() ; @profile
     return 0
 }
 
@@ -723,24 +735,31 @@ _IP_GetPackagePath(pid) {
 ; Try to extract icon from UWP package
 ; Uses cached logo path lookup to avoid repeated manifest parsing for multiple windows from same app
 IP_TryResolveFromUWP(pid) {
+    Profiler.Enter("IP_TryResolveFromUWP") ; @profile
     global _IP_DiagEnabled, _IP_LogPath
     ; Get package path first (also confirms it's a UWP app)
     packagePath := _IP_GetPackagePath(pid)
-    if (packagePath = "")
+    if (packagePath = "") {
+        Profiler.Leave() ; @profile
         return 0
+    }
 
     ; Get logo path (cached by packagePath)
     logoPath := _IP_GetUWPLogoPathCached(packagePath)
-    if (logoPath = "" || !FileExist(logoPath))
+    if (logoPath = "" || !FileExist(logoPath)) {
+        Profiler.Leave() ; @profile
         return 0
+    }
 
     ; Load PNG as HBITMAP
     hBitmap := 0
     hIcon := 0
     try {
         hBitmap := LoadPicture(logoPath, "GDI+")
-        if (!hBitmap)
+        if (!hBitmap) {
+            Profiler.Leave() ; @profile
             return 0
+        }
 
         ; Convert HBITMAP to HICON
         hIcon := _IP_BitmapToIcon(hBitmap)
@@ -753,6 +772,7 @@ IP_TryResolveFromUWP(pid) {
     if (hBitmap)
         DllCall("gdi32\DeleteObject", "ptr", hBitmap)
 
+    Profiler.Leave() ; @profile
     return hIcon
 }
 

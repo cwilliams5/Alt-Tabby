@@ -757,10 +757,13 @@ D2D_IsHDRActive() {
 ; With FLIP_DISCARD, back buffer content is undefined after Present(),
 ; so each frame gets a fresh buffer (~6μs per acquire).
 D2D_AcquireBackBuffer() {
+    Profiler.Enter("D2D_AcquireBackBuffer") ; @profile
     global gD2D_SwapChain, gD2D_RT, gD2D_BackBuffer
 
-    if (!gD2D_SwapChain || !gD2D_RT)
+    if (!gD2D_SwapChain || !gD2D_RT) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     ; Static buffer: hot path (~120fps), avoid per-frame allocation
     static bp1 := 0
@@ -776,17 +779,20 @@ D2D_AcquireBackBuffer() {
     surface := gD2D_SwapChain.GetBuffer(0)
     gD2D_BackBuffer := gD2D_RT.CreateBitmapFromDxgiSurface(surface, bp1)
     gD2D_RT.SetTarget(gD2D_BackBuffer)
+    Profiler.Leave() ; @profile
     return true
 }
 
 ; Release the back buffer after EndDraw(). Must be called BEFORE Present().
 ; Unbinding the target allows the swap chain to flip the buffer.
 D2D_ReleaseBackBuffer() {
+    Profiler.Enter("D2D_ReleaseBackBuffer") ; @profile
     global gD2D_RT, gD2D_BackBuffer
     if (gD2D_BackBuffer) {
         gD2D_RT.SetTarget(0)
         gD2D_BackBuffer := 0  ; COM Release via __Delete
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= D2D PRESENT =========================
@@ -795,10 +801,14 @@ D2D_ReleaseBackBuffer() {
 ; syncInterval=0 for immediate (waitable swap chain handles pacing).
 ; Fallback path: frame loop spin-waits for frame boundary instead of VSync.
 D2D_Present(syncInterval := 0) {
+    Profiler.Enter("D2D_Present") ; @profile
     global gD2D_SwapChain
-    if (!gD2D_SwapChain)
+    if (!gD2D_SwapChain) {
+        Profiler.Leave() ; @profile
         return
+    }
     gD2D_SwapChain.Present(syncInterval, 0)
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= DCOMP CLIP (Phase 2) =========================

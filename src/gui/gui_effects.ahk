@@ -316,11 +316,14 @@ FX_UpdateAmbient(dt) {
 
 ; Pre-render all active shader layers (D3D11 pipeline). Called BEFORE D2D BeginDraw.
 FX_PreRenderShaderLayers(w, h) {
+    Profiler.Enter("FX_PreRenderShaderLayers") ; @profile
     global gFX_ShaderLayers, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
     global gFX_GPUReady, cfg
 
-    if (!gShader_Ready || !gFX_GPUReady || gFX_ShaderLayers.Length = 0)
+    if (!gShader_Ready || !gFX_GPUReady || gFX_ShaderLayers.Length = 0) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     for _, layer in gFX_ShaderLayers {
         if (layer.key = "")
@@ -350,15 +353,19 @@ FX_PreRenderShaderLayers(w, h) {
                 LogAppend(LOG_PATH_SHADER, errDetail)
         }
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Draw all active shader layers inside D2D BeginDraw.
 ; Opacity is baked into shader output via AT_PostProcess — no PushLayer needed.
 FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
+    Profiler.Enter("FX_DrawShaderLayers") ; @profile
     global gD2D_RT, gFX_ShaderLayers, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
 
-    if (!gShader_Ready || gFX_ShaderLayers.Length = 0)
+    if (!gShader_Ready || gFX_ShaderLayers.Length = 0) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     for _, layer in gFX_ShaderLayers {
         if (layer.key = "")
@@ -367,18 +374,22 @@ FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
         if (pBitmap)
             gD2D_RT.DrawImage(pBitmap)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= MOUSE EFFECT =========================
 
 ; Pre-render the mouse effect (D3D11 pipeline). Called BEFORE D2D BeginDraw.
 FX_PreRenderMouseEffect(w, h) {
+    Profiler.Enter("FX_PreRenderMouseEffect") ; @profile
     global gFX_MouseEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
     global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow, cfg
     global gFX_MousePrevX, gFX_MousePrevY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed, gFX_MousePrevValid
 
-    if (gFX_MouseEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
+    if (gFX_MouseEffect.key = "" || !gShader_Ready || !gFX_GPUReady) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; --- Compute mouse velocity (CPU-side, per frame) ---
     baseTime := gFX_AmbientTime / 1000.0 * gFX_MouseEffect.speed
@@ -423,6 +434,7 @@ FX_PreRenderMouseEffect(w, h) {
 
     if (cfg.PerfAdaptiveMouseFPS && mouseSkipNext) {
         mouseSkipNext := false  ; always render the frame after a skip
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -444,18 +456,23 @@ FX_PreRenderMouseEffect(w, h) {
     ; If the mouse shader alone took more than half the frame budget, skip next frame
     if (cfg.PerfAdaptiveMouseFPS && mouseLastRenderMs > gAnim_FrameCapMs * 0.5)
         mouseSkipNext := true
+    Profiler.Leave() ; @profile
 }
 
 ; Draw the mouse effect inside D2D BeginDraw.
 FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
+    Profiler.Enter("FX_DrawMouseEffect") ; @profile
     global gD2D_RT, gFX_MouseEffect, gShader_Ready ; lint-ignore: phantom-global
 
-    if (gFX_MouseEffect.key = "" || !gShader_Ready)
+    if (gFX_MouseEffect.key = "" || !gShader_Ready) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     pBitmap := Shader_GetBitmap(gFX_MouseEffect.key)
     if (pBitmap)
         gD2D_RT.DrawImage(pBitmap)
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= SELECTION EFFECT =========================
@@ -463,11 +480,14 @@ FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
 ; Pre-render the selection shader. Called DURING paint (needs selection geometry).
 ; Decomposes ARGB ints to premultiplied float4 RGBA for the shader cbuffer.
 FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, isHovered, entranceT, rowRadius := 0.0) {
+    Profiler.Enter("FX_PreRenderSelectionEffect") ; @profile
     global gFX_SelectionEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
     global gShader_Registry, cfg ; lint-ignore: phantom-global
 
-    if (gFX_SelectionEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
+    if (gFX_SelectionEffect.key = "" || !gShader_Ready || !gFX_GPUReady) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Set selGlow/selIntensity right before render (shared-entry fix with hover)
     if (!gFX_SelectionEffect.isBGShader && gShader_Registry.Has(gFX_SelectionEffect.key)) {
@@ -522,19 +542,25 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Draw the selection effect inside D2D BeginDraw.
 ; selX/selY/selW/selH/rad are only needed for BG-as-selection (clipping + border).
 FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0, rad := 0) { ; lint-ignore: dead-param
+    Profiler.Enter("FX_DrawSelectionEffect") ; @profile
     global gD2D_RT, gFX_SelectionEffect, gShader_Ready, cfg ; lint-ignore: phantom-global
 
-    if (gFX_SelectionEffect.key = "" || !gShader_Ready)
+    if (gFX_SelectionEffect.key = "" || !gShader_Ready) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     pBitmap := Shader_GetBitmap(gFX_SelectionEffect.key)
-    if (!pBitmap)
+    if (!pBitmap) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     if (gFX_SelectionEffect.isBGShader) {
         static srcRect := Buffer(16), tgtPt := Buffer(8), dstRect := Buffer(16)
@@ -566,6 +592,7 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
     } else {
         gD2D_RT.DrawImage(pBitmap)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= SHADER CONFIG RESOLUTION =========================
@@ -1064,11 +1091,14 @@ FX_CycleSelectionEffect() {
 ; Pre-render the hover shader. Mirrors FX_PreRenderSelectionEffect but uses hover config.
 ; Sets selGlow/selIntensity on the registry entry right before render to avoid shared-entry conflict.
 FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, entranceT, rowRadius := 0.0) {
+    Profiler.Enter("FX_PreRenderHoverEffect") ; @profile
     global gFX_HoverEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
     global gShader_Registry, cfg ; lint-ignore: phantom-global
 
-    if (gFX_HoverEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
+    if (gFX_HoverEffect.key = "" || !gShader_Ready || !gFX_GPUReady) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Set selGlow/selIntensity right before render (shared-entry fix)
     hovIntensity := cfg.GUI_HoverSelectionIntensity
@@ -1123,18 +1153,24 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Draw the hover effect inside D2D BeginDraw.
 FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: dead-param
+    Profiler.Enter("FX_DrawHoverEffect") ; @profile
     global gD2D_RT, gFX_HoverEffect, gShader_Ready, cfg ; lint-ignore: phantom-global
 
-    if (gFX_HoverEffect.key = "" || !gShader_Ready)
+    if (gFX_HoverEffect.key = "" || !gShader_Ready) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     pBitmap := Shader_GetBitmap(gFX_HoverEffect.key)
-    if (!pBitmap)
+    if (!pBitmap) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     if (gFX_HoverEffect.isBGShader) {
         static hov_srcRect := Buffer(16), hov_tgtPt := Buffer(8), hov_dstRect := Buffer(16)
@@ -1164,6 +1200,7 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
     } else {
         gD2D_RT.DrawImage(pBitmap)
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Cycle the hover effect.

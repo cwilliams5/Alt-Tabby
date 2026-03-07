@@ -446,14 +446,17 @@ _WS_ApplyPatch(row, patch, hwnd) {
 }
 
 WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
+    Profiler.Enter("WL_UpdateFields") ; @profile
     global gWS_Store, gWS_Rev, gWS_SortOrderDirty, gWS_ContentDirty
     global gWS_MRUBumpOnly
     ; RACE FIX: Wrap body in Critical to prevent two producers from interleaving
     ; check-then-set on the same hwnd's fields (timer/hotkey interruption)
     Critical "On"
     hwnd := hwnd + 0
-    if (!gWS_Store.Has(hwnd))
+    if (!gWS_Store.Has(hwnd)) {
+        Profiler.Leave() ; @profile
         return { changed: false, exists: false, rev: gWS_Rev }
+    }
     row := gWS_Store[hwnd]
 
     ; Apply patch using shared helper
@@ -469,8 +472,11 @@ WL_UpdateFields(hwnd, patch, source := "", returnRow := false) {
         _WS_BumpRev("UpdateFields:" . source)
     }
     ; Return row when requested to avoid redundant GetByHwnd lookups
-    if (returnRow)
+    if (returnRow) {
+        Profiler.Leave() ; @profile
         return { changed: changed, exists: true, rev: gWS_Rev, row: row }
+    }
+    Profiler.Leave() ; @profile
     return { changed: changed, exists: true, rev: gWS_Rev }
 }
 
@@ -770,6 +776,7 @@ WL_IsOnCurrentWorkspace(workspaceName, currentWSName) {
 }
 
 WL_SetCurrentWorkspace(id, name := "") {
+    Profiler.Enter("WL_SetCurrentWorkspace") ; @profile
     global gWS_Meta, gWS_Rev, gWS_Store, gWS_SortOrderDirty, gWS_ContentDirty, gWS_MRUBumpOnly
     global gWS_OnWorkspaceChanged
     ; RACE FIX: Wrap entire body in Critical — meta writes (currentWSId, currentWSName)
@@ -782,8 +789,10 @@ WL_SetCurrentWorkspace(id, name := "") {
 
     ; Only recalculate window state if workspace NAME changed
     ; ID is metadata only — GUI cares about name for filtering
-    if (gWS_Meta["currentWSName"] = name)
+    if (gWS_Meta["currentWSName"] = name) {
+        Profiler.Leave() ; @profile
         return false
+    }
 
     gWS_Meta["currentWSName"] := name
 
@@ -810,6 +819,7 @@ WL_SetCurrentWorkspace(id, name := "") {
     if (gWS_OnWorkspaceChanged)
         gWS_OnWorkspaceChanged()  ; lint-ignore: critical-leak
 
+    Profiler.Leave() ; @profile
     return anyFlipped
 }
 
