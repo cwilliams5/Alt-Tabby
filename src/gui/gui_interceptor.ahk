@@ -441,13 +441,17 @@ INT_SetBypassMode(shouldBypass) {
 ; Recovers from silent desync where Tab was left Off after a bypass toggle.
 ; Called from: focus-change callback (active use) and housekeeping timer (idle).
 INT_ReassertTabHotkey() {
+    Critical "On"
     global gINT_BypassMode
-    if (gINT_BypassMode)
+    if (gINT_BypassMode) {
+        Critical "Off"
         return
+    }
     try {
         Hotkey("$*Tab", "On")
         Hotkey("$*Tab Up", "On")
     }
+    Critical "Off"
 }
 
 _INT_BuildBypassList() {
