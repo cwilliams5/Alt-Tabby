@@ -894,16 +894,21 @@ _Viewer_CheckHover() {
     if (gViewer_ShuttingDown || !gViewer_LV)
         return
 
-    pt := Buffer(8, 0)
+    static lastX := -1, lastY := -1
+    static pt := Buffer(8, 0)
     DllCall("GetCursorPos", "Ptr", pt)
+    x := NumGet(pt, 0, "Int"), y := NumGet(pt, 4, "Int")
+    if (x = lastX && y = lastY)
+        return
+    lastX := x, lastY := y
 
     ; -- ListView row hover --
     newHotRow := -1
-    lvPt := Buffer(8, 0)
+    static lvPt := Buffer(8, 0)
     NumPut("Int", NumGet(pt, 0, "Int"), "Int", NumGet(pt, 4, "Int"), lvPt)
     DllCall("ScreenToClient", "Ptr", gViewer_LV.Hwnd, "Ptr", lvPt)
     ; LVHITTESTINFO: POINT(8) + flags(4) + iItem(4) + iSubItem(4) + iGroup(4) = 24
-    hitInfo := Buffer(24, 0)
+    static hitInfo := Buffer(24, 0)
     NumPut("Int", NumGet(lvPt, 0, "Int"), "Int", NumGet(lvPt, 4, "Int"), hitInfo)
     hitRow := DllCall("SendMessageW", "Ptr", gViewer_LV.Hwnd, "UInt", 0x1012,
         "Ptr", 0, "Ptr", hitInfo, "Int")  ; LVM_HITTEST
@@ -922,11 +927,11 @@ _Viewer_CheckHover() {
     hwndUnder := DllCall("WindowFromPoint", "Int64", NumGet(pt, 0, "Int64"), "Ptr")
     newHotHdr := -1
     if (hwndUnder = gViewer_LVHeaderHwnd) {
-        hdrPt := Buffer(8, 0)
+        static hdrPt := Buffer(8, 0)
         NumPut("Int", NumGet(pt, 0, "Int"), "Int", NumGet(pt, 4, "Int"), hdrPt)
         DllCall("ScreenToClient", "Ptr", gViewer_LVHeaderHwnd, "Ptr", hdrPt)
         ; HDHITTESTINFO: POINT(8) + flags(4) + iItem(4) = 16
-        hdrHit := Buffer(16, 0)
+        static hdrHit := Buffer(16, 0)
         NumPut("Int", NumGet(hdrPt, 0, "Int"), "Int", NumGet(hdrPt, 4, "Int"), hdrHit)
         DllCall("SendMessageW", "Ptr", gViewer_LVHeaderHwnd, "UInt", 0x1206,
             "Ptr", 0, "Ptr", hdrHit)  ; HDM_HITTEST

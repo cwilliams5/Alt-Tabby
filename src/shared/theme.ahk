@@ -1128,8 +1128,14 @@ _Theme_CheckButtonHover() {
     if (gTheme_ButtonMap.Count = 0)
         return
 
-    pt := Buffer(8, 0)
+    static lastX := -1, lastY := -1
+    static pt := Buffer(8, 0)
     DllCall("GetCursorPos", "Ptr", pt)
+    x := NumGet(pt, 0, "Int"), y := NumGet(pt, 4, "Int")
+    if (x = lastX && y = lastY)
+        return
+    lastX := x, lastY := y
+
     hwndUnder := DllCall("WindowFromPoint",
         "Int64", NumGet(pt, 0, "Int64"), "Ptr")
 
