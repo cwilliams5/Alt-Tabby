@@ -877,7 +877,8 @@ _WS_ToItem(rec) {
         processName: rec.processName,
         iconHicon: rec.iconHicon,
         monitorHandle: rec.monitorHandle,
-        monitorLabel: rec.monitorLabel
+        monitorLabel: rec.monitorLabel,
+        Col6: ""
     }
 }
 
@@ -1377,33 +1378,23 @@ WL_GetDisplayList(opts := 0) {
             }
         }
         if (valid) {
-            ; Selective refresh: patch dirty items in-place, create only when no cache entry.
-            rows := []
-            for _, rec in sortedRecs {
-                if (gWS_DirtyHwnds.Has(rec.hwnd)) {
-                    if (gWS_DLCache_ItemsMap.Has(rec.hwnd)) {
-                        existing := gWS_DLCache_ItemsMap[rec.hwnd]
-                        _WS_PatchItem(existing, rec)
-                        rows.Push(existing)
-                    } else {
-                        newItem := _WS_ToItem(rec)
-                        rows.Push(newItem)
-                        gWS_DLCache_ItemsMap[rec.hwnd] := newItem
-                    }
-                } else if (gWS_DLCache_ItemsMap.Has(rec.hwnd))
-                    rows.Push(gWS_DLCache_ItemsMap[rec.hwnd])
-                else {
-                    newItem := _WS_ToItem(rec)
-                    rows.Push(newItem)
-                    gWS_DLCache_ItemsMap[rec.hwnd] := newItem
-                }
+            ; In-place: reuse cached items array, move bumped item to front
+            ; (mirrors sortedRecs reorder above — both arrays stay in lockstep)
+            rows := gWS_DLCache_Items
+            if (bestIdx > 1 && bestIdx <= rows.Length) {
+                movedItem := rows.RemoveAt(bestIdx)
+                rows.InsertAt(1, movedItem)
+            }
+            ; Patch dirty items directly via cache map (typically 1-2 during MRU bump)
+            for hwnd, _ in gWS_DirtyHwnds {
+                if (gWS_DLCache_ItemsMap.Has(hwnd))
+                    _WS_PatchItem(gWS_DLCache_ItemsMap[hwnd], gWS_Store[hwnd])
             }
             gWS_SortOrderDirty := false
             gWS_ContentDirty := false
             gWS_MRUBumpOnly := false
             gWS_MRUBumpedHwnd := 0
             gWS_DirtyHwnds := Map()
-            gWS_DLCache_Items := rows
             result := { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "mru" }
             if (columns = "hwndsOnly") {
                 hwnds := []

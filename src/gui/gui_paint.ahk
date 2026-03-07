@@ -398,19 +398,30 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     cols := cachedCols
     rightX := cachedColsRightX
 
+    ; Cache multiply-referenced config values (immutable — config restarts on change)
+    cfgSelARGB := cfg.GUI_SelARGB
+    cfgSelBorderARGB := cfg.GUI_SelBorderARGB
+    cfgSelBorderW := cfg.GUI_SelBorderWidthPx
+    cfgHoverARGB := cfg.GUI_HoverARGB
+    cfgHovBorderARGB := cfg.GUI_HovBorderARGB
+    cfgHovBorderW := cfg.GUI_HovBorderWidthPx
+    cfgBGImgAbove := cfg.BGImgRenderAboveShaders
+    cfgShowFooter := cfg.GUI_ShowFooter
+    cfgInnerShadowAlpha := cfg.GUI_InnerShadowAlpha
+
     textW := (rightX - Round(PAINT_TEXT_RIGHT_PAD_DIP * scale)) - textX
     if (textW < 0) {
         textW := 0
     }
 
     ; Background image layer (configurable: above or below shader layers)
-    if (!cfg.BGImgRenderAboveShaders)
+    if (!cfgBGImgAbove)
         BGImg_Draw()
 
     ; Shader layers (N stackable layers from config)
     FX_DrawShaderLayers(wPhys, hPhys)
 
-    if (cfg.BGImgRenderAboveShaders)
+    if (cfgBGImgAbove)
         BGImg_Draw()
 
     ; Mouse effect layer (above shader layers, below selection)
@@ -443,7 +454,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
     footerH := 0
     footerGap := 0
-    if (cfg.GUI_ShowFooter) {
+    if (cfgShowFooter) {
         footerH := Round(cfg.GUI_FooterHeightPx * scale)
         footerGap := Round(cfg.GUI_FooterGapTopPx * scale)
     }
@@ -541,15 +552,15 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 ; Shader-based selection effect
                 entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
-                    cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, entranceT, Rad)
+                    cfgSelARGB, cfgSelBorderARGB, cfgSelBorderW, 1.0, entranceT, Rad)
                 FX_DrawSelectionEffect(wPhys, hPhys, selX, selY, selW, selH, Rad)
             } else {
                 ; Simple D2D fill + border (the "None" path)
-                D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
-                bw := cfg.GUI_SelBorderWidthPx
+                D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfgSelARGB))
+                bw := cfgSelBorderW
                 if (bw > 0) {
                     half := bw / 2
-                    D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, Rad, D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
+                    D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, Rad, D2D_GetCachedBrush(cfgSelBorderARGB), bw)
                 }
             }
         }
@@ -570,25 +581,25 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                     ; Path 1: Independent hover shader
                     hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_HoverARGB, cfg.GUI_HovBorderARGB, cfg.GUI_HovBorderWidthPx, hoverEntranceT, Rad)
+                        cfgHoverARGB, cfgHovBorderARGB, cfgHovBorderW, hoverEntranceT, Rad)
                     FX_DrawHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (!cfg.GUI_UseHoverSelectionEffect && gFX_SelectionEffect.key != "" && gFX_GPUReady) {
                     ; Path 2: Reuse selection shader at SelectionIntensityForHover (only when hover independence is off)
                     hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, cfg.GUI_SelectionIntensityForHover, hoverEntranceT, Rad)
+                        cfgSelARGB, cfgSelBorderARGB, cfgSelBorderW, cfg.GUI_SelectionIntensityForHover, hoverEntranceT, Rad)
                     FX_DrawSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (gFX_GPUReady) {
                     ; Path 3: GPU flat fill + border
                     FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
-                } else if ((cfg.GUI_HoverARGB >> 24) > 0 || cfg.GUI_HovBorderWidthPx > 0) {
+                } else if ((cfgHoverARGB >> 24) > 0 || cfgHovBorderW > 0) {
                     ; Path 4: CPU fallback fill + border
-                    if ((cfg.GUI_HoverARGB >> 24) > 0)
-                        D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfg.GUI_HoverARGB))
-                    bw := cfg.GUI_HovBorderWidthPx
+                    if ((cfgHoverARGB >> 24) > 0)
+                        D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfgHoverARGB))
+                    bw := cfgHovBorderW
                     if (bw > 0) {
                         half := bw / 2
-                        D2D_StrokeRoundRect(hoverX + half, hoverY + half, hoverW - bw, RowH - bw, Rad, D2D_GetCachedBrush(cfg.GUI_HovBorderARGB), bw)
+                        D2D_StrokeRoundRect(hoverX + half, hoverY + half, hoverW - bw, RowH - bw, Rad, D2D_GetCachedBrush(cfgHovBorderARGB), bw)
                     }
                 }
             }
@@ -639,19 +650,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 _FX_DrawTextLeftShadow(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse, shadowBr, shadowP.offX, shadowP.offY)
                 _FX_DrawTextLeftShadow(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse, shadowBr, shadowP.offX, shadowP.offY)
                 for _, col in cols {
-                    val := ""
-                    if (cur.HasOwnProp(col.key))
-                        val := cur.%col.key%
-                    _FX_DrawTextLeftShadow(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, shadowP.offX, shadowP.offY)
+                    _FX_DrawTextLeftShadow(cur.%col.key%, col.x, yRow + colY, col.w, colH, brColUse, tfColUse, shadowBr, shadowP.offX, shadowP.offY)
                 }
             } else {
                 D2D_DrawTextLeft(title, textX, yRow + titleY, textW, titleH, brMainUse, tfMainUse)
                 D2D_DrawTextLeft(sub, textX, yRow + subY, textW, subH, brSubUse, tfSubUse)
                 for _, col in cols {
-                    val := ""
-                    if (cur.HasOwnProp(col.key))
-                        val := cur.%col.key%
-                    D2D_DrawTextLeft(val, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
+                    D2D_DrawTextLeft(cur.%col.key%, col.x, yRow + colY, col.w, colH, brColUse, tfColUse)
                 }
             }
 
@@ -679,16 +684,16 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     ; Footer
     if (diagTiming)
         t1 := QPC()
-    if (cfg.GUI_ShowFooter) {
+    if (cfgShowFooter) {
         _GUI_DrawFooter(wPhys, hPhys, scale)
     }
     if (diagTiming)
         tPO_Footer := QPC() - t1
 
     ; Inner shadow — config-driven depth and opacity
-    if (gFX_GPUReady && cfg.GUI_UseInnerShadow && cfg.GUI_InnerShadowAlpha > 0) {
+    if (gFX_GPUReady && cfg.GUI_UseInnerShadow && cfgInnerShadowAlpha > 0) {
         shadowDepth := Round(cfg.GUI_InnerShadowDepthPx * scale)
-        FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfg.GUI_InnerShadowAlpha)
+        FX_GPU_DrawInnerShadow(wPhys, hPhys, shadowDepth, cfgInnerShadowAlpha)
     }
 
     ; FPS debug overlay (toggled by F key)
