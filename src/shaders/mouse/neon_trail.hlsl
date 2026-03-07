@@ -1,12 +1,6 @@
 // Neon Trail — Glowing light-painting trail behind cursor (compute + pixel)
 // Grid splatting: CS accumulates neon glow onto a 1024x512 grid for O(1) PS.
 
-#define MAX_PARTICLES 128
-#define GRID_W 1024
-#define GRID_H 512
-#define GRID_CELLS (GRID_W * GRID_H)
-#define TOTAL_SLOTS (MAX_PARTICLES + GRID_CELLS)
-
 struct Particle {
     float2 pos;
     float2 vel;
@@ -28,19 +22,19 @@ float3 hsv2rgb(float3 c) {
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
-    if (idx >= TOTAL_SLOTS) return;
+    if (idx >= maxParticles + gridW * gridH) return;
 
-    if (idx < MAX_PARTICLES) {
+    if (idx < maxParticles) {
         Particle p = particles[idx];
 
         // Only thread 0 records new position
         if (idx == 0) {
-            if (iMouseSpeed < 5.0) return;
+            if (iMouseSpeed * reactivity < 5.0) return;
 
             // Find oldest slot to overwrite
             float oldestTime = 1e20;
             uint oldestIdx = 0;
-            for (uint i = 0; i < MAX_PARTICLES; i++) {
+            for (uint i = 0; i < maxParticles; i++) {
                 Particle check = particles[i];
                 if (check.life >= 1.0) {
                     oldestIdx = i;
@@ -55,7 +49,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 
             // Minimum distance check
             float minDist = 1e20;
-            for (uint j = 0; j < MAX_PARTICLES; j++) {
+            for (uint j = 0; j < maxParticles; j++) {
                 if (particles[j].life >= 1.0) continue;
                 float d = length(iMouse - particles[j].pos);
                 if (d < minDist) minDist = d;
@@ -87,14 +81,14 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         }
 
     } else {
-        uint gridIdx = idx - MAX_PARTICLES;
-        int2 gc = int2(gridIdx % GRID_W, gridIdx / GRID_W);
-        float2 cellPos = (float2(gc) + 0.5) / float2(GRID_W, GRID_H) * resolution;
+        uint gridIdx = idx - maxParticles;
+        int2 gc = int2(gridIdx % gridW, gridIdx / gridW);
+        float2 cellPos = (float2(gc) + 0.5) / float2((float)gridW, (float)gridH) * resolution;
 
         float3 accCol = float3(0, 0, 0);
         float accA = 0;
 
-        for (uint i = 0; i < MAX_PARTICLES; i++) {
+        for (uint i = 0; i < maxParticles; i++) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
@@ -143,15 +137,15 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 StructuredBuffer<Particle> particlesRead : register(t4);
 
 float4 sampleGrid(float2 uv) {
-    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    float2 gp = uv * float2((float)gridW, (float)gridH) - 0.5;
     int2 g = int2(floor(gp));
     float2 f = frac(gp);
-    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
-    uint i00 = MAX_PARTICLES + (uint)g.y * GRID_W + (uint)g.x;
+    g = clamp(g, int2(0, 0), int2(gridW - 2, gridH - 2));
+    uint i00 = maxParticles + (uint)g.y * gridW + (uint)g.x;
     float4 c00 = float4(particlesRead[i00].pos, particlesRead[i00].vel);
     float4 c10 = float4(particlesRead[i00+1].pos, particlesRead[i00+1].vel);
-    float4 c01 = float4(particlesRead[i00+GRID_W].pos, particlesRead[i00+GRID_W].vel);
-    float4 c11 = float4(particlesRead[i00+GRID_W+1].pos, particlesRead[i00+GRID_W+1].vel);
+    float4 c01 = float4(particlesRead[i00+gridW].pos, particlesRead[i00+gridW].vel);
+    float4 c11 = float4(particlesRead[i00+gridW+1].pos, particlesRead[i00+gridW+1].vel);
     return lerp(lerp(c00, c10, f.x), lerp(c01, c11, f.x), f.y);
 }
 

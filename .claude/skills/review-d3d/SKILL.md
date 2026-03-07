@@ -8,7 +8,7 @@ Enter planning mode. Deep-audit the D3D11 shader host code for per-frame waste �
 
 ## Context
 
-Alt-Tabby renders pixel shaders via a D3D11 immediate context, then copies the result to a D2D1 bitmap for compositing. The main per-frame entry point is `Shader_PreRender()` which executes the full D3D11 pipeline: constant buffer update → compute dispatch (for compute-enabled shaders) → state setup → Draw → GPU→CPU readback → D2D bitmap write. Compute shaders write to `RWStructuredBuffer` via UAV; the same buffer is then bound as SRV at slot 4 for the pixel shader to read.
+Alt-Tabby renders pixel shaders via a D3D11 immediate context, then copies the result to a D2D1 bitmap for compositing. The main per-frame entry point is `Shader_PreRender()` which executes the full D3D11 pipeline: constant buffer update → compute dispatch (for compute-enabled shaders) → state setup → Draw → GPU→CPU readback → D2D bitmap write. Compute shaders write to `RWStructuredBuffer` via UAV; the same buffer is then bound as SRV at slot 4 for the pixel shader to read. Dispatch count is computed from `entry.csNumElements` (= effective particles + grid cells), which varies by `GridQuality` and `ParticleDensity` config settings. Buffer size also varies -- `_Shader_CreateComputeBuffer` allocates based on config-driven element count from `_Shader_ComputeBufferLayout()`, not the static JSON `maxParticles`. Auditing buffer size should check the allocation matches the dispatch count.
 
 At 120-240fps, this pipeline runs every frame. Each `Buffer()` allocation, each redundant `ComCall`, and each avoidable state transition costs real time.
 
@@ -89,7 +89,7 @@ Note: Shared DXGI surfaces (DXGI_RESOURCE_MISC_SHARED_KEYED_MUTEX) would elimina
 ### 6. Constant Buffer Update Efficiency
 
 - `Map`/`Unmap` with `D3D11_MAP_WRITE_DISCARD` is the correct pattern for dynamic cbuffers.
-- Check: Is the cbuffer size optimal? (32 bytes currently — fits in a single cache line)
+- Check: Is the cbuffer size optimal? (128 bytes currently, 8 × 16-byte rows)
 - Check: Could we skip the cbuffer update if no values changed? (Unlikely — `time` changes every frame, but `darken`/`desaturate` don't.)
 
 ### 7. ComCall Exception Guarding

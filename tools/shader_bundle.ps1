@@ -135,9 +135,14 @@ foreach ($hlsl in $hlslFiles) {
     # Compute shader metadata (optional)
     $compute = $null
     if ($meta.PSObject.Properties.Match('compute').Count -gt 0 -and $null -ne $meta.compute) {
+        $baseParticles = 0
+        if ($meta.compute.PSObject.Properties.Match('baseParticles').Count -gt 0) {
+            $baseParticles = $meta.compute.baseParticles
+        }
         $compute = @{
-            MaxParticles  = $meta.compute.maxParticles
+            MaxParticles   = $meta.compute.maxParticles
             ParticleStride = $meta.compute.particleStride
+            BaseParticles  = $baseParticles
         }
     }
 
@@ -529,7 +534,7 @@ foreach ($shader in $allShaders) {
     # Build optional compute field
     $computeField = ''
     if ($null -ne $shader.Compute) {
-        $computeField = ", compute: {maxParticles: $($shader.Compute.MaxParticles), particleStride: $($shader.Compute.ParticleStride)}"
+        $computeField = ", compute: {maxParticles: $($shader.Compute.MaxParticles), particleStride: $($shader.Compute.ParticleStride), baseParticles: $($shader.Compute.BaseParticles)}"
     }
 
     [void]$sb.AppendLine("    return {opacity: $($shader.Opacity), iChannels: $chArray$timeFields$computeField}")

@@ -2,10 +2,6 @@
 // Cursor leaves trails of smoke that flow, swirl, and rise with natural buoyancy.
 // 128x64 velocity+density grid with semi-Lagrangian advection.
 
-#define GRID_W 1024
-#define GRID_H 512
-#define TOTAL_CELLS 524288
-#define MAX_PARTICLES TOTAL_CELLS
 
 struct Cell {
     float2 vel;       // velocity field (px/sec)
@@ -21,10 +17,10 @@ struct Cell {
 
 RWStructuredBuffer<Cell> grid : register(u0);
 
-int2 idxToGrid(uint idx) { return int2(idx % GRID_W, idx / GRID_W); }
+int2 idxToGrid(uint idx) { return int2(idx % gridW, idx / gridW); }
 uint gridToIdx(int2 g) {
-    g = clamp(g, int2(0, 0), int2(GRID_W - 1, GRID_H - 1));
-    return (uint)g.y * GRID_W + (uint)g.x;
+    g = clamp(g, int2(0, 0), int2(gridW - 1, gridH - 1));
+    return (uint)g.y * gridW + (uint)g.x;
 }
 
 float hash2(float2 p) {
@@ -44,10 +40,10 @@ float noise1(float2 p) {
 
 float sampleField(float2 uv) {
     uv = clamp(uv, float2(0.002, 0.002), float2(0.998, 0.998));
-    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    float2 gp = uv * float2((float)gridW, (float)gridH) - 0.5;
     int2 g = int2(floor(gp));
     float2 f = frac(gp);
-    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
+    g = clamp(g, int2(0, 0), int2(gridW - 2, gridH - 2));
     float d00 = grid[gridToIdx(g)].density;
     float d10 = grid[gridToIdx(g + int2(1, 0))].density;
     float d01 = grid[gridToIdx(g + int2(0, 1))].density;
@@ -58,12 +54,12 @@ float sampleField(float2 uv) {
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
-    if (idx >= TOTAL_CELLS) return;
+    if (idx >= (gridW * gridH)) return;
 
     int2 g = idxToGrid(idx);
     Cell c = grid[idx];
 
-    float2 cellUV = (float2(g) + 0.5) / float2(GRID_W, GRID_H);
+    float2 cellUV = (float2(g) + 0.5) / float2((float)gridW, (float)gridH);
     float2 cellPos = cellUV * resolution;
 
     // --- MOUSE FORCE ---
@@ -75,9 +71,9 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float falloff = 1.0 - dist / pushRadius;
         falloff *= falloff;
         float2 pushDir = iMouseVel / max(iMouseSpeed, 1.0);
-        c.vel += pushDir * falloff * iMouseSpeed * 0.5 * timeDelta;
+        c.vel += pushDir * falloff * iMouseSpeed * 0.5 * reactivity * timeDelta;
         if (dist > 1.0)
-            c.vel += normalize(fromMouse) * falloff * iMouseSpeed * 0.2 * timeDelta;
+            c.vel += normalize(fromMouse) * falloff * iMouseSpeed * 0.2 * reactivity * timeDelta;
     }
 
     // --- BUOYANCY (smoke rises — negative Y = up in screen coords) ---
@@ -90,7 +86,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         [unroll] for (int dx = -1; dx <= 1; dx++) {
             if (dx == 0 && dy == 0) continue;
             int2 ng = g + int2(dx, dy);
-            if (ng.x >= 0 && ng.x < GRID_W && ng.y >= 0 && ng.y < GRID_H) {
+            if (ng.x >= 0 && ng.x < (int)gridW && ng.y >= 0 && ng.y < (int)gridH) {
                 avgVel += grid[gridToIdx(ng)].vel;
                 neighbors++;
             }
@@ -110,7 +106,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
     if (dist < emitRadius && iMouseSpeed > 10.0) {
         float emit = (1.0 - dist / emitRadius);
         emit *= smoothstep(10.0, 200.0, iMouseSpeed);
-        c.density += emit * 3.0 * timeDelta;
+        c.density += emit * 3.0 * reactivity * timeDelta;
     }
 
     // --- DISSIPATION ---
@@ -121,8 +117,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
     c.vel *= (1.0 - 1.5 * timeDelta);
 
     // --- BOUNDARY ---
-    if (g.x == 0 || g.x == GRID_W - 1) c.vel.x *= 0.1;
-    if (g.y == 0 || g.y == GRID_H - 1) c.vel.y *= 0.1;
+    if (g.x == 0 || g.x == (int)gridW - 1) c.vel.x *= 0.1;
+    if (g.y == 0 || g.y == (int)gridH - 1) c.vel.y *= 0.1;
 
     grid[idx] = c;
 }
@@ -132,15 +128,15 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 StructuredBuffer<Cell> gridRead : register(t4);
 
 uint gridToIdxPS(int2 g) {
-    g = clamp(g, int2(0, 0), int2(GRID_W - 1, GRID_H - 1));
-    return (uint)g.y * GRID_W + (uint)g.x;
+    g = clamp(g, int2(0, 0), int2(gridW - 1, gridH - 1));
+    return (uint)g.y * gridW + (uint)g.x;
 }
 
 float sampleDensity(float2 uv) {
-    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    float2 gp = uv * float2((float)gridW, (float)gridH) - 0.5;
     int2 g = int2(floor(gp));
     float2 f = frac(gp);
-    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
+    g = clamp(g, int2(0, 0), int2(gridW - 2, gridH - 2));
     float d00 = gridRead[gridToIdxPS(g)].density;
     float d10 = gridRead[gridToIdxPS(g + int2(1, 0))].density;
     float d01 = gridRead[gridToIdxPS(g + int2(0, 1))].density;
@@ -149,10 +145,10 @@ float sampleDensity(float2 uv) {
 }
 
 float2 sampleVel(float2 uv) {
-    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    float2 gp = uv * float2((float)gridW, (float)gridH) - 0.5;
     int2 g = int2(floor(gp));
     float2 f = frac(gp);
-    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
+    g = clamp(g, int2(0, 0), int2(gridW - 2, gridH - 2));
     float2 v00 = gridRead[gridToIdxPS(g)].vel;
     float2 v10 = gridRead[gridToIdxPS(g + int2(1, 0))].vel;
     float2 v01 = gridRead[gridToIdxPS(g + int2(0, 1))].vel;

@@ -68,7 +68,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     // Base radius: grows with speed (shaky hand), grows slightly at edges (spread)
     float baseRadius = 140.0
-        + smoothstep(0.0, 1500.0, iMouseSpeed) * 80.0
+        + smoothstep(0.0, 1500.0, iMouseSpeed * reactivity) * 80.0
         + obliqueness * 30.0;
 
     // Noise-distorted edge for organic feel

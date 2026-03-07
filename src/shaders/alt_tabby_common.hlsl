@@ -29,6 +29,12 @@ cbuffer Constants : register(b0) {
     float isHovered;        // 0.0 = selected, 1.0 = hovered
     float entranceT;        // 0→1 entrance tween
     float iMouseSpeed;      // magnitude of iMouseVel (pixels/sec)
+
+    // --- Compute grid/particle config (offsets 112-124, 16-byte aligned) ---
+    uint gridW;             // grid width (0 = no grid)
+    uint gridH;             // grid height (0 = no grid)
+    uint maxParticles;      // particle slots (excluding grid cells)
+    float reactivity;       // cursor force multiplier
 };
 
 struct PSInput {
@@ -36,17 +42,19 @@ struct PSInput {
     float2 uv : TEXCOORD0;
 };
 
-// Post-process: darken, desaturate, brightness-alpha with opacity.
-// Standard variant: alpha = max brightness channel.
+// Post-process: darken, desaturate, premultiplied-alpha with opacity.
+// Standard variant: alpha = max brightness of pre-darken color.
+// Darken crushes color toward black without reducing alpha.
 float4 AT_PostProcess(float3 col) {
     float lum = dot(col, float3(0.299, 0.587, 0.114));
     col = lerp(col, (float3)lum, desaturate);
-    col *= (1.0 - darken);
     float a = max(col.r, max(col.g, col.b)) * opacity;
+    col *= (1.0 - darken);
     return float4(col * a, a);
 }
 
 // Custom-alpha variant: caller provides pre-computed alpha.
+// Darken crushes color toward black; alpha controlled only by opacity.
 float4 AT_PostProcess(float3 col, float a) {
     float lum = dot(col, float3(0.299, 0.587, 0.114));
     col = lerp(col, (float3)lum, desaturate);

@@ -242,9 +242,10 @@ Symmetric shaders (noise fields, clouds, fractals) usually don't need the flip.
 ### 5. Constant Buffer Header
 
 The cbuffer and PSInput struct are provided by `alt_tabby_common.hlsl`, which is prepended automatically before compilation. **Do NOT include them in the `.hlsl` file.** The common header provides:
-- `cbuffer Constants : register(b0)` with all uniforms (112 bytes):
+- `cbuffer Constants : register(b0)` with all uniforms (128 bytes, 8 × 16-byte rows):
   - **Core**: `time` (float), `resolution` (float2), `timeDelta` (float), `frame` (uint), `darken` (float), `desaturate` (float), `opacity` (float)
   - **Mouse**: `iMouse` (float2, cursor px), `iMouseVel` (float2, velocity px/sec), `iMouseSpeed` (float, magnitude of velocity)
+  - **Grid/Compute**: `gridW` (uint, grid width, 0 = no grid), `gridH` (uint, grid height, 0 = no grid), `maxParticles` (uint, particle slots excluding grid cells), `reactivity` (float, cursor force multiplier)
   - **Selection**: `selRect` (float4, x/y/w/h), `selColor` (float4, premul RGBA), `borderColor` (float4, premul RGBA), `borderWidth` (float), `isHovered` (float), `entranceT` (float)
 - `struct PSInput` with `SV_Position` and `TEXCOORD0`
 - `AT_PostProcess(float3 col)` and `AT_PostProcess(float3 col, float customAlpha)` functions
@@ -349,11 +350,20 @@ If the shader uses `iChannel0..3`:
 - `timeOffsetMax`: (optional) Maximum random time offset in seconds. Falls back to config `ShaderTimeOffsetMax` (default 90) if omitted. Set higher for shaders with long warmup (e.g., volumetric fog needs 40-120s).
 - `timeAccumulate`: (optional) When true, shader time persists across overlay show/hide so it picks up where it left off. Falls back to config `ShaderTimeAccumulate` (default true) if omitted. Set false for shaders with a deliberate intro animation you want to see each time.
 - `category`: (optional) `"mouse"` or `"selection"` for shaders in subdirectories. Background shaders (root dir) omit this field.
-- `compute`: (optional) `{ "maxParticles": N, "particleStride": N }`. When present, the shader is compiled as a compute+pixel pair. CS entry point is `CSMain` (compiled with `cs_5_0`), PS entry point is `PSMain` (compiled with `ps_5_0`), both in the same `.hlsl` file. The compute shader writes to `RWStructuredBuffer` via UAV; the pixel shader reads the same buffer as `StructuredBuffer` at `register(t4)`. Only used for mouse-category shaders that need persistent GPU-side state (particles, waves).
+- `compute`: (optional) `{ "maxParticles": N, "particleStride": 32, "baseParticles": M }`. When present, the shader is compiled as a compute+pixel pair. CS entry point is `CSMain` (compiled with `cs_5_0`), PS entry point is `PSMain` (compiled with `ps_5_0`), both in the same `.hlsl` file. The compute shader writes to `RWStructuredBuffer` via UAV; the pixel shader reads the same buffer as `StructuredBuffer` at `register(t4)`. Only used for mouse-category shaders that need persistent GPU-side state (particles, waves).
+  - `baseParticles` is the shader's intrinsic particle count (0 for pure-grid fluids, 128/384 for particle+grid). `maxParticles` in the JSON is the default total (= baseParticles + gridW * gridH at high quality). At runtime, actual buffer size is computed from `baseParticles * ParticleDensity + gridW * gridH` where grid dimensions come from `GridQuality` config.
 
 Add time fields when the shader has a notable warmup period or deliberate intro. Omit them for shaders that look good immediately at any time value.
 
 **Note on shader models:** Compute shaders require `cs_5_0` profile (DX11 feature level 11_0). Compute-paired pixel shaders use `ps_5_0`. Background and selection shaders remain `ps_4_0` for maximum compatibility.
+
+### Compute Shader Architectures
+
+Compute-enabled mouse shaders follow one of three buffer layout patterns:
+
+- **Particle + Grid** (ember_trail, ember_trail_long, campfire_embers, smoke_trail, fireflies, scatter, gravity_well, neon_trail): Buffer = `[particles 0..N-1] [grid cells N..N+W*H-1]`. CS particle threads do physics, CS grid threads accumulate nearby particles. PS bilinear-samples the grid. Grid cells reuse the Particle struct: `pos.xy` = accumulated RG, `vel.xy` = accumulated BA.
+- **Pure Grid / Fluid** (fluid_aquarium, fluid_calm, fluid_emit, water_surface): Buffer = `[grid cells 0..W*H-1]`. CS runs wave/fluid equations. PS samples the grid.
+- **No Grid** (ripple): Buffer = `[slots 0..N-1]`. CS manages slot lifecycle. PS loops over all slots.
 
 ### Shader Categories
 

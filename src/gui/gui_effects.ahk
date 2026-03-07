@@ -20,7 +20,7 @@ global gFX_ShaderLayers := []        ; Array of {key, name, opacity, darkness, d
 global gFX_ShaderTime := Map()       ; layerIndex → {offset, carry, accumulate} — per-layer time state
 global gFX_MouseEffect      ; Mouse effect state: {key, name, opacity}
 global gFX_SelectionEffect  ; Selection effect state: {key, name}
-gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
 gFX_SelectionEffect := {key: "", name: ""}
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
@@ -172,7 +172,7 @@ FX_GPU_Dispose() {
     ; Release shader resources
     gFX_ShaderTime := Map()
     gFX_ShaderLayers := []
-    gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+    gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
     gFX_SelectionEffect := {key: "", name: ""}
     Shader_Cleanup()
 }
@@ -369,10 +369,10 @@ FX_PreRenderMouseEffect(w, h) {
         return
 
     ; --- Compute mouse velocity (CPU-side, per frame) ---
-    baseTime := gFX_AmbientTime / 1000.0
+    baseTime := gFX_AmbientTime / 1000.0 * gFX_MouseEffect.speed
     if (gFX_ShaderTime.Has(gFX_MouseEffect.key)) {
         t := gFX_ShaderTime[gFX_MouseEffect.key]
-        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+        baseTime := (t.offset + t.carry + (gFX_AmbientTime / 1000.0)) * gFX_MouseEffect.speed
     }
 
     static prevTime := 0.0
@@ -416,7 +416,8 @@ FX_PreRenderMouseEffect(w, h) {
 
     tBefore := QPC()
     try {
-        Shader_PreRender(gFX_MouseEffect.key, w, h, baseTime, 0.0, 0.0, gFX_MouseEffect.opacity,
+        Shader_PreRender(gFX_MouseEffect.key, w, h, baseTime,
+            gFX_MouseEffect.darkness, gFX_MouseEffect.desat, gFX_MouseEffect.opacity,
             gFX_MouseX, gFX_MouseY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed)
     } catch as e {
         global LOG_PATH_SHADER
@@ -579,6 +580,7 @@ _FX_InitShaderTimeForKey(shaderKey) {
 _FX_ResolveConfiguredShaders() {
     global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, cfg
     global SHADER_KEYS, MOUSE_SHADER_KEYS, SELECTION_SHADER_KEYS ; lint-ignore: phantom-global
+    global gShader_Registry ; lint-ignore: phantom-global
 
     gFX_ShaderLayers := []
 
@@ -632,12 +634,21 @@ _FX_ResolveConfiguredShaders() {
                 break
             }
         }
-        if (found)
-            gFX_MouseEffect := {key: mouseKey, name: mouseKey, opacity: cfg.MouseEffect_Opacity}
-        else
-            gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+        if (found) {
+            gFX_MouseEffect := {key: mouseKey, name: mouseKey,
+                opacity: cfg.MouseEffect_Opacity,
+                darkness: cfg.MouseEffect_Darkness,
+                desat: cfg.MouseEffect_Desaturation,
+                speed: cfg.MouseEffect_Speed,
+                reactivity: cfg.MouseEffect_Reactivity}
+            ; Set reactivity on the shader registry entry if already registered
+            if (gShader_Registry.Has(mouseKey))
+                gShader_Registry[mouseKey].reactivity := cfg.MouseEffect_Reactivity
+        } else {
+            gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
+        }
     } else {
-        gFX_MouseEffect := {key: "", name: "", opacity: 0.0}
+        gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
     }
 
     ; Resolve selection effect
@@ -819,12 +830,17 @@ FX_CycleMouseEffect() {
     currentIdx := Mod(currentIdx + 1, total)
 
     if (currentIdx = 0) {
-        gFX_MouseEffect := {key: "", name: "", opacity: 0.30}
+        gFX_MouseEffect := {key: "", name: "", opacity: 0.30, darkness: gFX_MouseEffect.darkness,
+            desat: gFX_MouseEffect.desat, speed: gFX_MouseEffect.speed, reactivity: gFX_MouseEffect.reactivity}
     } else {
         newKey := MOUSE_SHADER_KEYS[currentIdx + 1]
         if (!gShader_Registry.Has(newKey))
             Shader_RegisterByKey(newKey)
-        gFX_MouseEffect := {key: newKey, name: MOUSE_SHADER_NAMES[currentIdx + 1], opacity: gFX_MouseEffect.opacity}
+        if (gShader_Registry.Has(newKey))
+            gShader_Registry[newKey].reactivity := gFX_MouseEffect.reactivity
+        gFX_MouseEffect := {key: newKey, name: MOUSE_SHADER_NAMES[currentIdx + 1],
+            opacity: gFX_MouseEffect.opacity, darkness: gFX_MouseEffect.darkness,
+            desat: gFX_MouseEffect.desat, speed: gFX_MouseEffect.speed, reactivity: gFX_MouseEffect.reactivity}
         ; Init time state for the new shader (keyed by name for mouse/selection)
         _FX_InitShaderTimeForKey(newKey)
     }

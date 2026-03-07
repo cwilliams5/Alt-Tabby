@@ -3,10 +3,6 @@
 // creating ripples that propagate, interfere, and reflect off boundaries.
 // Nearly invisible when calm — waves visible through specular highlights and Fresnel.
 
-#define GRID_W 1024
-#define GRID_H 512
-#define TOTAL_CELLS 524288
-#define MAX_PARTICLES TOTAL_CELLS
 
 struct Cell {
     float2 _pad0;     // offset 0-7
@@ -22,10 +18,10 @@ struct Cell {
 
 RWStructuredBuffer<Cell> grid : register(u0);
 
-int2 idxToGrid(uint idx) { return int2(idx % GRID_W, idx / GRID_W); }
+int2 idxToGrid(uint idx) { return int2(idx % gridW, idx / gridW); }
 uint gridToIdx(int2 g) {
-    g = clamp(g, int2(0, 0), int2(GRID_W - 1, GRID_H - 1));
-    return (uint)g.y * GRID_W + (uint)g.x;
+    g = clamp(g, int2(0, 0), int2(gridW - 1, gridH - 1));
+    return (uint)g.y * gridW + (uint)g.x;
 }
 
 float hash2(float2 p) {
@@ -35,12 +31,12 @@ float hash2(float2 p) {
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
-    if (idx >= TOTAL_CELLS) return;
+    if (idx >= (gridW * gridH)) return;
 
     int2 g = idxToGrid(idx);
     Cell c = grid[idx];
 
-    float2 cellUV = (float2(g) + 0.5) / float2(GRID_W, GRID_H);
+    float2 cellUV = (float2(g) + 0.5) / float2((float)gridW, (float)gridH);
     float2 cellPos = cellUV * resolution;
 
     // --- MOUSE FORCE: directional bow wave + wake ---
@@ -51,7 +47,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
     if (dist < pushRadius && iMouseSpeed > 5.0) {
         float falloff = 1.0 - dist / pushRadius;
         falloff *= falloff;
-        float pushStrength = smoothstep(5.0, 300.0, iMouseSpeed) * 5.0;
+        float pushStrength = smoothstep(5.0, 300.0, iMouseSpeed) * 5.0 * reactivity;
 
         // Directional: bow wave ahead, trough behind
         float2 pushDir = iMouseVel / max(iMouseSpeed, 1.0);
@@ -90,15 +86,15 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 StructuredBuffer<Cell> gridRead : register(t4);
 
 uint gridToIdxPS(int2 g) {
-    g = clamp(g, int2(0, 0), int2(GRID_W - 1, GRID_H - 1));
-    return (uint)g.y * GRID_W + (uint)g.x;
+    g = clamp(g, int2(0, 0), int2(gridW - 1, gridH - 1));
+    return (uint)g.y * gridW + (uint)g.x;
 }
 
 float sampleHeight(float2 uv) {
-    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    float2 gp = uv * float2((float)gridW, (float)gridH) - 0.5;
     int2 g = int2(floor(gp));
     float2 f = frac(gp);
-    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
+    g = clamp(g, int2(0, 0), int2(gridW - 2, gridH - 2));
     float h00 = gridRead[gridToIdxPS(g)].height;
     float h10 = gridRead[gridToIdxPS(g + int2(1, 0))].height;
     float h01 = gridRead[gridToIdxPS(g + int2(0, 1))].height;

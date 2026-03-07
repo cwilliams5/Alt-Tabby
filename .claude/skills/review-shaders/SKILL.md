@@ -120,7 +120,15 @@ HLSL compilers are good but not perfect. Help them:
 - **Literal precision**: `3.14159265` is fine, but `3.14159265358979323846` wastes parser time with no precision gain in `float` (only 7 significant digits). Use `3.14159265` or better yet `3.14159265f`.
 - **Integer vs float constants**: `2.0` in float context is fine; `2` might cause an implicit cast in some contexts.
 
-### 9. Any other detected optimizations. 
+### 9. Any other detected optimizations.
+
+### 10. Compute Shader Patterns
+
+1. **Grid accumulation inner loop**: The `O(maxParticles)` loop inside each grid cell thread is the hottest compute code. Key optimizations: early-exit radius check (`if (dist > maxRadius) continue;`) before computing glow/color; skip dead particles (`if (p.life >= 1.0) continue;`) as first check; avoid redundant normalize.
+2. **Grid cell packing**: Grid cells reuse the Particle struct to store RGBA (`pos.xy` = RG, `vel.xy` = BA). This is intentional for buffer reuse -- don't suggest cleanup.
+3. **Dispatch thread count**: CS dispatches `ceil(totalElements / 64)` threads. The `if (idx >= total) return;` guard is necessary for non-multiple-of-64 buffer sizes -- don't flag as waste.
+4. **Config-driven sizing**: Grid dimensions and particle counts are now runtime values from cbuffer (`gridW`, `gridH`, `maxParticles`), not compile-time `#define` constants. Buffer allocation comes from `_Shader_ComputeBufferLayout()` in d2d_shader.ahk.
+5. **Reactivity multiplier**: All cursor forces in compute shaders are scaled by `reactivity` (cbuffer float at offset 124). Reviews should verify new shaders multiply cursor-dependent forces by this value.
 
 ## Files to Audit
 

@@ -650,6 +650,12 @@ Optional cursor-reactive shader effect rendered above shader layers and below se
 | `UseMouseEffect` | bool | `true` | - | Enable the mouse-reactive shader effect. When disabled, no mouse effect renders. |
 | `Name` | string | `mouse_emberTrail` | - | Mouse effect shader. |
 | `Opacity` | float | `0.30` | `0.00` - `1.00` | Opacity of the mouse effect layer. |
+| `Darkness` | float | `0.00` | `0.00` - `1.00` | Darken the mouse effect. 0 = no change, 1 = fully black. |
+| `Desaturation` | float | `0.00` | `0.00` - `1.00` | Desaturate the mouse effect. 0 = full color, 1 = grayscale. |
+| `Speed` | float | `1.00` | `0.10` - `10.00` | Animation speed multiplier for the mouse effect. |
+| `GridQuality` | enum | `High` | - | Grid resolution for compute mouse effects. Low = 256×128 (~1 MB). Medium = 512×256 (~4 MB). High = 1024×512 (~16 MB, recommended). Ultra = 2048×1024 (~67 MB). Lower = better FPS. |
+| `ParticleDensity` | float | `1.00` | `0.25` - `4.00` | Particle count multiplier. Lower = better FPS, fewer particles. |
+| `Reactivity` | float | `1.00` | `0.10` - `3.00` | How strongly the cursor disturbs the effect. Higher = more dramatic. |
 | `CycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through mouse effects while overlay is visible. |
 
 ## BackgroundImage
@@ -748,4 +754,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-06 with 320 total settings.*
+*Generated on 2026-03-06 with 326 total settings.*

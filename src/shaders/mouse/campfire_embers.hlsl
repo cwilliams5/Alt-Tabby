@@ -1,12 +1,6 @@
 // Campfire Embers — Soft glowing embers with turbulence and grid splatting (compute + pixel)
 // Grid splatting: CS accumulates particle glow onto a 1024x512 grid for O(1) PS.
 
-#define MAX_PARTICLES 128
-#define GRID_W 1024
-#define GRID_H 512
-#define GRID_CELLS (GRID_W * GRID_H)
-#define TOTAL_SLOTS (MAX_PARTICLES + GRID_CELLS)
-
 struct Particle {
     float2 pos;
     float2 vel;
@@ -37,16 +31,16 @@ float noise1(float2 p) {
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
-    if (idx >= TOTAL_SLOTS) return;
+    if (idx >= maxParticles + gridW * gridH) return;
 
-    if (idx < MAX_PARTICLES) {
+    if (idx < maxParticles) {
         Particle p = particles[idx];
         float fi = (float)idx;
 
         if (p.life >= 1.0) {
             if (iMouseSpeed < 30.0) return;
             float spawnRoll = hash2(float2(fi, time * 60.0));
-            float spawnRate = smoothstep(30.0, 500.0, iMouseSpeed) * 0.025;
+            float spawnRate = smoothstep(30.0, 500.0, iMouseSpeed * reactivity) * 0.025;
             if (spawnRoll > spawnRate) return;
 
             float seed = hash1(fi * 17.3);
@@ -54,8 +48,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float seed3 = hash1(fi * 43.7 + 7.0);
 
             p.pos = iMouse + float2((seed - 0.5) * 20.0, (seed2 - 0.5) * 20.0);
-            float upSpeed = 40.0 + seed * 60.0;
-            float lateralDrift = (seed2 - 0.5) * 60.0;
+            float upSpeed = (40.0 + seed * 60.0) * reactivity;
+            float lateralDrift = (seed2 - 0.5) * 60.0 * reactivity;
             p.vel = float2(lateralDrift, -upSpeed);
             p.size = 8.0 + seed3 * 10.0;
             p.life = 0.0;
@@ -84,14 +78,14 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         particles[idx] = p;
 
     } else {
-        uint gridIdx = idx - MAX_PARTICLES;
-        int2 gc = int2(gridIdx % GRID_W, gridIdx / GRID_W);
-        float2 cellPos = (float2(gc) + 0.5) / float2(GRID_W, GRID_H) * resolution;
+        uint gridIdx = idx - maxParticles;
+        int2 gc = int2(gridIdx % gridW, gridIdx / gridW);
+        float2 cellPos = (float2(gc) + 0.5) / float2((float)gridW, (float)gridH) * resolution;
 
         float3 accCol = float3(0, 0, 0);
         float accA = 0;
 
-        for (uint i = 0; i < MAX_PARTICLES; i++) {
+        for (uint i = 0; i < maxParticles; i++) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
@@ -131,15 +125,15 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 StructuredBuffer<Particle> particlesRead : register(t4);
 
 float4 sampleGrid(float2 uv) {
-    float2 gp = uv * float2(GRID_W, GRID_H) - 0.5;
+    float2 gp = uv * float2((float)gridW, (float)gridH) - 0.5;
     int2 g = int2(floor(gp));
     float2 f = frac(gp);
-    g = clamp(g, int2(0, 0), int2(GRID_W - 2, GRID_H - 2));
-    uint i00 = MAX_PARTICLES + (uint)g.y * GRID_W + (uint)g.x;
+    g = clamp(g, int2(0, 0), int2(gridW - 2, gridH - 2));
+    uint i00 = maxParticles + (uint)g.y * gridW + (uint)g.x;
     float4 c00 = float4(particlesRead[i00].pos, particlesRead[i00].vel);
     float4 c10 = float4(particlesRead[i00+1].pos, particlesRead[i00+1].vel);
-    float4 c01 = float4(particlesRead[i00+GRID_W].pos, particlesRead[i00+GRID_W].vel);
-    float4 c11 = float4(particlesRead[i00+GRID_W+1].pos, particlesRead[i00+GRID_W+1].vel);
+    float4 c01 = float4(particlesRead[i00+gridW].pos, particlesRead[i00+gridW].vel);
+    float4 c11 = float4(particlesRead[i00+gridW+1].pos, particlesRead[i00+gridW+1].vel);
     return lerp(lerp(c00, c10, f.x), lerp(c01, c11, f.x), f.y);
 }
 

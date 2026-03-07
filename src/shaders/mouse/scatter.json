@@ -3,5 +3,5 @@
     "category": "mouse",
     "opacity": 0.30,
     "iChannels": [],
-    "compute": { "maxParticles": 524672, "particleStride": 32 }
+    "compute": { "maxParticles": 524672, "particleStride": 32, "baseParticles": 384 }
 }

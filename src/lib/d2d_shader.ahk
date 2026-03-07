@@ -72,11 +72,12 @@ VSOut VSMain(uint id : SV_VertexID) {
             return false
         gShader_VS := pVS
 
-        ; Create constant buffer (112 bytes: time, resolution, timeDelta, frame, darken, desaturate, opacity,
-        ;   iMouse, selRect, selColor, borderColor, borderWidth, isHovered, entranceT)
+        ; Create constant buffer (128 bytes: time, resolution, timeDelta, frame, darken, desaturate, opacity,
+        ;   iMouse, selRect, selColor, borderColor, borderWidth, isHovered, entranceT, iMouseSpeed,
+        ;   gridW, gridH, maxParticles, reactivity)
         ; D3D11_BUFFER_DESC (24 bytes): ByteWidth, Usage, BindFlags, CPUAccessFlags, MiscFlags, StructureByteStride
         bufDesc := Buffer(24, 0)
-        NumPut("uint", 112, bufDesc, 0)      ; ByteWidth = 112 (7 × 16, properly aligned)
+        NumPut("uint", 128, bufDesc, 0)      ; ByteWidth = 128 (8 × 16, properly aligned)
         NumPut("uint", 2, bufDesc, 4)        ; Usage = D3D11_USAGE_DYNAMIC
         NumPut("uint", 4, bufDesc, 8)        ; BindFlags = D3D11_BIND_CONSTANT_BUFFER
         NumPut("uint", 0x10000, bufDesc, 12) ; CPUAccessFlags = D3D11_CPU_ACCESS_WRITE
@@ -493,12 +494,58 @@ Shader_RegisterAlias(aliasName, srcName) {
         return false
 
     ; Share ps + cs + srvs + compute buffer, own render target (tex/rtv/bitmap start at 0 — lazy created in PreRender)
-    gShader_Registry[aliasName] := {ps: src.ps, cs: src.cs, csBuffer: src.csBuffer, csUAV: src.csUAV, csSRV: src.csSRV, csNumElements: src.csNumElements,
+    alias := {ps: src.ps, cs: src.cs, csBuffer: src.csBuffer, csUAV: src.csUAV, csSRV: src.csSRV, csNumElements: src.csNumElements,
         tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: src.meta, srvs: src.srvs, lastTime: 0.0}
+    ; Copy compute grid/particle fields if present (needed for cbuffer write in PreRender)
+    if (src.HasOwnProp("gridW"))
+        alias.gridW := src.gridW
+    if (src.HasOwnProp("gridH"))
+        alias.gridH := src.gridH
+    if (src.HasOwnProp("effectiveParticles"))
+        alias.effectiveParticles := src.effectiveParticles
+    gShader_Registry[aliasName] := alias
     return true
 }
 
 ; ========================= COMPUTE SHADER REGISTRATION =========================
+
+; Map grid quality preset name to width/height.
+_Shader_GridPreset(quality) {
+    switch StrLower(quality) {
+        case "low":    return {w: 256, h: 128}
+        case "medium": return {w: 512, h: 256}
+        case "high":   return {w: 1024, h: 512}
+        case "ultra":  return {w: 2048, h: 1024}
+        default:       return {w: 1024, h: 512}
+    }
+}
+
+; Compute effective buffer size from shader metadata + config settings.
+; Returns {totalElements, gridW, gridH, effectiveParticles}.
+_Shader_ComputeBufferLayout(computeMeta) {
+    global cfg
+    baseP := computeMeta.HasOwnProp("baseParticles") ? computeMeta.baseParticles : 0
+    effectiveP := Max(1, Round(baseP * cfg.MouseEffect_ParticleDensity))
+
+    ; Determine if this shader uses a grid
+    ; If baseParticles < maxParticles (and baseParticles > 0 or maxParticles > baseParticles), it has a grid
+    ; Pure grid: baseParticles = 0, maxParticles = gridW * gridH
+    ; No grid (ripple): baseParticles = maxParticles
+    hasGrid := (baseP < computeMeta.maxParticles) || (baseP = 0)
+
+    if (hasGrid) {
+        preset := _Shader_GridPreset(cfg.MouseEffect_GridQuality)
+        gridW := preset.w
+        gridH := preset.h
+        gridCells := gridW * gridH
+    } else {
+        gridW := 0
+        gridH := 0
+        gridCells := 0
+    }
+    totalElements := effectiveP + gridCells
+    return {totalElements: totalElements, gridW: gridW, gridH: gridH, effectiveParticles: effectiveP}
+}
 
 ; Register a compute+pixel shader pair. HLSL source must contain both CSMain and PSMain entry points.
 ; meta must include compute: {maxParticles: N, particleStride: N}
@@ -545,9 +592,12 @@ Shader_RegisterCompute(name, hlsl, meta) {
             return false
         }
 
-        ; Create structured buffer + UAV + SRV for particle data
+        ; Compute effective buffer layout from config
         computeMeta := meta.compute
-        csRes := _Shader_CreateComputeBuffer(computeMeta.maxParticles, computeMeta.particleStride)
+        layout := _Shader_ComputeBufferLayout(computeMeta)
+
+        ; Create structured buffer + UAV + SRV for particle data
+        csRes := _Shader_CreateComputeBuffer(layout.totalElements, computeMeta.particleStride)
         if (!csRes) {
             ComCall(2, pCS)
             ComCall(2, pPS)
@@ -555,14 +605,16 @@ Shader_RegisterCompute(name, hlsl, meta) {
         }
 
         gShader_Registry[name] := {ps: pPS, cs: pCS,
-            csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: computeMeta.maxParticles,
+            csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: layout.totalElements,
+            gridW: layout.gridW, gridH: layout.gridH, effectiveParticles: layout.effectiveParticles,
             tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
 
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
             _Shader_LoadTextures(name)
 
         if (cfg.DiagShaderLog)
-            _Shader_Log("RegisterCompute: " name " OK cs=" pCS " ps=" pPS " buf=" csRes.buffer)
+            _Shader_Log("RegisterCompute: " name " OK cs=" pCS " ps=" pPS " buf=" csRes.buffer
+                " grid=" layout.gridW "x" layout.gridH " particles=" layout.effectiveParticles)
         return true
     } catch as e {
         if (cfg.DiagShaderLog)
@@ -604,8 +656,11 @@ Shader_RegisterComputeFromResource(name, csResId, psResId, meta) {
             return false
         }
 
+        ; Compute effective buffer layout from config
         computeMeta := meta.compute
-        csRes := _Shader_CreateComputeBuffer(computeMeta.maxParticles, computeMeta.particleStride)
+        layout := _Shader_ComputeBufferLayout(computeMeta)
+
+        csRes := _Shader_CreateComputeBuffer(layout.totalElements, computeMeta.particleStride)
         if (!csRes) {
             ComCall(2, pCS)
             ComCall(2, pPS)
@@ -613,7 +668,8 @@ Shader_RegisterComputeFromResource(name, csResId, psResId, meta) {
         }
 
         gShader_Registry[name] := {ps: pPS, cs: pCS,
-            csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: computeMeta.maxParticles,
+            csBuffer: csRes.buffer, csUAV: csRes.uav, csSRV: csRes.srv, csNumElements: layout.totalElements,
+            gridW: layout.gridW, gridH: layout.gridH, effectiveParticles: layout.effectiveParticles,
             tex: 0, rtv: 0, staging: 0, bitmap: 0, w: 0, h: 0, meta: meta, srvs: [], lastTime: 0.0}
 
         if (meta.HasOwnProp("iChannels") && meta.iChannels.Length > 0)
@@ -1017,7 +1073,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     if (cfg.DiagShaderLog && !dbgRendered.Has(name)) {
         dbgRendered[name] := true
         entry_ := gShader_Registry[name]
-        _Shader_Log("PreRender FIRST: " name " srvs=" entry_.srvs.Length " sampler=" gShader_Sampler " ps=" entry_.ps)
+        _Shader_Log("PreRender FIRST: " name " srvs=" entry_.srvs.Length " sampler=" gShader_Sampler " ps=" entry_.ps
+            . " darken=" darken " desat=" desaturate " opacity=" opacity
+            . " gridW=" (entry_.HasOwnProp("gridW") ? entry_.gridW : "n/a")
+            . " gridH=" (entry_.HasOwnProp("gridH") ? entry_.gridH : "n/a")
+            . " maxP=" (entry_.HasOwnProp("effectiveParticles") ? entry_.effectiveParticles : "n/a"))
     }
 
     entry := gShader_Registry[name]
@@ -1043,7 +1103,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     entry.lastTime := timeSec
     gShader_FrameCount += 1
 
-    ; Map cbuffer → write all 112 bytes → Unmap
+    ; Map cbuffer → write all 128 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
     mapped := Buffer(16, 0)
     ; Map (vtable 14): resource, subresource, mapType=WRITE_DISCARD(4), mapFlags, mappedResource
@@ -1086,6 +1146,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         NumPut("float", Float(isHovered), pData, 100)       ; isHovered
         NumPut("float", Float(entranceT), pData, 104)       ; entranceT
         NumPut("float", Float(mouseSpeed), pData, 108)       ; iMouseSpeed
+        ; --- Compute grid/particle config (offset 112) ---
+        NumPut("uint",  entry.HasOwnProp("gridW") ? entry.gridW : 0,   pData, 112) ; gridW
+        NumPut("uint",  entry.HasOwnProp("gridH") ? entry.gridH : 0,   pData, 116) ; gridH
+        NumPut("uint",  entry.HasOwnProp("effectiveParticles") ? entry.effectiveParticles : 0, pData, 120) ; maxParticles
+        NumPut("float", Float(entry.HasOwnProp("reactivity") ? entry.reactivity : 1.0), pData, 124) ; reactivity
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)

@@ -3,7 +3,6 @@
 // Pixel shader reads ripple buffer and renders wave interference with wall reflections.
 // Each ripple varies in size, speed, wavelength, and intensity.
 
-#define MAX_RIPPLES 128
 
 struct Ripple {
     float2 center;      // spawn position in pixels
@@ -30,7 +29,7 @@ float hash2(float2 p) {
 [numthreads(64, 1, 1)]
 void CSMain(uint3 dtid : SV_DispatchThreadID) {
     uint idx = dtid.x;
-    if (idx >= MAX_RIPPLES) return;
+    if (idx >= maxParticles) return;
 
     Ripple r = ripples[idx];
     float fi = (float)idx;
@@ -46,7 +45,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 
         // Lower spawn rate — fewer but more varied ripples
         float spawnRoll = hash1(fi + time * 60.0);
-        float spawnRate = smoothstep(40.0, 400.0, iMouseSpeed) * 0.06;
+        float spawnRate = smoothstep(40.0, 400.0, iMouseSpeed * reactivity) * 0.06;
         if (spawnRoll > spawnRate) return;
 
         float seed = hash1(fi * 17.3);
@@ -57,7 +56,7 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         r.birthTime = time;
 
         // VARY intensity based on mouse speed
-        r.intensity = smoothstep(40.0, 500.0, iMouseSpeed) * (0.5 + seed * 0.5);
+        r.intensity = smoothstep(40.0, 500.0, iMouseSpeed * reactivity) * (0.5 + seed * 0.5);
 
         // VARY max radius: 150-500px (some ripples are small splashes, some are big waves)
         r.maxRadius = 150.0 + seed * 350.0;
@@ -124,7 +123,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float totalField = 0.0;
 
-    for (uint i = 0; i < MAX_RIPPLES; i++) {
+    for (uint i = 0; i < maxParticles; i++) {
         Ripple r = ripplesRead[i];
         if (r.intensity <= 0.0) continue;
 
