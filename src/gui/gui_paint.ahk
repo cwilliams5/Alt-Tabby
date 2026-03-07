@@ -181,6 +181,7 @@ GUI_Repaint() {
             }
         } else {
             gD2D_RT.BeginDraw()
+            Shader_InvalidateState()  ; D2D BeginDraw dirtied shared D3D11 context
 
             ; Clear the render target. Acrylic/AeroGlass: transparent so compositor
             ; backdrop shows through. Solid: paint the tint color directly via D2D
