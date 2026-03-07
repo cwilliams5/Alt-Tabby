@@ -89,7 +89,7 @@ Note: Shared DXGI surfaces (DXGI_RESOURCE_MISC_SHARED_KEYED_MUTEX) would elimina
 ### 6. Constant Buffer Update Efficiency
 
 - `Map`/`Unmap` with `D3D11_MAP_WRITE_DISCARD` is the correct pattern for dynamic cbuffers.
-- Check: Is the cbuffer size optimal? (128 bytes currently, 8 × 16-byte rows)
+- Check: Is the cbuffer size optimal? (144 bytes currently, 9 × 16-byte rows)
 - Check: Could we skip the cbuffer update if no values changed? (Unlikely — `time` changes every frame, but `darken`/`desaturate` don't.)
 
 ### 7. ComCall Exception Guarding

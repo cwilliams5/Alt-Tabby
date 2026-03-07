@@ -242,11 +242,11 @@ Symmetric shaders (noise fields, clouds, fractals) usually don't need the flip.
 ### 5. Constant Buffer Header
 
 The cbuffer and PSInput struct are provided by `alt_tabby_common.hlsl`, which is prepended automatically before compilation. **Do NOT include them in the `.hlsl` file.** The common header provides:
-- `cbuffer Constants : register(b0)` with all uniforms (128 bytes, 8 × 16-byte rows):
+- `cbuffer Constants : register(b0)` with all uniforms (144 bytes, 9 × 16-byte rows):
   - **Core**: `time` (float), `resolution` (float2), `timeDelta` (float), `frame` (uint), `darken` (float), `desaturate` (float), `opacity` (float)
   - **Mouse**: `iMouse` (float2, cursor px), `iMouseVel` (float2, velocity px/sec), `iMouseSpeed` (float, magnitude of velocity)
   - **Grid/Compute**: `gridW` (uint, grid width, 0 = no grid), `gridH` (uint, grid height, 0 = no grid), `maxParticles` (uint, particle slots excluding grid cells), `reactivity` (float, cursor force multiplier)
-  - **Selection**: `selRect` (float4, x/y/w/h), `selColor` (float4, premul RGBA), `borderColor` (float4, premul RGBA), `borderWidth` (float), `isHovered` (float), `entranceT` (float)
+  - **Selection**: `selRect` (float4, x/y/w/h), `selColor` (float4, premul RGBA), `borderColor` (float4, premul RGBA), `borderWidth` (float), `isHovered` (float, intensity: 1.0 = full selected, <1.0 = dimmed for hover), `entranceT` (float), `selGlow` (float, outer glow radius multiplier), `selIntensity` (float, effect blend strength)
 - `struct PSInput` with `SV_Position` and `TEXCOORD0`
 - `AT_PostProcess(float3 col)` and `AT_PostProcess(float3 col, float customAlpha)` functions
 
@@ -370,4 +370,4 @@ Compute-enabled mouse shaders follow one of three buffer layout patterns:
 Shaders are organized into three categories by directory:
 - **Background shaders** (`src/shaders/`): Composited as stackable layers behind the window list. Up to 4 layers.
 - **Mouse shaders** (`src/shaders/mouse/`): Single-slot effect receiving cursor data: `iMouse` (position), `iMouseVel` (velocity px/sec), `iMouseSpeed` (speed magnitude). Add `"category": "mouse"` to JSON.
-- **Selection shaders** (`src/shaders/selection/`): Single-slot effect for row selection highlight. Receives `selRect`, `selColor`, `borderColor`, `borderWidth`, `isHovered`, `entranceT` via cbuffer. Add `"category": "selection"` to JSON.
+- **Selection shaders** (`src/shaders/selection/`): Single-slot effect for row selection highlight. Receives `selRect`, `selColor`, `borderColor`, `borderWidth`, `isHovered`, `entranceT`, `selGlow`, `selIntensity` via cbuffer. `isHovered` is an intensity multiplier (1.0 = full selected, <1.0 = dimmed for hover reuse) — use it directly as `float intensity = isHovered;`. Do NOT hardcode hover dimming (e.g., `lerp(1.0, 0.45, isHovered)` is wrong). Add `"category": "selection"` to JSON.
