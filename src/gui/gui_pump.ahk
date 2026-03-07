@@ -193,17 +193,22 @@ GUIPump_EnsureRunning() {
 ; Event-driven: started by GUIPump_EnsureRunning, pauses after idle threshold.
 
 _GUIPump_CollectTick() {
+    Profiler.Enter("_GUIPump_CollectTick") ; @profile
     global _gPump_Client, _gPump_Connected, cfg, FR_EV_ENRICH_REQ, gFR_Enabled
     global _gPump_LastRequestTick, _gPump_LastResponseTick
     global _gPump_IdleTicks, _gPump_IdleThreshold, _gPump_TimerOn, _gPump_CollectTimerFn
     global _gPump_HelloSent, _gPump_PumpHwnd, _GPUMP_HEARTBEAT_MS
     static _errCount := 0
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
-    if (A_TickCount < _backoffUntil)
+    if (A_TickCount < _backoffUntil) {
+        Profiler.Leave() ; @profile
         return
+    }
     try {
-        if (!_gPump_Connected)
+        if (!_gPump_Connected) {
+            Profiler.Leave() ; @profile
             return
+        }
 
         ; Hang detection: sent request but no response within timeout.
         ; Must run before idle check — timer must stay running while request is in flight.
@@ -212,6 +217,7 @@ _GUIPump_CollectTick() {
             if (cfg.DiagPumpLog)
                 _GUIPump_Log("HUNG: No response for " (A_TickCount - _gPump_LastRequestTick) "ms, declaring pump hung")
             _GUIPump_HandleFailure("hung")
+            Profiler.Leave() ; @profile
             return
         }
 
@@ -243,8 +249,10 @@ _GUIPump_CollectTick() {
 
         if (hwnds.Length = 0) {
             ; Don't pause if waiting for a response — need timer running for hang detection
-            if (_gPump_LastRequestTick > _gPump_LastResponseTick)
+            if (_gPump_LastRequestTick > _gPump_LastResponseTick) {
+                Profiler.Leave() ; @profile
                 return
+            }
             ; Switch to heartbeat mode after idle threshold — slow timer checks pump health.
             ; Unlike local pumps (which fully stop), the enrichment pump needs to detect
             ; process death even when idle, since it's the only path to PUMP_FAILED signal.
@@ -259,6 +267,7 @@ _GUIPump_CollectTick() {
                     _GUIPump_Log("HEARTBEAT: Pump window gone, declaring pump dead")
                 _GUIPump_HandleFailure("process_exit")
             }
+            Profiler.Leave() ; @profile
             return
         }
 
@@ -297,6 +306,7 @@ _GUIPump_CollectTick() {
         ok := IPC_PipeClient_Send(_gPump_Client, requestJson, _gPump_PumpHwnd)
         if (!ok) {
             _GUIPump_HandleFailure("pipe_write")
+            Profiler.Leave() ; @profile
             return
         }
         _gPump_LastRequestTick := A_TickCount
@@ -309,11 +319,13 @@ _GUIPump_CollectTick() {
         global LOG_PATH_IPC
         HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_IPC, "GUIPump_CollectTick")
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= MESSAGE HANDLER =========================
 
 _GUIPump_OnMessage(msg, hPipe) {
+    Profiler.Enter("_GUIPump_OnMessage") ; @profile
     global cfg, FR_EV_ENRICH_RESP, _gPump_LastResponseTick, _gPump_LastRequestTick, gFR_Enabled
     global _gPump_PumpHwnd, _gPump_EnrichCount, g_TestingMode
     _gPump_LastResponseTick := A_TickCount
@@ -327,6 +339,7 @@ _GUIPump_OnMessage(msg, hPipe) {
     } catch {
         if (cfg.DiagPumpLog)
             _GUIPump_Log("ERROR: Failed to parse pump response, msg=" SubStr(msg, 1, 200))
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -336,6 +349,7 @@ _GUIPump_OnMessage(msg, hPipe) {
     if (msgType != IPC_MSG_ENRICHMENT) {
         if (cfg.DiagPumpLog)
             _GUIPump_Log("WARN: unexpected type='" msgType "' (expected '" IPC_MSG_ENRICHMENT "')")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -349,6 +363,7 @@ _GUIPump_OnMessage(msg, hPipe) {
     if (!parsed.Has("results")) {
         if (cfg.DiagPumpLog)
             _GUIPump_Log("WARN: no 'results' key in response")
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -419,6 +434,7 @@ _GUIPump_OnMessage(msg, hPipe) {
             _GUIPump_WriteEnrichSignal(_gPump_EnrichCount)
         }
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= PIPE WAKE =========================

@@ -39,10 +39,12 @@ _GUI_GetDisplayItems() {
 ; ========================= SELECTION MOVEMENT =========================
 
 _GUI_MoveSelection(delta) {
+    Profiler.Enter("_GUI_MoveSelection") ; @profile
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayH, cfg
 
     items := _GUI_GetDisplayItems()
     if (items.Length = 0 || delta = 0) {
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -89,6 +91,7 @@ _GUI_MoveSelection(delta) {
     ; during rapid mouse wheel scroll (Logitech infinite scroll).
     if (cfg.PerfAnimationType = "None")
         GUI_Repaint()
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= HOVER DETECTION =========================
@@ -355,6 +358,7 @@ _GUI_RemoveItemAt(idx1) {
 ; ========================= MOUSE HANDLERS =========================
 
 GUI_OnClick(x, y) {
+    Profiler.Enter("GUI_OnClick") ; @profile
     global gGUI_LiveItems, gGUI_Sel, gGUI_OverlayH, gGUI_OverlayVisible, gGUI_ScrollTop, cfg
     global gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_State, gGUI_DisplayItems
 
@@ -363,6 +367,7 @@ GUI_OnClick(x, y) {
     ; Don't process clicks if overlay isn't visible
     if (!gGUI_OverlayVisible) {
         Critical "Off"
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -373,6 +378,7 @@ GUI_OnClick(x, y) {
             && y >= gGUI_LeftArrowRect.y && y < gGUI_LeftArrowRect.y + gGUI_LeftArrowRect.h) {
             Critical "Off"
             GUI_ToggleWorkspaceMode()
+            Profiler.Leave() ; @profile
             return
         }
         ; Right arrow click
@@ -380,6 +386,7 @@ GUI_OnClick(x, y) {
             && y >= gGUI_RightArrowRect.y && y < gGUI_RightArrowRect.y + gGUI_RightArrowRect.h) {
             Critical "Off"
             GUI_ToggleWorkspaceMode()
+            Profiler.Leave() ; @profile
             return
         }
     }
@@ -390,6 +397,7 @@ GUI_OnClick(x, y) {
     if (act != "") {
         Critical "Off"
         _GUI_PerformAction(act, idx)
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -397,6 +405,7 @@ GUI_OnClick(x, y) {
     count := items.Length
     if (count = 0) {
         Critical "Off"
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -406,12 +415,14 @@ GUI_OnClick(x, y) {
     rowsTopDip := cfg.GUI_MarginY + GUI_HeaderBlockDip()
     if (yDip < rowsTopDip) {
         Critical "Off"
+        Profiler.Leave() ; @profile
         return
     }
 
     vis := GUI_GetVisibleRows()
     if (vis <= 0) {
         Critical "Off"
+        Profiler.Leave() ; @profile
         return
     }
     rowsDrawn := vis
@@ -425,6 +436,7 @@ GUI_OnClick(x, y) {
     }
     if (idxVisible > rowsDrawn) {
         Critical "Off"
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -441,6 +453,7 @@ GUI_OnClick(x, y) {
         ; run in a normal timer context where the frame loop can present.
         Critical "Off"
         SetTimer(_GUI_DeferredClickActivate, -1)
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -453,6 +466,7 @@ GUI_OnClick(x, y) {
     Critical "Off"
 
     GUI_Repaint()
+    Profiler.Leave() ; @profile
 }
 
 _GUI_DeferredClickActivate() {

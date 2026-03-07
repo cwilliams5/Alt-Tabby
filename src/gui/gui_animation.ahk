@@ -225,6 +225,7 @@ Anim_Shutdown() {
 ;   Tier 3: QPC spin-wait only — pure software cap
 ; After pacing: Sleep(0) message pump → Critical On (paint) → Critical Off.
 _Anim_FrameLoop() {
+    Profiler.Enter("_Anim_FrameLoop") ; @profile
     global gAnim_TimerRunning, gAnim_Tweens, gAnim_LastFrameTime, gAnim_FrameCapMs, gAnim_FrameDt
     global gAnim_OverlayOpacity, gAnim_HidePending, gAnim_FrameTimeDisplay
     global gGUI_OverlayVisible, cfg
@@ -326,6 +327,7 @@ _Anim_FrameLoop() {
         }
     }
 
+    Profiler.Leave() ; @profile
     _Anim_StopTimer()
 }
 
@@ -334,10 +336,12 @@ _Anim_FrameLoop() {
 ; AHK's Sleep(N>0) goes through MsgSleep which oversleeps by ~10-15ms, making it
 ; unusable for sub-20ms frame caps. Pure spin is precise and CPU-cheap (yielded).
 _Anim_FramePace() {
+    Profiler.Enter("_Anim_FramePace") ; @profile
     global gAnim_LastFrameTime, gAnim_FrameCapMs
     nextFrame := gAnim_LastFrameTime + gAnim_FrameCapMs
     while (QPC() < nextFrame)
         DllCall("ntdll\NtYieldExecution")
+    Profiler.Leave() ; @profile
 }
 
 _Anim_SyncOverlayOpacity() {
@@ -410,13 +414,16 @@ Anim_ForceCompleteHide() {
 }
 
 _Anim_DoActualHide() {
+    Profiler.Enter("_Anim_DoActualHide") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed, gD2D_RT
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
     global gGUI_DisplayItems
     static hideCount := 0
 
-    if (!gGUI_OverlayVisible)
+    if (!gGUI_OverlayVisible) {
+        Profiler.Leave() ; @profile
         return
+    }
 
     ; Release deferred display items — kept alive during hide-fade so the
     ; frame loop paints the frozen list while fading out (not the live MRU).
@@ -453,6 +460,7 @@ _Anim_DoActualHide() {
     if (Mod(hideCount, GUI_LOG_TRIM_EVERY_N_HIDES) = 0) {
         Paint_LogTrim()
     }
+    Profiler.Leave() ; @profile
 }
 
 ; ========================= SELECTION SLIDE =========================

@@ -114,19 +114,23 @@ ProcPump_EnsureRunning() {
 
 ; Main pump tick
 _PP_Tick() {
+    Profiler.Enter("_PP_Tick") ; @profile
     global ProcBatchPerTick, _PP_IdleTicks, _PP_IdleThreshold, _PP_TimerOn, cfg
 
     global gPP_PopBatch, gPP_GetProcNameCached, gPP_UpdateProcessName
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
-    if (A_TickCount < _backoffUntil)
+    if (A_TickCount < _backoffUntil) {
+        Profiler.Leave() ; @profile
         return
+    }
     logEnabled := cfg.DiagProcPumpLog
     try {
     pids := gPP_PopBatch(ProcBatchPerTick)
     if (!IsObject(pids) || pids.Length = 0) {
         ; Idle detection: pause timer after threshold empty ticks to reduce CPU churn
         Pump_HandleIdle(&_PP_IdleTicks, _PP_IdleThreshold, &_PP_TimerOn, _PP_Tick, _PP_Log)
+        Profiler.Leave() ; @profile
         return
     }
     _PP_IdleTicks := 0  ; Reset idle counter when we have work
@@ -185,6 +189,7 @@ _PP_Tick() {
         global LOG_PATH_PROCPUMP
         HandleTimerError(e, &_errCount, &_backoffUntil, LOG_PATH_PROCPUMP, "PP_Tick")
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Get full process path from PID (uses shared utility with logging)

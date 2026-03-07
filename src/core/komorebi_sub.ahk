@@ -619,6 +619,7 @@ _KomorebiSub_IssueRead() {
 ; Signature: (overlappedObj, err, bytesTransferred) per OVERLAPPED.ahk calling convention.
 ; Runs on the AHK thread (marshaled via SendMessageW from thread pool).
 _KomorebiSub_OnReadComplete(overlappedObj, err, bytesTransferred) {
+    Profiler.Enter("_KomorebiSub_OnReadComplete") ; @profile
     global _KSub_hPipe, _KSub_ReadPending, _KSub_LastEventTick, _KSub_AsyncMode
     global _KSub_ReadBuffer, _KSub_ReadBufferLen
     global KSUB_READ_BUF, KSUB_BUFFER_MAX_BYTES, IPC_ERROR_BROKEN_PIPE
@@ -627,6 +628,7 @@ _KomorebiSub_OnReadComplete(overlappedObj, err, bytesTransferred) {
     static _backoffUntil := 0
     if (A_TickCount < _backoffUntil) {
         _KSub_ReadPending := false
+        Profiler.Leave() ; @profile
         return  ; In backoff — maintenance timer will re-issue later
     }
     try {
@@ -642,16 +644,19 @@ _KomorebiSub_OnReadComplete(overlappedObj, err, bytesTransferred) {
         ; ERROR_OPERATION_ABORTED (995) = CancelIoEx from Stop()
         if (err = IPC_ERROR_BROKEN_PIPE) {
             _KomorebiSub_Start()
+            Profiler.Leave() ; @profile
             return
         }
         if (err = 995) {
             ; Cancellation — do NOT re-issue or restart
+            Profiler.Leave() ; @profile
             return
         }
 
         ; Other error: try to recover by re-issuing read
         if (_KSub_AsyncMode && _KSub_hPipe)
             _KomorebiSub_IssueRead()
+        Profiler.Leave() ; @profile
         return
     }
 
@@ -704,6 +709,7 @@ _KomorebiSub_OnReadComplete(overlappedObj, err, bytesTransferred) {
         if (_KSub_AsyncMode && _KSub_hPipe)
             _KomorebiSub_IssueRead()
     }
+    Profiler.Leave() ; @profile
 }
 
 ; Maintenance timer for async mode. Runs at a slow interval (default 2000ms).
