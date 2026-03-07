@@ -489,7 +489,7 @@ global gConfigRegistry := [
      d: "Hover row border stroke width in pixels. Set to 0 to disable the border."},
 
     {type: "subsection", section: "GUI", name: "Selection Shader",
-     desc: "Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect fed SelARGB, SelBorderARGB, SelBorderWidthPx, and HoverARGB from Selection Colors above. When disabled, selection uses the flat colors directly."},
+     desc: "Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect fed SelARGB, SelBorderARGB, and SelBorderWidthPx from Selection Colors above. When disabled, selection uses the flat colors directly."},
 
     {s: "GUI", k: "UseSelectionEffect", g: "GUI_UseSelectionEffect", t: "bool", default: true,
      d: "Enable the shader-based selection effect. When disabled, uses simple D2D fill with SelARGB/SelBorderARGB colors."},
@@ -532,7 +532,7 @@ global gConfigRegistry := [
      d: "Intensity when the selection shader is reused for hover. For selection shaders, dims the effect. For BG-as-selection shaders, acts as opacity. Only applies when no independent hover shader is configured."},
 
     {type: "subsection", section: "GUI", name: "Hover Selection Shader",
-     desc: "Independent shader for hover rows. When disabled, hover reuses the selection shader at SelectionIntensityForHover. When enabled, hover gets its own shader fed HoverARGB and HovBorderARGB from Selection Colors."},
+     desc: "Independent shader for hover rows. When disabled, hover reuses the selection shader at SelectionIntensityForHover. When enabled, hover gets its own shader fed HoverARGB, HovBorderARGB, and HovBorderWidthPx from Selection Colors."},
 
     {s: "GUI", k: "UseHoverSelectionEffect", g: "GUI_UseHoverSelectionEffect", t: "bool", default: false,
      d: "Enable an independent shader effect for hover rows. When disabled, hover reuses the selection shader (dimmed by SelectionIntensityForHover)."},
