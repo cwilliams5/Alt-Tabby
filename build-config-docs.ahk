@@ -120,7 +120,7 @@ BuildMarkdown() {
 
     ; Footer
     md .= "---`n`n"
-    md .= "*Generated on " FormatTime(, "yyyy-MM-dd") " with " CountSettings() " total settings.*`n"
+    md .= "*" CountSettings() " total settings.*`n"
 
     return md
 }
