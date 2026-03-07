@@ -57,7 +57,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float caustic = c1 * 0.6 + c2 * 0.4;
 
     // Sharpen the pattern — caustics have bright peaks and dark valleys
-    caustic = pow(caustic, 1.5);
+    caustic = caustic * sqrt(caustic);
 
     // Apply cursor mask
     caustic *= mask;

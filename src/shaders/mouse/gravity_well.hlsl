@@ -37,7 +37,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 
             float angle = seed * 6.2831853;
             float spawnDist = 30.0 + seed2 * 100.0;
-            p.pos = iMouse + float2(cos(angle), sin(angle)) * spawnDist;
+            float sa, ca; sincos(angle, sa, ca);
+            p.pos = iMouse + float2(ca, sa) * spawnDist;
 
             float2 radial = normalize(p.pos - iMouse);
             float2 tangent = float2(-radial.y, radial.x);
@@ -98,13 +99,16 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
-            float dist = length(cellPos - p.pos);
+            float2 delta = cellPos - p.pos;
+            float distSq = dot(delta, delta);
             float radius = p.size;
-            if (dist > radius * 4.0) continue;
+            float limit = radius * 4.0;
+            if (distSq > limit * limit) continue;
 
             // Core + glow
-            float core = exp(-dist * dist / (radius * radius * 0.3));
-            float glow = exp(-dist * dist / (radius * radius * 2.0));
+            float radiusSq = radius * radius;
+            float core = exp(-distSq / (radiusSq * 0.3));
+            float glow = exp(-distSq / (radiusSq * 2.0));
             float brightness = core * 0.8 + glow * 0.3;
 
             // Fade in/out

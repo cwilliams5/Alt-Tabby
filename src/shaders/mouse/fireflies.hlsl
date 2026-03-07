@@ -48,11 +48,13 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
 
             float angle = seed * 6.2831853;
             float dist = 20.0 + seed2 * 80.0;
-            p.pos = iMouse + float2(cos(angle), sin(angle)) * dist;
+            float sa, ca; sincos(angle, sa, ca);
+            p.pos = iMouse + float2(ca, sa) * dist;
 
             float vAngle = seed3 * 6.2831853;
             float vSpeed = 30.0 + seed * 50.0;
-            p.vel = float2(cos(vAngle), sin(vAngle)) * vSpeed;
+            float sv, cv; sincos(vAngle, sv, cv);
+            p.vel = float2(cv, sv) * vSpeed;
 
             p.size = 3.0 + seed * 3.0;
             p.life = 0.0;
@@ -81,7 +83,8 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
         float dartPhase = sin(time * 3.0 + fi * 7.0);
         if (dartPhase > 0.95) {
             float dartAngle = hash1(fi + floor(time * 3.0)) * 6.2831853;
-            p.vel += float2(cos(dartAngle), sin(dartAngle)) * 40.0 * timeDelta;
+            float sd, cd; sincos(dartAngle, sd, cd);
+            p.vel += float2(cd, sd) * 40.0 * timeDelta;
         }
 
         float speed = length(p.vel);
@@ -118,9 +121,11 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
-            float dist = length(cellPos - p.pos);
+            float2 delta = cellPos - p.pos;
+            float distSq = dot(delta, delta);
             float radius = p.size;
-            if (dist > radius * 4.0) continue;
+            float limit = radius * 4.0;
+            if (distSq > limit * limit) continue;
 
             // Pulsing bioluminescence
             float pulseFreq = 2.0 + hash1((float)i * 13.7) * 3.0;
@@ -129,8 +134,9 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             pulse = pulse * pulse;
 
             // Dual-layer glow
-            float innerGlow = exp(-dist * dist / (radius * radius * 0.3));
-            float outerGlow = exp(-dist * dist / (radius * radius * 2.0));
+            float radiusSq = radius * radius;
+            float innerGlow = exp(-distSq / (radiusSq * 0.3));
+            float outerGlow = exp(-distSq / (radiusSq * 2.0));
             float glow = innerGlow * 0.8 + outerGlow * 0.4;
             glow *= pulse;
 

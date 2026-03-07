@@ -119,12 +119,14 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
-            float dist = length(cellPos - p.pos);
+            float2 delta = cellPos - p.pos;
+            float distSq = dot(delta, delta);
             float radius = p.size;
-            if (dist > radius * 3.5) continue;
+            float limit = radius * 3.5;
+            if (distSq > limit * limit) continue;
 
             // Soft glow
-            float glow = exp(-dist * dist / (radius * radius * 0.6));
+            float glow = exp(-distSq / (radius * radius * 0.6));
 
             // Subtle shimmer
             float shimmer = 0.8 + 0.2 * sin(time * 2.0 + (float)i * 4.7);

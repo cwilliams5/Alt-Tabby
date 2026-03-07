@@ -119,7 +119,8 @@ float4 PSMain(PSInput input) : SV_Target {
     float spec = pow(max(dot(normal, halfVec), 0.0), 64.0);
 
     // Fresnel — wave edges are more visible (glancing angle reflection)
-    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.0);
+    float f = 1.0 - max(dot(normal, viewDir), 0.0);
+    float fresnel = f * f * f;
 
     // Disturbance — how much the surface deviates from flat
     float gradient = length(float2(ddx(height), ddy(height)));
@@ -139,7 +140,6 @@ float4 PSMain(PSInput input) : SV_Target {
     col += float3(0.9, 0.95, 1.0) * spec * 1.5;
 
     float alpha = saturate(intensity);
-    alpha = saturate(alpha);
 
     if (alpha < 0.003) return float4(0.0, 0.0, 0.0, 0.0);
 
