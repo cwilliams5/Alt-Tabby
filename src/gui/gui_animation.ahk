@@ -108,7 +108,7 @@ Anim_GetValue(name, defaultVal := 0) {
     return defaultVal
 }
 
-Anim_CancelTween(name) {
+_Anim_CancelTween(name) {
     global gAnim_Tweens
     if (gAnim_Tweens.Has(name))
         gAnim_Tweens.Delete(name)
@@ -121,7 +121,7 @@ Anim_CancelAll() {
     gFX_AmbientTime := 0.0
     FX_ResetMouseVelocity()
     gAnim_HidePending := false
-    Anim_StopTimer()
+    _Anim_StopTimer()
 }
 
 _Anim_UpdateTweens() {
@@ -185,7 +185,7 @@ Anim_EnsureTimer() {
     SetTimer(_Anim_FrameLoop, -1)
 }
 
-Anim_StopTimer() {
+_Anim_StopTimer() {
     global gAnim_TimerRunning, gAnim_TimerPeriodOn
     global gAnim_QuitEvent, gAnim_pBoostClock, gAnim_BoostActive
     ; Signal quit event to unblock compositor clock wait immediately
@@ -328,7 +328,7 @@ _Anim_FrameLoop() {
         }
     }
 
-    Anim_StopTimer()
+    _Anim_StopTimer()
 }
 
 ; QPC spin-wait until next frame boundary. NtYieldExecution yields CPU timeslice
@@ -461,7 +461,7 @@ _Anim_DoActualHide() {
 
 Anim_StartSelectionSlide(prevSel, newSel, count) { ; lint-ignore: dead-param
     global gAnim_SelPrevIndex, gAnim_SelNewIndex
-    Anim_CancelTween("selSlide")
+    _Anim_CancelTween("selSlide")
     gAnim_SelPrevIndex := prevSel
     gAnim_SelNewIndex := newSel
     ; 0→1 tween: paint code lerps between prev and new Y positions

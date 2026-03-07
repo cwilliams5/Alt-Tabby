@@ -1033,7 +1033,7 @@ _GUI_ActivateItem(item) {
     return result
 }
 
-GUI_ClickActivate(item) {
+_GUI_ClickActivate(item) { ; lint-ignore: dead-function
     global gGUI_State, gGUI_DisplayItems, cfg
     global gAnim_HidePending
     Critical "On"

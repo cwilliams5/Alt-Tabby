@@ -190,14 +190,14 @@ FX_GPU_Dispose() {
 ; Draw a soft rectangle using the primary chain (flood→crop→blur).
 ; x,y,w,h: rectangle in physical pixels. argb: fill color. blurStdDev: blur amount.
 ; offsetX/Y: additional translation (e.g., shadow offset).
-FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
+_FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput
     global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV, FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT
 
     flood := gFX_GPU["flood"], crop := gFX_GPU["crop"], blur := gFX_GPU["blur"]
 
     ; HDR: gamma-correct the flood color CPU-side (avoids premultiplied alpha edge artifacts)
-    flood.SetColorF(FX_FLOOD_COLOR, FX_HDRCorrectARGB(argb))
+    flood.SetColorF(FX_FLOOD_COLOR, _FX_HDRCorrectARGB(argb))
 
     ; Configure crop to the rectangle bounds
     crop.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
@@ -219,14 +219,14 @@ FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
 
 ; Draw a soft rectangle using the secondary chain (flood2→crop2→blur2).
 ; Allows drawing two different soft rects without reconfiguring the primary chain.
-FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
+_FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, gFX_GPU, gFX_GPUOutput
     global FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV, FX_BLUR_BORDER_MODE, D2D1_BORDER_SOFT
 
     flood2 := gFX_GPU["flood2"], crop2 := gFX_GPU["crop2"], blur2 := gFX_GPU["blur2"]
 
     ; HDR: gamma-correct the flood color CPU-side (avoids premultiplied alpha edge artifacts)
-    flood2.SetColorF(FX_FLOOD_COLOR, FX_HDRCorrectARGB(argb))
+    flood2.SetColorF(FX_FLOOD_COLOR, _FX_HDRCorrectARGB(argb))
     crop2.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
     crop2.SetEnum(1, D2D1_BORDER_SOFT)
     blur2.SetFloat(FX_BLUR_STDEV, blurStdDev)
@@ -249,12 +249,12 @@ FX_GPU_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
     edgeAlpha := Round(alpha * 1.2)
     if (edgeAlpha > 255) edgeAlpha := 255
     topARGB := (edgeAlpha << 24) | 0x000000
-    FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, Float(depth * 0.8))
+    _FX_DrawSoftRect(0, -depth, wPhys, depth, topARGB, Float(depth * 0.8))
 
     ; Bottom
     botAlpha := Round(alpha * 0.9)
     botARGB := (botAlpha << 24) | 0x000000
-    FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, Float(depth * 0.8))
+    _FX_DrawSoftRect2(0, hPhys, wPhys, depth, botARGB, Float(depth * 0.8))
 }
 
 ; ========================= GPU HOVER =========================
@@ -277,11 +277,11 @@ FX_GPU_DrawHover(x, y, w, h, rad) {
 ; ========================= HDR COMPENSATION =========================
 
 ; Apply HDR gamma correction to an ARGB integer (CPU-side).
-; Called from FX_DrawSoftRect/FX_DrawSoftRect2 to gamma-correct the flood color
+; Called from _FX_DrawSoftRect/_FX_DrawSoftRect2 to gamma-correct the flood color
 ; before it enters the effect chain. This avoids the premultiplied alpha edge
 ; artifacts that occur when GammaTransfer is applied after GaussianBlur.
 ; Returns corrected ARGB. No-op when HDR inactive.
-FX_HDRCorrectARGB(argb) {
+_FX_HDRCorrectARGB(argb) {
     global gFX_HDRActive, cfg
     if (!gFX_HDRActive)
         return argb

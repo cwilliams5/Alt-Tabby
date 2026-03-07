@@ -580,7 +580,7 @@ _D2D_CleanupWaitableState() {
 ; Resize the swap chain buffers. NOT called during normal operation (Phase 2:
 ; swap chain created at max monitor size, visible region controlled by DComp clip).
 ; Retained for device loss recovery on a monitor larger than initial max.
-D2D_ResizeRenderTarget(wPhys, hPhys) {
+_D2D_ResizeRenderTarget(wPhys, hPhys) { ; lint-ignore: dead-function
     global gD2D_SwapChain, gD2D_RT, gD2D_BackBuffer
     global gD2D_SwapChainFlags, DXGI_FORMAT_UNKNOWN
     if (!gD2D_SwapChain)

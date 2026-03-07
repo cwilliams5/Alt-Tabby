@@ -994,8 +994,8 @@ _FX_BrushProps() {
 }
 
 ; Create a linear gradient brush. Caller keeps reference; COM __Delete releases.
-; For variable stop counts. Prefer FX_LinearGradient2/3 for fixed 2/3-stop cases.
-FX_LinearGradient(x1, y1, x2, y2, stops) {
+; For variable stop counts. Prefer _FX_LinearGradient2/3 for fixed 2/3-stop cases.
+_FX_LinearGradient(x1, y1, x2, y2, stops) {
     global gD2D_RT
     gsc := _FX_BuildStops(stops)
     if (!gsc)
@@ -1011,7 +1011,7 @@ FX_LinearGradient(x1, y1, x2, y2, stops) {
 ; 2-stop linear gradient — cached. Brushes keyed by stop identity (positions + colors).
 ; Cache self-invalidates when RT pointer changes (device loss). Repositioned per-frame
 ; via SetStartPoint/SetEndPoint (~0 cost vs ~4μs COM creation).
-FX_LinearGradient2(x1, y1, x2, y2, pos1, argb1, pos2, argb2) {
+_FX_LinearGradient2(x1, y1, x2, y2, pos1, argb1, pos2, argb2) {
     global gD2D_RT
     static cache := Map()
     static cachedRTPtr := 0
@@ -1053,8 +1053,8 @@ FX_LinearGradient2(x1, y1, x2, y2, pos1, argb1, pos2, argb2) {
     return br
 }
 
-; 3-stop linear gradient — cached. Same self-invalidating pattern as FX_LinearGradient2.
-FX_LinearGradient3(x1, y1, x2, y2, pos1, argb1, pos2, argb2, pos3, argb3) {
+; 3-stop linear gradient — cached. Same self-invalidating pattern as _FX_LinearGradient2.
+_FX_LinearGradient3(x1, y1, x2, y2, pos1, argb1, pos2, argb2, pos3, argb3) { ; lint-ignore: dead-function
     global gD2D_RT
     static cache := Map()
     static cachedRTPtr := 0
@@ -1111,7 +1111,7 @@ _FX_WriteStop(buf, off, pos, argb) {
 ; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
 ; uniformly when the layer is composited onto the render target.
 ; Static buffer — PushLayer consumes immediately, safe to reuse across calls.
-FX_LayerParams(left, top, right, bottom, opacity) {
+_FX_LayerParams(left, top, right, bottom, opacity) { ; lint-ignore: dead-function
     static buf := 0
     if (!buf) {
         buf := Buffer(72, 0)
@@ -1179,7 +1179,7 @@ _FX_GetShadowParams(fx, scale) {
 ; Draw gradient strips along window edges to create depth.
 ; Each edge is a linear gradient from dark at the edge to transparent inward.
 ; `alpha` controls edge darkness (0x15 = subtle, 0x38 = strong).
-_FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
+_FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) { ; lint-ignore: dead-function
     edgeARGB := (alpha << 24) | 0x000000
     botAlpha := Round(alpha * 0.85)
     botARGB := (botAlpha << 24) | 0x000000
@@ -1187,22 +1187,22 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
     sideARGB := (sideAlpha << 24) | 0x000000
 
     ; Top edge
-    topBr := FX_LinearGradient2(0, 0, 0, depth, 0.0, edgeARGB, 1.0, 0x00000000)
+    topBr := _FX_LinearGradient2(0, 0, 0, depth, 0.0, edgeARGB, 1.0, 0x00000000)
     if (topBr)
         D2D_FillRect(0, 0, wPhys, depth, topBr)
 
     ; Bottom edge
-    botBr := FX_LinearGradient2(0, hPhys - depth, 0, hPhys, 0.0, 0x00000000, 1.0, botARGB)
+    botBr := _FX_LinearGradient2(0, hPhys - depth, 0, hPhys, 0.0, 0x00000000, 1.0, botARGB)
     if (botBr)
         D2D_FillRect(0, hPhys - depth, wPhys, depth, botBr)
 
     ; Left edge
-    leftBr := FX_LinearGradient2(0, 0, depth, 0, 0.0, sideARGB, 1.0, 0x00000000)
+    leftBr := _FX_LinearGradient2(0, 0, depth, 0, 0.0, sideARGB, 1.0, 0x00000000)
     if (leftBr)
         D2D_FillRect(0, 0, depth, hPhys, leftBr)
 
     ; Right edge
-    rightBr := FX_LinearGradient2(wPhys - depth, 0, wPhys, 0, 0.0, 0x00000000, 1.0, sideARGB)
+    rightBr := _FX_LinearGradient2(wPhys - depth, 0, wPhys, 0, 0.0, 0x00000000, 1.0, sideARGB)
     if (rightBr)
         D2D_FillRect(wPhys - depth, 0, depth, hPhys, rightBr)
 }
@@ -1211,7 +1211,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 
 ; Blend an ARGB color toward black by factor (0.0 = no change, 1.0 = pure black).
 ; Returns RGB only (caller handles alpha).
-FX_BlendToBlack(argb, factor) {
+_FX_BlendToBlack(argb, factor) { ; lint-ignore: dead-function
     r := (argb >> 16) & 0xFF
     g := (argb >> 8) & 0xFF
     b := argb & 0xFF
