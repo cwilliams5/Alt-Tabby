@@ -99,7 +99,13 @@ RunUnitTests_FileWatcher() {
                 break
             Sleep(50)
         }
-        Sleep(300)  ; catch any spurious second callback
+        ; Poll for stable count (600ms confirms absence, exits early if spurious fires)
+        graceStart := A_TickCount
+        while ((A_TickCount - graceStart) < 600) {
+            if (callbackCount3 > 1)
+                break
+            Sleep(50)
+        }
 
         if (callbackCount3 = 1) {
             Log("PASS: FileWatch debounce coalesced 5 rapid writes into 1 callback")

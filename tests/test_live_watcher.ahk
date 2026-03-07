@@ -303,11 +303,8 @@ RunLiveTests_Watcher() {
 _Watcher_Cleanup() {
     global WATCHER_EXE_NAME, WATCHER_HWND_FILE, WATCHER_LOG_PREFIX
 
-    ; Kill processes by name (only watcher copies, not other AltTabby.exe)
-    for _, proc in _Test_EnumProcesses(WATCHER_EXE_NAME) {
-        try ProcessClose(proc.pid)
-    }
-    Sleep(50)
+    ; Kill processes by name with poll for death (only watcher copies, not other AltTabby.exe)
+    _Test_KillProcessesByName(WATCHER_EXE_NAME)
 
     try FileDelete(WATCHER_HWND_FILE)
 

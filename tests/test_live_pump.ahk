@@ -349,11 +349,8 @@ RunLiveTests_Pump() {
 _Pump_Cleanup() {
     global PUMP_EXE_NAME, PUMP_HWND_FILE, PUMP_LOG_PREFIX
 
-    ; Kill processes by name (only pump copies, not other AltTabby.exe)
-    for _, proc in _Test_EnumProcesses(PUMP_EXE_NAME) {
-        try ProcessClose(proc.pid)
-    }
-    Sleep(50)
+    ; Kill processes by name with poll for death (only pump copies, not other AltTabby.exe)
+    _Test_KillProcessesByName(PUMP_EXE_NAME)
 
     try FileDelete(PUMP_HWND_FILE)
 

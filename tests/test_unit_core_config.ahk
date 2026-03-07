@@ -600,8 +600,30 @@ RunUnitTests_CoreConfig() {
         errFiles.Push(errFile)
     }
 
-    ; Single wait for all to initialize (750ms total instead of 4x750ms)
-    Sleep(750)
+    ; Poll for all processes to have started (or died with errors)
+    initStart := A_TickCount
+    while ((A_TickCount - initStart) < 3000) {
+        allReady := true
+        for idx, ep in entryPoints {
+            pid := pids[idx]
+            if (!pid)
+                continue
+            ; Process still running = initialized OK; process dead = check error file
+            if (ProcessExist(pid))
+                continue
+            ; Dead process — error file should exist if there was output
+            errFile := errFiles[idx]
+            if (errFile != "" && !FileExist(errFile)) {
+                allReady := false
+                break
+            }
+        }
+        if (allReady)
+            break
+        Sleep(50)
+    }
+    ; Additional grace for processes still running to finish init
+    Sleep(200)
 
     ; Collect results from all entry points
     for idx, ep in entryPoints {
@@ -619,6 +641,9 @@ RunUnitTests_CoreConfig() {
             stillRunning := false  ; We just killed it
         } else if (stillRunning) {
             ProcessClose(pid)
+            closeDeadline := A_TickCount + 2000
+            while (ProcessExist(pid) && (A_TickCount < closeDeadline))
+                Sleep(20)
         }
 
         ; Read error output
