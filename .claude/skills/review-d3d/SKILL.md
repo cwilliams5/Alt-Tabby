@@ -131,10 +131,10 @@ Split by concern (run in parallel):
 
 ### Tools
 
-- `query_function.ps1 Shader_PreRender` — extract the full per-frame function body
+- `query_function.ps1 Shader_PreRender` — extract the full per-frame function body (if query_function.ps1 can't parse it, read `src/lib/d2d_shader.ahk` directly at line ~1055)
 - `query_function.ps1 Shader_Init` — extract init code
 - `query_interface.ps1 d2d_shader` — full public API
-- `query_global_ownership.ps1 gShader_*` — who owns shader globals
+- `query_interface.ps1 d2d_shader` — shader globals and public API (note: `query_global_ownership.ps1` excludes `src/lib/`)
 
 ## Assessment Format
 

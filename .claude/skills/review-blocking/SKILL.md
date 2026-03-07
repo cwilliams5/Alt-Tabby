@@ -41,9 +41,9 @@ Produce a categorized function list:
 
 | Function | File | Tier | Reason |
 |----------|------|------|--------|
-| `_WEH_OnFocusChange` | `winevent_hook.ahk` | 1 | WinEvent callback + Critical |
+| `_WEH_WinEventProc` | `winevent_hook.ahk` | 1 | WinEvent callback + Critical |
 | `GUI_Repaint` | `gui_paint.ahk` | 1 | Timer callback |
-| `_BL_MatchPattern` | `blacklist.ahk` | 3 | Called by `Blacklist_IsWindowEligible` (Tier 2) |
+| `Blacklist_IsMatch` | `blacklist.ahk` | 3 | Called by `Blacklist_IsWindowEligible` (Tier 2) |
 
 ### Scope
 
@@ -138,7 +138,7 @@ For each file, list all findings across its functions:
 
 | Function | Finding | Line(s) | Est. Saving | Complexity | Fix |
 |----------|---------|---------|-------------|------------|-----|
-| `_WEH_OnFocusChange` | Redundant `WinGetTitle` call | 88 | ~50μs | Trivial | Cache in local |
+| `_WEH_WinEventProc` | Redundant `WinGetTitle` call | 88 | ~50μs | Trivial | Cache in local |
 
 ### `gui_paint.ahk`
 

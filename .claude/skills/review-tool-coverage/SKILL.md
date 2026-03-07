@@ -26,6 +26,10 @@ Query tools (`tools/query_*.ps1`) exist to give structured answers without loadi
 | `query_state.ps1` | State machine branch extractor |
 | `query_timers.ps1` | SetTimer inventory by file |
 | `query_visibility.ps1` | Public functions with few external callers |
+| `query_callchain.ps1` | Call graph traversal (forward and `-Reverse`) |
+| `query_impact.ps1` | Mutation impact analysis |
+| `query_includes.ps1` | Cross-file `#Include` analysis |
+| `query_mutations.ps1` | Global mutation tracking |
 
 ## Audit Steps
 

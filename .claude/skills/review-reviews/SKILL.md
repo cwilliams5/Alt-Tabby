@@ -95,11 +95,12 @@ Do NOT audit non-review skills (like `ship`, `worktree`, `clean-all`, `merge-all
 
 Split by skill batch (run in parallel). Each agent gets a group of skills and performs Phase 1 + Phase 2 for those skills:
 
-- **Performance skills** — `review-latency`, `review-blocking`, `review-criticals`, `review-mcode`, `review-resource-leaks`
-- **Correctness skills** — `review-race-conditions`, `review-option-interaction`, `review-comments`, `review-ahk2`
+- **Performance skills** — `review-latency`, `review-blocking`, `review-criticals`, `review-mcode`, `review-resource-leaks`, `review-paint`, `review-d3d`
+- **Correctness skills** — `review-race-conditions`, `review-option-interaction`, `review-comments`, `review-ahk2`, `review-reentrancy`
 - **Static analysis skills** — `review-static-coverage`, `review-static-history`, `review-static-lintignore`, `review-static-speed`
-- **Test/tool skills** — `review-test-coverage`, `review-test-quality`, `review-test-speed`, `review-test-skips`, `review-tool-coverage`, `review-tool-speed`
+- **Test/tool skills** — `review-test-coverage`, `review-test-quality`, `review-test-speed`, `review-test-skips`, `review-test-reliability`, `review-tool-coverage`, `review-tool-speed`
 - **Code structure skills** — `review-dead-code`, `review-code-quality`, `review-function-visibility`, `review-ownership-manifest`, `review-file-size`, `review-constants-to-configs`
+- **Rendering skills** — `review-shaders`, `review-shaders-open`
 - **UX/meta skills** — `review-professionalism`, `review-debug`, `review-outside-box`, `review-reviews`
 
 Phase 3 (architecture/rules consistency) should run as a separate pass after Phase 1/2, since it requires cross-referencing findings across skills.

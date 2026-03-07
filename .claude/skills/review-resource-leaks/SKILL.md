@@ -12,7 +12,7 @@ Enter planning mode. Systematically audit the codebase for resource leaks and un
 
 GDI+ objects (brushes, pens, fonts, bitmaps, graphics) that are created but never deleted. Each leaked object consumes a GDI handle — Windows limits these per-process (~10,000). Over time, leaks cause rendering failures or crashes.
 
-**Known safe pattern**: `Gdip_GetCachedBrush` and `gGdip_Res` cache objects intentionally — these are NOT leaks. The concern is `Gdip_CreateBrush*` / `Gdip_CreatePen` / `Gdip_CreateFont` calls whose return values are never passed to a corresponding `Gdip_Delete*`.
+**Known safe pattern**: `D2D_GetCachedBrush` and `gD2D_Res` cache objects intentionally — these are NOT leaks. The rendering pipeline uses D2D now — look for D2D resource create/release patterns and any remaining GDI+ usage in `src/lib/`.
 
 Look for:
 - Create without matching delete in the same scope or cleanup path
@@ -62,7 +62,7 @@ Data structures that grow over time without pruning:
 
 ## Known Safe Patterns (Do NOT Flag)
 
-- `gGdip_Res` brush/pen/font cache — intentional lifetime cache, cleaned up on exit
+- `gD2D_Res` brush/font cache — intentional lifetime cache, cleaned up on exit
 - `static` buffers in hot-path functions — intentional reuse per `ahk-patterns.md`
 - Flight recorder ring buffer — pre-allocated, fixed size, overwrites oldest entries
 - Stats `.bak` sentinel files — intentional crash-safety pattern
@@ -71,7 +71,7 @@ Data structures that grow over time without pruning:
 
 Split by resource type for independent parallel exploration:
 
-- **GDI+** — `src/gui/gui_paint.ahk`, `src/gui/gui_overlay.ahk`, any file using `Gdip_*`
+- **D2D / GDI+** — `src/gui/gui_paint.ahk`, `src/gui/gui_overlay.ahk`, `src/gui/gui_gdip.ahk`, any file using `D2D_*` functions. Some `Gdip_*` may remain in `src/lib/` but the paint pipeline is D2D now
 - **Win32 handles** — `src/core/` producers, `src/shared/ipc_pipe.ahk`, DllCall-heavy files. Use `query_function_visibility.ps1` to trace cleanup call chains — verify every Create/Open has a corresponding Close/Delete reachable from all callers.
 - **Timers** — use `query_timers.ps1` to inventory all timers, then check each for proper cleanup
 - **Pipe IPC** — `src/shared/ipc_pipe.ahk`, `src/pump/` files
@@ -96,7 +96,7 @@ Group by severity (per-paint > per-event > per-session > theoretical):
 
 | File | Lines | Resource Type | Leak Description | Impact | Fix |
 |------|-------|--------------|-----------------|--------|-----|
-| `file.ahk` | 42–58 | GDI+ Brush | `Gdip_CreateSolidBrush` in paint loop, never deleted | ~60 handles/sec | Use `Gdip_GetCachedBrush` or `static` |
+| `file.ahk` | 42–58 | D2D Brush | D2D brush created in paint loop, never released | ~60 handles/sec | Use `D2D_GetCachedBrush` or `static` |
 
 For CPU churn findings, use a separate table:
 

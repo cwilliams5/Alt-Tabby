@@ -20,7 +20,7 @@ Find every `Critical "On"` / `Critical "Off"` pair in `src/core/` and `src/gui/`
 
 | Function | File:Lines | Protected Code Summary | Hold Duration | Shared State Touched |
 |----------|-----------|----------------------|---------------|---------------------|
-| `_WEH_OnFocusChange` | `winevent_hook.ahk:40-85` | Check eligibility, upsert window, update MRU | Medium (~50-200μs) | `gWL_*` store globals, `gMRU_*` |
+| `_WEH_WinEventProc` | `winevent_hook.ahk:196+` | Check eligibility, upsert window, update MRU | Medium (~50-200μs) | `gWS_*` store globals |
 
 **Hold Duration estimates:**
 - **Trivial** (~1-5μs): Single assignment, counter increment, flag set
@@ -103,8 +103,8 @@ For each candidate:
 
 | # | Function | File:Lines | Hold Duration | Shared State | Classification |
 |---|----------|-----------|---------------|-------------|----------------|
-| 1 | `_WEH_OnFocusChange` | `winevent_hook.ahk:40-85` | Medium | `gWL_*`, `gMRU_*` | Still necessary |
-| 2 | `_KS_ProcessState` | `komorebi_state.ahk:120-180` | Long | `gKS_Cache`, `gWL_*` | Narrowable |
+| 1 | `_WEH_WinEventProc` | `winevent_hook.ahk:196+` | Medium | `gWS_*` | Still necessary |
+| 2 | `KSub_CacheFocusedHwnds` | `komorebi_state.ahk` | Long | `gKS_Cache`, `gWS_*` | Narrowable |
 | 3 | `_OldHelper` | `some_file.ahk:30-35` | Trivial | `gFoo` (no longer shared) | Stale |
 
 Total: N Critical sections. X still necessary, Y narrowable, Z stale, W unverifiable.
@@ -113,7 +113,7 @@ Total: N Critical sections. X still necessary, Y narrowable, Z stale, W unverifi
 
 | Function | File:Lines | Current Scope | Proposed Scope | Lines Moved Out | Est. Time Saved | Risk |
 |----------|-----------|--------------|---------------|----------------|----------------|------|
-| `_KS_ProcessState` | `komorebi_state.ahk:120-180` | 60 lines | 15 lines | JSON parse (before), log write (after) | ~100μs | Low — moved work is purely local |
+| `KSub_CacheFocusedHwnds` | `komorebi_state.ahk` | 60 lines | 15 lines | JSON parse (before), log write (after) | ~100μs | Low — moved work is purely local |
 
 **Section 3 — Stale holds (recommended removal):**
 

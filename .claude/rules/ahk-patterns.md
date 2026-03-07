@@ -77,7 +77,7 @@ Use tick-based timing instead of static counters that can leak state if timer is
 
 In frequently-called functions (paint, input, per-window loops):
 - **Buffers**: Use `static` for DllCall marshal buffers repopulated via NumPut before use
-- **GDI+ objects**: Cache brushes/pens/fonts (see `Gdip_GetCachedBrush`, `gGdip_Res`), never create+destroy per-call
+- **D2D objects**: Cache brushes/fonts (see `D2D_GetCachedBrush`, `gD2D_Res`), never create+destroy per-call
 - **Regex**: Pre-compile patterns at load time, not per-match (see `Blacklist_Reload`)
 - **Loop constants**: Hoist `Round(N * scale)` before loops, not per-iteration
 

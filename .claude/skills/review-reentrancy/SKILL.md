@@ -123,7 +123,7 @@ Scan these files for `ComCall(`, `ComObj`, vtable dispatch patterns, and `DllCal
 - `src/gui/gui_gdip.ahk` — D2D resource calls (CreateBrush, DrawText, DrawImage, etc.)
 
 **Secondary (show/hide transitions):**
-- `src/gui/gui_antiflash.ahk` — DWM cloaking, SetWindowPos, ShowWindow
+- `src/shared/gui_antiflash.ahk` — DWM cloaking, SetWindowPos, ShowWindow
 - `src/gui/gui_state.ahk` — state transitions that trigger show/hide
 - `src/gui/gui_overlay.ahk` — `D2D_HandleDeviceLoss` (full pipeline recreation)
 
