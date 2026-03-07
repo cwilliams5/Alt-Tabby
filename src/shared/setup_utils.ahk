@@ -1044,7 +1044,11 @@ Update_ApplyCore(opts) {
         targetRunAsAdmin := ReadIniBool(targetConfigPath, "Setup", "RunAsAdmin")
 
         ; Update admin task if target has admin mode enabled
-        if (targetRunAsAdmin && AdminTaskExists()) {
+        if (!targetRunAsAdmin && AdminTaskExists()) {
+            ; Config says admin disabled but task exists (orphaned from previous install
+            ; whose config was overwritten). Clean it up.
+            try DeleteAdminTask()
+        } else if (targetRunAsAdmin && AdminTaskExists()) {
             targetInstallId := ""
             if (FileExist(targetConfigPath)) {
                 try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
@@ -1153,7 +1157,11 @@ Update_ApplyCore(opts) {
         else if (FileExist(targetPath))
             ThemeMsgBox("The update could not be applied. The file may be locked by antivirus or another process.`n`nDetails: " e.Message, "Update Error", "Iconx")
         else
-            ThemeMsgBox("The update failed and the previous version could not be restored.`nPlease reinstall Alt-Tabby.`n`nDetails: " e.Message, "Alt-Tabby Critical", "Iconx")
+            ThemeMsgBox("The update failed and the previous version could not be restored.`n"
+                "A backup may exist at:`n" backupPath "`n`n"
+                "Try renaming this file back to the original name.`n"
+                "If that fails, please reinstall Alt-Tabby.`n`n"
+                "Details: " e.Message, "Alt-Tabby Critical", "Iconx")
     }
 }
 

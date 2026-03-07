@@ -302,6 +302,7 @@ _WizardApplyChoices(startMenu, startup, install, admin, autoUpdate) {
         } else {
             ; Install was requested but failed - don't create task pointing to temp location
             ThemeMsgBox("Admin mode requires successful installation.`nPlease try again or enable admin mode later from the tray menu.", APP_NAME, "Iconx")
+            admin := false  ; Prevent Step 3 (line 312) from writing RunAsAdmin=true
         }
     }
 
