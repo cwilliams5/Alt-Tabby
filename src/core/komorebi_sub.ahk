@@ -1074,6 +1074,7 @@ _KSub_OnNotification(jsonLine) {
             KSub_DiagLog("  WS event: " eventType " -> '" wsName "'")
         }
         if (wsName != "") {
+            Critical "On"
             global _KSub_LastWorkspaceName
             ; Capture old workspace BEFORE updating (needed for move events)
             previousWsName := _KSub_LastWorkspaceName
@@ -1124,6 +1125,7 @@ _KSub_OnNotification(jsonLine) {
 
             ; GUI notification is now handled inside WL_SetCurrentWorkspace itself.
             handledWorkspaceEvent := true
+            Critical "Off"
         }
     }
 
@@ -1145,6 +1147,7 @@ _KSub_OnNotification(jsonLine) {
     ; focused window = the one being moved). Patch it to the target workspace
     ; AFTER ProcessFullState to override any stale data.
     if (moveTargetHwnd && moveTargetWsName != "") {
+        Critical "On"
         global _KSub_WorkspaceCache
         try WL_UpdateFields(moveTargetHwnd, {
             workspaceName: moveTargetWsName,
@@ -1156,6 +1159,7 @@ _KSub_OnNotification(jsonLine) {
         _KSub_WorkspaceCache[moveTargetHwnd] := { wsName: moveTargetWsName, tick: A_TickCount }
         if (logEnabled)
             KSub_DiagLog("  Move post-fix: hwnd=" moveTargetHwnd " -> ws='" moveTargetWsName "'")
+        Critical "Off"
     }
 
     ; Deferred workspace update: MOVE events only. Now that ProcessFullState + post-fix
@@ -1596,7 +1600,9 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             if (!gWS_Store.Has(hwnd))
                 continue
             if (!wsMapNames.Has(hwnd) && _KSub_WorkspaceCache.Has(hwnd)) {
-                cached := _KSub_WorkspaceCache[hwnd]
+                cached := _KSub_WorkspaceCache.Get(hwnd, 0)
+                if (!cached)
+                    continue
                 ; Check cache staleness - entries older than _KSub_CacheMaxAgeMs are skipped
                 if ((now - cached.tick) > _KSub_CacheMaxAgeMs) {
                     _KSub_WorkspaceCache.Delete(hwnd)  ; Clean up stale entry
