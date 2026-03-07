@@ -58,7 +58,7 @@ GUI_Repaint() {
     ; creating nested repaints that paint intermediate state immediately overwritten.
     ; Guard skips nested calls; the outer paint finishes with correct final state. (#90)
     global gPaint_RepaintInProgress
-    global gFR_Enabled, FR_EV_PAINT_RESIZE, FR_EV_PAINT_RESIZE_DONE, FR_EV_PAINT, FR_EV_PAINT_BLOCKED
+    global gFR_Enabled, FR_EV_PAINT_RESIZE, FR_EV_PAINT_BLOCKED
     if (gPaint_RepaintInProgress) {
         if (gFR_Enabled)
             FR_Record(FR_EV_PAINT_BLOCKED, 1)
@@ -180,10 +180,6 @@ GUI_Repaint() {
                 tEndDraw := 0
             }
         } else {
-            ; FR: record paint path taken (d3=hoverRow for stale-hover diagnostics)
-            if (gFR_Enabled)
-                FR_Record(FR_EV_PAINT, paintNum, count, gGUI_HoverRow, needsResize)
-
             gD2D_RT.BeginDraw()
 
             ; Clear the render target. Acrylic/AeroGlass: transparent so compositor

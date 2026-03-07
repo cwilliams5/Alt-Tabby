@@ -78,19 +78,7 @@ When analyzing multiple dumps for the same bug:
 
 ## Event Reference
 
-See `docs/USING_RECORDER.md` for the full event reference table. Key events:
-
-| Event | What to Look For |
-|-------|-----------------|
-| `ALT_DN/UP` | `presses=0` on ALT_UP means no Tab was pressed. `session=1` means overlapping sessions. |
-| `TAB_DN` | `altDown=0` means Alt wasn't held — shouldn't fire. |
-| `TAB_DECIDE_INNER` | `isAltTab=0` means the system decided it wasn't an Alt-Tab. |
-| `STATE` | Every session must end at `→ IDLE`. |
-| `ACTIVATE_RESULT` | `success=0` + check `fg` to see what blocked. `success=2` = transitional (treated as success). |
-| `FOCUS_SUPPRESS` | `remainMs` shows suppression window. Events during suppression are ignored. |
-| `WS_SWITCH` | Workspace change. Multiple rapid switches can cause MRU confusion. |
-| `BYPASS` | `ON` = Tab hooks disabled. No TAB events will fire. |
-| `BUFFER_PUSH` | Events queued during async activation. Check they're replayed. |
+See `docs/USING_RECORDER.md` for the full event reference table with field descriptions and analysis patterns. Do NOT maintain a separate event list here — read the doc at analysis time.
 
 ## Reporting
 

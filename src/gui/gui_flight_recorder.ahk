@@ -1,6 +1,6 @@
 #Requires AutoHotkey v2.0
 ; Alt-Tabby GUI - Flight Recorder
-; Zero-cost in-memory ring buffer. Press F12 to dump last ~30s of events.
+; Zero-cost in-memory ring buffer. Press F12 to dump recent events.
 ; Enable via [Diagnostics] FlightRecorder=true in config.ini
 #Warn VarUnset, Off
 
@@ -61,9 +61,7 @@ global FR_EV_PRODUCER_RECOVER  := 61  ; d1=errCount d2=backoffMs — producer re
 
 ; Paint/resize events (70-79)
 global FR_EV_PAINT_RESIZE      := 70  ; d1=oldRows d2=newRows d3=newW d4=newH — window resize during paint
-global FR_EV_PAINT_RESIZE_DONE := 71  ; d1=preRenderMs*100 d2=flushMs*100 d3=exposureMs*100 d4=totalMs*100
-global FR_EV_PAINT              := 72  ; d1=paintNum d2=items d3=hoverRow d4=needsResize
-global FR_EV_PAINT_BLOCKED      := 73  ; d1=reason(1=reentrant,2=noRT) — paint skipped entirely
+global FR_EV_PAINT_BLOCKED      := 73  ; d1=reason(1=reentrant,2=noRT,3=acquireFailed) — paint skipped entirely
 
 ; State code constants (for FR_EV_STATE d1)
 global FR_ST_IDLE := 0
@@ -449,7 +447,7 @@ _FR_GetEventName(ev) {
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_KSUB_MRU_STALE, FR_EV_FG_GUARD
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
-    global FR_EV_PAINT_RESIZE, FR_EV_PAINT_RESIZE_DONE, FR_EV_PAINT, FR_EV_PAINT_BLOCKED
+    global FR_EV_PAINT_RESIZE, FR_EV_PAINT_BLOCKED
 
     switch ev {
         case FR_EV_ALT_DN:            return "ALT_DN"
@@ -491,8 +489,6 @@ _FR_GetEventName(ev) {
         case FR_EV_PRODUCER_BACKOFF:  return "PRODUCER_BACKOFF"
         case FR_EV_PRODUCER_RECOVER:  return "PRODUCER_RECOVER"
         case FR_EV_PAINT_RESIZE:      return "PAINT_RESIZE"
-        case FR_EV_PAINT_RESIZE_DONE: return "PAINT_RESIZE_DONE"
-        case FR_EV_PAINT:             return "PAINT"
         case FR_EV_PAINT_BLOCKED:     return "PAINT_BLOCKED"
         default:                      return "UNKNOWN(" ev ")"
     }
@@ -525,7 +521,7 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
     global FR_EV_FOCUS, FR_EV_FOCUS_SUPPRESS
     global FR_EV_KSUB_MRU_STALE, FR_EV_FG_GUARD
     global FR_EV_PRODUCER_BACKOFF, FR_EV_PRODUCER_RECOVER
-    global FR_EV_PAINT_RESIZE, FR_EV_PAINT_RESIZE_DONE, FR_EV_PAINT, FR_EV_PAINT_BLOCKED
+    global FR_EV_PAINT_RESIZE, FR_EV_PAINT_BLOCKED
 
     switch ev {
         case FR_EV_ALT_DN:
@@ -611,10 +607,6 @@ _FR_FormatDetails(ev, d1, d2, d3, d4, hwndMap) {
             return "errCount=" d1 "  wasBackoffMs=" d2
         case FR_EV_PAINT_RESIZE:
             return "rows=" d1 "→" d2 "  size=" d3 "x" d4
-        case FR_EV_PAINT_RESIZE_DONE:
-            return "preRender=" Round(d1 / 100, 2) "ms  flush=" Round(d2 / 100, 2) "ms  exposure=" Round(d3 / 100, 2) "ms  total=" Round(d4 / 100, 2) "ms"
-        case FR_EV_PAINT:
-            return "num=" d1 "  items=" d2 "  hover=" d3 "  resize=" d4
         case FR_EV_PAINT_BLOCKED:
             reasonStr := (d1 = 1) ? "reentrant" : (d1 = 2) ? "noRT" : "?(" d1 ")"
             return "reason=" reasonStr

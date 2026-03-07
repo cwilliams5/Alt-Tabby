@@ -13,7 +13,7 @@ When enabled, the dump hotkey is registered (pass-through — the key still work
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `FlightRecorder` | bool | true | Enable/disable the flight recorder |
-| `FlightRecorderBufferSize` | int | 2000 | Ring buffer size (500–10000). 2000 ≈ 30s of typical activity. |
+| `FlightRecorderBufferSize` | int | 2000 | Ring buffer size (500–10000). 2000 ≈ minutes of typical activity. |
 | `FlightRecorderHotkey` | string | F12 | Dump hotkey (AHK v2 syntax, e.g. `F12`, `^F12`, `+F11`) |
 
 ## Triggering a Dump
@@ -85,6 +85,7 @@ Chronological (newest first) list of events with millisecond timestamps relative
 | `ACTIVATE_START` | hwnd, onCurrentWS | Activation attempt beginning. |
 | `ACTIVATE_RESULT` | hwnd, success, fg | Activation outcome. success: 0=failed (fg is a different window), 1=confirmed, 2=transitional (fg was NULL during activation transition — treated as success). |
 | `ACTIVATE_GONE` | hwnd | Selected window no longer exists at activation time. |
+| `ACTIVATE_RETRY` | dead, retry, ok | Selected window gone, retried with fallback. ok: 0/1. |
 | `MRU_UPDATE` | hwnd, result | Local MRU reorder after activation. result=0 means hwnd not found. |
 | `BUFFER_PUSH` | event, bufLen | Event buffered during async activation. |
 
@@ -94,8 +95,11 @@ Chronological (newest first) list of events with millisecond timestamps relative
 |-------|--------|---------|
 | `FOCUS` | hwnd | WinEventHook detected a new foreground window. |
 | `FOCUS_SUPPRESS` | hwnd, remainingMs | Focus event suppressed (komorebi workspace transition). remainingMs = time until suppression expires. |
+| `KSUB_MRU_STALE` | ksubHwnd, actualFgHwnd | Komorebi reported a focused hwnd that doesn't match actual foreground — skipped to prevent MRU corruption. |
+| `FG_GUARD` | hwnd | Foreground guard caught a window missing from store at REFRESH time — added it. |
 | `WS_SWITCH` | | Komorebi workspace switch detected. |
 | `WS_TOGGLE` | newMode, displayCount | User toggled workspace filter. newMode: 1=all, 2=current. |
+| `MON_TOGGLE` | newMode, displayCount | User toggled monitor filter. newMode: 1=all, 2=current. |
 
 ### Data Layer Events
 
@@ -103,9 +107,24 @@ Chronological (newest first) list of events with millisecond timestamps relative
 |-------|--------|---------|
 | `REFRESH` | items | Live items refreshed from WindowList. |
 | `SCAN_COMPLETE` | foundCount, storeCount | Full window enumeration finished. foundCount=windows discovered, storeCount=total in store after scan. |
+| `ENRICH_REQ` | hwndCount | Enrichment batch sent to pump subprocess for icon/process resolution. |
+| `ENRICH_RESP` | appliedCount | Enrichment results received and applied to store. |
+| `WINDOW_ADD` | hwnd, storeCount | Window added to WindowList (discovered by producer). |
+| `WINDOW_REMOVE` | hwnd, storeCount | Window removed from WindowList (closed or became ineligible). |
+| `GHOST_PURGE` | removedCount | Zombie windows purged by ValidateExistence (HWND exists but no longer eligible). |
+| `BLACKLIST_PURGE` | removedCount | Windows purged because they matched updated blacklist rules. |
 | `COSMETIC_PATCH` | patchedCount, baseCount | In-place title/icon/process update during ACTIVE state. |
 | `PRODUCER_INIT` | type, success | Producer startup result. type: 1=KomorebiSub, 2=WinEventHook, 3=Pump. success: 0/1. |
+| `PRODUCER_BACKOFF` | errCount, backoffMs | Producer entering backoff after repeated errors. |
+| `PRODUCER_RECOVER` | errCount, wasBackoffMs | Producer recovered from backoff, resuming normal operation. |
 | `SESSION_START` | | Flight recorder initialized (process startup). |
+
+### Paint Events
+
+| Event | Fields | Meaning |
+|-------|--------|---------|
+| `PAINT_RESIZE` | oldRows, newRows, newW, newH | Overlay resize during paint (atomic: paint first, then DComp commit). |
+| `PAINT_BLOCKED` | reason | Paint skipped. reason: 1=reentrant (another paint in progress), 2=no render target, 3=back buffer acquire failed. |
 
 ## Analyzing Dumps
 

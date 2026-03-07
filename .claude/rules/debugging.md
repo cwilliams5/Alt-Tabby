@@ -17,6 +17,6 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 - **WebViewLog** → `tabby_webview_debug.log` — WebView2 config editor issues
 - **ShaderLog** → `tabby_shader.log` — D3D11 shader compilation, iChannel texture loading, SRV/sampler binding
 
-- **FlightRecorder** → `recorder/fr_YYYYMMDD_HHMMSS.txt` — In-memory ring buffer (default 2000 events ≈ 30s). Press F12 (configurable) to dump. Shows state snapshot, WindowList state, live items, and full event trace with hwnd resolution. Near-zero cost when enabled. Config: `FlightRecorderBufferSize` (int, 500-10000), `FlightRecorderHotkey` (string, default F12). See `docs/USING_RECORDER.md` for analysis guide.
+- **FlightRecorder** → `recorder/fr_YYYYMMDD_HHMMSS.txt` — In-memory ring buffer (default 2000 events). Press F12 (configurable) to dump. Shows state snapshot, WindowList state, live items, and full event trace with hwnd resolution. Near-zero cost when enabled. Config: `FlightRecorderBufferSize` (int, 500-10000), `FlightRecorderHotkey` (string, default F12). See `docs/USING_RECORDER.md` for analysis guide.
 
 `_GUI_LogError()` always logs to `tabby_store_error.log` (no config flag). `_GUI_LogInfo()` respects `StoreLog`.
