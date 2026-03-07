@@ -20,8 +20,6 @@ A proposed check must clear ALL of these:
 ## Current Check Inventory
 
 **Standalone checks** (complex enough to warrant their own process):
-- `check_includes.ps1` — include path validation
-- `check_profile_markers.ps1` — profiler instrumentation consistency
 - `check_warn.ps1` — warn directive enforcement
 
 **Batch checks** (grouped to share file cache and reduce PowerShell overhead):

@@ -15,7 +15,7 @@ Static analysis checks in `tests/check_batch_*.ps1` support inline suppression v
 ### Phase 1 — Inventory which checks have lint-ignore support
 
 Scan `tests/check_batch_*.ps1` files for suppression tag definitions. For each one, document:
-- The tag name (e.g., `lint-ignore: critical-section`)
+- The tag name (e.g., `lint-ignore: critical-leak`)
 - Which check/sub-check it belongs to
 - What the check is trying to enforce
 - How many usage sites exist in `.ahk` files
@@ -59,19 +59,19 @@ For each finding:
 
 | Tag | Check File | Enforces | Usage Count |
 |-----|-----------|----------|-------------|
-| `critical-section` | `check_batch_guards.ps1` | Critical "Off" before return | 14 |
+| `critical-leak` | `check_batch_guards.ps1` | Critical "Off" before return | 14 |
 
 **Section 2 — Tag-level evaluation:**
 
 | Tag | Keep Argument | Remove Argument | Verdict |
 |-----|--------------|----------------|---------|
-| `critical-section` | State machine returns inside outer Critical scope — checker can't see caller context | 14 uses may indicate the check needs scope awareness | Keep — but enhance check |
+| `critical-leak` | State machine returns inside outer Critical scope — checker can't see caller context | 14 uses may indicate the check needs scope awareness | Keep — but enhance check |
 
 **Section 3 — Per-usage audit:**
 
 | File | Line | Tag | Code | Classification | Action |
 |------|------|-----|------|---------------|--------|
-| `gui_state.ahk` | 130 | `critical-section` | `return ; lint-ignore: critical-section` | Appropriate — outer function holds Critical | None |
+| `gui_state.ahk` | 130 | `critical-leak` | `return ; lint-ignore: critical-leak` | Appropriate — outer function holds Critical | None |
 | `foo.ahk` | 55 | `dead-param` | `MyFunc(a, b) { ; lint-ignore: dead-param` | Workaround — param `b` could be removed | Remove suppression, remove param |
 
 Order by action needed: workarounds and stale suppressions first, appropriate ones last.
