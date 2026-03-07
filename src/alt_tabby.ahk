@@ -339,8 +339,8 @@ if (g_AltTabbyMode = "repair-admin-task") {
 
         if (exitCode != 0) {
             ; Task run failed - launch directly instead
-            ThemeMsgBox("Admin mode was repaired, but the scheduled task could not start`n"
-                "(exit code " exitCode ").`n`nLaunching Alt-Tabby directly instead.", APP_NAME, "Icon!")
+            ThemeMsgBox("Admin mode was repaired, but the scheduled task could not start.`n`n"
+                "Launching Alt-Tabby directly instead.", APP_NAME, "Icon!")
             Run('"' exePath '"')
         }
     } else {

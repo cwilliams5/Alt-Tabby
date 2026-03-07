@@ -978,10 +978,10 @@ global gConfigRegistry := [
     {s: "Komorebi", k: "CrossWorkspaceMethod", g: "KomorebiCrossWorkspaceMethod", t: "enum", default: "MimicNative",
      options: ["MimicNative", "RevealMove", "SwitchActivate"],
      d: "How Alt-Tabby activates windows on other workspaces.`n"
-      . "MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile.`n"
-      . "RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace.`n"
+      . "MimicNative = directly reveals and activates using Windows APIs (like native Alt+Tab), letting komorebi sync its layout.`n"
+      . "RevealMove = reveals the window, focuses it, then commands komorebi to move it back to its workspace.`n"
       . "SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window).`n"
-      . "MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails."},
+      . "MimicNative and RevealMove fall back to SwitchActivate if activation fails."},
 
     {s: "Komorebi", k: "MimicNativeSettleMs", g: "KomorebiMimicNativeSettleMs", t: "int", default: 0,
      min: 0, max: 1000,
@@ -994,7 +994,7 @@ global gConfigRegistry := [
      options: ["PollKomorebic", "PollCloak", "AwaitDelta"],
      d: "How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate).`n"
       . "PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU.`n"
-      . "PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall).`n"
+      . "PollCloak = checks if windows are hidden (recommended, fastest method).`n"
       . "AwaitDelta = waits for store delta, lowest CPU but potentially higher latency."},
 
     {type: "subsection", section: "Komorebi", name: "Subscription",
@@ -1002,11 +1002,11 @@ global gConfigRegistry := [
 
     {s: "Komorebi", k: "SubPollMs", g: "KomorebiSubPollMs", t: "int", default: 50,
      min: 10, max: 1000,
-     d: "Legacy pipe poll interval. Used when async I/O is unavailable."},
+     d: "Legacy pipe poll interval. Used when overlapped I/O is unavailable."},
 
     {s: "Komorebi", k: "SubMaintenanceMs", g: "KomorebiSubMaintenanceMs", t: "int", default: 2000,
      min: 500, max: 10000,
-     d: "Maintenance timer interval when async I/O is active (idle recycle, connection check, read recovery). Ignored in legacy poll mode."},
+     d: "Background maintenance interval for subscription health monitoring. Ignored in legacy poll mode."},
 
     {s: "Komorebi", k: "SubIdleRecycleMs", g: "KomorebiSubIdleRecycleMs", t: "int", default: 120000,
      min: 10000, max: 600000,
@@ -1108,7 +1108,7 @@ global gConfigRegistry := [
 
     {s: "Store", k: "PumpIconPruneIntervalMs", g: "PumpIconPruneIntervalMs", t: "int", default: 300000,
      min: 10000, max: 3600000,
-     d: "Interval (ms) for pump to prune HICONs of closed windows"},
+     d: "Interval to clean up cached icons for closed windows"},
 
     {s: "Store", k: "PumpHangTimeoutMs", g: "PumpHangTimeoutMs", t: "int", default: 15000,
      min: 5000, max: 60000,
@@ -1128,7 +1128,7 @@ global gConfigRegistry := [
 
     {s: "Store", k: "DebounceMs", g: "WinEventHookDebounceMs", t: "int", default: 50,
      min: 10, max: 1000,
-     d: "Debounce rapid events (e.g., window moving fires many events)"},
+     d: "Ignore rapid duplicate events (e.g., dragging a window fires many events)"},
 
     {s: "Store", k: "BatchMs", g: "WinEventHookBatchMs", t: "int", default: 100,
      min: 10, max: 2000,
