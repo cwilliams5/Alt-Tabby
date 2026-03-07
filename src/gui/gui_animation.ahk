@@ -21,7 +21,6 @@ global gAnim_FrameDt := 0.0           ; Delta ms since last frame
 global gAnim_FrameCapMs := 6.94       ; ms per frame (default ~144Hz, set by Anim_Init)
 global gAnim_TargetFPS := 144         ; Resolved from config or monitor
 global gAnim_TimerPeriodOn := false   ; timeBeginPeriod(1) active?
-global gAnim_FPSEnabled := false      ; FPS debug overlay toggle (F key)
 global gAnim_OverlayOpacity := 1.0    ; Current overlay fade opacity (0.0-1.0)
 global gAnim_HidePending := false     ; Hide-fade in progress
 global gAnim_DeferredTimerStart := false  ; Deferred frame loop start (STA pump safety, #175)
@@ -33,7 +32,6 @@ global gFX_AmbientTime := 0.0         ; Cumulative ms for ambient loops (Full mo
 global gAnim_FPSFrameCount := 0
 global gAnim_FPSLastSample := 0.0
 global gAnim_FPSDisplay := 0          ; Displayed FPS (updated every 500ms)
-global gAnim_FrameTimeDisplay := 0.0  ; Displayed frame time ms
 
 ; Compositor Clock state (Win11+ display-adaptive pacing)
 global gAnim_pWaitForClock := 0    ; Function ptr: DCompositionWaitForCompositorClock (0 = unavailable)

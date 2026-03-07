@@ -24,9 +24,6 @@ global gFX_HoverEffect      ; Hover effect state: {key, name, opacity, darkness,
 gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
 gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
 gFX_HoverEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
-global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
-global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
-global gFX_MouseInWindow := false    ; Mouse is inside overlay window
 global gFX_MousePrevX := 0.0        ; Previous frame mouse X
 global gFX_MousePrevY := 0.0        ; Previous frame mouse Y
 global gFX_MouseVelX := 0.0         ; Smoothed velocity X (px/sec)

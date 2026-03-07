@@ -13,6 +13,7 @@
 ; NOTE: Tab decision window now in config: cfg.AltTabTabDecisionMs (default 24ms)
 ; NOTE: Bypass settings are now in config: cfg.AltTabBypassFullscreen, cfg.AltTabBypassProcesses
 
+global gAnim_FPSEnabled := false      ; FPS debug overlay toggle (F key)
 global gINT_SessionActive := false
 global gINT_TabHeld := false
 global gINT_PressCount := 0
