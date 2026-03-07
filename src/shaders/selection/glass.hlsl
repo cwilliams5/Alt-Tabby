@@ -52,10 +52,18 @@ float4 PSMain(PSInput input) : SV_Target {
     col = lerp(col, fillCol, fillA);
     a = max(a, fillA);
 
+    // Gradient tint scaled by intensity
+    col += float3(0.05, 0.05, 0.08) * (1.0 - gradientT) * fill * selIntensity * 0.5;
+
     // Border layer
     float borderA = borderMask * borderColor.a * t * intensity;
     col = lerp(col, borderCol3, borderA);
     a = max(a, borderA);
+
+    // Post-process: darken + desaturate
+    float lum = dot(col, float3(0.299, 0.587, 0.114));
+    col = lerp(col, (float3)lum, desaturate);
+    col *= (1.0 - darken);
 
     return float4(col * a, a) * opacity;
 }

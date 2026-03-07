@@ -19,9 +19,9 @@ global gFX_HDRActive := false  ; True when HDR gamma compensation is active
 global gFX_ShaderLayers := []        ; Array of {key, name, opacity, darkness, desat, speed} per configured layer
 global gFX_ShaderTime := Map()       ; layerIndex → {offset, carry, accumulate} — per-layer time state
 global gFX_MouseEffect      ; Mouse effect state: {key, name, opacity}
-global gFX_SelectionEffect  ; Selection effect state: {key, name}
+global gFX_SelectionEffect  ; Selection effect state: {key, name, opacity, darkness, desat, speed}
 gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
-gFX_SelectionEffect := {key: "", name: ""}
+gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
 global gFX_MouseInWindow := false    ; Mouse is inside overlay window
@@ -173,7 +173,7 @@ FX_GPU_Dispose() {
     gFX_ShaderTime := Map()
     gFX_ShaderLayers := []
     gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
-    gFX_SelectionEffect := {key: "", name: ""}
+    gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
     Shader_Cleanup()
 }
 
@@ -463,6 +463,7 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
         t := gFX_ShaderTime[gFX_SelectionEffect.key]
         baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
     }
+    baseTime *= gFX_SelectionEffect.speed
 
     ; Decompose ARGB → premultiplied float4 RGBA
     selA := ((selARGB >> 24) & 0xFF) / 255.0
@@ -476,7 +477,8 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     bdrB := ((borderARGB & 0xFF) / 255.0) * bdrA
 
     try {
-        Shader_PreRender(gFX_SelectionEffect.key, w, h, baseTime, 0.0, 0.0, 1.0,
+        Shader_PreRender(gFX_SelectionEffect.key, w, h, baseTime,
+            gFX_SelectionEffect.darkness, gFX_SelectionEffect.desat, gFX_SelectionEffect.opacity,
             0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
             selR, selG, selB, selA,
@@ -662,12 +664,21 @@ _FX_ResolveConfiguredShaders() {
                 break
             }
         }
-        if (found)
-            gFX_SelectionEffect := {key: selKey, name: selKey}
-        else
-            gFX_SelectionEffect := {key: "", name: ""}
+        if (found) {
+            gFX_SelectionEffect := {key: selKey, name: selKey,
+                opacity: cfg.GUI_SelectionOpacity,
+                darkness: cfg.GUI_SelectionDarkness,
+                desat: cfg.GUI_SelectionDesaturation,
+                speed: cfg.GUI_SelectionSpeed}
+            if (gShader_Registry.Has(selKey)) {
+                gShader_Registry[selKey].selGlow := cfg.GUI_SelectionGlow
+                gShader_Registry[selKey].selIntensity := cfg.GUI_SelectionIntensity
+            }
+        } else {
+            gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
+        }
     } else {
-        gFX_SelectionEffect := {key: "", name: ""}
+        gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
     }
 }
 
@@ -874,12 +885,20 @@ FX_CycleSelectionEffect() {
     currentIdx := Mod(currentIdx + 1, total)
 
     if (currentIdx = 0) {
-        gFX_SelectionEffect := {key: "", name: ""}
+        gFX_SelectionEffect := {key: "", name: "",
+            opacity: cfg.GUI_SelectionOpacity, darkness: cfg.GUI_SelectionDarkness,
+            desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed}
     } else {
         newKey := SELECTION_SHADER_KEYS[currentIdx + 1]
         if (!gShader_Registry.Has(newKey))
             Shader_RegisterByKey(newKey)
-        gFX_SelectionEffect := {key: newKey, name: SELECTION_SHADER_NAMES[currentIdx + 1]}
+        gFX_SelectionEffect := {key: newKey, name: SELECTION_SHADER_NAMES[currentIdx + 1],
+            opacity: cfg.GUI_SelectionOpacity, darkness: cfg.GUI_SelectionDarkness,
+            desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed}
+        if (gShader_Registry.Has(newKey)) {
+            gShader_Registry[newKey].selGlow := cfg.GUI_SelectionGlow
+            gShader_Registry[newKey].selIntensity := cfg.GUI_SelectionIntensity
+        }
         ; Init time state for the new shader (keyed by name for mouse/selection)
         _FX_InitShaderTimeForKey(newKey)
     }

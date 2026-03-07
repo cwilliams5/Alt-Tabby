@@ -33,7 +33,7 @@ float4 PSMain(PSInput input) : SV_Target {
     float borderMask = smoothstep(borderWidth + 1.5, borderWidth - 0.5, abs(dist));
 
     // Outer rainbow glow
-    float outerGlow = smoothstep(10.0, 0.0, dist) * (1.0 - fill) * 0.3;
+    float outerGlow = smoothstep(10.0 * selGlow, 0.0, dist) * (1.0 - fill) * 0.3;
 
     // Subtle inner rainbow reflections
     float innerRef = smoothstep(0.0, -8.0, dist) * fill * 0.1;
@@ -50,17 +50,22 @@ float4 PSMain(PSInput input) : SV_Target {
     a = fillA;
 
     // Inner reflections
-    col += prismatic * innerRef * t * intensity;
+    col += prismatic * innerRef * t * intensity * selIntensity;
 
     // Outer glow
-    col += prismatic * outerGlow * t * intensity;
-    a = max(a, outerGlow * t * intensity);
+    col += prismatic * outerGlow * t * intensity * selIntensity;
+    a = max(a, outerGlow * t * intensity * selIntensity);
 
     // Prismatic border
-    float3 borderCol3 = lerp(borderColor.rgb, prismatic, 0.7);
+    float3 borderCol3 = lerp(borderColor.rgb, prismatic, 0.7 * selIntensity);
     float borderA = borderMask * borderColor.a * t * intensity;
     col = lerp(col, borderCol3, saturate(borderA));
     a = max(a, borderA);
+
+    // Post-process: darken + desaturate
+    float lum = dot(col, float3(0.299, 0.587, 0.114));
+    col = lerp(col, (float3)lum, desaturate);
+    col *= (1.0 - darken);
 
     a = saturate(a);
     return float4(col * a, a) * opacity;

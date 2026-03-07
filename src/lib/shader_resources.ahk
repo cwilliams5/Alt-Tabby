@@ -176,43 +176,46 @@
 ;@Ahk2Exe-AddResource ..\resources\shaders\ps_screensaverWarpedGradWaves.bin, 1140
 ;@Ahk2Exe-AddResource ..\resources\shaders\ps_seaAdventure.bin, 1141
 ;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_auroraSel.bin, 1142
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_ember.bin, 1143
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_frosted.bin, 1144
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_circuit.bin, 1143
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_fireBorder.bin, 1144
 ;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_glass.bin, 1145
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_liquid.bin, 1146
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_neon.bin, 1147
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_pulse.bin, 1148
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_shadetober29Injured.bin, 1149
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_simpleScreensaver.bin, 1150
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_simplex3dFbm.bin, 1151
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_singularity.bin, 1152
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_smokeFlythrough.bin, 1153
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_softWhisper.bin, 1154
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_spaceEye2.bin, 1155
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_sparksFromFire.bin, 1156
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_spiralsForWindowsTerminal.bin, 1157
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_starNew.bin, 1158
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_starShine.bin, 1159
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_starfieldSimV2.bin, 1160
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_starfieldWithFbm.bin, 1161
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_starleidoscope.bin, 1162
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_starship.bin, 1163
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_sunSurface.bin, 1164
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_tentaclesOfLight.bin, 1165
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_tileableWaterCaustic.bin, 1166
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_tilesInterestingPatterns.bin, 1167
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_toxicLake.bin, 1168
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_triangleNoise.bin, 1169
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_turbulenceTexture.bin, 1170
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_ultraLiquidBokeh.bin, 1171
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_underwaterCaustics.bin, 1172
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_vignetteBreathe.bin, 1173
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_vistaEsqueWallpaper.bin, 1174
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_volumetricFire.bin, 1175
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_voronoiBurning.bin, 1176
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_warpedLiquidMetal.bin, 1177
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_worleyNoiseWaters.bin, 1178
-;@Ahk2Exe-AddResource ..\resources\shaders\ps_wormCity.bin, 1179
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_gradientOrbit.bin, 1146
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_lava.bin, 1147
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_lightning.bin, 1148
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_plasma.bin, 1149
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_rain.bin, 1150
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_selection_smoke.bin, 1151
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_shadetober29Injured.bin, 1152
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_simpleScreensaver.bin, 1153
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_simplex3dFbm.bin, 1154
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_singularity.bin, 1155
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_smokeFlythrough.bin, 1156
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_softWhisper.bin, 1157
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_spaceEye2.bin, 1158
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_sparksFromFire.bin, 1159
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_spiralsForWindowsTerminal.bin, 1160
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_starNew.bin, 1161
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_starShine.bin, 1162
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_starfieldSimV2.bin, 1163
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_starfieldWithFbm.bin, 1164
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_starleidoscope.bin, 1165
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_starship.bin, 1166
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_sunSurface.bin, 1167
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_tentaclesOfLight.bin, 1168
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_tileableWaterCaustic.bin, 1169
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_tilesInterestingPatterns.bin, 1170
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_toxicLake.bin, 1171
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_triangleNoise.bin, 1172
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_turbulenceTexture.bin, 1173
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_ultraLiquidBokeh.bin, 1174
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_underwaterCaustics.bin, 1175
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_vignetteBreathe.bin, 1176
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_vistaEsqueWallpaper.bin, 1177
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_volumetricFire.bin, 1178
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_voronoiBurning.bin, 1179
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_warpedLiquidMetal.bin, 1180
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_worleyNoiseWaters.bin, 1181
+;@Ahk2Exe-AddResource ..\resources\shaders\ps_wormCity.bin, 1182
 ;@Ahk2Exe-AddResource ..\resources\shaders\cs_mouse_campfireEmbers.bin, 2000
 ;@Ahk2Exe-AddResource ..\resources\shaders\cs_mouse_emberTrail.bin, 2001
 ;@Ahk2Exe-AddResource ..\resources\shaders\cs_mouse_emberTrailLong.bin, 2002
@@ -398,43 +401,46 @@ global RES_ID_SHADER_PS_SATORI := 1139
 global RES_ID_SHADER_PS_SCREENSAVERWARPEDGRADWAVES := 1140
 global RES_ID_SHADER_PS_SEAADVENTURE := 1141
 global RES_ID_SHADER_PS_SELECTIONAURORASEL := 1142
-global RES_ID_SHADER_PS_SELECTIONEMBER := 1143
-global RES_ID_SHADER_PS_SELECTIONFROSTED := 1144
+global RES_ID_SHADER_PS_SELECTIONCIRCUIT := 1143
+global RES_ID_SHADER_PS_SELECTIONFIREBORDER := 1144
 global RES_ID_SHADER_PS_SELECTIONGLASS := 1145
-global RES_ID_SHADER_PS_SELECTIONLIQUID := 1146
-global RES_ID_SHADER_PS_SELECTIONNEON := 1147
-global RES_ID_SHADER_PS_SELECTIONPULSE := 1148
-global RES_ID_SHADER_PS_SHADETOBER29INJURED := 1149
-global RES_ID_SHADER_PS_SIMPLESCREENSAVER := 1150
-global RES_ID_SHADER_PS_SIMPLEX3DFBM := 1151
-global RES_ID_SHADER_PS_SINGULARITY := 1152
-global RES_ID_SHADER_PS_SMOKEFLYTHROUGH := 1153
-global RES_ID_SHADER_PS_SOFTWHISPER := 1154
-global RES_ID_SHADER_PS_SPACEEYE2 := 1155
-global RES_ID_SHADER_PS_SPARKSFROMFIRE := 1156
-global RES_ID_SHADER_PS_SPIRALSFORWINDOWSTERMINAL := 1157
-global RES_ID_SHADER_PS_STARNEW := 1158
-global RES_ID_SHADER_PS_STARSHINE := 1159
-global RES_ID_SHADER_PS_STARFIELDSIMV2 := 1160
-global RES_ID_SHADER_PS_STARFIELDWITHFBM := 1161
-global RES_ID_SHADER_PS_STARLEIDOSCOPE := 1162
-global RES_ID_SHADER_PS_STARSHIP := 1163
-global RES_ID_SHADER_PS_SUNSURFACE := 1164
-global RES_ID_SHADER_PS_TENTACLESOFLIGHT := 1165
-global RES_ID_SHADER_PS_TILEABLEWATERCAUSTIC := 1166
-global RES_ID_SHADER_PS_TILESINTERESTINGPATTERNS := 1167
-global RES_ID_SHADER_PS_TOXICLAKE := 1168
-global RES_ID_SHADER_PS_TRIANGLENOISE := 1169
-global RES_ID_SHADER_PS_TURBULENCETEXTURE := 1170
-global RES_ID_SHADER_PS_ULTRALIQUIDBOKEH := 1171
-global RES_ID_SHADER_PS_UNDERWATERCAUSTICS := 1172
-global RES_ID_SHADER_PS_VIGNETTEBREATHE := 1173
-global RES_ID_SHADER_PS_VISTAESQUEWALLPAPER := 1174
-global RES_ID_SHADER_PS_VOLUMETRICFIRE := 1175
-global RES_ID_SHADER_PS_VORONOIBURNING := 1176
-global RES_ID_SHADER_PS_WARPEDLIQUIDMETAL := 1177
-global RES_ID_SHADER_PS_WORLEYNOISEWATERS := 1178
-global RES_ID_SHADER_PS_WORMCITY := 1179
+global RES_ID_SHADER_PS_SELECTIONGRADIENTORBIT := 1146
+global RES_ID_SHADER_PS_SELECTIONLAVA := 1147
+global RES_ID_SHADER_PS_SELECTIONLIGHTNING := 1148
+global RES_ID_SHADER_PS_SELECTIONPLASMA := 1149
+global RES_ID_SHADER_PS_SELECTIONRAIN := 1150
+global RES_ID_SHADER_PS_SELECTIONSMOKE := 1151
+global RES_ID_SHADER_PS_SHADETOBER29INJURED := 1152
+global RES_ID_SHADER_PS_SIMPLESCREENSAVER := 1153
+global RES_ID_SHADER_PS_SIMPLEX3DFBM := 1154
+global RES_ID_SHADER_PS_SINGULARITY := 1155
+global RES_ID_SHADER_PS_SMOKEFLYTHROUGH := 1156
+global RES_ID_SHADER_PS_SOFTWHISPER := 1157
+global RES_ID_SHADER_PS_SPACEEYE2 := 1158
+global RES_ID_SHADER_PS_SPARKSFROMFIRE := 1159
+global RES_ID_SHADER_PS_SPIRALSFORWINDOWSTERMINAL := 1160
+global RES_ID_SHADER_PS_STARNEW := 1161
+global RES_ID_SHADER_PS_STARSHINE := 1162
+global RES_ID_SHADER_PS_STARFIELDSIMV2 := 1163
+global RES_ID_SHADER_PS_STARFIELDWITHFBM := 1164
+global RES_ID_SHADER_PS_STARLEIDOSCOPE := 1165
+global RES_ID_SHADER_PS_STARSHIP := 1166
+global RES_ID_SHADER_PS_SUNSURFACE := 1167
+global RES_ID_SHADER_PS_TENTACLESOFLIGHT := 1168
+global RES_ID_SHADER_PS_TILEABLEWATERCAUSTIC := 1169
+global RES_ID_SHADER_PS_TILESINTERESTINGPATTERNS := 1170
+global RES_ID_SHADER_PS_TOXICLAKE := 1171
+global RES_ID_SHADER_PS_TRIANGLENOISE := 1172
+global RES_ID_SHADER_PS_TURBULENCETEXTURE := 1173
+global RES_ID_SHADER_PS_ULTRALIQUIDBOKEH := 1174
+global RES_ID_SHADER_PS_UNDERWATERCAUSTICS := 1175
+global RES_ID_SHADER_PS_VIGNETTEBREATHE := 1176
+global RES_ID_SHADER_PS_VISTAESQUEWALLPAPER := 1177
+global RES_ID_SHADER_PS_VOLUMETRICFIRE := 1178
+global RES_ID_SHADER_PS_VORONOIBURNING := 1179
+global RES_ID_SHADER_PS_WARPEDLIQUIDMETAL := 1180
+global RES_ID_SHADER_PS_WORLEYNOISEWATERS := 1181
+global RES_ID_SHADER_PS_WORMCITY := 1182
 global RES_ID_SHADER_CS_MOUSECAMPFIREEMBERS := 2000
 global RES_ID_SHADER_CS_MOUSEEMBERTRAIL := 2001
 global RES_ID_SHADER_CS_MOUSEEMBERTRAILLONG := 2002

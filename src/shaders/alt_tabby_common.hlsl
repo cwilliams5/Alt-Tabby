@@ -35,6 +35,12 @@ cbuffer Constants : register(b0) {
     uint gridH;             // grid height (0 = no grid)
     uint maxParticles;      // particle slots (excluding grid cells)
     float reactivity;       // cursor force multiplier
+
+    // --- Selection effect tuning (offsets 128-140, 16-byte aligned) ---
+    float selGlow;          // outer glow radius multiplier (1.0 = default)
+    float selIntensity;     // effect blend strength (1.0 = default)
+    float _pad0;
+    float _pad1;
 };
 
 struct PSInput {

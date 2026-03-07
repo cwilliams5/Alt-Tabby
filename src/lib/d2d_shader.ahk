@@ -72,12 +72,12 @@ VSOut VSMain(uint id : SV_VertexID) {
             return false
         gShader_VS := pVS
 
-        ; Create constant buffer (128 bytes: time, resolution, timeDelta, frame, darken, desaturate, opacity,
+        ; Create constant buffer (144 bytes: time, resolution, timeDelta, frame, darken, desaturate, opacity,
         ;   iMouse, selRect, selColor, borderColor, borderWidth, isHovered, entranceT, iMouseSpeed,
-        ;   gridW, gridH, maxParticles, reactivity)
+        ;   gridW, gridH, maxParticles, reactivity, selGlow, selIntensity)
         ; D3D11_BUFFER_DESC (24 bytes): ByteWidth, Usage, BindFlags, CPUAccessFlags, MiscFlags, StructureByteStride
         bufDesc := Buffer(24, 0)
-        NumPut("uint", 128, bufDesc, 0)      ; ByteWidth = 128 (8 × 16, properly aligned)
+        NumPut("uint", 144, bufDesc, 0)      ; ByteWidth = 144 (9 × 16, properly aligned)
         NumPut("uint", 2, bufDesc, 4)        ; Usage = D3D11_USAGE_DYNAMIC
         NumPut("uint", 4, bufDesc, 8)        ; BindFlags = D3D11_BIND_CONSTANT_BUFFER
         NumPut("uint", 0x10000, bufDesc, 12) ; CPUAccessFlags = D3D11_CPU_ACCESS_WRITE
@@ -1103,7 +1103,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     entry.lastTime := timeSec
     gShader_FrameCount += 1
 
-    ; Map cbuffer → write all 128 bytes → Unmap
+    ; Map cbuffer → write all 144 bytes → Unmap
     ; D3D11_MAPPED_SUBRESOURCE (16 bytes on x64): pData(0), RowPitch(8), DepthPitch(12)
     mapped := Buffer(16, 0)
     ; Map (vtable 14): resource, subresource, mapType=WRITE_DISCARD(4), mapFlags, mappedResource
@@ -1151,6 +1151,9 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         NumPut("uint",  entry.HasOwnProp("gridH") ? entry.gridH : 0,   pData, 116) ; gridH
         NumPut("uint",  entry.HasOwnProp("effectiveParticles") ? entry.effectiveParticles : 0, pData, 120) ; maxParticles
         NumPut("float", Float(entry.HasOwnProp("reactivity") ? entry.reactivity : 1.0), pData, 124) ; reactivity
+        ; --- Selection effect tuning (offset 128) ---
+        NumPut("float", Float(entry.HasOwnProp("selGlow") ? entry.selGlow : 1.0), pData, 128) ; selGlow
+        NumPut("float", Float(entry.HasOwnProp("selIntensity") ? entry.selIntensity : 1.0), pData, 132) ; selIntensity
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)

@@ -256,13 +256,19 @@ Colors for selection and hover rows. Used directly when selection shader is off.
 
 ### Selection Shader
 
-Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect. When disabled, selection uses the flat colors above.
+Animated shader-based selection highlight. When enabled, replaces the flat color fill with a shader effect fed SelARGB, SelBorderARGB, SelBorderWidthPx, and HoverARGB from Selection Colors above. When disabled, selection uses the flat colors directly.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
 | `UseSelectionEffect` | bool | `true` | - | Enable the shader-based selection effect. When disabled, uses simple D2D fill with SelARGB/SelBorderARGB colors. |
 | `SelectionEffect` | string | `selection_auroraSel` | - | Shader-based selection effect. |
 | `SelectionCycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through selection effects while overlay is visible. |
+| `SelectionOpacity` | float | `1.00` | `0.00` - `1.00` | Selection shader opacity (0.0 = invisible, 1.0 = full). |
+| `SelectionDarkness` | float | `0.00` | `0.00` - `1.00` | Crush selection effect toward black without affecting transparency. |
+| `SelectionDesaturation` | float | `0.00` | `0.00` - `1.00` | Desaturate the selection effect toward grayscale. |
+| `SelectionSpeed` | float | `1.00` | `0.10` - `10.00` | Animation speed multiplier for selection shaders. |
+| `SelectionGlow` | float | `1.00` | `0.00` - `3.00` | Outer glow radius multiplier. Scales how far the effect bleeds beyond the selection border. |
+| `SelectionIntensity` | float | `1.00` | `0.00` - `2.00` | Effect blend strength. Scales how much the shader effect overrides the base fill color. |
 
 ### Shadows
 
@@ -769,4 +775,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-06 with 327 total settings.*
+*Generated on 2026-03-06 with 333 total settings.*
