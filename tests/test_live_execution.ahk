@@ -187,8 +187,11 @@ RunLiveTests_Execution() {
                 TestErrors++
             }
 
-            ; Kill the test process
+            ; Kill the test process and wait for death
             try ProcessClose(recreatePid)
+            closeDeadline := A_TickCount + 2000
+            while (ProcessExist(recreatePid) && (A_TickCount < closeDeadline))
+                Sleep(20)
         } else {
             Log("FAIL: Could not launch compiled exe for recreation test")
             TestErrors++
