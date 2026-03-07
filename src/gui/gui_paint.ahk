@@ -536,7 +536,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
                     cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 0.0, entranceT)
-                FX_DrawSelectionEffect(wPhys, hPhys)
+                FX_DrawSelectionEffect(wPhys, hPhys, selX, selY, selW, selH, Rad)
             } else {
                 ; Simple D2D fill + border (the "None" path)
                 D2D_FillRoundRect(selX, selY, selW, selH, Rad, D2D_GetCachedBrush(cfg.GUI_SelARGB))
@@ -564,7 +564,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                     hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
                         cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, hoverEntranceT)
-                    FX_DrawSelectionEffect(wPhys, hPhys)
+                    FX_DrawSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (gFX_GPUReady) {
                     FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
                 } else if ((cfg.GUI_HoverARGB >> 24) > 0) {

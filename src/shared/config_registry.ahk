@@ -491,6 +491,15 @@ global gConfigRegistry := [
     {s: "GUI", k: "SelectionCycleHotkey", g: "GUI_SelectionCycleHotkey", t: "string", default: "",
      d: "Optional hotkey to cycle through selection effects while overlay is visible."},
 
+    {s: "GUI", k: "UseBGShaderAsSelection", g: "GUI_UseBGShaderAsSelection", t: "bool", default: false,
+     d: "Use any background shader as the selection effect instead. Applies Opacity, Darkness, Desaturation, and Speed settings below. Selection-specific Glow and Intensity are ignored."},
+    {s: "GUI", k: "BGShaderAsSelection", g: "GUI_BGShaderAsSelection", t: "string", default: "domainWarpingTest",
+     dynamicOptions: "SHADER_KEYS",
+     d: "Background shader to use as the selection effect."},
+    {s: "GUI", k: "BGShaderAsSelectionSize", g: "GUI_BGShaderAsSelectionSize", t: "string", default: "Clip",
+     options: ["Clip", "Resize"],
+     d: "Clip shows a window into the full-size shader. Resize fits the entire shader into the selection rect."},
+
     {s: "GUI", k: "SelectionOpacity", g: "GUI_SelectionOpacity", t: "float", default: 1.0,
      min: 0.0, max: 1.0,
      d: "Selection shader opacity (0.0 = invisible, 1.0 = full)."},

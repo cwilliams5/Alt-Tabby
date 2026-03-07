@@ -19,9 +19,9 @@ global gFX_HDRActive := false  ; True when HDR gamma compensation is active
 global gFX_ShaderLayers := []        ; Array of {key, name, opacity, darkness, desat, speed} per configured layer
 global gFX_ShaderTime := Map()       ; layerIndex → {offset, carry, accumulate} — per-layer time state
 global gFX_MouseEffect      ; Mouse effect state: {key, name, opacity}
-global gFX_SelectionEffect  ; Selection effect state: {key, name, opacity, darkness, desat, speed}
+global gFX_SelectionEffect  ; Selection effect state: {key, name, opacity, darkness, desat, speed, isBGShader}
 gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
-gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
+gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
 global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
 global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
 global gFX_MouseInWindow := false    ; Mouse is inside overlay window
@@ -173,7 +173,7 @@ FX_GPU_Dispose() {
     gFX_ShaderTime := Map()
     gFX_ShaderLayers := []
     gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
-    gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
+    gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
     Shader_Cleanup()
 }
 
@@ -476,8 +476,15 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     bdrG := (((borderARGB >> 8) & 0xFF) / 255.0) * bdrA
     bdrB := ((borderARGB & 0xFF) / 255.0) * bdrA
 
+    ; BG-as-selection Resize mode: render at selection rect size so the shader fills the rect
+    renderW := w, renderH := h
+    if (gFX_SelectionEffect.isBGShader && cfg.GUI_BGShaderAsSelectionSize = "Resize") {
+        renderW := Max(Round(selW), 1)
+        renderH := Max(Round(selH), 1)
+    }
+
     try {
-        Shader_PreRender(gFX_SelectionEffect.key, w, h, baseTime,
+        Shader_PreRender(gFX_SelectionEffect.key, renderW, renderH, baseTime,
             gFX_SelectionEffect.darkness, gFX_SelectionEffect.desat, gFX_SelectionEffect.opacity,
             0, 0, 0.0, 0.0, 0.0,
             selX, selY, selW, selH,
@@ -495,15 +502,44 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 }
 
 ; Draw the selection effect inside D2D BeginDraw.
-FX_DrawSelectionEffect(wPhys, hPhys) { ; lint-ignore: dead-param
-    global gD2D_RT, gFX_SelectionEffect, gShader_Ready ; lint-ignore: phantom-global
+; selX/selY/selW/selH/rad are only needed for BG-as-selection (clipping + border).
+FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0, rad := 0) { ; lint-ignore: dead-param
+    global gD2D_RT, gFX_SelectionEffect, gShader_Ready, cfg ; lint-ignore: phantom-global
 
     if (gFX_SelectionEffect.key = "" || !gShader_Ready)
         return
 
     pBitmap := Shader_GetBitmap(gFX_SelectionEffect.key)
-    if (pBitmap)
+    if (!pBitmap)
+        return
+
+    if (gFX_SelectionEffect.isBGShader) {
+        static srcRect := Buffer(16), tgtPt := Buffer(8), dstRect := Buffer(16)
+        if (cfg.GUI_BGShaderAsSelectionSize = "Resize") {
+            ; Resize mode: shader rendered at selW×selH — draw full texture into selection rect
+            ; DrawBitmap(bitmap, destRect, opacity, interpMode, srcRect)
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), dstRect)
+            NumPut("float", 0.0, "float", 0.0,
+                   "float", Float(selW), "float", Float(selH), srcRect)
+            gD2D_RT.DrawBitmap({ptr: pBitmap}, dstRect, 1.0, 1, srcRect)
+        } else {
+            ; Clip mode: shader rendered at full size — crop to selection rect
+            NumPut("float", Float(selX), "float", Float(selY),
+                   "float", Float(selX + selW), "float", Float(selY + selH), srcRect)
+            NumPut("float", Float(selX), "float", Float(selY), tgtPt)
+            gD2D_RT.DrawImage(pBitmap, tgtPt, srcRect)
+        }
+        ; Draw border on top (BG shaders don't have built-in border)
+        bw := cfg.GUI_SelBorderWidthPx
+        if (bw > 0) {
+            half := bw / 2
+            D2D_StrokeRoundRect(selX + half, selY + half, selW - bw, selH - bw, rad,
+                D2D_GetCachedBrush(cfg.GUI_SelBorderARGB), bw)
+        }
+    } else {
         gD2D_RT.DrawImage(pBitmap)
+    }
 }
 
 ; ========================= SHADER CONFIG RESOLUTION =========================
@@ -654,31 +690,56 @@ _FX_ResolveConfiguredShaders() {
         gFX_MouseEffect := {key: "", name: "", opacity: 0.0, darkness: 0.0, desat: 0.0, speed: 1.0, reactivity: 1.0}
     }
 
-    ; Resolve selection effect
-    selKey := cfg.GUI_UseSelectionEffect ? cfg.GUI_SelectionEffect : ""
-    if (selKey != "" && selKey != "None") {
+    ; Resolve selection effect — BG-as-selection overrides dedicated selection shaders
+    _emptySelEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    if (!cfg.GUI_UseSelectionEffect) {
+        gFX_SelectionEffect := _emptySelEffect
+    } else if (cfg.GUI_UseBGShaderAsSelection) {
+        bgKey := cfg.GUI_BGShaderAsSelection
         found := false
-        for _, k in SELECTION_SHADER_KEYS {
-            if (k = selKey) {
+        for _, k in SHADER_KEYS {
+            if (k = bgKey) {
                 found := true
                 break
             }
         }
         if (found) {
-            gFX_SelectionEffect := {key: selKey, name: selKey,
+            gFX_SelectionEffect := {key: bgKey, name: bgKey,
                 opacity: cfg.GUI_SelectionOpacity,
                 darkness: cfg.GUI_SelectionDarkness,
                 desat: cfg.GUI_SelectionDesaturation,
-                speed: cfg.GUI_SelectionSpeed}
-            if (gShader_Registry.Has(selKey)) {
-                gShader_Registry[selKey].selGlow := cfg.GUI_SelectionGlow
-                gShader_Registry[selKey].selIntensity := cfg.GUI_SelectionIntensity
-            }
+                speed: cfg.GUI_SelectionSpeed,
+                isBGShader: true}
         } else {
-            gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
+            gFX_SelectionEffect := _emptySelEffect
         }
     } else {
-        gFX_SelectionEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0}
+        selKey := cfg.GUI_SelectionEffect
+        if (selKey != "" && selKey != "None") {
+            found := false
+            for _, k in SELECTION_SHADER_KEYS {
+                if (k = selKey) {
+                    found := true
+                    break
+                }
+            }
+            if (found) {
+                gFX_SelectionEffect := {key: selKey, name: selKey,
+                    opacity: cfg.GUI_SelectionOpacity,
+                    darkness: cfg.GUI_SelectionDarkness,
+                    desat: cfg.GUI_SelectionDesaturation,
+                    speed: cfg.GUI_SelectionSpeed,
+                    isBGShader: false}
+                if (gShader_Registry.Has(selKey)) {
+                    gShader_Registry[selKey].selGlow := cfg.GUI_SelectionGlow
+                    gShader_Registry[selKey].selIntensity := cfg.GUI_SelectionIntensity
+                }
+            } else {
+                gFX_SelectionEffect := _emptySelEffect
+            }
+        } else {
+            gFX_SelectionEffect := _emptySelEffect
+        }
     }
 }
 
@@ -865,37 +926,45 @@ FX_CycleMouseEffect() {
 }
 
 ; Cycle the selection effect.
+; When UseBGShaderAsSelection is active, cycles through BG shaders instead.
 FX_CycleSelectionEffect() {
     global gFX_SelectionEffect, gFX_GPUReady, gShader_Ready ; lint-ignore: phantom-global
     global SELECTION_SHADER_NAMES, SELECTION_SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
+    global SHADER_NAMES, SHADER_KEYS, cfg ; lint-ignore: phantom-global
 
     if (!gFX_GPUReady || !gShader_Ready)
         return
 
+    useBG := cfg.GUI_UseBGShaderAsSelection
+    names := useBG ? SHADER_NAMES : SELECTION_SHADER_NAMES
+    keys := useBG ? SHADER_KEYS : SELECTION_SHADER_KEYS
+
     currentIdx := 0
-    Loop SELECTION_SHADER_KEYS.Length {
-        if (SELECTION_SHADER_KEYS[A_Index] = gFX_SelectionEffect.key) {
+    Loop keys.Length {
+        if (keys[A_Index] = gFX_SelectionEffect.key) {
             currentIdx := A_Index - 1
             break
         }
     }
 
     ; Cycle forward — register on-demand
-    total := SELECTION_SHADER_NAMES.Length
+    total := names.Length
     currentIdx := Mod(currentIdx + 1, total)
 
     if (currentIdx = 0) {
         gFX_SelectionEffect := {key: "", name: "",
             opacity: cfg.GUI_SelectionOpacity, darkness: cfg.GUI_SelectionDarkness,
-            desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed}
+            desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed,
+            isBGShader: false}
     } else {
-        newKey := SELECTION_SHADER_KEYS[currentIdx + 1]
+        newKey := keys[currentIdx + 1]
         if (!gShader_Registry.Has(newKey))
             Shader_RegisterByKey(newKey)
-        gFX_SelectionEffect := {key: newKey, name: SELECTION_SHADER_NAMES[currentIdx + 1],
+        gFX_SelectionEffect := {key: newKey, name: names[currentIdx + 1],
             opacity: cfg.GUI_SelectionOpacity, darkness: cfg.GUI_SelectionDarkness,
-            desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed}
-        if (gShader_Registry.Has(newKey)) {
+            desat: cfg.GUI_SelectionDesaturation, speed: cfg.GUI_SelectionSpeed,
+            isBGShader: useBG}
+        if (!useBG && gShader_Registry.Has(newKey)) {
             gShader_Registry[newKey].selGlow := cfg.GUI_SelectionGlow
             gShader_Registry[newKey].selIntensity := cfg.GUI_SelectionIntensity
         }
@@ -905,7 +974,7 @@ FX_CycleSelectionEffect() {
 
     _FX_ReleaseInactiveShaders()
 
-    ToolTip("Selection: " (currentIdx = 0 ? "None" : SELECTION_SHADER_NAMES[currentIdx + 1]))
+    ToolTip("Selection: " (currentIdx = 0 ? "None" : names[currentIdx + 1]))
     SetTimer(() => ToolTip(), -2000)
     GUI_Repaint()
 }

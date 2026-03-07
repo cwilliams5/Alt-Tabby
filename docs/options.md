@@ -263,6 +263,9 @@ Animated shader-based selection highlight. When enabled, replaces the flat color
 | `UseSelectionEffect` | bool | `true` | - | Enable the shader-based selection effect. When disabled, uses simple D2D fill with SelARGB/SelBorderARGB colors. |
 | `SelectionEffect` | string | `selection_auroraSel` | - | Shader-based selection effect. |
 | `SelectionCycleHotkey` | string | `(empty)` | - | Optional hotkey to cycle through selection effects while overlay is visible. |
+| `UseBGShaderAsSelection` | bool | `false` | - | Use any background shader as the selection effect instead. Applies Opacity, Darkness, Desaturation, and Speed settings below. Selection-specific Glow and Intensity are ignored. |
+| `BGShaderAsSelection` | string | `domainWarpingTest` | - | Background shader to use as the selection effect. |
+| `BGShaderAsSelectionSize` | string | `Clip` | - | Clip shows a window into the full-size shader. Resize fits the entire shader into the selection rect. |
 | `SelectionOpacity` | float | `1.00` | `0.00` - `1.00` | Selection shader opacity (0.0 = invisible, 1.0 = full). |
 | `SelectionDarkness` | float | `0.00` | `0.00` - `1.00` | Crush selection effect toward black without affecting transparency. |
 | `SelectionDesaturation` | float | `0.00` | `0.00` - `1.00` | Desaturate the selection effect toward grayscale. |
@@ -775,4 +778,4 @@ Dev tooling for capturing overlay screenshots and video recordings. Zero overhea
 
 ---
 
-*Generated on 2026-03-06 with 333 total settings.*
+*Generated on 2026-03-06 with 336 total settings.*
