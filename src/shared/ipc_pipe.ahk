@@ -534,7 +534,7 @@ _IPC_ParseLines(stateObj, onMessageFn, hPipe := 0) {
 
 _IPC_PeekAvailable(hPipe) {
     bytesAvail := 0
-    ok := DllCall("PeekNamedPipe", "ptr", hPipe, "ptr", 0, "uint", 0, "uint*", 0, "uint*", &bytesAvail, "uint*", 0)
+    ok := DllCall("PeekNamedPipe", "ptr", hPipe, "ptr", 0, "uint", 0, "uint*", 0, "uint*", &bytesAvail, "uint*", 0, "int")
     if (!ok)
         return -1
     return bytesAvail

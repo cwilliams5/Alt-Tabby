@@ -587,7 +587,8 @@ _Splash_LoadWebPFrames(webpPath) {
             , "int", stride
             , "int", 0x26200A  ; PixelFormat32bppPARGB
             , "ptr", pixelBuf.Ptr
-            , "ptr*", &pBitmap)
+            , "ptr*", &pBitmap
+            , "int")
 
         if (hr = 0 && pBitmap) {
             g_SplashFrameBuffers.Push(pixelBuf)
@@ -725,7 +726,8 @@ _Splash_DecodeNextFrame() {
         , "int", stride
         , "int", 0x26200A  ; PixelFormat32bppPARGB
         , "ptr", pixelBuf.Ptr
-        , "ptr*", &pBitmap)
+        , "ptr*", &pBitmap
+        , "int")
 
     if (hr != 0 || !pBitmap)
         return false

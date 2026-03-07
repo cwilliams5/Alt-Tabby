@@ -1000,12 +1000,12 @@ _Theme_RegisterOwnerDrawButton(ctrl) {
     btnText := ctrl.Text
 
     ; Check if this is a default button (BS_DEFPUSHBUTTON = 0x01)
-    style := DllCall("GetWindowLong", "Ptr", ctrl.Hwnd, "Int", -16, "Int")
+    style := DllCall("user32\GetWindowLongPtrW", "Ptr", ctrl.Hwnd, "Int", -16, "Ptr")
     isDefault := (style & 0x0F) = 0x01
 
     ; Convert to BS_OWNERDRAW (0x0B) — clears low nibble, sets owner-draw
     style := (style & ~0xF) | 0xB
-    DllCall("SetWindowLong", "Ptr", ctrl.Hwnd, "Int", -16, "Int", style)
+    DllCall("user32\SetWindowLongPtrW", "Ptr", ctrl.Hwnd, "Int", -16, "Ptr", style, "Ptr")
 
     ; Register in tracking map
     gTheme_ButtonMap[ctrl.Hwnd] := {

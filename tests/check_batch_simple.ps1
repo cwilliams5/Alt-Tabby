@@ -432,6 +432,11 @@ $DC_TYPE_SET = @{}
 
 $DC_HANDLE_VAR_EXCLUDE = @{ 'hResult' = $true; 'hRes' = $true; 'hPhys' = $true }
 
+$WIN64_API_MAP = @{
+    'GetWindowLong' = 'GetWindowLongPtrW'
+    'SetWindowLong' = 'SetWindowLongPtrW'
+}
+
 function BS_FindDllCallEnd {
     param([string]$text, [int]$openParenIdx)
     $depth = 0; $inStr = $false
@@ -565,6 +570,23 @@ foreach ($file in $allFiles) {
                 Detail = "$varName looks like a handle - use `"Ptr`" not `"$wrongType`""
             }
         }
+
+        # Rule 3: 64-bit API names (e.g. GetWindowLong -> GetWindowLongPtrW)
+        if ($WIN64_API_MAP.ContainsKey($baseName) -and $joinedLine -notmatch 'A_PtrSize') {
+            $replacement = $WIN64_API_MAP[$baseName]
+            $detail = "${baseName}() is 32-bit - use `"$replacement`" on x64"
+            $dcIssues += [PSCustomObject]@{
+                File = $relPath; Line = $startLineNum; Rule = 'win64-api'; Detail = $detail
+            }
+        }
+
+        # Rule 3b: Result captured without explicit return type (default "Int" truncates unsigned/pointer)
+        if (-not $explicitReturn -and $joinedLine -match '\w+\s*:=\s*DllCall') {
+            $detail = "${baseName}() result captured with default `"Int`" return - specify explicit type"
+            $dcIssues += [PSCustomObject]@{
+                File = $relPath; Line = $startLineNum; Rule = 'missing-return-type'; Detail = $detail
+            }
+        }
     }
 }
 
@@ -572,7 +594,7 @@ if ($dcIssues.Count -gt 0) {
     $anyFailed = $true
     [void]$failOutput.AppendLine("")
     [void]$failOutput.AppendLine("  FAIL: $($dcIssues.Count) DllCall type issue(s) found.")
-    [void]$failOutput.AppendLine("  On 64-bit, handles are pointer-sized. Use `"Ptr`" not `"Int`"/`"UInt`".")
+    [void]$failOutput.AppendLine("  DllCall type safety: handle types, 64-bit API names, return type declarations.")
     [void]$failOutput.AppendLine("  Suppress with: ; lint-ignore: dllcall-types")
     $grouped = $dcIssues | Group-Object File
     foreach ($group in $grouped | Sort-Object Name) {
