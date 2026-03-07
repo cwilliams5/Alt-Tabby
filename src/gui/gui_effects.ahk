@@ -538,9 +538,10 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
 
     if (gFX_SelectionEffect.isBGShader) {
         static srcRect := Buffer(16), tgtPt := Buffer(8), dstRect := Buffer(16)
+        ; Clip shader output to RowRadius rounded rect
+        clipped := D2D_PushRoundRectClipLayer(selX, selY, selW, selH, rad)
         if (cfg.GUI_BGShaderAsSelectionSize = "Resize") {
             ; Resize mode: shader rendered at selW×selH — draw full texture into selection rect
-            ; DrawBitmap(bitmap, destRect, opacity, interpMode, srcRect)
             NumPut("float", Float(selX), "float", Float(selY),
                    "float", Float(selX + selW), "float", Float(selY + selH), dstRect)
             NumPut("float", 0.0, "float", 0.0,
@@ -553,7 +554,9 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
             NumPut("float", Float(selX), "float", Float(selY), tgtPt)
             gD2D_RT.DrawImage(pBitmap, tgtPt, srcRect)
         }
-        ; Draw border on top (BG shaders don't have built-in border)
+        if (clipped)
+            D2D_PopClipLayer()
+        ; Draw border on top (outside clip layer so it's not masked)
         bw := cfg.GUI_SelBorderWidthPx
         if (bw > 0) {
             half := bw / 2
@@ -1135,6 +1138,8 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
 
     if (gFX_HoverEffect.isBGShader) {
         static hov_srcRect := Buffer(16), hov_tgtPt := Buffer(8), hov_dstRect := Buffer(16)
+        ; Clip shader output to RowRadius rounded rect
+        clipped := D2D_PushRoundRectClipLayer(selX, selY, selW, selH, rad)
         if (cfg.GUI_HoverBGShaderAsSelectionSize = "Resize") {
             NumPut("float", Float(selX), "float", Float(selY),
                    "float", Float(selX + selW), "float", Float(selY + selH), hov_dstRect)
@@ -1147,7 +1152,9 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
             NumPut("float", Float(selX), "float", Float(selY), hov_tgtPt)
             gD2D_RT.DrawImage(pBitmap, hov_tgtPt, hov_srcRect)
         }
-        ; Draw border on top
+        if (clipped)
+            D2D_PopClipLayer()
+        ; Draw border on top (outside clip layer so it's not masked)
         bw := cfg.GUI_HovBorderWidthPx
         if (bw > 0) {
             half := bw / 2

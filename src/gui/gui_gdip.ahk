@@ -60,6 +60,60 @@ D2D_StrokeRoundRect(x, y, w, h, r, brush, strokeWidth) {
     gD2D_RT.DrawRoundedRectangle(rrBuf, brush, strokeWidth, 0)
 }
 
+; Push a D2D layer clipped to a rounded rectangle. Returns true if pushed.
+; Must be paired with D2D_PopClipLayer() when true.
+D2D_PushRoundRectClipLayer(x, y, w, h, r) {
+    global gD2D_RT, gD2D_Factory
+    if (!gD2D_RT || !gD2D_Factory || r <= 0)
+        return false
+    ; D2D1_ROUNDED_RECT (24 bytes)
+    static rrBuf := Buffer(24)
+    NumPut("float", Float(x), "float", Float(y),
+           "float", Float(x + w), "float", Float(y + h),
+           "float", Float(r), "float", Float(r), rrBuf)
+    ; Release previous geometry, create new one
+    ; ID2D1Factory::CreateRoundedRectangleGeometry (vtable 6)
+    static _geomPtr := 0
+    if (_geomPtr) {
+        ObjRelease(_geomPtr)
+        _geomPtr := 0
+    }
+    pGeom := 0
+    try {
+        ComCall(6, gD2D_Factory, "ptr", rrBuf, "ptr*", &pGeom, "hresult")
+    } catch {
+        return false
+    }
+    _geomPtr := pGeom
+    ; D2D1_LAYER_PARAMETERS (72 bytes on x64): initialize constants once
+    static lp := 0
+    if (!lp) {
+        lp := Buffer(72, 0)
+        ; contentBounds = infinite rect
+        NumPut("float", -3.402823466e+38, "float", -3.402823466e+38,
+               "float",  3.402823466e+38, "float",  3.402823466e+38, lp, 0)
+        ; maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE (0) — already zero
+        ; maskTransform = identity
+        NumPut("float", 1.0, "float", 0.0,
+               "float", 0.0, "float", 1.0,
+               "float", 0.0, "float", 0.0, lp, 28)
+        ; opacity = 1.0
+        NumPut("float", 1.0, lp, 52)
+        ; opacityBrush = NULL, layerOptions = NONE — already zero
+    }
+    ; Update geometry pointer (only field that changes per call)
+    NumPut("ptr", pGeom, lp, 16)
+    gD2D_RT.PushLayer(lp, 0)
+    return true
+}
+
+; Pop the clip layer pushed by D2D_PushRoundRectClipLayer.
+D2D_PopClipLayer() {
+    global gD2D_RT
+    if (gD2D_RT)
+        gD2D_RT.PopLayer()
+}
+
 ; Draw text with left/near alignment (most common case).
 D2D_DrawTextLeft(text, x, y, w, h, brush, tf) {
     global gD2D_RT, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR
