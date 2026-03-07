@@ -93,7 +93,7 @@ _GUI_MoveSelection(delta) {
 ; NOTE: No Critical "Off" here — callers may hold Critical (e.g., interceptor's TAB_STEP).
 ; AHK v2 Critical is thread-level, so "Off" here would leak and break the caller's protection.
 GUI_RecalcHover() {
-    global gGUI_OverlayH, gGUI_HoverRow, gGUI_HoverBtn
+    global gGUI_OverlayH, gGUI_HoverRow, gGUI_HoverBtn, gGUI_ScrollTop
 
     if (!gGUI_OverlayH) {
         return false
@@ -109,6 +109,15 @@ GUI_RecalcHover() {
 
     x := NumGet(pt, 0, "Int")
     y := NumGet(pt, 4, "Int")
+
+    ; PERF: Skip recalc when mouse hasn't moved AND scroll hasn't changed.
+    ; Tab press changes gGUI_ScrollTop, which changes row-under-cursor.
+    static lastX := -99999, lastY := -99999, lastScroll := -1
+    if (x = lastX && y = lastY && gGUI_ScrollTop = lastScroll)
+        return false
+    lastX := x
+    lastY := y
+    lastScroll := gGUI_ScrollTop
 
     ; Check if mouse is inside the GUI window bounds
     ; If outside, clear hover state

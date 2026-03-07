@@ -37,6 +37,9 @@ global _WEH_PendingFocusHwnd := 0         ; Set by callback, processed by batch
 ; Z-order tracking: only events that change Z-order should trigger full winenum scan
 ; NAMECHANGE and LOCATIONCHANGE fire frequently but don't affect Z — skip them
 global _WEH_PendingZNeeded := Map()       ; hwnd -> true if Z-affecting event received
+; PERF: Track LOCATIONCHANGE separately — only these events can change monitor placement.
+; Skip monitor probe (Win_GetMonitorHandle + Win_GetMonitorLabel) for NAMECHANGE-only updates.
+global _WEH_PendingLocChange := Map()     ; hwnd -> true if LOCATIONCHANGE received
 global _WEH_MruFallbackActive := false   ; True when MRU_Lite is running as WEH backoff fallback
 
 ; Fast-path one-shot wrapper: calls ProcessBatch without killing the periodic timer.
@@ -194,7 +197,7 @@ WinEventHook_IsRunning() {
 ;   0x800B = EVENT_OBJECT_LOCATIONCHANGE
 ;   0x800C = EVENT_OBJECT_NAMECHANGE
 _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) { ; lint-ignore: dead-param
-    global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd, _WEH_PendingZNeeded
+    global _WEH_PendingHwnds, _WEH_ShellWindow, _WEH_PendingFocusHwnd, _WEH_PendingZNeeded, _WEH_PendingLocChange
     global cfg, gWS_Store
 
     try {  ; Error boundary: DllCall callback — unhandled throw = undefined Win32 behavior
@@ -295,6 +298,10 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
         _WEH_PendingZNeeded[hwnd] := true
     }
 
+    ; Flag LOCATIONCHANGE — only these can change monitor placement
+    if (event = 0x800B)
+        _WEH_PendingLocChange[hwnd] := true
+
     Profiler.Leave() ; @profile
     Critical "Off"
 
@@ -319,7 +326,7 @@ _WEH_WinEventProc(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, 
 
 ; Process queued events in batches
 _WEH_ProcessBatch() {
-    global _WEH_PendingHwnds, WinEventHook_DebounceMs, _WEH_PendingZNeeded
+    global _WEH_PendingHwnds, WinEventHook_DebounceMs, _WEH_PendingZNeeded, _WEH_PendingLocChange
     global gWEH_LastFocusHwnd, _WEH_PendingFocusHwnd
     global _WEH_IdleTicks, _WEH_IdleThreshold, _WEH_TimerOn, WinEventHook_BatchMs
     global cfg, gWS_Meta, gKSub_MruSuppressUntilTick, gWS_Store, gWS_OnStoreChanged
@@ -457,15 +464,16 @@ _WEH_ProcessBatch() {
             superseded := (_WEH_PendingFocusHwnd != 0 && _WEH_PendingFocusHwnd != pendingProbeHwnd)
             Critical "Off"
             if (!superseded) {
-                WL_UpsertWindow([probe], "winevent_focus_add")
+                ; PERF: Batch new window + old focus clear into single UpsertWindow call
+                ; (single rev bump instead of two separate bumps)
+                records := [probe]
+                if (pendingPrevFocus && pendingPrevFocus != pendingProbeHwnd)
+                    records.Push(Map("hwnd", pendingPrevFocus, "isFocused", false))
+                WL_UpsertWindow(records, "winevent_focus_add")
                 if (logEnabled)
                     _WEH_DiagLog("  ADDED TO STORE: '" SubStr(probeTitle, 1, 30) "' with MRU tick")
 
-                ; Clear focus on previous window
                 Critical "On"
-                if (pendingPrevFocus && pendingPrevFocus != pendingProbeHwnd) {
-                    WL_UpdateFields(pendingPrevFocus, { isFocused: false }, "winevent_mru")
-                }
                 gWEH_LastFocusHwnd := pendingProbeHwnd
                 Critical "Off"
                 focusProcessed := true
@@ -532,13 +540,16 @@ _WEH_ProcessBatch() {
         idx++
     }
 
-    ; RACE FIX: Snapshot Z flags before cleanup (needed for conditional enqueue below)
+    ; RACE FIX: Snapshot Z + location flags before cleanup (needed for conditional logic below)
     ; Then remove processed items atomically
     Critical "On"
     zSnapshot := Map()
+    locSnapshot := Map()
     for _, hwnd in toProcess {
         if (_WEH_PendingZNeeded.Has(hwnd))
             zSnapshot[hwnd] := true
+        if (_WEH_PendingLocChange.Has(hwnd))
+            locSnapshot[hwnd] := true
     }
     for _, arr in [destroyed, hidden, toProcess] {
         for _, h in arr {
@@ -546,6 +557,8 @@ _WEH_ProcessBatch() {
                 _WEH_PendingHwnds.Delete(h)
             if (_WEH_PendingZNeeded.Has(h))
                 _WEH_PendingZNeeded.Delete(h)
+            if (_WEH_PendingLocChange.Has(h))
+                _WEH_PendingLocChange.Delete(h)
         }
     }
     Critical "Off"
@@ -595,7 +608,7 @@ _WEH_ProcessBatch() {
         for _, hwnd in toProcess {
             if (gWS_Store.Has(hwnd + 0)) {
                 ; Lightweight path: window already in store — skip immutable fields
-                result := _WEH_UpdateExisting(hwnd)
+                result := _WEH_UpdateExisting(hwnd, locSnapshot.Has(hwnd))
                 if (result = -1)
                     ineligibleHwnds.Push(hwnd)
                 else if (IsObject(result)) {
@@ -713,7 +726,7 @@ _WEH_ProbeWindow(hwnd) {
 ; Skips immutable fields (class, PID) - only fetches title + vis/min/cloak.
 ; Returns: Object patch (success), -1 (ineligible/destroyed), false (skipped/error)
 ; Caller batches patches and calls WL_BatchUpdateFields once for the whole batch.
-_WEH_UpdateExisting(hwnd) {
+_WEH_UpdateExisting(hwnd, hasLocationChange := true) {
     Profiler.Enter("_WEH_UpdateExisting") ; @profile
     global gWS_Store
     ; Check window still exists
@@ -755,12 +768,17 @@ _WEH_UpdateExisting(hwnd) {
         return -1
     }
 
-    ; Stamp monitor identity (detects cross-monitor moves via LOCATIONCHANGE)
-    hMon := Win_GetMonitorHandle(hwnd)
+    ; PERF: Only probe monitor on LOCATIONCHANGE — NAMECHANGE can't move a window.
+    ; Saves ~50-100μs per NAMECHANGE-only update (Win_GetMonitorHandle + Win_GetMonitorLabel).
+    patch := { title: title, isCloaked: isCloaked, isMinimized: isMin, isVisible: isVisible }
+    if (hasLocationChange) {
+        hMon := Win_GetMonitorHandle(hwnd)
+        patch.monitorHandle := hMon
+        patch.monitorLabel := Win_GetMonitorLabel(hMon)
+    }
 
     ; Return patch Object — caller collects into batch
     Profiler.Leave() ; @profile
-    return { title: title, isCloaked: isCloaked, isMinimized: isMin, isVisible: isVisible,
-             monitorHandle: hMon, monitorLabel: Win_GetMonitorLabel(hMon) }
+    return patch
 }
 

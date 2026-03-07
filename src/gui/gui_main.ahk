@@ -282,13 +282,17 @@ _GUI_OnProducerRevChanged(isStructural := true) {
                 GUI_PatchCosmeticUpdates()
         }
 
-        ; Check bypass mode on every focus change regardless of state.
+        ; Check bypass mode on foreground hwnd change regardless of state.
         ; Previously gated to ACTIVE-only, which caused a deadlock: bypass
         ; disabled Tab hooks, and only ACTIVE state (requires Tab) could clear it.
+        ; PERF: Cache result per hwnd — avoids cross-process WinGetProcessName + WinGetPos
+        ; on every producer callback (was 0.5-2ms × 5-20×/sec).
+        static lastBypassHwnd := 0, lastBypassResult := false
         fgHwnd := DllCall("GetForegroundWindow", "Ptr")
-        if (fgHwnd) {
-            shouldBypass := INT_ShouldBypassWindow(fgHwnd)
-            INT_SetBypassMode(shouldBypass)
+        if (fgHwnd && fgHwnd != lastBypassHwnd) {
+            lastBypassHwnd := fgHwnd
+            lastBypassResult := INT_ShouldBypassWindow(fgHwnd)
+            INT_SetBypassMode(lastBypassResult)
         }
 
         ; Re-assert Tab hotkey is enabled when bypass is off.
@@ -380,6 +384,13 @@ _GUI_StartValidateExistence() {
 
 _GUI_ValidateExistenceTick() {
     Profiler.Enter("_GUI_ValidateExistenceTick") ; @profile
+    global gGUI_State
+    ; PERF: Skip during overlay session — per-window DllCalls cost 1-3ms for 30 windows.
+    ; Display list is frozen during ACTIVE anyway; validation can wait.
+    if (gGUI_State = "ACTIVE" || gGUI_State = "ALT_PENDING") {
+        Profiler.Leave() ; @profile
+        return
+    }
     static _errCount := 0  ; Error boundary: consecutive error tracking
     static _backoffUntil := 0  ; Tick-based cooldown for exponential backoff
     if (A_TickCount < _backoffUntil) {
@@ -405,7 +416,11 @@ _GUI_StartHousekeeping() {
 }
 
 _GUI_Housekeeping() {
-    global cfg, LOG_PATH_STORE
+    global cfg, LOG_PATH_STORE, gGUI_State
+    ; PERF: Skip during overlay session — cache pruning + log rotation + reassert
+    ; cost 5-15ms combined; defer until user finishes Alt-Tab
+    if (gGUI_State = "ACTIVE" || gGUI_State = "ALT_PENDING")
+        return
     try {
     ; Cache pruning
     _GUI_TryHousekeep(KomorebiSub_PruneStaleCache, "KomorebiSub_PruneStaleCache", LOG_PATH_STORE)

@@ -407,7 +407,7 @@ $CHECKS = @(
         File     = "gui\gui_main.ahk"
         Function = "_GUI_OnProducerRevChanged"
         Desc     = "Bypass evaluation runs in all GUI states, not just ACTIVE (issue #91)"
-        Patterns = @("INT_SetBypassMode(shouldBypass)", "INT_ShouldBypassWindow(fgHwnd)")
+        Patterns = @("INT_SetBypassMode(lastBypassResult)", "INT_ShouldBypassWindow(fgHwnd)")
     },
     @{
         Id       = "config_validation_completeness_loader"
