@@ -245,11 +245,6 @@ class IDXGISwapChain1 extends ID2DBase {
     ; vtable index 8
     Present(syncInterval := 0, flags := 0) => ComCall(8, this, 'uint', syncInterval, 'uint', flags, 'hresult')
 
-    ; IDXGISwapChain::ResizeBuffers(bufferCount, width, height, format, flags)
-    ; vtable index 13
-    ResizeBuffers(bufferCount, width, height, format, flags := 0) {
-        return ComCall(13, this, 'uint', bufferCount, 'uint', width, 'uint', height, 'uint', format, 'uint', flags, 'hresult')
-    }
 }
 
 class IDXGISwapChain2 extends ID2DBase {
