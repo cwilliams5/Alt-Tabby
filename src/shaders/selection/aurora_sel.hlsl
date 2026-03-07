@@ -17,7 +17,7 @@ float4 PSMain(PSInput input) : SV_Target {
 
     float2 rectCenter = selRect.xy + selRect.zw * 0.5;
     float2 halfSize = selRect.zw * 0.5;
-    float radius = min(halfSize.x, halfSize.y) * 0.15;
+    float radius = rowRadius > 0.0 ? rowRadius : min(halfSize.x, halfSize.y) * 0.15;
 
     float dist = roundedRectSDF(pixelPos, rectCenter, halfSize, radius);
 

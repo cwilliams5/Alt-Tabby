@@ -535,7 +535,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                 ; Shader-based selection effect
                 entranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                 FX_PreRenderSelectionEffect(wPhys, hPhys, selX, selY, selW, selH,
-                    cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, entranceT)
+                    cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, 1.0, entranceT, Rad)
                 FX_DrawSelectionEffect(wPhys, hPhys, selX, selY, selW, selH, Rad)
             } else {
                 ; Simple D2D fill + border (the "None" path)
@@ -564,13 +564,13 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                     ; Path 1: Independent hover shader
                     hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_HoverARGB, cfg.GUI_HovBorderARGB, cfg.GUI_HovBorderWidthPx, hoverEntranceT)
+                        cfg.GUI_HoverARGB, cfg.GUI_HovBorderARGB, cfg.GUI_HovBorderWidthPx, hoverEntranceT, Rad)
                     FX_DrawHoverEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (!cfg.GUI_UseHoverSelectionEffect && gFX_SelectionEffect.key != "" && gFX_GPUReady) {
                     ; Path 2: Reuse selection shader at SelectionIntensityForHover (only when hover independence is off)
                     hoverEntranceT := Anim_GetValue("fx_sel_entrance", 1.0)
                     FX_PreRenderSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH,
-                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, cfg.GUI_SelectionIntensityForHover, hoverEntranceT)
+                        cfg.GUI_SelARGB, cfg.GUI_SelBorderARGB, cfg.GUI_SelBorderWidthPx, cfg.GUI_SelectionIntensityForHover, hoverEntranceT, Rad)
                     FX_DrawSelectionEffect(wPhys, hPhys, hoverX, hoverY, hoverW, RowH, Rad)
                 } else if (gFX_GPUReady) {
                     ; Path 3: GPU flat fill + border

@@ -1057,7 +1057,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     selX := 0, selY := 0, selW := 0, selH := 0,
     selColorR := 0.0, selColorG := 0.0, selColorB := 0.0, selColorA := 0.0,
     borderR := 0.0, borderG := 0.0, borderB := 0.0, borderA := 0.0,
-    borderWidth := 0.0, isHovered := 0.0, entranceT := 0.0) {
+    borderWidth := 0.0, isHovered := 0.0, entranceT := 0.0, rowRadius := 0.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
     global gShader_FrameCount, gShader_LastTime, gShader_ActiveName
     static dbgRendered := Map()
@@ -1154,6 +1154,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         ; --- Selection effect tuning (offset 128) ---
         NumPut("float", Float(entry.HasOwnProp("selGlow") ? entry.selGlow : 1.0), pData, 128) ; selGlow
         NumPut("float", Float(entry.HasOwnProp("selIntensity") ? entry.selIntensity : 1.0), pData, 132) ; selIntensity
+        NumPut("float", Float(rowRadius), pData, 136) ; rowRadius
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)

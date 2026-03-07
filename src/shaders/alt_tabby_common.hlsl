@@ -39,7 +39,7 @@ cbuffer Constants : register(b0) {
     // --- Selection effect tuning (offsets 128-140, 16-byte aligned) ---
     float selGlow;          // outer glow radius multiplier (1.0 = default)
     float selIntensity;     // effect blend strength (1.0 = default)
-    float _pad0;
+    float rowRadius;        // user's RowRadius in pixels (0 = shader decides)
     float _pad1;
 };
 

@@ -462,7 +462,7 @@ FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
 
 ; Pre-render the selection shader. Called DURING paint (needs selection geometry).
 ; Decomposes ARGB ints to premultiplied float4 RGBA for the shader cbuffer.
-FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, isHovered, entranceT) {
+FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, isHovered, entranceT, rowRadius := 0.0) {
     global gFX_SelectionEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
     global gShader_Registry, cfg ; lint-ignore: phantom-global
 
@@ -513,7 +513,7 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
             selX, selY, selW, selH,
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
-            borderWidth * 1.0, isHovered * 1.0, entranceT * 1.0)
+            borderWidth * 1.0, isHovered * 1.0, entranceT * 1.0, rowRadius * 1.0)
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
@@ -1063,7 +1063,7 @@ FX_CycleSelectionEffect() {
 
 ; Pre-render the hover shader. Mirrors FX_PreRenderSelectionEffect but uses hover config.
 ; Sets selGlow/selIntensity on the registry entry right before render to avoid shared-entry conflict.
-FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, entranceT) {
+FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, entranceT, rowRadius := 0.0) {
     global gFX_HoverEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
     global gShader_Registry, cfg ; lint-ignore: phantom-global
 
@@ -1114,7 +1114,7 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
             selX, selY, selW, selH,
             selR, selG, selB, selA,
             bdrR, bdrG, bdrB, bdrA,
-            borderWidth * 1.0, hovIntensity * 1.0, entranceT * 1.0)
+            borderWidth * 1.0, hovIntensity * 1.0, entranceT * 1.0, rowRadius * 1.0)
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
