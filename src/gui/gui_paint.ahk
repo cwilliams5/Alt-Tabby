@@ -20,7 +20,7 @@ global gPaint_RepaintInProgress := false  ; Reentrancy guard (see #90)
 global gGUI_LastRowsDesired := -1
 global gGUI_LeftArrowRect := { x: 0, y: 0, w: 0, h: 0 }
 global gGUI_RightArrowRect := { x: 0, y: 0, w: 0, h: 0 }
-global LOG_PATH_PAINT_TIMING  ; Defined in config_loader.ahk
+global gAnim_FrameTimeDisplay := 0.0  ; Displayed frame time ms
 Paint_Log(msg) {
     global cfg, LOG_PATH_PAINT_TIMING
     if (!cfg.DiagPaintTimingLog)

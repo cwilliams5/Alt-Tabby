@@ -4,6 +4,9 @@
 #Warn VarUnset, Off  ; Suppress warnings for cross-file globals/functions
 
 ; ========================= HOVER / MOUSE STATE =========================
+global gFX_MouseX := 0.0             ; Mouse X in client coords (physical px)
+global gFX_MouseY := 0.0             ; Mouse Y in client coords (physical px)
+global gFX_MouseInWindow := false    ; Mouse is inside overlay window
 global gGUI_HoverRow := 0
 global gGUI_HoverBtn := ""
 global gGUI_MouseTracking := false  ; Whether we've requested WM_MOUSELEAVE notification
