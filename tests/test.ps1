@@ -589,9 +589,13 @@ $guiScript = "$PSScriptRoot\gui_tests.ahk"
 $guiLogFile = "$env:TEMP\gui_tests_${worktreeId}.log"
 $guiHandle = [IntPtr]::Zero
 $guiTimingRecorded = $false
+$frScript = "$PSScriptRoot\test_unit_flight_recorder.ahk"
+$frLogFile = "$env:TEMP\fr_tests_${worktreeId}.log"
+$frHandle = [IntPtr]::Zero
 $compileHandle = [IntPtr]::Zero
 
 Remove-Item -Force -ErrorAction SilentlyContinue $guiLogFile
+Remove-Item -Force -ErrorAction SilentlyContinue $frLogFile
 
 # --- Live mode: Kill AltTabby + start compilation early (background) ---
 # Compilation overlaps with pre-gate checks to save ~3s on the critical path.
@@ -645,7 +649,8 @@ $filesToCheck = @(
     "$srcRoot\gui\gui_paint.ahk",
     "$srcRoot\gui\gui_input.ahk",
     "$srcRoot\gui\gui_overlay.ahk",
-    "$PSScriptRoot\gui_tests.ahk"
+    "$PSScriptRoot\gui_tests.ahk",
+    "$PSScriptRoot\test_unit_flight_recorder.ahk"
 )
 
 # Launch all syntax checks in parallel — direct AHK launch with captured output
@@ -799,6 +804,10 @@ $guiStartTickMs = $masterSw.ElapsedMilliseconds
 if (Test-Path $guiScript) {
     Write-Host "Starting GUI tests in background..." -ForegroundColor Cyan
     $guiHandle = [SilentProcess]::Start('"' + $ahk + '" /ErrorStdOut "' + $guiScript + '"')
+}
+if (Test-Path $frScript) {
+    Write-Host "Starting flight recorder tests in background..." -ForegroundColor Cyan
+    $frHandle = [SilentProcess]::Start('"' + $ahk + '" /ErrorStdOut "' + $frScript + '"')
 }
 
 # Launch unit suites immediately (they don't need compilation)
@@ -1218,6 +1227,20 @@ if ($guiHandle -ne [IntPtr]::Zero) {
     }
 } else {
     Write-Host "  SKIP: gui_tests.ahk not found" -ForegroundColor Yellow
+}
+
+# --- Flight Recorder Tests Phase (Collect Results) ---
+Write-Host "`n--- Flight Recorder Tests Phase ---" -ForegroundColor Yellow
+
+if ($frHandle -ne [IntPtr]::Zero) {
+    $frExitCode = [SilentProcess]::WaitAndGetExitCode($frHandle)
+    Show-TestSummary -LogPath $frLogFile -Label "FlightRecorder"
+
+    if ($frExitCode -ne 0) {
+        $mainExitCode = $frExitCode
+    }
+} else {
+    Write-Host "  SKIP: test_unit_flight_recorder.ahk not found" -ForegroundColor Yellow
 }
 
 Show-TimingReport

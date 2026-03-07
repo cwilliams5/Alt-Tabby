@@ -573,6 +573,58 @@ RunGUITests_State() {
 
     gFR_DumpInProgress := false
 
+    ; ============================================================
+    ; ALT_DOWN DURING ACTIVE STATE — INVARIANT TESTS
+    ; Alt key repeats fire ALT_DOWN while state is ACTIVE.
+    ; The handler must NOT corrupt gGUI_DisplayItems or gGUI_Sel.
+    ; Regression guard for commit e9a284b class of bugs.
+    ; ============================================================
+
+    ; ----- Test: Alt repeat during ACTIVE preserves display items -----
+    GUI_Log("Test: Alt repeat during ACTIVE preserves display items")
+    ResetGUIState()
+    SetupTestItems(5)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_State, "ACTIVE", "AltRepeat setup: state is ACTIVE")
+    GUI_AssertEq(gGUI_DisplayItems.Length, 5, "AltRepeat setup: display items frozen (5)")
+
+    ; Save reference to display items before alt repeat
+    savedDisplayRef := gGUI_DisplayItems
+    savedDisplayLen := gGUI_DisplayItems.Length
+    savedFirstHwnd := gGUI_DisplayItems[1].hwnd
+
+    ; Fire ALT_DOWN during ACTIVE (simulates keyboard auto-repeat)
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+
+    ; Display items must be untouched (same array ref, same content)
+    GUI_AssertTrue(gGUI_DisplayItems == savedDisplayRef, "AltRepeat: display items same array reference")
+    GUI_AssertEq(gGUI_DisplayItems.Length, savedDisplayLen, "AltRepeat: display items length unchanged")
+    GUI_AssertEq(gGUI_DisplayItems[1].hwnd, savedFirstHwnd, "AltRepeat: display items[1] unchanged")
+
+    ; ----- Test: Alt repeat during ACTIVE preserves selection -----
+    GUI_Log("Test: Alt repeat during ACTIVE preserves selection")
+    ResetGUIState()
+    SetupTestItems(5)
+
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_Sel, 2, "AltRepeat sel setup: initial sel=2")
+
+    ; Advance selection to 3
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    GUI_AssertEq(gGUI_Sel, 3, "AltRepeat sel setup: sel=3 after 2nd Tab")
+
+    ; Fire ALT_DOWN during ACTIVE — sel should NOT be reset
+    GUI_OnInterceptorEvent(TABBY_EV_ALT_DOWN, 0, 0)
+    GUI_AssertEq(gGUI_Sel, 3, "AltRepeat sel: sel preserved at 3 (not reset by ALT_DOWN)")
+
+    ; Fire TAB_STEP — should work correctly after alt repeat
+    GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
+    ; After ALT_DOWN, state is ALT_PENDING, so this TAB_STEP is a "first Tab" → sel=2
+    GUI_AssertEq(gGUI_Sel, 2, "AltRepeat sel: TAB_STEP after alt repeat produces sel=2 (re-freeze)")
+
     ; ----- Summary -----
     GUI_Log("`n=== GUI State Tests Summary ===")
     GUI_Log("Passed: " GUI_TestPassed)
