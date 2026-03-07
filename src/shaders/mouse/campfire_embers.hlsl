@@ -89,12 +89,15 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
-            float dist = length(cellPos - p.pos);
+            float2 delta = cellPos - p.pos;
+            float distSq = dot(delta, delta);
             float pulse = 1.0 + 0.15 * sin(p.life * 12.0 + (float)i * 2.0);
             float radius = p.size * pulse * (1.0 - p.life * 0.3);
-            if (dist > radius * 2.5) continue;
+            float limit = radius * 2.5;
+            if (distSq > limit * limit) continue;
 
-            float glow = exp(-dist * dist / (radius * radius * 0.5));
+            float radiusSq = radius * radius;
+            float glow = exp(-distSq / (radiusSq * 0.5));
             float fadeIn = smoothstep(0.0, 0.1, p.life);
             float fadeOut = smoothstep(1.0, 0.3, p.life);
             glow *= fadeIn * fadeOut;

@@ -14,11 +14,12 @@ float4 PSMain(PSInput input) : SV_Target {
     float e = 0, f = 0, s = 0, g = 0, k = 0.01;
     float o = 1;
 
+    float2x2 rot_neg08 = rotate2D(-0.8);
     for (int i = 0; i < 100; i++) {
         s = 2.0;
         g += min(f, max(0.03, e)) * 0.3;
         float3 p = float3((fragCoord - resolution / s) / resolution.y * g, g - s);
-        p.yz = mul(rotate2D(-0.8), p.yz);
+        p.yz = mul(rot_neg08, p.yz);
         p.y *= 2.5;
         p.z += time * 1.3;
         e = p.y;

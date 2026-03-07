@@ -100,11 +100,14 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
-            float dist = length(cellPos - p.pos);
+            float2 delta = cellPos - p.pos;
+            float distSq = dot(delta, delta);
             float radius = p.size;
-            if (dist > radius * 2.0) continue;
+            float limit = radius * 2.0;
+            if (distSq > limit * limit) continue;
+            float dist = sqrt(distSq);
 
-            float2 dir = (cellPos - p.pos) / max(radius, 1.0);
+            float2 dir = delta / max(radius, 1.0);
             float edgeNoise = fbm(dir * 3.0 + float2(time * 0.3, (float)i * 1.7));
             float noisyDist = dist + edgeNoise * radius * 0.3;
 

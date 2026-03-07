@@ -18,10 +18,10 @@ float worley(float2 p) {
 }
 
 float fworley(float2 p) {
-    return sqrt(sqrt(sqrt(
-        worley(p * 5.0 + 0.05 * time) *
-        sqrt(worley(p * 50.0 + 0.12 + -0.1 * time)) *
-        sqrt(sqrt(worley(p * -10.0 + 0.03 * time))))));
+    float a = worley(p * 5.0 + 0.05 * time);
+    float b = worley(p * 50.0 + 0.12 - 0.1 * time);
+    float c = worley(p * -10.0 + 0.03 * time);
+    return exp2(0.125 * log2(a) + 0.0625 * log2(b) + 0.03125 * log2(c));
 }
 
 float4 PSMain(PSInput input) : SV_Target {

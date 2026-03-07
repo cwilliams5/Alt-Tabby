@@ -75,7 +75,7 @@ float4 PSMain(PSInput input) : SV_Target {
         c *= calcAO(p, nor);
     }
 
-    c = lerp(float3(.02, 0, .05), c, 1. / exp(.15 * t));
+    c = lerp(float3(.02, 0, .05), c, exp(-.15 * t));
     c = c * (2.51 * c + .03) / (c * (2.43 * c + .59) + .14);
 
     c = pow(abs(c), (float3)(1. / 2.2));

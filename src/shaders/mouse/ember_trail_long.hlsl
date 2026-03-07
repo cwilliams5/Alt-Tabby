@@ -76,9 +76,12 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             Particle p = particles[i];
             if (p.life >= 1.0) continue;
 
-            float dist = length(cellPos - p.pos);
+            float2 delta = cellPos - p.pos;
+            float distSq = dot(delta, delta);
             float radius = p.size * (1.0 - p.life * 0.5);
-            if (dist > radius * 1.5) continue;
+            float limit = radius * 1.5;
+            if (distSq > limit * limit) continue;
+            float dist = sqrt(distSq);
 
             float glow = smoothstep(radius, 0.0, dist);
             glow *= smoothstep(1.0, 0.2, p.life);

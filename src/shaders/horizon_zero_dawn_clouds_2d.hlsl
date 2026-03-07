@@ -176,7 +176,8 @@ float4 PSMain(PSInput input) : SV_Target
     float3 col = float3(0., 0., 0.);
     col = skyCol + cloudShape;
     col = lerp(float3(cloudColor, cloudColor, cloudColor) * 25., col, 1. - cloudShape);
-    float sun = .002 / pow(length(uv - m), 1.7);
+    float2 dm = uv - m;
+    float sun = .002 / pow(dot(dm, dm), 0.85);
     col += (1. - smoothstep(.0, .4, cloudShape)) * sun;
     col = sqrt(col);
 

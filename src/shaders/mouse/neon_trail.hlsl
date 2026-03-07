@@ -95,8 +95,9 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float age = time - p.heat;
             if (age < 0.0 || age > 1.5) continue;
 
-            float dist = length(cellPos - p.pos);
-            if (dist > 60.0) continue;
+            float2 delta = cellPos - p.pos;
+            float distSq = dot(delta, delta);
+            if (distSq > 60.0 * 60.0) continue;
 
             // Age-based fade
             float fade = 1.0 - age / 1.5;
@@ -106,9 +107,10 @@ void CSMain(uint3 dtid : SV_DispatchThreadID) {
             float thickness = 2.0 + smoothstep(0.0, 500.0, p.size) * 4.0;
 
             // Triple-layer glow
-            float core = exp(-dist * dist / (thickness * thickness));
-            float inner = exp(-dist * dist / (thickness * thickness * 6.0));
-            float outer = exp(-dist * dist / (thickness * thickness * 20.0));
+            float thickSq = thickness * thickness;
+            float core = exp(-distSq / thickSq);
+            float inner = exp(-distSq / (thickSq * 6.0));
+            float outer = exp(-distSq / (thickSq * 20.0));
 
             float glow = core * 1.0 + inner * 0.4 + outer * 0.15;
             glow *= fade;
