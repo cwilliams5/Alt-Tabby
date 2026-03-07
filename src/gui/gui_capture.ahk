@@ -126,7 +126,7 @@ _Capture_Screenshot() {
         DllCall("DeleteObject", "Ptr", hBitmap)
         DllCall("DeleteDC", "Ptr", hMemDC)
         DllCall("ReleaseDC", "Ptr", 0, "Ptr", hScreenDC)
-        ToolTip("Screenshot failed: GdipCreateBitmap error " gdipResult)
+        ToolTip("Screenshot failed (bitmap creation error)")
         SetTimer(() => ToolTip(), -3000)
         return
     }
@@ -146,7 +146,7 @@ _Capture_Screenshot() {
     DllCall("ReleaseDC", "Ptr", 0, "Ptr", hScreenDC)
 
     if (saveResult != 0) {
-        ToolTip("Screenshot failed: GdipSave error " saveResult " path=" filePath)
+        ToolTip("Screenshot failed (could not save to " fileName ")")
         SetTimer(() => ToolTip(), -5000)
         return
     }

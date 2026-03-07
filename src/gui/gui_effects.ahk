@@ -344,7 +344,7 @@ FX_PreRenderShaderLayers(w, h) {
                 errDetail .= " extra=" e.Extra
             if (e.HasProp("Number") && e.Number != 0)
                 errDetail .= " hr=" Format("0x{:08x}", e.Number & 0xFFFFFFFF)
-            ToolTip(errDetail)
+            ToolTip("Shader effect failed — using fallback")
             SetTimer(() => ToolTip(), -5000)
             if (cfg.DiagShaderLog)
                 LogAppend(LOG_PATH_SHADER, errDetail)
@@ -434,7 +434,7 @@ FX_PreRenderMouseEffect(w, h) {
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
-        ToolTip(errDetail)
+        ToolTip("Mouse effect failed — using fallback")
         SetTimer(() => ToolTip(), -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
@@ -517,7 +517,7 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
-        ToolTip(errDetail)
+        ToolTip("Selection effect failed — using fallback")
         SetTimer(() => ToolTip(), -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
@@ -1118,7 +1118,7 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
     } catch as e {
         global LOG_PATH_SHADER
         errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
-        ToolTip(errDetail)
+        ToolTip("Hover effect failed — using fallback")
         SetTimer(() => ToolTip(), -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)

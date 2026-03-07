@@ -212,7 +212,7 @@ Launcher_ShowMismatchDialog(installedPath, title := "", message := "", question 
     result := ""  ; Will be set by button clicks
 
     ; Buttons: [Launch Installed] [Always Run From Here] ... gap ... [Run This Copy]
-    btnYes := mismatchGui.AddButton("x24 w140 y+24 Default", "Launch Installed")
+    btnYes := mismatchGui.AddButton("x24 w140 y+24 Default", "Run Installed")
     btnAlways := mismatchGui.AddButton("x+8 w170", "Always Run From Here")
     btnNo := mismatchGui.AddButton("x" (24 + contentW - 120) " yp w120", "Run This Copy")
 
