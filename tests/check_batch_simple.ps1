@@ -1697,7 +1697,13 @@ $dgIssues = [System.Collections.ArrayList]::new()
 # Phase 1: Collect ALL file-scope global declarations from src/ files
 $dgAllGlobals = [System.Collections.ArrayList]::new()
 
+# Exempt API-surface / constant-definition library files from dead-global check.
+# These files declare D2D/DXGI/GDI+ enums and constants for completeness — not all
+# are consumed yet, but removing them means re-declaring when next needed.
+$dgExemptFiles = @('d2d_types.ahk', 'gui_constants.ahk')
+
 foreach ($file in $allFiles) {
+    if ($file.Name -in $dgExemptFiles) { continue }
     $processed = $processedCache[$file.FullName]
     $relPath = $file.FullName.Replace("$projectRoot\", '')
     $depth = 0
@@ -2148,10 +2154,34 @@ $sw.Stop()
 # Sub-check 14: dead_params
 # Detects function parameters never referenced in the function
 # body. Excludes variadic (*) and throwaway (_).
+# Auto-exempts functions registered as callbacks (framework-mandated signatures).
 # Suppress: ; lint-ignore: dead-param (on function definition line)
 # ============================================================
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $dpIssues = [System.Collections.ArrayList]::new()
+
+# Build set of function names registered as callbacks (auto-exempt from dead-param).
+# AHK v2 callback signatures are framework-mandated — can't remove params without crash.
+$dpCallbackFuncs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+$dpCbPatterns = @(
+    [regex]::new('(?:OnMessage|Hotkey)\s*\(\s*[^,]+,\s*(\w+)', 'Compiled'),
+    [regex]::new('(?:OnExit|OnError)\s*\(\s*(\w+)', 'Compiled'),
+    [regex]::new('CallbackCreate\s*\(\s*(\w+)', 'Compiled'),
+    [regex]::new('\.OnEvent\s*\(\s*"[^"]*"\s*,\s*(\w+)', 'Compiled'),
+    [regex]::new('IPC_Pipe\w+_(?:Connect|Start)\s*\(\s*[^,]+,\s*(\w+)', 'Compiled'),
+    [regex]::new('OVERLAPPED\s*\(\s*(\w+)', 'Compiled')
+)
+foreach ($f in $allFiles) {
+    $dpText = $fileCacheText[$f.FullName]
+    foreach ($rx in $dpCbPatterns) {
+        foreach ($m in $rx.Matches($dpText)) {
+            $cbName = $m.Groups[1].Value
+            if ($cbName -and $cbName -notin $BS_AHK_KEYWORDS) {
+                [void]$dpCallbackFuncs.Add($cbName)
+            }
+        }
+    }
+}
 
 foreach ($fd in $bsFuncDefs) {
     $dpProc = $processedCache[$fd.FullPath]
@@ -2160,6 +2190,9 @@ foreach ($fd in $bsFuncDefs) {
 
     # Function-level suppression
     if ($dpProc[$dpDefIdx].Raw -match 'lint-ignore:\s*dead-param') { continue }
+
+    # Auto-exempt functions registered as callbacks (framework-mandated signatures)
+    if ($dpCallbackFuncs.Contains($fd.Name)) { continue }
 
     $dpParamStr = $fd.Params.Trim()
     if ($dpParamStr -eq '' -or $dpParamStr -eq '*') { continue }

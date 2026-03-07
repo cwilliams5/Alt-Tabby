@@ -39,7 +39,7 @@ global gFX_MousePrevValid := false   ; False until first valid sample
 FX_GPU_Init() {
     global gD2D_RT, gFX_GPU, gFX_GPUReady, gFX_GPUOutput, gFX_HDRActive, cfg
     global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
-    global SHADER_KEYS ; lint-ignore: phantom-global
+    global SHADER_KEYS
     global CLSID_D2D1GaussianBlur, CLSID_D2D1Shadow, CLSID_D2D1Flood
     global CLSID_D2D1Crop, CLSID_D2D1ColorMatrix, CLSID_D2D1Saturation
     global CLSID_D2D1Blend, CLSID_D2D1Composite
@@ -316,7 +316,7 @@ FX_UpdateAmbient(dt) {
 
 ; Pre-render all active shader layers (D3D11 pipeline). Called BEFORE D2D BeginDraw.
 FX_PreRenderShaderLayers(w, h) {
-    global gFX_ShaderLayers, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global (gShader_Ready in src/gui/d2d_shader.ahk)
+    global gFX_ShaderLayers, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime
     global gFX_GPUReady, cfg
 
     if (!gShader_Ready || !gFX_GPUReady || gFX_ShaderLayers.Length = 0)
@@ -355,7 +355,7 @@ FX_PreRenderShaderLayers(w, h) {
 ; Draw all active shader layers inside D2D BeginDraw.
 ; Opacity is baked into shader output via AT_PostProcess — no PushLayer needed.
 FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
-    global gD2D_RT, gFX_ShaderLayers, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/gui/d2d_shader.ahk)
+    global gD2D_RT, gFX_ShaderLayers, gShader_Ready
 
     if (!gShader_Ready || gFX_ShaderLayers.Length = 0)
         return
@@ -373,7 +373,7 @@ FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
 
 ; Pre-render the mouse effect (D3D11 pipeline). Called BEFORE D2D BeginDraw.
 FX_PreRenderMouseEffect(w, h) {
-    global gFX_MouseEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
+    global gFX_MouseEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime
     global gFX_MouseX, gFX_MouseY, gFX_MouseInWindow, cfg
     global gFX_MousePrevX, gFX_MousePrevY, gFX_MouseVelX, gFX_MouseVelY, gFX_MouseSpeed, gFX_MousePrevValid
 
@@ -448,7 +448,7 @@ FX_PreRenderMouseEffect(w, h) {
 
 ; Draw the mouse effect inside D2D BeginDraw.
 FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
-    global gD2D_RT, gFX_MouseEffect, gShader_Ready ; lint-ignore: phantom-global
+    global gD2D_RT, gFX_MouseEffect, gShader_Ready
 
     if (gFX_MouseEffect.key = "" || !gShader_Ready)
         return
@@ -463,8 +463,8 @@ FX_DrawMouseEffect(wPhys, hPhys) { ; lint-ignore: dead-param
 ; Pre-render the selection shader. Called DURING paint (needs selection geometry).
 ; Decomposes ARGB ints to premultiplied float4 RGBA for the shader cbuffer.
 FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, isHovered, entranceT, rowRadius := 0.0) {
-    global gFX_SelectionEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
-    global gShader_Registry, cfg ; lint-ignore: phantom-global
+    global gFX_SelectionEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime
+    global gShader_Registry, cfg
 
     if (gFX_SelectionEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
         return
@@ -527,7 +527,7 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
 ; Draw the selection effect inside D2D BeginDraw.
 ; selX/selY/selW/selH/rad are only needed for BG-as-selection (clipping + border).
 FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0, rad := 0) { ; lint-ignore: dead-param
-    global gD2D_RT, gFX_SelectionEffect, gShader_Ready, cfg ; lint-ignore: phantom-global
+    global gD2D_RT, gFX_SelectionEffect, gShader_Ready, cfg
 
     if (gFX_SelectionEffect.key = "" || !gShader_Ready)
         return
@@ -577,7 +577,7 @@ FX_DrawSelectionEffect(wPhys, hPhys, selX := 0, selY := 0, selW := 0, selH := 0,
 ; Skips entries already initialized (preserves time state across lazy-load).
 _FX_InitShaderTime() {
     global gFX_ShaderTime, gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect
-    global gShader_Registry ; lint-ignore: phantom-global
+    global gShader_Registry
 
     if (!IsObject(gFX_ShaderTime))
         gFX_ShaderTime := Map()
@@ -622,7 +622,7 @@ _FX_InitShaderTime() {
 ; Initialize shader time for a single shader key (mouse/selection effects).
 ; Uses shader JSON metadata for offset defaults.
 _FX_InitShaderTimeForKey(shaderKey) {
-    global gFX_ShaderTime, gShader_Registry ; lint-ignore: phantom-global
+    global gFX_ShaderTime, gShader_Registry
     if (shaderKey = "" || gFX_ShaderTime.Has(shaderKey))
         return
     minOff := 30, maxOff := 90, accum := true
@@ -644,8 +644,8 @@ _FX_InitShaderTimeForKey(shaderKey) {
 ; MouseEffect_*, and GUI_SelectionEffect into runtime state.
 _FX_ResolveConfiguredShaders() {
     global gFX_ShaderLayers, gFX_MouseEffect, gFX_SelectionEffect, gFX_HoverEffect, cfg
-    global SHADER_KEYS, MOUSE_SHADER_KEYS, SELECTION_SHADER_KEYS ; lint-ignore: phantom-global
-    global gShader_Registry ; lint-ignore: phantom-global
+    global SHADER_KEYS, MOUSE_SHADER_KEYS, SELECTION_SHADER_KEYS
+    global gShader_Registry
 
     gFX_ShaderLayers := []
 
@@ -860,9 +860,9 @@ _FX_ReleaseInactiveShaders() {
 
 ; Cycle the shader for a specific layer (1-based index).
 FX_CycleShaderLayer(layerIndex) {
-    global gFX_ShaderLayers, gFX_GPUReady, gShader_Ready, cfg ; lint-ignore: phantom-global
-    global SHADER_NAMES, SHADER_KEYS ; lint-ignore: phantom-global
-    global gShader_Registry ; lint-ignore: phantom-global
+    global gFX_ShaderLayers, gFX_GPUReady, gShader_Ready, cfg
+    global SHADER_NAMES, SHADER_KEYS
+    global gShader_Registry
 
     static cycling := false
     if (cycling)
@@ -964,8 +964,8 @@ FX_CycleShaderLayer(layerIndex) {
 
 ; Cycle the mouse effect.
 FX_CycleMouseEffect() {
-    global gFX_MouseEffect, gFX_GPUReady, gShader_Ready ; lint-ignore: phantom-global
-    global MOUSE_SHADER_NAMES, MOUSE_SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
+    global gFX_MouseEffect, gFX_GPUReady, gShader_Ready
+    global MOUSE_SHADER_NAMES, MOUSE_SHADER_KEYS, gShader_Registry
 
     if (!gFX_GPUReady || !gShader_Ready)
         return
@@ -1008,9 +1008,9 @@ FX_CycleMouseEffect() {
 ; Cycle the selection effect.
 ; When UseBGShaderAsSelection is active, cycles through BG shaders instead.
 FX_CycleSelectionEffect() {
-    global gFX_SelectionEffect, gFX_GPUReady, gShader_Ready ; lint-ignore: phantom-global
-    global SELECTION_SHADER_NAMES, SELECTION_SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
-    global SHADER_NAMES, SHADER_KEYS, cfg ; lint-ignore: phantom-global
+    global gFX_SelectionEffect, gFX_GPUReady, gShader_Ready
+    global SELECTION_SHADER_NAMES, SELECTION_SHADER_KEYS, gShader_Registry
+    global SHADER_NAMES, SHADER_KEYS, cfg
 
     if (!gFX_GPUReady || !gShader_Ready)
         return
@@ -1064,8 +1064,8 @@ FX_CycleSelectionEffect() {
 ; Pre-render the hover shader. Mirrors FX_PreRenderSelectionEffect but uses hover config.
 ; Sets selGlow/selIntensity on the registry entry right before render to avoid shared-entry conflict.
 FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borderWidth, entranceT, rowRadius := 0.0) {
-    global gFX_HoverEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global
-    global gShader_Registry, cfg ; lint-ignore: phantom-global
+    global gFX_HoverEffect, gShader_Ready, gFX_GPUReady, gFX_AmbientTime, gFX_ShaderTime
+    global gShader_Registry, cfg
 
     if (gFX_HoverEffect.key = "" || !gShader_Ready || !gFX_GPUReady)
         return
@@ -1127,7 +1127,7 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
 
 ; Draw the hover effect inside D2D BeginDraw.
 FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: dead-param
-    global gD2D_RT, gFX_HoverEffect, gShader_Ready, cfg ; lint-ignore: phantom-global
+    global gD2D_RT, gFX_HoverEffect, gShader_Ready, cfg
 
     if (gFX_HoverEffect.key = "" || !gShader_Ready)
         return
@@ -1169,9 +1169,9 @@ FX_DrawHoverEffect(wPhys, hPhys, selX, selY, selW, selH, rad) { ; lint-ignore: d
 ; Cycle the hover effect.
 ; When UseBGShaderAsHoverSelection is active, cycles through BG shaders instead.
 FX_CycleHoverEffect() {
-    global gFX_HoverEffect, gFX_GPUReady, gShader_Ready ; lint-ignore: phantom-global
-    global SELECTION_SHADER_NAMES, SELECTION_SHADER_KEYS, gShader_Registry ; lint-ignore: phantom-global
-    global SHADER_NAMES, SHADER_KEYS, cfg ; lint-ignore: phantom-global
+    global gFX_HoverEffect, gFX_GPUReady, gShader_Ready
+    global SELECTION_SHADER_NAMES, SELECTION_SHADER_KEYS, gShader_Registry
+    global SHADER_NAMES, SHADER_KEYS, cfg
 
     if (!gFX_GPUReady || !gShader_Ready)
         return

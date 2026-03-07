@@ -618,7 +618,7 @@ _KomorebiSub_IssueRead() {
 ; Async read completion callback — called by OVERLAPPED library when ReadFile completes.
 ; Signature: (overlappedObj, err, bytesTransferred) per OVERLAPPED.ahk calling convention.
 ; Runs on the AHK thread (marshaled via SendMessageW from thread pool).
-_KomorebiSub_OnReadComplete(overlappedObj, err, bytesTransferred) { ; lint-ignore: dead-param
+_KomorebiSub_OnReadComplete(overlappedObj, err, bytesTransferred) {
     global _KSub_hPipe, _KSub_ReadPending, _KSub_LastEventTick, _KSub_AsyncMode
     global _KSub_ReadBuffer, _KSub_ReadBufferLen
     global KSUB_READ_BUF, KSUB_BUFFER_MAX_BYTES, IPC_ERROR_BROKEN_PIPE

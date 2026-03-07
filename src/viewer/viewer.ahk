@@ -407,7 +407,7 @@ _Viewer_ForceRefresh() {
 
 ; ========================= RESIZE =========================
 
-_Viewer_OnResize(gui, minMax, w, h) { ; lint-ignore: dead-param
+_Viewer_OnResize(gui, minMax, w, h) {
     global gViewer_LV, gViewer_Status, gViewer_ShuttingDown
 
     if (gViewer_ShuttingDown)
@@ -560,7 +560,7 @@ _Viewer_InstallSubclass() {
 ; ========================= SUBCLASS CALLBACK (HEADER ONLY) =========================
 ; Only intercepts header NM_CUSTOMDRAW. All other notifications pass through.
 
-_Viewer_LVSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) { ; lint-ignore: dead-param
+_Viewer_LVSubclassProc(hwnd, uMsg, wParam, lParam, uIdSubclass, dwRefData) {
     global gViewer_LVHeaderHwnd, gViewer_ShuttingDown
 
     if (gViewer_ShuttingDown || uMsg != 0x004E)  ; Not WM_NOTIFY
@@ -703,7 +703,7 @@ _Viewer_DrawHeader(lParam) {
 ; WM_NOTIFY handler for row NM_CUSTOMDRAW + focus events
 ; Routes notifications from the ListView to the appropriate handler.
 ; Only intercepts notifications from our ListView; everything else falls through.
-_Viewer_OnWMNotify(wParam, lParam, msg, hwnd) { ; lint-ignore: dead-param  lint-ignore: mixed-returns
+_Viewer_OnWMNotify(wParam, lParam, msg, hwnd) { ; lint-ignore: mixed-returns
     global gViewer_LV, gViewer_Gui, gViewer_ShuttingDown
     if (gViewer_ShuttingDown || !gViewer_LV || !gViewer_Gui)
         return
@@ -976,7 +976,7 @@ _Viewer_InvalidateRow(rowIdx) {
 
 ; ========================= COLUMN CLICK SORT =========================
 
-_Viewer_OnColClick(lv, col) { ; lint-ignore: dead-param
+_Viewer_OnColClick(lv, col) {
     global gViewer_SortCol, gViewer_SortAsc, gViewer_LVHeaderHwnd, gViewer_LastRev
     global gViewer_ShuttingDown
     if (gViewer_ShuttingDown)
