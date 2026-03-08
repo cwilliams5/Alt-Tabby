@@ -753,7 +753,8 @@ _GUI_ShowOverlayWithFrozen() {
         return
     }
 
-    Win_DwmFlush()
+    ; PERF: DwmFlush removed — Present(0,0) already submitted the frame to the swap chain,
+    ; and Anim_StartTween handles the fade-in. DwmFlush was adding 0-16ms vsync wait.
 
     ; Start hover polling (fallback for WM_MOUSELEAVE)
     GUI_StartHoverPolling()
