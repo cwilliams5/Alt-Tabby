@@ -496,10 +496,10 @@ Settings for komorebi tiling window manager integration.
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `CrossWorkspaceMethod` | enum | `MimicNative` | - | How Alt-Tabby activates windows on other workspaces.<br>MimicNative = directly uncloaks and activates via COM (like native Alt+Tab), letting komorebi reconcile.<br>RevealMove = uncloaks window, focuses it, then commands komorebi to move it back to its workspace.<br>SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window).<br>MimicNative and RevealMove require COM and fall back to SwitchActivate if COM fails. |
+| `CrossWorkspaceMethod` | enum | `MimicNative` | - | How Alt-Tabby activates windows on other workspaces.<br>MimicNative = directly reveals and activates using Windows APIs (like native Alt+Tab), letting komorebi sync its layout.<br>RevealMove = reveals the window, focuses it, then commands komorebi to move it back to its workspace.<br>SwitchActivate = commands komorebi to switch first, waits for confirmation, then activates (may flash previously focused window).<br>MimicNative and RevealMove fall back to SwitchActivate if activation fails. |
 | `MimicNativeSettleMs` | int | `0` | `0` - `1000` | Milliseconds to wait after SwitchTo before returning (0 = no delay). Increase if cross-workspace activation is unreliable on slower systems. |
 | `UseSocket` | bool | `true` | - | Send commands directly to komorebi's named pipe instead of spawning komorebic.exe. Faster. Falls back to komorebic.exe if socket unavailable. |
-| `WorkspaceConfirmationMethod` | enum | `PollCloak` | - | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate).<br>PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU.<br>PollCloak = checks DWM cloaked state (recommended, sub-microsecond DllCall).<br>AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
+| `WorkspaceConfirmationMethod` | enum | `PollCloak` | - | How Alt-Tabby verifies a workspace switch completed (only used when CrossWorkspaceMethod=SwitchActivate).<br>PollKomorebic = polls komorebic CLI (spawns cmd.exe every 15ms), works on multi-monitor but highest CPU.<br>PollCloak = checks if windows are hidden (recommended, fastest method).<br>AwaitDelta = waits for store delta, lowest CPU but potentially higher latency. |
 
 ### Subscription
 
@@ -507,8 +507,8 @@ Event-driven komorebi integration via named pipe
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `SubPollMs` | int | `50` | `10` - `1000` | Legacy pipe poll interval. Used when async I/O is unavailable. |
-| `SubMaintenanceMs` | int | `2000` | `500` - `10000` | Maintenance timer interval when async I/O is active (idle recycle, connection check, read recovery). Ignored in legacy poll mode. |
+| `SubPollMs` | int | `50` | `10` - `1000` | Legacy pipe poll interval. Used when overlapped I/O is unavailable. |
+| `SubMaintenanceMs` | int | `2000` | `500` - `10000` | Background maintenance interval for subscription health monitoring. Ignored in legacy poll mode. |
 | `SubIdleRecycleMs` | int | `120000` | `10000` - `600000` | Restart subscription if no events for this long (stale detection) |
 | `SubFallbackPollMs` | int | `2000` | `500` - `30000` | Fallback polling interval if subscription fails |
 | `SubCacheMaxAgeMs` | int | `10000` | `1000` - `60000` | Maximum age (ms) for cached workspace assignments before they are considered stale. Lower values track rapid workspace switching more accurately. |
@@ -560,7 +560,7 @@ WinEventHook and MRU are always enabled (core). These control optional producers
 |--------|------|---------|-------|-------------|
 | `KomorebiIntegration` | enum | `Always` | - | Komorebi integration mode. Always = subscription with polling fallback and auto-retry (recommended). Polling = periodic state polling only. Never = disabled. |
 | `AdditionalWindowInformation` | enum | `Always` | - | How to resolve window icons and process names. Always = separate process with in-process fallback (recommended). NonBlocking = separate process only, no fallback. ProcessOnly = in-process only, saves memory. Never = disabled. |
-| `PumpIconPruneIntervalMs` | int | `300000` | `10000` - `3600000` | Interval (ms) for pump to prune HICONs of closed windows |
+| `PumpIconPruneIntervalMs` | int | `300000` | `10000` - `3600000` | Interval to clean up cached icons for closed windows |
 | `PumpHangTimeoutMs` | int | `15000` | `5000` - `60000` | Time (ms) without a pump response before declaring it hung and restarting |
 
 ### Window Filtering
@@ -578,7 +578,7 @@ Event-driven window change detection. Events are queued then processed in batche
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
-| `DebounceMs` | int | `50` | `10` - `1000` | Debounce rapid events (e.g., window moving fires many events) |
+| `DebounceMs` | int | `50` | `10` - `1000` | Ignore rapid duplicate events (e.g., dragging a window fires many events) |
 | `BatchMs` | int | `100` | `10` - `2000` | Batch processing interval - how often queued events are processed |
 | `WinEventHookIdleThreshold` | int | `10` | `1` - `100` | Empty batch ticks before pausing timer. Lower = faster idle detection, higher = more responsive to bursts. |
 | `ActiveRepaintDebounceMs` | int | `250` | `0` - `2000` | Minimum interval between cosmetic repaints while overlay is active (ms). Prevents animated titles from flooding repaints. 0 = no debounce. |

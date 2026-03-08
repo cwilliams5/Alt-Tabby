@@ -197,7 +197,7 @@ Use tick-based timing instead of static counters that can leak state if timer is
 
 In frequently-called functions (paint, input, per-window loops):
 - **Buffers**: Use `static` for DllCall marshal buffers repopulated via NumPut before use
-- **GDI+ objects**: Cache brushes/pens/fonts (see `Gdip_GetCachedBrush`, `gGdip_Res`), never create+destroy per-call
+- **D2D objects**: Cache brushes/fonts (see `D2D_GetCachedBrush`, `gD2D_Res`), never create+destroy per-call
 - **Regex**: Pre-compile patterns at load time, not per-match (see `Blacklist_Reload`)
 - **Loop constants**: Hoist `Round(N * scale)` before loops, not per-iteration
 
@@ -434,7 +434,7 @@ All in `[Diagnostics]` section of config.ini. Disabled by default. All logs in `
 - **WebViewLog** â†’ `tabby_webview_debug.log` â€” WebView2 config editor issues
 - **ShaderLog** â†’ `tabby_shader.log` â€” D3D11 shader compilation, iChannel texture loading, SRV/sampler binding
 
-- **FlightRecorder** â†’ `recorder/fr_YYYYMMDD_HHMMSS.txt` â€” In-memory ring buffer (default 2000 events â‰ˆ 30s). Press F12 (configurable) to dump. Shows state snapshot, WindowList state, live items, and full event trace with hwnd resolution. Near-zero cost when enabled. Config: `FlightRecorderBufferSize` (int, 500-10000), `FlightRecorderHotkey` (string, default F12). See `docs/USING_RECORDER.md` for analysis guide.
+- **FlightRecorder** â†’ `recorder/fr_YYYYMMDD_HHMMSS.txt` â€” In-memory ring buffer (default 2000 events). Press F12 (configurable) to dump. Shows state snapshot, WindowList state, live items, and full event trace with hwnd resolution. Near-zero cost when enabled. Config: `FlightRecorderBufferSize` (int, 500-10000), `FlightRecorderHotkey` (string, default F12). See `docs/USING_RECORDER.md` for analysis guide.
 
 `_GUI_LogError()` always logs to `tabby_store_error.log` (no config flag). `_GUI_LogInfo()` respects `StoreLog`.
 
