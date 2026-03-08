@@ -37,7 +37,7 @@ A_MenuMaskKey := "vkE8"
 #Include *i %A_ScriptDir%\..\shared\config_loader.ahk
 #Include *i %A_ScriptDir%\..\shared\error_boundary.ahk
 #Include *i %A_ScriptDir%\..\lib\cjson.ahk
-#Include *i %A_ScriptDir%\..\lib\icon_alpha.ahk
+#Include *i %A_ScriptDir%\icon_alpha.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_pipe.ahk
 #Include *i %A_ScriptDir%\..\shared\ipc_wmcopydata.ahk
 #Include *i %A_ScriptDir%\..\shared\blacklist.ahk

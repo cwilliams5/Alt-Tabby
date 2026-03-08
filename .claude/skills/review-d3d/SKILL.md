@@ -14,7 +14,7 @@ At 120-240fps, this pipeline runs every frame. Each `Buffer()` allocation, each 
 
 **Multi-shader-per-frame reality (post-#177):** `Shader_PreRender` is no longer called once per frame — it runs once per active shader layer (up to 4 background + 1 mouse + 1 selection + 1 hover = 7 invocations). Each invocation is the full D3D11 pipeline. Per-call waste multiplied by 7 is the actual per-frame cost. Additionally, compute-enabled shaders (mouse effects) run both a CS dispatch AND a PS draw per invocation.
 
-**Scope**: Only `src/lib/d2d_shader.ahk` — the D3D11 host-side interop code. Does NOT cover:
+**Scope**: Only `src/gui/d2d_shader.ahk` — the D3D11 host-side interop code. Does NOT cover:
 - HLSL shader source optimization (use `review-shaders` for that)
 - The D2D paint pipeline that consumes the shader output (use `review-paint` for that)
 - Shader compilation or bundling tooling
@@ -114,7 +114,7 @@ The code wraps ComCall in `try` blocks. Check:
 ## Files to Audit
 
 Primary:
-- `src/lib/d2d_shader.ahk` — the entire D3D11 interop layer
+- `src/gui/d2d_shader.ahk` — the entire D3D11 interop layer
 
 Supporting (for understanding the call pattern):
 - `src/gui/gui_effects.ahk` — where `FX_PreRenderShaderLayers` loops active layers calling `Shader_PreRender`, plus mouse/selection/hover pre-render. Also manages shader init/dispose and layer registration

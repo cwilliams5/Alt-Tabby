@@ -46,7 +46,7 @@ Only move files that exist — don't error on missing `.glsl` (some shaders may 
 powershell -File tools/shader_bundle.ps1
 ```
 
-This regenerates `src/lib/shader_bundle.ahk` and `src/lib/shader_resources.ahk`, and cleans stale textures from `resources/img/shaders/`.
+This regenerates `src/gui/shader_bundle.ahk` and `src/gui/shader_resources.ahk`, and cleans stale textures from `resources/img/shaders/`.
 
 ### 5. Run Tests
 

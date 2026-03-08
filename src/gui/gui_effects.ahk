@@ -316,7 +316,7 @@ FX_UpdateAmbient(dt) {
 
 ; Pre-render all active shader layers (D3D11 pipeline). Called BEFORE D2D BeginDraw.
 FX_PreRenderShaderLayers(w, h) {
-    global gFX_ShaderLayers, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
+    global gFX_ShaderLayers, gShader_Ready, gFX_AmbientTime, gFX_ShaderTime ; lint-ignore: phantom-global (gShader_Ready in src/gui/d2d_shader.ahk)
     global gFX_GPUReady, cfg
 
     if (!gShader_Ready || !gFX_GPUReady || gFX_ShaderLayers.Length = 0)
@@ -355,7 +355,7 @@ FX_PreRenderShaderLayers(w, h) {
 ; Draw all active shader layers inside D2D BeginDraw.
 ; Opacity is baked into shader output via AT_PostProcess — no PushLayer needed.
 FX_DrawShaderLayers(wPhys, hPhys) { ; lint-ignore: dead-param
-    global gD2D_RT, gFX_ShaderLayers, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/lib/d2d_shader.ahk)
+    global gD2D_RT, gFX_ShaderLayers, gShader_Ready ; lint-ignore: phantom-global (gShader_Ready in src/gui/d2d_shader.ahk)
 
     if (!gShader_Ready || gFX_ShaderLayers.Length = 0)
         return

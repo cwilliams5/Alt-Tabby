@@ -62,6 +62,7 @@ $script:RX_CLASS_DEF = [regex]::new('^\s*class\s+(\w+)', 'Compiled')
 $script:RX_FUNC_DEF  = [regex]::new('^\s*(?:static\s+)?(\w+)\s*\(([^)]*)\)\s*\{', 'Compiled')
 $script:RX_FUNC_DEF2 = [regex]::new('^\s*(?:static\s+)?(\w+)\s*\((.*)', 'Compiled')
 $script:RX_STATIC_METHOD = [regex]::new('^\s*static\s+(\w+)\s*\(', 'Compiled')
+$script:RX_INSTANCE_METHOD = [regex]::new('^\s*(\w+)\s*\(.*\)\s*(=>|\{)', 'Compiled')
 $script:RX_CALL_SITE = [regex]::new('(?<![.\w%])(\w+)\s*\(', 'Compiled')
 $script:RX_WORD      = [regex]::new('\b[a-zA-Z_]\w+\b', 'Compiled')
 
@@ -317,6 +318,7 @@ foreach ($file in $allProjectFiles) {
     $perFileProcessed = [object[]]::new($lines.Count)
 
     $inBlockComment = $false
+    $inContinuation = $false
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $raw = $lines[$i]
@@ -326,6 +328,20 @@ foreach ($file in $allProjectFiles) {
         if ($trimmed.StartsWith('/*')) { $inBlockComment = $true }
         if ($inBlockComment) {
             if ($trimmed.Contains('*/')) { $inBlockComment = $false }
+            $perFileProcessed[$i] = @{ Cleaned = ''; Braces = @(0, 0) }
+            continue
+        }
+
+        # AHK continuation section tracking: bare ( on a line enters, bare ) exits.
+        # A continuation section opener is ( alone or followed by AHK options (Join, LTrim, etc.)
+        # NOT a function call like FuncName(args) or (expr).
+        if ($inContinuation) {
+            if ($trimmed -match '^\)["'']?\s*$') { $inContinuation = $false }
+            $perFileProcessed[$i] = @{ Cleaned = ''; Braces = @(0, 0) }
+            continue
+        }
+        if ($trimmed -match '^\(\s*(Join\S*|LTrim|RTrim|Comments?|`)?\s*$') {
+            $inContinuation = $true
             $perFileProcessed[$i] = @{ Cleaned = ''; Braces = @(0, 0) }
             continue
         }
@@ -547,7 +563,7 @@ foreach ($file in $allProjectFiles) {
             }
         }
 
-        # --- Class method definitions: register static methods inside class bodies ---
+        # --- Class method definitions: register methods inside class bodies ---
         # Class methods appear at depth classDepth+1 (inside the class braces).
         # Register them so check_undefined_calls doesn't flag method definitions as calls.
         if ($inClass -and -not $inFunc -and $depth -eq ($classDepth + 1)) {
@@ -556,6 +572,15 @@ foreach ($file in $allProjectFiles) {
                 $methodName = $mStaticMethod.Groups[1].Value
                 if (-not $BF_AHK_KEYWORDS.ContainsKey($methodName.ToLower())) {
                     [void]$ucDefinedFunctions.Add($methodName)
+                }
+            } else {
+                # Instance methods: Name(...) => or Name(...) {
+                $mInstanceMethod = $script:RX_INSTANCE_METHOD.Match($cleaned)
+                if ($mInstanceMethod.Success) {
+                    $methodName = $mInstanceMethod.Groups[1].Value
+                    if (-not $BF_AHK_KEYWORDS.ContainsKey($methodName.ToLower())) {
+                        [void]$ucDefinedFunctions.Add($methodName)
+                    }
                 }
             }
         }

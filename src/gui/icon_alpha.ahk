@@ -8,7 +8,7 @@
 ; No imports, no CRT, pure buffer computation. 32+64 bit support.
 ;
 #Requires AutoHotkey v2.0
-#Include MCodeLoader.ahk
+#Include %A_LineFile%\..\..\lib\MCodeLoader.ahk
 
 class IconAlpha {
     static _mc := IconAlpha._Init()

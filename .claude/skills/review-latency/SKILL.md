@@ -84,7 +84,7 @@ Key files:
 - `src/gui/gui_gdip.ahk` — D2D resource management (`/review-paint`)
 - `src/gui/gui_math.ahk` — layout calculations (`/review-paint`)
 - `src/gui/gui_bgimage.ahk` — background image layer (`/review-paint`)
-- `src/lib/d2d_shader.ahk` — D3D11 interop (`/review-d3d`)
+- `src/gui/d2d_shader.ahk` — D3D11 interop (`/review-d3d`)
 - `src/shaders/*.hlsl` — pixel shaders (`/review-shaders`)
 
 **In scope from gui_animation.ahk** (the frame pacing / latency boundary):

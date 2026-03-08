@@ -19,8 +19,6 @@ global gShader_Sampler := 0      ; ID3D11SamplerState (wrap + linear, shared)
 global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h, meta, srvs}
 global gShader_Ready := false    ; true after Shader_Init succeeds
 global gShader_FrameCount := 0   ; frame counter for cbuffer
-global gShader_LastTime := 0.0   ; previous frame time for timeDelta
-global gShader_ActiveName := ""  ; currently rendered shader — used to release old RT on switch
 
 ; ========================= INIT =========================
 
@@ -33,6 +31,7 @@ Shader_Init() {
     if (!gD2D_D3DDevice)
         return false
 
+    global cfg
     if (cfg.DiagShaderLog)
         _Shader_LogInit()
 
@@ -131,6 +130,7 @@ VSOut VSMain(uint id : SV_VertexID) {
 ; Uses disk cache to skip D3DCompile when HLSL source hasn't changed.
 ; cacheName: unique name for cache file (e.g., "vs_VSMain", "ps_digital_rain").
 _Shader_Compile(hlsl, entryPoint, target, cacheName := "") {
+    global cfg
     ; Check bytecode cache first
     cacheKey := cacheName ? cacheName : entryPoint
     hash := _Shader_HashSource(hlsl, entryPoint, target)
@@ -334,7 +334,7 @@ _Shader_CacheWrite(name, hash, bytecode) {
 ; meta: {opacity: 0.50, iChannels: [{index: 0, file: "name_i0.png"}]}
 ; Compiles the PS and stores in registry. Returns true on success.
 Shader_Register(name, hlsl, meta := "") {
-    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice)
         return false
@@ -355,7 +355,7 @@ Shader_Register(name, hlsl, meta := "") {
 
         ; CreatePixelShader (ID3D11Device vtable 15)
         pPS := 0
-        hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
+        ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
         if (!pPS)
             return false
 
@@ -378,7 +378,7 @@ Shader_Register(name, hlsl, meta := "") {
 ; resId: Resource ID for the pre-compiled PS DXBC bytecode
 ; meta: {opacity: 0.50, iChannels: [{index: 0, file: "name_i0.png"}]}
 Shader_RegisterFromResource(name, resId, meta := "") {
-    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice)
         return false
@@ -399,7 +399,7 @@ Shader_RegisterFromResource(name, resId, meta := "") {
 
         ; CreatePixelShader (ID3D11Device vtable 15)
         pPS := 0
-        hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
+        ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
         if (!pPS)
             return false
 
@@ -422,7 +422,7 @@ Shader_RegisterFromResource(name, resId, meta := "") {
 ; hlslFile: filename relative to src/shaders/ (e.g., "fire.hlsl")
 ; meta: {opacity: 0.50, iChannels: [{index: 0, file: "name_i0.png"}]}
 Shader_RegisterFromFile(name, hlslFile, meta := "") {
-    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice)
         return false
@@ -550,7 +550,7 @@ _Shader_ComputeBufferLayout(computeMeta) {
 ; Register a compute+pixel shader pair. HLSL source must contain both CSMain and PSMain entry points.
 ; meta must include compute: {maxParticles: N, particleStride: N}
 Shader_RegisterCompute(name, hlsl, meta) {
-    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice)
         return false
@@ -580,13 +580,13 @@ Shader_RegisterCompute(name, hlsl, meta) {
 
         ; CreateComputeShader (ID3D11Device vtable 18)
         pCS := 0
-        hr := ComCall(18, gD2D_D3DDevice, "ptr", csBytecode, "uptr", csBytecode.Size, "ptr", 0, "ptr*", &pCS, "int")
+        ComCall(18, gD2D_D3DDevice, "ptr", csBytecode, "uptr", csBytecode.Size, "ptr", 0, "ptr*", &pCS, "int")
         if (!pCS)
             return false
 
         ; CreatePixelShader (ID3D11Device vtable 15)
         pPS := 0
-        hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
+        ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
         if (!pPS) {
             ComCall(2, pCS)
             return false
@@ -625,7 +625,7 @@ Shader_RegisterCompute(name, hlsl, meta) {
 
 ; Register a compute+pixel shader from pre-compiled DXBC resources.
 Shader_RegisterComputeFromResource(name, csResId, psResId, meta) {
-    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice || !IsObject(meta))
         return false
@@ -644,13 +644,13 @@ Shader_RegisterComputeFromResource(name, csResId, psResId, meta) {
 
         ; CreateComputeShader (ID3D11Device vtable 18)
         pCS := 0
-        hr := ComCall(18, gD2D_D3DDevice, "ptr", csBytecode, "uptr", csBytecode.Size, "ptr", 0, "ptr*", &pCS, "int")
+        ComCall(18, gD2D_D3DDevice, "ptr", csBytecode, "uptr", csBytecode.Size, "ptr", 0, "ptr*", &pCS, "int")
         if (!pCS)
             return false
 
         ; CreatePixelShader (ID3D11Device vtable 15)
         pPS := 0
-        hr := ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
+        ComCall(15, gD2D_D3DDevice, "ptr", psBytecode, "uptr", psBytecode.Size, "ptr", 0, "ptr*", &pPS, "int")
         if (!pPS) {
             ComCall(2, pCS)
             return false
@@ -685,7 +685,7 @@ Shader_RegisterComputeFromResource(name, csResId, psResId, meta) {
 
 ; Register a compute+pixel shader from HLSL file (dev mode).
 Shader_RegisterComputeFromFile(name, hlslFile, meta) {
-    global gD2D_D3DDevice, gShader_Registry, gShader_Ready
+    global gD2D_D3DDevice, gShader_Registry, gShader_Ready, cfg
 
     if (!gShader_Ready || !gD2D_D3DDevice || !IsObject(meta))
         return false
@@ -730,7 +730,7 @@ Shader_RegisterComputeFromFile(name, hlslFile, meta) {
 ; Create a D3D11 structured buffer with UAV + SRV for compute shader read/write.
 ; Returns {buffer, uav, srv} or 0 on failure.
 _Shader_CreateComputeBuffer(numElements, strideBytes) {
-    global gD2D_D3DDevice
+    global gD2D_D3DDevice, cfg
 
     totalSize := numElements * strideBytes
 
@@ -804,7 +804,7 @@ _Shader_CreateComputeBuffer(numElements, strideBytes) {
 ; Load iChannel textures for a shader. GDI+ → CreateTexture2D → CreateShaderResourceView.
 ; Loads ALL iChannels specified in metadata and stores SRVs in entry.srvs[] (ordered by channel index).
 _Shader_LoadTextures(name) {
-    global gD2D_D3DDevice, gShader_Registry
+    global gD2D_D3DDevice, gShader_Registry, cfg
 
     if (!gShader_Registry.Has(name))
         return
@@ -830,7 +830,7 @@ _Shader_LoadTextures(name) {
 
 ; Load a single texture file → D3D11 SRV. Returns SRV ptr or 0 on failure.
 _Shader_LoadOneTexture(fileName) {
-    global gD2D_D3DDevice
+    global gD2D_D3DDevice, cfg
     ; Ensure GDI+ is initialized (Gdip_Startup is a no-op in the D2D pipeline)
     static _gdipInit := _Shader_InitGdiplus()
     texPath := Shader_GetTexturePath(fileName)
@@ -1059,15 +1059,11 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     borderR := 0.0, borderG := 0.0, borderB := 0.0, borderA := 0.0,
     borderWidth := 0.0, isHovered := 0.0, entranceT := 0.0, rowRadius := 0.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
-    global gShader_FrameCount, gShader_LastTime, gShader_ActiveName
+    global gShader_FrameCount, cfg
     static dbgRendered := Map()
 
     if (!gShader_Ready || !gShader_Registry.Has(name))
         return false
-
-    ; Track active shaders for RT lifecycle. Multi-layer rendering keeps RTs for all active shaders.
-    ; Callers manage RT release via Shader_ReleaseInactive() when the active set changes.
-    gShader_ActiveName := name
 
     ; One-time log per shader name
     if (cfg.DiagShaderLog && !dbgRendered.Has(name)) {
@@ -1329,7 +1325,7 @@ Shader_GetMeta(name) {
 ; Release all D3D11 shader resources. Safe to call multiple times.
 Shader_Cleanup() {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
-    global gShader_FrameCount, gShader_LastTime, gShader_ActiveName
+    global gShader_FrameCount
 
     ; Release per-shader resources (all raw COM ptrs)
     for _, entry in gShader_Registry {
@@ -1369,10 +1365,8 @@ Shader_Cleanup() {
         gShader_D3DCtx := 0
     }
 
-    gShader_ActiveName := ""
     gShader_Ready := false
     gShader_FrameCount := 0
-    gShader_LastTime := 0.0
 }
 
 ; ========================= GDI+ INIT =========================

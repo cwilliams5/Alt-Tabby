@@ -117,7 +117,7 @@ Scan these files for `ComCall(`, `ComObj`, vtable dispatch patterns, and `DllCal
 **Primary (per-frame hot path):**
 - `src/gui/gui_paint.ahk` — `GUI_Repaint`, `_GUI_PaintOverlay`
 - `src/gui/gui_effects.ahk` — all `FX_PreRender*` and `FX_Draw*` functions
-- `src/lib/d2d_shader.ahk` — `Shader_PreRender` (40+ ComCalls per invocation, runs up to 7x/frame)
+- `src/gui/d2d_shader.ahk` — `Shader_PreRender` (40+ ComCalls per invocation, runs up to 7x/frame)
 - `src/gui/gui_overlay.ahk` — `D2D_AcquireBackBuffer`, `D2D_ReleaseBackBuffer`, `D2D_Present`, `D2D_SetClipRect`, `D2D_Commit`
 - `src/gui/gui_animation.ahk` — `_Anim_FrameLoop` (frame pacing + tween sync + DComp operations)
 - `src/gui/gui_gdip.ahk` — D2D resource calls (CreateBrush, DrawText, DrawImage, etc.)
@@ -149,7 +149,7 @@ For each COM call site from Step 1:
 
 ### Step 3 — Identify new/changed COM call sites since last audit
 
-Use `git log --all -p --diff-filter=AM -- src/gui/ src/lib/d2d_shader.ahk` and search for new `ComCall` additions. Any new COM call in the paint or frame loop path needs all 5 invariants verified. Pay special attention to:
+Use `git log --all -p --diff-filter=AM -- src/gui/ src/gui/d2d_shader.ahk` and search for new `ComCall` additions. Any new COM call in the paint or frame loop path needs all 5 invariants verified. Pay special attention to:
 
 - New DComp calls (transforms, opacity, Commit) — added for animation effects
 - New D3D11 calls — added for compute shaders, new shader layers

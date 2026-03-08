@@ -90,7 +90,7 @@ Primary (called every frame):
 Supporting (called from paint path):
 - `src/gui/gui_gdip.ahk` — D2D resource management, bitmap creation, cached brushes
 - `src/gui/gui_math.ahk` — layout calculations
-- `src/lib/d2d_shader.ahk` — `Shader_GetBitmap` returns intermediate textures for DrawImage (D3D11 dispatch internals are out of scope — use `review-d3d`)
+- `src/gui/d2d_shader.ahk` — `Shader_GetBitmap` returns intermediate textures for DrawImage (D3D11 dispatch internals are out of scope — use `review-d3d`)
 
 Init/config (not per-frame, but relevant for cache invalidation):
 - `src/gui/gui_effects.ahk` — `FX_Init()`, shader layer registration, effect disposal

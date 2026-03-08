@@ -6,7 +6,7 @@ disable-model-invocation: true
 ---
 Enter planning mode. Scan the codebase for MCode optimization opportunities. Use parallelism where possible.
 
-MCode replaces AHK-interpreted tight loops with native C machine code embedded as base64. The project already has an MCode pipeline (`tools/native_benchmark/native_src/`) and a working example (`src/lib/icon_alpha.ahk`). Adding a new function to an existing MCode module is low cost — the infrastructure exists.
+MCode replaces AHK-interpreted tight loops with native C machine code embedded as base64. The project already has an MCode pipeline (`tools/native_benchmark/native_src/`) and a working example (`src/gui/icon_alpha.ahk`). Adding a new function to an existing MCode module is low cost — the infrastructure exists.
 
 ## What Qualifies
 
@@ -33,7 +33,7 @@ All four must be true:
 
 ## Reference
 
-- `src/lib/icon_alpha.ahk` — template for MCode embedding (base64 → CryptStringToBinary → VirtualProtect)
+- `src/gui/icon_alpha.ahk` — template for MCode embedding (base64 → CryptStringToBinary → VirtualProtect)
 - `tools/native_benchmark/native_src/icon_alpha.c` — reference C source (no CRT, no imports, pure computation)
 - `tools/native_benchmark/` — benchmark harness and native build pipeline
 

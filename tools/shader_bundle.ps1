@@ -1,6 +1,6 @@
 # shader_bundle.ps1 — Scans src/shaders/**/*.hlsl + *.json, generates:
-#   src/lib/shader_bundle.ahk    — Metadata + Register functions + SHADER/MOUSE/SELECTION arrays
-#   src/lib/shader_resources.ahk — @Ahk2Exe-AddResource directives for textures + DXBC bytecode
+#   src/gui/shader_bundle.ahk    — Metadata + Register functions + SHADER/MOUSE/SELECTION arrays
+#   src/gui/shader_resources.ahk — @Ahk2Exe-AddResource directives for textures + DXBC bytecode
 #
 # HLSL source is NOT embedded. Pre-compiled DXBC bytecode is shipped as resources.
 # Shaders in subdirectories (mouse/, selection/) get category-specific arrays.
@@ -18,11 +18,11 @@ $ErrorActionPreference = 'Stop'
 # Resolve paths relative to repo root (script lives in tools/)
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $shaderDir = Join-Path $repoRoot 'src\shaders'
-$libDir = Join-Path $repoRoot 'src\lib'
+$guiDir = Join-Path $repoRoot 'src\gui'
 $resImgDir = Join-Path $repoRoot 'resources\img\shaders'
 $resDxbcDir = Join-Path $repoRoot 'resources\shaders'
-$bundlePath = Join-Path $libDir 'shader_bundle.ahk'
-$resourcesPath = Join-Path $libDir 'shader_resources.ahk'
+$bundlePath = Join-Path $guiDir 'shader_bundle.ahk'
+$resourcesPath = Join-Path $guiDir 'shader_resources.ahk'
 
 # Ensure output dirs exist
 if (!(Test-Path $resImgDir)) { New-Item -ItemType Directory -Path $resImgDir -Force | Out-Null }

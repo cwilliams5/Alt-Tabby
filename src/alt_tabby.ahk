@@ -110,17 +110,20 @@ for _, arg in A_Args {
 ; Third-party libraries (from src/lib/)
 #Include %A_ScriptDir%\lib\
 #Include cjson.ahk
-#Include icon_alpha.ahk
 #Include OVERLAPPED.ahk
 #Include DirectoryWatcher.ahk
 #Include Direct2D.ahk
+#Include *i WebView2.ahk
+#Include *i ComVar.ahk
+#Include *i Promise.ahk
+
+; First-party GPU/shader modules (from src/gui/)
+#Include %A_ScriptDir%\gui\
+#Include icon_alpha.ahk
 #Include d2d_device.ahk
 #Include d2d_shader.ahk
 #Include shader_bundle.ahk
 #Include shader_resources.ahk
-#Include *i WebView2.ahk
-#Include *i ComVar.ahk
-#Include *i Promise.ahk
 
 ; Shared libraries (from src/shared/)
 #Include %A_ScriptDir%\shared\

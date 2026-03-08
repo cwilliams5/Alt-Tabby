@@ -303,6 +303,11 @@ GUIPump_EnsureRunning(params*) {
 ProcPump_EnsureRunning(params*) {
 }
 
+; Shader name/key arrays (from shader_bundle.ahk — mocked to avoid GPU dependency chain)
+global SHADER_NAMES := ["None"], SHADER_KEYS := [""]
+global MOUSE_SHADER_NAMES := ["None"], MOUSE_SHADER_KEYS := [""]
+global SELECTION_SHADER_NAMES := ["None"], SELECTION_SHADER_KEYS := [""]
+
 ; ============================================================
 ; Include PRODUCTION files (tests call real functions)
 ; ============================================================
