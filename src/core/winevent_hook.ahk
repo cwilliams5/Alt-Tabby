@@ -543,8 +543,10 @@ _WEH_ProcessBatch() {
     ; RACE FIX: Snapshot Z + location flags before cleanup (needed for conditional logic below)
     ; Then remove processed items atomically
     Critical "On"
-    zSnapshot := Map()
-    locSnapshot := Map()
+    static zSnapshot := Map()  ; lint-ignore: static-in-timer
+    static locSnapshot := Map()  ; lint-ignore: static-in-timer
+    zSnapshot.Clear()
+    locSnapshot.Clear()
     for _, hwnd in toProcess {
         if (_WEH_PendingZNeeded.Has(hwnd))
             zSnapshot[hwnd] := true

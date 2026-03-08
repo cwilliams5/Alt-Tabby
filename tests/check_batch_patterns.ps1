@@ -1821,8 +1821,8 @@ if ($null -ne $cpiFullPath -and $fileCacheText.ContainsKey($cpiFullPath)) {
             }
         }
 
-        # --- Invariant 2: gWS_DirtyHwnds must be reset (assigned new Map()) somewhere ---
-        if (-not ($cpiBody -match 'gWS_DirtyHwnds\s*:=\s*Map\(\)')) {
+        # --- Invariant 2: gWS_DirtyHwnds must be reset (Map() or .Clear()) somewhere ---
+        if (-not ($cpiBody -match 'gWS_DirtyHwnds\s*(:=\s*Map\(\)|\.Clear\(\))')) {
             [void]$cpiIssues.Add("${cpiRelPath}: WL_GetDisplayList() never resets gWS_DirtyHwnds - stale dirty tracking accumulates")
         }
 

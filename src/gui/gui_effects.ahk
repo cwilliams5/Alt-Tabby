@@ -354,10 +354,11 @@ FX_PreRenderShaderLayers(w, h) {
 
         ; Compute effective time: (ambient / 1000) * speed + offset + carry
         ; Single Map.Get avoids Has+[] double lookup
-        baseTime := gFX_AmbientTime / 1000.0
+        ambientSec := gFX_AmbientTime / 1000.0
+        baseTime := ambientSec
         t := gFX_ShaderTime.Get(layer.layerIndex, 0)
         if (t)
-            baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+            baseTime := t.offset + t.carry + ambientSec
         effectiveTime := baseTime * layer.speed
 
         try {
@@ -370,7 +371,8 @@ FX_PreRenderShaderLayers(w, h) {
             if (e.HasProp("Number") && e.Number != 0)
                 errDetail .= " hr=" Format("0x{:08x}", e.Number & 0xFFFFFFFF)
             ToolTip(errDetail)
-            SetTimer(() => ToolTip(), -5000)
+            static clearTT := () => ToolTip()
+            SetTimer(clearTT, -5000)
             if (cfg.DiagShaderLog)
                 LogAppend(LOG_PATH_SHADER, errDetail)
         }
@@ -414,10 +416,11 @@ FX_PreRenderMouseEffect(w, h) {
     }
 
     ; --- Compute mouse velocity (CPU-side, per frame) ---
-    baseTime := gFX_AmbientTime / 1000.0 * gFX_MouseEffect.speed
+    ambientSec := gFX_AmbientTime / 1000.0
+    baseTime := ambientSec * gFX_MouseEffect.speed
     t := gFX_ShaderTime.Get(gFX_MouseEffect.key, 0)
     if (t)
-        baseTime := (t.offset + t.carry + (gFX_AmbientTime / 1000.0)) * gFX_MouseEffect.speed
+        baseTime := (t.offset + t.carry + ambientSec) * gFX_MouseEffect.speed
 
     static prevTime := 0.0
     dtSec := (prevTime > 0) ? baseTime - prevTime : 0.0
@@ -468,7 +471,8 @@ FX_PreRenderMouseEffect(w, h) {
         global LOG_PATH_SHADER
         errDetail := "Mouse shader ERR [" gFX_MouseEffect.key "]: " e.Message " @ " e.What
         ToolTip(errDetail)
-        SetTimer(() => ToolTip(), -5000)
+        static clearTT := () => ToolTip()
+        SetTimer(clearTT, -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }
@@ -518,10 +522,11 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
         entry.selIntensity := cfg.GUI_SelectionIntensity
     }
 
-    baseTime := gFX_AmbientTime / 1000.0
+    ambientSec := gFX_AmbientTime / 1000.0
+    baseTime := ambientSec
     t := gFX_ShaderTime.Get(gFX_SelectionEffect.key, 0)
     if (t)
-        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+        baseTime := t.offset + t.carry + ambientSec
     baseTime *= gFX_SelectionEffect.speed
 
     ; Decompose ARGB → premultiplied float4 RGBA (cached — config-stable values)
@@ -569,7 +574,8 @@ FX_PreRenderSelectionEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, b
         global LOG_PATH_SHADER
         errDetail := "Selection shader ERR [" gFX_SelectionEffect.key "]: " e.Message " @ " e.What
         ToolTip(errDetail)
-        SetTimer(() => ToolTip(), -5000)
+        static clearTT := () => ToolTip()
+        SetTimer(clearTT, -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }
@@ -1140,10 +1146,11 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
         entry.selIntensity := hovIntensity
     }
 
-    baseTime := gFX_AmbientTime / 1000.0
+    ambientSec := gFX_AmbientTime / 1000.0
+    baseTime := ambientSec
     t := gFX_ShaderTime.Get(gFX_HoverEffect.key, 0)
     if (t)
-        baseTime := t.offset + t.carry + (gFX_AmbientTime / 1000.0)
+        baseTime := t.offset + t.carry + ambientSec
     baseTime *= gFX_HoverEffect.speed
 
     ; Decompose ARGB → premultiplied float4 RGBA (cached — config-stable values)
@@ -1190,7 +1197,8 @@ FX_PreRenderHoverEffect(w, h, selX, selY, selW, selH, selARGB, borderARGB, borde
         global LOG_PATH_SHADER
         errDetail := "Hover shader ERR [" gFX_HoverEffect.key "]: " e.Message " @ " e.What
         ToolTip(errDetail)
-        SetTimer(() => ToolTip(), -5000)
+        static clearTT := () => ToolTip()
+        SetTimer(clearTT, -5000)
         if (cfg.DiagShaderLog)
             LogAppend(LOG_PATH_SHADER, errDetail)
     }

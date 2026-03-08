@@ -268,7 +268,8 @@ WL_UpsertWindow(records, source := "") {
     sortDirty := false
     contentDirty := false
     ; Collect rows needing enrichment (enqueued after Critical section ends)
-    rowsToEnqueue := []
+    static rowsToEnqueue := []
+    rowsToEnqueue.Length := 0
 
     ; LATENCY FIX: Single Critical section for entire batch (was per-record).
     ; For 30 windows this saves ~58 Critical enter/exit transitions (~1-2ms).
@@ -800,7 +801,7 @@ WL_SetCurrentWorkspace(id, name := "") {
     ; Unmanaged windows (empty workspaceName) float across all workspaces, treat as "on current"
     anyFlipped := false
     for _, rec in gWS_Store {
-        newIsOnCurrent := WL_IsOnCurrentWorkspace(rec.workspaceName, name)
+        newIsOnCurrent := (rec.workspaceName = name) || (rec.workspaceName = "")
         if (rec.isOnCurrentWorkspace != newIsOnCurrent) {
             rec.isOnCurrentWorkspace := newIsOnCurrent
             anyFlipped := true
@@ -1412,7 +1413,7 @@ WL_GetDisplayList(opts := 0) {
             gWS_ContentDirty := false
             gWS_MRUBumpOnly := false
             gWS_MRUBumpedHwnd := 0
-            gWS_DirtyHwnds := Map()
+            gWS_DirtyHwnds.Clear()
             gWS_DLCache_Items := rows
             result := { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "mru" }
             if (columns = "hwndsOnly") {
@@ -1461,7 +1462,7 @@ WL_GetDisplayList(opts := 0) {
         }
         if (valid) {
             gWS_ContentDirty := false
-            gWS_DirtyHwnds := Map()
+            gWS_DirtyHwnds.Clear()
             gWS_DLCache_Items := rows
             result := { rev: _WL_GetRev(), items: rows, itemsMap: gWS_DLCache_ItemsMap, meta: gWS_Meta, cachePath: "content" }
             if (columns = "hwndsOnly") {
@@ -1528,7 +1529,7 @@ WL_GetDisplayList(opts := 0) {
     gWS_ContentDirty := false
     gWS_MRUBumpOnly := false
     gWS_MRUBumpedHwnd := 0
-    gWS_DirtyHwnds := Map()
+    gWS_DirtyHwnds.Clear()
     gWS_DLCache_Items := rows
     gWS_DLCache_OptsKey := optsKey
     Critical "Off"

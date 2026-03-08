@@ -525,10 +525,11 @@ GUI_FilterDisplayItems(items) {
         return items
     }
     result := []
+    result.Capacity := items.Length
     for _, item in items {
-        if (!wsAll && !GUI_WorkspaceItemPasses(item))
+        if (!wsAll && !(item.HasOwnProp("isOnCurrentWorkspace") ? item.isOnCurrentWorkspace : true))
             continue
-        if (!monAll && !GUI_MonitorItemPasses(item))
+        if (!monAll && item.monitorHandle != gGUI_OverlayMonitorHandle)
             continue
         result.Push(item)
     }
@@ -1153,6 +1154,8 @@ _GUI_AsyncActivationTick() {
                 hasAltDn := true
             if (ev.ev = TABBY_EV_TAB_STEP)
                 hasTab := true
+            if (hasAltDn && hasTab)
+                break
         }
         if (hasAltDn && !hasTab) {
             shiftFlag := GetKeyState("Shift", "P") ? TABBY_FLAG_SHIFT : 0
