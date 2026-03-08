@@ -423,7 +423,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     ; Header
     if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
-        hdrTextH := Round(20 * scale)
+        hdrTextH := cachedLayout.hdrTextH
         if (shadowP.enabled) {
             _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
             for _, col in cols {
@@ -513,8 +513,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         brCol := gD2D_Res["brCol"], brColHi := gD2D_Res["brColHi"]
 
         ; Selection rect expansion (in physical px)
-        selExpandX := Round(4 * scale)
-        selExpandY := Round(2 * scale)
+        selExpandX := cachedLayout.selExpandX
+        selExpandY := cachedLayout.selExpandY
 
         ; ===== Selection highlight (drawn BEFORE row loop for correct Z-order) =====
         ; The highlight is a background element — text/icons draw on top.
@@ -713,9 +713,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 ; ========================= ACTION BUTTONS =========================
 
 ; Get scaled action button metrics with minimums enforced
-; Returns: {size, gap, rad}
+; Returns: {size, gap, rad} — cached per scale
 GUI_GetActionBtnMetrics(scale) {
     global cfg
+    static cached := {size: 0, gap: 0, rad: 0}, cachedScale := 0.0
+    if (Abs(cachedScale - scale) < 0.001)
+        return cached
     size := Round(cfg.GUI_ActionBtnSizePx * scale)
     if (size < 12)
         size := 12
@@ -725,7 +728,9 @@ GUI_GetActionBtnMetrics(scale) {
     rad := Round(cfg.GUI_ActionBtnRadiusPx * scale)
     if (rad < 2)
         rad := 2
-    return {size: size, gap: gap, rad: rad}
+    cached := {size: size, gap: gap, rad: rad}
+    cachedScale := scale
+    return cached
 }
 
 ; Draw a single action button and update btnX position
