@@ -1109,49 +1109,29 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         return false
     pData := NumGet(mapped, 0, "ptr")
     if (pData) {
-        ; --- Existing fields (32 bytes) ---
-        NumPut("float", Float(timeSec), pData, 0)          ; time        (offset 0)
-        NumPut("float", Float(w), pData, 4)                 ; resolution.x (offset 4)
-        NumPut("float", Float(h), pData, 8)                 ; resolution.y (offset 8)
-        NumPut("float", Float(timeDelta), pData, 12)        ; timeDelta   (offset 12)
-        NumPut("uint", gShader_FrameCount, pData, 16)       ; frame       (offset 16)
-        NumPut("float", Float(darken), pData, 20)           ; darken      (offset 20)
-        NumPut("float", Float(desaturate), pData, 24)       ; desaturate  (offset 24)
-        NumPut("float", Float(opacity), pData, 28)          ; opacity     (offset 28)
-        ; --- Mouse (offset 32) ---
-        NumPut("float", Float(mouseX), pData, 32)           ; iMouse.x
-        NumPut("float", Float(mouseY), pData, 36)           ; iMouse.y
-        NumPut("float", Float(mouseVelX), pData, 40)        ; iMouseVel.x
-        NumPut("float", Float(mouseVelY), pData, 44)        ; iMouseVel.y
-        ; --- Selection rect (offset 48) ---
-        NumPut("float", Float(selX), pData, 48)             ; selRect.x
-        NumPut("float", Float(selY), pData, 52)             ; selRect.y
-        NumPut("float", Float(selW), pData, 56)             ; selRect.w
-        NumPut("float", Float(selH), pData, 60)             ; selRect.h
-        ; --- Selection color (offset 64) ---
-        NumPut("float", Float(selColorR), pData, 64)        ; selColor.r
-        NumPut("float", Float(selColorG), pData, 68)        ; selColor.g
-        NumPut("float", Float(selColorB), pData, 72)        ; selColor.b
-        NumPut("float", Float(selColorA), pData, 76)        ; selColor.a
-        ; --- Border color (offset 80) ---
-        NumPut("float", Float(borderR), pData, 80)          ; borderColor.r
-        NumPut("float", Float(borderG), pData, 84)          ; borderColor.g
-        NumPut("float", Float(borderB), pData, 88)          ; borderColor.b
-        NumPut("float", Float(borderA), pData, 92)          ; borderColor.a
-        ; --- Selection params (offset 96) ---
-        NumPut("float", Float(borderWidth), pData, 96)      ; borderWidth
-        NumPut("float", Float(isHovered), pData, 100)       ; isHovered
-        NumPut("float", Float(entranceT), pData, 104)       ; entranceT
-        NumPut("float", Float(mouseSpeed), pData, 108)       ; iMouseSpeed
-        ; --- Compute grid/particle config (offset 112) ---
-        NumPut("uint",  entry.HasOwnProp("gridW") ? entry.gridW : 0,   pData, 112) ; gridW
-        NumPut("uint",  entry.HasOwnProp("gridH") ? entry.gridH : 0,   pData, 116) ; gridH
-        NumPut("uint",  entry.HasOwnProp("effectiveParticles") ? entry.effectiveParticles : 0, pData, 120) ; maxParticles
-        NumPut("float", Float(entry.HasOwnProp("reactivity") ? entry.reactivity : 1.0), pData, 124) ; reactivity
-        ; --- Selection effect tuning (offset 128) ---
-        NumPut("float", Float(entry.HasOwnProp("selGlow") ? entry.selGlow : 1.0), pData, 128) ; selGlow
-        NumPut("float", Float(entry.HasOwnProp("selIntensity") ? entry.selIntensity : 1.0), pData, 132) ; selIntensity
-        NumPut("float", Float(rowRadius), pData, 136) ; rowRadius
+        ; Pre-compute HasOwnProp values for batch write
+        gridW := entry.HasOwnProp("gridW") ? entry.gridW : 0
+        gridH := entry.HasOwnProp("gridH") ? entry.gridH : 0
+        maxPart := entry.HasOwnProp("effectiveParticles") ? entry.effectiveParticles : 0
+        react := entry.HasOwnProp("reactivity") ? entry.reactivity : 1.0
+        selGlowV := entry.HasOwnProp("selGlow") ? entry.selGlow : 1.0
+        selIntV := entry.HasOwnProp("selIntensity") ? entry.selIntensity : 1.0
+
+        ; Core params + mouse (offset 0-44, 12 values)
+        NumPut("float", Float(timeSec), "float", Float(w), "float", Float(h), "float", Float(timeDelta),
+               "uint", gShader_FrameCount, "float", Float(darken), "float", Float(desaturate), "float", Float(opacity),
+               "float", Float(mouseX), "float", Float(mouseY), "float", Float(mouseVelX), "float", Float(mouseVelY),
+               pData, 0)
+        ; Selection rect + colors (offset 48-92, 12 values)
+        NumPut("float", Float(selX), "float", Float(selY), "float", Float(selW), "float", Float(selH),
+               "float", Float(selColorR), "float", Float(selColorG), "float", Float(selColorB), "float", Float(selColorA),
+               "float", Float(borderR), "float", Float(borderG), "float", Float(borderB), "float", Float(borderA),
+               pData, 48)
+        ; Selection params + compute config + tuning (offset 96-136, 11 values)
+        NumPut("float", Float(borderWidth), "float", Float(isHovered), "float", Float(entranceT), "float", Float(mouseSpeed),
+               "uint", gridW, "uint", gridH, "uint", maxPart, "float", Float(react),
+               "float", Float(selGlowV), "float", Float(selIntV), "float", Float(rowRadius),
+               pData, 96)
     }
     ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
     try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)
