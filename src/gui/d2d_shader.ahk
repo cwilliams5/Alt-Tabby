@@ -19,6 +19,14 @@ global gShader_Sampler := 0      ; ID3D11SamplerState (wrap + linear, shared)
 global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h, meta, srvs}
 global gShader_Ready := false    ; true after Shader_Init succeeds
 global gShader_FrameCount := 0   ; frame counter for cbuffer
+global gShader_StateDirty := true ; dirty flag: D3D11 common state needs re-binding
+
+; Mark D3D11 common pipeline state as needing re-binding.
+; Call after D2D operations that share the device context (e.g., BeginDraw).
+Shader_InvalidateState() {
+    global gShader_StateDirty
+    gShader_StateDirty := true
+}
 
 ; ========================= INIT =========================
 
@@ -735,10 +743,15 @@ _Shader_CreateComputeBuffer(numElements, strideBytes) {
 
     ; Initialize buffer data: all zeros except life=1.0 (dead) for each particle.
     ; life field is at offset 16 (after float2 pos + float2 vel) in the 32-byte particle struct.
+    ; Uses RtlCopyMemory doubling (O(log N) DllCalls) instead of per-element NumPut loop.
     initData := Buffer(totalSize, 0)
-    Loop numElements {
-        offset := (A_Index - 1) * strideBytes
-        NumPut("float", 1.0, initData, offset + 16)  ; life = 1.0 (dead)
+    NumPut("float", 1.0, initData, 16)  ; Write one template particle
+    copied := 1
+    while (copied < numElements) {
+        chunk := Min(copied, numElements - copied)
+        DllCall("ntdll\RtlCopyMemory", "ptr", initData.Ptr + copied * strideBytes,
+            "ptr", initData.Ptr, "uint", chunk * strideBytes)
+        copied += chunk
     }
 
     ; D3D11_BUFFER_DESC (24 bytes)
@@ -1059,7 +1072,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     borderR := 0.0, borderG := 0.0, borderB := 0.0, borderA := 0.0,
     borderWidth := 0.0, isHovered := 0.0, entranceT := 0.0, rowRadius := 0.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
-    global gShader_FrameCount, cfg
+    global gShader_FrameCount, gShader_StateDirty, cfg
     static dbgRendered := Map()
 
     if (!gShader_Ready || !gShader_Registry.Has(name))
@@ -1122,44 +1135,44 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
                "float", entry.selGlow, "float", entry.selIntensity, "float", rowRadius,
                pData, 96)
     }
-    ; Unmap (vtable 15) — void; try suppresses false HRESULT throw from RAX garbage
-    try ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0)
+    ; Unmap (vtable 15) — void; "int" return type suppresses false HRESULT throw from RAX garbage
+    ComCall(15, ctx, "ptr", gShader_CBuffer, "uint", 0, "int")
 
     ; --- Compute shader dispatch (if this shader has a CS component) ---
     if (entry.cs) {
         ; CSSetShader (ID3D11DeviceContext vtable 69)
-        try ComCall(69, ctx, "ptr", entry.cs, "ptr", 0, "uint", 0)
+        ComCall(69, ctx, "ptr", entry.cs, "ptr", 0, "uint", 0, "int")
 
         ; CSSetConstantBuffers (vtable 71): same cbuffer at slot 0
         static csCbBuf := Buffer(A_PtrSize, 0)
         NumPut("ptr", gShader_CBuffer, csCbBuf)
-        try ComCall(71, ctx, "uint", 0, "uint", 1, "ptr", csCbBuf)
+        ComCall(71, ctx, "uint", 0, "uint", 1, "ptr", csCbBuf, "int")
 
         ; CSSetUnorderedAccessViews (vtable 68): UAV at slot 0
         static csUavBuf := Buffer(A_PtrSize, 0)
         NumPut("ptr", entry.csUAV, csUavBuf)
         static csInitialCount := Buffer(4, 0)
         NumPut("uint", 0xFFFFFFFF, csInitialCount)  ; -1 = don't reset append counter
-        try ComCall(68, ctx, "uint", 0, "uint", 1, "ptr", csUavBuf, "ptr", csInitialCount)
+        ComCall(68, ctx, "uint", 0, "uint", 1, "ptr", csUavBuf, "ptr", csInitialCount, "int")
 
         ; Dispatch (vtable 41): ceil(numElements / 64) thread groups
         numGroups := (entry.csNumElements + 63) // 64
-        try ComCall(41, ctx, "uint", numGroups, "uint", 1, "uint", 1)
+        ComCall(41, ctx, "uint", numGroups, "uint", 1, "uint", 1, "int")
 
         ; Unbind CS and UAV (clean state for PS phase)
-        try ComCall(69, ctx, "ptr", 0, "ptr", 0, "uint", 0)
+        ComCall(69, ctx, "ptr", 0, "ptr", 0, "uint", 0, "int")
         static csNullUav := Buffer(A_PtrSize, 0)
-        try ComCall(68, ctx, "uint", 0, "uint", 1, "ptr", csNullUav, "ptr", csInitialCount)
+        ComCall(68, ctx, "uint", 0, "uint", 1, "ptr", csNullUav, "ptr", csInitialCount, "int")
     }
 
     ; ClearRenderTargetView (vtable 50)
     static clearColor := _Shader_MakeClearColor()
-    try ComCall(50, ctx, "ptr", entry.rtv, "ptr", clearColor)
+    ComCall(50, ctx, "ptr", entry.rtv, "ptr", clearColor, "int")
 
     ; OMSetRenderTargets (vtable 33): count, ppRTVs, depthStencil
     static rtvBuf := Buffer(A_PtrSize, 0)
     NumPut("ptr", entry.rtv, rtvBuf)
-    try ComCall(33, ctx, "uint", 1, "ptr", rtvBuf, "ptr", 0)
+    ComCall(33, ctx, "uint", 1, "ptr", rtvBuf, "ptr", 0, "int")
 
     ; RSSetViewports (vtable 44)
     ; D3D11_VIEWPORT (24 bytes): TopLeftX, TopLeftY, Width, Height, MinDepth, MaxDepth
@@ -1171,21 +1184,34 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         NumPut("float", Float(w), vp, 8)
         NumPut("float", Float(h), vp, 12)
     }
-    try ComCall(44, ctx, "uint", 1, "ptr", vp)
+    ComCall(44, ctx, "uint", 1, "ptr", vp, "int")
 
-    ; IASetPrimitiveTopology (vtable 24) — TRIANGLELIST = 4
-    try ComCall(24, ctx, "uint", 4)
+    ; --- Common pipeline state: skip when already set in this pre-BeginDraw batch ---
+    if (gShader_StateDirty) {
+        ; IASetPrimitiveTopology (vtable 24) — TRIANGLELIST = 4
+        ComCall(24, ctx, "uint", 4, "int")
 
-    ; VSSetShader (vtable 11): shader, classInstances, numClassInstances
-    try ComCall(11, ctx, "ptr", gShader_VS, "ptr", 0, "uint", 0)
+        ; VSSetShader (vtable 11): shader, classInstances, numClassInstances
+        ComCall(11, ctx, "ptr", gShader_VS, "ptr", 0, "uint", 0, "int")
 
-    ; PSSetShader (vtable 9)
-    try ComCall(9, ctx, "ptr", entry.ps, "ptr", 0, "uint", 0)
+        ; PSSetConstantBuffers (vtable 16): startSlot, numBuffers, ppBuffers
+        static cbBuf := Buffer(A_PtrSize, 0)
+        NumPut("ptr", gShader_CBuffer, cbBuf)
+        ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf, "int")
 
-    ; PSSetConstantBuffers (vtable 16): startSlot, numBuffers, ppBuffers
-    static cbBuf := Buffer(A_PtrSize, 0)
-    NumPut("ptr", gShader_CBuffer, cbBuf)
-    try ComCall(16, ctx, "uint", 0, "uint", 1, "ptr", cbBuf)
+        ; PSSetSamplers (vtable 10): bind all 8 slots with shared sampler
+        if (gShader_Sampler) {
+            static sampBuf := Buffer(A_PtrSize * 8, 0)
+            Loop 8
+                NumPut("ptr", gShader_Sampler, sampBuf, (A_Index - 1) * A_PtrSize)
+            ComCall(10, ctx, "uint", 0, "uint", 8, "ptr", sampBuf, "int")
+        }
+
+        gShader_StateDirty := false
+    }
+
+    ; PSSetShader (vtable 9) — per-shader, always needed
+    ComCall(9, ctx, "ptr", entry.ps, "ptr", 0, "uint", 0, "int")
 
     ; Bind iChannel texture SRVs if available (PSSetShaderResources vtable 8)
     nSrvs := entry.srvs.Length
@@ -1197,35 +1223,24 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
         }
         Loop nSrvs
             NumPut("ptr", entry.srvs[A_Index], srvBuf, (A_Index - 1) * A_PtrSize)
-        try ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf)
+        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", srvBuf, "int")
     }
 
     ; Bind compute particle buffer as SRV at slot 4 (PSSetShaderResources, startSlot=4)
     if (entry.csSRV) {
         static csParticleSrvBuf := Buffer(A_PtrSize, 0)
         NumPut("ptr", entry.csSRV, csParticleSrvBuf)
-        try ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csParticleSrvBuf)
+        ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csParticleSrvBuf, "int")
     }
 
-    ; Bind sampler state to all slots used by SRVs (PSSetSamplers vtable 10)
-    if (gShader_Sampler) {
-        nSamplers := Max(nSrvs, 1)
-        static sampBuf := 0, sampBufN := 0
-        if (sampBufN != nSamplers) {
-            sampBufN := nSamplers
-            sampBuf := Buffer(A_PtrSize * nSamplers, 0)
-        }
-        Loop nSamplers
-            NumPut("ptr", gShader_Sampler, sampBuf, (A_Index - 1) * A_PtrSize)
-        try ComCall(10, ctx, "uint", 0, "uint", nSamplers, "ptr", sampBuf)
-    }
+    ; (Samplers bound once in dirty-flag block above)
 
     ; Draw (vtable 13): vertexCount=3, startVertexLocation=0
-    try ComCall(13, ctx, "uint", 3, "uint", 0)
+    ComCall(13, ctx, "uint", 3, "uint", 0, "int")
 
     ; Unbind render target — clean state for D2D BeginDraw
     ; OMSetRenderTargets(0, null, null)
-    try ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0)
+    ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0, "int")
 
     ; Unbind SRVs if they were bound
     if (nSrvs > 0) {
@@ -1234,18 +1249,18 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
             nullSrvBufN := nSrvs
             nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
         }
-        try ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf)
+        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf, "int")
     }
 
     ; Unbind compute particle SRV at slot 4
     if (entry.csSRV) {
         static csNullParticleSrv := Buffer(A_PtrSize, 0)
-        try ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csNullParticleSrv)
+        ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csNullParticleSrv, "int")
     }
 
     ; --- GPU→CPU readback: copy rendered texture to D2D bitmap ---
     ; CopyResource (vtable 47): staging ← render texture
-    try ComCall(47, ctx, "ptr", entry.staging, "ptr", entry.tex)
+    ComCall(47, ctx, "ptr", entry.staging, "ptr", entry.tex, "int")
 
     ; Map staging texture (vtable 14): D3D11_MAP_READ=1
     static mapped2 := Buffer(16, 0)
@@ -1259,7 +1274,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ComCall(10, entry.bitmap, "ptr", 0, "ptr", pPixels, "uint", rowPitch, "int")
 
     ; Unmap staging (vtable 15)
-    try ComCall(15, ctx, "ptr", entry.staging, "uint", 0)
+    ComCall(15, ctx, "ptr", entry.staging, "uint", 0, "int")
 
     return true
 }
