@@ -1054,6 +1054,7 @@ FX_LinearGradient2(x1, y1, x2, y2, pos1, argb1, pos2, argb2) {
 }
 
 ; 3-stop linear gradient — cached. Same self-invalidating pattern as FX_LinearGradient2.
+; lint-ignore: dead-function
 FX_LinearGradient3(x1, y1, x2, y2, pos1, argb1, pos2, argb2, pos3, argb3) {
     global gD2D_RT
     static cache := Map()
@@ -1111,6 +1112,7 @@ _FX_WriteStop(buf, off, pos, argb) {
 ; contentBounds clips the layer to (left, top, right, bottom). Opacity is applied
 ; uniformly when the layer is composited onto the render target.
 ; Static buffer — PushLayer consumes immediately, safe to reuse across calls.
+; lint-ignore: dead-function
 FX_LayerParams(left, top, right, bottom, opacity) {
     static buf := 0
     if (!buf) {
@@ -1179,6 +1181,7 @@ _FX_GetShadowParams(fx, scale) {
 ; Draw gradient strips along window edges to create depth.
 ; Each edge is a linear gradient from dark at the edge to transparent inward.
 ; `alpha` controls edge darkness (0x15 = subtle, 0x38 = strong).
+; lint-ignore: dead-function
 _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
     edgeARGB := (alpha << 24) | 0x000000
     botAlpha := Round(alpha * 0.85)
@@ -1211,6 +1214,7 @@ _FX_DrawInnerShadow(wPhys, hPhys, depth, alpha) {
 
 ; Blend an ARGB color toward black by factor (0.0 = no change, 1.0 = pure black).
 ; Returns RGB only (caller handles alpha).
+; lint-ignore: dead-function
 FX_BlendToBlack(argb, factor) {
     r := (argb >> 16) & 0xFF
     g := (argb >> 8) & 0xFF

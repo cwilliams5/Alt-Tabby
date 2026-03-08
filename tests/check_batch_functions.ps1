@@ -34,8 +34,9 @@ if (Test-Path $testsDir) {
     $testFiles = @(Get-ChildItem -Path $testsDir -Filter "*.ahk" -Recurse)
 }
 # All project AHK files (including lib/ and legacy exclusions per check_undefined_calls)
+# Exclude .claude/worktrees/ — agent worktrees duplicate the entire repo and cause 17x overcounting
 $allProjectFiles = @(Get-ChildItem -Path $projectRoot -Filter "*.ahk" -Recurse |
-    Where-Object { $_.FullName -notlike "*\legacy\*" })
+    Where-Object { $_.FullName -notlike "*\legacy\*" -and $_.FullName -notlike "*\.claude\worktrees\*" })
 
 $fileCache = @{}       # fullPath -> string[] (lines)
 $fileCacheText = @{}   # fullPath -> string (joined text)
@@ -959,11 +960,14 @@ foreach ($file in $srcFiles) {
             if (-not $hasBrace) { continue }
 
             if (-not $deadFuncDefs.ContainsKey($funcName)) {
+                # Include preceding line for lint-ignore suppression on the line above
+                $rawCtx = $raw
+                if ($i -gt 0) { $rawCtx = $lines[$i - 1] + ' ' + $raw }
                 $deadFuncDefs[$funcName] = @{
                     File    = $file.FullName
                     Line    = $i + 1
                     RelPath = $relPath
-                    Raw     = $raw
+                    Raw     = $rawCtx
                 }
             }
         }

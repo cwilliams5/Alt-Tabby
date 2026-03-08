@@ -140,6 +140,7 @@ class ID2D1DeviceContext extends ID2DBase {
 
     ; ID2D1DeviceContext::CreateCommandList() → ID2D1CommandList
     ; vtable index 67
+    ; lint-ignore: dead-function
     CreateCommandList() {
         ComCall(67, this, 'ptr*', &pCL := 0, 'hresult')
         return ID2D1CommandList(pCL)
@@ -210,6 +211,7 @@ class IDXGIFactory2 extends ID2DBase {
     ; IUnknown(0-2), IDXGIObject(3-6), IDXGIFactory(7-11),
     ; IDXGIFactory1(12-13), IDXGIFactory2::IsWindowedStereoEnabled(14),
     ; CreateSwapChainForHwnd(15)
+    ; lint-ignore: dead-function
     CreateSwapChainForHwnd(device, hwnd, desc, fullscreenDesc := 0, restrictToOutput := 0) {
         ComCall(15, this, 'ptr', device.ptr, 'ptr', hwnd, 'ptr', desc,
             'ptr', fullscreenDesc, 'ptr', restrictToOutput, 'ptr*', &pSwapChain := 0, 'hresult')
@@ -370,6 +372,7 @@ class ID2D1Effect extends ID2DBase {
     }
 
     ; Set a UINT32 property (D2D1_PROPERTY_TYPE_UINT32 = 3)
+    ; lint-ignore: dead-function
     SetUInt(index, value) {
         static buf := Buffer(4)
         NumPut("uint", value, buf)
@@ -384,6 +387,7 @@ class ID2D1Effect extends ID2DBase {
     }
 
     ; Set a BOOL property (D2D1_PROPERTY_TYPE_BOOL = 2)
+    ; lint-ignore: dead-function
     SetBool(index, value) {
         static buf := Buffer(4)
         NumPut("uint", value ? 1 : 0, buf)
@@ -391,6 +395,7 @@ class ID2D1Effect extends ID2DBase {
     }
 
     ; Set a VECTOR2 property (D2D1_PROPERTY_TYPE_VECTOR2 = 6) — e.g., shadow offset
+    ; lint-ignore: dead-function
     SetVector2(index, x, y) {
         static buf := Buffer(8)
         NumPut("float", Float(x), "float", Float(y), buf)
@@ -398,6 +403,7 @@ class ID2D1Effect extends ID2DBase {
     }
 
     ; Set a VECTOR3 property (D2D1_PROPERTY_TYPE_VECTOR3 = 7) — e.g., light position
+    ; lint-ignore: dead-function
     SetVector3(index, x, y, z) {
         static buf := Buffer(12)
         NumPut("float", Float(x), "float", Float(y), "float", Float(z), buf)

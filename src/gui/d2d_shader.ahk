@@ -1042,6 +1042,7 @@ _Shader_CreateRT(entry, w, h) {
 }
 
 ; GUID helper
+; lint-ignore: dead-function
 _Shader_MakeGUID(str) {
     buf := Buffer(16, 0)
     DllCall("ole32\CLSIDFromString", "str", str, "ptr", buf, "hresult")
@@ -1313,6 +1314,7 @@ Shader_GetBitmap(name) {
 }
 
 ; Return the metadata for a registered shader, or 0 if not found.
+; lint-ignore: dead-function
 Shader_GetMeta(name) {
     global gShader_Registry
     if (!gShader_Registry.Has(name))
