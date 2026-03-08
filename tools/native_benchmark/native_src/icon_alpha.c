@@ -142,6 +142,56 @@ void EXPORT icon_apply_mask_only(
 }
 
 /*
+ * icon_premultiply_alpha
+ *
+ * Premultiply BGRA pixel data for D2D (which expects premultiplied alpha).
+ *
+ * For each pixel:
+ *   alpha=0   → zero all channels (fully transparent)
+ *   alpha=255 → skip (fully opaque, no change)
+ *   else      → B,G,R = channel * alpha / 255
+ *
+ * Parameters:
+ *   pixels     - BGRA pixel buffer (modified in-place)
+ *   pixelCount - Number of pixels (width * height)
+ */
+void EXPORT icon_premultiply_alpha(
+    uint8_t *pixels,
+    uint32_t pixelCount
+) {
+    uint32_t i;
+    uint32_t *pixel_ptr;
+    uint32_t px, a, r, g, b;
+
+    if (!pixels || pixelCount == 0)
+        return;
+
+    pixel_ptr = (uint32_t *)pixels;
+
+    for (i = 0; i < pixelCount; i++) {
+        px = pixel_ptr[i];
+        a = px >> 24;
+
+        if (a == 0) {
+            /* Fully transparent — zero all channels */
+            pixel_ptr[i] = 0;
+        } else if (a < 255) {
+            /* Semi-transparent — premultiply B,G,R by alpha/255 */
+            b = (px & 0xFF);
+            g = ((px >> 8) & 0xFF);
+            r = ((px >> 16) & 0xFF);
+
+            b = (b * a) / 255;
+            g = (g * a) / 255;
+            r = (r * a) / 255;
+
+            pixel_ptr[i] = (a << 24) | (r << 16) | (g << 8) | b;
+        }
+        /* a=255: fully opaque — no change needed */
+    }
+}
+
+/*
  * icon_scan_alpha_only
  *
  * Lightweight scan-only variant (no mask application).

@@ -294,7 +294,7 @@ _BGImg_LoadImage(filePath) {
         ; Copy pixels and premultiply alpha for D2D
         pixelBuf := Buffer(stride * imgH)
         DllCall("ntdll\RtlCopyMemory", "ptr", pixelBuf.Ptr, "ptr", pPixels, "uint", stride * imgH)
-        D2D_PremultiplyAlpha(pixelBuf, pixelCount)
+        IconAlpha.PremultiplyAlpha(pixelBuf, pixelCount)
 
         ; Unlock and dispose GDI+ bitmap
         DllCall("gdiplus\GdipBitmapUnlockBits", "ptr", pBitmapGdip, "ptr", bmpData)
