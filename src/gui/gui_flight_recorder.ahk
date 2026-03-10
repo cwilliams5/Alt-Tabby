@@ -140,7 +140,7 @@ FR_Record(ev, d1:=0, d2:=0, d3:=0, d4:=0) {
 _FR_Dump() {
     global gFR_Enabled, gFR_Buffer, gFR_Idx, gFR_Size, gFR_Count
     global gGUI_State, gGUI_LiveItems, gGUI_LiveItemsMap, gGUI_Sel, gGUI_DisplayItems
-    global gGUI_PendingPhase, gGUI_CurrentWSName
+    global gGUI_Pending, gGUI_CurrentWSName
     global gINT_SessionActive, gINT_BypassMode, gINT_AltIsDown, gINT_TabPending
     global gINT_PendingDecideArmed, gINT_AltUpDuringPending, gINT_PressCount, gINT_TabHeld
     global gGUI_OverlayVisible, gGUI_ScrollTop
@@ -173,7 +173,7 @@ _FR_Dump() {
     snap.pendingDecideArmed := gINT_PendingDecideArmed
     snap.altUpDuringPending := gINT_AltUpDuringPending
     snap.pressCount := gINT_PressCount
-    snap.pendingPhase := gGUI_PendingPhase
+    snap.pendingPhase := gGUI_Pending.phase
     snap.overlayVisible := gGUI_OverlayVisible
     snap.sel := gGUI_Sel
     snap.scrollTop := gGUI_ScrollTop
@@ -288,7 +288,7 @@ _FR_DumpPhase2() {
     out .= "gINT_PendingDecideArmed = " snap.pendingDecideArmed "`n"
     out .= "gINT_AltUpDuringPending = " snap.altUpDuringPending "`n"
     out .= "gINT_PressCount         = " snap.pressCount "`n"
-    out .= "gGUI_PendingPhase       = " (snap.pendingPhase = "" ? '""' : snap.pendingPhase) "`n"
+    out .= "gGUI_Pending.phase       = " (snap.pendingPhase = "" ? '""' : snap.pendingPhase) "`n"
     out .= "gGUI_OverlayVisible     = " snap.overlayVisible "`n"
     out .= "gGUI_Sel                = " snap.sel "`n"
     out .= "gGUI_ScrollTop          = " snap.scrollTop "`n"

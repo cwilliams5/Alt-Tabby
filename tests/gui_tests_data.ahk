@@ -17,7 +17,7 @@ RunGUITests_Data() {
     global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_CurrentWSName, gGUI_WSContextSwitch
-    global gGUI_EventBuffer, gGUI_PendingPhase
+    global gGUI_EventBuffer, gGUI_Pending
     global gGUI_LiveItemsMap, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode, gMock_PruneCalledWith, gMock_PreCachedIcons
     global gGUI_Base, gGUI_Overlay, gGdip_IconCache
@@ -395,14 +395,14 @@ RunGUITests_Data() {
     GUI_Log("Test: ESC during async activation")
     ResetGUIState()
     SetupTestItems(5)
-    gGUI_PendingPhase := "polling"
+    gGUI_Pending.phase := "polling"
     gGUI_State := "ACTIVE"
     gGUI_EventBuffer := [{ev: TABBY_EV_TAB_STEP, flags: 0, lParam: 0}]
 
     GUI_OnInterceptorEvent(TABBY_EV_ESCAPE, 0, 0)
 
     GUI_AssertEq(gGUI_State, "IDLE", "ESC during async: state is IDLE")
-    GUI_AssertEq(gGUI_PendingPhase, "", "ESC during async: pending phase cleared")
+    GUI_AssertEq(gGUI_Pending.phase, "", "ESC during async: pending phase cleared")
     GUI_AssertEq(gGUI_EventBuffer.Length, 0, "ESC during async: buffer cleared")
 
     ; ============================================================
@@ -412,10 +412,10 @@ RunGUITests_Data() {
     ; ----- Test: Empty buffer triggers resync (no events to process) -----
     GUI_Log("Test: Empty buffer triggers resync")
     ResetGUIState()
-    gGUI_PendingPhase := "flushing"
+    gGUI_Pending.phase := "flushing"
     gGUI_EventBuffer := []
     _GUI_ProcessEventBuffer()
-    GUI_AssertEq(gGUI_PendingPhase, "", "Empty buffer: pending phase cleared")
+    GUI_AssertEq(gGUI_Pending.phase, "", "Empty buffer: pending phase cleared")
 
     ; ============================================================
     ; NORMAL EVENT BUFFER REPLAY TESTS
@@ -425,7 +425,7 @@ RunGUITests_Data() {
     GUI_Log("Test: Normal buffer replay completes full cycle")
     ResetGUIState()
     SetupTestItems(5)
-    gGUI_PendingPhase := "flushing"
+    gGUI_Pending.phase := "flushing"
 
     ; Buffer: normal Alt+Tab sequence (Tab NOT lost)
     gGUI_EventBuffer := [
@@ -438,13 +438,13 @@ RunGUITests_Data() {
 
     ; ALT_DN -> ALT_PENDING -> TAB_STEP -> ACTIVE -> ALT_UP -> IDLE
     GUI_AssertEq(gGUI_State, "IDLE", "Normal replay: cycle completed (state=IDLE)")
-    GUI_AssertEq(gGUI_PendingPhase, "", "Normal replay: pending phase cleared")
+    GUI_AssertEq(gGUI_Pending.phase, "", "Normal replay: pending phase cleared")
 
     ; ----- Test: Multi-Tab buffer replay completes full cycle -----
     GUI_Log("Test: Multi-Tab buffer replay completes full cycle")
     ResetGUIState()
     SetupTestItems(5)
-    gGUI_PendingPhase := "flushing"
+    gGUI_Pending.phase := "flushing"
 
     ; Buffer: Alt+Tab with 3 Tab presses (user cycling through windows)
     gGUI_EventBuffer := [
@@ -458,7 +458,7 @@ RunGUITests_Data() {
     _GUI_ProcessEventBuffer()
 
     GUI_AssertEq(gGUI_State, "IDLE", "Multi-Tab replay: cycle completed (state=IDLE)")
-    GUI_AssertEq(gGUI_PendingPhase, "", "Multi-Tab replay: pending phase cleared")
+    GUI_AssertEq(gGUI_Pending.phase, "", "Multi-Tab replay: pending phase cleared")
 
     ; ============================================================
     ; ICON CACHE PRUNE ON REFRESH TESTS (Resource leak fix)

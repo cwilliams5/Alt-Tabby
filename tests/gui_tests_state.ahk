@@ -17,7 +17,7 @@ RunGUITests_State() {
     global gGUI_State, gGUI_LiveItems, gGUI_DisplayItems, gGUI_ToggleBase
     global gGUI_Sel, gGUI_ScrollTop, gGUI_OverlayVisible, gGUI_TabCount
     global gGUI_WorkspaceMode, gGUI_CurrentWSName, gGUI_WSContextSwitch
-    global gGUI_EventBuffer, gGUI_PendingPhase
+    global gGUI_EventBuffer, gGUI_Pending
     global gGUI_LiveItemsMap, gMock_VisibleRows
     global gMock_BypassResult, gINT_BypassMode
     global gGUI_Base, gGUI_Overlay
@@ -389,7 +389,7 @@ RunGUITests_State() {
     GUI_Log("Test: Event buffer overflow recovery")
     ResetGUIState()
     SetupTestItems(5)
-    gGUI_PendingPhase := "polling"  ; Simulate async activation in progress
+    gGUI_Pending.phase := "polling"  ; Simulate async activation in progress
     gGUI_State := "ACTIVE"
 
     ; Fill buffer beyond max (51 events - over GUI_EVENT_BUFFER_MAX of 50)
@@ -401,7 +401,7 @@ RunGUITests_State() {
     GUI_OnInterceptorEvent(TABBY_EV_TAB_STEP, 0, 0)
 
     GUI_AssertEq(gGUI_State, "IDLE", "Overflow triggered IDLE state")
-    GUI_AssertEq(gGUI_PendingPhase, "", "Overflow cleared pending phase")
+    GUI_AssertEq(gGUI_Pending.phase, "", "Overflow cleared pending phase")
     gGUI_EventBuffer := []  ; Clean up
 
     ; ----- Test: First Tab selection with 1-item list -----
@@ -429,7 +429,7 @@ RunGUITests_State() {
     GUI_Log("Test: Lost Tab detection synthesizes TAB_STEP")
     ResetGUIState()
     SetupTestItems(5)
-    gGUI_PendingPhase := "flushing"
+    gGUI_Pending.phase := "flushing"
 
     ; Buffer: ALT_DN + ALT_UP but NO TAB (Tab was lost during komorebic's SendInput)
     gGUI_EventBuffer := [
@@ -443,7 +443,7 @@ RunGUITests_State() {
     ; After processing: cycle should have completed (synthesized Tab was processed)
     ; ALT_DN -> ALT_PENDING -> TAB (synthesized) -> ACTIVE -> ALT_UP -> IDLE
     GUI_AssertEq(gGUI_State, "IDLE", "Cycle completed after synthesized Tab (state=IDLE)")
-    GUI_AssertEq(gGUI_PendingPhase, "", "Pending phase cleared after buffer processed")
+    GUI_AssertEq(gGUI_Pending.phase, "", "Pending phase cleared after buffer processed")
 
     ; ----- Test: Quick-switch path (Alt+Tab released before overlay shown) -----
     GUI_Log("Test: Quick-switch activates without overlay")
