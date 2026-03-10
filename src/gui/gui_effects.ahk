@@ -157,11 +157,14 @@ FX_GPU_Init() {
                     if (layer.key != "")
                         Shader_RegisterAlias(layer.renderKey, layer.key)
                 }
-                if (gFX_MouseEffect.key != "")
+                ; Skip registration for keys already in the registry (BG-as-selection/hover
+                ; reuses a BG layer key — re-registering would overwrite the source entry,
+                ; orphaning aliases that share its PS/SRVs and leaking the old COM objects)
+                if (gFX_MouseEffect.key != "" && !gShader_Registry.Has(gFX_MouseEffect.key))
                     Shader_RegisterByKey(gFX_MouseEffect.key)
-                if (gFX_SelectionEffect.key != "")
+                if (gFX_SelectionEffect.key != "" && !gShader_Registry.Has(gFX_SelectionEffect.key))
                     Shader_RegisterByKey(gFX_SelectionEffect.key)
-                if (gFX_HoverEffect.key != "")
+                if (gFX_HoverEffect.key != "" && !gShader_Registry.Has(gFX_HoverEffect.key))
                     Shader_RegisterByKey(gFX_HoverEffect.key)
                 _FX_InitShaderTime()
             }
