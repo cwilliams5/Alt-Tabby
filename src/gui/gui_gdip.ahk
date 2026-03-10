@@ -109,7 +109,7 @@ D2D_PushRoundRectClipLayer(x, y, w, h, r) {
         ; opacityBrush = NULL, layerOptions = NONE — already zero
     }
     ; Update geometry pointer (only field that changes per call)
-    NumPut("ptr", pGeom, lp, 16)
+    NumPut("ptr", _geomPtr, lp, 16)
     gD2D_RT.PushLayer(lp, 0)
     return true
 }

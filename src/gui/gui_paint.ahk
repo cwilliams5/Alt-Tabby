@@ -139,8 +139,10 @@ GUI_Repaint() {
     ; Pre-render independent layers BEFORE the resize sync window.
     ; These use their own D3D11/D2D resources at the new dimensions — they
     ; don't depend on gD2D_RT being resized yet.
+    Shader_BeginBatch()
     FX_PreRenderShaderLayers(phW, phH)
     FX_PreRenderMouseEffect(phW, phH)
+    Shader_EndBatch()
     BGImg_EnsureCache(phW, phH)
 
     ; Ensure frame loop runs for continuous shader animation

@@ -21,12 +21,34 @@ global gShader_Registry := Map() ; name → {ps, tex, rtv, bitmap, w, h, meta, s
 global gShader_Ready := false    ; true after Shader_Init succeeds
 global gShader_FrameCount := 0   ; frame counter for cbuffer
 global gShader_StateDirty := true ; dirty flag: D3D11 common state needs re-binding
+global gShader_BatchMode := false  ; when true, defer RT/SRV unbind to Shader_EndBatch
 
 ; Mark D3D11 common pipeline state as needing re-binding.
 ; Call after D2D operations that share the device context (e.g., BeginDraw).
 Shader_InvalidateState() {
-    global gShader_StateDirty
+    global gShader_StateDirty, gShader_BatchMode
     gShader_StateDirty := true
+    gShader_BatchMode := false  ; Safety: clear stale batch from exception
+}
+
+; Begin a pre-BeginDraw batch: defer RT/SRV unbind between sequential PreRender calls.
+Shader_BeginBatch() {
+    global gShader_BatchMode
+    gShader_BatchMode := true
+}
+
+; End batch: unbind RT and SRV slots 0-4 once (instead of per-layer).
+Shader_EndBatch() {
+    global gShader_BatchMode, gShader_D3DCtx
+    gShader_BatchMode := false
+    if (!gShader_D3DCtx)
+        return
+    ctx := gShader_D3DCtx
+    ; Unbind RT — OMSetRenderTargets(0, null, null) vtable 33
+    ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0, "int")
+    ; Unbind SRV slots 0-4 (max iChannels + compute particle slot) — PSSetShaderResources vtable 8
+    static nullSrv5 := Buffer(A_PtrSize * 5, 0)
+    ComCall(8, ctx, "uint", 0, "uint", 5, "ptr", nullSrv5, "int")
 }
 
 ; ========================= INIT =========================
@@ -1053,7 +1075,7 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     borderR := 0.0, borderG := 0.0, borderB := 0.0, borderA := 0.0,
     borderWidth := 0.0, isHovered := 0.0, entranceT := 0.0, rowRadius := 0.0) {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
-    global gShader_FrameCount, gShader_StateDirty, cfg
+    global gShader_FrameCount, gShader_StateDirty, gShader_BatchMode, cfg
     static dbgRendered := Map()
 
     if (!gShader_Ready || !gShader_Registry.Has(name))
@@ -1157,15 +1179,19 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
 
     ; RSSetViewports (vtable 44)
     ; D3D11_VIEWPORT (24 bytes): TopLeftX, TopLeftY, Width, Height, MinDepth, MaxDepth
-    static vp := Buffer(24, 0), vpW := 0, vpH := 0
-    if (vpW = 0 && vpH = 0)
-        NumPut("float", 1.0, vp, 20)  ; MaxDepth (set once)
-    if (vpW != w || vpH != h) {
+    static vp := Buffer(24, 0), vpW := 0, vpH := 0, vpMaxDepthSet := false
+    if (!vpMaxDepthSet) {
+        NumPut("float", 1.0, vp, 20)
+        vpMaxDepthSet := true
+    }
+    vpChanged := (vpW != w || vpH != h)
+    if (vpChanged) {
         vpW := w, vpH := h
         NumPut("float", Float(w), vp, 8)
         NumPut("float", Float(h), vp, 12)
     }
-    ComCall(44, ctx, "uint", 1, "ptr", vp, "int")
+    if (gShader_StateDirty || vpChanged)
+        ComCall(44, ctx, "uint", 1, "ptr", vp, "int")
 
     ; --- Common pipeline state: skip when already set in this pre-BeginDraw batch ---
     if (gShader_StateDirty) {
@@ -1182,9 +1208,12 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
 
         ; PSSetSamplers (vtable 10): bind all 8 slots with shared sampler
         if (gShader_Sampler) {
-            static sampBuf := Buffer(A_PtrSize * 8, 0)
-            Loop 8
-                NumPut("ptr", gShader_Sampler, sampBuf, (A_Index - 1) * A_PtrSize)
+            static sampBuf := Buffer(A_PtrSize * 8, 0), sampFilled := 0
+            if (sampFilled != gShader_Sampler) {
+                Loop 8
+                    NumPut("ptr", gShader_Sampler, sampBuf, (A_Index - 1) * A_PtrSize)
+                sampFilled := gShader_Sampler
+            }
             ComCall(10, ctx, "uint", 0, "uint", 8, "ptr", sampBuf, "int")
         }
 
@@ -1219,24 +1248,27 @@ Shader_PreRender(name, w, h, timeSec, darken := 0.0, desaturate := 0.0, opacity 
     ; Draw (vtable 13): vertexCount=3, startVertexLocation=0
     ComCall(13, ctx, "uint", 3, "uint", 0, "int")
 
-    ; Unbind render target — clean state for D2D BeginDraw
-    ; OMSetRenderTargets(0, null, null)
-    ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0, "int")
+    ; Unbind RT + SRVs — skip when batching (deferred to Shader_EndBatch)
+    if (!gShader_BatchMode) {
+        ; Unbind render target — clean state for D2D BeginDraw
+        ; OMSetRenderTargets(0, null, null)
+        ComCall(33, ctx, "uint", 0, "ptr", 0, "ptr", 0, "int")
 
-    ; Unbind SRVs if they were bound
-    if (nSrvs > 0) {
-        static nullSrvBuf := 0, nullSrvBufN := 0
-        if (nullSrvBufN != nSrvs) {
-            nullSrvBufN := nSrvs
-            nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
+        ; Unbind SRVs if they were bound
+        if (nSrvs > 0) {
+            static nullSrvBuf := 0, nullSrvBufN := 0
+            if (nullSrvBufN != nSrvs) {
+                nullSrvBufN := nSrvs
+                nullSrvBuf := Buffer(A_PtrSize * nSrvs, 0)
+            }
+            ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf, "int")
         }
-        ComCall(8, ctx, "uint", 0, "uint", nSrvs, "ptr", nullSrvBuf, "int")
-    }
 
-    ; Unbind compute particle SRV at slot 4
-    if (entry.csSRV) {
-        static csNullParticleSrv := Buffer(A_PtrSize, 0)
-        ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csNullParticleSrv, "int")
+        ; Unbind compute particle SRV at slot 4
+        if (entry.csSRV) {
+            static csNullParticleSrv := Buffer(A_PtrSize, 0)
+            ComCall(8, ctx, "uint", 4, "uint", 1, "ptr", csNullParticleSrv, "int")
+        }
     }
 
     ; D2D bitmap is backed by the render target's DXGI surface — no readback needed.
@@ -1285,24 +1317,39 @@ Shader_Cleanup() {
     global gShader_D3DCtx, gShader_VS, gShader_CBuffer, gShader_Sampler, gShader_Registry, gShader_Ready
     global gShader_FrameCount
 
-    ; Release per-shader resources (all raw COM ptrs)
+    ; Release per-shader resources (all raw COM ptrs).
+    ; Aliases share ps, cs, csBuffer, csUAV, csSRV, and the srvs array with their
+    ; source entry. Track released pointers to avoid double-Release on shared objects.
+    released := Map()
     for _, entry in gShader_Registry {
         for _, srv in entry.srvs {
-            if (srv)
-                ComCall(2, srv)
+            if (srv && !released.Has(srv)) {
+                ComCall(2, srv, "uint")
+                released[srv] := true
+            }
         }
-        _Shader_ReleaseRT(entry)
+        _Shader_ReleaseRT(entry)  ; RT resources (tex/rtv/bitmap) are per-entry, never shared
         ; Release compute resources
-        if (entry.HasOwnProp("csSRV") && entry.csSRV)
-            ComCall(2, entry.csSRV)
-        if (entry.HasOwnProp("csUAV") && entry.csUAV)
-            ComCall(2, entry.csUAV)
-        if (entry.HasOwnProp("csBuffer") && entry.csBuffer)
-            ComCall(2, entry.csBuffer)
-        if (entry.HasOwnProp("cs") && entry.cs)
-            ComCall(2, entry.cs)
-        if (entry.ps)
-            ComCall(2, entry.ps)
+        if (entry.HasOwnProp("csSRV") && entry.csSRV && !released.Has(entry.csSRV)) {
+            ComCall(2, entry.csSRV, "uint")
+            released[entry.csSRV] := true
+        }
+        if (entry.HasOwnProp("csUAV") && entry.csUAV && !released.Has(entry.csUAV)) {
+            ComCall(2, entry.csUAV, "uint")
+            released[entry.csUAV] := true
+        }
+        if (entry.HasOwnProp("csBuffer") && entry.csBuffer && !released.Has(entry.csBuffer)) {
+            ComCall(2, entry.csBuffer, "uint")
+            released[entry.csBuffer] := true
+        }
+        if (entry.HasOwnProp("cs") && entry.cs && !released.Has(entry.cs)) {
+            ComCall(2, entry.cs, "uint")
+            released[entry.cs] := true
+        }
+        if (entry.ps && !released.Has(entry.ps)) {
+            ComCall(2, entry.ps, "uint")
+            released[entry.ps] := true
+        }
     }
     gShader_Registry := Map()
 
