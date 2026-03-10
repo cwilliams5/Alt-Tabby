@@ -107,7 +107,7 @@ GUI_HideOverlay() {
     Profiler.Enter("GUI_HideOverlay") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES, gD2D_RT
-    global gAnim_HidePending
+    global gAnim_HidePending, gPaint_RepaintInProgress
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
@@ -146,7 +146,12 @@ GUI_HideOverlay() {
     ; Clear D2D surface BEFORE hiding — ensures a clean swap chain buffer
     ; for the next Show().  SwapChain.Present() works for hidden windows
     ; (unlike HwndRenderTarget), so the clear actually commits.
+    ; STA reentrancy guard: BeginDraw/EndDraw/Present pump the message loop,
+    ; which can dispatch callbacks that reach GUI_Repaint. Save/restore
+    ; handles nesting when called from within an existing paint.
     if (gD2D_RT) {
+        wasInProgress := gPaint_RepaintInProgress
+        gPaint_RepaintInProgress := true
         try {
             if (D2D_AcquireBackBuffer()) {
                 gD2D_RT.BeginDraw()
@@ -157,6 +162,8 @@ GUI_HideOverlay() {
             }
         } catch {
             D2D_ReleaseBackBuffer()
+        } finally {
+            gPaint_RepaintInProgress := wasInProgress
         }
     }
 

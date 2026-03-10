@@ -417,7 +417,7 @@ _Anim_DoActualHide() {
     Profiler.Enter("_Anim_DoActualHide") ; @profile
     global gGUI_OverlayVisible, gGUI_Base, gGUI_BaseH, gGUI_Revealed, gD2D_RT
     global cfg, GUI_LOG_TRIM_EVERY_N_HIDES
-    global gGUI_DisplayItems
+    global gGUI_DisplayItems, gPaint_RepaintInProgress
     static hideCount := 0
 
     if (!gGUI_OverlayVisible) {
@@ -431,8 +431,14 @@ _Anim_DoActualHide() {
 
     GUI_ClearHoverState()
 
-    ; Clear D2D surface — ensures clean swap chain buffer for next Show
+    ; Clear D2D surface — ensures clean swap chain buffer for next Show.
+    ; STA reentrancy guard: BeginDraw/EndDraw/Present pump the message loop,
+    ; which can dispatch callbacks that reach GUI_Repaint (e.g., via
+    ; Anim_ForceCompleteHide during a new show sequence while state is ACTIVE).
+    ; Save/restore handles nesting when called from within an existing paint.
     if (gD2D_RT) {
+        wasInProgress := gPaint_RepaintInProgress
+        gPaint_RepaintInProgress := true
         try {
             if (D2D_AcquireBackBuffer()) {
                 gD2D_RT.BeginDraw()
@@ -443,6 +449,8 @@ _Anim_DoActualHide() {
             }
         } catch {
             D2D_ReleaseBackBuffer()
+        } finally {
+            gPaint_RepaintInProgress := wasInProgress
         }
     }
 

@@ -32,6 +32,7 @@ gGUI_HoverBtn: gui_input, gui_paint
 gGUI_HoverRow: gui_input, gui_paint
 gGUI_Sel: gui_input, gui_state
 gGUI_FocusBeforeShow: gui_state, gui_paint
+gPaint_RepaintInProgress: gui_animation, gui_overlay, gui_paint
 gAnim_DeferredTimerStart: gui_animation, gui_paint
 gAnim_OverlayOpacity: gui_animation, gui_state
 gAnim_HidePending: gui_animation, gui_overlay
