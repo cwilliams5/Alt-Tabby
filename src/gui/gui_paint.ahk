@@ -446,19 +446,21 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     shadowP := _FX_GetShadowParams(gFX_GPUReady ? 1 : 0, scale)
     shadowBr := shadowP.enabled ? D2D_GetCachedBrush(shadowP.argb) : 0
 
-    ; Header
+    ; Header (hoist gD2D_Res lookups — same pattern as row loop at lines 534-539)
     if (cfg.GUI_ShowHeader) {
         hdrY := y + hdrY4
         hdrTextH := cachedLayout.hdrTextH
+        brHdr := gD2D_Res["brHdr"]
+        tfHdr := gD2D_Res["tfHdr"]
         if (shadowP.enabled) {
-            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
+            _FX_DrawTextLeftShadow("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr, shadowBr, shadowP.offX, shadowP.offY)
             for _, col in cols {
-                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"], shadowBr, shadowP.offX, shadowP.offY)
+                _FX_DrawTextLeftShadow(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr, shadowBr, shadowP.offX, shadowP.offY)
             }
         } else {
-            D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
+            D2D_DrawTextLeft("Title", textX, hdrY, textW, hdrTextH, brHdr, tfHdr)
             for _, col in cols {
-                D2D_DrawTextLeft(col.name, col.x, hdrY, col.w, hdrTextH, gD2D_Res["brHdr"], gD2D_Res["tfHdr"])
+                D2D_DrawTextLeft(col.name, col.x, hdrY, col.w, hdrTextH, brHdr, tfHdr)
             }
         }
         y := y + hdrH28
@@ -470,8 +472,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     footerH := 0
     footerGap := 0
     if (cfg.GUI_ShowFooter) {
-        footerH := Round(cfg.GUI_FooterHeightPx * scale)
-        footerGap := Round(cfg.GUI_FooterGapTopPx * scale)
+        footerH := cachedLayout.footerH
+        footerGap := cachedLayout.footerGapTop
     }
     availH := hPhys - My - contentTopY - footerH - footerGap
     if (availH < 0) {
@@ -654,11 +656,12 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
 
             ; Text drawing (with optional shadow)
             title := cur.title
-            sub := ""
-            if (cur.processName != "") {
-                sub := cur.processName
-            } else {
-                sub := "Class: " cur.class
+            sub := cur.processName
+            if (sub = "") {
+                ; Lazy-cache: concat "Class: " only once per frozen item, not per-frame
+                if (!cur.HasOwnProp("_sub"))
+                    cur._sub := "Class: " cur.class
+                sub := cur._sub
             }
 
             if (shadowP.enabled) {
@@ -825,14 +828,10 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
         return
     }
 
-    trackW := Round(cfg.GUI_ScrollBarWidthPx * scale)
-    if (trackW < 2) {
-        trackW := 2
-    }
-    marR := Round(cfg.GUI_ScrollBarMarginRightPx * scale)
-    if (marR < 0) {
-        marR := 0
-    }
+    ; Use cached metrics (avoids per-frame Round() calls)
+    cl := GUI_GetCachedLayout(scale)
+    trackW := cl.sbTrackW
+    marR := cl.sbMarR
 
     x := wPhys - marR - trackW
     y := contentTopY
@@ -872,37 +871,27 @@ _GUI_DrawScrollbar(wPhys, contentTopY, rowsDrawn, rowHPhys, scrollTop, count, sc
 
 _GUI_DrawFooter(wPhys, hPhys, scale, shadowP, shadowBr) {
     global gGUI_FooterText, gGUI_LeftArrowRect, gGUI_RightArrowRect, gGUI_HoverBtn, cfg, gD2D_Res
-    global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
 
-    fh := Round(cfg.GUI_FooterHeightPx * scale)
-    if (fh < 1) {
-        fh := 1
-    }
-    mx := Round(cfg.GUI_MarginX * scale)
-    my := Round(cfg.GUI_MarginY * scale)
+    ; Use cached metrics (avoids per-frame Round() calls)
+    cl := GUI_GetCachedLayout(scale)
+    fh := cl.footerH
+    mx := cl.Mx
+    my := cl.My
 
     fx := mx
     fy := hPhys - my - fh
     fw := wPhys - 2 * mx
-    fr := Round(cfg.GUI_FooterBGRadius * scale)
-    if (fr < 0) {
-        fr := 0
-    }
+    fr := cl.footerBGRad
 
     ; Draw footer background
     D2D_FillRoundRect(fx, fy, fw, fh, fr, D2D_GetCachedBrush(cfg.GUI_FooterBGARGB))
     if (cfg.GUI_FooterBorderPx > 0) {
-        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, D2D_GetCachedBrush(cfg.GUI_FooterBorderARGB), Round(cfg.GUI_FooterBorderPx * scale))
-    }
-
-    pad := Round(cfg.GUI_FooterPaddingX * scale)
-    if (pad < 0) {
-        pad := 0
+        D2D_StrokeRoundRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1, fr, D2D_GetCachedBrush(cfg.GUI_FooterBorderARGB), cl.footerBorderPx)
     }
 
     ; Arrow dimensions
-    arrowW := Round(PAINT_ARROW_W_DIP * scale)
-    arrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
+    arrowW := cl.footerArrowW
+    arrowPad := cl.footerArrowPad
 
     ; Hoist repeated gD2D_Res lookups
     tfFooter := gD2D_Res["tfFooter"]

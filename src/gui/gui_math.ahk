@@ -60,6 +60,20 @@ GUI_GetCachedLayout(scale) {
     cached.hdrTextH := Round(20 * scale)
     cached.selExpandX := Round(4 * scale)
     cached.selExpandY := Round(2 * scale)
+
+    ; Scrollbar metrics (avoids 5 Round() calls per frame when scrollbar visible)
+    cached.sbTrackW := Max(2, Round(cfg.GUI_ScrollBarWidthPx * scale))
+    cached.sbMarR := Max(0, Round(cfg.GUI_ScrollBarMarginRightPx * scale))
+
+    ; Footer metrics (avoids 8 Round() calls per frame when footer visible)
+    global PAINT_ARROW_W_DIP, PAINT_ARROW_PAD_DIP
+    cached.footerH := Max(1, Round(cfg.GUI_FooterHeightPx * scale))
+    cached.footerGapTop := Round(cfg.GUI_FooterGapTopPx * scale)
+    cached.footerBGRad := Max(0, Round(cfg.GUI_FooterBGRadius * scale))
+    cached.footerArrowW := Round(PAINT_ARROW_W_DIP * scale)
+    cached.footerArrowPad := Round(PAINT_ARROW_PAD_DIP * scale)
+    cached.footerBorderPx := Round(cfg.GUI_FooterBorderPx * scale)
+
     cachedScale := scale
     return cached
 }

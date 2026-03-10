@@ -213,14 +213,22 @@ _FX_DrawSoftRect(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV
     global gFX_SoftRectFlood, gFX_SoftRectCrop, gFX_SoftRectBlur, gFX_SoftRectBlurOut
 
-    ; HDR: gamma-correct the flood color CPU-side (avoids premultiplied alpha edge artifacts)
-    gFX_SoftRectFlood.SetColorF(FX_FLOOD_COLOR, _FX_HDRCorrectARGB(argb))
+    ; Cache effect properties — skip COM Set* calls when values unchanged (inner shadow is config-stable)
+    static lastARGB := -1, lastX := "", lastY := "", lastW := "", lastH := "", lastBlur := ""
 
-    ; Configure crop to the rectangle bounds (border mode set once in FX_GPU_Init)
-    gFX_SoftRectCrop.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
-
-    ; Configure blur (border mode set once in FX_GPU_Init)
-    gFX_SoftRectBlur.SetFloat(FX_BLUR_STDEV, blurStdDev)
+    corrected := _FX_HDRCorrectARGB(argb)
+    if (corrected != lastARGB) {
+        gFX_SoftRectFlood.SetColorF(FX_FLOOD_COLOR, corrected)
+        lastARGB := corrected
+    }
+    if (x != lastX || y != lastY || w != lastW || h != lastH) {
+        gFX_SoftRectCrop.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
+        lastX := x, lastY := y, lastW := w, lastH := h
+    }
+    if (blurStdDev != lastBlur) {
+        gFX_SoftRectBlur.SetFloat(FX_BLUR_STDEV, blurStdDev)
+        lastBlur := blurStdDev
+    }
 
     ; Draw at offset position
     if (offsetX != 0 || offsetY != 0) {
@@ -238,10 +246,22 @@ _FX_DrawSoftRect2(x, y, w, h, argb, blurStdDev, offsetX := 0, offsetY := 0) {
     global gD2D_RT, FX_FLOOD_COLOR, FX_CROP_RECT, FX_BLUR_STDEV
     global gFX_SoftRect2Flood, gFX_SoftRect2Crop, gFX_SoftRect2Blur, gFX_SoftRect2BlurOut
 
-    ; HDR: gamma-correct the flood color CPU-side (avoids premultiplied alpha edge artifacts)
-    gFX_SoftRect2Flood.SetColorF(FX_FLOOD_COLOR, _FX_HDRCorrectARGB(argb))
-    gFX_SoftRect2Crop.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
-    gFX_SoftRect2Blur.SetFloat(FX_BLUR_STDEV, blurStdDev)
+    ; Cache effect properties — skip COM Set* calls when values unchanged
+    static lastARGB := -1, lastX := "", lastY := "", lastW := "", lastH := "", lastBlur := ""
+
+    corrected := _FX_HDRCorrectARGB(argb)
+    if (corrected != lastARGB) {
+        gFX_SoftRect2Flood.SetColorF(FX_FLOOD_COLOR, corrected)
+        lastARGB := corrected
+    }
+    if (x != lastX || y != lastY || w != lastW || h != lastH) {
+        gFX_SoftRect2Crop.SetRectF(FX_CROP_RECT, Float(x), Float(y), Float(x + w), Float(y + h))
+        lastX := x, lastY := y, lastW := w, lastH := h
+    }
+    if (blurStdDev != lastBlur) {
+        gFX_SoftRect2Blur.SetFloat(FX_BLUR_STDEV, blurStdDev)
+        lastBlur := blurStdDev
+    }
 
     if (offsetX != 0 || offsetY != 0) {
         static drawPt := Buffer(8)
