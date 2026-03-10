@@ -107,7 +107,7 @@ _WizardSkip(*) {
 }
 
 _WizardApply(*) {
-    global g_WizardGui, g_WizardShuttingDown, cfg, gConfigIniPath
+    global g_WizardGui, g_WizardShuttingDown, cfg, gConfigIniPath, TEMP_WIZARD_STATE
     if (g_WizardShuttingDown)
         return
     g_WizardShuttingDown := true  ; lint-ignore: guard-try-finally — intentionally kept true; false only on UAC-cancel retry
@@ -130,7 +130,7 @@ _WizardApply(*) {
             "admin", admin,
             "autoUpdate", autoUpdate
         ))
-        choicesFile := A_Temp "\alttabby_wizard.json"
+        choicesFile := TEMP_WIZARD_STATE
         try FileDelete(choicesFile)
         FileAppend(choices, choicesFile, "UTF-8")
 
@@ -179,9 +179,9 @@ _WizardApply(*) {
 ; Called when --wizard-continue flag is passed (after elevation)
 ; Returns: "installed" if we should launch from new location, true if normal continue, false on error
 WizardContinue() {
-    global cfg, gConfigIniPath, ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT
+    global cfg, gConfigIniPath, ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT, TEMP_WIZARD_STATE
 
-    choicesFile := A_Temp "\alttabby_wizard.json"
+    choicesFile := TEMP_WIZARD_STATE
     if (!FileExist(choicesFile))
         return false
 
