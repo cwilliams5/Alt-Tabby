@@ -212,7 +212,10 @@ Win_ApplyAcrylic(hWnd, argbColor) {
 }
 
 ; DWM backdrop refresh mock (#235)
+global gMock_RefreshBackdropCount := 0
 GUI_RefreshBackdrop() {
+    global gMock_RefreshBackdropCount
+    gMock_RefreshBackdropCount++
 }
 
 ; GDI+ icon cache invalidation mock
@@ -270,7 +273,11 @@ Anim_StartTween(name, from, to, durationMs, easingFunc) {
 }
 Anim_StartSelectionSlide(prevSel, newSel, count) {
 }
+global gMock_ForceCompleteHideCalled := 0
 Anim_ForceCompleteHide() {
+    global gMock_ForceCompleteHideCalled, gAnim_HidePending
+    gMock_ForceCompleteHideCalled++
+    gAnim_HidePending := false
 }
 Anim_AddLayered() {
 }
@@ -544,6 +551,8 @@ ResetGUIState() {
     global _gGUI_LastCosmeticRepaintTick
     global gWS_Store, gWS_DirtyHwnds
     global gMock_LastStatsMsg
+    global gMock_ForceCompleteHideCalled, gMock_RefreshBackdropCount
+    global gAnim_HidePending, gGUI_HoverRow, gGUI_HoverBtn
     global gStats_AltTabs, gStats_QuickSwitches, gStats_TabSteps
     global gStats_Cancellations, gStats_CrossWorkspace, gStats_WorkspaceToggles
     global gStats_LastSent
@@ -561,6 +570,11 @@ ResetGUIState() {
     gGUI_MonitorMode := "all"
     gGUI_OverlayMonitorHandle := 0
     gStats_MonitorToggles := 0
+    gMock_ForceCompleteHideCalled := 0
+    gMock_RefreshBackdropCount := 0
+    gAnim_HidePending := false
+    gGUI_HoverRow := 0
+    gGUI_HoverBtn := ""
     gGUI_Base.visible := false
     gGUI_Overlay.visible := false
     ; Cancel any pending pre-cache timer from previous test

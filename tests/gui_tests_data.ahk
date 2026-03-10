@@ -1071,6 +1071,190 @@ RunGUITests_Data() {
     GUI_AssertEq(remaining, 3, "OOB idx=99: 3 items unchanged")
     GUI_AssertEq(gGUI_LiveItemsMap.Count, 3, "OOB idx=99: map unchanged")
 
+    ; ============================================================
+    ; HOVER CLEARING DURING WORKSPACE SWITCH TESTS
+    ; Regression guard for #180: action button hover icons flash
+    ; at wrong row during workspace switch resize.
+    ; ============================================================
+
+    ; ----- Test: HandleWorkspaceSwitch clears hover state -----
+    GUI_Log("Test: HandleWorkspaceSwitch clears hover state (#180)")
+    ResetGUIState()
+    global gGUI_HoverRow, gGUI_HoverBtn, gMock_RefreshBackdropCount
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "Main"
+    gGUI_HoverRow := 3
+    gGUI_HoverBtn := "close"
+    items := CreateTestItems(5)
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+
+    GUI_HandleWorkspaceSwitch()
+
+    GUI_AssertEq(gGUI_HoverRow, 0, "WSHover: gGUI_HoverRow cleared to 0")
+    GUI_AssertEq(gGUI_HoverBtn, "", "WSHover: gGUI_HoverBtn cleared to empty")
+    GUI_AssertTrue(gMock_RefreshBackdropCount > 0, "WSHover: GUI_RefreshBackdrop called (#235 regression)")
+
+    ; ----- Test: HandleWorkspaceSwitch hover clear + sel reset + WSContextSwitch -----
+    GUI_Log("Test: HandleWorkspaceSwitch full state update")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "Beta"
+    gGUI_HoverRow := 2
+    gGUI_HoverBtn := "kill"
+    gGUI_Sel := 4
+    gGUI_ScrollTop := 3
+    items := CreateTestItems(6)
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+
+    GUI_HandleWorkspaceSwitch()
+
+    GUI_AssertEq(gGUI_HoverRow, 0, "WSHoverFull: hover row cleared")
+    GUI_AssertEq(gGUI_HoverBtn, "", "WSHoverFull: hover btn cleared")
+    GUI_AssertEq(gGUI_WSContextSwitch, true, "WSHoverFull: WSContextSwitch set")
+    GUI_AssertEq(gGUI_Sel, 1, "WSHoverFull: sel reset to 1")
+    GUI_AssertEq(gGUI_ScrollTop, 0, "WSHoverFull: scrollTop reset to 0")
+
+    ; ============================================================
+    ; GUI_OnWheel TESTS
+    ; Covers wParam bit manipulation and config branching.
+    ; ============================================================
+
+    ; ----- Test: OnWheel scroll down (default config) -----
+    GUI_Log("Test: OnWheel scroll down (viewport scroll)")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_DisplayItems := CreateTestItems(12)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    savedScrollTop := gGUI_ScrollTop
+    ; delta = -120 encoded in wParam: 0xFF880000 (0xFF88 = 65416 = 0x10000 - 120 = -120 unsigned)
+    GUI_OnWheel(0xFF880000, 0)
+    GUI_AssertTrue(gGUI_ScrollTop != savedScrollTop, "OnWheel down: scrollTop changed")
+
+    ; ----- Test: OnWheel scroll up -----
+    GUI_Log("Test: OnWheel scroll up")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_DisplayItems := CreateTestItems(12)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 3
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := false
+
+    savedScrollTop := gGUI_ScrollTop
+    ; delta = +120 encoded in wParam: 0x00780000 (0x0078 = 120)
+    GUI_OnWheel(0x00780000, 0)
+    GUI_AssertTrue(gGUI_ScrollTop != savedScrollTop, "OnWheel up: scrollTop changed")
+    GUI_AssertTrue(gGUI_ScrollTop < savedScrollTop, "OnWheel up: scrollTop decreased")
+
+    ; ----- Test: OnWheel with ScrollKeepHighlightOnTop moves selection -----
+    GUI_Log("Test: OnWheel with ScrollKeepHighlightOnTop moves selection")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_DisplayItems := CreateTestItems(12)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+    cfg.GUI_ScrollKeepHighlightOnTop := true
+
+    savedSel := gGUI_Sel
+    ; Scroll down → moves selection forward
+    GUI_OnWheel(0xFF880000, 0)
+    GUI_AssertTrue(gGUI_Sel != savedSel, "OnWheel KeepHighlight: selection changed")
+    GUI_AssertEq(gGUI_Sel, 2, "OnWheel KeepHighlight: sel moved to 2")
+    cfg.GUI_ScrollKeepHighlightOnTop := false  ; Restore
+
+    ; ----- Test: OnWheel when overlay not visible → no-op -----
+    GUI_Log("Test: OnWheel overlay not visible is no-op")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := false
+    gGUI_DisplayItems := CreateTestItems(12)
+    gGUI_Sel := 1
+    gGUI_ScrollTop := 0
+    gMock_VisibleRows := 5
+
+    GUI_OnWheel(0xFF880000, 0)
+    GUI_AssertEq(gGUI_ScrollTop, 0, "OnWheel hidden: scrollTop unchanged")
+    GUI_AssertEq(gGUI_Sel, 1, "OnWheel hidden: sel unchanged")
+
+    ; ============================================================
+    ; GUI_OnWorkspaceFlips CALLBACK TESTS
+    ; Covers the workspace change entry point that reads gWS_Meta
+    ; and calls GUI_HandleWorkspaceSwitch.
+    ; ============================================================
+
+    ; ----- Test: OnWorkspaceFlips detects workspace change -----
+    GUI_Log("Test: OnWorkspaceFlips detects workspace name change")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "Main"
+    global gWS_Meta
+    gWS_Meta := Map("currentWSName", "Beta")
+    items := CreateTestItems(5)
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+
+    GUI_OnWorkspaceFlips()
+
+    GUI_AssertEq(gGUI_CurrentWSName, "Beta", "WSFlips: currentWSName updated to Beta")
+    GUI_AssertEq(gGUI_WSContextSwitch, true, "WSFlips: WSContextSwitch set")
+    GUI_AssertEq(gGUI_Sel, 1, "WSFlips: sel reset to 1")
+
+    ; ----- Test: OnWorkspaceFlips same workspace → no-op -----
+    GUI_Log("Test: OnWorkspaceFlips same workspace is no-op")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_OverlayVisible := true
+    gGUI_CurrentWSName := "Main"
+    gGUI_Sel := 3
+    gWS_Meta := Map("currentWSName", "Main")
+    items := CreateTestItems(5)
+    gGUI_ToggleBase := items
+    gGUI_DisplayItems := items.Clone()
+
+    GUI_OnWorkspaceFlips()
+
+    GUI_AssertEq(gGUI_CurrentWSName, "Main", "WSFlips noop: currentWSName unchanged")
+    GUI_AssertEq(gGUI_WSContextSwitch, false, "WSFlips noop: WSContextSwitch not set")
+    GUI_AssertEq(gGUI_Sel, 3, "WSFlips noop: sel preserved")
+
+    ; ----- Test: OnWorkspaceFlips with non-object gWS_Meta → no crash -----
+    GUI_Log("Test: OnWorkspaceFlips with non-object gWS_Meta is safe")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_CurrentWSName := "Main"
+    gWS_Meta := 0  ; Not an object
+
+    GUI_OnWorkspaceFlips()
+
+    GUI_AssertEq(gGUI_CurrentWSName, "Main", "WSFlips non-object: currentWSName unchanged (no crash)")
+
+    ; ----- Test: OnWorkspaceFlips with empty currentWSName in meta → no-op -----
+    GUI_Log("Test: OnWorkspaceFlips with empty meta workspace is no-op")
+    ResetGUIState()
+    gGUI_State := "ACTIVE"
+    gGUI_CurrentWSName := "Main"
+    gWS_Meta := Map("currentWSName", "")
+
+    GUI_OnWorkspaceFlips()
+
+    GUI_AssertEq(gGUI_CurrentWSName, "Main", "WSFlips empty: currentWSName unchanged")
+
+    ; Restore gWS_Meta to Map for cleanup
+    gWS_Meta := Map()
+
     ; ----- Summary -----
     GUI_Log("`n=== GUI Data Tests Summary ===")
     GUI_Log("Passed: " GUI_TestPassed)
