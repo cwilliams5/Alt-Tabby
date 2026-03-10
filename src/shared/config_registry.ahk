@@ -1293,7 +1293,7 @@ global gConfigRegistry := [
     ; Shader Layers (array_section: up to 4 stackable layers)
     ; ============================================================
     {type: "section", name: "Shader", desc: "Shader Layers", array_section: 4,
-     long: "Stackable D3D11 shader backdrop layers rendered behind the Alt-Tab overlay. Up to 4 layers composited bottom-to-top. Each layer uses ~8 MB VRAM at 1080p (~32 MB at 4K). INI sections: [Shader.1] through [Shader.4]."},
+     long: "Stackable D3D11 shader backdrop layers rendered behind the Alt-Tab overlay. Up to 4 layers composited bottom-to-top. INI sections: [Shader.1] through [Shader.4]."},
 
     {s: "Shader", k: "UseShaderLayers", g: "ShaderUseShaderLayers", t: "bool", default: true,
      d: "Enable shader backdrop layers. When disabled, no shader layers render regardless of per-layer config."},

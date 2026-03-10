@@ -673,7 +673,7 @@ Memory management to maintain responsiveness after long idle periods.
 
 ## Shader
 
-Stackable D3D11 shader backdrop layers rendered behind the Alt-Tab overlay. Up to 4 layers composited bottom-to-top. Each layer uses ~8 MB VRAM at 1080p (~32 MB at 4K). INI sections: [Shader.1] through [Shader.4].
+Stackable D3D11 shader backdrop layers rendered behind the Alt-Tab overlay. Up to 4 layers composited bottom-to-top. INI sections: [Shader.1] through [Shader.4].
 
 | Option | Type | Default | Range | Description |
 |--------|------|---------|-------|-------------|
