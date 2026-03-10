@@ -60,22 +60,32 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
     # Function definition at file scope
     if (-not $inFunc -and $depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
         $fname = $Matches[1]
-        if ((-not $AHK_KEYWORDS_SET.Contains($fname)) -and $cleaned.Contains('{')) {
-            # Extract params
-            $params = ""
-            if ($lines[$i] -match '\(([^)]*)\)') {
-                $params = $Matches[1].Trim()
+        if (-not $AHK_KEYWORDS_SET.Contains($fname)) {
+            $hasBody = $cleaned.Contains('{')
+            if (-not $hasBody) {
+                for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                    $peek = $lines[$la].Trim()
+                    if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                    if ($peek.Contains('{')) { $hasBody = $true; break }
+                }
             }
+            if ($hasBody) {
+                # Extract params
+                $params = ""
+                if ($lines[$i] -match '\(([^)]*)\)') {
+                    $params = $Matches[1].Trim()
+                }
 
-            $entry = @{ Name = $fname; Params = $params; Line = ($i + 1) }
-            if ($fname.StartsWith('_')) {
-                [void]$privateFuncs.Add($entry)
-            } else {
-                [void]$publicFuncs.Add($entry)
+                $entry = @{ Name = $fname; Params = $params; Line = ($i + 1) }
+                if ($fname.StartsWith('_')) {
+                    [void]$privateFuncs.Add($entry)
+                } else {
+                    [void]$publicFuncs.Add($entry)
+                }
+
+                $inFunc = $true
+                $funcDepth = if ($cleaned.Contains('{')) { $depth } else { -2 }
             }
-
-            $inFunc = $true
-            $funcDepth = $depth
         }
     }
 
@@ -94,6 +104,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
         }
     }
 
+    if ($inFunc -and $funcDepth -eq -2 -and $cleaned.Contains('{')) { $funcDepth = $depth }
     $depth += $braceOpen - $braceClose
     if ($depth -lt 0) { $depth = 0 }
 

@@ -56,13 +56,23 @@ foreach ($file in $srcFiles) {
         # Function definition at file scope (depth 0), public only (no _ prefix)
         if ($depth -eq 0 -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
-            if (-not $AHK_KEYWORDS_SET.Contains($fname) -and -not $fname.StartsWith('_') -and $cleaned.Contains('{')) {
-                [void]$funcDefs.Add(@{
-                    Name    = $fname
-                    File    = $file.FullName
-                    RelPath = $relPath
-                    Line    = ($i + 1)
-                })
+            if (-not $AHK_KEYWORDS_SET.Contains($fname) -and -not $fname.StartsWith('_')) {
+                $hasBody = $cleaned.Contains('{')
+                if (-not $hasBody) {
+                    for ($la = $i + 1; $la -lt [Math]::Min($i + 10, $lines.Count); $la++) {
+                        $peek = $lines[$la].Trim()
+                        if ($peek -eq '' -or $peek.StartsWith(';')) { continue }
+                        if ($peek.Contains('{')) { $hasBody = $true; break }
+                    }
+                }
+                if ($hasBody) {
+                    [void]$funcDefs.Add(@{
+                        Name    = $fname
+                        File    = $file.FullName
+                        RelPath = $relPath
+                        Line    = ($i + 1)
+                    })
+                }
             }
         }
 
