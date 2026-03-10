@@ -4,6 +4,7 @@
 ; Handles: direct writes (Notepad), atomic temp+rename (VS Code), rapid saves.
 
 FileWatch_Start(filePath, callback, debounceMs := 300) {
+    global LOG_PATH_STORE
     SplitPath(filePath, &fileName, &dirPath)
     debounceFn := callback.Bind(filePath)
     w := {

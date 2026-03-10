@@ -540,7 +540,7 @@ CL_SaveChanges(changes) {
 ; Scans changes for array section keys (e.g., Shader2_*), checks if [Shader.2] exists in INI,
 ; and writes the full section template (header + ;;; descriptions + ; Key=default) if missing.
 _CL_EnsureArraySections(path, changes) {
-    global gConfigRegistry
+    global gConfigRegistry, LOG_PATH_STORE
 
     if (!FileExist(path))
         return
@@ -904,7 +904,7 @@ _CL_NormalizeArraySections(arraySections) {
 ; including ;;; description comments that belong to the section's keys.
 ; Handles duplicate section headers — removes ALL occurrences.
 CL_DeleteSections(sectionNames) {
-    global gConfigIniPath
+    global gConfigIniPath, LOG_PATH_STORE
 
     if (!FileExist(gConfigIniPath) || sectionNames.Length = 0)
         return
