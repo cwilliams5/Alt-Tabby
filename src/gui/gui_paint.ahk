@@ -370,13 +370,6 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
     if (diagTiming)
         tPO_Resources := QPC() - t1
 
-    ; ===== TIMING: Clear =====
-    if (diagTiming)
-        t1 := QPC()
-    ; Clear already done in GUI_Repaint (BeginDraw + Clear)
-    if (diagTiming)
-        tPO_GraphicsClear := QPC() - t1
-
     scrollTop := gGUI_ScrollTop
 
     cachedLayout := GUI_GetCachedLayout(scale)
@@ -613,7 +606,8 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
                     FX_GPU_DrawHover(hoverX, hoverY, hoverW, RowH, Rad)
                 } else if ((cfg.GUI_HoverARGB >> 24) > 0 || cfg.GUI_HovBorderWidthPx > 0) {
                     ; Path 4: CPU fallback fill + border
-                    if ((cfg.GUI_HoverARGB >> 24) > 0)
+                    hoverAlpha := cfg.GUI_HoverARGB >> 24
+                    if (hoverAlpha > 0)
                         D2D_FillRoundRect(hoverX, hoverY, hoverW, RowH, Rad, D2D_GetCachedBrush(cfg.GUI_HoverARGB))
                     bw := cfg.GUI_HovBorderWidthPx
                     if (bw > 0) {
@@ -732,7 +726,7 @@ _GUI_PaintOverlay(items, selIndex, wPhys, hPhys, scale, diagTiming := false) {
         tPO_Total := QPC() - tPO_Start
         idleDuration := (gPaint_LastPaintTick > 0) ? (A_TickCount - gPaint_LastPaintTick) : -1
         if (gPaint_SessionPaintCount <= 1 || idleDuration > 60000 || tPO_Total > 50) {
-            Paint_Log("  PaintOverlay: total=" Round(tPO_Total, 2) "ms | resources=" Round(tPO_Resources, 2) " clear=" Round(tPO_GraphicsClear, 2) " rows=" (IsSet(tPO_RowsTotal) ? Round(tPO_RowsTotal, 2) : 0) " scrollbar=" Round(tPO_Scrollbar, 2) " footer=" Round(tPO_Footer, 2))
+            Paint_Log("  PaintOverlay: total=" Round(tPO_Total, 2) "ms | resources=" Round(tPO_Resources, 2) " rows=" (IsSet(tPO_RowsTotal) ? Round(tPO_RowsTotal, 2) : 0) " scrollbar=" Round(tPO_Scrollbar, 2) " footer=" Round(tPO_Footer, 2))
             if (IsSet(tPO_IconsTotal)) {
                 Paint_Log("    Icons: totalTime=" Round(tPO_IconsTotal, 2) "ms | hits=" iconCacheHits " misses=" iconCacheMisses " rowsDrawn=" rowsToDraw)
             }

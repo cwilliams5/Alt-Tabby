@@ -38,19 +38,14 @@ MRU_Lite_Tick() {
         if (!hwnd || hwnd = _MRU_LastHwnd) {
             return
         }
-        ; Atomic focus update - prevent race conditions with other timers/hotkeys
-        Critical "On"
-        ; Clear focus on previous window
-        if (_MRU_LastHwnd) {
-            try {
-                WL_UpdateFields(_MRU_LastHwnd, { isFocused: false })
-            }
-        }
+        ; Batch both focus updates into single rev bump
+        ; WL_BatchUpdateFields handles its own Critical for store atomicity
+        patches := Map()
+        if (_MRU_LastHwnd)
+            patches[_MRU_LastHwnd] := {isFocused: false}
+        patches[hwnd] := {lastActivatedTick: A_TickCount, isFocused: true}
         _MRU_LastHwnd := hwnd
-        try {
-            WL_UpdateFields(hwnd, { lastActivatedTick: A_TickCount, isFocused: true })
-        }
-        Critical "Off"
+        try WL_BatchUpdateFields(patches, "mru_lite")
         _errCount := 0
         _backoffUntil := 0
     } catch as e {

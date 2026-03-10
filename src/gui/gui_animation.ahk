@@ -291,8 +291,11 @@ _Anim_FrameLoop() {
             continue  ; CancelAll sets gAnim_TimerRunning=false → loop exits
         }
 
+        ; Cache shader state for this frame (unchanged during paint)
+        hasShaders := FX_HasActiveShaders()
+
         ; Update ambient animations (Full mode, or any mode with active shaders)
-        if (gGUI_OverlayVisible && (cfg.PerfAnimationType = "Full" || FX_HasActiveShaders()))
+        if (gGUI_OverlayVisible && (cfg.PerfAnimationType = "Full" || hasShaders))
             FX_UpdateAmbient(gAnim_FrameDt)
 
         ; Paint frame (gAnim_FrameTimeDisplay set inside GUI_Repaint,
@@ -304,7 +307,7 @@ _Anim_FrameLoop() {
         _Anim_UpdateFPSCounter(now)
 
         ; Auto-stop (Minimal mode: exit when no active tweens AND no active shaders)
-        if (cfg.PerfAnimationType != "Full" && activeCount = 0 && !gAnim_HidePending && !FX_HasActiveShaders())
+        if (cfg.PerfAnimationType != "Full" && activeCount = 0 && !gAnim_HidePending && !hasShaders)
             break
 
         Critical "Off"

@@ -370,13 +370,15 @@ FX_PreRenderShaderLayers(w, h) {
         return
     }
 
+    ; Hoist loop-invariant computation (gFX_AmbientTime unchanged during paint)
+    ambientSec := gFX_AmbientTime / 1000.0
+
     for _, layer in gFX_ShaderLayers {
         if (layer.key = "")
             continue
 
         ; Compute effective time: (ambient / 1000) * speed + offset + carry
         ; Single Map.Get avoids Has+[] double lookup
-        ambientSec := gFX_AmbientTime / 1000.0
         baseTime := ambientSec
         t := gFX_ShaderTime.Get(layer.layerIndex, 0)
         if (t)
@@ -735,6 +737,17 @@ _FX_ResolveConfiguredShaders() {
 
     gFX_ShaderLayers := []
 
+    ; Build O(1) lookup sets from key arrays (replaces 6 linear scans below)
+    shaderKeySet := Map()
+    for _, k in SHADER_KEYS
+        shaderKeySet[k] := true
+    mouseKeySet := Map()
+    for _, k in MOUSE_SHADER_KEYS
+        mouseKeySet[k] := true
+    selKeySet := Map()
+    for _, k in SELECTION_SHADER_KEYS
+        selKeySet[k] := true
+
     ; Global shader toggle — skip all layer resolution when disabled
     if (!cfg.ShaderUseShaderLayers)
         return
@@ -746,14 +759,7 @@ _FX_ResolveConfiguredShaders() {
             continue
 
         ; Validate key exists in SHADER_KEYS
-        found := false
-        for _, k in SHADER_KEYS {
-            if (k = layerKey) {
-                found := true
-                break
-            }
-        }
-        if (!found)
+        if (!shaderKeySet.Has(layerKey))
             continue
 
         ; renderKey: per-layer alias so each layer gets its own render target
@@ -778,14 +784,7 @@ _FX_ResolveConfiguredShaders() {
     ; Resolve mouse effect
     mouseKey := cfg.MouseEffect_UseMouseEffect ? cfg.MouseEffect_Name : ""
     if (mouseKey != "") {
-        found := false
-        for _, k in MOUSE_SHADER_KEYS {
-            if (k = mouseKey) {
-                found := true
-                break
-            }
-        }
-        if (found) {
+        if (mouseKeySet.Has(mouseKey)) {
             gFX_MouseEffect := {key: mouseKey, name: mouseKey,
                 opacity: cfg.MouseEffect_Opacity,
                 darkness: cfg.MouseEffect_Darkness,
@@ -803,19 +802,12 @@ _FX_ResolveConfiguredShaders() {
     }
 
     ; Resolve selection effect — BG-as-selection overrides dedicated selection shaders
-    _emptySelEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    static _emptySelEffect := {key: "", name: "", opacity: 1.0, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
     if (!cfg.GUI_UseSelectionEffect) {
         gFX_SelectionEffect := _emptySelEffect
     } else if (cfg.GUI_UseBGShaderAsSelection) {
         bgKey := cfg.GUI_BGShaderAsSelection
-        found := false
-        for _, k in SHADER_KEYS {
-            if (k = bgKey) {
-                found := true
-                break
-            }
-        }
-        if (found) {
+        if (shaderKeySet.Has(bgKey)) {
             gFX_SelectionEffect := {key: bgKey, name: bgKey,
                 opacity: cfg.GUI_SelectionOpacity,
                 darkness: cfg.GUI_SelectionDarkness,
@@ -828,14 +820,7 @@ _FX_ResolveConfiguredShaders() {
     } else {
         selKey := cfg.GUI_SelectionEffect
         if (selKey != "" && selKey != "None") {
-            found := false
-            for _, k in SELECTION_SHADER_KEYS {
-                if (k = selKey) {
-                    found := true
-                    break
-                }
-            }
-            if (found) {
+            if (selKeySet.Has(selKey)) {
                 gFX_SelectionEffect := {key: selKey, name: selKey,
                     opacity: cfg.GUI_SelectionOpacity,
                     darkness: cfg.GUI_SelectionDarkness,
@@ -855,19 +840,12 @@ _FX_ResolveConfiguredShaders() {
     }
 
     ; Resolve hover effect — mirrors selection resolve with hover-specific config
-    _emptyHovEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
+    static _emptyHovEffect := {key: "", name: "", opacity: 0.8, darkness: 0.0, desat: 0.0, speed: 1.0, isBGShader: false}
     if (!cfg.GUI_UseHoverSelectionEffect) {
         gFX_HoverEffect := _emptyHovEffect
     } else if (cfg.GUI_UseBGShaderAsHoverSelection) {
         bgKey := cfg.GUI_HoverBGShaderAsSelection
-        found := false
-        for _, k in SHADER_KEYS {
-            if (k = bgKey) {
-                found := true
-                break
-            }
-        }
-        if (found) {
+        if (shaderKeySet.Has(bgKey)) {
             gFX_HoverEffect := {key: bgKey, name: bgKey,
                 opacity: cfg.GUI_HoverSelectionOpacity,
                 darkness: cfg.GUI_HoverSelectionDarkness,
@@ -880,14 +858,7 @@ _FX_ResolveConfiguredShaders() {
     } else {
         hovSelKey := cfg.GUI_HoverSelectionEffect
         if (hovSelKey != "" && hovSelKey != "None") {
-            found := false
-            for _, k in SELECTION_SHADER_KEYS {
-                if (k = hovSelKey) {
-                    found := true
-                    break
-                }
-            }
-            if (found) {
+            if (selKeySet.Has(hovSelKey)) {
                 gFX_HoverEffect := {key: hovSelKey, name: hovSelKey,
                     opacity: cfg.GUI_HoverSelectionOpacity,
                     darkness: cfg.GUI_HoverSelectionDarkness,

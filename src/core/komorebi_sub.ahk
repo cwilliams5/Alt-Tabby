@@ -1235,7 +1235,7 @@ _KSub_ScheduleCloakPush() {
     }
 
     _KSub_CloakPushPending := true
-    _KSub_CloakBatchTimerFn := _KSub_FlushCloakBatch.Bind()
+    _KSub_CloakBatchTimerFn := _KSub_FlushCloakBatch
     SetTimer(_KSub_CloakBatchTimerFn, -cfg.KomorebiSubBatchCloakEventsMs)
 }
 
@@ -1376,9 +1376,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     ; Build map of ALL windows to their workspaces from komorebi state
     ; Only stores wsName/isCurrent/winObj — title/class/exe extracted lazily
     ; in the "add to store" branch (uncommon path) to avoid wasted work
-    wsMapNames := Map()    ; hwnd -> wsName (string)
-    wsMapCurrent := Map()  ; hwnd -> isCurrent (bool)
-    wsMapWinObj := Map()   ; hwnd -> winObj (Map from cJson)
+    wsMap := Map()         ; hwnd -> {wsName, isCurrent, winObj}
     now := A_TickCount
 
     for mi, monObj in monitorsArr {
@@ -1417,11 +1415,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                         ; Prefer current workspace for duplicates: during move events,
                         ; mid-operation snapshot may have window on BOTH source and target.
                         ; If source is iterated after target, source would overwrite target.
-                        if (!wsMapNames.Has(hwnd) || isCurrentWs) {
-                            wsMapNames[hwnd] := wsName
-                            wsMapCurrent[hwnd] := isCurrentWs
-                            wsMapWinObj[hwnd] := win
-                        }
+                        if (!wsMap.Has(hwnd) || isCurrentWs)
+                            wsMap[hwnd] := {wsName: wsName, isCurrent: isCurrentWs, winObj: win}
                     }
                 }
 
@@ -1431,11 +1426,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                     if (winObj is Map && winObj.Has("hwnd")) {
                         _v := winObj["hwnd"]
                         hwnd := (_v is Integer) ? _v : 0
-                        if (!wsMapNames.Has(hwnd) || isCurrentWs) {
-                            wsMapNames[hwnd] := wsName
-                            wsMapCurrent[hwnd] := isCurrentWs
-                            wsMapWinObj[hwnd] := winObj
-                        }
+                        if (!wsMap.Has(hwnd) || isCurrentWs)
+                            wsMap[hwnd] := {wsName: wsName, isCurrent: isCurrentWs, winObj: winObj}
                     }
                 }
             }
@@ -1451,11 +1443,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                                 continue
                             _v := win["hwnd"]
                             hwnd := (_v is Integer) ? _v : 0
-                            if (hwnd && (!wsMapNames.Has(hwnd) || isCurrentWs)) {
-                                wsMapNames[hwnd] := wsName
-                                wsMapCurrent[hwnd] := isCurrentWs
-                                wsMapWinObj[hwnd] := win
-                            }
+                            if (hwnd && (!wsMap.Has(hwnd) || isCurrentWs))
+                                wsMap[hwnd] := {wsName: wsName, isCurrent: isCurrentWs, winObj: win}
                         }
                     }
                     ; Monocle may have single "window"
@@ -1464,11 +1453,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
                         if (winObj is Map && winObj.Has("hwnd")) {
                             _v := winObj["hwnd"]
                             hwnd := (_v is Integer) ? _v : 0
-                            if (hwnd && (!wsMapNames.Has(hwnd) || isCurrentWs)) {
-                                wsMapNames[hwnd] := wsName
-                                wsMapCurrent[hwnd] := isCurrentWs
-                                wsMapWinObj[hwnd] := winObj
-                            }
+                            if (hwnd && (!wsMap.Has(hwnd) || isCurrentWs))
+                                wsMap[hwnd] := {wsName: wsName, isCurrent: isCurrentWs, winObj: winObj}
                         }
                     }
                 }
@@ -1479,7 +1465,8 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     ; Batch update workspace cache for all windows in wsMap (single Critical section
     ; instead of per-window Critical enter/exit)
     Critical "On"
-    for hwnd, _wsn in wsMapNames {
+    for hwnd, _data in wsMap {
+        _wsn := _data.wsName
         if (_KSub_WorkspaceCache.Has(hwnd) && _KSub_WorkspaceCache[hwnd].wsName = _wsn)
             _KSub_WorkspaceCache[hwnd].tick := now
         else
@@ -1496,7 +1483,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     }
 
     if (cfg.DiagKomorebiLog)
-        KSub_DiagLog("ProcessFullState: wsMap has " wsMapNames.Count " windows, gWS_Store has " gWS_Store.Count " windows")
+        KSub_DiagLog("ProcessFullState: wsMap has " wsMap.Count " windows, gWS_Store has " gWS_Store.Count " windows")
 
     ; Capture MRU tick early to preserve timing (before batch collection)
     mruTick := A_TickCount
@@ -1507,14 +1494,15 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
     addedCount := 0
     updatedCount := 0
     skippedIneligible := 0
-    for hwnd, _wsn in wsMapNames {
-        _isCur := wsMapCurrent[hwnd]
+    for hwnd, _data in wsMap {
+        _wsn := _data.wsName
+        _isCur := _data.isCurrent
         ; Check if window exists in store
         if (!gWS_Store.Has(hwnd)) {
             ; Window not in store - add it!
             ; This happens for windows on other workspaces that winenum didn't see
             ; Extract title/class/exe lazily — only needed for new windows
-            _winObj := wsMapWinObj[hwnd]
+            _winObj := _data.winObj
             kTitle := _winObj.Has("title") ? String(_winObj["title"]) : ""
             kClass := _winObj.Has("class") ? String(_winObj["class"]) : ""
             title := (kTitle != "") ? kTitle : _KSub_GetWindowTitle(hwnd)
@@ -1613,7 +1601,7 @@ _KSub_ProcessFullState(stateObj, skipWorkspaceUpdate := false, lightMode := fals
             ; Guard: window may have been removed between snapshot and processing
             if (!gWS_Store.Has(hwnd))
                 continue
-            if (!wsMapNames.Has(hwnd) && _KSub_WorkspaceCache.Has(hwnd)) {
+            if (!wsMap.Has(hwnd) && _KSub_WorkspaceCache.Has(hwnd)) {
                 cached := _KSub_WorkspaceCache.Get(hwnd, 0)
                 if (!cached)
                     continue

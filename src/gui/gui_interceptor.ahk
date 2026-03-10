@@ -405,32 +405,33 @@ INT_SetBypassMode(shouldBypass) {
     global gINT_BypassMode, cfg
 
     global FR_EV_BYPASS, gFR_Enabled
+    diagLog := cfg.DiagEventLog
     if (shouldBypass && !gINT_BypassMode) {
         ; Entering bypass mode - disable Tab hooks
         if (gFR_Enabled)
             FR_Record(FR_EV_BYPASS, 1)
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Entering BYPASS MODE, disabling Tab hotkey")
         gINT_BypassMode := true
         try {
             Hotkey("$*Tab", "Off")
             Hotkey("$*Tab Up", "Off")
         } catch as e {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("INT: BYPASS Hotkey Off FAILED: " e.Message)
         }
     } else if (!shouldBypass && gINT_BypassMode) {
         ; Leaving bypass mode - re-enable Tab hooks
         if (gFR_Enabled)
             FR_Record(FR_EV_BYPASS, 0)
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("INT: Leaving BYPASS MODE, re-enabling Tab hotkey")
         gINT_BypassMode := false
         try {
             Hotkey("$*Tab", "On")
             Hotkey("$*Tab Up", "On")
         } catch as e {
-            if (cfg.DiagEventLog)
+            if (diagLog)
                 GUI_LogEvent("INT: BYPASS Hotkey On FAILED: " e.Message)
         }
     }
@@ -457,13 +458,13 @@ INT_ReassertTabHotkey() {
 
 _INT_BuildBypassList() {
     global cfg
-    list := []
+    list := Map()
     if (cfg.AltTabBypassProcesses = "")
         return list
     for _, nm in StrSplit(cfg.AltTabBypassProcesses, ",") {
         nm := Trim(nm)
         if (nm != "")
-            list.Push(StrLower(nm))
+            list[StrLower(nm)] := true
     }
     return list
 }
@@ -478,26 +479,26 @@ INT_ShouldBypassWindow(hwnd := 0) {
     if (!hwnd)
         return false
 
+    diagLog := cfg.DiagEventLog
+
     ; Check process blacklist (list pre-computed once per process lifetime)
     static bypassList := _INT_BuildBypassList()
-    if (bypassList.Length > 0) {
+    if (bypassList.Count > 0) {
         exename := ""
         try exename := WinGetProcessName(hwnd)
         if (exename) {
             lex := StrLower(exename)
-            for _, nm in bypassList {
-                if (nm = lex) {
-                    if (cfg.DiagEventLog)
-                        GUI_LogEvent("BYPASS REASON: process='" exename "' hwnd=" hwnd)
-                    return true
-                }
+            if (bypassList.Has(lex)) {
+                if (diagLog)
+                    GUI_LogEvent("BYPASS REASON: process='" exename "' hwnd=" hwnd)
+                return true
             }
         }
     }
 
     ; Check fullscreen detection
     if (cfg.AltTabBypassFullscreen && _INT_IsFullscreenHwnd(hwnd)) {
-        if (cfg.DiagEventLog)
+        if (diagLog)
             GUI_LogEvent("BYPASS REASON: fullscreen hwnd=" hwnd)
         return true
     }
