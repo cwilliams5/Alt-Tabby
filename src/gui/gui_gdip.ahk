@@ -127,8 +127,9 @@ D2D_DrawTextLeft(text, x, y, w, h, brush, tf) {
     global D2D1_DRAW_TEXT_OPTIONS_CLIP
     if (!gD2D_RT || !tf)
         return
-    ; Alignment guard: skip 2 COM calls when alignment already set (hot path ~300+ calls/frame)
-    if (!tf.HasOwnProp("_a") || tf._a != 0) {
+    ; Alignment guard: skip 2 COM calls when alignment already set.
+    ; _a pre-initialized to -1 in GUI_EnsureResources — no HasOwnProp needed.
+    if (tf._a != 0) {
         tf.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)
         tf.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR)
         tf._a := 0
@@ -145,8 +146,9 @@ D2D_DrawTextCentered(text, x, y, w, h, brush, tf) {
     global D2D1_DRAW_TEXT_OPTIONS_CLIP
     if (!gD2D_RT || !tf)
         return
-    ; Alignment guard: skip 2 COM calls when alignment already set
-    if (!tf.HasOwnProp("_a") || tf._a != 1) {
+    ; Alignment guard: skip 2 COM calls when alignment already set.
+    ; _a pre-initialized to -1 in GUI_EnsureResources — no HasOwnProp needed.
+    if (tf._a != 1) {
         tf.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)
         tf.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)
         tf._a := 1
@@ -211,8 +213,9 @@ _D2D_StrokeRect(x, y, w, h, brush, strokeWidth := 1.0) { ; lint-ignore: dead-fun
 ; COM wrappers auto-release via __Delete when Map entries are evicted.
 D2D_GetCachedBrush(argb) {
     global gD2D_BrushCache, D2D_BRUSH_CACHE_MAX, gD2D_RT
-    if (gD2D_BrushCache.Has(argb))
-        return gD2D_BrushCache[argb]
+    br := gD2D_BrushCache.Get(argb, 0)
+    if (br)
+        return br
     if (!gD2D_RT)
         return 0
     ; FIFO eviction
@@ -297,6 +300,8 @@ GUI_EnsureResources(scale) {
             tf.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)
             ; Set up ellipsis trimming (matches GDI+ GDIP_STRING_TRIMMING_ELLIPSIS)
             _D2D_SetEllipsisTrimming(tf)
+            ; Pre-init alignment tracker — avoids HasOwnProp check on hot path
+            tf._a := -1
         }
         gD2D_Res[f[1]] := tf
     }
@@ -496,9 +501,9 @@ D2D_DrawCachedIcon(hwnd, hIcon, x, y, size, &wasCacheHit := "") {
         return false
     }
 
-    ; Check cache — O(1) lookup
-    if (gGdip_IconCache.Has(hwnd)) {
-        cached := gGdip_IconCache[hwnd]
+    ; Check cache — single-lookup via .Get() (avoids Has+[] double hash)
+    cached := gGdip_IconCache.Get(hwnd, 0)
+    if (cached) {
         if (cached.hicon = hIcon && cached.bitmap) {
             static destRect := Buffer(16)
             NumPut("float", Float(x), "float", Float(y),

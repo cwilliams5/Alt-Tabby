@@ -170,7 +170,13 @@ global cfg := {
     GUI_MonitorFilterDefault: "All",
     GUI_AcrylicColor: 0xCC000000,
     PerfAnimationType: "None",
-    PerfAnimationSpeed: 1.0
+    PerfAnimationSpeed: 1.0,
+    GUI_FooterHeightPx: 36,
+    GUI_FooterGapTopPx: 8,
+    GUI_FooterBGRadius: 8,
+    GUI_FooterBorderPx: 0,
+    GUI_ScrollBarWidthPx: 6,
+    GUI_ScrollBarMarginRightPx: 4
 }
 
 ; Test tracking
