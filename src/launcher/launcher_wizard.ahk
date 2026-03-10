@@ -177,13 +177,13 @@ _WizardApply(*) {
 }
 
 ; Called when --wizard-continue flag is passed (after elevation)
-; Returns: "installed" if we should launch from new location, true if normal continue, false on error
+; Returns: "installed" if we should launch from new location, "completed" if normal continue, "cancelled" on error
 WizardContinue() {
     global cfg, gConfigIniPath, ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT, TEMP_WIZARD_STATE
 
     choicesFile := TEMP_WIZARD_STATE
     if (!FileExist(choicesFile))
-        return false
+        return "cancelled"
 
     ; Read saved choices
     try {
@@ -192,7 +192,7 @@ WizardContinue() {
         choices := JSON.Load(choicesJson)
     } catch {
         try FileDelete(choicesFile)  ; Safety cleanup if read succeeded but delete/parse failed
-        return false
+        return "cancelled"
     }
 
     ; Apply the choices (we're elevated now)
@@ -218,7 +218,7 @@ WizardContinue() {
         return "installed"
     }
 
-    return true
+    return "completed"
 }
 
 ; Internal: Apply wizard choices (called from both wizard and continuation)

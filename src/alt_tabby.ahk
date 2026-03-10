@@ -140,6 +140,7 @@ for _, arg in A_Args {
 #Include win_utils.ahk
 #Include pump_utils.ahk
 #Include resource_utils.ahk
+#Include webp_utils.ahk
 #Include stats.ahk
 #Include sort_utils.ahk
 #Include timing.ahk
@@ -264,10 +265,11 @@ if (g_AltTabbyMode = "wizard-continue") {
     Launcher_EnsureInstallationId()  ; Must be before WizardContinue (may create admin task)
     wizardResult := WizardContinue()
 
-    if (wizardResult = "installed") {
+    switch wizardResult {
+    case "installed":
         ; Installed to different location - new exe was launched, we exit
         ExitApp()
-    } else if (wizardResult) {
+    case "completed":
         ; Wizard completed - launch normally (from same location)
 
         ; Acquire mutex before running as launcher
@@ -279,7 +281,7 @@ if (g_AltTabbyMode = "wizard-continue") {
 
         Launcher_LogStartup()
         Launcher_StartSubprocesses()
-    } else {
+    default:
         ; No wizard data found - exit
         ThemeMsgBox("Setup could not continue — required data was not found.`n`n"
             "Please restart Alt-Tabby to try again.", APP_NAME, "Iconx")

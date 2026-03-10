@@ -168,10 +168,9 @@ FX_GPU_Init() {
         } catch as shaderErr {
             ; Shader pipeline unavailable — shader layer won't render,
             ; but all D2D-based effects (selection + backdrop styles 1-6) still work.
-            if (cfg.DiagShaderLog) {
-                global LOG_PATH_SHADER
-                LogAppend(LOG_PATH_SHADER, "FX_GPU_Init shader EXCEPTION: " shaderErr.Message " @ " shaderErr.What)
-            }
+            ; Always log shader init failures (detail logging stays behind DiagShaderLog)
+            global LOG_PATH_SHADER
+            try LogAppend(LOG_PATH_SHADER, "FX_GPU_Init shader EXCEPTION: " shaderErr.Message " @ " shaderErr.What)
         }
 
         return true
