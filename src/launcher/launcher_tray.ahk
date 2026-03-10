@@ -541,6 +541,7 @@ ToggleAdminMode() {
 ; Reads file content to determine outcome: numeric = still in progress, string = result
 _AdminToggle_CheckComplete() {
     global g_AdminToggleInProgress, TEMP_ADMIN_TOGGLE_LOCK, g_AdminToggleStartTick, g_CachedAdminTaskActive
+    global g_NeedsAdminReload
     global ADMIN_TOGGLE_POLL_MS, ADMIN_TOGGLE_TIMEOUT_MS
     global TOOLTIP_DURATION_DEFAULT, APP_NAME
     global ALTTABBY_TASK_NAME, TIMING_TASK_READY_WAIT, TIMING_SUBPROCESS_LAUNCH, cfg, gConfigIniPath
@@ -548,6 +549,8 @@ _AdminToggle_CheckComplete() {
     if (!FileExist(TEMP_ADMIN_TOGGLE_LOCK)) {
         ; Lock file gone entirely - elevated instance crashed or was killed
         g_AdminToggleInProgress := false
+        g_NeedsAdminReload := true
+        AdminTask_InvalidateCache()
         TrayTip("Admin Mode", "Operation did not complete. The elevated process may have crashed.", "Icon!")
         return
     }
@@ -566,6 +569,8 @@ _AdminToggle_CheckComplete() {
         elapsed := A_TickCount - g_AdminToggleStartTick
         if (elapsed >= ADMIN_TOGGLE_TIMEOUT_MS) {
             g_AdminToggleInProgress := false
+            g_NeedsAdminReload := true
+            AdminTask_InvalidateCache()
             try FileDelete(TEMP_ADMIN_TOGGLE_LOCK)
             TrayTip("Admin Mode", "The admin mode change took too long. Please try again from the tray menu.", "Icon!")
             return

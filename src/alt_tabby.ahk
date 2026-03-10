@@ -488,6 +488,9 @@ if (g_AltTabbyMode = "install-to-pf") {
             "  - Insufficient disk space`n`n"
             "The original file has not been modified.`n`n"
             "Details: " e.Message, APP_NAME, "Iconx")
+        ; Relaunch source exe so user isn't left with nothing running
+        if (IsSet(state) && state.HasOwnProp("source") && FileExist(state.source))
+            try Run('"' state.source '"')
     }
     ExitApp()
 }

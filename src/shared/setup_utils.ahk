@@ -1045,9 +1045,14 @@ Update_ApplyCore(opts) {
 
         ; Update admin task if target has admin mode enabled
         if (!targetRunAsAdmin && AdminTaskExists()) {
-            ; Config says admin disabled but task exists (orphaned from previous install
-            ; whose config was overwritten). Clean it up.
-            try DeleteAdminTask()
+            ; Config says admin disabled but task exists — only delete if it belongs to
+            ; this installation (matching ID). Otherwise it's another user's task.
+            targetInstallId := ""
+            if (FileExist(targetConfigPath))
+                try targetInstallId := IniRead(targetConfigPath, "Setup", "InstallationId", "")
+            taskId := AdminTask_GetInstallationId()
+            if (targetInstallId = "" || taskId = "" || targetInstallId = taskId)
+                try DeleteAdminTask()
         } else if (targetRunAsAdmin && AdminTaskExists()) {
             targetInstallId := ""
             if (FileExist(targetConfigPath)) {
