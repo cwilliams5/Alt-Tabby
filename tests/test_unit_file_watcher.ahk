@@ -59,7 +59,7 @@ RunUnitTests_FileWatcher() {
         ; Poll — callback should NOT fire. 2s confirms absence convincingly;
         ; exits early if callback does fire (catches false-negatives faster).
         noFireStart2 := A_TickCount
-        while ((A_TickCount - noFireStart2) < 500) {
+        while ((A_TickCount - noFireStart2) < 2000) {
             if (callbackFired2)
                 break
             Sleep(50)
@@ -101,7 +101,7 @@ RunUnitTests_FileWatcher() {
         }
         ; Poll for stable count (600ms confirms absence, exits early if spurious fires)
         graceStart := A_TickCount
-        while ((A_TickCount - graceStart) < 600) {
+        while ((A_TickCount - graceStart) < 2000) {
             if (callbackCount3 > 1)
                 break
             Sleep(50)
@@ -134,7 +134,7 @@ RunUnitTests_FileWatcher() {
 
         ; Poll — callback should NOT fire. 2s confirms absence convincingly.
         noFireStart4 := A_TickCount
-        while ((A_TickCount - noFireStart4) < 500) {
+        while ((A_TickCount - noFireStart4) < 2000) {
             if (callbackFired4)
                 break
             Sleep(50)
@@ -197,7 +197,12 @@ RunUnitTests_FileWatcher() {
         w6.Stop()
 
         ; Wait past the debounce window
-        Sleep(500)
+        noFireStart6 := A_TickCount
+        while ((A_TickCount - noFireStart6) < 2000) {
+            if (callbackFired6)
+                break
+            Sleep(50)
+        }
 
         if (!callbackFired6) {
             Log("PASS: FileWatch Stop() during active debounce prevented callback")

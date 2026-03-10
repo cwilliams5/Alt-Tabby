@@ -119,7 +119,7 @@ RunLiveTests_Watcher() {
         if (FileExist(storeLogPath)) {
             try {
                 content := FileRead(storeLogPath)
-                if (StrLen(content) > 0) {
+                if (StrLen(content) > 50) {
                     settleReady := true
                     break
                 }
@@ -138,6 +138,11 @@ RunLiveTests_Watcher() {
 
     ; Modify blacklist.txt on disk — the GUI file watcher should detect this
     blPath := testDir "\blacklist.txt"
+
+    ; Record log baseline BEFORE triggering the change so we only search new content
+    logBaseline := 0
+    try logBaseline := StrLen(FileRead(storeLogPath))
+
     try FileAppend("; file watcher test " A_TickCount "`n", blPath, "UTF-8")
 
     ; Poll store log for watcher reload message
@@ -147,7 +152,7 @@ RunLiveTests_Watcher() {
         if (FileExist(storeLogPath)) {
             try {
                 logContent := FileRead(storeLogPath)
-                if (InStr(logContent, "WATCH: blacklist reloaded")) {
+                if (InStr(SubStr(logContent, logBaseline + 1), "WATCH: blacklist reloaded")) {
                     watchReloaded := true
                     break
                 }
@@ -225,9 +230,15 @@ RunLiveTests_Watcher() {
     ; ============================================================
     Log("`n--- Ordered Shutdown Test ---")
 
-    ; Re-find GUI PID after potential restart
-    Sleep(200)
-    guiPid := _Watcher_FindGuiPid(launcherPid)
+    ; Re-find GUI PID after potential restart (poll instead of blind sleep)
+    guiPid := 0
+    guiDiscStart := A_TickCount
+    while ((A_TickCount - guiDiscStart) < 3000) {
+        guiPid := _Watcher_FindGuiPid(launcherPid)
+        if (guiPid)
+            break
+        Sleep(50)
+    }
 
     if (!guiPid) {
         Log("FAIL: Could not find GUI pid for shutdown test")
