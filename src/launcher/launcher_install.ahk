@@ -415,7 +415,11 @@ _Launcher_CleanupStaleAdminTask(newPath) {
                     Setup_SetRunAsAdmin(false)
                 }
             } catch {
-                ; UAC refused - suppress future repair prompts since user was already warned
+                ; UAC refused - disable admin mode + suppress future repair prompts.
+                ; Without SetRunAsAdmin(false, true), a config with RunAsAdmin=true would
+                ; trigger the auto-repair path on next launch → extra UAC prompt before
+                ; the declined marker breaks the loop.
+                Setup_SetRunAsAdmin(false, true)
                 Setup_SetSuppressAdminRepairPrompt(true)
                 TrayTip("Admin Mode", "Could not disable Admin Mode.`nRepair prompts have been suppressed.", "Icon!")
             }
