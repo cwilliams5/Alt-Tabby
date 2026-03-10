@@ -330,23 +330,4 @@ _Watcher_FindGuiPid(launcherPid) {
     return 0
 }
 
-; Helper: send WM_COPYDATA command to launcher, return response
-_Watcher_SendCommand(launcherHwnd, commandId) {
-    cds := Buffer(3 * A_PtrSize, 0)
-    NumPut("uptr", commandId, cds, 0)
-    NumPut("uint", 0, cds, A_PtrSize)
-    NumPut("ptr", 0, cds, 2 * A_PtrSize)
 
-    response := 0
-    result := DllCall("user32\SendMessageTimeoutW"
-        , "ptr", launcherHwnd
-        , "uint", 0x4A
-        , "ptr", A_ScriptHwnd
-        , "ptr", cds.Ptr
-        , "uint", 0x0002
-        , "uint", 3000
-        , "ptr*", &response
-        , "ptr")
-
-    return (result ? response : 0)
-}

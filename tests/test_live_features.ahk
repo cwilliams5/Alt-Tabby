@@ -307,36 +307,31 @@ RunLiveTests_Features() {
                 Log("PASS: Stats snapshot includes derived fields")
                 TestPassed++
 
-                ; Verify formula: QuickSwitchPct — expected from known inputs (3 / (7+3) * 100)
-                expectedQuickPct := Round(3 / (7 + 3) * 100, 1)
+                ; Verify derived values against hardcoded golden values (inputs: AT=7, QS=3, TS=15, C=2)
                 quickPct := snapshot.DerivedQuickSwitchPct
-                if (quickPct = expectedQuickPct) {
-                    Log("PASS: DerivedQuickSwitchPct = " quickPct " (matches formula)")
+                if (quickPct = 30.0) {
+                    Log("PASS: DerivedQuickSwitchPct = " quickPct)
                     TestPassed++
                 } else {
-                    Log("FAIL: DerivedQuickSwitchPct = " quickPct " (expected " expectedQuickPct ")")
+                    Log("FAIL: DerivedQuickSwitchPct = " quickPct " (expected 30.0)")
                     TestErrors++
                 }
 
-                ; Verify formula: CancelRate — expected from known inputs (2 / (7+2) * 100)
-                expectedCancelRate := Round(2 / (7 + 2) * 100, 1)
                 cancelRate := snapshot.DerivedCancelRate
-                if (cancelRate = expectedCancelRate) {
-                    Log("PASS: DerivedCancelRate = " cancelRate " (matches formula)")
+                if (cancelRate = 22.2) {
+                    Log("PASS: DerivedCancelRate = " cancelRate)
                     TestPassed++
                 } else {
-                    Log("FAIL: DerivedCancelRate = " cancelRate " (expected " expectedCancelRate ")")
+                    Log("FAIL: DerivedCancelRate = " cancelRate " (expected 22.2)")
                     TestErrors++
                 }
 
-                ; Verify formula: AvgTabsPerSwitch — expected from known inputs (15 / 7)
-                expectedAvgTabs := Round(15 / 7, 1)
                 avgTabsVal := snapshot.DerivedAvgTabsPerSwitch
-                if (avgTabsVal = expectedAvgTabs) {
-                    Log("PASS: DerivedAvgTabsPerSwitch = " avgTabsVal " (matches formula)")
+                if (avgTabsVal = 2.1) {
+                    Log("PASS: DerivedAvgTabsPerSwitch = " avgTabsVal)
                     TestPassed++
                 } else {
-                    Log("FAIL: DerivedAvgTabsPerSwitch = " avgTabsVal " (expected " expectedAvgTabs ")")
+                    Log("FAIL: DerivedAvgTabsPerSwitch = " avgTabsVal " (expected 2.1)")
                     TestErrors++
                 }
             } else {
