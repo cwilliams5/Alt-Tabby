@@ -60,7 +60,7 @@
 ;    hides it during this gap. Alpha=0 USUALLY hides the frame but can
 ;    intermittently leak (DWM race). Off-screen ensures any leak is invisible.
 ;
-;    See _GUI_AntiFlashPrepare/Reveal() in gui_antiflash.ahk.
+;    See GUI_AntiFlashPrepare/Reveal() in gui_antiflash.ahk.
 ;
 ; 6. OFF-SCREEN CENTERING REQUIRES RAW WIN32
 ;    AHK v2's Gui.Move() applies DPI scaling on coordinates. When a window
