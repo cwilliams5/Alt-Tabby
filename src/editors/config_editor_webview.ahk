@@ -77,7 +77,6 @@ global gCEW_Controller := 0
 global gCEW_WebView := 0
 global gCEW_SavedChanges := false
 global gCEW_HasChanges := false
-global gCEW_LauncherHwnd := 0  ; lint-ignore: dead-global  ; Set by init, consumed by alt_tabby.ahk exit handler
 global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage collection
 
 ; ============================================================
@@ -87,12 +86,10 @@ global gCEW_MessageHandler := 0  ; Must store HANDLER OBJECT to prevent garbage 
 ; Run the WebView2 config editor
 ; launcherHwnd: HWND of launcher process for WM_COPYDATA restart signal (0 = standalone)
 ; Returns: true if changes were saved, false otherwise
-CE_RunWebView2(launcherHwnd := 0) {
-    global gCEW_Gui, gCEW_Controller, gCEW_WebView, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
+CE_RunWebView2() {
+    global gCEW_Gui, gCEW_Controller, gCEW_WebView, gCEW_SavedChanges, gCEW_HasChanges
     global gCEW_MessageHandler
     global gConfigLoaded, RES_ID_WEBVIEW2_DLL, RES_ID_EDITOR_HTML
-
-    gCEW_LauncherHwnd := launcherHwnd
     gCEW_SavedChanges := false
     gCEW_HasChanges := false
 
@@ -215,7 +212,7 @@ _CEW_OnWebMessageRaw(this, sender, argsPtr) { ; lint-ignore: dead-param
 }
 
 _CEW_OnWebMessage(sender, args) { ; lint-ignore: dead-param
-    global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges, gCEW_LauncherHwnd
+    global gCEW_Gui, gCEW_SavedChanges, gCEW_HasChanges
     global cfg, LOG_PATH_WEBVIEW, LOG_PATH_STORE
 
     ; Parse JSON message from JavaScript

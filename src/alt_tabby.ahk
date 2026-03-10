@@ -233,7 +233,7 @@ if (g_AltTabbyMode = "config") {
 if (g_AltTabbyMode = "blacklist") {
     launcherHwnd := _ParseLauncherHwnd()
     ; Config + theme init is handled inside BlacklistEditor_Run (matches ConfigEditor_Run pattern)
-    BlacklistEditor_Run(launcherHwnd)
+    BlacklistEditor_Run()
     _NotifyEditorClosed(launcherHwnd)
     ExitApp()
 }

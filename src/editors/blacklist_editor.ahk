@@ -28,7 +28,6 @@ global gBE_OriginalTitle := ""
 global gBE_OriginalClass := ""
 global gBE_OriginalPair := ""
 global gBE_SavedChanges := false
-global gBE_LauncherHwnd := 0  ; lint-ignore: dead-global  ; Set by init, consumed by alt_tabby.ahk exit handler
 
 ; ============================================================
 ; PUBLIC API
@@ -36,10 +35,9 @@ global gBE_LauncherHwnd := 0  ; lint-ignore: dead-global  ; Set by init, consume
 
 ; Run the blacklist editor
 ; Returns: true if changes were saved, false otherwise
-BlacklistEditor_Run(launcherHwnd := 0) {
-    global gBE_Gui, gBE_SavedChanges, gBE_LauncherHwnd, gBlacklist_FilePath, gBlacklist_Loaded
+BlacklistEditor_Run() {
+    global gBE_Gui, gBE_SavedChanges, gBlacklist_FilePath, gBlacklist_Loaded
     global gConfigLoaded
-    gBE_LauncherHwnd := launcherHwnd
 
     ; Hide tray icon - only launcher should have one
     A_IconHidden := true

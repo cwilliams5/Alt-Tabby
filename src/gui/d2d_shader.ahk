@@ -1042,14 +1042,6 @@ _Shader_CreateRT(entry, w, h) {
     return true
 }
 
-; GUID helper
-; lint-ignore: dead-function
-_Shader_MakeGUID(str) {
-    buf := Buffer(16, 0)
-    DllCall("ole32\CLSIDFromString", "str", str, "ptr", buf, "hresult")
-    return buf
-}
-
 ; ========================= PRE-RENDER =========================
 
 ; Run the D3D11 shader pipeline. Call BEFORE D2D BeginDraw.
@@ -1284,15 +1276,6 @@ Shader_GetBitmap(name) {
     global gShader_Registry
     try return gShader_Registry[name].bitmap
     return 0
-}
-
-; Return the metadata for a registered shader, or 0 if not found.
-; lint-ignore: dead-function
-_Shader_GetMeta(name) {
-    global gShader_Registry
-    if (!gShader_Registry.Has(name))
-        return 0
-    return gShader_Registry[name].meta
 }
 
 ; ========================= CLEANUP =========================

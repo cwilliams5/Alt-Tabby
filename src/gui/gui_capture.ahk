@@ -8,7 +8,6 @@
 ; ============================================================
 
 global gCapture_Recording := false
-global gCapture_FfmpegPID := 0 ; lint-ignore: dead-global
 global gCapture_StdinPipe := 0
 
 ; ========================= INIT =========================
@@ -164,7 +163,7 @@ _Capture_Screenshot() {
 ;
 
 _Capture_RecordStart() {
-    global gGUI_OverlayVisible, gGUI_BaseH, gCapture_Recording, gCapture_FfmpegPID, gCapture_StdinPipe
+    global gGUI_OverlayVisible, gGUI_BaseH, gCapture_Recording, gCapture_StdinPipe
 
     if (!gGUI_OverlayVisible || gCapture_Recording)
         return
@@ -240,7 +239,6 @@ _Capture_RecordStart() {
         return
     }
 
-    gCapture_FfmpegPID := NumGet(pi, 16, "UInt")
     DllCall("CloseHandle", "Ptr", NumGet(pi, 0, "Ptr"))   ; hProcess
     DllCall("CloseHandle", "Ptr", NumGet(pi, 8, "Ptr"))   ; hThread
 
@@ -252,7 +250,7 @@ _Capture_RecordStart() {
 }
 
 _Capture_RecordStop() {
-    global gCapture_Recording, gCapture_FfmpegPID, gCapture_StdinPipe
+    global gCapture_Recording, gCapture_StdinPipe
 
     if (!gCapture_Recording)
         return
@@ -266,7 +264,6 @@ _Capture_RecordStop() {
     DllCall("CloseHandle", "Ptr", gCapture_StdinPipe)
 
     gCapture_Recording := false
-    gCapture_FfmpegPID := 0
     gCapture_StdinPipe := 0
 
     ToolTip("Recording stopped")
