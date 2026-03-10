@@ -282,7 +282,7 @@ if ($Query) {
 }
 
 # ============================================================
-# Pass 1: Collect file-scope globals
+# Pass 1: Collect file-scope globals (+ cache cleaned lines)
 # ============================================================
 $pass1Sw = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -292,6 +292,8 @@ $globalDecl = @{}
 $fileCache = @{}
 # fileCacheText: filePath -> joined string (for pre-filter IndexOf)
 $fileCacheText = @{}
+# cleanedLineCache: filePath -> array of [cleaned_line, brace_delta] per line
+$cleanedLineCache = @{}
 
 foreach ($file in $srcFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
@@ -308,9 +310,22 @@ foreach ($file in $srcFiles) {
     $inFunc = $false
     $funcDepth = -1
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
+    # Build per-line cache: [cleaned_line, brace_delta]
+    $lineCount = $lines.Count
+    $cachedLines = [object[]]::new($lineCount)
+
+    for ($i = 0; $i -lt $lineCount; $i++) {
         $cleaned = Clean-Line $lines[$i]
-        if ($cleaned -eq '') { continue }
+        if ($cleaned -eq '') {
+            $cachedLines[$i] = @('', 0)
+            continue
+        }
+
+        # Compute brace delta once
+        $opens = $cleaned.Length - $cleaned.Replace('{','').Length
+        $closes = $cleaned.Length - $cleaned.Replace('}','').Length
+        $delta = $opens - $closes
+        $cachedLines[$i] = @($cleaned, $delta)
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -320,7 +335,7 @@ foreach ($file in $srcFiles) {
             }
         }
 
-        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
+        $depth += $delta
 
         if ($inFunc -and $depth -le $funcDepth) {
             $inFunc = $false
@@ -348,6 +363,8 @@ foreach ($file in $srcFiles) {
             }
         }
     }
+
+    $cleanedLineCache[$file.FullName] = $cachedLines
 }
 
 # Build lookup set for fast matching
@@ -374,22 +391,16 @@ if (-not $Query -and $globalSet.Count -gt 0) {
         'Compiled, IgnoreCase')
 }
 
-# Pre-compile per-global mutation regex (avoids re-parsing patterns in inner loop)
-# NOTE: Combining these 5 patterns into a single alternation regex with 'Compiled' flag
-# was tested and is SLOWER (6.1s vs 2.7s). The 'Compiled' flag JIT-compiles each regex
-# to IL — with 651 globals, compilation overhead dwarfs per-call savings. The 5-pattern
-# short-circuit approach is faster because most lines match pattern[0] and skip the rest.
-$mutationRegex = @{}
-foreach ($name in $globalSet) {
-    $e = [regex]::Escape($name)
-    $mutationRegex[$name] = @(
-        [regex]::new("(?<![.\w])$e\s*[:+\-\*\/\.]+\="),
-        [regex]::new("(?<![.\w])$e\s*(\+\+|--)"),
-        [regex]::new("(?<![.\w])$e\[.+?\]\s*[:+\-\*\/\.]+\="),
-        [regex]::new("\b$e\.($MUTATING_METHODS)\s*\("),
-        [regex]::new("\b$e\.\w+\s*[:+\-\*\/\.]+\=")
-    )
-}
+# Generic mutation regex: 5 pre-compiled patterns that capture the variable name,
+# then verify against $globalSet via HashSet lookup. This replaces per-global regex
+# construction (previously 5 × N_globals regex objects) with 5 total + O(1) lookup.
+# NOTE: This is NOT the alternation approach warned against above — that combined all
+# global names into one regex. This uses generic (\w+) capture + HashSet.Contains().
+$_rxMut1 = [regex]::new('(?<![.\w])(\w+)\s*[:+\-\*\/\.]+\=', 'Compiled')
+$_rxMut2 = [regex]::new('(?<![.\w])(\w+)\s*(\+\+|--)', 'Compiled')
+$_rxMut3 = [regex]::new('(?<![.\w])(\w+)\[.+?\]\s*[:+\-\*\/\.]+\=', 'Compiled')
+$_rxMut4 = [regex]::new('\b(\w+)\.(' + $MUTATING_METHODS + ')\s*\(', 'Compiled')
+$_rxMut5 = [regex]::new('\b(\w+)\.\w+\s*[:+\-\*\/\.]+\=', 'Compiled')
 
 # ============================================================
 # Pass 2: Detect mutations in function bodies
@@ -421,6 +432,25 @@ foreach ($file in $srcFiles) {
     }
     $lines = $fileCache[$file.FullName]
 
+    # Use cached cleaned lines if available (from Pass 1), otherwise build cache now
+    $hasCachedLines = $cleanedLineCache.ContainsKey($file.FullName)
+    if (-not $hasCachedLines) {
+        $lineCount = $lines.Count
+        $cachedLines = [object[]]::new($lineCount)
+        for ($ci = 0; $ci -lt $lineCount; $ci++) {
+            $cleaned = Clean-Line $lines[$ci]
+            if ($cleaned -eq '') {
+                $cachedLines[$ci] = @('', 0)
+            } else {
+                $opens = $cleaned.Length - $cleaned.Replace('{','').Length
+                $closes = $cleaned.Length - $cleaned.Replace('}','').Length
+                $cachedLines[$ci] = @($cleaned, $opens - $closes)
+            }
+        }
+        $cleanedLineCache[$file.FullName] = $cachedLines
+    }
+    $cachedLines = $cleanedLineCache[$file.FullName]
+
     $depth = 0
     $inFunc = $false
     $funcDepth = -1
@@ -429,8 +459,10 @@ foreach ($file in $srcFiles) {
         [System.StringComparer]::OrdinalIgnoreCase)
 
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        $cleaned = Clean-Line $lines[$i]
+        $entry = $cachedLines[$i]
+        $cleaned = $entry[0]
         if ($cleaned -eq '') { continue }
+        $delta = $entry[1]
 
         if (-not $inFunc -and $cleaned -match '^\s*(?:static\s+)?(\w+)\s*\(') {
             $fname = $Matches[1]
@@ -441,7 +473,7 @@ foreach ($file in $srcFiles) {
             }
         }
 
-        $depth += ($cleaned.Length - $cleaned.Replace('{','').Length) - ($cleaned.Length - $cleaned.Replace('}','').Length)
+        $depth += $delta
 
         if ($inFunc -and $depth -le $funcDepth) {
             $inFunc = $false
@@ -478,14 +510,21 @@ foreach ($file in $srcFiles) {
             [void]$seen.Add($wName)
             if (-not $globalSet.Contains($wName)) { continue }
 
-            # Test mutation (5 patterns, short-circuits on first match)
-            $patterns = $mutationRegex[$wName]
-            $isMutation = $hasMutOp -and (
-                          $patterns[0].IsMatch($cleaned) -or
-                          $patterns[1].IsMatch($cleaned) -or
-                          $patterns[2].IsMatch($cleaned) -or
-                          $patterns[3].IsMatch($cleaned) -or
-                          $patterns[4].IsMatch($cleaned))
+            # Test mutation using generic patterns + HashSet verification
+            # Each pattern captures (\w+) at the mutation position; we check all
+            # matches on the line to see if $wName appears as a mutation target.
+            # Short-circuits on first pattern that confirms a match.
+            $isMutation = $false
+            if ($hasMutOp) {
+                :mutCheck foreach ($rxMut in @($_rxMut1, $_rxMut2, $_rxMut3, $_rxMut4, $_rxMut5)) {
+                    foreach ($rm in $rxMut.Matches($cleaned)) {
+                        if ($rm.Groups[1].Value -eq $wName) {
+                            $isMutation = $true
+                            break mutCheck
+                        }
+                    }
+                }
+            }
 
             if ($isMutation) {
                 [void]$mutations.Add(@{
